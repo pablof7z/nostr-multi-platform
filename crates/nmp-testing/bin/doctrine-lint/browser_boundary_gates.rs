@@ -1,0 +1,242 @@
+//! Browser runtime boundary smoke gates (#2082).
+//!
+//! `nmp-browser-runtime` is the Rust composition root for browser platforms.
+//! `web/packages/runtime-web` is only TypeScript ABI/Worker glue. These tests
+//! keep that split visible in doctrine CI.
+
+use std::path::{Path, PathBuf};
+
+use super::{run_lint, workspace_root};
+
+const RUNTIME_WEB_ALLOWED_DEPS: &[&str] = &["flatbuffers"];
+
+const TS_BOUNDARY_TOKENS: &[(&str, &str)] = &[
+    (
+        "setInterval(",
+        "polling timer; runtime-web must be message/callback driven",
+    ),
+    (
+        "setTimeout(",
+        "sleep/check timer; use Worker messages or the Rust runtime wake path",
+    ),
+    (
+        "requestAnimationFrame(",
+        "frame polling; UI rendering belongs outside runtime-web",
+    ),
+    (
+        "window.nostr",
+        "direct signer access; broker signer capabilities through Rust-owned flow",
+    ),
+    (
+        ".signEvent(",
+        "direct event signing; runtime-web must not own signing policy",
+    ),
+    (
+        "getPublicKey(",
+        "identity-provider policy; host supplies raw capability results",
+    ),
+    (
+        "getRelays(",
+        "relay-provider policy; Rust canonicalizes relay permissions",
+    ),
+    ("nostr-tools", "Nostr protocol library in TypeScript glue"),
+    (
+        "SimplePool",
+        "relay routing/client policy in TypeScript glue",
+    ),
+    (
+        "RelayPool",
+        "relay routing/client policy in TypeScript glue",
+    ),
+    (
+        "new WebSocket(",
+        "browser relay transport belongs in Rust runtime",
+    ),
+    ("localStorage", "durable browser storage from runtime-web"),
+    ("sessionStorage", "durable browser storage from runtime-web"),
+    ("indexedDB", "durable browser storage from runtime-web"),
+    ("caches.open(", "durable browser storage from runtime-web"),
+    ("console.log(", "debug retention/logging in runtime-web"),
+    ("console.debug(", "debug retention/logging in runtime-web"),
+    ("privateKey", "raw private-key material in TypeScript glue"),
+    ("secretKey", "raw private-key material in TypeScript glue"),
+    ("nsec", "raw secret material in TypeScript glue"),
+];
+
+#[test]
+fn nmp_browser_runtime_is_direct_doctrine_lint_clean() {
+    let (code, stdout, stderr) = run_lint(&["--path", "crates/nmp-browser-runtime/src"]);
+    assert_eq!(
+        code, 0,
+        "nmp-browser-runtime must stay clean when CI scans it directly; \
+         stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+}
+
+#[test]
+fn runtime_web_package_dependencies_stay_abi_only() {
+    let root = workspace_root();
+    let package_json = root.join("web/packages/runtime-web/package.json");
+    let body = std::fs::read_to_string(&package_json)
+        .unwrap_or_else(|err| panic!("failed to read {}: {err}", package_json.display()));
+    let manifest: serde_json::Value =
+        serde_json::from_str(&body).expect("runtime-web package.json must parse");
+    let deps = manifest["dependencies"]
+        .as_object()
+        .expect("runtime-web dependencies must be an object");
+
+    let mut violations = Vec::new();
+    for name in deps.keys() {
+        if !RUNTIME_WEB_ALLOWED_DEPS.contains(&name.as_str()) {
+            violations.push(name.clone());
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "runtime-web must stay ABI/Worker glue. Protocol, relay, signer, \
+         storage, or app policy dependencies belong in Rust or app shells, not \
+         this package:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn runtime_web_sources_have_no_policy_polling_or_secret_retention() {
+    let root = workspace_root();
+    let src_root = root.join("web/packages/runtime-web/src");
+    let mut files = Vec::new();
+    collect_ts_files(&src_root, &mut files);
+    assert!(!files.is_empty(), "runtime-web TS sources must exist");
+
+    let mut violations = Vec::new();
+    for path in files {
+        if should_skip_runtime_web_source(&path) {
+            continue;
+        }
+        let body = std::fs::read_to_string(&path)
+            .unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()));
+        let mut in_block_comment = false;
+        for (idx, line) in body.lines().enumerate() {
+            let live = strip_ts_comments(line, &mut in_block_comment);
+            for finding in ts_boundary_findings(&live) {
+                violations.push(format!(
+                    "{}:{} {}",
+                    relative_to(&root, &path).display(),
+                    idx + 1,
+                    finding
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "runtime-web must not grow protocol/routing/signing policy, polling, \
+         durable storage, or raw secret/debug retention:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn runtime_web_boundary_checker_flags_obvious_violations() {
+    for (line, needle) in [
+        ("setInterval(() => poll(), 1000);", "polling"),
+        ("window.nostr.signEvent(event);", "signing"),
+        (
+            "import { SimplePool } from \"nostr-tools\";",
+            "Nostr protocol",
+        ),
+        ("localStorage.setItem(\"nsec\", value);", "storage"),
+    ] {
+        let findings = ts_boundary_findings(line);
+        assert!(
+            findings.iter().any(|f| f.contains(needle)),
+            "expected `{line}` to produce a finding containing `{needle}`; got {findings:?}"
+        );
+    }
+
+    for line in [
+        "scope.postMessage({ type: \"update_bytes\", bytes });",
+        "const routing = decodeDispatchEnvelopeRouting(request.bytes);",
+    ] {
+        let findings = ts_boundary_findings(line);
+        assert!(
+            findings.is_empty(),
+            "expected `{line}` to stay clean; got {findings:?}"
+        );
+    }
+}
+
+fn collect_ts_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    let mut entries: Vec<_> = entries.filter_map(Result::ok).collect();
+    entries.sort_by_key(|entry| entry.path());
+    for entry in entries {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_ts_files(&path, out);
+        } else if matches!(
+            path.extension().and_then(|e| e.to_str()),
+            Some("ts" | "tsx")
+        ) {
+            out.push(path);
+        }
+    }
+}
+
+fn should_skip_runtime_web_source(path: &Path) -> bool {
+    let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+        return true;
+    };
+    name.ends_with(".generated.ts") || name.ends_with(".test.ts")
+}
+
+fn ts_boundary_findings(line: &str) -> Vec<String> {
+    let mut findings = Vec::new();
+    for (token, message) in TS_BOUNDARY_TOKENS {
+        if line.contains(token) {
+            findings.push(format!("`{token}` violates browser boundary: {message}"));
+        }
+    }
+    findings
+}
+
+fn strip_ts_comments(line: &str, in_block_comment: &mut bool) -> String {
+    let mut out = String::new();
+    let mut rest = line;
+    loop {
+        if *in_block_comment {
+            if let Some(end) = rest.find("*/") {
+                rest = &rest[end + 2..];
+                *in_block_comment = false;
+            } else {
+                break;
+            }
+        } else if let Some(line_comment) = rest.find("//") {
+            let before = &rest[..line_comment];
+            append_until_block_comment(before, &mut out, in_block_comment);
+            break;
+        } else {
+            append_until_block_comment(rest, &mut out, in_block_comment);
+            break;
+        }
+    }
+    out
+}
+
+fn append_until_block_comment(segment: &str, out: &mut String, in_block_comment: &mut bool) {
+    if let Some(start) = segment.find("/*") {
+        out.push_str(&segment[..start]);
+        *in_block_comment = true;
+    } else {
+        out.push_str(segment);
+    }
+}
+
+fn relative_to(root: &Path, path: &Path) -> PathBuf {
+    path.strip_prefix(root).unwrap_or(path).to_path_buf()
+}

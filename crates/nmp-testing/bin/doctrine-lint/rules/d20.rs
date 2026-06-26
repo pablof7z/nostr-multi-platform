@@ -28,8 +28,9 @@
 //!
 //! Only wasm-reachable crates are scanned:
 //! `nmp-core`, `nmp-store`, `nmp-network`, `nmp-signers`, `nmp-wasm`,
-//! `nmp-planner`, `nmp-chirp-config`, `nmp-signer-iface` (#1161 added the last
-//! three — they pull into the wasm dependency graph transitively).
+//! `nmp-browser-runtime`, `nmp-planner`, `nmp-chirp-config`,
+//! `nmp-signer-iface` (#1161 added the last three — they pull into the wasm
+//! dependency graph transitively; #2082 added the browser runtime crate).
 //!
 //! Within those crates, three subtrees are excluded because they never compile
 //! to `wasm32` (the actor *runtime*, the relay-worker I/O loop, and the LMDB
@@ -66,6 +67,7 @@ const WASM_REACHABLE_CRATES: &[&str] = &[
     "nmp-network",
     "nmp-signers",
     "nmp-wasm",
+    "nmp-browser-runtime",
     "nmp-planner",
     "nmp-chirp-config",
     "nmp-signer-iface",
@@ -246,7 +248,10 @@ mod tests {
         // `use ` keyword), 1-indexed. For `"use std::time::Instant;"`, `std`
         // is byte offset 4 → column 5.
         let hits = check("use std::time::Instant;", false, false);
-        assert_eq!(hits[0].0, 5, "column must be 1-indexed at the std::time:: path");
+        assert_eq!(
+            hits[0].0, 5,
+            "column must be 1-indexed at the std::time:: path"
+        );
     }
 
     // -- file_in_scope unit tests ---------------------------------------------
@@ -255,11 +260,7 @@ mod tests {
     fn wasm_reachable_crates_are_in_scope() {
         for c in WASM_REACHABLE_CRATES {
             let p = format!("crates/{}/src/lib.rs", c);
-            assert!(
-                file_in_scope(Path::new(&p)),
-                "{} src must be in scope",
-                c
-            );
+            assert!(file_in_scope(Path::new(&p)), "{} src must be in scope", c);
         }
         // Absolute path variant.
         assert!(file_in_scope(Path::new(
@@ -287,9 +288,7 @@ mod tests {
             "crates/nmp-network/src/relay_worker/mod.rs"
         )));
         // nmp-store/src/lmdb/** — the LMDB backend is native-only.
-        assert!(!file_in_scope(Path::new(
-            "crates/nmp-store/src/lmdb/gc.rs"
-        )));
+        assert!(!file_in_scope(Path::new("crates/nmp-store/src/lmdb/gc.rs")));
     }
 
     #[test]

@@ -31,8 +31,8 @@ use crate::signer::{
     enqueue_completion, CapabilityEnvelope, CapabilityProviderRegistry, SignerCompletion,
 };
 
-use std::collections::HashMap;
 use super::NoopRoutingTrace;
+use std::collections::HashMap;
 
 /// Public-facing handle to the browser runtime (issue #2058 — hides raw
 /// reducer/runtime handles).
@@ -135,8 +135,7 @@ impl BrowserRuntimeHandle {
         for signer in std::mem::take(&mut inner.capability_providers) {
             signer_registry.insert(signer);
         }
-        let (signer_completion_tx, signer_completion_rx) =
-            mpsc::channel::<SignerCompletion>();
+        let (signer_completion_tx, signer_completion_rx) = mpsc::channel::<SignerCompletion>();
 
         // ── #2074 — Rust-owned signer-state slot + typed projection ──────────
         let signer_state_slot = new_signer_state_slot();
@@ -151,10 +150,7 @@ impl BrowserRuntimeHandle {
 
         // ── Extract the receiver and build the runtime ────────────────────────
 
-        let inbox_rx = inner
-            .inbox_rx
-            .take()
-            .expect("BrowserRuntimeHandle: inbox_rx already consumed");
+        let inbox_rx = inner.inbox_rx;
         let inbox_tx = inner.inbox_tx.clone();
 
         let runtime = BrowserRuntime {
@@ -242,9 +238,11 @@ impl BrowserRuntimeHandle {
         let outcome = self.snapshot_cache.apply_frame(&raw);
         // D6: emit SnapshotDecodeFailed on degraded so the host can observe it.
         if let SnapshotOutcome::Degraded { ref reason, .. } = outcome {
-            self.runtime.pending_startup_events.push(
-                BrowserRuntimeEvent::SnapshotDecodeFailed { reason: reason.clone() },
-            );
+            self.runtime
+                .pending_startup_events
+                .push(BrowserRuntimeEvent::SnapshotDecodeFailed {
+                    reason: reason.clone(),
+                });
         }
         outcome
     }
@@ -281,7 +279,10 @@ impl BrowserRuntimeHandle {
         correlation_id: String,
         result: Result<String, String>,
     ) {
-        let completion = SignerCompletion { correlation_id, result };
+        let completion = SignerCompletion {
+            correlation_id,
+            result,
+        };
         let wake = self.runtime.relay_pool.wake_cell();
         enqueue_completion(&self.runtime.signer_completion_tx, &wake, completion);
     }

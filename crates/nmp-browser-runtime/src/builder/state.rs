@@ -17,20 +17,20 @@
 use std::sync::{Arc, Mutex};
 
 use nmp_core::actor::ActorMail;
-use nmp_core::substrate::{
-    BlockedRelayLookup, ContactsLookup, DmInboxRelayLookup, ExternalEventSinkPolicy,
-    MailboxCache, OutboxRouter, ProfileLookup, RawEventForwardPolicyContext,
-    RelayConnectedHook, RelayTextInterceptor, ReqFrameInterceptor, RoutingTraceObserver,
-};
-use nmp_core::{
-    ActionRegistry, AppRelaySlot, Clock, KernelEventObserverId, KernelReducer,
-    publish::OutboxResolver,
-    slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot},
-};
 use nmp_core::subs::PlanCoverageHook;
+use nmp_core::substrate::InputScopeRegistry;
 use nmp_core::substrate::PreferredRelaySource;
 use nmp_core::substrate::SearchScopeRegistry;
-use nmp_core::substrate::InputScopeRegistry;
+use nmp_core::substrate::{
+    BlockedRelayLookup, ContactsLookup, DmInboxRelayLookup, ExternalEventSinkPolicy, MailboxCache,
+    OutboxRouter, ProfileLookup, RawEventForwardPolicyContext, RelayConnectedHook,
+    RelayTextInterceptor, ReqFrameInterceptor, RoutingTraceObserver,
+};
+use nmp_core::{
+    publish::OutboxResolver,
+    slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot},
+    ActionRegistry, AppRelaySlot, Clock, KernelEventObserverId, KernelReducer,
+};
 
 // Type aliases matching AppHost factory shapes.
 type RoutingSubstrateFactory = Box<
@@ -49,9 +49,7 @@ type PublishResolverFactory = Box<
         + Sync,
 >;
 type ExternalEventSinkPolicyFactory = Box<
-    dyn Fn(RawEventForwardPolicyContext) -> Vec<Arc<dyn ExternalEventSinkPolicy>>
-        + Send
-        + Sync,
+    dyn Fn(RawEventForwardPolicyContext) -> Vec<Arc<dyn ExternalEventSinkPolicy>> + Send + Sync,
 >;
 
 /// Everything the builder accumulates before `start()`.
@@ -70,8 +68,8 @@ pub(crate) struct BrowserBuilderInner {
     // ── HostCapabilities ──────────────────────────────────────────────────────
     /// Sender half of the builder-owned mailbox. Cloned into `CommandSender`s.
     pub(crate) inbox_tx: std::sync::mpsc::Sender<ActorMail>,
-    /// Receiver half — consumed by `BrowserRuntime::new` at start().
-    pub(crate) inbox_rx: Option<std::sync::mpsc::Receiver<ActorMail>>,
+    /// Receiver half — moved into `BrowserRuntime` at start().
+    pub(crate) inbox_rx: std::sync::mpsc::Receiver<ActorMail>,
     /// Shared relay-list slot (builder holds it, kernel gets a clone at start).
     pub(crate) configured_relays_slot: AppRelaySlot,
     /// Preferred-relay source for NIP-50 search relay resolution. Stored here;
@@ -125,8 +123,7 @@ pub(crate) struct BrowserBuilderInner {
     // ── Collections handed to BrowserRuntime at start() ───────────────────────
     pub(crate) relay_text_interceptors: Vec<Arc<dyn RelayTextInterceptor>>,
     pub(crate) relay_connected_hooks: Vec<Arc<dyn RelayConnectedHook>>,
-    pub(crate) identity_change_observers:
-        Vec<Box<dyn Fn(Option<String>) + Send + Sync + 'static>>,
+    pub(crate) identity_change_observers: Vec<Box<dyn Fn(Option<String>) + Send + Sync + 'static>>,
     /// Capability/signer providers accumulated via
     /// `BrowserAppBuilder::with_capability_providers`. Moved into the
     /// `CapabilityProviderRegistry` in `from_builder_inner` at `start()`.
@@ -157,7 +154,7 @@ impl BrowserBuilderInner {
             reducer: KernelReducer::new(),
             action_registry: nmp_core::default_registry(),
             inbox_tx,
-            inbox_rx: Some(inbox_rx),
+            inbox_rx,
             configured_relays_slot,
             preferred_relay_source: None,
             singleton_event_observer_id: None,

@@ -58,6 +58,9 @@ jobs:
       - name: Run D6/D7/D8 against nmp-app-chirp (thin-shell rule)
         run: cargo run --quiet -p nmp-testing --bin doctrine-lint -- --path apps/chirp/crates/nmp-app-chirp/src
 
+      - name: Run doctrine-lint against nmp-browser-runtime
+        run: cargo run --quiet -p nmp-testing --bin doctrine-lint -- --path crates/nmp-browser-runtime/src
+
       - name: Run D8 no-polling gate across all production crates and apps
         run: cargo run --quiet -p nmp-testing --bin doctrine-lint -- --workspace-d8
 

@@ -327,10 +327,7 @@ impl BrowserAppBuilder<RelaysDeclared> {
     /// providers (NIP-07, NIP-46, local-key) are registered by the browser
     /// capability + signer-provider registry in #2049. When that lands, the
     /// provider set is supplied through `config` here; the gate itself stays.
-    pub fn decide_providers(
-        self,
-        config: BrowserRunConfig,
-    ) -> BrowserAppBuilder<ProvidersDecided> {
+    pub fn decide_providers(self, config: BrowserRunConfig) -> BrowserAppBuilder<ProvidersDecided> {
         {
             let Ok(mut g) = self.inner.lock() else {
                 return self.advance();
@@ -357,10 +354,10 @@ impl BrowserAppBuilder<ProvidersDecided> {
         nmp_defaults::register_defaults(&mut self);
 
         // Step 2 — consume the inner state and build the runtime.
-        let inner = self
-            .inner
-            .into_inner()
-            .expect("BrowserAppBuilder::start: inner Mutex poisoned");
+        let inner = match self.inner.into_inner() {
+            Ok(inner) => inner,
+            Err(poisoned) => poisoned.into_inner(),
+        };
 
         // #2072 — loud ADR-0053 gate: after register_defaults, declared
         // projections MUST be in `All` or `Narrow` state, not `Undeclared`.
