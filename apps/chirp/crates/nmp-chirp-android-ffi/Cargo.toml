@@ -9,11 +9,26 @@ name = "nmp-chirp-android-ffi"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-description = "Chirp-owned Android JNI delivery surface (Layer 6, Chirp app)."
+description = "Chirp-owned Android JNI/UniFFI delivery surface (Layer 6, Chirp app)."
 
 [lib]
 name = "nmp_android_ffi"
 crate-type = ["cdylib"]
+
+# The [[bin]] entry for uniffi-bindgen is gated behind `bindgen-cli` so that
+# the clap/camino deps do NOT enter the production cdylib build.  To regenerate
+# Kotlin bindings run:
+#   cargo run --bin uniffi-bindgen \
+#     --manifest-path apps/chirp/crates/nmp-chirp-android-ffi/Cargo.toml \
+#     --features bindgen-cli -- \
+#     generate --library <path-to-libnmp_android_ffi.dylib> \
+#     --crate nmp_chirp_android_ffi --language kotlin \
+#     --config apps/chirp/crates/nmp-chirp-android-ffi/uniffi.toml \
+#     --out-dir apps/chirp/android/app/src/main/java --no-format
+[[bin]]
+name = "uniffi-bindgen"
+path = "uniffi-bindgen.rs"
+required-features = ["bindgen-cli"]
 
 [features]
 # Marmot (MLS-over-Nostr encrypted groups). Mirrors the iOS posture: `marmot`
@@ -26,6 +41,8 @@ crate-type = ["cdylib"]
 # the JNI shim (the same symbol-retention mechanism documented at the top of
 # `src/lib.rs`).
 marmot = ["nmp-app-chirp/marmot", "dep:libsqlite3-sys", "dep:openssl-src"]
+# Gate the uniffi-bindgen CLI binary to keep clap/camino out of the .so.
+bindgen-cli = ["uniffi/cli"]
 
 [dependencies]
 # Path-dep on the SAME kernel the iOS app consumes.
@@ -55,6 +72,15 @@ zeroize = { version = "1", features = ["std"] }
 # vendored OpenSSL when cross-compiling for the NDK. Feature unification
 # applies this to the whole graph; only active when `marmot` is enabled.
 libsqlite3-sys = { version = "0.35", features = ["bundled-sqlcipher-vendored-openssl"], optional = true }
+
+# UniFFI proc-macro runtime + scaffolding generator (M14-0 / issue #2129).
+# PINNED to 0.29.5: the Kotlin bindings in apps/chirp/android/...uniffi/
+# were generated with exactly this version.  Change with:
+#   1. Bump here AND in the [[bin]] invocation comment above.
+#   2. Re-run the generate command.
+#   3. Check in regenerated Kotlin.
+#   4. Run ci/check-uniffi-kotlin-drift.sh to verify no drift.
+uniffi = { version = "=0.29.5" }
 
 [build-dependencies]
 # Pin the vendored-OpenSSL source consumed (transitively) by

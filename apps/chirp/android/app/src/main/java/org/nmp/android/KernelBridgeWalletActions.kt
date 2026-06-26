@@ -16,14 +16,9 @@ internal fun KernelBridge.walletConnect(uri: String): DispatchResult =
 internal fun KernelBridge.walletDisconnect(): DispatchResult =
     dispatchWalletWrite("nmp.wallet.disconnect", "\"Disconnect\"")
 
-private fun KernelBridge.dispatchWalletWrite(namespace: String, bodyJson: String): DispatchResult {
-    val handle = rawHandle()
-    return if (handle != 0L) {
-        DispatchResult.parse(nativeDispatchActionBytes(handle, namespace, bodyJson))
-    } else {
-        DispatchResult.Failure("dispatch returned a null handle")
-    }
-}
+// staged: see #2145 (M14-1) — migrate to GeneratedActionBuilders bytes-only dispatch.
+private fun KernelBridge.dispatchWalletWrite(namespace: String, bodyJson: String): DispatchResult =
+    dispatchActionJson(namespace, bodyJson)
 
 private fun walletJsonString(value: String): String {
     val sb = StringBuilder(value.length + 2)

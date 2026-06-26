@@ -1,4 +1,4 @@
-//! Chirp-owned Android JNI delivery surface (`nmp-chirp-android-ffi`).
+//! Chirp-owned Android JNI/UniFFI delivery surface (`nmp-chirp-android-ffi`).
 //!
 //! This crate is the Layer-6 cdylib for the Chirp Android app. It depends
 //! explicitly on `nmp-app-chirp` and `nmp-chirp-config` (Chirp operator
@@ -6,30 +6,37 @@
 //! generic framework crate (issue #1611, D0, `docs/architecture/crate-boundaries.md`
 //! §10).
 //!
-//! JNI shim: Android ⇄ the nmp-core kernel via Rust-path function calls.
+//! ## Lane overview
+//!
+//! * **UniFFI app-loop lane** (M14-0 / issue #2129) — `uniffi_app_loop.rs`:
+//!   `AppHandle` object with typed `DispatchAck` record and `UpdateSink`
+//!   callback interface. Replaces the deleted JNI app-loop symbols:
+//!   `nativeNew`, `nativeStart`, `nativeStop`, `nativeClose`, `nativeFree`,
+//!   `nativeSetUpdateListener`, `nativeClearUpdateListener`,
+//!   `nativeDispatchIntentBytes`, `nativeDispatchActionBytes`.
+//!
+//! * **Residual JNI lanes** (staged for future migration):
+//!   signer, external-signer/NIP-55, capability, identity, marmot, platform,
+//!   action stage-ack/retry/cancel, flat-feed, claims, relay management,
+//!   account management, session utility helpers.
 //!
 //! Doctrine: no business logic or cached state here (D5/D8) — pure transport.
-//! Errors never cross FFI (D6): the kernel reports via update frames; these
-//! entrypoints return only a handle / bytes / void. The kernel's update
-//! callback fires on its own listener thread with a pointer valid ONLY for the
-//! call's duration (`docs/ffi-surface.md` §3); the `on_update` trampoline in
-//! `session.rs` copies it into owned bytes and pushes them straight to a
-//! registered Kotlin listener via JNI (`nativeSetUpdateListener`, issue #614 —
-//! D8 no-polling). This mirrors the iOS push model: Kotlin no longer drains a
-//! 250 ms-timed channel on a blocked thread. Init-only configuration calls
-//! may return explicit status codes so late wiring is visible to the host.
+//! Errors never cross FFI (D6): the kernel reports via update frames. Init-only
+//! configuration calls may return explicit status codes so late wiring is
+//! visible to the host.
+
+// UniFFI scaffolding for the app-loop lane (M14-0 / issue #2129).
+// Namespace "nmp_android_ffi" matches [lib] name in Cargo.toml and
+// cdylib_name in uniffi.toml.  Must be called exactly once per library.
+uniffi::setup_scaffolding!("nmp_android_ffi");
 
 use std::ffi::CString;
-use std::sync::Arc;
 
 use jni::objects::{JClass, JString};
-use jni::sys::{jint, jlong};
+use jni::sys::jlong;
 use jni::JNIEnv;
 
-use nmp_app_chirp::{
-    action_spec_json_for_intent, nmp_app_chirp_declare_consumed_projections,
-    nmp_app_chirp_register, nmp_signer_broker_init, NmpRegisterStatus,
-};
+use nmp_app_chirp::action_spec_json_for_intent;
 
 mod action;
 mod capability;
@@ -43,94 +50,14 @@ mod relay_seeding;
 mod session;
 mod signer;
 mod signer_request_listener;
+mod uniffi_app_loop;
 mod update_listener;
 use nmp_app_chirp::nmp_app_chirp_create_new_account;
 use nmp_ffi::{
-    nmp_app_add_relay, nmp_app_declare_incremental_apply, nmp_app_encode_profile, nmp_app_free,
-    nmp_app_new, nmp_app_remove_account, nmp_app_remove_relay, nmp_app_signin_nsec, nmp_app_start,
-    nmp_app_stop, nmp_app_switch_active, nmp_free_string, NmpConfigStatus,
+    nmp_app_add_relay, nmp_app_encode_profile, nmp_app_remove_account, nmp_app_remove_relay,
+    nmp_app_signin_nsec, nmp_app_switch_active, nmp_free_string,
 };
-use session::{insert_session, remove_session};
 pub(crate) use session::{session_arc, Session};
-
-#[no_mangle]
-pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeNew(
-    _env: JNIEnv,
-    _class: JClass,
-) -> jlong {
-    let app = nmp_app_new();
-    if app.is_null() {
-        return 0;
-    }
-    let broker_rc = nmp_signer_broker_init(app);
-    if broker_rc != NmpConfigStatus::Ok as u32 {
-        eprintln!(
-            "nmp_signer_broker_init failed: rc={broker_rc} (1=NullApp, 2=AlreadyStarted, 3=Unavailable)"
-        );
-        nmp_app_free(app);
-        return 0;
-    }
-    // ADR-0053 / Workstream-E4 — declare Chirp's projection-consumption intent.
-    // Chirp is a full client, so this is the explicit `consume_all` (Chirp reads
-    // every kernel built-in); see `nmp_app_chirp_declare_consumed_projections` in
-    // nmp-app-chirp. Must run before `nmp_app_start` — an undeclared start is a
-    // loud forgotten-wiring bug, not a silent firehose. Thin: one static call.
-    nmp_app_chirp_declare_consumed_projections(app);
-    // ADR-0055 R3-S4 — declare that this host implements the incremental-apply
-    // contract (D3-3/D3-4/D3-5). The kernel switches from full-snapshot mode to
-    // delta mode after this call. Must run after declare_consumed_projections and
-    // before nmp_app_start. Non-zero return is a hard init error.
-    let rc = nmp_app_declare_incremental_apply(app);
-    if rc != 0 {
-        // RegistryUnavailable (2) or AlreadyStarted (1) — neither should occur
-        // here (called before start, registry is fresh). Abort; returning 0 would
-        // leave the kernel in an undefined incremental state.
-        // rc legend: 0=Ok, 1=AlreadyStarted, 2=RegistryUnavailable, -1=null-app.
-        eprintln!(
-            "nmp_app_declare_incremental_apply failed: rc={rc} (1=AlreadyStarted, 2=RegistryUnavailable)"
-        );
-        // The Session that would otherwise own `app` and free it via
-        // `free_native` is never constructed on this path, so free the kernel
-        // here to avoid leaking the `nmp_app_new` allocation.
-        nmp_app_free(app);
-        return 0;
-    }
-    // V-73: null viewer_pubkey (no viewer set at startup) always succeeds.
-    // Android passes null until the user signs in; the status is expected to
-    // be Ok.  If registration fails for an unexpected reason, fall back to a
-    // null chirp handle — the Session is still created so the kernel remains
-    // usable; the missing Chirp handle degrades the home feed gracefully (D6).
-    let mut chirp = std::ptr::null_mut();
-    let _register_status = nmp_app_chirp_register(app, std::ptr::null(), &mut chirp);
-    debug_assert_eq!(
-        _register_status,
-        NmpRegisterStatus::Ok as u32,
-        "nmp_app_chirp_register with null viewer must succeed"
-    );
-    let session = Arc::new(Session::new(app, chirp));
-    let handle = insert_session(session);
-    // ADR-0048 Stage 2 — register the external-signer capability trampoline
-    // (context = registry handle id, assigned above) + init the NIP-55 driver.
-    if handle != 0 {
-        external_signer::install(app, handle);
-    }
-    handle
-}
-
-#[no_mangle]
-pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeStart(
-    _env: JNIEnv,
-    _class: JClass,
-    handle: jlong,
-    visible_limit: jint,
-    emit_hz: jint,
-) {
-    if let Some(s) = session_arc(handle) {
-        s.with_app(|app| {
-            nmp_app_start(app, visible_limit as u32, emit_hz as u32);
-        });
-    }
-}
 
 /// Seed the relay list from a JSON string override or the Chirp defaults.
 ///
@@ -176,17 +103,6 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeSeedRelays(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeClose(
-    _env: JNIEnv,
-    _class: JClass,
-    handle: jlong,
-) {
-    if let Some(s) = session_arc(handle) {
-        s.close_updates();
-    }
-}
-
-#[no_mangle]
 pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeCreateLocalAccount(
     mut env: JNIEnv,
     _class: JClass,
@@ -216,17 +132,6 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeCreateLocalAccoun
     s.with_app(|app| {
         nmp_app_chirp_create_new_account(app, profile_c.as_ptr(), relays_c.as_ptr(), false, 1);
     });
-}
-
-#[no_mangle]
-pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeStop(
-    _env: JNIEnv,
-    _class: JClass,
-    handle: jlong,
-) {
-    if let Some(s) = session_arc(handle) {
-        s.with_app(|app| nmp_app_stop(app));
-    }
 }
 
 // The app-local profile/event JNI adapters live in `claims.rs` to keep this
@@ -401,21 +306,6 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeRemoveAccount(
         return;
     };
     s.with_app(|app| nmp_app_remove_account(app, pubkey.as_ptr()));
-}
-
-#[no_mangle]
-pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeFree(
-    _env: JNIEnv,
-    _class: JClass,
-    handle: jlong,
-) {
-    if let Some(s) = remove_session(handle) {
-        // `free_native` quiesces the update callback (the gate blocks until any
-        // in-flight `on_update` returns) and drops the JNI push listener
-        // `GlobalRef` before reclaiming the kernel. The `Arc<Session>` held by
-        // the registry keeps native state alive across concurrent JNI calls.
-        s.free_native();
-    }
 }
 
 /// Copy a Java `JString` into an owned `CString` ready for handing across the

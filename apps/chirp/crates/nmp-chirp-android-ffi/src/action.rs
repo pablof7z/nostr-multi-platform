@@ -1,15 +1,19 @@
 //! Android JNI wrappers for the Rust-owned action seam.
 //!
-//! The bridge parses no action vocabulary. Kotlin supplies a namespace and
-//! JSON body; Rust encodes the typed payload and dispatches through the byte
-//! doorway (`nmp_app_dispatch_action_bytes`). Terminal stage cleanup goes back
-//! through `nmp_app_ack_action_stage`.
+//! NOTE (M14-0 / issue #2129): `nativeDispatchIntentBytes` and
+//! `nativeDispatchActionBytes` have been **deleted** — intent/action dispatch
+//! for the app-loop lane is now served by `AppHandle::dispatch_intent_json` /
+//! `dispatch_action_json` / `dispatch_action_bytes` in `uniffi_app_loop.rs`.
+//!
+//! Retained symbols: `nativeAckActionStage`, `nativeRetryPublish`,
+//! `nativeCancelPublish`, `nativeDispatchAction`.  These are residual JNI
+//! symbols staged for a future migration lane.
 
 use jni::objects::{JClass, JString};
 use jni::sys::{jlong, jstring};
 use jni::JNIEnv;
 
-use nmp_app_chirp::{action_spec_for_intent_json, dispatch_action_bytes_for};
+use nmp_app_chirp::dispatch_action_bytes_for;
 use nmp_ffi::{nmp_app_ack_action_stage, nmp_app_cancel_action, nmp_app_retry_publish};
 use serde_json::json;
 
@@ -68,90 +72,10 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeDispatchAction(
     json_string(env, &dispatch_result_json(result))
 }
 
-/// Convert raw Chirp user intent into a typed action and dispatch it through
-/// the byte doorway in one JNI call (ADR-0064 / Cut-B host slice, #1782).
-///
-/// Kotlin passes user intent only (`intent_json`, a serialized
-/// `ChirpActionIntent`). Rust owns the protocol body: it builds the canonical
-/// `(namespace, body_json)` spec via `action_spec_for_intent_json` (NIP-10 reply
-/// tags, kind:6 reposts, profile fields), then encodes the typed `ActionPayload`
-/// bytes and dispatches them through the typed `nmp_app_dispatch_action_bytes`
-/// doorway via `dispatch_action_bytes_for`. No JSON crosses the FFI to the
-/// kernel.
-///
-/// Returns the Rust JSON envelope as a JNI string:
-/// * `{"correlation_id":"<id>"}` — accepted and enqueued.
-/// * `{"error":"<message>"}` — malformed intent / namespace, or rejected.
-///
-/// D6: null handle or malformed JNI arguments collapse to `"{}"`; Kotlin treats
-/// that as a parse failure rather than pretending the action succeeded. A null
-/// app inside the session yields the `"runtime app is not available"` error
-/// envelope, never a crash.
-#[no_mangle]
-pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeDispatchIntentBytes(
-    mut env: JNIEnv,
-    _class: JClass,
-    handle: jlong,
-    intent_json: JString,
-) -> jstring {
-    let Some(s) = session_arc(handle) else {
-        return json_string(env, "{}");
-    };
-    let Some(intent_json) = jstring_to_cstring(&mut env, &intent_json) else {
-        return json_string(env, "{}");
-    };
-    let intent = intent_json.to_string_lossy();
-
-    let result = match action_spec_for_intent_json(&intent) {
-        Ok(spec) => match s
-            .with_app(|app| dispatch_action_bytes_for(app, &spec.namespace, &spec.body_json))
-        {
-            Some(result) => result,
-            None => return json_string(env, "{}"),
-        },
-        Err(error) => Err(error),
-    };
-    json_string(env, &dispatch_result_json(result))
-}
-
-/// Dispatch a pre-built Chirp action `(namespace, body_json)` through the byte
-/// doorway (ADR-0064 / Cut-B host slice, #1782).
-///
-/// For the direct-JSON dispatch sites (wallet, relay-lists, NIP-29 group ops)
-/// where Kotlin already holds a namespace + body and does NOT go through the
-/// intent spec. Encodes the typed `ActionPayload` bytes via
-/// `dispatch_action_bytes_for` and dispatches the typed bytes; no JSON crosses
-/// the FFI to the kernel. Returns the same `{"correlation_id"}` / `{"error"}`
-/// envelope as `nativeDispatchIntentBytes`.
-///
-/// D6: null handle or malformed JNI arguments collapse to `"{}"`; a null app
-/// yields the `"runtime app is not available"` error envelope.
-#[no_mangle]
-pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeDispatchActionBytes(
-    mut env: JNIEnv,
-    _class: JClass,
-    handle: jlong,
-    namespace: JString,
-    body_json: JString,
-) -> jstring {
-    let Some(s) = session_arc(handle) else {
-        return json_string(env, "{}");
-    };
-    let Some(namespace) = jstring_to_cstring(&mut env, &namespace) else {
-        return json_string(env, "{}");
-    };
-    let Some(body_json) = jstring_to_cstring(&mut env, &body_json) else {
-        return json_string(env, "{}");
-    };
-    let namespace = namespace.to_string_lossy();
-    let body_json = body_json.to_string_lossy();
-
-    let Some(result) = s.with_app(|app| dispatch_action_bytes_for(app, &namespace, &body_json))
-    else {
-        return json_string(env, "{}");
-    };
-    json_string(env, &dispatch_result_json(result))
-}
+// nativeDispatchIntentBytes and nativeDispatchActionBytes were deleted in
+// M14-0 (issue #2129).  Intent/action dispatch for the app-loop lane is now
+// served by `AppHandle::dispatch_intent_json` / `dispatch_action_json` /
+// `dispatch_action_bytes` in `uniffi_app_loop.rs`.
 
 /// Render a dispatch result as the canonical `{"correlation_id"}` /
 /// `{"error"}` JSON envelope string. `serde_json::json!` keeps the message

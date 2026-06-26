@@ -3,14 +3,19 @@
 //! Extracted from `session.rs` to keep that file under the 500-LOC ceiling.
 //! Mirrors the synchronous [`crate::capability::SyncCapabilityHandler`]
 //! JNI-upcall pattern and the gallery's `android_push::GalleryUpdateListener`.
+//!
+//! NOTE (M14-0 / issue #2129): `nativeSetUpdateListener` and
+//! `nativeClearUpdateListener` have been **deleted** — the app-loop update
+//! lane is now served by the UniFFI `AppHandle::set_update_sink` /
+//! `clear_update_sink` path in `uniffi_app_loop.rs`. The `UpdatePushListener`
+//! type and `UpdateListenerSlot` typedef are retained because the residual JNI
+//! lanes (capability, signer) still reference `session_arc` which
+//! transitively requires the same session data.
 
 use std::sync::{Arc, Mutex};
 
-use jni::objects::{GlobalRef, JClass, JObject};
-use jni::sys::jlong;
-use jni::{JNIEnv, JavaVM};
-
-use crate::session::session_arc;
+use jni::objects::GlobalRef;
+use jni::JavaVM;
 
 /// JNI push listener for kernel update frames.
 ///
@@ -73,52 +78,9 @@ impl UpdatePushListener {
 /// the JNI boundary (deadlock prevention — see session.rs `on_update`).
 pub(crate) type UpdateListenerSlot = Mutex<Option<Arc<UpdatePushListener>>>;
 
-/// Register (or clear) the JNI push listener for kernel update frames
-/// (issue #614 — D8 no-polling; replaces the deleted `nativeNextUpdate`
-/// blocking drain).
-///
-/// `listener` must implement `fun onUpdate(frame: ByteArray)`. Frames are
-/// pushed from the kernel's update-listener thread (a Rust background thread),
-/// so Kotlin must treat `onUpdate` as a background callback and marshal to the
-/// main thread itself when needed. Pass `null` to deregister.
-///
-/// D6: a null/dead handle, or any JNI failure obtaining the `JavaVM` / global
-/// ref, is a silent no-op — never panics across the seam. The listener
-/// `GlobalRef` is dropped on teardown (`nativeClose`/`nativeFree`) after the
-/// update-callback quiescence gate guarantees no in-flight `on_update`.
-#[no_mangle]
-pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeSetUpdateListener(
-    env: JNIEnv,
-    _class: JClass,
-    handle: jlong,
-    listener: JObject,
-) {
-    let Some(s) = session_arc(handle) else {
-        return;
-    };
-    if listener.is_null() {
-        s.clear_push_listener();
-        return;
-    }
-    let Ok(vm) = env.get_java_vm() else {
-        return;
-    };
-    let Ok(global) = env.new_global_ref(&listener) else {
-        return;
-    };
-    s.set_push_listener(UpdatePushListener::new(vm, global));
-}
+// nativeSetUpdateListener and nativeClearUpdateListener were deleted in
+// M14-0 (issue #2129).  Update delivery for the app-loop lane is now served
+// by the UniFFI `AppHandle::set_update_sink` / `clear_update_sink` path in
+// `uniffi_app_loop.rs`.  KernelBridge.kt no longer declares `nativeSetUpdateListener`
+// or `nativeClearUpdateListener` external declarations — see bridge_parity.rs.
 
-/// Clear the JNI push listener without freeing the session (issue #614).
-///
-/// D6: a null/dead handle is a silent no-op.
-#[no_mangle]
-pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeClearUpdateListener(
-    _env: JNIEnv,
-    _class: JClass,
-    handle: jlong,
-) {
-    if let Some(s) = session_arc(handle) {
-        s.clear_push_listener();
-    }
-}

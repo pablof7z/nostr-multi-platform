@@ -333,3 +333,24 @@ jobs:
 
       - name: Check Kotlin marmot bindings are in sync with the schemas
         run: bash ci/check-marmot-flatc-drift.sh kotlin
+
+  # M14-0 (#2129) — UniFFI Kotlin binding drift gate. The checked-in UniFFI
+  # binding at apps/chirp/android/app/src/main/java/org/nmp/android/uniffi/nmp_android_ffi.kt
+  # is GENERATED from the proc-macro definitions in
+  # apps/chirp/crates/nmp-chirp-android-ffi/src/uniffi_app_loop.rs (AppHandle
+  # object + UpdateSink callback interface + DispatchAck record). The script
+  # builds the HOST cdylib (no Android NDK — uniffi-bindgen introspects metadata
+  # via dlopen) and runs the pinned vendored uniffi-bindgen, then byte-diffs
+  # against the checked-in file. Fails any PR whose Rust binding definitions and
+  # the generated Kotlin have drifted apart. Regenerate locally with:
+  #   bash ci/check-uniffi-kotlin-drift.sh --write
+  uniffi-kotlin-drift:
+    name: UniFFI Kotlin drift (android/.../uniffi/nmp_android_ffi.kt vs Rust proc-macros)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Check UniFFI Kotlin binding is in sync with the Rust definitions
+        run: bash ci/check-uniffi-kotlin-drift.sh

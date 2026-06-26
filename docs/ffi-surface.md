@@ -1,9 +1,17 @@
 # FFI Surface Reference
 
-> **Reviewed:** 2026-06-13. The production C/JNI ABI lives in
+> **Reviewed:** 2026-06-26. The production C/JNI ABI lives in
 > `crates/nmp-ffi`; `nmp-core` owns the actor/kernel and FlatBuffers transport
 > types. Update callbacks carry binary `nmp.transport.UpdateFrame` (`NMPU`)
 > frames only; the old JSON runtime snapshot path is gone.
+>
+> **M14-0 (issue #2129, 2026-06-26):** The Android app-loop lane has migrated
+> from JNI to UniFFI. The `AppHandle` object (`uniffi_app_loop.rs`) replaces the
+> deleted JNI symbols `nativeNew`, `nativeStart`, `nativeStop`, `nativeClose`,
+> `nativeFree`, `nativeSetUpdateListener`, `nativeClearUpdateListener`,
+> `nativeDispatchIntentBytes`, `nativeDispatchActionBytes`. FlatBuffers (NMPD +
+> NMPU) remains the byte payload format. Residual JNI lanes (signer, capability,
+> marmot, identity, feeds) are unchanged.
 
 The native runtime ships a flat `extern "C"` raw C ABI regardless of Rust module layout.
 Most production functions accept a `*mut NmpApp` opaque handle and return void
@@ -11,8 +19,8 @@ Most production functions accept a `*mut NmpApp` opaque handle and return void
 return `NmpConfigStatus` codes so post-start wiring mistakes are loud while
 remaining FFI-safe: `0` ok, `1` null app, `2` already started, `3` unavailable.
 The callers are **Chirp** (iOS, via `NmpCore.h`) and **Android** (via
-`nmp-android-ffi` JNI shim which calls through Rust paths, not direct C ABI).
-Pulse was deleted in HB50.
+`nmp-chirp-android-ffi`, which combines UniFFI `AppHandle` for the app-loop lane
+and legacy JNI for residual lanes). Pulse was deleted in HB50.
 
 This document describes the hand-maintained public surface. Treat exact symbol
 counts as generated-check territory; the live tree exports additional app,
