@@ -17,7 +17,7 @@ use crate::runtime::{RelayConfigAction as RuntimeRelayConfigAction, RelayConfigR
 use crate::{BrowserAppBuilder, BrowserRunConfig};
 
 use super::core::NmpRuntimeCore;
-use super::identity::canonical_pubkey_from_kind;
+use super::identity::install_identity;
 use super::protocol::{
     relay_bootstrap_from_config, BeginSign, ClientHello, DeliverSignerResponse,
     IdentityRelayPermission, PublishRelayPreferences, RelayConfig, ReleaseRef, ResolveRef,
@@ -140,12 +140,12 @@ impl NmpRuntimeCore {
         }]
     }
 
-    fn handle_set_identity(&mut self, req: SetIdentity) -> Vec<WorkerEvent> {
+    fn handle_set_identity(&mut self, mut req: SetIdentity) -> Vec<WorkerEvent> {
         let Some(handle) = self.handle.as_mut() else {
             return not_started_error(Some(req.correlation_id));
         };
 
-        match canonical_pubkey_from_kind(&req.kind, &req.pubkey_hex) {
+        match install_identity(handle, &mut req) {
             Ok(canonical_hex) => {
                 // Merge identity-provided relays BEFORE seeding the active account
                 // (#2139 HIGH 4: restores nmp-wasm signer.rs:151 behaviour).
@@ -166,7 +166,7 @@ impl NmpRuntimeCore {
                 vec![WorkerEvent::CapabilityFailure {
                     capability: "nmp.set_identity".to_string(),
                     correlation_id: req.correlation_id,
-                    reason: err.detail(),
+                    reason: err,
                 }]
             }
         }

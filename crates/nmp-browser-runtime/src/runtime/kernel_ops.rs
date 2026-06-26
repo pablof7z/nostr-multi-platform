@@ -14,16 +14,20 @@
 //! concurrently with `pump()`.
 
 use std::cell::RefCell;
+use std::sync::mpsc::TryRecvError;
 
 use nmp_core::substrate::{ActionContext, ActionRejection};
 use nmp_core::{
     CommandApplyOutcome, OutboundMessage, RefLiveness, RefNamespace, RefResolveMetadata, RefShape,
     SignRoundTripRequest,
 };
+use nmp_signers::SignerBackend;
 
+use super::event::BrowserRuntimeEvent;
 use super::handle::BrowserRuntimeHandle;
 use super::snapshot::SnapshotOutcome;
 use crate::runtime::PendingSignedPublish;
+use crate::signer::broker_sign_request;
 
 // ── DispatchBytesResult ──────────────────────────────────────────────────────
 
@@ -258,6 +262,24 @@ impl BrowserRuntimeHandle {
                             target,
                         },
                     );
+                    match self.try_satisfy_local_sign(
+                        &request.correlation_id,
+                        &request.account_pubkey,
+                        &request.unsigned_json,
+                    ) {
+                        Ok(Some(signed_outbound)) => {
+                            all_outbound.extend(signed_outbound);
+                            continue;
+                        }
+                        Ok(None) => {}
+                        Err(reason) => {
+                            return DispatchBytesResult::Rejected {
+                                capability: action_namespace,
+                                correlation_id,
+                                reason,
+                            };
+                        }
+                    }
                     // Fan whatever outbound we accumulated before the sign gate.
                     let prev_out = std::mem::take(&mut all_outbound);
                     self.fan_out_outbound(prev_out);
@@ -284,6 +306,60 @@ impl BrowserRuntimeHandle {
             action_type: action_namespace,
             correlation_id,
         }
+    }
+
+    fn try_satisfy_local_sign(
+        &mut self,
+        correlation_id: &str,
+        account_pubkey: &str,
+        unsigned_json: &str,
+    ) -> Result<Option<Vec<OutboundMessage>>, String> {
+        let Some(envelope) = self
+            .runtime
+            .signer_registry
+            .capability_envelope(account_pubkey)
+        else {
+            return Ok(None);
+        };
+        if !matches!(envelope.backend, SignerBackend::LocalKey) {
+            return Ok(None);
+        }
+
+        let wake = self.runtime.relay_pool.wake_cell();
+        if !broker_sign_request(
+            &self.runtime.signer_registry,
+            correlation_id,
+            account_pubkey,
+            unsigned_json,
+            &self.runtime.signer_completion_tx,
+            &wake,
+        ) {
+            return Ok(None);
+        }
+
+        let completion = match self.runtime.signer_completion_rx.try_recv() {
+            Ok(completion) => completion,
+            Err(TryRecvError::Empty) => {
+                return Err("local-key signer did not settle synchronously".to_string());
+            }
+            Err(TryRecvError::Disconnected) => {
+                return Err("local-key signer completion channel disconnected".to_string());
+            }
+        };
+        let (outbound, events) = self.runtime.deliver_one_completion(completion);
+        for event in events {
+            match event {
+                BrowserRuntimeEvent::SignCompleted { .. } => {}
+                BrowserRuntimeEvent::SignFailed { reason, .. }
+                | BrowserRuntimeEvent::CommandFailed { reason } => return Err(reason),
+                other => {
+                    return Err(format!(
+                        "local-key sign produced unexpected runtime event: {other:?}"
+                    ));
+                }
+            }
+        }
+        Ok(Some(outbound))
     }
 }
 

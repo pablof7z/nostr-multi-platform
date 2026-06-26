@@ -44,7 +44,7 @@ function buildSteps(state: OnboardingState): Step[] {
       status: state.signerConnected ? "done" : "active",
       detail: state.signerConnected
         ? "Signer is connected; write actions can request signatures."
-        : "Connect a NIP-07 signer to publish from this browser.",
+        : "Connect NIP-07 or use a memory-only local key to publish.",
     },
     {
       label: "Feed",

@@ -6,12 +6,20 @@
 //!
 //! Mirrors `nmp-wasm/src/signer_slot.rs` but defined here so
 //! `nmp-browser-runtime` stays free of a dep on the ABI crate. The validation
-//! logic is identical: `kind = "nip07"` is the only wired signer kind; the
-//! pubkey hex is parsed by the `nostr` crate's `PublicKey` to canonicalize it
-//! to lowercase (B2 – uppercase input must not reach the kernel as-is).
+//! logic keeps NIP-07 pubkey canonicalization and browser local-key signer
+//! installation in Rust. TypeScript never decodes or signs with a pasted nsec.
 //!
 //! Always-compiled: `NmpRuntimeCore::handle_set_identity` needs this on native
 //! CI too.
+
+use std::sync::Arc;
+
+use nmp_signers::{LocalKeySigner, Signer};
+use zeroize::Zeroize;
+
+use crate::runtime::BrowserRuntimeHandle;
+
+use super::protocol::SetIdentity;
 
 /// Possible failures when validating a `SetIdentity` request.
 #[derive(Debug)]
@@ -71,6 +79,37 @@ pub(crate) fn canonical_pubkey_from_kind(
             Ok(pubkey_hex.to_ascii_lowercase())
         }
         other => Err(IdentityError::UnsupportedKind(other.to_string())),
+    }
+}
+
+pub(crate) fn install_identity(
+    handle: &mut BrowserRuntimeHandle,
+    req: &mut SetIdentity,
+) -> Result<String, String> {
+    match req.kind.as_str() {
+        "nip07" => {
+            canonical_pubkey_from_kind(&req.kind, &req.pubkey_hex).map_err(|err| err.detail())
+        }
+        "local_key" => {
+            let Some(mut secret) = req
+                .secret_key_bech32
+                .take()
+                .filter(|value| !value.is_empty())
+            else {
+                return Err(
+                    "missing_local_key: secret_key_bech32 is required for local_key".to_string(),
+                );
+            };
+            let signer = LocalKeySigner::from_nsec(&secret)
+                .map_err(|err| format!("invalid_local_key: {err}"));
+            secret.zeroize();
+            let signer = signer?;
+            Ok(handle.install_signer_provider(Arc::new(signer) as Arc<dyn Signer>))
+        }
+        other => Err(format!(
+            "unsupported_signer_kind: \"{other}\" — supported signer kinds are \"nip07\" and \
+             \"local_key\". NIP-46 bunker signing is deferred to #2119/#2068."
+        )),
     }
 }
 

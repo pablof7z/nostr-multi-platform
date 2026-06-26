@@ -9,8 +9,10 @@ use std::sync::{
 };
 
 use super::*;
+use nmp_signers::{LocalKeySigner, Signer};
 
 const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
+const TEST_NSEC: &str = "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
 
 fn start_req() -> String {
     serde_json::json!({
@@ -319,4 +321,41 @@ fn set_identity_with_identity_relays_configures_relays() {
         relay_count_after > relay_count_before,
         "identity relay must be added to configured relays (#2139 HIGH 4)"
     );
+}
+
+#[test]
+fn local_key_identity_derives_account_and_redacts_debug() {
+    let mut core = NmpRuntimeCore::new();
+    let _ = core.handle_json_request(&start_req());
+
+    let req = serde_json::json!({
+        "type": "set_identity",
+        "kind": "local_key",
+        "pubkey_hex": "",
+        "secret_key_bech32": TEST_NSEC,
+        "correlation_id": "id-local"
+    });
+    let parsed: super::WorkerRequest =
+        serde_json::from_str(&req.to_string()).expect("set_identity parses");
+    let debug = format!("{parsed:?}");
+    assert!(
+        !debug.contains(TEST_NSEC),
+        "debug formatting must never expose the nsec: {debug}"
+    );
+    assert!(
+        debug.contains("[redacted]"),
+        "debug formatting must mark the redacted secret field: {debug}"
+    );
+
+    let resp = core.handle_json_request(&req.to_string());
+    assert!(resp.contains("action_accepted"), "resp={resp}");
+
+    let signer = LocalKeySigner::from_nsec(TEST_NSEC).expect("valid test nsec");
+    let expected_pubkey = signer.pubkey().to_hex();
+    let active = core
+        .handle
+        .as_ref()
+        .and_then(|handle| handle.active_account_pubkey_inner())
+        .expect("active account after local-key sign in");
+    assert_eq!(active, expected_pubkey);
 }

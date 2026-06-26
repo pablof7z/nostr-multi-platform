@@ -84,10 +84,7 @@ export type WorkerRequest =
    *    bech32 string) and an empty pubkey_hex; the runtime is responsible for
    *    decoding the nsec, deriving the pubkey, and installing a LocalKey
    *    provider. The TS layer MUST NOT decode or sign with the nsec — handing
-   *    it to the runtime is the only permitted use. The runtime currently
-   *    returns a `unsupported_signer_kind` capability failure for this kind;
-   *    the field + contract are forward-compatible so the UI works unchanged
-   *    once the runtime wires the local-key install door.
+   *    it to the runtime is the only permitted use.
    */
   | {
       type: "set_identity";

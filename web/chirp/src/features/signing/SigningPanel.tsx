@@ -18,7 +18,8 @@ import { deriveSignLifecycle, latestCapabilityFailure } from "./signerStatus";
 import "./signing.css";
 
 type ActiveIdentity =
-  | { kind: "nip07"; pubkey: string };
+  | { kind: "nip07"; pubkey: string }
+  | { kind: "local" };
 
 type SigningPanelProps = {
   onConnectionChange?: (connected: boolean) => void;
@@ -44,8 +45,10 @@ export function SigningPanel(props: SigningPanelProps) {
 
   const [identity, setIdentity] = createSignal<ActiveIdentity | null>(null);
   const [connecting, setConnecting] = createSignal(false);
+  const [importingLocal, setImportingLocal] = createSignal(false);
   const [onboardError, setOnboardError] = createSignal<string | null>(null);
   const [npubShort, setNpubShort] = createSignal<string | null>(null);
+  let localKeyInput: HTMLInputElement | undefined;
 
   const degraded = createMemo(() => snapshot().clientRuntime === "in_process_fallback");
   const connected = createMemo(() => identity() !== null);
@@ -87,6 +90,32 @@ export function SigningPanel(props: SigningPanelProps) {
     }
   };
 
+  const importLocalKey = async (event: SubmitEvent) => {
+    event.preventDefault();
+    const secret = localKeyInput?.value.trim() ?? "";
+    if (!secret) return;
+    setOnboardError(null);
+    setImportingLocal(true);
+    try {
+      const snap: RuntimeSnapshot = await client.setLocalKeySigner(secret);
+      if (localKeyInput) localKeyInput.value = "";
+      const failure = onboardingFailure(snap.events);
+      if (failure) {
+        setOnboardError(failure);
+        props.onConnectionChange?.(false);
+      } else {
+        setIdentity({ kind: "local" });
+        setNpubShort("local key");
+        props.onConnectionChange?.(true);
+      }
+    } catch (e) {
+      setOnboardError(humanizeError(e));
+      props.onConnectionChange?.(false);
+    } finally {
+      setImportingLocal(false);
+    }
+  };
+
   return (
     <div class="signing-panel" data-signer-connected={connected() ? "true" : "false"}>
       <Show when={degraded()}>
@@ -108,8 +137,8 @@ export function SigningPanel(props: SigningPanelProps) {
             when={hasNip07Extension()}
             fallback={
               <p class="signing-hint" role="status">
-                No NIP-07 browser extension detected. Install one (e.g. Alby,
-                nos2x) to publish from this browser.
+                No NIP-07 browser extension detected. Paste an nsec for this
+                session, or install a browser signer such as Alby or nos2x.
               </p>
             }
           >
@@ -123,13 +152,33 @@ export function SigningPanel(props: SigningPanelProps) {
             </button>
           </Show>
 
-          <div class="signing-blocked" data-action="local-key-blocked">
-            <strong>Local key import unavailable</strong>
-            <span>
-              The browser runtime does not yet install local nsec signers; this
-              path stays blocked until the Rust provider lands.
-            </span>
-          </div>
+          <form class="signing-nsec-form" onSubmit={importLocalKey}>
+            <label class="signing-label" for="local-nsec">
+              Local key
+            </label>
+            <input
+              ref={localKeyInput}
+              id="local-nsec"
+              class="signing-input"
+              data-testid="local-nsec-input"
+              type="password"
+              autocomplete="off"
+              spellcheck={false}
+              placeholder="nsec1..."
+              disabled={importingLocal()}
+            />
+            <button
+              class="signing-btn signing-btn--ghost"
+              data-testid="local-nsec-submit"
+              type="submit"
+              disabled={importingLocal()}
+            >
+              {importingLocal() ? "Importing..." : "Use for this session"}
+            </button>
+            <p class="signing-hint">
+              Memory-only: Chirp does not store pasted nsecs in browser storage.
+            </p>
+          </form>
 
           <Show when={onboardError()}>
             <p class="signing-error" role="alert" data-slot="onboard-error">
@@ -143,7 +192,7 @@ export function SigningPanel(props: SigningPanelProps) {
         <div class="signing-active" data-slot="active-signer">
           <div class="signing-active-row">
             <span class="signing-badge" data-signer-kind={identity()?.kind}>
-              NIP-07 extension
+              {identity()?.kind === "local" ? "Local key" : "NIP-07 extension"}
             </span>
             <Show when={npubShort()}>
               <span class="signing-npub" title="active account">

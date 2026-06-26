@@ -16,6 +16,7 @@ use std::rc::Rc;
 use std::sync::{mpsc, Arc};
 
 use nmp_core::{AppRelayList, CommandSender, SignerStateModel, UpdateFrameBytes};
+use nmp_signers::Signer;
 
 use super::diagnostics::BrowserRuntimeDiagnostics;
 use super::event::BrowserRuntimeEvent;
@@ -309,6 +310,20 @@ impl BrowserRuntimeHandle {
             .signer_registry
             .capability_envelope(account_pubkey)
             .cloned()
+    }
+
+    /// Install or replace a signer provider and publish signer readiness.
+    ///
+    /// D4: this mutates the provider registry and signer-state slot only through
+    /// the runtime handle, outside `pump()`. The caller still owns setting the
+    /// active account so relay/follow projections update through the normal
+    /// kernel reducer path.
+    pub(crate) fn install_signer_provider(&mut self, signer: Arc<dyn Signer>) -> String {
+        let pubkey = signer.pubkey().to_hex();
+        let backend = signer.backend();
+        self.runtime.signer_registry.insert(signer);
+        self.set_signer_state(Some(ready_model(&backend)));
+        pubkey
     }
 
     // ── #2074 — signer-state slot writer ─────────────────────────────────────

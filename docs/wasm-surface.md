@@ -1,33 +1,21 @@
 # WASM Surface Reference
 
-> **Reviewed:** 2026-06-22. Sourced directly from `crates/nmp-wasm/src/`.
-> This document is the single source of truth for the `crates/nmp-wasm`
-> ABI-glue contract. `crates/nmp-wasm` is **not** the browser runtime owner:
-> `crates/nmp-browser-runtime` owns worker composition, platform adaptation,
-> and the typed app builder (ADR-0067). This surface documents byte-oriented
-> dispatch in/out, capability-result bytes, callbacks, and lifecycle handle
-> mechanics only. See ADR-0047 (worker write/signing contract now defers to
-> **ADR-0064** — the unified write/command boundary).
->
-> **Note (2026-06-25):** The wasm-bindgen composition entry point (`NmpWasmRuntime`,
-> `handle_json`, `handle_dispatch_bytes`) that lived in the deleted Chirp Web crate
-> is gone (see #2052). The protocol contract described below remains the target
-> surface; the wasm-bindgen composition entry point will be re-established under
-> the new `nmp-browser-runtime` architecture (see #2038). Until then,
-> `crates/nmp-wasm/src/lib.rs` exposes only the hidden `RawWasmAbiAdapter` and
-> the protocol types — no `#[wasm_bindgen]` class is emitted.
+> **Reviewed:** 2026-06-26. Sourced directly from
+> `crates/nmp-browser-runtime/src/wasm/` and `web/packages/runtime-web/src/`.
+> This document is the single source of truth for the browser worker protocol.
+> `crates/nmp-wasm` remains the lower ABI-glue crate; `nmp-browser-runtime`
+> owns worker composition, platform adaptation, signer registration, storage
+> registration, and the typed app builder (ADR-0067).
 
-`crates/nmp-wasm` is the ABI delivery shell. The rebuilt browser runtime will
-instantiate this ABI surface from `crates/nmp-browser-runtime` on a dedicated
+`crates/nmp-browser-runtime` exports `NmpWasmRuntime` for the dedicated browser
 Worker. That Worker event loop drives a `KernelReducer` (D4): it is the single
-writer of kernel state, but composition, storage registration, signer/capability
-provider registration, and app-builder policy live in `nmp-browser-runtime`, not
-`nmp-wasm`.
+writer of kernel state, and composition, storage registration,
+signer/capability provider registration, and app-builder policy live in
+`nmp-browser-runtime`, not `nmp-wasm`.
 TypeScript renders snapshots and executes browser capabilities; Rust owns
 policy, routing, replay, Nostr protocol behaviour, and state transitions.
 
-The target ABI functions will be restored on the `NmpWasmRuntime` class. The
-wire protocol uses three channels:
+The `NmpWasmRuntime` class exposes three channels:
 
 1. **JSON control channel** — `handle_json(request: string): string` (sync).
    Accepts JSON-serialised structured controls (`hello`, `start`,
@@ -47,7 +35,8 @@ App-level **writes** ride the binary write channel as a typed
 `DispatchEnvelope` (ADR-0064 §1; §3 below). There is no Promise write
 entrypoint and no wasm-only write enum. Signing is the ADR-0050 capability round-trip
 (`begin_sign` → `sign_request` → `deliver_signer_response`), driven by pure
-message re-entry — the reducer never awaits a persistent signer (D7/D8).
+message re-entry; local-key sessions install a Rust signer provider and still
+avoid host-side policy or polling (D7/D8).
 
 ---
 
@@ -56,7 +45,7 @@ message re-entry — the reducer never awaits a persistent signer (D7/D8).
 Serialised with `"type"` as the discriminator (`serde(tag = "type",
 rename_all = "snake_case")`).
 
-Source: `crates/nmp-wasm/src/protocol.rs` lines 6–30.
+Source: `crates/nmp-browser-runtime/src/wasm/protocol.rs`.
 
 | `type` wire tag | Rust variant | Payload fields | Notes |
 |---|---|---|---|
@@ -67,7 +56,7 @@ Source: `crates/nmp-wasm/src/protocol.rs` lines 6–30.
 | `"release_ref"` | `ReleaseRef(ReleaseRef)` | `namespace: u32`, `key: String`, `consumer_id: String`, `correlation_id: String` | ADR-0063 structured reference release. |
 | `"dispatch_bytes"` | `DispatchBytes(DispatchBytes)` | `bytes: Vec<u8>` | **ADR-0064 typed write doorway.** `bytes` are a finished `DispatchEnvelope` FlatBuffers root (file id `NMPD`) carrying `correlation_id` + generated `action_namespace` + opaque typed `payload`. Production browser hosts call `handle_dispatch_bytes(bytes)` for this request instead of JSON-stringifying the `bytes` field. Decoded through `nmp_core::dispatch_envelope::decode_dispatch_envelope` — the SAME path the native FFI `nmp_app_dispatch_action_bytes` uses. There is no wasm-only write vocabulary. |
 | `"capability_result"` | `CapabilityResult(CapabilityResult)` | `capability: String`, `correlation_id: String`, `payload: Value` | Browser-side capability completion. Returns `CapabilityFailure` with reason `browser_actor_driver_missing` — the native actor capability handler is not available on wasm. |
-| `"set_identity"` | `SetIdentity(SetIdentity)` | `kind: String`, `pubkey_hex: String`, `correlation_id: String`, optional `identity_relays: Vec<{url, read, write}>` | Set the active identity. Only `kind = "nip07"` is wired. `pubkey_hex` is the result of `await window.nostr.getPublicKey()`. `identity_relays` forwards raw NIP-07 `getRelays()` permissions; Rust canonicalizes and merges them before active-account bootstrap. **No persistent signer is installed** (ADR-0064 §5): this only validates + canonicalizes the pubkey and seeds the kernel active account; signing is the `begin_sign` capability round-trip. |
+| `"set_identity"` | `SetIdentity(SetIdentity)` | `kind: String`, `pubkey_hex: String`, `correlation_id: String`, optional `secret_key_bech32: String`, optional `identity_relays: Vec<{url, read, write}>` | Set the active identity. `kind = "nip07"` uses `pubkey_hex` from `await window.nostr.getPublicKey()` and signs through `begin_sign`/`deliver_signer_response`. `kind = "local_key"` requires `secret_key_bech32`; Rust decodes the `nsec`, derives the pubkey, installs a `LocalKeySigner`, and redacts request debug. `identity_relays` forwards raw identity relay permissions; Rust canonicalizes and merges them before active-account bootstrap. |
 | `"begin_sign"` | `BeginSign(BeginSign)` | `account_pubkey: String`, `unsigned_json: String` | ADR-0050 sign capability round-trip. Parks a sign op and emits `sign_request` for the main-thread broker to fulfil via `window.nostr.signEvent`. Pure message re-entry (D8). |
 | `"deliver_signer_response"` | `DeliverSignerResponse(DeliverSignerResponse)` | `correlation_id: String`, `signed_json?: String`, `error?: String` | The broker delivers the signer response (success or rejection). Drives the parked op exactly once from this message handler — no polling (D8). Account-pinned. |
 
@@ -96,7 +85,7 @@ Serialised with `"type"` as the discriminator (`serde(tag = "type",
 rename_all = "snake_case")`). Returned as a JSON array from `handle_json`,
 except `UpdateBytes` which is routed through the binary snapshot callback (§4).
 
-Source: `crates/nmp-wasm/src/protocol.rs` lines 222–246.
+Source: `crates/nmp-browser-runtime/src/wasm/protocol.rs`.
 
 | `type` wire tag | Rust variant | Payload fields | Notes |
 |---|---|---|---|
@@ -109,7 +98,7 @@ Source: `crates/nmp-wasm/src/protocol.rs` lines 222–246.
 
 ### RuntimeStatus vocabulary
 
-Source: `crates/nmp-wasm/src/protocol.rs` lines 206–220.
+Source: `crates/nmp-browser-runtime/src/wasm/protocol.rs`.
 
 | Serialised value | Meaning |
 |---|---|
@@ -126,10 +115,11 @@ Source: `crates/nmp-wasm/src/protocol.rs` lines 206–220.
 
 ### `handle_json`
 
-Source: Deleted with Chirp Web (#2052); will be re-established under #2038 (nmp-browser-runtime).
+Source: `crates/nmp-browser-runtime/src/wasm/mod.rs` and
+`crates/nmp-browser-runtime/src/wasm/core.rs`.
 
 ```
-handle_json(request: string): Result<JsValue, JsValue>
+handle_json(request: string): JsValue
 ```
 
 Accepts a JSON-serialised structured-control `WorkerRequest`. Returns a JSON
@@ -139,20 +129,18 @@ The host sees a single binary channel for snapshot frames regardless of
 whether they were produced by a relay-inbound frame or by a
 `Start`/`ResolveRef`/`ReleaseRef` request.
 
-**D6:** Returns `Err(JsValue)` for JSON deserialisation failure *and* for any
-`WasmRuntimeError` from `RawWasmAbiAdapter::handle` — concretely: `InvalidConfig`
-(empty `app_id`, `database_name`, or `relays` on `Start`; relay-spawn failure
-on wasm32) or `KernelContract` (unexpected `KernelUpdate` variant returned by
-the pure reducer). All other runtime failures surface as `CapabilityFailure`
-inside the `Ok` result — never a `JsValue` rejection on anything the user can
-cause.
+**D6:** User-caused failures return data-shaped `WorkerEvent`s. JSON
+deserialisation returns `Error { code: "parse_error" }`; invalid controls and
+capability failures return `Error` or `CapabilityFailure` records. The JS bridge
+does not need an exception path for normal user or relay behavior.
 
 ### `handle_dispatch_bytes`
 
-Source: Deleted with Chirp Web (#2052); will be re-established under #2038 (nmp-browser-runtime).
+Source: `crates/nmp-browser-runtime/src/wasm/mod.rs` and
+`crates/nmp-browser-runtime/src/wasm/core.rs`.
 
 ```
-handle_dispatch_bytes(bytes: Uint8Array): Result<JsValue, JsValue>
+handle_dispatch_bytes(bytes: Uint8Array): JsValue
 ```
 
 Accepts the raw bytes of a finished `DispatchEnvelope` and returns the same
@@ -168,8 +156,8 @@ object shape.
 App-level writes cross as raw `DispatchEnvelope` bytes (ADR-0064 §1). The host
 builds the envelope through generated/typed builders
 (`web/packages/runtime-web/src/dispatchEnvelope.ts` → `encodeDispatchEnvelope`;
-see #2038 for the rebuilt nmp-browser-runtime Rust crate and rebuilt web app's
-`action_namespace` lowering). The `action_namespace` is a generated discriminant
+see the rebuilt web app's `action_namespace` lowering). The `action_namespace`
+is a generated discriminant
 — no human spells it at a call site — and is identical to the native
 `ActionModule` registry key. The wasm runtime decodes the envelope
 (`runtime/dispatch.rs::dispatch_bytes`) and routes by namespace; the opaque
@@ -200,7 +188,19 @@ Signing is a message-driven capability round-trip:
    polling, no tick-dependence (D8) — and emits `sign_completed` / `sign_failed`.
 
 The signer backend (local key / NIP-07 / NIP-46 / NIP-55) is invisible to the
-action vocabulary; the action payload carries no signer hint (V-78).
+action vocabulary; the action payload carries no signer hint (V-78). In the
+browser runtime, `local_key` signers satisfy publish signing inside Rust through
+the registered `LocalKeySigner`; NIP-07 remains the main-thread
+`sign_request` capability round-trip.
+
+### Browser local-key storage policy
+
+The web host may read a pasted `nsec` only long enough to send
+`set_identity kind=local_key`. Rust must parse, zeroize the transient request
+string, and hold only the in-memory signer provider for the current session.
+The secret must never appear in browser storage, URL state, snapshots, action
+history, debug output, or diagnostics. Reloading Chirp Web requires a new paste
+until a secure-storage ADR changes this contract.
 
 | Chirp `ChirpAction` | `action_namespace` | Notes |
 |---|---|---|
@@ -213,7 +213,8 @@ action vocabulary; the action payload carries no signer hint (V-78).
 
 ## 4. Binary snapshot callback
 
-Source: Deleted with Chirp Web (#2052); will be re-established under #2038.
+Source: `crates/nmp-browser-runtime/src/wasm/mod.rs` and
+`crates/nmp-browser-runtime/src/wasm/core.rs`.
 
 ```
 set_snapshot_callback(callback: Function | null): void
@@ -246,9 +247,9 @@ The runtime surfaces honest failure reasons as stable snake_case prefix strings
 in `CapabilityFailure.reason`. Hosts must pattern-match on the prefix (split on
 the first `: `).
 
-Source: `crates/nmp-wasm/src/dispatch_routing.rs`;
-`crates/nmp-wasm/src/signer_slot.rs`;
-`crates/nmp-wasm/src/publish_path.rs`.
+Source: `crates/nmp-browser-runtime/src/wasm/dispatch.rs`,
+`crates/nmp-browser-runtime/src/wasm/identity.rs`, and
+`crates/nmp-browser-runtime/src/wasm/ref_routing.rs`.
 
 | Prefix | Source function | Condition |
 |---|---|---|
@@ -256,14 +257,17 @@ Source: `crates/nmp-wasm/src/dispatch_routing.rs`;
 | `invalid_ref_request` | `invalid_ref_request_reason()` | A structured `resolve_ref` / `release_ref` control request carried an unknown namespace, shape, or liveness discriminant. |
 | `dispatch_envelope_rejected` | `dispatch_bytes` decode | The `DispatchBytes` buffer is not a valid `DispatchEnvelope` (bad file identifier, schema_version mismatch, oversize, missing routing fields). Surfaced as `WorkerEvent::Error`, not `CapabilityFailure`. |
 | `browser_actor_driver_missing` | `browser_driver_missing_reason()` | `CapabilityResult` received; no native actor to route it. The wasm runtime drains the JS pending state and returns this reason. |
-| `unsupported_signer_kind` | `SignerInstallError::UnsupportedKind` | `SetIdentity.kind` is not `"nip07"`. Only NIP-07 is wired. |
+| `unsupported_signer_kind` | `install_identity` | `SetIdentity.kind` is not `"nip07"` or `"local_key"`. NIP-46 remains deferred to #2119/#2068. |
 | `invalid_signer_pubkey` | `SignerInstallError::InvalidPubkey` | `SetIdentity.pubkey_hex` failed secp256k1 x-only pubkey parse. |
+| `missing_local_key` | `install_identity` | `SetIdentity.kind = "local_key"` omitted `secret_key_bech32`. |
+| `invalid_local_key` | `install_identity` | The supplied `secret_key_bech32` did not decode as a valid nsec. |
 
 ---
 
 ## 6. Routing decisions (diagnostic pull)
 
-Source: Deleted with Chirp Web (#2052); will be re-established under #2038.
+Source: `crates/nmp-browser-runtime/src/wasm/mod.rs` and
+`crates/nmp-browser-runtime/src/wasm/core.rs`.
 
 ```
 recent_routing_decisions(): string
