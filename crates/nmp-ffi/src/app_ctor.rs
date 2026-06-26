@@ -332,7 +332,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         #[cfg(test)]
         last_cmd_tag: std::sync::Mutex::new(None),
         #[cfg(feature = "signer-broker")]
-        signer_broker: Arc::new(Mutex::new(None)),
+        nip46_runtime: Arc::new(Mutex::new(None)),
         #[cfg(feature = "external-signer")]
         external_signer_driver: Arc::new(Mutex::new(None)),
         search_sessions: Mutex::new(std::collections::HashMap::new()),

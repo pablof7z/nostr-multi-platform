@@ -234,10 +234,6 @@ name = "nmp-relay-url"
 path = "crates/nmp-relay-url"
 
 [[public_crates]]
-name = "nmp-signer-broker"
-path = "crates/nmp-signer-broker"
-
-[[public_crates]]
 name = "nmp-signer-iface"
 path = "crates/nmp-signer-iface"
 

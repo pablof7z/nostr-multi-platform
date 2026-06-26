@@ -24,7 +24,7 @@ and legacy JNI for residual lanes). Pulse was deleted in HB50.
 
 This document describes the hand-maintained public surface. Treat exact symbol
 counts as generated-check territory; the live tree exports additional app,
-Android JNI, signer-broker, event-observer, snapshot-projection, and Marmot
+Android JNI, NIP-46 actor-lane, event-observer, snapshot-projection, and Marmot
 helper symbols.
 
 ---
@@ -43,17 +43,18 @@ helper symbols.
 
 ---
 
-## 2. Signer broker init (`nmp-signer-broker/src/ffi.rs`)
+## 2. NIP-46 actor-lane runtime (`nmp-ffi/src/signer_broker.rs`)
 
-Separate static library (`libnmp_signer_broker.a`). D0: the broker crate
-depends on both `nmp-core` and `nmp-signers`; to preserve the D0 boundary
-(`nmp-core` must not depend on `nmp-signers`) the broker lives in its own
-archive.
+PR-B2 (#2119): `nmp-signer-broker` is deleted. NIP-46 is now driven through
+the actor-relay lane (`nmp-nip46-runtime`) — the same shared relay socket the
+kernel uses for all outbound Nostr traffic. D0 is preserved: `nmp-core` still
+does not depend on `nmp-signers`; the runtime wiring lives in `nmp-ffi` (above
+`nmp-core` in the DAG) behind the `signer-broker` cargo feature.
 
 | Symbol | Signature | Behavior | Callers | Threading | D6 | D7 |
 |---|---|---|---|---|---|---|
-| `nmp_signer_broker_init` | `(app: *mut NmpApp) -> uint32_t` | Construct the app-scoped `BunkerBroker`, register the `bunker://` hook. Idempotent pre-start. Must be called once after `nmp_app_new`, before `nmp_app_start` and any `nmp_app_signin_bunker`. Post-start calls return `NmpConfigStatus_AlreadyStarted` and record `DroppedLateWiring` in the composition ledger. | Chirp boot, Android JNI (`nativeNew`) | Called on caller thread; broker runs a worker thread internally. | null → `NmpConfigStatus_NullApp` | D7-clean: hooks a URI handler; decides no policy |
-| `nmp_app_cancel_bunker_handshake` | `(app: *mut NmpApp)` | Cancel any in-flight NIP-46 handshake. Idempotent/safe when nothing is in flight. `app` arg is currently unused (kept for future per-app brokers). | Chirp | Synchronous | null → no-op (OnceLock not set) | n/a |
+| `nmp_signer_broker_init` | `(app: *mut NmpApp) -> uint32_t` | Register the NIP-46 actor-lane runtime on `app`: installs a `Nip46Interceptor` + `Nip46ConnectedHook` and a per-app bunker hook. Idempotent pre-start. Must be called once after `nmp_app_new`, before `nmp_app_start`. Post-start calls return `NmpConfigStatus_AlreadyStarted`. | Chirp boot, Android JNI (`nativeNew`) | Called on caller thread; all I/O routes through the actor's relay-worker thread. | null → `NmpConfigStatus_NullApp` | D7-clean: hooks a URI handler; decides no policy |
+| `nmp_app_cancel_bunker_handshake` | `(app: *mut NmpApp)` | Cancel any in-flight NIP-46 handshake. Clears the runtime and unregisters the persistent subscription on each relay. Idempotent. | Chirp | Synchronous, posts actor commands | null → no-op | n/a |
 
 ---
 
@@ -198,10 +199,10 @@ All fire-and-forget. Outcomes surface via snapshot `wallet_status` and
 
 ---
 
-## 9. Cancellation (`nmp-signer-broker/src/ffi.rs`)
+## 9. Cancellation (`nmp-ffi/src/signer_broker.rs`)
 
-`nmp_app_cancel_bunker_handshake` — documented in section 2 (Signer broker).
-No `_drop` or `_cancel` symbols exist outside the broker crate.
+`nmp_app_cancel_bunker_handshake` — documented in section 2 (NIP-46 actor-lane runtime).
+No `_drop` or `_cancel` symbols exist outside that module.
 
 ---
 

@@ -14,12 +14,11 @@
 //! During the app's **config phase** (before `kernel.start()`), so the actor
 //! reads the registered hooks once at kernel construction.
 //!
-//! ## PR-A dormancy contract
+//! ## PR-B2: broker deleted
 //!
-//! In PR-A the broker (`nmp-signer-broker`) still drives the NIP-46
-//! handshake; `register_nip46` is built and tested but NOT called from
-//! `nmp_ffi`.  PR-B will flip `nmp_signer_broker_init` to call
-//! `register_nip46` and delete the broker transport.
+//! `nmp_signer_broker_init` in `nmp-ffi` calls `register_nip46` and the
+//! broker transport (`nmp-signer-broker`) is deleted.  The actor-lane runtime
+//! is now the sole NIP-46 transport.
 //!
 //! ## Layer cleanliness
 //!
@@ -51,13 +50,16 @@ use crate::runtime::{new_nip46_runtime_handle, Nip46RuntimeHandle};
 ///
 /// - `app`: any type implementing both `RelayTextInterceptorRegistrar` and
 ///   `RelayConnectedHookRegistrar` (e.g. `NmpApp` in production, a test
-///   double in tests).
+///   double in tests).  Both traits use `&self` interior-mutability (e.g.
+///   `NmpApp`'s lock-based registrar impls), so this takes `&impl` rather than
+///   `&mut impl` — forming `&mut *app` from a raw `*mut NmpApp` pointer in
+///   `nmp-ffi` would violate aliasing rules.
 /// - `command_sender`: a clone of the actor's waking-inbox sender (obtained
 ///   from `app.actor_sender()` in the FFI adapter).  The interceptor uses
 ///   it to post actor commands (add_signer, bunker_handshake_progress, …)
 ///   without holding the kernel mutex.
 pub fn register_nip46(
-    app: &mut (impl RelayTextInterceptorRegistrar + RelayConnectedHookRegistrar),
+    app: &(impl RelayTextInterceptorRegistrar + RelayConnectedHookRegistrar),
     command_sender: CommandSender,
 ) -> Nip46RuntimeHandle {
     let handle = new_nip46_runtime_handle();

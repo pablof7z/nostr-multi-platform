@@ -110,7 +110,6 @@ nmp-nwc = { path = "../nmp-nwc" }
 # fetch, then observes via a kernel-side `RoutingTraceProjection`.
 nmp-router = { path = "../nmp-router" }
 nmp-signers = { path = "../nmp-signers" }
-nmp-signer-broker = { path = "../nmp-signer-broker" }
 nmp-signer-iface = { path = "../nmp-signer-iface" }
 # NIP-46 reconnect-ordering integration test (#2119): pool API + session reducer.
 nmp-network = { path = "../nmp-network", features = ["native"] }

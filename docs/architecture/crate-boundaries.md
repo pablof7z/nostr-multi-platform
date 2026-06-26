@@ -38,7 +38,7 @@ implementation is injected at composition time.
 | Layer | Owns | Current crates |
 |---|---|---|
 | 0 | Dependency-light vocabulary and interface types | `nmp-kinds`, `nmp-signer-iface`, `nmp-nip42-types`, `nmp-nip92-types`, `nmp-nip59`, `nmp-relay-url` |
-| 1 | Storage, network transport, concrete signer transport | `nmp-store`, `nmp-nostr-lmdb`, `nmp-network`, `nmp-signers`, `nmp-signer-broker` |
+| 1 | Storage, network transport, concrete signer transport | `nmp-store`, `nmp-nostr-lmdb`, `nmp-network`, `nmp-signers` |
 | 2 | Routing and subscription planning algorithms | `nmp-router`, `nmp-planner` |
 | 3 | Kernel substrate contracts and actor state | `nmp-core`, `nmp-coverage-gate` |
 | 4 | Reusable Nostr protocol/product modules | `nmp-nip01`, `nmp-nip02`, `nmp-nip17`, `nmp-nip18`, `nmp-nip29`, `nmp-nip42`, `nmp-nip47`, `nmp-nip51`, `nmp-nip57`, `nmp-nip60`, `nmp-nip77`, `nmp-nwc`, `nmp-marmot`, `nmp-relations`, `nmp-threading`, `nmp-feed`, `nmp-wot`, `nmp-content`, `nmp-content-fixtures` |
@@ -354,7 +354,7 @@ all siblings avoid each other.
 `nmp-browser-runtime` must not own:
 
 - Routing or outbox policy (that is `nmp-router` / kernel).
-- Signing policy or signer-provider semantics (that is `nmp-signers` / `nmp-signer-broker`).
+- Signing policy or signer-provider semantics (that is `nmp-signers`).
 - NIP modules, protocol defaults, app defaults, projection policy, persistence policy.
 - The wasm-bindgen ABI surface (that is the sibling `nmp-wasm` ABI shell).
 

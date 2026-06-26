@@ -1,6 +1,6 @@
 # ADR-0031 — `nmp-signer-broker` owns the NIP-46 relay transport; it does not use `nostr-connect`
 
-- **Status:** Accepted
+- **Status:** Superseded by actor-lane design / PR-B2 #2119 (nmp-signer-broker deleted)
 - **Date:** 2026-05-24
 - **Resolves:** V-36.
 - **Related:** ADR-0022 (NMP owns its relay transport), ADR-0026 (signer NIP-44 seal seam),

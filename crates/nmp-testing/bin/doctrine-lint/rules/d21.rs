@@ -90,7 +90,7 @@ const K2_CRATES: &[&str] = &[
     "nmp-ffi",
     "nmp-nip47",
     "nmp-network",
-    "nmp-signer-broker",
+    "nmp-nip46-runtime",
     "nmp-signers",
     "nmp-signer-iface",
 ];

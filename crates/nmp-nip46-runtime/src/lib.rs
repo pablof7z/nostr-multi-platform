@@ -7,12 +7,12 @@
 //! `nmp-nip47` (NWC wallet runtime): one substrate-registered interceptor +
 //! connected hook handle the full handshake and steady-state RPC lifecycle.
 //!
-//! ## PR-A dormancy contract
+//! ## PR-B2: broker deleted, actor-lane is the sole NIP-46 transport
 //!
-//! In PR-A the broker (`nmp-signer-broker`) still drives the NIP-46
-//! handshake; this crate is built and unit-tested but NOT wired into
-//! `nmp-ffi` yet.  PR-B performs the flip: calls [`register_nip46`] from
-//! the FFI initializer and deletes the broker transport.
+//! `nmp-signer-broker` is deleted in PR-B2 (#2119). `register_nip46` is wired
+//! into `nmp-ffi`'s `nmp_signer_broker_init` initializer, and the
+//! `ffi_support` module provides FFI-composition helpers that keep `nmp-ffi`
+//! free of `RelayRole` / `ActorLaneTransport` naming.
 //!
 //! ## Architectural overview
 //!
@@ -60,6 +60,10 @@
 #![allow(clippy::module_name_repetitions)]
 
 pub mod connected_hook;
+/// FFI-composition helpers — wrap `RelayRole` / `ActorLaneTransport` so that
+/// `nmp-ffi` (which must NOT name `nmp-network` on the `signer-broker` feature
+/// path) can still deliver init effects, cancel sessions, and restore from payload.
+pub mod ffi_support;
 pub mod interceptor;
 pub mod register;
 pub mod runtime;
@@ -67,6 +71,9 @@ pub mod transport;
 
 // ─── flat re-exports (the public surface) ────────────────────────────────────
 
+pub use ffi_support::{
+    cancel_nip46_session, deliver_init_effects, make_sub_id, restore_nip46_from_payload,
+};
 pub use register::register_nip46;
 pub use runtime::{
     clear_runtime, init_bunker, init_nostrconnect, init_restore, new_nip46_runtime_handle,
