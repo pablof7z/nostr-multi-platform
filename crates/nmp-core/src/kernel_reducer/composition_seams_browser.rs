@@ -16,13 +16,56 @@ use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::Arc;
 
 use crate::actor::unregister_observer_internal as unregister_observer;
+use crate::relay::OutboundMessage;
 use crate::substrate::{
-    BlockedRelayLookup, DmInboxRelayLookup, IngestParser, ReqFrameInterceptor,
+    BlockedRelayLookup, DmInboxRelayLookup, IngestParser, RelayTextInterceptor, ReqFrameInterceptor,
 };
 use crate::substrate::IncrementalApplyError;
 use crate::{AppRelaySlot, KernelEventObserverId};
 
 impl super::KernelReducer {
+    // ── Browser relay-interceptor composition seams (#2050) ───────────────────
+
+    /// Run all registered [`RelayTextInterceptor`]s against a single inbound
+    /// text frame, returning the union of their outbound messages.
+    ///
+    /// This is the browser-relay path equivalent of what the native actor loop
+    /// does inside `dispatch::relay_events::handle_relay_event`. Calling
+    /// interceptors through this seam preserves D4 (single-writer): the
+    /// browser relay handlers only enqueue raw text, and the drain path calls
+    /// this method from within `pump()` under the sole mutable `KernelReducer`
+    /// borrow.
+    ///
+    /// D0: substrate-generic — `KernelReducer` names no app/protocol nouns here.
+    pub fn run_relay_text_interceptors(
+        &mut self,
+        interceptors: &[Arc<dyn RelayTextInterceptor>],
+        relay_url: &str,
+        text: &str,
+    ) -> Vec<OutboundMessage> {
+        let mut outbound = Vec::new();
+        for interceptor in interceptors {
+            outbound.extend(interceptor.on_relay_text(&mut self.kernel, relay_url, text));
+        }
+        outbound
+    }
+
+    /// Run the `on_idle_tick` hook on all registered [`RelayTextInterceptor`]s,
+    /// returning the union of their outbound messages.
+    ///
+    /// Mirrors the native actor loop's idle-section sweep (D8: no sleep inside
+    /// hooks; compare kernel timestamps and emit failures for expired entries).
+    pub fn run_relay_idle_tick(
+        &mut self,
+        interceptors: &[Arc<dyn RelayTextInterceptor>],
+    ) -> Vec<OutboundMessage> {
+        let mut outbound = Vec::new();
+        for interceptor in interceptors {
+            outbound.extend(interceptor.on_idle_tick(&mut self.kernel));
+        }
+        outbound
+    }
+
     // ── Deferred &mut seams (applied at start()) ──────────────────────────────
 
     /// Install the subscription-plan coverage hook (ADR-0053 diagnostics seam).

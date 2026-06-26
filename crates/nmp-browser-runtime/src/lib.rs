@@ -21,6 +21,7 @@
 //! - [`PumpOutcome`] / [`BrowserRuntimeEvent`] — the result of one `pump()` turn.
 
 mod builder;
+pub(crate) mod relay;
 mod runtime;
 
 pub use builder::{BrowserAppBuilder, BrowserRunConfig};

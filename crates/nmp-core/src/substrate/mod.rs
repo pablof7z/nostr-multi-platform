@@ -146,8 +146,8 @@ pub use external_event_sink::{
 };
 pub use raw_event_forwarding::{RawEventForwardPolicyContext, RawEventForwardTarget};
 pub use relay_connected::{
-    fan_relay_connected, install_relay_connected_hook, new_relay_connected_hook_slot,
-    RelayConnectedHook, RelayConnectedHookSlot,
+    fan_relay_connected, fan_relay_connected_hooks, install_relay_connected_hook,
+    new_relay_connected_hook_slot, RelayConnectedHook, RelayConnectedHookSlot,
 };
 pub use relay_info::RelayInfoDoc;
 pub use relay_intercept::{

@@ -155,9 +155,11 @@ struct DriverState {
     /// Active JS closures — retained for the socket's lifetime. Replaced on
     /// every reconnect so the old socket's leaks are bounded.
     _closures: SocketClosures,
-    /// Currently-armed reconnect `setTimeout` callback. Held so the closure
-    /// is not GC'd before the timer fires. Reset on every reconnect attempt.
-    _reconnect_timer: Option<Closure<dyn FnMut()>>,
+    /// Currently-armed reconnect timer. Held so gloo_timers does not cancel
+    /// it before it fires (dropping `Timeout` calls `clearTimeout`). Setting
+    /// to `None` — e.g. from `close()` — intentionally cancels the pending
+    /// reconnect, mirroring the native `RelayCommand::Shutdown` exit path.
+    _reconnect_timer: Option<gloo_timers::callback::Timeout>,
     /// Frames enqueued before the socket reached `OPEN`. Drained and sent by
     /// `build_on_open` on connect. Survives reconnect attempts (so a frame
     /// buffered before the *first* successful open is not lost if the first
@@ -409,11 +411,17 @@ impl BrowserRelayDriver {
         }) as Box<dyn FnMut(ErrorEvent)>)
     }
 
-    /// Schedule a reconnect via `setTimeout`. Each call doubles the backoff
-    /// up to [`RELAY_RECONNECT_DELAY_MAX`] and applies the `jittered_backoff`
-    /// spread so simultaneous failures across many relays don't all reconnect
-    /// on the same tick. The closure is retained in `state._reconnect_timer`
-    /// so the JS GC doesn't drop it before the deadline.
+    /// Schedule a reconnect via `gloo_timers::callback::Timeout` (#2071).
+    ///
+    /// Each call doubles the backoff up to [`RELAY_RECONNECT_DELAY_MAX`] and
+    /// applies the `jittered_backoff` spread so simultaneous failures across
+    /// many relays don't all reconnect on the same tick.
+    ///
+    /// Unlike the previous `web_sys::window().set_timeout_*` approach,
+    /// `gloo_timers::callback::Timeout` schedules via `js_sys::global()`
+    /// which resolves to whichever global scope is active — both `Window`
+    /// and `WorkerGlobalScope`. Reconnect therefore fires correctly when the
+    /// driver runs inside a Worker (the primary nmp-browser-runtime target).
     fn schedule_reconnect(self: &Rc<Self>) {
         let delay = {
             let mut s = self.state.borrow_mut();
@@ -421,30 +429,21 @@ impl BrowserRelayDriver {
             s.backoff = (s.backoff * 2).min(RELAY_RECONNECT_DELAY_MAX);
             delay
         };
-        let window = match web_sys::window() {
-            Some(w) => w,
-            None => return, // no window (e.g. worker without `self`) — give up
-        };
+        let delay_ms = u32::try_from(delay.as_millis()).unwrap_or(u32::MAX);
         let weak = Rc::downgrade(self);
-        let cb = Closure::wrap(Box::new(move || {
+        let timeout = gloo_timers::callback::Timeout::new(delay_ms, move || {
             let Some(driver) = weak.upgrade() else { return };
             // Re-dial — if it fails synchronously (bad URL is rare here since
             // it worked the first time, but the user-agent may reject under
-            // memory pressure), drop the timer and report the failure.
+            // memory pressure), report the failure through the kernel handler.
             if let Err(error) = driver.dial() {
                 let error_str = format!("reconnect dial failed: {error:?}");
                 (driver.kernel.on_failed)(driver.role, &driver.url, error_str);
             }
-        }) as Box<dyn FnMut()>);
-        let result = window.set_timeout_with_callback_and_timeout_and_arguments_0(
-            cb.as_ref().unchecked_ref(),
-            i32::try_from(delay.as_millis()).unwrap_or(i32::MAX),
-        );
-        // Park the closure in state so JS does not GC it before firing.
-        // setTimeout returning Err means the user-agent refused the schedule;
-        // we drop the closure (no leak) and surface no reconnect attempt.
-        if result.is_ok() {
-            self.state.borrow_mut()._reconnect_timer = Some(cb);
-        }
+        });
+        // Park the Timeout handle in state so it is not dropped before firing.
+        // Dropping a gloo_timers::Timeout calls clearTimeout — intentional when
+        // close() sets this slot to None (cancels any pending reconnect).
+        self.state.borrow_mut()._reconnect_timer = Some(timeout);
     }
 }
