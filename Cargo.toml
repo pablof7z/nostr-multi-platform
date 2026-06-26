@@ -55,6 +55,7 @@ members = [
     "crates/nmp-planner",
     "crates/nmp-router",
     "crates/nmp-store",
+    "crates/nmp-sqlite-wasm",
     "crates/nmp-nwc",
     "crates/nmp-signer-broker",
     "crates/nmp-signer-iface",
