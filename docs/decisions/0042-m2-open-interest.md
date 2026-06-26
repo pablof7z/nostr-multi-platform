@@ -33,12 +33,17 @@ social timeline." A feed declaration names primary content kinds and a
 reactive source; protocol adapters derive wrapper acquisition and provenance.
 A long-form reader app may declare `[30023]`; a media app may declare `[20]`.
 
-## 2. Decision — generic `open_interest` / `close_interest`
+## 2. Decision — raw `open_interest` / `close_interest`
 
-Two new C-ABI symbols replace the five:
+The M2 migration introduced two raw C-ABI interest symbols as the low-level
+static subscription seam. They replaced the old bespoke author/thread/tag
+subscription verbs, but they are not the current app feed API. App feeds are
+declared through typed `FeedParams` and opened with `open_feed`; `open_interest`
+is for callers that need to attach an owner to a concrete, already-materialized
+Nostr filter.
 
 ```c
-// Register (or attach an owner to) a tailing interest.
+// Register (or attach an owner to) a concrete tailing interest.
 // filter_json: standard Nostr REQ filter, e.g. {"kinds":[30023],"authors":["<hex>"]}
 // consumer_id: refcount owner key — deduplicates across call sites
 // scope: 0 = ActiveAccount (re-routes on account switch), 1 = Global
@@ -62,8 +67,9 @@ Internal routing (`nmp-core`):
   `registry_mut().ensure_sub` / `drop_owner` + enqueues
   `CompileTrigger::InvalidateCompile` — byte-for-byte the body the
   `EnsureInterest` / `DropInterestOwner` arms already run.
-- Lifecycle is always **`Tailing`** — `open_interest` is a feed subscription,
-  never a one-shot.
+- Lifecycle is always **`Tailing`** — `open_interest` keeps a concrete filter
+  live until its owners close. It does not compile feed policy, primary-kind
+  declarations, wrapper acquisition, or dynamic source reduction.
 
 ### 2.1 Deterministic dedup via the `InterestShape` hash
 
@@ -83,10 +89,11 @@ The `scope` param maps to `crate::planner::InterestScope` on the
 `ActiveAccount` folds to `SubScope::Global` for the dedup key — identical to the
 existing `InterestRegistry::legacy_scope` convention — while the real
 `InterestScope::ActiveAccount` rides on the `LogicalInterest` so the compiler
-re-routes on account switch. Contact feeds use the account-routed surface. A
-visited author or open thread is keyed to a concrete pubkey/root id and uses
-scope `1` (Global); it does not reroute on account switch. Hashtag feeds also
-use scope `1`.
+re-routes the concrete filter on account switch. Dynamic feed sources such as
+active-user follows do not use this raw lane directly; they compile from
+`FeedParams` into ReducedSource-owned dependent interests. A visited author or
+open thread is keyed to a concrete pubkey/root id and uses scope `1` (Global);
+it does not reroute on account switch. Hashtag feeds also use scope `1`.
 
 ## 3. Net symbol delta
 

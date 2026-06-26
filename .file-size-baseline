@@ -22,7 +22,7 @@ crates/nmp-cli/registry/compose/content-view/NostrContentView.kt	599
 crates/nmp-cli/registry/tui/content-kind-registry/nostr_kind_registry.rs	826
 crates/nmp-codegen/src/swift.rs	605
 crates/nmp-codegen/src/swift_projections_registry.rs	741
-crates/nmp-core/src/actor/commands/publish.rs	610
+crates/nmp-core/src/actor/commands/publish.rs	550
 crates/nmp-core/src/actor/mod.rs	761
 crates/nmp-core/src/actor/sign_event_for_account_tests.rs	565
 crates/nmp-core/src/kernel/action_registry/tests.rs	724
@@ -30,12 +30,11 @@ crates/nmp-core/src/kernel/auth_tests.rs	762
 crates/nmp-core/src/kernel/cache_serve_universal_tests.rs	576
 crates/nmp-core/src/kernel/claim_expansion_ingest_tests.rs	707
 crates/nmp-core/src/kernel/discovery_tests.rs	604
-crates/nmp-core/src/kernel/ingest_tests.rs	767
+crates/nmp-core/src/kernel/ingest_tests.rs	761
 crates/nmp-core/src/kernel/publish_terminal_status_tests.rs	840
 crates/nmp-core/src/kernel/retention_tests.rs	530
 crates/nmp-core/src/kernel/routing_trace_dto.rs	527
-crates/nmp-core/src/kernel/state_projection_tests.rs	666
-crates/nmp-core/src/kernel/test_support.rs	519
+crates/nmp-core/src/kernel/state_projection_tests.rs	662
 crates/nmp-core/src/kernel/types.rs	692
 crates/nmp-core/src/subs/lifecycle_tests.rs	963
 crates/nmp-core/tests/nip_tag_conformance.rs	554

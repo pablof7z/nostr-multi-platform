@@ -26,12 +26,13 @@ extension KernelHandle {
     // NIP-18 repost wrapper acquisition, and opens the compiled `#t` filter at
     // `.global` scope (D0-correct).
 
-    /// M2 (ADR-0042) — generic feed-subscription open. `filterJSON` is a
-    /// verbatim NIP-01 REQ filter.
-    /// Declared feeds should pass primary kinds only through their typed seam;
-    /// protocol adapters derive repost wrappers. `consumerID` refcounts owners so
-    /// repeated opens of the same filter share one live subscription; `scope`
-    /// is `.activeAccount` (re-route on switch) or `.global` (account-agnostic).
+    /// M2 (ADR-0042) — low-level static interest open. `filterJSON` is a
+    /// verbatim NIP-01 REQ filter after feed/source policy has already been
+    /// compiled elsewhere.
+    /// App feeds should use `openFeed`; dynamic sources such as active follows
+    /// are ReducedSource feed sessions, not native-computed author lists.
+    /// `consumerID` refcounts owners so repeated opens of the same filter share
+    /// one live subscription; `scope` is `.activeAccount` or `.global`.
     func openInterest(filterJSON: String, consumerID: String, scope: InterestScope) {
         filterJSON.withCString { filterPtr in
             consumerID.withCString { consumerPtr in
@@ -40,7 +41,7 @@ extension KernelHandle {
         }
     }
 
-    /// M2 (ADR-0042) — detach one owner from a feed interest opened with
+    /// M2 (ADR-0042) — detach one owner from a low-level interest opened with
     /// `openInterest`. The live subscription is dropped on the last owner's
     /// close. Pass the SAME `filterJSON` / `consumerID` / `scope` the open used.
     func closeInterest(filterJSON: String, consumerID: String, scope: InterestScope) {

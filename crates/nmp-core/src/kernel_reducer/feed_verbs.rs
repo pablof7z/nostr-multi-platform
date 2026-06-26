@@ -3,8 +3,8 @@
 //! Split from `kernel_reducer.rs` to keep that file under the 500-LOC hard
 //! ceiling (AGENTS.md). The four methods here expose the M2 interest-registry
 //! and identity surface to the wasm runtime so the browser host can open/close
-//! generic feed subscriptions and hand off the viewer pubkey after NIP-07
-//! sign-in.
+//! concrete low-level interests and hand off the viewer pubkey after NIP-07
+//! sign-in. App feeds use typed `FeedParams`, not this raw interest lane.
 //!
 //! All four follow the same post-processing pattern as the relay-lifecycle
 //! methods in `kernel_reducer.rs`: `drain_lifecycle_outbound` is called inline
@@ -14,7 +14,7 @@
 use crate::relay::OutboundMessage;
 
 impl super::KernelReducer {
-    /// Attach a generic feed interest identified by `(filter_json, consumer_id,
+    /// Attach a generic low-level interest identified by `(filter_json, consumer_id,
     /// scope)`. On cold open (first owner) emits the batched-REQ frames
     /// immediately by draining the lifecycle outbound inline.
     ///
@@ -41,7 +41,7 @@ impl super::KernelReducer {
         self.kernel.partition_auth_paused(outbound)
     }
 
-    /// Detach one owner from a generic feed interest. When the last owner
+    /// Detach one owner from a generic low-level interest. When the last owner
     /// leaves, enqueues a CLOSE diff and emits it inline.
     ///
     /// Malformed `filter_json` is silently dropped (D6). Closing an interest
@@ -65,15 +65,15 @@ impl super::KernelReducer {
     }
 
     /// Install `pubkey_hex` as the active viewer account and fan out the
-    /// resulting bootstrap interests and follow-feed reconciliation.
+    /// resulting bootstrap interests plus generic feed-source reconciliation.
     ///
     /// This is the wasm analogue of `actor::commands::identity::switch_active`:
     /// it sets `active_account` (kernel projection + handle mutex), reconciles
-    /// the M2 follow-feed (withdraw prior account's interests / install new
-    /// account's follows), registers bootstrap interests for the new account
-    /// (self-profile, NIP-65, kind:10050, contacts), and drains lifecycle
-    /// outbound inline so any REQs that can be emitted against already-connected
-    /// relays go out immediately.
+    /// ReducedSource feed sessions re-resolve their active-account sources,
+    /// bootstrap interests are registered for the new account (self-profile,
+    /// NIP-65, kind:10050, contacts), and lifecycle outbound is drained inline
+    /// so any REQs that can be emitted against already-connected relays go out
+    /// immediately.
     ///
     /// Idempotence gate: a redundant call with the same pubkey is a no-op
     /// and returns `Vec::new()`. This mirrors native `switch_active`'s

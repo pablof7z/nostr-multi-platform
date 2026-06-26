@@ -1,5 +1,5 @@
 //! `register_op_feed_defaults` — the V-80 rung 6 (Stage 5) composition root
-//! that wires the OP-centric home feed together.
+//! that wires the OP-centric feed renderer together.
 //!
 //! This is the one place in the system that names `NmpApp` (`nmp-ffi`) and the
 //! NIP-10 OP-feed instance (`nmp-nip01`) in the same breath. Every lower layer
@@ -37,8 +37,8 @@
 //!
 //! Feed acquisition is owned by the `open_feed(FeedScope::ActiveUserFollows)`
 //! reduced-source path. This composition helper wires only the OP-feed render
-//! engine and its live follow predicate; it never declares an actor-owned
-//! follow-feed subscription.
+//! engine and its live follow predicate; it never declares actor-owned
+//! acquisition.
 //!
 //! # `event_lookup` reads the kernel event store (V-83)
 //!
@@ -84,8 +84,8 @@
 //! account switch, and logout. All of those are feed-perspective changes: the
 //! user has changed who can cause rows to appear. The engine therefore resets
 //! immediately instead of letting stale rows D5-evict naturally. Re-population
-//! comes from the same reactive acquisition/cache-serve path that registered
-//! the new follow-feed interest.
+//! comes from the same ReducedSource acquisition/cache-serve path that
+//! materializes the current active-account source.
 //!
 //! ## The account-change race (rung-4 flagged this)
 //!

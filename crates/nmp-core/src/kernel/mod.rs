@@ -1,166 +1,55 @@
 //! Kernel — the actor-owned event-processing core.
 
-#[cfg(test)]
-mod action_failure_tests;
 pub(crate) mod action_ledger;
-#[cfg(test)]
-mod action_lifecycle_kernel_tests;
 pub(crate) mod action_registry;
 pub(crate) mod action_stages;
-#[cfg(test)]
-mod action_stages_tests;
-#[cfg(test)]
-mod action_terminal_correctness_tests;
-#[cfg(test)]
-mod cancel_correlation_tests;
 mod composition_accessors;
 pub mod composition_ledger;
 mod composition_seams;
 pub(crate) mod handle_correlation; // handle ↔ dispatch-correlation_id (S7, #1754)
-#[cfg(test)]
-mod publish_completion_forget_tests; // D8 — forget handle↔correlation on completion (S7/#1754)
 mod relay_list_substrate;
 pub(crate) use relay_list_substrate::parse_relay_list_to_substrate;
+include!("test_modules.rs");
 mod active_timeline_authors;
 mod auth;
 mod auth_sign_state;
 pub(crate) mod cache_serve;
-#[cfg(test)]
-mod cache_serve_all_kinds_dispatcher_tests;
-#[cfg(test)]
-mod cache_serve_budget_tests;
-#[cfg(test)]
-mod cache_serve_coverage_tests;
-#[cfg(test)]
-mod cache_serve_tests;
-#[cfg(test)]
-mod cache_serve_universal_tests;
-#[cfg(test)]
-mod cache_serve_wakeup_tests;
-#[cfg(test)]
-mod chokepoint_tests;
 pub(crate) mod claim_expansion;
-#[cfg(test)]
-mod claim_expansion_edge_tests;
 mod claim_expansion_helpers;
-#[cfg(test)]
-mod claim_expansion_ingest_tests;
-#[cfg(any(test, feature = "test-support"))]
-mod claim_expansion_seam;
-#[cfg(test)]
-mod claim_expansion_tests;
-#[cfg(test)]
-mod claim_expansion_tick_tests;
-#[cfg(test)]
-mod claimed_events_raw_author_tests;
 pub(crate) mod clock;
-#[cfg(test)]
-mod clock_injection_tests;
-#[cfg(test)]
-mod closed_classifier_tests;
 pub(crate) mod closed_reason;
 mod coverage_ledger;
-#[cfg(test)]
-mod coverage_ledger_d1_tests;
-#[cfg(all(test, feature = "native"))]
-mod coverage_ledger_d2_journey_tests;
-#[cfg(test)]
-mod coverage_ledger_d2_tests;
 mod dependent_interests;
 mod diagnostic_counters;
 mod discovery;
-#[cfg(test)]
-mod discovery_tests;
-#[cfg(test)]
-mod eose_ok_notice_ingest_tests;
-#[cfg(test)]
-mod event_claim_hint_tests;
 pub(crate) mod event_claim_released; // V-59 rung 1 — event-claim released observer ring.
-#[cfg(test)]
-mod event_claim_released_tests;
-#[cfg(test)]
-mod event_claim_tests;
 mod event_observer;
-#[cfg(test)]
-mod event_observer_tests;
-#[cfg(test)]
-mod gc_step_tests;
-#[cfg(any(test, feature = "test-support"))]
-mod interest_install_cache_serve_support;
-#[cfg(test)]
-mod interest_install_cache_serve_tests;
-#[cfg(test)]
-mod interest_install_profile_cache_serve_tests;
 /// ADR-0054 §X — KernelPorts facade: 10 typed port newtypes (#1721 slice 1).
 pub mod kernel_ports;
 mod observer_replay;
 pub(crate) mod pull;
 pub mod pull_cursor; // ADR-0058 §3a — non-durable pull-cursor registry + actor commands.
-#[cfg(test)]
-mod pull_cursor_retention_tests;
-#[cfg(test)]
-mod pull_cursor_wake_tests;
-#[cfg(test)]
-mod pull_tests;
 pub(crate) mod pull_wake;
 mod ram_eviction;
-#[cfg(test)]
-mod ram_eviction_tests;
-#[cfg(test)]
-mod ram_eviction_view_pin_tests;
-#[cfg(test)]
-mod signed_events_return_tests;
 mod store_wakeup;
 /// ADR-0052 §D5 — `&mut Kernel` → narrow wallet/zap capability adapter.
 pub mod wallet_access; // ADR-0062 — observer-scoped read-model catch-up.
 pub use dependent_interests::DependentInterestChild;
 pub(crate) use observer_replay::ObserverReplayRequest;
-#[cfg(test)]
-mod dependent_interests_tests;
 mod external_event_sink;
 mod identity_state;
 mod ingest;
-#[cfg(test)]
-mod ingest_pre_verified_dispatcher_tests;
-#[cfg(test)]
-mod ingest_tests;
-#[cfg(test)]
-mod ingest_timeline_dispatcher_tests;
 mod lifecycle;
 mod lifecycle_drain;
 mod mailboxes;
-#[cfg(any(test, feature = "test-support"))]
-mod negentropy_test_support;
 mod negentropy_types;
 mod nostr;
-#[cfg(test)]
-mod observer_replay_store_tests;
-#[cfg(test)]
-mod observer_replay_tests;
-#[cfg(test)]
-mod outbox_tests;
-#[cfg(test)]
-mod proactive_profile_fetch_tests;
-#[cfg(test)]
-mod profile_claim_discovery_tests;
-#[cfg(test)]
-mod profile_claim_test_support;
-#[cfg(test)]
-mod profile_claim_tests;
 mod provenance;
-#[cfg(test)]
-mod provenance_wire_tests;
 mod publish_cmd;
 mod publish_cmd_contact_accessors;
 mod publish_engine;
-#[cfg(test)]
-mod publish_engine_tests;
 mod publish_engine_wire;
 mod publish_outbox;
-#[cfg(test)]
-mod publish_relay_identity_tests;
-#[cfg(test)]
-mod publish_terminal_status_tests;
 mod publish_verify;
 mod relay_diagnostics;
 mod relay_frame;
@@ -169,54 +58,22 @@ pub mod relay_score;
 mod relay_score_flush;
 mod relay_score_lookup_impl;
 mod relay_score_record;
-#[cfg(test)]
-mod relay_score_tests;
 mod relay_transport;
 pub mod replaceable_ttl;
-#[cfg(test)]
-mod replaceable_ttl_gate_tests;
 mod replay;
-#[cfg(test)]
-mod replay_tests;
 mod requests;
 pub mod routing_trace; // V-51 — bounded ring-buffer projection of recent routing decisions.
 pub mod routing_trace_dto; // V-51 — JSON DTO renderer for the routing-trace projection.
 pub use requests::ProfileLiveness;
 pub(crate) mod refs; // ADR-0063 (#1671) — kernel RefResolver.
 pub use refs::{EventShape, ProfileShape, RefLiveness, RefNamespace, RefResolveMetadata, RefShape};
-#[cfg(test)]
-mod d1_offline_bootstrap_tests;
-#[cfg(test)]
-mod dm_inbox_routing_tests;
 mod feed_author_refs;
-#[cfg(test)]
-mod perf_tests;
 /// ADR-0055 Rung 1 — kernel-owned per-projection revision manifest.
 pub(crate) mod projection_rev;
 mod ref_row_source;
-#[cfg(test)]
-mod refs_tests;
-#[cfg(test)]
-mod retention_tests;
 pub(crate) mod snapshot_registry;
-#[cfg(test)]
-mod snapshot_registry_tests;
-#[cfg(test)]
-mod state_projection_tests;
 mod status;
 mod store_init;
-#[cfg(test)]
-mod t142_drain_lifecycle_tick_tests;
-#[cfg(test)]
-mod t170_relay_scoped_keying_tests;
-#[cfg(test)]
-mod t171_planner_error_projection_tests;
-#[cfg(test)]
-mod test_router;
-#[cfg(any(test, feature = "test-support"))]
-pub(crate) mod test_support;
-#[cfg(test)]
-mod tests;
 mod tier3_encode;
 #[cfg(test)]
 mod tier3_envelope_tests;

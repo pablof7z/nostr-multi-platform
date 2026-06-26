@@ -11,7 +11,7 @@ This document is split into focused sub-files to stay under the 300 LOC ceiling 
 ## Section map
 
 - [Intro — purpose, doctrine alignment, per-bullet template, how this contract evolves](framework-magic/intro.md)
-- [Kind:3 auto-tracking — follow-list change recompiles dependent subscriptions](framework-magic/kind3.md) (C5)
+- [Active-follows ReducedSource tracking — source changes recompile dependent interests](framework-magic/kind3.md) (C5)
 - [Replaceable & delete invariants — supersession, parameterized supersession, kind:5, NIP-40](framework-magic/replaceable.md) (C1–C4)
 - [Outbox routing — read fan-out, write fan-out, private events fail closed](framework-magic/outbox.md) (C6, C7)
 - [Subscriptions — dedup, coalesce, auto-close, buffered batches](framework-magic/subs.md) (C8)
@@ -43,7 +43,7 @@ Each row binds a behavior to: the sub-file that specifies it, the test name in `
 | C2 | Parameterized replaceable supersession (30000–39999) by `(pubkey, kind, d-tag)` | replaceable.md | `c2_parameterized_replaceable_supersedes_by_dtag` | **[DONE]** · M3 · `c1_c4_c6_c9.rs:87` | spec §7.1 row "Parameterized replaceable"; §3.3 bug #1 |
 | C3 | Kind:5 delete propagation: referenced events removed, tombstone persisted | replaceable.md | `c3_kind5_delete_removes_referenced_and_tombstones` | **[DONE]** · M3 · `c1_c4_c6_c9.rs:134` | spec §7.1 row "Kind 5 (delete)" |
 | C4 | NIP-40 expiration auto-removes event at expiry; survives actor restart | replaceable.md | `c4_nip40_expiration_removes_and_persists_schedule` | **[DONE]** · M3 · `c1_c4_c6_c9.rs:178` | spec §7.1 row "NIP-40 expiration" |
-| C5 | Kind:3 auto-tracking: active account's follow-list change recompiles dependent subscriptions transparently | kind3.md | `c5_kind3_change_recompiles_follow_dependent_subs` | **[DONE]** · M2 · `c5_c8_c13.rs:64` | D3; M2 design §4 (`CompileTrigger::FollowListChanged` A11, landed `001ebf6`) |
+| C5 | Active-follows ReducedSource tracking: active account source changes recompile dependent interests transparently | kind3.md | `c5_kind3_change_recompiles_follow_dependent_subs` | **[DONE]** · M2/M5 · `c5_c8_c13.rs:64` | D3/D4; #2092 ReducedSource path |
 | C6 | Outbox read routing: `authors`-filter subscriptions fan out to those authors' write relays (NIP-65), de-duplicated | outbox.md | `c6_authors_subscription_routes_to_per_author_write_relays` | **[DONE]** · M2 · `c1_c4_c6_c9.rs:229` | D3; spec §7.3 row "Subscription with `authors`"; M2 design §7 |
 | C7 | Outbox write routing: publishes go to author write + `#p`-recipient inbox; private (gift-wrap) events fail closed when recipient inbox is unknown | outbox.md | `c7_publish_routes_outbox_and_private_fails_closed` | **[DONE]** · M6 · `c7_c11.rs:67` | D3; spec §7.3 rows "Publish*"; §3.3 bugs #3, #4 |
 | C8 | Subscription planner deduplicates overlapping interests into one wire REQ per relay, auto-closes on EOSE / last-consumer-drop, and buffers ingress to ≤60Hz per view | subs.md | `c8_subscriptions_coalesce_autoclose_and_buffer` | **[DONE]** · M2 · `c5_c8_c13.rs:133` | spec §7.2; §3.3 bug #2, bug #8 |
@@ -60,8 +60,8 @@ Each row binds a behavior to: the sub-file that specifies it, the test name in `
    action-module wrapper is still a substrate-layer gap tracked by
    `#57-c11-keyring` — an internal wiring caveat, **not** a bullet downgrade.
    Similarly C5's registry push that expands the author set is a synthetic
-   stand-in for the M11 ViewModule rebuild; the trigger, ingest fan, and
-   `drain_tick` routing it exercises are real.
+   stand-in for the ReducedSource dependent-interest replacement; the source
+   update, ingest fan, and `drain_tick` routing it exercises are real.
 2. **C13 is now `[DONE]`.** The D1 placeholder substrate
    (`Placeholder<T>` newtype, `picture_placeholder`, ADR-0017) and the actor
    projection path now satisfy the active proof target. The prior RED note is
@@ -133,8 +133,8 @@ do steps 1 and 2 in the **same commit**.
 
 The following items were pending research; citations are now concrete per `docs/research/ndk/kind3-auto-tracking.md` and `docs/research/applesauce/event-store-query-builders.md`:
 
-- `kind3.md` §3 — NDK's session layer opens a long-lived REQ for active-user events (including kind:3) at `sessions/src/store.ts:184-194`; kind:3 is processed in `handleContactListEvent` at `store.ts:492-512`, which updates `session.followSet`. Core NDK has **no** automatic open-subscription rewire on follow-list change; Svelte gets it via runes (`subscription.svelte.ts:164-177`), React requires explicit deps (`subscribe.ts:110`). NMP's kernel fills this gap with `Trigger::FollowListChanged` (C5).
-- `kind3.md` §4 — Applesauce's query-builder magic is `EventModels.model(Constructor, ...args)` at `event-models.ts:50-86`, backed by `share({resetOnRefCountZero: timer(60_000)})`. The `OutboxModel` composition at `models/outbox.ts:14-24` uses `switchMap` into per-contact `ReplaceableModel(kind:10002)` instances — when a kind:3 arrives, `ContactsModel` re-emits, `OutboxModel` switchMaps the new contact list, and every downstream relay-set consumer updates automatically. NMP's `ViewModule.dependencies()` + `Trigger::FollowListChanged` is the analog.
+- `kind3.md` §3 — NDK's session layer opens a long-lived REQ for active-user events (including kind:3) at `sessions/src/store.ts:184-194`; kind:3 is processed in `handleContactListEvent` at `store.ts:492-512`, which updates `session.followSet`. Core NDK has **no** automatic open-subscription rewire on follow-list change; Svelte gets it via runes (`subscription.svelte.ts:164-177`), React requires explicit deps (`subscribe.ts:110`). NMP fills this gap with Rust-owned ReducedSource recompilation (C5).
+- `kind3.md` §4 — Applesauce's query-builder magic is `EventModels.model(Constructor, ...args)` at `event-models.ts:50-86`, backed by `share({resetOnRefCountZero: timer(60_000)})`. The `OutboxModel` composition at `models/outbox.ts:14-24` uses `switchMap` into per-contact `ReplaceableModel(kind:10002)` instances — when a kind:3 arrives, `ContactsModel` re-emits, `OutboxModel` switchMaps the new contact list, and every downstream relay-set consumer updates automatically. NMP's ReducedSource/dependent-interest owner is the analog.
 - `outbox.md` §2 — NDK's relay auto-add on NIP-65 arrival is `refreshRelayConnections` at `core/src/ndk/index.ts:458-471` + `subscription/index.ts:787-812`. It **only adds** relays (never removes) and is triggered by NIP-65, not kind:3. NMP's wire-emitter diff (CLOSE + REQ delta) is strictly more correct.
 - `subs.md` §3 — Applesauce's logical-vs-wire split: `EventModels.model()` at `event-models.ts:50-86` is the logical layer (one shared pipeline per `(constructor, args)` hash); the underlying `EventStore.insert$` / `remove$` streams are the wire layer. NMP's `LogicalInterest` (`subscription-compilation/intro.md` §2.1) covers the same split.
 - `sync.md` §4 — Applesauce's watermark equivalent is the `claimLatest` / `claimEvents` refcount pair (`observable/claim-latest.ts`, `claim-events.ts`) plus the `EventMemory` LRU touch on claim (`event-memory.ts:188`). Coverage-awareness is implicit in the `eventLoader` fallback (`event-store.ts:102-104`): if the event is not in memory and the loader returns nothing, the miss is treated as authoritative for that pointer. NMP's explicit `(filter_sig, relay)` watermark is a more precise analog.
@@ -143,7 +143,7 @@ The following items were pending research; citations are now concrete per `docs/
 
 - This document does **not** specify HOW the framework implements each behavior — that lives in the milestone design doc named in the table.
 - This document does **not** duplicate `docs/product-spec/subsystems.md` §7.1 invariants — `replaceable.md` references the rows; it does not restate them.
-- This document does **not** introduce new types or traits — `PublishPlanner`, `ViewModule`, `LogicalInterest`, `SubscriptionCompiler`, `MailboxCache`, `KeyringCapability` are already defined in the cited design docs and product spec. The contract uses those names.
+- This document does **not** introduce new types or traits — `PublishPlanner`, `LogicalInterest`, `SubscriptionCompiler`, `MailboxCache`, `KeyringCapability`, and `ReducedSource` are already defined in the cited design docs and product spec. The contract uses those names.
 - This document does **not** describe the proof app, the starter app, or the kernel-substrate trait families — those are the substrate the contract holds the framework to.
 
 The contract's job is exactly: *enumerate what the app does not have to do, name where the framework does it, name the test that proves it.* Nothing more.

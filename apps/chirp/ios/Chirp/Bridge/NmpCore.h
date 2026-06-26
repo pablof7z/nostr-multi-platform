@@ -31,12 +31,11 @@ void nmp_app_start(void *app, unsigned int visible_limit, unsigned int emit_hz);
 void nmp_app_configure(void *app, unsigned int visible_limit, unsigned int emit_hz);
 void nmp_app_stop(void *app);
 void nmp_app_reset(void *app);
-// M2 (ADR-0042) — generic feed-subscription surface. Replaces the deleted
-// open_firehose_tag verb. Hashtag feeds now use the Chirp-owned tag-feed seam:
-// primary kind `[1]` is declared app-side, repost wrapper acquisition is
-// derived by NIP-18, and the compiled `#t` filter is opened at Global scope.
-// `filter_json` is a verbatim NIP-01 REQ filter. Declared feeds pass primary
-// kinds only through their typed seam; protocol adapters derive repost wrappers.
+// M2 (ADR-0042) — low-level static interest surface. `filter_json` is a
+// verbatim NIP-01 REQ filter after feed/source policy has already been compiled
+// elsewhere. Declared app feeds use nmp_app_open_feed; dynamic sources such as
+// active follows are Rust-owned ReducedSource sessions, not native-computed
+// author lists.
 // `consumer_id` refcounts owners across call sites passing the same filter;
 // `scope` is 0 = ActiveAccount (re-route on switch), 1 = Global
 // (account-agnostic, e.g. a hashtag feed).
