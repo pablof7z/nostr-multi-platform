@@ -1,11 +1,11 @@
 //! Stable machine codes for user-facing NIP-46/NIP-55 handshake progress labels
 //! (#1711, part of #1670).
 //!
-//! The broker owns the prose for the handshake steps it drives, so — mirroring
+//! The runtime owns the prose for the handshake steps it drives, so — mirroring
 //! the `UiToken` code registry pattern (`nmp_nip17::ui_codes`, etc.) — it owns
-//! the stable `code` keys too. `nmp-signer-broker` has no `nmp-core` dependency
+//! the stable `code` keys too. `nmp-nip46` has no `nmp-core` dependency
 //! (D0), so these live here as protocol-neutral `&'static str` constants; the
-//! broker emits one alongside the English fallback prose, and the shells localize
+//! runtime emits one alongside the English fallback prose, and the shells localize
 //! the code (falling back to the prose for any key they don't recognize).
 //!
 //! Only the user-facing *progress* labels carry a code. Diagnostic / `"failed"`

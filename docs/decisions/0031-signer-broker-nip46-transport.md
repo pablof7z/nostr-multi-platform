@@ -1,6 +1,6 @@
 # ADR-0031 — `nmp-signer-broker` owns the NIP-46 relay transport; it does not use `nostr-connect`
 
-- **Status:** Accepted
+- **Status:** Superseded by actor-lane design / PR-B2 #2119 (nmp-signer-broker deleted)
 - **Date:** 2026-05-24
 - **Resolves:** V-36.
 - **Related:** ADR-0022 (NMP owns its relay transport), ADR-0026 (signer NIP-44 seal seam),
@@ -90,11 +90,22 @@ batch-decrypt session for bunkers that negotiate it. The older per-envelope
 `unwrap_gift_wrap` sketch was rejected as unviable, since each kind:1059 unseal
 is two sequential interactive NIP-46 decrypts.
 
-## Decision
+> **SUPERSEDED (#2119, 2026-06-27).** The standalone `nmp-signer-broker` crate has been
+> **deleted**. NIP-46 no longer owns a bespoke socket/dispatcher: it rides the actor's
+> shared `Pool` relay lane, driven by the `nmp-nip46-runtime` crate (the pure reducer
+> lives in `nmp-nip46`). D0 is still satisfied — `nmp-core` names neither `nmp-signers`
+> nor any NIP-46 type; the wiring lives in `nmp-ffi` (above `nmp-core` in the DAG) behind
+> the `signer-broker` cargo feature. The original decision below is retained verbatim for
+> historical context; wherever it says "the broker owns the transport," read
+> "`nmp-nip46-runtime` drives the transport over the actor `Pool` lane."
 
-`nmp-signer-broker` is declared **canonical maintained infrastructure**. It is not a
-stopgap: it exists to satisfy D0, the mio execution model, multi-relay redundancy, and
+## Decision (historical — superseded)
+
+`nmp-signer-broker` was declared **canonical maintained infrastructure**. It was not a
+stopgap: it existed to satisfy D0, the mio execution model, multi-relay redundancy, and
 NMP-specific progress telemetry — none of which `nostr-connect` provides out of the box.
+(#2119 later achieved the same D0 + multi-relay + telemetry guarantees by folding the
+transport onto the shared actor `Pool` lane, removing the separate crate entirely.)
 
 `aim.md` §3 is updated by this ADR. The corollary "Use rust-nostr, not scratch crypto" applies to cryptographic primitives only
 (NIP-44, bech32, key derivation); it does not require using rust-nostr's relay-transport
@@ -112,10 +123,11 @@ upstream timeline is out of NMP's control.
 optionally extracting the non-NMP-specific relay-client primitive into a shared
 `nmp-relay-conn` crate and sharing it with `nmp-core`'s relay worker.
 
-**Current ruling:** Option B. The broker owns the NIP-46 relay transport. A shared
-relay-connection crate (`nmp-relay-conn`) has not been extracted; doing so would
-eliminate the remaining duplicate-transport code smell without changing the
-architectural decision.
+**Current ruling (as of #2119):** Neither Option A nor Option B. The duplicate-transport
+code smell was eliminated outright by deleting `nmp-signer-broker` and having
+`nmp-nip46-runtime` drive NIP-46 over the actor's existing shared `Pool` relay lane — the
+same socket layer the kernel uses for all outbound Nostr traffic. No separate
+relay-connection crate was needed; the actor `Pool` IS the shared transport.
 
 ## Consequences
 

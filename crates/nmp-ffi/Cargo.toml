@@ -31,7 +31,8 @@ native = ["nmp-core/native", "nmp-nip05/native"]
 # `NmpApp` for registration keep the broker graph out of their default build.
 signer-broker = [
     "native",
-    "dep:nmp-signer-broker",
+    "dep:nmp-nip46-runtime",
+    "dep:nmp-nip46",
     "dep:nmp-signer-iface",
     "dep:nmp-signers",
 ]
@@ -102,7 +103,8 @@ nmp-nip51 = { path = "../nmp-nip51" }
 # same composition-root role as `nmp_app_search_*`. Both edges are acyclic.
 nmp-intent = { path = "../nmp-intent" }
 nmp-nip05 = { path = "../nmp-nip05" }
-nmp-signer-broker = { path = "../nmp-signer-broker", optional = true }
+nmp-nip46-runtime = { path = "../nmp-nip46-runtime", optional = true }
+nmp-nip46 = { path = "../nmp-nip46", optional = true }
 nmp-signer-iface = { path = "../nmp-signer-iface", optional = true }
 nmp-signers = { path = "../nmp-signers", optional = true }
 nostr = { workspace = true, features = ["nip44", "nip59"] }

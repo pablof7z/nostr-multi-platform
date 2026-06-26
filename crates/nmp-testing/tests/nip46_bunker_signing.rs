@@ -1,30 +1,32 @@
 //! T119 — NIP-46 bunker signing **on the wire** end-to-end.
 //!
-//! Locks down the full chain that was wired up across the
-//! `nmp-signer-iface` → `nmp-signers` → app-neutral `nmp-signer-broker` →
-//! app/actor adapter stack but had no integration coverage prior to HB54:
+//! Locks down the full chain `nmp-signer-iface` → `nmp-signers` →
+//! `nmp-nip46` reducer → `nmp-nip46-runtime` actor-lane transport, driven by
+//! the test-only `ActorLaneAdapter` (`broker_adapter.rs`):
 //!
-//! 1. A `bunker://` URI is dispatched at the broker.
-//! 2. The broker dials a real WebSocket relay (here our `MockBunkerRelay`
-//!    on `127.0.0.1`), runs the `connect` + `get_public_key` handshake.
-//! 3. The broker constructs a `Nip46Signer` and emits `SignerReady`; the
-//!    test adapter packages it as `Box<dyn RemoteSignerHandle>` and posts
-//!    `AddRemoteSigner` to the actor sender — the same translation NmpApp
-//!    composition performs.
-//! 4. The test plays the actor's role: receives `AddRemoteSigner`, slots
-//!    the handle into a fresh `IdentityRuntime`, drives the signer handle
-//!    directly via `handle.sign(..).wait(..)` (a test-side convenience —
-//!    production code uses `sign_active_nonblocking`).
-//! 5. The signer's `sign()` enqueues a `sign_event` RPC; the broker's
-//!    `BrokerTransport::send_rpc` NIP-44-encrypts + signs + ships it to
-//!    the mock relay.
+//! 1. A `bunker://` URI is dispatched at the adapter (`start_handshake`).
+//! 2. The adapter opens a real WebSocket connection (here our `MockBunkerRelay`
+//!    on `127.0.0.1`) via the shared `Pool`, runs the `connect` +
+//!    `get_public_key` handshake through `Nip46Runtime::on_relay_text`.
+//! 3. On `SignerReady` the adapter constructs a `Nip46Signer` and posts
+//!    `AddSigner { RemoteHandle, .. }` to the actor sender — the same
+//!    translation `Nip46Interceptor` performs in production.
+//! 4. The test receives `AddSigner`, slots the handle into a fresh
+//!    `IdentityRuntime`, and drives the signer via `handle.sign(..).wait(..)`
+//!    (a test-side convenience — production uses `sign_active_nonblocking`).
+//! 5. The signer's `sign()` enqueues a `sign_event` RPC; `ActorLaneTransport`
+//!    NIP-44-encrypts + signs + posts an `EnqueueOutbound` that the adapter
+//!    pump routes to the mock relay.
 //! 6. The mock signs the inner kind:1 with the user's secret key and
 //!    replies with an encrypted `{id, result: <signed-event-json>}`.
-//! 7. The inbound dispatcher thread the broker spawned routes the
-//!    response back into `Nip46Signer::deliver_response`, which fires
-//!    the pending one-shot.
+//! 7. The adapter pump decodes the inbound frame through the runtime and
+//!    routes the body via `deliver_signer_response` → `Nip46Signer`'s parked
+//!    one-shot fires.
 //! 8. The mapper validates the signed kind:1 (id recomputation + schnorr
 //!    verify + pubkey match) and the `.wait()` call in the test unblocks.
+//!
+//! For the full production C-ABI seam (`nmp_signer_broker_init` +
+//! `nmp_app_signin_bunker`) see `nip46_ffi_production_path.rs`.
 //!
 //! ## Assertions
 //!
@@ -34,11 +36,9 @@
 //!
 //! ## What this **doesn't** test
 //!
-//! - Reconnect mid-publish (the broker does not yet replay in-flight RPCs
-//!   after a relay socket rebuild).
 //! - NIP-42 AUTH challenges over the bunker relay (separate follow-up;
 //!   `sync_kernel` clears the auth signer when a NIP-46 is active).
-//! - Concurrent publishes (the broker's `pending` map handles them; we
+//! - Concurrent publishes (the signer's `pending` map handles them; we
 //!   exercise one at a time).
 
 mod common;

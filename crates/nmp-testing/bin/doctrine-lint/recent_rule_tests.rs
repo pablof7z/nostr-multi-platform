@@ -305,7 +305,7 @@ fn k2_blast_radius_crates_are_d21_clean() {
         "nmp-ffi",
         "nmp-nip47",
         "nmp-network",
-        "nmp-signer-broker",
+        "nmp-nip46-runtime",
         "nmp-signers",
         "nmp-signer-iface",
     ];

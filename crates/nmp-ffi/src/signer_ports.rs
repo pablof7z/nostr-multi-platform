@@ -2,20 +2,20 @@
 //!
 //! Split out of `lib.rs` (file-size discipline) as a cohesive `impl NmpApp`
 //! block. These methods own the per-app bunker / NIP-55 **hook-slot** install
-//! + invoke surface and the per-app NIP-46 **broker** / NIP-55 **driver**
+//! + invoke surface and the per-app NIP-46 **runtime** / NIP-55 **driver**
 //! handle accessors that replaced the deleted `GLOBAL_BROKER` / `GLOBAL_DRIVER`
 //! process-globals (and the two `nmp-core` hook statics). Every handle here
 //! lives on the `NmpApp` and dies with it — no global aliasing across
 //! `nmp_app_free`.
 
-#[cfg(any(feature = "external-signer", feature = "signer-broker"))]
+#[cfg(feature = "external-signer")]
 use std::sync::Arc;
 
 use super::NmpApp;
 
 impl NmpApp {
-    /// ADR-0052 §D3 — install the per-app bunker-URI hook (the broker's
-    /// `start_handshake` / `restore_session` dispatch). Called by
+    /// ADR-0052 §D3 — install the per-app bunker-URI hook (the runtime's
+    /// `start_bunker_connect` / `restore_session` dispatch). Called by
     /// `nmp_signer_broker_init`. Replaces the deleted `register_bunker_hook`
     /// process-global write.
     pub(crate) fn install_bunker_hook(&self, hook: nmp_core::BunkerHookFn) {
@@ -48,37 +48,6 @@ impl NmpApp {
             &self.capability_ports.external_signer_hook,
             payload_json,
         )
-    }
-
-    /// ADR-0052 §D3 — per-app NIP-46 broker handle accessor (replacing
-    /// `GLOBAL_BROKER`). `get_or_init` is idempotent: the first
-    /// `nmp_signer_broker_init` constructs the broker; later calls keep it.
-    #[cfg(feature = "signer-broker")]
-    pub(crate) fn signer_broker_get_or_init(
-        &self,
-        init: impl FnOnce() -> Arc<nmp_signer_broker::BunkerBroker>,
-    ) -> Arc<nmp_signer_broker::BunkerBroker> {
-        let mut guard = self
-            .signer_broker
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some(existing) = guard.as_ref() {
-            return Arc::clone(existing);
-        }
-        let broker = init();
-        *guard = Some(Arc::clone(&broker));
-        broker
-    }
-
-    /// ADR-0052 §D3 — read the per-app broker handle (cancel / nostrconnect-uri
-    /// symbols). `None` before `nmp_signer_broker_init`.
-    #[cfg(feature = "signer-broker")]
-    pub(crate) fn signer_broker(&self) -> Option<Arc<nmp_signer_broker::BunkerBroker>> {
-        self.signer_broker
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .as_ref()
-            .map(Arc::clone)
     }
 
     /// ADR-0052 §D3 — per-app NIP-55 driver handle accessor (replacing

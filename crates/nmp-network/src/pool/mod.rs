@@ -42,9 +42,9 @@
 //!   is a separate PR. Today's `Pool` is native-only (gated by the
 //!   `native` Cargo feature); the wasm driver still lives in
 //!   `nmp-wasm`.
-//! - **Phase D** (signer-broker migration onto `Pool`) is shipped.
-//!   `nmp-signer-broker::relay_client::PoolRelayClient` rides `Pool`;
-//!   the duplicate mio/tungstenite client is gone (V-13 Stage 2 dedupe).
+//! - **Phase D** (NIP-46 transport onto `Pool`) is shipped. NIP-46 rides the
+//!   actor's shared `Pool` relay lane via `nmp-nip46-runtime` (#2119 retired
+//!   the standalone `nmp-signer-broker` `PoolRelayClient`; V-13 Stage 2 dedupe).
 //! - **Phase E** (NIP-42 wire/FSM split — surface `AUTH` as a distinct
 //!   [`RelayFrame::Auth`] variant) shipped: the translator's
 //!   `tungstenite::Message::Text → RelayFrame` step pre-classifies the

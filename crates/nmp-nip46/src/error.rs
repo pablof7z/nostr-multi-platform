@@ -8,7 +8,7 @@
 /// directly to `BunkerHandshakeProgress { stage: "failed", message }`.
 #[derive(Debug, Clone)]
 pub enum HandshakeError {
-    /// Cancelled via `BunkerBroker::cancel`.
+    /// Cancelled via the runtime's cancel path (`cancel_nip46_session`).
     Cancelled,
     /// Overall handshake deadline elapsed.
     Timeout(String),

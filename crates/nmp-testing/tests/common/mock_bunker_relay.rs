@@ -25,7 +25,7 @@
 //!
 //! This is NOT a general-purpose nostr relay. It only understands `REQ` /
 //! `EVENT` frames sufficient for the NIP-46 handshake + `sign_event` call
-//! path used by [`nmp_signer_broker`].
+//! path driven by the actor-lane runtime (`nmp-nip46-runtime`).
 //!
 //! ## Extra test-support APIs
 //!

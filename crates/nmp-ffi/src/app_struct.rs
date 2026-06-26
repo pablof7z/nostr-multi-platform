@@ -239,9 +239,10 @@ pub struct NmpApp {
     /// Test-only last-command-variant tag.
     #[cfg(test)]
     pub(crate) last_cmd_tag: std::sync::Mutex<Option<&'static str>>,
-    /// ADR-0052 §D3 — per-app NIP-46 broker handle.
+    /// ADR-0052 §D3 — per-app NIP-46 actor-lane runtime handle (set during
+    /// config phase by `nmp_signer_broker_init`; `None` until then).
     #[cfg(feature = "signer-broker")]
-    pub(crate) signer_broker: Arc<Mutex<Option<Arc<nmp_signer_broker::BunkerBroker>>>>,
+    pub(crate) nip46_runtime: Arc<Mutex<Option<nmp_nip46_runtime::Nip46RuntimeHandle>>>,
     /// ADR-0052 §D3 — per-app NIP-55 driver handle.
     #[cfg(feature = "external-signer")]
     pub(crate) external_signer_driver: Arc<Mutex<Option<Arc<crate::external_signer::Nip55Driver>>>>,

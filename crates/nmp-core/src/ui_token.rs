@@ -188,8 +188,8 @@ pub mod codes {
 
     // ── Progress codes (Severity::Progress) ──────────────────────────────────
     // In-flight NIP-46/NIP-55 onboarding progress labels the kernel sets
-    // directly on the bunker-handshake projection (#1711). The broker-emitted
-    // handshake stages own their own codes in `nmp_signer_broker::progress_codes`.
+    // directly on the bunker-handshake projection (#1711). The handshake stages
+    // own their own codes in `nmp_nip46::progress_codes`.
     /// The kernel is opening a NIP-46 bunker session (initial connect).
     pub const PROGRESS_WAITING_FOR_BROKER: &str = "signer_progress_waiting_for_broker";
     /// The kernel is restoring a persisted NIP-46 bunker session at launch.

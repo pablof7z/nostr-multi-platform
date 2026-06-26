@@ -274,10 +274,9 @@ impl Nip46Interceptor {
         // Complete the signer (handshake already done — supply user pubkey directly).
         let signer: Nip46Signer = signer_handle.complete(Arc::new(transport), user_pubkey);
 
-        // Wrap in ArcRemoteSigner so we can clone the Arc for dual-use later
-        // (PR-B2 will clean this up). The `Box<dyn RemoteSignerHandle>` is
-        // handed to the kernel; `Nip46Signer::deliver_response` routes inbound
-        // responses through `ingest_rpc_response` to resolve parked sign ops.
+        // Wrap in ArcRemoteSigner. The Arc is needed so that the sign call
+        // (which parks in `Nip46Signer::pending`) and the response delivery
+        // (which calls `ingest_rpc_response`) both refer to the SAME instance.
         let signer_source = SignerSource::RemoteHandle(Box::new(ArcRemoteSigner(Arc::new(signer))));
 
         // Report progress before handing off the signer.
@@ -309,11 +308,6 @@ fn extract_sub_id(frame: &str) -> Option<String> {
 // ─── ArcRemoteSigner ─────────────────────────────────────────────────────────
 
 /// Local `Arc<Nip46Signer>` wrapper for `Box<dyn RemoteSignerHandle>`.
-///
-/// `nmp-ffi/src/signer_broker.rs` has its own copy of this wrapper for the
-/// broker path (do NOT touch that one — broker still drives native NIP-46 until
-/// PR-B2). This copy lives in the runtime interceptor for the actor-lane path.
-/// PR-B2 will unify them when the broker is deleted.
 ///
 /// The `Arc` is needed so the sign call (which parks in `Nip46Signer::pending`)
 /// and the response delivery (which calls `ingest_rpc_response`) both refer to

@@ -74,16 +74,15 @@
 //! the driver's behavior, event ordering, and borrow semantics identical
 //! to the pre-move version.
 //!
-//! ## Step 8 phase D — `nmp-signer-broker` rides `Pool` (shipped)
+//! ## Step 8 phase D — NIP-46 transport rides `Pool` (shipped)
 //!
-//! `nmp-signer-broker::relay_client` is now a thin wrapper over
-//! [`pool::Pool`] (`PoolRelayClient`). The duplicate mio/tungstenite
-//! readiness loop in the broker is gone — V-13 Stage 2 dedupe. The
-//! broker owns ONE `Pool` per active bunker session; the dispatcher
-//! thread replays installed subscriptions on each fresh
-//! [`pool::PoolEvent::Opened`] so the inbound REQ survives a relay flap
-//! (V-14). The broker's Cargo.toml no longer names `tungstenite` /
-//! `mio` / `rustls` directly — only this crate.
+//! NIP-46 has no dedicated socket layer: it rides the actor's shared `Pool`
+//! relay lane. (Historically the now-deleted `nmp-signer-broker` was a thin
+//! `PoolRelayClient` wrapper over [`pool::Pool`] — V-13 Stage 2 dedupe removed
+//! its duplicate mio/tungstenite readiness loop; #2119 then retired the broker
+//! entirely in favour of `nmp-nip46-runtime` driving the actor relay lane.)
+//! The reconnect preamble replays the inbound REQ on each fresh
+//! [`pool::PoolEvent::Opened`] so the subscription survives a relay flap (V-14).
 //!
 //! ## Step 8 phase E — NIP-42 AUTH wire/FSM split (shipped)
 //!

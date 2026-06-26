@@ -435,20 +435,23 @@ void nmp_free_string(char *ptr);
 // `nmp_app_chirp_dispatch_action_bytes(app, "nmp.publish", action_json)` instead.
 void nmp_app_open_uri(void *app, const char *uri);
 
-// ── NIP-46 signer broker (Stage 4) ───────────────────────────────────────
+// ── NIP-46 actor-lane runtime ─────────────────────────────────────────────
 //
-// The reusable signer broker is app-neutral; the NmpApp/actor adapter lives
-// in nmp-ffi and is linked through the aggregate `libnmp_app_chirp.a` archive.
-// That keeps process-global Rust state, including the bunker hook, single-copy.
+// NIP-46 rides the actor's shared relay lane (no separate worker thread / socket).
+// The interceptor + per-app bunker hook live in nmp-ffi and are linked through
+// the aggregate `libnmp_app_chirp.a` archive. State is per-app (ADR-0052 §D3 —
+// no process-global), stored on the NmpApp handle.
 //
 // Call `nmp_signer_broker_init(app)` exactly once, right after `nmp_app_new()`,
-// before `nmp_app_start()`. Returns NmpConfigStatus_AlreadyStarted when called
+// before `nmp_app_start()`. Returns NmpConfigStatus_Ok (0) — including on a
+// second, idempotent no-op call — or NmpConfigStatus_AlreadyStarted when called
 // too late.
 // It registers a `bunker://` handler that drives the NIP-46 connect /
-// get_public_key dance on a worker thread; subsequent
-// `nmp_app_signin_bunker(app, uri)` calls flow through the broker.
+// get_public_key handshake over the actor relay lane; subsequent
+// `nmp_app_signin_bunker(app, uri)` calls flow through it.
 //
-// `nmp_app_cancel_bunker_handshake(app)` aborts any in-flight handshake.
+// `nmp_app_cancel_bunker_handshake(app)` aborts any in-flight handshake
+// (clears the runtime + unregisters the persistent subscription).
 // Idempotent / safe when nothing is in flight.
 uint32_t nmp_signer_broker_init(void *app);
 void nmp_app_cancel_bunker_handshake(void *app);

@@ -55,7 +55,7 @@ status; if they disagree, fix the index.
 | 0028 | Actor-liveness probe FFI (`nmp_app_is_alive`) | Accepted | — |
 | 0029 | Actor queue observability and backpressure policy | Accepted | — |
 | 0030 | UniFFI vs C-ABI: the two-surface binding decision | Accepted | — |
-| 0031 | `nmp-signer-broker` owns the NIP-46 relay transport | Accepted | — |
+| 0031 | `nmp-signer-broker` owns the NIP-46 relay transport | Superseded | Superseded by the actor-lane design (#2119); `nmp-signer-broker` deleted, NIP-46 rides the actor `Pool` lane via `nmp-nip46-runtime` |
 | 0032 | Backend sends raw data; presentation layers format | Accepted | Aligned with aim.md §2 raw-data doctrine; partial completion by 0041 |
 | 0033 | NMP feed viewport FFI | Accepted | — |
 | 0034 | Kind-dispatched content rendering with open widget registry | Accepted | — |

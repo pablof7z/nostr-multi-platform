@@ -59,7 +59,6 @@ members = [
     "crates/nmp-sqlite-wasm",
     "crates/nmp-sqlite-wasm-conformance",
     "crates/nmp-nwc",
-    "crates/nmp-signer-broker",
     "crates/nmp-signer-iface",
     "crates/nmp-signers",
     "crates/nmp-testing",
@@ -121,7 +120,7 @@ version = "0.8.0"
 # TODO: migrate the remaining crates to `*.workspace = true`. Done so far:
 #   nmp-core, nmp-nip01, nmp-marmot, nmp-signers.
 #   Still copy-pasting versions: nmp-nip59, nmp-nwc, nmp-nostr-lmdb,
-#   nmp-signer-broker, nmp-testing, nmp-content, nmp-relations,
+#   nmp-testing, nmp-content, nmp-relations,
 #   nmp-threading, nmp-nip23/29/42/57, nmp-cli, nmp-codegen, etc.
 [workspace.dependencies]
 flatbuffers = "25.12.19"

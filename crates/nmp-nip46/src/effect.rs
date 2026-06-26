@@ -11,7 +11,7 @@ use crate::error::HandshakeError;
 /// An effect that the caller must execute after the reducer returns.
 ///
 /// Effects are returned in a `Vec` from every reducer entry point. The caller
-/// (e.g. `nmp-signer-broker`) processes them in order: `Subscribe` → wire the
+/// (`nmp-nip46-runtime`) processes them in order: `Subscribe` → wire the
 /// REQ frame; `SendFrame` → write an EVENT frame; `Progress` → forward to the
 /// host UI; `SignerReady` → build the signer and complete the session;
 /// `Error` → surface to the host as a handshake failure.
@@ -43,7 +43,7 @@ pub enum Effect {
         detail: Option<String>,
     },
     /// Handshake completed successfully. The caller should build the signer
-    /// and emit `BrokerEvent::SignerReady`.
+    /// and register it (the actor-lane runtime calls `add_signer`).
     SignerReady(SignerReady),
     /// Deliver a steady-state RPC response (post-handshake; reserved for
     /// future use in a full-reducer mode).

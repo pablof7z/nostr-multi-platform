@@ -62,7 +62,7 @@
 //! hosted the five deleted globals (nmp-nip47, nmp-core, nmp-ffi) plus the two
 //! residuals (nmp-core, nmp-network) and the signer crates the bunker/NIP-55
 //! authority migrated to:
-//! `nmp-core`, `nmp-ffi`, `nmp-nip47`, `nmp-network`, `nmp-signer-broker`,
+//! `nmp-core`, `nmp-ffi`, `nmp-nip47`, `nmp-network`, `nmp-nip46-runtime`,
 //! `nmp-signers`, `nmp-signer-iface`. This is the regression surface that
 //! matters; the rule engine is workspace-capable but the gate watches where K2
 //! operated.
@@ -90,7 +90,7 @@ const K2_CRATES: &[&str] = &[
     "nmp-ffi",
     "nmp-nip47",
     "nmp-network",
-    "nmp-signer-broker",
+    "nmp-nip46-runtime",
     "nmp-signers",
     "nmp-signer-iface",
 ];
