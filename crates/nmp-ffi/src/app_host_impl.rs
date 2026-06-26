@@ -15,9 +15,10 @@ use std::sync::Arc;
 
 use nmp_core::substrate::{
     BlockedRelayLookupRegistrar, CoverageHookRegistrar, DmInboxRelayRegistrar,
-    EventObserverRegistrar, HostCapabilities, IdentityChangeRegistrar, IngestParserRegistrar,
-    KernelReaderRegistrar, RelayConnectedHookRegistrar, RelayTextInterceptorRegistrar,
-    InputScopeRegistrar, ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar,
+    HostCapabilities, IdentityChangeRegistrar, IngestParserRegistrar,
+    InputScopeRegistrar, KernelReaderRegistrar, LiveEventTapRegistrar,
+    RelayConnectedHookRegistrar, RelayTextInterceptorRegistrar,
+    ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar,
     SearchScopeRegistrar, SnapshotProjectionRegistrar,
 };
 use nmp_core::{KernelEventObserver, KernelEventObserverId};
@@ -264,12 +265,12 @@ impl HostCapabilities for NmpApp {
     }
 }
 
-impl EventObserverRegistrar for NmpApp {
-    fn register_event_observer(
+impl LiveEventTapRegistrar for NmpApp {
+    fn register_live_event_tap(
         &self,
         observer: Arc<dyn KernelEventObserver>,
     ) -> KernelEventObserverId {
-        NmpApp::register_event_observer(self, observer)
+        NmpApp::register_live_event_tap(self, observer)
     }
 
     fn unregister_event_observer(&self, id: KernelEventObserverId) {
@@ -282,7 +283,6 @@ impl EventObserverRegistrar for NmpApp {
     ) -> Option<KernelEventObserverId> {
         NmpApp::swap_singleton_event_observer(self, new)
     }
-
 }
 
 impl IdentityChangeRegistrar for NmpApp {

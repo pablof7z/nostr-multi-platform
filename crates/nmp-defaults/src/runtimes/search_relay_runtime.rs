@@ -38,7 +38,7 @@
 
 use std::sync::Arc;
 
-use nmp_core::substrate::{EventObserverRegistrar, HostCapabilities};
+use nmp_core::substrate::{LiveEventTapRegistrar, HostCapabilities};
 use nmp_core::KernelEventObserver;
 use nmp_nip50::SearchRelaySource;
 use nmp_nip51::SearchRelayListProjection;
@@ -89,7 +89,7 @@ use crate::search_defaults::SearchDefaults;
 /// opts out of the wholesale defaults can still wire just the search-relay
 /// projection by itself.
 pub fn register_search_relay_runtime(
-    app: &(impl EventObserverRegistrar + HostCapabilities),
+    app: &(impl LiveEventTapRegistrar + HostCapabilities),
 ) -> Arc<SearchRelayListProjection> {
     register_search_relay_runtime_with(app, SearchDefaults::default())
 }
@@ -99,7 +99,7 @@ pub fn register_search_relay_runtime(
 /// source. `register_search_relay_runtime` is the `SearchDefaults::default()`
 /// convenience, which declares no app-default relay.
 pub fn register_search_relay_runtime_with(
-    app: &(impl EventObserverRegistrar + HostCapabilities),
+    app: &(impl LiveEventTapRegistrar + HostCapabilities),
     defaults: SearchDefaults,
 ) -> Arc<SearchRelayListProjection> {
     // ── 1. Active-pubkey slot ────────────────────────────────────────────────
@@ -111,7 +111,7 @@ pub fn register_search_relay_runtime_with(
     // `nmp-core` `kernel/requests/startup.rs`) fetches the active account's
     // kind:10007 and fans it to every registered observer. Registering the
     // projection here is the only wiring this runtime needs.
-    app.register_event_observer(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
+    app.register_live_event_tap(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
 
     // ── 3. TRANSPARENCY GLUE — auto-wire the default search-relay source ──────
     //

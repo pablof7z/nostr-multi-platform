@@ -19,7 +19,7 @@
 //! 1. Builds a reusable `nmp_nip01::ModularTimelineProjection` with the
 //!    viewer's pubkey and the default `ModulePolicy`.
 //! 2. Registers it as a kernel event observer via
-//!    [`nmp_core::NmpApp::register_event_observer`]. From that moment on,
+//!    [`nmp_core::NmpApp::register_live_event_tap`]. From that moment on,
 //!    every kind:1 the kernel ingests fans out to the projection.
 //! 3. Returns an opaque handle the shell keeps for snapshots / unregister.
 //!

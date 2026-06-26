@@ -161,7 +161,7 @@ fn local_follow_then_unfollow_updates_active_follow_set_live() {
     // `DroppedLateWiring` and never bound onto the kernel. The follow-set
     // producer is wired exactly as the composition root (nmp-defaults) does.
     let follow_set = nmp_nip02::ActiveFollowSet::new(unsafe { &*app }.active_account_handle());
-    let _set_id = unsafe { &*app }.register_event_observer(follow_set.clone());
+    let _set_id = unsafe { &*app }.register_live_event_tap(follow_set.clone());
 
     // The test's synchronization edge: signal each accepted fan-out with its
     // kind, so we can wait for the kind:10002 relay list (publish targets) and
@@ -171,7 +171,7 @@ fn local_follow_then_unfollow_updates_active_follow_set_live() {
         tx: Mutex::new(tx),
         kind3_count: AtomicU32::new(0),
     });
-    let _sig_id = unsafe { &*app }.register_event_observer(signal.clone());
+    let _sig_id = unsafe { &*app }.register_live_event_tap(signal.clone());
 
     // Install a deterministic, advanceable kernel clock BEFORE start. The
     // kernel stamps every published event's `created_at` from this clock

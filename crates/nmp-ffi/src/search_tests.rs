@@ -185,6 +185,54 @@ fn open_search_user_preferred_fans_out_to_installed_primary_relays() {
     nmp_app_free(app);
 }
 
+/// Behavior-preservation invariant (#2089) — a search targeting MANY relays
+/// registers exactly ONE kernel event observer, shared across every
+/// relay-pinned interest. This is what keeps the global fan-out processing each
+/// accepted event once per session (not once per relay). Closing the session
+/// removes that single observer.
+#[test]
+fn multi_relay_search_shares_one_kernel_observer() {
+    let app = nmp_app_new();
+    // SAFETY: `nmp_app_new` never returns null.
+    let app_ref = unsafe { &*app };
+    let observers = app_ref.event_observers_handle();
+    let before = nmp_core::__ffi_internal::rust_observer_count(&observers);
+
+    // Three explicit relays → three pinned interests in one session.
+    let request = SearchRequest::new(
+        "nostr",
+        SearchScope::Users,
+        SearchTargets::Explicit(vec![
+            "wss://r1.example/".to_string(),
+            "wss://r2.example/".to_string(),
+            "wss://r3.example/".to_string(),
+        ]),
+        Some(10),
+    )
+    .expect("request");
+    app_ref.open_search(request, "multi");
+
+    assert_eq!(
+        app_ref.search_session_relays("multi").len(),
+        3,
+        "the session fans out to all three explicit relays"
+    );
+    assert_eq!(
+        nmp_core::__ffi_internal::rust_observer_count(&observers),
+        before + 1,
+        "three relay-pinned interests share ONE kernel observer (not one per relay)"
+    );
+
+    app_ref.close_search("multi");
+    assert_eq!(
+        nmp_core::__ffi_internal::rust_observer_count(&observers),
+        before,
+        "closing the session removes its single shared observer"
+    );
+
+    nmp_app_free(app);
+}
+
 #[test]
 fn open_search_without_source_is_cache_only_not_a_crash() {
     let app = nmp_app_new();

@@ -25,7 +25,7 @@
 //!
 //! ```ignore
 //! let engine = nmp_nip01::register_op_feed(viewer, predicate, lookup);
-//! app.register_event_observer(Arc::clone(&engine) as Arc<dyn KernelEventObserver>);
+//! app.register_live_event_tap(Arc::clone(&engine) as Arc<dyn KernelEventObserver>);
 //! app.register_feed("nmp.feed.home", Arc::clone(&engine) as Arc<dyn FeedController>);
 //! ```
 //!

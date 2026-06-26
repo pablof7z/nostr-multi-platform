@@ -17,6 +17,15 @@
   ADR-0053 (host-declared projections — observers self-gate by registration),
   `docs/wiki/guides/store-first-interest-registration.md`,
   `docs/wiki/guides/lmdb-event-store.md`.
+- **API naming update (#2089, historical mapping):** the API names below are
+  preserved as written at decision time. In current code: the live-event tap
+  registrar method `register_event_observer` is now `register_live_event_tap`
+  (trait `EventObserverRegistrar` → `LiveEventTapRegistrar`), and the
+  `register_feed_with_observer` per-open feed seam has been **removed** — its
+  muted→activate-with-read-cache-replay role is now the
+  `ObservedProjectionRegistrar::open_observed_projection` /
+  `close_observed_projection` door (the canonical realization of this ADR's
+  delivery invariant). Read the names in this document as those current APIs.
 
 ---
 

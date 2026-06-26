@@ -142,7 +142,7 @@ fn build_op_scope_session(
         empty_suppression_lookup(),
     );
     let observer_for_registry: Arc<dyn KernelEventObserver> = observer.clone();
-    let engine_observer_id = app.register_event_observer(observer_for_registry);
+    let engine_observer_id = app.register_live_event_tap(observer_for_registry);
 
     // ── 3. Pull controller over the live acquisition shape ───────────────
     let provider: Arc<dyn nmp_feed::FeedInterestShape + Send + Sync> = {
@@ -304,7 +304,7 @@ fn build_flat_scope_session(
 
     let feed = nmp_nip01::FlatFeed::new(admission);
     let observer_for_registry: Arc<dyn KernelEventObserver> = feed.clone();
-    let engine_observer_id = app.register_event_observer(observer_for_registry);
+    let engine_observer_id = app.register_live_event_tap(observer_for_registry);
 
     let provider: Arc<dyn nmp_feed::FeedInterestShape + Send + Sync> = {
         let live_shape = live_shape.clone();

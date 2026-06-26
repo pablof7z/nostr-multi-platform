@@ -161,7 +161,7 @@ pub(crate) use commands::notify_observers;
 // `activate_observer` is also used by the kernel replay path (wasm/no-native too).
 pub use commands::activate_observer;
 pub(crate) use commands::notify_observer_by_id;
-pub use commands::register_rust_observer_muted;
+pub use commands::{register_rust_observer_muted, rust_observer_count};
 // `KernelEventObserverSlot` and `register_rust_observer` are `pub`
 // unconditionally so `nmp-ffi` and wasm32 composition roots can register
 // observers. `new_event_observer_slot_headless` is `pub(crate)` — wasm32-safe

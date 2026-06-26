@@ -185,7 +185,7 @@ impl super::KernelReducer {
     // ── Observer-slot bridges (&self, via Arc<Mutex<ObserverInner>>) ──────────
 
     /// Unregister an event observer by id (Rust or C-ABI).
-    /// Bridges `EventObserverRegistrar::unregister_event_observer`.
+    /// Bridges `LiveEventTapRegistrar::unregister_event_observer`.
     pub fn unregister_event_observer(&self, id: KernelEventObserverId) {
         unregister_observer(&self.observer_slot, id);
     }

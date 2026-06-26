@@ -146,7 +146,7 @@ pub struct MarmotHandle {
 //
 // CALLER CONTRACT: `nmp_app_free` must not run while a kernel callback that
 // reaches this projection is still executing. The in-process Rust-trait
-// registration path used here (`register_event_observer` /
+// registration path used here (`register_live_event_tap` /
 // `replace_ingest_parser`) gets that fence from the actor join.
 // Calling `nmp_marmot_unregister` before `nmp_app_free` is the
 // documented hygiene step; the actor join is the actual fence.
@@ -398,7 +398,7 @@ pub(crate) fn register_with_keys(
     });
 
     let observer_id = app_ref
-        .register_event_observer(Arc::clone(&projection) as Arc<dyn nmp_core::KernelEventObserver>);
+        .register_live_event_tap(Arc::clone(&projection) as Arc<dyn nmp_core::KernelEventObserver>);
     if observer_id.0 == 0 {
         return std::ptr::null_mut(); // poisoned slot — soft fail.
     }

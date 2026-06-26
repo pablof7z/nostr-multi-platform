@@ -92,7 +92,10 @@ impl nmp_core::KernelEventObserver for SearchObserver {
 pub(crate) struct SearchSession {
     /// `nmp.nip50.search.<session_id>` — the typed sidecar key.
     projection_key: String,
-    /// The muted→active kernel observer id (the result projection).
+    /// The single muted→active kernel observer id (the shared result
+    /// projection). ONE observer backs every relay's pinned interest, so the
+    /// global fan-out processes each accepted event exactly once regardless of
+    /// how many relays the session targets.
     observer_id: KernelEventObserverId,
     /// Per-relay `(filter_json, consumer_id, relay_pin)` close args, matching
     /// each pinned open so the kernel reconstructs the same registry slot.
@@ -228,19 +231,23 @@ impl NmpApp {
             });
         }
 
-        // Register the projection (via the `&self` observer adapter) as a MUTED
-        // observer; each pinned open below activates it (idempotent activation)
-        // so LIVE relay events fan out to it. The generic read-cache replay is
-        // deliberately suppressed (empty `replay_shapes` below) — cache hits are
-        // served by the search-filtered FTS scan above, never by the structural
-        // replay gate that ignores the query text (#1882).
+        // Register the projection (via the `&self` observer adapter) as a SINGLE
+        // MUTED observer; each pinned open below activates the SAME id
+        // (idempotent activation) so LIVE relay events fan out to it exactly
+        // once. One observer backs all N relay interests — a search targeting
+        // many relays still processes each accepted event a single time (the
+        // global fan-out walks observer slots, not interests). The generic
+        // read-cache replay is deliberately suppressed (empty `replay_shapes`
+        // below) — cache hits are served by the search-filtered FTS scan above,
+        // never by the structural replay gate that ignores the query text (#1882).
         let observer_id = register_rust_observer_muted(
             &self.event_observers,
             Arc::new(SearchObserver(Arc::clone(&projection)))
                 as Arc<dyn nmp_core::KernelEventObserver>,
         );
 
-        // One relay-pinned observed interest per resolved relay.
+        // One relay-pinned observed interest per resolved relay, all activating
+        // the one shared `observer_id` above.
         let plan = search_relay_plan(&request, &relays);
         let mut relay_closes = Vec::with_capacity(plan.len());
         for pinned in plan {
@@ -281,8 +288,8 @@ impl NmpApp {
     }
 
     /// Close a NIP-50 search session: detach every per-relay pinned interest,
-    /// revoke the result observer, and remove the typed sidecar. Idempotent —
-    /// closing an unknown session is a harmless no-op (D6).
+    /// revoke the single result observer, and remove the typed sidecar.
+    /// Idempotent — closing an unknown session is a harmless no-op (D6).
     pub fn close_search(&self, session_id: &str) {
         let session = self
             .search_sessions

@@ -48,7 +48,7 @@
 //!
 //! ```text
 //! let mute = Arc::new(MuteListProjection::new(Arc::clone(&active_pubkey_slot)));
-//! app.register_event_observer(Arc::clone(&mute) as Arc<dyn KernelEventObserver>);
+//! app.register_live_event_tap(Arc::clone(&mute) as Arc<dyn KernelEventObserver>);
 //! timeline.set_suppression(Arc::clone(&mute) as Arc<dyn SuppressionLookup>);
 //! ```
 //!

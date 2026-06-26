@@ -122,10 +122,13 @@ app.register_snapshot_projection("nmp.myapp.key", move || {
 - **Use it when** you want module state visible in the host's `apply()`
   callback alongside the built-in named fields.
 
-## register_event_observer — the event-driven view seam
+## register_live_event_tap — the event-driven view seam
 
-`crates/nmp-ffi/src/lib.rs:1590`. Registers an in-process `KernelEventObserver`
-for event-driven view updates.
+Registers an in-process `KernelEventObserver` for event-driven view updates via
+the `LiveEventTapRegistrar` trait (`crates/nmp-ffi/src/event_observer.rs`). For
+the safe muted→activate-with-replay variant (ADR-0062) prefer the
+`ObservedProjectionRegistrar::open_observed_projection` door, which couples the
+observer to a relay-pinned interest and a read-cache catch-up replay.
 
 ```rust
 pub trait KernelEventObserver: Send + Sync {
@@ -134,7 +137,7 @@ pub trait KernelEventObserver: Send + Sync {
     fn on_kernel_event(&self, event: &KernelEvent);
 }
 
-app.register_event_observer(Arc::new(MyObserver { store: arc_store.clone() }));
+app.register_live_event_tap(Arc::new(MyObserver { store: arc_store.clone() }));
 // returns KernelEventObserverId for later unregister_event_observer()
 ```
 

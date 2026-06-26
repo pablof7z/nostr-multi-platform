@@ -24,7 +24,7 @@ pub(super) fn resolve_active_mute_list_members(
         app.active_account_handle(),
     ));
     let observer_id =
-        app.register_event_observer(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
+        app.register_live_event_tap(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
     let projection_for_identity = Arc::clone(&projection);
     let projection_for_replay = Arc::clone(&projection);
     let replay_slot = app.active_account_handle();

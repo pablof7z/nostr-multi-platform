@@ -15,6 +15,13 @@
   consumer-side declaration precedents this generalises: relay `push_interest` /
   interest lattice, unified ref resolution (`resolve_ref` / `release_ref`), and
   dynamic feed registration (`register_feed_with_observer`).
+- **API naming update (#2089, historical mapping):** `register_feed_with_observer`
+  is referenced throughout this ADR as it stood at decision time. It has since
+  been **removed**; the muted-observer + replay open it described is now the
+  `ObservedProjectionRegistrar::open_observed_projection` /
+  `close_observed_projection` door, and the plain live-event tap is registered via
+  `register_live_event_tap` (formerly `register_event_observer`). Read the old
+  names here as those current APIs.
 - **Scope:** WHICH projection keys are serialized into each pushed `SnapshotFrame`.
   NOT their content (owned by each projection's producer), NOT their decode path
   (owned by each shell), NOT per-tick change-diffing (a separate future optimization).

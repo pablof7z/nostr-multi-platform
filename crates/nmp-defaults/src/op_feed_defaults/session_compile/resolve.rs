@@ -128,7 +128,7 @@ fn resolve_active_follow_set(
     // session observer so kind:3 ingest keeps the predicate live (reactive).
     let follow_set = nmp_nip02::ActiveFollowSet::new(app.active_account_handle());
     let observer_id =
-        app.register_event_observer(Arc::clone(&follow_set) as Arc<dyn KernelEventObserver>);
+        app.register_live_event_tap(Arc::clone(&follow_set) as Arc<dyn KernelEventObserver>);
     let follow_set_for_identity = Arc::clone(&follow_set);
     let follow_set_for_replay = Arc::clone(&follow_set);
     let replay_slot = app.active_account_handle();
@@ -199,7 +199,7 @@ fn resolve_list_members(
         app.active_account_handle(),
     ));
     let observer_id =
-        app.register_event_observer(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
+        app.register_live_event_tap(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
     let projection_for_identity = Arc::clone(&projection);
     let projection_for_replay = Arc::clone(&projection);
     let replay_slot = app.active_account_handle();
@@ -277,7 +277,7 @@ fn resolve_wot(
     // second-degree query) — we do NOT touch the singleton bootstrap runtime.
     let graph = Arc::new(SessionWotGraph::new(seed.to_string(), KIND_CONTACT_LIST));
     let observer_id =
-        app.register_event_observer(Arc::clone(&graph) as Arc<dyn KernelEventObserver>);
+        app.register_live_event_tap(Arc::clone(&graph) as Arc<dyn KernelEventObserver>);
 
     let admission: RootAdmission = {
         let graph = Arc::clone(&graph);

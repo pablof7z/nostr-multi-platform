@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use nmp_core::slots::ActiveAccountSlot;
 use nmp_core::substrate::{
-    register_observer_projection, EventObserverRegistrar, HostCapabilities, KernelEvent,
+    register_observer_projection, LiveEventTapRegistrar, HostCapabilities, KernelEvent,
     SnapshotProjectionRegistrar,
 };
 use nmp_core::KernelEventObserver;
@@ -21,7 +21,7 @@ use crate::score::{TrustDecision, WotGraph, WotGraphStats};
 /// exact graph maintained by the observer. Existing composition roots may
 /// ignore the handle when they only need the bootstrap side effects.
 pub fn register_runtime(
-    app: &(impl HostCapabilities + EventObserverRegistrar + SnapshotProjectionRegistrar),
+    app: &(impl HostCapabilities + LiveEventTapRegistrar + SnapshotProjectionRegistrar),
 ) -> Option<Arc<WotBootstrapRuntime>> {
     let runtime = Arc::new(WotBootstrapRuntime::new(
         // Pubkey-only identity (Finding C): the WOT bootstrap needs the active

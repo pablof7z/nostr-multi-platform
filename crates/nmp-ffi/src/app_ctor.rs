@@ -331,7 +331,6 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         feed_sessions,
         // #1740 step 4 — empty until the first `register_custom_perspective`.
         custom_perspectives: Arc::new(nmp_feed::PerspectiveRegistry::default()),
-        interest_feed_observers: Mutex::new(std::collections::HashMap::new()),
         queue_depth,
         #[cfg(test)]
         send_cmd_count: AtomicU64::new(0),
@@ -343,6 +342,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         external_signer_driver: Arc::new(Mutex::new(None)),
         search_sessions: Mutex::new(std::collections::HashMap::new()),
         group_feed_sessions: Mutex::new(std::collections::HashMap::new()),
+        observed_projection_sessions: Mutex::new(std::collections::HashMap::new()),
         #[cfg(any(test, feature = "test-support"))]
         gc_budget_ceiling,
         composition: CompositionConfig {
