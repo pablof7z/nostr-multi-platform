@@ -1,7 +1,10 @@
 //! Signer-initiated (`nostrconnect://`) handshake tests.
 
+use nostr::nips::nip44;
+use serde_json::Value;
+
 use super::*;
-use crate::handshake::{run_nostrconnect_handshake, HandshakeError};
+use crate::{run_nostrconnect_handshake, HandshakeError};
 
 /// Security-critical: a `connect` frame whose `params[1]` secret does not
 /// match the expected session secret must be rejected with a definitive
@@ -53,8 +56,7 @@ fn run_nostrconnect_handshake_happy_path_returns_pubkeys() {
     let (inbound_tx, inbound_rx) = crossbeam_channel::unbounded::<Value>();
 
     // Deliver the connect frame up front.
-    let connect =
-        signer_connect_event(&signer_keys, client_keys.public_key(), secret);
+    let connect = signer_connect_event(&signer_keys, client_keys.public_key(), secret);
     inbound_tx.send(connect).unwrap();
 
     let cancel_rx = never_cancel();
@@ -75,11 +77,8 @@ fn run_nostrconnect_handshake_happy_path_returns_pubkeys() {
                 .and_then(|v| v.as_str())
                 .unwrap();
             // Try to decrypt; the broker encrypts to the signer.
-            let Ok(plain) = nip44::decrypt(
-                signer_for_driver.secret_key(),
-                &client_pk,
-                ct.as_bytes(),
-            ) else {
+            let Ok(plain) = nip44::decrypt(signer_for_driver.secret_key(), &client_pk, ct.as_bytes())
+            else {
                 continue;
             };
             let req: Value = match serde_json::from_str(&plain) {
@@ -87,14 +86,12 @@ fn run_nostrconnect_handshake_happy_path_returns_pubkeys() {
                 Err(_) => continue,
             };
             // Only reply to the get_public_key request.
-            if req.get("method").and_then(|v| v.as_str())
-                == Some("get_public_key")
-            {
+            if req.get("method").and_then(|v| v.as_str()) == Some("get_public_key") {
                 let req_id = req.get("id").and_then(|v| v.as_str()).unwrap();
                 let good = make_response_event(
                     &signer_for_driver,
                     client_pk,
-                    json!({"id": req_id, "result": user_pk_for_driver}),
+                    serde_json::json!({"id": req_id, "result": user_pk_for_driver}),
                 );
                 let _ = inbound_tx.send(good);
             }

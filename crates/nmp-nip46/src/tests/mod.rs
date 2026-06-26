@@ -3,7 +3,9 @@
 //!   `await_response` error/robustness paths;
 //! - [`nostrconnect`] — the signer-initiated `nostrconnect://` handshake;
 //! - [`units`] — pure-function units (`build_connect_params`,
-//!   `new_request_id`, `build_req_frame`, `decode_inbound_response`).
+//!   `new_request_id`, `build_req_frame`, `decode_inbound_response`,
+//!   `build_event_frame`).
+//! - [`uri_encode`] — percent-encoding unit tests.
 //!
 //! Shared test doubles + fixtures live here so every group reuses them via
 //! `use super::*`.
@@ -16,11 +18,12 @@ use nostr::nips::nip44;
 use nostr::{Keys, PublicKey};
 use serde_json::{json, Value};
 
-use crate::relay_client::{RelayClient, RelayError};
+use crate::relay::{FrameSink, FrameSinkError};
 
 mod bunker;
 mod nostrconnect;
 mod units;
+mod uri_encode;
 
 /// A never-cancelled cancel receiver for the happy/error-path tests: the
 /// returned `Sender` is leaked so the channel never disconnects, so the
@@ -33,11 +36,11 @@ fn never_cancel() -> Receiver<()> {
     rx
 }
 
-/// Test double for `RelayClient`. Every published frame is both retained
-/// in `sent` (for post-hoc assertions on the main thread) and forwarded
-/// over a notification channel so driver threads can *block* on the next
-/// frame instead of polling — satisfying the D8 "no polling — ever"
-/// doctrine in test code as well as production.
+/// Test double for [`FrameSink`]. Every published frame is both retained in
+/// `sent` (for post-hoc assertions on the main thread) and forwarded over a
+/// notification channel so driver threads can *block* on the next frame
+/// instead of polling — satisfying the D8 "no polling — ever" doctrine in
+/// test code as well as production.
 struct StubRelay {
     sent: Mutex<Vec<String>>,
     frame_tx: mpsc::Sender<String>,
@@ -65,15 +68,14 @@ impl StubRelay {
     }
 }
 
-impl RelayClient for StubRelay {
-    fn send(&self, frame: String) -> Result<(), RelayError> {
+impl FrameSink for StubRelay {
+    fn send(&self, frame: String) -> Result<(), FrameSinkError> {
         self.sent.lock().unwrap().push(frame.clone());
         // Best-effort: if the driver has already exited (receiver
         // dropped) the send fails harmlessly — the test is winding down.
         let _ = self.frame_tx.send(frame);
         Ok(())
     }
-    fn shutdown(&self) {}
 }
 
 /// Helper: simulate the relay echoing a bunker response. Takes the raw

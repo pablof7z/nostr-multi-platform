@@ -54,16 +54,103 @@
 
 pub mod broker;
 pub mod events;
-pub mod handshake;
-pub mod progress_codes;
 pub mod relay_client;
 pub mod transport;
-mod uri_encode;
+
+/// Facade module: re-exports the NIP-46 handshake functions with the broker's
+/// `&dyn RelayClient` signature. Internally bridges `RelayClient` →
+/// `nmp_nip46::FrameSink` so all callers in `broker/*.rs` compile with ZERO
+/// source edits — they keep using `crate::handshake::run_handshake(relay, ...)`
+/// where `relay: &dyn RelayClient`.
+pub mod handshake {
+    use crossbeam_channel::Receiver;
+    use nostr::{Keys, PublicKey};
+    use serde_json::Value;
+
+    pub use nmp_nip46::{
+        build_event_frame, build_req_frame, decode_inbound_response, HandshakeError,
+        HandshakeOutcome, NostrConnectOutcome,
+    };
+
+    /// Bridges the broker's `RelayClient` to `nmp_nip46::FrameSink`.
+    /// Trait-object upcasting (`&dyn RelayClient → &dyn FrameSink`) is NOT
+    /// automatic in stable Rust, so this one-line newtype fills the gap at the
+    /// module boundary rather than at every call site.
+    struct FrameSinkAdapter<'a>(&'a dyn crate::relay_client::RelayClient);
+
+    impl nmp_nip46::FrameSink for FrameSinkAdapter<'_> {
+        fn send(&self, frame: String) -> Result<(), nmp_nip46::FrameSinkError> {
+            self.0
+                .send(frame)
+                .map_err(|e| nmp_nip46::FrameSinkError(e.to_string()))
+        }
+    }
+
+    /// Run the client-initiated (`bunker://`) handshake. Preserves the
+    /// original `&dyn RelayClient` signature so `broker/handshake_thread.rs`
+    /// requires no edits.
+    #[allow(clippy::too_many_arguments)]
+    pub fn run_handshake(
+        relay: &dyn crate::relay_client::RelayClient,
+        inbound_rx: &Receiver<Value>,
+        cancel_rx: &Receiver<()>,
+        local_keys: &Keys,
+        remote_pubkey: PublicKey,
+        secret: Option<&str>,
+        perms: Option<&str>,
+        progress: &mut dyn FnMut(&str, &str, Option<&str>),
+    ) -> Result<HandshakeOutcome, HandshakeError> {
+        nmp_nip46::run_handshake(
+            &FrameSinkAdapter(relay),
+            inbound_rx,
+            cancel_rx,
+            local_keys,
+            remote_pubkey,
+            secret,
+            perms,
+            progress,
+        )
+    }
+
+    /// Run the signer-initiated (`nostrconnect://`) handshake. Preserves the
+    /// original `&dyn RelayClient` signature so `broker/nostrconnect.rs`
+    /// requires no edits.
+    pub fn run_nostrconnect_handshake(
+        relay: &dyn crate::relay_client::RelayClient,
+        inbound_rx: &Receiver<Value>,
+        cancel_rx: &Receiver<()>,
+        local_keys: &Keys,
+        expected_secret: &str,
+        progress: &mut dyn FnMut(&str, &str, Option<&str>),
+    ) -> Result<NostrConnectOutcome, HandshakeError> {
+        nmp_nip46::run_nostrconnect_handshake(
+            &FrameSinkAdapter(relay),
+            inbound_rx,
+            cancel_rx,
+            local_keys,
+            expected_secret,
+            progress,
+        )
+    }
+}
+
+/// Facade module: re-exports progress codes from `nmp-nip46` so callers using
+/// `crate::progress_codes::SENDING_CONNECT_TO_BUNKER` etc. compile unchanged.
+pub mod progress_codes {
+    pub use nmp_nip46::progress_codes::*;
+}
+
+/// Facade module: re-exports the URI encoder from `nmp-nip46` so
+/// `crate::uri_encode::percent_encode_query_value` in `broker/nostrconnect.rs`
+/// compiles without any source edit.
+pub mod uri_encode {
+    pub use nmp_nip46::percent_encode_query_value;
+}
 
 pub use broker::BunkerBroker;
 pub use events::{BrokerEvent, BrokerEventHandler, RelayIntakeDropReason};
+pub use nmp_nip46::percent_encode_query_value;
 pub use transport::BrokerTransport;
-pub use uri_encode::percent_encode_query_value;
 
 /// Opaque completion sink for steady-state NIP-46 responses (ADR-0050 §D3b).
 ///

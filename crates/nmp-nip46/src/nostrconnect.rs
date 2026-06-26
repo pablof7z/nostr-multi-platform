@@ -1,24 +1,25 @@
 //! `nostrconnect://` (signer-initiated) handshake.
 //!
 //! The signer scans the client's QR code and initiates the connection. This is
-//! the mirror of the client-initiated `bunker://` flow in the parent module:
-//! it reuses the same event-driven waits ([`super::await_response`],
-//! [`super::recv_inbound_or_cancel`]) and RPC helpers ([`super::publish_rpc`],
-//! [`super::new_request_id`]) — only the first step differs (wait for the
-//! signer's `connect` frame instead of sending one).
+//! the mirror of the client-initiated `bunker://` flow in [`crate::bunker`]:
+//! it reuses the same event-driven waits ([`crate::wait::await_response`],
+//! [`crate::wait::recv_inbound_or_cancel`]) and RPC helpers
+//! ([`crate::rpc::build_event_frame`], [`crate::rpc::new_request_id`]) —
+//! only the first step differs (wait for the signer's `connect` frame instead
+//! of sending one).
 
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use crossbeam_channel::Receiver;
 use nostr::nips::nip44;
-use nostr::{EventBuilder, Keys, Kind, Tag, Timestamp};
+use nostr::{Keys, PublicKey};
 use serde_json::Value;
 
-use super::{
-    await_response, new_request_id, publish_rpc, recv_inbound_or_cancel, HandshakeError,
-    STEP_TIMEOUT,
-};
-use crate::relay_client::RelayClient;
+use crate::bunker::STEP_TIMEOUT;
+use crate::error::HandshakeError;
+use crate::relay::FrameSink;
+use crate::rpc::{build_event_frame, new_request_id};
+use crate::wait::{await_response, recv_inbound_or_cancel};
 
 /// Result of a successful nostrconnect:// handshake: the signer's pubkey and
 /// the user's pubkey (as returned by `get_public_key`).
@@ -27,8 +28,8 @@ pub struct NostrConnectOutcome {
     /// The remote signer's pubkey (learned from `event.pubkey` of the first
     /// inbound `connect` frame). Needed to construct the `BrokerTransport`.
     pub signer_pubkey_hex: String,
-    /// The user pubkey returned by `get_public_key` — what
-    /// the completed signer reports to the host adapter.
+    /// The user pubkey returned by `get_public_key` — what the completed
+    /// signer reports to the host adapter.
     pub user_pubkey_hex: String,
 }
 
@@ -47,7 +48,7 @@ pub struct NostrConnectOutcome {
 /// `progress` emits: `"connecting"` (waiting for signer), `"awaiting_pubkey"`
 /// (after ack, before `get_public_key` response), `"failed"` on error.
 pub fn run_nostrconnect_handshake(
-    relay: &dyn RelayClient,
+    relay: &dyn FrameSink,
     inbound_rx: &Receiver<Value>,
     cancel_rx: &Receiver<()>,
     local_keys: &Keys,
@@ -74,31 +75,12 @@ pub fn run_nostrconnect_handshake(
         "result": "ack",
     })
     .to_string();
-    let signer_pk = nostr::PublicKey::from_hex(&signer_pubkey)
+    let signer_pk = PublicKey::from_hex(&signer_pubkey)
         .map_err(|e| HandshakeError::Protocol(format!("invalid signer pubkey: {e}")))?;
-    let ack_ciphertext = nip44::encrypt(
-        local_keys.secret_key(),
-        &signer_pk,
-        ack_response.as_bytes(),
-        nip44::Version::V2,
-    )
-    .map_err(|e| HandshakeError::Protocol(format!("nip44 encrypt ack: {e}")))?;
-    let ack_event = EventBuilder::new(Kind::from_u16(24133), ack_ciphertext)
-        .tags(vec![Tag::parse(["p", &signer_pubkey]).map_err(|e| {
-            HandshakeError::Protocol(format!("tag parse: {e}"))
-        })?])
-        .custom_created_at(Timestamp::from(
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map(|d| d.as_secs())
-                .unwrap_or(0),
-        ))
-        .sign_with_keys(local_keys)
-        .map_err(|e| HandshakeError::Protocol(format!("sign ack event: {e}")))?;
-    let ack_serialized = serde_json::to_string(&ack_event)
-        .map_err(|e| HandshakeError::Protocol(format!("serialize ack: {e}")))?;
+    let ack_frame = build_event_frame(local_keys, signer_pk, &ack_response)
+        .map_err(|e| HandshakeError::Protocol(e.to_string()))?;
     relay
-        .send(format!(r#"["EVENT",{ack_serialized}]"#))
+        .send(ack_frame)
         .map_err(|e| HandshakeError::Transport(e.to_string()))?;
 
     // Step 3 — send get_public_key to the signer.
@@ -108,14 +90,17 @@ pub fn run_nostrconnect_handshake(
         Some("Awaiting user confirmation in signer app"),
     );
     let gpk_id = new_request_id();
-    publish_rpc(
-        relay,
-        local_keys,
-        signer_pk,
-        &gpk_id,
-        "get_public_key",
-        serde_json::Value::Array(Vec::new()),
-    )?;
+    let gpk_envelope = serde_json::json!({
+        "id": &gpk_id,
+        "method": "get_public_key",
+        "params": Value::Array(Vec::new()),
+    })
+    .to_string();
+    let gpk_frame = build_event_frame(local_keys, signer_pk, &gpk_envelope)
+        .map_err(|e| HandshakeError::Protocol(e.to_string()))?;
+    relay
+        .send(gpk_frame)
+        .map_err(|e| HandshakeError::Transport(e.to_string()))?;
 
     // Step 4 — await the get_public_key response.
     let gpk_resp = await_response(
@@ -176,7 +161,7 @@ fn await_nostrconnect_connect(
         {
             continue;
         }
-        let Ok(signer_pk) = nostr::PublicKey::from_hex(&signer_pubkey_hex) else {
+        let Ok(signer_pk) = PublicKey::from_hex(&signer_pubkey_hex) else {
             continue;
         };
 

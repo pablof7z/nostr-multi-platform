@@ -22,6 +22,7 @@ crate-type = ["rlib"]
 # was swapped from `TungsteniteRelayClient` (in-broker mio loop) to
 # `PoolRelayClient` (Pool wrapper).
 nmp-network = { path = "../nmp-network", default-features = false, features = ["native"] }
+nmp-nip46 = { path = "../nmp-nip46" }
 nmp-signers = { path = "../nmp-signers" }
 nmp-signer-iface = { path = "../nmp-signer-iface" }
 nostr = { version = "0.44", features = ["std", "nip04", "nip44"] }

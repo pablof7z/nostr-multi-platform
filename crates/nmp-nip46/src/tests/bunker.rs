@@ -1,8 +1,11 @@
 //! Client-initiated (`bunker://`) handshake tests, plus the `await_response`
 //! error / robustness paths.
 
+use nostr::nips::nip44;
+use serde_json::{json, Value};
+
 use super::*;
-use crate::handshake::{run_handshake, HandshakeError};
+use crate::{run_handshake, HandshakeError};
 
 #[test]
 fn happy_path_connect_then_get_public_key_returns_user_pubkey() {
@@ -128,12 +131,8 @@ fn run_handshake_surfaces_bunker_error_response() {
                 .get("content")
                 .and_then(|v| v.as_str())
                 .unwrap();
-            let plain = nip44::decrypt(
-                bunker_for_driver.secret_key(),
-                &client_pk,
-                ct.as_bytes(),
-            )
-            .unwrap();
+            let plain =
+                nip44::decrypt(bunker_for_driver.secret_key(), &client_pk, ct.as_bytes()).unwrap();
             let req: Value = serde_json::from_str(&plain).unwrap();
             let req_id = req.get("id").and_then(|v| v.as_str()).unwrap();
             let err_rpc = json!({
@@ -141,8 +140,7 @@ fn run_handshake_surfaces_bunker_error_response() {
                 "result": Value::Null,
                 "error": "user rejected the request",
             });
-            let event =
-                make_response_event(&bunker_for_driver, client_pk, err_rpc);
+            let event = make_response_event(&bunker_for_driver, client_pk, err_rpc);
             let _ = inbound_tx.send(event);
         }
     });
@@ -195,18 +193,13 @@ fn run_handshake_rejects_non_string_result() {
                 .get("content")
                 .and_then(|v| v.as_str())
                 .unwrap();
-            let plain = nip44::decrypt(
-                bunker_for_driver.secret_key(),
-                &client_pk,
-                ct.as_bytes(),
-            )
-            .unwrap();
+            let plain =
+                nip44::decrypt(bunker_for_driver.secret_key(), &client_pk, ct.as_bytes()).unwrap();
             let req: Value = serde_json::from_str(&plain).unwrap();
             let req_id = req.get("id").and_then(|v| v.as_str()).unwrap();
             // `result` is an object, not a string.
             let bad_rpc = json!({ "id": req_id, "result": {"unexpected": true} });
-            let event =
-                make_response_event(&bunker_for_driver, client_pk, bad_rpc);
+            let event = make_response_event(&bunker_for_driver, client_pk, bad_rpc);
             let _ = inbound_tx.send(event);
         }
     });
@@ -278,15 +271,10 @@ fn run_handshake_skips_stray_events_then_completes() {
                 .get("content")
                 .and_then(|v| v.as_str())
                 .unwrap();
-            let plain = nip44::decrypt(
-                bunker_for_driver.secret_key(),
-                &client_pk,
-                ct.as_bytes(),
-            )
-            .unwrap();
+            let plain =
+                nip44::decrypt(bunker_for_driver.secret_key(), &client_pk, ct.as_bytes()).unwrap();
             let req: Value = serde_json::from_str(&plain).unwrap();
-            let req_id =
-                req.get("id").and_then(|v| v.as_str()).unwrap().to_string();
+            let req_id = req.get("id").and_then(|v| v.as_str()).unwrap().to_string();
             let result = if seen == 0 {
                 "ack".to_string()
             } else {

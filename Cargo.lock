@@ -4860,6 +4860,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-nip46"
+version = "0.8.0"
+dependencies = [
+ "crossbeam-channel",
+ "nostr",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "nmp-nip47"
 version = "0.8.0"
 dependencies = [
@@ -5083,6 +5093,7 @@ version = "0.8.0"
 dependencies = [
  "crossbeam-channel",
  "nmp-network",
+ "nmp-nip46",
  "nmp-signer-iface",
  "nmp-signers",
  "nostr",
