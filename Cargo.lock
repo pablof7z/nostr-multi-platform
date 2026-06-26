@@ -4837,6 +4837,7 @@ dependencies = [
  "nmp-planner",
  "nmp-signer-iface",
  "nmp-store",
+ "nostr",
  "serde",
  "serde_json",
 ]

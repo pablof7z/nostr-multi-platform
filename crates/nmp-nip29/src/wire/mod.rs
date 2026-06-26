@@ -13,7 +13,7 @@
 //!
 //! Separately, [`action_payload`] holds the WRITE-direction typed action
 //! payload codecs (ADR-0064 / S9 #1747): the `ActionPayload` impls for every
-//! event-authoring NIP-29 `ActionModule` (`join` / `leave` / `post_chat_message`
+//! event-authoring NIP-29 `ActionModule` (`join` / `leave` / `publish_group_event`
 //! / `create_public_group` / `react_in_group` / `share_event_in_group` /
 //! `repost_in_group` / `put_user` / `create_invite`). These are decoded by the
 //! registry adapter through each module's `decode_payload` override — the

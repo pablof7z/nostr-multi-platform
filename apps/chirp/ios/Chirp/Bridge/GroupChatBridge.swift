@@ -11,7 +11,7 @@ import os.log
 //
 // Thin-shell rule (Chirp): ZERO protocol logic in Swift. The Rust
 // `GroupChatProjection` owns ingest filtering and newest-first ordering;
-// the `nmp.nip29.post_chat_message` action owns the kind:9 event, its tags,
+// the `nmp.nip29.publish_group_event` action owns the kind:9 event, its tags,
 // and signing. Swift only marshals JSON across the FFI and mirrors the
 // snapshot.
 //
@@ -30,7 +30,7 @@ import os.log
 // ── Write side ────────────────────────────────────────────────────────────
 //
 //   • `postChatMessage(groupId:content:)` dispatches the
-//     `nmp.nip29.post_chat_message` action through the Chirp byte doorway
+//     `nmp.nip29.publish_group_event` action through the Chirp byte doorway
 //     (`nmp_app_chirp_dispatch_action_bytes`). Fire-and-forget — the outcome
 //     surfaces through the next snapshot tick (matches `react` / `follow`).
 // ─────────────────────────────────────────────────────────────────────────
@@ -84,17 +84,19 @@ extension KernelHandle {
         gcLog.info("registered NIP-29 group chat projection for \(groupId.localId, privacy: .public)")
     }
 
-    /// Dispatch a `nmp.nip29.post_chat_message` action — publish a kind:9 group
-    /// chat message. Routes through the Chirp byte doorway
-    /// (`nmp_app_chirp_dispatch_action_bytes`); the kind:9 event, its
-    /// `["h", local_id]` tag, and signing are
-    /// all owned by Rust (thin-shell rule). Fire-and-forget: the returned
-    /// correlation JSON is freed and ignored — the published message
-    /// surfaces through the next `nip29.group_chat` snapshot tick (matches
-    /// the `react` / `follow` / `publishNote` pattern).
+    /// Dispatch a `nmp.nip29.publish_group_event` action to publish a kind:9 group
+    /// chat message — chat is just one event kind on the generic group-publish
+    /// surface. Routes through the Chirp byte doorway
+    /// (`nmp_app_chirp_dispatch_action_bytes`); the event, its `["h", local_id]`
+    /// and `["previous", …]` envelope tags, and signing are all owned by Rust
+    /// (thin-shell rule). Fire-and-forget: the returned correlation JSON is freed
+    /// and ignored — the published message surfaces through the next
+    /// `nip29.group_chat` snapshot tick (matches the `react` / `follow` /
+    /// `publishNote` pattern).
     func postChatMessage(groupId: GroupId, content: String) {
         let payload: [String: Any] = [
             "group": groupId.jsonObject,
+            "kind": 9,
             "content": content,
         ]
         dispatchPostChatMessage(payload: payload)
@@ -148,7 +150,7 @@ extension KernelHandle {
 
     private func dispatchPostChatMessage(payload: [String: Any]) {
         dispatchGroupChatAction(
-            "nmp.nip29.post_chat_message", payload: payload, label: "postChatMessage")
+            "nmp.nip29.publish_group_event", payload: payload, label: "postChatMessage")
     }
 
     private func dispatchReactInGroup(payload: [String: Any]) {

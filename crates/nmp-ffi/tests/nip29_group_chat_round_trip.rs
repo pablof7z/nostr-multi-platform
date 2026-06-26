@@ -6,10 +6,11 @@
 //! ## Publish side
 //!
 //! `nmp_app_dispatch_action_bytes(app, envelope)` (ADR-0064 typed byte doorway)
-//! routes through the registered `PostChatMessageAction` module: the typed
+//! routes through the registered `PublishGroupEventAction` module: the typed
 //! validator runs synchronously and the executor enqueues
 //! `ActorCommand::PublishUnsignedEventToRelays` pinned to the group's host
-//! relay. The test encodes a typed `PostChatMessageInput`
+//! relay. The test encodes a typed `PublishGroupEventInput` (a kind:9 chat
+//! message)
 //! [`ActionPayload`](nmp_core::substrate::ActionPayload), wraps it in an open
 //! [`DispatchEnvelope`](nmp_core::dispatch_envelope) with a host-minted
 //! `correlation_id`, and dispatches the finished bytes — the JSON
@@ -47,12 +48,12 @@ use nmp_ffi::{
     nmp_app_consume_all_builtin_projections, nmp_app_dispatch_action_bytes, nmp_app_free,
     nmp_app_new, nmp_app_set_update_callback, nmp_app_start, nmp_free_string, NmpApp,
 };
-use nmp_nip29::action::PostChatMessageInput;
+use nmp_nip29::action::PublishGroupEventInput;
 use nmp_nip29::group_id::GroupId;
 use nmp_nip29::register::register_actions;
 use nmp_store::{RawEvent, VerifiedEvent};
 
-/// Dispatch a typed `PostChatMessageInput` through the ADR-0064 byte doorway
+/// Dispatch a typed `PublishGroupEventInput` through the ADR-0064 byte doorway
 /// ([`nmp_app_dispatch_action_bytes`]) and return the result envelope JSON.
 ///
 /// Mirrors the `apps/chirp/crates/nmp-app-chirp::dispatch_action_bytes_for` seam
@@ -62,7 +63,7 @@ use nmp_store::{RawEvent, VerifiedEvent};
 /// returned C string. `nmp-nip29` cannot depend on `nmp-app-chirp` (that would
 /// invert the crate stack), so the small encode-and-dispatch shape is inlined
 /// here.
-fn dispatch_post_chat_message(app: *mut NmpApp, action: &PostChatMessageInput) -> String {
+fn dispatch_publish_group_event(app: *mut NmpApp, action: &PublishGroupEventInput) -> String {
     static NEXT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
     let correlation_id = format!(
         "nip29-test-{}",
@@ -71,7 +72,7 @@ fn dispatch_post_chat_message(app: *mut NmpApp, action: &PostChatMessageInput) -
     let payload = action.encode();
     let envelope = encode_dispatch_envelope(
         &correlation_id,
-        PostChatMessageInput::SCHEMA_ID,
+        PublishGroupEventInput::SCHEMA_ID,
         DISPATCH_ENVELOPE_SCHEMA_VERSION,
         &payload,
     );
@@ -165,29 +166,32 @@ fn wait_for_group_message(content: &str) -> bool {
 // ── Publish side ─────────────────────────────────────────────────────────────
 
 /// Proves the publish-side seam is live: `nmp_app_dispatch_action_bytes` routes
-/// the typed `nmp.nip29.post_chat_message` payload through both the
-/// `PostChatMessageAction` module (typed validator → echoed `correlation_id`)
+/// the typed `nmp.nip29.publish_group_event` payload through both the
+/// `PublishGroupEventAction` module (typed validator → echoed `correlation_id`)
 /// and executor (enqueues `PublishUnsignedEventToRelays` on the actor channel,
 /// fire-and-forget).
 ///
 /// Registered via `nmp_nip29::register::register_actions` — zero Chirp
 /// symbols. Any host calls this same function at startup.
 #[test]
-fn post_chat_message_dispatch_returns_correlation_id() {
+fn publish_group_event_dispatch_returns_correlation_id() {
     let _g = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
 
     let app = nmp_app_new();
     // SAFETY: `app` is a valid pointer from `nmp_app_new`; no other reference
-    // aliases it at this call site.
-    register_actions(unsafe { &mut *app }).expect("NIP-29 actions register");
+    // aliases it at these call sites. The store slot is captured first (a
+    // `&self` read) and handed to `register_actions` so the generic publish
+    // action can read recent group events for `["previous", …]` tags.
+    let store_slot = unsafe { &*app }.event_store_handle();
+    register_actions(unsafe { &mut *app }, store_slot).expect("NIP-29 actions register");
 
-    let action = PostChatMessageInput {
+    let action = PublishGroupEventInput {
         group: GroupId::new(HOST_RELAY, "test-room"),
+        kind: 9,
         content: "hello from TUI".to_string(),
-        previous_event_id_prefixes: Vec::new(),
-        reply_to_event_id: None,
+        tags: Vec::new(),
     };
-    let out = dispatch_post_chat_message(app, &action);
+    let out = dispatch_publish_group_event(app, &action);
 
     let result: serde_json::Value = serde_json::from_str(&out).unwrap();
     // On the byte lane the correlation_id is HOST-supplied (ADR-0064 §4) and
@@ -201,19 +205,19 @@ fn post_chat_message_dispatch_returns_correlation_id() {
         "the doorway must echo the host-supplied correlation_id, got: {cid}"
     );
 
-    // Malformed payload (empty content) is rejected by the typed module
-    // validator — the executor is never reached.
-    let bad = PostChatMessageInput {
-        group: GroupId::new(HOST_RELAY, "test-room"),
-        content: String::new(),
-        previous_event_id_prefixes: Vec::new(),
-        reply_to_event_id: None,
+    // Malformed payload (non-routable group: empty host relay url) is rejected
+    // by the typed module validator — the executor is never reached.
+    let bad = PublishGroupEventInput {
+        group: GroupId::new("", "test-room"),
+        kind: 9,
+        content: "x".to_string(),
+        tags: Vec::new(),
     };
-    let out2 = dispatch_post_chat_message(app, &bad);
+    let out2 = dispatch_publish_group_event(app, &bad);
     let result2: serde_json::Value = serde_json::from_str(&out2).unwrap();
     assert!(
         result2.get("error").is_some(),
-        "dispatch of an empty-content message must be rejected by the typed validator: {result2}"
+        "dispatch with a non-routable group must be rejected by the typed validator: {result2}"
     );
 
     nmp_app_free(app);

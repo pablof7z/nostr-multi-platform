@@ -2,16 +2,21 @@
 //!
 //! This is the "host-pinned variant of an otherwise cross-protocol action"
 //! per `kinds.md` §4. It lives here because the routing concern (the `h`
-//! tag) is the discriminator.
+//! tag) is the discriminator. It is a thin convenience over the generic
+//! group-publish route: the envelope (`h` / `previous` / pin) is composed by
+//! [`super::publish::group_publish_plan`]; this action only shapes the kind:7
+//! reaction's caller tags (`e` / `p`).
 
+use nmp_core::actor::ActorCommand;
+use nmp_core::slots::EventStoreSlot;
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
 };
-use nmp_core::actor::ActorCommand;
 use serde::{Deserialize, Serialize};
 
 use crate::group_id::GroupId;
 
+use super::publish::group_publish_plan;
 use super::publish_plan::PublishPlan;
 
 /// NIP-25 reaction kind. Kept file-private to `composed.rs` because NIP-29
@@ -29,19 +34,39 @@ pub struct ReactInGroupInput {
     pub content: String,
 }
 
-/// Build the kind:7 in-group reaction `PublishPlan` from a typed input.
-fn react_in_group_plan(action: &ReactInGroupInput) -> PublishPlan {
-    let mut tags = vec![
-        vec!["h".into(), action.group.local_id.clone()],
-        vec!["e".into(), action.target_event_id.clone()],
-    ];
+/// The kind:7 reaction's caller tags (`e` target, optional `p` author). The
+/// NIP-29 envelope tags are injected by [`group_publish_plan`].
+fn react_caller_tags(action: &ReactInGroupInput) -> Vec<Vec<String>> {
+    let mut tags = vec![vec!["e".to_string(), action.target_event_id.clone()]];
     if let Some(p) = &action.target_author_pubkey {
-        tags.push(vec!["p".into(), p.clone()]);
+        tags.push(vec!["p".to_string(), p.clone()]);
     }
-    PublishPlan::pinned(&action.group, REACTION_KIND, action.content.clone(), tags)
+    tags
 }
 
-pub struct ReactInGroupAction;
+/// Build the kind:7 in-group reaction `PublishPlan`, composing the NIP-29
+/// envelope (`h` / `previous` / pin) from the store cache.
+fn react_in_group_plan(store_slot: &EventStoreSlot, action: &ReactInGroupInput) -> PublishPlan {
+    group_publish_plan(
+        store_slot,
+        &action.group,
+        REACTION_KIND,
+        action.content.clone(),
+        react_caller_tags(action),
+    )
+}
+
+pub struct ReactInGroupAction {
+    store_slot: EventStoreSlot,
+}
+
+impl ReactInGroupAction {
+    #[must_use]
+    pub fn new(store_slot: EventStoreSlot) -> Self {
+        Self { store_slot }
+    }
+}
+
 impl ActionModule for ReactInGroupAction {
     const NAMESPACE: &'static str = "nmp.nip29.react_in_group";
     type Action = ReactInGroupInput;
@@ -63,11 +88,6 @@ impl ActionModule for ReactInGroupAction {
         if action.content.is_empty() {
             return Err(ActionRejection::Invalid("reaction content is empty".into()));
         }
-        react_in_group_plan(&action)
-            .validate_no_unpinned_h()
-            .map_err(|_| {
-                ActionRejection::Invalid("missing host pin for in-group reaction".into())
-            })?;
         Ok(())
     }
     fn execute(
@@ -76,7 +96,10 @@ impl ActionModule for ReactInGroupAction {
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
     ) -> Result<(), String> {
-        send(react_in_group_plan(&action).into_actor_command(Some(correlation_id.to_string()))?);
+        send(
+            react_in_group_plan(&self.store_slot, &action)
+                .into_actor_command(Some(correlation_id.to_string()))?,
+        );
         Ok(())
     }
 }
@@ -85,7 +108,12 @@ impl ActionModule for ReactInGroupAction {
 mod tests {
     use super::*;
     use nmp_core::actor::PublishCommand;
+    use nmp_core::slots::new_event_store_slot;
     use std::cell::RefCell;
+
+    fn action() -> ReactInGroupAction {
+        ReactInGroupAction::new(new_event_store_slot())
+    }
 
     fn react_input() -> ReactInGroupInput {
         ReactInGroupInput {
@@ -99,18 +127,18 @@ mod tests {
     #[test]
     fn react_well_formed_passes_validator() {
         let mut ctx = ActionContext::default();
-        assert!(ReactInGroupAction.start(&mut ctx, react_input()).is_ok());
+        assert!(action().start(&mut ctx, react_input()).is_ok());
     }
 
     #[test]
     fn react_empty_host_relay_url_rejected_in_start() {
         let mut ctx = ActionContext::default();
-        let action = ReactInGroupInput {
+        let input = ReactInGroupInput {
             group: GroupId::new("", "room"),
             ..react_input()
         };
         assert!(matches!(
-            ReactInGroupAction.start(&mut ctx, action),
+            action().start(&mut ctx, input),
             Err(ActionRejection::Invalid(_))
         ));
     }
@@ -118,12 +146,12 @@ mod tests {
     #[test]
     fn react_empty_local_id_rejected_in_start() {
         let mut ctx = ActionContext::default();
-        let action = ReactInGroupInput {
+        let input = ReactInGroupInput {
             group: GroupId::new("wss://h", ""),
             ..react_input()
         };
         assert!(matches!(
-            ReactInGroupAction.start(&mut ctx, action),
+            action().start(&mut ctx, input),
             Err(ActionRejection::Invalid(_))
         ));
     }
@@ -131,12 +159,12 @@ mod tests {
     #[test]
     fn react_empty_target_event_id_rejected_in_start() {
         let mut ctx = ActionContext::default();
-        let action = ReactInGroupInput {
+        let input = ReactInGroupInput {
             target_event_id: String::new(),
             ..react_input()
         };
         assert!(matches!(
-            ReactInGroupAction.start(&mut ctx, action),
+            action().start(&mut ctx, input),
             Err(ActionRejection::Invalid(_))
         ));
     }
@@ -144,12 +172,12 @@ mod tests {
     #[test]
     fn react_empty_content_rejected_in_start() {
         let mut ctx = ActionContext::default();
-        let action = ReactInGroupInput {
+        let input = ReactInGroupInput {
             content: String::new(),
             ..react_input()
         };
         assert!(matches!(
-            ReactInGroupAction.start(&mut ctx, action),
+            action().start(&mut ctx, input),
             Err(ActionRejection::Invalid(_))
         ));
     }
@@ -157,7 +185,7 @@ mod tests {
     #[test]
     fn react_execute_emits_host_pinned_kind7_publish_command() {
         let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
-        ReactInGroupAction
+        action()
             .execute(react_input(), "react-cid", &|cmd| {
                 captured.borrow_mut().push(cmd);
             })

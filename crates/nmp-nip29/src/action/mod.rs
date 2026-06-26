@@ -7,9 +7,12 @@
 //!
 //! ## Action layout
 //!
-//! - `content` — `PostChatMessage` (kind:9).
-//! - `composed` — `ReactInGroup` (kind:7+h).
-//! - `group_event` — raw share/repost-in-group producers (kind:11/16+h).
+//! - `publish` — `PublishGroupEvent`: the generic "publish this event to group X"
+//!   surface (any kind; injects the `h` / `previous` / pin envelope). NIP-29
+//!   owns the envelope, not the event kind — "chat" is just `kind:9`.
+//! - `composed` — `ReactInGroup` (kind:7+h): thin convenience over `publish`.
+//! - `group_event` — share/repost-in-group producers (kind:11/16+h): thin
+//!   convenience over `publish`.
 //! - `create` — `CreatePublicGroup` (kind:9007 + kind:9002).
 //! - `discover` — `DiscoverGroups` (no publish; pushes a metadata interest).
 //! - `join` — `JoinGroup` (kind:9021, user-management request).
@@ -17,19 +20,19 @@
 //! - `admin` — `PutUser` (kind:9000) and `CreateInvite` (kind:9009).
 //! - `set_parent` — `SetParent` (kind:9002 edit-metadata, NIP-29 subgroups #2319).
 //!
-//! NIP-29 ships public group creation, relay-group chat, discovery, join, and
-//! the ADR-0060 admin subset (`9000` / `9009`) in v1. The other moderation
-//! actions remain out of this increment.
+//! NIP-29 ships public group creation, generic group-event publishing,
+//! discovery, join, and the ADR-0060 admin subset (`9000` / `9009`) in v1. The
+//! other moderation actions remain out of this increment.
 
 mod admin;
 mod composed;
-mod content;
 mod create;
 mod discover;
 mod group_event;
 mod join;
 mod leave;
 mod metadata_tags;
+mod publish;
 mod publish_plan;
 mod set_parent;
 
@@ -37,7 +40,7 @@ pub use admin::{
     CreateInviteAction, CreateInviteInput, PutUserAction, PutUserInput, MAX_CODES_PER_INVITE_EVENT,
 };
 pub use composed::{ReactInGroupAction, ReactInGroupInput};
-pub use content::{PostChatMessageAction, PostChatMessageInput};
+pub use publish::{PublishGroupEventAction, PublishGroupEventInput, DEFAULT_PREVIOUS_LIMIT};
 pub use create::{CreatePublicGroupAction, CreatePublicGroupInput, GroupAccess, GroupVisibility};
 pub use discover::{DiscoverGroupsAction, DiscoverGroupsInput};
 pub use group_event::{

@@ -1,12 +1,12 @@
 //! `ActionPayload` codecs for the core group-lifecycle / content actions:
-//! `join`, `leave`, `post_chat_message`, `create_public_group`, and
+//! `join`, `leave`, `publish_group_event`, `create_public_group`, and
 //! `react_in_group` (ADR-0064 / S9 #1747).
 
 use nmp_core::substrate::{ActionPayload, ActionPayloadDecodeError};
 
 use crate::action::{
     CreatePublicGroupInput, GroupAccess, GroupVisibility, JoinGroupInput, LeaveGroupInput,
-    PostChatMessageInput, ReactInGroupInput,
+    PublishGroupEventInput, ReactInGroupInput,
 };
 use crate::group_id::GroupId;
 
@@ -15,7 +15,7 @@ use super::{gate_schema_version, malformed, SCHEMA_VERSION};
 use super::create_public_group_action_generated::nmp::nip_29 as create_fb;
 use super::join_group_action_generated::nmp::nip_29 as join_fb;
 use super::leave_group_action_generated::nmp::nip_29 as leave_fb;
-use super::post_chat_message_action_generated::nmp::nip_29 as chat_fb;
+use super::publish_group_event_action_generated::nmp::nip_29 as publish_fb;
 use super::react_in_group_action_generated::nmp::nip_29 as react_fb;
 
 // --- JoinGroupInput ----------------------------------------------------------
@@ -121,65 +121,78 @@ impl ActionPayload for LeaveGroupInput {
     }
 }
 
-// --- PostChatMessageInput ----------------------------------------------------
+// --- PublishGroupEventInput --------------------------------------------------
 
-impl ActionPayload for PostChatMessageInput {
-    const SCHEMA_ID: &'static str = "nmp.nip29.post_chat_message";
+impl ActionPayload for PublishGroupEventInput {
+    const SCHEMA_ID: &'static str = "nmp.nip29.publish_group_event";
     const SCHEMA_VERSION: u32 = SCHEMA_VERSION;
 
     fn encode(&self) -> Vec<u8> {
         let mut fbb = flatbuffers::FlatBufferBuilder::new();
         let host_relay_url = fbb.create_string(&self.group.host_relay_url);
         let local_id = fbb.create_string(&self.group.local_id);
-        let group = chat_fb::GroupRef::create(
+        let group = publish_fb::GroupRef::create(
             &mut fbb,
-            &chat_fb::GroupRefArgs {
+            &publish_fb::GroupRefArgs {
                 host_relay_url: Some(host_relay_url),
                 local_id: Some(local_id),
             },
         );
         let content = fbb.create_string(&self.content);
-        let prefix_offsets: Vec<_> = self
-            .previous_event_id_prefixes
+        let tag_offsets: Vec<_> = self
+            .tags
             .iter()
-            .map(|p| fbb.create_string(p))
+            .map(|tag| {
+                let value_offsets: Vec<_> = tag.iter().map(|v| fbb.create_string(v)).collect();
+                let values = fbb.create_vector(&value_offsets);
+                publish_fb::StringTag::create(
+                    &mut fbb,
+                    &publish_fb::StringTagArgs {
+                        values: Some(values),
+                    },
+                )
+            })
             .collect();
-        let previous_event_id_prefixes = fbb.create_vector(&prefix_offsets);
-        let reply_to_event_id = self
-            .reply_to_event_id
-            .as_ref()
-            .map(|s| fbb.create_string(s));
-        let payload = chat_fb::PostChatMessagePayload::create(
+        let tags = fbb.create_vector(&tag_offsets);
+        let payload = publish_fb::PublishGroupEventPayload::create(
             &mut fbb,
-            &chat_fb::PostChatMessagePayloadArgs {
+            &publish_fb::PublishGroupEventPayloadArgs {
                 schema_version: SCHEMA_VERSION,
                 group: Some(group),
+                kind: self.kind,
                 content: Some(content),
-                previous_event_id_prefixes: Some(previous_event_id_prefixes),
-                reply_to_event_id,
+                tags: Some(tags),
             },
         );
-        chat_fb::finish_post_chat_message_payload_buffer(&mut fbb, payload);
+        publish_fb::finish_publish_group_event_payload_buffer(&mut fbb, payload);
         fbb.finished_data().to_vec()
     }
 
     fn decode(bytes: &[u8]) -> Result<Self, ActionPayloadDecodeError> {
-        if bytes.len() < 8 || !chat_fb::post_chat_message_payload_buffer_has_identifier(bytes) {
-            return Err(malformed("missing N29C file identifier"));
+        if bytes.len() < 8 || !publish_fb::publish_group_event_payload_buffer_has_identifier(bytes) {
+            return Err(malformed("missing N29G file identifier"));
         }
-        let root = chat_fb::root_as_post_chat_message_payload(bytes)
-            .map_err(|e| malformed(format!("not a valid PostChatMessagePayload buffer: {e}")))?;
+        let root = publish_fb::root_as_publish_group_event_payload(bytes)
+            .map_err(|e| malformed(format!("not a valid PublishGroupEventPayload buffer: {e}")))?;
         gate_schema_version(root.schema_version())?;
         let group = root.group();
-        let previous_event_id_prefixes = root
-            .previous_event_id_prefixes()
-            .map(|v| v.iter().map(str::to_string).collect())
+        let tags = root
+            .tags()
+            .map(|rows| {
+                rows.iter()
+                    .map(|row| {
+                        row.values()
+                            .map(|vs| vs.iter().map(str::to_string).collect())
+                            .unwrap_or_default()
+                    })
+                    .collect()
+            })
             .unwrap_or_default();
-        Ok(PostChatMessageInput {
+        Ok(PublishGroupEventInput {
             group: GroupId::new(group.host_relay_url(), group.local_id()),
-            content: root.content().to_string(),
-            previous_event_id_prefixes,
-            reply_to_event_id: root.reply_to_event_id().map(str::to_string),
+            kind: root.kind(),
+            content: root.content().map(str::to_string).unwrap_or_default(),
+            tags,
         })
     }
 }

@@ -2,17 +2,22 @@
 //!
 //! These actions own only the NIP-29 `h`-tag routing concern. Kind 11 and kind
 //! 16 semantics stay protocol-neutral; downstream crates decide whether a row is
-//! an article share, media share, repost, or something else.
+//! an article share, media share, repost, or something else. They are thin
+//! convenience wrappers over the generic group-publish route: the envelope
+//! (`h` / `previous` / pin) is composed by [`super::publish::group_publish_plan`];
+//! these actions only shape their `e` / `p` / `additional_tags` caller tags.
 
+use nmp_core::actor::ActorCommand;
+use nmp_core::slots::EventStoreSlot;
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
 };
-use nmp_core::actor::ActorCommand;
 use serde::{Deserialize, Serialize};
 
 use crate::group_id::GroupId;
 use crate::kinds::KIND_DISCUSSION_OR_ARTIFACT;
 
+use super::publish::group_publish_plan;
 use super::publish_plan::PublishPlan;
 
 const REPOST_KIND: u32 = 16;
@@ -44,17 +49,16 @@ pub struct RepostInGroupInput {
     pub additional_tags: Vec<Vec<String>>,
 }
 
-fn group_event_tags(
-    group: &GroupId,
+/// The caller tags for a group-event producer (`e` target, optional `p` author,
+/// plus any caller `additional_tags`). The NIP-29 envelope tags are injected by
+/// [`group_publish_plan`].
+fn group_event_caller_tags(
     target: &GroupEventTarget,
     additional_tags: &[Vec<String>],
 ) -> Vec<Vec<String>> {
-    let mut tags = vec![
-        vec!["h".into(), group.local_id.clone()],
-        vec!["e".into(), target.event_id.clone()],
-    ];
+    let mut tags = vec![vec!["e".to_string(), target.event_id.clone()]];
     if let Some(author) = &target.author_pubkey {
-        tags.push(vec!["p".into(), author.clone()]);
+        tags.push(vec!["p".to_string(), author.clone()]);
     }
     tags.extend(additional_tags.iter().cloned());
     tags
@@ -71,34 +75,46 @@ fn validate_group_event_input(
     }
     if additional_tags
         .iter()
-        .any(|tag| tag.first().is_some_and(|key| key == "h"))
+        .any(|tag| tag.first().is_some_and(|key| key == "h" || key == "previous"))
     {
         return Err(ActionRejection::Invalid(
-            "additional_tags must not override the group h tag".into(),
+            "additional_tags must not override the NIP-29 envelope (`h` / `previous`)".into(),
         ));
     }
     Ok(())
 }
 
-fn share_event_plan(action: &ShareEventInGroupInput) -> PublishPlan {
-    PublishPlan::pinned(
+fn share_event_plan(store_slot: &EventStoreSlot, action: &ShareEventInGroupInput) -> PublishPlan {
+    group_publish_plan(
+        store_slot,
         &action.group,
         KIND_DISCUSSION_OR_ARTIFACT,
         action.content.clone(),
-        group_event_tags(&action.group, &action.target, &action.additional_tags),
+        group_event_caller_tags(&action.target, &action.additional_tags),
     )
 }
 
-fn repost_plan(action: &RepostInGroupInput) -> PublishPlan {
-    PublishPlan::pinned(
+fn repost_plan(store_slot: &EventStoreSlot, action: &RepostInGroupInput) -> PublishPlan {
+    group_publish_plan(
+        store_slot,
         &action.group,
         REPOST_KIND,
         action.content.clone(),
-        group_event_tags(&action.group, &action.target, &action.additional_tags),
+        group_event_caller_tags(&action.target, &action.additional_tags),
     )
 }
 
-pub struct ShareEventInGroupAction;
+pub struct ShareEventInGroupAction {
+    store_slot: EventStoreSlot,
+}
+
+impl ShareEventInGroupAction {
+    #[must_use]
+    pub fn new(store_slot: EventStoreSlot) -> Self {
+        Self { store_slot }
+    }
+}
+
 impl ActionModule for ShareEventInGroupAction {
     const NAMESPACE: &'static str = "nmp.nip29.share_event_in_group";
     type Action = ShareEventInGroupInput;
@@ -110,10 +126,7 @@ impl ActionModule for ShareEventInGroupAction {
     }
 
     fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
-        validate_group_event_input(&action.group, &action.target, &action.additional_tags)?;
-        share_event_plan(&action)
-            .validate_no_unpinned_h()
-            .map_err(|_| ActionRejection::Invalid("missing host pin for in-group share".into()))
+        validate_group_event_input(&action.group, &action.target, &action.additional_tags)
     }
 
     fn execute(
@@ -122,12 +135,25 @@ impl ActionModule for ShareEventInGroupAction {
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
     ) -> Result<(), String> {
-        send(share_event_plan(&action).into_actor_command(Some(correlation_id.to_string()))?);
+        send(
+            share_event_plan(&self.store_slot, &action)
+                .into_actor_command(Some(correlation_id.to_string()))?,
+        );
         Ok(())
     }
 }
 
-pub struct RepostInGroupAction;
+pub struct RepostInGroupAction {
+    store_slot: EventStoreSlot,
+}
+
+impl RepostInGroupAction {
+    #[must_use]
+    pub fn new(store_slot: EventStoreSlot) -> Self {
+        Self { store_slot }
+    }
+}
+
 impl ActionModule for RepostInGroupAction {
     const NAMESPACE: &'static str = "nmp.nip29.repost_in_group";
     type Action = RepostInGroupInput;
@@ -139,10 +165,7 @@ impl ActionModule for RepostInGroupAction {
     }
 
     fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
-        validate_group_event_input(&action.group, &action.target, &action.additional_tags)?;
-        repost_plan(&action)
-            .validate_no_unpinned_h()
-            .map_err(|_| ActionRejection::Invalid("missing host pin for in-group repost".into()))
+        validate_group_event_input(&action.group, &action.target, &action.additional_tags)
     }
 
     fn execute(
@@ -151,7 +174,10 @@ impl ActionModule for RepostInGroupAction {
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
     ) -> Result<(), String> {
-        send(repost_plan(&action).into_actor_command(Some(correlation_id.to_string()))?);
+        send(
+            repost_plan(&self.store_slot, &action)
+                .into_actor_command(Some(correlation_id.to_string()))?,
+        );
         Ok(())
     }
 }
@@ -160,6 +186,7 @@ impl ActionModule for RepostInGroupAction {
 mod tests {
     use super::*;
     use nmp_core::actor::PublishCommand;
+    use nmp_core::slots::new_event_store_slot;
     use std::cell::RefCell;
 
     fn target() -> GroupEventTarget {
@@ -167,6 +194,14 @@ mod tests {
             event_id: "target-id".into(),
             author_pubkey: Some("target-author".into()),
         }
+    }
+
+    fn share_action() -> ShareEventInGroupAction {
+        ShareEventInGroupAction::new(new_event_store_slot())
+    }
+
+    fn repost_action() -> RepostInGroupAction {
+        RepostInGroupAction::new(new_event_store_slot())
     }
 
     fn share_input() -> ShareEventInGroupInput {
@@ -186,7 +221,7 @@ mod tests {
             ..share_input()
         };
         assert!(matches!(
-            ShareEventInGroupAction.start(&mut ctx, action),
+            share_action().start(&mut ctx, action),
             Err(ActionRejection::Invalid(_))
         ));
     }
@@ -199,7 +234,7 @@ mod tests {
             ..share_input()
         };
         assert!(matches!(
-            ShareEventInGroupAction.start(&mut ctx, action),
+            share_action().start(&mut ctx, action),
             Err(ActionRejection::Invalid(_))
         ));
     }
@@ -207,7 +242,7 @@ mod tests {
     #[test]
     fn share_executes_host_pinned_kind11() {
         let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
-        ShareEventInGroupAction
+        share_action()
             .execute(share_input(), "share-cid", &|cmd| {
                 captured.borrow_mut().push(cmd)
             })
@@ -241,7 +276,7 @@ mod tests {
             content: String::new(),
             additional_tags: Vec::new(),
         };
-        RepostInGroupAction
+        repost_action()
             .execute(action, "repost-cid", &|cmd| captured.borrow_mut().push(cmd))
             .expect("repost executes");
 

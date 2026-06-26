@@ -5,11 +5,12 @@
 
 use nmp_core::actor::ActorCommand;
 use nmp_core::actor::{ActionLedgerCommand, InterestsCommand, PublishCommand};
+use nmp_core::slots::new_event_store_slot;
 use nmp_core::substrate::ActionModule;
 use nmp_ffi::{nmp_app_free, nmp_app_new};
 use nmp_nip29::action::{
     CreatePublicGroupAction, DiscoverGroupsAction, DiscoverGroupsInput, JoinGroupAction,
-    JoinGroupInput, PostChatMessageAction, PostChatMessageInput, ReactInGroupAction,
+    JoinGroupInput, PublishGroupEventAction, PublishGroupEventInput, ReactInGroupAction,
 };
 use nmp_nip29::group_id::GroupId;
 use nmp_nip29::interest::relay_discovery_identity;
@@ -19,26 +20,26 @@ use super::super::nmp_app_chirp_unregister;
 use super::helpers::{dispatch, register_app, run_module_execute};
 
 /// THE NIP-CRATE SEAM PROOF: after `nmp_app_chirp_register`, the NIP-29
-/// `PostChatMessageAction` — an `ActionModule` impl living in the
+/// `PublishGroupEventAction` — an `ActionModule` impl living in the
 /// `nmp-nip29` protocol crate, NOT this app crate — is reachable through
 /// the typed byte doorway (ADR-0064 / Cut-B, #1756). A well-formed
-/// `PostChatMessageInput` yields an echoed host-supplied `correlation_id` (both
-/// the typed module validator and the executor are wired); a malformed body is
-/// rejected with `error`.
+/// `PublishGroupEventInput` (here a kind:9 chat message) yields an echoed
+/// host-supplied `correlation_id` (both the typed module validator and the
+/// executor are wired); a malformed body is rejected with `error`.
 ///
 /// This proves the ADR-0027 typed-registration seam (`register_action::<M>()`)
 /// works for NIP-crate modules, not just Chirp's app-local social verbs —
 /// without `nmp-core` learning any NIP-29 group nouns (D0).
 #[test]
-fn nip29_post_chat_message_dispatches_through_action_registry() {
+fn nip29_publish_group_event_dispatches_through_action_registry() {
     let app = nmp_app_new();
     let handle = register_app(app);
 
-    // Well-formed chat message: a host-pinned group + non-empty content.
-    // The typed `PostChatMessageAction::start` builds the `["h", local_id]`
-    // tag and enforces the host pin — a missing pin would reject here.
-    let body = r#"{"group":{"host_relay_url":"wss://groups.example.com","local_id":"rust-nostr"},"content":"hello"}"#;
-    let parsed = dispatch(app, "nmp.nip29.post_chat_message", body);
+    // Well-formed group event: a host-pinned group + a kind. The generic
+    // publish action injects the `["h", local_id]` envelope and enforces the
+    // host pin — a non-routable group would reject here.
+    let body = r#"{"group":{"host_relay_url":"wss://groups.example.com","local_id":"rust-nostr"},"kind":9,"content":"hello"}"#;
+    let parsed = dispatch(app, "nmp.nip29.publish_group_event", body);
     let id = parsed
         .get("correlation_id")
         .and_then(|v| v.as_str())
@@ -53,37 +54,42 @@ fn nip29_post_chat_message_dispatches_through_action_registry() {
     // typed module validator surfaced through the host seam (D6).
     let parsed = dispatch(
         app,
-        "nmp.nip29.post_chat_message",
-        r#"{"content":"no group"}"#,
+        "nmp.nip29.publish_group_event",
+        r#"{"kind":9,"content":"no group"}"#,
     );
     assert!(
         parsed.get("error").is_some(),
-        "chat message without `group` must be rejected: {parsed}"
+        "group event without `group` must be rejected: {parsed}"
     );
 
     nmp_app_chirp_unregister(handle);
     nmp_app_free(app);
 }
 
-/// THE EXECUTOR PROOF: the NIP-29 post-chat-message executor maps a
-/// validated `PostChatMessageInput` to a concrete
+/// THE EXECUTOR PROOF: the NIP-29 generic publish executor maps a validated
+/// `PublishGroupEventInput` to a concrete
 /// [`ActorCommand::PublishUnsignedEventToRelays`] pinned to the group's
-/// own host relay — proving the `PostChatMessageAction::execute` typed
-/// path (ADR-0027) produces the right command end-to-end.
+/// own host relay — proving the `PublishGroupEventAction::execute` typed
+/// path (ADR-0027) produces the right command end-to-end. Built directly
+/// (not via `run_module_execute`) because the action is stateful (it carries
+/// the V-83 store slot, so it has no `Default`).
 #[test]
-fn nip29_post_chat_message_executor_emits_host_pinned_publish_command() {
-    let input = PostChatMessageInput {
+fn nip29_publish_group_event_executor_emits_host_pinned_publish_command() {
+    let input = PublishGroupEventInput {
         group: GroupId::new("wss://groups.example.com", "rust-nostr"),
+        kind: KIND_CHAT_MESSAGE,
         content: "hello".to_string(),
-        previous_event_id_prefixes: vec![],
-        reply_to_event_id: None,
+        tags: vec![],
     };
-    let cmds =
-        run_module_execute::<PostChatMessageAction>(input).expect("well-formed chat message");
-    let cmd = cmds
+    let captured: std::cell::RefCell<Vec<ActorCommand>> = std::cell::RefCell::new(Vec::new());
+    PublishGroupEventAction::new(new_event_store_slot())
+        .execute(input, "test-cid", &|cmd| captured.borrow_mut().push(cmd))
+        .expect("well-formed group event");
+    let cmd = captured
+        .into_inner()
         .into_iter()
         .next()
-        .expect("post-chat-message executor must send at least one command");
+        .expect("publish-group-event executor must send at least one command");
 
     match cmd {
         ActorCommand::Publish(PublishCommand::UnsignedEventToRelays {
@@ -138,8 +144,8 @@ fn nip29_all_namespaces_dispatch_through_action_registry() {
     // `<Input>`.
     let cases: [(&str, String); 3] = [
         (
-            PostChatMessageAction::NAMESPACE,
-            format!(r#"{{"group":{group},"content":"hi"}}"#),
+            PublishGroupEventAction::NAMESPACE,
+            format!(r#"{{"group":{group},"kind":9,"content":"hi"}}"#),
         ),
         (
             ReactInGroupAction::NAMESPACE,

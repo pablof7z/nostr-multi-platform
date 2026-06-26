@@ -27,11 +27,12 @@
 //! zero NIP-29 nouns; composition happens here (defaults) and in `nmp-ffi`
 //! (the hydrating read views), never in the kernel.
 
+use nmp_core::slots::EventStoreSlot;
 use nmp_core::substrate::{ActionRegistrar, RegistrationError, SnapshotProjectionRegistrar};
 
 use crate::action::{
     CreateInviteAction, CreatePublicGroupAction, DiscoverGroupsAction, JoinGroupAction,
-    LeaveGroupAction, PostChatMessageAction, PutUserAction, ReactInGroupAction,
+    LeaveGroupAction, PublishGroupEventAction, PutUserAction, ReactInGroupAction,
     RepostInGroupAction, SetParentAction, ShareEventInGroupAction,
 };
 use crate::projection::{GroupDefaultsProjection, GroupDefaultsSnapshot};
@@ -95,7 +96,7 @@ pub fn wire_group_defaults_with_snapshot(
 /// Register the NIP-29 action namespaces against `app`'s action registry.
 ///
 /// Binds the typed [`ActionModule`](nmp_core::substrate::ActionModule) impls for:
-/// - `nmp.nip29.post_chat_message`
+/// - `nmp.nip29.publish_group_event`
 /// - `nmp.nip29.react_in_group`
 /// - `nmp.nip29.share_event_in_group`
 /// - `nmp.nip29.repost_in_group`
@@ -115,14 +116,25 @@ pub fn wire_group_defaults_with_snapshot(
 /// concrete `NmpApp` implements `ActionRegistrar`; the caller upcasts it
 /// via the trait, keeping this crate NIP-layer-only (D0 §3).
 ///
+/// `store_slot` is the V-83 [`EventStoreSlot`] publish-back handle (obtained
+/// from the host via `NmpApp::event_store_handle`). The group-publishing actions
+/// capture it (ADR-0052 rung 5.2 stateful module) so they can read recent group
+/// events for `["previous", …]` tags at publish time via a cache-only
+/// `StoreQuery::Tags { #h, limit }` — a single source of truth instead of a
+/// crate-local cache. The slot is empty until `nmp_app_start` publishes the
+/// store handle; reads before then degrade to no `previous` tags (D6).
+///
 /// Returns `Err(`[`RegistrationError`]`)` on the FIRST namespace collision
 /// detected (#1724 criterion 1: structured error in both dev and release).
 /// A collision means two init calls for the same app — the caller's bug.
-pub fn register_actions(app: &mut impl ActionRegistrar) -> Result<(), RegistrationError> {
-    app.register_action(PostChatMessageAction)?;
-    app.register_action(ReactInGroupAction)?;
-    app.register_action(ShareEventInGroupAction)?;
-    app.register_action(RepostInGroupAction)?;
+pub fn register_actions(
+    app: &mut impl ActionRegistrar,
+    store_slot: EventStoreSlot,
+) -> Result<(), RegistrationError> {
+    app.register_action(PublishGroupEventAction::new(store_slot.clone()))?;
+    app.register_action(ReactInGroupAction::new(store_slot.clone()))?;
+    app.register_action(ShareEventInGroupAction::new(store_slot.clone()))?;
+    app.register_action(RepostInGroupAction::new(store_slot))?;
     app.register_action(CreatePublicGroupAction)?;
     app.register_action(DiscoverGroupsAction)?;
     app.register_action(JoinGroupAction)?;

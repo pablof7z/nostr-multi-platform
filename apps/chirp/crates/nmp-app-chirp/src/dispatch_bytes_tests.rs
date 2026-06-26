@@ -81,8 +81,8 @@ fn every_dispatched_namespace_encodes_to_typed_payload() {
             r#"{"group":{"host_relay_url":"wss://groups.example","local_id":"g1"}}"#,
         ),
         (
-            "nmp.nip29.post_chat_message",
-            r#"{"group":{"host_relay_url":"wss://groups.example","local_id":"g1"},"content":"hi"}"#,
+            "nmp.nip29.publish_group_event",
+            r#"{"group":{"host_relay_url":"wss://groups.example","local_id":"g1"},"kind":9,"content":"hi"}"#,
         ),
         (
             "nmp.nip29.react_in_group",

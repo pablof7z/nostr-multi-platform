@@ -10,7 +10,7 @@
 //! panics on the decode path (D6).
 //!
 //! The impls are split by action family to stay under the file-size cap:
-//! - [`group`] — `join` / `leave` / `post_chat_message` / `create_public_group`
+//! - [`group`] — `join` / `leave` / `publish_group_event` / `create_public_group`
 //!   / `react_in_group`.
 //! - [`group_event`] — `share_event_in_group` / `repost_in_group`.
 //! - [`admin`] — `put_user` / `create_invite`.
@@ -46,8 +46,8 @@ generated_action_module!(
     "../generated/leave_group_action_generated.rs"
 );
 generated_action_module!(
-    post_chat_message_action_generated,
-    "../generated/post_chat_message_action_generated.rs"
+    publish_group_event_action_generated,
+    "../generated/publish_group_event_action_generated.rs"
 );
 generated_action_module!(
     react_in_group_action_generated,

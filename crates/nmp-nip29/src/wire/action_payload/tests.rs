@@ -4,7 +4,7 @@
 
 use crate::action::{
     CreateInviteInput, CreatePublicGroupInput, DiscoverGroupsInput, GroupAccess, GroupEventTarget,
-    GroupVisibility, JoinGroupInput, LeaveGroupInput, PostChatMessageInput, PutUserInput,
+    GroupVisibility, JoinGroupInput, LeaveGroupInput, PublishGroupEventInput, PutUserInput,
     ReactInGroupInput, RepostInGroupInput, SetParentInput, ShareEventInGroupInput,
 };
 use crate::group_id::GroupId;
@@ -83,44 +83,37 @@ fn leave_round_trips_and_preserves_presence() {
     );
 }
 
-// --- post_chat_message -------------------------------------------------------
+// --- publish_group_event -----------------------------------------------------
 
 #[test]
-fn chat_round_trips_with_prefixes_and_reply() {
-    let action = PostChatMessageInput {
+fn publish_round_trips_with_kind_content_and_tags() {
+    let action = PublishGroupEventInput {
         group: group(),
+        kind: 9,
         content: "hello".to_string(),
-        previous_event_id_prefixes: vec!["aa".to_string(), "bb".to_string()],
-        reply_to_event_id: Some("cc".to_string()),
+        tags: vec![
+            vec!["e".to_string(), "cc".to_string(), String::new(), "reply".to_string()],
+            vec!["t".to_string(), "nostr".to_string()],
+        ],
     };
     assert_eq!(
-        PostChatMessageInput::decode(&action.encode()).expect("decodes"),
+        PublishGroupEventInput::decode(&action.encode()).expect("decodes"),
         action
     );
 }
 
 #[test]
-fn chat_preserves_reply_presence_and_empty_prefixes() {
-    let action = PostChatMessageInput {
+fn publish_preserves_empty_content_and_empty_tags() {
+    let action = PublishGroupEventInput {
         group: group(),
-        content: "x".to_string(),
-        previous_event_id_prefixes: Vec::new(),
-        reply_to_event_id: None,
+        kind: 11,
+        content: String::new(),
+        tags: Vec::new(),
     };
-    let d = PostChatMessageInput::decode(&action.encode()).expect("decodes");
-    assert!(d.previous_event_id_prefixes.is_empty());
-    assert!(d.reply_to_event_id.is_none());
-    let empty_reply = PostChatMessageInput {
-        reply_to_event_id: Some(String::new()),
-        ..action
-    };
-    assert_eq!(
-        PostChatMessageInput::decode(&empty_reply.encode())
-            .expect("decodes")
-            .reply_to_event_id
-            .as_deref(),
-        Some("")
-    );
+    let d = PublishGroupEventInput::decode(&action.encode()).expect("decodes");
+    assert_eq!(d.kind, 11);
+    assert!(d.content.is_empty());
+    assert!(d.tags.is_empty());
 }
 
 // --- create_public_group -----------------------------------------------------
