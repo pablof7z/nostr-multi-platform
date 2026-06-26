@@ -63,6 +63,11 @@ compile_error!(
 #[cfg(target_arch = "wasm32")]
 pub mod shim;
 
+/// The shim error type, re-exported for PR-3's `nmp-store` wrapper to convert
+/// into `nmp_store::StoreError` at the (cycle-free) seam.
+#[cfg(target_arch = "wasm32")]
+pub use shim::SqliteWasmError;
+
 mod conv;
 mod delete;
 mod domain;
@@ -77,10 +82,19 @@ mod store_impl;
 
 /// Handle to the OPFS-backed SQLite event store.
 ///
-/// PR-1 stub: carries no state yet. PR-2 adds the SQLite connection (held
-/// behind a `RefCell<SqliteConn>`, owned by a single Worker actor — ADR-0054
-/// §3) plus the scoped `unsafe impl Send + Sync`; PR-3 wraps it with the
-/// `EventStore` impl in `nmp-store`. Kept target-agnostic for the spine so the
-/// type name resolves on any target; the engine fields and the `unsafe impl`
-/// it gains later are wasm32-only.
-pub struct OpfsSqliteStore;
+/// On wasm32 it owns the SQLite connection behind a `RefCell` (interior
+/// mutability for the synchronous `&self` `EventStore` trait — ADR-0054 §3),
+/// opened via [`OpfsSqliteStore::open`]. The connection handle is `!Send +
+/// !Sync`; the store nonetheless carries a single scoped `unsafe impl Send +
+/// Sync` (in `store_impl`) justified by single-Worker-actor ownership and made
+/// load-bearing by the `target_feature = "atomics"` `compile_error!` guard
+/// above. PR-3 wraps this handle with the `EventStore` impl in `nmp-store`.
+///
+/// The type name resolves on any target (the spine is target-agnostic), but the
+/// engine field, the `open` constructor, and the `unsafe impl` are wasm32-only;
+/// off wasm32 the struct is a zero-field marker that nothing constructs.
+pub struct OpfsSqliteStore {
+    /// The opfs-sahpool SQLite connection, owned by exactly one Worker actor.
+    #[cfg(target_arch = "wasm32")]
+    db: core::cell::RefCell<shim::SqliteConn>,
+}
