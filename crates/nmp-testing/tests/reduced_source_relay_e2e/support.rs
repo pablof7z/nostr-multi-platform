@@ -46,12 +46,21 @@ pub(crate) fn uninstall_update_signal() {
 }
 
 pub(crate) fn new_started_default_app() -> *mut NmpApp {
+    let app = new_default_app_before_start();
+    nmp_app_start(app, 256, 8);
+    app
+}
+
+pub(crate) fn new_default_app_before_start() -> *mut NmpApp {
     let app = nmp_app_new();
     assert!(!app.is_null(), "nmp_app_new returned null");
     nmp_defaults::register_defaults(unsafe { &mut *app });
     nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
-    nmp_app_start(app, 256, 8);
     app
+}
+
+pub(crate) fn start_app(app: *mut NmpApp) {
+    nmp_app_start(app, 256, 8);
 }
 
 pub(crate) fn add_relay(app: *mut NmpApp, relay: &str) {
@@ -130,6 +139,18 @@ pub(crate) fn signed_mute_list(keys: &Keys, muted_pubkeys: &[String], created_at
         .custom_created_at(Timestamp::from_secs(created_at))
         .sign_with_keys(keys)
         .expect("sign kind:10000")
+}
+
+pub(crate) fn signed_relay_list(keys: &Keys, relays: &[&str], created_at: u64) -> Event {
+    let tags: Vec<Tag> = relays
+        .iter()
+        .map(|url| Tag::parse(["r", *url]).expect("valid r tag"))
+        .collect();
+    EventBuilder::new(Kind::from(10_002u16), "")
+        .tags(tags)
+        .custom_created_at(Timestamp::from_secs(created_at))
+        .sign_with_keys(keys)
+        .expect("sign kind:10002")
 }
 
 pub(crate) fn signed_note(keys: &Keys, content: &str, created_at: u64) -> Event {

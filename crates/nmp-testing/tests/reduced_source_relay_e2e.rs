@@ -7,7 +7,76 @@
 #[path = "reduced_source_relay_e2e/support.rs"]
 mod support;
 
+use std::sync::{Arc, Condvar, Mutex};
+use std::time::{Duration, Instant};
+
+use nmp_core::substrate::{ReqFrameContext, ReqFrameInterceptor};
+use nmp_core::{Kernel, OutboundMessage};
+use serde_json::Value;
+
 use support::*;
+
+#[derive(Default)]
+struct CapturingReqInterceptor {
+    seen: Mutex<Vec<ReqFrameContext>>,
+    wake: Condvar,
+}
+
+impl CapturingReqInterceptor {
+    fn wait_for(&self, label: &str, pred: impl Fn(&ReqFrameContext) -> bool) -> ReqFrameContext {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let mut seen = self.seen.lock().unwrap_or_else(|e| e.into_inner());
+        loop {
+            if let Some(ctx) = seen.iter().find(|ctx| pred(ctx)).cloned() {
+                return ctx;
+            }
+            let now = Instant::now();
+            assert!(
+                now < deadline,
+                "timed out waiting for {label}; observed req contexts = {:?}",
+                *seen
+            );
+            let remaining = deadline.saturating_duration_since(now);
+            let (next, result) = self
+                .wake
+                .wait_timeout(seen, remaining)
+                .expect("req capture condvar");
+            seen = next;
+            if result.timed_out() {
+                assert!(
+                    seen.iter().any(&pred),
+                    "timed out waiting for {label}; observed req contexts = {:?}",
+                    *seen
+                );
+            }
+        }
+    }
+}
+
+impl ReqFrameInterceptor for CapturingReqInterceptor {
+    fn intercept_req(
+        &self,
+        _kernel: &mut Kernel,
+        ctx: &ReqFrameContext,
+    ) -> Option<Vec<OutboundMessage>> {
+        self.seen
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(ctx.clone());
+        self.wake.notify_all();
+        None
+    }
+}
+
+fn captured_req_matches(ctx: &ReqFrameContext, relay_url: &str, author: &str, kind: u64) -> bool {
+    if ctx.relay_url != relay_url {
+        return false;
+    }
+    let Ok(filter) = serde_json::from_str::<Value>(&ctx.filter_json) else {
+        return false;
+    };
+    has_kind(&filter, kind) && has_author(&filter, author)
+}
 
 #[test]
 fn active_follows_relay_replaces_source_and_closes_stale_author_sub() {
@@ -108,6 +177,59 @@ fn active_follows_cache_first_open_still_replays_live_relay_reqs() {
         vec![bob_note_id],
         "relay refinement must not disturb the cache-first row"
     );
+
+    nmp_ffi::nmp_app_free(app);
+    uninstall_update_signal();
+}
+
+#[test]
+fn list_members_nip65_arrival_emits_target_author_req() {
+    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    let rx = install_update_signal();
+
+    let alice = keys_from_byte(53);
+    let bob = keys_from_byte(54);
+    let bob_pk = bob.public_key().to_hex();
+    let alice_pk = alice.public_key().to_hex();
+    let nip65_target = "wss://bob-nip65-reroute.invalid";
+
+    let mute_list = signed_mute_list(&alice, std::slice::from_ref(&bob_pk), 100);
+    let bob_relay_list = signed_relay_list(&bob, &[nip65_target], 105);
+
+    let mut relay = RecordingRelay::spawn(vec![mute_list, bob_relay_list]);
+    let capture = Arc::new(CapturingReqInterceptor::default());
+    let app = new_default_app_before_start();
+    let app_ref = unsafe { &*app };
+    assert_eq!(
+        app_ref.set_req_frame_interceptor(capture.clone()),
+        nmp_ffi::NmpConfigStatus::Ok
+    );
+    start_app(app);
+    add_relay(app, relay.url());
+    sign_in(app, &alice);
+    wait_active(&rx, app_ref, &alice_pk);
+
+    let key = "test.relay.list-members.nip65-reroute";
+    let _handle = app_ref
+        .open_feed(&mute_source_params(key), &compiler)
+        .expect("active mute source opens");
+
+    relay.wait_req("active mute-list source", |filter| {
+        has_kind(filter, 10_000) && has_author(filter, &alice_pk)
+    });
+    let fallback_req = relay.wait_req("pre-NIP65 Bob author fallback sub", |filter| {
+        has_kind(filter, 1) && has_author(filter, &bob_pk) && !has_author(filter, &alice_pk)
+    });
+    relay.wait_req("Bob kind:10002 mailbox probe", |filter| {
+        has_kind(filter, 10_002) && has_author(filter, &bob_pk)
+    });
+    assert!(
+        !fallback_req.sub_id.is_empty(),
+        "pre-NIP-65 app-relay author sub must be a real wire subscription"
+    );
+    capture.wait_for("NIP-65 target Bob author REQ", |ctx| {
+        captured_req_matches(ctx, nip65_target, &bob_pk, 1)
+    });
 
     nmp_ffi::nmp_app_free(app);
     uninstall_update_signal();

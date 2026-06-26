@@ -1,16 +1,16 @@
 ---
 scenario: reduced-source-feed
 verdict: PASS
-generated_at: 1782444632
-relays: ["wss://relay.primal.net"]
+generated_at: 1782447084
+relays: ["wss://relay.damus.io"]
 ---
 
 # ReducedSource feed acquisition
 
 ## Verdict: PASS
 
-Published a fresh kind:3 for `fccf9a864007e46ebc9a16cf4b8574907608371f4875addbe6934925f2fe241b` following `66c97fab0a80b42fb903577ab9b343fbdd75b22b2f322128f4ff0aaaed973513`, published `d1956b7bd37fc8ba8acc0e00c4ae38c34a169b59518c0bc2969456db2a4944f8`, then opened `ActiveUserFollows` through the real app/kernel feed path and observed the note in the decoded NOFS snapshot.
+Published a fresh kind:3 for `c66f3fafe75936ccde176bb2203b4a911184320953575764ff45c16a3372b7b1` following `a40e5bbad0390ab1c6fd243efb36f653c0203b38cd59d958bfced102f10980a3`, published `bc2fb98f52c20befb2603d46580607606a2f9685e7151e7199a9c09e5323d42d`, then opened `ActiveUserFollows` through the real app/kernel feed path and observed the note in the decoded NOFS snapshot.
 
-- relay: `wss://relay.primal.net`
-- source event: `785cfce26c439c15ab42b1417328044e27eba5f9e78496cc70fc3ea248c97459`
-- note event: `d1956b7bd37fc8ba8acc0e00c4ae38c34a169b59518c0bc2969456db2a4944f8`
+- relay: `wss://relay.damus.io`
+- source event: `9ef35ae6fa6c8fb559a0c59b5772d14ec826e447ee3459dae6ee9a6da6f4738f`
+- note event: `bc2fb98f52c20befb2603d46580607606a2f9685e7151e7199a9c09e5323d42d`

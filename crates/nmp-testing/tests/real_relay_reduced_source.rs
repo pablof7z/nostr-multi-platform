@@ -28,8 +28,10 @@ use nmp_ffi::NmpApp;
 use nostr::{Event, Keys};
 use serde_json::{json, Value};
 
-const SCENARIO: &str = "reduced-source-feed";
-const REPORT: &str = "reduced-source-relay";
+const FEED_SCENARIO: &str = "reduced-source-feed";
+const FEED_REPORT: &str = "reduced-source-relay";
+const NIP65_SCENARIO: &str = "reduced-source-nip65-reroute";
+const NIP65_REPORT: &str = "reduced-source-nip65-reroute";
 const APP_WAIT: Duration = Duration::from_secs(30);
 const OK_WAIT: Duration = Duration::from_secs(8);
 
@@ -139,6 +141,17 @@ fn publish_to_first_accepting(relays: &[String], events: &[&Event]) -> Result<St
     Err(failures.join("\n"))
 }
 
+fn publish_all_to_relay(relay: &str, events: &[&Event]) -> Result<(), String> {
+    let Some(mut socket) = try_open(relay) else {
+        return Err(format!("{relay}: unreachable"));
+    };
+    for event in events {
+        publish_event(&mut socket, relay, event)?;
+    }
+    let _ = socket.close(None);
+    Ok(())
+}
+
 fn wait_feed_contains(
     rx: &Receiver<()>,
     app: &NmpApp,
@@ -171,18 +184,22 @@ fn wait_feed_contains(
 }
 
 fn write_skip(relays: &[String], body: &str) {
+    write_skip_for(
+        FEED_REPORT,
+        "ReducedSource feed acquisition",
+        FEED_SCENARIO,
+        relays,
+        body,
+    );
+}
+
+fn write_skip_for(report: &str, title: &str, scenario: &str, relays: &[String], body: &str) {
     let refs = relay_refs(relays);
     write_report(
-        REPORT,
-        &report_page(
-            "ReducedSource feed acquisition",
-            SCENARIO,
-            Verdict::Skip,
-            &refs,
-            body,
-        ),
+        report,
+        &report_page(title, scenario, Verdict::Skip, &refs, body),
     );
-    eprintln!("SKIP: {SCENARIO} - {body}");
+    eprintln!("SKIP: {scenario} - {body}");
 }
 
 #[test]
@@ -237,10 +254,10 @@ fn active_follows_reduced_source_over_real_relay() {
     nmp_ffi::nmp_app_free(app);
     support::uninstall_update_signal();
     write_report(
-        REPORT,
+        FEED_REPORT,
         &report_page(
             "ReducedSource feed acquisition",
-            SCENARIO,
+            FEED_SCENARIO,
             Verdict::Pass,
             &[relay.as_str()],
             &format!(
@@ -252,4 +269,111 @@ fn active_follows_reduced_source_over_real_relay() {
             ),
         ),
     );
+}
+
+#[test]
+#[ignore = "real-relay (run with --ignored)"]
+fn list_members_nip65_reroute_over_real_relays() {
+    let _serial = support::SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    let relays = candidate_relays();
+    let target_relays = relays
+        .iter()
+        .filter(|relay| relay.starts_with("wss://"))
+        .cloned()
+        .collect::<Vec<_>>();
+
+    if target_relays.len() < 2 {
+        write_skip_for(
+            NIP65_REPORT,
+            "ReducedSource NIP-65 reroute",
+            NIP65_SCENARIO,
+            &relays,
+            "Need at least two distinct `wss://` candidate relays to prove source-relay acquisition followed by NIP-65 target-relay fetch.",
+        );
+        return;
+    }
+
+    let mut failures = Vec::new();
+    for source_relay in &target_relays {
+        for target_relay in &target_relays {
+            if source_relay == target_relay {
+                continue;
+            }
+            match try_nip65_reroute_pair(source_relay, target_relay) {
+                Ok(()) => {
+                    write_report(
+                        NIP65_REPORT,
+                        &report_page(
+                            "ReducedSource NIP-65 reroute",
+                            NIP65_SCENARIO,
+                            Verdict::Pass,
+                            &[source_relay.as_str(), target_relay.as_str()],
+                            &format!(
+                                "Published the active user's kind:10000 source list and Bob's kind:10002 relay list to the source relay, published Bob's kind:1 note only to the target relay, configured the app with the source relay only, then observed the note in the decoded NOFS snapshot.\n\n- source relay: `{source_relay}`\n- target relay learned from kind:10002: `{target_relay}`"
+                            ),
+                        ),
+                    );
+                    return;
+                }
+                Err(err) => failures.push(format!("{source_relay} -> {target_relay}: {err}")),
+            }
+        }
+    }
+
+    write_skip_for(
+        NIP65_REPORT,
+        "ReducedSource NIP-65 reroute",
+        NIP65_SCENARIO,
+        &target_relays,
+        &format!(
+            "No candidate relay pair produced an observed app snapshot row for the NIP-65 target note. Attempts:\n\n```text\n{}\n```",
+            failures.join("\n")
+        ),
+    );
+}
+
+fn try_nip65_reroute_pair(source_relay: &str, target_relay: &str) -> Result<(), String> {
+    let alice = Keys::generate();
+    let bob = Keys::generate();
+    let alice_pk = alice.public_key().to_hex();
+    let bob_pk = bob.public_key().to_hex();
+    let now = common::now_s().saturating_sub(5);
+    let mute_list = support::signed_mute_list(&alice, std::slice::from_ref(&bob_pk), now);
+    let relay_list = support::signed_relay_list(&bob, &[target_relay], now.saturating_add(1));
+    let note = support::signed_note(
+        &bob,
+        &format!("nmp reduced-source nip65 reroute {}", common::now_ms()),
+        now.saturating_add(2),
+    );
+    let note_id = note.id.to_hex();
+
+    publish_all_to_relay(source_relay, &[&mute_list, &relay_list])?;
+    publish_all_to_relay(target_relay, &[&note])?;
+
+    let rx = support::install_update_signal();
+    let app = support::new_started_default_app();
+    support::add_relay(app, source_relay);
+    support::sign_in(app, &alice);
+    let app_ref = unsafe { &*app };
+    support::wait_active(&rx, app_ref, &alice_pk);
+
+    let key = "real-relay.reduced-source.nip65-reroute";
+    let _handle = app_ref
+        .open_feed(&support::mute_source_params(key), &support::compiler)
+        .expect("active mute-list feed opens");
+
+    let observed = wait_feed_contains(&rx, app_ref, key, &note_id, APP_WAIT);
+    nmp_ffi::nmp_app_free(app);
+    support::uninstall_update_signal();
+
+    if observed {
+        Ok(())
+    } else {
+        Err(format!(
+            "accepted source `{source}` and relay-list `{relay_list}`, accepted target note `{note}`, but the app feed did not observe the note within {APP_WAIT:?}",
+            source = mute_list.id.to_hex(),
+            relay_list = relay_list.id.to_hex(),
+            note = note_id,
+        ))
+    }
 }
