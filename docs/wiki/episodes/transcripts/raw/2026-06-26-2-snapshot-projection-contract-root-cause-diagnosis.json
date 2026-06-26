@@ -1,0 +1,70 @@
+[
+  [
+    "user",
+    "review the open PRs and try to land them"
+  ],
+  [
+    "assistant",
+    "Four open PRs. Let me get the CI status for each."
+  ],
+  [
+    "user",
+    "[Request interrupted by user for tool use]"
+  ],
+  [
+    "user",
+    "an agent says that the open PRs are stale and already landed on master -- can you verify and close the PR/issue if so?"
+  ],
+  [
+    "assistant",
+    "The wasm-organization agent finished. Its findings independently corroborate the PR cleanup (it flagged the same \"commits already on master, close the branches\" conclusion). Here's the map of the wasm work.\n\n## Wasm work organization\n\n### The shape of the effort\nThis is **Epic #2045 — \"reset browser runtime architecture and freeze current WASM work.\"** The root problem: `nmp-wasm` *looked* like the browser runtime, so agents kept piling signer/outbox/routing/protocol policy into it instead of reusing shared NMP crates. The reset redraws ownership into **3 layers** and rebuilds Chirp Web on top.\n\nThere's a **freeze in effect**: no feature/fix PRs touching `crates/nmp-wasm`, `apps/chirp/crates/nmp-app-chirp-web`, or `web/chirp` unless they're part of the reset; no new signer/outbox/routing/protocol policy in `nmp-wasm`; no TS workarounds for missing Rust seams.\n\n### Target architecture (3 layers)\n1. **`nmp-wasm` — ABI glue only.** wasm-bindgen exports, byte transport, callbacks, panic guards, lifecycle. No routing/signing/NIP/projection/persistence policy. (The old `WasmRuntime` facade was renamed `RawWasmAbiAdapter` and doc-hidden.)\n2. **`crates/nmp-browser-runtime` — the browser platform adapter (the real rebuild target).** Currently a **60-LOC stub**. Will own: the Worker event loop (D4 single-writer), transport-only browser WebSocket driver, a `BrowserAppBuilder` typestate composition root, and a pluggable capability/signer provider registry (NIP-07 / nsec / NIP-46).\n3. **NMP crates (`nmp-defaults`/`nmp-substrate-defaults` + nostr behavior crates).** The shared composition floor — browser composes through the *same* `register_substrate` surface native uses, via `nmp_core::substrate::AppHost`.\n\n### Done (on master)\n- Chirp Web product deleted (`6da4b6f6f`, 177 files / −21k LOC) — closed #2052, #2077–#2080\n- `nmp-browser-runtime` crate **scaffolded** (`3f4013cd5`) + release-classified (`69849f231`)\n- `nmp-wasm` reduced to ABI surface + doctrine dep/method gates (`1d1c95f21`) — #2062/2063/2064\n- Shared composition target documented (`0b1e84093`) — #2059/2060\n\n### Pending (the actual rebuild — all open issues, no code yet)\nLogical sequence:\n1. **#2032 ADR/docs** — write the ADR for the 3-layer split (ADR-0047 & ADR-0054 still describe the *old* model). `status:needs-adr` — **the biggest blocker**, prerequisite for everything else.\n2. **#2046/#2057/#2058** `BrowserAppBuilder` typestate (storage, relay policy, projections, defaults, providers must be wired before `start`)\n3. **#2047/#2061** unify browser ↔ native default composition + parity tests\n4. **#2049/#2065–#2068** capability + signer-provider registry (NIP-07, nsec, NIP-46-via-signer-broker)\n5. **#2050/#2069–#2071** transport-only browser relay driver + admission/socket budgets + cancelable timer\n6. **#2051/#2072–#2076** snapshot/projection/clock/diagnostics contracts (fail-closed, deterministic clock seam)\n7. **#2053/#2081/#2082** browser-runtime CI + doctrine gates\n8. **#2038** Chirp Web rebuild + real-relay acceptance (`status:blocked` on all above)\n9. **#1007** OPFS-SQLite store (ADR-0054, post-v1, blocked on #2038)\n\n### Notable blocker\nThe `NmpWasmRuntime` wasm-bindgen entry-point class **no longer exists on any branch** — it was deleted with the chirp-web crate and hasn't been re-established. So `web/packages/runtime-web/src/wasmBridge.ts` is non-functional by design until #2038. The whole browser path is dark until `nmp-browser-runtime` gets a real `BrowserAppBuilder`.\n\n**Bottom line:** the *teardown and scaffolding* phase is complete and merged; the *rebuild* phase (#2046 onward) hasn't started, and it's gated on writing the ADR (#2032) first.\n\nWant me to start on the ADR (#2032), or spin up the `BrowserAppBuilder` work?"
+  ],
+  [
+    "user",
+    "help me understand more the high-level of 2032's work"
+  ],
+  [
+    "assistant",
+    "Here's the high-level of **#2032 — \"Docs/ADR: freeze WASM work and define browser runtime ownership split.\"**\n\n## What kind of work it is\nIt's a **pure docs/decision issue — zero code.** (`category:decision`, `category:docs`, `status:needs-adr`, `priority:p1`.) Its entire job is to make the *durable source-of-truth documents* match the architecture the epic already decided on. Right now the code has started moving to the new 3-layer model, but the canonical docs still describe the **old** model — so anyone reading the docs (human or agent) gets pointed back at the footgun the reset exists to kill.\n\nIt's the **single highest-leverage blocker** because every downstream implementation issue (#2046 onward) builds against the ownership rules this issue is supposed to make canonical. Per the repo's planning-discipline rule (single source of truth per fact), the implementation can't proceed cleanly until the docs stop contradicting it.\n\n## The core contradiction it resolves\nToday's durable docs say **\"`nmp-wasm` is the browser runtime.\"** The corrected doctrine is:\n- `nmp-wasm` = **ABI glue only** (wasm-bindgen exports, byte transport, callbacks, panic guards, lifecycle).\n- The **browser runtime** is a *composed NMP app-builder/capability layer* living **outside** the binding crate (i.e. `nmp-browser-runtime`).\n- Chirp Web is **not a compatibility target** — it may be deleted/rebuilt (and already was).\n\n## The concrete deliverables (5 doc edits + 1 queue cleanup)\n1. **Amend ADR-0047 in place** — stop saying `nmp-wasm` owns the browser runtime.\n2. **Rewrite `docs/wasm-surface.md`** — describe the surface as frozen/transitional, or replace it with the intended ABI-glue contract.\n3. **Update `docs/architecture/crate-boundaries.md`** — assign browser-runtime composition to a crate *outside* the binding crate.\n4. **Fix the temporal plans** (`docs/plan.md`, `docs/plan/post-v1.md`, `docs/plan/m15-cross-platform.md`) — point web/WASM tracking at the live epic **#2045**, not at the *closed* #1008 or the obsolete Chirp Web path.\n5. **Mark ADR-0054 (OPFS-SQLite) blocked** — keep the OPFS *direction*, but stop assuming `nmp-wasm` is the composition root.\n6. **Queue hygiene** — block/re-scope/close the stale WASM/Chirp Web issues under #2045 (notably #2038, #1007, #2025–#2036) so the queue stops implying the old path is still the target.\n\n## Acceptance, in plain terms\nDocs durably state \"(a) `nmp-wasm` = ABI glue, (b) browser runtime = composed app-builder/capability layer outside the binding crate,\" ADR-0047 and ADR-0054 no longer preserve obsolete guidance, the plan files point at #2045, and no open issue still treats the old Chirp Web path as the destination.\n\n## Why it's subtle\nThe trap is scope: it's tempting to treat this as \"write the new browser-runtime spec.\" It's **not** — the epic explicitly says exact crate names and public API spelling are *owned by #2032*, but the **ownership invariants** are already fixed by #2045. So #2032's job is to *transcribe and reconcile* the already-decided invariants into the durable docs and name the crate/API surface — not to re-litigate the architecture. The real risk is doing it as scattered prose instead of amending the canonical files in place (which would itself violate the planning-discipline rule).\n\nWant me to draft the ADR-0047 amendment and the `wasm-surface.md` rewrite so you can review them before anything's committed?"
+  ],
+  [
+    "user",
+    "2032 has been merged -- now what?"
+  ],
+  [
+    "assistant",
+    "Opus explorer on #2059 is running. Once it returns its verdict, I'll get an independent second opinion via `codex exec` (feeding it the same question + the explorer's recommendation), then reconcile the two and present you a final design call. I'll wait for the explorer to complete."
+  ],
+  [
+    "user",
+    "A session-scoped Stop hook is now active with condition: \"drive all of the issues to completion, with frequent reviews from `codex exec` to ensure we don't drift away in complexity and stay true to the intended architecture -- use opus agents to decide/plan, sonnet agents for coding, PR + merge -- you own landing the PRs in master\". Briefly acknowledge the goal, then immediately start (or continue) working toward it — treat the condition itself as your directive and do not pause to ask the user what to do. The hook will block stopping until the condition holds. It auto-clears once the condition is met — do not tell the user to run `/goal clear` after success; that's only for clearing a goal early."
+  ],
+  [
+    "assistant",
+    "Fresh agent dispatched with explicit \"you implement on the existing PR branch\" framing — fixing the two correctness blockers (clear-via-Cleared-row, transactional merge cache), the D6 poison handling, the provider-readiness wiring, and the tests.rs split. I'll re-verify (including native projection-merge regression tests for the shared merge-cache fix) and merge.\n\nOperational note: a resumed agent can misread a fix message as a relay task — a freshly-spawned agent with explicit implementer framing is more reliable for fix rounds.\n\nStatus unchanged otherwise: snapshot in fix → then #2068 NIP-46 → CI-gates (planned) → Chirp rebuild (#2038, still to plan). Continuing automatically."
+  ],
+  [
+    "user",
+    "give me an update -- where are you, what have you done, what's still missing, what are you working on: bullet-point style, tldr style"
+  ],
+  [
+    "assistant",
+    "**TL;DR — Epic #2045 (browser-runtime reset), driving all sub-issues to completion**\n\n**Where I am**\n- Spine fully landed; 2.5 of 3 fan-out tracks merged; finishing the 3rd; CI-gates + Chirp rebuild still ahead.\n\n**Done & merged (17 issues closed)**\n- ✅ **#2059** — decided & documented: reuse `AppHost` (no new trait)\n- ✅ **#2047** — `nmp-defaults` wasm-safe (default-on `native` feature)\n- ✅ **PR-A** — narrow command interpreter + shared signed-publish helper (closed a forged-event gap)\n- ✅ **PR-B / #2046/#2057/#2058** — `BrowserAppBuilder` typestate + Worker single-writer loop\n- ✅ **#2050/#2069/#2070/#2071** — relay transport (driver integration, cancelable Worker timer, budgets) + fixed a real nmp-network Worker-reconnect bug\n- ✅ **#2049/#2065/#2066/#2067** — capability/signer registry + nsec/LocalKey + NIP-07\n\n**Working on now**\n- 🔧 **Snapshot/projection/clock/diagnostics (#2051/#2072/#2073/#2074/#2075/#2076)** — PR #2115 open, in fix round. Codex caught 2 blockers: `set_signer_state(None)` didn't truly clear, and `ProjectionMergeCache` wasn't transactional (a malformed frame could poison `last_good` — a real nmp-core bug the fail-closed work exposed, benefits native too). Fresh agent applying fixes + splitting an over-cap test file.\n\n**Still missing (queued, sequential on `nmp-browser-runtime`)**\n- ⬜ **#2068** — NIP-46 signer (native-broker / wasm host-brokered) — planned\n- ⬜ **#2053/#2081/#2082** — browser-runtime CI + doctrine gates — planned (2 native build modes as gates; real wasm32 CI is infeasible — secp256k1 C-toolchain — so deferred non-blocking)\n- ⬜ **#2038** — Chirp Web rebuild + real-relay acceptance (the final, biggest piece) — not yet planned\n\n**How it's going**\n- Loop per PR: Opus plans → `codex exec` reviews → Sonnet codes in a worktree → `codex exec` reviews the PR → fix → I merge → sync master → prune worktree.\n- Codex has caught a real defect on **every** PR that green CI missed (divergent publish path, silent-drop gaps, a wake bug that left relay inert, a 1Hz polling-loop doctrine violation, a non-transactional cache bug). That's the drift-prevention working.\n- Other agents are landing unrelated PRs concurrently (#2095/2099/2100); I'll absorb any rebase if they hit master.\n- Master is green and synced; my worktrees pruned on each merge."
+  ],
+  [
+    "user",
+    "but what's the overall stuff youre working on? what are you taked with?"
+  ],
+  [
+    "assistant",
+    "**#2068 NIP-46** is coding — the last signer sub-issue (native `BunkerBroker` + wasm host-brokered, with channel-based dynamic registration to respect D4). I'll codex-review it (the off-thread→pump registration is the risk), then merge.\n\n**Progress: 23 issues closed.**\n- Spine ✅ · Relay ✅ (4) · Signer core ✅ (4) · Snapshot ✅ (6)\n- Remaining: #2068 NIP-46 (coding) → CI-gates #2053/#2081/#2082 (planned) → Chirp rebuild #2038 (final, to plan)\n\nMaster green & synced; all my worktrees pruned; snapshot/signer issues closed. The plan→code→codex→fix→merge loop continues. Continuing automatically when the NIP-46 PR opens."
+  ],
+  [
+    "user",
+    "why does wasm require a specific nip-46 support? why isnt enough with what already exists?"
+  ],
+  [
+    "assistant",
+    "Step 1 (nmp-nip46 extraction) is on its final CI watch — error strings restored, codex-cleared, manifest registered. Merge on green, then Step 2 (event-reducer rewrite to drop the blocking `crossbeam` carry). Continuing automatically."
+  ]
+]

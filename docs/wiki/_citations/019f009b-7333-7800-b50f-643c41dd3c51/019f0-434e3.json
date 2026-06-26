@@ -1,0 +1,6 @@
+{
+  "id": "019f0-434e3",
+  "ts": "2026-06-26T07:34:57Z",
+  "session": "019f009b-7333-7800-b50f-643c41dd3c51",
+  "text": "\n1. registering the source interest;\n2. serving source rows from cache/store;\n3. marking the source dirty when relevant events/account state change;\n4. running a deterministic reducer;\n5. diffing previous vs. next reduced output;\n6. closing removed targets;\n7. opening changed/new targets through existing registries;\n8. triggering subscription recompilation.\n [...] - Account switch re-resolves active-account sources and closes stale old-account targets.\n- Relay reroute/NIP-65 changes recompile materialized interests without re-declaring the source.\n- Cache-first/offline behavior must reduce from stored source events before relay results arrive.\n- Recompute must be actor/kernel-owned, event-driven, and non-polling.\n- Large outputs must be partitioned by existing planner/wire constraints, not silently capped.\n- Native shells must never receive or compute the concrete expanded source set for correctness. [...] - Account login, logout, account switch, follow/unfollow, source replacement, source deletion, and relay reroute all close stale targets and open current targets.\n- Missing source data fails closed and keeps the source interest live."
+}

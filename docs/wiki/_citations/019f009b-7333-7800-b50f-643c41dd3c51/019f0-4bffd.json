@@ -1,0 +1,6 @@
+{
+  "id": "019f0-4bffd",
+  "ts": "2026-06-26T07:34:57Z",
+  "session": "019f009b-7333-7800-b50f-643c41dd3c51",
+  "text": "- The live app-facing feed entry is `nmp_app_open_feed`, with `FeedParams` / `FeedScope` / `PubkeySetExpr`: `apps/chirp/crates/nmp-app-chirp/src/ffi/feed.rs:96`, `crates/nmp-feed/src/params.rs:66`.\n- Current `PubkeySetExpr` already has closed dynamic cases such as `ActiveUserFollows`, `ContactList`, `ListMembers`, `Wot`, set algebra, and `CustomPerspectiveId`: `crates/nmp-feed/src/params.rs:66`. [...] - `nmp-defaults`: composition root that registers default reducers and maps `FeedParams` / `PubkeySetExpr` to reduced sources. [...] The builder guidance should say: apps open dynamic feeds with `open_feed(FeedParams)`, never watch kind:3/NIP-51/pointer sources in native, never pass concrete reduced author sets, and never reopen subscriptions on membership changes. Reducers live in protocol/defaults/app Rust; core/planner only see materialized substrate interests."
+}

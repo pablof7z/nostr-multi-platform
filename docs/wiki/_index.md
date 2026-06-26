@@ -2,7 +2,7 @@
 
 > Derived cache — do not hand-edit. Rebuilt by proactive-context after each capture.
 
-Last updated: 2026-06-19
+Last updated: 2026-06-26
 
 ## component-registry (2 guides)
 
@@ -21,12 +21,12 @@ Last updated: 2026-06-19
 
 | Slug | Title | Summary | Tags | Volatility | Verified | Topic |
 |------|-------|---------|------|------------|----------|-------|
-| [account-creation](guides/account-creation.md) | Account Creation | ActorCommand::CreateAccount takes initial_follows: Vec<String> supplied by the app; an empty vector means no contacts are prepopulated and no cold-start kind:3 | capture | warm | 2026-06-18 | crate-architecture |
-| [bootstrap-self-kinds](guides/bootstrap-self-kinds.md) | Bootstrap Self-Kinds | NMP subscribes at login to the user's self-kinds with a Tailing (persistent) subscription for kinds 0, 3, 10002, 10000, and 10006, so that updates to any of the | capture | warm | 2026-05-26 | crate-architecture |
-| [crate-architecture](guides/crate-architecture.md) | Crate Architecture | Relays do not generally reject large author REQ filters; no per-relay author-set sharding is needed as a base-layer fix. | capture | warm | 2026-06-18 | crate-architecture |
+| [account-creation](guides/account-creation.md) | Account Creation | ActorCommand::CreateAccount takes initial_follows: Vec<String> supplied by the app; an empty vector means no contacts are prepopulated and no cold-start kind:3 | capture | warm | 2026-06-26 | crate-architecture |
+| [bootstrap-self-kinds](guides/bootstrap-self-kinds.md) | Bootstrap Self-Kinds | NMP subscribes at login to the user's self-kinds with a Tailing (persistent) subscription for kinds 0, 3, 10002, 10000, and 10006, so that updates to any of the | capture | warm | 2026-06-26 | crate-architecture |
+| [crate-architecture](guides/crate-architecture.md) | Crate Architecture | Relays do not generally reject large author REQ filters; no per-relay author-set sharding is needed as a base-layer fix. | capture | warm | 2026-06-26 | crate-architecture |
 | [flatbuffers-transport](guides/flatbuffers-transport.md) | FlatBuffers Transport | PR #582 replaces the Rustâhost snapshot transport with FlatBuffers (nmp.transport.UpdateFrame, file id NMPU) carrying two variants: Snapshot (full kernel snap | capture | warm | 2026-05-26 | crate-architecture |
 | [nip25-reaction-ownership](guides/nip25-reaction-ownership.md) | NIP-25 Reaction Ownership | nmp-nip25 is the single owner of public kind 7 reaction actions and projection; nmp-nip02 retains only compatibility re-exports for the old ReactModule type nam | capture | warm | 2026-06-19 | crate-architecture |
-| [nmp-kinds-ssot](guides/nmp-kinds-ssot.md) | NMP Kinds Single Source of Truth | KIND_SHORT_NOTE is renamed to KIND_SHORT_TEXT_NOTE throughout nmp-nip01 with no compat alias; all call sites in build.rs, decode.rs, meta_timeline, view, visibl | capture | warm | 2026-06-18 | crate-architecture |
+| [nmp-kinds-ssot](guides/nmp-kinds-ssot.md) | NMP Kinds Single Source of Truth | KIND_SHORT_NOTE is renamed to KIND_SHORT_TEXT_NOTE throughout nmp-nip01 with no compat alias; all call sites in build.rs, decode.rs, meta_timeline, view, visibl | capture | warm | 2026-06-26 | crate-architecture |
 | [operator-data-leaf-apps-only](guides/operator-data-leaf-apps-only.md) | Operator Data Belongs Only in Leaf Apps | Hardcoded operator dataâincluding DEFAULT_FOLLOWS pubkeys (such as fiatjaf), DEFAULT_APP_RELAYS, nostrconnect bootstrap relay URLs, and sign_event permissions | capture | warm | 2026-06-18 | crate-architecture |
 | [publish-outbox-pipeline](guides/publish-outbox-pipeline.md) | Publish Outbox Pipeline | publish_outbox_status() must check for any Ok relay state before checking for Pending state, so that a partially-succeeded publish (some relays Ok, some Pending | capture | warm | 2026-05-26 | crate-architecture |
 
@@ -41,9 +41,9 @@ Last updated: 2026-06-19
 | [lmdb-event-store](guides/lmdb-event-store.md) | LMDB Event Store | The `EventStore` trait is the unified interface for event persistence, with `MemEventStore` for tests/WASM and `LmdbEventStore` for production (selected via `St | capture | warm | 2026-06-18 | data-persistence |
 | [logical-interest](guides/logical-interest.md) | LogicalInterest and the Subscription Registry | A LogicalInterest is the actor-internal, semantics-preserving description of what a view wants the kernel to keep alive on the wire. It is the input to subscription compilation and drives both REQ subscriptions and cache-serve scans. | capture | warm | 2026-06-18 | data-persistence |
 | [nostrdb-cache-engineering](guides/nostrdb-cache-engineering.md) | Nostrdb Cache Engineering | NMP adopts nostrdb cache engineering techniques (visitor query semantics, streaming reads, provenance indexes) as design concepts while keeping NMP's canonical | capture | warm | 2026-06-18 | data-persistence |
-| [store-first-interest-registration](guides/store-first-interest-registration.md) | Store-First Interest Registration (Enqueue and Drain) | ADR-0045 establishes a single event-acquisition mechanism: at interest-open time the store is scanned (cache-serve), and relay delivery fills the tail | capture | warm | 2026-06-18 | data-persistence |
+| [store-first-interest-registration](guides/store-first-interest-registration.md) | Store-First Interest Registration (Enqueue and Drain) | ADR-0045 establishes a single event-acquisition mechanism: at interest-open time the store is scanned (cache-serve), and relay delivery fills the tail | capture | warm | 2026-06-26 | data-persistence |
 
-## developer-workflow (11 guides)
+## developer-workflow (12 guides)
 
 | Slug | Title | Summary | Tags | Volatility | Verified | Topic |
 |------|-------|---------|------|------------|----------|-------|
@@ -53,6 +53,7 @@ Last updated: 2026-06-19
 | [build-linter-chain](guides/build-linter-chain.md) | Build-Linter Chain | Build commands and file writes are chained in a single shell invocation to prevent the linter from reverting changes between the edit and compilation steps | capture | warm | 2026-05-21 | developer-workflow |
 | [developer-workflow-standards](guides/developer-workflow-standards.md) | Developer Workflow Standards | No temporary hacks, 'for now' workarounds, or stubs that stay in production code are permitted; a staged fix is allowed only when a GitHub issue labeled status: | capture | warm | 2026-05-21 | developer-workflow |
 | [git-worktree-discipline](guides/git-worktree-discipline.md) | Git Worktree Discipline | All worktrees, orphan checkout directories, and stale branches (including worktree-*, codex-review-*, push-tmp, wip-snapshot-hb42, codex/worker1-nip17-dm-inbox- | capture | warm | 2026-05-18 | developer-workflow |
+| [github-milestone-phases](guides/github-milestone-phases.md) | GitHub Milestone Phases | GitHub issues are organized into 5 milestones by phase: v1 Blocker, Pre-v1 Hardening, v1 Infrastructure, v1 Developer Experience, and Post-v1 | capture | warm | 2026-06-26 | developer-workflow |
 | [post-v1-follow-ups](guides/post-v1-follow-ups.md) | Post-v1 Follow-ups | Web client config single-sourcing and ProjectionMergeCache migration to the wasm worker must be tracked as post-v1 follow-ups, not fixed in this campaign. | capture | warm | 2026-06-19 | developer-workflow |
 | [product-correction-escalation](guides/product-correction-escalation.md) | Product Correction Escalation | When a user gives a correction or instruction about how the NMP product should work, it must be treated as a possible product-authority update, not just an impl | capture | warm | 2026-06-18 | developer-workflow |
 | [repl-commands](guides/repl-commands.md) | REPL Commands | The create-account REPL command accepts inline relay URLs (e.g., create-account alice wss://relay.primal.net) | capture | warm | 2026-05-19 | developer-workflow |
@@ -67,7 +68,7 @@ Last updated: 2026-06-19
 | [actor-panic-handling](guides/actor-panic-handling.md) | Actor Panic Handling | The actor thread in nmp-core uses `std::panic::catch_unwind` to capture panic messages from `Keys::generate()`, `Secp256k1::new()`, or any other Rust code, and | capture | warm | 2026-05-19 | ffi-runtime |
 | [channel-disconnect-handling](guides/channel-disconnect-handling.md) | Channel Disconnect Handling | Rust channels must block with recv()/recv_timeout() or drain with try_recv() (not in a sleep loop); iOS must consume ViewBatch snapshots pushed by the kernel an | capture | warm | 2026-05-26 | ffi-runtime |
 | [concurrency-audit](guides/concurrency-audit.md) | Concurrency Audit | The workspace has 289 total locks (181 Mutex, 1 RwLock, 107 Atomic) and zero compiler warnings or deprecated items | capture | warm | 2026-05-21 | ffi-runtime |
-| [dispatch-action-seam](guides/dispatch-action-seam.md) | Dispatch Action Seam | The dispatch_action seam is structurally vestigial â 70 C-ABI symbols exist but only 3 are routed through dispatch_action | capture | warm | 2026-05-21 | ffi-runtime |
+| [dispatch-action-seam](guides/dispatch-action-seam.md) | Dispatch Action Seam | ADR-0064 collapses the write path to a single byte-transport doorway (one doorway per boundary). Multiple bespoke event-producing C symbols previously bypassed the dispatch_action doorway; migration to eliminate those bypasses is in progress. | capture | warm | 2026-05-21 | ffi-runtime |
 | [ffi-runtime-audit-findings](guides/ffi-runtime-audit-findings.md) | FFI Runtime Audit Findings | The hung-spinner finding (no async success terminal) is stale â success terminal was already implemented in reconcile.rs (PR #1211) after the audit was writte | capture | warm | 2026-06-18 | ffi-runtime |
 | [flatbuffers-decode-validation](guides/flatbuffers-decode-validation.md) | FlatBuffers Decode Validation | The FlatBuffers decode_value function returns a Result and rejects invalid values (non-finite floats, missing string_value, missing list/map, missing map pair v | capture | warm | 2026-05-26 | ffi-runtime |
 | [flatbuffers-version-pinning](guides/flatbuffers-version-pinning.md) | FlatBuffers Version Pinning | CI pins the intentionally asymmetric FlatBuffers runtime versions (Rust + Swift: 25.12.19, Web/TypeScript: 25.9.23, Android/Kotlin: 25.2.10) and verifies that e | capture | warm | 2026-05-26 | ffi-runtime |
@@ -103,8 +104,14 @@ Last updated: 2026-06-19
 | [poll-inbox-dispatch](guides/poll-inbox-dispatch.md) | Poll Inbox Dispatch | Polling is forbidden at every layer of the stack: no sleep+check loops, no Timer.scheduledTimer querying state, no try_recv+sleep spin loops, no Task loops with | capture | warm | 2026-05-19 | marmot |
 | [relay-roles](guides/relay-roles.md) | Relay Roles | The relay role is additive â a relay can have any combination of Read, Write, Indexer, and Wallet capabilities simultaneously | capture | warm | 2026-05-19 | marmot |
 | [relay-state-projections](guides/relay-state-projections.md) | Relay State Projections | Relay state fields (indexer_relays, local_write_relays, relay_edit_rows) are actor-owned: the sole write path is via IdentityState::set_relay_edit_rows from act | capture | warm | 2026-05-21 | marmot |
-| [timeline-metadata-fetch](guides/timeline-metadata-fetch.md) | Timeline Metadata Fetch | The follow-feed/timeline is a higher-order layer that sits above the base event-query substrate; it must be clearly delineated from the base layer in issue trac | capture | warm | 2026-06-18 | marmot |
+| [timeline-metadata-fetch](guides/timeline-metadata-fetch.md) | Timeline Metadata Fetch | Timeline acquisition is a higher-order ReducedSource layer above the base event-query substrate; metadata and secondary hydration stay as dependent interests. | capture | warm | 2026-06-18 | marmot |
 | [zaps-domain](guides/zaps-domain.md) | Zaps Domain | ZapsDomain registration requires net-new multi-PR ZapsView infrastructure because every premise in the original brief was wrong | capture | warm | 2026-05-22 | marmot |
+
+## reduced-source (1 guide)
+
+| Slug | Title | Summary | Tags | Volatility | Verified | Topic |
+|------|-------|---------|------|------------|----------|-------|
+| [reduced-source](guides/reduced-source.md) | ReducedSource and Dynamic Feed Composition | ReducedSource is a kernel-owned primitive that registers a source interest, runs a deterministic reducer on its results, diffs the output against prior reductio | capture | warm | 2026-06-26 | reduced-source |
 
 ## tui (13 guides)
 
@@ -147,7 +154,7 @@ Last updated: 2026-06-19
 |------|-------|---------|------|------------|----------|-------|
 | [nmp-website](guides/nmp-website.md) | NMP Website | The NMP developer landing page is deployed to nostr-mp.f7z.io via Vercel production | capture | warm | 2026-05-21 | website |
 
-## Research Records (4 records)
+## Research Records (10 records)
 
 | Record | Date | Finding | Agent |
 |--------|------|---------|-------|
@@ -155,8 +162,14 @@ Last updated: 2026-06-19
 | [2026-06-18-1-browseragent-test-of-spa-routing-3](research/2026-06-18-1-browseragent-test-of-spa-routing-3.md) | 2026-06-18 | BrowserAgent test of SPA routing: 3 navigation actions checked for URL and content changes; verdict: Routing WORKS | a60eed145549128b5 |
 | [2026-06-18-1-comparative-investigation-of-relay-networking-routing](research/2026-06-18-1-comparative-investigation-of-relay-networking-routing.md) | 2026-06-18 | Comparative investigation of relay networking/routing separation across applesauce, NDK, rust-nostr, and Bitcoin Core; verdict that NMP's crate-boundaries design conflates routing and pool lifecycle and should split nmp-relay-pool into nmp-router + nmp-network | Codex research agent |
 | [2026-06-18-1-nmp-component-registry-inventory-cataloged-14](research/2026-06-18-1-nmp-component-registry-inventory-cataloged-14.md) | 2026-06-18 | NMP Component Registry Inventory: cataloged 14 components across platforms, verified all TS-referenced source files exist on disk (6,705 LOC total), found TUI content components exist on disk but not wired into web registry, web platform entirely empty | a8e6f566355f0fb98 |
+| [2026-06-26-1-codex-design-evaluation-of-nip-46](research/2026-06-26-1-codex-design-evaluation-of-nip-46.md) | 2026-06-26 | Codex design evaluation of NIP-46 architecture: assesses whether it conflates protocol with transport/process management; recommends decoupling via transport-agnostic protocol core; verdict do-not-merge on PR #2117 | codex |
+| [2026-06-26-1-evaluated-16-docs-plan-milestone-and](research/2026-06-26-1-evaluated-16-docs-plan-milestone-and.md) | 2026-06-26 | Evaluated 16 docs/plan/ milestone and support files against execution status and GitHub issue tracking; verdict: all accounted for as shipped/stale/already-tracked, safe to retire directory | plan-issue-capture |
+| [2026-06-26-1-evaluation-of-16-docs-plan-files](research/2026-06-26-1-evaluation-of-16-docs-plan-files.md) | 2026-06-26 | Evaluation of 16 docs/plan/ files: per-file assessment of shipped/stale/already-tracked status with systematic verdicts and final judgment that all safe to delete with no valid future work lost. | plan-issue-capture@session-5f0cae74 |
+| [2026-06-26-1-nip-46-architectural-analysis-evaluated-protocol](research/2026-06-26-1-nip-46-architectural-analysis-evaluated-protocol.md) | 2026-06-26 | NIP-46 architectural analysis: evaluated protocol/transport separation criterion; diagnosed conflation in PR #2117; verdict: do not merge, requires decoupled design | main |
+| [2026-06-26-2-codex-review-of-pr-2123-nmp](research/2026-06-26-2-codex-review-of-pr-2123-nmp.md) | 2026-06-26 | Codex review of PR #2123 nmp-nip46 extraction: verifies behavior-preservation of deduped kind:24133 wire-builder and FrameSink bridge; FIX-FIRST verdict on error-string drift requiring correction | codex |
+| [AGENTS](research/AGENTS.md) |  |  |  |
 
-## Episode Cards (226 cards)
+## Episode Cards (231 cards)
 
 | Card | Date | Title | Salience | Status |
 |------|------|-------|----------|--------|
@@ -207,7 +220,7 @@ Last updated: 2026-06-19
 | [2026-05-21-4-phase-2-bunker-dms-should-extend](episodes/2026-05-21-4-phase-2-bunker-dms-should-extend.md) | 2026-05-21 | Phase 2 bunker DMs should extend PendingSign, not OS-thread driver | reversal | active |
 | [2026-05-21-5-image-rendering-adopts-ratatui-image-fallback](episodes/2026-05-21-5-image-rendering-adopts-ratatui-image-fallback.md) | 2026-05-21 | Image rendering adopts ratatui-image fallback ladder with VHS exclusion | architecture | active |
 | [2026-05-22-1-nip-29-wiring-relocated-from-chirp](episodes/2026-05-22-1-nip-29-wiring-relocated-from-chirp.md) | 2026-05-22 | NIP-29 wiring relocated from Chirp shell to nmp-nip29 protocol crate | architecture | active |
-| [2026-05-23-1-canonical-planning-doc-doctrine-three-files](episodes/2026-05-23-1-canonical-planning-doc-doctrine-three-files.md) | 2026-05-23 | Canonical planning-doc doctrine: three files, non-overlapping roles, no duplication | architecture | active |
+| [2026-05-23-1-canonical-planning-doc-doctrine-three-files](episodes/2026-05-23-1-canonical-planning-doc-doctrine-three-files.md) | 2026-05-23 | Canonical planning-doc doctrine: three files, non-overlapping roles, no duplication | architecture | superseded |
 | [2026-05-23-1-nmp-networking-routing-layer-two-crate](episodes/2026-05-23-1-nmp-networking-routing-layer-two-crate.md) | 2026-05-23 | NMP networking/routing layer: two-crate split with explicit-targets seam replaces monolithic relay-pool with rule registry | architecture | active |
 | [2026-05-23-1-quoted-event-embeds-now-appear-snapshot](episodes/2026-05-23-1-quoted-event-embeds-now-appear-snapshot.md) | 2026-05-23 | Quoted-event embeds now appear — snapshot refresh guard was too narrow | root-cause | active |
 | [2026-05-25-1-android-gallery-gets-its-own-jni](episodes/2026-05-25-1-android-gallery-gets-its-own-jni.md) | 2026-05-25 | Android gallery gets its own JNI shim instead of nmp-android-ffi | architecture | active |
@@ -339,7 +352,7 @@ Last updated: 2026-06-19
 | [2026-06-18-6-handshake-polling-eliminated-event-driven-cancel](episodes/2026-06-18-6-handshake-polling-eliminated-event-driven-cancel.md) | 2026-06-18 | Handshake polling eliminated: event-driven cancel via crossbeam | reversal | superseded |
 | [2026-06-18-6-known-signers-three-way-drift-rust](episodes/2026-06-18-6-known-signers-three-way-drift-rust.md) | 2026-06-18 | Known-signers three-way drift: Rust, Kotlin, Swift tables already diverged with no cross-validation | architecture | superseded |
 | [2026-06-18-6-per-nip-per-kind-branches-removed](episodes/2026-06-18-6-per-nip-per-kind-branches-removed.md) | 2026-06-18 | Per-NIP/per-kind branches removed from generic layers (D0) | architecture | superseded |
-| [2026-06-18-6-persist-follow-feed-kinds-unconditionally-in](episodes/2026-06-18-6-persist-follow-feed-kinds-unconditionally-in.md) | 2026-06-18 | Persist follow_feed_kinds unconditionally in kernel | product | superseded |
+| [2026-06-18-6-persist-follow-feed-kinds-unconditionally-in](episodes/2026-06-18-6-persist-follow-feed-kinds-unconditionally-in.md) | 2026-06-18 | Persist follow_feed_kinds unconditionally in kernel | product | active |
 | [2026-06-18-7-nip-17-dm-relay-bypass-silent](episodes/2026-06-18-7-nip-17-dm-relay-bypass-silent.md) | 2026-06-18 | NIP-17 DM relay bypass: silent relay pruning bug | root-cause | superseded |
 | [2026-06-18-7-operator-policy-removed-from-nmp-core](episodes/2026-06-18-7-operator-policy-removed-from-nmp-core.md) | 2026-06-18 | Operator policy removed from NMP core (D0/D4 doctrine) | architecture | superseded |
 | [2026-06-18-7-per-nip-branches-removed-from-generic](episodes/2026-06-18-7-per-nip-branches-removed-from-generic.md) | 2026-06-18 | Per-NIP branches removed from generic router layer; nip19 codec to become thin adapter | architecture | superseded |
@@ -386,3 +399,36 @@ Last updated: 2026-06-19
 | [2026-06-19-7-native-policy-duplication-rust-bound-no](episodes/2026-06-19-7-native-policy-duplication-rust-bound-no.md) | 2026-06-19 | Native policy duplication → Rust-bound; no-feed-after-signin bug fixed | product | active |
 | [2026-06-19-7-signer-handshake-200ms-polling-replaced-with](episodes/2026-06-19-7-signer-handshake-200ms-polling-replaced-with.md) | 2026-06-19 | Signer handshake: 200ms polling replaced with event-driven crossbeam channel | product | superseded |
 | [2026-06-19-8-handshake-polling-event-driven-crossbeam-channel](episodes/2026-06-19-8-handshake-polling-event-driven-crossbeam-channel.md) | 2026-06-19 | Handshake polling → event-driven crossbeam channel | architecture | active |
+| [2026-06-26-1-m14-uniffi-strategy-split-conditionally-elevate](episodes/2026-06-26-1-m14-uniffi-strategy-split-conditionally-elevate.md) | 2026-06-26 | M14 UniFFI strategy split: conditionally elevate Android binding generation to v1, defer iOS migration | architecture | active |
+| [2026-06-26-1-nip-46-architecture-shift-from-host](episodes/2026-06-26-1-nip-46-architecture-shift-from-host.md) | 2026-06-26 | NIP-46: Architecture shift from host-brokered to transport-agnostic protocol core | architecture | active |
+| [2026-06-26-1-replace-kind-specific-nip-29-actions](episodes/2026-06-26-1-replace-kind-specific-nip-29-actions.md) | 2026-06-26 | Replace kind-specific NIP-29 actions with generic kind-agnostic publish | architecture | active |
+| [2026-06-26-1-single-temporal-surface-github-issues-replaces](episodes/2026-06-26-1-single-temporal-surface-github-issues-replaces.md) | 2026-06-26 | Single temporal surface: GitHub Issues replaces docs/plan.md as canonical release tracker | architecture | active |
+| [2026-06-26-2-snapshot-projection-contract-root-cause-diagnosis](episodes/2026-06-26-2-snapshot-projection-contract-root-cause-diagnosis.md) | 2026-06-26 | Snapshot/projection contract: root-cause diagnosis and fixes for transactional-merge, D6-poison, provider-readiness bugs | root-cause | active |
+
+## Nouns (22 entities)
+
+| Noun | Name | Origin | Definition |
+|------|------|--------|------------|
+| [actionmodule](nouns/actionmodule.md) | ActionModule | extracted | a typed action framework that apps dispatch by ID; has start() for validation and execute() for emission; not called as a function |
+| [android-ffi](nouns/android-ffi.md) | Android FFI | extracted | a hand-rolled JNI stack that only receives cargo check testing, without binding-quality gates like iOS |
+| [chirp](nouns/chirp.md) | Chirp | extracted | NMP's reference Nostr client and full-stack showcase for demonstrating every reusable feature NMP ships |
+| [current-ffi-layer](nouns/current-ffi-layer.md) | current FFI layer | extracted | entirely hand-written C-ABI consisting of Rust extern 'C' fn symbols, C header files, and Swift/Kotlin bridge glue |
+| [docs-plan-directory](nouns/docs-plan-directory.md) | docs/plan/ directory | extracted | 14 milestone sub-pages of the Build & Validation Plan detailing the NMP v1 release breakdown into tracked phases |
+| [docs-plan-md](nouns/docs-plan-md.md) | docs/plan.md | extracted | Temporal coordination plan for NMP v1; explicitly not durable documentation—a coordination snapshot pruned as items complete or move to GitHub Issues |
+| [ffi-drift-yml](nouns/ffi-drift-yml.md) | ffi-drift.yml | extracted | a CI gate to catch hand-sync drift between Rust extern 'C' definitions and C header files |
+| [flatbuffers](nouns/flatbuffers.md) | FlatBuffers | extracted | the payload encoding mechanism that owns FullState/ViewBatch data; excluded from FFI migration scope |
+| [github-issues](nouns/github-issues.md) | GitHub Issues | extracted | The sole canonical temporal surface for tracking active work and tactical planning after docs/plan.md retirement |
+| [groupchatprojection](nouns/groupchatprojection.md) | GroupChatProjection | extracted | the projection that receives and materializes group events, wired via nmp_nip29::register::wire_group_chat |
+| [kind-9](nouns/kind-9.md) | Kind:9 | extracted | user-sent content event kind for chat messages in NIP-29 groups |
+| [m14](nouns/m14.md) | M14 | extracted | a post-v1 plan to replace hand-written C-ABI with auto-generated UniFFI bindings for Swift and Kotlin |
+| [nip-29](nouns/nip-29.md) | NIP-29 | extracted | in this project, owns only the h-tag routing concern for group-hosted events; does not own event kind semantics |
+| [nmp-app-surface](nouns/nmp-app-surface.md) | nmp_app_* surface | extracted | legitimate API (not debt); hand-maintained binding surface between Rust kernel and client SDKs |
+| [phase-labels](nouns/phase-labels.md) | phase:* labels | extracted | map directly to 5 milestone buckets for organizing issues |
+| [plans](nouns/plans.md) | Plans | extracted | Coordination artifacts, not durable understanding; implemented plan detail is removed or moved into durable docs; no new top-level plan files, scattered todo lists, or parallel roadmaps allowed |
+| [postchatmessageaction](nouns/postchatmessageaction.md) | PostChatMessageAction | extracted | a typed ActionModule under namespace 'nmp.nip29.post_chat_message' that builds NIP-29 group events |
+| [publishplan](nouns/publishplan.md) | PublishPlan | extracted | the typed carrier that every NIP-29 action emits, containing kind, content, tags, and a RelayPin for routing |
+| [recentgroupevents](nouns/recentgroupevents.md) | RecentGroupEvents | extracted | a bounded per-group LRU cache of recent events for anti-spam previous-tag generation; dead code instantiated only in tests |
+| [relaypin](nouns/relaypin.md) | RelayPin | extracted | a single relay URL the publish must target exclusively for group-event routing |
+| [typed-projection-structs](nouns/typed-projection-structs.md) | typed projection structs | extracted | auto-generated type definitions (*.generated.swift) created from FlatBuffers for snapshot payloads |
+| [uniffi](nouns/uniffi.md) | UniFFI | extracted | a binding/lifecycle surface generator; not the data payload path, which FlatBuffers owns |
+

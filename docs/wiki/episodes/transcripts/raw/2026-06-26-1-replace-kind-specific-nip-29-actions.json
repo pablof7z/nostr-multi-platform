@@ -1,0 +1,30 @@
+[
+  [
+    "user",
+    "does nmp-nip29 have a \"post chat message\" function for apps??"
+  ],
+  [
+    "assistant",
+    "Yes — `nmp-nip29` has it. It's `PostChatMessageAction`, a typed `ActionModule` exposed under the action namespace **`nmp.nip29.post_chat_message`**.\n\nHow apps use it:\n\n1. **Register it once** (before `nmp_app_start`) via `nmp_nip29::register::register_actions(app)`, which binds `PostChatMessageAction` along with the rest of the NIP-29 actions. Apps don't call it directly — Chirp's `register_nip29_actions` is just a thin delegate to this.\n\n2. **Dispatch it** through the normal typed action path with a `PostChatMessageInput` payload (FlatBuffers, ADR-0064 doorway). The input fields (`crates/nmp-nip29/src/action/content.rs`):\n   - `group: GroupId` — host relay URL + group id (required, must be routable)\n   - `content: String` — the message (rejected if empty)\n   - `previous_event_id_prefixes: Vec<...>` — NIP-29 `previous` tags\n   - `reply_to_event_id: Option<...>` — optional reply target\n\nIt builds a `PublishPlan::pinned` for `KIND_CHAT_MESSAGE` (kind 9), validates the host pin, and emits the publish via the standard actor command lane.\n\nA few things worth flagging:\n- It's an **action you dispatch**, not a `fn post_chat_message(...)` you call. Validation (`start`) runs before execution and rejects empty content / non-routable groups / missing host pin.\n- The receiving side is `GroupChatProjection`, wired via `nmp_nip29::register::wire_group_chat` under key `nmp.nip29.group_chat`. So an app registers both the projection (to read the transcript) and the actions (to post).\n- Per the thin-shell rule, this all lives in `nmp-nip29` — apps like Chirp just delegate; they don't reimplement it."
+  ],
+  [
+    "user",
+    "nip29 shouldn't have anything \"chat\" specific -- chat is just one more event kind -- this is poort design"
+  ],
+  [
+    "assistant",
+    "Now I'll run codex to validate the design and produce an exact edit plan. Running it with a focused prompt containing all the facts I gathered."
+  ],
+  [
+    "user",
+    "[Request interrupted by user for tool use]"
+  ],
+  [
+    "user",
+    "why, on publish, can't nmp-nip29 request from nmp-core a cache-only one-shot subscription for { #h: [...], limit: 5 } ? that should give the nmp-nip29 immediately the last 5 events from the cache"
+  ],
+  [
+    "assistant",
+    "Codex finished cleanly this time. Let me read its design."
+  ]
+]

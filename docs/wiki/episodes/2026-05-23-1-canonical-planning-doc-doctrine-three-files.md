@@ -4,7 +4,7 @@ date: 2026-05-23
 session: 9fc44c34-8e49-4959-91b3-714d4722ac3d
 transcript: /Users/pablofernandez/.claude/projects/-Users-pablofernandez-Work-nostr-multi-platform/9fc44c34-8e49-4959-91b3-714d4722ac3d.jsonl
 salience: architecture
-status: active
+status: superseded
 subjects:
   - planning-doctrine
   - docs-plan

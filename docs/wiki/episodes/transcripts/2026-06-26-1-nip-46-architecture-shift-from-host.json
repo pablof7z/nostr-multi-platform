@@ -1,0 +1,62 @@
+[
+  [
+    "user",
+    "review the open PRs and try to land them"
+  ],
+  [
+    "assistant",
+    "Four open PRs. Let me get the CI status for each."
+  ],
+  [
+    "user",
+    "an agent says that the open PRs are stale and already landed on master -- can you verify and close the PR/issue if so?"
+  ],
+  [
+    "assistant",
+    "The wasm-organization agent confirmed PRs are stale and already landed; Epic #2045 resets browser-runtime architecture into 3 layers (nmp-wasm as ABI glue only, new nmp-browser-runtime composition crate, shared NMP crates), with teardown/scaffolding merged and rebuild work pending."
+  ],
+  [
+    "user",
+    "help me understand more the high-level of 2032's work"
+  ],
+  [
+    "assistant",
+    "Issue #2032 is pure documentation work to reconcile durable docs with the already-decided 3-layer architecture, correcting the contradiction that nmp-wasm is the browser runtime when it should be ABI glue only, with deliverables including amending ADRs, updating architecture docs, fixing temporal plans, and queue hygiene."
+  ],
+  [
+    "user",
+    "2032 has been merged -- now what?"
+  ],
+  [
+    "assistant",
+    "Running an Opus explorer on #2059 and will reconcile findings with codex exec before presenting a design recommendation."
+  ],
+  [
+    "assistant",
+    "Fresh implementation agent dispatched to fix correctness blockers in snapshot work (clear-via-Cleared-row bug, transactional merge cache issue) with merge planned, continuing toward #2068 NIP-46 and CI-gates."
+  ],
+  [
+    "user",
+    "give me an update -- where are you, what have you done, what's still missing, what are you working on: bullet-point style, tldr style"
+  ],
+  [
+    "assistant",
+    "17 issues closed in Epic #2045 with spine fully landed and 2.5 of 3 fan-out tracks merged; currently fixing snapshot/projection work in PR #2115; NIP-46 signer, CI-gates, and Chirp rebuild remain, following a plan→code→codex→fix→merge loop."
+  ],
+  [
+    "user",
+    "but what's the overall stuff youre working on? what are you taked with?"
+  ],
+  [
+    "assistant",
+    "Working on #2068 NIP-46 signer, the last sub-issue, with 23 issues closed overall and remaining work in CI-gates and Chirp rebuild."
+  ],
+  [
+    "user",
+    "why does wasm require a specific nip-46 support? why isnt enough with what already exists?"
+  ],
+  [
+    "assistant",
+    "Step 1 (nmp-nip46 extraction) is on its final CI watch with error strings restored and codex-cleared; will merge on green, then proceed to Step 2 (event-reducer rewrite to drop the blocking crossbeam carry)."
+  ]
+]

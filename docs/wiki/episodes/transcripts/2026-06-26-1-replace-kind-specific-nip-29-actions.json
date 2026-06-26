@@ -1,0 +1,26 @@
+[
+  [
+    "user",
+    "does nmp-nip29 have a \"post chat message\" function for apps??"
+  ],
+  [
+    "assistant",
+    "Yes — `PostChatMessageAction` is exposed at `nmp.nip29.post_chat_message`; apps register it via `nmp_nip29::register::register_actions` and dispatch with a `PostChatMessageInput` payload, with receiving handled by `GroupChatProjection`."
+  ],
+  [
+    "user",
+    "nip29 shouldn't have anything \"chat\" specific -- chat is just one more event kind -- this is poort design"
+  ],
+  [
+    "assistant",
+    "Running codex to validate the design and produce an edit plan."
+  ],
+  [
+    "user",
+    "why, on publish, can't nmp-nip29 request from nmp-core a cache-only one-shot subscription for { #h: [...], limit: 5 } ? that should give the nmp-nip29 immediately the last 5 events from the cache"
+  ],
+  [
+    "assistant",
+    "Codex finished; reading the design."
+  ]
+]
