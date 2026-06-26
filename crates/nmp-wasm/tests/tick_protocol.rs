@@ -52,35 +52,66 @@ fn seed_account(runtime: &mut RawWasmAbiAdapter) {
     );
 }
 
-fn signed_event(id: &str) -> SignedEvent {
-    SignedEvent {
-        id: id.to_string(),
-        sig: format!("sig-{id}"),
+/// Build a genuinely Schnorr-signed event so that `publish_externally_signed`'s
+/// SHA-256 id-hash + Schnorr sig check (#2045 PR-A) passes. Returns the
+/// `SignedEvent` and its real hex id (used by relay-OK simulations).
+///
+/// The key is ephemeral (generated per call); the pubkey in the event does NOT
+/// need to match `ACCOUNT` because `verify_externally_signed_event` only checks
+/// cryptographic well-formedness, not author-vs-active-account identity.
+fn real_signed_event() -> (SignedEvent, String) {
+    let keys = nostr::Keys::generate();
+    let event = nostr::EventBuilder::new(nostr::Kind::from(1u16), "deadline probe")
+        .custom_created_at(nostr::Timestamp::from_secs(1_700_000_000))
+        .sign_with_keys(&keys)
+        .expect("test key signs");
+    let real_id = event.id.to_hex();
+    let signed = SignedEvent {
+        id: real_id.clone(),
+        sig: event.sig.to_string(),
         unsigned: UnsignedEvent {
-            pubkey: ACCOUNT.to_string(),
-            kind: 1,
-            tags: Vec::new(),
-            content: "deadline probe".to_string(),
-            created_at: 1_700_000_000,
+            pubkey: event.pubkey.to_hex(),
+            kind: u32::from(event.kind.as_u16()),
+            tags: event
+                .tags
+                .iter()
+                .map(|t: &nostr::Tag| t.as_slice().to_vec())
+                .collect(),
+            content: event.content.clone(),
+            created_at: event.created_at.as_secs(),
         },
-    }
+    };
+    (signed, real_id)
 }
 
-fn publish_request(correlation_id: &str, event_id: &str) -> WorkerRequest {
+/// Build a publish dispatch byte envelope with a real signed event. Returns the
+/// `WorkerRequest` AND the event's actual NIP-01 hex id (for relay-OK simulation).
+///
+/// Uses `Explicit` target with `RELAY_URL` so the `NoopOutboxResolver` (which
+/// returns nothing for `Auto` targets) actually queues the event and the kernel
+/// publish deadline fires. The tests here exercise the deadline scheduler, not
+/// the NIP-65 outbox resolver.
+fn publish_request(correlation_id: &str) -> (WorkerRequest, String) {
+    let (event, event_id) = real_signed_event();
     let payload = PublishAction::Publish {
-        handle: event_id.to_string(),
-        event: signed_event(event_id),
-        target: PublishTarget::Auto,
+        handle: event_id.clone(),
+        event,
+        target: PublishTarget::Explicit {
+            relays: vec![RELAY_URL.to_string()],
+        },
     }
     .encode();
-    WorkerRequest::DispatchBytes(DispatchBytes {
-        bytes: encode_dispatch_envelope(
-            correlation_id,
-            "nmp.publish",
-            DISPATCH_ENVELOPE_SCHEMA_VERSION,
-            &payload,
-        ),
-    })
+    (
+        WorkerRequest::DispatchBytes(DispatchBytes {
+            bytes: encode_dispatch_envelope(
+                correlation_id,
+                "nmp.publish",
+                DISPATCH_ENVELOPE_SCHEMA_VERSION,
+                &payload,
+            ),
+        }),
+        event_id,
+    )
 }
 
 fn resolve_profile_request(consumer_id: &str) -> WorkerRequest {
@@ -297,9 +328,9 @@ fn outbound_event_wake_stops_when_kernel_declares_no_deadline() {
         "idle post-start drain must not leave a cadence armed"
     );
 
-    let event_id = "22".repeat(32);
+    let (publish_req, event_id) = publish_request("publish-clears-before-wake");
     let events = rt
-        .handle(publish_request("publish-clears-before-wake", &event_id))
+        .handle(publish_req)
         .expect("publish dispatch must succeed");
     assert!(
         events
@@ -354,8 +385,9 @@ fn publish_outbound_declares_bounded_kernel_deadline() {
     let _ = rt
         .fire_maintenance_deadline_for_test()
         .expect("clear the post-start event deadline first");
+    let (publish_req, _event_id) = publish_request("publish-deadline");
     let events = rt
-        .handle(publish_request("publish-deadline", &"11".repeat(32)))
+        .handle(publish_req)
         .expect("publish dispatch must succeed");
     assert!(
         events

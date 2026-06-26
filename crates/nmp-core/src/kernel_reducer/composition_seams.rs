@@ -333,33 +333,10 @@ impl super::KernelReducer {
         target: crate::publish::PublishTarget,
         correlation_id: Option<String>,
     ) -> Vec<crate::relay::OutboundMessage> {
-        use nmp_signer_iface::SignedEvent;
-        // Reconstruct the `SignedEvent` shape the kernel publish path expects.
-        // `p_tags` drives the recipient-inbox fanout in
-        // `OutboxResolver::resolve`.
-        let p_tags: Vec<String> = raw
-            .tags
-            .iter()
-            .filter(|tag| tag.first().map(|s| s == "p").unwrap_or(false))
-            .filter_map(|tag| tag.get(1).cloned())
-            .collect();
-        let signed = SignedEvent {
-            id: raw.id.clone(),
-            sig: raw.sig.clone(),
-            unsigned: nmp_signer_iface::UnsignedEvent {
-                pubkey: raw.pubkey.clone(),
-                kind: raw.kind,
-                tags: raw.tags.clone(),
-                content: raw.content.clone(),
-                created_at: raw.created_at,
-            },
-        };
-        let outbound = self.kernel.publish_signed_to_with_correlation(
-            &signed,
-            &p_tags,
-            target,
-            correlation_id,
-        );
+        // Delegates to the shared Kernel::publish_externally_signed helper
+        // (#2045 PR-A): target-validate → verify-sig (closes forged-event gap)
+        // → D10 routing gate → publish. Then partitions auth-paused frames.
+        let outbound = self.kernel.publish_externally_signed(raw, target, correlation_id);
         self.kernel.partition_auth_paused(outbound)
     }
 }

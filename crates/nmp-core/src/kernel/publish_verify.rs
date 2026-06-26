@@ -1,4 +1,5 @@
-//! Single well-formedness gate for externally-supplied signed events.
+//! Single well-formedness gate + shared publish helper for externally-supplied
+//! signed events.
 //!
 //! Split from `publish_cmd.rs` so that file stays under the 500-LOC ceiling
 //! (AGENTS.md / V-12).
@@ -38,6 +39,87 @@ impl Kernel {
     /// `correlation_id` when a dispatched action is waiting on it, and returns
     /// `Err(())`. The caller drops the event before any outbound frame or
     /// publish-queue entry is produced.
+    /// Shared publish helper for **externally-signed** events (#2045 PR-A).
+    ///
+    /// Consolidates the three publish entry-points that previously each
+    /// reimplemented the verify → D10 → route pipeline:
+    ///
+    /// 1. Native `actor::commands::publish::publish_signed_event` (primary).
+    /// 2. `KernelReducer::publish_pre_signed` in `composition_seams.rs` (wasm
+    ///    pre-signed path — previously skipped signature verification).
+    ///
+    /// **Pipeline (fail-closed at every step):**
+    /// 1. `validate_publish_target` — empty/malformed explicit targets are
+    ///    refused early (sets a toast + records `Failed` terminal).
+    /// 2. `RawEvent` → `SignedEvent` reconstruction (no re-signing; id + sig
+    ///    carried through verbatim).
+    /// 3. `verify_externally_signed_event` — SHA-256 id-hash + Schnorr sig;
+    ///    forged/garbled events are dropped before any outbound frame (D6).
+    /// 4. `validate_publish_routing` (D10) — private/encrypted envelopes
+    ///    (kind:1059, kind:14) with `PublishTarget::Auto` are refused.
+    /// 5. `publish_signed_to_with_correlation` — NIP-65 outbox or explicit
+    ///    relay-pin routing (D3).
+    ///
+    /// D6 — total: every error path returns `Vec::new()` (never a panic).
+    pub(crate) fn publish_externally_signed(
+        &mut self,
+        raw: RawEvent,
+        target: crate::publish::PublishTarget,
+        correlation_id: Option<String>,
+    ) -> Vec<crate::relay::OutboundMessage> {
+        use crate::publish::{target_is_explicit_nonempty, validate_publish_routing,
+            validate_publish_target};
+
+        // Step 1 — target validation (inline fail_invalid_target logic).
+        if let Err(reason) = validate_publish_target(&target) {
+            let toast = format!("explicit publish target rejected: {reason}");
+            self.set_last_error_toast(Some(toast.clone()));
+            if let Some(id) = correlation_id {
+                self.record_action_failure(id, toast);
+            }
+            return Vec::new();
+        }
+        // Step 2 — reconstruct the SignedEvent wire shape.
+        let signed = SignedEvent {
+            id: raw.id,
+            sig: raw.sig,
+            unsigned: nmp_signer_iface::UnsignedEvent {
+                pubkey: raw.pubkey,
+                kind: raw.kind,
+                tags: raw.tags,
+                content: raw.content,
+                created_at: raw.created_at,
+            },
+        };
+        // Step 3 — well-formedness: SHA-256 id-hash + Schnorr sig (D6).
+        if self
+            .verify_externally_signed_event(&signed, correlation_id.as_deref())
+            .is_err()
+        {
+            return Vec::new();
+        }
+        // Step 4 — D10 routing-policy gate (private/encrypted envelope must
+        // have an explicit non-empty relay pin).
+        if let Err(reason) = validate_publish_routing(
+            signed.unsigned.kind,
+            target_is_explicit_nonempty(&target),
+        ) {
+            tracing::warn!(
+                kind = signed.unsigned.kind,
+                "publish_externally_signed refused: private/encrypted envelope without \
+                 an explicit relay pin would leak through the author's public outbox (D10).",
+            );
+            self.set_last_error_toast(Some(reason.clone()));
+            if let Some(id) = correlation_id {
+                let code = crate::ui_token::codes::LIFECYCLE_PUBLISH_NO_EXPLICIT_TARGET;
+                self.record_action_failure_coded(id, reason, Some(code), None);
+            }
+            return Vec::new();
+        }
+        // Step 5 — route through the publish engine.
+        self.publish_signed_to_with_correlation(&signed, &[], target, correlation_id)
+    }
+
     pub(crate) fn verify_externally_signed_event(
         &mut self,
         signed: &SignedEvent,

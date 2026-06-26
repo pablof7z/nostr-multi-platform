@@ -39,6 +39,51 @@ impl Kernel {
         &mut self.lifecycle
     }
 
+    /// Ensure-absent interest registration (#2045 PR-A).
+    ///
+    /// Registers the `(identity, interest)` pair if absent (EnsureAbsent policy);
+    /// store-serve + recompile trigger fire only when the interest is newly installed.
+    /// Used by the `EnsureInterest` `ActorCommand` arm (native dispatch AND the
+    /// headless `apply_actor_command` interpreter) to preserve the exact reason
+    /// tag `"ensure-interest"` that diagnostics downstream key on.
+    pub(crate) fn ensure_interest(
+        &mut self,
+        identity: crate::subs::SubIdentity,
+        interest: crate::planner::LogicalInterest,
+    ) {
+        self.register_interest(
+            &[crate::kernel::cache_serve::InterestRegistration {
+                identity,
+                interest,
+                policy: crate::kernel::cache_serve::InterestWrite::EnsureAbsent,
+            }],
+            "ensure-interest",
+        );
+    }
+
+    /// Drop one owner from the registry; enqueues `InvalidateCompile` if it was
+    /// removed (#2045 PR-A).
+    ///
+    /// Returns `true` when the owner was present and removed. Reason tag:
+    /// `"drop-interest-owner"` (preserved verbatim from the original
+    /// `cmd_interests::drop_interest_owner` dispatch arm).
+    pub(crate) fn drop_interest_owner(
+        &mut self,
+        identity: crate::subs::SubIdentity,
+    ) -> bool {
+        let removed = self.lifecycle.registry_mut().drop_owner(&identity);
+        if removed {
+            self.lifecycle.enqueue_trigger(
+                crate::subs::CompileTrigger::InvalidateCompile {
+                    reason: crate::subs::InvalidateReason::External(
+                        "drop-interest-owner".to_string(),
+                    ),
+                },
+            );
+        }
+        removed
+    }
+
     /// M2 (ADR-0042) — attach one owner to a generic feed interest; enqueues a recompile trigger.
     pub(crate) fn open_interest_sub(
         &mut self,

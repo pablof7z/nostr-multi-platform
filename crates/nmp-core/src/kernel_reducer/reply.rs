@@ -54,27 +54,27 @@ impl super::KernelReducer {
         p_tags: &[String],
         correlation_id: Option<String>,
     ) -> Vec<OutboundMessage> {
-        // Single well-formedness chokepoint shared with the native pre-signed
-        // publish path (`actor/commands/publish.rs::publish_signed_event`): the
-        // event entering here is externally signed (the wasm host's
-        // `Nip07Signer::sign()` Promise, or any in-process Rust caller that
-        // signed out-of-band), so it is untrusted bytes. Verify the event-id
-        // hash + Schnorr signature of the OUTER envelope before it can reach the
-        // engine's outbound frames; a forged/garbled event fails closed (D6) —
-        // the categorized `ERR_MALFORMED_EVENT` toast is set and the matching
-        // `Failed` terminal is recorded under `correlation_id`, and no frame
-        // goes out. Validates well-formedness ONLY — a gift-wrap / Marmot
-        // envelope's inner semantics stay opaque (ADR-0025).
-        if self
-            .kernel
-            .verify_externally_signed_event(signed, correlation_id.as_deref())
-            .is_err()
-        {
-            return Vec::new();
-        }
-        let outbound = self
-            .kernel
-            .publish_signed_with_correlation(signed, p_tags, correlation_id);
+        // Route through the shared Kernel::publish_externally_signed helper
+        // (#2045 PR-A): target-validate → verify-sig → D10 routing gate →
+        // publish. Callers always pass `p_tags = &[]`; the engine re-extracts
+        // `#p` tags from `signed.unsigned.tags` internally.
+        //
+        // Uses PublishTarget::Auto because this path (the post-sign wasm reply
+        // surface) always resolves via the NIP-65 outbox; callers that need an
+        // explicit pin use `publish_pre_signed` with `PublishTarget::Explicit`.
+        let raw = crate::store::RawEvent {
+            id: signed.id.clone(),
+            sig: signed.sig.clone(),
+            pubkey: signed.unsigned.pubkey.clone(),
+            kind: signed.unsigned.kind,
+            tags: signed.unsigned.tags.clone(),
+            content: signed.unsigned.content.clone(),
+            created_at: signed.unsigned.created_at,
+        };
+        let _ = p_tags; // callers always pass &[]; p-routing comes from event tags
+        let outbound =
+            self.kernel
+                .publish_externally_signed(raw, crate::publish::PublishTarget::Auto, correlation_id);
         self.kernel.partition_auth_paused(outbound)
     }
 

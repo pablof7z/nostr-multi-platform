@@ -14,7 +14,7 @@ use crate::actor::commands::publish_failures::{
 };
 use crate::actor::pending_sign::{ParkedOp, ParkedSignerOps};
 use crate::kernel::Kernel;
-use crate::publish::{validate_explicit_relays, validate_publish_target, PublishTarget};
+use crate::publish::{validate_explicit_relays, PublishTarget};
 use crate::relay::OutboundMessage;
 use nmp_signer_iface::UnsignedEvent;
 
@@ -264,79 +264,11 @@ pub(crate) fn publish_signed_event(
     target: PublishTarget,
     correlation_id: Option<String>,
 ) -> Vec<OutboundMessage> {
-    if let Err(reason) = validate_publish_target(&target) {
-        return fail_invalid_target(kernel, reason, correlation_id);
-    }
-    // RawEvent (flat NIP-01) → SignedEvent. No re-signing: `id` and `sig` are
-    // carried through verbatim onto the wire frame the engine builds.
-    let signed = nmp_signer_iface::SignedEvent {
-        id: raw.id,
-        sig: raw.sig,
-        unsigned: UnsignedEvent {
-            pubkey: raw.pubkey,
-            kind: raw.kind,
-            tags: raw.tags,
-            content: raw.content,
-            created_at: raw.created_at,
-        },
-    };
-    // Single well-formedness chokepoint shared with the wasm/verbatim write
-    // path (`kernel_reducer/reply.rs::publish_signed_event`): verifies the OUTER
-    // envelope's id-hash + Schnorr sig, fail-closed on a forged event (D6). It
-    // validates well-formedness ONLY — a gift-wrap / Marmot envelope's inner
-    // semantics stay opaque (ADR-0025).
-    if kernel
-        .verify_externally_signed_event(&signed, correlation_id.as_deref())
-        .is_err()
-    {
-        return Vec::new();
-    }
-    // ── D10 publish-policy gate (Workstream C one-door) ──────────────────────
-    //
-    // Refuse to publish a private/encrypted envelope (gift-wrap kind:1059,
-    // sealed kind:14) when the caller did not supply an explicit non-empty
-    // relay pin. The allow/reject decision is the publish-policy table's
-    // (`validate_publish_routing` → `classify_publish_behavior`), NOT a raw
-    // `kind == KIND_GIFT_WRAP` literal — the old literal guard missed kind:14
-    // and meant `policy.rs` was not the single door. This kernel-level guard
-    // closes EVERY path that reaches `publish_signed_event` at dispatch time;
-    // the publish-engine entry (`run_publish_engine_at`) applies the SAME
-    // policy gate as the deeper structural chokepoint for every other path.
-    //
-    // The refusal sets a D6 toast, drops the event before any outbound frame
-    // or publish-queue entry is produced, and logs the leak attempt. This is
-    // policy, not malformed data — `set_last_error_toast` (the legacy
-    // uncategorized path) is the right surface (a routing-leak policy refusal
-    // is not in the closed `error_category` key set defined by
-    // `kernel::closed_reason`).
-    if let Err(reason) = crate::publish::validate_publish_routing(
-        signed.unsigned.kind,
-        crate::publish::target_is_explicit_nonempty(&target),
-    ) {
-        tracing::warn!(
-            kind = signed.unsigned.kind,
-            "publish_signed_event refused: private/encrypted envelope without an \
-             explicit relay pin would route through the author's public-relay \
-             outbox, leaking the encrypted envelope (D10 violation). Caller must \
-             supply PublishTarget::Explicit with a non-empty relay set.",
-        );
-        kernel.set_last_error_toast(Some(reason.clone()));
-        // Broken-promise fix: a `dispatch_action` `PublishAction::Publish`
-        // recorded `Requested` under `correlation_id`; the refusal must reach
-        // `action_results` under that id so the host's spinner clears (same
-        // pattern as the per-verb sign-step early-exits). No-op for `None`.
-        if let Some(id) = correlation_id {
-            // Curated kernel policy copy (the D10 routing-leak refusal) — the
-            // host localizes it (#1735).
-            let code = crate::ui_token::codes::LIFECYCLE_PUBLISH_NO_EXPLICIT_TARGET;
-            kernel.record_action_failure_coded(id, reason, Some(code), None);
-        }
-        return Vec::new();
-    }
-    // `correlation_id` threads through to the publish engine's
-    // `correlation_id_override` — `None` preserves the prior fallback to the
-    // publish handle (== event id) for every non-dispatch caller.
-    kernel.publish_signed_to_with_correlation(&signed, &[], target, correlation_id)
+    // Delegates to the shared Kernel::publish_externally_signed helper
+    // (#2045 PR-A): target-validate → verify-sig → D10 routing gate → publish.
+    // Zero native behavior change — the full pipeline logic now lives in the
+    // kernel method so the wasm/headless paths share it (forged-event fix).
+    kernel.publish_externally_signed(raw, target, correlation_id)
 }
 
 /// Sign and publish a kind:0 profile metadata event for the active account.
