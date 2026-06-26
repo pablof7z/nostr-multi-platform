@@ -97,7 +97,7 @@ extension KernelHandle {
             "group": groupId.jsonObject,
             "content": content,
         ]
-        dispatchNip29("nmp.nip29.post_chat_message", payload: payload, label: "postChatMessage")
+        dispatchPostChatMessage(payload: payload)
     }
 
     /// Dispatch a `nmp.nip29.react_in_group` action — publish a kind:7 in-group
@@ -124,7 +124,7 @@ extension KernelHandle {
         if let eventAuthorPubkey {
             payload["target_author_pubkey"] = eventAuthorPubkey
         }
-        dispatchNip29("nmp.nip29.react_in_group", payload: payload, label: "reactToMessage")
+        dispatchReactInGroup(payload: payload)
     }
 
     /// Dispatch a `nmp.nip29.comment_in_group` action — publish a kind:1111 in-group
@@ -143,15 +143,29 @@ extension KernelHandle {
             "parent_event_id": replyToEventId,
             "content": content,
         ]
-        dispatchNip29("nmp.nip29.comment_in_group", payload: payload, label: "replyToMessage")
+        dispatchCommentInGroup(payload: payload)
     }
 
-    /// Shared fire-and-forget marshal for a NIP-29 action dispatch. Encodes
-    /// `payload` to JSON and routes it through the Chirp byte doorway
-    /// `nmp_app_chirp_dispatch_action_bytes`; the returned correlation JSON is
-    /// freed and ignored (the outcome surfaces through the next snapshot tick).
-    /// D6: a JSON-encode failure degrades to a logged no-op.
-    private func dispatchNip29(_ namespace: String, payload: [String: Any], label: String) {
+    private func dispatchPostChatMessage(payload: [String: Any]) {
+        dispatchGroupChatAction(
+            "nmp.nip29.post_chat_message", payload: payload, label: "postChatMessage")
+    }
+
+    private func dispatchReactInGroup(payload: [String: Any]) {
+        dispatchGroupChatAction(
+            "nmp.nip29.react_in_group", payload: payload, label: "reactToMessage")
+    }
+
+    private func dispatchCommentInGroup(payload: [String: Any]) {
+        dispatchGroupChatAction(
+            "nmp.nip29.comment_in_group", payload: payload, label: "replyToMessage")
+    }
+
+    private func dispatchGroupChatAction(
+        _ namespace: String,
+        payload: [String: Any],
+        label: String
+    ) {
         guard
             let data = try? JSONSerialization.data(withJSONObject: payload),
             let json = String(data: data, encoding: .utf8)

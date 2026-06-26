@@ -35,7 +35,7 @@ extension KernelHandle {
 
     @discardableResult
     func publishDmRelayList(relays: [String]) -> DispatchResult {
-        dispatchAction(namespace: "nmp.nip17.publish_relay_list", body: ["relays": relays])
+        dispatchRelayWalletAction("nmp.nip17.publish_relay_list", body: ["relays": relays])
     }
 
     /// `nmp.nip65.publish_relay_list` — dispatches a kind:10002 NIP-65
@@ -45,8 +45,8 @@ extension KernelHandle {
     /// kind:10002 tags.
     @discardableResult
     func publishRelayList(relays: [AppRelay]) -> DispatchResult {
-        return dispatchAction(
-            namespace: "nmp.nip65.publish_relay_list",
+        return dispatchRelayWalletAction(
+            "nmp.nip65.publish_relay_list",
             body: ["relays": relays.map { ["url": $0.url, "role": $0.role] }])
     }
 
@@ -65,15 +65,14 @@ extension KernelHandle {
     /// command that surfaces through `last_error_toast` in the snapshot.
     @discardableResult
     func walletConnect(uri: String) -> DispatchResult {
-        dispatchAction(namespace: "nmp.wallet.connect",
-                       body: ["Connect": ["uri": uri]])
+        dispatchRelayWalletAction("nmp.wallet.connect",
+                                  body: ["Connect": ["uri": uri]])
     }
 
     /// Disconnect the current NIP-47 wallet (fire-and-forget).
     @discardableResult
     func walletDisconnect() -> DispatchResult {
-        dispatchRawActionBytes(namespace: "nmp.wallet.disconnect",
-                               bodyJson: "\"Disconnect\"")
+        dispatchRelayWalletRaw("nmp.wallet.disconnect", bodyJson: "\"Disconnect\"")
     }
 
     /// Pay a Lightning invoice. Returns a `DispatchResult` with the
@@ -88,7 +87,36 @@ extension KernelHandle {
         } else {
             body["amount_msats"] = NSNull()
         }
-        return dispatchAction(namespace: "nmp.wallet.pay_invoice",
-                              body: ["PayInvoice": body])
+        return dispatchRelayWalletAction("nmp.wallet.pay_invoice",
+                                         body: ["PayInvoice": body])
+    }
+
+    @discardableResult
+    private func dispatchRelayWalletAction(
+        _ namespace: String,
+        body: [String: Any]
+    ) -> DispatchResult {
+        guard let data = try? JSONSerialization.data(withJSONObject: body),
+              let json = String(data: data, encoding: .utf8) else {
+            return .failure("failed to serialize action body")
+        }
+        return dispatchRelayWalletRaw(namespace, bodyJson: json)
+    }
+
+    @discardableResult
+    private func dispatchRelayWalletRaw(_ namespace: String, bodyJson: String) -> DispatchResult {
+        let envelope: String? = bodyJson.withCString { jsonPtr in
+            namespace.withCString { nsPtr in
+                guard let ptr = nmp_app_chirp_dispatch_action_bytes(raw, nsPtr, jsonPtr) else {
+                    return nil
+                }
+                defer { nmp_free_string(ptr) }
+                return String(cString: ptr)
+            }
+        }
+        guard let envelope else {
+            return .failure("dispatch returned a null envelope")
+        }
+        return DispatchResult.parse(envelope: envelope)
     }
 }

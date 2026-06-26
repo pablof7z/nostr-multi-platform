@@ -250,27 +250,6 @@ final class GalleryKernelHandle {
         secret.withCString { nmp_app_signin_nsec(raw, $0, 1) }
     }
 
-    // ── Generic action dispatch (phase 2 / ADR-0064 Cut-B #1756) ────────────
-
-    /// Dispatch an action through the typed byte doorway.
-    ///
-    /// Rust encodes `body` into the typed `ActionPayload` FlatBuffers bytes for
-    /// `namespace` and dispatches them through `nmp_app_dispatch_action_bytes`.
-    /// No JSON crosses the FFI to the kernel. Returns the raw JSON envelope
-    /// (`{"correlation_id":"…"}` on accept, `{"error":"…"}` on synchronous
-    /// rejection).
-    @discardableResult
-    func dispatchAction(namespace: String, body: String) -> String? {
-        let ptr: UnsafeMutablePointer<CChar>? = namespace.withCString { nsPtr in
-            body.withCString { bodyPtr in
-                nmp_app_gallery_dispatch_action_bytes(raw, nsPtr, bodyPtr)
-            }
-        }
-        guard let ptr else { return nil }
-        defer { nmp_free_string(ptr) }
-        return String(cString: ptr)
-    }
-
 }
 
 // MARK: - Update sink

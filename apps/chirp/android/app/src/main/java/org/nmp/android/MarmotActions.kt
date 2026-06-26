@@ -4,25 +4,24 @@ import android.util.Log
 import kotlinx.serialization.encodeToString
 
 private const val TAG = "MarmotActions"
-private const val MARMOT_NAMESPACE = "nmp.marmot"
 
 /**
  * Marmot (MLS-over-Nostr encrypted groups) write operations — Android peer of
  * iOS `MarmotStore` (Bridge/MarmotBridge.swift). Extracted from [KernelModel]
  * to keep both files under the repo's 500-LOC hard ceiling.
  *
- * Constructor takes [dispatchAction] — the same `bridge.dispatchAction` lambda
- * that [KernelModel] owns. Thin shell: ZERO protocol logic. Every op is a
- * single `dispatch_action("nmp.marmot", …)` call; Rust owns validation,
- * tokenisation, and key-package resolution. State arrives reactively via the
- * `nmp.marmot.snapshot` / `nmp.marmot.messages` push projections on
+ * Constructor takes [dispatchMarmotAction] — the typed Marmot write seam that
+ * [KernelModel] owns. Thin shell: ZERO protocol logic. Every op is a single
+ * Marmot action envelope; Rust owns validation, tokenisation, and key-package
+ * resolution. State arrives reactively via the `nmp.marmot.snapshot` /
+ * `nmp.marmot.messages` push projections on
  * [KernelModel.state] (D8 — no poll, no local echo).
  *
  * Call sites: [KernelModel.marmot] exposes this instance; UI screens reference
  * `model.marmot.createGroup(…)` etc., mirroring the iOS `model.marmot` surface.
  */
 class MarmotActions(
-    private val dispatchAction: (namespace: String, actionJson: String) -> DispatchResult,
+    private val dispatchMarmotAction: (actionJson: String) -> DispatchResult,
 ) {
     /** Account this instance last registered a Marmot identity for. */
     private var registeredAccount: String? = null
@@ -137,8 +136,8 @@ class MarmotActions(
     // ─────────────────────────────────────────────────────────────────────────
 
     private fun dispatch(actionJson: String): DispatchResult {
-        val result = dispatchAction(MARMOT_NAMESPACE, actionJson)
-        Log.d(TAG, "dispatch($MARMOT_NAMESPACE, $actionJson) → $result")
+        val result = dispatchMarmotAction(actionJson)
+        Log.d(TAG, "dispatchMarmotAction($actionJson) → $result")
         return result
     }
 }

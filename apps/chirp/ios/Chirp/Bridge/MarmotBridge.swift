@@ -157,10 +157,23 @@ extension KernelHandle {
         }
     }
 
-    // ADR-0025 PR 2 — `marmotDispatch(actionJSON:)` deleted. Every Marmot op
-    // now routes through `KernelHandle.dispatchRawAction(namespace:bodyJson:)`
-    // with namespace `"nmp.marmot"`. See `MarmotStore.dispatchAsync` /
-    // `dispatchFireAndForget` below for the migration target.
+    @discardableResult
+    fileprivate func dispatchMarmotAction(bodyJson: String) -> DispatchResult {
+        let namespace = "nmp.marmot"
+        let envelope: String? = bodyJson.withCString { jsonPtr in
+            namespace.withCString { nsPtr in
+                guard let ptr = nmp_app_chirp_dispatch_action_bytes(raw, nsPtr, jsonPtr) else {
+                    return nil
+                }
+                defer { nmp_free_string(ptr) }
+                return String(cString: ptr)
+            }
+        }
+        guard let envelope else {
+            return .failure("dispatch returned a null envelope")
+        }
+        return DispatchResult.parse(envelope: envelope)
+    }
 
 }
 
@@ -238,10 +251,9 @@ final class MarmotStore: ObservableObject {
     }
 
     // ── Dispatch op wrappers ──────────────────────────────────────────────
-    // Each encodes the op envelope and dispatches it through the kernel's
-    // typed `nmp_app_chirp_dispatch_action_bytes("nmp.marmot", …)` byte
-    // doorway. The next kernel snapshot pushes the refreshed Marmot view; the
-    // UI does not poll from Swift.
+    // Each encodes the op envelope and dispatches it through the typed Marmot
+    // bridge method. The next kernel snapshot pushes the refreshed Marmot view;
+    // the UI does not poll from Swift.
     //
     // `dispatch_action` is non-blocking — it validates the namespace + body,
     // mints a `correlation_id`, enqueues the op for the actor thread, and
@@ -278,7 +290,7 @@ final class MarmotStore: ObservableObject {
         // surfaces the same `.bridgeUnavailable` UX bunker sign-in users
         // saw on the old path.
         guard kernel.marmotHandle != nil else { return .bridgeUnavailable }
-        let result = kernel.dispatchRawAction(namespace: "nmp.marmot", bodyJson: json)
+        let result = kernel.dispatchMarmotAction(bodyJson: json)
         switch result {
         case .accepted(let correlationId):
             return .submitted(correlationId: correlationId)
@@ -294,7 +306,7 @@ final class MarmotStore: ObservableObject {
               let json = String(data: data, encoding: .utf8)
         else { return }
         guard kernel.marmotHandle != nil else { return }
-        _ = kernel.dispatchRawAction(namespace: "nmp.marmot", bodyJson: json)
+        _ = kernel.dispatchMarmotAction(bodyJson: json)
     }
 
     /// Publish (or rotate) the local MLS key-package.

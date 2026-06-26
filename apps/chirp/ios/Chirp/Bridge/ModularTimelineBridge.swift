@@ -92,6 +92,17 @@ extension KernelHandle {
             let data = try? JSONSerialization.data(withJSONObject: body),
             let json = String(data: data, encoding: .utf8)
         else { return }
-        _ = dispatchRawActionBytes(namespace: "nmp.nip01.visible_note_relations", bodyJson: json)
+        dispatchVisibleNoteRelations(bodyJson: json)
+    }
+
+    private func dispatchVisibleNoteRelations(bodyJson: String) {
+        let namespace = "nmp.nip01.visible_note_relations"
+        bodyJson.withCString { jsonPtr in
+            namespace.withCString { nsPtr in
+                if let ptr = nmp_app_chirp_dispatch_action_bytes(raw, nsPtr, jsonPtr) {
+                    nmp_free_string(ptr)
+                }
+            }
+        }
     }
 }

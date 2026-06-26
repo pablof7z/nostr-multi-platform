@@ -139,9 +139,6 @@ class GalleryModel : ViewModel() {
         bridge.releaseEvent(uri, consumerId)
     }
 
-    fun dispatchAction(action: String, payload: String): String? =
-        bridge.dispatchAction(action, payload)
-
     /**
      * Hop a pushed NIP-55 request (ADR-0048 Stage 2 / #1612) onto the main
      * thread before handing it to the activity-owned handler — the NIP-55

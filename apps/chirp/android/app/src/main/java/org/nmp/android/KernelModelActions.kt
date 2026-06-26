@@ -1,30 +1,16 @@
 package org.nmp.android
 
-import android.util.Log
-
-private const val TAG = "NmpCore"
-
 /**
- * Action-dispatch, outbox control-plane, wallet (NIP-47/NWC), and social write-op
- * extension surface for [KernelModel]. Split out of [KernelModel] to keep that
- * file under the 500-LOC ceiling (AGENTS.md File Size). Same package — no import
- * required. Public API surface is unchanged. Thin-shell rule: no business logic
- * here; Rust owns all dispatch policy (D7).
+ * Outbox control-plane, wallet (NIP-47/NWC), and social write-op extension
+ * surface for [KernelModel]. Split out of [KernelModel] to keep that file under
+ * the 500-LOC ceiling (AGENTS.md File Size). Same package — no import required.
+ * Public API surface is typed; namespace/body dispatch stays below
+ * [KernelBridge].
  */
 
 // -------------------------------------------------------------------------
-// Generic action dispatch + outbox control-plane
+// Outbox control-plane
 // -------------------------------------------------------------------------
-
-/**
- * Dispatch a named action through the action registry (generic path).
- * Fire-and-forget — outcomes arrive in the next snapshot tick.
- */
-fun KernelModel.dispatchAction(namespace: String, actionJson: String): DispatchResult {
-    val result = bridge.dispatchAction(namespace, actionJson)
-    Log.d(TAG, "dispatchAction($namespace) response: $result")
-    return result
-}
 
 fun KernelModel.ackActionStage(correlationId: String) {
     bridge.ackActionStage(correlationId)
@@ -44,17 +30,11 @@ fun KernelModel.cancelPublish(correlationId: String) {
 // Wallet (NIP-47 / NWC)
 // -------------------------------------------------------------------------
 
-/** Connect a NIP-47 wallet via NWC URI. [actionJson] = {"Connect":{"uri":"nostr+walletconnect://..."}} */
-fun KernelModel.dispatchWalletConnect(actionJson: String) {
-    val response = bridge.dispatchActionBytes("nmp.wallet.connect", actionJson)
-    Log.d(TAG, "wallet connect response: $response")
-}
+/** Connect a NIP-47 wallet via NWC URI. */
+fun KernelModel.dispatchWalletConnect(uri: String): DispatchResult = bridge.walletConnect(uri)
 
 /** Disconnect the current NIP-47 wallet. */
-fun KernelModel.dispatchWalletDisconnect() {
-    val response = bridge.dispatchActionBytes("nmp.wallet.disconnect", "\"Disconnect\"")
-    Log.d(TAG, "wallet disconnect response: $response")
-}
+fun KernelModel.dispatchWalletDisconnect(): DispatchResult = bridge.walletDisconnect()
 
 // -------------------------------------------------------------------------
 // Social + DM — write ops live in [social: SocialActions]; these delegate so
