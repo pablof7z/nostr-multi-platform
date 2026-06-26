@@ -4454,11 +4454,13 @@ dependencies = [
  "nmp-defaults",
  "nmp-network",
  "nmp-signer-iface",
+ "nmp-signers",
  "nmp-store",
  "nmp-substrate-defaults",
  "serde",
  "serde_json",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
  "wasm-bindgen-test",
 ]
 

@@ -30,6 +30,8 @@ use nmp_core::{CommandApplyOutcome, KernelReducer, OutboundMessage};
 
 use super::event::BrowserRuntimeEvent;
 use super::PendingSignedPublish;
+use crate::relay::WakeCell;
+use crate::signer::{broker_sign_request, CapabilityProviderRegistry, SignerCompletionTx};
 
 /// Maximum number of commands applied per `pump()` turn.
 ///
@@ -55,14 +57,19 @@ pub(super) struct DrainOutcome {
 /// Each command's [`CommandApplyOutcome`] is honored:
 /// * `Applied` → its outbound frames are collected.
 /// * `NeedsSign` → the publish continuation is parked in `pending` keyed on the
-///   sign correlation id and a [`BrowserRuntimeEvent::SignRequest`] is emitted
-///   (broker side lands in #2049).
-/// * `Unsupported` → a [`BrowserRuntimeEvent::CommandFailed`] is emitted (never
-///   a silent drop — D6-honest).
+///   sign correlation id. `broker_sign_request` is called; if a provider is
+///   found it dispatches the sign (LocalKey: inline; NIP-07/wasm: async via
+///   channel). Only when no provider is found is
+///   [`BrowserRuntimeEvent::SignRequest`] emitted for host-brokering (D6 —
+///   never a silent drop).
+/// * `Unsupported` → a [`BrowserRuntimeEvent::CommandFailed`] is emitted.
 pub(super) fn drain_inbox(
     reducer: &mut KernelReducer,
     rx: &Receiver<ActorMail>,
     pending: &mut HashMap<String, PendingSignedPublish>,
+    registry: &CapabilityProviderRegistry,
+    completion_tx: &SignerCompletionTx,
+    wake: &WakeCell,
 ) -> DrainOutcome {
     let mut outbound: Vec<OutboundMessage> = Vec::new();
     let mut events: Vec<BrowserRuntimeEvent> = Vec::new();
@@ -99,9 +106,7 @@ pub(super) fn drain_inbox(
                 target,
                 action_correlation_id,
             } => {
-                // Park the publish continuation under the sign correlation id;
-                // the broker (delivering the signed event + re-publishing) lands
-                // in #2049. The emission + parking are the contract that exists now.
+                // Park the publish continuation under the sign correlation id.
                 pending.insert(
                     request.correlation_id.clone(),
                     PendingSignedPublish {
@@ -109,11 +114,25 @@ pub(super) fn drain_inbox(
                         target,
                     },
                 );
-                events.push(BrowserRuntimeEvent::SignRequest {
-                    correlation_id: request.correlation_id,
-                    account_pubkey: request.account_pubkey,
-                    unsigned_json: request.unsigned_json,
-                });
+                // Try to auto-broker using a registered provider (LocalKey:
+                // inline; NIP-07/wasm: async via spawn_local → channel).
+                // If no provider is found, emit SignRequest for host-brokering
+                // (never silently drop — D6).
+                let brokered = broker_sign_request(
+                    registry,
+                    &request.correlation_id,
+                    &request.account_pubkey,
+                    &request.unsigned_json,
+                    completion_tx,
+                    wake,
+                );
+                if !brokered {
+                    events.push(BrowserRuntimeEvent::SignRequest {
+                        correlation_id: request.correlation_id,
+                        account_pubkey: request.account_pubkey,
+                        unsigned_json: request.unsigned_json,
+                    });
+                }
             }
             CommandApplyOutcome::Unsupported { reason } => {
                 events.push(BrowserRuntimeEvent::CommandFailed { reason });

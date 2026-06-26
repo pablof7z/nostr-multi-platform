@@ -39,6 +39,17 @@ pub enum BrowserRuntimeEvent {
         /// `browser_command_unsupported: ActorCommand::Identity(..) ...`).
         reason: String,
     },
+    /// A sign round-trip settled but could not be matched to a parked publish,
+    /// or the kernel reported an unknown/stale correlation id. Surfaced so a
+    /// stranded or duplicate sign delivery is observable rather than silently
+    /// dropped (D6-honest). Mirrors `nmp-wasm`'s `WorkerEvent::SignFailed`.
+    SignFailed {
+        /// The sign correlation id that failed to resolve.
+        correlation_id: String,
+        /// Human-readable reason (kernel failure string, or stale/duplicate
+        /// delivery note for an unknown correlation id).
+        reason: String,
+    },
     /// A relay socket could not be opened because the concurrent-socket budget
     /// (`MAX_CONCURRENT_SOCKETS = 64`) has been reached (#2070).
     ///
