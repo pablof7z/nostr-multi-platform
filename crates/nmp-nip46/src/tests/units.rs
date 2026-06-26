@@ -1,14 +1,12 @@
 //! Pure-function unit tests: `build_connect_params`, `new_request_id`,
 //! `build_req_frame`, `decode_inbound_response`, and `build_event_frame`.
 
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use nostr::nips::nip44;
 use serde_json::Value;
 
 use super::*;
 use crate::rpc::{build_connect_params, build_event_frame, decode_inbound_response, new_request_id};
-use crate::{build_req_frame, HandshakeOutcome};
+use crate::build_req_frame;
 
 // ─── build_connect_params ────────────────────────────────────────────────────
 
@@ -57,7 +55,7 @@ fn new_request_id_is_unique_across_calls() {
 #[test]
 fn build_req_frame_subscribes_to_kind_24133_for_local_pubkey() {
     let pk = Keys::generate().public_key().to_hex();
-    let frame = build_req_frame("sub-1", &pk);
+    let frame = build_req_frame("sub-1", &pk, TEST_NOW);
     let v: Value = serde_json::from_str(&frame).expect("REQ frame is JSON");
     let arr = v.as_array().unwrap();
     assert_eq!(arr[0].as_str(), Some("REQ"));
@@ -71,25 +69,29 @@ fn build_req_frame_subscribes_to_kind_24133_for_local_pubkey() {
 }
 
 #[test]
-fn build_req_frame_since_is_recent_and_in_the_past() {
+fn build_req_frame_since_is_now_minus_30() {
     let pk = Keys::generate().public_key().to_hex();
-    let frame = build_req_frame("sub-1", &pk);
+    let now = TEST_NOW;
+    let frame = build_req_frame("sub-1", &pk, now);
     let v: Value = serde_json::from_str(&frame).unwrap();
     let since = v.as_array().unwrap()[2]
         .get("since")
         .and_then(|s| s.as_u64())
         .expect("since is a number");
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-    // since == now - 30s (with small slack for test execution time).
-    assert!(since <= now, "since must not be in the future");
-    assert!(
-        now - since <= 35,
-        "since should be ~30s in the past, got {}s",
-        now - since
-    );
+    assert_eq!(since, now - 30, "since must be exactly now - 30");
+}
+
+#[test]
+fn build_req_frame_since_saturates_at_zero_for_small_now() {
+    let pk = Keys::generate().public_key().to_hex();
+    // now = 5, so now - 30 would underflow; saturating_sub clamps to 0.
+    let frame = build_req_frame("sub-1", &pk, 5);
+    let v: Value = serde_json::from_str(&frame).unwrap();
+    let since = v.as_array().unwrap()[2]
+        .get("since")
+        .and_then(|s| s.as_u64())
+        .expect("since is a number");
+    assert_eq!(since, 0, "since must saturate at 0, not overflow");
 }
 
 // ─── decode_inbound_response ─────────────────────────────────────────────────
@@ -188,15 +190,4 @@ fn build_event_frame_emits_kind_24133_with_p_tag_and_nip44_content() {
     let decrypted = nip44::decrypt(local.secret_key(), &remote, ciphertext.as_bytes())
         .expect("content must be NIP-44 decryptable by remote");
     assert_eq!(decrypted, plaintext, "decrypted content must equal plaintext");
-}
-
-// ─── HandshakeOutcome sanity ─────────────────────────────────────────────────
-
-#[test]
-fn handshake_outcome_stores_user_pubkey_verbatim() {
-    let pk = Keys::generate().public_key().to_hex();
-    let outcome = HandshakeOutcome {
-        user_pubkey_hex: pk.clone(),
-    };
-    assert_eq!(outcome.user_pubkey_hex, pk);
 }

@@ -25,6 +25,7 @@
 //! after the signal makes them self-exit. No thread is leaked: the reaper owns
 //! and joins every handle off the caller's path.
 
+mod drive;
 mod handshake_thread;
 mod intake;
 mod nostrconnect;

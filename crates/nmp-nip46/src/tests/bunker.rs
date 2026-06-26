@@ -1,310 +1,312 @@
-//! Client-initiated (`bunker://`) handshake tests, plus the `await_response`
-//! error / robustness paths.
+//! Synchronous reducer tests for the client-initiated (`bunker://`) handshake.
+//!
+//! No threads, no channels, no blocking — each test feeds events directly to
+//! the reducer and asserts the returned effects.
 
-use nostr::nips::nip44;
+use nostr::Keys;
 use serde_json::{json, Value};
 
 use super::*;
-use crate::{run_handshake, HandshakeError};
+use crate::bunker::start_bunker;
+use crate::effect::Effect;
+use crate::error::HandshakeError;
 
+const SUB_ID: &str = "nmp-bunker";
+
+/// Helper: run `start_bunker` and collect Send/Subscribe frames.
+fn bunker_start(
+    client_keys: &Keys,
+    bunker_pubkey: nostr::PublicKey,
+    secret: Option<&str>,
+    perms: Option<&str>,
+) -> (crate::reducer::SessionState, Vec<Effect>) {
+    start_bunker(
+        SUB_ID,
+        client_keys.clone(),
+        bunker_pubkey,
+        "wss://relay.example.com".to_string(),
+        secret,
+        perms,
+        TEST_NOW,
+    )
+}
+
+// ─── Happy path ──────────────────────────────────────────────────────────────
+
+/// End-to-end happy path: the reducer produces a connect SendFrame, and when
+/// the bunker replies with "ack", it advances to WaitGpk and emits a
+/// get_public_key SendFrame.  On the gpk reply it emits SignerReady.
 #[test]
-fn happy_path_connect_then_get_public_key_returns_user_pubkey() {
+fn happy_path_connect_then_get_public_key_returns_signer_ready() {
     let client_keys = Keys::generate();
     let bunker_keys = Keys::generate();
-    let bunker_pubkey = bunker_keys.public_key();
     let user_keys = Keys::generate();
     let user_pk_hex = user_keys.public_key().to_hex();
 
-    let (relay, frame_rx) = StubRelay::new();
-    let (inbound_tx, inbound_rx) = crossbeam_channel::unbounded::<Value>();
-    let cancel_rx = never_cancel();
+    // ── start ──
+    let (mut state, effects) = bunker_start(&client_keys, bunker_keys.public_key(), None, None);
 
-    // Driver thread: block on each outgoing frame as it is published,
-    // manufacture the matching bunker response, push it onto the inbound
-    // channel. `recv()` blocks (no poll loop); the loop ends naturally
-    // when the relay is dropped at end-of-test and `recv()` disconnects.
-    let bunker_keys_for_driver = bunker_keys.clone();
-    let client_pk_for_driver = client_keys.public_key();
-    let user_pk_for_driver = user_pk_hex.clone();
-    let driver = std::thread::spawn(move || {
-        let mut seen = 0usize;
-        while let Ok(frame) = frame_rx.recv() {
-            // Frame 0 is `connect` (reply "ack"); frame 1 is
-            // `get_public_key` (reply user pubkey).
-            let result = if seen == 0 {
-                "ack".to_string()
-            } else {
-                user_pk_for_driver.clone()
-            };
-            let response = bunker_response(
-                &frame,
-                &bunker_keys_for_driver,
-                client_pk_for_driver,
-                &result,
-            );
-            let _ = inbound_tx.send(response);
-            seen += 1;
-        }
-    });
+    // Expect: Subscribe, Progress("connecting"), SendFrame(connect)
+    assert!(matches!(&effects[0], Effect::Subscribe { .. }));
+    assert!(matches!(&effects[1], Effect::Progress { stage, .. } if stage == "connecting"));
+    let connect_frame = match &effects[2] {
+        Effect::SendFrame { text, .. } => text.clone(),
+        other => panic!("expected SendFrame, got {other:?}"),
+    };
 
-    let mut progress_events: Vec<(String, Option<String>)> = Vec::new();
-    let outcome = run_handshake(
-        relay.as_ref(),
-        &inbound_rx,
-        &cancel_rx,
-        &client_keys,
-        bunker_pubkey,
-        None,
-        None,
-        &mut |stage, _code, msg| progress_events.push((stage.to_string(), msg.map(String::from))),
-    )
-    .expect("handshake completes");
+    // ── connect response ──
+    let ack_event = respond_to_frame(
+        &connect_frame,
+        &bunker_keys,
+        client_keys.public_key(),
+        "ack",
+    );
+    let effects2 = state.on_relay_event(&ack_event, TEST_NOW);
 
-    assert_eq!(outcome.user_pubkey_hex, user_keys.public_key().to_hex());
-    assert!(progress_events.iter().any(|(s, _)| s == "connecting"));
-    assert!(progress_events.iter().any(|(s, _)| s == "awaiting_pubkey"));
-    assert!(relay.last_event().is_some());
+    // Expect: Progress("awaiting_pubkey"), SendFrame(get_public_key)
+    assert!(
+        matches!(&effects2[0], Effect::Progress { stage, .. } if stage == "awaiting_pubkey"),
+        "expected awaiting_pubkey progress, got {effects2:?}"
+    );
+    let gpk_frame = match &effects2[1] {
+        Effect::SendFrame { text, .. } => text.clone(),
+        other => panic!("expected SendFrame for get_public_key, got {other:?}"),
+    };
 
-    // Wind the driver down: dropping the relay closes `frame_tx`, so the
-    // driver's `recv()` disconnects and the loop exits deterministically.
-    drop(relay);
-    let _ = driver.join();
+    // ── get_public_key response ──
+    let gpk_event = respond_to_frame(&gpk_frame, &bunker_keys, client_keys.public_key(), &user_pk_hex);
+    let effects3 = state.on_relay_event(&gpk_event, TEST_NOW);
+
+    // Expect: SignerReady
+    let sr = match effects3.into_iter().next() {
+        Some(Effect::SignerReady(sr)) => sr,
+        other => panic!("expected SignerReady, got {other:?}"),
+    };
+    assert_eq!(sr.user_pubkey_hex, user_pk_hex);
+    assert_eq!(sr.remote_signer_pubkey_hex, bunker_keys.public_key().to_hex());
+    assert!(sr.granted_perms.is_none());
 }
 
+// ─── Progress events ─────────────────────────────────────────────────────────
+
 #[test]
-fn cancellation_aborts_with_cancelled_error() {
+fn start_bunker_emits_connecting_progress_with_code() {
     let client_keys = Keys::generate();
     let bunker_pk = Keys::generate().public_key();
+    let (_, effects) = bunker_start(&client_keys, bunker_pk, None, None);
 
-    let (relay, frame_rx) = StubRelay::new();
-    let (_inbound_tx, inbound_rx) = crossbeam_channel::unbounded::<Value>();
-    let (cancel_tx, cancel_rx) = crossbeam_channel::bounded::<()>(1);
-
-    // Deterministic trigger: block until the handshake publishes its first
-    // outgoing frame (the `connect` RPC), then cancel by sending on the cancel
-    // channel. The handshake `select!` wakes immediately on the cancel arm —
-    // event-driven, with no inbound traffic and no timer. No sleep needed.
-    let canceller = std::thread::spawn(move || {
-        let _ = frame_rx.recv();
-        let _ = cancel_tx.send(());
+    let progress = effects.iter().find_map(|e| {
+        if let Effect::Progress { stage, code, .. } = e {
+            if stage == "connecting" { Some(code.clone()) } else { None }
+        } else {
+            None
+        }
     });
-
-    let err = run_handshake(
-        relay.as_ref(),
-        &inbound_rx,
-        &cancel_rx,
-        &client_keys,
-        bunker_pk,
-        None,
-        None,
-        &mut |_, _, _| {},
-    )
-    .expect_err("cancelled");
-    assert!(matches!(err, HandshakeError::Cancelled));
-    let _ = canceller.join();
+    assert!(progress.is_some(), "must emit connecting progress");
+    assert!(
+        progress.unwrap().as_deref() == Some(crate::progress_codes::SENDING_CONNECT_TO_BUNKER),
+        "must carry the stable progress code"
+    );
 }
 
-/// The security-critical path: when the bunker replies with an `error`
-/// field, the handshake must surface a `BunkerError` carrying the text —
-/// never silently treat it as success.
+// ─── Error paths ─────────────────────────────────────────────────────────────
+
+/// The security-critical path: when the bunker replies with an `error` field,
+/// the reducer must surface `Effect::Error(BunkerError(...))`.
 #[test]
-fn run_handshake_surfaces_bunker_error_response() {
+fn bunker_error_response_to_connect_produces_error_effect() {
     let client_keys = Keys::generate();
     let bunker_keys = Keys::generate();
-    let bunker_pubkey = bunker_keys.public_key();
 
-    let (relay, frame_rx) = StubRelay::new();
-    let (inbound_tx, inbound_rx) = crossbeam_channel::unbounded::<Value>();
+    let (mut state, effects) = bunker_start(&client_keys, bunker_keys.public_key(), None, None);
+    let connect_frame = match &effects[2] {
+        Effect::SendFrame { text, .. } => text.clone(),
+        other => panic!("expected SendFrame, got {other:?}"),
+    };
 
-    let cancel_rx = never_cancel();
-
-    // Driver: block until the first outgoing frame (the `connect` RPC)
-    // arrives, then reply with an explicit error payload. `recv()`
-    // blocks — no poll loop.
-    let bunker_for_driver = bunker_keys.clone();
-    let client_pk = client_keys.public_key();
-    let driver = std::thread::spawn(move || {
-        if let Ok(frame) = frame_rx.recv() {
-            // Extract the connect request id by decrypting the frame.
-            let parsed: Value = serde_json::from_str(&frame).unwrap();
-            let ct = parsed.as_array().unwrap()[1]
-                .get("content")
-                .and_then(|v| v.as_str())
-                .unwrap();
-            let plain =
-                nip44::decrypt(bunker_for_driver.secret_key(), &client_pk, ct.as_bytes()).unwrap();
-            let req: Value = serde_json::from_str(&plain).unwrap();
-            let req_id = req.get("id").and_then(|v| v.as_str()).unwrap();
-            let err_rpc = json!({
-                "id": req_id,
-                "result": Value::Null,
-                "error": "user rejected the request",
-            });
-            let event = make_response_event(&bunker_for_driver, client_pk, err_rpc);
-            let _ = inbound_tx.send(event);
-        }
-    });
-
-    let err = run_handshake(
-        relay.as_ref(),
-        &inbound_rx,
-        &cancel_rx,
-        &client_keys,
-        bunker_pubkey,
-        None,
-        None,
-        &mut |_, _, _| {},
+    // Extract connect request id, send bunker error.
+    let parsed: Value = serde_json::from_str(&connect_frame).unwrap();
+    let ct = parsed.as_array().unwrap()[1].get("content").and_then(|v| v.as_str()).unwrap();
+    let plain = nostr::nips::nip44::decrypt(
+        bunker_keys.secret_key(),
+        &client_keys.public_key(),
+        ct.as_bytes(),
     )
-    .expect_err("bunker error must abort the handshake");
-    match err {
-        HandshakeError::BunkerError(msg) => {
-            assert!(
-                msg.contains("user rejected"),
-                "error text must reach the caller, got: {msg:?}"
-            );
-        }
-        other => panic!("expected BunkerError, got {other:?}"),
-    }
+    .unwrap();
+    let req: Value = serde_json::from_str(&plain).unwrap();
+    let req_id = req.get("id").and_then(|v| v.as_str()).unwrap();
+    let err_rpc = json!({ "id": req_id, "result": Value::Null, "error": "user rejected the request" });
+    let event = make_response_event(&bunker_keys, client_keys.public_key(), err_rpc);
 
-    let _ = driver.join();
+    let result_effects = state.on_relay_event(&event, TEST_NOW);
+    let err = match result_effects.into_iter().next() {
+        Some(Effect::Error { error }) => error,
+        other => panic!("expected Error effect, got {other:?}"),
+    };
+    assert!(
+        matches!(&err, HandshakeError::BunkerError(msg) if msg.contains("user rejected")),
+        "expected BunkerError with rejection message, got {err:?}"
+    );
 }
 
-/// A response carrying a non-string `result` (e.g. a bare object) must be
-/// surfaced as a `Protocol` error, not silently accepted.
+/// A response carrying a non-string `result` must be surfaced as a
+/// `Protocol` error, not silently accepted.
 #[test]
-fn run_handshake_rejects_non_string_result() {
+fn non_string_result_produces_protocol_error() {
     let client_keys = Keys::generate();
     let bunker_keys = Keys::generate();
-    let bunker_pubkey = bunker_keys.public_key();
 
-    let (relay, frame_rx) = StubRelay::new();
-    let (inbound_tx, inbound_rx) = crossbeam_channel::unbounded::<Value>();
+    let (mut state, effects) = bunker_start(&client_keys, bunker_keys.public_key(), None, None);
+    let connect_frame = match &effects[2] {
+        Effect::SendFrame { text, .. } => text.clone(),
+        other => panic!("expected SendFrame, got {other:?}"),
+    };
 
-    let cancel_rx = never_cancel();
-
-    // Driver: block for the first outgoing frame, then reply with a
-    // malformed (non-string `result`) payload. `recv()` blocks.
-    let bunker_for_driver = bunker_keys.clone();
-    let client_pk = client_keys.public_key();
-    let driver = std::thread::spawn(move || {
-        if let Ok(frame) = frame_rx.recv() {
-            let parsed: Value = serde_json::from_str(&frame).unwrap();
-            let ct = parsed.as_array().unwrap()[1]
-                .get("content")
-                .and_then(|v| v.as_str())
-                .unwrap();
-            let plain =
-                nip44::decrypt(bunker_for_driver.secret_key(), &client_pk, ct.as_bytes()).unwrap();
-            let req: Value = serde_json::from_str(&plain).unwrap();
-            let req_id = req.get("id").and_then(|v| v.as_str()).unwrap();
-            // `result` is an object, not a string.
-            let bad_rpc = json!({ "id": req_id, "result": {"unexpected": true} });
-            let event = make_response_event(&bunker_for_driver, client_pk, bad_rpc);
-            let _ = inbound_tx.send(event);
-        }
-    });
-
-    let err = run_handshake(
-        relay.as_ref(),
-        &inbound_rx,
-        &cancel_rx,
-        &client_keys,
-        bunker_pubkey,
-        None,
-        None,
-        &mut |_, _, _| {},
+    let parsed: Value = serde_json::from_str(&connect_frame).unwrap();
+    let ct = parsed.as_array().unwrap()[1].get("content").and_then(|v| v.as_str()).unwrap();
+    let plain = nostr::nips::nip44::decrypt(
+        bunker_keys.secret_key(),
+        &client_keys.public_key(),
+        ct.as_bytes(),
     )
-    .expect_err("non-string result must abort the handshake");
+    .unwrap();
+    let req: Value = serde_json::from_str(&plain).unwrap();
+    let req_id = req.get("id").and_then(|v| v.as_str()).unwrap();
+    let bad_rpc = json!({ "id": req_id, "result": {"unexpected": true} });
+    let event = make_response_event(&bunker_keys, client_keys.public_key(), bad_rpc);
+
+    let result_effects = state.on_relay_event(&event, TEST_NOW);
+    let err = match result_effects.into_iter().next() {
+        Some(Effect::Error { error }) => error,
+        other => panic!("expected Error effect, got {other:?}"),
+    };
     assert!(
         matches!(err, HandshakeError::Protocol(_)),
-        "expected Protocol error, got {err:?}"
+        "expected Protocol error for non-string result, got {err:?}"
     );
-
-    let _ = driver.join();
 }
 
-/// Stray events (wrong pubkey, undecryptable content) must be skipped
-/// without panic or premature failure; the genuine response that arrives
-/// afterward must still complete the step. Exercises D6 robustness.
+// ─── Stray-event skipping (D6) ───────────────────────────────────────────────
+
+/// Stray events (wrong pubkey, undecryptable content) must produce empty
+/// Vec<Effect> — the state machine does not advance and does not error.
+/// The genuine response that arrives afterward must still complete the step.
 #[test]
-fn run_handshake_skips_stray_events_then_completes() {
+fn stray_events_are_skipped_then_genuine_response_completes() {
     let client_keys = Keys::generate();
     let bunker_keys = Keys::generate();
-    let bunker_pubkey = bunker_keys.public_key();
-    let user_keys = Keys::generate();
-    let user_pk_hex = user_keys.public_key().to_hex();
     let stranger = Keys::generate();
+    let user_keys = Keys::generate();
 
-    let (relay, frame_rx) = StubRelay::new();
-    let (inbound_tx, inbound_rx) = crossbeam_channel::unbounded::<Value>();
+    let (mut state, effects) = bunker_start(&client_keys, bunker_keys.public_key(), None, None);
+    let connect_frame = match &effects[2] {
+        Effect::SendFrame { text, .. } => text.clone(),
+        other => panic!("expected SendFrame, got {other:?}"),
+    };
 
-    let cancel_rx = never_cancel();
+    // Stray 1: event from a stranger (wrong pubkey).
+    let stray = make_response_event(
+        &stranger,
+        client_keys.public_key(),
+        json!({"id": "noise", "result": "ignored"}),
+    );
+    let skip_effects = state.on_relay_event(&stray, TEST_NOW);
+    assert!(skip_effects.is_empty(), "stray event from stranger must be skipped: {skip_effects:?}");
 
-    // Driver: block on each outgoing frame; for every one, inject noise
-    // (stranger event + garbage ciphertext) ahead of the genuine reply.
-    // `recv()` blocks; the loop exits when the relay is dropped.
-    let bunker_for_driver = bunker_keys.clone();
-    let client_pk = client_keys.public_key();
-    let user_pk_for_driver = user_pk_hex.clone();
-    let driver = std::thread::spawn(move || {
-        let mut seen = 0usize;
-        while let Ok(frame) = frame_rx.recv() {
-            // Inject noise BEFORE the genuine reply: an event from a
-            // stranger and an event with garbage content.
-            let stray = make_response_event(
-                &stranger,
-                client_pk,
-                json!({"id": "noise", "result": "ignored"}),
-            );
-            let _ = inbound_tx.send(stray);
-            let mut garbage = make_response_event(
-                &bunker_for_driver,
-                client_pk,
-                json!({"id": "noise2", "result": "x"}),
-            );
-            garbage["content"] = json!("not-real-ciphertext");
-            let _ = inbound_tx.send(garbage);
+    // Stray 2: event with garbage ciphertext.
+    let mut garbage = make_response_event(
+        &bunker_keys,
+        client_keys.public_key(),
+        json!({"id": "noise2", "result": "x"}),
+    );
+    garbage["content"] = json!("not-real-ciphertext");
+    let skip_effects2 = state.on_relay_event(&garbage, TEST_NOW);
+    assert!(skip_effects2.is_empty(), "garbage ciphertext must be skipped");
 
-            // Now the genuine reply.
-            let parsed: Value = serde_json::from_str(&frame).unwrap();
-            let ct = parsed.as_array().unwrap()[1]
-                .get("content")
-                .and_then(|v| v.as_str())
-                .unwrap();
-            let plain =
-                nip44::decrypt(bunker_for_driver.secret_key(), &client_pk, ct.as_bytes()).unwrap();
-            let req: Value = serde_json::from_str(&plain).unwrap();
-            let req_id = req.get("id").and_then(|v| v.as_str()).unwrap().to_string();
-            let result = if seen == 0 {
-                "ack".to_string()
-            } else {
-                user_pk_for_driver.clone()
-            };
-            let good = make_response_event(
-                &bunker_for_driver,
-                client_pk,
-                json!({"id": req_id, "result": result}),
-            );
-            let _ = inbound_tx.send(good);
-            seen += 1;
-        }
-    });
+    // Now the genuine response arrives.
+    let ack_event =
+        respond_to_frame(&connect_frame, &bunker_keys, client_keys.public_key(), "ack");
+    let effects2 = state.on_relay_event(&ack_event, TEST_NOW);
+    assert!(
+        effects2.iter().any(|e| matches!(e, Effect::Progress { stage, .. } if stage == "awaiting_pubkey")),
+        "genuine connect response must advance to awaiting_pubkey"
+    );
 
-    let outcome = run_handshake(
-        relay.as_ref(),
-        &inbound_rx,
-        &cancel_rx,
-        &client_keys,
-        bunker_pubkey,
-        None,
-        None,
-        &mut |_, _, _| {},
-    )
-    .expect("handshake completes despite stray events");
-    assert_eq!(outcome.user_pubkey_hex, user_pk_hex);
+    // Continue with gpk.
+    let gpk_frame = match effects2.iter().find(|e| matches!(e, Effect::SendFrame { .. })) {
+        Some(Effect::SendFrame { text, .. }) => text.clone(),
+        _ => panic!("expected gpk SendFrame"),
+    };
+    let gpk_event = respond_to_frame(
+        &gpk_frame,
+        &bunker_keys,
+        client_keys.public_key(),
+        &user_keys.public_key().to_hex(),
+    );
+    let effects3 = state.on_relay_event(&gpk_event, TEST_NOW);
+    assert!(
+        matches!(effects3.first(), Some(Effect::SignerReady(_))),
+        "must complete with SignerReady"
+    );
+}
 
-    // Dropping the relay closes `frame_tx`; the driver's `recv()`
-    // disconnects and the loop exits.
-    drop(relay);
-    let _ = driver.join();
+/// Events processed after Done phase must produce empty effects.
+#[test]
+fn events_after_done_phase_are_silently_ignored() {
+    let client_keys = Keys::generate();
+    let bunker_keys = Keys::generate();
+    let user_keys = Keys::generate();
+
+    let (mut state, effects) = bunker_start(&client_keys, bunker_keys.public_key(), None, None);
+    let connect_frame = match &effects[2] {
+        Effect::SendFrame { text, .. } => text.clone(),
+        _ => panic!(),
+    };
+    let ack = respond_to_frame(&connect_frame, &bunker_keys, client_keys.public_key(), "ack");
+    let eff2 = state.on_relay_event(&ack, TEST_NOW);
+    let gpk_frame = match eff2.iter().find(|e| matches!(e, Effect::SendFrame { .. })) {
+        Some(Effect::SendFrame { text, .. }) => text.clone(),
+        _ => panic!(),
+    };
+    let gpk_resp = respond_to_frame(
+        &gpk_frame,
+        &bunker_keys,
+        client_keys.public_key(),
+        &user_keys.public_key().to_hex(),
+    );
+    let _ = state.on_relay_event(&gpk_resp, TEST_NOW); // → Done
+
+    // Any further event must be a no-op.
+    let noise = make_response_event(
+        &bunker_keys,
+        client_keys.public_key(),
+        json!({"id": "late", "result": "x"}),
+    );
+    let post_done = state.on_relay_event(&noise, TEST_NOW);
+    assert!(post_done.is_empty(), "Done phase must ignore all events");
+}
+
+// ─── Deadline / tick ─────────────────────────────────────────────────────────
+
+/// `tick` must emit a `Timeout` error when called after the deadline.
+#[test]
+fn tick_after_deadline_emits_timeout_error() {
+    let client_keys = Keys::generate();
+    let bunker_pk = Keys::generate().public_key();
+    let (mut state, _effects) = bunker_start(&client_keys, bunker_pk, None, None);
+
+    // Before deadline: no effects.
+    let pre = state.tick(TEST_NOW + 1);
+    assert!(pre.is_empty(), "tick before deadline must be empty");
+
+    // At or after deadline: Timeout error.
+    let at_deadline = state.tick(TEST_NOW + 60);
+    let err = match at_deadline.into_iter().next() {
+        Some(Effect::Error { error }) => error,
+        other => panic!("expected Timeout Error, got {other:?}"),
+    };
+    assert!(
+        matches!(&err, HandshakeError::Timeout(msg) if msg.contains("connect") && msg.contains("60s")),
+        "timeout message must name the step and budget: {err:?}"
+    );
 }

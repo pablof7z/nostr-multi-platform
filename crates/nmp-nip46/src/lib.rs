@@ -3,25 +3,21 @@
 //! Transport-agnostic NIP-46 protocol core.
 //!
 //! This crate contains the pure protocol logic for NIP-46 remote-signer
-//! connections: handshake state machines, RPC helpers, and wire-frame
-//! construction. It **spawns nothing**, **opens no sockets**, and has no
-//! dependency on any NMP application or network layer.
-//!
-//! The only transport coupling is the [`relay::FrameSink`] trait — a single
-//! `send(&str) -> Result<(), FrameSinkError>`. Production code in
-//! `nmp-signer-broker` wraps its `RelayClient` behind this seam; test stubs
-//! use `Vec`-backed impls.
+//! connections: a pure-function event reducer (no threads, no blocking, no
+//! `crossbeam`, no `SystemTime` on any reducer path), RPC helpers, and
+//! wire-frame construction. It **spawns nothing**, **opens no sockets**, and
+//! has no dependency on any NMP application or network layer.
 //!
 //! ## Module layout
 //!
 //! | module | contents |
 //! |--------|----------|
-//! | [`relay`] | [`relay::FrameSink`] trait + [`relay::FrameSinkError`] |
+//! | [`effect`] | [`effect::Effect`] + [`effect::SignerReady`] |
+//! | [`reducer`] | [`reducer::SessionState`] — pure handshake state machine |
+//! | [`bunker`] | [`bunker::start_bunker`] — client-initiated (`bunker://`) entry point |
+//! | [`nostrconnect`] | [`nostrconnect::start_nostrconnect`] — signer-initiated entry point |
 //! | [`error`] | [`error::HandshakeError`] |
-//! | [`rpc`] | [`rpc::build_event_frame`], [`rpc::decode_inbound_response`], id gen |
-//! | [`wait`] | blocking event-driven waits (STEP-1 carry; removed in STEP 2) |
-//! | [`bunker`] | client-initiated handshake (`bunker://`) |
-//! | [`nostrconnect`] | signer-initiated handshake (`nostrconnect://`) |
+//! | [`rpc`] | [`rpc::build_event_frame`], [`rpc::build_event_frame_at`], [`rpc::decode_inbound_response`] |
 //! | [`progress_codes`] | stable machine codes for progress labels |
 //! | [`uri_encode`] | RFC 3986 query-value percent-encoder |
 
@@ -30,21 +26,24 @@
 #![allow(clippy::module_name_repetitions)]
 
 pub mod bunker;
+pub mod effect;
 pub mod error;
 pub mod nostrconnect;
 pub mod progress_codes;
-pub mod relay;
+pub mod reducer;
 pub mod rpc;
 pub mod uri_encode;
-pub(crate) mod wait;
 
 // ─── flat re-exports (the "nmp_nip46::" public surface) ──────────────────────
 
-pub use bunker::{build_req_frame, run_handshake, HandshakeOutcome};
+pub use bunker::start_bunker;
+pub use effect::{Effect, SignerReady};
 pub use error::HandshakeError;
-pub use nostrconnect::{run_nostrconnect_handshake, NostrConnectOutcome};
-pub use relay::{FrameSink, FrameSinkError};
-pub use rpc::{build_event_frame, decode_inbound_response, RpcBuildError};
+pub use nostrconnect::start_nostrconnect;
+pub use reducer::SessionState;
+pub use rpc::{
+    build_event_frame, build_event_frame_at, build_req_frame, decode_inbound_response, RpcBuildError,
+};
 pub use uri_encode::percent_encode_query_value;
 
 #[cfg(test)]
