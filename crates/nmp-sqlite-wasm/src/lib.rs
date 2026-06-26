@@ -79,12 +79,21 @@ pub mod error;
 pub mod outcome;
 pub mod schema;
 
+// Target-agnostic PR-5 value/handle/ledger types — named by the (deferred)
+// `nmp-store` `EventStore` wrapper and the conformance harness.
+pub mod coverage;
+pub mod domain;
+pub mod ingest_log;
+pub mod types;
+
 mod delete;
-mod domain;
+mod dump;
 mod gc;
-mod ingest_log;
+mod gc_tombstones;
+mod ingest_log_store;
 mod insert;
 mod interaction_counters;
+mod meta;
 mod provenance;
 mod query;
 mod store_impl;
@@ -102,6 +111,23 @@ pub use outcome::{EventId, InsertOutcome, PubKey, RejectReason, TombstoneOrigin}
 /// The crate-local read query for [`OpfsSqliteStore::query_visit`] (mirror of
 /// `nmp_store::StoreQuery`; the `nmp-store` wrapper maps the two at the seam).
 pub use query::EngineQuery;
+
+// ── #1007 PR-5 public surface (gc / coverage ledger / ingest log / dump) ──────
+/// The eviction⇄ledger coherence backstop input (mirror `nmp_store::CoverageGuard`).
+pub use coverage::{CoverageGuard, CoverageMatchFn};
+/// The module-scoped domain handle (`domain_open`'s return).
+pub use domain::OpfsDomainHandle;
+/// Ingest-journal types (mirror `nmp_store::ingest_log::*`).
+pub use ingest_log::{
+    DeleteReason, LogOp, LogRetentionClaim, PullGap, PullPage, ScanLogResult, StoreLogEntry,
+    DEFAULT_LOG_MAX_ENTRIES,
+};
+/// GC / delete / dump / freshness / interaction / migration value types
+/// (mirror the corresponding `nmp_store` types at the cycle-free seam).
+pub use types::{
+    DeleteFilter, DomainMigration, DumpStats, GcBudget, GcReport, MigrationTx, ReplaceableKey,
+    TargetInteractionCounts,
+};
 
 /// Handle to the OPFS-backed SQLite event store.
 ///

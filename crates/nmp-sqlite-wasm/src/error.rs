@@ -44,6 +44,11 @@ pub enum SqliteWasmError {
     /// Encoding/decoding an event blob (or other row value) failed — a data
     /// fault, distinct from an engine-i/o fault. Produced by [`crate::conv`].
     Encoding(String),
+    /// A domain-namespace migration failed: either the on-disk schema is newer
+    /// than the requested target (the wrapper maps this to
+    /// `StoreError::SchemaTooNew`) or a migration step's `apply` closure returned
+    /// an error (`StoreError::MigrationFailed`). The message carries which.
+    Migration(String),
 }
 
 impl core::fmt::Display for SqliteWasmError {
@@ -59,6 +64,7 @@ impl core::fmt::Display for SqliteWasmError {
             Self::Step(s) => write!(f, "step failed: {s}"),
             Self::Column(s) => write!(f, "column read failed: {s}"),
             Self::Encoding(s) => write!(f, "encoding failed: {s}"),
+            Self::Migration(s) => write!(f, "domain migration failed: {s}"),
         }
     }
 }
