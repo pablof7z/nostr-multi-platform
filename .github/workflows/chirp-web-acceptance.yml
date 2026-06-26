@@ -69,6 +69,22 @@ jobs:
         run: npm ci
         working-directory: web
 
+      # The committed lockfile is generated on macOS; per npm's platform-specific
+      # optional-dependency locking it records only the darwin rolldown binding
+      # node entry. On the linux runner `npm ci` therefore installs no rolldown
+      # native binary and `vite build` (vite 8 / rolldown) fails with "Cannot
+      # find module @rolldown/binding-linux-x64-gnu". Install the linux-x64 binary
+      # explicitly at the exact version rolldown pins, WITHOUT mutating the shared
+      # lockfile (--no-save --no-package-lock). ubuntu-latest is x64 + glibc, so
+      # linux-x64-gnu is the correct variant. Regenerating a multi-platform lock
+      # was rejected: it churns the shared web/ lockfile (gallery/registry/Items
+      # C+D) with unrelated version bumps.
+      - name: Install linux rolldown native binary (lockfile is darwin-only)
+        working-directory: web
+        run: |
+          VER="$(node -p "require('./node_modules/rolldown/package.json').optionalDependencies['@rolldown/binding-linux-x64-gnu']")"
+          npm install --no-save --no-package-lock "@rolldown/binding-linux-x64-gnu@${VER}"
+
       - name: Typecheck app (src)
         run: npm run typecheck
         working-directory: web/chirp
@@ -136,6 +152,14 @@ jobs:
       - name: Install web dependencies
         run: npm ci
         working-directory: web
+
+      # Same darwin-only-lockfile fix as the pr-smoke job (see comment there):
+      # install the linux rolldown native binary that `vite build` needs.
+      - name: Install linux rolldown native binary (lockfile is darwin-only)
+        working-directory: web
+        run: |
+          VER="$(node -p "require('./node_modules/rolldown/package.json').optionalDependencies['@rolldown/binding-linux-x64-gnu']")"
+          npm install --no-save --no-package-lock "@rolldown/binding-linux-x64-gnu@${VER}"
 
       - name: Build wasm artifact (nmp-browser-runtime → public/nmp-wasm)
         env:
