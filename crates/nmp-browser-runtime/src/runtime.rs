@@ -48,6 +48,7 @@ use crate::signer::{
 use std::sync::mpsc;
 
 mod event;
+mod protocol;
 pub(crate) mod pump;
 mod signer_delivery;
 // Pub(crate) kernel-op helpers for the wasm entry point (#2038 item A).

@@ -4839,6 +4839,7 @@ dependencies = [
  "flatbuffers",
  "nmp-core",
  "nmp-signer-iface",
+ "nmp-store",
  "serde",
  "serde_json",
 ]

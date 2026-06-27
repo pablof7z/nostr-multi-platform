@@ -40,6 +40,18 @@ and relay diagnostics show per-relay acceptance or failure. Local validation mus
 assert that a fixture relay receives a signed kind:0 event with the requested
 metadata.
 
+## Reaction Publish Contract
+
+Chirp Web must let a signed-in user react to a feed or thread note through the
+typed NIP-25 action path. The browser shell may expose the Like affordance and
+send the selected event id, but Rust owns event construction, target-author tag
+resolution, signing, outbox routing, relay selection, and diagnostics.
+
+Reaction acceptance must prove that a fixture relay receives a signed kind:7
+event from the active user with the selected event's `e` tag, the target author's
+`p` tag, and the requested reaction content. The outbox/action result surfaces
+must show the same terminal relay verdicts used by notes and profiles.
+
 ## Secret Storage
 
 Pasted `nsec` values are session-memory only. Chirp Web must not persist them to

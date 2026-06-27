@@ -25,6 +25,7 @@ use nmp_signers::SignerBackend;
 
 use super::event::BrowserRuntimeEvent;
 use super::handle::BrowserRuntimeHandle;
+use super::protocol::expand_protocol_commands;
 use super::snapshot::SnapshotOutcome;
 use crate::runtime::PendingSignedPublish;
 use crate::signer::broker_sign_request;
@@ -237,7 +238,16 @@ impl BrowserRuntimeHandle {
             };
         }
 
-        let cmds = collected.into_inner();
+        let cmds = match expand_protocol_commands(collected.into_inner()) {
+            Ok(cmds) => cmds,
+            Err(reason) => {
+                return DispatchBytesResult::Rejected {
+                    capability: action_namespace,
+                    correlation_id,
+                    reason,
+                };
+            }
+        };
         let mut all_outbound: Vec<OutboundMessage> = Vec::new();
 
         // Apply each command to the kernel.

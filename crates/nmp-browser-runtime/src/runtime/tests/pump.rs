@@ -1,5 +1,28 @@
 use super::*;
 
+#[derive(Debug)]
+struct ReactionProtocolCommand;
+
+impl nmp_core::substrate::ProtocolCommand for ReactionProtocolCommand {
+    fn run(
+        self: Box<Self>,
+        ctx: &mut nmp_core::substrate::ProtocolCommandContext<'_>,
+    ) -> Result<(), nmp_core::substrate::ProtocolCommandError> {
+        ctx.publish_unsigned(
+            UnsignedEvent {
+                pubkey: String::new(),
+                kind: 7,
+                tags: vec![vec!["e".to_string(), "aa".repeat(32)]],
+                content: "+".to_string(),
+                created_at: 0,
+            },
+            Some("react-protocol-cid".to_string()),
+            None,
+        );
+        Ok(())
+    }
+}
+
 #[test]
 fn applied_command_produces_no_events_and_no_pending() {
     let mut reducer = KernelReducer::new();
@@ -14,6 +37,33 @@ fn applied_command_produces_no_events_and_no_pending() {
     assert!(out.events.is_empty(), "Applied must emit no host event");
     assert!(!out.yielded, "single command must not hit the drain budget");
     assert!(pending.is_empty(), "Applied must not park a sign request");
+}
+
+#[test]
+fn protocol_command_expands_before_headless_interpretation() {
+    let mut reducer = KernelReducer::new();
+    reducer.set_active_account_for_test("ab".repeat(32));
+    let rx = enqueue(vec![ActorCommand::Protocol(Box::new(
+        ReactionProtocolCommand,
+    ))]);
+    let mut pending = HashMap::new();
+    let (reg, tx) = empty_broker();
+
+    let out = drain_inbox(&mut reducer, &rx, &mut pending, &reg, &tx, &noop_wake());
+
+    assert_eq!(
+        out.events.len(),
+        1,
+        "expanded unsigned publish must request a signature"
+    );
+    let BrowserRuntimeEvent::SignRequest { unsigned_json, .. } = &out.events[0] else {
+        panic!("expected SignRequest, got {:?}", out.events[0]);
+    };
+    assert!(
+        unsigned_json.contains("\"kind\":7"),
+        "reaction protocol command must become unsigned kind:7 json: {unsigned_json}"
+    );
+    assert_eq!(pending.len(), 1, "sign continuation must be parked");
 }
 
 #[test]
