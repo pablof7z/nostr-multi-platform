@@ -2,16 +2,14 @@ use nmp_core::tags::{EventRef, Nip10Refs};
 use nmp_nip01::NoteRecord;
 use serde_json::{json, Value};
 
-use super::{
-    action_spec_for_intent_json, action_spec_json_for_intent, publish_note_spec, repost_spec,
-};
+use super::{publish_note_spec, react_spec, repost_spec, send_dm_spec, zap_spec};
 
 fn publish_raw_body(spec_body: &str) -> Value {
     serde_json::from_str::<Value>(spec_body).unwrap()["PublishRaw"].clone()
 }
 
 #[test]
-fn publish_reply_intent_uses_full_nip10_root_reply_and_p_tags() {
+fn publish_note_spec_reply_uses_full_nip10_root_reply_and_p_tags() {
     let parent = NoteRecord {
         event_id: "reply-id".to_string(),
         author: "bob".to_string(),
@@ -47,19 +45,14 @@ fn publish_reply_intent_uses_full_nip10_root_reply_and_p_tags() {
 }
 
 #[test]
-fn publish_minimal_reply_intent_builds_marked_root_and_reply_tags() {
-    let spec = action_spec_for_intent_json(
-        r#"{"type":"publish_note","content":"reply","reply_to_event_id":"parent-id"}"#,
-    )
-    .unwrap();
+fn publish_note_spec_root_note_has_no_tags_and_preserves_control_chars() {
+    let content = "quotes \" slash \\ newline\n tab\t nul\u{0000} ctrl\u{0001}";
+    let spec = publish_note_spec(content, None).unwrap();
+    assert_eq!(spec.namespace, "nmp.publish");
     let body = publish_raw_body(&spec.body_json);
-    assert_eq!(
-        body["tags"],
-        json!([
-            ["e", "parent-id", "", "root"],
-            ["e", "parent-id", "", "reply"]
-        ])
-    );
+    assert_eq!(body["kind"], 1);
+    assert_eq!(body["content"], content);
+    assert_eq!(body["tags"], json!([]));
 }
 
 #[test]
@@ -77,23 +70,34 @@ fn repost_spec_uses_kind6_target_tags_and_empty_content() {
 }
 
 #[test]
-fn action_spec_round_trips_json_escaping_and_control_chars() {
-    let content = "quotes \" slash \\ newline\n tab\t nul\u{0000} ctrl\u{0001}";
-    let intent = json!({ "type": "publish_note", "content": content }).to_string();
-    let spec_json = action_spec_json_for_intent(&intent);
-    let spec: Value = serde_json::from_str(&spec_json).unwrap();
-    assert_eq!(spec["namespace"], "nmp.publish");
-
-    let body = publish_raw_body(spec["body_json"].as_str().unwrap());
-    assert_eq!(body["content"], content);
+fn react_spec_targets_event_and_omits_null_author() {
+    let spec = react_spec("event-id", "+");
+    assert_eq!(spec.namespace, "nmp.nip25.react");
+    let body: Value = serde_json::from_str(&spec.body_json).unwrap();
+    assert_eq!(body["target_event_id"], "event-id");
+    assert_eq!(body["reaction"], "+");
+    // `target_author_pubkey: None` is dropped from the body JSON.
+    assert!(body.get("target_author_pubkey").is_none());
 }
 
 #[test]
-fn native_facing_spec_reports_malformed_intent_as_error_json() {
-    let spec_json = action_spec_json_for_intent(r#"{"type":"publish_note","content":}"#);
-    let spec: Value = serde_json::from_str(&spec_json).unwrap();
-    assert!(spec["error"]
-        .as_str()
-        .unwrap()
-        .contains("invalid Chirp action intent JSON"));
+fn send_dm_spec_drops_absent_reply_to() {
+    let spec = send_dm_spec("recipient", "hello", None);
+    assert_eq!(spec.namespace, "nmp.nip17.send");
+    let body: Value = serde_json::from_str(&spec.body_json).unwrap();
+    assert_eq!(body["recipient_pubkey"], "recipient");
+    assert_eq!(body["content"], "hello");
+    assert!(body.get("reply_to").is_none());
+}
+
+#[test]
+fn zap_spec_preserves_amount_and_drops_empty_optionals() {
+    let spec = zap_spec("recipient", 21_000, Some("target"), None, None, Vec::new());
+    assert_eq!(spec.namespace, "nmp.nip57.zap");
+    let body: Value = serde_json::from_str(&spec.body_json).unwrap();
+    assert_eq!(body["recipient_pubkey"], "recipient");
+    assert_eq!(body["amount_msats"], 21_000);
+    assert_eq!(body["target_event_id"], "target");
+    assert!(body.get("lnurl").is_none());
+    assert!(body.get("comment").is_none());
 }

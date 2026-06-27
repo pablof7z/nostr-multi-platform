@@ -31,12 +31,18 @@ def migrated_namespaces(root: Path) -> set[str]:
     registry = root / REGISTRY_REL
     if not registry.is_file():
         fail(f"action-builder registry not found: {REGISTRY_REL}")
-    # The registry is split across `registry.rs` and `registry_*.rs` siblings
+    # The registry is split across `registry.rs`, its `registry_*.rs` siblings
     # (e.g. `registry_marmot.rs` — the union-builder slices live in their own
-    # files for the 500-LOC ceiling; #2169). Scan `registry.rs` plus every
-    # `registry_*.rs` sibling so union-namespace constants are never missed.
+    # files for the 500-LOC ceiling; #2169), AND the nested `registry/*.rs`
+    # submodule (e.g. `registry/table.rs` — the flat `ACTION_BUILDERS` table was
+    # moved there for the file-size ceiling; M14-1 PR2 / #2145). Scan all three
+    # so no migrated namespace literal (flat or union) is ever missed.
     registry_dir = root / REGISTRY_DIR_REL
-    registry_files = [registry] + sorted(registry_dir.glob("registry_*.rs"))
+    registry_files = (
+        [registry]
+        + sorted(registry_dir.glob("registry_*.rs"))
+        + sorted((registry_dir / "registry").glob("*.rs"))
+    )
     namespaces: set[str] = set()
     for path in registry_files:
         text = path.read_text()
@@ -161,6 +167,17 @@ pub const PUBLISH_NAMESPACE: &str = "nmp.publish";
 pub const MARMOT_NAMESPACE: &str = "nmp.marmot";
 """,
         )
+        # Nested registry submodule — namespace only present in registry/table.rs,
+        # never in the top-level registry.rs.  migrated_namespaces() must discover
+        # it via the registry/*.rs glob; if that scan is removed this fixture is the
+        # one that will make the subsequent check fail.
+        write(
+            tmp / REGISTRY_DIR_REL / "registry" / "table.rs",
+            'pub const ACTION_BUILDERS_TABLE: &[ActionBuilder] = &[\n'
+            '    ActionBuilder { namespace: "nmp.selftest.nested", method: "selftest_nested",'
+            ' payload_file_identifier: "NST0", payload_schema_version: 1, fields: &[], doc: "" },\n'
+            '];\n',
+        )
         write(tmp / "apps/chirp/ios/Chirp/Bridge/Generated/ActionBuilders.generated.swift", '"nmp.follow"\n')
         write(tmp / "apps/chirp/android/app/src/main/java/org/nmp/android/ActionBuilders.kt", '"nmp.publish"\n')
         write(tmp / "apps/chirp/ios/Chirp/Bridge/KernelBridge.swift", "GeneratedActionBuilders.follow(...)\n")
@@ -169,6 +186,21 @@ pub const MARMOT_NAMESPACE: &str = "nmp.marmot";
         if check(tmp) != 0:
             fail("self-test valid fixture unexpectedly failed")
         print("native-action-boundary: self-test OK - generated files and comments may spell namespaces")
+
+        # Nested scan: add a namespace that ONLY exists in registry/table.rs and
+        # verify the boundary check catches a host literal for it.  A regression
+        # that removed nested scanning would still pass the top-level check above,
+        # making this the minimal sentinel for the registry/*.rs scan path.
+        nested_offender = tmp / "apps/chirp/ios/Chirp/Features/BadNested.swift"
+        write(nested_offender, 'let ns = "nmp.selftest.nested"\n')
+        stdout_n = StringIO()
+        stderr_n = StringIO()
+        with redirect_stdout(stdout_n), redirect_stderr(stderr_n):
+            nested_code = check(tmp)
+        nested_offender.unlink()
+        if nested_code == 0:
+            fail("self-test nested registry namespace did not trip")
+        print("native-action-boundary: self-test OK - hand-spelled nested registry namespace trips")
 
         offender = tmp / "apps/chirp/ios/Chirp/Features/Bad.swift"
         write(offender, 'let namespace = "nmp.follow"\n')

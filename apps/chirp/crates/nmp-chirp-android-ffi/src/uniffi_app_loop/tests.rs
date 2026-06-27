@@ -150,18 +150,6 @@ fn dispatch_action_json_returns_error_on_inert_handle() {
 }
 
 #[test]
-fn dispatch_intent_json_returns_error_on_malformed_intent() {
-    let handle = Arc::new(AppHandle {
-        session: Session::inert_session(),
-        handle: 0,
-    });
-    // Malformed intent — action_spec_for_intent_json must return Err.
-    let ack = handle.dispatch_intent_json("not-valid-json".to_string());
-    assert!(ack.correlation_id.is_none());
-    assert!(ack.error.is_some());
-}
-
-#[test]
 fn parse_dispatch_ack_correlation_id_path() {
     let ack = parse_dispatch_ack(r#"{"correlation_id":"chirp-42"}"#);
     assert_eq!(ack.correlation_id.as_deref(), Some("chirp-42"));

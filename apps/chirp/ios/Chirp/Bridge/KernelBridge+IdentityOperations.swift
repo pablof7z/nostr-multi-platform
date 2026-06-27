@@ -108,15 +108,21 @@ extension KernelHandle {
     }
 
     /// Publish a kind:0 profile metadata event for the active account through
-    /// the kernel's `ActionModule` family. Routes via the single
-    /// namespace-keyed `nmp_app_dispatch_action` entry point. Swift supplies
-    /// profile fields only; Rust builds the action JSON, kind:0 event,
-    /// `created_at` stamp, and signature. PR-A: returns the synchronous
-    /// dispatch result so the caller can drive a spinner keyed on the
-    /// correlation_id (or surface the error envelope to the user).
+    /// the generated `GeneratedActionBuilders.publishProfile` bytes (M14-1 /
+    /// #2145). Swift supplies profile fields only; Rust builds the kind:0 event,
+    /// `created_at` stamp, and signature. Empty fields are OMITTED (so a blank
+    /// `about` / `picture` is not written as an empty metadata key — preserving
+    /// the prior behaviour). PR-A: returns the synchronous dispatch result so
+    /// the caller can drive a spinner keyed on the correlation_id (or surface
+    /// the error envelope to the user).
     @discardableResult
     func publishProfile(name: String, about: String, picture: String) -> DispatchResult {
-        dispatchChirpIntent(.publishProfile(name: name, about: about, picture: picture))
+        let id = UUID().uuidString
+        var fields: [(String, String)] = []
+        if !name.isEmpty { fields.append(("name", name)) }
+        if !about.isEmpty { fields.append(("about", about)) }
+        if !picture.isEmpty { fields.append(("picture", picture)) }
+        return dispatchBytes(GeneratedActionBuilders.publishProfile(correlationId: id, fields: fields))
     }
 
     func switchActive(identityID: String) {

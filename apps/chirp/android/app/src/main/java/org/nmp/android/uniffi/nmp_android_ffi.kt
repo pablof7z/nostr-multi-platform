@@ -753,8 +753,6 @@ internal open class UniffiVTableCallbackInterfaceUpdateSink(
 
 
 
-
-
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -775,8 +773,6 @@ internal interface IntegrityCheckingUniffiLib : Library {
 fun uniffi_nmp_android_ffi_checksum_method_apphandle_dispatch_action_bytes(
 ): Short
 fun uniffi_nmp_android_ffi_checksum_method_apphandle_dispatch_action_json(
-): Short
-fun uniffi_nmp_android_ffi_checksum_method_apphandle_dispatch_intent_json(
 ): Short
 fun uniffi_nmp_android_ffi_checksum_method_apphandle_legacy_jni_session_id(
 ): Short
@@ -853,8 +849,6 @@ fun uniffi_nmp_android_ffi_fn_method_apphandle_clear_update_sink(`ptr`: Pointer,
 fun uniffi_nmp_android_ffi_fn_method_apphandle_dispatch_action_bytes(`ptr`: Pointer,`bytes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_nmp_android_ffi_fn_method_apphandle_dispatch_action_json(`ptr`: Pointer,`namespace`: RustBuffer.ByValue,`bodyJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
-fun uniffi_nmp_android_ffi_fn_method_apphandle_dispatch_intent_json(`ptr`: Pointer,`intentJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_nmp_android_ffi_fn_method_apphandle_legacy_jni_session_id(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
@@ -1001,9 +995,6 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_android_ffi_checksum_method_apphandle_dispatch_action_json() != 36630.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
-    if (lib.uniffi_nmp_android_ffi_checksum_method_apphandle_dispatch_intent_json() != 37584.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_android_ffi_checksum_method_apphandle_legacy_jni_session_id() != 38281.toShort()) {
@@ -1481,18 +1472,6 @@ public interface AppHandleInterface {
     fun `dispatchActionJson`(`namespace`: kotlin.String, `bodyJson`: kotlin.String): DispatchAck
     
     /**
-     * Dispatch from a `ChirpActionIntent` JSON string.
-     *
-     * LEGACY write-verb adapter carried over from the deleted
-     * `nativeDispatchIntentBytes` JNI symbol, kept as a STAGED RESIDUAL
-     * pending migration to `GeneratedActionBuilders` bytes-only dispatch
-     * in issue #2145 (M14-1). Rust converts the intent to a
-     * `(namespace, body_json)` spec and dispatches through the typed byte
-     * doorway. Never throws (D6).
-     */
-    fun `dispatchIntentJson`(`intentJson`: kotlin.String): DispatchAck
-    
-    /**
      * Session registry id for residual JNI lanes.
      *
      * Returns the `jlong` handle that signer, capability, marmot, and
@@ -1721,28 +1700,6 @@ open class AppHandle: Disposable, AutoCloseable, AppHandleInterface
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_nmp_android_ffi_fn_method_apphandle_dispatch_action_json(
         it, FfiConverterString.lower(`namespace`),FfiConverterString.lower(`bodyJson`),_status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Dispatch from a `ChirpActionIntent` JSON string.
-     *
-     * LEGACY write-verb adapter carried over from the deleted
-     * `nativeDispatchIntentBytes` JNI symbol, kept as a STAGED RESIDUAL
-     * pending migration to `GeneratedActionBuilders` bytes-only dispatch
-     * in issue #2145 (M14-1). Rust converts the intent to a
-     * `(namespace, body_json)` spec and dispatches through the typed byte
-     * doorway. Never throws (D6).
-     */override fun `dispatchIntentJson`(`intentJson`: kotlin.String): DispatchAck {
-            return FfiConverterTypeDispatchAck.lift(
-    callWithPointer {
-    uniffiRustCall() { _status ->
-    UniffiLib.INSTANCE.uniffi_nmp_android_ffi_fn_method_apphandle_dispatch_intent_json(
-        it, FfiConverterString.lower(`intentJson`),_status)
 }
     }
     )

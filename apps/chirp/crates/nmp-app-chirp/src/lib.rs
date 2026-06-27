@@ -59,21 +59,19 @@ pub use ffi::nmp_app_chirp_declare_consumed_projections;
 // `nmp_app_create_new_account` auto-follows nobody; the Swift/Kotlin shells call
 // THIS symbol so the seed pubkeys never transit the thin shell.
 pub use ffi::nmp_app_chirp_create_new_account;
-// ADR-0064 / Cut-B host slice (#1782) — the typed byte-doorway action seam the
-// iOS host calls: intent→spec→typed-bytes (`nmp_app_chirp_dispatch_intent_bytes`)
-// and the direct namespace+body dispatch (`nmp_app_chirp_dispatch_action_bytes`).
-// The retired `nmp_app_chirp_action_spec` symbol stays exported until the host
-// stops calling it (later cleanup).
+// The Rust-native `(namespace, body_json)` action builders backing
+// `crate::typed_api::ChirpClient` (chirp-tui / chirp-desktop). Social writes on
+// the iOS/Android shells ride the generated `GeneratedActionBuilders` byte
+// builders straight to the byte doorway; the `ChirpActionIntent` JSON intent
+// lane has been retired (M14-1 PR2 / #2145).
 pub use action_specs::{
-    action_spec_for_intent, action_spec_for_intent_json, action_spec_json_for_intent, follow_spec,
-    publish_note_spec, publish_profile_spec, react_spec, repost_spec, send_dm_spec, unfollow_spec,
-    zap_spec, ChirpActionIntent, ReplyTargetInput, TypedActionSpec,
+    follow_spec, publish_note_spec, publish_profile_spec, react_spec, repost_spec, send_dm_spec,
+    unfollow_spec, zap_spec, TypedActionSpec,
 };
 pub use dispatch_bytes::{dispatch_action_bytes_for, mint_correlation_id, parse_dispatch_envelope};
-pub use ffi::{
-    nmp_app_chirp_action_spec, nmp_app_chirp_dispatch_action_bytes,
-    nmp_app_chirp_dispatch_intent_bytes,
-};
+// The raw `(namespace, body_json)` byte doorway for direct-dispatch sites
+// (NIP-29 group ops, #2170). M14-1 / #2145.
+pub use ffi::nmp_app_chirp_dispatch_action_bytes;
 pub use ffi::{
     nmp_app_chirp_close_group_discovery,
     nmp_app_chirp_close_tag_feed,
