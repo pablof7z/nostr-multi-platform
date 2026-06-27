@@ -5,6 +5,7 @@ export type MainView =
   | "search"
   | "notifications"
   | "groups"
+  | "signer"
   | "profile"
   | "relays"
   | "offline"
@@ -48,6 +49,11 @@ const VIEW_COPY: Record<MainView, ViewCopy> = {
     title: "Discover public groups",
     support: "Browse Rust-projected NIP-29 group metadata from the configured public group relay.",
   },
+  signer: {
+    kicker: "Account session",
+    title: "Manage signer",
+    support: "Connect or inspect the browser signer that unlocks signed Chirp actions.",
+  },
   profile: {
     kicker: "Profile metadata",
     title: "Publish your Nostr profile",
@@ -77,7 +83,8 @@ const VIEW_COPY: Record<MainView, ViewCopy> = {
 
 export function viewFromHash(hash: string): MainView {
   const route = hash.split("?")[0];
-  if (route === "" || route === "#setup" || route === "#signing") return "setup";
+  if (route === "" || route === "#setup") return "setup";
+  if (route === "#signing" || route === "#signer") return "signer";
   if (route === "#saved") return "saved";
   if (route === "#search") return "search";
   if (route === "#notifications") return "notifications";

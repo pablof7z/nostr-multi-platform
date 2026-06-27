@@ -1,22 +1,22 @@
 # Product Spec: Chirp Web
 
-Chirp Web is the browser reference client for NMP. It must demonstrate that the
-WASM worker runtime can read, render, sign, publish, and diagnose real Nostr
-traffic without moving protocol policy into TypeScript.
+Chirp Web is the browser reference client for NMP. It must prove the WASM
+worker can read, render, sign, publish, and diagnose real Nostr traffic without
+TypeScript protocol policy.
 
 ## First-Run Contract
 
-A new browser profile must open into a usable product surface, not a dead demo.
-The first screen must show relay-backed feed state, relay health, signer state,
-compose affordances, and diagnostics for publish/action outcomes.
+New browser profiles must open into usable product, not a dead demo. The first
+screen must show relay/feed health, signer state, compose affordances, and
+publish/action diagnostics.
 
-First run is a guided onboarding flow, not a passive status list. The UI must
-show the next action needed to reach a signed product session, expose the
-available identity paths directly on that screen, and advance to a complete
-session only after runtime, relays, signer, and feed projection are all live.
-While unsigned, onboarding is the first product workspace, not a secondary
-sidebar card. The live feed may remain visible as read-mode proof, but identity
-choices and session proof must occupy the primary first-run region.
+First run is guided onboarding. The UI must show the next action, expose
+identity paths, and advance only after runtime, relays, signer, and feed
+projection are live. While unsigned, onboarding is the first product workspace;
+feed may remain as proof only if identity choices and session proof stay primary.
+
+`#signing` is the first-level account workspace, not a Setup alias. It must
+mark Signer active, keep signer status primary, and hide unrelated feed panes.
 
 Users without a browser extension must still have a complete write path:
 Chirp Web supports a memory-only local-key session by accepting an `nsec` and
@@ -25,8 +25,8 @@ Rust decodes the secret, derives the pubkey, registers the signer, and owns all
 signing. TypeScript may read the form value only to send that request; it must
 not decode, derive from, cache, or sign with the secret.
 
-NIP-07 remains the preferred browser-extension path. NIP-46 is not a web
-onboarding path until the browser runtime wires a bunker signer end to end.
+NIP-07 remains preferred. NIP-46 is not a web onboarding path until the browser
+runtime wires a bunker signer end to end.
 
 ## Search Discovery Contract
 

@@ -79,6 +79,7 @@ export default function App() {
   const feedReady = () => feedFrame() !== undefined;
   const feedCount = () => feedFrame()?.rows.length ?? 0;
   const topbar = () => viewCopy(mainView(), signerConnected());
+  const setupOrSignerView = () => mainView() === "setup" || mainView() === "signer";
   const focusedToolView = () => mainView() === "profile" || mainView() === "relays";
   const onboardingState = () => ({
     runtimeConnected: isConnected(),
@@ -159,7 +160,9 @@ export default function App() {
             >
               Notifications
             </a>
-            <a class="rail-link" href="#signing">Signer</a>
+            <a class={mainView() === "signer" ? "rail-link rail-link--active" : "rail-link"} href="#signing" aria-current={mainView() === "signer" ? "page" : undefined} data-testid="nav-signer">
+              Signer
+            </a>
             <a class={mainView() === "profile" ? "rail-link rail-link--active" : "rail-link"} href="#profile" aria-current={mainView() === "profile" ? "page" : undefined} data-testid="nav-profile">
               Profile
             </a>
@@ -230,7 +233,7 @@ export default function App() {
               <SigningPanel onConnectionChange={setSignerConnected} />
             </section>
 
-            {mainView() !== "setup" && (
+            {!setupOrSignerView() && (
               <>
                 <section id="feed" data-slot="feed" aria-label="Feed">
                   {mainView() === "search" && <SearchPanel />}
