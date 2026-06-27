@@ -1,5 +1,9 @@
 # Chirp Feature Test Checklist (iOS / Android / TUI)
 
+Chirp Web readiness is tracked separately in GitHub issue #2038 and
+`docs/product-spec/chirp-web.md`. This checklist is the native/TUI parity
+surface; do not use it as the web product-readiness authority.
+
 Legend: ✅ expected · ⚠️ partial/known-gap. Columns: **iOS · Android · TUI**.
 
 ## Startup
