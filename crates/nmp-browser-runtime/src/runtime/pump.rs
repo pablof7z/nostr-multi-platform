@@ -25,8 +25,9 @@
 use std::collections::HashMap;
 use std::sync::mpsc::{Receiver, TryRecvError};
 
-use nmp_core::actor::ActorMail;
+use nmp_core::actor::{ActorCommand, ActorMail, SignCommand};
 use nmp_core::{CommandApplyOutcome, KernelReducer, OutboundMessage};
+use nmp_signers::PublicKey;
 
 use super::event::BrowserRuntimeEvent;
 use super::protocol::expand_protocol_commands;
@@ -106,6 +107,9 @@ pub(super) fn drain_inbox(
             }
         };
         for cmd in commands {
+            let Some(cmd) = apply_browser_cipher_command(reducer, registry, cmd) else {
+                continue;
+            };
             match reducer.apply_actor_command(cmd) {
                 CommandApplyOutcome::Applied(msgs) => {
                     outbound.extend(msgs);
@@ -157,5 +161,86 @@ pub(super) fn drain_inbox(
         outbound,
         events,
         yielded: true,
+    }
+}
+
+fn apply_browser_cipher_command(
+    reducer: &KernelReducer,
+    registry: &CapabilityProviderRegistry,
+    command: ActorCommand,
+) -> Option<ActorCommand> {
+    match command {
+        ActorCommand::Sign(SignCommand::Nip44EncryptForAccount {
+            peer_pubkey,
+            plaintext,
+            signer_pubkey,
+            continuation,
+        }) => {
+            let result = resolve_signer_pubkey(reducer, signer_pubkey).and_then(|account| {
+                run_nip44_cipher(registry, &account, &peer_pubkey, &plaintext, CipherMode::Encrypt)
+            });
+            continuation.call(result);
+            None
+        }
+        ActorCommand::Sign(SignCommand::Nip44DecryptForAccount {
+            peer_pubkey,
+            ciphertext,
+            signer_pubkey,
+            continuation,
+        }) => {
+            let result = resolve_signer_pubkey(reducer, signer_pubkey).and_then(|account| {
+                run_nip44_cipher(registry, &account, &peer_pubkey, &ciphertext, CipherMode::Decrypt)
+            });
+            continuation.call(result);
+            None
+        }
+        other => Some(other),
+    }
+}
+
+fn resolve_signer_pubkey(
+    reducer: &KernelReducer,
+    signer_pubkey: Option<String>,
+) -> Result<String, String> {
+    if let Some(pubkey) = signer_pubkey {
+        return Ok(pubkey);
+    }
+    reducer
+        .active_account_handle()
+        .lock()
+        .map_err(|_| "browser nip44: active account lock poisoned".to_string())?
+        .clone()
+        .ok_or_else(|| "browser nip44: no active account".to_string())
+}
+
+enum CipherMode {
+    Encrypt,
+    Decrypt,
+}
+
+fn run_nip44_cipher(
+    registry: &CapabilityProviderRegistry,
+    account_pubkey: &str,
+    peer_pubkey: &str,
+    text: &str,
+    mode: CipherMode,
+) -> Result<String, String> {
+    let entry = registry
+        .resolve(account_pubkey)
+        .ok_or_else(|| format!("browser nip44: no signer for account {account_pubkey}"))?;
+    let nip44 = entry
+        .signer
+        .nip44()
+        .ok_or_else(|| format!("browser nip44: signer {account_pubkey} has no nip44 capability"))?;
+    let peer = PublicKey::from_hex(peer_pubkey)
+        .map_err(|e| format!("browser nip44: invalid peer pubkey: {e}"))?;
+    let mut op = match mode {
+        CipherMode::Encrypt => nip44.encrypt(&peer, text),
+        CipherMode::Decrypt => nip44.decrypt(&peer, text),
+    };
+    match op.poll() {
+        Some(Ok(value)) => Ok(value),
+        Some(Err(error)) => Err(error.to_string()),
+        None => Err("browser nip44: pending signer providers are not wired yet".to_string()),
     }
 }

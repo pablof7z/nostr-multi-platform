@@ -15,6 +15,7 @@ import { decodeUpdateFrame } from "./nmp/feedDecoder";
 import { decodeRuntimeProjection } from "./nmp/runtimeProjection";
 import { FeedPanel } from "./features/feed/FeedPanel";
 import { GroupsPanel } from "./features/groups/GroupsPanel";
+import { MessagesPanel } from "./features/messages/MessagesPanel";
 import { NotificationsPanel } from "./features/notifications/NotificationsPanel";
 import { OfflineReplayPanel } from "./features/offline/OfflineReplayPanel";
 import { SearchPanel } from "./features/search/SearchPanel";
@@ -81,7 +82,7 @@ export default function App() {
   const topbar = () => viewCopy(mainView(), signerConnected());
   const setupOrSignerView = () => mainView() === "setup" || mainView() === "signer";
   const focusedToolView = () => mainView() === "profile" || mainView() === "relays";
-  const blockedRoute = () => (mainView() === "messages" || mainView() === "wallet" || mainView() === "moderation" ? mainView() : undefined);
+  const blockedRoute = () => (mainView() === "wallet" || mainView() === "moderation" ? mainView() : undefined);
   const onboardingState = () => ({
     runtimeConnected: isConnected(),
     signerConnected: signerConnected(),
@@ -161,6 +162,14 @@ export default function App() {
             >
               Notifications
             </a>
+            <a
+              class={mainView() === "messages" ? "rail-link rail-link--active" : "rail-link"}
+              href="#messages"
+              aria-current={mainView() === "messages" ? "page" : undefined}
+              data-testid="nav-messages"
+            >
+              Messages
+            </a>
             <a class={mainView() === "signer" ? "rail-link rail-link--active" : "rail-link"} href="#signing" aria-current={mainView() === "signer" ? "page" : undefined} data-testid="nav-signer">
               Signer
             </a>
@@ -239,6 +248,7 @@ export default function App() {
                 <section id="feed" data-slot="feed" aria-label="Feed">
                   {mainView() === "search" && <SearchPanel />}
                   {mainView() === "notifications" && <NotificationsPanel />}
+                  {mainView() === "messages" && <MessagesPanel />}
                   {mainView() === "groups" && <GroupsPanel />}
                   {mainView() === "profile" && <ProfileEditor canPublish={signerConnected()} />}
                   {mainView() === "relays" && (

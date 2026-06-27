@@ -44,6 +44,9 @@ export default defineConfig({
   use: {
     baseURL: "http://localhost:4173",
     headless: true,
+    // The NIP-17 fixture relay uses a local self-signed WSS endpoint because
+    // production DM relay lists reject non-wss URLs.
+    ignoreHTTPSErrors: true,
     trace: "retain-on-failure",
   },
 

@@ -20,16 +20,17 @@ test("@wasm blocked workspaces are explicit and diagnostics-backed", async ({ pa
     await expect(panel).toBeVisible();
     await expect(page.getByRole("heading", { name: "More Chirp workspaces" })).toBeVisible();
     await expect(page.getByTestId("nav-notifications")).toBeVisible();
+    await expect(page.getByTestId("nav-messages")).toBeVisible();
     await expect(page.getByTestId("workspace-notifications")).toHaveCount(0);
-    await expect(page.getByTestId("workspace-messages")).toContainText("NIP-17");
+    await expect(page.getByTestId("workspace-messages")).toHaveCount(0);
     await expect(page.getByTestId("nav-groups")).toBeVisible();
     await expect(page.getByTestId("workspace-wallet")).toContainText("Wallet connection");
     await expect(page.getByTestId("workspace-moderation")).toContainText("WoT");
     await expect(page.getByTestId("workspace-offline")).toHaveCount(0);
     await expect(page.getByTestId("nav-offline")).toBeVisible();
 
-    await page.getByTestId("inspect-messages").click();
-    await expect(page.getByTestId("workspace-diagnostic")).toContainText("nmp.nip17.inbox");
+    await page.getByTestId("inspect-wallet").click();
+    await expect(page.getByTestId("workspace-diagnostic")).toContainText("nmp.nip57.wallet");
 
     await page.locator("#diagnostics").scrollIntoViewIfNeeded();
     await expect(page.locator(".outbox-state")).toContainText("Runtime rejected action");
@@ -45,7 +46,6 @@ test("@wasm blocked workspace deep routes focus the requested destination", asyn
   const relay = await startFeedFixtureRelay();
   const relayBootstrap = JSON.stringify([[relay.url, "both,indexer"]]);
   const routes = [
-    ["messages", "Private messages", "nmp.nip17.inbox"],
     ["wallet", "Wallet and zaps", "nmp.nip57.wallet"],
     ["moderation", "Trust and moderation", "nmp.trust_controls"],
   ] as const;
