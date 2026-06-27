@@ -93,8 +93,11 @@ test.describe("boot", () => {
       await expect(shell).toHaveAttribute("data-main-view", "setup");
       await expect(page.locator(".onboarding-panel")).toBeVisible();
       await page.getByRole("link", { name: "Relays" }).click();
-      await expect(page.locator(".diagnostics-panel")).toBeVisible();
+      await expect(shell).toHaveAttribute("data-main-view", "relays");
       await expect(page.locator(".relay-row").first()).toBeVisible();
+      await page.getByRole("link", { name: "Diagnostics" }).click();
+      await expect(shell).toHaveAttribute("data-main-view", "diagnostics");
+      await expect(page.locator(".diagnostics-panel")).toBeVisible();
       await page.getByRole("button", { name: /routing/i }).click();
       await expect(page.locator('[data-testid="routing-trace"]')).toBeVisible();
     } finally {

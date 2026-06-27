@@ -13,7 +13,6 @@ import { RelaySettingsPanel } from "./features/relays/RelaySettingsPanel";
 import { ProfileEditor } from "./features/profile/ProfileEditor";
 import { decodeUpdateFrame } from "./nmp/feedDecoder";
 import { decodeRuntimeProjection } from "./nmp/runtimeProjection";
-// Item C — feed / publish / profile UI (FeedPanel owns its own store + provider).
 import { FeedPanel } from "./features/feed/FeedPanel";
 import { GroupsPanel } from "./features/groups/GroupsPanel";
 import { NotificationsPanel } from "./features/notifications/NotificationsPanel";
@@ -80,6 +79,7 @@ export default function App() {
   const feedReady = () => feedFrame() !== undefined;
   const feedCount = () => feedFrame()?.rows.length ?? 0;
   const topbar = () => viewCopy(mainView(), signerConnected());
+  const focusedToolView = () => mainView() === "profile" || mainView() === "relays";
   const onboardingState = () => ({
     runtimeConnected: isConnected(),
     signerConnected: signerConnected(),
@@ -94,12 +94,7 @@ export default function App() {
 
   return (
     <NmpClientProvider client={client} snapshot={snapshot}>
-      {/*
-        Root element carries data attributes for Item E acceptance tests:
-          data-bridge-kind     — "worker" (real wasm) or "in_process_fallback"
-          data-runtime-status  — e.g. "running", "ready", "degraded:browser_bridge_unavailable"
-          data-has-snapshot    — "true" once the first UpdateFrame arrives
-      */}
+      {/* Root data attributes are the browser acceptance hooks for runtime health. */}
       <main
         class="app-shell"
         data-bridge-kind={bridgeKind()}
@@ -165,8 +160,12 @@ export default function App() {
               Notifications
             </a>
             <a class="rail-link" href="#signing">Signer</a>
-            <a class="rail-link" href="#profile">Profile</a>
-            <a class="rail-link" href="#relays">Relays</a>
+            <a class={mainView() === "profile" ? "rail-link rail-link--active" : "rail-link"} href="#profile" aria-current={mainView() === "profile" ? "page" : undefined} data-testid="nav-profile">
+              Profile
+            </a>
+            <a class={mainView() === "relays" ? "rail-link rail-link--active" : "rail-link"} href="#relays" aria-current={mainView() === "relays" ? "page" : undefined} data-testid="nav-relays">
+              Relays
+            </a>
             <a
               class={mainView() === "offline" ? "rail-link rail-link--active" : "rail-link"}
               href="#offline"
@@ -183,7 +182,9 @@ export default function App() {
             >
               More
             </a>
-            <a class="rail-link" href="#diagnostics">Diagnostics</a>
+            <a class={mainView() === "diagnostics" ? "rail-link rail-link--active" : "rail-link"} href="#diagnostics" aria-current={mainView() === "diagnostics" ? "page" : undefined} data-testid="nav-diagnostics">
+              Diagnostics
+            </a>
           </nav>
           <div class="rail-status" aria-live="polite">
             <span class="status-dot" data-connected={isConnected() ? "true" : "false"} />
@@ -235,28 +236,53 @@ export default function App() {
                   {mainView() === "search" && <SearchPanel />}
                   {mainView() === "notifications" && <NotificationsPanel />}
                   {mainView() === "groups" && <GroupsPanel />}
+                  {mainView() === "profile" && <ProfileEditor canPublish={signerConnected()} />}
+                  {mainView() === "relays" && (
+                    <div id="relays">
+                      <RelaySettingsPanel
+                        diagnostics={runtimeProjection()}
+                        canPublishRelayPreferences={signerConnected()}
+                      />
+                    </div>
+                  )}
                   {mainView() === "offline" && (
                     <OfflineReplayPanel diagnostics={runtimeProjection()} />
                   )}
                   {mainView() === "workspaces" && (
                     <BlockedWorkspacesPanel signedIn={signerConnected()} />
                   )}
+                  {mainView() === "diagnostics" && (
+                    <div id="diagnostics">
+                      <DiagnosticsPanel diagnostics={runtimeProjection()} events={snapshot().events} />
+                    </div>
+                  )}
                   {(mainView() === "home" || mainView() === "saved") && (
                     <FeedPanel canPublish={signerConnected()} diagnostics={runtimeProjection()} />
                   )}
                 </section>
-                <section class="side-stack" data-slot="session-tools" aria-label="Session tools">
-                  <ProfileEditor canPublish={signerConnected()} />
-                  <div id="relays">
-                    <RelaySettingsPanel
-                      diagnostics={runtimeProjection()}
-                      canPublishRelayPreferences={signerConnected()}
-                    />
-                  </div>
-                  <div id="diagnostics">
-                    <DiagnosticsPanel diagnostics={runtimeProjection()} events={snapshot().events} />
-                  </div>
-                </section>
+                {mainView() !== "diagnostics" && (
+                  <section class="side-stack" data-slot="session-tools" aria-label="Session tools">
+                    {focusedToolView() ? (
+                      <DiagnosticsPanel diagnostics={runtimeProjection()} events={snapshot().events} />
+                    ) : (
+                      <>
+                        <ProfileEditor canPublish={signerConnected()} />
+                        <div id="relays">
+                          <RelaySettingsPanel
+                            diagnostics={runtimeProjection()}
+                            canPublishRelayPreferences={signerConnected()}
+                          />
+                        </div>
+                        <div id="diagnostics">
+                          <DiagnosticsPanel
+                            diagnostics={runtimeProjection()}
+                            events={snapshot().events}
+                          />
+                        </div>
+                      </>
+                    )}
+                  </section>
+                )}
               </>
             )}
           </div>

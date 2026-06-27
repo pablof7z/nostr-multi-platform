@@ -24,6 +24,9 @@ test("@wasm relay settings: add dials a relay and remove updates runtime invento
       .poll(() => bootstrapRelay.connectionCount(), { timeout: 20_000 })
       .toBeGreaterThanOrEqual(1);
 
+    await page.getByTestId("nav-relays").click();
+    await expect(shell).toHaveAttribute("data-main-view", "relays");
+
     await page.getByTestId("relay-url-input").fill(addedRelay.url);
     await page.getByTestId("relay-role-select").selectOption("both");
     await page.getByTestId("relay-add-button").click();
@@ -83,6 +86,9 @@ test("@wasm relay settings: publishes signed NIP-65 preferences to a relay", asy
     const connect = page.locator('[data-slot="signing"] [data-action="connect-nip07"]');
     await expect(connect).toBeVisible({ timeout: 10_000 });
     await connect.click();
+
+    await page.getByTestId("nav-relays").click();
+    await expect(shell).toHaveAttribute("data-main-view", "relays");
 
     await page.getByTestId("relay-url-input").fill(advertisedRelay);
     await page.getByTestId("relay-role-select").selectOption("both");

@@ -5,8 +5,11 @@ export type MainView =
   | "search"
   | "notifications"
   | "groups"
+  | "profile"
+  | "relays"
   | "offline"
-  | "workspaces";
+  | "workspaces"
+  | "diagnostics";
 
 type ViewCopy = {
   kicker: string;
@@ -45,6 +48,16 @@ const VIEW_COPY: Record<MainView, ViewCopy> = {
     title: "Discover public groups",
     support: "Browse Rust-projected NIP-29 group metadata from the configured public group relay.",
   },
+  profile: {
+    kicker: "Profile metadata",
+    title: "Publish your Nostr profile",
+    support: "Edit kind:0 metadata and publish it through the same signed outbox path as notes.",
+  },
+  relays: {
+    kicker: "Relay management",
+    title: "Manage relay inventory",
+    support: "Inspect, add, remove, and publish relay preferences through runtime diagnostics.",
+  },
   offline: {
     kicker: "Storage and replay",
     title: "Inspect storage health",
@@ -55,6 +68,11 @@ const VIEW_COPY: Record<MainView, ViewCopy> = {
     title: "More Chirp workspaces",
     support: "Private, value, and moderation surfaces stay disabled until Rust-owned web flows exist.",
   },
+  diagnostics: {
+    kicker: "Runtime diagnostics",
+    title: "Inspect routing and outbox",
+    support: "Review relay state, subscriptions, outbox, action results, and routing traces.",
+  },
 };
 
 export function viewFromHash(hash: string): MainView {
@@ -64,10 +82,13 @@ export function viewFromHash(hash: string): MainView {
   if (route === "#search") return "search";
   if (route === "#notifications") return "notifications";
   if (route === "#groups") return "groups";
+  if (route === "#profile") return "profile";
+  if (route === "#relays") return "relays";
   if (route === "#offline") return "offline";
   if (route === "#workspaces" || route === "#messages" || route === "#wallet" || route === "#moderation") {
     return "workspaces";
   }
+  if (route === "#diagnostics") return "diagnostics";
   return "home";
 }
 

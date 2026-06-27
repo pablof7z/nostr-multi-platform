@@ -32,6 +32,9 @@ test("@wasm profile: local-key onboarding signs and publishes metadata", async (
       timeout: 30_000,
     });
 
+    await page.getByTestId("nav-profile").click();
+    await expect(shell).toHaveAttribute("data-main-view", "profile");
+
     await page.getByTestId("profile-name-input").fill(name);
     await page.getByTestId("profile-about-input").fill(about);
     await page.getByTestId("profile-picture-input").fill(picture);
