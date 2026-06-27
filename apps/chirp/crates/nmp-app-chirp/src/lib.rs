@@ -48,6 +48,7 @@ pub mod snapshot_types;
 pub mod typed_api;
 #[cfg(feature = "wallet")]
 mod wallet_runtime;
+mod zap_identifier;
 
 pub use ffi::{nmp_app_chirp_register, nmp_app_chirp_unregister, ChirpHandle, NmpRegisterStatus};
 // ADR-0053 / Workstream-E4 — Chirp's projection-consumption intent: the single
@@ -66,9 +67,10 @@ pub use ffi::nmp_app_chirp_create_new_account;
 // lane has been retired (M14-1 PR2 / #2145).
 pub use action_specs::{
     follow_spec, publish_note_spec, publish_profile_spec, react_spec, repost_spec, send_dm_spec,
-    unfollow_spec, zap_spec, TypedActionSpec,
+    unfollow_spec, zap_identifier_spec, zap_spec, TypedActionSpec,
 };
 pub use dispatch_bytes::{dispatch_action_bytes_for, mint_correlation_id, parse_dispatch_envelope};
+pub use zap_identifier::{ZapIdentifierInput, ZAP_IDENTIFIER_NAMESPACE};
 // The raw `(namespace, body_json)` byte doorway for direct-dispatch sites
 // (NIP-29 group ops, #2170). M14-1 / #2145.
 pub use ffi::nmp_app_chirp_dispatch_action_bytes;

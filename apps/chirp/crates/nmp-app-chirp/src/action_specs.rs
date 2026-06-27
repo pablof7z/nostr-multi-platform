@@ -20,6 +20,8 @@ use nmp_nip57::ZapInput;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+use crate::{ZapIdentifierInput, ZAP_IDENTIFIER_NAMESPACE};
+
 #[cfg(test)]
 #[path = "action_specs_tests.rs"]
 mod tests;
@@ -140,6 +142,24 @@ pub fn zap_spec(
             amount_msats,
             lnurl: non_empty(lnurl),
             relays,
+            target_event_id: non_empty(target_event_id),
+            comment: non_empty(comment),
+        },
+    )
+}
+
+#[must_use]
+pub fn zap_identifier_spec(
+    recipient_identifier: &str,
+    amount_msats: u64,
+    target_event_id: Option<&str>,
+    comment: Option<&str>,
+) -> TypedActionSpec {
+    typed_spec(
+        ZAP_IDENTIFIER_NAMESPACE,
+        &ZapIdentifierInput {
+            recipient_identifier: recipient_identifier.to_string(),
+            amount_msats,
             target_event_id: non_empty(target_event_id),
             comment: non_empty(comment),
         },

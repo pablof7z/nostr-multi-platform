@@ -36,7 +36,7 @@ const NIP05_MAX_RESPONSE_BYTES: usize = 100 * 1024;
 ///   absent, `name` was not in `names`, or the mapped value was not a valid
 ///   pubkey. The reason is human-readable for the diagnostic toast; it never
 ///   echoes the response body verbatim.
-pub(crate) fn resolve_nip05_pubkey_blocking(name: &str, domain: &str) -> Result<String, String> {
+pub fn resolve_nip05_pubkey_blocking(name: &str, domain: &str) -> Result<String, String> {
     // SSRF guard — reject IP-literal hosts and hosts that resolve to a
     // non-public address (loopback / private / link-local / unique-local /
     // CGNAT) BEFORE the fetch, so a NIP-05 identifier can't be used to probe
@@ -59,9 +59,12 @@ pub(crate) fn pubkey_from_names(
     document: &serde_json::Value,
     name: &str,
 ) -> Result<String, String> {
-    let names = document.get("names").and_then(serde_json::Value::as_object).ok_or_else(|| {
-        "NIP-05 document is missing the `names` object (not a NIP-05 endpoint)".to_string()
-    })?;
+    let names = document
+        .get("names")
+        .and_then(serde_json::Value::as_object)
+        .ok_or_else(|| {
+            "NIP-05 document is missing the `names` object (not a NIP-05 endpoint)".to_string()
+        })?;
     let raw = names
         .get(name)
         .and_then(serde_json::Value::as_str)

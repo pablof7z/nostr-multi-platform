@@ -18,9 +18,11 @@
 //!   the `RefNamespace::Profile` resolve-ref seam). HTTP lives behind the
 //!   `native` feature.
 
-use nmp_core::substrate::{ProtocolCommand, ProtocolCommandContext, ProtocolCommandError};
 use nmp_core::actor::ActorCommand;
-use nmp_core::actor::{ActionLedgerCommand, RefsCommand};
+use nmp_core::actor::ActionLedgerCommand;
+#[cfg(feature = "native")]
+use nmp_core::actor::RefsCommand;
+use nmp_core::substrate::{ProtocolCommand, ProtocolCommandContext, ProtocolCommandError};
 
 pub mod parse;
 
@@ -34,6 +36,8 @@ mod http;
 #[cfg(feature = "native")]
 mod host_guard;
 
+#[cfg(feature = "native")]
+pub use http::resolve_nip05_pubkey_blocking;
 pub use parse::parse_nip05;
 
 /// Refcount owner key used for the follow-up [`ActorCommand::ResolveRef`] this
@@ -102,10 +106,12 @@ impl ProtocolCommand for ResolveNip05Command {
                         message: message.clone(),
                     });
                     if let Some(cid) = correlation_id {
-                        ctx.send(ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure {
-                            correlation_id: cid,
-                            reason: message,
-                        }));
+                        ctx.send(ActorCommand::ActionLedger(
+                            ActionLedgerCommand::RecordFailure {
+                                correlation_id: cid,
+                                reason: message,
+                            },
+                        ));
                     }
                     return Ok(());
                 }
@@ -143,10 +149,12 @@ impl ProtocolCommand for ResolveNip05Command {
                             message: message.clone(),
                         });
                         if let Some(cid) = correlation_id {
-                            let _ = worker_tx.send(ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure {
-                                correlation_id: cid,
-                                reason: message,
-                            }));
+                            let _ = worker_tx.send(ActorCommand::ActionLedger(
+                                ActionLedgerCommand::RecordFailure {
+                                    correlation_id: cid,
+                                    reason: message,
+                                },
+                            ));
                         }
                     }
                 }
@@ -169,10 +177,12 @@ impl ProtocolCommand for ResolveNip05Command {
                 message: message.clone(),
             });
             if let Some(cid) = correlation_id {
-                ctx.send(ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure {
-                    correlation_id: cid,
-                    reason: message,
-                }));
+                ctx.send(ActorCommand::ActionLedger(
+                    ActionLedgerCommand::RecordFailure {
+                        correlation_id: cid,
+                        reason: message,
+                    },
+                ));
             }
             Ok(())
         }

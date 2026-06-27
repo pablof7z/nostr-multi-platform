@@ -1,0 +1,22 @@
+namespace nmp.app.chirp;
+
+// Chirp app-owned composition action for `:zap <identifier> <sats> [comment]`.
+// This payload is deliberately NOT in nmp-nip57: it composes NIP-05 resolution
+// with NIP-57 zap mechanics at the app layer.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh:
+//   PATH=~/.cache/nmp-flatc/v25.12.19:$PATH \
+//   flatc --rust -o apps/chirp/crates/nmp-app-chirp/src/wire/generated \
+//         apps/chirp/crates/nmp-app-chirp/schema/zap_identifier.fbs
+
+table ZapIdentifierPayload {
+  schema_version:uint;
+  recipient_identifier:string (required);
+  amount_msats:uint64;
+  target_event_id:string;
+  comment:string;
+}
+
+file_identifier "CZID";
+root_type ZapIdentifierPayload;

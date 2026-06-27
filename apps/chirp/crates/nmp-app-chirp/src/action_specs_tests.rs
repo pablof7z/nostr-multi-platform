@@ -2,7 +2,9 @@ use nmp_core::tags::{EventRef, Nip10Refs};
 use nmp_nip01::NoteRecord;
 use serde_json::{json, Value};
 
-use super::{publish_note_spec, react_spec, repost_spec, send_dm_spec, zap_spec};
+use super::{
+    publish_note_spec, react_spec, repost_spec, send_dm_spec, zap_identifier_spec, zap_spec,
+};
 
 fn publish_raw_body(spec_body: &str) -> Value {
     serde_json::from_str::<Value>(spec_body).unwrap()["PublishRaw"].clone()
@@ -100,4 +102,15 @@ fn zap_spec_preserves_amount_and_drops_empty_optionals() {
     assert_eq!(body["target_event_id"], "target");
     assert!(body.get("lnurl").is_none());
     assert!(body.get("comment").is_none());
+}
+
+#[test]
+fn zap_identifier_spec_carries_raw_identifier() {
+    let spec = zap_identifier_spec("alice@example.com", 21_000, None, Some("hi"));
+    assert_eq!(spec.namespace, "nmp.app.chirp.zap_identifier");
+    let body: Value = serde_json::from_str(&spec.body_json).unwrap();
+    assert_eq!(body["recipient_identifier"], "alice@example.com");
+    assert_eq!(body["amount_msats"], 21_000);
+    assert_eq!(body["comment"], "hi");
+    assert!(body.get("target_event_id").is_none());
 }

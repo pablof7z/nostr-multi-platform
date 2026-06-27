@@ -5,12 +5,12 @@ use nmp_app_chirp::ffi::{
     nmp_app_chirp_register_dm_inbox, nmp_app_chirp_register_follow_list,
     nmp_app_chirp_register_group_events,
 };
-use nmp_app_chirp::{nmp_app_chirp_close_group_discovery, nmp_app_chirp_open_group_discovery};
 use nmp_app_chirp::{
     nmp_app_cancel_bunker_handshake, nmp_app_chirp_create_new_account,
     nmp_app_chirp_identity_sign_in_nsec, nmp_app_chirp_open_tag_feed, nmp_app_nostrconnect_uri,
-    nmp_marmot_register_active, nmp_marmot_unregister, send_dm_spec, zap_spec,
+    nmp_marmot_register_active, nmp_marmot_unregister, send_dm_spec, zap_identifier_spec, zap_spec,
 };
+use nmp_app_chirp::{nmp_app_chirp_close_group_discovery, nmp_app_chirp_open_group_discovery};
 use nmp_chirp_config::CHIRP_MARMOT_KEYRING_SERVICE_ID;
 use nmp_ffi::{
     nmp_app_cancel_action, nmp_app_remove_relay, nmp_app_retry_publish, nmp_app_signin_nsec,
@@ -185,6 +185,18 @@ impl AppRuntime {
             lnurl,
             Vec::new(),
         );
+        self.dispatch_action(&spec.namespace, &spec.body_json)
+    }
+
+    pub fn zap_identifier(
+        &self,
+        recipient_identifier: &str,
+        amount_msats: u64,
+        target_event_id: Option<&str>,
+        comment: Option<&str>,
+    ) -> Result<String> {
+        let spec =
+            zap_identifier_spec(recipient_identifier, amount_msats, target_event_id, comment);
         self.dispatch_action(&spec.namespace, &spec.body_json)
     }
 

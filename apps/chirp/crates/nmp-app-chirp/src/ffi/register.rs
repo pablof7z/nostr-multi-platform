@@ -11,7 +11,7 @@ use nmp_nip01::meta_timeline::Pubkey;
 
 use nmp_nip02::register_follow_state_runtime;
 
-use super::actions::register_nip29_actions;
+use super::actions::{register_chirp_zap_identifier_action, register_nip29_actions};
 use super::handle::ChirpHandle;
 use super::helpers::c_string_opt;
 
@@ -123,6 +123,7 @@ pub extern "C" fn nmp_app_chirp_register(
     // `register_defaults` call above — no other reference aliases `app`
     // at this point.
     register_nip29_actions(unsafe { &mut *app });
+    register_chirp_zap_identifier_action(unsafe { &mut *app });
 
     // Visible timeline rows claim their relation streams through the same
     // dispatch_action door as all other app verbs. The action module lives in
