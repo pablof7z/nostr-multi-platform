@@ -25,6 +25,7 @@ use crate::signer::{CapabilityProviderRegistry, SignerCompletion, SignerCompleti
 
 mod composition;
 mod contract;
+mod dm_send;
 mod feed_attribution;
 mod feed_composition;
 mod group_timeline;

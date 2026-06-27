@@ -1,44 +1,16 @@
 //! Canonical host-side runtime controllers wired by [`super::register_defaults`].
 //!
-//! Two per-tick reconcilers that own active-account scoped interest
-//! book-keeping the kernel itself cannot do (D0 — `nmp-core` ships no DM/zap
-//! nouns):
+//! Runtime controllers own active-account scoped interest bookkeeping the
+//! kernel itself cannot do (D0 — `nmp-core` ships no DM/zap nouns).
 //!
-//! 1. [`register_dm_runtime`] — NIP-17 DM inbox.
-//!    * Wires the kind:1059 [`nmp_nip17::DmInboxProjection`] as an
-//!      `IngestParser` under slot `"nip17.dm_inbox"` + its
-//!      `"nmp.nip17.dm_inbox"` snapshot projection.
-//!    * Owns a `DmRuntimeController` registered via TWO seams:
-//!      (a) a **per-tick observer** that reconciles the active-account
-//!          gift-wrap inbox interest + pending kind:10050 publishes once
-//!          per tick (pure side-effect, no projection data), and
-//!      (b) a typed `"nmp.nip17.dm_relay_list"` projection closure that
-//!          is a PURE READ of the relay-list state (no reconcile inside).
-//! 2. [`register_zap_receipts_runtime`] — NIP-57 self-zap receipts.
-//!    * Owns a `ZapReceiptsRuntimeController` registered via the generic
-//!      **per-tick observer** seam (`register_snapshot_tick_observer`): it
-//!      ensures / drops the active-account kind:9735 `#p` subscription on
-//!      sign-in / account switch / sign-out and contributes NO snapshot data
-//!      (visible card zap counts are acquired through
-//!      `nmp.nip01.visible_note_relations`, not a global zap aggregate).
+//! `register_dm_runtime` wires the kind:1059 DM inbox parser/projection and a
+//! tick observer that reconciles gift-wrap inbox interests, kind:10050 relay
+//! list hydration, and own relay-list publishes. The paired
+//! `"nmp.nip17.dm_relay_list"` typed projection is a pure read.
 //!
-//! # Both controllers
-//!
-//! The snapshot tick drives reconciliation — the ensure must happen *before* the
-//! first event, the moment the user signs in. Both reconcile against a single
-//! `Mutex<Option<String>>` of the last-ensured pubkey, dropping a scoped owner
-//! so an account switch cleanly replaces rather than leaks, and degrade
-//! silently on lock poisoning / channel disconnect (D6).
-//! The seam differs only in that the DM controller also emits a typed projection;
-//! BOTH use `register_snapshot_tick_observer` for their reconcile→apply path.
-//! The DM projection closure is a PURE READ that never reconciles — keeping
-//! side-effect and data-projection concerns on separate, independently-owned seams.
-//!
-//! Originally lived in `apps/chirp/crates/nmp-app-chirp/src/{dm,zap_receipts}_runtime.rs`.
-//! Lifted here so any NMP-based app gets canonical DM + zap subscription
-//! behaviour through one `register_defaults` call. The DM keys also emit typed
-//! FlatBuffers sidecars (ADR-0037, Wave A): `nmp.nip17.dm_inbox` (`NDMI`) and
-//! `nmp.nip17.dm_relay_list` (`NDRL`).
+//! `register_zap_receipts_runtime` wires the NIP-57 self-zap receipt tick
+//! observer. Both controllers degrade silently on lock poisoning or channel
+//! disconnect (D6) and use `register_snapshot_tick_observer` for effects.
 
 use std::sync::{Arc, Mutex};
 
@@ -53,10 +25,6 @@ use nmp_nip17::{
     peer_dm_relay_list_interest, DmInboxProjection, DmRuntimeEffect, DmRuntimeState,
 };
 use nmp_nip57::{self_zap_receipts_identity, self_zap_receipts_interest};
-
-// ───────────────────────────────────────────────────────────────────────
-// NIP-17 DM runtime
-// ───────────────────────────────────────────────────────────────────────
 
 /// Wire the NIP-17 DM runtime into `app`.
 ///
@@ -408,10 +376,6 @@ impl DmRuntimeController {
         let _ = self.tx.send(cmd);
     }
 }
-
-// ───────────────────────────────────────────────────────────────────────
-// NIP-57 zap-receipts runtime
-// ───────────────────────────────────────────────────────────────────────
 
 /// Wire the NIP-57 self-zap-receipts subscription runtime into `app`.
 ///
