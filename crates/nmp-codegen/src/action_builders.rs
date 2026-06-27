@@ -36,6 +36,10 @@
 use std::path::Path;
 
 pub mod registry;
+// M14-1c / #2169 — the `nmp.marmot` union-builder registry slice, split out of
+// `registry.rs` for the 500-LOC ceiling (V-12). `registry` re-exports it via
+// `pub use super::registry_marmot::*;` so the flat `registry::` surface is kept.
+mod registry_marmot;
 
 pub mod kotlin;
 pub mod kotlin_marmot;

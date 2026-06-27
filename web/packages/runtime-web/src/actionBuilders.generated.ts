@@ -493,4 +493,215 @@ export const GeneratedActionBuilders = {
     return encodeDispatchEnvelope(correlationId, "nmp.publish", payload);
   },
 
+  /** Publish (or rotate) the local MLS key-package (kind:30443) to relays. */
+  marmotPublishKeyPackage(
+    correlationId: string,
+    relays: string[] = [],
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const relaysVec = stringVector(fbb, relays);
+    fbb.startObject(1);
+    fbb.addFieldOffset(0, relaysVec, 0); // slot 0: relays
+    const bodyOffset = fbb.endObject();
+    fbb.startObject(3);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldInt8(1, 1, 0); // slot 1: body_type
+    fbb.addFieldOffset(2, bodyOffset, 0); // slot 2: body
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "NMMA");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.marmot", payload);
+  },
+
+  /** Create a new MLS group and optionally invite peers. */
+  marmotCreateGroup(
+    correlationId: string,
+    name: string,
+    description: string = "",
+    inviteeText: string | null = null,
+    inviteeNpubs: string[] | null = null,
+    signedKeyPackageEventsJson: string[] = [],
+    relays: string[] = [],
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const relaysVec = stringVector(fbb, relays);
+    const jsonVec = signedKeyPackageEventsJson.length === 0 ? 0 : stringVector(fbb, signedKeyPackageEventsJson);
+    // inviteeNpubs: null → absent (None); non-null → present vector (even if empty)
+    const npubsVec = inviteeNpubs === null ? 0 : stringVector(fbb, inviteeNpubs);
+    const inviteeTextOffset = inviteeText === null ? 0 : fbb.createString(inviteeText);
+    const descOffset = description === "" ? 0 : fbb.createString(description);
+    const nameOffset = fbb.createString(name);
+    fbb.startObject(6);
+    fbb.addFieldOffset(0, nameOffset, 0); // slot 0: name (required)
+    if (descOffset !== 0) fbb.addFieldOffset(1, descOffset, 0); // slot 1: description
+    if (inviteeTextOffset !== 0) fbb.addFieldOffset(2, inviteeTextOffset, 0); // slot 2: invitee_text
+    if (npubsVec !== 0) fbb.addFieldOffset(3, npubsVec, 0); // slot 3: invitee_npubs
+    if (jsonVec !== 0) fbb.addFieldOffset(4, jsonVec, 0); // slot 4: signed_key_package_events_json
+    fbb.addFieldOffset(5, relaysVec, 0); // slot 5: relays
+    const bodyOffset = fbb.endObject();
+    fbb.startObject(3);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldInt8(1, 2, 0); // slot 1: body_type
+    fbb.addFieldOffset(2, bodyOffset, 0); // slot 2: body
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "NMMA");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.marmot", payload);
+  },
+
+  /** Invite one or more peers to an existing MLS group. */
+  marmotInvite(
+    correlationId: string,
+    groupIdHex: string,
+    inviteeText: string | null = null,
+    inviteeNpubs: string[] | null = null,
+    signedKeyPackageEventsJson: string[] = [],
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const jsonVec = signedKeyPackageEventsJson.length === 0 ? 0 : stringVector(fbb, signedKeyPackageEventsJson);
+    const npubsVec = inviteeNpubs === null ? 0 : stringVector(fbb, inviteeNpubs);
+    const inviteeTextOffset = inviteeText === null ? 0 : fbb.createString(inviteeText);
+    const gidOffset = fbb.createString(groupIdHex);
+    fbb.startObject(4);
+    fbb.addFieldOffset(0, gidOffset, 0); // slot 0: group_id_hex (required)
+    if (inviteeTextOffset !== 0) fbb.addFieldOffset(1, inviteeTextOffset, 0); // slot 1: invitee_text
+    if (npubsVec !== 0) fbb.addFieldOffset(2, npubsVec, 0); // slot 2: invitee_npubs
+    if (jsonVec !== 0) fbb.addFieldOffset(3, jsonVec, 0); // slot 3: signed_key_package_events_json
+    const bodyOffset = fbb.endObject();
+    fbb.startObject(3);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldInt8(1, 3, 0); // slot 1: body_type
+    fbb.addFieldOffset(2, bodyOffset, 0); // slot 2: body
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "NMMA");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.marmot", payload);
+  },
+
+  /** Send a kind:14 NIP-44 MLS group message. */
+  marmotSend(
+    correlationId: string,
+    groupIdHex: string,
+    text: string,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const textOffset = fbb.createString(text);
+    const gidOffset = fbb.createString(groupIdHex);
+    fbb.startObject(2);
+    fbb.addFieldOffset(0, gidOffset, 0); // slot 0: group_id_hex (required)
+    fbb.addFieldOffset(1, textOffset, 0); // slot 1: text (required)
+    const bodyOffset = fbb.endObject();
+    fbb.startObject(3);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldInt8(1, 4, 0); // slot 1: body_type
+    fbb.addFieldOffset(2, bodyOffset, 0); // slot 2: body
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "NMMA");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.marmot", payload);
+  },
+
+  /** Self-remove from a MLS group (SelfRemove proposal + commit). */
+  marmotLeave(
+    correlationId: string,
+    groupIdHex: string,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const gidOffset = fbb.createString(groupIdHex);
+    fbb.startObject(1);
+    fbb.addFieldOffset(0, gidOffset, 0); // slot 0: group_id_hex (required)
+    const bodyOffset = fbb.endObject();
+    fbb.startObject(3);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldInt8(1, 5, 0); // slot 1: body_type
+    fbb.addFieldOffset(2, bodyOffset, 0); // slot 2: body
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "NMMA");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.marmot", payload);
+  },
+
+  /** Remove other members from a MLS group (Remove proposal + commit). */
+  marmotRemove(
+    correlationId: string,
+    groupIdHex: string,
+    memberNpubs: string[] = [],
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const npubsVec = stringVector(fbb, memberNpubs);
+    const gidOffset = fbb.createString(groupIdHex);
+    fbb.startObject(2);
+    fbb.addFieldOffset(0, gidOffset, 0); // slot 0: group_id_hex (required)
+    fbb.addFieldOffset(1, npubsVec, 0); // slot 1: member_npubs
+    const bodyOffset = fbb.endObject();
+    fbb.startObject(3);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldInt8(1, 6, 0); // slot 1: body_type
+    fbb.addFieldOffset(2, bodyOffset, 0); // slot 2: body
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "NMMA");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.marmot", payload);
+  },
+
+  /** Accept a pending MLS Welcome (by gift-wrap event id hex). */
+  marmotAcceptWelcome(
+    correlationId: string,
+    welcomeIdHex: string,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const widOffset = fbb.createString(welcomeIdHex);
+    fbb.startObject(1);
+    fbb.addFieldOffset(0, widOffset, 0); // slot 0: welcome_id_hex (required)
+    const bodyOffset = fbb.endObject();
+    fbb.startObject(3);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldInt8(1, 7, 0); // slot 1: body_type
+    fbb.addFieldOffset(2, bodyOffset, 0); // slot 2: body
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "NMMA");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.marmot", payload);
+  },
+
+  /** Decline a pending MLS Welcome. */
+  marmotDeclineWelcome(
+    correlationId: string,
+    welcomeIdHex: string,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const widOffset = fbb.createString(welcomeIdHex);
+    fbb.startObject(1);
+    fbb.addFieldOffset(0, widOffset, 0); // slot 0: welcome_id_hex (required)
+    const bodyOffset = fbb.endObject();
+    fbb.startObject(3);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldInt8(1, 8, 0); // slot 1: body_type
+    fbb.addFieldOffset(2, bodyOffset, 0); // slot 2: body
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "NMMA");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.marmot", payload);
+  },
+
+  /** Explicitly clear the pending-commit state for a MLS group. */
+  marmotClearPending(
+    correlationId: string,
+    groupIdHex: string,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const gidOffset = fbb.createString(groupIdHex);
+    fbb.startObject(1);
+    fbb.addFieldOffset(0, gidOffset, 0); // slot 0: group_id_hex (required)
+    const bodyOffset = fbb.endObject();
+    fbb.startObject(3);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldInt8(1, 9, 0); // slot 1: body_type
+    fbb.addFieldOffset(2, bodyOffset, 0); // slot 2: body
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "NMMA");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.marmot", payload);
+  },
+
 };

@@ -2,1367 +2,1831 @@
 // @generated
 extern crate alloc;
 
-
 #[allow(unused_imports, dead_code)]
 pub mod nmp {
 
-#[allow(unused_imports, dead_code)]
-pub mod marmot {
-
-
-#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
-pub const ENUM_MIN_MARMOT_ACTION_BODY: u8 = 0;
-#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
-pub const ENUM_MAX_MARMOT_ACTION_BODY: u8 = 9;
-#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
-#[allow(non_camel_case_types)]
-pub const ENUM_VALUES_MARMOT_ACTION_BODY: [MarmotActionBody; 10] = [
-  MarmotActionBody::NONE,
-  MarmotActionBody::PublishKeyPackage,
-  MarmotActionBody::CreateGroup,
-  MarmotActionBody::Invite,
-  MarmotActionBody::Send,
-  MarmotActionBody::Leave,
-  MarmotActionBody::Remove,
-  MarmotActionBody::AcceptWelcome,
-  MarmotActionBody::DeclineWelcome,
-  MarmotActionBody::ClearPending,
-];
-
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-#[repr(transparent)]
-pub struct MarmotActionBody(pub u8);
-#[allow(non_upper_case_globals)]
-impl MarmotActionBody {
-  pub const NONE: Self = Self(0);
-  pub const PublishKeyPackage: Self = Self(1);
-  pub const CreateGroup: Self = Self(2);
-  pub const Invite: Self = Self(3);
-  pub const Send: Self = Self(4);
-  pub const Leave: Self = Self(5);
-  pub const Remove: Self = Self(6);
-  pub const AcceptWelcome: Self = Self(7);
-  pub const DeclineWelcome: Self = Self(8);
-  pub const ClearPending: Self = Self(9);
-
-  pub const ENUM_MIN: u8 = 0;
-  pub const ENUM_MAX: u8 = 9;
-  pub const ENUM_VALUES: &'static [Self] = &[
-    Self::NONE,
-    Self::PublishKeyPackage,
-    Self::CreateGroup,
-    Self::Invite,
-    Self::Send,
-    Self::Leave,
-    Self::Remove,
-    Self::AcceptWelcome,
-    Self::DeclineWelcome,
-    Self::ClearPending,
-  ];
-  /// Returns the variant's name or "" if unknown.
-  pub fn variant_name(self) -> Option<&'static str> {
-    match self {
-      Self::NONE => Some("NONE"),
-      Self::PublishKeyPackage => Some("PublishKeyPackage"),
-      Self::CreateGroup => Some("CreateGroup"),
-      Self::Invite => Some("Invite"),
-      Self::Send => Some("Send"),
-      Self::Leave => Some("Leave"),
-      Self::Remove => Some("Remove"),
-      Self::AcceptWelcome => Some("AcceptWelcome"),
-      Self::DeclineWelcome => Some("DeclineWelcome"),
-      Self::ClearPending => Some("ClearPending"),
-      _ => None,
-    }
-  }
-}
-impl ::core::fmt::Debug for MarmotActionBody {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-    if let Some(name) = self.variant_name() {
-      f.write_str(name)
-    } else {
-      f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
-    }
-  }
-}
-impl<'a> ::flatbuffers::Follow<'a> for MarmotActionBody {
-  type Inner = Self;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
-    Self(b)
-  }
-}
-
-impl ::flatbuffers::Push for MarmotActionBody {
-    type Output = MarmotActionBody;
-    #[inline]
-    unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
-        unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
-    }
-}
-
-impl ::flatbuffers::EndianScalar for MarmotActionBody {
-  type Scalar = u8;
-  #[inline]
-  fn to_little_endian(self) -> u8 {
-    self.0.to_le()
-  }
-  #[inline]
-  #[allow(clippy::wrong_self_convention)]
-  fn from_little_endian(v: u8) -> Self {
-    let b = u8::from_le(v);
-    Self(b)
-  }
-}
-
-impl<'a> ::flatbuffers::Verifiable for MarmotActionBody {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    u8::run_verifier(v, pos)
-  }
-}
-
-impl ::flatbuffers::SimpleToVerifyInSlice for MarmotActionBody {}
-pub struct MarmotActionBodyUnionTableOffset {}
-
-pub enum PublishKeyPackageOffset {}
-#[derive(Copy, Clone, PartialEq)]
-
-pub struct PublishKeyPackage<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
-
-impl<'a> ::flatbuffers::Follow<'a> for PublishKeyPackage<'a> {
-  type Inner = PublishKeyPackage<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
-
-impl<'a> PublishKeyPackage<'a> {
-  pub const VT_RELAYS: ::flatbuffers::VOffsetT = 4;
-
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    PublishKeyPackage { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args PublishKeyPackageArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<PublishKeyPackage<'bldr>> {
-    let mut builder = PublishKeyPackageBuilder::new(_fbb);
-    if let Some(x) = args.relays { builder.add_relays(x); }
-    builder.finish()
-  }
-
-
-  #[inline]
-  pub fn relays(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>(PublishKeyPackage::VT_RELAYS, None)}
-  }
-}
-
-impl ::flatbuffers::Verifiable for PublishKeyPackage<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("relays", Self::VT_RELAYS, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct PublishKeyPackageArgs<'a> {
-    pub relays: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
-}
-impl<'a> Default for PublishKeyPackageArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    PublishKeyPackageArgs {
-      relays: None,
-    }
-  }
-}
-
-pub struct PublishKeyPackageBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> PublishKeyPackageBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_relays(&mut self, relays: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b , ::flatbuffers::ForwardsUOffset<&'b  str>>>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(PublishKeyPackage::VT_RELAYS, relays);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> PublishKeyPackageBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    PublishKeyPackageBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<PublishKeyPackage<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
-
-impl ::core::fmt::Debug for PublishKeyPackage<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("PublishKeyPackage");
-      ds.field("relays", &self.relays());
-      ds.finish()
-  }
-}
-pub enum CreateGroupOffset {}
-#[derive(Copy, Clone, PartialEq)]
-
-pub struct CreateGroup<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
-
-impl<'a> ::flatbuffers::Follow<'a> for CreateGroup<'a> {
-  type Inner = CreateGroup<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
-
-impl<'a> CreateGroup<'a> {
-  pub const VT_NAME: ::flatbuffers::VOffsetT = 4;
-  pub const VT_DESCRIPTION: ::flatbuffers::VOffsetT = 6;
-  pub const VT_INVITEE_TEXT: ::flatbuffers::VOffsetT = 8;
-  pub const VT_INVITEE_NPUBS: ::flatbuffers::VOffsetT = 10;
-  pub const VT_SIGNED_KEY_PACKAGE_EVENTS_JSON: ::flatbuffers::VOffsetT = 12;
-  pub const VT_RELAYS: ::flatbuffers::VOffsetT = 14;
-
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    CreateGroup { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args CreateGroupArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<CreateGroup<'bldr>> {
-    let mut builder = CreateGroupBuilder::new(_fbb);
-    if let Some(x) = args.relays { builder.add_relays(x); }
-    if let Some(x) = args.signed_key_package_events_json { builder.add_signed_key_package_events_json(x); }
-    if let Some(x) = args.invitee_npubs { builder.add_invitee_npubs(x); }
-    if let Some(x) = args.invitee_text { builder.add_invitee_text(x); }
-    if let Some(x) = args.description { builder.add_description(x); }
-    if let Some(x) = args.name { builder.add_name(x); }
-    builder.finish()
-  }
-
-
-  #[inline]
-  pub fn name(&self) -> &'a str {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(CreateGroup::VT_NAME, None).unwrap()}
-  }
-  #[inline]
-  pub fn description(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(CreateGroup::VT_DESCRIPTION, None)}
-  }
-  #[inline]
-  pub fn invitee_text(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(CreateGroup::VT_INVITEE_TEXT, None)}
-  }
-  #[inline]
-  pub fn invitee_npubs(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>(CreateGroup::VT_INVITEE_NPUBS, None)}
-  }
-  #[inline]
-  pub fn signed_key_package_events_json(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>(CreateGroup::VT_SIGNED_KEY_PACKAGE_EVENTS_JSON, None)}
-  }
-  #[inline]
-  pub fn relays(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>(CreateGroup::VT_RELAYS, None)}
-  }
-}
-
-impl ::flatbuffers::Verifiable for CreateGroup<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("name", Self::VT_NAME, true)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("description", Self::VT_DESCRIPTION, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("invitee_text", Self::VT_INVITEE_TEXT, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("invitee_npubs", Self::VT_INVITEE_NPUBS, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("signed_key_package_events_json", Self::VT_SIGNED_KEY_PACKAGE_EVENTS_JSON, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("relays", Self::VT_RELAYS, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct CreateGroupArgs<'a> {
-    pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub description: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub invitee_text: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub invitee_npubs: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
-    pub signed_key_package_events_json: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
-    pub relays: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
-}
-impl<'a> Default for CreateGroupArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    CreateGroupArgs {
-      name: None, // required field
-      description: None,
-      invitee_text: None,
-      invitee_npubs: None,
-      signed_key_package_events_json: None,
-      relays: None,
-    }
-  }
-}
-
-pub struct CreateGroupBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> CreateGroupBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(CreateGroup::VT_NAME, name);
-  }
-  #[inline]
-  pub fn add_description(&mut self, description: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(CreateGroup::VT_DESCRIPTION, description);
-  }
-  #[inline]
-  pub fn add_invitee_text(&mut self, invitee_text: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(CreateGroup::VT_INVITEE_TEXT, invitee_text);
-  }
-  #[inline]
-  pub fn add_invitee_npubs(&mut self, invitee_npubs: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b , ::flatbuffers::ForwardsUOffset<&'b  str>>>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(CreateGroup::VT_INVITEE_NPUBS, invitee_npubs);
-  }
-  #[inline]
-  pub fn add_signed_key_package_events_json(&mut self, signed_key_package_events_json: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b , ::flatbuffers::ForwardsUOffset<&'b  str>>>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(CreateGroup::VT_SIGNED_KEY_PACKAGE_EVENTS_JSON, signed_key_package_events_json);
-  }
-  #[inline]
-  pub fn add_relays(&mut self, relays: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b , ::flatbuffers::ForwardsUOffset<&'b  str>>>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(CreateGroup::VT_RELAYS, relays);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> CreateGroupBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    CreateGroupBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<CreateGroup<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    self.fbb_.required(o, CreateGroup::VT_NAME,"name");
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
-
-impl ::core::fmt::Debug for CreateGroup<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("CreateGroup");
-      ds.field("name", &self.name());
-      ds.field("description", &self.description());
-      ds.field("invitee_text", &self.invitee_text());
-      ds.field("invitee_npubs", &self.invitee_npubs());
-      ds.field("signed_key_package_events_json", &self.signed_key_package_events_json());
-      ds.field("relays", &self.relays());
-      ds.finish()
-  }
-}
-pub enum InviteOffset {}
-#[derive(Copy, Clone, PartialEq)]
-
-pub struct Invite<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
-
-impl<'a> ::flatbuffers::Follow<'a> for Invite<'a> {
-  type Inner = Invite<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
-
-impl<'a> Invite<'a> {
-  pub const VT_GROUP_ID_HEX: ::flatbuffers::VOffsetT = 4;
-  pub const VT_INVITEE_TEXT: ::flatbuffers::VOffsetT = 6;
-  pub const VT_INVITEE_NPUBS: ::flatbuffers::VOffsetT = 8;
-  pub const VT_SIGNED_KEY_PACKAGE_EVENTS_JSON: ::flatbuffers::VOffsetT = 10;
-
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    Invite { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args InviteArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<Invite<'bldr>> {
-    let mut builder = InviteBuilder::new(_fbb);
-    if let Some(x) = args.signed_key_package_events_json { builder.add_signed_key_package_events_json(x); }
-    if let Some(x) = args.invitee_npubs { builder.add_invitee_npubs(x); }
-    if let Some(x) = args.invitee_text { builder.add_invitee_text(x); }
-    if let Some(x) = args.group_id_hex { builder.add_group_id_hex(x); }
-    builder.finish()
-  }
-
-
-  #[inline]
-  pub fn group_id_hex(&self) -> &'a str {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(Invite::VT_GROUP_ID_HEX, None).unwrap()}
-  }
-  #[inline]
-  pub fn invitee_text(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(Invite::VT_INVITEE_TEXT, None)}
-  }
-  #[inline]
-  pub fn invitee_npubs(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>(Invite::VT_INVITEE_NPUBS, None)}
-  }
-  #[inline]
-  pub fn signed_key_package_events_json(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>(Invite::VT_SIGNED_KEY_PACKAGE_EVENTS_JSON, None)}
-  }
-}
-
-impl ::flatbuffers::Verifiable for Invite<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("group_id_hex", Self::VT_GROUP_ID_HEX, true)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("invitee_text", Self::VT_INVITEE_TEXT, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("invitee_npubs", Self::VT_INVITEE_NPUBS, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("signed_key_package_events_json", Self::VT_SIGNED_KEY_PACKAGE_EVENTS_JSON, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct InviteArgs<'a> {
-    pub group_id_hex: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub invitee_text: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub invitee_npubs: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
-    pub signed_key_package_events_json: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
-}
-impl<'a> Default for InviteArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    InviteArgs {
-      group_id_hex: None, // required field
-      invitee_text: None,
-      invitee_npubs: None,
-      signed_key_package_events_json: None,
-    }
-  }
-}
-
-pub struct InviteBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> InviteBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_group_id_hex(&mut self, group_id_hex: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(Invite::VT_GROUP_ID_HEX, group_id_hex);
-  }
-  #[inline]
-  pub fn add_invitee_text(&mut self, invitee_text: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(Invite::VT_INVITEE_TEXT, invitee_text);
-  }
-  #[inline]
-  pub fn add_invitee_npubs(&mut self, invitee_npubs: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b , ::flatbuffers::ForwardsUOffset<&'b  str>>>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(Invite::VT_INVITEE_NPUBS, invitee_npubs);
-  }
-  #[inline]
-  pub fn add_signed_key_package_events_json(&mut self, signed_key_package_events_json: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b , ::flatbuffers::ForwardsUOffset<&'b  str>>>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(Invite::VT_SIGNED_KEY_PACKAGE_EVENTS_JSON, signed_key_package_events_json);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> InviteBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    InviteBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<Invite<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    self.fbb_.required(o, Invite::VT_GROUP_ID_HEX,"group_id_hex");
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
-
-impl ::core::fmt::Debug for Invite<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("Invite");
-      ds.field("group_id_hex", &self.group_id_hex());
-      ds.field("invitee_text", &self.invitee_text());
-      ds.field("invitee_npubs", &self.invitee_npubs());
-      ds.field("signed_key_package_events_json", &self.signed_key_package_events_json());
-      ds.finish()
-  }
-}
-pub enum SendOffset {}
-#[derive(Copy, Clone, PartialEq)]
-
-pub struct Send<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
-
-impl<'a> ::flatbuffers::Follow<'a> for Send<'a> {
-  type Inner = Send<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
-
-impl<'a> Send<'a> {
-  pub const VT_GROUP_ID_HEX: ::flatbuffers::VOffsetT = 4;
-  pub const VT_TEXT: ::flatbuffers::VOffsetT = 6;
-
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    Send { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args SendArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<Send<'bldr>> {
-    let mut builder = SendBuilder::new(_fbb);
-    if let Some(x) = args.text { builder.add_text(x); }
-    if let Some(x) = args.group_id_hex { builder.add_group_id_hex(x); }
-    builder.finish()
-  }
-
-
-  #[inline]
-  pub fn group_id_hex(&self) -> &'a str {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(Send::VT_GROUP_ID_HEX, None).unwrap()}
-  }
-  #[inline]
-  pub fn text(&self) -> &'a str {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(Send::VT_TEXT, None).unwrap()}
-  }
-}
-
-impl ::flatbuffers::Verifiable for Send<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("group_id_hex", Self::VT_GROUP_ID_HEX, true)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("text", Self::VT_TEXT, true)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct SendArgs<'a> {
-    pub group_id_hex: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub text: Option<::flatbuffers::WIPOffset<&'a str>>,
-}
-impl<'a> Default for SendArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    SendArgs {
-      group_id_hex: None, // required field
-      text: None, // required field
-    }
-  }
-}
-
-pub struct SendBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> SendBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_group_id_hex(&mut self, group_id_hex: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(Send::VT_GROUP_ID_HEX, group_id_hex);
-  }
-  #[inline]
-  pub fn add_text(&mut self, text: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(Send::VT_TEXT, text);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> SendBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    SendBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<Send<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    self.fbb_.required(o, Send::VT_GROUP_ID_HEX,"group_id_hex");
-    self.fbb_.required(o, Send::VT_TEXT,"text");
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
-
-impl ::core::fmt::Debug for Send<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("Send");
-      ds.field("group_id_hex", &self.group_id_hex());
-      ds.field("text", &self.text());
-      ds.finish()
-  }
-}
-pub enum LeaveOffset {}
-#[derive(Copy, Clone, PartialEq)]
-
-pub struct Leave<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
-
-impl<'a> ::flatbuffers::Follow<'a> for Leave<'a> {
-  type Inner = Leave<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
-
-impl<'a> Leave<'a> {
-  pub const VT_GROUP_ID_HEX: ::flatbuffers::VOffsetT = 4;
-
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    Leave { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args LeaveArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<Leave<'bldr>> {
-    let mut builder = LeaveBuilder::new(_fbb);
-    if let Some(x) = args.group_id_hex { builder.add_group_id_hex(x); }
-    builder.finish()
-  }
-
-
-  #[inline]
-  pub fn group_id_hex(&self) -> &'a str {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(Leave::VT_GROUP_ID_HEX, None).unwrap()}
-  }
-}
-
-impl ::flatbuffers::Verifiable for Leave<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("group_id_hex", Self::VT_GROUP_ID_HEX, true)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct LeaveArgs<'a> {
-    pub group_id_hex: Option<::flatbuffers::WIPOffset<&'a str>>,
-}
-impl<'a> Default for LeaveArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    LeaveArgs {
-      group_id_hex: None, // required field
-    }
-  }
-}
-
-pub struct LeaveBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> LeaveBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_group_id_hex(&mut self, group_id_hex: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(Leave::VT_GROUP_ID_HEX, group_id_hex);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> LeaveBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    LeaveBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<Leave<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    self.fbb_.required(o, Leave::VT_GROUP_ID_HEX,"group_id_hex");
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
-
-impl ::core::fmt::Debug for Leave<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("Leave");
-      ds.field("group_id_hex", &self.group_id_hex());
-      ds.finish()
-  }
-}
-pub enum RemoveOffset {}
-#[derive(Copy, Clone, PartialEq)]
-
-pub struct Remove<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
-
-impl<'a> ::flatbuffers::Follow<'a> for Remove<'a> {
-  type Inner = Remove<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
-
-impl<'a> Remove<'a> {
-  pub const VT_GROUP_ID_HEX: ::flatbuffers::VOffsetT = 4;
-  pub const VT_MEMBER_NPUBS: ::flatbuffers::VOffsetT = 6;
-
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    Remove { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args RemoveArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<Remove<'bldr>> {
-    let mut builder = RemoveBuilder::new(_fbb);
-    if let Some(x) = args.member_npubs { builder.add_member_npubs(x); }
-    if let Some(x) = args.group_id_hex { builder.add_group_id_hex(x); }
-    builder.finish()
-  }
-
-
-  #[inline]
-  pub fn group_id_hex(&self) -> &'a str {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(Remove::VT_GROUP_ID_HEX, None).unwrap()}
-  }
-  #[inline]
-  pub fn member_npubs(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>(Remove::VT_MEMBER_NPUBS, None)}
-  }
-}
-
-impl ::flatbuffers::Verifiable for Remove<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("group_id_hex", Self::VT_GROUP_ID_HEX, true)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("member_npubs", Self::VT_MEMBER_NPUBS, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct RemoveArgs<'a> {
-    pub group_id_hex: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub member_npubs: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
-}
-impl<'a> Default for RemoveArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    RemoveArgs {
-      group_id_hex: None, // required field
-      member_npubs: None,
-    }
-  }
-}
-
-pub struct RemoveBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RemoveBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_group_id_hex(&mut self, group_id_hex: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(Remove::VT_GROUP_ID_HEX, group_id_hex);
-  }
-  #[inline]
-  pub fn add_member_npubs(&mut self, member_npubs: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b , ::flatbuffers::ForwardsUOffset<&'b  str>>>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(Remove::VT_MEMBER_NPUBS, member_npubs);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> RemoveBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    RemoveBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<Remove<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    self.fbb_.required(o, Remove::VT_GROUP_ID_HEX,"group_id_hex");
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
-
-impl ::core::fmt::Debug for Remove<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("Remove");
-      ds.field("group_id_hex", &self.group_id_hex());
-      ds.field("member_npubs", &self.member_npubs());
-      ds.finish()
-  }
-}
-pub enum AcceptWelcomeOffset {}
-#[derive(Copy, Clone, PartialEq)]
-
-pub struct AcceptWelcome<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
-
-impl<'a> ::flatbuffers::Follow<'a> for AcceptWelcome<'a> {
-  type Inner = AcceptWelcome<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
-
-impl<'a> AcceptWelcome<'a> {
-  pub const VT_WELCOME_ID_HEX: ::flatbuffers::VOffsetT = 4;
-
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    AcceptWelcome { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args AcceptWelcomeArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<AcceptWelcome<'bldr>> {
-    let mut builder = AcceptWelcomeBuilder::new(_fbb);
-    if let Some(x) = args.welcome_id_hex { builder.add_welcome_id_hex(x); }
-    builder.finish()
-  }
-
-
-  #[inline]
-  pub fn welcome_id_hex(&self) -> &'a str {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(AcceptWelcome::VT_WELCOME_ID_HEX, None).unwrap()}
-  }
-}
-
-impl ::flatbuffers::Verifiable for AcceptWelcome<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("welcome_id_hex", Self::VT_WELCOME_ID_HEX, true)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct AcceptWelcomeArgs<'a> {
-    pub welcome_id_hex: Option<::flatbuffers::WIPOffset<&'a str>>,
-}
-impl<'a> Default for AcceptWelcomeArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    AcceptWelcomeArgs {
-      welcome_id_hex: None, // required field
-    }
-  }
-}
-
-pub struct AcceptWelcomeBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> AcceptWelcomeBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_welcome_id_hex(&mut self, welcome_id_hex: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(AcceptWelcome::VT_WELCOME_ID_HEX, welcome_id_hex);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> AcceptWelcomeBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    AcceptWelcomeBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<AcceptWelcome<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    self.fbb_.required(o, AcceptWelcome::VT_WELCOME_ID_HEX,"welcome_id_hex");
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
-
-impl ::core::fmt::Debug for AcceptWelcome<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("AcceptWelcome");
-      ds.field("welcome_id_hex", &self.welcome_id_hex());
-      ds.finish()
-  }
-}
-pub enum DeclineWelcomeOffset {}
-#[derive(Copy, Clone, PartialEq)]
-
-pub struct DeclineWelcome<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
-
-impl<'a> ::flatbuffers::Follow<'a> for DeclineWelcome<'a> {
-  type Inner = DeclineWelcome<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
-
-impl<'a> DeclineWelcome<'a> {
-  pub const VT_WELCOME_ID_HEX: ::flatbuffers::VOffsetT = 4;
-
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    DeclineWelcome { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args DeclineWelcomeArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<DeclineWelcome<'bldr>> {
-    let mut builder = DeclineWelcomeBuilder::new(_fbb);
-    if let Some(x) = args.welcome_id_hex { builder.add_welcome_id_hex(x); }
-    builder.finish()
-  }
-
-
-  #[inline]
-  pub fn welcome_id_hex(&self) -> &'a str {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(DeclineWelcome::VT_WELCOME_ID_HEX, None).unwrap()}
-  }
-}
-
-impl ::flatbuffers::Verifiable for DeclineWelcome<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("welcome_id_hex", Self::VT_WELCOME_ID_HEX, true)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct DeclineWelcomeArgs<'a> {
-    pub welcome_id_hex: Option<::flatbuffers::WIPOffset<&'a str>>,
-}
-impl<'a> Default for DeclineWelcomeArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    DeclineWelcomeArgs {
-      welcome_id_hex: None, // required field
-    }
-  }
-}
-
-pub struct DeclineWelcomeBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> DeclineWelcomeBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_welcome_id_hex(&mut self, welcome_id_hex: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(DeclineWelcome::VT_WELCOME_ID_HEX, welcome_id_hex);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> DeclineWelcomeBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    DeclineWelcomeBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<DeclineWelcome<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    self.fbb_.required(o, DeclineWelcome::VT_WELCOME_ID_HEX,"welcome_id_hex");
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
-
-impl ::core::fmt::Debug for DeclineWelcome<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("DeclineWelcome");
-      ds.field("welcome_id_hex", &self.welcome_id_hex());
-      ds.finish()
-  }
-}
-pub enum ClearPendingOffset {}
-#[derive(Copy, Clone, PartialEq)]
-
-pub struct ClearPending<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
-
-impl<'a> ::flatbuffers::Follow<'a> for ClearPending<'a> {
-  type Inner = ClearPending<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
-
-impl<'a> ClearPending<'a> {
-  pub const VT_GROUP_ID_HEX: ::flatbuffers::VOffsetT = 4;
-
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    ClearPending { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args ClearPendingArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<ClearPending<'bldr>> {
-    let mut builder = ClearPendingBuilder::new(_fbb);
-    if let Some(x) = args.group_id_hex { builder.add_group_id_hex(x); }
-    builder.finish()
-  }
-
-
-  #[inline]
-  pub fn group_id_hex(&self) -> &'a str {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(ClearPending::VT_GROUP_ID_HEX, None).unwrap()}
-  }
-}
-
-impl ::flatbuffers::Verifiable for ClearPending<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("group_id_hex", Self::VT_GROUP_ID_HEX, true)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct ClearPendingArgs<'a> {
-    pub group_id_hex: Option<::flatbuffers::WIPOffset<&'a str>>,
-}
-impl<'a> Default for ClearPendingArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    ClearPendingArgs {
-      group_id_hex: None, // required field
-    }
-  }
-}
-
-pub struct ClearPendingBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ClearPendingBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_group_id_hex(&mut self, group_id_hex: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(ClearPending::VT_GROUP_ID_HEX, group_id_hex);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ClearPendingBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    ClearPendingBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<ClearPending<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    self.fbb_.required(o, ClearPending::VT_GROUP_ID_HEX,"group_id_hex");
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
-
-impl ::core::fmt::Debug for ClearPending<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("ClearPending");
-      ds.field("group_id_hex", &self.group_id_hex());
-      ds.finish()
-  }
-}
-pub enum MarmotActionPayloadOffset {}
-#[derive(Copy, Clone, PartialEq)]
-
-pub struct MarmotActionPayload<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
-
-impl<'a> ::flatbuffers::Follow<'a> for MarmotActionPayload<'a> {
-  type Inner = MarmotActionPayload<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
-
-impl<'a> MarmotActionPayload<'a> {
-  pub const VT_SCHEMA_VERSION: ::flatbuffers::VOffsetT = 4;
-  pub const VT_BODY_TYPE: ::flatbuffers::VOffsetT = 6;
-  pub const VT_BODY: ::flatbuffers::VOffsetT = 8;
-
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    MarmotActionPayload { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args MarmotActionPayloadArgs
-  ) -> ::flatbuffers::WIPOffset<MarmotActionPayload<'bldr>> {
-    let mut builder = MarmotActionPayloadBuilder::new(_fbb);
-    if let Some(x) = args.body { builder.add_body(x); }
-    builder.add_schema_version(args.schema_version);
-    builder.add_body_type(args.body_type);
-    builder.finish()
-  }
-
-
-  #[inline]
-  pub fn schema_version(&self) -> u32 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u32>(MarmotActionPayload::VT_SCHEMA_VERSION, Some(0)).unwrap()}
-  }
-  #[inline]
-  pub fn body_type(&self) -> MarmotActionBody {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<MarmotActionBody>(MarmotActionPayload::VT_BODY_TYPE, Some(MarmotActionBody::NONE)).unwrap()}
-  }
-  #[inline]
-  pub fn body(&self) -> ::flatbuffers::Table<'a> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Table<'a>>>(MarmotActionPayload::VT_BODY, None).unwrap()}
-  }
-  #[inline]
-  #[allow(non_snake_case)]
-  pub fn body_as_publish_key_package(&self) -> Option<PublishKeyPackage<'a>> {
-    if self.body_type() == MarmotActionBody::PublishKeyPackage {
-      let u = self.body();
-      // Safety:
-      // Created from a valid Table for this object
-      // Which contains a valid union in this slot
-      Some(unsafe { PublishKeyPackage::init_from_table(u) })
-    } else {
-      None
-    }
-  }
-
-  #[inline]
-  #[allow(non_snake_case)]
-  pub fn body_as_create_group(&self) -> Option<CreateGroup<'a>> {
-    if self.body_type() == MarmotActionBody::CreateGroup {
-      let u = self.body();
-      // Safety:
-      // Created from a valid Table for this object
-      // Which contains a valid union in this slot
-      Some(unsafe { CreateGroup::init_from_table(u) })
-    } else {
-      None
-    }
-  }
-
-  #[inline]
-  #[allow(non_snake_case)]
-  pub fn body_as_invite(&self) -> Option<Invite<'a>> {
-    if self.body_type() == MarmotActionBody::Invite {
-      let u = self.body();
-      // Safety:
-      // Created from a valid Table for this object
-      // Which contains a valid union in this slot
-      Some(unsafe { Invite::init_from_table(u) })
-    } else {
-      None
-    }
-  }
-
-  #[inline]
-  #[allow(non_snake_case)]
-  pub fn body_as_send(&self) -> Option<Send<'a>> {
-    if self.body_type() == MarmotActionBody::Send {
-      let u = self.body();
-      // Safety:
-      // Created from a valid Table for this object
-      // Which contains a valid union in this slot
-      Some(unsafe { Send::init_from_table(u) })
-    } else {
-      None
-    }
-  }
-
-  #[inline]
-  #[allow(non_snake_case)]
-  pub fn body_as_leave(&self) -> Option<Leave<'a>> {
-    if self.body_type() == MarmotActionBody::Leave {
-      let u = self.body();
-      // Safety:
-      // Created from a valid Table for this object
-      // Which contains a valid union in this slot
-      Some(unsafe { Leave::init_from_table(u) })
-    } else {
-      None
-    }
-  }
-
-  #[inline]
-  #[allow(non_snake_case)]
-  pub fn body_as_remove(&self) -> Option<Remove<'a>> {
-    if self.body_type() == MarmotActionBody::Remove {
-      let u = self.body();
-      // Safety:
-      // Created from a valid Table for this object
-      // Which contains a valid union in this slot
-      Some(unsafe { Remove::init_from_table(u) })
-    } else {
-      None
-    }
-  }
-
-  #[inline]
-  #[allow(non_snake_case)]
-  pub fn body_as_accept_welcome(&self) -> Option<AcceptWelcome<'a>> {
-    if self.body_type() == MarmotActionBody::AcceptWelcome {
-      let u = self.body();
-      // Safety:
-      // Created from a valid Table for this object
-      // Which contains a valid union in this slot
-      Some(unsafe { AcceptWelcome::init_from_table(u) })
-    } else {
-      None
-    }
-  }
-
-  #[inline]
-  #[allow(non_snake_case)]
-  pub fn body_as_decline_welcome(&self) -> Option<DeclineWelcome<'a>> {
-    if self.body_type() == MarmotActionBody::DeclineWelcome {
-      let u = self.body();
-      // Safety:
-      // Created from a valid Table for this object
-      // Which contains a valid union in this slot
-      Some(unsafe { DeclineWelcome::init_from_table(u) })
-    } else {
-      None
-    }
-  }
-
-  #[inline]
-  #[allow(non_snake_case)]
-  pub fn body_as_clear_pending(&self) -> Option<ClearPending<'a>> {
-    if self.body_type() == MarmotActionBody::ClearPending {
-      let u = self.body();
-      // Safety:
-      // Created from a valid Table for this object
-      // Which contains a valid union in this slot
-      Some(unsafe { ClearPending::init_from_table(u) })
-    } else {
-      None
-    }
-  }
-
-}
-
-impl ::flatbuffers::Verifiable for MarmotActionPayload<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
+    #[allow(unused_imports, dead_code)]
+    pub mod marmot {
+
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MIN_MARMOT_ACTION_BODY: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_MARMOT_ACTION_BODY: u8 = 9;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_MARMOT_ACTION_BODY: [MarmotActionBody; 10] = [
+            MarmotActionBody::NONE,
+            MarmotActionBody::PublishKeyPackage,
+            MarmotActionBody::CreateGroup,
+            MarmotActionBody::Invite,
+            MarmotActionBody::Send,
+            MarmotActionBody::Leave,
+            MarmotActionBody::Remove,
+            MarmotActionBody::AcceptWelcome,
+            MarmotActionBody::DeclineWelcome,
+            MarmotActionBody::ClearPending,
+        ];
+
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct MarmotActionBody(pub u8);
+        #[allow(non_upper_case_globals)]
+        impl MarmotActionBody {
+            pub const NONE: Self = Self(0);
+            pub const PublishKeyPackage: Self = Self(1);
+            pub const CreateGroup: Self = Self(2);
+            pub const Invite: Self = Self(3);
+            pub const Send: Self = Self(4);
+            pub const Leave: Self = Self(5);
+            pub const Remove: Self = Self(6);
+            pub const AcceptWelcome: Self = Self(7);
+            pub const DeclineWelcome: Self = Self(8);
+            pub const ClearPending: Self = Self(9);
+
+            pub const ENUM_MIN: u8 = 0;
+            pub const ENUM_MAX: u8 = 9;
+            pub const ENUM_VALUES: &'static [Self] = &[
+                Self::NONE,
+                Self::PublishKeyPackage,
+                Self::CreateGroup,
+                Self::Invite,
+                Self::Send,
+                Self::Leave,
+                Self::Remove,
+                Self::AcceptWelcome,
+                Self::DeclineWelcome,
+                Self::ClearPending,
+            ];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::NONE => Some("NONE"),
+                    Self::PublishKeyPackage => Some("PublishKeyPackage"),
+                    Self::CreateGroup => Some("CreateGroup"),
+                    Self::Invite => Some("Invite"),
+                    Self::Send => Some("Send"),
+                    Self::Leave => Some("Leave"),
+                    Self::Remove => Some("Remove"),
+                    Self::AcceptWelcome => Some("AcceptWelcome"),
+                    Self::DeclineWelcome => Some("DeclineWelcome"),
+                    Self::ClearPending => Some("ClearPending"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for MarmotActionBody {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for MarmotActionBody {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for MarmotActionBody {
+            type Output = MarmotActionBody;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for MarmotActionBody {
+            type Scalar = u8;
+            #[inline]
+            fn to_little_endian(self) -> u8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: u8) -> Self {
+                let b = u8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for MarmotActionBody {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                u8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for MarmotActionBody {}
+        pub struct MarmotActionBodyUnionTableOffset {}
+
+        pub enum PublishKeyPackageOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        pub struct PublishKeyPackage<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for PublishKeyPackage<'a> {
+            type Inner = PublishKeyPackage<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> PublishKeyPackage<'a> {
+            pub const VT_RELAYS: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                PublishKeyPackage { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args PublishKeyPackageArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<PublishKeyPackage<'bldr>> {
+                let mut builder = PublishKeyPackageBuilder::new(_fbb);
+                if let Some(x) = args.relays {
+                    builder.add_relays(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn relays(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>
+            {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(PublishKeyPackage::VT_RELAYS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for PublishKeyPackage<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>,
+                    >>("relays", Self::VT_RELAYS, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct PublishKeyPackageArgs<'a> {
+            pub relays: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                >,
+            >,
+        }
+        impl<'a> Default for PublishKeyPackageArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                PublishKeyPackageArgs { relays: None }
+            }
+        }
+
+        pub struct PublishKeyPackageBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> PublishKeyPackageBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_relays(
+                &mut self,
+                relays: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    PublishKeyPackage::VT_RELAYS,
+                    relays,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> PublishKeyPackageBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                PublishKeyPackageBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<PublishKeyPackage<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for PublishKeyPackage<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("PublishKeyPackage");
+                ds.field("relays", &self.relays());
+                ds.finish()
+            }
+        }
+        pub enum CreateGroupOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        pub struct CreateGroup<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for CreateGroup<'a> {
+            type Inner = CreateGroup<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> CreateGroup<'a> {
+            pub const VT_NAME: ::flatbuffers::VOffsetT = 4;
+            pub const VT_DESCRIPTION: ::flatbuffers::VOffsetT = 6;
+            pub const VT_INVITEE_TEXT: ::flatbuffers::VOffsetT = 8;
+            pub const VT_INVITEE_NPUBS: ::flatbuffers::VOffsetT = 10;
+            pub const VT_SIGNED_KEY_PACKAGE_EVENTS_JSON: ::flatbuffers::VOffsetT = 12;
+            pub const VT_RELAYS: ::flatbuffers::VOffsetT = 14;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                CreateGroup { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args CreateGroupArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<CreateGroup<'bldr>> {
+                let mut builder = CreateGroupBuilder::new(_fbb);
+                if let Some(x) = args.relays {
+                    builder.add_relays(x);
+                }
+                if let Some(x) = args.signed_key_package_events_json {
+                    builder.add_signed_key_package_events_json(x);
+                }
+                if let Some(x) = args.invitee_npubs {
+                    builder.add_invitee_npubs(x);
+                }
+                if let Some(x) = args.invitee_text {
+                    builder.add_invitee_text(x);
+                }
+                if let Some(x) = args.description {
+                    builder.add_description(x);
+                }
+                if let Some(x) = args.name {
+                    builder.add_name(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn name(&self) -> &'a str {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(CreateGroup::VT_NAME, None)
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn description(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        CreateGroup::VT_DESCRIPTION,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn invitee_text(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        CreateGroup::VT_INVITEE_TEXT,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn invitee_npubs(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>
+            {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(CreateGroup::VT_INVITEE_NPUBS, None)
+                }
+            }
+            #[inline]
+            pub fn signed_key_package_events_json(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>
+            {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(
+                        CreateGroup::VT_SIGNED_KEY_PACKAGE_EVENTS_JSON, None
+                    )
+                }
+            }
+            #[inline]
+            pub fn relays(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>
+            {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(CreateGroup::VT_RELAYS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for CreateGroup<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "name",
+                        Self::VT_NAME,
+                        true,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "description",
+                        Self::VT_DESCRIPTION,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "invitee_text",
+                        Self::VT_INVITEE_TEXT,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>,
+                    >>("invitee_npubs", Self::VT_INVITEE_NPUBS, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>,
+                    >>(
+                        "signed_key_package_events_json",
+                        Self::VT_SIGNED_KEY_PACKAGE_EVENTS_JSON,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>,
+                    >>("relays", Self::VT_RELAYS, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct CreateGroupArgs<'a> {
+            pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub description: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub invitee_text: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub invitee_npubs: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                >,
+            >,
+            pub signed_key_package_events_json: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                >,
+            >,
+            pub relays: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                >,
+            >,
+        }
+        impl<'a> Default for CreateGroupArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                CreateGroupArgs {
+                    name: None, // required field
+                    description: None,
+                    invitee_text: None,
+                    invitee_npubs: None,
+                    signed_key_package_events_json: None,
+                    relays: None,
+                }
+            }
+        }
+
+        pub struct CreateGroupBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> CreateGroupBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(CreateGroup::VT_NAME, name);
+            }
+            #[inline]
+            pub fn add_description(&mut self, description: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    CreateGroup::VT_DESCRIPTION,
+                    description,
+                );
+            }
+            #[inline]
+            pub fn add_invitee_text(&mut self, invitee_text: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    CreateGroup::VT_INVITEE_TEXT,
+                    invitee_text,
+                );
+            }
+            #[inline]
+            pub fn add_invitee_npubs(
+                &mut self,
+                invitee_npubs: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    CreateGroup::VT_INVITEE_NPUBS,
+                    invitee_npubs,
+                );
+            }
+            #[inline]
+            pub fn add_signed_key_package_events_json(
+                &mut self,
+                signed_key_package_events_json: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    CreateGroup::VT_SIGNED_KEY_PACKAGE_EVENTS_JSON,
+                    signed_key_package_events_json,
+                );
+            }
+            #[inline]
+            pub fn add_relays(
+                &mut self,
+                relays: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    CreateGroup::VT_RELAYS,
+                    relays,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> CreateGroupBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                CreateGroupBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<CreateGroup<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                self.fbb_.required(o, CreateGroup::VT_NAME, "name");
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for CreateGroup<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("CreateGroup");
+                ds.field("name", &self.name());
+                ds.field("description", &self.description());
+                ds.field("invitee_text", &self.invitee_text());
+                ds.field("invitee_npubs", &self.invitee_npubs());
+                ds.field(
+                    "signed_key_package_events_json",
+                    &self.signed_key_package_events_json(),
+                );
+                ds.field("relays", &self.relays());
+                ds.finish()
+            }
+        }
+        pub enum InviteOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        pub struct Invite<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for Invite<'a> {
+            type Inner = Invite<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> Invite<'a> {
+            pub const VT_GROUP_ID_HEX: ::flatbuffers::VOffsetT = 4;
+            pub const VT_INVITEE_TEXT: ::flatbuffers::VOffsetT = 6;
+            pub const VT_INVITEE_NPUBS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_SIGNED_KEY_PACKAGE_EVENTS_JSON: ::flatbuffers::VOffsetT = 10;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                Invite { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args InviteArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<Invite<'bldr>> {
+                let mut builder = InviteBuilder::new(_fbb);
+                if let Some(x) = args.signed_key_package_events_json {
+                    builder.add_signed_key_package_events_json(x);
+                }
+                if let Some(x) = args.invitee_npubs {
+                    builder.add_invitee_npubs(x);
+                }
+                if let Some(x) = args.invitee_text {
+                    builder.add_invitee_text(x);
+                }
+                if let Some(x) = args.group_id_hex {
+                    builder.add_group_id_hex(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn group_id_hex(&self) -> &'a str {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Invite::VT_GROUP_ID_HEX, None)
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn invitee_text(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Invite::VT_INVITEE_TEXT, None)
+                }
+            }
+            #[inline]
+            pub fn invitee_npubs(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>
+            {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(Invite::VT_INVITEE_NPUBS, None)
+                }
+            }
+            #[inline]
+            pub fn signed_key_package_events_json(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>
+            {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(Invite::VT_SIGNED_KEY_PACKAGE_EVENTS_JSON, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for Invite<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "group_id_hex",
+                        Self::VT_GROUP_ID_HEX,
+                        true,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "invitee_text",
+                        Self::VT_INVITEE_TEXT,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>,
+                    >>("invitee_npubs", Self::VT_INVITEE_NPUBS, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>,
+                    >>(
+                        "signed_key_package_events_json",
+                        Self::VT_SIGNED_KEY_PACKAGE_EVENTS_JSON,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct InviteArgs<'a> {
+            pub group_id_hex: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub invitee_text: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub invitee_npubs: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                >,
+            >,
+            pub signed_key_package_events_json: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                >,
+            >,
+        }
+        impl<'a> Default for InviteArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                InviteArgs {
+                    group_id_hex: None, // required field
+                    invitee_text: None,
+                    invitee_npubs: None,
+                    signed_key_package_events_json: None,
+                }
+            }
+        }
+
+        pub struct InviteBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> InviteBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_group_id_hex(&mut self, group_id_hex: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    Invite::VT_GROUP_ID_HEX,
+                    group_id_hex,
+                );
+            }
+            #[inline]
+            pub fn add_invitee_text(&mut self, invitee_text: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    Invite::VT_INVITEE_TEXT,
+                    invitee_text,
+                );
+            }
+            #[inline]
+            pub fn add_invitee_npubs(
+                &mut self,
+                invitee_npubs: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    Invite::VT_INVITEE_NPUBS,
+                    invitee_npubs,
+                );
+            }
+            #[inline]
+            pub fn add_signed_key_package_events_json(
+                &mut self,
+                signed_key_package_events_json: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    Invite::VT_SIGNED_KEY_PACKAGE_EVENTS_JSON,
+                    signed_key_package_events_json,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> InviteBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                InviteBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<Invite<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                self.fbb_
+                    .required(o, Invite::VT_GROUP_ID_HEX, "group_id_hex");
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for Invite<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("Invite");
+                ds.field("group_id_hex", &self.group_id_hex());
+                ds.field("invitee_text", &self.invitee_text());
+                ds.field("invitee_npubs", &self.invitee_npubs());
+                ds.field(
+                    "signed_key_package_events_json",
+                    &self.signed_key_package_events_json(),
+                );
+                ds.finish()
+            }
+        }
+        pub enum SendOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        pub struct Send<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for Send<'a> {
+            type Inner = Send<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> Send<'a> {
+            pub const VT_GROUP_ID_HEX: ::flatbuffers::VOffsetT = 4;
+            pub const VT_TEXT: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                Send { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args SendArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<Send<'bldr>> {
+                let mut builder = SendBuilder::new(_fbb);
+                if let Some(x) = args.text {
+                    builder.add_text(x);
+                }
+                if let Some(x) = args.group_id_hex {
+                    builder.add_group_id_hex(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn group_id_hex(&self) -> &'a str {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Send::VT_GROUP_ID_HEX, None)
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn text(&self) -> &'a str {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Send::VT_TEXT, None)
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for Send<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "group_id_hex",
+                        Self::VT_GROUP_ID_HEX,
+                        true,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "text",
+                        Self::VT_TEXT,
+                        true,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct SendArgs<'a> {
+            pub group_id_hex: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub text: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for SendArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                SendArgs {
+                    group_id_hex: None, // required field
+                    text: None,         // required field
+                }
+            }
+        }
+
+        pub struct SendBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> SendBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_group_id_hex(&mut self, group_id_hex: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    Send::VT_GROUP_ID_HEX,
+                    group_id_hex,
+                );
+            }
+            #[inline]
+            pub fn add_text(&mut self, text: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Send::VT_TEXT, text);
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> SendBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                SendBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<Send<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                self.fbb_.required(o, Send::VT_GROUP_ID_HEX, "group_id_hex");
+                self.fbb_.required(o, Send::VT_TEXT, "text");
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for Send<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("Send");
+                ds.field("group_id_hex", &self.group_id_hex());
+                ds.field("text", &self.text());
+                ds.finish()
+            }
+        }
+        pub enum LeaveOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        pub struct Leave<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for Leave<'a> {
+            type Inner = Leave<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> Leave<'a> {
+            pub const VT_GROUP_ID_HEX: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                Leave { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args LeaveArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<Leave<'bldr>> {
+                let mut builder = LeaveBuilder::new(_fbb);
+                if let Some(x) = args.group_id_hex {
+                    builder.add_group_id_hex(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn group_id_hex(&self) -> &'a str {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Leave::VT_GROUP_ID_HEX, None)
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for Leave<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "group_id_hex",
+                        Self::VT_GROUP_ID_HEX,
+                        true,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct LeaveArgs<'a> {
+            pub group_id_hex: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for LeaveArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                LeaveArgs {
+                    group_id_hex: None, // required field
+                }
+            }
+        }
+
+        pub struct LeaveBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> LeaveBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_group_id_hex(&mut self, group_id_hex: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    Leave::VT_GROUP_ID_HEX,
+                    group_id_hex,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> LeaveBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                LeaveBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<Leave<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                self.fbb_
+                    .required(o, Leave::VT_GROUP_ID_HEX, "group_id_hex");
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for Leave<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("Leave");
+                ds.field("group_id_hex", &self.group_id_hex());
+                ds.finish()
+            }
+        }
+        pub enum RemoveOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        pub struct Remove<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for Remove<'a> {
+            type Inner = Remove<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> Remove<'a> {
+            pub const VT_GROUP_ID_HEX: ::flatbuffers::VOffsetT = 4;
+            pub const VT_MEMBER_NPUBS: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                Remove { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args RemoveArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<Remove<'bldr>> {
+                let mut builder = RemoveBuilder::new(_fbb);
+                if let Some(x) = args.member_npubs {
+                    builder.add_member_npubs(x);
+                }
+                if let Some(x) = args.group_id_hex {
+                    builder.add_group_id_hex(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn group_id_hex(&self) -> &'a str {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Remove::VT_GROUP_ID_HEX, None)
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn member_npubs(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>
+            {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(Remove::VT_MEMBER_NPUBS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for Remove<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "group_id_hex",
+                        Self::VT_GROUP_ID_HEX,
+                        true,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>,
+                    >>("member_npubs", Self::VT_MEMBER_NPUBS, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct RemoveArgs<'a> {
+            pub group_id_hex: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub member_npubs: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                >,
+            >,
+        }
+        impl<'a> Default for RemoveArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                RemoveArgs {
+                    group_id_hex: None, // required field
+                    member_npubs: None,
+                }
+            }
+        }
+
+        pub struct RemoveBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RemoveBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_group_id_hex(&mut self, group_id_hex: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    Remove::VT_GROUP_ID_HEX,
+                    group_id_hex,
+                );
+            }
+            #[inline]
+            pub fn add_member_npubs(
+                &mut self,
+                member_npubs: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    Remove::VT_MEMBER_NPUBS,
+                    member_npubs,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> RemoveBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                RemoveBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<Remove<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                self.fbb_
+                    .required(o, Remove::VT_GROUP_ID_HEX, "group_id_hex");
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for Remove<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("Remove");
+                ds.field("group_id_hex", &self.group_id_hex());
+                ds.field("member_npubs", &self.member_npubs());
+                ds.finish()
+            }
+        }
+        pub enum AcceptWelcomeOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        pub struct AcceptWelcome<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for AcceptWelcome<'a> {
+            type Inner = AcceptWelcome<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> AcceptWelcome<'a> {
+            pub const VT_WELCOME_ID_HEX: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                AcceptWelcome { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args AcceptWelcomeArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<AcceptWelcome<'bldr>> {
+                let mut builder = AcceptWelcomeBuilder::new(_fbb);
+                if let Some(x) = args.welcome_id_hex {
+                    builder.add_welcome_id_hex(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn welcome_id_hex(&self) -> &'a str {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(
+                            AcceptWelcome::VT_WELCOME_ID_HEX,
+                            None,
+                        )
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for AcceptWelcome<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "welcome_id_hex",
+                        Self::VT_WELCOME_ID_HEX,
+                        true,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct AcceptWelcomeArgs<'a> {
+            pub welcome_id_hex: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for AcceptWelcomeArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                AcceptWelcomeArgs {
+                    welcome_id_hex: None, // required field
+                }
+            }
+        }
+
+        pub struct AcceptWelcomeBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> AcceptWelcomeBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_welcome_id_hex(
+                &mut self,
+                welcome_id_hex: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    AcceptWelcome::VT_WELCOME_ID_HEX,
+                    welcome_id_hex,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> AcceptWelcomeBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                AcceptWelcomeBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<AcceptWelcome<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                self.fbb_
+                    .required(o, AcceptWelcome::VT_WELCOME_ID_HEX, "welcome_id_hex");
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for AcceptWelcome<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("AcceptWelcome");
+                ds.field("welcome_id_hex", &self.welcome_id_hex());
+                ds.finish()
+            }
+        }
+        pub enum DeclineWelcomeOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        pub struct DeclineWelcome<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for DeclineWelcome<'a> {
+            type Inner = DeclineWelcome<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> DeclineWelcome<'a> {
+            pub const VT_WELCOME_ID_HEX: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                DeclineWelcome { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args DeclineWelcomeArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<DeclineWelcome<'bldr>> {
+                let mut builder = DeclineWelcomeBuilder::new(_fbb);
+                if let Some(x) = args.welcome_id_hex {
+                    builder.add_welcome_id_hex(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn welcome_id_hex(&self) -> &'a str {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(
+                            DeclineWelcome::VT_WELCOME_ID_HEX,
+                            None,
+                        )
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for DeclineWelcome<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "welcome_id_hex",
+                        Self::VT_WELCOME_ID_HEX,
+                        true,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct DeclineWelcomeArgs<'a> {
+            pub welcome_id_hex: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for DeclineWelcomeArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                DeclineWelcomeArgs {
+                    welcome_id_hex: None, // required field
+                }
+            }
+        }
+
+        pub struct DeclineWelcomeBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> DeclineWelcomeBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_welcome_id_hex(
+                &mut self,
+                welcome_id_hex: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    DeclineWelcome::VT_WELCOME_ID_HEX,
+                    welcome_id_hex,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> DeclineWelcomeBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                DeclineWelcomeBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<DeclineWelcome<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                self.fbb_
+                    .required(o, DeclineWelcome::VT_WELCOME_ID_HEX, "welcome_id_hex");
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for DeclineWelcome<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("DeclineWelcome");
+                ds.field("welcome_id_hex", &self.welcome_id_hex());
+                ds.finish()
+            }
+        }
+        pub enum ClearPendingOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        pub struct ClearPending<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ClearPending<'a> {
+            type Inner = ClearPending<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ClearPending<'a> {
+            pub const VT_GROUP_ID_HEX: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ClearPending { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ClearPendingArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ClearPending<'bldr>> {
+                let mut builder = ClearPendingBuilder::new(_fbb);
+                if let Some(x) = args.group_id_hex {
+                    builder.add_group_id_hex(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn group_id_hex(&self) -> &'a str {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(
+                            ClearPending::VT_GROUP_ID_HEX,
+                            None,
+                        )
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ClearPending<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "group_id_hex",
+                        Self::VT_GROUP_ID_HEX,
+                        true,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct ClearPendingArgs<'a> {
+            pub group_id_hex: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for ClearPendingArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ClearPendingArgs {
+                    group_id_hex: None, // required field
+                }
+            }
+        }
+
+        pub struct ClearPendingBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ClearPendingBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_group_id_hex(&mut self, group_id_hex: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    ClearPending::VT_GROUP_ID_HEX,
+                    group_id_hex,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> ClearPendingBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ClearPendingBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ClearPending<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                self.fbb_
+                    .required(o, ClearPending::VT_GROUP_ID_HEX, "group_id_hex");
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ClearPending<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ClearPending");
+                ds.field("group_id_hex", &self.group_id_hex());
+                ds.finish()
+            }
+        }
+        pub enum MarmotActionPayloadOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        pub struct MarmotActionPayload<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for MarmotActionPayload<'a> {
+            type Inner = MarmotActionPayload<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> MarmotActionPayload<'a> {
+            pub const VT_SCHEMA_VERSION: ::flatbuffers::VOffsetT = 4;
+            pub const VT_BODY_TYPE: ::flatbuffers::VOffsetT = 6;
+            pub const VT_BODY: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                MarmotActionPayload { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args MarmotActionPayloadArgs,
+            ) -> ::flatbuffers::WIPOffset<MarmotActionPayload<'bldr>> {
+                let mut builder = MarmotActionPayloadBuilder::new(_fbb);
+                if let Some(x) = args.body {
+                    builder.add_body(x);
+                }
+                builder.add_schema_version(args.schema_version);
+                builder.add_body_type(args.body_type);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn schema_version(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(MarmotActionPayload::VT_SCHEMA_VERSION, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn body_type(&self) -> MarmotActionBody {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<MarmotActionBody>(
+                            MarmotActionPayload::VT_BODY_TYPE,
+                            Some(MarmotActionBody::NONE),
+                        )
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn body(&self) -> ::flatbuffers::Table<'a> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Table<'a>>>(
+                            MarmotActionPayload::VT_BODY,
+                            None,
+                        )
+                        .unwrap()
+                }
+            }
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn body_as_publish_key_package(&self) -> Option<PublishKeyPackage<'a>> {
+                if self.body_type() == MarmotActionBody::PublishKeyPackage {
+                    let u = self.body();
+                    // Safety:
+                    // Created from a valid Table for this object
+                    // Which contains a valid union in this slot
+                    Some(unsafe { PublishKeyPackage::init_from_table(u) })
+                } else {
+                    None
+                }
+            }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn body_as_create_group(&self) -> Option<CreateGroup<'a>> {
+                if self.body_type() == MarmotActionBody::CreateGroup {
+                    let u = self.body();
+                    // Safety:
+                    // Created from a valid Table for this object
+                    // Which contains a valid union in this slot
+                    Some(unsafe { CreateGroup::init_from_table(u) })
+                } else {
+                    None
+                }
+            }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn body_as_invite(&self) -> Option<Invite<'a>> {
+                if self.body_type() == MarmotActionBody::Invite {
+                    let u = self.body();
+                    // Safety:
+                    // Created from a valid Table for this object
+                    // Which contains a valid union in this slot
+                    Some(unsafe { Invite::init_from_table(u) })
+                } else {
+                    None
+                }
+            }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn body_as_send(&self) -> Option<Send<'a>> {
+                if self.body_type() == MarmotActionBody::Send {
+                    let u = self.body();
+                    // Safety:
+                    // Created from a valid Table for this object
+                    // Which contains a valid union in this slot
+                    Some(unsafe { Send::init_from_table(u) })
+                } else {
+                    None
+                }
+            }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn body_as_leave(&self) -> Option<Leave<'a>> {
+                if self.body_type() == MarmotActionBody::Leave {
+                    let u = self.body();
+                    // Safety:
+                    // Created from a valid Table for this object
+                    // Which contains a valid union in this slot
+                    Some(unsafe { Leave::init_from_table(u) })
+                } else {
+                    None
+                }
+            }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn body_as_remove(&self) -> Option<Remove<'a>> {
+                if self.body_type() == MarmotActionBody::Remove {
+                    let u = self.body();
+                    // Safety:
+                    // Created from a valid Table for this object
+                    // Which contains a valid union in this slot
+                    Some(unsafe { Remove::init_from_table(u) })
+                } else {
+                    None
+                }
+            }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn body_as_accept_welcome(&self) -> Option<AcceptWelcome<'a>> {
+                if self.body_type() == MarmotActionBody::AcceptWelcome {
+                    let u = self.body();
+                    // Safety:
+                    // Created from a valid Table for this object
+                    // Which contains a valid union in this slot
+                    Some(unsafe { AcceptWelcome::init_from_table(u) })
+                } else {
+                    None
+                }
+            }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn body_as_decline_welcome(&self) -> Option<DeclineWelcome<'a>> {
+                if self.body_type() == MarmotActionBody::DeclineWelcome {
+                    let u = self.body();
+                    // Safety:
+                    // Created from a valid Table for this object
+                    // Which contains a valid union in this slot
+                    Some(unsafe { DeclineWelcome::init_from_table(u) })
+                } else {
+                    None
+                }
+            }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn body_as_clear_pending(&self) -> Option<ClearPending<'a>> {
+                if self.body_type() == MarmotActionBody::ClearPending {
+                    let u = self.body();
+                    // Safety:
+                    // Created from a valid Table for this object
+                    // Which contains a valid union in this slot
+                    Some(unsafe { ClearPending::init_from_table(u) })
+                } else {
+                    None
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for MarmotActionPayload<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
      .visit_field::<u32>("schema_version", Self::VT_SCHEMA_VERSION, false)?
      .visit_union::<MarmotActionBody, _>("body_type", Self::VT_BODY_TYPE, "body", Self::VT_BODY, true, |key, v, pos| {
         match key {
@@ -1379,218 +1843,276 @@ impl ::flatbuffers::Verifiable for MarmotActionPayload<'_> {
         }
      })?
      .finish();
-    Ok(())
-  }
-}
-pub struct MarmotActionPayloadArgs {
-    pub schema_version: u32,
-    pub body_type: MarmotActionBody,
-    pub body: Option<::flatbuffers::WIPOffset<::flatbuffers::UnionWIPOffset>>,
-}
-impl<'a> Default for MarmotActionPayloadArgs {
-  #[inline]
-  fn default() -> Self {
-    MarmotActionPayloadArgs {
-      schema_version: 0,
-      body_type: MarmotActionBody::NONE,
-      body: None, // required field
-    }
-  }
-}
+                Ok(())
+            }
+        }
+        pub struct MarmotActionPayloadArgs {
+            pub schema_version: u32,
+            pub body_type: MarmotActionBody,
+            pub body: Option<::flatbuffers::WIPOffset<::flatbuffers::UnionWIPOffset>>,
+        }
+        impl<'a> Default for MarmotActionPayloadArgs {
+            #[inline]
+            fn default() -> Self {
+                MarmotActionPayloadArgs {
+                    schema_version: 0,
+                    body_type: MarmotActionBody::NONE,
+                    body: None, // required field
+                }
+            }
+        }
 
-pub struct MarmotActionPayloadBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> MarmotActionPayloadBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_schema_version(&mut self, schema_version: u32) {
-    self.fbb_.push_slot::<u32>(MarmotActionPayload::VT_SCHEMA_VERSION, schema_version, 0);
-  }
-  #[inline]
-  pub fn add_body_type(&mut self, body_type: MarmotActionBody) {
-    self.fbb_.push_slot::<MarmotActionBody>(MarmotActionPayload::VT_BODY_TYPE, body_type, MarmotActionBody::NONE);
-  }
-  #[inline]
-  pub fn add_body(&mut self, body: ::flatbuffers::WIPOffset<::flatbuffers::UnionWIPOffset>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(MarmotActionPayload::VT_BODY, body);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> MarmotActionPayloadBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    MarmotActionPayloadBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<MarmotActionPayload<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    self.fbb_.required(o, MarmotActionPayload::VT_BODY,"body");
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
+        pub struct MarmotActionPayloadBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> MarmotActionPayloadBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_schema_version(&mut self, schema_version: u32) {
+                self.fbb_.push_slot::<u32>(
+                    MarmotActionPayload::VT_SCHEMA_VERSION,
+                    schema_version,
+                    0,
+                );
+            }
+            #[inline]
+            pub fn add_body_type(&mut self, body_type: MarmotActionBody) {
+                self.fbb_.push_slot::<MarmotActionBody>(
+                    MarmotActionPayload::VT_BODY_TYPE,
+                    body_type,
+                    MarmotActionBody::NONE,
+                );
+            }
+            #[inline]
+            pub fn add_body(
+                &mut self,
+                body: ::flatbuffers::WIPOffset<::flatbuffers::UnionWIPOffset>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    MarmotActionPayload::VT_BODY,
+                    body,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> MarmotActionPayloadBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                MarmotActionPayloadBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<MarmotActionPayload<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                self.fbb_.required(o, MarmotActionPayload::VT_BODY, "body");
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
 
-impl ::core::fmt::Debug for MarmotActionPayload<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("MarmotActionPayload");
-      ds.field("schema_version", &self.schema_version());
-      ds.field("body_type", &self.body_type());
-      match self.body_type() {
-        MarmotActionBody::PublishKeyPackage => {
-          if let Some(x) = self.body_as_publish_key_package() {
-            ds.field("body", &x)
-          } else {
-            ds.field("body", &"InvalidFlatbuffer: Union discriminant does not match value.")
-          }
-        },
-        MarmotActionBody::CreateGroup => {
-          if let Some(x) = self.body_as_create_group() {
-            ds.field("body", &x)
-          } else {
-            ds.field("body", &"InvalidFlatbuffer: Union discriminant does not match value.")
-          }
-        },
-        MarmotActionBody::Invite => {
-          if let Some(x) = self.body_as_invite() {
-            ds.field("body", &x)
-          } else {
-            ds.field("body", &"InvalidFlatbuffer: Union discriminant does not match value.")
-          }
-        },
-        MarmotActionBody::Send => {
-          if let Some(x) = self.body_as_send() {
-            ds.field("body", &x)
-          } else {
-            ds.field("body", &"InvalidFlatbuffer: Union discriminant does not match value.")
-          }
-        },
-        MarmotActionBody::Leave => {
-          if let Some(x) = self.body_as_leave() {
-            ds.field("body", &x)
-          } else {
-            ds.field("body", &"InvalidFlatbuffer: Union discriminant does not match value.")
-          }
-        },
-        MarmotActionBody::Remove => {
-          if let Some(x) = self.body_as_remove() {
-            ds.field("body", &x)
-          } else {
-            ds.field("body", &"InvalidFlatbuffer: Union discriminant does not match value.")
-          }
-        },
-        MarmotActionBody::AcceptWelcome => {
-          if let Some(x) = self.body_as_accept_welcome() {
-            ds.field("body", &x)
-          } else {
-            ds.field("body", &"InvalidFlatbuffer: Union discriminant does not match value.")
-          }
-        },
-        MarmotActionBody::DeclineWelcome => {
-          if let Some(x) = self.body_as_decline_welcome() {
-            ds.field("body", &x)
-          } else {
-            ds.field("body", &"InvalidFlatbuffer: Union discriminant does not match value.")
-          }
-        },
-        MarmotActionBody::ClearPending => {
-          if let Some(x) = self.body_as_clear_pending() {
-            ds.field("body", &x)
-          } else {
-            ds.field("body", &"InvalidFlatbuffer: Union discriminant does not match value.")
-          }
-        },
-        _ => {
-          let x: Option<()> = None;
-          ds.field("body", &x)
-        },
-      };
-      ds.finish()
-  }
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a `MarmotActionPayload`
-/// and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_marmot_action_payload_unchecked`.
-pub fn root_as_marmot_action_payload(buf: &[u8]) -> Result<MarmotActionPayload<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root::<MarmotActionPayload>(buf)
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a size prefixed
-/// `MarmotActionPayload` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `size_prefixed_root_as_marmot_action_payload_unchecked`.
-pub fn size_prefixed_root_as_marmot_action_payload(buf: &[u8]) -> Result<MarmotActionPayload<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root::<MarmotActionPayload>(buf)
-}
-#[inline]
-/// Verifies, with the given options, that a buffer of bytes
-/// contains a `MarmotActionPayload` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_marmot_action_payload_unchecked`.
-pub fn root_as_marmot_action_payload_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<MarmotActionPayload<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root_with_opts::<MarmotActionPayload<'b>>(opts, buf)
-}
-#[inline]
-/// Verifies, with the given verifier options, that a buffer of
-/// bytes contains a size prefixed `MarmotActionPayload` and returns
-/// it. Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_marmot_action_payload_unchecked`.
-pub fn size_prefixed_root_as_marmot_action_payload_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<MarmotActionPayload<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root_with_opts::<MarmotActionPayload<'b>>(opts, buf)
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a MarmotActionPayload and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid `MarmotActionPayload`.
-pub unsafe fn root_as_marmot_action_payload_unchecked(buf: &[u8]) -> MarmotActionPayload<'_> {
-  unsafe { ::flatbuffers::root_unchecked::<MarmotActionPayload>(buf) }
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a size prefixed MarmotActionPayload and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid size prefixed `MarmotActionPayload`.
-pub unsafe fn size_prefixed_root_as_marmot_action_payload_unchecked(buf: &[u8]) -> MarmotActionPayload<'_> {
-  unsafe { ::flatbuffers::size_prefixed_root_unchecked::<MarmotActionPayload>(buf) }
-}
-pub const MARMOT_ACTION_PAYLOAD_IDENTIFIER: &str = "NMMA";
+        impl ::core::fmt::Debug for MarmotActionPayload<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("MarmotActionPayload");
+                ds.field("schema_version", &self.schema_version());
+                ds.field("body_type", &self.body_type());
+                match self.body_type() {
+                    MarmotActionBody::PublishKeyPackage => {
+                        if let Some(x) = self.body_as_publish_key_package() {
+                            ds.field("body", &x)
+                        } else {
+                            ds.field(
+                                "body",
+                                &"InvalidFlatbuffer: Union discriminant does not match value.",
+                            )
+                        }
+                    }
+                    MarmotActionBody::CreateGroup => {
+                        if let Some(x) = self.body_as_create_group() {
+                            ds.field("body", &x)
+                        } else {
+                            ds.field(
+                                "body",
+                                &"InvalidFlatbuffer: Union discriminant does not match value.",
+                            )
+                        }
+                    }
+                    MarmotActionBody::Invite => {
+                        if let Some(x) = self.body_as_invite() {
+                            ds.field("body", &x)
+                        } else {
+                            ds.field(
+                                "body",
+                                &"InvalidFlatbuffer: Union discriminant does not match value.",
+                            )
+                        }
+                    }
+                    MarmotActionBody::Send => {
+                        if let Some(x) = self.body_as_send() {
+                            ds.field("body", &x)
+                        } else {
+                            ds.field(
+                                "body",
+                                &"InvalidFlatbuffer: Union discriminant does not match value.",
+                            )
+                        }
+                    }
+                    MarmotActionBody::Leave => {
+                        if let Some(x) = self.body_as_leave() {
+                            ds.field("body", &x)
+                        } else {
+                            ds.field(
+                                "body",
+                                &"InvalidFlatbuffer: Union discriminant does not match value.",
+                            )
+                        }
+                    }
+                    MarmotActionBody::Remove => {
+                        if let Some(x) = self.body_as_remove() {
+                            ds.field("body", &x)
+                        } else {
+                            ds.field(
+                                "body",
+                                &"InvalidFlatbuffer: Union discriminant does not match value.",
+                            )
+                        }
+                    }
+                    MarmotActionBody::AcceptWelcome => {
+                        if let Some(x) = self.body_as_accept_welcome() {
+                            ds.field("body", &x)
+                        } else {
+                            ds.field(
+                                "body",
+                                &"InvalidFlatbuffer: Union discriminant does not match value.",
+                            )
+                        }
+                    }
+                    MarmotActionBody::DeclineWelcome => {
+                        if let Some(x) = self.body_as_decline_welcome() {
+                            ds.field("body", &x)
+                        } else {
+                            ds.field(
+                                "body",
+                                &"InvalidFlatbuffer: Union discriminant does not match value.",
+                            )
+                        }
+                    }
+                    MarmotActionBody::ClearPending => {
+                        if let Some(x) = self.body_as_clear_pending() {
+                            ds.field("body", &x)
+                        } else {
+                            ds.field(
+                                "body",
+                                &"InvalidFlatbuffer: Union discriminant does not match value.",
+                            )
+                        }
+                    }
+                    _ => {
+                        let x: Option<()> = None;
+                        ds.field("body", &x)
+                    }
+                };
+                ds.finish()
+            }
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a `MarmotActionPayload`
+        /// and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_marmot_action_payload_unchecked`.
+        pub fn root_as_marmot_action_payload(
+            buf: &[u8],
+        ) -> Result<MarmotActionPayload<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root::<MarmotActionPayload>(buf)
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a size prefixed
+        /// `MarmotActionPayload` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `size_prefixed_root_as_marmot_action_payload_unchecked`.
+        pub fn size_prefixed_root_as_marmot_action_payload(
+            buf: &[u8],
+        ) -> Result<MarmotActionPayload<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root::<MarmotActionPayload>(buf)
+        }
+        #[inline]
+        /// Verifies, with the given options, that a buffer of bytes
+        /// contains a `MarmotActionPayload` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_marmot_action_payload_unchecked`.
+        pub fn root_as_marmot_action_payload_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<MarmotActionPayload<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root_with_opts::<MarmotActionPayload<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Verifies, with the given verifier options, that a buffer of
+        /// bytes contains a size prefixed `MarmotActionPayload` and returns
+        /// it. Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_marmot_action_payload_unchecked`.
+        pub fn size_prefixed_root_as_marmot_action_payload_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<MarmotActionPayload<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root_with_opts::<MarmotActionPayload<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a MarmotActionPayload and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid `MarmotActionPayload`.
+        pub unsafe fn root_as_marmot_action_payload_unchecked(
+            buf: &[u8],
+        ) -> MarmotActionPayload<'_> {
+            unsafe { ::flatbuffers::root_unchecked::<MarmotActionPayload>(buf) }
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a size prefixed MarmotActionPayload and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid size prefixed `MarmotActionPayload`.
+        pub unsafe fn size_prefixed_root_as_marmot_action_payload_unchecked(
+            buf: &[u8],
+        ) -> MarmotActionPayload<'_> {
+            unsafe { ::flatbuffers::size_prefixed_root_unchecked::<MarmotActionPayload>(buf) }
+        }
+        pub const MARMOT_ACTION_PAYLOAD_IDENTIFIER: &str = "NMMA";
 
-#[inline]
-pub fn marmot_action_payload_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, MARMOT_ACTION_PAYLOAD_IDENTIFIER, false)
-}
+        #[inline]
+        pub fn marmot_action_payload_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, MARMOT_ACTION_PAYLOAD_IDENTIFIER, false)
+        }
 
-#[inline]
-pub fn marmot_action_payload_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, MARMOT_ACTION_PAYLOAD_IDENTIFIER, true)
-}
+        #[inline]
+        pub fn marmot_action_payload_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, MARMOT_ACTION_PAYLOAD_IDENTIFIER, true)
+        }
 
-#[inline]
-pub fn finish_marmot_action_payload_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
-    fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-    root: ::flatbuffers::WIPOffset<MarmotActionPayload<'a>>) {
-  fbb.finish(root, Some(MARMOT_ACTION_PAYLOAD_IDENTIFIER));
-}
+        #[inline]
+        pub fn finish_marmot_action_payload_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<MarmotActionPayload<'a>>,
+        ) {
+            fbb.finish(root, Some(MARMOT_ACTION_PAYLOAD_IDENTIFIER));
+        }
 
-#[inline]
-pub fn finish_size_prefixed_marmot_action_payload_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>, root: ::flatbuffers::WIPOffset<MarmotActionPayload<'a>>) {
-  fbb.finish_size_prefixed(root, Some(MARMOT_ACTION_PAYLOAD_IDENTIFIER));
-}
-}  // pub mod marmot
-}  // pub mod nmp
-
+        #[inline]
+        pub fn finish_size_prefixed_marmot_action_payload_buffer<
+            'a,
+            'b,
+            A: ::flatbuffers::Allocator + 'a,
+        >(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<MarmotActionPayload<'a>>,
+        ) {
+            fbb.finish_size_prefixed(root, Some(MARMOT_ACTION_PAYLOAD_IDENTIFIER));
+        }
+    } // pub mod marmot
+} // pub mod nmp
