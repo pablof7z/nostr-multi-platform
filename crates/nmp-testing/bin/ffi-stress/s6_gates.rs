@@ -65,7 +65,7 @@ impl S6Outcome {
     ///
     /// The hash-based `waste_ratio` is NOT the Rung-3 gate: Phase B reads ~40% by
     /// it, but that residue is entirely the two Tier-1 (feed-class) keys
-    /// `claimed_event_embeds` + `nip46_onboarding` — always-Changed by D3-7 (no
+    /// `refs.event.envelopes` + `nip46_onboarding` — always-Changed by D3-7 (no
     /// manifest entry, never omitted), so they stay on the wire every tick and
     /// dominate the hash-waste. (Probe: `relay_diagnostics` is byte-identical only
     /// 1/103 ticks, so it is NOT the dominator.) Those Tier-1 keys are gated in a

@@ -29,10 +29,20 @@ structure, not view styling.
 
 ## Embed Resolution
 
-Embed resolution and quote/reference cards flow through the Rust-owned
-reference/claim surfaces and typed projections. Renderers consume resolved data
-from snapshots and do not open ad hoc platform subscription loops per visible
-card.
+`refs.event` is the authoritative event-reference source. It carries row-delta
+updates whose payload is raw event data, and hosts merge those rows into a
+`RefEventStore`.
+
+`refs.event.envelopes` is a derived render projection. It is emitted only by
+composition roots that can see the merged `refs.event` store and `nmp-content`
+(`nmp-ffi`, browser runtime). It carries pre-resolved
+`primary_id -> EmbeddedEventEnvelope` data for typed-frame shells and component
+registries that cannot run Rust resolver code locally. It is not a second source
+of truth and must never be populated from legacy whole-map event claim
+projections.
+
+Renderers consume resolved data from snapshots and do not open ad hoc platform
+subscription loops per visible card.
 
 ## App Components
 

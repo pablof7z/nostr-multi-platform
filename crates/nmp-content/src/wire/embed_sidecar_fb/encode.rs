@@ -1,4 +1,4 @@
-//! Encode half of the `claimed_event_embeds` typed compatibility codec — the
+//! Encode half of the `refs.event.envelopes` typed projection codec — the
 //! resolved [`EmbeddedEventEnvelope`] map → `NEMB` FlatBuffer. See the
 //! module-root doc ([`super`]) for the layout / regeneration contract.
 
@@ -13,9 +13,9 @@ use crate::embed_projection::{
 };
 use crate::wire::encode_content_tree;
 
-/// See [`super::encode_claimed_event_embeds`].
+/// See [`super::encode_ref_event_envelopes`].
 #[must_use]
-pub(super) fn encode_claimed_event_embeds(
+pub(super) fn encode_ref_event_envelopes(
     entries: &BTreeMap<String, EmbeddedEventEnvelope>,
 ) -> Vec<u8> {
     let mut fbb = FlatBufferBuilder::new();
@@ -26,13 +26,13 @@ pub(super) fn encode_claimed_event_embeds(
         .collect();
     let entries_vec = fbb.create_vector(&entry_offsets);
 
-    let root = fb::ClaimedEventEmbeds::create(
+    let root = fb::RefEventEnvelopes::create(
         &mut fbb,
-        &fb::ClaimedEventEmbedsArgs {
+        &fb::RefEventEnvelopesArgs {
             entries: Some(entries_vec),
         },
     );
-    fb::finish_claimed_event_embeds_buffer(&mut fbb, root);
+    fb::finish_ref_event_envelopes_buffer(&mut fbb, root);
     fbb.finished_data().to_vec()
 }
 

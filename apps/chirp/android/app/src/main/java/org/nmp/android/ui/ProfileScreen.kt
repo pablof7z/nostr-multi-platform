@@ -42,7 +42,7 @@ import org.nmp.android.follow
 import org.nmp.android.unfollow
 import org.nmp.android.components.LocalNostrProfileHost
 import org.nmp.android.ui.embed.EventClaimer
-import org.nmp.android.ui.embed.LocalClaimedEventEmbeds
+import org.nmp.android.ui.embed.LocalRefEventEnvelopes
 import org.nmp.android.ui.embed.LocalEventClaimer
 import org.nmp.android.components.NostrAvatar
 import org.nmp.android.components.NostrNip05Badge
@@ -118,11 +118,11 @@ fun ProfileScreen(
         if (claim) model.claimEvent(uri, consumerId)
         else model.releaseEvent(uri, consumerId)
     }
-    val claimedEventEmbeds = projections?.claimedEventEmbeds ?: emptyMap()
+    val refEventEnvelopes = projections?.refEventEnvelopes ?: emptyMap()
 
     CompositionLocalProvider(
         LocalEventClaimer provides eventClaimer,
-        LocalClaimedEventEmbeds provides claimedEventEmbeds,
+        LocalRefEventEnvelopes provides refEventEnvelopes,
         LocalNostrProfileHost provides profileHost,
     ) {
         Box(modifier.fillMaxSize()) {

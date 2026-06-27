@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use serde_json::{json, Map, Value};
 
+use nmp_content::wire::EMBED_SIDECAR_PROJECTION_KEY;
 use nmp_content::{
     resolve_embed_projection, EmbedKindProjection, EmbeddedEventEnvelope, RenderContext,
     RenderContextWire,
@@ -51,8 +52,8 @@ pub(crate) fn snapshot_json_from_update_frame(
         refs_profiles_json(&ref_profiles.profiles()),
     );
     projections.insert(
-        REFS_EVENT_KEY.to_string(),
-        refs_events_json(&ref_events.events()),
+        EMBED_SIDECAR_PROJECTION_KEY.to_string(),
+        refs_event_envelopes_json(&ref_events.events()),
     );
     projections.insert(
         ACCOUNTS_SCHEMA_ID.to_string(),
@@ -123,10 +124,11 @@ fn profile_card_json(card: &ProfileCardModel, pubkey: &str) -> Value {
     })
 }
 
-/// Materialise the current `refs.event` row store as the gallery's render-facing
-/// event-ref envelope map. The input is the kernel-owned `refs.event` row-delta
-/// projection; kind dispatch stays in Rust via `nmp-content`.
-fn refs_events_json(events: &BTreeMap<String, ClaimedEventRow>) -> Value {
+/// Materialise the current `refs.event` row store as the gallery's derived
+/// `refs.event.envelopes` render map. The input is the kernel-owned
+/// `refs.event` row-delta projection; kind dispatch stays in Rust via
+/// `nmp-content`.
+fn refs_event_envelopes_json(events: &BTreeMap<String, ClaimedEventRow>) -> Value {
     let ctx = RenderContext::new();
     let mut out = Map::with_capacity(events.len());
     for (primary_id, row) in events {

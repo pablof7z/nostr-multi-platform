@@ -32,7 +32,7 @@ pub fn hex_color(hex: &str) -> Color32 {
 /// Render a kind:1 note body as wrapped inline widgets.
 ///
 /// `embeds` is the pre-resolved `primary_id -> EmbeddedEventEnvelope` map from
-/// the typed `claimed_event_embeds` sidecar (issue #1283 Phase 1). An `EventRef`
+/// the typed `refs.event.envelopes` sidecar (issue #1283 Phase 1). An `EventRef`
 /// segment whose `primary_id` is present in the map renders the embedded event
 /// (kernel-resolved, never re-parsed here — D0 thin-shell); an absent one falls
 /// back to the `↗ note` placeholder (the kernel has not claimed it yet).

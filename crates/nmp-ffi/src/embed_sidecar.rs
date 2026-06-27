@@ -1,4 +1,4 @@
-//! Compatibility `claimed_event_embeds` sidecar — issue #1283 / ADR-0034
+//! `refs.event.envelopes` derived sidecar — issue #1283 / ADR-0034
 //! §embed-sidecar.
 //!
 //! `refs.event` is the authoritative event-reference projection. Its row
@@ -16,11 +16,10 @@
 //!    store the pre-resolved `primary_id -> EmbeddedEventEnvelope` map in the
 //!    same shared state.
 //! 2. The snapshot projection closure registered at app-init reads from that
-//!    state on every subsequent tick and contributes the compatibility
-//!    `claimed_event_embeds` typed `NEMB` FlatBuffer projection
-//!      ([`nmp_content::wire::encode_claimed_event_embeds`]) for the typed-frame
-//!      shells (Chirp iOS + chirp-desktop), which have no JSON `payload` and so
-//!      decode the typed sidecar.
+//!    state on every subsequent tick and contributes the derived
+//!    `refs.event.envelopes` typed `NEMB` FlatBuffer projection
+//!    ([`nmp_content::wire::encode_ref_event_envelopes`]) for typed-frame
+//!    shells, which have no JSON `payload` and so decode the typed sidecar.
 //!
 //! Typed-frame shells decode the typed key instead of duplicating the
 //! `match kind` resolver in Swift/Kotlin: the iOS `EmbedHost.resolve()` /
@@ -30,7 +29,7 @@
 //!
 //! ## One-tick lag
 //!
-//! The compatibility sidecar is produced from the **previous** frame's
+//! The derived sidecar is produced from the **previous** frame's
 //! `refs.event` data (written in the listener thread after encode, read on the
 //! next tick's projection closure). This is acceptable: the event-ref flow is
 //! already async (kernel fetches the event on demand then surfaces it on the next
@@ -52,7 +51,10 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-use nmp_content::wire::{encode_claimed_event_embeds, EMBED_SIDECAR_SCHEMA_VERSION};
+use nmp_content::wire::{
+    encode_ref_event_envelopes, EMBED_SIDECAR_FILE_IDENTIFIER, EMBED_SIDECAR_PROJECTION_KEY,
+    EMBED_SIDECAR_SCHEMA_ID, EMBED_SIDECAR_SCHEMA_VERSION,
+};
 use nmp_content::{
     resolve_embed_projection, EmbedKindProjection, EmbeddedEventEnvelope, RenderContext,
     RenderContextWire,
@@ -64,10 +66,7 @@ use nmp_core::{
     typed_projections::ClaimedEventRow,
     TypedProjectionData,
 };
-/// Snapshot-projection key for the typed FlatBuffer embed sidecar.
-const EMBED_SIDECAR_KEY: &str = "claimed_event_embeds";
-
-/// Shared compatibility state for the old `claimed_event_embeds` projection.
+/// Shared state for the derived `refs.event.envelopes` projection.
 ///
 /// `ref_events` is the authoritative host-side mirror of `refs.event` row
 /// deltas. `envelopes` is a render-facing cache derived from that store; it is
@@ -132,8 +131,8 @@ fn build_envelope(primary_id: &str, projection: EmbedKindProjection) -> Embedded
     }
 }
 
-/// Resolve the current live `refs.event` rows into the compatibility envelope
-/// map consumed by the `claimed_event_embeds` encoder.
+/// Resolve the current live `refs.event` rows into the envelope map consumed by
+/// the `refs.event.envelopes` encoder.
 fn resolve_events(
     rows: &BTreeMap<String, ClaimedEventRow>,
 ) -> BTreeMap<String, EmbeddedEventEnvelope> {
@@ -150,8 +149,8 @@ fn resolve_events(
 /// Called from the listener thread after every update frame.
 ///
 /// Applies the `refs.event` row-delta typed sidecar from `frame_bytes`, resolves
-/// the store's current live rows via `nmp-content`, and updates the compatibility
-/// `claimed_event_embeds` map. Missing `refs.event` entries leave the prior
+/// the store's current live rows via `nmp-content`, and updates the derived
+/// `refs.event.envelopes` map. Missing `refs.event` entries leave the prior
 /// state intact; clear rows must arrive as explicit `refs.event` rows.
 ///
 /// Silent no-ops on any decode failure (D6).
@@ -199,17 +198,16 @@ fn snapshot_map(slot: &EmbedSidecarSlot) -> BTreeMap<String, EmbeddedEventEnvelo
 pub(crate) fn read_embed_sidecar_typed(slot: &EmbedSidecarSlot) -> TypedProjectionData {
     let map = snapshot_map(slot);
     TypedProjectionData {
-        key: EMBED_SIDECAR_KEY.to_string(),
-        schema_id: EMBED_SIDECAR_KEY.to_string(),
+        key: EMBED_SIDECAR_PROJECTION_KEY.to_string(),
+        schema_id: EMBED_SIDECAR_SCHEMA_ID.to_string(),
         schema_version: EMBED_SIDECAR_SCHEMA_VERSION,
-        file_identifier: String::from_utf8_lossy(nmp_content::wire::EMBED_SIDECAR_FILE_IDENTIFIER)
-            .into_owned(),
-        payload: encode_claimed_event_embeds(&map),
+        file_identifier: String::from_utf8_lossy(EMBED_SIDECAR_FILE_IDENTIFIER).into_owned(),
+        payload: encode_ref_event_envelopes(&map),
         ..Default::default()
     }
 }
 
-/// Register the typed `claimed_event_embeds` compatibility projection on `app`,
+/// Register the typed `refs.event.envelopes` derived projection on `app`,
 /// reading the resolved map derived from the `refs.event` store.
 ///
 /// The typed projection (`register_typed_snapshot_projection`) feeds the Chirp
@@ -223,7 +221,7 @@ pub(crate) fn read_embed_sidecar_typed(slot: &EmbedSidecarSlot) -> TypedProjecti
 /// dispatch lives in `nmp-content`; this is a thin reader/encoder.
 ///
 /// ADR-0055 R6-S2: the typed projection now uses `TypedProjectionEmissionState`
-/// to omit an unchanged `claimed_event_embeds` frame when the host has declared
+/// to omit an unchanged `refs.event.envelopes` frame when the host has declared
 /// incremental-apply capability (exact byte equality, monotonic rev, freeze
 /// guard on the same FrameIdentity the feed uses — one shared implementation).
 ///
@@ -244,7 +242,7 @@ pub(crate) fn install_embed_sidecar_projection(app: &crate::NmpApp, slot: EmbedS
         incremental_apply,
     )));
 
-    app.register_typed_snapshot_projection(EMBED_SIDECAR_KEY, move || {
+    app.register_typed_snapshot_projection(EMBED_SIDECAR_PROJECTION_KEY, move || {
         let typed_data = read_embed_sidecar_typed(&slot);
         // R6-S2: apply byte-equality omit (same mechanism as feed R6-S1).
         let identity = FrameIdentity {

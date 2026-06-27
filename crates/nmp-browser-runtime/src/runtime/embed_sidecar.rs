@@ -1,4 +1,4 @@
-//! Browser-owned `claimed_event_embeds` compatibility projection.
+//! Browser-owned `refs.event.envelopes` derived projection.
 //!
 //! The browser runtime receives raw kernel frames where `refs.event` is the
 //! authoritative event-reference source. Web shells still want the render-facing
@@ -10,7 +10,7 @@
 use std::collections::BTreeMap;
 
 use nmp_content::wire::{
-    encode_claimed_event_embeds, EMBED_SIDECAR_FILE_IDENTIFIER, EMBED_SIDECAR_PROJECTION_KEY,
+    encode_ref_event_envelopes, EMBED_SIDECAR_FILE_IDENTIFIER, EMBED_SIDECAR_PROJECTION_KEY,
     EMBED_SIDECAR_SCHEMA_ID, EMBED_SIDECAR_SCHEMA_VERSION,
 };
 use nmp_content::{
@@ -64,7 +64,7 @@ impl BrowserEmbedSidecar {
             schema_id: EMBED_SIDECAR_SCHEMA_ID.to_string(),
             schema_version: EMBED_SIDECAR_SCHEMA_VERSION,
             file_identifier: String::from_utf8_lossy(EMBED_SIDECAR_FILE_IDENTIFIER).into_owned(),
-            payload: encode_claimed_event_embeds(&self.envelopes),
+            payload: encode_ref_event_envelopes(&self.envelopes),
             ..Default::default()
         }
     }
@@ -159,7 +159,7 @@ mod tests {
         let mut sidecar = BrowserEmbedSidecar::default();
         sidecar.apply_raw_frame(&frame);
         let typed = sidecar.typed_projection();
-        let envelopes = nmp_content::wire::decode_claimed_event_embeds(&typed.payload)
+        let envelopes = nmp_content::wire::decode_ref_event_envelopes(&typed.payload)
             .expect("NEMB payload decodes");
         let envelope = envelopes
             .get(&primary_id)

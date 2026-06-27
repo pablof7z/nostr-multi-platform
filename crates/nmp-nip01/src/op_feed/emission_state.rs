@@ -2,7 +2,7 @@
 //!
 //! The generic omit mechanism ([`TypedProjectionEmissionState`] +
 //! [`FrameIdentity`]) was **generalised into `nmp-core`** in R6-S2 so that
-//! `claimed_event_embeds` (registered in `nmp-ffi`) and `nip46_onboarding`
+//! `refs.event.envelopes` (registered in `nmp-ffi`) and `nip46_onboarding`
 //! (registered in `nmp-core/actor`) can reuse the same byte-equality omit logic
 //! without duplication. This module re-exports those types from
 //! `nmp_core::projection_emission` and provides [`FeedEmissionState`] as a type
@@ -14,7 +14,7 @@
 //! There is exactly ONE omit implementation in the codebase:
 //! `nmp_core::projection_emission::TypedProjectionEmissionState`. All three
 //! typed projections that use the omit mechanism
-//! (`nmp.feed.home`, `claimed_event_embeds`, `nip46_onboarding`) share it.
+//! (`nmp.feed.home`, `refs.event.envelopes`, `nip46_onboarding`) share it.
 //!
 //! ## Original mechanism docs (now in `nmp-core::projection_emission`)
 //!

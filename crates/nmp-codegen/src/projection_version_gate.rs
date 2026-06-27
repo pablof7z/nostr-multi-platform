@@ -92,7 +92,7 @@ pub const PRODUCER_VERSION_SOURCES: &[ProducerVersionSource] = &[
         const_name: "SCHEMA_VERSION",
     },
     ProducerVersionSource {
-        key: "claimed_event_embeds",
+        key: "refs.event.envelopes",
         source_path: "crates/nmp-content/src/wire/embed_sidecar_fb/mod.rs",
         const_name: "SCHEMA_VERSION",
     },

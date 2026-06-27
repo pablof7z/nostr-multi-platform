@@ -10,7 +10,7 @@
 //!   `Unchanged` Tier-2 row is omitted; zero unchanged-Tier-2 leaks.
 //! - Frame bytes: **9640B → 7928B p50 (~18% reduction)**, zero data loss.
 //! - The remaining frame bytes are dominated by the two Tier-1 (feed-class) keys
-//!   `claimed_event_embeds` + `nip46_onboarding`, which are always-Changed by
+//!   `refs.event.envelopes` + `nip46_onboarding`, which are always-Changed by
 //!   D3-7 (no manifest entry) and are gated in a LATER rung — NOT this one.
 //!
 //! Note on the hash-based `waste_ratio`: Phase B still reads ~40% by that

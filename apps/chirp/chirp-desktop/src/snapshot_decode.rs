@@ -306,7 +306,7 @@ pub(crate) fn decode_snapshot_typed(
         );
     }
 
-    // Issue #1283 Phase 1: the typed `claimed_event_embeds` (`NEMB`) sidecar —
+    // Issue #1283 Phase 1: the typed `refs.event.envelopes` (`NEMB`) sidecar —
     // the SAME pre-resolved embed map Chirp iOS consumes. Desktop is a
     // typed-frame shell (no JSON `payload`), so this typed sidecar is the only
     // way it can render embeds; `render::note_body` looks an `EventRef` up by
@@ -314,7 +314,7 @@ pub(crate) fn decode_snapshot_typed(
     // (D6): a malformed buffer degrades to an empty map.
     let embeds: std::collections::HashMap<String, nmp_content::EmbeddedEventEnvelope> =
         find(nmp_content::wire::EMBED_SIDECAR_SCHEMA_ID)
-            .and_then(|b| nmp_content::wire::decode_claimed_event_embeds(b).ok())
+            .and_then(|b| nmp_content::wire::decode_ref_event_envelopes(b).ok())
             .map(|m| m.into_iter().collect())
             .unwrap_or_default();
 

@@ -201,7 +201,7 @@ class GalleryModel : ViewModel() {
         _profileMap.value = assembled
 
         val embeds = mutableMapOf<String, ResolvedEventEnvelopeWire>()
-        (projections["refs.event"] as? JsonObject)?.let { resolved ->
+        (projections["refs.event.envelopes"] as? JsonObject)?.let { resolved ->
             for ((primaryId, el) in resolved) {
                 val envelope = runCatching {
                     json.decodeFromJsonElement<ResolvedEventEnvelopeWire>(el)

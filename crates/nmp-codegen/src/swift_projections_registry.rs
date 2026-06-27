@@ -570,31 +570,31 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             swift_reader_type: Some("nmp_kernel_RelayDiagnosticsSnapshot"),
         }),
     },
-    // Pre-resolved embed map (issue #1283 / ADR-0034 §embed-sidecar) — keyed by
-    // `primary_id`, one `EmbeddedEventEnvelope` (the kind-dispatched
-    // `EmbedKindProjection`) per currently resolved event ref. Produced by
-    // `crates/nmp-ffi/src/embed_sidecar.rs`, which materialises `refs.event`
-    // rows through `nmp_content::resolve_embed_projection` and emits the typed
-    // `NEMB` FlatBuffer (this entry, Chirp typed-frame shell). Decoding the
-    // typed sidecar is what lets
-    // Chirp delete its in-Swift `match kind` embed resolver (the EmbedHost D0
-    // violation #1283 closes). The Swift value type `EmbeddedEventEnvelope` is
-    // hand-declared in `ios/.../Components/NostrContent/EmbedKindProjection.swift`
-    // (its Codable form decodes the JSON fallback; the glue builds it from the
-    // typed reader). Drives `EmbedHost.update(envelopes:)`.
+    // Pre-resolved embed-envelope map over authoritative `refs.event` rows
+    // (issue #1283 / ADR-0034 §embed-sidecar) — keyed by `primary_id`, one
+    // `EmbeddedEventEnvelope` (the kind-dispatched `EmbedKindProjection`) per
+    // currently resolved event ref. Produced by `crates/nmp-ffi/src/embed_sidecar.rs`,
+    // which materialises `refs.event` rows through
+    // `nmp_content::resolve_embed_projection` and emits the typed `NEMB`
+    // FlatBuffer (this entry, Chirp typed-frame shell). Decoding the typed
+    // sidecar is what lets Chirp delete its in-Swift `match kind` embed resolver
+    // (the EmbedHost D0 violation #1283 closes). The Swift value type
+    // `EmbeddedEventEnvelope` is hand-declared in
+    // `ios/.../Components/NostrContent/EmbedKindProjection.swift`; the glue
+    // builds it from the typed reader. Drives `EmbedHost.update(envelopes:)`.
     SnapshotProjectionEntry {
-        key: "claimed_event_embeds",
-        swift_field: "claimedEventEmbeds",
+        key: "refs.event.envelopes",
+        swift_field: "refEventEnvelopes",
         swift_type: "[String: EmbeddedEventEnvelope]",
         typed_sidecar: Some(TypedSidecar {
-            // Producer sets `key == schema_id == "claimed_event_embeds"`
+            // Producer sets `key == schema_id == "refs.event.envelopes"`
             // (`embed_sidecar::install_embed_sidecar_projection`).
             // `flatc --swift` reader from `crates/nmp-content/schema/embed_sidecar.fbs`
-            // (`apps/chirp/ios/Chirp/Bridge/Generated/ClaimedEventEmbeds.generated.swift`).
+            // (`apps/chirp/ios/Chirp/Bridge/Generated/RefEventEnvelopes.generated.swift`).
             // The `[EmbeddedEventEnvelope]` (key-sorted on `primary_id`) →
             // `[String: EmbeddedEventEnvelope]` map + the kind-discriminated
-            // `EmbedKindProjection` mapping is `TypedProjectionGlue.claimedEventEmbeds`.
-            swift_reader_type: Some("nmp_embed_ClaimedEventEmbeds"),
+            // `EmbedKindProjection` mapping is `TypedProjectionGlue.refEventEnvelopes`.
+            swift_reader_type: Some("nmp_embed_RefEventEnvelopes"),
         }),
     },
     SnapshotProjectionEntry {

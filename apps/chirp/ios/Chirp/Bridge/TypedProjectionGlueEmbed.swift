@@ -1,29 +1,29 @@
 import FlatBuffers
 import Foundation
 
-// HAND-WRITTEN glue for the typed `claimed_event_embeds` sidecar (issue #1283
+// HAND-WRITTEN glue for the typed `refs.event.envelopes` sidecar (issue #1283
 // Phase 1), kept in this sibling file rather than appended to
 // `TypedProjectionGlue.swift` because that file is at its file-size baseline
 // (AGENTS.md anti-cheat: split rather than raise a baseline).
 //
 // This is the half of the embed decode that maps the `flatc --swift` reader
-// (`nmp_embed_ClaimedEventEmbeds`, decoded by the GENERATED
-// `TypedClaimedEventEmbedsDecoder`) to the Chirp domain
+// (`nmp_embed_RefEventEnvelopes`, decoded by the GENERATED
+// `TypedRefEventEnvelopesDecoder`) to the Chirp domain
 // `[String: EmbeddedEventEnvelope]`. The kind-dispatch + tag/JSON parsing that
 // used to live in `EmbedHost.resolve()` is DELETED — the Rust resolver
 // (`nmp_content::resolve_embed_projection`) already did it on the kernel side,
 // so this glue is a pure field copy + enum re-tagging (D0 thin-shell: zero
 // resolution logic in Swift).
 extension TypedProjectionGlue {
-    // MARK: claimed_event_embeds → [String: EmbeddedEventEnvelope]
+    // MARK: refs.event.envelopes → [String: EmbeddedEventEnvelope]
 
-    /// Map the typed `claimed_event_embeds` sidecar (`NEMB` /
-    /// `nmp_embed_ClaimedEventEmbeds`) to the `[String: EmbeddedEventEnvelope]`
-    /// the compatibility projection yields. FlatBuffers has no map type, so the
+    /// Map the typed `refs.event.envelopes` sidecar (`NEMB` /
+    /// `nmp_embed_RefEventEnvelopes`) to the `[String: EmbeddedEventEnvelope]`
+    /// the derived projection yields. FlatBuffers has no map type, so the
     /// producer flattens the `primary_id -> envelope` map to a key-sorted vector;
     /// this rebuilds the dictionary keyed by `primaryId`.
-    static func claimedEventEmbeds(
-        _ reader: nmp_embed_ClaimedEventEmbeds
+    static func refEventEnvelopes(
+        _ reader: nmp_embed_RefEventEnvelopes
     ) -> [String: EmbeddedEventEnvelope] {
         reader.entries.reduce(into: [String: EmbeddedEventEnvelope]()) { out, entry in
             let primaryID = entry.primaryId ?? ""

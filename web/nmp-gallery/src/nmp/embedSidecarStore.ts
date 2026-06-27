@@ -3,7 +3,7 @@ import * as flatbuffers from "flatbuffers";
 import { ContentTreeWire as FbContentTreeWire } from "./generated/nmp/content/content-tree-wire";
 import type { WireNode as FbWireNode } from "./generated/nmp/content/wire-node";
 import { WireNodeKind } from "./generated/nmp/content/wire-node-kind";
-import { ClaimedEventEmbeds } from "./generated/nmp/embed/claimed-event-embeds";
+import { RefEventEnvelopes } from "./generated/nmp/embed/ref-event-envelopes";
 import { EmbedProjectionKind } from "./generated/nmp/embed/embed-projection-kind";
 import type { EmbedKindProjection as FbEmbedKindProjection } from "./generated/nmp/embed/embed-kind-projection";
 import type { EmbeddedEventEnvelope as FbEmbeddedEventEnvelope } from "./generated/nmp/embed/embedded-event-envelope";
@@ -15,7 +15,7 @@ import type {
   WireNode,
 } from "@nmp/components-web/src/content-kind-registry/NostrKindRegistry";
 
-export const EMBED_SIDECAR_KEY = "claimed_event_embeds";
+export const EMBED_SIDECAR_KEY = "refs.event.envelopes";
 export const NEMB_FILE_IDENTIFIER = "NEMB";
 
 const utf8Decoder = new TextDecoder();
@@ -24,8 +24,8 @@ export function decodeEmbedSidecar(bytes: Uint8Array): Map<string, EmbeddedEvent
   if (bytes.length < 8) return undefined;
   try {
     const bb = new flatbuffers.ByteBuffer(bytes);
-    if (!ClaimedEventEmbeds.bufferHasIdentifier(bb)) return undefined;
-    const root = ClaimedEventEmbeds.getRootAsClaimedEventEmbeds(bb);
+    if (!RefEventEnvelopes.bufferHasIdentifier(bb)) return undefined;
+    const root = RefEventEnvelopes.getRootAsRefEventEnvelopes(bb);
     const out = new Map<string, EmbeddedEventModel>();
     for (let i = 0; i < root.entriesLength(); i += 1) {
       const env = root.entries(i);

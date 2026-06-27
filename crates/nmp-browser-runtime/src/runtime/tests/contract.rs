@@ -37,7 +37,7 @@ fn next_frame_carries_rust_resolved_embed_sidecar() {
         nmp_content::wire::EMBED_SIDECAR_SCHEMA_ID
     );
     assert_eq!(sidecar.file_identifier, "NEMB");
-    let decoded = nmp_content::wire::decode_claimed_event_embeds(&sidecar.payload)
+    let decoded = nmp_content::wire::decode_ref_event_envelopes(&sidecar.payload)
         .expect("sidecar payload decodes");
     assert!(
         decoded.is_empty(),

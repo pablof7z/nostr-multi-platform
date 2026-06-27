@@ -47,7 +47,7 @@ import org.nmp.android.KernelModel
 import org.nmp.android.components.LocalNostrProfileHost
 import org.nmp.android.components.NostrAvatar
 import org.nmp.android.ui.embed.EventClaimer
-import org.nmp.android.ui.embed.LocalClaimedEventEmbeds
+import org.nmp.android.ui.embed.LocalRefEventEnvelopes
 import org.nmp.android.ui.embed.LocalEventClaimer
 import org.nmp.android.model.ChirpEventCard
 import org.nmp.android.model.ChirpRootCard
@@ -156,14 +156,14 @@ fun TimelineScreen(model: KernelModel, modifier: Modifier = Modifier) {
         else model.releaseEvent(uri, consumerId)
     }
 
-    val claimedEventEmbeds = s.projections?.claimedEventEmbeds ?: emptyMap()
+    val refEventEnvelopes = s.projections?.refEventEnvelopes ?: emptyMap()
     val profileHost = rememberKernelProfileHost(model)
 
     CompositionLocalProvider(
         LocalProfileClaimer provides claimer,
         LocalEventClaimer provides eventClaimer,
         LocalNostrProfileHost provides profileHost,
-        LocalClaimedEventEmbeds provides claimedEventEmbeds,
+        LocalRefEventEnvelopes provides refEventEnvelopes,
     ) {
         Box(modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize()) {

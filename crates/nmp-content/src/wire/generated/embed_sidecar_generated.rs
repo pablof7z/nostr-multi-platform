@@ -3153,15 +3153,15 @@ pub mod nmp {
                 ds.finish()
             }
         }
-        pub enum ClaimedEventEmbedsOffset {}
+        pub enum RefEventEnvelopesOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
-        pub struct ClaimedEventEmbeds<'a> {
+        pub struct RefEventEnvelopes<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
 
-        impl<'a> ::flatbuffers::Follow<'a> for ClaimedEventEmbeds<'a> {
-            type Inner = ClaimedEventEmbeds<'a>;
+        impl<'a> ::flatbuffers::Follow<'a> for RefEventEnvelopes<'a> {
+            type Inner = RefEventEnvelopes<'a>;
             #[inline]
             unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
                 Self {
@@ -3170,12 +3170,12 @@ pub mod nmp {
             }
         }
 
-        impl<'a> ClaimedEventEmbeds<'a> {
+        impl<'a> RefEventEnvelopes<'a> {
             pub const VT_ENTRIES: ::flatbuffers::VOffsetT = 4;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-                ClaimedEventEmbeds { _tab: table }
+                RefEventEnvelopes { _tab: table }
             }
             #[allow(unused_mut)]
             pub fn create<
@@ -3185,9 +3185,9 @@ pub mod nmp {
                 A: ::flatbuffers::Allocator + 'bldr,
             >(
                 _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-                args: &'args ClaimedEventEmbedsArgs<'args>,
-            ) -> ::flatbuffers::WIPOffset<ClaimedEventEmbeds<'bldr>> {
-                let mut builder = ClaimedEventEmbedsBuilder::new(_fbb);
+                args: &'args RefEventEnvelopesArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<RefEventEnvelopes<'bldr>> {
+                let mut builder = RefEventEnvelopesBuilder::new(_fbb);
                 if let Some(x) = args.entries {
                     builder.add_entries(x);
                 }
@@ -3212,12 +3212,12 @@ pub mod nmp {
                             'a,
                             ::flatbuffers::ForwardsUOffset<EmbeddedEventEnvelope>,
                         >,
-                    >>(ClaimedEventEmbeds::VT_ENTRIES, None)
+                    >>(RefEventEnvelopes::VT_ENTRIES, None)
                 }
             }
         }
 
-        impl ::flatbuffers::Verifiable for ClaimedEventEmbeds<'_> {
+        impl ::flatbuffers::Verifiable for RefEventEnvelopes<'_> {
             #[inline]
             fn run_verifier(
                 v: &mut ::flatbuffers::Verifier,
@@ -3234,7 +3234,7 @@ pub mod nmp {
                 Ok(())
             }
         }
-        pub struct ClaimedEventEmbedsArgs<'a> {
+        pub struct RefEventEnvelopesArgs<'a> {
             pub entries: Option<
                 ::flatbuffers::WIPOffset<
                     ::flatbuffers::Vector<
@@ -3244,18 +3244,18 @@ pub mod nmp {
                 >,
             >,
         }
-        impl<'a> Default for ClaimedEventEmbedsArgs<'a> {
+        impl<'a> Default for RefEventEnvelopesArgs<'a> {
             #[inline]
             fn default() -> Self {
-                ClaimedEventEmbedsArgs { entries: None }
+                RefEventEnvelopesArgs { entries: None }
             }
         }
 
-        pub struct ClaimedEventEmbedsBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+        pub struct RefEventEnvelopesBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
             fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
             start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
         }
-        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ClaimedEventEmbedsBuilder<'a, 'b, A> {
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RefEventEnvelopesBuilder<'a, 'b, A> {
             #[inline]
             pub fn add_entries(
                 &mut self,
@@ -3267,130 +3267,130 @@ pub mod nmp {
                 >,
             ) {
                 self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    ClaimedEventEmbeds::VT_ENTRIES,
+                    RefEventEnvelopes::VT_ENTRIES,
                     entries,
                 );
             }
             #[inline]
             pub fn new(
                 _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-            ) -> ClaimedEventEmbedsBuilder<'a, 'b, A> {
+            ) -> RefEventEnvelopesBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
-                ClaimedEventEmbedsBuilder {
+                RefEventEnvelopesBuilder {
                     fbb_: _fbb,
                     start_: start,
                 }
             }
             #[inline]
-            pub fn finish(self) -> ::flatbuffers::WIPOffset<ClaimedEventEmbeds<'a>> {
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<RefEventEnvelopes<'a>> {
                 let o = self.fbb_.end_table(self.start_);
                 ::flatbuffers::WIPOffset::new(o.value())
             }
         }
 
-        impl ::core::fmt::Debug for ClaimedEventEmbeds<'_> {
+        impl ::core::fmt::Debug for RefEventEnvelopes<'_> {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-                let mut ds = f.debug_struct("ClaimedEventEmbeds");
+                let mut ds = f.debug_struct("RefEventEnvelopes");
                 ds.field("entries", &self.entries());
                 ds.finish()
             }
         }
         #[inline]
-        /// Verifies that a buffer of bytes contains a `ClaimedEventEmbeds`
+        /// Verifies that a buffer of bytes contains a `RefEventEnvelopes`
         /// and returns it.
         /// Note that verification is still experimental and may not
         /// catch every error, or be maximally performant. For the
         /// previous, unchecked, behavior use
-        /// `root_as_claimed_event_embeds_unchecked`.
-        pub fn root_as_claimed_event_embeds(
+        /// `root_as_ref_event_envelopes_unchecked`.
+        pub fn root_as_ref_event_envelopes(
             buf: &[u8],
-        ) -> Result<ClaimedEventEmbeds<'_>, ::flatbuffers::InvalidFlatbuffer> {
-            ::flatbuffers::root::<ClaimedEventEmbeds>(buf)
+        ) -> Result<RefEventEnvelopes<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root::<RefEventEnvelopes>(buf)
         }
         #[inline]
         /// Verifies that a buffer of bytes contains a size prefixed
-        /// `ClaimedEventEmbeds` and returns it.
+        /// `RefEventEnvelopes` and returns it.
         /// Note that verification is still experimental and may not
         /// catch every error, or be maximally performant. For the
         /// previous, unchecked, behavior use
-        /// `size_prefixed_root_as_claimed_event_embeds_unchecked`.
-        pub fn size_prefixed_root_as_claimed_event_embeds(
+        /// `size_prefixed_root_as_ref_event_envelopes_unchecked`.
+        pub fn size_prefixed_root_as_ref_event_envelopes(
             buf: &[u8],
-        ) -> Result<ClaimedEventEmbeds<'_>, ::flatbuffers::InvalidFlatbuffer> {
-            ::flatbuffers::size_prefixed_root::<ClaimedEventEmbeds>(buf)
+        ) -> Result<RefEventEnvelopes<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root::<RefEventEnvelopes>(buf)
         }
         #[inline]
         /// Verifies, with the given options, that a buffer of bytes
-        /// contains a `ClaimedEventEmbeds` and returns it.
+        /// contains a `RefEventEnvelopes` and returns it.
         /// Note that verification is still experimental and may not
         /// catch every error, or be maximally performant. For the
         /// previous, unchecked, behavior use
-        /// `root_as_claimed_event_embeds_unchecked`.
-        pub fn root_as_claimed_event_embeds_with_opts<'b, 'o>(
+        /// `root_as_ref_event_envelopes_unchecked`.
+        pub fn root_as_ref_event_envelopes_with_opts<'b, 'o>(
             opts: &'o ::flatbuffers::VerifierOptions,
             buf: &'b [u8],
-        ) -> Result<ClaimedEventEmbeds<'b>, ::flatbuffers::InvalidFlatbuffer> {
-            ::flatbuffers::root_with_opts::<ClaimedEventEmbeds<'b>>(opts, buf)
+        ) -> Result<RefEventEnvelopes<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root_with_opts::<RefEventEnvelopes<'b>>(opts, buf)
         }
         #[inline]
         /// Verifies, with the given verifier options, that a buffer of
-        /// bytes contains a size prefixed `ClaimedEventEmbeds` and returns
+        /// bytes contains a size prefixed `RefEventEnvelopes` and returns
         /// it. Note that verification is still experimental and may not
         /// catch every error, or be maximally performant. For the
         /// previous, unchecked, behavior use
-        /// `root_as_claimed_event_embeds_unchecked`.
-        pub fn size_prefixed_root_as_claimed_event_embeds_with_opts<'b, 'o>(
+        /// `root_as_ref_event_envelopes_unchecked`.
+        pub fn size_prefixed_root_as_ref_event_envelopes_with_opts<'b, 'o>(
             opts: &'o ::flatbuffers::VerifierOptions,
             buf: &'b [u8],
-        ) -> Result<ClaimedEventEmbeds<'b>, ::flatbuffers::InvalidFlatbuffer> {
-            ::flatbuffers::size_prefixed_root_with_opts::<ClaimedEventEmbeds<'b>>(opts, buf)
+        ) -> Result<RefEventEnvelopes<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root_with_opts::<RefEventEnvelopes<'b>>(opts, buf)
         }
         #[inline]
-        /// Assumes, without verification, that a buffer of bytes contains a ClaimedEventEmbeds and returns it.
+        /// Assumes, without verification, that a buffer of bytes contains a RefEventEnvelopes and returns it.
         /// # Safety
-        /// Callers must trust the given bytes do indeed contain a valid `ClaimedEventEmbeds`.
-        pub unsafe fn root_as_claimed_event_embeds_unchecked(buf: &[u8]) -> ClaimedEventEmbeds<'_> {
-            unsafe { ::flatbuffers::root_unchecked::<ClaimedEventEmbeds>(buf) }
+        /// Callers must trust the given bytes do indeed contain a valid `RefEventEnvelopes`.
+        pub unsafe fn root_as_ref_event_envelopes_unchecked(buf: &[u8]) -> RefEventEnvelopes<'_> {
+            unsafe { ::flatbuffers::root_unchecked::<RefEventEnvelopes>(buf) }
         }
         #[inline]
-        /// Assumes, without verification, that a buffer of bytes contains a size prefixed ClaimedEventEmbeds and returns it.
+        /// Assumes, without verification, that a buffer of bytes contains a size prefixed RefEventEnvelopes and returns it.
         /// # Safety
-        /// Callers must trust the given bytes do indeed contain a valid size prefixed `ClaimedEventEmbeds`.
-        pub unsafe fn size_prefixed_root_as_claimed_event_embeds_unchecked(
+        /// Callers must trust the given bytes do indeed contain a valid size prefixed `RefEventEnvelopes`.
+        pub unsafe fn size_prefixed_root_as_ref_event_envelopes_unchecked(
             buf: &[u8],
-        ) -> ClaimedEventEmbeds<'_> {
-            unsafe { ::flatbuffers::size_prefixed_root_unchecked::<ClaimedEventEmbeds>(buf) }
+        ) -> RefEventEnvelopes<'_> {
+            unsafe { ::flatbuffers::size_prefixed_root_unchecked::<RefEventEnvelopes>(buf) }
         }
-        pub const CLAIMED_EVENT_EMBEDS_IDENTIFIER: &str = "NEMB";
+        pub const REF_EVENT_ENVELOPES_IDENTIFIER: &str = "NEMB";
 
         #[inline]
-        pub fn claimed_event_embeds_buffer_has_identifier(buf: &[u8]) -> bool {
-            ::flatbuffers::buffer_has_identifier(buf, CLAIMED_EVENT_EMBEDS_IDENTIFIER, false)
-        }
-
-        #[inline]
-        pub fn claimed_event_embeds_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
-            ::flatbuffers::buffer_has_identifier(buf, CLAIMED_EVENT_EMBEDS_IDENTIFIER, true)
+        pub fn ref_event_envelopes_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, REF_EVENT_ENVELOPES_IDENTIFIER, false)
         }
 
         #[inline]
-        pub fn finish_claimed_event_embeds_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
+        pub fn ref_event_envelopes_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, REF_EVENT_ENVELOPES_IDENTIFIER, true)
+        }
+
+        #[inline]
+        pub fn finish_ref_event_envelopes_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
             fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-            root: ::flatbuffers::WIPOffset<ClaimedEventEmbeds<'a>>,
+            root: ::flatbuffers::WIPOffset<RefEventEnvelopes<'a>>,
         ) {
-            fbb.finish(root, Some(CLAIMED_EVENT_EMBEDS_IDENTIFIER));
+            fbb.finish(root, Some(REF_EVENT_ENVELOPES_IDENTIFIER));
         }
 
         #[inline]
-        pub fn finish_size_prefixed_claimed_event_embeds_buffer<
+        pub fn finish_size_prefixed_ref_event_envelopes_buffer<
             'a,
             'b,
             A: ::flatbuffers::Allocator + 'a,
         >(
             fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-            root: ::flatbuffers::WIPOffset<ClaimedEventEmbeds<'a>>,
+            root: ::flatbuffers::WIPOffset<RefEventEnvelopes<'a>>,
         ) {
-            fbb.finish_size_prefixed(root, Some(CLAIMED_EVENT_EMBEDS_IDENTIFIER));
+            fbb.finish_size_prefixed(root, Some(REF_EVENT_ENVELOPES_IDENTIFIER));
         }
     } // pub mod embed
 } // pub mod nmp

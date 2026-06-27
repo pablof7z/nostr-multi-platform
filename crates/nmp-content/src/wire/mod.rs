@@ -24,9 +24,10 @@ pub mod typed_fb;
 mod tests;
 
 pub use embed_sidecar_fb::{
-    decode_claimed_event_embeds, encode_claimed_event_embeds,
-    FILE_IDENTIFIER as EMBED_SIDECAR_FILE_IDENTIFIER, PROJECTION_KEY as EMBED_SIDECAR_PROJECTION_KEY,
-    SCHEMA_ID as EMBED_SIDECAR_SCHEMA_ID, SCHEMA_VERSION as EMBED_SIDECAR_SCHEMA_VERSION,
+    decode_ref_event_envelopes, encode_ref_event_envelopes,
+    FILE_IDENTIFIER as EMBED_SIDECAR_FILE_IDENTIFIER,
+    PROJECTION_KEY as EMBED_SIDECAR_PROJECTION_KEY, SCHEMA_ID as EMBED_SIDECAR_SCHEMA_ID,
+    SCHEMA_VERSION as EMBED_SIDECAR_SCHEMA_VERSION,
 };
 pub use longform_fb::{
     decode_longform_articles, encode_longform_articles, LongformArticles,

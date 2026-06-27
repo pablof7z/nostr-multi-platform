@@ -7,7 +7,7 @@ import org.junit.Test
 /**
  * Article / Highlight / Profile / Unknown round-trip contract tests for
  * [TypedEmbedSidecarDecoder] — the typed-first decode of the
- * `claimed_event_embeds` (`NEMB` / `nmp.embed.ClaimedEventEmbeds`) sidecar
+ * `refs.event.envelopes` (`NEMB` / `nmp.embed.RefEventEnvelopes`) sidecar
  * (#1283 / #1335 item 2).
  *
  * Covers the non-ShortNote `EmbedProjectionKind` variants. Shared FlatBuffers

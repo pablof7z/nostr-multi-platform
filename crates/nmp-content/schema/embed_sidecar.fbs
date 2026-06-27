@@ -1,12 +1,12 @@
 namespace nmp.embed;
 
-// Typed FlatBuffers wire for the `claimed_event_embeds` compatibility sidecar
-// (issue #1283 / ADR-0034 §embed-sidecar). `nmp-ffi` derives this payload from
-// the authoritative `refs.event` row store and carries the pre-resolved map
-// (`primary_id -> EmbeddedEventEnvelope`) so a typed-frame shell (Chirp) can
-// decode the kind-dispatched `EmbedKindProjection` WITHOUT re-implementing the
-// `match kind` resolver in Swift/Kotlin (the D0 thin-shell violation #1283
-// closes).
+// Typed FlatBuffers wire for the `refs.event.envelopes` derived projection
+// (issue #1283 / ADR-0034 §embed-sidecar). `nmp-ffi` and browser runtimes derive
+// this payload from the authoritative `refs.event` row store and carry the
+// pre-resolved map (`primary_id -> EmbeddedEventEnvelope`) so typed-frame shells
+// can decode the kind-dispatched `EmbedKindProjection` WITHOUT re-implementing
+// the `match kind` resolver in Swift/Kotlin/TS (the D0 thin-shell violation
+// #1283 closes).
 //
 // Shape mirrors the existing resolver types in
 // `crates/nmp-content/src/embed_projection/` — never a bespoke re-parse:
@@ -31,7 +31,7 @@ namespace nmp.embed;
 // transport treats the nested buffer as opaque bytes.
 //
 // FlatBuffers has no native map — `entries` is a `key`-keyed vector on
-// `primary_id` so a host can binary-search an embed by its claim coordinate.
+// `primary_id` so a host can binary-search an embed by its ref coordinate.
 //
 // Regenerate the checked-in bindings only with the workspace FlatBuffers pin
 // (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh. The schema has
@@ -195,11 +195,11 @@ table EmbeddedEventEnvelope {
   projection:EmbedKindProjection;
 }
 
-// Root: the whole `claimed_event_embeds` projection in one buffer.
-table ClaimedEventEmbeds {
+// Root: the whole `refs.event.envelopes` projection in one buffer.
+table RefEventEnvelopes {
   // Envelopes keyed by `primary_id` (sorted for binary search).
   entries:[EmbeddedEventEnvelope];
 }
 
 file_identifier "NEMB";
-root_type ClaimedEventEmbeds;
+root_type RefEventEnvelopes;

@@ -9,7 +9,7 @@ use std::ffi::{c_char, CStr};
 
 use super::{app_ref, NmpApp};
 
-// Issue #1283 / ADR-0034 — the `claimed_event_embeds` snapshot-projection
+// Issue #1283 / ADR-0034 — the `refs.event.envelopes` snapshot-projection
 // producer. A submodule of `snapshot` (both own snapshot-projection wiring);
 // kept here rather than as a `lib.rs` sibling `mod` so the over-cap `lib.rs`
 // does not grow (AGENTS.md file-size anti-cheat). See the module doc for the

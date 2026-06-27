@@ -3,7 +3,7 @@ import SwiftUI
 /// Read-only source of resolved embed envelopes the kernel pushes on every
 /// snapshot frame, keyed by `primaryId` (event-id hex or `kind:pubkey:d`
 /// coordinate). The app binds a concrete conformer (holding the typed
-/// `claimed_event_embeds` sidecar map) into the environment via
+/// `refs.event.envelopes` sidecar map) into the environment via
 /// `.embedEnvelopeSource(...)`; `NostrContentView`'s event-ref renderer reads
 /// it to feed `EmbeddedEvent`.
 ///

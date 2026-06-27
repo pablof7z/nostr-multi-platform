@@ -129,12 +129,11 @@ extension KernelHandle {
             // yet — the decode is wired for parity and unit-tested.
             let typedDmInbox = TypedDmInboxDecoder.decode(from: envelopes)
             let typedDmRelayList = TypedDmRelayListDecoder.decode(from: envelopes)
-            // Issue #1283 Phase 1: the kernel-resolved embed map (`NEMB`). Returns
-            // nil when the sidecar is absent/malformed → the generic
-            // `projections.claimedEventEmbeds` JSON path stays active (ADR-0037
-            // Commitment 4). This is what feeds `EmbedHost` after the in-Swift
-            // resolver was deleted.
-            let typedClaimedEventEmbeds = TypedClaimedEventEmbedsDecoder.decode(from: envelopes)
+            // Issue #1283: the kernel-resolved embed map (`NEMB`). Returns nil
+            // when the derived refs.event.envelopes sidecar is absent or
+            // malformed. This feeds `EmbedHost` after the in-Swift resolver was
+            // deleted.
+            let typedRefEventEnvelopes = TypedRefEventEnvelopesDecoder.decode(from: envelopes)
             // NIP-46 cluster (`bunker_handshake` / `nip46_onboarding`). Each
             // returns nil when its sidecar is absent/malformed → the generic
             // `projections.<field>` JSON path stays active (ADR-0037 Commitment
@@ -194,7 +193,7 @@ extension KernelHandle {
                     typedProfile: typedProfile,
                     typedDmInbox: typedDmInbox,
                     typedDmRelayList: typedDmRelayList,
-                    typedClaimedEventEmbeds: typedClaimedEventEmbeds,
+                    typedRefEventEnvelopes: typedRefEventEnvelopes,
                     typedBunkerHandshake: typedBunkerHandshake,
                     typedNip46Onboarding: typedNip46Onboarding,
                     typedSignerState: typedSignerState,

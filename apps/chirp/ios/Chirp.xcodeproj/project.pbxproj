@@ -144,7 +144,7 @@
 		BCE5D9B3E0F2FEA3373C5FC1 /* ArticleEmbed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29AEBE8F2D795D794B979BA3 /* ArticleEmbed.swift */; };
 		BD08E46E21092C50C04D6E73 /* ZapAmountSheetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A2F197E5F54DB82A966F8BA /* ZapAmountSheetTests.swift */; };
 		BFDF559A18663B252819EEFD /* RelayDiagnostics.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD8E1C093624727988CF7D0D /* RelayDiagnostics.generated.swift */; };
-		C1634483DA1ABCA6690D3B77 /* ClaimedEventEmbeds.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA696E3683CB5A03549E76E3 /* ClaimedEventEmbeds.generated.swift */; };
+		C1634483DA1ABCA6690D3B77 /* RefEventEnvelopes.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA696E3683CB5A03549E76E3 /* RefEventEnvelopes.generated.swift */; };
 		C165D4FC06786DFA84D8EC7A /* TypedDmClusterDecoderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39F7B4A72549ACBC25CFDC07 /* TypedDmClusterDecoderTests.swift */; };
 		C325D3A97503867645C63653 /* ActionResults.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 829B41BFEB956EF7D54CB845 /* ActionResults.generated.swift */; };
 		C39EA68411B3B84D8D56B1CC /* KernelActionTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50AA40CD68CFA1E2FF7B2C28 /* KernelActionTypes.swift */; };
@@ -353,7 +353,7 @@
 		B9225E6F8027D8931C383148 /* NewGroupSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewGroupSheet.swift; sourceTree = "<group>"; };
 		B93BA204F0BFDE2297E508BD /* KernelBridge+FeedOperations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KernelBridge+FeedOperations.swift"; sourceTree = "<group>"; };
 		BA382E699E48F075AF20AB13 /* KernelBridge+IdentityOperations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KernelBridge+IdentityOperations.swift"; sourceTree = "<group>"; };
-		BA696E3683CB5A03549E76E3 /* ClaimedEventEmbeds.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaimedEventEmbeds.generated.swift; sourceTree = "<group>"; };
+		BA696E3683CB5A03549E76E3 /* RefEventEnvelopes.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RefEventEnvelopes.generated.swift; sourceTree = "<group>"; };
 		BE212C39877A658DFB0C98FA /* Chirp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Chirp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BF4D140423145993963B8F23 /* ThreadNoteRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadNoteRow.swift; sourceTree = "<group>"; };
 		C170D9BAEF17D256061902E9 /* ProfileNoteRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileNoteRow.swift; sourceTree = "<group>"; };
@@ -464,7 +464,7 @@
 				A1C755AB749835AB51CC442B /* ActionStages.generated.swift */,
 				AA96E693E37FEB722083990C /* ActiveAccount.generated.swift */,
 				5DDD17888ABA40FE82E0DFD0 /* BunkerHandshake.generated.swift */,
-				BA696E3683CB5A03549E76E3 /* ClaimedEventEmbeds.generated.swift */,
+				BA696E3683CB5A03549E76E3 /* RefEventEnvelopes.generated.swift */,
 				3422EE09C4761D61694F7BFF /* ClaimedEvents.generated.swift */,
 				0B50243EC2D32D04FF7003CE /* ConfiguredRelays.generated.swift */,
 				17C13BDDC2BB37FD854A42B7 /* ContentTree.generated.swift */,
@@ -941,7 +941,7 @@
 				192CF49D1BB3B5A4799329E4 /* ChirpApp.swift in Sources */,
 				62D73DD96F75F8C35AE03566 /* ChirpCapabilities.swift in Sources */,
 				28DDB51A3E188547CD78D215 /* ChirpTheme.swift in Sources */,
-				C1634483DA1ABCA6690D3B77 /* ClaimedEventEmbeds.generated.swift in Sources */,
+				C1634483DA1ABCA6690D3B77 /* RefEventEnvelopes.generated.swift in Sources */,
 				44AC82FB729E6F725EB6A993 /* ClaimedEvents.generated.swift in Sources */,
 				159A0AB673722908A2785D5C /* ComposeView.swift in Sources */,
 				9270B58217AF84C5A100F45A /* ConfiguredRelays.generated.swift in Sources */,

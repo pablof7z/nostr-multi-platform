@@ -38,8 +38,7 @@ enum TypedWalletDecoder {
     static let fileIdentifier = "NWST"
 
     /// Decode the typed `wallet` sidecar from the snapshot's typed-projection
-    /// envelopes into the Chirp domain value. Returns `nil` (so the host
-    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// envelopes into the Chirp domain value. Returns `nil` when the sidecar is absent,
     /// carries the wrong schema, or is not a well-formed buffer.
     static func decode(from projections: [TypedProjectionEnvelope]) -> WalletStatusData? {
         guard let projection = projections.first(where: {
@@ -72,8 +71,7 @@ enum TypedBunkerHandshakeDecoder {
     static let fileIdentifier = "KBHS"
 
     /// Decode the typed `bunker_handshake` sidecar from the snapshot's typed-projection
-    /// envelopes into the Chirp domain value. Returns `nil` (so the host
-    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// envelopes into the Chirp domain value. Returns `nil` when the sidecar is absent,
     /// carries the wrong schema, or is not a well-formed buffer.
     static func decode(from projections: [TypedProjectionEnvelope]) -> BunkerHandshake? {
         guard let projection = projections.first(where: {
@@ -106,8 +104,7 @@ enum TypedNip46OnboardingDecoder {
     static let fileIdentifier = "KN46"
 
     /// Decode the typed `nip46_onboarding` sidecar from the snapshot's typed-projection
-    /// envelopes into the Chirp domain value. Returns `nil` (so the host
-    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// envelopes into the Chirp domain value. Returns `nil` when the sidecar is absent,
     /// carries the wrong schema, or is not a well-formed buffer.
     static func decode(from projections: [TypedProjectionEnvelope]) -> Nip46Onboarding? {
         guard let projection = projections.first(where: {
@@ -140,8 +137,7 @@ enum TypedSignerStateDecoder {
     static let fileIdentifier = "KSST"
 
     /// Decode the typed `signer_state` sidecar from the snapshot's typed-projection
-    /// envelopes into the Chirp domain value. Returns `nil` (so the host
-    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// envelopes into the Chirp domain value. Returns `nil` when the sidecar is absent,
     /// carries the wrong schema, or is not a well-formed buffer.
     static func decode(from projections: [TypedProjectionEnvelope]) -> SignerState? {
         guard let projection = projections.first(where: {
@@ -174,8 +170,7 @@ enum TypedPublishQueueDecoder {
     static let fileIdentifier = "KPBQ"
 
     /// Decode the typed `publish_queue` sidecar from the snapshot's typed-projection
-    /// envelopes into the Chirp domain value. Returns `nil` (so the host
-    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// envelopes into the Chirp domain value. Returns `nil` when the sidecar is absent,
     /// carries the wrong schema, or is not a well-formed buffer.
     static func decode(from projections: [TypedProjectionEnvelope]) -> [PublishQueueEntry]? {
         guard let projection = projections.first(where: {
@@ -208,8 +203,7 @@ enum TypedPublishOutboxDecoder {
     static let fileIdentifier = "KPBO"
 
     /// Decode the typed `publish_outbox` sidecar from the snapshot's typed-projection
-    /// envelopes into the Chirp domain value. Returns `nil` (so the host
-    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// envelopes into the Chirp domain value. Returns `nil` when the sidecar is absent,
     /// carries the wrong schema, or is not a well-formed buffer.
     static func decode(from projections: [TypedProjectionEnvelope]) -> [PublishOutboxItem]? {
         guard let projection = projections.first(where: {
@@ -242,8 +236,7 @@ enum TypedOutboxSummaryDecoder {
     static let fileIdentifier = "KOXS"
 
     /// Decode the typed `outbox_summary` sidecar from the snapshot's typed-projection
-    /// envelopes into the Chirp domain value. Returns `nil` (so the host
-    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// envelopes into the Chirp domain value. Returns `nil` when the sidecar is absent,
     /// carries the wrong schema, or is not a well-formed buffer.
     static func decode(from projections: [TypedProjectionEnvelope]) -> OutboxSummary? {
         guard let projection = projections.first(where: {
@@ -276,8 +269,7 @@ enum TypedConfiguredRelaysDecoder {
     static let fileIdentifier = "KCRL"
 
     /// Decode the typed `configured_relays` sidecar from the snapshot's typed-projection
-    /// envelopes into the Chirp domain value. Returns `nil` (so the host
-    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// envelopes into the Chirp domain value. Returns `nil` when the sidecar is absent,
     /// carries the wrong schema, or is not a well-formed buffer.
     static func decode(from projections: [TypedProjectionEnvelope]) -> [AppRelay]? {
         guard let projection = projections.first(where: {
@@ -310,8 +302,7 @@ enum TypedRelayRoleOptionsDecoder {
     static let fileIdentifier = "KRRO"
 
     /// Decode the typed `relay_role_options` sidecar from the snapshot's typed-projection
-    /// envelopes into the Chirp domain value. Returns `nil` (so the host
-    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// envelopes into the Chirp domain value. Returns `nil` when the sidecar is absent,
     /// carries the wrong schema, or is not a well-formed buffer.
     static func decode(from projections: [TypedProjectionEnvelope]) -> [RelayRoleOption]? {
         guard let projection = projections.first(where: {
@@ -344,8 +335,7 @@ enum TypedAccountsDecoder {
     static let fileIdentifier = "KACC"
 
     /// Decode the typed `accounts` sidecar from the snapshot's typed-projection
-    /// envelopes into the Chirp domain value. Returns `nil` (so the host
-    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// envelopes into the Chirp domain value. Returns `nil` when the sidecar is absent,
     /// carries the wrong schema, or is not a well-formed buffer.
     static func decode(from projections: [TypedProjectionEnvelope]) -> [AccountSummary]? {
         guard let projection = projections.first(where: {
@@ -378,8 +368,7 @@ enum TypedActiveAccountDecoder {
     static let fileIdentifier = "KACT"
 
     /// Decode the typed `active_account` sidecar from the snapshot's typed-projection
-    /// envelopes into the Chirp domain value. Returns `nil` (so the host
-    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// envelopes into the Chirp domain value. Returns `nil` when the sidecar is absent,
     /// carries the wrong schema, or is not a well-formed buffer.
     static func decode(from projections: [TypedProjectionEnvelope]) -> String? {
         guard let projection = projections.first(where: {
@@ -412,8 +401,7 @@ enum TypedActionResultsDecoder {
     static let fileIdentifier = "KARS"
 
     /// Decode the typed `action_results` sidecar from the snapshot's typed-projection
-    /// envelopes into the Chirp domain value. Returns `nil` (so the host
-    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// envelopes into the Chirp domain value. Returns `nil` when the sidecar is absent,
     /// carries the wrong schema, or is not a well-formed buffer.
     static func decode(from projections: [TypedProjectionEnvelope]) -> [LastActionResult]? {
         guard let projection = projections.first(where: {
@@ -446,8 +434,7 @@ enum TypedActionStagesDecoder {
     static let fileIdentifier = "KAST"
 
     /// Decode the typed `action_stages` sidecar from the snapshot's typed-projection
-    /// envelopes into the Chirp domain value. Returns `nil` (so the host
-    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// envelopes into the Chirp domain value. Returns `nil` when the sidecar is absent,
     /// carries the wrong schema, or is not a well-formed buffer.
     static func decode(from projections: [TypedProjectionEnvelope]) -> [String: [ActionStageEntry]]? {
         guard let projection = projections.first(where: {
@@ -480,8 +467,7 @@ enum TypedActionLifecycleDecoder {
     static let fileIdentifier = "KALC"
 
     /// Decode the typed `action_lifecycle` sidecar from the snapshot's typed-projection
-    /// envelopes into the Chirp domain value. Returns `nil` (so the host
-    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// envelopes into the Chirp domain value. Returns `nil` when the sidecar is absent,
     /// carries the wrong schema, or is not a well-formed buffer.
     static func decode(from projections: [TypedProjectionEnvelope]) -> ActionLifecycleSnapshot? {
         guard let projection = projections.first(where: {
@@ -514,8 +500,7 @@ enum TypedProfileDecoder {
     static let fileIdentifier = "KPRF"
 
     /// Decode the typed `profile` sidecar from the snapshot's typed-projection
-    /// envelopes into the Chirp domain value. Returns `nil` (so the host
-    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// envelopes into the Chirp domain value. Returns `nil` when the sidecar is absent,
     /// carries the wrong schema, or is not a well-formed buffer.
     static func decode(from projections: [TypedProjectionEnvelope]) -> ProfileCard? {
         guard let projection = projections.first(where: {
@@ -548,8 +533,7 @@ enum TypedGroupTimelineDecoder {
     static let fileIdentifier = "NGTL"
 
     /// Decode the typed `nmp.nip29.group_timeline` sidecar from the snapshot's typed-projection
-    /// envelopes into the Chirp domain value. Returns `nil` (so the host
-    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// envelopes into the Chirp domain value. Returns `nil` when the sidecar is absent,
     /// carries the wrong schema, or is not a well-formed buffer.
     static func decode(from projections: [TypedProjectionEnvelope]) -> GroupTimelineSnapshot? {
         guard let projection = projections.first(where: {
@@ -582,8 +566,7 @@ enum TypedDmInboxDecoder {
     static let fileIdentifier = "NDMI"
 
     /// Decode the typed `nmp.nip17.dm_inbox` sidecar from the snapshot's typed-projection
-    /// envelopes into the Chirp domain value. Returns `nil` (so the host
-    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// envelopes into the Chirp domain value. Returns `nil` when the sidecar is absent,
     /// carries the wrong schema, or is not a well-formed buffer.
     static func decode(from projections: [TypedProjectionEnvelope]) -> DmInboxSnapshot? {
         guard let projection = projections.first(where: {
@@ -616,8 +599,7 @@ enum TypedFollowListDecoder {
     static let fileIdentifier = "NF02"
 
     /// Decode the typed `nmp.follow_list` sidecar from the snapshot's typed-projection
-    /// envelopes into the Chirp domain value. Returns `nil` (so the host
-    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// envelopes into the Chirp domain value. Returns `nil` when the sidecar is absent,
     /// carries the wrong schema, or is not a well-formed buffer.
     static func decode(from projections: [TypedProjectionEnvelope]) -> FollowListSnapshot? {
         guard let projection = projections.first(where: {
@@ -650,8 +632,7 @@ enum TypedDiscoveredGroupsDecoder {
     static let fileIdentifier = "NDGS"
 
     /// Decode the typed `nmp.nip29.discovered_groups` sidecar from the snapshot's typed-projection
-    /// envelopes into the Chirp domain value. Returns `nil` (so the host
-    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// envelopes into the Chirp domain value. Returns `nil` when the sidecar is absent,
     /// carries the wrong schema, or is not a well-formed buffer.
     static func decode(from projections: [TypedProjectionEnvelope]) -> DiscoveredGroupsSnapshot? {
         guard let projection = projections.first(where: {
@@ -684,8 +665,7 @@ enum TypedGroupDefaultsDecoder {
     static let fileIdentifier = "NGDF"
 
     /// Decode the typed `nmp.nip29.group_defaults` sidecar from the snapshot's typed-projection
-    /// envelopes into the Chirp domain value. Returns `nil` (so the host
-    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// envelopes into the Chirp domain value. Returns `nil` when the sidecar is absent,
     /// carries the wrong schema, or is not a well-formed buffer.
     static func decode(from projections: [TypedProjectionEnvelope]) -> GroupDefaultsSnapshot? {
         guard let projection = projections.first(where: {
@@ -718,8 +698,7 @@ enum TypedDmRelayListDecoder {
     static let fileIdentifier = "NDRL"
 
     /// Decode the typed `nmp.nip17.dm_relay_list` sidecar from the snapshot's typed-projection
-    /// envelopes into the Chirp domain value. Returns `nil` (so the host
-    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// envelopes into the Chirp domain value. Returns `nil` when the sidecar is absent,
     /// carries the wrong schema, or is not a well-formed buffer.
     static func decode(from projections: [TypedProjectionEnvelope]) -> DmRelayListSnapshot? {
         guard let projection = projections.first(where: {
@@ -752,8 +731,7 @@ enum TypedRelayDiagnosticsDecoder {
     static let fileIdentifier = "KRDG"
 
     /// Decode the typed `relay_diagnostics` sidecar from the snapshot's typed-projection
-    /// envelopes into the Chirp domain value. Returns `nil` (so the host
-    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// envelopes into the Chirp domain value. Returns `nil` when the sidecar is absent,
     /// carries the wrong schema, or is not a well-formed buffer.
     static func decode(from projections: [TypedProjectionEnvelope]) -> RelayDiagnosticsSnapshot? {
         guard let projection = projections.first(where: {
@@ -775,19 +753,18 @@ enum TypedRelayDiagnosticsDecoder {
     }
 }
 
-// MARK: - TypedClaimedEventEmbedsDecoder
-// Projection `claimed_event_embeds` → typed sidecar `claimed_event_embeds` (NEMB). Domain type: `[String: EmbeddedEventEnvelope]?`.
-enum TypedClaimedEventEmbedsDecoder {
+// MARK: - TypedRefEventEnvelopesDecoder
+// Projection `refs.event.envelopes` → typed sidecar `refs.event.envelopes` (NEMB). Domain type: `[String: EmbeddedEventEnvelope]?`.
+enum TypedRefEventEnvelopesDecoder {
     /// `TypedProjection.key` the producer publishes for this projection.
-    static let key = "claimed_event_embeds"
+    static let key = "refs.event.envelopes"
     /// `TypedPayload.schema_id` carried on the sidecar buffer.
-    static let schemaId = "claimed_event_embeds"
-    /// FlatBuffers `file_identifier` for `nmp_embed_ClaimedEventEmbeds`.
+    static let schemaId = "refs.event.envelopes"
+    /// FlatBuffers `file_identifier` for `nmp_embed_RefEventEnvelopes`.
     static let fileIdentifier = "NEMB"
 
-    /// Decode the typed `claimed_event_embeds` sidecar from the snapshot's typed-projection
-    /// envelopes into the Chirp domain value. Returns `nil` (so the host
-    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// Decode the typed `refs.event.envelopes` sidecar from the snapshot's typed-projection
+    /// envelopes into the Chirp domain value. Returns `nil` when the sidecar is absent,
     /// carries the wrong schema, or is not a well-formed buffer.
     static func decode(from projections: [TypedProjectionEnvelope]) -> [String: EmbeddedEventEnvelope]? {
         guard let projection = projections.first(where: {
@@ -802,10 +779,10 @@ enum TypedClaimedEventEmbedsDecoder {
     static func decode(bytes: Data) -> [String: EmbeddedEventEnvelope]? {
         guard !bytes.isEmpty else { return nil }
         var buffer = ByteBuffer(data: bytes)
-        let reader: nmp_embed_ClaimedEventEmbeds = getRoot(byteBuffer: &buffer)
+        let reader: nmp_embed_RefEventEnvelopes = getRoot(byteBuffer: &buffer)
         // Hand-written glue (NOT generated): map the `flatc --swift` reader
-        // struct to the Chirp domain type. See `TypedProjectionGlue.claimedEventEmbeds`.
-        return TypedProjectionGlue.claimedEventEmbeds(reader)
+        // struct to the Chirp domain type. See `TypedProjectionGlue.refEventEnvelopes`.
+        return TypedProjectionGlue.refEventEnvelopes(reader)
     }
 }
 
@@ -820,8 +797,7 @@ enum TypedSettingsHubDecoder {
     static let fileIdentifier = "KSHB"
 
     /// Decode the typed `settings_hub` sidecar from the snapshot's typed-projection
-    /// envelopes into the Chirp domain value. Returns `nil` (so the host
-    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// envelopes into the Chirp domain value. Returns `nil` when the sidecar is absent,
     /// carries the wrong schema, or is not a well-formed buffer.
     static func decode(from projections: [TypedProjectionEnvelope]) -> [String: Int]? {
         guard let projection = projections.first(where: {
@@ -854,8 +830,7 @@ enum TypedMarmotSnapshotDecoder {
     static let fileIdentifier = "NMMS"
 
     /// Decode the typed `nmp.marmot.snapshot` sidecar from the snapshot's typed-projection
-    /// envelopes into the Chirp domain value. Returns `nil` (so the host
-    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// envelopes into the Chirp domain value. Returns `nil` when the sidecar is absent,
     /// carries the wrong schema, or is not a well-formed buffer.
     static func decode(from projections: [TypedProjectionEnvelope]) -> MarmotSnapshot? {
         guard let projection = projections.first(where: {
@@ -888,8 +863,7 @@ enum TypedMarmotMessagesDecoder {
     static let fileIdentifier = "NMMG"
 
     /// Decode the typed `nmp.marmot.messages` sidecar from the snapshot's typed-projection
-    /// envelopes into the Chirp domain value. Returns `nil` (so the host
-    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// envelopes into the Chirp domain value. Returns `nil` when the sidecar is absent,
     /// carries the wrong schema, or is not a well-formed buffer.
     static func decode(from projections: [TypedProjectionEnvelope]) -> [String: [MarmotMessage]]? {
         guard let projection = projections.first(where: {

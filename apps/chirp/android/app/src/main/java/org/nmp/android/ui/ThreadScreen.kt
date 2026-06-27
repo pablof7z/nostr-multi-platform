@@ -33,7 +33,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.nmp.android.KernelModel
 import org.nmp.android.components.LocalNostrProfileHost
 import org.nmp.android.ui.embed.EventClaimer
-import org.nmp.android.ui.embed.LocalClaimedEventEmbeds
+import org.nmp.android.ui.embed.LocalRefEventEnvelopes
 import org.nmp.android.ui.embed.LocalEventClaimer
 
 @Composable
@@ -70,12 +70,12 @@ fun ThreadScreen(
         if (claim) model.claimEvent(uri, consumerId)
         else model.releaseEvent(uri, consumerId)
     }
-    val claimedEventEmbeds = projections?.claimedEventEmbeds ?: emptyMap()
+    val refEventEnvelopes = projections?.refEventEnvelopes ?: emptyMap()
 
     CompositionLocalProvider(
         LocalProfileClaimer provides claimer,
         LocalEventClaimer provides eventClaimer,
-        LocalClaimedEventEmbeds provides claimedEventEmbeds,
+        LocalRefEventEnvelopes provides refEventEnvelopes,
         LocalNostrProfileHost provides profileHost,
     ) {
         Column(modifier.fillMaxSize()) {

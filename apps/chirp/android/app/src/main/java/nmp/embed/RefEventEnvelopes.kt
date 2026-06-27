@@ -19,12 +19,12 @@ import java.nio.ByteOrder
 import kotlin.math.sign
 
 @Suppress("unused")
-class ClaimedEventEmbeds : Table() {
+class RefEventEnvelopes : Table() {
 
     fun __init(_i: Int, _bb: ByteBuffer)  {
         __reset(_i, _bb)
     }
-    fun __assign(_i: Int, _bb: ByteBuffer) : ClaimedEventEmbeds {
+    fun __assign(_i: Int, _bb: ByteBuffer) : RefEventEnvelopes {
         __init(_i, _bb)
         return this
     }
@@ -59,18 +59,18 @@ class ClaimedEventEmbeds : Table() {
     }
     companion object {
         fun validateVersion() = Constants.FLATBUFFERS_25_2_10()
-        fun getRootAsClaimedEventEmbeds(_bb: ByteBuffer): ClaimedEventEmbeds = getRootAsClaimedEventEmbeds(_bb, ClaimedEventEmbeds())
-        fun getRootAsClaimedEventEmbeds(_bb: ByteBuffer, obj: ClaimedEventEmbeds): ClaimedEventEmbeds {
+        fun getRootAsRefEventEnvelopes(_bb: ByteBuffer): RefEventEnvelopes = getRootAsRefEventEnvelopes(_bb, RefEventEnvelopes())
+        fun getRootAsRefEventEnvelopes(_bb: ByteBuffer, obj: RefEventEnvelopes): RefEventEnvelopes {
             _bb.order(ByteOrder.LITTLE_ENDIAN)
             return (obj.__assign(_bb.getInt(_bb.position()) + _bb.position(), _bb))
         }
-        fun ClaimedEventEmbedsBufferHasIdentifier(_bb: ByteBuffer) : Boolean = __has_identifier(_bb, "NEMB")
-        fun createClaimedEventEmbeds(builder: FlatBufferBuilder, entriesOffset: Int) : Int {
+        fun RefEventEnvelopesBufferHasIdentifier(_bb: ByteBuffer) : Boolean = __has_identifier(_bb, "NEMB")
+        fun createRefEventEnvelopes(builder: FlatBufferBuilder, entriesOffset: Int) : Int {
             builder.startTable(1)
             addEntries(builder, entriesOffset)
-            return endClaimedEventEmbeds(builder)
+            return endRefEventEnvelopes(builder)
         }
-        fun startClaimedEventEmbeds(builder: FlatBufferBuilder) = builder.startTable(1)
+        fun startRefEventEnvelopes(builder: FlatBufferBuilder) = builder.startTable(1)
         fun addEntries(builder: FlatBufferBuilder, entries: Int) = builder.addOffset(0, entries, 0)
         fun createEntriesVector(builder: FlatBufferBuilder, data: IntArray) : Int {
             builder.startVector(4, data.size, 4)
@@ -80,11 +80,11 @@ class ClaimedEventEmbeds : Table() {
             return builder.endVector()
         }
         fun startEntriesVector(builder: FlatBufferBuilder, numElems: Int) = builder.startVector(4, numElems, 4)
-        fun endClaimedEventEmbeds(builder: FlatBufferBuilder) : Int {
+        fun endRefEventEnvelopes(builder: FlatBufferBuilder) : Int {
             val o = builder.endTable()
             return o
         }
-        fun finishClaimedEventEmbedsBuffer(builder: FlatBufferBuilder, offset: Int) = builder.finish(offset, "NEMB")
-        fun finishSizePrefixedClaimedEventEmbedsBuffer(builder: FlatBufferBuilder, offset: Int) = builder.finishSizePrefixed(offset, "NEMB")
+        fun finishRefEventEnvelopesBuffer(builder: FlatBufferBuilder, offset: Int) = builder.finish(offset, "NEMB")
+        fun finishSizePrefixedRefEventEnvelopesBuffer(builder: FlatBufferBuilder, offset: Int) = builder.finishSizePrefixed(offset, "NEMB")
     }
 }

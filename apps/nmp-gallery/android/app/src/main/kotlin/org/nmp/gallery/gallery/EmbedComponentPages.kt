@@ -43,7 +43,7 @@ import org.nmp.gallery.registry.defaultMentionLabel
  * `quoteCardProvider`, which maps a resolved `resolvedEventEmbeds[primaryId]` entry
  * to a [NostrQuoteCardModel]. The `DisposableEffect` lifecycle fires
  * `resolveEventRef` on the URI so the kernel resolves the event (cache or relay)
- * and surfaces the resolved envelope under `projections["refs.event"]`;
+ * and surfaces the resolved envelope under `projections["refs.event.envelopes"]`;
  * recomposition then paints the
  * inline card mid-prose: "this is a great point [card] what do you think?".
  *

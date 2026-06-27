@@ -12,7 +12,7 @@
 //!   Because the feed must be present, it is deliberately NOT in `ALLOWED_ABSENT`:
 //!   a missing feed key is a hard FAIL.
 //!
-//! - `"claimed_event_embeds"` and `"nip46_onboarding"` are the only whitelisted
+//! - `"refs.event.envelopes"` and `"nip46_onboarding"` are the only whitelisted
 //!   absences (nondeterministic Tier-1 keys, always-Changed by D3-7; no manifest
 //!   entry; legitimately differ between the two independent kernel instances).
 //!
@@ -90,14 +90,14 @@ pub(crate) struct FeedOracleResult {
 
 /// Keys allowed to be absent from the incremental reconstruction.
 ///
-/// - `claimed_event_embeds`, `nip46_onboarding`: nondeterministic Tier-1 keys
+/// - `refs.event.envelopes`, `nip46_onboarding`: nondeterministic Tier-1 keys
 ///   (always-Changed by D3-7, no manifest entry; legitimate to differ between
 ///   the two independent kernel instances).
 /// - `nmp.feed.home`: the feed key IS expected to be present in the
 ///   reconstruction (from the first Phase B full-baseline tick), so it is NOT
 ///   in the absent whitelist. Its omission from the reconstruction would mean
 ///   the first Phase B tick never emitted it — a real bug. See the module doc.
-const ALLOWED_ABSENT: &[&str] = &["claimed_event_embeds", "nip46_onboarding"];
+const ALLOWED_ABSENT: &[&str] = &["refs.event.envelopes", "nip46_onboarding"];
 
 /// Run the byte-identity oracle against the Phase B incremental stream.
 ///

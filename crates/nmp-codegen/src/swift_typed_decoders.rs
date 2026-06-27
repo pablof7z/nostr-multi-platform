@@ -2,10 +2,11 @@
 //!
 //! ## What this emits and why
 //!
-//! Every snapshot projection now ships a typed FlatBuffer entry in the
-//! `SnapshotFrame.typed_projections` sidecar (ADR-0037/0044) ALONGSIDE the
-//! generic JSON `payload`. Switching Chirp's consumer off the JSON path means
-//! decoding those sidecars in Swift. The hand-written precedent is
+//! Snapshot projections ship typed FlatBuffer entries in the
+//! `SnapshotFrame.typed_projections` sidecar (ADR-0037/0044). Some keys still
+//! have a generic JSON `payload` fallback; newer derived projections such as
+//! `refs.event.envelopes` are typed-only. Switching Chirp's consumer off the
+//! JSON path means decoding those sidecars in Swift. The hand-written precedent is
 //! `apps/chirp/ios/Chirp/Bridge/TypedHomeFeedDecoder.swift`: find the envelope by
 //! `key`+`schemaId`, `getCheckedRoot(fileId:)` the bytes into the `flatc
 //! --swift` reader struct, map the reader to the Chirp domain type.
@@ -116,9 +117,7 @@ pub fn render_typed_decoders(entries: &[SnapshotProjectionEntry]) -> String {
         .collect();
 
     if emitted.is_empty() {
-        out.push_str(
-            "// No projection key has a checked-in `flatc --swift` reader binding yet.\n",
-        );
+        out.push_str("// No projection key has a checked-in `flatc --swift` reader binding yet.\n");
         return out;
     }
 
@@ -182,17 +181,14 @@ fn render_one_decoder(entry: &SnapshotProjectionEntry, out: &mut String) {
 
     // Envelope-set entry point — the shape `TypedHomeFeedDecoder.decode(from:)`
     // established. Returns the Chirp domain value, or nil when the sidecar is
-    // absent / wrong-schema / malformed (graceful fallback to the JSON path).
+    // absent / wrong-schema / malformed. Individual consumers decide whether
+    // nil means a JSON fallback, an absent optional projection, or an unchanged
+    // typed-frame state.
     out.push_str(&format!(
         "    /// Decode the typed `{}` sidecar from the snapshot's typed-projection\n",
         entry.key
     ));
-    out.push_str(
-        "    /// envelopes into the Chirp domain value. Returns `nil` (so the host\n",
-    );
-    out.push_str(
-        "    /// falls back to the generic JSON `payload`) when the sidecar is absent,\n",
-    );
+    out.push_str("    /// envelopes into the Chirp domain value. Returns `nil` when the sidecar is absent,\n");
     out.push_str("    /// carries the wrong schema, or is not a well-formed buffer.\n");
     out.push_str(&format!(
         "    static func decode(from projections: [TypedProjectionEnvelope]) -> {domain}? {{\n"

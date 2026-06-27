@@ -1,7 +1,9 @@
-//! Unit tests for the `claimed_event_embeds` sidecar (resolve path + wire
+//! Unit tests for the `refs.event.envelopes` sidecar (resolve path + wire
 //! shape). Extracted from `embed_sidecar.rs` to keep it under the 500 LOC gate.
 
-use nmp_content::wire::decode_claimed_event_embeds;
+use nmp_content::wire::{
+    decode_ref_event_envelopes, EMBED_SIDECAR_PROJECTION_KEY, EMBED_SIDECAR_SCHEMA_ID,
+};
 use nmp_content::{
     resolve_embed_projection, EmbedKindProjection, EmbeddedEventEnvelope, RenderContext,
 };
@@ -14,7 +16,7 @@ use std::collections::BTreeMap;
 
 use super::{
     build_envelope, new_embed_sidecar_slot, read_embed_sidecar_typed, row_to_kernel_event,
-    update_embed_sidecar_from_frame, EMBED_SIDECAR_KEY,
+    update_embed_sidecar_from_frame,
 };
 
 fn make_claimed_event_row(
@@ -207,10 +209,10 @@ fn embed_sidecar_json_shape_matches_expected_variant_tag() {
 fn typed_sidecar_is_present_and_empty_before_refs_event_arrives() {
     let slot = new_embed_sidecar_slot();
     let typed = read_embed_sidecar_typed(&slot);
-    assert_eq!(typed.key, EMBED_SIDECAR_KEY);
-    assert_eq!(typed.schema_id, EMBED_SIDECAR_KEY);
+    assert_eq!(typed.key, EMBED_SIDECAR_PROJECTION_KEY);
+    assert_eq!(typed.schema_id, EMBED_SIDECAR_SCHEMA_ID);
     let decoded =
-        decode_claimed_event_embeds(&typed.payload).expect("empty typed sidecar must decode");
+        decode_ref_event_envelopes(&typed.payload).expect("empty typed sidecar must decode");
     assert!(
         decoded.is_empty(),
         "empty refs.event store => empty typed map"
@@ -237,7 +239,7 @@ fn typed_sidecar_carries_the_expected_resolved_map() {
     slot.lock().unwrap().envelopes = map;
 
     let typed = read_embed_sidecar_typed(&slot);
-    let decoded = decode_claimed_event_embeds(&typed.payload).expect("typed sidecar must decode");
+    let decoded = decode_ref_event_envelopes(&typed.payload).expect("typed sidecar must decode");
 
     assert_eq!(decoded.len(), 3, "three entries expected");
     for key in ["note", "art", "unk"] {
@@ -262,7 +264,7 @@ fn typed_sidecar_carries_the_expected_resolved_map() {
 }
 
 #[test]
-fn update_from_refs_event_populates_compat_embed_payload() {
+fn update_from_refs_event_populates_ref_event_envelopes_payload() {
     let slot = new_embed_sidecar_slot();
     let primary_id = "note";
     let row = make_claimed_event_row(
@@ -278,7 +280,7 @@ fn update_from_refs_event_populates_compat_embed_payload() {
     update_embed_sidecar_from_frame(&frame, &slot);
 
     let typed = read_embed_sidecar_typed(&slot);
-    let decoded = decode_claimed_event_embeds(&typed.payload).expect("typed sidecar must decode");
+    let decoded = decode_ref_event_envelopes(&typed.payload).expect("typed sidecar must decode");
     assert_eq!(decoded.len(), 1);
     assert!(matches!(
         decoded[primary_id].projection,
@@ -303,9 +305,9 @@ fn update_ignores_raw_claimed_events_without_refs_event() {
     update_embed_sidecar_from_frame(&frame, &slot);
 
     let typed = read_embed_sidecar_typed(&slot);
-    let decoded = decode_claimed_event_embeds(&typed.payload).expect("typed sidecar must decode");
+    let decoded = decode_ref_event_envelopes(&typed.payload).expect("typed sidecar must decode");
     assert!(
         decoded.is_empty(),
-        "claimed_event_embeds compatibility output must derive from refs.event, not raw claimed_events"
+        "refs.event.envelopes output must derive from refs.event, not raw claimed_events"
     );
 }

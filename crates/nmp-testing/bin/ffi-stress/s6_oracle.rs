@@ -76,7 +76,7 @@ pub(crate) struct OracleResult {
 /// are the ONLY keys the oracle is allowed to find absent from the incremental
 /// reconstruction. Any OTHER absent key is a hard FAIL (a dropped Tier-2 row =
 /// a real omit bug the capstone must catch).
-const ALLOWED_ABSENT_TIER1_KEYS: &[&str] = &["claimed_event_embeds", "nip46_onboarding"];
+const ALLOWED_ABSENT_TIER1_KEYS: &[&str] = &["refs.event.envelopes", "nip46_onboarding"];
 
 /// Run the byte-identity oracle (end-state, fail-closed).
 ///

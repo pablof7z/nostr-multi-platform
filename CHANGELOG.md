@@ -48,9 +48,9 @@ must adapt the one C-ABI signature change below before bumping their pinned rev.
   snapshot loop spuriously.
 - **Event embeds now resolve through `refs.event` as the single source of
   truth.** The old `claimed_events` whole-map projection is no longer emitted,
-  gallery JSON exposes `refs.event` / `refs.profile`, and web gallery derives
-  `claimed_event_embeds` only as a transient `NEMB` compatibility envelope from
-  the Rust-resolved `refs.event` rows. Registry shell adapters are renamed around
+  gallery JSON exposes `refs.profile` plus the derived `refs.event.envelopes`
+  render map, and web gallery decodes the same `NEMB` envelope sidecar from
+  Rust-resolved `refs.event` rows. Registry shell adapters are renamed around
   `resolveEventRef` / `resolveProfileRef`, so UI components render typed
   projections instead of hand-parsing Nostr event JSON in each shell.
 

@@ -1,4 +1,5 @@
 use super::*;
+use nmp_content::wire::EMBED_SIDECAR_PROJECTION_KEY;
 use nmp_core::refs::{encode_ref_row_delta_batch, RefRow, RefRowDeltaBatch};
 use nmp_core::typed_projections::{encode_claimed_events, encode_profile, ClaimedEventsModel};
 use nmp_core::{encode_snapshot_frame, SnapshotEnvelope, TypedProjectionData};
@@ -24,11 +25,14 @@ fn empty_typed_snapshot_decodes_to_gallery_shape() {
     assert_eq!(value["schema_version"], 1);
     assert_eq!(value["running"], true);
     assert_eq!(value["projections"][REFS_PROFILE_KEY], json!({}));
-    assert_eq!(value["projections"][REFS_EVENT_KEY], json!({}));
+    assert_eq!(
+        value["projections"][EMBED_SIDECAR_PROJECTION_KEY],
+        json!({})
+    );
+    assert!(value["projections"].get(REFS_EVENT_KEY).is_none());
     assert_eq!(value["projections"]["accounts"], json!([]));
     assert_eq!(value["projections"]["relay_role_options"], json!([]));
     assert!(value["projections"].get("claimed_events").is_none());
-    assert!(value["projections"].get("claimed_event_embeds").is_none());
     assert!(value["projections"].get("signer_state").is_none());
 }
 
@@ -164,7 +168,7 @@ fn refs_profile_clear_drops_row_from_refs_profile_json() {
 }
 
 #[test]
-fn refs_event_row_delta_surfaces_resolved_envelope_in_refs_event_json() {
+fn refs_event_row_delta_surfaces_resolved_envelope_in_refs_event_envelopes_json() {
     let primary_id = "3333333333333333333333333333333333333333333333333333333333333333";
     let row = ClaimedEventRow {
         primary_id: primary_id.to_string(),
@@ -209,7 +213,7 @@ fn refs_event_row_delta_surfaces_resolved_envelope_in_refs_event_json() {
     )
     .expect("json");
 
-    let entry = &value["projections"][REFS_EVENT_KEY][primary_id];
+    let entry = &value["projections"][EMBED_SIDECAR_PROJECTION_KEY][primary_id];
     assert_eq!(entry["primary_id"], primary_id);
     assert_eq!(entry["projection"]["variant"], "shortNote");
     assert_eq!(entry["projection"]["data"]["id"], primary_id);
@@ -220,11 +224,11 @@ fn refs_event_row_delta_surfaces_resolved_envelope_in_refs_event_json() {
             .is_some(),
         "short-note envelopes must carry Rust-tokenized contentTree data; got {entry:?}"
     );
-    assert!(value["projections"].get("claimed_event_embeds").is_none());
+    assert!(value["projections"].get(REFS_EVENT_KEY).is_none());
 }
 
 #[test]
-fn refs_event_clear_drops_envelope_from_refs_event_json() {
+fn refs_event_clear_drops_envelope_from_refs_event_envelopes_json() {
     let primary_id = "4444444444444444444444444444444444444444444444444444444444444444";
     let row = ClaimedEventRow {
         primary_id: primary_id.to_string(),
@@ -270,7 +274,7 @@ fn refs_event_clear_drops_envelope_from_refs_event_json() {
     )
     .expect("json");
     assert_eq!(
-        added["projections"][REFS_EVENT_KEY][primary_id]["projection"]["variant"],
+        added["projections"][EMBED_SIDECAR_PROJECTION_KEY][primary_id]["projection"]["variant"],
         "shortNote"
     );
 
@@ -300,11 +304,11 @@ fn refs_event_clear_drops_envelope_from_refs_event_json() {
     )
     .expect("json");
     assert!(
-        cleared["projections"][REFS_EVENT_KEY]
+        cleared["projections"][EMBED_SIDECAR_PROJECTION_KEY]
             .get(primary_id)
             .is_none(),
-        "a refs.event CLEAR must drop the envelope from the refs.event map; got {:?}",
-        cleared["projections"][REFS_EVENT_KEY]
+        "a refs.event CLEAR must drop the envelope from refs.event.envelopes; got {:?}",
+        cleared["projections"][EMBED_SIDECAR_PROJECTION_KEY]
     );
 }
 

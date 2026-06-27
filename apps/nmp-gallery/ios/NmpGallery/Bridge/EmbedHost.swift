@@ -5,8 +5,8 @@ import os.log
 
 private let ehLog = Logger(subsystem: "org.nmp.gallery", category: "EmbedHost")
 
-/// Gallery-side mirror of the resolved event-ref embed envelope map
-/// materialised from `refs.event` after `resolve_ref` (ADR-0063 / ADR-0034).
+/// Gallery-side mirror of the resolved event-ref embed envelope map derived
+/// from `refs.event` after `resolve_ref` (ADR-0063 / ADR-0034).
 ///
 /// The renderer (`NostrContentView` / `EmbeddedEvent`) is frontend-driven
 /// (ADR-0034 / M16): it walks a content tree, encounters an `EventRef(uri)`,
@@ -16,9 +16,9 @@ private let ehLog = Logger(subsystem: "org.nmp.gallery", category: "EmbedHost")
 /// registers a `OneshotApi` interest, fetches via relays (or cache-hits),
 /// and surfaces the resolved raw event row under `refs.event`. The gallery Rust
 /// adapter merges that row-delta store, kind-dispatches each entry via
-/// `nmp_content::resolve_embed_projection`, and emits the pre-resolved
-/// `EmbeddedEventEnvelope` map under `projections["refs.event"]`. This class is
-/// the gallery's read-side mirror of that materialised map.
+/// `nmp_content::resolve_embed_projection`, and emits the derived
+/// `EmbeddedEventEnvelope` map under `projections["refs.event.envelopes"]`.
+/// This class is the gallery's read-side mirror of that materialised map.
 ///
 /// Each snapshot push calls `update(resolvedEventEmbeds:)`; on the next redraw
 /// the SwiftUI view tree re-reads `envelopeForURI(_:)` /

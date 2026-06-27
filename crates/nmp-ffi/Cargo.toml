@@ -73,9 +73,9 @@ nmp-store = { path = "../nmp-store" }
 # D0/ADR-0034 embed-sidecar: nmp-ffi sits above both nmp-core and nmp-content
 # in the DAG (nmp-content → nmp-core; nmp-ffi → nmp-core). Adding the edge
 # nmp-ffi → nmp-content is acyclic and legal. It lets nmp-ffi call
-# `resolve_embed_projection` on claimed events and emit the pre-resolved
-# `claimed_event_embeds` typed JSON sidecar so shells decode-only (no Swift/Kotlin
-# resolver duplicate). See issue #1283 and the RECOMMENDATION posted there.
+# `resolve_embed_projection` on refs.event rows and emit the pre-resolved
+# `refs.event.envelopes` typed FlatBuffers sidecar so shells decode-only (no
+# Swift/Kotlin resolver duplicate). See issue #1283 and ADR-0063.
 nmp-content = { path = "../nmp-content" }
 nmp-feed = { path = "../nmp-feed" }
 nmp-nip18 = { path = "../nmp-nip18" }
