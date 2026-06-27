@@ -12,8 +12,6 @@
 //! fields (`handle`) without changing visibility. No behavior change vs. the
 //! pre-split single file.
 
-use std::collections::BTreeSet;
-
 use crate::runtime::DispatchBytesResult;
 use crate::runtime::{RelayConfigAction as RuntimeRelayConfigAction, RelayConfigResult};
 use crate::{BrowserAppBuilder, BrowserRunConfig};
@@ -23,8 +21,7 @@ use super::identity::install_identity;
 use super::protocol::{
     relay_bootstrap_from_config, BeginSign, ClientHello, DeliverSignerResponse,
     IdentityRelayPermission, PublishRelayPreferences, RelayConfig, ReleaseRef, ResolveRef,
-    RuntimeStatus, SearchClose, SearchOpen, SearchScope, SearchTargets, SetIdentity, StartConfig,
-    WorkerEvent, WorkerRequest, PROTOCOL_VERSION,
+    RuntimeStatus, SetIdentity, StartConfig, WorkerEvent, WorkerRequest, PROTOCOL_VERSION,
 };
 use super::ref_routing::{
     invalid_ref_request_reason, ref_dispatch_from_release, ref_dispatch_from_resolve,
@@ -294,35 +291,6 @@ impl NmpRuntimeCore {
         }
     }
 
-    fn handle_search_open(&mut self, req: SearchOpen) -> Vec<WorkerEvent> {
-        let Some(handle) = self.handle.as_mut() else {
-            return not_started_error(Some(req.correlation_id));
-        };
-        let Some(request) = search_request_from_protocol(&req) else {
-            return vec![WorkerEvent::CapabilityFailure {
-                capability: "nmp.nip50.search.open".to_string(),
-                correlation_id: req.correlation_id,
-                reason: "invalid_search_request".to_string(),
-            }];
-        };
-        handle.open_search(request, &req.session_id);
-        vec![WorkerEvent::ActionAccepted {
-            action_type: "nmp.nip50.search.open".to_string(),
-            correlation_id: req.correlation_id,
-        }]
-    }
-
-    fn handle_search_close(&mut self, req: SearchClose) -> Vec<WorkerEvent> {
-        let Some(handle) = self.handle.as_mut() else {
-            return not_started_error(Some(req.correlation_id));
-        };
-        handle.close_search(&req.session_id);
-        vec![WorkerEvent::ActionAccepted {
-            action_type: "nmp.nip50.search.close".to_string(),
-            correlation_id: req.correlation_id,
-        }]
-    }
-
     fn handle_publish_relay_preferences(
         &mut self,
         req: PublishRelayPreferences,
@@ -515,20 +483,4 @@ fn identity_relays_to_rows(relays: &[IdentityRelayPermission]) -> Vec<(String, S
             Some((url, role.to_string()))
         })
         .collect()
-}
-
-fn search_request_from_protocol(req: &SearchOpen) -> Option<nmp_nip50::SearchRequest> {
-    let scope = match req.scope {
-        SearchScope::Notes => {
-            nmp_nip50::SearchScope::Kinds(BTreeSet::from([nmp_kinds::KIND_SHORT_TEXT_NOTE]))
-        }
-        SearchScope::Profiles => nmp_nip50::SearchScope::Users,
-        SearchScope::Longform => nmp_nip50::SearchScope::LongForm,
-    };
-    let targets = match req.targets {
-        SearchTargets::UserPreferred => nmp_nip50::SearchTargets::UserPreferred,
-        SearchTargets::AppDefault => nmp_nip50::SearchTargets::AppDefault,
-        SearchTargets::Explicit => nmp_nip50::SearchTargets::Explicit(req.relays.clone()),
-    };
-    nmp_nip50::SearchRequest::new(&req.query, scope, targets, req.max_hits)
 }

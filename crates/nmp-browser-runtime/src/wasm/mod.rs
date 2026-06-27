@@ -48,6 +48,7 @@ pub(crate) mod dispatch;
 pub(crate) mod identity;
 pub(crate) mod protocol;
 pub(crate) mod ref_routing;
+pub(crate) mod search;
 pub(crate) mod store_failure;
 
 // ── wasm32 entry point ────────────────────────────────────────────────────────
