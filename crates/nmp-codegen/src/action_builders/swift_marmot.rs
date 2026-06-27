@@ -128,11 +128,13 @@ fn emit_body(builder: &MarmotBuilder, out: &mut String) {
         MarmotBodyShape::CreateGroup => {
             out.push_str(
                 "        // Build offsets for nested objects FIRST (FlatBuffers bottom-up).\n\
+                 \x20       // relays + signed_key_package_events_json are NON-OPTIONAL [string]:\n\
+                 \x20       // ALWAYS present (even when empty) to match the Rust encoder (golden\n\
+                 \x20       // byte parity — #2169 / nip02 convention).\n\
                  \x20       let relayOffsets = relays.map { fbb.create(string: $0) }\n\
                  \x20       let relaysVec = fbb.createVector(ofOffsets: relayOffsets)\n\
                  \x20       let jsonOffsets = signedKeyPackageEventsJson.map { fbb.create(string: $0) }\n\
-                 \x20       let jsonVec: Offset? = signedKeyPackageEventsJson.isEmpty ? nil\n\
-                 \x20           : Offset(offset: fbb.createVector(ofOffsets: jsonOffsets).o)\n\
+                 \x20       let jsonVec = fbb.createVector(ofOffsets: jsonOffsets)\n\
                  \x20       // inviteeNpubs: nil → absent (None); non-nil → present vector (even if empty)\n\
                  \x20       let npubsVec: Offset? = inviteeNpubs.map { npubs in\n\
                  \x20           let offs = npubs.map { fbb.create(string: $0) }\n\
@@ -146,7 +148,7 @@ fn emit_body(builder: &MarmotBuilder, out: &mut String) {
                  \x20       if let descOffset { fbb.add(offset: descOffset, at: 6) } // slot 1: description\n\
                  \x20       if let inviteeTextOffset { fbb.add(offset: inviteeTextOffset, at: 8) } // slot 2: invitee_text\n\
                  \x20       if let npubsVec { fbb.add(offset: npubsVec, at: 10) } // slot 3: invitee_npubs\n\
-                 \x20       if let jsonVec { fbb.add(offset: jsonVec, at: 12) } // slot 4: signed_key_package_events_json\n\
+                 \x20       fbb.add(offset: jsonVec, at: 12) // slot 4: signed_key_package_events_json\n\
                  \x20       fbb.add(offset: relaysVec, at: 14) // slot 5: relays\n\
                  \x20       let bodyOffset = Offset(offset: fbb.endTable(at: bodyStart))\n",
             );
@@ -156,9 +158,10 @@ fn emit_body(builder: &MarmotBuilder, out: &mut String) {
         // slots 0-3 / vt 4-10
         MarmotBodyShape::Invite => {
             out.push_str(
-                "        let jsonOffsets = signedKeyPackageEventsJson.map { fbb.create(string: $0) }\n\
-                 \x20       let jsonVec: Offset? = signedKeyPackageEventsJson.isEmpty ? nil\n\
-                 \x20           : Offset(offset: fbb.createVector(ofOffsets: jsonOffsets).o)\n\
+                "        // signed_key_package_events_json is NON-OPTIONAL [string]: ALWAYS present\n\
+                 \x20       // (even when empty) to match the Rust encoder (golden byte parity — #2169).\n\
+                 \x20       let jsonOffsets = signedKeyPackageEventsJson.map { fbb.create(string: $0) }\n\
+                 \x20       let jsonVec = fbb.createVector(ofOffsets: jsonOffsets)\n\
                  \x20       let npubsVec: Offset? = inviteeNpubs.map { npubs in\n\
                  \x20           let offs = npubs.map { fbb.create(string: $0) }\n\
                  \x20           return Offset(offset: fbb.createVector(ofOffsets: offs).o)\n\
@@ -169,7 +172,7 @@ fn emit_body(builder: &MarmotBuilder, out: &mut String) {
                  \x20       fbb.add(offset: gidOffset, at: 4) // slot 0: group_id_hex (required)\n\
                  \x20       if let inviteeTextOffset { fbb.add(offset: inviteeTextOffset, at: 6) } // slot 1: invitee_text\n\
                  \x20       if let npubsVec { fbb.add(offset: npubsVec, at: 8) } // slot 2: invitee_npubs\n\
-                 \x20       if let jsonVec { fbb.add(offset: jsonVec, at: 10) } // slot 3: signed_key_package_events_json\n\
+                 \x20       fbb.add(offset: jsonVec, at: 10) // slot 3: signed_key_package_events_json\n\
                  \x20       let bodyOffset = Offset(offset: fbb.endTable(at: bodyStart))\n",
             );
         }

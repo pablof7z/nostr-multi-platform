@@ -59,16 +59,19 @@ fn malformed(reason: impl Into<String>) -> ActionPayloadDecodeError {
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-/// Encode a `Vec<String>` as a FlatBuffers `[string]` offset. Returns `None`
-/// when the vec is empty (absent in the buffer; decoded as `vec![]`).
+/// Encode a NON-OPTIONAL `Vec<String>` as a FlatBuffers `[string]` offset,
+/// ALWAYS present (even when empty → a present empty vector). This matches the
+/// canonical convention for non-optional `[string]` fields used by the
+/// generated host builders (Swift/Kotlin/TS) AND by the `nmp-nip02`
+/// `FollowManyAction` encoder (`fbb.create_vector` is unconditional there), so
+/// Rust-encode and host-encode produce byte-identical buffers (golden-fixture
+/// parity — #2169). The decoder reads absent and present-empty identically
+/// (both → `vec![]`), so this is purely about cross-encoder byte parity.
 fn encode_str_vec<'a>(
     fbb: &mut flatbuffers::FlatBufferBuilder<'a>,
     v: &[String],
 ) -> Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<&'a str>>>>
 {
-    if v.is_empty() {
-        return None;
-    }
     let offsets: Vec<_> = v.iter().map(|s| fbb.create_string(s)).collect();
     Some(fbb.create_vector(&offsets))
 }
@@ -86,16 +89,14 @@ fn encode_opt_str_vec<'a>(
     Some(fbb.create_vector(&offsets))
 }
 
-/// Encode `Vec<serde_json::Value>` as `[string]`. Each Value is serialised via
-/// `to_string()`. Empty → absent (decodes as `vec![]`).
+/// Encode a NON-OPTIONAL `Vec<serde_json::Value>` as `[string]`, ALWAYS present
+/// (even when empty → a present empty vector — see [`encode_str_vec`] for the
+/// byte-parity rationale). Each Value is serialised via `to_string()`.
 fn encode_json_vec<'a>(
     fbb: &mut flatbuffers::FlatBufferBuilder<'a>,
     v: &[serde_json::Value],
 ) -> Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<&'a str>>>>
 {
-    if v.is_empty() {
-        return None;
-    }
     let strs: Vec<String> = v.iter().map(|x| x.to_string()).collect();
     let offsets: Vec<_> = strs.iter().map(|s| fbb.create_string(s)).collect();
     Some(fbb.create_vector(&offsets))

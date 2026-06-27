@@ -121,10 +121,13 @@ fn emit_body(builder: &MarmotBuilder, out: &mut String) {
         // { name (req), description, invitee_text, invitee_npubs,
         //   signed_key_package_events_json, relays } — slots 0-5
         MarmotBodyShape::CreateGroup => {
+            // relays + signed_key_package_events_json are NON-OPTIONAL [string]:
+            // ALWAYS present (even when empty) to match the Rust encoder (golden
+            // byte parity — #2169 / nip02 convention). `stringVector` is present-always.
             str_vec_stmt(out, "relaysVec", "relays");
+            str_vec_stmt(out, "jsonVec", "signedKeyPackageEventsJson");
             out.push_str(
-                "    const jsonVec = signedKeyPackageEventsJson.length === 0 ? 0 : stringVector(fbb, signedKeyPackageEventsJson);\n\
-                 \x20   // inviteeNpubs: null → absent (None); non-null → present vector (even if empty)\n\
+                "    // inviteeNpubs: null → absent (None); non-null → present vector (even if empty)\n\
                  \x20   const npubsVec = inviteeNpubs === null ? 0 : stringVector(fbb, inviteeNpubs);\n\
                  \x20   const inviteeTextOffset = inviteeText === null ? 0 : fbb.createString(inviteeText);\n\
                  \x20   const descOffset = description === \"\" ? 0 : fbb.createString(description);\n\
@@ -134,7 +137,7 @@ fn emit_body(builder: &MarmotBuilder, out: &mut String) {
                  \x20   if (descOffset !== 0) fbb.addFieldOffset(1, descOffset, 0); // slot 1: description\n\
                  \x20   if (inviteeTextOffset !== 0) fbb.addFieldOffset(2, inviteeTextOffset, 0); // slot 2: invitee_text\n\
                  \x20   if (npubsVec !== 0) fbb.addFieldOffset(3, npubsVec, 0); // slot 3: invitee_npubs\n\
-                 \x20   if (jsonVec !== 0) fbb.addFieldOffset(4, jsonVec, 0); // slot 4: signed_key_package_events_json\n\
+                 \x20   fbb.addFieldOffset(4, jsonVec, 0); // slot 4: signed_key_package_events_json\n\
                  \x20   fbb.addFieldOffset(5, relaysVec, 0); // slot 5: relays\n\
                  \x20   const bodyOffset = fbb.endObject();\n",
             );
@@ -143,16 +146,18 @@ fn emit_body(builder: &MarmotBuilder, out: &mut String) {
         // { group_id_hex (req), invitee_text, invitee_npubs,
         //   signed_key_package_events_json } — slots 0-3
         MarmotBodyShape::Invite => {
+            // signed_key_package_events_json is NON-OPTIONAL [string]: ALWAYS present
+            // (even when empty) to match the Rust encoder (golden byte parity — #2169).
+            str_vec_stmt(out, "jsonVec", "signedKeyPackageEventsJson");
             out.push_str(
-                "    const jsonVec = signedKeyPackageEventsJson.length === 0 ? 0 : stringVector(fbb, signedKeyPackageEventsJson);\n\
-                 \x20   const npubsVec = inviteeNpubs === null ? 0 : stringVector(fbb, inviteeNpubs);\n\
+                "    const npubsVec = inviteeNpubs === null ? 0 : stringVector(fbb, inviteeNpubs);\n\
                  \x20   const inviteeTextOffset = inviteeText === null ? 0 : fbb.createString(inviteeText);\n\
                  \x20   const gidOffset = fbb.createString(groupIdHex);\n\
                  \x20   fbb.startObject(4);\n\
                  \x20   fbb.addFieldOffset(0, gidOffset, 0); // slot 0: group_id_hex (required)\n\
                  \x20   if (inviteeTextOffset !== 0) fbb.addFieldOffset(1, inviteeTextOffset, 0); // slot 1: invitee_text\n\
                  \x20   if (npubsVec !== 0) fbb.addFieldOffset(2, npubsVec, 0); // slot 2: invitee_npubs\n\
-                 \x20   if (jsonVec !== 0) fbb.addFieldOffset(3, jsonVec, 0); // slot 3: signed_key_package_events_json\n\
+                 \x20   fbb.addFieldOffset(3, jsonVec, 0); // slot 3: signed_key_package_events_json\n\
                  \x20   const bodyOffset = fbb.endObject();\n",
             );
         }

@@ -135,15 +135,13 @@ fn emit_body(builder: &MarmotBuilder, out: &mut String) {
         // { name (req), description, invitee_text, invitee_npubs,
         //   signed_key_package_events_json, relays } — slots 0-5
         MarmotBodyShape::CreateGroup => {
+            // relays + signed_key_package_events_json are NON-OPTIONAL [string]:
+            // ALWAYS present (even when empty) to match the Rust encoder (golden
+            // byte parity — #2169 / nip02 convention). `str_vec` emits present-always.
             str_vec(out, "relaysVec", "relays");
+            str_vec(out, "jsonVec", "signedKeyPackageEventsJson");
             out.push_str(
-                "        val jsonVec = if (signedKeyPackageEventsJson.isEmpty()) 0 else run {\n\
-                 \x20           val offs = IntArray(signedKeyPackageEventsJson.size) { i -> fbb.createString(signedKeyPackageEventsJson[i]) }\n\
-                 \x20           fbb.startVector(4, offs.size, 4)\n\
-                 \x20           for (i in offs.size - 1 downTo 0) fbb.addOffset(offs[i])\n\
-                 \x20           fbb.endVector()\n\
-                 \x20       }\n\
-                 \x20       // inviteeNpubs: null → absent (None); non-null → present vector (even if empty)\n\
+                "        // inviteeNpubs: null → absent (None); non-null → present vector (even if empty)\n\
                  \x20       val npubsVec = inviteeNpubs?.let { npubs ->\n\
                  \x20           val offs = IntArray(npubs.size) { i -> fbb.createString(npubs[i]) }\n\
                  \x20           fbb.startVector(4, offs.size, 4)\n\
@@ -158,7 +156,7 @@ fn emit_body(builder: &MarmotBuilder, out: &mut String) {
                  \x20       if (descOffset != 0) fbb.addOffset(1, descOffset, 0) // slot 1: description\n\
                  \x20       if (inviteeTextOffset != 0) fbb.addOffset(2, inviteeTextOffset, 0) // slot 2: invitee_text\n\
                  \x20       if (npubsVec != 0) fbb.addOffset(3, npubsVec, 0) // slot 3: invitee_npubs\n\
-                 \x20       if (jsonVec != 0) fbb.addOffset(4, jsonVec, 0) // slot 4: signed_key_package_events_json\n\
+                 \x20       fbb.addOffset(4, jsonVec, 0) // slot 4: signed_key_package_events_json\n\
                  \x20       fbb.addOffset(5, relaysVec, 0) // slot 5: relays\n\
                  \x20       val bodyOffset = fbb.endTable()\n",
             );
@@ -167,14 +165,11 @@ fn emit_body(builder: &MarmotBuilder, out: &mut String) {
         // { group_id_hex (req), invitee_text, invitee_npubs,
         //   signed_key_package_events_json } — slots 0-3
         MarmotBodyShape::Invite => {
+            // signed_key_package_events_json is NON-OPTIONAL [string]: ALWAYS present
+            // (even when empty) to match the Rust encoder (golden byte parity — #2169).
+            str_vec(out, "jsonVec", "signedKeyPackageEventsJson");
             out.push_str(
-                "        val jsonVec = if (signedKeyPackageEventsJson.isEmpty()) 0 else run {\n\
-                 \x20           val offs = IntArray(signedKeyPackageEventsJson.size) { i -> fbb.createString(signedKeyPackageEventsJson[i]) }\n\
-                 \x20           fbb.startVector(4, offs.size, 4)\n\
-                 \x20           for (i in offs.size - 1 downTo 0) fbb.addOffset(offs[i])\n\
-                 \x20           fbb.endVector()\n\
-                 \x20       }\n\
-                 \x20       val npubsVec = inviteeNpubs?.let { npubs ->\n\
+                "        val npubsVec = inviteeNpubs?.let { npubs ->\n\
                  \x20           val offs = IntArray(npubs.size) { i -> fbb.createString(npubs[i]) }\n\
                  \x20           fbb.startVector(4, offs.size, 4)\n\
                  \x20           for (i in offs.size - 1 downTo 0) fbb.addOffset(offs[i])\n\
@@ -186,7 +181,7 @@ fn emit_body(builder: &MarmotBuilder, out: &mut String) {
                  \x20       fbb.addOffset(0, gidOffset, 0) // slot 0: group_id_hex (required)\n\
                  \x20       if (inviteeTextOffset != 0) fbb.addOffset(1, inviteeTextOffset, 0) // slot 1: invitee_text\n\
                  \x20       if (npubsVec != 0) fbb.addOffset(2, npubsVec, 0) // slot 2: invitee_npubs\n\
-                 \x20       if (jsonVec != 0) fbb.addOffset(3, jsonVec, 0) // slot 3: signed_key_package_events_json\n\
+                 \x20       fbb.addOffset(3, jsonVec, 0) // slot 3: signed_key_package_events_json\n\
                  \x20       val bodyOffset = fbb.endTable()\n",
             );
         }

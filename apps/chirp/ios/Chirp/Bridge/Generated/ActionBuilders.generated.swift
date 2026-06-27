@@ -647,11 +647,13 @@ public enum GeneratedActionBuilders {
     ) -> [UInt8] {
         var fbb = FlatBufferBuilder()
         // Build offsets for nested objects FIRST (FlatBuffers bottom-up).
+        // relays + signed_key_package_events_json are NON-OPTIONAL [string]:
+        // ALWAYS present (even when empty) to match the Rust encoder (golden
+        // byte parity — #2169 / nip02 convention).
         let relayOffsets = relays.map { fbb.create(string: $0) }
         let relaysVec = fbb.createVector(ofOffsets: relayOffsets)
         let jsonOffsets = signedKeyPackageEventsJson.map { fbb.create(string: $0) }
-        let jsonVec: Offset? = signedKeyPackageEventsJson.isEmpty ? nil
-            : Offset(offset: fbb.createVector(ofOffsets: jsonOffsets).o)
+        let jsonVec = fbb.createVector(ofOffsets: jsonOffsets)
         // inviteeNpubs: nil → absent (None); non-nil → present vector (even if empty)
         let npubsVec: Offset? = inviteeNpubs.map { npubs in
             let offs = npubs.map { fbb.create(string: $0) }
@@ -665,7 +667,7 @@ public enum GeneratedActionBuilders {
         if let descOffset { fbb.add(offset: descOffset, at: 6) } // slot 1: description
         if let inviteeTextOffset { fbb.add(offset: inviteeTextOffset, at: 8) } // slot 2: invitee_text
         if let npubsVec { fbb.add(offset: npubsVec, at: 10) } // slot 3: invitee_npubs
-        if let jsonVec { fbb.add(offset: jsonVec, at: 12) } // slot 4: signed_key_package_events_json
+        fbb.add(offset: jsonVec, at: 12) // slot 4: signed_key_package_events_json
         fbb.add(offset: relaysVec, at: 14) // slot 5: relays
         let bodyOffset = Offset(offset: fbb.endTable(at: bodyStart))
         let payloadStart = fbb.startTable(with: 3)
@@ -692,9 +694,10 @@ public enum GeneratedActionBuilders {
         signedKeyPackageEventsJson: [String] = []
     ) -> [UInt8] {
         var fbb = FlatBufferBuilder()
+        // signed_key_package_events_json is NON-OPTIONAL [string]: ALWAYS present
+        // (even when empty) to match the Rust encoder (golden byte parity — #2169).
         let jsonOffsets = signedKeyPackageEventsJson.map { fbb.create(string: $0) }
-        let jsonVec: Offset? = signedKeyPackageEventsJson.isEmpty ? nil
-            : Offset(offset: fbb.createVector(ofOffsets: jsonOffsets).o)
+        let jsonVec = fbb.createVector(ofOffsets: jsonOffsets)
         let npubsVec: Offset? = inviteeNpubs.map { npubs in
             let offs = npubs.map { fbb.create(string: $0) }
             return Offset(offset: fbb.createVector(ofOffsets: offs).o)
@@ -705,7 +708,7 @@ public enum GeneratedActionBuilders {
         fbb.add(offset: gidOffset, at: 4) // slot 0: group_id_hex (required)
         if let inviteeTextOffset { fbb.add(offset: inviteeTextOffset, at: 6) } // slot 1: invitee_text
         if let npubsVec { fbb.add(offset: npubsVec, at: 8) } // slot 2: invitee_npubs
-        if let jsonVec { fbb.add(offset: jsonVec, at: 10) } // slot 3: signed_key_package_events_json
+        fbb.add(offset: jsonVec, at: 10) // slot 3: signed_key_package_events_json
         let bodyOffset = Offset(offset: fbb.endTable(at: bodyStart))
         let payloadStart = fbb.startTable(with: 3)
         fbb.add(element: UInt32(1), def: UInt32(0), at: 4) // slot 0: schema_version

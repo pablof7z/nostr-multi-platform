@@ -688,7 +688,7 @@ object GeneratedActionBuilders {
             for (i in offs.size - 1 downTo 0) fbb.addOffset(offs[i])
             fbb.endVector()
         }
-        val jsonVec = if (signedKeyPackageEventsJson.isEmpty()) 0 else run {
+        val jsonVec = run {
             val offs = IntArray(signedKeyPackageEventsJson.size) { i -> fbb.createString(signedKeyPackageEventsJson[i]) }
             fbb.startVector(4, offs.size, 4)
             for (i in offs.size - 1 downTo 0) fbb.addOffset(offs[i])
@@ -709,7 +709,7 @@ object GeneratedActionBuilders {
         if (descOffset != 0) fbb.addOffset(1, descOffset, 0) // slot 1: description
         if (inviteeTextOffset != 0) fbb.addOffset(2, inviteeTextOffset, 0) // slot 2: invitee_text
         if (npubsVec != 0) fbb.addOffset(3, npubsVec, 0) // slot 3: invitee_npubs
-        if (jsonVec != 0) fbb.addOffset(4, jsonVec, 0) // slot 4: signed_key_package_events_json
+        fbb.addOffset(4, jsonVec, 0) // slot 4: signed_key_package_events_json
         fbb.addOffset(5, relaysVec, 0) // slot 5: relays
         val bodyOffset = fbb.endTable()
         fbb.startTable(3)
@@ -736,7 +736,7 @@ object GeneratedActionBuilders {
         signedKeyPackageEventsJson: List<String> = emptyList(),
     ): ByteArray {
         val fbb = FlatBufferBuilder()
-        val jsonVec = if (signedKeyPackageEventsJson.isEmpty()) 0 else run {
+        val jsonVec = run {
             val offs = IntArray(signedKeyPackageEventsJson.size) { i -> fbb.createString(signedKeyPackageEventsJson[i]) }
             fbb.startVector(4, offs.size, 4)
             for (i in offs.size - 1 downTo 0) fbb.addOffset(offs[i])
@@ -754,7 +754,7 @@ object GeneratedActionBuilders {
         fbb.addOffset(0, gidOffset, 0) // slot 0: group_id_hex (required)
         if (inviteeTextOffset != 0) fbb.addOffset(1, inviteeTextOffset, 0) // slot 1: invitee_text
         if (npubsVec != 0) fbb.addOffset(2, npubsVec, 0) // slot 2: invitee_npubs
-        if (jsonVec != 0) fbb.addOffset(3, jsonVec, 0) // slot 3: signed_key_package_events_json
+        fbb.addOffset(3, jsonVec, 0) // slot 3: signed_key_package_events_json
         val bodyOffset = fbb.endTable()
         fbb.startTable(3)
         fbb.addInt(0, 1, 0) // slot 0: schema_version

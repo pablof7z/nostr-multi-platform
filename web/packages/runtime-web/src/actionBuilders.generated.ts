@@ -525,7 +525,7 @@ export const GeneratedActionBuilders = {
   ): Uint8Array {
     const fbb = new flatbuffers.Builder(64);
     const relaysVec = stringVector(fbb, relays);
-    const jsonVec = signedKeyPackageEventsJson.length === 0 ? 0 : stringVector(fbb, signedKeyPackageEventsJson);
+    const jsonVec = stringVector(fbb, signedKeyPackageEventsJson);
     // inviteeNpubs: null → absent (None); non-null → present vector (even if empty)
     const npubsVec = inviteeNpubs === null ? 0 : stringVector(fbb, inviteeNpubs);
     const inviteeTextOffset = inviteeText === null ? 0 : fbb.createString(inviteeText);
@@ -536,7 +536,7 @@ export const GeneratedActionBuilders = {
     if (descOffset !== 0) fbb.addFieldOffset(1, descOffset, 0); // slot 1: description
     if (inviteeTextOffset !== 0) fbb.addFieldOffset(2, inviteeTextOffset, 0); // slot 2: invitee_text
     if (npubsVec !== 0) fbb.addFieldOffset(3, npubsVec, 0); // slot 3: invitee_npubs
-    if (jsonVec !== 0) fbb.addFieldOffset(4, jsonVec, 0); // slot 4: signed_key_package_events_json
+    fbb.addFieldOffset(4, jsonVec, 0); // slot 4: signed_key_package_events_json
     fbb.addFieldOffset(5, relaysVec, 0); // slot 5: relays
     const bodyOffset = fbb.endObject();
     fbb.startObject(3);
@@ -558,7 +558,7 @@ export const GeneratedActionBuilders = {
     signedKeyPackageEventsJson: string[] = [],
   ): Uint8Array {
     const fbb = new flatbuffers.Builder(64);
-    const jsonVec = signedKeyPackageEventsJson.length === 0 ? 0 : stringVector(fbb, signedKeyPackageEventsJson);
+    const jsonVec = stringVector(fbb, signedKeyPackageEventsJson);
     const npubsVec = inviteeNpubs === null ? 0 : stringVector(fbb, inviteeNpubs);
     const inviteeTextOffset = inviteeText === null ? 0 : fbb.createString(inviteeText);
     const gidOffset = fbb.createString(groupIdHex);
@@ -566,7 +566,7 @@ export const GeneratedActionBuilders = {
     fbb.addFieldOffset(0, gidOffset, 0); // slot 0: group_id_hex (required)
     if (inviteeTextOffset !== 0) fbb.addFieldOffset(1, inviteeTextOffset, 0); // slot 1: invitee_text
     if (npubsVec !== 0) fbb.addFieldOffset(2, npubsVec, 0); // slot 2: invitee_npubs
-    if (jsonVec !== 0) fbb.addFieldOffset(3, jsonVec, 0); // slot 3: signed_key_package_events_json
+    fbb.addFieldOffset(3, jsonVec, 0); // slot 3: signed_key_package_events_json
     const bodyOffset = fbb.endObject();
     fbb.startObject(3);
     fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
