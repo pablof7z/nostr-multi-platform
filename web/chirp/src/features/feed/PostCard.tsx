@@ -12,6 +12,7 @@ import { displayLabel, shortHex } from "@nmp/components-web/src/user-avatar/Prof
 import { useNostrProfileHost } from "@nmp/components-web/src/user-avatar/NostrProfileHost";
 import { useNmpClient } from "../../nmp/context";
 import { bookmarkCommand, reactCommand, repostCommand } from "../../nmp/actions";
+import { RichContent } from "./RichContent";
 
 export type FeedSelection = { kind: "profile" | "thread"; row: FeedRow };
 
@@ -110,9 +111,7 @@ export function PostCard(props: {
         </div>
 
         {/* Content */}
-        <p class="post-content">
-          {displayContent()}
-        </p>
+        <RichContent content={displayContent()} />
 
         <Show when={counts().length > 0 || props.row.relayProvenance.length > 0}>
           <div class="post-meta-row">

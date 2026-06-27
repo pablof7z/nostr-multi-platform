@@ -90,6 +90,20 @@ test("@wasm feed: real signed events from the fixture relay reach a snapshot aft
     await expect(firstCard).toHaveAttribute("data-event-id", /^[a-f0-9]{64}$/);
     await expect(firstCard.getByRole("button", { name: /like/i })).toBeEnabled();
 
+    const richCard = feedSlot.getByTestId("post-card").filter({ hasText: relay.noteContent }).first();
+    await expect(richCard.getByTestId("post-content-hashtag")).toHaveText("#nostr");
+    await expect(richCard.getByTestId("post-content-link")).toHaveAttribute(
+      "href",
+      relay.noteLinkUrl,
+    );
+    const media = richCard.getByTestId("post-media-grid");
+    await expect(media).toBeVisible();
+    await expect
+      .poll(() =>
+        media.locator("img").first().evaluate((img) => (img as HTMLImageElement).naturalWidth),
+      )
+      .toBeGreaterThan(0);
+
     await firstCard.getByRole("button", { name: /open profile/i }).click();
     const detail = feedSlot.getByTestId("feed-detail-panel");
     await expect(detail).toHaveAttribute("data-kind", "profile");

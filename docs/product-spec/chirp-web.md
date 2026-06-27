@@ -189,3 +189,16 @@ message threads, simulate wallet state, or persist policy choices in TypeScript.
 When any blocked area becomes supported, the same navigation destination should
 graduate to Rust-owned projections/actions and browser acceptance that proves the
 real workflow rather than adding a second parallel surface.
+
+## Content Rendering Contract
+
+Chirp Web must render common kind:1 note content as a polished social card, not
+as an undifferentiated text blob. URLs, hashtags, Nostr references, line breaks,
+and image links should be visibly distinct and must preserve layout on desktop
+and mobile.
+
+This rendering is presentation only. TypeScript may tokenize already-projected
+note text to create anchors and media previews, but it must not interpret those
+tokens as protocol state, construct Nostr filters or events from them, or
+fabricate hydration for referenced events. Any opened search, profile, thread,
+or media workflow must still cross the existing Rust-owned runtime/action seams.

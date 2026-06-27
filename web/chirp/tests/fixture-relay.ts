@@ -31,19 +31,24 @@ import type { AddressInfo } from "net";
 import { createServer } from "node:http";
 import { finalizeEvent, generateSecretKey, getPublicKey } from "nostr-tools/pure";
 
-// A real 1×1 PNG served over HTTP so any avatar component genuinely fetches +
-// decodes a network image (naturalWidth > 0), with no external dependency.
-const ONE_BY_ONE_PNG = Buffer.from(
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
-  "base64",
-);
+const FIXTURE_IMAGE = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" role="img" aria-label="Chirp fixture media">
+  <rect width="640" height="400" fill="#dff4ec"/>
+  <circle cx="118" cy="112" r="54" fill="#217a63"/>
+  <path d="M210 122h288M210 186h220M210 250h286" stroke="#17202a" stroke-width="24" stroke-linecap="round"/>
+  <rect x="64" y="296" width="512" height="36" rx="18" fill="#ffffff" opacity=".82"/>
+  <path d="M104 314h188" stroke="#217a63" stroke-width="12" stroke-linecap="round"/>
+</svg>`;
 
-/** Start a throwaway HTTP server that serves the 1×1 PNG at any path. */
-function startPngServer(): Promise<{ url: string; close: () => Promise<void> }> {
+/** Start a throwaway HTTP server that serves a real network image at any path. */
+function startImageServer(): Promise<{ url: string; close: () => Promise<void> }> {
   return new Promise((resolve, reject) => {
     const server = createServer((_req, res) => {
-      res.writeHead(200, { "content-type": "image/png", "access-control-allow-origin": "*" });
-      res.end(ONE_BY_ONE_PNG);
+      res.writeHead(200, {
+        "content-type": "image/svg+xml",
+        "access-control-allow-origin": "*",
+      });
+      res.end(FIXTURE_IMAGE);
     });
     server.once("error", reject);
     server.listen(0, "127.0.0.1", () => {
@@ -92,8 +97,12 @@ export type FeedFixtureRelay = FixtureRelay & {
   followPubkey: string;
   /** Hex pubkey of the second follow, used to prove kind:3 edits preserve siblings. */
   secondFollowPubkey: string;
-  /** Content of the follow's note (assert against the rendered feed). */
+  /** Stable phrase inside the follow's note (assert against the rendered feed). */
   noteContent: string;
+  /** Normal URL embedded in the follow's note. */
+  noteLinkUrl: string;
+  /** Image URL embedded in the follow's note. */
+  noteImageUrl: string;
   /** Display name resolved from the follow's kind:0. */
   followDisplayName: string;
   /** Picture URL (http) resolved from the follow's kind:0. */
@@ -256,7 +265,7 @@ export async function startFeedFixtureRelay(): Promise<FeedFixtureRelay> {
   const followBPubkey = getPublicKey(followBSk);
 
   const now = Math.floor(Date.now() / 1000);
-  const noteContent = "hello from fixture relay";
+  const noteText = "hello from fixture relay";
   const longformContent = "longform fixture article about chirp search";
   const followADisplayName = "Alice Fixture";
   const followBDisplayName = "Bob Fixture";
@@ -264,8 +273,12 @@ export async function startFeedFixtureRelay(): Promise<FeedFixtureRelay> {
   // Serve the picture over real HTTP: nmp-core keeps only http(s) picture URLs
   // (a data: URI would be filtered), so this is a genuine network image the
   // avatar can fetch + decode with no external dependency.
-  const imageServer = await startPngServer();
+  const imageServer = await startImageServer();
   const followAPictureUrl = imageServer.url;
+  const noteContent = noteText;
+  const noteLinkUrl = "https://example.com/chirp";
+  const noteImageUrl = imageServer.url;
+  const richNoteContent = `${noteText} #nostr ${noteLinkUrl} ${noteImageUrl}`;
 
   const profileA = finalizeEvent(
     {
@@ -299,7 +312,7 @@ export async function startFeedFixtureRelay(): Promise<FeedFixtureRelay> {
       kind: 1,
       created_at: now - 50,
       tags: [["p", followBPubkey]],
-      content: noteContent,
+      content: richNoteContent,
     },
     followASk,
   ) as NostrEvent;
@@ -357,6 +370,8 @@ export async function startFeedFixtureRelay(): Promise<FeedFixtureRelay> {
     followPubkey: followAPubkey,
     secondFollowPubkey: followBPubkey,
     noteContent,
+    noteLinkUrl,
+    noteImageUrl,
     longformContent,
     followDisplayName: followADisplayName,
     followPictureUrl: followAPictureUrl,

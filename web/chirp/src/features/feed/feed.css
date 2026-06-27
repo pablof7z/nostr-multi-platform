@@ -245,20 +245,6 @@
   margin-left: auto;
 }
 
-.post-content {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 8;
-  margin: 7px 0 12px;
-  max-height: 12.4em;
-  overflow: hidden;
-  color: var(--ink);
-  font-size: 15px;
-  line-height: 1.55;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-}
-
 .post-meta-row,
 .post-counts,
 .post-provenance {
@@ -303,6 +289,7 @@
 
 .post-actions {
   gap: 10px;
+  flex-wrap: wrap;
 }
 
 .action-btn {
@@ -365,4 +352,5 @@
     width: 100%;
     margin-left: 0;
   }
+
 }
