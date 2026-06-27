@@ -3,15 +3,12 @@ name: sqlite-wasm-conformance
 # Dedicated-Worker OPFS-SQLite conformance gate for crates/nmp-sqlite-wasm
 # (issue #1007, PR-6).
 #
-# Unlike browser-runtime.yml's wasm32 job — which is non-blocking because
-# nmp-browser-runtime pulls in secp256k1-sys and thus needs a C wasm toolchain
-# (clang-wasm / emcc) the runner lacks — the nmp-sqlite-wasm dependency graph is
-# pure JS/Rust interop (js-sys, wasm-bindgen, web-sys, wasm-bindgen-futures).
-# It has NO C dependency, so wasm32-unknown-unknown builds with the stock
-# toolchain and this job is a genuine BLOCKING gate that actually executes the
-# engine in a headless browser. It is the sole end-to-end proof of the
-# Worker-only OPFS SyncAccessHandle path (which cannot run on the page main
-# thread, so the existing run_in_browser wasm tests structurally can't cover it).
+# nmp-sqlite-wasm's dependency graph is pure JS/Rust interop (js-sys,
+# wasm-bindgen, web-sys, wasm-bindgen-futures). It has NO C dependency, so this
+# job builds with the stock wasm32 toolchain and actually executes the engine in
+# a headless browser. It remains the end-to-end proof of the Worker-only OPFS
+# SyncAccessHandle path, while browser-runtime.yml provides the blocking wasm32
+# compile gate for the full runtime graph that pulls in secp256k1-sys.
 
 on:
   push:

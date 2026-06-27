@@ -10,7 +10,7 @@ description = "Browser platform adapter for NMP: Worker event loop, browser rela
 crate-type = ["cdylib", "rlib"]
 # Native build: `cargo build -p nmp-browser-runtime`
 # WASM32 build: `cargo build -p nmp-browser-runtime --target wasm32-unknown-unknown`
-#   (requires wasm32 sysroot and secp256k1-sys wasm support; ci/test runs native only)
+#   (requires wasm32 sysroot and a C compiler with a wasm backend for secp256k1-sys)
 
 [features]
 default = []

@@ -6,17 +6,13 @@ name: browser-runtime-conformance
 # composition inside a dedicated Web Worker.
 #
 # NON-BLOCKING BY CONSTRUCTION (honest constraint — do NOT silently skip):
-#   Unlike sqlite-wasm-conformance.yml (a genuinely BLOCKING gate, because
-#   nmp-sqlite-wasm has NO C dependency and builds with the stock wasm32
-#   toolchain), this harness drives the FULL runtime, which pulls secp256k1-sys
-#   through nmp-core. Compiling secp256k1-sys to wasm32 needs a C-to-wasm
-#   toolchain (clang's wasm backend + lld). ubuntu-latest ships neither by
-#   default — the SAME constraint documented in browser-runtime.yml's
-#   non-blocking wasm32 job and chirp-web-acceptance.yml's full-e2e-wasm job.
-#   Installing the toolchain + a wasm build of nmp-core adds minutes to every
-#   run, so this runs on a NIGHTLY schedule + manual dispatch rather than
-#   blocking every PR. The coverage is NOT skipped — it runs nightly and can be
-#   triggered on any branch via workflow_dispatch.
+#   browser-runtime.yml blocks PRs on the full runtime's wasm32 compile graph.
+#   This harness goes further: it builds the wasm bundle, installs Playwright,
+#   launches headless Chromium, and executes OPFS durability scenarios through
+#   the dedicated Worker. That browser execution cost belongs on a NIGHTLY
+#   schedule + manual dispatch rather than every PR. The coverage is NOT
+#   skipped — it runs nightly and can be triggered on any branch via
+#   workflow_dispatch.
 
 on:
   schedule:
@@ -45,11 +41,11 @@ jobs:
           key: browser-runtime-conformance
 
       # secp256k1-sys needs a C compiler that can target wasm32. clang ships a
-      # wasm backend; lld provides wasm-ld. Point the wasm32 C build at them.
-      - name: Install wasm C toolchain (clang + lld)
+      # wasm backend, lld provides wasm-ld, and llvm provides llvm-ar.
+      - name: Install wasm C toolchain (clang + lld + llvm-ar)
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang lld
+          sudo apt-get install -y clang lld llvm
 
       - name: Install Node
         uses: actions/setup-node@v4
