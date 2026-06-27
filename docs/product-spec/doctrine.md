@@ -142,7 +142,7 @@ This rules out:
 
 *Implementation detail: The kernel's snapshot `projections` map is divided into two clusters.*
 
-*Static cluster (always present regardless of open views): identity pair (`accounts`, `active_account`), publish cluster (`publish_queue`, `publish_outbox`, `outbox_summary`, `configured_relays`, `relay_role_options`, `settings_hub`), diagnostics (`relay_diagnostics`), profile card (`profile`), mention payloads (`mention_profiles`), and claim projections (`claimed_profiles`, `claimed_events`). These keys are required for app chrome that is visible regardless of which content screen is open.*
+*Static cluster (always present regardless of open views): identity pair (`accounts`, `active_account`), publish cluster (`publish_queue`, `publish_outbox`, `outbox_summary`, `configured_relays`, `relay_role_options`, `settings_hub`), diagnostics (`relay_diagnostics`), and profile card (`profile`). Demand-driven profile and event references cross the boundary through keyed row-delta projections (`refs.profile`, `refs.event`) only when a host opens the corresponding interest; the old whole-map claim projections are not part of the live snapshot contract.*
 
 *View-dependent cluster (only present when the view is subscribed): `timeline`,
 `inserted`, `updated`, `removed` appear only when the app/defaults layer declares

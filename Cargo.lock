@@ -4442,6 +4442,7 @@ dependencies = [
  "gloo-timers",
  "js-sys",
  "nmp-codegen",
+ "nmp-content",
  "nmp-core",
  "nmp-defaults",
  "nmp-feed",

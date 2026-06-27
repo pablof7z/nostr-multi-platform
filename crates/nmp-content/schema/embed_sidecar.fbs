@@ -1,14 +1,12 @@
 namespace nmp.embed;
 
-// Typed FlatBuffers wire for the `claimed_event_embeds` snapshot sidecar
-// (issue #1283 / ADR-0034 §embed-sidecar). This is the TYPED counterpart of the
-// JSON `claimed_event_embeds` projection produced by
-// `crates/nmp-ffi/src/embed_sidecar.rs`: it carries the SAME pre-resolved map
+// Typed FlatBuffers wire for the `claimed_event_embeds` compatibility sidecar
+// (issue #1283 / ADR-0034 §embed-sidecar). `nmp-ffi` derives this payload from
+// the authoritative `refs.event` row store and carries the pre-resolved map
 // (`primary_id -> EmbeddedEventEnvelope`) so a typed-frame shell (Chirp) can
 // decode the kind-dispatched `EmbedKindProjection` WITHOUT re-implementing the
 // `match kind` resolver in Swift/Kotlin (the D0 thin-shell violation #1283
-// closes). The JSON projection is kept in parallel for the gallery shell, which
-// still decodes JSON; both are produced from the identical resolver output.
+// closes).
 //
 // Shape mirrors the existing resolver types in
 // `crates/nmp-content/src/embed_projection/` — never a bespoke re-parse:

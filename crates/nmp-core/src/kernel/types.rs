@@ -609,23 +609,23 @@ pub(crate) struct KernelSnapshot {
     // FlatBuffers sidecar through the typed snapshot projection path.
 }
 
-// ── Claimed-event projection payload ──────────────────────────────────────────
+// ── refs.event row payload ────────────────────────────────────────────────────
 
-/// Per-event payload bundled into the `claimed_events` snapshot
-/// projection. Surfaces the raw protocol fields a renderer needs to
-/// resolve an embed without re-walking the store on the FFI side.
+/// Per-event payload bundled into one `refs.event` row. Surfaces the raw
+/// protocol fields a renderer needs to resolve an embed without re-walking the
+/// store on the FFI side.
 ///
-/// Keyed by `primary_id` in the projection map:
+/// Keyed by `primary_id` in the outer NRRD row:
 /// - hex-64 event id for nevent/note URIs (matches `StoredEvent.id`),
 /// - `kind:pubkey:d_tag` coordinate string for naddr URIs (matches the
 ///   renderer-side `WireUri.primary_id`).
 ///
 /// D0 — the name is intentionally generic ("event", not "embed"); the
-/// kernel primitive that drives this projection is event `resolve_ref` and
+/// kernel primitive that drives this row is event `resolve_ref` and
 /// can carry any kind, not just embed-class events.
 ///
-/// `pub(crate)` struct with `pub(super)` fields, serialised through
-/// `serde_json::to_value` from `kernel/update.rs`.
+/// `pub(crate)` struct with `pub(super)` fields, encoded into the KCEV row
+/// payload from `kernel/ref_row_source.rs`.
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub(crate) struct ClaimedEventDto {
     /// The projection key — either a hex-64 event id (nevent/note) or
@@ -649,13 +649,12 @@ pub(crate) struct ClaimedEventDto {
     pub(super) tags: Vec<Vec<String>>,
     /// Raw event content. NIP-23 article body, kind:1 note text, etc.
     pub(super) content: String,
-    /// Parsed NFCT bytes for the typed KCEV sidecar; skipped from legacy JSON.
+    /// Parsed NFCT bytes for the typed KCEV row payload.
     #[serde(skip)]
     pub(super) content_tree_bytes: Vec<u8>,
     /// Canonical signed NIP-01 event JSON, including `sig`.
     ///
-    /// Populated only for the generic `refs.event` Raw shape; legacy
-    /// `claimed_events` has no shape context and omits this field.
+    /// Populated only for the generic `refs.event` Raw shape.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) signed_event_json: Option<String>,
 }

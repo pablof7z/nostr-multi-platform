@@ -1,6 +1,7 @@
-// ADR-0063 Lane H: MentionProfilePayload + ProfileCard removed (mention_profiles /
-// claimed_profiles / resolved_profiles projection builders deleted).
-use super::super::{ClaimedEventDto, Kernel};
+// ADR-0063 Lane H: MentionProfilePayload + ProfileCard + claimed_events removed
+// (mention_profiles / claimed_profiles / resolved_profiles / claimed_events
+// projection builders deleted).
+use super::super::Kernel;
 
 // Canonical list of the kernel-owned (Tier-2) built-in projection keys.
 // The registry-closure Tier-1 keys are NOT listed here; they are introspectable
@@ -190,56 +191,13 @@ impl Kernel {
                 serde_json::to_value(self.profile_card()).unwrap_or(serde_json::Value::Null),
             );
         }
-        // ADR-0063 Lane H: mention_profiles / claimed_profiles / resolved_profiles emission deleted.
-        // These projections are replaced by refs.profile (KPRF/NRRD row-delta sidecars).
-        if declared.permits("claimed_events") {
-            projections.insert(
-                "claimed_events".to_string(),
-                serde_json::to_value(&self.claimed_events())
-                    .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::default())),
-            );
-        }
+        // ADR-0063 Lane H: mention_profiles / claimed_profiles /
+        // resolved_profiles / claimed_events emission deleted. These projections
+        // are replaced by refs.profile / refs.event row-delta sidecars.
         projections
     }
 
     // ADR-0063 Lane H: mention_profiles(), claimed_profiles(), resolved_profiles()
     // deleted. These were the old 3-tier JSON projection builders; profile data is
     // now delivered via the refs.profile KPRF NRRD row-delta sidecar.
-
-    /// `claimed_events` accessor — keyed by `primary_id` (hex64 event id for
-    /// nevent/note URIs; `kind:pubkey:d_tag` coordinate for naddr URIs). Walks
-    /// the current `event_claims` set and looks each key up against `self.events`
-    /// via `lookup_for_primary_id`; missing entries are silently absent (D1
-    /// best-effort). Entries carry raw event data only; author display state is
-    /// resolved by profile components through `resolve_ref` and the
-    /// `refs.profile` projection. BTreeMap for
-    /// deterministic key ordering.
-    ///
-    /// Shared accessor for the generic JSON projection and its Tier-2 typed
-    /// sidecar.
-    pub(in crate::kernel) fn claimed_events(
-        &self,
-    ) -> std::collections::BTreeMap<String, ClaimedEventDto> {
-        let mut claimed_events: std::collections::BTreeMap<String, ClaimedEventDto> =
-            std::collections::BTreeMap::new();
-        for key in self.event_claims.keys() {
-            if let Some(stored) = self.lookup_for_primary_id(key) {
-                // Parse raw content → NFCT bytes via the injected content-parser
-                // seam (no-op by default; web composition installs an
-                // nmp-content-backed parser so event refs render the
-                // kernel-parsed content tree).
-                let content_tree_bytes = self.content_parser.parse_to_nfct_bytes(
-                    &stored.content,
-                    &stored.tags,
-                    stored.kind,
-                );
-                claimed_events.insert(
-                    key.clone(),
-                    ClaimedEventDto::from_stored(key.clone(), &stored)
-                        .with_content_tree(content_tree_bytes),
-                );
-            }
-        }
-        claimed_events
-    }
 }

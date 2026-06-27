@@ -225,7 +225,7 @@ class KernelBridge {
     /**
      * Open an author profile by pubkey. Rust registers
      * `nmp.feed.author.<pubkey>` and admits primary kind:1 notes plus derived
-     * repost wrappers for rendering. Profile metadata is fetched via [claimProfile].
+     * repost wrappers for rendering. Profile metadata is fetched via refs.profile.
      *
      * D6: null handle or invalid pubkey is a silent no-op.
      */

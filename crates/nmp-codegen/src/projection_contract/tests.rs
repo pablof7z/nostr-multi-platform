@@ -189,8 +189,8 @@ fn keyed_registry_neutral_facts_match_contract() {
 }
 
 /// Lock the derived kernel built-in key set. This is the set `nmp-core`'s
-/// generated `KERNEL_BUILTIN_PROJECTION_KEYS` mirrors (14 decodable Tier-2
-/// entries + `signed_events` + the two `refs.*` carriers = 17, sorted).
+/// generated `KERNEL_BUILTIN_PROJECTION_KEYS` mirrors (13 decodable Tier-2
+/// entries + `signed_events` + the two `refs.*` carriers = 16, sorted).
 #[test]
 fn kernel_builtin_projection_keys_is_locked() {
     assert_eq!(
@@ -201,7 +201,6 @@ fn kernel_builtin_projection_keys_is_locked() {
             "action_results",
             "action_stages",
             "active_account",
-            "claimed_events",
             "configured_relays",
             "outbox_summary",
             "profile",

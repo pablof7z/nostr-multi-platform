@@ -69,10 +69,6 @@ mod publish_outbox_fb;
 mod publish_queue_fb;
 mod relay_role_options_fb;
 mod settings_hub_fb;
-// Wave C event-cluster (appended; see `builtins_profiles.rs`).
-// ADR-0063 Lane H: mention_profiles / claimed_profiles / resolved_profiles
-// typed projection modules deleted; only claimed_events remains.
-mod builtins_profiles;
 // ADR-0063 (#1671 integration glue) — the keyed `refs.profile` / `refs.event`
 // row-delta producer. Unlike the snapshot clusters it runs in `make_update`
 // (needs `&mut self`); see `builtins_refs.rs`.
@@ -146,9 +142,9 @@ pub use profile_fb::encode_profile;
 pub use profile_fb::{
     ProfileCardModel, PROFILE_FILE_IDENTIFIER, PROFILE_SCHEMA_ID, PROFILE_SCHEMA_VERSION,
 };
-// Wave C event-cluster (`claimed_events`). ADR-0063 Lane H:
-// mention_profiles / claimed_profiles / resolved_profiles re-exports deleted.
-// The ClaimedEventRow type is named in builtins_profiles.rs.
+// KCEV row payload codec for `refs.event`. ADR-0063 Lane H removed the
+// host-visible `claimed_events` projection; these types remain because
+// `refs.event` rows reuse the same single-entry FlatBuffer payload.
 pub use claimed_events_fb::encode_claimed_events;
 pub use claimed_events_fb::{
     ClaimedEventRow, ClaimedEventsModel, CLAIMED_EVENTS_FILE_IDENTIFIER, CLAIMED_EVENTS_SCHEMA_ID,
@@ -190,8 +186,8 @@ pub use signed_events_fb::{
 pub(crate) use builtins_refs::{REFS_EVENT_KEY, REFS_PROFILE_KEY};
 
 pub use relay_role_options_fb::decode_relay_role_options;
-// Wave C event-cluster — `decode_claimed_events` promoted to unconditional pub
-// (nmp-gallery typed-sidecar migration).
+// KCEV row payload codec — `decode_claimed_events` remains public because
+// refs.event host stores decode one single-entry payload per row.
 // ADR-0063 Lane H: decode_claimed_profiles / decode_mention_profiles /
 // decode_resolved_profiles deleted (replaced by refs.profile KPRF row-delta sidecar).
 pub use claimed_events_fb::decode_claimed_events;
@@ -262,14 +258,13 @@ impl super::Kernel {
     /// the actor thread inside the snapshot tick (D8: non-blocking).
     pub(in crate::kernel) fn builtin_typed_projections(&self) -> Vec<TypedProjectionData> {
         // 6 relay/settings/publish built-ins + 3 identity built-ins
-        // (`accounts` / `active_account` / `profile`) + 1 event built-in
-        // (`claimed_events`, unconditional) + up to 5 action-lifecycle /
+        // (`accounts` / `active_account` / `profile`) + up to 5 action-lifecycle /
         // diagnostics built-ins (`relay_diagnostics` unconditional once captured;
         // `action_results` / `signed_events` / `action_stages` /
         // `action_lifecycle` present only when captured this tick).
         // V-112 (ADR-0042): author_view / thread_view conditional built-ins deleted.
         // ADR-0063 Lane H: mention_profiles / claimed_profiles / resolved_profiles deleted.
-        let mut out = Vec::with_capacity(15);
+        let mut out = Vec::with_capacity(14);
 
         // `configured_relays` — encoded from the SAME `AppRelay` slice the JSON
         // path serialises (`configured_relays_snapshot()`).
@@ -336,11 +331,6 @@ impl super::Kernel {
         // unconditionally). V-112 (ADR-0042): `author_view` / `thread_view`
         // conditional pushes deleted. Extracted to `builtins_views.rs`.
         out.extend(self.views_cluster_typed_projections());
-
-        // Wave C event-cluster (`claimed_events`, unconditional). Extracted to
-        // `builtins_profiles.rs`. ADR-0063 Lane H: mention_profiles /
-        // claimed_profiles / resolved_profiles removed.
-        out.extend(self.profiles_cluster_typed_projections());
 
         // Wave C action-lifecycle + relay-diagnostics cluster (`action_results` /
         // `signed_events` / `action_stages` / `action_lifecycle` /

@@ -5,9 +5,10 @@ import SwiftUI
 /// Each page builds a `ContentTreeWire` containing surrounding prose plus an
 /// `EventRef` for a real bech32 URI. `NostrContentView` walks the tree; on
 /// hitting the `EventRef` it instantiates `EmbeddedEvent(uri: …)` which fires
-/// `sink.claim(uri, consumerId)` via `task(id:)`. The kernel resolves the
-/// event (cache or relay), surfaces it in `projections.claimed_events`, and
-/// `EmbedHost.update(fromSnapshotJSON:)` decodes the typed envelope. SwiftUI
+/// `resolveEventRef(uri, consumerId)` via `task(id:)`. The kernel resolves the
+/// event (cache or relay), and the gallery reads the resolved embed envelope
+/// map produced from that event-ref interest.
+/// `EmbedHost.update(resolvedEventEmbeds:)` receives the typed envelope. SwiftUI
 /// re-evaluates and the registry-resolved renderer paints the result.
 ///
 /// Mirrors the TUI showcase in `apps/nmp-gallery/tui/src/data.rs::from_live`.
@@ -68,7 +69,7 @@ struct ArticleEmbedPage: View {
                     uri: SHOWCASE_ARTICLE_NADDR,
                     kind: .address,
                     // Coordinate must match the kernel-emitted
-                    // `claimed_events` key exactly — `<kind>:<pubkey>:<d>`,
+                    // resolved event-ref primary-id key exactly — `<kind>:<pubkey>:<d>`,
                     // where pubkey is the decoded `naddr` author (NIP-19
                     // `provider` TLV). The kernel computes this in
                     // `kernel/requests/event.rs:132`; if the renderer-side

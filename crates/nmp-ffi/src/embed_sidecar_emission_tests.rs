@@ -56,7 +56,9 @@ fn tick(
         session_id: frame_session_id.load(Ordering::Acquire),
         snapshot_epoch: frame_snapshot_epoch.load(Ordering::Acquire),
     };
-    let Ok(mut st) = state.lock() else { return None; };
+    let Ok(mut st) = state.lock() else {
+        return None;
+    };
     let decision = st.should_emit(typed_data.payload.clone(), identity);
     drop(st);
     decision
@@ -75,7 +77,11 @@ fn populate_slot_with_marker(slot: &EmbedSidecarSlot, marker: u8) {
         EmbeddedEventEnvelope {
             uri: String::new(),
             primary_id: key,
-            render_context: RenderContextWire { depth: 0, max_depth: 4, visited: vec![] },
+            render_context: RenderContextWire {
+                depth: 0,
+                max_depth: 4,
+                visited: vec![],
+            },
             projection: EmbedKindProjection::Unknown(UnknownProjection {
                 kind: marker as u32,
                 author_pubkey: "aa".repeat(32),
@@ -91,7 +97,7 @@ fn populate_slot_with_marker(slot: &EmbedSidecarSlot, marker: u8) {
             collapse_reason: None,
         },
     );
-    *slot.lock().unwrap() = Some(map);
+    slot.lock().unwrap().envelopes = map;
 }
 
 // ── Group A: value changes → emit ────────────────────────────────────────────
@@ -100,7 +106,9 @@ fn populate_slot_with_marker(slot: &EmbedSidecarSlot, marker: u8) {
 #[test]
 fn claimed_event_embeds_a1_first_tick_always_emits() {
     let slot = new_embed_sidecar_slot(); // empty
-    let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(capability_on())));
+    let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(
+        capability_on(),
+    )));
     let sid = Arc::new(AtomicU64::new(1_000));
     let epoch = Arc::new(AtomicU64::new(0));
 
@@ -113,7 +121,9 @@ fn claimed_event_embeds_a1_first_tick_always_emits() {
 #[test]
 fn claimed_event_embeds_a2_new_embed_emits() {
     let slot = new_embed_sidecar_slot(); // empty
-    let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(capability_on())));
+    let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(
+        capability_on(),
+    )));
     let sid = Arc::new(AtomicU64::new(1_000));
     let epoch = Arc::new(AtomicU64::new(0));
 
@@ -133,16 +143,21 @@ fn claimed_event_embeds_a2_new_embed_emits() {
 fn claimed_event_embeds_a3_slot_cleared_emits() {
     let slot = new_embed_sidecar_slot();
     populate_slot_with_marker(&slot, 7);
-    let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(capability_on())));
+    let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(
+        capability_on(),
+    )));
     let sid = Arc::new(AtomicU64::new(1_000));
     let epoch = Arc::new(AtomicU64::new(0));
 
     tick(&slot, &state, &sid, &epoch); // baseline
 
-    *slot.lock().unwrap() = Some(BTreeMap::new()); // clear
+    slot.lock().unwrap().envelopes = BTreeMap::new(); // clear
 
     let result = tick(&slot, &state, &sid, &epoch);
-    assert!(result.is_some(), "clearing the slot must emit (bytes change)");
+    assert!(
+        result.is_some(),
+        "clearing the slot must emit (bytes change)"
+    );
 }
 
 // ── Group B: value unchanged → omit ──────────────────────────────────────────
@@ -152,14 +167,20 @@ fn claimed_event_embeds_a3_slot_cleared_emits() {
 fn claimed_event_embeds_b1_idle_tick_omits() {
     let slot = new_embed_sidecar_slot();
     populate_slot_with_marker(&slot, 3);
-    let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(capability_on())));
+    let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(
+        capability_on(),
+    )));
     let sid = Arc::new(AtomicU64::new(1_000));
     let epoch = Arc::new(AtomicU64::new(0));
 
     tick(&slot, &state, &sid, &epoch); // baseline
     let idle = tick(&slot, &state, &sid, &epoch);
     assert!(idle.is_none(), "idle tick (slot unchanged) must omit");
-    assert_eq!(state.lock().unwrap().current_rev(), 1, "rev must not advance on omit");
+    assert_eq!(
+        state.lock().unwrap().current_rev(),
+        1,
+        "rev must not advance on omit"
+    );
 }
 
 /// B.2 — Multiple consecutive idle ticks → all omitted, rev stable.
@@ -167,7 +188,9 @@ fn claimed_event_embeds_b1_idle_tick_omits() {
 fn claimed_event_embeds_b2_multiple_idle_ticks_omit() {
     let slot = new_embed_sidecar_slot();
     populate_slot_with_marker(&slot, 5);
-    let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(capability_on())));
+    let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(
+        capability_on(),
+    )));
     let sid = Arc::new(AtomicU64::new(1_000));
     let epoch = Arc::new(AtomicU64::new(0));
 
@@ -178,7 +201,11 @@ fn claimed_event_embeds_b2_multiple_idle_ticks_omit() {
             "idle tick {i} must omit"
         );
     }
-    assert_eq!(state.lock().unwrap().current_rev(), 1, "rev stable across 19 idle ticks");
+    assert_eq!(
+        state.lock().unwrap().current_rev(),
+        1,
+        "rev stable across 19 idle ticks"
+    );
 }
 
 // ── Group C: freeze guard ─────────────────────────────────────────────────────
@@ -196,14 +223,19 @@ fn claimed_event_embeds_b2_multiple_idle_ticks_omit() {
 fn claimed_event_embeds_c1_freeze_guard_session_id_change_forces_baseline() {
     let slot = new_embed_sidecar_slot();
     populate_slot_with_marker(&slot, 9);
-    let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(capability_on())));
+    let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(
+        capability_on(),
+    )));
     let sid = Arc::new(AtomicU64::new(1_000));
     let epoch = Arc::new(AtomicU64::new(0));
 
     // Pre-Reset session baseline.
     tick(&slot, &state, &sid, &epoch);
     // Idle tick → omit, host retains.
-    assert!(tick(&slot, &state, &sid, &epoch).is_none(), "pre-Reset idle omits");
+    assert!(
+        tick(&slot, &state, &sid, &epoch).is_none(),
+        "pre-Reset idle omits"
+    );
 
     // Reset: kernel rebuild → new session_id. Slot content unchanged.
     sid.store(2_000, Ordering::Release);
@@ -224,7 +256,9 @@ fn claimed_event_embeds_c1_freeze_guard_session_id_change_forces_baseline() {
 #[test]
 fn claimed_event_embeds_c2_freeze_guard_epoch_change_identical_bytes_forces_baseline() {
     let slot = new_embed_sidecar_slot(); // empty slot
-    let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(capability_on())));
+    let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(
+        capability_on(),
+    )));
     let sid = Arc::new(AtomicU64::new(1_000));
     let epoch = Arc::new(AtomicU64::new(0));
 
@@ -248,7 +282,9 @@ fn claimed_event_embeds_c2_freeze_guard_epoch_change_identical_bytes_forces_base
 fn claimed_event_embeds_d1_capability_off_always_emits() {
     let slot = new_embed_sidecar_slot();
     populate_slot_with_marker(&slot, 2);
-    let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(capability_off())));
+    let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(
+        capability_off(),
+    )));
     let sid = Arc::new(AtomicU64::new(1_000));
     let epoch = Arc::new(AtomicU64::new(0));
 
@@ -267,7 +303,9 @@ fn claimed_event_embeds_d1_capability_off_always_emits() {
 #[test]
 fn claimed_event_embeds_e1_host_coherence_full_sequence() {
     let slot = new_embed_sidecar_slot();
-    let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(capability_on())));
+    let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(
+        capability_on(),
+    )));
     let sid = Arc::new(AtomicU64::new(1_000));
     let epoch = Arc::new(AtomicU64::new(0));
 
@@ -299,7 +337,10 @@ fn claimed_event_embeds_e1_host_coherence_full_sequence() {
         }};
     }
 
-    let id_a = FrameIdentity { session_id: 1_000, snapshot_epoch: 0 };
+    let id_a = FrameIdentity {
+        session_id: 1_000,
+        snapshot_epoch: 0,
+    };
 
     // Tick 1: empty slot baseline.
     apply_host!(tick(&slot, &state, &sid, &epoch), id_a);
@@ -315,7 +356,10 @@ fn claimed_event_embeds_e1_host_coherence_full_sequence() {
 
     // Tick 4: Reset — new session_id.
     sid.store(2_000, Ordering::Release);
-    let id_b = FrameIdentity { session_id: 2_000, snapshot_epoch: 0 };
+    let id_b = FrameIdentity {
+        session_id: 2_000,
+        snapshot_epoch: 0,
+    };
     let r4 = tick(&slot, &state, &sid, &epoch);
     assert!(r4.is_some(), "post-Reset baseline must emit");
     apply_host!(r4, id_b);

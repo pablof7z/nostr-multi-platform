@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, HashSet};
 
 use nmp_content::embed_projection::EmbeddedEventEnvelope;
-use nmp_content::EventClaimSink;
+use nmp_content::EventRefResolver;
 use ratatui::{
     style::{Color, Modifier, Style},
     text::{Line, Span},
@@ -26,7 +26,7 @@ pub struct NostrContentView<'a> {
     media_images: &'a [(&'a str, &'a Protocol)],
     kind_registry: Option<&'a NostrKindRegistry>,
     embedded_events: Option<&'a BTreeMap<String, EmbeddedEventEnvelope>>,
-    claim_sink: Option<&'a dyn EventClaimSink>,
+    event_ref_resolver: Option<&'a dyn EventRefResolver>,
     profile_host: Option<&'a dyn NostrMentionProfileHost>,
     consumer_id: Option<&'a str>,
     // Per-render-pass seen-set. `Widget::render` consumes `self`, so the widget
@@ -44,7 +44,7 @@ impl<'a> NostrContentView<'a> {
             media_images: &[],
             kind_registry: None,
             embedded_events: None,
-            claim_sink: None,
+            event_ref_resolver: None,
             profile_host: None,
             consumer_id: None,
             claimed_this_frame: RefCell::new(HashSet::new()),
@@ -77,9 +77,9 @@ impl<'a> NostrContentView<'a> {
     /// Optional host-side sink used to initiate an upstream fetch the first
     /// time a `nostr:` event URI is encountered in a render pass (ADR-0034 /
     /// M16). Defaults to `None`, which preserves preview-only behaviour: no
-    /// claims are issued and only pre-populated `embedded_events` resolve.
-    pub fn claim_sink(mut self, sink: Option<&'a dyn EventClaimSink>) -> Self {
-        self.claim_sink = sink;
+    /// event refs are resolved and only pre-populated `embedded_events` resolve.
+    pub fn event_ref_resolver(mut self, sink: Option<&'a dyn EventRefResolver>) -> Self {
+        self.event_ref_resolver = sink;
         self
     }
 
@@ -91,9 +91,9 @@ impl<'a> NostrContentView<'a> {
         self
     }
 
-    /// Optional consumer identifier passed alongside each `claim` call so the
+    /// Optional consumer identifier passed alongside each `resolve_event_ref` call so the
     /// kernel can refcount per-host. Defaults to `None`; if either this or
-    /// `claim_sink` is unset, the claim path is skipped entirely.
+    /// `event_ref_resolver` is unset, the resolve path is skipped entirely.
     pub fn consumer_id(mut self, id: Option<&'a str>) -> Self {
         self.consumer_id = id;
         self

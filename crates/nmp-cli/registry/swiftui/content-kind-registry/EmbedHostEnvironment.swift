@@ -2,8 +2,8 @@ import SwiftUI
 
 /// Read-only source of resolved embed envelopes the kernel pushes on every
 /// snapshot frame, keyed by `primaryId` (event-id hex or `kind:pubkey:d`
-/// coordinate). The app binds a concrete conformer (holding the typed
-/// `claimed_event_embeds` sidecar map) into the environment via
+/// coordinate). The app binds a concrete conformer (holding the resolved
+/// event-ref embed envelope map produced after `resolve_ref`) into the environment via
 /// `.embedEnvelopeSource(...)`; `NostrContentView`'s event-ref renderer reads
 /// it to feed `EmbeddedEvent`.
 ///
@@ -22,8 +22,8 @@ private struct EmbedEnvelopeSourceKey: EnvironmentKey {
     static let defaultValue: EmbedEnvelopeSource? = nil
 }
 
-private struct EmbedClaimSinkKey: EnvironmentKey {
-    static let defaultValue: EventClaimSinkProtocol? = nil
+private struct EmbedEventRefResolverKey: EnvironmentKey {
+    static let defaultValue: EventRefResolverProtocol? = nil
 }
 
 private struct NostrKindRegistryKey: EnvironmentKey {
@@ -37,11 +37,11 @@ public extension EnvironmentValues {
         set { self[EmbedEnvelopeSourceKey.self] = newValue }
     }
 
-    /// The claim/release sink `EmbeddedEvent` fires on enter/exit so the kernel
+    /// The resolve/release adapter `EmbeddedEvent` fires on enter/exit so the kernel
     /// reference-counts the embed URI and triggers upstream fetch.
-    var embedClaimSink: EventClaimSinkProtocol? {
-        get { self[EmbedClaimSinkKey.self] }
-        set { self[EmbedClaimSinkKey.self] = newValue }
+    var embedEventRefResolver: EventRefResolverProtocol? {
+        get { self[EmbedEventRefResolverKey.self] }
+        set { self[EmbedEventRefResolverKey.self] = newValue }
     }
 
     /// The kind → renderer dispatch table consulted for each resolved embed.
@@ -52,17 +52,17 @@ public extension EnvironmentValues {
 }
 
 public extension View {
-    /// Bind the embed host, claim sink, and kind registry so any nested
+    /// Bind the embed host, event-ref resolver, and kind registry so any nested
     /// `NostrContentView` renders `nostr:` event refs through the kind-dispatch
     /// registry (ADR-0034).
     func embedEnvelopeSource(
         _ source: EmbedEnvelopeSource?,
-        claimSink: EventClaimSinkProtocol? = nil,
+        eventRefResolver: EventRefResolverProtocol? = nil,
         registry: NostrKindRegistry? = nil
     ) -> some View {
         self
             .environment(\.embedEnvelopeSource, source)
-            .environment(\.embedClaimSink, claimSink)
+            .environment(\.embedEventRefResolver, eventRefResolver)
             .environment(\.nostrKindRegistry, registry)
     }
 }

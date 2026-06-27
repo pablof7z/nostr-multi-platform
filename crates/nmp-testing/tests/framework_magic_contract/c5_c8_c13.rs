@@ -246,18 +246,18 @@ fn c8_subscriptions_coalesce_and_buffer() {
 ///
 /// Design: `docs/product-spec/doctrine.md` §D1, ADR-0017,
 ///         `docs/design/0001-ffi-update-channel-envelope.md` (T103).
-/// V-112 (ADR-0042): Updated to use event ref resolution + `claimed_events` typed
+/// V-112 (ADR-0042): Updated to use event ref resolution + `refs.event`
 /// projection instead of the deleted `OpenAuthor` + `author_view` sidecar.
 /// C13 property remains the same: raw event projections do not synthesize
 /// presentation fields before kind:0.
 #[test]
 fn c13_view_payload_uses_placeholders_then_refines_in_place() {
     use nmp_core::actor::{LifecycleCommand, RefsCommand, TestSupportCommand};
+    use nmp_core::refs::{RefEventStore, REFS_EVENT_KEY};
     use nmp_core::testing::{spawn_actor, ActorCommand};
-    use nmp_core::typed_projections::{decode_claimed_events, CLAIMED_EVENTS_SCHEMA_ID};
     use nmp_core::{
-        decode_snapshot_typed_projections, decode_update_frame, EventShape, RefLiveness,
-        RefNamespace, RefShape, UpdateEnvelope,
+        decode_snapshot_envelope, decode_snapshot_typed_projections, decode_update_frame,
+        EventShape, RefLiveness, RefNamespace, RefShape, UpdateEnvelope,
     };
     use nmp_store::RawEvent;
     use std::time::Duration;
@@ -288,15 +288,15 @@ fn c13_view_payload_uses_placeholders_then_refines_in_place() {
     use nmp_store::VerifiedEvent;
     let verified = VerifiedEvent::from_raw_unchecked(raw);
     // The diag-firehose-stress path pushes the event directly into self.events
-    // regardless of timeline_authors, so it is visible to claimed_events.
+    // regardless of timeline_authors, so it is visible to refs.event.
     tx.send(ActorCommand::TestSupport(
         TestSupportCommand::IngestPreVerifiedEvents(vec![verified]),
     ))
     .expect("send IngestPreVerifiedEvents");
 
     // V-112 (ADR-0042): OpenAuthor deleted. Use event ref resolution to surface the
-    // event in the `claimed_events` typed sidecar for C13 observation.
-    // D5: claimed_events carries the entry only after a Resolve dispatch.
+    // event in the `refs.event` typed sidecar for C13 observation.
+    // D5: refs.event carries the entry only after a Resolve dispatch.
     tx.send(ActorCommand::Refs(RefsCommand::Resolve {
         namespace: RefNamespace::Event,
         key: event_id.to_string(),
@@ -309,7 +309,7 @@ fn c13_view_payload_uses_placeholders_then_refines_in_place() {
     .expect("send event ref resolve");
 
     // Drain envelopes until we find a `Snapshot` carrying our event in the
-    // typed `claimed_events` sidecar. Every frame on the channel is a FlatBuffers
+    // `refs.event` sidecar. Every frame on the channel is a FlatBuffers
     // update frame per ADR-0001 (T103); decoding through `UpdateEnvelope`
     // first proves the snapshot is delivered with the canonical discriminator
     // — non-snapshot frames are skipped on the typed tag, never by key
@@ -317,6 +317,7 @@ fn c13_view_payload_uses_placeholders_then_refines_in_place() {
     // FlatBuffers sidecar; the generic JSON payload no longer exists.
     let our_row = {
         let mut found = None;
+        let mut event_store = RefEventStore::new();
         let deadline = std::time::Instant::now() + Duration::from_secs(5);
         while std::time::Instant::now() < deadline {
             match rx.recv_timeout(Duration::from_millis(100)) {
@@ -328,38 +329,43 @@ fn c13_view_payload_uses_placeholders_then_refines_in_place() {
                     if !matches!(envelope, UpdateEnvelope::Snapshot(_)) {
                         continue;
                     }
+                    let snapshot = decode_snapshot_envelope(&frame)
+                        .expect("snapshot frame must carry a decodable envelope");
                     let typed = decode_snapshot_typed_projections(&frame)
                         .expect("snapshot frame must carry a decodable typed sidecar");
-                    let model = typed
-                        .iter()
-                        .find(|t| t.key == CLAIMED_EVENTS_SCHEMA_ID)
-                        .and_then(|t| decode_claimed_events(&t.payload).ok());
-                    if let Some(model) = model {
-                        if let Some(row) = model
-                            .entries
-                            .into_iter()
-                            .find(|(k, _)| k == event_id)
-                            .map(|(_, v)| v)
-                        {
+                    for projection in typed.iter().filter(|t| t.key == REFS_EVENT_KEY) {
+                        let outcome = event_store.apply_sidecar(
+                            &projection.payload,
+                            snapshot.session_id,
+                            snapshot.snapshot_epoch,
+                        );
+                        assert!(
+                            !outcome.decode_failed,
+                            "refs.event rows emitted by the actor must decode"
+                        );
+                        if let Some(row) = event_store.event(event_id) {
                             found = Some(row);
                             break;
                         }
+                    }
+                    if found.is_some() {
+                        break;
                     }
                 }
                 Err(_) => break,
             }
         }
         found.expect(
-            "actor must emit a `snapshot` envelope whose typed claimed_events sidecar contains our event within 5 s",
+            "actor must emit a `snapshot` envelope whose refs.event sidecar contains our event within 5 s",
         )
     };
 
     // C13 core assertion: aim.md §2 — NMP ships raw event facts; the
     // presentation layer owns display/avatar synthesis. Observed via
-    // `claimed_events` (V-112: author_view deleted).
+    // `refs.event` (V-112: author_view deleted).
     assert_eq!(
         our_row.author_pubkey, author_pk,
-        "claimed_events must carry the raw event author pubkey, not synthesized presentation data"
+        "refs.event must carry the raw event author pubkey, not synthesized presentation data"
     );
 
     tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown))

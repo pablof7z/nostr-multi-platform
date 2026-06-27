@@ -185,39 +185,47 @@ pub extern "C" fn nmp_app_gallery_register(app: *mut c_void) {
     app.consume_all_builtin_projections();
 }
 
-/// Opaque host-owned mirror of the kernel's `refs.profile` row-delta projection
-/// (ADR-0063 #1671). The native shells (iOS / Android) hold one of these for the
-/// lifetime of their kernel session and pass it to every
-/// [`nmp_app_gallery_snapshot_json_from_update_frame`] call so per-key profile
-/// deltas accumulate across frames (the `refs.profile` sidecar carries only
-/// changed/cleared rows — a single frame cannot be decoded in isolation). This
-/// is the sole app-side store of hydrated profiles (D4); there is no second
-/// native profile cache.
-pub struct GalleryRefProfileStore {
-    inner: nmp_core::refs::RefProfileStore,
+/// Opaque host-owned mirrors of the kernel's `refs.profile` / `refs.event`
+/// row-delta projections (ADR-0063 #1671). The native shells (iOS / Android)
+/// hold one of these for the lifetime of their kernel session and pass it to
+/// every [`nmp_app_gallery_snapshot_json_from_update_frame`] call so per-key
+/// ref deltas accumulate across frames (each sidecar carries only
+/// changed/cleared rows — a single frame cannot be decoded in isolation).
+///
+/// D4: this is the sole app-side mirror of hydrated ref facts. Gallery JSON is
+/// materialised from these stores; native never keeps a second merge cache.
+pub struct GalleryRefStores {
+    pub(crate) profiles: nmp_core::refs::RefProfileStore,
+    pub(crate) events: nmp_core::refs::RefEventStore,
 }
 
-/// Allocate a fresh [`GalleryRefProfileStore`]. The caller owns the returned
-/// pointer and MUST release it exactly once with
-/// [`nmp_app_gallery_ref_profile_store_free`]. Never returns NULL.
+impl GalleryRefStores {
+    #[must_use]
+    pub(crate) fn new() -> Self {
+        Self {
+            profiles: nmp_core::refs::RefProfileStore::new(),
+            events: nmp_core::refs::RefEventStore::new(),
+        }
+    }
+}
+
+/// Allocate fresh gallery ref stores. The caller owns the returned pointer and
+/// MUST release it exactly once with [`nmp_app_gallery_ref_stores_free`]. Never
+/// returns NULL.
 #[no_mangle]
-pub extern "C" fn nmp_app_gallery_ref_profile_store_new() -> *mut GalleryRefProfileStore {
-    Box::into_raw(Box::new(GalleryRefProfileStore {
-        inner: nmp_core::refs::RefProfileStore::new(),
-    }))
+pub extern "C" fn nmp_app_gallery_ref_stores_new() -> *mut GalleryRefStores {
+    Box::into_raw(Box::new(GalleryRefStores::new()))
 }
 
-/// Release a [`GalleryRefProfileStore`] allocated by
-/// [`nmp_app_gallery_ref_profile_store_new`]. A NULL pointer is a silent no-op
+/// Release [`GalleryRefStores`] allocated by
+/// [`nmp_app_gallery_ref_stores_new`]. A NULL pointer is a silent no-op
 /// (D6). Double-free is undefined behaviour (caller contract).
 ///
 /// # Safety
 /// `store` must be a pointer returned by
-/// [`nmp_app_gallery_ref_profile_store_new`] and not already freed, or NULL.
+/// [`nmp_app_gallery_ref_stores_new`] and not already freed, or NULL.
 #[no_mangle]
-pub unsafe extern "C" fn nmp_app_gallery_ref_profile_store_free(
-    store: *mut GalleryRefProfileStore,
-) {
+pub unsafe extern "C" fn nmp_app_gallery_ref_stores_free(store: *mut GalleryRefStores) {
     if store.is_null() {
         return;
     }
@@ -227,9 +235,10 @@ pub unsafe extern "C" fn nmp_app_gallery_ref_profile_store_free(
 /// Decode one canonical typed `nmp.transport.UpdateFrame` into the Gallery
 /// snapshot JSON shape consumed by the iOS and Android model layers.
 ///
-/// ADR-0063 (#1671): the frame's `refs.profile` row-delta batch is merged into
-/// `store` (the host's persistent profile mirror) before the snapshot JSON is
-/// built; the rendered `refs.profile` JSON map is sourced from that store.
+/// ADR-0063 (#1671): the frame's `refs.profile` / `refs.event` row-delta
+/// batches are merged into `stores` (the host's persistent ref mirrors) before
+/// the snapshot JSON is built; the rendered `refs.profile` / `refs.event` JSON
+/// maps are sourced from those stores.
 /// `store` MUST persist across calls for one kernel session.
 ///
 /// Returns a heap-allocated UTF-8 JSON string on success; callers must release
@@ -238,20 +247,24 @@ pub unsafe extern "C" fn nmp_app_gallery_ref_profile_store_free(
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[no_mangle]
 pub extern "C" fn nmp_app_gallery_snapshot_json_from_update_frame(
-    store: *mut GalleryRefProfileStore,
+    stores: *mut GalleryRefStores,
     bytes: *const u8,
     len: usize,
 ) -> *mut c_char {
-    if store.is_null() || bytes.is_null() || len == 0 {
+    if stores.is_null() || bytes.is_null() || len == 0 {
         return std::ptr::null_mut();
     }
-    // SAFETY: caller guarantees `store` is a live pointer from
-    // `nmp_app_gallery_ref_profile_store_new`; access is serialised by the
+    // SAFETY: caller guarantees `stores` is a live pointer from
+    // `nmp_app_gallery_ref_stores_new`; access is serialised by the
     // single-threaded host decode path (the update callback dispatches to the
     // main actor / thread before calling this).
-    let store = unsafe { &mut *store };
+    let stores = unsafe { &mut *stores };
     let frame = unsafe { std::slice::from_raw_parts(bytes, len) };
-    let Ok(json) = snapshot_json::snapshot_json_from_update_frame(frame, &mut store.inner) else {
+    let Ok(json) = snapshot_json::snapshot_json_from_update_frame(
+        frame,
+        &mut stores.profiles,
+        &mut stores.events,
+    ) else {
         return std::ptr::null_mut();
     };
     CString::new(json)

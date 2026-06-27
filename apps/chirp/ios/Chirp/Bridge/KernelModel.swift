@@ -103,18 +103,14 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     /// kernel actor is not running (live path is `keyedRefCache`).
     var debugProfileCardOverrides: [String: ProfileCard] = [:]
     #endif
-    /// Typed NIP-17 DM cluster + claimed-event map sidecars (`NDMI` / `NDRL` /
-    /// `KCEV`). `typedDmInbox` feeds the `dmInbox` store and `typedClaimedEvents`
-    /// feeds `EmbedHost` from the SAME typed value in `apply(result:)`;
-    /// `typedDmRelayList` is read through the `dmRelayList` accessor (no consumer
-    /// yet — wired for parity).
+    /// Typed NIP-17 DM cluster sidecars (`NDMI` / `NDRL`). `typedDmInbox`
+    /// feeds the `dmInbox` store; `typedDmRelayList` is read through the
+    /// `dmRelayList` accessor (no consumer yet — wired for parity).
     /// Issue #1283 Phase 1: the embed resolver moved to Rust. `typedClaimedEventEmbeds`
     /// carries the kernel-resolved `claimed_event_embeds` (`NEMB`) map that feeds
-    /// `EmbedHost`; `typedClaimedEvents` (`KCEV`) is retained as a separate live
-    /// projection but is no longer the embed-resolution input.
+    /// `EmbedHost`; raw event refs flow through the keyed `refs.event` cache.
     @Published var typedDmInbox: DmInboxSnapshot?
     @Published var typedDmRelayList: DmRelayListSnapshot?
-    @Published var typedClaimedEvents: [String: ClaimedEventDto]?
     @Published var typedClaimedEventEmbeds: [String: EmbeddedEventEnvelope]?
 
     /// NIP-46 cluster typed sidecars (`bunker_handshake` / `nip46_onboarding`).

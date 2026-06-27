@@ -1,14 +1,14 @@
-//! `EmbedHostState` — gallery-side mirror of the kernel's `claimed_events`
-//! snapshot projection.
+//! `EmbedHostState` — gallery-side mirror of the kernel's `refs.event`
+//! row-delta projection.
 //!
 //! The renderer is frontend-driven (ADR-0034 / M16): when `NostrContentView`
 //! walks the content tree and hits an `EventRef(uri)`, it calls
-//! `sink.claim(uri, consumer_id)` via `EventClaimSink`. The host
+//! `sink.resolve_event_ref(uri, consumer_id)` via `EventRefResolver`. The host
 //! (`LiveKernelSink`) decodes the URI and forwards the raw event key through
 //! `resolve_ref`. The kernel registers a `OneshotApi` interest (D4 single
 //! writer), fetches the event from relays *or* short-circuits when it's already
 //! in the local store (cache hit, sub-tick latency), and surfaces the resolved
-//! event in the typed `claimed_events` sidecar (ADR-0037).
+//! event in the typed `refs.event` row-delta sidecar (ADR-0063).
 //!
 //! `EmbedHostState` is the gallery's read-side cache of that projection.
 //! Each snapshot push calls `update_from_typed`; on the next redraw the
@@ -35,8 +35,9 @@ use nmp_core::typed_projections::ClaimedEventRow;
 
 use crate::live::GalleryTypedSnapshot;
 
-/// Gallery-side cache of resolved embed envelopes. Reset on every snapshot
-/// (latest wins — the kernel's projection is the source of truth).
+/// Gallery-side cache of resolved embed envelopes. Reset from every
+/// materialised `refs.event` snapshot (latest wins — the kernel's projection is
+/// the source of truth).
 #[derive(Default)]
 pub struct EmbedHostState {
     envelopes: BTreeMap<String, EmbeddedEventEnvelope>,
@@ -48,8 +49,8 @@ impl EmbedHostState {
         Self::default()
     }
 
-    /// Rebuild the in-memory envelope map from a freshly pushed kernel
-    /// snapshot (typed path — reads the `claimed_events` typed sidecar from
+    /// Rebuild the in-memory envelope map from a freshly pushed kernel snapshot
+    /// (typed path — reads the materialised `refs.event` rows from
     /// `GalleryTypedSnapshot`). Each entry is a `ClaimedEventRow`; we turn it
     /// into a `KernelEvent`, route it through the canonical
     /// `resolve_embed_projection` dispatch point (the same function ADR-0034
@@ -59,23 +60,14 @@ impl EmbedHostState {
     /// Non-fatal: malformed entries are silently skipped (D6 — the renderer
     /// falls back to a loading placeholder until a well-formed snapshot lands).
     ///
-    /// Returns the pubkeys of claimed-event authors so the caller can issue
-    /// `resolve_profile`; `claimed_events` itself carries raw event data only.
+    /// Returns the pubkeys of event-ref authors so the caller can issue
+    /// `resolve_profile`; `refs.event` itself carries raw event data only.
     pub fn update_from_typed(&mut self, snapshot: &GalleryTypedSnapshot) -> Vec<String> {
-        // An absent (empty) claimed_events model is a no-op — do not wipe
-        // existing envelopes when no events are claimed yet (mirrors the
-        // previous JSON behaviour where a missing "claimed_events" key left
-        // the host untouched). Once the model has at least one entry the
-        // full replacement fires, keeping latest-wins semantics.
-        if snapshot.claimed_events.entries.is_empty() {
-            return Vec::new();
-        }
-
         let mut next: BTreeMap<String, EmbeddedEventEnvelope> = BTreeMap::new();
         let mut authors_needing_profile: Vec<String> = Vec::new();
         let ctx = RenderContext::new();
 
-        for (primary_id, row) in &snapshot.claimed_events.entries {
+        for (primary_id, row) in &snapshot.events {
             let Some(event) = kernel_event_from_row(row) else {
                 continue;
             };
@@ -164,11 +156,11 @@ mod tests {
         showcase_pubkey,
     };
     use nmp_content::embed_projection::EmbedKindProjection;
-    use nmp_core::typed_projections::{ClaimedEventRow, ClaimedEventsModel};
+    use nmp_core::typed_projections::ClaimedEventRow;
 
     fn snapshot_with(entries: Vec<(String, ClaimedEventRow)>) -> GalleryTypedSnapshot {
         GalleryTypedSnapshot {
-            claimed_events: ClaimedEventsModel { entries },
+            events: entries.into_iter().collect(),
             profiles: std::collections::BTreeMap::new(),
             relay_statuses: Vec::new(),
         }
@@ -314,16 +306,17 @@ mod tests {
     }
 
     #[test]
-    fn empty_model_leaves_host_untouched() {
+    fn empty_event_refs_replace_state() {
         let mut host = EmbedHostState::new();
         // First load a real entry.
         let (primary, row) = short_note_row();
         host.update_from_typed(&snapshot_with(vec![(primary.clone(), row)]));
         assert_eq!(host.len(), 1);
 
-        // An empty model (no claimed_events entries) should NOT wipe state.
+        // `GalleryTypedSnapshot::events` is the materialised refs.event store,
+        // so an empty set is authoritative and must clear old envelopes.
         host.update_from_typed(&GalleryTypedSnapshot::default());
-        assert_eq!(host.len(), 1, "empty model must not wipe state");
+        assert_eq!(host.len(), 0, "empty refs.event store must wipe state");
     }
 
     #[test]

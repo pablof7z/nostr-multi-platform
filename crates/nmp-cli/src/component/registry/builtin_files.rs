@@ -55,7 +55,9 @@ pub(super) const BUILTIN_FILES: &[(&str, &str)] = &[
     ),
     (
         "swiftui/content-view/Examples/NostrContentViewPreview.swift",
-        include_str!("../../../registry/swiftui/content-view/Examples/NostrContentViewPreview.swift"),
+        include_str!(
+            "../../../registry/swiftui/content-view/Examples/NostrContentViewPreview.swift"
+        ),
     ),
     (
         "swiftui/login-block/NostrLoginBlock.swift",
@@ -353,4 +355,3 @@ pub(super) const BUILTIN_FILES: &[(&str, &str)] = &[
         include_str!("../../../registry/web/relay-list/NostrRelayList.tsx"),
     ),
 ];
-

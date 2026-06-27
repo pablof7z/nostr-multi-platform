@@ -60,6 +60,27 @@ fn changed_rows_are_retained_when_next_frame_omits_them() {
 }
 
 #[test]
+fn extra_projections_are_output_only_not_retained() {
+    let mut cache = ProjectionMergeCache::default();
+    let first = cache
+        .merge_update_frame_with_extra_projections(
+            &frame(10, 0, &[row("profile", b"a", WireProjectionState::Changed)]),
+            [row(
+                "claimed_event_embeds",
+                b"sidecar",
+                WireProjectionState::Changed,
+            )],
+        )
+        .expect("first frame merges");
+    assert_eq!(keys(&first), vec!["claimed_event_embeds", "profile"]);
+
+    let second = cache
+        .merge_update_frame(&frame(10, 0, &[]))
+        .expect("second frame merges");
+    assert_eq!(keys(&second), vec!["profile"]);
+}
+
+#[test]
 fn cleared_rows_remove_cached_projection() {
     let mut cache = ProjectionMergeCache::default();
     cache

@@ -257,11 +257,15 @@ fn builtins_emit_without_any_host_typed_registration() {
     assert!(keys.contains("accounts"));
     assert!(keys.contains("active_account"));
     assert!(keys.contains("profile"));
-    // Wave C event-cluster: claimed_events is unconditional (`{}` when empty),
-    // so it appears even on a fresh kernel.
-    // ADR-0063 Lane H: mention_profiles / claimed_profiles / resolved_profiles
-    // deleted from typed sidecars (replaced by refs.profile KPRF row-delta sidecar).
-    assert!(keys.contains("claimed_events"));
+    // ADR-0063 Lane H: mention_profiles / claimed_profiles / resolved_profiles /
+    // claimed_events deleted from whole-map typed sidecars. Profile and event
+    // refs now flow through row-delta carriers.
+    assert!(keys.contains("refs.profile"));
+    assert!(keys.contains("refs.event"));
+    assert!(
+        !keys.contains("claimed_events"),
+        "claimed_events whole-map sidecar deleted (ADR-0063 Lane H)"
+    );
     assert!(
         !keys.contains("mention_profiles"),
         "mention_profiles deleted (ADR-0063 Lane H)"
@@ -295,17 +299,19 @@ fn builtins_emit_without_any_host_typed_registration() {
         !keys.contains("action_lifecycle"),
         "action_lifecycle is absent in steady state (nothing tracked)"
     );
-    // ADR-0063 Lane H: mention_profiles / claimed_profiles / resolved_profiles
-    // removed from typed sidecars (were 3 entries); count is now 11.
-    // Breakdown: 6 relay/settings/publish + 3 identity/views + 1 event
-    // (claimed_events) + 1 diagnostics (relay_diagnostics) = 11.
+    // ADR-0063 Lane H: mention_profiles / claimed_profiles / resolved_profiles /
+    // claimed_events removed from whole-map typed sidecars. The two refs.*
+    // row-delta carriers are unconditional Tier-2 entries.
+    // Breakdown: 6 relay/settings/publish + 3 identity/views + 2 refs.*
+    // carriers + 1 diagnostics (relay_diagnostics) = 12.
     assert_eq!(
         typed.len(),
-        11,
+        12,
         "the six relay/settings/publish built-ins + the three unconditional \
-         identity/views built-ins (accounts / active_account / profile) + \
-         claimed_events + relay_diagnostics = 11; \
-         ADR-0063 Lane H removed mention_profiles / claimed_profiles / resolved_profiles; \
+         identity/views built-ins (accounts / active_account / profile) + the \
+         refs.profile / refs.event row-delta carriers + relay_diagnostics = 12; \
+         ADR-0063 Lane H removed mention_profiles / claimed_profiles / \
+         resolved_profiles / claimed_events; \
          the four drain-on-emit built-ins absent on a fresh kernel: {typed:?}"
     );
 }

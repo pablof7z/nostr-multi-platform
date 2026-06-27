@@ -18,7 +18,10 @@ mod production_ingest_tests {
     use std::time::{Duration, Instant};
 
     use crate::kernel::claim_expansion::Phase;
+    use crate::kernel::public_typed_projections::ClaimedEventRow;
     use crate::kernel::{EventShape, Kernel, RefLiveness, RefNamespace, RefShape};
+    use crate::refs::{RefEventStore, REFS_EVENT_KEY};
+    use crate::update_envelope::{decode_snapshot_envelope, decode_snapshot_typed_projections};
     use {crate::relay::DEFAULT_VISIBLE_LIMIT, nmp_network::role::RelayRole};
 
     // ── Helpers (mirror relay_score_record::tests helpers) ──────────────────
@@ -76,6 +79,25 @@ mod production_ingest_tests {
             content: nostr_event.content.clone(),
             sig: nostr_event.sig.to_string(),
         }
+    }
+
+    fn event_ref_row(
+        kernel: &mut Kernel,
+        store: &mut RefEventStore,
+        primary_id: &str,
+    ) -> Option<ClaimedEventRow> {
+        let frame = kernel.make_update(true);
+        let envelope = decode_snapshot_envelope(&frame).expect("decode snapshot envelope");
+        let typed = decode_snapshot_typed_projections(&frame).expect("decode typed projections");
+        for entry in typed.iter().filter(|entry| entry.key == REFS_EVENT_KEY) {
+            let outcome =
+                store.apply_sidecar(&entry.payload, envelope.session_id, envelope.snapshot_epoch);
+            assert!(
+                !outcome.decode_failed,
+                "refs.event rows emitted by the kernel must pass decode-before-commit"
+            );
+        }
+        store.event(primary_id)
     }
 
     fn event_frame(sub_id: &str, event: &crate::kernel::NostrEvent) -> String {
@@ -474,29 +496,7 @@ mod production_ingest_tests {
         );
     }
 
-    // ── T-P7: REGRESSION — claimed kind:1 surfaces in the projection even when
-    //          a sibling relay EOSE'd-without-match BEFORE the EVENT arrived ──
-
-    /// REGRESSION (embed-loading-forever race). A claim's REQ fans out to
-    /// MULTIPLE relays sharing one `sub_id` (B4 shape-shared subs). Pre-fix,
-    /// `complete_unknown_oneshot` released the claim (`event_claims.remove`) on
-    /// the FIRST relay's EOSE-no-match. The slowest relay then delivered the
-    /// matching EVENT — it was stored in `self.events`, but the claim row was
-    /// already gone, so the `claimed_events` projection (which walks
-    /// `event_claims.keys()`) never surfaced it: the embed rendered "loading"
-    /// forever.
-    ///
-    /// This drives the EXACT production ordering through `handle_text`:
-    ///   relay_a EOSE-no-match  →  relay_b EVENT  →  assert projection present.
-    ///
-    /// Distinct from `event_claim_tests::claimed_events_projection_emits_dto_keyed_by_primary_id`,
-    /// which ingests via the `inject_note` bypass and never exercises the
-    /// EOSE-no-match teardown that precedes the EVENT — so it cannot catch this
-    /// race.
-    ///
-    /// The author is deliberately NOT in `timeline_authors`; the event persists
-    /// through the ingest chokepoint and surfaces because the live event-ref row
-    /// still exists after the sibling relay's EOSE-no-match.
+    // ── T-P7: sibling EOSE-no-match must not release a still-in-flight claim ──
     #[test]
     fn claimed_kind1_surfaces_when_event_arrives_after_sibling_eose_no_match() {
         use super::super::test_support;
@@ -517,10 +517,11 @@ mod production_ingest_tests {
         let primary_id = event.id.clone();
 
         let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+        let mut event_store = RefEventStore::new();
 
         // Resolve the event through the production raw-key event ref seam: this
-        // both refcounts `event_claims[primary_id]` (the key the projection
-        // walks) AND registers the `PendingClaim` controller state. The caller
+        // both refcounts `event_claims[primary_id]` (the key refs.event emits)
+        // AND registers the `PendingClaim` controller state. The caller
         // passes the relay hints that used to be carried by the URI TLV.
         let _ = kernel.resolve_ref(
             RefNamespace::Event,
@@ -557,9 +558,8 @@ mod production_ingest_tests {
 
         // Pre-arrival: the claim row exists but the event has not arrived, so
         // the projection must not surface it yet.
-        let snap = kernel.make_update_value_for_test(true);
         assert!(
-            snap["projections"]["claimed_events"][&primary_id].is_null(),
+            event_ref_row(&mut kernel, &mut event_store, &primary_id).is_none(),
             "claim row exists but the event has not arrived yet"
         );
 
@@ -581,37 +581,18 @@ mod production_ingest_tests {
             &event_frame(shared_sub_id, &event),
         );
 
-        // The claimed kind:1 event MUST now surface in the projection.
-        let snap = kernel.make_update_value_for_test(true);
-        let entry = &snap["projections"]["claimed_events"][&primary_id];
-        assert!(
-            entry.is_object(),
-            "claimed kind:1 event must surface in claimed_events even when it \
-             arrives after a sibling relay's EOSE-no-match — got {entry:?}"
+        // The claimed kind:1 event MUST now surface in refs.event.
+        let entry = event_ref_row(&mut kernel, &mut event_store, &primary_id).expect(
+            "claimed kind:1 event must surface in refs.event even when it arrives \
+             after a sibling relay's EOSE-no-match",
         );
-        assert_eq!(entry["primary_id"], primary_id);
-        assert_eq!(entry["kind"], 1);
+        assert_eq!(entry.primary_id, primary_id);
+        assert_eq!(entry.kind, 1);
 
         test_support::clear_claim_expansion_subs();
     }
 
-    // ── T-P8: DIAGNOSTIC — naddr (kind:30023) resolves through the REAL wire
-    //          ingest path (claim → wire frame → handle_text EVENT → projection) ─
-
-    /// Drives a kind:30023 addressable article through the SAME production wire
-    /// ingest the `resolve_event_ref_naddr_matches_kind_pubkey_dtag_in_store` unit
-    /// test does NOT exercise. That unit test pre-injects the article into the
-    /// store (`ingest_pre_verified_event`) and then claims, so it only proves
-    /// the store→projection coordinate lookup (stage d). It never feeds a real
-    /// signed EVENT through `handle_text` for a coordinate claim.
-    ///
-    /// This test closes that gap: claim the `naddr`, register the planner wire
-    /// frame, deliver the matching signed kind:30023 EVENT through `handle_text`,
-    /// and assert `claimed_events[kind:pubkey:d_tag]` surfaces. If this PASSES,
-    /// the shared kernel's addressable wire path is sound and the Android
-    /// embed-article gap is Android-bridge-specific. If it FAILS, the kernel
-    /// itself drops addressable events on the wire path and the unit test was
-    /// masking it.
+    // ── T-P8: naddr kind:30023 resolves through production wire ingest ────────
     #[test]
     fn claimed_naddr_article_surfaces_via_production_wire_ingest() {
         use super::super::test_support;
@@ -635,9 +616,10 @@ mod production_ingest_tests {
         let coord_key = format!("30023:{author_hex}:{d_tag}");
 
         let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+        let mut event_store = RefEventStore::new();
 
         // Resolve through the production raw-key event ref seam. This refcounts
-        // `event_claims[coord_key]` (the key the projection walks) AND registers
+        // `event_claims[coord_key]` (the key refs.event emits) AND registers
         // the W5 PendingClaim. The coordinate key carries the author, so
         // `claim_expansion_match_author` can still admit and score the EVENT.
         let _ = kernel.resolve_ref(
@@ -668,9 +650,8 @@ mod production_ingest_tests {
         kernel.register_wire_frames_for_test(&frames);
 
         // Pre-arrival: claim row exists, event not yet ingested → absent.
-        let snap = kernel.make_update_value_for_test(true);
         assert!(
-            snap["projections"]["claimed_events"][&coord_key].is_null(),
+            event_ref_row(&mut kernel, &mut event_store, &coord_key).is_none(),
             "claim row exists but the kind:30023 event has not arrived yet"
         );
 
@@ -681,18 +662,15 @@ mod production_ingest_tests {
             &event_frame(shared_sub_id, &event),
         );
 
-        // The addressable article MUST now surface in the projection, keyed by
+        // The addressable article MUST now surface in refs.event, keyed by
         // the coordinate string.
-        let snap = kernel.make_update_value_for_test(true);
-        let entry = &snap["projections"]["claimed_events"][&coord_key];
-        assert!(
-            entry.is_object(),
-            "claimed kind:30023 article must surface in claimed_events[{coord_key}] \
-             after arriving on the production wire path — got {entry:?}"
+        let entry = event_ref_row(&mut kernel, &mut event_store, &coord_key).expect(
+            "claimed kind:30023 article must surface in refs.event after arriving \
+             on the production wire path",
         );
-        assert_eq!(entry["primary_id"], coord_key);
-        assert_eq!(entry["kind"], 30023);
-        assert_eq!(entry["author_pubkey"], author_hex);
+        assert_eq!(entry.primary_id, coord_key);
+        assert_eq!(entry.kind, 30023);
+        assert_eq!(entry.author_pubkey, author_hex);
 
         test_support::clear_claim_expansion_subs();
     }

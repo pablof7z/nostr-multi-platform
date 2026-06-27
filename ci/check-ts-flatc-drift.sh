@@ -15,6 +15,7 @@
 #              + crates/nmp-core/schema/claimed_events.fbs
 #   KRDG        — crates/nmp-core/schema/relay_diagnostics.fbs
 #   NRRD        — crates/nmp-core/schema/ref_rowdelta.fbs (ADR-0063 / #1671)
+#   NEMB        — crates/nmp-content/schema/embed_sidecar.fbs
 # All generated with flatc 25.9.23 (the Web/TypeScript runtime pin — see
 # ci/check-flatbuffers-version-pins.sh and web/nmp-gallery/package.json).
 #
@@ -77,6 +78,9 @@ KRDG_SCHEMA="${REPO_ROOT}/crates/nmp-core/schema/relay_diagnostics.fbs"
 # generated independently into `nmp/refs/`. The keyed-projection row-delta
 # payload every web `RefRowCache` decodes.
 REFS_SCHEMA="${REPO_ROOT}/crates/nmp-core/schema/ref_rowdelta.fbs"
+# NEMB embed sidecar (nmp/embed/) — browser runtime derives this from the
+# authoritative refs.event store so web shells never re-parse raw event tags.
+EMBED_SCHEMA="${REPO_ROOT}/crates/nmp-content/schema/embed_sidecar.fbs"
 CHECKED_IN_ROOTS=("${REPO_ROOT}/web/nmp-gallery/src/nmp/generated")
 # components-web ships only the content subtree (content_tree.fbs bindings).
 # It is checked separately below with a scoped diff rather than a full-tree diff.
@@ -148,6 +152,11 @@ flatc --ts -o "${TMP_DIR}" \
 # the row-delta carrier the per-key RefRowCache merges (ADR-0063 / #1671).
 flatc --ts -o "${TMP_DIR}" "${REFS_SCHEMA}"
 
+# ── NEMB embed-sidecar schema (claimed_event_embeds → nmp/embed/) ────────────
+# Self-contained (nested content trees are opaque NFCT bytes). The browser
+# runtime appends this typed sidecar after merging refs.event.
+flatc --ts -o "${TMP_DIR}" "${EMBED_SCHEMA}"
+
 GENERATED_DIR="${TMP_DIR}/nmp"
 
 if [[ "${MODE}" == "--write" ]]; then
@@ -197,4 +206,4 @@ if [[ "${drift}" -ne 0 ]]; then
     exit 1
 fi
 
-echo "ts-flatc-drift: OK (flatc ${EXPECTED_FLATC_VERSION}, transport + feed + KPRF + KRDG + NRRD bindings in sync across ${#CHECKED_IN_ROOTS[@]} TS tree(s))"
+echo "ts-flatc-drift: OK (flatc ${EXPECTED_FLATC_VERSION}, transport + feed + KPRF + KRDG + NRRD + NEMB bindings in sync across ${#CHECKED_IN_ROOTS[@]} TS tree(s))"

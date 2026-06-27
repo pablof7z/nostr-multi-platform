@@ -63,7 +63,10 @@ fn inject_and_wait(app: *mut NmpApp, json: &str, id: &str, rx: &Receiver<()>) {
         match rx.recv_timeout(Duration::from_secs(5)) {
             Ok(()) if app_ref.event_by_id(id).is_some() => return,
             Ok(()) => {}
-            Err(_) => panic!("actor timed out making event {} readable", &id[..16.min(id.len())]),
+            Err(_) => panic!(
+                "actor timed out making event {} readable",
+                &id[..16.min(id.len())]
+            ),
         }
     }
 }
@@ -85,7 +88,12 @@ fn read_tag_card_ids(app: *mut NmpApp, key: &str) -> Vec<String> {
 }
 
 /// Block until the tag sidecar for `key` carries `expected` cards; return ids.
-fn wait_for_tag_cards(app: *mut NmpApp, key: &str, expected: usize, rx: &Receiver<()>) -> Vec<String> {
+fn wait_for_tag_cards(
+    app: *mut NmpApp,
+    key: &str,
+    expected: usize,
+    rx: &Receiver<()>,
+) -> Vec<String> {
     let ids = read_tag_card_ids(app, key);
     if ids.len() >= expected {
         return ids;
@@ -100,7 +108,10 @@ fn wait_for_tag_cards(app: *mut NmpApp, key: &str, expected: usize, rx: &Receive
             }
             Err(_) => {
                 let ids = read_tag_card_ids(app, key);
-                panic!("timed out waiting for {expected} cards in {key} (got {})", ids.len());
+                panic!(
+                    "timed out waiting for {expected} cards in {key} (got {})",
+                    ids.len()
+                );
             }
         }
     }
@@ -256,14 +267,18 @@ fn session_engine_tag_feed_registers_author_provider_structurally_and_releases_o
         "session-engine tag feed typed sidecar must be registered"
     );
     assert!(
-        app_ref.registered_feed_author_provider_keys().contains(&key),
+        app_ref
+            .registered_feed_author_provider_keys()
+            .contains(&key),
         "session-engine tag feed MUST have a structurally-paired author provider \
          (else open_feed migration regresses avatars — the #1740 gap this fixes)"
     );
 
     // The provider surfaces the feed's visible card author → it auto-resolves.
     assert!(
-        app_ref.run_feed_author_provider_for_test(&key).contains(&author),
+        app_ref
+            .run_feed_author_provider_for_test(&key)
+            .contains(&author),
         "the session author provider returns the visible author (auto-resolved via resolve_ref)"
     );
 
@@ -271,7 +286,9 @@ fn session_engine_tag_feed_registers_author_provider_structurally_and_releases_o
     let close_c = CString::new(tag).unwrap();
     nmp_app_chirp_close_tag_feed(app, close_c.as_ptr());
     assert!(
-        !app_ref.registered_feed_author_provider_keys().contains(&key),
+        !app_ref
+            .registered_feed_author_provider_keys()
+            .contains(&key),
         "session author provider released after close (no leak — paired teardown)"
     );
 
@@ -309,7 +326,11 @@ fn reopen_same_tag_keeps_one_live_session_and_replacement_renders() {
     let key = format!("nmp.feed.tag.{tag}");
     let tag_c = CString::new(tag).unwrap();
     nmp_app_chirp_open_tag_feed(app, tag_c.as_ptr());
-    assert_eq!(app_ref.live_feed_session_count(), 1, "first open mints one session");
+    assert_eq!(
+        app_ref.live_feed_session_count(),
+        1,
+        "first open mints one session"
+    );
 
     // Re-open WITHOUT closing — the prior session is torn down FIRST, leaving
     // exactly one live session (not two), and the replacement is the survivor.
@@ -365,13 +386,25 @@ fn two_apps_same_tag_are_disjoint_sessions() {
     let tag_c_b = CString::new(tag).unwrap();
     nmp_app_chirp_open_tag_feed(app_a, tag_c_a.as_ptr());
     nmp_app_chirp_open_tag_feed(app_b, tag_c_b.as_ptr());
-    assert_eq!(a_ref.live_feed_session_count(), 1, "app A has its own session");
-    assert_eq!(b_ref.live_feed_session_count(), 1, "app B has its own session");
+    assert_eq!(
+        a_ref.live_feed_session_count(),
+        1,
+        "app A has its own session"
+    );
+    assert_eq!(
+        b_ref.live_feed_session_count(),
+        1,
+        "app B has its own session"
+    );
 
     // Close the tag on A only — B's session must survive (no cross-app clobber).
     let close_a = CString::new(tag).unwrap();
     nmp_app_chirp_close_tag_feed(app_a, close_a.as_ptr());
-    assert_eq!(a_ref.live_feed_session_count(), 0, "app A's session torn down");
+    assert_eq!(
+        a_ref.live_feed_session_count(),
+        0,
+        "app A's session torn down"
+    );
     assert_eq!(
         b_ref.live_feed_session_count(),
         1,
@@ -380,7 +413,11 @@ fn two_apps_same_tag_are_disjoint_sessions() {
 
     let close_b = CString::new(tag).unwrap();
     nmp_app_chirp_close_tag_feed(app_b, close_b.as_ptr());
-    assert_eq!(b_ref.live_feed_session_count(), 0, "app B's session torn down");
+    assert_eq!(
+        b_ref.live_feed_session_count(),
+        0,
+        "app B's session torn down"
+    );
 
     nmp_app_free(app_a);
     nmp_app_free(app_b);

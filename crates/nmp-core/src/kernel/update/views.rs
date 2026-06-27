@@ -27,7 +27,7 @@ impl Kernel {
             // Other kinds (kind:30023 articles, kind:9802 highlights, ...)
             // are persisted via `verify_and_persist` into `self.store` but
             // NOT mirrored into `self.events`. Fall back to the EventStore
-            // so the `claimed_events` projection surfaces ALL kinds.
+            // so `refs.event` surfaces ALL kinds.
             let id_bytes = hex64_to_bytes32(key)?;
             return self
                 .store

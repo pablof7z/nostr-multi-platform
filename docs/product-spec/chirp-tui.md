@@ -136,7 +136,8 @@ animations.
 
 ### F1 — Timeline feed
 - Home feed from `chirp_snapshot().cards + blocks`
-- Display names from profile cache (shows `npub1…abcd` until resolved)
+- Display names from the kernel-owned `refs.profile` row (shows `npub1...abcd`
+  until resolved)
 - Per-author stable color (djb2 of npub)
 - Avatars: 2-cell square left of name (ratatui-image, halfblock fallback)
 - `created_at` → relative time ("3m ago", "2h ago", "Mon 14:22")

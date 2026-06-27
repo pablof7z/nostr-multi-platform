@@ -10,8 +10,16 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
 import org.nmp.gallery.gallery.REGISTRY_SECTIONS
 import org.nmp.gallery.gallery.RegistrySection
 import org.nmp.gallery.gallery.parseRegistryJson
@@ -48,8 +56,10 @@ class GalleryModel : ViewModel() {
 
     private val _profileMap = MutableStateFlow<Map<String, ProfileWire>>(emptyMap())
     val profileMap: StateFlow<Map<String, ProfileWire>> = _profileMap.asStateFlow()
-    private val _claimedEvents = MutableStateFlow<Map<String, ClaimedEventWire>>(emptyMap())
-    val claimedEvents: StateFlow<Map<String, ClaimedEventWire>> = _claimedEvents.asStateFlow()
+    private val _resolvedEventEmbeds =
+        MutableStateFlow<Map<String, ResolvedEventEnvelopeWire>>(emptyMap())
+    val resolvedEventEmbeds: StateFlow<Map<String, ResolvedEventEnvelopeWire>> =
+        _resolvedEventEmbeds.asStateFlow()
 
     /**
      * ADR-0048 D6 — unified remote-signer health (`projections.signer_state`).
@@ -121,22 +131,22 @@ class GalleryModel : ViewModel() {
      * Make `pubkey` demand-driven on the kernel under a stable consumer id
      * so the kernel can reclaim slots when no view needs the profile.
      */
-    fun claimProfile(pubkey: String, consumerId: String = CONSUMER_ID) {
-        bridge.claimProfile(pubkey, consumerId)
+    fun resolveProfileRef(pubkey: String, consumerId: String = CONSUMER_ID) {
+        bridge.resolveProfileRef(pubkey, consumerId)
     }
 
-    fun releaseProfile(pubkey: String, consumerId: String = CONSUMER_ID) {
-        bridge.releaseProfile(pubkey, consumerId)
+    fun releaseProfileRef(pubkey: String, consumerId: String = CONSUMER_ID) {
+        bridge.releaseProfileRef(pubkey, consumerId)
     }
 
     /** App-local URI adapter over the kernel's unified event ref seam. */
-    fun claimEvent(uri: String, consumerId: String = CONSUMER_ID) {
-        bridge.claimEvent(uri, consumerId)
+    fun resolveEventRef(uri: String, consumerId: String = CONSUMER_ID) {
+        bridge.resolveEventRef(uri, consumerId)
     }
 
-    /** Inverse of [claimEvent]; safe if the claim is already gone. */
-    fun releaseEvent(uri: String, consumerId: String = CONSUMER_ID) {
-        bridge.releaseEvent(uri, consumerId)
+    /** Inverse of [resolveEventRef]; safe if the interest is already gone. */
+    fun releaseEventRef(uri: String, consumerId: String = CONSUMER_ID) {
+        bridge.releaseEventRef(uri, consumerId)
     }
 
     /**
@@ -190,18 +200,16 @@ class GalleryModel : ViewModel() {
 
         _profileMap.value = assembled
 
-        val events = mutableMapOf<String, ClaimedEventWire>()
-        (projections["claimed_events"] as? JsonObject)?.let { claimed ->
-            for ((primaryId, el) in claimed) {
-                val event = runCatching {
-                    json.decodeFromJsonElement<ClaimedEventWire>(el)
+        val embeds = mutableMapOf<String, ResolvedEventEnvelopeWire>()
+        (projections["refs.event"] as? JsonObject)?.let { resolved ->
+            for ((primaryId, el) in resolved) {
+                val envelope = runCatching {
+                    json.decodeFromJsonElement<ResolvedEventEnvelopeWire>(el)
                 }.getOrNull() ?: continue
-                events[primaryId] = event
+                embeds[primaryId] = envelope
             }
         }
-        if (events.isNotEmpty()) {
-            _claimedEvents.value = _claimedEvents.value + events
-        }
+        _resolvedEventEmbeds.value = embeds
 
         // ADR-0048 D6 — the unified remote-signer health slot. Absent =
         // no remote-signer session active (clears any prior state).
@@ -229,11 +237,80 @@ class GalleryModel : ViewModel() {
 }
 
 @Serializable
-data class ClaimedEventWire(
-    @SerialName("id") val id: String = "",
-    @SerialName("author_pubkey") val authorPubkey: String = "",
-    @SerialName("kind") val kind: Long = 0L,
-    @SerialName("created_at") val createdAt: Long = 0L,
-    @SerialName("tags") val tags: List<List<String>> = emptyList(),
-    @SerialName("content") val content: String = "",
+data class ResolvedEventEnvelopeWire(
+    @SerialName("uri") val uri: String = "",
+    @SerialName("primary_id") val primaryId: String = "",
+    @SerialName("depth") val depth: Int = 0,
+    @SerialName("max_depth") val maxDepth: Int = 4,
+    @SerialName("collapsed") val collapsed: Boolean = false,
+    @SerialName("collapse_reason") val collapseReason: String? = null,
+    @SerialName("projection") val projection: JsonObject = JsonObject(emptyMap()),
 )
+
+val ResolvedEventEnvelopeWire.projectionVariant: String
+    get() = projection["variant"]?.jsonPrimitive?.contentOrNull.orEmpty()
+
+fun ResolvedEventEnvelopeWire.projectionString(key: String): String? =
+    projectionData()[key]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotEmpty() }
+
+fun ResolvedEventEnvelopeWire.projectionLong(key: String): Long? =
+    projectionData()[key]?.jsonPrimitive?.longOrNull
+
+fun ResolvedEventEnvelopeWire.projectionStrings(key: String): List<String> =
+    (projectionData()[key] as? JsonArray)
+        ?.mapNotNull { it.jsonPrimitive.contentOrNull?.takeIf(String::isNotEmpty) }
+        ?: emptyList()
+
+fun ResolvedEventEnvelopeWire.projectionContentText(): String? =
+    contentTreeText(projectionData()["contentTree"]?.jsonObject)
+
+private fun ResolvedEventEnvelopeWire.projectionData(): JsonObject =
+    projection["data"]?.jsonObject ?: JsonObject(emptyMap<String, JsonElement>())
+
+private fun contentTreeText(tree: JsonObject?): String? {
+    val nodes = tree?.get("nodes")?.jsonArray ?: return null
+    val roots = tree["roots"]?.jsonArray ?: return null
+    val text = roots
+        .mapNotNull { it.jsonPrimitive.intOrNull }
+        .joinToString(" ") { renderContentNode(it, nodes, emptySet()) }
+        .trim()
+    return text.takeIf { it.isNotEmpty() }
+}
+
+private fun renderContentNode(index: Int, nodes: JsonArray, seen: Set<Int>): String {
+    if (index in seen) return ""
+    val node = nodes.getOrNull(index)?.jsonObject ?: return ""
+    val nextSeen = seen + index
+    fun childrenText(key: String = "children"): String =
+        node[key]
+            ?.jsonArray
+            ?.mapNotNull { it.jsonPrimitive.intOrNull }
+            ?.joinToString("") { renderContentNode(it, nodes, nextSeen) }
+            .orEmpty()
+    return when (node["kind"]?.jsonPrimitive?.contentOrNull) {
+        "text" -> node["text"]?.jsonPrimitive?.contentOrNull.orEmpty()
+        "url" -> node["url"]?.jsonPrimitive?.contentOrNull.orEmpty()
+        "hashtag" -> node["tag"]?.jsonPrimitive?.contentOrNull?.let { "#$it" }.orEmpty()
+        "inline_code" -> node["code"]?.jsonPrimitive?.contentOrNull.orEmpty()
+        "soft_break" -> " "
+        "hard_break" -> "\n"
+        "paragraph", "heading", "emphasis", "strong", "block_quote", "link" -> childrenText()
+        "list" -> node["items"]
+            ?.jsonArray
+            ?.joinToString("\n") { item ->
+                item.jsonArray
+                    .mapNotNull { it.jsonPrimitive.intOrNull }
+                    .joinToString("") { renderContentNode(it, nodes, nextSeen) }
+            }
+            .orEmpty()
+        "code_block" -> node["body"]?.jsonPrimitive?.contentOrNull.orEmpty()
+        "image" -> node["alt"]?.jsonPrimitive?.contentOrNull.orEmpty()
+        "mention", "event_ref" -> node["uri"]
+            ?.jsonObject
+            ?.get("primary_id")
+            ?.jsonPrimitive
+            ?.contentOrNull
+            .orEmpty()
+        else -> ""
+    }
+}

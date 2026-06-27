@@ -189,8 +189,7 @@ extension KernelModel {
     }
 
     /// ADR-0063 Lane E (#1671) — per-key typed EVENT accessor backed by
-    /// `refs.event`. Exposed for parity; events still render via the
-    /// `claimed_events` projection (Lane H converges them).
+    /// `refs.event`.
     func refEvent(_ primaryId: String) -> ClaimedEventDto? {
         kernel.keyedRefCache.event(primaryId)
     }

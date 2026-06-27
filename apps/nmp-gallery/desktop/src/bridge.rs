@@ -47,8 +47,13 @@ impl GalleryBridge {
             // accumulate. It is the sole app-side profile store (D4); each frame
             // materialises its current set into the snapshot.
             let mut ref_profiles = nmp_core::refs::RefProfileStore::new();
+            let mut ref_events = nmp_core::refs::RefEventStore::new();
             for frame_bytes in rx {
-                let snap = GalleryTypedSnapshot::from_frame_bytes(&frame_bytes, &mut ref_profiles);
+                let snap = GalleryTypedSnapshot::from_frame_bytes(
+                    &frame_bytes,
+                    &mut ref_profiles,
+                    &mut ref_events,
+                );
                 // Send on the tokio channel. Ignore send error (subscription
                 // dropped); the loop exits gracefully.
                 let _ = snapshot_tx.send(snap);
@@ -64,8 +69,8 @@ impl GalleryBridge {
 
     /// Resolve an event URI (nevent / note / naddr) for embed rendering.
     pub fn resolve_event_uri(&self, uri: &str, consumer_id: &str) {
-        use nmp_content::EventClaimSink;
-        self.sink.claim(uri, consumer_id);
+        use nmp_content::EventRefResolver;
+        self.sink.resolve_event_ref(uri, consumer_id);
     }
 
     /// Resolve a visible profile reference (ADR-0063 #1671 — `resolve_ref` at

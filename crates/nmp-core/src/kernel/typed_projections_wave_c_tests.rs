@@ -10,19 +10,18 @@
 //! to its existing generic `Value` entry under the SAME key.
 //!
 //! V-112 (ADR-0042): `author_view` / `thread_view` deleted from typed sidecars.
-//! ADR-0063 Lane H: `mention_profiles` / `claimed_profiles` / `resolved_profiles`
-//! deleted from typed sidecars (replaced by refs.profile KPRF row-delta sidecar).
-//! The `profile_cluster_builtins_emit_typed_sidecars_alongside_json` test is
-//! retained for `claimed_events` only; the old profile-cluster assertions are gone.
+//! ADR-0063 Lane H: `mention_profiles` / `claimed_profiles` /
+//! `resolved_profiles` / `claimed_events` deleted from whole-map typed sidecars
+//! (replaced by refs.profile / refs.event NRRD row-delta sidecars).
 
 use super::typed_projections::{
-    decode_accounts, decode_active_account, decode_claimed_events, decode_profile,
-    ACCOUNTS_FILE_IDENTIFIER, ACCOUNTS_SCHEMA_ID, ACCOUNTS_SCHEMA_VERSION,
-    ACTIVE_ACCOUNT_FILE_IDENTIFIER, ACTIVE_ACCOUNT_SCHEMA_ID, ACTIVE_ACCOUNT_SCHEMA_VERSION,
-    CLAIMED_EVENTS_FILE_IDENTIFIER, CLAIMED_EVENTS_SCHEMA_ID, PROFILE_FILE_IDENTIFIER,
-    PROFILE_SCHEMA_ID, PROFILE_SCHEMA_VERSION,
+    decode_accounts, decode_active_account, decode_profile, ACCOUNTS_FILE_IDENTIFIER,
+    ACCOUNTS_SCHEMA_ID, ACCOUNTS_SCHEMA_VERSION, ACTIVE_ACCOUNT_FILE_IDENTIFIER,
+    ACTIVE_ACCOUNT_SCHEMA_ID, ACTIVE_ACCOUNT_SCHEMA_VERSION, PROFILE_FILE_IDENTIFIER,
+    PROFILE_SCHEMA_ID, PROFILE_SCHEMA_VERSION, REFS_EVENT_KEY, REFS_PROFILE_KEY,
 };
 use super::*;
+use crate::refs::decode_ref_row_delta_batch;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::update_envelope::TypedProjectionData;
 
@@ -126,15 +125,14 @@ fn identity_builtins_emit_typed_sidecars_alongside_json() {
     );
 }
 
-/// Wave C event-cluster: `claimed_events` lands in the `typed_projections`
-/// sidecar of the emitted frame, decodes back to its typed struct, AND keeps its
-/// generic `Value` entry (additivity). Empty map on a fresh kernel.
+/// ADR-0063 refs carriers: `refs.profile` and `refs.event` land in the
+/// `typed_projections` sidecar of the emitted frame and decode as NRRD batches.
+/// They intentionally have no generic JSON `projections` entries.
 ///
-/// ADR-0063 Lane H: mention_profiles / claimed_profiles / resolved_profiles
-/// assertions removed — those projections are deleted. The refs.profile KPRF
-/// row-delta sidecar is tested in the refs integration tests instead.
+/// ADR-0063 Lane H: mention_profiles / claimed_profiles / resolved_profiles /
+/// claimed_events assertions removed — those whole-map projections are deleted.
 #[test]
-fn event_cluster_builtin_emits_typed_sidecar_alongside_json() {
+fn refs_builtins_emit_typed_row_delta_sidecars() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     let (value, typed) = kernel.make_update_typed_for_test(true);
 
@@ -143,30 +141,33 @@ fn event_cluster_builtin_emits_typed_sidecar_alongside_json() {
         .and_then(serde_json::Value::as_object)
         .expect("snapshot must carry a projections object");
 
-    // --- claimed_events (empty on fresh kernel) ---------------------------------
-    let ce_json = projections
-        .get("claimed_events")
-        .and_then(serde_json::Value::as_object)
-        .unwrap_or_else(|| panic!("the generic JSON `claimed_events` entry must remain (additive)"))
-        .len();
-    let ce = typed_entry(&typed, "claimed_events");
-    assert_eq!(ce.schema_id, CLAIMED_EVENTS_SCHEMA_ID);
-    assert_eq!(
-        ce.file_identifier.as_bytes(),
-        CLAIMED_EVENTS_FILE_IDENTIFIER
-    );
-    let ce_decoded =
-        decode_claimed_events(&ce.payload).expect("claimed_events sidecar must decode");
-    assert_eq!(
-        ce_decoded.entries.len(),
-        ce_json,
-        "typed and JSON claimed_events must carry the same entry count"
+    let refs_profile = typed_entry(&typed, REFS_PROFILE_KEY);
+    assert_eq!(refs_profile.schema_id, REFS_PROFILE_KEY);
+    assert_eq!(refs_profile.file_identifier, "NRRD");
+    let profile_batch =
+        decode_ref_row_delta_batch(&refs_profile.payload).expect("refs.profile sidecar decodes");
+    assert_eq!(profile_batch.namespace, "profile");
+
+    let refs_event = typed_entry(&typed, REFS_EVENT_KEY);
+    assert_eq!(refs_event.schema_id, REFS_EVENT_KEY);
+    assert_eq!(refs_event.file_identifier, "NRRD");
+    let event_batch =
+        decode_ref_row_delta_batch(&refs_event.payload).expect("refs.event sidecar decodes");
+    assert_eq!(event_batch.namespace, "event");
+    assert!(
+        projections.get(REFS_PROFILE_KEY).is_none() && projections.get(REFS_EVENT_KEY).is_none(),
+        "refs.* carriers are typed-sidecar only, not generic JSON projections"
     );
 
-    // ADR-0063 Lane H: mention_profiles / claimed_profiles / resolved_profiles
+    // ADR-0063 Lane H: mention_profiles / claimed_profiles / resolved_profiles / claimed_events
     // are no longer emitted by the kernel. Assert they are absent from the
     // typed sidecar AND from the JSON projections.
-    let absent_keys = ["mention_profiles", "claimed_profiles", "resolved_profiles"];
+    let absent_keys = [
+        "mention_profiles",
+        "claimed_profiles",
+        "resolved_profiles",
+        "claimed_events",
+    ];
     for key in &absent_keys {
         assert!(
             typed.iter().all(|t| &t.key != key),

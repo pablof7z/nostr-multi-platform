@@ -8,12 +8,12 @@
 //! `Kernel::set_content_parser`. Mirrors the `OutboxRouter` / `MailboxCache`
 //! substrate seams exactly.
 //!
-//! The `claimed_events` projection calls the installed parser to embed a parsed
-//! `content_tree_bytes` alongside each claimed event's raw content, so a web
-//! host (which cannot run `nmp-content` in JS) can render the kernel-parsed
-//! content tree from an event `resolve_ref` — matching the native gallery's
-//! claim-driven content path. Hosts that install no parser (the default) get an
-//! empty buffer and fall back to the raw content string — behaviour-preserving
+//! `refs.event` row payloads call the installed parser to embed parsed
+//! `content_tree_bytes` alongside each event ref's raw content, so a web host
+//! (which cannot run `nmp-content` in JS) can render the kernel-parsed content
+//! tree from an event `resolve_ref` — matching the native gallery's
+//! resolve-driven content path. Hosts that install no parser (the default) get
+//! an empty buffer and fall back to the raw content string — behaviour-preserving
 //! for every existing native consumer (D0/D6).
 
 /// Parses raw event content into a serialized NFCT `ContentTreeWire` buffer.

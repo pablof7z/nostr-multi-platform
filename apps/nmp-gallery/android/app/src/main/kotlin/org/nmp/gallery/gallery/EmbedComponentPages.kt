@@ -13,9 +13,13 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import org.nmp.gallery.bridge.ClaimedEventWire
 import org.nmp.gallery.bridge.GalleryModel
 import org.nmp.gallery.bridge.GalleryShowcaseReferences
+import org.nmp.gallery.bridge.ResolvedEventEnvelopeWire
+import org.nmp.gallery.bridge.projectionContentText
+import org.nmp.gallery.bridge.projectionLong
+import org.nmp.gallery.bridge.projectionString
+import org.nmp.gallery.bridge.projectionVariant
 import org.nmp.gallery.registry.ContentTreeWire
 import org.nmp.gallery.registry.NostrArticleCardModel
 import org.nmp.gallery.registry.LocalNostrContentRenderer
@@ -36,15 +40,16 @@ import org.nmp.gallery.registry.defaultMentionLabel
  * `EventRef` (or `Mention`) for a real bech32 URI, then renders it through
  * [NostrContentView] — exactly the iOS `EmbedComponentPages.swift` shape. On
  * hitting the `EventRef`, `NostrContentView` calls the page's
- * `quoteCardProvider`, which maps a resolved `claimedEvents[primaryId]` entry
- * to a [NostrQuoteCardModel]. The `DisposableEffect` lifecycle fires the
- * `claim` on the URI so the kernel resolves the event (cache or relay) and
- * surfaces it in `projections.claimed_events`; recomposition then paints the
+ * `quoteCardProvider`, which maps a resolved `resolvedEventEmbeds[primaryId]` entry
+ * to a [NostrQuoteCardModel]. The `DisposableEffect` lifecycle fires
+ * `resolveEventRef` on the URI so the kernel resolves the event (cache or relay)
+ * and surfaces the resolved envelope under `projections["refs.event"]`;
+ * recomposition then paints the
  * inline card mid-prose: "this is a great point [card] what do you think?".
  *
  * Profile embeds resolve as an inline `@DisplayName` mention via the
- * `mentionLabel` callback (kind:0 path), claimed through `claimProfile` — no
- * event claim is required for `npub:` URIs.
+ * `mentionLabel` callback (kind:0 path), resolved through `resolveProfileRef` —
+ * no event-ref resolve is required for `npub:` URIs.
  *
  * Mirrors the TUI showcase in `apps/nmp-gallery/tui/src/data.rs::from_live`.
  *
@@ -62,7 +67,7 @@ fun EmbedComponentPage(
     model: GalleryModel,
     componentId: String,
 ) {
-    val claimedEvents by model.claimedEvents.collectAsState()
+    val resolvedEventEmbeds by model.resolvedEventEmbeds.collectAsState()
     val profileMap by model.profileMap.collectAsState()
     val showcase = model.showcase
 
@@ -89,7 +94,7 @@ fun EmbedComponentPage(
             EmbedComponentBody(
                 componentId = componentId,
                 showcase = showcase,
-                claimedEvents = claimedEvents,
+                resolvedEventEmbeds = resolvedEventEmbeds,
                 profileMap = profileMap,
                 model = model,
             )
@@ -101,15 +106,15 @@ fun EmbedComponentPage(
 private fun EmbedComponentBody(
     componentId: String,
     showcase: GalleryShowcaseReferences,
-    claimedEvents: Map<String, ClaimedEventWire>,
+    resolvedEventEmbeds: Map<String, ResolvedEventEnvelopeWire>,
     profileMap: Map<String, ProfileWire>,
     model: GalleryModel,
 ) {
     when (componentId) {
-        "embed-article" -> ArticleEmbedPage(showcase, claimedEvents, profileMap, model)
+        "embed-article" -> ArticleEmbedPage(showcase, resolvedEventEmbeds, profileMap, model)
         "embed-profile" -> ProfileEmbedPage(showcase, profileMap, model)
-        "embed-note" -> NoteEmbedPage(showcase, claimedEvents, model)
-        "embed-highlight" -> HighlightEmbedPage(showcase, claimedEvents, model)
+        "embed-note" -> NoteEmbedPage(showcase, resolvedEventEmbeds, model)
+        "embed-highlight" -> HighlightEmbedPage(showcase, resolvedEventEmbeds, model)
         else -> Text("Unknown embed component: $componentId")
     }
 }
@@ -119,7 +124,7 @@ private fun EmbedComponentBody(
 @Composable
 private fun ArticleEmbedPage(
     showcase: GalleryShowcaseReferences,
-    claimedEvents: Map<String, ClaimedEventWire>,
+    resolvedEventEmbeds: Map<String, ResolvedEventEnvelopeWire>,
     profileMap: Map<String, ProfileWire>,
     model: GalleryModel,
 ) {
@@ -131,28 +136,28 @@ private fun ArticleEmbedPage(
     // iOS's typed ArticleEmbed does). Without an explicit claim the kernel
     // never fetches Gigi's kind:0, and the byline falls back to hex.
     //
-    // Component-owned claiming (ADR-0034; mirrors iOS #847 / ProfileEmbedPage
+    // Component-owned resolving (ADR-0034; mirrors iOS #847 / ProfileEmbedPage
     // below): the presentation component claims the author's profile so the
-    // kernel resolves it into its profile cache — the kernel must NEVER fetch
+    // kernel resolves it into `refs.profile` — the kernel must NEVER fetch
     // an author's kind:0 as a side effect of event ingest. The author hex is
     // the pubkey TLV of the naddr, available verbatim as the middle field of
     // the addressable coordinate `<kind>:<pubkey>:<d-tag>`.
     val articleAuthorPubkey = articleAuthorPubkeyOf(showcase)
 
     DisposableEffect(articleUri) {
-        model.claimEvent(articleUri, GalleryModel.CONSUMER_ID)
+        model.resolveEventRef(articleUri, GalleryModel.CONSUMER_ID)
         onDispose {
-            model.releaseEvent(articleUri, GalleryModel.CONSUMER_ID)
+            model.releaseEventRef(articleUri, GalleryModel.CONSUMER_ID)
         }
     }
 
     DisposableEffect(articleAuthorPubkey) {
         if (articleAuthorPubkey != null) {
-            model.claimProfile(articleAuthorPubkey, GalleryModel.CONSUMER_ID)
+            model.resolveProfileRef(articleAuthorPubkey, GalleryModel.CONSUMER_ID)
         }
         onDispose {
             if (articleAuthorPubkey != null) {
-                model.releaseProfile(articleAuthorPubkey, GalleryModel.CONSUMER_ID)
+                model.releaseProfileRef(articleAuthorPubkey, GalleryModel.CONSUMER_ID)
             }
         }
     }
@@ -183,8 +188,8 @@ private fun ArticleEmbedPage(
             // read-from-profile shape the note path uses
             // (ContentComponentPages QuoteCardShowcase) and that iOS's typed
             // renderer relies on.
-            quoteCardProvider = { uri -> quoteCardFor(uri, claimedEvents, profileMap) },
-            articleCardProvider = { uri -> articleCardFor(uri, claimedEvents, profileMap) },
+            quoteCardProvider = { uri -> quoteCardFor(uri, resolvedEventEmbeds, profileMap) },
+            articleCardProvider = { uri -> articleCardFor(uri, resolvedEventEmbeds, profileMap) },
         )
         Text(
             "The renderer fires `claim` on the article naddr and on the author's kind:0; the kernel resolves kind:30023 and the author profile (Gigi). The kind:30023 EventRef dispatches to a typed NostrArticleCard (hero + title + summary + byline), mirroring iOS's NostrKindRegistry/ArticleEmbed and the TUI article renderer.",
@@ -208,9 +213,9 @@ private fun ProfileEmbedPage(
     // mirrors the real-app pattern where a parent note row or profile header
     // would own the claim, and iOS's hidden-avatar claim.
     DisposableEffect(pubkeyHex) {
-        model.claimProfile(pubkeyHex, GalleryModel.CONSUMER_ID)
+        model.resolveProfileRef(pubkeyHex, GalleryModel.CONSUMER_ID)
         onDispose {
-            model.releaseProfile(pubkeyHex, GalleryModel.CONSUMER_ID)
+            model.releaseProfileRef(pubkeyHex, GalleryModel.CONSUMER_ID)
         }
     }
 
@@ -240,7 +245,7 @@ private fun ProfileEmbedPage(
         )
         NostrContentView(tree = tree, mentionLabel = mentionLabel)
         Text(
-            "Profile mentions resolve via resolve_ref → the refs.profile keyed cache — the same kind:0 path the user-* pages use. No embed claim is required for `npub:` URIs.",
+            "Profile mentions resolve via resolve_ref -> the refs.profile keyed cache - the same kind:0 path the user-* pages use. No event-ref resolve is required for `npub:` URIs.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -252,15 +257,15 @@ private fun ProfileEmbedPage(
 @Composable
 private fun NoteEmbedPage(
     showcase: GalleryShowcaseReferences,
-    claimedEvents: Map<String, ClaimedEventWire>,
+    resolvedEventEmbeds: Map<String, ResolvedEventEnvelopeWire>,
     model: GalleryModel,
 ) {
     val noteUri = showcase.note.uri
 
     DisposableEffect(noteUri) {
-        model.claimEvent(noteUri, GalleryModel.CONSUMER_ID)
+        model.resolveEventRef(noteUri, GalleryModel.CONSUMER_ID)
         onDispose {
-            model.releaseEvent(noteUri, GalleryModel.CONSUMER_ID)
+            model.releaseEventRef(noteUri, GalleryModel.CONSUMER_ID)
         }
     }
 
@@ -286,7 +291,7 @@ private fun NoteEmbedPage(
         )
         NostrContentView(
             tree = tree,
-            quoteCardProvider = { uri -> quoteCardFor(uri, claimedEvents) },
+            quoteCardProvider = { uri -> quoteCardFor(uri, resolvedEventEmbeds) },
         )
         Text(
             "nevent1… URIs resolve through the app-owned URI adapter and unified ref path. The default short-note renderer paints author + content inline between the surrounding prose.",
@@ -301,15 +306,15 @@ private fun NoteEmbedPage(
 @Composable
 private fun HighlightEmbedPage(
     showcase: GalleryShowcaseReferences,
-    claimedEvents: Map<String, ClaimedEventWire>,
+    resolvedEventEmbeds: Map<String, ResolvedEventEnvelopeWire>,
     model: GalleryModel,
 ) {
     val highlightUri = showcase.highlight.uri
 
     DisposableEffect(highlightUri) {
-        model.claimEvent(highlightUri, GalleryModel.CONSUMER_ID)
+        model.resolveEventRef(highlightUri, GalleryModel.CONSUMER_ID)
         onDispose {
-            model.releaseEvent(highlightUri, GalleryModel.CONSUMER_ID)
+            model.releaseEventRef(highlightUri, GalleryModel.CONSUMER_ID)
         }
     }
 
@@ -333,7 +338,7 @@ private fun HighlightEmbedPage(
         )
         NostrContentView(
             tree = tree,
-            quoteCardProvider = { uri -> quoteCardFor(uri, claimedEvents) },
+            quoteCardProvider = { uri -> quoteCardFor(uri, resolvedEventEmbeds) },
         )
         Text(
             "NIP-84 highlights render as a pull-quote with optional source link. The kernel resolves kind:9802; iOS paints the typed projection, while Android renders it inline as a quote card (no per-kind inline dispatch yet).",
@@ -352,9 +357,9 @@ private fun HighlightEmbedPage(
 private fun articleRefUri(showcase: GalleryShowcaseReferences) = WireNostrUri(
     uri = showcase.article.uri,
     kind = WireNostrUriKind.Address,
-    // The `primaryId` must match the kernel-emitted `claimed_events` key
-    // exactly so `quoteCardProvider`'s `claimedEvents[uri.primaryId]` lookup
-    // hits. For an naddr that is the `<kind>:<pubkey>:<d>` coordinate, already
+    // The `primaryId` must match the `refs.event` row key exactly so
+    // `quoteCardProvider`'s `resolvedEventEmbeds[uri.primaryId]` lookup hits.
+    // For an naddr that is the `<kind>:<pubkey>:<d>` coordinate, already
     // computed into the showcase references on master.
     primaryId = showcase.article.primaryId,
 )
@@ -379,23 +384,26 @@ private fun profileMentionUri(showcase: GalleryShowcaseReferences) = WireNostrUr
 
 private fun quoteCardFor(
     uri: WireNostrUri,
-    claimedEvents: Map<String, ClaimedEventWire>,
+    resolvedEventEmbeds: Map<String, ResolvedEventEnvelopeWire>,
     profileMap: Map<String, ProfileWire> = emptyMap(),
 ): NostrQuoteCardModel? {
-    val event = claimedEvents[uri.primaryId] ?: return null
-    // Claimed events carry raw event data only; author display data comes from
-    // a separately claimed profile in the live profile map. Mirrors
-    // ContentComponentPages QuoteCardShowcase (the note path) and iOS's
-    // read-from-profile byline.
-    val profile = profileMap[event.authorPubkey]
+    val event = resolvedEventEmbeds[uri.primaryId] ?: return null
+    val authorPubkey = event.projectionString("authorPubkey")
+    val profile = authorPubkey?.let { profileMap[it] }
     return NostrQuoteCardModel(
-        id = event.id,
+        id = event.projectionString("id") ?: event.primaryId,
         unresolvedUri = uri.uri,
-        authorPubkey = event.authorPubkey,
+        authorPubkey = authorPubkey,
         authorDisplayName = profile?.displayName,
         authorAvatarUrl = profile?.pictureUrl,
-        content = event.content,
-        createdAtDisplay = event.createdAt.takeIf { it > 0L }?.let { NostrRelativeTime.ago(it) },
+        content = (
+            event.projectionString("content")
+                ?: event.projectionString("highlightedText")
+                ?: event.projectionContentText()
+            ).orEmpty(),
+        createdAtDisplay = event.projectionLong("createdAt")
+            ?.takeIf { it > 0L }
+            ?.let { NostrRelativeTime.ago(it) },
     )
 }
 
@@ -408,22 +416,21 @@ private fun quoteCardFor(
  */
 private fun articleCardFor(
     uri: WireNostrUri,
-    claimedEvents: Map<String, ClaimedEventWire>,
+    resolvedEventEmbeds: Map<String, ResolvedEventEnvelopeWire>,
     profileMap: Map<String, ProfileWire>,
 ): NostrArticleCardModel? {
-    val event = claimedEvents[uri.primaryId] ?: return null
-    if (event.kind != 30023L) return null
-    fun tag(key: String): String? =
-        event.tags.firstOrNull { it.firstOrNull() == key }?.getOrNull(1)?.takeIf { it.isNotEmpty() }
-    val profile = profileMap[event.authorPubkey]
+    val event = resolvedEventEmbeds[uri.primaryId] ?: return null
+    if (event.projectionVariant != "article") return null
+    val authorPubkey = event.projectionString("authorPubkey")
+    val profile = authorPubkey?.let { profileMap[it] }
     return NostrArticleCardModel(
-        id = event.id,
-        authorPubkey = event.authorPubkey,
+        id = event.projectionString("id") ?: event.primaryId,
+        authorPubkey = authorPubkey.orEmpty(),
         authorDisplayName = profile?.displayName,
         authorPictureUrl = profile?.pictureUrl,
-        title = tag("title"),
-        summary = tag("summary"),
-        heroImageUrl = tag("image"),
+        title = event.projectionString("title"),
+        summary = event.projectionString("summary"),
+        heroImageUrl = event.projectionString("heroImageUrl"),
     )
 }
 
@@ -431,7 +438,7 @@ private fun articleCardFor(
  * The article author's hex pubkey, parsed from the addressable coordinate
  * `<kind>:<pubkey>:<d-tag>` (the naddr's pubkey TLV). `kind` and `pubkey`
  * never contain `:`, so index `[1]` is the author even when the d-tag does.
- * Returns null if the coordinate is malformed (the claim is then skipped).
+ * Returns null if the coordinate is malformed (the profile resolve is skipped).
  */
 private fun articleAuthorPubkeyOf(showcase: GalleryShowcaseReferences): String? =
     showcase.article.primaryId.split(":").getOrNull(1)?.takeIf { it.isNotBlank() }

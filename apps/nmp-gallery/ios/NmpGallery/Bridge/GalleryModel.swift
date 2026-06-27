@@ -81,8 +81,8 @@ let SHOWCASE_HIGHLIGHT_NEVENT = GALLERY_SHOWCASE.highlight.uri
 ///
 /// ADR-0063 (#1671): the map is sourced from the kernel's `refs.profile`
 /// row-delta projection (the resolve_ref output), merged host-side into the
-/// `GalleryRefProfileStore` and materialised under the `refs.profile` JSON key
-/// by `nmp_app_gallery_snapshot_json_from_update_frame`. The app JSON adapter
+/// `GalleryRefStores` and materialised under the `refs.profile` JSON key by
+/// `nmp_app_gallery_snapshot_json_from_update_frame`. The app JSON adapter
 /// derives a bech32 `npub` from the raw pubkey for this gallery-only view. The
 /// extra `lnurl` field the card carries is ignored here.
 private struct RefProfileWire: Decodable, Sendable {
@@ -111,26 +111,26 @@ struct GallerySnapshot: Decodable, Equatable, Sendable {
     let running: Bool
     let profiles: [String: ProfileWire]
     let accounts: [AccountWire]
-    /// Pre-resolved embed-projection map produced by `nmp-ffi`'s embed sidecar
-    /// (issue #1283 / ADR-0034). Key = `primary_id`; value = fully resolved
-    /// `EmbeddedEventEnvelope` with `projection` already kind-dispatched in
-    /// Rust. Nil when the projection is absent (kernel not yet updated).
-    let claimedEventEmbeds: [String: EmbeddedEventEnvelope]?
+    /// Pre-resolved event-ref embed envelope map materialised from `refs.event`
+    /// after `resolve_ref` (ADR-0063 / ADR-0034). Key = `primary_id`; value =
+    /// fully resolved `EmbeddedEventEnvelope` with `projection` already
+    /// kind-dispatched in Rust. Nil when the projection is absent.
+    let resolvedEventEmbeds: [String: EmbeddedEventEnvelope]?
     /// Kernel-emitted relay-role presentation tokens from
     /// `projections.relay_role_options` (issue #996). The relay-list page
     /// looks `configured_relays.role` up here for `label`/`tint`, exactly as
     /// Chirp's `RelayConfigRow` does — no Swift-side role derivation.
     let relayRoleOptions: [GalleryRelayRoleOption]
 
-    static let empty = GallerySnapshot(running: false, profiles: [:], accounts: [], claimedEventEmbeds: nil)
+    static let empty = GallerySnapshot(running: false, profiles: [:], accounts: [], resolvedEventEmbeds: nil)
 
     init(running: Bool, profiles: [String: ProfileWire], accounts: [AccountWire],
-         claimedEventEmbeds: [String: EmbeddedEventEnvelope]? = nil,
+         resolvedEventEmbeds: [String: EmbeddedEventEnvelope]? = nil,
          relayRoleOptions: [GalleryRelayRoleOption] = []) {
         self.running = running
         self.profiles = profiles
         self.accounts = accounts
-        self.claimedEventEmbeds = claimedEventEmbeds
+        self.resolvedEventEmbeds = resolvedEventEmbeds
         self.relayRoleOptions = relayRoleOptions
     }
 
@@ -144,9 +144,9 @@ struct GallerySnapshot: Decodable, Equatable, Sendable {
         // a dotted key, so the raw value is spelled out explicitly here.
         case refsProfile = "refs.profile"
         case accounts
-        // `claimed_event_embeds` — with `.convertFromSnakeCase` this matches
-        // the camelCase key after conversion.
-        case claimedEventEmbeds
+        // ADR-0063 (#1671): event embed envelopes are materialised from the
+        // `refs.event` row-delta store under the dotted projection key.
+        case refsEvent = "refs.event"
         // `relay_role_options` → camelCase after `.convertFromSnakeCase`.
         case relayRoleOptions
     }
@@ -160,7 +160,7 @@ struct GallerySnapshot: Decodable, Equatable, Sendable {
         var resolvedAccounts: [AccountWire] = []
 
         var assembled: [String: ProfileWire] = [:]
-        var claimedEmbeds: [String: EmbeddedEventEnvelope]? = nil
+        var resolvedEventEmbeds: [String: EmbeddedEventEnvelope]? = nil
         var roleOptions: [GalleryRelayRoleOption] = []
         if let projections = try? container.nestedContainer(
             keyedBy: ProjectionsKeys.self,
@@ -185,10 +185,10 @@ struct GallerySnapshot: Decodable, Equatable, Sendable {
                 resolvedAccounts = accs
             }
             // Issue #1283 / ADR-0034: decode the pre-resolved embed map from
-            // the `nmp-ffi` sidecar. Fault-tolerant — nil when absent.
-            claimedEmbeds = try? projections.decodeIfPresent(
+            // the `refs.event` materialised map. Fault-tolerant — nil when absent.
+            resolvedEventEmbeds = try? projections.decodeIfPresent(
                 [String: EmbeddedEventEnvelope].self,
-                forKey: .claimedEventEmbeds
+                forKey: .refsEvent
             )
             // Issue #996: decode the kernel's relay-role presentation tokens so
             // the relay-list page resolves label/tint from the kernel source of
@@ -212,7 +212,7 @@ struct GallerySnapshot: Decodable, Equatable, Sendable {
 
         self.profiles = assembled
         self.accounts = resolvedAccounts
-        self.claimedEventEmbeds = claimedEmbeds
+        self.resolvedEventEmbeds = resolvedEventEmbeds
         self.relayRoleOptions = roleOptions
     }
 }
@@ -280,21 +280,21 @@ final class GalleryModel: NostrProfileHost {
     private(set) var lastDecodeError: String?
     private let kernel: GalleryKernelHandle
 
-    /// Embed-projection host. Reads `projections.claimed_events` from every
+    /// Embed-projection host. Reads resolved event-ref embed envelopes from every
     /// snapshot push (M16 / ADR-0034) so kind-dispatched embed renderers see
     /// resolved envelopes without re-parsing the kernel wire.
     let embedHost = EmbedHost()
 
-    /// Concrete `EventClaimSinkProtocol` impl forwarded into the SwiftUI
-    /// environment so `EmbeddedEvent` views can fire `claim`/`release` against
+    /// Concrete `EventRefResolverProtocol` impl forwarded into the SwiftUI
+    /// environment so `EmbeddedEvent` views can fire resolve/release against
     /// the gallery's live kernel. Stored (not computed / lazy) so the
     /// `@Observable` macro can synthesize storage.
-    let embedClaimSink: EventClaimSinkProtocol
+    let embedEventRefResolver: EventRefResolverProtocol
 
     init() {
         let kernel = GalleryKernelHandle()
         self.kernel = kernel
-        self.embedClaimSink = KernelEventClaimSink(kernel: kernel)
+        self.embedEventRefResolver = KernelEventRefResolver(kernel: kernel)
     }
 
     /// One-shot bootstrap. Wires the push callback, starts the kernel actor,
@@ -312,7 +312,7 @@ final class GalleryModel: NostrProfileHost {
         kernel.start()
         // Seed bootstrap relays. The gallery has no logged-in user → no
         // kind:10002 → empty `app_relays` and no routing target. Adding these
-        // before any component-owned profile claim means the first claim
+        // before any component-owned profile resolve means the first resolve
         // already has candidates instead of waiting for an external mailbox
         // to arrive.
         for relay in GALLERY_SHOWCASE.relays {
@@ -326,14 +326,15 @@ final class GalleryModel: NostrProfileHost {
     /// Decode a FlatBuffers update frame received from the push callback. A
     /// decode failure logs and keeps the previous snapshot intact (soft-fail).
     ///
-    /// `GallerySnapshot` now includes `claimedEventEmbeds` — the pre-resolved
-    /// embed-projection map produced by `nmp-ffi` (issue #1283 / ADR-0034).
+    /// `GallerySnapshot` includes `resolvedEventEmbeds` — the pre-resolved
+    /// event-ref embed envelope map materialised from `refs.event` after
+    /// `resolve_ref` (ADR-0063 / ADR-0034).
     /// A single `JSONDecoder` pass fills both the profile/account fields and the
     /// embed map; the separate `JSONSerialization` + `EmbedHost.update(fromSnapshotJSON:)`
     /// path is deleted (the kind-dispatch now runs in Rust, not in Swift).
     func decode(frame: Data) {
         guard let data = GalleryFlatBufferSnapshotDecoder.snapshotJSONData(
-            from: frame, store: kernel.refProfileStore) else {
+            from: frame, stores: kernel.refStores) else {
             return
         }
         let decoder = JSONDecoder()
@@ -345,7 +346,7 @@ final class GalleryModel: NostrProfileHost {
             self.lastDecodeError = nil
             // Embed-projection: feed the pre-resolved map directly from the
             // typed `GallerySnapshot` field (no separate JSONSerialization pass).
-            embedHost.update(claimedEventEmbeds: next.claimedEventEmbeds)
+            embedHost.update(resolvedEventEmbeds: next.resolvedEventEmbeds)
         } catch {
             let msg = "GallerySnapshot direct decode failed: \(error.localizedDescription)"
             gmLog.error("\(msg, privacy: .public)")
@@ -403,13 +404,13 @@ final class GalleryModel: NostrProfileHost {
     }
 
     /// NostrProfileHost: demand a profile projection for a mounted component.
-    func claimProfile(pubkey: String, consumerID: String) {
-        kernel.claimProfile(pubkey: pubkey, consumerID: consumerID)
+    func resolveProfileRef(pubkey: String, consumerID: String) {
+        kernel.resolveProfileRef(pubkey: pubkey, consumerID: consumerID)
     }
 
     /// NostrProfileHost: release a component's profile interest on unmount.
-    func releaseProfile(pubkey: String, consumerID: String) {
-        kernel.releaseProfile(pubkey: pubkey, consumerID: consumerID)
+    func releaseProfileRef(pubkey: String, consumerID: String) {
+        kernel.releaseProfileRef(pubkey: pubkey, consumerID: consumerID)
     }
 
     /// Showcase write surface (phase 2). Dispatches a sign-in action without

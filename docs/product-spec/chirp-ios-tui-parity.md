@@ -70,6 +70,6 @@ participate in discovery-kind routing (`0`, `3`, `10002`, and other
   opening a new dynamic pane unregisters the previous dynamic feed, and leaving
   the pane unregisters it.
 - Author kind:0 rendering and note relation counts follow the render-intent
-  model: visible note authors are claimed automatically, profile headers prefer
-  the kernel-owned `resolved_profiles` metadata, and names update when the
-  shared profile projections emit newer metadata.
+  model: visible note authors resolve through the unified profile ref path,
+  profile headers prefer the kernel-owned `refs.profile` row, and names update
+  when the keyed profile projection emits newer metadata.

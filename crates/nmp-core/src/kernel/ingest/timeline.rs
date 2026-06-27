@@ -128,8 +128,8 @@ impl Kernel {
         //   Web:     Post.onMount → claimProfileCommand (#885)
         //   Gallery: resolve_ref at render time
         // Profile rendering now flows through explicit profile claims and
-        // `refs.profile` materialization. `claimed_events` stays raw and carries
-        // the author pubkey for profile components to compose.
+        // `refs.profile` materialization. `refs.event` stays raw and carries the
+        // author pubkey for profile components to compose.
 
         // D9: kernel owns time — clamp relay-supplied created_at to now so a
         // future-dated event from a hostile/buggy relay cannot pin permanently

@@ -17,7 +17,6 @@ use super::{DeclarationPolicy, PresencePolicy, ProjectionContract, ProjectionTie
 const SRC_PROFILES: &str = "profiles_ver";
 const SRC_ACTIVE_ACCOUNT: &str = "active_account_ver";
 const SRC_ACCOUNTS: &str = "accounts_ver";
-const SRC_CLAIMED_EVENT_CONTENT: &str = "claimed_event_content_ver";
 const SRC_CONFIGURED_RELAYS: &str = "configured_relays_ver";
 const SRC_PUBLISH: &str = "publish_ver";
 const SRC_PUBLISH_ENGINE: &str = "publish_engine_ver";
@@ -70,17 +69,6 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         version: 1,
         declaration_policy: DeclarationPolicy::SelfDeclaredBuiltin,
         dependency_versions: &[SRC_ACTIVE_ACCOUNT],
-        presence_policy: PresencePolicy::RevDerived,
-    },
-    ProjectionContract {
-        key: "claimed_events",
-        tier: ProjectionTier::KernelBuiltin,
-        producer: "nmp-core kernel/typed_projections/claimed_events_fb",
-        schema_id: "claimed_events",
-        file_identifier: "KCEV",
-        version: 1,
-        declaration_policy: DeclarationPolicy::SelfDeclaredBuiltin,
-        dependency_versions: &[SRC_CLAIMED_EVENT_CONTENT],
         presence_policy: PresencePolicy::RevDerived,
     },
     ProjectionContract {

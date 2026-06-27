@@ -218,9 +218,9 @@ pub(crate) use types::RelayStatus as RelayStatusForCodegen;
 #[cfg(feature = "codegen-schema")]
 pub(crate) use types::WireSubscriptionStatus as WireSubscriptionStatusForCodegen;
 use types::{
-    ClaimedEventDto, Counters, DiagnosticFirehoseState, LogicalInterestStatus, Metrics,
-    NoticeEntry, OutboxSummarySnapshot, ProfileCard, PublishOutboxItem, PublishOutboxRelay,
-    RelayHealth, RelayStatus, StoredEvent, TimingMilestones, WireSub, WireSubscriptionState,
+    Counters, DiagnosticFirehoseState, LogicalInterestStatus, Metrics, NoticeEntry,
+    OutboxSummarySnapshot, ProfileCard, PublishOutboxItem, PublishOutboxRelay, RelayHealth,
+    RelayStatus, StoredEvent, TimingMilestones, WireSub, WireSubscriptionState,
     WireSubscriptionStatus, MAX_NOTICE_LOG,
 };
 

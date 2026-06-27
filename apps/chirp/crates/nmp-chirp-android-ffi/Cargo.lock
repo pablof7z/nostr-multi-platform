@@ -2227,9 +2227,11 @@ dependencies = [
 name = "nmp-nip18"
 version = "0.8.0"
 dependencies = [
+ "flatbuffers",
  "nmp-core",
  "nmp-kinds",
  "nmp-planner",
+ "nmp-signer-iface",
  "serde",
  "serde_json",
 ]
@@ -2442,6 +2444,7 @@ version = "0.8.0"
 dependencies = [
  "flatbuffers",
  "nmp-core",
+ "nmp-kinds",
  "nmp-nip01",
  "nmp-nip18",
  "nmp-nip22",

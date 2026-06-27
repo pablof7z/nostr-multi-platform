@@ -15,8 +15,8 @@
 //   - Embedded events (`nostr:nevent…` / `nostr:naddr…`) render via the
 //     kind-dispatch registry (ADR-0034): `EventRefBlock` delegates to the
 //     `EmbeddedEvent` composable from `compose/content-kind-registry`, which
-//     claims the URI, reads the kernel-resolved `EmbeddedEventEnvelope` from
-//     `LocalClaimedEventEmbeds`, and dispatches to the per-kind renderer in
+//     resolves the URI, reads the kernel-resolved `EmbeddedEventEnvelope` from
+//     `LocalResolvedEventEmbeds`, and dispatches to the per-kind renderer in
 //     `LocalNostrKindRegistry`.
 //
 // Inline runs are flattened into a single `AnnotatedString` (with per-run
@@ -429,8 +429,8 @@ private fun EventRefBlock(
     uri: WireNostrUri,
 ) {
     // Kind-dispatch path (ADR-0034 / F-CR-04). `EmbeddedEvent` owns the
-    // claim/release lifecycle, reads the kernel-resolved envelope from
-    // `LocalClaimedEventEmbeds`, and dispatches to the per-kind renderer in
+    // resolve/release lifecycle, reads the kernel-resolved envelope from
+    // `LocalResolvedEventEmbeds`, and dispatches to the per-kind renderer in
     // `LocalNostrKindRegistry`. It always renders — a loading placeholder
     // (via `EmbedChromeContainer`) shows until the host resolves the envelope.
     EmbeddedEvent(

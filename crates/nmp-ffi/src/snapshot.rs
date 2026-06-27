@@ -5,9 +5,9 @@
 //! The generic (`serde_json::Value`) lane has been removed; all projections use
 //! the typed FlatBuffers sidecar (ADR-0037).
 
-use std::ffi::{CStr, c_char};
+use std::ffi::{c_char, CStr};
 
-use super::{NmpApp, app_ref};
+use super::{app_ref, NmpApp};
 
 // Issue #1283 / ADR-0034 — the `claimed_event_embeds` snapshot-projection
 // producer. A submodule of `snapshot` (both own snapshot-projection wiring);

@@ -1,40 +1,39 @@
-//! `claimed_event_embeds` sidecar — issue #1283 / ADR-0034 §embed-sidecar.
+//! Compatibility `claimed_event_embeds` sidecar — issue #1283 / ADR-0034
+//! §embed-sidecar.
 //!
-//! The kernel's `claimed_events` KCEV FlatBuffer carries raw protocol data
-//! (kind, tags, content) but performs **no** kind-dependent branching — the
-//! `claimed_events.fbs` schema doc (line 31-34) explicitly records that
-//! invariant.  The `match event.kind` dispatch is a *rendering* concern that
-//! lives in `nmp-content` (D0-clean).
+//! `refs.event` is the authoritative event-reference projection. Its row
+//! payloads are single-event KCEV buffers carrying raw protocol data (kind,
+//! tags, content), but the row projection itself is stateful and row-grained:
+//! each frame carries only changed/cleared refs and must be merged into a
+//! [`nmp_core::refs::RefEventStore`]. The old whole-map `claimed_events`
+//! projection is not a valid data source for embed envelopes.
 //!
 //! This module implements the nmp-ffi layer's responsibility:
 //!
-//! 1. After each update frame arrives in the listener thread, decode the KCEV
-//!    typed sidecar, call `nmp_content::resolve_embed_projection` on every row,
-//!    and store the pre-resolved `primary_id -> EmbeddedEventEnvelope` map in a
-//!    shared slot (the single source of truth — see [`EmbedSidecarSlot`]).
-//! 2. TWO snapshot projection closures registered at app-init read from that one
-//!    slot on every subsequent tick and contribute `claimed_event_embeds`:
-//!    - a **JSON** `Value` projection (issue #1283 transitional) for the gallery
-//!      shell, which still decodes the JSON sidecar; and
-//!    - a **typed** `NEMB` FlatBuffer projection
+//! 1. After each update frame arrives in the listener thread, apply the
+//!    `refs.event` row-delta sidecar to a persistent [`RefEventStore`], resolve
+//!    its current live rows through `nmp_content::resolve_embed_projection`, and
+//!    store the pre-resolved `primary_id -> EmbeddedEventEnvelope` map in the
+//!    same shared state.
+//! 2. The snapshot projection closure registered at app-init reads from that
+//!    state on every subsequent tick and contributes the compatibility
+//!    `claimed_event_embeds` typed `NEMB` FlatBuffer projection
 //!      ([`nmp_content::wire::encode_claimed_event_embeds`]) for the typed-frame
 //!      shells (Chirp iOS + chirp-desktop), which have no JSON `payload` and so
 //!      decode the typed sidecar.
 //!
-//! Both encoders consume the identical resolved map, so the two sidecars carry
-//! the same data — a host's `typed<K> ?? json<k>` fallback lines up. Typed-frame
-//! shells decode the typed key instead of duplicating the `match kind` resolver
-//! in Swift/Kotlin: the iOS `EmbedHost.resolve()` / `parseProfileMetadata` /
-//! `extractTopLevelMedia` methods are deleted (closing the EmbedHost D0
-//! violation #1283, and fixing the #1299 inverted display_name precedence by
-//! making the Rust resolver authoritative).
+//! Typed-frame shells decode the typed key instead of duplicating the
+//! `match kind` resolver in Swift/Kotlin: the iOS `EmbedHost.resolve()` /
+//! `parseProfileMetadata` / `extractTopLevelMedia` methods are deleted (closing
+//! the EmbedHost D0 violation #1283, and fixing the #1299 inverted display_name
+//! precedence by making the Rust resolver authoritative).
 //!
 //! ## One-tick lag
 //!
-//! The embed sidecar is produced from the **previous** frame's KCEV data
-//! (written in the listener thread after encode, read on the next tick's
-//! projection closure).  This is acceptable: the claimed-events flow is already
-//! async (kernel fetches the event on demand then surfaces it on the next
+//! The compatibility sidecar is produced from the **previous** frame's
+//! `refs.event` data (written in the listener thread after encode, read on the
+//! next tick's projection closure). This is acceptable: the event-ref flow is
+//! already async (kernel fetches the event on demand then surfaces it on the next
 //! snapshot push), so one additional push-cycle lag is invisible to the user.
 //!
 //! ## D0 / D8 compliance
@@ -46,9 +45,9 @@
 //!   Rust — no I/O, no blocking.  Each projection closure is a cheap
 //!   `Mutex::lock` read + encode — non-blocking on the actor thread (D8:
 //!   projection closures must be non-blocking).
-//! - D6: all failure paths (missing KCEV entry, decode error) degrade to an
-//!   empty map, which the JSON closure maps to `{}` and the typed closure to a
-//!   well-formed empty `NEMB` buffer — never a panic.
+//! - D6: all failure paths (missing `refs.event` entry, decode error) preserve
+//!   the prior cache or degrade to a well-formed empty `NEMB` buffer on first
+//!   tick — never a panic.
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
@@ -59,25 +58,33 @@ use nmp_content::{
     RenderContextWire,
 };
 use nmp_core::{
-    decode_snapshot_typed_projections,
+    decode_snapshot_envelope, decode_snapshot_typed_projections,
+    refs::{RefEventStore, REFS_EVENT_KEY},
     substrate::KernelEvent,
-    typed_projections::{decode_claimed_events, ClaimedEventRow, CLAIMED_EVENTS_SCHEMA_ID},
+    typed_projections::ClaimedEventRow,
     TypedProjectionData,
 };
 /// Snapshot-projection key for the typed FlatBuffer embed sidecar.
 const EMBED_SIDECAR_KEY: &str = "claimed_event_embeds";
 
-/// Shared slot that carries the latest resolved embed map
-/// (`primary_id -> EmbeddedEventEnvelope`). This is the SINGLE source of truth
-/// the listener thread writes; both the JSON projection (gallery shell) and the
-/// typed FlatBuffer projection (Chirp typed-frame shell) are derived from it on
-/// the actor thread. `None` before the first frame arrives; `Some(map)` (which
-/// may be empty) after.
-pub(crate) type EmbedSidecarSlot = Arc<Mutex<Option<BTreeMap<String, EmbeddedEventEnvelope>>>>;
+/// Shared compatibility state for the old `claimed_event_embeds` projection.
+///
+/// `ref_events` is the authoritative host-side mirror of `refs.event` row
+/// deltas. `envelopes` is a render-facing cache derived from that store; it is
+/// never populated from the legacy whole-map `claimed_events` projection.
+#[derive(Debug, Default)]
+pub(crate) struct EmbedSidecarState {
+    ref_events: RefEventStore,
+    envelopes: BTreeMap<String, EmbeddedEventEnvelope>,
+}
+
+/// Shared slot written by the listener thread and read by the typed projection
+/// closure on the actor thread.
+pub(crate) type EmbedSidecarSlot = Arc<Mutex<EmbedSidecarState>>;
 
 /// Construct a new, empty [`EmbedSidecarSlot`].
 pub(crate) fn new_embed_sidecar_slot() -> EmbedSidecarSlot {
-    Arc::new(Mutex::new(None))
+    Arc::new(Mutex::new(EmbedSidecarState::default()))
 }
 
 /// Construct a fresh slot plus a listener-thread clone in one call, so the
@@ -125,55 +132,51 @@ fn build_envelope(primary_id: &str, projection: EmbedKindProjection) -> Embedded
     }
 }
 
-/// Called from the listener thread after every update frame.
-///
-/// Decodes the KCEV (`claimed_events`) typed sidecar from `frame_bytes`,
-/// resolves each row's `EmbedKindProjection` via `nmp-content`, and stores the
-/// resolved `primary_id -> EmbeddedEventEnvelope` map in `slot`. The next tick's
-/// projection closures (JSON + typed) read from the slot and each encode their
-/// own wire form (one-tick lag — see module doc).
-///
-/// Silent no-ops on any decode failure (D6).
-pub(crate) fn update_embed_sidecar_from_frame(frame_bytes: &[u8], slot: &EmbedSidecarSlot) {
-    // Decode the full typed-projection sidecar from the frame.
-    let Ok(projections) = decode_snapshot_typed_projections(frame_bytes) else {
-        return;
-    };
-
-    // Find the KCEV entry.
-    let Some(kcev_entry) = projections
-        .iter()
-        .find(|e| e.schema_id == CLAIMED_EVENTS_SCHEMA_ID)
-    else {
-        // No claimed events this frame — keep the slot as-is so the previous
-        // tick's embeddings remain visible (stable, not flicker).
-        return;
-    };
-
-    // Decode the FlatBuffer.
-    let Ok(model) = decode_claimed_events(&kcev_entry.payload) else {
-        return;
-    };
-
-    if model.entries.is_empty() {
-        // Explicit empty map — clear the slot so both sidecars see {} not stale.
-        if let Ok(mut guard) = slot.lock() {
-            *guard = Some(BTreeMap::new());
-        }
-        return;
-    }
-
-    // Resolve each entry into the shared envelope shape.
+/// Resolve the current live `refs.event` rows into the compatibility envelope
+/// map consumed by the `claimed_event_embeds` encoder.
+fn resolve_events(
+    rows: &BTreeMap<String, ClaimedEventRow>,
+) -> BTreeMap<String, EmbeddedEventEnvelope> {
     let ctx = RenderContext::new();
     let mut map: BTreeMap<String, EmbeddedEventEnvelope> = BTreeMap::new();
-    for (primary_id, row) in &model.entries {
+    for (primary_id, row) in rows {
         let event = row_to_kernel_event(row);
         let projection: EmbedKindProjection = resolve_embed_projection(&event, &ctx);
         map.insert(primary_id.clone(), build_envelope(primary_id, projection));
     }
+    map
+}
 
-    if let Ok(mut guard) = slot.lock() {
-        *guard = Some(map);
+/// Called from the listener thread after every update frame.
+///
+/// Applies the `refs.event` row-delta typed sidecar from `frame_bytes`, resolves
+/// the store's current live rows via `nmp-content`, and updates the compatibility
+/// `claimed_event_embeds` map. Missing `refs.event` entries leave the prior
+/// state intact; clear rows must arrive as explicit `refs.event` rows.
+///
+/// Silent no-ops on any decode failure (D6).
+pub(crate) fn update_embed_sidecar_from_frame(frame_bytes: &[u8], slot: &EmbedSidecarSlot) {
+    let Ok(envelope) = decode_snapshot_envelope(frame_bytes) else {
+        return;
+    };
+    let Ok(projections) = decode_snapshot_typed_projections(frame_bytes) else {
+        return;
+    };
+
+    let Some(refs_event_entry) = projections
+        .iter()
+        .find(|entry| entry.key == REFS_EVENT_KEY || entry.schema_id == REFS_EVENT_KEY)
+    else {
+        return;
+    };
+
+    if let Ok(mut state) = slot.lock() {
+        state.ref_events.apply_sidecar(
+            &refs_event_entry.payload,
+            envelope.session_id,
+            envelope.snapshot_epoch,
+        );
+        state.envelopes = resolve_events(&state.ref_events.events());
     }
 }
 
@@ -181,7 +184,9 @@ pub(crate) fn update_embed_sidecar_from_frame(frame_bytes: &[u8], slot: &EmbedSi
 /// lock. Returns an empty map when the slot is `None` (first tick, before any
 /// frame is processed) or when the mutex is poisoned (D6).
 fn snapshot_map(slot: &EmbedSidecarSlot) -> BTreeMap<String, EmbeddedEventEnvelope> {
-    slot.lock().ok().and_then(|g| g.clone()).unwrap_or_default()
+    slot.lock()
+        .map(|state| state.envelopes.clone())
+        .unwrap_or_default()
 }
 
 /// Build the TYPED FlatBuffer (`NEMB`) form of the embed sidecar from the slot.
@@ -204,21 +209,18 @@ pub(crate) fn read_embed_sidecar_typed(slot: &EmbedSidecarSlot) -> TypedProjecti
     }
 }
 
-/// Register BOTH the JSON and the typed `claimed_event_embeds` snapshot
-/// projections on `app`, each reading the same `slot` (the resolved map the
-/// listener thread writes).
+/// Register the typed `claimed_event_embeds` compatibility projection on `app`,
+/// reading the resolved map derived from the `refs.event` store.
 ///
-/// * The JSON projection (`register_snapshot_projection`) feeds the gallery
-///   shell, which decodes the JSON `Value` sidecar (issue #1283 transitional).
-/// * The typed projection (`register_typed_snapshot_projection`) feeds the Chirp
-///   typed-frame shell, which decodes the `NEMB` FlatBuffer and so needs ZERO
-///   embed-resolution logic in Swift (closes the EmbedHost D0 violation #1283).
+/// The typed projection (`register_typed_snapshot_projection`) feeds the Chirp
+/// typed-frame shell, which decodes the `NEMB` FlatBuffer and so needs ZERO
+/// embed-resolution logic in Swift (closes the EmbedHost D0 violation #1283).
 ///
 /// On the first tick (before the listener thread has processed any frame) the
 /// slot is `None`; both closures emit empty (D1: always present). After the
-/// first frame the slot holds the pre-resolved map. D8: each closure is a pure
+/// first frame the slot holds the pre-resolved map. D8: the closure is a pure
 /// `Mutex::lock` read + encode, non-blocking on the actor thread. D0: kind
-/// dispatch lives in `nmp-content`; these are thin readers/encoders.
+/// dispatch lives in `nmp-content`; this is a thin reader/encoder.
 ///
 /// ADR-0055 R6-S2: the typed projection now uses `TypedProjectionEmissionState`
 /// to omit an unchanged `claimed_event_embeds` frame when the host has declared

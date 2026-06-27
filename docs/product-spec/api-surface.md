@@ -70,8 +70,9 @@ surfaces. The current C/JNI surface includes:
 - `nmp_app_open_feed` / `nmp_app_close_feed` for app-facing feed sessions.
 - `nmp_app_open_interest` / `nmp_app_close_interest` for low-level NIP-01 filter
   interests.
-- `nmp_app_claim_profile` / `nmp_app_release_profile` and
-  `nmp_app_resolve_ref` / `nmp_app_release_ref` for refcounted typed hydration.
+- `nmp_app_resolve_ref` / `nmp_app_release_ref` for refcounted typed hydration
+  across the closed `profile` and `event` namespaces. Profile rows resolve
+  through the same seam and are read from the keyed `refs.profile` projection.
 
 Projection delivery is typed. Current projection registration and sidecar
 encoding are covered by ADR-0037, ADR-0044, and

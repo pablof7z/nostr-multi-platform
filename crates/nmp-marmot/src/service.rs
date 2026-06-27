@@ -619,7 +619,6 @@ impl<'a> CreateGroupPending<'a> {
         hex_encode(self.group_id.as_slice())
     }
 }
-
 impl<'a> Drop for CreateGroupPending<'a> {
     fn drop(&mut self) {
         if !self.resolved {

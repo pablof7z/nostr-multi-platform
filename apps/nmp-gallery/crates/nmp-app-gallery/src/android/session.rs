@@ -4,23 +4,20 @@
 //! doctrine). Contains:
 //!
 //! * [`GallerySession`] — per-session state (kernel handle, JNI push-listener
-//!   slots, host-side ref-profile mirror).
+//!   slots, host-side ref mirrors).
 //! * [`on_update`] / [`on_capability_request`] — the two `extern "C"`
 //!   trampolines registered with the kernel.
 //! * Small helpers: [`to_c_string`], [`session_ref`], [`jstring_to_cstring`].
 
-use std::ffi::{CStr, CString, c_void};
+use std::ffi::{c_void, CStr, CString};
 use std::sync::{Arc, Mutex};
 
-use jni::JNIEnv;
 use jni::objects::{JObject, JString};
 use jni::sys::jlong;
+use jni::JNIEnv;
 
-use nmp_ffi::{
-    nmp_app_set_capability_callback, nmp_app_set_update_callback, NmpApp,
-};
+use nmp_ffi::{nmp_app_set_capability_callback, nmp_app_set_update_callback, NmpApp};
 
-use nmp_core::refs::RefProfileStore;
 use nmp_core::__ffi_internal::capability_error_envelope;
 
 use crate::android_push::{
@@ -38,12 +35,12 @@ pub(crate) struct GallerySession {
     /// `ExternalSignerRequest` JSON payloads (D8 no-polling; replaces the
     /// deleted `nativeNextSignerRequest` blocking/timeout drain).
     pub(crate) signer_listener: SignerRequestListenerSlot,
-    /// ADR-0063 (#1671) — host-side mirror of the kernel's `refs.profile`
-    /// row-delta projection. Merged across frames in `nativeDecodeSnapshotJson`
-    /// (the sidecar carries only changed/cleared rows). The sole app-side profile
-    /// store (D4). Wrapped in a `Mutex` because the decode runs on whichever
-    /// thread Kotlin drains the push frame on.
-    pub(crate) ref_profiles: Mutex<RefProfileStore>,
+    /// ADR-0063 (#1671) — host-side mirrors of the kernel's `refs.profile` and
+    /// `refs.event` row-delta projections. Merged across frames in
+    /// `nativeDecodeSnapshotJson` (sidecars carry only changed/cleared rows).
+    /// The sole app-side ref stores (D4). Wrapped in a `Mutex` because decode
+    /// runs on whichever thread Kotlin drains the push frame on.
+    pub(crate) ref_stores: Mutex<crate::GalleryRefStores>,
 }
 
 // SAFETY: GallerySession is transferred to Kotlin as a jlong handle; access
@@ -89,9 +86,15 @@ pub(crate) extern "C" fn on_capability_request(
         .to_string_lossy()
         .into_owned();
     let parsed: serde_json::Value = serde_json::from_str(&request).unwrap_or_default();
-    let namespace = parsed.get("namespace").and_then(|v| v.as_str()).unwrap_or("");
+    let namespace = parsed
+        .get("namespace")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     if namespace != "external_signer" {
-        return to_c_string(capability_error_envelope(&request, "unsupported-on-android"));
+        return to_c_string(capability_error_envelope(
+            &request,
+            "unsupported-on-android",
+        ));
     }
     let Some(payload) = parsed.get("payload_json").and_then(|v| v.as_str()) else {
         return to_c_string(capability_error_envelope(&request, "missing-payload"));
@@ -105,9 +108,8 @@ pub(crate) extern "C" fn on_capability_request(
     // SAFETY: context points into the Arc<Mutex<...>> stored in GallerySession;
     // lifetime guaranteed by the `nativeFree` quiescence ordering (see module
     // doc and on_capability_request's own doc comment above).
-    let slot = unsafe {
-        &*(context as *const std::sync::Mutex<Option<Arc<SignerRequestPushListener>>>)
-    };
+    let slot =
+        unsafe { &*(context as *const std::sync::Mutex<Option<Arc<SignerRequestPushListener>>>) };
     let listener_snapshot: Option<Arc<SignerRequestPushListener>> =
         slot.lock().ok().and_then(|g| g.clone());
 
@@ -173,17 +175,15 @@ pub(crate) unsafe fn teardown_session(session: Box<GallerySession>) {
 ///
 /// `listener` must implement `fun onUpdate(frame: ByteArray)`. Pass `null` to
 /// deregister. D6: any JNI failure is a silent no-op.
-pub(crate) fn set_update_listener(
-    env: JNIEnv,
-    session: &GallerySession,
-    listener: JObject,
-) {
+pub(crate) fn set_update_listener(env: JNIEnv, session: &GallerySession, listener: JObject) {
     let ctx = unsafe { &*session.update_ctx };
     if listener.is_null() {
         ctx.clear_listener();
         return;
     }
     let Ok(vm) = env.get_java_vm() else { return };
-    let Ok(global) = env.new_global_ref(&listener) else { return };
+    let Ok(global) = env.new_global_ref(&listener) else {
+        return;
+    };
     ctx.set_listener(GalleryUpdateListener::new(vm, global));
 }

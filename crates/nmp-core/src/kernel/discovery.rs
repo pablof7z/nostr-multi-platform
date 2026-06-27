@@ -324,8 +324,8 @@ impl Kernel {
         // be in flight. Releasing the claim on the first EOSE here raced the
         // EVENT: the relay set's slowest member could deliver the event AFTER
         // a faster, content-less relay EOSE'd, and the claim row would already
-        // be gone — the `claimed_events` projection would then never surface
-        // the stored event (the embed renders "loading" forever).
+        // be gone — `refs.event` would then never surface the stored event
+        // (the embed renders "loading" forever).
         //
         // The per-relay EOSE is recorded by `record_claim_expansion_eose_no_match`
         // (called immediately after this in the EOSE arm), which removes this

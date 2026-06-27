@@ -274,10 +274,10 @@ class KernelModel : ViewModel() {
         keyedRefCache.profile(pubkey)
 
     /**
-     * ADR-0063 Lane G (#1671) — the per-key TYPED event read backed by the
-     * `refs.event` keyed-ref cache. Exposed for parity with iOS `refEvent`;
-     * events still render via the `claimed_events` projection (Lane H converges
-     * them). Returns null until the kernel resolves [primaryId].
+     * ADR-0063 Lane G/H (#1671) — the per-key TYPED event read backed by the
+     * `refs.event` keyed-ref cache. This is the live event-reference source of
+     * truth; legacy embed sidecars are derived from the same rows. Returns null
+     * until the kernel resolves [primaryId].
      */
     fun refEvent(primaryId: String): ClaimedEventDto? = keyedRefCache.event(primaryId)
 
@@ -285,8 +285,9 @@ class KernelModel : ViewModel() {
      * App-local URI adapter for demand-driven embedded-event fetches (#984):
      * the UI is rendering an
      * out-of-feed `EventRef` [uri] under [consumerId]; the kernel resolves it
-     * and ships the typed projection in the next `NEMB` sidecar
-     * (`projections.claimedEventEmbeds`). Compose DisposableEffect → claim.
+     * and ships the typed row in `refs.event`; Chirp also receives the derived
+     * `NEMB` compatibility sidecar (`projections.claimedEventEmbeds`).
+     * Compose DisposableEffect → claim.
      */
     fun claimEvent(uri: String, consumerId: String) {
         bridge.claimEvent(uri, consumerId)

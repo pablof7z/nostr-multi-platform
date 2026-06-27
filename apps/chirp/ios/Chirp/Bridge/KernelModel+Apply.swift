@@ -104,7 +104,6 @@ extension KernelModel {
         // `@Published` state — whole-map broadcast was the re-render bug.
         if ck.contains(TypedDmInboxDecoder.key) { typedDmInbox = result.typedDmInbox }
         if ck.contains(TypedDmRelayListDecoder.key) { typedDmRelayList = result.typedDmRelayList }
-        if ck.contains(TypedClaimedEventsDecoder.key) { typedClaimedEvents = result.typedClaimedEvents }
         if ck.contains(TypedClaimedEventEmbedsDecoder.key) { typedClaimedEventEmbeds = result.typedClaimedEventEmbeds }
         // NIP-46 cluster.
         if ck.contains(TypedBunkerHandshakeDecoder.key) { typedBunkerHandshake = result.typedBunkerHandshake }
@@ -250,7 +249,6 @@ extension KernelModel {
         // `keyedRefCache.reset()`.
         typedDmInbox = nil
         typedDmRelayList = nil
-        typedClaimedEvents = nil
         typedClaimedEventEmbeds = nil
         typedBunkerHandshake = nil
         typedNip46Onboarding = nil

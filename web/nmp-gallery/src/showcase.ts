@@ -12,7 +12,7 @@ export const SHOWCASE_PUBKEY: string = references.profile.pubkey_hex;
 
 // Real events to showcase the content-view component. `uri` is the `nostr:`
 // address the kernel resolves via the content-relay lane; `primary_id` is the
-// key the resolved event appears under in the `claimed_events` projection.
+// key the resolved event appears under in the `refs.event` projection.
 export const SHOWCASE_NOTE = {
   uri: references.note.uri,
   primaryId: references.note.primary_id,

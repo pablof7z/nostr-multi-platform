@@ -201,14 +201,19 @@ and the slot stays `Tailing` until the last owner releases — the existing
 Replace the three profile projections (and `claimed_events`) with **one keyed
 projection per namespace**:
 
-- `refs.profile` — `key → ResolvedRef<profile>` (`pubkey → ResolvedProfileRef`).
-- `refs.event` — `key → ResolvedRef<event>` (`primary_id → ResolvedEventRef`).
+- `refs.profile` — `key -> row payload` (`pubkey -> ProfileCard`), emitted as a
+  generic `NRRD` row-delta batch whose changed-row payload is the `KPRF`
+  profile codec.
+- `refs.event` — `key -> row payload` (`primary_id -> ClaimedEvent`), emitted as
+  a generic `NRRD` row-delta batch whose changed-row payload is a single-entry
+  `KCEV` event codec.
 
-Each map value carries the **widest shape any currently-live consumer of that key
-demanded**. If any consumer wants `profile.card`, the row carries card bytes; if all
-want `profile.ref`, it carries ref bytes. This is the typed-per-namespace output
-(invariant iv): `ResolvedProfileRef` and `ResolvedEventRef` are concrete FlatBuffers
-tables, **never** an app-visible `namespace: String → Value` registry.
+Each row value carries the **widest shape any currently-live consumer of that
+key demanded**. If any consumer wants `profile.card`, the row carries card
+bytes; if all want `profile.ref`, it carries ref bytes. This is the
+typed-per-namespace output (invariant iv): the namespace's row payload codec is
+concrete, **never** an app-visible `namespace: String -> Value` registry.
+`KCEV` remains a row codec only; it is not a live `claimed_events` projection.
 
 ### D6 — Full per-key reactivity, NOW (owner decision, overriding codex's defer)
 
@@ -324,11 +329,12 @@ grounded in master, not aspiration:
   `HashMap<key, u64>` bumped at each entity's mutation site), and teaching the manifest
   + `make_update` encoder to emit per-row `Changed` / `Cleared` instead of
   whole-projection presence. This is the concrete extension point ADR-0055 left open.
-- **Output schemas:** `crates/nmp-core/schema/{claimed_profiles,mention_profiles,resolved_profiles,claimed_events}.fbs`
-  are deleted; `profile_card.fbs` (the shared `ProfileCard` table) is retained as the
-  `profile.card` shape's row type and a new `profile.ref` row type is added. New
-  `refs_profile.fbs` / `refs_event.fbs` carry `key → ResolvedRef` with a closed shape
-  discriminant.
+- **Output schemas:** `crates/nmp-core/schema/{claimed_profiles,mention_profiles,resolved_profiles}.fbs`
+  are deleted. `ref_rowdelta.fbs` (`NRRD`) carries the outer `refs.profile` /
+  `refs.event` row-delta batch. `claimed_events.fbs` is retained only as the
+  single-entry `KCEV` row-payload codec for one `refs.event` row; it is not a
+  live whole-map projection. `profile_card.fbs` / `profile.fbs` are retained as
+  the profile row payload codec.
 - **Declared keys:** `KERNEL_BUILTIN_PROJECTION_KEYS`
   (`kernel/update/builtin_projection_keys.generated.rs`) loses the four keys and gains
   `refs.profile` / `refs.event`; `nmp-codegen`'s `SNAPSHOT_PROJECTIONS` registry and
@@ -384,8 +390,10 @@ corrected to drop "npub forms." The shell encodes bech32 at render time.
 ## Migration (one cut, no compat aliases — upgrade every consumer)
 
 **Delete:**
-- `claimed_profiles.fbs`, `mention_profiles.fbs`, `resolved_profiles.fbs`,
-  `claimed_events.fbs` + their generated Rust/Swift/Kotlin bindings.
+- `claimed_profiles.fbs`, `mention_profiles.fbs`, `resolved_profiles.fbs`
+  + their generated Rust/Swift/Kotlin bindings, and the host-visible
+  `claimed_events` projection bindings. The KCEV `claimed_events.fbs` codec
+  remains only as the per-row `refs.event` payload format.
 - The `claimed_profiles()` / `mention_profiles()` / `resolved_profiles()` /
   `claimed_events()` accessors and the precedence merge (`projections.rs:237-338`).
 - `MentionProfilePayload` (`kernel/types.rs`) and its typed sidecar
@@ -397,8 +405,11 @@ corrected to drop "npub forms." The shell encodes bech32 at render time.
 **Add:**
 - The `RefResolver` trait + `resolve_ref` / `release_ref` seam (C-ABI + JNI),
   `namespace` + `shape` closed enums, `liveness` axis on both namespaces.
-- `refs.profile` / `refs.event` projection schemas with closed shape discriminants
-  (`profile.ref` / `profile.card`, `event.embed` / `event.raw`).
+- `refs.profile` / `refs.event` projection keys whose typed payload is the
+  generic `ref_rowdelta.fbs` (`NRRD`) row batch. The namespace-specific row
+  payload codecs are `KPRF` for profile rows and single-entry `KCEV` for event
+  rows (`profile.ref` / `profile.card`, `event.embed` / `event.raw` shape
+  semantics live in the resolver, not in an app-visible projection fork).
 - Per-key rev in the resolver (replacing the whole-projection
   `profile_claims_ver` / `claimed_event_content_ver` scalars); per-row `Changed` /
   `Cleared` manifest + encoder support; per-key observable slots in the generated

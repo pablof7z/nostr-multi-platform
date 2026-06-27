@@ -13,9 +13,9 @@ use ratatui::{
 
 use nmp_content::embed_projection::EmbeddedEventEnvelope;
 
+use super::super::nostr_mention_chip::NostrMentionProfileHost;
 use super::embed_chrome_container::EmbedChromeContainer;
 use super::NostrKindRegistry;
-use super::super::nostr_mention_chip::NostrMentionProfileHost;
 
 pub struct EmbeddedEvent<'a> {
     pub envelope: &'a EmbeddedEventEnvelope,

@@ -2,38 +2,38 @@ import SwiftUI
 
 /// SwiftUI view that renders one embedded Nostr event by dispatching through
 /// `NostrKindRegistry`. The view itself is purely declarative — it owns the
-/// claim/release lifecycle of the embed URI (via `task(id:)` / `onDisappear`),
+/// resolve/release lifecycle of the embed URI (via `task(id:)` / `onDisappear`),
 /// reads the resolved `EmbeddedEventEnvelope` from the host bound by the
 /// caller, and lets the registry pick the right renderer.
 ///
 /// Mirrors the TUI's `EmbeddedEvent` widget (`crates/nmp-cli/registry/tui/
 /// content-kind-registry/embedded_event.rs`).
 ///
-/// Lifecycle (D8 — no polling; aligned with task instructions to never claim
-/// inside `var body`):
-///   • `.task(id: uri)` calls the sink's `claim` exactly once per URI.
+/// Lifecycle (D8 — no polling; aligned with task instructions to never resolve
+/// refs inside `var body`):
+///   • `.task(id: uri)` calls the resolver's `resolveEventRef` exactly once per URI.
 ///   • `.onDisappear` releases. SwiftUI's identity-stable `id:` parameter
-///     guarantees one matched claim/release pair per embedded slot.
+///     guarantees one matched resolve/release pair per embedded slot.
 public struct EmbeddedEvent: View {
     public var uri: String
     /// Optional resolved envelope. `nil` while the kernel fetches; the view
     /// shows a loading placeholder until the snapshot arrives.
     public var envelope: EmbeddedEventEnvelope?
     public var registry: NostrKindRegistry
-    public var claimSink: EventClaimSinkProtocol?
+    public var eventRefResolver: EventRefResolverProtocol?
     public var consumerId: String
 
     public init(
         uri: String,
         envelope: EmbeddedEventEnvelope?,
         registry: NostrKindRegistry,
-        claimSink: EventClaimSinkProtocol? = nil,
+        eventRefResolver: EventRefResolverProtocol? = nil,
         consumerId: String = "nmp-gallery-ios.embed"
     ) {
         self.uri = uri
         self.envelope = envelope
         self.registry = registry
-        self.claimSink = claimSink
+        self.eventRefResolver = eventRefResolver
         self.consumerId = consumerId
     }
 
@@ -45,10 +45,10 @@ public struct EmbeddedEvent: View {
             content
         }
         .task(id: uri) {
-            claimSink?.claim(uri: uri, consumerId: consumerId)
+            eventRefResolver?.resolveEventRef(uri: uri, consumerId: consumerId)
         }
         .onDisappear {
-            claimSink?.release(uri: uri, consumerId: consumerId)
+            eventRefResolver?.releaseEventRef(uri: uri, consumerId: consumerId)
         }
     }
 
@@ -86,14 +86,15 @@ public struct EmbeddedEvent: View {
     }
 }
 
-/// Protocol mirror of `nmp_content::EventClaimSink`. The renderer fires
-/// `claim(uri:consumerId:)` when an embed enters the view tree and the
-/// matching `release(...)` when it leaves. Implementations are app-owned URI
-/// adapters that decode to the raw event key and call the unified ref FFI.
+/// Renderer-owned event-ref lifecycle adapter. The renderer fires
+/// `resolveEventRef(uri:consumerId:)` when an embed enters the view tree and
+/// the matching `releaseEventRef(...)` when it leaves. Implementations are
+/// app-owned URI adapters that decode to the raw event key and call the unified
+/// ref FFI.
 ///
 /// `Sendable` because the gallery's concrete impl is the kernel actor's
 /// command channel — every method is fire-and-forget across threads.
-public protocol EventClaimSinkProtocol: Sendable {
-    func claim(uri: String, consumerId: String)
-    func release(uri: String, consumerId: String)
+public protocol EventRefResolverProtocol: Sendable {
+    func resolveEventRef(uri: String, consumerId: String)
+    func releaseEventRef(uri: String, consumerId: String)
 }

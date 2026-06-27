@@ -7,7 +7,7 @@
 //!
 //! Embedded events do NOT live here. The renderer is frontend-driven:
 //! when `NostrContentView` hits an `EventRef(uri)` it calls
-//! `sink.claim(uri, …)`, the kernel fetches (cache or relay), and the
+//! `sink.resolve_event_ref(uri, …)`, the kernel fetches (cache or relay), and the
 //! resolved envelopes flow through `EmbedHostState` (see `embed_host.rs`).
 //! Renderers consume the host's envelope map at render time, not a
 //! static field on `ContentExample`.
@@ -213,7 +213,7 @@ impl GalleryData {
     }
 
     /// Build trees that contain only real Nostr references. Relay-provided
-    /// fields arrive through `claimed_events` and the `refs.profile` keyed
+    /// fields arrive through `refs.event` and the `refs.profile` keyed
     /// projection; this initializer does not invent event bodies,
     /// authors, media, profile names, or profile pictures.
     fn build(primary_pubkey: &str) -> Self {
@@ -275,14 +275,14 @@ fn tree_for_content(content: &str) -> Result<ContentTreeWire, String> {
 mod live_profile_map_tests {
     use super::*;
     use crate::live::GalleryTypedSnapshot;
-    use nmp_core::typed_projections::{ClaimedEventsModel, ProfileCardModel};
+    use nmp_core::typed_projections::ProfileCardModel;
     use std::collections::BTreeMap;
 
     fn typed_snapshot_with_profile(pubkey: &str, card: ProfileCardModel) -> GalleryTypedSnapshot {
         let mut profiles = BTreeMap::new();
         profiles.insert(pubkey.to_string(), card);
         GalleryTypedSnapshot {
-            claimed_events: ClaimedEventsModel::default(),
+            events: BTreeMap::new(),
             profiles,
             relay_statuses: Vec::new(),
         }

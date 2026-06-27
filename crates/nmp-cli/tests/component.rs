@@ -268,7 +268,13 @@ fn add_component_installs_content_view_with_transitive_deps() {
 
     let out = nmp(
         tmp.path(),
-        &["add", "component", "swiftui/content-view", "--with", "example"],
+        &[
+            "add",
+            "component",
+            "swiftui/content-view",
+            "--with",
+            "example",
+        ],
     );
     assert!(
         out.status.success(),
@@ -277,17 +283,41 @@ fn add_component_installs_content_view_with_transitive_deps() {
     );
 
     // Direct sources.
-    assert!(tmp.path().join("Components/NostrContent/NostrContentView.swift").exists());
-    assert!(tmp.path().join("Components/NostrContent/NostrContentGrouping.swift").exists());
-    assert!(tmp.path().join("Components/NostrContent/Examples/NostrContentViewPreview.swift").exists());
+    assert!(tmp
+        .path()
+        .join("Components/NostrContent/NostrContentView.swift")
+        .exists());
+    assert!(tmp
+        .path()
+        .join("Components/NostrContent/NostrContentGrouping.swift")
+        .exists());
+    assert!(tmp
+        .path()
+        .join("Components/NostrContent/Examples/NostrContentViewPreview.swift")
+        .exists());
 
     // Transitive deps pulled by resolver.
-    assert!(tmp.path().join("Components/NostrContent/NostrContentRenderer.swift").exists());
-    assert!(tmp.path().join("Components/NostrContent/ContentTreeWire.swift").exists());
-    assert!(tmp.path().join("Components/NostrContent/NostrMediaGrid.swift").exists());
+    assert!(tmp
+        .path()
+        .join("Components/NostrContent/NostrContentRenderer.swift")
+        .exists());
+    assert!(tmp
+        .path()
+        .join("Components/NostrContent/ContentTreeWire.swift")
+        .exists());
+    assert!(tmp
+        .path()
+        .join("Components/NostrContent/NostrMediaGrid.swift")
+        .exists());
     // Event refs now render through the kind-dispatch registry (ADR-0034).
-    assert!(tmp.path().join("Components/NostrContent/NostrKindRegistry.swift").exists());
-    assert!(tmp.path().join("Components/NostrContent/EmbeddedEvent.swift").exists());
+    assert!(tmp
+        .path()
+        .join("Components/NostrContent/NostrKindRegistry.swift")
+        .exists());
+    assert!(tmp
+        .path()
+        .join("Components/NostrContent/EmbeddedEvent.swift")
+        .exists());
 
     let lock = fs::read_to_string(tmp.path().join("nmp.components.lock")).unwrap();
     assert!(lock.contains("id = \"swiftui/content-core\""));
@@ -311,8 +341,12 @@ fn add_component_dependency_order() {
     );
 
     let lock = fs::read_to_string(tmp.path().join("nmp.components.lock")).unwrap();
-    let core_pos = lock.find("id = \"swiftui/content-core\"").expect("content-core must be locked");
-    let minimal_pos = lock.find("id = \"swiftui/content-minimal\"").expect("content-minimal must be locked");
+    let core_pos = lock
+        .find("id = \"swiftui/content-core\"")
+        .expect("content-core must be locked");
+    let minimal_pos = lock
+        .find("id = \"swiftui/content-minimal\"")
+        .expect("content-minimal must be locked");
     assert!(
         core_pos < minimal_pos,
         "content-core must appear before content-minimal: core@{core_pos}, minimal@{minimal_pos}"

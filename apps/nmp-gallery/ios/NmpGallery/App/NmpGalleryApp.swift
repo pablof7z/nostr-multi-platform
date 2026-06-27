@@ -36,7 +36,7 @@ struct NmpGalleryApp: App {
                 .environment(model)
                 .environment(\.nostrProfileHost, model)
                 .environment(\.embedHost, model.embedHost)
-                .environment(\.embedClaimSink, model.embedClaimSink)
+                .environment(\.embedEventRefResolver, model.embedEventRefResolver)
                 .environment(\.nostrKindRegistry, kindRegistry)
                 .task {
                     model.start()

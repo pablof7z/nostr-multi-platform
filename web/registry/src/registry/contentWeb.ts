@@ -16,7 +16,7 @@ export const webContentCore: PlatformImpl = {
   version: "0.1.0",
   dependencies: [],
   longDescription:
-    "`decodeContentTree(bytes)` is the one place the web stack turns the kernel's NFCT bytes (`claimed_events.content_tree_bytes` / feed projections) into a decoded `ContentTreeWire` — every web content component (content-view, content-minimal) consumes the decoded tree, never raw bytes. Re-exports the generated `ContentTreeWire` + `WireNodeKind` so consumers import the tree type and the decoder from one module, mirroring the native content-core wire-type + renderer split. Also ships `isTreeRenderable` — the honesty gate (non-empty AND placeholder-free) the gallery uses to refuse the raw-string fallback. Pure; never fetches or mocks.",
+    "`decodeContentTree(bytes)` is the one place the web stack turns the kernel's NFCT bytes (`refs.event` row payloads / feed projections) into a decoded `ContentTreeWire` — every web content component (content-view, content-minimal) consumes the decoded tree, never raw bytes. Re-exports the generated `ContentTreeWire` + `WireNodeKind` so consumers import the tree type and the decoder from one module, mirroring the native content-core wire-type + renderer split. Also ships `isTreeRenderable` — the honesty gate (non-empty AND placeholder-free) the gallery uses to refuse the raw-string fallback. Pure; never fetches or mocks.",
   files: [
     { source: "web/content-core/decodeContentTree.ts", target: "src/components/nostr-content/decodeContentTree.ts", role: "source", content: webContentCoreTs },
   ],
@@ -57,7 +57,7 @@ export const webContentView: PlatformImpl = {
   screenshots: ["content-view-web-preview.png"],
   customization: [
     "Style via the `nostr-*` element classes (`nostr-p`, `nostr-h`, `nostr-url`, `nostr-blockquote`, `nostr-code-block`, …); the component emits semantic HTML with no inline styles.",
-    "The `tree` prop is a decoded `ContentTreeWire` from your kernel snapshot's `claimed_events` / feed projection; decode the NFCT bytes once in your runtime and pass the root object — the component is a pure walker.",
+    "The `tree` prop is a decoded `ContentTreeWire` from your kernel snapshot's `refs.event` row payload or feed projection; decode the NFCT bytes once in your runtime and pass the root object — the component is a pure walker.",
     "Mention and event-ref nodes render as `nostr:` anchors; install the embed-component layer to upgrade them to profile chips and quoted-event cards.",
   ],
 };
@@ -68,7 +68,7 @@ export const webContentKindRegistry: PlatformImpl = {
   version: "0.1.0",
   dependencies: ["content-kind-30023", "content-kind-9802", "content-quote-card"],
   longDescription:
-    "`<NostrEmbeddedEvent event={...} />` is the web kind-dispatch table. The host passes a fully resolved `EmbeddedEventModel` (the Rust kernel/`nmp-content` already kind-dispatched it into a `projection` and surfaced it in the snapshot's `claimed_event_embeds_json`) and the registry routes on `projection.variant`: `article` → `NostrArticleCard`, `highlight` → `NostrHighlightCard`, everything else → `NostrQuoteCard`. It maps the pre-resolved projection fields into each card's model — it does NOT re-parse raw NIP-23/NIP-84 tags (that policy is kernel-owned; the wire is the `nmp-content` resolver output / `EmbedKindProjection` serde enum shape decoded by the web TS, not the NEMB FlatBuffer iOS decodes). Verified live in the NMP web gallery dispatching a real article, highlight, and note. The web twin of the SwiftUI/TUI `NostrKindRegistry` + `EmbeddedEvent`.",
+    "`<NostrEmbeddedEvent event={...} />` is the web kind-dispatch table. The host passes a fully resolved `EmbeddedEventModel` decoded from the Rust-generated `claimed_event_embeds` / NEMB sidecar; that sidecar is composed from authoritative `refs.event` rows by `nmp-content`. The registry routes on `projection.variant`: `article` → `NostrArticleCard`, `highlight` → `NostrHighlightCard`, everything else → `NostrQuoteCard`. It maps the pre-resolved projection fields into each card's model — it does NOT re-parse raw NIP-23/NIP-84 tags. Verified live in the NMP web gallery dispatching a real article, highlight, and note. The web twin of the SwiftUI/TUI `NostrKindRegistry` + `EmbeddedEvent`.",
   files: [
     { source: "web/content-kind-registry/NostrKindRegistry.tsx", target: "src/components/nostr-content/NostrKindRegistry.tsx", role: "source", content: webKindRegistryTsx },
   ],
@@ -85,7 +85,7 @@ export const webContentKind30023: PlatformImpl = {
   version: "0.1.0",
   dependencies: ["content-kind-registry"],
   longDescription:
-    "`<NostrArticleCard article={...} />` is the web NIP-23 long-form card. Pure renderer: the host hydrates a `NostrArticleCardModel` from a resolved `claimed_events` kind:30023 entry (the `image`/`title`/`summary` tags + the kernel-enriched author). Renders the `image` tag as a 16:9 hero, the `title` headline, an optional `summary`, then an author byline (avatar + name + `article · kind:30023`). Verified live in the NMP web gallery against the real showcase article. Mirrors the SwiftUI `ArticleEmbed` / Compose `NostrArticleCard`.",
+    "`<NostrArticleCard article={...} />` is the web NIP-23 long-form card. Pure renderer: the host hydrates a `NostrArticleCardModel` from the resolved `refs.event` article projection (the `image`/`title`/`summary` fields + the kernel-enriched author). Renders the image as a 16:9 hero, the title headline, an optional summary, then an author byline (avatar + name + `article · kind:30023`). Verified live in the NMP web gallery against the real showcase article. Mirrors the SwiftUI `ArticleEmbed` / Compose `NostrArticleCard`.",
   files: [
     { source: "web/content-kind-30023/NostrArticleCard.tsx", target: "src/components/nostr-content/NostrArticleCard.tsx", role: "source", content: webArticleCardTsx },
   ],
@@ -102,7 +102,7 @@ export const webContentKind9802: PlatformImpl = {
   version: "0.1.0",
   dependencies: ["content-kind-registry"],
   longDescription:
-    "`<NostrHighlightCard highlight={...} />` is the web NIP-84 highlight card. Pure renderer: the host hydrates a `NostrHighlightCardModel` from a resolved `claimed_events` kind:9802 entry. Renders the highlighted text as a pull-quote in a yellow-accented box, an optional `context` line, and a source footer that branches on the `r` (URL) → `e` (event id) → `a` (addressable) tag in priority order. Verified live in the NMP web gallery against the real showcase highlight. Mirrors the SwiftUI/TUI `HighlightEmbed`.",
+    "`<NostrHighlightCard highlight={...} />` is the web NIP-84 highlight card. Pure renderer: the host hydrates a `NostrHighlightCardModel` from the resolved `refs.event` highlight projection. Renders the highlighted text as a pull-quote in a yellow-accented box, an optional `context` line, and a source footer from the resolved projection fields. Verified live in the NMP web gallery against the real showcase highlight. Mirrors the SwiftUI/TUI `HighlightEmbed`.",
   files: [
     { source: "web/content-kind-9802/NostrHighlightCard.tsx", target: "src/components/nostr-content/NostrHighlightCard.tsx", role: "source", content: webHighlightCardTsx },
   ],
@@ -136,7 +136,7 @@ export const webContentQuoteCard: PlatformImpl = {
   version: "0.1.0",
   dependencies: [],
   longDescription:
-    "`<NostrQuoteCard quote={...} nowSeconds={...} />` is the web quoted-note card (the kind:1 `embed-note` body). Pure renderer: the host hydrates a `NostrQuoteCardModel` from a resolved `claimed_events` entry (the referenced `nevent` claimed + kind:0-enriched). Renders an author header (avatar + name + relative time) above a content preview, in a subtle bordered card. Ships a pure `relativeTime(createdAt, now)` helper (now injected for testability). Verified live in the NMP web gallery against the real showcase note. Mirrors the SwiftUI/Compose `NostrQuoteCard`.",
+    "`<NostrQuoteCard quote={...} nowSeconds={...} />` is the web quoted-note card (the kind:1 `embed-note` body). Pure renderer: the host hydrates a `NostrQuoteCardModel` from the resolved `refs.event` short-note projection. Renders an author header (avatar + name + relative time) above a content preview, in a subtle bordered card. Ships a pure `relativeTime(createdAt, now)` helper (now injected for testability). Verified live in the NMP web gallery against the real showcase note. Mirrors the SwiftUI/Compose `NostrQuoteCard`.",
   files: [
     { source: "web/content-quote-card/NostrQuoteCard.tsx", target: "src/components/nostr-content/NostrQuoteCard.tsx", role: "source", content: webQuoteCardTsx },
   ],

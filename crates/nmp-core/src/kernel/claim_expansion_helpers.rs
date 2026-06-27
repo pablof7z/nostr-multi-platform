@@ -219,8 +219,8 @@ impl Kernel {
         // (`event_claims` refcount row + `event_claim_requested`) and push the
         // id into the release ring so a re-claim re-fetches. A `Hit` MUST keep
         // the `event_claims` row intact — the matching EVENT is now in the
-        // store and the `claimed_events` projection surfaces it on the next
-        // snapshot tick. (Previously this teardown lived in
+        // store and `refs.event` surfaces it on the next snapshot tick.
+        // (Previously this teardown lived in
         // `complete_unknown_oneshot` and fired on the FIRST relay's
         // EOSE-no-match, racing a sibling relay's still-in-flight EVENT.)
         if is_terminal_miss {

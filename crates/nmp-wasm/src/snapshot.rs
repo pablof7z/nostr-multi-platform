@@ -72,12 +72,12 @@ pub(crate) struct RuntimeMeta {
     /// AFTER `make_update_frame` returns, so the callback sees only `&[u8]`
     /// and never re-enters the reducer. This is the wasm twin of nmp-ffi's
     /// listener-thread `update_embed_sidecar_from_frame` hook: a composition
-    /// root that depends on `nmp-content` decodes the `claimed_events` KCEV
-    /// from the bytes, resolves each embed, and stores the resolved map in its
-    /// own slot, which a typed snapshot projection reads on the NEXT tick
-    /// (one-tick lag — identical to native, and acceptable for the async
-    /// claimed-events flow). `nmp-wasm` itself stays policy-free: it owns the
-    /// chokepoint, not the resolution.
+    /// root that depends on `nmp-content` decodes `refs.event` row payloads
+    /// (KCEV), resolves each embed, and stores the resolved map in its own slot,
+    /// which a typed snapshot projection reads on the NEXT tick (one-tick lag —
+    /// identical to native, and acceptable for the async event-ref flow).
+    /// `nmp-wasm` itself stays policy-free: it owns the chokepoint, not the
+    /// resolution.
     ///
     /// `Rc<dyn Fn(&[u8])>` (not `Send + Sync`) is correct on wasm32: the JS
     /// event loop is single-threaded, and the callback runs synchronously on

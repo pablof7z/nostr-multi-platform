@@ -4,12 +4,12 @@ import SwiftUI
 ///
 /// Two construction modes:
 ///   • `NostrProfileName(profile:)` — caller already holds a `ProfileWire`
-///     (static, no claiming). Renders `profile.display`.
-///   • `NostrProfileName(pubkey:)` — *self-claiming*. The component owns the
-///     responsibility of claiming the kind:0 it needs: on appear it claims the
-///     profile from the `NostrProfileHost`, reads the resolved projection
+///     (static, no resolving). Renders `profile.display`.
+///   • `NostrProfileName(pubkey:)` — self-resolving. The component owns the
+///     responsibility of resolving the kind:0 it needs: on appear it resolves
+///     the profile through the `NostrProfileHost`, reads the `refs.profile` projection
 ///     reactively, and releases on disappear. This mirrors `NostrAvatar`'s
-///     claim/release lifecycle exactly.
+///     resolve/release lifecycle exactly.
 ///
 /// Display always comes from a Rust-formatted source — `displayName` when the
 /// kind:0 has resolved, else the Rust-truncated `npubShort` (aim.md §6.9).
@@ -21,19 +21,19 @@ import SwiftUI
 public struct NostrProfileName: View {
     @Environment(\.nostrProfileHost) private var profileHost
 
-    /// Static profile supplied directly by the caller (no claiming). `nil`
-    /// when constructed in the self-claiming `pubkey:` mode.
+    /// Static profile supplied directly by the caller (no resolving). `nil`
+    /// when constructed in the self-resolving `pubkey:` mode.
     private let staticProfile: ProfileWire?
-    /// Pubkey to self-claim (also the static profile's pubkey in static mode).
+    /// Pubkey to self-resolve (also the static profile's pubkey in static mode).
     private let pubkey: String
     private let consumerID: String?
     public var font: Font
     public var color: Color
 
     @State private var generatedConsumerID: String
-    @State private var claimedPubkey: String?
+    @State private var activePubkey: String?
 
-    /// Static variant: render an already-resolved `ProfileWire`. No claiming.
+    /// Static variant: render an already-resolved `ProfileWire`. No resolving.
     public init(
         profile: ProfileWire,
         font: Font = .headline,
@@ -47,10 +47,10 @@ public struct NostrProfileName: View {
         self._generatedConsumerID = State(
             initialValue: "nostr-profile-name.static.\(UUID().uuidString)"
         )
-        self._claimedPubkey = State(initialValue: nil)
+        self._activePubkey = State(initialValue: nil)
     }
 
-    /// Self-claiming variant: claim the kind:0 for `pubkey` from the host,
+    /// Self-resolving variant: resolve the kind:0 for `pubkey` through the host,
     /// read the resolved profile reactively, release on disappear.
     public init(
         pubkey: String,
@@ -66,16 +66,16 @@ public struct NostrProfileName: View {
         self._generatedConsumerID = State(
             initialValue: consumerID ?? "nostr-profile-name.\(UUID().uuidString)"
         )
-        self._claimedPubkey = State(initialValue: nil)
+        self._activePubkey = State(initialValue: nil)
     }
 
     public var body: some View {
-        // Static mode: render the supplied profile directly, no claiming.
+        // Static mode: render the supplied profile directly, no resolving.
         if let staticProfile {
             return AnyView(label(for: staticProfile))
         }
 
-        // Self-claiming mode: resolve reactively from the host, claim/release
+        // Self-resolving mode: resolve reactively from the host, resolve/release
         // exactly like `NostrAvatar`.
         let resolved = profileHost?.profile(forPubkey: pubkey)
         return AnyView(
@@ -90,20 +90,20 @@ public struct NostrProfileName: View {
             }
             .task(id: pubkey) {
                 await MainActor.run {
-                    if let claimedPubkey, claimedPubkey != pubkey {
-                        profileHost?.releaseProfile(
-                            pubkey: claimedPubkey,
+                    if let activePubkey, activePubkey != pubkey {
+                        profileHost?.releaseProfileRef(
+                            pubkey: activePubkey,
                             consumerID: generatedConsumerID
                         )
                     }
-                    claimedPubkey = pubkey
-                    profileHost?.claimProfile(pubkey: pubkey, consumerID: generatedConsumerID)
+                    activePubkey = pubkey
+                    profileHost?.resolveProfileRef(pubkey: pubkey, consumerID: generatedConsumerID)
                 }
             }
             .onDisappear {
-                if let claimedPubkey {
-                    profileHost?.releaseProfile(pubkey: claimedPubkey, consumerID: generatedConsumerID)
-                    self.claimedPubkey = nil
+                if let activePubkey {
+                    profileHost?.releaseProfileRef(pubkey: activePubkey, consumerID: generatedConsumerID)
+                    self.activePubkey = nil
                 }
             }
         )

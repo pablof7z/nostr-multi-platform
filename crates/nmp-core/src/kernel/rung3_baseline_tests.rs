@@ -123,7 +123,7 @@ fn first_frame_after_declare_incremental_apply_is_full_baseline() {
     // Every Tier-2 built-in that has a payload on a fresh kernel MUST appear.
     // Non-drain keys that always produce bytes: configured_relays, profile,
     // accounts, active_account,
-    // claimed_events, relay_role_options, settings_hub,
+    // refs.profile, refs.event, relay_role_options, settings_hub,
     // publish_queue, publish_outbox, outbox_summary, relay_diagnostics.
     //
     // We check the set of present keys covers all built-in UNCONDITIONAL keys.
@@ -191,11 +191,11 @@ fn second_incremental_frame_omits_unchanged_keys() {
 
 /// A projection newly admitted by the host's consumed-projection declaration
 /// must emit a baseline row even when its logical payload is empty. This is the
-/// #1430 absent->present-empty edge for `claimed_events`: without a declaration
+/// #1430 absent->present-empty edge for a self-declared built-in: without a declaration
 /// transition signal, the oracle sees payload bytes change from absent to the
 /// encoded empty map while the manifest still says `Unchanged`.
 #[test]
-fn newly_declared_claimed_events_emits_changed_empty_baseline() {
+fn newly_declared_settings_hub_emits_changed_baseline() {
     let (mut kernel, slot) = kernel_with_slot();
 
     {
@@ -206,32 +206,32 @@ fn newly_declared_claimed_events_emits_changed_empty_baseline() {
 
     let frame1 = emit_frame(&mut kernel);
     assert!(
-        frame1.iter().all(|row| row.key != "claimed_events"),
-        "claimed_events must be filtered out before the host declares it"
+        frame1.iter().all(|row| row.key != "settings_hub"),
+        "settings_hub must be filtered out before the host declares it"
     );
 
     {
         let mut registry = slot.lock().expect("registry lock");
-        registry.declare_consumed_projections(["claimed_events"]);
+        registry.declare_consumed_projections(["settings_hub"]);
     }
 
     let frame2 = emit_frame(&mut kernel);
     let row = frame2
         .iter()
-        .find(|row| row.key == "claimed_events")
-        .expect("newly declared claimed_events must emit a baseline row");
+        .find(|row| row.key == "settings_hub")
+        .expect("newly declared settings_hub must emit a baseline row");
     assert_eq!(
         row.state,
         WireProjectionState::Changed,
-        "newly declared claimed_events must be stamped Changed"
+        "newly declared settings_hub must be stamped Changed"
     );
     assert!(
         !row.payload.is_empty(),
-        "baseline row carries the encoded empty claimed_events map"
+        "baseline row carries the encoded settings_hub payload"
     );
     let state = kernel
-        .last_emitted_projection_state("claimed_events")
-        .expect("claimed_events state captured by oracle");
+        .last_emitted_projection_state("settings_hub")
+        .expect("settings_hub state captured by oracle");
     assert_eq!(
         state.presence,
         super::super::projection_rev::ProjectionPresence::Changed,
@@ -374,7 +374,7 @@ fn omission_biconditional_oracle_omitted_iff_unchanged() {
     // `relay_role_options` / `settings_hub` cluster — plus `relay_diagnostics`
     // (whose per-emit fingerprint folds in the configured-relay set). Every
     // OTHER Tier-2 key (`profile`, `accounts`, `active_account`,
-    // `claimed_events`,
+    // `refs.event`,
     // the publish cluster) is untouched and MUST be omitted.
     use crate::kernel::AppRelay;
     kernel.set_configured_relays(vec![AppRelay::new(

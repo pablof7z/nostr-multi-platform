@@ -40,8 +40,8 @@ void nmp_app_stop(void *app);
 
 // Typed reference-resolution entry points. The gallery resolves visible
 // profiles and event embeds through these, not through raw
-// namespace/shape/liveness integers. The resolved rows flow back through the
-// kernel's `refs.profile` / `refs.event` row-delta projections.
+// namespace/shape/liveness integers. Profiles flow back through `refs.profile`;
+// event embeds flow back through the resolved event-ref/embed projections.
 // D6: null/invalid args are silent no-ops, never panics.
 // D8: fire-and-forget; the actor processes commands asynchronously.
 void nmp_app_resolve_profile_ref(void *app, const char *key,
@@ -57,7 +57,7 @@ void nmp_app_resolve_event_embed_live_with_metadata(void *app, const char *key,
 void nmp_app_release_event_ref(void *app, const char *key,
                                const char *consumer_id);
 
-// ── Event claim / release (kind-dispatch embed) ──────────────────────────
+// ── Event-ref resolve / release (kind-dispatch embed) ────────────────────
 
 // Event URI front doors are removed. Callers decode the nostr: URI via
 // nmp_nip21_decode_uri and then route to the typed event-embed adapters above.
@@ -113,25 +113,26 @@ void nmp_app_signin_nsec(void *app, const char *secret, uint8_t make_active);
 void nmp_app_gallery_register(void *app);
 const char *nmp_app_gallery_showcase_references_json(void);
 
-// ── refs.profile host mirror (ADR-0063 #1671) ────────────────────────────
+// ── refs.* host mirrors (ADR-0063 #1671) ─────────────────────────────────
 //
-// Opaque host-owned mirror of the kernel's `refs.profile` row-delta projection.
-// The shell allocates ONE per kernel session and threads it into every
-// `nmp_app_gallery_snapshot_json_from_update_frame` call so per-key profile
-// deltas accumulate across frames (the sidecar carries only changed/cleared
-// rows — a single frame cannot be decoded in isolation). Sole app-side profile
-// store (D4). Release with `nmp_app_gallery_ref_profile_store_free`.
-typedef struct GalleryRefProfileStore GalleryRefProfileStore;
-struct GalleryRefProfileStore *nmp_app_gallery_ref_profile_store_new(void);
-void nmp_app_gallery_ref_profile_store_free(struct GalleryRefProfileStore *store);
+// Opaque host-owned mirrors of the kernel's `refs.profile` / `refs.event`
+// row-delta projections. The shell allocates ONE per kernel session and
+// threads it into every `nmp_app_gallery_snapshot_json_from_update_frame` call
+// so per-key ref deltas accumulate across frames (the sidecars carry only
+// changed/cleared rows — a single frame cannot be decoded in isolation). Sole
+// app-side ref stores (D4). Release with `nmp_app_gallery_ref_stores_free`.
+typedef struct GalleryRefStores GalleryRefStores;
+struct GalleryRefStores *nmp_app_gallery_ref_stores_new(void);
+void nmp_app_gallery_ref_stores_free(struct GalleryRefStores *stores);
 
 // Decode borrowed FlatBuffers `nmp.transport.UpdateFrame` bytes into the
-// Gallery snapshot JSON shape, merging the frame's `refs.profile` row-delta
-// batch into `store` first (the rendered `refs.profile` JSON map is sourced
-// from that store). `store` MUST persist across calls for one kernel session.
+// Gallery snapshot JSON shape, merging the frame's `refs.profile` /
+// `refs.event` row-delta batches into `stores` first (the rendered
+// `refs.profile` / `refs.event` JSON maps are sourced from those stores).
+// `stores` MUST persist across calls for one kernel session.
 // Returns a heap string that MUST be released via `nmp_free_string`; returns
-// NULL for a NULL store, malformed frames, or decode failures.
-char *nmp_app_gallery_snapshot_json_from_update_frame(struct GalleryRefProfileStore *store,
+// NULL for NULL stores, malformed frames, or decode failures.
+char *nmp_app_gallery_snapshot_json_from_update_frame(struct GalleryRefStores *stores,
                                                       const uint8_t *bytes, uintptr_t len);
 
 // ── Stateless NIP-21 / NIP-19 decode ────────────────────────────────────

@@ -30,8 +30,8 @@ use crate::{
 };
 
 /// Per-frame embed-rendering context — the renderer's pulled-in deps so
-/// it can drive the renderer-triggered claim path (ADR-0034). `envelopes`
-/// is the host's current `claimed_events` map (built from the latest
+/// it can drive the renderer-triggered resolve path (ADR-0034). `envelopes`
+/// is the host's current `refs.event` map (built from the latest
 /// snapshot push); `sink` forwards new claims to the kernel; `consumer_id`
 /// is the per-consumer key the kernel refcounts under.
 #[derive(Clone, Copy)]
@@ -112,10 +112,10 @@ pub fn render_body(
                 .kind_registry(Some(&registry))
                 .embedded_events(Some(embed_ctx.envelopes))
                 .profile_host(Some(&profile_host))
-                .claim_sink(
+                .event_ref_resolver(
                     embed_ctx
                         .sink
-                        .map(|sink| sink as &dyn nmp_content::EventClaimSink),
+                        .map(|sink| sink as &dyn nmp_content::EventRefResolver),
                 )
                 .consumer_id(Some(embed_ctx.consumer_id))
                 .render(area, buf)
@@ -193,12 +193,16 @@ fn render_media_grid(
     embed_ctx: EmbedFrameContext<'_>,
 ) {
     if let Some(sink) = embed_ctx.sink {
-        nmp_content::EventClaimSink::claim(sink, article_naddr(), embed_ctx.consumer_id);
+        nmp_content::EventRefResolver::resolve_event_ref(
+            sink,
+            article_naddr(),
+            embed_ctx.consumer_id,
+        );
     }
     let urls = relay_media_urls(embed_ctx.envelopes);
     if urls.is_empty() {
         paragraph(vec![Line::from(
-            "Waiting for relay-backed media from the claimed article.",
+            "Waiting for relay-backed media from the resolved article.",
         )])
         .render(area, buf);
         return;
@@ -299,7 +303,7 @@ impl NostrProfileHost for GalleryProfileHost<'_> {
     }
 
     fn resolve_ref(&self, pubkey: &str, consumer_id: &str) {
-        self.claim(pubkey, consumer_id);
+        self.resolve_profile_ref(pubkey, consumer_id);
     }
 
     fn release_ref(&self, pubkey: &str, consumer_id: &str) {
@@ -321,7 +325,7 @@ impl NostrMentionProfileHost for GalleryProfileHost<'_> {
     }
 
     fn resolve_ref(&self, pubkey: &str, consumer_id: &str) {
-        self.claim(pubkey, consumer_id);
+        self.resolve_profile_ref(pubkey, consumer_id);
     }
 }
 
@@ -330,7 +334,7 @@ impl GalleryProfileHost<'_> {
         self.profiles.resolve(pubkey)
     }
 
-    fn claim(&self, pubkey: &str, consumer_id: &str) {
+    fn resolve_profile_ref(&self, pubkey: &str, consumer_id: &str) {
         if let Some(claims) = self.claims {
             claims
                 .borrow_mut()
@@ -441,23 +445,18 @@ fn render_embed_showcase(
     let registry = NostrKindRegistry::make_default();
     let profile_host = profile_host_from_context(embed_ctx);
 
-    // M16 / ADR-0034: the renderer is frontend-driven. When `NostrContentView`
-    // hits an EventRef(uri), it calls `sink.claim(uri, consumer_id)` — the
-    // kernel fetches (cache or relay) and surfaces in `claimed_events`. The
-    // `EmbedHostState` decodes that on each snapshot tick and exposes the
-    // envelopes through `embed_ctx.envelopes`. The renderer looks them up
-    // by `primary_id` / `uri`; if absent → loading placeholder; if present
-    // → kind registry dispatches to the right handler.
+    // Renderer-triggered event refs resolve through the kernel sink; pushed
+    // snapshots refresh `embed_ctx.envelopes` for kind-registry dispatch.
     NostrContentView::new(&example.tree)
         .render_data(Some(&example.render_data))
         .media_images(media_images)
         .kind_registry(Some(&registry))
         .embedded_events(Some(embed_ctx.envelopes))
         .profile_host(Some(&profile_host))
-        .claim_sink(
+        .event_ref_resolver(
             embed_ctx
                 .sink
-                .map(|sink| sink as &dyn nmp_content::EventClaimSink),
+                .map(|sink| sink as &dyn nmp_content::EventRefResolver),
         )
         .consumer_id(Some(embed_ctx.consumer_id))
         .render(area, buf);

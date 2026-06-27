@@ -130,22 +130,24 @@ The kernel automatically tracks when replaceable events (kind:0 profiles, kind:1
 
 - Profile data automatically re-fetched after kind-specific timeout (default: 1h for kind:0, 6h for kind:10002)
 - No polling loop needed in app code; framework wakes up only when a view claims the event
-- Lazy re-verification: a claim re-fetches a replaceable identity **only if its TTL has elapsed** — claiming a still-fresh profile/article is a no-op, so `.onAppear` on a feed of avatars never spams REQs
+- Lazy re-verification: a ref resolve re-fetches a replaceable identity **only if its TTL has elapsed** — resolving a still-fresh profile/article is a no-op, so `.onAppear` on a feed of avatars never spams REQs
 - Forced refresh on demand via the **`force` argument on the existing claim functions** (no separate symbol)
 - Per-event freshness tracking in persistent LMDB sub-db (`replaceable_freshness`), survives app restarts
 
 **API surface:**
 
 - **Rust (kernel-internal):** `Kernel::claim_replaceable(kind, pubkey, d_tag?, force)` — re-fetch if the TTL has elapsed, or unconditionally when `force == true`
-- **FFI (app-facing):** force-refresh is a parameter on profile claims; event-ref resolution uses the unified `nmp_app_resolve_ref` — **not** a standalone symbol:
-  - `nmp_app_claim_profile(app, pubkey, consumer_id, force: int)` — kind:0 profile; `force != 0` bypasses the TTL gate
-  - `nmp_app_resolve_ref(app, namespace: int, key, consumer_id, shape: int, liveness: int)` — namespace=1 for events; `key` is a 64-hex event-id, `"kind:pubkey:d"` naddr coordinate, or `"i:<external-id>"` NIP-73 ref (not a `nostr:` URI); `shape`: 2=embed, 3=raw; TTL gate runs automatically for addressable keys and is a no-op for immutable event-ids
-  - Swift mirrors expose `force: Bool = false` (e.g. `claimProfile(pubkey:consumerID:force:)`), so background callers pass nothing.
+- **FFI (app-facing):** profile and event hydration use the unified
+  `nmp_app_resolve_ref` / `nmp_app_release_ref` seam — not standalone
+  profile-claim symbols:
+  - `nmp_app_resolve_ref(app, namespace: int, key, consumer_id, shape: int, liveness: int)` — namespace=0 for profiles and namespace=1 for events; profile shapes are `0=profile.ref`, `1=profile.card`; event shapes are `2=embed`, `3=raw`; liveness is `0=CacheOk`, `1=Live`.
+  - Registry user components call the shell adapter's `resolveProfileRef`, which maps to profile namespace + `profile.ref` + `CacheOk` and reads the current row from `refs.profile`.
+  - TTL/freshness gates run automatically for replaceable entities; immutable event ids are a no-op for freshness.
 - **Customization:** `NmpAppBuilder::with_replaceable_ttl_config(ReplaceableTtlConfig { per_kind, default })`
 
-> The earlier `nmp_app_refresh_replaceable` symbol was **removed**. Force-refresh
-> is now `force = 1` on the claim functions, keeping the C-ABI surface frozen
-> (no new per-verb export).
+> The earlier `nmp_app_refresh_replaceable` and profile-claim symbols were
+> removed from the app-facing guidance. Reference resolution now carries the
+> liveness/freshness intent through one seam.
 
 **When to pass `force = 1` (true):**
 
@@ -154,7 +156,7 @@ The kernel automatically tracks when replaceable events (kind:0 profiles, kind:1
 
 **When to pass `force = 0` (false) — the default, and almost everything:**
 
-- Background claims and component self-claims (avatars, name labels, embed cards) on `.onAppear` / list-row render.
+- Background resolves and component self-resolves (avatars, name labels, embed cards) on `.onAppear` / list-row render.
 - Cold-start replay of parked claims.
 - Any claim where you are not certain it is a deliberate user "refresh this now" action — when unsure, pass `0` and trust the TTL schedule.
 

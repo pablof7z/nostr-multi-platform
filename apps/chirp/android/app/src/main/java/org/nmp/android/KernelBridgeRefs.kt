@@ -5,8 +5,8 @@ package org.nmp.android
  * resolution: event claim/release surface + the ADR-0063 Lane D/G unified
  * resolve_ref / release_ref seam (#1671).
  *
- * ADR-0063 Lane H: claimProfile / releaseProfile deleted (use resolveRef with
- * RefNamespace.Profile instead).
+ * ADR-0063 Lane H: the old profile-claim bridge was deleted; use resolveRef
+ * with RefNamespace.Profile instead.
  *
  * Split out of [KernelBridge] to keep that file under the 500-LOC ceiling
  * (AGENTS.md File Size). Same package — no import required. Thin-shell rule:
@@ -17,10 +17,11 @@ package org.nmp.android
  * Demand-driven embedded-event fetch claim (#984 / T180 / ADR-0034): the UI
  * is rendering an out-of-feed `EventRef` ([uri] is the verbatim
  * `nevent`/`note`/`naddr` URI) under [consumerId]; the kernel resolves the
- * event (cache-first, then relay) and ships its typed projection in the next
- * `NEMB` sidecar (`projections.claimedEventEmbeds`). App-local wrappers named
- * `claimEvent` / `nativeClaimEvent` are URI adapters over unified `resolve_ref`,
- * not kernel or C front doors.
+ * event (cache-first, then relay) and ships its typed row in `refs.event`;
+ * Chirp also receives the derived `NEMB` compatibility sidecar
+ * (`projections.claimedEventEmbeds`). App-local wrappers named `claimEvent` /
+ * `nativeClaimEvent` are URI adapters over unified `resolve_ref`, not kernel or
+ * C front doors.
  *
  * Idempotent per (uri, consumerId); the matching [releaseEvent] must be
  * called when the embed leaves the composition so the kernel reclaims the
@@ -47,7 +48,7 @@ fun KernelBridge.releaseEvent(uri: String, consumerId: String) {
 /**
  * ADR-0063 Lane D/G (#1671) — unified, origin-blind reference resolution. The
  * Android twin of iOS `KernelHandle.resolveRef`. Supersedes the deleted legacy
- * [claimProfile] surface (ADR-0063 Lane H).
+ * profile-claim surface (ADR-0063 Lane H).
  *
  * [namespace] — [RefNamespace] (profile / event).
  * [key] — lowercase 64-hex pubkey (profile) or event-id hex / `kind:pubkey:d`

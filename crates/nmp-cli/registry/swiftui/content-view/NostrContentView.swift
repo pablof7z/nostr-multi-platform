@@ -13,8 +13,9 @@ import UIKit
 ///   • Mention display labels are provided by the app via `mentionLabel`.
 ///   • Embedded events (`nostr:nevent…` / `nostr:naddr…`) render through the
 ///     kind-dispatch registry (ADR-0034): the app binds an `EmbedEnvelopeSource`
-///     + claim sink + `NostrKindRegistry` via `.embedEnvelopeSource(...)` and
-///     `eventRefView` dispatches through `EmbeddedEvent`. With no host bound,
+///     + `EventRefResolverProtocol` + `NostrKindRegistry` via
+///     `.embedEnvelopeSource(...)` and `eventRefView` dispatches through
+///     `EmbeddedEvent`. With no host bound,
 ///     `EmbeddedEvent` still renders a loading placeholder via the default
 ///     registry — there is no separate quote-card fallback.
 public struct NostrContentView: View {
@@ -36,7 +37,7 @@ public struct NostrContentView: View {
     // NostrContentAttributed) in the same module can read theming + callbacks.
     @Environment(\.nostrContentRenderer) var renderer
     @Environment(\.embedEnvelopeSource) private var embedEnvelopeSource
-    @Environment(\.embedClaimSink) private var embedClaimSink
+    @Environment(\.embedEventRefResolver) private var embedEventRefResolver
     @Environment(\.nostrKindRegistry) private var nostrKindRegistry
 
     public init(
@@ -247,7 +248,7 @@ public struct NostrContentView: View {
 
     private func eventRefView(_ uri: NostrWireUri) -> some View {
         // Kind-dispatch path (ADR-0034 / F-CR-04). `EmbeddedEvent` owns the
-        // claim/release lifecycle via `task(id:)` + `onDisappear`; the registry
+        // resolve/release lifecycle via `task(id:)` + `onDisappear`; the registry
         // picks the renderer for the resolved projection. The view always
         // renders even if the host hasn't resolved the envelope yet (loading
         // placeholder via `EmbedChromeContainer`). With no registry bound, the
@@ -257,7 +258,7 @@ public struct NostrContentView: View {
             envelope: embedEnvelopeSource?.envelopeForPrimaryID(uri.primaryId)
                 ?? embedEnvelopeSource?.envelopeForURI(uri.uri),
             registry: nostrKindRegistry ?? NostrKindRegistry.makeDefault(),
-            claimSink: embedClaimSink
+            eventRefResolver: embedEventRefResolver
         )
     }
 

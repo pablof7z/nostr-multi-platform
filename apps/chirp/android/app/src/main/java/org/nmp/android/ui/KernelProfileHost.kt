@@ -96,10 +96,10 @@ class KernelProfileHost(
     // surfaces, so they resolve the small ProfileRef shape with CacheOk liveness
     // (background fill, no tailing sub). The open profile screen resolves the full
     // ProfileCard/Live shape itself (see ProfileScreen).
-    override fun claimProfile(pubkey: String, consumerId: String) =
+    override fun resolveProfileRef(pubkey: String, consumerId: String) =
         resolveFn(pubkey, consumerId, RefShape.ProfileRef, RefLiveness.CacheOk)
 
-    override fun releaseProfile(pubkey: String, consumerId: String) = releaseFn(pubkey, consumerId)
+    override fun releaseProfileRef(pubkey: String, consumerId: String) = releaseFn(pubkey, consumerId)
 }
 
 /**

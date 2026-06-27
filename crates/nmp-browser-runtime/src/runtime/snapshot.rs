@@ -15,6 +15,7 @@
 //! D6 — total: every path is `Result`-gated; `last_good` is never mutated
 //! on error; the cache never panics.
 
+use super::embed_sidecar::BrowserEmbedSidecar;
 use nmp_core::{ProjectionMergeCache, UpdateFrameDecodeError};
 
 /// The outcome of one [`BrowserSnapshotCache::apply_frame`] call.
@@ -43,6 +44,7 @@ pub enum SnapshotOutcome {
 #[derive(Default)]
 pub struct BrowserSnapshotCache {
     merge_cache: ProjectionMergeCache,
+    embed_sidecar: BrowserEmbedSidecar,
     last_good: Option<Vec<u8>>,
 }
 
@@ -62,8 +64,15 @@ impl BrowserSnapshotCache {
     ///
     /// D6 — total: never panics; all error paths are `Result`-gated.
     pub fn apply_frame(&mut self, raw: &[u8]) -> SnapshotOutcome {
-        match self.merge_cache.merge_update_frame(raw) {
+        let mut embed_sidecar = self.embed_sidecar.clone();
+        embed_sidecar.apply_raw_frame(raw);
+        let projection = embed_sidecar.typed_projection();
+        match self
+            .merge_cache
+            .merge_update_frame_with_extra_projections(raw, [projection])
+        {
             Ok(merged) => {
+                self.embed_sidecar = embed_sidecar;
                 self.last_good = Some(merged.clone());
                 SnapshotOutcome::Frame(merged)
             }

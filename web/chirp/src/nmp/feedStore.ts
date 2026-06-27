@@ -5,7 +5,7 @@
 //   2. Decodes the `nmp.feed.home` FlatBuffers projection into typed FeedRow objects.
 //   3. Applies the `refs.profile` NRRD sidecar into the persistent RefProfileStore.
 //   4. Exposes a `NostrProfileHost` that components can mount via NostrProfileHostProvider.
-//   5. Provides `resolveProfile` / `releaseProfile` dispatch helpers.
+//   5. Provides `resolveProfileRef` / `releaseProfileRef` dispatch helpers.
 //
 // Zero protocol logic — the decode comes from feedDecoder.ts (reusing gallery's
 // FlatBuffers generated classes); all Nostr networking stays in the wasm kernel.
@@ -122,10 +122,10 @@ export function createFeedStore(): FeedStore {
     profile(pubkey: string): ProfileWire | undefined {
       return profiles[pubkey];
     },
-    claimProfile(pubkey: string, consumerId: string): void {
+    resolveProfileRef(pubkey: string, consumerId: string): void {
       void client.dispatchCommand(resolveProfileCommand(pubkey, consumerId));
     },
-    releaseProfile(pubkey: string, consumerId: string): void {
+    releaseProfileRef(pubkey: string, consumerId: string): void {
       void client.dispatchCommand(releaseProfileCommand(pubkey, consumerId));
     },
   };

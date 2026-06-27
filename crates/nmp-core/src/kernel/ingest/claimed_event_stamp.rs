@@ -11,7 +11,7 @@ use crate::store::InsertOutcome;
 impl Kernel {
     /// Bump `claimed_event_content_ver` when `outcome` (from a `verify_and_persist`
     /// store insert) lands an event matching a live `event_claims` key — so the
-    /// `claimed_events` projection rev advances without waiting for a profile bump.
+    /// `refs.event` projection rev advances without waiting for a profile bump.
     ///
     /// `event_claims` keys (`requests/event.rs::primary_id`) are a hex64 event id
     /// (note claims), a `"kind:pubkey:d_tag"` coordinate (addressable /

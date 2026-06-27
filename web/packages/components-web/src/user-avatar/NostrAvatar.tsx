@@ -35,8 +35,8 @@ export function NostrAvatar(props: {
     return u;
   });
 
-  onMount(() => host.claimProfile(props.pubkey, consumerId));
-  onCleanup(() => host.releaseProfile(props.pubkey, consumerId));
+  onMount(() => host.resolveProfileRef(props.pubkey, consumerId));
+  onCleanup(() => host.releaseProfileRef(props.pubkey, consumerId));
 
   return (
     <span

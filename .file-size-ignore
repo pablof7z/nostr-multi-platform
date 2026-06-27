@@ -32,6 +32,10 @@ crates/nmp-testing/fixtures/file-size-gate/oversized.rs
 # cohesion rationale of the LOC gate does not apply to a chronological log.
 CHANGELOG.md
 
+# Generated proactive-context wiki indexes; individual wiki pages remain checked.
+docs/wiki/_index.md
+web/registry/docs/wiki/_index.md
+
 # UniFFI-generated Swift bindings (machine-generated, not hand-authored)
 ios/*/Sources/*/Core/Generated/*.swift
 

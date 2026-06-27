@@ -19,16 +19,16 @@ import java.util.UUID
  *
  * Two rendering modes:
  *   • [NostrProfileName] `(profile = …)` — caller already holds a
- *     [ProfileWire] (static, no claiming). Renders `profile.display`.
- *   • [NostrProfileName] `(pubkey = …)` — *self-claiming*. The component owns
- *     claiming the kind:0 it needs: it claims the author's profile from the
- *     [NostrProfileHost] on composition, reads the resolved projection
+ *     [ProfileWire] (static, no resolving). Renders `profile.display`.
+ *   • [NostrProfileName] `(pubkey = …)` — self-resolving. The component owns
+ *     resolving the kind:0 it needs: it resolves the author's profile through
+ *     [NostrProfileHost] on composition, reads the `refs.profile` projection
  *     reactively, and releases on disposal. This mirrors [NostrAvatar]'s
- *     claim/release lifecycle exactly.
+ *     resolve/release lifecycle exactly.
  *
  * Display always comes from a Rust-formatted source — `displayName` when the
  * kind:0 has resolved, else the Rust-truncated `npubShort` (never reformat in
- * Kotlin, never raw hex). In the self-claiming mode, until the host has any
+ * Kotlin, never raw hex). In the self-resolving mode, until the host has any
  * profile for the pubkey the component renders nothing rather than synthesize a
  * Kotlin-side abbreviation.
  *
@@ -53,11 +53,11 @@ fun NostrProfileName(
 }
 
 /**
- * Self-claiming display-name text keyed by `pubkey`.
+ * Self-resolving display-name text keyed by `pubkey`.
  *
- * Claims the author's kind:0 from [NostrProfileHost] on composition (via
+ * Resolves the author's kind:0 through [NostrProfileHost] on composition (via
  * [DisposableEffect], like [NostrAvatar]), reads the resolved [ProfileWire]
- * reactively, and releases on disposal. The presentation layer owns claiming —
+ * reactively, and releases on disposal. The presentation layer owns resolving —
  * no event triggers a kernel kind:0 fetch of the author.
  *
  * Renders nothing until the host resolves a profile for `pubkey`, so the
@@ -78,9 +78,9 @@ fun NostrProfileName(
     }
 
     DisposableEffect(pubkey, profileHost, resolvedConsumerId) {
-        profileHost?.claimProfile(pubkey, resolvedConsumerId)
+        profileHost?.resolveProfileRef(pubkey, resolvedConsumerId)
         onDispose {
-            profileHost?.releaseProfile(pubkey, resolvedConsumerId)
+            profileHost?.releaseProfileRef(pubkey, resolvedConsumerId)
         }
     }
 

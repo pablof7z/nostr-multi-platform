@@ -120,17 +120,17 @@ impl NostrContentView<'_> {
         let Some(registry) = self.kind_registry else {
             return false;
         };
-        // Edge-triggered fetch: when both sink and consumer are configured,
-        // ask the host to claim this URI before we look up the envelope. The
-        // claim is independent of cache state — warm cache claims refcount
-        // upstream as a near no-op; cold cache claims trigger the OneshotApi
+        // Edge-triggered fetch: when both resolver and consumer are configured,
+        // ask the host to resolve this URI before we look up the envelope. The
+        // request is independent of cache state — warm cache resolves refcount
+        // upstream as a near no-op; cold cache resolves trigger the OneshotApi
         // path and the envelope surfaces in a later snapshot. Dedup per render
         // pass via the seen-set so multiple references to the same URI in one
         // frame collapse into a single host call.
-        if let (Some(sink), Some(consumer)) = (self.claim_sink, self.consumer_id) {
+        if let (Some(sink), Some(consumer)) = (self.event_ref_resolver, self.consumer_id) {
             let mut seen = self.claimed_this_frame.borrow_mut();
             if seen.insert(uri.uri.clone()) {
-                sink.claim(&uri.uri, consumer);
+                sink.resolve_event_ref(&uri.uri, consumer);
             }
         }
         let Some(envelope) = self.envelope_for(uri) else {
@@ -177,7 +177,13 @@ impl NostrContentView<'_> {
 
     /// Render a markdown blockquote (`> …`). Mirrors the `lines()` path's
     /// `blockquote_lines`; not an embedded-event quote card.
-    fn render_blockquote(&self, children: &[usize], area: Rect, buf: &mut Buffer, cursor: &mut u16) {
+    fn render_blockquote(
+        &self,
+        children: &[usize],
+        area: Rect,
+        buf: &mut Buffer,
+        cursor: &mut u16,
+    ) {
         let lines = self.blockquote_lines(children, area.width as usize);
         self.render_lines(lines, area, buf, cursor);
     }

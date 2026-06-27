@@ -56,16 +56,10 @@ fn no_host_projection_leaves_only_the_builtin_projections() {
             // identity pair
             "accounts",
             "active_account",
-            // generic claimed-event projection (F-CR-06 / ADR-0034):
-            // primary_id -> ClaimedEventDto for every event a renderer
-            // has resolved through the event-ref seam and that has since arrived in
-            // the read-cache. Always present (empty `{}` is the no-claim
-            // steady state) so a host that pre-allocates the map slot
-            // never sees an absent key.
-            "claimed_events",
-            // ADR-0063 Lane H: claimed_profiles / mention_profiles / resolved_profiles
-            // deleted. Profile resolution is now served by refs.profile (KPRF
-            // NRRD row-delta sidecar).
+            // ADR-0063 Lane H: claimed_profiles / mention_profiles /
+            // resolved_profiles / claimed_events JSON projections deleted.
+            // Profile/event resolution is now served by refs.profile / refs.event
+            // NRRD row-delta sidecars.
             //
             // app-declared relay configuration (formerly `relay_edit_rows`).
             "configured_relays",

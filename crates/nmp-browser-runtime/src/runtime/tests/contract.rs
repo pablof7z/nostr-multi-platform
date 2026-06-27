@@ -21,6 +21,31 @@ fn next_frame_returns_frame_on_valid_handle() {
 }
 
 #[test]
+fn next_frame_carries_rust_resolved_embed_sidecar() {
+    let mut handle = started_handle();
+    let SnapshotOutcome::Frame(bytes) = handle.next_frame(true) else {
+        panic!("expected merged frame");
+    };
+    let rows = nmp_core::decode_snapshot_typed_projections(&bytes).expect("frame decodes");
+    let sidecar = rows
+        .iter()
+        .find(|row| row.key == nmp_content::wire::EMBED_SIDECAR_PROJECTION_KEY)
+        .expect("browser runtime appends embed sidecar");
+
+    assert_eq!(
+        sidecar.schema_id,
+        nmp_content::wire::EMBED_SIDECAR_SCHEMA_ID
+    );
+    assert_eq!(sidecar.file_identifier, "NEMB");
+    let decoded = nmp_content::wire::decode_claimed_event_embeds(&sidecar.payload)
+        .expect("sidecar payload decodes");
+    assert!(
+        decoded.is_empty(),
+        "fresh runtime has no resolved embeds yet"
+    );
+}
+
+#[test]
 fn snapshot_cache_degraded_on_corrupt_bytes() {
     let mut cache = BrowserSnapshotCache::new();
     let outcome = cache.apply_frame(b"this is not a valid update frame at all");

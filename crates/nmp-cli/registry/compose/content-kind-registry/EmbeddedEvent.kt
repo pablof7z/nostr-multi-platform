@@ -6,15 +6,16 @@
 // view and the TUI `EmbeddedEvent` widget.
 //
 // Lifecycle (D8 — no polling):
-//   • A [DisposableEffect] keyed on (uri, consumerId) claims on enter and
-//     releases on dispose — the kernel reference-counts; Kotlin never counts.
-//   • The resolved [EmbeddedEventEnvelope] is read from [LocalClaimedEventEmbeds]
+//   • A [DisposableEffect] keyed on (uri, consumerId) resolves an event ref on
+//     enter and releases on dispose — the kernel reference-counts; Kotlin never
+//     counts.
+//   • The resolved [EmbeddedEventEnvelope] is read from [LocalResolvedEventEmbeds]
 //     by `primaryId`; while absent it shows a loading placeholder (NOT a
 //     permanent "Event pending" text), which resolves on the next snapshot tick.
 //   • Resolution dispatches through the [NostrKindRegistry] to the per-kind
 //     renderer, wrapped in [EmbedChromeContainer].
 //
-// THIN-SHELL (D0): zero protocol logic — only claim lifecycle, a map lookup,
+// THIN-SHELL (D0): zero protocol logic — only ref lifecycle, a map lookup,
 // collapse/loading state, and registry dispatch over an already-typed
 // projection.
 
@@ -37,25 +38,28 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 
 /**
- * Per-embed claim callback. The presentation layer claims an `EventRef` URI
- * when it begins rendering and releases on dispose; the kernel resolves the
- * event and ships its typed projection in the next `NEMB` sidecar.
+ * Per-embed event-ref resolver. The presentation layer resolves an `EventRef`
+ * URI when it begins rendering and releases on dispose; the host adapter
+ * decodes the URI at the app edge and calls the kernel's unified ref resolver.
  *
- * `LocalEventClaimer.current` is `null` outside a provider scope, so
+ * `LocalEventRefResolver.current` is `null` outside a provider scope, so
  * [EmbeddedEvent] degrades to a static loading placeholder rather than crashing.
  */
-public typealias EventClaimer = (uri: String, consumerId: String, claim: Boolean) -> Unit
+public interface EventRefResolver {
+    public fun resolveEventRef(uri: String, consumerId: String)
+    public fun releaseEventRef(uri: String, consumerId: String)
+}
 
-public val LocalEventClaimer: androidx.compose.runtime.ProvidableCompositionLocal<EventClaimer?> =
+public val LocalEventRefResolver: androidx.compose.runtime.ProvidableCompositionLocal<EventRefResolver?> =
     compositionLocalOf { null }
 
 /**
- * Resolved embed envelopes from the kernel's `claimed_event_embeds` (`NEMB`)
- * sidecar, keyed by `primaryId` (event-id hex or `kind:pubkey:d` coord).
- * Provided once at each screen root and read by [EmbeddedEvent]. Defaults to an
- * empty map outside a provider scope (the loading placeholder then persists).
+ * Resolved event-ref embed envelopes materialised from the `refs.event`
+ * projection after `resolve_ref`, keyed by `primaryId` (event-id hex or
+ * `kind:pubkey:d` coord). Defaults to an empty map outside a provider scope
+ * (the loading placeholder then persists).
  */
-public val LocalClaimedEventEmbeds: androidx.compose.runtime.ProvidableCompositionLocal<Map<String, EmbeddedEventEnvelope>> =
+public val LocalResolvedEventEmbeds: androidx.compose.runtime.ProvidableCompositionLocal<Map<String, EmbeddedEventEnvelope>> =
     compositionLocalOf { emptyMap() }
 
 /**
@@ -86,15 +90,15 @@ public fun EmbeddedEvent(
     primaryId: String,
     consumerId: String = "nmp-gallery-android.embed",
 ) {
-    val claimer = LocalEventClaimer.current
-    val claimKey = primaryId.ifEmpty { uri }
-    DisposableEffect(claimKey, consumerId) {
-        claimer?.invoke(uri, consumerId, true)
-        onDispose { claimer?.invoke(uri, consumerId, false) }
+    val eventRefResolver = LocalEventRefResolver.current
+    val lifecycleKey = primaryId.ifEmpty { uri }
+    DisposableEffect(lifecycleKey, consumerId) {
+        eventRefResolver?.resolveEventRef(uri, consumerId)
+        onDispose { eventRefResolver?.releaseEventRef(uri, consumerId) }
     }
 
-    val envelope = LocalClaimedEventEmbeds.current[primaryId]
-        ?: LocalClaimedEventEmbeds.current[uri]
+    val envelope = LocalResolvedEventEmbeds.current[primaryId]
+        ?: LocalResolvedEventEmbeds.current[uri]
     val registry = LocalNostrKindRegistry.current
 
     EmbedChromeContainer(
@@ -102,7 +106,7 @@ public fun EmbeddedEvent(
         collapsed = envelope?.collapsed ?: false,
     ) {
         when (embedRenderState(envelope)) {
-            EmbedRenderState.LOADING -> EmbedLoading(claimKey)
+            EmbedRenderState.LOADING -> EmbedLoading(lifecycleKey)
             EmbedRenderState.COLLAPSED -> EmbedCollapsed(envelope?.collapseReason)
             EmbedRenderState.RESOLVED -> {
                 val projection = envelope!!.projection!!

@@ -36,6 +36,7 @@ test-support = []
 [dependencies]
 # Kernel + composition surface. default-features=false keeps wasm32 free of mio/lmdb.
 nmp-core = { path = "../nmp-core", default-features = false }
+nmp-content = { path = "../nmp-content" }
 nmp-substrate-defaults = { path = "../nmp-substrate-defaults" }
 nmp-store = { path = "../nmp-store" }
 nmp-network = { path = "../nmp-network", default-features = false }

@@ -48,15 +48,17 @@ class MainActivity : ComponentActivity() {
         setContent {
             val profiles by model.profileMap.collectAsStateWithLifecycle()
             val latestProfiles = rememberUpdatedState(profiles)
-                val profileHost = remember(model) {
-                    object : NostrProfileHost {
-                        @Composable
-                        override fun profileForPubkey(pubkey: String) = latestProfiles.value[pubkey]
-                        override fun claimProfile(pubkey: String, consumerId: String) {
-                            model.claimProfile(pubkey, consumerId)
+            val profileHost = remember(model) {
+                object : NostrProfileHost {
+                    @Composable
+                    override fun profileForPubkey(pubkey: String) = latestProfiles.value[pubkey]
+
+                    override fun resolveProfileRef(pubkey: String, consumerId: String) {
+                        model.resolveProfileRef(pubkey, consumerId)
                     }
-                    override fun releaseProfile(pubkey: String, consumerId: String) {
-                        model.releaseProfile(pubkey, consumerId)
+
+                    override fun releaseProfileRef(pubkey: String, consumerId: String) {
+                        model.releaseProfileRef(pubkey, consumerId)
                     }
                 }
             }

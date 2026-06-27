@@ -823,11 +823,7 @@ async fn test_nip01_addressable_events_with_identical_timestamps() {
             .kind(Kind::Custom(30023));
 
         let results = db.query(filter).await.expect("Failed to query");
-        assert_eq!(
-            results.len(),
-            1,
-            "Should have exactly one addressable event"
-        );
+        assert_eq!(results.len(), 1, "Should have exactly one addressable event");
 
         // According to NIP-01, event1 should be retained (smaller ID)
         assert_eq!(
@@ -859,11 +855,7 @@ async fn test_nip01_addressable_events_with_identical_timestamps() {
             .kind(Kind::Custom(30023));
 
         let results = db.query(filter).await.expect("Failed to query");
-        assert_eq!(
-            results.len(),
-            1,
-            "Should have exactly one addressable event"
-        );
+        assert_eq!(results.len(), 1, "Should have exactly one addressable event");
 
         // According to NIP-01, event1 should be retained (smaller ID)
         assert_eq!(
