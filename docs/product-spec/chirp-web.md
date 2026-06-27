@@ -57,9 +57,9 @@ and typed `NDGS` sidecar under `nmp.nip29.discovered_groups`.
 
 TypeScript must decode the typed `NDGS` snapshot and render discovered group
 metadata. It must not construct NIP-29 filters, keep a parallel group cache,
-derive member/admin counts, or invent relay provenance. Group timelines, join
-or leave actions, and moderation controls remain disabled until their own
-Rust-owned browser runtime flows exist.
+derive counts, or invent provenance. Until Rust-owned flows exist, timeline,
+join/leave, and moderation controls must expose blocked diagnostics rather than
+disabled title-only buttons.
 
 Acceptance must prove that opening the Groups workspace sends a real
 Rust-owned NIP-29 discovery subscription to the configured group relay, and

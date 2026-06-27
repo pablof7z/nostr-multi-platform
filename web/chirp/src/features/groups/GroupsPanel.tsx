@@ -5,15 +5,20 @@ import {
 } from "../../chirpConfig";
 import { decodeGroupDiscoveryFrame, type DiscoveredGroupRow } from "../../nmp/groupDecoder";
 import { useNmpClient } from "../../nmp/context";
+import { blockedWorkspaceCommand } from "../../nmp/actions";
 import "./groups.css";
 
 const SESSION_ID = "chirp-web-groups";
+const TIMELINE_CAPABILITY = "nmp.nip29.group_timeline";
+const JOIN_CAPABILITY = "nmp.nip29.join";
 
 export function GroupsPanel() {
   const { client, snapshot } = useNmpClient();
   const [opened, setOpened] = createSignal(false);
   const [opening, setOpening] = createSignal(false);
   const [rows, setRows] = createSignal<DiscoveredGroupRow[]>([]);
+  const [lastCapability, setLastCapability] = createSignal<string | null>(null);
+  const [busyCapability, setBusyCapability] = createSignal<string | null>(null);
   const relayUrl = chirpGroupRelayUrlFromSearch(window.location.search) ?? CHIRP_PUBLIC_GROUP_RELAY_URL;
 
   const decodedFrame = createMemo(() => decodeGroupDiscoveryFrame(snapshot().latestUpdateBytes));
@@ -38,6 +43,16 @@ export function GroupsPanel() {
 
   const relayLabel = () => relayUrl.replace(/^wss?:\/\//, "");
   const visibleRows = () => rows();
+  const inspect = async (capability: string) => {
+    if (busyCapability()) return;
+    setBusyCapability(capability);
+    try {
+      await client.dispatchCommand(blockedWorkspaceCommand(capability));
+      setLastCapability(capability);
+    } finally {
+      setBusyCapability(null);
+    }
+  };
 
   return (
     <section class="groups-panel" aria-label="Groups" data-testid="groups-panel">
@@ -53,8 +68,8 @@ export function GroupsPanel() {
 
       <div class="groups-actions" aria-label="Group workspace status">
         <span data-state={opened() ? "live" : "pending"}>{opened() ? "live discovery" : "opening"}</span>
-        <span>timeline pending</span>
-        <span>membership pending</span>
+        <span data-state="blocked">timeline blocked</span>
+        <span data-state="blocked">membership blocked</span>
       </div>
 
       <div class="groups-list" data-testid="groups-list">
@@ -67,14 +82,28 @@ export function GroupsPanel() {
             </div>
           }
         >
-          <For each={visibleRows()}>{(row) => <GroupCard row={row} />}</For>
+          <For each={visibleRows()}>
+            {(row) => <GroupCard row={row} busyCapability={busyCapability()} onInspect={inspect} />}
+          </For>
         </Show>
       </div>
+
+      <Show when={lastCapability()}>
+        {(capability) => (
+          <p class="groups-diagnostic" role="status" data-testid="groups-diagnostic">
+            Recorded diagnostic for <code>{capability()}</code>.
+          </p>
+        )}
+      </Show>
     </section>
   );
 }
 
-function GroupCard(props: { row: DiscoveredGroupRow }) {
+function GroupCard(props: {
+  row: DiscoveredGroupRow;
+  busyCapability: string | null;
+  onInspect: (capability: string) => void;
+}) {
   const title = () => props.row.name || props.row.groupId;
   const subtitle = () => props.row.about || "No group description published yet.";
   const relay = () => props.row.hostRelayUrl.replace(/^wss?:\/\//, "");
@@ -103,11 +132,21 @@ function GroupCard(props: { row: DiscoveredGroupRow }) {
       </div>
 
       <div class="group-controls">
-        <button type="button" disabled title="Group timelines require the Rust-owned web open path.">
-          Timeline
+        <button
+          type="button"
+          data-testid="group-timeline-inspect"
+          disabled={props.busyCapability !== null}
+          onClick={() => props.onInspect(TIMELINE_CAPABILITY)}
+        >
+          Inspect timeline
         </button>
-        <button type="button" disabled title="Join and leave actions are not wired for Chirp Web yet.">
-          Join
+        <button
+          type="button"
+          data-testid="group-join-inspect"
+          disabled={props.busyCapability !== null}
+          onClick={() => props.onInspect(JOIN_CAPABILITY)}
+        >
+          Inspect join
         </button>
       </div>
     </article>

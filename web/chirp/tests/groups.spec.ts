@@ -28,6 +28,13 @@ test("@wasm groups workspace renders NIP-29 discovery from Rust projection", asy
     await expect(card).toContainText(`${relay.adminCount} admins`);
     await expect(card).toContainText("public");
     await expect(card).toContainText("open");
+    await expect(card).toContainText("Inspect timeline");
+    await expect(card).toContainText("Inspect join");
+
+    await card.getByTestId("group-timeline-inspect").click();
+    await expect(page.getByTestId("groups-diagnostic")).toContainText("nmp.nip29.group_timeline");
+    await card.getByTestId("group-join-inspect").click();
+    await expect(page.getByTestId("groups-diagnostic")).toContainText("nmp.nip29.join");
 
     await expect
       .poll(() => relay.subscriptions().some((filter) => includesGroupMetadataKinds(filter.kinds)))

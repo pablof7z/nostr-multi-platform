@@ -60,6 +60,11 @@
   color: var(--accent);
 }
 
+.groups-actions span[data-state="blocked"] {
+  border-color: color-mix(in srgb, var(--danger) 30%, var(--line));
+  color: var(--danger);
+}
+
 .groups-list {
   min-height: 0;
 }
@@ -190,6 +195,31 @@
   background: var(--bg-panel);
   color: var(--ink-3);
   font-weight: 750;
+}
+
+.group-controls button:not(:disabled) {
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.group-controls button:not(:disabled):hover {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--line));
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-panel));
+}
+
+.groups-diagnostic {
+  margin: 12px 18px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  background: var(--bg-panel);
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.groups-diagnostic code {
+  color: var(--ink);
+  font-family: var(--font-mono);
 }
 
 @media (max-width: 720px) {
