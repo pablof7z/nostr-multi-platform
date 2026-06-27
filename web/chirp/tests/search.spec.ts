@@ -42,3 +42,41 @@ test("@wasm search: NIP-50 results render from the Rust typed search sidecar", a
     await relay.close();
   }
 });
+
+test("@wasm search: feed hashtag opens NIP-50 note discovery", async ({ page }) => {
+  test.setTimeout(120_000);
+
+  const relay = await startFeedFixtureRelay();
+  const relayBootstrap = JSON.stringify([[relay.url, "both,indexer"]]);
+
+  try {
+    await page.goto(
+      `/?relay_bootstrap=${encodeURIComponent(relayBootstrap)}&search_relay=${encodeURIComponent(
+        relay.url,
+      )}`,
+    );
+
+    const shell = page.locator(SHELL);
+    await expect(shell).toHaveAttribute("data-runtime-status", "running", { timeout: 30_000 });
+    await page.getByRole("link", { name: "Home" }).click();
+
+    const richCard = page
+      .getByTestId("post-card")
+      .filter({ hasText: relay.noteContent })
+      .first();
+    await expect(richCard).toBeVisible({ timeout: 60_000 });
+    await richCard.getByTestId("post-content-hashtag").click();
+
+    await expect(shell).toHaveAttribute("data-main-view", "search");
+    await expect(page.getByTestId("search-input")).toHaveValue("#nostr");
+    await expect(page.getByRole("heading", { name: "Search relays and cache" })).toBeVisible();
+    await expect(page.getByTestId("search-results")).toContainText(relay.noteContent, {
+      timeout: 60_000,
+    });
+    await expect(page.getByTestId("search-results")).toContainText(
+      relay.url.replace(/^wss?:\/\//, ""),
+    );
+  } finally {
+    await relay.close();
+  }
+});

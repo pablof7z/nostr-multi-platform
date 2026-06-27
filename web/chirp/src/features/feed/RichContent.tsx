@@ -65,6 +65,10 @@ function compactUrl(value: string): string {
   }
 }
 
+function hashtagSearchHref(value: string): string {
+  return `#search?q=${encodeURIComponent(value)}`;
+}
+
 export function RichContent(props: { content: string }) {
   const segments = () => parseContent(props.content);
   const imageSegments = () => segments().filter((segment) => segment.kind === "url" && segment.image);
@@ -88,7 +92,7 @@ export function RichContent(props: { content: string }) {
               </Show>
               <Show when={segment.kind === "hashtag"}>
                 <a
-                  href="#search"
+                  href={hashtagSearchHref(segment.value)}
                   class="post-hashtag"
                   data-testid="post-content-hashtag"
                   title={`Search ${segment.value}`}

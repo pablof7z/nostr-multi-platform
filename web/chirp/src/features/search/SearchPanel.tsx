@@ -1,4 +1,4 @@
-import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { CHIRP_SEARCH_RELAY_URL, chirpSearchRelayUrlsFromSearch } from "../../chirpConfig";
 import { useNmpClient } from "../../nmp/context";
 import { decodeSearchResultsFrame, type SearchResultRow } from "../../nmp/searchDecoder";
@@ -9,10 +9,21 @@ type SearchScope = "notes" | "profiles" | "longform";
 const SESSION_ID = "chirp-web-main";
 const DEFAULT_QUERY = "nostr";
 
+function hashSearchParams(): { query: string; scope: SearchScope } {
+  const [, rawQuery = ""] = window.location.hash.split("?");
+  const params = new URLSearchParams(rawQuery);
+  const scope = params.get("scope");
+  return {
+    query: params.get("q")?.trim() || DEFAULT_QUERY,
+    scope: scope === "profiles" || scope === "longform" ? scope : "notes",
+  };
+}
+
 export function SearchPanel() {
   const { client, snapshot } = useNmpClient();
-  const [query, setQuery] = createSignal(DEFAULT_QUERY);
-  const [scope, setScope] = createSignal<SearchScope>("notes");
+  const initial = hashSearchParams();
+  const [query, setQuery] = createSignal(initial.query);
+  const [scope, setScope] = createSignal<SearchScope>(initial.scope);
   const [lastQuery, setLastQuery] = createSignal("");
   const [isSearching, setIsSearching] = createSignal(false);
   const [autoRan, setAutoRan] = createSignal(false);
@@ -33,7 +44,7 @@ export function SearchPanel() {
     if (autoRan()) return;
     if (snapshot().status !== "running") return;
     setAutoRan(true);
-    void runSearch(DEFAULT_QUERY, scope());
+    void runSearch(query(), scope());
   });
 
   onCleanup(() => {
@@ -44,6 +55,18 @@ export function SearchPanel() {
     event.preventDefault();
     void runSearch(query(), scope());
   };
+
+  onMount(() => {
+    const syncHashQuery = () => {
+      const next = hashSearchParams();
+      if (next.query === query() && next.scope === scope()) return;
+      setQuery(next.query);
+      setScope(next.scope);
+      if (snapshot().status === "running") void runSearch(next.query, next.scope);
+    };
+    window.addEventListener("hashchange", syncHashQuery);
+    onCleanup(() => window.removeEventListener("hashchange", syncHashQuery));
+  });
 
   const selectScope = (next: SearchScope) => {
     setScope(next);
