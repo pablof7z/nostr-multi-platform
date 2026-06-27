@@ -37,6 +37,7 @@ import { decodeRuntimeProjection } from "./nmp/runtimeProjection";
 // Item C — feed / publish / profile UI (FeedPanel owns its own store + provider).
 import { FeedPanel } from "./features/feed/FeedPanel";
 import { GroupsPanel } from "./features/groups/GroupsPanel";
+import { NotificationsPanel } from "./features/notifications/NotificationsPanel";
 import { SearchPanel } from "./features/search/SearchPanel";
 import { BlockedWorkspacesPanel } from "./features/workspaces/BlockedWorkspacesPanel";
 
@@ -56,15 +57,15 @@ declare global {
 // The client is a module-level singleton: one worker per page load.
 const client = createNmpClient();
 
-type MainView = "home" | "search" | "groups" | "workspaces";
+type MainView = "home" | "search" | "notifications" | "groups" | "workspaces";
 
 function viewFromHash(): MainView {
   const hash = window.location.hash;
   if (hash === "#search") return "search";
+  if (hash === "#notifications") return "notifications";
   if (hash === "#groups") return "groups";
   if (
     hash === "#workspaces" ||
-    hash === "#notifications" ||
     hash === "#messages" ||
     hash === "#wallet" ||
     hash === "#moderation" ||
@@ -120,6 +121,8 @@ export default function App() {
   const topbarKicker = () =>
     mainView() === "search"
       ? "NIP-50 discovery"
+      : mainView() === "notifications"
+        ? "Notifications"
       : mainView() === "groups"
         ? "NIP-29 groups"
       : mainView() === "workspaces"
@@ -127,6 +130,7 @@ export default function App() {
         : "Home feed";
   const topbarTitle = () => {
     if (mainView() === "search") return "Search relays and cache";
+    if (mainView() === "notifications") return "Notifications";
     if (mainView() === "groups") return "Discover public groups";
     if (mainView() === "workspaces") return "More Chirp workspaces";
     return signerConnected() ? "Real relay timeline" : "Set up Chirp Web";
@@ -134,6 +138,9 @@ export default function App() {
   const topbarSupport = () => {
     if (mainView() === "search") {
       return "Find notes, profiles, and long-form posts with relay and cache provenance.";
+    }
+    if (mainView() === "notifications") {
+      return "Review replies, mentions, reactions, reposts, comments, and zaps with source relays.";
     }
     if (mainView() === "groups") {
       return "Browse Rust-projected NIP-29 group metadata from the configured public group relay.";
@@ -202,6 +209,14 @@ export default function App() {
               Groups
             </a>
             <a class="rail-link" href="#saved">Saved</a>
+            <a
+              class={mainView() === "notifications" ? "rail-link rail-link--active" : "rail-link"}
+              href="#notifications"
+              aria-current={mainView() === "notifications" ? "page" : undefined}
+              data-testid="nav-notifications"
+            >
+              Notifications
+            </a>
             <a class="rail-link" href="#signing">Signer</a>
             <a class="rail-link" href="#profile">Profile</a>
             <a class="rail-link" href="#relays">Relays</a>
@@ -262,6 +277,7 @@ export default function App() {
             */}
             <section id="feed" data-slot="feed" aria-label="Feed">
               {mainView() === "search" && <SearchPanel />}
+              {mainView() === "notifications" && <NotificationsPanel />}
               {mainView() === "groups" && <GroupsPanel />}
               {mainView() === "workspaces" && (
                 <BlockedWorkspacesPanel

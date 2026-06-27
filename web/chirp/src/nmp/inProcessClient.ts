@@ -11,6 +11,7 @@ import { BaseClient } from "./clientBase";
 import {
   runtimeConnection,
   type GroupDiscoveryOpenRequest,
+  type NotificationsOpenRequest,
   type RuntimeSnapshot,
   type SearchOpenRequest,
 } from "./clientTypes";
@@ -164,6 +165,23 @@ export class InProcessNmpClient extends BaseClient {
       type: "group_discovery_close",
       session_id: sessionId,
       correlation_id: makeCorrelationId("web-groups", this.nextCorrelationId++),
+    });
+  }
+
+  async openNotifications(request: NotificationsOpenRequest): Promise<RuntimeSnapshot> {
+    return this.send({
+      type: "notifications_open",
+      session_id: request.sessionId,
+      account_pubkey: request.accountPubkey,
+      correlation_id: makeCorrelationId("web-notifications", this.nextCorrelationId++),
+    });
+  }
+
+  async closeNotifications(sessionId: string): Promise<RuntimeSnapshot> {
+    return this.send({
+      type: "notifications_close",
+      session_id: sessionId,
+      correlation_id: makeCorrelationId("web-notifications", this.nextCorrelationId++),
     });
   }
 

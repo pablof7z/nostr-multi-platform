@@ -38,6 +38,11 @@ export type GroupDiscoveryOpenRequest = {
   relayUrl: string;
 };
 
+export type NotificationsOpenRequest = {
+  sessionId: string;
+  accountPubkey: string;
+};
+
 export type NmpClient = {
   snapshot(): RuntimeSnapshot;
   subscribe(listener: (snapshot: RuntimeSnapshot) => void): () => void;
@@ -55,4 +60,6 @@ export type NmpClient = {
   closeSearch(sessionId: string): Promise<RuntimeSnapshot>;
   openGroupDiscovery(request: GroupDiscoveryOpenRequest): Promise<RuntimeSnapshot>;
   closeGroupDiscovery(sessionId: string): Promise<RuntimeSnapshot>;
+  openNotifications(request: NotificationsOpenRequest): Promise<RuntimeSnapshot>;
+  closeNotifications(sessionId: string): Promise<RuntimeSnapshot>;
 };

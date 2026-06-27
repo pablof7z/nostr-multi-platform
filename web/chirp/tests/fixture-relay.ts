@@ -150,6 +150,17 @@ function matchesFilter(event: NostrEvent, filter: NostrFilter): boolean {
   if (filter.ids !== undefined && !filter.ids.includes(event.id)) return false;
   if (filter.since !== undefined && event.created_at < filter.since) return false;
   if (filter.until !== undefined && event.created_at > filter.until) return false;
+  for (const [key, value] of Object.entries(filter)) {
+    if (!key.startsWith("#")) continue;
+    if (!Array.isArray(value)) continue;
+    const tagName = key.slice(1);
+    const accepted = value.filter((item): item is string => typeof item === "string");
+    if (accepted.length === 0) continue;
+    const matched = event.tags.some(
+      (tag) => tag[0] === tagName && typeof tag[1] === "string" && accepted.includes(tag[1]),
+    );
+    if (!matched) return false;
+  }
   if (typeof filter.search === "string" && !matchesSearch(event, filter.search)) return false;
   return true;
 }
@@ -165,7 +176,7 @@ function matchesSearch(event: NostrEvent, search: string): boolean {
   return terms.every((term) => haystack.includes(term));
 }
 
-function startServer(
+export function startFixtureRelayServer(
   seededEvents: NostrEvent[],
   options: FixtureRelayOptions = {},
 ): Promise<FixtureRelay> {
@@ -255,7 +266,7 @@ function startServer(
  * outbound EVENT frames.
  */
 export async function startFixtureRelay(options: FixtureRelayOptions = {}): Promise<FixtureRelay> {
-  return startServer([], options);
+  return startFixtureRelayServer([], options);
 }
 
 /**
@@ -374,7 +385,7 @@ export async function startFeedFixtureRelay(): Promise<FeedFixtureRelay> {
 
   const seeded: NostrEvent[] = [contactList, profileA, profileB, noteA, noteB, longform];
 
-  const base = await startServer(seeded);
+  const base = await startFixtureRelayServer(seeded);
   return {
     ...base,
     close: async () => {
@@ -453,7 +464,7 @@ export async function startGroupFixtureRelay(): Promise<GroupFixtureRelay> {
     groupSk,
   ) as NostrEvent;
 
-  const base = await startServer([metadata, admins, members]);
+  const base = await startFixtureRelayServer([metadata, admins, members]);
   return {
     ...base,
     close: async () => {

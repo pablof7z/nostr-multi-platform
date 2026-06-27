@@ -17,14 +17,6 @@ type Workspace = {
 
 const WORKSPACES: Workspace[] = [
   {
-    id: "notifications",
-    title: "Notifications",
-    capability: "nmp.notifications.open",
-    status: "blocked",
-    reason: "No Rust-owned notification projection or read-state persistence is exposed to web.",
-    proof: "Needs replies, mentions, reposts, reactions, source relays, and read state from Rust.",
-  },
-  {
     id: "messages",
     title: "Private messages",
     capability: "nmp.nip17.inbox",

@@ -67,6 +67,30 @@ Rust-owned NIP-29 discovery subscription to the configured group relay, and
 that signed kind:39000/39001/39002 fixture events render from the typed group
 discovery sidecar with relay provenance.
 
+## Notifications Contract
+
+Chirp Web must expose notifications as a first-level product workspace for the
+active account. The browser shell may request that a notification session opens
+for the Rust-owned active account pubkey, but Rust must own the bounded `#p`
+inbox interest, cross-protocol classification, dedupe, ordering, relay
+provenance, and typed `NNTF` sidecar under
+`nmp.relations.notifications.<session>`.
+
+Notifications include replies and mentions from kind:1 events, NIP-25
+reactions, NIP-18 reposts, NIP-22 comments, and NIP-57 zap receipts that p-tag
+the active account. TypeScript must decode the typed `NNTF` snapshot and render
+rows. It must not construct notification filters, maintain a parallel unread
+store, classify Nostr event kinds, or invent source relay provenance.
+
+Read/unread persistence remains disabled until a Rust-owned read-state action
+and projection exist. The workspace must represent that limitation honestly
+rather than storing read state in the shell.
+
+Acceptance must prove that opening Notifications sends a Rust-owned bounded
+`#p=<active-account>` subscription, and that signed fixture reply, mention,
+reaction, and repost events render from the typed notification sidecar with
+source relay provenance.
+
 ## Profile Open Contract
 
 Chirp Web must let users open a visible author profile from feed and thread
@@ -210,10 +234,10 @@ the raw secret.
 
 Chirp Web must not hide missing major product areas behind absent navigation or
 fake local-only controls. Until web-ready Rust projections and actions exist for
-notifications, NIP-17 private messages, wallet/zap flows, moderation/WoT, group
-timeline/membership actions, or offline replay ownership, the browser product
-must expose those destinations as blocked or disabled workspaces with clear
-reasons.
+NIP-17 private messages, wallet/zap flows, moderation/WoT, group
+timeline/membership actions, notification read state, or offline replay
+ownership, the browser product must expose those destinations as blocked or
+disabled workspaces with clear reasons.
 
 Blocked workspace controls may emit log-safe `capability_failure` diagnostics so
 users and tests can prove the unsupported state is deliberate. They must not

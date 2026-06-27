@@ -108,6 +108,24 @@ export class DegradedRuntime {
             reason: this.unavailableReason,
           },
         ];
+      case "notifications_open":
+        return [
+          {
+            type: "capability_failure",
+            capability: "nmp.relations.notifications.open",
+            correlation_id: request.correlation_id,
+            reason: this.unavailableReason,
+          },
+        ];
+      case "notifications_close":
+        return [
+          {
+            type: "capability_failure",
+            capability: "nmp.relations.notifications.close",
+            correlation_id: request.correlation_id,
+            reason: this.unavailableReason,
+          },
+        ];
       case "relay_config":
         return [
           {

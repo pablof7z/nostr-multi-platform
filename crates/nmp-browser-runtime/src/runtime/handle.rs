@@ -34,8 +34,8 @@ use crate::signer::{
     enqueue_completion, CapabilityEnvelope, CapabilityProviderRegistry, SignerCompletion,
 };
 
-use super::{BrowserGroupDiscoverySession, BrowserSearchSession};
 use super::NoopRoutingTrace;
+use super::{BrowserGroupDiscoverySession, BrowserNotificationsSession, BrowserSearchSession};
 
 /// Public-facing handle to the browser runtime (issue #2058 — hides raw
 /// reducer/runtime handles).
@@ -61,6 +61,7 @@ pub struct BrowserRuntimeHandle {
     pub(super) observed_projection_registrar: ObservedProjectionCommandHandle,
     pub(super) search_sessions: HashMap<String, BrowserSearchSession>,
     pub(super) group_discovery_sessions: HashMap<String, BrowserGroupDiscoverySession>,
+    pub(super) notifications_sessions: HashMap<String, BrowserNotificationsSession>,
 }
 
 impl BrowserRuntimeHandle {
@@ -203,6 +204,7 @@ impl BrowserRuntimeHandle {
             observed_projection_registrar,
             search_sessions: HashMap::new(),
             group_discovery_sessions: HashMap::new(),
+            notifications_sessions: HashMap::new(),
         };
 
         // ── Spawn relay drivers from bootstrap list (wasm32 only) ────────────

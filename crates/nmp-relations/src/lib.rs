@@ -18,12 +18,20 @@
 //! NIP-22 / NIP-57 sources). `nmp-nip01` never depends back on this crate.
 
 mod classifier;
+mod notifications;
 mod visible_relations;
 mod wire;
 
 pub use classifier::{default_note_relation_classifier, DefaultNoteRelationClassifier};
+pub use notifications::{
+    notifications_interest_shape, NotificationKind, NotificationRow, NotificationsProjection,
+    NotificationsSnapshot, NOTIFICATIONS_FILE_IDENTIFIER, NOTIFICATIONS_KEY, NOTIFICATIONS_LIMIT,
+    NOTIFICATIONS_SCHEMA_ID, NOTIFICATIONS_SCHEMA_VERSION,
+};
 pub use visible_relations::{
     register_visible_note_relation_actions, visible_note_relations_identity,
-    visible_note_relations_interest, visible_note_relations_interest_id, VisibleNoteRelationsAction,
-    VisibleNoteRelationsModule, VISIBLE_NOTE_RELATIONS_LIMIT, VISIBLE_NOTE_RELATIONS_NAMESPACE,
+    visible_note_relations_interest, visible_note_relations_interest_id,
+    VisibleNoteRelationsAction, VisibleNoteRelationsModule, VISIBLE_NOTE_RELATIONS_LIMIT,
+    VISIBLE_NOTE_RELATIONS_NAMESPACE,
 };
+pub use wire::{encode_notifications_snapshot, notifications_file_identifier};

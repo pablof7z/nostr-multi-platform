@@ -3,6 +3,7 @@
 //!
 //! [`action_payload`] holds the `ActionPayload` impl for
 //! [`crate::VisibleNoteRelationsAction`] (`nmp.nip01.visible_note_relations`).
+//! [`notifications_fb`] holds the read-side notification projection codec.
 //!
 //! The generated module below is intrinsically `unsafe` (every accessor reads a
 //! raw `Table`); only the generated module opts back into `unsafe`. The
@@ -31,3 +32,6 @@ generated_action_module!(
 );
 
 pub mod action_payload;
+pub mod notifications_fb;
+
+pub use notifications_fb::{encode_notifications_snapshot, notifications_file_identifier};

@@ -47,6 +47,7 @@ pub(crate) mod core;
 pub(crate) mod dispatch;
 pub(crate) mod group_discovery;
 pub(crate) mod identity;
+pub(crate) mod notifications;
 pub(crate) mod protocol;
 pub(crate) mod ref_routing;
 pub(crate) mod search;

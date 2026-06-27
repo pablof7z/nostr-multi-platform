@@ -30,6 +30,8 @@ pub(crate) enum WorkerRequest {
     SearchClose(SearchClose),
     GroupDiscoveryOpen(GroupDiscoveryOpen),
     GroupDiscoveryClose(GroupDiscoveryClose),
+    NotificationsOpen(NotificationsOpen),
+    NotificationsClose(NotificationsClose),
     RelayConfig(RelayConfig),
     PublishRelayPreferences(PublishRelayPreferences),
     CapabilityResult(CapabilityResultPayload),
@@ -173,6 +175,19 @@ pub(crate) struct GroupDiscoveryOpen {
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct GroupDiscoveryClose {
+    pub session_id: String,
+    pub correlation_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct NotificationsOpen {
+    pub session_id: String,
+    pub account_pubkey: String,
+    pub correlation_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct NotificationsClose {
     pub session_id: String,
     pub correlation_id: String,
 }
