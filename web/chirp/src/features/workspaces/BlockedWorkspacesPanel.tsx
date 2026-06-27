@@ -1,4 +1,4 @@
-import { For, Show, createSignal } from "solid-js";
+import { For, Show, createMemo, createSignal } from "solid-js";
 import { blockedWorkspaceCommand } from "../../nmp/actions";
 import { useNmpClient } from "../../nmp/context";
 import "./workspaces.css";
@@ -41,10 +41,15 @@ const WORKSPACES: Workspace[] = [
   },
 ];
 
-export function BlockedWorkspacesPanel(props: { signedIn: boolean }) {
+export function BlockedWorkspacesPanel(props: { signedIn: boolean; focus?: string }) {
   const { client } = useNmpClient();
   const [lastCapability, setLastCapability] = createSignal<string | null>(null);
   const [busyCapability, setBusyCapability] = createSignal<string | null>(null);
+  const visibleWorkspaces = createMemo(() => {
+    const focus = props.focus;
+    if (!focus) return WORKSPACES;
+    return [...WORKSPACES].sort((a, b) => (a.id === focus ? -1 : b.id === focus ? 1 : 0));
+  });
   const inspect = async (workspace: Workspace) => {
     if (busyCapability()) return;
     setBusyCapability(workspace.capability);
@@ -61,7 +66,7 @@ export function BlockedWorkspacesPanel(props: { signedIn: boolean }) {
       <div class="workspaces-header">
         <div>
           <p class="panel-kicker">More</p>
-          <h2>Blocked product areas</h2>
+          <h2>{props.focus ? "Blocked destination" : "Blocked product areas"}</h2>
         </div>
         <span class="workspace-session" data-signed-in={props.signedIn ? "true" : "false"}>
           {props.signedIn ? "signed session" : "read mode"}
@@ -69,11 +74,12 @@ export function BlockedWorkspacesPanel(props: { signedIn: boolean }) {
       </div>
 
       <div class="workspace-grid">
-        <For each={WORKSPACES}>
+        <For each={visibleWorkspaces()}>
           {(workspace) => (
             <article
               class="workspace-row"
               data-status={workspace.status}
+              data-focused={workspace.id === props.focus ? "true" : "false"}
               data-testid={`workspace-${workspace.id}`}
             >
               <div class="workspace-badge" aria-hidden="true">

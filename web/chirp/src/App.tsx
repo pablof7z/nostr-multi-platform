@@ -81,6 +81,7 @@ export default function App() {
   const topbar = () => viewCopy(mainView(), signerConnected());
   const setupOrSignerView = () => mainView() === "setup" || mainView() === "signer";
   const focusedToolView = () => mainView() === "profile" || mainView() === "relays";
+  const blockedRoute = () => (mainView() === "messages" || mainView() === "wallet" || mainView() === "moderation" ? mainView() : undefined);
   const onboardingState = () => ({
     runtimeConnected: isConnected(),
     signerConnected: signerConnected(),
@@ -178,9 +179,9 @@ export default function App() {
               Storage
             </a>
             <a
-              class={mainView() === "workspaces" ? "rail-link rail-link--active" : "rail-link"}
+              class={mainView() === "workspaces" || blockedRoute() ? "rail-link rail-link--active" : "rail-link"}
               href="#workspaces"
-              aria-current={mainView() === "workspaces" ? "page" : undefined}
+              aria-current={mainView() === "workspaces" || blockedRoute() ? "page" : undefined}
               data-testid="nav-workspaces"
             >
               More
@@ -251,8 +252,8 @@ export default function App() {
                   {mainView() === "offline" && (
                     <OfflineReplayPanel diagnostics={runtimeProjection()} />
                   )}
-                  {mainView() === "workspaces" && (
-                    <BlockedWorkspacesPanel signedIn={signerConnected()} />
+                  {(mainView() === "workspaces" || blockedRoute()) && (
+                    <BlockedWorkspacesPanel signedIn={signerConnected()} focus={blockedRoute()} />
                   )}
                   {mainView() === "diagnostics" && (
                     <div id="diagnostics">

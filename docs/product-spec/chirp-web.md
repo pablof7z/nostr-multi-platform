@@ -10,10 +10,9 @@ New browser profiles must open into usable product, not a dead demo. The first
 screen must show relay/feed health, signer state, compose affordances, and
 publish/action diagnostics.
 
-First run is guided onboarding. The UI must show the next action, expose
-identity paths, and advance only after runtime, relays, signer, and feed
-projection are live. While unsigned, onboarding is the first product workspace;
-feed may remain as proof only if identity choices and session proof stay primary.
+First run is guided onboarding. UI must expose next action and identity paths,
+advancing only after runtime, relays, signer, and feed projection are live.
+While unsigned, onboarding is primary; feed is proof only when session proof stays primary.
 
 `#signing` is the first-level account workspace, not a Setup alias. It must
 mark Signer active, keep signer status primary, and hide unrelated feed panes.
@@ -276,10 +275,11 @@ timeline/membership actions, or durable offline replay ownership, the browser
 product must expose those destinations as blocked, disabled, or explicitly
 partial workspaces with clear reasons.
 
-Blocked workspace controls may emit log-safe `capability_failure` diagnostics so
-users and tests can prove the unsupported state is deliberate. They must not
-construct Nostr events, maintain shell-local unread counts, fabricate private
-message threads, simulate wallet state, or persist policy choices in TypeScript.
+Blocked controls may emit log-safe `capability_failure` diagnostics proving the
+unsupported state is deliberate. They must not construct Nostr events, maintain
+shell-local unread counts, fabricate private message threads, simulate wallet
+state, or persist policy choices in TypeScript. Deep routes `#messages`,
+`#wallet`, and `#moderation` must focus the requested blocked destination.
 
 When any blocked area becomes supported, the same navigation destination should
 graduate to Rust-owned projections/actions and browser acceptance that proves the

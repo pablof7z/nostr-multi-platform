@@ -10,6 +10,9 @@ export type MainView =
   | "relays"
   | "offline"
   | "workspaces"
+  | "messages"
+  | "wallet"
+  | "moderation"
   | "diagnostics";
 
 type ViewCopy = {
@@ -74,6 +77,21 @@ const VIEW_COPY: Record<MainView, ViewCopy> = {
     title: "More Chirp workspaces",
     support: "Private, value, and moderation surfaces stay disabled until Rust-owned web flows exist.",
   },
+  messages: {
+    kicker: "Blocked workspace",
+    title: "Private messages",
+    support: "NIP-17 private messaging stays disabled until Rust owns web decrypt/send flows.",
+  },
+  wallet: {
+    kicker: "Blocked workspace",
+    title: "Wallet and zaps",
+    support: "Wallet connection, zap request, payment, and receipt state need Rust-owned web flows.",
+  },
+  moderation: {
+    kicker: "Blocked workspace",
+    title: "Trust and moderation",
+    support: "Mute, block, relay, WoT, and hidden-content policy need Rust-owned projections.",
+  },
   diagnostics: {
     kicker: "Runtime diagnostics",
     title: "Inspect routing and outbox",
@@ -92,9 +110,10 @@ export function viewFromHash(hash: string): MainView {
   if (route === "#profile") return "profile";
   if (route === "#relays") return "relays";
   if (route === "#offline") return "offline";
-  if (route === "#workspaces" || route === "#messages" || route === "#wallet" || route === "#moderation") {
-    return "workspaces";
-  }
+  if (route === "#workspaces") return "workspaces";
+  if (route === "#messages") return "messages";
+  if (route === "#wallet") return "wallet";
+  if (route === "#moderation") return "moderation";
   if (route === "#diagnostics") return "diagnostics";
   return "home";
 }
