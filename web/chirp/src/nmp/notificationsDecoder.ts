@@ -17,11 +17,13 @@ export type NotificationItem = {
   content: string;
   targetEventId?: string;
   sourceRelays: string[];
+  read: boolean;
 };
 
 export type NotificationsFrame = {
   viewerPubkey: string;
   rows: NotificationItem[];
+  unreadCount: number;
 };
 
 export function decodeNotificationsFrame(
@@ -67,6 +69,7 @@ function decodePayload(bytes: Uint8Array): NotificationsFrame | undefined {
   return {
     viewerPubkey: snapshot.viewerPubkey() ?? "",
     rows,
+    unreadCount: snapshot.unreadCount(),
   };
 }
 
@@ -85,6 +88,7 @@ function decodeRow(row: NotificationRow): NotificationItem {
     content: row.content() ?? "",
     targetEventId: row.targetEventId() ?? undefined,
     sourceRelays,
+    read: row.read(),
   };
 }
 

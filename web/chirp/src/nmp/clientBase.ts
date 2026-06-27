@@ -4,6 +4,7 @@ import type { ChirpRelayStartOverride } from "../chirpConfig";
 import type {
   GroupDiscoveryOpenRequest,
   NmpClient,
+  NotificationsMarkReadRequest,
   NotificationsOpenRequest,
   RuntimeSnapshot,
   SearchOpenRequest,
@@ -65,4 +66,5 @@ export abstract class BaseClient implements NmpClient {
   abstract closeGroupDiscovery(sessionId: string): Promise<RuntimeSnapshot>;
   abstract openNotifications(request: NotificationsOpenRequest): Promise<RuntimeSnapshot>;
   abstract closeNotifications(sessionId: string): Promise<RuntimeSnapshot>;
+  abstract markNotificationsRead(request: NotificationsMarkReadRequest): Promise<RuntimeSnapshot>;
 }

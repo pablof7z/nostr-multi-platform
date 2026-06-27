@@ -16,12 +16,14 @@ table NotificationRow {
   content:string;
   target_event_id:string;
   source_relays:[string];
+  read:bool;
 }
 
 table NotificationsSnapshot {
   schema_version:uint32 = 1;
   viewer_pubkey:string;
   rows:[NotificationRow];
+  unread_count:uint32;
 }
 
 root_type NotificationsSnapshot;

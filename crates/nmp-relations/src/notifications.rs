@@ -26,6 +26,7 @@ pub struct NotificationRow {
     pub content: String,
     pub target_event_id: Option<String>,
     pub source_relays: Vec<String>,
+    pub read: bool,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -57,11 +58,13 @@ impl NotificationKind {
 pub struct NotificationsSnapshot {
     pub viewer_pubkey: String,
     pub rows: Vec<NotificationRow>,
+    pub unread_count: u32,
 }
 
 pub struct NotificationsProjection {
     viewer_pubkey: String,
     rows: Mutex<BoundedMessageMap<String, NotificationRow>>,
+    read_event_ids: Mutex<BTreeSet<String>>,
 }
 
 impl NotificationsProjection {
@@ -70,6 +73,7 @@ impl NotificationsProjection {
         Self {
             viewer_pubkey,
             rows: Mutex::new(BoundedMessageMap::new(NOTIFICATIONS_LIMIT as usize)),
+            read_event_ids: Mutex::new(BTreeSet::new()),
         }
     }
 
@@ -84,18 +88,67 @@ impl NotificationsProjection {
             return NotificationsSnapshot {
                 viewer_pubkey: self.viewer_pubkey.clone(),
                 rows: Vec::new(),
+                unread_count: 0,
             };
         };
         let mut ordered: Vec<_> = rows.values().cloned().collect();
+        let read_event_ids = self.read_event_ids.lock().ok();
+        for row in &mut ordered {
+            row.read = read_event_ids
+                .as_ref()
+                .is_some_and(|ids| ids.contains(&row.event_id));
+        }
         ordered.sort_by(|a, b| {
             b.created_at
                 .cmp(&a.created_at)
                 .then_with(|| b.event_id.cmp(&a.event_id))
         });
+        let unread_count = ordered.iter().filter(|row| !row.read).count();
         NotificationsSnapshot {
             viewer_pubkey: self.viewer_pubkey.clone(),
             rows: ordered,
+            unread_count: unread_count.min(u32::MAX as usize) as u32,
         }
+    }
+
+    pub fn mark_read<I, S>(&self, event_ids: I) -> usize
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let Ok(rows) = self.rows.lock() else {
+            return 0;
+        };
+        let Ok(mut read_event_ids) = self.read_event_ids.lock() else {
+            return 0;
+        };
+        let mut changed = 0;
+        for id in event_ids {
+            let id = id.as_ref().trim();
+            if id.is_empty() || !rows.contains_key(id) {
+                continue;
+            }
+            if read_event_ids.insert(id.to_string()) {
+                changed += 1;
+            }
+        }
+        changed
+    }
+
+    pub fn mark_all_read(&self) -> usize {
+        let Ok(rows) = self.rows.lock() else {
+            return 0;
+        };
+        let Ok(mut read_event_ids) = self.read_event_ids.lock() else {
+            return 0;
+        };
+        let mut changed = 0;
+        for (id, _) in rows.iter() {
+            if read_event_ids.insert(id.clone()) {
+                changed += 1;
+            }
+        }
+        changed
     }
 
     fn classify(&self, event: &KernelEvent) -> Option<NotificationRow> {
@@ -135,6 +188,7 @@ impl NotificationsProjection {
             content: event.content.clone(),
             target_event_id,
             source_relays: event.relay_provenance.clone(),
+            read: false,
         })
     }
 }
@@ -188,63 +242,4 @@ fn first_event_tag(tags: &[Vec<String>]) -> Option<String> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    const VIEWER: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-    const ACTOR: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
-    const TARGET: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
-
-    fn event(id: &str, kind: u32, tags: Vec<Vec<&str>>, content: &str) -> KernelEvent {
-        KernelEvent {
-            id: id.to_string(),
-            author: ACTOR.to_string(),
-            kind,
-            created_at: 42,
-            tags: tags
-                .into_iter()
-                .map(|tag| tag.into_iter().map(str::to_string).collect())
-                .collect(),
-            content: content.to_string(),
-            relay_provenance: vec!["wss://relay.example".to_string()],
-        }
-    }
-
-    #[test]
-    fn captures_reply_to_viewer_with_source_relay() {
-        let projection = NotificationsProjection::new(VIEWER.to_string());
-        projection.on_kernel_event(&event(
-            "reply",
-            KIND_SHORT_TEXT_NOTE,
-            vec![vec!["e", TARGET], vec!["p", VIEWER]],
-            "reply body",
-        ));
-
-        let snapshot = projection.snapshot();
-        assert_eq!(snapshot.rows.len(), 1);
-        assert_eq!(snapshot.rows[0].notification_kind, NotificationKind::Reply);
-        assert_eq!(snapshot.rows[0].target_event_id.as_deref(), Some(TARGET));
-        assert_eq!(snapshot.rows[0].source_relays, vec!["wss://relay.example"]);
-    }
-
-    #[test]
-    fn ignores_self_authored_and_unaddressed_events() {
-        let projection = NotificationsProjection::new(VIEWER.to_string());
-        let mut self_event = event("self", KIND_REACTION, vec![vec!["p", VIEWER]], "+");
-        self_event.author = VIEWER.to_string();
-        projection.on_kernel_event(&self_event);
-        projection.on_kernel_event(&event("other", KIND_REACTION, vec![], "+"));
-        assert!(projection.snapshot().rows.is_empty());
-    }
-
-    #[test]
-    fn interest_shape_is_bounded_p_tag_inbox() {
-        let shape = notifications_interest_shape(VIEWER);
-        assert_eq!(shape.limit, Some(NOTIFICATIONS_LIMIT));
-        assert!(shape.kinds.contains(&KIND_REACTION));
-        assert!(shape
-            .tags
-            .get("p")
-            .is_some_and(|values| values.contains(VIEWER)));
-    }
-}
+mod tests;

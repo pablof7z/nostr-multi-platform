@@ -88,6 +88,13 @@ export type WorkerRequest =
       session_id: string;
       correlation_id: string;
     }
+  | {
+      type: "notifications_mark_read";
+      session_id: string;
+      event_ids?: string[];
+      all_visible?: boolean;
+      correlation_id: string;
+    }
   /** Browser runtime relay inventory edit. This is structured transport/runtime
    *  control, not an app-level write. The Rust runtime validates URL/role,
    *  mutates the configured-relay projection, and opens/closes browser relay

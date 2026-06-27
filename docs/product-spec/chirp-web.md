@@ -79,17 +79,19 @@ provenance, and typed `NNTF` sidecar under
 Notifications include replies and mentions from kind:1 events, NIP-25
 reactions, NIP-18 reposts, NIP-22 comments, and NIP-57 zap receipts that p-tag
 the active account. TypeScript must decode the typed `NNTF` snapshot and render
-rows. It must not construct notification filters, maintain a parallel unread
-store, classify Nostr event kinds, or invent source relay provenance.
+rows, including Rust-projected read state. It must not construct notification
+filters, maintain a parallel unread store, classify Nostr event kinds, or invent
+source relay provenance.
 
-Read/unread persistence remains disabled until a Rust-owned read-state action
-and projection exist. The workspace must represent that limitation honestly
-rather than storing read state in the shell.
+Read/unread state is a Rust projection concern. The browser shell may send a
+typed mark-read request for currently visible notification event ids or all
+visible rows, but Rust must decide which rows are eligible and emit the updated
+`NNTF` unread count and per-row read flags.
 
 Acceptance must prove that opening Notifications sends a Rust-owned bounded
-`#p=<active-account>` subscription, and that signed fixture reply, mention,
-reaction, and repost events render from the typed notification sidecar with
-source relay provenance.
+`#p=<active-account>` subscription; signed fixture interactions render with
+source relay provenance; and marking visible rows read updates the
+Rust-projected unread count without shell-local read storage.
 
 ## Profile Open Contract
 
@@ -270,9 +272,9 @@ the raw secret.
 Chirp Web must not hide missing major product areas behind absent navigation or
 fake local-only controls. Until web-ready Rust projections and actions exist for
 NIP-17 private messages, wallet/zap flows, moderation/WoT, group
-timeline/membership actions, notification read state, or durable offline replay
-ownership, the browser product must expose those destinations as blocked,
-disabled, or explicitly partial workspaces with clear reasons.
+timeline/membership actions, or durable offline replay ownership, the browser
+product must expose those destinations as blocked, disabled, or explicitly
+partial workspaces with clear reasons.
 
 Blocked workspace controls may emit log-safe `capability_failure` diagnostics so
 users and tests can prove the unsupported state is deliberate. They must not

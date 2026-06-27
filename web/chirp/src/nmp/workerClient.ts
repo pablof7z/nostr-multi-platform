@@ -13,6 +13,7 @@ import { BaseClient } from "./clientBase";
 import {
   runtimeConnection,
   type GroupDiscoveryOpenRequest,
+  type NotificationsMarkReadRequest,
   type NotificationsOpenRequest,
   type RuntimeSnapshot,
   type SearchOpenRequest,
@@ -236,6 +237,18 @@ export class WorkerNmpClient extends BaseClient {
       { type: "notifications_close", session_id: sessionId, correlation_id: correlationId },
       correlationId,
     );
+  }
+
+  async markNotificationsRead(request: NotificationsMarkReadRequest): Promise<RuntimeSnapshot> {
+    await this.helloReady;
+    const correlationId = makeCorrelationId("web-notifications", this.nextCorrelationId++);
+    return this.request({
+      type: "notifications_mark_read",
+      session_id: request.sessionId,
+      event_ids: request.eventIds ?? [],
+      all_visible: request.allVisible ?? false,
+      correlation_id: correlationId,
+    }, correlationId);
   }
 
   private request(request: WorkerRequest, explicitCorrelationId?: string): Promise<RuntimeSnapshot> {

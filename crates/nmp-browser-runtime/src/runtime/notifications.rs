@@ -17,6 +17,7 @@ const SCOPE_GLOBAL: u32 = 1;
 
 pub(crate) struct BrowserNotificationsSession {
     projection_key: String,
+    projection: Arc<NotificationsProjection>,
     observer_ids: Vec<ObservedProjectionId>,
 }
 
@@ -39,7 +40,7 @@ impl BrowserRuntimeHandle {
 
         let shape = notifications_interest_shape(pubkey);
         let filter_json = nmp_core::subs::filter_json_for(&shape);
-        let observer: Arc<dyn nmp_core::ObservedProjectionSink> = projection;
+        let observer: Arc<dyn nmp_core::ObservedProjectionSink> = projection.clone();
         let decl = ObservedProjection {
             observer,
             filter_json,
@@ -56,10 +57,28 @@ impl BrowserRuntimeHandle {
             session_id.to_string(),
             BrowserNotificationsSession {
                 projection_key: projection_key.clone(),
+                projection,
                 observer_ids,
             },
         );
         Ok(projection_key)
+    }
+
+    pub(crate) fn mark_notifications_read(
+        &mut self,
+        session_id: &str,
+        event_ids: Vec<String>,
+        all_visible: bool,
+    ) -> Result<usize, String> {
+        let Some(session) = self.notifications_sessions.get(session_id) else {
+            return Err("notification session is not open".to_string());
+        };
+        let changed = if all_visible {
+            session.projection.mark_all_read()
+        } else {
+            session.projection.mark_read(event_ids)
+        };
+        Ok(changed)
     }
 
     pub(crate) fn close_notifications(&mut self, session_id: &str) {

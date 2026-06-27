@@ -51,8 +51,13 @@ rowsLength():number {
   return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
 }
 
+unreadCount():number {
+  const offset = this.bb!.__offset(this.bb_pos, 10);
+  return offset ? this.bb!.readUint32(this.bb_pos + offset) : 0;
+}
+
 static startNotificationsSnapshot(builder:flatbuffers.Builder) {
-  builder.startObject(3);
+  builder.startObject(4);
 }
 
 static addSchemaVersion(builder:flatbuffers.Builder, schemaVersion:number) {
@@ -79,6 +84,10 @@ static startRowsVector(builder:flatbuffers.Builder, numElems:number) {
   builder.startVector(4, numElems, 4);
 }
 
+static addUnreadCount(builder:flatbuffers.Builder, unreadCount:number) {
+  builder.addFieldInt32(3, unreadCount, 0);
+}
+
 static endNotificationsSnapshot(builder:flatbuffers.Builder):flatbuffers.Offset {
   const offset = builder.endObject();
   return offset;
@@ -92,11 +101,12 @@ static finishSizePrefixedNotificationsSnapshotBuffer(builder:flatbuffers.Builder
   builder.finish(offset, 'NNTF', true);
 }
 
-static createNotificationsSnapshot(builder:flatbuffers.Builder, schemaVersion:number, viewerPubkeyOffset:flatbuffers.Offset, rowsOffset:flatbuffers.Offset):flatbuffers.Offset {
+static createNotificationsSnapshot(builder:flatbuffers.Builder, schemaVersion:number, viewerPubkeyOffset:flatbuffers.Offset, rowsOffset:flatbuffers.Offset, unreadCount:number):flatbuffers.Offset {
   NotificationsSnapshot.startNotificationsSnapshot(builder);
   NotificationsSnapshot.addSchemaVersion(builder, schemaVersion);
   NotificationsSnapshot.addViewerPubkey(builder, viewerPubkeyOffset);
   NotificationsSnapshot.addRows(builder, rowsOffset);
+  NotificationsSnapshot.addUnreadCount(builder, unreadCount);
   return NotificationsSnapshot.endNotificationsSnapshot(builder);
 }
 }

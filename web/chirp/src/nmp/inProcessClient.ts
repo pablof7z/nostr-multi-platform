@@ -11,6 +11,7 @@ import { BaseClient } from "./clientBase";
 import {
   runtimeConnection,
   type GroupDiscoveryOpenRequest,
+  type NotificationsMarkReadRequest,
   type NotificationsOpenRequest,
   type RuntimeSnapshot,
   type SearchOpenRequest,
@@ -181,6 +182,16 @@ export class InProcessNmpClient extends BaseClient {
     return this.send({
       type: "notifications_close",
       session_id: sessionId,
+      correlation_id: makeCorrelationId("web-notifications", this.nextCorrelationId++),
+    });
+  }
+
+  async markNotificationsRead(request: NotificationsMarkReadRequest): Promise<RuntimeSnapshot> {
+    return this.send({
+      type: "notifications_mark_read",
+      session_id: request.sessionId,
+      event_ids: request.eventIds ?? [],
+      all_visible: request.allVisible ?? false,
       correlation_id: makeCorrelationId("web-notifications", this.nextCorrelationId++),
     });
   }

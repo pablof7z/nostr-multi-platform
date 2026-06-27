@@ -48,6 +48,7 @@ impl NmpRuntimeCore {
             WorkerRequest::GroupDiscoveryClose(req) => self.handle_group_discovery_close(req),
             WorkerRequest::NotificationsOpen(req) => self.handle_notifications_open(req),
             WorkerRequest::NotificationsClose(req) => self.handle_notifications_close(req),
+            WorkerRequest::NotificationsMarkRead(req) => self.handle_notifications_mark_read(req),
             WorkerRequest::RelayConfig(req) => self.handle_relay_config(req),
             WorkerRequest::PublishRelayPreferences(req) => {
                 self.handle_publish_relay_preferences(req)

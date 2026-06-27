@@ -4,7 +4,7 @@
 
 use super::core::NmpRuntimeCore;
 use super::dispatch::not_started_error;
-use super::protocol::{NotificationsClose, NotificationsOpen, WorkerEvent};
+use super::protocol::{NotificationsClose, NotificationsMarkRead, NotificationsOpen, WorkerEvent};
 
 impl NmpRuntimeCore {
     pub(super) fn handle_notifications_open(&mut self, req: NotificationsOpen) -> Vec<WorkerEvent> {
@@ -36,5 +36,25 @@ impl NmpRuntimeCore {
             action_type: "nmp.relations.notifications.close".to_string(),
             correlation_id: req.correlation_id,
         }]
+    }
+
+    pub(super) fn handle_notifications_mark_read(
+        &mut self,
+        req: NotificationsMarkRead,
+    ) -> Vec<WorkerEvent> {
+        let Some(handle) = self.handle.as_mut() else {
+            return not_started_error(Some(req.correlation_id));
+        };
+        match handle.mark_notifications_read(&req.session_id, req.event_ids, req.all_visible) {
+            Ok(_) => vec![WorkerEvent::ActionAccepted {
+                action_type: "nmp.relations.notifications.mark_read".to_string(),
+                correlation_id: req.correlation_id,
+            }],
+            Err(reason) => vec![WorkerEvent::CapabilityFailure {
+                capability: "nmp.relations.notifications.mark_read".to_string(),
+                correlation_id: req.correlation_id,
+                reason,
+            }],
+        }
     }
 }

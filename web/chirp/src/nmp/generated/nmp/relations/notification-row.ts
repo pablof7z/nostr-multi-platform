@@ -79,8 +79,13 @@ sourceRelaysLength():number {
   return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
 }
 
+read():boolean {
+  const offset = this.bb!.__offset(this.bb_pos, 20);
+  return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
+}
+
 static startNotificationRow(builder:flatbuffers.Builder) {
-  builder.startObject(8);
+  builder.startObject(9);
 }
 
 static addEventId(builder:flatbuffers.Builder, eventIdOffset:flatbuffers.Offset) {
@@ -127,12 +132,16 @@ static startSourceRelaysVector(builder:flatbuffers.Builder, numElems:number) {
   builder.startVector(4, numElems, 4);
 }
 
+static addRead(builder:flatbuffers.Builder, read:boolean) {
+  builder.addFieldInt8(8, +read, +false);
+}
+
 static endNotificationRow(builder:flatbuffers.Builder):flatbuffers.Offset {
   const offset = builder.endObject();
   return offset;
 }
 
-static createNotificationRow(builder:flatbuffers.Builder, eventIdOffset:flatbuffers.Offset, actorPubkeyOffset:flatbuffers.Offset, eventKind:number, notificationKindOffset:flatbuffers.Offset, createdAt:bigint, contentOffset:flatbuffers.Offset, targetEventIdOffset:flatbuffers.Offset, sourceRelaysOffset:flatbuffers.Offset):flatbuffers.Offset {
+static createNotificationRow(builder:flatbuffers.Builder, eventIdOffset:flatbuffers.Offset, actorPubkeyOffset:flatbuffers.Offset, eventKind:number, notificationKindOffset:flatbuffers.Offset, createdAt:bigint, contentOffset:flatbuffers.Offset, targetEventIdOffset:flatbuffers.Offset, sourceRelaysOffset:flatbuffers.Offset, read:boolean):flatbuffers.Offset {
   NotificationRow.startNotificationRow(builder);
   NotificationRow.addEventId(builder, eventIdOffset);
   NotificationRow.addActorPubkey(builder, actorPubkeyOffset);
@@ -142,6 +151,7 @@ static createNotificationRow(builder:flatbuffers.Builder, eventIdOffset:flatbuff
   NotificationRow.addContent(builder, contentOffset);
   NotificationRow.addTargetEventId(builder, targetEventIdOffset);
   NotificationRow.addSourceRelays(builder, sourceRelaysOffset);
+  NotificationRow.addRead(builder, read);
   return NotificationRow.endNotificationRow(builder);
 }
 }

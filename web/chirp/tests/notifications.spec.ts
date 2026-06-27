@@ -27,6 +27,18 @@ test("@wasm notifications workspace renders Rust-owned p-tag inbox", async ({ pa
     await expect(panel).toContainText("Reaction");
     await expect(panel).toContainText("Repost");
     await expect(panel).toContainText("127.0.0.1");
+    await expect(page.getByTestId("notifications-source")).toHaveText(/[1-9]\d* unread/);
+    await expect(page.getByTestId("notification-card").first()).toHaveAttribute(
+      "data-read",
+      "false",
+    );
+
+    await page.getByTestId("notifications-mark-read").click();
+    await expect(page.getByTestId("notifications-source")).toContainText("0 unread");
+    await expect(page.getByTestId("notification-card").first()).toHaveAttribute(
+      "data-read",
+      "true",
+    );
 
     await expect
       .poll(

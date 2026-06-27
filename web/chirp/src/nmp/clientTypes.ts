@@ -43,6 +43,12 @@ export type NotificationsOpenRequest = {
   accountPubkey: string;
 };
 
+export type NotificationsMarkReadRequest = {
+  sessionId: string;
+  eventIds?: string[];
+  allVisible?: boolean;
+};
+
 export type NmpClient = {
   snapshot(): RuntimeSnapshot;
   subscribe(listener: (snapshot: RuntimeSnapshot) => void): () => void;
@@ -62,4 +68,5 @@ export type NmpClient = {
   closeGroupDiscovery(sessionId: string): Promise<RuntimeSnapshot>;
   openNotifications(request: NotificationsOpenRequest): Promise<RuntimeSnapshot>;
   closeNotifications(sessionId: string): Promise<RuntimeSnapshot>;
+  markNotificationsRead(request: NotificationsMarkReadRequest): Promise<RuntimeSnapshot>;
 };

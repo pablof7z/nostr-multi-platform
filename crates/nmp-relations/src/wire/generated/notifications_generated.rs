@@ -34,6 +34,7 @@ pub mod nmp {
             pub const VT_CONTENT: ::flatbuffers::VOffsetT = 14;
             pub const VT_TARGET_EVENT_ID: ::flatbuffers::VOffsetT = 16;
             pub const VT_SOURCE_RELAYS: ::flatbuffers::VOffsetT = 18;
+            pub const VT_READ: ::flatbuffers::VOffsetT = 20;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -70,6 +71,7 @@ pub mod nmp {
                 if let Some(x) = args.event_id {
                     builder.add_event_id(x);
                 }
+                builder.add_read(args.read);
                 builder.finish()
             }
 
@@ -169,6 +171,17 @@ pub mod nmp {
                     >>(NotificationRow::VT_SOURCE_RELAYS, None)
                 }
             }
+            #[inline]
+            pub fn read(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(NotificationRow::VT_READ, Some(false))
+                        .unwrap()
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for NotificationRow<'_> {
@@ -208,6 +221,7 @@ pub mod nmp {
                     .visit_field::<::flatbuffers::ForwardsUOffset<
                         ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>,
                     >>("source_relays", Self::VT_SOURCE_RELAYS, false)?
+                    .visit_field::<bool>("read", Self::VT_READ, false)?
                     .finish();
                 Ok(())
             }
@@ -225,6 +239,7 @@ pub mod nmp {
                     ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
                 >,
             >,
+            pub read: bool,
         }
         impl<'a> Default for NotificationRowArgs<'a> {
             #[inline]
@@ -238,6 +253,7 @@ pub mod nmp {
                     content: None,
                     target_event_id: None,
                     source_relays: None,
+                    read: false,
                 }
             }
         }
@@ -311,6 +327,11 @@ pub mod nmp {
                 );
             }
             #[inline]
+            pub fn add_read(&mut self, read: bool) {
+                self.fbb_
+                    .push_slot::<bool>(NotificationRow::VT_READ, read, false);
+            }
+            #[inline]
             pub fn new(
                 _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
             ) -> NotificationRowBuilder<'a, 'b, A> {
@@ -338,6 +359,7 @@ pub mod nmp {
                 ds.field("content", &self.content());
                 ds.field("target_event_id", &self.target_event_id());
                 ds.field("source_relays", &self.source_relays());
+                ds.field("read", &self.read());
                 ds.finish()
             }
         }
@@ -362,6 +384,7 @@ pub mod nmp {
             pub const VT_SCHEMA_VERSION: ::flatbuffers::VOffsetT = 4;
             pub const VT_VIEWER_PUBKEY: ::flatbuffers::VOffsetT = 6;
             pub const VT_ROWS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_UNREAD_COUNT: ::flatbuffers::VOffsetT = 10;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -378,6 +401,7 @@ pub mod nmp {
                 args: &'args NotificationsSnapshotArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<NotificationsSnapshot<'bldr>> {
                 let mut builder = NotificationsSnapshotBuilder::new(_fbb);
+                builder.add_unread_count(args.unread_count);
                 if let Some(x) = args.rows {
                     builder.add_rows(x);
                 }
@@ -426,6 +450,17 @@ pub mod nmp {
                     >>(NotificationsSnapshot::VT_ROWS, None)
                 }
             }
+            #[inline]
+            pub fn unread_count(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(NotificationsSnapshot::VT_UNREAD_COUNT, Some(0))
+                        .unwrap()
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for NotificationsSnapshot<'_> {
@@ -444,6 +479,7 @@ pub mod nmp {
                     .visit_field::<::flatbuffers::ForwardsUOffset<
                         ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<NotificationRow>>,
                     >>("rows", Self::VT_ROWS, false)?
+                    .visit_field::<u32>("unread_count", Self::VT_UNREAD_COUNT, false)?
                     .finish();
                 Ok(())
             }
@@ -456,6 +492,7 @@ pub mod nmp {
                     ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<NotificationRow<'a>>>,
                 >,
             >,
+            pub unread_count: u32,
         }
         impl<'a> Default for NotificationsSnapshotArgs<'a> {
             #[inline]
@@ -464,6 +501,7 @@ pub mod nmp {
                     schema_version: 1,
                     viewer_pubkey: None,
                     rows: None,
+                    unread_count: 0,
                 }
             }
         }
@@ -501,6 +539,11 @@ pub mod nmp {
                 );
             }
             #[inline]
+            pub fn add_unread_count(&mut self, unread_count: u32) {
+                self.fbb_
+                    .push_slot::<u32>(NotificationsSnapshot::VT_UNREAD_COUNT, unread_count, 0);
+            }
+            #[inline]
             pub fn new(
                 _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
             ) -> NotificationsSnapshotBuilder<'a, 'b, A> {
@@ -523,6 +566,7 @@ pub mod nmp {
                 ds.field("schema_version", &self.schema_version());
                 ds.field("viewer_pubkey", &self.viewer_pubkey());
                 ds.field("rows", &self.rows());
+                ds.field("unread_count", &self.unread_count());
                 ds.finish()
             }
         }

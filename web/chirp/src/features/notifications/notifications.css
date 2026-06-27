@@ -35,13 +35,29 @@
   border-bottom: 1px solid var(--border);
 }
 
-.notifications-actions span {
+.notifications-actions span,
+.notifications-mark-read {
   border: 1px solid var(--border);
   border-radius: 999px;
   color: var(--muted);
   font-size: 12px;
   font-weight: 800;
   padding: 5px 9px;
+}
+
+.notifications-mark-read {
+  background: var(--surface-raised);
+  cursor: pointer;
+}
+
+.notifications-mark-read:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.notifications-mark-read:disabled {
+  cursor: default;
+  opacity: 0.55;
 }
 
 .notifications-actions span[data-state="live"] {
@@ -82,6 +98,15 @@
   border-radius: 8px;
   background: var(--surface-raised);
   padding: 12px;
+}
+
+.notification-card[data-read="false"] {
+  border-color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.notification-card[data-read="true"] {
+  opacity: 0.76;
 }
 
 .notification-kind {

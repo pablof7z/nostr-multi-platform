@@ -37,6 +37,7 @@ pub fn encode_notifications_snapshot(snapshot: &NotificationsSnapshot) -> Vec<u8
             schema_version: NOTIFICATIONS_SCHEMA_VERSION,
             viewer_pubkey: Some(viewer_pubkey),
             rows: Some(rows),
+            unread_count: snapshot.unread_count,
         },
     );
     fb::finish_notifications_snapshot_buffer(&mut fbb, root);
@@ -73,6 +74,7 @@ fn encode_row<'a>(
             content: Some(content),
             target_event_id,
             source_relays,
+            read: row.read,
         },
     )
 }

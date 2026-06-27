@@ -12,6 +12,7 @@ export function NotificationsPanel() {
   const [failedFor, setFailedFor] = createSignal<string | null>(null);
   const [opening, setOpening] = createSignal(false);
   const [rows, setRows] = createSignal<NotificationItem[]>([]);
+  const [unreadCount, setUnreadCount] = createSignal(0);
   const runtime = createMemo(() => decodeRuntimeProjection(snapshot().latestUpdateBytes));
   const accountPubkey = createMemo(() => runtime()?.activeAccountPubkey);
 
@@ -23,8 +24,10 @@ export function NotificationsPanel() {
     const frame = decodedFrame();
     if (account && frame?.viewerPubkey === account) {
       setRows(frame.rows);
+      setUnreadCount(frame.unreadCount);
     } else {
       setRows([]);
+      setUnreadCount(0);
     }
   });
 
@@ -47,6 +50,15 @@ export function NotificationsPanel() {
     void client.closeNotifications(SESSION_ID);
   });
 
+  const markAllRead = () => {
+    const eventIds = rows()
+      .filter((row) => !row.read)
+      .map((row) => row.eventId)
+      .filter(Boolean);
+    if (eventIds.length === 0) return;
+    void client.markNotificationsRead({ sessionId: SESSION_ID, eventIds, allVisible: false });
+  };
+
   return (
     <section class="notifications-panel" aria-label="Notifications" data-testid="notifications-panel">
       <div class="notifications-header">
@@ -55,7 +67,9 @@ export function NotificationsPanel() {
           <h2>Notifications</h2>
         </div>
         <span class="notifications-source" data-testid="notifications-source">
-          {accountPubkey() ? `${rows().length} interactions` : "sign in required"}
+          {accountPubkey()
+            ? `${unreadCount()} unread / ${rows().length} interactions`
+            : "sign in required"}
         </span>
       </div>
 
@@ -70,7 +84,15 @@ export function NotificationsPanel() {
                 : "waiting for identity"}
         </span>
         <span>source relays visible</span>
-        <span>read state pending</span>
+        <button
+          type="button"
+          class="notifications-mark-read"
+          data-testid="notifications-mark-read"
+          disabled={unreadCount() === 0}
+          onClick={markAllRead}
+        >
+          Mark all read
+        </button>
       </div>
 
       <Show
@@ -112,6 +134,7 @@ function NotificationCard(props: { row: NotificationItem }) {
       class="notification-card"
       data-testid="notification-card"
       data-kind={props.row.notificationKind}
+      data-read={props.row.read ? "true" : "false"}
     >
       <div class="notification-kind" aria-hidden="true">
         {kindInitial(props.row.notificationKind)}
