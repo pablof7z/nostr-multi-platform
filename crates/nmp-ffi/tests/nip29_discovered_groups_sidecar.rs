@@ -11,11 +11,11 @@ mod common;
 
 use common::{boot, inject, raw_event, teardown, wait_for_typed, HOST, SERIAL};
 
-use nmp_store::VerifiedEvent;
 use nmp_nip29::{
     decode_discovered_groups_snapshot, DISCOVERED_GROUPS_FILE_IDENTIFIER,
     DISCOVERED_GROUPS_SCHEMA_ID,
 };
+use nmp_store::VerifiedEvent;
 
 /// kind:39000/39002 events for the wired relay roll into the
 /// `"nmp.nip29.discovered_groups"` typed sidecar with the `NDGS` identifier; the
@@ -188,7 +188,11 @@ fn discovered_groups_typed_sidecar_carries_subgroup_tags() {
 
     let entry = wait_for_typed("nmp.nip29.discovered_groups", |t| {
         decode_discovered_groups_snapshot(&t.payload)
-            .map(|s| s.groups.iter().any(|g| g.group_id == "nostr" && g.parent.as_deref() == Some("tech")))
+            .map(|s| {
+                s.groups
+                    .iter()
+                    .any(|g| g.group_id == "nostr" && g.parent.as_deref() == Some("tech"))
+            })
             .unwrap_or(false)
     })
     .expect("typed sidecar must carry the subgroup parent within 3 s");
@@ -217,6 +221,43 @@ fn discovered_groups_typed_sidecar_carries_subgroup_tags() {
     assert!(
         nostr.children.is_empty(),
         "nostr has no children declared in this snapshot"
+    );
+
+    teardown(app);
+}
+
+#[test]
+fn discovery_reader_is_the_canonical_sidecar_projection() {
+    let _g = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+    let app = boot();
+
+    let (_handle, reader) = unsafe { (*app).open_group_discovery_with_reader(HOST.to_string()) };
+
+    let meta = VerifiedEvent::from_raw_unchecked(raw_event(
+        &"7".repeat(64),
+        &"f".repeat(64),
+        39000,
+        100,
+        vec![
+            vec!["d".into(), "reader-room".into()],
+            vec!["name".into(), "Reader Room".into()],
+        ],
+        "",
+    ));
+    inject(app, vec![meta]);
+
+    let entry = wait_for_typed("nmp.nip29.discovered_groups", |t| {
+        decode_discovered_groups_snapshot(&t.payload)
+            .map(|s| s.groups.iter().any(|g| g.group_id == "reader-room"))
+            .unwrap_or(false)
+    })
+    .expect("canonical discovery sidecar must carry the reader-room row within 3 s");
+
+    let sidecar = decode_discovered_groups_snapshot(&entry.payload).expect("NDGS decode");
+    assert_eq!(
+        reader.snapshot(),
+        sidecar,
+        "the Rust reader must expose the same projection instance that feeds the typed sidecar"
     );
 
     teardown(app);

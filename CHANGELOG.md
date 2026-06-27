@@ -1,5 +1,15 @@
 # Changelog
 
+## nmp-v0.8.1 — 2026-06-27
+
+### Changed
+
+- NIP-29 group discovery and joined-groups doors now expose Rust-side
+  reader-returning open methods (`open_group_discovery_with_reader`,
+  `open_joined_groups_with_reader`). App crates can compose over the canonical
+  discovered/joined projections without opening duplicate observed projections
+  or becoming second producers of `nmp.nip29.*` typed sidecar keys.
+
 ## nmp-v0.8.0 — 2026-06-27
 
 **BREAKING release — profile-resolution overhaul.** Git-rev-pinning consumers
