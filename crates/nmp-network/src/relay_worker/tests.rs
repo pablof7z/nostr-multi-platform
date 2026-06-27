@@ -24,15 +24,15 @@ use crate::role::RelayRole;
 /// What the server-side WebSocket observed. Kept narrow so test assertions
 /// don't have to match on `Message` variants the test doesn't care about.
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum ServerObserved {
+pub(super) enum ServerObserved {
     Ping,
     Pong,
     Text(String),
     Close,
 }
 
-struct LocalServer {
-    url: String,
+pub(super) struct LocalServer {
+    pub(super) url: String,
     observed_rx: Receiver<ServerObserved>,
     _shutdown_tx: Sender<()>,
     _thread: JoinHandle<()>,
@@ -44,7 +44,7 @@ impl LocalServer {
     /// inline in `worker_reconnects_when_pong_does_not_arrive` because it
     /// requires a hand-rolled WS handshake to bypass tungstenite's helpful
     /// auto-pong logic.
-    fn start_auto_pong() -> Self {
+    pub(super) fn start_auto_pong() -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind ephemeral");
         let port = listener.local_addr().expect("local_addr").port();
         let url = format!("ws://127.0.0.1:{port}");
@@ -107,7 +107,7 @@ impl LocalServer {
         }
     }
 
-    fn await_event(&self, want: ServerObserved, budget: Duration) -> bool {
+    pub(super) fn await_event(&self, want: ServerObserved, budget: Duration) -> bool {
         let deadline = Instant::now() + budget;
         loop {
             let remaining = deadline.saturating_duration_since(Instant::now());
@@ -509,75 +509,6 @@ fn t130_frames_sent_before_connect_arrive_after_open() {
         Duration::from_millis(500),
     );
     assert!(connected.is_some(), "worker must report Connected");
-}
-
-// ─── Finding 1 — ControlDrain::Disconnected must emit a terminal event ───────
-
-/// When the control-sender is dropped mid-session (caller tore down the Pool
-/// slot without sending Shutdown), the worker must emit a terminal
-/// `RelayEvent::Closed` so consumers tracking slot health see a definitive
-/// terminal state rather than being stuck at the last non-terminal event.
-///
-/// ## Invariant being pinned
-///
-/// Every exit path of `run_connected_relay` → `run_relay_worker` must end with
-/// either `RelayEvent::Closed` (clean shutdown / control-sender-dropped) or
-/// `RelayEvent::Failed` (transport or keepalive error) so the relay-event
-/// stream is always terminated.
-#[test]
-fn disconnected_control_sender_emits_terminal_closed_event() {
-    let server = LocalServer::start_auto_pong();
-
-    let (relay_tx, relay_rx) = mpsc::channel::<RelayEvent>();
-    let control_tx = spawn_relay_worker_with_keepalive(
-        RelayRole::Content,
-        server.url.clone(),
-        42,
-        relay_tx,
-        Duration::from_secs(30), // long keepalive — must not interfere
-        Duration::from_secs(30),
-        None,
-    );
-
-    // Wait for Connected before dropping the sender so we're mid-session.
-    let connected = drain_until(
-        &relay_rx,
-        |ev| matches!(ev, RelayEvent::Connected { .. }),
-        Duration::from_secs(2),
-    );
-    assert!(
-        connected.is_some(),
-        "worker must report Connected before test can proceed"
-    );
-
-    // Drop the control sender — simulates Pool slot teardown without Shutdown.
-    // The `ControlInbox` internal forwarding thread will observe the disconnect
-    // on the next recv(), which will cause `drain_pending` to return
-    // `ControlDrain::Disconnected` on the next tick of `run_connected_relay`.
-    drop(control_tx);
-
-    // The worker MUST emit a terminal event. We accept both Closed (correct)
-    // and — defensively — Failed (would still be honest), but NOT absence.
-    let terminal = drain_until(
-        &relay_rx,
-        |ev| {
-            matches!(
-                ev,
-                RelayEvent::Closed { generation: 42, .. }
-                    | RelayEvent::Failed { generation: 42, .. }
-            )
-        },
-        Duration::from_secs(2),
-    );
-    assert!(
-        terminal.is_some(),
-        "dropping the control sender must produce a terminal RelayEvent::Closed; got none within 2s"
-    );
-    // Specifically it must be Closed (not Failed) — the disconnect is not an error.
-    assert!(
-        matches!(terminal.unwrap(), RelayEvent::Closed { .. }),
-        "control-sender drop is a clean teardown; event must be Closed, not Failed"
-    );
 }
 
 // ─── V-58 — SetBackoffHint unit tests ───────────────────────────────────────

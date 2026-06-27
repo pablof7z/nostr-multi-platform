@@ -45,7 +45,7 @@ crates/nmp-marmot/src/projection/state.rs	615
 crates/nmp-marmot/src/service.rs	642
 crates/nmp-marmot/src/tests.rs	749
 crates/nmp-network/src/pool/tests.rs	554
-crates/nmp-network/src/relay_worker/tests.rs	810
+crates/nmp-network/src/relay_worker/tests.rs	741
 crates/nmp-nip01/src/timeline_projection.rs	576
 crates/nmp-nip17/src/dm_send/tests.rs	756
 crates/nmp-nip60/src/nip60_wallet.rs	714

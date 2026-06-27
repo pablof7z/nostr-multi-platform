@@ -1,5 +1,26 @@
 # Changelog
 
+## nmp-v0.8.3 — 2026-06-27
+
+**BREAKING correction — event-ref render envelopes now use their final
+projection key.** Git-rev-pinning consumers should move to this baseline rather
+than depending on the retired compatibility name. This patch release also
+includes the Marmot write-builder baseline from the post-`v0.8.2` merge window.
+
+### Changed
+
+- The derived render envelope sidecar is now emitted and decoded as
+  `refs.event.envelopes` / `RefEventEnvelopes` (schema version 2). `refs.event`
+  remains the authoritative raw row-delta source; shells and gallery JSON must
+  consume the pre-rendered envelope map from `refs.event.envelopes`, not from
+  raw `refs.event` and not from the retired `claimed_event_embeds` key.
+- Swift, Kotlin, TypeScript, browser-runtime, Chirp, desktop, Gallery, docs, and
+  drift gates all use the final projection name. `claimed_event_embeds` remains
+  only as retired ADR terminology.
+- Marmot writes now use bytes-only generated builders across Rust, iOS, and
+  Android, keeping downstream app write paths on the typed envelope contract
+  instead of JSON-shaped shell glue.
+
 ## nmp-v0.8.2 — 2026-06-27
 
 ### Changed
