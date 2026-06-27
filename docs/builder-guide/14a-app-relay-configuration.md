@@ -36,12 +36,13 @@ round-trip.
 
 ## Declaring app relays in Rust
 
-Use `NmpAppBuilder::with_relays([(url, role), ...])` to declare the app's
-default relay set. The builder carries these as defaults; on first start they
-are written to the `.nmp-relay-config.json` sidecar alongside the LMDB store.
+Use `nmp-native-runtime::NmpAppBuilder::with_relays([(url, role), ...])` to
+declare the app's default relay set. The builder carries these as defaults; on
+first start they are written to the `.nmp-relay-config.json` sidecar alongside
+the LMDB store.
 
 ```rust
-use nmp_defaults::{NmpAppBuilder, RunConfig};
+use nmp_native_runtime::{NmpAppBuilder, RunConfig};
 
 let app = NmpAppBuilder::new()
     .storage_path("/path/to/app/data")

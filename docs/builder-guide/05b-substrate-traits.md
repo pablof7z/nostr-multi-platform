@@ -234,7 +234,7 @@ For a headless example, the same composition fits in `examples/shell.rs`
 using `NmpAppBuilder`:
 
 ```rust
-use nmp_defaults::{NmpAppBuilder, RunConfig};
+use nmp_native_runtime::{NmpAppBuilder, RunConfig};
 
 let mut builder = NmpAppBuilder::new();
 microblog_core::register(&mut builder);
@@ -242,7 +242,7 @@ let app = builder
     .in_memory()
     .declare_consumed_projections(["microblog.items"])
     .start(RunConfig::default());
-// Drive the app via `nmp_ffi` symbols, then `nmp_ffi::nmp_app_free(app)`.
+// Native C callers drive the same runtime through `nmp_ffi` ABI symbols.
 ```
 
 `nmp_defaults::register_defaults` installs the production routing substrate,

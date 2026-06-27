@@ -1,9 +1,11 @@
 # FFI Surface Reference
 
 > **Reviewed:** 2026-06-26. The production C/JNI ABI lives in
-> `crates/nmp-ffi`; `nmp-core` owns the actor/kernel and FlatBuffers transport
-> types. Update callbacks carry binary `nmp.transport.UpdateFrame` (`NMPU`)
-> frames only; the old JSON runtime snapshot path is gone.
+> `crates/nmp-ffi`; the durable target is for `nmp-ffi` to delegate runtime
+> ownership to `nmp-native-runtime` (ADR-0068). `nmp-core` owns the actor/kernel
+> and FlatBuffers transport types. Update callbacks carry binary
+> `nmp.transport.UpdateFrame` (`NMPU`) frames only; the old JSON runtime snapshot
+> path is gone.
 >
 > **M14-0 (issue #2129, 2026-06-26):** The Android app-loop lane has migrated
 > from JNI to UniFFI. The `AppHandle` object (`uniffi_app_loop.rs`) replaces the
@@ -13,7 +15,10 @@
 > NMPU) remains the byte payload format. Residual JNI lanes (signer, capability,
 > marmot, identity, feeds) are unchanged.
 
-The native runtime ships a flat `extern "C"` raw C ABI regardless of Rust module layout.
+The native delivery surface ships a flat `extern "C"` raw C ABI regardless of
+Rust module layout. Today those symbols are implemented in `nmp-ffi`; under the
+#2205 target split, `nmp-ffi` is the ABI shell and `nmp-native-runtime` owns the
+native handle, actor lifecycle, runtime slots, and typed Rust builder.
 Most production functions accept a `*mut NmpApp` opaque handle and return void
 (or `*mut c_char` for `dispatch_capability`). Init-only configuration symbols
 return `NmpConfigStatus` codes so post-start wiring mistakes are loud while
@@ -48,8 +53,10 @@ helper symbols.
 PR-B2 (#2119): `nmp-signer-broker` is deleted. NIP-46 is now driven through
 the actor-relay lane (`nmp-nip46-runtime`) — the same shared relay socket the
 kernel uses for all outbound Nostr traffic. D0 is preserved: `nmp-core` still
-does not depend on `nmp-signers`; the runtime wiring lives in `nmp-ffi` (above
-`nmp-core` in the DAG) behind the `signer-broker` cargo feature.
+does not depend on `nmp-signers`; the runtime wiring currently lives in
+`nmp-ffi` (above `nmp-core` in the DAG) behind the `signer-broker` cargo
+feature. That placement is native-runtime migration debt under #2205/#2210, not
+the durable C-ABI boundary.
 
 | Symbol | Signature | Behavior | Callers | Threading | D6 | D7 |
 |---|---|---|---|---|---|---|

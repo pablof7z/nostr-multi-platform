@@ -35,6 +35,7 @@ crate-type = ["staticlib", "rlib"]
 
 [dependencies]
 nmp-core = { path = "../../../crates/nmp-core" }
+nmp-native-runtime = { path = "../../../crates/nmp-native-runtime" }
 nmp-ffi = { path = "../../../crates/nmp-ffi" }
 nmp-defaults = { path = "../../../crates/nmp-defaults" }
 microblog-core = { path = "../../../crates/microblog-core" }
@@ -65,7 +66,7 @@ If you are building a headless example rather than an iOS shell, the same
 composition fits in `examples/shell.rs` using `NmpAppBuilder`:
 
 ```rust
-use nmp_defaults::{NmpAppBuilder, RunConfig};
+use nmp_native_runtime::{NmpAppBuilder, RunConfig};
 
 fn main() {
     let mut builder = NmpAppBuilder::new();
@@ -74,8 +75,7 @@ fn main() {
         .storage_path("/tmp/microblog-data")
         .declare_consumed_projections(["microblog.items"])
         .start(RunConfig::default());
-    // Drive the app via `nmp_ffi` symbols (set update callback, dispatch
-    // actions, etc.), then `nmp_ffi::nmp_app_free(app)`.
+    // Native C callers drive the same runtime through `nmp_ffi` ABI symbols.
 }
 ```
 

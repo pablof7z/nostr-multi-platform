@@ -20,7 +20,9 @@ nmp doctor                           Diagnose toolchain and build environment.
 nmp upgrade                          Bump NMP dependencies and run migrations.
 ```
 
-Composition is a library call through `nmp-defaults` and `NmpAppBuilder`.
+Composition is a library call through `nmp-defaults` plus the selected platform
+runtime builder (`nmp-native-runtime::NmpAppBuilder` for native targets,
+`BrowserAppBuilder` for web).
 
 ## `nmp init`
 
