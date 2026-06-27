@@ -5,10 +5,10 @@ mod common;
 
 use common::{boot, inject, raw_event, teardown, wait_for_typed, HOST, SERIAL};
 
-use nmp_store::VerifiedEvent;
 use nmp_nip29::{
     decode_joined_groups_snapshot, JOINED_GROUPS_FILE_IDENTIFIER, JOINED_GROUPS_SCHEMA_ID,
 };
+use nmp_store::VerifiedEvent;
 
 #[test]
 fn joined_groups_typed_sidecar_round_trips_membership_and_admin_status() {
@@ -152,6 +152,48 @@ fn joined_groups_sidecar_reflects_latest_relay_snapshot_only() {
 
     let snapshot = decode_joined_groups_snapshot(&entry.payload).expect("NJGS payload must decode");
     assert!(snapshot.groups.is_empty());
+
+    teardown(app);
+}
+
+#[test]
+fn joined_groups_reader_is_the_canonical_sidecar_projection() {
+    let _g = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+    let app = boot();
+    let active = "a".repeat(64);
+
+    let reader = unsafe {
+        (*app)
+            .open_joined_groups_with_reader(active.clone(), HOST.to_string())
+            .expect("non-empty active pubkey opens a joined-groups reader")
+    };
+
+    let members = VerifiedEvent::from_raw_unchecked(raw_event(
+        &"8".repeat(64),
+        &"f".repeat(64),
+        39002,
+        100,
+        vec![
+            vec!["d".into(), "reader-room".into()],
+            vec!["p".into(), active.clone()],
+        ],
+        "",
+    ));
+    inject(app, vec![members]);
+
+    let entry = wait_for_typed("nmp.nip29.joined_groups", |t| {
+        decode_joined_groups_snapshot(&t.payload)
+            .map(|s| s.groups.iter().any(|g| g.group_id == "reader-room"))
+            .unwrap_or(false)
+    })
+    .expect("canonical joined-groups sidecar must carry the reader-room row within 3 s");
+
+    let sidecar = decode_joined_groups_snapshot(&entry.payload).expect("NJGS decode");
+    assert_eq!(
+        reader.snapshot(),
+        sidecar,
+        "the Rust reader must expose the same projection instance that feeds the typed sidecar"
+    );
 
     teardown(app);
 }

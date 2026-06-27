@@ -57,9 +57,9 @@ use nmp_core::ObservedProjectionId;
 use nmp_feed::DEFAULT_FEED_WINDOW_LIMIT;
 use nmp_nip29::group_id::{group_metadata_filter_json, GroupId};
 use nmp_nip29::{
-    encode_discovered_groups_snapshot, encode_group_timeline_snapshot, encode_joined_groups_snapshot,
-    DiscoveredGroupsProjection, GroupTimelineProjection, JoinedGroupsProjection,
-    DISCOVERED_GROUPS_FILE_IDENTIFIER, DISCOVERED_GROUPS_SCHEMA_ID,
+    encode_discovered_groups_snapshot, encode_group_timeline_snapshot,
+    encode_joined_groups_snapshot, DiscoveredGroupsProjection, GroupTimelineProjection,
+    JoinedGroupsProjection, DISCOVERED_GROUPS_FILE_IDENTIFIER, DISCOVERED_GROUPS_SCHEMA_ID,
     DISCOVERED_GROUPS_SCHEMA_VERSION, GROUP_TIMELINE_FILE_IDENTIFIER, GROUP_TIMELINE_SCHEMA_ID,
     GROUP_TIMELINE_SCHEMA_VERSION, JOINED_GROUPS_FILE_IDENTIFIER, JOINED_GROUPS_SCHEMA_ID,
     JOINED_GROUPS_SCHEMA_VERSION,
@@ -186,8 +186,27 @@ impl NmpApp {
     /// Singleton: re-opening replaces the prior discovery view.
     #[must_use]
     pub fn open_group_discovery(&self, host_relay_url: String) -> GroupFeedHandle {
+        let (handle, _) = self.open_group_discovery_with_reader(host_relay_url);
+        handle
+    }
+
+    /// Open group discovery and return the canonical projection reader.
+    ///
+    /// This is the Rust-side app-composition API for hosts that need to fold
+    /// discovered groups into an app-owned projection. The returned
+    /// [`DiscoveredGroupsProjection`] is the same `Arc` registered as the
+    /// observed projection and used by the `"nmp.nip29.discovered_groups"`
+    /// typed sidecar. Callers must not open a second discovery projection just
+    /// to compose over the catalog; use this reader and keep the sidecar,
+    /// relay-pinned interest, and #2088 hydration single-owned by this door.
+    #[must_use]
+    pub fn open_group_discovery_with_reader(
+        &self,
+        host_relay_url: String,
+    ) -> (GroupFeedHandle, Arc<DiscoveredGroupsProjection>) {
         let relay_pin = Some(host_relay_url.clone());
         let projection = Arc::new(DiscoveredGroupsProjection::new(host_relay_url));
+        let projection_reader = Arc::clone(&projection);
 
         let projection_for_sidecar = Arc::clone(&projection);
         let register_sidecar = move |app: &NmpApp| {
@@ -215,10 +234,13 @@ impl NmpApp {
             register_sidecar,
         );
 
-        GroupFeedHandle {
-            app_addr: (self as *const NmpApp) as usize,
-            key: DISCOVERED_GROUPS_KEY.to_string(),
-        }
+        (
+            GroupFeedHandle {
+                app_addr: (self as *const NmpApp) as usize,
+                key: DISCOVERED_GROUPS_KEY.to_string(),
+            },
+            projection_reader,
+        )
     }
 
     /// Close the group-discovery read view opened by
@@ -235,8 +257,25 @@ impl NmpApp {
     /// outbox-routed (no pin). Hydrating + `ActiveAccount`-scoped (re-routes on
     /// account switch). An empty `active_pubkey` is a no-op (D6). Singleton.
     pub fn open_joined_groups(&self, active_pubkey: String, host_relay_url: String) {
+        let _ = self.open_joined_groups_with_reader(active_pubkey, host_relay_url);
+    }
+
+    /// Open joined groups and return the canonical projection reader.
+    ///
+    /// This is the Rust-side app-composition API for hosts that need to fold
+    /// active-account membership/admin truth into an app-owned projection. The
+    /// returned [`JoinedGroupsProjection`] is the same `Arc` registered as the
+    /// observed projection and used by the `"nmp.nip29.joined_groups"` typed
+    /// sidecar. Returns `None` when `active_pubkey` is empty and no view was
+    /// opened.
+    #[must_use]
+    pub fn open_joined_groups_with_reader(
+        &self,
+        active_pubkey: String,
+        host_relay_url: String,
+    ) -> Option<Arc<JoinedGroupsProjection>> {
         if active_pubkey.is_empty() {
-            return;
+            return None;
         }
         let (projection, relay_pin) = if host_relay_url.is_empty() {
             (Arc::new(JoinedGroupsProjection::new(active_pubkey)), None)
@@ -249,6 +288,7 @@ impl NmpApp {
                 Some(host_relay_url),
             )
         };
+        let projection_reader = Arc::clone(&projection);
 
         let projection_for_sidecar = Arc::clone(&projection);
         let register_sidecar = move |app: &NmpApp| {
@@ -275,6 +315,7 @@ impl NmpApp {
             projection as Arc<dyn nmp_core::ObservedProjectionSink>,
             register_sidecar,
         );
+        Some(projection_reader)
     }
 
     /// Close the joined-groups read view opened by [`Self::open_joined_groups`].

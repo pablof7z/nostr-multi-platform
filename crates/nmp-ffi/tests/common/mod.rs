@@ -19,14 +19,14 @@ use std::ffi::c_void;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use nmp_store::{RawEvent, VerifiedEvent};
+use nmp_core::actor::ActorCommand;
+use nmp_core::actor::TestSupportCommand;
 use nmp_core::{decode_snapshot_typed_projections, TypedProjectionData};
-use nmp_core::actor::{ActorCommand};
-use nmp_core::actor::{TestSupportCommand};
 use nmp_ffi::{
     nmp_app_consume_all_builtin_projections, nmp_app_free, nmp_app_new,
     nmp_app_set_update_callback, nmp_app_start, NmpApp,
 };
+use nmp_store::{RawEvent, VerifiedEvent};
 
 /// NmpApp instances spawn global actor threads that do not cleanly isolate
 /// across parallel test processes — every test in either file serialises on
