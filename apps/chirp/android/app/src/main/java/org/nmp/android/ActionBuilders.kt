@@ -172,6 +172,70 @@ object GeneratedActionBuilders {
         )
     }
 
+    /// Add one item to the active account's NIP-51 bookmark list.
+    /// Builds the `nmp.nip51.add_bookmark` `DispatchEnvelope` bytes for the byte doorway.
+    fun addBookmark(
+        correlationId: String,
+        accountPubkey: String,
+        itemKind: Int,
+        value: String,
+        relay: String?,
+    ): ByteArray {
+        val fbb = FlatBufferBuilder()
+        val accountPubkeyOffset = fbb.createString(accountPubkey)
+        val valueOffset = fbb.createString(value)
+        val relayOffset = relay?.let { fbb.createString(it) } ?: 0
+        fbb.startTable(3)
+        fbb.addByte(0, itemKind.toByte(), 0) // slot 0: kind
+        fbb.addOffset(1, valueOffset, 0) // slot 1: value
+        if (relayOffset != 0) fbb.addOffset(2, relayOffset, 0) // slot 2: relay
+        val itemRoot = fbb.endTable()
+        fbb.startTable(3)
+        fbb.addInt(0, 1, 0) // slot 0: schema_version
+        fbb.addOffset(1, accountPubkeyOffset, 0) // slot 1: account_pubkey
+        fbb.addOffset(2, itemRoot, 0) // slot 2: item
+        val payloadRoot = fbb.endTable()
+        fbb.finish(payloadRoot, "N51B")
+        val payload = fbb.sizedByteArray()
+        return encodeDispatchEnvelope(
+            correlationId = correlationId,
+            actionNamespace = "nmp.nip51.add_bookmark",
+            payload = payload,
+        )
+    }
+
+    /// Remove one item from the active account's NIP-51 bookmark list.
+    /// Builds the `nmp.nip51.remove_bookmark` `DispatchEnvelope` bytes for the byte doorway.
+    fun removeBookmark(
+        correlationId: String,
+        accountPubkey: String,
+        itemKind: Int,
+        value: String,
+        relay: String?,
+    ): ByteArray {
+        val fbb = FlatBufferBuilder()
+        val accountPubkeyOffset = fbb.createString(accountPubkey)
+        val valueOffset = fbb.createString(value)
+        val relayOffset = relay?.let { fbb.createString(it) } ?: 0
+        fbb.startTable(3)
+        fbb.addByte(0, itemKind.toByte(), 0) // slot 0: kind
+        fbb.addOffset(1, valueOffset, 0) // slot 1: value
+        if (relayOffset != 0) fbb.addOffset(2, relayOffset, 0) // slot 2: relay
+        val itemRoot = fbb.endTable()
+        fbb.startTable(3)
+        fbb.addInt(0, 1, 0) // slot 0: schema_version
+        fbb.addOffset(1, accountPubkeyOffset, 0) // slot 1: account_pubkey
+        fbb.addOffset(2, itemRoot, 0) // slot 2: item
+        val payloadRoot = fbb.endTable()
+        fbb.finish(payloadRoot, "N51B")
+        val payload = fbb.sizedByteArray()
+        return encodeDispatchEnvelope(
+            correlationId = correlationId,
+            actionNamespace = "nmp.nip51.remove_bookmark",
+            payload = payload,
+        )
+    }
+
     /// Sign-and-publish an arbitrary event kind (generic publish path; NIP-65 outbox or explicit relays).
     /// Builds the `nmp.publish` `DispatchEnvelope` bytes (body `PublishRaw`) for the byte doorway.
     fun publishRaw(

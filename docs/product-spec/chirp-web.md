@@ -73,6 +73,27 @@ signed kind:3 event with that `p` tag removed, the visible button flips from the
 Rust follow-list projection, and the same outbox/action result surfaces show the
 terminal relay verdict.
 
+## Bookmark Publish Contract
+
+Chirp Web must let a signed-in user save and unsave feed or thread notes through
+the typed NIP-51 bookmark action path. The browser shell may expose the save
+affordance, selected event id, and relay hint, but button state must derive from
+Rust's `nmp.nip51.bookmarks` projection. TypeScript must not maintain an
+independent bookmark set, construct kind:10003 tags, choose relay targets, or
+decide whether a bookmark-list edit is safe.
+
+Rust owns kind:10003 read-modify-write construction, metadata preservation,
+signing, outbox routing, relay selection, diagnostics, and active-account
+authorization. If the active account's bookmark baseline is unavailable or the
+requested item conflicts with the loaded list, Chirp Web must surface the action
+failure honestly instead of publishing a replacement from shell-local state.
+
+Acceptance must prove that bookmark publishes a signed kind:10003 event from the
+active user with the selected note's `e` tag present, removing the bookmark
+publishes a signed kind:10003 event with that `e` tag removed, the visible button
+flips from the Rust bookmark projection, and the same outbox/action result
+surfaces show the terminal relay verdict.
+
 ## Secret Storage
 
 Pasted `nsec` values are session-memory only. Chirp Web must not persist them to

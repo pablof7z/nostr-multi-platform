@@ -23,42 +23,107 @@ type NextAction = {
   href: string;
 };
 
+type Proof = {
+  label: string;
+  value: string;
+  tone: "good" | "warn" | "muted";
+};
+
+function hasAcceptedRelayReceipt(result: string | undefined): boolean {
+  if (!result) return false;
+  try {
+    const parsed: unknown = JSON.parse(result);
+    if (typeof parsed !== "object" || parsed === null) return false;
+    const record = parsed as Record<string, unknown>;
+    if (record.kind !== "publish_relay_receipt" || !Array.isArray(record.relays)) return false;
+    return record.relays.some((relay) => {
+      if (typeof relay !== "object" || relay === null) return false;
+      const status = (relay as Record<string, unknown>).status;
+      return status === "ok" || status === "accepted";
+    });
+  } catch {
+    return false;
+  }
+}
+
 function buildSteps(state: OnboardingState): Step[] {
   const relayCount = state.diagnostics?.relays.length ?? 0;
   const connectedRelays =
     state.diagnostics?.relays.filter((relay) => relay.connection === "connected").length ?? 0;
+  const acceptedPublishes =
+    state.diagnostics?.actionResults.filter((result) => hasAcceptedRelayReceipt(result.result))
+      .length ?? 0;
+
+  return [
+    {
+      label: "Start runtime",
+      status: state.runtimeConnected ? "done" : "active",
+      detail: state.runtimeConnected
+        ? "WASM worker is running and producing snapshots."
+        : state.runtimeMode === "worker"
+          ? "Waiting for the first WASM worker snapshot."
+          : "Browser runtime is degraded; publishing stays unavailable.",
+    },
+    {
+      label: "Read signed out",
+      status:
+        connectedRelays > 0 && state.feedReady
+          ? "done"
+          : relayCount > 0 || state.feedReady
+            ? "active"
+            : "blocked",
+      detail:
+        connectedRelays > 0
+          ? `${connectedRelays}/${relayCount} relays connected; ${state.feedCount} feed notes decoded.`
+          : "Waiting for relay inventory and the first feed projection.",
+    },
+    {
+      label: "Connect identity",
+      status: state.signerConnected ? "done" : "active",
+      detail: state.signerConnected
+        ? "Write actions can now request signatures."
+        : "Use NIP-07 for a normal account or a session nsec for local testing.",
+    },
+    {
+      label: "Prove publish path",
+      status: acceptedPublishes > 0 ? "done" : state.signerConnected && state.feedReady ? "active" : "blocked",
+      detail: acceptedPublishes > 0
+        ? `${acceptedPublishes} signed action accepted by a relay.`
+        : state.signerConnected
+        ? "Publish, react, follow, or save and inspect per-relay verdicts."
+        : "Connect a signer before testing signed social actions.",
+    },
+  ];
+}
+
+function buildProofs(state: OnboardingState): Proof[] {
+  const relayCount = state.diagnostics?.relays.length ?? 0;
+  const connectedRelays =
+    state.diagnostics?.relays.filter((relay) => relay.connection === "connected").length ?? 0;
+  const acceptedPublishes =
+    state.diagnostics?.actionResults.filter((result) => hasAcceptedRelayReceipt(result.result))
+      .length ?? 0;
 
   return [
     {
       label: "Runtime",
-      status: state.runtimeConnected ? "done" : "active",
-      detail: state.runtimeConnected
-        ? "WASM worker is running."
-        : state.runtimeMode === "worker"
-          ? "Waiting for the first WASM worker snapshot."
-          : "Browser runtime is degraded; publishing is unavailable.",
+      value: state.runtimeMode === "worker" ? "WASM worker" : "degraded",
+      tone: state.runtimeConnected && state.runtimeMode === "worker" ? "good" : "warn",
     },
     {
       label: "Relays",
-      status: connectedRelays > 0 ? "done" : relayCount > 0 ? "active" : "blocked",
-      detail:
-        relayCount > 0
-          ? `${connectedRelays}/${relayCount} configured relays connected.`
-          : "No configured relay inventory has reached the runtime.",
-    },
-    {
-      label: "Identity",
-      status: state.signerConnected ? "done" : "active",
-      detail: state.signerConnected
-        ? "Signer is connected; write actions can request signatures."
-        : "Connect NIP-07 or use a memory-only local key to publish.",
+      value: relayCount > 0 ? `${connectedRelays}/${relayCount}` : "pending",
+      tone: connectedRelays > 0 ? "good" : "warn",
     },
     {
       label: "Feed",
-      status: state.feedReady && state.feedCount > 0 ? "done" : state.feedReady ? "active" : "blocked",
-      detail: state.feedReady
-        ? `${state.feedCount} notes decoded from the runtime feed projection.`
-        : "Waiting for the first feed projection snapshot.",
+      value: state.feedReady ? `${state.feedCount} notes` : "pending",
+      tone: state.feedReady && state.feedCount > 0 ? "good" : "warn",
+    },
+    {
+      label: "Publishes",
+      value: acceptedPublishes > 0 ? `${acceptedPublishes} accepted` : "none yet",
+      tone: acceptedPublishes > 0 ? "good" : "muted",
     },
   ];
 }
@@ -72,24 +137,24 @@ function nextAction(steps: Step[]): NextAction {
       href: "#feed",
     };
   }
-  if (blocked.label === "Identity") {
+  if (blocked.label === "Connect identity") {
     return {
       label: "Connect identity",
       detail: "Choose NIP-07 or paste a session-only nsec to unlock write actions.",
       href: "#signing",
     };
   }
-  if (blocked.label === "Relays") {
+  if (blocked.label === "Read signed out") {
     return {
       label: "Check relays",
       detail: "Wait for a relay socket or adjust the configured relay set.",
       href: "#relays",
     };
   }
-  if (blocked.label === "Feed") {
+  if (blocked.label === "Prove publish path") {
     return {
-      label: "Open feed",
-      detail: "The runtime is connected; waiting for followed notes to hydrate.",
+      label: "Try an action",
+      detail: "Post, react, follow, or save a note, then inspect relay acceptance.",
       href: "#feed",
     };
   }
@@ -102,19 +167,20 @@ function nextAction(steps: Step[]): NextAction {
 
 export function OnboardingPanel(props: { state: OnboardingState }) {
   const steps = () => buildSteps(props.state);
+  const proofs = () => buildProofs(props.state);
   const complete = () => steps().every((step) => step.status === "done");
   const completeCount = () => steps().filter((step) => step.status === "done").length;
   const action = () => nextAction(steps());
 
   return (
-    <section class="onboarding-panel" aria-label="First-run onboarding">
+    <section class="onboarding-panel" aria-label="First-run onboarding" data-testid="onboarding-panel">
       <div class="onboarding-header">
         <div>
           <p class="panel-kicker">First run</p>
-          <h2>{complete() ? "Ready for signed Chirps" : "Set up Chirp"}</h2>
+          <h2>{complete() ? "Chirp is ready" : "Get to a real session"}</h2>
           <p>
-            Bring a relay-backed timeline online, connect an identity, then send
-            a signed action with visible relay proof.
+            Start in read mode, connect an identity, then confirm signed actions
+            through relay verdicts and diagnostics.
           </p>
         </div>
         <span class="onboarding-progress">{completeCount()}/4</span>
@@ -127,6 +193,16 @@ export function OnboardingPanel(props: { state: OnboardingState }) {
         <a class="onboarding-action" href={action().href}>
           {action().label}
         </a>
+      </div>
+      <div class="onboarding-proof-grid" aria-label="Session proof">
+        <For each={proofs()}>
+          {(proof) => (
+            <div class="onboarding-proof" data-tone={proof.tone}>
+              <span>{proof.label}</span>
+              <strong>{proof.value}</strong>
+            </div>
+          )}
+        </For>
       </div>
       <ol class="onboarding-steps">
         <For each={steps()}>

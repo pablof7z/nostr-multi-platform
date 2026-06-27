@@ -57,6 +57,8 @@ export type RuntimeProjection = {
   actionResults: ActionResultRuntimeRow[];
   actionStages: ActionStageRuntimeRow[];
   followList: string[];
+  activeAccountPubkey?: string;
+  bookmarkedEventIds: string[];
   lastErrorToast?: string;
   lastErrorCategory?: string;
   lastPlannerError?: string;
@@ -142,6 +144,8 @@ function decodeSnapshot(snap: SnapshotFrame): RuntimeProjection {
     actionResults: typed.actionResults,
     actionStages: typed.actionStages,
     followList: typed.followList,
+    activeAccountPubkey: typed.activeAccountPubkey,
+    bookmarkedEventIds: typed.bookmarkedEventIds,
     lastErrorToast: snap.lastErrorToast() ?? undefined,
     lastErrorCategory: snap.lastErrorCategory() ?? undefined,
     lastPlannerError: snap.lastPlannerError() ?? undefined,

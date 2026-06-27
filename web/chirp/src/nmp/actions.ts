@@ -137,6 +137,26 @@ export function followCommand(pubkey: string, following: boolean): RuntimeComman
   };
 }
 
+const BOOKMARK_ITEM_EVENT = 0;
+
+export function bookmarkCommand(
+  accountPubkey: string,
+  eventId: string,
+  bookmarked: boolean,
+  relay: string | null = null,
+): RuntimeCommand {
+  const ns = bookmarked ? "nmp.nip51.add_bookmark" : "nmp.nip51.remove_bookmark";
+  const builder = bookmarked
+    ? GeneratedActionBuilders.addBookmark
+    : GeneratedActionBuilders.removeBookmark;
+  return {
+    kind: "dispatch_bytes",
+    actionType: ns,
+    buildDispatchBytes: (correlationId) =>
+      builder(correlationId, accountPubkey, BOOKMARK_ITEM_EVENT, eventId, relay),
+  };
+}
+
 // ── ADR-0063 component-owned reference-resolution seam (#1671) ───────────────
 //
 // Web components call these on mount / unmount to register / release their

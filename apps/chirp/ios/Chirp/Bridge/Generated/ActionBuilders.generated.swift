@@ -167,6 +167,70 @@ public enum GeneratedActionBuilders {
         )
     }
 
+    /// Add one item to the active account's NIP-51 bookmark list.
+    /// Builds the `nmp.nip51.add_bookmark` `DispatchEnvelope` bytes for the byte doorway.
+    public static func addBookmark(
+        correlationId: String,
+        accountPubkey: String,
+        itemKind: UInt8,
+        value: String,
+        relay: String?
+    ) -> [UInt8] {
+        var fbb = FlatBufferBuilder()
+        let accountPubkeyOffset = fbb.create(string: accountPubkey)
+        let valueOffset = fbb.create(string: value)
+        let relayOffset: Offset = relay.map { fbb.create(string: $0) } ?? Offset()
+        let itemStart = fbb.startTable(with: 3)
+        fbb.add(element: itemKind, def: UInt8(0), at: 4) // slot 0: kind
+        fbb.add(offset: valueOffset, at: 6) // slot 1: value
+        if relayOffset.o != 0 { fbb.add(offset: relayOffset, at: 8) } // slot 2: relay
+        let itemRoot = Offset(offset: fbb.endTable(at: itemStart))
+        let payloadStart = fbb.startTable(with: 3)
+        fbb.add(element: UInt32(1), def: UInt32(0), at: 4) // slot 0: schema_version
+        fbb.add(offset: accountPubkeyOffset, at: 6) // slot 1: account_pubkey
+        fbb.add(offset: itemRoot, at: 8) // slot 2: item
+        let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))
+        fbb.finish(offset: payloadRoot, fileId: "N51B")
+        let payload = fbb.sizedByteArray
+        return encodeDispatchEnvelope(
+            correlationId: correlationId,
+            actionNamespace: "nmp.nip51.add_bookmark",
+            payload: payload
+        )
+    }
+
+    /// Remove one item from the active account's NIP-51 bookmark list.
+    /// Builds the `nmp.nip51.remove_bookmark` `DispatchEnvelope` bytes for the byte doorway.
+    public static func removeBookmark(
+        correlationId: String,
+        accountPubkey: String,
+        itemKind: UInt8,
+        value: String,
+        relay: String?
+    ) -> [UInt8] {
+        var fbb = FlatBufferBuilder()
+        let accountPubkeyOffset = fbb.create(string: accountPubkey)
+        let valueOffset = fbb.create(string: value)
+        let relayOffset: Offset = relay.map { fbb.create(string: $0) } ?? Offset()
+        let itemStart = fbb.startTable(with: 3)
+        fbb.add(element: itemKind, def: UInt8(0), at: 4) // slot 0: kind
+        fbb.add(offset: valueOffset, at: 6) // slot 1: value
+        if relayOffset.o != 0 { fbb.add(offset: relayOffset, at: 8) } // slot 2: relay
+        let itemRoot = Offset(offset: fbb.endTable(at: itemStart))
+        let payloadStart = fbb.startTable(with: 3)
+        fbb.add(element: UInt32(1), def: UInt32(0), at: 4) // slot 0: schema_version
+        fbb.add(offset: accountPubkeyOffset, at: 6) // slot 1: account_pubkey
+        fbb.add(offset: itemRoot, at: 8) // slot 2: item
+        let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))
+        fbb.finish(offset: payloadRoot, fileId: "N51B")
+        let payload = fbb.sizedByteArray
+        return encodeDispatchEnvelope(
+            correlationId: correlationId,
+            actionNamespace: "nmp.nip51.remove_bookmark",
+            payload: payload
+        )
+    }
+
     /// Sign-and-publish an arbitrary event kind (generic publish path; NIP-65 outbox or explicit relays).
     /// Builds the `nmp.publish` `DispatchEnvelope` bytes (body `PublishRaw`) for the byte doorway.
     public static func publishRaw(

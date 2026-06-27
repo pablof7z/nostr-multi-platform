@@ -233,6 +233,11 @@ pub const PRODUCER_CONST_TARGETS: &[ProducerConstTarget] = &[
         "MUTE_LIST",
         "crates/nmp-nip51/src/wire/mute_list_producer_consts.generated.rs",
     ),
+    pub_target(
+        "nmp.nip51.bookmarks",
+        "BOOKMARK_LIST",
+        "crates/nmp-nip51/src/wire/bookmark_list_producer_consts.generated.rs",
+    ),
 ];
 
 /// Build an all-`pub` kernel target (the common case).
@@ -432,7 +437,10 @@ mod tests {
     #[test]
     fn render_is_stable() {
         for target in PRODUCER_CONST_TARGETS {
-            assert_eq!(render_producer_consts(target), render_producer_consts(target));
+            assert_eq!(
+                render_producer_consts(target),
+                render_producer_consts(target)
+            );
         }
     }
 }

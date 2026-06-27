@@ -104,6 +104,10 @@ fn shared_helpers() -> String {
 /// Render one typed builder method (a property on the `GeneratedActionBuilders`
 /// object literal).
 fn render_one(builder: &ActionBuilder, out: &mut String) {
+    if is_bookmark_builder(builder) {
+        render_bookmark_update(builder, out);
+        return;
+    }
     let contract = contract_for(builder.namespace);
     out.push_str(&format!("  /** {} */\n", builder.doc));
     out.push_str(&format!("  {}(\n", builder.method));
@@ -179,6 +183,57 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
             }
         }
     }
+    out.push_str("    const payloadRoot = fbb.endObject();\n");
+    out.push_str(&format!(
+        "    fbb.finish(payloadRoot, {:?});\n",
+        contract.file_identifier
+    ));
+    out.push_str("    const payload = fbb.asUint8Array();\n");
+    out.push_str(&format!(
+        "    return encodeDispatchEnvelope(correlationId, {:?}, payload);\n",
+        builder.namespace
+    ));
+    out.push_str("  },\n\n");
+}
+
+fn is_bookmark_builder(builder: &ActionBuilder) -> bool {
+    matches!(
+        builder.namespace,
+        "nmp.nip51.add_bookmark" | "nmp.nip51.remove_bookmark"
+    )
+}
+
+fn render_bookmark_update(builder: &ActionBuilder, out: &mut String) {
+    let contract = contract_for(builder.namespace);
+    out.push_str(&format!("  /** {} */\n", builder.doc));
+    out.push_str(&format!(
+        "  {}(\n\
+         \x20   correlationId: string,\n\
+         \x20   accountPubkey: string,\n\
+         \x20   itemKind: number,\n\
+         \x20   value: string,\n\
+         \x20   relay: string | null,\n\
+         \x20 ): Uint8Array {{\n",
+        builder.method
+    ));
+    out.push_str("    const fbb = new flatbuffers.Builder(64);\n");
+    out.push_str("    const accountPubkeyOffset = fbb.createString(accountPubkey);\n");
+    out.push_str("    const valueOffset = fbb.createString(value);\n");
+    out.push_str("    const relayOffset = relay === null ? 0 : fbb.createString(relay);\n");
+    out.push_str("    fbb.startObject(3);\n");
+    out.push_str("    fbb.addFieldInt8(0, itemKind, 0); // slot 0: kind\n");
+    out.push_str("    fbb.addFieldOffset(1, valueOffset, 0); // slot 1: value\n");
+    out.push_str(
+        "    if (relayOffset !== 0) fbb.addFieldOffset(2, relayOffset, 0); // slot 2: relay\n",
+    );
+    out.push_str("    const itemRoot = fbb.endObject();\n");
+    out.push_str("    fbb.startObject(3);\n");
+    out.push_str(&format!(
+        "    fbb.addFieldInt32(0, {}, 0); // slot 0: schema_version\n",
+        contract.schema_version
+    ));
+    out.push_str("    fbb.addFieldOffset(1, accountPubkeyOffset, 0); // slot 1: account_pubkey\n");
+    out.push_str("    fbb.addFieldOffset(2, itemRoot, 0); // slot 2: item\n");
     out.push_str("    const payloadRoot = fbb.endObject();\n");
     out.push_str(&format!(
         "    fbb.finish(payloadRoot, {:?});\n",

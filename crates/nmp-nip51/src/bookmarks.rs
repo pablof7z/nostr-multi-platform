@@ -129,6 +129,30 @@ impl BookmarkListProjection {
             )),
         }
     }
+
+    fn replace_snapshot_for_active_account(
+        &self,
+        account_pubkey: &str,
+        snapshot: BookmarkListSnapshot,
+    ) -> Result<(), String> {
+        self.ensure_active_account(account_pubkey)
+            .map_err(action_rejection_message)?;
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| "bookmark list state unavailable".to_string())?;
+        let created_at = if state.owner_pubkey.as_deref() == Some(account_pubkey) {
+            state.created_at
+        } else {
+            0
+        };
+        *state = BookmarkListState {
+            owner_pubkey: Some(account_pubkey.to_string()),
+            created_at,
+            snapshot,
+        };
+        Ok(())
+    }
 }
 
 impl ObservedProjectionSink for BookmarkListProjection {
@@ -239,11 +263,14 @@ impl ActionModule for AddBookmarkAction {
             .map_err(action_rejection_message)?;
         let mut snapshot = self.projection.snapshot_for_account(&action.account_pubkey);
         snapshot.items.push(item);
+        let snapshot = dedupe_snapshot(snapshot);
         send(ActorCommand::Publish(PublishCommand::UnsignedEvent {
-            event: build_bookmark_list_event(&dedupe_snapshot(snapshot)),
+            event: build_bookmark_list_event(&snapshot),
             correlation_id: Some(correlation_id.to_string()),
             signer_pubkey: None,
         }));
+        self.projection
+            .replace_snapshot_for_active_account(&action.account_pubkey, snapshot)?;
         Ok(())
     }
 }
@@ -302,6 +329,8 @@ impl ActionModule for RemoveBookmarkAction {
             correlation_id: Some(correlation_id.to_string()),
             signer_pubkey: None,
         }));
+        self.projection
+            .replace_snapshot_for_active_account(&action.account_pubkey, snapshot)?;
         Ok(())
     }
 }

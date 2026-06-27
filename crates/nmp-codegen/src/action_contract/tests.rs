@@ -37,21 +37,34 @@ fn schema_files_match_contract_identity() {
 }
 
 #[test]
-fn generated_flat_builders_match_contract() {
+fn generated_builders_match_contract() {
     let builder_namespaces: std::collections::BTreeSet<&str> =
         ACTION_BUILDERS.iter().map(|b| b.namespace).collect();
     let contract_generated: std::collections::BTreeSet<&str> = ACTION_CONTRACT
         .iter()
-        .filter(|c| c.builder_support == BuilderSupport::GeneratedFlatTable)
+        .filter(|c| {
+            matches!(
+                c.builder_support,
+                BuilderSupport::GeneratedFlatTable | BuilderSupport::GeneratedBookmarkItemTable
+            )
+        })
         .map(|c| c.namespace)
         .collect();
     assert_eq!(
         builder_namespaces, contract_generated,
-        "ACTION_BUILDERS must equal the contract rows marked GeneratedFlatTable"
+        "ACTION_BUILDERS must equal contract rows with generated host builders"
     );
     for builder in ACTION_BUILDERS {
         let contract = contract_for(builder.namespace);
-        assert_eq!(contract.builder_support, BuilderSupport::GeneratedFlatTable);
+        assert!(
+            matches!(
+                contract.builder_support,
+                BuilderSupport::GeneratedFlatTable | BuilderSupport::GeneratedBookmarkItemTable
+            ),
+            "builder namespace {} has non-generated contract support {:?}",
+            builder.namespace,
+            contract.builder_support
+        );
     }
 }
 

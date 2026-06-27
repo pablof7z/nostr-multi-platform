@@ -199,6 +199,10 @@ fn add_action_rejects_duplicate_and_publishes_append() {
     assert_eq!(signer_pubkey, None);
     assert_eq!(event.kind, KIND_BOOKMARK_LIST);
     assert_eq!(event.tags, vec![vec!["e", EVENT_A], vec!["e", EVENT_B]]);
+    assert_eq!(
+        projection.snapshot().items,
+        vec![item_event(EVENT_A), item_event(EVENT_B)]
+    );
 }
 
 #[test]
@@ -247,6 +251,7 @@ fn remove_action_rejects_absent_and_publishes_removal() {
         panic!("expected PublishUnsignedEvent");
     };
     assert_eq!(event.tags, vec![vec!["e", EVENT_B]]);
+    assert_eq!(projection.snapshot().items, vec![item_event(EVENT_B)]);
 }
 
 #[test]

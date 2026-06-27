@@ -24,9 +24,9 @@ test("@wasm onboarding: no-extension browser reaches a complete local-key produc
 
     const onboarding = page.locator(".onboarding-panel");
     await expect(onboarding).toBeVisible({ timeout: 10_000 });
-    await expect(onboarding).toContainText("Set up Chirp");
+    await expect(onboarding).toContainText("Get to a real session");
     await expect(onboarding).toContainText("Connect identity");
-    await expect(onboarding).toContainText("Choose NIP-07 or paste a session-only nsec");
+    await expect(onboarding).toContainText("Use NIP-07 for a normal account");
 
     await expect(page.locator(".signing-method", { hasText: "NIP-07 browser signer" })).toBeVisible();
     await expect(page.locator(".signing-method", { hasText: "Session nsec" })).toBeVisible();
@@ -42,9 +42,22 @@ test("@wasm onboarding: no-extension browser reaches a complete local-key produc
     await expect(page.getByTestId("feed-timeline")).toContainText(relay.noteContent, {
       timeout: 60_000,
     });
-    await expect(onboarding).toContainText("Ready for signed Chirps", { timeout: 30_000 });
+    await expect(onboarding.locator(".onboarding-progress")).toHaveText("3/4");
+    await expect(onboarding).toContainText("Try an action");
+
+    const content = `onboarding acceptance ${Date.now()}`;
+    await page.getByTestId("compose-input").fill(content);
+    await page.getByRole("button", { name: "Post" }).click();
+    await expect
+      .poll(
+        () => relay.receivedEvents().some((event) => event.kind === 1 && event.content === content),
+        { timeout: 30_000 },
+      )
+      .toBe(true);
+
+    await expect(onboarding).toContainText("Chirp is ready", { timeout: 30_000 });
     await expect(onboarding.locator(".onboarding-progress")).toHaveText("4/4");
-    await expect(onboarding).toContainText("Start chirping");
+    await expect(onboarding).toContainText("accepted");
 
     const storageText = await page.evaluate(() =>
       [

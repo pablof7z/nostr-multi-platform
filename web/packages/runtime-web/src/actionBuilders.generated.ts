@@ -123,6 +123,60 @@ export const GeneratedActionBuilders = {
     return encodeDispatchEnvelope(correlationId, "nmp.follow_many", payload);
   },
 
+  /** Add one item to the active account's NIP-51 bookmark list. */
+  addBookmark(
+    correlationId: string,
+    accountPubkey: string,
+    itemKind: number,
+    value: string,
+    relay: string | null,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const accountPubkeyOffset = fbb.createString(accountPubkey);
+    const valueOffset = fbb.createString(value);
+    const relayOffset = relay === null ? 0 : fbb.createString(relay);
+    fbb.startObject(3);
+    fbb.addFieldInt8(0, itemKind, 0); // slot 0: kind
+    fbb.addFieldOffset(1, valueOffset, 0); // slot 1: value
+    if (relayOffset !== 0) fbb.addFieldOffset(2, relayOffset, 0); // slot 2: relay
+    const itemRoot = fbb.endObject();
+    fbb.startObject(3);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldOffset(1, accountPubkeyOffset, 0); // slot 1: account_pubkey
+    fbb.addFieldOffset(2, itemRoot, 0); // slot 2: item
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "N51B");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.nip51.add_bookmark", payload);
+  },
+
+  /** Remove one item from the active account's NIP-51 bookmark list. */
+  removeBookmark(
+    correlationId: string,
+    accountPubkey: string,
+    itemKind: number,
+    value: string,
+    relay: string | null,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const accountPubkeyOffset = fbb.createString(accountPubkey);
+    const valueOffset = fbb.createString(value);
+    const relayOffset = relay === null ? 0 : fbb.createString(relay);
+    fbb.startObject(3);
+    fbb.addFieldInt8(0, itemKind, 0); // slot 0: kind
+    fbb.addFieldOffset(1, valueOffset, 0); // slot 1: value
+    if (relayOffset !== 0) fbb.addFieldOffset(2, relayOffset, 0); // slot 2: relay
+    const itemRoot = fbb.endObject();
+    fbb.startObject(3);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldOffset(1, accountPubkeyOffset, 0); // slot 1: account_pubkey
+    fbb.addFieldOffset(2, itemRoot, 0); // slot 2: item
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "N51B");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.nip51.remove_bookmark", payload);
+  },
+
   /** Sign-and-publish an arbitrary event kind (generic publish path; NIP-65 outbox or explicit relays). */
   publishRaw(
     correlationId: string,

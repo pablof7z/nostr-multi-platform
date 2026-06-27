@@ -46,7 +46,22 @@ pub fn register_bookmark_runtime(
     // ── 2. Action modules ─────────────────────────────────────────────────
     nmp_nip51::register_bookmark_actions(app, Arc::clone(&projection));
 
-    // ── 3. Active observed-projection reconciler ─────────────────────────
+    // ── 3. Snapshot projection (typed sidecar) ────────────────────────────
+    let projection_for_typed = Arc::clone(&projection);
+    app.register_typed_snapshot_projection("nmp.nip51.bookmarks", move || {
+        let snapshot = projection_for_typed.snapshot();
+        Some(nmp_core::TypedProjectionData {
+            key: "nmp.nip51.bookmarks".to_string(),
+            schema_id: nmp_nip51::BOOKMARK_LIST_SCHEMA_ID.to_string(),
+            schema_version: nmp_nip51::BOOKMARK_LIST_SCHEMA_VERSION,
+            file_identifier: String::from_utf8_lossy(nmp_nip51::BOOKMARK_LIST_FILE_IDENTIFIER)
+                .into_owned(),
+            payload: nmp_nip51::encode_bookmark_list(&snapshot),
+            ..Default::default()
+        })
+    });
+
+    // ── 4. Active observed-projection reconciler ─────────────────────────
     let observer = Arc::clone(&projection) as Arc<dyn ObservedProjectionSink>;
     let controller = Arc::new(ActiveObservedProjection::new(
         app.active_pubkey(),

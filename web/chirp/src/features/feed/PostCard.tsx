@@ -11,13 +11,15 @@ import { NostrAvatar } from "@nmp/components-web/src/user-avatar/NostrAvatar";
 import { displayLabel, shortHex } from "@nmp/components-web/src/user-avatar/ProfileWire";
 import { useNostrProfileHost } from "@nmp/components-web/src/user-avatar/NostrProfileHost";
 import { useNmpClient } from "../../nmp/context";
-import { reactCommand } from "../../nmp/actions";
+import { bookmarkCommand, reactCommand } from "../../nmp/actions";
 
 export type FeedSelection = { kind: "profile" | "thread"; row: FeedRow };
 
 export function PostCard(props: {
   row: FeedRow;
   canPublish: boolean;
+  activeAccountPubkey?: string;
+  bookmarked: boolean;
   onSelect: (selection: FeedSelection) => void;
 }) {
   const host = useNostrProfileHost();
@@ -45,6 +47,17 @@ export function PostCard(props: {
   const handleReact = () => {
     if (!props.canPublish) return;
     void client.dispatchCommand(reactCommand(props.row.id));
+  };
+  const handleBookmark = () => {
+    if (!props.canPublish || !props.activeAccountPubkey) return;
+    void client.dispatchCommand(
+      bookmarkCommand(
+        props.activeAccountPubkey,
+        props.row.id,
+        !props.bookmarked,
+        props.row.relayProvenance[0] ?? null,
+      ),
+    );
   };
 
   const counts = () => [
@@ -129,6 +142,23 @@ export function PostCard(props: {
             onClick={handleReact}
           >
             Like
+          </button>
+          <button
+            class="action-btn"
+            data-state={props.bookmarked ? "saved" : "idle"}
+            aria-pressed={props.bookmarked ? "true" : "false"}
+            aria-label={props.bookmarked ? "Remove bookmark" : "Bookmark"}
+            title={
+              props.canPublish && props.activeAccountPubkey
+                ? props.bookmarked
+                  ? "Remove bookmark"
+                  : "Bookmark"
+                : "Sign in to bookmark"
+            }
+            disabled={!props.canPublish || !props.activeAccountPubkey}
+            onClick={handleBookmark}
+          >
+            {props.bookmarked ? "Saved" : "Save"}
           </button>
         </div>
       </div>

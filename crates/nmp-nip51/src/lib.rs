@@ -116,6 +116,10 @@ pub use web_bookmarks::{
     PublishWebBookmarkInput, WebBookmarkDraft, WebBookmarkSnapshot, WebBookmarksProjection,
     WebBookmarksSnapshot,
 };
+pub use wire::bookmark_list_fb::{
+    decode_bookmark_list, encode_bookmark_list, BOOKMARK_LIST_FILE_IDENTIFIER,
+    BOOKMARK_LIST_SCHEMA_ID, BOOKMARK_LIST_SCHEMA_VERSION,
+};
 pub use wire::mute_list_fb::{
     decode_mute_list, encode_mute_list, MUTE_LIST_FILE_IDENTIFIER, MUTE_LIST_SCHEMA_ID,
     MUTE_LIST_SCHEMA_VERSION,

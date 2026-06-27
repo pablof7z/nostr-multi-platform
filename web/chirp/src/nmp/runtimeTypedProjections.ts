@@ -13,10 +13,14 @@ const PUBLISH_OUTBOX_KEY = "publish_outbox";
 const ACTION_RESULTS_KEY = "action_results";
 const ACTION_STAGES_KEY = "action_stages";
 const FOLLOW_LIST_KEY = "nmp.follow_list";
+const ACTIVE_ACCOUNT_KEY = "active_account";
+const BOOKMARKS_KEY = "nmp.nip51.bookmarks";
 const PUBLISH_OUTBOX_FILE_ID = "KPBO";
 const ACTION_RESULTS_FILE_ID = "KARS";
 const ACTION_STAGES_FILE_ID = "KAST";
 const FOLLOW_LIST_FILE_ID = "NF02";
+const ACTIVE_ACCOUNT_FILE_ID = "KACT";
+const BOOKMARKS_FILE_ID = "N51L";
 
 export type PublishOutboxRelayRuntimeRow = {
   relayUrl: string;
@@ -59,6 +63,8 @@ export type TypedRuntimeProjections = {
   actionResults: ActionResultRuntimeRow[];
   actionStages: ActionStageRuntimeRow[];
   followList: string[];
+  activeAccountPubkey?: string;
+  bookmarkedEventIds: string[];
 };
 
 function numberFromBigint(value: bigint | null): number {
@@ -73,6 +79,7 @@ export function decodeTypedRuntimeProjections(snap: SnapshotFrame): TypedRuntime
     actionResults: [],
     actionStages: [],
     followList: [],
+    bookmarkedEventIds: [],
   };
 
   for (let i = 0; i < snap.typedProjectionsLength(); i++) {
@@ -91,10 +98,56 @@ export function decodeTypedRuntimeProjections(snap: SnapshotFrame): TypedRuntime
       result.actionStages = decodeActionStages(bytes);
     } else if (key === FOLLOW_LIST_KEY && fileId === FOLLOW_LIST_FILE_ID) {
       result.followList = decodeFollowList(bytes);
+    } else if (key === ACTIVE_ACCOUNT_KEY && fileId === ACTIVE_ACCOUNT_FILE_ID) {
+      result.activeAccountPubkey = decodeActiveAccount(bytes);
+    } else if (key === BOOKMARKS_KEY && fileId === BOOKMARKS_FILE_ID) {
+      result.bookmarkedEventIds = decodeBookmarkEventIds(bytes);
     }
   }
 
   return result;
+}
+
+function decodeActiveAccount(bytes: Uint8Array): string | undefined {
+  try {
+    const bb = new flatbuffers.ByteBuffer(bytes);
+    if (!bb.__has_identifier(ACTIVE_ACCOUNT_FILE_ID)) return undefined;
+    const root = bb.readInt32(bb.position()) + bb.position();
+    const hasOffset = bb.__offset(root, 4);
+    if (!hasOffset || !bb.readInt8(root + hasOffset)) return undefined;
+    const pubkeyOffset = bb.__offset(root, 6);
+    if (!pubkeyOffset) return undefined;
+    const pubkey = bb.__string(root + pubkeyOffset);
+    return typeof pubkey === "string" && pubkey.length > 0 ? pubkey : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function decodeBookmarkEventIds(bytes: Uint8Array): string[] {
+  try {
+    const bb = new flatbuffers.ByteBuffer(bytes);
+    if (!bb.__has_identifier(BOOKMARKS_FILE_ID)) return [];
+    const root = bb.readInt32(bb.position()) + bb.position();
+    const itemsOffset = bb.__offset(root, 4);
+    if (!itemsOffset) return [];
+    const items = bb.__vector(root + itemsOffset);
+    const length = bb.__vector_len(root + itemsOffset);
+    const ids: string[] = [];
+    for (let i = 0; i < length; i++) {
+      const item = bb.__indirect(items + i * 4);
+      const kindOffset = bb.__offset(item, 4);
+      const valueOffset = bb.__offset(item, 6);
+      if (!valueOffset) continue;
+      const kind = kindOffset ? bb.readUint8(item + kindOffset) : 0;
+      if (kind !== 0) continue;
+      const value = bb.__string(item + valueOffset);
+      if (typeof value === "string") ids.push(value);
+    }
+    return ids;
+  } catch {
+    return [];
+  }
 }
 
 function decodeFollowList(bytes: Uint8Array): string[] {

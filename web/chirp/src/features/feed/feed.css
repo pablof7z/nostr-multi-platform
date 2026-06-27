@@ -264,6 +264,12 @@
   color: var(--accent);
 }
 
+.action-btn[data-state="saved"] {
+  border-color: color-mix(in srgb, var(--tone-ok) 52%, var(--line));
+  background: color-mix(in srgb, var(--tone-ok) 12%, var(--bg-raised));
+  color: var(--tone-ok);
+}
+
 .action-btn:disabled {
   background: var(--bg-inset);
   color: var(--ink-3);

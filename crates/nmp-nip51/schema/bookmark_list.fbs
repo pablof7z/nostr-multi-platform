@@ -1,0 +1,37 @@
+namespace nmp.nip51;
+
+// Typed FlatBuffers wire for the `nmp.nip51.bookmarks` snapshot projection.
+//
+// The producer is the `BookmarkListProjection` closure registered in
+// `crates/nmp-defaults/src/runtimes/bookmarks_runtime.rs`, which serialises the
+// active account's NIP-51 kind:10003 `BookmarkListSnapshot`.
+//
+// Field-for-field mirror (raw protocol values only, ADR-0032):
+//   * item.kind  -> Event / Address / Url / Hashtag tagged-table discriminator
+//   * item.value -> event id, address coordinate, URL, or hashtag
+//   * item.relay -> optional relay hint for event/address bookmarks
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh:
+//   flatc --rust -o crates/nmp-nip51/src/wire/generated \
+//         crates/nmp-nip51/schema/bookmark_list.fbs
+
+enum BookmarkListItemKind:ubyte {
+  Event = 0,
+  Address = 1,
+  Url = 2,
+  Hashtag = 3,
+}
+
+table BookmarkListItem {
+  kind:BookmarkListItemKind;
+  value:string (required);
+  relay:string;
+}
+
+table BookmarkListSnapshot {
+  items:[BookmarkListItem];
+}
+
+file_identifier "N51L";
+root_type BookmarkListSnapshot;

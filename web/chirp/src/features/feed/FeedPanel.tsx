@@ -8,7 +8,7 @@
 // Zero Nostr protocol logic — decoding and dispatching are owned by feedDecoder.ts
 // and feedStore.ts respectively. This file is pure presentation orchestration.
 
-import { For, Show, createSignal } from "solid-js";
+import { For, Show, createMemo, createSignal } from "solid-js";
 import { NostrProfileHostProvider } from "@nmp/components-web/src/user-avatar/NostrProfileHost";
 import { createFeedStore } from "../../nmp/feedStore";
 import type { RuntimeProjection } from "../../nmp/runtimeProjection";
@@ -20,6 +20,7 @@ import "./feed.css";
 export function FeedPanel(props: { canPublish: boolean; diagnostics?: RuntimeProjection }) {
   const { state, profileHost } = createFeedStore();
   const [selection, setSelection] = createSignal<FeedSelection | null>(null);
+  const bookmarkedIds = createMemo(() => new Set(props.diagnostics?.bookmarkedEventIds ?? []));
 
   return (
     <NostrProfileHostProvider host={profileHost}>
@@ -68,6 +69,8 @@ export function FeedPanel(props: { canPublish: boolean; diagnostics?: RuntimePro
                   <PostCard
                     row={row}
                     canPublish={props.canPublish}
+                    activeAccountPubkey={props.diagnostics?.activeAccountPubkey}
+                    bookmarked={bookmarkedIds().has(row.id)}
                     onSelect={setSelection}
                   />
                 )}

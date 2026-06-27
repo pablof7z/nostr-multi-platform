@@ -101,6 +101,7 @@ export default function App() {
         data-bridge-kind={bridgeKind()}
         data-runtime-status={runtimeStatus()}
         data-has-snapshot={hasSnapshot() ? "true" : "false"}
+        data-signer-connected={signerConnected() ? "true" : "false"}
       >
         <aside class="app-rail" aria-label="Chirp navigation">
           <div class="brand-lockup">
@@ -130,7 +131,12 @@ export default function App() {
           <header class="topbar">
             <div>
               <p class="topbar-kicker">Home feed</p>
-              <h1>Real relay timeline</h1>
+              <h1>{signerConnected() ? "Real relay timeline" : "Set up Chirp Web"}</h1>
+              <p class="topbar-support">
+                {signerConnected()
+                  ? "Read, publish, and verify every action through relay diagnostics."
+                  : "Browse signed out, connect a signer when you are ready to publish."}
+              </p>
             </div>
             <div
               class="status-indicator"

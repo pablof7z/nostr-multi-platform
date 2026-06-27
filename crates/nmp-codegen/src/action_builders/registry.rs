@@ -181,6 +181,21 @@ pub const ACTION_BUILDERS: &[ActionBuilder] = &[
         }],
         doc: "Follow many pubkeys in one race-free read-modify-write cycle (NIP-02).",
     },
+    // nip51 — bookmark add/remove share BookmarkUpdatePayload. This is a nested
+    // item table, so the emitters special-case the method shape while still
+    // keeping the namespace/method/doc in this generated-builder registry.
+    ActionBuilder {
+        namespace: "nmp.nip51.add_bookmark",
+        method: "addBookmark",
+        fields: &[],
+        doc: "Add one item to the active account's NIP-51 bookmark list.",
+    },
+    ActionBuilder {
+        namespace: "nmp.nip51.remove_bookmark",
+        method: "removeBookmark",
+        fields: &[],
+        doc: "Remove one item from the active account's NIP-51 bookmark list.",
+    },
 ];
 
 // ── nmp.publish — the UNION-bodied builders (ADR-0064 §3) ────────────────────
