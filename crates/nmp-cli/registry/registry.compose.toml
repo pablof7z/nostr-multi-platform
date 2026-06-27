@@ -43,7 +43,7 @@ role = "source"
 id = "compose/content-kind-registry"
 version = "0.1.0"
 target = "compose"
-description = "Compose kind-dispatch registry for embedded Nostr events, including the embed chrome container, embedded-event composable, and default short-note/article/highlight/profile/unknown renderers."
+description = "Compose kind-dispatch registry for embedded Nostr events. App roots provide Rust-derived refs.event.envelopes plus the resolver; composables render that mirror without parsing raw event rows."
 dependencies = [
     "compose/content-core",
     "compose/user-avatar",

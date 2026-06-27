@@ -13,15 +13,10 @@ use nmp_content::wire::{
     encode_ref_event_envelopes, EMBED_SIDECAR_FILE_IDENTIFIER, EMBED_SIDECAR_PROJECTION_KEY,
     EMBED_SIDECAR_SCHEMA_ID, EMBED_SIDECAR_SCHEMA_VERSION,
 };
-use nmp_content::{
-    resolve_embed_projection, EmbedKindProjection, EmbeddedEventEnvelope, RenderContext,
-    RenderContextWire,
-};
+use nmp_content::{derive_ref_event_store_envelopes, EmbeddedEventEnvelope};
 use nmp_core::{
     decode_snapshot_envelope, decode_snapshot_typed_projections,
     refs::{RefEventStore, REFS_EVENT_KEY},
-    substrate::KernelEvent,
-    typed_projections::ClaimedEventRow,
     TypedProjectionData,
 };
 
@@ -54,7 +49,7 @@ impl BrowserEmbedSidecar {
 
         self.ref_events
             .apply_sidecar(&entry.payload, envelope.session_id, envelope.snapshot_epoch);
-        self.envelopes = resolve_events(&self.ref_events.events());
+        self.envelopes = derive_ref_event_store_envelopes(&self.ref_events);
     }
 
     /// Build the transient NEMB projection appended to the browser frame.
@@ -70,51 +65,12 @@ impl BrowserEmbedSidecar {
     }
 }
 
-fn resolve_events(
-    rows: &BTreeMap<String, ClaimedEventRow>,
-) -> BTreeMap<String, EmbeddedEventEnvelope> {
-    let ctx = RenderContext::new();
-    rows.iter()
-        .map(|(primary_id, row)| {
-            let event = row_to_kernel_event(row);
-            let projection = resolve_embed_projection(&event, &ctx);
-            (primary_id.clone(), build_envelope(primary_id, projection))
-        })
-        .collect()
-}
-
-fn row_to_kernel_event(row: &ClaimedEventRow) -> KernelEvent {
-    KernelEvent {
-        id: row.id.clone(),
-        author: row.author_pubkey.clone(),
-        kind: row.kind,
-        created_at: row.created_at,
-        tags: row.tags.clone(),
-        content: row.content.clone(),
-        relay_provenance: Vec::new(),
-    }
-}
-
-fn build_envelope(primary_id: &str, projection: EmbedKindProjection) -> EmbeddedEventEnvelope {
-    EmbeddedEventEnvelope {
-        uri: String::new(),
-        primary_id: primary_id.to_string(),
-        render_context: RenderContextWire {
-            depth: 0,
-            max_depth: 4,
-            visited: Vec::new(),
-        },
-        projection,
-        collapsed: false,
-        collapse_reason: None,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nmp_content::EmbedKindProjection;
     use nmp_core::refs::{encode_ref_row_delta_batch, RefRow, RefRowDeltaBatch};
-    use nmp_core::typed_projections::{encode_claimed_events, ClaimedEventsModel};
+    use nmp_core::typed_projections::{encode_claimed_events, ClaimedEventRow, ClaimedEventsModel};
     use nmp_core::{encode_snapshot_frame, SnapshotEnvelope, WireProjectionState};
 
     #[test]

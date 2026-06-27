@@ -85,7 +85,7 @@ export const webContentKind30023: PlatformImpl = {
   version: "0.1.0",
   dependencies: ["content-kind-registry"],
   longDescription:
-    "`<NostrArticleCard article={...} />` is the web NIP-23 long-form card. Pure renderer: the host hydrates a `NostrArticleCardModel` from the resolved `refs.event` article projection (the `image`/`title`/`summary` fields + the kernel-enriched author). Renders the image as a 16:9 hero, the title headline, an optional summary, then an author byline (avatar + name + `article · kind:30023`). Verified live in the NMP web gallery against the real showcase article. Mirrors the SwiftUI `ArticleEmbed` / Compose `NostrArticleCard`.",
+    "`<NostrArticleCard article={...} />` is the web NIP-23 long-form card. Pure renderer: the host hydrates a `NostrArticleCardModel` from the `ArticleProjection` inside derived `refs.event.envelopes` (the `image`/`title`/`summary` fields + the kernel-enriched author). Renders the image as a 16:9 hero, the title headline, an optional summary, then an author byline (avatar + name + `article · kind:30023`). Verified live in the NMP web gallery against the real showcase article. Mirrors the SwiftUI `ArticleEmbed` / Compose `NostrArticleCard`.",
   files: [
     { source: "web/content-kind-30023/NostrArticleCard.tsx", target: "src/components/nostr-content/NostrArticleCard.tsx", role: "source", content: webArticleCardTsx },
   ],
@@ -102,7 +102,7 @@ export const webContentKind9802: PlatformImpl = {
   version: "0.1.0",
   dependencies: ["content-kind-registry"],
   longDescription:
-    "`<NostrHighlightCard highlight={...} />` is the web NIP-84 highlight card. Pure renderer: the host hydrates a `NostrHighlightCardModel` from the resolved `refs.event` highlight projection. Renders the highlighted text as a pull-quote in a yellow-accented box, an optional `context` line, and a source footer from the resolved projection fields. Verified live in the NMP web gallery against the real showcase highlight. Mirrors the SwiftUI/TUI `HighlightEmbed`.",
+    "`<NostrHighlightCard highlight={...} />` is the web NIP-84 highlight card. Pure renderer: the host hydrates a `NostrHighlightCardModel` from the `HighlightProjection` inside derived `refs.event.envelopes`. Renders the highlighted text as a pull-quote in a yellow-accented box, an optional `context` line, and a source footer from the resolved projection fields. Verified live in the NMP web gallery against the real showcase highlight. Mirrors the SwiftUI/TUI `HighlightEmbed`.",
   files: [
     { source: "web/content-kind-9802/NostrHighlightCard.tsx", target: "src/components/nostr-content/NostrHighlightCard.tsx", role: "source", content: webHighlightCardTsx },
   ],
@@ -136,7 +136,7 @@ export const webContentQuoteCard: PlatformImpl = {
   version: "0.1.0",
   dependencies: [],
   longDescription:
-    "`<NostrQuoteCard quote={...} nowSeconds={...} />` is the web quoted-note card (the kind:1 `embed-note` body). Pure renderer: the host hydrates a `NostrQuoteCardModel` from the resolved `refs.event` short-note projection. Renders an author header (avatar + name + relative time) above a content preview, in a subtle bordered card. Ships a pure `relativeTime(createdAt, now)` helper (now injected for testability). Verified live in the NMP web gallery against the real showcase note. Mirrors the SwiftUI/Compose `NostrQuoteCard`.",
+    "`<NostrQuoteCard quote={...} nowSeconds={...} />` is the web quoted-note card (the kind:1 `embed-note` body). Pure renderer: the host hydrates a `NostrQuoteCardModel` from the `ShortNoteProjection` inside derived `refs.event.envelopes`. Renders an author header (avatar + name + relative time) above a content preview, in a subtle bordered card. Ships a pure `relativeTime(createdAt, now)` helper (now injected for testability). Verified live in the NMP web gallery against the real showcase note. Mirrors the SwiftUI/Compose `NostrQuoteCard`.",
   files: [
     { source: "web/content-quote-card/NostrQuoteCard.tsx", target: "src/components/nostr-content/NostrQuoteCard.tsx", role: "source", content: webQuoteCardTsx },
   ],

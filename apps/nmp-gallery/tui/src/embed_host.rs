@@ -26,12 +26,7 @@
 
 use std::collections::BTreeMap;
 
-use nmp_content::{
-    embed_projection::{EmbeddedEventEnvelope, RenderContextWire},
-    resolve_embed_projection, RenderContext,
-};
-use nmp_core::substrate::KernelEvent;
-use nmp_core::typed_projections::ClaimedEventRow;
+use nmp_content::embed_projection::{derive_ref_event_envelopes, EmbeddedEventEnvelope};
 
 use crate::live::GalleryTypedSnapshot;
 
@@ -51,11 +46,9 @@ impl EmbedHostState {
 
     /// Rebuild the in-memory envelope map from a freshly pushed kernel snapshot
     /// (typed path — reads the materialised `refs.event` rows from
-    /// `GalleryTypedSnapshot`). Each entry is a `ClaimedEventRow`; we turn it
-    /// into a `KernelEvent`, route it through the canonical
-    /// `resolve_embed_projection` dispatch point (the same function ADR-0034
-    /// mandates for ALL embed kind decisions), and store the resulting envelope
-    /// under `primary_id`.
+    /// `GalleryTypedSnapshot`). The shared `nmp-content` derivation path routes
+    /// each row through the canonical `resolve_embed_projection` dispatch point
+    /// and stores the resulting envelope under `primary_id`.
     ///
     /// Non-fatal: malformed entries are silently skipped (D6 — the renderer
     /// falls back to a loading placeholder until a well-formed snapshot lands).
@@ -63,34 +56,15 @@ impl EmbedHostState {
     /// Returns the pubkeys of event-ref authors so the caller can issue
     /// `resolve_profile`; `refs.event` itself carries raw event data only.
     pub fn update_from_typed(&mut self, snapshot: &GalleryTypedSnapshot) -> Vec<String> {
-        let mut next: BTreeMap<String, EmbeddedEventEnvelope> = BTreeMap::new();
-        let mut authors_needing_profile: Vec<String> = Vec::new();
-        let ctx = RenderContext::new();
-
-        for (primary_id, row) in &snapshot.events {
-            let Some(event) = kernel_event_from_row(row) else {
-                continue;
-            };
-
-            if !event.author.is_empty() {
-                authors_needing_profile.push(event.author.clone());
-            }
-
-            let projection = resolve_embed_projection(&event, &ctx);
-            let envelope = EmbeddedEventEnvelope {
-                uri: String::new(), // The renderer falls back from primary_id; URI keying happens at claim time.
-                primary_id: primary_id.clone(),
-                render_context: RenderContextWire {
-                    depth: 0,
-                    max_depth: 4,
-                    visited: Vec::new(),
-                },
-                projection,
-                collapsed: false,
-                collapse_reason: None,
-            };
-            next.insert(primary_id.clone(), envelope);
-        }
+        let next = derive_ref_event_envelopes(&snapshot.events);
+        let mut authors_needing_profile: Vec<String> = snapshot
+            .events
+            .iter()
+            .filter(|(primary_id, row)| {
+                next.contains_key(*primary_id) && !row.author_pubkey.is_empty()
+            })
+            .map(|(_, row)| row.author_pubkey.clone())
+            .collect();
 
         self.envelopes = next;
         authors_needing_profile.sort();
@@ -116,21 +90,6 @@ impl EmbedHostState {
     pub fn is_empty(&self) -> bool {
         self.envelopes.is_empty()
     }
-}
-
-fn kernel_event_from_row(row: &ClaimedEventRow) -> Option<KernelEvent> {
-    if row.author_pubkey.is_empty() {
-        return None;
-    }
-    Some(KernelEvent {
-        id: row.id.clone(),
-        author: row.author_pubkey.clone(),
-        kind: row.kind,
-        created_at: row.created_at,
-        tags: row.tags.clone(),
-        content: row.content.clone(),
-        relay_provenance: Vec::new(),
-    })
 }
 
 #[cfg(test)]

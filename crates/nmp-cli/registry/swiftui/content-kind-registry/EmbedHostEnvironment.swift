@@ -1,11 +1,12 @@
 import SwiftUI
 
-/// Read-only source of resolved embed envelopes the kernel pushes on every
-/// snapshot frame, keyed by `primaryId` (event-id hex or `kind:pubkey:d`
-/// coordinate). The app binds a concrete conformer (holding the resolved
-/// event-ref embed envelope map produced after `resolve_ref`) into the environment via
-/// `.embedEnvelopeSource(...)`; `NostrContentView`'s event-ref renderer reads
-/// it to feed `EmbeddedEvent`.
+/// Read-only source of resolved embed envelopes the app-level host/provider
+/// receives from Rust on every snapshot frame, keyed by `primaryId`
+/// (event-id hex or `kind:pubkey:d` coordinate). The map is the derived
+/// `refs.event.envelopes` sidecar produced from authoritative `refs.event`
+/// rows by `nmp_content::derive_ref_event_envelopes`; this conformer only
+/// mirrors that sidecar into SwiftUI. `NostrContentView`'s event-ref renderer
+/// reads it to feed `EmbeddedEvent`.
 ///
 /// THIN-SHELL: the conformer only stores and looks up the already-resolved
 /// envelopes — no kind dispatch, no protocol parsing (the Rust resolver did

@@ -54,10 +54,12 @@ public val LocalEventRefResolver: androidx.compose.runtime.ProvidableComposition
     compositionLocalOf { null }
 
 /**
- * Resolved event-ref embed envelopes materialised from the `refs.event`
- * projection after `resolve_ref`, keyed by `primaryId` (event-id hex or
- * `kind:pubkey:d` coord). Defaults to an empty map outside a provider scope
- * (the loading placeholder then persists).
+ * Resolved event-ref embed envelopes from Rust's derived
+ * `refs.event.envelopes` sidecar, keyed by `primaryId` (event-id hex or
+ * `kind:pubkey:d` coord). The sidecar is generated from authoritative
+ * `refs.event` rows by `nmp_content::derive_ref_event_envelopes`; Compose only
+ * mirrors it inside the app-level provider. Defaults to an empty map outside a
+ * provider scope (the loading placeholder then persists).
  */
 public val LocalResolvedEventEmbeds: androidx.compose.runtime.ProvidableCompositionLocal<Map<String, EmbeddedEventEnvelope>> =
     compositionLocalOf { emptyMap() }
