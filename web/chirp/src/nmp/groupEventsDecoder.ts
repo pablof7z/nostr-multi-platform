@@ -1,13 +1,13 @@
 import * as flatbuffers from "flatbuffers";
-import { GroupTimelineEvent } from "./generated/nmp/nip29/group-timeline-event";
-import { GroupTimelineSnapshot } from "./generated/nmp/nip29/group-timeline-snapshot";
+import { GroupEvent } from "./generated/nmp/nip29/group-event";
+import { GroupEventsSnapshot } from "./generated/nmp/nip29/group-events-snapshot";
 import { FrameKind } from "./generated/nmp/transport/frame-kind";
 import { UpdateFrame } from "./generated/nmp/transport/update-frame";
 
-const GROUP_TIMELINE_KEY = "nmp.nip29.group_timeline";
-const GROUP_TIMELINE_FILE_ID = "NGTL";
+const GROUP_EVENTS_KEY = "nmp.nip29.group_events";
+const GROUP_EVENTS_FILE_ID = "NGEV";
 
-export type GroupTimelineRow = {
+export type GroupEventsRow = {
   id: string;
   pubkey: string;
   content: string;
@@ -15,13 +15,13 @@ export type GroupTimelineRow = {
   kind: number;
 };
 
-export type GroupTimelineFrame = {
-  rows: GroupTimelineRow[];
+export type GroupEventsFrame = {
+  rows: GroupEventsRow[];
 };
 
-export function decodeGroupTimelineFrame(
+export function decodeGroupEventsFrame(
   bytes: Uint8Array | undefined,
-): GroupTimelineFrame | undefined {
+): GroupEventsFrame | undefined {
   if (!bytes) return undefined;
   try {
     const bb = new flatbuffers.ByteBuffer(bytes);
@@ -35,8 +35,8 @@ export function decodeGroupTimelineFrame(
       const payload = projection?.payload();
       const payloadBytes = payload?.payloadArray();
       if (
-        projection?.key() !== GROUP_TIMELINE_KEY ||
-        payload?.fileIdentifier() !== GROUP_TIMELINE_FILE_ID ||
+        projection?.key() !== GROUP_EVENTS_KEY ||
+        payload?.fileIdentifier() !== GROUP_EVENTS_FILE_ID ||
         !payloadBytes ||
         payloadBytes.length === 0
       ) {
@@ -50,11 +50,11 @@ export function decodeGroupTimelineFrame(
   }
 }
 
-function decodePayload(bytes: Uint8Array): GroupTimelineFrame | undefined {
+function decodePayload(bytes: Uint8Array): GroupEventsFrame | undefined {
   const bb = new flatbuffers.ByteBuffer(bytes);
-  if (!GroupTimelineSnapshot.bufferHasIdentifier(bb)) return undefined;
-  const snapshot = GroupTimelineSnapshot.getRootAsGroupTimelineSnapshot(bb);
-  const rows: GroupTimelineRow[] = [];
+  if (!GroupEventsSnapshot.bufferHasIdentifier(bb)) return undefined;
+  const snapshot = GroupEventsSnapshot.getRootAsGroupEventsSnapshot(bb);
+  const rows: GroupEventsRow[] = [];
   for (let i = 0; i < snapshot.eventsLength(); i++) {
     const event = snapshot.events(i);
     const row = event ? decodeEvent(event) : undefined;
@@ -63,7 +63,7 @@ function decodePayload(bytes: Uint8Array): GroupTimelineFrame | undefined {
   return { rows };
 }
 
-function decodeEvent(event: GroupTimelineEvent): GroupTimelineRow | undefined {
+function decodeEvent(event: GroupEvent): GroupEventsRow | undefined {
   const id = event.id();
   const pubkey = event.pubkey();
   const content = event.content();

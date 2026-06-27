@@ -4,22 +4,22 @@
 
 import * as flatbuffers from 'flatbuffers';
 
-export class GroupTimelineEvent {
+export class GroupEvent {
   bb: flatbuffers.ByteBuffer|null = null;
   bb_pos = 0;
-  __init(i:number, bb:flatbuffers.ByteBuffer):GroupTimelineEvent {
+  __init(i:number, bb:flatbuffers.ByteBuffer):GroupEvent {
   this.bb_pos = i;
   this.bb = bb;
   return this;
 }
 
-static getRootAsGroupTimelineEvent(bb:flatbuffers.ByteBuffer, obj?:GroupTimelineEvent):GroupTimelineEvent {
-  return (obj || new GroupTimelineEvent()).__init(bb.readInt32(bb.position()) + bb.position(), bb);
+static getRootAsGroupEvent(bb:flatbuffers.ByteBuffer, obj?:GroupEvent):GroupEvent {
+  return (obj || new GroupEvent()).__init(bb.readInt32(bb.position()) + bb.position(), bb);
 }
 
-static getSizePrefixedRootAsGroupTimelineEvent(bb:flatbuffers.ByteBuffer, obj?:GroupTimelineEvent):GroupTimelineEvent {
+static getSizePrefixedRootAsGroupEvent(bb:flatbuffers.ByteBuffer, obj?:GroupEvent):GroupEvent {
   bb.setPosition(bb.position() + flatbuffers.SIZE_PREFIX_LENGTH);
-  return (obj || new GroupTimelineEvent()).__init(bb.readInt32(bb.position()) + bb.position(), bb);
+  return (obj || new GroupEvent()).__init(bb.readInt32(bb.position()) + bb.position(), bb);
 }
 
 id():string|null
@@ -53,7 +53,7 @@ kind():number {
   return offset ? this.bb!.readUint32(this.bb_pos + offset) : 0;
 }
 
-static startGroupTimelineEvent(builder:flatbuffers.Builder) {
+static startGroupEvent(builder:flatbuffers.Builder) {
   builder.startObject(5);
 }
 
@@ -77,18 +77,18 @@ static addKind(builder:flatbuffers.Builder, kind:number) {
   builder.addFieldInt32(4, kind, 0);
 }
 
-static endGroupTimelineEvent(builder:flatbuffers.Builder):flatbuffers.Offset {
+static endGroupEvent(builder:flatbuffers.Builder):flatbuffers.Offset {
   const offset = builder.endObject();
   return offset;
 }
 
-static createGroupTimelineEvent(builder:flatbuffers.Builder, idOffset:flatbuffers.Offset, pubkeyOffset:flatbuffers.Offset, contentOffset:flatbuffers.Offset, createdAt:bigint, kind:number):flatbuffers.Offset {
-  GroupTimelineEvent.startGroupTimelineEvent(builder);
-  GroupTimelineEvent.addId(builder, idOffset);
-  GroupTimelineEvent.addPubkey(builder, pubkeyOffset);
-  GroupTimelineEvent.addContent(builder, contentOffset);
-  GroupTimelineEvent.addCreatedAt(builder, createdAt);
-  GroupTimelineEvent.addKind(builder, kind);
-  return GroupTimelineEvent.endGroupTimelineEvent(builder);
+static createGroupEvent(builder:flatbuffers.Builder, idOffset:flatbuffers.Offset, pubkeyOffset:flatbuffers.Offset, contentOffset:flatbuffers.Offset, createdAt:bigint, kind:number):flatbuffers.Offset {
+  GroupEvent.startGroupEvent(builder);
+  GroupEvent.addId(builder, idOffset);
+  GroupEvent.addPubkey(builder, pubkeyOffset);
+  GroupEvent.addContent(builder, contentOffset);
+  GroupEvent.addCreatedAt(builder, createdAt);
+  GroupEvent.addKind(builder, kind);
+  return GroupEvent.endGroupEvent(builder);
 }
 }

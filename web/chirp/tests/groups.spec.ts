@@ -48,7 +48,7 @@ test("@wasm groups workspace renders NIP-29 discovery from Rust projection", asy
       .poll(() => relay.subscriptions().some((filter) => includesGroupMetadataKinds(filter.kinds)))
       .toBe(true);
     await expect
-      .poll(() => relay.subscriptions().some((filter) => includesGroupTimelineFilter(filter, relay.groupId)))
+      .poll(() => relay.subscriptions().some((filter) => includesGroupEventsFilter(filter, relay.groupId)))
       .toBe(true);
   } finally {
     await relay.close();
@@ -62,7 +62,7 @@ function includesGroupMetadataKinds(kinds: number[] | undefined): boolean {
   );
 }
 
-function includesGroupTimelineFilter(filter: Record<string, unknown>, groupId: string): boolean {
+function includesGroupEventsFilter(filter: Record<string, unknown>, groupId: string): boolean {
   const kinds = filter.kinds;
   const hTags = filter["#h"];
   return (

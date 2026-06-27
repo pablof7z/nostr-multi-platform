@@ -38,10 +38,13 @@ export type GroupDiscoveryOpenRequest = {
   relayUrl: string;
 };
 
-export type GroupTimelineOpenRequest = {
+export type GroupEventsOpenRequest = {
   sessionId: string;
   relayUrl: string;
   groupId: string;
+  /** Consumer-declared kind selection (issue #2187). Empty = all h-tagged
+   *  group events; a chat view passes `[9, 11]`. */
+  kinds: number[];
 };
 
 export type NotificationsOpenRequest = {
@@ -72,8 +75,8 @@ export type NmpClient = {
   closeSearch(sessionId: string): Promise<RuntimeSnapshot>;
   openGroupDiscovery(request: GroupDiscoveryOpenRequest): Promise<RuntimeSnapshot>;
   closeGroupDiscovery(sessionId: string): Promise<RuntimeSnapshot>;
-  openGroupTimeline(request: GroupTimelineOpenRequest): Promise<RuntimeSnapshot>;
-  closeGroupTimeline(sessionId: string): Promise<RuntimeSnapshot>;
+  openGroupEvents(request: GroupEventsOpenRequest): Promise<RuntimeSnapshot>;
+  closeGroupEvents(sessionId: string): Promise<RuntimeSnapshot>;
   openNotifications(request: NotificationsOpenRequest): Promise<RuntimeSnapshot>;
   closeNotifications(sessionId: string): Promise<RuntimeSnapshot>;
   markNotificationsRead(request: NotificationsMarkReadRequest): Promise<RuntimeSnapshot>;

@@ -11,7 +11,7 @@ import { BaseClient } from "./clientBase";
 import {
   runtimeConnection,
   type GroupDiscoveryOpenRequest,
-  type GroupTimelineOpenRequest,
+  type GroupEventsOpenRequest,
   type NotificationsMarkReadRequest,
   type NotificationsOpenRequest,
   type RuntimeSnapshot,
@@ -170,21 +170,22 @@ export class InProcessNmpClient extends BaseClient {
     });
   }
 
-  async openGroupTimeline(request: GroupTimelineOpenRequest): Promise<RuntimeSnapshot> {
+  async openGroupEvents(request: GroupEventsOpenRequest): Promise<RuntimeSnapshot> {
     return this.send({
-      type: "group_timeline_open",
+      type: "group_events_open",
       session_id: request.sessionId,
       relay_url: request.relayUrl,
       group_id: request.groupId,
-      correlation_id: makeCorrelationId("web-group-timeline", this.nextCorrelationId++),
+      kinds: request.kinds,
+      correlation_id: makeCorrelationId("web-group-events", this.nextCorrelationId++),
     });
   }
 
-  async closeGroupTimeline(sessionId: string): Promise<RuntimeSnapshot> {
+  async closeGroupEvents(sessionId: string): Promise<RuntimeSnapshot> {
     return this.send({
-      type: "group_timeline_close",
+      type: "group_events_close",
       session_id: sessionId,
-      correlation_id: makeCorrelationId("web-group-timeline", this.nextCorrelationId++),
+      correlation_id: makeCorrelationId("web-group-events", this.nextCorrelationId++),
     });
   }
 
