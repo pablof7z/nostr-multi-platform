@@ -1,6 +1,6 @@
 # Changelog
 
-## nmp-v0.8.0 — 2026-06-15
+## nmp-v0.8.0 — 2026-06-27
 
 **BREAKING release — profile-resolution overhaul.** Git-rev-pinning consumers
 must adapt the one C-ABI signature change below before bumping their pinned rev.
@@ -27,6 +27,13 @@ must adapt the one C-ABI signature change below before bumping their pinned rev.
   pubkey rate down substantially for mention/attribution-heavy feeds.
 - Web-feed snapshot-loop fix — the web client no longer re-runs the feed
   snapshot loop spuriously.
+- **Event embeds now resolve through `refs.event` as the single source of
+  truth.** The old `claimed_events` whole-map projection is no longer emitted,
+  gallery JSON exposes `refs.event` / `refs.profile`, and web gallery derives
+  `claimed_event_embeds` only as a transient `NEMB` compatibility envelope from
+  the Rust-resolved `refs.event` rows. Registry shell adapters are renamed around
+  `resolveEventRef` / `resolveProfileRef`, so UI components render typed
+  projections instead of hand-parsing Nostr event JSON in each shell.
 
 ### Release plumbing
 
