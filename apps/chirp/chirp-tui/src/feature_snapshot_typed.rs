@@ -163,9 +163,9 @@ pub(crate) fn feature_snapshot_from_flatbuffer(bytes: &[u8]) -> FeatureSnapshot 
         })
         .unwrap_or_default();
 
-    // Host-registered: nmp.nip29.group_timeline (key == "nmp.nip29.group_timeline")
-    let group_messages = find("nmp.nip29.group_timeline")
-        .and_then(|b| nmp_nip29::decode_group_timeline_snapshot(b).ok())
+    // Host-registered: nmp.nip29.group_events (key == "nmp.nip29.group_events")
+    let group_messages = find("nmp.nip29.group_events")
+        .and_then(|b| nmp_nip29::decode_group_events_snapshot(b).ok())
         .map(|m| {
             m.events
                 .into_iter()

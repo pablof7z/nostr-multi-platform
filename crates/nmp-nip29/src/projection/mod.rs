@@ -4,9 +4,9 @@
 //! shape — a [`nmp_core::ObservedProjectionSink`] for ingest plus a no-argument
 //! `snapshot_json` for `nmp_core::NmpApp::register_snapshot_projection`:
 //!
-//! - [`group_timeline`] — [`GroupTimelineProjection`]: one group's chat-content
-//!   events (kinds 9/11) keyed by `["h", local_id]`. The read-side
-//!   of `GroupChatView`.
+//! - [`group_events`] — [`GroupEventsProjection`]: one group's events for a
+//!   consumer-declared kind set, keyed by `["h", local_id]`. The read-side
+//!   of `GroupChatView` (which asks for kinds 9/11).
 //! - [`discovered`] — [`DiscoveredGroupsProjection`]: a single relay's
 //!   group catalog, accumulated from kinds 39000/39001/39002. The read-side
 //!   of `JoinGroupView` / discovery flows.
@@ -18,12 +18,12 @@
 //!   status derived from relay-signed 39001/39002 snapshots.
 
 pub mod discovered;
-pub mod group_timeline;
+pub mod group_events;
 pub mod group_defaults;
 pub mod joined;
 
 pub use discovered::{DiscoveredGroup, DiscoveredGroupsProjection, DiscoveredGroupsSnapshot};
-pub use group_timeline::{GroupTimelineEvent, GroupTimelineProjection, GroupTimelineSnapshot};
+pub use group_events::{GroupEvent, GroupEventsProjection, GroupEventsSnapshot};
 pub use group_defaults::{
     GroupDefaultsProjection, GroupDefaultsSnapshot, DEFAULT_PUBLIC_GROUP_RELAY_URL,
 };

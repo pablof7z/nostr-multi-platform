@@ -97,7 +97,7 @@ MAPPINGS=(
     "crates/nmp-nip17/schema/dm_inbox.fbs|dm_inbox_generated.swift|DmInbox.generated.swift"
     "crates/nmp-nip17/schema/dm_relay_list.fbs|dm_relay_list_generated.swift|DmRelayList.generated.swift"
     "crates/nmp-nip29/schema/discovered_groups.fbs|discovered_groups_generated.swift|DiscoveredGroups.generated.swift"
-    "crates/nmp-nip29/schema/group_timeline.fbs|group_timeline_generated.swift|GroupTimeline.generated.swift"
+    "crates/nmp-nip29/schema/group_events.fbs|group_events_generated.swift|GroupEvents.generated.swift"
     "crates/nmp-nip29/schema/group_defaults.fbs|group_defaults_generated.swift|GroupDefaults.generated.swift"
     "crates/nmp-nip47/schema/wallet_status.fbs|wallet_status_generated.swift|WalletStatus.generated.swift"
     "crates/nmp-nip50/schema/search_results.fbs|search_results_generated.swift|SearchResults.generated.swift"

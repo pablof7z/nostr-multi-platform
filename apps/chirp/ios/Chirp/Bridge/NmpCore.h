@@ -544,28 +544,32 @@ void nmp_app_chirp_unregister(void *handle);
 // a screen opened AFTER the group's events were already cached catches up on
 // the cached tail, then tails live.
 //
-//   • `group_id_json` is a JSON object naming the target group:
-//       {"host_relay_url":"wss://groups.example.com","local_id":"room"}
+//   • `request_json` wraps the target group under `"group"` and names the
+//     event `"kinds"` the view consumes:
+//       {"group":{"host_relay_url":"wss://groups.example.com","local_id":"room"},
+//        "kinds":[9,11]}
+//     `kinds` is REQUIRED: an empty array means "all kinds", a missing array
+//     is rejected. Chirp's group chat passes `[9, 11]` (chat + thread root).
 //   • Returns void. The group's chat messages surface on every kernel
-//     snapshot tick under the `projections` key `"nmp.nip29.group_timeline"`,
+//     snapshot tick under the `projections` key `"nmp.nip29.group_events"`,
 //     shaped `{ "messages": [ { id, pubkey, content, created_at, kind } ] }`
 //     ordered newest-first.
 //   • Singleton scope: calling it again replaces the prior view (the prior
 //     hydrating session is closed first — no leak). Because the view now holds
-//     a relay interest, tear it down with `nmp_app_chirp_unregister_group_timeline`
+//     a relay interest, tear it down with `nmp_app_chirp_unregister_group_events`
 //     when the screen is dismissed.
 //   • Fire-and-forget (D6): a null `app`, null / invalid-UTF-8
-//     `group_id_json`, or a JSON shape that does not deserialize to a
-//     `GroupId` all degrade to a silent no-op.
+//     `request_json`, or a JSON shape that does not deserialize to a valid
+//     request (missing `group` or `kinds`) all degrade to a silent no-op.
 //   • `app` MUST outlive the registration; it is borrowed only for the
 //     duration of this call.
-void nmp_app_chirp_register_group_timeline(void *app, const char *group_id_json);
+void nmp_app_chirp_register_group_events(void *app, const char *request_json);
 
 // Tear down the group-chat read view opened by
-// `nmp_app_chirp_register_group_timeline`: detaches the relay interest, revokes the
-// observer, and removes the `"nmp.nip29.group_timeline"` snapshot projection.
+// `nmp_app_chirp_register_group_events`: detaches the relay interest, revokes the
+// observer, and removes the `"nmp.nip29.group_events"` snapshot projection.
 // Idempotent; a null `app` is a silent no-op (D6).
-void nmp_app_chirp_unregister_group_timeline(void *app);
+void nmp_app_chirp_unregister_group_events(void *app);
 
 // ── NIP-29 group-discovery open/close lifecycle ──────────────────────────
 //

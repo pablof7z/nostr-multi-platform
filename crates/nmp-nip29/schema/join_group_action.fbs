@@ -6,7 +6,7 @@ namespace nmp.nip29;
 // The OPAQUE `DispatchEnvelope.payload` for that namespace; the registry adapter
 // decodes against THIS schema, gating `schema_version` BEFORE `start()`
 // (fail-closed on mismatch). WRITE-direction action payload — distinct from the
-// READ-direction snapshot sidecars (group_timeline.fbs / …).
+// READ-direction snapshot sidecars (group_events.fbs / …).
 //
 // Self-contained (no `include`); the `GroupRef` sub-table is declared inline so
 // each action schema generates an independent `_generated.rs` module. Regenerate

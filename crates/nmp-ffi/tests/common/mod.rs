@@ -1,13 +1,13 @@
 //! Shared harness for the NIP-29 read-view proof tests in `nmp-ffi`
-//! (`nip29_group_timeline_sidecar.rs`, `nip29_discovered_groups_sidecar.rs`,
-//! `nip29_joined_groups_sidecar.rs`, `nip29_group_timeline_round_trip.rs`,
+//! (`nip29_group_events_sidecar.rs`, `nip29_discovered_groups_sidecar.rs`,
+//! `nip29_joined_groups_sidecar.rs`, `nip29_group_events_round_trip.rs`,
 //! `nip29_hydration.rs`).
 //!
 //! Drives the full FFI snapshot path — boot an `NmpApp`, run the actor, collect
 //! every emitted `UpdateFrame`, decode each with `decode_snapshot_typed_projections`,
 //! and surface the typed sidecar entry for a key once a predicate accepts it.
 //! This is the same path any host shell reads from; the views are opened by the
-//! hydrating composition methods `NmpApp::open_group_timeline` /
+//! hydrating composition methods `NmpApp::open_group_events` /
 //! `open_group_discovery` / `open_joined_groups` (#2088, `crate::group_feed`),
 //! which register the projection muted, route ingest through the read-cache
 //! replay door, and emit a typed FlatBuffers sidecar (ADR-0037).

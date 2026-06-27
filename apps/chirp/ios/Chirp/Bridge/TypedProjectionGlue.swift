@@ -230,19 +230,19 @@ enum TypedProjectionGlue {
         )
     }
 
-    // MARK: nmp.nip29.group_timeline → GroupTimelineSnapshot
+    // MARK: nmp.nip29.group_events → GroupEventsSnapshot
 
-    /// Map the typed `nmp.nip29.group_timeline` sidecar (`NGTL` /
-    /// `nmp_nip29_GroupTimelineSnapshot`) to the `GroupTimelineSnapshot` the JSON
-    /// `projections["nmp.nip29.group_timeline"]` path yields. Flat field-for-field
-    /// copy: one ordered `[GroupTimelineEvent]` vector (newest-first; the Rust
+    /// Map the typed `nmp.nip29.group_events` sidecar (`NGEV` /
+    /// `nmp_nip29_GroupEventsSnapshot`) to the `GroupEventsSnapshot` the JSON
+    /// `projections["nmp.nip29.group_events"]` path yields. Flat field-for-field
+    /// copy: one ordered `[GroupEvent]` vector (newest-first; the Rust
     /// projection owns the order, Swift does not re-sort), each row carrying raw
     /// protocol values (`id`/`pubkey` hex, verbatim `content`, Unix-second
     /// `createdAt`, raw `kind`).
-    static func groupTimeline(_ reader: nmp_nip29_GroupTimelineSnapshot) -> GroupTimelineSnapshot {
-        GroupTimelineSnapshot(
+    static func groupEvents(_ reader: nmp_nip29_GroupEventsSnapshot) -> GroupEventsSnapshot {
+        GroupEventsSnapshot(
             events: reader.events.map { row in
-                GroupTimelineEvent(
+                GroupEvent(
                     id: row.id ?? "",
                     pubkey: row.pubkey ?? "",
                     content: row.content ?? "",

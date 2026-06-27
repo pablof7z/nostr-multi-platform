@@ -36,7 +36,7 @@ use nmp_ffi::{nmp_app_free, nmp_app_new, NmpApp};
 use super::super::{
     nmp_app_chirp_close_group_discovery, nmp_app_chirp_open_group_discovery,
     nmp_app_chirp_register, nmp_app_chirp_register_dm_inbox, nmp_app_chirp_register_follow_list,
-    nmp_app_chirp_register_group_timeline, nmp_app_chirp_unregister,
+    nmp_app_chirp_register_group_events, nmp_app_chirp_unregister,
 };
 
 mod registry_coverage;
@@ -61,10 +61,11 @@ fn every_generic_projection_key_has_a_typed_sidecar() {
     // open_group_discovery requires a real relay URL; null returns null (D6).
     let discovery_relay = CString::new("wss://groups.example.com").unwrap();
     let discovery_handle = nmp_app_chirp_open_group_discovery(app, discovery_relay.as_ptr());
-    let group_id =
-        CString::new(r#"{"host_relay_url":"wss://groups.example.com","local_id":"abcd"}"#)
-            .unwrap();
-    nmp_app_chirp_register_group_timeline(app, group_id.as_ptr());
+    let group_request = CString::new(
+        r#"{"group":{"host_relay_url":"wss://groups.example.com","local_id":"abcd"},"kinds":[9,11]}"#,
+    )
+    .unwrap();
+    nmp_app_chirp_register_group_events(app, group_request.as_ptr());
 
     let app_ref: &NmpApp = unsafe { &*app };
     // The generic lane is deleted (rule A6). Use registered_typed_projection_keys()

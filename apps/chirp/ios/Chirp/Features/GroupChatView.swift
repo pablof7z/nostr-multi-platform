@@ -4,8 +4,8 @@ import SwiftUI
 // GroupChatView — one NIP-29 group's chat stream.
 //
 // First real consumer of the NIP-29 seam:
-//   • Read:  `projections["nmp.nip29.group_timeline"]`, mirrored by `GroupChatStore`
-//            (registered via `nmp_app_chirp_register_group_timeline`).
+//   • Read:  `projections["nmp.nip29.group_events"]`, mirrored by `GroupChatStore`
+//            (registered via `nmp_app_chirp_register_group_events`).
 //   • Write: `nmp.nip29.publish_group_event` via `KernelHandle.postChatMessage`.
 //
 // Thin-shell rule: ZERO protocol logic here. Messages arrive newest-first
@@ -23,7 +23,7 @@ struct GroupChatView: View {
     @State private var draft = ""
     /// The message currently being replied to, or `nil` for a plain post.
     /// Set by a context-menu "Reply" tap; cleared on send or banner dismiss.
-    @State private var replyTarget: GroupTimelineEvent?
+    @State private var replyTarget: GroupEvent?
     @FocusState private var composerFocused: Bool
 
     private var trimmedDraft: String {
@@ -181,7 +181,7 @@ struct GroupChatView: View {
 // ── Message row ───────────────────────────────────────────────────────────
 
 private struct GroupChatMessageRow: View {
-    let message: GroupTimelineEvent
+    let message: GroupEvent
     /// Long-press → "React ❤️": dispatches `nmp.nip29.react_in_group`.
     let onReact: () -> Void
     /// Long-press → "Reply": arms the composer's reply target so the next

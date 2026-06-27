@@ -27,7 +27,7 @@ mod composition;
 mod contract;
 mod feed_attribution;
 mod feed_composition;
-mod group_timeline;
+mod group_events;
 mod pump;
 mod search;
 mod signer;

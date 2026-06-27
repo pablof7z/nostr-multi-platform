@@ -155,12 +155,12 @@ mod tests {
     #[test]
     fn flags_bare_nip29_projection_key() {
         let hits = check(
-            r#"    app.register_snapshot_projection("nip29.group_timeline", move || snap.snapshot_json());"#,
+            r#"    app.register_snapshot_projection("nip29.group_events", move || snap.snapshot_json());"#,
             false,
         );
         assert_eq!(hits.len(), 1, "bare nip29. key must fire D16");
         assert!(
-            hits[0].1.contains("nip29.group_timeline"),
+            hits[0].1.contains("nip29.group_events"),
             "message must name the key"
         );
         assert!(hits[0].1.contains("D16"), "message must name the rule");
@@ -182,7 +182,7 @@ mod tests {
     #[test]
     fn allows_nmp_prefixed_nip29_key() {
         let hits = check(
-            r#"    app.register_snapshot_projection("nmp.nip29.group_timeline", move || snap.snapshot_json());"#,
+            r#"    app.register_snapshot_projection("nmp.nip29.group_events", move || snap.snapshot_json());"#,
             false,
         );
         assert!(
@@ -203,7 +203,7 @@ mod tests {
     #[test]
     fn ignores_comment_lines() {
         let hits = check(
-            r#"    // app.register_snapshot_projection("nip29.group_timeline", ...)"#,
+            r#"    // app.register_snapshot_projection("nip29.group_events", ...)"#,
             true,
         );
         assert!(hits.is_empty(), "comment lines must not fire D16");
@@ -222,7 +222,7 @@ mod tests {
     #[test]
     fn file_in_scope_excludes_protocol_crates() {
         assert!(!file_in_scope(&PathBuf::from(
-            "crates/nmp-nip29/src/projection/group_timeline.rs"
+            "crates/nmp-nip29/src/projection/group_events.rs"
         )));
         assert!(!file_in_scope(&PathBuf::from(
             "crates/nmp-nip17/src/inbox.rs"
@@ -266,7 +266,7 @@ mod tests {
 
     #[test]
     fn reports_column_at_opening_quote() {
-        let line = r#"    app.register_snapshot_projection("nip29.group_timeline", ...);"#;
+        let line = r#"    app.register_snapshot_projection("nip29.group_events", ...);"#;
         let hits = check(line, false);
         assert_eq!(hits.len(), 1);
         let expected_col = line.find('"').unwrap() + 1; // 1-indexed

@@ -11,7 +11,7 @@
 //! triples — there is no Rust type to reflect via `schemars` (unlike Stage 1).
 //! The natural home would have been `nmp-core::codegen_schema` alongside
 //! Stage 1, BUT the registry MUST name dotted host-registered keys like
-//! `"nmp.nip29.group_timeline"`, `"nmp.nip17.dm_inbox"`.
+//! `"nmp.nip29.group_events"`, `"nmp.nip17.dm_inbox"`.
 //! Those substrings would trip D0 doctrine-lint (`nip29` / `nip17` / `nip57`
 //! tokens forbidden in `nmp-core` per `crates/nmp-testing/bin/doctrine-lint/
 //! rules/d0.rs`). The substrings are legitimate here because *they are the
@@ -90,8 +90,8 @@ pub struct SnapshotProjectionEntry {
     /// Examples:
     /// - `"wallet"` → no transform needed, post-transform is `"wallet"`.
     /// - `"action_stages"` → post-transform is `"actionStages"`.
-    /// - `"nmp.nip29.group_timeline"` → post-transform is `"nmp.nip29.groupTimeline"`
-    ///   (the `.`-segments stay intact, only `group_timeline` camelises).
+    /// - `"nmp.nip29.group_events"` → post-transform is `"nmp.nip29.groupEvents"`
+    ///   (the `.`-segments stay intact, only `group_events` camelises).
     pub key: &'static str,
     /// Swift property name on `SnapshotProjections`. Always lowerCamelCase.
     /// The renderer emits `let <swift_field>: <swift_type>?` on the struct
@@ -104,7 +104,7 @@ pub struct SnapshotProjectionEntry {
     /// requires the shell tolerate that.
     ///
     /// Plain types pass through verbatim: `"WalletStatusData"`,
-    /// `"GroupTimelineSnapshot"`. Container types are written in their full
+    /// `"GroupEventsSnapshot"`. Container types are written in their full
     /// Swift form: `"[PublishQueueEntry]"`, `"[String: [ActionStageEntry]]"`,
     /// `"[String: ProfileCard]"`, `"[String]"`. The renderer never
     /// composes these — what you write here is what appears on the line.
@@ -456,18 +456,18 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
     // post-transform key keeps the `nmp.<nip>.<verb>` shape but with the
     // tail camelised.
     SnapshotProjectionEntry {
-        key: "nmp.nip29.group_timeline",
-        swift_field: "groupTimeline",
-        swift_type: "GroupTimelineSnapshot",
+        key: "nmp.nip29.group_events",
+        swift_field: "groupEvents",
+        swift_type: "GroupEventsSnapshot",
         typed_sidecar: Some(TypedSidecar {
             // Wave B Tier-1 #4: the `flatc --swift` reader
-            // (`nmp_nip29_GroupTimelineSnapshot`) ships in this PR. Host-registered
-            // producer in `crates/nmp-ffi/src/group_feed.rs` (#2088):
-            // `NmpApp::open_group_timeline` → `register_typed_snapshot_projection`.
-            // Flat field-for-field copy: `{ events: [GroupTimelineEvent] }`,
+            // (`nmp_nip29_GroupEventsSnapshot`) ships in this PR. Host-registered
+            // producer in `crates/nmp-ffi/src/group_feed.rs` (#2187):
+            // `NmpApp::open_group_events` → `register_typed_snapshot_projection`.
+            // Flat field-for-field copy: `{ events: [GroupEvent] }`,
             // each row `{ id, pubkey, content, created_at, kind }`. See
-            // `TypedProjectionGlue.groupTimeline`.
-            swift_reader_type: Some("nmp_nip29_GroupTimelineSnapshot"),
+            // `TypedProjectionGlue.groupEvents`.
+            swift_reader_type: Some("nmp_nip29_GroupEventsSnapshot"),
         }),
     },
     SnapshotProjectionEntry {

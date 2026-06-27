@@ -26,7 +26,7 @@ pub mod swift;
 // `apps/chirp/ios/Chirp/Bridge/KernelBridge.swift`; the renderer in `swift.rs`
 // appends `SnapshotProjections` to the generated file using this slice.
 // Lives in `nmp-codegen` (D0-exempt) so the registry can name dotted host
-// keys like `"nmp.nip29.group_timeline"` without tripping doctrine-lint on
+// keys like `"nmp.nip29.group_events"` without tripping doctrine-lint on
 // `nmp-core`. See module doc for the full rationale.
 pub mod swift_projections_registry;
 // #1723 (epic #1719) — the neutral projection contract manifest. The single

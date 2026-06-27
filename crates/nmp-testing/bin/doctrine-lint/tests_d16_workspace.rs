@@ -41,7 +41,7 @@ fn d16_positive_fixture_fires() {
     );
     // Both banned bare-prefix literals in the fixture must surface so a
     // regression that silently swallows one cannot pass this test.
-    for token in ["nip29.group_timeline", "nip17.dm_inbox"] {
+    for token in ["nip29.group_events", "nip17.dm_inbox"] {
         assert!(
             stdout.contains(token),
             "d16 positive must name `{}`; stdout:\n{}",

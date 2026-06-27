@@ -1,18 +1,19 @@
 namespace nmp.nip29;
 
-// Typed FlatBuffers wire for the NIP-29 group-timeline snapshot projection
-// (`nmp_nip29::projection::GroupTimelineSnapshot`), schema_id
-// "nmp.nip29.group_timeline".
+// Typed FlatBuffers wire for the NIP-29 group-events snapshot projection
+// (`nmp_nip29::projection::GroupEventsSnapshot`), schema_id
+// "nmp.nip29.group_events".
 //
-// NIP-29 is a kind-agnostic group transport: this projection accumulates every
-// h-tagged group event regardless of kind and exposes the kind per event, so a
-// "chat view" is a consumer-side filter on `kind == 9`, not a baked-in concept.
+// NIP-29 is a kind-agnostic group transport (issue #2187): this projection
+// accumulates the h-tagged group events the CONSUMER asked for and exposes the
+// kind per event. A "chat view" is a consumer that declared kinds {9, 11}; the
+// projection itself bakes in no kind policy.
 //
 // This is the typed sidecar (ADR-0037) carried alongside the existing generic
 // `serde_json::Value` projection registered under the same key in
-// `nmp_nip29::register::wire_group_timeline`. The serde shape
-// (`GroupTimelineProjection::snapshot_json`) stays authoritative; this buffer
-// mirrors it byte-for-byte in field semantics so a host with a `NGTL` decoder
+// `nmp-ffi`'s `NmpApp::open_group_events`. The serde shape
+// (`GroupEventsProjection::snapshot_json`) stays authoritative; this buffer
+// mirrors it byte-for-byte in field semantics so a host with a `NGEV` decoder
 // can read typed accessors instead of JSON reflection. An un-updated host falls
 // back to the generic `Value` subtree (the permanent fallback from ADR-0037).
 //
@@ -29,25 +30,24 @@ namespace nmp.nip29;
 // is self-contained (no `include`), so generate with plain `flatc --rust`:
 //
 //   flatc --rust -o crates/nmp-nip29/src/wire/generated \
-//         crates/nmp-nip29/schema/group_timeline.fbs
+//         crates/nmp-nip29/schema/group_events.fbs
 
-// One group event on the timeline. A flat carrier mirroring
-// `nmp_nip29::GroupTimelineEvent` exactly.
-table GroupTimelineEvent {
+// One group event. A flat carrier mirroring `nmp_nip29::GroupEvent` exactly.
+table GroupEvent {
   id:string;            // raw hex event id (also the projection dedupe key)
   pubkey:string;        // raw hex author pubkey (64 chars)
   content:string;       // event content, verbatim
   created_at:uint64;    // event created_at, Unix seconds
-  kind:uint32;          // event kind (e.g. 9 chat, 11 thread) — consumers filter
+  kind:uint32;          // event kind (e.g. 9 chat, 11 thread, 1111 comment)
 }
 
-// The serialised group-timeline read model. `events` is ordered newest-first
+// The serialised group-events read model. `events` is ordered newest-first
 // (`created_at` descending, ties broken by id descending) — the encoder ships
 // the snapshot order verbatim.
-table GroupTimelineSnapshot {
-  schema_version:uint32 = 1;   // mirrors GROUP_TIMELINE_SCHEMA_VERSION
-  events:[GroupTimelineEvent];
+table GroupEventsSnapshot {
+  schema_version:uint32 = 1;   // mirrors GROUP_EVENTS_SCHEMA_VERSION
+  events:[GroupEvent];
 }
 
-root_type GroupTimelineSnapshot;
-file_identifier "NGTL";
+root_type GroupEventsSnapshot;
+file_identifier "NGEV";

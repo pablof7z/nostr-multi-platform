@@ -1,5 +1,5 @@
 use nmp_core::substrate::KernelEvent;
-use nmp_nip29::decode_group_timeline_snapshot;
+use nmp_nip29::decode_group_events_snapshot;
 
 use super::started_handle;
 
@@ -7,12 +7,13 @@ const RELAY: &str = "wss://groups.example";
 const GROUP_ID: &str = "nmp-builders";
 
 #[test]
-fn browser_group_timeline_emits_ngtl_rows_from_h_tagged_relay_hits() {
+fn browser_group_events_emits_ngev_rows_from_h_tagged_relay_hits() {
     let mut handle = started_handle();
+    // Chat view: the consumer declares kinds [9, 11] (issue #2187).
     let key = handle
-        .open_group_timeline(RELAY, GROUP_ID, "g1")
-        .expect("valid group timeline");
-    assert_eq!(key, "nmp.nip29.group_timeline");
+        .open_group_events(RELAY, GROUP_ID, vec![9, 11], "g1")
+        .expect("valid group events");
+    assert_eq!(key, "nmp.nip29.group_events");
 
     let opened = handle.pump();
     let outbound = opened
@@ -40,8 +41,8 @@ fn browser_group_timeline_emits_ngtl_rows_from_h_tagged_relay_hits() {
             relay_provenance: vec![RELAY.to_string()],
         });
 
-    let payload = timeline_payload(&mut handle, "nmp.nip29.group_timeline");
-    let snapshot = decode_group_timeline_snapshot(&payload).expect("NGTL decodes");
+    let payload = timeline_payload(&mut handle, "nmp.nip29.group_events");
+    let snapshot = decode_group_events_snapshot(&payload).expect("NGEV decodes");
     assert_eq!(snapshot.events.len(), 1);
     assert_eq!(
         snapshot.events[0].content,

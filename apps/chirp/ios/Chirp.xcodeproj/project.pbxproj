@@ -163,7 +163,7 @@
 		D93F87FAB4BDD5BB307789C0 /* KernelModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3808C5C6482C44109C442925 /* KernelModel.swift */; };
 		DC6FF9F50A594B0F3F0B84F8 /* DmBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDF6A637F032F16E09D2F6AC /* DmBridge.swift */; };
 		DF88BB885BF9F28670BC75A2 /* EmbedKindProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D0489622C6A26A315F81408 /* EmbedKindProjection.swift */; };
-		DFB6EABC021D572534C3AB93 /* GroupTimeline.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = F25D41AB0F7C56A1473186BE /* GroupTimeline.generated.swift */; };
+		DFB6EABC021D572534C3AB93 /* GroupEvents.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = F25D41AB0F7C56A1473186BE /* GroupEvents.generated.swift */; };
 		E0261E96E6ED75A89AC63364 /* RelayRoleOptions.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 550440DC731E63D13B088D60 /* RelayRoleOptions.generated.swift */; };
 		E04FAFA54A9A43858EB226CF /* MarmotModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B15293C7F9947AC5629CC8A6 /* MarmotModels.swift */; };
 		E082E49B38D53ECF2328D109 /* FeedWindow.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8D6691C36F18AFB0ECF923F /* FeedWindow.generated.swift */; };
@@ -393,7 +393,7 @@
 		EFAA2430D446BC5045B521C3 /* SettingsHub.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsHub.generated.swift; sourceTree = "<group>"; };
 		EFD5F255DFCEAF651DAD2601 /* AppRuntimeMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRuntimeMetrics.swift; sourceTree = "<group>"; };
 		F084A0E109F23A641626E2F9 /* MarmotInviteSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarmotInviteSheet.swift; sourceTree = "<group>"; };
-		F25D41AB0F7C56A1473186BE /* GroupTimeline.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupTimeline.generated.swift; sourceTree = "<group>"; };
+		F25D41AB0F7C56A1473186BE /* GroupEvents.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupEvents.generated.swift; sourceTree = "<group>"; };
 		F3554BAD41A86827FFAF1D06 /* ChirpUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ChirpUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		F4B102E18AA406E26FBF1957 /* JoinGroupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JoinGroupView.swift; sourceTree = "<group>"; };
 		F4F21B71FA094E854F8804AD /* NostrAvatar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrAvatar.swift; sourceTree = "<group>"; };
@@ -473,7 +473,7 @@
 				14F6832910B9E6ED7CCDE701 /* DmRelayList.generated.swift */,
 				D8D6691C36F18AFB0ECF923F /* FeedWindow.generated.swift */,
 				AA6138CF89212823876CA2EC /* FollowList.generated.swift */,
-				F25D41AB0F7C56A1473186BE /* GroupTimeline.generated.swift */,
+				F25D41AB0F7C56A1473186BE /* GroupEvents.generated.swift */,
 				84D75F3370D27FAAEA3B8C33 /* GroupDefaults.generated.swift */,
 				ED03F335A2A3AA5CE4089C57 /* KernelTypes.generated.swift */,
 				31E4EFE499809F51EDF801A8 /* KeyedRefCache.generated.swift */,
@@ -963,7 +963,7 @@
 				E082E49B38D53ECF2328D109 /* FeedWindow.generated.swift in Sources */,
 				A40672B13026E9B94EC7E65A /* FollowList.generated.swift in Sources */,
 				68AC65797FD219DC0B752949 /* FollowListBridge.swift in Sources */,
-				DFB6EABC021D572534C3AB93 /* GroupTimeline.generated.swift in Sources */,
+				DFB6EABC021D572534C3AB93 /* GroupEvents.generated.swift in Sources */,
 				5F05576A5E81E79E0B4C9DE6 /* GroupChatBridge.swift in Sources */,
 				EEDE116FC91062BBFA1DA249 /* GroupChatView.swift in Sources */,
 				704D121428463E20F29B3202 /* GroupDefaults.generated.swift in Sources */,

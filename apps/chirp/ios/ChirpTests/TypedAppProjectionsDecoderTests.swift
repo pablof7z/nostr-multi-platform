@@ -3,7 +3,7 @@ import FlatBuffers
 @testable import Chirp
 
 /// Typed-decode tests for the Wave B Tier-1 #4 app-projection sidecars:
-/// `nmp.follow_list` (`NF02`), `nmp.nip29.group_timeline` (`NGTL`), and
+/// `nmp.follow_list` (`NF02`), `nmp.nip29.group_events` (`NGEV`), and
 /// `nmp.nip29.discovered_groups` (`NDGS`).
 /// These mirror `TypedDiagnosticsLifecycleDecoderTests`: build the typed
 /// FlatBuffers buffer directly via the generated builders, wrap it in a
@@ -95,22 +95,22 @@ final class TypedAppProjectionsDecoderTests: XCTestCase {
         XCTAssertTrue(snap.follows.isEmpty)
     }
 
-    // ── nmp.nip29.group_timeline (NGTL) ──────────────────────────────────────────
+    // ── nmp.nip29.group_events (NGEV) ──────────────────────────────────────────
 
     func testTypedGroupChatSidecarDecodes() throws {
         let envelope = TypedProjectionEnvelope(
-            key: TypedGroupTimelineDecoder.key,
-            schemaId: TypedGroupTimelineDecoder.schemaId,
+            key: TypedGroupEventsDecoder.key,
+            schemaId: TypedGroupEventsDecoder.schemaId,
             schemaVersion: 1,
-            fileIdentifier: TypedGroupTimelineDecoder.fileIdentifier,
-            payload: buildGroupTimeline([
+            fileIdentifier: TypedGroupEventsDecoder.fileIdentifier,
+            payload: buildGroupEvents([
                 ("typed-id-1", "typed-pk-1", "typed hello", 1_700_000_111, 9),
                 ("typed-id-2", "typed-pk-2", "typed thread", 1_700_000_222, 11),
             ]))
 
         let snap = try XCTUnwrap(
-            TypedGroupTimelineDecoder.decode(from: [envelope]),
-            "well-formed NGTL sidecar must decode")
+            TypedGroupEventsDecoder.decode(from: [envelope]),
+            "well-formed NGEV sidecar must decode")
 
         XCTAssertEqual(snap.events.count, 2)
         // Order preserved verbatim (the Rust projection emits newest-first).
@@ -125,17 +125,17 @@ final class TypedAppProjectionsDecoderTests: XCTestCase {
     }
 
     func testAbsentGroupChatSidecarFallsBack() {
-        XCTAssertNil(TypedGroupTimelineDecoder.decode(from: []))
+        XCTAssertNil(TypedGroupEventsDecoder.decode(from: []))
     }
 
     func testWrongSchemaGroupChatFallsBack() {
         let envelope = TypedProjectionEnvelope(
-            key: TypedGroupTimelineDecoder.key,
-            schemaId: "not.group_timeline",
+            key: TypedGroupEventsDecoder.key,
+            schemaId: "not.group_events",
             schemaVersion: 1,
-            fileIdentifier: TypedGroupTimelineDecoder.fileIdentifier,
-            payload: buildGroupTimeline([("i", "p", "c", 1, 9)]))
-        XCTAssertNil(TypedGroupTimelineDecoder.decode(from: [envelope]))
+            fileIdentifier: TypedGroupEventsDecoder.fileIdentifier,
+            payload: buildGroupEvents([("i", "p", "c", 1, 9)]))
+        XCTAssertNil(TypedGroupEventsDecoder.decode(from: [envelope]))
     }
 
     // NOTE: the garbled-file-identifier test was removed. The decode path now
@@ -146,7 +146,7 @@ final class TypedAppProjectionsDecoderTests: XCTestCase {
     // the selection mechanism, not the file identifier.
 
     func testEmptyGroupChatBufferDecodesToNoMessages() throws {
-        let snap = try XCTUnwrap(TypedGroupTimelineDecoder.decode(bytes: buildGroupTimeline([])))
+        let snap = try XCTUnwrap(TypedGroupEventsDecoder.decode(bytes: buildGroupEvents([])))
         XCTAssertTrue(snap.events.isEmpty)
     }
 
@@ -250,13 +250,13 @@ final class TypedAppProjectionsDecoderTests: XCTestCase {
         return fbb.data
     }
 
-    private func buildGroupTimeline(_ rows: [(String, String, String, UInt64, UInt32)]) -> Data {
+    private func buildGroupEvents(_ rows: [(String, String, String, UInt64, UInt32)]) -> Data {
         var fbb = FlatBufferBuilder(initialSize: 512)
         let offsets: [Offset] = rows.map { (id, pubkey, content, createdAt, kind) in
             let idOff = fbb.create(string: id)
             let pkOff = fbb.create(string: pubkey)
             let contentOff = fbb.create(string: content)
-            return nmp_nip29_GroupTimelineEvent.createGroupTimelineEvent(
+            return nmp_nip29_GroupEvent.createGroupEvent(
                 &fbb,
                 idOffset: idOff,
                 pubkeyOffset: pkOff,
@@ -265,9 +265,9 @@ final class TypedAppProjectionsDecoderTests: XCTestCase {
                 kind: kind)
         }
         let vec = fbb.createVector(ofOffsets: offsets)
-        let root = nmp_nip29_GroupTimelineSnapshot.createGroupTimelineSnapshot(
+        let root = nmp_nip29_GroupEventsSnapshot.createGroupEventsSnapshot(
             &fbb, eventsVectorOffset: vec)
-        nmp_nip29_GroupTimelineSnapshot.finish(&fbb, end: root)
+        nmp_nip29_GroupEventsSnapshot.finish(&fbb, end: root)
         return fbb.data
     }
 

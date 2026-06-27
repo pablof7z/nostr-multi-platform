@@ -299,12 +299,12 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         presence_policy: PresencePolicy::None,
     },
     ProjectionContract {
-        key: "nmp.nip29.group_timeline",
+        key: "nmp.nip29.group_events",
         tier: ProjectionTier::HostRegistered,
-        producer: "nmp-ffi group_feed (NmpApp::open_group_timeline, #2088)",
-        schema_id: "nmp.nip29.group_timeline",
-        file_identifier: "NGTL",
-        // nmp-nip29 wire/group_timeline_fb::GROUP_TIMELINE_SCHEMA_VERSION
+        producer: "nmp-ffi group_feed (NmpApp::open_group_events, #2187)",
+        schema_id: "nmp.nip29.group_events",
+        file_identifier: "NGEV",
+        // nmp-nip29 wire/group_events_fb::GROUP_EVENTS_SCHEMA_VERSION
         version: 1,
         declaration_policy: DeclarationPolicy::RegistrationGated,
         dependency_versions: &[],

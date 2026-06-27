@@ -6,9 +6,9 @@
 //!   an opaque handle for later snapshots / unregister.
 //! - [`nmp_app_open_feed`] / [`nmp_app_close_feed`] — the single typed feed
 //!   session doorway for home, author, thread, and other declared feeds.
-//! - [`nmp_app_chirp_register_group_timeline`] /
-//!   [`nmp_app_chirp_unregister_group_timeline`] — open/close a NIP-29 group-chat
-//!   read view (`"nmp.nip29.group_timeline"`, `NGTL`). The view is now a HYDRATING
+//! - [`nmp_app_chirp_register_group_events`] /
+//!   [`nmp_app_chirp_unregister_group_events`] — open/close a NIP-29 group-chat
+//!   read view (`"nmp.nip29.group_events"`, `NGEV`). The view is now a HYDRATING
 //!   observed interest (#2088): a screen opened after the group's events were
 //!   cached catches up on the cached tail. Singleton; `register` replaces a
 //!   prior view, `unregister` tears it down on screen dismissal.
@@ -80,7 +80,7 @@ pub use declared_projections::nmp_app_chirp_declare_consumed_projections;
 pub use feed::{nmp_app_close_feed, nmp_app_open_feed};
 pub use group::{
     nmp_app_chirp_close_group_discovery, nmp_app_chirp_open_group_discovery,
-    nmp_app_chirp_register_group_timeline, nmp_app_chirp_unregister_group_timeline,
+    nmp_app_chirp_register_group_events, nmp_app_chirp_unregister_group_events,
 };
 pub use handle::ChirpHandle;
 #[cfg(feature = "marmot")]
