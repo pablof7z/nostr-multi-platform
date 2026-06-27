@@ -110,6 +110,8 @@ mod publish_engine_tests;
 #[cfg(test)]
 mod publish_relay_identity_tests;
 #[cfg(test)]
+mod publish_relay_receipt_tests;
+#[cfg(test)]
 mod publish_terminal_status_tests;
 #[cfg(test)]
 mod pull_cursor_retention_tests;

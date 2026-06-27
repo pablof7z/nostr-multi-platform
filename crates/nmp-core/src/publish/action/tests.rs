@@ -137,6 +137,40 @@ fn publish_raw_accepts_arbitrary_event_kind_with_auto_target() {
 }
 
 #[test]
+fn publish_reply_validates_parent_event_id_shape() {
+    let action = PublishAction::PublishReply {
+        content: "reply".to_string(),
+        reply_to_event_id: "not-hex".to_string(),
+        target: PublishTarget::Auto,
+        signer_pubkey: None,
+    };
+    let err = PublishModule
+        .start(&mut ctx(), action)
+        .expect_err("invalid parent event id must fail closed");
+    assert!(
+        matches!(err, ActionRejection::Invalid(ref msg) if msg.contains("64-character hex")),
+        "got {err:?}"
+    );
+}
+
+#[test]
+fn publish_reply_rejects_empty_content() {
+    let action = PublishAction::PublishReply {
+        content: "   ".to_string(),
+        reply_to_event_id: "a".repeat(64),
+        target: PublishTarget::Auto,
+        signer_pubkey: None,
+    };
+    let err = PublishModule
+        .start(&mut ctx(), action)
+        .expect_err("empty reply content must fail closed");
+    assert!(
+        matches!(err, ActionRejection::Invalid(ref msg) if msg.contains("must not be empty")),
+        "got {err:?}"
+    );
+}
+
+#[test]
 fn publish_raw_rejects_gift_wrap_with_auto_target() {
     // BLOCKER #1 regression: a kind:1059 gift-wrap published raw with `Auto`
     // would Auto-route the encrypted envelope to the author's PUBLIC relays
@@ -352,6 +386,34 @@ fn execute_publish_raw_threads_signer_pubkey_onto_actor_command() {
             );
         }
         other => panic!("expected PublishRawEvent, got {other:?}"),
+    }
+}
+
+#[test]
+fn execute_publish_reply_emits_publish_reply_command() {
+    let parent_id = "b".repeat(64);
+    let action = PublishAction::PublishReply {
+        content: "reply".to_string(),
+        reply_to_event_id: parent_id.clone(),
+        target: PublishTarget::Auto,
+        signer_pubkey: None,
+    };
+    let cmds = run_execute(action).expect("execute must succeed");
+    assert_eq!(cmds.len(), 1, "must emit exactly one command");
+    match cmds.into_iter().next().unwrap() {
+        ActorCommand::Publish(PublishCommand::Reply {
+            content,
+            reply_to_event_id,
+            target,
+            correlation_id,
+            ..
+        }) => {
+            assert_eq!(content, "reply");
+            assert_eq!(reply_to_event_id, parent_id);
+            assert_eq!(target, PublishTarget::Auto);
+            assert_eq!(correlation_id.as_deref(), Some("test-cid"));
+        }
+        other => panic!("expected PublishReply, got {other:?}"),
     }
 }
 

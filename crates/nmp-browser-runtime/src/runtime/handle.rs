@@ -12,10 +12,13 @@
 //! - `diagnostics() -> BrowserRuntimeDiagnostics` — log-safe diagnostics (#2075)
 //! - Clock injection applied in `from_builder_inner` (#2076)
 
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{mpsc, Arc};
 
+use nmp_core::substrate::{ObservedProjectionCommandHandle, PreferredRelaySource};
 use nmp_core::{AppRelayList, CommandSender, SignerStateModel, UpdateFrameBytes};
+use nmp_signers::Signer;
 
 use super::diagnostics::BrowserRuntimeDiagnostics;
 use super::event::BrowserRuntimeEvent;
@@ -32,7 +35,10 @@ use crate::signer::{
 };
 
 use super::NoopRoutingTrace;
-use std::collections::HashMap;
+use super::{
+    BrowserGroupDiscoverySession, BrowserGroupTimelineSession, BrowserNotificationsSession,
+    BrowserSearchSession,
+};
 
 /// Public-facing handle to the browser runtime (issue #2058 — hides raw
 /// reducer/runtime handles).
@@ -53,6 +59,13 @@ pub struct BrowserRuntimeHandle {
 
     // ── #2074 — Rust-owned signer-state slot ─────────────────────────────────
     pub(super) signer_state_slot: BrowserSignerStateSlot,
+
+    pub(super) preferred_relay_source: Option<Arc<dyn PreferredRelaySource>>,
+    pub(super) observed_projection_registrar: ObservedProjectionCommandHandle,
+    pub(super) search_sessions: HashMap<String, BrowserSearchSession>,
+    pub(super) group_discovery_sessions: HashMap<String, BrowserGroupDiscoverySession>,
+    pub(super) group_timeline_sessions: HashMap<String, BrowserGroupTimelineSession>,
+    pub(super) notifications_sessions: HashMap<String, BrowserNotificationsSession>,
 }
 
 impl BrowserRuntimeHandle {
@@ -160,8 +173,13 @@ impl BrowserRuntimeHandle {
 
         // ── Extract the receiver and build the runtime ────────────────────────
 
+        let preferred_relay_source = inner.preferred_relay_source.take();
         let inbox_rx = inner.inbox_rx;
         let inbox_tx = inner.inbox_tx.clone();
+        let observed_projection_registrar = inner.reducer.observed_projection_command_handle(
+            Arc::clone(&inner.observed_projection_sessions),
+            CommandSender::new(inbox_tx.clone()),
+        );
 
         let runtime = BrowserRuntime {
             reducer: inner.reducer,
@@ -186,6 +204,12 @@ impl BrowserRuntimeHandle {
             configured_relays: relay_slot,
             snapshot_cache: BrowserSnapshotCache::new(),
             signer_state_slot,
+            preferred_relay_source,
+            observed_projection_registrar,
+            search_sessions: HashMap::new(),
+            group_discovery_sessions: HashMap::new(),
+            group_timeline_sessions: HashMap::new(),
+            notifications_sessions: HashMap::new(),
         };
 
         // ── Spawn relay drivers from bootstrap list (wasm32 only) ────────────
@@ -309,6 +333,20 @@ impl BrowserRuntimeHandle {
             .signer_registry
             .capability_envelope(account_pubkey)
             .cloned()
+    }
+
+    /// Install or replace a signer provider and publish signer readiness.
+    ///
+    /// D4: this mutates the provider registry and signer-state slot only through
+    /// the runtime handle, outside `pump()`. The caller still owns setting the
+    /// active account so relay/follow projections update through the normal
+    /// kernel reducer path.
+    pub(crate) fn install_signer_provider(&mut self, signer: Arc<dyn Signer>) -> String {
+        let pubkey = signer.pubkey().to_hex();
+        let backend = signer.backend();
+        self.runtime.signer_registry.insert(signer);
+        self.set_signer_state(Some(ready_model(&backend)));
+        pubkey
     }
 
     // ── #2074 — signer-state slot writer ─────────────────────────────────────

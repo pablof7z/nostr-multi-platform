@@ -29,6 +29,7 @@ use nmp_core::actor::ActorMail;
 use nmp_core::{CommandApplyOutcome, KernelReducer, OutboundMessage};
 
 use super::event::BrowserRuntimeEvent;
+use super::protocol::expand_protocol_commands;
 use super::PendingSignedPublish;
 use crate::relay::WakeCell;
 use crate::signer::{broker_sign_request, CapabilityProviderRegistry, SignerCompletionTx};
@@ -97,45 +98,54 @@ pub(super) fn drain_inbox(
         };
 
         applied += 1;
-        match reducer.apply_actor_command(cmd) {
-            CommandApplyOutcome::Applied(msgs) => {
-                outbound.extend(msgs);
-            }
-            CommandApplyOutcome::NeedsSign {
-                request,
-                target,
-                action_correlation_id,
-            } => {
-                // Park the publish continuation under the sign correlation id.
-                pending.insert(
-                    request.correlation_id.clone(),
-                    PendingSignedPublish {
-                        action_correlation_id,
-                        target,
-                    },
-                );
-                // Try to auto-broker using a registered provider (LocalKey:
-                // inline; NIP-07/wasm: async via spawn_local → channel).
-                // If no provider is found, emit SignRequest for host-brokering
-                // (never silently drop — D6).
-                let brokered = broker_sign_request(
-                    registry,
-                    &request.correlation_id,
-                    &request.account_pubkey,
-                    &request.unsigned_json,
-                    completion_tx,
-                    wake,
-                );
-                if !brokered {
-                    events.push(BrowserRuntimeEvent::SignRequest {
-                        correlation_id: request.correlation_id,
-                        account_pubkey: request.account_pubkey,
-                        unsigned_json: request.unsigned_json,
-                    });
-                }
-            }
-            CommandApplyOutcome::Unsupported { reason } => {
+        let commands = match expand_protocol_commands(vec![cmd]) {
+            Ok(commands) => commands,
+            Err(reason) => {
                 events.push(BrowserRuntimeEvent::CommandFailed { reason });
+                continue;
+            }
+        };
+        for cmd in commands {
+            match reducer.apply_actor_command(cmd) {
+                CommandApplyOutcome::Applied(msgs) => {
+                    outbound.extend(msgs);
+                }
+                CommandApplyOutcome::NeedsSign {
+                    request,
+                    target,
+                    action_correlation_id,
+                } => {
+                    // Park the publish continuation under the sign correlation id.
+                    pending.insert(
+                        request.correlation_id.clone(),
+                        PendingSignedPublish {
+                            action_correlation_id,
+                            target,
+                        },
+                    );
+                    // Try to auto-broker using a registered provider (LocalKey:
+                    // inline; NIP-07/wasm: async via spawn_local → channel).
+                    // If no provider is found, emit SignRequest for host-brokering
+                    // (never silently drop — D6).
+                    let brokered = broker_sign_request(
+                        registry,
+                        &request.correlation_id,
+                        &request.account_pubkey,
+                        &request.unsigned_json,
+                        completion_tx,
+                        wake,
+                    );
+                    if !brokered {
+                        events.push(BrowserRuntimeEvent::SignRequest {
+                            correlation_id: request.correlation_id,
+                            account_pubkey: request.account_pubkey,
+                            unsigned_json: request.unsigned_json,
+                        });
+                    }
+                }
+                CommandApplyOutcome::Unsupported { reason } => {
+                    events.push(BrowserRuntimeEvent::CommandFailed { reason });
+                }
             }
         }
     }

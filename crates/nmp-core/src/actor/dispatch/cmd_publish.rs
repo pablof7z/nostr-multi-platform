@@ -1,20 +1,4 @@
 //! Publish, follow, relay-mutation, and action-record dispatch arms.
-//!
-//! Covers: `PublishRawEvent`, `PublishProfile`, `PublishUnsignedEvent`,
-//! `PublishUnsignedEventToRelays`, `PublishSignedEvent`, `RetryPublish`,
-//! `CancelPublish`, `Follow`, `Unfollow`, `FollowMany`,
-//! `AddRelay`, `RemoveRelay`, `ReconnectRelays`,
-//! `RecordActionFailure`, `RecordActionSuccess`, `AckActionStage`,
-//! `SetRelayInfo`.
-//!
-//! Extracted from `dispatch.rs` to keep `mod.rs` under the LOC ceiling.
-//! No behaviour change — all logic is verbatim from the original file.
-//!
-//! ADR-0065 — the `dispatch_publish` / `dispatch_contacts` /
-//! `dispatch_relay` / `dispatch_action_ledger` functions below match the
-//! `PublishCommand` / `ContactsCommand` / `RelayCommand` /
-//! `ActionLedgerCommand` sub-enums and route each verb to its existing
-//! handler.
 
 use crate::actor::commands;
 use crate::actor::relay_mgmt::{ensure_relay_worker, shutdown_relay_worker};
@@ -89,6 +73,67 @@ pub(super) fn publish_raw_event(
                 // Honour the `PublishRaw` signer selector: `None` signs
                 // with the active account; `Some(pubkey)` signs with that
                 // registered app-managed signer slot.
+                signer_pubkey,
+                ctx.parked_ops,
+            )
+        }
+    };
+    maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+    Some(outbound)
+}
+
+/// Dispatch `ActorCommand::PublishReply`.
+pub(super) fn publish_reply(
+    content: String,
+    reply_to_event_id: String,
+    target: crate::publish::PublishTarget,
+    signer_pubkey: Option<String>,
+    correlation_id: Option<String>,
+    ctx: &mut ActorContext<'_>,
+) -> Option<Vec<OutboundMessage>> {
+    use crate::actor::tick::maybe_emit_after_dispatch;
+
+    if let Some(ref cid) = correlation_id {
+        ctx.kernel.record_action_stage(
+            cid,
+            crate::kernel::action_stages::ActionStage::Requested,
+            None,
+        );
+    }
+    let Some(tags) =
+        crate::kernel_reducer::reply::build_reply_tags_from_kernel(ctx.kernel, &reply_to_event_id)
+    else {
+        let reason = format!("reply_target_unknown: {reply_to_event_id}");
+        ctx.kernel.set_last_error_toast(Some(reason.clone()));
+        if let Some(id) = correlation_id {
+            ctx.kernel.record_action_failure(id, reason);
+        }
+        maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+        return Some(Vec::new());
+    };
+    let unsigned = nmp_signer_iface::UnsignedEvent {
+        pubkey: String::new(),
+        kind: 1,
+        tags,
+        content,
+        created_at: ctx.kernel.now_secs(),
+    };
+    let outbound = match target {
+        crate::publish::PublishTarget::Auto => commands::publish_unsigned_event(
+            ctx.identity,
+            ctx.kernel,
+            unsigned,
+            correlation_id,
+            signer_pubkey,
+            ctx.parked_ops,
+        ),
+        crate::publish::PublishTarget::Explicit { relays } => {
+            commands::publish_unsigned_event_to_relays(
+                ctx.identity,
+                ctx.kernel,
+                unsigned,
+                relays,
+                correlation_id,
                 signer_pubkey,
                 ctx.parked_ops,
             )

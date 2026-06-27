@@ -1,7 +1,7 @@
 // Trait implementations for `PublishEngineError`. Split out of `engine.rs`
 // to keep that file within the 500-LOC hard cap (AGENTS.md).
-use super::PublishEngineError;
 use super::super::traits::PublishStoreError;
+use super::PublishEngineError;
 
 impl std::fmt::Display for PublishEngineError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

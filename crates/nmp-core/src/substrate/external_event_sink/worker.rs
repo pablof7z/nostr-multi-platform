@@ -57,13 +57,14 @@ fn fan_out_relays(
             continue;
         }
         // Build the wire frame at most once across all destinations/policies.
-        let text = frame_text
-            .get_or_insert_with(|| format!(r#"["EVENT",{}]"#, work.frame.canonical_json));
+        let text =
+            frame_text.get_or_insert_with(|| format!(r#"["EVENT",{}]"#, work.frame.canonical_json));
         for dest in destinations {
             match dest {
                 SinkDestination::Relay(target) => {
-                    let handle =
-                        rt.pool.ensure_open_with_role(&target.relay_url, target.relay_role);
+                    let handle = rt
+                        .pool
+                        .ensure_open_with_role(&target.relay_url, target.relay_role);
                     let _ = rt.pool.send(handle, WireFrame::Text(text.clone()));
                 }
             }

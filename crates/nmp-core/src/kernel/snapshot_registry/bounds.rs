@@ -42,12 +42,7 @@ pub const MAX_TICK_OBSERVERS: usize = 16;
 ///
 /// `registry` names the registry for the diagnostic (`"snapshot projection"` /
 /// `"typed snapshot projection"`).
-pub(super) fn admit_keyed(
-    len: usize,
-    key_exists: bool,
-    key: &str,
-    registry: &str,
-) -> bool {
+pub(super) fn admit_keyed(len: usize, key_exists: bool, key: &str, registry: &str) -> bool {
     if !key_exists && len >= MAX_SNAPSHOT_PROJECTIONS {
         tracing::warn!(
             key = %key,

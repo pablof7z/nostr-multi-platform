@@ -13,7 +13,11 @@ fn with_snapshot_frame<R>(bytes: &[u8], f: impl FnOnce(fb::SnapshotFrame<'_>) ->
         "frame must carry the NMPU identifier"
     );
     let frame = fb::root_as_update_frame(bytes).expect("decode update frame");
-    assert_eq!(frame.kind(), fb::FrameKind::Snapshot, "expected a snapshot frame");
+    assert_eq!(
+        frame.kind(),
+        fb::FrameKind::Snapshot,
+        "expected a snapshot frame"
+    );
     let snapshot = frame.snapshot().expect("snapshot frame present");
     f(snapshot)
 }
@@ -33,7 +37,11 @@ fn gap5_negentropy_sync_stats_round_trips_through_tier3() {
     assert_eq!(json_stats["rounds"].as_u64(), Some(3), "JSON rounds");
     assert_eq!(json_stats["have_ids"].as_u64(), Some(7), "JSON have_ids");
     assert_eq!(json_stats["need_ids"].as_u64(), Some(2), "JSON need_ids");
-    assert_eq!(json_stats["local_item_count"].as_u64(), Some(10), "JSON local_item_count");
+    assert_eq!(
+        json_stats["local_item_count"].as_u64(),
+        Some(10),
+        "JSON local_item_count"
+    );
     // transfer_avoided_bytes = (10 - 7) * 512 = 1536
     assert_eq!(
         json_stats["transfer_avoided_bytes"].as_u64(),
@@ -80,7 +88,11 @@ fn gap5_negentropy_sync_stats_default_zeros_on_fresh_kernel() {
         assert_eq!(stats.rounds(), 0, "fresh kernel: rounds == 0");
         assert_eq!(stats.have_ids(), 0, "fresh kernel: have_ids == 0");
         assert_eq!(stats.need_ids(), 0, "fresh kernel: need_ids == 0");
-        assert_eq!(stats.local_item_count(), 0, "fresh kernel: local_item_count == 0");
+        assert_eq!(
+            stats.local_item_count(),
+            0,
+            "fresh kernel: local_item_count == 0"
+        );
         assert_eq!(
             stats.transfer_avoided_bytes(),
             0,

@@ -14,9 +14,9 @@
 
 use super::super::Kernel;
 use crate::planner::InterestShape;
-use crate::relay::{DEFAULT_VISIBLE_LIMIT};
-use nmp_network::role::RelayRole;
+use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::store::{CompiledIndexSpec, SearchField, SearchScopeId, StoredEvent};
+use nmp_network::role::RelayRole;
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
@@ -24,9 +24,8 @@ use std::sync::Arc;
 /// field. Mirrors the shape a real `SearchScopeProvider` would compile into,
 /// but built directly so the test does not depend on the registry/composition.
 fn note_content_scope() -> CompiledIndexSpec {
-    let extract = Arc::new(|ev: &StoredEvent| {
-        vec![(SearchField::new(0), ev.raw.content.clone())]
-    }) as Arc<crate::store::ExtractFn>;
+    let extract = Arc::new(|ev: &StoredEvent| vec![(SearchField::new(0), ev.raw.content.clone())])
+        as Arc<crate::store::ExtractFn>;
     CompiledIndexSpec {
         scope_id: SearchScopeId::from_label("test.note.content"),
         kinds: BTreeSet::from([1u32]),
@@ -87,7 +86,10 @@ fn search_shape_with_registered_scope_serves_from_cache() {
     let shape = search_shape("nostr rust");
     let served = kernel.try_cache_serve_search(&shape, /* completion_key */ 42);
 
-    assert!(served, "a registered cache scope covers kind:1 → cache-served");
+    assert!(
+        served,
+        "a registered cache scope covers kind:1 → cache-served"
+    );
     assert!(
         kernel.events.contains_key(matching.as_str()),
         "the matching note must be served from the local FTS index with NO relay"
@@ -113,7 +115,12 @@ fn search_shape_without_scope_stays_relay_only() {
     // NO scope installed.
 
     let keys = ::nostr::Keys::generate();
-    seed_note(&mut kernel, &keys, "learning nostr and rust today", 1_700_000_000);
+    seed_note(
+        &mut kernel,
+        &keys,
+        "learning nostr and rust today",
+        1_700_000_000,
+    );
     kernel.events.clear();
 
     let shape = search_shape("nostr rust");

@@ -11,9 +11,7 @@ use crate::relay_worker::RelayEvent;
 
 use super::frame::tungstenite_to_relay_frame;
 use super::inner::{PoolInner, SlotState};
-use super::types::{
-    ClosedReason, HealthState, PoolEvent, RelayFrame, RelayHandle, TransportError,
-};
+use super::types::{ClosedReason, HealthState, PoolEvent, RelayFrame, RelayHandle, TransportError};
 
 /// A `RelayEvent` with the lock-free portion of translation already done.
 /// Carries the routing key `(relay_url, generation)` plus the variant-specific

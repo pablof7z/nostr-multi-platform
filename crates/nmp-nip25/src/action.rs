@@ -58,11 +58,12 @@ impl ActionModule for ReactModule {
 
     fn execute(
         &self,
-        _ctx: &ActionContext,
-        action: Self::Action,
+        ctx: &ActionContext,
+        mut action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
     ) -> Result<(), String> {
+        action.target_author_pubkey = resolve_target_author_pubkey(ctx, &action);
         send(ActorCommand::Protocol(Box::new(PublishReactionCommand {
             action,
             correlation_id: correlation_id.to_string(),
@@ -201,6 +202,17 @@ fn reaction_tags(action: &ReactAction) -> Option<(Vec<Vec<String>>, String)> {
         tags.push(vec!["p".to_string(), author.clone()]);
     }
     Some((tags, content))
+}
+
+fn resolve_target_author_pubkey(ctx: &ActionContext, action: &ReactAction) -> Option<String> {
+    if action.target_author_pubkey.is_some() {
+        return action.target_author_pubkey.clone();
+    }
+    ctx.local_event_by_id(&action.target_event_id)
+        .ok()
+        .flatten()
+        .map(|stored| stored.raw.pubkey.clone())
+        .filter(|pubkey| is_hex64(pubkey))
 }
 
 fn default_reaction() -> String {

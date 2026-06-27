@@ -1,0 +1,298 @@
+# Product Spec: Chirp Web
+
+Chirp Web is the browser reference client for NMP. It must prove the WASM
+worker can read, render, sign, publish, and diagnose real Nostr traffic without
+TypeScript protocol policy.
+
+## First-Run Contract
+
+New browser profiles must open into usable product, not a dead demo, with
+relay/feed health, signer state, compose affordances, and publish/action diagnostics.
+
+First run is guided onboarding. UI must expose next action and identity paths,
+advancing only after runtime, relays, signer, and feed projection are live.
+While unsigned, onboarding is primary; feed is proof only when session proof stays primary.
+Empty feeds must link to discovery, relay checks, or identity setup.
+
+`#signing` is the first-level account workspace, not a Setup alias. It must
+mark Signer active, keep signer status primary, and hide unrelated feed panes.
+
+Users without a browser extension must still have a complete write path:
+Chirp Web supports a memory-only local-key session by accepting an `nsec` and
+handing it directly to `nmp-browser-runtime` as `set_identity kind=local_key`.
+Rust decodes the secret, derives the pubkey, registers the signer, and owns all
+signing. TypeScript may read the form value only to send that request; it must
+not decode, derive from, cache, or sign with the secret.
+
+NIP-07 remains preferred. NIP-46 is not a web onboarding path until the browser
+runtime wires a bunker signer end to end.
+
+## Search Discovery Contract
+
+Chirp Web must expose NIP-50 search as a first-level product workspace, not as a
+shell-local filter over the visible feed. The browser shell may collect the
+query, selected scope, and leaf-app search relay policy, but Rust must validate
+and bound the query, build the `SearchRequest`, resolve targets, open the
+relay-pinned interests, ingest cache hits through the NIP-50 FTS path, and emit
+typed `N50S` results under `nmp.nip50.search.<session>`.
+
+TypeScript must decode the typed `N50S` snapshot and render results. It must not
+construct NIP-01 search filters, scan feed rows as search, or invent result
+provenance. The default search relay is app policy; tests may override it via URL.
+
+Acceptance must prove that opening the Search workspace sends a real Rust-owned
+NIP-50 session through the browser worker, that a fixture relay receives the
+search subscription, and that matching signed events render from the typed
+search sidecar with relay/cache provenance.
+
+## Group Discovery Contract
+
+Chirp Web must expose NIP-29 public group discovery as a first-level product
+workspace. The browser shell may choose the Chirp public group relay from app
+policy and request that the workspace opens or closes, but Rust must own the
+relay-pinned NIP-29 metadata interest, cache replay, group metadata projection,
+and typed `NDGS` sidecar under `nmp.nip29.discovered_groups`.
+
+TypeScript must decode the typed `NDGS` snapshot and render discovered group
+metadata. It must not construct NIP-29 filters, keep a parallel group cache,
+derive counts, or invent provenance. Opening a group timeline must request a
+Rust-owned relay-pinned NIP-29 `#h` chat interest and render the typed `NGTL`
+sidecar under `nmp.nip29.group_timeline`. Until Rust-owned flows exist for
+join/leave and moderation, those controls must expose blocked diagnostics.
+
+Acceptance must prove that opening the Groups workspace sends a real
+Rust-owned NIP-29 discovery subscription to the configured group relay, and
+that signed kind:39000/39001/39002 fixture events render from the typed group
+discovery sidecar with relay provenance. Acceptance must also prove that opening
+a group sends a real kind:9/11 `#h` subscription and renders signed group
+messages from the typed timeline sidecar.
+
+## Notifications Contract
+
+Chirp Web must expose notifications as a first-level product workspace for the
+active account. The browser shell may request that a notification session opens
+for the Rust-owned active account pubkey, but Rust must own the bounded `#p`
+inbox interest, cross-protocol classification, dedupe, ordering, relay
+provenance, and typed `NNTF` sidecar under
+`nmp.relations.notifications.<session>`.
+
+Notifications include replies and mentions from kind:1 events, NIP-25
+reactions, NIP-18 reposts, NIP-22 comments, and NIP-57 zap receipts that p-tag
+the active account. TypeScript must decode the typed `NNTF` snapshot and render
+rows, including Rust-projected read state. It must not construct notification
+filters, maintain a parallel unread store, classify Nostr event kinds, or invent
+source relay provenance.
+
+Read/unread state is a Rust projection concern. The browser shell may send a
+typed mark-read request for currently visible notification event ids or all
+visible rows, but Rust must decide which rows are eligible and emit the updated
+`NNTF` unread count and per-row read flags.
+
+Acceptance must prove that opening Notifications sends a Rust-owned bounded
+`#p=<active-account>` subscription; signed fixture interactions render with
+source relay provenance; and marking visible rows read updates the
+Rust-projected unread count without shell-local read storage.
+
+## Profile Open Contract
+
+Chirp Web must let users open a visible author profile from feed and thread
+cards. The profile surface must render Rust-resolved profile metadata when
+available, the active-account follow state from `nmp.follow_list`, relay
+provenance for hydrated author content, and authored posts already present in
+Rust-owned feed projections.
+
+The browser shell may filter the current projected feed rows for presentation,
+but it must not maintain an independent author timeline, profile cache, contact
+graph, or relay query plan. If the author has more content than the current
+projection has hydrated, the UI must represent only the visible projected set
+until a Rust-owned profile/feed workspace provides a broader author feed.
+
+## Thread Open Contract
+
+Chirp Web must let users open a visible feed note into a thread detail surface.
+The browser shell may render the selected Rust-projected root, relation counts,
+relay provenance, and Rust-emitted reply attribution rows from the existing
+`nmp.feed.home` projection. TypeScript must not issue relay queries, infer NIP-10
+thread membership, or maintain a parallel thread graph.
+
+The current thread detail shows selected-note content, relation counters, relay
+provenance, a reply composer, and visible reply attribution rows containing the
+reply author, reply event id, and timestamp. Full reply-body hydration remains
+pending until Rust emits a dedicated thread/read-model sidecar for browser
+sessions.
+
+Acceptance must prove that opening a fixture-fed thread renders reply
+attribution from the typed feed projection and that publishing a reply still
+uses the Rust-owned NIP-10 publish path.
+
+## Profile Publish Contract
+
+Chirp Web must let a signed-in user publish their public identity from the first
+product session. The browser shell may collect profile fields such as display
+name, about text, and picture URL, but it must send them through the typed
+profile publish command. Event construction, signing, outbox routing, relay
+selection, and acceptance diagnostics remain owned by Rust and the browser
+runtime.
+
+Publishing profile metadata must surface the same proof path as note publishing:
+the outbox shows the in-flight action, action results show the runtime verdict,
+and relay diagnostics show per-relay acceptance or failure. Local validation must
+assert that a fixture relay receives a signed kind:0 event with the requested
+metadata.
+
+## Reaction Publish Contract
+
+Chirp Web must let a signed-in user react to a feed or thread note through the
+typed NIP-25 action path. The browser shell may expose the Like affordance and
+send the selected event id, but Rust owns event construction, target-author tag
+resolution, signing, outbox routing, relay selection, and diagnostics.
+
+Reaction acceptance must prove that a fixture relay receives a signed kind:7
+event from the active user with the selected event's `e` tag, the target author's
+`p` tag, and the requested reaction content. The outbox/action result surfaces
+must show the same terminal relay verdicts used by notes and profiles.
+
+## Repost Publish Contract
+
+Chirp Web must let a signed-in user repost a feed or thread note through the
+typed NIP-18 action path. The browser shell may expose the Repost affordance and
+send the target event id, target kind, target author, and relay hint already
+decoded from Rust projections, but Rust owns wrapper-kind selection, NIP-18 tag
+construction, signing, outbox routing, relay selection, and diagnostics.
+
+Kind:1 targets must publish kind:6 repost wrappers. Other public target kinds
+must publish kind:16 generic repost wrappers. TypeScript must not construct
+`e`, `p`, or `k` tags and must not fall back to `nmp.publish`/`PublishRaw` for
+reposts.
+
+Acceptance must prove that repost publishes a signed kind:6 or kind:16 event
+from the active user with the selected event's `e` tag, the target author's `p`
+tag when known, the target-kind `k` tag, and the same outbox/action result
+surfaces used by notes, profiles, reactions, follows, and bookmarks.
+
+## Quote Repost Publish Contract
+
+Chirp Web must let a signed-in user quote a feed or thread note through the
+typed NIP-18 quote-repost action path. The browser shell may expose the Quote
+affordance, the composer target preview, and the user's commentary, but Rust
+owns kind:1 event construction, NIP-18 `q` tag construction, target metadata
+tags, signing, outbox routing, relay selection, and diagnostics.
+
+Quote reposts must publish kind:1 notes with non-empty commentary, a `q` tag
+for the selected event, the target author's `p` tag when known, and the
+target-kind `k` tag. TypeScript must not construct `q`, `p`, or `k` tags and
+must not fall back to `nmp.publish`/`PublishRaw` for quote reposts.
+
+Acceptance must prove that quote repost publishes a signed kind:1 event from the
+active user with the selected event's `q` tag, the target author's `p` tag when
+known, the target-kind `k` tag, the requested commentary, and the same
+outbox/action result surfaces used by notes, profiles, reactions, reposts,
+follows, and bookmarks.
+
+## Follow Publish Contract
+
+Chirp Web must let a signed-in user follow and unfollow a displayed author
+through the typed NIP-02 action path. The browser shell may expose the profile
+button and selected pubkey, but button state must derive from Rust's
+`nmp.follow_list` projection. TypeScript must not maintain an independent
+contact graph, construct kind:3 tags, choose relay targets, or decide whether a
+contact-list edit is safe.
+
+Rust owns kind:3 read-modify-write construction, contact-list metadata
+preservation, signing, outbox routing, relay selection, diagnostics, and the
+fail-closed `follow_list_not_loaded` behavior. If the active account's kind:3
+baseline is not loaded, Chirp Web must surface the action failure honestly
+instead of publishing an empty-list replacement.
+
+Acceptance must prove that follow publishes a signed kind:3 event from the
+active user with the selected author's `p` tag present, unfollow publishes a
+signed kind:3 event with that `p` tag removed, the visible button flips from the
+Rust follow-list projection, and the same outbox/action result surfaces show the
+terminal relay verdict.
+
+## Bookmark Publish Contract
+
+Chirp Web must let a signed-in user save and unsave feed or thread notes through
+the typed NIP-51 bookmark action path. The browser shell may expose the save
+affordance, selected event id, and relay hint, but button state must derive from
+Rust's `nmp.nip51.bookmarks` projection. TypeScript must not maintain an
+independent bookmark set, construct kind:10003 tags, choose relay targets, or
+decide whether a bookmark-list edit is safe.
+
+Chirp Web must also expose a Saved view. The Saved view is a presentation filter
+over notes already hydrated from Rust-owned feed projections, with membership
+coming only from `nmp.nip51.bookmarks`. If the bookmark list contains ids whose
+events have not hydrated yet, the UI must say the saved notes are syncing instead
+of fabricating placeholder notes or maintaining a shell-side saved-note cache.
+
+Rust owns kind:10003 read-modify-write construction, metadata preservation,
+signing, outbox routing, relay selection, diagnostics, and active-account
+authorization. If the active account's bookmark baseline is unavailable or the
+requested item conflicts with the loaded list, Chirp Web must surface the action
+failure honestly instead of publishing a replacement from shell-local state.
+
+Acceptance must prove that bookmark publishes a signed kind:10003 event from the
+active user with the selected note's `e` tag present, removing the bookmark
+publishes a signed kind:10003 event with that `e` tag removed, the visible button
+flips from the Rust bookmark projection, and the same outbox/action result
+surfaces show the terminal relay verdict. Reload acceptance must prove that a
+fresh browser session can refetch the bookmark list from relays and show the
+saved note in the Saved view without relying on in-memory UI state.
+
+## Storage And Replay Contract
+
+Chirp Web must expose storage and replay health as a first-level product
+workspace. The browser shell may render the store status, active interests, wire
+subscriptions, relay inventory, and publish outbox rows already emitted by the
+runtime snapshot, but it must not infer cache coverage, retry ownership,
+subscription policy, or offline recovery state.
+
+The Storage workspace must make the current limitation explicit: durable offline
+publish replay is not complete until Rust owns the persisted queue and recovery
+policy end to end. Until then, the workspace is an inspectable health surface,
+not a promise that pending publishes survive reload or reconnect.
+
+Acceptance must prove that opening Storage renders Rust-emitted relay,
+interest, and wire-subscription diagnostics, and that the UI keeps the durable
+offline publish limitation visible.
+
+## Secret Storage
+
+Pasted `nsec` values are session-memory only. Chirp Web must not persist them to
+localStorage, sessionStorage, IndexedDB, OPFS, snapshots, action history, debug
+logs, or URL state. Reloading the page requires the user to paste the key again
+unless a future secure-storage decision changes this spec.
+
+All user-visible and diagnostic outputs must be log-safe: redacted request debug,
+action stages, action results, and publish outbox projections must never include
+the raw secret.
+
+## Blocked Web Workspace Contract
+
+Chirp Web must not hide missing major product areas behind absent navigation or
+fake local-only controls. Until web-ready Rust projections and actions exist for
+NIP-17 private messages, wallet/zap flows, moderation/WoT, group membership
+actions, or durable offline replay ownership, the browser product must expose
+those destinations as blocked, disabled, or explicitly partial workspaces with
+clear reasons.
+
+Blocked controls may emit log-safe `capability_failure` diagnostics proving the
+unsupported state is deliberate. They must not construct Nostr events, maintain
+shell-local unread counts, fabricate private message threads, simulate wallet
+state, or persist policy choices in TypeScript. Deep routes `#messages`,
+`#wallet`, and `#moderation` must focus the requested blocked destination. When
+any blocked area becomes supported, the same navigation destination graduates to
+Rust-owned projections/actions and browser acceptance for the real workflow.
+
+## Content Rendering Contract
+
+Chirp Web must render common kind:1 note content as a polished social card, not
+as an undifferentiated text blob. URLs, hashtags, Nostr references, line breaks,
+and image links should be visibly distinct and must preserve layout on desktop
+and mobile.
+
+This rendering is presentation only. TypeScript may tokenize already-projected
+note text to create anchors and media previews, but it must not interpret those
+tokens as protocol state, construct Nostr filters or events from them, or
+fabricate hydration for referenced events. Any opened search, profile, thread,
+or media workflow must still cross the existing Rust-owned runtime/action seams.

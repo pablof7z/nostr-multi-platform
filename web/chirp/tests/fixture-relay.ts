@@ -4,8 +4,8 @@
  * Starts a WebSocket server on a random loopback port. The relay speaks the
  * minimal Nostr relay protocol the acceptance specs need:
  *   - Accepts any WebSocket connection.
- *   - REQ   → emits seeded events matching the filter, then EOSE.
- *   - EVENT → records the inbound event, acknowledges with OK.
+ *   - REQ   → emits retained events matching the filter, then EOSE.
+ *   - EVENT → records the inbound event, retains it for later REQs, then ACKs.
  *   - CLOSE → no response (per NIP-01).
  *
  * The relay runs in the Node.js Playwright process and never touches the
@@ -15,6 +15,8 @@
  *   `startFixtureRelay()`     — boot smoke relay (EOSE only, no seeded events).
  *   `startFeedFixtureRelay()` — feed relay pre-loaded with genuinely signed
  *                               events (viewer kind:3 + two follows' kind:0/1).
+ *   `startGroupFixtureRelay()` — group relay pre-loaded with signed NIP-29
+ *                                metadata/member/admin events.
  *
  * All seeded events are signed with real secp256k1 keys via nostr-tools. The
  * nmp-core ingest path verifies signatures and rejects forged ones, so these
@@ -31,19 +33,24 @@ import type { AddressInfo } from "net";
 import { createServer } from "node:http";
 import { finalizeEvent, generateSecretKey, getPublicKey } from "nostr-tools/pure";
 
-// A real 1×1 PNG served over HTTP so any avatar component genuinely fetches +
-// decodes a network image (naturalWidth > 0), with no external dependency.
-const ONE_BY_ONE_PNG = Buffer.from(
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
-  "base64",
-);
+const FIXTURE_IMAGE = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" role="img" aria-label="Chirp fixture media">
+  <rect width="640" height="400" fill="#dff4ec"/>
+  <circle cx="118" cy="112" r="54" fill="#217a63"/>
+  <path d="M210 122h288M210 186h220M210 250h286" stroke="#17202a" stroke-width="24" stroke-linecap="round"/>
+  <rect x="64" y="296" width="512" height="36" rx="18" fill="#ffffff" opacity=".82"/>
+  <path d="M104 314h188" stroke="#217a63" stroke-width="12" stroke-linecap="round"/>
+</svg>`;
 
-/** Start a throwaway HTTP server that serves the 1×1 PNG at any path. */
-function startPngServer(): Promise<{ url: string; close: () => Promise<void> }> {
+/** Start a throwaway HTTP server that serves a real network image at any path. */
+function startImageServer(): Promise<{ url: string; close: () => Promise<void> }> {
   return new Promise((resolve, reject) => {
     const server = createServer((_req, res) => {
-      res.writeHead(200, { "content-type": "image/png", "access-control-allow-origin": "*" });
-      res.end(ONE_BY_ONE_PNG);
+      res.writeHead(200, {
+        "content-type": "image/svg+xml",
+        "access-control-allow-origin": "*",
+      });
+      res.end(FIXTURE_IMAGE);
     });
     server.once("error", reject);
     server.listen(0, "127.0.0.1", () => {
@@ -79,26 +86,56 @@ export type FixtureRelay = {
   eventCount(): number;
   /** Snapshot of EVENT payloads received from browser clients. */
   receivedEvents(): NostrEvent[];
+  /** Snapshot of REQ filters received from browser clients. */
+  subscriptions(): NostrFilter[];
   /** Gracefully close the server and resolve once all connections are gone. */
   close(): Promise<void>;
 };
 
 export type FeedFixtureRelay = FixtureRelay & {
+  /** Secret key for the test viewer; specs may encode it as nsec for local-key onboarding. */
+  viewerSecretKey: Uint8Array;
   /** Hex pubkey of the test viewer (use this for the window.nostr mock). */
   viewerPubkey: string;
   /** Hex pubkey of the follow whose kind:1 note appears in the feed. */
   followPubkey: string;
-  /** Content of the follow's note (assert against the rendered feed). */
+  /** Hex pubkey of the second follow, used to prove kind:3 edits preserve siblings. */
+  secondFollowPubkey: string;
+  /** Stable phrase inside the follow's note (assert against the rendered feed). */
   noteContent: string;
+  /** Normal URL embedded in the follow's note. */
+  noteLinkUrl: string;
+  /** Image URL embedded in the follow's note. */
+  noteImageUrl: string;
   /** Display name resolved from the follow's kind:0. */
   followDisplayName: string;
   /** Picture URL (http) resolved from the follow's kind:0. */
   followPictureUrl: string;
   /** Display name of the second follow who replies (attribution badge). */
   replierDisplayName: string;
+  /** Content of a long-form event used by search specs outside the home feed. */
+  longformContent: string;
 };
 
-type NostrFilter = {
+export type GroupFixtureRelay = FixtureRelay & {
+  groupId: string;
+  groupName: string;
+  groupAbout: string;
+  groupPictureUrl: string;
+  groupMessageContent: string;
+  memberCount: number;
+  adminCount: number;
+};
+
+export type FixtureRelayOptions = {
+  eventAck?: {
+    ok?: boolean;
+    message?: string;
+    delayMs?: number;
+  };
+};
+
+export type NostrFilter = {
   kinds?: number[];
   authors?: string[];
   ids?: string[];
@@ -114,14 +151,41 @@ function matchesFilter(event: NostrEvent, filter: NostrFilter): boolean {
   if (filter.ids !== undefined && !filter.ids.includes(event.id)) return false;
   if (filter.since !== undefined && event.created_at < filter.since) return false;
   if (filter.until !== undefined && event.created_at > filter.until) return false;
+  for (const [key, value] of Object.entries(filter)) {
+    if (!key.startsWith("#")) continue;
+    if (!Array.isArray(value)) continue;
+    const tagName = key.slice(1);
+    const accepted = value.filter((item): item is string => typeof item === "string");
+    if (accepted.length === 0) continue;
+    const matched = event.tags.some(
+      (tag) => tag[0] === tagName && typeof tag[1] === "string" && accepted.includes(tag[1]),
+    );
+    if (!matched) return false;
+  }
+  if (typeof filter.search === "string" && !matchesSearch(event, filter.search)) return false;
   return true;
 }
 
-function startServer(seededEvents: NostrEvent[]): Promise<FixtureRelay> {
+function matchesSearch(event: NostrEvent, search: string): boolean {
+  const terms = search
+    .toLowerCase()
+    .split(/\s+/)
+    .map((term) => term.trim())
+    .filter(Boolean);
+  if (terms.length === 0) return true;
+  const haystack = event.content.toLowerCase();
+  return terms.every((term) => haystack.includes(term));
+}
+
+export function startFixtureRelayServer(
+  seededEvents: NostrEvent[],
+  options: FixtureRelayOptions = {},
+): Promise<FixtureRelay> {
   return new Promise((resolve, reject) => {
     const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
     let connections = 0;
     const receivedEvents: NostrEvent[] = [];
+    const subscriptions: NostrFilter[] = [];
 
     wss.once("error", reject);
 
@@ -146,21 +210,31 @@ function startServer(seededEvents: NostrEvent[]): Promise<FixtureRelay> {
             const filters = (rest.slice(1) as NostrFilter[]).filter(
               (f) => typeof f === "object" && f !== null,
             );
-            for (const event of seededEvents) {
+            subscriptions.push(...filters);
+            const sendSoon = (frame: string) => setTimeout(() => ws.send(frame), 0);
+            const retainedEvents = [...seededEvents, ...receivedEvents];
+            for (const event of retainedEvents) {
               const matched =
                 filters.length === 0 || filters.some((f) => matchesFilter(event, f));
               if (matched) {
-                ws.send(JSON.stringify(["EVENT", subId, event]));
+                sendSoon(JSON.stringify(["EVENT", subId, event]));
               }
             }
-            ws.send(JSON.stringify(["EOSE", subId]));
+            sendSoon(JSON.stringify(["EOSE", subId]));
           } else if (verb === "EVENT") {
             const event = rest[0] as Record<string, unknown> | undefined;
             const eventId = typeof event?.id === "string" ? event.id : "";
             if (event !== undefined) {
               receivedEvents.push(event as NostrEvent);
             }
-            ws.send(JSON.stringify(["OK", eventId, true, ""]));
+            const ack = options.eventAck ?? {};
+            const ok = ack.ok ?? true;
+            const message = ack.message ?? "";
+            setTimeout(() => {
+              if (ws.readyState === 1) {
+                ws.send(JSON.stringify(["OK", eventId, ok, message]));
+              }
+            }, ack.delayMs ?? 0);
           }
           // CLOSE: no response required per NIP-01.
         });
@@ -179,6 +253,7 @@ function startServer(seededEvents: NostrEvent[]): Promise<FixtureRelay> {
         connectionCount: () => connections,
         eventCount: () => receivedEvents.length,
         receivedEvents: () => [...receivedEvents],
+        subscriptions: () => [...subscriptions],
         close,
       });
     });
@@ -191,8 +266,8 @@ function startServer(seededEvents: NostrEvent[]): Promise<FixtureRelay> {
  * publish spec, where the only events the relay sees are the browser's own
  * outbound EVENT frames.
  */
-export async function startFixtureRelay(): Promise<FixtureRelay> {
-  return startServer([]);
+export async function startFixtureRelay(options: FixtureRelayOptions = {}): Promise<FixtureRelay> {
+  return startFixtureRelayServer([], options);
 }
 
 /**
@@ -218,15 +293,20 @@ export async function startFeedFixtureRelay(): Promise<FeedFixtureRelay> {
   const followBPubkey = getPublicKey(followBSk);
 
   const now = Math.floor(Date.now() / 1000);
-  const noteContent = "hello from fixture relay";
+  const noteText = "hello from fixture relay";
+  const longformContent = "longform fixture article about chirp search";
   const followADisplayName = "Alice Fixture";
   const followBDisplayName = "Bob Fixture";
 
   // Serve the picture over real HTTP: nmp-core keeps only http(s) picture URLs
   // (a data: URI would be filtered), so this is a genuine network image the
   // avatar can fetch + decode with no external dependency.
-  const imageServer = await startPngServer();
+  const imageServer = await startImageServer();
   const followAPictureUrl = imageServer.url;
+  const noteContent = noteText;
+  const noteLinkUrl = "https://example.com/chirp";
+  const noteImageUrl = imageServer.url;
+  const richNoteContent = `${noteText} #nostr ${noteLinkUrl} ${noteImageUrl}`;
 
   const profileA = finalizeEvent(
     {
@@ -260,7 +340,7 @@ export async function startFeedFixtureRelay(): Promise<FeedFixtureRelay> {
       kind: 1,
       created_at: now - 50,
       tags: [["p", followBPubkey]],
-      content: noteContent,
+      content: richNoteContent,
     },
     followASk,
   ) as NostrEvent;
@@ -294,20 +374,121 @@ export async function startFeedFixtureRelay(): Promise<FeedFixtureRelay> {
     viewerSk,
   ) as NostrEvent;
 
-  const seeded: NostrEvent[] = [contactList, profileA, profileB, noteA, noteB];
+  const longform = finalizeEvent(
+    {
+      kind: 30023,
+      created_at: now - 5,
+      tags: [["title", "Chirp search fixture"]],
+      content: longformContent,
+    },
+    followASk,
+  ) as NostrEvent;
 
-  const base = await startServer(seeded);
+  const seeded: NostrEvent[] = [contactList, profileA, profileB, noteA, noteB, longform];
+
+  const base = await startFixtureRelayServer(seeded);
   return {
     ...base,
     close: async () => {
       await base.close();
       await imageServer.close();
     },
+    viewerSecretKey: viewerSk,
     viewerPubkey,
     followPubkey: followAPubkey,
+    secondFollowPubkey: followBPubkey,
     noteContent,
+    noteLinkUrl,
+    noteImageUrl,
+    longformContent,
     followDisplayName: followADisplayName,
     followPictureUrl: followAPictureUrl,
     replierDisplayName: followBDisplayName,
+  };
+}
+
+export async function startGroupFixtureRelay(): Promise<GroupFixtureRelay> {
+  const groupSk = generateSecretKey();
+  const memberASk = generateSecretKey();
+  const memberBSk = generateSecretKey();
+  const adminSk = generateSecretKey();
+  const memberAPubkey = getPublicKey(memberASk);
+  const memberBPubkey = getPublicKey(memberBSk);
+  const adminPubkey = getPublicKey(adminSk);
+  const now = Math.floor(Date.now() / 1000);
+  const imageServer = await startImageServer();
+  const groupId = "nmp-builders";
+  const groupName = "NMP Builders";
+  const groupAbout = "A public room for Rust-owned Nostr clients on every platform.";
+  const groupMessageContent = "Rust-owned group timeline from the fixture relay";
+
+  const metadata = finalizeEvent(
+    {
+      kind: 39000,
+      created_at: now - 20,
+      tags: [
+        ["d", groupId],
+        ["name", groupName],
+        ["about", groupAbout],
+        ["picture", imageServer.url],
+        ["public"],
+        ["open"],
+      ],
+      content: "",
+    },
+    groupSk,
+  ) as NostrEvent;
+
+  const admins = finalizeEvent(
+    {
+      kind: 39001,
+      created_at: now - 10,
+      tags: [
+        ["d", groupId],
+        ["p", adminPubkey],
+      ],
+      content: "",
+    },
+    groupSk,
+  ) as NostrEvent;
+
+  const members = finalizeEvent(
+    {
+      kind: 39002,
+      created_at: now - 5,
+      tags: [
+        ["d", groupId],
+        ["p", memberAPubkey],
+        ["p", memberBPubkey],
+      ],
+      content: "",
+    },
+    groupSk,
+  ) as NostrEvent;
+
+  const message = finalizeEvent(
+    {
+      kind: 9,
+      created_at: now,
+      tags: [["h", groupId]],
+      content: groupMessageContent,
+    },
+    memberASk,
+  ) as NostrEvent;
+
+  const base = await startFixtureRelayServer([metadata, admins, members, message]);
+  return {
+    ...base,
+    close: async () => {
+      await base.close();
+      await imageServer.close();
+    },
+    groupId,
+    groupName,
+    groupAbout,
+    groupPictureUrl: imageServer.url,
+    groupMessageContent,
+    memberCount: 2,
+    adminCount: 1,
   };
 }

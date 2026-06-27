@@ -203,7 +203,10 @@ impl ExternalEventSinkDispatcher {
         if matching.is_empty() {
             return false;
         }
-        let work = DispatchWork { frame, policies: matching };
+        let work = DispatchWork {
+            frame,
+            policies: matching,
+        };
         match self.tx.try_send(work) {
             Ok(()) => true,
             Err(_) => {
@@ -256,14 +259,12 @@ impl ExternalEventSinkDispatcher {
 ///
 /// Populated at app construction, then bound to the runtime when the actor
 /// spawns.
-pub type ExternalEventSinkDispatcherSlot =
-    Arc<Mutex<Option<ExternalEventSinkDispatcher>>>;
+pub type ExternalEventSinkDispatcherSlot = Arc<Mutex<Option<ExternalEventSinkDispatcher>>>;
 
 #[must_use]
 pub fn new_external_event_sink_dispatcher_slot() -> ExternalEventSinkDispatcherSlot {
     Arc::new(Mutex::new(None))
 }
-
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 

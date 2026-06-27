@@ -136,7 +136,14 @@ pub(crate) fn handle_relay_event(
                     send_all_outbound(relay_runtime, pool, kernel, publish_replay);
                 }
             }
-            maybe_send_startup(running, startup_sent, relay_runtime, pool, kernel, Instant::now());
+            maybe_send_startup(
+                running,
+                startup_sent,
+                relay_runtime,
+                pool,
+                kernel,
+                Instant::now(),
+            );
             emit_now(kernel, running, update_tx, last_emit);
         }
         // ── Failed ───────────────────────────────────────────────────────

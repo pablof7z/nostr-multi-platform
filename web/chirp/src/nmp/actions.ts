@@ -7,6 +7,21 @@ import { GeneratedActionBuilders, type WorkerRequest } from "@nmp/runtime-web";
 export type ChirpAction =
   | { action: "publish_note"; content: string; reply_to_id?: string | null }
   | { action: "react"; target_event_id: string; reaction?: string }
+  | {
+      action: "repost";
+      target_event_id: string;
+      target_kind: number;
+      target_author_pubkey?: string;
+      relay_hint?: string | null;
+    }
+  | {
+      action: "quote_repost";
+      target_event_id: string;
+      target_kind: number;
+      target_author_pubkey?: string;
+      relay_hint?: string | null;
+      content: string;
+    }
   | { action: "follow"; pubkey: string }
   | { action: "unfollow"; pubkey: string };
 
@@ -38,6 +53,15 @@ export type RuntimeCommand =
       namespace: number;
       key: string;
       consumerId: string;
+    }
+  | {
+      kind: "relay_config";
+      action: "add" | "remove";
+      url: string;
+      role?: string;
+    }
+  | {
+      kind: "publish_relay_preferences";
     }
   | {
       kind: "unsupported";
@@ -75,10 +99,11 @@ export function chirpActionRequest(action: ChirpAction, correlationId: string): 
   let bytes: Uint8Array;
   switch (action.action) {
     case "publish_note":
-      // NIP-10 reply-tag construction belongs to the host (#906): a kind:1 note
-      // lowers to the engine-generic `PublishRaw`. `reply_to_id` is resolved by
-      // the publish path, not forwarded into the envelope.
-      bytes = GeneratedActionBuilders.publishRaw(correlationId, 1, [], action.content);
+      // Top-level notes use the generic kind:1 publish builder. Replies carry
+      // only user intent; Rust resolves NIP-10 tags from the stored parent.
+      bytes = action.reply_to_id
+        ? GeneratedActionBuilders.publishReply(correlationId, action.content, action.reply_to_id)
+        : GeneratedActionBuilders.publishRaw(correlationId, 1, [], action.content);
       break;
     case "react":
       bytes = GeneratedActionBuilders.react(
@@ -86,6 +111,25 @@ export function chirpActionRequest(action: ChirpAction, correlationId: string): 
         action.target_event_id,
         action.reaction ?? "+",
         null,
+      );
+      break;
+    case "repost":
+      bytes = GeneratedActionBuilders.repost(
+        correlationId,
+        action.target_event_id,
+        action.target_kind,
+        action.target_author_pubkey ?? null,
+        action.relay_hint ?? null,
+      );
+      break;
+    case "quote_repost":
+      bytes = GeneratedActionBuilders.quoteRepost(
+        correlationId,
+        action.target_event_id,
+        action.target_kind,
+        action.target_author_pubkey ?? null,
+        action.relay_hint ?? null,
+        action.content,
       );
       break;
     case "follow":
@@ -117,6 +161,48 @@ export function reactCommand(targetEventId: string, reaction = "+"): RuntimeComm
   };
 }
 
+export function repostCommand(
+  targetEventId: string,
+  targetKind: number,
+  targetAuthorPubkey: string | null,
+  relayHint: string | null = null,
+): RuntimeCommand {
+  return {
+    kind: "dispatch_bytes",
+    actionType: "nmp.nip18.repost",
+    buildDispatchBytes: (correlationId) =>
+      GeneratedActionBuilders.repost(
+        correlationId,
+        targetEventId,
+        targetKind,
+        targetAuthorPubkey,
+        relayHint,
+      ),
+  };
+}
+
+export function quoteRepostCommand(
+  targetEventId: string,
+  targetKind: number,
+  targetAuthorPubkey: string | null,
+  relayHint: string | null,
+  content: string,
+): RuntimeCommand {
+  return {
+    kind: "dispatch_bytes",
+    actionType: "nmp.nip18.quote_repost",
+    buildDispatchBytes: (correlationId) =>
+      GeneratedActionBuilders.quoteRepost(
+        correlationId,
+        targetEventId,
+        targetKind,
+        targetAuthorPubkey,
+        relayHint,
+        content,
+      ),
+  };
+}
+
 export function followCommand(pubkey: string, following: boolean): RuntimeCommand {
   const ns = following ? "nmp.follow" : "nmp.unfollow";
   const builder = following ? GeneratedActionBuilders.follow : GeneratedActionBuilders.unfollow;
@@ -124,6 +210,26 @@ export function followCommand(pubkey: string, following: boolean): RuntimeComman
     kind: "dispatch_bytes",
     actionType: ns,
     buildDispatchBytes: (correlationId) => builder(correlationId, pubkey),
+  };
+}
+
+const BOOKMARK_ITEM_EVENT = 0;
+
+export function bookmarkCommand(
+  accountPubkey: string,
+  eventId: string,
+  bookmarked: boolean,
+  relay: string | null = null,
+): RuntimeCommand {
+  const ns = bookmarked ? "nmp.nip51.add_bookmark" : "nmp.nip51.remove_bookmark";
+  const builder = bookmarked
+    ? GeneratedActionBuilders.addBookmark
+    : GeneratedActionBuilders.removeBookmark;
+  return {
+    kind: "dispatch_bytes",
+    actionType: ns,
+    buildDispatchBytes: (correlationId) =>
+      builder(correlationId, accountPubkey, BOOKMARK_ITEM_EVENT, eventId, relay),
   };
 }
 
@@ -215,12 +321,39 @@ export function releaseEventCommand(key: string, consumerId: string): RuntimeCom
   };
 }
 
+export function addRelayCommand(url: string, role: string): RuntimeCommand {
+  return {
+    kind: "relay_config",
+    action: "add",
+    url,
+    role,
+  };
+}
+
+export function removeRelayCommand(url: string): RuntimeCommand {
+  return {
+    kind: "relay_config",
+    action: "remove",
+    url,
+  };
+}
+
+export function publishRelayPreferencesCommand(): RuntimeCommand {
+  return {
+    kind: "publish_relay_preferences",
+  };
+}
+
 function unsupportedCommand(capability: string, _payload: unknown): RuntimeCommand {
   return {
     kind: "unsupported",
     capability,
-    reason: `unsupported_in_web_preview: ${capability} is not wired to a generated dispatch_bytes builder in Chirp Web yet`,
+    reason: `unsupported_in_chirp_web: ${capability} is blocked until a Rust-owned projection or generated dispatch_bytes action is available`,
   };
+}
+
+export function blockedWorkspaceCommand(capability: string): RuntimeCommand {
+  return unsupportedCommand(capability, {});
 }
 
 export function openProfileCommand(pubkey: string): RuntimeCommand {

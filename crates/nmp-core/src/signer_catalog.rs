@@ -204,7 +204,10 @@ mod tests {
         assert!(!KNOWN_SIGNER_APPS.is_empty());
         for app in KNOWN_SIGNER_APPS {
             assert!(!app.app_id.is_empty(), "app_id must be non-empty");
-            assert!(!app.display_label.is_empty(), "display_label must be non-empty");
+            assert!(
+                !app.display_label.is_empty(),
+                "display_label must be non-empty"
+            );
             assert!(!app.capabilities.is_empty(), "every app speaks ≥1 protocol");
             assert!(
                 app.android.is_some() || app.ios.is_some(),

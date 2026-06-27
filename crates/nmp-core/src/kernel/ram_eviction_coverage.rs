@@ -136,7 +136,11 @@ impl Kernel {
                 }
                 let shape = interest.shape.clone();
                 let matches: CoverageMatchFn = std::sync::Arc::new(
-                    move |id: &str, author: &str, kind: u32, created_at: u64, tags: &[Vec<String>]| {
+                    move |id: &str,
+                          author: &str,
+                          kind: u32,
+                          created_at: u64,
+                          tags: &[Vec<String>]| {
                         shape.matches_event_with_id(id, author, kind, created_at, tags)
                     },
                 );

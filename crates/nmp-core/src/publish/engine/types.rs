@@ -125,10 +125,11 @@ pub struct LastTerminal {
     /// (ADR-0043 Decision 4). `nmp-core` NEVER parses this — it is forwarded
     /// verbatim into the `action_results[correlation_id]` row's `result` field
     /// so a protocol crate can attach a descriptor (e.g. a Blossom blob
-    /// descriptor) without `nmp-core` learning any protocol noun (D0). `None`
-    /// for every publish-engine terminal and the bare `record_action_success`
-    /// path; `Some(json)` only on the `RecordActionSuccess { result_json }`
-    /// off-band path.
+    /// descriptor) without `nmp-core` learning any protocol noun (D0). Publish
+    /// engine terminals leave this as `None`; the kernel terminal fold attaches
+    /// the Rust-owned relay receipt from `PublishQueueTerminal::Settled`.
+    /// `Some(json)` is reserved for off-band action successes that already have
+    /// their own structured result.
     pub result_json: Option<String>,
     /// Curated kernel policy `reason_code` for shell localization (#1735).
     ///

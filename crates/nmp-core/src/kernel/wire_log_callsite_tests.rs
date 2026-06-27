@@ -210,8 +210,8 @@ mod tests {
     fn event_hit_wires_event_rx_via_production_ingest() {
         use super::super::test_support;
         use super::super::Kernel;
-        use crate::relay::{DEFAULT_VISIBLE_LIMIT};
-use nmp_network::role::RelayRole;
+        use crate::relay::DEFAULT_VISIBLE_LIMIT;
+        use nmp_network::role::RelayRole;
 
         test_support::clear_claim_expansion_subs();
         let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
@@ -250,8 +250,8 @@ use nmp_network::role::RelayRole;
     fn eose_after_hit_wires_eose_rx_matched_true_via_production_ingest() {
         use super::super::test_support;
         use super::super::Kernel;
-        use crate::relay::{DEFAULT_VISIBLE_LIMIT};
-use nmp_network::role::RelayRole;
+        use crate::relay::DEFAULT_VISIBLE_LIMIT;
+        use nmp_network::role::RelayRole;
 
         test_support::clear_claim_expansion_subs();
         let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);

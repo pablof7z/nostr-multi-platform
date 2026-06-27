@@ -39,6 +39,7 @@ ios/*/Sources/*/Core/Generated/*.swift
 crates/**/src/**/generated/*.rs
 ios/*/*/Bridge/Generated/*.swift
 apps/*/ios/*/Bridge/Generated/*.swift
+apps/chirp/android/app/src/main/java/org/nmp/android/ActionBuilders.kt
 apps/chirp/android/app/src/main/java/nmp/**
 apps/*/android/app/src/main/kotlin/nmp/transport/**
 web/nmp-gallery/src/nmp/generated/**

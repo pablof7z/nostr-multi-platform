@@ -98,6 +98,57 @@ export const GeneratedActionBuilders = {
     return encodeDispatchEnvelope(correlationId, "nmp.nip25.unreact", payload);
   },
 
+  /** Publish a NIP-18 repost wrapper for a target event. */
+  repost(
+    correlationId: string,
+    targetEventId: string,
+    targetKind: number,
+    targetAuthorPubkey: string | null,
+    relayHint: string | null,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const targetEventIdOffset = fbb.createString(targetEventId);
+    const targetAuthorPubkeyOffset = targetAuthorPubkey === null ? 0 : fbb.createString(targetAuthorPubkey);
+    const relayHintOffset = relayHint === null ? 0 : fbb.createString(relayHint);
+    fbb.startObject(5);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldOffset(1, targetEventIdOffset, 0); // slot 1: targetEventId
+    fbb.addFieldInt32(2, targetKind, 0); // slot 2: targetKind
+    if (targetAuthorPubkeyOffset !== 0) fbb.addFieldOffset(3, targetAuthorPubkeyOffset, 0); // slot 3: targetAuthorPubkey
+    if (relayHintOffset !== 0) fbb.addFieldOffset(4, relayHintOffset, 0); // slot 4: relayHint
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "N18R");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.nip18.repost", payload);
+  },
+
+  /** Publish a NIP-18 quote repost note for a target event. */
+  quoteRepost(
+    correlationId: string,
+    targetEventId: string,
+    targetKind: number,
+    targetAuthorPubkey: string | null,
+    relayHint: string | null,
+    content: string,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const targetEventIdOffset = fbb.createString(targetEventId);
+    const targetAuthorPubkeyOffset = targetAuthorPubkey === null ? 0 : fbb.createString(targetAuthorPubkey);
+    const relayHintOffset = relayHint === null ? 0 : fbb.createString(relayHint);
+    const contentOffset = fbb.createString(content);
+    fbb.startObject(6);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldOffset(1, targetEventIdOffset, 0); // slot 1: targetEventId
+    fbb.addFieldInt32(2, targetKind, 0); // slot 2: targetKind
+    if (targetAuthorPubkeyOffset !== 0) fbb.addFieldOffset(3, targetAuthorPubkeyOffset, 0); // slot 3: targetAuthorPubkey
+    if (relayHintOffset !== 0) fbb.addFieldOffset(4, relayHintOffset, 0); // slot 4: relayHint
+    fbb.addFieldOffset(5, contentOffset, 0); // slot 5: content
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "N18Q");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.nip18.quote_repost", payload);
+  },
+
   /** Follow a single pubkey (NIP-02 contact-list add). */
   follow(
     correlationId: string,
@@ -145,6 +196,60 @@ export const GeneratedActionBuilders = {
     fbb.finish(payloadRoot, "NFMA");
     const payload = fbb.asUint8Array();
     return encodeDispatchEnvelope(correlationId, "nmp.follow_many", payload);
+  },
+
+  /** Add one item to the active account's NIP-51 bookmark list. */
+  addBookmark(
+    correlationId: string,
+    accountPubkey: string,
+    itemKind: number,
+    value: string,
+    relay: string | null,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const accountPubkeyOffset = fbb.createString(accountPubkey);
+    const valueOffset = fbb.createString(value);
+    const relayOffset = relay === null ? 0 : fbb.createString(relay);
+    fbb.startObject(3);
+    fbb.addFieldInt8(0, itemKind, 0); // slot 0: kind
+    fbb.addFieldOffset(1, valueOffset, 0); // slot 1: value
+    if (relayOffset !== 0) fbb.addFieldOffset(2, relayOffset, 0); // slot 2: relay
+    const itemRoot = fbb.endObject();
+    fbb.startObject(3);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldOffset(1, accountPubkeyOffset, 0); // slot 1: account_pubkey
+    fbb.addFieldOffset(2, itemRoot, 0); // slot 2: item
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "N51B");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.nip51.add_bookmark", payload);
+  },
+
+  /** Remove one item from the active account's NIP-51 bookmark list. */
+  removeBookmark(
+    correlationId: string,
+    accountPubkey: string,
+    itemKind: number,
+    value: string,
+    relay: string | null,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const accountPubkeyOffset = fbb.createString(accountPubkey);
+    const valueOffset = fbb.createString(value);
+    const relayOffset = relay === null ? 0 : fbb.createString(relay);
+    fbb.startObject(3);
+    fbb.addFieldInt8(0, itemKind, 0); // slot 0: kind
+    fbb.addFieldOffset(1, valueOffset, 0); // slot 1: value
+    if (relayOffset !== 0) fbb.addFieldOffset(2, relayOffset, 0); // slot 2: relay
+    const itemRoot = fbb.endObject();
+    fbb.startObject(3);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldOffset(1, accountPubkeyOffset, 0); // slot 1: account_pubkey
+    fbb.addFieldOffset(2, itemRoot, 0); // slot 2: item
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "N51B");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.nip51.remove_bookmark", payload);
   },
 
   /** Add a relay URL to the NIP-51 blocked-relay list. */
@@ -316,6 +421,41 @@ export const GeneratedActionBuilders = {
     fbb.startObject(3);
     fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
     fbb.addFieldInt8(1, 3, 0); // slot 1: body_type
+    fbb.addFieldOffset(2, bodyOffset, 0); // slot 2: body
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "NPUB");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.publish", payload);
+  },
+
+  /** Sign-and-publish a kind:1 reply; Rust derives NIP-10 tags from the stored parent event. */
+  publishReply(
+    correlationId: string,
+    content: string,
+    replyToEventId: string,
+    relays: string[] | null = null,
+    signerPubkey: string | null = null,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const contentOffset = fbb.createString(content);
+    const replyToEventIdOffset = fbb.createString(replyToEventId);
+    const signerPubkeyOffset = signerPubkey === null ? 0 : fbb.createString(signerPubkey);
+    const targetRelays = relays ?? [];
+    const explicit = targetRelays.length > 0;
+    const targetRelaysVec = stringVector(fbb, targetRelays);
+    fbb.startObject(2);
+    fbb.addFieldInt8(0, explicit ? 1 : 0, 0); // slot 0: explicit
+    fbb.addFieldOffset(1, targetRelaysVec, 0); // slot 1: relays
+    const targetOffset = fbb.endObject();
+    fbb.startObject(4);
+    fbb.addFieldOffset(0, contentOffset, 0); // slot 0: content
+    fbb.addFieldOffset(1, replyToEventIdOffset, 0); // slot 1: reply_to_event_id
+    fbb.addFieldOffset(2, targetOffset, 0); // slot 2: target
+    if (signerPubkeyOffset !== 0) fbb.addFieldOffset(3, signerPubkeyOffset, 0); // slot 3: signer_pubkey
+    const bodyOffset = fbb.endObject();
+    fbb.startObject(3);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldInt8(1, 4, 0); // slot 1: body_type
     fbb.addFieldOffset(2, bodyOffset, 0); // slot 2: body
     const payloadRoot = fbb.endObject();
     fbb.finish(payloadRoot, "NPUB");

@@ -82,6 +82,17 @@ fn count_kind_10002_frames(outbound: &[crate::relay::OutboundMessage]) -> usize 
         .count()
 }
 
+fn kind_10002_created_at(outbound: &[crate::relay::OutboundMessage]) -> Option<u64> {
+    outbound.iter().find_map(|m| {
+        let parsed: serde_json::Value = serde_json::from_str(&m.text).ok()?;
+        let event = parsed.as_array()?.get(1)?;
+        if event.get("kind")?.as_u64()? != 10002 {
+            return None;
+        }
+        event.get("created_at")?.as_u64()
+    })
+}
+
 #[test]
 fn add_relay_with_active_signer_publishes_kind_10002() {
     // Headline assertion the PR title makes: a real AddRelay edit by a
@@ -101,6 +112,12 @@ fn add_relay_with_active_signer_publishes_kind_10002() {
     assert!(
         count_kind_10002_frames(&outbound) >= 1,
         "AddRelay with an active signer must re-publish kind:10002. \
+         Outbound frames were: {:?}",
+        outbound.iter().map(|m| &m.text).collect::<Vec<_>>(),
+    );
+    assert!(
+        kind_10002_created_at(&outbound).is_some_and(|created_at| created_at > 0),
+        "kind:10002 sentinel timestamps must be stamped before signing. \
          Outbound frames were: {:?}",
         outbound.iter().map(|m| &m.text).collect::<Vec<_>>(),
     );

@@ -10,6 +10,8 @@ description = "Cross-protocol social-relation aggregation for NMP — the engage
 # Kernel substrate: KernelEvent, ActionModule, ActorCommand, the
 # NoteRelationClassifier seam (owned by nmp-nip01), subs identity types.
 nmp-core = { path = "../nmp-core", default-features = false }
+# Layer-0 kind constants used by the cross-protocol notification projection.
+nmp-kinds = { path = "../nmp-kinds" }
 # Interest types for the visible-note-relations action.
 nmp-planner = { path = "../nmp-planner", default-features = false }
 # Base note crate — owns the relation-count vocabulary, the `NoteRelationIndex`,

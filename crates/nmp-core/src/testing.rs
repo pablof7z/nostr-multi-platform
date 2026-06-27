@@ -3,7 +3,10 @@
 //! actor test entrypoints and the NIP golden-tag conformance harness.
 
 pub use crate::actor::{spawn_test_actor, ActorCommand, TestSupportCommand};
-pub use crate::kernel::{PROCESS_PROJECTIONS_CHANGED, PROCESS_PROJECTIONS_SERIALIZED, PROCESS_RAM_EVENTS_EVICTED, PROCESS_STORE_LRU_EVICTED};
+pub use crate::kernel::{
+    PROCESS_PROJECTIONS_CHANGED, PROCESS_PROJECTIONS_SERIALIZED, PROCESS_RAM_EVENTS_EVICTED,
+    PROCESS_STORE_LRU_EVICTED,
+};
 pub use crate::store::{RawEvent, VerifiedEvent}; // ADR-0055 churn
 
 /// NIP golden-tag conformance harness — drives the (crate-private) command
@@ -53,7 +56,9 @@ pub fn spawn_actor_with_storage_path(
     crate::CommandSender,
     mpsc::Receiver<crate::update_envelope::UpdateFrameBytes>,
 ) {
-    use crate::actor::{run_actor_with_observers, ActorChannels, ActorConfigSources, ActorRuntimeSlots};
+    use crate::actor::{
+        run_actor_with_observers, ActorChannels, ActorConfigSources, ActorRuntimeSlots,
+    };
     use crate::slots::new_storage_path_slot;
     use std::sync::{atomic::AtomicU64, Arc, Mutex};
 
@@ -84,7 +89,8 @@ pub fn spawn_actor_with_storage_path(
             active_account: crate::slots::new_active_account_slot(),
             event_store: crate::slots::new_event_store_slot(),
             pull_cursor_registry: crate::slots::new_pull_cursor_registry_handle_slot(),
-            external_event_sink_dispatcher: crate::substrate::new_external_event_sink_dispatcher_slot(),
+            external_event_sink_dispatcher:
+                crate::substrate::new_external_event_sink_dispatcher_slot(),
         };
         let config = ActorConfigSources {
             storage_path: path_slot,
@@ -93,7 +99,9 @@ pub fn spawn_actor_with_storage_path(
             host_op_handler: crate::substrate::new_host_op_handler_slot(),
             relay_text_interceptor: crate::substrate::new_relay_text_interceptor_slot(),
             relay_connected_hook: crate::substrate::new_relay_connected_hook_slot(),
-            ingest_dispatcher: Arc::new(std::sync::RwLock::new(crate::substrate::EventIngestDispatcher::new())),
+            ingest_dispatcher: Arc::new(std::sync::RwLock::new(
+                crate::substrate::EventIngestDispatcher::new(),
+            )),
             search_scope_registry: Arc::new(crate::substrate::SearchScopeRegistry::new()),
             dm_inbox_relays: Arc::new(Mutex::new(crate::substrate::empty_dm_inbox_relay_lookup())),
             profile_lookup: Arc::new(Mutex::new(crate::substrate::empty_profile_lookup())),
@@ -110,7 +118,11 @@ pub fn spawn_actor_with_storage_path(
         }
         .snapshot();
         run_actor_with_observers(
-            ActorChannels { inbox_rx: command_rx, command_tx_self: actor_command_tx_self, update_tx },
+            ActorChannels {
+                inbox_rx: command_rx,
+                command_tx_self: actor_command_tx_self,
+                update_tx,
+            },
             config,
             runtime,
         );
@@ -166,7 +178,9 @@ pub fn inject_signed_events(
             VerifiedEvent::try_from_raw(raw).ok()
         })
         .collect();
-    tx.send(ActorCommand::TestSupport(TestSupportCommand::IngestPreVerifiedEvents(events)))
+    tx.send(ActorCommand::TestSupport(
+        TestSupportCommand::IngestPreVerifiedEvents(events),
+    ))
 }
 
 /// Send a [`ActorCommand::Barrier`] and block until the actor acknowledges
@@ -180,7 +194,12 @@ pub fn inject_signed_events(
 /// `true` the actor's state reflects all prior commands.
 pub fn wait_barrier(tx: &crate::CommandSender, timeout: std::time::Duration) -> bool {
     let (ack_tx, ack_rx) = mpsc::sync_channel(1);
-    if tx.send(ActorCommand::TestSupport(TestSupportCommand::Barrier { ack: ack_tx })).is_err() {
+    if tx
+        .send(ActorCommand::TestSupport(TestSupportCommand::Barrier {
+            ack: ack_tx,
+        }))
+        .is_err()
+    {
         return false;
     }
     ack_rx.recv_timeout(timeout).is_ok()

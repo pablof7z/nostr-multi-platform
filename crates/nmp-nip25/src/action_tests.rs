@@ -1,5 +1,8 @@
 use super::*;
 use std::cell::RefCell;
+use std::sync::Arc;
+
+use nmp_store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
 
 const TARGET: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const AUTHOR: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
@@ -81,6 +84,51 @@ fn react_protocol_publishes_kind7_via_one_door() {
             assert_eq!(event.tags[1], vec!["p".to_string(), AUTHOR.to_string()]);
             assert_eq!(correlation_id.as_deref(), Some("react-cid"));
             assert_eq!(signer_pubkey, None);
+        }
+        other => panic!("expected PublishUnsignedEvent, got {other:?}"),
+    }
+}
+
+#[test]
+fn react_execute_resolves_target_author_from_action_context_store() {
+    let store = Arc::new(MemEventStore::new());
+    store
+        .insert(
+            VerifiedEvent::from_raw_unchecked(RawEvent {
+                id: TARGET.to_string(),
+                pubkey: AUTHOR.to_string(),
+                created_at: 1,
+                kind: 1,
+                tags: vec![],
+                content: "target".to_string(),
+                sig: "0".repeat(128),
+            }),
+            &"ws://fixture.test".to_string(),
+            1,
+        )
+        .expect("seed target event");
+    let ctx = ActionContext::with_event_store(store);
+
+    let cmd = capture_execute(|send| {
+        ReactModule
+            .execute(
+                &ctx,
+                ReactAction {
+                    target_event_id: TARGET.to_string(),
+                    reaction: "+".to_string(),
+                    target_author_pubkey: None,
+                },
+                "react-cid",
+                send,
+            )
+            .expect("execute succeeds");
+    });
+
+    match run_one_protocol(cmd) {
+        ActorCommand::Publish(PublishCommand::UnsignedEvent { event, .. }) => {
+            assert_eq!(event.kind, KIND_REACTION);
+            assert_eq!(event.tags[0], vec!["e".to_string(), TARGET.to_string()]);
+            assert_eq!(event.tags[1], vec!["p".to_string(), AUTHOR.to_string()]);
         }
         other => panic!("expected PublishUnsignedEvent, got {other:?}"),
     }

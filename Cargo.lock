@@ -4444,17 +4444,42 @@ dependencies = [
  "nmp-codegen",
  "nmp-core",
  "nmp-defaults",
+ "nmp-feed",
+ "nmp-kinds",
  "nmp-network",
+ "nmp-nip01",
+ "nmp-nip02",
+ "nmp-nip18",
+ "nmp-nip29",
+ "nmp-nip50",
+ "nmp-planner",
+ "nmp-relations",
  "nmp-signer-iface",
  "nmp-signers",
  "nmp-store",
  "nmp-substrate-defaults",
+ "nostr",
  "serde",
  "serde_json",
  "tracing",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "wasm-bindgen-test",
+ "zeroize",
+]
+
+[[package]]
+name = "nmp-browser-runtime-conformance"
+version = "0.8.0"
+dependencies = [
+ "console_error_panic_hook",
+ "js-sys",
+ "nmp-browser-runtime",
+ "nmp-core",
+ "nmp-signer-iface",
+ "nmp-store",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
 ]
 
 [[package]]
@@ -4791,9 +4816,11 @@ dependencies = [
 name = "nmp-nip18"
 version = "0.8.0"
 dependencies = [
+ "flatbuffers",
  "nmp-core",
  "nmp-kinds",
  "nmp-planner",
+ "nmp-signer-iface",
  "serde",
  "serde_json",
 ]
@@ -4817,6 +4844,7 @@ dependencies = [
  "flatbuffers",
  "nmp-core",
  "nmp-signer-iface",
+ "nmp-store",
  "serde",
  "serde_json",
 ]
@@ -5067,6 +5095,7 @@ version = "0.8.0"
 dependencies = [
  "flatbuffers",
  "nmp-core",
+ "nmp-kinds",
  "nmp-nip01",
  "nmp-nip18",
  "nmp-nip22",

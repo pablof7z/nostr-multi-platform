@@ -51,7 +51,10 @@ fn none_when_no_kind3_for_author() {
 #[test]
 fn none_when_author_hex_malformed_or_slot_empty() {
     let slot = new_event_store_slot();
-    assert_eq!(following_count_from_store(&slot, "11".repeat(32).as_str()), None);
+    assert_eq!(
+        following_count_from_store(&slot, "11".repeat(32).as_str()),
+        None
+    );
     let store = nmp_store::MemEventStore::default();
     let slot = slot_with(store);
     assert_eq!(following_count_from_store(&slot, "not-hex"), None);

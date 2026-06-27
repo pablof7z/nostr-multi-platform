@@ -125,9 +125,10 @@ impl Kernel {
         need_ids: u64,
         local_item_count: u64,
     ) {
-        use super::types::{AVG_EVENT_BYTES, NegentropySyncStats};
-        let transfer_avoided_bytes =
-            local_item_count.saturating_sub(have_ids).saturating_mul(AVG_EVENT_BYTES);
+        use super::types::{NegentropySyncStats, AVG_EVENT_BYTES};
+        let transfer_avoided_bytes = local_item_count
+            .saturating_sub(have_ids)
+            .saturating_mul(AVG_EVENT_BYTES);
         self.negentropy_sync_stats = NegentropySyncStats {
             rounds,
             have_ids,

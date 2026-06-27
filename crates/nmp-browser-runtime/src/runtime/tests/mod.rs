@@ -23,7 +23,11 @@ use crate::signer::{CapabilityProviderRegistry, SignerCompletion, SignerCompleti
 
 mod composition;
 mod contract;
+mod feed_attribution;
+mod feed_composition;
+mod group_timeline;
 mod pump;
+mod search;
 mod signer;
 
 fn enqueue(cmds: Vec<ActorCommand>) -> mpsc::Receiver<ActorMail> {

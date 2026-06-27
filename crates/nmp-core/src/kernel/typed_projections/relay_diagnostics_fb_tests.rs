@@ -27,8 +27,14 @@ fn sample() -> RelayDiagnosticsModel {
             last_notice: Some("rate limited".to_string()),
             notice_count: 3,
             notices: vec![
-                super::NoticeRow { at_ms: 1_700_000_010_000, text: "newest".to_string() },
-                super::NoticeRow { at_ms: 1_700_000_001_000, text: "oldest".to_string() },
+                super::NoticeRow {
+                    at_ms: 1_700_000_010_000,
+                    text: "newest".to_string(),
+                },
+                super::NoticeRow {
+                    at_ms: 1_700_000_001_000,
+                    text: "oldest".to_string(),
+                },
             ],
             last_error: None,
             wire_subs: vec![WireSubRow {
@@ -73,8 +79,8 @@ fn sample() -> RelayDiagnosticsModel {
 #[test]
 fn encode_decode_round_trips() {
     let model = sample();
-    let decoded = decode_relay_diagnostics(&encode_relay_diagnostics(&model))
-        .expect("decode must succeed");
+    let decoded =
+        decode_relay_diagnostics(&encode_relay_diagnostics(&model)).expect("decode must succeed");
     assert_eq!(
         decoded, model,
         "round-trip must preserve every field, nested wire_subs/interests, and \
@@ -111,7 +117,10 @@ fn discovery_kinds_round_trip() {
     model.relays[0].discovery_kinds = vec![0, 3, 10002, 10003];
     let decoded =
         decode_relay_diagnostics(&encode_relay_diagnostics(&model)).expect("decode succeeds");
-    assert_eq!(decoded.relays[0].discovery_kinds, vec![0u64, 3, 10002, 10003]);
+    assert_eq!(
+        decoded.relays[0].discovery_kinds,
+        vec![0u64, 3, 10002, 10003]
+    );
 }
 
 /// Empty discovery_kinds round-trips correctly.
@@ -152,10 +161,7 @@ fn reasons_round_trip() {
         },
         ConnectionReasonRow {
             kind: "nip65".to_string(),
-            author_pubkeys: vec![
-                "aabbcc".to_string(),
-                "ddeeff".to_string(),
-            ],
+            author_pubkeys: vec!["aabbcc".to_string(), "ddeeff".to_string()],
             author_total: 2,
             kinds: vec![],
             source_event_id: None,

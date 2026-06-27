@@ -89,8 +89,7 @@ fn first_tag_value_handles_key_only_tag() {
 fn hex_pk(i: usize) -> String {
     format!(
         "{:016x}{}",
-        i as u64,
-        "0123456789abcdef0123456789abcdef0123456789abcdef"
+        i as u64, "0123456789abcdef0123456789abcdef0123456789abcdef"
     )
 }
 
@@ -179,7 +178,11 @@ fn kind3_tags_after_add_is_idempotent() {
     // Adding a pubkey that is already present must not create a duplicate.
     let current = vec![p(PUBKEY_A), p(PUBKEY_B)];
     let result = kind3_tags_after_add(&current, PUBKEY_A);
-    assert_eq!(result, vec![p(PUBKEY_A), p(PUBKEY_B)], "no duplicate inserted");
+    assert_eq!(
+        result,
+        vec![p(PUBKEY_A), p(PUBKEY_B)],
+        "no duplicate inserted"
+    );
 }
 
 #[test]
@@ -254,7 +257,10 @@ fn kind3_tags_after_remove_drops_any_arity_and_keeps_non_p() {
     let result = kind3_tags_after_remove(&current, PUBKEY_A);
     assert_eq!(
         result,
-        vec![vec!["r".to_string(), "wss://relay".to_string()], p(PUBKEY_B)]
+        vec![
+            vec!["r".to_string(), "wss://relay".to_string()],
+            p(PUBKEY_B)
+        ]
     );
 }
 

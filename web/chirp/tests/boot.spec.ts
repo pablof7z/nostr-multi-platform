@@ -57,9 +57,7 @@ test.describe("boot", () => {
     // No UpdateFrame is ever emitted on the degraded path.
     await expect(shell).toHaveAttribute("data-has-snapshot", "false");
 
-    // The signing slot renders the degraded status message (no connect button in
-    // the degraded/in_process_fallback path — SigningPanel gates connect behind
-    // <Show when={!degraded() && !connected()}> which is false here).
+    // The signing slot stays honest when the runtime cannot install signers.
     await expect(page.locator('[data-slot="signing"] .signing-degraded')).toBeVisible();
   });
 
@@ -89,6 +87,36 @@ test.describe("boot", () => {
       await expect
         .poll(() => relay.connectionCount(), { timeout: 20_000 })
         .toBeGreaterThanOrEqual(1);
+
+      // Product readiness surface: first-run starts in setup, while relay
+      // diagnostics remain reachable from the rail without developer tools.
+      await expect(shell).toHaveAttribute("data-main-view", "setup");
+      await expect(page.locator(".onboarding-panel")).toBeVisible();
+      await page.getByRole("link", { name: "Home" }).click();
+      await expect(shell).toHaveAttribute("data-main-view", "home");
+      const emptyFeed = page.getByTestId("feed-empty");
+      await expect(emptyFeed).toContainText("Search");
+      await expect(emptyFeed).toContainText("Groups");
+      await expect(emptyFeed).toContainText("Relays");
+      await expect(emptyFeed).toContainText("Signer");
+      await page.getByRole("link", { name: "Saved" }).click();
+      await expect(shell).toHaveAttribute("data-main-view", "saved");
+      const emptySaved = page.getByTestId("saved-empty");
+      await expect(emptySaved).toContainText("Home");
+      await expect(emptySaved).toContainText("Search");
+      await page.getByRole("link", { name: "Signer" }).click();
+      await expect(shell).toHaveAttribute("data-main-view", "signer");
+      await expect(page.getByTestId("nav-signer")).toHaveAttribute("aria-current", "page");
+      await expect(page.locator('[data-slot="signing"]')).toBeVisible();
+      await expect(page.locator('[data-slot="feed"]')).toHaveCount(0);
+      await page.getByRole("link", { name: "Relays" }).click();
+      await expect(shell).toHaveAttribute("data-main-view", "relays");
+      await expect(page.locator(".relay-row").first()).toBeVisible();
+      await page.getByRole("link", { name: "Diagnostics" }).click();
+      await expect(shell).toHaveAttribute("data-main-view", "diagnostics");
+      await expect(page.locator(".diagnostics-panel")).toBeVisible();
+      await page.getByRole("button", { name: /routing/i }).click();
+      await expect(page.locator('[data-testid="routing-trace"]')).toBeVisible();
     } finally {
       await relay.close();
     }

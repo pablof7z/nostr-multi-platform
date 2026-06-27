@@ -60,9 +60,7 @@ pub(super) fn raw_matches_store_query(raw: &RawEvent, query: &StoreQuery) -> boo
             kinds,
             since,
             until,
-        } => {
-            (kinds.is_empty() || kinds.contains(&raw.kind)) && in_range(raw, *since, *until)
-        }
+        } => (kinds.is_empty() || kinds.contains(&raw.kind)) && in_range(raw, *since, *until),
 
         StoreQuery::KindDtag {
             kind,

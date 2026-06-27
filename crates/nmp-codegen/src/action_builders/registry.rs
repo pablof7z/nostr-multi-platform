@@ -175,6 +175,66 @@ pub const ACTION_BUILDERS: &[ActionBuilder] = &[
         ],
         doc: "Retract a previously-published NIP-25 reaction.",
     },
+    // nip18 — publish repost wrappers from target facts. Rust owns tag shape.
+    ActionBuilder {
+        namespace: "nmp.nip18.repost",
+        method: "repost",
+        fields: &[
+            PayloadField {
+                name: "targetEventId",
+                kind: FieldKind::Str,
+                optional: false,
+            },
+            PayloadField {
+                name: "targetKind",
+                kind: FieldKind::Uint,
+                optional: false,
+            },
+            PayloadField {
+                name: "targetAuthorPubkey",
+                kind: FieldKind::Str,
+                optional: true,
+            },
+            PayloadField {
+                name: "relayHint",
+                kind: FieldKind::Str,
+                optional: true,
+            },
+        ],
+        doc: "Publish a NIP-18 repost wrapper for a target event.",
+    },
+    ActionBuilder {
+        namespace: "nmp.nip18.quote_repost",
+        method: "quoteRepost",
+        fields: &[
+            PayloadField {
+                name: "targetEventId",
+                kind: FieldKind::Str,
+                optional: false,
+            },
+            PayloadField {
+                name: "targetKind",
+                kind: FieldKind::Uint,
+                optional: false,
+            },
+            PayloadField {
+                name: "targetAuthorPubkey",
+                kind: FieldKind::Str,
+                optional: true,
+            },
+            PayloadField {
+                name: "relayHint",
+                kind: FieldKind::Str,
+                optional: true,
+            },
+            PayloadField {
+                name: "content",
+                kind: FieldKind::Str,
+                optional: false,
+            },
+        ],
+        doc: "Publish a NIP-18 quote repost note for a target event.",
+    },
     // nip02 — follow / unfollow share the single-pubkey FollowActionPayload
     // shape (follow_action.fbs); follow_many is the bulk primitive
     // (follow_many_action.fbs).
@@ -207,6 +267,21 @@ pub const ACTION_BUILDERS: &[ActionBuilder] = &[
             optional: true,
         }],
         doc: "Follow many pubkeys in one race-free read-modify-write cycle (NIP-02).",
+    },
+    // nip51 — bookmark add/remove share BookmarkUpdatePayload. This is a nested
+    // item table, so the emitters special-case the method shape while still
+    // keeping the namespace/method/doc in this generated-builder registry.
+    ActionBuilder {
+        namespace: "nmp.nip51.add_bookmark",
+        method: "addBookmark",
+        fields: &[],
+        doc: "Add one item to the active account's NIP-51 bookmark list.",
+    },
+    ActionBuilder {
+        namespace: "nmp.nip51.remove_bookmark",
+        method: "removeBookmark",
+        fields: &[],
+        doc: "Remove one item from the active account's NIP-51 bookmark list.",
     },
     // nip51 — block / unblock relay (block_relay.fbs / unblock_relay.fbs).
     ActionBuilder {
@@ -317,10 +392,12 @@ pub const ACTION_BUILDERS: &[ActionBuilder] = &[
 //     schema_version:uint;        // slot 0 — fail-closed tripwire (vtable 4)
 //     body:PublishPayloadBody (required); // union → body_type at slot 1
 //   }                                     //         body offset at slot 2
-//   union PublishPayloadBody { PublishSigned, PublishProfile, PublishRaw }
+//   union PublishPayloadBody { PublishSigned, PublishProfile, PublishRaw,
+//                              PublishReply }
 //
 // A FlatBuffers union expands to TWO root fields: a `*_type` ubyte discriminant
-// (declaration-order: NONE=0, PublishSigned=1, PublishProfile=2, PublishRaw=3)
+// (declaration-order: NONE=0, PublishSigned=1, PublishProfile=2, PublishRaw=3,
+// PublishReply=4)
 // and the body table offset. The emitters build the nested body table first,
 // then stamp `(schema_version, body_type, body)` into the root — the byte-for-
 // byte twin of `encode_publish_payload` in `nmp-core/src/publish/wire.rs`.
@@ -340,6 +417,8 @@ pub const ACTION_BUILDERS: &[ActionBuilder] = &[
 pub const PUBLISH_BODY_PUBLISH_PROFILE: u8 = 2;
 /// See [`PUBLISH_BODY_PUBLISH_PROFILE`].
 pub const PUBLISH_BODY_PUBLISH_RAW: u8 = 3;
+/// See [`PUBLISH_BODY_PUBLISH_PROFILE`].
+pub const PUBLISH_BODY_PUBLISH_REPLY: u8 = 4;
 
 /// One `nmp.publish` union-bodied builder.
 ///
@@ -368,6 +447,9 @@ pub enum BodyShape {
     PublishRaw,
     /// `PublishProfile { fields:[ProfileField] }`.
     PublishProfile,
+    /// `PublishReply { content:string, reply_to_event_id:string,
+    /// target:PublishTarget, signer_pubkey:string }`.
+    PublishReply,
 }
 
 /// The `nmp.publish` builders. See [`PublishBuilder`].
@@ -377,6 +459,12 @@ pub const PUBLISH_BUILDERS: &[PublishBuilder] = &[
         body_type: PUBLISH_BODY_PUBLISH_RAW,
         body: BodyShape::PublishRaw,
         doc: "Sign-and-publish an arbitrary event kind (generic publish path; NIP-65 outbox or explicit relays).",
+    },
+    PublishBuilder {
+        method: "publishReply",
+        body_type: PUBLISH_BODY_PUBLISH_REPLY,
+        body: BodyShape::PublishReply,
+        doc: "Sign-and-publish a kind:1 reply; Rust derives NIP-10 tags from the stored parent event.",
     },
     PublishBuilder {
         method: "publishProfile",

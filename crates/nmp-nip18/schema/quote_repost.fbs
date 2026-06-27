@@ -1,0 +1,21 @@
+namespace nmp.nip18;
+
+// Typed FlatBuffers payload for the `nmp.nip18.quote_repost` ActionModule.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19):
+//   flatc --rust -o crates/nmp-nip18/src/wire/generated \
+//         crates/nmp-nip18/schema/quote_repost.fbs
+
+table QuoteRepostPayload {
+  // Fail-closed schema_version tripwire.
+  schema_version:uint;
+  target_event_id:string (required);
+  target_kind:uint;
+  target_author_pubkey:string;
+  relay_hint:string;
+  content:string (required);
+}
+
+file_identifier "N18Q";
+root_type QuoteRepostPayload;

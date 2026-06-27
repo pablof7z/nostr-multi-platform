@@ -352,6 +352,7 @@ impl BrowserAppBuilder<ProvidersDecided> {
     pub fn start(mut self) -> BrowserRuntimeHandle {
         // Step 1 — register NMP defaults (takes `&mut impl AppHost`).
         nmp_defaults::register_defaults(&mut self);
+        crate::feed::register_browser_home_feed(&self);
 
         // Step 2 — consume the inner state and build the runtime.
         let inner = match self.inner.into_inner() {

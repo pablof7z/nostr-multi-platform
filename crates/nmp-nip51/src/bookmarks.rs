@@ -8,16 +8,17 @@
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
-use nmp_core::actor::ActorCommand;
-use nmp_core::actor::PublishCommand;
-use nmp_core::substrate::{
-    ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRegistrar,
-    ActionRejection, KernelEvent,
-};
+use nmp_core::substrate::{ActionRejection, KernelEvent};
 use nmp_core::{canonical_relay_url, ObservedProjectionSink};
 use nmp_kinds::KIND_BOOKMARK_LIST;
 use nmp_signer_iface::UnsignedEvent;
 use serde::{Deserialize, Serialize};
+
+#[path = "bookmarks/actions.rs"]
+mod actions;
+pub use actions::{
+    register_bookmark_actions, AddBookmarkAction, BookmarkUpdateInput, RemoveBookmarkAction,
+};
 
 /// NIP-51 metadata tags carried by a bookmark list.
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
@@ -129,6 +130,30 @@ impl BookmarkListProjection {
             )),
         }
     }
+
+    fn replace_snapshot_for_active_account(
+        &self,
+        account_pubkey: &str,
+        snapshot: BookmarkListSnapshot,
+    ) -> Result<(), String> {
+        self.ensure_active_account(account_pubkey)
+            .map_err(action_rejection_message)?;
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| "bookmark list state unavailable".to_string())?;
+        let created_at = if state.owner_pubkey.as_deref() == Some(account_pubkey) {
+            state.created_at
+        } else {
+            0
+        };
+        *state = BookmarkListState {
+            owner_pubkey: Some(account_pubkey.to_string()),
+            created_at,
+            snapshot,
+        };
+        Ok(())
+    }
 }
 
 impl ObservedProjectionSink for BookmarkListProjection {
@@ -184,134 +209,6 @@ pub fn build_bookmark_list_event(snapshot: &BookmarkListSnapshot) -> UnsignedEve
         content: String::new(),
         created_at: 0,
     }
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct BookmarkUpdateInput {
-    pub account_pubkey: String,
-    pub item: BookmarkItem,
-}
-
-pub struct AddBookmarkAction {
-    projection: Arc<BookmarkListProjection>,
-}
-
-impl AddBookmarkAction {
-    #[must_use]
-    pub fn new(projection: Arc<BookmarkListProjection>) -> Self {
-        Self { projection }
-    }
-}
-
-impl ActionModule for AddBookmarkAction {
-    const NAMESPACE: &'static str = "nmp.nip51.add_bookmark";
-    type Action = BookmarkUpdateInput;
-
-    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
-        Some(<Self::Action as ActionPayload>::decode(bytes))
-    }
-
-    fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
-        let item = normalize_item(&action.item).map_err(ActionRejection::Invalid)?;
-        self.projection
-            .ensure_active_account(&action.account_pubkey)?;
-        if snapshot_contains(
-            &self.projection.snapshot_for_account(&action.account_pubkey),
-            &item,
-        ) {
-            return Err(ActionRejection::Conflict(
-                "bookmark item is already present in kind:10003".to_string(),
-            ));
-        }
-        Ok(())
-    }
-
-    fn execute(
-        &self,
-        _ctx: &ActionContext,
-        action: Self::Action,
-        correlation_id: &str,
-        send: &dyn Fn(ActorCommand),
-    ) -> Result<(), String> {
-        let item = normalize_item(&action.item)?;
-        self.projection
-            .ensure_active_account(&action.account_pubkey)
-            .map_err(action_rejection_message)?;
-        let mut snapshot = self.projection.snapshot_for_account(&action.account_pubkey);
-        snapshot.items.push(item);
-        send(ActorCommand::Publish(PublishCommand::UnsignedEvent {
-            event: build_bookmark_list_event(&dedupe_snapshot(snapshot)),
-            correlation_id: Some(correlation_id.to_string()),
-            signer_pubkey: None,
-        }));
-        Ok(())
-    }
-}
-
-pub struct RemoveBookmarkAction {
-    projection: Arc<BookmarkListProjection>,
-}
-
-impl RemoveBookmarkAction {
-    #[must_use]
-    pub fn new(projection: Arc<BookmarkListProjection>) -> Self {
-        Self { projection }
-    }
-}
-
-impl ActionModule for RemoveBookmarkAction {
-    const NAMESPACE: &'static str = "nmp.nip51.remove_bookmark";
-    type Action = BookmarkUpdateInput;
-
-    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
-        Some(<Self::Action as ActionPayload>::decode(bytes))
-    }
-
-    fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
-        let item = normalize_item(&action.item).map_err(ActionRejection::Invalid)?;
-        self.projection
-            .ensure_active_account(&action.account_pubkey)?;
-        if !snapshot_contains(
-            &self.projection.snapshot_for_account(&action.account_pubkey),
-            &item,
-        ) {
-            return Err(ActionRejection::Conflict(
-                "bookmark item is not present in kind:10003".to_string(),
-            ));
-        }
-        Ok(())
-    }
-
-    fn execute(
-        &self,
-        _ctx: &ActionContext,
-        action: Self::Action,
-        correlation_id: &str,
-        send: &dyn Fn(ActorCommand),
-    ) -> Result<(), String> {
-        let item = normalize_item(&action.item)?;
-        self.projection
-            .ensure_active_account(&action.account_pubkey)
-            .map_err(action_rejection_message)?;
-        let mut snapshot = self.projection.snapshot_for_account(&action.account_pubkey);
-        snapshot
-            .items
-            .retain(|candidate| !same_item(candidate, &item));
-        send(ActorCommand::Publish(PublishCommand::UnsignedEvent {
-            event: build_bookmark_list_event(&snapshot),
-            correlation_id: Some(correlation_id.to_string()),
-            signer_pubkey: None,
-        }));
-        Ok(())
-    }
-}
-
-pub fn register_bookmark_actions(
-    app: &mut impl ActionRegistrar,
-    projection: Arc<BookmarkListProjection>,
-) {
-    app.register_default_action(AddBookmarkAction::new(Arc::clone(&projection)));
-    app.register_default_action(RemoveBookmarkAction::new(projection));
 }
 
 fn parse_bookmark_list(event: &KernelEvent) -> BookmarkListSnapshot {

@@ -113,7 +113,8 @@ pub(super) fn open_interest(
         ports.update_tx,
         ports.last_emit,
     );
-    Some(Vec::new())
+    let outbound = ports.kernel.drain_lifecycle_outbound();
+    Some(ports.kernel.partition_auth_paused(outbound))
 }
 
 /// Dispatch `ActorCommand::OpenObservedInterest`.
@@ -151,7 +152,8 @@ pub(super) fn open_observed_interest(
         ports.update_tx,
         ports.last_emit,
     );
-    Some(Vec::new())
+    let outbound = ports.kernel.drain_lifecycle_outbound();
+    Some(ports.kernel.partition_auth_paused(outbound))
 }
 
 /// Dispatch `ActorCommand::CloseInterest`.
@@ -178,7 +180,8 @@ pub(super) fn close_interest(
         ports.update_tx,
         ports.last_emit,
     );
-    Some(Vec::new())
+    let outbound = ports.kernel.drain_lifecycle_outbound();
+    Some(ports.kernel.partition_auth_paused(outbound))
 }
 
 /// Dispatch `ActorCommand::IngestPreVerifiedEvents` (test-support only).

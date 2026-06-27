@@ -462,5 +462,4 @@ impl Kernel {
             .note_copy_emit("action_stages", !result.is_null());
         result
     }
-
 }

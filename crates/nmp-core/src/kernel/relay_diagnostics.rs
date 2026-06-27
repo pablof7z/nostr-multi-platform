@@ -316,8 +316,15 @@ fn build_relay_row(
     };
     let info = s.info.as_ref().map(RelayDiagnosticsInfo::from_doc);
     let notice_count = s.notices_rx;
-    let notices: Vec<RelayDiagnosticsNotice> = s.notices.iter().rev()
-        .map(|n| RelayDiagnosticsNotice { at_ms: n.at_ms, text: n.text.clone() }).collect();
+    let notices: Vec<RelayDiagnosticsNotice> = s
+        .notices
+        .iter()
+        .rev()
+        .map(|n| RelayDiagnosticsNotice {
+            at_ms: n.at_ms,
+            text: n.text.clone(),
+        })
+        .collect();
     let (
         role,
         connection,

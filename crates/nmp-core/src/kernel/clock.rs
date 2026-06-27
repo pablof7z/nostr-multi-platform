@@ -93,9 +93,7 @@ impl MonotonicSecondClock {
 #[cfg(any(test, feature = "test-support"))]
 impl Clock for MonotonicSecondClock {
     fn now(&self) -> SystemTime {
-        let secs = self
-            .advance_secs
-            .load(std::sync::atomic::Ordering::Acquire);
+        let secs = self.advance_secs.load(std::sync::atomic::Ordering::Acquire);
         self.base + std::time::Duration::from_secs(secs)
     }
 }

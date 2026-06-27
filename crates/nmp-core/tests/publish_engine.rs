@@ -401,7 +401,13 @@ fn static_outbox_falls_back_to_indexer_when_author_has_no_writes() {
         indexer_fallback: vec!["wss://indexer-1".to_string(), "wss://indexer-2".to_string()],
         ..StaticOutbox::default()
     };
-    let resolved = outbox.resolve("alice", &[], &PublishTarget::Auto, 1, &BlockedRelaySet::new());
+    let resolved = outbox.resolve(
+        "alice",
+        &[],
+        &PublishTarget::Auto,
+        1,
+        &BlockedRelaySet::new(),
+    );
     let resolved_urls: std::collections::BTreeSet<String> =
         resolved.iter().map(|r| r.url.clone()).collect();
     assert_eq!(
@@ -426,7 +432,13 @@ fn static_outbox_uses_author_writes_and_skips_indexer_fallback() {
         vec!["wss://alice-1".to_string(), "wss://alice-2".to_string()],
     );
     outbox.indexer_fallback = vec!["wss://indexer-fallback".to_string()];
-    let resolved = outbox.resolve("alice", &[], &PublishTarget::Auto, 1, &BlockedRelaySet::new());
+    let resolved = outbox.resolve(
+        "alice",
+        &[],
+        &PublishTarget::Auto,
+        1,
+        &BlockedRelaySet::new(),
+    );
     let resolved_urls: std::collections::BTreeSet<&str> =
         resolved.iter().map(|r| r.url.as_str()).collect();
     assert!(resolved_urls.contains("wss://alice-1"));

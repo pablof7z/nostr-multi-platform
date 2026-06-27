@@ -18,8 +18,8 @@
 
 use std::collections::HashMap;
 
-use nmp_core::{KernelReducer, OutboundMessage, SignRoundTripOutcome};
 use nmp_core::time::Instant;
+use nmp_core::{KernelReducer, OutboundMessage, SignRoundTripOutcome};
 
 use super::event::BrowserRuntimeEvent;
 use super::PendingSignedPublish;
@@ -49,9 +49,7 @@ pub(super) fn deliver_one_completion(
         Ok(signed_json) => {
             reducer.deliver_signed_response_at(&completion.correlation_id, &signed_json, now)
         }
-        Err(reason) => {
-            reducer.fail_sign_roundtrip_at(&completion.correlation_id, &reason, now)
-        }
+        Err(reason) => reducer.fail_sign_roundtrip_at(&completion.correlation_id, &reason, now),
     };
     settle_outcome(reducer, pending, outcome)
 }
@@ -112,7 +110,10 @@ fn settle_outcome(
             // Emit SignFailed (not CommandFailed) — the wire protocol expects a
             // correlation-keyed sign terminal the main-thread broker can resolve
             // (#2139 BLOCKER 2 — was CommandFailed which breaks broker settlement).
-            let events = vec![BrowserRuntimeEvent::SignFailed { correlation_id, reason }];
+            let events = vec![BrowserRuntimeEvent::SignFailed {
+                correlation_id,
+                reason,
+            }];
             (Vec::new(), events)
         }
         SignRoundTripOutcome::Unknown { correlation_id } => {

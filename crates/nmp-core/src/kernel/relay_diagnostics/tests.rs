@@ -29,8 +29,8 @@ fn event_to_unix_ms_conversions() {
 /// this would be flaky. With the anchor it is deterministic by construction.
 #[test]
 fn snapshot_is_byte_stable_without_intervening_event() {
-    use crate::relay::{DEFAULT_VISIBLE_LIMIT};
-use nmp_network::role::RelayRole;
+    use crate::relay::DEFAULT_VISIBLE_LIMIT;
+    use nmp_network::role::RelayRole;
 
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     // `start()` captures the wall-clock anchor; required for the conversion.
@@ -101,8 +101,8 @@ fn snapshot_emits_one_row_per_known_relay() {
 
 #[test]
 fn snapshot_emits_every_transport_url_for_same_role() {
-    use crate::relay::{DEFAULT_VISIBLE_LIMIT};
-use nmp_network::role::RelayRole;
+    use crate::relay::DEFAULT_VISIBLE_LIMIT;
+    use nmp_network::role::RelayRole;
 
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.relay_connecting_url(RelayRole::Content, "wss://relay-a.test/");
@@ -135,8 +135,8 @@ use nmp_network::role::RelayRole;
 /// newest-first in the projection.
 #[test]
 fn notice_count_and_bounded_log() {
-    use crate::relay::{DEFAULT_VISIBLE_LIMIT};
-use nmp_network::role::RelayRole;
+    use crate::relay::DEFAULT_VISIBLE_LIMIT;
+    use nmp_network::role::RelayRole;
     use std::collections::HashMap;
 
     let url = "wss://relay-notice.test/";
@@ -162,21 +162,29 @@ use nmp_network::role::RelayRole;
         .expect("relay row must be present");
 
     // Total counter is exact (not capped).
-    assert_eq!(row.notice_count, total as u64, "notice_count must equal total NOTICEs received");
+    assert_eq!(
+        row.notice_count, total as u64,
+        "notice_count must equal total NOTICEs received"
+    );
 
     // Ring is capped at 32 (MAX_NOTICE_LOG).
     assert_eq!(row.notices.len(), 32, "notices ring must be capped at 32");
 
     // Newest-first: the last ingested message ("msg 34") must be first.
-    assert_eq!(row.notices[0].text, "msg 34", "notices must be ordered newest-first");
-    assert_eq!(row.notices[31].text, "msg 3", "oldest retained entry must be msg 3");
+    assert_eq!(
+        row.notices[0].text, "msg 34",
+        "notices must be ordered newest-first"
+    );
+    assert_eq!(
+        row.notices[31].text, "msg 3",
+        "oldest retained entry must be msg 3"
+    );
 
     // last_notice still reflects the most recent notice text.
     assert_eq!(row.last_notice.as_deref(), Some("msg 34"));
 
     // Build a map to cross-check all 32 retained entries.
-    let text_set: HashMap<&str, ()> =
-        row.notices.iter().map(|n| (n.text.as_str(), ())).collect();
+    let text_set: HashMap<&str, ()> = row.notices.iter().map(|n| (n.text.as_str(), ())).collect();
     for i in 3..=34_usize {
         assert!(
             text_set.contains_key(format!("msg {i}").as_str()),
@@ -194,8 +202,8 @@ use nmp_network::role::RelayRole;
 
 #[test]
 fn relay_row_event_count_uses_session_transport_counter_after_subs_close() {
-    use crate::relay::{DEFAULT_VISIBLE_LIMIT};
-use nmp_network::role::RelayRole;
+    use crate::relay::DEFAULT_VISIBLE_LIMIT;
+    use nmp_network::role::RelayRole;
 
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.relay_connecting_url(RelayRole::Indexer, "wss://indexer-relay.example/");
@@ -219,9 +227,9 @@ use nmp_network::role::RelayRole;
 
 #[test]
 fn set_relay_info_surfaces_on_diagnostics_row() {
-    use crate::relay::{DEFAULT_VISIBLE_LIMIT};
-use nmp_network::role::RelayRole;
+    use crate::relay::DEFAULT_VISIBLE_LIMIT;
     use crate::substrate::RelayInfoDoc;
+    use nmp_network::role::RelayRole;
 
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     let url = "wss://relay.example/";
@@ -267,9 +275,9 @@ use nmp_network::role::RelayRole;
 
 #[test]
 fn relay_info_freshness_gate() {
-    use crate::relay::{DEFAULT_VISIBLE_LIMIT};
-use nmp_network::role::RelayRole;
+    use crate::relay::DEFAULT_VISIBLE_LIMIT;
     use crate::substrate::RelayInfoDoc;
+    use nmp_network::role::RelayRole;
     use std::time::Duration;
 
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);

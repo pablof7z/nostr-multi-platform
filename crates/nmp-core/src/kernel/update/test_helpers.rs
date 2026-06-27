@@ -7,8 +7,8 @@
 
 use super::super::Kernel;
 use crate::kernel::projection_rev;
-use crate::kernel::update::rung2_stamp;
 use crate::kernel::update::helpers;
+use crate::kernel::update::rung2_stamp;
 use crate::update_envelope::{decode_snapshot_typed_projections, encode_snapshot_with_envelope};
 
 impl Kernel {
@@ -38,7 +38,8 @@ impl Kernel {
         if let Some(value) = last_event_to_emit_ms {
             self.max_event_to_emit_ms = self.max_event_to_emit_ms.max(value);
         }
-        let update = self.build_snapshot_struct(running, last_tick_ms, emit_started, last_event_to_emit_ms);
+        let update =
+            self.build_snapshot_struct(running, last_tick_ms, emit_started, last_event_to_emit_ms);
         let before_serialize = super::super::Instant::now();
         let typed = self.run_typed_projections();
         self.run_tick_observers();
@@ -52,18 +53,25 @@ impl Kernel {
         if let Some(obj) = json.as_object_mut() {
             obj.insert(
                 "projections".to_string(),
-                serde_json::to_value(&projections_map).unwrap_or(serde_json::Value::Object(serde_json::Map::new())),
+                serde_json::to_value(&projections_map)
+                    .unwrap_or(serde_json::Value::Object(serde_json::Map::new())),
             );
         }
         // ADR-0055 Rung 2: stamp rev/state/epoch identical to the production path.
         let diag_fp = helpers::diagnostics_payload_fingerprint(&typed);
-        self.projection_rev_tracker.reconcile_diagnostics_fingerprint(diag_fp);
+        self.projection_rev_tracker
+            .reconcile_diagnostics_fingerprint(diag_fp);
         let manifest = self.projection_manifest();
         let epoch_stamp = rung2_stamp::epoch_stamp(&manifest);
         let typed = rung2_stamp::stamp_typed_projections(typed, &manifest);
         // ADR-0055 Rung 3 (D3-6): pass the kernel-owned reusable builder,
         // matching the production path in `make_update`.
-        let frame = encode_snapshot_with_envelope(&mut self.snapshot_builder, &typed, &update, &epoch_stamp);
+        let frame = encode_snapshot_with_envelope(
+            &mut self.snapshot_builder,
+            &typed,
+            &update,
+            &epoch_stamp,
+        );
         // Advance the tracker's last-emitted baseline so the next tick's presence
         // computation is accurate (matches the production path).
         rung2_stamp::record_emitted_for_manifest(&mut self.projection_rev_tracker, &manifest);
@@ -98,7 +106,8 @@ impl Kernel {
             .timing
             .last_event_at
             .map(|last_event_at| emit_started.duration_since(last_event_at).as_millis());
-        let snapshot = self.build_snapshot_struct(running, last_tick_ms, emit_started, last_event_to_emit_ms);
+        let snapshot =
+            self.build_snapshot_struct(running, last_tick_ms, emit_started, last_event_to_emit_ms);
         // Run the same side-effect hooks that `make_update` runs, so tests
         // observing tick observers / typed projection closures see the same
         // per-tick semantics.
@@ -110,7 +119,8 @@ impl Kernel {
         // ADR-0055 Rung 2: keep the projection-rev tracker in the same state as
         // the production path so oracle-gated tests see consistent revs.
         let diag_fp = helpers::diagnostics_payload_fingerprint(&_typed_merged);
-        self.projection_rev_tracker.reconcile_diagnostics_fingerprint(diag_fp);
+        self.projection_rev_tracker
+            .reconcile_diagnostics_fingerprint(diag_fp);
         let manifest = self.projection_manifest();
         rung2_stamp::record_emitted_for_manifest(&mut self.projection_rev_tracker, &manifest);
         // Build the projections map and inject into the snapshot JSON so that
@@ -120,7 +130,8 @@ impl Kernel {
         if let Some(obj) = json.as_object_mut() {
             obj.insert(
                 "projections".to_string(),
-                serde_json::to_value(&projections_map).unwrap_or(serde_json::Value::Object(serde_json::Map::new())),
+                serde_json::to_value(&projections_map)
+                    .unwrap_or(serde_json::Value::Object(serde_json::Map::new())),
             );
         }
         json
@@ -148,8 +159,7 @@ impl Kernel {
         Vec<crate::update_envelope::TypedProjectionData>,
     ) {
         let (frame, value) = self.make_update_frame_and_json_for_test(running);
-        let typed = decode_snapshot_typed_projections(&frame)
-            .unwrap_or_default();
+        let typed = decode_snapshot_typed_projections(&frame).unwrap_or_default();
         (value, typed)
     }
 }

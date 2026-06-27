@@ -66,10 +66,7 @@ pub(crate) enum InboundRelayEvent {
         reason: Option<String>,
     },
     /// The socket teardown completed (kernel evicts wire-subs, etc.).
-    Closed {
-        role: RelayRole,
-        url: String,
-    },
+    Closed { role: RelayRole, url: String },
     /// A transient socket error.
     Failed {
         role: RelayRole,
@@ -350,12 +347,7 @@ mod tests {
 
         struct CountingHook(Arc<AtomicUsize>);
         impl RelayConnectedHook for CountingHook {
-            fn on_relay_connected(
-                &self,
-                _url: &str,
-                _is_reconnect: bool,
-                _sender: CommandSender,
-            ) {
+            fn on_relay_connected(&self, _url: &str, _is_reconnect: bool, _sender: CommandSender) {
                 self.0.fetch_add(1, Ordering::SeqCst);
             }
         }
@@ -396,8 +388,7 @@ mod tests {
         }
 
         let count = Arc::new(AtomicUsize::new(0));
-        let ic: Arc<dyn RelayTextInterceptor> =
-            Arc::new(CountingInterceptor(Arc::clone(&count)));
+        let ic: Arc<dyn RelayTextInterceptor> = Arc::new(CountingInterceptor(Arc::clone(&count)));
 
         let q = test_queue();
         q.push(InboundRelayEvent::Text {
@@ -409,6 +400,10 @@ mod tests {
         let (sender, _rx) = test_sender();
         let out = drain_inbound(&q, &mut reducer, &[ic], &[], &sender);
         assert!(!out.yielded);
-        assert_eq!(count.load(Ordering::SeqCst), 1, "interceptor must be called once");
+        assert_eq!(
+            count.load(Ordering::SeqCst),
+            1,
+            "interceptor must be called once"
+        );
     }
 }

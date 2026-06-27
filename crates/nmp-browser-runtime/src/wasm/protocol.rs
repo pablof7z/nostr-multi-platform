@@ -26,6 +26,17 @@ pub(crate) enum WorkerRequest {
     ResolveRef(ResolveRef),
     ReleaseRef(ReleaseRef),
     DispatchBytes(DispatchBytesPayload),
+    SearchOpen(SearchOpen),
+    SearchClose(SearchClose),
+    GroupDiscoveryOpen(GroupDiscoveryOpen),
+    GroupDiscoveryClose(GroupDiscoveryClose),
+    GroupTimelineOpen(GroupTimelineOpen),
+    GroupTimelineClose(GroupTimelineClose),
+    NotificationsOpen(NotificationsOpen),
+    NotificationsClose(NotificationsClose),
+    NotificationsMarkRead(NotificationsMarkRead),
+    RelayConfig(RelayConfig),
+    PublishRelayPreferences(PublishRelayPreferences),
     CapabilityResult(CapabilityResultPayload),
     SetIdentity(SetIdentity),
     BeginSign(BeginSign),
@@ -55,13 +66,30 @@ pub(crate) struct RelayBootstrapEntry {
     pub role: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 pub(crate) struct SetIdentity {
     pub kind: String,
     pub pubkey_hex: String,
+    #[serde(default)]
+    pub secret_key_bech32: Option<String>,
     pub correlation_id: String,
     #[serde(default)]
     pub identity_relays: Vec<IdentityRelayPermission>,
+}
+
+impl std::fmt::Debug for SetIdentity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SetIdentity")
+            .field("kind", &self.kind)
+            .field("pubkey_hex", &self.pubkey_hex)
+            .field(
+                "secret_key_bech32",
+                &self.secret_key_bech32.as_ref().map(|_| "[redacted]"),
+            )
+            .field("correlation_id", &self.correlation_id)
+            .field("identity_relays", &self.identity_relays)
+            .finish()
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -104,6 +132,112 @@ pub(crate) struct ReleaseRef {
 pub(crate) struct DispatchBytesPayload {
     #[serde(default)]
     pub bytes: Vec<u8>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct SearchOpen {
+    pub session_id: String,
+    pub query: String,
+    pub scope: SearchScope,
+    pub targets: SearchTargets,
+    #[serde(default)]
+    pub relays: Vec<String>,
+    #[serde(default)]
+    pub max_hits: Option<usize>,
+    pub correlation_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum SearchScope {
+    Notes,
+    Profiles,
+    Longform,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum SearchTargets {
+    UserPreferred,
+    AppDefault,
+    Explicit,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct SearchClose {
+    pub session_id: String,
+    pub correlation_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct GroupDiscoveryOpen {
+    pub session_id: String,
+    pub relay_url: String,
+    pub correlation_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct GroupDiscoveryClose {
+    pub session_id: String,
+    pub correlation_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct GroupTimelineOpen {
+    pub session_id: String,
+    pub relay_url: String,
+    pub group_id: String,
+    pub correlation_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct GroupTimelineClose {
+    pub session_id: String,
+    pub correlation_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct NotificationsOpen {
+    pub session_id: String,
+    pub account_pubkey: String,
+    pub correlation_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct NotificationsClose {
+    pub session_id: String,
+    pub correlation_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct NotificationsMarkRead {
+    pub session_id: String,
+    #[serde(default)]
+    pub event_ids: Vec<String>,
+    #[serde(default)]
+    pub all_visible: bool,
+    pub correlation_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct RelayConfig {
+    pub action: RelayConfigAction,
+    pub url: String,
+    #[serde(default)]
+    pub role: Option<String>,
+    pub correlation_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct PublishRelayPreferences {
+    pub correlation_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum RelayConfigAction {
+    Add,
+    Remove,
 }
 
 #[derive(Debug, Deserialize)]
@@ -152,6 +286,8 @@ pub(crate) enum WorkerEvent {
     },
     SignRequest {
         correlation_id: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        action_correlation_id: Option<String>,
         account_pubkey: String,
         unsigned_json: String,
     },

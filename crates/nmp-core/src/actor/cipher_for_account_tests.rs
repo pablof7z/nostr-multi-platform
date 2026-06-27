@@ -25,9 +25,9 @@ use super::pending_sign::{resolve_parked_op, ParkedOpSink};
 use super::signer_port_test_harness::dispatch_one;
 use super::{ActorCommand, CipherContinuation};
 use super::{IdentityCommand, SignCommand};
-use nmp_signer_iface::RemoteSignerHandle;
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
+use nmp_signer_iface::RemoteSignerHandle;
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 const TEST_NSEC: &str = "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";

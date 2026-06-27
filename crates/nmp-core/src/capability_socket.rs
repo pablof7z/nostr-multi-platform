@@ -5,7 +5,7 @@
 //! and the handler returns a typed envelope as JSON. Failures are represented
 //! as data (D6), never as panics or NULL returns to the caller.
 
-use std::ffi::{CString, c_char, c_void};
+use std::ffi::{c_char, c_void, CString};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 
 /// Native capability handler. Receives a `CapabilityRequest` JSON
@@ -215,12 +215,10 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         assert_eq!(v["namespace"], "test");
         assert_eq!(v["correlation_id"], "c1");
-        assert!(
-            v["result_json"]
-                .as_str()
-                .unwrap()
-                .contains("no-capability-handler")
-        );
+        assert!(v["result_json"]
+            .as_str()
+            .unwrap()
+            .contains("no-capability-handler"));
     }
 
     #[test]
@@ -229,12 +227,10 @@ mod tests {
         install(&slot, null_handler);
         let out = dispatch_capability(&slot, r#"{"namespace":"ns","correlation_id":"c2"}"#);
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
-        assert!(
-            v["result_json"]
-                .as_str()
-                .unwrap()
-                .contains("handler-returned-null")
-        );
+        assert!(v["result_json"]
+            .as_str()
+            .unwrap()
+            .contains("handler-returned-null"));
     }
 
     #[test]

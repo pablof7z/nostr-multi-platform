@@ -21,7 +21,8 @@
  * cover the conventions used by the pre-rebuild suite plus data-slot fallbacks.
  */
 
-import { expect, test } from "@playwright/test";
+import { expect, test, type BrowserContext } from "@playwright/test";
+import { nip19 } from "nostr-tools";
 import { finalizeEvent, generateSecretKey, getPublicKey } from "nostr-tools/pure";
 import { startFixtureRelay } from "./fixture-relay.js";
 
@@ -52,7 +53,7 @@ test("@wasm publish: composed note is NIP-07 signed and the relay receives a val
 }) => {
   test.setTimeout(120_000);
 
-  const relay = await startFixtureRelay();
+  const relay = await startFixtureRelay({ eventAck: { delayMs: 2_500 } });
   const relayBootstrap = JSON.stringify([[relay.url, "both,indexer"]]);
   const viewerSecretKey = generateSecretKey();
   const viewerPubkey = getPublicKey(viewerSecretKey);
@@ -114,10 +115,29 @@ test("@wasm publish: composed note is NIP-07 signed and the relay receives a val
     await compose.fill(content);
     await page.getByRole("button", { name: /publish|chirp|post|send/i }).first().click();
 
+    await expect(page.getByTestId("publish-outbox")).toContainText("in flight", {
+      timeout: 15_000,
+    });
+    await expect(page.getByTestId("publish-outbox")).toContainText(content, {
+      timeout: 15_000,
+    });
+    await expect(page.getByTestId("publish-outbox")).toContainText(/sending|pending|retrying/i, {
+      timeout: 15_000,
+    });
+
     // The fixture relay received the published EVENT.
     await expect
       .poll(() => relay.eventCount(), { timeout: 30_000 })
       .toBeGreaterThanOrEqual(1);
+    await expect(page.getByTestId("action-results")).toContainText(/published|accepted/i, {
+      timeout: 30_000,
+    });
+    await expect(page.getByTestId("relay-verdicts")).toContainText("127.0.0.1", {
+      timeout: 30_000,
+    });
+    await expect(page.getByTestId("relay-verdicts")).toContainText("accepted", {
+      timeout: 30_000,
+    });
 
     // The NIP-07 stub signed exactly the note (scenario 4: round-trip).
     expect(signedEvents.length).toBeGreaterThanOrEqual(1);
@@ -131,6 +151,149 @@ test("@wasm publish: composed note is NIP-07 signed and the relay receives a val
       ]),
     );
   } finally {
+    await relay.close();
+  }
+});
+
+test("@wasm publish: local-key onboarding signs and publishes without a browser extension", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+
+  const relay = await startFixtureRelay({ eventAck: { delayMs: 1_000 } });
+  const relayBootstrap = JSON.stringify([[relay.url, "both,indexer"]]);
+  const localSecretKey = generateSecretKey();
+  const localNsec = nip19.nsecEncode(localSecretKey);
+  const localPubkey = getPublicKey(localSecretKey);
+  const content = `chirp local-key publish ${Date.now()}`;
+
+  try {
+    await page.goto(`/?relay_bootstrap=${encodeURIComponent(relayBootstrap)}`);
+
+    const shell = page.locator(SHELL);
+    await expect(shell).toHaveAttribute("data-runtime-status", "running", { timeout: 30_000 });
+    await expect
+      .poll(() => relay.connectionCount(), { timeout: 20_000 })
+      .toBeGreaterThanOrEqual(1);
+
+    await expect(page.getByText("Connect signer")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("local-nsec-input")).toBeVisible({ timeout: 10_000 });
+    await page.getByTestId("local-nsec-input").fill(localNsec);
+    await page.getByTestId("local-nsec-submit").click();
+
+    await expect(page.locator(".status-indicator")).toHaveAttribute("data-connected", "true", {
+      timeout: 30_000,
+    });
+    await expect(page.locator('[data-slot="active-signer"]')).toContainText("Local key");
+    await expect(page.getByTestId("local-nsec-input")).toHaveCount(0);
+
+    const compose = await findCompose(page);
+    test.skip(
+      compose === undefined,
+      "Compose UI not present in the Item B shell yet — local-key publish round-trip activates " +
+        "automatically once the compose box + publish button land on master.",
+    );
+    if (compose === undefined) return;
+
+    await compose.fill(content);
+    await page.getByRole("button", { name: /publish|chirp|post|send/i }).first().click();
+
+    await expect(page.getByTestId("publish-outbox")).toContainText("in flight", {
+      timeout: 15_000,
+    });
+    await expect(page.getByTestId("publish-outbox")).toContainText(content, {
+      timeout: 15_000,
+    });
+    await expect
+      .poll(() => relay.eventCount(), { timeout: 30_000 })
+      .toBeGreaterThanOrEqual(1);
+    await expect(page.getByTestId("action-results")).toContainText(/published|accepted/i, {
+      timeout: 30_000,
+    });
+    await expect(page.getByTestId("relay-verdicts")).toContainText("127.0.0.1", {
+      timeout: 30_000,
+    });
+    await expect(page.getByTestId("relay-verdicts")).toContainText("accepted", {
+      timeout: 30_000,
+    });
+    expect(relay.receivedEvents()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 1, pubkey: localPubkey, content }),
+      ]),
+    );
+  } finally {
+    await relay.close();
+  }
+});
+
+test("@wasm publish: accepted local-key note refetches in a second browser session", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+
+  const relay = await startFixtureRelay();
+  const relayBootstrap = JSON.stringify([[relay.url, "both,indexer"]]);
+  const localSecretKey = generateSecretKey();
+  const localNsec = nip19.nsecEncode(localSecretKey);
+  const localPubkey = getPublicKey(localSecretKey);
+  const content = `chirp refetch proof ${Date.now()}`;
+  let secondContext: BrowserContext | undefined;
+
+  try {
+    await page.goto(`/?relay_bootstrap=${encodeURIComponent(relayBootstrap)}`);
+
+    const shell = page.locator(SHELL);
+    await expect(shell).toHaveAttribute("data-runtime-status", "running", { timeout: 30_000 });
+    await expect
+      .poll(() => relay.connectionCount(), { timeout: 20_000 })
+      .toBeGreaterThanOrEqual(1);
+
+    await page.getByTestId("local-nsec-input").fill(localNsec);
+    await page.getByTestId("local-nsec-submit").click();
+    await expect(page.locator(".status-indicator")).toHaveAttribute("data-connected", "true", {
+      timeout: 30_000,
+    });
+
+    const compose = await findCompose(page);
+    test.skip(
+      compose === undefined,
+      "Compose UI not present — second-session refetch proof activates once compose lands.",
+    );
+    if (compose === undefined) return;
+
+    await compose.fill(content);
+    await page.getByRole("button", { name: /publish|chirp|post|send/i }).first().click();
+
+    await expect
+      .poll(() => relay.eventCount(), { timeout: 30_000 })
+      .toBeGreaterThanOrEqual(1);
+    expect(relay.receivedEvents()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 1, pubkey: localPubkey, content }),
+      ]),
+    );
+    await expect(page.getByTestId("action-results")).toContainText(/published|accepted/i, {
+      timeout: 30_000,
+    });
+
+    const browser = page.context().browser();
+    if (browser === null) throw new Error("Playwright browser handle unavailable");
+    secondContext = await browser.newContext();
+    const secondPage = await secondContext.newPage();
+    await secondPage.goto(`/?relay_bootstrap=${encodeURIComponent(relayBootstrap)}`);
+
+    const secondShell = secondPage.locator(SHELL);
+    await expect(secondShell).toHaveAttribute("data-runtime-status", "running", {
+      timeout: 30_000,
+    });
+    await expect(secondShell).toHaveAttribute("data-has-snapshot", "true", {
+      timeout: 30_000,
+    });
+    await expect(secondPage.getByTestId("feed-timeline")).toContainText(content, {
+      timeout: 60_000,
+    });
+  } finally {
+    await secondContext?.close();
     await relay.close();
   }
 });

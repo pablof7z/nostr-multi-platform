@@ -1,6 +1,5 @@
 //! Lifecycle smoke, `apply_selection` wiring, dead-relay exclusion, and
 //! `drain_tick` actor-idle-loop driver tests.
-
 use super::*;
 use crate::planner::{
     InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope, InterestShape,
@@ -48,8 +47,6 @@ fn empty_tick_does_not_compile() {
     assert!(frames.is_empty());
     assert_eq!(l.compile_count(), 0);
 }
-
-// ─── apply_selection wiring ──────────────────────────────────────────────
 
 /// With 10 follows each declaring a unique write relay (no shared
 /// coverage), the naive plan would carry 10 relay entries. Bound
@@ -780,18 +777,21 @@ fn pd033c_set_bootstrap_content_relays_replaces_rather_than_appends() {
 
     let mailboxes = InMemoryMailboxCache::new();
     let event_id_hex: String = "bb".repeat(32);
-    push_legacy(l.registry_mut(), LogicalInterest {
-        id: InterestId(1),
-        scope: InterestScope::Global,
-        shape: InterestShape {
-            event_ids: [event_id_hex].into_iter().collect(),
-            limit: Some(1),
-            ..Default::default()
+    push_legacy(
+        l.registry_mut(),
+        LogicalInterest {
+            id: InterestId(1),
+            scope: InterestScope::Global,
+            shape: InterestShape {
+                event_ids: [event_id_hex].into_iter().collect(),
+                limit: Some(1),
+                ..Default::default()
+            },
+            hints: Vec::new(),
+            lifecycle: InterestLifecycle::OneShot,
+            is_indexer_discovery: false,
         },
-        hints: Vec::new(),
-        lifecycle: InterestLifecycle::OneShot,
-        is_indexer_discovery: false,
-    });
+    );
 
     let frames = l.recompile_and_diff(&mailboxes).expect("compile");
     let urls: std::collections::BTreeSet<String> = frames

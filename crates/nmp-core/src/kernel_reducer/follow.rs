@@ -45,6 +45,8 @@ impl super::KernelReducer {
     /// borrow drops before any async boundary (wasm `RefCell` discipline).
     #[must_use]
     pub fn try_current_kind3_event(&self) -> Option<(Vec<Vec<String>>, String)> {
-        self.kernel.try_current_kind3_event()
+        self.kernel
+            .try_current_kind3_event()
+            .map(|(tags, content, _created_at)| (tags, content))
     }
 }

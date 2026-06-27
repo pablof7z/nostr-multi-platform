@@ -183,8 +183,7 @@ pub mod codes {
     /// The NIP-46 signer broker was not initialised before a URI reached it.
     pub const SIGNER_BROKER_NOT_INITIALISED: &str = "signer_broker_not_initialised";
     /// The external (NIP-55) signer driver was not initialised on restore.
-    pub const SIGNER_NIP55_DRIVER_NOT_INITIALISED: &str =
-        "signer_nip55_driver_not_initialised";
+    pub const SIGNER_NIP55_DRIVER_NOT_INITIALISED: &str = "signer_nip55_driver_not_initialised";
 
     // ── Progress codes (Severity::Progress) ──────────────────────────────────
     // In-flight NIP-46/NIP-55 onboarding progress labels the kernel sets
@@ -193,8 +192,7 @@ pub mod codes {
     /// The kernel is opening a NIP-46 bunker session (initial connect).
     pub const PROGRESS_WAITING_FOR_BROKER: &str = "signer_progress_waiting_for_broker";
     /// The kernel is restoring a persisted NIP-46 bunker session at launch.
-    pub const PROGRESS_RESTORING_BROKER_SESSION: &str =
-        "signer_progress_restoring_broker_session";
+    pub const PROGRESS_RESTORING_BROKER_SESSION: &str = "signer_progress_restoring_broker_session";
 
     // ── action_lifecycle failure-reason codes (#1735) ────────────────────────
     // Stable machine keys for the kernel's OWN curated action-failure copy,
@@ -211,8 +209,7 @@ pub mod codes {
     /// relay target was refused (publishing would leak the encrypted envelope to
     /// the default outbox — a D10 violation). The shell explains the host must
     /// supply an explicit relay set.
-    pub const LIFECYCLE_PUBLISH_NO_EXPLICIT_TARGET: &str =
-        "lifecycle_publish_no_explicit_target";
+    pub const LIFECYCLE_PUBLISH_NO_EXPLICIT_TARGET: &str = "lifecycle_publish_no_explicit_target";
     /// A signing/capability round-trip was denied or timed out (NIP-46 bunker /
     /// NIP-55 Android remote signer rejected the request, or the approval budget
     /// elapsed). This is a `Failed` terminal with a CURATED code — distinct from

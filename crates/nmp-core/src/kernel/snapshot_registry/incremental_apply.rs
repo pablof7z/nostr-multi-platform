@@ -95,7 +95,8 @@ impl SnapshotRegistry {
     /// contended RMW race.
     pub fn declare_incremental_apply(&mut self) {
         if !self.incremental_apply_enabled.load(Ordering::Acquire) {
-            self.incremental_apply_enabled.store(true, Ordering::Release);
+            self.incremental_apply_enabled
+                .store(true, Ordering::Release);
             // D3-5: signal that the kernel must reset its last-emitted baseline
             // so the next frame is a full baseline. The latch is consumed once
             // by `take_incremental_apply_baseline_pending` in `make_update`.

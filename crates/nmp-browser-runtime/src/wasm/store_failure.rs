@@ -134,15 +134,27 @@ mod tests {
             SECOND_TAB_POOL_LOCK,
             UNKNOWN,
         ] {
-            assert!(r.starts_with(PREFIX), "reason `{r}` must carry the `{PREFIX}` prefix");
-            assert!(r.contains(": "), "reason `{r}` must be host-splittable on `: `");
+            assert!(
+                r.starts_with(PREFIX),
+                "reason `{r}` must carry the `{PREFIX}` prefix"
+            );
+            assert!(
+                r.contains(": "),
+                "reason `{r}` must be host-splittable on `: `"
+            );
         }
     }
 
     #[test]
     fn quota_classifies_first() {
-        assert_eq!(classify_open_failure(&io("QuotaExceededError: ...")), QUOTA_DENIED);
-        assert_eq!(classify_open_failure(&io("the disk has no space left")), QUOTA_DENIED);
+        assert_eq!(
+            classify_open_failure(&io("QuotaExceededError: ...")),
+            QUOTA_DENIED
+        );
+        assert_eq!(
+            classify_open_failure(&io("the disk has no space left")),
+            QUOTA_DENIED
+        );
         // Quota wins even if other tokens are present.
         assert_eq!(
             classify_open_failure(&io("QuotaExceededError on access handle")),
@@ -168,7 +180,10 @@ mod tests {
             classify_open_failure(&io("SecurityError: storage disallowed")),
             PRIVATE_BROWSING
         );
-        assert_eq!(classify_open_failure(&io("operation is not allowed")), PRIVATE_BROWSING);
+        assert_eq!(
+            classify_open_failure(&io("operation is not allowed")),
+            PRIVATE_BROWSING
+        );
     }
 
     #[test]

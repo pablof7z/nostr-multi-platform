@@ -39,6 +39,12 @@ fn render_one(builder: &PublishBuilder, out: &mut String) {
         BodyShape::PublishProfile => {
             out.push_str("        fields: List<Pair<String, String>>,\n");
         }
+        BodyShape::PublishReply => {
+            out.push_str("        content: String,\n");
+            out.push_str("        replyToEventId: String,\n");
+            out.push_str("        relays: List<String>? = null,\n");
+            out.push_str("        signerPubkey: String? = null,\n");
+        }
     }
     out.push_str("    ): ByteArray {\n");
     out.push_str("        val fbb = FlatBufferBuilder()\n");
@@ -46,6 +52,7 @@ fn render_one(builder: &PublishBuilder, out: &mut String) {
     match builder.body {
         BodyShape::PublishRaw => render_raw_body(out),
         BodyShape::PublishProfile => render_profile_body(out),
+        BodyShape::PublishReply => render_reply_body(out),
     }
 
     // PublishPayload root: schema_version (slot 0), body_type ubyte (slot 1),
@@ -157,6 +164,25 @@ fn render_profile_body(out: &mut String) {
          \x20       }\n\
          \x20       fbb.startTable(1)\n\
          \x20       fbb.addOffset(0, fieldsVec, 0) // slot 0: fields\n\
+         \x20       val bodyOffset = fbb.endTable()\n",
+    );
+}
+
+fn render_reply_body(out: &mut String) {
+    out.push_str(
+        "        val contentOffset = fbb.createString(content)\n\
+         \x20       val replyToEventIdOffset = fbb.createString(replyToEventId)\n\
+         \x20       val signerPubkeyOffset = signerPubkey?.let { fbb.createString(it) } ?: 0\n",
+    );
+    render_target(out);
+    // PublishReply: content (slot 0), reply_to_event_id (slot 1), target
+    // (slot 2), signer_pubkey (slot 3, optional).
+    out.push_str(
+        "        fbb.startTable(4)\n\
+         \x20       fbb.addOffset(0, contentOffset, 0) // slot 0: content\n\
+         \x20       fbb.addOffset(1, replyToEventIdOffset, 0) // slot 1: reply_to_event_id\n\
+         \x20       fbb.addOffset(2, targetOffset, 0) // slot 2: target\n\
+         \x20       if (signerPubkeyOffset != 0) fbb.addOffset(3, signerPubkeyOffset, 0) // slot 3: signer_pubkey\n\
          \x20       val bodyOffset = fbb.endTable()\n",
     );
 }

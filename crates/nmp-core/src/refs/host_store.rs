@@ -16,9 +16,9 @@
 
 use std::collections::BTreeMap;
 
-use super::{RefRowApplyOutcome, RefRowCache, decode_ref_row_delta_batch};
+use super::{decode_ref_row_delta_batch, RefRowApplyOutcome, RefRowCache};
 use crate::kernel::public_typed_projections::{
-    ClaimedEventRow, ProfileCardModel, decode_claimed_events, decode_profile,
+    decode_claimed_events, decode_profile, ClaimedEventRow, ProfileCardModel,
 };
 
 /// The kernel-emitted projection key + Lane A namespace token for the profile

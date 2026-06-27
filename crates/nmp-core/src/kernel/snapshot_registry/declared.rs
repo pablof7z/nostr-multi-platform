@@ -180,7 +180,11 @@ impl DeclaredProjections {
     /// seams, or the Chirp shell helper — is checked. `All` / `Undeclared`
     /// declare no narrow set, so they are untouched by this check.
     pub(crate) fn enforce_no_drift(&self) {
-        let stray = self.stray_keys(crate::kernel::KERNEL_BUILTIN_PROJECTION_KEYS.iter().copied());
+        let stray = self.stray_keys(
+            crate::kernel::KERNEL_BUILTIN_PROJECTION_KEYS
+                .iter()
+                .copied(),
+        );
         if !stray.is_empty() {
             tracing::warn!(
                 stray = ?stray,
@@ -313,7 +317,11 @@ mod tests {
     /// drift gate.
     #[test]
     fn undeclared_and_all_have_no_strays() {
-        let decodable = || crate::kernel::KERNEL_BUILTIN_PROJECTION_KEYS.iter().copied();
+        let decodable = || {
+            crate::kernel::KERNEL_BUILTIN_PROJECTION_KEYS
+                .iter()
+                .copied()
+        };
         assert!(DeclaredProjections::Undeclared
             .stray_keys(decodable())
             .is_empty());
@@ -331,8 +339,12 @@ mod tests {
                 .map(|k| k.to_string()),
         );
         assert!(
-            d.stray_keys(crate::kernel::KERNEL_BUILTIN_PROJECTION_KEYS.iter().copied())
-                .is_empty(),
+            d.stray_keys(
+                crate::kernel::KERNEL_BUILTIN_PROJECTION_KEYS
+                    .iter()
+                    .copied()
+            )
+            .is_empty(),
             "the full built-in set declared back must be drift-free"
         );
     }
@@ -347,8 +359,11 @@ mod tests {
         // is a real built-in; `nmp.feed.home` is a Tier-1 key that must not be
         // declared here (it self-gates by registration).
         d.declare(["profile", "relay_diagnstics", "nmp.feed.home"]);
-        let mut stray =
-            d.stray_keys(crate::kernel::KERNEL_BUILTIN_PROJECTION_KEYS.iter().copied());
+        let mut stray = d.stray_keys(
+            crate::kernel::KERNEL_BUILTIN_PROJECTION_KEYS
+                .iter()
+                .copied(),
+        );
         stray.sort();
         assert_eq!(
             stray,

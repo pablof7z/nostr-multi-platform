@@ -47,6 +47,12 @@ fn contract_matches_modules_and_default_payload_reexports() {
         assert_contract::<nmp_nip25::UnreactModule, action_payloads::UnreactAction>(
             "nmp.nip25.unreact",
         ),
+        assert_contract::<nmp_nip18::RepostModule, action_payloads::RepostAction>(
+            "nmp.nip18.repost",
+        ),
+        assert_contract::<nmp_nip18::QuoteRepostModule, action_payloads::QuoteRepostAction>(
+            "nmp.nip18.quote_repost",
+        ),
         assert_contract::<nmp_nip51::AddBookmarkAction, action_payloads::BookmarkUpdateInput>(
             "nmp.nip51.add_bookmark",
         ),

@@ -47,7 +47,7 @@
 //! > `PublishUnsignedEvent` inside an `extern "C" fn nmp_app_*` body
 //! > (D11 lint catches that regression).
 
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use super::ActionContext;
 

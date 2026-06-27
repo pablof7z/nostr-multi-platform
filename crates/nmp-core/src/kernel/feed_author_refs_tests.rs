@@ -17,11 +17,11 @@
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
-use super::feed_author_consumer_id;
 use super::super::refs::{ProfileShape, RefLiveness, RefNamespace, RefShape};
 use super::super::snapshot_registry::new_snapshot_projection_slot;
 use super::super::*;
-use crate::relay::{DEFAULT_VISIBLE_LIMIT};
+use super::feed_author_consumer_id;
+use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use nmp_network::role::RelayRole;
 
 const HOME_KEY: &str = "nmp.feed.home";
@@ -32,7 +32,10 @@ fn hex64(prefix: &str) -> String {
 
 /// A kernel with a snapshot slot bound, plus a connected relay so resolves
 /// register a fetch interest (not just a cache-serve).
-fn kernel_with_slot() -> (Kernel, super::super::snapshot_registry::SnapshotProjectionSlot) {
+fn kernel_with_slot() -> (
+    Kernel,
+    super::super::snapshot_registry::SnapshotProjectionSlot,
+) {
     let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
     kernel.relay_connected(RelayRole::Content);
     let slot = new_snapshot_projection_slot();
@@ -86,7 +89,10 @@ fn feed_tick_auto_resolves_each_visible_author() {
             super::super::short_hex(pk)
         );
         // The feed avatar wants the `Ref` shape (not full Card).
-        assert_eq!(kernel.ref_demanded_profile_shape(pk), Some(ProfileShape::Ref));
+        assert_eq!(
+            kernel.ref_demanded_profile_shape(pk),
+            Some(ProfileShape::Ref)
+        );
     }
     // The kernel tracks exactly these three under the consumer.
     let tracked: &BTreeSet<String> = kernel
@@ -136,7 +142,10 @@ fn scrolling_off_an_author_releases_its_ref() {
         !kernel.profile_claims.contains_key(&a),
         "scrolled-off author must release its slot (no leak)"
     );
-    assert!(kernel.profile_claims.contains_key(&b), "still-visible author retained");
+    assert!(
+        kernel.profile_claims.contains_key(&b),
+        "still-visible author retained"
+    );
     let tracked = kernel.auto_profile_refs_by_consumer.get(&consumer).unwrap();
     assert_eq!(tracked.len(), 1);
 }
@@ -164,7 +173,10 @@ fn closing_permanent_home_feed_releases_all_refs() {
         "release-all on the permanent home feed must drop EVERY auto-resolved ref"
     );
     assert!(
-        kernel.auto_profile_refs_by_consumer.get(&consumer).is_none(),
+        kernel
+            .auto_profile_refs_by_consumer
+            .get(&consumer)
+            .is_none(),
         "the consumer's tracking entry is gone after release-all"
     );
 }
@@ -184,10 +196,7 @@ fn unregistering_transient_feed_provider_releases_all_on_next_tick() {
     assert_eq!(kernel.profile_claims.len(), 2);
 
     // Transient feed closes: provider removed (the `unregister_feed` action).
-    assert!(slot
-        .lock()
-        .unwrap()
-        .remove_feed_author_provider(thread_key));
+    assert!(slot.lock().unwrap().remove_feed_author_provider(thread_key));
 
     // Next tick: the consumer has no live provider, so the sweep releases all.
     kernel.reconcile_feed_author_refs();
@@ -195,7 +204,10 @@ fn unregistering_transient_feed_provider_releases_all_on_next_tick() {
         kernel.profile_claims.is_empty(),
         "a provider that vanished must release every ref it held (transient-feed leak guard)"
     );
-    assert!(kernel.auto_profile_refs_by_consumer.get(&consumer).is_none());
+    assert!(kernel
+        .auto_profile_refs_by_consumer
+        .get(&consumer)
+        .is_none());
 }
 
 /// Direct release-by-feed-key seam. NOTE: `unregister_feed` does NOT call this
@@ -245,7 +257,10 @@ fn feed_ref_dedupes_with_explicit_live_card_claim() {
     let consumers = kernel.profile_claims.get(&a).expect("claimed");
     assert_eq!(consumers.len(), 2, "feed + explicit screen share one slot");
     // Widest shape wins: Card (the screen) over Ref (the feed).
-    assert_eq!(kernel.ref_demanded_profile_shape(&a), Some(ProfileShape::Card));
+    assert_eq!(
+        kernel.ref_demanded_profile_shape(&a),
+        Some(ProfileShape::Card)
+    );
     // Live wins: the slot stays Tailing while the screen's Live owner holds.
     assert!(
         kernel.live_profile_claims.contains_key(&a),
@@ -318,7 +333,11 @@ fn guardrail_fires_for_emitted_but_unresolved_author() {
     assert!(kernel.ref_demanded_profile_shape(&a).is_none());
 
     let hits = kernel.unresolved_feed_authors(&live);
-    assert_eq!(hits.len(), 1, "guardrail must flag the emitted-but-unresolved author");
+    assert_eq!(
+        hits.len(),
+        1,
+        "guardrail must flag the emitted-but-unresolved author"
+    );
     assert_eq!(hits[0], (consumer, a));
 }
 
@@ -341,7 +360,9 @@ fn emitted_set_guardrail_fires_for_unresolved_emitted_author() {
     // the sink) but NOTHING ever resolved it — no provider, no resolve_ref.
     let a = hex64("dead1");
     let consumer = feed_author_consumer_id("nmp.feed.author.deadbeef");
-    slot.lock().unwrap().record_emitted_feed_authors(rev, consumer.clone(), [a.clone()]);
+    slot.lock()
+        .unwrap()
+        .record_emitted_feed_authors(rev, consumer.clone(), [a.clone()]);
 
     // The emitted-set guardrail flags it (provider-tracking guardrail would NOT —
     // there is no `auto_profile_refs_by_consumer` entry for this consumer).
@@ -352,7 +373,11 @@ fn emitted_set_guardrail_fires_for_unresolved_emitted_author() {
         "provider-tracking guardrail is blind to a feed with no provider"
     );
     let hits = kernel.emitted_unresolved_feed_authors(rev);
-    assert_eq!(hits.len(), 1, "emitted-set guardrail must flag the emitted-but-unresolved author");
+    assert_eq!(
+        hits.len(),
+        1,
+        "emitted-set guardrail must flag the emitted-but-unresolved author"
+    );
     assert_eq!(hits[0], (consumer, a));
 }
 
@@ -377,7 +402,9 @@ fn emitted_set_guardrail_silent_for_resolved_emitted_author() {
         false,
         Vec::new(),
     );
-    slot.lock().unwrap().record_emitted_feed_authors(rev, consumer, [a.clone()]);
+    slot.lock()
+        .unwrap()
+        .record_emitted_feed_authors(rev, consumer, [a.clone()]);
 
     assert!(
         kernel.emitted_unresolved_feed_authors(rev).is_empty(),
@@ -434,7 +461,10 @@ fn load_older_widening_within_tick_does_not_blank_authors() {
         .expect("consumer tracked")
         .clone();
     let emitted: BTreeSet<String> = shared_window.into_iter().collect();
-    assert_eq!(resolved, emitted, "resolved set == emitted window (no load_older gap)");
+    assert_eq!(
+        resolved, emitted,
+        "resolved set == emitted window (no load_older gap)"
+    );
     assert!(resolved.contains(&a) && !resolved.contains(&b) && resolved.len() == 1);
     // The emitted-set guardrail is silent (every emitted author has demand).
     assert!(

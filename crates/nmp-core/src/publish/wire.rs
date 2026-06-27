@@ -46,9 +46,7 @@ use serde_json::Value;
 use generated::nmp::publish as fb;
 
 use crate::publish::action::{PublishAction, PublishTarget, RelayUrl};
-use crate::substrate::{
-    ActionPayload, ActionPayloadDecodeError,
-};
+use crate::substrate::{ActionPayload, ActionPayloadDecodeError};
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 /// Stable identity of the `nmp.publish` typed payload schema.
@@ -84,7 +82,10 @@ fn build_target<'a>(
         PublishTarget::Auto => (false, Vec::new()),
         PublishTarget::Explicit { relays } => (
             true,
-            relays.iter().map(|r| fbb.create_string(r)).collect::<Vec<_>>(),
+            relays
+                .iter()
+                .map(|r| fbb.create_string(r))
+                .collect::<Vec<_>>(),
         ),
     };
     let relays = fbb.create_vector(&relay_offsets);
@@ -123,7 +124,11 @@ fn encode_publish_payload(action: &PublishAction) -> Vec<u8> {
     let mut fbb = flatbuffers::FlatBufferBuilder::new();
 
     let (body_type, body) = match action {
-        PublishAction::Publish { handle, event, target } => {
+        PublishAction::Publish {
+            handle,
+            event,
+            target,
+        } => {
             let handle = fbb.create_string(handle);
             // OPAQUE: the canonical NIP-01 wire JSON, verbatim. Byte-exact so the
             // signature stays valid (NEVER a typed table re-encode).
@@ -138,7 +143,10 @@ fn encode_publish_payload(action: &PublishAction) -> Vec<u8> {
                     target: Some(target),
                 },
             );
-            (fb::PublishPayloadBody::PublishSigned, signed.as_union_value())
+            (
+                fb::PublishPayloadBody::PublishSigned,
+                signed.as_union_value(),
+            )
         }
         PublishAction::PublishProfile { fields } => {
             let field_offsets: Vec<WIPOffset<fb::ProfileField<'_>>> = fields
@@ -158,13 +166,45 @@ fn encode_publish_payload(action: &PublishAction) -> Vec<u8> {
             let fields = fbb.create_vector(&field_offsets);
             let profile = fb::PublishProfile::create(
                 &mut fbb,
-                &fb::PublishProfileArgs { fields: Some(fields) },
+                &fb::PublishProfileArgs {
+                    fields: Some(fields),
+                },
             );
-            (fb::PublishPayloadBody::PublishProfile, profile.as_union_value())
+            (
+                fb::PublishPayloadBody::PublishProfile,
+                profile.as_union_value(),
+            )
         }
-        PublishAction::PublishRaw { kind, tags, content, target, signer_pubkey } => {
+        PublishAction::PublishRaw {
+            kind,
+            tags,
+            content,
+            target,
+            signer_pubkey,
+        } => {
             let (raw, _) = build_publish_raw(&mut fbb, *kind, tags, content, target, signer_pubkey);
             (fb::PublishPayloadBody::PublishRaw, raw.as_union_value())
+        }
+        PublishAction::PublishReply {
+            content,
+            reply_to_event_id,
+            target,
+            signer_pubkey,
+        } => {
+            let content = fbb.create_string(content);
+            let reply_to_event_id = fbb.create_string(reply_to_event_id);
+            let target = build_target(&mut fbb, target);
+            let signer_pubkey = signer_pubkey.as_ref().map(|s| fbb.create_string(s));
+            let reply = fb::PublishReply::create(
+                &mut fbb,
+                &fb::PublishReplyArgs {
+                    content: Some(content),
+                    reply_to_event_id: Some(reply_to_event_id),
+                    target: Some(target),
+                    signer_pubkey,
+                },
+            );
+            (fb::PublishPayloadBody::PublishReply, reply.as_union_value())
         }
     };
 
@@ -192,10 +232,14 @@ fn build_publish_raw<'a>(
     let tag_offsets: Vec<WIPOffset<fb::TagRow<'_>>> = tags
         .iter()
         .map(|row| {
-            let values: Vec<WIPOffset<&str>> =
-                row.iter().map(|s| fbb.create_string(s)).collect();
+            let values: Vec<WIPOffset<&str>> = row.iter().map(|s| fbb.create_string(s)).collect();
             let values = fbb.create_vector(&values);
-            fb::TagRow::create(fbb, &fb::TagRowArgs { values: Some(values) })
+            fb::TagRow::create(
+                fbb,
+                &fb::TagRowArgs {
+                    values: Some(values),
+                },
+            )
         })
         .collect();
     let tags = fbb.create_vector(&tag_offsets);
@@ -218,7 +262,9 @@ fn build_publish_raw<'a>(
 // --- decode ------------------------------------------------------------------
 
 fn malformed(reason: impl Into<String>) -> ActionPayloadDecodeError {
-    ActionPayloadDecodeError::Malformed { reason: reason.into() }
+    ActionPayloadDecodeError::Malformed {
+        reason: reason.into(),
+    }
 }
 
 /// Decode typed FlatBuffers bytes into a [`PublishAction`].
@@ -253,7 +299,11 @@ fn decode_publish_payload(bytes: &[u8]) -> Result<PublishAction, ActionPayloadDe
             let canonical = signed.canonical_event().bytes();
             let event = parse_nip01_event(canonical)?;
             let target = read_target(signed.target());
-            Ok(PublishAction::Publish { handle, event, target })
+            Ok(PublishAction::Publish {
+                handle,
+                event,
+                target,
+            })
         }
         fb::PublishPayloadBody::PublishProfile => {
             let profile = root
@@ -262,7 +312,10 @@ fn decode_publish_payload(bytes: &[u8]) -> Result<PublishAction, ActionPayloadDe
             let mut fields = serde_json::Map::new();
             if let Some(rows) = profile.fields() {
                 for row in rows.iter() {
-                    fields.insert(row.key().to_string(), Value::String(row.value().to_string()));
+                    fields.insert(
+                        row.key().to_string(),
+                        Value::String(row.value().to_string()),
+                    );
                 }
             }
             Ok(PublishAction::PublishProfile { fields })
@@ -292,7 +345,20 @@ fn decode_publish_payload(bytes: &[u8]) -> Result<PublishAction, ActionPayloadDe
                 signer_pubkey,
             })
         }
-        other => Err(malformed(format!("unknown PublishPayloadBody discriminant: {other:?}"))),
+        fb::PublishPayloadBody::PublishReply => {
+            let reply = root
+                .body_as_publish_reply()
+                .ok_or_else(|| malformed("body_type=PublishReply but body absent"))?;
+            Ok(PublishAction::PublishReply {
+                content: reply.content().to_string(),
+                reply_to_event_id: reply.reply_to_event_id().to_string(),
+                target: read_target(reply.target()),
+                signer_pubkey: reply.signer_pubkey().map(|s| s.to_string()),
+            })
+        }
+        other => Err(malformed(format!(
+            "unknown PublishPayloadBody discriminant: {other:?}"
+        ))),
     }
 }
 
@@ -304,7 +370,9 @@ fn decode_publish_payload(bytes: &[u8]) -> Result<PublishAction, ActionPayloadDe
 fn parse_nip01_event(bytes: &[u8]) -> Result<SignedEvent, ActionPayloadDecodeError> {
     let v: Value = serde_json::from_slice(bytes)
         .map_err(|e| malformed(format!("canonical_event is not valid NIP-01 JSON: {e}")))?;
-    let obj = v.as_object().ok_or_else(|| malformed("canonical_event is not a JSON object"))?;
+    let obj = v
+        .as_object()
+        .ok_or_else(|| malformed("canonical_event is not a JSON object"))?;
 
     let get_str = |k: &str| -> Result<String, ActionPayloadDecodeError> {
         obj.get(k)
@@ -345,7 +413,13 @@ fn parse_nip01_event(bytes: &[u8]) -> Result<SignedEvent, ActionPayloadDecodeErr
     Ok(SignedEvent {
         id,
         sig,
-        unsigned: UnsignedEvent { pubkey, kind, tags, content, created_at },
+        unsigned: UnsignedEvent {
+            pubkey,
+            kind,
+            tags,
+            content,
+            created_at,
+        },
     })
 }
 
@@ -359,7 +433,10 @@ pub(crate) fn encode_with_schema_version_for_test(schema_version: u32) -> Vec<u8
     let content = fbb.create_string("x");
     let target = fb::PublishTarget::create(
         &mut fbb,
-        &fb::PublishTargetArgs { explicit: false, relays: None },
+        &fb::PublishTargetArgs {
+            explicit: false,
+            relays: None,
+        },
     );
     let raw = fb::PublishRaw::create(
         &mut fbb,

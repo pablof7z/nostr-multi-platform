@@ -41,10 +41,7 @@ use super::{fire_wake, WakeCell};
 /// closures can push events and schedule pumps without holding a mutable borrow
 /// on the relay pool, and observe a later `set_wake`.
 #[cfg(target_arch = "wasm32")]
-pub(crate) fn build_handlers(
-    inbound: Rc<InboundQueue>,
-    wake: WakeCell,
-) -> BrowserKernelHandlers {
+pub(crate) fn build_handlers(inbound: Rc<InboundQueue>, wake: WakeCell) -> BrowserKernelHandlers {
     let on_connected = {
         let inbound = Rc::clone(&inbound);
         let wake = Rc::clone(&wake);

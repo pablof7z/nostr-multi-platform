@@ -20,6 +20,7 @@
 //!
 //! 1. **Action modules** for the common NIPs:
 //!    * `nmp.follow` / `nmp.unfollow` — [`nmp_nip02`]
+//!    * `nmp.nip18.repost` / `nmp.nip18.quote_repost` — [`nmp_nip18`]
 //!    * `nmp.nip25.react` / `nmp.nip25.unreact` — [`nmp_nip25`]
 //!    * `nmp.nip17.send` / `nmp.nip17.publish_relay_list` — [`nmp_nip17`]
 //!    * `nmp.nip57.zap` — [`nmp_nip57`]
@@ -109,6 +110,7 @@ use nmp_core::substrate::{
 pub mod action_payloads;
 #[cfg(feature = "native")]
 pub mod builder;
+mod composition;
 #[cfg(feature = "native")]
 pub mod op_feed_defaults;
 pub mod op_pointer_source;
@@ -290,104 +292,20 @@ fn register_defaults_inner(
     // struct so app-core crates get an instance-identical read handle.
     handles.mailbox_cache = Some(register_substrate(app, coverage_gate));
 
-    // ── NIP-50 public full-text search scopes (#1811) ────────────────────
-    //
-    // Register the crate-owned `nip50.profiles` / `nip50.notes` /
-    // `nip50.longform` `SearchScopeProvider`s into the shared FTS scope
-    // registry. Search is a generic public-query capability (NIP-50 is
-    // transport infrastructure, not a social preference), so all three are
-    // wired in the default bundle regardless of the social toggles — an
-    // unqueried scope merely indexes events that already pass the kind filter,
-    // and registration is additive/yielding (ADR-0049). The scopes are all
-    // `PublicIndexable`, so private kinds ([4,13,14,15,1059,1060]) are dropped
-    // from the compiled spec by construction; `nmp-core` names no FTS noun (the
-    // call lives here in the composition crate, never in the kernel — D0).
-    //
-    // The registry the host accumulates these into is compiled +
-    // `install_into(store)` at actor-kernel construction
-    // (`nmp-core::actor::config::apply_to_kernel`), so they MUST be registered
-    // before `start()` — guaranteed because `register_defaults` is a pre-start
-    // config step.
-    nmp_nip50::register_search_scopes(app);
-
-    // ── NIP-50 input-scope recognizers (#1804, S7) ────────────────────────
-    //
-    // Register the three NIP-50 `InputScopeRecognizer`s (profiles / notes /
-    // longform) into the shared input-scope registry so the input-intent
-    // resolver (`nmp_app_intent_classify`) can produce `TextQuery` candidates
-    // for free-text input with no app-level wiring call. Wired here alongside
-    // the FTS scope registration in the always-on block (search is not a social
-    // preference; free-text user-input classification is generic transport
-    // infrastructure). `nmp-core` names no NIP-50 noun (D0).
-    nmp_nip50::register_input_scopes(app);
+    composition::register_nip50_defaults(app);
 
     // ── Social-feature defaults (toggleable) ─────────────────────────────
 
     if social {
-        // NIP-02: kind:3 follow/unfollow.
-        nmp_nip02::register_follow_actions(app);
-        // NIP-25: public kind:7 reactions and kind:5 unreact deletion.
-        // Uses the typed descriptor (#1724 criterion 6).
-        nmp_core::substrate::ProtocolDescriptor::register_actions(&nmp_nip25::Nip25Descriptor, app);
-        // NIP-84: public kind:9802 highlight publish (`nmp.nip84.publish_highlight`).
-        // Yielding default via the typed descriptor.
-        nmp_core::substrate::ProtocolDescriptor::register_actions(&nmp_nip84::Nip84Descriptor, app);
-        // NIP-29 group input-scope recognizer (#1804, S7).
-        //
-        // Register the `nip29.groups` `InputScopeRecognizer` so the
-        // input-intent resolver can classify NIP-29 URI form
-        // (`host'local-id`) and `naddr` references that point to a group.
-        // The recognizer is pure/IO-free (claim-detect only; no HTTP, no
-        // relay round-trip). NIP-29 is a social/group feature, so it belongs
-        // in this block rather than the always-on substrate tier.
-        nmp_nip29::register_input_scopes(app);
-        // WOT bootstrap reconciler (EnsureInterest/DropInterestOwner book-keeping
-        // for the active account; kernel ships zero WOT nouns — D0).
-        handles.wot = nmp_wot::register_runtime(app);
-        // NIP-51 mute-list observer + projection; the handle lets app-level
-        // feed composition reuse the same read model instead of registering a
-        // duplicate observer.
-        handles.mute = Some(runtimes::register_mute_runtime(app));
-        // NIP-51 kind:10003 global bookmarks. Registers the active-account
-        // observer and the add/remove bookmark action modules against the same
-        // read model, so writes merge the latest observed list instead of
-        // overwriting it through PublishRaw.
-        let _ = runtimes::register_bookmark_runtime(app);
-        // NIP-51 kind:10007 search-relay list. Registers the active-account
-        // observer so the SearchRelayListProjection is populated for the
-        // signed-in account. The app-provided SearchDefaults backs the
-        // higher-order NIP-50 fallback; the default value is empty, so
-        // shared NMP composition never picks a public search relay.
-        handles.search_relays = Some(runtimes::register_search_relay_runtime_with(
-            app,
-            search_defaults,
-        ));
-        // NIP-22 kind:1111 comments. Installs the threaded comment-thread
-        // observer and registers the `nmp.nip22.post_comment` action. The
-        // `Arc<CommentThreadProjection>` is dropped here (fire-and-forget
-        // bundle path); apps that render comment threads call
-        // [`register_comment_runtime`] directly to keep the snapshot handle.
-        let _ = runtimes::register_comment_runtime(app);
+        composition::register_social_defaults(app, &mut handles, search_defaults);
     }
 
     if dms {
-        // NIP-17: kind:14 chat-message DM send + kind:10050 DM-relay-list
-        // publish. Critically, this call also installs the substrate
-        // `DmInboxRelayLookup` AND registers the `Kind10050Parser` as an
-        // `IngestParser` for kind:10050 (V-40).
-        nmp_nip17::register_actions(app);
-        // NIP-17 DM-inbox runtime (kind:1059 gift-wrap inbox projection +
-        // relay-list reconciler).
-        runtimes::register_dm_runtime(app);
+        composition::register_dm_defaults(app);
     }
 
     if zaps {
-        // NIP-57: kind:9734 zap-request build + LNURL fetch + bolt11
-        // surfacing. The protocol crate owns the action module and the
-        // `FetchLnurlInvoiceCommand` protocol command end-to-end (V-41).
-        nmp_nip57::register_actions(app);
-        // NIP-57 self-zap-receipts subscription runtime (kind:9735 `#p`).
-        runtimes::register_zap_receipts_runtime(app);
+        composition::register_zap_defaults(app);
     }
 
     if longform {

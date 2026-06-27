@@ -68,7 +68,11 @@ fn relay_status_entry(rs: &fb::RelayStatus<'_>) -> RelayStatusEntry {
 pub(crate) fn decode_relay_statuses(snapshot: &fb::SnapshotFrame<'_>) -> Vec<RelayStatusEntry> {
     snapshot
         .relay_statuses()
-        .map(|vec| (0..vec.len()).map(|i| relay_status_entry(&vec.get(i))).collect())
+        .map(|vec| {
+            (0..vec.len())
+                .map(|i| relay_status_entry(&vec.get(i)))
+                .collect()
+        })
         .unwrap_or_default()
 }
 
@@ -173,7 +177,9 @@ pub(crate) fn encode_relay_statuses<'bldr>(
     if entries.is_empty() {
         return None;
     }
-    let offsets: Vec<_> =
-        entries.iter().map(|entry| encode_relay_status_entry(builder, entry)).collect();
+    let offsets: Vec<_> = entries
+        .iter()
+        .map(|entry| encode_relay_status_entry(builder, entry))
+        .collect();
     Some(builder.create_vector(&offsets))
 }

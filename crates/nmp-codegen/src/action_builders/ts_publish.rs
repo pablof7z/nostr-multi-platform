@@ -39,6 +39,12 @@ fn render_one(builder: &PublishBuilder, out: &mut String) {
         BodyShape::PublishProfile => {
             out.push_str("    fields: Array<[string, string]>,\n");
         }
+        BodyShape::PublishReply => {
+            out.push_str("    content: string,\n");
+            out.push_str("    replyToEventId: string,\n");
+            out.push_str("    relays: string[] | null = null,\n");
+            out.push_str("    signerPubkey: string | null = null,\n");
+        }
     }
     out.push_str("  ): Uint8Array {\n");
     out.push_str("    const fbb = new flatbuffers.Builder(64);\n");
@@ -46,6 +52,7 @@ fn render_one(builder: &PublishBuilder, out: &mut String) {
     match builder.body {
         BodyShape::PublishRaw => render_raw_body(out),
         BodyShape::PublishProfile => render_profile_body(out),
+        BodyShape::PublishReply => render_reply_body(out),
     }
 
     // PublishPayload root: schema_version (slot 0), body_type ubyte (slot 1),
@@ -130,6 +137,25 @@ fn render_profile_body(out: &mut String) {
          \x20   const fieldsVec = fbb.endVector();\n\
          \x20   fbb.startObject(1);\n\
          \x20   fbb.addFieldOffset(0, fieldsVec, 0); // slot 0: fields\n\
+         \x20   const bodyOffset = fbb.endObject();\n",
+    );
+}
+
+fn render_reply_body(out: &mut String) {
+    out.push_str(
+        "    const contentOffset = fbb.createString(content);\n\
+         \x20   const replyToEventIdOffset = fbb.createString(replyToEventId);\n\
+         \x20   const signerPubkeyOffset = signerPubkey === null ? 0 : fbb.createString(signerPubkey);\n",
+    );
+    render_target(out);
+    // PublishReply: content (slot 0), reply_to_event_id (slot 1), target
+    // (slot 2), signer_pubkey (slot 3, optional).
+    out.push_str(
+        "    fbb.startObject(4);\n\
+         \x20   fbb.addFieldOffset(0, contentOffset, 0); // slot 0: content\n\
+         \x20   fbb.addFieldOffset(1, replyToEventIdOffset, 0); // slot 1: reply_to_event_id\n\
+         \x20   fbb.addFieldOffset(2, targetOffset, 0); // slot 2: target\n\
+         \x20   if (signerPubkeyOffset !== 0) fbb.addFieldOffset(3, signerPubkeyOffset, 0); // slot 3: signer_pubkey\n\
          \x20   const bodyOffset = fbb.endObject();\n",
     );
 }

@@ -74,7 +74,10 @@ pub fn new_relay_connected_hook_slot() -> RelayConnectedHookSlot {
 
 /// Install a hook into the slot. Helper so protocol crates do not reach into
 /// the `Mutex` directly.
-pub fn install_relay_connected_hook(slot: &RelayConnectedHookSlot, hook: Arc<dyn RelayConnectedHook>) {
+pub fn install_relay_connected_hook(
+    slot: &RelayConnectedHookSlot,
+    hook: Arc<dyn RelayConnectedHook>,
+) {
     if let Ok(mut hooks) = slot.lock() {
         hooks.push(hook);
     }

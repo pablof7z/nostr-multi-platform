@@ -88,9 +88,9 @@ pub const KEEPALIVE_PONG_TIMEOUT: Duration = Duration::from_secs(30);
 /// No shared state needed: each worker computes its own jitter independently.
 #[must_use]
 pub fn jittered_backoff(base: Duration, url: &str) -> Duration {
-    let hash = url
-        .bytes()
-        .fold(0u64, |acc, b| acc.wrapping_mul(31).wrapping_add(u64::from(b)));
+    let hash = url.bytes().fold(0u64, |acc, b| {
+        acc.wrapping_mul(31).wrapping_add(u64::from(b))
+    });
     let jitter_ms = hash % 5000; // 0–4999 ms spread
     base + Duration::from_millis(jitter_ms)
 }

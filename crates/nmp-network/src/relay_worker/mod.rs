@@ -14,11 +14,11 @@ mod io_ready;
 mod jitter_tests;
 #[cfg(test)]
 mod no_polling_tests;
+#[cfg(test)]
+mod preamble_tests;
 mod socket_io;
 #[cfg(test)]
 mod tests;
-#[cfg(test)]
-mod preamble_tests;
 
 use connect::open_relay_socket;
 use socket_io::{drain_relay_reads, flush_relay_writes, flush_socket_message, FlushResult};
@@ -114,8 +114,8 @@ pub(super) type RelaySocket = WebSocket<MaybeTlsStream<TcpStream>>;
 // helper now live in the always-compiled `relay_protocol` module so both the
 // native relay worker and the wasm32 `BrowserRelayDriver` can share them.
 use crate::relay_protocol::{
-    apply_reconnect_backoff, is_permanent_error, jittered_backoff,
-    RELAY_RECONNECT_DELAY_INITIAL, RELAY_RECONNECT_DELAY_MAX,
+    apply_reconnect_backoff, is_permanent_error, jittered_backoff, RELAY_RECONNECT_DELAY_INITIAL,
+    RELAY_RECONNECT_DELAY_MAX,
 };
 
 /// Spawn-with-explicit-keepalive worker that dials `relay_url` on

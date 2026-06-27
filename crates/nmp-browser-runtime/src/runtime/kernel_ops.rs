@@ -14,16 +14,21 @@
 //! concurrently with `pump()`.
 
 use std::cell::RefCell;
+use std::sync::mpsc::TryRecvError;
 
 use nmp_core::substrate::{ActionContext, ActionRejection};
 use nmp_core::{
     CommandApplyOutcome, OutboundMessage, RefLiveness, RefNamespace, RefResolveMetadata, RefShape,
     SignRoundTripRequest,
 };
+use nmp_signers::SignerBackend;
 
+use super::event::BrowserRuntimeEvent;
 use super::handle::BrowserRuntimeHandle;
+use super::protocol::expand_protocol_commands;
 use super::snapshot::SnapshotOutcome;
 use crate::runtime::PendingSignedPublish;
+use crate::signer::broker_sign_request;
 
 // ── DispatchBytesResult ──────────────────────────────────────────────────────
 
@@ -34,17 +39,28 @@ use crate::runtime::PendingSignedPublish;
 #[derive(Debug)]
 pub(crate) enum DispatchBytesResult {
     /// Command applied, outbound fanned, snapshot ready.
-    Applied { action_type: String, correlation_id: String },
+    Applied {
+        action_type: String,
+        correlation_id: String,
+    },
     /// Command needs an async sign round-trip.
     SignRequired {
+        action_correlation_id: String,
         correlation_id: String,
         account_pubkey: String,
         unsigned_json: String,
     },
     /// Typed decode / `start()` / `execute()` rejection or kernel unsupported.
-    Rejected { capability: String, correlation_id: String, reason: String },
+    Rejected {
+        capability: String,
+        correlation_id: String,
+        reason: String,
+    },
     /// No active account — fail-closed write gate.
-    NoActiveAccount { capability: String, correlation_id: String },
+    NoActiveAccount {
+        capability: String,
+        correlation_id: String,
+    },
     /// DispatchEnvelope decode failed (bad file id, oversize, etc.).
     DecodeError { message: String },
 }
@@ -69,7 +85,23 @@ impl BrowserRuntimeHandle {
         &mut self,
         canonical_pubkey_hex: String,
     ) -> Vec<OutboundMessage> {
-        self.runtime.reducer.set_active_account(canonical_pubkey_hex)
+        let before = self
+            .runtime
+            .reducer
+            .active_account_handle()
+            .lock()
+            .ok()
+            .and_then(|guard| guard.clone());
+        let outbound = self
+            .runtime
+            .reducer
+            .set_active_account(canonical_pubkey_hex.clone());
+        if before.as_deref() != Some(canonical_pubkey_hex.as_str()) {
+            for observer in &self.runtime.identity_change_observers {
+                observer(Some(canonical_pubkey_hex.clone()));
+            }
+        }
+        outbound
     }
 
     /// Fan outbound relay frames to the pool's WebSocket drivers.
@@ -119,7 +151,9 @@ impl BrowserRuntimeHandle {
         key: &str,
         consumer_id: &str,
     ) -> Vec<OutboundMessage> {
-        self.runtime.reducer.release_ref(namespace, key, consumer_id)
+        self.runtime
+            .reducer
+            .release_ref(namespace, key, consumer_id)
     }
 
     /// JSON snapshot of recent routing decisions (log-safe diagnostics).
@@ -204,7 +238,16 @@ impl BrowserRuntimeHandle {
             };
         }
 
-        let cmds = collected.into_inner();
+        let cmds = match expand_protocol_commands(collected.into_inner()) {
+            Ok(cmds) => cmds,
+            Err(reason) => {
+                return DispatchBytesResult::Rejected {
+                    capability: action_namespace,
+                    correlation_id,
+                    reason,
+                };
+            }
+        };
         let mut all_outbound: Vec<OutboundMessage> = Vec::new();
 
         // Apply each command to the kernel.
@@ -229,10 +272,29 @@ impl BrowserRuntimeHandle {
                             target,
                         },
                     );
+                    match self.try_satisfy_local_sign(
+                        &request.correlation_id,
+                        &request.account_pubkey,
+                        &request.unsigned_json,
+                    ) {
+                        Ok(Some(signed_outbound)) => {
+                            all_outbound.extend(signed_outbound);
+                            continue;
+                        }
+                        Ok(None) => {}
+                        Err(reason) => {
+                            return DispatchBytesResult::Rejected {
+                                capability: action_namespace,
+                                correlation_id,
+                                reason,
+                            };
+                        }
+                    }
                     // Fan whatever outbound we accumulated before the sign gate.
                     let prev_out = std::mem::take(&mut all_outbound);
                     self.fan_out_outbound(prev_out);
                     return DispatchBytesResult::SignRequired {
+                        action_correlation_id: correlation_id,
                         correlation_id: request.correlation_id,
                         account_pubkey: request.account_pubkey,
                         unsigned_json: request.unsigned_json,
@@ -256,48 +318,58 @@ impl BrowserRuntimeHandle {
         }
     }
 
-    /// Merge identity-provided relay URLs into the kernel's configured relay list
-    /// and apply the result (#2139 HIGH 4 — restores nmp-wasm signer.rs:151 behaviour).
-    ///
-    /// Reads the current list from the relay slot, merges incoming rows (adds new
-    /// entries, upgrades roles of existing ones by unioning read/write/indexer flags),
-    /// and calls `set_configured_relays`. Called from `wasm::dispatch::handle_set_identity`
-    /// before seeding the active account so the kernel's relay discovery is seeded
-    /// from identity-provided relays at the same moment the account activates.
-    ///
-    /// No-op when `new_rows` is empty (avoids a redundant kernel write).
-    pub(crate) fn apply_identity_relays(&mut self, new_rows: Vec<(String, String)>) {
-        if new_rows.is_empty() {
-            return;
+    fn try_satisfy_local_sign(
+        &mut self,
+        correlation_id: &str,
+        account_pubkey: &str,
+        unsigned_json: &str,
+    ) -> Result<Option<Vec<OutboundMessage>>, String> {
+        let Some(envelope) = self
+            .runtime
+            .signer_registry
+            .capability_envelope(account_pubkey)
+        else {
+            return Ok(None);
+        };
+        if !matches!(envelope.backend, SignerBackend::LocalKey) {
+            return Ok(None);
         }
-        let mut merged: Vec<(String, String)> = self
-            .configured_relays
-            .lock()
-            .map(|g| {
-                g.as_slice()
-                    .iter()
-                    .map(|r| (r.url().to_string(), r.role().to_string()))
-                    .collect()
-            })
-            .unwrap_or_default();
 
-        let mut changed = false;
-        for (url, role) in new_rows {
-            if let Some(existing) = merged.iter_mut().find(|(eu, _)| eu == &url) {
-                let merged_role = merge_relay_roles(&existing.1, &role);
-                if merged_role != existing.1 {
-                    existing.1 = merged_role;
-                    changed = true;
+        let wake = self.runtime.relay_pool.wake_cell();
+        if !broker_sign_request(
+            &self.runtime.signer_registry,
+            correlation_id,
+            account_pubkey,
+            unsigned_json,
+            &self.runtime.signer_completion_tx,
+            &wake,
+        ) {
+            return Ok(None);
+        }
+
+        let completion = match self.runtime.signer_completion_rx.try_recv() {
+            Ok(completion) => completion,
+            Err(TryRecvError::Empty) => {
+                return Err("local-key signer did not settle synchronously".to_string());
+            }
+            Err(TryRecvError::Disconnected) => {
+                return Err("local-key signer completion channel disconnected".to_string());
+            }
+        };
+        let (outbound, events) = self.runtime.deliver_one_completion(completion);
+        for event in events {
+            match event {
+                BrowserRuntimeEvent::SignCompleted { .. } => {}
+                BrowserRuntimeEvent::SignFailed { reason, .. }
+                | BrowserRuntimeEvent::CommandFailed { reason } => return Err(reason),
+                other => {
+                    return Err(format!(
+                        "local-key sign produced unexpected runtime event: {other:?}"
+                    ));
                 }
-            } else {
-                merged.push((url, role));
-                changed = true;
             }
         }
-
-        if changed {
-            self.runtime.reducer.set_configured_relays(merged);
-        }
+        Ok(Some(outbound))
     }
 }
 
@@ -310,51 +382,4 @@ fn format_rejection(rejection: ActionRejection) -> String {
         ActionRejection::Unauthorized(s) => format!("unauthorized: {s}"),
         ActionRejection::Conflict(s) => format!("conflict: {s}"),
     }
-}
-
-/// Merge two relay role strings by unioning their read/write/indexer flags.
-///
-/// Parses both role strings (comma-separated "read", "write", "both", "indexer"),
-/// ORs the flags, and returns a canonical combined string.
-fn merge_relay_roles(existing: &str, incoming: &str) -> String {
-    let (er, ew, ei) = parse_role_flags(existing);
-    let (ir, iw, ii) = parse_role_flags(incoming);
-    let r = er || ir;
-    let w = ew || iw;
-    let i = ei || ii;
-    let mut parts: Vec<&str> = Vec::new();
-    match (r, w) {
-        (true, true) => parts.push("both"),
-        (true, false) => parts.push("read"),
-        (false, true) => parts.push("write"),
-        (false, false) => {}
-    }
-    if i {
-        parts.push("indexer");
-    }
-    if parts.is_empty() {
-        existing.to_string()
-    } else {
-        parts.join(",")
-    }
-}
-
-/// Parse a comma-separated relay role string into (read, write, indexer) flags.
-fn parse_role_flags(role: &str) -> (bool, bool, bool) {
-    let mut read = false;
-    let mut write = false;
-    let mut indexer = false;
-    for part in role.split(',') {
-        match part.trim() {
-            "read" => read = true,
-            "write" => write = true,
-            "both" => {
-                read = true;
-                write = true;
-            }
-            "indexer" => indexer = true,
-            _ => {}
-        }
-    }
-    (read, write, indexer)
 }

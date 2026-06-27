@@ -72,10 +72,10 @@ pub(crate) struct BrowserBuilderInner {
     pub(crate) inbox_rx: std::sync::mpsc::Receiver<ActorMail>,
     /// Shared relay-list slot (builder holds it, kernel gets a clone at start).
     pub(crate) configured_relays_slot: AppRelaySlot,
-    /// Preferred-relay source for NIP-50 search relay resolution. Stored here;
-    /// consumed when the browser capability/host surface that resolves preferred
-    /// relays lands — seam: browser capability registry (#2049).
-    #[allow(dead_code)]
+    /// Preferred-relay source for NIP-50 search relay resolution. Stored during
+    /// pre-start defaults registration and moved into `BrowserRuntimeHandle`,
+    /// where `search_open(UserPreferred)` resolves kind:10007/app-default relay
+    /// policy at use time.
     pub(crate) preferred_relay_source: Option<Arc<dyn PreferredRelaySource>>,
 
     // ── Registries (held as Arc for install_into at start()) ─────────────────

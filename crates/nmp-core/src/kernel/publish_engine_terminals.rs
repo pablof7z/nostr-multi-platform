@@ -97,12 +97,15 @@ impl Kernel {
             // is silent on cap hits (D6) — the diagnostic counters in the
             // underlying trackers surface the event without interrupting the
             // publish path.
+            let result_json = terminal
+                .result_json
+                .or_else(|| publish_receipt_result_json(&terminal.publish_queue));
             self.action_ledger.record_terminal(
                 &terminal.correlation_id,
                 stage,
                 status,
                 terminal.error,
-                terminal.result_json,
+                result_json,
                 terminal.event_id,
                 terminal.reason_code,
                 None,
@@ -203,7 +206,6 @@ impl Kernel {
         }
         serde_json::Value::Array(rows)
     }
-
 }
 
 /// T128: map a `TerminalOutcome` into the wire-level `(status, outcomes)`
@@ -255,4 +257,29 @@ fn classify_terminal_outcome(
         "ok"
     };
     (status, outcomes)
+}
+
+fn publish_receipt_result_json(payload: &PublishQueueTerminal) -> Option<String> {
+    let PublishQueueTerminal::Settled(outcome) = payload else {
+        return None;
+    };
+    let (_, outcomes) = classify_terminal_outcome(outcome);
+    Some(
+        serde_json::json!({
+            "kind": "publish_relay_receipt",
+            "event_id": outcome.event_id,
+            "relays": outcomes
+                .into_iter()
+                .map(|relay| {
+                    serde_json::json!({
+                        "relay_url": relay.relay_url,
+                        "status": relay.status,
+                        "message": relay.message,
+                        "relay_reason": relay.relay_reason,
+                    })
+                })
+                .collect::<Vec<_>>(),
+        })
+        .to_string(),
+    )
 }

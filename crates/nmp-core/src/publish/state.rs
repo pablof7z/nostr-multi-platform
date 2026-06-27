@@ -274,7 +274,10 @@ impl RetryPolicy {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RetryVerdict {
     Settled(PerRelayState),
-    ScheduleRetry { delay_ms: u64, next_attempt: u32 },
+    ScheduleRetry {
+        delay_ms: u64,
+        next_attempt: u32,
+    },
     /// `auth-required` — the relay refused the EVENT because the socket is not
     /// yet NIP-42 authenticated. The publish must PARK (the engine demotes the
     /// relay to durable `Pending` via the availability gate and re-dispatches
@@ -283,7 +286,9 @@ pub enum RetryVerdict {
     /// bunker-signed AUTH), far longer than any fast retry tick — a budgeted
     /// retry guarantees a false terminal failure. The park is event-driven (D8:
     /// no sleep/poll); `reason` carries the relay's message for diagnostics.
-    ParkAwaitingAuth { reason: String },
+    ParkAwaitingAuth {
+        reason: String,
+    },
 }
 
 /// Pure transition function. Takes the current state + an ack + policy + a

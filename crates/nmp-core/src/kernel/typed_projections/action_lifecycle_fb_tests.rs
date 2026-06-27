@@ -74,12 +74,18 @@ fn model_from_json_mirrors_the_producer_shape() {
     assert_eq!(model.recent_terminal[0].reason_code, None);
     assert_eq!(model.recent_terminal[0].reason_subject, None);
     // Curated row: code + subject parsed alongside the prose fallback.
-    assert_eq!(model.recent_terminal[1].reason.as_deref(), Some("no active account"));
+    assert_eq!(
+        model.recent_terminal[1].reason.as_deref(),
+        Some("no active account")
+    );
     assert_eq!(
         model.recent_terminal[1].reason_code.as_deref(),
         Some("lifecycle_no_active_account")
     );
-    assert_eq!(model.recent_terminal[1].reason_subject.as_deref(), Some("alice"));
+    assert_eq!(
+        model.recent_terminal[1].reason_subject.as_deref(),
+        Some("alice")
+    );
 }
 
 #[test]

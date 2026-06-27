@@ -128,7 +128,11 @@ impl CommandSender {
         relay_url: String,
         text: String,
     ) {
-        let _ = self.send(ActorCommand::EnqueueOutbound { role, relay_url, text });
+        let _ = self.send(ActorCommand::EnqueueOutbound {
+            role,
+            relay_url,
+            text,
+        });
     }
 
     /// Register a reconnect preamble with the relay worker for `relay_url`.
@@ -143,7 +147,11 @@ impl CommandSender {
         relay_url: String,
         frames: Vec<String>,
     ) {
-        let _ = self.send(ActorCommand::SetReconnectPreamble { role, relay_url, frames });
+        let _ = self.send(ActorCommand::SetReconnectPreamble {
+            role,
+            relay_url,
+            frames,
+        });
     }
 
     /// Unregister a persistent NIP-46 subscription.

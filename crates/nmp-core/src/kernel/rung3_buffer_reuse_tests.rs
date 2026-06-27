@@ -127,11 +127,7 @@ fn buffer_reuse_rev_monotonically_increasing() {
 
     let revs: Vec<u64> = frames
         .iter()
-        .map(|f| {
-            decode_snapshot_envelope(f)
-                .expect("frame must decode")
-                .rev
-        })
+        .map(|f| decode_snapshot_envelope(f).expect("frame must decode").rev)
         .collect();
 
     // Verify strictly increasing.
@@ -277,9 +273,8 @@ fn buffer_capacity_stable_after_warmup() {
 
     // All post-warmup frames must decode successfully.
     for (i, frame) in post_warmup.iter().enumerate() {
-        decode_snapshot_envelope(frame).unwrap_or_else(|err| {
-            panic!("post-warmup frame {i} failed to decode: {err}")
-        });
+        decode_snapshot_envelope(frame)
+            .unwrap_or_else(|err| panic!("post-warmup frame {i} failed to decode: {err}"));
     }
 
     // Frame sizes must be stable (no unbounded growth). For a fixed-content

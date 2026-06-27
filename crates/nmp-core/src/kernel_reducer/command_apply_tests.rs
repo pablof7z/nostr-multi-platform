@@ -18,6 +18,7 @@ use crate::planner::{
     InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
 };
 use crate::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
+use crate::ObservedProjectionId;
 use nmp_network::role::RelayRole;
 
 // ─── shared constants / helpers ──────────────────────────────────────────────
@@ -144,6 +145,40 @@ fn open_interest_with_relay_connected_emits_req_frame() {
             assert!(
                 frames.iter().any(|m| m.text.contains("REQ")),
                 "OpenInterest with relay connected must produce a REQ frame; got: {:?}",
+                frames.iter().map(|m| &m.text).collect::<Vec<_>>()
+            );
+        }
+        other => panic!("expected Applied, got {other:?}"),
+    }
+}
+
+#[test]
+fn open_observed_interest_with_relay_connected_emits_req_frame() {
+    let mut r = KernelReducer::new();
+    r.set_configured_relays(vec![(RELAY.to_string(), "both".to_string())]);
+    let _ = r.handle_relay_connected(RelayRole::Content, RELAY, false);
+    let shape = InterestShape {
+        kinds: [1].into_iter().collect(),
+        ..Default::default()
+    };
+
+    let outcome = r.apply_actor_command(ActorCommand::Interests(
+        InterestsCommand::OpenObservedInterest {
+            filter_json: r#"{"kinds":[1]}"#.to_string(),
+            consumer_id: "observed-feed".to_string(),
+            scope: 1,
+            relay_pin: None,
+            observer_id: ObservedProjectionId(1),
+            replay_shapes: vec![shape],
+            replay_limit: 64,
+        },
+    ));
+
+    match outcome {
+        CommandApplyOutcome::Applied(frames) => {
+            assert!(
+                frames.iter().any(|m| m.text.contains("REQ")),
+                "OpenObservedInterest with relay connected must produce a REQ frame; got: {:?}",
                 frames.iter().map(|m| &m.text).collect::<Vec<_>>()
             );
         }

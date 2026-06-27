@@ -37,31 +37,39 @@ use nmp_core::substrate::{
     SubscriptionTrace,
 };
 use nmp_core::time::Instant;
-use nmp_core::{
-    ActionRegistry, CommandSender, KernelReducer, OutboundMessage, UpdateFrameBytes,
-};
+use nmp_core::{ActionRegistry, CommandSender, KernelReducer, OutboundMessage, UpdateFrameBytes};
 
 use crate::builder::BrowserRunConfig;
 use crate::relay::RelayPool;
 use crate::signer::{
-    CapabilityProviderRegistry, SignerCompletion,
-    SignerCompletionRx, SignerCompletionTx,
+    CapabilityProviderRegistry, SignerCompletion, SignerCompletionRx, SignerCompletionTx,
 };
 
 use std::sync::mpsc;
 
 mod event;
+mod protocol;
 pub(crate) mod pump;
 mod signer_delivery;
 // Pub(crate) kernel-op helpers for the wasm entry point (#2038 item A).
 mod kernel_ops;
 pub(crate) use kernel_ops::DispatchBytesResult;
+mod relay_config_ops;
+pub(crate) use relay_config_ops::{RelayConfigAction, RelayConfigResult};
+mod group_discovery;
+pub(crate) use group_discovery::BrowserGroupDiscoverySession;
+mod group_timeline;
+pub(crate) use group_timeline::BrowserGroupTimelineSession;
+mod notifications;
+pub(crate) use notifications::BrowserNotificationsSession;
+mod search;
+pub(crate) use search::BrowserSearchSession;
 
 // ── #2051/#2073 — snapshot/projection/clock/diagnostics track ────────────────
-pub mod snapshot;
-pub(crate) mod signer_state;
 pub mod diagnostics;
 mod handle;
+pub(crate) mod signer_state;
+pub mod snapshot;
 
 pub use diagnostics::BrowserRuntimeDiagnostics;
 pub use event::BrowserRuntimeEvent;
@@ -233,6 +241,19 @@ impl BrowserRuntime {
             &cmd_sender,
         );
 
+        // Relay ingest can synchronously trigger observed-projection callbacks
+        // that enqueue follow-up commands through the same inbox. Drain one more
+        // bounded turn so those commands are not stranded waiting for another
+        // host wake that will never fire.
+        let post_relay_cmd_drain = pump::drain_inbox(
+            &mut self.reducer,
+            &self.inbox_rx,
+            &mut self.pending_signed_publishes,
+            &self.signer_registry,
+            &self.signer_completion_tx,
+            &wake,
+        );
+
         // ── 3. Relay idle-tick sweep ──────────────────────────────────────────
         // Run every registered interceptor's `on_idle_tick` (e.g. NWC expiry
         // sweeps). Mirrors the native actor loop's idle section; D8: hooks
@@ -250,6 +271,7 @@ impl BrowserRuntime {
         all_outbound.extend(cmd_drain.outbound);
         all_outbound.extend(completion_outbound);
         all_outbound.extend(relay_drain.outbound);
+        all_outbound.extend(post_relay_cmd_drain.outbound);
         all_outbound.extend(idle_outbound);
         all_outbound.extend(tick_outbound);
 
@@ -261,13 +283,17 @@ impl BrowserRuntime {
         events.extend(cmd_drain.events);
         events.extend(completion_events);
         events.extend(relay_drain.events);
+        events.extend(post_relay_cmd_drain.events);
         let budget_events = self.relay_pool.fan_out_outbound(&all_outbound);
         events.extend(budget_events);
 
         PumpOutcome {
             outbound: all_outbound,
             events,
-            yielded: cmd_drain.yielded || relay_drain.yielded || completion_yielded,
+            yielded: cmd_drain.yielded
+                || relay_drain.yielded
+                || post_relay_cmd_drain.yielded
+                || completion_yielded,
         }
     }
 

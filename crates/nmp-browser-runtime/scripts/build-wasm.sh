@@ -20,6 +20,7 @@ set -euo pipefail
 CRATE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKSPACE_DIR="$(cd "${CRATE_DIR}/../.." && pwd)"
 PKG_OUT="${WORKSPACE_DIR}/pkg/nmp-browser-runtime"
+SQLITE_WASM_VENDOR="${WORKSPACE_DIR}/crates/nmp-sqlite-wasm/vendor/sqlite-wasm"
 
 # Optional --dev flag for an unoptimised (debug) build.
 PROFILE_FLAG="--release"
@@ -53,6 +54,12 @@ wasm-pack build \
   "${PROFILE_FLAG}" \
   --out-dir "${PKG_OUT}" \
   --features wasm
+
+SNIPPET_DIR="$(find "${PKG_OUT}/snippets" -type d -path '*/vendor/sqlite-wasm' | head -n1)"
+if [[ -n "${SNIPPET_DIR}" ]]; then
+  cp "${SQLITE_WASM_VENDOR}/sqlite3.mjs" "${SQLITE_WASM_VENDOR}/sqlite3.wasm" "${SNIPPET_DIR}/"
+  echo "==> Staged sqlite3.mjs + sqlite3.wasm into ${SNIPPET_DIR#${PKG_OUT}/}"
+fi
 
 echo ""
 echo "==> Done. Output in ${PKG_OUT}"

@@ -1,29 +1,29 @@
 // SigningPanel — Chirp Web onboarding + signing UI (#2038 item D).
 //
 // Rendered into <section data-slot="signing"> in App.tsx. Responsibilities:
-//   • Onboard an identity via NIP-07 (browser extension) or a local nsec key.
+//   • Onboard an identity via NIP-07 (browser extension).
 //   • Show the active signer + connection state (event-derived; see signerStatus).
 //   • Surface the pending sign round-trip and honest failures.
-//   • Degrade honestly: no extension → local-key only; degraded runtime → say so.
+//   • Degrade honestly: no extension or unsupported signer path → say so.
 //
 // Thin-shell contract: ZERO crypto in TS. NIP-07 signing is delegated to the
-// extension by the main-thread broker (signBroker.ts). The local-key nsec is
-// handed VERBATIM to the Rust LocalKey provider (client.setLocalKeySigner); it
-// is never decoded or signed-with here, and is cleared from component state the
-// moment it is dispatched.
+// extension by the main-thread broker (signBroker.ts).
 
 import { createMemo, createSignal, Show } from "solid-js";
 import { encodeNpub, type WorkerEvent } from "@nmp/runtime-web";
 import { useNmpClient } from "../../nmp/context";
 import type { RuntimeSnapshot } from "../../nmp/client";
 import { hasNip07Extension, nip07PublicKey, readNip07Relays } from "./nip07";
-import { checkNsecFormat } from "./nsecInput";
 import { deriveSignLifecycle, latestCapabilityFailure } from "./signerStatus";
 import "./signing.css";
 
 type ActiveIdentity =
   | { kind: "nip07"; pubkey: string }
-  | { kind: "local_key" };
+  | { kind: "local" };
+
+type SigningPanelProps = {
+  onConnectionChange?: (connected: boolean) => void;
+};
 
 /** Inspect a post-onboarding snapshot for a capability failure that aborted the
  *  identity install. Returns the honest reason, or undefined on success. */
@@ -40,15 +40,15 @@ function shortHex(hex: string): string {
   return hex.length <= 12 ? hex : `${hex.slice(0, 8)}…${hex.slice(-4)}`;
 }
 
-export function SigningPanel() {
+export function SigningPanel(props: SigningPanelProps) {
   const { client, snapshot } = useNmpClient();
 
   const [identity, setIdentity] = createSignal<ActiveIdentity | null>(null);
   const [connecting, setConnecting] = createSignal(false);
+  const [importingLocal, setImportingLocal] = createSignal(false);
   const [onboardError, setOnboardError] = createSignal<string | null>(null);
-  const [nsec, setNsec] = createSignal("");
-  const [showNsec, setShowNsec] = createSignal(false);
   const [npubShort, setNpubShort] = createSignal<string | null>(null);
+  let localKeyInput: HTMLInputElement | undefined;
 
   const degraded = createMemo(() => snapshot().clientRuntime === "in_process_fallback");
   const connected = createMemo(() => identity() !== null);
@@ -76,41 +76,43 @@ export function SigningPanel() {
       const failure = onboardingFailure(snap.events);
       if (failure) {
         setOnboardError(failure);
+        props.onConnectionChange?.(false);
       } else {
         setIdentity({ kind: "nip07", pubkey });
+        props.onConnectionChange?.(true);
         resolveNpub(pubkey);
       }
     } catch (e) {
       setOnboardError(humanizeError(e));
+      props.onConnectionChange?.(false);
     } finally {
       setConnecting(false);
     }
   };
 
-  const connectLocalKey = async () => {
-    const check = checkNsecFormat(nsec());
-    if (!check.ok) {
-      setOnboardError(check.reason);
-      return;
-    }
+  const importLocalKey = async (event: SubmitEvent) => {
+    event.preventDefault();
+    const secret = localKeyInput?.value.trim() ?? "";
+    if (!secret) return;
     setOnboardError(null);
-    setConnecting(true);
+    setImportingLocal(true);
     try {
-      // Hand the nsec to the Rust LocalKey provider verbatim and immediately
-      // drop it from component state. The runtime derives the pubkey + signs.
-      const snap: RuntimeSnapshot = await client.setLocalKeySigner(check.value);
-      setNsec("");
+      const snap: RuntimeSnapshot = await client.setLocalKeySigner(secret);
+      if (localKeyInput) localKeyInput.value = "";
       const failure = onboardingFailure(snap.events);
       if (failure) {
         setOnboardError(failure);
+        props.onConnectionChange?.(false);
       } else {
-        setIdentity({ kind: "local_key" });
-        setShowNsec(false);
+        setIdentity({ kind: "local" });
+        setNpubShort("session key");
+        props.onConnectionChange?.(true);
       }
     } catch (e) {
       setOnboardError(humanizeError(e));
+      props.onConnectionChange?.(false);
     } finally {
-      setConnecting(false);
+      setImportingLocal(false);
     }
   };
 
@@ -126,74 +128,76 @@ export function SigningPanel() {
 
       <Show when={!degraded() && !connected()}>
         <div class="signing-onboarding">
-          <h2 class="signing-title">Connect your Nostr identity</h2>
+          <div>
+            <p class="signing-kicker">Identity</p>
+            <h2 class="signing-title">Connect signer</h2>
+            <p class="signing-intro">
+              Pick a signing method for this browser session. Chirp will publish
+              only after the runtime confirms the signer is installed.
+            </p>
+          </div>
 
-          <Show
-            when={hasNip07Extension()}
-            fallback={
-              <p class="signing-hint" role="status">
-                No NIP-07 browser extension detected. Install one (e.g. Alby,
-                nos2x) for the most secure sign-in, or use a secret key below.
-              </p>
-            }
-          >
-            <button
-              class="signing-btn signing-btn--primary"
-              data-action="connect-nip07"
-              disabled={connecting()}
-              onClick={() => void connectNip07()}
-            >
-              {connecting() ? "Connecting…" : "Connect browser extension (NIP-07)"}
-            </button>
-          </Show>
+          <div class="signing-methods" aria-label="Signing methods">
+            <section class="signing-method" data-method="nip07">
+              <div>
+                <strong>NIP-07 browser signer</strong>
+                <span>Use the account already active in your extension.</span>
+              </div>
+              <Show
+                when={hasNip07Extension()}
+                fallback={
+                  <p class="signing-hint" role="status">
+                    No extension detected in this browser. Install Alby, nos2x,
+                    or use the session key option.
+                  </p>
+                }
+              >
+                <button
+                  class="signing-btn signing-btn--primary connect-btn"
+                  data-action="connect-nip07"
+                  disabled={connecting()}
+                  onClick={() => void connectNip07()}
+                >
+                  {connecting() ? "Connecting..." : "Connect NIP-07"}
+                </button>
+              </Show>
+            </section>
 
-          <Show
-            when={showNsec()}
-            fallback={
-              <button
-                class="signing-btn signing-btn--ghost"
-                data-action="reveal-nsec"
-                onClick={() => setShowNsec(true)}
-              >
-                Use a secret key (nsec) instead
-              </button>
-            }
-          >
-            <form
-              class="signing-nsec-form"
-              onSubmit={(e) => {
-                e.preventDefault();
-                void connectLocalKey();
-              }}
-            >
-              <label class="signing-label" for="signing-nsec-input">
-                Secret key (nsec)
-              </label>
-              <input
-                id="signing-nsec-input"
-                class="signing-input"
-                type="password"
-                autocomplete="off"
-                spellcheck={false}
-                placeholder="nsec1…"
-                data-action="nsec-input"
-                value={nsec()}
-                onInput={(e) => setNsec(e.currentTarget.value)}
-              />
-              <p class="signing-hint">
-                Your key is handed to the local signer and never leaves this
-                device. Chirp does not transmit or store it.
-              </p>
-              <button
-                class="signing-btn signing-btn--primary"
-                type="submit"
-                data-action="connect-nsec"
-                disabled={connecting()}
-              >
-                {connecting() ? "Connecting…" : "Sign in with secret key"}
-              </button>
-            </form>
-          </Show>
+            <section class="signing-method" data-method="local-key">
+              <div>
+                <strong>Session nsec</strong>
+                <span>Paste an nsec for a memory-only local signer.</span>
+              </div>
+              <form class="signing-nsec-form" onSubmit={importLocalKey}>
+                <label class="signing-label" for="local-nsec">
+                  Secret key
+                </label>
+                <input
+                  ref={localKeyInput}
+                  id="local-nsec"
+                  class="signing-input"
+                  data-testid="local-nsec-input"
+                  type="password"
+                  autocomplete="off"
+                  spellcheck={false}
+                  placeholder="nsec1..."
+                  disabled={importingLocal()}
+                />
+                <button
+                  class="signing-btn signing-btn--ghost"
+                  data-testid="local-nsec-submit"
+                  type="submit"
+                  disabled={importingLocal()}
+                >
+                  {importingLocal() ? "Importing..." : "Use for this session"}
+                </button>
+                <p class="signing-hint">
+                  Not saved to localStorage, sessionStorage, IndexedDB, OPFS,
+                  snapshots, logs, or URL state.
+                </p>
+              </form>
+            </section>
+          </div>
 
           <Show when={onboardError()}>
             <p class="signing-error" role="alert" data-slot="onboard-error">
@@ -207,7 +211,7 @@ export function SigningPanel() {
         <div class="signing-active" data-slot="active-signer">
           <div class="signing-active-row">
             <span class="signing-badge" data-signer-kind={identity()?.kind}>
-              {identity()?.kind === "nip07" ? "NIP-07 extension" : "Local key"}
+              {identity()?.kind === "local" ? "Local key" : "NIP-07 extension"}
             </span>
             <Show when={npubShort()}>
               <span class="signing-npub" title="active account">

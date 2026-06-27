@@ -67,8 +67,9 @@ impl Kernel {
         target: crate::publish::PublishTarget,
         correlation_id: Option<String>,
     ) -> Vec<crate::relay::OutboundMessage> {
-        use crate::publish::{target_is_explicit_nonempty, validate_publish_routing,
-            validate_publish_target};
+        use crate::publish::{
+            target_is_explicit_nonempty, validate_publish_routing, validate_publish_target,
+        };
 
         // Step 1 — target validation (inline fail_invalid_target logic).
         if let Err(reason) = validate_publish_target(&target) {
@@ -100,10 +101,9 @@ impl Kernel {
         }
         // Step 4 — D10 routing-policy gate (private/encrypted envelope must
         // have an explicit non-empty relay pin).
-        if let Err(reason) = validate_publish_routing(
-            signed.unsigned.kind,
-            target_is_explicit_nonempty(&target),
-        ) {
+        if let Err(reason) =
+            validate_publish_routing(signed.unsigned.kind, target_is_explicit_nonempty(&target))
+        {
             tracing::warn!(
                 kind = signed.unsigned.kind,
                 "publish_externally_signed refused: private/encrypted envelope without \

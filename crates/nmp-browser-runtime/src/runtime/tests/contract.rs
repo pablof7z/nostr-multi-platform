@@ -311,7 +311,9 @@ fn poisoned_slot_read_defaults_and_write_recovers() {
             ..Default::default()
         }),
     );
-    let guard = slot.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let guard = slot
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     assert_eq!(
         guard.model().map(|m| m.signer_kind.as_str()),
         Some("local"),

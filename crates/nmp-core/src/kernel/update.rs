@@ -1,6 +1,5 @@
 //! Snapshot emission: encodes kernel state into the FlatBuffers update frame
 //! that drives every UI update.
-//!
 //! `Kernel::make_update` is the hot path called at up to 4 Hz. It:
 //! 1. Assembles `KernelSnapshot` with `Metrics` counters and all projections.
 //! 2. Encodes the snapshot once and hands the binary frame to the caller.
@@ -23,9 +22,9 @@ pub(in crate::kernel) mod helpers;
 mod projections;
 mod rung2_stamp;
 mod rung3_omit;
-mod views;
 #[cfg(test)]
 mod test_helpers;
+mod views;
 // ADR-0055 Rung 3 (D3-5) — baseline-semantics + omission-oracle integration
 // tests. They drive the real `make_update` path (this module's hot path), so
 // they are homed under `update` rather than the `kernel/mod.rs` module list,
@@ -235,18 +234,17 @@ impl Kernel {
             // field set — `snapshot_projections_with_publish_cluster` inserts
             // them into the same `projections` map under built-in keys.
             //
-
         }
     }
 
     pub(crate) fn make_update(&mut self, running: bool) -> UpdateFrameBytes {
         let emit_started = Instant::now(); // doctrine-allow: D9 — per-emit diagnostic timing anchor; wall stamp uses injected clock below
-        // Wall-clock stamp for the actor-thread liveness heartbeat. `Instant`
-        // above is monotonic and cannot be compared to a shell-side clock, so a
-        // separate wall-clock reading is required. D7 / D9: the kernel owns time
-        // — route through the injected `Clock` via `now_ms()` so deterministic
-        // replay and tests observe the same `last_tick_ms` the production tick
-        // emitted. `now_ms()` collapses a pre-epoch clock to `0` (D6: no panic).
+                                           // Wall-clock stamp for the actor-thread liveness heartbeat. `Instant`
+                                           // above is monotonic and cannot be compared to a shell-side clock, so a
+                                           // separate wall-clock reading is required. D7 / D9: the kernel owns time
+                                           // — route through the injected `Clock` via `now_ms()` so deterministic
+                                           // replay and tests observe the same `last_tick_ms` the production tick
+                                           // emitted. `now_ms()` collapses a pre-epoch clock to `0` (D6: no panic).
         let last_tick_ms = self.now_ms();
         self.rev = self.rev.saturating_add(1);
         self.update_sequence = self.update_sequence.saturating_add(1);
@@ -268,14 +266,15 @@ impl Kernel {
             self.max_event_to_emit_ms = self.max_event_to_emit_ms.max(value);
         }
 
-        let update = self.build_snapshot_struct(running, last_tick_ms, emit_started, last_event_to_emit_ms);
+        let update =
+            self.build_snapshot_struct(running, last_tick_ms, emit_started, last_event_to_emit_ms);
 
         // Capture the encode start so we can report "build" vs "encode" time.
         let before_serialize = Instant::now(); // doctrine-allow: D9 — snapshot encode diagnostic timing anchor; not replay policy
-        // ADR-0037: run every host-registered typed projection and carry its
-        // opaque FlatBuffers bytes in the frame's `typed_projections` sidecar.
-        // D8: these closures run on this actor thread inside the tick;
-        // `run_typed_projections` documents the non-blocking contract.
+                                               // ADR-0037: run every host-registered typed projection and carry its
+                                               // opaque FlatBuffers bytes in the frame's `typed_projections` sidecar.
+                                               // D8: these closures run on this actor thread inside the tick;
+                                               // `run_typed_projections` documents the non-blocking contract.
         let typed = self.run_typed_projections();
         // Fire every host-registered per-tick observer (the generic, data-free
         // counterpart to the projection registry — see
@@ -307,9 +306,7 @@ impl Kernel {
         // carries it through unchanged.
         let mut typed = typed;
         let pull_wakes = self.drain_pull_wakes();
-        if let Some(sidecar) =
-            crate::kernel::pull_wake::pull_wake_typed_projection(&pull_wakes)
-        {
+        if let Some(sidecar) = crate::kernel::pull_wake::pull_wake_typed_projection(&pull_wakes) {
             typed.push(sidecar);
         }
         // Wave C (ADR-0037): merge the kernel-owned (Tier-2) built-in typed
@@ -440,7 +437,12 @@ impl Kernel {
         // so `encoded` owns its bytes independently of `self.snapshot_builder`.
         // The builder's internal heap allocation is retained across ticks,
         // eliminating the per-tick `FlatBufferBuilder::new()` allocation.
-        let encoded = encode_snapshot_with_envelope(&mut self.snapshot_builder, &typed, &update, &epoch_stamp);
+        let encoded = encode_snapshot_with_envelope(
+            &mut self.snapshot_builder,
+            &typed,
+            &update,
+            &epoch_stamp,
+        );
         // ADR-0055 Rung 2 (production path): advance the last-emitted baseline.
         // Test builds do this in the oracle AFTER its check (see `rung2_stamp`);
         // the cfg ensures no double-call.
@@ -464,8 +466,7 @@ impl Kernel {
                 encoded.len(),
                 this_make_update_us,
                 this_serialize_us,
-                last_event_to_emit_ms
-                    .map_or_else(|| "none".to_string(), |value| value.to_string()),
+                last_event_to_emit_ms.map_or_else(|| "none".to_string(), |value| value.to_string()),
                 self.max_event_to_emit_ms,
             );
             // ADR-0055 Rung 0: churn fields are the empirical anchor, emitted
@@ -495,5 +496,4 @@ impl Kernel {
         self.last_payload_bytes = encoded.len();
         encoded
     }
-
 }

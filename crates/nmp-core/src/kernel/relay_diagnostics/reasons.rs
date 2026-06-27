@@ -2,7 +2,9 @@
 //!
 //! Raw tokens are emitted on the wire; shells format them for display.
 
-use nmp_planner::plan::{HintOrigin, InterestAttribution, RelayAttribution, UserConfiguredCategory};
+use nmp_planner::plan::{
+    HintOrigin, InterestAttribution, RelayAttribution, UserConfiguredCategory,
+};
 use serde::{Deserialize, Serialize};
 
 /// Cap for `author_pubkeys` in one `RelayConnectionReason`. The UI renders

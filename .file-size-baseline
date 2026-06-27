@@ -22,7 +22,7 @@ crates/nmp-cli/registry/compose/content-view/NostrContentView.kt	599
 crates/nmp-cli/registry/tui/content-kind-registry/nostr_kind_registry.rs	826
 crates/nmp-codegen/src/swift.rs	605
 crates/nmp-codegen/src/swift_projections_registry.rs	722
-crates/nmp-core/src/actor/commands/publish.rs	550
+crates/nmp-core/src/actor/commands/publish.rs	537
 crates/nmp-core/src/actor/mod.rs	750
 crates/nmp-core/src/actor/sign_event_for_account_tests.rs	565
 crates/nmp-core/src/kernel/auth_tests.rs	762
@@ -42,14 +42,14 @@ crates/nmp-defaults/src/runtimes.rs	535
 crates/nmp-marmot/src/ffi.rs	607
 crates/nmp-marmot/src/projection/ops.rs	594
 crates/nmp-marmot/src/projection/state.rs	615
-crates/nmp-marmot/src/service.rs	643
-crates/nmp-marmot/src/tests.rs	750
+crates/nmp-marmot/src/service.rs	642
+crates/nmp-marmot/src/tests.rs	749
 crates/nmp-network/src/pool/tests.rs	554
 crates/nmp-network/src/relay_worker/tests.rs	810
 crates/nmp-nip01/src/timeline_projection.rs	576
 crates/nmp-nip17/src/dm_send/tests.rs	756
 crates/nmp-nip60/src/nip60_wallet.rs	714
-crates/nmp-nostr-lmdb/src/lib_tests.rs	875
+crates/nmp-nostr-lmdb/src/lib_tests.rs	870
 crates/nmp-planner/src/compiler/tests.rs	567
 crates/nmp-planner/src/interest.rs	583
 crates/nmp-router/src/nip65_resolver/tests.rs	547

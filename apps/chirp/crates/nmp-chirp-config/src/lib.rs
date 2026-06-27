@@ -9,7 +9,7 @@ pub struct ChirpRelayBootstrapEntry {
     pub role: &'static str,
 }
 
-pub const CHIRP_CONTENT_RELAY_URL: &str = "wss://relay.primal.net";
+pub const CHIRP_CONTENT_RELAY_URL: &str = "wss://nos.lol";
 pub const CHIRP_INDEXER_RELAY_URL: &str = "wss://purplepag.es";
 pub const CHIRP_SEARCH_RELAY_URL: &str = "wss://relay.nostr.band";
 pub const CHIRP_PUBLIC_GROUP_RELAY_URL: &str = "wss://relay.groups.nip29.com";

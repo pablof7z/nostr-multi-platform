@@ -129,6 +129,67 @@ object GeneratedActionBuilders {
         )
     }
 
+    /// Publish a NIP-18 repost wrapper for a target event.
+    /// Builds the `nmp.nip18.repost` `DispatchEnvelope` bytes for the byte doorway.
+    fun repost(
+        correlationId: String,
+        targetEventId: String,
+        targetKind: Int,
+        targetAuthorPubkey: String?,
+        relayHint: String?,
+    ): ByteArray {
+        val fbb = FlatBufferBuilder()
+        val targetEventIdOffset = fbb.createString(targetEventId)
+        val targetAuthorPubkeyOffset = targetAuthorPubkey?.let { fbb.createString(it) } ?: 0
+        val relayHintOffset = relayHint?.let { fbb.createString(it) } ?: 0
+        fbb.startTable(5)
+        fbb.addInt(0, 1, 0) // slot 0: schema_version
+        fbb.addOffset(1, targetEventIdOffset, 0) // slot 1: targetEventId
+        fbb.addInt(2, targetKind, 0) // slot 2: targetKind
+        if (targetAuthorPubkeyOffset != 0) fbb.addOffset(3, targetAuthorPubkeyOffset, 0) // slot 3: targetAuthorPubkey
+        if (relayHintOffset != 0) fbb.addOffset(4, relayHintOffset, 0) // slot 4: relayHint
+        val payloadRoot = fbb.endTable()
+        fbb.finish(payloadRoot, "N18R")
+        val payload = fbb.sizedByteArray()
+        return encodeDispatchEnvelope(
+            correlationId = correlationId,
+            actionNamespace = "nmp.nip18.repost",
+            payload = payload,
+        )
+    }
+
+    /// Publish a NIP-18 quote repost note for a target event.
+    /// Builds the `nmp.nip18.quote_repost` `DispatchEnvelope` bytes for the byte doorway.
+    fun quoteRepost(
+        correlationId: String,
+        targetEventId: String,
+        targetKind: Int,
+        targetAuthorPubkey: String?,
+        relayHint: String?,
+        content: String,
+    ): ByteArray {
+        val fbb = FlatBufferBuilder()
+        val targetEventIdOffset = fbb.createString(targetEventId)
+        val targetAuthorPubkeyOffset = targetAuthorPubkey?.let { fbb.createString(it) } ?: 0
+        val relayHintOffset = relayHint?.let { fbb.createString(it) } ?: 0
+        val contentOffset = fbb.createString(content)
+        fbb.startTable(6)
+        fbb.addInt(0, 1, 0) // slot 0: schema_version
+        fbb.addOffset(1, targetEventIdOffset, 0) // slot 1: targetEventId
+        fbb.addInt(2, targetKind, 0) // slot 2: targetKind
+        if (targetAuthorPubkeyOffset != 0) fbb.addOffset(3, targetAuthorPubkeyOffset, 0) // slot 3: targetAuthorPubkey
+        if (relayHintOffset != 0) fbb.addOffset(4, relayHintOffset, 0) // slot 4: relayHint
+        fbb.addOffset(5, contentOffset, 0) // slot 5: content
+        val payloadRoot = fbb.endTable()
+        fbb.finish(payloadRoot, "N18Q")
+        val payload = fbb.sizedByteArray()
+        return encodeDispatchEnvelope(
+            correlationId = correlationId,
+            actionNamespace = "nmp.nip18.quote_repost",
+            payload = payload,
+        )
+    }
+
     /// Follow a single pubkey (NIP-02 contact-list add).
     /// Builds the `nmp.follow` `DispatchEnvelope` bytes for the byte doorway.
     fun follow(
@@ -196,6 +257,70 @@ object GeneratedActionBuilders {
         return encodeDispatchEnvelope(
             correlationId = correlationId,
             actionNamespace = "nmp.follow_many",
+            payload = payload,
+        )
+    }
+
+    /// Add one item to the active account's NIP-51 bookmark list.
+    /// Builds the `nmp.nip51.add_bookmark` `DispatchEnvelope` bytes for the byte doorway.
+    fun addBookmark(
+        correlationId: String,
+        accountPubkey: String,
+        itemKind: Int,
+        value: String,
+        relay: String?,
+    ): ByteArray {
+        val fbb = FlatBufferBuilder()
+        val accountPubkeyOffset = fbb.createString(accountPubkey)
+        val valueOffset = fbb.createString(value)
+        val relayOffset = relay?.let { fbb.createString(it) } ?: 0
+        fbb.startTable(3)
+        fbb.addByte(0, itemKind.toByte(), 0) // slot 0: kind
+        fbb.addOffset(1, valueOffset, 0) // slot 1: value
+        if (relayOffset != 0) fbb.addOffset(2, relayOffset, 0) // slot 2: relay
+        val itemRoot = fbb.endTable()
+        fbb.startTable(3)
+        fbb.addInt(0, 1, 0) // slot 0: schema_version
+        fbb.addOffset(1, accountPubkeyOffset, 0) // slot 1: account_pubkey
+        fbb.addOffset(2, itemRoot, 0) // slot 2: item
+        val payloadRoot = fbb.endTable()
+        fbb.finish(payloadRoot, "N51B")
+        val payload = fbb.sizedByteArray()
+        return encodeDispatchEnvelope(
+            correlationId = correlationId,
+            actionNamespace = "nmp.nip51.add_bookmark",
+            payload = payload,
+        )
+    }
+
+    /// Remove one item from the active account's NIP-51 bookmark list.
+    /// Builds the `nmp.nip51.remove_bookmark` `DispatchEnvelope` bytes for the byte doorway.
+    fun removeBookmark(
+        correlationId: String,
+        accountPubkey: String,
+        itemKind: Int,
+        value: String,
+        relay: String?,
+    ): ByteArray {
+        val fbb = FlatBufferBuilder()
+        val accountPubkeyOffset = fbb.createString(accountPubkey)
+        val valueOffset = fbb.createString(value)
+        val relayOffset = relay?.let { fbb.createString(it) } ?: 0
+        fbb.startTable(3)
+        fbb.addByte(0, itemKind.toByte(), 0) // slot 0: kind
+        fbb.addOffset(1, valueOffset, 0) // slot 1: value
+        if (relayOffset != 0) fbb.addOffset(2, relayOffset, 0) // slot 2: relay
+        val itemRoot = fbb.endTable()
+        fbb.startTable(3)
+        fbb.addInt(0, 1, 0) // slot 0: schema_version
+        fbb.addOffset(1, accountPubkeyOffset, 0) // slot 1: account_pubkey
+        fbb.addOffset(2, itemRoot, 0) // slot 2: item
+        val payloadRoot = fbb.endTable()
+        fbb.finish(payloadRoot, "N51B")
+        val payload = fbb.sizedByteArray()
+        return encodeDispatchEnvelope(
+            correlationId = correlationId,
+            actionNamespace = "nmp.nip51.remove_bookmark",
             payload = payload,
         )
     }
@@ -422,6 +547,51 @@ object GeneratedActionBuilders {
         fbb.startTable(3)
         fbb.addInt(0, 1, 0) // slot 0: schema_version
         fbb.addByte(1, 3.toByte(), 0) // slot 1: body_type
+        fbb.addOffset(2, bodyOffset, 0) // slot 2: body
+        val payloadRoot = fbb.endTable()
+        fbb.finish(payloadRoot, "NPUB")
+        val payload = fbb.sizedByteArray()
+        return encodeDispatchEnvelope(
+            correlationId = correlationId,
+            actionNamespace = "nmp.publish",
+            payload = payload,
+        )
+    }
+
+    /// Sign-and-publish a kind:1 reply; Rust derives NIP-10 tags from the stored parent event.
+    /// Builds the `nmp.publish` `DispatchEnvelope` bytes (body `PublishReply`) for the byte doorway.
+    fun publishReply(
+        correlationId: String,
+        content: String,
+        replyToEventId: String,
+        relays: List<String>? = null,
+        signerPubkey: String? = null,
+    ): ByteArray {
+        val fbb = FlatBufferBuilder()
+        val contentOffset = fbb.createString(content)
+        val replyToEventIdOffset = fbb.createString(replyToEventId)
+        val signerPubkeyOffset = signerPubkey?.let { fbb.createString(it) } ?: 0
+        val targetRelays = relays ?: emptyList()
+        val explicit = targetRelays.isNotEmpty()
+        val targetRelaysVec = run {
+            val offsets = IntArray(targetRelays.size) { i -> fbb.createString(targetRelays[i]) }
+            fbb.startVector(4, offsets.size, 4)
+            for (i in offsets.size - 1 downTo 0) fbb.addOffset(offsets[i])
+            fbb.endVector()
+        }
+        fbb.startTable(2)
+        fbb.addBoolean(0, explicit, false) // slot 0: explicit
+        fbb.addOffset(1, targetRelaysVec, 0) // slot 1: relays
+        val targetOffset = fbb.endTable()
+        fbb.startTable(4)
+        fbb.addOffset(0, contentOffset, 0) // slot 0: content
+        fbb.addOffset(1, replyToEventIdOffset, 0) // slot 1: reply_to_event_id
+        fbb.addOffset(2, targetOffset, 0) // slot 2: target
+        if (signerPubkeyOffset != 0) fbb.addOffset(3, signerPubkeyOffset, 0) // slot 3: signer_pubkey
+        val bodyOffset = fbb.endTable()
+        fbb.startTable(3)
+        fbb.addInt(0, 1, 0) // slot 0: schema_version
+        fbb.addByte(1, 4.toByte(), 0) // slot 1: body_type
         fbb.addOffset(2, bodyOffset, 0) // slot 2: body
         val payloadRoot = fbb.endTable()
         fbb.finish(payloadRoot, "NPUB")

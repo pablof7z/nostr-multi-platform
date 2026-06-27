@@ -1,10 +1,12 @@
-//! Browser relay driver planning — one socket per URL (native parity).
+//! Browser relay driver planning — one socket per URL/role pair.
 //!
-//! Ported from `nmp-wasm/src/relay_plan.rs`. See that module's documentation
-//! for the rationale (why one socket per URL, not per (URL, role) pair).
+//! Browser WebSocket frames do not carry role metadata, while the kernel keys
+//! wire subscriptions by `(role, relay_url, sub_id)`. A relay declared for both
+//! content and indexer lanes therefore needs one browser driver per lane so
+//! inbound frames are reported under the same role that emitted the REQ.
 //!
 //! The planner is always-compiled (no wasm32 gate) so it can be tested natively
-//! without wasm32 toolchain, matching the approach in nmp-wasm.
+//! without a wasm32 toolchain.
 
 // Plan structs and functions are consumed from wasm32-gated spawn/mod code.
 // On native they are unused outside tests; suppress the lint rather than
@@ -13,14 +15,11 @@
 
 use nmp_network::role::RelayRole;
 
-/// One planned driver: a distinct relay URL, the primary role its socket
-/// reports inbound frames under (native-parity first-role-wins), and the
-/// full declared role union for diagnostics.
+/// One planned driver: a distinct relay URL/role pair.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DriverPlan {
     pub(crate) url: String,
-    pub(crate) primary_role: RelayRole,
-    pub(crate) roles: Vec<RelayRole>,
+    pub(crate) role: RelayRole,
 }
 
 /// Expand a bootstrap role string into the role lanes it declares.
@@ -53,40 +52,23 @@ fn roles_for_str(role_str: &str) -> Vec<RelayRole> {
     roles
 }
 
-/// Native-parity primary role: first of `RelayRole::all()` (`[Content, Indexer]`)
-/// present in the set. `Content` wins for `both` / `both,indexer`.
-fn primary_role(roles: &[RelayRole]) -> RelayRole {
-    RelayRole::all()
-        .into_iter()
-        .find(|r| roles.contains(r))
-        .unwrap_or(RelayRole::Content)
-}
-
-/// Collapse `(url, role_str)` pairs to one [`DriverPlan`] per distinct URL,
-/// unioning declared roles and preserving first-seen order.
+/// Expand `(url, role_str)` pairs to one [`DriverPlan`] per distinct URL/role,
+/// preserving first-seen order.
 ///
 /// Each `(url, role_str)` entry matches the format stored in
 /// `BrowserBuilderInner::relay_bootstrap: Vec<(String, String)>`.
 pub(crate) fn plan_drivers(bootstrap: &[(String, String)]) -> Vec<DriverPlan> {
     let mut plans: Vec<DriverPlan> = Vec::with_capacity(bootstrap.len());
     for (url, role_str) in bootstrap {
-        let lanes = roles_for_str(role_str);
-        if let Some(existing) = plans.iter_mut().find(|p| &p.url == url) {
-            for role in lanes {
-                if !existing.roles.contains(&role) {
-                    existing.roles.push(role);
-                }
+        for role in roles_for_str(role_str) {
+            if plans.iter().any(|p| p.url == *url && p.role == role) {
+                continue;
             }
-        } else {
             plans.push(DriverPlan {
                 url: url.clone(),
-                primary_role: RelayRole::Content, // finalized below
-                roles: lanes,
+                role,
             });
         }
-    }
-    for plan in &mut plans {
-        plan.primary_role = primary_role(&plan.roles);
     }
     plans
 }
@@ -100,30 +82,29 @@ mod tests {
     }
 
     #[test]
-    fn both_indexer_collapses_to_one_driver_recorded_as_content() {
+    fn both_indexer_expands_to_content_and_indexer_drivers() {
         let plans = plan_drivers(&[entry("wss://relay.primal.net", "both,indexer")]);
-        assert_eq!(plans.len(), 1);
-        assert_eq!(plans[0].primary_role, RelayRole::Content);
-        assert_eq!(plans[0].roles, vec![RelayRole::Content, RelayRole::Indexer]);
+        assert_eq!(plans.len(), 2);
+        assert_eq!(plans[0].role, RelayRole::Content);
+        assert_eq!(plans[1].role, RelayRole::Indexer);
     }
 
     #[test]
     fn indexer_only_relay_is_one_indexer_driver() {
         let plans = plan_drivers(&[entry("wss://purplepag.es", "indexer")]);
         assert_eq!(plans.len(), 1);
-        assert_eq!(plans[0].primary_role, RelayRole::Indexer);
-        assert_eq!(plans[0].roles, vec![RelayRole::Indexer]);
+        assert_eq!(plans[0].role, RelayRole::Indexer);
     }
 
     #[test]
-    fn duplicate_url_distinct_roles_unions_into_one_driver() {
+    fn duplicate_url_distinct_roles_produces_one_driver_per_role() {
         let plans = plan_drivers(&[
             entry("wss://nos.lol", "content"),
             entry("wss://nos.lol", "indexer"),
         ]);
-        assert_eq!(plans.len(), 1);
-        assert_eq!(plans[0].primary_role, RelayRole::Content);
-        assert_eq!(plans[0].roles, vec![RelayRole::Content, RelayRole::Indexer]);
+        assert_eq!(plans.len(), 2);
+        assert_eq!(plans[0].role, RelayRole::Content);
+        assert_eq!(plans[1].role, RelayRole::Indexer);
     }
 
     #[test]
@@ -133,34 +114,39 @@ mod tests {
             entry("wss://purplepag.es", "indexer"),
             entry("wss://nos.lol", "both,indexer"),
         ]);
-        let urls: Vec<&str> = plans.iter().map(|p| p.url.as_str()).collect();
+        let pairs: Vec<(&str, RelayRole)> =
+            plans.iter().map(|p| (p.url.as_str(), p.role)).collect();
         assert_eq!(
-            urls,
-            vec!["wss://relay.primal.net", "wss://purplepag.es", "wss://nos.lol"]
+            pairs,
+            vec![
+                ("wss://relay.primal.net", RelayRole::Content),
+                ("wss://relay.primal.net", RelayRole::Indexer),
+                ("wss://purplepag.es", RelayRole::Indexer),
+                ("wss://nos.lol", RelayRole::Content),
+                ("wss://nos.lol", RelayRole::Indexer),
+            ]
         );
-        assert_eq!(plans.len(), 3);
     }
 
     #[test]
     fn unrecognized_role_falls_back_to_content() {
         let plans = plan_drivers(&[entry("wss://relay.example", "totally-new-role")]);
         assert_eq!(plans.len(), 1);
-        assert_eq!(plans[0].primary_role, RelayRole::Content);
+        assert_eq!(plans[0].role, RelayRole::Content);
     }
 
     #[test]
     fn read_indexer_composite_produces_both_roles() {
         let plans = plan_drivers(&[entry("wss://relay.example", "read,indexer")]);
-        assert_eq!(plans.len(), 1);
-        assert_eq!(plans[0].primary_role, RelayRole::Content);
-        assert_eq!(plans[0].roles, vec![RelayRole::Content, RelayRole::Indexer]);
+        assert_eq!(plans.len(), 2);
+        assert_eq!(plans[0].role, RelayRole::Content);
+        assert_eq!(plans[1].role, RelayRole::Indexer);
     }
 
     #[test]
     fn write_role_is_content_lane() {
         let plans = plan_drivers(&[entry("wss://relay.example", "write")]);
         assert_eq!(plans.len(), 1);
-        assert_eq!(plans[0].primary_role, RelayRole::Content);
-        assert_eq!(plans[0].roles, vec![RelayRole::Content]);
+        assert_eq!(plans[0].role, RelayRole::Content);
     }
 }

@@ -262,9 +262,18 @@ fn builtins_emit_without_any_host_typed_registration() {
     // ADR-0063 Lane H: mention_profiles / claimed_profiles / resolved_profiles
     // deleted from typed sidecars (replaced by refs.profile KPRF row-delta sidecar).
     assert!(keys.contains("claimed_events"));
-    assert!(!keys.contains("mention_profiles"), "mention_profiles deleted (ADR-0063 Lane H)");
-    assert!(!keys.contains("claimed_profiles"), "claimed_profiles deleted (ADR-0063 Lane H)");
-    assert!(!keys.contains("resolved_profiles"), "resolved_profiles deleted (ADR-0063 Lane H)");
+    assert!(
+        !keys.contains("mention_profiles"),
+        "mention_profiles deleted (ADR-0063 Lane H)"
+    );
+    assert!(
+        !keys.contains("claimed_profiles"),
+        "claimed_profiles deleted (ADR-0063 Lane H)"
+    );
+    assert!(
+        !keys.contains("resolved_profiles"),
+        "resolved_profiles deleted (ADR-0063 Lane H)"
+    );
     // Wave C action-lifecycle + diagnostics cluster: `relay_diagnostics` is
     // unconditional (captured every emit), so it appears on a fresh kernel; the
     // four drain-on-emit built-ins are absent in steady state (nothing settled /

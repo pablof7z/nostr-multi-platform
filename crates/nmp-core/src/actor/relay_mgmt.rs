@@ -47,7 +47,10 @@
 
 use crate::kernel::Kernel;
 use crate::relay::{CanonicalRelayUrl, OutboundMessage};
-use nmp_network::{pool::{Pool, WireFrame}, role::RelayRole};
+use nmp_network::{
+    pool::{Pool, WireFrame},
+    role::RelayRole,
+};
 use serde_json::json;
 use std::collections::HashSet;
 

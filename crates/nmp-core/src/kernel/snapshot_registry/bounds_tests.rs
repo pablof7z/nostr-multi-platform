@@ -6,10 +6,10 @@
 //! (`serde_json::Value`) lane has been removed; tests now cover only the typed
 //! and tick-observer ceilings.
 
-use super::SnapshotRegistry;
 use super::bounds::{MAX_SNAPSHOT_PROJECTIONS, MAX_TICK_OBSERVERS};
-use std::sync::Arc;
+use super::SnapshotRegistry;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
 /// D5: same ceiling for the **typed** projection registry.
 #[test]

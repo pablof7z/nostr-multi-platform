@@ -9,6 +9,7 @@ import * as flatbuffers from "flatbuffers";
 import { UpdateFrame } from "./generated/nmp/transport/update-frame";
 import { FrameKind } from "./generated/nmp/transport/frame-kind";
 import { OpFeedSnapshot } from "./generated/nmp/nip01/op-feed-snapshot";
+import type { RelationCount } from "./generated/nmp/nip01/relation-count";
 import type { SnapshotFrame } from "./generated/nmp/transport/snapshot-frame";
 
 /** The typed projection key the home feed uses (mirrors OP_FEED_SNAPSHOT_KEY in Rust). */
@@ -23,6 +24,8 @@ const NRRD_FILE_IDENTIFIER = "NRRD";
 export type FeedRow = {
   /** Hex event id. */
   id: string;
+  /** Nostr event kind. */
+  kind: number;
   /** Author hex pubkey (64 chars). */
   authorPubkey: string;
   /** Unix timestamp (seconds). */
@@ -39,6 +42,28 @@ export type FeedRow = {
   isRepost: boolean;
   /** Pubkey of the reposter (set iff `isRepost`). */
   repostedByPubkey?: string;
+  /** Runtime-provided relay URLs that delivered the note. */
+  relayProvenance: string[];
+  /** Runtime-provided relation counters for the note. */
+  relationCounts: FeedRelationCounts;
+  /** Rust-emitted reply attribution rows for replies already visible to the feed. */
+  replyAttributions: FeedReplyAttribution[];
+};
+
+export type FeedReplyAttribution = {
+  authorPubkey: string;
+  authorDisplayName?: string;
+  authorPictureUrl?: string;
+  replyEventId: string;
+  replyCreatedAt: number;
+};
+
+export type FeedRelationCounts = {
+  replies: number;
+  reactions: number;
+  reposts: number;
+  zaps: number;
+  comments: number;
 };
 
 /** Decoded frame — feed rows + optional refs.profile sidecar bytes + identity fields. */
@@ -120,10 +145,20 @@ function extractFeedRows(feedSnap: OpFeedSnapshot): FeedRow[] {
 
     const row: FeedRow = {
       id,
+      kind: card.kind(),
       authorPubkey,
       createdAt: Number(card.createdAt()),
       content: card.content() ?? "",
       isRepost: false,
+      relayProvenance: [],
+      relationCounts: {
+        replies: 0,
+        reactions: 0,
+        reposts: 0,
+        zaps: 0,
+        comments: 0,
+      },
+      replyAttributions: [],
     };
 
     if (card.hasAuthorDisplayName()) {
@@ -144,7 +179,55 @@ function extractFeedRows(feedSnap: OpFeedSnapshot): FeedRow[] {
       if (rp) row.repostedByPubkey = rp;
     }
 
+    const relationCounts = card.relationCounts();
+    if (relationCounts) {
+      row.relationCounts = {
+        replies: countValue(relationCounts.replies()),
+        reactions: countValue(relationCounts.reactions()),
+        reposts: countValue(relationCounts.reposts()),
+        zaps: countValue(relationCounts.zaps()),
+        comments: countValue(relationCounts.comments()),
+      };
+    }
+
+    for (let j = 0; j < rootCard.attributionLength(); j++) {
+      const attribution = rootCard.attribution(j);
+      if (!attribution) continue;
+      const authorPubkey = attribution.authorPubkey() ?? "";
+      const replyEventId = attribution.replyEventId() ?? "";
+      if (!authorPubkey || !replyEventId) continue;
+      const reply: FeedReplyAttribution = {
+        authorPubkey,
+        replyEventId,
+        replyCreatedAt: Number(attribution.replyCreatedAt()),
+      };
+      const display = attribution.authorDisplay();
+      if (display?.hasName()) {
+        const name = display.name();
+        if (name) reply.authorDisplayName = name;
+      }
+      if (display?.hasPictureUrl()) {
+        const picture = display.pictureUrl();
+        if (picture) reply.authorPictureUrl = picture;
+      }
+      row.replyAttributions.push(reply);
+    }
+
+    const provenance: string[] = [];
+    for (let j = 0; j < card.relayProvenanceLength(); j++) {
+      const relay = card.relayProvenance(j);
+      if (relay) provenance.push(String(relay));
+    }
+    row.relayProvenance = provenance;
+
     rows.push(row);
   }
   return rows;
+}
+
+function countValue(count: RelationCount | null): number {
+  if (!count) return 0;
+  const value = count.count();
+  if (value > BigInt(Number.MAX_SAFE_INTEGER)) return Number.MAX_SAFE_INTEGER;
+  return Number(value);
 }

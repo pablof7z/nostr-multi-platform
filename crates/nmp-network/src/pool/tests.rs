@@ -1,7 +1,5 @@
 //! Unit tests for the push-model [`super::Pool`] API.
-//!
 //! Two layers of test:
-//!
 //! 1. **Pure structural** — slot allocation, generational handle
 //!    rejection, snapshot shape, "no send-to-all" surface. No real
 //!    socket; the worker's spawn call is exercised but the URL is a
@@ -10,11 +8,9 @@
 //! 2. **Real socket** — boot a `tungstenite::server::accept` on a
 //!    loopback port, drive `ensure_open` + `send` + assert a
 //!    `PoolEvent::Opened` then `PoolEvent::Frame` arrives.
-//!
 //! The full keepalive / reconnect / jitter behaviour is already
 //! exercised by [`crate::relay_worker::tests`] (22 tests, all green
 //! after phase A). These tests focus on the new push-model surface.
-
 use std::net::TcpListener;
 use std::sync::mpsc;
 use std::thread;
@@ -32,15 +28,20 @@ use crate::role::RelayRole;
 /// so `ensure_open` refuses to dial it) (#967).
 #[test]
 fn canonicalize_normalizes_and_fails_closed() {
-    assert_eq!(canonicalize("WSS://relay.example").as_deref(), Some("wss://relay.example"));
-    assert_eq!(canonicalize("  wss://relay.example\n").as_deref(), Some("wss://relay.example"));
+    assert_eq!(
+        canonicalize("WSS://relay.example").as_deref(),
+        Some("wss://relay.example")
+    );
+    assert_eq!(
+        canonicalize("  wss://relay.example\n").as_deref(),
+        Some("wss://relay.example")
+    );
     assert_eq!(canonicalize("not a url"), None);
     assert_eq!(canonicalize("http://relay.example"), None);
     assert_eq!(canonicalize("wss://"), None);
 }
 
 /// Two `ensure_open` calls for the same URL share a slot.
-///
 /// Without a real socket, the worker thread will keep retrying the
 /// dial, but the pool-side state (slot map, handle generation) is
 /// observable synchronously.
@@ -94,10 +95,7 @@ fn close_then_reopen_bumps_generation_invalidating_stale_handle() {
         pool.health(h1).is_none(),
         "stale handle must yield None from health()"
     );
-    assert!(
-        !pool.close(h1),
-        "stale handle must be a no-op for close()"
-    );
+    assert!(!pool.close(h1), "stale handle must be a no-op for close()");
     assert!(
         !pool.send(h1, WireFrame::Text("[\"REQ\",\"x\",{}]".to_string())),
         "stale handle must be a no-op for send()"
@@ -201,7 +199,9 @@ fn end_to_end_pool_surfaces_inbound_text_as_relay_frame() {
         let (stream, _addr) = listener.accept().expect("accept");
         let mut websocket = tungstenite::accept(stream).expect("ws handshake");
         // Push one text frame at the client.
-        let _ = websocket.write(tungstenite::Message::Text("[\"NOTICE\",\"hi\"]".to_string()));
+        let _ = websocket.write(tungstenite::Message::Text(
+            "[\"NOTICE\",\"hi\"]".to_string(),
+        ));
         let _ = websocket.flush();
         // Hold the socket open briefly so the client has time to read.
         thread::sleep(Duration::from_millis(500));
@@ -213,7 +213,13 @@ fn end_to_end_pool_surfaces_inbound_text_as_relay_frame() {
     let _h = pool.ensure_open(&url);
 
     let frame_event = recv_until(&events_rx, Duration::from_secs(5), |ev| {
-        matches!(ev, PoolEvent::Frame { frame: RelayFrame::Text(_), .. })
+        matches!(
+            ev,
+            PoolEvent::Frame {
+                frame: RelayFrame::Text(_),
+                ..
+            }
+        )
     })
     .expect("PoolEvent::Frame(Text) within 5s");
     match frame_event {
@@ -332,11 +338,7 @@ fn shutdown_drops_public_events_sender_for_consumer_join() {
 
 /// Helper: spin `events.recv` until either a matching event arrives or
 /// `budget` elapses.
-fn recv_until<F>(
-    rx: &mpsc::Receiver<PoolEvent>,
-    budget: Duration,
-    pred: F,
-) -> Option<PoolEvent>
+fn recv_until<F>(rx: &mpsc::Receiver<PoolEvent>, budget: Duration, pred: F) -> Option<PoolEvent>
 where
     F: Fn(&PoolEvent) -> bool,
 {
@@ -385,10 +387,8 @@ fn ensure_open_with_explicit_role_overrides_default() {
         events_tx,
     );
     let h_default = pool.ensure_open(&String::from("wss://127.0.0.1:1/a"));
-    let _h_explicit = pool.ensure_open_with_role(
-        &String::from("wss://127.0.0.1:1/b"),
-        RelayRole::Content,
-    );
+    let _h_explicit =
+        pool.ensure_open_with_role(&String::from("wss://127.0.0.1:1/b"), RelayRole::Content);
     let snap = pool.snapshot();
     let row_a = snap
         .rows

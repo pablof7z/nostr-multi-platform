@@ -6,17 +6,13 @@
 //! and the real apply path, including raw-byte forgeries (out-of-range state
 //! discriminant, missing key) the safe encoder never produces.
 
-use super::property::{decode_ok, payload_for, wire_round_trip};
 use super::super::*;
+use super::property::{decode_ok, payload_for, wire_round_trip};
 
 /// Encode a batch where one row carries a RAW wire `state` discriminant — used
 /// to forge an out-of-range state (e.g. 255) the safe encoder never emits.
 /// Mirrors `encode_ref_row_delta_batch` but stamps `raw_state` on `raw_state_at`.
-fn encode_with_raw_state(
-    batch: &RefRowDeltaBatch,
-    raw_state_at: usize,
-    raw_state: u8,
-) -> Vec<u8> {
+fn encode_with_raw_state(batch: &RefRowDeltaBatch, raw_state_at: usize, raw_state: u8) -> Vec<u8> {
     use super::super::wire as fb;
     use flatbuffers::FlatBufferBuilder;
     let mut builder = FlatBufferBuilder::new();
@@ -163,8 +159,18 @@ fn malformed_first_baseline_after_epoch_bump_retains_prior_cache() {
         rows: vec![RefRow::changed("carol", 2, payload_for("carol", 2))],
     };
     cache.apply(&wire_round_trip(&good_baseline), 1, 1, &decode_ok);
-    assert!(!cache.needs_resync(), "a valid baseline at the new epoch clears resync");
-    assert_eq!(cache.snapshot("profile").keys().cloned().collect::<Vec<_>>(), vec!["carol"]);
+    assert!(
+        !cache.needs_resync(),
+        "a valid baseline at the new epoch clears resync"
+    );
+    assert_eq!(
+        cache
+            .snapshot("profile")
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>(),
+        vec!["carol"]
+    );
 }
 
 /// BLOCKING-1 (session change variant): same fail-closed contract on a session
@@ -208,7 +214,10 @@ fn baseline_missing_key_row_rejects_whole_batch() {
 
     // The wire decoder must reject the whole batch (no row-skipping).
     let decoded = decode_ref_row_delta_batch(&bytes);
-    assert!(decoded.is_err(), "a missing-key row must fail the whole batch decode");
+    assert!(
+        decoded.is_err(),
+        "a missing-key row must fail the whole batch decode"
+    );
 
     // And the cache is untouched: the host never applies an undecodable batch.
     assert_eq!(cache.get("profile", "alice"), Some(payload_for("alice", 1)));
@@ -243,7 +252,10 @@ fn batch_applies_only_to_its_own_namespace() {
         rows: vec![RefRow::changed("shared", 2, b"profile-bytes-v2".to_vec())],
     };
     cache.apply(&wire_round_trip(&profile2), 1, 0, &decode_ok);
-    assert_eq!(cache.get("profile", "shared"), Some(b"profile-bytes-v2".to_vec()));
+    assert_eq!(
+        cache.get("profile", "shared"),
+        Some(b"profile-bytes-v2".to_vec())
+    );
     assert_eq!(cache.get("event", "shared"), Some(b"event-bytes".to_vec()));
 }
 
@@ -275,6 +287,11 @@ fn invalid_state_discriminant_rejects_batch() {
     assert_eq!(cache.get("profile", "alice"), Some(payload_for("alice", 1)));
     // Sanity: the same batch with state=0 (Changed) DOES decode + commit.
     let ok_bytes = encode_with_raw_state(&batch, 0, 0);
-    cache.apply(&decode_ref_row_delta_batch(&ok_bytes).unwrap(), 1, 0, &decode_ok);
+    cache.apply(
+        &decode_ref_row_delta_batch(&ok_bytes).unwrap(),
+        1,
+        0,
+        &decode_ok,
+    );
     assert_eq!(cache.get("profile", "alice"), Some(payload_for("alice", 2)));
 }

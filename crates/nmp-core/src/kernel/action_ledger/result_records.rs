@@ -33,7 +33,8 @@ pub(crate) struct ActionResultRecord {
     /// Verbatim failure string (`None` on success / cancel).
     pub(super) error: Option<String>,
     /// Opaque structured result body, forwarded verbatim into the row's
-    /// `result` field. `None` unless the action attached one.
+    /// `result` field. Publish terminals use this for the Rust-owned relay
+    /// receipt; non-publish actions may attach their own protocol result.
     pub(super) result_json: Option<String>,
     /// The signed event's id, when one backs this terminal (#1702). `None` for
     /// off-band terminals where no event was ever signed.

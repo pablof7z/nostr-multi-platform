@@ -92,14 +92,22 @@ mod tests {
         assert_eq!(interest.lifecycle, InterestLifecycle::Tailing);
         assert_eq!(interest.scope, InterestScope::ActiveAccount);
         assert_eq!(interest.shape.kinds, [1u32, 6u32].into_iter().collect());
-        assert_eq!(interest.shape.authors, ["aa".to_string()].into_iter().collect());
+        assert_eq!(
+            interest.shape.authors,
+            ["aa".to_string()].into_iter().collect()
+        );
         let _ = identity;
     }
 
     #[test]
     fn scope_one_maps_to_global() {
-        let (_id, interest) =
-            build_interest_pair(r##"{"kinds":[1],"#t":["bitcoin"]}"##, "tag-bitcoin", 1, None).unwrap();
+        let (_id, interest) = build_interest_pair(
+            r##"{"kinds":[1],"#t":["bitcoin"]}"##,
+            "tag-bitcoin",
+            1,
+            None,
+        )
+        .unwrap();
         assert_eq!(interest.scope, InterestScope::Global);
     }
 
@@ -194,9 +202,13 @@ mod tests {
             build_interest_pair(filter, "search-c", 1, Some("wss://a.example/")).unwrap();
         let (id_b, int_b) =
             build_interest_pair(filter, "search-c", 1, Some("wss://b.example/")).unwrap();
-        assert!(reg.apply(&t, InterestWrite::EnsureAbsent, id_a, int_a).newly_installed);
         assert!(
-            reg.apply(&t, InterestWrite::EnsureAbsent, id_b, int_b).newly_installed,
+            reg.apply(&t, InterestWrite::EnsureAbsent, id_a, int_a)
+                .newly_installed
+        );
+        assert!(
+            reg.apply(&t, InterestWrite::EnsureAbsent, id_b, int_b)
+                .newly_installed,
             "a different relay pin is a distinct slot, not a dedup"
         );
         assert_eq!(reg.len(), 2);

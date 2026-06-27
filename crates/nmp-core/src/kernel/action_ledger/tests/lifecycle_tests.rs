@@ -7,7 +7,9 @@
 //! `reason_subject` (#1735). Kernel-level contract tests (driving
 //! `Kernel::record_action_stage` etc.) live in `action_lifecycle_kernel_tests.rs`.
 
-use crate::kernel::action_ledger::{ActionLedger, LifecycleSnapshot, LifecycleStage, RECENT_TERMINAL_TTL_MS};
+use crate::kernel::action_ledger::{
+    ActionLedger, LifecycleSnapshot, LifecycleStage, RECENT_TERMINAL_TTL_MS,
+};
 use crate::kernel::action_stages::{
     ActionStage, MAX_STAGES_PER_CORRELATION, MAX_TRACKED_CORRELATIONS, PENDING_STAGE_RETENTION_MS,
 };
@@ -269,13 +271,21 @@ fn wire_shape_flattens_stage_and_reason() {
 fn global_cap_evicts_oldest_correlation() {
     let mut l = ActionLedger::new();
     for i in 0..MAX_TRACKED_CORRELATIONS {
-        rec(&mut l, &format!("c-{i:04}"), ActionStage::Requested, i as u64);
+        rec(
+            &mut l,
+            &format!("c-{i:04}"),
+            ActionStage::Requested,
+            i as u64,
+        );
     }
     assert_eq!(l.len(), MAX_TRACKED_CORRELATIONS);
 
     rec(&mut l, "c-new", ActionStage::Requested, 9_999);
     assert_eq!(l.len(), MAX_TRACKED_CORRELATIONS, "size pins at cap");
-    assert!(l.history("c-0000").is_none(), "oldest correlation_id evicted");
+    assert!(
+        l.history("c-0000").is_none(),
+        "oldest correlation_id evicted"
+    );
     assert!(l.history("c-new").is_some());
 }
 
@@ -349,7 +359,10 @@ fn lifecycle_advances_past_history_per_correlation_cap() {
     // dropped) — proves the history really hit the cap.
     let hist = l.history(cid).unwrap();
     assert_eq!(hist.len(), MAX_STAGES_PER_CORRELATION);
-    assert!(matches!(hist.last().unwrap().stage, ActionStage::AwaitingCapability));
+    assert!(matches!(
+        hist.last().unwrap().stage,
+        ActionStage::AwaitingCapability
+    ));
 
     // The DERIVED lifecycle view shows the post-cap `Publishing` — the latest
     // slot advanced even though the history dropped the diagnostic row.
@@ -362,7 +375,11 @@ fn lifecycle_advances_past_history_per_correlation_cap() {
     // TTL relative to the NEW timestamp, and a stale anchor would have expired.
     let still_live = l.lifecycle_snapshot(cap_at + PENDING_STAGE_RETENTION_MS - 1);
     let payload2: LifecycleSnapshot = serde_json::from_value(still_live).unwrap();
-    assert_eq!(payload2.in_flight.len(), 1, "TTL anchor re-anchored to the latest record");
+    assert_eq!(
+        payload2.in_flight.len(),
+        1,
+        "TTL anchor re-anchored to the latest record"
+    );
 }
 
 /// The curated sidecar is reconciled when its id leaves the history (cap or

@@ -128,8 +128,9 @@ impl Kernel {
         if self.store_wakeups.pull.is_empty() {
             return Vec::new();
         }
-        let drained: Vec<(PullCursorId, u64)> =
-            std::mem::take(&mut self.store_wakeups.pull).into_iter().collect();
+        let drained: Vec<(PullCursorId, u64)> = std::mem::take(&mut self.store_wakeups.pull)
+            .into_iter()
+            .collect();
         // Level-triggered: re-arm cursors still behind the head.
         self.rearm_pull_wakes_still_behind();
         drained

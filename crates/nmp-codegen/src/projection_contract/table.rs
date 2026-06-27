@@ -402,6 +402,18 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         presence_policy: PresencePolicy::None,
     },
     ProjectionContract {
+        key: "nmp.nip51.bookmarks",
+        tier: ProjectionTier::HostRegistered,
+        producer: "nmp-defaults runtimes/bookmarks_runtime (NIP-51)",
+        schema_id: "nmp.nip51.bookmarks",
+        file_identifier: "N51L",
+        // nmp-nip51 wire/bookmark_list_fb::BOOKMARK_LIST_SCHEMA_VERSION
+        version: 1,
+        declaration_policy: DeclarationPolicy::RegistrationGated,
+        dependency_versions: &[],
+        presence_policy: PresencePolicy::None,
+    },
+    ProjectionContract {
         key: "claimed_event_embeds",
         tier: ProjectionTier::HostRegistered,
         producer: "nmp-ffi embed_sidecar",

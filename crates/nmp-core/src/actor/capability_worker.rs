@@ -34,11 +34,11 @@
 //!   reads actor-owned identity state. The worker only calls `dispatch_capability`
 //!   with pre-baked JSON.
 
-use std::sync::mpsc::{Receiver, Sender, channel};
+use std::sync::mpsc::{channel, Receiver, Sender};
 use std::time::Duration;
 
 use crate::actor::IdentityCommand;
-use crate::capability_socket::{CapabilityCallbackSlot, dispatch_capability};
+use crate::capability_socket::{dispatch_capability, CapabilityCallbackSlot};
 use crate::substrate::CapabilityRequest;
 
 /// An item of work for the capability worker thread.
@@ -174,15 +174,15 @@ mod tests {
     use super::*;
     use crate::actor::{ActorMail, CommandSender};
     use crate::capability_socket::{
-        CapabilityCallbackRegistration, CapabilityCallbackSlot, new_capability_callback_slot,
+        new_capability_callback_slot, CapabilityCallbackRegistration, CapabilityCallbackSlot,
     };
     use crate::substrate::{
         CapabilityEnvelope, CapabilityModule, KeyringCapability, KeyringIdentityWiring,
     };
     use std::collections::HashMap;
-    use std::ffi::{CStr, CString, c_char, c_void};
-    use std::sync::Mutex;
+    use std::ffi::{c_char, c_void, CStr, CString};
     use std::sync::mpsc::Receiver;
+    use std::sync::Mutex;
     use std::time::Duration;
 
     /// ADR-0050 §D3a — the worker now takes a [`CommandSender`] over an

@@ -23,17 +23,17 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use super::super::nostr::NostrEvent;
-use super::super::refs::{RefLiveness, RefNamespace, RefShape};
 use super::super::refs::{EventShape, ProfileShape};
+use super::super::refs::{RefLiveness, RefNamespace, RefShape};
 use super::super::snapshot_registry::new_snapshot_projection_slot;
 use super::super::typed_projections::{
     decode_claimed_events, decode_profile, REFS_EVENT_KEY, REFS_PROFILE_KEY,
 };
 use super::super::Kernel;
 use crate::refs::{decode_ref_row_delta_batch, RefRowCache, RefRowDeltaTracker};
-use crate::relay::{DEFAULT_VISIBLE_LIMIT};
-use nmp_network::role::RelayRole;
+use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::update_envelope::{decode_snapshot_envelope, decode_snapshot_typed_projections};
+use nmp_network::role::RelayRole;
 
 fn hex64(prefix: &str) -> String {
     format!("{prefix:0<64}").chars().take(64).collect()
@@ -151,7 +151,10 @@ fn full_snapshot(kernel: &Kernel, namespace: &str) -> BTreeMap<String, Vec<u8>> 
 
 /// Install a kernel with a snapshot slot + incremental-apply declared (so the
 /// producer omits Unchanged rows and the first frame is a full baseline).
-fn kernel_with_incremental() -> (Kernel, super::super::snapshot_registry::SnapshotProjectionSlot) {
+fn kernel_with_incremental() -> (
+    Kernel,
+    super::super::snapshot_registry::SnapshotProjectionSlot,
+) {
     let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
     kernel.relay_connected(RelayRole::Content);
     let slot = new_snapshot_projection_slot();
@@ -225,7 +228,12 @@ fn refs_newly_declared_emits_full_baseline() {
     );
     inject_kind0(&mut kernel, &alice, "Alice");
     inject_kind0(&mut kernel, &bob, "Bob");
-    kernel.ingest_timeline_event(RelayRole::Content, "wss://relay.example/", "sub", note.clone());
+    kernel.ingest_timeline_event(
+        RelayRole::Content,
+        "wss://relay.example/",
+        "sub",
+        note.clone(),
+    );
 
     // ── Phase 1: NARROWED — no refs.* rows must cross the wire ────────────────
     let frame = kernel.make_update(true);
@@ -353,7 +361,12 @@ fn incremental_equals_full_across_resolve_ingest_release_and_rebaseline() {
     // Ingest the matching kind:0s + the event so the rows become resolvable.
     inject_kind0(&mut kernel, &alice, "Alice");
     inject_kind0(&mut kernel, &bob, "Bob");
-    kernel.ingest_timeline_event(RelayRole::Content, "wss://relay.example/", "sub", note.clone());
+    kernel.ingest_timeline_event(
+        RelayRole::Content,
+        "wss://relay.example/",
+        "sub",
+        note.clone(),
+    );
     emit_and_apply(&mut kernel, &mut profile_cache, &mut event_cache);
 
     assert_eq!(
@@ -405,7 +418,10 @@ fn incremental_equals_full_across_resolve_ingest_release_and_rebaseline() {
     );
 
     // ── invariant 3: release bob → his row becomes Cleared (not stale) ───────
-    assert!(profile_cache.get("profile", &bob).is_some(), "bob present pre-release");
+    assert!(
+        profile_cache.get("profile", &bob).is_some(),
+        "bob present pre-release"
+    );
     kernel.release_ref(RefNamespace::Profile, &bob, "view-b");
     emit_and_apply(&mut kernel, &mut profile_cache, &mut event_cache);
     assert!(

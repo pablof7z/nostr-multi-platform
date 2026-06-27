@@ -67,11 +67,10 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use wasm_bindgen::{closure::Closure, JsCast, JsValue};
-use web_sys::{BinaryType, CloseEvent, ErrorEvent, MessageEvent, WebSocket};
+use web_sys::{BinaryType, CloseEvent, Event, MessageEvent, WebSocket};
 
 use crate::relay_protocol::{
-    is_permanent_error, jittered_backoff, RELAY_RECONNECT_DELAY_INITIAL,
-    RELAY_RECONNECT_DELAY_MAX,
+    is_permanent_error, jittered_backoff, RELAY_RECONNECT_DELAY_INITIAL, RELAY_RECONNECT_DELAY_MAX,
 };
 use crate::role::RelayRole;
 
@@ -183,7 +182,7 @@ struct SocketClosures {
     on_open: Option<Closure<dyn FnMut()>>,
     on_message: Option<Closure<dyn FnMut(MessageEvent)>>,
     on_close: Option<Closure<dyn FnMut(CloseEvent)>>,
-    on_error: Option<Closure<dyn FnMut(ErrorEvent)>>,
+    on_error: Option<Closure<dyn FnMut(Event)>>,
 }
 
 impl BrowserRelayDriver {
@@ -234,9 +233,7 @@ impl BrowserRelayDriver {
     pub fn send_text(&self, text: &str) -> Result<(), JsValue> {
         let mut state = self.state.borrow_mut();
         match &state.current_socket {
-            Some(socket) if socket.ready_state() == WebSocket::OPEN => {
-                socket.send_with_str(text)
-            }
+            Some(socket) if socket.ready_state() == WebSocket::OPEN => socket.send_with_str(text),
             // CONNECTING (socket present, not yet open) or between a close and
             // the next reconnect dial (no socket): buffer until `onopen`.
             _ => {
@@ -269,6 +266,12 @@ impl BrowserRelayDriver {
     #[must_use]
     pub fn url(&self) -> &str {
         &self.url
+    }
+
+    /// Diagnostic/kernel role this driver reports inbound frames under.
+    #[must_use]
+    pub fn role(&self) -> RelayRole {
+        self.role
     }
 
     /// Open a new WebSocket and wire its four event closures. Called once
@@ -386,19 +389,21 @@ impl BrowserRelayDriver {
             // still fires `wasClean=true`, and the native worker reconnects on
             // both. Skipping on `was_clean` would silently strand the driver
             // every time the relay does a clean restart.
-            let permanent =
-                driver.state.borrow().permanent_failure || is_permanent_error(&reason);
+            let permanent = driver.state.borrow().permanent_failure || is_permanent_error(&reason);
             if !permanent {
                 driver.schedule_reconnect();
             }
         }) as Box<dyn FnMut(CloseEvent)>)
     }
 
-    fn build_on_error(self: &Rc<Self>) -> Closure<dyn FnMut(ErrorEvent)> {
+    fn build_on_error(self: &Rc<Self>) -> Closure<dyn FnMut(Event)> {
         let weak = Rc::downgrade(self);
-        Closure::wrap(Box::new(move |event: ErrorEvent| {
+        Closure::wrap(Box::new(move |event: Event| {
             let Some(driver) = weak.upgrade() else { return };
-            let message = event.message();
+            let message = js_sys::Reflect::get(event.as_ref(), &JsValue::from_str("message"))
+                .ok()
+                .and_then(|value| value.as_string())
+                .unwrap_or_default();
             // ErrorEvent on a WebSocket is followed by a CloseEvent — the
             // close handler owns the reconnect decision. We only report the
             // error string into the kernel so the snapshot surfaces it.
@@ -408,7 +413,7 @@ impl BrowserRelayDriver {
                 message
             };
             (driver.kernel.on_failed)(driver.role, &driver.url, error);
-        }) as Box<dyn FnMut(ErrorEvent)>)
+        }) as Box<dyn FnMut(Event)>)
     }
 
     /// Schedule a reconnect via `gloo_timers::callback::Timeout` (#2071).

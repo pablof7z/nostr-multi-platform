@@ -10,15 +10,11 @@ use crate::store::{RawEvent, VerifiedEvent};
 
 // ─── Synthetic pubkeys (valid 64-char hex) ───────────────────────────────────
 
-const ACCOUNT_PK: &str =
-    "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1";
-const FOLLOW_A: &str =
-    "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2";
-const FOLLOW_B: &str =
-    "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3";
+const ACCOUNT_PK: &str = "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1";
+const FOLLOW_A: &str = "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2";
+const FOLLOW_B: &str = "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3";
 // A kind:3 event id (arbitrary valid 64-char hex)
-const KIND3_ID: &str =
-    "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4";
+const KIND3_ID: &str = "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -159,7 +155,10 @@ fn try_current_kind3_event_returns_full_tags_and_content() {
         .try_current_kind3_event()
         .expect("kind:3 loaded → must return Some");
     assert_eq!(tags, rich_kind3_tags(), "every tag must survive verbatim");
-    assert_eq!(content, "legacy relay json", "content must survive verbatim");
+    assert_eq!(
+        content, "legacy relay json",
+        "content must survive verbatim"
+    );
 }
 
 #[test]
@@ -188,7 +187,11 @@ fn kind3_edit_add_preserves_relay_hints_petnames_non_p_and_content() {
 
     // Non-`p` tag survives verbatim, in place.
     assert!(
-        edited.contains(&vec!["r".to_string(), RELAY_A.to_string(), "read".to_string()]),
+        edited.contains(&vec![
+            "r".to_string(),
+            RELAY_A.to_string(),
+            "read".to_string()
+        ]),
         "non-`p` tag must survive an add edit"
     );
     // Relay hint + petname survive on the existing follow.
@@ -231,7 +234,11 @@ fn kind3_edit_remove_preserves_relay_hints_petnames_non_p_and_content() {
     );
     // Non-`p` tag survives.
     assert!(
-        edited.contains(&vec!["r".to_string(), RELAY_A.to_string(), "read".to_string()]),
+        edited.contains(&vec![
+            "r".to_string(),
+            RELAY_A.to_string(),
+            "read".to_string()
+        ]),
         "non-`p` tag must survive a remove edit"
     );
     // The kept follow retains its relay hint + petname.
@@ -262,7 +269,11 @@ fn kind3_edit_remove_drops_relay_hinted_and_petnamed_p_of_any_arity() {
     );
     // FOLLOW_B and the non-`p` tag stay.
     assert!(edited.contains(&vec!["p".to_string(), FOLLOW_B.to_string()]));
-    assert!(edited.contains(&vec!["r".to_string(), RELAY_A.to_string(), "read".to_string()]));
+    assert!(edited.contains(&vec![
+        "r".to_string(),
+        RELAY_A.to_string(),
+        "read".to_string()
+    ]));
 }
 
 #[test]

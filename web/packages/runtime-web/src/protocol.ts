@@ -46,6 +46,88 @@ export type WorkerRequest =
       type: "dispatch_bytes";
       bytes: Uint8Array;
     }
+  /** NIP-50 public search. The worker validates/bounds the query through
+   *  `nmp_nip50::SearchRequest` and emits typed results under
+   *  `nmp.nip50.search.<session_id>` (`N50S`) in update snapshots. */
+  | {
+      type: "search_open";
+      session_id: string;
+      query: string;
+      scope: "notes" | "profiles" | "longform";
+      targets: "user_preferred" | "app_default" | "explicit";
+      relays?: string[];
+      max_hits?: number;
+      correlation_id: string;
+    }
+  | {
+      type: "search_close";
+      session_id: string;
+      correlation_id: string;
+    }
+  /** NIP-29 public group discovery. The worker owns the relay-pinned metadata
+   *  interest and emits `nmp.nip29.discovered_groups` (`NDGS`) in snapshots. */
+  | {
+      type: "group_discovery_open";
+      session_id: string;
+      relay_url: string;
+      correlation_id: string;
+    }
+  | {
+      type: "group_discovery_close";
+      session_id: string;
+      correlation_id: string;
+    }
+  /** NIP-29 selected group timeline. The worker owns the relay-pinned `#h`
+   *  interest and emits `nmp.nip29.group_timeline` (`NGTL`) in snapshots. */
+  | {
+      type: "group_timeline_open";
+      session_id: string;
+      relay_url: string;
+      group_id: string;
+      correlation_id: string;
+    }
+  | {
+      type: "group_timeline_close";
+      session_id: string;
+      correlation_id: string;
+    }
+  | {
+      type: "notifications_open";
+      session_id: string;
+      account_pubkey: string;
+      correlation_id: string;
+    }
+  | {
+      type: "notifications_close";
+      session_id: string;
+      correlation_id: string;
+    }
+  | {
+      type: "notifications_mark_read";
+      session_id: string;
+      event_ids?: string[];
+      all_visible?: boolean;
+      correlation_id: string;
+    }
+  /** Browser runtime relay inventory edit. This is structured transport/runtime
+   *  control, not an app-level write. The Rust runtime validates URL/role,
+   *  mutates the configured-relay projection, and opens/closes browser relay
+   *  drivers so diagnostics reflect the live socket inventory. */
+  | {
+      type: "relay_config";
+      action: "add" | "remove";
+      url: string;
+      role?: string;
+      correlation_id: string;
+    }
+  /** Publish the Rust-owned configured relay projection as NIP-65 kind:10002.
+   *  This is a typed write: the worker encodes `nmp.nip65.publish_relay_list`
+   *  and routes it through the same `dispatch_bytes` path, so TS never builds
+   *  NIP-65 tags or marker policy. */
+  | {
+      type: "publish_relay_preferences";
+      correlation_id: string;
+    }
   | {
       type: "capability_result";
       capability: string;
@@ -65,10 +147,7 @@ export type WorkerRequest =
    *    bech32 string) and an empty pubkey_hex; the runtime is responsible for
    *    decoding the nsec, deriving the pubkey, and installing a LocalKey
    *    provider. The TS layer MUST NOT decode or sign with the nsec — handing
-   *    it to the runtime is the only permitted use. The runtime currently
-   *    returns a `unsupported_signer_kind` capability failure for this kind;
-   *    the field + contract are forward-compatible so the UI works unchanged
-   *    once the runtime wires the local-key install door.
+   *    it to the runtime is the only permitted use.
    */
   | {
       type: "set_identity";
@@ -150,6 +229,9 @@ export type WorkerEvent =
   | {
       type: "sign_request";
       correlation_id: string;
+      /** Present when this sign request was caused by an action dispatch; lets
+       *  the UI settle the initiating command while the signer broker continues. */
+      action_correlation_id?: string | null;
       account_pubkey: string;
       unsigned_json: string;
     }

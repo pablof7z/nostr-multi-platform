@@ -80,7 +80,11 @@ fn auth_required_ack_parks_relay_pending_does_not_settle_failed() {
     let dispatcher = Arc::new(ReplayDispatcher::new());
     dispatcher.script(
         AUTH_RELAY,
-        vec![RelayAck::failed(AUTH_RELAY, "auth-required", "auth-required: please AUTH")],
+        vec![RelayAck::failed(
+            AUTH_RELAY,
+            "auth-required",
+            "auth-required: please AUTH",
+        )],
     );
     let mut engine = engine_routed_to(AUTH_RELAY, Arc::clone(&dispatcher));
 

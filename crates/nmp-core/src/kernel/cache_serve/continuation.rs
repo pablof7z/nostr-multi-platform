@@ -10,10 +10,10 @@
 //! visit limit the chunk advances to the next query; otherwise it lowers the
 //! resume cursor and continues on the same query next tick.
 
+use super::super::types::StoredEvent;
+use super::super::Kernel;
 use super::queries::{query_since_mut, query_until, query_until_mut};
 use super::PendingCacheServe;
-use super::super::Kernel;
-use super::super::types::StoredEvent;
 use crate::store::RawEvent;
 use nmp_store::__nmp_core_internal;
 

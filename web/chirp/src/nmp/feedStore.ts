@@ -39,6 +39,37 @@ function nextConsumerId(prefix: string): string {
   return `${prefix}-${_claimSeq++}`;
 }
 
+function rowSignature(rows: FeedRow[]): string {
+  return rows
+    .map((row) =>
+      [
+        row.id,
+        row.kind,
+        row.createdAt,
+        row.authorPubkey,
+        row.authorDisplayName ?? "",
+        row.content,
+        row.relationCounts.replies,
+        row.relationCounts.reactions,
+        row.relationCounts.reposts,
+        row.relationCounts.zaps,
+        row.relationCounts.comments,
+        row.replyAttributions
+          .map((reply) =>
+            [
+              reply.authorPubkey,
+              reply.authorDisplayName ?? "",
+              reply.replyEventId,
+              reply.replyCreatedAt,
+            ].join(","),
+          )
+          .join(";"),
+        row.relayProvenance.join(","),
+      ].join(":"),
+    )
+    .join("|");
+}
+
 /** Create the Chirp feed store. Must be called inside a SolidJS reactive root
  *  (component body or createRoot). Uses NmpClientContext internally. */
 export function createFeedStore(): FeedStore {
@@ -54,6 +85,7 @@ export function createFeedStore(): FeedStore {
   // Feed rows: plain signal — FeedRow objects are plain data, safe for signals.
   const [rows, setRows] = createSignal<FeedRow[]>([]);
   const [ready, setReady] = createSignal(false);
+  let lastRowsSignature = "";
 
   // Reactive effect: run whenever the raw snapshot bytes change.
   createEffect(() => {
@@ -77,7 +109,9 @@ export function createFeedStore(): FeedStore {
     }
 
     // Update feed rows.
-    if (decoded.rows.length > 0 || !ready()) {
+    const nextRowsSignature = rowSignature(decoded.rows);
+    if (!ready() || (decoded.rows.length > 0 && nextRowsSignature !== lastRowsSignature)) {
+      lastRowsSignature = nextRowsSignature;
       setRows(decoded.rows);
       setReady(true);
     }

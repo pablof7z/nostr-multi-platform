@@ -182,7 +182,10 @@ pub fn decode_ref_row_delta_batch(
                 key,
                 rev: row.rev(),
                 state,
-                payload: row.payload().map(|p| p.bytes().to_vec()).unwrap_or_default(),
+                payload: row
+                    .payload()
+                    .map(|p| p.bytes().to_vec())
+                    .unwrap_or_default(),
             });
         }
     }

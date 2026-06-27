@@ -9,9 +9,9 @@
 
 use super::{RefEventStore, RefProfileStore};
 use crate::kernel::public_typed_projections::{
-    ClaimedEventRow, ClaimedEventsModel, ProfileCardModel, encode_claimed_events, encode_profile,
+    encode_claimed_events, encode_profile, ClaimedEventRow, ClaimedEventsModel, ProfileCardModel,
 };
-use crate::refs::{RefRow, RefRowDeltaBatch, encode_ref_row_delta_batch};
+use crate::refs::{encode_ref_row_delta_batch, RefRow, RefRowDeltaBatch};
 
 const ALICE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const BOB: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";

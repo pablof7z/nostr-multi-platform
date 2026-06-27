@@ -28,7 +28,7 @@ use super::super::refs::{RefLiveness, RefNamespace, RefShape};
 use super::super::typed_projections::{decode_claimed_events, decode_profile};
 use super::super::Kernel;
 use crate::refs::RefRowDeltaTracker;
-use crate::relay::{DEFAULT_VISIBLE_LIMIT};
+use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use nmp_network::role::RelayRole;
 
 fn hex64(prefix: &str) -> String {

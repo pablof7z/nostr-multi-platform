@@ -35,12 +35,12 @@
 #[cfg(any(test, feature = "test-support"))]
 use std::sync::Arc;
 
-use nmp_signer_iface::UnsignedEvent;
 use super::routing::{
     MailboxCache, OutboxRouter, ParsedRelayList, Pubkey, RelayUrl, RoutedRelaySet, RoutingContext,
     RoutingError,
 };
 use crate::planner::LogicalInterest;
+use nmp_signer_iface::UnsignedEvent;
 
 // ─── EmptyOutboxRouter ───────────────────────────────────────────────────────
 

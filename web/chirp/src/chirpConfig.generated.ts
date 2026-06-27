@@ -6,7 +6,7 @@
 // supplies its own `relays` + `relay_bootstrap` in the Start request. These are
 // single-sourced from the Rust crate so the two can never drift (#1546 F6).
 
-export const CHIRP_CONTENT_RELAY_URL = "wss://relay.primal.net";
+export const CHIRP_CONTENT_RELAY_URL = "wss://nos.lol";
 export const CHIRP_INDEXER_RELAY_URL = "wss://purplepag.es";
 export const CHIRP_SEARCH_RELAY_URL = "wss://relay.nostr.band";
 export const CHIRP_PUBLIC_GROUP_RELAY_URL = "wss://relay.groups.nip29.com";

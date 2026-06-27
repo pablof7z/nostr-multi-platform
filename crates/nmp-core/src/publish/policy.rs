@@ -37,9 +37,9 @@
 //!   *expressed*, not a behaviour change.
 
 use crate::kinds::{
-    is_addressable, is_replaceable, KIND_BLOCKED_RELAYS, KIND_BOOKMARK_LIST,
-    KIND_CHAT_MESSAGE, KIND_CONTACT_LIST, KIND_DM_RELAY_LIST, KIND_GIFT_WRAP, KIND_MUTE_LIST,
-    KIND_PROFILE_METADATA, KIND_RELAY_LIST,
+    is_addressable, is_replaceable, KIND_BLOCKED_RELAYS, KIND_BOOKMARK_LIST, KIND_CHAT_MESSAGE,
+    KIND_CONTACT_LIST, KIND_DM_RELAY_LIST, KIND_GIFT_WRAP, KIND_MUTE_LIST, KIND_PROFILE_METADATA,
+    KIND_RELAY_LIST,
 };
 
 /// Typed behaviour class for a kind on the publish/outbox path.

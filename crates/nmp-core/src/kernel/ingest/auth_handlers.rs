@@ -6,8 +6,8 @@
 
 use super::super::{Arc, Kernel, OutboundMessage, RelayRole};
 use crate::subs::RelayAuthState;
-use serde_json::{json, Value};
 use crate::time::UNIX_EPOCH;
+use serde_json::{json, Value};
 
 /// Wire key for the `RelayStatus.auth` field — ADR-0007 §1 / matches the
 /// `nmp_nip42::state::RelayAuthState::as_status_key` keys verbatim so the

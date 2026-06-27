@@ -44,6 +44,12 @@ fn render_one(builder: &PublishBuilder, out: &mut String) {
         BodyShape::PublishProfile => {
             out.push_str("        fields: [(String, String)]\n");
         }
+        BodyShape::PublishReply => {
+            out.push_str("        content: String,\n");
+            out.push_str("        replyToEventId: String,\n");
+            out.push_str("        relays: [String]? = nil,\n");
+            out.push_str("        signerPubkey: String? = nil\n");
+        }
     }
     out.push_str("    ) -> [UInt8] {\n");
     out.push_str("        var fbb = FlatBufferBuilder()\n");
@@ -51,6 +57,7 @@ fn render_one(builder: &PublishBuilder, out: &mut String) {
     match builder.body {
         BodyShape::PublishRaw => render_raw_body(out),
         BodyShape::PublishProfile => render_profile_body(out),
+        BodyShape::PublishReply => render_reply_body(out),
     }
 
     // PublishPayload root: schema_version (slot 0 / vt 4), body_type ubyte
@@ -139,5 +146,24 @@ fn render_profile_body(out: &mut String) {
          \x20       let profileStart = fbb.startTable(with: 1)\n\
          \x20       fbb.add(offset: fieldsVec, at: 4) // slot 0: fields\n\
          \x20       let bodyOffset = Offset(offset: fbb.endTable(at: profileStart))\n",
+    );
+}
+
+fn render_reply_body(out: &mut String) {
+    out.push_str(
+        "        let contentOffset = fbb.create(string: content)\n\
+         \x20       let replyToEventIdOffset = fbb.create(string: replyToEventId)\n\
+         \x20       let signerPubkeyOffset: Offset = signerPubkey.map { fbb.create(string: $0) } ?? Offset()\n",
+    );
+    render_target(out);
+    // PublishReply: content (slot 0 / vt 4), reply_to_event_id (slot 1 / vt 6),
+    // target (slot 2 / vt 8), signer_pubkey (slot 3 / vt 10).
+    out.push_str(
+        "        let replyStart = fbb.startTable(with: 4)\n\
+         \x20       fbb.add(offset: contentOffset, at: 4) // slot 0: content\n\
+         \x20       fbb.add(offset: replyToEventIdOffset, at: 6) // slot 1: reply_to_event_id\n\
+         \x20       fbb.add(offset: targetOffset, at: 8) // slot 2: target\n\
+         \x20       if signerPubkeyOffset.o != 0 { fbb.add(offset: signerPubkeyOffset, at: 10) } // slot 3: signer_pubkey\n\
+         \x20       let bodyOffset = Offset(offset: fbb.endTable(at: replyStart))\n",
     );
 }

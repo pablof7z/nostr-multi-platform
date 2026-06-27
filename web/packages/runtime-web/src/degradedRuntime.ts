@@ -72,6 +72,105 @@ export class DegradedRuntime {
           },
         ];
       }
+      case "search_open":
+        return [
+          {
+            type: "capability_failure",
+            capability: "nmp.nip50.search.open",
+            correlation_id: request.correlation_id,
+            reason: this.unavailableReason,
+          },
+        ];
+      case "search_close":
+        return [
+          {
+            type: "capability_failure",
+            capability: "nmp.nip50.search.close",
+            correlation_id: request.correlation_id,
+            reason: this.unavailableReason,
+          },
+        ];
+      case "group_discovery_open":
+        return [
+          {
+            type: "capability_failure",
+            capability: "nmp.nip29.group_discovery.open",
+            correlation_id: request.correlation_id,
+            reason: this.unavailableReason,
+          },
+        ];
+      case "group_discovery_close":
+        return [
+          {
+            type: "capability_failure",
+            capability: "nmp.nip29.group_discovery.close",
+            correlation_id: request.correlation_id,
+            reason: this.unavailableReason,
+          },
+        ];
+      case "group_timeline_open":
+        return [
+          {
+            type: "capability_failure",
+            capability: "nmp.nip29.group_timeline.open",
+            correlation_id: request.correlation_id,
+            reason: this.unavailableReason,
+          },
+        ];
+      case "group_timeline_close":
+        return [
+          {
+            type: "capability_failure",
+            capability: "nmp.nip29.group_timeline.close",
+            correlation_id: request.correlation_id,
+            reason: this.unavailableReason,
+          },
+        ];
+      case "notifications_open":
+        return [
+          {
+            type: "capability_failure",
+            capability: "nmp.relations.notifications.open",
+            correlation_id: request.correlation_id,
+            reason: this.unavailableReason,
+          },
+        ];
+      case "notifications_close":
+        return [
+          {
+            type: "capability_failure",
+            capability: "nmp.relations.notifications.close",
+            correlation_id: request.correlation_id,
+            reason: this.unavailableReason,
+          },
+        ];
+      case "notifications_mark_read":
+        return [
+          {
+            type: "capability_failure",
+            capability: "nmp.relations.notifications.mark_read",
+            correlation_id: request.correlation_id,
+            reason: this.unavailableReason,
+          },
+        ];
+      case "relay_config":
+        return [
+          {
+            type: "capability_failure",
+            capability: "nmp.relay_config",
+            correlation_id: request.correlation_id,
+            reason: this.unavailableReason,
+          },
+        ];
+      case "publish_relay_preferences":
+        return [
+          {
+            type: "capability_failure",
+            capability: "nmp.nip65.publish_relay_list",
+            correlation_id: request.correlation_id,
+            reason: this.unavailableReason,
+          },
+        ];
       case "capability_result":
         return [
           {
