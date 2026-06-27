@@ -27,11 +27,11 @@
  * contract; the relay protocol itself is unchanged.
  */
 
-import { WebSocketServer } from "ws";
 import type { WebSocket } from "ws";
-import type { AddressInfo } from "net";
+import type { AddressInfo } from "node:net";
 import { createServer } from "node:http";
 import { finalizeEvent, generateSecretKey, getPublicKey } from "nostr-tools/pure";
+import { startFixtureWebSocketServer } from "./fixture-relay-server.js";
 
 const FIXTURE_IMAGE = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" role="img" aria-label="Chirp fixture media">
@@ -133,6 +133,7 @@ export type FixtureRelayOptions = {
     message?: string;
     delayMs?: number;
   };
+  secure?: boolean;
 };
 
 export type NostrFilter = {
@@ -181,82 +182,64 @@ export function startFixtureRelayServer(
   seededEvents: NostrEvent[],
   options: FixtureRelayOptions = {},
 ): Promise<FixtureRelay> {
-  return new Promise((resolve, reject) => {
-    const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+  return startFixtureWebSocketServer(options.secure ?? false).then(({ wss, url, close }) => {
     let connections = 0;
     const receivedEvents: NostrEvent[] = [];
     const subscriptions: NostrFilter[] = [];
 
-    wss.once("error", reject);
+    wss.on("connection", (ws: WebSocket) => {
+      connections += 1;
 
-    wss.once("listening", () => {
-      const { port } = wss.address() as AddressInfo;
+      ws.on("message", (raw: Buffer | string) => {
+        let msg: unknown;
+        try {
+          msg = JSON.parse(typeof raw === "string" ? raw : raw.toString());
+        } catch {
+          return;
+        }
+        if (!Array.isArray(msg) || msg.length === 0) return;
+        const [verb, ...rest] = msg as [string, ...unknown[]];
 
-      wss.on("connection", (ws: WebSocket) => {
-        connections += 1;
-
-        ws.on("message", (raw: Buffer | string) => {
-          let msg: unknown;
-          try {
-            msg = JSON.parse(typeof raw === "string" ? raw : raw.toString());
-          } catch {
-            return;
+        if (verb === "REQ" && typeof rest[0] === "string") {
+          const subId = rest[0];
+          const filters = (rest.slice(1) as NostrFilter[]).filter(
+            (f) => typeof f === "object" && f !== null,
+          );
+          subscriptions.push(...filters);
+          const sendSoon = (frame: string) => setTimeout(() => ws.send(frame), 0);
+          const retainedEvents = [...seededEvents, ...receivedEvents];
+          for (const event of retainedEvents) {
+            const matched = filters.length === 0 || filters.some((f) => matchesFilter(event, f));
+            if (matched) sendSoon(JSON.stringify(["EVENT", subId, event]));
           }
-          if (!Array.isArray(msg) || msg.length === 0) return;
-          const [verb, ...rest] = msg as [string, ...unknown[]];
-
-          if (verb === "REQ" && typeof rest[0] === "string") {
-            const subId = rest[0];
-            const filters = (rest.slice(1) as NostrFilter[]).filter(
-              (f) => typeof f === "object" && f !== null,
-            );
-            subscriptions.push(...filters);
-            const sendSoon = (frame: string) => setTimeout(() => ws.send(frame), 0);
-            const retainedEvents = [...seededEvents, ...receivedEvents];
-            for (const event of retainedEvents) {
-              const matched =
-                filters.length === 0 || filters.some((f) => matchesFilter(event, f));
-              if (matched) {
-                sendSoon(JSON.stringify(["EVENT", subId, event]));
-              }
-            }
-            sendSoon(JSON.stringify(["EOSE", subId]));
-          } else if (verb === "EVENT") {
-            const event = rest[0] as Record<string, unknown> | undefined;
-            const eventId = typeof event?.id === "string" ? event.id : "";
-            if (event !== undefined) {
-              receivedEvents.push(event as NostrEvent);
-            }
-            const ack = options.eventAck ?? {};
-            const ok = ack.ok ?? true;
-            const message = ack.message ?? "";
-            setTimeout(() => {
-              if (ws.readyState === 1) {
-                ws.send(JSON.stringify(["OK", eventId, ok, message]));
-              }
-            }, ack.delayMs ?? 0);
+          sendSoon(JSON.stringify(["EOSE", subId]));
+        } else if (verb === "EVENT") {
+          const event = rest[0] as Record<string, unknown> | undefined;
+          const eventId = typeof event?.id === "string" ? event.id : "";
+          if (event !== undefined) {
+            receivedEvents.push(event as NostrEvent);
           }
-          // CLOSE: no response required per NIP-01.
-        });
-
-        ws.on("error", () => {});
+          const ack = options.eventAck ?? {};
+          const ok = ack.ok ?? true;
+          const message = ack.message ?? "";
+          setTimeout(() => {
+            if (ws.readyState === 1) ws.send(JSON.stringify(["OK", eventId, ok, message]));
+          }, ack.delayMs ?? 0);
+        }
+        // CLOSE: no response required per NIP-01.
       });
 
-      const close = (): Promise<void> =>
-        new Promise<void>((res, rej) => {
-          for (const client of wss.clients) client.terminate();
-          wss.close((err) => (err ? rej(err) : res()));
-        });
-
-      resolve({
-        url: `ws://127.0.0.1:${port}`,
-        connectionCount: () => connections,
-        eventCount: () => receivedEvents.length,
-        receivedEvents: () => [...receivedEvents],
-        subscriptions: () => [...subscriptions],
-        close,
-      });
+      ws.on("error", () => {});
     });
+
+    return {
+      url,
+      connectionCount: () => connections,
+      eventCount: () => receivedEvents.length,
+      receivedEvents: () => [...receivedEvents],
+      subscriptions: () => [...subscriptions],
+      close,
+    };
   });
 }
 

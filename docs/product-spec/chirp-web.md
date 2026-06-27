@@ -93,6 +93,35 @@ Acceptance must prove that opening Notifications sends a Rust-owned bounded
 source relay provenance; and marking visible rows read updates the
 Rust-projected unread count without shell-local read storage.
 
+## Private Messages Contract
+
+Chirp Web must expose NIP-17 private messages as a first-level inbox workspace
+for the active account. Rust owns kind:1059 gift-wrap interest reconciliation,
+gift-wrap decrypt through the signer port, ordering, dedupe, outgoing-vs-incoming
+classification, and the typed `NDMI` sidecar under `nmp.nip17.dm_inbox`.
+
+TypeScript must decode the typed `NDMI` snapshot and render conversations. It
+must not decrypt, construct private-event filters, fabricate local threads,
+store plaintext outside the rendered snapshot, or infer private-message policy.
+When no active account exists, the UI must render a signed-out state. When
+`decrypt_state` is `limited`, the UI must surface `undecrypted_count` as state.
+
+Outbound NIP-17 send is not supported on web until the browser runtime wires the
+Rust protocol-command expansion to real signer and recipient-DM-relay
+capabilities. The Messages workspace may expose a blocked diagnostic for
+`nmp.nip17.send`, but it must not simulate send, choose recipient inbox relays,
+or construct gift-wrap envelopes in TypeScript.
+
+Source relay provenance is still blocked by the browser ingest seam: the
+current Rust parser receives event bodies without the relay URL that delivered
+them. Until that seam carries provenance into the inbox projection, TypeScript
+must render source provenance as pending and must not fabricate relay names.
+
+Acceptance must prove that signing in opens a real Rust-owned kind:1059 `#p` DM
+inbox interest; a signed fixture gift-wrap decrypts through Rust into the typed
+`NDMI` sidecar; and the browser renders plaintext, peer pubkey, decrypt state,
+and pending source provenance without a shell-local message store.
+
 ## Profile Open Contract
 
 Chirp Web must let users open a visible author profile from feed and thread
@@ -271,18 +300,19 @@ the raw secret.
 
 Chirp Web must not hide missing major product areas behind absent navigation or
 fake local-only controls. Until web-ready Rust projections and actions exist for
-NIP-17 private messages, wallet/zap flows, moderation/WoT, group membership
-actions, or durable offline replay ownership, the browser product must expose
-those destinations as blocked, disabled, or explicitly partial workspaces with
-clear reasons.
+wallet/zap flows, moderation/WoT, group membership actions, outbound NIP-17
+send, NIP-17 source relay provenance, or durable offline replay ownership, the
+browser product must expose those destinations as blocked, disabled, or
+explicitly partial workspaces with clear reasons.
 
 Blocked controls may emit log-safe `capability_failure` diagnostics proving the
 unsupported state is deliberate. They must not construct Nostr events, maintain
 shell-local unread counts, fabricate private message threads, simulate wallet
 state, or persist policy choices in TypeScript. Deep routes `#messages`,
-`#wallet`, and `#moderation` must focus the requested blocked destination. When
-any blocked area becomes supported, the same navigation destination graduates to
-Rust-owned projections/actions and browser acceptance for the real workflow.
+`#wallet`, and `#moderation` must either render the live supported surface or
+focus the requested blocked destination. When any blocked area becomes
+supported, the same navigation destination graduates to Rust-owned
+projections/actions and browser acceptance for the real workflow.
 
 ## Content Rendering Contract
 

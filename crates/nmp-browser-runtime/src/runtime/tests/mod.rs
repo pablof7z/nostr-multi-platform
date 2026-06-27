@@ -9,9 +9,11 @@
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::{mpsc, Arc};
+use std::sync::{mpsc, Arc, Mutex};
 
-use nmp_core::actor::{ActorCommand, ActorMail, LifecycleCommand, PublishCommand};
+use nmp_core::actor::{
+    ActorCommand, ActorMail, CipherContinuation, LifecycleCommand, PublishCommand, SignCommand,
+};
 use nmp_core::KernelReducer;
 use nmp_signer_iface::{SignerOp, UnsignedEvent};
 use nmp_signers::{LocalKeySigner, Signer};

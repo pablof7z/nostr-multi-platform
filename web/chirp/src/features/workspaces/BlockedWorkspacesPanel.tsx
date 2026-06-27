@@ -16,14 +16,6 @@ type Workspace = {
 
 const WORKSPACES: Workspace[] = [
   {
-    id: "messages",
-    title: "Private messages",
-    capability: "nmp.nip17.inbox",
-    status: "blocked",
-    reason: "NIP-17 web decrypt/send approval is not wired through the browser runtime.",
-    proof: "Private payloads must stay inside Rust-owned decrypt and send flows.",
-  },
-  {
     id: "wallet",
     title: "Wallet and zaps",
     capability: "nmp.nip57.wallet",

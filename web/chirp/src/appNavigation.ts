@@ -78,9 +78,9 @@ const VIEW_COPY: Record<MainView, ViewCopy> = {
     support: "Private, value, and moderation surfaces stay disabled until Rust-owned web flows exist.",
   },
   messages: {
-    kicker: "Blocked workspace",
+    kicker: "NIP-17 inbox",
     title: "Private messages",
-    support: "NIP-17 private messaging stays disabled until Rust owns web decrypt/send flows.",
+    support: "Read gift-wrapped private messages from the Rust-owned inbox projection.",
   },
   wallet: {
     kicker: "Blocked workspace",

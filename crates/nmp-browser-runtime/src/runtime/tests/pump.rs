@@ -119,6 +119,55 @@ fn unsupported_command_surfaces_command_failed() {
 }
 
 #[test]
+fn nip44_decrypt_for_account_resolves_local_key_continuation() {
+    let recipient = LocalKeySigner::from_secret_hex(&"22".repeat(32)).expect("valid secret");
+    let recipient_pubkey = recipient.pubkey();
+    let recipient_hex = recipient_pubkey.to_hex();
+    let peer = nostr::Keys::generate();
+    let plaintext = "browser runtime decrypts the DM";
+    let ciphertext = nostr::nips::nip44::encrypt(
+        peer.secret_key(),
+        &recipient_pubkey,
+        plaintext,
+        nostr::nips::nip44::Version::V2,
+    )
+    .expect("fixture encrypt");
+
+    let captured = Arc::new(Mutex::new(None));
+    let captured_for_continuation = Arc::clone(&captured);
+    let continuation = CipherContinuation::new(move |outcome| {
+        *captured_for_continuation.lock().expect("capture lock") = Some(outcome);
+    });
+
+    let mut reducer = KernelReducer::new();
+    let _ = reducer.set_active_account(recipient_hex.clone());
+    let rx = enqueue(vec![ActorCommand::Sign(SignCommand::Nip44DecryptForAccount {
+        peer_pubkey: peer.public_key().to_hex(),
+        ciphertext,
+        signer_pubkey: None,
+        continuation,
+    })]);
+    let mut pending = HashMap::new();
+    let mut reg = CapabilityProviderRegistry::new();
+    reg.insert(Arc::new(recipient) as Arc<dyn Signer>);
+    let (_unused_reg, tx) = empty_broker();
+
+    let out = drain_inbox(&mut reducer, &rx, &mut pending, &reg, &tx, &noop_wake());
+
+    assert!(out.events.is_empty(), "decrypt is delivered by continuation");
+    assert!(pending.is_empty(), "cipher continuations are not publish signs");
+    assert_eq!(
+        captured
+            .lock()
+            .expect("capture lock")
+            .take()
+            .expect("continuation ran")
+            .expect("decrypt succeeded"),
+        plaintext
+    );
+}
+
+#[test]
 fn drain_is_bounded_by_budget_and_remainder_drains_next_pump() {
     let mut reducer = KernelReducer::new();
     let total = BROWSER_COMMAND_DRAIN_BUDGET + 10;
