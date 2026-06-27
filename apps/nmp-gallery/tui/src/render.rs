@@ -445,13 +445,8 @@ fn render_embed_showcase(
     let registry = NostrKindRegistry::make_default();
     let profile_host = profile_host_from_context(embed_ctx);
 
-    // M16 / ADR-0034: the renderer is frontend-driven. When `NostrContentView`
-    // hits an EventRef(uri), it calls `sink.resolve_event_ref(uri, consumer_id)` — the
-    // kernel fetches (cache or relay) and surfaces in `refs.event`. The
-    // `EmbedHostState` decodes that on each snapshot tick and exposes the
-    // envelopes through `embed_ctx.envelopes`. The renderer looks them up
-    // by `primary_id` / `uri`; if absent → loading placeholder; if present
-    // → kind registry dispatches to the right handler.
+    // Renderer-triggered event refs resolve through the kernel sink; pushed
+    // snapshots refresh `embed_ctx.envelopes` for kind-registry dispatch.
     NostrContentView::new(&example.tree)
         .render_data(Some(&example.render_data))
         .media_images(media_images)

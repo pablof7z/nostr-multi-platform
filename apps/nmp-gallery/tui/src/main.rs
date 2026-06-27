@@ -1,19 +1,7 @@
 //! NMP Gallery TUI — live-only kernel-driven Nostr component showcase.
 //!
-//! The program flow:
-//! 1. Spin up `LiveKernel` (the persistent `nmp_app_*` actor handle).
-//! 2. Boot `LiveKernel` without blocking prefetch. The initial frame carries
-//!    canonical Nostr references; relay-backed projections refine it in place.
-//! 3. Take the snapshot receiver off the kernel; spawn two threads:
-//!    - input thread (crossterm `event::read` blocking)
-//!    - snapshot thread (snapshot push receiver blocking)
-//!    Both feed a single `Receiver<GalleryEvent>` the main loop blocks on.
-//! 4. Main loop:
-//!    - On `Input` → mutate selection state, redraw.
-//!    - On `Snapshot` → update `EmbedHostState`, redraw.
-//!    The renderer (NostrContentView) calls `sink.resolve_event_ref(uri, …)` when it
-//!    encounters embedded URIs; the kernel fetches them (cache or relay);
-//!    the next snapshot push delivers them; the redraw shows them.
+//! Boots the live kernel, blocks on input/snapshot channels, and redraws from
+//! pushed snapshots. Renderers resolve embed URIs through the kernel sink.
 
 use std::{
     cell::RefCell,
@@ -48,12 +36,7 @@ struct Args {
     component: String,
     dump_lines: bool,
     list: bool,
-    /// Headless verification mode — boots the kernel, resolves every embed
-    /// URI the gallery's content trees reference, waits up to N seconds
-    /// for each event ref to resolve via the snapshot push, and prints a
-    /// structured pass/fail report. Exits 0 on full success, 1 on any
-    /// timeout or decode failure. Used to validate the architecture
-    /// end-to-end without an interactive terminal.
+    /// Headless verification mode for renderer-triggered event-ref resolves.
     smoke: bool,
     smoke_timeout_secs: u64,
 }

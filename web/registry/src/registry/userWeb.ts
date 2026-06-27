@@ -41,7 +41,7 @@ export const webUserAvatar: PlatformImpl = {
   customization: [
     "Edit the `PALETTE` array in `NostrAvatar.tsx` to match your brand; the color is deterministic from the pubkey so a user always gets the same one.",
     "Swap the `<img>` for your own image cache component — the identicon fallback (`<span>` with initials) is self-contained.",
-    "Implement `NostrProfileHost` over your kernel host: `profile(pubkey)` reads the resolved projection reactively, `claimProfile`/`releaseProfile` register interest on mount/cleanup.",
+    "Implement `NostrProfileHost` over your kernel host: `profile(pubkey)` reads the resolved projection reactively, `resolveProfileRef`/`releaseProfileRef` register interest on mount/cleanup.",
   ],
 };
 

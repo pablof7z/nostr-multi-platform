@@ -2,10 +2,10 @@ import { createContext, useContext, type JSX } from "solid-js";
 import type { ProfileWire } from "./ProfileWire";
 
 // Host bridge for the user-* components. The host app (gallery, Chirp, …) owns
-// the kernel: it fetches kind:0 on `claimProfile`, releases interest on
-// `releaseProfile`, and exposes the resolved `ProfileWire` reactively through
-// `profile`. Components never fetch or persist — they claim on mount, release
-// on cleanup, and render whatever `profile(pubkey)` currently returns.
+// the kernel: it resolves `refs.profile` on `resolveProfileRef`, releases
+// interest on `releaseProfileRef`, and exposes the resolved `ProfileWire`
+// reactively through `profile`. Components never fetch or persist — they resolve
+// on mount, release on cleanup, and render whatever `profile(pubkey)` returns.
 //
 // This mirrors the SwiftUI `NostrProfileHost` environment and the Compose
 // `NostrProfileHost` interface so the contract is identical across platforms.
@@ -15,11 +15,11 @@ export interface NostrProfileHost {
    *  inside a tracking scope (component body / JSX) to update on resolution. */
   profile(pubkey: string): ProfileWire | undefined;
   /** Register interest in a pubkey's profile. The kernel fetches kind:0 on the
-   *  first claim and refcounts by `consumerId`. */
-  claimProfile(pubkey: string, consumerId: string): void;
+   *  first ref resolve and refcounts by `consumerId`. */
+  resolveProfileRef(pubkey: string, consumerId: string): void;
   /** Drop interest. The kernel can garbage-collect the subscription once every
    *  consumer releases. */
-  releaseProfile(pubkey: string, consumerId: string): void;
+  releaseProfileRef(pubkey: string, consumerId: string): void;
 }
 
 const NostrProfileHostContext = createContext<NostrProfileHost>();

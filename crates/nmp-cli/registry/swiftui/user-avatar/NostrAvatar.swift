@@ -69,18 +69,18 @@ public struct NostrAvatar: View {
         .task(id: pubkey) {
             await MainActor.run {
                 if let claimedPubkey, claimedPubkey != pubkey {
-                    profileHost?.releaseProfile(
+                    profileHost?.releaseProfileRef(
                         pubkey: claimedPubkey,
                         consumerID: generatedConsumerID
                     )
                 }
                 claimedPubkey = pubkey
-                profileHost?.claimProfile(pubkey: pubkey, consumerID: generatedConsumerID)
+                profileHost?.resolveProfileRef(pubkey: pubkey, consumerID: generatedConsumerID)
             }
         }
         .onDisappear {
             if let claimedPubkey {
-                profileHost?.releaseProfile(pubkey: claimedPubkey, consumerID: generatedConsumerID)
+                profileHost?.releaseProfileRef(pubkey: claimedPubkey, consumerID: generatedConsumerID)
                 self.claimedPubkey = nil
             }
         }

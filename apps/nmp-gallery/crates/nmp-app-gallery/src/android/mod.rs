@@ -143,17 +143,18 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeDecodeSnap
     let Some(s) = session_ref(handle) else {
         return null;
     };
-    let Ok(mut stores) = s.ref_stores.lock() else {
+    let Ok(mut store_guard) = s.ref_stores.lock() else {
         return null;
     };
-    let Ok(json) = crate::snapshot_json::snapshot_json_from_update_frame(
-        &bytes,
-        &mut stores.profiles,
-        &mut stores.events,
-    ) else {
+    let Ok(json) = ({
+        let stores = &mut *store_guard;
+        let ref_profiles = &mut stores.profiles;
+        let ref_events = &mut stores.events;
+        crate::snapshot_json::snapshot_json_from_update_frame(&bytes, ref_profiles, ref_events)
+    }) else {
         return null;
     };
-    drop(stores);
+    drop(store_guard);
     match env.new_string(json) {
         Ok(js) => js.into_raw(),
         Err(_) => null,

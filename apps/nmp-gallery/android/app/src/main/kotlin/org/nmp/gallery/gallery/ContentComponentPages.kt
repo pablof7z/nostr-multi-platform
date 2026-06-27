@@ -302,7 +302,7 @@ private fun quoteCardFor(
         id = event.projectionString("id") ?: event.primaryId,
         unresolvedUri = uri.uri,
         authorPubkey = event.projectionString("authorPubkey"),
-        content = event.projectionString("content") ?: event.projectionContentText(),
+        content = (event.projectionString("content") ?: event.projectionContentText()).orEmpty(),
         mediaThumbnailUrl = mediaUrls(event).firstOrNull(),
         createdAtDisplay = event.projectionLong("createdAt")
             ?.takeIf { it > 0L }

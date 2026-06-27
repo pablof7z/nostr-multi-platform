@@ -47,6 +47,7 @@ use crate::signer::{
 
 use std::sync::mpsc;
 
+mod embed_sidecar;
 mod event;
 mod protocol;
 pub(crate) mod pump;

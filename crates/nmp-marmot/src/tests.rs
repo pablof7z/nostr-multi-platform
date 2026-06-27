@@ -711,7 +711,6 @@ fn dropped_self_remove_does_not_increment_orphaned_count() {
         "SelfRemove drop must not increment orphaned_commit_count"
     );
 }
-
 // ─── V-62 / #1651: init_error surfaced in snapshot ───────────────────────────
 
 /// V-62 / #1651: a `MarmotProjection` built with

@@ -50,7 +50,7 @@ export default function App(): JSX.Element {
   createEffect(() => {
     if (runtime.anyIndexerConnected() && !claimed) {
       claimed = true;
-      runtime.host.claimProfile(SHOWCASE_PUBKEY, "gallery-root");
+      runtime.host.resolveProfileRef(SHOWCASE_PUBKEY, "gallery-root");
     }
   });
 
@@ -62,7 +62,7 @@ export default function App(): JSX.Element {
       const pk = ev?.authorPubkey;
       if (pk && !claimedAuthors.has(pk)) {
         claimedAuthors.add(pk);
-        runtime.host.claimProfile(pk, `embed-author-${pk.slice(0, 8)}`);
+        runtime.host.resolveProfileRef(pk, `embed-author-${pk.slice(0, 8)}`);
       }
     }
   });

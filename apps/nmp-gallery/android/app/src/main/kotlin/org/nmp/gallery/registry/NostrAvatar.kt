@@ -45,9 +45,9 @@ fun NostrAvatar(
     val resolvedAvatarUrl = avatarUrl ?: profileHost?.profileForPubkey(pubkey)?.avatarUrl
 
     DisposableEffect(pubkey, profileHost, resolvedConsumerId) {
-        profileHost?.claimProfile(pubkey, resolvedConsumerId)
+        profileHost?.resolveProfileRef(pubkey, resolvedConsumerId)
         onDispose {
-            profileHost?.releaseProfile(pubkey, resolvedConsumerId)
+            profileHost?.releaseProfileRef(pubkey, resolvedConsumerId)
         }
     }
 

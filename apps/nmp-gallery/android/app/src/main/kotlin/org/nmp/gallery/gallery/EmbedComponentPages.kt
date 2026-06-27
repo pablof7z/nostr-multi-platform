@@ -396,9 +396,11 @@ private fun quoteCardFor(
         authorPubkey = authorPubkey,
         authorDisplayName = profile?.displayName,
         authorAvatarUrl = profile?.pictureUrl,
-        content = event.projectionString("content")
-            ?: event.projectionString("highlightedText")
-            ?: event.projectionContentText(),
+        content = (
+            event.projectionString("content")
+                ?: event.projectionString("highlightedText")
+                ?: event.projectionContentText()
+            ).orEmpty(),
         createdAtDisplay = event.projectionLong("createdAt")
             ?.takeIf { it > 0L }
             ?.let { NostrRelativeTime.ago(it) },

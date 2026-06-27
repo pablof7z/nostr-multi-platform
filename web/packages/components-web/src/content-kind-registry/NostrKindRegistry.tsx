@@ -9,7 +9,7 @@
  * fields into each card's typed model — it NEVER re-parses raw NIP-23 / NIP-84
  * tags. This is the web twin of the SwiftUI/TUI `NostrKindRegistry` +
  * `EmbeddedEvent` dispatch table, consuming the same `nmp-content` resolver
- * output (the `EmbeddedEventEnvelope` serde shape).
+ * output decoded from the Rust-owned `claimed_event_embeds` / NEMB sidecar.
  *
  * Pure (D7): the host owns the claim/resolve lifecycle and passes a fully
  * resolved envelope; the registry only chooses the renderer and projects the
@@ -25,9 +25,8 @@ import { NostrQuoteCard, type NostrQuoteCardModel } from "../content-quote-card/
  * The kernel-resolved per-kind projection. Mirrors the Rust
  * `nmp-content` `EmbedKindProjection` serde *enum* shape exactly:
  * `{ "variant": …, "data": … }` (serde `tag = "variant", content = "data",
- * rename_all = "camelCase"`) — the resolver output the web TS decodes. (Not the
- * shape iOS decodes: iOS consumes the native `claimed_event_embeds` NEMB
- * FlatBuffer.)
+ * rename_all = "camelCase"`) after the web runtime decodes the Rust-generated
+ * `claimed_event_embeds` NEMB FlatBuffer.
  */
 export type EmbedKindProjection =
   | { variant: "shortNote"; data: ShortNoteProjection }
@@ -112,11 +111,9 @@ export type UnknownProjection = {
 };
 
 /**
- * A fully resolved embedded-event envelope. Mirrors the Rust `nmp-content`
- * `EmbeddedEventEnvelope` serde shape (camelCase). Hosts derive this render
- * envelope from authoritative `refs.event` rows; native compatibility sidecars
- * may carry the same envelope map under older projection names, but they are
- * not the source of truth.
+ * A fully resolved embedded-event envelope. Hosts receive this render envelope
+ * from Rust-owned composition over authoritative `refs.event` rows (browser and
+ * native typed-frame shells decode the `claimed_event_embeds` / NEMB sidecar).
  */
 export type EmbeddedEventModel = {
   uri: string;

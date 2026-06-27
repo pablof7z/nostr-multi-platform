@@ -27,6 +27,20 @@ impl ProjectionMergeCache {
     /// returned as errors so the caller can surface a degraded state without
     /// mutating the last-good cache.
     pub fn merge_update_frame(&mut self, bytes: &[u8]) -> Result<Vec<u8>, UpdateFrameDecodeError> {
+        self.merge_update_frame_with_extra_projections(bytes, std::iter::empty())
+    }
+
+    /// Apply one snapshot frame and append transient derived projections to the
+    /// returned merged bytes.
+    ///
+    /// `extra` entries are not retained in this cache. They are for host-side
+    /// composition roots that derive a compatibility sidecar from the merged
+    /// source projections for the current outgoing frame.
+    pub fn merge_update_frame_with_extra_projections(
+        &mut self,
+        bytes: &[u8],
+        extra: impl IntoIterator<Item = TypedProjectionData>,
+    ) -> Result<Vec<u8>, UpdateFrameDecodeError> {
         if !fb::update_frame_buffer_has_identifier(bytes) {
             return Err(UpdateFrameDecodeError::InvalidFlatbuffer(
                 "missing NMPU file identifier".to_string(),
@@ -80,7 +94,11 @@ impl ProjectionMergeCache {
         // Commit: decode succeeded, so atomically adopt the new identity + set.
         self.frame_identity = Some(identity);
         self.projections = next_projections;
-        let merged: Vec<TypedProjectionData> = self.projections.values().cloned().collect();
+        let mut output = self.projections.clone();
+        for entry in extra {
+            output.insert(entry.key.clone(), entry);
+        }
+        let merged: Vec<TypedProjectionData> = output.values().cloned().collect();
         Ok(rewrite_typed_projections(&snapshot, &merged))
     }
 }

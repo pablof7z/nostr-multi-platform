@@ -20,7 +20,7 @@ mod production_ingest_tests {
     use crate::kernel::claim_expansion::Phase;
     use crate::kernel::public_typed_projections::ClaimedEventRow;
     use crate::kernel::{EventShape, Kernel, RefLiveness, RefNamespace, RefShape};
-    use crate::refs::{REFS_EVENT_KEY, RefEventStore};
+    use crate::refs::{RefEventStore, REFS_EVENT_KEY};
     use crate::update_envelope::{decode_snapshot_envelope, decode_snapshot_typed_projections};
     use {crate::relay::DEFAULT_VISIBLE_LIMIT, nmp_network::role::RelayRole};
 
@@ -90,11 +90,8 @@ mod production_ingest_tests {
         let envelope = decode_snapshot_envelope(&frame).expect("decode snapshot envelope");
         let typed = decode_snapshot_typed_projections(&frame).expect("decode typed projections");
         for entry in typed.iter().filter(|entry| entry.key == REFS_EVENT_KEY) {
-            let outcome = store.apply_sidecar(
-                &entry.payload,
-                envelope.session_id,
-                envelope.snapshot_epoch,
-            );
+            let outcome =
+                store.apply_sidecar(&entry.payload, envelope.session_id, envelope.snapshot_epoch);
             assert!(
                 !outcome.decode_failed,
                 "refs.event rows emitted by the kernel must pass decode-before-commit"
@@ -499,29 +496,7 @@ mod production_ingest_tests {
         );
     }
 
-    // ── T-P7: REGRESSION — claimed kind:1 surfaces in refs.event even when
-    //          a sibling relay EOSE'd-without-match BEFORE the EVENT arrived ──
-
-    /// REGRESSION (embed-loading-forever race). A claim's REQ fans out to
-    /// MULTIPLE relays sharing one `sub_id` (B4 shape-shared subs). Pre-fix,
-    /// `complete_unknown_oneshot` released the claim (`event_claims.remove`) on
-    /// the FIRST relay's EOSE-no-match. The slowest relay then delivered the
-    /// matching EVENT — it was stored in `self.events`, but the claim row was
-    /// already gone, so the `refs.event` row source (which walks live event
-    /// ref keys) never surfaced it: the embed rendered "loading"
-    /// forever.
-    ///
-    /// This drives the EXACT production ordering through `handle_text`:
-    ///   relay_a EOSE-no-match  →  relay_b EVENT  →  assert row present.
-    ///
-    /// Distinct from `event_claim_tests::refs_event_projection_emits_dto_keyed_by_primary_id`,
-    /// which ingests via the `inject_note` bypass and never exercises the
-    /// EOSE-no-match teardown that precedes the EVENT — so it cannot catch this
-    /// race.
-    ///
-    /// The author is deliberately NOT in `timeline_authors`; the event persists
-    /// through the ingest chokepoint and surfaces because the live event-ref row
-    /// still exists after the sibling relay's EOSE-no-match.
+    // ── T-P7: sibling EOSE-no-match must not release a still-in-flight claim ──
     #[test]
     fn claimed_kind1_surfaces_when_event_arrives_after_sibling_eose_no_match() {
         use super::super::test_support;
@@ -617,23 +592,7 @@ mod production_ingest_tests {
         test_support::clear_claim_expansion_subs();
     }
 
-    // ── T-P8: DIAGNOSTIC — naddr (kind:30023) resolves through the REAL wire
-    //          ingest path (claim → wire frame → handle_text EVENT → refs.event) ─
-
-    /// Drives a kind:30023 addressable article through the SAME production wire
-    /// ingest the `resolve_event_ref_naddr_matches_kind_pubkey_dtag_in_store` unit
-    /// test does NOT exercise. That unit test pre-injects the article into the
-    /// store (`ingest_pre_verified_event`) and then claims, so it only proves
-    /// the store→projection coordinate lookup (stage d). It never feeds a real
-    /// signed EVENT through `handle_text` for a coordinate claim.
-    ///
-    /// This test closes that gap: claim the `naddr`, register the planner wire
-    /// frame, deliver the matching signed kind:30023 EVENT through `handle_text`,
-    /// and assert `refs.event[kind:pubkey:d_tag]` surfaces. If this PASSES,
-    /// the shared kernel's addressable wire path is sound and the Android
-    /// embed-article gap is Android-bridge-specific. If it FAILS, the kernel
-    /// itself drops addressable events on the wire path and the unit test was
-    /// masking it.
+    // ── T-P8: naddr kind:30023 resolves through production wire ingest ────────
     #[test]
     fn claimed_naddr_article_surfaces_via_production_wire_ingest() {
         use super::super::test_support;

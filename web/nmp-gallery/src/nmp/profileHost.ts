@@ -12,7 +12,12 @@ import {
   type WorkerEvent,
   type WorkerRequest,
 } from "@nmp/runtime-web";
-import { RefEventStore, REFS_EVENT_KEY, tagValue, type ClaimedEventWire } from "./refEventStore";
+import {
+  decodeEmbedSidecar,
+  EMBED_SIDECAR_KEY,
+  NEMB_FILE_IDENTIFIER,
+} from "./embedSidecarStore";
+import { RefEventStore, REFS_EVENT_KEY, type ClaimedEventWire } from "./refEventStore";
 import { RefProfileStore } from "./refProfileStore";
 import type { ProfileWire } from "@nmp/components-web/src/user-avatar/ProfileWire";
 import type { NostrProfileHost } from "@nmp/components-web/src/user-avatar/NostrProfileHost";
@@ -33,10 +38,6 @@ const REF_LIVENESS_CACHE_OK = 0;
 
 const NRRD_FILE_IDENTIFIER = "NRRD";
 const REFS_PROFILE_PROJECTION_KEY = "refs.profile";
-const KIND_PROFILE_METADATA = 0;
-const KIND_SHORT_NOTE = 1;
-const KIND_LONG_FORM_ARTICLE = 30023;
-const KIND_HIGHLIGHT = 9802;
 
 export type RelayStatusRow = {
   url: string;
@@ -120,100 +121,6 @@ function decodeRelays(snapshot: SnapshotFrame): RelayStatusRow[] {
   return rows;
 }
 
-function textTree(content: string): { nodes: { kind: string; text?: string }[]; roots: number[] } {
-  return content.length > 0 ? { nodes: [{ kind: "text", text: content }], roots: [0] } : { nodes: [], roots: [] };
-}
-
-function embedEnvelopeFromEvent(ev: ClaimedEventWire): EmbeddedEventModel {
-  const base = {
-    uri: "",
-    primaryId: ev.primaryId,
-    collapsed: false,
-    collapseReason: null,
-  };
-  switch (ev.kind) {
-    case KIND_PROFILE_METADATA:
-      return {
-        ...base,
-        projection: {
-          variant: "profile",
-          data: {
-            pubkey: ev.authorPubkey,
-          },
-        },
-      };
-    case KIND_SHORT_NOTE:
-      return {
-        ...base,
-        projection: {
-          variant: "shortNote",
-          data: {
-            id: ev.id,
-            authorPubkey: ev.authorPubkey,
-            authorDisplayName: null,
-            authorPictureUrl: null,
-            createdAt: ev.createdAt,
-            contentTree: textTree(ev.content),
-            mediaUrls: [],
-          },
-        },
-      };
-    case KIND_LONG_FORM_ARTICLE:
-      return {
-        ...base,
-        projection: {
-          variant: "article",
-          data: {
-            id: ev.id,
-            authorPubkey: ev.authorPubkey,
-            authorDisplayName: null,
-            authorPictureUrl: null,
-            createdAt: ev.createdAt,
-            title: tagValue(ev, "title") ?? null,
-            summary: tagValue(ev, "summary") ?? null,
-            heroImageUrl: tagValue(ev, "image") ?? null,
-            dTag: tagValue(ev, "d") ?? "",
-          },
-        },
-      };
-    case KIND_HIGHLIGHT:
-      return {
-        ...base,
-        projection: {
-          variant: "highlight",
-          data: {
-            id: ev.id,
-            authorPubkey: ev.authorPubkey,
-            authorDisplayName: null,
-            createdAt: ev.createdAt,
-            highlightedText: ev.content,
-            sourceEventId: tagValue(ev, "e") ?? null,
-            sourceEventAddr: tagValue(ev, "a") ?? null,
-            sourceUrl: tagValue(ev, "r") ?? null,
-            context: tagValue(ev, "context") ?? null,
-          },
-        },
-      };
-    default:
-      return {
-        ...base,
-        projection: {
-          variant: "unknown",
-          data: {
-            kind: ev.kind,
-            authorPubkey: ev.authorPubkey,
-            authorDisplayName: null,
-            authorPictureUrl: null,
-            createdAt: ev.createdAt,
-            content: ev.content,
-            tags: ev.tags,
-            altText: tagValue(ev, "alt") ?? null,
-          },
-        },
-      };
-  }
-}
-
 // ── Runtime ────────────────────────────────────────────────────────────────
 
 export function createGalleryRuntime(): GalleryRuntime {
@@ -225,6 +132,7 @@ export function createGalleryRuntime(): GalleryRuntime {
   // store proxy would wrap that object and break its `this.bb`-based accessors,
   // so the map is kept as an opaque signal value (replaced wholesale per frame).
   const [claimedEvents, setClaimedEvents] = createSignal<Map<string, ClaimedEventWire>>(new Map());
+  const [claimedEventEmbeds, setClaimedEventEmbeds] = createSignal<Map<string, EmbeddedEventModel>>(new Map());
   const [status, setStatus] = createSignal<RuntimeStatus>("ready");
   const [relays, setRelays] = createSignal<RelayStatusRow[]>([]);
   const [resolvedCount, setResolvedCount] = createSignal(0);
@@ -285,6 +193,11 @@ export function createGalleryRuntime(): GalleryRuntime {
         refEvents.applySidecar(eventsPayload, snap.sessionId(), snap.snapshotEpoch());
         setClaimedEvents(refEvents.events());
       }
+      const embedsPayload = findTypedSidecar(snap, EMBED_SIDECAR_KEY, NEMB_FILE_IDENTIFIER);
+      if (embedsPayload !== undefined) {
+        const embeds = decodeEmbedSidecar(embedsPayload);
+        if (embeds !== undefined) setClaimedEventEmbeds(embeds);
+      }
     } catch {
       // Keep last-good state on a corrupt frame (D6 — never blank-reset).
     }
@@ -337,7 +250,7 @@ export function createGalleryRuntime(): GalleryRuntime {
     profile(pubkey: string): ProfileWire | undefined {
       return profiles[pubkey];
     },
-    claimProfile(pubkey: string, consumerId: string): void {
+    resolveProfileRef(pubkey: string, consumerId: string): void {
       void request({
         type: "resolve_ref",
         namespace: REF_NS_PROFILE,
@@ -348,7 +261,7 @@ export function createGalleryRuntime(): GalleryRuntime {
         correlation_id: `resolve-${claimSeq++}`,
       });
     },
-    releaseProfile(pubkey: string, consumerId: string): void {
+    releaseProfileRef(pubkey: string, consumerId: string): void {
       void request({
         type: "release_ref",
         namespace: REF_NS_PROFILE,
@@ -407,10 +320,7 @@ export function createGalleryRuntime(): GalleryRuntime {
       });
     },
     claimedEvent: (primaryId: string) => claimedEvents().get(primaryId),
-    claimedEventEmbed: (primaryId: string) => {
-      const ev = claimedEvents().get(primaryId);
-      return ev ? embedEnvelopeFromEvent(ev) : undefined;
-    },
+    claimedEventEmbed: (primaryId: string) => claimedEventEmbeds().get(primaryId),
     requestNpub(pubkey: string) {
       if (requestedNpubs.has(pubkey)) return;
       requestedNpubs.add(pubkey);
