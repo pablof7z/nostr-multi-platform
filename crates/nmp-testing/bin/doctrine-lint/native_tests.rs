@@ -162,6 +162,50 @@ fn native_lifecycle_leak_marker_fires() {
 }
 
 #[test]
+fn native_pure_bytes_dispatch_not_flagged() {
+    // A plain `dispatchBytes(builderBytes)` call has no namespace literal —
+    // it is the sanctioned hand-written wrapper name and must NOT fire D18.
+    let root = fake_native_root(
+        "doctrine_native_pure_bytes_dispatch",
+        &[(
+            "apps/chirp/android/app/src/main/java/example/Relay.kt",
+            "fun publishRelayList(bridge: KernelBridge, bytes: ByteArray) {\n    return bridge.dispatchBytes(builderBytes)\n}\n",
+        )],
+    );
+    let root_str = root.to_string_lossy().into_owned();
+    let (code, stdout, stderr) =
+        run_lint(&["--workspace-native", "--workspace-native-root", &root_str]);
+    assert_eq!(code, 0, "stdout:\n{}\nstderr:\n{}", stdout, stderr);
+    assert!(
+        !stdout.contains("error[D18]"),
+        "pure-bytes dispatch must not fire D18; stdout:\n{}",
+        stdout
+    );
+}
+
+#[test]
+fn native_uniffi_doorway_call_not_flagged() {
+    // `appHandle?.dispatchActionBytes(bytes)` is the UniFFI doorway call — no
+    // namespace literal on the line.  It must NOT be flagged by D18.
+    let root = fake_native_root(
+        "doctrine_native_uniffi_doorway",
+        &[(
+            "apps/chirp/android/app/src/main/java/example/KernelBridge.kt",
+            "internal fun dispatchBytes(bytes: ByteArray): DispatchResult {\n    val ack = appHandle?.dispatchActionBytes(bytes)\n        ?: return DispatchResult.Failure(\"null\")\n    return DispatchResult.fromAck(ack)\n}\n",
+        )],
+    );
+    let root_str = root.to_string_lossy().into_owned();
+    let (code, stdout, stderr) =
+        run_lint(&["--workspace-native", "--workspace-native-root", &root_str]);
+    assert_eq!(code, 0, "stdout:\n{}\nstderr:\n{}", stdout, stderr);
+    assert!(
+        !stdout.contains("error[D18]"),
+        "UniFFI doorway call (no namespace literal) must not fire D18; stdout:\n{}",
+        stdout
+    );
+}
+
+#[test]
 fn live_workspace_native_doctrine_is_clean_with_allowlist() {
     let (code, stdout, stderr) = run_lint(&["--workspace-native"]);
     assert_eq!(

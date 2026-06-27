@@ -173,6 +173,22 @@ class KernelBridge {
     }
 
     /**
+     * Dispatch a pre-encoded `DispatchEnvelope` FlatBuffers byte buffer through
+     * the typed byte doorway (M14-1 / #2145 — generated builder path).
+     *
+     * Called by [KernelBridgeOutboxRelay] and [KernelBridgeWalletActions] after
+     * building bytes via [GeneratedActionBuilders]. App code NEVER spells
+     * action namespaces — those live only in the generated builders.
+     * D6: null/dead handle returns [DispatchResult.Failure].
+     */
+    internal fun dispatchBytes(bytes: ByteArray): DispatchResult {
+        if (handle == 0L) return DispatchResult.Failure("dispatch returned a null handle")
+        val ack = appHandle?.dispatchActionBytes(bytes)
+            ?: return DispatchResult.Failure("dispatch returned a null handle")
+        return DispatchResult.fromAck(ack)
+    }
+
+    /**
      * Acknowledge a terminal `action_stages` entry after the host has reacted.
      * Rust owns the lifecycle ledger; Android forwards only the correlation id.
      */

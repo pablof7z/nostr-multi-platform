@@ -49,6 +49,32 @@ public enum GeneratedActionBuilders {
         return fbb.sizedByteArray
     }
 
+    /// Map a relay role string to the RelayMarker ubyte (Both=0, Read=1, Write=2, Indexer=3),
+    /// mirroring `RelayMarker::from_role_string` in `nmp-router` EXACTLY — including rejection.
+    /// Unknown tokens or no-flag input (e.g. empty string) encode as 255 (out-of-range sentinel)
+    /// so the Rust decoder (`marker_from_wire`) fails closed instead of silently becoming Both.
+    /// Role strings may be comma-separated (e.g. `"both,indexer"`); comparisons are case-insensitive.
+    private static func relayMarkerByte(_ role: String) -> UInt8 {
+        var hasBoth = false; var hasRead = false; var hasWrite = false; var hasIndexer = false
+        var invalid = false
+        for part in role.split(separator: ",").map({ $0.trimmingCharacters(in: .whitespaces).lowercased() }) {
+            switch part {
+            case "": break
+            case "both": hasBoth = true
+            case "read": hasRead = true
+            case "write": hasWrite = true
+            case "indexer": hasIndexer = true
+            default: invalid = true
+            }
+        }
+        if invalid { return 255 }
+        if hasBoth || (hasRead && hasWrite) { return 0 }
+        if hasRead { return 1 }
+        if hasWrite { return 2 }
+        if hasIndexer { return 3 }
+        return 255
+    }
+
     /// Publish a NIP-25 reaction to a target event.
     /// Builds the `nmp.nip25.react` `DispatchEnvelope` bytes for the byte doorway.
     public static func react(
@@ -163,6 +189,170 @@ public enum GeneratedActionBuilders {
         return encodeDispatchEnvelope(
             correlationId: correlationId,
             actionNamespace: "nmp.follow_many",
+            payload: payload
+        )
+    }
+
+    /// Add a relay URL to the NIP-51 blocked-relay list.
+    /// Builds the `nmp.nip51.block_relay` `DispatchEnvelope` bytes for the byte doorway.
+    public static func blockRelay(
+        correlationId: String,
+        url: String,
+        accountPubkey: String
+    ) -> [UInt8] {
+        var fbb = FlatBufferBuilder()
+        let urlOffset = fbb.create(string: url)
+        let accountPubkeyOffset = fbb.create(string: accountPubkey)
+        let payloadStart = fbb.startTable(with: 3)
+        fbb.add(element: UInt32(1), def: UInt32(0), at: 4) // slot 0: schema_version
+        fbb.add(offset: urlOffset, at: 6) // slot 1: url
+        fbb.add(offset: accountPubkeyOffset, at: 8) // slot 2: accountPubkey
+        let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))
+        fbb.finish(offset: payloadRoot, fileId: "NBLK")
+        let payload = fbb.sizedByteArray
+        return encodeDispatchEnvelope(
+            correlationId: correlationId,
+            actionNamespace: "nmp.nip51.block_relay",
+            payload: payload
+        )
+    }
+
+    /// Remove a relay URL from the NIP-51 blocked-relay list.
+    /// Builds the `nmp.nip51.unblock_relay` `DispatchEnvelope` bytes for the byte doorway.
+    public static func unblockRelay(
+        correlationId: String,
+        url: String,
+        accountPubkey: String
+    ) -> [UInt8] {
+        var fbb = FlatBufferBuilder()
+        let urlOffset = fbb.create(string: url)
+        let accountPubkeyOffset = fbb.create(string: accountPubkey)
+        let payloadStart = fbb.startTable(with: 3)
+        fbb.add(element: UInt32(1), def: UInt32(0), at: 4) // slot 0: schema_version
+        fbb.add(offset: urlOffset, at: 6) // slot 1: url
+        fbb.add(offset: accountPubkeyOffset, at: 8) // slot 2: accountPubkey
+        let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))
+        fbb.finish(offset: payloadRoot, fileId: "NUBL")
+        let payload = fbb.sizedByteArray
+        return encodeDispatchEnvelope(
+            correlationId: correlationId,
+            actionNamespace: "nmp.nip51.unblock_relay",
+            payload: payload
+        )
+    }
+
+    /// Publish a NIP-17 DM relay list (kind:10050).
+    /// Builds the `nmp.nip17.publish_relay_list` `DispatchEnvelope` bytes for the byte doorway.
+    public static func publishDmRelayList(
+        correlationId: String,
+        relays: [String]
+    ) -> [UInt8] {
+        var fbb = FlatBufferBuilder()
+        let relaysOffsets = relays.map { fbb.create(string: $0) }
+        let relaysOffset = fbb.createVector(ofOffsets: relaysOffsets)
+        let payloadStart = fbb.startTable(with: 2)
+        fbb.add(element: UInt32(1), def: UInt32(0), at: 4) // slot 0: schema_version
+        fbb.add(offset: relaysOffset, at: 6) // slot 1: relays
+        let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))
+        fbb.finish(offset: payloadRoot, fileId: "N17R")
+        let payload = fbb.sizedByteArray
+        return encodeDispatchEnvelope(
+            correlationId: correlationId,
+            actionNamespace: "nmp.nip17.publish_relay_list",
+            payload: payload
+        )
+    }
+
+    /// Publish a NIP-65 relay-list metadata event (kind:10002).
+    /// Builds the `nmp.nip65.publish_relay_list` `DispatchEnvelope` bytes for the byte doorway.
+    public static func publishRelayList(
+        correlationId: String,
+        relays: [(url: String, role: String)]
+    ) -> [UInt8] {
+        var fbb = FlatBufferBuilder()
+        var relaysEntryOffsets: [Offset] = []
+        for r in relays {
+            let urlOff = fbb.create(string: r.url)
+            let entryStart = fbb.startTable(with: 2)
+            fbb.add(offset: urlOff, at: 4) // RelayListEntry slot 0: url
+            fbb.add(element: Self.relayMarkerByte(r.role), def: UInt8(0), at: 6) // RelayListEntry slot 1: marker
+            relaysEntryOffsets.append(Offset(offset: fbb.endTable(at: entryStart)))
+        }
+        let relaysOffset = fbb.createVector(ofOffsets: relaysEntryOffsets)
+        let payloadStart = fbb.startTable(with: 2)
+        fbb.add(element: UInt32(1), def: UInt32(0), at: 4) // slot 0: schema_version
+        fbb.add(offset: relaysOffset, at: 6) // slot 1: relays
+        let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))
+        fbb.finish(offset: payloadRoot, fileId: "N65P")
+        let payload = fbb.sizedByteArray
+        return encodeDispatchEnvelope(
+            correlationId: correlationId,
+            actionNamespace: "nmp.nip65.publish_relay_list",
+            payload: payload
+        )
+    }
+
+    /// Connect a NIP-47 Nostr Wallet Connect URI.
+    /// Builds the `nmp.wallet.connect` `DispatchEnvelope` bytes for the byte doorway.
+    public static func walletConnect(
+        correlationId: String,
+        uri: String
+    ) -> [UInt8] {
+        var fbb = FlatBufferBuilder()
+        let uriOffset = fbb.create(string: uri)
+        let payloadStart = fbb.startTable(with: 2)
+        fbb.add(element: UInt32(1), def: UInt32(0), at: 4) // slot 0: schema_version
+        fbb.add(offset: uriOffset, at: 6) // slot 1: uri
+        let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))
+        fbb.finish(offset: payloadRoot, fileId: "N47C")
+        let payload = fbb.sizedByteArray
+        return encodeDispatchEnvelope(
+            correlationId: correlationId,
+            actionNamespace: "nmp.wallet.connect",
+            payload: payload
+        )
+    }
+
+    /// Disconnect the current NIP-47 wallet (no payload data beyond schema_version).
+    /// Builds the `nmp.wallet.disconnect` `DispatchEnvelope` bytes for the byte doorway.
+    public static func walletDisconnect(
+        correlationId: String
+    ) -> [UInt8] {
+        var fbb = FlatBufferBuilder()
+        let payloadStart = fbb.startTable(with: 1)
+        fbb.add(element: UInt32(1), def: UInt32(0), at: 4) // slot 0: schema_version
+        let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))
+        fbb.finish(offset: payloadRoot, fileId: "N47D")
+        let payload = fbb.sizedByteArray
+        return encodeDispatchEnvelope(
+            correlationId: correlationId,
+            actionNamespace: "nmp.wallet.disconnect",
+            payload: payload
+        )
+    }
+
+    /// Pay a Lightning invoice via the NIP-47 wallet.
+    /// Builds the `nmp.wallet.pay_invoice` `DispatchEnvelope` bytes for the byte doorway.
+    public static func walletPayInvoice(
+        correlationId: String,
+        bolt11: String,
+        amountMsats: UInt64?
+    ) -> [UInt8] {
+        var fbb = FlatBufferBuilder()
+        let bolt11Offset = fbb.create(string: bolt11)
+        let payloadStart = fbb.startTable(with: 4)
+        fbb.add(element: UInt32(1), def: UInt32(0), at: 4) // slot 0: schema_version
+        fbb.add(offset: bolt11Offset, at: 6) // slot 1: bolt11
+        if let amountMsatsVal = amountMsats {
+            fbb.add(element: amountMsatsVal, def: UInt64(0), at: 8) // slot 2: amountMsats
+            fbb.add(element: true, def: false, at: 10) // slot 3: hasAmountMsats
+        }
+        let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))
+        fbb.finish(offset: payloadRoot, fileId: "N47P")
+        let payload = fbb.sizedByteArray
+        return encodeDispatchEnvelope(
+            correlationId: correlationId,
+            actionNamespace: "nmp.wallet.pay_invoice",
             payload: payload
         )
     }

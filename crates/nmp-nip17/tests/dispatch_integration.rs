@@ -148,6 +148,83 @@ fn build_bad_version_send_payload() -> Vec<u8> {
     fbb.finished_data().to_vec()
 }
 
+// ---- M14-1 / #2145: generated-builder wire round-trip (StrVec) --------------
+//
+// The positive tests above feed the Rust typed `.encode()` through `start_bytes`.
+// The test below proves that bytes shaped EXACTLY as the generated Swift/Kotlin
+// `publishDmRelayList` builder emits (`crates/nmp-codegen/src/action_builders`)
+// — a `relays:[string]` vector at slot 1 of the `N17R` payload, wrapped in the
+// `NMPD` envelope — decode back field-for-field and dispatch through the
+// registry. This is the authoritative wire guard the codegen emitter unit tests
+// cannot provide (that crate has no nmp-core dep).
+
+/// Build a `nmp.nip17.publish_relay_list` `DispatchEnvelope` EXACTLY as the
+/// generated `publishDmRelayList(correlationId:relays:)` builder does (N17R;
+/// schema_version slot 0, relays string-vector slot 1), stamped into `NMPD`.
+fn build_dm_relay_list_envelope(correlation_id: &str, relays: &[&str]) -> Vec<u8> {
+    use flatbuffers::{FlatBufferBuilder, VOffsetT, WIPOffset};
+    use nmp_core::dispatch_envelope::encode_dispatch_envelope;
+
+    let payload = {
+        let mut fbb = FlatBufferBuilder::new();
+        let relay_offsets: Vec<WIPOffset<&str>> =
+            relays.iter().map(|r| fbb.create_string(r)).collect();
+        let relays_vec = fbb.create_vector(&relay_offsets);
+        let start = fbb.start_table();
+        fbb.push_slot::<u32>(4 as VOffsetT, 1, 0); // slot 0: schema_version = 1
+        fbb.push_slot_always::<WIPOffset<_>>(6 as VOffsetT, relays_vec); // slot 1: relays
+        let root = fbb.end_table(start);
+        fbb.finish(root, Some("N17R"));
+        fbb.finished_data().to_vec()
+    };
+    encode_dispatch_envelope(correlation_id, "nmp.nip17.publish_relay_list", 1, &payload)
+}
+
+/// `publishDmRelayList` builder bytes decode field-for-field to
+/// `PublishDmRelayListInput` and dispatch through `start_bytes` to
+/// `nmp.nip17.publish_relay_list`. The wrong-namespace twin (routed as
+/// `nmp.nip17.send`) proves the route is real.
+#[test]
+fn dm_relay_list_builder_bytes_round_trip() {
+    use nmp_core::dispatch_envelope::decode_dispatch_envelope;
+    use nmp_core::substrate::{ActionContext, ActionPayload, ActionRejection};
+
+    let registry = registry_with_nip17();
+    let relays = ["wss://relay.one", "wss://relay.two"];
+    let bytes = build_dm_relay_list_envelope("corr-n17r", &relays);
+
+    let decoded = decode_dispatch_envelope(&bytes).expect("builder envelope must decode (S2)");
+    assert_eq!(decoded.action_namespace, "nmp.nip17.publish_relay_list");
+    assert_eq!(
+        nmp_nip17::PublishDmRelayListInput::decode(&decoded.payload)
+            .expect("payload must decode via PublishDmRelayListInput"),
+        nmp_nip17::PublishDmRelayListInput {
+            relays: relays.iter().map(|r| r.to_string()).collect(),
+        },
+        "publishDmRelayList builder bytes must decode field-for-field"
+    );
+    registry
+        .start_bytes(
+            &mut ActionContext::default(),
+            1_700_000_000_000,
+            &decoded.action_namespace,
+            &decoded.payload,
+        )
+        .expect("publishDmRelayList builder bytes must dispatch + validate via start_bytes");
+    let err = registry
+        .start_bytes(
+            &mut ActionContext::default(),
+            1_700_000_000_000,
+            "nmp.nip17.send",
+            &decoded.payload,
+        )
+        .expect_err("an N17R payload routed as send must be rejected");
+    assert!(
+        matches!(err, ActionRejection::Invalid(_)),
+        "wrong-namespace dispatch must fail closed as Invalid, got {err:?}"
+    );
+}
+
 /// A finished `PublishDmRelayListPayload` (file identifier `N17R`) with
 /// `schema_version = 999`. The fail-closed gate must reject it before `start`.
 fn build_bad_version_relay_list_payload() -> Vec<u8> {
