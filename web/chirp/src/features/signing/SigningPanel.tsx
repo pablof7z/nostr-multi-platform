@@ -105,7 +105,7 @@ export function SigningPanel(props: SigningPanelProps) {
         props.onConnectionChange?.(false);
       } else {
         setIdentity({ kind: "local" });
-        setNpubShort("local key");
+        setNpubShort("session key");
         props.onConnectionChange?.(true);
       }
     } catch (e) {

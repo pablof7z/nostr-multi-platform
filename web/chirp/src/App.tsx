@@ -19,7 +19,9 @@
 //
 // Item C: import and render your components inside [data-slot="feed"] via
 //   the NmpClientContext.Provider tree (useSnapshot / useNmpClient).
-// Item D: import and render signing/onboarding UI inside [data-slot="signing"].
+// Item D: render signing/onboarding UI inside [data-slot="signing"]. The slot
+// stays mounted for the whole browser session so signer-local presentation state
+// is not lost after the identity step completes.
 
 import { createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { createNmpClient, type RuntimeSnapshot } from "./nmp/client";
@@ -113,6 +115,14 @@ export default function App() {
       : signerConnected()
         ? "Read, publish, and verify every action through relay diagnostics."
         : "Browse signed out, connect a signer when you are ready to publish.";
+  const onboardingState = () => ({
+    runtimeConnected: isConnected(),
+    signerConnected: signerConnected(),
+    feedReady: feedReady(),
+    feedCount: feedCount(),
+    runtimeMode: bridgeKind(),
+    diagnostics: runtimeProjection(),
+  });
 
   return (
     <NmpClientProvider client={client} snapshot={snapshot}>
@@ -188,7 +198,17 @@ export default function App() {
             </div>
           </header>
 
-          <div class="content-grid">
+          <div class="content-grid" data-first-run={signerConnected() ? "false" : "true"}>
+            <section
+              id="signing"
+              class="first-run-workspace"
+              data-slot="signing"
+              aria-label="First-run setup"
+            >
+              <OnboardingPanel state={onboardingState()} />
+              <SigningPanel onConnectionChange={setSignerConnected} />
+            </section>
+
             {/*
               MOUNT POINT — Item C: feed / profile / publish UI.
               Item C imports its panel components and renders them here via
@@ -208,18 +228,7 @@ export default function App() {
               signer status, and the pending-sign overlay. All signing logic lives in
               features/signing/ and reads the runtime via NmpClientContext.
             */}
-            <section id="signing" class="side-stack" data-slot="signing" aria-label="Signing">
-              <OnboardingPanel
-                state={{
-                  runtimeConnected: isConnected(),
-                  signerConnected: signerConnected(),
-                  feedReady: feedReady(),
-                  feedCount: feedCount(),
-                  runtimeMode: bridgeKind(),
-                  diagnostics: runtimeProjection(),
-                }}
-              />
-              <SigningPanel onConnectionChange={setSignerConnected} />
+            <section class="side-stack" data-slot="session-tools" aria-label="Session tools">
               <ProfileEditor canPublish={signerConnected()} />
               <div id="relays">
                 <RelaySettingsPanel

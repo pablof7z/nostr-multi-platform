@@ -179,8 +179,18 @@
   margin: 0 auto;
 }
 
+.first-run-workspace {
+  display: grid;
+  min-width: 0;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 1.08fr) minmax(330px, 0.92fr);
+  gap: 20px;
+  align-items: stretch;
+}
+
 [data-slot="feed"],
-[data-slot="signing"] {
+[data-slot="signing"],
+[data-slot="session-tools"] {
   min-width: 0;
 }
 
@@ -215,6 +225,10 @@
   }
 
   .content-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .first-run-workspace {
     grid-template-columns: minmax(0, 1fr);
   }
 }
@@ -270,7 +284,15 @@
     max-width: 100%;
   }
 
-  .app-shell[data-signer-connected="false"] [data-slot="signing"] {
-    order: -1;
+  .first-run-workspace {
+    gap: 0;
+  }
+
+  .content-grid[data-first-run="true"] [data-slot="feed"] {
+    order: 2;
+  }
+
+  .content-grid[data-first-run="true"] [data-slot="session-tools"] {
+    order: 3;
   }
 }

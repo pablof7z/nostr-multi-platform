@@ -14,6 +14,9 @@ First run is a guided onboarding flow, not a passive status list. The UI must
 show the next action needed to reach a signed product session, expose the
 available identity paths directly on that screen, and advance to a complete
 session only after runtime, relays, signer, and feed projection are all live.
+While unsigned, onboarding is the first product workspace, not a secondary
+sidebar card. The live feed may remain visible as read-mode proof, but identity
+choices and session proof must occupy the primary first-run region.
 
 Users without a browser extension must still have a complete write path:
 Chirp Web supports a memory-only local-key session by accepting an `nsec` and
