@@ -17,7 +17,7 @@ use crate::kernel::wallet_access::KernelWalletAccess;
 ///
 /// Step 1.b — the open-seam dispatch arm. Debt C replaced the
 /// prior 12-positional-closure bundle with typed capability
-/// adapters (`KernelClock`/`LocalSignerAccess`/`DmInboxLookup`/
+/// adapters (`KernelClock`/`LocalSignerAccess`/`DmInboxRelayLookup`/
 /// `ErrorSurface`/`ActionStageTracker`/`RecipientRelayLookup`).
 /// Each adapter borrows a `RefCell`-wrapped reference to the
 /// kernel or identity runtime; the kernel and identity types

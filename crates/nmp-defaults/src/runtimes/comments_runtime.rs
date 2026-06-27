@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use nmp_core::substrate::{ActionRegistrar, ObservedProjection, ObservedProjectionRegistrar};
 use nmp_core::ObservedProjectionSink;
-use nmp_nip22::{CommentThreadProjection, KIND_COMMENT};
+use nmp_nip22::{CommentThreadProjection, KIND_NIP22_COMMENT};
 
 /// Wire the kind:1111 comment-thread projection and the post-comment action.
 ///
@@ -25,7 +25,7 @@ pub fn register_comment_runtime(
         Arc::clone(&projection) as Arc<dyn ObservedProjectionSink>,
         "nmp.nip22.comments",
         1,
-        [KIND_COMMENT],
+        [KIND_NIP22_COMMENT],
         512,
     ));
 

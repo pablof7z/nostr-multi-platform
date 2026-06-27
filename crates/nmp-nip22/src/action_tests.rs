@@ -1,4 +1,5 @@
 use super::*;
+use nmp_kinds::KIND_NIP22_COMMENT;
 use std::cell::RefCell;
 
 const ROOT_EVENT: &str = "3333333333333333333333333333333333333333333333333333333333333333";
@@ -42,7 +43,7 @@ fn published_event(action: PostCommentAction) -> UnsignedEvent {
             correlation_id,
             signer_pubkey,
         }) => {
-            assert_eq!(event.kind, KIND_COMMENT);
+            assert_eq!(event.kind, KIND_NIP22_COMMENT);
             assert_eq!(event.created_at, 0);
             assert_eq!(event.pubkey, "");
             assert_eq!(correlation_id.as_deref(), Some("comment-cid"));

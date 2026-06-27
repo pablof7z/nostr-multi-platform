@@ -8,7 +8,7 @@ use nostr::nips::nip44;
 use nostr::{Event, EventBuilder, EventId, Keys, Kind, Tag};
 
 use crate::error::Nip60Error;
-use crate::kinds::KIND_HISTORY;
+use crate::kinds::KIND_NIP60_HISTORY;
 
 /// Direction of a spending history entry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -89,12 +89,12 @@ pub fn build_history_event(record: &HistoryRecord, keys: &Keys) -> Result<EventB
         })?);
     }
 
-    Ok(EventBuilder::new(Kind::from(KIND_HISTORY as u16), content).tags(tags))
+    Ok(EventBuilder::new(Kind::from(KIND_NIP60_HISTORY as u16), content).tags(tags))
 }
 
 /// Extract kind:7376 plain `e` tags marked as redeemed nutzap receipts.
 pub fn redeemed_nutzap_ids(event: &Event) -> Vec<EventId> {
-    if event.kind != Kind::from(KIND_HISTORY as u16) {
+    if event.kind != Kind::from(KIND_NIP60_HISTORY as u16) {
         return Vec::new();
     }
 

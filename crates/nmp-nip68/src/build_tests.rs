@@ -1,7 +1,7 @@
-use crate::{ImageMeta, PicturePost, PicturePostBuildError, KIND_PICTURE_EVENT};
+use crate::{MediaMeta, PicturePost, PicturePostBuildError, KIND_PICTURE_EVENT};
 
-fn image(url: &str, hash: &str, mime: &str) -> ImageMeta {
-    ImageMeta::new(url)
+fn image(url: &str, hash: &str, mime: &str) -> MediaMeta {
+    MediaMeta::new(url)
         .sha256(hash)
         .mime(mime)
         .dimensions(640, 480)
@@ -53,8 +53,8 @@ fn rejects_missing_image_and_incomplete_imeta() {
         PicturePostBuildError::MissingImage
     );
     assert!(matches!(
-        PicturePost::new(ImageMeta::new("https://cdn.example/a.jpg")).build(),
-        Err(PicturePostBuildError::IncompleteImageMetadata { .. })
+        PicturePost::new(MediaMeta::new("https://cdn.example/a.jpg")).build(),
+        Err(PicturePostBuildError::IncompleteMediaMetadata { .. })
     ));
 }
 
@@ -73,7 +73,7 @@ fn emits_empty_title_tag_when_title_is_omitted() {
 #[test]
 fn rejects_unsupported_mime() {
     let err = PicturePost::new(
-        ImageMeta::new("https://cdn.example/a.mp4")
+        MediaMeta::new("https://cdn.example/a.mp4")
             .sha256("abc")
             .mime("video/mp4"),
     )

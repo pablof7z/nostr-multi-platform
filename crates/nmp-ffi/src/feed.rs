@@ -22,26 +22,19 @@ pub use nmp_feed::{
 
 /// Typed error for a `FeedParams` declaration whose primary kinds are invalid
 /// (D6 — no panic).
-///
-/// This is the single canonical primary-kind validation error
-/// [`nmp_nip18::PrimaryKindError`], re-exported under a feed-facing alias.
-/// Deciding that wrapper kinds (6/16) and the delete kind (5) are derived
-/// acquisition rather than primary input is protocol knowledge, so the error and
-/// the validator both live in the protocol layer (`nmp_nip18`), NOT in the
-/// protocol-agnostic `nmp-feed` engine (D0). One owner, no duplication (D4).
-pub use nmp_nip18::PrimaryKindError as FeedParamsError;
+pub use nmp_nip18::PrimaryKindError;
 
 /// Validate a [`FeedParams`] declaration's primary kinds and return the compiled
 /// acquisition kind set (primary ∪ derived wrappers ∪ kind 5).
 ///
 /// Thin wrapper over the single canonical validator
 /// [`nmp_nip18::validate_primary_kinds`] (wrapper/delete/empty rejection + the
-/// acquisition derivation). Fail-closed (D6 — typed [`FeedParamsError`], never
+/// acquisition derivation). Fail-closed (D6 — typed [`PrimaryKindError`], never
 /// panic). This is the ONE place the open-feed seam, the FFI/WASM boundary, and
 /// the perspective compiler validate primary kinds.
 pub fn validate_feed_params(
     params: &FeedParams,
-) -> Result<std::collections::BTreeSet<u32>, FeedParamsError> {
+) -> Result<std::collections::BTreeSet<u32>, PrimaryKindError> {
     nmp_nip18::validate_primary_kinds(params.primary_kinds.iter().copied())
 }
 
@@ -70,7 +63,7 @@ pub enum FeedParamsDecodeError {
     /// The JSON payload did not parse into a `FeedParams`.
     MalformedJson,
     /// The decoded params failed validation (e.g. wrapper/delete primary kind).
-    InvalidParams(FeedParamsError),
+    InvalidParams(PrimaryKindError),
 }
 
 #[no_mangle]
@@ -109,17 +102,17 @@ mod primary_kind_validation_tests {
     fn validate_feed_params_fails_closed_on_wrapper_delete_empty() {
         assert_eq!(
             validate_feed_params(&sample_params(vec![1, 6])),
-            Err(FeedParamsError::RepostWrapper { kind: 6 }),
+            Err(PrimaryKindError::RepostWrapper { kind: 6 }),
             "kind 6 is derived acquisition, not primary"
         );
         assert_eq!(
             validate_feed_params(&sample_params(vec![1, KIND_DELETE])),
-            Err(FeedParamsError::DeleteKind),
+            Err(PrimaryKindError::DeleteKind),
             "kind 5 is derived suppression, not primary"
         );
         assert_eq!(
             validate_feed_params(&sample_params(vec![])),
-            Err(FeedParamsError::EmptyPrimaryKinds),
+            Err(PrimaryKindError::EmptyPrimaryKinds),
             "an open feed must declare at least one primary kind"
         );
     }
@@ -168,13 +161,13 @@ mod feed_params_decode_tests {
         assert_eq!(
             decode_and_validate_feed_params(&params_json("[1, 6]")),
             Err(FeedParamsDecodeError::InvalidParams(
-                FeedParamsError::RepostWrapper { kind: 6 }
+                PrimaryKindError::RepostWrapper { kind: 6 }
             ))
         );
         assert_eq!(
             decode_and_validate_feed_params(&params_json("[1, 5]")),
             Err(FeedParamsDecodeError::InvalidParams(
-                FeedParamsError::DeleteKind
+                PrimaryKindError::DeleteKind
             ))
         );
     }

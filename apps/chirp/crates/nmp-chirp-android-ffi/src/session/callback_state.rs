@@ -6,28 +6,21 @@
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::Sender;
 
-use crate::update_listener::UpdateListenerSlot;
-pub(crate) use crate::update_listener::UpdatePushListener;
-
-/// Holds the three delivery channels for kernel update frames.
+/// Holds the delivery channels for kernel update frames.
 ///
-/// Fields are `pub(crate)` so the sibling test submodules (`tests.rs`,
-/// `push_listener_lock_ordering_tests.rs`) can observe slot state directly.
+/// Fields are `pub(crate)` so the sibling test submodule (`tests.rs`)
+/// can observe slot state directly.
 pub(crate) struct CallbackState {
     /// Legacy mpsc sink — retained only for the in-crate unit tests
-    /// (`recv_next_update`). Production update delivery is the JNI push path
-    /// via [`CallbackState::push_listener`].
+    /// (`recv_next_update`). Production update delivery is the UniFFI generic
+    /// sink via [`CallbackState::set_generic_sink`].
     pub(crate) tx: Mutex<Option<Sender<Vec<u8>>>>,
-    /// JNI push listener — invoked on every update frame (issue #614, D8: no
-    /// polling). Cleared in [`super::Session::close_updates`] after the
-    /// quiescence gate guarantees no further `on_update` invocations.
-    pub(crate) push_listener: UpdateListenerSlot,
     /// UniFFI generic sink — invoked on every update frame for the UniFFI
     /// app-loop lane (M14-0 / issue #2129, D8: no polling). Snapshot-under-lock
     /// pattern: `Arc` is cloned under the `Mutex` lock, the lock is released
     /// BEFORE the invocation so the lock is never held across the Kotlin upcall
-    /// (deadlock prevention — matches `push_listener` above). Cleared in
-    /// `close_updates` after the quiescence gate (same as `push_listener`).
+    /// (deadlock prevention). Cleared in `close_updates` after the quiescence
+    /// gate (same as the former push_listener).
     pub(crate) generic_sink: Mutex<Option<Arc<dyn Fn(Vec<u8>) + Send + Sync>>>,
 }
 
@@ -35,7 +28,6 @@ impl CallbackState {
     pub(crate) fn new(tx: Sender<Vec<u8>>) -> Self {
         Self {
             tx: Mutex::new(Some(tx)),
-            push_listener: Mutex::new(None),
             generic_sink: Mutex::new(None),
         }
     }
@@ -52,18 +44,6 @@ impl CallbackState {
     pub(crate) fn close(&self) {
         if let Ok(mut guard) = self.tx.lock() {
             guard.take();
-        }
-    }
-
-    pub(crate) fn set_push_listener(&self, listener: UpdatePushListener) {
-        if let Ok(mut slot) = self.push_listener.lock() {
-            *slot = Some(Arc::new(listener));
-        }
-    }
-
-    pub(crate) fn clear_push_listener(&self) {
-        if let Ok(mut slot) = self.push_listener.lock() {
-            slot.take();
         }
     }
 

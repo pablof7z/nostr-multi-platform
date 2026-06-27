@@ -15,8 +15,6 @@ use nmp_ffi::{NmpApp, nmp_app_free, nmp_app_set_capability_callback, nmp_app_set
 
 use crate::capability::CapabilityHandlerSlot;
 use crate::signer_request_listener::SignerRequestListenerSlot;
-pub(crate) use crate::update_listener::UpdatePushListener;
-
 pub(crate) use self::callback_state::CallbackState;
 
 #[path = "session/callback_state.rs"]
@@ -148,7 +146,6 @@ impl Session {
         let Ok(mut state) = self.state.lock() else { return };
         if state.updates_closed { return; } // idempotent
         if !state.app.is_null() {
-            self.callback_state.clear_push_listener();
             self.callback_state.clear_generic_sink();
             self.clear_signer_request_listener();
         }
@@ -157,16 +154,6 @@ impl Session {
             slot.take();
         }
         state.updates_closed = true;
-    }
-
-    /// Register the JNI push listener for kernel update frames (issue #614).
-    pub(crate) fn set_push_listener(&self, listener: UpdatePushListener) {
-        self.callback_state.set_push_listener(listener);
-    }
-
-    /// Drop the JNI push listener. Safe to call when none is set.
-    pub(crate) fn clear_push_listener(&self) {
-        self.callback_state.clear_push_listener();
     }
 
     /// Free all native resources.  Idempotent.
@@ -362,13 +349,6 @@ extern "C" fn on_update(context: *mut c_void, bytes: *const u8, len: usize) {
         state.generic_sink.lock().ok().and_then(|g| g.clone());
     if let Some(sink) = generic_snapshot {
         sink(frame.to_vec());
-    }
-    // JNI push path (issue #614 — D8: no polling).
-    // Lock ordering: snapshot Arc clone under lock, drop lock BEFORE push.
-    let listener_snapshot: Option<Arc<UpdatePushListener>> =
-        state.push_listener.lock().ok().and_then(|g| g.clone());
-    if let Some(listener) = listener_snapshot {
-        listener.push(frame);
     }
     // Legacy mpsc path — only in-crate unit tests drain this.
     state.send(frame.to_vec());

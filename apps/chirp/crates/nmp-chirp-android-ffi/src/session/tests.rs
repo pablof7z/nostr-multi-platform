@@ -8,26 +8,8 @@ use std::time::Duration;
 use super::{NextUpdate, Session, insert_session, remove_session, session_arc};
 
 #[test]
-fn push_listener_slot_starts_empty() {
-    // A freshly constructed session has no JNI push listener registered.
-    let session = Session::test_session();
-    let guard = session.callback_state.push_listener.lock().unwrap();
-    assert!(guard.is_none());
-}
-
-#[test]
-fn close_updates_clears_push_listener_slot() {
-    // UAF-safety invariant: after teardown the push-listener slot is empty
-    // (in production the `GlobalRef` is dropped after the quiescence gate).
-    let session = Session::test_session();
-    session.close_updates();
-    let guard = session.callback_state.push_listener.lock().unwrap();
-    assert!(guard.is_none());
-}
-
-#[test]
-fn on_update_forwards_frame_to_mpsc_when_no_push_listener() {
-    // With no JNI listener registered, the push branch is a no-op and the
+fn on_update_forwards_frame_to_mpsc_when_no_generic_sink() {
+    // With no generic sink registered, the UniFFI path is a no-op and the
     // frame still reaches the legacy mpsc test seam — never dropped.
     let session = Session::test_session();
     let handle = insert_session(Arc::clone(&session));

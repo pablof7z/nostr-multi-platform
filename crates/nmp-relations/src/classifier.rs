@@ -128,7 +128,7 @@ mod tests {
         let root = "r".repeat(64);
         let comment = kernel_event(
             &"c".repeat(64),
-            nmp_nip22::KIND_COMMENT,
+            nmp_nip22::KIND_NIP22_COMMENT,
             vec![
                 vec!["E".to_string(), root.clone()],
                 vec!["K".to_string(), "11".to_string()],

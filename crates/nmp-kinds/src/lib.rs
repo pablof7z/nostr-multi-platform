@@ -100,10 +100,6 @@ pub const KIND_WIKI_ARTICLE: u32 = 30_818;
 /// MLS group; keyed by `(pubkey, kind, d-tag)`.
 pub const KIND_MARMOT_KEY_PACKAGE: u32 = 30443;
 
-/// Marmot KeyPackage legacy event (kind:443). Dual-published alongside
-/// kind:30443 through the migration window; readers accept both.
-pub const KIND_MARMOT_KEY_PACKAGE_LEGACY: u32 = 443;
-
 /// Marmot Welcome rumor (kind:444). The inner, unsigned MLS Welcome carried
 /// inside a kind:1059 gift-wrap; the tap admits it defensively even though the
 /// wire Welcome is always the gift-wrap (the shared core skips a bare 444).
@@ -138,6 +134,15 @@ pub const KIND_ZAP_REQUEST: u32 = 9734;
 /// NIP-57 zap receipt (kind:9735). Minted by the LN provider after the
 /// invoice settles. Decode-only — clients never construct kind:9735 directly.
 pub const KIND_ZAP_RECEIPT: u32 = 9735;
+
+// ─── NIP-84 — highlights ──────────────────────────────────────────────────
+
+/// NIP-84 highlight (kind:9802). A highlight event carries a quoted passage
+/// from a referenced source (article, website, or other addressable event) in
+/// its `content`. References the source via `a`/`e`/`r` tags. Decode/build
+/// logic lives in `nmp-nip84` (or `nmp-content`); this constant is only
+/// Layer-0 vocabulary.
+pub const KIND_HIGHLIGHT: u32 = 9_802;
 
 // ─── NIP-78 — arbitrary custom app data ───────────────────────────────────
 

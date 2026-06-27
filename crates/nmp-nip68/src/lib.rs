@@ -30,7 +30,7 @@ pub use feed::{
     PictureRepostAttribution,
 };
 pub use imeta::{
-    is_accepted_image_mime, parse_imeta_tag, ImageDimensions, ImageMeta, ImetaField,
+    is_accepted_image_mime, parse_imeta_tag, ImetaField, MediaDimensions, MediaMeta,
     ACCEPTED_IMAGE_MIME_TYPES,
 };
 pub use kinds::KIND_PICTURE_EVENT;

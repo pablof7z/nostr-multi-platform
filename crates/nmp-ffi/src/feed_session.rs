@@ -46,7 +46,7 @@ use nmp_feed::{
 pub enum FeedOpenError {
     /// The declared [`FeedParams`] failed primary-kind validation (wrapper /
     /// delete / empty primary kinds). Carries the underlying typed error.
-    InvalidParams(crate::FeedParamsError),
+    InvalidParams(nmp_nip18::PrimaryKindError),
     /// The declared [`nmp_feed::FeedScope`] is recognised by the model but not
     /// yet wired by this step. Step 3 (the full perspective compiler) lands the
     /// remaining variants; until then they fail closed with this typed error
@@ -58,14 +58,6 @@ pub enum FeedOpenError {
     /// so nothing leaked. The open is reported as failed.
     RegistryUnavailable,
 }
-
-/// The result a [`FeedCompiler`] returns on success: the projection key the
-/// session emits under and the ordered teardown recipe that releases everything
-/// the compile registered over the existing mechanics.
-///
-/// This is exactly [`nmp_feed::FeedSessionBuild`]; re-exported here under a
-/// task-local alias so call sites read as "what the compiler produced".
-pub type FeedCompileOutput = FeedSessionBuild;
 
 /// A scope→registration compiler. `open_feed` invokes it once, AFTER primary-kind
 /// validation, to perform the real registration over the existing feed mechanics
@@ -92,7 +84,7 @@ pub trait FeedCompiler {
         app: &NmpApp,
         params: &FeedParams,
         acquisition_kinds: &std::collections::BTreeSet<u32>,
-    ) -> Result<FeedCompileOutput, FeedOpenError>;
+    ) -> Result<FeedSessionBuild, FeedOpenError>;
 }
 
 /// Blanket impl so a plain closure can be used as a [`FeedCompiler`] — the
@@ -103,14 +95,14 @@ where
         &NmpApp,
         &FeedParams,
         &std::collections::BTreeSet<u32>,
-    ) -> Result<FeedCompileOutput, FeedOpenError>,
+    ) -> Result<FeedSessionBuild, FeedOpenError>,
 {
     fn compile(
         &self,
         app: &NmpApp,
         params: &FeedParams,
         acquisition_kinds: &std::collections::BTreeSet<u32>,
-    ) -> Result<FeedCompileOutput, FeedOpenError> {
+    ) -> Result<FeedSessionBuild, FeedOpenError> {
         self(app, params, acquisition_kinds)
     }
 }
@@ -122,7 +114,7 @@ where
 /// Each `teardown_*` method builds a single [`TeardownAction`] that reuses the
 /// SAME underlying registry primitive the registration used — there is no second
 /// teardown path (D4). A compiler assembles a `Vec<TeardownAction>` from these
-/// and returns it in its [`FeedCompileOutput`]; `close_feed` runs them.
+/// and returns it in its [`FeedSessionBuild`]; `close_feed` runs them.
 #[derive(Clone)]
 pub struct FeedTeardown {
     feeds: FeedRegistrySlot,

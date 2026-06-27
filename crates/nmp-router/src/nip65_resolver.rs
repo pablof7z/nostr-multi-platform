@@ -357,16 +357,6 @@ fn hex_nibble(b: u8) -> Option<u8> {
     }
 }
 
-/// Returns `true` iff `url` is a usable relay URL — validated by the single
-/// workspace authority [`canonicalize_relay_url`] (None ⇒ not usable).
-///
-/// Note: `parse_nip65_tags` now calls `canonicalize_relay_url` directly rather
-/// than this predicate, so this function is no longer on the hot path. It is
-/// retained as a named utility for external callers / tests.
-fn is_relay_url(url: &str) -> bool {
-    canonicalize_relay_url(url).is_some()
-}
-
 #[cfg(test)]
 #[path = "nip65_resolver/tests.rs"]
 mod tests;

@@ -23,7 +23,7 @@ use nmp_feed::{
     FeedSessionBuild, FeedSessionRegistry, FeedWindow, ProjectionKey, TeardownAction,
 };
 
-use crate::feed_session::{FeedCompileOutput, FeedOpenError, FeedTeardown};
+use crate::feed_session::{FeedOpenError, FeedTeardown};
 use crate::{nmp_app_free, nmp_app_new, NmpApp};
 
 /// A feed double registered as BOTH a controller (reachable `load_older`
@@ -72,7 +72,7 @@ fn home_compiler(
     &NmpApp,
     &FeedParams,
     &std::collections::BTreeSet<u32>,
-) -> Result<FeedCompileOutput, FeedOpenError> {
+) -> Result<FeedSessionBuild, FeedOpenError> {
     move |app: &NmpApp, params: &FeedParams, _kinds: &std::collections::BTreeSet<u32>| {
         // `open_feed` has already validated the primary kinds at the seam, so the
         // compiler receives a pre-validated acquisition set. Only the
@@ -262,7 +262,7 @@ fn invalid_primary_kinds_fail_closed_before_the_compiler_runs() {
         let compiler = move |_app: &NmpApp,
                              _p: &FeedParams,
                              _k: &std::collections::BTreeSet<u32>|
-              -> Result<FeedCompileOutput, FeedOpenError> {
+              -> Result<FeedSessionBuild, FeedOpenError> {
             ran_c.fetch_add(1, Ordering::SeqCst);
             unreachable!("compiler must not run for invalid primary kinds");
         };
