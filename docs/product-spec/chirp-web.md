@@ -6,13 +6,13 @@ TypeScript protocol policy.
 
 ## First-Run Contract
 
-New browser profiles must open into usable product, not a dead demo. The first
-screen must show relay/feed health, signer state, compose affordances, and
-publish/action diagnostics.
+New browser profiles must open into usable product, not a dead demo, with
+relay/feed health, signer state, compose affordances, and publish/action diagnostics.
 
 First run is guided onboarding. UI must expose next action and identity paths,
 advancing only after runtime, relays, signer, and feed projection are live.
 While unsigned, onboarding is primary; feed is proof only when session proof stays primary.
+Empty feeds must link to discovery, relay checks, or identity setup.
 
 `#signing` is the first-level account workspace, not a Setup alias. It must
 mark Signer active, keep signer status primary, and hide unrelated feed panes.

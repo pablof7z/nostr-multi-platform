@@ -184,6 +184,33 @@
   line-height: 1.45;
 }
 
+.feed-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.feed-empty-actions a {
+  min-width: 76px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+  background: var(--bg-panel);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 750;
+  text-align: center;
+  text-decoration: none;
+}
+
+.feed-empty-actions a:hover {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--line));
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-panel));
+  color: var(--accent);
+}
+
 .post-card {
   display: flex;
   gap: 14px;

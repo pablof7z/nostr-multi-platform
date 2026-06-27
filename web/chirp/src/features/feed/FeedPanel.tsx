@@ -135,22 +135,10 @@ export function FeedPanel(props: { canPublish: boolean; diagnostics?: RuntimePro
                   <Show
                     when={mode() === "saved"}
                     fallback={
-                      <>
-                        <strong>No notes yet</strong>
-                        <span>
-                          Connect a signer with follows or use a relay bootstrap to hydrate the feed.
-                        </span>
-                      </>
+                      <EmptyFeedActions canPublish={props.canPublish} />
                     }
                   >
-                    <strong>
-                      {bookmarkedCount() > 0 ? "Saved notes are syncing" : "No saved notes yet"}
-                    </strong>
-                    <span>
-                      {bookmarkedCount() > 0
-                        ? "Your bookmark list is loaded; waiting for those notes to hydrate from relays."
-                        : "Save a note from Home and it will appear here from the Rust bookmark projection."}
-                    </span>
+                    <EmptySavedActions syncing={bookmarkedCount() > 0} />
                   </Show>
                 </div>
               }
@@ -172,5 +160,39 @@ export function FeedPanel(props: { canPublish: boolean; diagnostics?: RuntimePro
         </div>
       </div>
     </NostrProfileHostProvider>
+  );
+}
+
+function EmptyFeedActions(props: { canPublish: boolean }) {
+  return (
+    <>
+      <strong>No notes yet</strong>
+      <span>Use discovery, relay checks, or identity setup to hydrate a real feed.</span>
+      <div class="feed-empty-actions" aria-label="Feed next actions">
+        <a href="#search">Search</a>
+        <a href="#groups">Groups</a>
+        <a href="#relays">Relays</a>
+        <Show when={!props.canPublish}>
+          <a href="#signing">Signer</a>
+        </Show>
+      </div>
+    </>
+  );
+}
+
+function EmptySavedActions(props: { syncing: boolean }) {
+  return (
+    <>
+      <strong>{props.syncing ? "Saved notes are syncing" : "No saved notes yet"}</strong>
+      <span>
+        {props.syncing
+          ? "Your bookmark list is loaded; waiting for those notes to hydrate from relays."
+          : "Save a note from Home and it will appear here from the Rust bookmark projection."}
+      </span>
+      <div class="feed-empty-actions" aria-label="Saved next actions">
+        <a href="#feed">Home</a>
+        <a href="#search">Search</a>
+      </div>
+    </>
   );
 }

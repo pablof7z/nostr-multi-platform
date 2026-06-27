@@ -92,6 +92,18 @@ test.describe("boot", () => {
       // diagnostics remain reachable from the rail without developer tools.
       await expect(shell).toHaveAttribute("data-main-view", "setup");
       await expect(page.locator(".onboarding-panel")).toBeVisible();
+      await page.getByRole("link", { name: "Home" }).click();
+      await expect(shell).toHaveAttribute("data-main-view", "home");
+      const emptyFeed = page.getByTestId("feed-empty");
+      await expect(emptyFeed).toContainText("Search");
+      await expect(emptyFeed).toContainText("Groups");
+      await expect(emptyFeed).toContainText("Relays");
+      await expect(emptyFeed).toContainText("Signer");
+      await page.getByRole("link", { name: "Saved" }).click();
+      await expect(shell).toHaveAttribute("data-main-view", "saved");
+      const emptySaved = page.getByTestId("saved-empty");
+      await expect(emptySaved).toContainText("Home");
+      await expect(emptySaved).toContainText("Search");
       await page.getByRole("link", { name: "Signer" }).click();
       await expect(shell).toHaveAttribute("data-main-view", "signer");
       await expect(page.getByTestId("nav-signer")).toHaveAttribute("aria-current", "page");
