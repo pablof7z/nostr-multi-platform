@@ -47,7 +47,9 @@ if ! rustup target list --installed 2>/dev/null | grep -q "wasm32-unknown-unknow
   rustup target add wasm32-unknown-unknown
 fi
 
-# Build.
+# Build. Start from an empty package directory so stale wasm-bindgen snippet
+# hashes from an older build cannot survive into deploy artifacts.
+rm -rf "${PKG_OUT}"
 wasm-pack build \
   "${CRATE_DIR}" \
   --target web \
@@ -55,11 +57,10 @@ wasm-pack build \
   --out-dir "${PKG_OUT}" \
   --features wasm
 
-SNIPPET_DIR="$(find "${PKG_OUT}/snippets" -type d -path '*/vendor/sqlite-wasm' | head -n1)"
-if [[ -n "${SNIPPET_DIR}" ]]; then
+find "${PKG_OUT}/snippets" -type d -path '*/vendor/sqlite-wasm' | sort | while IFS= read -r SNIPPET_DIR; do
   cp "${SQLITE_WASM_VENDOR}/sqlite3.mjs" "${SQLITE_WASM_VENDOR}/sqlite3.wasm" "${SNIPPET_DIR}/"
   echo "==> Staged sqlite3.mjs + sqlite3.wasm into ${SNIPPET_DIR#${PKG_OUT}/}"
-fi
+done
 
 echo ""
 echo "==> Done. Output in ${PKG_OUT}"
