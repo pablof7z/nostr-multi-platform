@@ -38,6 +38,7 @@ import { decodeRuntimeProjection } from "./nmp/runtimeProjection";
 import { FeedPanel } from "./features/feed/FeedPanel";
 import { GroupsPanel } from "./features/groups/GroupsPanel";
 import { NotificationsPanel } from "./features/notifications/NotificationsPanel";
+import { OfflineReplayPanel } from "./features/offline/OfflineReplayPanel";
 import { SearchPanel } from "./features/search/SearchPanel";
 import { BlockedWorkspacesPanel } from "./features/workspaces/BlockedWorkspacesPanel";
 
@@ -57,19 +58,19 @@ declare global {
 // The client is a module-level singleton: one worker per page load.
 const client = createNmpClient();
 
-type MainView = "home" | "search" | "notifications" | "groups" | "workspaces";
+type MainView = "home" | "search" | "notifications" | "groups" | "offline" | "workspaces";
 
 function viewFromHash(): MainView {
   const hash = window.location.hash;
   if (hash === "#search") return "search";
   if (hash === "#notifications") return "notifications";
   if (hash === "#groups") return "groups";
+  if (hash === "#offline") return "offline";
   if (
     hash === "#workspaces" ||
     hash === "#messages" ||
     hash === "#wallet" ||
-    hash === "#moderation" ||
-    hash === "#offline"
+    hash === "#moderation"
   ) {
     return "workspaces";
   }
@@ -125,6 +126,8 @@ export default function App() {
         ? "Notifications"
       : mainView() === "groups"
         ? "NIP-29 groups"
+      : mainView() === "offline"
+        ? "Storage and replay"
       : mainView() === "workspaces"
         ? "Product coverage"
         : "Home feed";
@@ -132,6 +135,7 @@ export default function App() {
     if (mainView() === "search") return "Search relays and cache";
     if (mainView() === "notifications") return "Notifications";
     if (mainView() === "groups") return "Discover public groups";
+    if (mainView() === "offline") return "Inspect storage health";
     if (mainView() === "workspaces") return "More Chirp workspaces";
     return signerConnected() ? "Real relay timeline" : "Set up Chirp Web";
   };
@@ -145,8 +149,11 @@ export default function App() {
     if (mainView() === "groups") {
       return "Browse Rust-projected NIP-29 group metadata from the configured public group relay.";
     }
+    if (mainView() === "offline") {
+      return "Inspect store health, active replay interests, relay coverage, and pending publish state.";
+    }
     if (mainView() === "workspaces") {
-      return "Private, value, moderation, and replay surfaces stay disabled until Rust-owned web flows exist.";
+      return "Private, value, and moderation surfaces stay disabled until Rust-owned web flows exist.";
     }
     return signerConnected()
       ? "Read, publish, and verify every action through relay diagnostics."
@@ -221,6 +228,14 @@ export default function App() {
             <a class="rail-link" href="#profile">Profile</a>
             <a class="rail-link" href="#relays">Relays</a>
             <a
+              class={mainView() === "offline" ? "rail-link rail-link--active" : "rail-link"}
+              href="#offline"
+              aria-current={mainView() === "offline" ? "page" : undefined}
+              data-testid="nav-offline"
+            >
+              Storage
+            </a>
+            <a
               class={mainView() === "workspaces" ? "rail-link rail-link--active" : "rail-link"}
               href="#workspaces"
               aria-current={mainView() === "workspaces" ? "page" : undefined}
@@ -279,11 +294,11 @@ export default function App() {
               {mainView() === "search" && <SearchPanel />}
               {mainView() === "notifications" && <NotificationsPanel />}
               {mainView() === "groups" && <GroupsPanel />}
+              {mainView() === "offline" && (
+                <OfflineReplayPanel diagnostics={runtimeProjection()} />
+              )}
               {mainView() === "workspaces" && (
-                <BlockedWorkspacesPanel
-                  diagnostics={runtimeProjection()}
-                  signedIn={signerConnected()}
-                />
+                <BlockedWorkspacesPanel signedIn={signerConnected()} />
               )}
               {mainView() === "home" && (
                 <FeedPanel canPublish={signerConnected()} diagnostics={runtimeProjection()} />

@@ -1,7 +1,6 @@
 import { For, Show, createSignal } from "solid-js";
 import { blockedWorkspaceCommand } from "../../nmp/actions";
 import { useNmpClient } from "../../nmp/context";
-import type { RuntimeProjection } from "../../nmp/runtimeProjection";
 import "./workspaces.css";
 
 type WorkspaceStatus = "blocked" | "partial";
@@ -40,28 +39,12 @@ const WORKSPACES: Workspace[] = [
     reason: "Mute, block, relay, WoT, and hidden-content policy are not projected for web yet.",
     proof: "Filtering policy must be replayable Rust state with visible provenance.",
   },
-  {
-    id: "offline",
-    title: "Offline and replay",
-    capability: "nmp.offline_replay",
-    status: "partial",
-    reason: "Storage health is visible, but durable offline publish ownership is not proven.",
-    proof: "Pending publishes must survive reload and reconnect before this workspace is enabled.",
-  },
 ];
 
-export function BlockedWorkspacesPanel(props: {
-  diagnostics?: RuntimeProjection;
-  signedIn: boolean;
-}) {
+export function BlockedWorkspacesPanel(props: { signedIn: boolean }) {
   const { client } = useNmpClient();
   const [lastCapability, setLastCapability] = createSignal<string | null>(null);
   const [busyCapability, setBusyCapability] = createSignal<string | null>(null);
-  const storageState = () =>
-    props.diagnostics?.storeOpenFailure
-      ? `storage blocked: ${props.diagnostics.storeOpenFailure}`
-      : "storage health visible";
-
   const inspect = async (workspace: Workspace) => {
     if (busyCapability()) return;
     setBusyCapability(workspace.capability);
@@ -102,7 +85,7 @@ export function BlockedWorkspacesPanel(props: {
                   <span>{workspace.status}</span>
                 </div>
                 <p>{workspace.reason}</p>
-                <small>{workspace.id === "offline" ? storageState() : workspace.proof}</small>
+                <small>{workspace.proof}</small>
               </div>
               <button
                 type="button"

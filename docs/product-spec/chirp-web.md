@@ -237,6 +237,23 @@ surfaces show the terminal relay verdict. Reload acceptance must prove that a
 fresh browser session can refetch the bookmark list from relays and show the
 saved note in the Saved view without relying on in-memory UI state.
 
+## Storage And Replay Contract
+
+Chirp Web must expose storage and replay health as a first-level product
+workspace. The browser shell may render the store status, active interests, wire
+subscriptions, relay inventory, and publish outbox rows already emitted by the
+runtime snapshot, but it must not infer cache coverage, retry ownership,
+subscription policy, or offline recovery state.
+
+The Storage workspace must make the current limitation explicit: durable offline
+publish replay is not complete until Rust owns the persisted queue and recovery
+policy end to end. Until then, the workspace is an inspectable health surface,
+not a promise that pending publishes survive reload or reconnect.
+
+Acceptance must prove that opening Storage renders Rust-emitted relay,
+interest, and wire-subscription diagnostics, and that the UI keeps the durable
+offline publish limitation visible.
+
 ## Secret Storage
 
 Pasted `nsec` values are session-memory only. Chirp Web must not persist them to
@@ -253,9 +270,9 @@ the raw secret.
 Chirp Web must not hide missing major product areas behind absent navigation or
 fake local-only controls. Until web-ready Rust projections and actions exist for
 NIP-17 private messages, wallet/zap flows, moderation/WoT, group
-timeline/membership actions, notification read state, or offline replay
-ownership, the browser product must expose those destinations as blocked or
-disabled workspaces with clear reasons.
+timeline/membership actions, notification read state, or durable offline replay
+ownership, the browser product must expose those destinations as blocked,
+disabled, or explicitly partial workspaces with clear reasons.
 
 Blocked workspace controls may emit log-safe `capability_failure` diagnostics so
 users and tests can prove the unsupported state is deliberate. They must not

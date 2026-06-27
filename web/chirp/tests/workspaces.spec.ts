@@ -25,7 +25,8 @@ test("@wasm blocked workspaces are explicit and diagnostics-backed", async ({ pa
     await expect(page.getByTestId("nav-groups")).toBeVisible();
     await expect(page.getByTestId("workspace-wallet")).toContainText("Wallet connection");
     await expect(page.getByTestId("workspace-moderation")).toContainText("WoT");
-    await expect(page.getByTestId("workspace-offline")).toContainText("partial");
+    await expect(page.getByTestId("workspace-offline")).toHaveCount(0);
+    await expect(page.getByTestId("nav-offline")).toBeVisible();
 
     await page.getByTestId("inspect-messages").click();
     await expect(page.getByTestId("workspace-diagnostic")).toContainText("nmp.nip17.inbox");
@@ -33,6 +34,38 @@ test("@wasm blocked workspaces are explicit and diagnostics-backed", async ({ pa
     await page.locator("#diagnostics").scrollIntoViewIfNeeded();
     await expect(page.locator(".outbox-state")).toContainText("Runtime rejected action");
     await expect(page.locator(".outbox-state")).toContainText("unsupported_in_chirp_web");
+  } finally {
+    await relay.close();
+  }
+});
+
+test("@wasm storage workspace exposes runtime replay diagnostics", async ({ page }) => {
+  test.setTimeout(90_000);
+
+  const relay = await startFeedFixtureRelay();
+  const relayBootstrap = JSON.stringify([[relay.url, "both,indexer"]]);
+
+  try {
+    await page.goto(`/?relay_bootstrap=${encodeURIComponent(relayBootstrap)}#offline`);
+
+    const shell = page.locator(SHELL);
+    await expect(shell).toHaveAttribute("data-runtime-status", "running", { timeout: 30_000 });
+    await expect(shell).toHaveAttribute("data-has-snapshot", "true", { timeout: 30_000 });
+
+    const panel = page.getByTestId("offline-panel");
+    await expect(panel).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Inspect storage health" })).toBeVisible();
+    await expect(page.getByTestId("offline-storage-state")).toContainText(/Store|Storage/);
+    await expect(panel).toContainText("Durable offline publish replay remains blocked");
+    await expect(page.getByTestId("offline-relays")).toContainText("127.0.0.1", {
+      timeout: 30_000,
+    });
+    await expect(page.getByTestId("offline-interests")).toContainText(/nmp\.|feed|profile/i, {
+      timeout: 30_000,
+    });
+    await expect(page.getByTestId("offline-wires")).toContainText(/EOSE|waiting for EOSE/i, {
+      timeout: 30_000,
+    });
   } finally {
     await relay.close();
   }
