@@ -1,4 +1,4 @@
-//! Decode half of the `claimed_event_embeds` typed codec — `NEMB` FlatBuffer →
+//! Decode half of the `refs.event.envelopes` typed codec — `NEMB` FlatBuffer →
 //! resolver [`EmbeddedEventEnvelope`] map. See the module-root doc ([`super`])
 //! for the layout / regeneration contract.
 //!
@@ -14,15 +14,15 @@ use crate::embed_projection::{
 };
 use crate::wire::decode_content_tree;
 
-/// See [`super::decode_claimed_event_embeds`].
-pub(super) fn decode_claimed_event_embeds(
+/// See [`super::decode_ref_event_envelopes`].
+pub(super) fn decode_ref_event_envelopes(
     bytes: &[u8],
 ) -> Result<BTreeMap<String, EmbeddedEventEnvelope>, String> {
-    if bytes.len() < 8 || !fb::claimed_event_embeds_buffer_has_identifier(bytes) {
+    if bytes.len() < 8 || !fb::ref_event_envelopes_buffer_has_identifier(bytes) {
         return Err("missing NEMB file identifier".to_string());
     }
-    let root = fb::root_as_claimed_event_embeds(bytes)
-        .map_err(|e| format!("not a valid ClaimedEventEmbeds buffer: {e}"))?;
+    let root = fb::root_as_ref_event_envelopes(bytes)
+        .map_err(|e| format!("not a valid RefEventEnvelopes buffer: {e}"))?;
 
     let mut entries = BTreeMap::new();
     if let Some(fb_entries) = root.entries() {

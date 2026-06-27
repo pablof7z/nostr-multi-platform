@@ -286,7 +286,7 @@ class KernelModel : ViewModel() {
      * the UI is rendering an
      * out-of-feed `EventRef` [uri] under [consumerId]; the kernel resolves it
      * and ships the typed row in `refs.event`; Chirp also receives the derived
-     * `NEMB` compatibility sidecar (`projections.claimedEventEmbeds`).
+     * `refs.event.envelopes` sidecar (`projections.refEventEnvelopes`).
      * Compose DisposableEffect → claim.
      */
     fun claimEvent(uri: String, consumerId: String) {

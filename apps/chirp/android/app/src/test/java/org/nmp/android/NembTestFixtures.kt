@@ -7,7 +7,7 @@ import nmp.content.RenderMode
 import nmp.content.WireNode
 import nmp.content.WireNodeKind
 import nmp.embed.ArticleProjection
-import nmp.embed.ClaimedEventEmbeds
+import nmp.embed.RefEventEnvelopes
 import nmp.embed.EmbeddedEventEnvelope
 import nmp.embed.EmbedKindProjection
 import nmp.embed.EmbedProjectionKind
@@ -20,7 +20,7 @@ import nmp.embed.UnknownProjection
 /**
  * Shared NEMB FlatBuffers fixture builders for the [TypedEmbedSidecarDecoder]
  * round-trip contract tests (#1283 / #1335 item 2). Each `*NembBuffer` returns a
- * complete `NEMB` ([nmp.embed.ClaimedEventEmbeds]) ByteArray; each
+ * complete `NEMB` ([nmp.embed.RefEventEnvelopes]) ByteArray; each
  * `build*Envelope` returns an offset into a caller-supplied [FlatBufferBuilder]
  * so multiple entries can pack into one buffer. Extracted from the original test
  * class to keep each concern-scoped file under the AGENTS.md size caps.
@@ -32,9 +32,9 @@ object NembTestFixtures {
 
     fun emptyNembBuffer(): ByteArray {
         val b = FlatBufferBuilder(64)
-        val entries = ClaimedEventEmbeds.createEntriesVector(b, intArrayOf())
-        val root = ClaimedEventEmbeds.createClaimedEventEmbeds(b, entries)
-        ClaimedEventEmbeds.finishClaimedEventEmbedsBuffer(b, root)
+        val entries = RefEventEnvelopes.createEntriesVector(b, intArrayOf())
+        val root = RefEventEnvelopes.createRefEventEnvelopes(b, entries)
+        RefEventEnvelopes.finishRefEventEnvelopesBuffer(b, root)
         return b.sizedByteArray()
     }
 
@@ -76,9 +76,9 @@ object NembTestFixtures {
 
     /** Pack the given envelope offsets into a finished NEMB buffer. */
     fun wrapEntries(b: FlatBufferBuilder, envelopeOffsets: IntArray): ByteArray {
-        val entries = ClaimedEventEmbeds.createEntriesVector(b, envelopeOffsets)
-        val root = ClaimedEventEmbeds.createClaimedEventEmbeds(b, entries)
-        ClaimedEventEmbeds.finishClaimedEventEmbedsBuffer(b, root)
+        val entries = RefEventEnvelopes.createEntriesVector(b, envelopeOffsets)
+        val root = RefEventEnvelopes.createRefEventEnvelopes(b, entries)
+        RefEventEnvelopes.finishRefEventEnvelopesBuffer(b, root)
         return b.sizedByteArray()
     }
 

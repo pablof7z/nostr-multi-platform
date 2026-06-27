@@ -76,10 +76,10 @@ extension KernelModel {
         // the TypedXDecoder enums declare them (TypedAccountsDecoder.key == "accounts",
         // etc.). For non-keyed slots (typedEnvelope, flatFeeds) we always assign.
         let ck = result.changedKeys
-        // Issue #1283 Phase 1: EmbedHost is always updated when claimed_event_embeds
+        // Issue #1283 Phase 1: EmbedHost is always updated when refs.event.envelopes
         // changed, or on first frame (cache is idempotent for unchanged data).
-        if ck.contains(TypedClaimedEventEmbedsDecoder.key) {
-            embedHost.update(envelopes: result.typedClaimedEventEmbeds)
+        if ck.contains(TypedRefEventEnvelopesDecoder.key) {
+            embedHost.update(envelopes: result.typedRefEventEnvelopes)
         }
         // ADR-0038: typed home-feed slot.
         if ck.contains("nmp.feed.home") { typedHomeFeed = result.typedHomeFeed }
@@ -104,7 +104,7 @@ extension KernelModel {
         // `@Published` state — whole-map broadcast was the re-render bug.
         if ck.contains(TypedDmInboxDecoder.key) { typedDmInbox = result.typedDmInbox }
         if ck.contains(TypedDmRelayListDecoder.key) { typedDmRelayList = result.typedDmRelayList }
-        if ck.contains(TypedClaimedEventEmbedsDecoder.key) { typedClaimedEventEmbeds = result.typedClaimedEventEmbeds }
+        if ck.contains(TypedRefEventEnvelopesDecoder.key) { typedRefEventEnvelopes = result.typedRefEventEnvelopes }
         // NIP-46 cluster.
         if ck.contains(TypedBunkerHandshakeDecoder.key) { typedBunkerHandshake = result.typedBunkerHandshake }
         if ck.contains(TypedNip46OnboardingDecoder.key) { typedNip46Onboarding = result.typedNip46Onboarding }
@@ -249,7 +249,7 @@ extension KernelModel {
         // `keyedRefCache.reset()`.
         typedDmInbox = nil
         typedDmRelayList = nil
-        typedClaimedEventEmbeds = nil
+        typedRefEventEnvelopes = nil
         typedBunkerHandshake = nil
         typedNip46Onboarding = nil
         typedSignerState = nil

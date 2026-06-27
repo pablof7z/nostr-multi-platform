@@ -69,7 +69,7 @@ fn all_dotted_keys_are_present() {
         .map(|e| e.key)
         .filter(|k| k.contains('.'))
         .collect();
-    // Nine dotted keys. `nmp.feed.home` is a NOFS typed sidecar decoded by
+    // Ten dotted keys. `nmp.feed.home` is a NOFS typed sidecar decoded by
     // the hand-written `TypedHomeFeedDecoder` (`swift_reader_type: None`) —
     // not a JSON `SnapshotProjections` field, so it has no `XCTAssertNotNil`
     // in the Swift conformance test, but it IS a dotted registry key.
@@ -80,6 +80,7 @@ fn all_dotted_keys_are_present() {
         "nmp.nip17.dm_inbox",
         "nmp.follow_list",
         "nmp.nip17.dm_relay_list",
+        "refs.event.envelopes",
         "nmp.marmot.snapshot",
         "nmp.marmot.messages",
         "nmp.feed.home",

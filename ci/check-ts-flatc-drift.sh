@@ -152,7 +152,7 @@ flatc --ts -o "${TMP_DIR}" \
 # the row-delta carrier the per-key RefRowCache merges (ADR-0063 / #1671).
 flatc --ts -o "${TMP_DIR}" "${REFS_SCHEMA}"
 
-# ── NEMB embed-sidecar schema (claimed_event_embeds → nmp/embed/) ────────────
+# ── NEMB embed-sidecar schema (refs.event.envelopes → nmp/embed/) ────────────
 # Self-contained (nested content trees are opaque NFCT bytes). The browser
 # runtime appends this typed sidecar after merging refs.event.
 flatc --ts -o "${TMP_DIR}" "${EMBED_SCHEMA}"

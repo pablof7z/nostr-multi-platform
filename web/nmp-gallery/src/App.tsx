@@ -183,13 +183,13 @@ export default function App(): JSX.Element {
   // lockstep with the per-component demos above (article/note also wait for
   // the author profile).
   const articleEmbed = createMemo(() =>
-    articleCard() ? runtime.claimedEventEmbed(SHOWCASE_ARTICLE.primaryId) : undefined,
+    articleCard() ? runtime.refEventEnvelope(SHOWCASE_ARTICLE.primaryId) : undefined,
   );
   const highlightEmbed = createMemo(() =>
-    highlightCard() ? runtime.claimedEventEmbed(SHOWCASE_HIGHLIGHT.primaryId) : undefined,
+    highlightCard() ? runtime.refEventEnvelope(SHOWCASE_HIGHLIGHT.primaryId) : undefined,
   );
   const noteEmbed = createMemo(() =>
-    noteCard() ? runtime.claimedEventEmbed(SHOWCASE_NOTE.primaryId) : undefined,
+    noteCard() ? runtime.refEventEnvelope(SHOWCASE_NOTE.primaryId) : undefined,
   );
 
   // The standalone embed-article / embed-highlight showcase sections render the

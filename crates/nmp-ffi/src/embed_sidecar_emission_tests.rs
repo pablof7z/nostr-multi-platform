@@ -1,11 +1,11 @@
-//! ADR-0055 R6-S2 cardinal-trap tests for the `claimed_event_embeds` typed
+//! ADR-0055 R6-S2 cardinal-trap tests for the `refs.event.envelopes` typed
 //! projection emission gate.
 //!
 //! Tests prove the `TypedProjectionEmissionState` wrapping in
 //! `install_embed_sidecar_projection` behaves correctly for this whole-value
 //! key. The omit logic itself is tested exhaustively in
 //! `nmp_core::projection_emission_tests`; these tests confirm the INTEGRATION
-//! path (actual producer output for `claimed_event_embeds`).
+//! path (actual producer output for `refs.event.envelopes`).
 //!
 //! ## Groups (parallel to R6-S1 Group A/B/C)
 //!
@@ -104,7 +104,7 @@ fn populate_slot_with_marker(slot: &EmbedSidecarSlot, marker: u8) {
 
 /// A.1 — First tick always emits a full baseline.
 #[test]
-fn claimed_event_embeds_a1_first_tick_always_emits() {
+fn ref_event_envelopes_a1_first_tick_always_emits() {
     let slot = new_embed_sidecar_slot(); // empty
     let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(
         capability_on(),
@@ -119,7 +119,7 @@ fn claimed_event_embeds_a1_first_tick_always_emits() {
 
 /// A.2 — Slot gains a new embed → bytes change → emit.
 #[test]
-fn claimed_event_embeds_a2_new_embed_emits() {
+fn ref_event_envelopes_a2_new_embed_emits() {
     let slot = new_embed_sidecar_slot(); // empty
     let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(
         capability_on(),
@@ -140,7 +140,7 @@ fn claimed_event_embeds_a2_new_embed_emits() {
 
 /// A.3 — Slot cleared → bytes change (non-empty NEMB → empty NEMB) → emit.
 #[test]
-fn claimed_event_embeds_a3_slot_cleared_emits() {
+fn ref_event_envelopes_a3_slot_cleared_emits() {
     let slot = new_embed_sidecar_slot();
     populate_slot_with_marker(&slot, 7);
     let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(
@@ -164,7 +164,7 @@ fn claimed_event_embeds_a3_slot_cleared_emits() {
 
 /// B.1 — Idle tick (slot unchanged) → omit.
 #[test]
-fn claimed_event_embeds_b1_idle_tick_omits() {
+fn ref_event_envelopes_b1_idle_tick_omits() {
     let slot = new_embed_sidecar_slot();
     populate_slot_with_marker(&slot, 3);
     let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(
@@ -185,7 +185,7 @@ fn claimed_event_embeds_b1_idle_tick_omits() {
 
 /// B.2 — Multiple consecutive idle ticks → all omitted, rev stable.
 #[test]
-fn claimed_event_embeds_b2_multiple_idle_ticks_omit() {
+fn ref_event_envelopes_b2_multiple_idle_ticks_omit() {
     let slot = new_embed_sidecar_slot();
     populate_slot_with_marker(&slot, 5);
     let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(
@@ -210,17 +210,17 @@ fn claimed_event_embeds_b2_multiple_idle_ticks_omit() {
 
 // ── Group C: freeze guard ─────────────────────────────────────────────────────
 
-/// C.1 — THE FREEZE TEST for `claimed_event_embeds`. `ActorCommand::Lifecycle(LifecycleCommand::Reset)`
+/// C.1 — THE FREEZE TEST for `refs.event.envelopes`. `ActorCommand::Lifecycle(LifecycleCommand::Reset)`
 /// rebuilds the kernel → new `session_id`, but the producer emission state
 /// SURVIVES. The slot content may encode to BYTE-IDENTICAL bytes. The host
 /// cache reset (new session_id → removeAll) means an omit here would leave the
-/// host with NO `claimed_event_embeds` entry → frozen, blank embeds.
+/// host with NO `refs.event.envelopes` entry → frozen, blank embeds.
 ///
 /// Against a naive impl (byte-equality only, no identity check), the producer
 /// would OMIT and this test would FAIL.
 /// With R6-S2 fix, the changed `session_id` forces a baseline → EMITS.
 #[test]
-fn claimed_event_embeds_c1_freeze_guard_session_id_change_forces_baseline() {
+fn ref_event_envelopes_c1_freeze_guard_session_id_change_forces_baseline() {
     let slot = new_embed_sidecar_slot();
     populate_slot_with_marker(&slot, 9);
     let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(
@@ -251,10 +251,10 @@ fn claimed_event_embeds_c1_freeze_guard_session_id_change_forces_baseline() {
 }
 
 /// C.2 — Freeze guard, epoch axis: `snapshot_epoch` change with identical bytes
-/// (account switch where the new account's `claimed_event_embeds` encodes the
+/// (account switch where the new account's `refs.event.envelopes` encodes the
 /// same — e.g. both empty maps) MUST emit a baseline, not omit.
 #[test]
-fn claimed_event_embeds_c2_freeze_guard_epoch_change_identical_bytes_forces_baseline() {
+fn ref_event_envelopes_c2_freeze_guard_epoch_change_identical_bytes_forces_baseline() {
     let slot = new_embed_sidecar_slot(); // empty slot
     let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(
         capability_on(),
@@ -279,7 +279,7 @@ fn claimed_event_embeds_c2_freeze_guard_epoch_change_identical_bytes_forces_base
 
 /// D.1 — Capability OFF: every tick emits (byte-identical to today).
 #[test]
-fn claimed_event_embeds_d1_capability_off_always_emits() {
+fn ref_event_envelopes_d1_capability_off_always_emits() {
     let slot = new_embed_sidecar_slot();
     populate_slot_with_marker(&slot, 2);
     let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(
@@ -301,7 +301,7 @@ fn claimed_event_embeds_d1_capability_off_always_emits() {
 /// E.1 — Full host-coherence sequence: slot changes, then idle, then Reset.
 /// Reconstructed host cache always equals the full payload.
 #[test]
-fn claimed_event_embeds_e1_host_coherence_full_sequence() {
+fn ref_event_envelopes_e1_host_coherence_full_sequence() {
     let slot = new_embed_sidecar_slot();
     let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(
         capability_on(),

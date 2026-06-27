@@ -103,6 +103,9 @@ private struct RefProfileWire: Decodable, Sendable {
 ///     materialised from the `refs.profile` row-delta store host-side). The
 ///     gallery owns no precedence merge. Always present (`{}` when empty).
 ///
+///   * `projections."refs.event.envelopes"[primaryId]` — the render-facing
+///     embed envelope derived from the authoritative `refs.event` row store.
+///
 /// `snapshot.profiles[pubkey] -> ProfileWire?` is decoded directly from that
 /// surface so the per-component pages stay decoupled from the wire
 /// shape. Decoding is fault-tolerant — a missing/null projection key
@@ -111,7 +114,7 @@ struct GallerySnapshot: Decodable, Equatable, Sendable {
     let running: Bool
     let profiles: [String: ProfileWire]
     let accounts: [AccountWire]
-    /// Pre-resolved event-ref embed envelope map materialised from `refs.event`
+    /// Pre-resolved event-ref embed envelope map derived from `refs.event`
     /// after `resolve_ref` (ADR-0063 / ADR-0034). Key = `primary_id`; value =
     /// fully resolved `EmbeddedEventEnvelope` with `projection` already
     /// kind-dispatched in Rust. Nil when the projection is absent.
@@ -144,9 +147,9 @@ struct GallerySnapshot: Decodable, Equatable, Sendable {
         // a dotted key, so the raw value is spelled out explicitly here.
         case refsProfile = "refs.profile"
         case accounts
-        // ADR-0063 (#1671): event embed envelopes are materialised from the
-        // `refs.event` row-delta store under the dotted projection key.
-        case refsEvent = "refs.event"
+        // ADR-0063 (#1671): event embed envelopes are derived from the
+        // `refs.event` row-delta store under their own dotted projection key.
+        case refEventEnvelopes = "refs.event.envelopes"
         // `relay_role_options` → camelCase after `.convertFromSnakeCase`.
         case relayRoleOptions
     }
@@ -184,11 +187,11 @@ struct GallerySnapshot: Decodable, Equatable, Sendable {
             ) {
                 resolvedAccounts = accs
             }
-            // Issue #1283 / ADR-0034: decode the pre-resolved embed map from
-            // the `refs.event` materialised map. Fault-tolerant — nil when absent.
+            // Issue #1283 / ADR-0034: decode the pre-resolved embed map derived
+            // from `refs.event`. Fault-tolerant — nil when absent.
             resolvedEventEmbeds = try? projections.decodeIfPresent(
                 [String: EmbeddedEventEnvelope].self,
-                forKey: .refsEvent
+                forKey: .refEventEnvelopes
             )
             // Issue #996: decode the kernel's relay-role presentation tokens so
             // the relay-list page resolves label/tint from the kernel source of
@@ -327,8 +330,8 @@ final class GalleryModel: NostrProfileHost {
     /// decode failure logs and keeps the previous snapshot intact (soft-fail).
     ///
     /// `GallerySnapshot` includes `resolvedEventEmbeds` — the pre-resolved
-    /// event-ref embed envelope map materialised from `refs.event` after
-    /// `resolve_ref` (ADR-0063 / ADR-0034).
+    /// event-ref embed envelope map derived from `refs.event` after
+    /// `resolve_ref` and materialised under `refs.event.envelopes`.
     /// A single `JSONDecoder` pass fills both the profile/account fields and the
     /// embed map; the separate `JSONSerialization` + `EmbedHost.update(fromSnapshotJSON:)`
     /// path is deleted (the kind-dispatch now runs in Rust, not in Swift).

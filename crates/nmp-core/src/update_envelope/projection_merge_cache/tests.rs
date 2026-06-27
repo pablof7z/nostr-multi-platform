@@ -66,13 +66,13 @@ fn extra_projections_are_output_only_not_retained() {
         .merge_update_frame_with_extra_projections(
             &frame(10, 0, &[row("profile", b"a", WireProjectionState::Changed)]),
             [row(
-                "claimed_event_embeds",
+                "refs.event.envelopes",
                 b"sidecar",
                 WireProjectionState::Changed,
             )],
         )
         .expect("first frame merges");
-    assert_eq!(keys(&first), vec!["claimed_event_embeds", "profile"]);
+    assert_eq!(keys(&first), vec!["profile", "refs.event.envelopes"]);
 
     let second = cache
         .merge_update_frame(&frame(10, 0, &[]))

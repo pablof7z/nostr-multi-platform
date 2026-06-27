@@ -68,7 +68,7 @@ export const webContentKindRegistry: PlatformImpl = {
   version: "0.1.0",
   dependencies: ["content-kind-30023", "content-kind-9802", "content-quote-card"],
   longDescription:
-    "`<NostrEmbeddedEvent event={...} />` is the web kind-dispatch table. The host passes a fully resolved `EmbeddedEventModel` decoded from the Rust-generated `claimed_event_embeds` / NEMB sidecar; that sidecar is composed from authoritative `refs.event` rows by `nmp-content`. The registry routes on `projection.variant`: `article` → `NostrArticleCard`, `highlight` → `NostrHighlightCard`, everything else → `NostrQuoteCard`. It maps the pre-resolved projection fields into each card's model — it does NOT re-parse raw NIP-23/NIP-84 tags. Verified live in the NMP web gallery dispatching a real article, highlight, and note. The web twin of the SwiftUI/TUI `NostrKindRegistry` + `EmbeddedEvent`.",
+    "`<NostrEmbeddedEvent event={...} />` is the web kind-dispatch table. The host passes a fully resolved `EmbeddedEventModel` decoded from the Rust-generated `refs.event.envelopes` / NEMB sidecar; that sidecar is composed from authoritative `refs.event` rows by `nmp-content`. The registry routes on `projection.variant`: `article` -> `NostrArticleCard`, `highlight` -> `NostrHighlightCard`, everything else -> `NostrQuoteCard`. It maps the pre-resolved projection fields into each card's model and does not re-parse raw NIP-23/NIP-84 tags. Verified live in the NMP web gallery dispatching a real article, highlight, and note. The web twin of the SwiftUI/TUI `NostrKindRegistry` + `EmbeddedEvent`.",
   files: [
     { source: "web/content-kind-registry/NostrKindRegistry.tsx", target: "src/components/nostr-content/NostrKindRegistry.tsx", role: "source", content: webKindRegistryTsx },
   ],

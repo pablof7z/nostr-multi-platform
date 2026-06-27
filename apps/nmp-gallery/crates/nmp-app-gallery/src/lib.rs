@@ -237,8 +237,9 @@ pub unsafe extern "C" fn nmp_app_gallery_ref_stores_free(store: *mut GalleryRefS
 ///
 /// ADR-0063 (#1671): the frame's `refs.profile` / `refs.event` row-delta
 /// batches are merged into `stores` (the host's persistent ref mirrors) before
-/// the snapshot JSON is built; the rendered `refs.profile` / `refs.event` JSON
-/// maps are sourced from those stores.
+/// the snapshot JSON is built; `refs.profile` is rendered from the profile
+/// store and the derived `refs.event.envelopes` render map is built from the
+/// event store.
 /// `store` MUST persist across calls for one kernel session.
 ///
 /// Returns a heap-allocated UTF-8 JSON string on success; callers must release

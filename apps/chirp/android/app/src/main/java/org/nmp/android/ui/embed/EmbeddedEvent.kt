@@ -31,12 +31,12 @@ typealias EventClaimer = (uri: String, consumerId: String, claim: Boolean) -> Un
 val LocalEventClaimer = compositionLocalOf<EventClaimer?> { null }
 
 /**
- * Resolved embed envelopes from the kernel's `claimed_event_embeds` (`NEMB`)
+ * Resolved embed envelopes from the kernel's `refs.event.envelopes` (`NEMB`)
  * sidecar, keyed by `primaryId` (event-id hex or `kind:pubkey:d` coord).
  * Provided once at each screen root and read by [EmbeddedEvent]. Defaults to an
  * empty map outside a provider scope (the loading placeholder then persists).
  */
-val LocalClaimedEventEmbeds = compositionLocalOf<Map<String, EmbedEnvelopeEntry>> { emptyMap() }
+val LocalRefEventEnvelopes = compositionLocalOf<Map<String, EmbedEnvelopeEntry>> { emptyMap() }
 
 /**
  * What an [EmbeddedEvent] should display for a given resolved envelope. Pure
@@ -89,7 +89,7 @@ class EventClaimHandle(
  * Lifecycle (D8 — no polling):
  *   • A [DisposableEffect] keyed on ([uri], [consumerId]) claims on enter and
  *     releases on dispose — the kernel reference-counts; Kotlin never counts.
- *   • The resolved [EmbedEnvelopeEntry] is read from [LocalClaimedEventEmbeds]
+ *   • The resolved [EmbedEnvelopeEntry] is read from [LocalRefEventEnvelopes]
  *     by [primaryId]; while absent it shows a loading placeholder (NOT a
  *     permanent "Event pending" text), which resolves to the typed render on
  *     the next snapshot tick.
@@ -118,7 +118,7 @@ fun EmbeddedEvent(
         onDispose { handle.dispose() }
     }
 
-    val envelope = LocalClaimedEventEmbeds.current[primaryId]
+    val envelope = LocalRefEventEnvelopes.current[primaryId]
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),

@@ -193,9 +193,9 @@ fn real_registry_emits_exactly_the_proof_keys() {
         !out.contains("enum TypedClaimedEventsDecoder {"),
         "claimed_events whole-map projection deleted — refs.event rows use the keyed cache"
     );
-    // Issue #1283 Phase 1: the typed embed sidecar (`claimedEventEmbeds` →
-    // `TypedClaimedEventEmbedsDecoder`, `NEMB` / `nmp_embed_ClaimedEventEmbeds`).
-    assert!(out.contains("enum TypedClaimedEventEmbedsDecoder {"));
+    // Issue #1283 Phase 1: the typed embed sidecar (`refEventEnvelopes` →
+    // `TypedRefEventEnvelopesDecoder`, `NEMB` / `nmp_embed_RefEventEnvelopes`).
+    assert!(out.contains("enum TypedRefEventEnvelopesDecoder {"));
     // NIP-46 per-key sidecar flips. The enum name derives from `swift_field`.
     assert!(out.contains("enum TypedBunkerHandshakeDecoder {"));
     assert!(out.contains("enum TypedNip46OnboardingDecoder {"));
@@ -246,7 +246,7 @@ fn real_registry_emits_exactly_the_proof_keys() {
          flips; Wave C: action_results, action_stages; signer_state \
          (ADR-0048 D6, generalised from V-14 bunker_connection_state); \
          #626: nmp.nip29.group_defaults; #1283 Phase 1: \
-         claimed_event_embeds (NEMB); #2091: global zaps sidecar deleted; \
+         refs.event.envelopes (NEMB); #2091: global zaps sidecar deleted; \
          if this changed, \
          regenerate TypedProjectionDecoders.generated.swift and update this test"
     );

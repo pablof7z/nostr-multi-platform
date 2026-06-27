@@ -1,4 +1,4 @@
-//! Round-trip proofs for the `claimed_event_embeds` typed FlatBuffers codec.
+//! Round-trip proofs for the `refs.event.envelopes` typed FlatBuffers codec.
 //!
 //! Every projection variant is resolved through the REAL
 //! [`resolve_embed_projection`] resolver (never a hand-built struct), wrapped in
@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 
 use nmp_core::substrate::KernelEvent;
 
-use super::{decode_claimed_event_embeds, encode_claimed_event_embeds, FILE_IDENTIFIER};
+use super::{decode_ref_event_envelopes, encode_ref_event_envelopes, FILE_IDENTIFIER};
 use crate::context::RenderContext;
 use crate::embed_projection::{
     resolve_embed_projection, EmbedKindProjection, EmbeddedEventEnvelope, RenderContextWire,
@@ -57,15 +57,15 @@ fn resolve(event: &KernelEvent) -> EmbedKindProjection {
 #[test]
 fn empty_map_round_trips_to_empty_map() {
     let entries: BTreeMap<String, EmbeddedEventEnvelope> = BTreeMap::new();
-    let bytes = encode_claimed_event_embeds(&entries);
-    let decoded = decode_claimed_event_embeds(&bytes).expect("empty buffer must decode");
+    let bytes = encode_ref_event_envelopes(&entries);
+    let decoded = decode_ref_event_envelopes(&bytes).expect("empty buffer must decode");
     assert!(decoded.is_empty(), "empty input must yield empty map");
 }
 
 #[test]
 fn buffer_carries_nemb_identifier() {
     let entries: BTreeMap<String, EmbeddedEventEnvelope> = BTreeMap::new();
-    let bytes = encode_claimed_event_embeds(&entries);
+    let bytes = encode_ref_event_envelopes(&entries);
     assert_eq!(
         &bytes[4..8],
         FILE_IDENTIFIER,
@@ -85,8 +85,8 @@ fn short_note_round_trips() {
     let mut entries = BTreeMap::new();
     entries.insert("p1".to_string(), envelope("p1", resolve(&ev)));
 
-    let bytes = encode_claimed_event_embeds(&entries);
-    let decoded = decode_claimed_event_embeds(&bytes).expect("decode");
+    let bytes = encode_ref_event_envelopes(&entries);
+    let decoded = decode_ref_event_envelopes(&bytes).expect("decode");
 
     let env = decoded.get("p1").expect("p1 present");
     assert_eq!(env.primary_id, "p1");
@@ -117,8 +117,8 @@ fn article_round_trips_with_optional_tags() {
     let mut entries = BTreeMap::new();
     entries.insert("art1".to_string(), envelope("art1", resolve(&ev)));
 
-    let bytes = encode_claimed_event_embeds(&entries);
-    let decoded = decode_claimed_event_embeds(&bytes).expect("decode");
+    let bytes = encode_ref_event_envelopes(&entries);
+    let decoded = decode_ref_event_envelopes(&bytes).expect("decode");
 
     match &decoded.get("art1").unwrap().projection {
         EmbedKindProjection::Article(a) => {
@@ -144,8 +144,8 @@ fn highlight_round_trips() {
     let mut entries = BTreeMap::new();
     entries.insert("hl1".to_string(), envelope("hl1", resolve(&ev)));
 
-    let bytes = encode_claimed_event_embeds(&entries);
-    let decoded = decode_claimed_event_embeds(&bytes).expect("decode");
+    let bytes = encode_ref_event_envelopes(&entries);
+    let decoded = decode_ref_event_envelopes(&bytes).expect("decode");
 
     match &decoded.get("hl1").unwrap().projection {
         EmbedKindProjection::Highlight(h) => {
@@ -171,8 +171,8 @@ fn profile_round_trips() {
     let mut entries = BTreeMap::new();
     entries.insert("ee".repeat(32), envelope(&"ee".repeat(32), resolve(&ev)));
 
-    let bytes = encode_claimed_event_embeds(&entries);
-    let decoded = decode_claimed_event_embeds(&bytes).expect("decode");
+    let bytes = encode_ref_event_envelopes(&entries);
+    let decoded = decode_ref_event_envelopes(&bytes).expect("decode");
 
     match &decoded.get(&"ee".repeat(32)).unwrap().projection {
         EmbedKindProjection::Profile(p) => {
@@ -204,8 +204,8 @@ fn profile_with_enrichment_round_trips() {
     let mut entries = BTreeMap::new();
     entries.insert("k".to_string(), envelope("k", proj));
 
-    let bytes = encode_claimed_event_embeds(&entries);
-    let decoded = decode_claimed_event_embeds(&bytes).expect("decode");
+    let bytes = encode_ref_event_envelopes(&entries);
+    let decoded = decode_ref_event_envelopes(&bytes).expect("decode");
 
     match &decoded.get("k").unwrap().projection {
         EmbedKindProjection::Profile(p) => {
@@ -236,8 +236,8 @@ fn unknown_round_trips_with_tags() {
     let mut entries = BTreeMap::new();
     entries.insert("un1".to_string(), envelope("un1", resolve(&ev)));
 
-    let bytes = encode_claimed_event_embeds(&entries);
-    let decoded = decode_claimed_event_embeds(&bytes).expect("decode");
+    let bytes = encode_ref_event_envelopes(&entries);
+    let decoded = decode_ref_event_envelopes(&bytes).expect("decode");
 
     match &decoded.get("un1").unwrap().projection {
         EmbedKindProjection::Unknown(u) => {
@@ -271,8 +271,8 @@ fn multiple_entries_preserve_keys() {
     entries.insert("note-key".to_string(), envelope("note-key", resolve(&n)));
     entries.insert("prof-key".to_string(), envelope("prof-key", resolve(&p)));
 
-    let bytes = encode_claimed_event_embeds(&entries);
-    let decoded = decode_claimed_event_embeds(&bytes).expect("decode");
+    let bytes = encode_ref_event_envelopes(&entries);
+    let decoded = decode_ref_event_envelopes(&bytes).expect("decode");
 
     assert_eq!(decoded.len(), 2);
     assert!(matches!(
@@ -287,7 +287,7 @@ fn multiple_entries_preserve_keys() {
 
 #[test]
 fn garbage_bytes_decode_to_err_not_panic() {
-    assert!(decode_claimed_event_embeds(&[]).is_err());
-    assert!(decode_claimed_event_embeds(&[0u8; 4]).is_err());
-    assert!(decode_claimed_event_embeds(b"XXXXabcd").is_err());
+    assert!(decode_ref_event_envelopes(&[]).is_err());
+    assert!(decode_ref_event_envelopes(&[0u8; 4]).is_err());
+    assert!(decode_ref_event_envelopes(b"XXXXabcd").is_err());
 }

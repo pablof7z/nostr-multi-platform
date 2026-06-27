@@ -825,14 +825,14 @@ public struct nmp_embed_EmbeddedEventEnvelope: FlatBufferTable, FlatbuffersVecto
   }
 }
 
-public struct nmp_embed_ClaimedEventEmbeds: FlatBufferTable, FlatbuffersVectorInitializable, Verifiable {
+public struct nmp_embed_RefEventEnvelopes: FlatBufferTable, FlatbuffersVectorInitializable, Verifiable {
 
   static func validateVersion() { FlatBuffersVersion_25_12_19() }
   public var __buffer: ByteBuffer! { return _accessor.bb }
   private var _accessor: Table
 
   public static var id: String { "NEMB" } 
-  public static func finish(_ fbb: inout FlatBufferBuilder, end: Offset, prefix: Bool = false) { fbb.finish(offset: end, fileId: nmp_embed_ClaimedEventEmbeds.id, addPrefix: prefix) }
+  public static func finish(_ fbb: inout FlatBufferBuilder, end: Offset, prefix: Bool = false) { fbb.finish(offset: end, fileId: nmp_embed_RefEventEnvelopes.id, addPrefix: prefix) }
   private init(_ t: Table) { _accessor = t }
   public init(_ bb: ByteBuffer, o: Int32) { _accessor = Table(bb: bb, position: o) }
 
@@ -844,16 +844,16 @@ public struct nmp_embed_ClaimedEventEmbeds: FlatBufferTable, FlatbuffersVectorIn
 
   public var entries: FlatbufferVector<nmp_embed_EmbeddedEventEnvelope> { return _accessor.vector(at: VTOFFSET.entries.v, byteSize: 4) }
   public func entriesBy(key: String) -> nmp_embed_EmbeddedEventEnvelope? { let o = _accessor.offset(VTOFFSET.entries.v); return o == 0 ? nil : nmp_embed_EmbeddedEventEnvelope.lookupByKey(vector: _accessor.vector(at: o), key: key, fbb: _accessor.bb) }
-  public static func startClaimedEventEmbeds(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 1) }
+  public static func startRefEventEnvelopes(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 1) }
   public static func addVectorOf(entries: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: entries, at: VTOFFSET.entries.p) }
-  public static func endClaimedEventEmbeds(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
-  public static func createClaimedEventEmbeds(
+  public static func endRefEventEnvelopes(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
+  public static func createRefEventEnvelopes(
     _ fbb: inout FlatBufferBuilder,
     entriesVectorOffset entries: Offset = Offset()
   ) -> Offset {
-    let __start = nmp_embed_ClaimedEventEmbeds.startClaimedEventEmbeds(&fbb)
-    nmp_embed_ClaimedEventEmbeds.addVectorOf(entries: entries, &fbb)
-    return nmp_embed_ClaimedEventEmbeds.endClaimedEventEmbeds(&fbb, start: __start)
+    let __start = nmp_embed_RefEventEnvelopes.startRefEventEnvelopes(&fbb)
+    nmp_embed_RefEventEnvelopes.addVectorOf(entries: entries, &fbb)
+    return nmp_embed_RefEventEnvelopes.endRefEventEnvelopes(&fbb, start: __start)
   }
 
   public static func verify<T>(_ verifier: inout Verifier, at position: Int, of type: T.Type) throws where T: Verifiable {

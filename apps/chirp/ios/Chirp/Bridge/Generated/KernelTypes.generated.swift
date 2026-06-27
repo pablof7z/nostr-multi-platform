@@ -185,7 +185,7 @@ struct SnapshotProjections: Decodable, Equatable {
     let groupDefaults: GroupDefaultsSnapshot?
     let dmRelayList: DmRelayListSnapshot?
     let relayDiagnostics: RelayDiagnosticsSnapshot?
-    let claimedEventEmbeds: [String: EmbeddedEventEnvelope]?
+    let refEventEnvelopes: [String: EmbeddedEventEnvelope]?
     let settingsHub: [String: Int]?
     let marmotSnapshot: MarmotSnapshot?
     let marmotMessages: [String: [MarmotMessage]]?
@@ -214,7 +214,7 @@ struct SnapshotProjections: Decodable, Equatable {
         case groupDefaults = "nmp.nip29.groupDefaults"
         case dmRelayList = "nmp.nip17.dmRelayList"
         case relayDiagnostics
-        case claimedEventEmbeds
+        case refEventEnvelopes = "refs.event.envelopes"
         case settingsHub
         case marmotSnapshot = "nmp.marmot.snapshot"
         case marmotMessages = "nmp.marmot.messages"

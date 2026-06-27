@@ -5,7 +5,7 @@ import org.junit.Test
 
 /**
  * Error-path contract tests for [TypedEmbedSidecarDecoder] — the typed-first
- * decode of the `claimed_event_embeds` (`NEMB` / `nmp.embed.ClaimedEventEmbeds`)
+ * decode of the `refs.event.envelopes` (`NEMB` / `nmp.embed.RefEventEnvelopes`)
  * sidecar (#1283 / #1335 item 2).
  *
  * Covers the ADR-0037 Commitment 4 fail-closed contract: an absent sidecar,

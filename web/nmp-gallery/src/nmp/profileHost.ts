@@ -79,7 +79,7 @@ export type GalleryRuntime = {
   /** Reactive — a render-facing embed envelope derived from the authoritative
    *  `refs.event` row, keyed by `primary_id`. Undefined until the event row
    *  resolves. */
-  claimedEventEmbed: (primaryId: string) => EmbeddedEventModel | undefined;
+  refEventEnvelope: (primaryId: string) => EmbeddedEventModel | undefined;
   /** Request the Rust-encoded npub for a pubkey (idempotent; fires once per
    *  pubkey). The result lands reactively in `npub(pubkey)`. */
   requestNpub: (pubkey: string) => void;
@@ -132,7 +132,7 @@ export function createGalleryRuntime(): GalleryRuntime {
   // store proxy would wrap that object and break its `this.bb`-based accessors,
   // so the map is kept as an opaque signal value (replaced wholesale per frame).
   const [claimedEvents, setClaimedEvents] = createSignal<Map<string, ClaimedEventWire>>(new Map());
-  const [claimedEventEmbeds, setClaimedEventEmbeds] = createSignal<Map<string, EmbeddedEventModel>>(new Map());
+  const [refEventEnvelopes, setRefEventEnvelopes] = createSignal<Map<string, EmbeddedEventModel>>(new Map());
   const [status, setStatus] = createSignal<RuntimeStatus>("ready");
   const [relays, setRelays] = createSignal<RelayStatusRow[]>([]);
   const [resolvedCount, setResolvedCount] = createSignal(0);
@@ -196,7 +196,7 @@ export function createGalleryRuntime(): GalleryRuntime {
       const embedsPayload = findTypedSidecar(snap, EMBED_SIDECAR_KEY, NEMB_FILE_IDENTIFIER);
       if (embedsPayload !== undefined) {
         const embeds = decodeEmbedSidecar(embedsPayload);
-        if (embeds !== undefined) setClaimedEventEmbeds(embeds);
+        if (embeds !== undefined) setRefEventEnvelopes(embeds);
       }
     } catch {
       // Keep last-good state on a corrupt frame (D6 — never blank-reset).
@@ -320,7 +320,7 @@ export function createGalleryRuntime(): GalleryRuntime {
       });
     },
     claimedEvent: (primaryId: string) => claimedEvents().get(primaryId),
-    claimedEventEmbed: (primaryId: string) => claimedEventEmbeds().get(primaryId),
+    refEventEnvelope: (primaryId: string) => refEventEnvelopes().get(primaryId),
     requestNpub(pubkey: string) {
       if (requestedNpubs.has(pubkey)) return;
       requestedNpubs.add(pubkey);

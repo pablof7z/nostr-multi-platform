@@ -18,8 +18,8 @@ package org.nmp.android
  * is rendering an out-of-feed `EventRef` ([uri] is the verbatim
  * `nevent`/`note`/`naddr` URI) under [consumerId]; the kernel resolves the
  * event (cache-first, then relay) and ships its typed row in `refs.event`;
- * Chirp also receives the derived `NEMB` compatibility sidecar
- * (`projections.claimedEventEmbeds`). App-local wrappers named `claimEvent` /
+ * Chirp also receives the derived `refs.event.envelopes` sidecar
+ * (`projections.refEventEnvelopes`). App-local wrappers named `claimEvent` /
  * `nativeClaimEvent` are URI adapters over unified `resolve_ref`, not kernel or
  * C front doors.
  *

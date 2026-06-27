@@ -20,10 +20,10 @@ struct ClaimedEventDto: Decodable, Equatable {
 /// Issue #1283 Phase 1: the kind-dispatch + tag/JSON parsing that used to live in
 /// this file (`resolve()` / `parseProfileMetadata` / `extractTopLevelMedia`) is
 /// DELETED. The Rust resolver (`nmp_content::resolve_embed_projection`, invoked by
-/// the `nmp-ffi` `claimed_event_embeds` sidecar producer) does that work on the
+/// the `nmp-ffi` `refs.event.envelopes` sidecar producer) does that work on the
 /// kernel side and ships the result as a typed `NEMB` FlatBuffer. Chirp now
-/// decodes that sidecar (`TypedClaimedEventEmbedsDecoder` →
-/// `TypedProjectionGlue.claimedEventEmbeds`) into `[String: EmbeddedEventEnvelope]`
+/// decodes that sidecar (`TypedRefEventEnvelopesDecoder` →
+/// `TypedProjectionGlue.refEventEnvelopes`) into `[String: EmbeddedEventEnvelope]`
 /// and this host just stores it — ZERO embed-resolution logic in Swift
 /// (D0 thin-shell; closes the EmbedHost D0 violation). This is also what fixes
 /// the #1299 inverted `display_name` precedence: the kernel's NIP-01/24-correct
@@ -40,7 +40,7 @@ final class EmbedHost: EmbedEnvelopeSource {
     var count: Int { envelopesByPrimaryID.count }
 
     /// Called on every snapshot tick with the pre-resolved embed map decoded from
-    /// the typed `claimed_event_embeds` sidecar. `nil`/empty leaves the previous
+    /// the typed `refs.event.envelopes` sidecar. `nil`/empty leaves the previous
     /// map intact (stable, not flicker) — mirroring the prior behaviour.
     func update(envelopes: [String: EmbeddedEventEnvelope]?) {
         guard let envelopes, !envelopes.isEmpty else { return }

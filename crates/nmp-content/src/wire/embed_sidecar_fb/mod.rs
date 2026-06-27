@@ -1,11 +1,10 @@
-//! Typed FlatBuffers wire codec for the `claimed_event_embeds` snapshot sidecar
+//! Typed FlatBuffers wire codec for the `refs.event.envelopes` snapshot sidecar
 //! (issue #1283 / ADR-0034 §embed-sidecar).
 //!
-//! This is the typed compatibility projection emitted under the historical
-//! `claimed_event_embeds` key by `nmp-ffi`. The payload is derived from the
-//! authoritative `refs.event` row store and carries a pre-resolved
-//! `primary_id -> EmbeddedEventEnvelope` map so a typed-frame shell (Chirp)
-//! never re-implements the `match kind` resolver in Swift. See
+//! The payload is derived from the authoritative `refs.event` row store and
+//! carries a pre-resolved `primary_id -> EmbeddedEventEnvelope` map so a
+//! typed-frame shell never re-implements the `match kind` resolver in native
+//! code. See
 //! `schema/embed_sidecar.fbs` for the field map.
 //!
 //! The shape mirrors the existing resolver types
@@ -17,7 +16,7 @@
 //! codec, reused as an opaque-bytes unit (no schema `include`), exactly as
 //! `longform_fb` carries the article body.
 //!
-//! Honours D6 (no panics): [`decode_claimed_event_embeds`] returns `Err(String)`
+//! Honours D6 (no panics): [`decode_ref_event_envelopes`] returns `Err(String)`
 //! on any malformed input; there are no `unwrap`/`expect`/panicking operations on
 //! the decode path.
 //!
@@ -67,32 +66,32 @@ use std::collections::BTreeMap;
 use crate::embed_projection::EmbeddedEventEnvelope;
 
 /// Stable schema identifier carried in the typed-projection envelope.
-pub const SCHEMA_ID: &str = "claimed_event_embeds";
-/// Snapshot-projection key the typed compatibility sidecar is emitted under.
-pub const PROJECTION_KEY: &str = "claimed_event_embeds";
+pub const SCHEMA_ID: &str = "refs.event.envelopes";
+/// Snapshot-projection key the typed derived sidecar is emitted under.
+pub const PROJECTION_KEY: &str = "refs.event.envelopes";
 /// FlatBuffers file identifier embedded in every buffer this module emits.
 pub const FILE_IDENTIFIER: &[u8; 4] = b"NEMB";
 /// Wire schema version. Bump on any breaking change to `embed_sidecar.fbs`.
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 
-/// Encode the `claimed_event_embeds` projection (envelopes keyed by
+/// Encode the `refs.event.envelopes` projection (envelopes keyed by
 /// `primary_id`) to typed FlatBuffers bytes (with the `NEMB` file identifier).
 ///
 /// `entries` is encoded in [`BTreeMap`] (ascending-`primary_id`) order so the
 /// `(key)`-keyed `entries` vector is sorted — a host may binary-search it by
 /// `primary_id`.
 #[must_use]
-pub fn encode_claimed_event_embeds(entries: &BTreeMap<String, EmbeddedEventEnvelope>) -> Vec<u8> {
-    encode::encode_claimed_event_embeds(entries)
+pub fn encode_ref_event_envelopes(entries: &BTreeMap<String, EmbeddedEventEnvelope>) -> Vec<u8> {
+    encode::encode_ref_event_envelopes(entries)
 }
 
-/// Decode typed FlatBuffers bytes (as produced by [`encode_claimed_event_embeds`])
+/// Decode typed FlatBuffers bytes (as produced by [`encode_ref_event_envelopes`])
 /// back into a `primary_id -> EmbeddedEventEnvelope` map. Returns an error string
 /// on any malformed input or missing required field.
-pub fn decode_claimed_event_embeds(
+pub fn decode_ref_event_envelopes(
     bytes: &[u8],
 ) -> Result<BTreeMap<String, EmbeddedEventEnvelope>, String> {
-    decode::decode_claimed_event_embeds(bytes)
+    decode::decode_ref_event_envelopes(bytes)
 }
 
 #[cfg(test)]

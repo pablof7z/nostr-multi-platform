@@ -10,8 +10,8 @@ import org.junit.Test
 
 /**
  * ShortNote-family round-trip contract tests for [TypedEmbedSidecarDecoder] —
- * the typed-first decode of the `claimed_event_embeds` (`NEMB` /
- * `nmp.embed.ClaimedEventEmbeds`) sidecar (#1283 / #1335 item 2).
+ * the typed-first decode of the `refs.event.envelopes` (`NEMB` /
+ * `nmp.embed.RefEventEnvelopes`) sidecar (#1283 / #1335 item 2).
  *
  * Covers the ShortNote projection plus the envelope-level concerns that ride on
  * it: optional `has_*` fields, multiple entries keyed by primaryId, the NFCT

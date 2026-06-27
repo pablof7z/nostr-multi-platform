@@ -178,7 +178,7 @@ private fun EventRefBlock(
     }
     // Out-of-feed ref (#984): claim the URI so the kernel resolves it and ships
     // the typed projection in the `NEMB` sidecar; `EmbeddedEvent` reads the
-    // resolved envelope from `LocalClaimedEventEmbeds` and dispatches it through
+    // resolved envelope from `LocalRefEventEnvelopes` and dispatches it through
     // `NostrKindRegistry`. Until resolution lands it shows a loading state, not
     // a permanent placeholder.
     EmbeddedEvent(

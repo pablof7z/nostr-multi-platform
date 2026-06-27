@@ -3,12 +3,12 @@
 /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, @typescript-eslint/no-non-null-assertion */
 
 export { ArticleProjection } from './embed/article-projection.js';
-export { ClaimedEventEmbeds } from './embed/claimed-event-embeds.js';
 export { EmbedKindProjection } from './embed/embed-kind-projection.js';
 export { EmbedProjectionKind } from './embed/embed-projection-kind.js';
 export { EmbeddedEventEnvelope } from './embed/embedded-event-envelope.js';
 export { HighlightProjection } from './embed/highlight-projection.js';
 export { ProfileProjection } from './embed/profile-projection.js';
+export { RefEventEnvelopes } from './embed/ref-event-envelopes.js';
 export { ShortNoteProjection } from './embed/short-note-projection.js';
 export { TagRow } from './embed/tag-row.js';
 export { UnknownProjection } from './embed/unknown-projection.js';

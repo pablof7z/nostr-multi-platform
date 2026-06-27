@@ -7,22 +7,22 @@ import * as flatbuffers from 'flatbuffers';
 import { EmbeddedEventEnvelope } from '../../nmp/embed/embedded-event-envelope.js';
 
 
-export class ClaimedEventEmbeds {
+export class RefEventEnvelopes {
   bb: flatbuffers.ByteBuffer|null = null;
   bb_pos = 0;
-  __init(i:number, bb:flatbuffers.ByteBuffer):ClaimedEventEmbeds {
+  __init(i:number, bb:flatbuffers.ByteBuffer):RefEventEnvelopes {
   this.bb_pos = i;
   this.bb = bb;
   return this;
 }
 
-static getRootAsClaimedEventEmbeds(bb:flatbuffers.ByteBuffer, obj?:ClaimedEventEmbeds):ClaimedEventEmbeds {
-  return (obj || new ClaimedEventEmbeds()).__init(bb.readInt32(bb.position()) + bb.position(), bb);
+static getRootAsRefEventEnvelopes(bb:flatbuffers.ByteBuffer, obj?:RefEventEnvelopes):RefEventEnvelopes {
+  return (obj || new RefEventEnvelopes()).__init(bb.readInt32(bb.position()) + bb.position(), bb);
 }
 
-static getSizePrefixedRootAsClaimedEventEmbeds(bb:flatbuffers.ByteBuffer, obj?:ClaimedEventEmbeds):ClaimedEventEmbeds {
+static getSizePrefixedRootAsRefEventEnvelopes(bb:flatbuffers.ByteBuffer, obj?:RefEventEnvelopes):RefEventEnvelopes {
   bb.setPosition(bb.position() + flatbuffers.SIZE_PREFIX_LENGTH);
-  return (obj || new ClaimedEventEmbeds()).__init(bb.readInt32(bb.position()) + bb.position(), bb);
+  return (obj || new RefEventEnvelopes()).__init(bb.readInt32(bb.position()) + bb.position(), bb);
 }
 
 static bufferHasIdentifier(bb:flatbuffers.ByteBuffer):boolean {
@@ -39,7 +39,7 @@ entriesLength():number {
   return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
 }
 
-static startClaimedEventEmbeds(builder:flatbuffers.Builder) {
+static startRefEventEnvelopes(builder:flatbuffers.Builder) {
   builder.startObject(1);
 }
 
@@ -59,22 +59,22 @@ static startEntriesVector(builder:flatbuffers.Builder, numElems:number) {
   builder.startVector(4, numElems, 4);
 }
 
-static endClaimedEventEmbeds(builder:flatbuffers.Builder):flatbuffers.Offset {
+static endRefEventEnvelopes(builder:flatbuffers.Builder):flatbuffers.Offset {
   const offset = builder.endObject();
   return offset;
 }
 
-static finishClaimedEventEmbedsBuffer(builder:flatbuffers.Builder, offset:flatbuffers.Offset) {
+static finishRefEventEnvelopesBuffer(builder:flatbuffers.Builder, offset:flatbuffers.Offset) {
   builder.finish(offset, 'NEMB');
 }
 
-static finishSizePrefixedClaimedEventEmbedsBuffer(builder:flatbuffers.Builder, offset:flatbuffers.Offset) {
+static finishSizePrefixedRefEventEnvelopesBuffer(builder:flatbuffers.Builder, offset:flatbuffers.Offset) {
   builder.finish(offset, 'NEMB', true);
 }
 
-static createClaimedEventEmbeds(builder:flatbuffers.Builder, entriesOffset:flatbuffers.Offset):flatbuffers.Offset {
-  ClaimedEventEmbeds.startClaimedEventEmbeds(builder);
-  ClaimedEventEmbeds.addEntries(builder, entriesOffset);
-  return ClaimedEventEmbeds.endClaimedEventEmbeds(builder);
+static createRefEventEnvelopes(builder:flatbuffers.Builder, entriesOffset:flatbuffers.Offset):flatbuffers.Offset {
+  RefEventEnvelopes.startRefEventEnvelopes(builder);
+  RefEventEnvelopes.addEntries(builder, entriesOffset);
+  return RefEventEnvelopes.endRefEventEnvelopes(builder);
 }
 }

@@ -30,7 +30,7 @@ final class EmbedKindProjectionTests: XCTestCase {
     private func freshHost() -> EmbedHost { EmbedHost() }
 
     /// Wrap a projection in the FFI-sidecar envelope shape (the shape the typed
-    /// decoder produces — see `TypedProjectionGlue.claimedEventEmbeds`).
+    /// decoder produces — see `TypedProjectionGlue.refEventEnvelopes`).
     private func envelope(_ projection: EmbedKindProjection, primaryId: String? = nil) -> EmbeddedEventEnvelope {
         EmbeddedEventEnvelope(uri: "", primaryId: primaryId ?? sampleId, projection: projection)
     }

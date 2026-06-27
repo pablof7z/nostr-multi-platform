@@ -87,7 +87,7 @@ MAPPINGS=(
     "crates/nmp-core/schema/settings_hub.fbs|settings_hub_generated.swift|SettingsHub.generated.swift"
     "crates/nmp-core/schema/signer_state.fbs|signer_state_generated.swift|SignerState.generated.swift"
     "crates/nmp-content/schema/content_tree.fbs|content_tree_generated.swift|ContentTree.generated.swift"
-    "crates/nmp-content/schema/embed_sidecar.fbs|embed_sidecar_generated.swift|ClaimedEventEmbeds.generated.swift"
+    "crates/nmp-content/schema/embed_sidecar.fbs|embed_sidecar_generated.swift|RefEventEnvelopes.generated.swift"
     "crates/nmp-feed/schema/feed_home.fbs|feed_home_generated.swift|FeedWindow.generated.swift"
     "crates/nmp-marmot/schema/marmot_messages.fbs|marmot_messages_generated.swift|MarmotMessages.generated.swift"
     "crates/nmp-marmot/schema/marmot_snapshot.fbs|marmot_snapshot_generated.swift|MarmotSnapshot.generated.swift"

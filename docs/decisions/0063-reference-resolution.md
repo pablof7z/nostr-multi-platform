@@ -335,6 +335,14 @@ grounded in master, not aspiration:
   single-entry `KCEV` row-payload codec for one `refs.event` row; it is not a
   live whole-map projection. `profile_card.fbs` / `profile.fbs` are retained as
   the profile row payload codec.
+- **Derived embed envelopes:** `refs.event.envelopes` is the only render-envelope
+  sidecar for event embeds. Its `RefEventEnvelopes` FlatBuffer (`NEMB`) is
+  mechanically derived from the merged `refs.event` row store through
+  `nmp-content::resolve_embed_projection`; it is not populated from
+  `claimed_events` and is not an authoritative event source. Typed-frame shells
+  decode this derived map only to avoid duplicating kind dispatch and tag
+  parsing in Swift/Kotlin/TS. The legacy public key name
+  `claimed_event_embeds` is retired.
 - **Declared keys:** `KERNEL_BUILTIN_PROJECTION_KEYS`
   (`kernel/update/builtin_projection_keys.generated.rs`) loses the four keys and gains
   `refs.profile` / `refs.event`; `nmp-codegen`'s `SNAPSHOT_PROJECTIONS` registry and

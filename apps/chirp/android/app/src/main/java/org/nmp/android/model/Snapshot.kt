@@ -86,11 +86,11 @@ data class SnapshotProjections(
     // branching on raw protocol strings.
     @SerialName("relay_diagnostics") val relayDiagnostics: RelayDiagnosticsSnapshot? = null,
     // #1283 / #1335 item 2: typed NEMB embed sidecar — decoded by
-    // [TypedEmbedSidecarDecoder] from the `claimed_event_embeds` typed projection.
+    // [TypedEmbedSidecarDecoder] from the `refs.event.envelopes` typed projection.
     // Empty map when the sidecar is absent (ADR-0037 Commitment 4 fail-closed).
     // The map is keyed by `primary_id` (event-id hex or `kind:pubkey:d` coord).
     // DECODE-ONLY: the kernel resolves embed projections; this shell is D0-clean.
-    @SerialName("claimed_event_embeds") val claimedEventEmbeds: Map<String, EmbedEnvelopeEntry> = emptyMap(),
+    @SerialName("refs.event.envelopes") val refEventEnvelopes: Map<String, EmbedEnvelopeEntry> = emptyMap(),
     @SerialName("nmp.follow_list") val followList: FollowListSnapshot = FollowListSnapshot(),
 )
 
@@ -344,7 +344,7 @@ data class SignerState(
 //
 // Android peer of iOS `EmbeddedEventEnvelope` + `EmbedKindProjection`
 // (apps/chirp/ios/.../EmbedKindProjection.swift). Decoded ONLY from the typed
-// `claimed_event_embeds` (`NEMB`) sidecar by [TypedEmbedSidecarDecoder]. The
+// `refs.event.envelopes` (`NEMB`) sidecar by [TypedEmbedSidecarDecoder]. The
 // kernel resolves all embed projections on the Rust side (D0-clean: zero kind
 // dispatch, zero tag/JSON parsing in Kotlin). Plain-text `content` for
 // text-body variants is extracted from the NFCT sub-buffer by reusing the
@@ -353,7 +353,7 @@ data class SignerState(
 /**
  * Decoded typed envelope for one embedded event — the Kotlin peer of
  * iOS `EmbeddedEventEnvelope` and the FFI sidecar's `EmbeddedEventEnvelope`.
- * Keyed by `primaryId` in [SnapshotProjections.claimedEventEmbeds].
+ * Keyed by `primaryId` in [SnapshotProjections.refEventEnvelopes].
  * Not a JSON projection — populated exclusively from the typed NEMB sidecar.
  */
 @Serializable

@@ -1,7 +1,7 @@
 package org.nmp.android
 
 import android.util.Log
-import nmp.embed.ClaimedEventEmbeds
+import nmp.embed.RefEventEnvelopes
 import nmp.embed.EmbedProjectionKind
 import nmp.embed.EmbeddedEventEnvelope as FbEmbeddedEventEnvelope
 import nmp.embed.EmbedKindProjection as FbEmbedKindProjection
@@ -18,9 +18,9 @@ import java.nio.ByteOrder
 private const val TAG = "TypedEmbedSidecarDecoder"
 
 /**
- * Typed-first decoder for the kernel-owned `claimed_event_embeds` snapshot
- * projection (`NEMB` / `nmp.embed.ClaimedEventEmbeds`) — the Android peer of
- * iOS `TypedProjectionGlueEmbed.claimedEventEmbeds(_:)`.
+ * Typed-first decoder for the kernel-owned `refs.event.envelopes` snapshot
+ * projection (`NEMB` / `nmp.embed.RefEventEnvelopes`) — the Android peer of
+ * iOS `TypedProjectionGlueEmbed.refEventEnvelopes(_:)`.
  *
  * DECODE-ONLY: the kernel resolves all embed projections on the Rust side
  * (`crates/nmp-content/src/embed_projection/`). Zero kind dispatch, zero
@@ -39,16 +39,16 @@ private const val TAG = "TypedEmbedSidecarDecoder"
 object TypedEmbedSidecarDecoder {
 
     /** Projection key published by the kernel (`TypedProjection.key`). */
-    const val PROJECTION_KEY = "claimed_event_embeds"
+    const val PROJECTION_KEY = "refs.event.envelopes"
 
     /** Schema id carried in `TypedPayload.schema_id`. */
-    const val SCHEMA_ID = "nmp.embed"
+    const val SCHEMA_ID = "refs.event.envelopes"
 
-    /** FlatBuffers `file_identifier` for `ClaimedEventEmbeds`. */
+    /** FlatBuffers `file_identifier` for `RefEventEnvelopes`. */
     const val FILE_IDENTIFIER = "NEMB"
 
     /**
-     * Extract and decode the `claimed_event_embeds` typed payload from a list
+     * Extract and decode the `refs.event.envelopes` typed payload from a list
      * of [TypedProjectionEnvelope]s lifted off a snapshot frame.
      *
      * Returns an empty map when the matching NEMB entry is absent or undecodable
@@ -66,7 +66,7 @@ object TypedEmbedSidecarDecoder {
      * Decode a raw `NEMB` FlatBuffers buffer into a `[primaryId → EmbedEnvelopeEntry]`
      * map.
      *
-     * Mirrors iOS `TypedProjectionGlueEmbed.claimedEventEmbeds(_:)`. Verifies
+     * Mirrors iOS `TypedProjectionGlueEmbed.refEventEnvelopes(_:)`. Verifies
      * the `NEMB` file identifier before reading any fields; returns an empty map
      * on any parse error so the host renders empty-state, never stale values
      * (D1: fail closed, never crash). Raw values only — no display helpers,
@@ -76,11 +76,11 @@ object TypedEmbedSidecarDecoder {
         if (bytes.isEmpty()) return emptyMap()
         return try {
             val bb = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
-            if (!ClaimedEventEmbeds.ClaimedEventEmbedsBufferHasIdentifier(bb)) {
+            if (!RefEventEnvelopes.RefEventEnvelopesBufferHasIdentifier(bb)) {
                 Log.e(TAG, "NEMB file_identifier missing (${bytes.size} bytes)")
                 return emptyMap()
             }
-            val root = ClaimedEventEmbeds.getRootAsClaimedEventEmbeds(bb)
+            val root = RefEventEnvelopes.getRootAsRefEventEnvelopes(bb)
             val result = HashMap<String, EmbedEnvelopeEntry>(root.entriesLength * 2)
             for (i in 0 until root.entriesLength) {
                 val entry: FbEmbeddedEventEnvelope = root.entries(i) ?: continue

@@ -402,13 +402,13 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         presence_policy: PresencePolicy::None,
     },
     ProjectionContract {
-        key: "claimed_event_embeds",
+        key: "refs.event.envelopes",
         tier: ProjectionTier::HostRegistered,
         producer: "nmp-ffi embed_sidecar",
-        schema_id: "claimed_event_embeds",
+        schema_id: "refs.event.envelopes",
         file_identifier: "NEMB",
         // nmp-content wire/embed_sidecar_fb::SCHEMA_VERSION
-        version: 1,
+        version: 2,
         declaration_policy: DeclarationPolicy::RegistrationGated,
         dependency_versions: &[],
         presence_policy: PresencePolicy::None,

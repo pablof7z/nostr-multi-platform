@@ -106,12 +106,12 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     /// Typed NIP-17 DM cluster sidecars (`NDMI` / `NDRL`). `typedDmInbox`
     /// feeds the `dmInbox` store; `typedDmRelayList` is read through the
     /// `dmRelayList` accessor (no consumer yet — wired for parity).
-    /// Issue #1283 Phase 1: the embed resolver moved to Rust. `typedClaimedEventEmbeds`
-    /// carries the kernel-resolved `claimed_event_embeds` (`NEMB`) map that feeds
+    /// Issue #1283 Phase 1: the embed resolver moved to Rust. `typedRefEventEnvelopes`
+    /// carries the kernel-resolved `refs.event.envelopes` (`NEMB`) map that feeds
     /// `EmbedHost`; raw event refs flow through the keyed `refs.event` cache.
     @Published var typedDmInbox: DmInboxSnapshot?
     @Published var typedDmRelayList: DmRelayListSnapshot?
-    @Published var typedClaimedEventEmbeds: [String: EmbeddedEventEnvelope]?
+    @Published var typedRefEventEnvelopes: [String: EmbeddedEventEnvelope]?
 
     /// NIP-46 cluster typed sidecars (`bunker_handshake` / `nip46_onboarding`).
     /// `nil` ⇒ the `bunkerHandshake` / `nip46Onboarding` accessors return nil.
