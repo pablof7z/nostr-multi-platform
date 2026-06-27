@@ -2,7 +2,7 @@ name: chirp-web-acceptance
 
 # Real-relay acceptance suite for the Chirp Web rebuild (#2038 item E).
 #
-# Two tiers, deliberately split by cost and by the wasm-toolchain constraint:
+# Two tiers, deliberately split by cost:
 #
 #   pr-smoke  (BLOCKING, every web PR/push)
 #     Typechecks the app + the e2e suite and runs the wasm-FREE browser
@@ -18,15 +18,13 @@ name: chirp-web-acceptance
 #     boot, fixture-relay connect + ingest, publish round-trip).
 #
 #     Why this is NOT a PR-blocking gate (honest constraint, do-not-silently-skip):
-#       The wasm artifact needs a C toolchain that can compile secp256k1-sys to
-#       wasm32. ubuntu-latest ships neither clang-wasm nor the Emscripten SDK by
-#       default — the SAME constraint documented in browser-runtime.yml, whose
-#       `wasm32-smoke` job is non-blocking for exactly this reason. Installing a
-#       wasm C toolchain + a release wasm-pack build of nmp-core adds several
-#       minutes to every run, so the full browser e2e runs on a nightly schedule
-#       (plus workflow_dispatch for on-demand verification of a web/chirp PR)
-#       rather than blocking every PR. The coverage is NOT skipped — it runs
-#       nightly and can be triggered manually on any branch.
+#       browser-runtime.yml blocks PRs on the full runtime's wasm32 compile
+#       graph. This job goes further: it builds the release wasm artifact,
+#       builds the Chirp app, installs Playwright, and runs the full browser
+#       e2e suite. That cost belongs on a nightly schedule (plus
+#       workflow_dispatch for on-demand verification of a web/chirp PR) rather
+#       than blocking every PR. The coverage is NOT skipped — it runs nightly
+#       and can be triggered manually on any branch.
 
 on:
   # Blocking smoke runs on web changes.
@@ -140,11 +138,11 @@ jobs:
           key: chirp-web-acceptance-wasm
 
       # secp256k1-sys needs a C compiler that can target wasm32. clang ships a
-      # wasm backend; lld provides wasm-ld. Point the wasm32 C build at them.
-      - name: Install wasm C toolchain (clang + lld)
+      # wasm backend, lld provides wasm-ld, and llvm provides llvm-ar.
+      - name: Install wasm C toolchain (clang + lld + llvm-ar)
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang lld
+          sudo apt-get install -y clang lld llvm
 
       - name: Install wasm-pack
         run: cargo install wasm-pack --locked || cargo install wasm-pack
