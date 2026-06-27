@@ -16,7 +16,10 @@ fn mint_correlation_id_is_non_empty_and_unique() {
     let b = mint_correlation_id();
     assert!(!a.is_empty());
     assert!(!b.is_empty());
-    assert_ne!(a, b, "the monotone counter must not repeat within a process");
+    assert_ne!(
+        a, b,
+        "the monotone counter must not repeat within a process"
+    );
     assert!(a.starts_with("chirp-"));
 }
 
@@ -56,6 +59,10 @@ fn every_dispatched_namespace_encodes_to_typed_payload() {
             r#"{"recipient_pubkey":"deadbeef","amount_msats":1000}"#,
         ),
         (
+            "nmp.app.chirp.zap_identifier",
+            r#"{"recipient_identifier":"alice@example.com","amount_msats":21000,"comment":"hi"}"#,
+        ),
+        (
             "nmp.nip65.publish_relay_list",
             r#"{"relays":[{"url":"wss://relay.example","role":"read,write"}]}"#,
         ),
@@ -71,7 +78,10 @@ fn every_dispatched_namespace_encodes_to_typed_payload() {
             "nmp.nip01.visible_note_relations",
             r#"{"op":"claim","event_id":"abc","consumer_id":"row-0"}"#,
         ),
-        ("nmp.nip29.discover", r#"{"relay_url":"wss://groups.example"}"#),
+        (
+            "nmp.nip29.discover",
+            r#"{"relay_url":"wss://groups.example"}"#,
+        ),
         (
             "nmp.nip29.create_public_group",
             r#"{"group":{"host_relay_url":"wss://groups.example","local_id":"g1"},"name":"Group"}"#,

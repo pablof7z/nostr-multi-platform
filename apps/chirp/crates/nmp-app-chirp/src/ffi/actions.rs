@@ -7,9 +7,9 @@
 //! substrate; this file owns the **Chirp-specific** registration that the
 //! template intentionally does not ship.
 //!
-//! Today: just NIP-29 (relay-based group chat). A notes-only or DM-only
-//! Nostr app on top of NMP would not register these — group chat is not
-//! part of the canonical NMP composition.
+//! Today: NIP-29 (relay-based group chat) plus Chirp's raw-identifier zap
+//! composition action. A notes-only or DM-only Nostr app on top of NMP would not
+//! register these - they are not part of the canonical NMP composition.
 //!
 //! # History
 //!
@@ -51,4 +51,13 @@ pub(super) fn register_nip29_actions(app: &mut NmpApp) {
     // WasmRuntime) can surface the error. Here we let the tracing log stand;
     // a collision means double-init, which the tracing error will surface.
     let _ = nmp_nip29::register_actions(app);
+}
+
+/// Register Chirp's app-owned raw identifier zap action.
+///
+/// The action composes `nmp-nip05` resolution with the existing `nmp-nip57`
+/// zap protocol command. It lives here rather than in `nmp-nip57` so protocol
+/// crates do not import sibling protocol crates.
+pub(super) fn register_chirp_zap_identifier_action(app: &mut NmpApp) {
+    crate::zap_identifier::register_zap_identifier_default(app);
 }

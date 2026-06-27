@@ -95,6 +95,10 @@ nmp-nip02 = { path = "../../../../crates/nmp-nip02" }
 nmp-nip25 = { path = "../../../../crates/nmp-nip25" }
 # NIP-17 DM action input type used by Chirp's Rust-owned action-spec builders.
 nmp-nip17 = { path = "../../../../crates/nmp-nip17" }
+# NIP-05 pure parser + native `.well-known/nostr.json` resolver. Chirp uses this
+# only from its app-owned zap-identifier composition action; `nmp-nip57` remains
+# the protocol zap crate and does not depend on NIP-05.
+nmp-nip05 = { path = "../../../../crates/nmp-nip05", features = ["native"] }
 # NIP-29 relay-based groups. Chirp registers the crate's typed
 # `JoinRequestAction` `ActionModule` against the kernel action registry —
 # proving the host-extensibility seam works for NIP-crate modules, not just
@@ -126,6 +130,7 @@ nmp-threading = { path = "../../../../crates/nmp-threading" }
 # Optional + feature-gated (`marmot`): deferred post-v1, so the default-off
 # build excludes it.
 nmp-marmot = { path = "../../../../crates/nmp-marmot", optional = true }
+flatbuffers = { workspace = true }
 # `nostr` reconstructs typed `Event` / `Keys` / `PublicKey` / `RelayUrl`
 # values from the C-ABI JSON and builds the kind:444 message rumor.
 # Pinned to the workspace `0.44` graph (nmp-core + mdk-core re-export the

@@ -44,6 +44,34 @@ enum CommandResult {
     },
 }
 
+trait ZapCommandRuntime {
+    fn zap_identifier(
+        &self,
+        recipient_identifier: &str,
+        amount_msats: u64,
+        target_event_id: Option<&str>,
+        comment: Option<&str>,
+    ) -> Result<String, String>;
+}
+
+impl ZapCommandRuntime for AppRuntime {
+    fn zap_identifier(
+        &self,
+        recipient_identifier: &str,
+        amount_msats: u64,
+        target_event_id: Option<&str>,
+        comment: Option<&str>,
+    ) -> Result<String, String> {
+        AppRuntime::zap_identifier(
+            self,
+            recipient_identifier,
+            amount_msats,
+            target_event_id,
+            comment,
+        )
+    }
+}
+
 fn help_text() -> Result<CommandResult, String> {
     Ok(CommandResult::Status(
         "commands: account profile relay dm-relays wallet zap dm group mls search outbox tab"
@@ -166,15 +194,24 @@ fn wallet(rest: &str, runtime: &AppRuntime) -> Result<CommandResult, String> {
     }
 }
 
-/// `:zap <lightning-address> <sats> [comment]` — dispatches
-/// `nmp.nip57.zap` with the resolved Nostr pubkey and sats→msats
-/// conversion. Rust owns the LNURL fetch and NWC pay-invoice chain; the
-/// TUI only builds and dispatches the command input.
+/// `:zap <nip05-or-lightning-address> <sats> [comment]` — dispatches a
+/// Rust-owned zap intent with the raw identifier and sats→msats conversion.
+/// NIP-05 lookup, LNURL fetch, and NWC pay-invoice execution stay in Rust.
 fn zap(rest: &str, runtime: &AppRuntime) -> Result<CommandResult, String> {
-    let (address, rest) = first_word(rest);
-    require(address, "zap <lightning-address> <sats> [comment]")?;
+    zap_with(rest, runtime)
+}
+
+fn zap_with(rest: &str, runtime: &impl ZapCommandRuntime) -> Result<CommandResult, String> {
+    let (identifier, rest) = first_word(rest);
+    require(
+        identifier,
+        "zap <nip05-or-lightning-address> <sats> [comment]",
+    )?;
     let (sats_str, comment_rest) = first_word(rest);
-    require(sats_str, "zap <lightning-address> <sats> [comment]")?;
+    require(
+        sats_str,
+        "zap <nip05-or-lightning-address> <sats> [comment]",
+    )?;
     let sats: u64 = sats_str
         .parse()
         .map_err(|_| "sats must be a positive integer".to_string())?;
@@ -183,51 +220,14 @@ fn zap(rest: &str, runtime: &AppRuntime) -> Result<CommandResult, String> {
     }
     let comment = nonempty(comment_rest).map(str::to_string);
 
-    if !address.contains('@') {
-        return Err("zap requires a lightning address (user@domain)".to_string());
-    }
-    let pubkey = resolve_nip05_pubkey(address)?;
-
-    let cid = runtime.zap(
-        &pubkey,
-        sats * 1000,
+    let cid = runtime.zap_identifier(
+        identifier,
+        sats.checked_mul(1000)
+            .ok_or_else(|| "zap amount is too large".to_string())?,
         None,
         comment.as_deref(),
-        Some(address),
     )?;
-    Ok(action(cid, &format!("zap {sats} sat → {address}")))
-}
-
-/// Resolve a NIP-05 lightning address (`user@domain`) to a hex Nostr
-/// pubkey. Performs the canonical NIP-05 lookup:
-/// `GET https://{domain}/.well-known/nostr.json?name={user}` and reads
-/// `names[user]`. 8s timeout — the actor thread is not blocked because
-/// `:zap` runs on the TUI event loop, but a slow well-known endpoint
-/// must not freeze the UI either.
-fn resolve_nip05_pubkey(lud16: &str) -> Result<String, String> {
-    let (user, domain) = lud16
-        .split_once('@')
-        .ok_or_else(|| format!("invalid lightning address: {lud16}"))?;
-    if user.is_empty() || domain.is_empty() {
-        return Err(format!("invalid lightning address: {lud16}"));
-    }
-    let url = format!("https://{domain}/.well-known/nostr.json?name={user}");
-    let agent = ureq::AgentBuilder::new()
-        .timeout(std::time::Duration::from_secs(8))
-        .build();
-    let resp = agent
-        .get(&url)
-        .call()
-        .map_err(|e| format!("NIP-05 fetch failed: {e}"))?;
-    let json: Value = resp
-        .into_json()
-        .map_err(|e| format!("NIP-05 JSON parse error: {e}"))?;
-    json.get("names")
-        .and_then(|n| n.get(user))
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty())
-        .map(str::to_string)
-        .ok_or_else(|| format!("NIP-05 did not return a pubkey for {user}@{domain}"))
+    Ok(action(cid, &format!("zap {sats} sat -> {identifier}")))
 }
 
 fn dm(rest: &str, runtime: &AppRuntime) -> Result<CommandResult, String> {
@@ -419,5 +419,80 @@ fn truncate(value: &str) -> String {
         compact
     } else {
         format!("{}...", compact.chars().take(117).collect::<String>())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::RefCell;
+
+    #[derive(Debug, Eq, PartialEq)]
+    struct ZapCall {
+        recipient_identifier: String,
+        amount_msats: u64,
+        target_event_id: Option<String>,
+        comment: Option<String>,
+    }
+
+    #[derive(Default)]
+    struct RecordingZapRuntime {
+        calls: RefCell<Vec<ZapCall>>,
+    }
+
+    impl ZapCommandRuntime for RecordingZapRuntime {
+        fn zap_identifier(
+            &self,
+            recipient_identifier: &str,
+            amount_msats: u64,
+            target_event_id: Option<&str>,
+            comment: Option<&str>,
+        ) -> Result<String, String> {
+            self.calls.borrow_mut().push(ZapCall {
+                recipient_identifier: recipient_identifier.to_string(),
+                amount_msats,
+                target_event_id: target_event_id.map(str::to_string),
+                comment: comment.map(str::to_string),
+            });
+            Ok("cid-zap".to_string())
+        }
+    }
+
+    #[test]
+    fn zap_identifier_command_dispatches_raw_identifier() {
+        let runtime = RecordingZapRuntime::default();
+        let result = zap_with("alice@example.com 21 hi", &runtime).unwrap();
+        match result {
+            CommandResult::Action {
+                correlation_id,
+                label,
+            } => {
+                assert_eq!(correlation_id, "cid-zap");
+                assert_eq!(label, "zap 21 sat -> alice@example.com");
+            }
+            CommandResult::Status(status) => panic!("expected action, got status {status}"),
+        }
+        assert_eq!(
+            runtime.calls.into_inner(),
+            vec![ZapCall {
+                recipient_identifier: "alice@example.com".to_string(),
+                amount_msats: 21_000,
+                target_event_id: None,
+                comment: Some("hi".to_string()),
+            }]
+        );
+    }
+
+    #[test]
+    fn zap_command_source_contains_no_shell_nip05_http_resolver() {
+        let source = include_str!("commands.rs");
+        // Keep the source gate readable without embedding the exact old
+        // resolver tokens in this test's own source text.
+        let old_nip05_path = [".well-known/", "nostr", ".json"].concat();
+        let old_http_client = ["ureq", "::", "AgentBuilder"].concat();
+        let old_names_key = ["\"", "na", "mes", "\""].concat();
+        assert!(!source.contains(&old_nip05_path));
+        assert!(!source.contains(&old_http_client));
+        assert!(!source.contains(&old_names_key));
     }
 }

@@ -77,6 +77,7 @@ fn encode_payload_for_namespace(namespace: &str, json: &str) -> Result<Vec<u8>, 
             encode::<nmp_nip17::PublishDmRelayListInput>(namespace, json)
         }
         "nmp.nip57.zap" => encode::<nmp_nip57::ZapInput>(namespace, json),
+        "nmp.app.chirp.zap_identifier" => encode::<crate::ZapIdentifierInput>(namespace, json),
         "nmp.nip65.publish_relay_list" => {
             encode::<nmp_router::PublishRelayListInput>(namespace, json)
         }
