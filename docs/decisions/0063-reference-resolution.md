@@ -337,8 +337,10 @@ grounded in master, not aspiration:
   the profile row payload codec.
 - **Derived embed envelopes:** `refs.event.envelopes` is the only render-envelope
   sidecar for event embeds. Its `RefEventEnvelopes` FlatBuffer (`NEMB`) is
-  mechanically derived from the merged `refs.event` row store through
-  `nmp-content::resolve_embed_projection`; it is not populated from
+  mechanically derived from the merged `refs.event` row store by
+  `nmp_content::derive_ref_event_envelopes` /
+  `derive_ref_event_store_envelopes`, whose only kind-dispatch step is
+  `nmp-content::resolve_embed_projection`. It is not populated from
   `claimed_events` and is not an authoritative event source. Typed-frame shells
   decode this derived map only to avoid duplicating kind dispatch and tag
   parsing in Swift/Kotlin/TS. The legacy public key name

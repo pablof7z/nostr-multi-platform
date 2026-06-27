@@ -313,6 +313,58 @@ fn refs_event_clear_drops_envelope_from_refs_event_envelopes_json() {
 }
 
 #[test]
+fn malformed_refs_event_row_does_not_emit_false_envelope() {
+    let primary_id = "5555555555555555555555555555555555555555555555555555555555555555";
+    let row = ClaimedEventRow {
+        primary_id: primary_id.to_string(),
+        id: primary_id.to_string(),
+        author_pubkey: String::new(),
+        kind: 1,
+        created_at: 1234,
+        tags: Vec::new(),
+        content: "malformed row".to_string(),
+        content_tree_bytes: Vec::new(),
+        signed_event_json: None,
+    };
+    let row_payload = encode_claimed_events(&ClaimedEventsModel {
+        entries: vec![(primary_id.to_string(), row)],
+    });
+    let frame = encode_snapshot_frame(
+        &SnapshotEnvelope {
+            running: true,
+            update_kind: "ViewBatch".to_string(),
+            session_id: 1,
+            ..Default::default()
+        },
+        &[TypedProjectionData {
+            key: REFS_EVENT_KEY.to_string(),
+            schema_id: REFS_EVENT_KEY.to_string(),
+            schema_version: 1,
+            file_identifier: String::new(),
+            payload: encode_ref_row_delta_batch(&RefRowDeltaBatch {
+                namespace: "event".to_string(),
+                baseline: true,
+                rows: vec![RefRow::changed(primary_id, 1, row_payload)],
+            }),
+            ..Default::default()
+        }],
+    );
+
+    let mut profiles = RefProfileStore::new();
+    let mut events = RefEventStore::new();
+    let value: Value = serde_json::from_str(
+        &snapshot_json_from_update_frame(&frame, &mut profiles, &mut events).expect("decode"),
+    )
+    .expect("json");
+
+    assert_eq!(
+        value["projections"][EMBED_SIDECAR_PROJECTION_KEY],
+        json!({}),
+        "malformed refs.event rows must fail closed in refs.event.envelopes"
+    );
+}
+
+#[test]
 fn profile_card_json_adds_gallery_display_fields() {
     let card = ProfileCardModel {
         pubkey: "0000000000000000000000000000000000000000000000000000000000000000".to_string(),

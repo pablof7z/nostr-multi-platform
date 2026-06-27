@@ -35,11 +35,14 @@ updates whose payload is raw event data, and hosts merge those rows into a
 
 `refs.event.envelopes` is a derived render projection. It is emitted only by
 composition roots that can see the merged `refs.event` store and `nmp-content`
-(`nmp-ffi`, browser runtime). It carries pre-resolved
-`primary_id -> EmbeddedEventEnvelope` data for typed-frame shells and component
-registries that cannot run Rust resolver code locally. It is not a second source
-of truth and must never be populated from legacy whole-map event claim
-projections.
+(`nmp-ffi`, browser runtime, app Rust proof hosts). The reusable derivation path
+is `nmp_content::derive_ref_event_envelopes` or
+`nmp_content::derive_ref_event_store_envelopes`, which turns the merged
+`refs.event` rows into pre-resolved `primary_id -> EmbeddedEventEnvelope` data
+through `resolve_embed_projection`. Typed-frame shells and component registries
+consume that sidecar because they cannot run Rust resolver code locally. It is
+not a second source of truth and must never be populated from legacy whole-map
+event claim projections.
 
 Renderers consume resolved data from snapshots and do not open ad hoc platform
 subscription loops per visible card.

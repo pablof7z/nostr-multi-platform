@@ -58,7 +58,7 @@ role = "source"
 id = "tui/content-kind-registry"
 version = "0.1.0"
 target = "tui"
-description = "Ratatui kind-dispatch registry for embedded Nostr events, including default short-note and unknown-kind renderers."
+description = "Ratatui kind-dispatch registry for embedded Nostr events. Hosts pass Rust-derived refs.event.envelopes from authoritative refs.event rows; widgets only render typed envelopes."
 dependencies = ["tui/content-core"]
 [[components.files]]
 source = "tui/content-kind-registry/mod.rs"

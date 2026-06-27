@@ -104,7 +104,7 @@ export const embedComponents: Component[] = [
         version: "0.1.0",
         dependencies: ["content-kind-registry"],
         longDescription:
-          "`<NostrArticleCard article={...} />` renders a resolved kind:30023 inline: a 16:9 hero image, the title headline, an optional summary, and an author byline (avatar + name). The host hydrates the model from the resolved `refs.event` article projection; per-kind dispatch lives in `content-kind-registry`'s `NostrEmbeddedEvent`. Verified live in the NMP web gallery against the real showcase article (author byline gated on the kernel resolving the author's kind:0 — never an unresolved 'unknown').",
+          "`<NostrArticleCard article={...} />` renders a resolved kind:30023 inline: a 16:9 hero image, the title headline, an optional summary, and an author byline (avatar + name). The host hydrates the model from the `ArticleProjection` inside derived `refs.event.envelopes`; per-kind dispatch lives in `content-kind-registry`'s `NostrEmbeddedEvent`. Verified live in the NMP web gallery against the real showcase article (author byline gated on the kernel resolving the author's kind:0 — never an unresolved 'unknown').",
         files: [
           { source: "web/content-kind-30023/NostrArticleCard.tsx", target: "src/components/nostr-content/NostrArticleCard.tsx", role: "source", content: webArticleCardTsx },
         ],
@@ -195,7 +195,7 @@ export const embedComponents: Component[] = [
         version: "0.1.0",
         dependencies: ["content-quote-card"],
         longDescription:
-          "Web resolves the referenced `nevent` and renders the resolved kind:1 note as a `<NostrQuoteCard quote={...} />` — author header (avatar + name + relative time) above the content preview. The host hydrates the model from the resolved `refs.event` short-note projection; the card only renders. Verified live in the NMP web gallery against the real showcase note.",
+          "Web resolves the referenced `nevent` and renders the resolved kind:1 note as a `<NostrQuoteCard quote={...} />` — author header (avatar + name + relative time) above the content preview. The host hydrates the model from the `ShortNoteProjection` inside derived `refs.event.envelopes`; the card only renders. Verified live in the NMP web gallery against the real showcase note.",
         files: [
           { source: "web/content-quote-card/NostrQuoteCard.tsx", target: "src/components/nostr-content/NostrQuoteCard.tsx", role: "source", content: webQuoteCardTsx },
         ],
@@ -266,7 +266,7 @@ export const embedComponents: Component[] = [
         version: "0.1.0",
         dependencies: ["content-kind-registry"],
         longDescription:
-          "`<NostrHighlightCard highlight={...} />` renders a resolved kind:9802 highlight: the highlighted text as a pull-quote in a yellow-accented box, an optional `context` line, and a source footer from the resolved projection fields. The host hydrates the model from the resolved `refs.event` highlight projection; dispatch lives in `content-kind-registry`. Verified live in the NMP web gallery against the real showcase highlight. Mirrors the SwiftUI/TUI `HighlightEmbed`.",
+          "`<NostrHighlightCard highlight={...} />` renders a resolved kind:9802 highlight: the highlighted text as a pull-quote in a yellow-accented box, an optional `context` line, and a source footer from the resolved projection fields. The host hydrates the model from the `HighlightProjection` inside derived `refs.event.envelopes`; dispatch lives in `content-kind-registry`. Verified live in the NMP web gallery against the real showcase highlight. Mirrors the SwiftUI/TUI `HighlightEmbed`.",
         files: [
           { source: "web/content-kind-9802/NostrHighlightCard.tsx", target: "src/components/nostr-content/NostrHighlightCard.tsx", role: "source", content: webHighlightCardTsx },
         ],

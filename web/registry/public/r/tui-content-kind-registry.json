@@ -2,7 +2,7 @@
   "name": "tui-content-kind-registry",
   "type": "registry:ui",
   "title": "Content Kind Registry (tui)",
-  "description": "Ratatui kind-dispatch registry for embedded Nostr events, including default short-note and unknown-kind renderers.",
+  "description": "Ratatui kind-dispatch registry for embedded Nostr events. Hosts pass Rust-derived refs.event.envelopes from authoritative refs.event rows; widgets only render typed envelopes.",
   "dependencies": [],
   "registryDependencies": [
     "tui-content-core"

@@ -3,15 +3,11 @@ use std::collections::BTreeMap;
 use serde_json::{json, Map, Value};
 
 use nmp_content::wire::EMBED_SIDECAR_PROJECTION_KEY;
-use nmp_content::{
-    resolve_embed_projection, EmbedKindProjection, EmbeddedEventEnvelope, RenderContext,
-    RenderContextWire,
-};
+use nmp_content::{derive_ref_event_envelopes, EmbeddedEventEnvelope};
 use nmp_core::refs::{RefEventStore, RefProfileStore, REFS_EVENT_KEY, REFS_PROFILE_KEY};
 use nmp_core::{
     decode_snapshot_envelope, decode_snapshot_typed_projections,
     display::{short_npub, to_npub},
-    substrate::KernelEvent,
     typed_projections::{
         decode_accounts, decode_relay_role_options, decode_signer_state, AccountsModel,
         ClaimedEventRow, ProfileCardModel, RelayRoleOptionsModel, SignerStateModel,
@@ -129,42 +125,13 @@ fn profile_card_json(card: &ProfileCardModel, pubkey: &str) -> Value {
 /// `refs.event` row-delta projection; kind dispatch stays in Rust via
 /// `nmp-content`.
 fn refs_event_envelopes_json(events: &BTreeMap<String, ClaimedEventRow>) -> Value {
-    let ctx = RenderContext::new();
-    let mut out = Map::with_capacity(events.len());
-    for (primary_id, row) in events {
-        let event = row_to_kernel_event(row);
-        let projection: EmbedKindProjection = resolve_embed_projection(&event, &ctx);
-        let env = build_envelope(primary_id, projection);
-        out.insert(primary_id.clone(), embedded_event_envelope_json(&env));
-    }
-    Value::Object(out)
-}
-
-fn row_to_kernel_event(row: &ClaimedEventRow) -> KernelEvent {
-    KernelEvent {
-        id: row.id.clone(),
-        author: row.author_pubkey.clone(),
-        kind: row.kind,
-        created_at: row.created_at,
-        tags: row.tags.clone(),
-        content: row.content.clone(),
-        relay_provenance: Vec::new(),
-    }
-}
-
-fn build_envelope(primary_id: &str, projection: EmbedKindProjection) -> EmbeddedEventEnvelope {
-    EmbeddedEventEnvelope {
-        uri: String::new(),
-        primary_id: primary_id.to_string(),
-        render_context: RenderContextWire {
-            depth: 0,
-            max_depth: 4,
-            visited: Vec::new(),
-        },
-        projection,
-        collapsed: false,
-        collapse_reason: None,
-    }
+    let envelopes = derive_ref_event_envelopes(events);
+    Value::Object(
+        envelopes
+            .iter()
+            .map(|(primary_id, env)| (primary_id.clone(), embedded_event_envelope_json(env)))
+            .collect(),
+    )
 }
 
 fn embedded_event_envelope_json(env: &EmbeddedEventEnvelope) -> Value {

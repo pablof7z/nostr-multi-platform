@@ -57,6 +57,33 @@ fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
+fn public_surface_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if path.file_name().is_some_and(|n| {
+                matches!(
+                    n.to_str(),
+                    Some("target" | "build" | ".gradle" | "node_modules" | "DerivedData")
+                )
+            }) {
+                continue;
+            }
+            public_surface_files(&path, out);
+        } else if path.extension().is_some_and(|ext| {
+            matches!(
+                ext.to_str(),
+                Some("rs" | "swift" | "kt" | "kts" | "ts" | "tsx" | "js" | "json")
+            )
+        }) {
+            out.push(path);
+        }
+    }
+}
+
 fn binary_contains(bytes: &[u8], needle: &[u8]) -> bool {
     bytes.windows(needle.len()).any(|window| window == needle)
 }
@@ -65,7 +92,7 @@ fn binary_contains(bytes: &[u8], needle: &[u8]) -> bool {
 /// in comments documenting their removal). Returns the code portion only.
 fn code_only(line: &str) -> &str {
     let trimmed = line.trim_start();
-    if trimmed.starts_with("//") {
+    if trimmed.starts_with("//") || trimmed.starts_with("/*") || trimmed.starts_with('*') {
         return "";
     }
     line
@@ -199,6 +226,39 @@ fn raw_wasm_feed_verb_dispatch_strings_are_not_routed() {
         violations.is_empty(),
         "retired raw wasm feed-verb dispatch strings reappeared in the router \
          (the public open_feed doorway is the only feed-open surface):\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn claimed_event_embeds_key_is_not_used_in_public_surfaces() {
+    let root = repo_root();
+    let mut files = Vec::new();
+    for sub in ["crates", "apps", "web"] {
+        public_surface_files(&root.join(sub), &mut files);
+    }
+    assert!(!files.is_empty(), "must scan public source surfaces");
+
+    let mut violations = Vec::new();
+    for file in &files {
+        if file.ends_with("tests/feed_public_surface_retired.rs") {
+            continue;
+        }
+        let Ok(text) = fs::read_to_string(file) else {
+            continue;
+        };
+        for (n, line) in text.lines().enumerate() {
+            if code_only(line).contains("claimed_event_embeds") {
+                violations.push(format!("{}:{}: {}", file.display(), n + 1, line.trim()));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "retired public projection key `claimed_event_embeds` reappeared in a \
+         production/public surface; use `refs.event.envelopes` derived from \
+         authoritative `refs.event` rows instead:\n{}",
         violations.join("\n")
     );
 }

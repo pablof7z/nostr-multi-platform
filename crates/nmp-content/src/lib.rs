@@ -51,9 +51,9 @@ pub mod wire;
 
 pub use context::{render_context_can_descend, RenderContext};
 pub use embed_projection::{
-    resolve_embed_projection, ArticleProjection, EmbedKindProjection, EmbeddedEventEnvelope,
-    HighlightProjection, ProfileProjection, RenderContextWire, ShortNoteProjection,
-    UnknownProjection,
+    derive_ref_event_envelopes, derive_ref_event_store_envelopes, resolve_embed_projection,
+    ArticleProjection, EmbedKindProjection, EmbeddedEventEnvelope, HighlightProjection,
+    ProfileProjection, RenderContextWire, ShortNoteProjection, UnknownProjection,
 };
 pub use embed_registry::{
     ClaimHandle, EmbedClaimDelta, EmbedClaimRegistry, EmbedClaimSpec, EmbedClaimState,

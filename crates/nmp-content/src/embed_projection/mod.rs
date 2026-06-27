@@ -8,12 +8,14 @@
 //! D0-clean: lives in nmp-content (a rendering sidecar), not nmp-core substrate.
 //! See ADR-0034 (`docs/decisions/0034-kind-dispatch-content-rendering.md`) for the full contract.
 
+mod derived;
 mod envelope;
 mod variants;
 
 #[cfg(test)]
 mod tests;
 
+pub use derived::{derive_ref_event_envelopes, derive_ref_event_store_envelopes};
 pub use envelope::{EmbeddedEventEnvelope, RenderContextWire};
 pub use variants::{
     ArticleProjection, EmbedKindProjection, HighlightProjection, ProfileProjection,
@@ -21,7 +23,9 @@ pub use variants::{
 };
 
 use nmp_core::substrate::KernelEvent;
-use nmp_kinds::{KIND_HIGHLIGHT, KIND_LONG_FORM_ARTICLE, KIND_PROFILE_METADATA, KIND_SHORT_TEXT_NOTE};
+use nmp_kinds::{
+    KIND_HIGHLIGHT, KIND_LONG_FORM_ARTICLE, KIND_PROFILE_METADATA, KIND_SHORT_TEXT_NOTE,
+};
 
 use crate::context::RenderContext;
 use crate::mode::RenderMode;

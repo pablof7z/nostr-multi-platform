@@ -107,7 +107,7 @@ role = "example"
 id = "swiftui/content-kind-registry"
 version = "0.1.0"
 target = "swiftui"
-description = "SwiftUI kind-dispatch registry for embedded Nostr events, including the embed chrome container, embedded-event view, default kind renderers, and the embed-host environment seam consumed by content-view."
+description = "SwiftUI kind-dispatch registry for embedded Nostr events. App roots bind a provider over Rust-derived refs.event.envelopes; components render that mirror without treating envelopes as event truth."
 dependencies = [
     "swiftui/content-core",
     "swiftui/user-avatar",
