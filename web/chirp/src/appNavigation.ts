@@ -58,13 +58,14 @@ const VIEW_COPY: Record<MainView, ViewCopy> = {
 };
 
 export function viewFromHash(hash: string): MainView {
-  if (hash === "" || hash === "#setup" || hash === "#signing") return "setup";
-  if (hash === "#saved") return "saved";
-  if (hash === "#search") return "search";
-  if (hash === "#notifications") return "notifications";
-  if (hash === "#groups") return "groups";
-  if (hash === "#offline") return "offline";
-  if (hash === "#workspaces" || hash === "#messages" || hash === "#wallet" || hash === "#moderation") {
+  const route = hash.split("?")[0];
+  if (route === "" || route === "#setup" || route === "#signing") return "setup";
+  if (route === "#saved") return "saved";
+  if (route === "#search") return "search";
+  if (route === "#notifications") return "notifications";
+  if (route === "#groups") return "groups";
+  if (route === "#offline") return "offline";
+  if (route === "#workspaces" || route === "#messages" || route === "#wallet" || route === "#moderation") {
     return "workspaces";
   }
   return "home";
