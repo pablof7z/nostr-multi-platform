@@ -29,6 +29,12 @@ type Proof = {
   tone: "good" | "warn" | "muted";
 };
 
+type JourneyAction = {
+  label: string;
+  href: string;
+  state: "ready" | "locked";
+};
+
 function hasAcceptedRelayReceipt(result: string | undefined): boolean {
   if (!result) return false;
   try {
@@ -121,9 +127,34 @@ function buildProofs(state: OnboardingState): Proof[] {
       tone: state.feedReady && state.feedCount > 0 ? "good" : "warn",
     },
     {
-      label: "Publishes",
+      label: "Proof",
       value: acceptedPublishes > 0 ? `${acceptedPublishes} accepted` : "none yet",
       tone: acceptedPublishes > 0 ? "good" : "muted",
+    },
+  ];
+}
+
+function buildJourneyActions(state: OnboardingState): JourneyAction[] {
+  return [
+    {
+      label: "Read feed",
+      href: "#feed",
+      state: state.runtimeConnected && state.feedReady ? "ready" : "locked",
+    },
+    {
+      label: "Find people",
+      href: "#search",
+      state: state.runtimeConnected ? "ready" : "locked",
+    },
+    {
+      label: "DMs",
+      href: "#messages",
+      state: state.signerConnected ? "ready" : "locked",
+    },
+    {
+      label: "Inspect proof",
+      href: "#diagnostics",
+      state: state.runtimeConnected ? "ready" : "locked",
     },
   ];
 }
@@ -168,6 +199,7 @@ function nextAction(steps: Step[]): NextAction {
 export function OnboardingPanel(props: { state: OnboardingState }) {
   const steps = () => buildSteps(props.state);
   const proofs = () => buildProofs(props.state);
+  const journeyActions = () => buildJourneyActions(props.state);
   const complete = () => steps().every((step) => step.status === "done");
   const completeCount = () => steps().filter((step) => step.status === "done").length;
   const action = () => nextAction(steps());
@@ -179,11 +211,14 @@ export function OnboardingPanel(props: { state: OnboardingState }) {
           <p class="panel-kicker">First run</p>
           <h2>{complete() ? "Chirp is ready" : "Get to a real session"}</h2>
           <p>
-            Start in read mode, connect an identity, then confirm signed actions
-            through relay verdicts and diagnostics.
+            Read from relays first, connect an identity when you are ready to
+            write, then confirm the signed path through relay verdicts.
           </p>
         </div>
         <span class="onboarding-progress">{completeCount()}/4</span>
+      </div>
+      <div class="onboarding-meter" aria-hidden="true">
+        <span style={{ width: `${(completeCount() / 4) * 100}%` }} />
       </div>
       <div class="onboarding-next" data-complete={complete() ? "true" : "false"}>
         <div>
@@ -193,6 +228,16 @@ export function OnboardingPanel(props: { state: OnboardingState }) {
         <a class="onboarding-action" href={action().href}>
           {action().label}
         </a>
+      </div>
+      <div class="onboarding-actions" aria-label="First-run workspaces">
+        <For each={journeyActions()}>
+          {(item) => (
+            <a href={item.href} data-state={item.state}>
+              <span>{item.label}</span>
+              <strong>{item.state === "ready" ? "Ready" : "Locked"}</strong>
+            </a>
+          )}
+        </For>
       </div>
       <div class="onboarding-proof-grid" aria-label="Session proof">
         <For each={proofs()}>

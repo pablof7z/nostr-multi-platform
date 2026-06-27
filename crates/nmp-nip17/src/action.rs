@@ -23,13 +23,16 @@
 //! re-derives the pubkey from the signing `Keys` at gift-wrap time, exactly
 //! as the NIP-29 actions do.
 
-use nmp_core::actor::ActorCommand;
+use nmp_core::actor::{ActorCommand, InterestsCommand};
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{DmInput, SendGiftWrappedDmCommand, build_dm_rumor};
+use crate::{
+    build_dm_rumor, peer_dm_relay_list_identity, peer_dm_relay_list_interest, DmInput,
+    SendGiftWrappedDmCommand,
+};
 
 /// Wire shape for `nmp.nip17.send` — the JSON a host passes to
 /// `nmp_app_dispatch_action`.
@@ -98,6 +101,51 @@ impl ActionModule for SendDmAction {
             recipient_pubkey: action.recipient_pubkey,
             correlation_id: Some(correlation_id.to_string()),
         })));
+        Ok(())
+    }
+}
+
+/// Wire shape for `nmp.nip17.hydrate_peer_relay_list`.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct HydratePeerRelayListInput {
+    /// DM peer whose kind:10050 relay list should be fetched.
+    pub peer_pubkey: String,
+}
+
+/// Opens the Rust-owned kind:10050 relay-list interest for a DM peer.
+///
+/// The host only names a visible conversation peer; the action owns the
+/// protocol details: kind:10050, one-shot lifecycle, indexer discovery flag,
+/// and stable subscription identity.
+pub struct HydratePeerRelayListAction;
+
+impl ActionModule for HydratePeerRelayListAction {
+    const NAMESPACE: &'static str = "nmp.nip17.hydrate_peer_relay_list";
+    type Action = HydratePeerRelayListInput;
+
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<HydratePeerRelayListInput as ActionPayload>::decode(bytes))
+    }
+
+    fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
+        if action.peer_pubkey.trim().is_empty() {
+            return Err(ActionRejection::Invalid("missing peer pubkey".into()));
+        }
+        Ok(())
+    }
+
+    fn execute(
+        &self,
+        _ctx: &ActionContext,
+        action: Self::Action,
+        _correlation_id: &str,
+        send: &dyn Fn(ActorCommand),
+    ) -> Result<(), String> {
+        let peer = action.peer_pubkey;
+        send(ActorCommand::Interests(InterestsCommand::EnsureInterest {
+            identity: peer_dm_relay_list_identity(&peer),
+            interest: peer_dm_relay_list_interest(&peer),
+        }));
         Ok(())
     }
 }
@@ -201,6 +249,33 @@ mod tests {
                 assert!(s.contains("cid-dm"), "correlation_id must thread through");
             }
             other => panic!("expected ActorCommand::Protocol, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn hydrate_peer_relay_list_emits_kind10050_interest() {
+        use std::cell::RefCell;
+
+        let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
+        HydratePeerRelayListAction
+            .execute(
+                &ActionContext::default(),
+                HydratePeerRelayListInput {
+                    peer_pubkey: RECIPIENT.to_string(),
+                },
+                "cid-hydrate",
+                &|cmd| captured.borrow_mut().push(cmd),
+            )
+            .expect("well-formed input executes");
+        let cmds = captured.into_inner();
+        assert_eq!(cmds.len(), 1);
+        match &cmds[0] {
+            ActorCommand::Interests(InterestsCommand::EnsureInterest { identity, interest }) => {
+                assert_eq!(*identity, peer_dm_relay_list_identity(RECIPIENT));
+                assert!(interest.shape.authors.contains(RECIPIENT));
+                assert!(interest.shape.kinds.contains(&10050));
+            }
+            other => panic!("expected peer relay-list interest, got {other:?}"),
         }
     }
 }

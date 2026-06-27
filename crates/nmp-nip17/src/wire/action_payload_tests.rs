@@ -2,7 +2,7 @@
 //! (ADR-0064 / S9 #1747). Every fail-closed gate asserts the NEGATIVE.
 
 use super::*;
-use crate::action::SendDmInput;
+use crate::action::{HydratePeerRelayListInput, SendDmInput};
 use crate::dm_relay_list::PublishDmRelayListInput;
 use nmp_core::substrate::{ActionPayload, ActionPayloadDecodeError};
 
@@ -52,7 +52,10 @@ fn send_dm_wrong_schema_version_is_rejected() {
     let err = SendDmInput::decode(&bytes).expect_err("bad version rejected");
     assert_eq!(
         err,
-        ActionPayloadDecodeError::SchemaVersionMismatch { found: 999, expected: SCHEMA_VERSION }
+        ActionPayloadDecodeError::SchemaVersionMismatch {
+            found: 999,
+            expected: SCHEMA_VERSION
+        }
     );
 }
 
@@ -94,7 +97,44 @@ fn publish_relay_list_wrong_schema_version_is_rejected() {
     let err = PublishDmRelayListInput::decode(&bytes).expect_err("bad version rejected");
     assert_eq!(
         err,
-        ActionPayloadDecodeError::SchemaVersionMismatch { found: 2, expected: SCHEMA_VERSION }
+        ActionPayloadDecodeError::SchemaVersionMismatch {
+            found: 2,
+            expected: SCHEMA_VERSION
+        }
+    );
+}
+
+// --- HydratePeerRelayListInput round-trips ----------------------------------
+
+#[test]
+fn hydrate_peer_relay_list_round_trips() {
+    let action = HydratePeerRelayListInput {
+        peer_pubkey: RECIPIENT.to_string(),
+    };
+    let decoded = HydratePeerRelayListInput::decode(&action.encode()).expect("decodes");
+    assert_eq!(decoded, action);
+}
+
+#[test]
+fn hydrate_peer_relay_list_wrong_schema_version_is_rejected() {
+    let mut fbb = flatbuffers::FlatBufferBuilder::new();
+    let peer = fbb.create_string(RECIPIENT);
+    let payload = hydrate_fb::HydratePeerRelayListPayload::create(
+        &mut fbb,
+        &hydrate_fb::HydratePeerRelayListPayloadArgs {
+            schema_version: 2,
+            peer_pubkey: Some(peer),
+        },
+    );
+    hydrate_fb::finish_hydrate_peer_relay_list_payload_buffer(&mut fbb, payload);
+    let bytes = fbb.finished_data().to_vec();
+    let err = HydratePeerRelayListInput::decode(&bytes).expect_err("bad version rejected");
+    assert_eq!(
+        err,
+        ActionPayloadDecodeError::SchemaVersionMismatch {
+            found: 2,
+            expected: SCHEMA_VERSION
+        }
     );
 }
 
@@ -108,6 +148,10 @@ fn malformed_buffers_are_rejected() {
     ));
     assert!(matches!(
         PublishDmRelayListInput::decode(&[]),
+        Err(ActionPayloadDecodeError::Malformed { .. })
+    ));
+    assert!(matches!(
+        HydratePeerRelayListInput::decode(&[]),
         Err(ActionPayloadDecodeError::Malformed { .. })
     ));
 }

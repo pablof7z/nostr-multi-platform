@@ -86,6 +86,8 @@ export type FixtureRelay = {
   eventCount(): number;
   /** Snapshot of EVENT payloads received from browser clients. */
   receivedEvents(): NostrEvent[];
+  /** Snapshot of retained EVENT payloads sent from this fixture relay to clients. */
+  deliveredEvents(): NostrEvent[];
   /** Snapshot of REQ filters received from browser clients. */
   subscriptions(): NostrFilter[];
   /** Gracefully close the server and resolve once all connections are gone. */
@@ -185,6 +187,7 @@ export function startFixtureRelayServer(
   return startFixtureWebSocketServer(options.secure ?? false).then(({ wss, url, close }) => {
     let connections = 0;
     const receivedEvents: NostrEvent[] = [];
+    const deliveredEvents: NostrEvent[] = [];
     const subscriptions: NostrFilter[] = [];
 
     wss.on("connection", (ws: WebSocket) => {
@@ -207,10 +210,15 @@ export function startFixtureRelayServer(
           );
           subscriptions.push(...filters);
           const sendSoon = (frame: string) => setTimeout(() => ws.send(frame), 0);
+          const sendEventSoon = (event: NostrEvent) =>
+            setTimeout(() => {
+              deliveredEvents.push(event);
+              ws.send(JSON.stringify(["EVENT", subId, event]));
+            }, 0);
           const retainedEvents = [...seededEvents, ...receivedEvents];
           for (const event of retainedEvents) {
             const matched = filters.length === 0 || filters.some((f) => matchesFilter(event, f));
-            if (matched) sendSoon(JSON.stringify(["EVENT", subId, event]));
+            if (matched) sendEventSoon(event);
           }
           sendSoon(JSON.stringify(["EOSE", subId]));
         } else if (verb === "EVENT") {
@@ -237,6 +245,7 @@ export function startFixtureRelayServer(
       connectionCount: () => connections,
       eventCount: () => receivedEvents.length,
       receivedEvents: () => [...receivedEvents],
+      deliveredEvents: () => [...deliveredEvents],
       subscriptions: () => [...subscriptions],
       close,
     };

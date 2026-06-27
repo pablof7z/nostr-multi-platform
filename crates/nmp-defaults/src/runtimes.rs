@@ -49,8 +49,8 @@ use nmp_core::substrate::{
 };
 use nmp_core::{read_eligible_relay_urls, AppRelaySlot};
 use nmp_nip17::{
-    active_giftwrap_inbox_identity, active_giftwrap_inbox_interest, DmInboxProjection,
-    DmRuntimeEffect, DmRuntimeState,
+    active_giftwrap_inbox_identity, active_giftwrap_inbox_interest, peer_dm_relay_list_identity,
+    peer_dm_relay_list_interest, DmInboxProjection, DmRuntimeEffect, DmRuntimeState,
 };
 use nmp_nip57::{self_zap_receipts_identity, self_zap_receipts_interest};
 
@@ -84,7 +84,7 @@ pub fn register_dm_runtime(
           + IngestParserRegistrar
           + SnapshotProjectionRegistrar),
 ) {
-    register_inbox_projection(app);
+    let inbox_projection = register_inbox_projection(app);
 
     let controller = Arc::new(DmRuntimeController {
         relay_slot: app.configured_relays_handle(),
@@ -95,6 +95,7 @@ pub fn register_dm_runtime(
         active_pubkey: app.active_pubkey(),
         tx: app.actor_sender(),
         state: Mutex::new(DmRuntimeState::default()),
+        inbox_projection,
     });
 
     // Per-tick reconciler: drives the active-account gift-wrap inbox interest +
@@ -129,7 +130,7 @@ fn register_inbox_projection(
           + IdentityChangeRegistrar
           + IngestParserRegistrar
           + SnapshotProjectionRegistrar),
-) {
+) -> Arc<DmInboxProjection> {
     // Raw-tap retirement ladder complete (rules A5, PR-1 + PR-2): the DM inbox
     // projection rides the substrate `IngestParser` seam exclusively.
     //
@@ -211,6 +212,8 @@ fn register_inbox_projection(
             ..Default::default()
         })
     });
+
+    projection
 }
 
 /// Lifecycle controller for the DM inbox projection.
@@ -296,6 +299,7 @@ struct DmRuntimeController {
     active_pubkey: nmp_core::slots::ActiveAccountSlot,
     tx: nmp_core::CommandSender,
     state: Mutex<DmRuntimeState>,
+    inbox_projection: Arc<DmInboxProjection>,
 }
 
 impl DmRuntimeController {
@@ -318,6 +322,7 @@ impl DmRuntimeController {
         for effect in state.reconcile(
             relay_list.active_pubkey.as_deref(),
             &relay_list.read_relay_urls,
+            &self.dm_peer_pubkeys(),
         ) {
             self.apply(effect);
         }
@@ -350,6 +355,15 @@ impl DmRuntimeController {
             .unwrap_or_default()
     }
 
+    fn dm_peer_pubkeys(&self) -> Vec<String> {
+        self.inbox_projection
+            .snapshot()
+            .conversations
+            .into_iter()
+            .map(|conversation| conversation.peer_pubkey)
+            .collect()
+    }
+
     fn apply(&self, effect: DmRuntimeEffect) {
         let cmd = match effect {
             DmRuntimeEffect::PushInboxInterest(pubkey) => {
@@ -360,6 +374,24 @@ impl DmRuntimeController {
             }
             DmRuntimeEffect::WithdrawInboxInterest => ActorCommand::Interests(
                 InterestsCommand::DropInterestOwner(active_giftwrap_inbox_identity()),
+            ),
+            DmRuntimeEffect::PushOwnRelayListInterest(pubkey) => {
+                ActorCommand::Interests(InterestsCommand::EnsureInterest {
+                    identity: peer_dm_relay_list_identity(&pubkey),
+                    interest: peer_dm_relay_list_interest(&pubkey),
+                })
+            }
+            DmRuntimeEffect::WithdrawOwnRelayListInterest(pubkey) => ActorCommand::Interests(
+                InterestsCommand::DropInterestOwner(peer_dm_relay_list_identity(&pubkey)),
+            ),
+            DmRuntimeEffect::PushPeerRelayListInterest(pubkey) => {
+                ActorCommand::Interests(InterestsCommand::EnsureInterest {
+                    identity: peer_dm_relay_list_identity(&pubkey),
+                    interest: peer_dm_relay_list_interest(&pubkey),
+                })
+            }
+            DmRuntimeEffect::WithdrawPeerRelayListInterest(pubkey) => ActorCommand::Interests(
+                InterestsCommand::DropInterestOwner(peer_dm_relay_list_identity(&pubkey)),
             ),
             DmRuntimeEffect::PublishRelayList { event, .. } => {
                 // Non-dispatch internal path — the action-seam variant at

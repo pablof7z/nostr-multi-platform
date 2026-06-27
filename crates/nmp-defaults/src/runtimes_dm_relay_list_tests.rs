@@ -24,7 +24,8 @@ use nmp_core::actor::InterestsCommand;
 use nmp_core::slots::ActiveAccountSlot;
 use nmp_core::AppRelayList;
 use nmp_nip17::{
-    active_giftwrap_inbox_identity, active_giftwrap_inbox_interest_id, DmRuntimeState,
+    active_giftwrap_inbox_identity, active_giftwrap_inbox_interest_id, peer_dm_relay_list_identity,
+    DmInboxProjection, DmRuntimeEffect, DmRuntimeState,
 };
 use nostr::Keys;
 
@@ -41,14 +42,20 @@ fn controller() -> (
     Receiver<nmp_core::ActorMail>,
 ) {
     let (inbox_tx, rx) = mpsc::channel::<nmp_core::ActorMail>();
+    let projection_tx = nmp_core::CommandSender::new(inbox_tx.clone());
     let tx = nmp_core::CommandSender::new(inbox_tx);
     let active_pubkey: ActiveAccountSlot = Arc::new(Mutex::new(None));
     let relay_slot = Arc::new(Mutex::new(AppRelayList::default()));
+    let inbox_projection = Arc::new(DmInboxProjection::new(
+        projection_tx,
+        Arc::clone(&active_pubkey),
+    ));
     let controller = DmRuntimeController {
         relay_slot,
         active_pubkey: Arc::clone(&active_pubkey),
         tx,
         state: Mutex::new(DmRuntimeState::default()),
+        inbox_projection,
     };
     (controller, active_pubkey, rx)
 }
@@ -165,5 +172,55 @@ fn reconciliation_fires_from_tick_observer_not_from_projection_read() {
     assert!(
         !pushed_again,
         "a second tick with the same pubkey must NOT re-ensure; got {cmds_second_tick:?}"
+    );
+}
+
+#[test]
+fn peer_relay_list_effect_maps_to_kind10050_interest() {
+    let (controller, _slot, rx) = controller();
+    let peer = Keys::generate().public_key().to_hex();
+
+    controller.apply(DmRuntimeEffect::PushPeerRelayListInterest(peer.clone()));
+
+    let cmds: Vec<ActorCommand> = drained(&rx);
+    let pushed_peer = cmds.iter().any(|cmd| {
+        matches!(
+            cmd,
+            ActorCommand::Interests(InterestsCommand::EnsureInterest { identity, interest })
+                if *identity == peer_dm_relay_list_identity(&peer)
+                    && interest.shape.authors.contains(&peer)
+                    && interest.shape.kinds.contains(&10050)
+                    && interest.shape.limit == Some(1)
+                    && interest.is_indexer_discovery
+        )
+    });
+    assert!(
+        pushed_peer,
+        "peer relay-list hydration must use a Rust-owned kind:10050 interest; got {cmds:?}"
+    );
+}
+
+#[test]
+fn own_relay_list_effect_maps_to_kind10050_interest() {
+    let (controller, _slot, rx) = controller();
+    let account = Keys::generate().public_key().to_hex();
+
+    controller.apply(DmRuntimeEffect::PushOwnRelayListInterest(account.clone()));
+
+    let cmds: Vec<ActorCommand> = drained(&rx);
+    let pushed_self = cmds.iter().any(|cmd| {
+        matches!(
+            cmd,
+            ActorCommand::Interests(InterestsCommand::EnsureInterest { identity, interest })
+                if *identity == peer_dm_relay_list_identity(&account)
+                    && interest.shape.authors.contains(&account)
+                    && interest.shape.kinds.contains(&10050)
+                    && interest.shape.limit == Some(1)
+                    && interest.is_indexer_discovery
+        )
+    });
+    assert!(
+        pushed_self,
+        "own relay-list hydration must use a Rust-owned kind:10050 interest for NIP-17 self-copy routing; got {cmds:?}"
     );
 }

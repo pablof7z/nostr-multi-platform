@@ -44,12 +44,13 @@
 
 use std::sync::Arc;
 
+use nmp_core::actor::{ActorCommand, InterestsCommand};
 use nmp_core::substrate::build_nip44_decrypt_for_account;
 use nmp_core::CommandSender;
 use nostr::Event;
 
 use super::store::{first_p_tag, first_reply_e_tag, source_relays_from, InboxStore};
-use super::DmMessage;
+use super::{peer_dm_relay_list_identity, peer_dm_relay_list_interest, DmMessage};
 
 /// Launch the outer decrypt for one accepted kind:1059 envelope. Returns `true`
 /// when the chain was launched (the outer envelope parsed and a decrypt command
@@ -151,6 +152,7 @@ fn decrypt_seal(
     };
 
     let store_for_err = Arc::clone(&store);
+    let tx_for_terminal = tx.clone();
     let cmd = build_nip44_decrypt_for_account(
         seal_author.to_hex(),
         inner_ciphertext,
@@ -164,7 +166,14 @@ fn decrypt_seal(
             // the chain.
             if let Ok(rumor_plaintext) = outcome {
                 if let Ok(gift) = nmp_nip59::parse_rumor(&seal, &rumor_plaintext) {
-                    store_rumor(&store, generation, &signer_hex, &gift, source_relay_url.as_deref());
+                    store_rumor(
+                        &tx_for_terminal,
+                        &store,
+                        generation,
+                        &signer_hex,
+                        &gift,
+                        source_relay_url.as_deref(),
+                    );
                 }
             }
             store.chain_done(generation);
@@ -180,6 +189,7 @@ fn decrypt_seal(
 /// Terminal step — apply the kind:14 gate, classify peer/direction, and insert
 /// into the store under the captured §D6 epoch.
 fn store_rumor(
+    tx: &CommandSender,
     store: &InboxStore,
     generation: u64,
     signer_hex: &str,
@@ -227,5 +237,16 @@ fn store_rumor(
 
     // §D6 epoch-guarded idempotent insert (stale epoch / poisoned mutex →
     // silent no-op).
-    store.insert(generation, message_id, peer_pubkey, message, source_relay_url);
+    if store.insert(
+        generation,
+        message_id,
+        peer_pubkey.clone(),
+        message,
+        source_relay_url,
+    ) {
+        let _ = tx.send(ActorCommand::Interests(InterestsCommand::EnsureInterest {
+            identity: peer_dm_relay_list_identity(&peer_pubkey),
+            interest: peer_dm_relay_list_interest(&peer_pubkey),
+        }));
+    }
 }

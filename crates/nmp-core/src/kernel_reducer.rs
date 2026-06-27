@@ -272,6 +272,7 @@ mod composition_seams;
 mod composition_seams_browser; // PR-B (#2046) AppHost seams factored out for LOC ceiling
 mod feed_verbs;
 mod follow;
+mod protocol_apply;
 mod react;
 mod refs;
 mod relay_lifecycle;

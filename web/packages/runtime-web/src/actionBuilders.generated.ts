@@ -290,6 +290,28 @@ export const GeneratedActionBuilders = {
     return encodeDispatchEnvelope(correlationId, "nmp.nip51.unblock_relay", payload);
   },
 
+  /** Send a NIP-17 private direct message. */
+  sendDm(
+    correlationId: string,
+    recipientPubkey: string,
+    content: string,
+    replyTo: string | null,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const recipientPubkeyOffset = fbb.createString(recipientPubkey);
+    const contentOffset = fbb.createString(content);
+    const replyToOffset = replyTo === null ? 0 : fbb.createString(replyTo);
+    fbb.startObject(4);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldOffset(1, recipientPubkeyOffset, 0); // slot 1: recipientPubkey
+    fbb.addFieldOffset(2, contentOffset, 0); // slot 2: content
+    if (replyToOffset !== 0) fbb.addFieldOffset(3, replyToOffset, 0); // slot 3: replyTo
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "N17S");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.nip17.send", payload);
+  },
+
   /** Publish a NIP-17 DM relay list (kind:10050). */
   publishDmRelayList(
     correlationId: string,
@@ -304,6 +326,22 @@ export const GeneratedActionBuilders = {
     fbb.finish(payloadRoot, "N17R");
     const payload = fbb.asUint8Array();
     return encodeDispatchEnvelope(correlationId, "nmp.nip17.publish_relay_list", payload);
+  },
+
+  /** Hydrate a DM peer's NIP-17 relay list (kind:10050). */
+  hydrateDmPeerRelayList(
+    correlationId: string,
+    peerPubkey: string,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const peerPubkeyOffset = fbb.createString(peerPubkey);
+    fbb.startObject(2);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldOffset(1, peerPubkeyOffset, 0); // slot 1: peerPubkey
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "N17H");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.nip17.hydrate_peer_relay_list", payload);
   },
 
   /** Publish a NIP-65 relay-list metadata event (kind:10002). */

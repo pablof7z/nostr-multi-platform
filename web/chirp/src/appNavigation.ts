@@ -25,7 +25,7 @@ const VIEW_COPY: Record<MainView, ViewCopy> = {
   setup: {
     kicker: "First run",
     title: "Set up Chirp Web",
-    support: "Start with a live runtime, relay feed, signer choice, and signed-action proof.",
+    support: "Read from live relays, choose a signer, and verify signed actions through relay proof.",
   },
   home: {
     kicker: "Home feed",

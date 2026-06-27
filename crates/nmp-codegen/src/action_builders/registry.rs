@@ -318,7 +318,30 @@ pub const ACTION_BUILDERS: &[ActionBuilder] = &[
         ],
         doc: "Remove a relay URL from the NIP-51 blocked-relay list.",
     },
-    // nip17 — DM relay list (dm_relay_list_action.fbs).
+    // nip17 — private direct messages (send.fbs) and DM relay list
+    // (dm_relay_list_action.fbs).
+    ActionBuilder {
+        namespace: "nmp.nip17.send",
+        method: "sendDm",
+        fields: &[
+            PayloadField {
+                name: "recipientPubkey",
+                kind: FieldKind::Str,
+                optional: false,
+            },
+            PayloadField {
+                name: "content",
+                kind: FieldKind::Str,
+                optional: false,
+            },
+            PayloadField {
+                name: "replyTo",
+                kind: FieldKind::Str,
+                optional: true,
+            },
+        ],
+        doc: "Send a NIP-17 private direct message.",
+    },
     ActionBuilder {
         namespace: "nmp.nip17.publish_relay_list",
         method: "publishDmRelayList",
@@ -328,6 +351,16 @@ pub const ACTION_BUILDERS: &[ActionBuilder] = &[
             optional: false,
         }],
         doc: "Publish a NIP-17 DM relay list (kind:10050).",
+    },
+    ActionBuilder {
+        namespace: "nmp.nip17.hydrate_peer_relay_list",
+        method: "hydrateDmPeerRelayList",
+        fields: &[PayloadField {
+            name: "peerPubkey",
+            kind: FieldKind::Str,
+            optional: false,
+        }],
+        doc: "Hydrate a DM peer's NIP-17 relay list (kind:10050).",
     },
     // nip65 — outbox relay list (publish_relay_list.fbs).
     ActionBuilder {

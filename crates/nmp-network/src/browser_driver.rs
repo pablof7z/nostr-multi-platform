@@ -274,6 +274,16 @@ impl BrowserRelayDriver {
         self.role
     }
 
+    /// Whether the underlying browser WebSocket is currently open.
+    #[must_use]
+    pub fn is_open(&self) -> bool {
+        self.state
+            .borrow()
+            .current_socket
+            .as_ref()
+            .is_some_and(|socket| socket.ready_state() == WebSocket::OPEN)
+    }
+
     /// Open a new WebSocket and wire its four event closures. Called once
     /// from `new()` and again from every reconnect path. Each invocation
     /// builds a fresh closure set and overwrites the old socket (which is

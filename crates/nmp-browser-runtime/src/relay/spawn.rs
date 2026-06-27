@@ -53,8 +53,36 @@ pub(crate) fn fan_out_outbound(
         let url = message.relay_url();
 
         let role = message.role();
-        let known = pool.iter().any(|d| d.url() == url && d.role() == role);
-        if !known {
+        let is_publish_event = message.text().starts_with("[\"EVENT\"");
+        let exact_known = pool.iter().any(|d| d.url() == url && d.role() == role);
+        let exact_open = pool
+            .iter()
+            .any(|d| d.url() == url && d.role() == role && d.is_open());
+        let fallback_same_url_open =
+            is_publish_event && !exact_open && pool.iter().any(|d| d.url() == url && d.is_open());
+
+        let mut sent = false;
+        if fallback_same_url_open {
+            // For publish EVENT frames the resolved URL is the routing
+            // authority; role only buckets diagnostics. If the exact role
+            // socket is not open yet but another lane to the same relay is
+            // open, send there rather than strand the publish behind a
+            // pre-connect buffer. REQ/CLOSE frames keep exact-role routing.
+            if let Some(driver) = pool.iter().find(|d| d.url() == url && d.is_open()) {
+                if let Err(error) = driver.send_text(message.text()) {
+                    events.push(BrowserRuntimeEvent::RelaySendFailed {
+                        url: url.to_string(),
+                        reason: format!("{error:?}"),
+                    });
+                }
+                sent = true;
+            }
+        }
+        if sent {
+            continue;
+        }
+
+        if !exact_known {
             if pool.len() >= MAX_CONCURRENT_SOCKETS {
                 // Budget exceeded — emit event, never silent.
                 events.push(BrowserRuntimeEvent::RelayBudgetExceeded {
