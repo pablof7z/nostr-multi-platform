@@ -52,3 +52,20 @@ pub(super) fn register_nip29_actions(app: &mut NmpApp) {
     // a collision means double-init, which the tracing error will surface.
     let _ = nmp_nip29::register_actions(app);
 }
+
+/// Register the NIP-01 note-publish (`nmp.nip01.publish_note`) and NIP-18 repost
+/// (`nmp.nip18.repost`) action modules against `app`'s action registry
+/// (M14-1 / PR2 #2145).
+///
+/// Both carry generated host byte-builders (`publishNote` / `repost`) so the
+/// native shells dispatch them through `nmp_app_dispatch_action_bytes` with Rust
+/// owning ALL NIP-10 reply-tag + kind:6 construction. They live in the Chirp app
+/// composition rather than `nmp_defaults::register_defaults` because their
+/// producing crate `nmp-nip01` is native-only in `nmp-defaults` (its op-feed
+/// composition names `NmpApp`), so they are not part of the neutral default set
+/// the browser/wasm runtime also stands on — the same reason NIP-29 registers
+/// here (`ActionDefaultTier::App`).
+pub(super) fn register_note_actions(app: &mut NmpApp) {
+    nmp_core::substrate::ProtocolDescriptor::register_actions(&nmp_nip01::Nip01Descriptor, app);
+    nmp_core::substrate::ProtocolDescriptor::register_actions(&nmp_nip18::Nip18Descriptor, app);
+}

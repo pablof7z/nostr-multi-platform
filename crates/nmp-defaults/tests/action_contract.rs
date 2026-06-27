@@ -62,6 +62,14 @@ fn contract_matches_modules_and_default_payload_reexports() {
             action_payloads::PublishDmRelayListInput,
         >("nmp.nip17.publish_relay_list"),
         assert_contract::<nmp_nip57::ZapAction, action_payloads::ZapInput>("nmp.nip57.zap"),
+        // App-tier (registered by a leaf app's own composition — e.g. Chirp's
+        // `register_note_actions` — NOT `register_defaults`). Not in
+        // `action_payloads` (only default registrations appear there), so checked
+        // directly from the producing crates, like the wallet rows below.
+        assert_contract::<nmp_nip01::PublishNoteModule, nmp_nip01::PublishNoteInput>(
+            "nmp.nip01.publish_note",
+        ),
+        assert_contract::<nmp_nip18::RepostModule, nmp_nip18::RepostInput>("nmp.nip18.repost"),
         assert_contract::<
             nmp_nip84::PublishHighlightModule,
             action_payloads::PublishHighlightAction,

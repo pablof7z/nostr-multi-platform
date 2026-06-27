@@ -1,7 +1,7 @@
 package org.nmp.android
 
 import android.util.Log
-import kotlinx.serialization.encodeToString
+import java.util.UUID
 
 private const val TAG = "SocialActions"
 
@@ -11,90 +11,120 @@ private const val TAG = "SocialActions"
  * surface. Extracted from [KernelModel] to keep both files under the repo's
  * 500-LOC hard ceiling (mirrors the [MarmotActions] extraction).
  *
- * Constructor takes one lambda owned by [KernelModel]:
- *  - [dispatchIntent] = `bridge.dispatchIntentBytes` — Rust takes the typed
- *    user-intent JSON and does intent → spec → typed-bytes → byte dispatch in
- *    a single call (the byte doorway), replacing the former
- *    buildActionSpec + dispatchAction two-step.
+ * M14-1 / PR2 (#2145): every social write is built by a generated
+ * `GeneratedActionBuilders.*` FlatBuffers byte builder and dispatched through
+ * the generic byte doorway via [dispatchBytes] — the retired JSON-intent path
+ * (`ChirpActionIntent` → `dispatchIntentBytes`) is gone. App code NEVER spells a
+ * namespace, assembles JSON, or builds a tag: Rust owns the protocol body, tag
+ * construction, and validation. The host supplies only raw user input + a fresh
+ * correlation id.
  *
- * Thin shell: ZERO protocol logic. Kotlin ferries typed user intent; Rust owns
- * action-namespace selection, body shape, tag construction, and validation.
- * Outcomes arrive reactively via the next snapshot tick on [KernelModel.state]
- * (D8 — no poll, no local echo).
+ * Thin shell: ZERO protocol logic. Outcomes arrive reactively via the next
+ * snapshot tick on [KernelModel.state] (D8 — no poll, no local echo).
  *
  * Call sites: [KernelModel] exposes one-line delegations (`model.zapNote(…)`
  * etc.) so the public surface is unchanged; the bodies live here.
  */
 class SocialActions(
-    private val dispatchIntent: (intentJson: String) -> DispatchResult,
+    private val dispatchBytes: (bytes: ByteArray) -> DispatchResult,
 ) {
 
     /**
-     * Publish a new note. Kotlin forwards only user intent; Rust builds the
-     * `nmp.publish` namespace and `PublishRaw` body, including reply tags.
-     * Returns the correlation_id if accepted, or null on error.
+     * Publish a new note (`nmp.nip01.publish_note`). Kotlin forwards only the
+     * content + optional parent event id; Rust builds the kind:1 event and any
+     * NIP-10 reply tags. Returns the correlation_id if accepted, or null on error.
      */
     fun publishNote(content: String, replyToId: String? = null): String? {
-        val response = dispatchTypedIntent(
-            ChirpActionIntent(
-                type = "publish_note",
-                content = content,
-                replyToEventId = replyToId,
-            )
-        ) ?: return null
+        val id = UUID.randomUUID().toString()
+        val bytes = GeneratedActionBuilders.publishNote(
+            correlationId = id,
+            content = content,
+            replyEventId = replyToId,
+            replyAuthorPubkey = null,
+            replyRootEventId = null,
+            replyRootRelay = null,
+            replyMentionedPubkeys = null,
+        )
+        val response = dispatchBuilt(bytes, "publishNote") ?: return null
         return response.correlationId
     }
 
-    /** Zap a note (NIP-57). */
+    /** Zap a note (NIP-57). Relay selection is kernel policy — `relays` is empty. */
     fun zapNote(
         eventId: String,
         recipientPubkey: String,
         amountMsats: Long = 21000L,
         comment: String = "",
-    ): DispatchResult? = dispatchTypedIntent(
-        ChirpActionIntent(
-            type = "zap",
-            targetEventId = eventId,
+    ): DispatchResult? {
+        val id = UUID.randomUUID().toString()
+        val bytes = GeneratedActionBuilders.zap(
+            correlationId = id,
             recipientPubkey = recipientPubkey,
             amountMsats = amountMsats,
+            lnurl = null,
+            relays = emptyList(),
+            targetEventId = eventId,
             comment = comment.takeIf { it.isNotEmpty() },
         )
-    )
+        return dispatchBuilt(bytes, "zap")
+    }
 
     /** React to a note (NIP-25). */
-    fun react(eventId: String, reaction: String = "+"): DispatchResult? = dispatchTypedIntent(
-        ChirpActionIntent(type = "react", eventId = eventId, reaction = reaction)
-    )
+    fun react(eventId: String, reaction: String = "+"): DispatchResult? {
+        val id = UUID.randomUUID().toString()
+        val bytes = GeneratedActionBuilders.react(
+            correlationId = id,
+            targetEventId = eventId,
+            reaction = reaction,
+            targetAuthorPubkey = null,
+        )
+        return dispatchBuilt(bytes, "react")
+    }
 
     /** Repost a note (NIP-18 kind:6). Mirrors iOS `model.repost(eventID:authorPubkey:)`. */
-    fun repost(eventId: String, authorPubkey: String): DispatchResult? = dispatchTypedIntent(
-        ChirpActionIntent(type = "repost", eventId = eventId, authorPubkey = authorPubkey)
-    )
+    fun repost(eventId: String, authorPubkey: String): DispatchResult? {
+        val id = UUID.randomUUID().toString()
+        val bytes = GeneratedActionBuilders.repost(
+            correlationId = id,
+            eventId = eventId,
+            authorPubkey = authorPubkey,
+        )
+        return dispatchBuilt(bytes, "repost")
+    }
 
     /** Follow a pubkey. */
-    fun follow(pubkey: String): DispatchResult? = dispatchTypedIntent(
-        ChirpActionIntent(type = "follow", pubkey = pubkey)
-    )
+    fun follow(pubkey: String): DispatchResult? {
+        val id = UUID.randomUUID().toString()
+        val bytes = GeneratedActionBuilders.follow(correlationId = id, pubkey = pubkey)
+        return dispatchBuilt(bytes, "follow")
+    }
 
     /** Unfollow a pubkey. */
-    fun unfollow(pubkey: String): DispatchResult? = dispatchTypedIntent(
-        ChirpActionIntent(type = "unfollow", pubkey = pubkey)
-    )
+    fun unfollow(pubkey: String): DispatchResult? {
+        val id = UUID.randomUUID().toString()
+        val bytes = GeneratedActionBuilders.unfollow(correlationId = id, pubkey = pubkey)
+        return dispatchBuilt(bytes, "unfollow")
+    }
 
     /** Send a NIP-17 direct message to the given recipient pubkey. */
-    fun sendDm(recipientPubkey: String, content: String): DispatchResult? = dispatchTypedIntent(
-        ChirpActionIntent(type = "send_dm", recipientPubkey = recipientPubkey, content = content)
-    )
+    fun sendDm(recipientPubkey: String, content: String): DispatchResult? {
+        val id = UUID.randomUUID().toString()
+        val bytes = GeneratedActionBuilders.sendDm(
+            correlationId = id,
+            recipientPubkey = recipientPubkey,
+            content = content,
+            replyTo = null,
+        )
+        return dispatchBuilt(bytes, "sendDm")
+    }
 
     /**
-     * Encode the typed user intent and dispatch it through the Rust byte
-     * doorway, which builds the namespace + typed body and routes it in one
-     * call. Returns null on a Rust-side rejection (fail-closed, D1/D6).
+     * Dispatch generated `DispatchEnvelope` bytes through the Rust byte doorway.
+     * Returns null on a Rust-side rejection (fail-closed, D1/D6).
      */
-    private fun dispatchTypedIntent(intent: ChirpActionIntent): DispatchResult? {
-        val intentJson = chirpActionJson.encodeToString(intent)
-        val response = dispatchIntent(intentJson)
-        Log.d(TAG, "dispatchTypedIntent(${intent.type}) response: $response")
+    private fun dispatchBuilt(bytes: ByteArray, label: String): DispatchResult? {
+        val response = dispatchBytes(bytes)
+        Log.d(TAG, "dispatch($label) response: $response")
         return if (response is DispatchResult.Failure) null else response
     }
 }

@@ -11,7 +11,7 @@ use nmp_nip01::meta_timeline::Pubkey;
 
 use nmp_nip02::register_follow_state_runtime;
 
-use super::actions::register_nip29_actions;
+use super::actions::{register_nip29_actions, register_note_actions};
 use super::handle::ChirpHandle;
 use super::helpers::c_string_opt;
 
@@ -123,6 +123,16 @@ pub extern "C" fn nmp_app_chirp_register(
     // `register_defaults` call above — no other reference aliases `app`
     // at this point.
     register_nip29_actions(unsafe { &mut *app });
+
+    // M14-1 / PR2 (#2145): the NIP-01 note-publish + NIP-18 repost action
+    // modules. Their producing crates (`nmp-nip01`, `nmp-nip18`) carry generated
+    // host byte-builders (`publishNote` / `repost`) but `nmp-nip01` is native-only
+    // in `nmp-defaults` (op-feed coupling), so they register here in the app
+    // composition rather than the neutral `register_defaults` default set —
+    // exactly like NIP-29 above.
+    //
+    // SAFETY: same exclusive-borrow rationale as `register_nip29_actions`.
+    register_note_actions(unsafe { &mut *app });
 
     // Visible timeline rows claim their relation streams through the same
     // dispatch_action door as all other app verbs. The action module lives in

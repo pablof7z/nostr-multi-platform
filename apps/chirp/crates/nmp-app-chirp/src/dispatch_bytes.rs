@@ -11,22 +11,16 @@
 //!
 //! ## Why a namespace-keyed encoder (and not a JSON pass-through)
 //!
-//! Chirp's Rust action builders (`crate::action_specs`, the runtime `json!`
-//! bodies) are the single source of truth for each action's canonical serde
-//! shape — they encode protocol detail (NIP-10 reply tags, the NIP-65
-//! `role`→`RelayMarker` collapse, serde defaults for the optional NIP-29 group
-//! fields) that must not be re-derived at every call site. Those builders are
-//! ALSO still consumed by the not-yet-migrated host seams (the iOS/Android
-//! `nmp_app_chirp_action_spec` C symbol, `action_spec_json_for_intent`), so
-//! their `(namespace, json)` contract must stay intact for the next slice.
-//!
-//! So this seam keeps the builders untouched and converts at the doorway: it
-//! deserializes the builder's canonical JSON into the matching per-crate
-//! `ActionPayload` type — keyed by the host namespace — and calls
-//! [`ActionPayload::encode`] to produce the typed payload bytes. The JSON is an
-//! in-process intermediate that NEVER crosses the FFI; only typed bytes do. A
-//! namespace with no typed encoder is rejected fail-closed (D6) rather than
-//! silently falling back to a JSON dispatch — there is no JSON dispatch left.
+//! Every Chirp write is routed through the `(namespace, body_json)` byte
+//! doorway. The caller supplies a pre-serialised JSON body (produced by the
+//! Rust shell's own action-builder helpers, e.g. `serde_json::json!` stanzas
+//! for NIP-29 group ops or wallet verbs); this module deserialises it into
+//! the matching per-crate `ActionPayload` type keyed by namespace and calls
+//! [`ActionPayload::encode`] to produce the typed FlatBuffers payload bytes.
+//! The JSON is an in-process intermediate that NEVER crosses the FFI; only
+//! typed bytes do. A namespace with no typed encoder is rejected fail-closed
+//! (D6) rather than silently falling back to a JSON dispatch — there is no
+//! JSON dispatch left.
 
 use std::ffi::CStr;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -69,6 +63,8 @@ pub fn mint_correlation_id() -> String {
 fn encode_payload_for_namespace(namespace: &str, json: &str) -> Result<Vec<u8>, String> {
     match namespace {
         "nmp.publish" => encode::<nmp_core::publish::PublishAction>(namespace, json),
+        "nmp.nip01.publish_note" => encode::<nmp_nip01::PublishNoteInput>(namespace, json),
+        "nmp.nip18.repost" => encode::<nmp_nip18::RepostInput>(namespace, json),
         "nmp.nip25.react" => encode::<nmp_nip25::ReactAction>(namespace, json),
         "nmp.nip25.unreact" => encode::<nmp_nip25::UnreactAction>(namespace, json),
         "nmp.follow" | "nmp.unfollow" => encode::<nmp_nip02::PubkeyAction>(namespace, json),

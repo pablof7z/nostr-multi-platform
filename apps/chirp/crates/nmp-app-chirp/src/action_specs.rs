@@ -4,7 +4,7 @@
 //! `(namespace, body_json)` pair to feed through `nmp_app_dispatch_action`.
 //! Protocol envelopes stay here; Swift/Kotlin only carry raw user input.
 
-use nmp_core::tags::{e_tag, p_tag, EventRef, Nip10Refs};
+use nmp_core::tags::{e_tag, p_tag};
 use nmp_nip01::{Note, NoteRecord};
 use nmp_nip02::{PubkeyAction, ReactAction};
 use nmp_nip17::SendDmInput;
@@ -37,161 +37,6 @@ impl TypedActionSpec {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum ChirpActionIntent {
-    PublishNote {
-        content: String,
-        #[serde(default)]
-        reply_to: Option<ReplyTargetInput>,
-        #[serde(default)]
-        reply_to_event_id: Option<String>,
-    },
-    PublishProfile {
-        name: String,
-        #[serde(default)]
-        about: Option<String>,
-        #[serde(default)]
-        picture: Option<String>,
-    },
-    Repost {
-        event_id: String,
-        author_pubkey: String,
-    },
-    React {
-        event_id: String,
-        reaction: String,
-    },
-    Follow {
-        pubkey: String,
-    },
-    Unfollow {
-        pubkey: String,
-    },
-    Zap {
-        target_event_id: String,
-        recipient_pubkey: String,
-        amount_msats: u64,
-        #[serde(default)]
-        lnurl: Option<String>,
-        #[serde(default)]
-        comment: Option<String>,
-    },
-    SendDm {
-        recipient_pubkey: String,
-        content: String,
-        #[serde(default)]
-        reply_to: Option<String>,
-    },
-    /// Block a relay: add `url` to the active account's kind:10006 blocked-relay
-    /// list. `account_pubkey` is the active signer's hex pubkey — the module uses
-    /// it to read the current blocked set for idempotency. Mapped to the
-    /// `nmp.nip51.block_relay` router-owned ActionModule.
-    BlockRelay {
-        url: String,
-        account_pubkey: String,
-    },
-    /// Unblock a relay: remove `url` from the active account's kind:10006 list.
-    /// Symmetric to [`BlockRelay`]. Mapped to `nmp.nip51.unblock_relay`.
-    UnblockRelay {
-        url: String,
-        account_pubkey: String,
-    },
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
-pub struct ReplyTargetInput {
-    pub event_id: String,
-    pub author_pubkey: String,
-    #[serde(default)]
-    pub created_at: u64,
-    #[serde(default)]
-    pub content: String,
-    #[serde(default)]
-    pub root_event_id: Option<String>,
-    #[serde(default)]
-    pub root_relay: Option<String>,
-    #[serde(default)]
-    pub mentioned_pubkeys: Vec<String>,
-}
-
-pub fn action_spec_for_intent_json(intent_json: &str) -> Result<TypedActionSpec, String> {
-    let intent: ChirpActionIntent = serde_json::from_str(intent_json)
-        .map_err(|e| format!("invalid Chirp action intent JSON: {e}"))?;
-    action_spec_for_intent(intent)
-}
-
-#[must_use]
-pub fn action_spec_json_for_intent(intent_json: &str) -> String {
-    match action_spec_for_intent_json(intent_json) {
-        Ok(spec) => serialize_or_error(&spec),
-        Err(error) => json!({ "error": error }).to_string(),
-    }
-}
-
-pub fn action_spec_for_intent(intent: ChirpActionIntent) -> Result<TypedActionSpec, String> {
-    match intent {
-        ChirpActionIntent::PublishNote {
-            content,
-            reply_to,
-            reply_to_event_id,
-        } => match reply_to {
-            Some(parent) => {
-                let parent = parent.into_note_record();
-                publish_note_spec(&content, Some(&parent))
-            }
-            None => publish_note_minimal_reply_spec(&content, reply_to_event_id.as_deref()),
-        },
-        ChirpActionIntent::PublishProfile {
-            name,
-            about,
-            picture,
-        } => Ok(publish_profile_spec(
-            &name,
-            about.as_deref().unwrap_or(""),
-            picture.as_deref().unwrap_or(""),
-        )),
-        ChirpActionIntent::Repost {
-            event_id,
-            author_pubkey,
-        } => Ok(repost_spec(&event_id, &author_pubkey)),
-        ChirpActionIntent::React { event_id, reaction } => Ok(react_spec(&event_id, &reaction)),
-        ChirpActionIntent::Follow { pubkey } => Ok(follow_spec(&pubkey)),
-        ChirpActionIntent::Unfollow { pubkey } => Ok(unfollow_spec(&pubkey)),
-        ChirpActionIntent::Zap {
-            target_event_id,
-            recipient_pubkey,
-            amount_msats,
-            lnurl,
-            comment,
-        } => Ok(zap_spec(
-            &recipient_pubkey,
-            amount_msats,
-            Some(&target_event_id),
-            comment.as_deref(),
-            lnurl.as_deref(),
-            Vec::new(),
-        )),
-        ChirpActionIntent::SendDm {
-            recipient_pubkey,
-            content,
-            reply_to,
-        } => Ok(send_dm_spec(
-            &recipient_pubkey,
-            &content,
-            reply_to.as_deref(),
-        )),
-        ChirpActionIntent::BlockRelay {
-            url,
-            account_pubkey,
-        } => Ok(block_relay_spec(&url, &account_pubkey)),
-        ChirpActionIntent::UnblockRelay {
-            url,
-            account_pubkey,
-        } => Ok(unblock_relay_spec(&url, &account_pubkey)),
-    }
-}
-
 pub fn publish_note_spec(
     content: &str,
     reply_to: Option<&NoteRecord>,
@@ -202,23 +47,6 @@ pub fn publish_note_spec(
     }
     let unsigned = builder.build("", 0).map_err(|e| e.to_string())?;
     Ok(publish_raw_spec(1, unsigned.tags, content))
-}
-
-pub fn publish_note_minimal_reply_spec(
-    content: &str,
-    reply_to_event_id: Option<&str>,
-) -> Result<TypedActionSpec, String> {
-    Note::new(content).build("", 0).map_err(|e| e.to_string())?;
-    let tags = reply_to_event_id
-        .filter(|id| !id.trim().is_empty())
-        .map(|id| {
-            vec![
-                e_tag(id, None, Some("root")),
-                e_tag(id, None, Some("reply")),
-            ]
-        })
-        .unwrap_or_default();
-    Ok(publish_raw_spec(1, tags, content))
 }
 
 #[must_use]
@@ -357,28 +185,6 @@ pub fn publish_relay_list_spec(relays: &[(&str, &str)]) -> TypedActionSpec {
     )
 }
 
-impl ReplyTargetInput {
-    fn into_note_record(self) -> NoteRecord {
-        let refs = Nip10Refs {
-            root: self.root_event_id.map(|id| EventRef {
-                id,
-                relay: self.root_relay,
-                marker: Some("root".to_string()),
-            }),
-            reply: None,
-            mentions: Vec::new(),
-            mentioned_pubkeys: self.mentioned_pubkeys,
-        };
-        NoteRecord {
-            event_id: self.event_id,
-            author: self.author_pubkey,
-            created_at: self.created_at,
-            content: self.content,
-            refs,
-        }
-    }
-}
-
 fn publish_raw_spec(kind: u32, tags: Vec<Vec<String>>, content: &str) -> TypedActionSpec {
     TypedActionSpec::new(
         "nmp.publish",
@@ -402,12 +208,6 @@ fn serialize_action_body(input: &impl Serialize) -> String {
     let mut value = serde_json::to_value(input).unwrap_or(Value::Null);
     drop_null_object_fields(&mut value);
     value.to_string()
-}
-
-fn serialize_or_error(spec: &TypedActionSpec) -> String {
-    serde_json::to_string(spec).unwrap_or_else(|e| {
-        json!({ "error": format!("failed to encode action spec: {e}") }).to_string()
-    })
 }
 
 fn drop_null_object_fields(value: &mut Value) {

@@ -1,9 +1,10 @@
 //! Android JNI wrappers for the Rust-owned action seam.
 //!
 //! NOTE (M14-0 / issue #2129): `nativeDispatchIntentBytes` and
-//! `nativeDispatchActionBytes` have been **deleted** — intent/action dispatch
-//! for the app-loop lane is now served by `AppHandle::dispatch_intent_json` /
-//! `dispatch_action_json` / `dispatch_action_bytes` in `uniffi_app_loop.rs`.
+//! `nativeDispatchActionBytes` have been **deleted** — action dispatch for the
+//! app-loop lane is now served by `AppHandle::dispatch_action_json` /
+//! `dispatch_action_bytes` in `uniffi_app_loop.rs`. The JSON-intent lane
+//! (`dispatch_intent_json`) was retired in M14-1 / PR2 (#2145).
 //!
 //! Retained symbols: `nativeAckActionStage`, `nativeRetryPublish`,
 //! `nativeCancelPublish`, `nativeDispatchAction`.  These are residual JNI
@@ -73,9 +74,9 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeDispatchAction(
 }
 
 // nativeDispatchIntentBytes and nativeDispatchActionBytes were deleted in
-// M14-0 (issue #2129).  Intent/action dispatch for the app-loop lane is now
-// served by `AppHandle::dispatch_intent_json` / `dispatch_action_json` /
-// `dispatch_action_bytes` in `uniffi_app_loop.rs`.
+// M14-0 (issue #2129).  Action dispatch for the app-loop lane is now served by
+// `AppHandle::dispatch_action_json` / `dispatch_action_bytes` in
+// `uniffi_app_loop.rs`; the JSON-intent lane was retired in M14-1 / PR2 (#2145).
 
 /// Render a dispatch result as the canonical `{"correlation_id"}` /
 /// `{"error"}` JSON envelope string. `serde_json::json!` keeps the message

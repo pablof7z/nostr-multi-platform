@@ -411,16 +411,26 @@ extension ProfileCard {
     var displayLabel: String { displayName ?? pubkey.shortHex }
 }
 
-/// A primary profile button. The shell owns only presentation labels/icons.
-/// Follow/unfollow writes carry a typed `ChirpActionIntent` that Rust turns
-/// into the dispatch namespace + body inside `nmp_app_chirp_action_spec`.
-/// A `nil` intent is local chrome only (currently the edit-profile sheet).
+/// The write a primary profile button performs. `pubkey` is the only datum the
+/// shell carries; the actual NIP-02 contact-list edit (namespace, tags, signing)
+/// is owned by Rust behind `model.follow` / `model.unfollow` →
+/// `GeneratedActionBuilders` (M14-1 / PR2 #2145). `follow` vs `unfollow` is a
+/// pure UI-state choice (the button toggles on `isFollowing`), not protocol
+/// logic — the shell never spells a namespace or builds a tag.
+enum ProfileWrite: Equatable {
+    case follow(pubkey: String)
+    case unfollow(pubkey: String)
+}
+
+/// A primary profile button. The shell owns only presentation labels/icons + the
+/// pubkey to write against. A `nil` write is local chrome only (currently the
+/// edit-profile sheet).
 struct ProfileAction: Equatable {
     let label: String
     /// SF Symbol name the shell renders without further mapping.
     let iconName: String
-    /// Rust-owned write intent to dispatch verbatim, or nil for local UI.
-    let intent: ChirpActionIntent?
+    /// The follow/unfollow write to perform, or nil for local UI.
+    let write: ProfileWrite?
 }
 
 // V-112 (ADR-0042): `AuthorProfileSnapshot` Decodable deleted — the

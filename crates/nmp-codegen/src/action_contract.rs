@@ -26,6 +26,15 @@ pub enum ActionDefaultTier {
     /// default composition. Excluded from [`canonical_default_action_namespaces`]
     /// so `register_defaults` matching tests stay green.
     Wallet,
+    /// Registered by a leaf APP's own composition (e.g. Chirp's
+    /// `register_nip29_actions` / `register_note_actions`), NOT by
+    /// `nmp_defaults::register_defaults`. These actions have a generated host
+    /// builder + a typed payload, but their producing crate is not part of the
+    /// neutral default composition (e.g. `nmp-nip01` is native-only in
+    /// `nmp-defaults` because of its op-feed coupling). Excluded from
+    /// [`canonical_default_action_namespaces`] so the native/wasm default-action
+    /// parity tests stay green.
+    App,
 }
 
 /// Whether host action builders are generated for this namespace.
@@ -119,13 +128,22 @@ pub fn contract_for(namespace: &str) -> &'static ActionContract {
 /// `register_defaults` matching test stays green.
 #[must_use]
 pub fn canonical_default_action_namespaces() -> Vec<&'static str> {
-    sorted_namespaces(|c| c.default_tier != ActionDefaultTier::Wallet)
+    sorted_namespaces(|c| {
+        c.default_tier != ActionDefaultTier::Wallet && c.default_tier != ActionDefaultTier::App
+    })
 }
 
 /// Sorted wallet-tier action namespaces (opt-in via `with_wallet`).
 #[must_use]
 pub fn wallet_action_namespaces() -> Vec<&'static str> {
     sorted_namespaces(|c| c.default_tier == ActionDefaultTier::Wallet)
+}
+
+/// Sorted app-tier action namespaces (registered by a leaf app's own
+/// composition, not by `register_defaults`).
+#[must_use]
+pub fn app_action_namespaces() -> Vec<&'static str> {
+    sorted_namespaces(|c| c.default_tier == ActionDefaultTier::App)
 }
 
 /// Sorted namespaces registered by `nmp_defaults::register_substrate`.

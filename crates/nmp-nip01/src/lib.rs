@@ -57,6 +57,7 @@ mod timeline_snapshot_generated {
 #[path = "wire/generated/op_feed_generated.rs"]
 mod op_feed_generated;
 
+pub mod action;
 pub mod build;
 pub mod contacts_cache;
 pub mod decode;
@@ -73,6 +74,7 @@ pub mod timeline_projection;
 pub mod typed_wire;
 pub mod view;
 
+pub use action::{Nip01Descriptor, PublishNoteInput, PublishNoteModule};
 pub use build::{Note, NoteBuildError, NoteBuilder};
 pub use contacts_cache::ContactsCache;
 pub use decode::{try_from_event, try_from_kernel_event, NoteRecord};

@@ -6,11 +6,13 @@
 use nmp_core::substrate::KernelEvent;
 use serde::Deserialize;
 
+mod action;
 mod coordinate;
 mod delete;
 mod primary_kind;
 mod repost_projection;
 
+pub use action::{Nip18Descriptor, RepostInput, RepostModule};
 pub use coordinate::{is_addressable_kind, AddressCoordinate};
 pub use delete::{DeleteRecord, KIND_DELETE};
 pub use primary_kind::{

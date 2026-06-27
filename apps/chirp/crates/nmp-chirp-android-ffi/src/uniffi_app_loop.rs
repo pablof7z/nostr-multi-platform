@@ -7,8 +7,8 @@
 //!
 //! The app-loop shape is now:
 //!   Kotlin creates `AppHandle` via UniFFI → `start()` → dispatch/update
-//!   loop (via `dispatch_action_bytes` / `dispatch_action_json` /
-//!   `dispatch_intent_json` + `set_update_sink`) → `stop()` → `close()`.
+//!   loop (via `dispatch_action_bytes` / `dispatch_action_json` +
+//!   `set_update_sink`) → `stop()` → `close()`.
 //!
 //! FlatBuffers bytes are preserved byte-for-byte across the boundary.
 //!
@@ -27,7 +27,7 @@
 //! * **marmot.rs**: `nativeMarmotRegisterActive`, `nativeMarmotUnregister`
 //! * **lib.rs**: `nativeSeedRelays`, `nativeSignInNsec`, `nativeSwitchAccount`,
 //!   `nativeRemoveAccount`, `nativeCreateLocalAccount`, `nativeAddRelay`,
-//!   `nativeRemoveRelay`, `nativeEncodeProfile`, `nativeBuildActionSpec`
+//!   `nativeRemoveRelay`, `nativeEncodeProfile`
 //! * **platform.rs**: `nativeSetStoragePath`, `nativeLifecycleForeground`,
 //!   `nativeLifecycleBackground`, `nativeIsAlive`
 //! * **action.rs**: `nativeAckActionStage`, `nativeRetryPublish`,
@@ -54,9 +54,8 @@ use std::ffi::CStr;
 use std::sync::Arc;
 
 use nmp_app_chirp::{
-    action_spec_for_intent_json, dispatch_action_bytes_for,
-    nmp_app_chirp_declare_consumed_projections, nmp_app_chirp_register, nmp_signer_broker_init,
-    NmpRegisterStatus,
+    dispatch_action_bytes_for, nmp_app_chirp_declare_consumed_projections, nmp_app_chirp_register,
+    nmp_signer_broker_init, NmpRegisterStatus,
 };
 use nmp_ffi::{
     nmp_app_declare_incremental_apply, nmp_app_dispatch_action_bytes, nmp_app_free, nmp_app_new,
@@ -193,29 +192,6 @@ impl AppHandle {
             .session
             .with_app(|app| dispatch_action_bytes_for(app, &namespace, &body_json));
         dispatch_result_to_ack(result)
-    }
-
-    /// Dispatch from a `ChirpActionIntent` JSON string.
-    ///
-    /// LEGACY write-verb adapter carried over from the deleted
-    /// `nativeDispatchIntentBytes` JNI symbol, kept as a STAGED RESIDUAL
-    /// pending migration to `GeneratedActionBuilders` bytes-only dispatch
-    /// in issue #2145 (M14-1). Rust converts the intent to a
-    /// `(namespace, body_json)` spec and dispatches through the typed byte
-    /// doorway. Never throws (D6).
-    pub fn dispatch_intent_json(&self, intent_json: String) -> DispatchAck {
-        match action_spec_for_intent_json(&intent_json) {
-            Err(e) => DispatchAck {
-                correlation_id: None,
-                error: Some(e),
-            },
-            Ok(spec) => {
-                let result = self.session.with_app(|app| {
-                    dispatch_action_bytes_for(app, &spec.namespace, &spec.body_json)
-                });
-                dispatch_result_to_ack(result)
-            }
-        }
     }
 
     /// Register a UniFFI update sink for kernel frames (D8: push, no polling).

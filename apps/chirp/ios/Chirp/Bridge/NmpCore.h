@@ -513,19 +513,10 @@ uint32_t nmp_app_chirp_register(void *app,
 // the single source of truth, no hand-maintained list). Call once at app
 // construction, before `nmp_app_start`. A null `app` is a silent no-op (D6).
 void nmp_app_chirp_declare_consumed_projections(void *app);
-// Build a Rust-authored Chirp action dispatch spec from typed user intent JSON.
-// Returns {"namespace":"...","body_json":"..."} or {"error":"..."}; free with
-// nmp_free_string.
-char *nmp_app_chirp_action_spec(const char *intent_json);
-// ADR-0064 / S4 (#1782) — Chirp's intent BYTE doorway. Takes the SAME
-// `ChirpActionIntent` JSON `nmp_app_chirp_action_spec` accepts, but does the
-// whole intent → Rust-authored spec → typed per-crate FlatBuffers payload →
-// `DispatchEnvelope` → byte doorway in ONE call. No protocol body or namespace
-// is authored in the host, and no JSON crosses to the kernel (only typed
-// bytes). Returns the same `{"correlation_id":"<id>"}` (accepted) or
-// `{"error":"…"}` JSON, freed via `nmp_free_string`. Fail-closed (D6): a null
-// `app` / null-or-malformed intent / unknown namespace returns `{"error":…}`.
-char *nmp_app_chirp_dispatch_intent_bytes(void *app, const char *intent_json);
+// M14-1 / PR2 (#2145): the JSON-intent C symbols `nmp_app_chirp_action_spec`
+// and `nmp_app_chirp_dispatch_intent_bytes` were RETIRED — every native social
+// write now goes through a generated `GeneratedActionBuilders.*` byte builder
+// dispatched via the generic `nmp_app_dispatch_action_bytes` doorway.
 // ADR-0064 / S4 (#1782) — bridge-private compatibility doorway for action
 // families not yet covered by generated host builders (wallet, relay lists,
 // NIP-29 group ops, Marmot). App code must expose typed methods and must not

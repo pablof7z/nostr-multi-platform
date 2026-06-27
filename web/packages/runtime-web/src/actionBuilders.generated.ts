@@ -98,6 +98,57 @@ export const GeneratedActionBuilders = {
     return encodeDispatchEnvelope(correlationId, "nmp.nip25.unreact", payload);
   },
 
+  /** Publish a NIP-01 kind:1 note; Rust builds NIP-10 reply tags from the parent fields. */
+  publishNote(
+    correlationId: string,
+    content: string,
+    replyEventId: string | null,
+    replyAuthorPubkey: string | null,
+    replyRootEventId: string | null,
+    replyRootRelay: string | null,
+    replyMentionedPubkeys: string[] | null,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const contentOffset = fbb.createString(content);
+    const replyEventIdOffset = replyEventId === null ? 0 : fbb.createString(replyEventId);
+    const replyAuthorPubkeyOffset = replyAuthorPubkey === null ? 0 : fbb.createString(replyAuthorPubkey);
+    const replyRootEventIdOffset = replyRootEventId === null ? 0 : fbb.createString(replyRootEventId);
+    const replyRootRelayOffset = replyRootRelay === null ? 0 : fbb.createString(replyRootRelay);
+    const replyMentionedPubkeysOffset =
+      replyMentionedPubkeys === null || replyMentionedPubkeys.length === 0 ? 0 : stringVector(fbb, replyMentionedPubkeys);
+    fbb.startObject(7);
+    fbb.addFieldInt32(0, 2, 0); // slot 0: schema_version
+    fbb.addFieldOffset(1, contentOffset, 0); // slot 1: content
+    if (replyEventIdOffset !== 0) fbb.addFieldOffset(2, replyEventIdOffset, 0); // slot 2: replyEventId
+    if (replyAuthorPubkeyOffset !== 0) fbb.addFieldOffset(3, replyAuthorPubkeyOffset, 0); // slot 3: replyAuthorPubkey
+    if (replyRootEventIdOffset !== 0) fbb.addFieldOffset(4, replyRootEventIdOffset, 0); // slot 4: replyRootEventId
+    if (replyRootRelayOffset !== 0) fbb.addFieldOffset(5, replyRootRelayOffset, 0); // slot 5: replyRootRelay
+    if (replyMentionedPubkeysOffset !== 0) fbb.addFieldOffset(6, replyMentionedPubkeysOffset, 0); // slot 6: replyMentionedPubkeys
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "N01N");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.nip01.publish_note", payload);
+  },
+
+  /** Repost an event (NIP-18 kind:6); Rust builds the e/p tags. */
+  repost(
+    correlationId: string,
+    eventId: string,
+    authorPubkey: string,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const eventIdOffset = fbb.createString(eventId);
+    const authorPubkeyOffset = fbb.createString(authorPubkey);
+    fbb.startObject(3);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldOffset(1, eventIdOffset, 0); // slot 1: eventId
+    fbb.addFieldOffset(2, authorPubkeyOffset, 0); // slot 2: authorPubkey
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "N18R");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.nip18.repost", payload);
+  },
+
   /** Follow a single pubkey (NIP-02 contact-list add). */
   follow(
     correlationId: string,
@@ -185,6 +236,28 @@ export const GeneratedActionBuilders = {
     return encodeDispatchEnvelope(correlationId, "nmp.nip51.unblock_relay", payload);
   },
 
+  /** Send a NIP-17 private direct message (kind:14 → gift-wrapped kind:1059). */
+  sendDm(
+    correlationId: string,
+    recipientPubkey: string,
+    content: string,
+    replyTo: string | null,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const recipientPubkeyOffset = fbb.createString(recipientPubkey);
+    const contentOffset = fbb.createString(content);
+    const replyToOffset = replyTo === null ? 0 : fbb.createString(replyTo);
+    fbb.startObject(4);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldOffset(1, recipientPubkeyOffset, 0); // slot 1: recipientPubkey
+    fbb.addFieldOffset(2, contentOffset, 0); // slot 2: content
+    if (replyToOffset !== 0) fbb.addFieldOffset(3, replyToOffset, 0); // slot 3: replyTo
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "N17S");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.nip17.send", payload);
+  },
+
   /** Publish a NIP-17 DM relay list (kind:10050). */
   publishDmRelayList(
     correlationId: string,
@@ -199,6 +272,36 @@ export const GeneratedActionBuilders = {
     fbb.finish(payloadRoot, "N17R");
     const payload = fbb.asUint8Array();
     return encodeDispatchEnvelope(correlationId, "nmp.nip17.publish_relay_list", payload);
+  },
+
+  /** Zap a recipient (NIP-57 kind:9734); Rust owns LNURL resolution + relay selection. */
+  zap(
+    correlationId: string,
+    recipientPubkey: string,
+    amountMsats: bigint,
+    lnurl: string | null,
+    relays: string[],
+    targetEventId: string | null,
+    comment: string | null,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const recipientPubkeyOffset = fbb.createString(recipientPubkey);
+    const lnurlOffset = lnurl === null ? 0 : fbb.createString(lnurl);
+    const relaysOffset = stringVector(fbb, relays);
+    const targetEventIdOffset = targetEventId === null ? 0 : fbb.createString(targetEventId);
+    const commentOffset = comment === null ? 0 : fbb.createString(comment);
+    fbb.startObject(7);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldOffset(1, recipientPubkeyOffset, 0); // slot 1: recipientPubkey
+    fbb.addFieldInt64(2, amountMsats, BigInt(0)); // slot 2: amountMsats
+    if (lnurlOffset !== 0) fbb.addFieldOffset(3, lnurlOffset, 0); // slot 3: lnurl
+    fbb.addFieldOffset(4, relaysOffset, 0); // slot 4: relays
+    if (targetEventIdOffset !== 0) fbb.addFieldOffset(5, targetEventIdOffset, 0); // slot 5: targetEventId
+    if (commentOffset !== 0) fbb.addFieldOffset(6, commentOffset, 0); // slot 6: comment
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "N57Z");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.nip57.zap", payload);
   },
 
   /** Publish a NIP-65 relay-list metadata event (kind:10002). */

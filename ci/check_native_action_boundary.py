@@ -30,7 +30,15 @@ def migrated_namespaces(root: Path) -> set[str]:
     registry = root / REGISTRY_REL
     if not registry.is_file():
         fail(f"action-builder registry not found: {REGISTRY_REL}")
-    text = registry.read_text()
+    # The registry is a Rust module: the `ACTION_BUILDERS` table (and its
+    # `namespace:` literals) may live in `registry.rs` itself or in any
+    # `registry/<submodule>.rs` it declares via `mod ...;`. Read the whole
+    # module so the gate follows the SSOT wherever a file-size split moves it.
+    sources = [registry]
+    registry_dir = registry.with_suffix("")
+    if registry_dir.is_dir():
+        sources.extend(sorted(registry_dir.rglob("*.rs")))
+    text = "\n".join(src.read_text() for src in sources)
     namespaces = set(re.findall(r'namespace:\s*"([^"]+)"', text))
     publish = re.search(r'PUBLISH_NAMESPACE:\s*&str\s*=\s*"([^"]+)"', text)
     if publish:

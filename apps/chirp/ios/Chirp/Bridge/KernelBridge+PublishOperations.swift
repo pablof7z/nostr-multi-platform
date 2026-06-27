@@ -2,26 +2,41 @@ import Foundation
 
 // ── Publish / action dispatch / social interaction operations ─────────────────
 // Extracted from KernelBridge.swift to satisfy the 500-LOC ceiling (#962).
+// M14-1 / PR2 (#2145): every social write uses GeneratedActionBuilders bytes
+// dispatched via `dispatchBytes` — no namespace strings, no JSON assembly, no
+// tag construction in host code. Rust owns all protocol-tag construction.
 
 extension KernelHandle {
-    /// Publish a kind:1 note (optionally a reply) through the kernel's
-    /// `ActionModule` family. Swift supplies compose input only; Rust builds
-    /// the `nmp.publish` action spec, `PublishRaw` body, and any NIP-10 tags.
-    /// PR-A: returns the synchronous dispatch result so the caller can drive a
-    /// spinner keyed on the correlation_id (or surface the error envelope to the
-    /// user). The terminal verdict arrives through
-    /// `projections["action_results"]` on a later snapshot tick — match by
-    /// `correlation_id` to clear the spinner.
+    /// Publish a kind:1 note (optionally a reply) via the typed FlatBuffers byte
+    /// builder (`nmp.nip01.publish_note`). Swift supplies compose input only; the
+    /// Rust action module builds the kind:1 event and any NIP-10 reply tags from
+    /// the parent fields. Returns the synchronous dispatch result so the caller
+    /// can drive a spinner keyed on the correlation_id; the terminal verdict
+    /// arrives through the `action_lifecycle` projection on a later snapshot tick.
     @discardableResult
     func publishNote(content: String, replyTo: ChirpReplyTarget?) -> DispatchResult {
-        dispatchChirpIntent(.publishNote(content: content, replyTo: replyTo))
+        let id = UUID().uuidString
+        let bytes = GeneratedActionBuilders.publishNote(
+            correlationId: id,
+            content: content,
+            replyEventId: replyTo?.eventID,
+            replyAuthorPubkey: replyTo?.authorPubkey,
+            replyRootEventId: nil,
+            replyRootRelay: nil,
+            replyMentionedPubkeys: nil
+        )
+        return dispatchBytes(bytes)
     }
 
-    /// Publish a kind:6 repost of the given note through `PublishRaw`.
-    /// NIP-18: tags `["e", eventID]` and `["p", authorPubkey]`, empty content.
+    /// Publish a kind:6 repost of the given note via the typed FlatBuffers byte
+    /// builder (`nmp.nip18.repost`). Rust builds the kind:6 event with tags
+    /// `["e", eventID]` and `["p", authorPubkey]` and empty content.
     @discardableResult
     func repost(eventID: String, authorPubkey: String) -> DispatchResult {
-        dispatchChirpIntent(.repost(eventID: eventID, authorPubkey: authorPubkey))
+        let id = UUID().uuidString
+        let bytes = GeneratedActionBuilders.repost(
+            correlationId: id, eventId: eventID, authorPubkey: authorPubkey)
+        return dispatchBytes(bytes)
     }
 
     func retryPublish(handle: String) {
@@ -38,17 +53,28 @@ extension KernelHandle {
 
     @discardableResult
     func react(targetEventID: String, reaction: String) -> DispatchResult {
-        dispatchChirpIntent(.react(eventID: targetEventID, reaction: reaction))
+        let id = UUID().uuidString
+        let bytes = GeneratedActionBuilders.react(
+            correlationId: id,
+            targetEventId: targetEventID,
+            reaction: reaction,
+            targetAuthorPubkey: nil
+        )
+        return dispatchBytes(bytes)
     }
 
     @discardableResult
     func follow(pubkey: String) -> DispatchResult {
-        dispatchChirpIntent(.follow(pubkey: pubkey))
+        let id = UUID().uuidString
+        let bytes = GeneratedActionBuilders.follow(correlationId: id, pubkey: pubkey)
+        return dispatchBytes(bytes)
     }
 
     @discardableResult
     func unfollow(pubkey: String) -> DispatchResult {
-        dispatchChirpIntent(.unfollow(pubkey: pubkey))
+        let id = UUID().uuidString
+        let bytes = GeneratedActionBuilders.unfollow(correlationId: id, pubkey: pubkey)
+        return dispatchBytes(bytes)
     }
 
     /// Dispatch a NIP-57 zap through the `nmp.nip57.zap` ActionModule.
@@ -70,42 +96,19 @@ extension KernelHandle {
         amountMsats: UInt64,
         comment: String? = nil
     ) -> DispatchResult {
-        dispatchChirpIntent(.zap(
-            targetEventID: targetEventID,
+        let id = UUID().uuidString
+        // V-07: relay selection is kernel policy — pass an empty `relays` list;
+        // the actor auto-selects from the recipient's kind:10002 write/both set.
+        let bytes = GeneratedActionBuilders.zap(
+            correlationId: id,
             recipientPubkey: authorPubkey,
             amountMsats: amountMsats,
             lnurl: lnurl,
+            relays: [],
+            targetEventId: targetEventID,
             comment: comment
-        ))
-    }
-
-    /// Build and dispatch a Chirp action spec authored by Rust.
-    ///
-    /// Swift owns only raw user intent. Rust returns the exact namespace and
-    /// body JSON before Rust encodes and dispatches typed bytes.
-    @discardableResult
-    func dispatchChirpIntent(_ intent: ChirpActionIntent) -> DispatchResult {
-        let intentJson: String
-        do {
-            let data = try JSONEncoder().encode(intent)
-            guard let json = String(data: data, encoding: .utf8) else {
-                return .failure("failed to encode Chirp action intent as UTF-8")
-            }
-            intentJson = json
-        } catch {
-            return .failure("failed to encode Chirp action intent: \(error.localizedDescription)")
-        }
-        let envelope: String? = intentJson.withCString { intentPtr in
-            guard let ptr = nmp_app_chirp_dispatch_intent_bytes(raw, intentPtr) else {
-                return nil
-            }
-            defer { nmp_free_string(ptr) }
-            return String(cString: ptr)
-        }
-        guard let envelope else {
-            return .failure("intent dispatch returned a null envelope")
-        }
-        return DispatchResult.parse(envelope: envelope)
+        )
+        return dispatchBytes(bytes)
     }
 
     /// PR-G — acknowledge a `correlation_id` in the `action_stages` snapshot

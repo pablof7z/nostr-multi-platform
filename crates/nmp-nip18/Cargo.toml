@@ -10,5 +10,12 @@ description = "NIP-18 repost decoding and read-surfacing projections for NMP."
 nmp-core = { path = "../nmp-core", default-features = false }
 nmp-kinds = { path = "../nmp-kinds" }
 nmp-planner = { path = "../nmp-planner", default-features = false }
+# `nmp-signer-iface` supplies the substrate `UnsignedEvent` the `nmp.nip18.repost`
+# action module builds for the publish engine.
+nmp-signer-iface = { path = "../nmp-signer-iface" }
+# Typed FlatBuffers payload codec for the `nmp.nip18.repost` action
+# (`repost.fbs`). Workspace-pinned to 25.12.19, enforced by
+# ci/check-flatbuffers-version-pins.sh.
+flatbuffers = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

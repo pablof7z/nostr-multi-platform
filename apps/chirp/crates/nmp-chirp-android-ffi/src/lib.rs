@@ -36,7 +36,6 @@ use jni::objects::{JClass, JString};
 use jni::sys::jlong;
 use jni::JNIEnv;
 
-use nmp_app_chirp::action_spec_json_for_intent;
 
 mod action;
 mod capability;
@@ -178,35 +177,6 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeEncodeProfile(
     env.new_string(encoded)
         .map(|s| s.into_raw())
         .unwrap_or(ptr::null_mut())
-}
-
-/// Build a Chirp action dispatch spec from typed user intent.
-///
-/// Kotlin passes user intent only. Rust owns the action namespace and body JSON
-/// shape returned as `{"namespace":"...","body_json":"..."}` or
-/// `{"error":"..."}`.
-#[no_mangle]
-pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeBuildActionSpec(
-    mut env: JNIEnv,
-    _class: JClass,
-    intent_json: JString,
-) -> jni::sys::jstring {
-    let Some(intent) = env
-        .get_string(&intent_json)
-        .map(|s| s.to_string_lossy().into_owned())
-        .ok()
-        .filter(|s| !s.trim().is_empty())
-    else {
-        // D6: null on JNI failure — never panic through extern "system".
-        return env
-            .new_string(r#"{"error":"missing Chirp action intent JSON"}"#)
-            .map(|s| s.into_raw())
-            .unwrap_or(std::ptr::null_mut());
-    };
-    let result = action_spec_json_for_intent(&intent);
-    env.new_string(&result)
-        .map(|s| s.into_raw())
-        .unwrap_or(std::ptr::null_mut())
 }
 
 /// Add a relay by URL and role string ("read", "write", or "both").

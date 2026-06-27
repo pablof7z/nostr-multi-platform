@@ -1,0 +1,45 @@
+namespace nmp.nip01;
+
+// M14-1 / PR2 (#2145) — typed FlatBuffers payload for the `nmp.nip01.publish_note`
+// `ActionModule`. The OPAQUE `DispatchEnvelope.payload` for that namespace; the
+// registry adapter decodes against THIS schema, gating `schema_version` BEFORE
+// `start()` (fail-closed on mismatch).
+//
+// Rust owns ALL NIP-10 reply-tag construction: the host supplies raw note
+// content plus, when this note is a reply, the parent's protocol fields. The
+// `PublishNoteModule` reconstructs the parent `NoteRecord` and builds the
+// marked-form root/reply `e`-tags + thread `p`-tags via `nmp_nip01::Note` — the
+// shell never assembles a tag.
+//
+// Reply-field presence is keyed on `reply_event_id`:
+//   * absent                          → a root note (no tags).
+//   * present, `reply_author_pubkey`  → minimal root+reply `e`-tags on the same id.
+//     absent
+//   * present + `reply_author_pubkey` → full NIP-10 `Note::reply_to(parent)`.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh:
+//   PATH=~/.cache/nmp-flatc/v25.12.19:$PATH \
+//   flatc --rust -o crates/nmp-nip01/src/wire/generated \
+//         crates/nmp-nip01/schema/publish_note.fbs
+
+table PublishNotePayload {
+  // Fail-closed schema_version tripwire (read RAW before decode).
+  schema_version:uint;
+  // The note body — becomes the kind:1 `content` (required, non-empty).
+  content:string (required);
+  // Parent event id (hex) when this note is a reply. Absent for a root note.
+  reply_event_id:string;
+  // Parent author pubkey (hex). When present alongside `reply_event_id`, the
+  // module builds the full NIP-10 reply (root/reply markers + `p`-tags).
+  reply_author_pubkey:string;
+  // Thread root event id (hex), when the parent already pointed at a root.
+  reply_root_event_id:string;
+  // Optional relay hint for the thread root `e`-tag.
+  reply_root_relay:string;
+  // Parent's mentioned pubkeys, re-notified as thread `p`-tags (de-duplicated).
+  reply_mentioned_pubkeys:[string];
+}
+
+file_identifier "N01N";
+root_type PublishNotePayload;

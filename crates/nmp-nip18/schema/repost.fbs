@@ -1,0 +1,29 @@
+namespace nmp.nip18;
+
+// M14-1 / PR2 (#2145) — typed FlatBuffers payload for the `nmp.nip18.repost`
+// `ActionModule`. The OPAQUE `DispatchEnvelope.payload` for that namespace; the
+// registry adapter decodes against THIS schema, gating `schema_version` BEFORE
+// `start()` (fail-closed on mismatch).
+//
+// Rust owns the kind:6 repost construction: the host supplies the target event
+// id + author pubkey, and `RepostModule` builds the kind:6 event with `["e",
+// event_id]` + `["p", author_pubkey]` tags and an empty content. The shell never
+// assembles a tag.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh:
+//   PATH=~/.cache/nmp-flatc/v25.12.19:$PATH \
+//   flatc --rust -o crates/nmp-nip18/src/wire/generated \
+//         crates/nmp-nip18/schema/repost.fbs
+
+table RepostPayload {
+  // Fail-closed schema_version tripwire (read RAW before decode).
+  schema_version:uint;
+  // Target event id (hex) being reposted (the kind:6 `e`-tag).
+  event_id:string (required);
+  // Target event author pubkey (hex) (the kind:6 `p`-tag).
+  author_pubkey:string (required);
+}
+
+file_identifier "N18R";
+root_type RepostPayload;
