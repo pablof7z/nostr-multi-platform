@@ -51,6 +51,9 @@ test("@wasm messages workspace renders Rust-owned NIP-17 inbox", async ({ page }
     await expect(page.getByTestId("messages-conversation")).toContainText(
       relay.senderPubkey.slice(0, 8),
     );
+    await expect(page.getByTestId("messages-conversation")).toContainText(
+      relay.url.replace(/^wss?:\/\//, ""),
+    );
     await expect(page.getByTestId("messages-compose-blocked")).toContainText(
       "Sending is blocked on web",
     );

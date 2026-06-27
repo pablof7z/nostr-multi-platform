@@ -39,6 +39,14 @@ pub trait IngestParser: Send + Sync {
     fn parse_at(&self, evt: &VerifiedEvent, _now_secs: u64) {
         self.parse(evt);
     }
+
+    /// Source-aware ingest hook for parsers whose read model must preserve the
+    /// relay that delivered an event. Existing parsers can keep implementing
+    /// `parse` or `parse_at`; the dispatcher calls this method and the default
+    /// delegates to the timestamped hook.
+    fn parse_at_source(&self, evt: &VerifiedEvent, now_secs: u64, _source_relay_url: Option<&str>) {
+        self.parse_at(evt, now_secs);
+    }
 }
 
 /// Registry of [`IngestParser`]s the kernel fans every ingested event to.
@@ -221,15 +229,30 @@ impl EventIngestDispatcher {
     /// actor/kernel-authored Unix timestamp for parsers that need replayable
     /// state-affecting time.
     pub fn dispatch_at(&self, evt: &VerifiedEvent, now_secs: u64) {
+        self.dispatch_at_source(evt, now_secs, None);
+    }
+
+    /// Fan `evt` to every parser registered for its kind, carrying both the
+    /// actor/kernel-authored Unix timestamp and optional live relay provenance.
+    ///
+    /// `source_relay_url` is `Some` only for live relay ingest. Cache-serve,
+    /// local-publish, and source-free test paths pass `None` so parsers cannot
+    /// mistake replay/local state for a network source.
+    pub fn dispatch_at_source(
+        &self,
+        evt: &VerifiedEvent,
+        now_secs: u64,
+        source_relay_url: Option<&str>,
+    ) {
         let kind = evt.raw().kind;
         if let Some(parsers) = self.by_kind.get(&kind) {
             for (_, p) in parsers {
-                p.parse_at(evt, now_secs);
+                p.parse_at_source(evt, now_secs, source_relay_url);
             }
         }
         for (range, _, p) in &self.by_range {
             if range.contains(&kind) {
-                p.parse_at(evt, now_secs);
+                p.parse_at_source(evt, now_secs, source_relay_url);
             }
         }
     }

@@ -105,6 +105,16 @@ impl IngestSource<'_> {
             IngestSource::LocalPublish => "",
         }
     }
+
+    /// Relay provenance for parser-owned read models. Only live relay ingest
+    /// carries a relay URL; local publish and cache replay must not be
+    /// represented as network sources.
+    fn parser_source_relay_url(&self) -> Option<&str> {
+        match self {
+            IngestSource::Relay { relay_url, .. } => Some(relay_url),
+            IngestSource::LocalPublish => None,
+        }
+    }
 }
 
 #[cfg(test)]

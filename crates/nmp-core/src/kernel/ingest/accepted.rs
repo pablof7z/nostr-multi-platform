@@ -65,7 +65,7 @@ impl Kernel {
                 | InsertOutcome::Ephemeral { .. }
         );
         if canonical {
-            self.project_accepted_event(&verified);
+            self.project_accepted_event_from(&verified, source.parser_source_relay_url());
             // Keep the read-cache (`self.events` / `self.timeline`) consistent with
             // the store's current head when a replaceable event is replaced live.
             // Without this, a stale predecessor that cache-serve previously served

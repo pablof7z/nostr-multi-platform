@@ -100,7 +100,7 @@ impl Kernel {
             let verified_for_dispatch =
                 crate::store::VerifiedEvent::from_raw_unchecked(raw.clone());
             if let Ok(d) = self.ingest_dispatcher_slot().read() {
-                d.dispatch(&verified_for_dispatch);
+                d.dispatch_at_source(&verified_for_dispatch, self.now_secs(), Some(&relay_url));
             }
         }
         if sub_id.starts_with("diag-firehose-") {

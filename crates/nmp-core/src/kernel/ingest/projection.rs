@@ -16,6 +16,17 @@ impl Kernel {
         &mut self,
         verified: &crate::store::VerifiedEvent,
     ) {
+        self.project_accepted_event_from(verified, None);
+    }
+
+    /// Source-aware variant for live relay ingest. Cache replay and local
+    /// publish use [`Self::project_accepted_event`] so parser-owned read models
+    /// do not confuse replay/local rows with relay provenance.
+    pub(in crate::kernel) fn project_accepted_event_from(
+        &mut self,
+        verified: &crate::store::VerifiedEvent,
+        source_relay_url: Option<&str>,
+    ) {
         let raw = verified.raw();
         let author = raw.pubkey.clone();
         let event_id = raw.id.clone();
@@ -37,7 +48,7 @@ impl Kernel {
         // (1) NIP-parser dispatch. D6 — a poisoned dispatcher lock degrades to
         // "no parser fired" (graceful; persistence already succeeded).
         if let Ok(d) = self.ingest_dispatcher_slot().read() {
-            d.dispatch_at(verified, self.now_secs());
+            d.dispatch_at_source(verified, self.now_secs(), source_relay_url);
         }
 
         // (2b) Transition sweep AFTER dispatch.
