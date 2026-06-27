@@ -52,6 +52,18 @@ function rowSignature(rows: FeedRow[]): string {
         row.relationCounts.replies,
         row.relationCounts.reactions,
         row.relationCounts.reposts,
+        row.relationCounts.zaps,
+        row.relationCounts.comments,
+        row.replyAttributions
+          .map((reply) =>
+            [
+              reply.authorPubkey,
+              reply.authorDisplayName ?? "",
+              reply.replyEventId,
+              reply.replyCreatedAt,
+            ].join(","),
+          )
+          .join(";"),
         row.relayProvenance.join(","),
       ].join(":"),
     )

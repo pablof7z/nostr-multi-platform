@@ -120,8 +120,11 @@ test("@wasm feed: real signed events from the fixture relay reach a snapshot aft
       relay.noteLinkUrl,
     );
 
-    await firstCard.getByRole("button", { name: /open thread/i }).click();
+    await richCard.getByRole("button", { name: /open thread/i }).click();
     await expect(detail).toHaveAttribute("data-kind", "thread");
+    await expect(detail.getByTestId("thread-reply-attribution")).toContainText(
+      relay.replierDisplayName,
+    );
   } finally {
     await relay.close();
   }

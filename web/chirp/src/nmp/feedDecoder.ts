@@ -46,6 +46,16 @@ export type FeedRow = {
   relayProvenance: string[];
   /** Runtime-provided relation counters for the note. */
   relationCounts: FeedRelationCounts;
+  /** Rust-emitted reply attribution rows for replies already visible to the feed. */
+  replyAttributions: FeedReplyAttribution[];
+};
+
+export type FeedReplyAttribution = {
+  authorPubkey: string;
+  authorDisplayName?: string;
+  authorPictureUrl?: string;
+  replyEventId: string;
+  replyCreatedAt: number;
 };
 
 export type FeedRelationCounts = {
@@ -148,6 +158,7 @@ function extractFeedRows(feedSnap: OpFeedSnapshot): FeedRow[] {
         zaps: 0,
         comments: 0,
       },
+      replyAttributions: [],
     };
 
     if (card.hasAuthorDisplayName()) {
@@ -177,6 +188,29 @@ function extractFeedRows(feedSnap: OpFeedSnapshot): FeedRow[] {
         zaps: countValue(relationCounts.zaps()),
         comments: countValue(relationCounts.comments()),
       };
+    }
+
+    for (let j = 0; j < rootCard.attributionLength(); j++) {
+      const attribution = rootCard.attribution(j);
+      if (!attribution) continue;
+      const authorPubkey = attribution.authorPubkey() ?? "";
+      const replyEventId = attribution.replyEventId() ?? "";
+      if (!authorPubkey || !replyEventId) continue;
+      const reply: FeedReplyAttribution = {
+        authorPubkey,
+        replyEventId,
+        replyCreatedAt: Number(attribution.replyCreatedAt()),
+      };
+      const display = attribution.authorDisplay();
+      if (display?.hasName()) {
+        const name = display.name();
+        if (name) reply.authorDisplayName = name;
+      }
+      if (display?.hasPictureUrl()) {
+        const picture = display.pictureUrl();
+        if (picture) reply.authorPictureUrl = picture;
+      }
+      row.replyAttributions.push(reply);
     }
 
     const provenance: string[] = [];

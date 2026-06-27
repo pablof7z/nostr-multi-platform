@@ -171,6 +171,63 @@
   gap: 12px;
 }
 
+.thread-replies {
+  display: grid;
+  gap: 8px;
+}
+
+.thread-section-heading,
+.thread-reply-body > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.thread-section-heading strong,
+.thread-reply strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.thread-section-heading span,
+.thread-reply span,
+.thread-reply code {
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.thread-reply {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  background: var(--bg-raised);
+}
+
+.thread-reply-body {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.thread-reply code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thread-empty {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .thread-reply-form {
   display: grid;
   gap: 10px;

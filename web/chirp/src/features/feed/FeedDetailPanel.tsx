@@ -1,7 +1,10 @@
-import { For, Show, createEffect, createMemo, createSignal } from "solid-js";
-import type { FeedRow } from "../../nmp/feedDecoder";
+import { For, Show, createEffect, createMemo, createSignal, createUniqueId } from "solid-js";
+import type { FeedReplyAttribution, FeedRow } from "../../nmp/feedDecoder";
 import { useNmpClient } from "../../nmp/context";
 import { followCommand, publishNoteAction } from "../../nmp/actions";
+import { displayLabel, shortHex as shortPubkey } from "@nmp/components-web/src/user-avatar/ProfileWire";
+import { useNostrProfileHost } from "@nmp/components-web/src/user-avatar/NostrProfileHost";
+import { NostrAvatar } from "@nmp/components-web/src/user-avatar/NostrAvatar";
 import { ProfileDetail } from "./ProfileDetail";
 import "./feed-detail.css";
 
@@ -117,6 +120,20 @@ function ThreadPreview(props: { row: FeedRow; canPublish: boolean }) {
           </For>
         </Show>
       </div>
+      <section class="thread-replies" aria-label="Replies">
+        <div class="thread-section-heading">
+          <strong>Replies</strong>
+          <span>{props.row.replyAttributions.length}</span>
+        </div>
+        <Show
+          when={props.row.replyAttributions.length > 0}
+          fallback={<p class="thread-empty">No replies in view yet.</p>}
+        >
+          <For each={props.row.replyAttributions}>
+            {(reply) => <ThreadReplyAttribution reply={reply} />}
+          </For>
+        </Show>
+      </section>
       <form
         class="thread-reply-form"
         onSubmit={(event) => {
@@ -145,4 +162,37 @@ function ThreadPreview(props: { row: FeedRow; canPublish: boolean }) {
       </form>
     </div>
   );
+}
+
+function ThreadReplyAttribution(props: { reply: FeedReplyAttribution }) {
+  const host = useNostrProfileHost();
+  const consumerId = `thread-reply.${createUniqueId()}`;
+  const author = () => {
+    const profile = host.profile(props.reply.authorPubkey);
+    if (profile) return displayLabel(profile, props.reply.authorPubkey);
+    return props.reply.authorDisplayName || shortPubkey(props.reply.authorPubkey);
+  };
+  const timestamp = () =>
+    new Date(props.reply.replyCreatedAt * 1000).toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  return (
+    <article class="thread-reply" data-testid="thread-reply-attribution">
+      <NostrAvatar pubkey={props.reply.authorPubkey} size={28} consumerId={consumerId} />
+      <div class="thread-reply-body">
+        <div>
+          <strong title={props.reply.authorPubkey}>{author()}</strong>
+          <span>{timestamp()}</span>
+        </div>
+        <code title={props.reply.replyEventId}>{shortHex(props.reply.replyEventId)}</code>
+      </div>
+    </article>
+  );
+}
+
+function shortHex(value: string): string {
+  return value.length > 10 ? `${value.slice(0, 6)}...${value.slice(-4)}` : value;
 }

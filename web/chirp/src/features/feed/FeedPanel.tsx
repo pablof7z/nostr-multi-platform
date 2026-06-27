@@ -32,6 +32,12 @@ export function FeedPanel(props: { canPublish: boolean; diagnostics?: RuntimePro
   const bookmarkedIds = createMemo(() => new Set(props.diagnostics?.bookmarkedEventIds ?? []));
   const savedRows = createMemo(() => state.rows.filter((row) => bookmarkedIds().has(row.id)));
   const visibleRows = createMemo(() => (mode() === "saved" ? savedRows() : state.rows));
+  const detailSelection = createMemo(() => {
+    const current = selection();
+    if (!current) return null;
+    const latest = state.rows.find((row) => row.id === current.row.id);
+    return latest ? { ...current, row: latest } : current;
+  });
   const bookmarkedCount = () => props.diagnostics?.bookmarkedEventIds.length ?? 0;
 
   onMount(() => {
@@ -90,7 +96,7 @@ export function FeedPanel(props: { canPublish: boolean; diagnostics?: RuntimePro
           </span>
         </div>
 
-        <Show when={selection()}>
+        <Show when={detailSelection()}>
           {(value) => (
             <FeedDetailPanel
               selection={value()}

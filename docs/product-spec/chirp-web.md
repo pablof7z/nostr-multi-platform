@@ -105,6 +105,24 @@ graph, or relay query plan. If the author has more content than the current
 projection has hydrated, the UI must represent only the visible projected set
 until a Rust-owned profile/feed workspace provides a broader author feed.
 
+## Thread Open Contract
+
+Chirp Web must let users open a visible feed note into a thread detail surface.
+The browser shell may render the selected Rust-projected root, relation counts,
+relay provenance, and Rust-emitted reply attribution rows from the existing
+`nmp.feed.home` projection. TypeScript must not issue relay queries, infer NIP-10
+thread membership, or maintain a parallel thread graph.
+
+The current thread detail shows selected-note content, relation counters, relay
+provenance, a reply composer, and visible reply attribution rows containing the
+reply author, reply event id, and timestamp. Full reply-body hydration remains
+pending until Rust emits a dedicated thread/read-model sidecar for browser
+sessions.
+
+Acceptance must prove that opening a fixture-fed thread renders reply
+attribution from the typed feed projection and that publishing a reply still
+uses the Rust-owned NIP-10 publish path.
+
 ## Profile Publish Contract
 
 Chirp Web must let a signed-in user publish their public identity from the first
