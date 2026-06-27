@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "EventStore trait + MemEventStore / LmdbEventStore backends. Extracted from nmp-core in step 9 of the crate-boundary migration."
+description = "EventStore trait + MemEventStore / LmdbEventStore backends. Extracted from nmp-core (see docs/architecture/crate-boundaries.md §9)."
 
 [lib]
 name = "nmp_store"

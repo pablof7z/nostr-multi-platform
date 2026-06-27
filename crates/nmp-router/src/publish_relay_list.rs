@@ -1,7 +1,7 @@
 //! `nmp.nip65.publish_relay_list` — NIP-65 relay-list (kind:10002) publish path.
 //!
-//! Absorbed from the (now-deleted) `nmp-nip65` crate at step 3 of the
-//! crate-boundary migration (`docs/architecture/crate-boundaries.md` §5).
+//! Absorbed from the (now-deleted) `nmp-nip65` crate; see
+//! `docs/architecture/crate-boundaries.md` §3.
 //! `nmp-router` is the single home for both the kind:10002 ingest parser
 //! ([`crate::Kind10002Parser`]) + cache ([`crate::InMemoryMailboxCache`])
 //! **and** the kind:10002 publish action: routing owns the kind end-to-end.

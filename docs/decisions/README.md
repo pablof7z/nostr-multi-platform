@@ -78,7 +78,7 @@ status; if they disagree, fix the index.
 | 0051 | First-class NIP-11 relay-information documents in NMP | Accepted / implemented | — |
 | 0052 | Instance-scoped extension seams — register values, not types | Accepted / implemented | — |
 | 0053 | Host-declared projection subscriptions | Accepted | Amends 0039 |
-| 0054 | Web persistence (OPFS-SQLite sync VFS) + offline-queue durability | Accepted (Stage 5; Stages 6–9 queued) | — |
+| 0054 | Web persistence (OPFS-SQLite sync VFS) + offline-queue durability | Accepted (implemented; Stages 5–9 shipped via #2147–#2165) | — |
 | 0055 | Incremental projection emission (per-projection revision transport) | Accepted (implemented; Rungs 0-3 + capstone) | Amends aim.md §10 + Doctrine #12 |
 | 0056 | K3 coverage ledger | Accepted / implemented | — |
 | 0057 | Unified kind-agnostic accepted-event ingest chokepoint | Accepted / implemented | Amends 0042 (finalizes its read path) |
@@ -86,9 +86,9 @@ status; if they disagree, fix the index.
 | 0059 | Account lifecycle is separate from bootstrap publish | Accepted / implemented | — |
 | 0060 | NIP-29 admin actions and joined-groups projection | Accepted / implemented | — |
 | 0061 | NIP-22 comments | Accepted / implemented | — |
-| 0062 | Observer-scoped read-model catch-up | Proposed | — |
+| 0062 | Observer-scoped read-model catch-up | Accepted (implemented) | — |
 | 0063 | Reference resolution: unified keyed `RefResolver` primitive | Accepted | Amends 0042; extends 0053, 0055 |
 | 0064 | Unified write/command boundary: one byte transport, open FlatBuffers payloads, signing as a capability round-trip | Accepted/implemented | Extends 0027, 0050, 0040; folds in the worker write/signing contract from 0047 |
 | 0065 | `ActorCommand` sub-enum collapse | Accepted | Aligns the in-process command vocabulary with 0064 |
-| 0066 | Delegated NIP-44 decrypt sessions for bunker DM backfill | Accepted for staged implementation | Extends 0050 §D7; relies on 0031 |
+| 0066 | Delegated NIP-44 decrypt sessions for bunker DM backfill | Accepted for staged implementation | Extends 0050 §D7; NIP-46 transport principle from 0031 (superseded; now via nmp-nip46-runtime) |
 | 0067 | Browser runtime ownership split (nmp-wasm is ABI glue) | Accepted | Amends 0047 and 0054 |

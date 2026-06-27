@@ -65,8 +65,8 @@ pub fn register_actions(app: &mut NmpApp) {
 }
 
 // Called separately after the read model is constructed.
-pub fn register_projector(app: &mut NmpApp, projection: Arc<GroupChatProjection>) {
-    app.register_typed_snapshot_projection("nmp.nip29.group_chat", move || {
+pub fn register_projector(app: &mut NmpApp, projection: Arc<GroupEventsProjection>) {
+    app.register_typed_snapshot_projection("nmp.nip29.group_events", move || {
         projection.typed_snapshot()    // cheap, non-blocking
     });
 }

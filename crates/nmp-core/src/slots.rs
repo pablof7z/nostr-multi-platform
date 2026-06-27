@@ -1,8 +1,8 @@
 //! Shared substrate slot aliases the FFI shell (`nmp-ffi`) and the actor
 //! runtime (`crate::actor`) both reach into.
 //!
-//! Step 11 final of `docs/architecture/crate-boundaries.md` §5 extracted the
-//! C-ABI surface to a standalone `nmp-ffi` crate. The slot type aliases
+//! The C-ABI surface was extracted to a standalone `nmp-ffi` crate (see
+//! `docs/architecture/crate-boundaries.md` §10a). The slot type aliases
 //! these two layers shared used to live in `crate::ffi::mod.rs` (private to
 //! `nmp-core`); after the move the actor side cannot name them through
 //! `crate::ffi::*` any more. They are substrate-grade (just shared

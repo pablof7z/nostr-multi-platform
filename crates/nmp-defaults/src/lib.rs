@@ -3,7 +3,7 @@
 //!
 //! Per **ADR-0046** ("composition is a library, not a generator") this crate is
 //! NOT a template and NOT a scaffold to copy — it is a runtime library you
-//! depend on and call. Step 10 of `docs/architecture/crate-boundaries.md` §5.
+//! depend on and call. See `docs/architecture/crate-boundaries.md` §10.
 //! Closes **V-48**: "No composition-root crate — second-app developer must read
 //! 403 LOC of Chirp to understand registration".
 //!

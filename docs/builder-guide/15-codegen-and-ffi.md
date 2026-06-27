@@ -135,7 +135,7 @@ for the update stream.
 
 **What it is.** A snapshot projection is a named slice of app- or module-owned
 state, keyed by a dotted `nmp.*` namespace (e.g. `nmp.feed.home`,
-`nmp.nip29.group_chat`, `nmp.follow_list`, scoped relation-count projections),
+`nmp.nip29.group_events`, `nmp.follow_list`, scoped relation-count projections),
 that rides the kernel's reactive snapshot
 push frame ([06 — Reactivity contract](06-reactivity-contract.md)) into the host.
 The kernel pushes a **whole frame every emit tick when state changed**; hosts

@@ -255,12 +255,11 @@ pub(super) fn dispatch_action_json(
 /// `nmp-nip29`, the `nmp-testing` zap E2E harnesses), and the `nmp-defaults`
 /// registration probe now reads `registered_action_namespaces()` directly. The
 /// SOLE remaining justified test-only caller is the `nmp-marmot`
-/// `dispatch_action_tests` suite: the `nmp.marmot` action module is NOT yet
-/// typed-payload-capable (its `decode_payload` defaults to `None`, so the byte
-/// doorway rejects the namespace fail-closed), so its dispatch tests cannot ride
-/// the typed lane until Marmot gains an `ActionPayload` in a later ADR-0064
-/// stage. This shim therefore stays — as a clearly test-only seam that cannot be
-/// confused with the binding production transport (which is bytes-only).
+/// `dispatch_action_tests` suite. Marmot now implements `decode_payload` (PR
+/// #2179, `crates/nmp-marmot/src/projection/action.rs:393`); migration of these
+/// tests to the byte doorway is tracked separately. This shim therefore stays —
+/// as a clearly test-only seam that cannot be confused with the binding
+/// production transport (which is bytes-only).
 ///
 /// # Safety
 /// `app` may be null (D6: returns `{"error":"…"}` envelope). If non-null it

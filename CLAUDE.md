@@ -6,9 +6,9 @@ This file intentionally defers to [`AGENTS.md`](AGENTS.md), which is the canonic
 
 The canonical crate-boundary spec lives at
 [`docs/architecture/crate-boundaries.md`](docs/architecture/crate-boundaries.md). The
-prior architecture freeze (2026-05-24) is lifted now that the spec exists. Migration
-follows the 12-step order in §5 of that document. New work that touches crate boundaries
-must align with that plan; ad-hoc moves are out of bounds.
+prior architecture freeze (2026-05-24) is lifted now that the spec exists.
+New work that touches crate boundaries must align with the durable layer rules (§2–§10a)
+in that document; ad-hoc moves are out of bounds.
 
 ## Cold-start reading order
 

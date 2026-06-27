@@ -1,9 +1,9 @@
 //! Subscription compiler — the M2 planner subsystem.
 //!
-//! Extracted from `nmp-core::planner` in step 9 of the crate-boundary
-//! migration (see `docs/architecture/crate-boundaries.md` §5). `nmp-core`
-//! re-exports this crate's public surface as `nmp_core::planner::*` so
-//! existing call sites compile unchanged.
+//! Extracted from `nmp-core::planner` (see `docs/architecture/crate-boundaries.md`
+//! §9). `nmp-core` re-exports a subset of this crate's surface as
+//! `pub(crate) mod planner` so internal call sites compile unchanged;
+//! external callers must depend on `nmp-planner` directly.
 //!
 //! Turns a set of `LogicalInterest`s into a `CompiledPlan` mapping each
 //! relay URL to the exact set of REQ frames to emit.

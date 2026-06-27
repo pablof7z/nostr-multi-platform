@@ -1,7 +1,6 @@
 //! NIP-57 LNURL-pay fetcher — `FetchLnurlInvoiceCommand` `ProtocolCommand`.
 //!
-//! V-41 / step 4 of the crate-boundary migration
-//! (`docs/architecture/crate-boundaries.md` §5). Replaces the old
+//! V-41 / `docs/architecture/crate-boundaries.md` §4. Replaces the old
 //! `nmp-core::actor::commands::zap::handle_fetch_lnurl_invoice` +
 //! `ActorCommand::FetchLnurlInvoice` variant: the entire LNURL-pay
 //! orchestration now lives in `nmp-nip57` and dispatches through the

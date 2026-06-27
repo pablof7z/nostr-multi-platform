@@ -57,8 +57,8 @@ native = [
 # V-38: the `wallet` feature was deleted; the NIP-47 NWC wallet stack
 # (runtime + action modules + status projection) moved to `crates/nmp-nip47`.
 # The kernel no longer depends on `nmp-nwc`; that edge inverted to
-# `nmp-nip47 → nmp-nwc`. See `docs/architecture/crate-boundaries.md` §5
-# step 7. The `nmp_app_wallet_*` FFI symbols stay on `nmp-core::ffi::wallet`
+# `nmp-nip47 → nmp-nwc`. See `docs/architecture/crate-boundaries.md` §3.7.
+# The `nmp_app_wallet_*` FFI symbols stay on `nmp-core::ffi::wallet`
 # as thin shims over `dispatch_action` (no `nmp-nwc` dep at the kernel boundary).
 # Expose actor internals for live-bench harnesses and integration test binaries.
 # Never enable in production builds. Forwards to `nmp-store/test-support` so
@@ -70,10 +70,10 @@ test-support = ["nmp-store/test-support"]
 # nostr-database). ADR-0011, ADR-0012. lmdb-backend implies native (LMDB
 # requires OS file I/O).
 lmdb-backend = ["nmp-store/lmdb-backend", "native"]
-# Step 11 final — the `android-ffi` feature used to gate the FFI
-# re-export surface that nmp-android-ffi consumed. The whole `ffi::`
-# module moved to the standalone `nmp-ffi` crate; the JNI shim now
-# depends on `nmp-ffi` directly, so this feature is a thin alias for
+# The `android-ffi` feature used to gate the FFI re-export surface that
+# nmp-android-ffi consumed. The whole `ffi::` module moved to the standalone
+# `nmp-ffi` crate (see `docs/architecture/crate-boundaries.md` §10a); the JNI
+# shim now depends on `nmp-ffi` directly, so this feature is a thin alias for
 # `native` retained for downstream compatibility (the workspace still
 # has callers passing `--features android-ffi` to mean "give me the
 # native FFI graph").
@@ -153,17 +153,18 @@ zeroize = { workspace = true }
 # on each projection type the emitter reflects.
 schemars = { version = "0.8", optional = true }
 
-# EventStore + DomainMigration types live in `nmp-store` (step 9 extraction).
-# nmp-core re-exports `store::*` and `substrate::{DomainMigration, MigrationTx}`
-# from this crate so existing import sites compile unchanged. The
-# `lmdb-backend` Cargo feature here forwards to `nmp-store/lmdb-backend`,
-# which is the one place the heed / nostr-database / nmp-nostr-lmdb graph
-# is pulled in.
+# EventStore + DomainMigration types live in `nmp-store` (see
+# `docs/architecture/crate-boundaries.md` §9). nmp-core re-exports
+# `store::*` and `substrate::{DomainMigration, MigrationTx}` from this crate
+# so existing import sites compile unchanged. The `lmdb-backend` Cargo feature
+# here forwards to `nmp-store/lmdb-backend`, which is the one place the heed /
+# nostr-database / nmp-nostr-lmdb graph is pulled in.
 nmp-store = { path = "../nmp-store" }
-# LogicalInterest + subscription compiler live in `nmp-planner` (step 9
-# extraction). nmp-core re-exports `planner::*` and `stable_hash::*` from this
-# crate so existing import sites compile unchanged. nmp-planner is a Layer-2
-# foundation with NO back-edge into nmp-core — keeps the dep graph acyclic.
+# LogicalInterest + subscription compiler live in `nmp-planner` (see
+# `docs/architecture/crate-boundaries.md` §9). nmp-core re-exports
+# `planner::*` and `stable_hash::*` from this crate so existing import sites
+# compile unchanged. nmp-planner is a Layer-2 foundation with NO back-edge
+# into nmp-core — keeps the dep graph acyclic.
 nmp-planner = { path = "../nmp-planner" }
 
 # W1 — wasm-safe time shim. `web-time 1.1.0` is already in the workspace

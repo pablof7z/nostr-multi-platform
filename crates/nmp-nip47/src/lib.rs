@@ -9,9 +9,8 @@
 //! After V-38 lands `nmp-core` no longer depends on `nmp-nwc`; that edge
 //! moves here (`nmp-nip47 → nmp-nwc`, `nmp-nip47 → nmp-core`).
 //!
-//! See `docs/architecture/crate-boundaries.md` §2 (per-crate table row
-//! `nmp-nip47`) and §5 step 7 for the canonical responsibility statement +
-//! migration brief.
+//! See `docs/architecture/crate-boundaries.md` §2 (per-crate table row for
+//! `nmp-nip47`) and §3.7 for the canonical responsibility statement.
 //!
 //! # Composition
 //!

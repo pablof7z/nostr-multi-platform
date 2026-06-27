@@ -104,7 +104,7 @@ impl Signer for NoopSigner {
 /// Resolve `PublishTarget::Auto` to a concrete relay set per NIP-65.
 ///
 /// The real implementation lives in `nmp-router` (the single home for NIP-65
-/// mailbox routing — see `docs/architecture/crate-boundaries.md` §5): author
+/// mailbox routing — see `docs/architecture/crate-boundaries.md` §3): author
 /// kind:10002 write relays union'd with small `#p` recipient sets' read relays.
 /// Discovery kinds additionally fan out to configured indexers; non-discovery
 /// kinds fail closed when the author has no published or local write relay list.
