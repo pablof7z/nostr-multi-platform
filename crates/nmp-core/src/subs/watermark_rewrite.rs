@@ -14,7 +14,7 @@ use super::wire::lifecycle_for_shape;
 /// is NOT considered ephemeral — persistent kinds may match, so the rewrite
 /// still applies. Mirrors the carve-out NDK added in commit `5afbd245`.
 pub(super) fn shape_is_ephemeral_only(shape: &InterestShape) -> bool {
-    !shape.kinds.is_empty() && shape.kinds.iter().all(|k| (20000..30000).contains(k))
+    !shape.kinds.is_empty() && shape.kinds.iter().copied().all(nmp_kinds::is_ephemeral)
 }
 
 /// In-place rewrite of every non-ephemeral sub-shape's `since` to

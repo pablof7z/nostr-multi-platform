@@ -14,7 +14,7 @@ use std::sync::Arc;
 use nmp_core::substrate::{
     CacheSearchMode, SearchIndexSpec, SearchPrivacyPolicy, SearchScopeProvider, SearchScopeRegistrar,
 };
-use nmp_kinds::KIND_LONG_FORM_ARTICLE;
+use nmp_kinds::{KIND_LONG_FORM_ARTICLE, KIND_PROFILE_METADATA, KIND_SHORT_TEXT_NOTE};
 use nmp_store::{SearchField, SearchScopeId, StoredEvent};
 
 /// Stable scope labels — also the bridge the result projection uses to map a
@@ -22,9 +22,6 @@ use nmp_store::{SearchField, SearchScopeId, StoredEvent};
 pub const SCOPE_LABEL_PROFILES: &str = "nip50.profiles";
 pub const SCOPE_LABEL_NOTES: &str = "nip50.notes";
 pub const SCOPE_LABEL_LONGFORM: &str = "nip50.longform";
-
-const KIND_PROFILE: u32 = 0;
-const KIND_NOTE: u32 = 1;
 
 /// Long-form body bytes indexed (the rest is dropped at extract time so a
 /// pathological article body can't blow the per-doc token budget — the store
@@ -60,7 +57,7 @@ impl SearchScopeProvider for ProfileSearchScope {
         SearchIndexSpec {
             scope: SearchScopeId::from_label(SCOPE_LABEL_PROFILES),
             source: "nip50.profiles (kind:0 metadata)",
-            kinds: BTreeSet::from([KIND_PROFILE]),
+            kinds: BTreeSet::from([KIND_PROFILE_METADATA]),
             fields: vec![
                 Self::F_NAME,
                 Self::F_DISPLAY_NAME,
@@ -122,7 +119,7 @@ impl SearchScopeProvider for NoteSearchScope {
         SearchIndexSpec {
             scope: SearchScopeId::from_label(SCOPE_LABEL_NOTES),
             source: "nip50.notes (kind:1 content)",
-            kinds: BTreeSet::from([KIND_NOTE]),
+            kinds: BTreeSet::from([KIND_SHORT_TEXT_NOTE]),
             fields: vec![Self::F_CONTENT],
             privacy: SearchPrivacyPolicy::PublicIndexable,
             cache_mode: CacheSearchMode::Both,

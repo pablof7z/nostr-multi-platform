@@ -96,9 +96,12 @@ pub use lmdb::{conversion_count, reset_conversion_count};
 // F-TTL — re-export replaceable freshness types from nmp-nostr-lmdb.
 // Only available when lmdb-backend is enabled (the module owns the LMDB types).
 #[cfg(feature = "lmdb-backend")]
-pub use nmp_nostr_lmdb::{is_addressable, is_replaceable, ReplaceableKey};
+pub use nmp_nostr_lmdb::ReplaceableKey;
 
-// F-TTL — stub implementations for non-lmdb builds (tests, wasm).
+// F-TTL — re-export the canonical kind predicates.
+pub use nmp_kinds::{is_addressable, is_replaceable};
+
+// F-TTL — stub freshness types for non-lmdb builds (tests, wasm).
 // These allow the code to compile but the kernel will never use them
 // (reverify queue and freshness store operations are no-ops in MemEventStore).
 #[cfg(not(feature = "lmdb-backend"))]
@@ -127,32 +130,12 @@ pub mod replaceable_stubs {
         }
     }
 
-    /// Check if a kind is addressable (NIP-01).
-    ///
-    /// Delegates to [`nostr::Kind::is_addressable`] — the single source of
-    /// truth — so the non-LMDB build classifies kinds identically to the
-    /// LMDB build. Addressable is the `30000..=39999` range only.
-    pub fn is_addressable(kind: u32) -> bool {
-        nostr::Kind::from(kind as u16).is_addressable()
-    }
-
-    /// Check if a kind is regular replaceable (NIP-01).
-    ///
-    /// Delegates to [`nostr::Kind::is_replaceable`]. Regular replaceable is
-    /// kinds `0`, `3`, `41` and the `10000..=19999` range — NOT the broad
-    /// `kind < 20000` the prior hand-rolled stub used.
-    pub fn is_replaceable(kind: u32) -> bool {
-        nostr::Kind::from(kind as u16).is_replaceable()
-    }
-
     /// Stub cache type.
     pub type ReplaceableCache = HashMap<ReplaceableKey, u64>;
 }
 
 #[cfg(not(feature = "lmdb-backend"))]
-pub use replaceable_stubs::{
-    is_addressable, is_replaceable, ReplaceableCache, ReplaceableKey,
-};
+pub use replaceable_stubs::{ReplaceableCache, ReplaceableKey};
 
 use std::path::PathBuf;
 

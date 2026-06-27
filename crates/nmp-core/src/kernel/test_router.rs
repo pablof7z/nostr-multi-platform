@@ -40,16 +40,16 @@ use crate::substrate::{
 };
 use nmp_signer_iface::UnsignedEvent;
 
-/// Spec §3.1 lane 6 discovery kinds: kind:0 (profile metadata), kind:3
-/// (contacts), kind:10000–19999 (NIP-51 lists, INCLUDING kind:10002).
+/// Spec §3.1 lane 6 discovery kinds: regular replaceable kinds.
 ///
-/// NOTE: intentional copy of `nmp_router::is_discovery_kind` — `nmp-core`
+/// NOTE: intentional wrapper around `nmp-kinds` mirroring
+/// `nmp_router::is_discovery_kind` — `nmp-core`
 /// cannot depend on `nmp-router` (would invert the §3 crate-boundary arrow)
 /// and adding it as a dev-dep triggers rustc trait-coherence failures; see the
 /// module-level comment for the full explanation.
 #[inline]
 fn is_discovery_kind(kind: u32) -> bool {
-    kind == 0 || kind == 3 || (10_000..20_000).contains(&kind)
+    nmp_kinds::is_replaceable(kind)
 }
 
 /// Tag keys whose third column carries a lane-2 relay hint (mirrors

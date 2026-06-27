@@ -233,7 +233,7 @@ pub const KIND_NIP61_NUTZAP: u32 = 9321;
 /// metadata to Nostr.
 pub const KIND_MINT_ANNOUNCE: u32 = 38172;
 
-// ─── NIP-01 replaceable / addressable kind predicates ──────────────────────
+// ─── NIP-01 replaceable / addressable / ephemeral predicates ───────────────
 
 /// Whether a kind is a *regular replaceable* event (NIP-01).
 ///
@@ -244,8 +244,8 @@ pub const KIND_MINT_ANNOUNCE: u32 = 38172;
 /// and the range `10000..=19999`. Kind `41` (NIP-28 channel metadata) is the
 /// one special case `nostr::Kind::is_replaceable` adds beyond the NIP-01 range
 /// text, included here so this predicate matches the upstream `nostr` crate
-/// bit-for-bit — `nmp-store` / `nmp-nostr-lmdb` delegate to `nostr::Kind`, and
-/// the two must NEVER disagree for the same kind.
+/// bit-for-bit. Consumers must delegate here so the workspace never disagrees
+/// for the same kind.
 ///
 /// This is the strict NIP-01 meaning and does NOT include addressable kinds:
 /// callers wanting "replaceable in the broad sense" must test
@@ -267,6 +267,16 @@ pub fn is_replaceable(kind: u32) -> bool {
 #[must_use]
 pub fn is_addressable(kind: u32) -> bool {
     (30_000..40_000).contains(&kind)
+}
+
+/// Whether a kind is *ephemeral* (NIP-16 / NIP-01).
+///
+/// Ephemeral means relays SHOULD NOT store the event. The range is
+/// `20000..=29999`.
+#[inline]
+#[must_use]
+pub fn is_ephemeral(kind: u32) -> bool {
+    (20_000..30_000).contains(&kind)
 }
 
 /// Whether an event's `#p` tags denote message **recipients** (people to
@@ -375,6 +385,19 @@ mod tests {
         assert!(!is_addressable(3));
         assert!(!is_addressable(10_000));
         assert!(!is_addressable(40_000));
+    }
+
+    #[test]
+    fn ephemeral_range() {
+        assert!(is_ephemeral(20_000), "start of range");
+        assert!(is_ephemeral(29_999), "end of range");
+
+        assert!(!is_ephemeral(19_999), "below ephemeral range");
+        assert!(!is_ephemeral(30_000), "addressable start");
+        assert!(!is_ephemeral(40_000), "above addressable");
+        assert!(!is_ephemeral(0));
+        assert!(!is_ephemeral(3));
+        assert!(!is_ephemeral(10_000));
     }
 
     #[test]

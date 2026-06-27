@@ -53,22 +53,22 @@ impl RawEvent {
         hex_to_bytes32(&self.pubkey)
     }
 
-    /// NIP-01 replaceable kinds: 0, 3, and 10000–19999.
+    /// NIP-01 regular replaceable kinds.
     #[must_use]
     pub fn is_replaceable(&self) -> bool {
-        self.kind == 0 || self.kind == 3 || (10_000..20_000).contains(&self.kind)
+        nmp_kinds::is_replaceable(self.kind)
     }
 
-    /// NIP-33 parameterized replaceable kinds: 30000–39999.
+    /// NIP-33 addressable / parameterized replaceable kinds.
     #[must_use]
     pub fn is_param_replaceable(&self) -> bool {
-        (30_000..40_000).contains(&self.kind)
+        nmp_kinds::is_addressable(self.kind)
     }
 
-    /// NIP-16 ephemeral kinds: 20000–29999.
+    /// NIP-16 ephemeral kinds.
     #[must_use]
     pub fn is_ephemeral(&self) -> bool {
-        (20_000..30_000).contains(&self.kind)
+        nmp_kinds::is_ephemeral(self.kind)
     }
 
     /// Returns the value of the first `d` tag, if present.

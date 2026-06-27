@@ -1,20 +1,19 @@
 //! Discovery-kind helpers for lane 6 (Indexer) — shared by the router so the
 //! `router.rs` hand-authored file stays under its LOC ceiling.
 //!
-//! Spec §3.1 lane 6 discovery kinds: kind:0 (profile metadata), kind:3
-//! (contacts), kind:10000–19999 (NIP-51 lists, INCLUDING kind:10002
-//! relay-list). The indexer lane is ALWAYS-ON for these kinds — it stacks on
-//! top of the per-author NIP-65 set so newer versions of these replaceable
-//! events published to relays NOT in the cached set can still be discovered
-//! (defeating the kind:10002 self-sealing loop).
+//! Spec §3.1 lane 6 discovery kinds are the regular replaceable event kinds.
+//! The indexer lane is ALWAYS-ON for these kinds — it stacks on top of the
+//! per-author NIP-65 set so newer versions of these replaceable events
+//! published to relays NOT in the cached set can still be discovered (defeating
+//! the kind:10002 self-sealing loop).
 
 use std::collections::BTreeSet;
 
-/// True for kinds the indexer lane serves (kind:0 / kind:3 / 10000–19999).
+/// True for kinds the indexer lane serves (regular replaceable kinds).
 #[inline]
 #[must_use]
 pub fn is_discovery_kind(kind: u32) -> bool {
-    kind == 0 || kind == 3 || (10_000..20_000).contains(&kind)
+    nmp_kinds::is_replaceable(kind)
 }
 
 /// Compute the per-relay kind scope to attach to indexer relays for a
@@ -42,7 +41,13 @@ pub(crate) fn indexer_kind_scope(kinds: &BTreeSet<u32>) -> Option<BTreeSet<u32>>
         // All-discovery interest — no override; use the full kind set.
         return None;
     }
-    Some(kinds.iter().copied().filter(|k| is_discovery_kind(*k)).collect())
+    Some(
+        kinds
+            .iter()
+            .copied()
+            .filter(|k| is_discovery_kind(*k))
+            .collect(),
+    )
 }
 
 #[cfg(test)]
@@ -53,6 +58,7 @@ mod tests {
     fn discovery_kinds_recognised() {
         assert!(is_discovery_kind(0));
         assert!(is_discovery_kind(3));
+        assert!(is_discovery_kind(41));
         assert!(is_discovery_kind(10_002));
         assert!(!is_discovery_kind(1));
         assert!(!is_discovery_kind(6));

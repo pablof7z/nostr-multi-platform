@@ -5156,6 +5156,7 @@ name = "nmp-sqlite-wasm"
 version = "0.8.4"
 dependencies = [
  "js-sys",
+ "nmp-kinds",
  "serde",
  "serde_json",
  "wasm-bindgen",
@@ -5179,6 +5180,7 @@ name = "nmp-store"
 version = "0.8.4"
 dependencies = [
  "heed",
+ "nmp-kinds",
  "nmp-nostr-lmdb",
  "nmp-sqlite-wasm",
  "nostr",
