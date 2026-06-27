@@ -8,32 +8,32 @@
 //! flows through the standard snapshot push:
 //!
 //! 1. Renderer encounters an `EventRef(uri)` token.
-//! 2. `NostrContentView` calls `sink.claim(uri, consumer_id)` via the
-//!    `EventClaimSink` host bridge.
-//! 3. `LiveKernelSink::claim` forwards the raw event key plus decoded URI
-//!    metadata to the typed event-embed ref adapter — the
+//! 2. `NostrContentView` calls `sink.resolve_event_ref(uri, consumer_id)` via the
+//!    `EventRefResolver` host bridge.
+//! 3. `LiveKernelSink::resolve_event_ref` forwards the raw event key plus
+//!    decoded URI metadata to the typed event-ref adapter — the
 //!    kernel registers a `OneshotApi` interest (D4 single writer), short-circuits
 //!    on cache hit, or compiles a wire REQ on cache miss.
 //! 4. The event arrives (cache or relay), gets surfaced in the typed
-//!    `claimed_events` sidecar, the gallery's snapshot thread sends a
-//!    `GalleryEvent::Snapshot` to the main loop,
-//!    `EmbedHostState::update_from_typed` decodes it, and the next
+//!    `refs.event` row-delta sidecar, the gallery's snapshot thread sends a
+//!    `GalleryEvent::Snapshot` to the main loop, `EmbedHostState::update_from_typed`
+//!    consumes the materialised event rows, and the next
 //!    redraw shows the resolved article (or short-note / highlight / ...).
 //!
 //! `LiveKernel` is `pub` so `main.rs` can keep it alive for the program
 //! lifetime; `LiveKernelSink` wraps the `*mut NmpApp` pointer as the
-//! `EventClaimSink` plugged into the renderer via the W4/W5 wiring.
+//! `EventRefResolver` plugged into the renderer via the W4/W5 wiring.
 
 use std::{
     collections::BTreeMap,
-    ffi::{CString, c_void},
+    ffi::{c_void, CString},
     sync::mpsc::{Receiver, Sender},
     time::Duration,
 };
 
-use nmp_content::EventClaimSink;
-use nmp_core::refs::{REFS_PROFILE_KEY, RefProfileStore};
-use nmp_core::typed_projections::{CLAIMED_EVENTS_SCHEMA_ID, ClaimedEventsModel, ProfileCardModel};
+use nmp_content::EventRefResolver;
+use nmp_core::refs::{RefEventStore, RefProfileStore, REFS_EVENT_KEY, REFS_PROFILE_KEY};
+use nmp_core::typed_projections::{ClaimedEventRow, ProfileCardModel};
 
 use crate::data::showcase_pubkey;
 
@@ -52,12 +52,14 @@ pub struct LiveGallerySource;
 ///
 /// Built from the FlatBuffers typed-sidecar payload that the kernel emits on
 /// every actor tick (ADR-0037). The gallery reads:
-/// - `claimed_events` — resolved embed events (embed host, EmbedHostState).
+/// - `events` — the materialised `primary_id -> ClaimedEventRow` set merged
+///   from the `refs.event` row-delta projection (embed host, EmbedHostState).
 /// - `profiles` — the materialised `pubkey -> ProfileCardModel` set merged from
 ///   the `refs.profile` row-delta projection (ADR-0063 #1671). This replaces the
 ///   retired `resolved_profiles` whole-map projection. Because `refs.profile` is
 ///   a per-KEY row-delta batch, it can only be merged into the stateful
-///   [`RefProfileStore`] that lives across frames — see
+///   [`RefProfileStore`] that lives across frames. `refs.event` follows the same
+///   row-grained contract through [`RefEventStore`] — see
 ///   [`GalleryTypedSnapshot::from_frame_bytes`].
 ///
 /// Both fields degrade gracefully to empty when their respective typed sidecar
@@ -67,9 +69,10 @@ pub struct LiveGallerySource;
 /// the typed `SnapshotEnvelope`), used by the smoke-mode relay-wait loop.
 #[derive(Debug, Default)]
 pub struct GalleryTypedSnapshot {
-    /// Resolved embed events. Empty when no claims have been issued yet or
-    /// while relay round-trips are in flight.
-    pub claimed_events: ClaimedEventsModel,
+    /// Materialised `primary_id -> ClaimedEventRow` set merged from the
+    /// `refs.event` row-delta projection. Empty when no event refs are live or
+    /// after the kernel has explicitly cleared every row.
+    pub events: BTreeMap<String, ClaimedEventRow>,
     /// Materialised `pubkey -> ProfileCardModel` set merged from the
     /// `refs.profile` row-delta projection (resolve_ref output). Empty until the
     /// kernel has resolved at least one kind:0 for a resolved pubkey. This is a
@@ -83,16 +86,20 @@ pub struct GalleryTypedSnapshot {
 
 impl GalleryTypedSnapshot {
     /// Decode a raw FlatBuffers frame (as produced by `nmp_app_set_update_callback`),
-    /// merging its `refs.profile` row-delta batch into the persistent `store`, and
-    /// materialise the gallery's view of one tick.
+    /// merging its `refs.profile` / `refs.event` row-delta batches into the
+    /// persistent stores, and materialise the gallery's view of one tick.
     ///
-    /// ADR-0063 (#1671): `refs.profile` is a per-KEY row-delta projection, so the
-    /// caller MUST thread a stateful [`RefProfileStore`] (one per update loop) —
-    /// a single frame's batch carries only changed/cleared rows. Tolerant: if any
+    /// ADR-0063 (#1671): both refs projections are per-KEY row-deltas, so the
+    /// caller MUST thread stateful stores (one per update loop) — a single
+    /// frame's batch carries only changed/cleared rows. Tolerant: if any
     /// projection fails to decode its field is left at the default (empty). A
-    /// malformed `refs.profile` payload is a fail-closed no-op inside the store
-    /// (prior rows retained). Panics never occur (D6).
-    pub fn from_frame_bytes(bytes: &[u8], store: &mut RefProfileStore) -> Self {
+    /// malformed refs payload is a fail-closed no-op inside its store (prior rows
+    /// retained). Panics never occur (D6).
+    pub fn from_frame_bytes(
+        bytes: &[u8],
+        profiles_store: &mut RefProfileStore,
+        events_store: &mut RefEventStore,
+    ) -> Self {
         // Tier-3 envelope: relay_statuses + the (session_id, snapshot_epoch)
         // identity the row-delta cache merges under.
         let envelope = nmp_core::decode_snapshot_envelope(bytes);
@@ -113,27 +120,28 @@ impl GalleryTypedSnapshot {
                 .map(|p| p.payload.as_slice())
         };
 
-        let claimed_events = find(CLAIMED_EVENTS_SCHEMA_ID)
-            .and_then(|b| nmp_core::typed_projections::decode_claimed_events(b).ok())
-            .unwrap_or_default();
+        if let Some(payload) = find(REFS_EVENT_KEY) {
+            events_store.apply_sidecar(payload, session_id, snapshot_epoch);
+        }
+        let events = events_store.events();
 
         // ADR-0063 (#1671): merge the `refs.profile` row-delta batch into the
         // stateful store (the ONLY app-side mirror of hydrated profiles, D4),
         // then materialise the current full set for this frame's readers.
         if let Some(payload) = find(REFS_PROFILE_KEY) {
-            store.apply_sidecar(payload, session_id, snapshot_epoch);
+            profiles_store.apply_sidecar(payload, session_id, snapshot_epoch);
         }
-        let profiles = store.profiles();
+        let profiles = profiles_store.profiles();
 
         Self {
-            claimed_events,
+            events,
             profiles,
             relay_statuses,
         }
     }
 
     /// True when at least one relay reports a "connected" connection state.
-    /// Used by the smoke loop to gate the first claim issuance.
+    /// Used by the smoke loop to gate the first event-ref resolve.
     pub fn any_relay_connected(&self) -> bool {
         self.relay_statuses
             .iter()
@@ -162,10 +170,10 @@ struct UpdateBridge {
     tx: Sender<Vec<u8>>,
 }
 
-/// `EventClaimSink` impl wrapping a live kernel's app pointer. The
-/// renderer-triggered claim path (`NostrContentView::claim_sink`) calls
-/// this on each render frame; `claim` forwards to the typed event-embed adapter,
-/// `release` to the typed event-ref release adapter. `Send + Sync` because every FFI
+/// `EventRefResolver` impl wrapping a live kernel's app pointer. The
+/// renderer-triggered resolve path (`NostrContentView::event_ref_resolver`) calls
+/// this on each render frame; `resolve_event_ref` forwards to the typed event-embed adapter,
+/// `release_event_ref` to the typed event-ref release adapter. `Send + Sync` because every FFI
 /// symbol forwards to the actor's command channel — the pointer is just
 /// an opaque key.
 pub struct LiveKernelSink {
@@ -264,8 +272,8 @@ fn event_ref_from_uri(uri: &str) -> Option<EventRefFromUri> {
 }
 
 // App-owned URI adapter over the typed event-ref resolve/release seams.
-impl EventClaimSink for LiveKernelSink {
-    fn claim(&self, uri: &str, consumer_id: &str) {
+impl EventRefResolver for LiveKernelSink {
+    fn resolve_event_ref(&self, uri: &str, consumer_id: &str) {
         let Some(event_ref) = event_ref_from_uri(uri) else {
             return;
         };
@@ -280,7 +288,7 @@ impl EventClaimSink for LiveKernelSink {
         );
     }
 
-    fn release(&self, uri: &str, consumer_id: &str) {
+    fn release_event_ref(&self, uri: &str, consumer_id: &str) {
         let Some(event_ref) = event_ref_from_uri(uri) else {
             return;
         };

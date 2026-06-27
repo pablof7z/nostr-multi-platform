@@ -1,4 +1,4 @@
-//! Round-trip proof for the `claimed_events` Tier-2 typed codec.
+//! Round-trip proof for the KCEV `refs.event` row-payload codec.
 
 use super::*;
 

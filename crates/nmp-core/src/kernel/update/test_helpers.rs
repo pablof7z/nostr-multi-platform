@@ -7,8 +7,10 @@
 
 use super::super::Kernel;
 use crate::kernel::projection_rev;
+use crate::kernel::typed_projections;
 use crate::kernel::update::helpers;
 use crate::kernel::update::rung2_stamp;
+use crate::kernel::update::rung3_omit;
 use crate::update_envelope::{decode_snapshot_typed_projections, encode_snapshot_with_envelope};
 
 impl Kernel {
@@ -45,7 +47,7 @@ impl Kernel {
         self.run_tick_observers();
         // Drain and capture before merge so `captured_*` fields are set.
         self.drain_and_capture_projections();
-        let typed = self.merge_builtin_typed_projections(typed);
+        let mut typed = self.merge_builtin_typed_projections(typed);
         // Build the projections map and inject into the snapshot JSON so that
         // test assertions reading snapshot["projections"]["key"] work.
         let projections_map = self.build_projections_map();
@@ -57,13 +59,32 @@ impl Kernel {
                     .unwrap_or(serde_json::Value::Object(serde_json::Map::new())),
             );
         }
+        let declared = self.declared_projections_snapshot();
+        self.projection_rev_tracker
+            .reconcile_declared_permits(&declared);
+        let (incremental_enabled, baseline_pending) = self.incremental_apply_state();
+        if baseline_pending {
+            self.projection_rev_tracker.reset_last_emitted();
+        }
+        let profile_permitted = declared.permits(typed_projections::REFS_PROFILE_KEY);
+        let event_permitted = declared.permits(typed_projections::REFS_EVENT_KEY);
+        let mut refs_entries =
+            self.refs_row_delta_projections(baseline_pending, profile_permitted, event_permitted);
+        if declared.is_narrowing() {
+            refs_entries.retain(|entry| declared.permits(&entry.key));
+        }
+        typed.extend(refs_entries);
         // ADR-0055 Rung 2: stamp rev/state/epoch identical to the production path.
         let diag_fp = helpers::diagnostics_payload_fingerprint(&typed);
         self.projection_rev_tracker
             .reconcile_diagnostics_fingerprint(diag_fp);
+        let publish_engine_fp = helpers::publish_engine_payload_fingerprint(&typed);
+        self.projection_rev_tracker
+            .reconcile_publish_engine_fingerprint(publish_engine_fp);
         let manifest = self.projection_manifest();
         let epoch_stamp = rung2_stamp::epoch_stamp(&manifest);
         let typed = rung2_stamp::stamp_typed_projections(typed, &manifest);
+        let typed = rung3_omit::omit_unchanged(typed, &manifest, incremental_enabled);
         // ADR-0055 Rung 3 (D3-6): pass the kernel-owned reusable builder,
         // matching the production path in `make_update`.
         let frame = encode_snapshot_with_envelope(
@@ -115,12 +136,30 @@ impl Kernel {
         self.run_tick_observers();
         // Drain and capture before merge so `captured_*` fields are set.
         self.drain_and_capture_projections();
-        let _typed_merged = self.merge_builtin_typed_projections(_typed_host);
+        let mut typed_merged = self.merge_builtin_typed_projections(_typed_host);
+        let declared = self.declared_projections_snapshot();
+        self.projection_rev_tracker
+            .reconcile_declared_permits(&declared);
+        let (_incremental_enabled, baseline_pending) = self.incremental_apply_state();
+        if baseline_pending {
+            self.projection_rev_tracker.reset_last_emitted();
+        }
+        let profile_permitted = declared.permits(typed_projections::REFS_PROFILE_KEY);
+        let event_permitted = declared.permits(typed_projections::REFS_EVENT_KEY);
+        let mut refs_entries =
+            self.refs_row_delta_projections(baseline_pending, profile_permitted, event_permitted);
+        if declared.is_narrowing() {
+            refs_entries.retain(|entry| declared.permits(&entry.key));
+        }
+        typed_merged.extend(refs_entries);
         // ADR-0055 Rung 2: keep the projection-rev tracker in the same state as
         // the production path so oracle-gated tests see consistent revs.
-        let diag_fp = helpers::diagnostics_payload_fingerprint(&_typed_merged);
+        let diag_fp = helpers::diagnostics_payload_fingerprint(&typed_merged);
         self.projection_rev_tracker
             .reconcile_diagnostics_fingerprint(diag_fp);
+        let publish_engine_fp = helpers::publish_engine_payload_fingerprint(&typed_merged);
+        self.projection_rev_tracker
+            .reconcile_publish_engine_fingerprint(publish_engine_fp);
         let manifest = self.projection_manifest();
         rung2_stamp::record_emitted_for_manifest(&mut self.projection_rev_tracker, &manifest);
         // Build the projections map and inject into the snapshot JSON so that

@@ -11,8 +11,11 @@ private let kbLog = Logger(subsystem: "org.nmp.gallery", category: "GalleryKerne
 ///   • Profile data arrives via the PUSH callback registered with
 ///     `nmp_app_set_update_callback`. The callback receives a FlatBuffers
 ///     `UpdateFrame`; the gallery merges its `refs.profile` row-delta batch
-///     into the session `GalleryRefProfileStore` and reads the materialised
+///     into the session `GalleryRefStores` and reads the materialised
 ///     `projections."refs.profile"[pubkey]` card (ADR-0063 #1671).
+///   • Event embed envelopes follow the same path through `refs.event`: Rust
+///     merges the event row-delta store, kind-dispatches with `nmp-content`,
+///     and materialises `projections."refs.event"[primaryId]`.
 ///   • There is no pull-side snapshot accessor; kernel liveness is observed
 ///     through `nmp_app_is_alive` and all state arrives via the push callback.
 ///
@@ -22,7 +25,7 @@ private let kbLog = Logger(subsystem: "org.nmp.gallery", category: "GalleryKerne
 ///   3. `start()`        — turns on the actor.
 ///   4. `addRelay`       — seed bootstrap relay set (cold-start kind:0 / kind:10002
 ///      routing target when no logged-in user is present).
-///   5. `claimProfile`   — component-owned profile interest (routes through
+///   5. `resolveProfileRef`   — component-owned profile interest (routes through
 ///      `nmp_app_resolve_ref`). The kernel fetches kind:0 and surfaces the
 ///      resolved ProfileCard under `projections."refs.profile"[pubkey]`.
 ///   6. `dispatchAction` — generic action dispatch (phase 2).
@@ -30,20 +33,20 @@ private let kbLog = Logger(subsystem: "org.nmp.gallery", category: "GalleryKerne
 final class GalleryKernelHandle {
     let raw: UnsafeMutableRawPointer
     private var retainedUpdateSink: Unmanaged<GalleryUpdateSink>?
-    /// ADR-0063 (#1671) — host-side mirror of the kernel's `refs.profile`
-    /// row-delta projection. One per kernel session; threaded into every
-    /// snapshot decode so per-key deltas accumulate. Sole app-side profile
-    /// store (D4). Freed in `deinit`.
+    /// ADR-0063 (#1671) — host-side mirrors of the kernel's `refs.profile`
+    /// and `refs.event` row-delta projections. One per kernel session; threaded
+    /// into every snapshot decode so per-key deltas accumulate. Sole app-side
+    /// ref stores (D4). Freed in `deinit`.
     ///
-    /// The C header imports `struct GalleryRefProfileStore *` as
+    /// The C header imports `struct GalleryRefStores *` as
     /// `OpaquePointer?`, so the handle is stored and passed through DIRECTLY —
     /// no `OpaquePointer(...)` wrapping or `UnsafeMutablePointer(...)` casting.
-    let refProfileStore: OpaquePointer?
+    let refStores: OpaquePointer?
 
     init() {
         raw = nmp_app_new()
         Self.configureStoragePath(for: raw)
-        refProfileStore = nmp_app_gallery_ref_profile_store_new()
+        refStores = nmp_app_gallery_ref_stores_new()
         // Phase 1: register the gallery composition on the kernel. The parallel
         // `nmp-app-gallery` crate forwards to `nmp_app_template::register_defaults`;
         // the call is fire-and-forget (D6) — there is no opaque handle to capture
@@ -61,9 +64,9 @@ final class GalleryKernelHandle {
         // `nmp_app_free` joins the actor thread so any in-flight observer
         // callback is fenced.
         nmp_app_free(raw)
-        // ADR-0063 (#1671): release the refs.profile mirror after the kernel is
+        // ADR-0063 (#1671): release the refs.* mirrors after the kernel is
         // freed (so no in-flight decode can still touch it).
-        nmp_app_gallery_ref_profile_store_free(refProfileStore)
+        nmp_app_gallery_ref_stores_free(refStores)
     }
 
     private static func configureStoragePath(for raw: UnsafeMutableRawPointer) {
@@ -121,12 +124,13 @@ final class GalleryKernelHandle {
 
     // ── Profile resolution (ADR-0063 #1671) ──────────────────────────────
 
-    /// Resolve a visible profile reference for `pubkey` (ADR-0063 #1671 —
-    /// supersedes `claimProfile`). The registry widgets call this on mount; the
-    /// resolved kind:0 flows back through `refs.profile`. Origin-blind: every
+    /// Resolve a visible profile reference for `pubkey` through
+    /// `nmp_app_resolve_profile_ref` (ADR-0063 #1671). The registry widgets call
+    /// this on mount; the resolved kind:0 flows back through `refs.profile`.
+    /// Origin-blind: every
     /// visible author resolves at `profile.ref` / `CacheOk` (the gallery renders
     /// only inline avatars/names, never an open-profile pane).
-    func claimProfile(pubkey: String, consumerID: String) {
+    func resolveProfileRef(pubkey: String, consumerID: String) {
         pubkey.withCString { pkPtr in
             consumerID.withCString { cidPtr in
                 nmp_app_resolve_profile_ref(raw, pkPtr, cidPtr)
@@ -134,9 +138,9 @@ final class GalleryKernelHandle {
         }
     }
 
-    /// Release a profile reference previously claimed via `claimProfile`. Pass
+    /// Release a profile reference previously resolved via `resolveProfileRef`. Pass
     /// the SAME `(pubkey, consumerID)` so the kernel reclaims the slot.
-    func releaseProfile(pubkey: String, consumerID: String) {
+    func releaseProfileRef(pubkey: String, consumerID: String) {
         pubkey.withCString { pkPtr in
             consumerID.withCString { cidPtr in
                 nmp_app_release_profile_ref(raw, pkPtr, cidPtr)
@@ -144,7 +148,7 @@ final class GalleryKernelHandle {
         }
     }
 
-    // ── Event claim / release ────────────────────────────────────────────
+    // ── Event-ref resolve / release ──────────────────────────────────────
 
     // App-owned URI adapter: decode nostr: via nmp_nip21_decode_uri, then route
     // the raw event key plus decoded relay/author metadata to typed event-ref
@@ -158,7 +162,7 @@ final class GalleryKernelHandle {
     /// #1726 — Decode a `nostr:` URI and resolve the embedded event via the
     /// typed event-embed ref adapter.
     /// App-local URI adapter over the unified ref-resolution seam.
-    func claimEvent(uri: String, consumerID: String, force: Bool = false) {
+    func resolveEventRef(uri: String, consumerID: String, force: Bool = false) {
         guard let eventRef = decodeEventRef(from: uri) else { return }
         eventRef.key.withCString { keyPtr in
             consumerID.withCString { cidPtr in
@@ -177,7 +181,7 @@ final class GalleryKernelHandle {
 
     /// #1726 — App-local URI adapter that releases the event via the typed
     /// event-ref adapter.
-    func releaseEvent(uri: String, consumerID: String) {
+    func releaseEventRef(uri: String, consumerID: String) {
         guard let eventRef = decodeEventRef(from: uri) else { return }
         eventRef.key.withCString { keyPtr in
             consumerID.withCString { cidPtr in
@@ -276,16 +280,16 @@ private let galleryUpdateCallback: NmpUpdateCallback = { context, pointer, len i
 
 enum GalleryFlatBufferSnapshotDecoder {
     /// Decode one update frame into the gallery snapshot JSON, merging the
-    /// frame's `refs.profile` row-delta batch into `store` first (ADR-0063
-    /// #1671). `store` MUST be the per-session mirror so per-key deltas
-    /// accumulate across frames.
-    static func snapshotJSONData(from data: Data, store: OpaquePointer?) -> Data? {
+    /// frame's `refs.profile` / `refs.event` row-delta batches into `stores`
+    /// first (ADR-0063 #1671). `stores` MUST be the per-session mirror so
+    /// per-key deltas accumulate across frames.
+    static func snapshotJSONData(from data: Data, stores: OpaquePointer?) -> Data? {
         let ptr: UnsafeMutablePointer<CChar>? = data.withUnsafeBytes { raw -> UnsafeMutablePointer<CChar>? in
             guard let base = raw.bindMemory(to: UInt8.self).baseAddress else {
                 return nil
             }
             return nmp_app_gallery_snapshot_json_from_update_frame(
-                store, base, UInt(data.count))
+                stores, base, UInt(data.count))
         }
         guard let ptr else {
             kbLog.error("gallery typed snapshot decode failed")

@@ -15,7 +15,6 @@ pub(crate) const BUILTIN_PROJECTION_DEPENDENCIES: &[(&str, &[&str])] = &[
     ("action_results", &[SRC_SETTLEMENT_ENQUEUE, SRC_SETTLEMENT_DRAIN]),
     ("action_stages", &[SRC_SETTLEMENT_ENQUEUE, SRC_TTL_EXPIRY]),
     ("active_account", &[SRC_ACTIVE_ACCOUNT]),
-    ("claimed_events", &[SRC_CLAIMED_EVENT_CONTENT]),
     ("configured_relays", &[SRC_CONFIGURED_RELAYS]),
     ("outbox_summary", &[SRC_PUBLISH_ENGINE]),
     ("profile", &[SRC_PROFILES, SRC_ACTIVE_ACCOUNT]),

@@ -388,40 +388,6 @@ enum TypedProjectionGlue {
         )
     }
 
-    // MARK: claimed_events → [String: ClaimedEventDto]
-
-    /// Map the typed `claimed_events` sidecar (`KCEV` /
-    /// `nmp_kernel_ClaimedEventsSnapshot`) to the `[String: ClaimedEventDto]` the
-    /// JSON `projections.claimedEvents` path yields. FlatBuffers has no map type,
-    /// so the producer flattens the `primary_id -> ClaimedEvent` map to a
-    /// key-sorted `[{key, value}]` vector; this rebuilds the dictionary keyed by
-    /// `primary_id`, mirroring the `claimed_profiles` precedent.
-    ///
-    /// `ClaimedEventDto` (hand-declared in `EmbedHost.swift`) carries the generic
-    /// event fields the refs.event accessor needs: `id`, `authorPubkey`, `kind`,
-    /// `createdAt`, `content`, `tags`, and optional `signedEventJson` when the
-    /// producer emitted an `event.raw` row. The redundant `primary_id` body copy
-    /// is deliberately NOT mapped; the JSON decode drops it too. `kind`
-    /// (`UInt32`) and `createdAt` (`UInt64`) narrow to the DTO's `Int` exactly
-    /// as the JSON `Int` decode does. `tags` rebuilds `[[String]]` from the
-    /// nested `[TagRow]` / `[String]` vectors.
-    static func claimedEvents(
-        _ reader: nmp_kernel_ClaimedEventsSnapshot
-    ) -> [String: ClaimedEventDto] {
-        reader.entries.reduce(into: [String: ClaimedEventDto]()) { out, entry in
-            guard let key = entry.key, let event = entry.value else { return }
-            out[key] = ClaimedEventDto(
-                id: event.id ?? "",
-                authorPubkey: event.authorPubkey ?? "",
-                kind: Int(event.kind),
-                createdAt: Int(event.createdAt),
-                content: event.content ?? "",
-                tags: event.tags.map { row in row.values.map { $0 ?? "" } },
-                signedEventJson: event.hasSignedEventJson ? (event.signedEventJson ?? "") : nil
-            )
-        }
-    }
-
     // MARK: refs.event row → ClaimedEventDto (ADR-0063 Lane C, #1671)
     //
     // Moved to `TypedProjectionGlue+Refs.swift` (codex NIT: keep this

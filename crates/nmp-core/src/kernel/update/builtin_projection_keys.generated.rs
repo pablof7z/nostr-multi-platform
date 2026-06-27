@@ -14,7 +14,6 @@ pub const KERNEL_BUILTIN_PROJECTION_KEYS: &[&str] = &[
     "action_results",
     "action_stages",
     "active_account",
-    "claimed_events",
     "configured_relays",
     "outbox_summary",
     "profile",

@@ -1,23 +1,20 @@
 namespace nmp.kernel;
 
-// Typed FlatBuffers wire for the kernel-owned `claimed_events` snapshot
-// projection (Tier-2: kernel built-in).
+// Typed FlatBuffers wire for a single `refs.event` row payload.
 //
-// The producer is `Kernel::snapshot_projections_with_publish_cluster` in
-// `crates/nmp-core/src/kernel/update/projections.rs`, which inserts the
-// `serde_json` serialisation of `claimed_events()` (a
-// `BTreeMap<String, ClaimedEventDto>`: primary_id -> resolved+enriched event)
-// under the JSON key `"claimed_events"`. This typed buffer is the host-visible
-// update-frame representation and is emitted in `SnapshotFrame.typed_projections`
-// under the same key; absent or invalid bytes fail closed at the typed decoder
-// boundary.
+// `claimed_events` used to be a whole-map Tier-2 built-in projection. ADR-0063
+// Lane H deleted that host-visible projection. KCEV remains only as the
+// namespace-specific payload codec inside a `refs.event` NRRD row: each row's
+// payload is a `ClaimedEventsSnapshot` with exactly one
+// `primary_id -> ClaimedEvent` entry. Hosts merge the outer NRRD batch through
+// `RefRowCache` / `RefEventStore`, then decode this inner payload for the row.
 //
-// FlatBuffers has no map type, so the `primary_id -> ClaimedEventDto` map is
-// flattened to a vector of `{key, value}` entries. The producer is a `BTreeMap`,
-// so the entries are already sorted by key — preserved verbatim, matching the
-// BTree-ordered serde JSON map.
+// FlatBuffers has no map type, so the row still uses a vector of `{key, value}`
+// entries. For refs.event that vector MUST contain one entry whose key matches
+// both the outer NRRD row key and `value.primary_id`; host stores reject
+// malformed/mismatched rows before commit.
 //
-// Field-for-field mirror of the SERIALISED `ClaimedEventDto`. The raw `tags`
+// Field-for-field mirror of the event row payload. The raw `tags`
 // field is a `Vec<Vec<String>>` (an array of tag rows, each a list of strings)
 // — FlatBuffers has no nested-vector type, so it is modelled as `[TagRow]`
 // where each `TagRow` wraps one inner `[string]`.
@@ -42,10 +39,10 @@ table TagRow {
   values:[string];
 }
 
-// Field-for-field mirror of one SERIALISED `ClaimedEventDto`.
+// Field-for-field mirror of one refs.event row.
 table ClaimedEvent {
-  // The projection key — hex-64 event id (nevent/note) or `kind:pubkey:d_tag`
-  // (naddr). Carried in the body too (matches the map key).
+  // The row key — hex-64 event id (nevent/note) or `kind:pubkey:d_tag`
+  // (naddr). Carried in the body too (matches the outer NRRD row key).
   primary_id:string;
   // Canonical 64-hex event id of the resolved event.
   id:string;
@@ -64,14 +61,12 @@ table ClaimedEvent {
   // native (which parses via nmp-content directly) — fall back to `content`.
   content_tree_bytes:[ubyte];
   // Canonical signed NIP-01 event JSON, including `sig`. Present only for the
-  // generic refs.event `event.raw` row shape; `event.embed` and the legacy
-  // whole-map claimed_events projection omit it.
+  // generic refs.event `event.raw` row shape; `event.embed` omits it.
   has_signed_event_json:bool;
   signed_event_json:string;
 }
 
-// One `primary_id -> ClaimedEvent` map entry. Entries are sorted by `key`
-// (BTreeMap).
+// One `primary_id -> ClaimedEvent` row entry.
 table ClaimedEventEntry {
   // The map key — the event's `primary_id` (matches `value.primary_id`).
   key:string;

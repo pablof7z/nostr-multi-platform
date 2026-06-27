@@ -11,9 +11,8 @@ extension TypedProjectionGlue {
 
     /// Map ONE `refs.event` row payload buffer — a `KCEV`
     /// `nmp_kernel_ClaimedEventsSnapshot` carrying EXACTLY ONE entry — to that one
-    /// `ClaimedEventDto`. This is the per-ROW twin of `claimedEvents` (which yields
-    /// the whole map): the `KeyedRefCache.event(primaryId)` typed accessor calls
-    /// this so a view binds one decoded event, not a dict.
+    /// `ClaimedEventDto`. The `KeyedRefCache.event(primaryId)` typed accessor
+    /// calls this so a view binds one decoded event, not a dict.
     ///
     /// FAIL-CLOSED single-entry contract (codex BLOCKING): the kernel's
     /// `ref_event_row_payload` (`crates/nmp-core/src/kernel/ref_row_source.rs`)

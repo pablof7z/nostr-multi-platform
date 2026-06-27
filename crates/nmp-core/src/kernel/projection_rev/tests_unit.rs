@@ -213,16 +213,11 @@ fn all_dep_source_names_are_recognized_by_get() {
 
 // ── Oracle bite (F1 regression catcher) ───────────────────────────────────────
 
-/// S1-bite: prove the oracle would CATCH the F1 regression. We simulate the old
-/// (buggy) behaviour by claiming a longform coord and ingesting the article
-/// WITHOUT the chokepoint having bumped — achieved by reaching past the public
-/// path: we manually clear the bump effect, then assert make_update panics.
-///
-/// Rather than fork production code, we reproduce the *shape* of the bug at the
-/// tracker level and confirm the oracle's StaleStamp direction fires: a payload
-/// that changes while presence stays Unchanged is a violation.
+/// S1-bite: prove the oracle catches the stale-cache shape for full-snapshot
+/// projections. Rather than fork production code, reproduce the bug at the
+/// tracker level: a payload changes while presence stays Unchanged.
 #[test]
-fn s1_bite_oracle_catches_stale_claimed_events() {
+fn s1_bite_oracle_catches_stale_full_snapshot_projection() {
     use crate::kernel::projection_rev::oracle::{check_oracle, OracleViolationKind};
     use crate::update_envelope::TypedProjectionData;
 
@@ -238,11 +233,11 @@ fn s1_bite_oracle_catches_stale_claimed_events() {
     }
 
     let mut tracker = ProjectionRevTracker::default();
-    tracker.record_emitted("claimed_events");
+    tracker.record_emitted("profile");
     let manifest_prev = build_manifest(&tracker, 0);
 
-    // Previous emit: claimed_events carried payload P0.
-    let typed_prev = vec![typed("claimed_events", b"P0")];
+    // Previous emit: profile carried payload P0.
+    let typed_prev = vec![typed("profile", b"P0")];
     // Seed prev fingerprints exactly as record_tick would.
     let prev_fps = {
         let mut oracle = crate::kernel::projection_rev::oracle::OracleState::default();
@@ -253,13 +248,13 @@ fn s1_bite_oracle_catches_stale_claimed_events() {
     // This tick: payload CHANGED to P1 but NO source-version bump happened
     // (the F1 bug) -> presence is Unchanged. The oracle must flag StaleStamp.
     let manifest_now = build_manifest(&tracker, 0);
-    let typed_now = vec![typed("claimed_events", b"P1")];
+    let typed_now = vec![typed("profile", b"P1")];
     let violations = check_oracle(&prev_fps, &manifest_now, &typed_now);
     assert!(
         violations
             .iter()
-            .any(|v| v.key == "claimed_events" && v.kind == OracleViolationKind::StaleStamp),
-        "oracle MUST flag StaleStamp when claimed_events payload changes but rev \
+            .any(|v| v.key == "profile" && v.kind == OracleViolationKind::StaleStamp),
+        "oracle MUST flag StaleStamp when a full-snapshot payload changes but rev \
          does not advance (the F1 regression); got {violations:?}"
     );
 }

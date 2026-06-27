@@ -2,9 +2,8 @@ import XCTest
 import FlatBuffers
 @testable import Chirp
 
-/// Typed-decode tests for the NIP-17 DM cluster + claimed-event map sidecars:
-/// `nmp.nip17.dm_inbox` (`NDMI`), `nmp.nip17.dm_relay_list` (`NDRL`), and
-/// `claimed_events` (`KCEV`).
+/// Typed-decode tests for the NIP-17 DM cluster sidecars:
+/// `nmp.nip17.dm_inbox` (`NDMI`) and `nmp.nip17.dm_relay_list` (`NDRL`).
 ///
 /// These mirror `TypedAppProjectionsDecoderTests` / `TypedProfileClusterDecoderTests`:
 /// build the typed FlatBuffers buffer directly via the generated builders, wrap
@@ -17,7 +16,7 @@ import FlatBuffers
 /// so a passing assertion proves the typed path won rather than coincided. The
 /// "absent / wrong-schema / garbled" cases assert `nil`, the signal the read
 /// site interprets as "fall back to the generic JSON `projections.<field>` path"
-/// (ADR-0037 Commitment 4). For all three keys `key == schemaId`, so the
+/// (ADR-0037 Commitment 4). For both keys `key == schemaId`, so the
 /// `*IdentityIsExact` cases pin the producer contract cheaply.
 ///
 /// `has_*` companion-bool semantics (`hasReplyTo` on a DM message,
@@ -187,71 +186,6 @@ final class TypedDmClusterDecoderTests: XCTestCase {
     // field values). The key+schemaId envelope routing in `decode(from:)` is
     // the selection mechanism, not the file identifier.
 
-    // MARK: - claimed_events (KCEV)
-
-    func testClaimedEventsSidecarIdentityIsExact() {
-        XCTAssertEqual(TypedClaimedEventsDecoder.key, "claimed_events")
-        XCTAssertEqual(TypedClaimedEventsDecoder.schemaId, "claimed_events")
-        XCTAssertEqual(TypedClaimedEventsDecoder.fileIdentifier, "KCEV")
-    }
-
-    func testTypedClaimedEventsSidecarDecodes() throws {
-        let envelope = TypedProjectionEnvelope(
-            key: TypedClaimedEventsDecoder.key,
-            schemaId: TypedClaimedEventsDecoder.schemaId,
-            schemaVersion: 1,
-            fileIdentifier: TypedClaimedEventsDecoder.fileIdentifier,
-            payload: buildClaimedEvents([
-                ClaimedEventFixture(
-                    primaryId: "typedid64a", id: "typedid64a",
-                    authorPubkey: "typedauthorA", kind: 1, createdAt: 1_700_000_010,
-                    content: "typed note content",
-                    tags: [["e", "typedref"], ["p", "typedpeer", "wss://typed.relay"]]),
-                ClaimedEventFixture(
-                    primaryId: "30023:typedauthorB:typedslug",
-                    id: "typedid64b", authorPubkey: "typedauthorB",
-                    kind: 30023, createdAt: 1_700_000_020,
-                    content: "typed longform",
-                    tags: []),
-            ]))
-
-        let map = try XCTUnwrap(
-            TypedClaimedEventsDecoder.decode(from: [envelope]),
-            "well-formed KCEV sidecar must decode")
-
-        XCTAssertEqual(Set(map.keys), ["typedid64a", "30023:typedauthorB:typedslug"])
-
-        let a = try XCTUnwrap(map["typedid64a"])
-        XCTAssertEqual(a.id, "typedid64a")
-        XCTAssertEqual(a.authorPubkey, "typedauthorA")
-        XCTAssertEqual(a.kind, 1)
-        XCTAssertEqual(a.createdAt, 1_700_000_010)
-        XCTAssertEqual(a.content, "typed note content")
-        XCTAssertEqual(a.tags, [["e", "typedref"], ["p", "typedpeer", "wss://typed.relay"]])
-
-        let b = try XCTUnwrap(map["30023:typedauthorB:typedslug"])
-        XCTAssertEqual(b.kind, 30023)
-        XCTAssertEqual(b.tags, [])
-    }
-
-    func testAbsentClaimedEventsSidecarFallsBack() {
-        XCTAssertNil(TypedClaimedEventsDecoder.decode(from: []))
-    }
-
-    func testWrongSchemaClaimedEventsFallsBack() {
-        let envelope = TypedProjectionEnvelope(
-            key: TypedClaimedEventsDecoder.key,
-            schemaId: "not.claimed_events",
-            schemaVersion: 1,
-            fileIdentifier: TypedClaimedEventsDecoder.fileIdentifier,
-            payload: buildClaimedEvents([
-                ClaimedEventFixture(
-                    primaryId: "x", id: "x", authorPubkey: "a", kind: 1,
-                    createdAt: 1, content: "c", tags: []),
-            ]))
-        XCTAssertNil(TypedClaimedEventsDecoder.decode(from: [envelope]))
-    }
-
     // NOTE: the garbled-file-identifier test was removed. The decode path now
     // uses unchecked `getRoot` (trusted in-process FFI boundary); the 4-byte
     // file-identifier magic is NOT verified. A structurally-valid buffer with
@@ -330,45 +264,4 @@ final class TypedDmClusterDecoderTests: XCTestCase {
         return fbb.data
     }
 
-    private struct ClaimedEventFixture {
-        let primaryId: String
-        let id: String
-        let authorPubkey: String
-        let kind: UInt32
-        let createdAt: UInt64
-        let content: String
-        let tags: [[String]]
-    }
-
-    private func buildClaimedEvents(_ events: [ClaimedEventFixture]) -> Data {
-        var fbb = FlatBufferBuilder(initialSize: 512)
-        let entryOffsets: [Offset] = events.map { event in
-            let tagOffsets: [Offset] = event.tags.map { tag in
-                let valuesVec = fbb.createVector(ofOffsets: tag.map { fbb.create(string: $0) })
-                return nmp_kernel_TagRow.createTagRow(&fbb, valuesVectorOffset: valuesVec)
-            }
-            let tagsVec = fbb.createVector(ofOffsets: tagOffsets)
-            let primaryOff = fbb.create(string: event.primaryId)
-            let idOff = fbb.create(string: event.id)
-            let authorOff = fbb.create(string: event.authorPubkey)
-            let contentOff = fbb.create(string: event.content)
-            let eventOff = nmp_kernel_ClaimedEvent.createClaimedEvent(
-                &fbb,
-                primaryIdOffset: primaryOff,
-                idOffset: idOff,
-                authorPubkeyOffset: authorOff,
-                kind: event.kind,
-                createdAt: event.createdAt,
-                tagsVectorOffset: tagsVec,
-                contentOffset: contentOff)
-            let keyOff = fbb.create(string: event.primaryId)
-            return nmp_kernel_ClaimedEventEntry.createClaimedEventEntry(
-                &fbb, keyOffset: keyOff, valueOffset: eventOff)
-        }
-        let entriesVec = fbb.createVector(ofOffsets: entryOffsets)
-        let root = nmp_kernel_ClaimedEventsSnapshot.createClaimedEventsSnapshot(
-            &fbb, entriesVectorOffset: entriesVec)
-        nmp_kernel_ClaimedEventsSnapshot.finish(&fbb, end: root)
-        return fbb.data
-    }
 }

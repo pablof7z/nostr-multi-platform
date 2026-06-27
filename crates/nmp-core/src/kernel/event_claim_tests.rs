@@ -1,11 +1,11 @@
 //! Tests for the generic event `resolve_ref` / `release_ref` kernel primitive
-//! and the `claimed_events` snapshot projection (F-CR-06 / ADR-0034).
+//! and the `refs.event` keyed row projection (F-CR-06 / ADR-0034).
 //!
 //! These tests stay scoped to `nmp-core`: no relay traffic, no actor wiring,
 //! no FFI. Each test drives the raw-key event resolver directly
 //! and asserts on either the `event_claims` refcount state, the
-//! `discovery_in_flight()` OneshotApi counter, or the snapshot's
-//! `projections.claimed_events` map.
+//! `discovery_in_flight()` OneshotApi counter, or the kernel-emitted
+//! `refs.event` row-delta sidecar.
 //!
 //! Test-support paths:
 //! - `inject_replaceable_event` covers kinds 0/3/10002 (the only kinds with
@@ -18,9 +18,11 @@ use super::*;
 use crate::kernel::{EventShape, RefLiveness};
 use crate::nip19::{NaddrData, NeventData, encode_naddr, encode_nevent};
 use crate::nip21::{NostrUri, parse_nostr_uri};
-use crate::relay::{DEFAULT_VISIBLE_LIMIT};
+use crate::refs::{REFS_EVENT_KEY, RefEventStore};
+use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use nmp_network::role::RelayRole;
 use crate::store::{RawEvent, VerifiedEvent};
+use crate::update_envelope::{decode_snapshot_envelope, decode_snapshot_typed_projections};
 
 const TEST_AUTHOR_HEX: &str = "abababababababababababababababababababababababababababababababab";
 const TEST_D_TAG: &str = "kind-dispatch";
@@ -154,8 +156,34 @@ fn inject_note(kernel: &mut Kernel, id: &str, author: &str, content: &str) {
     );
 }
 
+fn apply_event_refs(kernel: &mut Kernel, store: &mut RefEventStore) {
+    let frame = kernel.make_update(true);
+    let envelope = decode_snapshot_envelope(&frame).expect("decode snapshot envelope");
+    let typed = decode_snapshot_typed_projections(&frame).expect("decode typed projections");
+    for entry in typed.iter().filter(|entry| entry.key == REFS_EVENT_KEY) {
+        let outcome = store.apply_sidecar(
+            &entry.payload,
+            envelope.session_id,
+            envelope.snapshot_epoch,
+        );
+        assert!(
+            !outcome.decode_failed,
+            "refs.event rows emitted by the kernel must pass decode-before-commit"
+        );
+    }
+}
+
+fn event_ref_row(
+    kernel: &mut Kernel,
+    store: &mut RefEventStore,
+    primary_id: &str,
+) -> Option<crate::kernel::public_typed_projections::ClaimedEventRow> {
+    apply_event_refs(kernel, store);
+    store.event(primary_id)
+}
+
 /// 1. A `resolve_event_ref` for an event already in the read-cache short-circuits
-/// the OneshotApi registration — no discovery REQ is queued, the projection
+/// the OneshotApi registration — no discovery REQ is queued, `refs.event`
 /// emits the DTO immediately.
 #[test]
 fn resolve_event_ref_for_known_event_id_resolves_without_relay() {
@@ -186,14 +214,13 @@ fn resolve_event_ref_for_known_event_id_resolves_without_relay() {
     // Refcount recorded.
     assert_eq!(kernel.event_claims_len_for_test(&id), 1);
 
-    // Snapshot carries the DTO.
-    let snapshot = kernel.make_update_value_for_test(true);
-    let entry = &snapshot["projections"]["claimed_events"][&id];
-    assert!(entry.is_object(), "claimed_events[id] must be present");
-    assert_eq!(entry["id"], id);
-    assert_eq!(entry["kind"], 1);
-    assert_eq!(entry["author_pubkey"], TEST_AUTHOR_HEX);
-    assert_eq!(entry["content"], "hello world");
+    let mut event_store = RefEventStore::new();
+    let entry = event_ref_row(&mut kernel, &mut event_store, &id)
+        .expect("refs.event row must be present");
+    assert_eq!(entry.id, id);
+    assert_eq!(entry.kind, 1);
+    assert_eq!(entry.author_pubkey, TEST_AUTHOR_HEX);
+    assert_eq!(entry.content, "hello world");
 }
 
 /// 2. A `resolve_event_ref` for an unknown event id registers a OneShot + Global
@@ -268,16 +295,13 @@ fn resolve_event_ref_naddr_matches_kind_pubkey_dtag_in_store() {
         "event_claim_requested must stay empty when the addressable triple is cached"
     );
 
-    let snapshot = kernel.make_update_value_for_test(true);
-    let entry = &snapshot["projections"]["claimed_events"][&coord_key];
-    assert!(
-        entry.is_object(),
-        "claimed_events[{coord_key}] must be present after claim resolves"
-    );
-    assert_eq!(entry["primary_id"], coord_key);
-    assert_eq!(entry["id"], id);
-    assert_eq!(entry["kind"], 30023);
-    assert_eq!(entry["author_pubkey"], TEST_AUTHOR_HEX);
+    let mut event_store = RefEventStore::new();
+    let entry = event_ref_row(&mut kernel, &mut event_store, &coord_key)
+        .expect("refs.event row must be present after claim resolves");
+    assert_eq!(entry.primary_id, coord_key);
+    assert_eq!(entry.id, id);
+    assert_eq!(entry.kind, 30023);
+    assert_eq!(entry.author_pubkey, TEST_AUTHOR_HEX);
 }
 
 /// 4. `release_event_ref` removes the consumer from the per-`primary_id` set;
@@ -360,7 +384,7 @@ fn resolve_event_ref_bounded_at_max_event_claims_per_key() {
 }
 
 /// 6. Snapshot push semantics (D8): a claim registered BEFORE the event
-/// arrives leaves `claimed_events` empty; once the event is ingested the
+/// arrives leaves `refs.event` without a row; once the event is ingested the
 /// next snapshot tick surfaces the DTO under the `primary_id` key.
 ///
 /// NOTE: this test ingests via the `inject_note` bypass and so does NOT
@@ -370,8 +394,9 @@ fn resolve_event_ref_bounded_at_max_event_claims_per_key() {
 /// lives in `claim_expansion_ingest_tests.rs`, which has the production
 /// `handle_text` + B4 shared-sub harness this bypass test lacks.
 #[test]
-fn claimed_events_projection_emits_dto_keyed_by_primary_id() {
+fn refs_event_projection_emits_dto_keyed_by_primary_id() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let mut event_store = RefEventStore::new();
 
     let id = hex64("d");
     let uri = nevent_uri(&id, Some(1), Some(TEST_AUTHOR_HEX));
@@ -379,25 +404,19 @@ fn claimed_events_projection_emits_dto_keyed_by_primary_id() {
     // Pre-arrival: the claim registers an interest but the projection has
     // no entry (the event is not yet in the read-cache).
     let _ = resolve_event_uri(&mut kernel, &uri, "view-0".to_string(), true, false);
-    let snapshot = kernel.make_update_value_for_test(true);
-    let entry = &snapshot["projections"]["claimed_events"][&id];
     assert!(
-        entry.is_null(),
-        "claimed_events[{id}] must be absent before the event arrives — got {entry:?}"
+        event_ref_row(&mut kernel, &mut event_store, &id).is_none(),
+        "refs.event[{id}] must be absent before the event arrives"
     );
 
     // Inject the event and re-emit; the DTO must appear under the same
     // key (the kernel's `primary_id` is the event-id hex).
     inject_note(&mut kernel, &id, TEST_AUTHOR_HEX, "post-arrival content");
-    let snapshot = kernel.make_update_value_for_test(true);
-    let entry = &snapshot["projections"]["claimed_events"][&id];
-    assert!(
-        entry.is_object(),
-        "claimed_events[{id}] must surface after ingest — got {entry:?}"
-    );
-    assert_eq!(entry["primary_id"], id);
-    assert_eq!(entry["content"], "post-arrival content");
-    assert_eq!(entry["kind"], 1);
+    let entry = event_ref_row(&mut kernel, &mut event_store, &id)
+        .expect("refs.event row must surface after ingest");
+    assert_eq!(entry.primary_id, id);
+    assert_eq!(entry.content, "post-arrival content");
+    assert_eq!(entry.kind, 1);
 }
 
 /// 7. (codex M3) Releasing the last consumer of a claim also cancels the

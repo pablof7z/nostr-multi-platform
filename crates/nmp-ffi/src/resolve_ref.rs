@@ -61,7 +61,7 @@
 //! An invalid key (wrong case, wrong length, non-decimal kind, missing segment,
 //! empty external id) is a silent no-op at the kernel's resolver body (D6).
 
-use super::{NmpApp, app_ref, c_string_argument};
+use super::{app_ref, c_string_argument, NmpApp};
 use nmp_core::__ffi_internal::is_hex_pubkey;
 use nmp_core::{EventShape, ProfileShape, RefLiveness, RefNamespace, RefResolveMetadata, RefShape};
 use serde_json::Value;

@@ -775,40 +775,6 @@ enum TypedRelayDiagnosticsDecoder {
     }
 }
 
-// MARK: - TypedClaimedEventsDecoder
-// Projection `claimed_events` → typed sidecar `claimed_events` (KCEV). Domain type: `[String: ClaimedEventDto]?`.
-enum TypedClaimedEventsDecoder {
-    /// `TypedProjection.key` the producer publishes for this projection.
-    static let key = "claimed_events"
-    /// `TypedPayload.schema_id` carried on the sidecar buffer.
-    static let schemaId = "claimed_events"
-    /// FlatBuffers `file_identifier` for `nmp_kernel_ClaimedEventsSnapshot`.
-    static let fileIdentifier = "KCEV"
-
-    /// Decode the typed `claimed_events` sidecar from the snapshot's typed-projection
-    /// envelopes into the Chirp domain value. Returns `nil` (so the host
-    /// falls back to the generic JSON `payload`) when the sidecar is absent,
-    /// carries the wrong schema, or is not a well-formed buffer.
-    static func decode(from projections: [TypedProjectionEnvelope]) -> [String: ClaimedEventDto]? {
-        guard let projection = projections.first(where: {
-            $0.key == key && $0.schemaId == schemaId
-        }), !projection.payload.isEmpty else {
-            return nil
-        }
-        return decode(bytes: projection.payload)
-    }
-
-    /// Decode a raw `KCEV` FlatBuffers buffer into the Chirp domain value.
-    static func decode(bytes: Data) -> [String: ClaimedEventDto]? {
-        guard !bytes.isEmpty else { return nil }
-        var buffer = ByteBuffer(data: bytes)
-        let reader: nmp_kernel_ClaimedEventsSnapshot = getRoot(byteBuffer: &buffer)
-        // Hand-written glue (NOT generated): map the `flatc --swift` reader
-        // struct to the Chirp domain type. See `TypedProjectionGlue.claimedEvents`.
-        return TypedProjectionGlue.claimedEvents(reader)
-    }
-}
-
 // MARK: - TypedClaimedEventEmbedsDecoder
 // Projection `claimed_event_embeds` → typed sidecar `claimed_event_embeds` (NEMB). Domain type: `[String: EmbeddedEventEnvelope]?`.
 enum TypedClaimedEventEmbedsDecoder {

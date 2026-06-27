@@ -19,10 +19,9 @@ extension TypedProjectionGlue {
 
     /// Map the typed `claimed_event_embeds` sidecar (`NEMB` /
     /// `nmp_embed_ClaimedEventEmbeds`) to the `[String: EmbeddedEventEnvelope]`
-    /// the JSON `projections.claimedEventEmbeds` path yields. FlatBuffers has no
-    /// map type, so the producer flattens the `primary_id -> envelope` map to a
-    /// key-sorted vector; this rebuilds the dictionary keyed by `primaryId`,
-    /// mirroring the `claimedEvents` / `claimedProfiles` precedent.
+    /// the compatibility projection yields. FlatBuffers has no map type, so the
+    /// producer flattens the `primary_id -> envelope` map to a key-sorted vector;
+    /// this rebuilds the dictionary keyed by `primaryId`.
     static func claimedEventEmbeds(
         _ reader: nmp_embed_ClaimedEventEmbeds
     ) -> [String: EmbeddedEventEnvelope] {

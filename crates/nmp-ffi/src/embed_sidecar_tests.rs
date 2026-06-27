@@ -2,13 +2,19 @@
 //! shape). Extracted from `embed_sidecar.rs` to keep it under the 500 LOC gate.
 
 use nmp_content::wire::decode_claimed_event_embeds;
-use nmp_content::{resolve_embed_projection, EmbedKindProjection, EmbeddedEventEnvelope, RenderContext};
-use nmp_core::typed_projections::ClaimedEventRow;
+use nmp_content::{
+    resolve_embed_projection, EmbedKindProjection, EmbeddedEventEnvelope, RenderContext,
+};
+use nmp_core::refs::{encode_ref_row_delta_batch, RefRow, RefRowDeltaBatch, REFS_EVENT_KEY};
+use nmp_core::typed_projections::{
+    encode_claimed_events, ClaimedEventRow, ClaimedEventsModel, CLAIMED_EVENTS_SCHEMA_ID,
+};
+use nmp_core::{encode_snapshot_frame, SnapshotEnvelope, TypedProjectionData};
 use std::collections::BTreeMap;
 
 use super::{
-    build_envelope, new_embed_sidecar_slot, read_embed_sidecar_typed,
-    row_to_kernel_event, EMBED_SIDECAR_KEY,
+    build_envelope, new_embed_sidecar_slot, read_embed_sidecar_typed, row_to_kernel_event,
+    update_embed_sidecar_from_frame, EMBED_SIDECAR_KEY,
 };
 
 fn make_claimed_event_row(
@@ -30,6 +36,53 @@ fn make_claimed_event_row(
         content_tree_bytes: Vec::new(),
         signed_event_json: None,
     }
+}
+
+fn refs_event_frame(primary_id: &str, row: ClaimedEventRow, rev: u64) -> Vec<u8> {
+    let row_payload = encode_claimed_events(&ClaimedEventsModel {
+        entries: vec![(primary_id.to_string(), row)],
+    });
+    encode_snapshot_frame(
+        &SnapshotEnvelope {
+            running: true,
+            update_kind: "ViewBatch".to_string(),
+            session_id: 1,
+            ..Default::default()
+        },
+        &[TypedProjectionData {
+            key: REFS_EVENT_KEY.to_string(),
+            schema_id: REFS_EVENT_KEY.to_string(),
+            schema_version: 1,
+            file_identifier: String::new(),
+            payload: encode_ref_row_delta_batch(&RefRowDeltaBatch {
+                namespace: "event".to_string(),
+                baseline: rev == 1,
+                rows: vec![RefRow::changed(primary_id, rev, row_payload)],
+            }),
+            ..Default::default()
+        }],
+    )
+}
+
+fn claimed_events_only_frame(primary_id: &str, row: ClaimedEventRow) -> Vec<u8> {
+    encode_snapshot_frame(
+        &SnapshotEnvelope {
+            running: true,
+            update_kind: "ViewBatch".to_string(),
+            session_id: 1,
+            ..Default::default()
+        },
+        &[TypedProjectionData {
+            key: CLAIMED_EVENTS_SCHEMA_ID.to_string(),
+            schema_id: CLAIMED_EVENTS_SCHEMA_ID.to_string(),
+            schema_version: 1,
+            file_identifier: String::new(),
+            payload: encode_claimed_events(&ClaimedEventsModel {
+                entries: vec![(primary_id.to_string(), row)],
+            }),
+            ..Default::default()
+        }],
+    )
 }
 
 #[test]
@@ -151,14 +204,17 @@ fn embed_sidecar_json_shape_matches_expected_variant_tag() {
 }
 
 #[test]
-fn typed_sidecar_is_present_and_empty_when_slot_is_none() {
+fn typed_sidecar_is_present_and_empty_before_refs_event_arrives() {
     let slot = new_embed_sidecar_slot();
     let typed = read_embed_sidecar_typed(&slot);
     assert_eq!(typed.key, EMBED_SIDECAR_KEY);
     assert_eq!(typed.schema_id, EMBED_SIDECAR_KEY);
-    let decoded = decode_claimed_event_embeds(&typed.payload)
-        .expect("empty typed sidecar must decode");
-    assert!(decoded.is_empty(), "absent slot => empty typed map");
+    let decoded =
+        decode_claimed_event_embeds(&typed.payload).expect("empty typed sidecar must decode");
+    assert!(
+        decoded.is_empty(),
+        "empty refs.event store => empty typed map"
+    );
 }
 
 #[test]
@@ -178,18 +234,78 @@ fn typed_sidecar_carries_the_expected_resolved_map() {
         let proj = resolve_embed_projection(&row_to_kernel_event(&row), &ctx);
         map.insert(pid.to_string(), build_envelope(pid, proj));
     }
-    *slot.lock().unwrap() = Some(map);
+    slot.lock().unwrap().envelopes = map;
 
     let typed = read_embed_sidecar_typed(&slot);
-    let decoded = decode_claimed_event_embeds(&typed.payload)
-        .expect("typed sidecar must decode");
+    let decoded = decode_claimed_event_embeds(&typed.payload).expect("typed sidecar must decode");
 
     assert_eq!(decoded.len(), 3, "three entries expected");
     for key in ["note", "art", "unk"] {
         assert!(decoded.contains_key(key), "typed missing {key}");
-        assert_eq!(decoded[key].primary_id, key, "typed primary_id mismatch for {key}");
+        assert_eq!(
+            decoded[key].primary_id, key,
+            "typed primary_id mismatch for {key}"
+        );
     }
-    assert!(matches!(decoded["note"].projection, EmbedKindProjection::ShortNote(_)));
-    assert!(matches!(decoded["art"].projection, EmbedKindProjection::Article(_)));
-    assert!(matches!(decoded["unk"].projection, EmbedKindProjection::Unknown(_)));
+    assert!(matches!(
+        decoded["note"].projection,
+        EmbedKindProjection::ShortNote(_)
+    ));
+    assert!(matches!(
+        decoded["art"].projection,
+        EmbedKindProjection::Article(_)
+    ));
+    assert!(matches!(
+        decoded["unk"].projection,
+        EmbedKindProjection::Unknown(_)
+    ));
+}
+
+#[test]
+fn update_from_refs_event_populates_compat_embed_payload() {
+    let slot = new_embed_sidecar_slot();
+    let primary_id = "note";
+    let row = make_claimed_event_row(
+        primary_id,
+        primary_id,
+        &"aa".repeat(32),
+        1,
+        "hello from refs.event",
+        vec![],
+    );
+    let frame = refs_event_frame(primary_id, row, 1);
+
+    update_embed_sidecar_from_frame(&frame, &slot);
+
+    let typed = read_embed_sidecar_typed(&slot);
+    let decoded = decode_claimed_event_embeds(&typed.payload).expect("typed sidecar must decode");
+    assert_eq!(decoded.len(), 1);
+    assert!(matches!(
+        decoded[primary_id].projection,
+        EmbedKindProjection::ShortNote(_)
+    ));
+}
+
+#[test]
+fn update_ignores_raw_claimed_events_without_refs_event() {
+    let slot = new_embed_sidecar_slot();
+    let primary_id = "legacy";
+    let row = make_claimed_event_row(
+        primary_id,
+        primary_id,
+        &"aa".repeat(32),
+        1,
+        "legacy claimed_events must not be authoritative",
+        vec![],
+    );
+    let frame = claimed_events_only_frame(primary_id, row);
+
+    update_embed_sidecar_from_frame(&frame, &slot);
+
+    let typed = read_embed_sidecar_typed(&slot);
+    let decoded = decode_claimed_event_embeds(&typed.payload).expect("typed sidecar must decode");
+    assert!(
+        decoded.is_empty(),
+        "claimed_event_embeds compatibility output must derive from refs.event, not raw claimed_events"
+    );
 }

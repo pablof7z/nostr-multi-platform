@@ -1,7 +1,7 @@
 //! `EmbedClaimRegistry` — refcounted per-id claim/release for embedded events.
 //!
 //! When N timeline rows render the same `nevent1…` (or `naddr1…`), the
-//! registry **deduplicates the in-memory claim state**: repeated `claim`s
+//! registry **deduplicates the in-memory claim state**: repeated claims
 //! on the same target share one [`Entry`] and one [`ResolvedEvent`], and
 //! the registry can answer "is anything still observing this target?"
 //! ([`is_claimed`] / [`refcount`] / [`claim_count`]). `claim` returns an
@@ -33,7 +33,7 @@
 //! [`claim_count`]: EmbedClaimRegistry::claim_count
 //! [`on_event_inserted`]: EmbedClaimRegistry::on_event_inserted
 
-pub mod event_claim_sink;
+pub mod event_ref_resolver;
 mod state;
 mod target;
 mod view;
@@ -41,7 +41,7 @@ mod view;
 #[cfg(test)]
 mod tests;
 
-pub use event_claim_sink::{EventClaimSink, NoopEventClaimSink};
+pub use event_ref_resolver::{EventRefResolver, NoopEventRefResolver};
 pub use state::EmbedClaimState;
 pub use target::{ClaimHandle, EmbedTarget, ResolvedEvent};
 pub use view::{EmbedClaimDelta, EmbedClaimSpec, EmbedRegistrySnapshot};

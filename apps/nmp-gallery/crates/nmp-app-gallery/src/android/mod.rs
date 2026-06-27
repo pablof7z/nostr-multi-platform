@@ -14,9 +14,9 @@
 use std::ffi::c_void;
 use std::sync::Arc;
 
-use jni::JNIEnv;
 use jni::objects::{JByteArray, JClass, JObject, JString};
 use jni::sys::{jint, jlong, jstring};
+use jni::JNIEnv;
 
 use nmp_ffi::{
     nmp_app_add_relay, nmp_app_deliver_external_signer_response, nmp_app_new,
@@ -29,15 +29,13 @@ use crate::dispatch_bytes::dispatch_action_bytes_for;
 
 use crate::android_push::{SignerRequestListenerSlot, SignerRequestPushListener};
 
-use nmp_core::refs::RefProfileStore;
-
 use std::sync::Mutex;
 
-mod event_claims;
+mod event_refs;
 pub(crate) mod session;
 use session::{
-    GallerySession, jstring_to_cstring, on_capability_request, on_update, session_ref,
-    set_update_listener, teardown_session,
+    jstring_to_cstring, on_capability_request, on_update, session_ref, set_update_listener,
+    teardown_session, GallerySession,
 };
 
 // ── JNI entry points ──────────────────────────────────────────────────────
@@ -75,7 +73,7 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeNew(
         app,
         update_ctx,
         signer_listener,
-        ref_profiles: Mutex::new(RefProfileStore::new()),
+        ref_stores: Mutex::new(crate::GalleryRefStores::new()),
     });
     Box::into_raw(session) as jlong
 }
@@ -137,20 +135,25 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeDecodeSnap
     let Ok(bytes) = env.convert_byte_array(frame) else {
         return null;
     };
-    // ADR-0063 (#1671): merge the frame's `refs.profile` row-delta batch into the
-    // session's persistent store before building the snapshot JSON. The handle is
-    // optional only for the (pre-session) error path; without it the row-deltas
-    // cannot accumulate, so a missing handle yields null (D6).
+    // ADR-0063 (#1671): merge the frame's `refs.profile` / `refs.event`
+    // row-delta batches into the session's persistent stores before building
+    // snapshot JSON. The handle is optional only for the (pre-session) error
+    // path; without it row-deltas cannot accumulate, so a missing handle yields
+    // null (D6).
     let Some(s) = session_ref(handle) else {
         return null;
     };
-    let Ok(mut store) = s.ref_profiles.lock() else {
+    let Ok(mut stores) = s.ref_stores.lock() else {
         return null;
     };
-    let Ok(json) = crate::snapshot_json::snapshot_json_from_update_frame(&bytes, &mut store) else {
+    let Ok(json) = crate::snapshot_json::snapshot_json_from_update_frame(
+        &bytes,
+        &mut stores.profiles,
+        &mut stores.events,
+    ) else {
         return null;
     };
-    drop(store);
+    drop(stores);
     match env.new_string(json) {
         Ok(js) => js.into_raw(),
         Err(_) => null,

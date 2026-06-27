@@ -1,7 +1,9 @@
 use super::*;
-use crate::relay::{DEFAULT_VISIBLE_LIMIT};
+use crate::refs::{REFS_EVENT_KEY, RefEventStore};
+use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use nmp_network::role::RelayRole;
 use crate::store::{RawEvent, VerifiedEvent};
+use crate::update_envelope::{decode_snapshot_envelope, decode_snapshot_typed_projections};
 
 const TEST_AUTHOR_HEX: &str = "abababababababababababababababababababababababababababababababab";
 
@@ -31,7 +33,7 @@ fn inject_note(kernel: &mut Kernel, id: &str, author: &str, content: &str) {
 }
 
 #[test]
-fn claimed_events_carries_raw_author_pubkey_without_profile_enrichment() {
+fn refs_event_carries_raw_author_pubkey_without_profile_enrichment() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 
     let id = hex64("9");
@@ -62,15 +64,23 @@ fn claimed_events_carries_raw_author_pubkey_without_profile_enrichment() {
         Vec::new(),
     );
 
-    let snapshot = kernel.make_update_value_for_test(true);
-    let entry = &snapshot["projections"]["claimed_events"][&id];
-    assert_eq!(entry["author_pubkey"], TEST_AUTHOR_HEX);
-    assert!(
-        entry.get("author_display_name").is_none(),
-        "claimed_events must not duplicate kind:0 display names"
-    );
-    assert!(
-        entry.get("author_picture_url").is_none(),
-        "claimed_events must not duplicate kind:0 avatar URLs"
-    );
+    let frame = kernel.make_update(true);
+    let envelope = decode_snapshot_envelope(&frame).expect("decode snapshot envelope");
+    let typed = decode_snapshot_typed_projections(&frame).expect("decode typed projections");
+    let mut store = RefEventStore::new();
+    for entry in typed.iter().filter(|entry| entry.key == REFS_EVENT_KEY) {
+        let outcome = store.apply_sidecar(
+            &entry.payload,
+            envelope.session_id,
+            envelope.snapshot_epoch,
+        );
+        assert!(
+            !outcome.decode_failed,
+            "refs.event rows emitted by the kernel must decode"
+        );
+    }
+    let entry = store.event(&id).expect("refs.event row must be present");
+    assert_eq!(entry.author_pubkey, TEST_AUTHOR_HEX);
+    // The row type has no display-name/avatar fields; profile presentation
+    // enrichment is delivered separately through refs.profile.
 }

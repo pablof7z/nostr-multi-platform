@@ -275,7 +275,7 @@ fn address_uri_projects_with_address_discriminator_and_round_trips() {
             assert_eq!(uri.kind, WireNostrUriKind::Address);
             // `primary_id` for an addressable URI is the coordinate string
             // `"{kind}:{pubkey}:{d_tag}"` so it matches the kernel's
-            // `claimed_events[primary_id]` projection key exactly (the
+            // `refs.event[primary_id]` row key exactly (the
             // renderer's `envelope_for(uri)` lookup hits without an alias
             // map). See `wire/projection.rs::project_uri` for the
             // construction; the prior shape (bare pubkey) caused the

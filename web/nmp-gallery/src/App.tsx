@@ -163,7 +163,7 @@ export default function App(): JSX.Element {
   // Card "ready" gates: the embed cards must show a resolved author byline, so
   // they wait for the author's profile to resolve. We read it from the SAME
   // `refs.profile` row cache the avatar/name/mention-chip use (host.profile)
-  // rather than the kernel's claimed_events author enrichment — the former is
+  // rather than any event-row author enrichment — the former is
   // reliable; the latter can lag. Same no-unresolved-data discipline as user-*.
   const authorOf = (ev: ClaimedEventWire | undefined) =>
     ev ? runtime.host.profile(ev.authorPubkey) : undefined;
@@ -178,11 +178,10 @@ export default function App(): JSX.Element {
   const highlightCard = createMemo(() => highlightRaw());
   const noteCard = createMemo(() => authorResolved(noteRaw()));
 
-  // #1767 — the kernel-RESOLVED embed envelopes (projection already
-  // kind-dispatched in Rust via `claimed_event_embeds_json`). The
-  // content-kind-registry section renders from these instead of re-parsing
-  // tags. Each gates on its per-card memo so it appears in lockstep with the
-  // per-component demos above (article/note also wait for the author profile).
+  // The render-facing embed envelopes are derived from the authoritative
+  // `refs.event` row cache. Each gates on its per-card memo so it appears in
+  // lockstep with the per-component demos above (article/note also wait for
+  // the author profile).
   const articleEmbed = createMemo(() =>
     articleCard() ? runtime.claimedEventEmbed(SHOWCASE_ARTICLE.primaryId) : undefined,
   );
@@ -193,10 +192,9 @@ export default function App(): JSX.Element {
     noteCard() ? runtime.claimedEventEmbed(SHOWCASE_NOTE.primaryId) : undefined,
   );
 
-  // #1767 — the standalone embed-article / embed-highlight showcase sections
-  // render the SAME card components, but source their fields from the
-  // kernel-RESOLVED projection (variant `data`) instead of re-parsing
-  // NIP-23/NIP-84 tags. The byline still comes from host-resolved `authorOf(...)`
+  // The standalone embed-article / embed-highlight showcase sections render the
+  // SAME card components, sourcing their fields from the envelope derived from
+  // `refs.event`. The byline still comes from host-resolved `authorOf(...)`
   // (the projection's static author is null by design). Narrowing helpers are
   // pure (gallerySupport); reactivity stays here in the memo.
   const articleProjection = createMemo(() => articleProjectionOf(articleEmbed()));

@@ -19,8 +19,8 @@
 //!
 //! 4. **Seeded-store offline render** (`#628`) — an actor whose local store is
 //!    seeded with a known event BEFORE `Start` (with zero relays) must render
-//!    that event from the local store alone. The running snapshot's typed
-//!    `claimed_events` sidecar must contain the seeded event within the same
+//!    that event from the local store alone. The running snapshot's
+//!    `refs.event` sidecar must contain the seeded event within the same
 //!    500 ms budget, with no relay connectivity at all
 //!    (offline-first.md §7: "the first rendered frame is produced from
 //!    local-store content alone").
@@ -274,19 +274,19 @@ mod tests {
     /// (`IngestPreVerifiedEvents`) and resolves it (`RefsCommand::Resolve`) BEFORE the
     /// `running=true` snapshot is observed, with `initial_relays` EMPTY — zero
     /// connectivity. Within the same 500 ms budget the other D1 tests use, the
-    /// actor must emit a `running=true` snapshot whose typed `claimed_events`
-    /// sidecar carries the seeded event. No relay ever connects: the rendered
+    /// actor must emit a `running=true` snapshot whose `refs.event` row sidecar
+    /// carries the seeded event. No relay ever connects: the rendered
     /// frame is produced from local-store content alone.
     ///
     /// Decode pattern reused from `nmp-testing` C13
     /// (`framework_magic_contract/c5_c8_c13.rs`): `decode_snapshot_typed_projections`
-    /// → find the `claimed_events` sidecar → `decode_claimed_events` → look up
+    /// → find the `refs.event` sidecar → `RefEventStore` → look up
     /// the seeded event id.
     #[test]
     fn v628_seeded_store_renders_offline_with_zero_relays() {
+        use crate::refs::{RefEventStore, REFS_EVENT_KEY};
         use crate::store::{RawEvent, VerifiedEvent};
-        use crate::typed_projections::{decode_claimed_events, CLAIMED_EVENTS_SCHEMA_ID};
-        use crate::update_envelope::decode_snapshot_typed_projections;
+        use crate::update_envelope::{decode_snapshot_envelope, decode_snapshot_typed_projections};
 
         let (cmd_tx, upd_rx) = spawn_actor();
 
@@ -295,7 +295,7 @@ mod tests {
 
         // Seed a known event into the local store. The diag-firehose-stress
         // ingest path pushes the event directly into `self.events` regardless
-        // of `timeline_authors`, so it is visible to `claimed_events`.
+        // of `timeline_authors`, so it is visible to refs.event.
         let author_pk = "628a0628a0628a0628a0628a0628a0628a0628a0628a0628a0628a0628a0628a";
         let event_id = "628e0000628e0000628e0000628e0000628e0000628e0000628e0000628e0000";
         let raw = RawEvent {
@@ -323,10 +323,10 @@ mod tests {
             }))
             .expect("send Start with zero relays");
 
-        // Claim the seeded event so it surfaces in the `claimed_events` typed
-        // sidecar (D5: claimed_events carries the entry only after a Resolve
-        // dispatch). The store already holds the event, so this resolves from
-        // local content — no relay fetch is needed or possible (zero relays).
+        // Claim the seeded event so it surfaces in the `refs.event` sidecar
+        // (D5: refs.event carries the entry only after a Resolve dispatch). The
+        // store already holds the event, so this resolves from local content —
+        // no relay fetch is needed or possible (zero relays).
         cmd_tx
             .send(ActorCommand::Refs(RefsCommand::Resolve {
                 namespace: RefNamespace::Event,
@@ -340,10 +340,11 @@ mod tests {
             .expect("claim seeded event");
 
         // Within the existing 500 ms D1 budget, a running=true snapshot whose
-        // typed claimed_events sidecar contains the seeded event must arrive —
-        // produced from local store alone, with no relay connected.
+        // refs.event row cache contains the seeded event must arrive — produced
+        // from local store alone, with no relay connected.
         let deadline = std::time::Instant::now() + Duration::from_millis(500);
         let mut found = false;
+        let mut event_store = RefEventStore::new();
         while std::time::Instant::now() < deadline {
             let remaining = deadline.saturating_duration_since(std::time::Instant::now());
             match upd_rx.recv_timeout(remaining) {
@@ -360,14 +361,22 @@ mod tests {
                         Ok(p) => p,
                         Err(_) => continue,
                     };
-                    let has_seeded = projections
-                        .iter()
-                        .find(|p| p.schema_id == CLAIMED_EVENTS_SCHEMA_ID)
-                        .and_then(|p| decode_claimed_events(&p.payload).ok())
-                        .map(|model| model.entries.iter().any(|(k, _)| k == event_id))
-                        .unwrap_or(false);
-                    if has_seeded {
-                        found = true;
+                    for projection in projections.iter().filter(|p| p.key == REFS_EVENT_KEY) {
+                        let outcome = event_store.apply_sidecar(
+                            &projection.payload,
+                            env.session_id,
+                            env.snapshot_epoch,
+                        );
+                        assert!(
+                            !outcome.decode_failed,
+                            "refs.event rows emitted by the actor must decode"
+                        );
+                        if event_store.event(event_id).is_some() {
+                            found = true;
+                            break;
+                        }
+                    }
+                    if found {
                         break;
                     }
                 }
@@ -377,7 +386,7 @@ mod tests {
 
         assert!(
             found,
-            "#628: a running=true snapshot whose typed claimed_events sidecar \
+            "#628: a running=true snapshot whose refs.event sidecar \
              contains the seeded event {event_id} must arrive within 500 ms with \
              ZERO relays connected (offline-first.md §7: the first rendered frame \
              is produced from local-store content alone)"

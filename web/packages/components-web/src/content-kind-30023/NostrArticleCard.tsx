@@ -2,8 +2,8 @@
  * NostrArticleCard — NIP-23 long-form (kind:30023) embed card for the web.
  *
  * Pure renderer (D7): the host hydrates a `NostrArticleCardModel` from a
- * resolved `claimed_events` entry (the kernel decodes the kind:30023 event and
- * enriches the author's kind:0) and passes it in. The card never parses, fetches,
+ * resolved `refs.event` article entry (or an envelope map derived from
+ * `refs.event`) and passes it in. The card never parses, fetches,
  * or mocks — it renders the `image` tag as a 16:9 hero, the `title` as the
  * headline, an optional `summary`, then an author byline (avatar + display name
  * + `article · kind:30023`). Mirrors the SwiftUI `ArticleEmbed` / Compose

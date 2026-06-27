@@ -3,7 +3,7 @@
  *
  * `ContentTreeWire` is the kernel's NFCT projection (the `nmp-content` tokenizer
  * behind the kernel's content-parser seam), shipped as FlatBuffers bytes inside
- * the snapshot (`claimed_events.content_tree_bytes` / feed projections). This
+ * the snapshot (`refs.event` row payloads / feed projections). This
  * module is the one place that turns those raw bytes into a decoded
  * `ContentTreeWire` root — every content component (content-view, content-minimal)
  * consumes the decoded tree, never raw bytes, so decoding lives here once.

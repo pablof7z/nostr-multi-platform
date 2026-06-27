@@ -1,6 +1,6 @@
-//! Encode half of the `claimed_event_embeds` typed codec — the resolver
-//! [`EmbeddedEventEnvelope`] map → `NEMB` FlatBuffer. See the module-root doc
-//! ([`super`]) for the layout / regeneration contract.
+//! Encode half of the `claimed_event_embeds` typed compatibility codec — the
+//! resolved [`EmbeddedEventEnvelope`] map → `NEMB` FlatBuffer. See the
+//! module-root doc ([`super`]) for the layout / regeneration contract.
 
 use std::collections::BTreeMap;
 
@@ -258,7 +258,12 @@ fn encode_tag_row<'a>(
 ) -> WIPOffset<fb::TagRow<'a>> {
     let value_strs: Vec<WIPOffset<&str>> = row.iter().map(|v| fbb.create_string(v)).collect();
     let values = fbb.create_vector(&value_strs);
-    fb::TagRow::create(fbb, &fb::TagRowArgs { values: Some(values) })
+    fb::TagRow::create(
+        fbb,
+        &fb::TagRowArgs {
+            values: Some(values),
+        },
+    )
 }
 
 /// Encode an `Option<&str>` as a `(has_*, value)` pair: `Some` → `(true, v)`,

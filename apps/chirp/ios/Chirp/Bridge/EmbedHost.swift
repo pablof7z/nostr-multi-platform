@@ -2,15 +2,9 @@ import Foundation
 import Observation
 import SwiftUI
 
-/// Raw wire shape for one entry in `projections["claimed_events"]` (ADR-0034 /
-/// F-CR-06). Hand-declared value type for the generated
-/// `SnapshotProjections.claimedEvents` field and the `claimed_events` typed
-/// decoder (`TypedClaimedEventsDecoder` / `TypedProjectionGlue.claimedEvents`).
-/// Mirrors the kernel's `ClaimedEventDto` (`crates/nmp-core/src/kernel/types.rs`).
-/// The kernel emits snake_case keys; `KernelHandle.decode` applies
-/// `.convertFromSnakeCase`, so the property names below are the post-transform
-/// camelCase form. Retained because `claimed_events` is still a live projection;
-/// it is no longer the embed-resolution input (see `EmbedHost`).
+/// Raw wire shape for one decoded `refs.event` row payload (KCEV). Mirrors the
+/// kernel's event-row DTO fields; used by the keyed `refs.event` cache, not by a
+/// host-visible `claimed_events` snapshot projection.
 struct ClaimedEventDto: Decodable, Equatable {
     let id: String
     let authorPubkey: String

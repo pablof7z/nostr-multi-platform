@@ -210,7 +210,7 @@ fn project_uri(uri: &NostrUri) -> Option<WireNostrUri> {
             uri: canonical,
             kind: WireNostrUriKind::Address,
             // Coordinate string `"{kind}:{pubkey}:{d_tag}"` matches the
-            // kernel's `claimed_events[primary_id]` snapshot key, so the
+            // kernel's `refs.event[primary_id]` row key, so the
             // renderer's `envelope_for(uri)` lookup hits without an extra
             // alias map on the host side. (Previously `pubkey.clone()`,
             // which was ambiguous — the same author can have many
@@ -218,8 +218,12 @@ fn project_uri(uri: &NostrUri) -> Option<WireNostrUri> {
             // single canonical address-coordinate primitive (issue #1740 step 5)
             // so this naddr identity path cannot drift from the repost/feed/
             // delete coordinate string.
-            primary_id: nmp_nip18::AddressCoordinate::new(*kind, pubkey.clone(), identifier.clone())
-                .to_wire(),
+            primary_id: nmp_nip18::AddressCoordinate::new(
+                *kind,
+                pubkey.clone(),
+                identifier.clone(),
+            )
+            .to_wire(),
             relays: relays.clone(),
             author: Some(pubkey.clone()),
             event_kind: Some(*kind),

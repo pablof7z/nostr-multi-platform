@@ -62,7 +62,6 @@ fn empty_declared_set_emits_all_builtins() {
         "active_account",
         "profile",
         "relay_diagnostics",
-        "claimed_events",
     ] {
         assert!(
             projections.contains_key(key),
@@ -76,13 +75,15 @@ fn empty_declared_set_emits_all_builtins() {
 /// undeclared keys absent. `relay_diagnostics` (the headline) is NOT declared
 /// here and must be omitted.
 ///
-/// ADR-0063 Lane H: resolved_profiles deleted; test updated to use claimed_events.
+/// ADR-0063 Lane H: resolved_profiles / claimed_events JSON projections deleted;
+/// use live JSON built-ins here. refs.event declaration semantics are covered by
+/// the keyed row-delta integration tests.
 #[test]
 fn declared_set_narrows_to_members_and_omits_relay_diagnostics() {
     let (mut kernel, slot) = kernel_with_slot();
     slot.lock()
         .unwrap()
-        .declare_consumed_projections(["profile", "accounts", "claimed_events"]);
+        .declare_consumed_projections(["profile", "accounts", "configured_relays"]);
 
     let projections = projections_json(&mut kernel);
 
@@ -96,8 +97,8 @@ fn declared_set_narrows_to_members_and_omits_relay_diagnostics() {
         "declared `accounts` present"
     );
     assert!(
-        projections.contains_key("claimed_events"),
-        "declared `claimed_events` present"
+        projections.contains_key("configured_relays"),
+        "declared `configured_relays` present"
     );
 
     // THE acceptance criterion: relay_diagnostics is gated out.

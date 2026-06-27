@@ -570,49 +570,13 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             swift_reader_type: Some("nmp_kernel_RelayDiagnosticsSnapshot"),
         }),
     },
-    // ADR-0063 Lane H: resolved_profiles / claimed_profiles entries deleted.
-    // Profile resolution is now served by refs.profile (KPRF NRRD row-delta
-    // sidecar per claim). The typed_projections cluster for these two was
-    // removed from builtins_profiles.rs; the Swift SnapshotProjections fields
-    // (resolvedProfiles / claimedProfiles) and their FlatBuffers readers
-    // (nmp_kernel_ResolvedProfilesSnapshot / nmp_kernel_ClaimedProfilesSnapshot)
-    // are likewise deleted.
-    //
-    // Reference-first claimed-event map (ADR-0034 / F-CR-06) — keyed by
-    // `primary_id` (hex-64 event id for nevent/note, `kind:pubkey:d_tag`
-    // coordinate for naddr), one `ClaimedEventDto` per currently claimed
-    // embed/kind-registry event. Built in
-    // `kernel/update/projections.rs::snapshot_projections_with_publish_cluster`
-    // from the kernel's claimed-event set (see
-    // `crates/nmp-core/src/kernel/types.rs::ClaimedEventDto`). The Swift
-    // value type `ClaimedEventDto` is hand-declared (Stage-3 value types are
-    // not schema-reflected) in `apps/chirp/ios/Chirp/Bridge/EmbedHost.swift`, its
-    // sole consumer. Drives `EmbedHost.update(from:)` for the NMP embed
-    // system.
-    SnapshotProjectionEntry {
-        key: "claimed_events",
-        swift_field: "claimedEvents",
-        swift_type: "[String: ClaimedEventDto]",
-        typed_sidecar: Some(TypedSidecar {
-            // NIP-17 DM cluster batch (claimed-event map): the `flatc --swift`
-            // reader (`nmp_kernel_ClaimedEventsSnapshot`, entries each carrying
-            // `nmp_kernel_ClaimedEvent` + `nmp_kernel_TagRow`) ships with this
-            // batch from `crates/nmp-core/schema/claimed_events.fbs`. Flattened
-            // `[{key,value}]` → `[String: ClaimedEventDto]` map, mirroring the
-            // `claimed_profiles` precedent; the redundant `primary_id` body
-            // field is NOT mapped (the hand-declared `ClaimedEventDto` in
-            // `EmbedHost.swift` ignores it — field-aligned, not thick). See
-            // `TypedProjectionGlue.claimedEvents`.
-            swift_reader_type: Some("nmp_kernel_ClaimedEventsSnapshot"),
-        }),
-    },
     // Pre-resolved embed map (issue #1283 / ADR-0034 §embed-sidecar) — keyed by
     // `primary_id`, one `EmbeddedEventEnvelope` (the kind-dispatched
-    // `EmbedKindProjection`) per currently claimed embed. Produced by
-    // `crates/nmp-ffi/src/embed_sidecar.rs`, which resolves each `claimed_events`
-    // row through `nmp_content::resolve_embed_projection` and emits BOTH a JSON
-    // `Value` projection (gallery shell) and the typed `NEMB` FlatBuffer (this
-    // entry, Chirp typed-frame shell). Decoding the typed sidecar is what lets
+    // `EmbedKindProjection`) per currently resolved event ref. Produced by
+    // `crates/nmp-ffi/src/embed_sidecar.rs`, which materialises `refs.event`
+    // rows through `nmp_content::resolve_embed_projection` and emits the typed
+    // `NEMB` FlatBuffer (this entry, Chirp typed-frame shell). Decoding the
+    // typed sidecar is what lets
     // Chirp delete its in-Swift `match kind` embed resolver (the EmbedHost D0
     // violation #1283 closes). The Swift value type `EmbeddedEventEnvelope` is
     // hand-declared in `ios/.../Components/NostrContent/EmbedKindProjection.swift`

@@ -19,7 +19,7 @@
 //!   sorted, ≤500 entries by `TIMELINE_CACHE_LIMIT`).
 //! - The event id is a key in `self.event_claims` (a UI component is
 //!   currently holding a claim on it — evicting would make the next
-//!   snapshot emit an empty `claimed_events` entry).
+//!   snapshot omit the live `refs.event` row).
 //! - **Active open interest** (V-112 / ADR-0042): every cached event that
 //!   matches the wire-filter shape of any active `LogicalInterest` in the
 //!   planner registry (`self.lifecycle.registry().iter_active()` +

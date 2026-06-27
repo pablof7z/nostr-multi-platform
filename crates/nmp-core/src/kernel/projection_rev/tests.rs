@@ -140,11 +140,11 @@ fn emitted_state(kernel: &Kernel, key: &str) -> (u64, ProjectionPresence) {
 /// S1: claim a kind:30023 by COORD, then ingest the article for the FIRST time
 /// (`InsertOutcome::Inserted`). The store-ingest chokepoint must bump
 /// `claimed_event_content_ver` even though the claim key is a coord, not the new
-/// event's hex id — F1. The `claimed_events` rev must advance and the projection
-/// be Changed. Driven through the REAL ingest + claim + emit path; the oracle
+/// event's hex id — F1. The `refs.event` rev must advance and the projection be
+/// Changed. Driven through the REAL ingest + claim + emit path; the oracle
 /// guards completeness.
 #[test]
-fn s1_fresh_longform_claim_store_ingest_bumps_claimed_events_rev() {
+fn s1_fresh_longform_claim_store_ingest_bumps_refs_event_rev() {
     let keys = ::nostr::Keys::generate();
     let author = keys.public_key().to_hex();
     let d_tag = "my-article";
@@ -163,9 +163,9 @@ fn s1_fresh_longform_claim_store_ingest_bumps_claimed_events_rev() {
         Vec::new(),
     );
 
-    // Baseline emit so the manifest has a recorded last-emit for claimed_events.
+    // Baseline emit so the manifest has a recorded last-emit for refs.event.
     emit(&mut kernel);
-    let (rev_before, _) = live_state(&kernel, "claimed_events");
+    let (rev_before, _) = live_state(&kernel, "refs.event");
 
     // The article arrives for the FIRST time -> InsertOutcome::Inserted. Signed,
     // so it passes verify_and_persist; matched to the live claim by COORD (the
@@ -174,11 +174,11 @@ fn s1_fresh_longform_claim_store_ingest_bumps_claimed_events_rev() {
     ingest(&mut kernel, RelayRole::Content, "lf-sub", &article);
 
     // The chokepoint bumps claimed_event_content_ver via the COORD fallback.
-    let (rev_after, _) = live_state(&kernel, "claimed_events");
+    let (rev_after, _) = live_state(&kernel, "refs.event");
     assert!(
         rev_after > rev_before,
         "F1: fresh-longform Inserted matching a live coord claim must advance \
-         claimed_events rev; before={rev_before} after={rev_after}"
+         refs.event rev; before={rev_before} after={rev_after}"
     );
 
     // The emit reflects Changed and the oracle (run inside make_update) passes.
@@ -188,11 +188,11 @@ fn s1_fresh_longform_claim_store_ingest_bumps_claimed_events_rev() {
 // ── Scenario 2: profile update after claim ────────────────────────────────────
 
 /// S2: claim a note, then a kind:0 for its author arrives while the claim is
-/// live. `claimed_events` carries raw author pubkeys only, so kind:0 arrival
-/// must advance `profile` without advancing `claimed_events`. Real ingest +
+/// live. `refs.event` carries raw author pubkeys only, so kind:0 arrival must
+/// advance `profile` without advancing `refs.event`. Real ingest +
 /// claim + emit; oracle guards completeness.
 #[test]
-fn s2_profile_update_after_claim_does_not_bump_claimed_events() {
+fn s2_profile_update_after_claim_does_not_bump_refs_event() {
     let keys = ::nostr::Keys::generate();
     let author = keys.public_key().to_hex();
 
@@ -213,18 +213,18 @@ fn s2_profile_update_after_claim_does_not_bump_claimed_events() {
     );
 
     emit(&mut kernel);
-    let (ce_before, _) = live_state(&kernel, "claimed_events");
+    let (ce_before, _) = live_state(&kernel, "refs.event");
     let (prof_before, _) = live_state(&kernel, "profile");
 
     // kind:0 for the claimed note's author arrives (real signed).
     let profile = signed_profile(&keys, "alice", 1_700_000_500);
     ingest(&mut kernel, RelayRole::Indexer, "meta-sub", &profile);
 
-    let (ce_after, _) = live_state(&kernel, "claimed_events");
+    let (ce_after, _) = live_state(&kernel, "refs.event");
     let (prof_after, _) = live_state(&kernel, "profile");
     assert_eq!(
         ce_after, ce_before,
-        "claimed_events must not advance on profile-only enrichment; {ce_before} -> {ce_after}"
+        "refs.event must not advance on profile-only enrichment; {ce_before} -> {ce_after}"
     );
     assert!(
         prof_after > prof_before,
@@ -445,7 +445,7 @@ fn s7_relay_status_transition_advances_relay_diagnostics() {
 // ── Scenario 9: RAM-eviction of profiles advances profile rev (F4) ────────────
 
 /// S9 (F4): RAM-tier eviction removes profile rows the `profile` / `accounts` /
-/// `claimed_events` projections derive from. `evict_profiles_cache` must bump
+/// `refs.profile` projections derive from. `evict_profiles_cache` must bump
 /// `profiles_ver` when it removes ≥1 row, else the host serves a profile the
 /// kernel no longer holds. Driven through the REAL `inject_replaceable_event`
 /// (kind:0) population + `evict_ram_caches` path.

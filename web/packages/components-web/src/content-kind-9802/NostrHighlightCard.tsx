@@ -2,7 +2,7 @@
  * NostrHighlightCard — NIP-84 highlight (kind:9802) embed card for the web.
  *
  * Pure renderer (D7): the host hydrates a `NostrHighlightCardModel` from a
- * resolved `claimed_events` entry. Renders the highlighted text as a pull-quote
+ * resolved `refs.event` highlight entry. Renders the highlighted text as a pull-quote
  * in a yellow-accented box, an optional surrounding `context` line, and a source
  * footer that branches on the highlight's `r` (URL), `e` (event id), or `a`
  * (addressable event) tag — in that priority order. Mirrors the SwiftUI/TUI

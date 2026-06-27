@@ -109,11 +109,6 @@ pub const PRODUCER_CONST_TARGETS: &[ProducerConstTarget] = &[
         "crates/nmp-core/src/kernel/typed_projections/active_account_producer_consts.generated.rs",
     ),
     pub_target(
-        "claimed_events",
-        "CLAIMED_EVENTS",
-        "crates/nmp-core/src/kernel/typed_projections/claimed_events_producer_consts.generated.rs",
-    ),
-    pub_target(
         "configured_relays",
         "CONFIGURED_RELAYS",
         "crates/nmp-core/src/kernel/typed_projections/configured_relays_producer_consts.generated.rs",

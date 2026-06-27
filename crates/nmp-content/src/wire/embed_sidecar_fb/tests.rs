@@ -15,7 +15,13 @@ use crate::embed_projection::{
     resolve_embed_projection, EmbedKindProjection, EmbeddedEventEnvelope, RenderContextWire,
 };
 
-fn kernel_event(id: &str, author: &str, kind: u32, content: &str, tags: Vec<Vec<String>>) -> KernelEvent {
+fn kernel_event(
+    id: &str,
+    author: &str,
+    kind: u32,
+    content: &str,
+    tags: Vec<Vec<String>>,
+) -> KernelEvent {
     KernelEvent {
         id: id.to_string(),
         author: author.to_string(),
@@ -60,12 +66,22 @@ fn empty_map_round_trips_to_empty_map() {
 fn buffer_carries_nemb_identifier() {
     let entries: BTreeMap<String, EmbeddedEventEnvelope> = BTreeMap::new();
     let bytes = encode_claimed_event_embeds(&entries);
-    assert_eq!(&bytes[4..8], FILE_IDENTIFIER, "buffer must embed the NEMB id");
+    assert_eq!(
+        &bytes[4..8],
+        FILE_IDENTIFIER,
+        "buffer must embed the NEMB id"
+    );
 }
 
 #[test]
 fn short_note_round_trips() {
-    let ev = kernel_event("aa".repeat(32).as_str(), &"bb".repeat(32), 1, "hello https://x.com/a.png", vec![]);
+    let ev = kernel_event(
+        "aa".repeat(32).as_str(),
+        &"bb".repeat(32),
+        1,
+        "hello https://x.com/a.png",
+        vec![],
+    );
     let mut entries = BTreeMap::new();
     entries.insert("p1".to_string(), envelope("p1", resolve(&ev)));
 
@@ -91,7 +107,13 @@ fn article_round_trips_with_optional_tags() {
         vec!["title".to_string(), "My Title".to_string()],
         vec!["summary".to_string(), "A summary".to_string()],
     ];
-    let ev = kernel_event("art".repeat(16).as_str(), &"cc".repeat(32), 30023, "# Body", tags);
+    let ev = kernel_event(
+        "art".repeat(16).as_str(),
+        &"cc".repeat(32),
+        30023,
+        "# Body",
+        tags,
+    );
     let mut entries = BTreeMap::new();
     entries.insert("art1".to_string(), envelope("art1", resolve(&ev)));
 
@@ -112,7 +134,13 @@ fn article_round_trips_with_optional_tags() {
 #[test]
 fn highlight_round_trips() {
     let tags = vec![vec!["e".to_string(), "source-id".to_string()]];
-    let ev = kernel_event("hl".repeat(16).as_str(), &"dd".repeat(32), 9802, "quoted", tags);
+    let ev = kernel_event(
+        "hl".repeat(16).as_str(),
+        &"dd".repeat(32),
+        9802,
+        "quoted",
+        tags,
+    );
     let mut entries = BTreeMap::new();
     entries.insert("hl1".to_string(), envelope("hl1", resolve(&ev)));
 
@@ -198,7 +226,13 @@ fn unknown_round_trips_with_tags() {
         vec!["alt".to_string(), "an ad".to_string()],
         vec!["price".to_string(), "100".to_string(), "USD".to_string()],
     ];
-    let ev = kernel_event("un".repeat(16).as_str(), &"ff".repeat(32), 30402, "classified", tags);
+    let ev = kernel_event(
+        "un".repeat(16).as_str(),
+        &"ff".repeat(32),
+        30402,
+        "classified",
+        tags,
+    );
     let mut entries = BTreeMap::new();
     entries.insert("un1".to_string(), envelope("un1", resolve(&ev)));
 
@@ -219,7 +253,13 @@ fn unknown_round_trips_with_tags() {
 
 #[test]
 fn multiple_entries_preserve_keys() {
-    let n = kernel_event("a1".repeat(16).as_str(), &"11".repeat(32), 1, "note", vec![]);
+    let n = kernel_event(
+        "a1".repeat(16).as_str(),
+        &"11".repeat(32),
+        1,
+        "note",
+        vec![],
+    );
     let p = kernel_event(
         "22".repeat(32).as_str(),
         &"22".repeat(32),

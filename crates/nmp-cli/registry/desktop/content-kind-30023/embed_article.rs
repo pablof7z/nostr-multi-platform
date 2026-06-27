@@ -12,12 +12,12 @@ const BORDER_COLOR: Color = Color { r: 0.278, g: 0.333, b: 0.404, a: 1.0 };
 /// Shows title, author · date · N min read byline, and summary. No image
 /// loading for now — hero image is a follow-on.
 ///
-/// Component-owned claiming (mirrors iOS #833): the byline renders from an
-/// `author_name` the *displaying* renderer resolved from a profile it claimed
-/// (presentation-owned claiming), NOT from the projection's static
-/// `author_display_name` field. The render path in `gallery.rs` claims the
+/// Component-owned resolving (mirrors iOS #833): the byline renders from an
+/// `author_name` the *displaying* renderer resolved from a profile ref
+/// (presentation-owned resolving), NOT from the projection's static
+/// `author_display_name` field. The render path in `gallery.rs` resolves the
 /// article author's kind:0 and resolves it through `LiveProfileMap` before
-/// constructing this card; `claimed_events` now carries raw pubkeys only.
+/// constructing this card; the event row carries raw pubkeys only.
 pub struct ArticleCard<'a> {
     article: &'a ArticleProjection,
     /// Presentation-resolved author label: the displaying renderer's

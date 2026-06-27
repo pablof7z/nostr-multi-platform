@@ -20,9 +20,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import org.nmp.gallery.bridge.ClaimedEventWire
 import org.nmp.gallery.bridge.GalleryModel
 import org.nmp.gallery.bridge.GalleryShowcaseReferences
+import org.nmp.gallery.bridge.ResolvedEventEnvelopeWire
+import org.nmp.gallery.bridge.projectionContentText
+import org.nmp.gallery.bridge.projectionLong
+import org.nmp.gallery.bridge.projectionString
+import org.nmp.gallery.bridge.projectionStrings
 import org.nmp.gallery.registry.ContentTreeWire
 import org.nmp.gallery.registry.LocalNostrContentRenderer
 import org.nmp.gallery.registry.MediaKind
@@ -43,18 +47,18 @@ import org.nmp.gallery.registry.defaultMentionLabel
 @Composable
 fun ContentComponentPage(model: GalleryModel, componentId: String) {
     val profileMap by model.profileMap.collectAsState()
-    val claimedEvents by model.claimedEvents.collectAsState()
+    val resolvedEventEmbeds by model.resolvedEventEmbeds.collectAsState()
     val showcase = model.showcase
     var rawMode by remember { mutableStateOf(false) }
 
     DisposableEffect(showcase) {
-        model.claimProfile(showcase.profile.pubkeyHex, GalleryModel.CONSUMER_ID)
-        model.claimEvent(showcase.note.uri, GalleryModel.CONSUMER_ID)
-        model.claimEvent(showcase.article.uri, GalleryModel.CONSUMER_ID)
+        model.resolveProfileRef(showcase.profile.pubkeyHex, GalleryModel.CONSUMER_ID)
+        model.resolveEventRef(showcase.note.uri, GalleryModel.CONSUMER_ID)
+        model.resolveEventRef(showcase.article.uri, GalleryModel.CONSUMER_ID)
         onDispose {
-            model.releaseProfile(showcase.profile.pubkeyHex, GalleryModel.CONSUMER_ID)
-            model.releaseEvent(showcase.note.uri, GalleryModel.CONSUMER_ID)
-            model.releaseEvent(showcase.article.uri, GalleryModel.CONSUMER_ID)
+            model.releaseProfileRef(showcase.profile.pubkeyHex, GalleryModel.CONSUMER_ID)
+            model.releaseEventRef(showcase.note.uri, GalleryModel.CONSUMER_ID)
+            model.releaseEventRef(showcase.article.uri, GalleryModel.CONSUMER_ID)
         }
     }
 
@@ -105,7 +109,7 @@ fun ContentComponentPage(model: GalleryModel, componentId: String) {
                 componentId = componentId,
                 showcase = showcase,
                 profileMap = profileMap,
-                claimedEvents = claimedEvents,
+                resolvedEventEmbeds = resolvedEventEmbeds,
                 mentionLabel = mentionLabel,
             )
         }
@@ -117,16 +121,16 @@ private fun ContentComponentBody(
     componentId: String,
     showcase: GalleryShowcaseReferences,
     profileMap: Map<String, ProfileWire>,
-    claimedEvents: Map<String, ClaimedEventWire>,
+    resolvedEventEmbeds: Map<String, ResolvedEventEnvelopeWire>,
     mentionLabel: (WireNostrUri) -> String,
 ) {
     when (componentId) {
         "content-core" -> ContentCoreShowcase(showcase, mentionLabel)
-        "content-view" -> ContentViewShowcase(showcase, mentionLabel, claimedEvents)
+        "content-view" -> ContentViewShowcase(showcase, mentionLabel, resolvedEventEmbeds)
         "content-mention-chip" -> MentionChipShowcase(showcase, profileMap, mentionLabel)
         "content-minimal" -> MinimalContentShowcase(showcase, mentionLabel)
-        "content-media-grid" -> MediaGridShowcase(claimedEvents)
-        "content-quote-card" -> QuoteCardShowcase(showcase, profileMap, claimedEvents)
+        "content-media-grid" -> MediaGridShowcase(resolvedEventEmbeds)
+        "content-quote-card" -> QuoteCardShowcase(showcase, profileMap, resolvedEventEmbeds)
         else -> Text("Unknown content component: $componentId")
     }
 }
@@ -143,12 +147,12 @@ private fun ContentCoreShowcase(
 private fun ContentViewShowcase(
     showcase: GalleryShowcaseReferences,
     mentionLabel: (WireNostrUri) -> String,
-    claimedEvents: Map<String, ClaimedEventWire>,
+    resolvedEventEmbeds: Map<String, ResolvedEventEnvelopeWire>,
 ) {
     NostrContentView(
         tree = showcaseRichTree(showcase),
         mentionLabel = mentionLabel,
-        quoteCardProvider = { uri -> quoteCardFor(uri, claimedEvents) },
+        quoteCardProvider = { uri -> quoteCardFor(uri, resolvedEventEmbeds) },
     )
 }
 
@@ -186,12 +190,12 @@ private fun MinimalContentShowcase(
 }
 
 @Composable
-private fun MediaGridShowcase(claimedEvents: Map<String, ClaimedEventWire>) {
-    val urls = mediaUrlsFromClaims(claimedEvents)
+private fun MediaGridShowcase(resolvedEventEmbeds: Map<String, ResolvedEventEnvelopeWire>) {
+    val urls = mediaUrlsFromResolvedEventEmbeds(resolvedEventEmbeds)
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Relay-backed media", style = MaterialTheme.typography.bodySmall)
         if (urls.isEmpty()) {
-            Text("Waiting for media from the claimed article.", style = MaterialTheme.typography.bodySmall)
+            Text("Waiting for media from the resolved article.", style = MaterialTheme.typography.bodySmall)
         } else {
             NostrMediaGrid(imageUrls = urls)
         }
@@ -202,10 +206,10 @@ private fun MediaGridShowcase(claimedEvents: Map<String, ClaimedEventWire>) {
 private fun QuoteCardShowcase(
     showcase: GalleryShowcaseReferences,
     profileMap: Map<String, ProfileWire>,
-    claimedEvents: Map<String, ClaimedEventWire>,
+    resolvedEventEmbeds: Map<String, ResolvedEventEnvelopeWire>,
 ) {
     val noteUri = noteUri(showcase)
-    val quoteModel = quoteCardFor(noteUri, claimedEvents)?.let { model ->
+    val quoteModel = quoteCardFor(noteUri, resolvedEventEmbeds)?.let { model ->
         val profile = model.authorPubkey?.let { profileMap[it] }
         model.copy(
             authorDisplayName = profile?.displayName,
@@ -291,31 +295,32 @@ private fun profileUri(showcase: GalleryShowcaseReferences) = WireNostrUri(
 
 private fun quoteCardFor(
     uri: WireNostrUri,
-    claimedEvents: Map<String, ClaimedEventWire>,
+    resolvedEventEmbeds: Map<String, ResolvedEventEnvelopeWire>,
 ): NostrQuoteCardModel? {
-    val event = claimedEvents[uri.primaryId] ?: return null
+    val event = resolvedEventEmbeds[uri.primaryId] ?: return null
     return NostrQuoteCardModel(
-        id = event.id,
+        id = event.projectionString("id") ?: event.primaryId,
         unresolvedUri = uri.uri,
-        authorPubkey = event.authorPubkey,
-        content = event.content,
+        authorPubkey = event.projectionString("authorPubkey"),
+        content = event.projectionString("content") ?: event.projectionContentText(),
         mediaThumbnailUrl = mediaUrls(event).firstOrNull(),
-        createdAtDisplay = event.createdAt.takeIf { it > 0L }?.let { NostrRelativeTime.ago(it) },
+        createdAtDisplay = event.projectionLong("createdAt")
+            ?.takeIf { it > 0L }
+            ?.let { NostrRelativeTime.ago(it) },
     )
 }
 
-private fun mediaUrlsFromClaims(claimedEvents: Map<String, ClaimedEventWire>): List<String> =
-    claimedEvents.values.flatMap(::mediaUrls).distinct()
+private fun mediaUrlsFromResolvedEventEmbeds(
+    resolvedEventEmbeds: Map<String, ResolvedEventEnvelopeWire>,
+): List<String> = resolvedEventEmbeds.values.flatMap(::mediaUrls).distinct()
 
-private fun mediaUrls(event: ClaimedEventWire): List<String> {
-    val tagged = event.tags
-        .filter { row -> row.firstOrNull() in setOf("image", "thumb", "r", "url") }
-        .mapNotNull { row -> row.getOrNull(1) }
-        .filter(::looksLikeMedia)
-    val inline = event.content
+private fun mediaUrls(event: ResolvedEventEnvelopeWire): List<String> {
+    val projected = event.projectionStrings("mediaUrls") +
+        listOfNotNull(event.projectionString("heroImageUrl"))
+    val inline = event.projectionString("content").orEmpty()
         .split(Regex("\\s+"))
         .filter(::looksLikeMedia)
-    return (tagged + inline).distinct()
+    return (projected + inline).distinct()
 }
 
 private fun looksLikeMedia(value: String): Boolean {

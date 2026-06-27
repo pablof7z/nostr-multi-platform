@@ -1,12 +1,12 @@
 //! Typed FlatBuffers wire codec for the `claimed_event_embeds` snapshot sidecar
 //! (issue #1283 / ADR-0034 §embed-sidecar).
 //!
-//! This is the **typed** counterpart of the JSON `claimed_event_embeds`
-//! projection (`crates/nmp-ffi/src/embed_sidecar.rs`). Both carry the same
-//! pre-resolved `primary_id -> EmbeddedEventEnvelope` map; the typed payload is
-//! what a typed-frame shell (Chirp) decodes so it never re-implements the
-//! `match kind` resolver in Swift. The JSON projection stays in parallel for the
-//! gallery shell. See `schema/embed_sidecar.fbs` for the field map.
+//! This is the typed compatibility projection emitted under the historical
+//! `claimed_event_embeds` key by `nmp-ffi`. The payload is derived from the
+//! authoritative `refs.event` row store and carries a pre-resolved
+//! `primary_id -> EmbeddedEventEnvelope` map so a typed-frame shell (Chirp)
+//! never re-implements the `match kind` resolver in Swift. See
+//! `schema/embed_sidecar.fbs` for the field map.
 //!
 //! The shape mirrors the existing resolver types
 //! ([`EmbeddedEventEnvelope`](crate::embed_projection::EmbeddedEventEnvelope) /
@@ -68,8 +68,7 @@ use crate::embed_projection::EmbeddedEventEnvelope;
 
 /// Stable schema identifier carried in the typed-projection envelope.
 pub const SCHEMA_ID: &str = "claimed_event_embeds";
-/// Snapshot-projection key the typed sidecar is emitted under (matches the JSON
-/// projection key so a host's `typed<K> ?? json<k>` fallback lines up).
+/// Snapshot-projection key the typed compatibility sidecar is emitted under.
 pub const PROJECTION_KEY: &str = "claimed_event_embeds";
 /// FlatBuffers file identifier embedded in every buffer this module emits.
 pub const FILE_IDENTIFIER: &[u8; 4] = b"NEMB";

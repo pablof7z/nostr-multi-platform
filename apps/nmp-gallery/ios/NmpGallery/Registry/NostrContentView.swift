@@ -22,7 +22,7 @@ public struct NostrContentView: View {
 
     @Environment(\.nostrContentRenderer) private var renderer
     @Environment(\.embedHost) private var embedHost
-    @Environment(\.embedClaimSink) private var embedClaimSink
+    @Environment(\.embedEventRefResolver) private var embedEventRefResolver
     @Environment(\.nostrKindRegistry) private var nostrKindRegistry
 
     public init(
@@ -213,9 +213,9 @@ public struct NostrContentView: View {
 
     @ViewBuilder
     private func eventRefView(_ uri: NostrWireUri) -> some View {
-        if let registry = nostrKindRegistry, embedHost != nil || embedClaimSink != nil {
+        if let registry = nostrKindRegistry, embedHost != nil || embedEventRefResolver != nil {
             // Kind-dispatch path (ADR-0034 / M16). `EmbeddedEvent` owns the
-            // claim/release lifecycle via `task(id:)` + `onDisappear`; the
+            // resolve/release lifecycle via `task(id:)` + `onDisappear`; the
             // registry picks the renderer for the resolved projection. The
             // view always renders even if the host doesn't have the envelope
             // yet (loading placeholder via `EmbedChromeContainer`).
@@ -224,7 +224,7 @@ public struct NostrContentView: View {
                 envelope: embedHost?.envelopeForPrimaryID(uri.primaryId)
                     ?? embedHost?.envelopeForURI(uri.uri),
                 registry: registry,
-                claimSink: embedClaimSink
+                eventRefResolver: embedEventRefResolver
             )
         } else {
             // Legacy quote-card path. Kept so existing content-quote-card

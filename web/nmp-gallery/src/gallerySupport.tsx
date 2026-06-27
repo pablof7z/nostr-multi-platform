@@ -10,11 +10,11 @@ import type {
 } from "@nmp/components-web/src/content-kind-registry/NostrKindRegistry";
 import type { ProfileWire } from "@nmp/components-web/src/user-avatar/ProfileWire";
 
-// #1767 — pure projections of the kernel-RESOLVED embed envelope. The standalone
+// Pure projections of the render-facing embed envelope. The standalone
 // embed-article / embed-highlight showcase sections render their card fields
-// from the resolved per-kind projection (NOT re-parsed NIP-23/NIP-84 tags); these
-// narrow the projection union to the variant payload. Pure — App.tsx wraps them
-// in a `createMemo` so reactivity stays at the component call site.
+// from the resolved per-kind projection; these helpers only narrow the
+// projection union to the variant payload. App.tsx wraps them in a `createMemo`
+// so reactivity stays at the component call site.
 
 /** The `article` variant payload of a resolved embed, else undefined. */
 export function articleProjectionOf(

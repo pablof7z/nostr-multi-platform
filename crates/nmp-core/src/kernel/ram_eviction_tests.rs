@@ -227,9 +227,9 @@ fn timeline_events_are_never_evicted() {
     }
 }
 
-/// Events held in `event_claims` must NEVER be evicted.
+/// Events held in `event_claims` for refs.event rows must NEVER be evicted.
 #[test]
-fn claimed_events_are_never_evicted() {
+fn event_claim_refs_are_never_evicted() {
     use std::collections::BTreeSet;
 
     let mut kernel = Kernel::with_storage_path(DEFAULT_VISIBLE_LIMIT, None);
@@ -442,4 +442,3 @@ fn run_gc_step_drives_ram_eviction() {
         kernel.events.len()
     );
 }
-

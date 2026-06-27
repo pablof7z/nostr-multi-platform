@@ -11,7 +11,7 @@
 //! 4. Main loop:
 //!    - On `Input` → mutate selection state, redraw.
 //!    - On `Snapshot` → update `EmbedHostState`, redraw.
-//!    The renderer (NostrContentView) calls `sink.claim(uri, …)` when it
+//!    The renderer (NostrContentView) calls `sink.resolve_event_ref(uri, …)` when it
 //!    encounters embedded URIs; the kernel fetches them (cache or relay);
 //!    the next snapshot push delivers them; the redraw shows them.
 
@@ -32,7 +32,7 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use nmp_content::EventClaimSink;
+use nmp_content::EventRefResolver;
 use nmp_gallery_tui::{
     data::{GalleryData, LiveProfileMap},
     embed_host::EmbedHostState,
@@ -48,9 +48,9 @@ struct Args {
     component: String,
     dump_lines: bool,
     list: bool,
-    /// Headless verification mode — boots the kernel, claims every embed
+    /// Headless verification mode — boots the kernel, resolves every embed
     /// URI the gallery's content trees reference, waits up to N seconds
-    /// for each claim to resolve via the snapshot push, and prints a
+    /// for each event ref to resolve via the snapshot push, and prints a
     /// structured pass/fail report. Exits 0 on full success, 1 on any
     /// timeout or decode failure. Used to validate the architecture
     /// end-to-end without an interactive terminal.
@@ -76,7 +76,7 @@ fn main() -> io::Result<()> {
     // Smoke mode bypasses the cold-start bootstrap (which can flake when
     // specific hardcoded event ids aren't available on configured relays).
     // It directly validates the embed architecture: kernel boot → renderer
-    // claims via sink → snapshot delivery → host decode.
+    // resolves via sink -> snapshot delivery -> host decode.
     if args.smoke {
         let mut kernel = match LiveGallerySource::boot_kernel_only() {
             Ok(k) => k,
@@ -166,7 +166,7 @@ fn main() -> io::Result<()> {
     Ok(())
 }
 
-/// Headless verification of the renderer-triggered claim path. Mirrors what
+/// Headless verification of the renderer-triggered resolve path. Mirrors what
 /// the TUI does at render time but without ratatui — claims each embed URI
 /// directly via the sink, drains snapshots into the host until either the
 /// targets resolve or the timeout fires, then prints a structured report.
@@ -182,7 +182,7 @@ fn run_smoke(
     struct SmokeTarget {
         label: &'static str,
         uri: String,
-        /// Snapshot key the kernel uses for `claimed_events[primary_id]`.
+        /// Row key the kernel uses for `refs.event[primary_id]`.
         /// hex64 event id for nevent/note; "kind:author:d_tag" for naddr.
         primary_id: String,
     }
@@ -233,49 +233,53 @@ fn run_smoke(
     let consumer_id = "nmp-gallery-tui.smoke";
 
     println!("== nmp-gallery-tui --smoke ==");
-    println!("kernel up, relays seeded; validating renderer-triggered embed claims.");
+    println!("kernel up, relays seeded; validating renderer-triggered event-ref resolves.");
     println!();
 
     println!(
-        "Target {} embed URI(s); waiting for relay connection then claiming:",
+        "Target {} embed URI(s); waiting for relay connection then resolving:",
         targets.len()
     );
     for t in &targets {
         println!("  target: {} → {}", t.label, t.uri);
-        println!(
-            "    primary_id expected in claimed_events: {}",
-            t.primary_id
-        );
+        println!("    primary_id expected in refs.event: {}", t.primary_id);
     }
     println!();
 
     let started = Instant::now();
-    let mut claims_issued = false;
+    let mut resolves_issued = false;
     let mut snapshot_tick = 0u32;
     let mut resolved_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
     // ADR-0063 (#1671): the stateful `refs.profile` row-delta mirror — merged
     // across frames so per-key deltas accumulate (D4: the sole profile store).
     let mut ref_profiles = nmp_core::refs::RefProfileStore::new();
+    let mut ref_events = nmp_core::refs::RefEventStore::new();
 
     while started.elapsed() < timeout && resolved_ids.len() < targets.len() {
         let remaining = timeout - started.elapsed();
         match snapshot_rx.recv_timeout(remaining) {
             Ok(frame_bytes) => {
-                let snap = GalleryTypedSnapshot::from_frame_bytes(&frame_bytes, &mut ref_profiles);
+                let snap = GalleryTypedSnapshot::from_frame_bytes(
+                    &frame_bytes,
+                    &mut ref_profiles,
+                    &mut ref_events,
+                );
                 snapshot_tick += 1;
                 host.update_from_typed(&snap);
 
-                // Re-resolve on EVERY snapshot tick until claims_issued.
+                // Re-resolve on EVERY snapshot tick until resolves_issued.
                 // The kernel queues cold event refs until a relay is connected,
                 // so we keep trying until the OneshotApi interest can register
                 // and the planner compiles a wire REQ.
-                if !claims_issued && snap.any_relay_connected() {
-                    println!("  + relay connected — claims firing on tick #{snapshot_tick}");
+                if !resolves_issued && snap.any_relay_connected() {
+                    println!(
+                        "  + relay connected - event-ref resolves firing on tick #{snapshot_tick}"
+                    );
                     for t in &targets {
-                        println!("    claim: {}", t.uri);
-                        sink.claim(&t.uri, consumer_id);
+                        println!("    resolve: {}", t.uri);
+                        sink.resolve_event_ref(&t.uri, consumer_id);
                     }
-                    claims_issued = true;
+                    resolves_issued = true;
                 }
 
                 // Print any target that just resolved.
@@ -306,8 +310,8 @@ fn run_smoke(
     println!("Summary:");
     println!("  snapshot ticks observed: {snapshot_tick}");
     println!(
-        "  claims issued:           {}",
-        if claims_issued { "yes" } else { "no" }
+        "  resolves issued:         {}",
+        if resolves_issued { "yes" } else { "no" }
     );
     println!(
         "  resolved targets:        {}/{}",
@@ -582,7 +586,7 @@ fn handle_input_after_snapshot(ev: Event, selected_index: &mut usize) {
     }
 }
 
-/// Fire `resolve_profile` for each claimed-event author. `claimed_events`
+/// Fire `resolve_profile` for each event-ref author. `refs.event`
 /// carries raw pubkeys only, so the profile components own kind:0 hydration
 /// through the normal per-(pubkey, consumer_id) refcounted resolve path.
 fn resolve_profiles_for(sink: &Arc<LiveKernelSink>, authors: &[String]) {
@@ -630,13 +634,18 @@ fn spawn_input_thread(tx: Sender<GalleryEvent>) {
 
 fn spawn_snapshot_thread(tx: Sender<GalleryEvent>, rx: std::sync::mpsc::Receiver<Vec<u8>>) {
     thread::spawn(move || {
-        // ADR-0063 (#1671): the stateful `refs.profile` row-delta mirror lives in
-        // the snapshot thread (the reader of the kernel frames), merged across
-        // ticks so per-key deltas accumulate. It is the sole app-side profile
-        // store (D4); each frame materialises its current set into the snapshot.
+        // ADR-0063 (#1671): the stateful refs row-delta mirrors live in the
+        // snapshot thread (the reader of the kernel frames), merged across
+        // ticks so per-key deltas accumulate. They are the sole app-side stores
+        // (D4); each frame materialises their current sets into the snapshot.
         let mut ref_profiles = nmp_core::refs::RefProfileStore::new();
+        let mut ref_events = nmp_core::refs::RefEventStore::new();
         for frame_bytes in rx {
-            let snap = GalleryTypedSnapshot::from_frame_bytes(&frame_bytes, &mut ref_profiles);
+            let snap = GalleryTypedSnapshot::from_frame_bytes(
+                &frame_bytes,
+                &mut ref_profiles,
+                &mut ref_events,
+            );
             if tx.send(GalleryEvent::Snapshot(Box::new(snap))).is_err() {
                 break;
             }

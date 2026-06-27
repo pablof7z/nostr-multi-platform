@@ -10,8 +10,8 @@
 //! `event_claims[primary_id]`, registers a `OneShot + Global` interest via
 //! [`crate::subs::OneshotApi::request`] (D4: single registration path), and
 //! enqueues a [`crate::subs::CompileTrigger::ViewOpened`] so the planner
-//! compiles a wire REQ. `primary_id` is the projection key `claimed_events`
-//! uses (hex64 id, or `kind:pubkey:d_tag` matching `WireUri.primary_id`).
+//! compiles a wire REQ. `primary_id` is the `refs.event` row key (hex64 id, or
+//! `kind:pubkey:d_tag` matching `WireUri.primary_id`).
 //!
 //! ## One raw-key front door (ADR-0063 D1 — single path)
 //!
@@ -230,9 +230,9 @@ impl Kernel {
         let liveness_upgraded =
             liveness == RefLiveness::Live && replaceable_coord.is_some() && !live_before;
         let mutated = inserted || shape_widened || liveness_upgraded;
-        // Must run BEFORE the already-resolved short-circuit so the projection
-        // re-emits on the next tick even when no REQ goes out (the host needs the
-        // `claimed_events[primary_id]` entry to render the embed card).
+        // Must run BEFORE the already-resolved short-circuit so refs.event
+        // re-emits on the next tick even when no REQ goes out (the host needs
+        // the `refs.event[primary_id]` row to render the embed card).
         if mutated {
             self.changed_since_emit = true;
             // ADR-0055 Rung 1: bump claimed_event_content_ver (codex #1 condition 1).

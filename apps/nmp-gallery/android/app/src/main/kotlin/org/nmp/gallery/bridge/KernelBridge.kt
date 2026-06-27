@@ -77,25 +77,25 @@ class KernelBridge {
      * ADR-0063 (#1671) — resolve a visible profile reference (supersedes the
      * deleted `nativeClaimProfile`). Origin-blind: the gallery resolves every
      * visible author at `profile.ref` / `CacheOk` (inline avatars/names only).
-     * Idempotent per (pubkey, consumerId); matching [releaseProfile] required
+     * Idempotent per (pubkey, consumerId); matching [releaseProfileRef] required
      * when the view disappears. The resolved kind:0 flows back through the
      * `refs.profile` row-delta projection.
      */
-    fun claimProfile(pubkey: String, consumerId: String) {
+    fun resolveProfileRef(pubkey: String, consumerId: String) {
         if (handle != 0L) nativeResolveProfileRef(handle, pubkey, consumerId)
     }
 
-    fun releaseProfile(pubkey: String, consumerId: String) {
+    fun releaseProfileRef(pubkey: String, consumerId: String) {
         if (handle != 0L) nativeReleaseProfileRef(handle, pubkey, consumerId)
     }
 
-    /** App-local URI adapter: nativeClaimEvent decodes [uri] and calls resolve_ref. */
-    fun claimEvent(uri: String, consumerId: String) {
-        if (handle != 0L) nativeClaimEvent(handle, uri, consumerId)
+    /** App-local URI adapter: nativeResolveEventRef decodes [uri] and calls resolve_ref. */
+    fun resolveEventRef(uri: String, consumerId: String) {
+        if (handle != 0L) nativeResolveEventRef(handle, uri, consumerId)
     }
 
     /** App-local URI adapter: nativeReleaseEvent decodes [uri] and calls release_ref. */
-    fun releaseEvent(uri: String, consumerId: String) {
+    fun releaseEventRef(uri: String, consumerId: String) {
         if (handle != 0L) nativeReleaseEvent(handle, uri, consumerId)
     }
 
@@ -186,7 +186,7 @@ class KernelBridge {
     private external fun nativeStop(handle: Long)
     private external fun nativeResolveProfileRef(handle: Long, key: String, consumerId: String)
     private external fun nativeReleaseProfileRef(handle: Long, key: String, consumerId: String)
-    private external fun nativeClaimEvent(handle: Long, uri: String, consumerId: String)
+    private external fun nativeResolveEventRef(handle: Long, uri: String, consumerId: String)
     // nativeDecodeSnapshotJson lives in the companion (static JNI) so it can be
     // reused without an instance; the [handle] selects the session's store.
     private external fun nativeReleaseEvent(handle: Long, uri: String, consumerId: String)

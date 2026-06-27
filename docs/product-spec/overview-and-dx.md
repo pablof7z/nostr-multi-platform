@@ -359,8 +359,8 @@ Example product shape:
 NostrAvatar(pubkey: authorPubkey)
 ```
 
-The app should not also remember to claim the profile, watch kind:0 updates,
-maintain a side map of hydrated profiles, and release the claim when the row
+The app should not also remember to call `resolve_ref`, watch kind:0 updates,
+maintain a side map of hydrated profiles, and release the reference when the row
 disappears. That is registry-component work.
 
 Registry components promise:
@@ -369,11 +369,13 @@ Registry components promise:
   `npub`/`nprofile`, `note`/`nevent`, `naddr`, relay URLs, and typed component
   inputs. Hydrated projection objects may exist for previews, tests, and
   composition, but they are not the happy path for app screens.
-- **Self-managed reactivity.** A mounted component claims the Rust-owned facts it
-  needs, observes projection changes, redraws through the native UI mechanism,
-  and releases the claim when no longer visible.
+- **Self-managed reactivity.** A mounted component resolves the Rust-owned facts
+  it needs, observes the Rust-produced projection for that reference
+  (`refs.profile` for profile rows, resolved event-ref/embed envelope maps for
+  event embeds), redraws through the native UI mechanism, and releases the
+  reference when no longer visible.
 - **One shell adapter.** Apps wire the registry host once at the platform shell
-  boundary. Feature screens do not call per-row claim/release or equivalent
+  boundary. Feature screens do not call per-row resolve/release or equivalent
   lifecycle APIs for each rendered row.
 - **Rust-owned truth.** Relay choice, fetch policy, cache mutation, replaceable
   supersession, and profile/embed resolution stay in Rust. Native components
@@ -405,7 +407,7 @@ that requires every feature screen to hand-roll hydration is not complete.
 Feed APIs follow the same rule. App authors declare `FeedParams` with primary
 content kinds and a closed `FeedScope` / `PubkeySetExpr` source. Protocol and
 defaults code reduce that source into planner-owned interests. Secondary facts
-that a rendered component needs are dependent interests claimed by that
+that a rendered component needs are dependent interests resolved by that
 component or read model, never native-owned caches or ad hoc relay fetches.
 The default reducers include active-account follows and NIP-51 pubkey-list
 sources such as people-list members and public mute-list `p` tags.

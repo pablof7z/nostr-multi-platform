@@ -3,16 +3,13 @@
  *
  * `NostrEmbeddedEvent` takes a fully *resolved* `EmbeddedEventEnvelope` —
  * produced by the Rust kernel/composition root (`nmp-content`'s
- * `resolve_embed_projection`) and surfaced in the wasm snapshot's
- * `claimed_event_embeds_json` typed projection (issue #1767). The envelope's
+ * `resolve_embed_projection`) from authoritative `refs.event` rows. The envelope's
  * `projection` is already kind-dispatched in Rust (`{ variant, data }`), so the
  * web registry only chooses the renderer and maps the pre-resolved projection
  * fields into each card's typed model — it NEVER re-parses raw NIP-23 / NIP-84
  * tags. This is the web twin of the SwiftUI/TUI `NostrKindRegistry` +
  * `EmbeddedEvent` dispatch table, consuming the same `nmp-content` resolver
- * output (the `EmbeddedEventEnvelope` serde shape). (The contract is Rust serde
- * → web TS; iOS consumes the native `claimed_event_embeds` NEMB FlatBuffer, not
- * this JSON.)
+ * output (the `EmbeddedEventEnvelope` serde shape).
  *
  * Pure (D7): the host owns the claim/resolve lifecycle and passes a fully
  * resolved envelope; the registry only chooses the renderer and projects the
@@ -43,8 +40,8 @@ export type EmbedKindProjection =
  * One node of the Rust-parsed content tree (`nmp-content`'s `ContentTreeWire`),
  * in its serde-JSON shape: a tagged union `{ "kind": "text", "text": … }`
  * (`tag = "kind", rename_all = "snake_case"`). Only the fields the web preview
- * walker reads are typed; the renderer-complete tree is decoded elsewhere from
- * the typed `claimed_events` FlatBuffer (`NostrContentView`).
+ * walker reads are typed; renderer-complete trees are decoded from NFCT bytes
+ * carried by `refs.event` rows or feed projections (`NostrContentView`).
  */
 export type WireNode = {
   kind: string;
@@ -116,10 +113,10 @@ export type UnknownProjection = {
 
 /**
  * A fully resolved embedded-event envelope. Mirrors the Rust `nmp-content`
- * `EmbeddedEventEnvelope` serde shape (camelCase) — the resolver output the web
- * TS decodes, surfaced from the `claimed_event_embeds_json` typed projection
- * (#1767). (iOS consumes the native `claimed_event_embeds` NEMB FlatBuffer, a
- * different wire format that shares this resolution logic but not this JSON.)
+ * `EmbeddedEventEnvelope` serde shape (camelCase). Hosts derive this render
+ * envelope from authoritative `refs.event` rows; native compatibility sidecars
+ * may carry the same envelope map under older projection names, but they are
+ * not the source of truth.
  */
 export type EmbeddedEventModel = {
   uri: string;

@@ -57,7 +57,7 @@ pub use embed_projection::{
 };
 pub use embed_registry::{
     ClaimHandle, EmbedClaimDelta, EmbedClaimRegistry, EmbedClaimSpec, EmbedClaimState,
-    EmbedRegistrySnapshot, EmbedTarget, EventClaimSink, NoopEventClaimSink, ResolvedEvent,
+    EmbedRegistrySnapshot, EmbedTarget, EventRefResolver, NoopEventRefResolver, ResolvedEvent,
 };
 pub use longform::{
     longform_acquisition_kinds, longform_feed_predicate, ArticleFeedItem, LongformFeed,

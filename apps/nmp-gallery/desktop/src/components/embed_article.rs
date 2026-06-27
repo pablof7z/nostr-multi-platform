@@ -3,9 +3,24 @@ use iced::{Border, Color, Element, Length};
 
 use nmp_content::embed_projection::ArticleProjection;
 
-const MUTED: Color = Color { r: 0.580, g: 0.639, b: 0.722, a: 1.0 };
-const FAINT_BG: Color = Color { r: 0.071, g: 0.098, b: 0.141, a: 1.0 };
-const BORDER_COLOR: Color = Color { r: 0.278, g: 0.333, b: 0.404, a: 1.0 };
+const MUTED: Color = Color {
+    r: 0.580,
+    g: 0.639,
+    b: 0.722,
+    a: 1.0,
+};
+const FAINT_BG: Color = Color {
+    r: 0.071,
+    g: 0.098,
+    b: 0.141,
+    a: 1.0,
+};
+const BORDER_COLOR: Color = Color {
+    r: 0.278,
+    g: 0.333,
+    b: 0.404,
+    a: 1.0,
+};
 
 /// Iced article embed card for kind:30023.
 ///
@@ -17,7 +32,7 @@ const BORDER_COLOR: Color = Color { r: 0.278, g: 0.333, b: 0.404, a: 1.0 };
 /// (presentation-owned claiming), NOT from the projection's static
 /// `author_display_name` field. The render path in `gallery.rs` claims the
 /// article author's kind:0 and resolves it through `LiveProfileMap` before
-/// constructing this card; `claimed_events` now carries raw pubkeys only.
+/// constructing this card; `refs.event` carries raw pubkeys only.
 pub struct ArticleCard<'a> {
     article: &'a ArticleProjection,
     /// Presentation-resolved author label: the displaying renderer's
@@ -60,20 +75,25 @@ impl<'a> ArticleCard<'a> {
             text("●").size(9).style(|_| iced::widget::text::Style {
                 color: Some(Color::from_rgb8(220, 38, 38)),
             }),
-            text(author).size(11).style(|_| iced::widget::text::Style {
-                color: Some(MUTED),
-            }),
+            text(author)
+                .size(11)
+                .style(|_| iced::widget::text::Style { color: Some(MUTED) }),
             text(format!("· {date}"))
                 .size(11)
                 .style(|_| iced::widget::text::Style {
-                    color: Some(Color { r: 0.392, g: 0.455, b: 0.545, a: 1.0 }),
+                    color: Some(Color {
+                        r: 0.392,
+                        g: 0.455,
+                        b: 0.545,
+                        a: 1.0
+                    }),
                 }),
         ]
         .spacing(4);
 
-        let summary_text = text(snippet).size(12).style(|_| iced::widget::text::Style {
-            color: Some(MUTED),
-        });
+        let summary_text = text(snippet)
+            .size(12)
+            .style(|_| iced::widget::text::Style { color: Some(MUTED) });
 
         let inner = column![title_row, byline, summary_text].spacing(6);
 
@@ -108,8 +128,23 @@ fn format_short_date(unix_secs: u64) -> String {
         y += 1;
     }
     let leap = y % 4 == 0 && (y % 100 != 0 || y % 400 == 0);
-    let month_days = [31u32, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-    let month_names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    let month_days = [
+        31u32,
+        if leap { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
+    let month_names = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
     let mut month = 0usize;
     while month < 12 && d >= month_days[month] {
         d -= month_days[month];

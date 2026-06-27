@@ -11,9 +11,8 @@
 //   • optional summary line
 //   • author byline: avatar + display name + "article · kind:30023"
 //
-// The app hydrates `NostrArticleCardModel` from a resolved `claimed_events`
-// entry (title/summary/image come from the event's NIP-23 tags); the card only
-// renders. Depends on `compose/content-core`.
+// The app hydrates `NostrArticleCardModel` from the resolved `refs.event`
+// article projection; the card only renders. Depends on `compose/content-core`.
 
 package nmp.content
 

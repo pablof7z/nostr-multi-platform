@@ -2,8 +2,8 @@
  * NostrQuoteCard — quoted-note card for the web (the kind:1 `embed-note` body).
  *
  * Pure renderer (D7): the host hydrates a `NostrQuoteCardModel` from a resolved
- * `claimed_events` entry (the referenced `nevent` claimed + kind:0-enriched) and
- * passes it in. Renders an author header (avatar + name + relative time) above a
+ * `refs.event` entry (or an envelope map derived from `refs.event`) and passes
+ * it in. Renders an author header (avatar + name + relative time) above a
  * content preview, inside a subtle bordered card. Mirrors the SwiftUI/Compose
  * `NostrQuoteCard`.
  */

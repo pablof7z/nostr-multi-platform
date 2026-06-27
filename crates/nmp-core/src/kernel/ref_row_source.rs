@@ -19,9 +19,9 @@
 //!   tick), so enumerating them would resurrect released rows on a baseline. A
 //!   key is live iff a consumer currently demands a shape for it.
 //! - [`Kernel::ref_row_payload`](RefRowRevSource::ref_row_payload) — builds the
-//!   typed row for the WIDEST demanded shape, reading the SAME kernel accessors
-//!   the legacy `claimed_profiles` / `claimed_events` projections read
-//!   (`profile_card_for`, `lookup_for_primary_id` + the content-parser seam).
+//!   typed row for the WIDEST demanded shape, reading the kernel's canonical
+//!   accessors (`profile_card_for`, `lookup_for_primary_id` + the
+//!   content-parser seam).
 //!   `None` when the entity is not yet resolvable (absence ⇒ Unchanged on the
 //!   carrier, never Cleared — invariant #1).
 //!
@@ -110,12 +110,11 @@ impl Kernel {
     }
 
     /// Build the typed `refs.event` row payload for `key` at the demanded event
-    /// shape. Reads the SAME `lookup_for_primary_id` + content-parser seam the
-    /// legacy `claimed_events` projection reads. `None` when the key is not live
-    /// OR the event is not yet in the store (not-resolvable ⇒ Unchanged, never
-    /// Cleared). The single-entry [`ClaimedEventsModel`] reuses the existing,
-    /// round-tripping `claimed_events` codec so the carrier payload decodes with
-    /// the production decoder.
+    /// shape. Reads the canonical `lookup_for_primary_id` + content-parser seam.
+    /// `None` when the key is not live OR the event is not yet in the store
+    /// (not-resolvable ⇒ Unchanged, never Cleared). The single-entry
+    /// [`ClaimedEventsModel`] reuses the existing, round-tripping KCEV codec so
+    /// the carrier payload decodes with the production decoder.
     fn ref_event_row_payload(&self, key: &str) -> Option<Vec<u8>> {
         let shape = self.ref_demanded_event_shape(key)?;
         let stored = self.lookup_for_primary_id(key)?;

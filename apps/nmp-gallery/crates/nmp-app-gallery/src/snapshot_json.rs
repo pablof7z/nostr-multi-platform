@@ -2,18 +2,19 @@ use std::collections::BTreeMap;
 
 use serde_json::{json, Map, Value};
 
-use nmp_content::wire::{
-    decode_claimed_event_embeds, EMBED_SIDECAR_PROJECTION_KEY, EMBED_SIDECAR_SCHEMA_ID,
+use nmp_content::{
+    resolve_embed_projection, EmbedKindProjection, EmbeddedEventEnvelope, RenderContext,
+    RenderContextWire,
 };
-use nmp_core::refs::{RefProfileStore, REFS_PROFILE_KEY};
+use nmp_core::refs::{RefEventStore, RefProfileStore, REFS_EVENT_KEY, REFS_PROFILE_KEY};
 use nmp_core::{
     decode_snapshot_envelope, decode_snapshot_typed_projections,
     display::{short_npub, to_npub},
+    substrate::KernelEvent,
     typed_projections::{
-        decode_accounts, decode_claimed_events, decode_relay_role_options, decode_signer_state,
-        AccountsModel, ClaimedEventRow, ClaimedEventsModel, ProfileCardModel,
-        RelayRoleOptionsModel, SignerStateModel, ACCOUNTS_SCHEMA_ID, CLAIMED_EVENTS_SCHEMA_ID,
-        RELAY_ROLE_OPTIONS_SCHEMA_ID, SIGNER_STATE_SCHEMA_ID,
+        decode_accounts, decode_relay_role_options, decode_signer_state, AccountsModel,
+        ClaimedEventRow, ProfileCardModel, RelayRoleOptionsModel, SignerStateModel,
+        ACCOUNTS_SCHEMA_ID, RELAY_ROLE_OPTIONS_SCHEMA_ID, SIGNER_STATE_SCHEMA_ID,
     },
     TypedProjectionData,
 };
@@ -28,6 +29,7 @@ const PROFILES_JSON_KEY: &str = REFS_PROFILE_KEY;
 pub(crate) fn snapshot_json_from_update_frame(
     bytes: &[u8],
     ref_profiles: &mut RefProfileStore,
+    ref_events: &mut RefEventStore,
 ) -> Result<String, String> {
     let envelope = decode_snapshot_envelope(bytes).map_err(|err| err.to_string())?;
     let typed = decode_snapshot_typed_projections(bytes).map_err(|err| err.to_string())?;
@@ -39,6 +41,9 @@ pub(crate) fn snapshot_json_from_update_frame(
     if let Some(entry) = find_projection(&typed, REFS_PROFILE_KEY)? {
         ref_profiles.apply_sidecar(&entry.payload, envelope.session_id, envelope.snapshot_epoch);
     }
+    if let Some(entry) = find_projection(&typed, REFS_EVENT_KEY)? {
+        ref_events.apply_sidecar(&entry.payload, envelope.session_id, envelope.snapshot_epoch);
+    }
 
     let mut projections = Map::new();
     projections.insert(
@@ -46,8 +51,8 @@ pub(crate) fn snapshot_json_from_update_frame(
         refs_profiles_json(&ref_profiles.profiles()),
     );
     projections.insert(
-        CLAIMED_EVENTS_SCHEMA_ID.to_string(),
-        claimed_events_json(find_projection(&typed, CLAIMED_EVENTS_SCHEMA_ID)?)?,
+        REFS_EVENT_KEY.to_string(),
+        refs_events_json(&ref_events.events()),
     );
     projections.insert(
         ACCOUNTS_SCHEMA_ID.to_string(),
@@ -56,10 +61,6 @@ pub(crate) fn snapshot_json_from_update_frame(
     projections.insert(
         RELAY_ROLE_OPTIONS_SCHEMA_ID.to_string(),
         relay_role_options_json(find_projection(&typed, RELAY_ROLE_OPTIONS_SCHEMA_ID)?)?,
-    );
-    projections.insert(
-        EMBED_SIDECAR_PROJECTION_KEY.to_string(),
-        claimed_event_embeds_json(find_projection(&typed, EMBED_SIDECAR_SCHEMA_ID)?)?,
     );
     if let Some(entry) = find_projection(&typed, SIGNER_STATE_SCHEMA_ID)? {
         projections.insert(
@@ -122,31 +123,57 @@ fn profile_card_json(card: &ProfileCardModel, pubkey: &str) -> Value {
     })
 }
 
-fn claimed_events_json(entry: Option<&TypedProjectionData>) -> Result<Value, String> {
-    let Some(entry) = entry else {
-        return Ok(Value::Object(Map::new()));
-    };
-    let model = decode_claimed_events(&entry.payload)?;
-    Ok(claimed_events_model_json(&model))
-}
-
-fn claimed_events_model_json(model: &ClaimedEventsModel) -> Value {
-    let mut out = Map::with_capacity(model.entries.len());
-    for (key, row) in &model.entries {
-        out.insert(key.clone(), claimed_event_row_json(row));
+/// Materialise the current `refs.event` row store as the gallery's render-facing
+/// event-ref envelope map. The input is the kernel-owned `refs.event` row-delta
+/// projection; kind dispatch stays in Rust via `nmp-content`.
+fn refs_events_json(events: &BTreeMap<String, ClaimedEventRow>) -> Value {
+    let ctx = RenderContext::new();
+    let mut out = Map::with_capacity(events.len());
+    for (primary_id, row) in events {
+        let event = row_to_kernel_event(row);
+        let projection: EmbedKindProjection = resolve_embed_projection(&event, &ctx);
+        let env = build_envelope(primary_id, projection);
+        out.insert(primary_id.clone(), embedded_event_envelope_json(&env));
     }
     Value::Object(out)
 }
 
-fn claimed_event_row_json(row: &ClaimedEventRow) -> Value {
+fn row_to_kernel_event(row: &ClaimedEventRow) -> KernelEvent {
+    KernelEvent {
+        id: row.id.clone(),
+        author: row.author_pubkey.clone(),
+        kind: row.kind,
+        created_at: row.created_at,
+        tags: row.tags.clone(),
+        content: row.content.clone(),
+        relay_provenance: Vec::new(),
+    }
+}
+
+fn build_envelope(primary_id: &str, projection: EmbedKindProjection) -> EmbeddedEventEnvelope {
+    EmbeddedEventEnvelope {
+        uri: String::new(),
+        primary_id: primary_id.to_string(),
+        render_context: RenderContextWire {
+            depth: 0,
+            max_depth: 4,
+            visited: Vec::new(),
+        },
+        projection,
+        collapsed: false,
+        collapse_reason: None,
+    }
+}
+
+fn embedded_event_envelope_json(env: &EmbeddedEventEnvelope) -> Value {
     json!({
-        "primary_id": row.primary_id,
-        "id": row.id,
-        "author_pubkey": row.author_pubkey,
-        "kind": row.kind,
-        "created_at": row.created_at,
-        "tags": row.tags,
-        "content": row.content,
+        "uri": env.uri,
+        "primary_id": env.primary_id,
+        "depth": env.render_context.depth,
+        "max_depth": env.render_context.max_depth,
+        "collapsed": env.collapsed,
+        "collapse_reason": env.collapse_reason,
+        "projection": env.projection,
     })
 }
 
@@ -218,29 +245,6 @@ fn relay_role_options_model_json(model: &RelayRoleOptionsModel) -> Value {
     )
 }
 
-fn claimed_event_embeds_json(entry: Option<&TypedProjectionData>) -> Result<Value, String> {
-    let Some(entry) = entry else {
-        return Ok(Value::Object(Map::new()));
-    };
-    let decoded = decode_claimed_event_embeds(&entry.payload)?;
-    let mut out = Map::with_capacity(decoded.len());
-    for (primary_id, env) in &decoded {
-        out.insert(
-            primary_id.clone(),
-            json!({
-                "uri": env.uri,
-                "primary_id": env.primary_id,
-                "depth": env.render_context.depth,
-                "max_depth": env.render_context.max_depth,
-                "collapsed": env.collapsed,
-                "collapse_reason": env.collapse_reason,
-                "projection": env.projection,
-            }),
-        );
-    }
-    Ok(Value::Object(out))
-}
-
 fn signer_state_json(model: &SignerStateModel) -> Value {
     json!({
         "signer_kind": model.signer_kind,
@@ -266,7 +270,7 @@ fn empty_string_as_null(value: &str) -> Value {
 mod tests {
     use super::*;
     use nmp_core::refs::{encode_ref_row_delta_batch, RefRow, RefRowDeltaBatch};
-    use nmp_core::typed_projections::encode_profile;
+    use nmp_core::typed_projections::{encode_claimed_events, encode_profile, ClaimedEventsModel};
     use nmp_core::{encode_snapshot_frame, SnapshotEnvelope, TypedProjectionData};
 
     #[test]
@@ -280,19 +284,21 @@ mod tests {
             &[],
         );
 
-        let mut store = RefProfileStore::new();
+        let mut profiles = RefProfileStore::new();
+        let mut events = RefEventStore::new();
         let value: Value = serde_json::from_str(
-            &snapshot_json_from_update_frame(&frame, &mut store).expect("decode"),
+            &snapshot_json_from_update_frame(&frame, &mut profiles, &mut events).expect("decode"),
         )
         .expect("json");
 
         assert_eq!(value["schema_version"], 1);
         assert_eq!(value["running"], true);
         assert_eq!(value["projections"][REFS_PROFILE_KEY], json!({}));
-        assert_eq!(value["projections"]["claimed_events"], json!({}));
+        assert_eq!(value["projections"][REFS_EVENT_KEY], json!({}));
         assert_eq!(value["projections"]["accounts"], json!([]));
         assert_eq!(value["projections"]["relay_role_options"], json!([]));
-        assert_eq!(value["projections"]["claimed_event_embeds"], json!({}));
+        assert!(value["projections"].get("claimed_events").is_none());
+        assert!(value["projections"].get("claimed_event_embeds").is_none());
         assert!(value["projections"].get("signer_state").is_none());
     }
 
@@ -330,9 +336,10 @@ mod tests {
             }],
         );
 
-        let mut store = RefProfileStore::new();
+        let mut profiles = RefProfileStore::new();
+        let mut events = RefEventStore::new();
         let value: Value = serde_json::from_str(
-            &snapshot_json_from_update_frame(&frame, &mut store).expect("decode"),
+            &snapshot_json_from_update_frame(&frame, &mut profiles, &mut events).expect("decode"),
         )
         .expect("json");
 
@@ -356,7 +363,8 @@ mod tests {
             ..Default::default()
         });
 
-        let mut store = RefProfileStore::new();
+        let mut profiles = RefProfileStore::new();
+        let mut events = RefEventStore::new();
 
         // Frame 1: baseline carrying the resolved card — present.
         let add_frame = encode_snapshot_frame(
@@ -380,7 +388,8 @@ mod tests {
             }],
         );
         let added: Value = serde_json::from_str(
-            &snapshot_json_from_update_frame(&add_frame, &mut store).expect("decode add"),
+            &snapshot_json_from_update_frame(&add_frame, &mut profiles, &mut events)
+                .expect("decode add"),
         )
         .expect("json");
         assert_eq!(
@@ -411,7 +420,8 @@ mod tests {
             }],
         );
         let cleared: Value = serde_json::from_str(
-            &snapshot_json_from_update_frame(&clear_frame, &mut store).expect("decode clear"),
+            &snapshot_json_from_update_frame(&clear_frame, &mut profiles, &mut events)
+                .expect("decode clear"),
         )
         .expect("json");
         assert!(
@@ -420,6 +430,151 @@ mod tests {
                 .is_none(),
             "a refs.profile CLEAR must drop the row from the refs.profile map; got {:?}",
             cleared["projections"][REFS_PROFILE_KEY]
+        );
+    }
+
+    #[test]
+    fn refs_event_row_delta_surfaces_resolved_envelope_in_refs_event_json() {
+        let primary_id = "3333333333333333333333333333333333333333333333333333333333333333";
+        let row = ClaimedEventRow {
+            primary_id: primary_id.to_string(),
+            id: primary_id.to_string(),
+            author_pubkey: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                .to_string(),
+            kind: 1,
+            created_at: 1234,
+            tags: Vec::new(),
+            content: "hello from refs.event".to_string(),
+            content_tree_bytes: Vec::new(),
+            signed_event_json: None,
+        };
+        let row_payload = encode_claimed_events(&ClaimedEventsModel {
+            entries: vec![(primary_id.to_string(), row)],
+        });
+        let frame = encode_snapshot_frame(
+            &SnapshotEnvelope {
+                running: true,
+                update_kind: "ViewBatch".to_string(),
+                session_id: 1,
+                ..Default::default()
+            },
+            &[TypedProjectionData {
+                key: REFS_EVENT_KEY.to_string(),
+                schema_id: REFS_EVENT_KEY.to_string(),
+                schema_version: 1,
+                file_identifier: String::new(),
+                payload: encode_ref_row_delta_batch(&RefRowDeltaBatch {
+                    namespace: "event".to_string(),
+                    baseline: true,
+                    rows: vec![RefRow::changed(primary_id, 1, row_payload)],
+                }),
+                ..Default::default()
+            }],
+        );
+
+        let mut profiles = RefProfileStore::new();
+        let mut events = RefEventStore::new();
+        let value: Value = serde_json::from_str(
+            &snapshot_json_from_update_frame(&frame, &mut profiles, &mut events).expect("decode"),
+        )
+        .expect("json");
+
+        let entry = &value["projections"][REFS_EVENT_KEY][primary_id];
+        assert_eq!(entry["primary_id"], primary_id);
+        assert_eq!(entry["projection"]["variant"], "shortNote");
+        assert_eq!(entry["projection"]["data"]["id"], primary_id);
+        assert!(
+            entry["projection"]["data"]
+                .get("contentTree")
+                .and_then(Value::as_object)
+                .is_some(),
+            "short-note envelopes must carry Rust-tokenized contentTree data; got {entry:?}"
+        );
+        assert!(value["projections"].get("claimed_event_embeds").is_none());
+    }
+
+    #[test]
+    fn refs_event_clear_drops_envelope_from_refs_event_json() {
+        let primary_id = "4444444444444444444444444444444444444444444444444444444444444444";
+        let row = ClaimedEventRow {
+            primary_id: primary_id.to_string(),
+            id: primary_id.to_string(),
+            author_pubkey: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                .to_string(),
+            kind: 1,
+            created_at: 1234,
+            tags: Vec::new(),
+            content: "soon released".to_string(),
+            content_tree_bytes: Vec::new(),
+            signed_event_json: None,
+        };
+        let row_payload = encode_claimed_events(&ClaimedEventsModel {
+            entries: vec![(primary_id.to_string(), row)],
+        });
+
+        let mut profiles = RefProfileStore::new();
+        let mut events = RefEventStore::new();
+        let add_frame = encode_snapshot_frame(
+            &SnapshotEnvelope {
+                running: true,
+                update_kind: "ViewBatch".to_string(),
+                session_id: 1,
+                ..Default::default()
+            },
+            &[TypedProjectionData {
+                key: REFS_EVENT_KEY.to_string(),
+                schema_id: REFS_EVENT_KEY.to_string(),
+                schema_version: 1,
+                file_identifier: String::new(),
+                payload: encode_ref_row_delta_batch(&RefRowDeltaBatch {
+                    namespace: "event".to_string(),
+                    baseline: true,
+                    rows: vec![RefRow::changed(primary_id, 1, row_payload)],
+                }),
+                ..Default::default()
+            }],
+        );
+        let added: Value = serde_json::from_str(
+            &snapshot_json_from_update_frame(&add_frame, &mut profiles, &mut events)
+                .expect("decode add"),
+        )
+        .expect("json");
+        assert_eq!(
+            added["projections"][REFS_EVENT_KEY][primary_id]["projection"]["variant"],
+            "shortNote"
+        );
+
+        let clear_frame = encode_snapshot_frame(
+            &SnapshotEnvelope {
+                running: true,
+                update_kind: "ViewBatch".to_string(),
+                session_id: 1,
+                ..Default::default()
+            },
+            &[TypedProjectionData {
+                key: REFS_EVENT_KEY.to_string(),
+                schema_id: REFS_EVENT_KEY.to_string(),
+                schema_version: 1,
+                file_identifier: String::new(),
+                payload: encode_ref_row_delta_batch(&RefRowDeltaBatch {
+                    namespace: "event".to_string(),
+                    baseline: false,
+                    rows: vec![RefRow::cleared(primary_id, 2)],
+                }),
+                ..Default::default()
+            }],
+        );
+        let cleared: Value = serde_json::from_str(
+            &snapshot_json_from_update_frame(&clear_frame, &mut profiles, &mut events)
+                .expect("decode clear"),
+        )
+        .expect("json");
+        assert!(
+            cleared["projections"][REFS_EVENT_KEY]
+                .get(primary_id)
+                .is_none(),
+            "a refs.event CLEAR must drop the envelope from the refs.event map; got {:?}",
+            cleared["projections"][REFS_EVENT_KEY]
         );
     }
 

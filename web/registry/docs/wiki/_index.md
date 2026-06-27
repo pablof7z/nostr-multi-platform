@@ -10,7 +10,7 @@ Last updated: 2026-05-31
 |------|-------|---------|------|------------|----------|
 | [android-compose-gallery](android-compose-gallery.md) | Android (Compose) Gallery | The Android typed-article Compose component (`NostrArticleCard`) is published to the registry as `compose/content-kind-30023` with canonical source, regenerated | capture | warm | 2026-05-31 |
 | [browser-agent-navigation-testing](browser-agent-navigation-testing.md) | Browser Agent Navigation Testing | Browser agents using agent-browser or playwright-cli test navigation on the deployed site. | capture | warm | 2026-05-31 |
-| [claimed-events-projection](claimed-events-projection.md) | Claimed Events Projection | The `claimed_events` projection keys naddr (addressable) claims by `kind:pubkey:d_tag` coordinate and nevent (event-id) claims by hex64 event id. | capture | warm | 2026-05-31 |
+| [claimed-events-projection](claimed-events-projection.md) | Refs Event Projection | The `refs.event` row-delta projection keys naddr (addressable) event refs by `kind:pubkey:d_tag` coordinate and nevent/note refs by hex64 event id. | capture | warm | 2026-06-27 |
 | [component-owned-claiming](component-owned-claiming.md) | Component-Owned Claiming | Components self-claim the profiles they need (e.g | capture | warm | 2026-05-31 |
 | [cross-crate-path-imports](cross-crate-path-imports.md) | Cross-Crate Path Imports | Cross-crate `#[path]`-shared registry modules must use `super::` relative imports (e.g | capture | warm | 2026-05-31 |
 | [desktop-iced-gallery](desktop-iced-gallery.md) | Desktop (Iced) Gallery | Desktop (iced) is a registered platform on the nmpui website with the `desktop` value in the `Platform` type, `PLATFORM_ORDER`, and `PLATFORM_LABELS`. | capture | warm | 2026-05-31 |

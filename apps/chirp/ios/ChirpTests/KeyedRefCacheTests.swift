@@ -338,8 +338,7 @@ final class KeyedRefCacheTests: XCTestCase {
     }
 
     /// SANITY: a well-formed single-entry KCEV row decodes through the typed
-    /// `event(primaryId) -> ClaimedEventDto?` accessor (the per-row twin of
-    /// `claimedEvents`).
+    /// `event(primaryId) -> ClaimedEventDto?` accessor.
     func testTypedEventAccessorDecodesSingleEntryRow() {
         let cache = KeyedRefCache()  // real typed decode-before-commit seam
         let changed = cache.merge(

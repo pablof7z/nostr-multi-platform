@@ -185,11 +185,14 @@ fn real_registry_emits_exactly_the_proof_keys() {
         !out.contains("enum TypedResolvedProfilesDecoder {"),
         "resolved_profiles deleted — ADR-0063 Lane H"
     );
-    // NIP-17 DM cluster + claimed-event map. The enum name derives from
-    // `swift_field`, so the dotted producer keys map to camelCase decoders.
+    // NIP-17 DM cluster. The enum name derives from `swift_field`, so the
+    // dotted producer keys map to camelCase decoders.
     assert!(out.contains("enum TypedDmInboxDecoder {"));
     assert!(out.contains("enum TypedDmRelayListDecoder {"));
-    assert!(out.contains("enum TypedClaimedEventsDecoder {"));
+    assert!(
+        !out.contains("enum TypedClaimedEventsDecoder {"),
+        "claimed_events whole-map projection deleted — refs.event rows use the keyed cache"
+    );
     // Issue #1283 Phase 1: the typed embed sidecar (`claimedEventEmbeds` →
     // `TypedClaimedEventEmbedsDecoder`, `NEMB` / `nmp_embed_ClaimedEventEmbeds`).
     assert!(out.contains("enum TypedClaimedEventEmbedsDecoder {"));
@@ -225,17 +228,18 @@ fn real_registry_emits_exactly_the_proof_keys() {
         })
         .count();
     assert_eq!(
-        emitted, 27,
-        "exactly 27 keys have a checked-in flatc --swift reader binding \
+        emitted, 26,
+        "exactly 26 keys have a checked-in flatc --swift reader binding \
          today (accounts + active_account from PR #1039; the Wave B batch #2: \
          configured_relays, relay_role_options, outbox_summary, \
          publish_outbox, publish_queue; the Wave B batch #3: \
          relay_diagnostics, action_lifecycle; the Wave B Tier-1 #4: \
          nmp.follow_list, nmp.nip29.group_timeline, \
          nmp.nip29.discovered_groups; the profile cluster: profile; \
-         ADR-0063 Lane H: claimed_profiles + resolved_profiles DELETED; \
+         ADR-0063 Lane H: claimed_profiles + resolved_profiles + \
+         claimed_events DELETED; \
          the NIP-17 DM cluster: \
-         nmp.nip17.dm_inbox, nmp.nip17.dm_relay_list, claimed_events; the \
+         nmp.nip17.dm_inbox, nmp.nip17.dm_relay_list; the \
          NIP-46 cluster: bunker_handshake, nip46_onboarding; the Marmot \
          push-projection cluster: nmp.marmot.snapshot, nmp.marmot.messages; \
          plus the wallet (producer field-add) + settings_hub (kernel built-in) \

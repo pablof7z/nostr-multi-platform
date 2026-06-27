@@ -3,8 +3,6 @@ import { createSignal, type Accessor } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 
 import { FrameKind, UpdateFrame } from "./generated/nmp/transport";
-import { ClaimedEventsSnapshot } from "./generated/nmp/kernel/claimed-events-snapshot";
-import { ContentTreeWire } from "./generated/nmp/content/content-tree-wire";
 import type { SnapshotFrame } from "./generated/nmp/transport/snapshot-frame";
 import {
   eventCorrelationId,
@@ -14,10 +12,13 @@ import {
   type WorkerEvent,
   type WorkerRequest,
 } from "@nmp/runtime-web";
+import { RefEventStore, REFS_EVENT_KEY, tagValue, type ClaimedEventWire } from "./refEventStore";
 import { RefProfileStore } from "./refProfileStore";
 import type { ProfileWire } from "@nmp/components-web/src/user-avatar/ProfileWire";
 import type { NostrProfileHost } from "@nmp/components-web/src/user-avatar/NostrProfileHost";
 import type { EmbeddedEventModel } from "@nmp/components-web/src/content-kind-registry/NostrKindRegistry";
+
+export { tagValue, type ClaimedEventWire } from "./refEventStore";
 
 // ADR-0063 Lane D wire codes (mirror the wasm structured `resolve_ref` /
 // `release_ref` protocol):
@@ -27,52 +28,21 @@ import type { EmbeddedEventModel } from "@nmp/components-web/src/content-kind-re
 const REF_NS_PROFILE = 0;
 const REF_NS_EVENT = 1;
 const REF_SHAPE_PROFILE_REF = 0;
-const REF_SHAPE_EVENT_EMBED = 0;
+const REF_SHAPE_EVENT_RAW = 1;
 const REF_LIVENESS_CACHE_OK = 0;
 
 const NRRD_FILE_IDENTIFIER = "NRRD";
 const REFS_PROFILE_PROJECTION_KEY = "refs.profile";
-const KCEV_FILE_IDENTIFIER = "KCEV";
-const KCEV_PROJECTION_KEY = "claimed_events";
-// #1767 — the JSON embed-projection sidecar key. The payload is UTF-8
-// `serde_json` of `{ [primaryId]: EmbeddedEventEnvelope }`, the `nmp-content`
-// resolver output / `EmbeddedEventEnvelope` serde shape this web TS decodes.
-// (iOS decodes a DIFFERENT wire format — the native `claimed_event_embeds`
-// NEMB FlatBuffer — which shares the resolution logic but not this JSON.) The
-// kernel/composition root has already kind-dispatched each embed
-// (`projection.variant`), so the web renders from the resolved projection
-// instead of re-parsing NIP-23 / NIP-84 tags.
-const EMBED_PROJECTION_KEY = "claimed_event_embeds_json";
+const KIND_PROFILE_METADATA = 0;
+const KIND_SHORT_NOTE = 1;
+const KIND_LONG_FORM_ARTICLE = 30023;
+const KIND_HIGHLIGHT = 9802;
 
 export type RelayStatusRow = {
   url: string;
   role: string;
   connection: string;
 };
-
-/** One raw event from the kernel's `claimed_events` projection.
- *  `contentTree` is the kernel-parsed NFCT tree (`nmp-content` behind the
- *  content-parser seam); `content` is the raw NIP-01 string fallback. */
-export type ClaimedEventWire = {
-  primaryId: string;
-  id: string;
-  kind: number;
-  content: string;
-  createdAt: number;
-  /** Author pubkey (hex). */
-  authorPubkey: string;
-  /** Raw event tags (array of tag rows). Embed cards read `title`/`image`/
-   *  `summary`/`context`/source tags from here. */
-  tags: string[][];
-  /** Decoded NFCT tree, present iff the kernel emitted non-empty NFCT bytes. */
-  contentTree?: ContentTreeWire;
-};
-
-/** First value of the first tag row whose tag name (index 0) matches `name`. */
-export function tagValue(ev: ClaimedEventWire, name: string): string | undefined {
-  const row = ev.tags.find((t) => t[0] === name);
-  return row && row.length > 1 ? row[1] : undefined;
-}
 
 export type GalleryRuntime = {
   /** The profile host wired into the registry user-* components. */
@@ -105,10 +75,9 @@ export type GalleryRuntime = {
   /** Reactive — a claimed event keyed by its `primary_id`, or undefined until
    *  the kernel resolves it. */
   claimedEvent: (primaryId: string) => ClaimedEventWire | undefined;
-  /** Reactive — the kernel-RESOLVED embed envelope for a claimed event, keyed
-   *  by `primary_id` (#1767). The `projection` is already kind-dispatched in
-   *  Rust; the registry renders from it without re-parsing tags. Undefined
-   *  until the embed sidecar surfaces the resolved entry. */
+  /** Reactive — a render-facing embed envelope derived from the authoritative
+   *  `refs.event` row, keyed by `primary_id`. Undefined until the event row
+   *  resolves. */
   claimedEventEmbed: (primaryId: string) => EmbeddedEventModel | undefined;
   /** Request the Rust-encoded npub for a pubkey (idempotent; fires once per
    *  pubkey). The result lands reactively in `npub(pubkey)`. */
@@ -126,111 +95,15 @@ export type GalleryRuntime = {
  *  (`RefRowCache`) merges per-key — never decoded in isolation. A frame with no
  *  `refs.profile` entry returns `undefined` and the caller leaves the persistent
  *  cache untouched (keep-last-good). */
-function findRefsProfileSidecar(snapshot: SnapshotFrame): Uint8Array | undefined {
+function findTypedSidecar(snapshot: SnapshotFrame, key: string, fileIdentifier: string): Uint8Array | undefined {
   for (let i = 0; i < snapshot.typedProjectionsLength(); i += 1) {
     const proj = snapshot.typedProjections(i);
-    if (!proj || proj.key() !== REFS_PROFILE_PROJECTION_KEY) continue;
+    if (!proj || proj.key() !== key) continue;
     const payload = proj.payload();
-    if (!payload || payload.fileIdentifier() !== NRRD_FILE_IDENTIFIER) return undefined;
+    if (!payload || payload.fileIdentifier() !== fileIdentifier) return undefined;
     const payloadBytes = payload.payloadArray();
     if (!payloadBytes || payloadBytes.length === 0) return undefined;
     return payloadBytes;
-  }
-  return undefined;
-}
-
-/** Decode the claimed_events (KCEV) typed projection from a snapshot frame into
- *  a primary_id→ClaimedEventWire map. Each event's `content_tree_bytes` (the
- *  kernel-parsed NFCT) is decoded into a `ContentTreeWire` when present; empty
- *  bytes leave `contentTree` undefined (the view then renders raw `content`).
- *  Returns `undefined` on missing/corrupt projection so the caller keeps the
- *  last good map (D6 — never blank-reset). */
-function decodeClaimedEvents(snapshot: SnapshotFrame): Map<string, ClaimedEventWire> | undefined {
-  for (let i = 0; i < snapshot.typedProjectionsLength(); i += 1) {
-    const proj = snapshot.typedProjections(i);
-    if (!proj || proj.key() !== KCEV_PROJECTION_KEY) continue;
-    const payload = proj.payload();
-    if (!payload || payload.fileIdentifier() !== KCEV_FILE_IDENTIFIER) return undefined;
-    const payloadBytes = payload.payloadArray();
-    if (!payloadBytes || payloadBytes.length === 0) return undefined;
-    try {
-      const bb = new flatbuffers.ByteBuffer(payloadBytes);
-      if (!ClaimedEventsSnapshot.bufferHasIdentifier(bb)) return undefined;
-      const root = ClaimedEventsSnapshot.getRootAsClaimedEventsSnapshot(bb);
-      const out = new Map<string, ClaimedEventWire>();
-      for (let j = 0; j < root.entriesLength(); j += 1) {
-        const entry = root.entries(j);
-        if (!entry) continue;
-        const key = entry.key();
-        const ev = entry.value();
-        if (!key || !ev) continue;
-        const tags: string[][] = [];
-        for (let t = 0; t < ev.tagsLength(); t += 1) {
-          const row = ev.tags(t);
-          if (!row) continue;
-          const values: string[] = [];
-          for (let v = 0; v < row.valuesLength(); v += 1) {
-            values.push((row.values(v) as string) ?? "");
-          }
-          tags.push(values);
-        }
-        const wire: ClaimedEventWire = {
-          primaryId: key,
-          id: ev.id() ?? "",
-          kind: ev.kind(),
-          content: ev.content() ?? "",
-          createdAt: Number(ev.createdAt()),
-          authorPubkey: ev.authorPubkey() ?? "",
-          tags,
-        };
-        const ctBytes = ev.contentTreeBytesArray();
-        if (ctBytes && ctBytes.length > 0) {
-          try {
-            const ctBb = new flatbuffers.ByteBuffer(ctBytes);
-            if (ContentTreeWire.bufferHasIdentifier(ctBb)) {
-              wire.contentTree = ContentTreeWire.getRootAsContentTreeWire(ctBb);
-            }
-          } catch {
-            // Corrupt NFCT bytes — leave contentTree undefined (raw fallback).
-          }
-        }
-        out.set(key, wire);
-      }
-      return out;
-    } catch {
-      return undefined;
-    }
-  }
-  return undefined;
-}
-
-/** Decode the `claimed_event_embeds_json` typed projection (#1767) into a
- *  primary_id→EmbeddedEventModel map. The payload is UTF-8 `serde_json` of the
- *  resolved embed map (NOT a FlatBuffer — Option A / JSON parity with iOS), so
- *  it is `JSON.parse`d directly; the kernel has already kind-dispatched each
- *  `projection`. Returns `undefined` on a missing/corrupt projection so the
- *  caller keeps the last good map (D6 — never blank-reset). */
-function decodeClaimedEventEmbeds(snapshot: SnapshotFrame): Map<string, EmbeddedEventModel> | undefined {
-  for (let i = 0; i < snapshot.typedProjectionsLength(); i += 1) {
-    const proj = snapshot.typedProjections(i);
-    if (!proj || proj.key() !== EMBED_PROJECTION_KEY) continue;
-    const payload = proj.payload();
-    if (!payload) return undefined;
-    const payloadBytes = payload.payloadArray();
-    if (!payloadBytes || payloadBytes.length === 0) return undefined;
-    try {
-      const text = new TextDecoder().decode(payloadBytes);
-      const parsed = JSON.parse(text) as Record<string, EmbeddedEventModel>;
-      const out = new Map<string, EmbeddedEventModel>();
-      for (const [key, envelope] of Object.entries(parsed)) {
-        if (envelope && typeof envelope === "object" && envelope.projection) {
-          out.set(key, envelope);
-        }
-      }
-      return out;
-    } catch {
-      return undefined;
-    }
   }
   return undefined;
 }
@@ -247,6 +120,100 @@ function decodeRelays(snapshot: SnapshotFrame): RelayStatusRow[] {
   return rows;
 }
 
+function textTree(content: string): { nodes: { kind: string; text?: string }[]; roots: number[] } {
+  return content.length > 0 ? { nodes: [{ kind: "text", text: content }], roots: [0] } : { nodes: [], roots: [] };
+}
+
+function embedEnvelopeFromEvent(ev: ClaimedEventWire): EmbeddedEventModel {
+  const base = {
+    uri: "",
+    primaryId: ev.primaryId,
+    collapsed: false,
+    collapseReason: null,
+  };
+  switch (ev.kind) {
+    case KIND_PROFILE_METADATA:
+      return {
+        ...base,
+        projection: {
+          variant: "profile",
+          data: {
+            pubkey: ev.authorPubkey,
+          },
+        },
+      };
+    case KIND_SHORT_NOTE:
+      return {
+        ...base,
+        projection: {
+          variant: "shortNote",
+          data: {
+            id: ev.id,
+            authorPubkey: ev.authorPubkey,
+            authorDisplayName: null,
+            authorPictureUrl: null,
+            createdAt: ev.createdAt,
+            contentTree: textTree(ev.content),
+            mediaUrls: [],
+          },
+        },
+      };
+    case KIND_LONG_FORM_ARTICLE:
+      return {
+        ...base,
+        projection: {
+          variant: "article",
+          data: {
+            id: ev.id,
+            authorPubkey: ev.authorPubkey,
+            authorDisplayName: null,
+            authorPictureUrl: null,
+            createdAt: ev.createdAt,
+            title: tagValue(ev, "title") ?? null,
+            summary: tagValue(ev, "summary") ?? null,
+            heroImageUrl: tagValue(ev, "image") ?? null,
+            dTag: tagValue(ev, "d") ?? "",
+          },
+        },
+      };
+    case KIND_HIGHLIGHT:
+      return {
+        ...base,
+        projection: {
+          variant: "highlight",
+          data: {
+            id: ev.id,
+            authorPubkey: ev.authorPubkey,
+            authorDisplayName: null,
+            createdAt: ev.createdAt,
+            highlightedText: ev.content,
+            sourceEventId: tagValue(ev, "e") ?? null,
+            sourceEventAddr: tagValue(ev, "a") ?? null,
+            sourceUrl: tagValue(ev, "r") ?? null,
+            context: tagValue(ev, "context") ?? null,
+          },
+        },
+      };
+    default:
+      return {
+        ...base,
+        projection: {
+          variant: "unknown",
+          data: {
+            kind: ev.kind,
+            authorPubkey: ev.authorPubkey,
+            authorDisplayName: null,
+            authorPictureUrl: null,
+            createdAt: ev.createdAt,
+            content: ev.content,
+            tags: ev.tags,
+            altText: tagValue(ev, "alt") ?? null,
+          },
+        },
+      };
+  }
+}
+
 // ── Runtime ────────────────────────────────────────────────────────────────
 
 export function createGalleryRuntime(): GalleryRuntime {
@@ -258,11 +225,6 @@ export function createGalleryRuntime(): GalleryRuntime {
   // store proxy would wrap that object and break its `this.bb`-based accessors,
   // so the map is kept as an opaque signal value (replaced wholesale per frame).
   const [claimedEvents, setClaimedEvents] = createSignal<Map<string, ClaimedEventWire>>(new Map());
-  // #1767 — kernel-resolved embed envelopes, keyed by primary_id. Plain JSON
-  // objects (decoded from the JSON sidecar), so a plain signal is fine.
-  const [claimedEventEmbeds, setClaimedEventEmbeds] = createSignal<Map<string, EmbeddedEventModel>>(
-    new Map(),
-  );
   const [status, setStatus] = createSignal<RuntimeStatus>("ready");
   const [relays, setRelays] = createSignal<RelayStatusRow[]>([]);
   const [resolvedCount, setResolvedCount] = createSignal(0);
@@ -281,6 +243,7 @@ export function createGalleryRuntime(): GalleryRuntime {
   // runtime's lifetime — row deltas merge into it across frames. Replaces the
   // whole-map `resolved_profiles` decode.
   const refProfiles = new RefProfileStore();
+  const refEvents = new RefEventStore();
 
   const worker = new Worker(new URL("@nmp/runtime-web/worker", import.meta.url), { type: "module" });
   const pending = new Map<string, () => void>();
@@ -308,7 +271,7 @@ export function createGalleryRuntime(): GalleryRuntime {
       // trigger downstream re-renders — AND drops rows the kernel cleared (an
       // identity/epoch baseline that shrinks the set to empty is reflected, where
       // gating on `changedKeys` alone would leave stale cards visible).
-      const refsPayload = findRefsProfileSidecar(snap);
+      const refsPayload = findTypedSidecar(snap, REFS_PROFILE_PROJECTION_KEY, NRRD_FILE_IDENTIFIER);
       if (refsPayload !== undefined) {
         refProfiles.applySidecar(refsPayload, snap.sessionId(), snap.snapshotEpoch());
         const cards = refProfiles.profiles();
@@ -317,11 +280,11 @@ export function createGalleryRuntime(): GalleryRuntime {
         setProfiles(reconcile(next, { merge: true }));
         setResolvedCount(cards.size);
       }
-      const events = decodeClaimedEvents(snap);
-      if (events !== undefined) setClaimedEvents(events);
-      // #1767 — decode the resolved embed sidecar (kind-dispatched in Rust).
-      const embeds = decodeClaimedEventEmbeds(snap);
-      if (embeds !== undefined) setClaimedEventEmbeds(embeds);
+      const eventsPayload = findTypedSidecar(snap, REFS_EVENT_KEY, NRRD_FILE_IDENTIFIER);
+      if (eventsPayload !== undefined) {
+        refEvents.applySidecar(eventsPayload, snap.sessionId(), snap.snapshotEpoch());
+        setClaimedEvents(refEvents.events());
+      }
     } catch {
       // Keep last-good state on a corrupt frame (D6 — never blank-reset).
     }
@@ -427,7 +390,7 @@ export function createGalleryRuntime(): GalleryRuntime {
         namespace: REF_NS_EVENT,
         key,
         consumer_id: consumerId,
-        shape: REF_SHAPE_EVENT_EMBED,
+        shape: REF_SHAPE_EVENT_RAW,
         liveness: REF_LIVENESS_CACHE_OK,
         hints,
         event_author: eventAuthor ?? null,
@@ -444,7 +407,10 @@ export function createGalleryRuntime(): GalleryRuntime {
       });
     },
     claimedEvent: (primaryId: string) => claimedEvents().get(primaryId),
-    claimedEventEmbed: (primaryId: string) => claimedEventEmbeds().get(primaryId),
+    claimedEventEmbed: (primaryId: string) => {
+      const ev = claimedEvents().get(primaryId);
+      return ev ? embedEnvelopeFromEvent(ev) : undefined;
+    },
     requestNpub(pubkey: string) {
       if (requestedNpubs.has(pubkey)) return;
       requestedNpubs.add(pubkey);

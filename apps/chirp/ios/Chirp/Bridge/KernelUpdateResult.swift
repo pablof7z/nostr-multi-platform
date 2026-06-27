@@ -74,10 +74,6 @@ struct KernelUpdateResult {
     /// `projections["nmp.nip17.dm_relay_list"]` JSON fallback. No Swift read
     /// consumer yet — read through the `dmRelayList` accessor (added for parity).
     let typedDmRelayList: DmRelayListSnapshot?
-    /// Typed `claimed_events` projection decode (`KCEV`). `nil` ⇒ generic
-    /// `projections.claimedEvents` JSON fallback. Still a live projection; no
-    /// longer the embed-resolution input (issue #1283 Phase 1 — see below).
-    let typedClaimedEvents: [String: ClaimedEventDto]?
     /// Typed `claimed_event_embeds` projection decode (`NEMB`, issue #1283
     /// Phase 1). `nil` ⇒ generic `projections.claimedEventEmbeds` JSON fallback.
     /// The kernel-resolved (`nmp_content::resolve_embed_projection`) embed map;

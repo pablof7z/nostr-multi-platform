@@ -5,9 +5,9 @@
 
 use std::ffi::{CStr, CString};
 
-use jni::JNIEnv;
 use jni::objects::{JClass, JString};
 use jni::sys::jlong;
+use jni::JNIEnv;
 
 use nmp_ffi::{
     nmp_app_release_event_ref, nmp_app_resolve_event_embed_with_metadata, nmp_free_string,
@@ -74,7 +74,7 @@ fn event_ref_from_uri(uri: &CStr) -> Option<EventRefFromUri> {
 /// App-local JNI URI adapter. Decodes the `nostr:` URI in Rust and forwards to
 /// the typed event-embed ref adapter.
 #[no_mangle]
-pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeClaimEvent(
+pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeResolveEventRef(
     mut env: JNIEnv,
     _class: JClass,
     handle: jlong,

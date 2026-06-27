@@ -5,23 +5,22 @@ import os.log
 
 private let ehLog = Logger(subsystem: "org.nmp.gallery", category: "EmbedHost")
 
-/// Gallery-side cache of the pre-resolved `claimed_event_embeds` projection
-/// produced by `nmp-ffi`'s embed sidecar (issue #1283 / ADR-0034).
+/// Gallery-side mirror of the resolved event-ref embed envelope map
+/// materialised from `refs.event` after `resolve_ref` (ADR-0063 / ADR-0034).
 ///
 /// The renderer (`NostrContentView` / `EmbeddedEvent`) is frontend-driven
 /// (ADR-0034 / M16): it walks a content tree, encounters an `EventRef(uri)`,
-/// and the `EmbeddedEvent` view fires `sink.claim(uri, consumerId)` via
-/// `EventClaimSinkProtocol`. The host (`KernelEventClaimSink`) decodes the
+/// and the `EmbeddedEvent` view fires `sink.resolveEventRef(uri, consumerId)` via
+/// `EventRefResolverProtocol`. The host (`KernelEventRefResolver`) decodes the
 /// URI and forwards the raw event key through `resolve_ref`. The kernel
 /// registers a `OneshotApi` interest, fetches via relays (or cache-hits),
-/// and surfaces the resolved event in
-/// `snapshot.projections.claimed_events[primary_id]`. `nmp-ffi` then
-/// kind-dispatches each entry via `nmp_content::resolve_embed_projection`
-/// and emits the pre-resolved `EmbeddedEventEnvelope` map under
-/// `projections["claimed_event_embeds"]`. This class is the gallery's
-/// read-side cache of that projection.
+/// and surfaces the resolved raw event row under `refs.event`. The gallery Rust
+/// adapter merges that row-delta store, kind-dispatches each entry via
+/// `nmp_content::resolve_embed_projection`, and emits the pre-resolved
+/// `EmbeddedEventEnvelope` map under `projections["refs.event"]`. This class is
+/// the gallery's read-side mirror of that materialised map.
 ///
-/// Each snapshot push calls `update(claimedEventEmbeds:)`; on the next redraw
+/// Each snapshot push calls `update(resolvedEventEmbeds:)`; on the next redraw
 /// the SwiftUI view tree re-reads `envelopeForURI(_:)` /
 /// `envelopeForPrimaryID(_:)` and the registry dispatches to the right renderer.
 ///
@@ -30,22 +29,21 @@ private let ehLog = Logger(subsystem: "org.nmp.gallery", category: "EmbedHost")
 @MainActor
 @Observable
 final class EmbedHost {
-    /// Claimed envelopes keyed by `primary_id` (event-id hex for nevent/note,
+    /// Resolved envelopes keyed by `primary_id` (event-id hex for nevent/note,
     /// `"kind:pubkey:d"` coordinate for naddr). Latest-snapshot-wins; rebuilt
-    /// from the pre-resolved `claimed_event_embeds` projection on each non-nil
-    /// push. The kind-dispatch runs in Rust (`nmp-content`); this class is
-    /// decode-only.
+    /// from the pre-resolved embed envelope projection on each non-nil push.
+    /// The kind-dispatch runs in Rust (`nmp-content`); this class is decode-only.
     private(set) var envelopesByPrimaryID: [String: EmbeddedEventEnvelope] = [:]
 
     /// Diagnostics — number of resolved envelopes in the current snapshot.
     var count: Int { envelopesByPrimaryID.count }
 
-    /// Called on every snapshot tick with the pre-resolved embed map from
-    /// `projections["claimed_event_embeds"]`.  A nil or empty value leaves the
+    /// Called on every snapshot tick with the pre-resolved embed envelope map.
+    /// A nil or empty value leaves the
     /// previous state intact (stable, not flicker) — matches the one-tick-lag
     /// semantics of the Rust sidecar (D6: graceful degradation).
-    func update(claimedEventEmbeds: [String: EmbeddedEventEnvelope]?) {
-        guard let embeds = claimedEventEmbeds, !embeds.isEmpty else { return }
+    func update(resolvedEventEmbeds: [String: EmbeddedEventEnvelope]?) {
+        guard let embeds = resolvedEventEmbeds, !embeds.isEmpty else { return }
         envelopesByPrimaryID = embeds
     }
 
@@ -63,7 +61,7 @@ final class EmbedHost {
         if let direct = envelopesByPrimaryID[uri] {
             return direct
         }
-        // Linear scan only on miss. Map is small (one entry per claimed embed).
+        // Linear scan only on miss. Map is small (one entry per resolved embed).
         return envelopesByPrimaryID.values.first { $0.uri == uri }
     }
 }
@@ -74,8 +72,8 @@ private struct EmbedHostKey: EnvironmentKey {
     static let defaultValue: EmbedHost? = nil
 }
 
-private struct EmbedClaimSinkKey: EnvironmentKey {
-    static let defaultValue: EventClaimSinkProtocol? = nil
+private struct EmbedEventRefResolverKey: EnvironmentKey {
+    static let defaultValue: EventRefResolverProtocol? = nil
 }
 
 private struct NostrKindRegistryKey: EnvironmentKey {
@@ -93,9 +91,9 @@ extension EnvironmentValues {
         set { self[EmbedHostKey.self] = newValue }
     }
 
-    var embedClaimSink: EventClaimSinkProtocol? {
-        get { self[EmbedClaimSinkKey.self] }
-        set { self[EmbedClaimSinkKey.self] = newValue }
+    var embedEventRefResolver: EventRefResolverProtocol? {
+        get { self[EmbedEventRefResolverKey.self] }
+        set { self[EmbedEventRefResolverKey.self] = newValue }
     }
 
     var nostrKindRegistry: NostrKindRegistry? {

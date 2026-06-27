@@ -11,16 +11,17 @@ use super::*;
 /// silent.
 #[test]
 fn registry_size_is_locked() {
-    // 28 entries: 31 (the #1610 baseline) minus 2 old-surface entries removed
-    // in ADR-0063 Lane H (#1671): `claimed_profiles` (KCPR) and
-    // `resolved_profiles` (KRPR). Profile data is now served via the
-    // refs.profile KPRF NRRD row-delta sidecar; minus the deleted global
-    // zaps sidecar (#2091).
+    // 27 entries: 31 (the #1610 baseline) minus 3 old-surface entries removed
+    // in ADR-0063 Lane H (#1671): `claimed_profiles` (KCPR),
+    // `resolved_profiles` (KRPR), and the host-visible `claimed_events`
+    // whole-map projection. KCEV remains only as the refs.event row codec.
+    // Profile/event data is now served via refs.profile / refs.event NRRD
+    // row-delta sidecars; minus the deleted global zaps sidecar (#2091).
     // Bump this (and add a new SnapshotProjectionEntry above) when a new
     // projection is wired.
     assert_eq!(
         SNAPSHOT_PROJECTIONS.len(),
-        28,
+        27,
         "registry size changed — regenerate KernelTypes.generated.swift and update this test"
     );
 }

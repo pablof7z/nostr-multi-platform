@@ -121,15 +121,14 @@ extension KernelHandle {
             // `resolved_profiles` (KRPR) deleted — ADR-0063 Lane H. Profile data
             // is now served via the refs.profile KPRF NRRD row-delta sidecar.
             let typedProfile = TypedProfileDecoder.decode(from: envelopes)
-            // NIP-17 DM cluster + claimed-event map (`nmp.nip17.dm_inbox` /
-            // `nmp.nip17.dm_relay_list` / `claimed_events`). Each returns nil when
+            // NIP-17 DM cluster (`nmp.nip17.dm_inbox` /
+            // `nmp.nip17.dm_relay_list`). Each returns nil when
             // its sidecar is absent/malformed → the generic `projections.<field>`
             // JSON path stays active (ADR-0037 Commitment 4), mirroring
             // `typedAccounts` above. `dm_relay_list` has no Swift read consumer
             // yet — the decode is wired for parity and unit-tested.
             let typedDmInbox = TypedDmInboxDecoder.decode(from: envelopes)
             let typedDmRelayList = TypedDmRelayListDecoder.decode(from: envelopes)
-            let typedClaimedEvents = TypedClaimedEventsDecoder.decode(from: envelopes)
             // Issue #1283 Phase 1: the kernel-resolved embed map (`NEMB`). Returns
             // nil when the sidecar is absent/malformed → the generic
             // `projections.claimedEventEmbeds` JSON path stays active (ADR-0037
@@ -195,7 +194,6 @@ extension KernelHandle {
                     typedProfile: typedProfile,
                     typedDmInbox: typedDmInbox,
                     typedDmRelayList: typedDmRelayList,
-                    typedClaimedEvents: typedClaimedEvents,
                     typedClaimedEventEmbeds: typedClaimedEventEmbeds,
                     typedBunkerHandshake: typedBunkerHandshake,
                     typedNip46Onboarding: typedNip46Onboarding,

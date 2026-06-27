@@ -171,7 +171,7 @@ export const contentComponents: Component[] = [
         screenshots: ["content-view-kotlin-preview.png"],
         customization: [
           "`NostrContentView` walks a `ContentTreeWire` and dispatches each block-level group to the matching sub-component. Customizing usually means editing the sub-component rather than this dispatcher.",
-          "Event refs render through the kind-dispatch registry (`content-kind-registry`): provide `LocalClaimedEventEmbeds` + `LocalNostrKindRegistry` to drive them.",
+          "Event refs render through the kind-dispatch registry (`content-kind-registry`): provide `LocalResolvedEventEmbeds` + `LocalEventRefResolver` + `LocalNostrKindRegistry` to drive them.",
         ],
       },
       tui: {

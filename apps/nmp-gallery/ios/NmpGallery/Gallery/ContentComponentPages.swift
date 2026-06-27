@@ -260,7 +260,7 @@ struct ContentMediaGridPage: View {
         VStack(spacing: 16) {
             ContentPageFrame(caption: "NostrMediaGrid — relay-backed article media") {
                 if imageUrls.isEmpty {
-                    Text("Waiting for relay-backed media from the claimed article.")
+                    Text("Waiting for relay-backed media from the resolved article.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
@@ -269,13 +269,13 @@ struct ContentMediaGridPage: View {
             }
         }
         .task(id: SHOWCASE_ARTICLE_NADDR) {
-            model.embedClaimSink.claim(
+            model.embedEventRefResolver.resolveEventRef(
                 uri: SHOWCASE_ARTICLE_NADDR,
                 consumerId: "nmp-gallery-ios.content-media-grid"
             )
         }
         .onDisappear {
-            model.embedClaimSink.release(
+            model.embedEventRefResolver.releaseEventRef(
                 uri: SHOWCASE_ARTICLE_NADDR,
                 consumerId: "nmp-gallery-ios.content-media-grid"
             )
@@ -329,13 +329,13 @@ struct ContentQuoteCardPage: View {
             }
         }
         .task(id: SHOWCASE_NOTE_NEVENT) {
-            model.embedClaimSink.claim(
+            model.embedEventRefResolver.resolveEventRef(
                 uri: SHOWCASE_NOTE_NEVENT,
                 consumerId: "nmp-gallery-ios.content-quote-card"
             )
         }
         .onDisappear {
-            model.embedClaimSink.release(
+            model.embedEventRefResolver.releaseEventRef(
                 uri: SHOWCASE_NOTE_NEVENT,
                 consumerId: "nmp-gallery-ios.content-quote-card"
             )

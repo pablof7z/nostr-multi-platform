@@ -39,7 +39,7 @@ export const contentKindComponents: Component[] = [
         version: "0.1.0",
         dependencies: ["content-core", "user-avatar"],
         longDescription:
-          "Swift mirror of `tui/content-kind-registry`. `NostrKindRegistry` is a SwiftUI-friendly @MainActor dispatch table mapping `EmbedKindProjection` variants to `KindRenderer` implementations. `EmbeddedEvent` owns the claim/release lifecycle (via `.task(id:)` + `.onDisappear`), reads the resolved envelope from the app's `EmbedHost`, and dispatches through the registry. `EmbedChromeContainer` mirrors the TUI's depth-graded accent stripe so nested embeds visually scale identically across platforms.",
+          "Swift mirror of `tui/content-kind-registry`. `NostrKindRegistry` is a SwiftUI-friendly @MainActor dispatch table mapping `EmbedKindProjection` variants to `KindRenderer` implementations. `EmbeddedEvent` owns the resolve/release lifecycle (via `.task(id:)` + `.onDisappear`), reads the resolved envelope from the app's `EmbedHost`, and dispatches through the registry. `EmbedChromeContainer` mirrors the TUI's depth-graded accent stripe so nested embeds visually scale identically across platforms.",
         files: [
           { source: "swiftui/content-kind-registry/EmbedKindProjection.swift", target: "Components/NostrContent/EmbedKindProjection.swift", role: "source", content: swiftuiEmbedKindProjectionSwift },
           { source: "swiftui/content-kind-registry/EmbedHostEnvironment.swift", target: "Components/NostrContent/EmbedHostEnvironment.swift", role: "source", content: swiftuiEmbedHostEnvironmentSwift },
@@ -50,8 +50,8 @@ export const contentKindComponents: Component[] = [
         screenshots: ["embed-article-ios-gallery-preview.png"],
         customization: [
           "Build the registry once at app start with `NostrKindRegistry.makeDefault()` then `registry.setArticle(ArticleEmbed())` / `registry.setHighlight(HighlightEmbed())` to swap in richer per-kind components.",
-          "Bind the host once with `.embedEnvelopeSource(source, claimSink: sink, registry: registry)` — `NostrContentView` and `EmbeddedEvent` both read the registry, claim sink, and resolved envelopes from there.",
-          "Conform your envelope holder to `EmbedEnvelopeSource` and implement `EventClaimSinkProtocol` against your kernel FFI; the embed view owns lifecycle, not your app code.",
+          "Bind the host once with `.embedEnvelopeSource(source, eventRefResolver: resolver, registry: registry)` — `NostrContentView` and `EmbeddedEvent` both read the registry, resolver, and resolved envelopes from there.",
+          "Conform your envelope holder to `EmbedEnvelopeSource` and implement `EventRefResolverProtocol` against your kernel FFI; the embed view owns lifecycle, not your app code.",
         ],
       },
       compose: {
@@ -60,7 +60,7 @@ export const contentKindComponents: Component[] = [
         version: "0.1.0",
         dependencies: ["content-core", "user-avatar"],
         longDescription:
-          "Compose mirror of `tui/content-kind-registry`. `NostrKindRegistry` is a dispatch table mapping `EmbedKindProjection` variants to `KindRenderer` composables. `EmbeddedEvent` owns the claim/release lifecycle (via `DisposableEffect`), reads the resolved envelope from `LocalClaimedEventEmbeds`, and dispatches through `LocalNostrKindRegistry`. `EmbedChromeContainer` mirrors the depth-graded accent stripe so nested embeds scale identically across platforms.",
+          "Compose mirror of `tui/content-kind-registry`. `NostrKindRegistry` is a dispatch table mapping `EmbedKindProjection` variants to `KindRenderer` composables. `EmbeddedEvent` owns the resolve/release lifecycle (via `DisposableEffect`), reads the resolved envelope from `LocalResolvedEventEmbeds`, and dispatches through `LocalNostrKindRegistry`. `EmbedChromeContainer` mirrors the depth-graded accent stripe so nested embeds scale identically across platforms.",
         files: [
           { source: "compose/content-kind-registry/EmbedKindProjection.kt", target: "Components/NostrContent/EmbedKindProjection.kt", role: "source", content: composeEmbedKindProjectionKotlin },
           { source: "compose/content-kind-registry/EmbedChromeContainer.kt", target: "Components/NostrContent/EmbedChromeContainer.kt", role: "source", content: composeEmbedChromeContainerKotlin },
@@ -70,7 +70,7 @@ export const contentKindComponents: Component[] = [
         screenshots: ["embed-article-kotlin-preview.png"],
         customization: [
           "Build the registry once with `NostrKindRegistry.makeDefault()` then `setArticle(...)` / `setHighlight(...)` to swap in richer per-kind composables.",
-          "Provide `LocalNostrKindRegistry`, `LocalClaimedEventEmbeds`, and `LocalEventClaimer` at your screen root; `NostrContentView` and `EmbeddedEvent` both read from there.",
+          "Provide `LocalNostrKindRegistry`, `LocalResolvedEventEmbeds`, and `LocalEventRefResolver` at your screen root; `NostrContentView` and `EmbeddedEvent` both read from there.",
         ],
       },
       tui: {
@@ -193,7 +193,7 @@ export const contentKindComponents: Component[] = [
         version: "0.1.0",
         dependencies: ["content-kind-registry"],
         longDescription:
-          "`NostrArticleCard` is the canonical NIP-23 Compose card. Per-kind dispatch lives in `NostrContentView.EventRefBlock` via an `articleCardProvider`, so the card stays self-contained on `compose/content-core` — no separate kind-registry component. Renders the article's `image` tag as a 16:9 hero (Coil `SubcomposeAsyncImage` with a placeholder fallback), the `title` as a semibold headline, an optional `summary` line, then an author byline with an avatar (`NostrIdenticon` fallback) + display name + `article · kind:30023` tag. The app hydrates a `NostrArticleCardModel` from a resolved `claimed_events` entry; the card only renders.",
+          "`NostrArticleCard` is the canonical NIP-23 Compose card. Per-kind dispatch lives in `NostrContentView.EventRefBlock` via an `articleCardProvider`, so the card stays self-contained on `compose/content-core` — no separate kind-registry component. Renders the article hero image as a 16:9 hero (Coil `SubcomposeAsyncImage` with a placeholder fallback), the title as a semibold headline, an optional summary line, then an author byline with an avatar (`NostrIdenticon` fallback) + display name + `article · kind:30023` tag. The app hydrates a `NostrArticleCardModel` from the resolved `refs.event` article projection; the card only renders.",
         files: [
           { source: "compose/content-kind-30023/NostrArticleCard.kt", target: "Components/NostrContent/NostrArticleCard.kt", role: "source", content: composeArticleCardKotlin },
         ],

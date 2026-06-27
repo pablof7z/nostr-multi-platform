@@ -1,11 +1,11 @@
-//! `EventClaimSink` — renderer→host bridge for upstream event fetches.
+//! `EventRefResolver` — renderer→host bridge for upstream event fetches.
 //!
 //! ADR-0034 / M16. The trait lives in `nmp-content` so renderers (e.g.
 //! `NostrContentView` in the TUI registry) can take
-//! `Option<&dyn EventClaimSink>` without `nmp-content` ever gaining an
+//! `Option<&dyn EventRefResolver>` without `nmp-content` ever gaining an
 //! `nmp-ffi` dependency. Each platform host (TUI, iOS, Compose) supplies an
-//! impl that decodes the embed URI at the app boundary and bridges `claim` /
-//! `release` to the unified `resolve_ref` / `release_ref` surface.
+//! impl that decodes the embed URI at the app boundary and bridges `resolve_event_ref` /
+//! `release_event_ref` to the unified `resolve_ref` / `release_ref` surface.
 
 /// Host-side bridge that lets a renderer initiate an upstream fetch for
 /// an embedded event (ADR-0034). The trait lives in nmp-content so
@@ -17,32 +17,32 @@
 /// # Examples
 ///
 /// ```
-/// use nmp_content::EventClaimSink;
+/// use nmp_content::EventRefResolver;
 ///
 /// struct MyHost;
-/// impl EventClaimSink for MyHost {
-///     fn claim(&self, _uri: &str, _consumer_id: &str) { /* call FFI */ }
-///     fn release(&self, _uri: &str, _consumer_id: &str) { /* call FFI */ }
+/// impl EventRefResolver for MyHost {
+///     fn resolve_event_ref(&self, _uri: &str, _consumer_id: &str) { /* call FFI */ }
+///     fn release_event_ref(&self, _uri: &str, _consumer_id: &str) { /* call FFI */ }
 /// }
-/// let _: Box<dyn EventClaimSink> = Box::new(MyHost);
+/// let _: Box<dyn EventRefResolver> = Box::new(MyHost);
 /// ```
-pub trait EventClaimSink: Send + Sync {
+pub trait EventRefResolver: Send + Sync {
     /// Initiate (or refcount-increment) an upstream fetch for `uri` on
     /// behalf of `consumer_id`. Implementations are expected to be
     /// idempotent and infallible — failure must be swallowed silently so
     /// renderers can call this on every render pass without guarding.
-    fn claim(&self, uri: &str, consumer_id: &str);
+    fn resolve_event_ref(&self, uri: &str, consumer_id: &str);
 
-    /// Release a previously-claimed `(uri, consumer_id)` pair. A
+    /// Release a previously-resolved `(uri, consumer_id)` pair. A
     /// double-release or unknown pair is a no-op.
-    fn release(&self, uri: &str, consumer_id: &str);
+    fn release_event_ref(&self, uri: &str, consumer_id: &str);
 }
 
 /// No-op sink — fixture/test surfaces use this so renderers can run
 /// without an active kernel.
-pub struct NoopEventClaimSink;
+pub struct NoopEventRefResolver;
 
-impl EventClaimSink for NoopEventClaimSink {
-    fn claim(&self, _uri: &str, _consumer_id: &str) {}
-    fn release(&self, _uri: &str, _consumer_id: &str) {}
+impl EventRefResolver for NoopEventRefResolver {
+    fn resolve_event_ref(&self, _uri: &str, _consumer_id: &str) {}
+    fn release_event_ref(&self, _uri: &str, _consumer_id: &str) {}
 }

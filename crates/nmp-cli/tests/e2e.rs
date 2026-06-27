@@ -25,12 +25,7 @@ fn full_registry_workflow() {
     // --- nmp init my-gallery ------------------------------------------------
     let init = nmp(
         tmp.path(),
-        &[
-            "init",
-            "my-gallery",
-            "--path",
-            app.to_str().unwrap(),
-        ],
+        &["init", "my-gallery", "--path", app.to_str().unwrap()],
     );
     assert!(
         init.status.success(),
@@ -111,16 +106,12 @@ fn full_registry_workflow() {
 
     // Every installed file (4 of them) must have a source_sha256 that
     // matches the on-disk content.
-    let renderer_sha_install = lock_sha_for_path(
-        &lock,
-        "Components/NostrContent/NostrContentRenderer.swift",
-    )
-    .expect("renderer must be in the lock");
-    let render_identity_sha_install = lock_sha_for_path(
-        &lock,
-        "Components/SwiftUI/RenderIdentifiable.swift",
-    )
-    .expect("render-identity must be in the lock");
+    let renderer_sha_install =
+        lock_sha_for_path(&lock, "Components/NostrContent/NostrContentRenderer.swift")
+            .expect("renderer must be in the lock");
+    let render_identity_sha_install =
+        lock_sha_for_path(&lock, "Components/SwiftUI/RenderIdentifiable.swift")
+            .expect("render-identity must be in the lock");
     let minimal_sha_install = lock_sha_for_path(
         &lock,
         "Components/NostrContent/NostrMinimalContentView.swift",
@@ -149,9 +140,9 @@ fn full_registry_workflow() {
     );
     assert_eq!(
         render_identity_sha_install,
-        sha256_hex_of(&fs::read_to_string(
-            app.join("Components/SwiftUI/RenderIdentifiable.swift")
-        ).unwrap()),
+        sha256_hex_of(
+            &fs::read_to_string(app.join("Components/SwiftUI/RenderIdentifiable.swift")).unwrap()
+        ),
         "render-identity lock sha must match on-disk content"
     );
 
@@ -254,7 +245,13 @@ fn dependency_resolution() {
 
     let add = nmp(
         tmp.path(),
-        &["add", "component", "swiftui/content-view", "--with", "example"],
+        &[
+            "add",
+            "component",
+            "swiftui/content-view",
+            "--with",
+            "example",
+        ],
     );
     assert!(
         add.status.success(),
@@ -266,14 +263,38 @@ fn dependency_resolution() {
     let root = tmp.path();
     let nc = root.join("Components/NostrContent");
     let files = [
-        (nc.join("NostrContentRenderer.swift"),        "Components/NostrContent/NostrContentRenderer.swift"),
-        (nc.join("ContentTreeWire.swift"),             "Components/NostrContent/ContentTreeWire.swift"),
-        (nc.join("NostrMediaGrid.swift"),              "Components/NostrContent/NostrMediaGrid.swift"),
-        (nc.join("NostrKindRegistry.swift"),           "Components/NostrContent/NostrKindRegistry.swift"),
-        (nc.join("EmbeddedEvent.swift"),               "Components/NostrContent/EmbeddedEvent.swift"),
-        (nc.join("NostrContentView.swift"),            "Components/NostrContent/NostrContentView.swift"),
-        (nc.join("NostrContentGrouping.swift"),        "Components/NostrContent/NostrContentGrouping.swift"),
-        (nc.join("Examples/NostrContentViewPreview.swift"), "Components/NostrContent/Examples/NostrContentViewPreview.swift"),
+        (
+            nc.join("NostrContentRenderer.swift"),
+            "Components/NostrContent/NostrContentRenderer.swift",
+        ),
+        (
+            nc.join("ContentTreeWire.swift"),
+            "Components/NostrContent/ContentTreeWire.swift",
+        ),
+        (
+            nc.join("NostrMediaGrid.swift"),
+            "Components/NostrContent/NostrMediaGrid.swift",
+        ),
+        (
+            nc.join("NostrKindRegistry.swift"),
+            "Components/NostrContent/NostrKindRegistry.swift",
+        ),
+        (
+            nc.join("EmbeddedEvent.swift"),
+            "Components/NostrContent/EmbeddedEvent.swift",
+        ),
+        (
+            nc.join("NostrContentView.swift"),
+            "Components/NostrContent/NostrContentView.swift",
+        ),
+        (
+            nc.join("NostrContentGrouping.swift"),
+            "Components/NostrContent/NostrContentGrouping.swift",
+        ),
+        (
+            nc.join("Examples/NostrContentViewPreview.swift"),
+            "Components/NostrContent/Examples/NostrContentViewPreview.swift",
+        ),
     ];
     for (path, _) in &files {
         assert!(path.exists(), "expected installed file: {}", path.display());
@@ -332,7 +353,9 @@ fn re_add_idempotency() {
         String::from_utf8_lossy(&first.stderr)
     );
 
-    let renderer = tmp.path().join("Components/NostrContent/NostrContentRenderer.swift");
+    let renderer = tmp
+        .path()
+        .join("Components/NostrContent/NostrContentRenderer.swift");
     let original_content = fs::read_to_string(&renderer).unwrap();
 
     // Second install — CLI must reject without overwriting.
@@ -378,13 +401,34 @@ fn cross_platform_compose() {
     // All expected Kotlin files must land at their declared target paths.
     let nc = tmp.path().join("Components/NostrContent");
     let files = [
-        (nc.join("NostrContentRenderer.kt"),  "Components/NostrContent/NostrContentRenderer.kt"),
-        (nc.join("ContentTreeWire.kt"),        "Components/NostrContent/ContentTreeWire.kt"),
-        (nc.join("NostrMediaGrid.kt"),         "Components/NostrContent/NostrMediaGrid.kt"),
-        (nc.join("NostrKindRegistry.kt"),      "Components/NostrContent/NostrKindRegistry.kt"),
-        (nc.join("EmbeddedEvent.kt"),          "Components/NostrContent/EmbeddedEvent.kt"),
-        (nc.join("NostrContentView.kt"),       "Components/NostrContent/NostrContentView.kt"),
-        (nc.join("NostrContentGrouping.kt"),   "Components/NostrContent/NostrContentGrouping.kt"),
+        (
+            nc.join("NostrContentRenderer.kt"),
+            "Components/NostrContent/NostrContentRenderer.kt",
+        ),
+        (
+            nc.join("ContentTreeWire.kt"),
+            "Components/NostrContent/ContentTreeWire.kt",
+        ),
+        (
+            nc.join("NostrMediaGrid.kt"),
+            "Components/NostrContent/NostrMediaGrid.kt",
+        ),
+        (
+            nc.join("NostrKindRegistry.kt"),
+            "Components/NostrContent/NostrKindRegistry.kt",
+        ),
+        (
+            nc.join("EmbeddedEvent.kt"),
+            "Components/NostrContent/EmbeddedEvent.kt",
+        ),
+        (
+            nc.join("NostrContentView.kt"),
+            "Components/NostrContent/NostrContentView.kt",
+        ),
+        (
+            nc.join("NostrContentGrouping.kt"),
+            "Components/NostrContent/NostrContentGrouping.kt",
+        ),
     ];
     for (path, _) in &files {
         assert!(path.exists(), "expected Kotlin file: {}", path.display());
@@ -417,9 +461,6 @@ fn cross_platform_compose() {
         let expected = sha256_hex_of(&on_disk);
         let actual = lock_sha_for_path(&lock, target)
             .unwrap_or_else(|| panic!("lock missing sha for {target}: {lock}"));
-        assert_eq!(
-            actual, expected,
-            "compose lock sha mismatch for {target}"
-        );
+        assert_eq!(actual, expected, "compose lock sha mismatch for {target}");
     }
 }
