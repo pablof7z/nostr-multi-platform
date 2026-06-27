@@ -106,12 +106,12 @@ use std::sync::Arc;
 use nmp_core::substrate::{
     AppHost, ObservedProjection, ObservedProjectionRegistrar, SnapshotProjectionRegistrar,
 };
-
 pub mod action_payloads;
 #[cfg(feature = "native")]
 pub mod builder;
 #[cfg(feature = "native")]
 pub mod op_feed_defaults;
+pub mod op_pointer_source;
 #[cfg(feature = "native")]
 pub(crate) mod relay_config;
 #[cfg(feature = "native")]

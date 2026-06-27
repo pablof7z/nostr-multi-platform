@@ -54,6 +54,8 @@ mod d1_offline_bootstrap_tests;
 #[cfg(test)]
 mod dependent_interests_tests;
 #[cfg(test)]
+mod pointer_target_cache_serve_tests;
+#[cfg(test)]
 mod discovery_tests;
 #[cfg(test)]
 mod dm_inbox_routing_tests;
