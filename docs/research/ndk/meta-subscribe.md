@@ -51,6 +51,13 @@ The original research mapped this to a proposed runtime reducer trait. That
 surface did not ship. Current NMP uses typed feed sessions,
 event observers, projections, ref claims, and the interest registry.
 
+> **Shipped (#2113).** The pointer-source read model now exists on exactly these
+> seams — no new trait family, no out-of-band fetch. The pure read-model state
+> machine is [`nmp_content::PointerSourceModel`](../../../crates/nmp-content/src/pointer_source/model.rs)
+> and the composition that wires it to the kernel is
+> [`nmp_defaults::op_pointer_source`](../../../crates/nmp-defaults/src/op_pointer_source/mod.rs).
+> The rest of this section is the design it implements.
+
 A meta-subscription is still the right shape, but the NMP implementation target
 is **dependent interests**:
 
@@ -98,53 +105,78 @@ Benefit: reposted-feed, highlighted-articles, commented-articles, and
 engagement-aggregator UIs can be expressed without giving up planner-level
 dedup, outbox routing, cache-serve, or close semantics.
 
-## 7. Current NMP sketch
+## 7. NMP implementation (#2113, shipped)
 
-The implementation shape is a read-model/protocol module, not a new substrate
-trait:
+The implementation is a read-model/protocol module, not a new substrate trait:
 
 ```text
-open pointer source
+open pointer source                 [op_pointer_source: ObservedProjection::from_shape]
   -> register one normal tailing LogicalInterest
-ingest pointer events
-  -> reducer extracts event ids / naddr coords / tag refs
+ingest pointer events               [PointerSourceModel::apply_pointer]
+  -> reducer extracts event ids / naddr coords
   -> dependent-interest owner replaces the materialized target set
-targets arrive or cache serves
+       [ReplaceDependentInterestSet, one DependentInterestChild per target]
+targets arrive or cache serves      [DynamicTargetProjection delivers; run_cache_serve_step serves]
   -> projection recomputes pointed-to items and pointedBy index
-sort changes
+       [PointerSourceModel::apply_target / items / pointed_by]
+sort changes                        [PointerSourceModel::set_sort]
   -> projection state changes; target interests stay deduped and cache-first
-close consumer
+close consumer                      [PointerSourceSession::close]
   -> owner releases pointer interest and dependent target children
 ```
 
-The substrate already has the right low-level shape for target hydration:
+The substrate already had the right low-level shape for target hydration:
 `InterestShape` carries `event_ids` and `addresses`, and those shapes route
-through the same planner/registry/cache path as other interests. What is still
-not complete is the full `$metaSubscribe` read model: the pointer-source owner,
-target-set replacement lifecycle, `pointedBy` reverse index, and projection
-sort modes. That work should be a follow-up on the existing ref/dependent-
-interest seams, not a new trait family or an out-of-band fetch lane.
-Tracked follow-up: #2113.
+through the same planner/registry/cache path as other interests. #2113 added the
+read-model half on top of those seams: the pointer-source owner, the target-set
+replacement lifecycle (`Kernel::replace_dependent_interest_set`), the
+`pointedBy` reverse index, and the projection sort modes — with **no** new trait
+family and **no** out-of-band fetch lane.
 
-#2092 generalizes the adjacent ReducedSource family whose reduced output is an
+**The one substrate gap, and how it was bridged.** Dependent interests *acquire*
+targets but do not *deliver* them to a read-model observer. Rather than add a new
+"observed dependent interest" seam, the controller reconciles a
+`DynamicTargetProjection` (the same open/close-on-shape-change pattern the
+ReducedSource feed's `DynamicObservedProjection` uses) over the union target
+shape. Acquisition (per-target dependent children, for slot-level cross-consumer
+dedup) and delivery (one union observed projection) are driven from the one
+read-model target set.
+
+`#2092` generalizes the adjacent ReducedSource family whose reduced output is an
 author or tag-value set, so home/follow feeds, mute-list feeds, and follow-pack
 feeds stop being separate bespoke paths. Pointer-target hydration composes with
-that family but remains its own read-model follow-up.
+that family — it reuses the same `DependentInterestChild` / dependent-interest
+lifecycle and the same dynamic-observed-projection delivery — but is its own
+read model, **not** a second feed doorway. A pointer source never overloads a
+pubkey `FeedScope`; it materializes `event_ids` / `addresses` targets.
 
 ## 8. Test surface
 
-The correctness tests should assert the substrate properties, not a view trait:
+The correctness tests assert the substrate properties, not a view trait, split
+across the read-model unit layer and the composition/kernel integration layer:
 
-1. **Hydration via event ids.** Pointer event with an `e` tag materializes one
-   dependent `{ids:[X]}` interest, routed and deduped through the planner.
-2. **Hydration via addresses.** Pointer event with an `a` tag materializes one
-   dependent `addresses:{coord}` interest routed to the addressed author's
-   write relays.
-3. **Cross-consumer dedup.** Two projections that need the same target produce
-   one merged REQ per relay.
-4. **Source shrink closes.** When the pointer/source reducer removes a target,
-   the dependent child closes after normal owner/warmth rules.
-5. **Empty output fails closed.** An empty pointer/source reduction produces no
-   wildcard target query.
-6. **Sort is projection state.** Changing sort recomputes payload order without
-   rebuilding unchanged pointer/target interests.
+1. **Hydration via event ids.** A pointer event with an `e` tag materializes one
+   dependent `{event_ids:[X]}` child and a delivery interest over the same id.
+   (`op_pointer_source::tests::pointer_event_id_materializes_*`)
+2. **Hydration via addresses.** A pointer event with an `a` tag materializes one
+   dependent `{kinds:[k], addresses:[coord]}` child routed to the addressed
+   author's write relays. (`op_pointer_source::tests::pointer_address_*`)
+3. **Cross-consumer dedup.** Two read models that need the same target emit
+   children with the identical `SubKey`, so the registry collapses them onto one
+   slot → one merged REQ per relay.
+   (`op_pointer_source::tests::cross_consumer_targets_share_one_dependent_child_key`,
+   `dependent_interests_tests::shared_child_dedups_until_last_source_owner_closes`)
+4. **Source shrink closes.** Dropping the last pointer to a target withdraws it
+   from demand; the dependent child then closes after normal owner rules.
+   (`pointer_source::tests::source_shrink_closes_unreferenced_target`,
+   `dependent_interests_tests::replace_add_shrink_replace_and_empty_fail_closed`)
+5. **Empty output fails closed.** An empty pointer reduction produces no children
+   and no delivery shape — never a wildcard query.
+   (`op_pointer_source::tests::empty_reduction_fails_closed`)
+6. **Cache-first target serve.** An address target materialized through
+   `replace_dependent_interest_set` is served from the warm store with zero relay.
+   (`pointer_target_cache_serve_tests::address_target_child_serves_from_warm_store_zero_relay`)
+7. **Sort is projection state.** Changing sort recomputes payload order without
+   reopening or re-acquiring any interest.
+   (`pointer_source::tests::set_sort_does_not_change_demand`,
+   `op_pointer_source::tests::sort_change_does_not_reopen_or_reacquire`)

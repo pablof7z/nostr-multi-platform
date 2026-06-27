@@ -88,6 +88,13 @@ pub fn render(builders: &[ActionBuilder]) -> String {
 /// Render the module-level FlatBuffers helpers shared by the flat-table and
 /// publish-union builders. `stringVector` encodes a `[string]` vector
 /// (last-element-first, the FlatBuffers vector layout) and returns its offset.
+/// `relayMarkerByte` maps a role string to the RelayMarker ubyte, mirroring
+/// `RelayMarker::from_role_string` in `nmp-router` EXACTLY — including rejection.
+///
+/// SSOT: `RelayMarker::from_role_string` in `crates/nmp-router/src/publish_relay_list.rs`.
+/// 255 = deliberate out-of-range sentinel: the Rust decoder (`marker_from_wire`) rejects
+/// any ordinal not in {0,1,2,3}, so encoding 255 for invalid/empty roles makes dispatch
+/// fail closed (DispatchAck.error) rather than silently publishing a Both relay.
 fn shared_helpers() -> String {
     String::from(
         "/** Encode a `[string]` FlatBuffers vector (built last element first) and\n\
@@ -97,6 +104,30 @@ fn shared_helpers() -> String {
          \x20 fbb.startVector(4, offsets.length, 4);\n\
          \x20 for (let i = offsets.length - 1; i >= 0; i--) fbb.addOffset(offsets[i]!);\n\
          \x20 return fbb.endVector();\n\
+         }\n\
+         \n\
+         /** Map a relay role string to the RelayMarker ubyte (Both=0, Read=1, Write=2, Indexer=3),\n\
+          * mirroring `RelayMarker::from_role_string` in `nmp-router` EXACTLY — including rejection.\n\
+          * Unknown tokens or no-flag input (e.g. empty string) encode as 255 (out-of-range sentinel)\n\
+          * so the Rust decoder (`marker_from_wire`) fails closed instead of silently becoming Both.\n\
+          * Role strings may be comma-separated (e.g. `\"both,indexer\"`); comparisons are case-insensitive. */\n\
+         function relayMarkerByte(role: string): number {\n\
+         \x20 let hasBoth = false, hasRead = false, hasWrite = false, hasIndexer = false;\n\
+         \x20 let invalid = false;\n\
+         \x20 for (const part of role.split(\",\").map((s) => s.trim().toLowerCase())) {\n\
+         \x20   if (part === \"\") { /* no-op: empty part (e.g. trailing comma) matches Rust */ }\n\
+         \x20   else if (part === \"both\") hasBoth = true;\n\
+         \x20   else if (part === \"read\") hasRead = true;\n\
+         \x20   else if (part === \"write\") hasWrite = true;\n\
+         \x20   else if (part === \"indexer\") hasIndexer = true;\n\
+         \x20   else invalid = true;\n\
+         \x20 }\n\
+         \x20 if (invalid) return 255;\n\
+         \x20 if (hasBoth || (hasRead && hasWrite)) return 0;\n\
+         \x20 if (hasRead) return 1;\n\
+         \x20 if (hasWrite) return 2;\n\
+         \x20 if (hasIndexer) return 3;\n\
+         \x20 return 255;\n\
          }\n",
     )
 }
@@ -119,8 +150,8 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
     out.push_str(",\n  ): Uint8Array {\n");
 
     out.push_str("    const fbb = new flatbuffers.Builder(64);\n");
-    // Build nested string/vector offsets before the table (FlatBuffers requires
-    // nested objects be built before the table that references them).
+    // Build nested string/vector/table offsets before the table (FlatBuffers
+    // requires nested objects be finished before the table that references them).
     for field in builder.fields {
         match field.kind {
             FieldKind::Str if field.optional => {
@@ -149,20 +180,39 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
                     ));
                 }
             }
-            FieldKind::Uint => {}
+            FieldKind::RelayListEntryVec => {
+                // Build each RelayListEntry table (url + marker) then a vector
+                // of those table offsets.
+                out.push_str(&format!(
+                    "    const {n}Offset = (() => {{\n\
+                     \x20     const entryOffsets: number[] = {n}.map((r) => {{\n\
+                     \x20       const urlOff = fbb.createString(r.url);\n\
+                     \x20       fbb.startObject(2);\n\
+                     \x20       fbb.addFieldOffset(0, urlOff, 0); // RelayListEntry slot 0: url\n\
+                     \x20       fbb.addFieldInt8(1, relayMarkerByte(r.role), 0); // RelayListEntry slot 1: marker\n\
+                     \x20       return fbb.endObject();\n\
+                     \x20     }});\n\
+                     \x20     fbb.startVector(4, entryOffsets.length, 4);\n\
+                     \x20     for (let i = entryOffsets.length - 1; i >= 0; i--) fbb.addOffset(entryOffsets[i]!);\n\
+                     \x20     return fbb.endVector();\n\
+                     \x20   }})();\n",
+                    n = field.name
+                ));
+            }
+            FieldKind::Uint | FieldKind::Ulong | FieldKind::UlongWithPresenceFlag { .. } => {}
         }
     }
-    // Table: 1 (schema_version) + N fields.
-    out.push_str("    fbb.startObject(");
-    out.push_str(&format!("{});\n", builder.fields.len() + 1));
+    // Table: 1 (schema_version slot) + sum of each field's slot_count.
+    let slot_total: usize = 1 + builder.fields.iter().map(|f| f.slot_count()).sum::<usize>();
+    out.push_str(&format!("    fbb.startObject({slot_total});\n"));
     out.push_str(&format!(
         "    fbb.addFieldInt32(0, {}, 0); // slot 0: schema_version\n",
         contract.schema_version
     ));
-    for (idx, field) in builder.fields.iter().enumerate() {
-        let slot = idx + 1; // slot 0 is schema_version
+    let mut slot = 1usize; // slot 0 = schema_version
+    for field in builder.fields {
         match field.kind {
-            FieldKind::Str | FieldKind::StrVec => {
+            FieldKind::Str | FieldKind::StrVec | FieldKind::RelayListEntryVec => {
                 if field.optional {
                     out.push_str(&format!(
                         "    if ({n}Offset !== 0) fbb.addFieldOffset({slot}, {n}Offset, 0); // slot {slot}: {n}\n",
@@ -181,7 +231,34 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
                     n = field.name
                 ));
             }
+            FieldKind::Ulong => {
+                if field.optional {
+                    out.push_str(&format!(
+                        "    if ({n} !== null) fbb.addFieldInt64({slot}, {n}, BigInt(0)); // slot {slot}: {n}\n",
+                        n = field.name
+                    ));
+                } else {
+                    out.push_str(&format!(
+                        "    fbb.addFieldInt64({slot}, {n}, BigInt(0)); // slot {slot}: {n}\n",
+                        n = field.name
+                    ));
+                }
+            }
+            FieldKind::UlongWithPresenceFlag { flag_name } => {
+                let slot_flag = slot + 1;
+                out.push_str(&format!(
+                    "    if ({n} !== null) {{\n\
+                     \x20     fbb.addFieldInt64({slot}, {n}, BigInt(0)); // slot {slot}: {n}\n\
+                     \x20     fbb.addFieldInt8({slot_flag}, 1, 0); // slot {slot_flag}: {flag} (bool)\n\
+                     \x20   }}\n",
+                    n = field.name,
+                    slot = slot,
+                    slot_flag = slot_flag,
+                    flag = flag_name,
+                ));
+            }
         }
+        slot += field.slot_count();
     }
     out.push_str("    const payloadRoot = fbb.endObject();\n");
     out.push_str(&format!(
@@ -258,6 +335,14 @@ fn ts_param_type(field: &PayloadField) -> String {
         (FieldKind::Uint, true) => "number | null".to_string(),
         (FieldKind::StrVec, false) => "string[]".to_string(),
         (FieldKind::StrVec, true) => "string[] | null".to_string(),
+        (FieldKind::Ulong, false) => "bigint".to_string(),
+        (FieldKind::Ulong, true) => "bigint | null".to_string(),
+        // UlongWithPresenceFlag is always presented as optional.
+        (FieldKind::UlongWithPresenceFlag { .. }, _) => "bigint | null".to_string(),
+        // RelayListEntry vector: array of {url, role} objects.
+        (FieldKind::RelayListEntryVec, _) => {
+            "Array<{ url: string; role: string }>".to_string()
+        }
     }
 }
 

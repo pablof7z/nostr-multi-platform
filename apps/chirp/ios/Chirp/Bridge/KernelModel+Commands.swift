@@ -115,7 +115,7 @@ extension KernelModel {
         track(kernel.unfollow(pubkey: pubkey))
     }
 
-    /// Dispatch `nmp.nip51.block_relay` for the active account.
+    /// Dispatch `nmp.nip51.block_relay` for the active account (M14-1 / #2145).
     ///
     /// Reads the active account pubkey from `activeAccount` and includes it in
     /// the `BlockRelayInput` body so the router-owned ActionModule can read the
@@ -126,10 +126,10 @@ extension KernelModel {
         guard let pubkey = activeAccount else {
             return .failure("block relay: no active account")
         }
-        return track(kernel.dispatchChirpIntent(.blockRelay(url: url, accountPubkey: pubkey)))
+        return track(kernel.blockRelay(url: url, accountPubkey: pubkey))
     }
 
-    /// Dispatch `nmp.nip51.unblock_relay` for the active account.
+    /// Dispatch `nmp.nip51.unblock_relay` for the active account (M14-1 / #2145).
     ///
     /// Symmetric to `blockRelay`. The router-owned ActionModule rejects with a
     /// Conflict (no publish) when the relay is not currently blocked.
@@ -138,7 +138,7 @@ extension KernelModel {
         guard let pubkey = activeAccount else {
             return .failure("unblock relay: no active account")
         }
-        return track(kernel.dispatchChirpIntent(.unblockRelay(url: url, accountPubkey: pubkey)))
+        return track(kernel.unblockRelay(url: url, accountPubkey: pubkey))
     }
 
     @discardableResult

@@ -77,6 +77,32 @@ pub enum FieldKind {
     Uint,
     /// A `[string]` vector field — encoded as a vector of string offsets.
     StrVec,
+    /// A `ulong` (u64) scalar field — encoded inline with default `0`.
+    Ulong,
+    /// A `ulong` scalar + a companion `bool` presence flag (two FlatBuffers
+    /// slots). Preserves `Some(0)` vs `None` for `Option<u64>` on the Rust
+    /// side: the decoder reads `Some(v)` only when the flag is true.
+    UlongWithPresenceFlag {
+        /// Name of the companion bool presence-flag field (next slot).
+        flag_name: &'static str,
+    },
+    /// A `[RelayListEntry]` vector: each entry is a FlatBuffers table with
+    /// `url:string (required)` (slot 0) and `marker:RelayMarker` ubyte (slot 1,
+    /// default 0 = Both). Role strings are mapped to bytes by the generated
+    /// `relayMarkerByte` helper — no role logic in host code.
+    RelayListEntryVec,
+}
+
+impl PayloadField {
+    /// Number of FlatBuffers slots this field occupies (declaration-order in
+    /// the `.fbs`). All types are 1 except `UlongWithPresenceFlag`, which
+    /// occupies 2 (the scalar + the bool flag).
+    pub fn slot_count(&self) -> usize {
+        match self.kind {
+            FieldKind::UlongWithPresenceFlag { .. } => 2,
+            _ => 1,
+        }
+    }
 }
 
 /// One generated typed write builder.
@@ -104,9 +130,10 @@ pub struct ActionBuilder {
 /// it does NOT live here — its encode shape (a nested body table + a union type
 /// discriminant) is materially different from the flat-table primitives below.
 /// The publish builders are described by [`PUBLISH_BUILDERS`] and hand-modelled
-/// by the emitters' `render_publish_*` paths. This registry covers the five
-/// flat-table namespaces end-to-end: every primitive (string, uint, optional
-/// string, string vector) is exercised.
+/// by the emitters' `render_publish_*` paths. This registry covers every
+/// flat-table namespace end-to-end: every primitive (string, uint, optional
+/// string, string vector, ulong-with-presence-flag, relay-list-entry-vec) is
+/// exercised.
 pub const ACTION_BUILDERS: &[ActionBuilder] = &[
     // nip25 — react / unreact (react.fbs / unreact.fbs).
     ActionBuilder {
@@ -255,6 +282,102 @@ pub const ACTION_BUILDERS: &[ActionBuilder] = &[
         method: "removeBookmark",
         fields: &[],
         doc: "Remove one item from the active account's NIP-51 bookmark list.",
+    },
+    // nip51 — block / unblock relay (block_relay.fbs / unblock_relay.fbs).
+    ActionBuilder {
+        namespace: "nmp.nip51.block_relay",
+        method: "blockRelay",
+        fields: &[
+            PayloadField {
+                name: "url",
+                kind: FieldKind::Str,
+                optional: false,
+            },
+            PayloadField {
+                name: "accountPubkey",
+                kind: FieldKind::Str,
+                optional: false,
+            },
+        ],
+        doc: "Add a relay URL to the NIP-51 blocked-relay list.",
+    },
+    ActionBuilder {
+        namespace: "nmp.nip51.unblock_relay",
+        method: "unblockRelay",
+        fields: &[
+            PayloadField {
+                name: "url",
+                kind: FieldKind::Str,
+                optional: false,
+            },
+            PayloadField {
+                name: "accountPubkey",
+                kind: FieldKind::Str,
+                optional: false,
+            },
+        ],
+        doc: "Remove a relay URL from the NIP-51 blocked-relay list.",
+    },
+    // nip17 — DM relay list (dm_relay_list_action.fbs).
+    ActionBuilder {
+        namespace: "nmp.nip17.publish_relay_list",
+        method: "publishDmRelayList",
+        fields: &[PayloadField {
+            name: "relays",
+            kind: FieldKind::StrVec,
+            optional: false,
+        }],
+        doc: "Publish a NIP-17 DM relay list (kind:10050).",
+    },
+    // nip65 — outbox relay list (publish_relay_list.fbs).
+    ActionBuilder {
+        namespace: "nmp.nip65.publish_relay_list",
+        method: "publishRelayList",
+        fields: &[PayloadField {
+            name: "relays",
+            kind: FieldKind::RelayListEntryVec,
+            optional: false,
+        }],
+        doc: "Publish a NIP-65 relay-list metadata event (kind:10002).",
+    },
+    // wallet — NIP-47 Nostr Wallet Connect (wallet_connect.fbs /
+    // wallet_disconnect.fbs / wallet_pay_invoice.fbs).
+    ActionBuilder {
+        namespace: "nmp.wallet.connect",
+        method: "walletConnect",
+        fields: &[PayloadField {
+            name: "uri",
+            kind: FieldKind::Str,
+            optional: false,
+        }],
+        doc: "Connect a NIP-47 Nostr Wallet Connect URI.",
+    },
+    ActionBuilder {
+        namespace: "nmp.wallet.disconnect",
+        method: "walletDisconnect",
+        fields: &[],
+        doc: "Disconnect the current NIP-47 wallet (no payload data beyond schema_version).",
+    },
+    ActionBuilder {
+        namespace: "nmp.wallet.pay_invoice",
+        method: "walletPayInvoice",
+        fields: &[
+            PayloadField {
+                name: "bolt11",
+                kind: FieldKind::Str,
+                optional: false,
+            },
+            // `amount_msats` is `Option<u64>` on the Rust side — two slots:
+            // the ulong scalar + a `has_amount_msats:bool` presence flag.
+            PayloadField {
+                name: "amountMsats",
+                kind: FieldKind::UlongWithPresenceFlag {
+                    flag_name: "hasAmountMsats",
+                },
+                optional: true,
+            },
+        ],
+        doc: "Pay a Lightning invoice via the NIP-47 wallet.",
     },
 ];
 

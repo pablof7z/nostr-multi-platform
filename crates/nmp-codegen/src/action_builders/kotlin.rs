@@ -63,6 +63,7 @@ pub fn render(builders: &[ActionBuilder]) -> String {
     out.push('\n');
     out.push_str("object GeneratedActionBuilders {\n");
     out.push_str(&envelope_helper());
+    out.push_str(&relay_marker_byte_helper());
     for builder in builders {
         out.push('\n');
         render_one(builder, &mut out);
@@ -122,6 +123,51 @@ fn envelope_helper() -> String {
     s
 }
 
+/// Render the private `relayMarkerByte` helper — maps a role string to the
+/// `RelayMarker` ubyte (Both=0, Read=1, Write=2, Indexer=3), mirroring
+/// `RelayMarker::from_role_string` in `nmp-router` EXACTLY — including
+/// rejection. Unknown tokens or no-flag cases (e.g. empty string) encode as
+/// 255 (out-of-range sentinel) so the Rust decoder (`marker_from_wire`) fails
+/// closed (Err) rather than silently becoming Both. Emitted once at the top of
+/// `GeneratedActionBuilders`; used by `publishRelayList`.
+///
+/// SSOT: `RelayMarker::from_role_string` in `crates/nmp-router/src/publish_relay_list.rs`.
+/// 255 = deliberate out-of-range sentinel: the Rust decoder (`marker_from_wire`) rejects
+/// any ordinal not in {0,1,2,3}, so encoding 255 for invalid/empty roles makes dispatch
+/// fail closed (DispatchAck.error) rather than silently publishing a Both relay.
+fn relay_marker_byte_helper() -> String {
+    String::from(
+        "\n\
+         \x20   /// Map a relay role string to the RelayMarker ubyte (Both=0, Read=1, Write=2, Indexer=3),\n\
+         \x20   /// mirroring `RelayMarker::from_role_string` in `nmp-router` EXACTLY — including rejection.\n\
+         \x20   /// Unknown tokens or no-flag input (e.g. empty string) encode as 255 (out-of-range sentinel)\n\
+         \x20   /// so the Rust decoder (`marker_from_wire`) fails closed instead of silently becoming Both.\n\
+         \x20   /// Role strings may be comma-separated (e.g. `\"both,indexer\"`); comparisons are case-insensitive.\n\
+         \x20   private fun relayMarkerByte(role: String): Byte {\n\
+         \x20       var hasBoth = false; var hasRead = false; var hasWrite = false; var hasIndexer = false\n\
+         \x20       var invalid = false\n\
+         \x20       for (part in role.split(\",\").map { it.trim().lowercase() }) {\n\
+         \x20           when (part) {\n\
+         \x20               \"\" -> {}\n\
+         \x20               \"both\" -> hasBoth = true\n\
+         \x20               \"read\" -> hasRead = true\n\
+         \x20               \"write\" -> hasWrite = true\n\
+         \x20               \"indexer\" -> hasIndexer = true\n\
+         \x20               else -> invalid = true\n\
+         \x20           }\n\
+         \x20       }\n\
+         \x20       if (invalid) return 255.toByte()\n\
+         \x20       return (when {\n\
+         \x20           hasBoth || (hasRead && hasWrite) -> 0\n\
+         \x20           hasRead -> 1\n\
+         \x20           hasWrite -> 2\n\
+         \x20           hasIndexer -> 3\n\
+         \x20           else -> 255\n\
+         \x20       }).toByte()\n\
+         \x20   }\n",
+    )
+}
+
 /// Render one typed builder function.
 fn render_one(builder: &ActionBuilder, out: &mut String) {
     if is_bookmark_builder(builder) {
@@ -147,7 +193,7 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
     out.push_str(",\n    ): ByteArray {\n");
 
     out.push_str("        val fbb = FlatBufferBuilder()\n");
-    // Build nested string/vector offsets before the table.
+    // Build nested string/vector/table offsets before the table.
     for field in builder.fields {
         match field.kind {
             FieldKind::Str if field.optional => {
@@ -188,19 +234,40 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
                     ));
                 }
             }
-            FieldKind::Uint => {}
+            FieldKind::RelayListEntryVec => {
+                // Build each RelayListEntry table (url + marker) then a vector
+                // of those table offsets.
+                out.push_str(&format!(
+                    "        val {n}Offset = run {{\n\
+                     \x20           val entryOffsets = IntArray({n}.size) {{ i ->\n\
+                     \x20               val (url, role) = {n}[i]\n\
+                     \x20               val urlOff = fbb.createString(url)\n\
+                     \x20               fbb.startTable(2)\n\
+                     \x20               fbb.addOffset(0, urlOff, 0) // RelayListEntry slot 0: url\n\
+                     \x20               fbb.addByte(1, relayMarkerByte(role), 0) // RelayListEntry slot 1: marker\n\
+                     \x20               fbb.endTable()\n\
+                     \x20           }}\n\
+                     \x20           fbb.startVector(4, entryOffsets.size, 4)\n\
+                     \x20           for (i in entryOffsets.size - 1 downTo 0) fbb.addOffset(entryOffsets[i])\n\
+                     \x20           fbb.endVector()\n\
+                     \x20       }}\n",
+                    n = field.name
+                ));
+            }
+            FieldKind::Uint | FieldKind::Ulong | FieldKind::UlongWithPresenceFlag { .. } => {}
         }
     }
-    let table_fields = builder.fields.len() + 1;
-    out.push_str(&format!("        fbb.startTable({table_fields})\n"));
+    // Table: 1 (schema_version slot) + sum of each field's slot_count.
+    let slot_total: usize = 1 + builder.fields.iter().map(|f| f.slot_count()).sum::<usize>();
+    out.push_str(&format!("        fbb.startTable({slot_total})\n"));
     out.push_str(&format!(
         "        fbb.addInt(0, {}, 0) // slot 0: schema_version\n",
         contract.schema_version
     ));
-    for (idx, field) in builder.fields.iter().enumerate() {
-        let slot = idx + 1;
+    let mut slot = 1usize; // slot 0 = schema_version
+    for field in builder.fields {
         match field.kind {
-            FieldKind::Str | FieldKind::StrVec => {
+            FieldKind::Str | FieldKind::StrVec | FieldKind::RelayListEntryVec => {
                 if field.optional {
                     out.push_str(&format!(
                         "        if ({n}Offset != 0) fbb.addOffset({slot}, {n}Offset, 0) // slot {slot}: {n}\n",
@@ -219,7 +286,34 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
                     n = field.name
                 ));
             }
+            FieldKind::Ulong => {
+                if field.optional {
+                    out.push_str(&format!(
+                        "        if ({n} != null) fbb.addLong({slot}, {n}, 0L) // slot {slot}: {n}\n",
+                        n = field.name
+                    ));
+                } else {
+                    out.push_str(&format!(
+                        "        fbb.addLong({slot}, {n}, 0L) // slot {slot}: {n}\n",
+                        n = field.name
+                    ));
+                }
+            }
+            FieldKind::UlongWithPresenceFlag { flag_name } => {
+                let slot_flag = slot + 1;
+                out.push_str(&format!(
+                    "        if ({n} != null) {{\n\
+                     \x20           fbb.addLong({slot}, {n}, 0L) // slot {slot}: {n}\n\
+                     \x20           fbb.addBoolean({slot_flag}, true, false) // slot {slot_flag}: {flag}\n\
+                     \x20       }}\n",
+                    n = field.name,
+                    slot = slot,
+                    slot_flag = slot_flag,
+                    flag = flag_name,
+                ));
+            }
         }
+        slot += field.slot_count();
     }
     out.push_str("        val payloadRoot = fbb.endTable()\n");
     out.push_str(&format!(
@@ -297,10 +391,9 @@ fn render_bookmark_update(builder: &ActionBuilder, out: &mut String) {
     out.push_str("    }\n");
 }
 
-/// Kotlin parameter type for a field. Note: a `uint` becomes `Int` (the
-/// FlatBuffers Kotlin runtime carries u32 inline as a signed `Int`); the S3
-/// trio's only uints are the implicit slot-0 `schema_version`, never a builder
-/// parameter, so this is here for completeness.
+/// Kotlin parameter type for a field. `uint` → `Int` (FlatBuffers Kotlin
+/// carries u32 as a signed `Int`); `ulong` → `Long` (u64 carried as signed
+/// `Long` at the byte level).
 fn kotlin_param_type(field: &PayloadField) -> String {
     match (field.kind, field.optional) {
         (FieldKind::Str, false) => "String".to_string(),
@@ -309,6 +402,13 @@ fn kotlin_param_type(field: &PayloadField) -> String {
         (FieldKind::Uint, true) => "Int?".to_string(),
         (FieldKind::StrVec, false) => "List<String>".to_string(),
         (FieldKind::StrVec, true) => "List<String>?".to_string(),
+        (FieldKind::Ulong, false) => "Long".to_string(),
+        (FieldKind::Ulong, true) => "Long?".to_string(),
+        // UlongWithPresenceFlag is always presented as optional — the flag
+        // encodes Some vs None so the parameter is always `T?`.
+        (FieldKind::UlongWithPresenceFlag { .. }, _) => "Long?".to_string(),
+        // RelayListEntry vector: list of (url, role) pairs.
+        (FieldKind::RelayListEntryVec, _) => "List<Pair<String, String>>".to_string(),
     }
 }
 

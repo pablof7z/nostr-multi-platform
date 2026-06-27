@@ -43,6 +43,7 @@ mod grouper;
 pub mod longform;
 pub mod markdown;
 pub mod mode;
+pub mod pointer_source;
 mod regex_set;
 pub mod segment;
 mod tokenizer;
@@ -56,7 +57,7 @@ pub use embed_projection::{
 };
 pub use embed_registry::{
     ClaimHandle, EmbedClaimDelta, EmbedClaimRegistry, EmbedClaimSpec, EmbedClaimState,
-    EmbedRegistrySnapshot, EmbedTarget, EventClaimSink, NoopEventClaimSink,
+    EmbedRegistrySnapshot, EmbedTarget, EventClaimSink, NoopEventClaimSink, ResolvedEvent,
 };
 pub use longform::{
     longform_acquisition_kinds, longform_feed_predicate, ArticleFeedItem, LongformFeed,
@@ -65,6 +66,7 @@ pub use longform::{
 };
 pub use markdown::{MarkdownInline, MarkdownNode};
 pub use mode::{sniff_mode_from_kind, RenderMode};
+pub use pointer_source::{PointerItem, PointerSortMode, PointerSourceModel};
 pub use segment::{ContentTree, InvoiceKind, MediaKind, Segment};
 pub use tokenizer::{tokenize, tokenize_with_kind};
 pub use wire::{

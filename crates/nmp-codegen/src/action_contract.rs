@@ -22,6 +22,10 @@ pub enum ActionDefaultTier {
     DirectMessages,
     /// Registered when `NmpDefaults.zaps` is enabled.
     Zaps,
+    /// Registered opt-in via `NmpAppBuilder::with_wallet` — NOT part of the
+    /// default composition. Excluded from [`canonical_default_action_namespaces`]
+    /// so `register_defaults` matching tests stay green.
+    Wallet,
 }
 
 /// Whether host action builders are generated for this namespace.
@@ -112,10 +116,18 @@ pub fn contract_for(namespace: &str) -> &'static ActionContract {
 }
 
 /// Sorted namespaces for the canonical default composition, including the
-/// `nmp-core` built-in publish action.
+/// `nmp-core` built-in publish action. Wallet namespaces are opt-in via
+/// `NmpAppBuilder::with_wallet` and are excluded from this set so the
+/// `register_defaults` matching test stays green.
 #[must_use]
 pub fn canonical_default_action_namespaces() -> Vec<&'static str> {
-    sorted_namespaces(|_| true)
+    sorted_namespaces(|c| c.default_tier != ActionDefaultTier::Wallet)
+}
+
+/// Sorted wallet-tier action namespaces (opt-in via `with_wallet`).
+#[must_use]
+pub fn wallet_action_namespaces() -> Vec<&'static str> {
+    sorted_namespaces(|c| c.default_tier == ActionDefaultTier::Wallet)
 }
 
 /// Sorted namespaces registered by `nmp_defaults::register_substrate`.

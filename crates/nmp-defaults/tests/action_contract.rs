@@ -68,8 +68,21 @@ fn contract_matches_modules_and_default_payload_reexports() {
             action_payloads::PublishDmRelayListInput,
         >("nmp.nip17.publish_relay_list"),
         assert_contract::<nmp_nip57::ZapAction, action_payloads::ZapInput>("nmp.nip57.zap"),
-        assert_contract::<nmp_nip84::PublishHighlightModule, action_payloads::PublishHighlightAction>(
-            "nmp.nip84.publish_highlight",
+        assert_contract::<
+            nmp_nip84::PublishHighlightModule,
+            action_payloads::PublishHighlightAction,
+        >("nmp.nip84.publish_highlight"),
+        // Wallet (opt-in via `with_wallet`; nmp_nip47 available via the
+        // `native` default feature). Not in `action_payloads` (only default
+        // registrations appear there), so checked directly from nmp_nip47.
+        assert_contract::<nmp_nip47::WalletConnectModule, nmp_nip47::WalletConnectAction>(
+            "nmp.wallet.connect",
+        ),
+        assert_contract::<nmp_nip47::WalletDisconnectModule, nmp_nip47::WalletDisconnectAction>(
+            "nmp.wallet.disconnect",
+        ),
+        assert_contract::<nmp_nip47::WalletPayInvoiceModule, nmp_nip47::WalletAction>(
+            "nmp.wallet.pay_invoice",
         ),
     ];
 
@@ -80,8 +93,8 @@ fn contract_matches_modules_and_default_payload_reexports() {
         .collect();
     assert_eq!(
         checked, contract,
-        "every default action contract row must be checked against its module \
-         namespace and public nmp-defaults::action_payloads re-export"
+        "every action contract row must be checked against its module \
+         namespace and payload type (wallet rows checked via nmp_nip47 directly)"
     );
 }
 

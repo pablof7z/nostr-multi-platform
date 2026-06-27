@@ -32,6 +32,30 @@ function stringVector(fbb: flatbuffers.Builder, values: string[]): flatbuffers.O
   return fbb.endVector();
 }
 
+/** Map a relay role string to the RelayMarker ubyte (Both=0, Read=1, Write=2, Indexer=3),
+* mirroring `RelayMarker::from_role_string` in `nmp-router` EXACTLY — including rejection.
+* Unknown tokens or no-flag input (e.g. empty string) encode as 255 (out-of-range sentinel)
+* so the Rust decoder (`marker_from_wire`) fails closed instead of silently becoming Both.
+* Role strings may be comma-separated (e.g. `"both,indexer"`); comparisons are case-insensitive. */
+function relayMarkerByte(role: string): number {
+  let hasBoth = false, hasRead = false, hasWrite = false, hasIndexer = false;
+  let invalid = false;
+  for (const part of role.split(",").map((s) => s.trim().toLowerCase())) {
+    if (part === "") { /* no-op: empty part (e.g. trailing comma) matches Rust */ }
+    else if (part === "both") hasBoth = true;
+    else if (part === "read") hasRead = true;
+    else if (part === "write") hasWrite = true;
+    else if (part === "indexer") hasIndexer = true;
+    else invalid = true;
+  }
+  if (invalid) return 255;
+  if (hasBoth || (hasRead && hasWrite)) return 0;
+  if (hasRead) return 1;
+  if (hasWrite) return 2;
+  if (hasIndexer) return 3;
+  return 255;
+}
+
 export const GeneratedActionBuilders = {
   /** Publish a NIP-25 reaction to a target event. */
   react(
@@ -226,6 +250,137 @@ export const GeneratedActionBuilders = {
     fbb.finish(payloadRoot, "N51B");
     const payload = fbb.asUint8Array();
     return encodeDispatchEnvelope(correlationId, "nmp.nip51.remove_bookmark", payload);
+  },
+
+  /** Add a relay URL to the NIP-51 blocked-relay list. */
+  blockRelay(
+    correlationId: string,
+    url: string,
+    accountPubkey: string,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const urlOffset = fbb.createString(url);
+    const accountPubkeyOffset = fbb.createString(accountPubkey);
+    fbb.startObject(3);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldOffset(1, urlOffset, 0); // slot 1: url
+    fbb.addFieldOffset(2, accountPubkeyOffset, 0); // slot 2: accountPubkey
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "NBLK");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.nip51.block_relay", payload);
+  },
+
+  /** Remove a relay URL from the NIP-51 blocked-relay list. */
+  unblockRelay(
+    correlationId: string,
+    url: string,
+    accountPubkey: string,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const urlOffset = fbb.createString(url);
+    const accountPubkeyOffset = fbb.createString(accountPubkey);
+    fbb.startObject(3);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldOffset(1, urlOffset, 0); // slot 1: url
+    fbb.addFieldOffset(2, accountPubkeyOffset, 0); // slot 2: accountPubkey
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "NUBL");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.nip51.unblock_relay", payload);
+  },
+
+  /** Publish a NIP-17 DM relay list (kind:10050). */
+  publishDmRelayList(
+    correlationId: string,
+    relays: string[],
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const relaysOffset = stringVector(fbb, relays);
+    fbb.startObject(2);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldOffset(1, relaysOffset, 0); // slot 1: relays
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "N17R");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.nip17.publish_relay_list", payload);
+  },
+
+  /** Publish a NIP-65 relay-list metadata event (kind:10002). */
+  publishRelayList(
+    correlationId: string,
+    relays: Array<{ url: string; role: string }>,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const relaysOffset = (() => {
+      const entryOffsets: number[] = relays.map((r) => {
+        const urlOff = fbb.createString(r.url);
+        fbb.startObject(2);
+        fbb.addFieldOffset(0, urlOff, 0); // RelayListEntry slot 0: url
+        fbb.addFieldInt8(1, relayMarkerByte(r.role), 0); // RelayListEntry slot 1: marker
+        return fbb.endObject();
+      });
+      fbb.startVector(4, entryOffsets.length, 4);
+      for (let i = entryOffsets.length - 1; i >= 0; i--) fbb.addOffset(entryOffsets[i]!);
+      return fbb.endVector();
+    })();
+    fbb.startObject(2);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldOffset(1, relaysOffset, 0); // slot 1: relays
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "N65P");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.nip65.publish_relay_list", payload);
+  },
+
+  /** Connect a NIP-47 Nostr Wallet Connect URI. */
+  walletConnect(
+    correlationId: string,
+    uri: string,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const uriOffset = fbb.createString(uri);
+    fbb.startObject(2);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldOffset(1, uriOffset, 0); // slot 1: uri
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "N47C");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.wallet.connect", payload);
+  },
+
+  /** Disconnect the current NIP-47 wallet (no payload data beyond schema_version). */
+  walletDisconnect(
+    correlationId: string,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    fbb.startObject(1);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "N47D");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.wallet.disconnect", payload);
+  },
+
+  /** Pay a Lightning invoice via the NIP-47 wallet. */
+  walletPayInvoice(
+    correlationId: string,
+    bolt11: string,
+    amountMsats: bigint | null,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const bolt11Offset = fbb.createString(bolt11);
+    fbb.startObject(4);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldOffset(1, bolt11Offset, 0); // slot 1: bolt11
+    if (amountMsats !== null) {
+      fbb.addFieldInt64(2, amountMsats, BigInt(0)); // slot 2: amountMsats
+      fbb.addFieldInt8(3, 1, 0); // slot 3: hasAmountMsats (bool)
+    }
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "N47P");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.wallet.pay_invoice", payload);
   },
 
   /** Sign-and-publish an arbitrary event kind (generic publish path; NIP-65 outbox or explicit relays). */
