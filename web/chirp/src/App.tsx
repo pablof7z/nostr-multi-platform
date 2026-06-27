@@ -37,6 +37,7 @@ import { decodeRuntimeProjection } from "./nmp/runtimeProjection";
 // Item C — feed / publish / profile UI (FeedPanel owns its own store + provider).
 import { FeedPanel } from "./features/feed/FeedPanel";
 import { SearchPanel } from "./features/search/SearchPanel";
+import { BlockedWorkspacesPanel } from "./features/workspaces/BlockedWorkspacesPanel";
 
 // NIP-07 browser extension interface (window.nostr — EIP-1193-style extension).
 // Shared ambient declaration: signBroker.ts, client.ts, and the signing feature
@@ -54,10 +55,23 @@ declare global {
 // The client is a module-level singleton: one worker per page load.
 const client = createNmpClient();
 
-type MainView = "home" | "search";
+type MainView = "home" | "search" | "workspaces";
 
 function viewFromHash(): MainView {
-  return window.location.hash === "#search" ? "search" : "home";
+  const hash = window.location.hash;
+  if (hash === "#search") return "search";
+  if (
+    hash === "#workspaces" ||
+    hash === "#notifications" ||
+    hash === "#messages" ||
+    hash === "#groups" ||
+    hash === "#wallet" ||
+    hash === "#moderation" ||
+    hash === "#offline"
+  ) {
+    return "workspaces";
+  }
+  return "home";
 }
 
 /** Derive a stable string from the runtime status for data attributes and UI. */
@@ -102,19 +116,28 @@ export default function App() {
   });
   const feedReady = () => feedFrame() !== undefined;
   const feedCount = () => feedFrame()?.rows.length ?? 0;
-  const topbarKicker = () => (mainView() === "search" ? "NIP-50 discovery" : "Home feed");
-  const topbarTitle = () =>
+  const topbarKicker = () =>
     mainView() === "search"
-      ? "Search relays and cache"
-      : signerConnected()
-        ? "Real relay timeline"
-        : "Set up Chirp Web";
-  const topbarSupport = () =>
-    mainView() === "search"
-      ? "Find notes, profiles, and long-form posts with relay and cache provenance."
-      : signerConnected()
-        ? "Read, publish, and verify every action through relay diagnostics."
-        : "Browse signed out, connect a signer when you are ready to publish.";
+      ? "NIP-50 discovery"
+      : mainView() === "workspaces"
+        ? "Product coverage"
+        : "Home feed";
+  const topbarTitle = () => {
+    if (mainView() === "search") return "Search relays and cache";
+    if (mainView() === "workspaces") return "More Chirp workspaces";
+    return signerConnected() ? "Real relay timeline" : "Set up Chirp Web";
+  };
+  const topbarSupport = () => {
+    if (mainView() === "search") {
+      return "Find notes, profiles, and long-form posts with relay and cache provenance.";
+    }
+    if (mainView() === "workspaces") {
+      return "Private, value, moderation, and replay surfaces stay disabled until Rust-owned web flows exist.";
+    }
+    return signerConnected()
+      ? "Read, publish, and verify every action through relay diagnostics."
+      : "Browse signed out, connect a signer when you are ready to publish.";
+  };
   const onboardingState = () => ({
     runtimeConnected: isConnected(),
     signerConnected: signerConnected(),
@@ -167,6 +190,14 @@ export default function App() {
             <a class="rail-link" href="#signing">Signer</a>
             <a class="rail-link" href="#profile">Profile</a>
             <a class="rail-link" href="#relays">Relays</a>
+            <a
+              class={mainView() === "workspaces" ? "rail-link rail-link--active" : "rail-link"}
+              href="#workspaces"
+              aria-current={mainView() === "workspaces" ? "page" : undefined}
+              data-testid="nav-workspaces"
+            >
+              More
+            </a>
             <a class="rail-link" href="#diagnostics">Diagnostics</a>
           </nav>
           <div class="rail-status" aria-live="polite">
@@ -215,9 +246,14 @@ export default function App() {
               NmpClientContext. Do not add logic to this slot — zero protocol TS.
             */}
             <section id="feed" data-slot="feed" aria-label="Feed">
-              {mainView() === "search" ? (
-                <SearchPanel />
-              ) : (
+              {mainView() === "search" && <SearchPanel />}
+              {mainView() === "workspaces" && (
+                <BlockedWorkspacesPanel
+                  diagnostics={runtimeProjection()}
+                  signedIn={signerConnected()}
+                />
+              )}
+              {mainView() === "home" && (
                 <FeedPanel canPublish={signerConnected()} diagnostics={runtimeProjection()} />
               )}
             </section>

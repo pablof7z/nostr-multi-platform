@@ -172,3 +172,20 @@ unless a future secure-storage decision changes this spec.
 All user-visible and diagnostic outputs must be log-safe: redacted request debug,
 action stages, action results, and publish outbox projections must never include
 the raw secret.
+
+## Blocked Web Workspace Contract
+
+Chirp Web must not hide missing major product areas behind absent navigation or
+fake local-only controls. Until web-ready Rust projections and actions exist for
+notifications, NIP-17 private messages, groups, wallet/zap flows, moderation/WoT,
+or offline replay ownership, the browser product must expose those destinations
+as blocked workspaces with clear reasons.
+
+Blocked workspace controls may emit log-safe `capability_failure` diagnostics so
+users and tests can prove the unsupported state is deliberate. They must not
+construct Nostr events, maintain shell-local unread counts, fabricate private
+message threads, simulate wallet state, or persist policy choices in TypeScript.
+
+When any blocked area becomes supported, the same navigation destination should
+graduate to Rust-owned projections/actions and browser acceptance that proves the
+real workflow rather than adding a second parallel surface.

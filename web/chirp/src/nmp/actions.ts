@@ -348,8 +348,12 @@ function unsupportedCommand(capability: string, _payload: unknown): RuntimeComma
   return {
     kind: "unsupported",
     capability,
-    reason: `unsupported_in_web_preview: ${capability} is not wired to a generated dispatch_bytes builder in Chirp Web yet`,
+    reason: `unsupported_in_chirp_web: ${capability} is blocked until a Rust-owned projection or generated dispatch_bytes action is available`,
   };
+}
+
+export function blockedWorkspaceCommand(capability: string): RuntimeCommand {
+  return unsupportedCommand(capability, {});
 }
 
 export function openProfileCommand(pubkey: string): RuntimeCommand {
