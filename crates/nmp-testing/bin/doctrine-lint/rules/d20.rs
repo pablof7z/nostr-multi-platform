@@ -39,9 +39,10 @@
 //! - `relay_worker/**`
 //! - `nmp-store/src/lmdb/**`
 //!
-//! The two time shims themselves are exempt (they MUST import `std::time`):
+//! The time shims themselves are exempt (they MUST import `std::time`):
 //! - `crates/nmp-core/src/time.rs`
 //! - `crates/nmp-store/src/time.rs`
+//! - `crates/nmp-signers/src/time.rs`
 //!
 //! ## Exemptions
 //!
@@ -84,11 +85,13 @@ pub fn file_in_scope(path: &Path) -> bool {
         return false;
     }
 
-    // The two time shims MUST import std::time — they are the abstraction.
+    // Time shims MUST import std::time — they are the abstraction layer.
     if s.ends_with("/crates/nmp-core/src/time.rs")
         || s.ends_with("crates/nmp-core/src/time.rs")
         || s.ends_with("/crates/nmp-store/src/time.rs")
         || s.ends_with("crates/nmp-store/src/time.rs")
+        || s.ends_with("/crates/nmp-signers/src/time.rs")
+        || s.ends_with("crates/nmp-signers/src/time.rs")
     {
         return false;
     }
@@ -272,6 +275,7 @@ mod tests {
     fn time_shims_are_out_of_scope() {
         assert!(!file_in_scope(Path::new("crates/nmp-core/src/time.rs")));
         assert!(!file_in_scope(Path::new("crates/nmp-store/src/time.rs")));
+        assert!(!file_in_scope(Path::new("crates/nmp-signers/src/time.rs")));
         assert!(!file_in_scope(Path::new(
             "/abs/crates/nmp-core/src/time.rs"
         )));

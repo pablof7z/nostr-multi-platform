@@ -274,7 +274,7 @@ impl Signer for LocalKeySigner {
         Some(self)
     }
 
-    fn to_payload(&self) -> SignerPayload {
+    fn to_payload(&self) -> Result<SignerPayload, SignerError> {
         let key = match &self.password {
             Some(pwd) => {
                 use nostr::nips::nip19::ToBech32;
@@ -283,17 +283,17 @@ impl Signer for LocalKeySigner {
                     .with_secret_key(|sk| {
                         EncryptedSecretKey::new(sk, pwd, self.ncryptsec_log_n, KeySecurity::Medium)
                     })
-                    .expect("NIP-49 encrypt with a valid key + password should not fail"); // doctrine-allow: D6 — `to_payload` (Signer trait) returns `SignerPayload`, not `Result`; the key is held + validated at construction. CAVEAT: scrypt at log_n=16 is theoretically OOM-reachable on memory-constrained devices — refactoring the trait to `-> Result<SignerPayload, SignerError>` is tracked as a follow-up
+                    .map_err(|e| SignerError::Backend(format!("NIP-49 encrypt: {e}")))?;
                 let bech = enc
                     .to_bech32()
-                    .expect("EncryptedSecretKey -> bech32 should not fail"); // doctrine-allow: D6 — bech32 encoding of an already-constructed `EncryptedSecretKey` is infallible (fixed HRP + valid payload); a failure here is a logic bug, not an operational error
+                    .map_err(|e| SignerError::Backend(format!("EncryptedSecretKey -> bech32: {e}")))?;
                 LocalKeyMaterial::Ncryptsec(bech)
             }
             None => {
                 LocalKeyMaterial::Raw(self.with_secret_key(|sk| Zeroizing::new(sk.to_secret_hex())))
             }
         };
-        SignerPayload::Local(LocalPayload { key })
+        Ok(SignerPayload::Local(LocalPayload { key }))
     }
 }
 
@@ -437,7 +437,7 @@ mod tests {
             .expect("from hex")
             .with_password(Some("hunter2".to_string()))
             .with_ncryptsec_log_n(8);
-        let payload = with_pwd.to_payload();
+        let payload = with_pwd.to_payload().expect("to_payload");
         let SignerPayload::Local(lp) = payload else {
             panic!("expected local payload");
         };

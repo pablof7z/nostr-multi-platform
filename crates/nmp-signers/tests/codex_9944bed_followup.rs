@@ -69,7 +69,7 @@ fn nip07_from_cached_pubkey_then_pubkey_is_infallible() {
     assert_eq!(signer.pubkey(), real_pubkey);
 
     // Round-trip via payload: cached pubkey is preserved.
-    let payload = signer.to_payload();
+    let payload = signer.to_payload().expect("to_payload");
     let nmp_signers::SignerPayload::Nip07(np) = payload else {
         panic!("expected nip07 payload");
     };

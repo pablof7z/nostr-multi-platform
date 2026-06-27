@@ -10,7 +10,7 @@
 
 // Constants are consumed in wasm32-gated code (handlers, spawn, mod). On native
 // they appear unused, but they exist to keep the budget configuration in one
-// canonical place. // doctrine-allow: dead_code on native is expected for wasm32-only paths.
+// canonical place. dead_code on native is expected for wasm32-only paths.
 #![cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 
 /// Maximum number of inbound relay events applied per `pump()` turn.

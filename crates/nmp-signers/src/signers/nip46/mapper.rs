@@ -219,7 +219,7 @@ pub fn escape_json(s: &str) -> String {
 /// boundary — uniqueness within the signer's lifetime is what matters.
 pub fn generate_request_id() -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
-    use std::time::{SystemTime, UNIX_EPOCH}; // doctrine-allow: D20 — NIP-46 mapper not wasm-reachable today (#1173 defers; route through crate::time shim when it lands)
+    use crate::time::{SystemTime, UNIX_EPOCH};
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)

@@ -31,7 +31,7 @@ fn t1_local_signer_round_trips_payloads() {
     let pubkey_hex = signer.pubkey().to_hex();
 
     // Raw round-trip.
-    let payload = signer.to_payload();
+    let payload = signer.to_payload().expect("to_payload raw");
     let SignerPayload::Local(lp) = payload else {
         panic!("expected local payload");
     };
@@ -44,7 +44,7 @@ fn t1_local_signer_round_trips_payloads() {
         .unwrap()
         .with_password(Some("hunter2".to_string()))
         .with_ncryptsec_log_n(8);
-    let SignerPayload::Local(lp) = with_pwd.to_payload() else {
+    let SignerPayload::Local(lp) = with_pwd.to_payload().expect("to_payload ncryptsec") else {
         panic!("expected local payload");
     };
     let restored = LocalKeySigner::from_payload_with_password(&lp, Some("hunter2"))
@@ -225,7 +225,7 @@ fn t6_nip46_handshake_and_sign_round_trip() {
     assert_eq!(signed.unsigned.pubkey, remote_user_pubkey.to_hex());
 
     // Payload round-trip.
-    let payload = signer.to_payload();
+    let payload = signer.to_payload().expect("to_payload");
     let SignerPayload::Nip46(np) = payload else {
         panic!("expected nip46 payload");
     };
@@ -273,7 +273,7 @@ fn local_payload_raw_json_wire_form_unchanged_after_zeroize_wrap() {
     use nmp_signers::signers::{LocalKeyMaterial, LocalPayload};
 
     let signer = LocalKeySigner::generate();
-    let SignerPayload::Local(lp) = signer.to_payload() else {
+    let SignerPayload::Local(lp) = signer.to_payload().expect("to_payload") else {
         panic!("expected local payload");
     };
     let LocalKeyMaterial::Raw(ref hex) = lp.key else {

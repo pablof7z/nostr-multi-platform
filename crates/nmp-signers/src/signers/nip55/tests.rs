@@ -699,7 +699,7 @@ fn persistence_round_trip() {
     let pubkey = local.pubkey();
     let (signer, _transport) = make_signer_with_pubkey(pubkey);
 
-    let payload = signer.to_payload();
+    let payload = signer.to_payload().expect("to_payload");
     let SignerPayload::Nip55(p) = &payload else {
         panic!("expected SignerPayload::Nip55, got {payload:?}");
     };
