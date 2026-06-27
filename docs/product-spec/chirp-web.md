@@ -48,6 +48,20 @@ NIP-50 session through the browser worker, that a fixture relay receives the
 search subscription, and that matching signed events render from the typed
 search sidecar with relay/cache provenance.
 
+## Profile Open Contract
+
+Chirp Web must let users open a visible author profile from feed and thread
+cards. The profile surface must render Rust-resolved profile metadata when
+available, the active-account follow state from `nmp.follow_list`, relay
+provenance for hydrated author content, and authored posts already present in
+Rust-owned feed projections.
+
+The browser shell may filter the current projected feed rows for presentation,
+but it must not maintain an independent author timeline, profile cache, contact
+graph, or relay query plan. If the author has more content than the current
+projection has hydrated, the UI must represent only the visible projected set
+until a Rust-owned profile/feed workspace provides a broader author feed.
+
 ## Profile Publish Contract
 
 Chirp Web must let a signed-in user publish their public identity from the first

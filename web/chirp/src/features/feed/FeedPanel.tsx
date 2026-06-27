@@ -94,6 +94,7 @@ export function FeedPanel(props: { canPublish: boolean; diagnostics?: RuntimePro
           {(value) => (
             <FeedDetailPanel
               selection={value()}
+              rows={state.rows}
               canPublish={props.canPublish}
               followPubkeys={props.diagnostics?.followList ?? []}
               onClose={() => setSelection(null)}

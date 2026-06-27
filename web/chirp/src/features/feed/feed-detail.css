@@ -41,6 +41,11 @@
   color: var(--accent);
 }
 
+.profile-detail {
+  display: grid;
+  gap: 14px;
+}
+
 .profile-preview {
   gap: 14px;
 }
@@ -68,11 +73,97 @@
 }
 
 .profile-preview-body p,
+.profile-empty,
 .thread-preview p {
   margin: 0;
   color: var(--ink-2);
   line-height: 1.5;
   overflow-wrap: anywhere;
+}
+
+.profile-context-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.profile-context-card {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  background: var(--bg-raised);
+}
+
+.profile-context-card span,
+.profile-section-heading span,
+.profile-authored-post time,
+.profile-relays span {
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.profile-context-card strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.profile-relays {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.profile-relays code {
+  max-width: 220px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 5px 8px;
+  background: var(--bg-raised);
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-authored {
+  display: grid;
+  gap: 10px;
+}
+
+.profile-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.profile-section-heading strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.profile-authored-post {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px;
+  background: var(--bg-raised);
+}
+
+.profile-authored-post .post-content {
+  margin: 0;
+}
+
+.profile-authored-post .post-media-grid {
+  max-width: 360px;
 }
 
 .thread-preview {
@@ -186,6 +277,15 @@
   .profile-preview {
     align-items: flex-start;
     flex-wrap: wrap;
+  }
+
+  .profile-context-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .profile-section-heading {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .detail-primary {

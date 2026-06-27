@@ -107,7 +107,18 @@ test("@wasm feed: real signed events from the fixture relay reach a snapshot aft
     await firstCard.getByRole("button", { name: /open profile/i }).click();
     const detail = feedSlot.getByTestId("feed-detail-panel");
     await expect(detail).toHaveAttribute("data-kind", "profile");
+    await expect(detail.getByTestId("profile-detail")).toContainText(relay.followDisplayName);
     await expect(detail.getByTestId("profile-follow-toggle")).toBeEnabled();
+    await expect(detail.getByTestId("profile-follow-toggle")).toHaveAttribute("aria-pressed", "true");
+    await expect(detail.getByTestId("profile-relay-provenance")).toContainText(
+      relay.url.replace(/^wss?:\/\//, ""),
+    );
+    const authoredPost = detail.getByTestId("profile-authored-post").first();
+    await expect(authoredPost).toContainText(relay.noteContent);
+    await expect(authoredPost.getByTestId("post-content-link")).toHaveAttribute(
+      "href",
+      relay.noteLinkUrl,
+    );
 
     await firstCard.getByRole("button", { name: /open thread/i }).click();
     await expect(detail).toHaveAttribute("data-kind", "thread");

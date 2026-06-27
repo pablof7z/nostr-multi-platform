@@ -2,9 +2,7 @@ import { For, Show, createEffect, createMemo, createSignal } from "solid-js";
 import type { FeedRow } from "../../nmp/feedDecoder";
 import { useNmpClient } from "../../nmp/context";
 import { followCommand, publishNoteAction } from "../../nmp/actions";
-import { displayLabel, shortHex } from "@nmp/components-web/src/user-avatar/ProfileWire";
-import { useNostrProfileHost } from "@nmp/components-web/src/user-avatar/NostrProfileHost";
-import { NostrAvatar } from "@nmp/components-web/src/user-avatar/NostrAvatar";
+import { ProfileDetail } from "./ProfileDetail";
 import "./feed-detail.css";
 
 export type FeedDetailSelection = {
@@ -14,21 +12,13 @@ export type FeedDetailSelection = {
 
 export function FeedDetailPanel(props: {
   selection: FeedDetailSelection;
+  rows: FeedRow[];
   canPublish: boolean;
   followPubkeys: string[];
   onClose: () => void;
 }) {
-  const host = useNostrProfileHost();
   const { client } = useNmpClient();
-  const profile = () => host.profile(props.selection.row.authorPubkey);
   const [followBusy, setFollowBusy] = createSignal(false);
-  const authorLabel = () => {
-    const resolved = profile();
-    if (!resolved && props.selection.row.authorDisplayName) {
-      return props.selection.row.authorDisplayName;
-    }
-    return displayLabel(resolved, props.selection.row.authorPubkey);
-  };
   const consumerId = createMemo(() => `feed-detail.${props.selection.kind}.${props.selection.row.id}`);
   const targetPubkey = () => props.selection.row.authorPubkey;
   const following = () => props.followPubkeys.includes(targetPubkey());
@@ -65,40 +55,15 @@ export function FeedDetailPanel(props: {
         when={props.selection.kind === "profile"}
         fallback={<ThreadPreview row={props.selection.row} canPublish={props.canPublish} />}
       >
-        <div class="profile-preview">
-          <NostrAvatar
-            pubkey={props.selection.row.authorPubkey}
-            size={56}
-            consumerId={consumerId()}
-          />
-          <div class="profile-preview-body">
-            <strong>{authorLabel()}</strong>
-            <code>{shortHex(props.selection.row.authorPubkey)}</code>
-            <Show when={profile()?.about}>
-              <p>{profile()!.about}</p>
-            </Show>
-            <Show when={profile()?.nip05}>
-              <span>{profile()!.nip05}</span>
-            </Show>
-          </div>
-          <button
-            class="detail-primary"
-            data-testid="profile-follow-toggle"
-            aria-label={following() ? "Unfollow" : "Follow"}
-            aria-pressed={following() ? "true" : "false"}
-            disabled={!props.canPublish || followBusy()}
-            title={
-              props.canPublish
-                ? following()
-                  ? "Publish unfollow"
-                  : "Publish follow"
-                : "Sign in to follow"
-            }
-            onClick={() => void publishFollow(!following())}
-          >
-            {followBusy() ? "Publishing..." : following() ? "Following" : "Follow"}
-          </button>
-        </div>
+        <ProfileDetail
+          row={props.selection.row}
+          rows={props.rows}
+          consumerId={consumerId()}
+          following={following()}
+          canPublish={props.canPublish}
+          followBusy={followBusy()}
+          onFollowToggle={(next) => void publishFollow(next)}
+        />
       </Show>
     </aside>
   );
