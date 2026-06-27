@@ -198,13 +198,18 @@ fn is_prefix_match_key(key: &[u8], prefix: &str) -> bool {
     }
 }
 
-/// Order candidates newest-first (ascending rev == descending created_at).
+/// Order candidates (ascending rev == descending created_at).
 fn order_candidates(candidates: &mut [(u64, SearchDocumentKey)], query: &TextSearchQuery) {
     match query.order {
-        // Phase-1 relevance == newest-first (no term-frequency ranking yet); the
-        // type is frozen so Phase-2 can refine without an API change. Both arms
-        // sort newest-first for now (mem parity).
-        TextSearchOrder::NewestFirst | TextSearchOrder::Relevance => {
+        TextSearchOrder::NewestFirst => {
+            candidates.sort_unstable_by_key(|(rev, doc)| (*rev, *doc));
+        }
+        TextSearchOrder::Relevance => {
+            // Phase-1: no term-frequency data is stored in the posting index,
+            // so true TF-IDF ranking is deferred to Phase-2. Use recency as a
+            // proxy (newest-first), matching mem-backend parity. The variant is
+            // kept frozen so Phase-2 can wire scoring without an API change.
+            // NOTE: callers receive recency order, not relevance order.
             candidates.sort_unstable_by_key(|(rev, doc)| (*rev, *doc));
         }
     }

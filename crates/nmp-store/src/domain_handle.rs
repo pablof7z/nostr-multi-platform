@@ -136,14 +136,4 @@ impl DomainHandle {
         }
     }
 
-    /// Scan entries via a named secondary index with the given key prefix.
-    pub fn scan_index<'a>(
-        &'a self,
-        _index: &'static str,
-        key_prefix: &[u8],
-    ) -> Result<DomainScanIter<'a>, StoreError> {
-        // For now both backends have a flat map per namespace — no separate
-        // secondary indexes are maintained. Fall back to scan_prefix.
-        self.scan_prefix(key_prefix)
-    }
 }
