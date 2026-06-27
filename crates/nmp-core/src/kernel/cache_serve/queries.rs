@@ -293,6 +293,7 @@ pub(in crate::kernel) fn compile_store_query_plan(
 /// Returns an empty vec when the shape has no mapping (not covered by any
 /// engineering increment). This is a thin wrapper over
 /// [`compile_store_query_plan`] for callers that only need the query list.
+#[cfg(test)]
 pub(in crate::kernel) fn shape_to_store_queries(shape: &InterestShape) -> Vec<StoreQuery> {
     match compile_store_query_plan(shape) {
         Ok(plan) => plan.queries,

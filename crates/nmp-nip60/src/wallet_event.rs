@@ -12,7 +12,7 @@ use nostr::nips::nip44;
 use nostr::{EventBuilder, EventId, Keys, Kind, PublicKey, SecretKey, Tag, TagKind};
 
 use crate::error::Nip60Error;
-use crate::kinds::KIND_WALLET;
+use crate::kinds::KIND_NIP60_WALLET;
 
 // ─── Wire content ──────────────────────────────────────────────────────────
 
@@ -85,7 +85,7 @@ pub fn build_wallet_event(
         tags.push(Tag::custom(TagKind::custom("relay"), [relay.as_str()]));
     }
 
-    Ok(EventBuilder::new(Kind::from(KIND_WALLET as u16), content).tags(tags))
+    Ok(EventBuilder::new(Kind::from(KIND_NIP60_WALLET as u16), content).tags(tags))
 }
 
 // ─── Decode ────────────────────────────────────────────────────────────────

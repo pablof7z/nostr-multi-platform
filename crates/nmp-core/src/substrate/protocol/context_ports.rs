@@ -63,9 +63,9 @@ impl<'a> ProtocolCommandContext<'a> {
         self.signers
     }
 
-    /// Borrow the [`DmInboxLookup`] capability.
+    /// Borrow the [`DmInboxRelayLookup`] capability.
     #[must_use]
-    pub fn dms(&self) -> &dyn DmInboxLookup {
+    pub fn dms(&self) -> &dyn DmInboxRelayLookup {
         self.dms
     }
 
@@ -161,7 +161,7 @@ impl<'a> ProtocolCommandContext<'a> {
         ));
     }
 
-    /// D15-wrapped [`DmInboxLookup::dm_inbox_relays`]. Returns `None`
+    /// D15-wrapped [`DmInboxRelayLookup::dm_inbox_relays`]. Returns `None`
     /// on a panicking adapter (the gift-wrap publish path fails closed
     /// on `None` per NIP-17 § 2).
     #[must_use]

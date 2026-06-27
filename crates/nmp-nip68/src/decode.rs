@@ -4,7 +4,7 @@ use nmp_store::StoredEvent;
 use nmp_core::substrate::KernelEvent;
 use serde::{Deserialize, Serialize};
 
-use crate::imeta::{parse_imeta_tag, ImageMeta};
+use crate::imeta::{parse_imeta_tag, MediaMeta};
 use crate::kinds::KIND_PICTURE_EVENT;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -15,7 +15,7 @@ pub struct PictureEventRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
     pub content: String,
-    pub images: Vec<ImageMeta>,
+    pub images: Vec<MediaMeta>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub content_warning: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -71,7 +71,7 @@ fn decode_borrowed(
         return None;
     }
 
-    let images: Vec<ImageMeta> = tags.iter().filter_map(|tag| parse_imeta_tag(tag)).collect();
+    let images: Vec<MediaMeta> = tags.iter().filter_map(|tag| parse_imeta_tag(tag)).collect();
     if images.is_empty() {
         return None;
     }

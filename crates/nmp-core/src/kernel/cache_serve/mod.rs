@@ -100,8 +100,9 @@ pub(super) mod wakeup;
 
 pub(in crate::kernel) use queries::{
     compile_store_query_plan, completion_key_for_interest, query_since_mut, query_until_mut,
-    shape_to_store_queries,
 };
+#[cfg(test)]
+pub(in crate::kernel) use queries::shape_to_store_queries;
 pub(in crate::kernel) use queries::{StoreQueryPlan, UnsupportedShapeReason};
 
 use super::Kernel;

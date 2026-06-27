@@ -29,7 +29,6 @@ pub use projection::{
 };
 pub use request::{
     SearchRequest, SearchScope, SearchTargets, DEFAULT_MAX_SEARCH_HITS, HARD_MAX_SEARCH_HITS,
-    KIND_LONG_FORM,
 };
 pub use input_recognizers::{
     register_input_scopes, LongFormInputRecognizer, NotesInputRecognizer, ProfilesInputRecognizer,

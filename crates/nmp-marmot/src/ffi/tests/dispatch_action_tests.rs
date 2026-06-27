@@ -1,5 +1,7 @@
 use super::*;
-use crate::projection::action::{MarmotActionModule, MARMOT_ACTION_NAMESPACE};
+use crate::projection::action::{MarmotAction, MarmotActionModule};
+use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
+use nmp_core::substrate::ActionPayload;
 
 // ── ADR-0025 retirement / dispatch_action → MarmotProtocolCommand ───────
 //
@@ -14,17 +16,33 @@ use crate::projection::action::{MarmotActionModule, MARMOT_ACTION_NAMESPACE};
 //      (`MarmotHandle::dispatch` / direct `ops::dispatch`) share ONE
 //      `MarmotProjection` — a dispatch through the generic path mutates
 //      state visible to a subsequent read through the Rust-native path.
-//      This is the property the ADR-0025 PR 3 deletion relied on, and the
+//      This was the property the ADR-0025 PR 3 deletion relied on, and the
 //      property a future second Marmot host (post-Chirp) must continue to
 //      satisfy.
 
-fn dispatch_marmot_action(app: *mut nmp_ffi::NmpApp, envelope_json: &str) -> String {
-    let namespace_c = CString::new(MARMOT_ACTION_NAMESPACE).unwrap();
-    let envelope_c = CString::new(envelope_json).unwrap();
-    let out_ptr = nmp_ffi::nmp_app_dispatch_action(app, namespace_c.as_ptr(), envelope_c.as_ptr());
+/// Dispatch a Marmot action through the ADR-0064 byte doorway.
+///
+/// Parses `action_json` into a [`MarmotAction`], encodes it as FlatBuffers
+/// payload, wraps it in a `DispatchEnvelope`, and calls
+/// [`nmp_ffi::nmp_app_dispatch_action_bytes`]. Returns the host-minted
+/// `correlation_id` (32 hex chars from the first half of a fresh nostr key).
+fn dispatch_marmot_action(app: *mut nmp_ffi::NmpApp, action_json: &str) -> String {
+    // Host-mint a 32-char hex correlation_id (first 32 chars of a 64-char pubkey hex).
+    let correlation_id = nostr::Keys::generate().public_key().to_hex();
+    let correlation_id = &correlation_id[..32];
+
+    // Parse + encode the action as FlatBuffers payload.
+    let action: MarmotAction = serde_json::from_str(action_json)
+        .unwrap_or_else(|e| panic!("test action_json must deserialize to MarmotAction: {e}"));
+    let payload = action.encode();
+
+    // Wrap in the DispatchEnvelope and dispatch through the byte doorway.
+    let envelope =
+        encode_dispatch_envelope(correlation_id, MarmotAction::SCHEMA_ID, DISPATCH_ENVELOPE_SCHEMA_VERSION, &payload);
+    let out_ptr = nmp_ffi::nmp_app_dispatch_action_bytes(app, envelope.as_ptr(), envelope.len());
     assert!(
         !out_ptr.is_null(),
-        "dispatch_action must return a non-null envelope (D6)"
+        "dispatch_action_bytes must return a non-null result (D6)"
     );
     // SAFETY: the dispatcher returns a freshly-allocated NUL-terminated
     // string the caller must release via `nmp_free_string`.
@@ -33,17 +51,20 @@ fn dispatch_marmot_action(app: *mut nmp_ffi::NmpApp, envelope_json: &str) -> Str
         .into_owned();
     nmp_ffi::nmp_free_string(out_ptr);
     let parsed: serde_json::Value = serde_json::from_str(&out)
-        .unwrap_or_else(|e| panic!("dispatch return must be valid JSON; got `{out}`: {e}"));
-    let id = parsed
+        .unwrap_or_else(|e| panic!("dispatch result must be valid JSON; got `{out}`: {e}"));
+    assert!(
+        parsed.get("error").is_none(),
+        "dispatch_action_bytes must not return an error; got: {out}"
+    );
+    let echoed_id = parsed
         .get("correlation_id")
         .and_then(|v| v.as_str())
-        .unwrap_or_else(|| panic!("dispatch envelope must carry a correlation_id; got: {out}"));
+        .unwrap_or_else(|| panic!("dispatch result must echo correlation_id; got: {out}"));
     assert_eq!(
-        id.len(),
-        32,
-        "correlation_id must be 32 hex chars; got: {id}"
+        echoed_id, correlation_id,
+        "byte doorway must echo back the host-supplied correlation_id"
     );
-    id.to_string()
+    echoed_id.to_string()
 }
 
 fn wait_for_projection_state<T>(

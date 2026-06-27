@@ -11,7 +11,7 @@
 //! [`ProtocolCommandContextParts`] bundles six typed capability traits so the
 //! constructor takes one named-field struct instead of positional args:
 //! [`KernelClock`] (D7 wall-clock), [`LocalSignerAccess`] (local key +
-//! active-pubkey), [`DmInboxLookup`] (kind:10050 relays), [`ErrorSurface`]
+//! active-pubkey), [`DmInboxRelayLookup`] (kind:10050 relays), [`ErrorSurface`]
 //! (D6 toast/failure), [`ActionStageTracker`] (`Requested` stage write),
 //! [`RecipientRelayLookup`] (V-07 NIP-65 outbox via the kernel router).
 //! D11: one public production constructor ([`ProtocolCommandContext::new`]);
@@ -46,7 +46,7 @@ pub use command_error::ProtocolCommandError;
 #[path = "protocol/capabilities.rs"]
 mod capabilities;
 pub use capabilities::{
-    ActionStageTracker, DmInboxLookup, ErrorSurface, HostOpHandlerAccess, KernelClock,
+    ActionStageTracker, DmInboxRelayLookup, ErrorSurface, HostOpHandlerAccess, KernelClock,
     LocalSignerAccess, NoopActionStageTracker, NoopErrorSurface, NoopHostOpHandlerAccess,
     NoopKernelClock, NoopLocalSignerAccess, NoopRecipientRelayLookup, NoopWalletKernelAccess,
     NoopZapProfileLookup, RecipientRelayLookup, WalletKernelAccess, ZapProfileLookup,
@@ -71,7 +71,7 @@ pub struct ProtocolCommandContextParts<'a> {
     pub command_sender: crate::actor::CommandSender,
     pub clock: &'a dyn KernelClock,
     pub signers: &'a dyn LocalSignerAccess,
-    pub dms: &'a dyn DmInboxLookup,
+    pub dms: &'a dyn DmInboxRelayLookup,
     pub errors: &'a dyn ErrorSurface,
     pub stages: &'a dyn ActionStageTracker,
     pub recipients: &'a dyn RecipientRelayLookup,
@@ -86,7 +86,7 @@ pub struct ProtocolCommandContextParts<'a> {
 /// Per-command runtime affordances handed to [`ProtocolCommand::run`].
 ///
 /// Exposes 6 typed capability traits ([`KernelClock`], [`LocalSignerAccess`],
-/// [`DmInboxLookup`], [`ErrorSurface`], [`ActionStageTracker`],
+/// [`DmInboxRelayLookup`], [`ErrorSurface`], [`ActionStageTracker`],
 /// [`RecipientRelayLookup`]) plus 2 channel sinks ([`send`](Self::send) and
 /// [`command_sender_clone`](Self::command_sender_clone)). Construction
 /// goes through a single named-field [`ProtocolCommandContextParts`]
@@ -103,7 +103,7 @@ pub struct ProtocolCommandContext<'a> {
     command_sender: crate::actor::CommandSender,
     clock: &'a dyn KernelClock,
     signers: &'a dyn LocalSignerAccess,
-    dms: &'a dyn DmInboxLookup,
+    dms: &'a dyn DmInboxRelayLookup,
     errors: &'a dyn ErrorSurface,
     stages: &'a dyn ActionStageTracker,
     recipients: &'a dyn RecipientRelayLookup,

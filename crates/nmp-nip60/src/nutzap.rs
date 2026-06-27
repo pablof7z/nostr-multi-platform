@@ -27,7 +27,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::cashu::types::Proof;
 use crate::error::Nip60Error;
-use crate::kinds::{KIND_NUTZAP, KIND_NUTZAP_INFO};
+use crate::kinds::{KIND_NIP61_NUTZAP, KIND_NIP61_NUTZAP_INFO};
 
 // ─── NutZap info event (kind:10019) ───────────────────────────────────────
 
@@ -55,7 +55,7 @@ pub fn build_nutzap_info_event(info: &NutZapInfo, _keys: &Keys) -> Result<EventB
     if let Some(ref pk) = info.cashu_pubkey {
         tags.push(Tag::custom(TagKind::custom("pubkey"), [pk.as_str()]));
     }
-    Ok(EventBuilder::new(Kind::from(KIND_NUTZAP_INFO as u16), "").tags(tags))
+    Ok(EventBuilder::new(Kind::from(KIND_NIP61_NUTZAP_INFO as u16), "").tags(tags))
 }
 
 /// Decode a kind:10019 event into [`NutZapInfo`].
@@ -195,7 +195,7 @@ pub fn build_nutzap_event(
     }
 
     let content = comment.unwrap_or("").to_string();
-    Ok(EventBuilder::new(Kind::from(KIND_NUTZAP as u16), content).tags(tags))
+    Ok(EventBuilder::new(Kind::from(KIND_NIP61_NUTZAP as u16), content).tags(tags))
 }
 
 /// Decoded nutzap received by a user.

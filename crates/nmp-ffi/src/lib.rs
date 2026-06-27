@@ -134,11 +134,6 @@ pub use action::{
     nmp_app_ack_action_stage, nmp_app_dispatch_action_bytes,
     nmp_app_register_action_result_observer,
 };
-// Test-support shim: re-export the deleted JSON doorway for integration tests
-// in sibling crates that have not yet been migrated to the typed byte path.
-// Never compiled into production binaries (only under test-support feature).
-#[cfg(feature = "test-support")]
-pub use action::nmp_app_dispatch_action;
 #[cfg(feature = "native")]
 pub use capability::{nmp_app_dispatch_capability, nmp_app_set_capability_callback};
 #[cfg(feature = "native")]
@@ -148,17 +143,17 @@ pub use feed::nmp_app_load_older_feed;
 #[cfg(feature = "native")]
 pub use feed::{
     decode_and_validate_feed_params, validate_feed_params, FeedAdmission, FeedHandle, FeedParams,
-    FeedParamsDecodeError, FeedParamsError, FeedRanking, FeedRender, FeedScope, FeedSessionId,
+    FeedParamsDecodeError, FeedRanking, FeedRender, FeedScope, FeedSessionId,
     FeedWindow, ProjectionKey, PubkeySetExpr,
 };
 #[cfg(feature = "native")]
-pub use feed_session::{
-    handle_projection_key, FeedCompileOutput, FeedCompiler, FeedOpenError, FeedTeardown,
-};
+pub use feed_session::{handle_projection_key, FeedCompiler, FeedOpenError, FeedTeardown};
+#[cfg(feature = "native")]
+pub use nmp_feed::FeedSessionBuild;
 #[cfg(feature = "native")]
 pub use free::nmp_free_string;
 #[cfg(feature = "native")]
-pub use observed_projection_handle::ObservedProjectionHandle;
+pub use nmp_core::substrate::ObservedProjectionCommandHandle;
 // #2088 — the NIP-29 per-open read-view opaque handle (group discovery). The
 // `open_group_*` / `close_group_*` methods are inherent `NmpApp` methods reached
 // through the `NmpApp` type itself; only the handle type needs hoisting so the

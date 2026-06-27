@@ -10,7 +10,6 @@ use nmp_planner::interest::bounded_search_query;
 use nmp_planner::InterestShape;
 use serde::{Deserialize, Serialize};
 
-pub use nmp_kinds::KIND_LONG_FORM_ARTICLE as KIND_LONG_FORM;
 pub const DEFAULT_MAX_SEARCH_HITS: usize = 200;
 pub const HARD_MAX_SEARCH_HITS: usize = 500;
 

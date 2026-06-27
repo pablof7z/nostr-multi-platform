@@ -40,13 +40,9 @@ pub trait LocalSignerAccess {
     fn active_account_pubkey(&self) -> Option<String>;
 }
 
-/// NIP-17 kind:10050 DM-inbox relay reads — substrate-generic. Re-uses
-/// the existing [`crate::substrate::DmInboxRelayLookup`] trait (the same
-/// seam the planner's kernel-side `MailboxCache` adapter consults). The
-/// concrete cache lives in `nmp-nip17::DmRelayCache`; this re-export
-/// keeps the capability-trait surface consistent (one name for the
-/// DM-inbox lookup contract across the substrate).
-pub use crate::substrate::DmInboxRelayLookup as DmInboxLookup;
+/// NIP-17 kind:10050 DM-inbox relay reads — substrate-generic.
+/// The concrete cache lives in `nmp-nip17::DmRelayCache`.
+pub use crate::substrate::DmInboxRelayLookup;
 
 /// D6 observable error surfaces — the `last_error_toast` projection and
 /// the `Failed` terminal action-stage recorder. NIP commands fire these

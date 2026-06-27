@@ -34,7 +34,7 @@ fn text_note(keys: &Keys, created_at: u64, content: &str) -> Event {
 
 fn picture_event(keys: &Keys, created_at: u64, content: &str) -> Event {
     let draft = nmp_nip68::PicturePost::new(
-        nmp_nip68::ImageMeta::new("https://cdn.example/matrix.jpg")
+        nmp_nip68::MediaMeta::new("https://cdn.example/matrix.jpg")
             .mime("image/jpeg")
             .dimensions(640, 480),
     )

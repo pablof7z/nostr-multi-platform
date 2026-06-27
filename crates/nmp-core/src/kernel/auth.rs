@@ -30,10 +30,7 @@ use std::sync::Arc;
 /// T77: the AUTH/OK frame parsers + shapes now live in the dependency-free
 /// `nmp-nip42-types` substrate crate, shared verbatim with `nmp-nip42` (no
 /// Cargo cycle — the types crate depends on nothing in the workspace).
-/// `OkFrame` is retained as an alias for `AuthOk` so the kernel FSM's
-/// `on_ok_frame(&OkFrame)` signature and the `OkFrame { .. }` test
-/// constructors are unchanged.
-pub(crate) use nmp_nip42_types::{parse_ok_frame, AuthOk as OkFrame};
+pub(crate) use nmp_nip42_types::{parse_ok_frame, AuthOk};
 
 /// Synchronous signer callback. The actor / iOS layer adapts
 /// `nmp_signers::AccountManager::signer_active()` to this signature at kernel
@@ -180,7 +177,7 @@ impl AuthDriverState {
     /// Apply an OK frame correlated against the in-flight event id. Returns
     /// the new state when matched, or `None` when the OK is for some other
     /// event (publish OK, unrelated id).
-    pub fn on_ok_frame(&mut self, ok: &OkFrame) -> Option<RelayAuthState> {
+    pub fn on_ok_frame(&mut self, ok: &AuthOk) -> Option<RelayAuthState> {
         if self.pending_event_id.as_deref() != Some(ok.event_id.as_str()) {
             return None;
         }
@@ -234,13 +231,13 @@ mod tests {
         let mut d = AuthDriverState::new();
         d.on_auth_frame("c1".into());
         d.record_dispatch("evt1".into());
-        let unrelated = OkFrame {
+        let unrelated = AuthOk {
             event_id: "evt2".into(),
             accepted: true,
             reason: String::new(),
         };
         assert!(d.on_ok_frame(&unrelated).is_none(), "unrelated OK = no-op");
-        let auth_ok = OkFrame {
+        let auth_ok = AuthOk {
             event_id: "evt1".into(),
             accepted: true,
             reason: String::new(),
@@ -253,7 +250,7 @@ mod tests {
         let mut d = AuthDriverState::new();
         d.on_auth_frame("c1".into());
         d.record_dispatch("evt1".into());
-        let rejected = OkFrame {
+        let rejected = AuthOk {
             event_id: "evt1".into(),
             accepted: false,
             reason: "restricted".into(),

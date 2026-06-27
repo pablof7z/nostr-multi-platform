@@ -14,8 +14,6 @@ use nmp_kinds::KIND_NIP22_COMMENT;
 use nmp_signer_iface::UnsignedEvent;
 use serde::{Deserialize, Serialize};
 
-pub use nmp_kinds::KIND_NIP22_COMMENT as KIND_COMMENT;
-
 /// Input for `nmp.nip22.post_comment`.
 ///
 /// `root_tag_name` selects the uppercase root scope: `A` for an addressable

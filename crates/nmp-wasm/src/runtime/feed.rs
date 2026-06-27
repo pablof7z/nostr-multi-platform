@@ -21,13 +21,7 @@ use super::RawWasmAbiAdapter;
 // `nmp_nip18` transform, composed at this boundary (D0).
 use nmp_feed::{FeedAuthorRefs, FeedParams, FeedRenderSource};
 
-/// Typed error for the wasm-boundary `FeedParams` decode + validation
-/// (D6 — no panic; the wasm worker reports the variant, never throws).
-///
-/// This is the single canonical primary-kind validation error
-/// [`nmp_nip18::PrimaryKindError`] — the SAME owner the native FFI boundary and
-/// the perspective compiler use (D4 — no duplicated validator/error).
-pub use nmp_nip18::PrimaryKindError as FeedParamsError;
+pub use nmp_nip18::PrimaryKindError;
 
 /// Typed error for the wasm-boundary `FeedParams` decode + validation
 /// (D6 — no panic; the wasm worker reports the variant, never throws).
@@ -36,7 +30,7 @@ pub enum FeedParamsDecodeError {
     /// The JSON payload did not parse into a `FeedParams`.
     MalformedJson,
     /// The decoded params failed validation (e.g. wrapper/delete primary kind).
-    InvalidParams(FeedParamsError),
+    InvalidParams(PrimaryKindError),
 }
 
 /// Validate a [`FeedParams`] declaration's primary kinds and return the compiled
@@ -47,7 +41,7 @@ pub enum FeedParamsDecodeError {
 /// acquisition derivation) — the SAME owner native FFI uses.
 fn validate_feed_params(
     params: &FeedParams,
-) -> Result<std::collections::BTreeSet<u32>, FeedParamsError> {
+) -> Result<std::collections::BTreeSet<u32>, PrimaryKindError> {
     nmp_nip18::validate_primary_kinds(params.primary_kinds.iter().copied())
 }
 
@@ -153,13 +147,13 @@ mod feed_params_decode_tests {
         assert_eq!(
             decode_and_validate_feed_params(&params_json("[20, 16]")),
             Err(FeedParamsDecodeError::InvalidParams(
-                FeedParamsError::RepostWrapper { kind: 16 }
+                PrimaryKindError::RepostWrapper { kind: 16 }
             ))
         );
         assert_eq!(
             decode_and_validate_feed_params(&params_json("[1, 5]")),
             Err(FeedParamsDecodeError::InvalidParams(
-                FeedParamsError::DeleteKind
+                PrimaryKindError::DeleteKind
             ))
         );
     }

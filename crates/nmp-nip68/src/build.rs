@@ -5,14 +5,14 @@ use std::collections::BTreeSet;
 use nmp_signer_iface::UnsignedEvent;
 use serde::{Deserialize, Serialize};
 
-use crate::imeta::ImageMeta;
+use crate::imeta::MediaMeta;
 use crate::kinds::KIND_PICTURE_EVENT;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum PicturePostBuildError {
     MissingImage,
     EmptyImageUrl,
-    IncompleteImageMetadata { url: String },
+    IncompleteMediaMetadata { url: String },
     UnsupportedMime { mime: String },
 }
 
@@ -21,7 +21,7 @@ impl core::fmt::Display for PicturePostBuildError {
         match self {
             Self::MissingImage => write!(f, "NIP-68 picture event requires at least one image"),
             Self::EmptyImageUrl => write!(f, "NIP-68 image metadata requires a non-empty url"),
-            Self::IncompleteImageMetadata { url } => {
+            Self::IncompleteMediaMetadata { url } => {
                 write!(
                     f,
                     "NIP-68 imeta for {url} requires url plus at least one metadata field"
@@ -40,12 +40,12 @@ pub struct PicturePost;
 
 impl PicturePost {
     #[must_use]
-    pub fn new(image: ImageMeta) -> PicturePostBuilder {
+    pub fn new(image: MediaMeta) -> PicturePostBuilder {
         PicturePostBuilder::empty().image(image)
     }
 
     #[must_use]
-    pub fn with_images(images: Vec<ImageMeta>) -> PicturePostBuilder {
+    pub fn with_images(images: Vec<MediaMeta>) -> PicturePostBuilder {
         PicturePostBuilder {
             images,
             ..PicturePostBuilder::empty()
@@ -55,7 +55,7 @@ impl PicturePost {
 
 #[derive(Clone, Debug)]
 pub struct PicturePostBuilder {
-    images: Vec<ImageMeta>,
+    images: Vec<MediaMeta>,
     title: Option<String>,
     content: String,
     content_warning: Option<String>,
@@ -84,7 +84,7 @@ impl PicturePostBuilder {
     }
 
     #[must_use]
-    pub fn image(mut self, image: ImageMeta) -> Self {
+    pub fn image(mut self, image: MediaMeta) -> Self {
         self.images.push(image);
         self
     }
@@ -233,12 +233,12 @@ impl PicturePostDraft {
     }
 }
 
-fn validate_image(image: &ImageMeta) -> Result<(), PicturePostBuildError> {
+fn validate_image(image: &MediaMeta) -> Result<(), PicturePostBuildError> {
     if image.url.is_empty() {
         return Err(PicturePostBuildError::EmptyImageUrl);
     }
     if image.metadata_field_count() == 0 {
-        return Err(PicturePostBuildError::IncompleteImageMetadata {
+        return Err(PicturePostBuildError::IncompleteMediaMetadata {
             url: image.url.clone(),
         });
     }
@@ -250,7 +250,7 @@ fn validate_image(image: &ImageMeta) -> Result<(), PicturePostBuildError> {
     Ok(())
 }
 
-fn ordered_image_mimes(images: &[ImageMeta]) -> Vec<String> {
+fn ordered_image_mimes(images: &[MediaMeta]) -> Vec<String> {
     let mut seen = BTreeSet::new();
     images
         .iter()
@@ -259,7 +259,7 @@ fn ordered_image_mimes(images: &[ImageMeta]) -> Vec<String> {
         .collect()
 }
 
-fn ordered_image_hashes(images: &[ImageMeta]) -> Vec<String> {
+fn ordered_image_hashes(images: &[MediaMeta]) -> Vec<String> {
     let mut seen = BTreeSet::new();
     images
         .iter()

@@ -11,11 +11,9 @@ use nmp_core::substrate::ObservedProjectionCommandHandle;
 
 use crate::app_struct::NmpApp;
 
-pub type ObservedProjectionHandle = ObservedProjectionCommandHandle;
-
 impl NmpApp {
     #[must_use]
-    pub fn observed_projection_handle(&self) -> ObservedProjectionHandle {
+    pub fn observed_projection_handle(&self) -> ObservedProjectionCommandHandle {
         ObservedProjectionCommandHandle::new(
             Arc::clone(&self.event_observers),
             Arc::clone(&self.observed_projection_sessions),

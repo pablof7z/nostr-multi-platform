@@ -150,7 +150,7 @@ pub use nmp_store::{DomainMigration, MigrationTx};
 pub use placeholder::{picture_placeholder, Placeholder};
 pub use protocol::{
     build_nip44_decrypt_for_account, build_nip44_encrypt_for_account, build_record_action_failure,
-    build_record_action_success, build_sign_event_for_account, ActionStageTracker, DmInboxLookup,
+    build_record_action_success, build_sign_event_for_account, ActionStageTracker,
     ErrorSurface, HostOpHandlerAccess, KernelClock, LocalSignerAccess, NoopActionStageTracker,
     NoopErrorSurface, NoopHostOpHandlerAccess, NoopKernelClock, NoopLocalSignerAccess,
     NoopRecipientRelayLookup, NoopWalletKernelAccess, NoopZapProfileLookup, ProtocolCommand,

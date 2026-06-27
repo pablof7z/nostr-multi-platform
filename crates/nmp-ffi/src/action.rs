@@ -199,11 +199,10 @@ pub extern "C" fn nmp_app_register_action_result_observer(
     });
 }
 
-/// Pure (FFI-free) core of the (now-deleted) `nmp_app_dispatch_action`:
-/// validate the action against the registry, drive its execution through the
-/// actor, and return the JSON result string. Retained as a test utility so
-/// existing unit tests that exercise the JSON dispatch logic do not need to
-/// be rewritten for the byte doorway (ADR-0064 / Cut-B, #1756).
+/// Pure (FFI-free) core of the action dispatch logic: validate the action
+/// against the registry, drive its execution through the actor, and return
+/// the JSON result string. Used by nmp-ffi action tests that exercise the
+/// JSON dispatch logic without going through the byte doorway.
 #[cfg(any(test, feature = "test-support"))]
 pub(super) fn dispatch_action_json(
     app: Option<&NmpApp>,
@@ -226,12 +225,6 @@ pub(super) fn dispatch_action_json(
         .start(&mut ctx, dispatch_now_ms, namespace, action_json)
     {
         Ok(correlation_id) => {
-            // `start()` validated the action and minted the correlation id.
-            // Drive execution and turn the outcome into the JSON result. The
-            // execute closure is the JSON-twin (`execute_action`); the
-            // post-mint outcome handling is shared with the byte doorway via
-            // `finish_dispatch` so both paths report acceptance / failure
-            // identically (#1676 BUG-A/B/C).
             finish_dispatch(
                 app,
                 &correlation_id,
@@ -240,64 +233,6 @@ pub(super) fn dispatch_action_json(
         }
         Err(rejection) => rejection_json(rejection),
     }
-}
-
-/// Test-only C-ABI compatibility shim for the deleted `nmp_app_dispatch_action`
-/// JSON doorway. Wraps [`dispatch_action_json`] with the original C signature.
-///
-/// ADR-0064 / Cut-B (#1756): the production symbol is deleted; this shim exists
-/// exclusively under `test-support` and is never emitted in a release binary
-/// (the S10 drift gate in `action/s10_gates_tests.rs` statically forbids it from
-/// ever becoming a `#[no_mangle] pub extern "C"` symbol).
-///
-/// #1996 — the practical test callers have been migrated to the typed
-/// [`nmp_app_dispatch_action_bytes`] byte doorway (`nmp-nip02`, `nmp-blossom`,
-/// `nmp-nip29`, the `nmp-testing` zap E2E harnesses), and the `nmp-defaults`
-/// registration probe now reads `registered_action_namespaces()` directly. The
-/// SOLE remaining justified test-only caller is the `nmp-marmot`
-/// `dispatch_action_tests` suite. Marmot now implements `decode_payload` (PR
-/// #2179, `crates/nmp-marmot/src/projection/action.rs:393`); migration of these
-/// tests to the byte doorway is tracked separately. This shim therefore stays —
-/// as a clearly test-only seam that cannot be confused with the binding
-/// production transport (which is bytes-only).
-///
-/// # Safety
-/// `app` may be null (D6: returns `{"error":"…"}` envelope). If non-null it
-/// must be a valid live `NmpApp`. `namespace` and `action_json` must be valid
-/// NUL-terminated UTF-8 C strings.
-#[cfg(feature = "test-support")]
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub fn nmp_app_dispatch_action(
-    app: *mut NmpApp,
-    namespace: *const std::ffi::c_char,
-    action_json: *const std::ffi::c_char,
-) -> *mut std::ffi::c_char {
-    let namespace = if namespace.is_null() {
-        String::new()
-    } else {
-        unsafe { std::ffi::CStr::from_ptr(namespace) }
-            .to_string_lossy()
-            .into_owned()
-    };
-    let action_json = if action_json.is_null() {
-        String::new()
-    } else {
-        unsafe { std::ffi::CStr::from_ptr(action_json) }
-            .to_string_lossy()
-            .into_owned()
-    };
-    let app_ref = if app.is_null() {
-        None
-    } else {
-        Some(unsafe { &*app })
-    };
-    let result = dispatch_action_json(app_ref, &namespace, &action_json);
-    std::ffi::CString::new(result)
-        .unwrap_or_else(|_| {
-            std::ffi::CString::new(r#"{"error":"dispatch result encoding failed"}"#)
-                .unwrap_or_default()
-        })
-        .into_raw()
 }
 
 /// Shared post-mint outcome handling for the byte ([`bytes::nmp_app_dispatch_action_bytes`])
@@ -317,7 +252,7 @@ pub fn nmp_app_dispatch_action(
 ///   the SOLE terminal. Record a `Failed { reason }` so the host spinner keyed
 ///   on the id resolves, and return BOTH id and error so the host can ACK +
 ///   toast.
-fn finish_dispatch(
+pub(super) fn finish_dispatch(
     app: &NmpApp,
     correlation_id: &str,
     outcome: Result<(), nmp_core::__ffi_internal::ActionExecuteFailure>,
@@ -349,15 +284,7 @@ fn finish_dispatch(
     }
 }
 
-/// Drive the validated action toward execution via the registry's executor
-/// map. Each module registers its own executor in
-/// [`nmp_core::__ffi_internal::default_registry`]; this function delegates without
-/// naming any module directly (D0).
-///
-/// `correlation_id` is the registry-minted action id the caller will return
-/// to the host. It is forwarded to the executor so an `ActorCommand` whose
-/// terminal verdict must carry this id (the `PublishRaw` path) can be built
-/// with it.
+/// Drive the validated action toward execution via the registry's executor map.
 #[cfg(any(test, feature = "test-support"))]
 fn execute_action(
     app: &NmpApp,

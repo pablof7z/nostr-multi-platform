@@ -9,7 +9,7 @@ use nostr::{EventBuilder, EventId, Keys, Kind, PublicKey, SecretKey};
 
 use crate::cashu::types::Proof;
 use crate::error::Nip60Error;
-use crate::kinds::KIND_TOKEN;
+use crate::kinds::KIND_NIP60_TOKEN;
 
 /// Decrypted content of a kind:7375 token event.
 #[derive(Debug, Clone)]
@@ -54,7 +54,7 @@ pub fn build_token_event(record: &TokenRecord, keys: &Keys) -> Result<EventBuild
         nip44::encrypt(keys.secret_key(), &keys.public_key(), json, nip44::Version::V2)
             .map_err(|e| Nip60Error::Nip44(format!("{e}")))?;
 
-    Ok(EventBuilder::new(Kind::from(KIND_TOKEN as u16), content))
+    Ok(EventBuilder::new(Kind::from(KIND_NIP60_TOKEN as u16), content))
 }
 
 // ─── Decode ────────────────────────────────────────────────────────────────

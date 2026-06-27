@@ -26,7 +26,7 @@ fn parses_full_imeta_tag() {
     assert_eq!(parsed.sha256.as_deref(), Some("abc123"));
     assert_eq!(
         parsed.dimensions,
-        Some(ImageDimensions {
+        Some(MediaDimensions {
             width: 3024,
             height: 4032
         })
@@ -56,7 +56,7 @@ fn rejects_non_image_mime_when_present() {
 
 #[test]
 fn imeta_tag_round_trips_ordered_fields() {
-    let image = ImageMeta::new("https://cdn.example/a.webp")
+    let image = MediaMeta::new("https://cdn.example/a.webp")
         .sha256("abc")
         .mime("image/webp")
         .dimensions(640, 480)
