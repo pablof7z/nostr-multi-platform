@@ -388,6 +388,27 @@ public enum GeneratedActionBuilders {
         )
     }
 
+    /// Hydrate a DM peer's NIP-17 relay list (kind:10050).
+    /// Builds the `nmp.nip17.hydrate_peer_relay_list` `DispatchEnvelope` bytes for the byte doorway.
+    public static func hydrateDmPeerRelayList(
+        correlationId: String,
+        peerPubkey: String
+    ) -> [UInt8] {
+        var fbb = FlatBufferBuilder()
+        let peerPubkeyOffset = fbb.create(string: peerPubkey)
+        let payloadStart = fbb.startTable(with: 2)
+        fbb.add(element: UInt32(1), def: UInt32(0), at: 4) // slot 0: schema_version
+        fbb.add(offset: peerPubkeyOffset, at: 6) // slot 1: peerPubkey
+        let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))
+        fbb.finish(offset: payloadRoot, fileId: "N17H")
+        let payload = fbb.sizedByteArray
+        return encodeDispatchEnvelope(
+            correlationId: correlationId,
+            actionNamespace: "nmp.nip17.hydrate_peer_relay_list",
+            payload: payload
+        )
+    }
+
     /// Publish a NIP-65 relay-list metadata event (kind:10002).
     /// Builds the `nmp.nip65.publish_relay_list` `DispatchEnvelope` bytes for the byte doorway.
     public static func publishRelayList(

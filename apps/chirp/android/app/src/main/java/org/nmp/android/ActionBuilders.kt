@@ -399,6 +399,27 @@ object GeneratedActionBuilders {
         )
     }
 
+    /// Hydrate a DM peer's NIP-17 relay list (kind:10050).
+    /// Builds the `nmp.nip17.hydrate_peer_relay_list` `DispatchEnvelope` bytes for the byte doorway.
+    fun hydrateDmPeerRelayList(
+        correlationId: String,
+        peerPubkey: String,
+    ): ByteArray {
+        val fbb = FlatBufferBuilder()
+        val peerPubkeyOffset = fbb.createString(peerPubkey)
+        fbb.startTable(2)
+        fbb.addInt(0, 1, 0) // slot 0: schema_version
+        fbb.addOffset(1, peerPubkeyOffset, 0) // slot 1: peerPubkey
+        val payloadRoot = fbb.endTable()
+        fbb.finish(payloadRoot, "N17H")
+        val payload = fbb.sizedByteArray()
+        return encodeDispatchEnvelope(
+            correlationId = correlationId,
+            actionNamespace = "nmp.nip17.hydrate_peer_relay_list",
+            payload = payload,
+        )
+    }
+
     /// Publish a NIP-65 relay-list metadata event (kind:10002).
     /// Builds the `nmp.nip65.publish_relay_list` `DispatchEnvelope` bytes for the byte doorway.
     fun publishRelayList(

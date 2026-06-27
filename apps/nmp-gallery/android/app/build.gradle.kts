@@ -47,7 +47,7 @@ android {
     // `--features android-ffi` is REQUIRED — it enables the `Java_org_nmp_gallery_*`
     // JNI exports. Verify after building:
     //   nm -D src/main/jniLibs/arm64-v8a/libnmp_app_gallery.so \
-    //       | grep -c Java_org_nmp_gallery   # must be 14
+    //       | grep Java_org_nmp_gallery_bridge_KernelBridge_nativeNew
     sourceSets["main"].jniLibs.srcDirs("src/main/jniLibs")
 
     // Kotlin sources live in `src/main/kotlin` rather than `src/main/java`.

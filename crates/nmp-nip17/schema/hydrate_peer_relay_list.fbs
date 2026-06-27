@@ -1,0 +1,11 @@
+namespace nmp.nip17;
+
+// Typed payload for `nmp.nip17.hydrate_peer_relay_list`.
+// The host names the visible DM peer; Rust owns the kind:10050 interest shape.
+table HydratePeerRelayListPayload {
+  schema_version:uint;
+  peer_pubkey:string (required);
+}
+
+file_identifier "N17H";
+root_type HydratePeerRelayListPayload;

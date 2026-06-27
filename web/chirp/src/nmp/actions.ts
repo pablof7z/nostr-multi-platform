@@ -369,7 +369,21 @@ export function openTagCommand(tag: string): RuntimeCommand {
 }
 
 export function sendDmCommand(recipientPubkey: string, content: string): RuntimeCommand {
-  return unsupportedCommand("nmp.nip17.send", { recipient_pubkey: recipientPubkey, content });
+  return {
+    kind: "dispatch_bytes",
+    actionType: "nmp.nip17.send",
+    buildDispatchBytes: (correlationId) =>
+      GeneratedActionBuilders.sendDm(correlationId, recipientPubkey, content, null),
+  };
+}
+
+export function hydrateDmPeerRelayListCommand(peerPubkey: string): RuntimeCommand {
+  return {
+    kind: "dispatch_bytes",
+    actionType: "nmp.nip17.hydrate_peer_relay_list",
+    buildDispatchBytes: (correlationId) =>
+      GeneratedActionBuilders.hydrateDmPeerRelayList(correlationId, peerPubkey),
+  };
 }
 
 export function outboxCommand(action: "retry" | "cancel", handle: string): RuntimeCommand {

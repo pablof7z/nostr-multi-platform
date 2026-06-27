@@ -272,6 +272,7 @@ mod composition_seams;
 mod composition_seams_browser; // PR-B (#2046) AppHost seams factored out for LOC ceiling
 mod feed_verbs;
 mod follow;
+mod protocol_apply;
 mod react;
 mod refs;
 mod relay_lifecycle;
@@ -319,6 +320,10 @@ mod command_apply_tests;
 #[cfg(test)]
 #[path = "kernel_reducer/command_apply_publish_tests.rs"]
 mod command_apply_publish_tests;
+
+#[cfg(test)]
+#[path = "kernel_reducer/command_apply_publish_timestamp_tests.rs"]
+mod command_apply_publish_timestamp_tests;
 
 #[cfg(test)]
 #[path = "kernel_reducer/command_apply_contacts_tests.rs"]

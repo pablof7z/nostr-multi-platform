@@ -62,6 +62,7 @@
 //!
 //! <https://github.com/nostr-protocol/nips/blob/master/17.md>
 
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use nmp_core::slots::ActiveAccountSlot;
@@ -69,7 +70,9 @@ use nmp_core::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 use nmp_core::substrate::{IngestParser, ViewDependencies};
 use nmp_core::{CommandSender, KindFilter};
 use nmp_nip59::KIND_GIFT_WRAP;
-use nmp_planner::{InterestId, InterestLifecycle, InterestScope, LogicalInterest, PTagRouting};
+use nmp_planner::{
+    InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest, PTagRouting,
+};
 use nmp_store::VerifiedEvent;
 use nostr::{Event, JsonUtil};
 use serde::{Deserialize, Serialize};
@@ -406,6 +409,46 @@ pub fn active_giftwrap_inbox_interest(pubkey: &str) -> LogicalInterest {
     );
     interest.shape.p_tag_routing = PTagRouting::Nip17DmRelays;
     interest
+}
+
+/// Scoped registry identity for a peer's kind:10050 DM relay-list fetch.
+///
+/// The owner is shared by the DM runtime and the key is peer-specific, so a
+/// conversation list can add/drop individual peer relay-list interests without
+/// disturbing the active-account inbox subscription.
+#[must_use]
+pub fn peer_dm_relay_list_identity(pubkey: &str) -> SubIdentity {
+    SubIdentity::new(
+        SubOwnerKey::new("nip17.dm_relay_list.peers"),
+        SubKey::builder("nip17.dm_relay_list.peer")
+            .with(pubkey)
+            .finish(),
+        SubScope::Global,
+    )
+}
+
+/// One-shot interest that hydrates a peer's NIP-17 kind:10050 DM relay list.
+///
+/// Outbound NIP-17 sends resolve the recipient's DM inbox relays from the
+/// Rust-owned kind:10050 cache. This interest is how the runtime fetches that
+/// cache entry for peers visible in the inbox; it never hands relay choice to
+/// the host shell.
+#[must_use]
+pub fn peer_dm_relay_list_interest(pubkey: &str) -> LogicalInterest {
+    let identity = peer_dm_relay_list_identity(pubkey);
+    LogicalInterest {
+        id: InterestId(identity.key.0),
+        scope: InterestScope::Global,
+        shape: InterestShape {
+            authors: BTreeSet::from([pubkey.to_string()]),
+            kinds: BTreeSet::from([10050]),
+            limit: Some(1),
+            ..Default::default()
+        },
+        hints: Vec::new(),
+        lifecycle: InterestLifecycle::OneShot,
+        is_indexer_discovery: true,
+    }
 }
 
 #[path = "inbox/store.rs"]

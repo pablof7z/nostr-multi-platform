@@ -214,6 +214,16 @@ pub const ACTION_BUILDERS: &[ActionBuilder] = &[
         }],
         doc: "Publish a NIP-17 DM relay list (kind:10050).",
     },
+    ActionBuilder {
+        namespace: "nmp.nip17.hydrate_peer_relay_list",
+        method: "hydrateDmPeerRelayList",
+        fields: &[PayloadField {
+            name: "peerPubkey",
+            kind: FieldKind::Str,
+            optional: false,
+        }],
+        doc: "Hydrate a DM peer's NIP-17 relay list (kind:10050).",
+    },
     // nip65 — outbox relay list (publish_relay_list.fbs).
     ActionBuilder {
         namespace: "nmp.nip65.publish_relay_list",

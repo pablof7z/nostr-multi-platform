@@ -27,7 +27,7 @@
 
 pub use nmp_core::publish::PublishAction;
 pub use nmp_nip02::{FollowManyAction, PubkeyAction};
-pub use nmp_nip17::{PublishDmRelayListInput, SendDmInput};
+pub use nmp_nip17::{HydratePeerRelayListInput, PublishDmRelayListInput, SendDmInput};
 pub use nmp_nip18::{QuoteRepostAction, RepostAction};
 pub use nmp_nip22::PostCommentAction;
 pub use nmp_nip25::{ReactAction, UnreactAction};

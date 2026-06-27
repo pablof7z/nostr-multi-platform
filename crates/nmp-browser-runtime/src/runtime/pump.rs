@@ -26,11 +26,11 @@ use std::collections::HashMap;
 use std::sync::mpsc::{Receiver, TryRecvError};
 
 use nmp_core::actor::{ActorCommand, ActorMail, SignCommand};
-use nmp_core::{CommandApplyOutcome, KernelReducer, OutboundMessage};
+use nmp_core::{CommandApplyOutcome, CommandSender, KernelReducer, OutboundMessage};
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 use nmp_signers::PublicKey;
 
 use super::event::BrowserRuntimeEvent;
-use super::protocol::expand_protocol_commands;
 use super::PendingSignedPublish;
 use crate::relay::WakeCell;
 use crate::signer::{broker_sign_request, CapabilityProviderRegistry, SignerCompletionTx};
@@ -72,6 +72,7 @@ pub(super) fn drain_inbox(
     registry: &CapabilityProviderRegistry,
     completion_tx: &SignerCompletionTx,
     wake: &WakeCell,
+    command_sender: &CommandSender,
 ) -> DrainOutcome {
     let mut outbound: Vec<OutboundMessage> = Vec::new();
     let mut events: Vec<BrowserRuntimeEvent> = Vec::new();
@@ -99,13 +100,15 @@ pub(super) fn drain_inbox(
         };
 
         applied += 1;
-        let commands = match expand_protocol_commands(vec![cmd]) {
-            Ok(commands) => commands,
-            Err(reason) => {
-                events.push(BrowserRuntimeEvent::CommandFailed { reason });
-                continue;
-            }
-        };
+        let (commands, protocol_outbound) =
+            match reducer.expand_protocol_commands(vec![cmd], command_sender.clone()) {
+                Ok(expanded) => expanded,
+                Err(reason) => {
+                    events.push(BrowserRuntimeEvent::CommandFailed { reason });
+                    continue;
+                }
+            };
+        outbound.extend(protocol_outbound);
         for cmd in commands {
             let Some(cmd) = apply_browser_cipher_command(reducer, registry, cmd) else {
                 continue;
@@ -170,15 +173,33 @@ fn apply_browser_cipher_command(
     command: ActorCommand,
 ) -> Option<ActorCommand> {
     match command {
+        ActorCommand::Sign(SignCommand::EventForAccount {
+            unsigned,
+            signer_pubkey,
+            continuation,
+        }) => {
+            let result = resolve_signer_pubkey(reducer, signer_pubkey, "browser sign")
+                .and_then(|account| run_sign_event(registry, &account, unsigned));
+            continuation.call(result);
+            None
+        }
         ActorCommand::Sign(SignCommand::Nip44EncryptForAccount {
             peer_pubkey,
             plaintext,
             signer_pubkey,
             continuation,
         }) => {
-            let result = resolve_signer_pubkey(reducer, signer_pubkey).and_then(|account| {
-                run_nip44_cipher(registry, &account, &peer_pubkey, &plaintext, CipherMode::Encrypt)
-            });
+            let result = resolve_signer_pubkey(reducer, signer_pubkey, "browser nip44").and_then(
+                |account| {
+                    run_nip44_cipher(
+                        registry,
+                        &account,
+                        &peer_pubkey,
+                        &plaintext,
+                        CipherMode::Encrypt,
+                    )
+                },
+            );
             continuation.call(result);
             None
         }
@@ -188,9 +209,17 @@ fn apply_browser_cipher_command(
             signer_pubkey,
             continuation,
         }) => {
-            let result = resolve_signer_pubkey(reducer, signer_pubkey).and_then(|account| {
-                run_nip44_cipher(registry, &account, &peer_pubkey, &ciphertext, CipherMode::Decrypt)
-            });
+            let result = resolve_signer_pubkey(reducer, signer_pubkey, "browser nip44").and_then(
+                |account| {
+                    run_nip44_cipher(
+                        registry,
+                        &account,
+                        &peer_pubkey,
+                        &ciphertext,
+                        CipherMode::Decrypt,
+                    )
+                },
+            );
             continuation.call(result);
             None
         }
@@ -201,6 +230,7 @@ fn apply_browser_cipher_command(
 fn resolve_signer_pubkey(
     reducer: &KernelReducer,
     signer_pubkey: Option<String>,
+    operation: &str,
 ) -> Result<String, String> {
     if let Some(pubkey) = signer_pubkey {
         return Ok(pubkey);
@@ -208,9 +238,25 @@ fn resolve_signer_pubkey(
     reducer
         .active_account_handle()
         .lock()
-        .map_err(|_| "browser nip44: active account lock poisoned".to_string())?
+        .map_err(|_| format!("{operation}: active account lock poisoned"))?
         .clone()
-        .ok_or_else(|| "browser nip44: no active account".to_string())
+        .ok_or_else(|| format!("{operation}: no active account"))
+}
+
+fn run_sign_event(
+    registry: &CapabilityProviderRegistry,
+    account_pubkey: &str,
+    unsigned: UnsignedEvent,
+) -> Result<SignedEvent, String> {
+    let entry = registry
+        .resolve(account_pubkey)
+        .ok_or_else(|| format!("browser sign: no signer for account {account_pubkey}"))?;
+    let mut op = entry.signer.sign(unsigned);
+    match op.poll() {
+        Some(Ok(signed)) => Ok(signed),
+        Some(Err(error)) => Err(error.to_string()),
+        None => Err("browser sign: pending signer providers are not wired yet".to_string()),
+    }
 }
 
 enum CipherMode {

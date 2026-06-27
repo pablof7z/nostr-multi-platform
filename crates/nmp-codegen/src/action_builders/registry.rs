@@ -1,26 +1,10 @@
 //! ADR-0064 §3 (#1783) — the action-builder registry: the single source of
 //! truth describing every generated typed write builder.
 //!
-//! ## What this models
-//!
-//! Each [`ActionBuilder`] describes ONE app-facing typed write method
-//! (`client.react(...)`, `client.follow(...)`, …): its GENERATED
-//! `action_namespace` (the open-registry routing key — ADR-0064 §2, never
-//! hand-written by app code) and the FlatBuffers payload table field shape. The
-//! neutral namespace/schema/file-id facts live in
-//! [`crate::action_contract::ACTION_CONTRACT`] so registration, public payload
-//! exposure, and generated builders share one source.
-//!
-//! The Swift/Kotlin emitters ([`crate::action_builders::swift`] /
-//! [`crate::action_builders::kotlin`]) read this slice and emit, per builder, a
-//! typed method that:
-//!
-//! 1. encodes the per-crate FlatBuffers payload table (field order = the order
-//!    declared here, which MUST match the `.fbs` table) directly via the
-//!    FlatBuffers runtime builder — no flatc-generated payload class needed; and
-//! 2. stamps `(namespace, DISPATCH_ENVELOPE_SCHEMA_VERSION, payload)` into a
-//!    `DispatchEnvelope` and returns the finished bytes for the one byte doorway
-//!    `nmp_app_dispatch_action_bytes` (#1752).
+//! Each [`ActionBuilder`] describes one app-facing typed write method and its
+//! FlatBuffers payload table shape. The neutral namespace/schema/file-id facts
+//! live in [`crate::action_contract::ACTION_CONTRACT`] so registration, public
+//! payload exposure, and generated builders share one source.
 //!
 //! ## Why the registry lives in `nmp-codegen` (D0 exemption)
 //!
@@ -140,7 +124,6 @@ mod table;
 pub use table::ACTION_BUILDERS;
 
 // ── nmp.publish — the UNION-bodied builders (ADR-0064 §3) ────────────────────
-//
 // `nmp.publish` is the namespace EVERY second-app consumer (hl / tenex-off /
 // podcast, iOS + Android) actually writes through, so the typed builders don't
 // unblock those migrations without it. Unlike the flat tables above, the
@@ -210,7 +193,6 @@ pub enum BodyShape {
     PublishReply,
 }
 
-/// The `nmp.publish` builders. See [`PublishBuilder`].
 pub const PUBLISH_BUILDERS: &[PublishBuilder] = &[
     PublishBuilder {
         method: "publishRaw",

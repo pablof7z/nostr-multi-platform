@@ -20,7 +20,8 @@
 //! `Interests(OpenInterest)`, `Interests(OpenObservedInterest)`,
 //! `Interests(CloseInterest)`,
 //! `Relay(SetRelayInfo)`, `Lifecycle(MarkChangedSinceEmit)`,
-//! `Publish(SignedEvent)`.
+//! `Publish(SignedEvent)`, `ActionLedger(RecordFailure|RecordSuccess)`,
+//! `ShowToast`, `ShowErrorToken`, `EnqueueOutbound`.
 //!
 //! **Group B → `NeedsSign`:**
 //! `Publish(UnsignedEvent)`, `Publish(RawEvent)`, `Publish(Reply)`,
@@ -65,7 +66,8 @@ impl super::KernelReducer {
     /// See the [module docs](self) for the full handled/unhandled set.
     pub fn apply_actor_command(&mut self, command: ActorCommand) -> CommandApplyOutcome {
         use crate::actor::{
-            ContactsCommand, InterestsCommand, LifecycleCommand, PublishCommand, RelayCommand,
+            ActionLedgerCommand, ContactsCommand, InterestsCommand, LifecycleCommand,
+            PublishCommand, RelayCommand,
         };
         use CommandApplyOutcome::{Applied, NeedsSign, Unsupported};
 
@@ -186,6 +188,47 @@ impl super::KernelReducer {
                 Applied(outbound)
             }
 
+            // ActionLedger terminals are part of the protocol-continuation
+            // surface. NIP-17 gift-wrap failures enqueue these from continuation
+            // closures after the initial `ProtocolCommand` has returned.
+            ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure {
+                correlation_id,
+                reason,
+            }) => {
+                self.kernel.record_action_failure(correlation_id, reason);
+                Applied(Vec::new())
+            }
+            ActorCommand::ActionLedger(ActionLedgerCommand::RecordSuccess {
+                correlation_id,
+                result_json,
+            }) => {
+                self.kernel
+                    .record_action_success(correlation_id, result_json);
+                Applied(Vec::new())
+            }
+            ActorCommand::ActionLedger(ActionLedgerCommand::Ack(correlation_id)) => {
+                self.kernel.ack_action_stage(&correlation_id);
+                Applied(Vec::new())
+            }
+
+            ActorCommand::ShowToast { message } => {
+                self.kernel.set_last_error_toast(Some(message));
+                Applied(Vec::new())
+            }
+            ActorCommand::ShowErrorToken { token } => {
+                self.kernel.set_last_error_token(&token);
+                Applied(Vec::new())
+            }
+            ActorCommand::EnqueueOutbound {
+                relay_url,
+                text,
+                role,
+            } => Applied(vec![OutboundMessage {
+                relay_url,
+                text,
+                role,
+            }]),
+
             // ── Group B: NeedsSign (async sign round-trip required) ──────────
 
             // UnsignedEvent: build unsigned JSON, begin sign round-trip.
@@ -199,12 +242,17 @@ impl super::KernelReducer {
                         reason: "no active account for UnsignedEvent sign round-trip".to_string(),
                     };
                 };
+                let created_at = if event.created_at == 0 {
+                    self.now_secs()
+                } else {
+                    event.created_at
+                };
                 let unsigned_json = serde_json::json!({
                     "pubkey": account_pubkey,
                     "kind": event.kind,
                     "tags": event.tags,
                     "content": event.content,
-                    "created_at": event.created_at,
+                    "created_at": created_at,
                 })
                 .to_string();
                 match self.begin_sign_roundtrip_at(

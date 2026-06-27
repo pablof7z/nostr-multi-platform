@@ -49,7 +49,6 @@ use std::sync::mpsc;
 
 mod embed_sidecar;
 mod event;
-mod protocol;
 pub(crate) mod pump;
 mod signer_delivery;
 // Pub(crate) kernel-op helpers for the wasm entry point (#2038 item A).
@@ -206,6 +205,7 @@ impl BrowserRuntime {
             &self.signer_registry,
             &self.signer_completion_tx,
             &wake,
+            &cmd_sender,
         );
 
         // ── 1.5. Drain sign completions (bounded — same budget as cmd drain) ───
@@ -253,6 +253,17 @@ impl BrowserRuntime {
             &self.signer_registry,
             &self.signer_completion_tx,
             &wake,
+            &cmd_sender,
+        );
+
+        let post_completion_cmd_drain = pump::drain_inbox(
+            &mut self.reducer,
+            &self.inbox_rx,
+            &mut self.pending_signed_publishes,
+            &self.signer_registry,
+            &self.signer_completion_tx,
+            &wake,
+            &cmd_sender,
         );
 
         // ── 3. Relay idle-tick sweep ──────────────────────────────────────────
@@ -273,6 +284,7 @@ impl BrowserRuntime {
         all_outbound.extend(completion_outbound);
         all_outbound.extend(relay_drain.outbound);
         all_outbound.extend(post_relay_cmd_drain.outbound);
+        all_outbound.extend(post_completion_cmd_drain.outbound);
         all_outbound.extend(idle_outbound);
         all_outbound.extend(tick_outbound);
 
@@ -285,16 +297,23 @@ impl BrowserRuntime {
         events.extend(completion_events);
         events.extend(relay_drain.events);
         events.extend(post_relay_cmd_drain.events);
+        events.extend(post_completion_cmd_drain.events);
         let budget_events = self.relay_pool.fan_out_outbound(&all_outbound);
         events.extend(budget_events);
+
+        let yielded = cmd_drain.yielded
+            || relay_drain.yielded
+            || post_relay_cmd_drain.yielded
+            || post_completion_cmd_drain.yielded
+            || completion_yielded;
+        if yielded {
+            crate::relay::fire_wake(&wake);
+        }
 
         PumpOutcome {
             outbound: all_outbound,
             events,
-            yielded: cmd_drain.yielded
-                || relay_drain.yielded
-                || post_relay_cmd_drain.yielded
-                || completion_yielded,
+            yielded,
         }
     }
 

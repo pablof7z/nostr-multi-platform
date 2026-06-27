@@ -15,7 +15,7 @@ use std::sync::mpsc::{channel, Receiver};
 use std::sync::{Arc, Mutex};
 
 use nmp_core::actor::ActorCommand;
-use nmp_core::actor::SignCommand;
+use nmp_core::actor::{InterestsCommand, SignCommand};
 use nmp_core::substrate::IngestParser;
 use nmp_core::{ActorMail, CommandSender};
 use nmp_store::{RawEvent, VerifiedEvent};
@@ -69,6 +69,13 @@ fn drive_decrypts(rx: &Receiver<ActorMail>, decryptor: &Decryptor) -> usize {
             }) => {
                 processed += 1;
                 continuation.call(decryptor.decrypt(&peer_pubkey, &ciphertext));
+            }
+            ActorCommand::Interests(InterestsCommand::EnsureInterest { interest, .. })
+                if interest.shape.kinds.contains(&10050) =>
+            {
+                // Successful DM decrypts now hydrate the authenticated peer's
+                // NIP-17 relay list so outbound replies can route without
+                // shell-side policy.
             }
             // The chain only ever emits decrypts; anything else is unexpected.
             other => panic!("unexpected command on the inbox port chain: {other:?}"),

@@ -74,7 +74,9 @@ pub mod kind10050_parser;
 pub mod ui_codes;
 pub mod wire;
 
-pub use action::{SendDmAction, SendDmInput};
+pub use action::{
+    HydratePeerRelayListAction, HydratePeerRelayListInput, SendDmAction, SendDmInput,
+};
 pub use dm_relay_cache::DmRelayCache;
 pub use dm_relay_list::{
     build_dm_relay_list_event, PublishDmRelayListAction, PublishDmRelayListInput,
@@ -83,8 +85,8 @@ pub use dm_runtime::{DmRuntimeEffect, DmRuntimeState};
 pub use dm_send::SendGiftWrappedDmCommand;
 pub use inbox::{
     active_giftwrap_inbox_identity, active_giftwrap_inbox_interest,
-    active_giftwrap_inbox_interest_id, DmConversation, DmInboxProjection, DmInboxSnapshot,
-    DmMessage,
+    active_giftwrap_inbox_interest_id, peer_dm_relay_list_identity, peer_dm_relay_list_interest,
+    DmConversation, DmInboxProjection, DmInboxSnapshot, DmMessage,
 };
 pub use kind10050_parser::Kind10050Parser;
 pub use wire::dm_inbox_fb::{
@@ -159,8 +161,9 @@ pub fn build_dm_rumor(input: &DmInput) -> UnsignedEvent {
 
 /// Register every NIP-17 substrate seam against `app`:
 ///
-/// 1. The two [`nmp_core::substrate::ActionModule`] verbs
-///    (`nmp.nip17.send` and `nmp.nip17.publish_relay_list`).
+/// 1. The [`nmp_core::substrate::ActionModule`] verbs
+///    (`nmp.nip17.send`, peer relay-list hydration, and
+///    `nmp.nip17.publish_relay_list`).
 /// 2. The kind:10050 [`Kind10050Parser`] (V-40) — wired into the
 ///    kernel's [`nmp_core::substrate::EventIngestDispatcher`] so an
 ///    accepted kind:10050 writes the `DmRelayCache`.
@@ -181,6 +184,7 @@ pub fn register_actions(
     // Yielding defaults (ADR-0049 Part 1): an app may pre-empt either DM action
     // module regardless of call order.
     app.register_default_action(SendDmAction);
+    app.register_default_action(HydratePeerRelayListAction);
     app.register_default_action(PublishDmRelayListAction);
 
     // V-40 — install the shared `DmRelayCache` on both ends:

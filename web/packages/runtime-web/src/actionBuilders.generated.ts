@@ -306,6 +306,22 @@ export const GeneratedActionBuilders = {
     return encodeDispatchEnvelope(correlationId, "nmp.nip17.publish_relay_list", payload);
   },
 
+  /** Hydrate a DM peer's NIP-17 relay list (kind:10050). */
+  hydrateDmPeerRelayList(
+    correlationId: string,
+    peerPubkey: string,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const peerPubkeyOffset = fbb.createString(peerPubkey);
+    fbb.startObject(2);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldOffset(1, peerPubkeyOffset, 0); // slot 1: peerPubkey
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "N17H");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.nip17.hydrate_peer_relay_list", payload);
+  },
+
   /** Publish a NIP-65 relay-list metadata event (kind:10002). */
   publishRelayList(
     correlationId: string,
