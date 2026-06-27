@@ -250,7 +250,7 @@ fn group(rest: &str, runtime: &AppRuntime) -> Result<CommandResult, String> {
         "open" => {
             let (relay, id) = first_word(args);
             require(id, "group open <relay-url> <local-id>")?;
-            runtime.register_group_timeline(relay, id)?;
+            runtime.register_group_events(relay, id)?;
             Ok(status(format!("group chat registered for {id}")))
         }
         "join" => {

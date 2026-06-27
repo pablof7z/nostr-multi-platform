@@ -30,8 +30,8 @@ pub(crate) enum WorkerRequest {
     SearchClose(SearchClose),
     GroupDiscoveryOpen(GroupDiscoveryOpen),
     GroupDiscoveryClose(GroupDiscoveryClose),
-    GroupTimelineOpen(GroupTimelineOpen),
-    GroupTimelineClose(GroupTimelineClose),
+    GroupEventsOpen(GroupEventsOpen),
+    GroupEventsClose(GroupEventsClose),
     NotificationsOpen(NotificationsOpen),
     NotificationsClose(NotificationsClose),
     NotificationsMarkRead(NotificationsMarkRead),
@@ -183,15 +183,19 @@ pub(crate) struct GroupDiscoveryClose {
 }
 
 #[derive(Debug, Deserialize)]
-pub(crate) struct GroupTimelineOpen {
+pub(crate) struct GroupEventsOpen {
     pub session_id: String,
     pub relay_url: String,
     pub group_id: String,
+    /// Consumer-declared kind selection (issue #2187). Empty = all h-tagged
+    /// group events; a chat view sends `[9, 11]`. NIP-29 owns only the
+    /// `["h", local_id]` routing; the consumer picks the kinds.
+    pub kinds: Vec<u32>,
     pub correlation_id: String,
 }
 
 #[derive(Debug, Deserialize)]
-pub(crate) struct GroupTimelineClose {
+pub(crate) struct GroupEventsClose {
     pub session_id: String,
     pub correlation_id: String,
 }

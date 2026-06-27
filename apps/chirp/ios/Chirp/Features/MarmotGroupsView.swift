@@ -208,7 +208,7 @@ private func marmotInitErrorMessage(_ kind: String) -> String? {
 //
 // Subtitle uses # prefix to signal public/unencrypted without protocol terms.
 // `initials` is the avatar-tile label — V-29 (thin-shell): the derivation
-// lives in Rust (`nmp_nip29::projection::group_timeline::group_initials`) and
+// lives in Rust (`nmp_nip29::projection::group_events::group_initials`) and
 // surfaces on every snapshot tick as `GroupChatStore.groupInitials`. The
 // caller threads it in; this row binds it verbatim and never slices the
 // local-id string itself.

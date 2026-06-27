@@ -108,7 +108,7 @@ final class ProjectionMergeCache {
         case "action_stages": return TypedActionStagesDecoder.decode(bytes: bytes) != nil
         case "action_lifecycle": return TypedActionLifecycleDecoder.decode(bytes: bytes) != nil
         case "profile": return TypedProfileDecoder.decode(bytes: bytes) != nil
-        case "nmp.nip29.group_timeline": return TypedGroupTimelineDecoder.decode(bytes: bytes) != nil
+        case "nmp.nip29.group_events": return TypedGroupEventsDecoder.decode(bytes: bytes) != nil
         case "nmp.nip17.dm_inbox": return TypedDmInboxDecoder.decode(bytes: bytes) != nil
         case "nmp.follow_list": return TypedFollowListDecoder.decode(bytes: bytes) != nil
         case "nmp.nip29.discovered_groups": return TypedDiscoveredGroupsDecoder.decode(bytes: bytes) != nil

@@ -74,7 +74,7 @@ fn all_dotted_keys_are_present() {
     // not a JSON `SnapshotProjections` field, so it has no `XCTAssertNotNil`
     // in the Swift conformance test, but it IS a dotted registry key.
     let expected = [
-        "nmp.nip29.group_timeline",
+        "nmp.nip29.group_events",
         "nmp.nip29.discovered_groups",
         "nmp.nip29.group_defaults",
         "nmp.nip17.dm_inbox",

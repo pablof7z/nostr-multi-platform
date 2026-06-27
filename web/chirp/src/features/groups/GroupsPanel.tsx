@@ -5,9 +5,9 @@ import {
 } from "../../chirpConfig";
 import { decodeGroupDiscoveryFrame, type DiscoveredGroupRow } from "../../nmp/groupDecoder";
 import {
-  decodeGroupTimelineFrame,
-  type GroupTimelineRow,
-} from "../../nmp/groupTimelineDecoder";
+  decodeGroupEventsFrame,
+  type GroupEventsRow,
+} from "../../nmp/groupEventsDecoder";
 import { useNmpClient } from "../../nmp/context";
 import { blockedWorkspaceCommand } from "../../nmp/actions";
 import "./groups.css";
@@ -22,7 +22,7 @@ export function GroupsPanel() {
   const [opening, setOpening] = createSignal(false);
   const [rows, setRows] = createSignal<DiscoveredGroupRow[]>([]);
   const [selectedGroup, setSelectedGroup] = createSignal<DiscoveredGroupRow | null>(null);
-  const [timelineRows, setTimelineRows] = createSignal<GroupTimelineRow[]>([]);
+  const [timelineRows, setTimelineRows] = createSignal<GroupEventsRow[]>([]);
   const [timelineOpening, setTimelineOpening] = createSignal(false);
   const [lastCapability, setLastCapability] = createSignal<string | null>(null);
   const [busyCapability, setBusyCapability] = createSignal<string | null>(null);
@@ -34,7 +34,7 @@ export function GroupsPanel() {
     if (frame) setRows(frame.rows);
   });
 
-  const decodedTimelineFrame = createMemo(() => decodeGroupTimelineFrame(snapshot().latestUpdateBytes));
+  const decodedTimelineFrame = createMemo(() => decodeGroupEventsFrame(snapshot().latestUpdateBytes));
   createEffect(() => {
     const frame = decodedTimelineFrame();
     if (frame) setTimelineRows(frame.rows);
@@ -52,7 +52,7 @@ export function GroupsPanel() {
 
   onCleanup(() => {
     void client.closeGroupDiscovery(SESSION_ID);
-    void client.closeGroupTimeline(TIMELINE_SESSION_ID);
+    void client.closeGroupEvents(TIMELINE_SESSION_ID);
   });
 
   const relayLabel = () => relayUrl.replace(/^wss?:\/\//, "");
@@ -73,10 +73,13 @@ export function GroupsPanel() {
     setTimelineRows([]);
     setTimelineOpening(true);
     try {
-      await client.openGroupTimeline({
+      await client.openGroupEvents({
         sessionId: TIMELINE_SESSION_ID,
         relayUrl: row.hostRelayUrl,
         groupId: row.groupId,
+        // Chat view: kinds 9 (chat) + 11 (thread) — the consumer declares the
+        // kind set; NIP-29 owns only the `#h` routing (issue #2187).
+        kinds: [9, 11],
       });
     } finally {
       setTimelineOpening(false);
@@ -214,7 +217,7 @@ function GroupCard(props: {
 function GroupTimelinePanel(props: {
   group: DiscoveredGroupRow;
   opening: boolean;
-  rows: GroupTimelineRow[];
+  rows: GroupEventsRow[];
 }) {
   const relay = () => props.group.hostRelayUrl.replace(/^wss?:\/\//, "");
   const title = () => props.group.name || props.group.groupId;

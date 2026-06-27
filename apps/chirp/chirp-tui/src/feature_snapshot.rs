@@ -95,7 +95,7 @@ impl FeatureSnapshot {
             configured_relays: configured_relays_from(projections),
             wallet: wallet_from(projections.get("wallet")),
             dm_conversations: dm_from(projections),
-            group_messages: messages_from(projection(projections, "nmp.nip29.group_timeline")),
+            group_messages: messages_from(projection(projections, "nmp.nip29.group_events")),
             discovered_groups: groups_from(projections),
             follow_count: follow_count_from(projections),
             settings_hub: settings_hub_from(projections.get("settings_hub")),

@@ -77,17 +77,20 @@ export type WorkerRequest =
       session_id: string;
       correlation_id: string;
     }
-  /** NIP-29 selected group timeline. The worker owns the relay-pinned `#h`
-   *  interest and emits `nmp.nip29.group_timeline` (`NGTL`) in snapshots. */
+  /** NIP-29 selected group events view. The worker owns the relay-pinned `#h`
+   *  interest and emits `nmp.nip29.group_events` (`NGEV`) in snapshots. NIP-29
+   *  owns only the `["h", local_id]` routing (issue #2187); the consumer
+   *  declares the `kinds` (empty = all; a chat view sends `[9, 11]`). */
   | {
-      type: "group_timeline_open";
+      type: "group_events_open";
       session_id: string;
       relay_url: string;
       group_id: string;
+      kinds: number[];
       correlation_id: string;
     }
   | {
-      type: "group_timeline_close";
+      type: "group_events_close";
       session_id: string;
       correlation_id: string;
     }

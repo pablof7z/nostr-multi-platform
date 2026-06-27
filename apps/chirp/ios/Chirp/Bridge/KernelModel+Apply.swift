@@ -97,7 +97,7 @@ extension KernelModel {
         if ck.contains(TypedActionLifecycleDecoder.key) { typedActionLifecycle = result.typedActionLifecycle }
         // V6 Stage 4 (Wave B Tier-1 #4): app-projection typed slots.
         if ck.contains(TypedFollowListDecoder.key) { typedFollowList = result.typedFollowList }
-        if ck.contains(TypedGroupTimelineDecoder.key) { typedGroupChat = result.typedGroupChat }
+        if ck.contains(TypedGroupEventsDecoder.key) { typedGroupChat = result.typedGroupChat }
         if ck.contains(TypedDiscoveredGroupsDecoder.key) { typedDiscoveredGroups = result.typedDiscoveredGroups }
         if ck.contains(TypedGroupDefaultsDecoder.key) { typedGroupDefaults = result.typedGroupDefaults }
         // ADR-0063 Lane E (#1671): profile slots are NOT mirrored into
@@ -163,7 +163,7 @@ extension KernelModel {
         // NIP-29 + NIP-17 stores — pushed every tick so their lazy init fires
         // on the first snapshot (registering the read projections in the
         // process). Rust owns the DM inbox interest lifecycle.
-        // The typed `NGTL` sidecar is the sole source — the SAME value the
+        // The typed `NGEV` sidecar is the sole source — the SAME value the
         // `typedGroupChat` slot holds, so the store never diverges from the UI.
         groupChat.apply(snapshot: result.typedGroupChat)
         // NIP-17 DM cluster: the typed `NDMI` sidecar is the sole source.

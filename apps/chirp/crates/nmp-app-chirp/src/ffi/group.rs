@@ -17,40 +17,62 @@ use std::ffi::c_char;
 
 use nmp_ffi::{GroupFeedHandle, NmpApp};
 use nmp_nip29::group_id::GroupId;
+use serde::Deserialize;
 
 use super::helpers::c_string_opt;
 
-/// Open a NIP-29 group-chat read view for one group into `app`.
+/// The C-ABI request shape for [`nmp_app_chirp_register_group_events`].
 ///
-/// This is **pure consumption** — the read-side of a group-chat screen. It
-/// constructs a `GroupTimelineProjection` scoped to the supplied group and routes
-/// its ingest through the hydrating observed-interest door
-/// ([`NmpApp::open_group_timeline`]): a screen opened AFTER the group's kind:9/11
-/// events were already cached now catches up on the cached tail (#2088), then
-/// tails live. Its snapshot surfaces under `"nmp.nip29.group_timeline"` (`NGTL`).
+/// NIP-29 owns only the `["h", local_id]` routing (issue #2187); the CONSUMER
+/// declares both the group AND which kinds it wants. `kinds` is **required**:
+/// a missing field is a deserialize error (rejected), so an old `GroupId`-only
+/// payload cannot silently widen into a broad all-kinds read. An **empty**
+/// `kinds` array means "all h-tagged group events".
+#[derive(Deserialize)]
+struct GroupEventsRequest {
+    /// The target group `{host_relay_url, local_id}`.
+    group: GroupId,
+    /// The consumer's kind selection. Empty = all; missing = invalid.
+    kinds: Vec<u32>,
+}
+
+/// Open a NIP-29 group-events read view for one group + kind set into `app`.
 ///
-/// `group_id_json` is a JSON object naming the target group:
+/// This is **pure consumption** — the read-side of a group screen. It
+/// constructs a `GroupEventsProjection` scoped to the supplied group and kind
+/// set, and routes its ingest through the hydrating observed-interest door
+/// ([`NmpApp::open_group_events`]): a screen opened AFTER the group's events
+/// were already cached now catches up on the cached tail (#2088), then tails
+/// live. Its snapshot surfaces under `"nmp.nip29.group_events"` (`NGEV`).
+///
+/// `request_json` is a JSON object naming the target group AND the kinds the
+/// consumer wants (a chat view passes `[9, 11]`):
 ///
 /// ```json
-/// {"host_relay_url":"wss://groups.example.com","local_id":"room"}
+/// {"group":{"host_relay_url":"wss://groups.example.com","local_id":"room"},"kinds":[9,11]}
 /// ```
 ///
-/// D6 — fire-and-forget. A null `app`, a null/invalid-UTF-8 `group_id_json`, or
-/// a JSON shape that does not deserialize to a [`GroupId`] degrades to a silent
-/// return — nothing is registered and no error crosses the FFI.
+/// **Empty `kinds` = all h-tagged group events. A missing `kinds` field is
+/// invalid** and rejected (prevents an old `GroupId`-only payload silently
+/// becoming a broad read).
 ///
-/// SCOPE — singleton: a subsequent call replaces the prior group-chat view
+/// D6 — fire-and-forget. A null `app`, a null/invalid-UTF-8 `request_json`, or
+/// a JSON shape that does not deserialize to a [`GroupEventsRequest`] (including
+/// a missing `kinds`) degrades to a silent return — nothing is registered and
+/// no error crosses the FFI.
+///
+/// SCOPE — singleton: a subsequent call replaces the prior group-events view
 /// (the prior hydrating session is closed first, leak-free). Because the view
 /// now holds a relay interest, the companion
-/// [`nmp_app_chirp_unregister_group_timeline`] tears it down when the screen is
+/// [`nmp_app_chirp_unregister_group_events`] tears it down when the screen is
 /// dismissed.
 ///
 /// `app` MUST outlive the call (it is only borrowed for its duration).
 #[no_mangle]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn nmp_app_chirp_register_group_timeline(
+pub extern "C" fn nmp_app_chirp_register_group_events(
     app: *mut NmpApp,
-    group_id_json: *const c_char,
+    request_json: *const c_char,
 ) {
     if app.is_null() {
         return;
@@ -59,35 +81,36 @@ pub extern "C" fn nmp_app_chirp_register_group_timeline(
     // live for the duration of this call. The borrow is not held past return.
     let app_ref = unsafe { &*app };
 
-    // Reject silently on a missing or malformed group id — D6. The JSON must
-    // deserialize to the typed `GroupId { host_relay_url, local_id }`.
-    let Some(raw) = c_string_opt(group_id_json) else {
+    // Reject silently on a missing or malformed request — D6. The JSON must
+    // deserialize to `{ group: GroupId, kinds: [u32] }`; a missing `kinds`
+    // field is a deserialize error and is rejected.
+    let Some(raw) = c_string_opt(request_json) else {
         return;
     };
-    let Ok(group_id) = serde_json::from_str::<GroupId>(&raw) else {
+    let Ok(request) = serde_json::from_str::<GroupEventsRequest>(&raw) else {
         return;
     };
 
     // Thin-shell rule: parse C string, delegate to the hydrating composer.
-    app_ref.open_group_timeline(group_id);
+    app_ref.open_group_events(request.group, request.kinds);
 }
 
-/// Tear down the NIP-29 group-chat read view opened by
-/// [`nmp_app_chirp_register_group_timeline`].
+/// Tear down the NIP-29 group-events read view opened by
+/// [`nmp_app_chirp_register_group_events`].
 ///
 /// Detaches the relay interest, revokes the observer, and removes the
-/// `"nmp.nip29.group_timeline"` typed snapshot projection so no stale chat log is
+/// `"nmp.nip29.group_events"` typed snapshot projection so no stale event log is
 /// emitted after the screen is dismissed. Idempotent — closing an unopened
 /// view is a harmless no-op. D6 — a null `app` is a silent no-op.
 #[no_mangle]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn nmp_app_chirp_unregister_group_timeline(app: *mut NmpApp) {
+pub extern "C" fn nmp_app_chirp_unregister_group_events(app: *mut NmpApp) {
     if app.is_null() {
         return;
     }
     // SAFETY: caller guarantees `app` is a valid pointer from `nmp_app_new`.
     let app_ref = unsafe { &*app };
-    app_ref.close_group_timeline();
+    app_ref.close_group_events();
 }
 
 /// Open a NIP-29 group-discovery session for one host relay.

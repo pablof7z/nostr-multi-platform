@@ -17,7 +17,7 @@
 //! read-cache replay door) so a late-opened view catches up. That composition
 //! must name `NmpApp`, which is the FFI host type `nmp-nip29` may not name
 //! (D0), so it cannot live in this crate. `nmp-nip29` contributes only the
-//! NmpApp-free filter-builders (`GroupId::chat_filter_json`,
+//! NmpApp-free filter-builders (`GroupEventsQuery::filter_json`,
 //! `group_metadata_filter_json`) the composer feeds to the open door.
 //!
 //! ## D0 compliance

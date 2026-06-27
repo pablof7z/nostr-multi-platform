@@ -20,8 +20,8 @@ import os.log
 //   • `registerGroupChat(groupId:)` wires a `GroupChatProjection` for one
 //     group into the kernel. It registers no handle and exports no
 //     `unregister` — the group's messages surface on every kernel snapshot
-//     under the `projections` key `"nmp.nip29.group_timeline"` (decoded by
-//     `SnapshotProjections.groupTimeline` in `KernelBridge.swift`).
+//     under the `projections` key `"nmp.nip29.group_events"` (decoded by
+//     `SnapshotProjections.groupEvents` in `KernelBridge.swift`).
 //   • Single-screen scope: per the FFI contract, calling it twice replaces
 //     the singleton observer. `GroupChatStore.registerOnce` guards against
 //     duplicate registration by the same store; `KernelModel` creates a new
@@ -61,26 +61,36 @@ struct GroupId: Hashable, Equatable {
 // ── KernelHandle NIP-29 group-chat extension (C-FFI surface) ──────────────
 
 extension KernelHandle {
-    /// Wire a NIP-29 `GroupTimelineProjection` for `groupId` into the kernel.
+    /// Wire a NIP-29 `GroupEventsProjection` for `groupId` into the kernel.
     ///
     /// Pure consumption — registers no handle. The group's chat messages
     /// then surface on every kernel snapshot under the `projections` key
-    /// `"nmp.nip29.group_timeline"`. D6: a JSON-encode failure degrades to a
+    /// `"nmp.nip29.group_events"`. D6: a JSON-encode failure degrades to a
     /// logged no-op; the Rust side likewise no-ops on a null / malformed
     /// argument.
+    ///
+    /// The request JSON wraps the group object under `"group"` and names the
+    /// event `"kinds"` the view consumes — Chirp's group chat reads kind:9
+    /// (chat) and kind:11 (thread root). `kinds` is required by the FFI
+    /// contract: an empty array would mean "all kinds", a missing array is
+    /// rejected.
     ///
     /// Single-screen scope: per the FFI contract, a second call replaces
     /// the singleton observer and overwrites the snapshot key. A store still
     /// registers only once; selecting a different group creates a new store.
     func registerGroupChat(groupId: GroupId) {
+        let request: [String: Any] = [
+            "group": groupId.jsonObject,
+            "kinds": [9, 11],
+        ]
         guard
-            let data = try? JSONSerialization.data(withJSONObject: groupId.jsonObject),
+            let data = try? JSONSerialization.data(withJSONObject: request),
             let json = String(data: data, encoding: .utf8)
         else {
-            gcLog.error("registerGroupChat: failed to encode GroupId JSON")
+            gcLog.error("registerGroupChat: failed to encode group-events request JSON")
             return
         }
-        json.withCString { nmp_app_chirp_register_group_timeline(raw, $0) }
+        json.withCString { nmp_app_chirp_register_group_events(raw, $0) }
         gcLog.info("registered NIP-29 group chat projection for \(groupId.localId, privacy: .public)")
     }
 
@@ -91,7 +101,7 @@ extension KernelHandle {
     /// and `["previous", …]` envelope tags, and signing are all owned by Rust
     /// (thin-shell rule). Fire-and-forget: the returned correlation JSON is freed
     /// and ignored — the published message surfaces through the next
-    /// `nip29.group_timeline` snapshot tick (matches the `react` / `follow` /
+    /// `nip29.group_events` snapshot tick (matches the `react` / `follow` /
     /// `publishNote` pattern).
     func postChatMessage(groupId: GroupId, content: String) {
         let payload: [String: Any] = [
@@ -188,7 +198,7 @@ extension KernelHandle {
 // ── GroupChatStore — projection mirror pushed by KernelModel.apply ────────
 
 /// `@MainActor` store backing `GroupChatView`. A pure mirror of the kernel's
-/// `nip29.group_timeline` projection plus a thin send wrapper — no Swift owns
+/// `nip29.group_events` projection plus a thin send wrapper — no Swift owns
 /// any chat state, ordering, or protocol decision (thin-shell rule).
 @MainActor
 final class GroupChatStore: ObservableObject {
@@ -196,15 +206,15 @@ final class GroupChatStore: ObservableObject {
     let groupId: GroupId
 
     /// Newest-first chat messages, mirrored verbatim from the kernel
-    /// projection. Ordering is owned by the Rust `GroupTimelineProjection`.
-    @Published private(set) var messages: [GroupTimelineEvent] = []
+    /// projection. Ordering is owned by the Rust `GroupEventsProjection`.
+    @Published private(set) var messages: [GroupEvent] = []
 
     /// Two-char uppercase avatar-tile label for `PublicGroupRow`. ADR-0032:
     /// derived locally from `GroupId::local_id` via `displayInitials`.
     var groupInitials: String { groupId.localId.displayInitials }
 
     private unowned let kernel: KernelHandle
-    /// Guards against a second `nmp_app_chirp_register_group_timeline` call —
+    /// Guards against a second `nmp_app_chirp_register_group_events` call —
     /// one store represents one selected group.
     private var registered = false
 
@@ -231,7 +241,7 @@ final class GroupChatStore: ObservableObject {
     /// leaves `messages` untouched; an empty array clears `messages`.
     /// ADR-0032: `groupInitials` is derived locally from `GroupId.localId`
     /// — it is no longer a kernel-emitted field.
-    func apply(snapshot: GroupTimelineSnapshot?) {
+    func apply(snapshot: GroupEventsSnapshot?) {
         guard let snapshot else { return }
         if snapshot.events != messages {
             messages = snapshot.events

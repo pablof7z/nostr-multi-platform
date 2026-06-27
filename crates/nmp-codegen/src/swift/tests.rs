@@ -284,8 +284,8 @@ fn post_convert_leaves_dots_opaque() {
     // `.` is NOT a separator for `.convertFromSnakeCase`; only `_` is.
     // The dotted host-registered keys camelise per segment.
     assert_eq!(
-        post_convert_from_snake_case("nmp.nip29.group_timeline"),
-        "nmp.nip29.groupTimeline"
+        post_convert_from_snake_case("nmp.nip29.group_events"),
+        "nmp.nip29.groupEvents"
     );
     assert_eq!(
         post_convert_from_snake_case("nmp.nip17.dm_inbox"),
@@ -319,7 +319,7 @@ fn post_convert_leaves_dots_opaque() {
 fn render_snapshot_projections_emits_one_field_and_one_case_per_entry() {
     // Three-entry hand-rolled registry covers the three case shapes:
     // single-word (`wallet`), snake_case → camelCase (`bunker_handshake`),
-    // and dotted (`nmp.nip29.group_timeline`).
+    // and dotted (`nmp.nip29.group_events`).
     let entries = vec![
         SnapshotProjectionEntry {
             key: "wallet",
@@ -334,9 +334,9 @@ fn render_snapshot_projections_emits_one_field_and_one_case_per_entry() {
             typed_sidecar: None,
         },
         SnapshotProjectionEntry {
-            key: "nmp.nip29.group_timeline",
-            swift_field: "groupTimeline",
-            swift_type: "GroupTimelineSnapshot",
+            key: "nmp.nip29.group_events",
+            swift_field: "groupEvents",
+            swift_type: "GroupEventsSnapshot",
             typed_sidecar: None,
         },
     ];
@@ -347,7 +347,7 @@ fn render_snapshot_projections_emits_one_field_and_one_case_per_entry() {
     assert!(out.contains("struct SnapshotProjections: Decodable, Equatable {"));
     assert!(out.contains("    let wallet: WalletStatusData?\n"));
     assert!(out.contains("    let bunkerHandshake: BunkerHandshake?\n"));
-    assert!(out.contains("    let groupTimeline: GroupTimelineSnapshot?\n"));
+    assert!(out.contains("    let groupEvents: GroupEventsSnapshot?\n"));
 
     // CodingKeys enum.
     assert!(out.contains("    enum CodingKeys: String, CodingKey {\n"));
@@ -360,9 +360,9 @@ fn render_snapshot_projections_emits_one_field_and_one_case_per_entry() {
         !out.contains("case bunkerHandshake = \"bunker_handshake\""),
         "snake_case keys whose camelCase post-transform matches the Swift field MUST not carry an explicit raw value"
     );
-    // `nmp.nip29.group_timeline`: post-transform `nmp.nip29.groupTimeline`
-    // differs from the Swift field `groupTimeline` → explicit raw value.
-    assert!(out.contains("        case groupTimeline = \"nmp.nip29.groupTimeline\"\n"));
+    // `nmp.nip29.group_events`: post-transform `nmp.nip29.groupEvents`
+    // differs from the Swift field `groupEvents` → explicit raw value.
+    assert!(out.contains("        case groupEvents = \"nmp.nip29.groupEvents\"\n"));
 }
 
 #[test]

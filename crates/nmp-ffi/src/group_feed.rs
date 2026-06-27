@@ -38,7 +38,7 @@
 //!
 //! ## Read-model parity
 //!
-//! The typed read-models (`GroupTimelineProjection` → `NGTL`,
+//! The typed read-models (`GroupEventsProjection` → `NGEV`,
 //! `DiscoveredGroupsProjection` → `NDGS`, `JoinedGroupsProjection` → `NJGS`)
 //! and their snapshot keys / payloads are BYTE-IDENTICAL to the prior
 //! `wire_*` registrations — only the ingest seam changed (bare-active →
@@ -57,11 +57,12 @@ use nmp_core::ObservedProjectionId;
 use nmp_feed::DEFAULT_FEED_WINDOW_LIMIT;
 use nmp_nip29::group_id::{group_metadata_filter_json, GroupId};
 use nmp_nip29::{
-    encode_discovered_groups_snapshot, encode_group_timeline_snapshot,
-    encode_joined_groups_snapshot, DiscoveredGroupsProjection, GroupTimelineProjection,
-    JoinedGroupsProjection, DISCOVERED_GROUPS_FILE_IDENTIFIER, DISCOVERED_GROUPS_SCHEMA_ID,
-    DISCOVERED_GROUPS_SCHEMA_VERSION, GROUP_TIMELINE_FILE_IDENTIFIER, GROUP_TIMELINE_SCHEMA_ID,
-    GROUP_TIMELINE_SCHEMA_VERSION, JOINED_GROUPS_FILE_IDENTIFIER, JOINED_GROUPS_SCHEMA_ID,
+    encode_discovered_groups_snapshot, encode_group_events_snapshot,
+    encode_joined_groups_snapshot, DiscoveredGroupsProjection, GroupEventsProjection,
+    GroupEventsQuery, JoinedGroupsProjection, DISCOVERED_GROUPS_FILE_IDENTIFIER,
+    DISCOVERED_GROUPS_SCHEMA_ID,
+    DISCOVERED_GROUPS_SCHEMA_VERSION, GROUP_EVENTS_FILE_IDENTIFIER, GROUP_EVENTS_SCHEMA_ID,
+    GROUP_EVENTS_SCHEMA_VERSION, JOINED_GROUPS_FILE_IDENTIFIER, JOINED_GROUPS_SCHEMA_ID,
     JOINED_GROUPS_SCHEMA_VERSION,
 };
 
@@ -75,14 +76,14 @@ const SCOPE_ACTIVE_ACCOUNT: u32 = 0;
 const SCOPE_GLOBAL: u32 = 1;
 
 /// Snapshot key + singleton session key for the group-chat view.
-const GROUP_TIMELINE_KEY: &str = "nmp.nip29.group_timeline";
+const GROUP_EVENTS_KEY: &str = "nmp.nip29.group_events";
 /// Snapshot key + singleton session key for the discovered-groups view.
 const DISCOVERED_GROUPS_KEY: &str = "nmp.nip29.discovered_groups";
 /// Snapshot key + singleton session key for the joined-groups view.
 const JOINED_GROUPS_KEY: &str = "nmp.nip29.joined_groups";
 
 /// Refcount-owner id for each (singleton) NIP-29 view's pinned interest.
-const GROUP_TIMELINE_CONSUMER: &str = "nip29-group-timeline";
+const GROUP_EVENTS_CONSUMER: &str = "nip29-group-events";
 const DISCOVERED_GROUPS_CONSUMER: &str = "nip29-discovered-groups";
 const JOINED_GROUPS_CONSUMER: &str = "nip29-joined-groups";
 
@@ -131,56 +132,68 @@ impl GroupFeedHandle {
 }
 
 impl NmpApp {
-    /// Open the NIP-29 group-chat read view for `group_id` (the reusable Rust
-    /// API; the Chirp C-ABI thin shell `nmp_app_chirp_register_group_timeline`
-    /// delegates here). Hydrating: a view opened after the group's kind:9/11
-    /// events were already cached catches them up (#2088), then tails live.
+    /// Open the NIP-29 group-events read view for `group_id` constrained to the
+    /// consumer-declared `kinds` (the reusable Rust API; the Chirp C-ABI thin
+    /// shell `nmp_app_chirp_register_group_events` delegates here). Hydrating: a
+    /// view opened after the group's events were already cached catches them up
+    /// (#2088), then tails live.
     ///
-    /// Singleton: re-opening replaces the prior group-chat view (idempotent at
+    /// `kinds` is the consumer's kind selection (issue #2187): NIP-29 owns only
+    /// the `["h", local_id]` routing; the caller chooses which kinds to read.
+    /// An **empty** `kinds` means "all h-tagged group events". A chat view passes
+    /// `[9, 11]`.
+    ///
+    /// Singleton: re-opening replaces the prior group-events view (idempotent at
     /// the registry level — the prior session is closed first, so navigating
     /// between groups never leaks the previous observer/interest).
-    pub fn open_group_timeline(&self, group_id: GroupId) {
-        let _ = self.open_group_timeline_with_reader(group_id);
+    pub fn open_group_events(&self, group_id: GroupId, kinds: Vec<u32>) {
+        let _ = self.open_group_events_with_reader(group_id, kinds);
     }
 
-    /// Open group timeline and return the canonical projection reader.
+    /// Open the group-events view and return the canonical projection reader.
     ///
     /// This is the Rust-side app-composition API for hosts that need to read
-    /// the selected chat directly. The returned [`GroupTimelineProjection`] is
+    /// the selected group directly. The returned [`GroupEventsProjection`] is
     /// the same `Arc` registered as the observed projection and used by the
-    /// `"nmp.nip29.group_timeline"` typed sidecar. Callers must not open a
-    /// second timeline observer just to render the selected chat; use this
+    /// `"nmp.nip29.group_events"` typed sidecar. Callers must not open a
+    /// second group-events observer just to render the selected group; use this
     /// reader and keep the sidecar, relay-pinned interest, and #2088 hydration
     /// single-owned by this door.
+    ///
+    /// The same [`GroupEventsQuery`] builds BOTH the relay-interest `filter_json`
+    /// and the projection's accept predicate, so the wire filter and the kind
+    /// gate can never diverge.
     #[must_use]
-    pub fn open_group_timeline_with_reader(
+    pub fn open_group_events_with_reader(
         &self,
         group_id: GroupId,
-    ) -> Arc<GroupTimelineProjection> {
-        let filter_json = group_id.chat_filter_json();
+        kinds: Vec<u32>,
+    ) -> Arc<GroupEventsProjection> {
         let relay_pin = Some(group_id.host_relay_url.clone());
-        let projection = Arc::new(GroupTimelineProjection::new(group_id));
+        let query = GroupEventsQuery::from_kinds(group_id, kinds);
+        let filter_json = query.filter_json();
+        let projection = Arc::new(GroupEventsProjection::new(query));
         let projection_reader = Arc::clone(&projection);
 
         let projection_for_sidecar = Arc::clone(&projection);
         let register_sidecar = move |app: &NmpApp| {
-            app.register_typed_snapshot_projection(GROUP_TIMELINE_KEY, move || {
+            app.register_typed_snapshot_projection(GROUP_EVENTS_KEY, move || {
                 let snapshot = projection_for_sidecar.snapshot();
                 Some(nmp_core::TypedProjectionData {
-                    key: GROUP_TIMELINE_KEY.to_string(),
-                    schema_id: GROUP_TIMELINE_SCHEMA_ID.to_string(),
-                    schema_version: GROUP_TIMELINE_SCHEMA_VERSION,
-                    file_identifier: String::from_utf8_lossy(GROUP_TIMELINE_FILE_IDENTIFIER)
+                    key: GROUP_EVENTS_KEY.to_string(),
+                    schema_id: GROUP_EVENTS_SCHEMA_ID.to_string(),
+                    schema_version: GROUP_EVENTS_SCHEMA_VERSION,
+                    file_identifier: String::from_utf8_lossy(GROUP_EVENTS_FILE_IDENTIFIER)
                         .into_owned(),
-                    payload: encode_group_timeline_snapshot(&snapshot),
+                    payload: encode_group_events_snapshot(&snapshot),
                     ..Default::default()
                 })
             });
         };
 
         self.open_group_feed(
-            GROUP_TIMELINE_KEY,
-            GROUP_TIMELINE_CONSUMER,
+            GROUP_EVENTS_KEY,
+            GROUP_EVENTS_CONSUMER,
             SCOPE_GLOBAL,
             relay_pin,
             filter_json,
@@ -190,10 +203,10 @@ impl NmpApp {
         projection_reader
     }
 
-    /// Close the group-chat read view opened by [`Self::open_group_timeline`].
+    /// Close the group-chat read view opened by [`Self::open_group_events`].
     /// Idempotent — closing an unopened view is a harmless no-op (D6).
-    pub fn close_group_timeline(&self) {
-        self.close_group_feed(GROUP_TIMELINE_KEY);
+    pub fn close_group_events(&self) {
+        self.close_group_feed(GROUP_EVENTS_KEY);
     }
 
     /// Open the NIP-29 group-discovery read view for one host relay. Hydrating:

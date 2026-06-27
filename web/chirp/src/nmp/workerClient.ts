@@ -13,7 +13,7 @@ import { BaseClient } from "./clientBase";
 import {
   runtimeConnection,
   type GroupDiscoveryOpenRequest,
-  type GroupTimelineOpenRequest,
+  type GroupEventsOpenRequest,
   type NotificationsMarkReadRequest,
   type NotificationsOpenRequest,
   type RuntimeSnapshot,
@@ -217,26 +217,27 @@ export class WorkerNmpClient extends BaseClient {
     );
   }
 
-  async openGroupTimeline(request: GroupTimelineOpenRequest): Promise<RuntimeSnapshot> {
+  async openGroupEvents(request: GroupEventsOpenRequest): Promise<RuntimeSnapshot> {
     await this.helloReady;
-    const correlationId = makeCorrelationId("web-group-timeline", this.nextCorrelationId++);
+    const correlationId = makeCorrelationId("web-group-events", this.nextCorrelationId++);
     return this.request(
       {
-        type: "group_timeline_open",
+        type: "group_events_open",
         session_id: request.sessionId,
         relay_url: request.relayUrl,
         group_id: request.groupId,
+        kinds: request.kinds,
         correlation_id: correlationId,
       },
       correlationId,
     );
   }
 
-  async closeGroupTimeline(sessionId: string): Promise<RuntimeSnapshot> {
+  async closeGroupEvents(sessionId: string): Promise<RuntimeSnapshot> {
     await this.helloReady;
-    const correlationId = makeCorrelationId("web-group-timeline", this.nextCorrelationId++);
+    const correlationId = makeCorrelationId("web-group-events", this.nextCorrelationId++);
     return this.request(
-      { type: "group_timeline_close", session_id: sessionId, correlation_id: correlationId },
+      { type: "group_events_close", session_id: sessionId, correlation_id: correlationId },
       correlationId,
     );
   }

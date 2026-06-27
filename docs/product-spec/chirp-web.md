@@ -59,9 +59,10 @@ and typed `NDGS` sidecar under `nmp.nip29.discovered_groups`.
 
 TypeScript must decode the typed `NDGS` snapshot and render discovered group
 metadata. It must not construct NIP-29 filters, keep a parallel group cache,
-derive counts, or invent provenance. Opening a group timeline must request a
-Rust-owned relay-pinned NIP-29 `#h` chat interest and render the typed `NGTL`
-sidecar under `nmp.nip29.group_timeline`. Until Rust-owned flows exist for
+derive counts, or invent provenance. Opening a group view must request a
+Rust-owned relay-pinned NIP-29 `#h` group-events interest for the consumer's
+declared kinds (a chat view sends kinds `[9, 11]`) and render the typed `NGEV`
+sidecar under `nmp.nip29.group_events`. Until Rust-owned flows exist for
 join/leave and moderation, those controls must expose blocked diagnostics.
 
 Acceptance must prove that opening the Groups workspace sends a real

@@ -31,7 +31,7 @@
 //! ```
 //!
 //! The dispatch layer (shell / FFI) deserializes this back into a [`GroupId`] and
-//! routes to the group-open lane (the hydrating `NmpApp::open_group_timeline` /
+//! routes to the group-open lane (the hydrating `NmpApp::open_group_events` /
 //! `open_group_discovery` composers in `nmp-ffi`, #2088).
 //!
 //! # D0 compliance

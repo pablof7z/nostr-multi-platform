@@ -25,19 +25,20 @@
 //! - [`cache`] — `previous_tag_prefix` helper, `JoinedHostsCache`,
 //!   `TofuSignerCache` (metadata-signer trust).
 //! - [`interest`] — helpers for constructing pinned `LogicalInterest`s.
-//! - [`projection`] — `GroupTimelineProjection`: the read-side of a group-chat
+//! - [`projection`] — `GroupEventsProjection`: the read-side of a group-chat
 //!   screen, plus raw group-event projections for reusable `h`-tag mechanics.
 //!
 //! All inputs to actions carry a typed `GroupId` so the publish planner gets a
 //! typed `PublishPlan::pin_to: Some(host)` carrier and never derives routing
 //! from raw tag strings.
 //!
-//! read-side extension path is `projection::GroupTimelineProjection` via
+//! read-side extension path is `projection::GroupEventsProjection` via
 //! `ObservedProjectionSink` — see `nmp_core::substrate` module docs.
 
 pub mod action;
 pub mod cache;
 pub mod group_id;
+pub mod group_query;
 pub mod input_scope;
 pub mod interest;
 pub mod kinds;
@@ -47,13 +48,14 @@ pub mod search;
 pub mod wire;
 
 pub use group_id::GroupId;
+pub use group_query::{GroupEventKinds, GroupEventsQuery};
 pub use input_scope::{
     register_input_scopes, GroupIdentPayload, GroupInputScopeRecognizer, GROUP_INPUT_SCOPE_LABEL,
 };
 pub use kinds::{event_is_group_event, group_id_from_tags, GroupEventClass, KindClass};
 pub use projection::{
-    DiscoveredGroup, DiscoveredGroupsProjection, DiscoveredGroupsSnapshot, GroupTimelineEvent,
-    GroupTimelineProjection, GroupTimelineSnapshot, GroupDefaultsProjection, GroupDefaultsSnapshot,
+    DiscoveredGroup, DiscoveredGroupsProjection, DiscoveredGroupsSnapshot, GroupEvent,
+    GroupEventsProjection, GroupEventsSnapshot, GroupDefaultsProjection, GroupDefaultsSnapshot,
     JoinedGroup, JoinedGroupsProjection, JoinedGroupsSnapshot, DEFAULT_PUBLIC_GROUP_RELAY_URL,
 };
 pub use register::register_actions;
@@ -63,9 +65,9 @@ pub use wire::discovered_groups_fb::{
     DISCOVERED_GROUPS_FILE_IDENTIFIER, DISCOVERED_GROUPS_SCHEMA_ID,
     DISCOVERED_GROUPS_SCHEMA_VERSION,
 };
-pub use wire::group_timeline_fb::{
-    decode_group_timeline_snapshot, encode_group_timeline_snapshot, GROUP_TIMELINE_FILE_IDENTIFIER,
-    GROUP_TIMELINE_SCHEMA_ID, GROUP_TIMELINE_SCHEMA_VERSION,
+pub use wire::group_events_fb::{
+    decode_group_events_snapshot, encode_group_events_snapshot, GROUP_EVENTS_FILE_IDENTIFIER,
+    GROUP_EVENTS_SCHEMA_ID, GROUP_EVENTS_SCHEMA_VERSION,
 };
 pub use wire::group_defaults_fb::{
     decode_group_defaults_snapshot, encode_group_defaults_snapshot, GROUP_DEFAULTS_FILE_IDENTIFIER,
