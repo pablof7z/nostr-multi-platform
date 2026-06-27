@@ -242,12 +242,17 @@ impl super::KernelReducer {
                         reason: "no active account for UnsignedEvent sign round-trip".to_string(),
                     };
                 };
+                let created_at = if event.created_at == 0 {
+                    self.now_secs()
+                } else {
+                    event.created_at
+                };
                 let unsigned_json = serde_json::json!({
                     "pubkey": account_pubkey,
                     "kind": event.kind,
                     "tags": event.tags,
                     "content": event.content,
-                    "created_at": event.created_at,
+                    "created_at": created_at,
                 })
                 .to_string();
                 match self.begin_sign_roundtrip_at(
