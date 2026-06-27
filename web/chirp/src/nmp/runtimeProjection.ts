@@ -56,6 +56,7 @@ export type RuntimeProjection = {
   publishOutbox: PublishOutboxRuntimeItem[];
   actionResults: ActionResultRuntimeRow[];
   actionStages: ActionStageRuntimeRow[];
+  followList: string[];
   lastErrorToast?: string;
   lastErrorCategory?: string;
   lastPlannerError?: string;
@@ -140,6 +141,7 @@ function decodeSnapshot(snap: SnapshotFrame): RuntimeProjection {
     publishOutbox: typed.publishOutbox,
     actionResults: typed.actionResults,
     actionStages: typed.actionStages,
+    followList: typed.followList,
     lastErrorToast: snap.lastErrorToast() ?? undefined,
     lastErrorCategory: snap.lastErrorCategory() ?? undefined,
     lastPlannerError: snap.lastPlannerError() ?? undefined,

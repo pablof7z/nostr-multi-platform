@@ -23,15 +23,21 @@ use crate::builder::BrowserAppBuilder;
 type LiveShape = Arc<dyn Fn() -> Option<InterestShape> + Send + Sync>;
 
 pub(crate) fn register_browser_home_feed<S>(builder: &BrowserAppBuilder<S>) {
-    let (active_account_slot, event_store) = {
+    let (active_account_slot, event_store, contacts_lookup) = {
         let Ok(g) = builder.inner.lock() else { return };
+        let Some(contacts_lookup) = g.contacts_lookup.as_ref().cloned() else {
+            return;
+        };
         (
             g.reducer.active_account_handle(),
             g.reducer.event_store_handle(),
+            contacts_lookup,
         )
     };
 
     let follow_set = nmp_nip02::ActiveFollowSet::new(active_account_slot.clone());
+    let follow_list_projection =
+        nmp_nip02::FollowListProjection::new(active_account_slot.clone(), contacts_lookup);
     let event_lookup: nmp_feed::EventLookup =
         Arc::new(move |id| slots::event_by_id_from_arc(&event_store, id));
 
@@ -99,6 +105,10 @@ pub(crate) fn register_browser_home_feed<S>(builder: &BrowserAppBuilder<S>) {
             payload: nmp_nip01::op_feed::encode_op_feed_snapshot(&engine.snapshot_current_window()),
             ..Default::default()
         })
+    });
+
+    builder.register_typed_snapshot_projection("nmp.follow_list", move || {
+        nmp_nip02::typed_projection_entry(&follow_list_projection)
     });
 }
 

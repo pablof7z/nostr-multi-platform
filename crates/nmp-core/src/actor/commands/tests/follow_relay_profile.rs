@@ -49,6 +49,47 @@ fn unfollow_removes_pubkey_from_contact_list() {
 }
 
 #[test]
+fn unfollow_same_second_baseline_stamps_strict_replacement() {
+    let (mut id, mut kernel) = fresh();
+    kernel.set_clock(std::sync::Arc::new(crate::kernel::clock::FixedClock(
+        std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000),
+    )));
+    sign_in_with_nip65(&mut id, &mut kernel);
+    let author = id.active_pubkey().unwrap();
+    let keep = "c".repeat(64);
+    let drop = "d".repeat(64);
+    kernel.inject_replaceable_event(
+        &"3".repeat(64),
+        &author,
+        1_700_000_000,
+        3,
+        vec![
+            vec!["p".to_string(), keep.clone()],
+            vec!["p".to_string(), drop.clone()],
+        ],
+        "wss://seed-relay.test",
+        1,
+    );
+
+    let outbound = follow(
+        &id,
+        &mut kernel,
+        &drop,
+        false,
+        None,
+        &mut crate::actor::pending_sign::ParkedSignerOps::new(),
+    );
+
+    assert!(!outbound.is_empty(), "unfollow must re-publish the kind:3");
+    let event = last_published_event_json(&outbound);
+    assert_eq!(
+        event["created_at"].as_u64(),
+        Some(1_700_000_001),
+        "same-second contact edits must stamp after the baseline they replace"
+    );
+}
+
+#[test]
 fn follow_already_followed_is_idempotent_no_duplicate() {
     // Re-following a pubkey already in the kind:3 must not append a duplicate
     // `p` tag (publish.rs:308-311 — the `!any(|p| p == pubkey)` guard).

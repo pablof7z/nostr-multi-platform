@@ -93,7 +93,7 @@ test("@wasm feed: real signed events from the fixture relay reach a snapshot aft
     await firstCard.getByRole("button", { name: /open profile/i }).click();
     const detail = feedSlot.getByTestId("feed-detail-panel");
     await expect(detail).toHaveAttribute("data-kind", "profile");
-    await expect(detail.getByRole("button", { name: "Follow" })).toBeEnabled();
+    await expect(detail.getByTestId("profile-follow-toggle")).toBeEnabled();
 
     await firstCard.getByRole("button", { name: /open thread/i }).click();
     await expect(detail).toHaveAttribute("data-kind", "thread");

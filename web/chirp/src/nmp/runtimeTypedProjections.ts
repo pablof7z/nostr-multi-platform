@@ -12,9 +12,11 @@ import type { SnapshotFrame } from "./generated/nmp/transport/snapshot-frame";
 const PUBLISH_OUTBOX_KEY = "publish_outbox";
 const ACTION_RESULTS_KEY = "action_results";
 const ACTION_STAGES_KEY = "action_stages";
+const FOLLOW_LIST_KEY = "nmp.follow_list";
 const PUBLISH_OUTBOX_FILE_ID = "KPBO";
 const ACTION_RESULTS_FILE_ID = "KARS";
 const ACTION_STAGES_FILE_ID = "KAST";
+const FOLLOW_LIST_FILE_ID = "NF02";
 
 export type PublishOutboxRelayRuntimeRow = {
   relayUrl: string;
@@ -56,6 +58,7 @@ export type TypedRuntimeProjections = {
   publishOutbox: PublishOutboxRuntimeItem[];
   actionResults: ActionResultRuntimeRow[];
   actionStages: ActionStageRuntimeRow[];
+  followList: string[];
 };
 
 function numberFromBigint(value: bigint | null): number {
@@ -69,6 +72,7 @@ export function decodeTypedRuntimeProjections(snap: SnapshotFrame): TypedRuntime
     publishOutbox: [],
     actionResults: [],
     actionStages: [],
+    followList: [],
   };
 
   for (let i = 0; i < snap.typedProjectionsLength(); i++) {
@@ -85,10 +89,37 @@ export function decodeTypedRuntimeProjections(snap: SnapshotFrame): TypedRuntime
       result.actionResults = decodeActionResults(bytes);
     } else if (key === ACTION_STAGES_KEY && fileId === ACTION_STAGES_FILE_ID) {
       result.actionStages = decodeActionStages(bytes);
+    } else if (key === FOLLOW_LIST_KEY && fileId === FOLLOW_LIST_FILE_ID) {
+      result.followList = decodeFollowList(bytes);
     }
   }
 
   return result;
+}
+
+function decodeFollowList(bytes: Uint8Array): string[] {
+  try {
+    const bb = new flatbuffers.ByteBuffer(bytes);
+    if (!bb.__has_identifier(FOLLOW_LIST_FILE_ID)) return [];
+    const root = bb.readInt32(bb.position()) + bb.position();
+    const followsOffset = bb.__offset(root, 4);
+    if (!followsOffset) return [];
+    const follows = bb.__vector(root + followsOffset);
+    const length = bb.__vector_len(root + followsOffset);
+    const pubkeys: string[] = [];
+    for (let i = 0; i < length; i++) {
+      const entry = bb.__indirect(follows + i * 4);
+      const pubkeyOffset = bb.__offset(entry, 4);
+      if (!pubkeyOffset) continue;
+      const pubkey = bb.__string(entry + pubkeyOffset);
+      if (typeof pubkey === "string") {
+        pubkeys.push(pubkey);
+      }
+    }
+    return pubkeys;
+  } catch {
+    return [];
+  }
 }
 
 function decodePublishOutbox(bytes: Uint8Array): PublishOutboxRuntimeItem[] {

@@ -52,6 +52,27 @@ event from the active user with the selected event's `e` tag, the target author'
 `p` tag, and the requested reaction content. The outbox/action result surfaces
 must show the same terminal relay verdicts used by notes and profiles.
 
+## Follow Publish Contract
+
+Chirp Web must let a signed-in user follow and unfollow a displayed author
+through the typed NIP-02 action path. The browser shell may expose the profile
+button and selected pubkey, but button state must derive from Rust's
+`nmp.follow_list` projection. TypeScript must not maintain an independent
+contact graph, construct kind:3 tags, choose relay targets, or decide whether a
+contact-list edit is safe.
+
+Rust owns kind:3 read-modify-write construction, contact-list metadata
+preservation, signing, outbox routing, relay selection, diagnostics, and the
+fail-closed `follow_list_not_loaded` behavior. If the active account's kind:3
+baseline is not loaded, Chirp Web must surface the action failure honestly
+instead of publishing an empty-list replacement.
+
+Acceptance must prove that follow publishes a signed kind:3 event from the
+active user with the selected author's `p` tag present, unfollow publishes a
+signed kind:3 event with that `p` tag removed, the visible button flips from the
+Rust follow-list projection, and the same outbox/action result surfaces show the
+terminal relay verdict.
+
 ## Secret Storage
 
 Pasted `nsec` values are session-memory only. Chirp Web must not persist them to

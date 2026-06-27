@@ -152,7 +152,7 @@ export default function App() {
               NmpClientContext. Do not add logic to this slot — zero protocol TS.
             */}
             <section id="feed" data-slot="feed" aria-label="Feed">
-              <FeedPanel canPublish={signerConnected()} />
+              <FeedPanel canPublish={signerConnected()} diagnostics={runtimeProjection()} />
             </section>
 
             {/*

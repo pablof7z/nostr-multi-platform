@@ -42,7 +42,7 @@ impl Kernel {
     /// multi-author interest with no per-author limit).
     #[must_use]
     pub(crate) fn try_current_follows(&self) -> Option<Vec<String>> {
-        let (tags, _content) = self.try_current_kind3_event()?;
+        let (tags, _content, _created_at) = self.try_current_kind3_event()?;
         let follows = tags
             .iter()
             .filter(|t: &&Vec<String>| t.first().map(String::as_str) == Some("p"))
@@ -54,9 +54,10 @@ impl Kernel {
 
     /// Return the active account's FULL existing kind:3 raw event — every tag
     /// verbatim (`Vec<Vec<String>>`, including relay-hint and petname columns
-    /// on `p` tags and every non-`p` tag) plus the original `content` string —
-    /// so a follow-list edit can splice ONLY the `p` section and re-publish
-    /// without discarding the rest of the user's contact list (issue #1246).
+    /// on `p` tags and every non-`p` tag), the original `content` string, and
+    /// the baseline `created_at` — so a follow-list edit can splice ONLY the
+    /// `p` section and stamp a strict replacement without discarding the rest of
+    /// the user's contact list (issue #1246).
     ///
     /// Fails closed: returns `None` when no active account is set OR the active
     /// account's kind:3 has not been ingested yet — the SAME safety gate as
@@ -66,7 +67,7 @@ impl Kernel {
     /// concern, not a contact-list-editing one — capping here would silently
     /// drop follows ≥501 on every edit).
     #[must_use]
-    pub(crate) fn try_current_kind3_event(&self) -> Option<(Vec<Vec<String>>, String)> {
+    pub(crate) fn try_current_kind3_event(&self) -> Option<(Vec<Vec<String>>, String, u64)> {
         let author_hex = self.active_account_pubkey()?;
         let author = crate::kernel::hex_to_pubkey_bytes(author_hex)?;
         let Ok(mut iter) = self.store.scan_by_author_kind(&author, &[3], None, None, 1) else {
@@ -76,7 +77,11 @@ impl Kernel {
             // kind:3 not yet ingested — None, not empty.
             return None;
         };
-        Some((stored.raw.tags.clone(), stored.raw.content.clone()))
+        Some((
+            stored.raw.tags.clone(),
+            stored.raw.content.clone(),
+            stored.raw.created_at,
+        ))
     }
 
     /// Resolve the active account's CURRENT kind:3 baseline for a follow-set
@@ -105,7 +110,9 @@ impl Kernel {
     /// [`Self::try_current_kind3_event`] remains the wasm reducer seam's gate and
     /// keeps its strict not-loaded → `None` contract unchanged.
     #[must_use]
-    pub(crate) fn try_current_kind3_event_for_edit(&self) -> Option<(Vec<Vec<String>>, String)> {
+    pub(crate) fn try_current_kind3_event_for_edit(
+        &self,
+    ) -> Option<(Vec<Vec<String>>, String, u64)> {
         if let Some(raw) = self.try_current_kind3_event() {
             return Some(raw);
         }
@@ -118,6 +125,6 @@ impl Kernel {
             .into_iter()
             .map(|pk| vec!["p".to_string(), pk])
             .collect();
-        Some((tags, String::new()))
+        Some((tags, String::new(), 0))
     }
 }

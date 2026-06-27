@@ -11,12 +11,13 @@
 import { For, Show, createSignal } from "solid-js";
 import { NostrProfileHostProvider } from "@nmp/components-web/src/user-avatar/NostrProfileHost";
 import { createFeedStore } from "../../nmp/feedStore";
+import type { RuntimeProjection } from "../../nmp/runtimeProjection";
 import { PostCard, type FeedSelection } from "./PostCard";
 import { FeedDetailPanel } from "./FeedDetailPanel";
 import { Composer } from "./Composer";
 import "./feed.css";
 
-export function FeedPanel(props: { canPublish: boolean }) {
+export function FeedPanel(props: { canPublish: boolean; diagnostics?: RuntimeProjection }) {
   const { state, profileHost } = createFeedStore();
   const [selection, setSelection] = createSignal<FeedSelection | null>(null);
 
@@ -31,6 +32,7 @@ export function FeedPanel(props: { canPublish: boolean }) {
             <FeedDetailPanel
               selection={value()}
               canPublish={props.canPublish}
+              followPubkeys={props.diagnostics?.followList ?? []}
               onClose={() => setSelection(null)}
             />
           )}

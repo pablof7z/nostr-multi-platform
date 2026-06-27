@@ -143,6 +143,48 @@ fn browser_home_feed_projection_renders_followed_note() {
 }
 
 #[test]
+fn browser_home_feed_exports_follow_list_projection_from_contacts_lookup() {
+    let viewer_keys = nostr::Keys::generate();
+    let follow_keys = nostr::Keys::generate();
+    let viewer_pk = viewer_keys.public_key().to_hex();
+    let follow_pk = follow_keys.public_key().to_hex();
+
+    let mut handle = BrowserAppBuilder::new()
+        .in_memory()
+        .consume_all_builtin_projections()
+        .without_initial_relays()
+        .decide_providers(BrowserRunConfig::default())
+        .start();
+
+    let outbound = handle.apply_set_active_account(viewer_pk.clone());
+    handle.fan_out_outbound(outbound);
+    handle.pump();
+
+    let contact_frame = relay_event_frame(
+        "contact-list-sub",
+        signed_kind3_json(&viewer_keys, std::slice::from_ref(&follow_pk), 10),
+    );
+    let outbound = handle.runtime.reducer.handle_relay_frame(
+        nmp_network::role::RelayRole::Content,
+        RELAY,
+        RelayFrame::Text(contact_frame),
+    );
+    handle.fan_out_outbound(outbound);
+
+    let frame = handle.next_frame(true);
+    let follows = decode_follow_list(&frame);
+    assert_eq!(
+        follows
+            .follows
+            .iter()
+            .map(|entry| entry.pubkey.as_str())
+            .collect::<Vec<_>>(),
+        vec![follow_pk.as_str()],
+        "browser follow button state must be backed by the Rust NIP-02 projection"
+    );
+}
+
+#[test]
 fn browser_home_feed_projection_renders_followed_note_from_relay_frames() {
     let viewer_keys = nostr::Keys::generate();
     let follow_keys = nostr::Keys::generate();
@@ -346,4 +388,17 @@ fn decode_home_feed(frame: &crate::runtime::SnapshotOutcome) -> nmp_nip01::op_fe
         .find(|row| row.key == nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY)
         .expect("home feed projection must be present");
     nmp_nip01::op_feed::decode_op_feed_snapshot(&row.payload).expect("NOFS payload decodes")
+}
+
+fn decode_follow_list(frame: &crate::runtime::SnapshotOutcome) -> nmp_nip02::FollowListSnapshot {
+    let crate::runtime::SnapshotOutcome::Frame(bytes) = frame else {
+        panic!("expected snapshot frame, got {frame:?}");
+    };
+    let typed = nmp_core::decode_snapshot_typed_projections(bytes).expect("frame decodes");
+    let row = typed
+        .into_iter()
+        .find(|row| row.key == "nmp.follow_list")
+        .expect("follow-list projection must be present");
+    assert_eq!(row.schema_id, nmp_nip02::FOLLOW_LIST_SCHEMA_ID);
+    nmp_nip02::decode_follow_list(&row.payload).expect("NF02 payload decodes")
 }

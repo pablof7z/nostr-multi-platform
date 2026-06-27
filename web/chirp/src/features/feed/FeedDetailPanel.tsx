@@ -1,4 +1,4 @@
-import { For, Show, createMemo, createSignal } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal } from "solid-js";
 import type { FeedRow } from "../../nmp/feedDecoder";
 import { useNmpClient } from "../../nmp/context";
 import { followCommand, publishNoteAction } from "../../nmp/actions";
@@ -15,11 +15,13 @@ export type FeedDetailSelection = {
 export function FeedDetailPanel(props: {
   selection: FeedDetailSelection;
   canPublish: boolean;
+  followPubkeys: string[];
   onClose: () => void;
 }) {
   const host = useNostrProfileHost();
   const { client } = useNmpClient();
   const profile = () => host.profile(props.selection.row.authorPubkey);
+  const [followBusy, setFollowBusy] = createSignal(false);
   const authorLabel = () => {
     const resolved = profile();
     if (!resolved && props.selection.row.authorDisplayName) {
@@ -28,10 +30,22 @@ export function FeedDetailPanel(props: {
     return displayLabel(resolved, props.selection.row.authorPubkey);
   };
   const consumerId = createMemo(() => `feed-detail.${props.selection.kind}.${props.selection.row.id}`);
+  const targetPubkey = () => props.selection.row.authorPubkey;
+  const following = () => props.followPubkeys.includes(targetPubkey());
 
-  const publishFollow = () => {
-    if (!props.canPublish) return;
-    void client.dispatchCommand(followCommand(props.selection.row.authorPubkey, true));
+  createEffect(() => {
+    targetPubkey();
+    setFollowBusy(false);
+  });
+
+  const publishFollow = async (next: boolean) => {
+    if (!props.canPublish || followBusy()) return;
+    setFollowBusy(true);
+    try {
+      await client.dispatchCommand(followCommand(targetPubkey(), next));
+    } finally {
+      setFollowBusy(false);
+    }
   };
 
   return (
@@ -69,11 +83,20 @@ export function FeedDetailPanel(props: {
           </div>
           <button
             class="detail-primary"
-            disabled={!props.canPublish}
-            title={props.canPublish ? "Publish follow" : "Sign in to follow"}
-            onClick={publishFollow}
+            data-testid="profile-follow-toggle"
+            aria-label={following() ? "Unfollow" : "Follow"}
+            aria-pressed={following() ? "true" : "false"}
+            disabled={!props.canPublish || followBusy()}
+            title={
+              props.canPublish
+                ? following()
+                  ? "Publish unfollow"
+                  : "Publish follow"
+                : "Sign in to follow"
+            }
+            onClick={() => void publishFollow(!following())}
           >
-            Follow
+            {followBusy() ? "Publishing..." : following() ? "Following" : "Follow"}
           </button>
         </div>
       </Show>

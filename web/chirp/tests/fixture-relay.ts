@@ -90,6 +90,8 @@ export type FeedFixtureRelay = FixtureRelay & {
   viewerPubkey: string;
   /** Hex pubkey of the follow whose kind:1 note appears in the feed. */
   followPubkey: string;
+  /** Hex pubkey of the second follow, used to prove kind:3 edits preserve siblings. */
+  secondFollowPubkey: string;
   /** Content of the follow's note (assert against the rendered feed). */
   noteContent: string;
   /** Display name resolved from the follow's kind:0. */
@@ -328,6 +330,7 @@ export async function startFeedFixtureRelay(): Promise<FeedFixtureRelay> {
     viewerSecretKey: viewerSk,
     viewerPubkey,
     followPubkey: followAPubkey,
+    secondFollowPubkey: followBPubkey,
     noteContent,
     followDisplayName: followADisplayName,
     followPictureUrl: followAPictureUrl,

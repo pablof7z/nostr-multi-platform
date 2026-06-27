@@ -396,16 +396,11 @@ pub(crate) fn follow(
             correlation_id,
         );
     }
-    // Fail-closed gate (issue #1246b): resolve the active account's CURRENT
-    // kind:3 baseline — the FULL raw event from the store (preserving relay
-    // hints / petnames / content), OR, for an account whose follow set is KNOWN
-    // but has no stored raw event (a brand-new local account, or restored
-    // contacts), a `p`-only reconstruction from the contacts cache. `None` means
-    // an EXISTING account's kind:3 has not synced yet; publishing an edit built
-    // from an empty list would silently wipe the user's contacts, so surface the
-    // failure under the dispatch correlation_id (matching the wasm path's
-    // `follow_list_not_loaded` CapabilityFailure after PR #1244).
-    let Some((current_tags, current_content)) = kernel.try_current_kind3_event_for_edit() else {
+    // Fail closed until the current kind:3 baseline is known; otherwise an edit
+    // built from an empty list could silently wipe the user's contacts.
+    let Some((current_tags, current_content, baseline_created_at)) =
+        kernel.try_current_kind3_event_for_edit()
+    else {
         return fail_publish(kernel, "follow_list_not_loaded".to_string(), correlation_id);
     };
     // Splice ONLY the `p` section — preserve relay hints, petnames, every
@@ -420,7 +415,7 @@ pub(crate) fn follow(
         kind: 3,
         tags,
         content: current_content,
-        created_at: kernel.now_secs(),
+        created_at: kernel.now_secs().max(baseline_created_at.saturating_add(1)),
     };
     // Non-blocking sign: a remote signer's `Pending` op is parked for the
     // actor's idle-tick poll loop rather than blocking the actor thread.
@@ -489,14 +484,10 @@ pub(crate) fn follow_many(
     let Some(author) = identity.active_pubkey() else {
         return toast_no_account(kernel, "follow_many", correlation_id);
     };
-    // Fail-closed gate — same discipline as `follow()`. A brand-new onboarding
-    // account (created with empty `initial_follows`, so no cold-start kind:3 was
-    // published) has its empty follow set seeded into the contacts cache by
-    // `create_account`, so this resolves to an empty-but-KNOWN baseline and the
-    // selected pack pubkeys publish as the account's first kind:3 — it does NOT
-    // fail closed. An EXISTING account whose remote kind:3 is not yet synced
-    // (cache unknown) still fails closed, never clobbering an unsynced list.
-    let Some((current_tags, current_content)) = kernel.try_current_kind3_event_for_edit() else {
+    // Same fail-closed contacts baseline discipline as `follow()`.
+    let Some((current_tags, current_content, baseline_created_at)) =
+        kernel.try_current_kind3_event_for_edit()
+    else {
         return fail_publish(kernel, "follow_list_not_loaded".to_string(), correlation_id);
     };
     // Determine the self-pubkey to guard against (prefer the actor's live
@@ -523,7 +514,7 @@ pub(crate) fn follow_many(
         kind: 3,
         tags: merged_tags,
         content: current_content,
-        created_at: kernel.now_secs(),
+        created_at: kernel.now_secs().max(baseline_created_at.saturating_add(1)),
     };
     let mut op = match sign_active_nonblocking(identity, &unsigned) {
         Ok(op) => op,
