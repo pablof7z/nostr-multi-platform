@@ -8,22 +8,31 @@ import org.junit.Test
  * (M14-1c / #2169).
  *
  * Each test builds a `DispatchEnvelope` via [GeneratedActionBuilders] and asserts
- * the bytes are IDENTICAL to a canonical golden fixture. The SAME golden hex is
- * asserted by:
- *   * Rust:  `crates/nmp-marmot/src/wire/action_payload_tests.rs`
- *            (`golden_*_payload_byte_identical` — the ENVELOPE constants).
+ * the bytes are byte-IDENTICAL to a canonical host fixture. The SAME fixture is
+ * asserted by the Swift shell:
  *   * Swift: `apps/chirp/ios/ChirpTests/MarmotBuilderGoldenTests.swift`.
+ * So this gate proves Kotlin↔Swift builder byte-identity — the meaningful
+ * cross-SHELL guarantee. (The two hand-rolled host builders are byte-identical
+ * to each other.)
  *
- * This FORCES the Kotlin `flatbuffers-java` builder output to be byte-identical
- * to the Rust `MarmotAction::encode()` + `encode_dispatch_envelope` output —
- * blessing the present-empty non-optional vector encoding (relays /
- * signed_key_package_events_json) that all three sides must agree on. If the
- * Kotlin builder ever diverges (slot order, vector presence, envelope shape),
- * this test fails before the drift reaches a device.
+ * Rust parity is SEMANTIC, not byte-identical: the Rust `MarmotAction::encode()`
+ * uses the flatc-generated `*::create()` builders, which pack table fields in a
+ * different order than these hand-rolled forward-slot builders. The bytes
+ * therefore differ while decoding to the identical `MarmotAction` (FlatBuffers
+ * decodes by vtable slot, order-independent). The Rust test
+ * `host_builder_bytes_round_trip_to_expected_action`
+ * (`crates/nmp-marmot/src/wire/action_payload_tests.rs`) feeds THESE exact host
+ * bytes through the production decode path and asserts the expected
+ * `MarmotAction`, including the present-empty non-optional vectors (relays /
+ * signedKeyPackageEventsJson) that #2169 blesses. See that file's
+ * "parity contract" comment for the full rationale.
+ *
+ * If the Kotlin builder ever diverges (slot order, vector presence, envelope
+ * shape), this test fails before the drift reaches a device.
  *
  * The fixtures are the full envelope for the fixed correlation id `"golden-corr"`.
  * To regenerate after an intentional schema change, see the regeneration note in
- * the Rust `action_payload_tests.rs` golden section, then update the
+ * the Rust `action_payload_tests.rs` parity-contract section, then update the
  * `*.fb.hex` fixtures here and the Swift constants.
  *
  * This file REPLACES the obsolete `MarmotActionEnvelopesTest.kt`, which tested
@@ -40,7 +49,8 @@ class MarmotBuilderGoldenTest {
         )
         assertEquals(
             "marmotPublishKeyPackage(relays=[]) must be byte-identical to the " +
-                "canonical golden NMPD envelope (Rust + Swift assert the SAME hex)",
+                "canonical host NMPD envelope fixture (Swift asserts the SAME hex; " +
+                    "Rust round-trips these exact bytes — see the parity contract)",
             golden,
             toHex(actual),
         )
@@ -60,7 +70,8 @@ class MarmotBuilderGoldenTest {
         )
         assertEquals(
             "marmotCreateGroup(..) must be byte-identical to the canonical golden " +
-                "NMPD envelope (Rust + Swift assert the SAME hex)",
+                "host NMPD envelope fixture (Swift asserts the SAME hex; Rust " +
+                    "round-trips these exact bytes — see the parity contract)",
             golden,
             toHex(actual),
         )

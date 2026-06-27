@@ -204,88 +204,107 @@ fn clear_pending_round_trips() {
     assert_eq!(rt(&a), a);
 }
 
-// ── golden NMMA byte fixtures (cross-language byte parity — #2169) ─────────────
+// ── golden NMMA fixtures + cross-language parity contract (#2169) ──────────────
 //
-// These canonical byte fixtures are the SINGLE SOURCE OF TRUTH that the Rust
-// encoder AND the generated Swift/Kotlin host builders must each reproduce
-// byte-for-byte. Two representative arms are pinned: an EMPTY-vector arm
+// Two representative arms are pinned: an EMPTY-vector arm
 // (`PublishKeyPackage { relays: [] }` — proves the present-empty non-optional
 // vector encoding) and a POPULATED arm (`CreateGroup` with strings + present
 // `invitee_npubs` + present-empty json vec + populated `relays`).
 //
-// Each is pinned at TWO levels:
-//   * PAYLOAD (NMMA): exactly what `MarmotAction::encode()` returns.
-//   * ENVELOPE (NMPD): the full `DispatchEnvelope` for correlation id
-//     `"golden-corr"` — exactly what the generated `GeneratedActionBuilders`
-//     host method returns. The host builders emit the WHOLE envelope, so the
-//     Swift/Kotlin golden tests do a direct byte compare against the ENVELOPE
-//     hex (no host-side FlatBuffers decoder needed). The same hex is embedded in:
-//       - Kotlin: apps/chirp/android/app/src/test/resources/fixtures/
-//                 marmot_publish_key_package_empty_golden_v1.fb.hex
-//                 marmot_create_group_populated_golden_v1.fb.hex
-//                 (+ MarmotBuilderGoldenTest.kt)
-//       - Swift:  apps/chirp/ios/ChirpTests/MarmotBuilderGoldenTests.swift
+// PARITY CONTRACT — why byte-identity is NOT asserted Rust↔host (Option B):
 //
-// This FORCES Rust-encode ↔ host-builder byte parity and blesses the
-// present-empty non-optional vector encoding. The envelope creation order
-// (correlation string, namespace string, payload vector) is identical in Rust
-// `encode_dispatch_envelope` and the generated `encodeDispatchEnvelope`, so the
-// envelope bytes are byte-identical too.
+// Three encoders touch these payloads:
+//   * Rust `MarmotAction::encode()` — uses the flatc-GENERATED `*::create()`
+//     builders, which pack table fields by DESCENDING type size then DESCENDING
+//     slot (the flatc convention: `add_payload`, `add_schema_version`,
+//     `add_action_namespace`, `add_correlation_id` — reverse of slot order).
+//   * Swift `GeneratedActionBuilders.marmot*` — HAND-ROLLED `startTable`/`add`
+//     in FORWARD slot order.
+//   * Kotlin `GeneratedActionBuilders.marmot*` — the SAME hand-rolled forward
+//     order.
 //
-// To regenerate after an intentional schema/encoder change: add a temporary
-// dump test that prints `to_hex(&action.encode())` and the envelope, run it,
-// then paste the new hex here AND into the Swift/Kotlin fixtures.
+// Field WRITE order changes where each field's value sits in the table body, so
+// flatc-generated-`create()` output is byte-DIFFERENT from the hand-rolled host
+// builders — while being SEMANTICALLY IDENTICAL (FlatBuffers decodes by vtable
+// slot, which is order-independent). Forcing byte-identity would mean either
+// re-implementing flatc's field-packing in the hand-rolled emitters, or
+// rewriting the SHARED `nmp_core::encode_dispatch_envelope` (used by every
+// action, not just marmot) to forward order — neither is justified: in
+// production the HOST encodes the envelope and RUST only DECODES it, so the
+// bytes are never byte-compared. The invariant that actually matters is
+// SEMANTIC: every encoder must agree on present-vs-absent fields so the decoded
+// `MarmotAction` is identical (this is the real #2169 fix — all three emit a
+// PRESENT empty vector for non-optional `[string]`).
+//
+// So the parity is pinned as follows:
+//   * Rust  — `MarmotAction::encode()` byte-locked to its OWN canonical payload
+//     hex below (regression lock on the Rust present-empty encoding).
+//   * Rust  — the ACTUAL host-builder envelope bytes (captured from the Kotlin
+//     + Swift CI, which are byte-identical to EACH OTHER) round-trip through
+//     `decode_dispatch_envelope` + `MarmotAction::decode` to the EXPECTED
+//     action (semantic parity on real host bytes — proves the kernel consumes
+//     host builder output, including the present-empty vectors).
+//   * Kotlin + Swift — each assert their builder output is byte-identical to
+//     the SAME host-canonical envelope fixture (`*_golden_v1.fb.hex` /
+//     `MarmotBuilderGoldenTests.swift`), which proves Kotlin↔Swift
+//     byte-identity — the meaningful cross-SHELL guarantee.
+//
+// To regenerate after an intentional schema/encoder change: update the Rust
+// `MARMOT_PAYLOAD_*` hex from `MarmotAction::encode()`, rebuild the host
+// builders, run the Kotlin/Swift golden tests (they print expected-vs-actual on
+// failure), and paste the new host envelope hex into `HOST_ENVELOPE_*` here +
+// the `.fb.hex` fixtures + the Swift constants.
 
-/// `PublishKeyPackage { relays: [] }` PAYLOAD — the EMPTY-vector arm. `relays`
-/// is a NON-OPTIONAL `[string]` emitted as a PRESENT empty vector (not absent).
-const GOLDEN_PUBLISH_KEY_PACKAGE_EMPTY: &str = "140000004e4d4d4100000a001200080007000c000a00000000000001010000000c0000000000060008000400060000000400000000000000";
+/// `PublishKeyPackage { relays: [] }` PAYLOAD — exactly what
+/// `MarmotAction::encode()` returns (flatc-generated field order). `relays` is
+/// a NON-OPTIONAL `[string]` emitted as a PRESENT empty vector (not absent).
+const MARMOT_PAYLOAD_PUBLISH_KEY_PACKAGE_EMPTY: &str = "140000004e4d4d4100000a001200080007000c000a00000000000001010000000c0000000000060008000400060000000400000000000000";
 
-/// `CreateGroup { .. }` PAYLOAD — the POPULATED arm.
-const GOLDEN_CREATE_GROUP_POPULATED: &str = "140000004e4d4d4100000a001000080007000c000a00000000000002010000001400000010001c00040008000c0010001400180010000000180000002400000030000000440000006c0000006c0000000b000000456e67696e656572696e6700090000005465616d2063686174000000110000006e70756231616263206e70756231646566000000020000001800000004000000080000006e7075623164656600000000080000006e7075623161626300000000000000000100000004000000130000007773733a2f2f72656c61792e6578616d706c6500";
+/// `CreateGroup { .. }` PAYLOAD — exactly what `MarmotAction::encode()` returns.
+const MARMOT_PAYLOAD_CREATE_GROUP_POPULATED: &str = "140000004e4d4d4100000a001000080007000c000a00000000000002010000001400000010001c00040008000c0010001400180010000000180000002400000030000000440000006c0000006c0000000b000000456e67696e656572696e6700090000005465616d2063686174000000110000006e70756231616263206e70756231646566000000020000001800000004000000080000006e7075623164656600000000080000006e7075623161626300000000000000000100000004000000130000007773733a2f2f72656c61792e6578616d706c6500";
 
 /// The EMPTY-vector arm wrapped in a `DispatchEnvelope` (correlation
-/// `"golden-corr"`, namespace `nmp.marmot`) — what the Swift/Kotlin
-/// `marmotPublishKeyPackage(correlationId: "golden-corr")` builder returns.
-const GOLDEN_ENVELOPE_PUBLISH_KEY_PACKAGE_EMPTY: &str = "140000004e4d50440c001400040008000c0010000c0000005c00000048000000010000000400000038000000140000004e4d4d4100000a001200080007000c000a00000000000001010000000c00000000000600080004000600000004000000000000000a0000006e6d702e6d61726d6f7400000b000000676f6c64656e2d636f727200";
+/// `"golden-corr"`, namespace `nmp.marmot`) — the BYTE-IDENTICAL output of the
+/// Kotlin AND Swift `marmotPublishKeyPackage(correlationId: "golden-corr")`
+/// builders (hand-rolled forward field order; differs from the Rust flatc order
+/// but decodes identically — see the parity contract above). Mirrors
+/// `marmot_publish_key_package_empty_golden_v1.fb.hex` +
+/// `MarmotBuilderGoldenTests.swift`.
+const HOST_ENVELOPE_PUBLISH_KEY_PACKAGE_EMPTY: &str = "140000004e4d50440c00140010000c00080004000c0000001000000001000000440000005000000038000000140000004e4d4d4100000a0012000c000b0004000a00000014000000000000010100000000000600080004000600000004000000000000000a0000006e6d702e6d61726d6f7400000b000000676f6c64656e2d636f727200";
 
-/// The POPULATED arm wrapped in a `DispatchEnvelope` — what the Swift/Kotlin
-/// `marmotCreateGroup(correlationId: "golden-corr", ..)` builder returns.
-const GOLDEN_ENVELOPE_CREATE_GROUP_POPULATED: &str = "140000004e4d50440c001400040008000c0010000c000000fc000000e80000000100000004000000d8000000140000004e4d4d4100000a001000080007000c000a00000000000002010000001400000010001c00040008000c0010001400180010000000180000002400000030000000440000006c0000006c0000000b000000456e67696e656572696e6700090000005465616d2063686174000000110000006e70756231616263206e70756231646566000000020000001800000004000000080000006e7075623164656600000000080000006e7075623161626300000000000000000100000004000000130000007773733a2f2f72656c61792e6578616d706c65000a0000006e6d702e6d61726d6f7400000b000000676f6c64656e2d636f727200";
+/// The POPULATED arm wrapped in a `DispatchEnvelope` — the BYTE-IDENTICAL
+/// output of the Kotlin AND Swift `marmotCreateGroup(correlationId:
+/// "golden-corr", ..)` builders. Mirrors
+/// `marmot_create_group_populated_golden_v1.fb.hex` +
+/// `MarmotBuilderGoldenTests.swift`.
+const HOST_ENVELOPE_CREATE_GROUP_POPULATED: &str = "140000004e4d50440c00140010000c00080004000c0000001000000001000000e4000000f0000000d8000000140000004e4d4d4100000a0010000c000b0004000a0000001c000000000000020100000010001c001800140010000c0008000400100000008000000078000000480000002c00000018000000040000000b000000456e67696e656572696e6700090000005465616d2063686174000000110000006e70756231616263206e70756231646566000000020000001800000004000000080000006e7075623164656600000000080000006e7075623161626300000000000000000100000004000000130000007773733a2f2f72656c61792e6578616d706c65000a0000006e6d702e6d61726d6f7400000b000000676f6c64656e2d636f727200";
 
 fn to_hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-fn golden_envelope(action: &MarmotAction) -> Vec<u8> {
-    use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
-    encode_dispatch_envelope(
-        "golden-corr",
-        "nmp.marmot",
-        DISPATCH_ENVELOPE_SCHEMA_VERSION,
-        &action.encode(),
-    )
+fn bytes_from_hex(hex: &str) -> Vec<u8> {
+    assert!(hex.len() % 2 == 0, "hex must be whole bytes");
+    (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).expect("valid hex"))
+        .collect()
 }
 
+/// Rust regression lock: `MarmotAction::encode()` produces its OWN canonical
+/// payload bytes (present-empty non-optional vector preserved). This pins the
+/// Rust encoder; the host parity is checked separately via the semantic
+/// round-trip below.
 #[test]
-fn golden_publish_key_package_empty_payload_byte_identical() {
-    let action = MarmotAction::PublishKeyPackage { relays: vec![] };
+fn rust_encode_matches_its_canonical_payload_bytes() {
+    let empty = MarmotAction::PublishKeyPackage { relays: vec![] };
     assert_eq!(
-        to_hex(&action.encode()),
-        GOLDEN_PUBLISH_KEY_PACKAGE_EMPTY,
-        "Rust PAYLOAD encode must equal the canonical golden NMMA bytes \
-         (Swift/Kotlin builders assert the SAME envelope hex — keep all in sync)"
+        to_hex(&empty.encode()),
+        MARMOT_PAYLOAD_PUBLISH_KEY_PACKAGE_EMPTY,
+        "Rust PublishKeyPackage{{relays:[]}} encode (present-empty vector) drifted"
     );
-    assert_eq!(
-        to_hex(&golden_envelope(&action)),
-        GOLDEN_ENVELOPE_PUBLISH_KEY_PACKAGE_EMPTY,
-        "Rust ENVELOPE must equal the canonical golden NMPD bytes that the host \
-         builder marmotPublishKeyPackage(correlationId: \"golden-corr\") returns"
-    );
-}
 
-#[test]
-fn golden_create_group_populated_payload_byte_identical() {
-    let action = MarmotAction::CreateGroup {
+    let populated = MarmotAction::CreateGroup {
         name: "Engineering".to_string(),
         description: "Team chat".to_string(),
         invitee_text: Some("npub1abc npub1def".to_string()),
@@ -294,17 +313,56 @@ fn golden_create_group_populated_payload_byte_identical() {
         relays: vec!["wss://relay.example".to_string()],
     };
     assert_eq!(
-        to_hex(&action.encode()),
-        GOLDEN_CREATE_GROUP_POPULATED,
-        "Rust PAYLOAD encode must equal the canonical golden NMMA bytes \
-         (Swift/Kotlin builders assert the SAME envelope hex — keep all in sync)"
+        to_hex(&populated.encode()),
+        MARMOT_PAYLOAD_CREATE_GROUP_POPULATED,
+        "Rust CreateGroup populated encode drifted"
     );
-    assert_eq!(
-        to_hex(&golden_envelope(&action)),
-        GOLDEN_ENVELOPE_CREATE_GROUP_POPULATED,
-        "Rust ENVELOPE must equal the canonical golden NMPD bytes that the host \
-         builder marmotCreateGroup(correlationId: \"golden-corr\", ..) returns"
-    );
+}
+
+/// Cross-language SEMANTIC parity on ACTUAL host-builder bytes (#2169 Option B).
+///
+/// The captured Kotlin/Swift `GeneratedActionBuilders` envelope bytes (which are
+/// byte-identical to each other) MUST round-trip through the production decode
+/// path (`decode_dispatch_envelope` → `MarmotAction::decode`) to the exact
+/// expected `MarmotAction`. This proves the kernel consumes host builder output
+/// faithfully — including the present-empty non-optional vectors — even though
+/// the host's hand-rolled field order is byte-different from Rust's flatc order.
+#[test]
+fn host_builder_bytes_round_trip_to_expected_action() {
+    use nmp_core::dispatch_envelope::decode_dispatch_envelope;
+
+    let cases = [
+        (
+            HOST_ENVELOPE_PUBLISH_KEY_PACKAGE_EMPTY,
+            MarmotAction::PublishKeyPackage { relays: vec![] },
+        ),
+        (
+            HOST_ENVELOPE_CREATE_GROUP_POPULATED,
+            MarmotAction::CreateGroup {
+                name: "Engineering".to_string(),
+                description: "Team chat".to_string(),
+                invitee_text: Some("npub1abc npub1def".to_string()),
+                invitee_npubs: Some(vec!["npub1abc".to_string(), "npub1def".to_string()]),
+                signed_key_package_events_json: vec![],
+                relays: vec!["wss://relay.example".to_string()],
+            },
+        ),
+    ];
+
+    for (envelope_hex, expected) in cases {
+        let bytes = bytes_from_hex(envelope_hex);
+        let decoded = decode_dispatch_envelope(&bytes)
+            .expect("host envelope bytes must decode via S2 decode_dispatch_envelope");
+        assert_eq!(decoded.action_namespace, "nmp.marmot");
+        assert_eq!(decoded.correlation_id, "golden-corr");
+        let action = MarmotAction::decode(&decoded.payload)
+            .expect("host payload must decode via MarmotAction::decode");
+        assert_eq!(
+            action, expected,
+            "host builder bytes must decode to the expected MarmotAction \
+             (semantic cross-language parity — #2169)"
+        );
+    }
 }
 
 // ── fail-closed gates ─────────────────────────────────────────────────────────
