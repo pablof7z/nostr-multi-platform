@@ -339,13 +339,9 @@ fn executor_failure_returns_correlation_id_and_enqueues_failed_terminal() {
     let app_mut = unsafe { &mut *app };
     let _ = app_mut.register_action(TestPanicModule);
 
-    let sends_before = app_mut
-        .send_cmd_count
-        .load(std::sync::atomic::Ordering::Relaxed);
+    let sends_before = app_mut.send_cmd_count_for_test();
     let out = dispatch_action_json(Some(&*app_mut), "test.panic", "{}");
-    let sends_after = app_mut
-        .send_cmd_count
-        .load(std::sync::atomic::Ordering::Relaxed);
+    let sends_after = app_mut.send_cmd_count_for_test();
 
     let parsed: serde_json::Value =
         serde_json::from_str(&out).expect("dispatch envelope must be parseable JSON");

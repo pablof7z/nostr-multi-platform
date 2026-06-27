@@ -8,7 +8,7 @@ use super::handle::ChirpHandle;
 /// after this call.
 ///
 /// V-80 rung 7 — the OP-feed engine + `ActiveFollowSet` observers are
-/// registered by `nmp_defaults::register_op_feed_defaults` through the
+/// registered by `nmp_native_runtime::register_op_feed_defaults` through the
 /// kernel's standard observer registry, NOT through a single swappable slot
 /// this handle owns. There is no per-handle `observer_id` to revoke here; the
 /// observers live for the life of the `NmpApp` and are torn down by

@@ -221,16 +221,14 @@ pub(super) fn dispatch_action_json(
     };
     let mut ctx = ActionContext::with_event_store_slot(app.event_store_handle());
     match app
-        .action_registry
+        .action_registry()
         .start(&mut ctx, dispatch_now_ms, namespace, action_json)
     {
-        Ok(correlation_id) => {
-            finish_dispatch(
-                app,
-                &correlation_id,
-                execute_action(app, &ctx, namespace, action_json, &correlation_id),
-            )
-        }
+        Ok(correlation_id) => finish_dispatch(
+            app,
+            &correlation_id,
+            execute_action(app, &ctx, namespace, action_json, &correlation_id),
+        ),
         Err(rejection) => rejection_json(rejection),
     }
 }
@@ -259,14 +257,14 @@ pub(super) fn finish_dispatch(
 ) -> String {
     match outcome {
         Ok(()) => {
-            app.action_registry.deliver_result(ActionResult {
+            app.action_registry().deliver_result(ActionResult {
                 correlation_id: correlation_id.to_string(),
                 result_json: serde_json::Value::Null,
             });
             format!(r#"{{"correlation_id":{}}}"#, json_string(correlation_id))
         }
         Err(failure) if failure.enqueued => {
-            app.action_registry.deliver_result(ActionResult {
+            app.action_registry().deliver_result(ActionResult {
                 correlation_id: correlation_id.to_string(),
                 result_json: serde_json::Value::Null,
             });
@@ -293,7 +291,7 @@ fn execute_action(
     action_json: &str,
     correlation_id: &str,
 ) -> Result<(), nmp_core::__ffi_internal::ActionExecuteFailure> {
-    app.action_registry
+    app.action_registry()
         .execute(ctx, namespace, action_json, correlation_id, &|cmd| {
             app.send_cmd(cmd);
         })

@@ -12,41 +12,31 @@
 //! is never part of the production FFI ABI (D0).
 #![cfg(any(test, feature = "test-support"))]
 
-use super::{app_ref, NmpApp};
+use super::NmpApp;
 use nmp_core::{BunkerHookFn, ExternalSignerHookFn};
 
 /// Install a bunker hook into `app`'s per-app slot (the same slot
 /// `nmp_signer_broker_init` installs the real broker hook into). Null-safe.
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn install_bunker_hook_for_test(app: *mut NmpApp, hook: BunkerHookFn) {
-    if let Some(app) = app_ref(app) {
-        app.install_bunker_hook(hook);
-    }
+    nmp_native_runtime::install_bunker_hook_for_test(app, hook);
 }
 
 /// Invoke `app`'s installed bunker connect hook through its per-app slot.
 /// Returns `true` iff a hook is installed (and fired). Null-safe (`false`).
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn invoke_bunker_connect_hook_for_test(app: *mut NmpApp, uri: &str) -> bool {
-    match app_ref(app) {
-        Some(app) => app.invoke_bunker_connect_hook_for_test(uri),
-        None => false,
-    }
+    nmp_native_runtime::invoke_bunker_connect_hook_for_test(app, uri)
 }
 
 /// Install a NIP-55 external-signer restore hook into `app`'s per-app slot.
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn install_external_signer_hook_for_test(app: *mut NmpApp, hook: ExternalSignerHookFn) {
-    if let Some(app) = app_ref(app) {
-        app.install_external_signer_hook(hook);
-    }
+    nmp_native_runtime::install_external_signer_hook_for_test(app, hook);
 }
 
 /// Invoke `app`'s installed NIP-55 restore hook through its per-app slot.
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn invoke_external_signer_restore_hook_for_test(app: *mut NmpApp, payload_json: &str) -> bool {
-    match app_ref(app) {
-        Some(app) => app.invoke_external_signer_restore_hook_for_test(payload_json),
-        None => false,
-    }
+    nmp_native_runtime::invoke_external_signer_restore_hook_for_test(app, payload_json)
 }

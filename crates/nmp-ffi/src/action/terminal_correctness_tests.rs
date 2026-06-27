@@ -13,8 +13,6 @@
 use super::super::{nmp_app_free, nmp_app_new};
 use super::*;
 
-use std::sync::atomic::Ordering;
-
 use nmp_core::substrate::ActionModule;
 
 /// A module that enqueues a terminal-bearing command and then panics — the
@@ -60,9 +58,9 @@ fn async_completing_executor_enqueue_then_panic_suppresses_failure_fanin() {
 
     // The monotone send counter only ever increments, so reading it after the
     // synchronous `dispatch_action_json` returns is race-free.
-    let sends_before = app_mut.send_cmd_count.load(Ordering::Relaxed);
+    let sends_before = app_mut.send_cmd_count_for_test();
     let out = dispatch_action_json(Some(&*app_mut), "test.enqueue_then_panic", "{}");
-    let sends_after = app_mut.send_cmd_count.load(Ordering::Relaxed);
+    let sends_after = app_mut.send_cmd_count_for_test();
 
     let parsed: serde_json::Value =
         serde_json::from_str(&out).expect("dispatch envelope must be parseable JSON");

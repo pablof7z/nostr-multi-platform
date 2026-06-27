@@ -14,26 +14,12 @@
 //!   *which* capability, *what* operation, and *how* to react to the result
 //!   are the issuing module's concern (see `substrate::KeyringIdentityWiring`).
 
-use super::{NmpApp, app_ref};
+use super::{app_ref, NmpApp};
 use nmp_core::__ffi_internal::{
-    CapabilityCallback, CapabilityCallbackRegistration, CapabilityCallbackSlot,
-    capability_error_envelope, dispatch_capability,
+    capability_error_envelope, dispatch_capability, CapabilityCallback,
+    CapabilityCallbackRegistration, CapabilityCallbackSlot,
 };
-use std::ffi::{CString, c_char, c_void};
-use std::sync::Arc;
-
-impl NmpApp {
-    /// Arc clone of the per-app capability callback slot (crate-family only;
-    /// lets `nmp-marmot` reuse the kernel's native capability handler — the
-    /// process-global vs per-app reconciliation is documented in
-    /// `nmp-marmot::credential_store`). Defined here beside the rest of the
-    /// capability-socket surface rather than in `lib.rs`.
-    #[doc(hidden)]
-    #[must_use]
-    pub fn capability_callback_slot(&self) -> CapabilityCallbackSlot {
-        Arc::clone(&self.capability_callback)
-    }
-}
+use std::ffi::{c_char, c_void, CString};
 
 /// Register the native capability handler. The kernel routes every
 /// `CapabilityRequest` JSON through this seam (e.g. Swift's
@@ -63,7 +49,7 @@ pub extern "C" fn nmp_app_set_capability_callback(
     let Some(app) = app_ref(app) else {
         return;
     };
-    app.capability_callback
+    app.capability_callback_slot()
         .set_registration(callback.map(|callback| CapabilityCallbackRegistration {
             context: context as usize,
             callback,
@@ -85,7 +71,7 @@ pub extern "C" fn nmp_app_dispatch_capability(
 ) -> *mut c_char {
     let request = super::c_string_argument(request_json).unwrap_or_default();
     let envelope = match app_ref(app) {
-        Some(app) => dispatch_capability(&app.capability_callback, &request),
+        Some(app) => dispatch_capability(&app.capability_callback_slot(), &request),
         None => capability_error_envelope(&request, "kernel-unavailable"),
     };
     // JSON never contains an interior NUL; the `c"{}"` literal fallback is

@@ -23,7 +23,8 @@ use nmp_core::substrate::KernelEvent;
 use nmp_store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
 // `on_kernel_event` is a `ObservedProjectionSink` method (the engine impls it).
 use nmp_core::ObservedProjectionSink as _;
-use nmp_ffi::{nmp_app_free, nmp_app_new, NmpApp};
+mod common;
+use common::*;
 
 // ─── Test-isolation guard ────────────────────────────────────────────────────
 //
@@ -177,7 +178,7 @@ fn repost_l5_backward_hydration_resolves_wrapper_via_real_event_lookup() {
     // `(target, None)` and LOSE the provenance — that is the regression these
     // assertions guard.
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    let app = nmp_app_new();
+    let app = new_app_ptr();
     assert!(!app.is_null());
 
     // The wrapper is in the kernel store (the engine has observed it via the
@@ -189,7 +190,7 @@ fn repost_l5_backward_hydration_resolves_wrapper_via_real_event_lookup() {
     // SAFETY: valid non-null pointer.
     set_app_active(app, Some(ALICE));
     let engine =
-        nmp_defaults::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string(), vec![1])
+        nmp_native_runtime::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string(), vec![1])
             .engine;
 
     // 1. The repost wrapper arrives (fan-out). Placeholder keyed by the target,
@@ -226,7 +227,7 @@ fn repost_l5_backward_hydration_resolves_wrapper_via_real_event_lookup() {
         "the rebuilt card carries the reposter from the resolved wrapper"
     );
 
-    nmp_app_free(app);
+    free_app_ptr(app);
 }
 
 #[test]
@@ -239,7 +240,7 @@ fn repost_l2_reply_to_kind6_wrapper_rekeys_via_real_event_lookup() {
     // buffer against the kind:6 wrapper id — which never becomes a root — and
     // the OP would surface with ZERO attribution.
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    let app = nmp_app_new();
+    let app = new_app_ptr();
     assert!(!app.is_null());
 
     // Both the wrapper AND the target OP are in the kernel store, so the re-keyed
@@ -263,7 +264,7 @@ fn repost_l2_reply_to_kind6_wrapper_rekeys_via_real_event_lookup() {
     // SAFETY: valid non-null pointer.
     set_app_active(app, Some(ALICE));
     let engine =
-        nmp_defaults::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string(), vec![1])
+        nmp_native_runtime::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string(), vec![1])
             .engine;
 
     // The target OP is observed (so it is a live root) and the wrapper too.
@@ -286,7 +287,7 @@ fn repost_l2_reply_to_kind6_wrapper_rekeys_via_real_event_lookup() {
     );
     assert_eq!(target_card.attribution[0].author_pubkey, ALICE);
 
-    nmp_app_free(app);
+    free_app_ptr(app);
 }
 
 #[test]
@@ -298,7 +299,7 @@ fn event_lookup_is_correctness_preserving_before_store_published() {
     // provenance until a real read is available. This locks in the
     // "correctness-preserving" contract the former tracker V-83 entry highlighted.
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    let app = nmp_app_new();
+    let app = new_app_ptr();
     assert!(!app.is_null());
 
     // Slot deliberately NOT published.
@@ -311,7 +312,7 @@ fn event_lookup_is_correctness_preserving_before_store_published() {
 
     set_app_active(app, Some(ALICE));
     let engine =
-        nmp_defaults::register_op_feed_defaults(app_ref, ALICE.to_string(), vec![1]).engine;
+        nmp_native_runtime::register_op_feed_defaults(app_ref, ALICE.to_string(), vec![1]).engine;
 
     // Drive the L-5 sequence with no published store: placeholder, then hydrate
     // body — but provenance is absent (no wrapper read possible), and crucially
@@ -330,5 +331,5 @@ fn event_lookup_is_correctness_preserving_before_store_published() {
         "no store read → no wrapper resolution → provenance omitted (degrades, never panics)"
     );
 
-    nmp_app_free(app);
+    free_app_ptr(app);
 }

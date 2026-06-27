@@ -15,8 +15,9 @@
 //! two builders, two wallets, no crosstalk — is proven end-to-end by
 //! `nmp-testing/tests/k2_two_instance_wallet_isolation.rs`.)
 
-use nmp_defaults::{NmpAppBuilder, RunConfig};
-use nmp_ffi::{nmp_app_free, nmp_app_stop};
+use nmp_native_runtime::{NmpAppBuilder, RunConfig};
+mod common;
+use common::*;
 
 /// `.with_wallet()` wires the wallet stack during config and type-state-advances
 /// to `start()`. After start the `"wallet"` snapshot projection is registered
@@ -36,15 +37,15 @@ fn with_wallet_wires_stack_before_start() {
     assert!(!app.is_null(), "start() after with_wallet() returned null");
 
     // The generic JSON lane is deleted (rule A6). Check the typed registry.
-    let app_ref: &nmp_ffi::NmpApp = unsafe { &*app };
+    let app_ref: &NmpApp = unsafe { &*app };
     let typed_keys = app_ref.registered_typed_projection_keys();
     assert!(
         typed_keys.contains(&"wallet".to_string()),
         "with_wallet() must register the \"wallet\" typed snapshot projection"
     );
 
-    nmp_app_stop(app);
-    nmp_app_free(app);
+    stop_app(app);
+    free_app_ptr(app);
 }
 
 /// `.with_wallet()` composes with `register_defaults` + a storage choice in the
@@ -65,9 +66,12 @@ fn with_wallet_composes_with_register_defaults_and_storage() {
     // Per-instance (ADR-0052 rung 5.2): the wallet projection resolves on THIS
     // app regardless of which test ran first — no shared global.
     // The generic JSON lane is deleted (rule A6). Check the typed registry.
-    let app_ref: &nmp_ffi::NmpApp = unsafe { &*app };
+    let app_ref: &NmpApp = unsafe { &*app };
     let typed_keys = app_ref.registered_typed_projection_keys();
-    assert!(typed_keys.contains(&"wallet".to_string()), "wallet projection must be registered");
-    nmp_app_stop(app);
-    nmp_app_free(app);
+    assert!(
+        typed_keys.contains(&"wallet".to_string()),
+        "wallet projection must be registered"
+    );
+    stop_app(app);
+    free_app_ptr(app);
 }

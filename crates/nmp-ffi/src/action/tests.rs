@@ -67,9 +67,9 @@ fn ack_action_stage_null_app_is_noop() {
 fn ack_action_stage_null_correlation_id_is_noop() {
     with_app(|app| {
         let app_ptr = app as *const _ as *mut super::NmpApp;
-        let depth_before = app.queue_depth.load(std::sync::atomic::Ordering::Relaxed);
+        let depth_before = app.queue_depth_for_test();
         super::nmp_app_ack_action_stage(app_ptr, std::ptr::null());
-        let depth_after = app.queue_depth.load(std::sync::atomic::Ordering::Relaxed);
+        let depth_after = app.queue_depth_for_test();
         assert_eq!(
             depth_before, depth_after,
             "null correlation_id must not enqueue any command"
@@ -81,10 +81,10 @@ fn ack_action_stage_null_correlation_id_is_noop() {
 fn ack_action_stage_empty_string_is_noop() {
     with_app(|app| {
         let app_ptr = app as *const _ as *mut super::NmpApp;
-        let depth_before = app.queue_depth.load(std::sync::atomic::Ordering::Relaxed);
+        let depth_before = app.queue_depth_for_test();
         let empty = std::ffi::CString::new("").unwrap();
         super::nmp_app_ack_action_stage(app_ptr, empty.as_ptr());
-        let depth_after = app.queue_depth.load(std::sync::atomic::Ordering::Relaxed);
+        let depth_after = app.queue_depth_for_test();
         assert_eq!(depth_before, depth_after);
     });
 }
@@ -95,7 +95,7 @@ fn ack_action_stage_well_formed_enqueues_command() {
         let app_ptr = app as *const _ as *mut super::NmpApp;
         let cid = std::ffi::CString::new("corr-test").unwrap();
         super::nmp_app_ack_action_stage(app_ptr, cid.as_ptr());
-        let _ = app.queue_depth.load(std::sync::atomic::Ordering::Relaxed);
+        let _ = app.queue_depth_for_test();
     });
 }
 

@@ -1,4 +1,4 @@
-//! Integration test for [`nmp_defaults::register_op_feed_defaults`]
+//! Integration test for [`nmp_native_runtime::register_op_feed_defaults`]
 //! (V-80 rung 6, Stage 5 — the OP-centric home-feed composition root).
 //!
 //! Spins up a real [`NmpApp`] via `nmp_app_new`, wires the OP feed with
@@ -29,7 +29,8 @@ use std::sync::{Arc, Mutex};
 use nmp_core::slots::ActiveAccountSlot;
 use nmp_core::substrate::{EventId, KernelEvent};
 use nmp_core::ObservedProjectionSink;
-use nmp_ffi::{nmp_app_free, nmp_app_new, NmpApp};
+mod common;
+use common::*;
 
 // ─── Test-isolation guard ────────────────────────────────────────────────────
 //
@@ -135,13 +136,13 @@ fn read_typed_op_feed(app: *mut NmpApp, key: &str) -> Option<nmp_nip01::op_feed:
 #[test]
 fn registers_op_feed_engine_under_home_key() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    let app = nmp_app_new();
+    let app = new_app_ptr();
     assert!(!app.is_null(), "nmp_app_new returned null");
 
     // SAFETY: `app` is a valid non-null pointer fresh from `nmp_app_new`.
     set_app_active(app, Some(ALICE));
     let _defaults =
-        nmp_defaults::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string(), vec![1]);
+        nmp_native_runtime::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string(), vec![1]);
 
     // The engine's `RootFeedSnapshot` shape is `{ cards, page, metrics }`.
     // `ModularTimelineProjection` would emit a `ModularTimelineSnapshot`
@@ -160,18 +161,18 @@ fn registers_op_feed_engine_under_home_key() {
         "RootFeedSnapshot carries a page field"
     );
 
-    nmp_app_free(app);
+    free_app_ptr(app);
 }
 
 #[test]
 fn register_defaults_rejects_repost_wrappers_as_primary_feed_kinds() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    let app = nmp_app_new();
+    let app = new_app_ptr();
     assert!(!app.is_null(), "nmp_app_new returned null");
 
     set_app_active(app, Some(ALICE));
     let app_ref = unsafe { &*app };
-    let _defaults = nmp_defaults::register_op_feed_defaults(
+    let _defaults = nmp_native_runtime::register_op_feed_defaults(
         app_ref,
         ALICE.to_string(),
         vec![nmp_nip18::KIND_REPOST],
@@ -183,7 +184,7 @@ fn register_defaults_rejects_repost_wrappers_as_primary_feed_kinds() {
          invalid primary declarations must fail closed"
     );
 
-    nmp_app_free(app);
+    free_app_ptr(app);
 }
 
 // ─── 2. Attribution path through the returned engine ─────────────────────────
@@ -191,7 +192,7 @@ fn register_defaults_rejects_repost_wrappers_as_primary_feed_kinds() {
 #[test]
 fn followed_reply_surfaces_root_with_attribution() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    let app = nmp_app_new();
+    let app = new_app_ptr();
     assert!(!app.is_null());
 
     // Active account == ALICE: self-inclusion makes ALICE a follow, so ALICE's
@@ -199,7 +200,7 @@ fn followed_reply_surfaces_root_with_attribution() {
     // SAFETY: valid non-null pointer.
     set_app_active(app, Some(ALICE));
     let engine =
-        nmp_defaults::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string(), vec![1])
+        nmp_native_runtime::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string(), vec![1])
             .engine;
 
     // ALICE (a follow, via self-inclusion) replies to BOB's not-yet-seen OP.
@@ -230,7 +231,7 @@ fn followed_reply_surfaces_root_with_attribution() {
         "attribution carries the raw replier pubkey"
     );
 
-    nmp_app_free(app);
+    free_app_ptr(app);
 }
 
 // ─── 3. Account-switch clear → kind:3 → repopulate ───────────────────────────
@@ -303,12 +304,12 @@ fn account_switch_clears_then_kind3_repopulates() {
 #[test]
 fn kind3_replacement_resets_visible_feed_immediately() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    let app = nmp_app_new();
+    let app = new_app_ptr();
     assert!(!app.is_null());
 
     set_app_active(app, Some(ALICE));
     let defaults =
-        nmp_defaults::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string(), vec![1]);
+        nmp_native_runtime::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string(), vec![1]);
 
     let follow_observer: &dyn ObservedProjectionSink = &*defaults.follow_set;
     follow_observer.on_kernel_event(&kind3(ALICE, &[BOB]));
@@ -339,7 +340,7 @@ fn kind3_replacement_resets_visible_feed_immediately() {
         "replacement kind:3 must clear rows from the prior follow perspective immediately"
     );
 
-    nmp_app_free(app);
+    free_app_ptr(app);
 }
 
 // ─── 4. No duplicate feed state ──────────────────────────────────────────────
@@ -358,13 +359,13 @@ fn wiring_declaration_does_not_fabricate_feed_state() {
     //       empty immediately after wiring, i.e. no declaration side effect
     //       fabricated cards out of thin air.
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    let app = nmp_app_new();
+    let app = new_app_ptr();
     assert!(!app.is_null());
 
     // SAFETY: valid non-null pointer.
     set_app_active(app, Some(ALICE));
     let engine =
-        nmp_defaults::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string(), vec![1])
+        nmp_native_runtime::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string(), vec![1])
             .engine;
 
     let snapshot = engine.snapshot(&nmp_feed::FeedRequest::default());
@@ -373,7 +374,7 @@ fn wiring_declaration_does_not_fabricate_feed_state() {
         "wiring must not fabricate feed state (no replayed/duplicated interest output)"
     );
 
-    nmp_app_free(app);
+    free_app_ptr(app);
 }
 
 // ─── 5. load_older losslessness: typed sidecar reflects the grown window ──────
@@ -390,13 +391,13 @@ fn wiring_declaration_does_not_fabricate_feed_state() {
 #[test]
 fn load_older_typed_sidecar_reflects_grown_window() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    let app = nmp_app_new();
+    let app = new_app_ptr();
     assert!(!app.is_null());
 
     // SAFETY: valid non-null pointer.
     set_app_active(app, Some(ALICE));
     let defaults =
-        nmp_defaults::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string(), vec![1]);
+        nmp_native_runtime::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string(), vec![1]);
     let engine = &defaults.engine;
 
     // Ingest 90 root events from ALICE (the viewer, so all are in-feed).
@@ -441,5 +442,5 @@ fn load_older_typed_sidecar_reflects_grown_window() {
         "after grow: typed sidecar must reflect the grown viewport (all 90 events, not just 80)"
     );
 
-    nmp_app_free(app);
+    free_app_ptr(app);
 }

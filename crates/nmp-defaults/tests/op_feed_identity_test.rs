@@ -5,15 +5,13 @@
 //! sign-in / remove-account commands, and wait on update callback ticks until
 //! the follow predicate and feed snapshot reflect the identity change.
 
-use std::ffi::{c_void, CString};
+use std::ffi::c_void;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
-use nmp_ffi::{
-    nmp_app_free, nmp_app_inject_signed_event_json, nmp_app_new, nmp_app_remove_account,
-    nmp_app_set_update_callback, nmp_app_signin_nsec, nmp_app_start,
-};
+mod common;
+use common::*;
 use nostr::prelude::*;
 use nostr::{EventBuilder, Kind, Tag, Timestamp};
 
@@ -68,15 +66,13 @@ fn second_nsec() -> String {
     Keys::new(sk).secret_key().to_bech32().expect("nsec bech32")
 }
 
-fn sign_in(app: *mut nmp_ffi::NmpApp, nsec: &str) {
-    let secret = CString::new(nsec).expect("nsec has no nul");
-    nmp_app_signin_nsec(app, secret.as_ptr(), 1);
+fn sign_in(app: *mut NmpApp, nsec: &str) {
+    signin_nsec(app, nsec, true);
 }
 
-fn inject_signed_json(app: *mut nmp_ffi::NmpApp, json: &str) {
-    let event = CString::new(json).expect("event json has no nul");
+fn inject_signed_json(app: *mut NmpApp, json: &str) {
     assert!(
-        nmp_app_inject_signed_event_json(app, event.as_ptr()),
+        inject_signed_event_json(app, json),
         "signed event must verify and inject"
     );
 }
@@ -106,12 +102,12 @@ fn signed_note(keys: &Keys, content: &str, created_at: u64) -> String {
 fn logout_before_kind3_clears_op_feed_identity_state() {
     let _g = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     let rx = install_update_signal();
-    let app = nmp_app_new();
-    nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
+    let app = new_app_ptr();
+    set_c_update_listener(app, std::ptr::null_mut(), Some(update_signal_callback));
     // SAFETY: app is a live pointer from nmp_app_new.
     let app_ref = unsafe { &*app };
-    let defaults = nmp_defaults::register_op_feed_defaults(app_ref, String::new(), vec![1]);
-    nmp_app_start(app, 256, 4);
+    let defaults = nmp_native_runtime::register_op_feed_defaults(app_ref, String::new(), vec![1]);
+    start_app(app, 256, 4);
 
     let alice = keys_from_nsec(TEST_NSEC);
     let alice_pk = alice.public_key().to_hex();
@@ -129,8 +125,7 @@ fn logout_before_kind3_clears_op_feed_identity_state() {
             .is_empty()
     });
 
-    let identity = CString::new(alice_pk.clone()).unwrap();
-    nmp_app_remove_account(app, identity.as_ptr());
+    remove_account(app, &alice_pk);
     wait_for(&rx, "logout clears OP feed", || {
         app_ref.active_account_handle().lock().unwrap().is_none()
             && defaults.follow_set.follows().is_empty()
@@ -141,7 +136,7 @@ fn logout_before_kind3_clears_op_feed_identity_state() {
                 .is_empty()
     });
 
-    nmp_app_free(app);
+    free_app_ptr(app);
     uninstall_update_signal();
 }
 
@@ -149,12 +144,12 @@ fn logout_before_kind3_clears_op_feed_identity_state() {
 fn switch_after_kind3_clears_predicate_snapshot_then_new_kind3_repopulates() {
     let _g = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     let rx = install_update_signal();
-    let app = nmp_app_new();
-    nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
+    let app = new_app_ptr();
+    set_c_update_listener(app, std::ptr::null_mut(), Some(update_signal_callback));
     // SAFETY: app is a live pointer from nmp_app_new.
     let app_ref = unsafe { &*app };
-    let defaults = nmp_defaults::register_op_feed_defaults(app_ref, String::new(), vec![1]);
-    nmp_app_start(app, 256, 4);
+    let defaults = nmp_native_runtime::register_op_feed_defaults(app_ref, String::new(), vec![1]);
+    start_app(app, 256, 4);
 
     let alice = keys_from_nsec(TEST_NSEC);
     let alice_pk = alice.public_key().to_hex();
@@ -211,6 +206,6 @@ fn switch_after_kind3_clears_predicate_snapshot_then_new_kind3_repopulates() {
                 .is_empty()
     });
 
-    nmp_app_free(app);
+    free_app_ptr(app);
     uninstall_update_signal();
 }

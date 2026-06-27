@@ -51,7 +51,7 @@ fn install_blocking_handler(
 }
 
 fn app_capability_slot(app: *mut NmpApp) -> CapabilityCallbackSlot {
-    unsafe { Arc::clone(&(*app).capability_callback) }
+    unsafe { &*app }.capability_callback_slot()
 }
 
 #[test]

@@ -11,7 +11,7 @@
 //! gate can recognise it (and any future tooling) without parsing `mod.rs`.
 #![cfg(any(test, feature = "test-support"))]
 
-use super::{app_ref, NmpApp};
+use super::{app_ref, NmpApp, NmpConfigStatus};
 use nmp_core::actor::ActorCommand;
 use nmp_core::actor::TestSupportCommand;
 use std::ffi::{c_char, CStr};
@@ -229,21 +229,10 @@ pub extern "C" fn nmp_app_inject_signed_event_json(
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[no_mangle]
 pub extern "C" fn nmp_app_configure_gc_budget(app: *mut NmpApp, max_events: u64) -> u32 {
-    use super::prestart_config::NmpConfigStatus;
     let Some(app) = app_ref(app) else {
         return NmpConfigStatus::NullApp.code();
     };
-    if let Err(status) = app.ensure_prestart_config(
-        "gc_budget",
-        "gc_budget_ceiling",
-        "nmp_app_configure_gc_budget",
-    ) {
-        return status.code();
-    }
-    if let Ok(mut guard) = app.gc_budget_ceiling.lock() {
-        *guard = Some(max_events as usize);
-    }
-    NmpConfigStatus::Ok.code()
+    app.configure_gc_budget_for_test(max_events).code()
 }
 
 /// Test-support — ingest `count` real Schnorr-signed kind:1 events under an

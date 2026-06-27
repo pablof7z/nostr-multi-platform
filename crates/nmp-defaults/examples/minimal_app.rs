@@ -18,8 +18,7 @@
 //! If this example outgrows ~20 lines of actual work, the template is
 //! regressing toward boilerplate.
 
-use nmp_defaults::{NmpAppBuilder, RunConfig};
-use nmp_ffi::{nmp_app_free, nmp_app_stop};
+use nmp_native_runtime::{NmpAppBuilder, RunConfig};
 
 fn main() {
     // 1. Start the builder.
@@ -69,6 +68,11 @@ fn main() {
     println!("  - Kernel started (in-memory store)");
 
     // 5. Tear down.
-    nmp_app_stop(app);
-    nmp_app_free(app);
+    if !app.is_null() {
+        // SAFETY: `start()` returned ownership of this pointer to the example.
+        unsafe {
+            (&*app).stop_runtime();
+            drop(Box::from_raw(app));
+        }
+    }
 }

@@ -4,13 +4,12 @@
 //! ## Why this lives here (ADR-0064 / Cut-B, #1756)
 //!
 //! A default-only composition root (e.g. `nmp-app-gallery`) dispatches writes
-//! through the typed BYTE doorway
-//! [`nmp_ffi::nmp_app_dispatch_action_bytes`], which requires encoding each
-//! action's canonical body into its typed `ActionPayload` FlatBuffers bytes.
+//! through the typed BYTE doorway, which requires encoding each action's
+//! canonical body into its typed `ActionPayload` FlatBuffers bytes.
 //! That encode step must name the concrete per-NIP payload type for every
 //! namespace — but the D0 boundary forbids a generic showcase app from
-//! depending on the per-NIP crates directly (it names only `nmp-defaults`,
-//! `nmp-core`, `nmp-ffi`).
+//! depending on the per-NIP crates directly (it names only the default
+//! composition and core substrate surfaces).
 //!
 //! `nmp-defaults` already depends on exactly the per-NIP crates whose action
 //! modules `register_defaults` installs, so it is the single, correct home for

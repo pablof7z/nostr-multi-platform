@@ -7,7 +7,8 @@
 use std::collections::BTreeSet;
 
 use nmp_core::substrate::{ActionModule, ActionPayload};
-use nmp_ffi::{nmp_app_free, nmp_app_new};
+mod common;
+use common::*;
 
 fn assert_contract<M, A>(namespace: &'static str) -> &'static str
 where
@@ -72,10 +73,9 @@ fn contract_matches_modules_and_default_payload_reexports() {
             action_payloads::PublishDmRelayListInput,
         >("nmp.nip17.publish_relay_list"),
         assert_contract::<nmp_nip57::ZapAction, action_payloads::ZapInput>("nmp.nip57.zap"),
-        assert_contract::<
-            nmp_nip84::PublishHighlightModule,
-            action_payloads::PublishHighlightAction,
-        >("nmp.nip84.publish_highlight"),
+        assert_contract::<nmp_nip84::PublishHighlightModule, action_payloads::PublishHighlightAction>(
+            "nmp.nip84.publish_highlight",
+        ),
         // Wallet (opt-in via `with_wallet`; nmp_nip47 available via the
         // `native` default feature). Not in `action_payloads` (only default
         // registrations appear there), so checked directly from nmp_nip47.
@@ -110,7 +110,7 @@ fn contract_matches_modules_and_default_payload_reexports() {
 
 #[test]
 fn live_default_action_registry_matches_contract() {
-    let app = nmp_app_new();
+    let app = new_app_ptr();
     assert!(!app.is_null(), "nmp_app_new returned null");
     let app_mut = unsafe { &mut *app };
 
@@ -126,5 +126,5 @@ fn live_default_action_registry_matches_contract() {
         "register_defaults must register exactly the default action contract"
     );
 
-    nmp_app_free(app);
+    free_app_ptr(app);
 }

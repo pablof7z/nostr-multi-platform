@@ -6,7 +6,6 @@ use super::{
 };
 use nmp_core::decode_snapshot_envelope;
 use std::ffi::c_void;
-use std::sync::atomic::Ordering;
 use std::sync::mpsc::{channel, Sender};
 use std::sync::Arc;
 use std::sync::{Mutex, OnceLock};
@@ -60,7 +59,7 @@ fn passive_handle_delivers_prestart_snapshot_on_callback_registration() {
         UNIX_EPOCH + Duration::from_millis(1_700_000_123_456),
     ));
     app_ref.set_kernel_clock_for_test(Arc::clone(&clock));
-    app_ref.queue_depth.store(7, Ordering::Relaxed);
+    app_ref.set_queue_depth_for_test(7);
 
     nmp_app_set_update_callback(
         app,
@@ -84,7 +83,7 @@ fn passive_handle_delivers_prestart_snapshot_on_callback_registration() {
         envelope.actor_queue_depth, 7,
         "passive pre-start frame must read the kernel-bound queue-depth handle"
     );
-    app_ref.queue_depth.store(0, Ordering::Relaxed);
+    app_ref.set_queue_depth_for_test(0);
 
     nmp_app_start(app, 256, 4);
     assert_eq!(crate::nmp_app_is_alive(app), 1, "start spawns the actor");

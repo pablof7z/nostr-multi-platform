@@ -271,7 +271,7 @@ pub(crate) fn run(_cfg: S7Config, report: &mut ScenarioMetrics) {
         *slot.lock().expect("active-account slot") = Some(VIEWER_PUBKEY.to_string());
 
         // Wire op_feed. SAFETY: valid pointer; called before start.
-        let _feed = nmp_defaults::register_op_feed_defaults(
+        let _feed = nmp_native_runtime::register_op_feed_defaults(
             unsafe { &*app },
             VIEWER_PUBKEY.to_string(),
             vec![1],
@@ -319,7 +319,7 @@ pub(crate) fn run(_cfg: S7Config, report: &mut ScenarioMetrics) {
         let slot = unsafe { &*app }.active_account_handle();
         *slot.lock().expect("active-account slot") = Some(VIEWER_PUBKEY.to_string());
 
-        let _feed = nmp_defaults::register_op_feed_defaults(
+        let _feed = nmp_native_runtime::register_op_feed_defaults(
             unsafe { &*app },
             VIEWER_PUBKEY.to_string(),
             vec![1],

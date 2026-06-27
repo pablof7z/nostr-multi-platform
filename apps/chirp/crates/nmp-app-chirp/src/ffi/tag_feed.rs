@@ -10,7 +10,7 @@
 //! and pushes a raw `nmp_app_open_interest`. It declares only Chirp's PRIMARY
 //! content kind (`[1]`) inside a typed [`FeedParams`] with
 //! [`FeedScope::Tag`] acquisition and lets [`NmpApp::open_feed`] drive the
-//! perspective compiler ([`nmp_defaults::compile_feed_params`]):
+//! perspective compiler ([`nmp_native_runtime::compile_feed_params`]):
 //!
 //! * wrapper kinds 6/16 are DERIVED below the app boundary by the compiler (the
 //!   app never names `[1,6]`), so the `#t` acquisition interest the kernel opens
@@ -168,7 +168,7 @@ fn compiler(
     params: &FeedParams,
     kinds: &std::collections::BTreeSet<u32>,
 ) -> Result<nmp_feed::FeedSessionBuild, FeedOpenError> {
-    nmp_defaults::compile_feed_params(app, params, kinds)
+    nmp_native_runtime::compile_feed_params(app, params, kinds)
 }
 
 /// Open a global hashtag feed for primary kind:1 notes carrying the normalized

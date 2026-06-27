@@ -27,7 +27,7 @@
 //!    `nmp init` scaffold's `register`; one call to
 //!    [`nmp_defaults::register_defaults`]).
 //! 2. [`register_following_timeline`] — open the FOLLOWING timeline. One call
-//!    to [`nmp_defaults::register_op_feed_defaults`] wires the OP-centric home
+//!    to [`nmp_native_runtime::register_op_feed_defaults`] wires the OP-centric home
 //!    feed (the following timeline): ingest fan-out, the live follow-set
 //!    predicate, the seq-ordered pull pager, and the typed `nmp.feed.home`
 //!    projection. The shell never names a relay, a filter, or a subscription.
@@ -76,7 +76,7 @@ pub fn register(app: &mut impl AppHost) {
 /// for self-attribution); the live follow set is read from the kernel's
 /// active-account slot regardless, so this is advisory.
 pub fn register_following_timeline(app: &NmpApp, viewer_pubkey_hex: impl Into<String>) {
-    let _defaults = nmp_defaults::register_op_feed_defaults(
+    let _defaults = nmp_native_runtime::register_op_feed_defaults(
         app,
         viewer_pubkey_hex.into(),
         FOLLOWING_PRIMARY_FEED_KINDS.to_vec(),

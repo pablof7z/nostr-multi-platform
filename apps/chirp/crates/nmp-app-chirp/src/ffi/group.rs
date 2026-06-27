@@ -15,7 +15,7 @@
 
 use std::ffi::c_char;
 
-use nmp_ffi::{GroupFeedHandle, NmpApp};
+use nmp_ffi::{open_group_discovery_handle, GroupFeedHandle, NmpApp};
 use nmp_nip29::group_id::GroupId;
 use serde::Deserialize;
 
@@ -147,7 +147,7 @@ pub extern "C" fn nmp_app_chirp_open_group_discovery(
     };
 
     // Thin-shell rule: parse C string, delegate to the hydrating composer.
-    Box::into_raw(Box::new(app_ref.open_group_discovery(relay_url)))
+    Box::into_raw(Box::new(open_group_discovery_handle(app_ref, relay_url)))
 }
 
 /// Close a NIP-29 group-discovery session opened by

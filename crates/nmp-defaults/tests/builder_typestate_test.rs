@@ -24,14 +24,15 @@
 //! is integration-test territory (the `nmp-testing` crate). These tests
 //! focus on the wiring-phase guarantees.
 
-use nmp_ffi::{nmp_app_free, nmp_app_stop};
-use nmp_defaults::{NmpAppBuilder, RunConfig};
+mod common;
+use common::*;
+use nmp_native_runtime::{NmpAppBuilder, RunConfig};
 
 // ── helper ───────────────────────────────────────────────────────────────────
 
 /// Start a builder through the full happy path and return the started pointer.
-/// The caller is responsible for `nmp_app_free(ptr)`.
-fn start_default() -> *mut nmp_ffi::NmpApp {
+/// The caller is responsible for `free_app_ptr(ptr)`.
+fn start_default() -> *mut NmpApp {
     let app = NmpAppBuilder::new()
         .in_memory()
         .consume_all_builtin_projections()
@@ -47,8 +48,8 @@ fn start_default() -> *mut nmp_ffi::NmpApp {
 fn builder_new_and_in_memory_start_returns_non_null() {
     // Minimal happy path: no extra wiring, explicit in-memory opt-in.
     let app = start_default();
-    nmp_app_stop(app);
-    nmp_app_free(app);
+    stop_app(app);
+    free_app_ptr(app);
 }
 
 #[test]
@@ -63,8 +64,8 @@ fn builder_storage_path_start_returns_non_null() {
         .without_initial_relays()
         .start(RunConfig::default());
     assert!(!app.is_null(), "start() returned null after storage_path()");
-    nmp_app_stop(app);
-    nmp_app_free(app);
+    stop_app(app);
+    free_app_ptr(app);
 }
 
 #[test]
@@ -83,8 +84,8 @@ fn builder_implements_apphost_for_register_defaults() {
             .start(RunConfig::default())
     };
     assert!(!app.is_null());
-    nmp_app_stop(app);
-    nmp_app_free(app);
+    stop_app(app);
+    free_app_ptr(app);
 }
 
 #[test]
@@ -133,8 +134,8 @@ fn builder_full_pipeline_with_register_defaults_and_custom_run_config() {
             .start(cfg)
     };
     assert!(!app.is_null());
-    nmp_app_stop(app);
-    nmp_app_free(app);
+    stop_app(app);
+    free_app_ptr(app);
 }
 
 /// ADR-0053 DEBT 2 — the narrowing path. `.declare_consumed_projections(keys)`
@@ -156,8 +157,8 @@ fn builder_declare_consumed_projections_narrows_and_advances_typestate() {
         unsafe { &*app }.consumed_projections_are_narrowing(),
         "after declaring a non-empty set the app must be in narrowing state"
     );
-    nmp_app_stop(app);
-    nmp_app_free(app);
+    stop_app(app);
+    free_app_ptr(app);
 }
 
 /// ADR-0053 DEBT 2 — the explicit firehose opt-out.
@@ -179,8 +180,8 @@ fn builder_consume_all_builtin_projections_is_not_narrowing() {
         !unsafe { &*app }.consumed_projections_are_narrowing(),
         "consume_all_builtin_projections() must leave the app permissive (not narrowing)"
     );
-    nmp_app_stop(app);
-    nmp_app_free(app);
+    stop_app(app);
+    free_app_ptr(app);
 }
 
 /// #1493 — `.with_relays(...)` is the typestate-advancing relay decision
@@ -195,8 +196,8 @@ fn builder_with_relays_advances_typestate_and_starts() {
         .with_relays([("wss://app-owned.relay/", "both")])
         .start(RunConfig::default());
     assert!(!app.is_null(), "with_relays → start must return non-null");
-    nmp_app_stop(app);
-    nmp_app_free(app);
+    stop_app(app);
+    free_app_ptr(app);
 }
 
 /// #1493 — `.with_relays(empty)` panics: a no-relay start must be the explicit
@@ -236,6 +237,6 @@ fn builder_declared_projections_union_across_trait_and_typestate_methods() {
         unsafe { &*app }.consumed_projections_are_narrowing(),
         "the union of both declarations must be narrowing"
     );
-    nmp_app_stop(app);
-    nmp_app_free(app);
+    stop_app(app);
+    free_app_ptr(app);
 }

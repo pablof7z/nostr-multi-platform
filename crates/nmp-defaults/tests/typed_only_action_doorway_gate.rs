@@ -21,14 +21,15 @@
 //! from `ActionContract::typed_dispatch`, so a JSON-only default action needs an
 //! explicit tracked exemption in the contract and this gate fails on drift.
 
-use nmp_ffi::{nmp_app_free, nmp_app_new};
+mod common;
+use common::*;
 
 /// THE production gate: after the canonical `register_defaults` wiring, the
 /// untyped (JSON-doorway-only) module set is EXACTLY the contract exemption
 /// set. Everything else is typed (ADR-0064 / #1756).
 #[test]
 fn register_defaults_untyped_modules_match_the_migration_allowlist() {
-    let app = nmp_app_new();
+    let app = new_app_ptr();
     assert!(!app.is_null(), "nmp_app_new returned null");
     // SAFETY: `app` is a valid non-null pointer fresh from `nmp_app_new`.
     let app_mut = unsafe { &mut *app };
@@ -49,7 +50,7 @@ fn register_defaults_untyped_modules_match_the_migration_allowlist() {
          exemption absent here must be removed from the contract."
     );
 
-    nmp_app_free(app);
+    free_app_ptr(app);
 }
 
 /// A deliberately JSON-only module — `serde_json::Value` action, NO
@@ -80,7 +81,7 @@ impl nmp_core::substrate::ActionModule for JsonOnlyAppModule {
 /// JSON-only module is reachable through the byte doorway.
 #[test]
 fn gate_flags_a_json_only_module_registered_on_a_real_app() {
-    let app = nmp_app_new();
+    let app = new_app_ptr();
     assert!(!app.is_null(), "nmp_app_new returned null");
     // SAFETY: valid non-null pointer fresh from `nmp_app_new`.
     let app_mut = unsafe { &mut *app };
@@ -107,5 +108,5 @@ fn gate_flags_a_json_only_module_registered_on_a_real_app() {
         "registering one JSON-only module must add EXACTLY one untyped namespace"
     );
 
-    nmp_app_free(app);
+    free_app_ptr(app);
 }

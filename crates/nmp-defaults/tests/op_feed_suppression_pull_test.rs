@@ -6,6 +6,8 @@
 
 use std::sync::{Arc, Mutex};
 
+mod common;
+use common::*;
 use nmp_core::substrate::KernelEvent;
 use nmp_core::ObservedProjectionSink;
 use nmp_core::{decode_snapshot_typed_projections, encode_snapshot_frame, SnapshotEnvelope};
@@ -90,18 +92,18 @@ fn mute_list(id: &str, muted_authors: &[&str], muted_events: &[&str]) -> KernelE
     }
 }
 
-fn set_active_account(app: &nmp_ffi::NmpApp, pubkey: &str) {
+fn set_active_account(app: &NmpApp, pubkey: &str) {
     *app.active_account_handle()
         .lock()
         .expect("active account slot") = Some(pubkey.to_string());
 }
 
-fn publish_store(app: &nmp_ffi::NmpApp, store: Arc<MemEventStore>) {
+fn publish_store(app: &NmpApp, store: Arc<MemEventStore>) {
     let store: Arc<dyn EventStore> = store;
     *app.event_store_handle().lock().expect("event store slot") = Some(store);
 }
 
-fn current_home_ids(defaults: &nmp_defaults::OpFeedDefaults) -> Vec<String> {
+fn current_home_ids(defaults: &nmp_native_runtime::OpFeedDefaults) -> Vec<String> {
     defaults
         .engine
         .snapshot_current_window()
@@ -111,7 +113,7 @@ fn current_home_ids(defaults: &nmp_defaults::OpFeedDefaults) -> Vec<String> {
         .collect()
 }
 
-fn typed_home_ids_from_snapshot_frame(app: &nmp_ffi::NmpApp) -> Vec<String> {
+fn typed_home_ids_from_snapshot_frame(app: &NmpApp) -> Vec<String> {
     let typed = app.run_typed_snapshot_projections();
     let frame = encode_snapshot_frame(&SnapshotEnvelope::default(), &typed);
     let rows = decode_snapshot_typed_projections(&frame).expect("snapshot frame sidecar decodes");
@@ -130,7 +132,7 @@ fn typed_home_ids_from_snapshot_frame(app: &nmp_ffi::NmpApp) -> Vec<String> {
 #[test]
 fn mute_replacement_to_empty_replays_suppressed_rows_from_store() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    let app = nmp_ffi::nmp_app_new();
+    let app = new_app_ptr();
     assert!(!app.is_null());
     let app_ref = unsafe { &*app };
     set_active_account(app_ref, ALICE);
@@ -139,7 +141,7 @@ fn mute_replacement_to_empty_replays_suppressed_rows_from_store() {
     publish_store(app_ref, Arc::clone(&store));
 
     let mute = Arc::new(MuteListProjection::new(app_ref.active_account_handle()));
-    let defaults = nmp_defaults::register_op_feed_defaults_with_mute(
+    let defaults = nmp_native_runtime::register_op_feed_defaults_with_mute(
         app_ref,
         ALICE.to_string(),
         vec![1],
@@ -194,13 +196,13 @@ fn mute_replacement_to_empty_replays_suppressed_rows_from_store() {
         "the same opened feed replays from cache and restores rows after suppression is removed"
     );
 
-    nmp_ffi::nmp_app_free(app);
+    free_app_ptr(app);
 }
 
 #[test]
 fn typed_home_sidecar_clears_and_regrows_after_mute_replacement() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    let app = nmp_ffi::nmp_app_new();
+    let app = new_app_ptr();
     assert!(!app.is_null());
     let app_ref = unsafe { &*app };
     set_active_account(app_ref, ALICE);
@@ -209,7 +211,7 @@ fn typed_home_sidecar_clears_and_regrows_after_mute_replacement() {
     publish_store(app_ref, Arc::clone(&store));
 
     let mute = Arc::new(MuteListProjection::new(app_ref.active_account_handle()));
-    let defaults = nmp_defaults::register_op_feed_defaults_with_mute(
+    let defaults = nmp_native_runtime::register_op_feed_defaults_with_mute(
         app_ref,
         ALICE.to_string(),
         vec![1],
@@ -267,13 +269,13 @@ fn typed_home_sidecar_clears_and_regrows_after_mute_replacement() {
         "the typed sidecar regrows with both rows after suppression is removed"
     );
 
-    nmp_ffi::nmp_app_free(app);
+    free_app_ptr(app);
 }
 
 #[test]
 fn muted_repost_targets_do_not_count_as_visible_pull_progress() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    let app = nmp_ffi::nmp_app_new();
+    let app = new_app_ptr();
     assert!(!app.is_null());
     let app_ref = unsafe { &*app };
     set_active_account(app_ref, ALICE);
@@ -282,7 +284,7 @@ fn muted_repost_targets_do_not_count_as_visible_pull_progress() {
     publish_store(app_ref, Arc::clone(&store));
 
     let mute = Arc::new(MuteListProjection::new(app_ref.active_account_handle()));
-    let defaults = nmp_defaults::register_op_feed_defaults_with_mute(
+    let defaults = nmp_native_runtime::register_op_feed_defaults_with_mute(
         app_ref,
         ALICE.to_string(),
         vec![1],
@@ -337,13 +339,13 @@ fn muted_repost_targets_do_not_count_as_visible_pull_progress() {
         "after replay, muted target repost wrappers stay hidden and the followed author's later direct note appears"
     );
 
-    nmp_ffi::nmp_app_free(app);
+    free_app_ptr(app);
 }
 
 #[test]
 fn event_id_mute_replacement_replays_suppressed_rows_from_store() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    let app = nmp_ffi::nmp_app_new();
+    let app = new_app_ptr();
     assert!(!app.is_null());
     let app_ref = unsafe { &*app };
     set_active_account(app_ref, ALICE);
@@ -352,7 +354,7 @@ fn event_id_mute_replacement_replays_suppressed_rows_from_store() {
     publish_store(app_ref, Arc::clone(&store));
 
     let mute = Arc::new(MuteListProjection::new(app_ref.active_account_handle()));
-    let defaults = nmp_defaults::register_op_feed_defaults_with_mute(
+    let defaults = nmp_native_runtime::register_op_feed_defaults_with_mute(
         app_ref,
         ALICE.to_string(),
         vec![1],
@@ -407,5 +409,5 @@ fn event_id_mute_replacement_replays_suppressed_rows_from_store() {
         "the formerly event-id-muted row re-enters from the Rust store"
     );
 
-    nmp_ffi::nmp_app_free(app);
+    free_app_ptr(app);
 }

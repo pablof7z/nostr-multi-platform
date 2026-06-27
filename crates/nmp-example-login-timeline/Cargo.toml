@@ -10,8 +10,10 @@ description = "Canonical DX worked example: login → following-timeline render 
 
 [dependencies]
 # The composition-root library (ADR-0046): `register_defaults` +
-# `register_op_feed_defaults` are the two framework calls the shell makes.
+# substrate defaults.
 nmp-defaults = { path = "../nmp-defaults" }
+# Native runtime owner: typestate builder plus OP-feed registration.
+nmp-native-runtime = { path = "../nmp-native-runtime" }
 # The `NmpApp` handle the shell reads the typed projection from, and (in the
 # harness) the C-ABI login surface.
 nmp-ffi = { path = "../nmp-ffi" }

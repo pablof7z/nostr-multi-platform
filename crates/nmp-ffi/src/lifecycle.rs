@@ -45,7 +45,7 @@ pub extern "C" fn nmp_app_lifecycle_foreground(app: *mut NmpApp) {
     let Some(app) = app_ref(app) else {
         return;
     };
-    app.lifecycle_event(LifecyclePhase::Foreground);
+    app.lifecycle_foreground();
 }
 
 /// Report iOS `scenePhase == .background` (or platform equivalent). Symmetric
@@ -65,7 +65,7 @@ pub extern "C" fn nmp_app_lifecycle_background(app: *mut NmpApp) {
     let Some(app) = app_ref(app) else {
         return;
     };
-    app.lifecycle_event(LifecyclePhase::Background);
+    app.lifecycle_background();
 }
 
 /// Register a native handler that fires on meaningful phase transitions.
@@ -86,13 +86,10 @@ pub extern "C" fn nmp_app_set_lifecycle_callback(
     let Some(app) = app_ref(app) else {
         return;
     };
-    let Ok(mut slot) = app.lifecycle_observer.lock() else {
-        return;
-    };
-    *slot = callback.map(|callback| LifecycleObserverRegistration {
+    app.set_lifecycle_observer(callback.map(|callback| LifecycleObserverRegistration {
         context: context as usize,
         callback,
-    });
+    }));
 }
 
 /// Actor-liveness probe (D7 pull-side sibling of the
@@ -126,19 +123,7 @@ pub extern "C" fn nmp_app_is_alive(app: *mut NmpApp) -> u8 {
     let Some(app) = app_ref(app) else {
         return 0;
     };
-    // D6 — a poisoned mutex on the actor slot is "kernel state is broken";
-    // collapse to dead rather than panic across the FFI seam.
-    let Ok(guard) = app.actor.lock() else {
-        return 0;
-    };
-    match guard.as_ref() {
-        Some(handle) if !handle.is_finished() => 1,
-        // `None` is the pre-start / post-`Drop` state; `Some` with
-        // `is_finished()` is the post-panic / post-`Shutdown` state. Both are
-        // "the actor will no longer service commands" — the host must surface
-        // a fatal error.
-        _ => 0,
-    }
+    u8::from(app.is_alive())
 }
 
 #[cfg(test)]

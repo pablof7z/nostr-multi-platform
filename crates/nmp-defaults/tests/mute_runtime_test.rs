@@ -19,7 +19,8 @@ use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::{EventId, KernelEvent, SuppressionLookup};
 use nmp_core::ObservedProjectionSink;
-use nmp_ffi::{nmp_app_free, nmp_app_new};
+mod common;
+use common::*;
 use nmp_nip01::{ModularTimelineProjection, ModularTimelineSpec, TimelineEventCard};
 use nmp_nip51::MuteListProjection;
 use nmp_threading::ModulePolicy;
@@ -100,14 +101,14 @@ fn card_ids(proj: &ModularTimelineProjection) -> Vec<String> {
 /// projection. Cold state: both arrays empty.
 #[test]
 fn register_defaults_wires_mute_list_projection() {
-    let app = nmp_app_new();
+    let app = new_app_ptr();
     assert!(!app.is_null(), "nmp_app_new returned null");
 
     // SAFETY: `app` is a valid non-null pointer from `nmp_app_new`.
     nmp_defaults::register_defaults(unsafe { &mut *app });
 
     // The generic JSON lane is deleted (rule A6). Use the typed FlatBuffers sidecar.
-    let app_ref: &nmp_ffi::NmpApp = unsafe { &*app };
+    let app_ref: &NmpApp = unsafe { &*app };
     let projections = app_ref.run_typed_snapshot_projections();
     let entry = projections
         .iter()
@@ -115,7 +116,7 @@ fn register_defaults_wires_mute_list_projection() {
         .expect("register_defaults must register the nmp.nip51.mute_list typed projection");
     let snapshot = nmp_nip51::wire::mute_list_fb::decode_mute_list(&entry.payload)
         .expect("mute_list projection must decode to MuteListSnapshot");
-    nmp_app_free(app);
+    free_app_ptr(app);
 
     assert!(
         snapshot.muted_pubkeys.is_empty(),
