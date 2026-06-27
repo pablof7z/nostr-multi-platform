@@ -48,7 +48,8 @@ export function FeedPanel(props: { canPublish: boolean; diagnostics?: RuntimePro
 
   const selectMode = (next: FeedMode) => {
     setMode(next);
-    window.history.replaceState(null, "", next === "saved" ? "#saved" : "#feed");
+    const nextHash = next === "saved" ? "#saved" : "#feed";
+    if (window.location.hash !== nextHash) window.location.hash = nextHash;
   };
 
   const startQuote = (row: FeedSelection["row"]) => {

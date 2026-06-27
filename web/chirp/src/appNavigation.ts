@@ -1,6 +1,7 @@
 export type MainView =
   | "setup"
   | "home"
+  | "saved"
   | "search"
   | "notifications"
   | "groups"
@@ -23,6 +24,11 @@ const VIEW_COPY: Record<MainView, ViewCopy> = {
     kicker: "Home feed",
     title: "Real relay timeline",
     support: "Read, publish, and verify every action through relay diagnostics.",
+  },
+  saved: {
+    kicker: "NIP-51 bookmarks",
+    title: "Saved notes",
+    support: "Review notes from the Rust-owned bookmark projection and relay-hydrated feed.",
   },
   search: {
     kicker: "NIP-50 discovery",
@@ -53,6 +59,7 @@ const VIEW_COPY: Record<MainView, ViewCopy> = {
 
 export function viewFromHash(hash: string): MainView {
   if (hash === "" || hash === "#setup" || hash === "#signing") return "setup";
+  if (hash === "#saved") return "saved";
   if (hash === "#search") return "search";
   if (hash === "#notifications") return "notifications";
   if (hash === "#groups") return "groups";

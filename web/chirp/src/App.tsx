@@ -148,7 +148,14 @@ export default function App() {
             >
               Groups
             </a>
-            <a class="rail-link" href="#saved">Saved</a>
+            <a
+              class={mainView() === "saved" ? "rail-link rail-link--active" : "rail-link"}
+              href="#saved"
+              aria-current={mainView() === "saved" ? "page" : undefined}
+              data-testid="nav-saved"
+            >
+              Saved
+            </a>
             <a
               class={mainView() === "notifications" ? "rail-link rail-link--active" : "rail-link"}
               href="#notifications"
@@ -234,7 +241,7 @@ export default function App() {
                   {mainView() === "workspaces" && (
                     <BlockedWorkspacesPanel signedIn={signerConnected()} />
                   )}
-                  {mainView() === "home" && (
+                  {(mainView() === "home" || mainView() === "saved") && (
                     <FeedPanel canPublish={signerConnected()} diagnostics={runtimeProjection()} />
                   )}
                 </section>

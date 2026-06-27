@@ -105,6 +105,13 @@ test("@wasm bookmarks: saved view refetches saved note after reload", async ({ p
       .poll(() => hasBookmarkEdit(relay, targetEventId!, true), { timeout: 30_000 })
       .toBe(true);
     await expect(page.getByTestId("saved-count")).toHaveText("1 saved", { timeout: 30_000 });
+    await page.getByTestId("nav-saved").click();
+    await expect(page.locator(SHELL)).toHaveAttribute("data-main-view", "saved");
+    await expect(page.getByTestId("nav-saved")).toHaveAttribute("aria-current", "page");
+    await expect(page.getByRole("heading", { name: "Saved notes" })).toBeVisible();
+    await expect(page.getByTestId("saved-timeline")).toContainText(relay.noteContent, {
+      timeout: 30_000,
+    });
 
     const browser = page.context().browser();
     if (browser === null) throw new Error("Playwright browser handle unavailable");
@@ -116,7 +123,9 @@ test("@wasm bookmarks: saved view refetches saved note after reload", async ({ p
     });
     await secondPage.getByTestId("local-nsec-input").fill(localNsec);
     await secondPage.getByTestId("local-nsec-submit").click();
-    await secondPage.getByTestId("saved-view-tab").click();
+    await secondPage.getByTestId("nav-saved").click();
+    await expect(secondPage.locator(SHELL)).toHaveAttribute("data-main-view", "saved");
+    await expect(secondPage.getByRole("heading", { name: "Saved notes" })).toBeVisible();
 
     await expect(secondPage.getByTestId("saved-count")).toHaveText("1 saved", {
       timeout: 30_000,
