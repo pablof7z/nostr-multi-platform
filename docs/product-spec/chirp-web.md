@@ -70,6 +70,25 @@ from the active user with the selected event's `e` tag, the target author's `p`
 tag when known, the target-kind `k` tag, and the same outbox/action result
 surfaces used by notes, profiles, reactions, follows, and bookmarks.
 
+## Quote Repost Publish Contract
+
+Chirp Web must let a signed-in user quote a feed or thread note through the
+typed NIP-18 quote-repost action path. The browser shell may expose the Quote
+affordance, the composer target preview, and the user's commentary, but Rust
+owns kind:1 event construction, NIP-18 `q` tag construction, target metadata
+tags, signing, outbox routing, relay selection, and diagnostics.
+
+Quote reposts must publish kind:1 notes with non-empty commentary, a `q` tag
+for the selected event, the target author's `p` tag when known, and the
+target-kind `k` tag. TypeScript must not construct `q`, `p`, or `k` tags and
+must not fall back to `nmp.publish`/`PublishRaw` for quote reposts.
+
+Acceptance must prove that quote repost publishes a signed kind:1 event from the
+active user with the selected event's `q` tag, the target author's `p` tag when
+known, the target-kind `k` tag, the requested commentary, and the same
+outbox/action result surfaces used by notes, profiles, reactions, reposts,
+follows, and bookmarks.
+
 ## Follow Publish Contract
 
 Chirp Web must let a signed-in user follow and unfollow a displayed author

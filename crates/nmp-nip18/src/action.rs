@@ -4,6 +4,7 @@ use nmp_core::substrate::{
     ActionRejection, ProtocolCommand, ProtocolCommandContext, ProtocolCommandError,
     ProtocolDescriptor,
 };
+use nmp_core::tags::{p_tag, q_tag};
 use nmp_signer_iface::UnsignedEvent;
 use serde::{Deserialize, Serialize};
 
@@ -21,13 +22,33 @@ pub struct RepostAction {
     pub relay_hint: Option<String>,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct QuoteRepostAction {
+    pub target_event_id: String,
+    /// Nostr kind of the event being quoted. Quote reposts publish a kind:1
+    /// note with a NIP-18 q tag; this kind is retained as target metadata.
+    pub target_kind: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_author_pubkey: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub relay_hint: Option<String>,
+    pub content: String,
+}
+
 #[derive(Debug)]
 pub struct RepostCommand {
     action: RepostAction,
     correlation_id: String,
 }
 
+#[derive(Debug)]
+pub struct QuoteRepostCommand {
+    action: QuoteRepostAction,
+    correlation_id: String,
+}
+
 pub struct RepostModule;
+pub struct QuoteRepostModule;
 
 impl ActionModule for RepostModule {
     const NAMESPACE: &'static str = "nmp.nip18.repost";
@@ -56,6 +77,33 @@ impl ActionModule for RepostModule {
     }
 }
 
+impl ActionModule for QuoteRepostModule {
+    const NAMESPACE: &'static str = "nmp.nip18.quote_repost";
+    type Action = QuoteRepostAction;
+
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<QuoteRepostAction as ActionPayload>::decode(bytes))
+    }
+
+    fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
+        validate_quote_repost(&action).map_err(ActionRejection::Invalid)
+    }
+
+    fn execute(
+        &self,
+        _ctx: &ActionContext,
+        action: Self::Action,
+        correlation_id: &str,
+        send: &dyn Fn(ActorCommand),
+    ) -> Result<(), String> {
+        send(ActorCommand::Protocol(Box::new(QuoteRepostCommand {
+            action,
+            correlation_id: correlation_id.to_string(),
+        })));
+        Ok(())
+    }
+}
+
 impl ProtocolCommand for RepostCommand {
     fn run(
         self: Box<Self>,
@@ -72,40 +120,88 @@ impl ProtocolCommand for RepostCommand {
     }
 }
 
+impl ProtocolCommand for QuoteRepostCommand {
+    fn run(
+        self: Box<Self>,
+        ctx: &mut ProtocolCommandContext<'_>,
+    ) -> Result<(), ProtocolCommandError> {
+        let event = quote_repost_event(&self.action)
+            .map_err(|err| ProtocolCommandError::new(format!("quote repost: {err}")))?;
+        ctx.send(ActorCommand::Publish(PublishCommand::UnsignedEvent {
+            event,
+            correlation_id: Some(self.correlation_id),
+            signer_pubkey: None,
+        }));
+        Ok(())
+    }
+}
+
 pub struct Nip18Descriptor;
 
 impl ProtocolDescriptor for Nip18Descriptor {
     fn register_actions(&self, app: &mut impl ActionRegistrar) {
         app.register_default_action(RepostModule);
+        app.register_default_action(QuoteRepostModule);
     }
 }
 
 pub fn register_actions(app: &mut impl ActionRegistrar) {
     app.register_default_action(RepostModule);
+    app.register_default_action(QuoteRepostModule);
 }
 
 fn validate(action: &RepostAction) -> Result<(), String> {
-    if !is_hex64(&action.target_event_id) {
-        return Err("repost requires a 64-hex target_event_id".to_string());
+    validate_target(
+        &action.target_event_id,
+        action.target_kind,
+        action.target_author_pubkey.as_deref(),
+        action.relay_hint.as_deref(),
+        "repost",
+    )
+}
+
+fn validate_quote_repost(action: &QuoteRepostAction) -> Result<(), String> {
+    validate_target(
+        &action.target_event_id,
+        action.target_kind,
+        action.target_author_pubkey.as_deref(),
+        action.relay_hint.as_deref(),
+        "quote repost",
+    )?;
+    if action.content.trim().is_empty() {
+        return Err("quote repost requires non-empty content".to_string());
     }
-    if action.target_kind == 0 {
-        return Err("repost requires a non-zero target_kind".to_string());
+    Ok(())
+}
+
+fn validate_target(
+    target_event_id: &str,
+    target_kind: u32,
+    target_author_pubkey: Option<&str>,
+    relay_hint: Option<&str>,
+    label: &str,
+) -> Result<(), String> {
+    if !is_hex64(target_event_id) {
+        return Err(format!("{label} requires a 64-hex target_event_id"));
     }
-    if action
-        .target_author_pubkey
-        .as_deref()
+    if target_kind == 0 {
+        return Err(format!("{label} requires a non-zero target_kind"));
+    }
+    if target_author_pubkey
         .map(str::trim)
         .is_some_and(|author| !is_hex64(author))
     {
-        return Err("repost target_author_pubkey must be 64-hex when provided".to_string());
+        return Err(format!(
+            "{label} target_author_pubkey must be 64-hex when provided"
+        ));
     }
-    if action
-        .relay_hint
-        .as_deref()
+    if relay_hint
         .map(str::trim)
         .is_some_and(|relay| relay.is_empty())
     {
-        return Err("repost relay_hint must be non-empty when provided".to_string());
+        return Err(format!(
+            "{label} relay_hint must be non-empty when provided"
+        ));
     }
     Ok(())
 }
@@ -143,6 +239,47 @@ fn repost_event(action: &RepostAction) -> Result<UnsignedEvent, String> {
         },
         tags,
         content: String::new(),
+        created_at: 0,
+    })
+}
+
+fn quote_repost_event(action: &QuoteRepostAction) -> Result<UnsignedEvent, String> {
+    validate_quote_repost(action)?;
+    let relay = action
+        .relay_hint
+        .as_deref()
+        .map(str::trim)
+        .filter(|relay| !relay.is_empty());
+
+    let mut quote_tag = q_tag(action.target_event_id.trim(), relay);
+    if let Some(pubkey) = action
+        .target_author_pubkey
+        .as_deref()
+        .map(str::trim)
+        .filter(|pubkey| !pubkey.is_empty())
+    {
+        if relay.is_none() {
+            quote_tag.push(String::new());
+        }
+        quote_tag.push(pubkey.to_string());
+    }
+
+    let mut tags = vec![quote_tag];
+    if let Some(pubkey) = action
+        .target_author_pubkey
+        .as_deref()
+        .map(str::trim)
+        .filter(|pubkey| !pubkey.is_empty())
+    {
+        tags.push(p_tag(pubkey, None));
+    }
+    tags.push(vec!["k".to_string(), action.target_kind.to_string()]);
+
+    Ok(UnsignedEvent {
+        pubkey: String::new(),
+        kind: 1,
+        tags,
+        content: action.content.trim().to_string(),
         created_at: 0,
     })
 }

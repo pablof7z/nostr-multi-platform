@@ -129,6 +129,38 @@ public enum GeneratedActionBuilders {
         )
     }
 
+    /// Publish a NIP-18 quote repost note for a target event.
+    /// Builds the `nmp.nip18.quote_repost` `DispatchEnvelope` bytes for the byte doorway.
+    public static func quoteRepost(
+        correlationId: String,
+        targetEventId: String,
+        targetKind: UInt32,
+        targetAuthorPubkey: String?,
+        relayHint: String?,
+        content: String
+    ) -> [UInt8] {
+        var fbb = FlatBufferBuilder()
+        let targetEventIdOffset = fbb.create(string: targetEventId)
+        let targetAuthorPubkeyOffset: Offset = targetAuthorPubkey.map { fbb.create(string: $0) } ?? Offset()
+        let relayHintOffset: Offset = relayHint.map { fbb.create(string: $0) } ?? Offset()
+        let contentOffset = fbb.create(string: content)
+        let payloadStart = fbb.startTable(with: 6)
+        fbb.add(element: UInt32(1), def: UInt32(0), at: 4) // slot 0: schema_version
+        fbb.add(offset: targetEventIdOffset, at: 6) // slot 1: targetEventId
+        fbb.add(element: UInt32(targetKind), def: UInt32(0), at: 8) // slot 2: targetKind
+        if targetAuthorPubkeyOffset.o != 0 { fbb.add(offset: targetAuthorPubkeyOffset, at: 10) } // slot 3: targetAuthorPubkey
+        if relayHintOffset.o != 0 { fbb.add(offset: relayHintOffset, at: 12) } // slot 4: relayHint
+        fbb.add(offset: contentOffset, at: 14) // slot 5: content
+        let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))
+        fbb.finish(offset: payloadRoot, fileId: "N18Q")
+        let payload = fbb.sizedByteArray
+        return encodeDispatchEnvelope(
+            correlationId: correlationId,
+            actionNamespace: "nmp.nip18.quote_repost",
+            payload: payload
+        )
+    }
+
     /// Follow a single pubkey (NIP-02 contact-list add).
     /// Builds the `nmp.follow` `DispatchEnvelope` bytes for the byte doorway.
     public static func follow(

@@ -20,7 +20,7 @@
 //!
 //! 1. **Action modules** for the common NIPs:
 //!    * `nmp.follow` / `nmp.unfollow` — [`nmp_nip02`]
-//!    * `nmp.nip18.repost` — [`nmp_nip18`]
+//!    * `nmp.nip18.repost` / `nmp.nip18.quote_repost` — [`nmp_nip18`]
 //!    * `nmp.nip25.react` / `nmp.nip25.unreact` — [`nmp_nip25`]
 //!    * `nmp.nip17.send` / `nmp.nip17.publish_relay_list` — [`nmp_nip17`]
 //!    * `nmp.nip57.zap` — [`nmp_nip57`]

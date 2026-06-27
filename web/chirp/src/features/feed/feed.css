@@ -73,6 +73,60 @@
   cursor: not-allowed;
 }
 
+.quote-target {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  background: var(--bg-raised);
+}
+
+.quote-target div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.quote-target strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quote-target span {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.quote-target button {
+  appearance: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 7px 10px;
+  background: var(--bg-panel);
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.quote-target button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .composer-submit,
 .action-btn {
   appearance: none;
@@ -292,6 +346,14 @@
   .feed-loading,
   .feed-empty {
     min-height: 190px;
+  }
+
+  .quote-target {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .quote-target button {
+    justify-self: start;
   }
 
   .post-timestamp {

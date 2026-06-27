@@ -27,6 +27,7 @@ function modeFromHash(): FeedMode {
 export function FeedPanel(props: { canPublish: boolean; diagnostics?: RuntimeProjection }) {
   const { state, profileHost } = createFeedStore();
   const [selection, setSelection] = createSignal<FeedSelection | null>(null);
+  const [quoteTarget, setQuoteTarget] = createSignal<FeedSelection["row"] | null>(null);
   const [mode, setMode] = createSignal<FeedMode>(modeFromHash());
   const bookmarkedIds = createMemo(() => new Set(props.diagnostics?.bookmarkedEventIds ?? []));
   const savedRows = createMemo(() => state.rows.filter((row) => bookmarkedIds().has(row.id)));
@@ -44,11 +45,23 @@ export function FeedPanel(props: { canPublish: boolean; diagnostics?: RuntimePro
     window.history.replaceState(null, "", next === "saved" ? "#saved" : "#feed");
   };
 
+  const startQuote = (row: FeedSelection["row"]) => {
+    setQuoteTarget(row);
+    requestAnimationFrame(() => {
+      document.querySelector<HTMLTextAreaElement>('[data-testid="compose-input"]')?.focus();
+    });
+  };
+
   return (
     <NostrProfileHostProvider host={profileHost}>
       <div class="feed-panel" data-testid="feed-panel" data-view={mode()}>
         {/* Compose box */}
-        <Composer canPublish={props.canPublish} />
+        <Composer
+          canPublish={props.canPublish}
+          quoteTarget={quoteTarget()}
+          onCancelQuote={() => setQuoteTarget(null)}
+          onQuotePublished={() => setQuoteTarget(null)}
+        />
 
         <div class="feed-viewbar" id="saved" aria-label="Feed views">
           <div class="feed-tabs" role="tablist" aria-label="Timeline views">
@@ -142,6 +155,7 @@ export function FeedPanel(props: { canPublish: boolean; diagnostics?: RuntimePro
                     activeAccountPubkey={props.diagnostics?.activeAccountPubkey}
                     bookmarked={bookmarkedIds().has(row.id)}
                     onSelect={setSelection}
+                    onQuote={startQuote}
                   />
                 )}
               </For>

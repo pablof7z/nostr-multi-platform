@@ -21,6 +21,7 @@ export function PostCard(props: {
   activeAccountPubkey?: string;
   bookmarked: boolean;
   onSelect: (selection: FeedSelection) => void;
+  onQuote: (row: FeedRow) => void;
 }) {
   const host = useNostrProfileHost();
   const { client } = useNmpClient();
@@ -162,6 +163,15 @@ export function PostCard(props: {
             onClick={handleRepost}
           >
             Repost
+          </button>
+          <button
+            class="action-btn"
+            aria-label="Quote"
+            title={props.canPublish ? "Quote" : "Sign in to quote"}
+            disabled={!props.canPublish}
+            onClick={() => props.onQuote(props.row)}
+          >
+            Quote
           </button>
           <button
             class="action-btn"

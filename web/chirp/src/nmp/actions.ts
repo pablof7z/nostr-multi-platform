@@ -7,7 +7,21 @@ import { GeneratedActionBuilders, type WorkerRequest } from "@nmp/runtime-web";
 export type ChirpAction =
   | { action: "publish_note"; content: string; reply_to_id?: string | null }
   | { action: "react"; target_event_id: string; reaction?: string }
-  | { action: "repost"; target_event_id: string; target_kind: number; target_author_pubkey?: string; relay_hint?: string | null }
+  | {
+      action: "repost";
+      target_event_id: string;
+      target_kind: number;
+      target_author_pubkey?: string;
+      relay_hint?: string | null;
+    }
+  | {
+      action: "quote_repost";
+      target_event_id: string;
+      target_kind: number;
+      target_author_pubkey?: string;
+      relay_hint?: string | null;
+      content: string;
+    }
   | { action: "follow"; pubkey: string }
   | { action: "unfollow"; pubkey: string };
 
@@ -108,6 +122,16 @@ export function chirpActionRequest(action: ChirpAction, correlationId: string): 
         action.relay_hint ?? null,
       );
       break;
+    case "quote_repost":
+      bytes = GeneratedActionBuilders.quoteRepost(
+        correlationId,
+        action.target_event_id,
+        action.target_kind,
+        action.target_author_pubkey ?? null,
+        action.relay_hint ?? null,
+        action.content,
+      );
+      break;
     case "follow":
       bytes = GeneratedActionBuilders.follow(correlationId, action.pubkey);
       break;
@@ -153,6 +177,28 @@ export function repostCommand(
         targetKind,
         targetAuthorPubkey,
         relayHint,
+      ),
+  };
+}
+
+export function quoteRepostCommand(
+  targetEventId: string,
+  targetKind: number,
+  targetAuthorPubkey: string | null,
+  relayHint: string | null,
+  content: string,
+): RuntimeCommand {
+  return {
+    kind: "dispatch_bytes",
+    actionType: "nmp.nip18.quote_repost",
+    buildDispatchBytes: (correlationId) =>
+      GeneratedActionBuilders.quoteRepost(
+        correlationId,
+        targetEventId,
+        targetKind,
+        targetAuthorPubkey,
+        relayHint,
+        content,
       ),
   };
 }

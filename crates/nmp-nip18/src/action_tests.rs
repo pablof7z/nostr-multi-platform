@@ -29,6 +29,18 @@ fn capture_execute(action: RepostAction) -> ActorCommand {
     cmds.pop().unwrap()
 }
 
+fn capture_execute_quote(action: QuoteRepostAction) -> ActorCommand {
+    let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
+    QuoteRepostModule
+        .execute(&ActionContext::default(), action, "quote-cid", &|cmd| {
+            captured.borrow_mut().push(cmd)
+        })
+        .expect("execute succeeds");
+    let mut cmds = captured.into_inner();
+    assert_eq!(cmds.len(), 1, "expected one command");
+    cmds.pop().unwrap()
+}
+
 fn published_event(action: RepostAction) -> UnsignedEvent {
     match run_one_protocol(capture_execute(action)) {
         ActorCommand::Publish(PublishCommand::UnsignedEvent {
@@ -39,6 +51,23 @@ fn published_event(action: RepostAction) -> UnsignedEvent {
             assert_eq!(event.created_at, 0);
             assert_eq!(event.pubkey, "");
             assert_eq!(correlation_id.as_deref(), Some("repost-cid"));
+            assert_eq!(signer_pubkey, None);
+            event
+        }
+        other => panic!("expected PublishUnsignedEvent, got {other:?}"),
+    }
+}
+
+fn published_quote_event(action: QuoteRepostAction) -> UnsignedEvent {
+    match run_one_protocol(capture_execute_quote(action)) {
+        ActorCommand::Publish(PublishCommand::UnsignedEvent {
+            event,
+            correlation_id,
+            signer_pubkey,
+        }) => {
+            assert_eq!(event.created_at, 0);
+            assert_eq!(event.pubkey, "");
+            assert_eq!(correlation_id.as_deref(), Some("quote-cid"));
             assert_eq!(signer_pubkey, None);
             event
         }
@@ -91,6 +120,58 @@ fn non_kind_one_target_publishes_generic_repost() {
 }
 
 #[test]
+fn quote_repost_publishes_kind_one_with_q_tag() {
+    let event = published_quote_event(QuoteRepostAction {
+        target_event_id: TARGET_EVENT.to_string(),
+        target_kind: 1,
+        target_author_pubkey: Some(TARGET_AUTHOR.to_string()),
+        relay_hint: Some("wss://relay.example".to_string()),
+        content: "read this".to_string(),
+    });
+
+    assert_eq!(event.kind, 1);
+    assert_eq!(
+        event.tags,
+        vec![
+            vec![
+                "q".to_string(),
+                TARGET_EVENT.to_string(),
+                "wss://relay.example".to_string(),
+                TARGET_AUTHOR.to_string()
+            ],
+            vec!["p".to_string(), TARGET_AUTHOR.to_string()],
+            vec!["k".to_string(), "1".to_string()]
+        ]
+    );
+    assert_eq!(event.content, "read this");
+}
+
+#[test]
+fn quote_repost_keeps_empty_relay_slot_before_author() {
+    let event = published_quote_event(QuoteRepostAction {
+        target_event_id: TARGET_EVENT.to_string(),
+        target_kind: 30023,
+        target_author_pubkey: Some(TARGET_AUTHOR.to_string()),
+        relay_hint: None,
+        content: "article quote".to_string(),
+    });
+
+    assert_eq!(
+        event.tags,
+        vec![
+            vec![
+                "q".to_string(),
+                TARGET_EVENT.to_string(),
+                String::new(),
+                TARGET_AUTHOR.to_string()
+            ],
+            vec!["p".to_string(), TARGET_AUTHOR.to_string()],
+            vec!["k".to_string(), "30023".to_string()]
+        ]
+    );
+}
+
+#[test]
 fn rejects_malformed_target_event_id() {
     let mut ctx = ActionContext::default();
     assert!(matches!(
@@ -101,6 +182,24 @@ fn rejects_malformed_target_event_id() {
                 target_kind: 1,
                 target_author_pubkey: None,
                 relay_hint: None,
+            },
+        ),
+        Err(ActionRejection::Invalid(_))
+    ));
+}
+
+#[test]
+fn rejects_empty_quote_content() {
+    let mut ctx = ActionContext::default();
+    assert!(matches!(
+        QuoteRepostModule.start(
+            &mut ctx,
+            QuoteRepostAction {
+                target_event_id: TARGET_EVENT.to_string(),
+                target_kind: 1,
+                target_author_pubkey: Some(TARGET_AUTHOR.to_string()),
+                relay_hint: None,
+                content: "   ".to_string(),
             },
         ),
         Err(ActionRejection::Invalid(_))

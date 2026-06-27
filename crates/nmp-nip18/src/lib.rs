@@ -13,7 +13,10 @@ mod primary_kind;
 mod repost_projection;
 mod wire;
 
-pub use action::{register_actions, Nip18Descriptor, RepostAction, RepostModule};
+pub use action::{
+    register_actions, Nip18Descriptor, QuoteRepostAction, QuoteRepostModule, RepostAction,
+    RepostModule,
+};
 pub use coordinate::{is_addressable_kind, AddressCoordinate};
 pub use delete::{DeleteRecord, KIND_DELETE};
 pub use primary_kind::{

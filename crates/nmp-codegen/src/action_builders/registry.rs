@@ -176,6 +176,38 @@ pub const ACTION_BUILDERS: &[ActionBuilder] = &[
         ],
         doc: "Publish a NIP-18 repost wrapper for a target event.",
     },
+    ActionBuilder {
+        namespace: "nmp.nip18.quote_repost",
+        method: "quoteRepost",
+        fields: &[
+            PayloadField {
+                name: "targetEventId",
+                kind: FieldKind::Str,
+                optional: false,
+            },
+            PayloadField {
+                name: "targetKind",
+                kind: FieldKind::Uint,
+                optional: false,
+            },
+            PayloadField {
+                name: "targetAuthorPubkey",
+                kind: FieldKind::Str,
+                optional: true,
+            },
+            PayloadField {
+                name: "relayHint",
+                kind: FieldKind::Str,
+                optional: true,
+            },
+            PayloadField {
+                name: "content",
+                kind: FieldKind::Str,
+                optional: false,
+            },
+        ],
+        doc: "Publish a NIP-18 quote repost note for a target event.",
+    },
     // nip02 — follow / unfollow share the single-pubkey FollowActionPayload
     // shape (follow_action.fbs); follow_many is the bulk primitive
     // (follow_many_action.fbs).
