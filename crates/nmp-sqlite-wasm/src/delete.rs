@@ -244,7 +244,7 @@ fn coordinate_targets(
     d_tag: &str,
     kind5_at: u64,
 ) -> Result<Vec<EventId>, SqliteWasmError> {
-    let stmt = if (30_000..40_000).contains(&kind) {
+    let stmt = if nmp_kinds::is_addressable(kind) {
         let s = conn.prepare(
             "SELECT id FROM events
              WHERE pubkey = ?1 AND kind = ?2 AND d_tag = ?3 AND created_at <= ?4",

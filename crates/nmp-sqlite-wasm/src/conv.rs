@@ -74,22 +74,22 @@ impl EngineEvent {
         hex_to_bytes32(&self.pubkey)
     }
 
-    /// NIP-01 replaceable kinds: 0, 3, and 10000–19999.
+    /// NIP-01 regular replaceable kinds.
     #[must_use]
     pub fn is_replaceable(&self) -> bool {
-        self.kind == 0 || self.kind == 3 || (10_000..20_000).contains(&self.kind)
+        nmp_kinds::is_replaceable(self.kind)
     }
 
-    /// NIP-33 parameterized replaceable kinds: 30000–39999.
+    /// NIP-33 addressable / parameterized replaceable kinds.
     #[must_use]
     pub fn is_param_replaceable(&self) -> bool {
-        (30_000..40_000).contains(&self.kind)
+        nmp_kinds::is_addressable(self.kind)
     }
 
-    /// NIP-16 ephemeral kinds: 20000–29999.
+    /// NIP-16 ephemeral kinds.
     #[must_use]
     pub fn is_ephemeral(&self) -> bool {
-        (20_000..30_000).contains(&self.kind)
+        nmp_kinds::is_ephemeral(self.kind)
     }
 
     /// The first `d`-tag value (raw bytes), if present. Empty/absent → `None`
@@ -170,7 +170,8 @@ pub fn encode_blob(event: &EngineEvent) -> Result<Vec<u8>, SqliteWasmError> {
 
 /// Reconstruct an event from its `events.raw` blob.
 pub fn decode_blob(blob: &[u8]) -> Result<EngineEvent, SqliteWasmError> {
-    serde_json::from_slice(blob).map_err(|e| SqliteWasmError::Encoding(format!("decode event: {e}")))
+    serde_json::from_slice(blob)
+        .map_err(|e| SqliteWasmError::Encoding(format!("decode event: {e}")))
 }
 
 /// Decode a 64-char lowercase/uppercase hex string into 32 bytes. Returns `None`
@@ -251,11 +252,24 @@ mod tests {
         assert_eq!(ev.d_tag(), Some(b"slug-1".to_vec()));
         assert_eq!(ev.expiration(), Some(1_700_001_000));
         // single-letter tags: d, e, p (not "expiration", not "nonsingle").
-        let mut names: Vec<char> = ev.single_letter_tags().into_iter().map(|(n, _)| n).collect();
+        let mut names: Vec<char> = ev
+            .single_letter_tags()
+            .into_iter()
+            .map(|(n, _)| n)
+            .collect();
         names.sort_unstable();
         assert_eq!(names, vec!['d', 'e', 'p']);
         assert_eq!(ev.e_tags().len(), 1);
         assert_eq!(ev.a_tags().len(), 0);
+    }
+
+    #[test]
+    fn kind_41_uses_canonical_replaceable_predicate() {
+        let mut ev = sample();
+        ev.kind = nmp_kinds::KIND_CHANNEL_METADATA;
+        assert!(ev.is_replaceable());
+        assert!(!ev.is_param_replaceable());
+        assert!(!ev.is_ephemeral());
     }
 
     #[test]

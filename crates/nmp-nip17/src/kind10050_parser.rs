@@ -41,13 +41,11 @@
 
 use std::sync::Arc;
 
-use nmp_store::VerifiedEvent;
 use nmp_core::substrate::IngestParser;
+use nmp_kinds::KIND_DM_RELAY_LIST;
+use nmp_store::VerifiedEvent;
 
 use crate::dm_relay_cache::DmRelayCache;
-
-/// NIP-17 § 2 — the kind number for DM-relay-list events.
-const KIND_DM_RELAY_LIST: u32 = 10_050;
 
 /// The kind:10050 ingest parser. Constructed with a shared
 /// [`Arc<DmRelayCache>`] handle — the same `Arc` the kernel holds as its
@@ -132,8 +130,8 @@ fn canonicalize_relay_url(url: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nmp_store::RawEvent;
     use nmp_core::substrate::EventIngestDispatcher;
+    use nmp_store::RawEvent;
 
     fn evt(pubkey: &str, kind: u32, tags: Vec<Vec<String>>) -> VerifiedEvent {
         VerifiedEvent::from_raw_unchecked(RawEvent {

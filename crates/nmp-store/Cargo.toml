@@ -30,6 +30,7 @@ opfs-sqlite-backend = ["dep:nmp-sqlite-wasm"]
 test-support = []
 
 [dependencies]
+nmp-kinds = { path = "../nmp-kinds" }
 nostr = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["raw_value"] }

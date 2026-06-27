@@ -12,7 +12,7 @@ use std::ops::ControlFlow;
 
 use nmp_core::slots::relay_provenance_for_event;
 use nmp_core::substrate::KernelEvent;
-use nmp_kinds::KIND_LONG_FORM_ARTICLE;
+use nmp_kinds::{KIND_LONG_FORM_ARTICLE, KIND_PROFILE_METADATA, KIND_SHORT_TEXT_NOTE};
 use nmp_store::{
     is_prefix_match, split_query_terms, tokenize, EventStore, SearchScopeId, StoreQuery,
     StoredEvent, TextSearchBudget, TextSearchOrder, TextSearchQuery, TextSearchStatus,
@@ -22,9 +22,11 @@ use serde::{Deserialize, Serialize};
 use crate::request::{SearchRequest, SearchScope};
 use crate::scopes::{SCOPE_LABEL_LONGFORM, SCOPE_LABEL_NOTES, SCOPE_LABEL_PROFILES};
 
-const KIND_NOTE: u32 = 1;
-const KIND_PROFILE: u32 = 0;
 const CACHE_FALLBACK_SCAN_LIMIT: usize = 512;
+
+fn is_short_text_note_scope(kinds: &BTreeSet<u32>) -> bool {
+    kinds.len() == 1 && kinds.contains(&KIND_SHORT_TEXT_NOTE)
+}
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum SearchHitSource {
@@ -139,9 +141,7 @@ impl SearchResultsProjection {
         let label = match &self.request.scope {
             SearchScope::Users => SCOPE_LABEL_PROFILES,
             SearchScope::LongForm => SCOPE_LABEL_LONGFORM,
-            SearchScope::Kinds(kinds) if kinds.len() == 1 && kinds.contains(&KIND_NOTE) => {
-                SCOPE_LABEL_NOTES
-            }
+            SearchScope::Kinds(kinds) if is_short_text_note_scope(kinds) => SCOPE_LABEL_NOTES,
             // Multi-kind / custom interests have no single registered FTS
             // scope; the relay path still serves them.
             SearchScope::Kinds(_) | SearchScope::Custom(_) => return None,
@@ -189,10 +189,10 @@ impl SearchResultsProjection {
 
     fn cache_scan_kinds(&self) -> Option<Vec<u32>> {
         match &self.request.scope {
-            SearchScope::Users => Some(vec![KIND_PROFILE]),
+            SearchScope::Users => Some(vec![KIND_PROFILE_METADATA]),
             SearchScope::LongForm => Some(vec![KIND_LONG_FORM_ARTICLE]),
-            SearchScope::Kinds(kinds) if kinds.len() == 1 && kinds.contains(&KIND_NOTE) => {
-                Some(vec![KIND_NOTE])
+            SearchScope::Kinds(kinds) if is_short_text_note_scope(kinds) => {
+                Some(vec![KIND_SHORT_TEXT_NOTE])
             }
             SearchScope::Kinds(_) | SearchScope::Custom(_) => None,
         }
@@ -202,7 +202,7 @@ impl SearchResultsProjection {
         let haystack = match &self.request.scope {
             SearchScope::Users => profile_search_text(&stored.raw.content),
             SearchScope::LongForm => longform_search_text(&stored.raw.content, &stored.raw.tags),
-            SearchScope::Kinds(kinds) if kinds.len() == 1 && kinds.contains(&KIND_NOTE) => {
+            SearchScope::Kinds(kinds) if is_short_text_note_scope(kinds) => {
                 stored.raw.content.clone()
             }
             SearchScope::Kinds(_) | SearchScope::Custom(_) => String::new(),

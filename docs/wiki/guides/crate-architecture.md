@@ -117,15 +117,17 @@ Issue #1561 search belongs in NMP with an ADR first, and should likely be split 
 Protocol crates must not import one another; cross-protocol composition belongs in the app crate.
 
 <!-- citations: [^019ed-132] [^019ed-136] [^129d2-79] [^129d2-80] [^019ed-3] [^019ed-86] [^129d2-100] [^019ed-120] [^019ed-152] -->
-## Replaceable & Addressable Kind Predicates
+## Replaceable, Addressable & Ephemeral Kind Predicates
 
-Kind integer constants and the `is_replaceable` / `is_addressable` predicates have a single canonical definition in `nmp-kinds` (Layer-0, zero dependencies); `nmp-core::kinds` re-exports via `pub use nmp_kinds::*`, and all downstream crates must use the re-export rather than re-declaring literals.
+Kind integer constants and the `is_replaceable` / `is_addressable` / `is_ephemeral` predicates have a single canonical definition in `nmp-kinds` (Layer-0, zero dependencies); `nmp-core::kinds` re-exports via `pub use nmp_kinds::*`, and all downstream crates must use the re-export rather than re-declaring literals.
 
 The prior local `nmp_core::kinds::is_replaceable` predicate returned `true` for kinds 0–9999 (treating regular events like kind:1, 6, 7 as replaceable), which was the opposite of `nostr::Kind::is_replaceable` and of the `nmp-store` / `nmp-nostr-lmdb` predicates — a latent correctness hazard (#1493). The consolidated definition in `nmp-kinds` and the `pub use nmp_kinds::*` re-export in `nmp-core::kinds` eliminate this divergence and the buggy local definitions.
 
 The canonical `is_replaceable` predicate matches `nostr::Kind::is_replaceable` bit-for-bit: replaceable kinds are 0 (metadata), 3 (contacts), 41 (NIP-28 channel metadata special case), and the range 10000..20000 (exclusive). Kinds 1, 6, and 7 are NOT replaceable.
 
 The canonical `is_addressable` predicate matches `nostr::Kind::is_addressable`: true only for 30000..40000 (exclusive). The ephemeral range 20000..30000 is NOT addressable; the prior hand-rolled `nmp-core` copy wrongly included it.
+
+The canonical `is_ephemeral` predicate is true only for 20000..30000 (exclusive). Event-store and subscription-watermark code must call this predicate instead of re-declaring the range.
 
 `nmp-kinds` must NOT take a dependency on the nostr crate; the predicates must be encoded directly in `nmp-kinds` with a higher-layer parity test against `nostr::Kind` if desired.
 

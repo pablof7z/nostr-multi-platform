@@ -18,6 +18,7 @@ path = "src/lib.rs"
 # (that engine remains the vendored artifact), so they belong here, not under
 # the wasm-only target table below.
 [dependencies]
+nmp-kinds = { path = "../nmp-kinds" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
