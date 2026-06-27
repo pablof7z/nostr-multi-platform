@@ -12,9 +12,11 @@ mod common;
 
 use common::{boot, inject, raw_event, teardown, wait_for_typed, HOST, SERIAL};
 
-use nmp_store::VerifiedEvent;
 use nmp_nip29::group_id::GroupId;
-use nmp_nip29::{decode_group_timeline_snapshot, GROUP_TIMELINE_FILE_IDENTIFIER, GROUP_TIMELINE_SCHEMA_ID};
+use nmp_nip29::{
+    decode_group_timeline_snapshot, GROUP_TIMELINE_FILE_IDENTIFIER, GROUP_TIMELINE_SCHEMA_ID,
+};
+use nmp_store::VerifiedEvent;
 
 /// A kind:9 event h-tagged for the wired group surfaces in the
 /// `"nmp.nip29.group_timeline"` typed sidecar with the `NGTL` identifier, and the
@@ -83,12 +85,46 @@ fn group_timeline_typed_sidecar_empty_decodes() {
     })
     .expect("group_timeline typed sidecar must appear even with no messages");
 
-    let snapshot =
-        decode_group_timeline_snapshot(&entry.payload).expect("empty NGTL payload must still decode");
+    let snapshot = decode_group_timeline_snapshot(&entry.payload)
+        .expect("empty NGTL payload must still decode");
     assert!(
         snapshot.events.is_empty(),
         "no events injected → empty messages, got {:?}",
         snapshot.events
+    );
+
+    teardown(app);
+}
+
+#[test]
+fn group_timeline_reader_is_the_canonical_sidecar_projection() {
+    let _g = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+    let app = boot();
+    let reader =
+        unsafe { (*app).open_group_timeline_with_reader(GroupId::new(HOST, "reader-room")) };
+
+    let msg = VerifiedEvent::from_raw_unchecked(raw_event(
+        &"9".repeat(64),
+        &"f".repeat(64),
+        9,
+        100,
+        vec![vec!["h".into(), "reader-room".into()]],
+        "reader message",
+    ));
+    inject(app, vec![msg]);
+
+    let entry = wait_for_typed("nmp.nip29.group_timeline", |t| {
+        decode_group_timeline_snapshot(&t.payload)
+            .map(|s| s.events.iter().any(|m| m.content == "reader message"))
+            .unwrap_or(false)
+    })
+    .expect("canonical group timeline sidecar must carry the reader-room message within 3 s");
+
+    let sidecar = decode_group_timeline_snapshot(&entry.payload).expect("NGTL decode");
+    assert_eq!(
+        reader.snapshot(),
+        sidecar,
+        "the Rust reader must expose the same projection instance that feeds the typed sidecar"
     );
 
     teardown(app);

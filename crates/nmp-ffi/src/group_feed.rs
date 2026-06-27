@@ -140,9 +140,27 @@ impl NmpApp {
     /// the registry level — the prior session is closed first, so navigating
     /// between groups never leaks the previous observer/interest).
     pub fn open_group_timeline(&self, group_id: GroupId) {
+        let _ = self.open_group_timeline_with_reader(group_id);
+    }
+
+    /// Open group timeline and return the canonical projection reader.
+    ///
+    /// This is the Rust-side app-composition API for hosts that need to read
+    /// the selected chat directly. The returned [`GroupTimelineProjection`] is
+    /// the same `Arc` registered as the observed projection and used by the
+    /// `"nmp.nip29.group_timeline"` typed sidecar. Callers must not open a
+    /// second timeline observer just to render the selected chat; use this
+    /// reader and keep the sidecar, relay-pinned interest, and #2088 hydration
+    /// single-owned by this door.
+    #[must_use]
+    pub fn open_group_timeline_with_reader(
+        &self,
+        group_id: GroupId,
+    ) -> Arc<GroupTimelineProjection> {
         let filter_json = group_id.chat_filter_json();
         let relay_pin = Some(group_id.host_relay_url.clone());
         let projection = Arc::new(GroupTimelineProjection::new(group_id));
+        let projection_reader = Arc::clone(&projection);
 
         let projection_for_sidecar = Arc::clone(&projection);
         let register_sidecar = move |app: &NmpApp| {
@@ -169,6 +187,7 @@ impl NmpApp {
             projection as Arc<dyn nmp_core::ObservedProjectionSink>,
             register_sidecar,
         );
+        projection_reader
     }
 
     /// Close the group-chat read view opened by [`Self::open_group_timeline`].

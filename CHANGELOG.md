@@ -1,5 +1,14 @@
 # Changelog
 
+## nmp-v0.8.2 — 2026-06-27
+
+### Changed
+
+- NIP-29 group timeline now exposes `open_group_timeline_with_reader`, returning
+  the canonical `GroupTimelineProjection` instance that also feeds the
+  `"nmp.nip29.group_timeline"` typed sidecar. Rust app shells can read the
+  selected chat without opening a duplicate per-shell observer.
+
 ## nmp-v0.8.1 — 2026-06-27
 
 ### Changed

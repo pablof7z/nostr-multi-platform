@@ -68,9 +68,10 @@ activates the projection. That is the current read-model contract for
 late-opened NIP-29 views; a plain active event observer is not a valid
 hydrating view path.
 
-When an app-specific Rust projection needs to compose over discovered or joined
-groups, it must use the `nmp-ffi::group_feed` reader-returning open methods
-(`open_group_discovery_with_reader`, `open_joined_groups_with_reader`). Those
+When an app-specific Rust projection needs to compose over group timeline,
+discovered groups, or joined groups, it must use the `nmp-ffi::group_feed`
+reader-returning open methods (`open_group_timeline_with_reader`,
+`open_group_discovery_with_reader`, `open_joined_groups_with_reader`). Those
 methods return the same projection instance that feeds the canonical typed
 sidecar, preserving one producer for each `nmp.nip29.*` projection key.
 
