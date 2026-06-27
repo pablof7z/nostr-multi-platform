@@ -108,6 +108,24 @@ export class DegradedRuntime {
             reason: this.unavailableReason,
           },
         ];
+      case "group_timeline_open":
+        return [
+          {
+            type: "capability_failure",
+            capability: "nmp.nip29.group_timeline.open",
+            correlation_id: request.correlation_id,
+            reason: this.unavailableReason,
+          },
+        ];
+      case "group_timeline_close":
+        return [
+          {
+            type: "capability_failure",
+            capability: "nmp.nip29.group_timeline.close",
+            correlation_id: request.correlation_id,
+            reason: this.unavailableReason,
+          },
+        ];
       case "notifications_open":
         return [
           {

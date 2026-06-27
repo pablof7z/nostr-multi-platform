@@ -28,16 +28,27 @@ test("@wasm groups workspace renders NIP-29 discovery from Rust projection", asy
     await expect(card).toContainText(`${relay.adminCount} admins`);
     await expect(card).toContainText("public");
     await expect(card).toContainText("open");
-    await expect(card).toContainText("Inspect timeline");
+    await expect(card).toContainText("Open timeline");
     await expect(card).toContainText("Inspect join");
 
-    await card.getByTestId("group-timeline-inspect").click();
-    await expect(page.getByTestId("groups-diagnostic")).toContainText("nmp.nip29.group_timeline");
+    await card.getByTestId("group-timeline-open").click();
+    const timeline = page.getByTestId("group-timeline-panel");
+    await expect(timeline).toBeVisible();
+    await expect(timeline).toContainText(relay.groupName);
+    await expect(timeline.getByTestId("group-timeline-row")).toContainText(
+      relay.groupMessageContent,
+      { timeout: 30_000 },
+    );
+    await expect(timeline.getByTestId("group-timeline-row")).toContainText("kind 9");
+
     await card.getByTestId("group-join-inspect").click();
     await expect(page.getByTestId("groups-diagnostic")).toContainText("nmp.nip29.join");
 
     await expect
       .poll(() => relay.subscriptions().some((filter) => includesGroupMetadataKinds(filter.kinds)))
+      .toBe(true);
+    await expect
+      .poll(() => relay.subscriptions().some((filter) => includesGroupTimelineFilter(filter, relay.groupId)))
       .toBe(true);
   } finally {
     await relay.close();
@@ -48,5 +59,17 @@ function includesGroupMetadataKinds(kinds: number[] | undefined): boolean {
   return (
     Array.isArray(kinds) &&
     [39000, 39001, 39002].every((kind) => kinds.includes(kind))
+  );
+}
+
+function includesGroupTimelineFilter(filter: Record<string, unknown>, groupId: string): boolean {
+  const kinds = filter.kinds;
+  const hTags = filter["#h"];
+  return (
+    Array.isArray(kinds) &&
+    kinds.includes(9) &&
+    kinds.includes(11) &&
+    Array.isArray(hTags) &&
+    hTags.includes(groupId)
   );
 }

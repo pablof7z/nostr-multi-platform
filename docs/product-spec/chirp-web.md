@@ -37,10 +37,8 @@ relay-pinned interests, ingest cache hits through the NIP-50 FTS path, and emit
 typed `N50S` results under `nmp.nip50.search.<session>`.
 
 TypeScript must decode the typed `N50S` snapshot and render results. It must not
-construct NIP-01 search filters, scan feed rows as a substitute for search, or
-invent result provenance. The default Chirp Web search relay is app policy from
-the generated Chirp config; tests may override it through URL state to keep
-acceptance hermetic.
+construct NIP-01 search filters, scan feed rows as search, or invent result
+provenance. The default search relay is app policy; tests may override it via URL.
 
 Acceptance must prove that opening the Search workspace sends a real Rust-owned
 NIP-50 session through the browser worker, that a fixture relay receives the
@@ -57,14 +55,17 @@ and typed `NDGS` sidecar under `nmp.nip29.discovered_groups`.
 
 TypeScript must decode the typed `NDGS` snapshot and render discovered group
 metadata. It must not construct NIP-29 filters, keep a parallel group cache,
-derive counts, or invent provenance. Until Rust-owned flows exist, timeline,
-join/leave, and moderation controls must expose blocked diagnostics rather than
-disabled title-only buttons.
+derive counts, or invent provenance. Opening a group timeline must request a
+Rust-owned relay-pinned NIP-29 `#h` chat interest and render the typed `NGTL`
+sidecar under `nmp.nip29.group_timeline`. Until Rust-owned flows exist for
+join/leave and moderation, those controls must expose blocked diagnostics.
 
 Acceptance must prove that opening the Groups workspace sends a real
 Rust-owned NIP-29 discovery subscription to the configured group relay, and
 that signed kind:39000/39001/39002 fixture events render from the typed group
-discovery sidecar with relay provenance.
+discovery sidecar with relay provenance. Acceptance must also prove that opening
+a group sends a real kind:9/11 `#h` subscription and renders signed group
+messages from the typed timeline sidecar.
 
 ## Notifications Contract
 
@@ -270,20 +271,18 @@ the raw secret.
 
 Chirp Web must not hide missing major product areas behind absent navigation or
 fake local-only controls. Until web-ready Rust projections and actions exist for
-NIP-17 private messages, wallet/zap flows, moderation/WoT, group
-timeline/membership actions, or durable offline replay ownership, the browser
-product must expose those destinations as blocked, disabled, or explicitly
-partial workspaces with clear reasons.
+NIP-17 private messages, wallet/zap flows, moderation/WoT, group membership
+actions, or durable offline replay ownership, the browser product must expose
+those destinations as blocked, disabled, or explicitly partial workspaces with
+clear reasons.
 
 Blocked controls may emit log-safe `capability_failure` diagnostics proving the
 unsupported state is deliberate. They must not construct Nostr events, maintain
 shell-local unread counts, fabricate private message threads, simulate wallet
 state, or persist policy choices in TypeScript. Deep routes `#messages`,
-`#wallet`, and `#moderation` must focus the requested blocked destination.
-
-When any blocked area becomes supported, the same navigation destination should
-graduate to Rust-owned projections/actions and browser acceptance that proves the
-real workflow rather than adding a second parallel surface.
+`#wallet`, and `#moderation` must focus the requested blocked destination. When
+any blocked area becomes supported, the same navigation destination graduates to
+Rust-owned projections/actions and browser acceptance for the real workflow.
 
 ## Content Rendering Contract
 

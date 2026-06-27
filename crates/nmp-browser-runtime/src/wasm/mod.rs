@@ -46,6 +46,7 @@
 pub(crate) mod core;
 pub(crate) mod dispatch;
 pub(crate) mod group_discovery;
+pub(crate) mod group_timeline;
 pub(crate) mod identity;
 pub(crate) mod notifications;
 pub(crate) mod protocol;

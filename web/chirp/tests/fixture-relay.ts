@@ -122,6 +122,7 @@ export type GroupFixtureRelay = FixtureRelay & {
   groupName: string;
   groupAbout: string;
   groupPictureUrl: string;
+  groupMessageContent: string;
   memberCount: number;
   adminCount: number;
 };
@@ -419,6 +420,7 @@ export async function startGroupFixtureRelay(): Promise<GroupFixtureRelay> {
   const groupId = "nmp-builders";
   const groupName = "NMP Builders";
   const groupAbout = "A public room for Rust-owned Nostr clients on every platform.";
+  const groupMessageContent = "Rust-owned group timeline from the fixture relay";
 
   const metadata = finalizeEvent(
     {
@@ -464,7 +466,17 @@ export async function startGroupFixtureRelay(): Promise<GroupFixtureRelay> {
     groupSk,
   ) as NostrEvent;
 
-  const base = await startFixtureRelayServer([metadata, admins, members]);
+  const message = finalizeEvent(
+    {
+      kind: 9,
+      created_at: now,
+      tags: [["h", groupId]],
+      content: groupMessageContent,
+    },
+    memberASk,
+  ) as NostrEvent;
+
+  const base = await startFixtureRelayServer([metadata, admins, members, message]);
   return {
     ...base,
     close: async () => {
@@ -475,6 +487,7 @@ export async function startGroupFixtureRelay(): Promise<GroupFixtureRelay> {
     groupName,
     groupAbout,
     groupPictureUrl: imageServer.url,
+    groupMessageContent,
     memberCount: 2,
     adminCount: 1,
   };

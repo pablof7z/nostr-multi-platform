@@ -46,6 +46,8 @@ impl NmpRuntimeCore {
             WorkerRequest::SearchClose(req) => self.handle_search_close(req),
             WorkerRequest::GroupDiscoveryOpen(req) => self.handle_group_discovery_open(req),
             WorkerRequest::GroupDiscoveryClose(req) => self.handle_group_discovery_close(req),
+            WorkerRequest::GroupTimelineOpen(req) => self.handle_group_timeline_open(req),
+            WorkerRequest::GroupTimelineClose(req) => self.handle_group_timeline_close(req),
             WorkerRequest::NotificationsOpen(req) => self.handle_notifications_open(req),
             WorkerRequest::NotificationsClose(req) => self.handle_notifications_close(req),
             WorkerRequest::NotificationsMarkRead(req) => self.handle_notifications_mark_read(req),

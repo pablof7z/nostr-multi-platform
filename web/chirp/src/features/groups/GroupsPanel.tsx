@@ -4,12 +4,16 @@ import {
   chirpGroupRelayUrlFromSearch,
 } from "../../chirpConfig";
 import { decodeGroupDiscoveryFrame, type DiscoveredGroupRow } from "../../nmp/groupDecoder";
+import {
+  decodeGroupTimelineFrame,
+  type GroupTimelineRow,
+} from "../../nmp/groupTimelineDecoder";
 import { useNmpClient } from "../../nmp/context";
 import { blockedWorkspaceCommand } from "../../nmp/actions";
 import "./groups.css";
 
 const SESSION_ID = "chirp-web-groups";
-const TIMELINE_CAPABILITY = "nmp.nip29.group_timeline";
+const TIMELINE_SESSION_ID = "chirp-web-group-timeline";
 const JOIN_CAPABILITY = "nmp.nip29.join";
 
 export function GroupsPanel() {
@@ -17,6 +21,9 @@ export function GroupsPanel() {
   const [opened, setOpened] = createSignal(false);
   const [opening, setOpening] = createSignal(false);
   const [rows, setRows] = createSignal<DiscoveredGroupRow[]>([]);
+  const [selectedGroup, setSelectedGroup] = createSignal<DiscoveredGroupRow | null>(null);
+  const [timelineRows, setTimelineRows] = createSignal<GroupTimelineRow[]>([]);
+  const [timelineOpening, setTimelineOpening] = createSignal(false);
   const [lastCapability, setLastCapability] = createSignal<string | null>(null);
   const [busyCapability, setBusyCapability] = createSignal<string | null>(null);
   const relayUrl = chirpGroupRelayUrlFromSearch(window.location.search) ?? CHIRP_PUBLIC_GROUP_RELAY_URL;
@@ -25,6 +32,12 @@ export function GroupsPanel() {
   createEffect(() => {
     const frame = decodedFrame();
     if (frame) setRows(frame.rows);
+  });
+
+  const decodedTimelineFrame = createMemo(() => decodeGroupTimelineFrame(snapshot().latestUpdateBytes));
+  createEffect(() => {
+    const frame = decodedTimelineFrame();
+    if (frame) setTimelineRows(frame.rows);
   });
 
   createEffect(() => {
@@ -39,6 +52,7 @@ export function GroupsPanel() {
 
   onCleanup(() => {
     void client.closeGroupDiscovery(SESSION_ID);
+    void client.closeGroupTimeline(TIMELINE_SESSION_ID);
   });
 
   const relayLabel = () => relayUrl.replace(/^wss?:\/\//, "");
@@ -51,6 +65,21 @@ export function GroupsPanel() {
       setLastCapability(capability);
     } finally {
       setBusyCapability(null);
+    }
+  };
+  const openTimeline = async (row: DiscoveredGroupRow) => {
+    if (timelineOpening()) return;
+    setSelectedGroup(row);
+    setTimelineRows([]);
+    setTimelineOpening(true);
+    try {
+      await client.openGroupTimeline({
+        sessionId: TIMELINE_SESSION_ID,
+        relayUrl: row.hostRelayUrl,
+        groupId: row.groupId,
+      });
+    } finally {
+      setTimelineOpening(false);
     }
   };
 
@@ -68,9 +97,21 @@ export function GroupsPanel() {
 
       <div class="groups-actions" aria-label="Group workspace status">
         <span data-state={opened() ? "live" : "pending"}>{opened() ? "live discovery" : "opening"}</span>
-        <span data-state="blocked">timeline blocked</span>
+        <span data-state={selectedGroup() ? "live" : "pending"}>
+          {selectedGroup() ? "live timeline" : "timeline ready"}
+        </span>
         <span data-state="blocked">membership blocked</span>
       </div>
+
+      <Show when={selectedGroup()}>
+        {(group) => (
+          <GroupTimelinePanel
+            group={group()}
+            opening={timelineOpening()}
+            rows={timelineRows()}
+          />
+        )}
+      </Show>
 
       <div class="groups-list" data-testid="groups-list">
         <Show
@@ -83,7 +124,16 @@ export function GroupsPanel() {
           }
         >
           <For each={visibleRows()}>
-            {(row) => <GroupCard row={row} busyCapability={busyCapability()} onInspect={inspect} />}
+            {(row) => (
+              <GroupCard
+                row={row}
+                selected={selectedGroup()?.groupId === row.groupId}
+                busyCapability={busyCapability()}
+                timelineOpening={timelineOpening()}
+                onOpenTimeline={openTimeline}
+                onInspect={inspect}
+              />
+            )}
           </For>
         </Show>
       </div>
@@ -101,14 +151,22 @@ export function GroupsPanel() {
 
 function GroupCard(props: {
   row: DiscoveredGroupRow;
+  selected: boolean;
   busyCapability: string | null;
+  timelineOpening: boolean;
+  onOpenTimeline: (row: DiscoveredGroupRow) => void;
   onInspect: (capability: string) => void;
 }) {
   const title = () => props.row.name || props.row.groupId;
   const subtitle = () => props.row.about || "No group description published yet.";
   const relay = () => props.row.hostRelayUrl.replace(/^wss?:\/\//, "");
   return (
-    <article class="group-card" data-testid="group-card" data-group-id={props.row.groupId}>
+    <article
+      class="group-card"
+      data-testid="group-card"
+      data-selected={props.selected}
+      data-group-id={props.row.groupId}
+    >
       <div class="group-avatar" aria-hidden="true">
         <Show when={props.row.picture} fallback={<span>{title().slice(0, 1).toUpperCase()}</span>}>
           {(picture) => <img src={picture()} alt="" loading="lazy" />}
@@ -134,11 +192,11 @@ function GroupCard(props: {
       <div class="group-controls">
         <button
           type="button"
-          data-testid="group-timeline-inspect"
-          disabled={props.busyCapability !== null}
-          onClick={() => props.onInspect(TIMELINE_CAPABILITY)}
+          data-testid="group-timeline-open"
+          disabled={props.timelineOpening}
+          onClick={() => props.onOpenTimeline(props.row)}
         >
-          Inspect timeline
+          {props.selected ? "Timeline open" : "Open timeline"}
         </button>
         <button
           type="button"
@@ -151,6 +209,63 @@ function GroupCard(props: {
       </div>
     </article>
   );
+}
+
+function GroupTimelinePanel(props: {
+  group: DiscoveredGroupRow;
+  opening: boolean;
+  rows: GroupTimelineRow[];
+}) {
+  const relay = () => props.group.hostRelayUrl.replace(/^wss?:\/\//, "");
+  const title = () => props.group.name || props.group.groupId;
+  return (
+    <section class="group-timeline" data-testid="group-timeline-panel" aria-label="Group timeline">
+      <div class="group-timeline-head">
+        <div>
+          <p class="panel-kicker">Timeline</p>
+          <h3>{title()}</h3>
+        </div>
+        <span title={props.group.hostRelayUrl}>{relay()}</span>
+      </div>
+      <Show
+        when={props.rows.length > 0}
+        fallback={
+          <div class="group-timeline-empty" data-testid="group-timeline-empty">
+            <strong>{props.opening ? "Opening group timeline" : "No group messages returned"}</strong>
+            <span>{props.group.groupId}</span>
+          </div>
+        }
+      >
+        <ol class="group-timeline-list">
+          <For each={props.rows}>
+            {(row) => (
+              <li class="group-timeline-row" data-testid="group-timeline-row">
+                <div>
+                  <strong>{shortPubkey(row.pubkey)}</strong>
+                  <span>{formatTimelineTime(row.createdAt)} · kind {row.kind}</span>
+                </div>
+                <p>{row.content}</p>
+              </li>
+            )}
+          </For>
+        </ol>
+      </Show>
+    </section>
+  );
+}
+
+function shortPubkey(pubkey: string): string {
+  return pubkey.length > 14 ? `${pubkey.slice(0, 8)}...${pubkey.slice(-4)}` : pubkey;
+}
+
+function formatTimelineTime(createdAt: number): string {
+  if (!Number.isFinite(createdAt) || createdAt <= 0) return "unknown time";
+  return new Date(createdAt * 1000).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function GroupFlags(props: { row: DiscoveredGroupRow }) {

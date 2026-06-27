@@ -77,6 +77,20 @@ export type WorkerRequest =
       session_id: string;
       correlation_id: string;
     }
+  /** NIP-29 selected group timeline. The worker owns the relay-pinned `#h`
+   *  interest and emits `nmp.nip29.group_timeline` (`NGTL`) in snapshots. */
+  | {
+      type: "group_timeline_open";
+      session_id: string;
+      relay_url: string;
+      group_id: string;
+      correlation_id: string;
+    }
+  | {
+      type: "group_timeline_close";
+      session_id: string;
+      correlation_id: string;
+    }
   | {
       type: "notifications_open";
       session_id: string;

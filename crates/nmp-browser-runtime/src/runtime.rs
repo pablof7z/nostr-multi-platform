@@ -58,6 +58,8 @@ mod relay_config_ops;
 pub(crate) use relay_config_ops::{RelayConfigAction, RelayConfigResult};
 mod group_discovery;
 pub(crate) use group_discovery::BrowserGroupDiscoverySession;
+mod group_timeline;
+pub(crate) use group_timeline::BrowserGroupTimelineSession;
 mod notifications;
 pub(crate) use notifications::BrowserNotificationsSession;
 mod search;

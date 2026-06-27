@@ -60,9 +60,109 @@
   color: var(--accent);
 }
 
+.groups-actions span[data-state="pending"] {
+  border-color: color-mix(in srgb, var(--ink-3) 28%, var(--line));
+}
+
 .groups-actions span[data-state="blocked"] {
   border-color: color-mix(in srgb, var(--danger) 30%, var(--line));
   color: var(--danger);
+}
+
+.group-timeline {
+  display: grid;
+  gap: 0;
+  margin: 14px 18px 2px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-panel);
+}
+
+.group-timeline-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.group-timeline-head h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 18px;
+  letter-spacing: 0;
+}
+
+.group-timeline-head > span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-timeline-empty {
+  display: grid;
+  gap: 6px;
+  padding: 18px 14px;
+}
+
+.group-timeline-empty strong {
+  color: var(--ink);
+}
+
+.group-timeline-empty span {
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.group-timeline-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.group-timeline-row {
+  display: grid;
+  gap: 7px;
+  padding: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.group-timeline-row:last-child {
+  border-bottom: 0;
+}
+
+.group-timeline-row > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.group-timeline-row strong {
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.group-timeline-row span {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+.group-timeline-row p {
+  margin: 0;
+  color: var(--ink);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .groups-list {
@@ -103,6 +203,11 @@
 
 .group-card:hover {
   background: var(--bg-panel);
+}
+
+.group-card[data-selected="true"] {
+  background: color-mix(in srgb, var(--accent) 7%, var(--bg-raised));
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .group-avatar {
@@ -235,6 +340,17 @@
     flex-direction: column;
     padding-right: 16px;
     padding-left: 16px;
+  }
+
+  .group-timeline {
+    margin-right: 16px;
+    margin-left: 16px;
+  }
+
+  .group-timeline-head,
+  .group-timeline-row > div {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .group-card {

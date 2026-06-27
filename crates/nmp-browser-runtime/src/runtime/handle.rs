@@ -35,7 +35,10 @@ use crate::signer::{
 };
 
 use super::NoopRoutingTrace;
-use super::{BrowserGroupDiscoverySession, BrowserNotificationsSession, BrowserSearchSession};
+use super::{
+    BrowserGroupDiscoverySession, BrowserGroupTimelineSession, BrowserNotificationsSession,
+    BrowserSearchSession,
+};
 
 /// Public-facing handle to the browser runtime (issue #2058 — hides raw
 /// reducer/runtime handles).
@@ -61,6 +64,7 @@ pub struct BrowserRuntimeHandle {
     pub(super) observed_projection_registrar: ObservedProjectionCommandHandle,
     pub(super) search_sessions: HashMap<String, BrowserSearchSession>,
     pub(super) group_discovery_sessions: HashMap<String, BrowserGroupDiscoverySession>,
+    pub(super) group_timeline_sessions: HashMap<String, BrowserGroupTimelineSession>,
     pub(super) notifications_sessions: HashMap<String, BrowserNotificationsSession>,
 }
 
@@ -204,6 +208,7 @@ impl BrowserRuntimeHandle {
             observed_projection_registrar,
             search_sessions: HashMap::new(),
             group_discovery_sessions: HashMap::new(),
+            group_timeline_sessions: HashMap::new(),
             notifications_sessions: HashMap::new(),
         };
 

@@ -11,6 +11,7 @@ import { BaseClient } from "./clientBase";
 import {
   runtimeConnection,
   type GroupDiscoveryOpenRequest,
+  type GroupTimelineOpenRequest,
   type NotificationsMarkReadRequest,
   type NotificationsOpenRequest,
   type RuntimeSnapshot,
@@ -166,6 +167,24 @@ export class InProcessNmpClient extends BaseClient {
       type: "group_discovery_close",
       session_id: sessionId,
       correlation_id: makeCorrelationId("web-groups", this.nextCorrelationId++),
+    });
+  }
+
+  async openGroupTimeline(request: GroupTimelineOpenRequest): Promise<RuntimeSnapshot> {
+    return this.send({
+      type: "group_timeline_open",
+      session_id: request.sessionId,
+      relay_url: request.relayUrl,
+      group_id: request.groupId,
+      correlation_id: makeCorrelationId("web-group-timeline", this.nextCorrelationId++),
+    });
+  }
+
+  async closeGroupTimeline(sessionId: string): Promise<RuntimeSnapshot> {
+    return this.send({
+      type: "group_timeline_close",
+      session_id: sessionId,
+      correlation_id: makeCorrelationId("web-group-timeline", this.nextCorrelationId++),
     });
   }
 
