@@ -14,14 +14,14 @@
 use std::sync::mpsc::{channel, Receiver};
 use std::sync::{Arc, Mutex};
 
+use nmp_core::actor::ActorCommand;
+use nmp_core::actor::SignCommand;
 use nmp_core::substrate::IngestParser;
 use nmp_core::{ActorMail, CommandSender};
-use nmp_core::actor::{ActorCommand};
-use nmp_core::actor::{SignCommand};
 use nmp_store::{RawEvent, VerifiedEvent};
 use nostr::{EventBuilder, JsonUtil, Keys, Kind, PublicKey, SecretKey, Tag, Timestamp};
 
-use super::{DmInboxProjection, KIND_GIFT_WRAP};
+use super::DmInboxProjection;
 
 /// A NIP-44 decryptor the harness uses to resolve one `Nip44DecryptForAccount`.
 /// Models the actor dispatch arm's two backends:
@@ -129,7 +129,10 @@ fn local_backend_received_dm_surfaces_through_the_port() {
     proj.parse(&verified(&envelope));
 
     let decrypts = drive_decrypts(&rx, &Decryptor::Local(bob.secret_key().clone()));
-    assert_eq!(decrypts, 2, "one envelope = outer + seal = two port decrypts");
+    assert_eq!(
+        decrypts, 2,
+        "one envelope = outer + seal = two port decrypts"
+    );
 
     let snap = proj.snapshot();
     assert_eq!(snap.conversations.len(), 1);
@@ -149,6 +152,30 @@ fn local_backend_received_dm_surfaces_through_the_port() {
 }
 
 #[test]
+fn live_ingest_source_relay_surfaces_in_snapshot() {
+    let alice = Keys::generate();
+    let bob = Keys::generate();
+    let (proj, rx) = projection_for(&bob.public_key());
+
+    let envelope = gift_wrapped_dm(&alice, &bob.public_key(), "with source", 12_345, None);
+    proj.parse_at_source(
+        &verified(&envelope),
+        1_700_000_000,
+        Some("wss://dm-relay.example"),
+    );
+
+    drive_decrypts(&rx, &Decryptor::Local(bob.secret_key().clone()));
+
+    let snap = proj.snapshot();
+    let relays = &snap.conversations[0].messages[0].source_relays;
+    assert_eq!(
+        relays,
+        &vec!["wss://dm-relay.example".to_string()],
+        "live relay ingest must preserve source provenance for the shell"
+    );
+}
+
+#[test]
 fn local_backend_self_copy_files_under_recipient_peer() {
     let alice = Keys::generate();
     let bob = Keys::generate();
@@ -159,8 +186,9 @@ fn local_backend_self_copy_files_under_recipient_peer() {
         .tags(vec![Tag::public_key(alice.public_key())])
         .custom_created_at(Timestamp::from(500))
         .build(bob.public_key());
-    let self_copy = nmp_nip59::gift_wrap_local(&bob, &bob.public_key(), &rumor, Timestamp::from(500))
-        .expect("gift wrap");
+    let self_copy =
+        nmp_nip59::gift_wrap_local(&bob, &bob.public_key(), &rumor, Timestamp::from(500))
+            .expect("gift wrap");
     proj.parse(&verified(&self_copy));
 
     drive_decrypts(&rx, &Decryptor::Local(bob.secret_key().clone()));
@@ -193,7 +221,11 @@ fn local_backend_reply_marker_and_dedupe() {
 
     let snap = proj.snapshot();
     assert_eq!(snap.conversations.len(), 1);
-    assert_eq!(snap.conversations[0].messages.len(), 1, "re-delivery is idempotent");
+    assert_eq!(
+        snap.conversations[0].messages.len(),
+        1,
+        "re-delivery is idempotent"
+    );
     assert_eq!(
         snap.conversations[0].messages[0].reply_to.as_deref(),
         Some(parent),
@@ -236,7 +268,10 @@ fn bunker_backend_decrypts_through_the_port_with_no_local_keys() {
 
     // RemoteStub: the secret lives "out of process"; the projection never saw it.
     let decrypts = drive_decrypts(&rx, &Decryptor::RemoteStub(bob.secret_key().clone()));
-    assert_eq!(decrypts, 2, "bunker unwrap is still outer + seal = two port decrypts");
+    assert_eq!(
+        decrypts, 2,
+        "bunker unwrap is still outer + seal = two port decrypts"
+    );
 
     let snap = proj.snapshot();
     assert_eq!(
@@ -244,7 +279,10 @@ fn bunker_backend_decrypts_through_the_port_with_no_local_keys() {
         1,
         "a bunker account decrypts the inbox through the port (V-08 fix)"
     );
-    assert_eq!(snap.conversations[0].messages[0].content, "hello bunker bob");
+    assert_eq!(
+        snap.conversations[0].messages[0].content,
+        "hello bunker bob"
+    );
     assert_eq!(
         snap.conversations[0].peer_pubkey,
         alice.public_key().to_hex()
@@ -311,7 +349,10 @@ fn malformed_envelope_launches_no_chain() {
     let (proj, rx) = projection_for(&bob.public_key());
     assert!(!proj.ingest_gift_wrap("not json", None));
     assert!(!proj.ingest_gift_wrap("{}", None));
-    assert!(rx.try_recv().is_err(), "a malformed envelope emits no port command");
+    assert!(
+        rx.try_recv().is_err(),
+        "a malformed envelope emits no port command"
+    );
     assert!(proj.snapshot().conversations.is_empty());
 }
 
@@ -333,7 +374,13 @@ fn bunker_backfill_is_bounded_and_surfaces_limited_state() {
     let total = (MAX_IN_FLIGHT_DECRYPTS as usize) + 5;
     let mut admitted = 0;
     for i in 0..total {
-        let envelope = gift_wrapped_dm(&alice, &bob.public_key(), &format!("m{i}"), 100 + i as u64, None);
+        let envelope = gift_wrapped_dm(
+            &alice,
+            &bob.public_key(),
+            &format!("m{i}"),
+            100 + i as u64,
+            None,
+        );
         if proj.ingest_gift_wrap(&envelope.as_json(), None) {
             admitted += 1;
         }
@@ -348,7 +395,10 @@ fn bunker_backfill_is_bounded_and_surfaces_limited_state() {
         snap.conversations.is_empty(),
         "nothing decrypted yet (no bunker round-trip resolved)"
     );
-    assert_eq!(snap.decrypt_state, "limited", "pending backfill → limited (§D7)");
+    assert_eq!(
+        snap.decrypt_state, "limited",
+        "pending backfill → limited (§D7)"
+    );
     assert_eq!(
         u64::from(snap.undecrypted_count),
         total as u64,
@@ -393,7 +443,11 @@ fn account_switch_resets_the_backfill_budget() {
         let envelope = gift_wrapped_dm(&alice, &bob.public_key(), &format!("m{i}"), 100 + i, None);
         let _ = proj.ingest_gift_wrap(&envelope.as_json(), None);
     }
-    assert_eq!(proj.snapshot().decrypt_state, "limited", "backfill fills the bound");
+    assert_eq!(
+        proj.snapshot().decrypt_state,
+        "limited",
+        "backfill fills the bound"
+    );
 
     proj.clear(); // account switch
     let snap = proj.snapshot();

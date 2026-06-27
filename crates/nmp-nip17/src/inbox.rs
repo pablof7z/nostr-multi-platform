@@ -108,7 +108,7 @@ pub struct DmMessage {
     /// re-do that work).
     pub is_outgoing: bool,
     /// Relay URLs that delivered the gift-wrap envelope for this message.
-    /// Populated from the kernel raw observer source provenance and kept
+    /// Populated from the kernel ingest source provenance and kept
     /// deduplicated in first-seen order.
     #[serde(default)]
     pub source_relays: Vec<String>,
@@ -329,16 +329,19 @@ impl IngestParser for DmInboxProjection {
     /// `serde_json::to_string` of the [`nmp_store::RawEvent`] that
     /// [`VerifiedEvent::raw`] exposes.
     ///
-    /// Source relay provenance is unavailable at the `IngestParser` seam today
-    /// (the dispatcher API carries only the `VerifiedEvent`); relay-delivered
-    /// events therefore accumulate no `source_relays` entries via this path.
-    /// Callers that have the relay URL available should use
-    /// [`Self::ingest_gift_wrap`] directly.
+    /// Live relay ingest calls [`Self::parse_at_source`] so the projection can
+    /// preserve the delivering relay URL in `source_relays`. Source-free paths
+    /// such as cache replay and legacy tests still call this method and produce
+    /// a provenance-free row.
     ///
     /// D3/D8 — runs synchronously on the actor thread; bounded per-event work
     /// (one JSON serialisation, one outer-envelope parse, ONE port command).
     /// D6 — every pre-launch failure is a silent no-op.
     fn parse(&self, evt: &VerifiedEvent) {
+        self.parse_at_source(evt, 0, None);
+    }
+
+    fn parse_at_source(&self, evt: &VerifiedEvent, _now_secs: u64, source_relay_url: Option<&str>) {
         debug_assert_eq!(
             evt.raw().kind,
             KIND_GIFT_WRAP,
@@ -351,7 +354,7 @@ impl IngestParser for DmInboxProjection {
         let Ok(json) = serde_json::to_string(evt.raw()) else {
             return;
         };
-        let _ = self.ingest_gift_wrap(&json, None);
+        let _ = self.ingest_gift_wrap(&json, source_relay_url);
     }
 }
 

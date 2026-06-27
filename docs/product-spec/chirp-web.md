@@ -112,15 +112,15 @@ capabilities. The Messages workspace may expose a blocked diagnostic for
 `nmp.nip17.send`, but it must not simulate send, choose recipient inbox relays,
 or construct gift-wrap envelopes in TypeScript.
 
-Source relay provenance is still blocked by the browser ingest seam: the
-current Rust parser receives event bodies without the relay URL that delivered
-them. Until that seam carries provenance into the inbox projection, TypeScript
-must render source provenance as pending and must not fabricate relay names.
+Source relay provenance must come from the Rust ingest dispatcher. Live relay
+gift-wraps carry the delivering relay URL into the inbox projection; source-free
+paths such as cache replay may render provenance as pending. TypeScript must
+not fabricate relay names.
 
 Acceptance must prove that signing in opens a real Rust-owned kind:1059 `#p` DM
 inbox interest; a signed fixture gift-wrap decrypts through Rust into the typed
 `NDMI` sidecar; and the browser renders plaintext, peer pubkey, decrypt state,
-and pending source provenance without a shell-local message store.
+and live source provenance without a shell-local message store.
 
 ## Profile Open Contract
 
@@ -301,8 +301,8 @@ the raw secret.
 Chirp Web must not hide missing major product areas behind absent navigation or
 fake local-only controls. Until web-ready Rust projections and actions exist for
 wallet/zap flows, moderation/WoT, group membership actions, outbound NIP-17
-send, NIP-17 source relay provenance, or durable offline replay ownership, the
-browser product must expose those destinations as blocked, disabled, or
+send, or durable offline replay ownership, the browser product must expose those
+destinations as blocked, disabled, or
 explicitly partial workspaces with clear reasons.
 
 Blocked controls may emit log-safe `capability_failure` diagnostics proving the

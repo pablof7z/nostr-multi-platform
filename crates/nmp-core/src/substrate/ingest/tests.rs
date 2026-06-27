@@ -25,6 +25,36 @@ impl IngestParser for CapturingParser {
     }
 }
 
+struct SourceCapturingParser {
+    seen: Mutex<Vec<(u32, u64, Option<String>)>>,
+}
+
+impl SourceCapturingParser {
+    fn new() -> Arc<Self> {
+        Arc::new(Self {
+            seen: Mutex::new(Vec::new()),
+        })
+    }
+
+    fn seen(&self) -> Vec<(u32, u64, Option<String>)> {
+        self.seen.lock().unwrap().clone()
+    }
+}
+
+impl IngestParser for SourceCapturingParser {
+    fn parse(&self, evt: &VerifiedEvent) {
+        self.seen.lock().unwrap().push((evt.raw().kind, 0, None));
+    }
+
+    fn parse_at_source(&self, evt: &VerifiedEvent, now_secs: u64, source_relay_url: Option<&str>) {
+        self.seen.lock().unwrap().push((
+            evt.raw().kind,
+            now_secs,
+            source_relay_url.map(str::to_string),
+        ));
+    }
+}
+
 fn evt(kind: u32) -> VerifiedEvent {
     VerifiedEvent::from_raw_unchecked(RawEvent {
         id: "00".repeat(32),
@@ -107,6 +137,31 @@ fn registration_count_tracks_both_axes() {
     d.register_kind(1, p.clone());
     d.register_range(30_000..40_000, p.clone());
     assert_eq!(d.registration_count(), 3);
+}
+
+#[test]
+fn dispatch_at_source_carries_timestamp_and_relay() {
+    let mut d = EventIngestDispatcher::new();
+    let p = SourceCapturingParser::new();
+    d.register_kind(1059, p.clone());
+
+    d.dispatch_at_source(&evt(1059), 1_700_000_123, Some("wss://dm.example"));
+
+    assert_eq!(
+        p.seen(),
+        vec![(1059, 1_700_000_123, Some("wss://dm.example".to_string()))]
+    );
+}
+
+#[test]
+fn dispatch_at_keeps_source_absent() {
+    let mut d = EventIngestDispatcher::new();
+    let p = SourceCapturingParser::new();
+    d.register_kind(1059, p.clone());
+
+    d.dispatch_at(&evt(1059), 1_700_000_123);
+
+    assert_eq!(p.seen(), vec![(1059, 1_700_000_123, None)]);
 }
 
 #[test]
