@@ -182,7 +182,7 @@ mod tests {
         )));
         // App-layer CLI / fixture crates that live under `apps/<app>/` — the
         // `/apps/` exemption clause covers them; these assertions pin the
-        // post-step-11 (`docs/architecture/crate-boundaries.md` §5) locations.
+        // post-FFI-extraction (`docs/architecture/crate-boundaries.md` §10a) locations.
         assert!(file_is_exempt(&std::path::PathBuf::from(
             "apps/chirp/crates/nmp-app-chirp/src/actions.rs"
         )));

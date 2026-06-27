@@ -1,7 +1,7 @@
 //! `nmp-network` — Layer-1 native WebSocket transport
-//! (`docs/architecture/crate-boundaries.md` §3.8 / §5 step 8).
+//! (`docs/architecture/crate-boundaries.md` §8).
 //!
-//! ## Step 8 phase A — extraction (shipped)
+//! ## §8 Phase A — extraction (shipped)
 //!
 //! Four modules, moved verbatim from `nmp-core` so the kernel crate no
 //! longer owns the `tungstenite`/`mio`/`rustls` graph:

@@ -25,10 +25,10 @@ includes the Marmot write-builder baseline from the post-`v0.8.2` merge window.
 
 ### Changed
 
-- NIP-29 group timeline now exposes `open_group_timeline_with_reader`, returning
-  the canonical `GroupTimelineProjection` instance that also feeds the
-  `"nmp.nip29.group_timeline"` typed sidecar. Rust app shells can read the
-  selected chat without opening a duplicate per-shell observer.
+- NIP-29 group events now exposed via `open_group_events(group_id, kinds)`,
+  returning the canonical `GroupEventsProjection` instance that feeds the
+  `"nmp.nip29.group_events"` typed sidecar. Rust app shells can read the
+  selected group event stream without opening a duplicate per-shell observer.
 
 ## nmp-v0.8.1 — 2026-06-27
 

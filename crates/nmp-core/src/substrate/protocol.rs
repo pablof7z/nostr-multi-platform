@@ -1,6 +1,6 @@
 //! `ProtocolCommand` — the write-path substrate seam.
 //!
-//! Defined by `docs/architecture/crate-boundaries.md` §4.1 (step 1.b).
+//! Defined by `docs/architecture/crate-boundaries.md` §4.1.
 //! NIP crates implement [`ProtocolCommand`] and dispatch through
 //! [`crate::ActorCommand::Protocol`]; the actor's dispatch arm calls
 //! [`ProtocolCommand::run`] with a [`ProtocolCommandContext`] that exposes

@@ -1,5 +1,5 @@
 //! Public value types for the push-model [`crate::pool::Pool`] API
-//! (`docs/architecture/crate-boundaries.md` §3.8 — step 8 phase B).
+//! (`docs/architecture/crate-boundaries.md` §8 — phase B).
 //!
 //! These types are the wire-layer vocabulary the kernel actor speaks to
 //! `nmp-network`. They are deliberately substrate-grade: no protocol nouns

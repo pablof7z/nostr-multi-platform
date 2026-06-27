@@ -68,9 +68,9 @@ pub mod capability_socket;
 // formatting primitives every NIP crate / kernel module / host-app
 // projection previously duplicated.
 pub mod display;
-// Step 11 final — the C-ABI surface that used to live in `mod ffi;` now lives
-// in the standalone `nmp-ffi` crate (`docs/architecture/crate-boundaries.md`
-// §5 step 11-final). `mod ffi;` / `pub use ffi::*` are gone; consumers reach
+// The C-ABI surface that used to live in `mod ffi;` now lives in the
+// standalone `nmp-ffi` crate (`docs/architecture/crate-boundaries.md` §10a).
+// `mod ffi;` / `pub use ffi::*` are gone; consumers reach
 // the symbols through `nmp_ffi::*` directly. The substrate types the FFI
 // marshals are re-exported through the public surface below + `__ffi_internal`.
 // ffi_guard: pure catch_unwind wrapper. Not I/O-bound; kept always-on
@@ -136,17 +136,11 @@ mod transport;
 // fail-closed gates + the opaque-payload carry. Public so the wasm runtime and
 // the native FFI byte doorway both reach the one inbound decode path.
 pub use transport::dispatch_envelope;
-// Step 8 phase A — `relay_protocol` and `relay_worker` moved to
-// `nmp-network`. They are re-imported here only through the (gated) actor
-// runtime path; the public re-exports below preserve the prior
-// `nmp_core::relay_protocol::*` surface (no-op for downstream crates that
-// imported through the old path — they should migrate to `nmp_network`).
-//
 // V-38: the `wallet` module is gone — the NIP-47 wallet runtime + the
 // `nmp.wallet.pay_invoice` `ActionModule` moved to `crates/nmp-nip47`. The
 // kernel no longer depends on `nmp-nwc`, and `nmp-core` no longer has a
 // `wallet` Cargo feature. See `docs/architecture/crate-boundaries.md`
-// §5 step 7 for the migration brief.
+// §3.7 for the crate responsibility statement.
 // Deterministic 64-bit hash helper — internal path for nmp-core.
 // External callers must depend on `nmp-planner` directly and use
 // `nmp_planner::stable_hash::stable_hash64` (#1608, compat facade deleted).
@@ -256,7 +250,7 @@ pub use kernel::routing_trace::{
 pub use kernel::routing_trace_dto::{projection_to_json, ROUTING_TRACE_SCHEMA_VERSION};
 // V-01 Stage 3 — the wire-transport-agnostic frame enum the kernel ingests.
 // Promoted to the public surface so the wasm32 `BrowserRelayDriver` (lives
-// in `nmp-network::browser_driver` as of step 8 phase C) can be bridged from
+// in `nmp-network::browser_driver`) can be bridged from
 // `web_sys::MessageEvent` / `CloseEvent` through the
 // `nmp-wasm::relay_pool::build_handlers` callback bag.
 // Substrate-grade (D0): no app/protocol nouns.
@@ -274,7 +268,7 @@ pub use kernel_reducer::{
 pub use relay::canonical_relay_url;
 // V-01 Stage 3 — the per-frame outbound type (`role`, `relay_url`, `text`) the
 // kernel produces and any transport (native `relay_worker`, wasm
-// `BrowserRelayDriver` — both in `nmp-network` as of step 8 phase C) consumes.
+// `BrowserRelayDriver` — both in `nmp-network`) consumes.
 // Fields stay `pub(crate)` so the kernel remains the single writer; external
 // callers read via accessors.
 pub use relay::OutboundMessage;
@@ -351,11 +345,11 @@ pub use actor::{CipherContinuation, SignContinuation, SignerSource};
 pub use actor::ActorMail;
 pub use actor::{CommandSendError, CommandSender};
 
-// Step 11 final — every `nmp_app_*` `extern "C"` symbol that used to be
-// re-exported from `ffi::` now lives in the standalone `nmp-ffi` crate.
-// Consumers that previously named the symbols through `nmp_core::` should
-// migrate to `nmp_ffi::*`. The `NmpApp` opaque handle moved with the
-// symbols. See `docs/architecture/crate-boundaries.md` §5 step 11-final.
+// Every `nmp_app_*` `extern "C"` symbol that used to be re-exported from
+// `ffi::` now lives in the standalone `nmp-ffi` crate (see
+// `docs/architecture/crate-boundaries.md` §10a). Consumers that previously
+// named the symbols through `nmp_core::` should migrate to `nmp_ffi::*`.
+// The `NmpApp` opaque handle moved with the symbols.
 //
 // V-38: the `nmp_app_wallet_*` FFI symbols moved to `nmp-ffi::wallet` as
 // thin shims routing through `nmp.wallet.{connect,disconnect,pay_invoice}`

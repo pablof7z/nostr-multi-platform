@@ -21,10 +21,10 @@
 //!   live key (the profile card / event embed). `None` only for a key that is
 //!   not currently live.
 //!
-//! Until Lane B lands on the integration branch the trait is satisfied by
-//! [`MapRowRevSource`] (in-memory stub). When Lane B lands, its resolver impls
-//! `RefRowRevSource` and the stub is deleted. No reimplementation of resolution
-//! lives here.
+//! Lane B is realized: `impl RefRowRevSource for Kernel` lives at
+//! `crates/nmp-core/src/kernel/ref_row_source.rs`. [`MapRowRevSource`] is
+//! a `#[cfg(test)]`-only fixture kept for unit tests; it is never a production
+//! resolver. No reimplementation of resolution lives here.
 
 use super::rowdelta::{RefRow, RefRowDeltaBatch};
 use std::collections::{BTreeMap, HashMap};
@@ -203,12 +203,11 @@ fn sorted_keys(source: &dyn RefRowRevSource, namespace: &str) -> Vec<String> {
 
 // ── Lane B stub ────────────────────────────────────────────────────────────────
 
-/// In-memory [`RefRowRevSource`] stub standing in for Lane B's resolver until it
-/// lands on the integration branch. Holds `(namespace, key) -> (rev, payload)`.
+/// In-memory [`RefRowRevSource`] test fixture. Holds `(namespace, key) -> (rev, payload)`.
 ///
-/// This is the EXACT shape Lane A needs from Lane B; it is a test/bench fixture,
-/// never a production resolver. Delete when Lane B's `RefResolver` implements
-/// `RefRowRevSource`.
+/// Lane B is realized (`impl RefRowRevSource for Kernel` at
+/// `crates/nmp-core/src/kernel/ref_row_source.rs`); this type is retained as a
+/// `#[cfg(test)]` unit-test fixture only — never used in production builds.
 #[cfg(test)]
 #[derive(Debug, Default, Clone)]
 pub struct MapRowRevSource {

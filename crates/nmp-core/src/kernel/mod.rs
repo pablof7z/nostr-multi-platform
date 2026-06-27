@@ -270,9 +270,9 @@ pub struct Kernel {
     pending_backoff_hints: Vec<(String, BackoffHint)>,
     /// Kind:3 contact-list lookup substrate (D0, ADR-0057 PR 3).
     contacts_lookup: Arc<dyn ContactsLookup>,
-    /// NIP-65 kind:10002 mailbox cache substrate (crate-boundaries step 3).
+    /// NIP-65 kind:10002 mailbox cache substrate (see crate-boundaries.md §3).
     mailbox_cache: Arc<dyn MailboxCache>,
-    /// Outbox router substrate (crate-boundaries step 3).
+    /// Outbox router substrate (see crate-boundaries.md §3).
     outbox_router: Arc<dyn OutboxRouter>,
     /// Injected content parser (D0 — no NIP noun in `nmp-core`).
     content_parser: Arc<dyn crate::substrate::ContentParser>,

@@ -2,10 +2,10 @@
 //!
 //! # Crate placement
 //!
-//! Extracted from `nmp-core::store` (step 9 of the crate-boundary migration —
-//! see `docs/architecture/crate-boundaries.md` §5). `nmp-core` re-exports the
-//! public surface as `nmp_core::store::*` so existing import sites compile
-//! unchanged.
+//! Extracted from `nmp-core::store` (see `docs/architecture/crate-boundaries.md`
+//! §9). `nmp-core` re-exports the surface as `pub(crate) mod store` — external
+//! callers must depend on `nmp-store` directly (#1608/#1944, compat facade
+//! narrowed to crate-internal).
 //!
 //! The store-migration value types ([`DomainMigration`], [`MigrationTx`])
 //! that previously lived in `nmp-core::substrate::domain` moved with the
