@@ -77,7 +77,11 @@ fn checked_in_native_libs_do_not_export_contact_feed_symbols() {
     // tracked as a prebuilt `.so`, and a stale binary can keep exporting a
     // deleted public symbol. Scan bytes directly so the gate does not depend on
     // platform-specific `nm` availability.
-    const RETIRED_C_SYMBOLS: &[&str] = &["nmp_app_open_contact_feed", "nmp_app_close_contact_feed"];
+    const RETIRED_C_SYMBOLS: &[&str] = &[
+        "nmp_app_open_contact_feed",
+        "nmp_app_close_contact_feed",
+        "claimed_event_embeds",
+    ];
 
     let root = repo_root();
     let libs =
@@ -101,7 +105,7 @@ fn checked_in_native_libs_do_not_export_contact_feed_symbols() {
 
     assert!(
         violations.is_empty(),
-        "retired contact-feed C-ABI symbols remain in checked-in native libs:\n{}",
+        "retired public-surface strings remain in checked-in native libs:\n{}",
         violations.join("\n")
     );
 }
