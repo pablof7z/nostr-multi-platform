@@ -8,6 +8,7 @@ import {
 export type MessagesFixtureRelay = FixtureRelay & {
   viewerSecretKey: Uint8Array;
   viewerPubkey: string;
+  senderSecretKey: Uint8Array;
   senderPubkey: string;
   messageContent: string;
 };
@@ -30,17 +31,27 @@ export async function startMessagesFixtureRelay(): Promise<MessagesFixtureRelay>
     },
     viewerSk,
   ) as NostrEvent;
+  const senderRelayList = finalizeEvent(
+    {
+      kind: 10050,
+      created_at: now - 25,
+      tags: [["relay", base.url]],
+      content: "",
+    },
+    senderSk,
+  ) as NostrEvent;
   const giftWrap = nip17.wrapEvent(
     senderSk,
     { publicKey: viewerPubkey },
     messageContent,
   ) as NostrEvent;
-  seeded.push(relayList, giftWrap);
+  seeded.push(relayList, senderRelayList, giftWrap);
 
   return {
     ...base,
     viewerSecretKey: viewerSk,
     viewerPubkey,
+    senderSecretKey: senderSk,
     senderPubkey,
     messageContent,
   };

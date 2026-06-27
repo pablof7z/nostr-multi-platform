@@ -64,6 +64,10 @@ fn contract_matches_modules_and_default_payload_reexports() {
         ),
         assert_contract::<nmp_nip17::SendDmAction, action_payloads::SendDmInput>("nmp.nip17.send"),
         assert_contract::<
+            nmp_nip17::HydratePeerRelayListAction,
+            action_payloads::HydratePeerRelayListInput,
+        >("nmp.nip17.hydrate_peer_relay_list"),
+        assert_contract::<
             nmp_nip17::PublishDmRelayListAction,
             action_payloads::PublishDmRelayListInput,
         >("nmp.nip17.publish_relay_list"),

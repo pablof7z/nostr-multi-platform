@@ -1,21 +1,21 @@
-import { For, Show, createMemo, createSignal } from "solid-js";
-import { blockedWorkspaceCommand } from "../../nmp/actions";
+import { For, Show, createEffect, createMemo, createSignal } from "solid-js";
+import { hydrateDmPeerRelayListCommand, sendDmCommand } from "../../nmp/actions";
 import { useNmpClient } from "../../nmp/context";
 import {
   decodeDmInboxFrame,
   type DmConversationItem,
   type DmMessageItem,
 } from "../../nmp/dmInboxDecoder";
-import { decodeRuntimeProjection } from "../../nmp/runtimeProjection";
+import {
+  decodeRuntimeProjection,
+  type ActionResultRuntimeRow,
+} from "../../nmp/runtimeProjection";
 import "./messages.css";
-
-const SEND_CAPABILITY = "nmp.nip17.send";
 
 export function MessagesPanel() {
   const { client, snapshot } = useNmpClient();
   const [selectedPeer, setSelectedPeer] = createSignal<string | null>(null);
-  const [lastCapability, setLastCapability] = createSignal<string | null>(null);
-  const [busyCapability, setBusyCapability] = createSignal<string | null>(null);
+  const hydratedPeers = new Set<string>();
   const runtime = createMemo(() => decodeRuntimeProjection(snapshot().latestUpdateBytes));
   const activeAccount = createMemo(() => runtime()?.activeAccountPubkey);
   const inbox = createMemo(() => decodeDmInboxFrame(snapshot().latestUpdateBytes));
@@ -30,16 +30,13 @@ export function MessagesPanel() {
     conversations().reduce((total, row) => total + row.messages.length, 0),
   );
   const decryptState = createMemo(() => inbox()?.decryptState ?? "unavailable");
-  const inspectSend = async () => {
-    if (busyCapability()) return;
-    setBusyCapability(SEND_CAPABILITY);
-    try {
-      await client.dispatchCommand(blockedWorkspaceCommand(SEND_CAPABILITY));
-      setLastCapability(SEND_CAPABILITY);
-    } finally {
-      setBusyCapability(null);
-    }
-  };
+
+  createEffect(() => {
+    const peer = selected()?.peerPubkey;
+    if (!peer || hydratedPeers.has(peer)) return;
+    hydratedPeers.add(peer);
+    void client.dispatchCommand(hydrateDmPeerRelayListCommand(peer));
+  });
 
   return (
     <section class="messages-panel" aria-label="Private messages" data-testid="messages-panel">
@@ -65,15 +62,7 @@ export function MessagesPanel() {
         <Show when={(inbox()?.undecryptedCount ?? 0) > 0}>
           <span data-state="limited">{inbox()?.undecryptedCount} pending decrypt</span>
         </Show>
-        <button
-          type="button"
-          class="messages-send-diagnostic"
-          data-testid="messages-send-diagnostic"
-          disabled={busyCapability() !== null}
-          onClick={() => void inspectSend()}
-        >
-          Inspect send
-        </button>
+        <span data-state="live">Rust-owned send</span>
       </div>
 
       <Show
@@ -93,6 +82,7 @@ export function MessagesPanel() {
               <span>
                 Chirp is listening for kind:1059 gift-wraps tagged to the active account.
               </span>
+              <DmSendForm showRecipient />
             </div>
           }
         >
@@ -113,14 +103,6 @@ export function MessagesPanel() {
             </Show>
           </div>
         </Show>
-      </Show>
-
-      <Show when={lastCapability()}>
-        {(capability) => (
-          <p class="messages-diagnostic" role="status" data-testid="messages-diagnostic">
-            Recorded diagnostic for <code>{capability()}</code>.
-          </p>
-        )}
       </Show>
     </section>
   );
@@ -163,15 +145,133 @@ function ConversationView(props: { conversation: DmConversationItem }) {
           {(message) => <MessageBubble message={message} />}
         </For>
       </ol>
-      <div class="messages-compose-blocked" data-testid="messages-compose-blocked">
-        <strong>Sending is blocked on web</strong>
-        <span>
-          The inbox is live; outbound NIP-17 send waits for the browser runtime to wire
-          Rust signer and recipient relay capabilities into protocol expansion.
-        </span>
-      </div>
+      <DmSendForm recipientPubkey={props.conversation.peerPubkey} />
     </section>
   );
+}
+
+function DmSendForm(props: { recipientPubkey?: string; showRecipient?: boolean }) {
+  const { client, snapshot } = useNmpClient();
+  const [recipient, setRecipient] = createSignal(props.recipientPubkey ?? "");
+  const [content, setContent] = createSignal("");
+  const [status, setStatus] = createSignal<"idle" | "sending" | "accepted" | "failed">("idle");
+  const [message, setMessage] = createSignal("Rust builds, encrypts, wraps, and routes the DM.");
+  const [pendingCorrelation, setPendingCorrelation] = createSignal<string | null>(null);
+  const [recentResults, setRecentResults] = createSignal<ActionResultRuntimeRow[]>([]);
+  const runtime = createMemo(() => decodeRuntimeProjection(snapshot().latestUpdateBytes));
+
+  const target = () => (props.recipientPubkey ?? recipient()).trim();
+  const trimmedContent = () => content().trim();
+  const canSend = () => status() !== "sending" && target().length > 0 && trimmedContent().length > 0;
+
+  createEffect(() => {
+    const rows = runtime()?.actionResults ?? [];
+    if (rows.length === 0) return;
+    setRecentResults((previous) => mergeActionResults(previous, rows));
+  });
+
+  createEffect(() => {
+    const correlation = pendingCorrelation();
+    if (!correlation) return;
+    const result = recentResults().find((row) => row.correlationId === correlation);
+    if (!result) return;
+    if (result.status === "published") {
+      setContent("");
+      setStatus("accepted");
+      setMessage("Published through Rust-owned NIP-17 gift-wrap routing.");
+      setPendingCorrelation(null);
+      return;
+    }
+    if (result.status === "failed") {
+      setStatus("failed");
+      setMessage(result.error ?? "Rust rejected the DM before publish.");
+      setPendingCorrelation(null);
+    }
+  });
+
+  const submit = async (event: SubmitEvent) => {
+    event.preventDefault();
+    if (!canSend()) return;
+    setStatus("sending");
+    setMessage("Sending through nmp.nip17.send; waiting for relay verdict.");
+    try {
+      const afterDispatch = await client.dispatchCommand(sendDmCommand(target(), trimmedContent()));
+      const accepted = afterDispatch.events.find(
+        (item) => item.type === "action_accepted" && item.action_type === "nmp.nip17.send",
+      );
+      const failure = afterDispatch.events.find(
+        (item) => item.type === "capability_failure" && item.capability === "nmp.nip17.send",
+      );
+      if (accepted?.type === "action_accepted") {
+        setPendingCorrelation(accepted.correlation_id);
+        setMessage("Rust accepted the DM command; waiting for relay verdict.");
+      } else if (failure?.type === "capability_failure") {
+        setStatus("failed");
+        setMessage(failure.reason);
+      } else {
+        setStatus("failed");
+        setMessage("Runtime did not acknowledge the DM command.");
+      }
+    } catch (error) {
+      setStatus("failed");
+      setMessage(error instanceof Error ? error.message : "Send failed.");
+    }
+  };
+
+  return (
+    <form class="messages-compose" data-testid="messages-compose" onSubmit={submit}>
+      <Show when={props.showRecipient}>
+        <label>
+          <span>Recipient pubkey</span>
+          <input
+            data-testid="messages-recipient-input"
+            autocomplete="off"
+            spellcheck={false}
+            value={recipient()}
+            onInput={(event) => setRecipient(event.currentTarget.value)}
+          />
+        </label>
+      </Show>
+      <label>
+        <span>Message</span>
+        <textarea
+          data-testid="messages-content-input"
+          rows={3}
+          value={content()}
+          onInput={(event) => setContent(event.currentTarget.value)}
+        />
+      </label>
+      <div class="messages-compose-actions">
+        <p data-state={status()} data-testid="messages-send-status">
+          {message()}
+        </p>
+        <button type="submit" data-testid="messages-send-button" disabled={!canSend()}>
+          Send
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function mergeActionResults(
+  previous: ActionResultRuntimeRow[],
+  incoming: readonly ActionResultRuntimeRow[],
+): ActionResultRuntimeRow[] {
+  const seen = new Set<string>();
+  return [...incoming, ...previous]
+    .filter((row) => {
+      const key = [
+        row.correlationId,
+        row.status,
+        row.eventId ?? "",
+        row.error ?? "",
+        row.result ?? "",
+      ].join(":");
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 16);
 }
 
 function MessageBubble(props: { message: DmMessageItem }) {

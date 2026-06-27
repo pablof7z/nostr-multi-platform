@@ -366,6 +366,33 @@ public enum GeneratedActionBuilders {
         )
     }
 
+    /// Send a NIP-17 private direct message.
+    /// Builds the `nmp.nip17.send` `DispatchEnvelope` bytes for the byte doorway.
+    public static func sendDm(
+        correlationId: String,
+        recipientPubkey: String,
+        content: String,
+        replyTo: String?
+    ) -> [UInt8] {
+        var fbb = FlatBufferBuilder()
+        let recipientPubkeyOffset = fbb.create(string: recipientPubkey)
+        let contentOffset = fbb.create(string: content)
+        let replyToOffset: Offset = replyTo.map { fbb.create(string: $0) } ?? Offset()
+        let payloadStart = fbb.startTable(with: 4)
+        fbb.add(element: UInt32(1), def: UInt32(0), at: 4) // slot 0: schema_version
+        fbb.add(offset: recipientPubkeyOffset, at: 6) // slot 1: recipientPubkey
+        fbb.add(offset: contentOffset, at: 8) // slot 2: content
+        if replyToOffset.o != 0 { fbb.add(offset: replyToOffset, at: 10) } // slot 3: replyTo
+        let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))
+        fbb.finish(offset: payloadRoot, fileId: "N17S")
+        let payload = fbb.sizedByteArray
+        return encodeDispatchEnvelope(
+            correlationId: correlationId,
+            actionNamespace: "nmp.nip17.send",
+            payload: payload
+        )
+    }
+
     /// Publish a NIP-17 DM relay list (kind:10050).
     /// Builds the `nmp.nip17.publish_relay_list` `DispatchEnvelope` bytes for the byte doorway.
     public static func publishDmRelayList(
@@ -384,6 +411,27 @@ public enum GeneratedActionBuilders {
         return encodeDispatchEnvelope(
             correlationId: correlationId,
             actionNamespace: "nmp.nip17.publish_relay_list",
+            payload: payload
+        )
+    }
+
+    /// Hydrate a DM peer's NIP-17 relay list (kind:10050).
+    /// Builds the `nmp.nip17.hydrate_peer_relay_list` `DispatchEnvelope` bytes for the byte doorway.
+    public static func hydrateDmPeerRelayList(
+        correlationId: String,
+        peerPubkey: String
+    ) -> [UInt8] {
+        var fbb = FlatBufferBuilder()
+        let peerPubkeyOffset = fbb.create(string: peerPubkey)
+        let payloadStart = fbb.startTable(with: 2)
+        fbb.add(element: UInt32(1), def: UInt32(0), at: 4) // slot 0: schema_version
+        fbb.add(offset: peerPubkeyOffset, at: 6) // slot 1: peerPubkey
+        let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))
+        fbb.finish(offset: payloadRoot, fileId: "N17H")
+        let payload = fbb.sizedByteArray
+        return encodeDispatchEnvelope(
+            correlationId: correlationId,
+            actionNamespace: "nmp.nip17.hydrate_peer_relay_list",
             payload: payload
         )
     }

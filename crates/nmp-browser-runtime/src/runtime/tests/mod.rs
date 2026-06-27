@@ -14,7 +14,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use nmp_core::actor::{
     ActorCommand, ActorMail, CipherContinuation, LifecycleCommand, PublishCommand, SignCommand,
 };
-use nmp_core::KernelReducer;
+use nmp_core::{CommandSender, KernelReducer};
 use nmp_signer_iface::{SignerOp, UnsignedEvent};
 use nmp_signers::{LocalKeySigner, Signer};
 
@@ -25,6 +25,7 @@ use crate::signer::{CapabilityProviderRegistry, SignerCompletion, SignerCompleti
 
 mod composition;
 mod contract;
+mod dm_send;
 mod feed_attribution;
 mod feed_composition;
 mod group_timeline;
@@ -51,6 +52,11 @@ fn empty_broker() -> (CapabilityProviderRegistry, SignerCompletionTx) {
 
 fn noop_wake() -> WakeCell {
     Rc::new(RefCell::new(Rc::new(|| {}) as Rc<dyn Fn()>))
+}
+
+fn test_command_sender() -> CommandSender {
+    let (tx, _rx) = mpsc::channel::<ActorMail>();
+    CommandSender::new(tx)
 }
 
 fn started_handle() -> crate::BrowserRuntimeHandle {

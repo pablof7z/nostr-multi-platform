@@ -6,6 +6,9 @@
 //!
 //! * push / withdraw the gift-wrap inbox interest for the active account so
 //!   the kernel subscribes to kind:1059 envelopes addressed to that pubkey;
+//! * fetch kind:10050 DM relay lists for the active account and visible DM
+//!   peers so outbound sends can resolve self-copy and recipient inbox relays
+//!   through the Rust-owned cache;
 //! * publish a fresh kind:10050 DM relay-list event when the canonical relay
 //!   set changes (so other clients can find the user as a DM recipient).
 //!
@@ -32,6 +35,7 @@ use crate::dm_relay_list::build_dm_relay_list_event;
 pub struct DmRuntimeState {
     last_inbox_pubkey: Option<String>,
     last_published: Option<(String, BTreeSet<String>)>,
+    last_peer_relay_list_pubkeys: BTreeSet<String>,
 }
 
 impl DmRuntimeState {
@@ -59,11 +63,18 @@ impl DmRuntimeState {
         &mut self,
         active_pubkey: Option<&str>,
         read_relay_urls: &[String],
+        peer_pubkeys: &[String],
     ) -> Vec<DmRuntimeEffect> {
         let mut effects = Vec::new();
         let active_pubkey = active_pubkey.filter(|pk| !pk.is_empty());
         let Some(account) = active_pubkey else {
-            if self.last_inbox_pubkey.take().is_some() {
+            for peer in std::mem::take(&mut self.last_peer_relay_list_pubkeys) {
+                effects.push(DmRuntimeEffect::WithdrawPeerRelayListInterest(peer));
+            }
+            if let Some(previous_account) = self.last_inbox_pubkey.take() {
+                effects.push(DmRuntimeEffect::WithdrawOwnRelayListInterest(
+                    previous_account,
+                ));
                 effects.push(DmRuntimeEffect::WithdrawInboxInterest);
             }
             self.last_published = None;
@@ -71,8 +82,19 @@ impl DmRuntimeState {
         };
 
         if self.last_inbox_pubkey.as_deref() != Some(account) {
+            if let Some(previous_account) = self.last_inbox_pubkey.as_ref() {
+                effects.push(DmRuntimeEffect::WithdrawOwnRelayListInterest(
+                    previous_account.clone(),
+                ));
+            }
+            for peer in std::mem::take(&mut self.last_peer_relay_list_pubkeys) {
+                effects.push(DmRuntimeEffect::WithdrawPeerRelayListInterest(peer));
+            }
             self.last_inbox_pubkey = Some(account.to_string());
             effects.push(DmRuntimeEffect::PushInboxInterest(account.to_string()));
+            effects.push(DmRuntimeEffect::PushOwnRelayListInterest(
+                account.to_string(),
+            ));
         }
 
         if self
@@ -82,6 +104,28 @@ impl DmRuntimeState {
         {
             self.last_published = None;
         }
+
+        let next_peers = peer_pubkeys
+            .iter()
+            .filter(|peer| !peer.is_empty() && peer.as_str() != account)
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        for peer in self
+            .last_peer_relay_list_pubkeys
+            .difference(&next_peers)
+            .cloned()
+            .collect::<Vec<_>>()
+        {
+            effects.push(DmRuntimeEffect::WithdrawPeerRelayListInterest(peer));
+        }
+        for peer in next_peers
+            .difference(&self.last_peer_relay_list_pubkeys)
+            .cloned()
+            .collect::<Vec<_>>()
+        {
+            effects.push(DmRuntimeEffect::PushPeerRelayListInterest(peer));
+        }
+        self.last_peer_relay_list_pubkeys = next_peers;
 
         let event = build_dm_relay_list_event(read_relay_urls);
         let relay_urls = relay_urls_from_event(&event);
@@ -121,6 +165,19 @@ pub enum DmRuntimeEffect {
     /// switched). The host translates to `InterestsCommand::DropInterestOwner`
     /// with `active_giftwrap_inbox_interest_id()`.
     WithdrawInboxInterest,
+    /// Fetch the active account's own kind:10050 DM relay list. Outbound
+    /// NIP-17 sends need this for the self-copy envelope.
+    PushOwnRelayListInterest(String),
+    /// Drop the active account's own kind:10050 relay-list interest when the
+    /// account logs out or switches.
+    WithdrawOwnRelayListInterest(String),
+    /// Fetch this peer's kind:10050 DM relay list. The host translates to
+    /// `InterestsCommand::EnsureInterest` with
+    /// `peer_dm_relay_list_interest(&pubkey)`.
+    PushPeerRelayListInterest(String),
+    /// Drop a peer kind:10050 relay-list interest when the conversation
+    /// disappears or the active account changes.
+    WithdrawPeerRelayListInterest(String),
     /// Publish the user's own kind:10050 DM relay-list. `event` is the
     /// unsigned event built by [`build_dm_relay_list_event`] (D7 sentinel
     /// `created_at: 0`, empty pubkey — the actor stamps and signs).
@@ -154,26 +211,28 @@ mod tests {
     #[test]
     fn active_account_pushes_interest_and_publishes_once() {
         let mut state = DmRuntimeState::default();
-        let effects = state.reconcile(Some("alice"), &relays(&["wss://a.example"]));
+        let effects = state.reconcile(Some("alice"), &relays(&["wss://a.example"]), &[]);
         assert!(matches!(
             effects.as_slice(),
             [
                 DmRuntimeEffect::PushInboxInterest(pk),
+                DmRuntimeEffect::PushOwnRelayListInterest(own_pk),
                 DmRuntimeEffect::PublishRelayList { relay_set, .. }
-            ] if pk == "alice" && relay_set.contains("wss://a.example")
+            ] if pk == "alice" && own_pk == "alice" && relay_set.contains("wss://a.example")
         ));
         assert!(state
-            .reconcile(Some("alice"), &relays(&["wss://a.example"]))
+            .reconcile(Some("alice"), &relays(&["wss://a.example"]), &[])
             .is_empty());
     }
 
     #[test]
     fn relay_set_changes_republish_without_repush_interest() {
         let mut state = DmRuntimeState::default();
-        let _ = state.reconcile(Some("alice"), &relays(&["wss://a.example"]));
+        let _ = state.reconcile(Some("alice"), &relays(&["wss://a.example"]), &[]);
         let effects = state.reconcile(
             Some("alice"),
             &relays(&["wss://a.example", "wss://b.example"]),
+            &[],
         );
         assert!(matches!(
             effects.as_slice(),
@@ -186,24 +245,74 @@ mod tests {
     #[test]
     fn account_switch_replaces_interest_and_republishes_same_relays() {
         let mut state = DmRuntimeState::default();
-        let _ = state.reconcile(Some("alice"), &relays(&["wss://a.example"]));
-        let effects = state.reconcile(Some("bob"), &relays(&["wss://a.example"]));
+        let _ = state.reconcile(Some("alice"), &relays(&["wss://a.example"]), &[]);
+        let effects = state.reconcile(Some("bob"), &relays(&["wss://a.example"]), &[]);
         assert!(matches!(
             effects.as_slice(),
             [
+                DmRuntimeEffect::WithdrawOwnRelayListInterest(previous_pk),
                 DmRuntimeEffect::PushInboxInterest(pk),
+                DmRuntimeEffect::PushOwnRelayListInterest(own_pk),
                 DmRuntimeEffect::PublishRelayList { relay_set, .. }
-            ] if pk == "bob" && relay_set.contains("wss://a.example")
+            ] if previous_pk == "alice"
+                && pk == "bob"
+                && own_pk == "bob"
+                && relay_set.contains("wss://a.example")
         ));
     }
 
     #[test]
     fn logout_withdraws_active_interest_slot() {
         let mut state = DmRuntimeState::default();
-        let _ = state.reconcile(Some("alice"), &relays(&["wss://a.example"]));
+        let _ = state.reconcile(Some("alice"), &relays(&["wss://a.example"]), &[]);
         assert_eq!(
-            state.reconcile(None, &relays(&["wss://a.example"])),
-            vec![DmRuntimeEffect::WithdrawInboxInterest]
+            state.reconcile(None, &relays(&["wss://a.example"]), &[]),
+            vec![
+                DmRuntimeEffect::WithdrawOwnRelayListInterest("alice".to_string()),
+                DmRuntimeEffect::WithdrawInboxInterest,
+            ]
+        );
+    }
+
+    #[test]
+    fn visible_peer_pushes_kind10050_interest_once() {
+        let mut state = DmRuntimeState::default();
+        let effects = state.reconcile(
+            Some("alice"),
+            &relays(&["wss://a.example"]),
+            &["bob".to_string()],
+        );
+        assert!(
+            effects.contains(&DmRuntimeEffect::PushPeerRelayListInterest(
+                "bob".to_string()
+            ))
+        );
+        let effects = state.reconcile(
+            Some("alice"),
+            &relays(&["wss://a.example"]),
+            &["bob".to_string()],
+        );
+        assert!(
+            !effects.contains(&DmRuntimeEffect::PushPeerRelayListInterest(
+                "bob".to_string()
+            )),
+            "peer relay-list interest must be idempotent"
+        );
+    }
+
+    #[test]
+    fn peer_interest_is_withdrawn_on_account_switch() {
+        let mut state = DmRuntimeState::default();
+        let _ = state.reconcile(
+            Some("alice"),
+            &relays(&["wss://a.example"]),
+            &["bob".to_string()],
+        );
+        let effects = state.reconcile(Some("carol"), &relays(&["wss://a.example"]), &[]);
+        assert!(
+            effects.contains(&DmRuntimeEffect::WithdrawPeerRelayListInterest(
+                "bob".to_string()
+            ))
         );
     }
 }

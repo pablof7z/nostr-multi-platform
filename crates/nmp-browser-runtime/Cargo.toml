@@ -78,6 +78,7 @@ wasm-bindgen-futures = "0.4.71"
 tracing = "0.1"
 
 [dev-dependencies]
+flatbuffers = { workspace = true }
 nmp-core = { path = "../nmp-core", features = ["test-support"], default-features = false }
 nmp-codegen = { path = "../nmp-codegen" }
 nostr = { workspace = true, features = ["std"] }

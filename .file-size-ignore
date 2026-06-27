@@ -46,6 +46,7 @@ apps/*/ios/*/Bridge/Generated/*.swift
 apps/chirp/android/app/src/main/java/org/nmp/android/ActionBuilders.kt
 apps/chirp/android/app/src/main/java/nmp/**
 apps/*/android/app/src/main/kotlin/nmp/transport/**
+web/packages/runtime-web/src/actionBuilders.generated.ts
 web/nmp-gallery/src/nmp/generated/**
 # Generated typed action-builders for the web runtime (emitted by
 # `nmp-codegen gen action-builders --platform ts`; the Swift/Kotlin siblings

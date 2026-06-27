@@ -174,6 +174,17 @@ With no active account, typed writes fail with `signer_not_installed`; after
 `WasmOutboxResolver`. Malformed typed payloads fail as data-shaped
 `CapabilityFailure`s from the registry/decode path.
 
+Chirp Web's generated builder set includes `nmp.nip17.send` (`N17S`),
+`nmp.nip17.hydrate_peer_relay_list` (`N17H`), and
+`nmp.nip17.publish_relay_list` (`N17R`). The browser shell may pass the
+selected peer pubkey, recipient pubkey, optional reply id, and draft content
+into those builders, but the runtime and `nmp-nip17` own NIP-17 relay-list
+lookup and interest shape, NIP-44 encryption/decryption, gift-wrap
+construction, signing, explicit relay routing, and fail-closed errors. Browser
+local-key sessions satisfy the required NIP-44 capability synchronously; async
+signer-provider send parity is limited until those providers expose NIP-44
+encryption through the same port.
+
 ### Signing — the ADR-0050 capability round-trip
 
 Signing is a message-driven capability round-trip:

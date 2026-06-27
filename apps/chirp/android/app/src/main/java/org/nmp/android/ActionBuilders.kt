@@ -373,6 +373,33 @@ object GeneratedActionBuilders {
         )
     }
 
+    /// Send a NIP-17 private direct message.
+    /// Builds the `nmp.nip17.send` `DispatchEnvelope` bytes for the byte doorway.
+    fun sendDm(
+        correlationId: String,
+        recipientPubkey: String,
+        content: String,
+        replyTo: String?,
+    ): ByteArray {
+        val fbb = FlatBufferBuilder()
+        val recipientPubkeyOffset = fbb.createString(recipientPubkey)
+        val contentOffset = fbb.createString(content)
+        val replyToOffset = replyTo?.let { fbb.createString(it) } ?: 0
+        fbb.startTable(4)
+        fbb.addInt(0, 1, 0) // slot 0: schema_version
+        fbb.addOffset(1, recipientPubkeyOffset, 0) // slot 1: recipientPubkey
+        fbb.addOffset(2, contentOffset, 0) // slot 2: content
+        if (replyToOffset != 0) fbb.addOffset(3, replyToOffset, 0) // slot 3: replyTo
+        val payloadRoot = fbb.endTable()
+        fbb.finish(payloadRoot, "N17S")
+        val payload = fbb.sizedByteArray()
+        return encodeDispatchEnvelope(
+            correlationId = correlationId,
+            actionNamespace = "nmp.nip17.send",
+            payload = payload,
+        )
+    }
+
     /// Publish a NIP-17 DM relay list (kind:10050).
     /// Builds the `nmp.nip17.publish_relay_list` `DispatchEnvelope` bytes for the byte doorway.
     fun publishDmRelayList(
@@ -395,6 +422,27 @@ object GeneratedActionBuilders {
         return encodeDispatchEnvelope(
             correlationId = correlationId,
             actionNamespace = "nmp.nip17.publish_relay_list",
+            payload = payload,
+        )
+    }
+
+    /// Hydrate a DM peer's NIP-17 relay list (kind:10050).
+    /// Builds the `nmp.nip17.hydrate_peer_relay_list` `DispatchEnvelope` bytes for the byte doorway.
+    fun hydrateDmPeerRelayList(
+        correlationId: String,
+        peerPubkey: String,
+    ): ByteArray {
+        val fbb = FlatBufferBuilder()
+        val peerPubkeyOffset = fbb.createString(peerPubkey)
+        fbb.startTable(2)
+        fbb.addInt(0, 1, 0) // slot 0: schema_version
+        fbb.addOffset(1, peerPubkeyOffset, 0) // slot 1: peerPubkey
+        val payloadRoot = fbb.endTable()
+        fbb.finish(payloadRoot, "N17H")
+        val payload = fbb.sizedByteArray()
+        return encodeDispatchEnvelope(
+            correlationId = correlationId,
+            actionNamespace = "nmp.nip17.hydrate_peer_relay_list",
             payload = payload,
         )
     }

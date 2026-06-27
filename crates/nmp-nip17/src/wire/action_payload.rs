@@ -36,11 +36,25 @@ pub mod send_generated;
 #[path = "generated/dm_relay_list_action_generated.rs"]
 pub mod dm_relay_list_action_generated;
 
+#[allow(
+    clippy::all,
+    dead_code,
+    deprecated,
+    missing_docs,
+    non_camel_case_types,
+    non_snake_case,
+    unsafe_code,
+    unused_imports
+)]
+#[path = "generated/hydrate_peer_relay_list_generated.rs"]
+pub mod hydrate_peer_relay_list_generated;
+
+use dm_relay_list_action_generated::nmp::nip_17 as relay_list_fb;
+use hydrate_peer_relay_list_generated::nmp::nip_17 as hydrate_fb;
 use nmp_core::substrate::{ActionPayload, ActionPayloadDecodeError};
 use send_generated::nmp::nip_17 as send_fb;
-use dm_relay_list_action_generated::nmp::nip_17 as relay_list_fb;
 
-use crate::action::SendDmInput;
+use crate::action::{HydratePeerRelayListInput, SendDmInput};
 use crate::dm_relay_list::PublishDmRelayListInput;
 
 /// Wire schema version for both nip17 action payloads. Bump on any breaking
@@ -48,7 +62,53 @@ use crate::dm_relay_list::PublishDmRelayListInput;
 pub const SCHEMA_VERSION: u32 = 1;
 
 fn malformed(reason: impl Into<String>) -> ActionPayloadDecodeError {
-    ActionPayloadDecodeError::Malformed { reason: reason.into() }
+    ActionPayloadDecodeError::Malformed {
+        reason: reason.into(),
+    }
+}
+
+// --- HydratePeerRelayListInput (nmp.nip17.hydrate_peer_relay_list) -----------
+
+impl ActionPayload for HydratePeerRelayListInput {
+    const SCHEMA_ID: &'static str = "nmp.nip17.hydrate_peer_relay_list";
+    const SCHEMA_VERSION: u32 = SCHEMA_VERSION;
+
+    fn encode(&self) -> Vec<u8> {
+        let mut fbb = flatbuffers::FlatBufferBuilder::new();
+        let peer_pubkey = fbb.create_string(&self.peer_pubkey);
+        let payload = hydrate_fb::HydratePeerRelayListPayload::create(
+            &mut fbb,
+            &hydrate_fb::HydratePeerRelayListPayloadArgs {
+                schema_version: SCHEMA_VERSION,
+                peer_pubkey: Some(peer_pubkey),
+            },
+        );
+        hydrate_fb::finish_hydrate_peer_relay_list_payload_buffer(&mut fbb, payload);
+        fbb.finished_data().to_vec()
+    }
+
+    fn decode(bytes: &[u8]) -> Result<Self, ActionPayloadDecodeError> {
+        if bytes.len() < 8
+            || !hydrate_fb::hydrate_peer_relay_list_payload_buffer_has_identifier(bytes)
+        {
+            return Err(malformed("missing N17H file identifier"));
+        }
+        let root = hydrate_fb::root_as_hydrate_peer_relay_list_payload(bytes).map_err(|e| {
+            malformed(format!(
+                "not a valid HydratePeerRelayListPayload buffer: {e}"
+            ))
+        })?;
+        let found = root.schema_version();
+        if found != SCHEMA_VERSION {
+            return Err(ActionPayloadDecodeError::SchemaVersionMismatch {
+                found,
+                expected: SCHEMA_VERSION,
+            });
+        }
+        Ok(HydratePeerRelayListInput {
+            peer_pubkey: root.peer_pubkey().to_string(),
+        })
+    }
 }
 
 // --- SendDmInput (nmp.nip17.send) --------------------------------------------
@@ -105,8 +165,7 @@ impl ActionPayload for PublishDmRelayListInput {
 
     fn encode(&self) -> Vec<u8> {
         let mut fbb = flatbuffers::FlatBufferBuilder::new();
-        let relay_offsets: Vec<_> =
-            self.relays.iter().map(|r| fbb.create_string(r)).collect();
+        let relay_offsets: Vec<_> = self.relays.iter().map(|r| fbb.create_string(r)).collect();
         let relays = fbb.create_vector(&relay_offsets);
         let payload = relay_list_fb::PublishDmRelayListPayload::create(
             &mut fbb,

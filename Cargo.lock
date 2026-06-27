@@ -4439,6 +4439,7 @@ name = "nmp-browser-runtime"
 version = "0.8.3"
 dependencies = [
  "console_error_panic_hook",
+ "flatbuffers",
  "gloo-timers",
  "js-sys",
  "nmp-codegen",

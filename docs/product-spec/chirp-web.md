@@ -13,6 +13,10 @@ First run is guided onboarding. UI must expose next action and identity paths,
 advancing only after runtime, relays, signer, and feed projection are live.
 While unsigned, onboarding is primary; feed is proof only when session proof stays primary.
 Empty feeds must link to discovery, relay checks, or identity setup.
+The setup workspace must also expose concrete readiness for the first product
+workspaces (read feed, discovery, private messages, diagnostics) so a new user
+can see what is available now, what is locked behind identity, and where to go
+next without reading developer diagnostics.
 
 `#signing` is the first-level account workspace, not a Setup alias. It must
 mark Signer active, keep signer status primary, and hide unrelated feed panes.
@@ -106,11 +110,21 @@ store plaintext outside the rendered snapshot, or infer private-message policy.
 When no active account exists, the UI must render a signed-out state. When
 `decrypt_state` is `limited`, the UI must surface `undecrypted_count` as state.
 
-Outbound NIP-17 send is not supported on web until the browser runtime wires the
-Rust protocol-command expansion to real signer and recipient-DM-relay
-capabilities. The Messages workspace may expose a blocked diagnostic for
-`nmp.nip17.send`, but it must not simulate send, choose recipient inbox relays,
-or construct gift-wrap envelopes in TypeScript.
+Outbound NIP-17 send is supported for browser local-key sessions through the
+typed `nmp.nip17.send` action. TypeScript may collect a recipient pubkey and
+plaintext draft, but the action must cross the generated `dispatch_bytes`
+builder; Rust owns recipient and self-copy kind:10050 relay-list lookup,
+gift-wrap construction, NIP-44 encryption, signing, explicit relay routing,
+outbox diagnostics, and fail-closed errors. If either receiver's DM relay list
+is missing, or if the active signer cannot satisfy the required NIP-44/signing
+capabilities, the send must fail visibly through Rust action state rather than
+falling back to public content relays or a shell-local simulation.
+
+NIP-07 and NIP-46 outbound send parity remains limited until the browser runtime
+wires async signer-provider NIP-44 encryption for those signer kinds. The UI may
+render the same send form, but it must treat capability failures as product
+state and must not implement private-message encryption or relay policy in
+TypeScript.
 
 Source relay provenance must come from the Rust ingest dispatcher. Live relay
 gift-wraps carry the delivering relay URL into the inbox projection; source-free
@@ -119,8 +133,10 @@ not fabricate relay names.
 
 Acceptance must prove that signing in opens a real Rust-owned kind:1059 `#p` DM
 inbox interest; a signed fixture gift-wrap decrypts through Rust into the typed
-`NDMI` sidecar; and the browser renders plaintext, peer pubkey, decrypt state,
-and live source provenance without a shell-local message store.
+`NDMI` sidecar; the browser renders plaintext, peer pubkey, decrypt state, and
+live source provenance without a shell-local message store; and a local-key
+browser send dispatches typed `N17S` bytes so Rust publishes signed kind:1059
+recipient/self-copy envelopes to the receivers' kind:10050 relays.
 
 ## Profile Open Contract
 
