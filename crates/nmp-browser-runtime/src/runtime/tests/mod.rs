@@ -25,6 +25,7 @@ mod composition;
 mod contract;
 mod feed_composition;
 mod pump;
+mod search;
 mod signer;
 
 fn enqueue(cmds: Vec<ActorCommand>) -> mpsc::Receiver<ActorMail> {

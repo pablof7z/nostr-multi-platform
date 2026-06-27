@@ -52,6 +52,31 @@ impl ObservedProjectionCommandHandle {
         if !decl.has_declared_shape() {
             return ObservedProjectionId(0);
         }
+        self.open_with_replay(decl, true)
+    }
+
+    /// Open a declared observed projection without generic read-cache replay.
+    ///
+    /// This is intentionally narrow. Most read models must use [`Self::open`],
+    /// whose non-empty replay-shape guard prevents late-joiner data loss.
+    /// Protocols with a stronger cache path, such as NIP-50 FTS search, use
+    /// this live-only variant so stale structural cache replay cannot bypass
+    /// their own query filter.
+    #[must_use]
+    pub fn open_live_only(&self, decl: ObservedProjection) -> ObservedProjectionId {
+        if filter_json_is_empty(&decl.filter_json)
+            || InterestShape::from_filter_json(&decl.filter_json).is_none()
+        {
+            return ObservedProjectionId(0);
+        }
+        self.open_with_replay(decl, false)
+    }
+
+    fn open_with_replay(&self, mut decl: ObservedProjection, replay: bool) -> ObservedProjectionId {
+        if !replay {
+            decl.replay_shapes.clear();
+            decl.replay_limit = 0;
+        }
         let observer_id = register_rust_observer_muted(&self.observers, decl.observer);
         if observer_id.0 == 0 {
             return observer_id;

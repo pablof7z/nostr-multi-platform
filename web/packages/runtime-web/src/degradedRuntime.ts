@@ -72,6 +72,24 @@ export class DegradedRuntime {
           },
         ];
       }
+      case "search_open":
+        return [
+          {
+            type: "capability_failure",
+            capability: "nmp.nip50.search.open",
+            correlation_id: request.correlation_id,
+            reason: this.unavailableReason,
+          },
+        ];
+      case "search_close":
+        return [
+          {
+            type: "capability_failure",
+            capability: "nmp.nip50.search.close",
+            correlation_id: request.correlation_id,
+            reason: this.unavailableReason,
+          },
+        ];
       case "relay_config":
         return [
           {

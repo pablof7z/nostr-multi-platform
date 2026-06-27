@@ -46,6 +46,24 @@ export type WorkerRequest =
       type: "dispatch_bytes";
       bytes: Uint8Array;
     }
+  /** NIP-50 public search. The worker validates/bounds the query through
+   *  `nmp_nip50::SearchRequest` and emits typed results under
+   *  `nmp.nip50.search.<session_id>` (`N50S`) in update snapshots. */
+  | {
+      type: "search_open";
+      session_id: string;
+      query: string;
+      scope: "notes" | "profiles" | "longform";
+      targets: "user_preferred" | "app_default" | "explicit";
+      relays?: string[];
+      max_hits?: number;
+      correlation_id: string;
+    }
+  | {
+      type: "search_close";
+      session_id: string;
+      correlation_id: string;
+    }
   /** Browser runtime relay inventory edit. This is structured transport/runtime
    *  control, not an app-level write. The Rust runtime validates URL/role,
    *  mutates the configured-relay projection, and opens/closes browser relay

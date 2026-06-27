@@ -45,6 +45,7 @@ nmp-kinds = { path = "../nmp-kinds" }
 nmp-nip01 = { path = "../nmp-nip01" }
 nmp-nip02 = { path = "../nmp-nip02" }
 nmp-nip18 = { path = "../nmp-nip18" }
+nmp-nip50 = { path = "../nmp-nip50" }
 nmp-planner = { path = "../nmp-planner", default-features = false }
 # Signer trait + LocalKeySigner / Nip07Signer implementations used by the
 # capability-provider registry (#2049/#2066/#2067). `default-features = false`

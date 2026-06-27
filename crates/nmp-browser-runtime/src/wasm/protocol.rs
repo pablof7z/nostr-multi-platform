@@ -26,6 +26,8 @@ pub(crate) enum WorkerRequest {
     ResolveRef(ResolveRef),
     ReleaseRef(ReleaseRef),
     DispatchBytes(DispatchBytesPayload),
+    SearchOpen(SearchOpen),
+    SearchClose(SearchClose),
     RelayConfig(RelayConfig),
     PublishRelayPreferences(PublishRelayPreferences),
     CapabilityResult(CapabilityResultPayload),
@@ -123,6 +125,41 @@ pub(crate) struct ReleaseRef {
 pub(crate) struct DispatchBytesPayload {
     #[serde(default)]
     pub bytes: Vec<u8>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct SearchOpen {
+    pub session_id: String,
+    pub query: String,
+    pub scope: SearchScope,
+    pub targets: SearchTargets,
+    #[serde(default)]
+    pub relays: Vec<String>,
+    #[serde(default)]
+    pub max_hits: Option<usize>,
+    pub correlation_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum SearchScope {
+    Notes,
+    Profiles,
+    Longform,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum SearchTargets {
+    UserPreferred,
+    AppDefault,
+    Explicit,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct SearchClose {
+    pub session_id: String,
+    pub correlation_id: String,
 }
 
 #[derive(Debug, Deserialize)]

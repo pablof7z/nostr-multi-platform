@@ -78,6 +78,17 @@ export type NmpClient = {
   beginSign(accountPubkey: string, unsignedJson: string): void;
   /** #968 — request the kernel-owned routing diagnostics snapshot. */
   refreshRoutingDecisions(): Promise<RuntimeSnapshot>;
+  openSearch(request: SearchOpenRequest): Promise<RuntimeSnapshot>;
+  closeSearch(sessionId: string): Promise<RuntimeSnapshot>;
+};
+
+export type SearchOpenRequest = {
+  sessionId: string;
+  query: string;
+  scope: "notes" | "profiles" | "longform";
+  targets: "user_preferred" | "app_default" | "explicit";
+  relays?: string[];
+  maxHits?: number;
 };
 
 export function createNmpClient(): NmpClient {
@@ -154,6 +165,8 @@ abstract class BaseClient implements NmpClient {
   ): Promise<RuntimeSnapshot>;
   abstract beginSign(accountPubkey: string, unsignedJson: string): void;
   abstract refreshRoutingDecisions(): Promise<RuntimeSnapshot>;
+  abstract openSearch(request: SearchOpenRequest): Promise<RuntimeSnapshot>;
+  abstract closeSearch(sessionId: string): Promise<RuntimeSnapshot>;
 }
 
 class WorkerNmpClient extends BaseClient {
@@ -305,6 +318,33 @@ class WorkerNmpClient extends BaseClient {
     await this.helloReady;
     const correlationId = makeCorrelationId("web-routing", this.nextCorrelationId++);
     return this.request({ type: "routing_decisions", correlation_id: correlationId }, correlationId);
+  }
+
+  async openSearch(request: SearchOpenRequest): Promise<RuntimeSnapshot> {
+    await this.helloReady;
+    const correlationId = makeCorrelationId("web-search", this.nextCorrelationId++);
+    return this.request(
+      {
+        type: "search_open",
+        session_id: request.sessionId,
+        query: request.query,
+        scope: request.scope,
+        targets: request.targets,
+        relays: request.relays ?? [],
+        max_hits: request.maxHits,
+        correlation_id: correlationId,
+      },
+      correlationId,
+    );
+  }
+
+  async closeSearch(sessionId: string): Promise<RuntimeSnapshot> {
+    await this.helloReady;
+    const correlationId = makeCorrelationId("web-search", this.nextCorrelationId++);
+    return this.request(
+      { type: "search_close", session_id: sessionId, correlation_id: correlationId },
+      correlationId,
+    );
   }
 
   private request(request: WorkerRequest, explicitCorrelationId?: string): Promise<RuntimeSnapshot> {
@@ -473,6 +513,27 @@ class InProcessNmpClient extends BaseClient {
     return this.send({
       type: "routing_decisions",
       correlation_id: makeCorrelationId("web-routing", this.nextCorrelationId++),
+    });
+  }
+
+  async openSearch(request: SearchOpenRequest): Promise<RuntimeSnapshot> {
+    return this.send({
+      type: "search_open",
+      session_id: request.sessionId,
+      query: request.query,
+      scope: request.scope,
+      targets: request.targets,
+      relays: request.relays ?? [],
+      max_hits: request.maxHits,
+      correlation_id: makeCorrelationId("web-search", this.nextCorrelationId++),
+    });
+  }
+
+  async closeSearch(sessionId: string): Promise<RuntimeSnapshot> {
+    return this.send({
+      type: "search_close",
+      session_id: sessionId,
+      correlation_id: makeCorrelationId("web-search", this.nextCorrelationId++),
     });
   }
 

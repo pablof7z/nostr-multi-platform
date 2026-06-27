@@ -100,6 +100,8 @@ export type FeedFixtureRelay = FixtureRelay & {
   followPictureUrl: string;
   /** Display name of the second follow who replies (attribution badge). */
   replierDisplayName: string;
+  /** Content of a long-form event used by search specs outside the home feed. */
+  longformContent: string;
 };
 
 export type FixtureRelayOptions = {
@@ -126,7 +128,19 @@ function matchesFilter(event: NostrEvent, filter: NostrFilter): boolean {
   if (filter.ids !== undefined && !filter.ids.includes(event.id)) return false;
   if (filter.since !== undefined && event.created_at < filter.since) return false;
   if (filter.until !== undefined && event.created_at > filter.until) return false;
+  if (typeof filter.search === "string" && !matchesSearch(event, filter.search)) return false;
   return true;
+}
+
+function matchesSearch(event: NostrEvent, search: string): boolean {
+  const terms = search
+    .toLowerCase()
+    .split(/\s+/)
+    .map((term) => term.trim())
+    .filter(Boolean);
+  if (terms.length === 0) return true;
+  const haystack = event.content.toLowerCase();
+  return terms.every((term) => haystack.includes(term));
 }
 
 function startServer(
@@ -243,6 +257,7 @@ export async function startFeedFixtureRelay(): Promise<FeedFixtureRelay> {
 
   const now = Math.floor(Date.now() / 1000);
   const noteContent = "hello from fixture relay";
+  const longformContent = "longform fixture article about chirp search";
   const followADisplayName = "Alice Fixture";
   const followBDisplayName = "Bob Fixture";
 
@@ -318,7 +333,17 @@ export async function startFeedFixtureRelay(): Promise<FeedFixtureRelay> {
     viewerSk,
   ) as NostrEvent;
 
-  const seeded: NostrEvent[] = [contactList, profileA, profileB, noteA, noteB];
+  const longform = finalizeEvent(
+    {
+      kind: 30023,
+      created_at: now - 5,
+      tags: [["title", "Chirp search fixture"]],
+      content: longformContent,
+    },
+    followASk,
+  ) as NostrEvent;
+
+  const seeded: NostrEvent[] = [contactList, profileA, profileB, noteA, noteB, longform];
 
   const base = await startServer(seeded);
   return {
@@ -332,6 +357,7 @@ export async function startFeedFixtureRelay(): Promise<FeedFixtureRelay> {
     followPubkey: followAPubkey,
     secondFollowPubkey: followBPubkey,
     noteContent,
+    longformContent,
     followDisplayName: followADisplayName,
     followPictureUrl: followAPictureUrl,
     replierDisplayName: followBDisplayName,

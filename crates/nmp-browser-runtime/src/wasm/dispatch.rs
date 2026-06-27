@@ -12,6 +12,8 @@
 //! fields (`handle`) without changing visibility. No behavior change vs. the
 //! pre-split single file.
 
+use std::collections::BTreeSet;
+
 use crate::runtime::DispatchBytesResult;
 use crate::runtime::{RelayConfigAction as RuntimeRelayConfigAction, RelayConfigResult};
 use crate::{BrowserAppBuilder, BrowserRunConfig};
@@ -21,7 +23,8 @@ use super::identity::install_identity;
 use super::protocol::{
     relay_bootstrap_from_config, BeginSign, ClientHello, DeliverSignerResponse,
     IdentityRelayPermission, PublishRelayPreferences, RelayConfig, ReleaseRef, ResolveRef,
-    RuntimeStatus, SetIdentity, StartConfig, WorkerEvent, WorkerRequest, PROTOCOL_VERSION,
+    RuntimeStatus, SearchClose, SearchOpen, SearchScope, SearchTargets, SetIdentity, StartConfig,
+    WorkerEvent, WorkerRequest, PROTOCOL_VERSION,
 };
 use super::ref_routing::{
     invalid_ref_request_reason, ref_dispatch_from_release, ref_dispatch_from_resolve,
@@ -42,6 +45,8 @@ impl NmpRuntimeCore {
             WorkerRequest::BeginSign(req) => self.handle_begin_sign(req),
             WorkerRequest::DeliverSignerResponse(resp) => self.handle_deliver_signer_response(resp),
             WorkerRequest::DispatchBytes(payload) => self.dispatch_dispatch_bytes(&payload.bytes),
+            WorkerRequest::SearchOpen(req) => self.handle_search_open(req),
+            WorkerRequest::SearchClose(req) => self.handle_search_close(req),
             WorkerRequest::RelayConfig(req) => self.handle_relay_config(req),
             WorkerRequest::PublishRelayPreferences(req) => {
                 self.handle_publish_relay_preferences(req)
@@ -107,6 +112,8 @@ impl NmpRuntimeCore {
             None => storage.in_memory(),
         }
         .consume_all_builtin_projections();
+        nmp_nip50::register_search_scopes(&builder);
+        nmp_nip50::register_input_scopes(&builder);
 
         // Degraded-open diagnostic (#1007 PR-8): if `prepare_store` classified an
         // OPFS open failure and parked the stable reason, thread it onto the
@@ -285,6 +292,35 @@ impl NmpRuntimeCore {
                 reason,
             }],
         }
+    }
+
+    fn handle_search_open(&mut self, req: SearchOpen) -> Vec<WorkerEvent> {
+        let Some(handle) = self.handle.as_mut() else {
+            return not_started_error(Some(req.correlation_id));
+        };
+        let Some(request) = search_request_from_protocol(&req) else {
+            return vec![WorkerEvent::CapabilityFailure {
+                capability: "nmp.nip50.search.open".to_string(),
+                correlation_id: req.correlation_id,
+                reason: "invalid_search_request".to_string(),
+            }];
+        };
+        handle.open_search(request, &req.session_id);
+        vec![WorkerEvent::ActionAccepted {
+            action_type: "nmp.nip50.search.open".to_string(),
+            correlation_id: req.correlation_id,
+        }]
+    }
+
+    fn handle_search_close(&mut self, req: SearchClose) -> Vec<WorkerEvent> {
+        let Some(handle) = self.handle.as_mut() else {
+            return not_started_error(Some(req.correlation_id));
+        };
+        handle.close_search(&req.session_id);
+        vec![WorkerEvent::ActionAccepted {
+            action_type: "nmp.nip50.search.close".to_string(),
+            correlation_id: req.correlation_id,
+        }]
     }
 
     fn handle_publish_relay_preferences(
@@ -479,4 +515,20 @@ fn identity_relays_to_rows(relays: &[IdentityRelayPermission]) -> Vec<(String, S
             Some((url, role.to_string()))
         })
         .collect()
+}
+
+fn search_request_from_protocol(req: &SearchOpen) -> Option<nmp_nip50::SearchRequest> {
+    let scope = match req.scope {
+        SearchScope::Notes => {
+            nmp_nip50::SearchScope::Kinds(BTreeSet::from([nmp_kinds::KIND_SHORT_TEXT_NOTE]))
+        }
+        SearchScope::Profiles => nmp_nip50::SearchScope::Users,
+        SearchScope::Longform => nmp_nip50::SearchScope::LongForm,
+    };
+    let targets = match req.targets {
+        SearchTargets::UserPreferred => nmp_nip50::SearchTargets::UserPreferred,
+        SearchTargets::AppDefault => nmp_nip50::SearchTargets::AppDefault,
+        SearchTargets::Explicit => nmp_nip50::SearchTargets::Explicit(req.relays.clone()),
+    };
+    nmp_nip50::SearchRequest::new(&req.query, scope, targets, req.max_hits)
 }

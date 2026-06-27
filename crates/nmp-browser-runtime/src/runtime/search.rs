@@ -1,0 +1,148 @@
+//! Browser-runtime NIP-50 search sessions.
+//!
+//! This mirrors the native `NmpApp::open_search` composition role without
+//! depending on `nmp-ffi`: `nmp-nip50` owns request validation, relay-pinned
+//! fanout, cache ingestion, result projection, and the typed `N50S` codec.
+
+use std::sync::{Arc, Mutex};
+
+use nmp_core::substrate::{KernelEvent, ObservedProjection};
+use nmp_core::{ObservedProjectionId, ObservedProjectionSink, TypedProjectionData};
+use nmp_feed::DEFAULT_FEED_WINDOW_LIMIT;
+use nmp_nip50::{
+    encode_search_results_snapshot, search_relay_plan, SearchRequest, SearchResultsProjection,
+    SearchTargets, SEARCH_RESULTS_FILE_IDENTIFIER, SEARCH_RESULTS_SCHEMA_ID,
+    SEARCH_RESULTS_SCHEMA_VERSION,
+};
+
+use super::handle::BrowserRuntimeHandle;
+
+const SCOPE_GLOBAL: u32 = 1;
+
+pub(crate) struct BrowserSearchSession {
+    projection_key: String,
+    observer_ids: Vec<ObservedProjectionId>,
+}
+
+struct SearchObserver(Arc<Mutex<SearchResultsProjection>>);
+
+impl ObservedProjectionSink for SearchObserver {
+    fn on_kernel_event(&self, event: &KernelEvent) {
+        let relay = event.relay_provenance.first().cloned().unwrap_or_default();
+        if let Ok(mut projection) = self.0.lock() {
+            projection.ingest_relay_event(event, relay);
+        }
+    }
+}
+
+impl BrowserRuntimeHandle {
+    pub(crate) fn open_search(&mut self, request: SearchRequest, session_id: &str) -> String {
+        self.close_search(session_id);
+
+        let relays = self.resolve_search_relays(&request.targets);
+        let projection = Arc::new(Mutex::new(SearchResultsProjection::new(request.clone())));
+
+        let store = self.runtime.reducer.event_store_handle();
+        if let Ok(mut proj) = projection.lock() {
+            let _ = proj.ingest_cache_from_store(store.as_ref());
+        }
+
+        let key = search_key(session_id);
+        self.register_search_sidecar(&key, Arc::clone(&projection));
+
+        let mut observer_ids = Vec::new();
+        for pinned in search_relay_plan(&request, &relays) {
+            let observer = Arc::new(SearchObserver(Arc::clone(&projection)));
+            let decl = ObservedProjection {
+                observer,
+                filter_json: nmp_core::subs::filter_json_for(&pinned.shape),
+                consumer_id: search_consumer(session_id, &pinned.relay),
+                scope: SCOPE_GLOBAL,
+                relay_pin: Some(pinned.relay.clone()),
+                // NIP-50 cache is served above by FTS query, not by generic
+                // structural cache replay. `open_live_only` clears these before
+                // sending the kernel command while preserving scoped live fanout.
+                replay_shapes: vec![pinned.shape],
+                replay_limit: DEFAULT_FEED_WINDOW_LIMIT,
+            };
+            let id = self.observed_projection_registrar.open_live_only(decl);
+            if id.0 != 0 {
+                observer_ids.push(id);
+            }
+        }
+
+        self.search_sessions.insert(
+            session_id.to_string(),
+            BrowserSearchSession {
+                projection_key: key.clone(),
+                observer_ids,
+            },
+        );
+        key
+    }
+
+    pub(crate) fn close_search(&mut self, session_id: &str) {
+        let Some(session) = self.search_sessions.remove(session_id) else {
+            return;
+        };
+        for id in session.observer_ids {
+            self.observed_projection_registrar.close(id);
+        }
+        self.runtime
+            .reducer
+            .remove_snapshot_projection(&session.projection_key);
+    }
+
+    fn register_search_sidecar(
+        &mut self,
+        key: &str,
+        projection: Arc<Mutex<SearchResultsProjection>>,
+    ) {
+        let key_for_row = key.to_string();
+        self.runtime
+            .reducer
+            .register_typed_snapshot_projection(key.to_string(), move || {
+                let snapshot = projection.lock().ok()?.snapshot();
+                Some(TypedProjectionData {
+                    key: key_for_row.clone(),
+                    schema_id: SEARCH_RESULTS_SCHEMA_ID.to_string(),
+                    schema_version: SEARCH_RESULTS_SCHEMA_VERSION,
+                    file_identifier: String::from_utf8_lossy(SEARCH_RESULTS_FILE_IDENTIFIER)
+                        .into_owned(),
+                    payload: encode_search_results_snapshot(&snapshot),
+                    ..Default::default()
+                })
+            });
+    }
+
+    fn resolve_search_relays(&self, targets: &SearchTargets) -> Vec<String> {
+        let (primary, fallback) = self
+            .preferred_relay_source
+            .as_ref()
+            .map(|source| (source.primary(), source.fallback()))
+            .unwrap_or_default();
+        let raw = match targets {
+            SearchTargets::Explicit(list) => list.clone(),
+            SearchTargets::UserPreferred => {
+                if primary.is_empty() {
+                    fallback
+                } else {
+                    primary
+                }
+            }
+            SearchTargets::AppDefault => fallback,
+        };
+        let mut seen = std::collections::BTreeSet::new();
+        raw.into_iter()
+            .filter(|relay| !relay.is_empty() && seen.insert(relay.clone()))
+            .collect()
+    }
+}
+
+fn search_key(session_id: &str) -> String {
+    format!("nmp.nip50.search.{session_id}")
+}
+
+fn search_consumer(session_id: &str, relay: &str) -> String {
+    format!("search-{session_id}-{relay}")
+}

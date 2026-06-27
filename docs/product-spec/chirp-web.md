@@ -25,6 +25,26 @@ not decode, derive from, cache, or sign with the secret.
 NIP-07 remains the preferred browser-extension path. NIP-46 is not a web
 onboarding path until the browser runtime wires a bunker signer end to end.
 
+## Search Discovery Contract
+
+Chirp Web must expose NIP-50 search as a first-level product workspace, not as a
+shell-local filter over the visible feed. The browser shell may collect the
+query, selected scope, and leaf-app search relay policy, but Rust must validate
+and bound the query, build the `SearchRequest`, resolve targets, open the
+relay-pinned interests, ingest cache hits through the NIP-50 FTS path, and emit
+typed `N50S` results under `nmp.nip50.search.<session>`.
+
+TypeScript must decode the typed `N50S` snapshot and render results. It must not
+construct NIP-01 search filters, scan feed rows as a substitute for search, or
+invent result provenance. The default Chirp Web search relay is app policy from
+the generated Chirp config; tests may override it through URL state to keep
+acceptance hermetic.
+
+Acceptance must prove that opening the Search workspace sends a real Rust-owned
+NIP-50 session through the browser worker, that a fixture relay receives the
+search subscription, and that matching signed events render from the typed
+search sidecar with relay/cache provenance.
+
 ## Profile Publish Contract
 
 Chirp Web must let a signed-in user publish their public identity from the first

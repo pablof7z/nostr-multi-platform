@@ -56,6 +56,8 @@ mod kernel_ops;
 pub(crate) use kernel_ops::DispatchBytesResult;
 mod relay_config_ops;
 pub(crate) use relay_config_ops::{RelayConfigAction, RelayConfigResult};
+mod search;
+pub(crate) use search::BrowserSearchSession;
 
 // ── #2051/#2073 — snapshot/projection/clock/diagnostics track ────────────────
 pub mod diagnostics;

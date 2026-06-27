@@ -34,6 +34,7 @@ import { decodeUpdateFrame } from "./nmp/feedDecoder";
 import { decodeRuntimeProjection } from "./nmp/runtimeProjection";
 // Item C — feed / publish / profile UI (FeedPanel owns its own store + provider).
 import { FeedPanel } from "./features/feed/FeedPanel";
+import { SearchPanel } from "./features/search/SearchPanel";
 
 // NIP-07 browser extension interface (window.nostr — EIP-1193-style extension).
 // Shared ambient declaration: signBroker.ts, client.ts, and the signing feature
@@ -51,6 +52,12 @@ declare global {
 // The client is a module-level singleton: one worker per page load.
 const client = createNmpClient();
 
+type MainView = "home" | "search";
+
+function viewFromHash(): MainView {
+  return window.location.hash === "#search" ? "search" : "home";
+}
+
 /** Derive a stable string from the runtime status for data attributes and UI. */
 function runtimeStatusLabel(snapshot: RuntimeSnapshot): string {
   const s = snapshot.status;
@@ -61,12 +68,18 @@ function runtimeStatusLabel(snapshot: RuntimeSnapshot): string {
 export default function App() {
   const [snapshot, setSnapshot] = createSignal<RuntimeSnapshot>(client.snapshot());
   const [signerConnected, setSignerConnected] = createSignal(false);
+  const [mainView, setMainView] = createSignal<MainView>(viewFromHash());
 
   const unsubscribe = client.subscribe(setSnapshot);
   onCleanup(unsubscribe);
 
   // Boot the runtime on mount: parse relay_bootstrap from URL and send `start`.
-  onMount(() => void start());
+  onMount(() => {
+    const syncHash = () => setMainView(viewFromHash());
+    window.addEventListener("hashchange", syncHash);
+    onCleanup(() => window.removeEventListener("hashchange", syncHash));
+    void start();
+  });
 
   const start = async () => {
     const override = chirpRelayOverrideFromSearch(window.location.search);
@@ -87,6 +100,19 @@ export default function App() {
   });
   const feedReady = () => feedFrame() !== undefined;
   const feedCount = () => feedFrame()?.rows.length ?? 0;
+  const topbarKicker = () => (mainView() === "search" ? "NIP-50 discovery" : "Home feed");
+  const topbarTitle = () =>
+    mainView() === "search"
+      ? "Search relays and cache"
+      : signerConnected()
+        ? "Real relay timeline"
+        : "Set up Chirp Web";
+  const topbarSupport = () =>
+    mainView() === "search"
+      ? "Find notes, profiles, and long-form posts with relay and cache provenance."
+      : signerConnected()
+        ? "Read, publish, and verify every action through relay diagnostics."
+        : "Browse signed out, connect a signer when you are ready to publish.";
 
   return (
     <NmpClientProvider client={client} snapshot={snapshot}>
@@ -112,7 +138,21 @@ export default function App() {
             </div>
           </div>
           <nav class="rail-nav" aria-label="Primary">
-            <a class="rail-link rail-link--active" href="#feed" aria-current="page">Home</a>
+            <a
+              class={mainView() === "home" ? "rail-link rail-link--active" : "rail-link"}
+              href="#feed"
+              aria-current={mainView() === "home" ? "page" : undefined}
+            >
+              Home
+            </a>
+            <a
+              class={mainView() === "search" ? "rail-link rail-link--active" : "rail-link"}
+              href="#search"
+              aria-current={mainView() === "search" ? "page" : undefined}
+              data-testid="nav-search"
+            >
+              Search
+            </a>
             <a class="rail-link" href="#saved">Saved</a>
             <a class="rail-link" href="#signing">Signer</a>
             <a class="rail-link" href="#profile">Profile</a>
@@ -131,13 +171,9 @@ export default function App() {
         <div class="app-main">
           <header class="topbar">
             <div>
-              <p class="topbar-kicker">Home feed</p>
-              <h1>{signerConnected() ? "Real relay timeline" : "Set up Chirp Web"}</h1>
-              <p class="topbar-support">
-                {signerConnected()
-                  ? "Read, publish, and verify every action through relay diagnostics."
-                  : "Browse signed out, connect a signer when you are ready to publish."}
-              </p>
+              <p class="topbar-kicker">{topbarKicker()}</p>
+              <h1>{topbarTitle()}</h1>
+              <p class="topbar-support">{topbarSupport()}</p>
             </div>
             <div
               class="status-indicator"
@@ -159,7 +195,11 @@ export default function App() {
               NmpClientContext. Do not add logic to this slot — zero protocol TS.
             */}
             <section id="feed" data-slot="feed" aria-label="Feed">
-              <FeedPanel canPublish={signerConnected()} diagnostics={runtimeProjection()} />
+              {mainView() === "search" ? (
+                <SearchPanel />
+              ) : (
+                <FeedPanel canPublish={signerConnected()} diagnostics={runtimeProjection()} />
+              )}
             </section>
 
             {/*

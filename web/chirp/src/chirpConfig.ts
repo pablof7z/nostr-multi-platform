@@ -93,3 +93,9 @@ export function chirpRelayOverrideFromSearch(search: string): ChirpRelayStartOve
   const relays = params.getAll("relay").filter(Boolean);
   return relays.length > 0 ? relays : undefined;
 }
+
+export function chirpSearchRelayUrlsFromSearch(search: string): string[] | undefined {
+  const params = new URLSearchParams(search);
+  const relays = params.getAll("search_relay").concat(params.getAll("searchRelay")).filter(Boolean);
+  return relays.length > 0 ? relays : undefined;
+}
