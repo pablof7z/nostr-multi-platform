@@ -290,28 +290,6 @@ export const GeneratedActionBuilders = {
     return encodeDispatchEnvelope(correlationId, "nmp.nip51.unblock_relay", payload);
   },
 
-  /** Send a NIP-17 private direct message. */
-  sendDm(
-    correlationId: string,
-    recipientPubkey: string,
-    content: string,
-    replyTo: string | null,
-  ): Uint8Array {
-    const fbb = new flatbuffers.Builder(64);
-    const recipientPubkeyOffset = fbb.createString(recipientPubkey);
-    const contentOffset = fbb.createString(content);
-    const replyToOffset = replyTo === null ? 0 : fbb.createString(replyTo);
-    fbb.startObject(4);
-    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
-    fbb.addFieldOffset(1, recipientPubkeyOffset, 0); // slot 1: recipientPubkey
-    fbb.addFieldOffset(2, contentOffset, 0); // slot 2: content
-    if (replyToOffset !== 0) fbb.addFieldOffset(3, replyToOffset, 0); // slot 3: replyTo
-    const payloadRoot = fbb.endObject();
-    fbb.finish(payloadRoot, "N17S");
-    const payload = fbb.asUint8Array();
-    return encodeDispatchEnvelope(correlationId, "nmp.nip17.send", payload);
-  },
-
   /** Publish a NIP-17 DM relay list (kind:10050). */
   publishDmRelayList(
     correlationId: string,
@@ -419,6 +397,58 @@ export const GeneratedActionBuilders = {
     fbb.finish(payloadRoot, "N47P");
     const payload = fbb.asUint8Array();
     return encodeDispatchEnvelope(correlationId, "nmp.wallet.pay_invoice", payload);
+  },
+
+  /** Send a NIP-17 gift-wrapped direct message to a recipient. */
+  sendDm(
+    correlationId: string,
+    recipientPubkey: string,
+    content: string,
+    replyTo: string | null,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const recipientPubkeyOffset = fbb.createString(recipientPubkey);
+    const contentOffset = fbb.createString(content);
+    const replyToOffset = replyTo === null ? 0 : fbb.createString(replyTo);
+    fbb.startObject(4);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldOffset(1, recipientPubkeyOffset, 0); // slot 1: recipientPubkey
+    fbb.addFieldOffset(2, contentOffset, 0); // slot 2: content
+    if (replyToOffset !== 0) fbb.addFieldOffset(3, replyToOffset, 0); // slot 3: replyTo
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "N17S");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.nip17.send", payload);
+  },
+
+  /** Publish a NIP-57 zap request for a recipient (optionally a target event). */
+  zap(
+    correlationId: string,
+    recipientPubkey: string,
+    amountMsats: bigint,
+    lnurl: string | null,
+    relays: string[],
+    targetEventId: string | null,
+    comment: string | null,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const recipientPubkeyOffset = fbb.createString(recipientPubkey);
+    const lnurlOffset = lnurl === null ? 0 : fbb.createString(lnurl);
+    const relaysOffset = stringVector(fbb, relays);
+    const targetEventIdOffset = targetEventId === null ? 0 : fbb.createString(targetEventId);
+    const commentOffset = comment === null ? 0 : fbb.createString(comment);
+    fbb.startObject(7);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldOffset(1, recipientPubkeyOffset, 0); // slot 1: recipientPubkey
+    fbb.addFieldInt64(2, amountMsats, BigInt(0)); // slot 2: amountMsats
+    if (lnurlOffset !== 0) fbb.addFieldOffset(3, lnurlOffset, 0); // slot 3: lnurl
+    fbb.addFieldOffset(4, relaysOffset, 0); // slot 4: relays
+    if (targetEventIdOffset !== 0) fbb.addFieldOffset(5, targetEventIdOffset, 0); // slot 5: targetEventId
+    if (commentOffset !== 0) fbb.addFieldOffset(6, commentOffset, 0); // slot 6: comment
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "N57Z");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.nip57.zap", payload);
   },
 
   /** Sign-and-publish an arbitrary event kind (generic publish path; NIP-65 outbox or explicit relays). */

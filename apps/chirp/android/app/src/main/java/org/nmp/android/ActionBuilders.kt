@@ -373,33 +373,6 @@ object GeneratedActionBuilders {
         )
     }
 
-    /// Send a NIP-17 private direct message.
-    /// Builds the `nmp.nip17.send` `DispatchEnvelope` bytes for the byte doorway.
-    fun sendDm(
-        correlationId: String,
-        recipientPubkey: String,
-        content: String,
-        replyTo: String?,
-    ): ByteArray {
-        val fbb = FlatBufferBuilder()
-        val recipientPubkeyOffset = fbb.createString(recipientPubkey)
-        val contentOffset = fbb.createString(content)
-        val replyToOffset = replyTo?.let { fbb.createString(it) } ?: 0
-        fbb.startTable(4)
-        fbb.addInt(0, 1, 0) // slot 0: schema_version
-        fbb.addOffset(1, recipientPubkeyOffset, 0) // slot 1: recipientPubkey
-        fbb.addOffset(2, contentOffset, 0) // slot 2: content
-        if (replyToOffset != 0) fbb.addOffset(3, replyToOffset, 0) // slot 3: replyTo
-        val payloadRoot = fbb.endTable()
-        fbb.finish(payloadRoot, "N17S")
-        val payload = fbb.sizedByteArray()
-        return encodeDispatchEnvelope(
-            correlationId = correlationId,
-            actionNamespace = "nmp.nip17.send",
-            payload = payload,
-        )
-    }
-
     /// Publish a NIP-17 DM relay list (kind:10050).
     /// Builds the `nmp.nip17.publish_relay_list` `DispatchEnvelope` bytes for the byte doorway.
     fun publishDmRelayList(
@@ -541,6 +514,73 @@ object GeneratedActionBuilders {
         return encodeDispatchEnvelope(
             correlationId = correlationId,
             actionNamespace = "nmp.wallet.pay_invoice",
+            payload = payload,
+        )
+    }
+
+    /// Send a NIP-17 gift-wrapped direct message to a recipient.
+    /// Builds the `nmp.nip17.send` `DispatchEnvelope` bytes for the byte doorway.
+    fun sendDm(
+        correlationId: String,
+        recipientPubkey: String,
+        content: String,
+        replyTo: String?,
+    ): ByteArray {
+        val fbb = FlatBufferBuilder()
+        val recipientPubkeyOffset = fbb.createString(recipientPubkey)
+        val contentOffset = fbb.createString(content)
+        val replyToOffset = replyTo?.let { fbb.createString(it) } ?: 0
+        fbb.startTable(4)
+        fbb.addInt(0, 1, 0) // slot 0: schema_version
+        fbb.addOffset(1, recipientPubkeyOffset, 0) // slot 1: recipientPubkey
+        fbb.addOffset(2, contentOffset, 0) // slot 2: content
+        if (replyToOffset != 0) fbb.addOffset(3, replyToOffset, 0) // slot 3: replyTo
+        val payloadRoot = fbb.endTable()
+        fbb.finish(payloadRoot, "N17S")
+        val payload = fbb.sizedByteArray()
+        return encodeDispatchEnvelope(
+            correlationId = correlationId,
+            actionNamespace = "nmp.nip17.send",
+            payload = payload,
+        )
+    }
+
+    /// Publish a NIP-57 zap request for a recipient (optionally a target event).
+    /// Builds the `nmp.nip57.zap` `DispatchEnvelope` bytes for the byte doorway.
+    fun zap(
+        correlationId: String,
+        recipientPubkey: String,
+        amountMsats: Long,
+        lnurl: String?,
+        relays: List<String>,
+        targetEventId: String?,
+        comment: String?,
+    ): ByteArray {
+        val fbb = FlatBufferBuilder()
+        val recipientPubkeyOffset = fbb.createString(recipientPubkey)
+        val lnurlOffset = lnurl?.let { fbb.createString(it) } ?: 0
+        val relaysOffset = run {
+            val offsets = IntArray(relays.size) { i -> fbb.createString(relays[i]) }
+            fbb.startVector(4, offsets.size, 4)
+            for (i in offsets.size - 1 downTo 0) fbb.addOffset(offsets[i])
+            fbb.endVector()
+        }
+        val targetEventIdOffset = targetEventId?.let { fbb.createString(it) } ?: 0
+        val commentOffset = comment?.let { fbb.createString(it) } ?: 0
+        fbb.startTable(7)
+        fbb.addInt(0, 1, 0) // slot 0: schema_version
+        fbb.addOffset(1, recipientPubkeyOffset, 0) // slot 1: recipientPubkey
+        fbb.addLong(2, amountMsats, 0L) // slot 2: amountMsats
+        if (lnurlOffset != 0) fbb.addOffset(3, lnurlOffset, 0) // slot 3: lnurl
+        fbb.addOffset(4, relaysOffset, 0) // slot 4: relays
+        if (targetEventIdOffset != 0) fbb.addOffset(5, targetEventIdOffset, 0) // slot 5: targetEventId
+        if (commentOffset != 0) fbb.addOffset(6, commentOffset, 0) // slot 6: comment
+        val payloadRoot = fbb.endTable()
+        fbb.finish(payloadRoot, "N57Z")
+        val payload = fbb.sizedByteArray()
+        return encodeDispatchEnvelope(
+            correlationId = correlationId,
+            actionNamespace = "nmp.nip57.zap",
             payload = payload,
         )
     }

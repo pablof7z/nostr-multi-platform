@@ -26,8 +26,8 @@ import Foundation
 // ── Write side ────────────────────────────────────────────────────────────
 //
 //   • `sendDm(recipientPubkey:content:replyTo:)` dispatches the `nmp.nip17.send`
-//     action via `dispatchChirpIntent`, which routes through the Chirp byte
-//     doorway (`nmp_app_chirp_dispatch_intent_bytes`).
+//     action via the generated `GeneratedActionBuilders.sendDm` bytes through
+//     the typed byte doorway (`nmp_app_dispatch_action_bytes`, M14-1 / #2145).
 //     Fire-and-forget — the sent message reappears through the next snapshot
 //     tick (the actor gift-wraps a self-copy to the sender).
 // ─────────────────────────────────────────────────────────────────────────
@@ -36,17 +36,19 @@ import Foundation
 
 extension KernelHandle {
     /// Dispatch a `nmp.nip17.send` action — send a NIP-17 private direct message
-    /// to `recipientPubkey`. Routes via `dispatchChirpIntent` through the Chirp
-    /// byte doorway (`nmp_app_chirp_dispatch_intent_bytes`); the kind:14 rumor,
-    /// the NIP-59 gift-wrap, and signing are all owned by Rust (thin-shell rule).
-    /// Fire-and-forget: the returned correlation JSON is freed and ignored —
-    /// the sent message surfaces through the next `nip17.dm_inbox` snapshot
-    /// tick (the actor gift-wraps a self-copy).
+    /// to `recipientPubkey`. Builds the typed FlatBuffers payload via the
+    /// generated `GeneratedActionBuilders.sendDm` and dispatches through the
+    /// byte doorway; the kind:14 rumor, the NIP-59 gift-wrap, and signing are
+    /// all owned by Rust (thin-shell rule). Fire-and-forget: the returned
+    /// correlation JSON is ignored — the sent message surfaces through the next
+    /// `nip17.dm_inbox` snapshot tick (the actor gift-wraps a self-copy).
     ///
     /// `replyTo`, when supplied, is the event id this message replies to; the
     /// Rust action adds the NIP-10 reply marker.
     func sendDm(recipientPubkey: String, content: String, replyTo: String? = nil) {
-        _ = dispatchChirpIntent(.sendDm(
+        let id = UUID().uuidString
+        _ = dispatchBytes(GeneratedActionBuilders.sendDm(
+            correlationId: id,
             recipientPubkey: recipientPubkey,
             content: content,
             replyTo: replyTo

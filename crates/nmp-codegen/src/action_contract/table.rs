@@ -298,7 +298,7 @@ pub const ACTION_CONTRACT: &[ActionContract] = &[
         schema_version: 1,
         file_identifier: "N57Z",
         default_tier: ActionDefaultTier::Zaps,
-        builder_support: NO_GENERATED_BUILDER,
+        builder_support: BuilderSupport::GeneratedFlatTable,
         public_re_export: PUBLIC_REEXPORT,
         typed_dispatch: TYPED_ONLY,
     },

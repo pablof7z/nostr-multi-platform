@@ -141,11 +141,6 @@ extension KernelModel {
         return track(kernel.unblockRelay(url: url, accountPubkey: pubkey))
     }
 
-    @discardableResult
-    func dispatchChirpIntent(_ intent: ChirpActionIntent) -> DispatchResult {
-        track(kernel.dispatchChirpIntent(intent))
-    }
-
     /// Dispatch a NIP-57 zap through the `nmp.nip57.zap` ActionModule.
     /// The recipient's `lnurl` is sourced from the keyed profile sidecar
     /// (pre-extracted from kind:0 by Rust — the shell never parses metadata).

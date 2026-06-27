@@ -120,10 +120,12 @@ void nmp_app_close_feed(void *app, const char *handle_json);
 // last_error_toast / accounts / publish_queue fields (D6).
 //
 // The per-verb `nmp_app_react` / `nmp_app_follow` / `nmp_app_unfollow`
-// symbols were deleted: the three social verbs are D0 app nouns and now
-// route through `nmp_app_chirp_dispatch_action_bytes` under the
-// `nmp.nip25.react` / `nmp.follow` / `nmp.unfollow` namespaces, which
-// `nmp-app-template` registers from `nmp_app_chirp_register`.
+// symbols were deleted: social write verbs are D0 app nouns and are now
+// dispatched via `nmp_app_dispatch_action_bytes` using bytes produced by
+// generated action builders (Swift `dispatchBytes` / Kotlin `ActionBuilders`)
+// under the `nmp.nip25.react` / `nmp.follow` / `nmp.unfollow` namespaces.
+// `nmp-app-template` registers these actions via `nmp_app_chirp_register`.
+// Do NOT reintroduce the old intent/action-spec path; use generated builders.
 // make_active=1: sign in and set as the active account (normal sign-in).
 // make_active=0: register a visible secondary signer without activating it.
 // Hidden app-managed keys use nmp_app_register_agent_nsec.
@@ -353,9 +355,10 @@ char *nmp_app_dispatch_capability(void *app, const char *request_json);
 // remaining dispatch entry point; the JSON `nmp_app_dispatch_action` doorway
 // was deleted). The caller passes the bytes of an open `DispatchEnvelope`
 // (correlation_id + action_namespace + schema_version + opaque per-crate
-// payload). The Chirp-specific helpers `nmp_app_chirp_dispatch_intent_bytes`
-// and `nmp_app_chirp_dispatch_action_bytes` (below) build this envelope in
-// Rust so the shell never hand-assembles FlatBuffers. Returns the same
+// payload). Social writes build this envelope via the generated
+// `GeneratedActionBuilders` byte builders; the Chirp helper
+// `nmp_app_chirp_dispatch_action_bytes` (below) builds it in Rust from a
+// `(namespace, body_json)` pair for the direct-dispatch sites. Returns the same
 // heap-allocated `{"correlation_id":"<id>"}` (accepted+enqueued) or
 // `{"error":"…"}` JSON shape, which MUST be freed via `nmp_free_string`.
 // Fail-closed (D6): a null `app`, a null `ptr`, an oversize / malformed /
@@ -513,27 +516,16 @@ uint32_t nmp_app_chirp_register(void *app,
 // the single source of truth, no hand-maintained list). Call once at app
 // construction, before `nmp_app_start`. A null `app` is a silent no-op (D6).
 void nmp_app_chirp_declare_consumed_projections(void *app);
-// Build a Rust-authored Chirp action dispatch spec from typed user intent JSON.
-// Returns {"namespace":"...","body_json":"..."} or {"error":"..."}; free with
-// nmp_free_string.
-char *nmp_app_chirp_action_spec(const char *intent_json);
-// ADR-0064 / S4 (#1782) — Chirp's intent BYTE doorway. Takes the SAME
-// `ChirpActionIntent` JSON `nmp_app_chirp_action_spec` accepts, but does the
-// whole intent → Rust-authored spec → typed per-crate FlatBuffers payload →
-// `DispatchEnvelope` → byte doorway in ONE call. No protocol body or namespace
-// is authored in the host, and no JSON crosses to the kernel (only typed
-// bytes). Returns the same `{"correlation_id":"<id>"}` (accepted) or
-// `{"error":"…"}` JSON, freed via `nmp_free_string`. Fail-closed (D6): a null
-// `app` / null-or-malformed intent / unknown namespace returns `{"error":…}`.
-char *nmp_app_chirp_dispatch_intent_bytes(void *app, const char *intent_json);
-// ADR-0064 / S4 (#1782) — bridge-private compatibility doorway for action
-// families not yet covered by generated host builders (wallet, relay lists,
-// NIP-29 group ops, Marmot). App code must expose typed methods and must not
-// present `(namespace, body_json)` as its API. Rust converts the verbatim body
-// to the namespace's typed payload bytes and dispatches through the byte
-// doorway; only typed bytes cross to the kernel. Same `{"correlation_id"}` /
-// `{"error"}` return + free contract. Fail-closed (D6) on null/unknown
-// namespace.
+// ADR-0064 / S4 (#1782), M14-1 / #2145 — bridge-private doorway for the
+// direct-dispatch action families (NIP-29 group ops) where the host already
+// holds a `(namespace, body_json)` pair. Social writes (notes, reactions,
+// reposts, follows, zaps, DMs) no longer route here: they ride the generated
+// `GeneratedActionBuilders` byte builders straight to
+// `nmp_app_dispatch_action_bytes`. Rust converts the verbatim body to the
+// namespace's typed payload bytes and dispatches through the byte doorway; only
+// typed bytes cross to the kernel. Returns `{"correlation_id":"<id>"}`
+// (accepted) or `{"error":"…"}` JSON, freed via `nmp_free_string`. Fail-closed
+// (D6) on null/unknown namespace.
 char *nmp_app_chirp_dispatch_action_bytes(void *app, const char *namespace, const char *body_json);
 void nmp_app_chirp_unregister(void *handle);
 

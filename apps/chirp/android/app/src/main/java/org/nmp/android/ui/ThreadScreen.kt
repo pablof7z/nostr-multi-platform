@@ -152,12 +152,20 @@ fun ThreadScreen(
                 Button(
                     onClick = {
                         val content = replyContent.trim()
-                        if (content.isNotEmpty()) {
+                        if (content.isNotEmpty() && cardLookup.containsKey(eventId)) {
                             model.publishNote(content, eventId)
                             replyContent = ""
                         }
                     },
-                    enabled = replyContent.isNotBlank(),
+                    // M14-1 / #2145: `publishReply` looks up the STORED parent
+                    // event in the kernel to derive the NIP-10 tags and rejects a
+                    // missing/non-kind:1 parent. Gate the reply until the parent
+                    // card is present in the thread feed (it always is for a
+                    // thread opened from a rendered note; the empty/pending case
+                    // after a search/deep-link is the one we guard) so we never
+                    // submit a reply the kernel would reject as
+                    // `reply_target_unknown`.
+                    enabled = replyContent.isNotBlank() && cardLookup.containsKey(eventId),
                 ) {
                     Text("Reply")
                 }

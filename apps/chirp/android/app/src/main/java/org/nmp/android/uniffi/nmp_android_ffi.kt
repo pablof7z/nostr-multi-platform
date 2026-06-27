@@ -753,8 +753,6 @@ internal open class UniffiVTableCallbackInterfaceUpdateSink(
 
 
 
-
-
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -775,8 +773,6 @@ internal interface IntegrityCheckingUniffiLib : Library {
 fun uniffi_nmp_android_ffi_checksum_method_apphandle_dispatch_action_bytes(
 ): Short
 fun uniffi_nmp_android_ffi_checksum_method_apphandle_dispatch_action_json(
-): Short
-fun uniffi_nmp_android_ffi_checksum_method_apphandle_dispatch_intent_json(
 ): Short
 fun uniffi_nmp_android_ffi_checksum_method_apphandle_legacy_jni_session_id(
 ): Short
@@ -853,8 +849,6 @@ fun uniffi_nmp_android_ffi_fn_method_apphandle_clear_update_sink(`ptr`: Pointer,
 fun uniffi_nmp_android_ffi_fn_method_apphandle_dispatch_action_bytes(`ptr`: Pointer,`bytes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_nmp_android_ffi_fn_method_apphandle_dispatch_action_json(`ptr`: Pointer,`namespace`: RustBuffer.ByValue,`bodyJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
-fun uniffi_nmp_android_ffi_fn_method_apphandle_dispatch_intent_json(`ptr`: Pointer,`intentJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_nmp_android_ffi_fn_method_apphandle_legacy_jni_session_id(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
@@ -1000,10 +994,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_nmp_android_ffi_checksum_method_apphandle_dispatch_action_bytes() != 18528.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_nmp_android_ffi_checksum_method_apphandle_dispatch_action_json() != 36630.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
-    if (lib.uniffi_nmp_android_ffi_checksum_method_apphandle_dispatch_intent_json() != 37584.toShort()) {
+    if (lib.uniffi_nmp_android_ffi_checksum_method_apphandle_dispatch_action_json() != 60943.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_android_ffi_checksum_method_apphandle_legacy_jni_session_id() != 38281.toShort()) {
@@ -1471,26 +1462,15 @@ public interface AppHandleInterface {
     /**
      * Dispatch from a `(namespace, body_json)` pair.
      *
-     * LEGACY write-verb adapter carried over from the deleted
-     * `nativeDispatchActionBytes` JNI symbol, kept as a STAGED RESIDUAL
-     * pending migration to `GeneratedActionBuilders` bytes-only dispatch
-     * in issue #2145 (M14-1). Routes through the same typed byte doorway
+     * JSON adapter for namespaces that pre-date the FlatBuffers write boundary:
+     * kept as a RESIDUAL for the Marmot hybrid builder path (#2169) and the
+     * terminal-UI (TUI) consumer. The intent/action-spec path is GONE (M14-1 /
+     * #2145); all Chirp social write verbs use `dispatch_action_bytes` with
+     * generated builders. Routes through the same typed byte doorway
      * (`nmp_app_dispatch_action_bytes`) as `dispatch_action_bytes`.
      * Never throws (D6).
      */
     fun `dispatchActionJson`(`namespace`: kotlin.String, `bodyJson`: kotlin.String): DispatchAck
-    
-    /**
-     * Dispatch from a `ChirpActionIntent` JSON string.
-     *
-     * LEGACY write-verb adapter carried over from the deleted
-     * `nativeDispatchIntentBytes` JNI symbol, kept as a STAGED RESIDUAL
-     * pending migration to `GeneratedActionBuilders` bytes-only dispatch
-     * in issue #2145 (M14-1). Rust converts the intent to a
-     * `(namespace, body_json)` spec and dispatches through the typed byte
-     * doorway. Never throws (D6).
-     */
-    fun `dispatchIntentJson`(`intentJson`: kotlin.String): DispatchAck
     
     /**
      * Session registry id for residual JNI lanes.
@@ -1709,10 +1689,11 @@ open class AppHandle: Disposable, AutoCloseable, AppHandleInterface
     /**
      * Dispatch from a `(namespace, body_json)` pair.
      *
-     * LEGACY write-verb adapter carried over from the deleted
-     * `nativeDispatchActionBytes` JNI symbol, kept as a STAGED RESIDUAL
-     * pending migration to `GeneratedActionBuilders` bytes-only dispatch
-     * in issue #2145 (M14-1). Routes through the same typed byte doorway
+     * JSON adapter for namespaces that pre-date the FlatBuffers write boundary:
+     * kept as a RESIDUAL for the Marmot hybrid builder path (#2169) and the
+     * terminal-UI (TUI) consumer. The intent/action-spec path is GONE (M14-1 /
+     * #2145); all Chirp social write verbs use `dispatch_action_bytes` with
+     * generated builders. Routes through the same typed byte doorway
      * (`nmp_app_dispatch_action_bytes`) as `dispatch_action_bytes`.
      * Never throws (D6).
      */override fun `dispatchActionJson`(`namespace`: kotlin.String, `bodyJson`: kotlin.String): DispatchAck {
@@ -1721,28 +1702,6 @@ open class AppHandle: Disposable, AutoCloseable, AppHandleInterface
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_nmp_android_ffi_fn_method_apphandle_dispatch_action_json(
         it, FfiConverterString.lower(`namespace`),FfiConverterString.lower(`bodyJson`),_status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Dispatch from a `ChirpActionIntent` JSON string.
-     *
-     * LEGACY write-verb adapter carried over from the deleted
-     * `nativeDispatchIntentBytes` JNI symbol, kept as a STAGED RESIDUAL
-     * pending migration to `GeneratedActionBuilders` bytes-only dispatch
-     * in issue #2145 (M14-1). Rust converts the intent to a
-     * `(namespace, body_json)` spec and dispatches through the typed byte
-     * doorway. Never throws (D6).
-     */override fun `dispatchIntentJson`(`intentJson`: kotlin.String): DispatchAck {
-            return FfiConverterTypeDispatchAck.lift(
-    callWithPointer {
-    uniffiRustCall() { _status ->
-    UniffiLib.INSTANCE.uniffi_nmp_android_ffi_fn_method_apphandle_dispatch_intent_json(
-        it, FfiConverterString.lower(`intentJson`),_status)
 }
     }
     )

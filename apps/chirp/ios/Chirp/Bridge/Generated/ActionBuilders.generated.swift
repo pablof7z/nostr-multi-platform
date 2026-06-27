@@ -366,33 +366,6 @@ public enum GeneratedActionBuilders {
         )
     }
 
-    /// Send a NIP-17 private direct message.
-    /// Builds the `nmp.nip17.send` `DispatchEnvelope` bytes for the byte doorway.
-    public static func sendDm(
-        correlationId: String,
-        recipientPubkey: String,
-        content: String,
-        replyTo: String?
-    ) -> [UInt8] {
-        var fbb = FlatBufferBuilder()
-        let recipientPubkeyOffset = fbb.create(string: recipientPubkey)
-        let contentOffset = fbb.create(string: content)
-        let replyToOffset: Offset = replyTo.map { fbb.create(string: $0) } ?? Offset()
-        let payloadStart = fbb.startTable(with: 4)
-        fbb.add(element: UInt32(1), def: UInt32(0), at: 4) // slot 0: schema_version
-        fbb.add(offset: recipientPubkeyOffset, at: 6) // slot 1: recipientPubkey
-        fbb.add(offset: contentOffset, at: 8) // slot 2: content
-        if replyToOffset.o != 0 { fbb.add(offset: replyToOffset, at: 10) } // slot 3: replyTo
-        let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))
-        fbb.finish(offset: payloadRoot, fileId: "N17S")
-        let payload = fbb.sizedByteArray
-        return encodeDispatchEnvelope(
-            correlationId: correlationId,
-            actionNamespace: "nmp.nip17.send",
-            payload: payload
-        )
-    }
-
     /// Publish a NIP-17 DM relay list (kind:10050).
     /// Builds the `nmp.nip17.publish_relay_list` `DispatchEnvelope` bytes for the byte doorway.
     public static func publishDmRelayList(
@@ -526,6 +499,69 @@ public enum GeneratedActionBuilders {
         return encodeDispatchEnvelope(
             correlationId: correlationId,
             actionNamespace: "nmp.wallet.pay_invoice",
+            payload: payload
+        )
+    }
+
+    /// Send a NIP-17 gift-wrapped direct message to a recipient.
+    /// Builds the `nmp.nip17.send` `DispatchEnvelope` bytes for the byte doorway.
+    public static func sendDm(
+        correlationId: String,
+        recipientPubkey: String,
+        content: String,
+        replyTo: String?
+    ) -> [UInt8] {
+        var fbb = FlatBufferBuilder()
+        let recipientPubkeyOffset = fbb.create(string: recipientPubkey)
+        let contentOffset = fbb.create(string: content)
+        let replyToOffset: Offset = replyTo.map { fbb.create(string: $0) } ?? Offset()
+        let payloadStart = fbb.startTable(with: 4)
+        fbb.add(element: UInt32(1), def: UInt32(0), at: 4) // slot 0: schema_version
+        fbb.add(offset: recipientPubkeyOffset, at: 6) // slot 1: recipientPubkey
+        fbb.add(offset: contentOffset, at: 8) // slot 2: content
+        if replyToOffset.o != 0 { fbb.add(offset: replyToOffset, at: 10) } // slot 3: replyTo
+        let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))
+        fbb.finish(offset: payloadRoot, fileId: "N17S")
+        let payload = fbb.sizedByteArray
+        return encodeDispatchEnvelope(
+            correlationId: correlationId,
+            actionNamespace: "nmp.nip17.send",
+            payload: payload
+        )
+    }
+
+    /// Publish a NIP-57 zap request for a recipient (optionally a target event).
+    /// Builds the `nmp.nip57.zap` `DispatchEnvelope` bytes for the byte doorway.
+    public static func zap(
+        correlationId: String,
+        recipientPubkey: String,
+        amountMsats: UInt64,
+        lnurl: String?,
+        relays: [String],
+        targetEventId: String?,
+        comment: String?
+    ) -> [UInt8] {
+        var fbb = FlatBufferBuilder()
+        let recipientPubkeyOffset = fbb.create(string: recipientPubkey)
+        let lnurlOffset: Offset = lnurl.map { fbb.create(string: $0) } ?? Offset()
+        let relaysOffsets = relays.map { fbb.create(string: $0) }
+        let relaysOffset = fbb.createVector(ofOffsets: relaysOffsets)
+        let targetEventIdOffset: Offset = targetEventId.map { fbb.create(string: $0) } ?? Offset()
+        let commentOffset: Offset = comment.map { fbb.create(string: $0) } ?? Offset()
+        let payloadStart = fbb.startTable(with: 7)
+        fbb.add(element: UInt32(1), def: UInt32(0), at: 4) // slot 0: schema_version
+        fbb.add(offset: recipientPubkeyOffset, at: 6) // slot 1: recipientPubkey
+        fbb.add(element: amountMsats, def: UInt64(0), at: 8) // slot 2: amountMsats
+        if lnurlOffset.o != 0 { fbb.add(offset: lnurlOffset, at: 10) } // slot 3: lnurl
+        fbb.add(offset: relaysOffset, at: 12) // slot 4: relays
+        if targetEventIdOffset.o != 0 { fbb.add(offset: targetEventIdOffset, at: 14) } // slot 5: targetEventId
+        if commentOffset.o != 0 { fbb.add(offset: commentOffset, at: 16) } // slot 6: comment
+        let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))
+        fbb.finish(offset: payloadRoot, fileId: "N57Z")
+        let payload = fbb.sizedByteArray
+        return encodeDispatchEnvelope(
+            correlationId: correlationId,
+            actionNamespace: "nmp.nip57.zap",
             payload: payload
         )
     }

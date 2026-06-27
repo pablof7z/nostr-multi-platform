@@ -248,3 +248,148 @@ fn build_bad_version_relay_list_payload() -> Vec<u8> {
     fbb.finish(root, Some(RELAY_LIST_IDENTIFIER));
     fbb.finished_data().to_vec()
 }
+
+// ---- ADR-0064 §3 (#1783 / M14-1 PR2 #2145): generated `sendDm` builder round-trip
+//
+// The Swift/Kotlin/TS `sendDm` action-builder
+// (`crates/nmp-codegen/src/action_builders/registry/table.rs`) hand-rolls the
+// `SendDmPayload` slot layout (schema_version at slot 0 / vt4, then
+// recipient_pubkey, content, reply_to?), wrapped in the 4-slot `DispatchEnvelope`
+// (NMPD). This proves bytes shaped THAT way decode via S2
+// (`decode_dispatch_envelope`) to `nmp.nip17.send` and read back through
+// `SendDmInput::decode` field-for-field, with `reply_to` presence preserved.
+
+/// Build a `nmp.nip17.send` `DispatchEnvelope` exactly as the generated host
+/// `sendDm` builder does: encode the `SendDmPayload` (N17S) at its declaration
+/// slots, then stamp it into the open envelope (NMPD). `reply_to` is omitted
+/// from the buffer when `None`.
+fn build_send_dm_dispatch_envelope(
+    correlation_id: &str,
+    recipient_pubkey: &str,
+    content: &str,
+    reply_to: Option<&str>,
+) -> Vec<u8> {
+    use flatbuffers::{FlatBufferBuilder, VOffsetT, WIPOffset};
+
+    const SEND_IDENTIFIER: &str = "N17S";
+    let payload = {
+        let mut fbb = FlatBufferBuilder::new();
+        let recipient_off = fbb.create_string(recipient_pubkey);
+        let content_off = fbb.create_string(content);
+        let reply_off = reply_to.map(|s| fbb.create_string(s));
+        let start = fbb.start_table();
+        fbb.push_slot::<u32>(4 as VOffsetT, 1, 0); // slot 0: schema_version = 1
+        fbb.push_slot_always::<WIPOffset<&str>>(6 as VOffsetT, recipient_off); // slot 1
+        fbb.push_slot_always::<WIPOffset<&str>>(8 as VOffsetT, content_off); // slot 2
+        if let Some(off) = reply_off {
+            fbb.push_slot_always::<WIPOffset<&str>>(10 as VOffsetT, off); // slot 3
+        }
+        let root = fbb.end_table(start);
+        fbb.finish(root, Some(SEND_IDENTIFIER));
+        fbb.finished_data().to_vec()
+    };
+    nmp_core::dispatch_envelope::encode_dispatch_envelope(
+        correlation_id,
+        "nmp.nip17.send",
+        1,
+        &payload,
+    )
+}
+
+/// `sendDm` builder bytes (with a `reply_to`) decode via S2 to `nmp.nip17.send`
+/// + correlation id, and read back through `SendDmInput::decode` field-for-field
+/// — including the optional `reply_to` as `Some`.
+#[test]
+fn generated_send_dm_builder_bytes_round_trip_with_reply() {
+    use nmp_core::dispatch_envelope::decode_dispatch_envelope;
+    use nmp_core::substrate::ActionPayload;
+    use nmp_nip17::action::SendDmInput;
+
+    let recipient = "a".repeat(64);
+    let reply = "e".repeat(64);
+    let bytes =
+        build_send_dm_dispatch_envelope("corr-dm", &recipient, "gm fren", Some(&reply));
+
+    let decoded = decode_dispatch_envelope(&bytes).expect("send envelope must decode (S2)");
+    assert_eq!(decoded.correlation_id, "corr-dm");
+    assert_eq!(decoded.action_namespace, "nmp.nip17.send");
+
+    let action = SendDmInput::decode(&decoded.payload)
+        .expect("the opaque payload must decode via SendDmInput::decode");
+    assert_eq!(action.recipient_pubkey, recipient);
+    assert_eq!(action.content, "gm fren");
+    assert_eq!(action.reply_to.as_deref(), Some(reply.as_str()));
+}
+
+/// `sendDm` builder bytes with `reply_to: Some("")` decode to a `SendDmInput`
+/// whose `reply_to` is `Some("")` — a present-but-empty string is a distinct
+/// state from an absent field and must NOT be collapsed to `None`.
+#[test]
+fn generated_send_dm_builder_bytes_empty_reply_to_round_trip() {
+    use nmp_core::dispatch_envelope::decode_dispatch_envelope;
+    use nmp_core::substrate::ActionPayload;
+    use nmp_nip17::action::SendDmInput;
+
+    let recipient = "c".repeat(64);
+    let bytes =
+        build_send_dm_dispatch_envelope("corr-dm-empty-reply", &recipient, "hi", Some(""));
+
+    let decoded =
+        decode_dispatch_envelope(&bytes).expect("send envelope with empty reply_to must decode (S2)");
+    assert_eq!(decoded.action_namespace, "nmp.nip17.send");
+
+    let action = SendDmInput::decode(&decoded.payload)
+        .expect("payload with empty reply_to must decode via SendDmInput::decode");
+    assert_eq!(action.recipient_pubkey, recipient);
+    assert_eq!(action.content, "hi");
+    assert_eq!(
+        action.reply_to.as_deref(),
+        Some(""),
+        "present-empty reply_to must round-trip as Some(\"\"), not collapse to None"
+    );
+}
+
+/// `sendDm` builder bytes with `reply_to` omitted decode to a `SendDmInput`
+/// whose `reply_to` is `None` (field-absence round-trips as `None`), and the
+/// bytes dispatch end-to-end through `start_bytes`. The wrong-namespace twin
+/// proves the route is real.
+#[test]
+fn generated_send_dm_builder_bytes_no_reply_dispatch_through_start_bytes() {
+    use nmp_core::dispatch_envelope::decode_dispatch_envelope;
+    use nmp_core::substrate::{ActionContext, ActionPayload, ActionRejection};
+    use nmp_nip17::action::SendDmInput;
+
+    let recipient = "b".repeat(64);
+    let bytes = build_send_dm_dispatch_envelope("corr-dm-min", &recipient, "hello", None);
+
+    let decoded = decode_dispatch_envelope(&bytes).expect("send envelope must decode (S2)");
+    assert_eq!(decoded.action_namespace, "nmp.nip17.send");
+    let action = SendDmInput::decode(&decoded.payload).expect("minimal DM payload must decode");
+    assert_eq!(action.recipient_pubkey, recipient);
+    assert_eq!(action.content, "hello");
+    assert_eq!(action.reply_to, None);
+
+    let mut registry = registry_with_nip17();
+    // POSITIVE: routed to nmp.nip17.send, payload decodes + start() OK.
+    registry
+        .start_bytes(
+            &mut ActionContext::default(),
+            1_700_000_000_000,
+            &decoded.action_namespace,
+            &decoded.payload,
+        )
+        .expect("sendDm builder bytes must dispatch + validate via start_bytes");
+    // LOAD-BEARING: the same bytes under a wrong namespace must fail closed.
+    let err = registry
+        .start_bytes(
+            &mut ActionContext::default(),
+            1_700_000_000_000,
+            "nmp.nip17.publish_relay_list",
+            &decoded.payload,
+        )
+        .expect_err("a SendDmPayload routed as publish_relay_list must be rejected");
+    assert!(
+        matches!(err, ActionRejection::Invalid(_)),
+        "wrong-namespace dispatch must fail closed as Invalid, got {err:?}"
+    );
+}

@@ -16,9 +16,9 @@
 //! shape — they encode protocol detail (NIP-10 reply tags, the NIP-65
 //! `role`→`RelayMarker` collapse, serde defaults for the optional NIP-29 group
 //! fields) that must not be re-derived at every call site. Those builders are
-//! ALSO still consumed by the not-yet-migrated host seams (the iOS/Android
-//! `nmp_app_chirp_action_spec` C symbol, `action_spec_json_for_intent`), so
-//! their `(namespace, json)` contract must stay intact for the next slice.
+//! ALSO consumed by the Rust-native `crate::typed_api::ChirpClient`
+//! (chirp-tui / chirp-desktop), so their `(namespace, json)` contract must stay
+//! intact.
 //!
 //! So this seam keeps the builders untouched and converts at the doorway: it
 //! deserializes the builder's canonical JSON into the matching per-crate

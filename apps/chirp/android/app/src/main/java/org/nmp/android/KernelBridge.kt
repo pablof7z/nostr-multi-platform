@@ -143,21 +143,6 @@ class KernelBridge {
     }
 
     /**
-     * Typed Chirp action-intent dispatch through the Rust byte doorway
-     * (M14-0: uses [AppHandle.dispatchIntentJson]).
-     *
-     * Rust parses the intent, builds (namespace, body_json), encodes FlatBuffers
-     * bytes, dispatches, and returns a typed [DispatchResult]. The intent JSON
-     * never touches the Kotlin → kernel FFI boundary as bytes; Rust builds them.
-     */
-    fun dispatchIntentBytes(intentJson: String): DispatchResult {
-        if (handle == 0L) return DispatchResult.Failure("dispatch returned a null handle")
-        val ack = appHandle?.dispatchIntentJson(intentJson)
-            ?: return DispatchResult.Failure("dispatch returned a null handle")
-        return DispatchResult.fromAck(ack)
-    }
-
-    /**
      * Dispatch a pre-built `(namespace, bodyJson)` action through the UniFFI
      * byte doorway (M14-0; replaces `nativeDispatchActionBytes`).
      *
@@ -456,7 +441,6 @@ class KernelBridge {
     internal external fun nativeRetryPublish(handle: Long, correlationId: String)
     internal external fun nativeCancelPublish(handle: Long, correlationId: String)
     private external fun nativeLoadOlderFeed(handle: Long, feedKey: String)
-    private external fun nativeBuildActionSpec(intentJson: String): String
     private external fun nativeOpenThread(handle: Long, noteId: String): String?
     private external fun nativeCloseThread(handle: Long, feedHandle: String)
     private external fun nativeOpenAuthor(handle: Long, pubkey: String): String?
