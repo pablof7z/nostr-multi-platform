@@ -111,8 +111,9 @@ Deleting the old `gen modules` scaffolder did not touch them.
 ├─ `nmp` CLI (SHIPS, crates/nmp-cli/) ────────────────────────────────┤
 │ `nmp init <app>` scaffolds a thin Rust shell: a `<name>-core` crate  │
 │ that calls `register_defaults`, plus a headless `examples/shell.rs`   │
-│ that drives it through the native runtime `NmpAppBuilder`. No `gen   │
-│ modules` step and no                                                  │
+│ that drives it through the current `NmpAppBuilder` export. #2210     │
+│ moves that builder into nmp-native-runtime. No `gen modules` step     │
+│ and no                                                               │
 │ generated `apps/` tree. Full multi-platform starter is a future       │
 │ milestone.                                                            │
 └─────────────────────────────────────────────────────────────────────┘

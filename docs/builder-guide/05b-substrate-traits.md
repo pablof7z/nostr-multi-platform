@@ -231,10 +231,12 @@ pub extern "C" fn nmp_app_microblog_register(app: *mut NmpApp) {
 ```
 
 For a headless example, the same composition fits in `examples/shell.rs`
-using `NmpAppBuilder`:
+using the current `NmpAppBuilder` export. ADR-0068 moves this builder to
+`nmp-native-runtime` in #2210; until that lands, the runnable import remains
+`nmp-defaults`:
 
 ```rust
-use nmp_native_runtime::{NmpAppBuilder, RunConfig};
+use nmp_defaults::{NmpAppBuilder, RunConfig};
 
 let mut builder = NmpAppBuilder::new();
 microblog_core::register(&mut builder);

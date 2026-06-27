@@ -21,8 +21,9 @@ nmp upgrade                          Bump NMP dependencies and run migrations.
 ```
 
 Composition is a library call through `nmp-defaults` plus the selected platform
-runtime builder (`nmp-native-runtime::NmpAppBuilder` for native targets,
-`BrowserAppBuilder` for web).
+runtime builder. The native target builder is `nmp-native-runtime::NmpAppBuilder`
+after #2210; until that migration lands, the current runnable export remains
+`nmp_defaults::NmpAppBuilder`. Web uses `BrowserAppBuilder`.
 
 ## `nmp init`
 

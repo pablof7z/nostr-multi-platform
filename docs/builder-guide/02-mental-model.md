@@ -47,11 +47,12 @@ Four layers, strict ownership. Built from the bottom up:
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-Representative shipped crates are labelled in their layer above:
+Representative current and target crates are labelled in their layer above:
 `nmp-core` (kernel), `nmp-nip29` / `nmp-nip42` / `nmp-nip77` / `nmp-signers`
 (protocol modules), `apps/chirp/crates/nmp-app-chirp` + `microblog-core` (app cores),
-`nmp-defaults` (canonical composition library), `nmp-native-runtime` (native
-runtime owner), and `nmp-ffi` (shared C-ABI shell).
+`nmp-defaults` (canonical composition library; current native builder export
+until #2210), `nmp-native-runtime` (target native runtime owner), and `nmp-ffi`
+(current C-ABI/runtime shell, target C-ABI shell only).
 `nmp-codegen` still emits host bindings (`gen swift`, `gen typed-decoders`);
 it no longer generates per-app composition crates (ADR-0046). Chirp is the
 active product shell.

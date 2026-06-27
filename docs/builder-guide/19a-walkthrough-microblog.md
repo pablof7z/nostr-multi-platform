@@ -257,9 +257,10 @@ serde_json = { workspace = true }
 ```
 
 `nmp-ffi` is **not** a dependency of the app-core crate. The core writes to
-`AppHost` traits; the native runtime owns the `NmpApp` handle, and the thin
-staticlib shell (created in [19b](19b-walkthrough-microblog.md)) exposes only the
-C-ABI surface.
+`AppHost` traits; today `nmp-ffi` owns the `NmpApp` handle and C-ABI surface.
+Under ADR-0068/#2210, the native runtime owns the handle and the thin staticlib
+shell (created in [19b](19b-walkthrough-microblog.md)) exposes only the C-ABI
+surface.
 
 ## Next step: the thin staticlib shell
 
@@ -267,7 +268,8 @@ This crate contains the app logic. It has no `#[no_mangle]` symbols and no
 iOS-specific code. [19b](19b-walkthrough-microblog.md) wraps it in a
 staticlib crate (`apps/microblog/nmp-app-microblog`) whose entire job is to:
 
-1. Link `nmp-defaults`, `nmp-native-runtime`, `nmp-ffi`, and `microblog-core`.
+1. Link `nmp-defaults`, `nmp-ffi`, and `microblog-core` today. After #2210, the
+   native runtime crate is linked separately and `nmp-ffi` remains C-ABI glue.
 2. Export one registration symbol the iOS shell calls after `nmp_app_new()`.
 3. Call `microblog_core::register(app)`. The defaults call is already inside
    that app-core composition root.

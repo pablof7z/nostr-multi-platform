@@ -35,7 +35,6 @@ crate-type = ["staticlib", "rlib"]
 
 [dependencies]
 nmp-core = { path = "../../../crates/nmp-core" }
-nmp-native-runtime = { path = "../../../crates/nmp-native-runtime" }
 nmp-ffi = { path = "../../../crates/nmp-ffi" }
 nmp-defaults = { path = "../../../crates/nmp-defaults" }
 microblog-core = { path = "../../../crates/microblog-core" }
@@ -63,10 +62,12 @@ pub extern "C" fn nmp_app_microblog_register(app: *mut NmpApp) {
 ```
 
 If you are building a headless example rather than an iOS shell, the same
-composition fits in `examples/shell.rs` using `NmpAppBuilder`:
+composition fits in `examples/shell.rs` using the current `NmpAppBuilder`
+export. ADR-0068 moves this builder to `nmp-native-runtime` in #2210; until that
+lands, the runnable import remains `nmp-defaults`:
 
 ```rust
-use nmp_native_runtime::{NmpAppBuilder, RunConfig};
+use nmp_defaults::{NmpAppBuilder, RunConfig};
 
 fn main() {
     let mut builder = NmpAppBuilder::new();

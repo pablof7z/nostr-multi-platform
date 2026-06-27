@@ -9,9 +9,9 @@ native shell.
 
 ## The entry point: `NmpAppBuilder`
 
-`nmp-native-runtime` owns `NmpAppBuilder`, a typestate-guarded native runtime
-composition root. The current `nmp-defaults` builder export is migration debt
-under ADR-0068/#2205, not the durable source for native runtime state.
+Today `nmp-defaults` exports `NmpAppBuilder`, a typestate-guarded native runtime
+composition root. That placement is migration debt under ADR-0068/#2205: #2210
+moves the builder to `nmp-native-runtime`, the durable native runtime owner.
 The typestate enforces at compile time that:
 
 1. A storage choice (`.in_memory()` or `.storage_path(p)`) is made before `start()`.
@@ -24,7 +24,6 @@ Add the dependency:
 # Cargo.toml of your app-core crate (or a top-level binary crate)
 [dependencies]
 nmp-defaults = { path = "/path/to/nmp/crates/nmp-defaults" }
-nmp-native-runtime = { path = "/path/to/nmp/crates/nmp-native-runtime" }
 nmp-ffi = { path = "/path/to/nmp/crates/nmp-ffi" } # only when using the C ABI
 ```
 
@@ -32,7 +31,7 @@ nmp-ffi = { path = "/path/to/nmp/crates/nmp-ffi" } # only when using the C ABI
 
 ```rust
 use std::sync::{Arc, Mutex};
-use nmp_native_runtime::{NmpAppBuilder, RunConfig};
+use nmp_defaults::{NmpAppBuilder, RunConfig};
 use nmp_ffi::{nmp_app_free, nmp_app_stop};
 
 // Import your app-core crate — see 19a for how it's structured.
