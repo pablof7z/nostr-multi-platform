@@ -231,7 +231,9 @@ pub extern "C" fn nmp_app_microblog_register(app: *mut NmpApp) {
 ```
 
 For a headless example, the same composition fits in `examples/shell.rs`
-using `NmpAppBuilder`:
+using the current `NmpAppBuilder` export. ADR-0068 moves this builder to
+`nmp-native-runtime` in #2210; until that lands, the runnable import remains
+`nmp-defaults`:
 
 ```rust
 use nmp_defaults::{NmpAppBuilder, RunConfig};
@@ -242,7 +244,7 @@ let app = builder
     .in_memory()
     .declare_consumed_projections(["microblog.items"])
     .start(RunConfig::default());
-// Drive the app via `nmp_ffi` symbols, then `nmp_ffi::nmp_app_free(app)`.
+// Native C callers drive the same runtime through `nmp_ffi` ABI symbols.
 ```
 
 `nmp_defaults::register_defaults` installs the production routing substrate,

@@ -35,7 +35,7 @@ implementation depends on a higher-layer trait as an explicit dependency
 inversion. In that case, the trait lives in the owner layer and the concrete
 implementation is injected at composition time.
 
-| Layer | Owns | Current crates |
+| Layer | Owns | Durable crate owners |
 |---|---|---|
 | 0 | Dependency-light vocabulary and interface types | `nmp-kinds`, `nmp-signer-iface`, `nmp-nip42-types`, `nmp-nip92-types`, `nmp-nip59`, `nmp-relay-url` |
 | 1 | Storage, network transport, concrete signer transport | `nmp-store`, `nmp-nostr-lmdb`, `nmp-network`, `nmp-signers` |
@@ -43,12 +43,14 @@ implementation is injected at composition time.
 | 3 | Kernel substrate contracts and actor state | `nmp-core`, `nmp-coverage-gate` |
 | 4 | Reusable Nostr protocol/product modules | `nmp-nip01`, `nmp-nip02`, `nmp-nip17`, `nmp-nip18`, `nmp-nip29`, `nmp-nip42`, `nmp-nip47`, `nmp-nip51`, `nmp-nip57`, `nmp-nip60`, `nmp-nip77`, `nmp-nwc`, `nmp-marmot`, `nmp-relations`, `nmp-threading`, `nmp-feed`, `nmp-wot`, `nmp-content`, `nmp-content-fixtures` |
 | 5 | App composition | `nmp-defaults`, `apps/<app>/...` Rust crates |
-| 6 | Bindings and deliverables | `nmp-ffi`, `nmp-android-ffi`, `nmp-browser-runtime`, `nmp-wasm` |
+| 6 | Platform runtimes, bindings, and deliverables | `nmp-native-runtime`, `nmp-ffi`, `nmp-android-ffi`, `nmp-browser-runtime`, `nmp-wasm` |
 | Sidecars | Tooling, tests, diagnostics | `nmp-cli`, `nmp-codegen`, `nmp-testing`, app shells |
 
 Sibling crates do not depend on each other unless the dependency is part of
 their declared responsibility. Binding crates are siblings: one binding crate
-must not depend on another binding crate for business behavior.
+must not depend on another binding crate for business behavior. If a durable
+crate owner named here has not yet been extracted in code, the current owner is
+migration debt tracked in GitHub Issues, not an exception to this graph.
 
 `nmp-signer-iface` (Layer 0) owns the dependency-light signing substrate
 vocabulary so lower-layer signer and protocol crates can name it without
@@ -283,15 +285,23 @@ that cannot implement the full AppHost tier (currently Chirp web) must call
 `nmp-substrate-defaults` for the shared router/mailbox/profile/contacts
 cache-parser floor; they must not hand-copy that construction.
 
+`nmp-defaults` composes only through `nmp_core::substrate::AppHost` and the
+narrow registrar traits below it. It must not depend on `nmp-ffi`, name
+`NmpApp`, own a platform runtime handle, or export a native builder. Its target
+dependency direction is `platform/app runtime -> nmp-defaults`, never
+`nmp-defaults -> platform runtime`.
+
 `nmp-defaults` (like `nmp-core` and every other NMP crate) **must not own
 operator policy facts** — relay URLs, nostrconnect bootstrap relay URLs, seed
 pubkeys, account auto-follow lists, or signer permission batches. Those facts
 belong only in leaf app Rust crates (`apps/<app>/...`, e.g.
-`apps/chirp/crates/nmp-chirp-config`) or operator-provided app config (#1493). The
-`NmpAppBuilder` enforces this at compile time: an app must declare its initial
-relay set with `.with_relays(...)` or explicitly opt out with
-`.without_initial_relays()` before `start()` — there is no framework relay
-default to inherit silently.
+`apps/chirp/crates/nmp-chirp-config`) or operator-provided app config (#1493).
+The native and browser runtime builders enforce this at compile time: an app
+must declare its initial relay set with `.with_relays(...)` or explicitly opt
+out with `.without_initial_relays()` before `start()` — there is no framework
+relay default to inherit silently. The current `NmpAppBuilder` location in
+`nmp-defaults` is migration debt under #2205/#2210/#2212, not the durable
+composition boundary.
 
 App crates under `apps/<app>/` compose `nmp-defaults` plus app-specific
 state **and own all operator policy** (relays, seed follows, signer perms).
@@ -316,12 +326,36 @@ ref/dependent-interest lifecycles.
 
 ## 10. Binding Crates
 
-`nmp-ffi`, `nmp-android-ffi`, `nmp-wasm`, and `nmp-browser-runtime` are delivery
-surfaces. The ABI-glue binding crates own ABI shape, panic guards, callbacks,
-lifecycle handles, and platform-specific bridge mechanics. They do not own
-business policy, app defaults, or example-app namespaces unless they are
-explicitly app-owned delivery crates. `nmp-browser-runtime` is the browser
-composition-root delivery surface described in §10a.
+`nmp-native-runtime`, `nmp-browser-runtime`, `nmp-ffi`, `nmp-android-ffi`, and
+`nmp-wasm` are delivery surfaces. Runtime adapter crates own platform runtime
+lifecycle and typed builders; ABI-glue binding crates own ABI shape, pointer or
+byte conversion, panic guards, callbacks, lifecycle handle exposure, and
+platform-specific bridge mechanics. They do not own business policy, app
+defaults, or example-app namespaces unless they are explicitly app-owned
+delivery crates.
+
+Native target split (#2205/#2209):
+
+- `nmp-native-runtime` is the native platform runtime adapter. It owns the
+  native `NmpApp`/handle type, actor-thread lifecycle, native runtime slots,
+  session registries, native Rust APIs, and the native typestate builder
+  (`NmpAppBuilder` / `RunConfig`). It composes `nmp-defaults` like a leaf app
+  runtime.
+- `nmp-ffi` is a C ABI shell over `nmp-native-runtime`. It owns `extern "C"`
+  symbols, opaque pointers, C strings, panic guards, callback registration
+  glue, and C-compatible allocation/freeing only.
+- `nmp-android-ffi` is JNI/Android delivery glue over the same native runtime
+  APIs for lanes not served by UniFFI.
+
+The current code still lets `nmp-ffi` own `NmpApp`, the actor-thread runtime,
+native NIP-29/NIP-50/intent session orchestration, and part of the builder path;
+`nmp-defaults` also still has native-runtime coupling. That state is migration
+debt until #2210-#2214 land. It is not a durable composition-root exception for
+`nmp-ffi`, and it is not permission for `nmp-defaults` to depend on `nmp-ffi`.
+
+`nmp-browser-runtime` is the browser composition-root delivery surface
+described in §10a. `nmp-wasm` is the wasm ABI shell over that runtime, analogous
+to `nmp-ffi` over `nmp-native-runtime`.
 
 The pre-v1 ABI surface is governed, not compatibility-frozen. Net-new
 `nmp_app_*` symbols require an ADR or an accepted GitHub issue that explicitly
@@ -335,12 +369,11 @@ Temporary retention requires a staged GitHub issue with a deletion gate.
 ## 10a. Browser Platform Adapter (nmp-browser-runtime)
 
 `nmp-browser-runtime` is the browser platform adapter per ADR-0067: a Layer-6
-composition-root delivery surface, sibling to `nmp-ffi` (native C) and
-`nmp-android-ffi` (Android JNI). Unlike pure ABI-glue binding crates, it is a
-**composition root**: it composes `nmp-defaults` and protocol crates into a typed
-builder (`BrowserAppBuilder`), exactly as a native leaf app would. It thus may
-depend on Layer-5 composition crates, breaking the usual binding-crate rule that
-all siblings avoid each other.
+runtime adapter, sibling to `nmp-native-runtime`. Unlike pure ABI-glue binding
+crates, it is a **composition root**: it composes `nmp-defaults` and protocol
+crates into a typed builder (`BrowserAppBuilder`), exactly as a native runtime
+does. It thus may depend on Layer-5 composition crates, breaking the usual
+binding-crate rule that all siblings avoid each other.
 
 `nmp-browser-runtime` owns:
 
@@ -349,7 +382,8 @@ all siblings avoid each other.
 - Browser storage initialization and lifecycle.
 - Capability provider registry and browser signer provider mapping.
 - Browser timer and clock seams for `nmp-core` injection.
-- The typed `BrowserAppBuilder` composition root (browser twin of `NmpAppBuilder`).
+- The typed `BrowserAppBuilder` composition root (browser twin of the native
+  runtime's `NmpAppBuilder`).
 
 `nmp-browser-runtime` must not own:
 
@@ -371,10 +405,10 @@ already platform-neutral: it is the blanket-impl union of the narrow D6 registra
 traits, every method registers a Rust-owned fact (action modules, ingest parsers,
 snapshot projections, declared observed projections, routing/publish factories,
 kernel-reader slots, capability seams), and platform capabilities (storage, sockets, OS
-keychains) are deliberately excluded. Native (`NmpAppBuilder`) and browser
-(`BrowserAppBuilder`) implement the same narrow registrars and obtain `AppHost`
-through the blanket impl; only a composition root names `AppHost`, while protocol
-modules continue to take the narrow trait(s) they use.
+keychains) are deliberately excluded. Native (`nmp-native-runtime::NmpAppBuilder`)
+and browser (`BrowserAppBuilder`) implement the same narrow registrars and obtain
+`AppHost` through the blanket impl; only a composition root names `AppHost`,
+while protocol modules continue to take the narrow trait(s) they use.
 
 Layer ownership of registered facts (all browser-relevant; none native-only):
 
@@ -393,12 +427,12 @@ justify a narrower trait):
    `KernelReducer` (D4), so it constructs the inbox and `CommandSender` itself;
    the resolution is a wasm-safe headless inbox constructor in `nmp-core` plus the
    builder's Worker loop — not a trait change.
-2. **wasm-safe defaults (#2047 / #2060).** §10a sets the target dependency
-   `nmp-browser-runtime → nmp-defaults`, but `nmp-defaults` currently hard-depends
-   on `nmp-ffi` (it names `NmpApp` for `register_op_feed_defaults`), which does not
-   build for wasm32. That native-only composition must be `native`-feature-gated so
-   the neutral `register_defaults` registrations compile for the browser. Until
-   that lands, the browser builder uses the `nmp-substrate-defaults` floor (§9).
+2. **wasm-safe defaults (#2047 / #2060, reconciled with #2205/#2212).** §10a
+   sets the target dependency `nmp-browser-runtime -> nmp-defaults`, but
+   `nmp-defaults` currently has native-runtime coupling through `nmp-ffi`. That
+   must be removed so neutral `register_defaults` registrations compile for the
+   browser and native runtimes alike. Until that lands, the browser builder uses
+   the `nmp-substrate-defaults` floor (§9).
 
 ---
 

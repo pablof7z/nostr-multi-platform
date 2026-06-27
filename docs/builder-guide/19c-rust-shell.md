@@ -9,7 +9,9 @@ native shell.
 
 ## The entry point: `NmpAppBuilder`
 
-`nmp-defaults` ships `NmpAppBuilder`, a typestate-guarded composition root.
+Today `nmp-defaults` exports `NmpAppBuilder`, a typestate-guarded native runtime
+composition root. That placement is migration debt under ADR-0068/#2205: #2210
+moves the builder to `nmp-native-runtime`, the durable native runtime owner.
 The typestate enforces at compile time that:
 
 1. A storage choice (`.in_memory()` or `.storage_path(p)`) is made before `start()`.
@@ -22,7 +24,7 @@ Add the dependency:
 # Cargo.toml of your app-core crate (or a top-level binary crate)
 [dependencies]
 nmp-defaults = { path = "/path/to/nmp/crates/nmp-defaults" }
-nmp-ffi          = { path = "/path/to/nmp/crates/nmp-ffi" }
+nmp-ffi = { path = "/path/to/nmp/crates/nmp-ffi" } # only when using the C ABI
 ```
 
 ## Minimal read-only shell (~30 lines)

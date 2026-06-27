@@ -41,8 +41,8 @@ The shipped extension seams are:
 - `register_typed_snapshot_projection` for host
   state,
 - `CapabilityModule` and capability sockets for native facts,
-- `NmpAppBuilder`, `AppHost`, and `nmp-defaults::register_defaults` for
-  composition.
+- `AppHost` and `nmp-defaults::register_defaults` for composition, plus
+  platform runtime builders such as `nmp-native-runtime::NmpAppBuilder`.
 
 If implementing an app requires adding that app's nouns to `nmp-core`, the
 boundary is wrong. Either add a reusable Nostr mechanism in an NMP crate or add
@@ -62,8 +62,8 @@ the product concept to the app's Rust core.
 - The kernel stays reusable and app-agnostic.
 - Social-client behavior is implemented through protocol/defaults/app modules,
   not as hard-coded kernel view kinds.
-- External consumers compose NMP through `NmpAppBuilder` and `nmp-defaults`,
-  then add their own Rust-owned modules.
+- External consumers compose NMP through `nmp-defaults` and a platform runtime
+  builder, then add their own Rust-owned modules.
 - Future apps prove the boundary by adding app crates or protocol crates, not by
   growing `nmp-core`.
 

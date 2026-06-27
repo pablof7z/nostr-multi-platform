@@ -37,8 +37,10 @@ round-trip.
 ## Declaring app relays in Rust
 
 Use `NmpAppBuilder::with_relays([(url, role), ...])` to declare the app's
-default relay set. The builder carries these as defaults; on first start they
-are written to the `.nmp-relay-config.json` sidecar alongside the LMDB store.
+default relay set. Today the runnable builder export is `nmp-defaults`; ADR-0068
+moves it to `nmp-native-runtime` in #2210. The builder carries relay defaults;
+on first start they are written to the `.nmp-relay-config.json` sidecar
+alongside the LMDB store.
 
 ```rust
 use nmp_defaults::{NmpAppBuilder, RunConfig};

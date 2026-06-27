@@ -62,7 +62,9 @@ pub extern "C" fn nmp_app_microblog_register(app: *mut NmpApp) {
 ```
 
 If you are building a headless example rather than an iOS shell, the same
-composition fits in `examples/shell.rs` using `NmpAppBuilder`:
+composition fits in `examples/shell.rs` using the current `NmpAppBuilder`
+export. ADR-0068 moves this builder to `nmp-native-runtime` in #2210; until that
+lands, the runnable import remains `nmp-defaults`:
 
 ```rust
 use nmp_defaults::{NmpAppBuilder, RunConfig};
@@ -74,8 +76,7 @@ fn main() {
         .storage_path("/tmp/microblog-data")
         .declare_consumed_projections(["microblog.items"])
         .start(RunConfig::default());
-    // Drive the app via `nmp_ffi` symbols (set update callback, dispatch
-    // actions, etc.), then `nmp_ffi::nmp_app_free(app)`.
+    // Native C callers drive the same runtime through `nmp_ffi` ABI symbols.
 }
 ```
 

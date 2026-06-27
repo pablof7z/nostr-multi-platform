@@ -77,8 +77,10 @@ Deleting the old `gen modules` scaffolder did not touch them.
 ```
 ┌─ TODAY (SHIPS) ─────────────────────────────────────────────────────┐
 │ Raw C/JNI lifecycle/action/capability ABI in crates/nmp-ffi. It      │
-│ exports the `nmp_app_*` surface (`new`, `start`, byte action dispatch,  │
+│ currently exports `nmp_app_*` (`new`, `start`, byte action dispatch, │
 │ capability callbacks, projection/observer registration, etc.).         │
+│ Target split (#2205/ADR-0068): nmp-ffi is only the C ABI shell over  │
+│ nmp-native-runtime, which owns NmpApp, runtime slots, and builder.    │
 │ The update callback carries one binary `nmp.transport.UpdateFrame`   │
 │ with file identifier `NMPU`: Snapshot or Panic. There is no JSON     │
 │ runtime snapshot fallback and no pull/drain update symbol.           │
@@ -109,7 +111,9 @@ Deleting the old `gen modules` scaffolder did not touch them.
 ├─ `nmp` CLI (SHIPS, crates/nmp-cli/) ────────────────────────────────┤
 │ `nmp init <app>` scaffolds a thin Rust shell: a `<name>-core` crate  │
 │ that calls `register_defaults`, plus a headless `examples/shell.rs`   │
-│ that drives it through `NmpAppBuilder`. No `gen modules` step and no   │
+│ that drives it through the current `NmpAppBuilder` export. #2210     │
+│ moves that builder into nmp-native-runtime. No `gen modules` step     │
+│ and no                                                               │
 │ generated `apps/` tree. Full multi-platform starter is a future       │
 │ milestone.                                                            │
 └─────────────────────────────────────────────────────────────────────┘
@@ -149,9 +153,10 @@ visible-note relation data: the owning card or detail view claims a bounded
 
 ### Production seam — `register_typed_snapshot_projection`
 
-Register host-rendered projection state as a typed sidecar with
-`NmpApp::register_typed_snapshot_projection` (C-ABI registration support lives
-in `crates/nmp-ffi/src/snapshot.rs`). The closure returns
+Register host-rendered projection state as a typed sidecar with the native
+runtime registration API. Current C-ABI registration support lives in
+`crates/nmp-ffi/src/snapshot.rs` until the ADR-0068 split moves runtime
+ownership into `nmp-native-runtime`. The closure returns
 `Option<TypedProjectionData>`:
 
 - `Some(Changed row)` contains the projection key, e.g. `nmp.feed.home`;

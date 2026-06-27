@@ -17,7 +17,8 @@ NMP composition is a library call.
 
 A downstream app:
 
-1. creates an `NmpAppBuilder`;
+1. creates the platform runtime builder, such as
+   `nmp-native-runtime::NmpAppBuilder` for native or `BrowserAppBuilder` for web;
 2. installs the substrate/default tier it needs through `nmp-defaults`;
 3. registers app/protocol-specific actions, projections, observers, and
    capabilities;
@@ -25,7 +26,8 @@ A downstream app:
 
 `nmp-defaults::register_defaults` is the standard full Nostr composition.
 `nmp-defaults::register_substrate` is the narrower correctness substrate for
-apps that need lower-level assembly.
+apps that need lower-level assembly. `nmp-defaults` owns those registration
+functions, not the platform runtime builder or ABI surface.
 
 ## Boundaries
 
