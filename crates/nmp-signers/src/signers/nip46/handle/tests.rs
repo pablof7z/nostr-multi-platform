@@ -536,7 +536,7 @@ fn from_payload_without_cached_pubkey_returns_not_ready() {
     // pubkey — restore must refuse with NotReady, not panic.
     let remote_user = LocalKeySigner::generate();
     let (signer, _t) = build_signer_with_remote(&remote_user);
-    let SignerPayload::Nip46(mut payload) = signer.to_payload() else {
+    let SignerPayload::Nip46(mut payload) = signer.to_payload().expect("to_payload") else {
         panic!("expected nip46 payload");
     };
     payload.cached_remote_user_pubkey_hex = None;
@@ -553,7 +553,7 @@ fn from_payload_without_cached_pubkey_returns_not_ready() {
 fn from_payload_with_invalid_cached_pubkey_returns_backend_err() {
     let remote_user = LocalKeySigner::generate();
     let (signer, _t) = build_signer_with_remote(&remote_user);
-    let SignerPayload::Nip46(mut payload) = signer.to_payload() else {
+    let SignerPayload::Nip46(mut payload) = signer.to_payload().expect("to_payload") else {
         panic!("expected nip46 payload");
     };
     payload.cached_remote_user_pubkey_hex = Some("not-valid-hex".to_string());
@@ -570,7 +570,7 @@ fn from_payload_with_invalid_cached_pubkey_returns_backend_err() {
 fn from_payload_with_invalid_local_secret_returns_backend_err() {
     let remote_user = LocalKeySigner::generate();
     let (signer, _t) = build_signer_with_remote(&remote_user);
-    let SignerPayload::Nip46(mut payload) = signer.to_payload() else {
+    let SignerPayload::Nip46(mut payload) = signer.to_payload().expect("to_payload") else {
         panic!("expected nip46 payload");
     };
     payload.local_secret_hex =
@@ -590,7 +590,7 @@ fn from_payload_round_trips_a_valid_payload() {
     // payload restores and yields the same pubkey + relays.
     let remote_user = LocalKeySigner::generate();
     let (signer, transport) = build_signer_with_remote(&remote_user);
-    let SignerPayload::Nip46(payload) = signer.to_payload() else {
+    let SignerPayload::Nip46(payload) = signer.to_payload().expect("to_payload") else {
         panic!("expected nip46 payload");
     };
     let restored = Nip46Signer::from_payload(&payload, transport).expect("valid restore");

@@ -4,8 +4,3 @@
 # Entries must point to existing transitional debt already tracked in
 # GitHub Issues. Keep fragments exact enough that nearby new code does not
 # inherit the exemption accidentally.
-
-apps/chirp/ios/Chirp/Bridge/KernelBridge.swift	body: ["PublishProfile": ["fields": profile]]	V-57 P3 native publish policy migration
-apps/chirp/ios/Chirp/Bridge/KernelBridge.swift	return dispatchAction(namespace: "nmp.publish", body: ["PublishRaw": inner])	V-57 P3 native publish policy migration
-apps/chirp/android/app/src/main/java/org/nmp/android/KernelModel.kt	"""{"PublishRaw":{"kind":1,"tags":[["e","$replyToId","","reply"]],"content":"${escapeJson(content)}","target":"$target"}}"""	V-57 P3 native publish policy migration
-apps/chirp/android/app/src/main/java/org/nmp/android/KernelModel.kt	"""{"PublishRaw":{"kind":1,"tags":[],"content":"${escapeJson(content)}","target":"$target"}}"""	V-57 P3 native publish policy migration

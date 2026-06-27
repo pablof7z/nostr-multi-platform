@@ -40,7 +40,7 @@ impl RemoteSignerHandle for Nip55Signer {
     }
 
     fn persistence_payload_json(&self) -> Option<String> {
-        serde_json::to_string(&self.to_payload()).ok()
+        self.to_payload().ok().and_then(|p| serde_json::to_string(&p).ok())
     }
 
     /// Per-op deadline for NIP-55 signer operations (sign + nip44 verbs).

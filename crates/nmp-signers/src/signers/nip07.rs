@@ -134,10 +134,10 @@ impl Signer for Nip07Signer {
         Some(self)
     }
 
-    fn to_payload(&self) -> SignerPayload {
-        SignerPayload::Nip07(Nip07Payload {
+    fn to_payload(&self) -> Result<SignerPayload, nmp_signer_iface::SignerError> {
+        Ok(SignerPayload::Nip07(Nip07Payload {
             cached_pubkey_hex: Some(self.cached_pubkey.to_hex()),
-        })
+        }))
     }
 }
 

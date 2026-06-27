@@ -335,8 +335,8 @@ impl Signer for Nip46Signer {
         Some(self)
     }
 
-    fn to_payload(&self) -> SignerPayload {
-        SignerPayload::Nip46(Nip46Payload {
+    fn to_payload(&self) -> Result<SignerPayload, nmp_signer_iface::SignerError> {
+        Ok(SignerPayload::Nip46(Nip46Payload {
             local_secret_hex: Zeroizing::new(self.local_keys.secret_key().to_secret_hex()),
             remote_pubkey_hex: self.uri.remote_pubkey_hex.clone(),
             relays: self.uri.relays.clone(),
@@ -348,7 +348,7 @@ impl Signer for Nip46Signer {
                 .lock()
                 .ok()
                 .and_then(|slot| slot.clone()),
-        })
+        }))
     }
 }
 

@@ -73,7 +73,7 @@ fn begin_sends_extension_rpc_and_persists_support_on_success() {
     assert_eq!(grant.session_id, "opaque-session-token");
     assert_eq!(grant.max_batch_items, 128);
 
-    let SignerPayload::Nip46(payload) = signer.to_payload() else {
+    let SignerPayload::Nip46(payload) = signer.to_payload().expect("to_payload") else {
         panic!("expected nip46 payload");
     };
     assert_eq!(
@@ -194,7 +194,7 @@ fn malformed_batch_response_surfaces_backend_error() {
 fn restored_payload_preserves_extension_metadata() {
     let remote_user = LocalKeySigner::generate();
     let (signer, _transport) = build_signer_with_remote(&remote_user);
-    let SignerPayload::Nip46(mut payload) = signer.to_payload() else {
+    let SignerPayload::Nip46(mut payload) = signer.to_payload().expect("to_payload") else {
         panic!("expected nip46 payload");
     };
     payload.nip44_decrypt_session_extension =
@@ -202,7 +202,7 @@ fn restored_payload_preserves_extension_metadata() {
 
     let restored =
         Nip46Signer::from_payload(&payload, Arc::new(StubTransport::default())).expect("restore");
-    let SignerPayload::Nip46(restored_payload) = restored.to_payload() else {
+    let SignerPayload::Nip46(restored_payload) = restored.to_payload().expect("to_payload") else {
         panic!("expected nip46 payload");
     };
     assert_eq!(

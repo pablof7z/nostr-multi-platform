@@ -4,7 +4,7 @@
 
 use std::fmt::Debug;
 
-use nmp_signer_iface::{SignedEvent, UnsignedEvent};
+use nmp_signer_iface::{SignedEvent, SignerError, UnsignedEvent};
 use nostr::PublicKey;
 use serde::{Deserialize, Serialize};
 
@@ -81,5 +81,10 @@ pub trait Signer: Send + Sync + Debug {
 
     /// Serialize the signer for persistence.  Round-trips via the kind-specific
     /// constructor.
-    fn to_payload(&self) -> SignerPayload;
+    ///
+    /// Returns `Err` only when encryption of the local key material fails
+    /// (NIP-49 scrypt at log_n=16 is theoretically OOM-reachable on
+    /// memory-constrained devices).  All other signer kinds are infallible and
+    /// return `Ok` unconditionally.
+    fn to_payload(&self) -> Result<SignerPayload, SignerError>;
 }

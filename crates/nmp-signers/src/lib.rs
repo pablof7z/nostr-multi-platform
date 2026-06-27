@@ -23,6 +23,7 @@
 pub mod bunker;
 pub mod identity;
 pub mod signers;
+pub(crate) mod time;
 
 pub use bunker::{parse_bunker_uri, BunkerParseError, BunkerUri, MAX_BUNKER_URI_LEN};
 pub use identity::{

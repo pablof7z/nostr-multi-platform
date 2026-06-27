@@ -121,7 +121,7 @@ fn default_permissions() -> Vec<Nip55Permission> {
 /// the pending map lifetime is all that's required.
 fn generate_correlation_id() -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
-    use std::time::{SystemTime, UNIX_EPOCH}; // doctrine-allow: D20 — NIP-55 is the native Android external signer; never compiled to wasm32 (#1173 defers)
+    use std::time::{SystemTime, UNIX_EPOCH}; // doctrine-allow: D20 — NIP-55 is the native Android external signer (nostrsigner: Intent); it is permanently excluded from any wasm32 target and will never become wasm-reachable
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -436,7 +436,7 @@ impl Signer for Nip55Signer {
         Some(self)
     }
 
-    fn to_payload(&self) -> SignerPayload {
+    fn to_payload(&self) -> Result<SignerPayload, nmp_signer_iface::SignerError> {
         let state = self.state.lock();
         let (signer_package, granted_permissions) = state
             .map(|s| {
@@ -449,11 +449,11 @@ impl Signer for Nip55Signer {
                 )
             })
             .unwrap_or_default();
-        SignerPayload::Nip55(Nip55Payload {
+        Ok(SignerPayload::Nip55(Nip55Payload {
             user_pubkey_hex: self.user_pubkey.to_hex(),
             signer_package,
             granted_permissions,
-        })
+        }))
     }
 }
 

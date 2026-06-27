@@ -17,6 +17,9 @@ pub mod d18;
 pub mod d19;
 pub mod d20;
 pub mod d21;
+// D22 is deliberately unassigned — the slot is reserved and intentionally
+// skipped in the numbering sequence so that future audits do not mistake the
+// gap for a missing rule implementation.
 pub mod d23;
 pub mod d24;
 pub mod d25;

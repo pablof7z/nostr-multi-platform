@@ -47,6 +47,12 @@ zeroize = { workspace = true, features = ["serde"] }
 # weight that cargo skips. Versions match the rest of the workspace's wasm
 # stack so feature unification keeps one copy of each crate in the graph.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+# W1 — wasm-safe time shim. `web-time 1.1` replaces `std::time::{SystemTime,
+# Instant, UNIX_EPOCH}` on wasm32 (backed by `performance.now()` / `Date.now()`
+# which are available in every JS Worker context). On native it re-exports
+# `std::time` verbatim so behaviour is byte-for-byte identical. Pulled from the
+# workspace version already present in `Cargo.lock` via `nmp-core`.
+web-time = "1.1"
 js-sys = "0.3.98"
 wasm-bindgen = "0.2.121"
 # Drive the `window.nostr.signEvent(...)` Promise without blocking the wasm
