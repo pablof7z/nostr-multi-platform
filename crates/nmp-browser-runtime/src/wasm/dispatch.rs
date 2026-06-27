@@ -44,6 +44,8 @@ impl NmpRuntimeCore {
             WorkerRequest::DispatchBytes(payload) => self.dispatch_dispatch_bytes(&payload.bytes),
             WorkerRequest::SearchOpen(req) => self.handle_search_open(req),
             WorkerRequest::SearchClose(req) => self.handle_search_close(req),
+            WorkerRequest::GroupDiscoveryOpen(req) => self.handle_group_discovery_open(req),
+            WorkerRequest::GroupDiscoveryClose(req) => self.handle_group_discovery_close(req),
             WorkerRequest::RelayConfig(req) => self.handle_relay_config(req),
             WorkerRequest::PublishRelayPreferences(req) => {
                 self.handle_publish_relay_preferences(req)

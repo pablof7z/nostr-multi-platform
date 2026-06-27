@@ -21,7 +21,7 @@ test("@wasm blocked workspaces are explicit and diagnostics-backed", async ({ pa
     await expect(page.getByRole("heading", { name: "More Chirp workspaces" })).toBeVisible();
     await expect(page.getByTestId("workspace-notifications")).toContainText("blocked");
     await expect(page.getByTestId("workspace-messages")).toContainText("NIP-17");
-    await expect(page.getByTestId("workspace-groups")).toContainText("Group discovery");
+    await expect(page.getByTestId("nav-groups")).toBeVisible();
     await expect(page.getByTestId("workspace-wallet")).toContainText("Wallet connection");
     await expect(page.getByTestId("workspace-moderation")).toContainText("WoT");
     await expect(page.getByTestId("workspace-offline")).toContainText("partial");

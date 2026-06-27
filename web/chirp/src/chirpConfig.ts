@@ -99,3 +99,8 @@ export function chirpSearchRelayUrlsFromSearch(search: string): string[] | undef
   const relays = params.getAll("search_relay").concat(params.getAll("searchRelay")).filter(Boolean);
   return relays.length > 0 ? relays : undefined;
 }
+
+export function chirpGroupRelayUrlFromSearch(search: string): string | undefined {
+  const params = new URLSearchParams(search);
+  return params.get("group_relay") ?? params.get("groupRelay") ?? undefined;
+}

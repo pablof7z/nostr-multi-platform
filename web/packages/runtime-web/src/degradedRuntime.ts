@@ -90,6 +90,24 @@ export class DegradedRuntime {
             reason: this.unavailableReason,
           },
         ];
+      case "group_discovery_open":
+        return [
+          {
+            type: "capability_failure",
+            capability: "nmp.nip29.group_discovery.open",
+            correlation_id: request.correlation_id,
+            reason: this.unavailableReason,
+          },
+        ];
+      case "group_discovery_close":
+        return [
+          {
+            type: "capability_failure",
+            capability: "nmp.nip29.group_discovery.close",
+            correlation_id: request.correlation_id,
+            reason: this.unavailableReason,
+          },
+        ];
       case "relay_config":
         return [
           {

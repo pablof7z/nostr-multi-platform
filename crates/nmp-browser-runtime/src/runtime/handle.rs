@@ -34,7 +34,7 @@ use crate::signer::{
     enqueue_completion, CapabilityEnvelope, CapabilityProviderRegistry, SignerCompletion,
 };
 
-use super::BrowserSearchSession;
+use super::{BrowserGroupDiscoverySession, BrowserSearchSession};
 use super::NoopRoutingTrace;
 
 /// Public-facing handle to the browser runtime (issue #2058 — hides raw
@@ -60,6 +60,7 @@ pub struct BrowserRuntimeHandle {
     pub(super) preferred_relay_source: Option<Arc<dyn PreferredRelaySource>>,
     pub(super) observed_projection_registrar: ObservedProjectionCommandHandle,
     pub(super) search_sessions: HashMap<String, BrowserSearchSession>,
+    pub(super) group_discovery_sessions: HashMap<String, BrowserGroupDiscoverySession>,
 }
 
 impl BrowserRuntimeHandle {
@@ -201,6 +202,7 @@ impl BrowserRuntimeHandle {
             preferred_relay_source,
             observed_projection_registrar,
             search_sessions: HashMap::new(),
+            group_discovery_sessions: HashMap::new(),
         };
 
         // ── Spawn relay drivers from bootstrap list (wasm32 only) ────────────

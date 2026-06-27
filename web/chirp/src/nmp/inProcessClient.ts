@@ -8,7 +8,12 @@ import { chirpActionRequest, type ChirpAction, type RuntimeCommand } from "./act
 import { chirpStartRelays, type ChirpRelayStartOverride } from "../chirpConfig";
 import { makeCorrelationId } from "./correlationId";
 import { BaseClient } from "./clientBase";
-import { runtimeConnection, type RuntimeSnapshot, type SearchOpenRequest } from "./clientTypes";
+import {
+  runtimeConnection,
+  type GroupDiscoveryOpenRequest,
+  type RuntimeSnapshot,
+  type SearchOpenRequest,
+} from "./clientTypes";
 
 export class InProcessNmpClient extends BaseClient {
   private readonly runtime = new DegradedRuntime(
@@ -142,6 +147,23 @@ export class InProcessNmpClient extends BaseClient {
       type: "search_close",
       session_id: sessionId,
       correlation_id: makeCorrelationId("web-search", this.nextCorrelationId++),
+    });
+  }
+
+  async openGroupDiscovery(request: GroupDiscoveryOpenRequest): Promise<RuntimeSnapshot> {
+    return this.send({
+      type: "group_discovery_open",
+      session_id: request.sessionId,
+      relay_url: request.relayUrl,
+      correlation_id: makeCorrelationId("web-groups", this.nextCorrelationId++),
+    });
+  }
+
+  async closeGroupDiscovery(sessionId: string): Promise<RuntimeSnapshot> {
+    return this.send({
+      type: "group_discovery_close",
+      session_id: sessionId,
+      correlation_id: makeCorrelationId("web-groups", this.nextCorrelationId++),
     });
   }
 

@@ -56,6 +56,8 @@ mod kernel_ops;
 pub(crate) use kernel_ops::DispatchBytesResult;
 mod relay_config_ops;
 pub(crate) use relay_config_ops::{RelayConfigAction, RelayConfigResult};
+mod group_discovery;
+pub(crate) use group_discovery::BrowserGroupDiscoverySession;
 mod search;
 pub(crate) use search::BrowserSearchSession;
 

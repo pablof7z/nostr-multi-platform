@@ -83,8 +83,10 @@ CC_wasm32_unknown_unknown=clang bash "$CRATE_SCRIPT"
 # 4. Copy wasm output to the chirp public directory
 # ---------------------------------------------------------------------------
 echo "[build] Copying wasm output to $DEST_DIR..."
+rm -rf "$DEST_DIR"
 mkdir -p "$DEST_DIR"
 cp -r "$PKG_OUT/." "$DEST_DIR/"
+cp "$DEST_DIR/nmp_browser_runtime.js" "$DEST_DIR/nmp-browser-runtime.js"
 
 # ---------------------------------------------------------------------------
 # 5. Build the Chirp web app (TypeScript check + Vite bundle)

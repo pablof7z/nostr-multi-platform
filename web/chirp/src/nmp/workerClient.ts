@@ -10,7 +10,12 @@ import { chirpStartRelays, type ChirpRelayStartOverride } from "../chirpConfig";
 import { fulfilSignRequestViaExtension } from "./signBroker";
 import { makeCorrelationId } from "./correlationId";
 import { BaseClient } from "./clientBase";
-import { runtimeConnection, type RuntimeSnapshot, type SearchOpenRequest } from "./clientTypes";
+import {
+  runtimeConnection,
+  type GroupDiscoveryOpenRequest,
+  type RuntimeSnapshot,
+  type SearchOpenRequest,
+} from "./clientTypes";
 
 export class WorkerNmpClient extends BaseClient {
   private readonly worker = new Worker(new URL("@nmp/runtime-web/worker", import.meta.url), {
@@ -182,6 +187,29 @@ export class WorkerNmpClient extends BaseClient {
     const correlationId = makeCorrelationId("web-search", this.nextCorrelationId++);
     return this.request(
       { type: "search_close", session_id: sessionId, correlation_id: correlationId },
+      correlationId,
+    );
+  }
+
+  async openGroupDiscovery(request: GroupDiscoveryOpenRequest): Promise<RuntimeSnapshot> {
+    await this.helloReady;
+    const correlationId = makeCorrelationId("web-groups", this.nextCorrelationId++);
+    return this.request(
+      {
+        type: "group_discovery_open",
+        session_id: request.sessionId,
+        relay_url: request.relayUrl,
+        correlation_id: correlationId,
+      },
+      correlationId,
+    );
+  }
+
+  async closeGroupDiscovery(sessionId: string): Promise<RuntimeSnapshot> {
+    await this.helloReady;
+    const correlationId = makeCorrelationId("web-groups", this.nextCorrelationId++);
+    return this.request(
+      { type: "group_discovery_close", session_id: sessionId, correlation_id: correlationId },
       correlationId,
     );
   }

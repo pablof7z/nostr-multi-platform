@@ -1,7 +1,12 @@
 import type { IdentityRelayPermission, RuntimeStatus, WorkerEvent } from "@nmp/runtime-web";
 import type { ChirpAction, RuntimeCommand } from "./actions";
 import type { ChirpRelayStartOverride } from "../chirpConfig";
-import type { NmpClient, RuntimeSnapshot, SearchOpenRequest } from "./clientTypes";
+import type {
+  GroupDiscoveryOpenRequest,
+  NmpClient,
+  RuntimeSnapshot,
+  SearchOpenRequest,
+} from "./clientTypes";
 
 export abstract class BaseClient implements NmpClient {
   private events: WorkerEvent[] = [];
@@ -55,4 +60,6 @@ export abstract class BaseClient implements NmpClient {
   abstract refreshRoutingDecisions(): Promise<RuntimeSnapshot>;
   abstract openSearch(request: SearchOpenRequest): Promise<RuntimeSnapshot>;
   abstract closeSearch(sessionId: string): Promise<RuntimeSnapshot>;
+  abstract openGroupDiscovery(request: GroupDiscoveryOpenRequest): Promise<RuntimeSnapshot>;
+  abstract closeGroupDiscovery(sessionId: string): Promise<RuntimeSnapshot>;
 }

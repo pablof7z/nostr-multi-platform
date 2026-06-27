@@ -36,6 +36,7 @@ import { decodeUpdateFrame } from "./nmp/feedDecoder";
 import { decodeRuntimeProjection } from "./nmp/runtimeProjection";
 // Item C — feed / publish / profile UI (FeedPanel owns its own store + provider).
 import { FeedPanel } from "./features/feed/FeedPanel";
+import { GroupsPanel } from "./features/groups/GroupsPanel";
 import { SearchPanel } from "./features/search/SearchPanel";
 import { BlockedWorkspacesPanel } from "./features/workspaces/BlockedWorkspacesPanel";
 
@@ -55,16 +56,16 @@ declare global {
 // The client is a module-level singleton: one worker per page load.
 const client = createNmpClient();
 
-type MainView = "home" | "search" | "workspaces";
+type MainView = "home" | "search" | "groups" | "workspaces";
 
 function viewFromHash(): MainView {
   const hash = window.location.hash;
   if (hash === "#search") return "search";
+  if (hash === "#groups") return "groups";
   if (
     hash === "#workspaces" ||
     hash === "#notifications" ||
     hash === "#messages" ||
-    hash === "#groups" ||
     hash === "#wallet" ||
     hash === "#moderation" ||
     hash === "#offline"
@@ -119,17 +120,23 @@ export default function App() {
   const topbarKicker = () =>
     mainView() === "search"
       ? "NIP-50 discovery"
+      : mainView() === "groups"
+        ? "NIP-29 groups"
       : mainView() === "workspaces"
         ? "Product coverage"
         : "Home feed";
   const topbarTitle = () => {
     if (mainView() === "search") return "Search relays and cache";
+    if (mainView() === "groups") return "Discover public groups";
     if (mainView() === "workspaces") return "More Chirp workspaces";
     return signerConnected() ? "Real relay timeline" : "Set up Chirp Web";
   };
   const topbarSupport = () => {
     if (mainView() === "search") {
       return "Find notes, profiles, and long-form posts with relay and cache provenance.";
+    }
+    if (mainView() === "groups") {
+      return "Browse Rust-projected NIP-29 group metadata from the configured public group relay.";
     }
     if (mainView() === "workspaces") {
       return "Private, value, moderation, and replay surfaces stay disabled until Rust-owned web flows exist.";
@@ -185,6 +192,14 @@ export default function App() {
               data-testid="nav-search"
             >
               Search
+            </a>
+            <a
+              class={mainView() === "groups" ? "rail-link rail-link--active" : "rail-link"}
+              href="#groups"
+              aria-current={mainView() === "groups" ? "page" : undefined}
+              data-testid="nav-groups"
+            >
+              Groups
             </a>
             <a class="rail-link" href="#saved">Saved</a>
             <a class="rail-link" href="#signing">Signer</a>
@@ -247,6 +262,7 @@ export default function App() {
             */}
             <section id="feed" data-slot="feed" aria-label="Feed">
               {mainView() === "search" && <SearchPanel />}
+              {mainView() === "groups" && <GroupsPanel />}
               {mainView() === "workspaces" && (
                 <BlockedWorkspacesPanel
                   diagnostics={runtimeProjection()}

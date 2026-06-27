@@ -64,6 +64,19 @@ export type WorkerRequest =
       session_id: string;
       correlation_id: string;
     }
+  /** NIP-29 public group discovery. The worker owns the relay-pinned metadata
+   *  interest and emits `nmp.nip29.discovered_groups` (`NDGS`) in snapshots. */
+  | {
+      type: "group_discovery_open";
+      session_id: string;
+      relay_url: string;
+      correlation_id: string;
+    }
+  | {
+      type: "group_discovery_close";
+      session_id: string;
+      correlation_id: string;
+    }
   /** Browser runtime relay inventory edit. This is structured transport/runtime
    *  control, not an app-level write. The Rust runtime validates URL/role,
    *  mutates the configured-relay projection, and opens/closes browser relay

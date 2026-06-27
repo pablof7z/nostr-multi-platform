@@ -15,6 +15,8 @@
  *   `startFixtureRelay()`     — boot smoke relay (EOSE only, no seeded events).
  *   `startFeedFixtureRelay()` — feed relay pre-loaded with genuinely signed
  *                               events (viewer kind:3 + two follows' kind:0/1).
+ *   `startGroupFixtureRelay()` — group relay pre-loaded with signed NIP-29
+ *                                metadata/member/admin events.
  *
  * All seeded events are signed with real secp256k1 keys via nostr-tools. The
  * nmp-core ingest path verifies signatures and rejects forged ones, so these
@@ -84,6 +86,8 @@ export type FixtureRelay = {
   eventCount(): number;
   /** Snapshot of EVENT payloads received from browser clients. */
   receivedEvents(): NostrEvent[];
+  /** Snapshot of REQ filters received from browser clients. */
+  subscriptions(): NostrFilter[];
   /** Gracefully close the server and resolve once all connections are gone. */
   close(): Promise<void>;
 };
@@ -113,6 +117,15 @@ export type FeedFixtureRelay = FixtureRelay & {
   longformContent: string;
 };
 
+export type GroupFixtureRelay = FixtureRelay & {
+  groupId: string;
+  groupName: string;
+  groupAbout: string;
+  groupPictureUrl: string;
+  memberCount: number;
+  adminCount: number;
+};
+
 export type FixtureRelayOptions = {
   eventAck?: {
     ok?: boolean;
@@ -121,7 +134,7 @@ export type FixtureRelayOptions = {
   };
 };
 
-type NostrFilter = {
+export type NostrFilter = {
   kinds?: number[];
   authors?: string[];
   ids?: string[];
@@ -160,6 +173,7 @@ function startServer(
     const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
     let connections = 0;
     const receivedEvents: NostrEvent[] = [];
+    const subscriptions: NostrFilter[] = [];
 
     wss.once("error", reject);
 
@@ -184,6 +198,7 @@ function startServer(
             const filters = (rest.slice(1) as NostrFilter[]).filter(
               (f) => typeof f === "object" && f !== null,
             );
+            subscriptions.push(...filters);
             const sendSoon = (frame: string) => setTimeout(() => ws.send(frame), 0);
             const retainedEvents = [...seededEvents, ...receivedEvents];
             for (const event of retainedEvents) {
@@ -226,6 +241,7 @@ function startServer(
         connectionCount: () => connections,
         eventCount: () => receivedEvents.length,
         receivedEvents: () => [...receivedEvents],
+        subscriptions: () => [...subscriptions],
         close,
       });
     });
@@ -376,5 +392,79 @@ export async function startFeedFixtureRelay(): Promise<FeedFixtureRelay> {
     followDisplayName: followADisplayName,
     followPictureUrl: followAPictureUrl,
     replierDisplayName: followBDisplayName,
+  };
+}
+
+export async function startGroupFixtureRelay(): Promise<GroupFixtureRelay> {
+  const groupSk = generateSecretKey();
+  const memberASk = generateSecretKey();
+  const memberBSk = generateSecretKey();
+  const adminSk = generateSecretKey();
+  const memberAPubkey = getPublicKey(memberASk);
+  const memberBPubkey = getPublicKey(memberBSk);
+  const adminPubkey = getPublicKey(adminSk);
+  const now = Math.floor(Date.now() / 1000);
+  const imageServer = await startImageServer();
+  const groupId = "nmp-builders";
+  const groupName = "NMP Builders";
+  const groupAbout = "A public room for Rust-owned Nostr clients on every platform.";
+
+  const metadata = finalizeEvent(
+    {
+      kind: 39000,
+      created_at: now - 20,
+      tags: [
+        ["d", groupId],
+        ["name", groupName],
+        ["about", groupAbout],
+        ["picture", imageServer.url],
+        ["public"],
+        ["open"],
+      ],
+      content: "",
+    },
+    groupSk,
+  ) as NostrEvent;
+
+  const admins = finalizeEvent(
+    {
+      kind: 39001,
+      created_at: now - 10,
+      tags: [
+        ["d", groupId],
+        ["p", adminPubkey],
+      ],
+      content: "",
+    },
+    groupSk,
+  ) as NostrEvent;
+
+  const members = finalizeEvent(
+    {
+      kind: 39002,
+      created_at: now - 5,
+      tags: [
+        ["d", groupId],
+        ["p", memberAPubkey],
+        ["p", memberBPubkey],
+      ],
+      content: "",
+    },
+    groupSk,
+  ) as NostrEvent;
+
+  const base = await startServer([metadata, admins, members]);
+  return {
+    ...base,
+    close: async () => {
+      await base.close();
+      await imageServer.close();
+    },
+    groupId,
+    groupName,
+    groupAbout,
+    groupPictureUrl: imageServer.url,
+    memberCount: 2,
+    adminCount: 1,
   };
 }

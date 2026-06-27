@@ -33,14 +33,6 @@ const WORKSPACES: Workspace[] = [
     proof: "Private payloads must stay inside Rust-owned decrypt and send flows.",
   },
   {
-    id: "groups",
-    title: "Groups",
-    capability: "nmp.groups.open",
-    status: "blocked",
-    reason: "Group discovery, membership, and moderation projections are not web-ready.",
-    proof: "Group timelines need Rust-owned NIP-29 or Marmot state before controls are enabled.",
-  },
-  {
     id: "wallet",
     title: "Wallet and zaps",
     capability: "nmp.nip57.wallet",

@@ -48,6 +48,25 @@ NIP-50 session through the browser worker, that a fixture relay receives the
 search subscription, and that matching signed events render from the typed
 search sidecar with relay/cache provenance.
 
+## Group Discovery Contract
+
+Chirp Web must expose NIP-29 public group discovery as a first-level product
+workspace. The browser shell may choose the Chirp public group relay from app
+policy and request that the workspace opens or closes, but Rust must own the
+relay-pinned NIP-29 metadata interest, cache replay, group metadata projection,
+and typed `NDGS` sidecar under `nmp.nip29.discovered_groups`.
+
+TypeScript must decode the typed `NDGS` snapshot and render discovered group
+metadata. It must not construct NIP-29 filters, keep a parallel group cache,
+derive member/admin counts, or invent relay provenance. Group timelines, join
+or leave actions, and moderation controls remain disabled until their own
+Rust-owned browser runtime flows exist.
+
+Acceptance must prove that opening the Groups workspace sends a real
+Rust-owned NIP-29 discovery subscription to the configured group relay, and
+that signed kind:39000/39001/39002 fixture events render from the typed group
+discovery sidecar with relay provenance.
+
 ## Profile Open Contract
 
 Chirp Web must let users open a visible author profile from feed and thread
@@ -191,9 +210,10 @@ the raw secret.
 
 Chirp Web must not hide missing major product areas behind absent navigation or
 fake local-only controls. Until web-ready Rust projections and actions exist for
-notifications, NIP-17 private messages, groups, wallet/zap flows, moderation/WoT,
-or offline replay ownership, the browser product must expose those destinations
-as blocked workspaces with clear reasons.
+notifications, NIP-17 private messages, wallet/zap flows, moderation/WoT, group
+timeline/membership actions, or offline replay ownership, the browser product
+must expose those destinations as blocked or disabled workspaces with clear
+reasons.
 
 Blocked workspace controls may emit log-safe `capability_failure` diagnostics so
 users and tests can prove the unsupported state is deliberate. They must not

@@ -33,6 +33,11 @@ export type SearchOpenRequest = {
   maxHits?: number;
 };
 
+export type GroupDiscoveryOpenRequest = {
+  sessionId: string;
+  relayUrl: string;
+};
+
 export type NmpClient = {
   snapshot(): RuntimeSnapshot;
   subscribe(listener: (snapshot: RuntimeSnapshot) => void): () => void;
@@ -48,4 +53,6 @@ export type NmpClient = {
   refreshRoutingDecisions(): Promise<RuntimeSnapshot>;
   openSearch(request: SearchOpenRequest): Promise<RuntimeSnapshot>;
   closeSearch(sessionId: string): Promise<RuntimeSnapshot>;
+  openGroupDiscovery(request: GroupDiscoveryOpenRequest): Promise<RuntimeSnapshot>;
+  closeGroupDiscovery(sessionId: string): Promise<RuntimeSnapshot>;
 };
