@@ -55,12 +55,6 @@ struct ChirpActionIntent: Encodable, Equatable {
     let amountMsats: UInt64?
     let lnurl: String?
     let comment: String?
-    /// Relay URL for `block_relay` / `unblock_relay` intents.
-    let url: String?
-    /// Active account hex pubkey for `block_relay` / `unblock_relay` intents.
-    /// The router-owned ActionModule uses it to read the current blocked set.
-    let accountPubkey: String?
-
     static func publishNote(content: String, replyTo: ChirpReplyTarget?) -> Self {
         Self(type: "publish_note", content: content, replyTo: replyTo)
     }
@@ -83,20 +77,6 @@ struct ChirpActionIntent: Encodable, Equatable {
 
     static func unfollow(pubkey: String) -> Self {
         Self(type: "unfollow", pubkey: pubkey)
-    }
-
-    /// Block a relay. `accountPubkey` is the active account's hex pubkey — the
-    /// router-owned `nmp.nip51.block_relay` ActionModule uses it to read the
-    /// current blocked set for the idempotency guard.
-    static func blockRelay(url: String, accountPubkey: String) -> Self {
-        Self(type: "block_relay", url: url, accountPubkey: accountPubkey)
-    }
-
-    /// Unblock a relay. Symmetric to `blockRelay`. Maps to
-    /// `nmp.nip51.unblock_relay`. Rejects (no publish) if the relay is not
-    /// currently blocked.
-    static func unblockRelay(url: String, accountPubkey: String) -> Self {
-        Self(type: "unblock_relay", url: url, accountPubkey: accountPubkey)
     }
 
     static func zap(
@@ -142,9 +122,7 @@ struct ChirpActionIntent: Encodable, Equatable {
         recipientPubkey: String? = nil,
         amountMsats: UInt64? = nil,
         lnurl: String? = nil,
-        comment: String? = nil,
-        url: String? = nil,
-        accountPubkey: String? = nil
+        comment: String? = nil
     ) {
         self.type = type
         self.content = content
@@ -163,12 +141,10 @@ struct ChirpActionIntent: Encodable, Equatable {
         self.amountMsats = amountMsats
         self.lnurl = lnurl
         self.comment = comment
-        self.url = url
-        self.accountPubkey = accountPubkey
     }
 
     private enum CodingKeys: String, CodingKey {
-        case type, content, name, about, picture, reaction, pubkey, lnurl, comment, url
+        case type, content, name, about, picture, reaction, pubkey, lnurl, comment
         case replyTo = "reply_to"
         case replyToEventID = "reply_to_event_id"
         case eventID = "event_id"
@@ -176,7 +152,6 @@ struct ChirpActionIntent: Encodable, Equatable {
         case targetEventID = "target_event_id"
         case recipientPubkey = "recipient_pubkey"
         case amountMsats = "amount_msats"
-        case accountPubkey = "account_pubkey"
     }
 
     func encode(to encoder: Encoder) throws {
@@ -198,8 +173,6 @@ struct ChirpActionIntent: Encodable, Equatable {
         try c.encodeIfPresent(amountMsats, forKey: .amountMsats)
         try c.encodeIfPresent(lnurl, forKey: .lnurl)
         try c.encodeIfPresent(comment, forKey: .comment)
-        try c.encodeIfPresent(url, forKey: .url)
-        try c.encodeIfPresent(accountPubkey, forKey: .accountPubkey)
     }
 }
 

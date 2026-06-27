@@ -50,6 +50,34 @@ object GeneratedActionBuilders {
         return fbb.sizedByteArray()
     }
 
+    /// Map a relay role string to the RelayMarker ubyte (Both=0, Read=1, Write=2, Indexer=3),
+    /// mirroring `RelayMarker::from_role_string` in `nmp-router` EXACTLY — including rejection.
+    /// Unknown tokens or no-flag input (e.g. empty string) encode as 255 (out-of-range sentinel)
+    /// so the Rust decoder (`marker_from_wire`) fails closed instead of silently becoming Both.
+    /// Role strings may be comma-separated (e.g. `"both,indexer"`); comparisons are case-insensitive.
+    private fun relayMarkerByte(role: String): Byte {
+        var hasBoth = false; var hasRead = false; var hasWrite = false; var hasIndexer = false
+        var invalid = false
+        for (part in role.split(",").map { it.trim().lowercase() }) {
+            when (part) {
+                "" -> {}
+                "both" -> hasBoth = true
+                "read" -> hasRead = true
+                "write" -> hasWrite = true
+                "indexer" -> hasIndexer = true
+                else -> invalid = true
+            }
+        }
+        if (invalid) return 255.toByte()
+        return (when {
+            hasBoth || (hasRead && hasWrite) -> 0
+            hasRead -> 1
+            hasWrite -> 2
+            hasIndexer -> 3
+            else -> 255
+        }).toByte()
+    }
+
     /// Publish a NIP-25 reaction to a target event.
     /// Builds the `nmp.nip25.react` `DispatchEnvelope` bytes for the byte doorway.
     fun react(
@@ -168,6 +196,178 @@ object GeneratedActionBuilders {
         return encodeDispatchEnvelope(
             correlationId = correlationId,
             actionNamespace = "nmp.follow_many",
+            payload = payload,
+        )
+    }
+
+    /// Add a relay URL to the NIP-51 blocked-relay list.
+    /// Builds the `nmp.nip51.block_relay` `DispatchEnvelope` bytes for the byte doorway.
+    fun blockRelay(
+        correlationId: String,
+        url: String,
+        accountPubkey: String,
+    ): ByteArray {
+        val fbb = FlatBufferBuilder()
+        val urlOffset = fbb.createString(url)
+        val accountPubkeyOffset = fbb.createString(accountPubkey)
+        fbb.startTable(3)
+        fbb.addInt(0, 1, 0) // slot 0: schema_version
+        fbb.addOffset(1, urlOffset, 0) // slot 1: url
+        fbb.addOffset(2, accountPubkeyOffset, 0) // slot 2: accountPubkey
+        val payloadRoot = fbb.endTable()
+        fbb.finish(payloadRoot, "NBLK")
+        val payload = fbb.sizedByteArray()
+        return encodeDispatchEnvelope(
+            correlationId = correlationId,
+            actionNamespace = "nmp.nip51.block_relay",
+            payload = payload,
+        )
+    }
+
+    /// Remove a relay URL from the NIP-51 blocked-relay list.
+    /// Builds the `nmp.nip51.unblock_relay` `DispatchEnvelope` bytes for the byte doorway.
+    fun unblockRelay(
+        correlationId: String,
+        url: String,
+        accountPubkey: String,
+    ): ByteArray {
+        val fbb = FlatBufferBuilder()
+        val urlOffset = fbb.createString(url)
+        val accountPubkeyOffset = fbb.createString(accountPubkey)
+        fbb.startTable(3)
+        fbb.addInt(0, 1, 0) // slot 0: schema_version
+        fbb.addOffset(1, urlOffset, 0) // slot 1: url
+        fbb.addOffset(2, accountPubkeyOffset, 0) // slot 2: accountPubkey
+        val payloadRoot = fbb.endTable()
+        fbb.finish(payloadRoot, "NUBL")
+        val payload = fbb.sizedByteArray()
+        return encodeDispatchEnvelope(
+            correlationId = correlationId,
+            actionNamespace = "nmp.nip51.unblock_relay",
+            payload = payload,
+        )
+    }
+
+    /// Publish a NIP-17 DM relay list (kind:10050).
+    /// Builds the `nmp.nip17.publish_relay_list` `DispatchEnvelope` bytes for the byte doorway.
+    fun publishDmRelayList(
+        correlationId: String,
+        relays: List<String>,
+    ): ByteArray {
+        val fbb = FlatBufferBuilder()
+        val relaysOffset = run {
+            val offsets = IntArray(relays.size) { i -> fbb.createString(relays[i]) }
+            fbb.startVector(4, offsets.size, 4)
+            for (i in offsets.size - 1 downTo 0) fbb.addOffset(offsets[i])
+            fbb.endVector()
+        }
+        fbb.startTable(2)
+        fbb.addInt(0, 1, 0) // slot 0: schema_version
+        fbb.addOffset(1, relaysOffset, 0) // slot 1: relays
+        val payloadRoot = fbb.endTable()
+        fbb.finish(payloadRoot, "N17R")
+        val payload = fbb.sizedByteArray()
+        return encodeDispatchEnvelope(
+            correlationId = correlationId,
+            actionNamespace = "nmp.nip17.publish_relay_list",
+            payload = payload,
+        )
+    }
+
+    /// Publish a NIP-65 relay-list metadata event (kind:10002).
+    /// Builds the `nmp.nip65.publish_relay_list` `DispatchEnvelope` bytes for the byte doorway.
+    fun publishRelayList(
+        correlationId: String,
+        relays: List<Pair<String, String>>,
+    ): ByteArray {
+        val fbb = FlatBufferBuilder()
+        val relaysOffset = run {
+            val entryOffsets = IntArray(relays.size) { i ->
+                val (url, role) = relays[i]
+                val urlOff = fbb.createString(url)
+                fbb.startTable(2)
+                fbb.addOffset(0, urlOff, 0) // RelayListEntry slot 0: url
+                fbb.addByte(1, relayMarkerByte(role), 0) // RelayListEntry slot 1: marker
+                fbb.endTable()
+            }
+            fbb.startVector(4, entryOffsets.size, 4)
+            for (i in entryOffsets.size - 1 downTo 0) fbb.addOffset(entryOffsets[i])
+            fbb.endVector()
+        }
+        fbb.startTable(2)
+        fbb.addInt(0, 1, 0) // slot 0: schema_version
+        fbb.addOffset(1, relaysOffset, 0) // slot 1: relays
+        val payloadRoot = fbb.endTable()
+        fbb.finish(payloadRoot, "N65P")
+        val payload = fbb.sizedByteArray()
+        return encodeDispatchEnvelope(
+            correlationId = correlationId,
+            actionNamespace = "nmp.nip65.publish_relay_list",
+            payload = payload,
+        )
+    }
+
+    /// Connect a NIP-47 Nostr Wallet Connect URI.
+    /// Builds the `nmp.wallet.connect` `DispatchEnvelope` bytes for the byte doorway.
+    fun walletConnect(
+        correlationId: String,
+        uri: String,
+    ): ByteArray {
+        val fbb = FlatBufferBuilder()
+        val uriOffset = fbb.createString(uri)
+        fbb.startTable(2)
+        fbb.addInt(0, 1, 0) // slot 0: schema_version
+        fbb.addOffset(1, uriOffset, 0) // slot 1: uri
+        val payloadRoot = fbb.endTable()
+        fbb.finish(payloadRoot, "N47C")
+        val payload = fbb.sizedByteArray()
+        return encodeDispatchEnvelope(
+            correlationId = correlationId,
+            actionNamespace = "nmp.wallet.connect",
+            payload = payload,
+        )
+    }
+
+    /// Disconnect the current NIP-47 wallet (no payload data beyond schema_version).
+    /// Builds the `nmp.wallet.disconnect` `DispatchEnvelope` bytes for the byte doorway.
+    fun walletDisconnect(
+        correlationId: String,
+    ): ByteArray {
+        val fbb = FlatBufferBuilder()
+        fbb.startTable(1)
+        fbb.addInt(0, 1, 0) // slot 0: schema_version
+        val payloadRoot = fbb.endTable()
+        fbb.finish(payloadRoot, "N47D")
+        val payload = fbb.sizedByteArray()
+        return encodeDispatchEnvelope(
+            correlationId = correlationId,
+            actionNamespace = "nmp.wallet.disconnect",
+            payload = payload,
+        )
+    }
+
+    /// Pay a Lightning invoice via the NIP-47 wallet.
+    /// Builds the `nmp.wallet.pay_invoice` `DispatchEnvelope` bytes for the byte doorway.
+    fun walletPayInvoice(
+        correlationId: String,
+        bolt11: String,
+        amountMsats: Long?,
+    ): ByteArray {
+        val fbb = FlatBufferBuilder()
+        val bolt11Offset = fbb.createString(bolt11)
+        fbb.startTable(4)
+        fbb.addInt(0, 1, 0) // slot 0: schema_version
+        fbb.addOffset(1, bolt11Offset, 0) // slot 1: bolt11
+        if (amountMsats != null) {
+            fbb.addLong(2, amountMsats, 0L) // slot 2: amountMsats
+            fbb.addBoolean(3, true, false) // slot 3: hasAmountMsats
+        }
+        val payloadRoot = fbb.endTable()
+        fbb.finish(payloadRoot, "N47P")
+        val payload = fbb.sizedByteArray()
+        return encodeDispatchEnvelope(
+            correlationId = correlationId,
+            actionNamespace = "nmp.wallet.pay_invoice",
             payload = payload,
         )
     }

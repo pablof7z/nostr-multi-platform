@@ -1,5 +1,6 @@
 package org.nmp.android
 
+import java.util.UUID
 import org.nmp.android.model.RelayStatus
 
 /**
@@ -35,59 +36,24 @@ fun KernelBridge.cancelPublish(correlationId: String) {
 }
 
 /**
- * Publish the NIP-65 (kind:10002) relay-list metadata event. Mirrors iOS
+ * Publish the NIP-65 (kind:10002) relay-list metadata event via the typed
+ * FlatBuffers byte builder (M14-1 / #2145). Mirrors iOS
  * `KernelHandle.publishRelayList(relays:)` — forwards each relay's verbatim
  * `url` + kernel-authored `role` string; Rust normalizes composite roles and
  * skips indexer-only rows when building the kind:10002 tags.
  */
-fun KernelBridge.publishRelayList(relays: List<RelayStatus>): DispatchResult =
-    dispatchAuthoredWrite(
-        "nmp.nip65.publish_relay_list",
-        relayListBodyJson(relays),
-    )
+fun KernelBridge.publishRelayList(relays: List<RelayStatus>): DispatchResult {
+    val id = UUID.randomUUID().toString()
+    val entries = relays.map { Pair(it.relayUrl, it.role) }
+    return dispatchBytes(GeneratedActionBuilders.publishRelayList(id, entries))
+}
 
 /**
- * Publish the NIP-17 DM relay-list (kind:10050). Mirrors iOS
- * `KernelHandle.publishDmRelayList(relays:)` — a flat `wss://` URL array.
+ * Publish the NIP-17 DM relay-list (kind:10050) via the typed FlatBuffers byte
+ * builder (M14-1 / #2145). Mirrors iOS `KernelHandle.publishDmRelayList(relays:)`
+ * — a flat `wss://` URL array.
  */
-fun KernelBridge.publishDmRelayList(relays: List<String>): DispatchResult =
-    dispatchAuthoredWrite(
-        "nmp.nip17.publish_relay_list",
-        dmRelayListBodyJson(relays),
-    )
-
-// staged: see #2145 (M14-1) — migrate to GeneratedActionBuilders bytes-only dispatch.
-private fun KernelBridge.dispatchAuthoredWrite(namespace: String, bodyJson: String): DispatchResult =
-    dispatchActionJson(namespace, bodyJson)
-
-private fun relayListBodyJson(relays: List<RelayStatus>): String {
-    val entries = relays.joinToString(separator = ",") { relay ->
-        "{\"url\":${jsonString(relay.relayUrl)},\"role\":${jsonString(relay.role)}}"
-    }
-    return "{\"relays\":[$entries]}"
-}
-
-private fun dmRelayListBodyJson(relays: List<String>): String {
-    val entries = relays.joinToString(separator = ",") { jsonString(it) }
-    return "{\"relays\":[$entries]}"
-}
-
-/** Minimal JSON string encoder (escapes the characters that can appear in a
- *  relay URL / role token). Kotlinx-serialization is not pulled in here to
- *  keep this leaf wrapper dependency-free. */
-private fun jsonString(value: String): String {
-    val sb = StringBuilder(value.length + 2)
-    sb.append('"')
-    for (c in value) {
-        when (c) {
-            '"' -> sb.append("\\\"")
-            '\\' -> sb.append("\\\\")
-            '\n' -> sb.append("\\n")
-            '\r' -> sb.append("\\r")
-            '\t' -> sb.append("\\t")
-            else -> sb.append(c)
-        }
-    }
-    sb.append('"')
-    return sb.toString()
+fun KernelBridge.publishDmRelayList(relays: List<String>): DispatchResult {
+    val id = UUID.randomUUID().toString()
+    return dispatchBytes(GeneratedActionBuilders.publishDmRelayList(id, relays))
 }

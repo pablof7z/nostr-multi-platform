@@ -24,7 +24,7 @@
 //! relies on (exactly like [`crate::swift`] / [`crate::swift_typed_decoders`]).
 
 use crate::action_builders::registry::{
-    ActionBuilder, FieldKind, ACTION_BUILDERS, DISPATCH_ENVELOPE_FILE_IDENTIFIER,
+    ActionBuilder, FieldKind, PayloadField, ACTION_BUILDERS, DISPATCH_ENVELOPE_FILE_IDENTIFIER,
     DISPATCH_ENVELOPE_SCHEMA_VERSION,
 };
 use crate::action_contract::contract_for;
@@ -62,6 +62,7 @@ pub fn render(builders: &[ActionBuilder]) -> String {
     out.push('\n');
     out.push_str("public enum GeneratedActionBuilders {\n");
     out.push_str(&envelope_helper());
+    out.push_str(&relay_marker_byte_helper());
     for builder in builders {
         out.push('\n');
         render_one(builder, &mut out);
@@ -122,6 +123,49 @@ fn envelope_helper() -> String {
     s
 }
 
+/// Render the private `relayMarkerByte` helper — maps a role string to the
+/// `RelayMarker` ubyte (Both=0, Read=1, Write=2, Indexer=3), mirroring
+/// `RelayMarker::from_role_string` in `nmp-router` EXACTLY — including
+/// rejection. Unknown tokens or no-flag cases (e.g. empty string) encode as
+/// 255 (out-of-range sentinel) so the Rust decoder (`marker_from_wire`) fails
+/// closed (Err) rather than silently becoming Both. Emitted once at the top of
+/// `GeneratedActionBuilders`; used by `publishRelayList`.
+///
+/// SSOT: `RelayMarker::from_role_string` in `crates/nmp-router/src/publish_relay_list.rs`.
+/// 255 = deliberate out-of-range sentinel: the Rust decoder (`marker_from_wire`) rejects
+/// any ordinal not in {0,1,2,3}, so encoding 255 for invalid/empty roles makes dispatch
+/// fail closed (DispatchAck.error) rather than silently publishing a Both relay.
+fn relay_marker_byte_helper() -> String {
+    String::from(
+        "\n\
+         \x20   /// Map a relay role string to the RelayMarker ubyte (Both=0, Read=1, Write=2, Indexer=3),\n\
+         \x20   /// mirroring `RelayMarker::from_role_string` in `nmp-router` EXACTLY — including rejection.\n\
+         \x20   /// Unknown tokens or no-flag input (e.g. empty string) encode as 255 (out-of-range sentinel)\n\
+         \x20   /// so the Rust decoder (`marker_from_wire`) fails closed instead of silently becoming Both.\n\
+         \x20   /// Role strings may be comma-separated (e.g. `\"both,indexer\"`); comparisons are case-insensitive.\n\
+         \x20   private static func relayMarkerByte(_ role: String) -> UInt8 {\n\
+         \x20       var hasBoth = false; var hasRead = false; var hasWrite = false; var hasIndexer = false\n\
+         \x20       var invalid = false\n\
+         \x20       for part in role.split(separator: \",\").map({ $0.trimmingCharacters(in: .whitespaces).lowercased() }) {\n\
+         \x20           switch part {\n\
+         \x20           case \"\": break\n\
+         \x20           case \"both\": hasBoth = true\n\
+         \x20           case \"read\": hasRead = true\n\
+         \x20           case \"write\": hasWrite = true\n\
+         \x20           case \"indexer\": hasIndexer = true\n\
+         \x20           default: invalid = true\n\
+         \x20           }\n\
+         \x20       }\n\
+         \x20       if invalid { return 255 }\n\
+         \x20       if hasBoth || (hasRead && hasWrite) { return 0 }\n\
+         \x20       if hasRead { return 1 }\n\
+         \x20       if hasWrite { return 2 }\n\
+         \x20       if hasIndexer { return 3 }\n\
+         \x20       return 255\n\
+         \x20   }\n",
+    )
+}
+
 /// Render one typed builder function.
 fn render_one(builder: &ActionBuilder, out: &mut String) {
     let contract = contract_for(builder.namespace);
@@ -146,8 +190,8 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
 
     // Encode the payload table.
     out.push_str("        var fbb = FlatBufferBuilder()\n");
-    // Create string/vector offsets first (FlatBuffers requires nested objects
-    // be built before the table that references them).
+    // Create string/vector/table offsets first (FlatBuffers requires nested
+    // objects to be finished before the table that references them).
     for field in builder.fields {
         match field.kind {
             FieldKind::Str if field.optional => {
@@ -180,23 +224,39 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
                     ));
                 }
             }
-            FieldKind::Uint => {}
+            FieldKind::RelayListEntryVec => {
+                // Build each RelayListEntry table (url + marker) then a vector
+                // of those entry offsets.
+                out.push_str(&format!(
+                    "        var {n}EntryOffsets: [Offset] = []\n\
+                     \x20       for r in {n} {{\n\
+                     \x20           let urlOff = fbb.create(string: r.url)\n\
+                     \x20           let entryStart = fbb.startTable(with: 2)\n\
+                     \x20           fbb.add(offset: urlOff, at: 4) // RelayListEntry slot 0: url\n\
+                     \x20           fbb.add(element: Self.relayMarkerByte(r.role), def: UInt8(0), at: 6) // RelayListEntry slot 1: marker\n\
+                     \x20           {n}EntryOffsets.append(Offset(offset: fbb.endTable(at: entryStart)))\n\
+                     \x20       }}\n\
+                     \x20       let {n}Offset = fbb.createVector(ofOffsets: {n}EntryOffsets)\n",
+                    n = field.name
+                ));
+            }
+            FieldKind::Uint | FieldKind::Ulong | FieldKind::UlongWithPresenceFlag { .. } => {}
         }
     }
-    // Table: 1 (schema_version) + N fields.
-    let table_fields = builder.fields.len() + 1;
+    // Table: 1 (schema_version slot) + sum of each field's slot_count.
+    let slot_total: usize = 1 + builder.fields.iter().map(|f| f.slot_count()).sum::<usize>();
     out.push_str(&format!(
-        "        let payloadStart = fbb.startTable(with: {table_fields})\n"
+        "        let payloadStart = fbb.startTable(with: {slot_total})\n"
     ));
     out.push_str(&format!(
         "        fbb.add(element: UInt32({}), def: UInt32(0), at: 4) // slot 0: schema_version\n",
         contract.schema_version
     ));
-    for (idx, field) in builder.fields.iter().enumerate() {
-        let slot = idx + 1; // slot 0 is schema_version
+    let mut slot = 1usize; // slot 0 = schema_version
+    for field in builder.fields {
         let vtoffset = 4 + slot * 2;
         match field.kind {
-            FieldKind::Str | FieldKind::StrVec => {
+            FieldKind::Str | FieldKind::StrVec | FieldKind::RelayListEntryVec => {
                 if field.optional {
                     out.push_str(&format!(
                         "        if {n}Offset.o != 0 {{ fbb.add(offset: {n}Offset, at: {vt}) }} // slot {slot}: {n}\n",
@@ -218,7 +278,38 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
                     vt = vtoffset
                 ));
             }
+            FieldKind::Ulong => {
+                if field.optional {
+                    out.push_str(&format!(
+                        "        if let {n}Val = {n} {{ fbb.add(element: {n}Val, def: UInt64(0), at: {vt}) }} // slot {slot}: {n}\n",
+                        n = field.name,
+                        vt = vtoffset
+                    ));
+                } else {
+                    out.push_str(&format!(
+                        "        fbb.add(element: {n}, def: UInt64(0), at: {vt}) // slot {slot}: {n}\n",
+                        n = field.name,
+                        vt = vtoffset
+                    ));
+                }
+            }
+            FieldKind::UlongWithPresenceFlag { flag_name } => {
+                let vt_flag = vtoffset + 2; // flag is the next slot
+                out.push_str(&format!(
+                    "        if let {n}Val = {n} {{\n\
+                     \x20           fbb.add(element: {n}Val, def: UInt64(0), at: {vt}) // slot {slot}: {n}\n\
+                     \x20           fbb.add(element: true, def: false, at: {vt_flag}) // slot {slot_flag}: {flag}\n\
+                     \x20       }}\n",
+                    n = field.name,
+                    vt = vtoffset,
+                    vt_flag = vt_flag,
+                    slot = slot,
+                    slot_flag = slot + 1,
+                    flag = flag_name,
+                ));
+            }
         }
+        slot += field.slot_count();
     }
     out.push_str("        let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))\n");
     out.push_str(&format!(
@@ -239,7 +330,7 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
 }
 
 /// Swift parameter type for a field.
-fn swift_param_type(field: &PayloadFieldRef) -> String {
+fn swift_param_type(field: &PayloadField) -> String {
     match (field.kind, field.optional) {
         (FieldKind::Str, false) => "String".to_string(),
         (FieldKind::Str, true) => "String?".to_string(),
@@ -247,12 +338,15 @@ fn swift_param_type(field: &PayloadFieldRef) -> String {
         (FieldKind::Uint, true) => "UInt32?".to_string(),
         (FieldKind::StrVec, false) => "[String]".to_string(),
         (FieldKind::StrVec, true) => "[String]?".to_string(),
+        (FieldKind::Ulong, false) => "UInt64".to_string(),
+        (FieldKind::Ulong, true) => "UInt64?".to_string(),
+        // UlongWithPresenceFlag is always presented as optional — the flag
+        // encodes Some vs None so the parameter is always `T?`.
+        (FieldKind::UlongWithPresenceFlag { .. }, _) => "UInt64?".to_string(),
+        // RelayListEntry vector: named-tuple array (url + role string).
+        (FieldKind::RelayListEntryVec, _) => "[(url: String, role: String)]".to_string(),
     }
 }
-
-// Local alias so `swift_param_type` can take a `&PayloadField` without importing
-// the type name twice.
-use crate::action_builders::registry::PayloadField as PayloadFieldRef;
 
 /// Render the full file for the default registry.
 #[must_use]

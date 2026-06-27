@@ -36,6 +36,13 @@ fun KernelModel.dispatchWalletConnect(uri: String): DispatchResult = bridge.wall
 /** Disconnect the current NIP-47 wallet. */
 fun KernelModel.dispatchWalletDisconnect(): DispatchResult = bridge.walletDisconnect()
 
+/** Pay a Lightning invoice via the NIP-47 wallet. [amountMsats] is `null` for
+ *  self-specified (amountless) invoices; a non-null value overrides the invoice
+ *  amount (used when the invoice has no embedded amount).
+ */
+fun KernelModel.dispatchWalletPayInvoice(bolt11: String, amountMsats: Long? = null): DispatchResult =
+    bridge.walletPayInvoice(bolt11, amountMsats)
+
 // -------------------------------------------------------------------------
 // Social + DM — write ops live in [social: SocialActions]; these delegate so
 // the public surface (model.zapNote(…) etc.) is unchanged.
