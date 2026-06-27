@@ -1,0 +1,111 @@
+namespace nmp.marmot;
+
+// ADR-0064 / #2169 (M14-1c) — typed FlatBuffers payload for the `nmp.marmot`
+// `ActionModule` (the MLS-over-Nostr write seam). The OPAQUE
+// `DispatchEnvelope.payload` for `action_namespace = "nmp.marmot"`.
+//
+// One namespace, nine arms: the `MarmotActionBody` union selects the write op.
+// The `MarmotActionPayload` root wraps: `schema_version` (fail-closed tripwire,
+// slot 0 / vt 4) + the union `body` (discriminant ubyte at slot 1 / vt 6,
+// body offset at slot 2 / vt 8).
+//
+// Union discriminant order (declaration order, NONE=0):
+//   PublishKeyPackage=1, CreateGroup=2, Invite=3, Send=4, Leave=5,
+//   Remove=6, AcceptWelcome=7, DeclineWelcome=8, ClearPending=9
+//
+// `signed_key_package_events_json` is a `[string]` vector where each element
+// is the `serde_json::Value::to_string()` of one signed kind:30443 key-package
+// event JSON object. Decoded Rust-side via `serde_json::from_str` per element.
+//
+// Regenerate the checked-in Rust bindings ONLY with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh:
+//   flatc --rust -o crates/nmp-marmot/src/wire/generated \
+//         crates/nmp-marmot/schema/marmot_action.fbs
+
+// ── Arm body tables ──────────────────────────────────────────────────────────
+
+// Publish (or rotate) the local MLS key-package (kind:30443).
+// `relays` is the fallback write-relay set; production hosts override via
+// the host's kind:10002 write relays.
+table PublishKeyPackage {
+  relays:[string];
+}
+
+// Create a new MLS group.
+// `invitee_text` is the raw user-typed peer list (whitespace/comma/semicolon/
+// newline-separated npubs). Preferred over `invitee_npubs` when both present.
+// `invitee_npubs` is the pre-tokenized npub list (REPL / test path).
+// `signed_key_package_events_json` carries pre-fetched kind:30443 events as
+// JSON strings; empty → fall back to the in-process cache.
+table CreateGroup {
+  name:string (required);
+  description:string;
+  invitee_text:string;
+  invitee_npubs:[string];
+  signed_key_package_events_json:[string];
+  relays:[string];
+}
+
+// Invite peers to an existing MLS group.
+table Invite {
+  group_id_hex:string (required);
+  invitee_text:string;
+  invitee_npubs:[string];
+  signed_key_package_events_json:[string];
+}
+
+// Send a kind:14 NIP-44 group message.
+table Send {
+  group_id_hex:string (required);
+  text:string (required);
+}
+
+// Self-remove from a group (MLS SelfRemove proposal + commit).
+table Leave {
+  group_id_hex:string (required);
+}
+
+// Remove other members from the group (MLS Remove proposal + commit).
+table Remove {
+  group_id_hex:string (required);
+  member_npubs:[string];
+}
+
+// Accept a previously-cached pending Welcome (gift-wrap event id hex).
+table AcceptWelcome {
+  welcome_id_hex:string (required);
+}
+
+// Decline a previously-cached pending Welcome.
+table DeclineWelcome {
+  welcome_id_hex:string (required);
+}
+
+// Explicit pending-commit clear (mdk-api.md §7.7).
+table ClearPending {
+  group_id_hex:string (required);
+}
+
+// ── Union + root ─────────────────────────────────────────────────────────────
+
+union MarmotActionBody {
+  PublishKeyPackage,
+  CreateGroup,
+  Invite,
+  Send,
+  Leave,
+  Remove,
+  AcceptWelcome,
+  DeclineWelcome,
+  ClearPending
+}
+
+table MarmotActionPayload {
+  // Fail-closed schema_version tripwire (read RAW before decode, slot 0 / vt 4).
+  schema_version:uint;
+  // Union body: discriminant ubyte at slot 1 / vt 6; offset at slot 2 / vt 8.
+  body:MarmotActionBody (required);
+}
+
+file_identifier "NMMA";
+root_type MarmotActionPayload;

@@ -96,10 +96,11 @@ pub mod kotlin_keyed_cache;
 pub use manifest::{AppManifest, ModuleSet, NmpDependency};
 pub use action_contract::{
     canonical_default_action_namespaces, contract_for as action_contract_for,
-    dm_action_namespaces, lookup as action_contract_lookup, render_action_contract_report,
-    social_action_namespaces, substrate_action_namespaces, typed_dispatch_exemption_namespaces,
-    zap_action_namespaces, ActionContract, ActionDefaultTier, BuilderSupport,
-    PublicReExportPolicy, TypedDispatchPolicy, ACTION_CONTRACT,
+    dm_action_namespaces, lookup as action_contract_lookup, marmot_action_namespaces,
+    render_action_contract_report, social_action_namespaces, substrate_action_namespaces,
+    typed_dispatch_exemption_namespaces, wallet_action_namespaces, zap_action_namespaces,
+    ActionContract, ActionDefaultTier, BuilderSupport, PublicReExportPolicy, TypedDispatchPolicy,
+    ACTION_CONTRACT,
 };
 pub use projection_contract::{
     contract_for, drain_projection_keys, kernel_builtin_dependencies,

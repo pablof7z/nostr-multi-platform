@@ -639,4 +639,295 @@ object GeneratedActionBuilders {
             payload = payload,
         )
     }
+
+    /// Publish (or rotate) the local MLS key-package (kind:30443) to relays.
+    /// Builds the `nmp.marmot` `DispatchEnvelope` bytes (body `PublishKeyPackage`) for the byte doorway.
+    fun marmotPublishKeyPackage(
+        correlationId: String,
+        relays: List<String> = emptyList(),
+    ): ByteArray {
+        val fbb = FlatBufferBuilder()
+        val relaysVec = run {
+            val offs = IntArray(relays.size) { i -> fbb.createString(relays[i]) }
+            fbb.startVector(4, offs.size, 4)
+            for (i in offs.size - 1 downTo 0) fbb.addOffset(offs[i])
+            fbb.endVector()
+        }
+        fbb.startTable(1)
+        fbb.addOffset(0, relaysVec, 0) // slot 0: relays
+        val bodyOffset = fbb.endTable()
+        fbb.startTable(3)
+        fbb.addInt(0, 1, 0) // slot 0: schema_version
+        fbb.addByte(1, 1.toByte(), 0) // slot 1: body_type
+        fbb.addOffset(2, bodyOffset, 0) // slot 2: body
+        val payloadRoot = fbb.endTable()
+        fbb.finish(payloadRoot, "NMMA")
+        val payload = fbb.sizedByteArray()
+        return encodeDispatchEnvelope(
+            correlationId = correlationId,
+            actionNamespace = "nmp.marmot",
+            payload = payload,
+        )
+    }
+
+    /// Create a new MLS group and optionally invite peers.
+    /// Builds the `nmp.marmot` `DispatchEnvelope` bytes (body `CreateGroup`) for the byte doorway.
+    fun marmotCreateGroup(
+        correlationId: String,
+        name: String,
+        description: String = "",
+        inviteeText: String? = null,
+        inviteeNpubs: List<String>? = null,
+        signedKeyPackageEventsJson: List<String> = emptyList(),
+        relays: List<String> = emptyList(),
+    ): ByteArray {
+        val fbb = FlatBufferBuilder()
+        val relaysVec = run {
+            val offs = IntArray(relays.size) { i -> fbb.createString(relays[i]) }
+            fbb.startVector(4, offs.size, 4)
+            for (i in offs.size - 1 downTo 0) fbb.addOffset(offs[i])
+            fbb.endVector()
+        }
+        val jsonVec = if (signedKeyPackageEventsJson.isEmpty()) 0 else run {
+            val offs = IntArray(signedKeyPackageEventsJson.size) { i -> fbb.createString(signedKeyPackageEventsJson[i]) }
+            fbb.startVector(4, offs.size, 4)
+            for (i in offs.size - 1 downTo 0) fbb.addOffset(offs[i])
+            fbb.endVector()
+        }
+        // inviteeNpubs: null → absent (None); non-null → present vector (even if empty)
+        val npubsVec = inviteeNpubs?.let { npubs ->
+            val offs = IntArray(npubs.size) { i -> fbb.createString(npubs[i]) }
+            fbb.startVector(4, offs.size, 4)
+            for (i in offs.size - 1 downTo 0) fbb.addOffset(offs[i])
+            fbb.endVector()
+        } ?: 0
+        val inviteeTextOffset = inviteeText?.let { fbb.createString(it) } ?: 0
+        val descOffset = if (description.isEmpty()) 0 else fbb.createString(description)
+        val nameOffset = fbb.createString(name)
+        fbb.startTable(6)
+        fbb.addOffset(0, nameOffset, 0) // slot 0: name (required)
+        if (descOffset != 0) fbb.addOffset(1, descOffset, 0) // slot 1: description
+        if (inviteeTextOffset != 0) fbb.addOffset(2, inviteeTextOffset, 0) // slot 2: invitee_text
+        if (npubsVec != 0) fbb.addOffset(3, npubsVec, 0) // slot 3: invitee_npubs
+        if (jsonVec != 0) fbb.addOffset(4, jsonVec, 0) // slot 4: signed_key_package_events_json
+        fbb.addOffset(5, relaysVec, 0) // slot 5: relays
+        val bodyOffset = fbb.endTable()
+        fbb.startTable(3)
+        fbb.addInt(0, 1, 0) // slot 0: schema_version
+        fbb.addByte(1, 2.toByte(), 0) // slot 1: body_type
+        fbb.addOffset(2, bodyOffset, 0) // slot 2: body
+        val payloadRoot = fbb.endTable()
+        fbb.finish(payloadRoot, "NMMA")
+        val payload = fbb.sizedByteArray()
+        return encodeDispatchEnvelope(
+            correlationId = correlationId,
+            actionNamespace = "nmp.marmot",
+            payload = payload,
+        )
+    }
+
+    /// Invite one or more peers to an existing MLS group.
+    /// Builds the `nmp.marmot` `DispatchEnvelope` bytes (body `Invite`) for the byte doorway.
+    fun marmotInvite(
+        correlationId: String,
+        groupIdHex: String,
+        inviteeText: String? = null,
+        inviteeNpubs: List<String>? = null,
+        signedKeyPackageEventsJson: List<String> = emptyList(),
+    ): ByteArray {
+        val fbb = FlatBufferBuilder()
+        val jsonVec = if (signedKeyPackageEventsJson.isEmpty()) 0 else run {
+            val offs = IntArray(signedKeyPackageEventsJson.size) { i -> fbb.createString(signedKeyPackageEventsJson[i]) }
+            fbb.startVector(4, offs.size, 4)
+            for (i in offs.size - 1 downTo 0) fbb.addOffset(offs[i])
+            fbb.endVector()
+        }
+        val npubsVec = inviteeNpubs?.let { npubs ->
+            val offs = IntArray(npubs.size) { i -> fbb.createString(npubs[i]) }
+            fbb.startVector(4, offs.size, 4)
+            for (i in offs.size - 1 downTo 0) fbb.addOffset(offs[i])
+            fbb.endVector()
+        } ?: 0
+        val inviteeTextOffset = inviteeText?.let { fbb.createString(it) } ?: 0
+        val gidOffset = fbb.createString(groupIdHex)
+        fbb.startTable(4)
+        fbb.addOffset(0, gidOffset, 0) // slot 0: group_id_hex (required)
+        if (inviteeTextOffset != 0) fbb.addOffset(1, inviteeTextOffset, 0) // slot 1: invitee_text
+        if (npubsVec != 0) fbb.addOffset(2, npubsVec, 0) // slot 2: invitee_npubs
+        if (jsonVec != 0) fbb.addOffset(3, jsonVec, 0) // slot 3: signed_key_package_events_json
+        val bodyOffset = fbb.endTable()
+        fbb.startTable(3)
+        fbb.addInt(0, 1, 0) // slot 0: schema_version
+        fbb.addByte(1, 3.toByte(), 0) // slot 1: body_type
+        fbb.addOffset(2, bodyOffset, 0) // slot 2: body
+        val payloadRoot = fbb.endTable()
+        fbb.finish(payloadRoot, "NMMA")
+        val payload = fbb.sizedByteArray()
+        return encodeDispatchEnvelope(
+            correlationId = correlationId,
+            actionNamespace = "nmp.marmot",
+            payload = payload,
+        )
+    }
+
+    /// Send a kind:14 NIP-44 MLS group message.
+    /// Builds the `nmp.marmot` `DispatchEnvelope` bytes (body `Send`) for the byte doorway.
+    fun marmotSend(
+        correlationId: String,
+        groupIdHex: String,
+        text: String,
+    ): ByteArray {
+        val fbb = FlatBufferBuilder()
+        val textOffset = fbb.createString(text)
+        val gidOffset = fbb.createString(groupIdHex)
+        fbb.startTable(2)
+        fbb.addOffset(0, gidOffset, 0) // slot 0: group_id_hex (required)
+        fbb.addOffset(1, textOffset, 0) // slot 1: text (required)
+        val bodyOffset = fbb.endTable()
+        fbb.startTable(3)
+        fbb.addInt(0, 1, 0) // slot 0: schema_version
+        fbb.addByte(1, 4.toByte(), 0) // slot 1: body_type
+        fbb.addOffset(2, bodyOffset, 0) // slot 2: body
+        val payloadRoot = fbb.endTable()
+        fbb.finish(payloadRoot, "NMMA")
+        val payload = fbb.sizedByteArray()
+        return encodeDispatchEnvelope(
+            correlationId = correlationId,
+            actionNamespace = "nmp.marmot",
+            payload = payload,
+        )
+    }
+
+    /// Self-remove from a MLS group (SelfRemove proposal + commit).
+    /// Builds the `nmp.marmot` `DispatchEnvelope` bytes (body `Leave`) for the byte doorway.
+    fun marmotLeave(
+        correlationId: String,
+        groupIdHex: String,
+    ): ByteArray {
+        val fbb = FlatBufferBuilder()
+        val gidOffset = fbb.createString(groupIdHex)
+        fbb.startTable(1)
+        fbb.addOffset(0, gidOffset, 0) // slot 0: group_id_hex (required)
+        val bodyOffset = fbb.endTable()
+        fbb.startTable(3)
+        fbb.addInt(0, 1, 0) // slot 0: schema_version
+        fbb.addByte(1, 5.toByte(), 0) // slot 1: body_type
+        fbb.addOffset(2, bodyOffset, 0) // slot 2: body
+        val payloadRoot = fbb.endTable()
+        fbb.finish(payloadRoot, "NMMA")
+        val payload = fbb.sizedByteArray()
+        return encodeDispatchEnvelope(
+            correlationId = correlationId,
+            actionNamespace = "nmp.marmot",
+            payload = payload,
+        )
+    }
+
+    /// Remove other members from a MLS group (Remove proposal + commit).
+    /// Builds the `nmp.marmot` `DispatchEnvelope` bytes (body `Remove`) for the byte doorway.
+    fun marmotRemove(
+        correlationId: String,
+        groupIdHex: String,
+        memberNpubs: List<String> = emptyList(),
+    ): ByteArray {
+        val fbb = FlatBufferBuilder()
+        val npubsVec = run {
+            val offs = IntArray(memberNpubs.size) { i -> fbb.createString(memberNpubs[i]) }
+            fbb.startVector(4, offs.size, 4)
+            for (i in offs.size - 1 downTo 0) fbb.addOffset(offs[i])
+            fbb.endVector()
+        }
+        val gidOffset = fbb.createString(groupIdHex)
+        fbb.startTable(2)
+        fbb.addOffset(0, gidOffset, 0) // slot 0: group_id_hex (required)
+        fbb.addOffset(1, npubsVec, 0) // slot 1: member_npubs
+        val bodyOffset = fbb.endTable()
+        fbb.startTable(3)
+        fbb.addInt(0, 1, 0) // slot 0: schema_version
+        fbb.addByte(1, 6.toByte(), 0) // slot 1: body_type
+        fbb.addOffset(2, bodyOffset, 0) // slot 2: body
+        val payloadRoot = fbb.endTable()
+        fbb.finish(payloadRoot, "NMMA")
+        val payload = fbb.sizedByteArray()
+        return encodeDispatchEnvelope(
+            correlationId = correlationId,
+            actionNamespace = "nmp.marmot",
+            payload = payload,
+        )
+    }
+
+    /// Accept a pending MLS Welcome (by gift-wrap event id hex).
+    /// Builds the `nmp.marmot` `DispatchEnvelope` bytes (body `AcceptWelcome`) for the byte doorway.
+    fun marmotAcceptWelcome(
+        correlationId: String,
+        welcomeIdHex: String,
+    ): ByteArray {
+        val fbb = FlatBufferBuilder()
+        val widOffset = fbb.createString(welcomeIdHex)
+        fbb.startTable(1)
+        fbb.addOffset(0, widOffset, 0) // slot 0: welcome_id_hex (required)
+        val bodyOffset = fbb.endTable()
+        fbb.startTable(3)
+        fbb.addInt(0, 1, 0) // slot 0: schema_version
+        fbb.addByte(1, 7.toByte(), 0) // slot 1: body_type
+        fbb.addOffset(2, bodyOffset, 0) // slot 2: body
+        val payloadRoot = fbb.endTable()
+        fbb.finish(payloadRoot, "NMMA")
+        val payload = fbb.sizedByteArray()
+        return encodeDispatchEnvelope(
+            correlationId = correlationId,
+            actionNamespace = "nmp.marmot",
+            payload = payload,
+        )
+    }
+
+    /// Decline a pending MLS Welcome.
+    /// Builds the `nmp.marmot` `DispatchEnvelope` bytes (body `DeclineWelcome`) for the byte doorway.
+    fun marmotDeclineWelcome(
+        correlationId: String,
+        welcomeIdHex: String,
+    ): ByteArray {
+        val fbb = FlatBufferBuilder()
+        val widOffset = fbb.createString(welcomeIdHex)
+        fbb.startTable(1)
+        fbb.addOffset(0, widOffset, 0) // slot 0: welcome_id_hex (required)
+        val bodyOffset = fbb.endTable()
+        fbb.startTable(3)
+        fbb.addInt(0, 1, 0) // slot 0: schema_version
+        fbb.addByte(1, 8.toByte(), 0) // slot 1: body_type
+        fbb.addOffset(2, bodyOffset, 0) // slot 2: body
+        val payloadRoot = fbb.endTable()
+        fbb.finish(payloadRoot, "NMMA")
+        val payload = fbb.sizedByteArray()
+        return encodeDispatchEnvelope(
+            correlationId = correlationId,
+            actionNamespace = "nmp.marmot",
+            payload = payload,
+        )
+    }
+
+    /// Explicitly clear the pending-commit state for a MLS group.
+    /// Builds the `nmp.marmot` `DispatchEnvelope` bytes (body `ClearPending`) for the byte doorway.
+    fun marmotClearPending(
+        correlationId: String,
+        groupIdHex: String,
+    ): ByteArray {
+        val fbb = FlatBufferBuilder()
+        val gidOffset = fbb.createString(groupIdHex)
+        fbb.startTable(1)
+        fbb.addOffset(0, gidOffset, 0) // slot 0: group_id_hex (required)
+        val bodyOffset = fbb.endTable()
+        fbb.startTable(3)
+        fbb.addInt(0, 1, 0) // slot 0: schema_version
+        fbb.addByte(1, 9.toByte(), 0) // slot 1: body_type
+        fbb.addOffset(2, bodyOffset, 0) // slot 2: body
+        val payloadRoot = fbb.endTable()
+        fbb.finish(payloadRoot, "NMMA")
+        val payload = fbb.sizedByteArray()
+        return encodeDispatchEnvelope(
+            correlationId = correlationId,
+            actionNamespace = "nmp.marmot",
+            payload = payload,
+        )
+    }
 }

@@ -87,14 +87,20 @@ fn contract_matches_modules_and_default_payload_reexports() {
     ];
 
     let checked: BTreeSet<&str> = checked.into_iter().collect();
+    // `ActionDefaultTier::Marmot` is a feature-gated dep (`nmp-marmot`) not
+    // available in `nmp-defaults`. Filter it from the contract set so the
+    // set-equality assertion does not require adding `nmp-marmot` here.
     let contract: BTreeSet<&str> = nmp_codegen::ACTION_CONTRACT
         .iter()
+        .filter(|c| c.default_tier != nmp_codegen::ActionDefaultTier::Marmot)
         .map(|c| c.namespace)
         .collect();
     assert_eq!(
         checked, contract,
         "every action contract row must be checked against its module \
-         namespace and payload type (wallet rows checked via nmp_nip47 directly)"
+         namespace and payload type (wallet rows checked via nmp_nip47 directly; \
+         marmot rows excluded — nmp-marmot is a feature-gated dep not available \
+         in nmp-defaults)"
     );
 }
 

@@ -103,6 +103,10 @@ fn encode_payload_for_namespace(namespace: &str, json: &str) -> Result<Vec<u8>, 
         "nmp.wallet.disconnect" => encode::<nmp_nip47::WalletDisconnectAction>(namespace, json),
         #[cfg(feature = "wallet")]
         "nmp.wallet.pay_invoice" => encode::<nmp_nip47::WalletAction>(namespace, json),
+        #[cfg(feature = "marmot")]
+        "nmp.marmot" => {
+            encode::<nmp_marmot::projection::action::MarmotAction>(namespace, json)
+        }
         other => Err(format!(
             "no typed payload encoder for action namespace '{other}' (byte doorway has no JSON fallback)"
         )),

@@ -75,7 +75,7 @@ class KernelModel : ViewModel() {
      * `model.marmot` surface; all UI call sites use `model.marmot.<op>()`.
      * Extracted into [MarmotActions] to keep this file under the 500-LOC ceiling.
      */
-    val marmot = MarmotActions(dispatchMarmotAction = { json -> bridge.dispatchMarmotAction(json) })
+    val marmot = MarmotActions(dispatchBytes = { bytes -> bridge.dispatchMarmotBytes(bytes) })
 
     /**
      * Social write operations (NIP-25/57/18/02/17). Extracted into [SocialActions]

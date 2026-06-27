@@ -1,8 +1,12 @@
 package org.nmp.android
 
-private const val MARMOT_ACTION_NAMESPACE = "nmp.marmot"
+// M14-1c / #2169 — The Marmot write seam now routes through the typed byte
+// doorway via `GeneratedActionBuilders.marmotXxx(...)` → `bridge.dispatchBytes`.
+// The hand-spelled `MARMOT_ACTION_NAMESPACE` literal and
+// `dispatchMarmotAction(actionJson)` JSON bridge are DELETED here; the
+// boundary gate (`ci/check_native_action_boundary.py`) asserts no hand-spelled
+// `"nmp.marmot"` literal survives in production Kotlin.
 
-/** Dispatch a Marmot action envelope through the UniFFI AppHandle byte doorway.
- *  staged: see #2145 (M14-1) — migrate to GeneratedActionBuilders bytes-only dispatch. */
-internal fun KernelBridge.dispatchMarmotAction(actionJson: String): DispatchResult =
-    dispatchActionJson(MARMOT_ACTION_NAMESPACE, actionJson)
+/** Dispatch a Marmot action bytes payload through the typed byte doorway. */
+internal fun KernelBridge.dispatchMarmotBytes(bytes: ByteArray): DispatchResult =
+    dispatchBytes(bytes)

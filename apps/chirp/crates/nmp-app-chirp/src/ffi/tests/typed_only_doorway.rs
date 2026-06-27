@@ -77,13 +77,6 @@ use super::helpers::{MarmotTestRegistration, register_marmot_for_test};
 /// composition (excluding the `marmot` feature) is REACHED.
 const MIGRATION_PENDING_UNTYPED: &[&str] = &[];
 
-/// `nmp.marmot` is JSON-only (`MarmotActionModule` overrides no
-/// `decode_payload`; see `crates/nmp-marmot/src/projection/action.rs`). Owner:
-/// nmp-marmot (the MLS-over-Nostr seam). Only present under `--features marmot`,
-/// so it is a SEPARATE feature-gated allowlist entry.
-#[cfg(feature = "marmot")]
-const MARMOT_PENDING_UNTYPED: &str = "nmp.marmot";
-
 struct FullChirpComposition {
     app: *mut NmpApp,
     handle: *mut ChirpHandle,
@@ -151,17 +144,15 @@ fn build_full_chirp_composition() -> FullChirpComposition {
     composition
 }
 
-/// Sorted expected untyped set for the composition actually built (feature
-/// dependent).
+/// Sorted expected untyped set for the composition actually built.
+/// After M14-1c (#2169), `nmp.marmot` is now TYPED (`MarmotActionModule`
+/// overrides `decode_payload`) so it is no longer in the untyped allowlist.
+/// The full composition (including `--features marmot`) has zero untyped modules.
 fn expected_untyped() -> Vec<String> {
-    let mut expected: Vec<String> = MIGRATION_PENDING_UNTYPED
+    MIGRATION_PENDING_UNTYPED
         .iter()
         .map(|s| (*s).to_string())
-        .collect();
-    #[cfg(feature = "marmot")]
-    expected.push(MARMOT_PENDING_UNTYPED.to_string());
-    expected.sort();
-    expected
+        .collect()
 }
 
 /// THE production gate: after the FULL Chirp composition is wired, the untyped
@@ -185,7 +176,7 @@ fn full_chirp_composition_untyped_modules_match_the_migration_allowlist() {
          module in the production composition (forbidden — the byte doorway is \
          typed-only, #1756). A namespace in the allowlist but absent here \
          finished its typed migration — strike it from \
-         `MIGRATION_PENDING_UNTYPED` (or `MARMOT_PENDING_UNTYPED`) so the \
+         `MIGRATION_PENDING_UNTYPED` so the \
          ratchet shrinks toward empty (Cut B = empty across the full \
          composition)."
     );

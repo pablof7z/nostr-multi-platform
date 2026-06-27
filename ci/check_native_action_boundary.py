@@ -32,9 +32,10 @@ def migrated_namespaces(root: Path) -> set[str]:
         fail(f"action-builder registry not found: {REGISTRY_REL}")
     text = registry.read_text()
     namespaces = set(re.findall(r'namespace:\s*"([^"]+)"', text))
-    publish = re.search(r'PUBLISH_NAMESPACE:\s*&str\s*=\s*"([^"]+)"', text)
-    if publish:
-        namespaces.add(publish.group(1))
+    # Pick up union-namespace constants (PUBLISH_NAMESPACE, MARMOT_NAMESPACE, …).
+    # Pattern: `pub const FOO_NAMESPACE: &str = "nmp.xxx";`
+    for m in re.finditer(r'pub const \w+_NAMESPACE:\s*&str\s*=\s*"([^"]+)"', text):
+        namespaces.add(m.group(1))
     if not namespaces:
         fail("no migrated action namespaces discovered from action-builder registry")
     return namespaces
@@ -148,6 +149,7 @@ pub const ACTION_BUILDERS: &[ActionBuilder] = &[
     ActionBuilder { namespace: "nmp.follow", method: "follow", payload_file_identifier: "NF2A", payload_schema_version: 1, fields: &[], doc: "" },
 ];
 pub const PUBLISH_NAMESPACE: &str = "nmp.publish";
+pub const MARMOT_NAMESPACE: &str = "nmp.marmot";
 """,
         )
         write(tmp / "apps/chirp/ios/Chirp/Bridge/Generated/ActionBuilders.generated.swift", '"nmp.follow"\n')

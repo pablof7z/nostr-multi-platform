@@ -38,13 +38,19 @@ use std::path::Path;
 pub mod registry;
 
 pub mod kotlin;
+pub mod kotlin_marmot;
 pub mod kotlin_publish;
 pub mod swift;
+pub mod swift_marmot;
 pub mod swift_publish;
 pub mod ts;
+pub mod ts_marmot;
 pub mod ts_publish;
 
-pub use registry::{ActionBuilder, FieldKind, PayloadField, ACTION_BUILDERS};
+pub use registry::{
+    ActionBuilder, FieldKind, MarmotBodyShape, MarmotBuilder, PayloadField, ACTION_BUILDERS,
+    MARMOT_BUILDERS, MARMOT_NAMESPACE,
+};
 
 /// Which host language to emit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
