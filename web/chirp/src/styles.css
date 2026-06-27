@@ -179,6 +179,11 @@
   margin: 0 auto;
 }
 
+.content-grid[data-main-view="setup"] {
+  max-width: 1040px;
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .first-run-workspace {
   display: grid;
   min-width: 0;
@@ -186,6 +191,10 @@
   grid-template-columns: minmax(0, 1.08fr) minmax(330px, 0.92fr);
   gap: 20px;
   align-items: stretch;
+}
+
+.content-grid[data-main-view="setup"] .first-run-workspace {
+  grid-column: auto;
 }
 
 [data-slot="feed"],
@@ -286,13 +295,5 @@
 
   .first-run-workspace {
     gap: 0;
-  }
-
-  .content-grid[data-first-run="true"] [data-slot="feed"] {
-    order: 2;
-  }
-
-  .content-grid[data-first-run="true"] [data-slot="session-tools"] {
-    order: 3;
   }
 }

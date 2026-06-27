@@ -18,6 +18,8 @@ test("@wasm onboarding: no-extension browser reaches a complete local-key produc
 
     const shell = page.locator(SHELL);
     await expect(shell).toHaveAttribute("data-runtime-status", "running", { timeout: 30_000 });
+    await expect(shell).toHaveAttribute("data-main-view", "setup");
+    await expect(page.getByTestId("nav-setup")).toHaveAttribute("aria-current", "page");
     await expect
       .poll(() => relay.connectionCount(), { timeout: 20_000 })
       .toBeGreaterThanOrEqual(1);
@@ -32,6 +34,7 @@ test("@wasm onboarding: no-extension browser reaches a complete local-key produc
     await expect(page.locator(".signing-method", { hasText: "Session nsec" })).toBeVisible();
     await expect(page.getByText("No extension detected in this browser")).toBeVisible();
     await expect(page.getByTestId("local-nsec-input")).toBeVisible();
+    await expect(page.locator('[data-slot="feed"]')).toHaveCount(0);
 
     await page.getByTestId("local-nsec-input").fill(localNsec);
     await page.getByTestId("local-nsec-submit").click();
@@ -39,6 +42,7 @@ test("@wasm onboarding: no-extension browser reaches a complete local-key produc
     await expect(page.locator('[data-slot="active-signer"]')).toContainText("Local key", {
       timeout: 30_000,
     });
+    await expect(shell).toHaveAttribute("data-main-view", "home");
     await expect(page.getByTestId("feed-timeline")).toContainText(relay.noteContent, {
       timeout: 60_000,
     });

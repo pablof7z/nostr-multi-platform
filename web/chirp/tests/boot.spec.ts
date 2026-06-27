@@ -88,9 +88,11 @@ test.describe("boot", () => {
         .poll(() => relay.connectionCount(), { timeout: 20_000 })
         .toBeGreaterThanOrEqual(1);
 
-      // Product readiness surface: first-run checklist + relay diagnostics must
-      // render from runtime-owned state, not just hidden data attributes.
+      // Product readiness surface: first-run starts in setup, while relay
+      // diagnostics remain reachable from the rail without developer tools.
+      await expect(shell).toHaveAttribute("data-main-view", "setup");
       await expect(page.locator(".onboarding-panel")).toBeVisible();
+      await page.getByRole("link", { name: "Relays" }).click();
       await expect(page.locator(".diagnostics-panel")).toBeVisible();
       await expect(page.locator(".relay-row").first()).toBeVisible();
       await page.getByRole("button", { name: /routing/i }).click();
