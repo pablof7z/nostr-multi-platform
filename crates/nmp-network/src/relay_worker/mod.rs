@@ -9,6 +9,8 @@ use tungstenite::stream::MaybeTlsStream;
 use tungstenite::{Message, WebSocket};
 
 mod connect;
+#[cfg(test)]
+mod control_disconnect_tests;
 mod io_ready;
 #[cfg(test)]
 mod jitter_tests;
@@ -326,6 +328,7 @@ fn run_connected_relay(
                 // sending Shutdown). Emit an honest Closed event so consumers tracking
                 // slot health see a terminal state rather than being left at the last
                 // non-terminal event forever.
+                let _ = socket.close(None);
                 let _ = relay_tx.send(RelayEvent::Closed {
                     role,
                     relay_url: relay_url.to_string(),
