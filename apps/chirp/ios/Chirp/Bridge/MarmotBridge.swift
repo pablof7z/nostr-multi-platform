@@ -36,19 +36,20 @@ import os.log
 //   event of those kinds is automatically processed by the Rust layer
 //   (welcomes / messages / key packages surface in the next snapshot).
 //
-// ── ADR-0025 PR 2 (this revision) — dispatch routing ─────────────────────
+// ── M14-1c / #2169 — typed FlatBuffers byte doorway ──────────────────────
 //
-// MLS write ops (create_group, invite, send, leave, remove, accept_welcome,
-// decline_welcome, publish_key_package, clear_pending)
-// are routed through Chirp's typed byte doorway
-// `nmp_app_chirp_dispatch_action_bytes("nmp.marmot", action_json)` — the same
-// ActionModule executor path every other namespace uses after typed payload
-// encoding. The Rust side (PR #363) registered a `MarmotActionModule` +
-// `MlsOpHandler` trait so the wire shape stays byte-identical
-// (`{"op":"...", ...}`), while Swift no longer reaches bespoke Marmot C-ABI
-// dispatch symbols. Dispatch is non-blocking — it returns a `correlation_id`
-// synchronously and the actual `Accepted` / `Failed` verdict arrives in the
-// next snapshot's `action_stages` projection.
+// MLS write ops are routed through the typed byte doorway via
+// `GeneratedActionBuilders.marmotXxx(...)` → `kernel.dispatchBytes(bytes)`.
+// The generated builders hand-roll the `MarmotActionPayload` FlatBuffers
+// buffer (marmot_action.fbs / NMMA) matching `MarmotAction::encode` in
+// `nmp_marmot::wire::action_payload`. The Rust decoder unpacks the union
+// arm via `MarmotActionModule::decode_payload` (override added in #2169).
+//
+// The JSON assembly helpers (`dispatchMarmotAction(bodyJson:)`,
+// `dispatchAsync`, `dispatchFireAndForget`) are DELETED — replaced by
+// per-method builder calls. No `nmp_app_chirp_dispatch_action_bytes` calls
+// with a hand-spelled `"nmp.marmot"` literal remain in production code
+// (enforced by `ci/check_native_action_boundary.py`).
 //
 // ── Key-package fetch ─────────────────────────────────────────────────────
 //
@@ -156,25 +157,6 @@ extension KernelHandle {
             marmotHandle = nil
         }
     }
-
-    @discardableResult
-    fileprivate func dispatchMarmotAction(bodyJson: String) -> DispatchResult {
-        let namespace = "nmp.marmot"
-        let envelope: String? = bodyJson.withCString { jsonPtr in
-            namespace.withCString { nsPtr in
-                guard let ptr = nmp_app_chirp_dispatch_action_bytes(raw, nsPtr, jsonPtr) else {
-                    return nil
-                }
-                defer { nmp_free_string(ptr) }
-                return String(cString: ptr)
-            }
-        }
-        guard let envelope else {
-            return .failure("dispatch returned a null envelope")
-        }
-        return DispatchResult.parse(envelope: envelope)
-    }
-
 }
 
 // ── MarmotStore — projection mirror pushed by KernelModel.apply ───────────
@@ -251,46 +233,37 @@ final class MarmotStore: ObservableObject {
     }
 
     // ── Dispatch op wrappers ──────────────────────────────────────────────
-    // Each encodes the op envelope and dispatches it through the typed Marmot
-    // bridge method. The next kernel snapshot pushes the refreshed Marmot view;
-    // the UI does not poll from Swift.
+    // Each encodes the typed FlatBuffers payload via `GeneratedActionBuilders`
+    // and dispatches it through `kernel.dispatchBytes(_:)` (M14-1c / #2169).
     //
-    // `dispatch_action` is non-blocking — it validates the namespace + body,
+    // `dispatchBytes` is non-blocking — it validates the typed payload,
     // mints a `correlation_id`, enqueues the op for the actor thread, and
     // returns immediately. The actor in turn invokes the registered
-    // `MlsOpHandler` and records `Accepted` / `Failed` in `action_stages` for a
-    // future snapshot. As a result the wrappers below run inline on the
-    // calling actor (no `DispatchQueue.global()` or `withCheckedContinuation`
-    // is needed — the prior 0–6 s relay-timeout justification was specific to
-    // the now-retired blocking `nmp_marmot_dispatch` path).
+    // `MlsOpHandler` and records `Accepted` / `Failed` in `action_stages` for
+    // a future snapshot.
     //
     // Two call-site contracts:
     // • Fire-and-forget (Void return): the outcome arrives as a refreshed
     //   snapshot on the next kernel tick; callers need no result.
     // • Result-dependent (async → MarmotOpResult): the `async` is kept on
     //   the signature for source-compat with existing `Task { let r = await
-    //   … }` call sites, even though the body is now synchronous. The
-    //   returned value reports submission acceptance only — see the
-    //   `MarmotOpResult` doc comment for the semantic shift.
+    //   … }` call sites, even though the body is now synchronous.
 
-    /// Encode the op envelope and dispatch it through `dispatch_action`.
-    /// Returns a `MarmotOpResult` reporting submission acceptance: `.ok`
-    /// when the kernel minted a `correlation_id`; `.failure(_)` when the
-    /// kernel rejected the body synchronously (unknown namespace, malformed
-    /// JSON, validator rejection) or when the body failed to encode.
-    /// Never throws across the bridge (D6).
-    private func dispatchAsync(_ action: [String: Any]) async -> MarmotOpResult {
-        guard let data = try? JSONSerialization.data(withJSONObject: action),
-              let json = String(data: data, encoding: .utf8)
-        else { return .failure("could not encode action") }
-        // The Marmot handle is the Swift-side proof that the active account
-        // has a local signing key (and therefore an MLS identity). The
-        // kernel-side module will also reject a `nmp.marmot` dispatch when
-        // no MarmotMlsOpHandler is installed, but preserving the fast-fail
-        // surfaces the same `.bridgeUnavailable` UX bunker sign-in users
-        // saw on the old path.
+    // ── fire-and-forget helper ────────────────────────────────────────────
+
+    /// Dispatch typed bytes fire-and-forget. The Marmot handle is the Swift-
+    /// side proof of a local signing key; without it the kernel rejects the
+    /// dispatch anyway, but the fast-fail preserves the `.bridgeUnavailable`
+    /// UX for bunker users.
+    private func fireAndForget(_ bytes: [UInt8]) {
+        guard kernel.marmotHandle != nil else { return }
+        _ = kernel.dispatchBytes(bytes)
+    }
+
+    /// Dispatch typed bytes and translate the result to `MarmotOpResult`.
+    private func submitAsync(_ bytes: [UInt8]) async -> MarmotOpResult {
         guard kernel.marmotHandle != nil else { return .bridgeUnavailable }
-        let result = kernel.dispatchMarmotAction(bodyJson: json)
+        let result = kernel.dispatchBytes(bytes)
         switch result {
         case .accepted(let correlationId):
             return .submitted(correlationId: correlationId)
@@ -299,22 +272,17 @@ final class MarmotStore: ObservableObject {
         }
     }
 
-    /// Encode the op envelope and dispatch fire-and-forget. The outcome
-    /// arrives as a refreshed snapshot on the next kernel tick.
-    private func dispatchFireAndForget(_ action: [String: Any]) {
-        guard let data = try? JSONSerialization.data(withJSONObject: action),
-              let json = String(data: data, encoding: .utf8)
-        else { return }
-        guard kernel.marmotHandle != nil else { return }
-        _ = kernel.dispatchMarmotAction(bodyJson: json)
-    }
+    // ── Publish (or rotate) the local MLS key-package ────────────────────
 
     /// Publish (or rotate) the local MLS key-package.
     ///
     /// Fire-and-forget: the refreshed key-package state arrives via the next
     /// kernel snapshot tick.
     func publishKeyPackage() {
-        dispatchFireAndForget(["op": "publish_key_package"])
+        let bytes = GeneratedActionBuilders.marmotPublishKeyPackage(
+            correlationId: UUID().uuidString
+        )
+        fireAndForget(bytes)
     }
 
     /// True if all of the given npubs have a cached key package locally.
@@ -323,56 +291,98 @@ final class MarmotStore: ObservableObject {
         return npubs.allSatisfy { cached.contains($0) }
     }
 
+    // ── CreateGroup ───────────────────────────────────────────────────────
+
     /// Create a new MLS group. `inviteeText` is the raw text the user
     /// typed; Rust tokenises (whitespace / comma / semicolon / newline)
     /// and validates each entry — Swift does no parsing.
     func createGroup(name: String, description: String, inviteeText: String) async -> MarmotOpResult {
-        await dispatchAsync([
-            "op": "create_group",
-            "name": name,
-            "description": description,
-            "invitee_text": inviteeText,
-            "signed_key_package_events_json": [String](),
-        ])
+        let bytes = GeneratedActionBuilders.marmotCreateGroup(
+            correlationId: UUID().uuidString,
+            name: name,
+            description: description,
+            inviteeText: inviteeText
+        )
+        return await submitAsync(bytes)
     }
+
+    // ── Invite ────────────────────────────────────────────────────────────
 
     /// Invite peers to an existing MLS group. `inviteeText` is the raw
     /// user-typed list; tokenisation + validation happen Rust-side.
     func invite(groupIDHex: String, inviteeText: String) async -> MarmotOpResult {
-        await dispatchAsync([
-            "op": "invite",
-            "group_id_hex": groupIDHex,
-            "invitee_text": inviteeText,
-            "signed_key_package_events_json": [String](),
-        ])
+        let bytes = GeneratedActionBuilders.marmotInvite(
+            correlationId: UUID().uuidString,
+            groupIdHex: groupIDHex,
+            inviteeText: inviteeText
+        )
+        return await submitAsync(bytes)
     }
+
+    // ── Send ──────────────────────────────────────────────────────────────
 
     func send(groupIDHex: String, text: String) async -> MarmotOpResult {
-        await dispatchAsync(["op": "send", "group_id_hex": groupIDHex, "text": text])
+        let bytes = GeneratedActionBuilders.marmotSend(
+            correlationId: UUID().uuidString,
+            groupIdHex: groupIDHex,
+            text: text
+        )
+        return await submitAsync(bytes)
     }
+
+    // ── Leave ─────────────────────────────────────────────────────────────
 
     func leave(groupIDHex: String) async -> MarmotOpResult {
-        await dispatchAsync(["op": "leave", "group_id_hex": groupIDHex])
+        let bytes = GeneratedActionBuilders.marmotLeave(
+            correlationId: UUID().uuidString,
+            groupIdHex: groupIDHex
+        )
+        return await submitAsync(bytes)
     }
 
+    // ── Remove ────────────────────────────────────────────────────────────
+
     func remove(groupIDHex: String, memberNpubs: [String]) async -> MarmotOpResult {
-        await dispatchAsync(["op": "remove", "group_id_hex": groupIDHex, "member_npubs": memberNpubs])
+        let bytes = GeneratedActionBuilders.marmotRemove(
+            correlationId: UUID().uuidString,
+            groupIdHex: groupIDHex,
+            memberNpubs: memberNpubs
+        )
+        return await submitAsync(bytes)
     }
+
+    // ── AcceptWelcome ─────────────────────────────────────────────────────
 
     /// Accept a pending MLS group invite. Fire-and-forget: the welcome
     /// disappears from the next snapshot tick.
     func acceptWelcome(welcomeIDHex: String) {
-        dispatchFireAndForget(["op": "accept_welcome", "welcome_id_hex": welcomeIDHex])
+        let bytes = GeneratedActionBuilders.marmotAcceptWelcome(
+            correlationId: UUID().uuidString,
+            welcomeIdHex: welcomeIDHex
+        )
+        fireAndForget(bytes)
     }
+
+    // ── DeclineWelcome ────────────────────────────────────────────────────
 
     /// Decline a pending MLS group invite. Fire-and-forget: the welcome
     /// disappears from the next snapshot tick.
     func declineWelcome(welcomeIDHex: String) {
-        dispatchFireAndForget(["op": "decline_welcome", "welcome_id_hex": welcomeIDHex])
+        let bytes = GeneratedActionBuilders.marmotDeclineWelcome(
+            correlationId: UUID().uuidString,
+            welcomeIdHex: welcomeIDHex
+        )
+        fireAndForget(bytes)
     }
+
+    // ── ClearPending ──────────────────────────────────────────────────────
 
     /// Publish-failure recovery: clear a group's pending MDK commit.
     func clearPending(groupIDHex: String) {
-        dispatchFireAndForget(["op": "clear_pending", "group_id_hex": groupIDHex])
+        let bytes = GeneratedActionBuilders.marmotClearPending(
+            correlationId: UUID().uuidString,
+            groupIdHex: groupIDHex
+        )
+        fireAndForget(bytes)
     }
 }

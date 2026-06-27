@@ -333,4 +333,21 @@ pub const ACTION_CONTRACT: &[ActionContract] = &[
         public_re_export: PUBLIC_REEXPORT,
         typed_dispatch: TYPED_ONLY,
     },
+    // nmp-marmot — MLS-over-Nostr write seam (opt-in via `--features marmot`).
+    // One namespace, nine arms (union). M14-1c / #2169.
+    ActionContract {
+        namespace: "nmp.marmot",
+        producer: "nmp-marmot action",
+        module_type: "nmp_marmot::MarmotActionModule",
+        payload_type: "nmp_marmot::MarmotAction",
+        schema_id: "nmp.marmot",
+        schema_path: "crates/nmp-marmot/schema/marmot_action.fbs",
+        root_type: "MarmotActionPayload",
+        schema_version: 1,
+        file_identifier: "NMMA",
+        default_tier: ActionDefaultTier::Marmot,
+        builder_support: BuilderSupport::GeneratedMarmotUnion,
+        public_re_export: PUBLIC_REEXPORT,
+        typed_dispatch: TYPED_ONLY,
+    },
 ];

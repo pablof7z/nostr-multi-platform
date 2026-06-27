@@ -56,8 +56,8 @@ use std::sync::Arc;
 
 use nmp_core::actor::ActorCommand;
 use nmp_core::substrate::{
-    ActionContext, ActionModule, ActionRejection, ProtocolCommand, ProtocolCommandContext,
-    ProtocolCommandError,
+    ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
+    ProtocolCommand, ProtocolCommandContext, ProtocolCommandError,
 };
 use serde::{Deserialize, Serialize};
 
@@ -85,7 +85,7 @@ pub const MARMOT_ACTION_NAMESPACE: &str = "nmp.marmot";
 /// envelope tolerates ignored extra fields (e.g. iOS sometimes appends
 /// `signed_key_package_events_json: []` to `invite` and `create_group`
 /// even when empty), and rejecting them would break the migration.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum MarmotAction {
     /// Publish (or rotate) the local MLS key-package as kind:30443.
@@ -383,6 +383,15 @@ impl ActionModule for MarmotActionModule {
     fn is_async_completing() -> bool {
         // doctrine-allow: D12 — stage transitions are recorded by the typed protocol command on the Protocol arm, not here; this is the seam declaration so the registry routes the verdict.
         true
+    }
+
+    /// Decode a typed FlatBuffers payload produced by the host builder (M14-1c /
+    /// #2169). Delegates to [`ActionPayload::decode`] on [`MarmotAction`], which
+    /// checks the `NMMA` file identifier and the `schema_version` tripwire
+    /// before reconstructing the union arm. Returns `Some(...)` always — this
+    /// module is now typed-only through the byte doorway.
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<Self::Action as ActionPayload>::decode(bytes))
     }
 
     /// Hand the typed action to [`MarmotProtocolCommand`] on the `Protocol`

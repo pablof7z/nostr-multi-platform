@@ -473,3 +473,12 @@ pub const PUBLISH_BUILDERS: &[PublishBuilder] = &[
         doc: "Sign-and-publish a kind:0 profile metadata event for the active account.",
     },
 ];
+
+// ── nmp.marmot union builders (M14-1c / #2169) ───────────────────────────────
+//
+// The 9-arm `nmp.marmot` union registry lives in the sibling
+// [`crate::action_builders::registry_marmot`] module (size-management seam —
+// V-12; declared in `action_builders.rs`). Re-exported here so callers see one
+// flat `registry::` surface (`MARMOT_BUILDERS`, `MarmotBuilder`,
+// `MarmotBodyShape`, `MARMOT_NAMESPACE`).
+pub use super::registry_marmot::*;

@@ -607,4 +607,277 @@ public enum GeneratedActionBuilders {
             payload: payload
         )
     }
+
+    /// Publish (or rotate) the local MLS key-package (kind:30443) to relays.
+    /// Builds the `nmp.marmot` `DispatchEnvelope` bytes (body `PublishKeyPackage`) for the byte doorway.
+    public static func marmotPublishKeyPackage(
+        correlationId: String,
+        relays: [String] = []
+    ) -> [UInt8] {
+        var fbb = FlatBufferBuilder()
+        let relayOffsets = relays.map { fbb.create(string: $0) }
+        let relaysVec = fbb.createVector(ofOffsets: relayOffsets)
+        let bodyStart = fbb.startTable(with: 1)
+        fbb.add(offset: relaysVec, at: 4) // slot 0: relays
+        let bodyOffset = Offset(offset: fbb.endTable(at: bodyStart))
+        let payloadStart = fbb.startTable(with: 3)
+        fbb.add(element: UInt32(1), def: UInt32(0), at: 4) // slot 0: schema_version
+        fbb.add(element: UInt8(1), def: UInt8(0), at: 6) // slot 1: body_type
+        fbb.add(offset: bodyOffset, at: 8) // slot 2: body
+        let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))
+        fbb.finish(offset: payloadRoot, fileId: "NMMA")
+        let payload = fbb.sizedByteArray
+        return encodeDispatchEnvelope(
+            correlationId: correlationId,
+            actionNamespace: "nmp.marmot",
+            payload: payload
+        )
+    }
+
+    /// Create a new MLS group and optionally invite peers.
+    /// Builds the `nmp.marmot` `DispatchEnvelope` bytes (body `CreateGroup`) for the byte doorway.
+    public static func marmotCreateGroup(
+        correlationId: String,
+        name: String,
+        description: String = "",
+        inviteeText: String? = nil,
+        inviteeNpubs: [String]? = nil,
+        signedKeyPackageEventsJson: [String] = [],
+        relays: [String] = []
+    ) -> [UInt8] {
+        var fbb = FlatBufferBuilder()
+        // Build offsets for nested objects FIRST (FlatBuffers bottom-up).
+        // relays + signed_key_package_events_json are NON-OPTIONAL [string]:
+        // ALWAYS present (even when empty) to match the Rust encoder (golden
+        // byte parity — #2169 / nip02 convention).
+        let relayOffsets = relays.map { fbb.create(string: $0) }
+        let relaysVec = fbb.createVector(ofOffsets: relayOffsets)
+        let jsonOffsets = signedKeyPackageEventsJson.map { fbb.create(string: $0) }
+        let jsonVec = fbb.createVector(ofOffsets: jsonOffsets)
+        // inviteeNpubs: nil → absent (None); non-nil → present vector (even if empty)
+        let npubsVec: Offset? = inviteeNpubs.map { npubs in
+            let offs = npubs.map { fbb.create(string: $0) }
+            return Offset(offset: fbb.createVector(ofOffsets: offs).o)
+        }
+        let inviteeTextOffset: Offset? = inviteeText.map { fbb.create(string: $0) }
+        let descOffset: Offset? = description.isEmpty ? nil : Optional(fbb.create(string: description))
+        let nameOffset = fbb.create(string: name)
+        let bodyStart = fbb.startTable(with: 6)
+        fbb.add(offset: nameOffset, at: 4) // slot 0: name (required)
+        if let descOffset { fbb.add(offset: descOffset, at: 6) } // slot 1: description
+        if let inviteeTextOffset { fbb.add(offset: inviteeTextOffset, at: 8) } // slot 2: invitee_text
+        if let npubsVec { fbb.add(offset: npubsVec, at: 10) } // slot 3: invitee_npubs
+        fbb.add(offset: jsonVec, at: 12) // slot 4: signed_key_package_events_json
+        fbb.add(offset: relaysVec, at: 14) // slot 5: relays
+        let bodyOffset = Offset(offset: fbb.endTable(at: bodyStart))
+        let payloadStart = fbb.startTable(with: 3)
+        fbb.add(element: UInt32(1), def: UInt32(0), at: 4) // slot 0: schema_version
+        fbb.add(element: UInt8(2), def: UInt8(0), at: 6) // slot 1: body_type
+        fbb.add(offset: bodyOffset, at: 8) // slot 2: body
+        let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))
+        fbb.finish(offset: payloadRoot, fileId: "NMMA")
+        let payload = fbb.sizedByteArray
+        return encodeDispatchEnvelope(
+            correlationId: correlationId,
+            actionNamespace: "nmp.marmot",
+            payload: payload
+        )
+    }
+
+    /// Invite one or more peers to an existing MLS group.
+    /// Builds the `nmp.marmot` `DispatchEnvelope` bytes (body `Invite`) for the byte doorway.
+    public static func marmotInvite(
+        correlationId: String,
+        groupIdHex: String,
+        inviteeText: String? = nil,
+        inviteeNpubs: [String]? = nil,
+        signedKeyPackageEventsJson: [String] = []
+    ) -> [UInt8] {
+        var fbb = FlatBufferBuilder()
+        // signed_key_package_events_json is NON-OPTIONAL [string]: ALWAYS present
+        // (even when empty) to match the Rust encoder (golden byte parity — #2169).
+        let jsonOffsets = signedKeyPackageEventsJson.map { fbb.create(string: $0) }
+        let jsonVec = fbb.createVector(ofOffsets: jsonOffsets)
+        let npubsVec: Offset? = inviteeNpubs.map { npubs in
+            let offs = npubs.map { fbb.create(string: $0) }
+            return Offset(offset: fbb.createVector(ofOffsets: offs).o)
+        }
+        let inviteeTextOffset: Offset? = inviteeText.map { fbb.create(string: $0) }
+        let gidOffset = fbb.create(string: groupIdHex)
+        let bodyStart = fbb.startTable(with: 4)
+        fbb.add(offset: gidOffset, at: 4) // slot 0: group_id_hex (required)
+        if let inviteeTextOffset { fbb.add(offset: inviteeTextOffset, at: 6) } // slot 1: invitee_text
+        if let npubsVec { fbb.add(offset: npubsVec, at: 8) } // slot 2: invitee_npubs
+        fbb.add(offset: jsonVec, at: 10) // slot 3: signed_key_package_events_json
+        let bodyOffset = Offset(offset: fbb.endTable(at: bodyStart))
+        let payloadStart = fbb.startTable(with: 3)
+        fbb.add(element: UInt32(1), def: UInt32(0), at: 4) // slot 0: schema_version
+        fbb.add(element: UInt8(3), def: UInt8(0), at: 6) // slot 1: body_type
+        fbb.add(offset: bodyOffset, at: 8) // slot 2: body
+        let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))
+        fbb.finish(offset: payloadRoot, fileId: "NMMA")
+        let payload = fbb.sizedByteArray
+        return encodeDispatchEnvelope(
+            correlationId: correlationId,
+            actionNamespace: "nmp.marmot",
+            payload: payload
+        )
+    }
+
+    /// Send a kind:14 NIP-44 MLS group message.
+    /// Builds the `nmp.marmot` `DispatchEnvelope` bytes (body `Send`) for the byte doorway.
+    public static func marmotSend(
+        correlationId: String,
+        groupIdHex: String,
+        text: String
+    ) -> [UInt8] {
+        var fbb = FlatBufferBuilder()
+        let textOffset = fbb.create(string: text)
+        let gidOffset = fbb.create(string: groupIdHex)
+        let bodyStart = fbb.startTable(with: 2)
+        fbb.add(offset: gidOffset, at: 4) // slot 0: group_id_hex (required)
+        fbb.add(offset: textOffset, at: 6) // slot 1: text (required)
+        let bodyOffset = Offset(offset: fbb.endTable(at: bodyStart))
+        let payloadStart = fbb.startTable(with: 3)
+        fbb.add(element: UInt32(1), def: UInt32(0), at: 4) // slot 0: schema_version
+        fbb.add(element: UInt8(4), def: UInt8(0), at: 6) // slot 1: body_type
+        fbb.add(offset: bodyOffset, at: 8) // slot 2: body
+        let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))
+        fbb.finish(offset: payloadRoot, fileId: "NMMA")
+        let payload = fbb.sizedByteArray
+        return encodeDispatchEnvelope(
+            correlationId: correlationId,
+            actionNamespace: "nmp.marmot",
+            payload: payload
+        )
+    }
+
+    /// Self-remove from a MLS group (SelfRemove proposal + commit).
+    /// Builds the `nmp.marmot` `DispatchEnvelope` bytes (body `Leave`) for the byte doorway.
+    public static func marmotLeave(
+        correlationId: String,
+        groupIdHex: String
+    ) -> [UInt8] {
+        var fbb = FlatBufferBuilder()
+        let gidOffset = fbb.create(string: groupIdHex)
+        let bodyStart = fbb.startTable(with: 1)
+        fbb.add(offset: gidOffset, at: 4) // slot 0: group_id_hex (required)
+        let bodyOffset = Offset(offset: fbb.endTable(at: bodyStart))
+        let payloadStart = fbb.startTable(with: 3)
+        fbb.add(element: UInt32(1), def: UInt32(0), at: 4) // slot 0: schema_version
+        fbb.add(element: UInt8(5), def: UInt8(0), at: 6) // slot 1: body_type
+        fbb.add(offset: bodyOffset, at: 8) // slot 2: body
+        let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))
+        fbb.finish(offset: payloadRoot, fileId: "NMMA")
+        let payload = fbb.sizedByteArray
+        return encodeDispatchEnvelope(
+            correlationId: correlationId,
+            actionNamespace: "nmp.marmot",
+            payload: payload
+        )
+    }
+
+    /// Remove other members from a MLS group (Remove proposal + commit).
+    /// Builds the `nmp.marmot` `DispatchEnvelope` bytes (body `Remove`) for the byte doorway.
+    public static func marmotRemove(
+        correlationId: String,
+        groupIdHex: String,
+        memberNpubs: [String] = []
+    ) -> [UInt8] {
+        var fbb = FlatBufferBuilder()
+        let npubOffsets = memberNpubs.map { fbb.create(string: $0) }
+        let npubsVec = fbb.createVector(ofOffsets: npubOffsets)
+        let gidOffset = fbb.create(string: groupIdHex)
+        let bodyStart = fbb.startTable(with: 2)
+        fbb.add(offset: gidOffset, at: 4) // slot 0: group_id_hex (required)
+        fbb.add(offset: npubsVec, at: 6) // slot 1: member_npubs
+        let bodyOffset = Offset(offset: fbb.endTable(at: bodyStart))
+        let payloadStart = fbb.startTable(with: 3)
+        fbb.add(element: UInt32(1), def: UInt32(0), at: 4) // slot 0: schema_version
+        fbb.add(element: UInt8(6), def: UInt8(0), at: 6) // slot 1: body_type
+        fbb.add(offset: bodyOffset, at: 8) // slot 2: body
+        let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))
+        fbb.finish(offset: payloadRoot, fileId: "NMMA")
+        let payload = fbb.sizedByteArray
+        return encodeDispatchEnvelope(
+            correlationId: correlationId,
+            actionNamespace: "nmp.marmot",
+            payload: payload
+        )
+    }
+
+    /// Accept a pending MLS Welcome (by gift-wrap event id hex).
+    /// Builds the `nmp.marmot` `DispatchEnvelope` bytes (body `AcceptWelcome`) for the byte doorway.
+    public static func marmotAcceptWelcome(
+        correlationId: String,
+        welcomeIdHex: String
+    ) -> [UInt8] {
+        var fbb = FlatBufferBuilder()
+        let widOffset = fbb.create(string: welcomeIdHex)
+        let bodyStart = fbb.startTable(with: 1)
+        fbb.add(offset: widOffset, at: 4) // slot 0: welcome_id_hex (required)
+        let bodyOffset = Offset(offset: fbb.endTable(at: bodyStart))
+        let payloadStart = fbb.startTable(with: 3)
+        fbb.add(element: UInt32(1), def: UInt32(0), at: 4) // slot 0: schema_version
+        fbb.add(element: UInt8(7), def: UInt8(0), at: 6) // slot 1: body_type
+        fbb.add(offset: bodyOffset, at: 8) // slot 2: body
+        let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))
+        fbb.finish(offset: payloadRoot, fileId: "NMMA")
+        let payload = fbb.sizedByteArray
+        return encodeDispatchEnvelope(
+            correlationId: correlationId,
+            actionNamespace: "nmp.marmot",
+            payload: payload
+        )
+    }
+
+    /// Decline a pending MLS Welcome.
+    /// Builds the `nmp.marmot` `DispatchEnvelope` bytes (body `DeclineWelcome`) for the byte doorway.
+    public static func marmotDeclineWelcome(
+        correlationId: String,
+        welcomeIdHex: String
+    ) -> [UInt8] {
+        var fbb = FlatBufferBuilder()
+        let widOffset = fbb.create(string: welcomeIdHex)
+        let bodyStart = fbb.startTable(with: 1)
+        fbb.add(offset: widOffset, at: 4) // slot 0: welcome_id_hex (required)
+        let bodyOffset = Offset(offset: fbb.endTable(at: bodyStart))
+        let payloadStart = fbb.startTable(with: 3)
+        fbb.add(element: UInt32(1), def: UInt32(0), at: 4) // slot 0: schema_version
+        fbb.add(element: UInt8(8), def: UInt8(0), at: 6) // slot 1: body_type
+        fbb.add(offset: bodyOffset, at: 8) // slot 2: body
+        let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))
+        fbb.finish(offset: payloadRoot, fileId: "NMMA")
+        let payload = fbb.sizedByteArray
+        return encodeDispatchEnvelope(
+            correlationId: correlationId,
+            actionNamespace: "nmp.marmot",
+            payload: payload
+        )
+    }
+
+    /// Explicitly clear the pending-commit state for a MLS group.
+    /// Builds the `nmp.marmot` `DispatchEnvelope` bytes (body `ClearPending`) for the byte doorway.
+    public static func marmotClearPending(
+        correlationId: String,
+        groupIdHex: String
+    ) -> [UInt8] {
+        var fbb = FlatBufferBuilder()
+        let gidOffset = fbb.create(string: groupIdHex)
+        let bodyStart = fbb.startTable(with: 1)
+        fbb.add(offset: gidOffset, at: 4) // slot 0: group_id_hex (required)
+        let bodyOffset = Offset(offset: fbb.endTable(at: bodyStart))
+        let payloadStart = fbb.startTable(with: 3)
+        fbb.add(element: UInt32(1), def: UInt32(0), at: 4) // slot 0: schema_version
+        fbb.add(element: UInt8(9), def: UInt8(0), at: 6) // slot 1: body_type
+        fbb.add(offset: bodyOffset, at: 8) // slot 2: body
+        let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))
+        fbb.finish(offset: payloadRoot, fileId: "NMMA")
+        let payload = fbb.sizedByteArray
+        return encodeDispatchEnvelope(
+            correlationId: correlationId,
+            actionNamespace: "nmp.marmot",
+            payload: payload
+        )
+    }
 }

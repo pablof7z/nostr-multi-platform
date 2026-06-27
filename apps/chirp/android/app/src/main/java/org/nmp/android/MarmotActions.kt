@@ -1,7 +1,7 @@
 package org.nmp.android
 
 import android.util.Log
-import kotlinx.serialization.encodeToString
+import java.util.UUID
 
 private const val TAG = "MarmotActions"
 
@@ -10,18 +10,21 @@ private const val TAG = "MarmotActions"
  * iOS `MarmotStore` (Bridge/MarmotBridge.swift). Extracted from [KernelModel]
  * to keep both files under the repo's 500-LOC hard ceiling.
  *
- * Constructor takes [dispatchMarmotAction] — the typed Marmot write seam that
- * [KernelModel] owns. Thin shell: ZERO protocol logic. Every op is a single
- * Marmot action envelope; Rust owns validation, tokenisation, and key-package
- * resolution. State arrives reactively via the `nmp.marmot.snapshot` /
- * `nmp.marmot.messages` push projections on
- * [KernelModel.state] (D8 — no poll, no local echo).
+ * M14-1c / #2169: All dispatch paths now use the typed byte doorway via
+ * `GeneratedActionBuilders.marmotXxx(...)` → [dispatchBytes]. The JSON DTO
+ * classes (`MarmotActionEnvelopes.kt`) and the JSON bridge helper
+ * (`dispatchMarmotAction`) are DELETED. No hand-spelled `"nmp.marmot"` literal
+ * remains in production Kotlin (asserted by `ci/check_native_action_boundary.py`).
+ *
+ * Thin shell: ZERO protocol logic. Every op is a single generated FlatBuffers
+ * buffer. State arrives reactively via the `nmp.marmot.snapshot` /
+ * `nmp.marmot.messages` push projections on [KernelModel.state] (D8 — no poll).
  *
  * Call sites: [KernelModel.marmot] exposes this instance; UI screens reference
  * `model.marmot.createGroup(…)` etc., mirroring the iOS `model.marmot` surface.
  */
 class MarmotActions(
-    private val dispatchMarmotAction: (actionJson: String) -> DispatchResult,
+    private val dispatchBytes: (bytes: ByteArray) -> DispatchResult,
 ) {
     /** Account this instance last registered a Marmot identity for. */
     private var registeredAccount: String? = null
@@ -47,8 +50,19 @@ class MarmotActions(
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Write operations (one dispatchAction each)
+    // Write operations (one generated builder per op)
     // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Publish (or rotate) the local MLS key-package (kind:30443). Fire-and-forget:
+     * the refreshed key-package state arrives via the next snapshot tick.
+     */
+    fun publishKeyPackage(): DispatchResult {
+        val bytes = GeneratedActionBuilders.marmotPublishKeyPackage(
+            correlationId = UUID.randomUUID().toString(),
+        )
+        return dispatch(bytes)
+    }
 
     /**
      * Create a new MLS group. [inviteeText] is the raw text the user typed;
@@ -57,36 +71,36 @@ class MarmotActions(
      * on the next snapshot tick.
      */
     fun createGroup(name: String, description: String, inviteeText: String): DispatchResult {
-        val envelope = MarmotCreateGroupEnvelope(
+        val bytes = GeneratedActionBuilders.marmotCreateGroup(
+            correlationId = UUID.randomUUID().toString(),
             name = name,
             description = description,
             inviteeText = inviteeText.takeIf { it.isNotBlank() },
         )
-        return dispatch(chirpActionJson.encodeToString(envelope))
+        return dispatch(bytes)
+    }
+
+    /**
+     * Invite peers to an existing MLS group. [inviteeText] is the raw text the
+     * user typed; Rust tokenises and validates — no parsing in Kotlin.
+     */
+    fun invite(groupIdHex: String, inviteeText: String): DispatchResult {
+        val bytes = GeneratedActionBuilders.marmotInvite(
+            correlationId = UUID.randomUUID().toString(),
+            groupIdHex = groupIdHex,
+            inviteeText = inviteeText.takeIf { it.isNotBlank() },
+        )
+        return dispatch(bytes)
     }
 
     /** Send an application message in an existing MLS group. */
     fun sendGroupMessage(groupIdHex: String, text: String): DispatchResult {
-        val envelope = MarmotSendEnvelope(groupIdHex = groupIdHex, text = text)
-        return dispatch(chirpActionJson.encodeToString(envelope))
-    }
-
-    /** Publish (or rotate) the local MLS key package. */
-    fun publishKeyPackage(): DispatchResult {
-        val envelope = MarmotPublishKeyPackageEnvelope()
-        return dispatch(chirpActionJson.encodeToString(envelope))
-    }
-
-    /** Accept a pending MLS group invite (kind:444 Welcome). */
-    fun acceptWelcome(welcomeIdHex: String): DispatchResult {
-        val envelope = MarmotAcceptWelcomeEnvelope(welcomeIdHex = welcomeIdHex)
-        return dispatch(chirpActionJson.encodeToString(envelope))
-    }
-
-    /** Decline a pending MLS group invite. */
-    fun declineWelcome(welcomeIdHex: String): DispatchResult {
-        val envelope = MarmotDeclineWelcomeEnvelope(welcomeIdHex = welcomeIdHex)
-        return dispatch(chirpActionJson.encodeToString(envelope))
+        val bytes = GeneratedActionBuilders.marmotSend(
+            correlationId = UUID.randomUUID().toString(),
+            groupIdHex = groupIdHex,
+            text = text,
+        )
+        return dispatch(bytes)
     }
 
     /**
@@ -94,50 +108,64 @@ class MarmotActions(
      * `model.marmot.leave(groupIDHex:)`.
      */
     fun leave(groupIdHex: String): DispatchResult {
-        val envelope = MarmotLeaveEnvelope(groupIdHex = groupIdHex)
-        return dispatch(chirpActionJson.encodeToString(envelope))
-    }
-
-    /**
-     * Invite peers to an existing MLS group. [inviteeText] is the raw text the
-     * user typed; Rust tokenises and validates — no parsing in Kotlin. Mirrors
-     * iOS `model.marmot.invite(groupIDHex:inviteeText:)`.
-     */
-    fun invite(groupIdHex: String, inviteeText: String): DispatchResult {
-        val envelope = MarmotInviteEnvelope(
+        val bytes = GeneratedActionBuilders.marmotLeave(
+            correlationId = UUID.randomUUID().toString(),
             groupIdHex = groupIdHex,
-            inviteeText = inviteeText.takeIf { it.isNotBlank() },
         )
-        return dispatch(chirpActionJson.encodeToString(envelope))
+        return dispatch(bytes)
     }
 
     /**
      * Remove other members from the group (MLS Remove proposal + commit).
      * [members] accepts raw hex pubkeys — PublicKey::parse accepts both hex and
-     * npub, so snapshot member hex strings pass verbatim. Mirrors iOS
-     * `model.marmot.remove(groupIDHex:memberNpubs:)`.
+     * npub, so snapshot member hex strings pass verbatim.
      */
     fun removeMembers(groupIdHex: String, members: List<String>): DispatchResult {
-        val envelope = MarmotRemoveEnvelope(groupIdHex = groupIdHex, memberNpubs = members)
-        return dispatch(chirpActionJson.encodeToString(envelope))
+        val bytes = GeneratedActionBuilders.marmotRemove(
+            correlationId = UUID.randomUUID().toString(),
+            groupIdHex = groupIdHex,
+            memberNpubs = members,
+        )
+        return dispatch(bytes)
+    }
+
+    /** Accept a pending MLS group invite (kind:444 Welcome). */
+    fun acceptWelcome(welcomeIdHex: String): DispatchResult {
+        val bytes = GeneratedActionBuilders.marmotAcceptWelcome(
+            correlationId = UUID.randomUUID().toString(),
+            welcomeIdHex = welcomeIdHex,
+        )
+        return dispatch(bytes)
+    }
+
+    /** Decline a pending MLS group invite. */
+    fun declineWelcome(welcomeIdHex: String): DispatchResult {
+        val bytes = GeneratedActionBuilders.marmotDeclineWelcome(
+            correlationId = UUID.randomUUID().toString(),
+            welcomeIdHex = welcomeIdHex,
+        )
+        return dispatch(bytes)
     }
 
     /**
      * Explicit pending-commit clear — exposed so the UI can unwedge a group
-     * after a relay-publish failure. Mirrors iOS `model.marmot.clearPending`.
+     * after a relay-publish failure.
      */
     fun clearPending(groupIdHex: String): DispatchResult {
-        val envelope = MarmotClearPendingEnvelope(groupIdHex = groupIdHex)
-        return dispatch(chirpActionJson.encodeToString(envelope))
+        val bytes = GeneratedActionBuilders.marmotClearPending(
+            correlationId = UUID.randomUUID().toString(),
+            groupIdHex = groupIdHex,
+        )
+        return dispatch(bytes)
     }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Internal helpers
     // ─────────────────────────────────────────────────────────────────────────
 
-    private fun dispatch(actionJson: String): DispatchResult {
-        val result = dispatchMarmotAction(actionJson)
-        Log.d(TAG, "dispatchMarmotAction($actionJson) → $result")
+    private fun dispatch(bytes: ByteArray): DispatchResult {
+        val result = dispatchBytes(bytes)
+        Log.d(TAG, "dispatchMarmotBytes(${bytes.size}B) → $result")
         return result
     }
 }

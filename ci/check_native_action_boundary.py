@@ -14,7 +14,8 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
-REGISTRY_REL = Path("crates/nmp-codegen/src/action_builders/registry.rs")
+REGISTRY_DIR_REL = Path("crates/nmp-codegen/src/action_builders")
+REGISTRY_REL = REGISTRY_DIR_REL / "registry.rs"
 SCAN_ROOT_RELS = [
     Path("apps/chirp/ios/Chirp"),
     Path("apps/chirp/android/app/src/main/java/org/nmp/android"),
@@ -30,11 +31,20 @@ def migrated_namespaces(root: Path) -> set[str]:
     registry = root / REGISTRY_REL
     if not registry.is_file():
         fail(f"action-builder registry not found: {REGISTRY_REL}")
-    text = registry.read_text()
-    namespaces = set(re.findall(r'namespace:\s*"([^"]+)"', text))
-    publish = re.search(r'PUBLISH_NAMESPACE:\s*&str\s*=\s*"([^"]+)"', text)
-    if publish:
-        namespaces.add(publish.group(1))
+    # The registry is split across `registry.rs` and `registry_*.rs` siblings
+    # (e.g. `registry_marmot.rs` — the union-builder slices live in their own
+    # files for the 500-LOC ceiling; #2169). Scan `registry.rs` plus every
+    # `registry_*.rs` sibling so union-namespace constants are never missed.
+    registry_dir = root / REGISTRY_DIR_REL
+    registry_files = [registry] + sorted(registry_dir.glob("registry_*.rs"))
+    namespaces: set[str] = set()
+    for path in registry_files:
+        text = path.read_text()
+        namespaces.update(re.findall(r'namespace:\s*"([^"]+)"', text))
+        # Pick up union-namespace constants (PUBLISH_NAMESPACE, MARMOT_NAMESPACE, …).
+        # Pattern: `pub const FOO_NAMESPACE: &str = "nmp.xxx";`
+        for m in re.finditer(r'pub const \w+_NAMESPACE:\s*&str\s*=\s*"([^"]+)"', text):
+            namespaces.add(m.group(1))
     if not namespaces:
         fail("no migrated action namespaces discovered from action-builder registry")
     return namespaces
@@ -148,6 +158,7 @@ pub const ACTION_BUILDERS: &[ActionBuilder] = &[
     ActionBuilder { namespace: "nmp.follow", method: "follow", payload_file_identifier: "NF2A", payload_schema_version: 1, fields: &[], doc: "" },
 ];
 pub const PUBLISH_NAMESPACE: &str = "nmp.publish";
+pub const MARMOT_NAMESPACE: &str = "nmp.marmot";
 """,
         )
         write(tmp / "apps/chirp/ios/Chirp/Bridge/Generated/ActionBuilders.generated.swift", '"nmp.follow"\n')

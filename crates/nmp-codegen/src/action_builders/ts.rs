@@ -80,6 +80,8 @@ pub fn render(builders: &[ActionBuilder]) -> String {
     // what `render_default` (and therefore the CLI + drift gate) uses.
     if std::ptr::eq(builders.as_ptr(), ACTION_BUILDERS.as_ptr()) {
         crate::action_builders::ts_publish::render_publish(&mut out);
+        // The `nmp.marmot` UNION builders (M14-1c / #2169 — 9-arm union).
+        crate::action_builders::ts_marmot::render_marmot(&mut out);
     }
     out.push_str("};\n");
     out
