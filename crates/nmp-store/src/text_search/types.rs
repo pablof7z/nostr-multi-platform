@@ -132,7 +132,13 @@ pub struct SearchScore(pub u32);
 pub enum TextSearchOrder {
     /// Newest `created_at` first (the default browse order).
     NewestFirst,
-    /// Highest [`SearchScore`] first.
+    /// Highest [`SearchScore`] first (Phase-2 target).
+    ///
+    /// **Phase-1 status**: both backends treat this as a recency-order proxy
+    /// (newest-first) because no term-frequency data is stored in the posting
+    /// index yet. The variant is intentionally kept frozen so Phase-2 can wire
+    /// real TF-IDF scoring without an API break. Each backend's `order_candidates`
+    /// / `emit` has an explicit arm with a `NOTE` comment acknowledging the gap.
     Relevance,
 }
 
