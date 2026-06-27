@@ -82,6 +82,12 @@ Rust's `nmp.nip51.bookmarks` projection. TypeScript must not maintain an
 independent bookmark set, construct kind:10003 tags, choose relay targets, or
 decide whether a bookmark-list edit is safe.
 
+Chirp Web must also expose a Saved view. The Saved view is a presentation filter
+over notes already hydrated from Rust-owned feed projections, with membership
+coming only from `nmp.nip51.bookmarks`. If the bookmark list contains ids whose
+events have not hydrated yet, the UI must say the saved notes are syncing instead
+of fabricating placeholder notes or maintaining a shell-side saved-note cache.
+
 Rust owns kind:10003 read-modify-write construction, metadata preservation,
 signing, outbox routing, relay selection, diagnostics, and active-account
 authorization. If the active account's bookmark baseline is unavailable or the
@@ -92,7 +98,9 @@ Acceptance must prove that bookmark publishes a signed kind:10003 event from the
 active user with the selected note's `e` tag present, removing the bookmark
 publishes a signed kind:10003 event with that `e` tag removed, the visible button
 flips from the Rust bookmark projection, and the same outbox/action result
-surfaces show the terminal relay verdict.
+surfaces show the terminal relay verdict. Reload acceptance must prove that a
+fresh browser session can refetch the bookmark list from relays and show the
+saved note in the Saved view without relying on in-memory UI state.
 
 ## Secret Storage
 

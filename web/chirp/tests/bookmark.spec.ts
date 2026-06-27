@@ -3,7 +3,7 @@
  * NIP-51 kind:10003 projection and publishes real signed bookmark-list edits.
  */
 
-import { expect, test } from "@playwright/test";
+import { expect, test, type BrowserContext } from "@playwright/test";
 import { nip19 } from "nostr-tools";
 import { startFeedFixtureRelay } from "./fixture-relay.js";
 
@@ -72,6 +72,67 @@ test("@wasm bookmarks: save toggle publishes signed NIP-51 bookmark add and remo
       timeout: 30_000,
     });
   } finally {
+    await relay.close();
+  }
+});
+
+test("@wasm bookmarks: saved view refetches saved note after reload", async ({ page }) => {
+  test.setTimeout(120_000);
+
+  const relay = await startFeedFixtureRelay();
+  const relayBootstrap = JSON.stringify([[relay.url, "both,indexer"]]);
+  const localNsec = nip19.nsecEncode(relay.viewerSecretKey);
+  let secondContext: BrowserContext | undefined;
+
+  try {
+    await page.goto(`/?relay_bootstrap=${encodeURIComponent(relayBootstrap)}`);
+    await expect(page.locator(SHELL)).toHaveAttribute("data-runtime-status", "running", {
+      timeout: 30_000,
+    });
+    await page.getByTestId("local-nsec-input").fill(localNsec);
+    await page.getByTestId("local-nsec-submit").click();
+
+    const targetCard = page
+      .getByTestId("post-card")
+      .filter({ hasText: relay.noteContent })
+      .first();
+    await expect(targetCard).toBeVisible({ timeout: 60_000 });
+    const targetEventId = await targetCard.getAttribute("data-event-id");
+    expect(targetEventId).toMatch(/^[a-f0-9]{64}$/);
+
+    await targetCard.getByRole("button", { name: /^bookmark$/i }).click();
+    await expect
+      .poll(() => hasBookmarkEdit(relay, targetEventId!, true), { timeout: 30_000 })
+      .toBe(true);
+    await expect(page.getByTestId("saved-count")).toHaveText("1 saved", { timeout: 30_000 });
+
+    const browser = page.context().browser();
+    if (browser === null) throw new Error("Playwright browser handle unavailable");
+    secondContext = await browser.newContext();
+    const secondPage = await secondContext.newPage();
+    await secondPage.goto(`/?relay_bootstrap=${encodeURIComponent(relayBootstrap)}`);
+    await expect(secondPage.locator(SHELL)).toHaveAttribute("data-runtime-status", "running", {
+      timeout: 30_000,
+    });
+    await secondPage.getByTestId("local-nsec-input").fill(localNsec);
+    await secondPage.getByTestId("local-nsec-submit").click();
+    await secondPage.getByTestId("saved-view-tab").click();
+
+    await expect(secondPage.getByTestId("saved-count")).toHaveText("1 saved", {
+      timeout: 30_000,
+    });
+    await expect(secondPage.getByTestId("saved-timeline")).toContainText(relay.noteContent, {
+      timeout: 60_000,
+    });
+    await expect(
+      secondPage
+        .getByTestId("post-card")
+        .filter({ hasText: relay.noteContent })
+        .first()
+        .getByRole("button", { name: /remove bookmark/i }),
+    ).toHaveAttribute("aria-pressed", "true");
+  } finally {
+    await secondContext?.close();
     await relay.close();
   }
 });

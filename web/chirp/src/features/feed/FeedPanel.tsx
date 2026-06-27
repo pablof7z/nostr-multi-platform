@@ -8,7 +8,7 @@
 // Zero Nostr protocol logic — decoding and dispatching are owned by feedDecoder.ts
 // and feedStore.ts respectively. This file is pure presentation orchestration.
 
-import { For, Show, createMemo, createSignal } from "solid-js";
+import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { NostrProfileHostProvider } from "@nmp/components-web/src/user-avatar/NostrProfileHost";
 import { createFeedStore } from "../../nmp/feedStore";
 import type { RuntimeProjection } from "../../nmp/runtimeProjection";
@@ -16,17 +16,66 @@ import { PostCard, type FeedSelection } from "./PostCard";
 import { FeedDetailPanel } from "./FeedDetailPanel";
 import { Composer } from "./Composer";
 import "./feed.css";
+import "./saved.css";
+
+type FeedMode = "home" | "saved";
+
+function modeFromHash(): FeedMode {
+  return window.location.hash === "#saved" ? "saved" : "home";
+}
 
 export function FeedPanel(props: { canPublish: boolean; diagnostics?: RuntimeProjection }) {
   const { state, profileHost } = createFeedStore();
   const [selection, setSelection] = createSignal<FeedSelection | null>(null);
+  const [mode, setMode] = createSignal<FeedMode>(modeFromHash());
   const bookmarkedIds = createMemo(() => new Set(props.diagnostics?.bookmarkedEventIds ?? []));
+  const savedRows = createMemo(() => state.rows.filter((row) => bookmarkedIds().has(row.id)));
+  const visibleRows = createMemo(() => (mode() === "saved" ? savedRows() : state.rows));
+  const bookmarkedCount = () => props.diagnostics?.bookmarkedEventIds.length ?? 0;
+
+  onMount(() => {
+    const syncHash = () => setMode(modeFromHash());
+    window.addEventListener("hashchange", syncHash);
+    onCleanup(() => window.removeEventListener("hashchange", syncHash));
+  });
+
+  const selectMode = (next: FeedMode) => {
+    setMode(next);
+    window.history.replaceState(null, "", next === "saved" ? "#saved" : "#feed");
+  };
 
   return (
     <NostrProfileHostProvider host={profileHost}>
-      <div class="feed-panel" data-testid="feed-panel">
+      <div class="feed-panel" data-testid="feed-panel" data-view={mode()}>
         {/* Compose box */}
         <Composer canPublish={props.canPublish} />
+
+        <div class="feed-viewbar" id="saved" aria-label="Feed views">
+          <div class="feed-tabs" role="tablist" aria-label="Timeline views">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode() === "home" ? "true" : "false"}
+              data-active={mode() === "home" ? "true" : "false"}
+              onClick={() => selectMode("home")}
+            >
+              Home
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode() === "saved" ? "true" : "false"}
+              data-active={mode() === "saved" ? "true" : "false"}
+              data-testid="saved-view-tab"
+              onClick={() => selectMode("saved")}
+            >
+              Saved
+            </button>
+          </div>
+          <span class="feed-view-count" data-testid="saved-count">
+            {bookmarkedCount()} saved
+          </span>
+        </div>
 
         <Show when={selection()}>
           {(value) => (
@@ -40,7 +89,10 @@ export function FeedPanel(props: { canPublish: boolean; diagnostics?: RuntimePro
         </Show>
 
         {/* Timeline */}
-        <div class="feed-timeline" data-testid="feed-timeline">
+        <div
+          class="feed-timeline"
+          data-testid={mode() === "saved" ? "saved-timeline" : "feed-timeline"}
+        >
           <Show
             when={state.ready}
             fallback={
@@ -53,18 +105,36 @@ export function FeedPanel(props: { canPublish: boolean; diagnostics?: RuntimePro
             }
           >
             <Show
-              when={state.rows.length > 0}
+              when={visibleRows().length > 0}
               fallback={
                 <div
                   class="feed-empty"
-                  data-testid="feed-empty"
+                  data-testid={mode() === "saved" ? "saved-empty" : "feed-empty"}
                 >
-                  <strong>No notes yet</strong>
-                  <span>Connect a signer with follows or use a relay bootstrap to hydrate the feed.</span>
+                  <Show
+                    when={mode() === "saved"}
+                    fallback={
+                      <>
+                        <strong>No notes yet</strong>
+                        <span>
+                          Connect a signer with follows or use a relay bootstrap to hydrate the feed.
+                        </span>
+                      </>
+                    }
+                  >
+                    <strong>
+                      {bookmarkedCount() > 0 ? "Saved notes are syncing" : "No saved notes yet"}
+                    </strong>
+                    <span>
+                      {bookmarkedCount() > 0
+                        ? "Your bookmark list is loaded; waiting for those notes to hydrate from relays."
+                        : "Save a note from Home and it will appear here from the Rust bookmark projection."}
+                    </span>
+                  </Show>
                 </div>
               }
             >
-              <For each={state.rows}>
+              <For each={visibleRows()}>
                 {(row) => (
                   <PostCard
                     row={row}

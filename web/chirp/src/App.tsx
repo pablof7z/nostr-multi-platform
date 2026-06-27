@@ -113,6 +113,7 @@ export default function App() {
           </div>
           <nav class="rail-nav" aria-label="Primary">
             <a class="rail-link rail-link--active" href="#feed" aria-current="page">Home</a>
+            <a class="rail-link" href="#saved">Saved</a>
             <a class="rail-link" href="#signing">Signer</a>
             <a class="rail-link" href="#profile">Profile</a>
             <a class="rail-link" href="#relays">Relays</a>
