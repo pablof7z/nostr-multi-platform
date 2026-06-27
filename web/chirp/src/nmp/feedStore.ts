@@ -44,6 +44,7 @@ function rowSignature(rows: FeedRow[]): string {
     .map((row) =>
       [
         row.id,
+        row.kind,
         row.createdAt,
         row.authorPubkey,
         row.authorDisplayName ?? "",

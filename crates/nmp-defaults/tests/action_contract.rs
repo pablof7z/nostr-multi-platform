@@ -47,6 +47,9 @@ fn contract_matches_modules_and_default_payload_reexports() {
         assert_contract::<nmp_nip25::UnreactModule, action_payloads::UnreactAction>(
             "nmp.nip25.unreact",
         ),
+        assert_contract::<nmp_nip18::RepostModule, action_payloads::RepostAction>(
+            "nmp.nip18.repost",
+        ),
         assert_contract::<nmp_nip51::AddBookmarkAction, action_payloads::BookmarkUpdateInput>(
             "nmp.nip51.add_bookmark",
         ),
@@ -62,10 +65,9 @@ fn contract_matches_modules_and_default_payload_reexports() {
             action_payloads::PublishDmRelayListInput,
         >("nmp.nip17.publish_relay_list"),
         assert_contract::<nmp_nip57::ZapAction, action_payloads::ZapInput>("nmp.nip57.zap"),
-        assert_contract::<
-            nmp_nip84::PublishHighlightModule,
-            action_payloads::PublishHighlightAction,
-        >("nmp.nip84.publish_highlight"),
+        assert_contract::<nmp_nip84::PublishHighlightModule, action_payloads::PublishHighlightAction>(
+            "nmp.nip84.publish_highlight",
+        ),
     ];
 
     let checked: BTreeSet<&str> = checked.into_iter().collect();

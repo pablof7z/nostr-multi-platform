@@ -24,6 +24,8 @@ const NRRD_FILE_IDENTIFIER = "NRRD";
 export type FeedRow = {
   /** Hex event id. */
   id: string;
+  /** Nostr event kind. */
+  kind: number;
   /** Author hex pubkey (64 chars). */
   authorPubkey: string;
   /** Unix timestamp (seconds). */
@@ -133,6 +135,7 @@ function extractFeedRows(feedSnap: OpFeedSnapshot): FeedRow[] {
 
     const row: FeedRow = {
       id,
+      kind: card.kind(),
       authorPubkey,
       createdAt: Number(card.createdAt()),
       content: card.content() ?? "",

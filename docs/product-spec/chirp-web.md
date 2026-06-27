@@ -52,6 +52,24 @@ event from the active user with the selected event's `e` tag, the target author'
 `p` tag, and the requested reaction content. The outbox/action result surfaces
 must show the same terminal relay verdicts used by notes and profiles.
 
+## Repost Publish Contract
+
+Chirp Web must let a signed-in user repost a feed or thread note through the
+typed NIP-18 action path. The browser shell may expose the Repost affordance and
+send the target event id, target kind, target author, and relay hint already
+decoded from Rust projections, but Rust owns wrapper-kind selection, NIP-18 tag
+construction, signing, outbox routing, relay selection, and diagnostics.
+
+Kind:1 targets must publish kind:6 repost wrappers. Other public target kinds
+must publish kind:16 generic repost wrappers. TypeScript must not construct
+`e`, `p`, or `k` tags and must not fall back to `nmp.publish`/`PublishRaw` for
+reposts.
+
+Acceptance must prove that repost publishes a signed kind:6 or kind:16 event
+from the active user with the selected event's `e` tag, the target author's `p`
+tag when known, the target-kind `k` tag, and the same outbox/action result
+surfaces used by notes, profiles, reactions, follows, and bookmarks.
+
 ## Follow Publish Contract
 
 Chirp Web must let a signed-in user follow and unfollow a displayed author

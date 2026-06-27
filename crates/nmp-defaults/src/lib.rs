@@ -20,6 +20,7 @@
 //!
 //! 1. **Action modules** for the common NIPs:
 //!    * `nmp.follow` / `nmp.unfollow` — [`nmp_nip02`]
+//!    * `nmp.nip18.repost` — [`nmp_nip18`]
 //!    * `nmp.nip25.react` / `nmp.nip25.unreact` — [`nmp_nip25`]
 //!    * `nmp.nip17.send` / `nmp.nip17.publish_relay_list` — [`nmp_nip17`]
 //!    * `nmp.nip57.zap` — [`nmp_nip57`]
@@ -329,6 +330,8 @@ fn register_defaults_inner(
         // NIP-25: public kind:7 reactions and kind:5 unreact deletion.
         // Uses the typed descriptor (#1724 criterion 6).
         nmp_core::substrate::ProtocolDescriptor::register_actions(&nmp_nip25::Nip25Descriptor, app);
+        // NIP-18: public kind:6/kind:16 repost wrapper publish.
+        nmp_core::substrate::ProtocolDescriptor::register_actions(&nmp_nip18::Nip18Descriptor, app);
         // NIP-84: public kind:9802 highlight publish (`nmp.nip84.publish_highlight`).
         // Yielding default via the typed descriptor.
         nmp_core::substrate::ProtocolDescriptor::register_actions(&nmp_nip84::Nip84Descriptor, app);

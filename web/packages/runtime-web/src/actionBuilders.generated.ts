@@ -74,6 +74,30 @@ export const GeneratedActionBuilders = {
     return encodeDispatchEnvelope(correlationId, "nmp.nip25.unreact", payload);
   },
 
+  /** Publish a NIP-18 repost wrapper for a target event. */
+  repost(
+    correlationId: string,
+    targetEventId: string,
+    targetKind: number,
+    targetAuthorPubkey: string | null,
+    relayHint: string | null,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const targetEventIdOffset = fbb.createString(targetEventId);
+    const targetAuthorPubkeyOffset = targetAuthorPubkey === null ? 0 : fbb.createString(targetAuthorPubkey);
+    const relayHintOffset = relayHint === null ? 0 : fbb.createString(relayHint);
+    fbb.startObject(5);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldOffset(1, targetEventIdOffset, 0); // slot 1: targetEventId
+    fbb.addFieldInt32(2, targetKind, 0); // slot 2: targetKind
+    if (targetAuthorPubkeyOffset !== 0) fbb.addFieldOffset(3, targetAuthorPubkeyOffset, 0); // slot 3: targetAuthorPubkey
+    if (relayHintOffset !== 0) fbb.addFieldOffset(4, relayHintOffset, 0); // slot 4: relayHint
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "N18R");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.nip18.repost", payload);
+  },
+
   /** Follow a single pubkey (NIP-02 contact-list add). */
   follow(
     correlationId: string,

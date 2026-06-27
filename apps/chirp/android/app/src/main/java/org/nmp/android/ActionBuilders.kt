@@ -101,6 +101,35 @@ object GeneratedActionBuilders {
         )
     }
 
+    /// Publish a NIP-18 repost wrapper for a target event.
+    /// Builds the `nmp.nip18.repost` `DispatchEnvelope` bytes for the byte doorway.
+    fun repost(
+        correlationId: String,
+        targetEventId: String,
+        targetKind: Int,
+        targetAuthorPubkey: String?,
+        relayHint: String?,
+    ): ByteArray {
+        val fbb = FlatBufferBuilder()
+        val targetEventIdOffset = fbb.createString(targetEventId)
+        val targetAuthorPubkeyOffset = targetAuthorPubkey?.let { fbb.createString(it) } ?: 0
+        val relayHintOffset = relayHint?.let { fbb.createString(it) } ?: 0
+        fbb.startTable(5)
+        fbb.addInt(0, 1, 0) // slot 0: schema_version
+        fbb.addOffset(1, targetEventIdOffset, 0) // slot 1: targetEventId
+        fbb.addInt(2, targetKind, 0) // slot 2: targetKind
+        if (targetAuthorPubkeyOffset != 0) fbb.addOffset(3, targetAuthorPubkeyOffset, 0) // slot 3: targetAuthorPubkey
+        if (relayHintOffset != 0) fbb.addOffset(4, relayHintOffset, 0) // slot 4: relayHint
+        val payloadRoot = fbb.endTable()
+        fbb.finish(payloadRoot, "N18R")
+        val payload = fbb.sizedByteArray()
+        return encodeDispatchEnvelope(
+            correlationId = correlationId,
+            actionNamespace = "nmp.nip18.repost",
+            payload = payload,
+        )
+    }
+
     /// Follow a single pubkey (NIP-02 contact-list add).
     /// Builds the `nmp.follow` `DispatchEnvelope` bytes for the byte doorway.
     fun follow(

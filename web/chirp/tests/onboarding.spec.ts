@@ -47,7 +47,7 @@ test("@wasm onboarding: no-extension browser reaches a complete local-key produc
 
     const content = `onboarding acceptance ${Date.now()}`;
     await page.getByTestId("compose-input").fill(content);
-    await page.getByRole("button", { name: "Post" }).click();
+    await page.getByRole("button", { name: "Post", exact: true }).click();
     await expect
       .poll(
         () => relay.receivedEvents().some((event) => event.kind === 1 && event.content === content),

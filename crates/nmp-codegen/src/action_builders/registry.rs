@@ -148,6 +148,34 @@ pub const ACTION_BUILDERS: &[ActionBuilder] = &[
         ],
         doc: "Retract a previously-published NIP-25 reaction.",
     },
+    // nip18 — publish repost wrappers from target facts. Rust owns tag shape.
+    ActionBuilder {
+        namespace: "nmp.nip18.repost",
+        method: "repost",
+        fields: &[
+            PayloadField {
+                name: "targetEventId",
+                kind: FieldKind::Str,
+                optional: false,
+            },
+            PayloadField {
+                name: "targetKind",
+                kind: FieldKind::Uint,
+                optional: false,
+            },
+            PayloadField {
+                name: "targetAuthorPubkey",
+                kind: FieldKind::Str,
+                optional: true,
+            },
+            PayloadField {
+                name: "relayHint",
+                kind: FieldKind::Str,
+                optional: true,
+            },
+        ],
+        doc: "Publish a NIP-18 repost wrapper for a target event.",
+    },
     // nip02 — follow / unfollow share the single-pubkey FollowActionPayload
     // shape (follow_action.fbs); follow_many is the bulk primitive
     // (follow_many_action.fbs).

@@ -6,11 +6,14 @@
 use nmp_core::substrate::KernelEvent;
 use serde::Deserialize;
 
+mod action;
 mod coordinate;
 mod delete;
 mod primary_kind;
 mod repost_projection;
+mod wire;
 
+pub use action::{register_actions, Nip18Descriptor, RepostAction, RepostModule};
 pub use coordinate::{is_addressable_kind, AddressCoordinate};
 pub use delete::{DeleteRecord, KIND_DELETE};
 pub use primary_kind::{
@@ -199,7 +202,10 @@ mod tests {
     #[test]
     fn non_kind_1_primary_acquires_kind_16_reposts_and_deletes() {
         let kinds = acquisition_kinds_for_primary([20]);
-        assert_eq!(kinds, BTreeSet::from([20, KIND_GENERIC_REPOST, KIND_DELETE]));
+        assert_eq!(
+            kinds,
+            BTreeSet::from([20, KIND_GENERIC_REPOST, KIND_DELETE])
+        );
     }
 
     #[test]

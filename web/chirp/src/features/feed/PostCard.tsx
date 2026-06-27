@@ -11,7 +11,7 @@ import { NostrAvatar } from "@nmp/components-web/src/user-avatar/NostrAvatar";
 import { displayLabel, shortHex } from "@nmp/components-web/src/user-avatar/ProfileWire";
 import { useNostrProfileHost } from "@nmp/components-web/src/user-avatar/NostrProfileHost";
 import { useNmpClient } from "../../nmp/context";
-import { bookmarkCommand, reactCommand } from "../../nmp/actions";
+import { bookmarkCommand, reactCommand, repostCommand } from "../../nmp/actions";
 
 export type FeedSelection = { kind: "profile" | "thread"; row: FeedRow };
 
@@ -47,6 +47,17 @@ export function PostCard(props: {
   const handleReact = () => {
     if (!props.canPublish) return;
     void client.dispatchCommand(reactCommand(props.row.id));
+  };
+  const handleRepost = () => {
+    if (!props.canPublish) return;
+    void client.dispatchCommand(
+      repostCommand(
+        props.row.id,
+        props.row.kind,
+        props.row.authorPubkey,
+        props.row.relayProvenance[0] ?? null,
+      ),
+    );
   };
   const handleBookmark = () => {
     if (!props.canPublish || !props.activeAccountPubkey) return;
@@ -142,6 +153,15 @@ export function PostCard(props: {
             onClick={handleReact}
           >
             Like
+          </button>
+          <button
+            class="action-btn"
+            aria-label="Repost"
+            title={props.canPublish ? "Repost" : "Sign in to repost"}
+            disabled={!props.canPublish}
+            onClick={handleRepost}
+          >
+            Repost
           </button>
           <button
             class="action-btn"

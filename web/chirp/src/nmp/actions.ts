@@ -7,6 +7,7 @@ import { GeneratedActionBuilders, type WorkerRequest } from "@nmp/runtime-web";
 export type ChirpAction =
   | { action: "publish_note"; content: string; reply_to_id?: string | null }
   | { action: "react"; target_event_id: string; reaction?: string }
+  | { action: "repost"; target_event_id: string; target_kind: number; target_author_pubkey?: string; relay_hint?: string | null }
   | { action: "follow"; pubkey: string }
   | { action: "unfollow"; pubkey: string };
 
@@ -98,6 +99,15 @@ export function chirpActionRequest(action: ChirpAction, correlationId: string): 
         null,
       );
       break;
+    case "repost":
+      bytes = GeneratedActionBuilders.repost(
+        correlationId,
+        action.target_event_id,
+        action.target_kind,
+        action.target_author_pubkey ?? null,
+        action.relay_hint ?? null,
+      );
+      break;
     case "follow":
       bytes = GeneratedActionBuilders.follow(correlationId, action.pubkey);
       break;
@@ -124,6 +134,26 @@ export function reactCommand(targetEventId: string, reaction = "+"): RuntimeComm
     actionType: "nmp.nip25.react",
     buildDispatchBytes: (correlationId) =>
       GeneratedActionBuilders.react(correlationId, targetEventId, reaction, null),
+  };
+}
+
+export function repostCommand(
+  targetEventId: string,
+  targetKind: number,
+  targetAuthorPubkey: string | null,
+  relayHint: string | null = null,
+): RuntimeCommand {
+  return {
+    kind: "dispatch_bytes",
+    actionType: "nmp.nip18.repost",
+    buildDispatchBytes: (correlationId) =>
+      GeneratedActionBuilders.repost(
+        correlationId,
+        targetEventId,
+        targetKind,
+        targetAuthorPubkey,
+        relayHint,
+      ),
   };
 }
 
