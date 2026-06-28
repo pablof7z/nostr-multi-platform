@@ -23,7 +23,6 @@
 //!    * `nmp.nip18.repost` / `nmp.nip18.quote_repost` — [`nmp_nip18`]
 //!    * `nmp.nip25.react` / `nmp.nip25.unreact` — [`nmp_nip25`]
 //!    * `nmp.nip17.send` / `nmp.nip17.publish_relay_list` — [`nmp_nip17`]
-//!    * `nmp.nip57.zap` — [`nmp_nip57`]
 //!    * `nmp.nip65.publish_relay_list` — [`nmp_router`]
 //!    * `nmp.nip51.add_bookmark` / `nmp.nip51.remove_bookmark` — [`nmp_nip51`]
 //! 2. **Ingest parsers** for the kinds NMP knows how to decode into
@@ -52,9 +51,8 @@
 //!    oversized relay plans, and [`nmp_nip77::NegentropySyncRuntime`] replaces
 //!    eligible large one-shot author×kind REQs with NIP-77 negentropy.
 //! 7. **Canonical runtime controllers** — see [`runtimes`] — for WOT
-//!    bootstrap, the NIP-17 DM-inbox subscription/projection, and the NIP-57
-//!    self-zap-receipts subscription. These are pure host-side
-//!    reconcilers; the kernel ships zero WOT/DM/zap nouns (D0).
+//!    bootstrap and the NIP-17 DM-inbox subscription/projection. These are pure
+//!    host-side reconcilers; the kernel ships zero WOT/DM nouns (D0).
 //!
 //! # What this crate is NOT
 //!
@@ -222,8 +220,8 @@ pub fn register_defaults_with_handles(
 ///
 /// Always calls [`register_substrate`] (the correctness floor is NOT
 /// toggleable — it is correctness, not preference), then layers the
-/// social-feature defaults selected by the `social` / `dms` / `zaps` /
-/// `longform` toggles on top, wires NIP-50 search fallback relays ONLY from
+/// social-feature defaults selected by the `social` / `dms` / `longform`
+/// toggles on top, wires NIP-50 search fallback relays ONLY from
 /// the app-supplied [`SearchDefaults`], and finally wires the `nostrconnect`
 /// bootstrap relay ONLY when the leaf app supplied one (`Some(url)`).
 ///
@@ -249,7 +247,6 @@ fn register_defaults_inner(
         search_defaults,
         social,
         dms,
-        zaps,
         longform,
         client_identity,
         attach_client_tag,
@@ -279,10 +276,6 @@ fn register_defaults_inner(
 
     if dms {
         composition::register_dm_defaults(app);
-    }
-
-    if zaps {
-        composition::register_zap_defaults(app);
     }
 
     if longform {

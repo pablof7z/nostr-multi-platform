@@ -155,20 +155,12 @@ name = "nmp-nip46-runtime"
 path = "crates/nmp-nip46-runtime"
 
 [[public_crates]]
-name = "nmp-nip47"
-path = "crates/nmp-nip47"
-
-[[public_crates]]
 name = "nmp-nip50"
 path = "crates/nmp-nip50"
 
 [[public_crates]]
 name = "nmp-nip51"
 path = "crates/nmp-nip51"
-
-[[public_crates]]
-name = "nmp-nip57"
-path = "crates/nmp-nip57"
 
 [[public_crates]]
 name = "nmp-nip84"
@@ -229,10 +221,6 @@ name = "nmp-nostr-lmdb"
 path = "crates/nmp-nostr-lmdb"
 
 [[public_crates]]
-name = "nmp-nwc"
-path = "crates/nmp-nwc"
-
-[[public_crates]]
 name = "nmp-relay-url"
 path = "crates/nmp-relay-url"
 
@@ -269,6 +257,21 @@ reason = "Dedicated-Worker OPFS conformance test vehicle for nmp-sqlite-wasm (#1
 name = "nmp-browser-runtime-conformance"
 path = "crates/nmp-browser-runtime-conformance"
 reason = "Dedicated-Worker OPFS durability conformance vehicle for nmp-browser-runtime (#1007 PR-9); a wasm-bindgen cdylib test harness driving hydration/reload + offline-publish-queue survival, never published"
+
+[[private_packages]]
+name = "nmp-nip47"
+path = "crates/nmp-nip47"
+reason = "Post-v1 Nostr Wallet Connect protocol crate (#2318); kept in the workspace for tests and future work, but excluded from the v1 public release train"
+
+[[private_packages]]
+name = "nmp-nip57"
+path = "crates/nmp-nip57"
+reason = "Post-v1 lightning zap protocol crate (#2318); kept in the workspace for tests and future work, but excluded from the v1 public release train"
+
+[[private_packages]]
+name = "nmp-nwc"
+path = "crates/nmp-nwc"
+reason = "Post-v1 NWC client helper crate (#2318); kept in the workspace for tests and future work, but excluded from the v1 public release train"
 
 [[private_packages]]
 name = "nmp-app-gallery"

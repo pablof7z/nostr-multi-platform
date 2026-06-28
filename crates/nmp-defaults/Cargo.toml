@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "The framework's default composition for an NMP-based Nostr application (ADR-0046 — composition is a library, not a generator). One call (`register_defaults`) wires the default action modules (NIP-01 publish, NIP-02 follow/react, NIP-17 send + DM-relay-list publish, NIP-57 zap, NIP-65 publish_relay_list), the default ingest parsers (kind:10050 → `DmRelayCache`), the production routing substrate (`GenericOutboxRouter` + `InMemoryMailboxCache`), indexer-republish policy, the canonical DM-inbox + zap-receipts runtimes, and the D2 coverage hook. The Bevy-`DefaultPlugins` / Spring-Boot-starter pattern. Closes V-48 (see `docs/architecture/crate-boundaries.md` §10)."
+description = "The framework's default composition for an NMP-based Nostr application (ADR-0046 — composition is a library, not a generator). One call (`register_defaults`) wires the default action modules (NIP-01 publish, NIP-02 follow/react, NIP-17 send + DM-relay-list publish, NIP-65 publish_relay_list), the default ingest parsers (kind:10050 → `DmRelayCache`), the production routing substrate (`GenericOutboxRouter` + `InMemoryMailboxCache`), indexer-republish policy, the canonical DM-inbox runtime, and the D2 coverage hook. The Bevy-`DefaultPlugins` / Spring-Boot-starter pattern. Closes V-48 (see `docs/architecture/crate-boundaries.md` §10)."
 
 [features]
 # Default-on so existing native consumers keep the production substrate.
@@ -16,7 +16,6 @@ native = [
     "dep:nmp-nip11",
     "nmp-core/native",
     "nmp-router/native",
-    "nmp-nip57/native",
 ]
 
 [dependencies]
@@ -60,9 +59,6 @@ nmp-nip22 = { path = "../nmp-nip22" }
 # optional so the neutral wasm path does not require native I/O.
 nmp-nip11 = { path = "../nmp-nip11", optional = true }
 nmp-nip17 = { path = "../nmp-nip17" }
-# `default-features = false` keeps wasm32 free of ureq; `nmp-nip57/native`
-# re-enables it via the `native` feature above.
-nmp-nip57 = { path = "../nmp-nip57", default-features = false }
 # NIP-50 public full-text search scopes (#1811): `register_search_scopes`
 # installs the `nip50.profiles` / `nip50.notes` / `nip50.longform`
 # crate-owned `SearchScopeProvider`s into the shared FTS scope registry so the

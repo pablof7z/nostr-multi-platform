@@ -10,6 +10,9 @@
 > **Zap contract**: the target registry surface uses `zapEnabled: Bool` /
 > `zapEnabled: Boolean`. The component does not receive `authorLnurl`, parse
 > LNURL metadata, or pass LNURL through the zap callback.
+> **V1 scope**: zap publishing is post-v1 (#2318). The v1 default composition
+> does not register `nmp.nip57.zap`, and generated host action builders do not
+> expose a zap dispatch helper.
 >
 > **Related**: GitHub issue #997; blocker details:
 > [note-actions-row-contract-blockers.md](note-actions-row-contract-blockers.md).
@@ -77,7 +80,7 @@ owns local reply/zap dialogs.
 |--------|------------|----------------|------------------|
 | Like / React | `kernel.react(targetEventID:reaction:)` | `model.react(card.id, "❤")` | `nmp.nip25.react` |
 | Repost | `kernel.repost(eventID:authorPubkey:)` | `model.repost(card.id, card.authorPubkey)` | `nmp.nip18.repost` |
-| Zap | `kernel.zap(...)` | `model.zapNote(...)` | `nmp.nip57.zap` |
+| Zap | `kernel.zap(...)` | `model.zapNote(...)` | post-v1 `nmp.nip57.zap`; not v1 default |
 | Reply | reply sheet, compose path | `model.publishNote(content, card.id)` | `nmp.nip01.publish_note` |
 
 iOS callbacks are wired in `HomeFeedView.swift:131-141`; kernel calls go
@@ -205,10 +208,12 @@ the host from Rust-owned or Rust-derived state. The component does not accept
 `authorLnurl`, parse `lud06`/`lud16`, or decide zapability from profile
 metadata.
 
-When `zapEnabled == true`, the zap button is enabled and `onZap` may fire. The
-host owns the amount picker and dispatches `nmp.nip57.zap`; Rust still fails
-closed if no LNURL exists at dispatch time. When `zapEnabled == false`, the
-button renders disabled/muted and does not fire `onZap`.
+When `zapEnabled == true` in a post-v1 zap-enabled app, the zap button is
+enabled and `onZap` may fire. The host owns the amount picker and dispatches
+the app-wired zap action; Rust still fails closed if no LNURL exists at dispatch
+time. In v1 defaults `zapEnabled` must remain false because `nmp.nip57.zap` is
+not registered or generated as a default host builder. When `zapEnabled ==
+false`, the button renders disabled/muted and does not fire `onZap`.
 
 This keeps LNURL out of both native shells and removes the current iOS
 `profileCard.lnurl` lookup from the component call path.

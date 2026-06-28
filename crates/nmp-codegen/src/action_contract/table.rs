@@ -396,8 +396,12 @@ pub const ACTION_CONTRACT: &[ActionContract] = &[
         schema_version: 1,
         file_identifier: "N57Z",
         default_tier: ActionDefaultTier::Zaps,
-        builder_support: BuilderSupport::GeneratedFlatTable,
-        public_re_export: PUBLIC_REEXPORT,
+        builder_support: BuilderSupport::NotGenerated {
+            reason: "post-v1 zap send surface removed from v1 generated host builders (#2318)",
+        },
+        public_re_export: PublicReExportPolicy::NotReExported {
+            reason: "nmp-defaults does not register or re-export zap payloads in v1 (#2318)",
+        },
         typed_dispatch: TYPED_ONLY,
     },
     // nmp-nip47 — NIP-47 Nostr Wallet Connect (opt-in via `with_wallet`).

@@ -20,7 +20,8 @@ pub enum ActionDefaultTier {
     Social,
     /// Registered when `NmpDefaults.dms` is enabled.
     DirectMessages,
-    /// Registered when `NmpDefaults.zaps` is enabled.
+    /// Post-v1 zap action row. Not registered by `nmp-defaults` v1 composition
+    /// (#2318).
     Zaps,
     /// Registered opt-in via `NmpAppBuilder::with_wallet` — NOT part of the
     /// default composition. Excluded from [`canonical_default_action_namespaces`]
@@ -68,6 +69,12 @@ pub enum BuilderSupport {
 pub enum PublicReExportPolicy {
     /// Re-export the typed payload through `nmp_defaults::action_payloads`.
     DefaultsActionPayloads,
+    /// Keep the typed payload in its owning crate; not re-exported by
+    /// `nmp-defaults`.
+    NotReExported {
+        /// Tracked rationale for the absence.
+        reason: &'static str,
+    },
 }
 
 /// Whether a registered default is allowed to be JSON-only.
@@ -138,15 +145,16 @@ pub fn contract_for(namespace: &str) -> &'static ActionContract {
 }
 
 /// Sorted namespaces for the canonical default composition, including the
-/// `nmp-core` built-in publish action. Wallet and Marmot namespaces are opt-in
-/// and are excluded from this set so the `register_defaults` matching test stays
-/// green on both no-wallet and no-marmot builds.
+/// `nmp-core` built-in publish action. Wallet, zaps, and Marmot namespaces are
+/// opt-in/post-v1 and are excluded from this set so the `register_defaults`
+/// matching test stays green on default builds.
 #[must_use]
 pub fn canonical_default_action_namespaces() -> Vec<&'static str> {
     sorted_namespaces(|c| {
         c.default_tier != ActionDefaultTier::Wallet
             && c.default_tier != ActionDefaultTier::Marmot
             && c.default_tier != ActionDefaultTier::ComponentRegistered
+            && c.default_tier != ActionDefaultTier::Zaps
     })
 }
 
@@ -180,7 +188,8 @@ pub fn dm_action_namespaces() -> Vec<&'static str> {
     sorted_namespaces(|c| c.default_tier == ActionDefaultTier::DirectMessages)
 }
 
-/// Sorted zap-tier action namespaces.
+/// Sorted zap-tier action namespaces, retained for post-v1/private crate tests
+/// but not registered by `nmp-defaults`.
 #[must_use]
 pub fn zap_action_namespaces() -> Vec<&'static str> {
     sorted_namespaces(|c| c.default_tier == ActionDefaultTier::Zaps)

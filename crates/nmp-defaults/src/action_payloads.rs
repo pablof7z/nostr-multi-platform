@@ -31,6 +31,5 @@ pub use nmp_nip18::{QuoteRepostAction, RepostAction};
 pub use nmp_nip22::PostCommentAction;
 pub use nmp_nip25::{ReactAction, UnreactAction};
 pub use nmp_nip51::{BookmarkSetUpdateInput, BookmarkUpdateInput, PublishWebBookmarkInput};
-pub use nmp_nip57::ZapInput;
 pub use nmp_nip84::PublishHighlightAction;
 pub use nmp_router::{BlockRelayInput, PublishRelayListInput, UnblockRelayInput};

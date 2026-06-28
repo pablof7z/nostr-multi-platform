@@ -530,42 +530,6 @@ public enum GeneratedActionBuilders {
         )
     }
 
-    /// Publish a NIP-57 zap request for a recipient (optionally a target event).
-    /// Builds the `nmp.nip57.zap` `DispatchEnvelope` bytes for the byte doorway.
-    public static func zap(
-        correlationId: String,
-        recipientPubkey: String,
-        amountMsats: UInt64,
-        lnurl: String?,
-        relays: [String],
-        targetEventId: String?,
-        comment: String?
-    ) -> [UInt8] {
-        var fbb = FlatBufferBuilder()
-        let recipientPubkeyOffset = fbb.create(string: recipientPubkey)
-        let lnurlOffset: Offset = lnurl.map { fbb.create(string: $0) } ?? Offset()
-        let relaysOffsets = relays.map { fbb.create(string: $0) }
-        let relaysOffset = fbb.createVector(ofOffsets: relaysOffsets)
-        let targetEventIdOffset: Offset = targetEventId.map { fbb.create(string: $0) } ?? Offset()
-        let commentOffset: Offset = comment.map { fbb.create(string: $0) } ?? Offset()
-        let payloadStart = fbb.startTable(with: 7)
-        fbb.add(element: UInt32(1), def: UInt32(0), at: 4) // slot 0: schema_version
-        fbb.add(offset: recipientPubkeyOffset, at: 6) // slot 1: recipientPubkey
-        fbb.add(element: amountMsats, def: UInt64(0), at: 8) // slot 2: amountMsats
-        if lnurlOffset.o != 0 { fbb.add(offset: lnurlOffset, at: 10) } // slot 3: lnurl
-        fbb.add(offset: relaysOffset, at: 12) // slot 4: relays
-        if targetEventIdOffset.o != 0 { fbb.add(offset: targetEventIdOffset, at: 14) } // slot 5: targetEventId
-        if commentOffset.o != 0 { fbb.add(offset: commentOffset, at: 16) } // slot 6: comment
-        let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))
-        fbb.finish(offset: payloadRoot, fileId: "N57Z")
-        let payload = fbb.sizedByteArray
-        return encodeDispatchEnvelope(
-            correlationId: correlationId,
-            actionNamespace: "nmp.nip57.zap",
-            payload: payload
-        )
-    }
-
     /// Publish a NIP-84 kind:9802 highlight annotation.
     /// Builds the `nmp.nip84.publish_highlight` `DispatchEnvelope` bytes for the byte doorway.
     public static func publishHighlight(

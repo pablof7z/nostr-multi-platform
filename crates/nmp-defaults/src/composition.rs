@@ -34,8 +34,3 @@ pub(crate) fn register_dm_defaults(app: &mut impl AppHost) {
     nmp_nip17::register_actions(app);
     runtimes::register_dm_runtime(app);
 }
-
-pub(crate) fn register_zap_defaults(app: &mut impl AppHost) {
-    nmp_nip57::register_actions(app);
-    runtimes::register_zap_receipts_runtime(app);
-}

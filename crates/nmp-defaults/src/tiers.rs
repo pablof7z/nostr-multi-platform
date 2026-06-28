@@ -10,8 +10,8 @@
 //! `NoTargets`, kind:10002 never populates the mailbox cache, oversized relay
 //! plans are never trimmed. This is the `MinimalPlugins` analog from the Bevy
 //! `DefaultPlugins` study — the irreducible floor every NMP app stands on.
-//! **Social-feature defaults** — the nip02/nip17/nip57 action bundles, the
-//! WOT/DM/zap runtime controllers, the NIP-23 long-form typed projection — are
+//! **Social-feature defaults** — the nip02/nip17 action bundles, the
+//! WOT/DM runtime controllers, the NIP-23 long-form typed projection — are
 //! *preferences*, not correctness; a non-social external consumer
 //! (podcast-player, hl, win-the-day) wants the floor without the ceiling.
 //!
@@ -36,9 +36,9 @@
 //! is **shared** between the hook and the runtime, so overriding it post-hoc
 //! would desync them, which is why it is a [`NmpDefaults`] field, not a literal.
 //!
-//! **Social** (added by [`register_defaults`] on top): nip02/nip17/nip57
-//! action bundles, WOT/DM/zap runtime controllers, the long-form typed
-//! projection, and explicit app-supplied operator policy such as
+//! **Social** (added by [`register_defaults`] on top): nip02/nip17 action
+//! bundles, WOT/DM runtime controllers, the long-form typed projection, and
+//! explicit app-supplied operator policy such as
 //! `nostrconnect` and NIP-50 search fallback relays.
 
 use std::sync::Arc;
@@ -136,13 +136,6 @@ pub struct NmpDefaults {
     /// **Default:** `true`.
     pub dms: bool,
 
-    /// Wire the NIP-57 zap action bundle **and** the self-zap-receipts
-    /// subscription runtime (kind:9735 `#p` reconciler). Disable for a
-    /// consumer with no lightning/zap surface.
-    ///
-    /// **Default:** `true`.
-    pub zaps: bool,
-
     /// Wire the NIP-23 long-form (kind:30023) **typed** snapshot projection
     /// (`nmp.nip23.articles`, the `NL23` FlatBuffer). Disable for a consumer
     /// that never reads long-form articles.
@@ -179,7 +172,6 @@ impl Default for NmpDefaults {
             search_defaults: SearchDefaults::default(),
             social: true,
             dms: true,
-            zaps: true,
             longform: true,
             client_identity: None,
             attach_client_tag: false,

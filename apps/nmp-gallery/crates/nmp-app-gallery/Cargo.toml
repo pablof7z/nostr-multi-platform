@@ -33,8 +33,8 @@ android-ffi = ["nmp-ffi/android-ffi", "nmp-ffi/native", "dep:jni"]
 nmp-ffi = { path = "../../../../crates/nmp-ffi", default-features = false }
 # Canonical NMP composition root (V-48). `register_defaults` wires the
 # default action modules, ingest parsers, routing substrate, publish
-# resolver, coverage hook, and the canonical DM-inbox + zap-receipts
-# runtime controllers. The gallery's `nmp_app_gallery_register` is a
+# resolver, coverage hook, and the canonical DM-inbox runtime controller.
+# The gallery's `nmp_app_gallery_register` is a
 # one-line forward to this call — that is the whole point of the crate.
 nmp-defaults = { path = "../../../../crates/nmp-defaults" }
 nmp-core = { path = "../../../../crates/nmp-core" }

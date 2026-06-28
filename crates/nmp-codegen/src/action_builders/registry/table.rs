@@ -304,47 +304,6 @@ pub const ACTION_BUILDERS: &[ActionBuilder] = &[
         ],
         doc: "Send a NIP-17 gift-wrapped direct message to a recipient.",
     },
-    // nip57 — publish a NIP-57 zap request (zap.fbs / ZapPayload). Mirrors
-    // `nmp_nip57::ZapInput`: recipient_pubkey required + amount_msats (u64)
-    // inline; lnurl / target_event_id / comment optional; relays is the vector
-    // (may be empty → kernel auto-selects from NIP-65 write relays).
-    ActionBuilder {
-        namespace: "nmp.nip57.zap",
-        method: "zap",
-        fields: &[
-            PayloadField {
-                name: "recipientPubkey",
-                kind: FieldKind::Str,
-                optional: false,
-            },
-            PayloadField {
-                name: "amountMsats",
-                kind: FieldKind::Ulong,
-                optional: false,
-            },
-            PayloadField {
-                name: "lnurl",
-                kind: FieldKind::Str,
-                optional: true,
-            },
-            PayloadField {
-                name: "relays",
-                kind: FieldKind::StrVec,
-                optional: false,
-            },
-            PayloadField {
-                name: "targetEventId",
-                kind: FieldKind::Str,
-                optional: true,
-            },
-            PayloadField {
-                name: "comment",
-                kind: FieldKind::Str,
-                optional: true,
-            },
-        ],
-        doc: "Publish a NIP-57 zap request for a recipient (optionally a target event).",
-    },
     // Host-called typed actions added after the original registry slice.
     PUBLISH_HIGHLIGHT,
     POST_COMMENT,
