@@ -31,8 +31,8 @@ use super::{BrowserRuntime, PumpOutcome};
 use crate::builder::BrowserBuilderInner;
 use crate::relay::RelayPool;
 use crate::signer::{
-    enqueue_completion, BrowserNip46Runtime, CapabilityEnvelope, CapabilityProviderRegistry,
-    PendingCipherCompletions, SignerCompletion,
+    BrowserNip46Runtime, CapabilityEnvelope, CapabilityProviderRegistry, PendingCipherCompletions,
+    SignerCompletion, enqueue_completion,
 };
 
 use super::NoopRoutingTrace;
@@ -152,7 +152,10 @@ impl BrowserRuntimeHandle {
 
         // ── Build relay pool ──────────────────────────────────────────────────
         let user_agent = inner.relay_user_agent.take();
-        let relay_pool = RelayPool::new(user_agent);
+        inner.relay_connected_hooks.push(Arc::new(
+            crate::relay::info_fetch::BrowserNip11FetchHook::new(user_agent.clone()),
+        ));
+        let relay_pool = RelayPool::new();
 
         // ── Build signer registry from accumulated providers (#2049) ──────────
         let mut signer_registry = CapabilityProviderRegistry::new();

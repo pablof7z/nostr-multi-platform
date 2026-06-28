@@ -18,7 +18,7 @@
 //! | `opfs_store_open_failure: private_browsing` | Private/incognito window where OPFS is blocked by a `SecurityError`. |
 //! | `opfs_store_open_failure: quota_denied` | The origin's storage quota was exhausted at open (pool pre-allocation). |
 //! | `opfs_store_open_failure: handle_loss` | A `SyncAccessHandle` was lost/invalidated (`InvalidStateError`) — e.g. the OS reclaimed it. |
-//! | `opfs_store_open_failure: second_tab_pool_lock` | Another tab on the same `database_name` already holds the exclusive sahpool; this tab cannot acquire it (`NoModificationAllowedError` / lock contention). |
+//! | `opfs_store_open_failure: second_tab_pool_lock` | Another tab already holds durable ownership for this `database_name`, or the exclusive sahpool lock could not be acquired. |
 //! | `opfs_store_open_failure: unknown` | An open failure that matched none of the above — never silently dropped. |
 //!
 //! # Classification source
@@ -56,7 +56,7 @@ pub(crate) const PRIVATE_BROWSING: &str = "opfs_store_open_failure: private_brow
 pub(crate) const QUOTA_DENIED: &str = "opfs_store_open_failure: quota_denied";
 /// A SyncAccessHandle was lost / invalidated.
 pub(crate) const HANDLE_LOSS: &str = "opfs_store_open_failure: handle_loss";
-/// Another tab holds the exclusive sahpool for this `database_name`.
+/// Another tab owns durable mode for this `database_name`.
 pub(crate) const SECOND_TAB_POOL_LOCK: &str = "opfs_store_open_failure: second_tab_pool_lock";
 /// Open failed for a reason outside the known taxonomy.
 pub(crate) const UNKNOWN: &str = "opfs_store_open_failure: unknown";

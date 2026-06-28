@@ -54,6 +54,7 @@ pub(crate) mod protocol;
 pub(crate) mod ref_routing;
 pub(crate) mod search;
 pub(crate) mod store_failure;
+pub(crate) mod web_locks;
 
 // ── wasm32 entry point ────────────────────────────────────────────────────────
 
@@ -74,6 +75,7 @@ mod wasm_impl {
     /// thread boundaries. Single-threaded wasm32 guarantees no contention.
     struct Inner {
         core: NmpRuntimeCore,
+        durable_tab_lock: Option<super::web_locks::DurableTabLock>,
         /// JS function to call with `(bytes: Uint8Array)` on snapshot push.
         snapshot_cb: Option<Function>,
         /// Wake closure built by `set_snapshot_callback` but not yet installed
@@ -87,6 +89,7 @@ mod wasm_impl {
         fn new() -> Self {
             Self {
                 core: NmpRuntimeCore::new(),
+                durable_tab_lock: None,
                 snapshot_cb: None,
                 pending_wake: None,
             }
@@ -295,6 +298,21 @@ mod wasm_impl {
         #[cfg(feature = "opfs-sqlite-backend")]
         pub async fn prepare_store(&self, app_id: String, database_name: String) {
             let db_name = super::core::opfs_database_name(&app_id, &database_name);
+            let lock = match super::web_locks::acquire_durable_tab_lock(&db_name).await {
+                Ok(lock) => lock,
+                Err(err) => {
+                    tracing::warn!(
+                        "OPFS-SQLite durable tab lock unavailable for {db_name:?}: {err}; \
+                         falling back to in-memory store (durability OFF)"
+                    );
+                    if let Ok(mut inner) = self.inner.try_borrow_mut() {
+                        inner.core.set_store_open_failure(
+                            super::store_failure::SECOND_TAB_POOL_LOCK.to_string(),
+                        );
+                    }
+                    return;
+                }
+            };
             match nmp_store::OpfsSqliteEventStore::open(&db_name).await {
                 Ok(store) => {
                     let store: std::sync::Arc<dyn nmp_store::EventStore> =
@@ -304,9 +322,11 @@ mod wasm_impl {
                     // this await-driven call on the single-threaded wasm target.
                     if let Ok(mut inner) = self.inner.try_borrow_mut() {
                         inner.core.set_injected_store(store);
+                        inner.durable_tab_lock = Some(lock);
                     }
                 }
                 Err(err) => {
+                    lock.release();
                     // Classify into a stable reason and park it for handle_start to
                     // thread onto the kernel's Tier-3 `store_open_failure`. The
                     // fallback to in-memory is honest: durability is OFF and the
@@ -360,7 +380,7 @@ mod wasm_impl {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub use wasm_impl::{nmp_encode_npub, NmpWasmRuntime};
+pub use wasm_impl::{NmpWasmRuntime, nmp_encode_npub};
 
 // ── Non-wasm stubs (native CI / doc builds) ───────────────────────────────────
 

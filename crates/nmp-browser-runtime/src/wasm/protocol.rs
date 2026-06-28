@@ -349,7 +349,7 @@ pub(crate) fn serialize_one(event: WorkerEvent) -> String {
 ///
 /// If `relay_bootstrap` is non-empty it is used verbatim (explicit role
 /// assignment wins). Otherwise synthesize one entry per URL with `role =
-/// "both"` (matches `nmp-wasm::protocol::relay_bootstrap_from_config`).
+/// "both"`.
 pub(crate) fn relay_bootstrap_from_config(
     relays: Vec<String>,
     relay_bootstrap: Vec<RelayBootstrapEntry>,

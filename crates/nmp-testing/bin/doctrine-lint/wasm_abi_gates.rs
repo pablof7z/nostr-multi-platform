@@ -3,31 +3,15 @@
 //! These are cargo/source smoke gates for the boundary that doctrine-lint runs
 //! in every `doctrine_lint_smoke` pass. They deliberately enforce only the
 //! narrow facts that should be mechanically stable:
-//! - `nmp-wasm` must not depend on app crates, router/default composition, or
+//! - `nmp-wasm` must not depend on runtime, app, router/default composition, or
 //!   signer implementation crates.
-//! - the hidden raw adapter must not expose feature/composition methods as
-//!   public Rust API.
+//! - the retired raw adapter path must stay deleted.
 
 use std::process::Command;
 
 use super::workspace_root;
 
-const ALLOWED_WASM_DEPS: &[&str] = &[
-    "nmp-core",
-    "nmp-feed",
-    "nmp-network",
-    "nmp-nip18",
-    "nmp-signer-iface",
-    "nmp-store",
-    "js-sys",
-    "serde",
-    "serde_json",
-    "wasm-bindgen",
-    "wasm-bindgen-test",
-    "console_error_panic_hook",
-    "gloo-timers",
-    "nostr",
-];
+const ALLOWED_WASM_DEPS: &[&str] = &["serde", "serde_json"];
 
 #[test]
 fn nmp_wasm_dependencies_stay_abi_only() {
@@ -75,9 +59,9 @@ fn nmp_wasm_dependencies_stay_abi_only() {
 }
 
 #[test]
-fn nmp_wasm_raw_adapter_public_methods_are_abi_only() {
+fn nmp_wasm_raw_adapter_path_is_retired() {
     let root = workspace_root();
-    let runtime_files = [
+    let retired_paths = [
         "crates/nmp-wasm/src/runtime.rs",
         "crates/nmp-wasm/src/runtime/actions.rs",
         "crates/nmp-wasm/src/runtime/default.rs",
@@ -87,31 +71,25 @@ fn nmp_wasm_raw_adapter_public_methods_are_abi_only() {
         "crates/nmp-wasm/src/runtime/lifecycle.rs",
         "crates/nmp-wasm/src/runtime/signer.rs",
         "crates/nmp-wasm/src/runtime/test_support.rs",
+        "crates/nmp-wasm/src/relay_pool.rs",
+        "crates/nmp-wasm/src/relay_plan.rs",
+        "crates/nmp-wasm/src/dispatch_routing.rs",
+        "crates/nmp-wasm/src/signer_slot.rs",
+        "crates/nmp-wasm/src/snapshot.rs",
+        "crates/nmp-wasm/src/tick.rs",
     ];
 
     let mut violations = Vec::new();
-    for relative in runtime_files {
-        let path = root.join(relative);
-        let source = std::fs::read_to_string(&path)
-            .unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()));
-        for (idx, line) in source.lines().enumerate() {
-            let trimmed = line.trim_start();
-            if !trimmed.starts_with("pub fn ") {
-                continue;
-            }
-            let name = public_fn_name(trimmed).unwrap_or("<unknown>");
-            if public_adapter_method_allowed(relative, name) {
-                continue;
-            }
-            violations.push(format!("{}:{} pub fn {name}", relative, idx + 1));
+    for relative in retired_paths {
+        if root.join(relative).exists() {
+            violations.push(relative);
         }
     }
 
     assert!(
         violations.is_empty(),
-        "RawWasmAbiAdapter may expose only ABI-neutral methods (`new`, `handle`, \
-         `dispatch_bytes`) plus native `*_for_test` helpers. Move composition \
-         hooks to nmp-browser-runtime or keep them crate-private:\n{}",
+        "legacy nmp-wasm runtime/adapter files must stay retired; browser \
+         runtime behavior belongs in nmp-browser-runtime:\n{}",
         violations.join("\n")
     );
 }
@@ -127,21 +105,7 @@ fn nmp_wasm_exports_hidden_raw_adapter_not_runtime_facade() {
         "nmp-wasm must not re-export the old public WasmRuntime facade"
     );
     assert!(
-        lib.contains("#[doc(hidden)]\npub use runtime::RawWasmAbiAdapter;"),
-        "nmp-wasm must expose RawWasmAbiAdapter only as a hidden internal ABI adapter"
+        !lib.contains("RawWasmAbiAdapter"),
+        "nmp-wasm must not expose the retired RawWasmAbiAdapter"
     );
-}
-
-fn public_fn_name(line: &str) -> Option<&str> {
-    let rest = line.strip_prefix("pub fn ")?;
-    rest.split(|c| c == '(' || c == '<').next()
-}
-
-fn public_adapter_method_allowed(relative: &str, name: &str) -> bool {
-    match relative {
-        "crates/nmp-wasm/src/runtime.rs" => matches!(name, "new" | "handle"),
-        "crates/nmp-wasm/src/runtime/dispatch.rs" => name == "dispatch_bytes",
-        "crates/nmp-wasm/src/runtime/test_support.rs" => name.ends_with("_for_test"),
-        _ => false,
-    }
 }

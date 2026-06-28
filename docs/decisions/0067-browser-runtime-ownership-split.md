@@ -33,3 +33,8 @@ Both native (`NmpAppBuilder` in `nmp-native-runtime`, per ADR-0068) and browser 
 - The existing Chirp Web implementation (`web/chirp`, `apps/chirp/crates/nmp-app-chirp-web`, current `web/packages/runtime-web` preview pieces) is **not** a compatibility target and is deleted/quarantined (#2052 / #2077-#2080).
 - ADR-0047 and ADR-0054 are amended in place so browser runtime ownership is assigned to `nmp-browser-runtime`, not `nmp-wasm`.
 - OPFS-SQLite persistence (ADR-0054 / #1007) stays the intended direction but is gated behind this split: the store is injected through the browser builder's storage decision, not constructed inside `nmp-wasm`.
+- The legacy internal `RawWasmAbiAdapter` path in `crates/nmp-wasm` is retired
+  once `nmp-browser-runtime::wasm::NmpWasmRuntime` covers the browser callers.
+  `nmp-wasm` remains only as a serializable protocol-type crate for older Rust
+  consumers; browser runtime behavior and wasm-bindgen exports live in
+  `nmp-browser-runtime`.
