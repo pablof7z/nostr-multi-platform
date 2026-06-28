@@ -1,10 +1,9 @@
 # App Model
 
-An app has a Rust composition root. The composition root installs the mandatory
-substrate and then opts into named reusable NMP features and app-owned product
-features. The preferred production shape uses the existing native/browser/TUI
-runtime builders or composition root plus narrow installer functions, where
-substrate, storage, policy, and feature opt-ins are visible:
+An NMP app has a Rust composition root. That root installs the substrate and
+then opts into explicit reusable NMP features and app-owned product features.
+
+Illustrative shape:
 
 ```rust
 let mut app = runtime_builder.storage_path(policy.storage).build_core();
@@ -15,575 +14,79 @@ nmp_nip51::install_lists(&mut app);
 nmp_nip50::install_search(&mut app, policy.search);
 nmp_nip29::install_groups(&mut app, policy.groups);
 microblog_app::install_home_feed(&mut app, policy.home_feed);
-highlighter_app::install_feature(&mut app, policy.highlighter);
 ```
 
-The exact names above are illustrative. The rule is not illustrative:
-`register_defaults()` is rejected as production app architecture. Product apps
-show the substrate and feature methods they install. A typestate or equivalent
-runtime builder is attractive because it can require storage and substrate
-before start, make the app immutable after build, and remove idempotency bugs
-from repeated registration. Do not add a broad app-builder or `AppHost` feature
-bucket before proving the existing runtime builders, `register_substrate`,
-narrow registrars, and installer extension traits cannot carry the selected
-slice. If a monolithic preset survives as a migration path, it is a
-tutorial or migration shim with explicit callers and a deletion target, not the
-architecture real products should copy.
-For a migration shim, the bar is higher than "maybe a consumer exists": name the
-live consumers, support window, owner, and deletion/formalization gate. If those
-cannot be proven against current call sites, the preset is deleted rather than
-documented as a compatibility surface.
-Known live surfaces to classify include `nmp-defaults` itself, `nmp-cli`
-templates/help, browser builder `start()` composition, `nmp-gallery`'s
-composition root, `nmp-example-login-timeline`, examples, docs, and downstream
-app roots. The future doc cannot simply say "rejected" while those surfaces keep
-teaching it as the normal production path; each surface must migrate to explicit
-feature composition or be labeled tutorial/migration with the support window and
-deletion gate above.
+The names are placeholders. The rule is not: production apps should show the
+features and policy they install. A hidden `register_defaults()` preset is not
+the desired production architecture.
 
-Composition classification is a P0 artifact, not a vague audit note:
+## What Goes Where
 
-| Surface | Default target |
-|---|---|
-| `nmp-defaults` | reusable installer library; no leaf-app policy or magic production preset |
-| `nmp-cli` and templates | production scaffold teaches explicit feature composition; tutorial preset is separately labeled |
-| `BrowserAppBuilder::start` | starts an already-explicit browser composition and reports unmet runtime/storage capabilities |
-| `nmp-gallery` root | explicit showcase composition or tutorial/showcase compatibility with deletion/formalization gate |
-| examples and docs | teach typed sessions/actions and explicit composition, not projection tiers or raw interests |
-| downstream app roots | app-specific policy stays in app Rust crates; NMP crates get only reusable Nostr mechanisms |
+NMP crates provide reusable Nostr mechanisms:
 
-`nmp init` should teach production architecture by default: explicit feature
-composition and policy builders. A separate tutorial preset can exist only when
-the generated text labels it as tutorial/sample convenience and points production
-apps at explicit feature composition.
+- relay routing and provenance;
+- signing and signer continuations;
+- event storage and bounded replay;
+- NIP implementations;
+- typed read sessions;
+- typed action and publish machinery;
+- generic projections, refs, search, threads, counts, and protocol parsers.
 
-The scaffold gates must flip with this design. Production scaffold tests reject
-hidden `register_defaults()` and `declare_consumed_projections` teaching paths.
-Tutorial scaffold tests may allow a preset only when the generated text labels
-the preset as tutorial/sample convenience and the production path is separately
-tested.
+App Rust crates provide product behavior:
 
-The substrate is the correctness floor: actor, store, indexes, signer ports,
-capabilities, planner, publish engine, and typed update delivery. Feature
-installers sit on top of it.
+- home-feed ranking or fallback policy;
+- Highlighter capture/OCR/share queues;
+- podcast playback, downloads, chapters, and agents;
+- gallery showcase state;
+- any domain logic a different Nostr app would not reuse.
 
-## Feature Installers
+Native and web shells render, execute capabilities, and hold ephemeral
+presentation state. They do not own routing, retry, publish status, protocol
+tagging, durable caches, signer policy, or product-correct derived facts.
 
-Avoid adding a public "feature bundle" object. Prefer explicit installer
-functions and existing builder extension traits over a broad `dyn AppFeature`,
-new app-builder trait, or AppHost-wide method pile. The first implementation may
-add at most one new read-lifecycle public noun: typed session
-descriptor/handle. Existing boundary concepts such as typed actions,
-capability results, typed outputs, and publish status may be retained or refined
-only when they delete, privatize, or narrow equal or larger old public surface.
-Everything else must be an existing seam, private machinery, or rejected until a
-slice proves it removes more architecture than it adds.
+## Feature Installation
 
-A feature installer is not an open screen. It installs reusable capability:
+A feature installer can register:
 
-- read/query descriptors;
-- typed projection producers;
-- actions and reducers;
+- typed read session descriptors;
+- typed outputs and reducers;
+- typed actions;
 - event draft builders;
-- parsers and protocol validation;
+- protocol parsers and validators;
 - capability needs;
-- protocol-owned state;
-- publish route policy where the protocol owns it.
+- publish route policy owned by that protocol or app feature.
 
-NMP feature installers provide reusable Nostr mechanisms: NIP-02 follows, NIP-29
-groups, NIP-17 DMs, NIP-65 routing, profile refs, event refs, search, generic
-thread reduction, generic live counts, and publish policy.
+Feature installers should be explicit functions or narrow builder extensions.
+Avoid a broad public `AppFeature` object or a method pile on `AppHost` unless a
+concrete slice proves existing seams cannot express the feature without keeping
+larger old surface.
 
-App feature installers provide product behavior that is not reusable Nostr
-infrastructure: Highlighter capture/OCR/share queues/article chrome, podcast
-playback/downloads/feed fetching/transcripts/agents, or gallery showcase
-catalog state. They use NMP features, but they do not become NMP crates unless
-the mechanism is useful to other Nostr apps.
+## Developer Experience
 
-Home feed is a composition proof case, not a privileged framework feature. A
-microblog app may install a home-feed feature set that uses NIP-02 follows, NIP-65
-outbox routing, profile refs, event refs, ranking, mute policy, and app-owned
-fallbacks. Those reusable mechanisms belong in NMP; the product meaning of
-"home" belongs in the app or a reusable feed crate only if it is genuinely a
-generic Nostr feed mechanism.
+The desired app-authoring loop is:
 
-The app crate is also the right owner for cross-protocol product composition.
-For example, publishing a highlight and then sharing it into a NIP-29 room is
-Highlighter behavior. The highlight feature and NIP-29 feature do not need to
-import each other's domain types.
+1. Define Rust-owned state and output types.
+2. Define typed read sessions for screens or widgets.
+3. Define typed actions and event draft builders for user intent.
+4. Install reusable NMP features and app-owned product features in the root.
+5. Let generated or contract-tested host adapters open sessions, dispatch
+   actions, render outputs, and report raw capability results.
 
-Custom app features should not require a framework PR. An app Rust crate can
-define a typed session descriptor, output schema, reducer, generated adapter
-contract, actions, event builders, and capability needs for its own domain, then
-compose those with NMP protocol features. What it must not do is push raw relay
-subscriptions, projection declarations, tag mutation, or publish routing into
-the native shell just because the feature is app-specific.
-
-The intended authoring contract is concrete:
-
-1. Define the app-owned state/output types and the events or capability results
-   that can change them.
-2. Define typed session descriptors for read demand, including route policy,
-   replay/admission rules, status, and teardown.
-3. Define typed actions/builders for user intent, including any publish intent
-   and signer requirements.
-4. Register the feature through the app composition root or a narrow installer.
-5. Generate or contract-test host adapters so Swift/Kotlin/TypeScript/TUI code
-   opens sessions, dispatches actions, renders outputs, and reports capability
-   results without reimplementing protocol policy.
-
-If that authoring path needs a new NMP module before the first app feature can
-work, the module starts as suspect. First try the existing builder,
-`AppHost`/registrar, action, observed-session, and publish seams; promote a new
-framework surface only after the app feature proves a repeated invariant and an
-old public door is retired.
-
-This should reduce NMP, not grow it. When a downstream app exposes a missing
-piece, the first question is whether NMP lacks a reusable Nostr mechanism or the
-app lacks an app-owned Rust feature. If the behavior is podcast playback,
-Highlighter capture, gallery showcase state, OCR, catalog search, local agents,
-or another product domain, keeping it in the app crate is the simpler
-architecture. NMP crates should shrink toward reusable protocol/runtime
-mechanisms and delete framework doors that exist only because app crates could
-not previously define typed sessions/actions cleanly.
-
-Do not confuse that with "fewer crates at any cost." Browser runtime, FFI,
-intent classification, feed mechanics, conformance, and testing can be real
-boundaries when they protect platform, ABI, protocol, runtime, or enforcement
-invariants. The first deletion target is hidden production surface such as
-monolithic `register_defaults()`, raw app-facing read/write doors, and duplicated
-lifecycle controllers. Merging browser runtime into FFI, feed mechanics into
-defaults, intent parsing into core, or gallery policy into framework defaults
-would reduce file count while hiding the same complexity behind worse ownership.
-
-This is the answer to the NDK comparison in #2313. NMP should feel like a
-one-call subscribe from Swift, Kotlin, TypeScript, or TUI after the app Rust
-crate has defined the session, but the production model is not arbitrary
-shell-authored Nostr subscriptions. If a product needs "kind 999999 from these
-authors" or "events from this relay-pinned group," the app or protocol Rust
-feature owns that descriptor once, and generated host APIs expose the pleasant
-open/close/render surface to every shell. Shell-only raw streams stay
-diagnostic, test, export, prototype, or migration tools; they are not the
-architecture for shipped product behavior.
+The host experience can feel like a simple `open(HomeFeed(...))`, but that
+door is backed by Rust-owned feature definitions, not arbitrary shell-authored
+relay subscriptions.
 
 ## Composition Gates
 
-The composition root should make these gates explicit:
-
-- `substrate`: actor, store, planner, signer ports, capability registry, and
-  update delivery.
-- `protocol features`: reusable Nostr read/write/query/publish behavior.
-- `app features`: product state, product actions, app-owned projections, and
-  capability needs.
-- `output contract`: typed outputs the shell may render or cache for rendering.
-- `capability contract`: native/web capabilities Rust may request and the raw
-  results the shell reports back.
-- `client identity`: one declared app identity such as name/version/handler that
-  feeds User-Agent and opt-in NIP-89 client tags through one Rust-owned outbound
-  finalization path.
-
-This keeps framework defaults useful without hiding the product architecture.
-Feature-install helpers should live in feature composition crates such as
-defaults, runtimes, protocol crates, or app crates, usually as builder extension
-traits or explicit registration helpers. They should not become a pile of
-unrelated methods on `nmp-core::AppHost`.
-
-Existing composition seams are the first place to prove this. Native already has
-`nmp-native-runtime::NmpAppBuilder`; browser already has
-`nmp-browser-runtime::BrowserAppBuilder`; reusable installers already compose
-through the platform-neutral `AppHost` super-trait and the narrow registrar
-traits beneath it. A new app-builder trait, `AppHost` extension surface, or
-composition crate is justified only after the first implementation shows why
-those existing seams cannot express explicit feature composition without
-retaining hidden defaults or broad public machinery. `AppHost` remains a
-composition-root target, not an app-developer API and not a protocol-module
-dependency.
-
-Composition should be idempotent where practical and explicit across browser,
-native, TUI, and test roots. A browser `start()` path should not silently install
-a different product architecture from the native root.
-
-Explicit composition still needs observability. Rejecting hidden
-`register_defaults()` must not delete the useful part of ADR-0049: an app should
-be able to inspect what installers ran, what they registered, what they skipped
-or yielded to app policy, and which capability/runtime requirements remain
-unsatisfied. The difference is that the ledger explains an explicit composition
-root; it is not a substitute for reading a magic preset.
-
-`nmp-defaults` is a reusable composition library, not a leaf app. It may provide
-generic routing, mailbox, parser, signer, and publish installers, but it must not
-own operator policy such as seed follows, bootstrap relay lists, app relay
-brands, signer permission defaults, or product onboarding choices. Leaf app Rust
-crates provide that policy explicitly, preferably through typed builders that
-make the "with policy" versus "without policy" decision visible at compile time.
-
-Account creation follows the same boundary. Native and web shells may collect
-raw user input and execute signer/keychain/browser capabilities, but account
-admission, onboarding defaults, seeded relay/follow choices, and first-run
-publish actions belong to app Rust or reusable protocol features. Passing opaque
-policy JSON through native composition is just hidden defaults with a different
-file extension.
-
-Client identity follows the same single-source rule. An app declares client
-identity once in its Rust composition root. NMP can derive User-Agent headers and
-optional NIP-89 client tags from that one declaration during outbound
-finalization. Native shells do not maintain parallel client-label, version, or
-tag tables, and protocol crates do not hard-code product identity.
-
-Generated catalogs and manifests follow the same rule. Known signer apps,
-signer capabilities, Android package/query declarations, iOS URL-scheme plist
-entries, generated TypeScript relay/config tables, release manifest entries, and
-similar platform-visible catalogs must have one Rust or manifest system of
-record. Native/web files may contain generated artifacts, not independently
-maintained policy tables. A parity gate that compares Swift to Kotlin but not
-back to the Rust/catalog source is not enough; drift prevention must point at the
-single writer.
-
-Signer catalog generation is the sharp example. The Rust signer catalog is the
-source of truth for signer identity, capability metadata, and platform exposure.
-Android manifest queries, iOS plist URL schemes, generated runtime catalogs, and
-docs derive from that source; scheme-only native identity is insufficient and
-native-maintained signer tables are drift.
-
-Generated app-feature APIs mean typed action, output, runtime, and capability
-adapters. They do not mean resurrecting generated per-app framework composition
-or hiding product policy inside generated native glue. If a generated API
-constructs Nostr events, chooses relays, signs, publishes, parses protocol tags,
-or owns durable product state, it is the wrong boundary unless the Rust app or
-protocol feature is the actual owner and the generated surface is only transport.
-
-FFI binding strategy is an implementation lane, not the architecture itself.
-FlatBuffers/update frames can remain the update payload transport while typed
-sessions/actions and generated adapters improve the public model. UniFFI,
-C-ABI, JNI, and browser-worker bindings are allowed to change only when the
-change deletes hand-written drift or narrows a public door. Targeted Android
-binding generation may be worth pulling forward if it retires duplicated JNI
-work; a full iOS binding migration is a separate decision unless the ADR
-explicitly reopens it. Binding churn that preserves the same old read/write
-doors is not simplification.
-Generated transport work must carry real drift gates: pinned schema/tool
-versions, ABI/header checks, cross-language golden fixtures for Rust, Swift,
-Kotlin, and TypeScript where shipped, decode validation, `u64`/BigInt handling,
-and case-conversion collision tests. A generated adapter that compiles but can
-silently decode a different payload shape is just a cleaner-looking old bug.
-Hand-authored host adapters are allowed only as migration-scoped or
-contract-tested transport glue. They must not spell product policy, protocol tag
-semantics, route policy, signer completion, or durable state. If they still spell
-raw ref namespaces, shape ids, liveness flags, worker message names, or update
-merge rules, they need parity fixtures against the Rust/source schema and a
-generation or deletion gate.
-
-The binding maintenance tax is real. Highlighter, Podcast Player, and gallery
-all show hand-maintained Swift/Kotlin/TypeScript/TUI glue, row caches, JNI/C-ABI
-wrappers, and compatibility facades that can drift from Rust. Generation is
-worth pulling forward when it deletes those duplicated surfaces, closes an
-Android/iOS/web parity gap, or makes action/output/schema drift fail in check
-mode. It is not worth doing when it only wraps the old public doors in new
-generated code.
-
-Runtime lifecycle FFI stays separate from product architecture. Calls such as
-`nmp_app_start`, `nmp_app_configure`, `nmp_app_stop`, `nmp_app_reset`,
-foreground/background notifications, liveness probes, and update callbacks are
-host runtime controls. They may start, stop, quiesce, and deliver update frames;
-they must not become feature-session lifecycle, product state, retry policy, or
-app read/write recipes.
-
-## App Feature Runtime Contract
-
-App-owned Rust crates may need runtime services that are not reusable Nostr
-protocol machinery. Podcast playback, queueing, downloads, transcript work,
-provider catalogs, STT/TTS, local agents, widgets, AppIntents, CarPlay, remote
-commands, Live Activities, Handoff, and import/export flows are valid app
-features. They should have generated app-feature APIs or typed capability
-requests, not be forced through NMP protocol crates and not be mistaken for
-legacy FFI just because they are app-specific.
-
-The contract is still Rust-owned:
-
-- app Rust owns durable state, policy, reducers, shutdown, scheduled work, and
-  injected clocks;
-- native/web executes platform capabilities and reports raw results;
-- generated app-feature APIs are typed and versioned;
-- capability result channels re-enter the Rust reducer path;
-- event-producing operations still use the typed action/publish doorway.
-
-Native mirrors are allowed only when they are capability or rendering
-mechanics, not durable product truth:
-
-| Native/local surface | Allowed role | Forbidden role |
-|---|---|---|
-| Widget/App Group snapshot | last Rust-emitted widget frame for WidgetKit | source of playback queue, episode state, relay state, or publish status |
-| `MPNowPlayingInfoCenter` / remote command state | OS media surface fed from Rust playback state | independent playback state machine or queue owner |
-| ActivityKit/Live Activity state | executor-side copy needed by ActivityKit throttling/lifecycle | decision about whether an activity should exist or what episode is current |
-| `NSUserActivity`/Handoff payload | OS handoff payload built from Rust semantic state | second navigation/playback source of truth |
-| image/profile/render caches | bounded render cache for already-projected data | protocol cache, profile truth, relay policy, or ref lifecycle owner |
-| secure storage/keychain | secret-bearing capability store | signer policy, permission model, or publish continuation owner |
-| native app database/UserDefaults | migration/import/export staging or render cache with Rust owner | durable product store for Nostr/account/playback/feed facts |
-
-App chrome follows the same rule. Rust owns semantic navigation state: current
-route, selected room/feed/ref, active account scope, unread/product state,
-cross-platform tab meaning, and any state a widget, deep link, or second
-platform must reproduce to stay correct. Native/web may own ephemeral
-presentation state such as selected visual tab affordance, sheets, popovers,
-FAB expansion, scroll position, focus, split-view column width, and animations
-when those values are derivable and dispatch typed Rust actions for semantic
-changes. If a chrome value affects routing, protocol policy, persistence,
-notifications, access control, or cross-platform behavior, it is Rust-owned.
-
-Podcast is the stress case for this boundary:
-
-| Podcast surface | Rust/app owner | Native or service role |
-|---|---|---|
-| playback queue and current episode | podcast Rust feature | audio engine executes requested command and reports raw progress/result |
-| RSS/OPML/import/export | podcast Rust feature owns parsing, normalization, stable ids, row errors, conditional request metadata, injected time, and durable subscription results | file picker/share-sheet/temp-file/network capability and rendering only |
-| widget/App Group frame | last Rust-emitted widget output | WidgetKit-readable snapshot only |
-| AppIntent/Siri/CarPlay/remote command | typed action/headless invocation result | raw OS command, activation, or error |
-| Live Activity/Handoff/deep link | Rust semantic state and action result | OS payload/display/update mechanics |
-| per-podcast signer and provider keys | named product signer/security decision plus capability result | keychain/file/provider capability only after ADR decision |
-| NIP-F4/Blossom publish status | publish ledger/status output | upload/signing/storage capabilities report raw results |
-| provider/agent jobs | durable Rust job state, typed trigger, injected clock, retry/cancel/progress/cost/result | external provider or media capability executes raw request and returns raw status/result |
-
-Optimistic native mirrors are allowed only as latency/presentation aids. A
-bookmark toggle may animate immediately if Rust remains authoritative and the
-next typed output reconciles the truth. A Wi-Fi-only publish policy, relay list,
-signer timeout, queue mutation, or publish success state is not an optimistic
-mirror; it is product policy and must be Rust-owned.
-
-File and binary capabilities follow the same boundary. OCR, camera, share
-extensions, Blossom upload/download, STT/TTS, local AI/model calls, and media
-transcoding may hand native/web a file handle, temp path, blob id, or provider
-request to execute. Rust owns the request intent, temp-file lifecycle decision,
-binary provenance needed for later event construction, durable result state, and
-any publish action that follows.
-
-Headless and OS-owned surfaces are not exempt. A widget, AppIntent, CarPlay
-scene, remote command, Live Activity, extension, or suspended-process resume
-should first use typed actions, short-lived headless invocation, capability
-results, or last Rust-emitted mirror frames. App-lifetime typed sessions are
-allowed only for a selected proof row that uses the same lifecycle contract as a
-visible screen. None of these surfaces may own a parallel playback queue, signer
-state, relay policy, deep-link admission policy, or publish result model.
-
-This distinguishes legitimate app runtime surface from forbidden protocol
-escape hatches. A Whisper upload, playback seek, provider-key read, or local
-agent tool call may be an app-feature API. A native-built Nostr event,
-native-chosen relay route, or native-owned publish status is not.
-
-## Developer Mental Model
-
-An app developer should know:
-
-- which features the app installs;
-- which feature/ref session a screen, component, widget, or service opens;
-- which typed output that owner renders;
-- which draft builder or action builder constructs an event or product action;
-- which signer should sign when the active account is not enough;
-- whether publishing uses automatic routing, protocol-pinned routing, or an
-  explicit relay override;
-- when to close query handles.
-
-For custom product behavior, the developer should expect one Rust definition
-plus generated shell calls:
-
-```text
-define app/protocol Rust session once
-  -> generate Swift/Kotlin/TypeScript/TUI open/close/action helpers
-  -> shell opens the typed session and renders typed output
-```
-
-That is the "door." It is not a framework PR for every feature, and it is not a
-native callback that streams arbitrary raw events.
-
-## Clean-Room Developer Path
-
-This is illustrative, not an API commitment. The point is the developer
-experience the architecture must make possible.
-
-An app root should read like explicit product composition:
-
-```text
-app = NmpApp::new()
-  .install(nmp::substrate())
-  .install(nip02::follow_lists())
-  .install(nip29::groups())
-  .install(nip17::direct_messages())
-  .install(app::rooms())
-  .install(app::playback())
-  .with_client_identity(app_client)
-  .with_app_policy(app_policy)
-  .build()
-```
-
-A screen should open what it renders:
-
-```text
-room = app.open(RoomTimeline { group_id })
-author = app.open(ProfileRef { pubkey, owner: room })
-
-render(room.output)
-render(author.output)
-dispatch(PlaybackCommand { command: TogglePlayPause })
-render(last_rust_emitted_playback_frame)
-```
-
-If Podcast later proves it needs resident playback state under a typed session,
-that can become a selected service-surface proof. It is not the default clean-room
-screen model.
-
-A product-specific read should be one Rust-owned feature definition plus generated
-host calls:
-
-```text
-feature SavedHighlights {
-  source: active_account_bookmarks + app_filter
-  route: planned_outbox
-  replay: bounded_before_live
-  output: HighlightRows
-  actions: OpenHighlight, ShareToRoom
-}
-```
-
-The generated shell surface should be boring:
-
-```text
-handle = app.open_saved_highlights(filter)
-view.render(app.saved_highlights(handle))
-app.dispatch(share_highlight_to_room(highlight_id, room_id))
-```
-
-For writes, construction, signing, and publishing stay separable without making
-the shell own protocol policy:
-
-```text
-draft = reply_to(event).content("nice")
-app.publish(draft)
-
-article = article().title("Hello").content(body)
-app.publish_to_group(article, group_id)
-
-episode = podcast_episode(show_id, media_ref)
-app.publish_episode(episode, signer: podcast_key)
-```
-
-The shell should not need to know whether the implementation used
-`ObservedProjection`, a dependent interest, a store replay cursor, a signer
-parking continuation, a route planner, or a row-delta cache. If a clean-room app
-still has to wire those pieces by hand, the destination architecture has failed
-the #2313/#2316 test.
-
-An app developer should not need to know:
-
-- projection tiers;
-- `SnapshotRegistry`;
-- muted observers;
-- replay shapes;
-- raw relay fanout;
-- NIP-65 mailbox lookup internals;
-- cache/store replay mechanics;
-- FlatBuffers sidecar registration;
-- snapshot tick reconcilers;
-- publish retry classification;
-- native-side relay routing.
-
-## Shell Responsibilities
-
-Native and web shells have three jobs:
-
-- render the typed state Rust gives them;
-- execute capabilities requested by Rust;
-- hold ephemeral presentation state such as focus, animation, scroll affordance,
-  or transient sheet state.
-
-The discriminating test stays simple: if a second platform would have to
-reimplement the behavior to stay correct, the behavior belongs in Rust.
-
-Rust outputs carry semantic facts, not presentation formatting. A projection may
-emit raw signer kind/state tokens, pubkeys, timestamps, event refs, route status,
-and domain state. Shells may choose labels, icons, colors, typography,
-truncation, local date formatting, and animation as long as those choices do not
-change behavior, routing, policy, identity, replay, sorting, or protocol meaning.
-Relay diagnostics and publish status follow the same boundary: Rust emits
-structured status and provenance, not display tone. Shells derive color,
-severity labels, icons, and copy from semantic fields.
-
-Projection caches generated for Swift, Kotlin, TypeScript, C, or TUI are not
-product state. They are render adapters for typed Rust outputs. A shell may keep
-row-delta caches for profiles, event refs, playback rows, or domain slices when
-the adapter owns their lifecycle and Rust remains the durable source of truth.
-
-Connectivity follows the same rule. Native may report raw platform facts such
-as `NWPath` state, metered network flags, background mode, or reachability. Rust
-owns app policy such as Wi-Fi-only publishing, relay-pool pause/resume, retry
-eligibility, and whether pending work may continue on the current connection.
-
-## Downstream App Shape
-
-`nmp-gallery` mostly exercises NMP features directly across iOS, Android, TUI,
-desktop, and web in this checkout. It needs component-scoped profile and event
-refs, generated ref caches, embed resolution, auth/signing component coverage,
-and no ref/projection retry timers. Its showcase relays are sample
-data/bootstrap policy for the gallery app, not framework defaults for NMP.
-Today's gallery bridge still teaches old architecture through
-`register_defaults()` / `consume_all_builtin_projections()` and platform-local
-URI/ref adapters; the migration proof is not complete until those are replaced
-or explicitly scoped as tutorial/showcase compatibility.
-Gallery acceptance needs an explicit composition manifest rather than another
-defaults wrapper: installed reusable features, app showcase features, output
-schemas, ref descriptors, signer capabilities, relay/bootstrap policy, consumed
-outputs, generated/contract-tested adapters, and web component/package ownership.
-`nmp_app_gallery_register`, browser `start()`, and Android byte-dispatch action
-sets must be classified as explicit composition, tutorial/test compatibility, or
-migration shims with owner, support window, and deletion/formalization gate.
-Existing Gallery helpers such as `openAuthor`, `claimProfile`, and
-`nmp_app_gallery_snapshot` are readiness smells until their owner is clear:
-typed session, generated adapter, diagnostic export, or migration shim.
-Gallery web is not proven by generic browser-runtime conformance or a TS-only
-demo. The package that ships gallery web needs its own wasm/Worker/OPFS proof,
-generated or contract-tested ref handles, no correctness `setInterval`
-release/reclaim loop, and `gallery_merge_cache_contract` coverage for full,
-delta, clear, tombstone/stale, decode-poison, baseline, and empty-baseline
-behavior. Raw `search_open`, `group_events_open`, and worker `resolve_ref` lanes
-must be classified as typed session targets, diagnostics, or migration shims.
-Silent in-memory fallback can be a diagnostic mode; it cannot count as product
-architecture proof.
-
-Highlighter needs NMP features plus Highlighter-owned feature modules for
-capture, share, article reading, curation, room chrome, comments, feedback, and
-podcast surfaces. Its native shells should execute Keychain, OCR, share extension,
-camera, AVPlayer, NIP-55, and connectivity capabilities, then report raw
-results to Rust.
-Highlighter web needs a scope decision before it can count as architecture
-evidence: NMP target runtime, SSR/migration exception, or out of scope. Direct
-NDK reads/writes/signing, direct Blossom/NIP-05 flows, LocalStorage sessions,
-fire-and-forget publish, and TypeScript protocol parsing must not remain both
-shipping product paths and known violations. The Go relay/server boundary stays
-app-owned: NIP-29 group lifecycle/moderation, NIP-42 admission, Blossom,
-LiveKit, search/admin state, and operator policy cross to clients as typed
-server/relay provenance rather than moving into generic NMP crates. Feedback
-can remain reusable protocol surface where appropriate, but Highlighter product
-behavior must not force every NMP app into the Highlighter runtime shape.
-Share extensions and deep links enter one Rust-owned classifier/action path;
-shells report raw activation data rather than parsing protocol meaning.
-
-Podcast Player needs NMP features plus podcast-owned feature modules for playback,
-queue, downloads, feed subscription, OPML/import, transcripts, widgets,
-Blossom-backed publish flows, and agent behavior. RSS, playback, queue, and
-transcript logic must stay in the app Rust crate.
-Podcast service surfaces and app-feature jobs are acceptance tests for the
-Rust-owned boundary. AppIntents, Siri, CarPlay, remote commands, Live
-Activities, Handoff, RSS/OPML, STT/TTS, provider jobs, agents, transcripts, and
-generated artifacts need typed app-feature APIs, durable Rust job rows, injected
-clocks, restart recovery, cancellation, retry/backoff, progress/cost/result, and
-explicit provider-polling exceptions when external providers offer no push or
-webhook. NIP-F4 publishing needs terminal relay/server status, not optimistic
-timestamps. Per-podcast keys must be accepted by ADR as a file-backed named
-product signer store with a clear threat model or replaced by a secure-storage
-capability; there is no "temporary but final" key path. Podcast and other
-downstream apps also need one coherent NMP revision baseline, not mixed
-workspace/path/git/released NMP crates used as architecture proof.
-
-Secondary downstream apps such as 29er and Olas are useful sanity checks but not
-permission to add product nouns to NMP. 29er should prove NIP-29/raw-event/group
-tree behavior through reusable protocol features and an app Rust core; Olas
-should prove picture-event, WoT, and image-feed mechanisms without moving Olas
-ranking or onboarding policy into framework crates.
+The composition root should make these facts visible:
+
+- storage and substrate policy;
+- installed protocol features;
+- installed app features;
+- output contracts exposed to hosts;
+- capabilities the shell must provide;
+- app identity and outbound client-tag policy.
+
+The first implementation should reuse the existing runtime builders, `AppHost`
+composition seam, and narrow registrars before adding a new framework-wide
+composition abstraction.
