@@ -236,6 +236,43 @@ enum UiErrorProse {
                 "error.signer.nip55_not_initialised",
                 value: "External signing isn’t available right now.",
                 comment: "Toast: NIP-55 driver not initialised")
+        // ── nmp-nip57 (Zap) ──────────────────────────────────────────
+        case "nip57_zap_no_lnurl":
+            return NSLocalizedString(
+                "error.nip57.zap_no_lnurl",
+                value: "This user has no lightning address.",
+                comment: "Toast: recipient has no lightning address for zapping")
+        case "nip57_zap_lnurl_resolve_failed", "nip57_zap_fetch_failed", "nip57_zap_failed":
+            return NSLocalizedString(
+                "error.nip57.zap_failed",
+                value: "Zap failed. Please try again.",
+                comment: "Toast: zap request failed")
+        case "nip57_zap_sign_failed":
+            return NSLocalizedString(
+                "error.nip57.zap_sign_failed",
+                value: "Couldn’t sign the zap request.",
+                comment: "Toast: signing the zap request failed")
+        case "nip57_zap_no_wallet":
+            return NSLocalizedString(
+                "error.nip57.zap_no_wallet",
+                value: "No wallet connected — add a NWC wallet first.",
+                comment: "Toast: attempted to zap with no wallet configured")
+        // ── nmp-nip05 (NIP-05 lookup) ────────────────────────────────
+        case "nip05_lookup_invalid":
+            return NSLocalizedString(
+                "error.nip05.lookup_invalid",
+                value: "That NIP-05 identifier isn’t valid.",
+                comment: "Toast: NIP-05 identifier failed shape validation")
+        case "nip05_lookup_failed":
+            return NSLocalizedString(
+                "error.nip05.lookup_failed",
+                value: "NIP-05 lookup failed.",
+                comment: "Toast: NIP-05 HTTP lookup returned an error")
+        case "nip05_lookup_native_unavailable":
+            return NSLocalizedString(
+                "error.nip05.lookup_native_unavailable",
+                value: "NIP-05 lookup isn’t available in this build.",
+                comment: "Toast: NIP-05 native fetcher not compiled")
         default:
             return nil
         }

@@ -144,14 +144,16 @@ object KernelUpdateFrameDecoder {
     ): KernelUpdate? {
         return try {
             KernelUpdate(
-                // rev, running, metrics, relayStatuses, lastErrorToast all come
-                // from the Tier-3 SnapshotFrame envelope (ADR-0044). The generic
-                // `payload:Value` root map is no longer present (PR-B #991/#979).
+                // rev, running, metrics, relayStatuses, lastErrorToast, and
+                // lastErrorCategory all come from the Tier-3 SnapshotFrame
+                // envelope (ADR-0044). The generic `payload:Value` root map is
+                // no longer present (PR-B #991/#979).
                 rev = snapshot.rev.toLong(),
                 running = snapshot.running,
                 metrics = decodeMetricsFromTier3(snapshot),
                 relayStatuses = decodeRelayStatusesFromTier3(snapshot),
                 lastErrorToast = snapshot.lastErrorToast,
+                lastErrorCategory = snapshot.lastErrorCategory,
                 projections = decodeProjections(typedProjections),
             )
         } catch (e: Exception) {

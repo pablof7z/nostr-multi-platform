@@ -14,8 +14,8 @@
 //! relays receive, and the LN provider mints it after the invoice settles.
 //! This command therefore emits NO relay-bound frames. On a fetched invoice it
 //! dispatches the actor-local NWC pay-invoice command; on LNURL failure or a
-//! missing wallet it sends `ShowToast` + `RecordActionFailure` so the host's
-//! spinner resolves without scraping toast text.
+//! missing wallet it sends `ShowErrorToken` + `RecordActionFailure` so the
+//! host's spinner resolves and the shell renders localized prose (#1682).
 //!
 //! # Surfaces threaded through `ProtocolCommandContext`
 //!
@@ -46,7 +46,7 @@
 //! 2. GET that URL → `{ callback, minSendable, maxSendable, nostrPubkey, … }`.
 //! 3. GET `{callback}?amount=<msats>&nostr=<urlencoded-signed-9734>` → `{ pr }`.
 //! 4. Send follow-up [`ActorCommand`]s: `Protocol(WalletPayInvoiceCommand)` on
-//!    a fetched invoice, else `ShowToast` + `RecordActionFailure`.
+//!    a fetched invoice, else `ShowErrorToken` + `RecordActionFailure`.
 //!
 //! Because the port resolves the sign before the worker spawns, the worker
 //! never holds a `SignerOp` and never waits on the signer — it receives the
@@ -78,6 +78,7 @@ use nmp_core::substrate::{
 };
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 use nmp_core::actor::ActorCommand;
+use nmp_core::ui_token::UiToken;
 use nmp_kinds::KIND_ZAP_RECEIPT;
 use nostr::{EventBuilder, Keys, Kind, Tag, Timestamp};
 
@@ -116,7 +117,7 @@ pub struct FetchLnurlInvoiceCommand {
     /// `dispatch_action` (`nmp.nip57.zap`). When `Some`, terminal stages
     /// (`Accepted` / `Failed`) are recorded against this id so the host
     /// spinner clears. `None` means a direct caller with no spinner —
-    /// only the `ShowToast` follow-up is sent.
+    /// only the `ShowErrorToken` follow-up is sent.
     pub correlation_id: Option<String>,
     /// ADR-0052 rung 5.2: the per-app [`PaymentPort`] the zap auto-chain pays
     /// through — captured by `ZapAction` at composition time, not read from a
@@ -151,12 +152,20 @@ impl ProtocolCommand for FetchLnurlInvoiceCommand {
             _ => match ctx.zap_profiles().lnurl_for_pubkey(&recipient_pubkey) {
                 Some(v) => v,
                 None => {
-                    let reason = "this user has no lightning address in their profile";
-                    ctx.send(ActorCommand::ShowToast {
-                        message: reason.to_string(),
+                    // issue #1682 — emit a structured token so the shell renders
+                    // localized prose; the English fallback covers non-localizing
+                    // shells and diagnostic logs.
+                    ctx.send(ActorCommand::ShowErrorToken {
+                        token: UiToken::error(
+                            crate::ui_codes::ZAP_NO_LNURL,
+                            "This user has no lightning address.",
+                        ),
                     });
                     if let Some(cid) = correlation_id {
-                        ctx.record_action_failure(cid, reason.to_string());
+                        ctx.record_action_failure(
+                            cid,
+                            "This user has no lightning address.".to_string(),
+                        );
                     }
                     return Ok(());
                 }
@@ -187,9 +196,12 @@ impl ProtocolCommand for FetchLnurlInvoiceCommand {
         // D6 fail-closed: abort the zap if lnurl tag encoding fails (most
         // providers including Primal won't mint a receipt without it).
         if let Err(reason) = inject_lnurl_tag(&lnurl_or_address, &mut unsigned) {
-            ctx.send(ActorCommand::ShowToast {
-                message: format!("Zap failed: {reason}"),
-            });
+            let token = UiToken::error(
+                crate::ui_codes::ZAP_LNURL_RESOLVE_FAILED,
+                "Zap failed.",
+            )
+            .with_detail(reason.clone());
+            ctx.send(ActorCommand::ShowErrorToken { token });
             if let Some(cid) = correlation_id {
                 ctx.record_action_failure(cid, reason);
             }
@@ -209,7 +221,7 @@ impl ProtocolCommand for FetchLnurlInvoiceCommand {
         //
         // [`ProtocolCommandContext::command_sender_clone`] hands us an owned
         // `Sender<ActorCommand>` (a cheap atomic ref-count bump) for the
-        // continuation + worker to post follow-up commands (`ShowToast`,
+        // continuation + worker to post follow-up commands (`ShowErrorToken`,
         // `Protocol(WalletPayInvoiceCommand)`, `RecordActionFailure`) back into
         // the actor loop after the dispatch arm (and its
         // `ProtocolCommandContext`) have returned.
@@ -224,9 +236,14 @@ impl ProtocolCommand for FetchLnurlInvoiceCommand {
                 Err(reason) => {
                     // Sign failed (genuinely-no-active-account, broker
                     // rejection, or a malformed signer response) — fail closed
-                    // with a D6 toast + `RecordActionFailure`.
-                    let msg = format!("Zap failed: {reason}");
-                    let _ = worker_tx.send(ActorCommand::ShowToast { message: msg });
+                    // with a D6 structured token + `RecordActionFailure`
+                    // (#1682: machine code + English fallback).
+                    let token = UiToken::error(
+                        crate::ui_codes::ZAP_SIGN_FAILED,
+                        "Couldn't sign the zap request.",
+                    )
+                    .with_detail(reason.clone());
+                    let _ = worker_tx.send(ActorCommand::ShowErrorToken { token });
                     if let Some(cid) = correlation_id {
                         let _ = worker_tx.send(build_record_action_failure(cid, reason));
                     }
@@ -237,8 +254,12 @@ impl ProtocolCommand for FetchLnurlInvoiceCommand {
             let signed_json = match signed_event_to_nostr_json(&signed) {
                 Ok(json) => json,
                 Err(reason) => {
-                    let msg = format!("Zap failed: {reason}");
-                    let _ = worker_tx.send(ActorCommand::ShowToast { message: msg });
+                    let token = UiToken::error(
+                        crate::ui_codes::ZAP_SIGN_FAILED,
+                        "Couldn't sign the zap request.",
+                    )
+                    .with_detail(reason.clone());
+                    let _ = worker_tx.send(ActorCommand::ShowErrorToken { token });
                     if let Some(cid) = correlation_id {
                         let _ = worker_tx.send(build_record_action_failure(cid, reason));
                     }
@@ -269,7 +290,7 @@ impl ProtocolCommand for FetchLnurlInvoiceCommand {
 ///
 /// On a fetched invoice the worker hands the bolt11 to the NWC wallet (the
 /// kind:23195 response closes the `nmp.nip57.zap` stage on confirmation); on a
-/// missing wallet or LNURL failure it posts `ShowToast` + `RecordActionFailure`
+/// missing wallet or LNURL failure it posts `ShowErrorToken` + `RecordActionFailure`
 /// so the host spinner resolves with a clear reason.
 fn spawn_lnurl_worker(
     worker_tx: nmp_core::CommandSender,
@@ -292,9 +313,12 @@ fn spawn_lnurl_worker(
                     if let Err(reason) = crate::pending::active_pending_zap_registry()
                         .remember_expected_provider(&zap_request_id, &invoice.provider_pubkey)
                     {
-                        let _ = worker_tx.send(ActorCommand::ShowToast {
-                            message: format!("Zap failed: {reason}"),
-                        });
+                        let token = UiToken::error(
+                            crate::ui_codes::ZAP_FAILED,
+                            "Zap failed.",
+                        )
+                        .with_detail(reason.clone());
+                        let _ = worker_tx.send(ActorCommand::ShowErrorToken { token });
                         if let Some(cid) = correlation_id {
                             let _ = worker_tx.send(build_record_action_failure(cid, reason));
                         }
@@ -307,20 +331,27 @@ fn spawn_lnurl_worker(
                     }));
                 }
                 None => {
-                    let reason =
-                        "zap: no wallet connected — connect a NWC wallet first".to_string();
-                    let _ = worker_tx.send(ActorCommand::ShowToast {
-                        message: reason.clone(),
+                    let _ = worker_tx.send(ActorCommand::ShowErrorToken {
+                        token: UiToken::error(
+                            crate::ui_codes::ZAP_NO_WALLET,
+                            "No wallet connected — add a NWC wallet first.",
+                        ),
                     });
                     if let Some(cid) = correlation_id {
-                        let _ = worker_tx.send(build_record_action_failure(cid, reason));
+                        let _ = worker_tx.send(build_record_action_failure(
+                            cid,
+                            "No wallet connected — add a NWC wallet first.".to_string(),
+                        ));
                     }
                 }
             },
             Err(reason) => {
-                let _ = worker_tx.send(ActorCommand::ShowToast {
-                    message: format!("Zap failed: {reason}"),
-                });
+                let token = UiToken::error(
+                    crate::ui_codes::ZAP_FETCH_FAILED,
+                    "Zap failed.",
+                )
+                .with_detail(reason.clone());
+                let _ = worker_tx.send(ActorCommand::ShowErrorToken { token });
                 if let Some(cid) = correlation_id {
                     let _ = worker_tx.send(build_record_action_failure(cid, reason));
                 }

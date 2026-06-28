@@ -45,6 +45,10 @@
 //! - `nmp-nip17` (`nmp_nip17::ui_codes`): DM send + gift-wrap failures.
 //! - `nmp-nip47` (`nmp_nip47::ui_codes`): NWC connect / encrypt / sign / wallet
 //!   errors.
+//! - `nmp-nip57` (`nmp_nip57::ui_codes`): zap LNURL-pay errors (no-lnurl /
+//!   resolve-failed / sign-failed / fetch-failed / no-wallet / zap-failed).
+//! - `nmp-nip05` (`nmp_nip05::ui_codes`): NIP-05 reverse-lookup errors
+//!   (lookup-invalid / lookup-failed / lookup-native-unavailable).
 //!
 //! Shells localize every key in those sets; an unknown key falls back to the
 //! token's English `fallback_prose`.

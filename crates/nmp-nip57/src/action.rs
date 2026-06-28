@@ -8,8 +8,8 @@
 //! `ActorCommand` variant has been deleted along with the
 //! `nmp-core::actor::commands::zap` module). The protocol command signs
 //! the kind:9734 on the actor thread, fetches the receiver's LNURL
-//! callback off-thread, and surfaces the resulting bolt11 invoice as a
-//! `ShowToast` follow-up.
+//! callback off-thread, and surfaces errors as a `ShowErrorToken` follow-up
+//! (#1682 / #2285 — machine code + English fallback for shell localization).
 //!
 //! # Wire routing
 //!

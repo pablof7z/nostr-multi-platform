@@ -72,8 +72,8 @@ pub enum ActorCommand {
     /// D6 — legacy raw-prose boundary ingress for callers that only have a
     /// command sender. New kernel/core producers must use `ShowErrorToken` so
     /// the snapshot carries a stable `last_error_category`; this variant remains
-    /// only for older protocol/FFI edges that still need a channel-routed error
-    /// until their owning crates define token codes.
+    /// for callers that have not yet defined token codes (e.g. the typed wrapper
+    /// in `nmp-native-runtime::app_impl_core`).
     ShowToast { message: String },
     /// D6 + issue #1682 — surface a structured error [`UiToken`] from an
     /// off-actor worker thread (e.g. the NIP-17 gift-wrap publish

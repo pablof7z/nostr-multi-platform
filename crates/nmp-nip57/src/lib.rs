@@ -22,6 +22,7 @@ pub mod kinds;
 #[cfg(feature = "native")]
 pub mod lnurl;
 pub mod pending;
+pub mod ui_codes;
 pub mod view;
 pub mod wire;
 
