@@ -30,6 +30,18 @@ Native/web/desktop/TUI shells own exactly:
 - execution of OS/browser capabilities;
 - ephemeral presentation state that cannot become product truth.
 
+For an app developer, this means Swift, Kotlin, TypeScript, or TUI code should
+mostly do three things:
+
+- start or attach to the Rust-owned app runtime;
+- open typed read sessions and dispatch typed actions;
+- render emitted state and answer capability requests.
+
+Anything a second platform would need to reimplement to stay correct belongs in
+Rust: read-source expansion, relay choice, signer choice, tag/envelope mutation,
+publish retry, cache truth, admission policy, privacy checks, product queue
+state, durable navigation meaning, and user-visible operation status.
+
 Capability flow is:
 
 ```text

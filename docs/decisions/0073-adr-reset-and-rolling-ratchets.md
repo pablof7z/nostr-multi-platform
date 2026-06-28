@@ -32,10 +32,11 @@ ADR-0069 through ADR-0073 are the current redesign spine:
 Older ADRs remain authoritative only for current invariants that do not conflict
 with this redesign spine. When an older ADR teaches a superseded app-facing
 surface, its current rule must be amended in place or the ADR must be folded,
-deleted, or retired by #2320. Git history preserves decision history; the active
-ADR directory should not act as a museum of old public architecture.
+deleted, or retired by the PR touching that area. Git history preserves decision
+history; the active ADR directory should not act as a museum of old public
+architecture.
 
-The #2320 cleanup classifies each older ADR as one of:
+The ADR index classifies each older ADR as one of:
 
 - folded into the redesign spine;
 - folded into another durable owner such as architecture docs, product spec, or
@@ -43,9 +44,9 @@ The #2320 cleanup classifies each older ADR as one of:
 - still-current standalone invariant;
 - retired/deleted because it is milestone-specific, stale, or superseded.
 
-The temporary `docs/new-arch/` candidate packet is retired once its surviving
-decisions are represented by ADRs, durable docs, and GitHub issues. It must not
-survive as another architecture authority.
+The temporary `docs/new-arch/` candidate packet has been retired. Future
+architecture proposals must move surviving decisions into ADRs, durable docs,
+and GitHub issues instead of leaving a parallel architecture packet behind.
 
 Migration proceeds by rolling horizon. At any point, only the next one to five
 PR-sized slices need implementation-level detail. After each slice, the project
@@ -65,11 +66,12 @@ Positive:
 
 Negative/tradeoffs:
 
-- #2320 is real work: many references in product specs, builder guides, recipes,
-  wiki pages, and older ADRs must be corrected in place.
+- The cleanup is continuing work: many references in product specs, builder
+  guides, recipes, wiki pages, and older ADRs must be corrected in place as
+  implementation slices touch those areas.
 - Some historical detail will move out of active docs and into git history.
-- The redesign ADRs intentionally do not classify every old ADR in this first
-  record; the classification is a follow-up cleanup slice.
+- The ADR index is not permission to keep stale guidance forever. Folded and
+  amended ADRs should shrink when their implementation area is next edited.
 
 ## Alternatives considered
 
@@ -82,7 +84,7 @@ Negative/tradeoffs:
 
 ## Fitness functions / enforcement
 
-- #2320 owns the ADR classification ledger and cleanup work.
+- `docs/decisions/README.md` owns the ADR classification ledger.
 - Every remaining ADR is either current standalone guidance or has a clear folded
   owner.
 - Stale references to production `register_defaults()`, app-facing
@@ -103,8 +105,7 @@ net permanent concepts:
 
 ## Linked work
 
-- #2320: ADR reset.
+- #2320: original ADR reset issue, now closed after the spine and index landed.
 - #2316: foundational feature-state decomposition.
 - #2313: app-developer API complexity.
-- #2320: retires the temporary `docs/new-arch/` candidate packet after durable
-  migration.
+- #2324: landed the initial ADR reset/spine cleanup.

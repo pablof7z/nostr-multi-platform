@@ -34,6 +34,24 @@ A typed session owns the complete lifecycle for one read demand:
 - wake sources for event, store, source, mailbox, or capability changes;
 - teardown for owner close, child demand release, and clear/tombstone output.
 
+From the app developer perspective, a screen asks for the thing it wants to
+show, not for each internal pipe needed to make that thing appear. For example,
+an article app should be able to express:
+
+```text
+open articles where:
+  primary kind is 30023
+  authors are people the active user follows
+  OR articles were reacted to/commented on by those people
+```
+
+That one read demand compiles into author/source resolution, outbox-aware relay
+planning, cache replay, live subscriptions, comment/reaction references, typed
+output, status, and teardown. If the active user's follows change, the session
+owner replaces dependent demand and clears withdrawn output without shell code
+resubscribing. If the resolved author/source set is empty, the session fails
+closed unless it explicitly declares a fallback.
+
 Native, web, TUI, and desktop shells open typed sessions and render typed
 outputs. They do not hand-author relay filters, raw `open_interest` calls,
 projection declarations, reducer names, dynamic source sets, or teardown recipes
@@ -49,6 +67,12 @@ private/provisional dynamic-source machinery unless a later ADR proves a real
 app-facing need. `open_feed(FeedParams)` may become a generated helper over typed
 sessions, a compatibility shim, or a retired feed-specific door; it must not stay
 beside typed sessions as an equal public lifecycle model.
+
+This ADR does not require flattening every read into a generic
+`subscribe(filter)` surface. Nostr routing, replay, provenance, dynamic sources,
+private relays, group hosts, and typed output are real concerns. The requirement
+is that those concerns are owned by one session contract per product read, with
+feature-shaped helpers where that is the humane API.
 
 Empty dynamic source sets fail closed unless the feature explicitly declares a
 fallback source. Empty authors, tags, refs, or groups never become wildcard
