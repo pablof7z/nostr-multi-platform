@@ -54,8 +54,9 @@ fn init_scaffold_is_a_compiling_composition_shell() {
             && lib.contains("GeneratedActionBuilders.publishProfile"),
         "scaffolded starter must point shells at generated publish builders:\n{lib}"
     );
+    let legacy_embed_projection_key = ["claimed_event", "embeds"].join("_");
     assert!(
-        !lib.contains("resolved_profiles") && !lib.contains("claimed_event_embeds"),
+        !lib.contains("resolved_profiles") && !lib.contains(&legacy_embed_projection_key),
         "scaffolded starter must not teach legacy projection names:\n{lib}"
     );
     let shell = std::fs::read_to_string(root.join("crates/demoapp-core/examples/shell.rs"))

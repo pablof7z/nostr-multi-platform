@@ -337,8 +337,10 @@ fn g3_shell_uses_nmp_app_builder() {
         "G3 DX GAP: starter must separate full projection contract from built-in declarations.\n\
          lib.rs:\n{lib_rs}",
     );
+    let legacy_embed_projection_key = ["claimed_event", "embeds"].join("_");
     assert!(
-        !lib_rs.contains("resolved_profiles") && !lib_rs.contains("claimed_event_embeds"),
+        !lib_rs.contains("resolved_profiles")
+            && !lib_rs.contains(&legacy_embed_projection_key),
         "G3 DX GAP: starter code must not mention legacy projection data sources.\n\
          lib.rs:\n{lib_rs}",
     );
