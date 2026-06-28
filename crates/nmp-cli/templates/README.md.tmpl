@@ -4,11 +4,24 @@ Scaffolded by `nmp init {{name}}`.
 
 ## Composition is a library (ADR-0046)
 
-`crates/{{pkg}}` is a **thin composition shell** over the NMP framework. Its
-`register` function inherits the canonical NMP composition with one call to
-`nmp_defaults::register_defaults` — the Bevy-`DefaultPlugins` /
-Spring-Boot-starter pattern. There is no generated FFI crate: you depend on the
-framework's default composition, you do not generate it.
+`crates/{{pkg}}` is a **thin composition shell** over the NMP framework, not a
+fork of Chirp. Its `register` function inherits the canonical NMP composition
+with one call to `nmp_defaults::register_defaults` — the Bevy-`DefaultPlugins`
+/ Spring-Boot-starter pattern. There is no generated FFI crate: you depend on
+the framework's default composition, you do not generate it.
+
+## Starter contract
+
+The generated app demonstrates the boring v1 path:
+
+| Surface | Starter shape |
+|------|------|
+| Runtime | `examples/shell.rs` uses `nmp_native_runtime::NmpAppBuilder`, calls `{{crate_ident}}::register(&mut builder)` once, declares projection consumption, declares relay policy, then starts. |
+| Timeline/read | `starter_home_feed_params()` declares the typed `nmp.feed.home` read surface; platform shells open/render that Rust/NMP projection instead of owning subscription or cache policy. |
+| Profile/content | Component hosts read `refs.profile`, authoritative `refs.event`, and derived `refs.event.envelopes`. Do not use pre-v1 whole-map projections. |
+| Component host | Install one app-root provider such as SwiftUI `NmpComponentHost` or Compose `NmpComponentHostProvider`; leaf components render and manage visible claim/release only. |
+| Compose/publish | Platform shells build bytes with generated builders such as `GeneratedActionBuilders.publishRaw` / `publishReply` / `publishProfile`, then dispatch those bytes. They do not spell action namespaces or JSON payloads by hand. |
+| Ownership | Product facts, routing, publish semantics, cache invalidation, and projection derivation stay in Rust/NMP. SwiftUI, Compose, web, or TUI shells render snapshots and execute capabilities only. |
 
 ## Layout
 
@@ -52,3 +65,5 @@ nmp doctor                # confirm the dependency policy
 3. Install a component host with fixtures while wiring UI tests, for example
    `nmp add component swiftui/component-host --with fixture`.
 4. Build a platform shell (SwiftUI / Compose / …) over the `NmpApp` C-ABI.
+5. Read the v1 runtime/component migration guide in the NMP checkout:
+   `docs/migration.md`.

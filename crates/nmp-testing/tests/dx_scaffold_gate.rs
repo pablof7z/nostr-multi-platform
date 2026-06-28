@@ -290,7 +290,16 @@ fn g3_shell_uses_nmp_app_builder() {
          shell.rs:\n{shell_rs}",
     );
 
-    // G3d: lib.rs calls register_defaults (the canonical NMP composition).
+    // G3d: Shell declares the kernel built-in starter projections.
+    assert!(
+        shell_rs.contains(
+            ".declare_consumed_projections(dxdemo3_core::starter_builtin_projection_keys())"
+        ),
+        "G3 DX GAP: shell.rs does not declare kernel built-in starter projections.\n\
+         shell.rs:\n{shell_rs}",
+    );
+
+    // G3e: lib.rs calls register_defaults (the canonical NMP composition).
     let lib_rs = fs::read_to_string(
         app_root.join("crates").join(pkg).join("src").join("lib.rs"),
     )
@@ -300,6 +309,39 @@ fn g3_shell_uses_nmp_app_builder() {
         lib_rs.contains("nmp_defaults::register_defaults"),
         "G3 DX GAP: lib.rs register() does not call nmp_defaults::register_defaults.\n\
          The scaffold must wire the canonical NMP composition (ADR-0046).\n\
+         lib.rs:\n{lib_rs}",
+    );
+
+    // G3f: lib.rs teaches current projections and typed write builders.
+    for key in [
+        "nmp.feed.home",
+        "refs.profile",
+        "refs.event",
+        "refs.event.envelopes",
+    ] {
+        assert!(
+            lib_rs.contains(key),
+            "G3 DX GAP: starter projection key `{key}` missing.\nlib.rs:\n{lib_rs}",
+        );
+    }
+    assert!(
+        lib_rs.contains("GeneratedActionBuilders.publishRaw")
+            && lib_rs.contains("GeneratedActionBuilders.publishReply"),
+        "G3 DX GAP: starter must point shells at generated publish builders.\n\
+         lib.rs:\n{lib_rs}",
+    );
+    assert!(
+        lib_rs.contains("starter_projection_keys")
+            && lib_rs.contains("starter_builtin_projection_keys")
+            && lib_rs.contains("starter_home_feed_params"),
+        "G3 DX GAP: starter must separate full projection contract from built-in declarations.\n\
+         lib.rs:\n{lib_rs}",
+    );
+    let legacy_embed_projection_key = ["claimed_event", "embeds"].join("_");
+    assert!(
+        !lib_rs.contains("resolved_profiles")
+            && !lib_rs.contains(&legacy_embed_projection_key),
+        "G3 DX GAP: starter code must not mention legacy projection data sources.\n\
          lib.rs:\n{lib_rs}",
     );
 }
