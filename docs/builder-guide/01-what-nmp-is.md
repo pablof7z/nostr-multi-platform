@@ -90,9 +90,8 @@ ready-to-build Rust workspace — a thin `<name>-core` crate that calls
 `nmp_defaults::register_defaults`, plus a headless `examples/shell.rs`. The
 C-ABI surface is shared through `nmp-ffi`, and composition is a library call.
 
-Coming next: Blossom blob storage, an Android shell on the same kernel,
-WASM write path + IndexedDB (browser relay driver already landed; write
-path and storage in progress), and UniFFI to replace the raw C FFI.
+Coming next: Blossom blob storage, continued browser-runtime hardening, and
+UniFFI to replace the raw C FFI.
 
 ## Comparison — 6 axes
 
@@ -115,20 +114,22 @@ not an application framework. NMP does not claim the app-layer axes as a
 >   new actor-owned kernel synthesizing lessons from both.
 > - **NOT a Nostr protocol library.** It depends on `rust-nostr`; it does
 >   not reimplement events, filters, or NIPs.
-> - **NOT at feature parity with NDK.** NDK ships DMs and Wallet today;
->   NMP defers both — see callout below. Do not read the comparison table
->   as "NMP > NDK."
+> - **NOT at feature parity with NDK.** NMP ships NIP-17 through Rust-owned
+>   modules and reference-app surfaces, but each signer/backend has explicit
+>   capability limits; Wallet remains deferred. Do not read the comparison
+>   table as "NMP > NDK."
 > - **NOT a UI toolkit.** No SwiftUI/Compose components; the shell is the
 >   builder's, the kernel is NMP's.
 
-## Deferred to post-v1
+## Capability caveats
 
-> **NMP v1 does not ship DMs or Wallet.** The old NIP-17 DM stack (with
-> the Notification Service Extension) and the NWC + zaps + Cashu + nutzaps
-> stack are both deferred to post-v1. NDK has DMs and Wallet packages
-> today; NMP does not. The eventual wallet and messaging designs are
-> documented but aspirational. If you need DMs or a wallet now, NMP is not
-> yet your framework.
+> **NMP does not promise every signer can do every private flow.** Local-key
+> signers can satisfy NIP-44 directly; NIP-46 signers depend on the remote
+> provider approving `nip44_encrypt` / `nip44_decrypt`; NIP-07 browser
+> extensions are private-flow capable only when they expose both optional
+> `window.nostr.nip44` verbs. See the browser capability matrix in
+> [`docs/wasm-surface.md`](../wasm-surface.md#browser-signerprivate-flow-capability-model).
+> Wallet/NWC/Cashu/nutzap parity remains post-v1.
 
 ## See also
 

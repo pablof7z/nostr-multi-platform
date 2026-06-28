@@ -75,6 +75,15 @@ caches the remote user pubkey after the first handshake
 (`nip46/mod.rs:23-24`), NIP-07 cannot exist without a cached pubkey
 (`nip07.rs:42-45`) — there is **no panic path** (D6).
 
+Browser NIP-17/private-flow support follows the capability matrix in
+[`docs/wasm-surface.md`](../wasm-surface.md#browser-signerprivate-flow-capability-model).
+In short: local-key browser sessions do NIP-44 inline in Rust, NIP-46 browser
+sessions route `nip44_encrypt` / `nip44_decrypt` through pending provider
+operations, and NIP-07 browser sessions can satisfy NIP-44 only when the
+extension exposes both optional `window.nostr.nip44` verbs. A browser extension
+that supports `window.nostr.signEvent` but lacks either NIP-44 verb is a valid
+signing extension, not a private-flow-capable signer.
+
 ## Session storage and restore
 
 `crates/nmp-core/src/actor/session_persistence.rs` owns the current session

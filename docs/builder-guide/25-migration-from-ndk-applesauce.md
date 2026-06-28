@@ -29,7 +29,7 @@ an actor-owned value that produces a bounded JSON or typed sidecar pushed to the
 | `ndk.subscribe(filters, opts)` | `eventStore.timeline(filters)` | `open_feed(FeedParams)` / action-dispatched claim → Rust registers `LogicalInterest`s; you pass *intent*, not filters/relays |
 | `NDKEvent` + manual derive | `eventStore.model(...)` (RxJS) | `ObservedProjectionSink` + `register_snapshot_projection` — actor-owned projection pushed as a JSON slice in every snapshot; **not** a stream you subscribe to |
 | build event → `signer.sign` → `ndk.publish` | `ActionRunner` + `ctx.publish(event, relays?)` | `ActionModule` + the publish engine — one action signs, publishes (outbox-routed), and updates the store atomically |
-| `NDKPrivateKeySigner` / `NDKNip46Signer` / NIP-55 | `SimpleSigner` / `ExtensionSigner` / `AmberClipboardSigner` | `nmp-signers::Signer` (Local / NIP-46 / NIP-07) + Keyring capability; iOS Keychain SHIPS, iOS external-signer is a capability hook not turnkey |
+| `NDKPrivateKeySigner` / `NDKNip46Signer` / NIP-55 | `SimpleSigner` / `ExtensionSigner` / `AmberClipboardSigner` | `nmp-signers::Signer` (Local / NIP-46 / NIP-07) + Keyring capability; browser NIP-44 is capability-specific, not implied by every browser signer; iOS Keychain SHIPS, iOS external-signer is a capability hook not turnkey |
 | `@nostr-dev-kit/sessions` store + `activePubkey` | `AccountManager` + `IAccount` | kernel `AppState.session` + `nmp-signers::AccountManager`; account is identity-only, derived state lives in app-owned stores |
 | kind:3 watcher in sessions pkg + Svelte runes / React deps to rewire | consumer manually re-subscribes | **ReducedSource / framework-magic** — Rust owns source reduction and dependent-interest replacement; app dispatches **zero** rewire code |
 
@@ -78,9 +78,16 @@ Each item below is code you wrote in NDK/Applesauce that NMP **owns**:
   lists, mute lists, follow packs, and pointer cascades reduce in Rust and
   materialize normal interests through the registry/planner. Native only
   declares the feed/action/ref claim and renders snapshots.
-- **Do not expect NDK feature parity.** NDK ships DMs and a Wallet today;
-  NMP defers both to post-v1 (`01-what-nmp-is.md`). Do not plan a migration
-  that depends on them.
+- **Do not flatten signer capabilities.** NDK/Applesauce browser signers often
+  expose optional encryption methods beside signing. In NMP, local-key browser
+  sessions satisfy NIP-44 inline in Rust; browser NIP-46 sessions use pending
+  provider routing; NIP-07 sessions can do NIP-44 only when the extension
+  exposes both `window.nostr.nip44.encrypt` and `.decrypt`. A sign-only
+  extension is not private-flow capable. See the shared matrix in
+  [`docs/wasm-surface.md`](../wasm-surface.md#browser-signerprivate-flow-capability-model).
+- **Do not expect full NDK feature parity.** NMP ships Rust-owned NIP-17 paths,
+  but Wallet/NWC/Cashu/nutzap parity remains post-v1. Do not plan a migration
+  that depends on wallet support.
 
 ## See also
 
