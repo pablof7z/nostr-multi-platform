@@ -1,0 +1,153 @@
+name: perf-gates
+
+# Modelled perf benchmarks promoted to PR-blocking gates (issue #2124).
+#
+# Both benches run in DETERMINISTIC (modelled) mode — no live relays, no
+# external resources, no flaky async timers. The --quick scale factor
+# reduces event volume by ~10x (reactivity-bench: multiplier 1 instead of 10;
+# firehose-bench: scale factor 0.2) to keep wall-clock under ~5 min while
+# still exercising all absolute gate thresholds:
+#
+#   reactivity-bench gates:
+#     lookup p99          ≤ 100 µs   (reverse-index hot-path ceiling)
+#     recompute p99       ≤ 1 ms     (delta-buffer flush ceiling)
+#     emit Hz             ≥ 60 Hz    (D8 reconciler frequency floor)
+#     deltas/view/sec     ≤ 60       (over-invalidation budget)
+#     false wakeup rate   ≤ 10 %     (spurious delta budget)
+#     candidates/delta    ≤ 1.25     (reverse-index fanout budget)
+#     working-set memory  ≤ 100 MiB  (actor hot working set)
+#
+#   firehose-bench gates (replay/modelled):
+#     first item          ≤ 800 ms
+#     filled timeline     ≤ 5 s
+#     ramp memory         ≤ 200 MiB
+#     ingest-to-emit p99  ≤ 50 ms
+#     view batch Hz       ≥ 60 Hz
+#
+# Live firehose (relay-dependent) stays in real-relay-nightly.yml — relay
+# flake makes it unsuitable for PR blocking.
+#
+# Path filter: any change under crates/ or apps/chirp/crates/ can shift
+# kernel throughput, so we gate broadly rather than risk a silent miss from
+# a narrow filter.
+#
+# Build note: nmp-testing's regular dep tree includes nmp-app-chirp (needed
+# by sanity-gate). The first cold build is heavy (openmls + marmot +
+# nmp-core); Swatinem/rust-cache makes subsequent runs incremental. The two
+# jobs each carry a DISTINCT rust-cache key (reactivity-bench / firehose-bench)
+# and do not share release artifacts, so each pays its own cold openmls+marmot
+# build on a cold or evicted cache. The 45-minute timeout gives that cold path
+# comfortable headroom; cached runs typically finish in 7–10 min.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+    paths:
+      - ".github/workflows/perf-gates.yml"
+      - "crates/**"
+      - "apps/chirp/crates/**"
+
+jobs:
+  reactivity-bench:
+    name: reactivity-bench (quick, --fail-on-gate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      # The nmp-testing + nmp-app-chirp dep tree can exhaust ~14 GB free on a
+      # bare ubuntu-latest runner. Drop pre-installed SDKs we never use to
+      # reclaim ~25 GB before building (same pattern as test.yml).
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /usr/local/lib/android /opt/hostedtoolcache/CodeQL \
+            /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
+          sudo docker image prune --all --force || true
+          df -h /
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      # Swatinem/rust-cache fingerprints target/ by crate + feature + Cargo.lock,
+      # so a dep change only re-uploads the slice that actually changed.
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: reactivity-bench
+
+      # --release is required: debug builds are ~10x slower and will miss the
+      # lookup-p99 / recompute-p99 gates under normal conditions.
+      - name: Build reactivity-bench (release)
+        run: cargo build --release --bin reactivity-bench -p nmp-testing
+
+      # --quick reduces the per-scenario event multiplier from 10 to 1 (~10x
+      # fewer events), keeping wall-clock to ~1–2 min while still hitting every
+      # absolute threshold. --fail-on-gate exits 2 on any budget violation;
+      # the step fails and blocks the PR.
+      - name: Run reactivity-bench (quick, --fail-on-gate)
+        run: |
+          set -euo pipefail
+          ./target/release/reactivity-bench --quick --fail-on-gate
+
+      # The report is written to docs/perf/reactivity-bench/ by default.
+      # Upload on failure so the gate verdict is inspectable without re-running.
+      - name: Upload bench report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reactivity-bench-report-${{ github.run_id }}
+          path: docs/perf/reactivity-bench/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  firehose-bench:
+    name: firehose-bench replay (quick, --fail-on-gate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /usr/local/lib/android /opt/hostedtoolcache/CodeQL \
+            /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
+          sudo docker image prune --all --force || true
+          df -h /
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: firehose-bench
+
+      - name: Build firehose-bench (release)
+        run: cargo build --release --bin firehose-bench -p nmp-testing
+
+      # replay mode: deterministic synthetic trace, no relay sockets. This is
+      # the CI-appropriate mode (vs. live mode which drives real relays and stays
+      # in real-relay-nightly.yml per the issue spec).
+      # --quick: scale factor 0.2 (5x less virtual load than standard).
+      # --fail-on-gate: exits 2 on any scenario gate violation; blocks the PR.
+      - name: Run firehose-bench (replay, quick, --fail-on-gate)
+        run: |
+          set -euo pipefail
+          ./target/release/firehose-bench replay --quick --fail-on-gate
+
+      # The unified perf-report is written to docs/perf/firehose-bench/ by
+      # write_report. Upload on failure for post-run inspection.
+      - name: Upload bench report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: firehose-bench-report-${{ github.run_id }}
+          path: docs/perf/firehose-bench/
+          if-no-files-found: ignore
+          retention-days: 7
