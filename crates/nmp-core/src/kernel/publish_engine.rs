@@ -23,8 +23,9 @@
 //!   `RecentFailure` snapshot row via `engine.record_engine_error` before the
 //!   error propagates back across the kernel's plain-data return surface.
 //! - **D7** (engine retries, native never decides): retry policy lives in
-//!   the engine. The kernel only translates `OK` frames into `RelayAck`s and
-//!   feeds them in via `on_ack`.
+//!   the engine. The kernel only translates relay delivery signals (`OK`
+//!   frames and verified same-relay event echoes) into `RelayAck`s and feeds
+//!   them in via `on_ack`.
 //! - **D8** (no per-event alloc on the resolve path): the `QueueDispatcher`
 //!   appends to a single buffer; the kernel drains in bulk per publish call.
 
@@ -50,7 +51,7 @@ use nmp_network::role::RelayRole;
 use nmp_signer_iface::SignedEvent;
 
 use super::publish_engine_wire::{describe_engine_error, split_ok_message};
-use super::Kernel;
+use super::{CanonicalRelayUrl, Kernel};
 
 /// Build the kernel's publish engine with the in-crate `NoopOutboxResolver`
 /// default. Production composition (`nmp-defaults::register_defaults`)
@@ -405,10 +406,41 @@ impl Kernel {
             let (code, message) = split_ok_message(payload.message);
             RelayAck::failed(relay_url, code, message)
         };
+        self.handle_publish_ack_at(payload.event_id, ack, now_ms)
+    }
+
+    /// Verified relay-event echo fallback: a relay that later serves the exact
+    /// in-flight event back has proven it stores the event even when it failed
+    /// to deliver a NIP-20 `OK` frame on the publish socket.
+    pub(crate) fn handle_publish_event_echo(
+        &mut self,
+        relay_url: &str,
+        event_id: &str,
+    ) -> Vec<OutboundMessage> {
+        self.handle_publish_event_echo_at(relay_url, event_id, self.now_ms())
+    }
+
+    /// Time-injected variant for deterministic tests.
+    pub(crate) fn handle_publish_event_echo_at(
+        &mut self,
+        relay_url: &str,
+        event_id: &str,
+        now_ms: u64,
+    ) -> Vec<OutboundMessage> {
+        let canonical_relay = CanonicalRelayUrl::parse_or_raw(relay_url).into_string();
+        self.handle_publish_ack_at(event_id, RelayAck::ok(&canonical_relay), now_ms)
+    }
+
+    fn handle_publish_ack_at(
+        &mut self,
+        event_id: &str,
+        ack: RelayAck,
+        now_ms: u64,
+    ) -> Vec<OutboundMessage> {
         // event_id == handle (per `run_publish_engine`).
         let engine_rev_before = self.publish_engine.snapshot().rev;
         self.publish_engine
-            .on_ack(&payload.event_id.to_string(), ack, now_ms);
+            .on_ack(&event_id.to_string(), ack, now_ms);
         // T128: a terminal ack (Ok or final give-up) may have just settled
         // the publish — apply the terminal verdict to the queue entry before
         // any retry frame drain so the iOS snapshot reflects the new status.

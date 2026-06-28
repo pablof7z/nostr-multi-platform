@@ -111,7 +111,7 @@ impl Kernel {
             "EVENT" => {
                 let sub_id = array.get(1).and_then(Value::as_str).unwrap_or("unknown");
                 if let Some(event_value) = array.get(2) {
-                    self.handle_event(role, relay_url, sub_id, event_value);
+                    outbound.extend(self.handle_event(role, relay_url, sub_id, event_value));
                 }
             }
             "EOSE" => {
@@ -182,10 +182,10 @@ impl Kernel {
         relay_url: &str,
         sub_id: &str,
         value: &Value,
-    ) {
+    ) -> Vec<OutboundMessage> {
         let Ok(event) = serde_json::from_value::<NostrEvent>(value.clone()) else {
             self.log(format!("bad EVENT payload on {sub_id}"));
-            return;
+            return Vec::new();
         };
 
         let now = Instant::now(); // doctrine-allow: D9 — relay/event diagnostic elapsed-time marker; not replay policy
@@ -211,6 +211,19 @@ impl Kernel {
 
         let outcome = self.ingest_accepted_event(IngestSource::Relay { relay_url, sub_id }, event);
 
+        let mut outbound = Vec::new();
+        if matches!(
+            outcome,
+            Some(
+                crate::store::InsertOutcome::Inserted { .. }
+                    | crate::store::InsertOutcome::Replaced { .. }
+                    | crate::store::InsertOutcome::Duplicate { .. }
+                    | crate::store::InsertOutcome::Ephemeral { .. }
+            )
+        ) {
+            outbound.extend(self.handle_publish_event_echo(relay_url, &event_id_for_score));
+        }
+
         if let Some(author) = claim_match_author.as_deref() {
             if matches!(
                 outcome,
@@ -223,5 +236,6 @@ impl Kernel {
             }
         }
         self.changed_since_emit = true;
+        outbound
     }
 }
