@@ -383,14 +383,14 @@ fn publish_roundtrip_via_outbox() {
 //   4. No WatermarkFn installed (cold start / empty store): assert no `since`
 //      in the filter (relay sends everything).
 //
-// Design note: `nmp-nip77` (NIP-77 negentropy full-sync) was deleted (no
-// shipping callers); the surviving mechanism that "skips redundant fetches"
-// is the T129 watermark-to-`since` rewrite in `SubscriptionLifecycle`.  This
-// rewrite is the shipping D2-adjacent coverage gate: instead of suppressing
-// the REQ entirely, it narrows it so the relay sends only NEW events.  The
-// rewrite is driven by a `WatermarkFn` installed at kernel construction time
-// (production: `EventStore::query_visit` newest-created_at lookup; tests:
-// any `Arc<dyn Fn(&InterestShape) -> Option<u64>>`).
+// Design note: this legacy test covers only the T129 watermark-to-`since`
+// rewrite in `SubscriptionLifecycle`; it is not the proof surface for the
+// current `nmp-nip77` runtime.  The rewrite remains a D2-adjacent coverage
+// gate: instead of suppressing the REQ entirely, it narrows it so the relay
+// sends only NEW events.  The rewrite is driven by a `WatermarkFn` installed
+// at kernel construction time (production: `EventStore::query_visit`
+// newest-created_at lookup; tests: any `Arc<dyn Fn(&InterestShape) ->
+// Option<u64>>`).
 //
 // D2 doctrine note: a complete negentropy-driven REQ suppression path would
 // require a shipping coverage hook (`PlanCoverageHook`) that derives its
