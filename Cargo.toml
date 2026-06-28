@@ -1,8 +1,5 @@
 [workspace]
 members = [
-    "apps/chirp/crates/*",
-    "apps/chirp/chirp-tui",
-    "apps/chirp/chirp-desktop",
     "apps/nmp-gallery/crates/*",
     "apps/nmp-gallery/tui",
     "apps/nmp-gallery/desktop",
@@ -84,7 +81,6 @@ members = [
 # To build a parked crate on demand:
 #   cargo build --manifest-path crates/nmp-nip60/Cargo.toml
 exclude = [
-    "apps/chirp/crates/nmp-chirp-android-ffi",
     "crates/nmp-nip60",
 ]
 resolver = "2"
