@@ -22,9 +22,11 @@ name: native-tests
 #
 # Why path-filtered: `android/**` and `apps/chirp/crates/nmp-chirp-android-ffi/**` are
 # the obvious Android triggers; `ios/**` and `crates/nmp-ffi/**` are the iOS triggers;
-# `crates/nmp-codegen/**` and `crates/nmp-core/**` are included on both because
-# the nmp-core projection types are the single source of truth the native
-# decoders mirror — a change there is precisely when the consumer tests must run.
+# `crates/nmp-codegen/**`, `crates/nmp-core/**`, and the Tier-1 NIP projection
+# producer crates are included on both because they are the source of truth for
+# native-consumed projection shapes. A producer crate can change a generated
+# decoder without touching the handwritten Swift/Kotlin consumers; these tests
+# are the compile gate for that consumer half.
 # `apps/nmp-gallery/android/**` and `apps/nmp-gallery/crates/nmp-app-gallery/**` are included so
 # the gallery JUnit suite (VendorDriftGateTest + NIP-55 login-block tests) runs
 # whenever the gallery's Kotlin or Rust code changes.
@@ -40,6 +42,9 @@ on:
       - "apps/nmp-gallery/crates/nmp-app-gallery/**"
       - "crates/nmp-codegen/**"
       - "crates/nmp-core/**"
+      - "crates/nmp-nip17/**"
+      - "crates/nmp-nip29/**"
+      - "crates/nmp-nip51/**"
       - "ios/**"
       - "crates/nmp-ffi/**"
   pull_request:
@@ -52,6 +57,9 @@ on:
       - "apps/nmp-gallery/crates/nmp-app-gallery/**"
       - "crates/nmp-codegen/**"
       - "crates/nmp-core/**"
+      - "crates/nmp-nip17/**"
+      - "crates/nmp-nip29/**"
+      - "crates/nmp-nip51/**"
       - "ios/**"
       - "crates/nmp-ffi/**"
 
