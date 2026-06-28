@@ -141,6 +141,8 @@ Existing explicit-relay seams need to be classified before they are collapsed:
 | NIP-29 group publish plan | protocol host pin | group id, host relay, `h` tag/previous-group tags where applicable; reject missing group context |
 | NIP-17/gift-wrap relay set | verified private inbox | recipient inbox proof; fail closed when unknown |
 | `UnsignedEventToRelays` host-pinned unsigned event | protocol host pin or manual override | caller-supplied provenance before signing; host pin keeps typed context such as group id/source |
+| account/bootstrap relay-list publish | automatic public route or app-owned bootstrap policy | distinguish NIP-65 relay-list update from app onboarding/bootstrap defaults; status shows planner or policy source |
+| router/context-port explicit routes | host pin, verified inbox, manual, bootstrap, imported, or diagnostic | no context-port bypass may enter publish without a provenance class and status mapping |
 | pre-signed `SignedEvent` / imported event | imported/verbatim unless a protocol plan proves stronger provenance | imported status, validation result, and reduced guarantees; no silent upgrade to protocol-owned route |
 | test/diagnostic explicit relays | diagnostic/test | not reachable from product shell APIs |
 
@@ -177,8 +179,8 @@ protocol envelope rules that may depend on the publish call:
   reserved/profile/metadata events unless a protocol-specific ADR explicitly
   allows that surface.
 - Podcast publishing can construct NIP-F4 show/feed/episode/list events, attach
-  Blossom references, select per-podcast or active-account signers, and preserve
-  explicit write-relay provenance.
+  Blossom references, preserve Blossom server provenance, select per-podcast or
+  active-account signers, and preserve explicit write-relay provenance.
 - App builders can attach correlation ids and product publish state.
 
 Finalization must fail before signing if the required context is missing. A
@@ -332,6 +334,10 @@ emit ack/error/retry/exhausted status through the same Rust-owned publish stream
 Blossom server selection follows the same rule as relay selection: native may
 execute upload/download capabilities, but Rust owns which server list is valid,
 why an explicit server is allowed, and how that status is reported.
+A NIP-F4 event that contains a Blossom URL without recording which server
+contract produced it has the same audit problem as an explicit relay list
+without route provenance. Server provenance must survive construction,
+publish status, retry/resume, and user diagnostics.
 
 ## Generated Builders And Actions
 

@@ -44,6 +44,12 @@ models without requiring native shells to hand-author relay subscriptions.
 The handle name above is deliberately generic: the public concept is a typed
 session lifecycle, not a new `LiveQuery` engine.
 
+#2316 rules out a thin convenience wrapper. A session is real only when one
+contract owns acquisition, route planning, replay, observed sink, admission,
+output/schema, source dependency wakes, error/status state, and teardown. If the
+implementation still asks a feature author to wire those mechanisms separately,
+then the API got easier to call but the architecture did not change.
+
 The candidate should start as a small typed descriptor plus handle, not a new
 lifecycle engine. It compiles into existing or consolidated machinery:
 
@@ -62,13 +68,13 @@ source expression
 ```
 
 This is the architectural door missing from the current API. The first
-implementation should prove the descriptor can sit on top of the safe
-`ObservedProjection` pattern and dependent-interest machinery before adding any
-new public lifecycle surface. `open_interest` is only acquisition. It can fetch
-events without making them visible to the app, so it should not be the public
-app read model. It can remain available to substrate, debug, test, and migration
-code that is explicitly acquiring events without claiming an app-visible output
-lifecycle.
+implementation should prove the descriptor can reuse, narrow, or delete the safe
+parts of the `ObservedProjection` pattern and dependent-interest machinery
+before adding any new public lifecycle surface. `open_interest` is only
+acquisition. It can fetch events without making them visible to the app, so it
+should not be the public app read model. It can remain available to substrate,
+debug, test, and migration code that is explicitly acquiring events without
+claiming an app-visible output lifecycle.
 
 The proof must start from existing surfaces, not from a fresh abstraction. Try to
 generalize or narrow `open_feed`, `resolve_ref`, `ObservedProjectionRegistrar`,
@@ -188,6 +194,12 @@ typed identity, lifecycle, bounded output, injected time, capability result
 channels, and deterministic teardown; they are not permission for hidden native
 stores or polling loops.
 
+Service sessions are a design hypothesis, not settled doctrine. They are included
+because Podcast Player, widgets, AppIntents, CarPlay, Live Activities, Handoff,
+and signer/runtime work expose a real gap in the screen-only model. The ADR must
+prove they can reuse the normal session/action/capability machinery without
+becoming a second app model or a runtime-specific framework.
+
 Service sessions need an explicit lifecycle contract:
 
 | Surface | Opens or resumes | Reports back | Must not own |
@@ -198,6 +210,13 @@ Service sessions need an explicit lifecycle contract:
 | Remote command | command action into Rust playback/session state | raw OS command metadata | queue mutation or gesture policy outside Rust |
 | Live Activity | app/service session decides desired activity state | ActivityKit executor result, throttling/failure facts | decision about current episode or activity existence |
 | Handoff/resume | resume action with OS payload decoded as capability input | raw resume/handoff capability result | second navigation, playback, or account source of truth |
+
+"Dispatch accepted" is not the operation result. AppIntents, Siri, CarPlay,
+remote commands, widgets, Live Activities, Handoff, and cold-start workers may
+return quickly, but the Rust-owned session must still emit pending, completion,
+error, or diagnostic state for the user-visible operation. A Swift singleton
+enqueue, foreground-store mutation, or native callback success is not proof that
+playback changed, a publish completed, or a relay operation succeeded.
 
 Opening before relay, mailbox, identity, or source readiness is allowed. Rust
 queues and replans the session when dependencies arrive. The shell should not
@@ -297,18 +316,18 @@ Replay tests must cover this, not only live delivery. A store replay for a
 relay-pinned session needs either stored relay provenance or another explicit
 protocol-approved admission proof; a matching `#h` tag alone is not enough.
 
-## ReducedSource
+## Dynamic Source Reconciliation
 
-`ReducedSource` is the model for dynamic query inputs.
+Dynamic source reconciliation is the model for query inputs derived from other
+events, account state, or capability state.
 
 Decision status: current NMP docs and code already contain `ReducedSource` and
 `open_feed`-style machinery, but the live type is private native-feed compiler
 machinery. Pointer-source, browser feed, defaults runtimes, and active-account
 controllers have adjacent source-reconciliation patterns. The ADR must decide
 whether these are semantically the same family before extracting anything
-generic. Until then, this document uses `ReducedSource` to name the
-dynamic-source invariant, not to assert that the current type shape is settled
-or that a new public primitive is required.
+generic. Until then, `ReducedSource` means one current private feed-local
+implementation candidate, not the architecture noun and not a public primitive.
 This deliberately conflicts with older generated wiki guidance that described
 `ReducedSource`, `FeedParams`, and `open_feed(FeedParams)` as the app-facing
 architecture. Treat that guidance as a historical checkpoint to re-audit, not as

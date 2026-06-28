@@ -19,6 +19,11 @@ only as an exploration artifact should be deleted or explicitly retired. The
 point of this directory is to converge on the right shape before editing the
 canonical docs, not to add another source of truth.
 
+This directory should not survive as a parallel plan. The final migration must
+turn accepted facts into durable docs/ADRs, turn tactical work into GitHub
+issues, and then delete or retire `docs/new-arch`. If this packet still needs to
+be read to understand current architecture after signoff, P8 failed.
+
 The fitness matrix in this packet is transitional: it becomes real only when it
 is executable work. Each accepted ratchet must graduate into a doctrine lint,
 `nmp-testing` gate, CI check, GitHub issue acceptance criterion, or ADR
@@ -62,6 +67,13 @@ existing architecture text:
 - **#2316:** root cause. One feature's state is split across acquisition,
   replay, sink, admission, sidecar, projection emission, ticks, dependencies,
   and teardown.
+- **#2316 rescope:** the fix is not a convenience `open_feature()` wrapper. It is
+  a foundational decomposition problem: one concept must own the whole lifecycle,
+  or the wrapper only hides fragmentation for one more layer.
+- **#2307:** concrete deletion proof for the same root. Tick-polling
+  `ActiveObservedProjection`/`DynamicObservedProjection` copies should collapse
+  into one event-driven reconciler, then `register_snapshot_tick_observer` should
+  be deleted once sibling consumers migrate.
 - **#2088/#2089/#2090/#2091/#2092/#2113:** replay-before-live, no public
   filterless observers, dynamic sources, pointer/ref demand, and related
   lifecycle fragments must become one owned session contract.
@@ -92,6 +104,7 @@ Known contradiction ledger for P8:
 | `docs/wiki/guides/signer-broker-handshake-loop.md` and NIP-46 research pages | protocol state must not own transport/process loops; reconnect/cancel must be event-driven | signer/session phases must prove transport-agnostic protocol core plus runtime-owned execution, not a second signer runtime framework |
 | `docs/wiki/guides/action-module-adr.md` | dual action seams and typed external-effect rules remain part of the evidence base | write-flow migration must converge on typed actions/builders and explicit capability results, not create another dispatch door |
 | ADR-0009, ADR-0046, ADR-0053, ADR-0062 and builder-guide 02/15/19/28 | teach app assembly through defaults, observed projections, projection tiers, or action-triggered subscription recipes | amend or retire once typed sessions, explicit composition, and session-scoped output demand are accepted |
+| ADR-0049 composition ledger/yield behavior | records useful observability for what composition installed and yielded | preserve observable composition ledgers when deleting hidden defaults; do not lose auditability while simplifying |
 | `docs/product-spec/api-surface.md`, `docs/product-spec/cli-toolchain-phasing.md`, `docs/ffi-surface.md`, `docs/wasm-surface.md`, and `docs/recipes/app-shapes.md` | still expose old public read/write/init surfaces as normal product API | rewrite around typed sessions/actions, explicit feature composition, and scoped compatibility doors |
 | wiki noun/topic pages for `nmp-defaults`, `ObservedProjection`, `read-surface`, `write-register-surface`, `nmp-wasm`, and `nmp-browser-runtime` | generated pages may preserve stale surface names as facts | regenerate, correct in place, or retire after durable owners are updated |
 
@@ -112,12 +125,12 @@ private or deleted: everything else unless a named invariant, live owner,
 
 | Concept | Status | Rule |
 |---|---|---|
-| Feature bundle | Accepted public concept | Installs typed sessions, actions, outputs, builders, and capability needs through narrow registrars or builder methods. Avoid a broad `dyn AppFeature` object unless it deletes existing complexity. |
-| Typed session / session descriptor | Accepted public concept | The app opens typed demand and receives a handle plus typed output. This is the public replacement for hand-wiring interest, replay, observer, projection, and teardown. |
-| Typed action / generated builder | Accepted public concept | User intent enters Rust through typed action data with correlation ids, validation, signer route, and status. |
-| Capability result | Accepted boundary concept | Native/web executes OS or platform capabilities and reports raw results back into Rust. |
-| Typed projection/status output | Accepted render contract | Rust emits semantic state, publish status, signer status, and app output; shells render it. |
-| Route provenance | Accepted internal contract surfaced in status | Exact relays are insufficient. Publish routing must preserve why a route is valid: automatic, host-pinned, verified private inbox, manual override, or imported/verbatim. |
+| Feature bundle | Candidate public concept pending ADR | Installs typed sessions, actions, outputs, builders, and capability needs through narrow registrars or builder methods. Avoid a broad `dyn AppFeature` object unless it deletes existing complexity. |
+| Typed session / session descriptor | Candidate public concept pending ADR | The app opens typed demand and receives a handle plus typed output. This is the public replacement for hand-wiring interest, replay, observer, projection, and teardown. |
+| Typed action / generated builder | Candidate public concept pending ADR | User intent enters Rust through typed action data with correlation ids, validation, signer route, and status. |
+| Capability result | Candidate boundary concept pending ADR | Native/web executes OS or platform capabilities and reports raw results back into Rust. |
+| Typed projection/status output | Candidate render contract pending ADR | Rust emits semantic state, publish status, signer status, and app output; shells render it. |
+| Route provenance | Candidate internal contract surfaced in status | Exact relays are insufficient. Publish routing must preserve why a route is valid: automatic, host-pinned, verified private inbox, manual override, or imported/verbatim. |
 | `ObservedProjection` | Private machinery | Keep if it protects replay-before-live, scoped delivery, relay provenance, and close semantics. App developers should not assemble it. |
 | `ReducedSource` / shape reconciler | Private/provisional machinery | Treat as the dynamic-source invariant, not a public noun. The current private feed machinery and adjacent pointer/browser/defaults reconcilers generalize only after semantic proof across source families. |
 | Reverse wake/admission indexes | Private machinery when proven | Wake sources and bounded admission are mandatory; specific indexes are added only when scoped fanout cannot prove the invariant. |
@@ -136,6 +149,14 @@ mental model where the app root cannot tell which protocol features, runtimes,
 policy, projections, and route machinery are installed. A preset can remain only
 as tutorial/migration/test compatibility with named live consumers, owner,
 support window, and deletion/formalization gate.
+
+Foundational-decomposition clarification: a typed session is acceptable only if
+it becomes the owner of the full read lifecycle. It is not acceptable to add an
+`open_feature()` facade that still requires separate interest registration,
+projection declaration, replay wiring, observed sink activation, sidecar/cache
+registration, tick emission, dynamic source reconciliation, and close-token
+bookkeeping underneath. That would answer the DX complaint while preserving the
+architecture defect #2316 names.
 
 ## Deletion-First Rule
 
@@ -253,6 +274,10 @@ whether the destination architecture is real.
   sessions/actions or be deleted; if it is SSR/migration/out-of-scope, that
   boundary needs an owner and formal criteria. Direct NDK cannot remain both a
   violation and a normal shipping path.
+- Treat this as a hard signoff blocker, not an implementation detail. If
+  Highlighter web remains a shipping runtime, every direct NDK fetch, subscribe,
+  sign, publish, cache, relay-set, and tag-parser product path must be migrated
+  behind NMP or explicitly classified with owner and deletion/formalization gate.
 - Replace or classify web NDK product runtime paths for onboarding/profile,
   rooms/invites/membership, highlights, comments, capture, Blossom, NIP-05,
   search/SSR, and signer sessions.
@@ -273,6 +298,9 @@ whether the destination architecture is real.
   and suspended/cold starts must use app-lifetime/service sessions or typed
   capability results. They must not own playback queue, signer state, relay
   policy, or publish status.
+- "Dispatch accepted" is not completion. OS-owned surfaces must get Rust-owned
+  operation result, pending, error, or completion state rather than treating a
+  foreground singleton enqueue as user-visible success.
 - Native mirrors need an explicit owner: App Group widget snapshots,
   `MPNowPlayingInfo`, ActivityKit state, `NSUserActivity`, Keychain, media caches,
   and Swift/SQLite stores are allowed only as capability/rendering mechanics when
@@ -289,6 +317,9 @@ whether the destination architecture is real.
 - The proof includes iOS, Android, TUI, desktop, and web. `web/nmp-gallery`
   exists; its wasm build deferral and raw worker ref API are migration evidence,
   not proof of completion.
+- Gallery proof is split into separate gates: ref lifecycle, web wasm/worker,
+  generated ref API, and per-shell auth/signing matrix. Android NIP-55 progress
+  or a native demo does not imply web, iOS, TUI, or desktop correctness.
 - Component refs and embeds must use deterministic open/close ownership. Web
   release/reclaim loops and desktop/TUI claim-on-render/tick patterns are the
   lifecycle smell to remove; copied-label timers are only presentation.
@@ -305,12 +336,13 @@ or trigger a named kill criterion. They are not follow-up polish.
 
 | Gate | Required proof |
 |---|---|
-| Highlighter web runtime inventory | Every `@nostr-dev-kit`, `$subscribe`, `fetchEvents`, direct sign/publish, relay-set, and tag-parser product path is classified as NMP target-runtime migration, SSR-only, diagnostic, deleted, or explicitly out of scope, with owner and deletion/formalization criterion. Direct NDK cannot remain both violation and normal runtime. |
+| Highlighter web runtime inventory | Every `@nostr-dev-kit`, `$subscribe`, `fetchEvents`, direct sign/publish, relay-set, cache, and tag-parser product path is classified as NMP target-runtime migration, SSR-only, diagnostic, deleted, or explicitly out of scope, with owner and deletion/formalization criterion. Direct NDK cannot remain both violation and normal runtime. |
 | Highlighter iOS/session policy | Wi-Fi/offline/cache policy is Rust-owned from raw platform capability facts; profile/event/embed refs use typed owner handles with close/clear tests; production app roots do not rely on hidden `register_defaults()` or `consume_all_builtin_projections()` except labeled migration/tutorial paths. |
 | Highlighter semantic parsing | `tagsJson`, manual NIP-10/NIP-21/NIP-22/NIP-29 parsing, article/highlight card derivation, and discussion-root inference either move behind Rust descriptors/generated adapters or are proven presentation-only. |
-| Podcast service sessions | Widget, AppIntent/Siri, CarPlay, remote command, Live Activity, Handoff, and suspended/cold start flows work through app/service sessions or typed capability results, not UI-process singletons or shell-local durable state. |
-| Podcast NIP-F4 publish | Show, episode, feed/list, Blossom references, named/per-podcast signer, key-storage capability, route/server provenance, local ingest, relay ack/error/retry/exhausted status, and user-visible completion are proven end to end. Constructed JSON, queued-only status, `publish_dispatched`, or `relay_pending` is not enough. |
-| `nmp-gallery` web/ref lifecycle | wasm/worker runtime builds, ref APIs are generated/typed, no correctness `setInterval` release/reclaim loop is needed, and component refs clear by owner lifecycle across web/iOS/Android/TUI/desktop. |
+| Podcast service sessions | Widget, AppIntent/Siri, CarPlay, remote command, Live Activity, Handoff, and suspended/cold start flows work through app/service sessions or typed capability results, not UI-process singletons or shell-local durable state. Results report Rust-owned pending/error/completion, not only dispatch acceptance. |
+| Podcast NIP-F4 publish | Show, episode, feed/list, Blossom references/server provenance, named/per-podcast signer, key-storage capability, route provenance, local ingest, relay ack/error/retry/exhausted status, and user-visible completion are proven end to end. Constructed JSON, queued-only status, `publish_dispatched`, or `relay_pending` is not enough. |
+| `nmp-gallery` web/ref lifecycle | wasm/worker runtime builds, missing wasm/worker fails closed, ref APIs are generated/typed, no correctness `setInterval` release/reclaim loop is needed, and component refs clear by owner lifecycle across web/iOS/Android/TUI/desktop. |
+| `nmp-gallery` auth/signing matrix | Android NIP-55, web NIP-07, iOS, TUI, desktop, local/no-auth, remote signer, and unauthenticated modes are classified independently; one shell's proof cannot stand in for another. |
 | Generated merge/cache parity | Full, delta, clear/tombstone, stale-frame, decode-poison, and baseline recovery behavior match across every shell used by a migrated feature. |
 | Publish route provenance | Status payloads expose provenance class and reason, not just relay URLs or queued/signed. Manual, host-pinned, verified inbox, imported/verbatim, and diagnostic routes remain distinguishable through dispatch, signing, retry/resume, local ingest, and status. |
 | App-feature API classification | Every cross-boundary app API is generated typed, capability/result, diagnostic/test, or migration-with-deletion. Event-producing APIs always route through typed action/publish status, never hand-authored JSON/event doors. |
@@ -428,6 +460,9 @@ episode/wiki decisions:
 - **NDK-style subscribe:** the comparable DX target is not a shell-owned raw
   event stream. It is a Rust-owned session descriptor plus generated host API so
   every shell gets a one-call open/render surface without owning Nostr policy.
+- **`nmp.follow_list`:** reusable protocol outputs belong to reusable protocol
+  or NMP feature crates. `nmp.follow_list` cannot live in Chirp/FFI glue while
+  pretending other apps have a coherent social primitive.
 - **#2314/display separation:** presentation vocabulary such as colors, labels,
   icons, and relative formatting stays in shells. Rust outputs semantic facts
   and status tokens only.

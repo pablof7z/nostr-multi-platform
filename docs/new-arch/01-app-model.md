@@ -139,6 +139,13 @@ Composition should be idempotent where practical and explicit across browser,
 native, TUI, and test roots. A browser `start()` path should not silently install
 a different product architecture from the native root.
 
+Explicit composition still needs observability. Rejecting hidden
+`register_defaults()` must not delete the useful part of ADR-0049: an app should
+be able to inspect what installers ran, what they registered, what they skipped
+or yielded to app policy, and which capability/runtime requirements remain
+unsatisfied. The difference is that the ledger explains an explicit composition
+root; it is not a substitute for reading a magic preset.
+
 `nmp-defaults` is a reusable composition library, not a leaf app. It may provide
 generic routing, mailbox, parser, signer, and publish installers, but it must not
 own operator policy such as seed follows, bootstrap relay lists, app relay

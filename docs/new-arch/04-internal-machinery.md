@@ -323,14 +323,14 @@ workstreams that converge into the same endpoint:
 | A. Baseline and ratchets | old public doors, tick users, direct publish paths, downstream native policy | counted baseline, owner for each count, and CI/doctrine gate for "does not increase" |
 | B. Composition/defaults | `register_defaults`, `nmp init`, app roots, protocol feature installers | explicit feature composition as the production model; presets labeled tutorial/compatibility with live consumers, support window, owner, and deletion/formalization gate, or deleted |
 | C. Session descriptor | one typed lifecycle owner over acquisition, replay, sink, output, and teardown | one simple real session migrated without a new engine or public `ObservedProjection` API |
-| D. Dynamic sources | follow/list/group/thread/embed source sets | private reconciler proof for source arrival, withdrawal, empty-source fail-closed, fallback, and teardown |
+| D. Shape/source reconciliation | follow/list/group/thread/embed/account/ref source sets | private reconciler proof for source arrival, withdrawal, empty-source fail-closed, fallback, account switch, replay, route replanning, and teardown |
 | E. Output/projection contract | projection ownership, schema/version, sidecars, host caches | one owner per output key, collision failure, shared merge semantics across generated/host adapters |
 | F. Read routing/admission | outbox routing, relay-pinned sessions, private reads, explicit overrides | route provenance in read descriptors and replay/live admission; no shell relay policy |
 | G. Write routing/publish | event construction/finalization, signer selection, publish route provenance | one publish doorway distinguishes automatic, host-pinned, verified inbox, manual, and imported routes |
 | H. Signer/status runtime | local, NIP-07, NIP-46, NIP-55-style, named product, agent, imported event | Rust-owned pending/ready/failed/signed status and parked continuation model across platforms |
 | I. Service/capability sessions | widgets, AppIntents, CarPlay, remote commands, Live Activities, Handoff, media/STT/AI | app/service sessions or typed capability results; no `KernelModel.shared` UI-process dependency for correctness |
 | J. Generated adapters/codegen | action builders, output schemas, row caches, FFI/runtime bridges | generated or contract-tested drift prevention for every cross-platform payload used by migrated flows |
-| K. Downstream proofs | Highlighter, Podcast Player, `nmp-gallery`, sanity checks from 29er/Olas | each acceptance matrix passes or triggers a named kill criterion; downstream app nouns stay out of NMP crates |
+| K. Downstream/browser proofs | Highlighter, Podcast Player, `nmp-gallery`, browser runtime, sanity checks from 29er/Olas | each acceptance matrix passes or triggers a named kill criterion; downstream app nouns stay out of NMP crates; degraded wasm/worker/runtime modes fail closed |
 | L. Durable docs/ADR retirement | ADR, builder guide, product specs, templates, wiki, issues | local packet retired; durable docs corrected in place; tactical work lives only in GitHub issues |
 
 Ordering rules:
@@ -338,8 +338,10 @@ Ordering rules:
 - A and B happen first. Without baselines and explicit composition, later work can
   look cleaner while old public doors keep growing.
 - C proves the lifecycle owner before D or E generalize anything.
-- D may stay private until at least two source families prove identical
-  semantics. Do not promote `ReducedSource` because one feed path exists.
+- D may stay private until at least two non-trivial source families prove
+  identical semantics. Do not promote `ReducedSource` because one feed path
+  exists; active-account, pointer/ref, group/list, and feed sources must either
+  converge on one reconciler or remain private feature-local machinery.
 - E must land before broad host migration, or every shell will invent its own
   merge/cache contract again.
 - F and G must preserve route provenance before downstream NIP-29, NIP-17,
@@ -447,6 +449,43 @@ the full migration is done:
 - New app-feature APIs are allowed for app runtime capabilities, but they must
   be typed/versioned and may not own Nostr protocol policy.
 
+**Classified baseline requirement before P0.**
+Raw grep counts are useful smoke alarms, but they are not a migration plan. Before
+P0, classify each old-pattern family by lane:
+
+```text
+production product path
+substrate/protocol-internal path
+diagnostic/export/test path
+generated artifact
+durable doc/current teaching
+historical/stale doc
+migration shim with owner and deletion/formalization gate
+delete now
+```
+
+Run this classification for `open_interest`, `open_feed`/feed sessions,
+`resolve_ref`/component refs, `ObservedProjection`, `ReducedSource`/source
+reconcilers, `register_defaults`, `declare_consumed_projections` /
+`consume_all_builtin_projections`, explicit publish routes, snapshot tick
+observers, browser degraded-runtime fallbacks, and gallery reclaim loops.
+
+The output is a public-door disposition ledger:
+
+| Door/concept | Live production callers | Non-production callers | Target disposition | First deletion/formalization proof |
+|---|---:|---:|---|---|
+| raw `open_interest` / `nmp_app_open_interest` | classify | classify | internal/diagnostic/compat or delete | first typed session migrates equivalent product read |
+| `open_feed` / feed session APIs | classify | classify | narrow into typed session or compatibility | feed/session convergence proof |
+| `resolve_ref` / worker ref protocol | classify | classify | generated typed ref session or diagnostic | gallery ref lifecycle proof |
+| `ObservedProjection` public registrar | classify | classify | private machinery or narrowed seam | descriptor proof over replay-before-live |
+| `ReducedSource` / feed source compiler | classify | classify | private dynamic-source reconciliation | two source-family proof before generalizing |
+| defaults/projection declarations | classify | classify | explicit composition/output demand or tutorial | scaffold/docs ratchet and composition ledger |
+| anonymous explicit publish routes | classify | classify | one provenance carrier or delete dead seam | publish route contract |
+| snapshot ticks/reclaim timers | classify | classify | event-driven wakes or bounded presentation only | no-polling/reconciler proof |
+
+Do not use unclassified call sites as evidence that a compatibility surface must
+survive. Unknown defaults to "not yet justified," not "keep."
+
 **P0: Baseline and freeze old patterns.**
 Inventory public read/write doors and duplicate lifecycle recipes in
 `nmp-core`, `nmp-defaults`, `nmp-native-runtime`, `nmp-browser-runtime`,
@@ -503,6 +542,20 @@ deletion gate. "Compatibility" alone is not a reason to keep it. Use the existin
 cache-serve wakeup pattern as the reference: live/store events enqueue coalesced
 work, and actor ticks only drain already-declared work.
 
+#2307 is the concrete proof slice for P2. It identifies four near-copy
+reconcilers plus account-keyed snapshot-tick polling:
+
+- `nmp-defaults/src/runtimes/active_observed_projection.rs`;
+- `nmp-native-runtime/src/runtimes/active_observed_projection.rs`;
+- `nmp-native-runtime/src/op_feed_defaults/dynamic_observer.rs`;
+- `nmp-browser-runtime/src/feed.rs`'s private `DynamicObservedProjection`.
+
+The acceptable result is one D0-clean event-driven reconciler that composes the
+existing `ObservedProjectionRegistrar` and `IdentityChangeRegistrar`, migrates
+current active-account consumers, deletes the duplicate controllers, and adds a
+ratchet against reintroducing snapshot-tick account sampling. A compatibility
+alias or a fifth reconciler fails P2.
+
 **P3: Make scoped session demand own scoped output demand.**
 Prove that opening a session can declare its typed output. Keep
 `DeclaredProjections` only for always-on app chrome, compatibility, or measured
@@ -526,6 +579,10 @@ claim-on-render or claim-on-tick behavior before treating the registry as a
 copyable downstream template. Copy-to-clipboard timers are presentation
 affordances; they are not the architecture failure unless they start owning
 product state.
+Missing wasm, missing Worker storage, or OPFS/SQLite open failure may produce
+typed diagnostics, but it cannot silently become a successful in-memory product
+runtime for proof purposes. The web runtime either proves the durable worker path
+or the e2e gate fails closed.
 P4 starts only after P1 proves the descriptor lifecycle and P3 proves output
 ownership/merge semantics. It is the first real migrated session family across
 all shells, not a prerequisite for the minimal descriptor proof.
@@ -833,8 +890,12 @@ cargo test -p nmp-testing --test publish_route_provenance_contract
 cargo test -p nmp-testing --test docs_architecture_teaching_ratchet
 cargo test -p nmp-testing --test downstream_architecture_acceptance
 cargo test -p nmp-testing --test service_session_contract
+cargo test -p nmp-testing --test podcast_service_completion_contract
 cargo test -p nmp-testing --test gallery_web_runtime_contract
+cargo test -p nmp-testing --test gallery_ref_lifecycle_contract
+cargo test -p nmp-testing --test gallery_auth_signing_matrix_contract
 cargo test -p nmp-testing --test highlighter_web_runtime_ratchet
+cargo test -p nmp-testing --test highlighter_web_scope_decision_gate
 cargo test -p nmp-testing --test highlighter_component_session_contract
 cargo test -p nmp-testing --test podcast_nipf4_publish_contract
 cargo test -p nmp-testing --test app_feature_api_classification
