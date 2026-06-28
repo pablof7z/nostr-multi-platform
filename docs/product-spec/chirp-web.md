@@ -65,6 +65,9 @@ work and must fail visibly rather than being treated as NIP-44 capable.
 TypeScript must not call `window.nostr.nip44` directly. NIP-46 bunker sign-in is
 a supported browser-runtime signer path when the shell supplies a `bunker_uri`;
 Rust owns the handshake, signer installation, and subsequent signing.
+The browser signer/private-flow capability matrix in
+[`docs/wasm-surface.md`](../wasm-surface.md#browser-signerprivate-flow-capability-model)
+is the generic NMP contract that this product spec follows.
 
 ## Search Discovery Contract
 
@@ -359,10 +362,12 @@ the raw secret.
 
 Chirp Web must not hide missing major product areas behind absent navigation or
 fake local-only controls. Until web-ready Rust projections and actions exist for
-wallet/zap flows, moderation/WoT, group membership actions, outbound NIP-17
-send, or durable offline replay ownership, the browser product must expose those
-destinations as blocked, disabled, or
-explicitly partial workspaces with clear reasons.
+wallet/zap flows, moderation/WoT, group membership actions, or durable offline
+replay ownership, the browser product must expose those destinations as blocked,
+disabled, or explicitly partial workspaces with clear reasons. Private messages
+are not globally blocked: they must render the live supported surface from the
+Private Messages Contract above, and signer-specific NIP-44 gaps must surface as
+capability-limited product state.
 
 Blocked controls may emit log-safe `capability_failure` diagnostics proving the
 unsupported state is deliberate. They must not construct Nostr events, maintain

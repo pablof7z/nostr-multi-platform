@@ -1,6 +1,6 @@
 # WASM Surface Reference
 
-> **Reviewed:** 2026-06-26. Sourced directly from
+> **Reviewed:** 2026-06-28. Sourced directly from
 > `crates/nmp-browser-runtime/src/wasm/` and `web/packages/runtime-web/src/`.
 > This document is the single source of truth for the browser worker protocol.
 > `nmp-browser-runtime` owns the wasm-bindgen Worker export, worker composition,
@@ -191,7 +191,23 @@ continuation. The NIP-07 signer bridge is separate: `nmp-signers` probes
 `encrypt(pubkey, plaintext)` and `decrypt(pubkey, ciphertext)`. TypeScript and
 UI code must not call `window.nostr.nip44` directly.
 
-### Signing — the ADR-0050 capability round-trip
+### Browser signer/private-flow capability model
+
+Browser private flows are capability-shaped, not a blanket "browser signer"
+promise:
+
+| Browser signer path | NIP-44 support | NIP-17 send/private-flow result |
+|---|---|---|
+| `kind = "local_key"` | Supported inline in Rust through `LocalKeySigner`. | Supported when normal NIP-17 routing inputs are available. The host may collect draft text and recipient pubkey, but Rust owns NIP-44, gift-wrap construction, signing, and relay targeting. |
+| `kind = "nip46"` | Supported through the browser runtime provider registry. `nip44_encrypt` / `nip44_decrypt` return pending operations, relay re-entry delivers the NIP-46 RPC response, and the next runtime pump resumes the parked continuation. Implemented by #2195 / PR #2248. | Supported when the remote signer approves the verb and normal NIP-17 routing inputs are available. Provider rejection or unsupported remote capability surfaces as runtime failure. |
+| `kind = "nip07"` with `window.nostr.nip44.encrypt` and `.decrypt` | Supported by the `nmp-signers` wasm NIP-07 bridge. The signer implementation, not TypeScript UI, calls the optional extension methods. Implemented by #2247 / PR #2249. | Supported only for extensions that expose both NIP-44 verbs and return valid string results. Extension rejection, thrown JS errors, or malformed return values surface as signer/runtime failure. |
+| `kind = "nip07"` without both NIP-44 verbs | Not supported. Sign-event support alone is not enough for NIP-17 private flows. | Private-message send/decrypt must fail visibly through Rust action/runtime state. The host must not add TypeScript crypto fallback or call `window.nostr.nip44` directly. |
+| No active signer or unsupported signer kind | Not supported. | Typed writes fail as normal runtime capability errors such as `signer_not_installed` or `unsupported_signer_kind`. |
+
+This same matrix is the NIP support model referenced by the Chirp Web product
+spec and builder-guide signer docs.
+
+### Signing - the ADR-0050 capability round-trip
 
 Signing is a message-driven capability round-trip:
 
@@ -209,7 +225,8 @@ action vocabulary; the action payload carries no signer hint (V-78). In the
 browser runtime, `local_key` signers satisfy publish signing inside Rust
 through the registered `LocalKeySigner`; NIP-46 bunker signers satisfy publish
 signing and NIP-44 cipher operations through the Rust-owned browser NIP-46
-runtime; NIP-07 remains the main-thread `sign_request` capability round-trip.
+runtime; for event signing, NIP-07 remains the main-thread `sign_request`
+capability round-trip.
 
 NIP-44 follows the same signer-owned boundary. Local-key accounts encrypt and
 decrypt inline in Rust. NIP-07 accounts call the optional
