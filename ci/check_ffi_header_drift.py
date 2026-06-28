@@ -233,7 +233,7 @@ def normalize_rust_type(value: str) -> str:
 
 
 RUST_EXPORT_RE = re.compile(
-    r"#\[no_mangle\](?:\s*#\[[^\]]+\])*\s*pub\s+extern\s+\"C\"\s+fn\s+"
+    r"#\[no_mangle\](?:\s*#\[[^\]]+\])*\s*pub\s+(?:unsafe\s+)?extern\s+\"C\"\s+fn\s+"
     r"(?P<name>nmp_[A-Za-z0-9_]+)\s*\(",
     flags=re.S,
 )

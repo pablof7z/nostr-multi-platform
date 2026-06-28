@@ -143,12 +143,6 @@ void nmp_external_signer_init(void *app);
 void nmp_app_signin_nip55(void *app, const char *signer_package);
 // Report a raw ExternalSignerResponse JSON back to the NIP-55 driver (D7).
 void nmp_app_deliver_external_signer_response(void *app, const char *response_json);
-// Sign an unsigned event with the named account's signer and park the result
-// in the snapshot's signed_events projection.  Returns a correlation_id string
-// that the caller uses to retrieve the signed event JSON.  Free with
-// nmp_free_string.  Pass an empty string for account_pubkey_hex to use
-// the active account.
-char *nmp_app_sign_event_for_return(void *app, const char *account_pubkey_hex, const char *unsigned_json);
 void nmp_app_create_new_account(void *app, const char *profile_json, const char *relays_json, bool mls, uint8_t make_active);
 // Chirp-owned create-account wrapper (#1493). Same arguments as
 // nmp_app_create_new_account, but the fresh account auto-follows Chirp's

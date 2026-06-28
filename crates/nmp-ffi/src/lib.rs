@@ -40,16 +40,11 @@ mod nip21_ffi;
 mod passive_start_tests;
 mod publish;
 pub mod pull;
-#[cfg(feature = "native")]
-mod relay_info_probe;
 mod resolve_ref;
 #[cfg(test)]
 #[path = "resolve_ref_tests.rs"]
 mod resolve_ref_tests;
 mod search;
-#[cfg(test)]
-#[path = "sign_event_for_return_tests.rs"]
-mod sign_event_for_return_tests;
 #[cfg(feature = "signer-broker")]
 mod signer_broker;
 #[cfg(any(test, feature = "test-support"))]
@@ -112,8 +107,6 @@ pub use nip19_ffi::nmp_app_encode_profile;
 pub use nip21_ffi::nmp_nip21_decode_uri;
 #[cfg(feature = "native")]
 pub use publish::{nmp_app_cancel_action, nmp_app_retry_publish};
-#[cfg(feature = "native")]
-pub use relay_info_probe::{nmp_app_probe_relay_info, RelayInfoProbeCallback};
 // #1726 — unified diagnostic pull accessor (routing/composition/merged).
 // Replaces the deleted `nmp_app_recent_routing_decisions` and
 // `nmp_app_composition_report` symbols. No compat shims kept.
