@@ -127,6 +127,17 @@ typed identity, lifecycle, bounded output, injected time, capability result
 channels, and deterministic teardown; they are not permission for hidden native
 stores or polling loops.
 
+Service sessions need an explicit lifecycle contract:
+
+| Surface | Opens or resumes | Reports back | Must not own |
+|---|---|---|---|
+| Widget refresh | app-lifetime/widget session or last Rust-emitted widget frame | WidgetKit timeline request / display result if relevant | playback queue, episode truth, relay state |
+| AppIntent/Siri | cold service session or dispatch into existing app runtime | typed intent result or capability failure | hidden singleton-only app state that fails unless UI is open |
+| CarPlay scene | scene owner session on attach, close on detach | selection/transport actions and raw CarPlay capability state | parallel navigation/playback model or polling wait loop |
+| Remote command | command action into Rust playback/session state | raw OS command metadata | queue mutation or gesture policy outside Rust |
+| Live Activity | app/service session decides desired activity state | ActivityKit executor result, throttling/failure facts | decision about current episode or activity existence |
+| Handoff/resume | resume action with OS payload decoded as capability input | raw resume/handoff capability result | second navigation, playback, or account source of truth |
+
 Opening before relay, mailbox, identity, or source readiness is allowed. Rust
 queues and replans the session when dependencies arrive. The shell should not
 retry with timers.
@@ -155,6 +166,12 @@ filterless observer problem.
 App developers should not manually assemble this. A feature or live query
 descriptor uses it internally.
 
+Delivery is not population. Fixing a missing projection by seeding the store,
+pre-warming a cache, or asking the shell to retry claims is still a lifecycle
+bug if the session open did not own observer registration, cache replay,
+activation, output emission, and teardown. The feature/session door must make
+hydration happen by construction, not by after-the-fact cache warming.
+
 The reconciler must be event-driven. Identity changes, source changes, mailbox
 updates, refcount changes, and store ingest should trigger reconciliation. A
 snapshot tick observer is not the model.
@@ -172,10 +189,12 @@ protocol-approved admission proof; a matching `#h` tag alone is not enough.
 `ReducedSource` is the model for dynamic query inputs.
 
 Decision status: current NMP docs and code already contain `ReducedSource` and
-`open_feed`-style machinery, so the ADR must decide whether that model is being
-amended, renamed, or replaced. Until then, this document uses `ReducedSource` to
-name the dynamic-source invariant, not to assert that the current type shape is
-settled or that a new public primitive is required.
+`open_feed`-style machinery, but the live type is feed-session shaped. The ADR
+must decide whether that model is amended, renamed, kept private, or replaced by
+a smaller shape reconciler plus dependent-interest replacement set. Until then,
+this document uses `ReducedSource` to name the dynamic-source invariant, not to
+assert that the current type shape is settled or that a new public primitive is
+required.
 
 Examples:
 
@@ -183,7 +202,7 @@ Examples:
 - events by members of a NIP-51 list;
 - replies to currently visible thread roots;
 - target events pointed to by a stream of pointer events;
-- group content from groups the account has joined.
+- group content from groups the account has joined;
 - embeds referenced by currently visible event bodies.
 
 The source set is not a static list. It is derived from other events or account
@@ -233,6 +252,12 @@ Group membership is a first-class blocker. If a feature cannot prove the joined
 group, host relay, or member set, it should fail closed or emit a typed missing
 context state instead of falling through to a broad public query.
 
+Follow-list ownership is a concrete acceptance criterion from #2313. The
+follow-list read model is a reusable NIP-02/NMP feature output, not Chirp-owned
+FFI glue. The destination is that `nmp.follow_list` or its replacement is owned
+by the reusable follow feature, while Chirp, Highlighter, gallery, and other apps
+are consumers that open sessions or render outputs.
+
 ## Routing
 
 Every session descriptor must declare one routing mode. This is feature/protocol
@@ -241,7 +266,10 @@ policy, not a casual caller option passed by the shell:
 - **planned route:** the normal case. NMP owns relay planning, including NIP-65
   outbox routing for author-scoped reads, mailbox/inbox discovery where relevant,
   search/discovery relay policy, configured app relays, cache replay, and
-  replan-on-mailbox-change behavior.
+  replan-on-mailbox-change behavior. Planning is kind/protocol-aware: `p` tags
+  are not always recipients, discovery kinds are not private inboxes, blocked
+  relay rules still apply, indexer/search lanes are explicit, and host-pinned
+  protocols carry provenance.
 - **relay-pinned route:** the protocol or source owns a specific relay context,
   such as a NIP-29 group host relay. Admission must prove the event came through
   that context or another protocol-approved source.
@@ -298,6 +326,16 @@ TypeScript, and TUI shells.
 Generated ref caches must share the same full/delta/clear/stale-frame merge
 contract as other outputs; schema drift between Rust payloads and Swift/Kotlin/
 TypeScript mirrors is a correctness bug, not a UI adapter preference.
+
+Gallery is the first component-ref proof, and it must include every live shell:
+
+| Shell | Current proof target | Migration smell to remove or formalize |
+|---|---|---|
+| iOS/Swift | `refs.profile`, `refs.event`, embed envelopes, sign-in surface | shell URI/ref adapter should become generated descriptor/adapter glue |
+| Android/Kotlin | `refs.profile`, `refs.event.envelopes`, NIP-55 signer bridge | auth/signing proof is strongest here; it cannot stand in for other shells |
+| Web/TypeScript | `web/nmp-gallery` runtime and component registry | wasm build is deferred; raw worker `resolve_ref` messages and retry/reclaim loop remain |
+| TUI | pushed snapshots and visible-profile claims | render-time URI/ref adapter must stay lifecycle-only, not protocol policy |
+| Desktop | live bridge and embed/profile display | claim-every-render/tick behavior must be replaced by deterministic owner lifecycle |
 
 ## Composite Sessions
 

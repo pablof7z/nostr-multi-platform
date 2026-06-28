@@ -1,27 +1,30 @@
 # App Model
 
-An app has a Rust composition root. The composition root installs the substrate
-and then opts into named reusable NMP features and app-owned product features:
+An app has a Rust composition root. The composition root installs the mandatory
+substrate and then opts into named reusable NMP features and app-owned product
+features. The preferred production shape is a builder or explicit registration
+expression where substrate, storage, policy, and feature opt-ins are visible:
 
 ```rust
-pub fn register(app: &mut impl AppHost, policy: AppPolicy) {
-    nmp_defaults::register_substrate(app, policy.substrate);
-
-    nmp_defaults::features::nip02_follow_list(app);
-    nmp_defaults::features::nip51_lists(app);
-    nmp_defaults::features::nip50_search(app, policy.search);
-    nmp_defaults::features::nip29_groups(app, policy.groups);
-    app_feed::features::home_feed(app, policy.home_feed);
-
-    highlighter_app::features::register(app, policy.highlighter);
-    podcast_app::features::register(app, policy.podcast);
-}
+let app = NmpApp::builder()
+    .storage_path(policy.storage)
+    .with_substrate(policy.substrate)
+    .with_nip02_follow_list()
+    .with_nip51_lists()
+    .with_nip50_search(policy.search)
+    .with_nip29_groups(policy.groups)
+    .with_home_feed(policy.home_feed)
+    .with_app_feature(highlighter_app::feature(policy.highlighter))
+    .build();
 ```
 
 The exact names above are illustrative. The rule is not illustrative:
 `register_defaults()` should not be the taught mental model for real apps. It
-may remain a convenience preset, but product apps should show the features they
-install.
+may remain a compatibility or tutorial preset only if the ADR keeps it. Product
+apps should show the substrate and feature methods they install. A typestate or
+equivalent builder is attractive because it can require storage and substrate
+before start, make the app immutable after build, and remove idempotency bugs
+from repeated registration.
 
 The ADR must also decide how `nmp init` teaches this. If the generated app is a
 production scaffold, it should emit explicit feature composition and policy
@@ -96,15 +99,16 @@ The composition root should make these gates explicit:
 
 This keeps framework defaults useful without hiding the product architecture.
 Feature-install helpers should live in feature composition crates such as
-defaults, runtimes, protocol crates, or app crates. They should not become a
-pile of unrelated methods on `nmp-core::AppHost`.
+defaults, runtimes, protocol crates, or app crates, usually as builder extension
+traits or explicit registration helpers. They should not become a pile of
+unrelated methods on `nmp-core::AppHost`.
 
 Composition should be idempotent where practical and explicit across browser,
 native, TUI, and test roots. A browser `start()` path should not silently install
 a different product architecture from the native root.
 
-`nmp-defaults` is a reusable composition library, not a leaf app. It may install
-generic routing, mailbox, parser, signer, and publish substrate, but it must not
+`nmp-defaults` is a reusable composition library, not a leaf app. It may provide
+generic routing, mailbox, parser, signer, and publish installers, but it must not
 own operator policy such as seed follows, bootstrap relay lists, app relay
 brands, signer permission defaults, or product onboarding choices. Leaf app Rust
 crates provide that policy explicitly, preferably through typed builders that
@@ -128,6 +132,19 @@ The contract is still Rust-owned:
 - generated app-feature APIs are typed and versioned;
 - capability result channels re-enter the Rust reducer path;
 - event-producing operations still use the typed action/publish doorway.
+
+Native mirrors are allowed only when they are capability or rendering
+mechanics, not durable product truth:
+
+| Native/local surface | Allowed role | Forbidden role |
+|---|---|---|
+| Widget/App Group snapshot | last Rust-emitted widget frame for WidgetKit | source of playback queue, episode state, relay state, or publish status |
+| `MPNowPlayingInfoCenter` / remote command state | OS media surface fed from Rust playback state | independent playback state machine or queue owner |
+| ActivityKit/Live Activity state | executor-side copy needed by ActivityKit throttling/lifecycle | decision about whether an activity should exist or what episode is current |
+| `NSUserActivity`/Handoff payload | OS handoff payload built from Rust semantic state | second navigation/playback source of truth |
+| image/profile/render caches | bounded render cache for already-projected data | protocol cache, profile truth, relay policy, or ref lifecycle owner |
+| secure storage/keychain | secret-bearing capability store | signer policy, permission model, or publish continuation owner |
+| native app database/UserDefaults | migration/import/export staging or render cache with Rust owner | durable product store for Nostr/account/playback/feed facts |
 
 Headless and OS-owned surfaces are not exempt. A widget, AppIntent, CarPlay
 scene, remote command, Live Activity, extension, or suspended-process resume may
@@ -198,9 +215,14 @@ eligibility, and whether pending work may continue on the current connection.
 ## Downstream App Shape
 
 `nmp-gallery` mostly exercises NMP features directly across iOS, Android, TUI,
-and desktop in this checkout. It needs component-scoped profile and event refs,
-generated ref caches, embed resolution, auth/signing component coverage, and no
-shell retry timers.
+desktop, and web in this checkout. It needs component-scoped profile and event
+refs, generated ref caches, embed resolution, auth/signing component coverage,
+and no ref/projection retry timers. Its showcase relays are sample
+data/bootstrap policy for the gallery app, not framework defaults for NMP.
+Today's gallery bridge still teaches old architecture through
+`register_defaults()` / `consume_all_builtin_projections()` and platform-local
+URI/ref adapters; the migration proof is not complete until those are replaced
+or explicitly scoped as tutorial/showcase compatibility.
 
 Highlighter needs NMP features plus Highlighter-owned bundles for capture,
 share, article reading, curation, room chrome, comments, feedback, and podcast
@@ -212,3 +234,9 @@ Podcast Player needs NMP features plus podcast-owned bundles for playback,
 queue, downloads, feed subscription, OPML/import, transcripts, widgets,
 Blossom-backed publish flows, and agent behavior. RSS, playback, queue, and
 transcript logic must stay in the app Rust crate.
+
+Secondary downstream apps such as 29er and Olas are useful sanity checks but not
+permission to add product nouns to NMP. 29er should prove NIP-29/raw-event/group
+tree behavior through reusable protocol features and an app Rust core; Olas
+should prove picture-event, WoT, and image-feed mechanisms without moving Olas
+ranking or onboarding policy into framework crates.

@@ -25,7 +25,7 @@ Examples:
 react to event X with "+"
 construct a reply to event Y
 construct an article draft
-construct a NIP-29 group message
+construct an event that may later be published into a NIP-29 group
 construct a NIP-17 DM envelope
 construct a kind:10002 relay list
 construct a podcast episode publish
@@ -37,8 +37,9 @@ Construction may be layered:
 - A reaction builder can construct the reaction event for a target event.
 - A reply builder can inspect the target and choose the right reply shape, such
   as NIP-22 behavior when replying to a non-kind:1 event.
-- A group publish helper can add the NIP-29 `h` tag and attach the host-relay
-  route context.
+- NIP-29 does not construct replies, reactions, articles, or app-specific
+  events. It can finalize an already-constructed event into a group context by
+  adding or validating NIP-29 group envelope data and host-relay route context.
 - A DM helper can build the correct private-event envelope and mark the write as
   private-inbox-routed.
 - An app crate can compose protocol builders without making protocol crates
@@ -88,26 +89,42 @@ Minimum route-provenance matrix:
 | manual explicit override | app/protocol owner, purpose, tests, and relay set | send exactly there, with no hidden fallback | marked manual/audited |
 | imported/verbatim external event | caller declares reduced guarantees and supplies signed bytes | validate/store/publish only within explicit policy | status says imported/verbatim |
 
+Existing explicit-relay seams need to be classified before they are collapsed:
+
+| Current shape | Required provenance class | Required proof |
+|---|---|---|
+| `PublishTarget::Explicit` from app/manual caller | manual explicit override | caller owns purpose/reason; no hidden fallback; status marks manual |
+| NIP-29 group publish plan | protocol host pin | group id, host relay, `h` tag/previous-group tags where applicable; reject missing group context |
+| NIP-17/gift-wrap relay set | verified private inbox | recipient inbox proof; fail closed when unknown |
+| `UnsignedEventToRelays` / pre-signed import | imported/verbatim or protocol host pin | imported status and reduced guarantees unless a protocol plan proves stronger provenance |
+| test/diagnostic explicit relays | diagnostic/test | not reachable from product shell APIs |
+
 ## Stage 2: Finalization
 
 Finalization is the last mutation point before signing. It applies route and
 protocol envelope rules that may depend on the publish call:
 
-- NIP-29 can add or verify the `h` tag, attach group id, and pin the host relay.
+- NIP-29 can add or verify the `h` tag, attach group id, preserve/append
+  group-context tags where the protocol requires them, and pin the host relay.
 - NIP-17 can construct private envelopes and opt out of public outbox routing.
 - NIP-22 reply helpers can choose reply tags based on the target kind.
 - NIP-65 relay-list publishing can enforce the correct public route policy.
-- Podcast publishing can attach explicit write relays and Blossom references.
+- Podcast publishing can construct NIP-F4 show/feed/episode/list events, attach
+  Blossom references, select per-podcast or active-account signers, and preserve
+  explicit write-relay provenance.
 - App builders can attach correlation ids and product publish state.
 
 Finalization must fail before signing if the required context is missing. A
 group publish without a group route, an unknown private inbox, or an unsupported
 explicit relay policy should not create a signed event.
-Generic raw publishing cannot silently bypass protocol invariants. An `h`-tagged
-NIP-29 write either comes from the NIP-29 builder/plan with group-route proof or
-is explicitly classified as imported/verbatim/manual raw publish with reduced
-guarantees. Likewise, private-event publishes must distinguish verified
-NIP-17 inbox routing from other explicit private-envelope delivery.
+Generic raw publishing cannot silently bypass protocol invariants. A NIP-29
+group write is not `comment_in_group` or `reply_in_group`; it is "publish this
+already-constructed event in this group context." The base event is constructed
+by the appropriate NMP/app builder, then the NIP-29 finalizer adds or verifies
+the group envelope and host route. An `h`-tagged write that did not pass through
+that group-route proof is imported/verbatim/manual raw publish with reduced
+guarantees. Likewise, private-event publishes must distinguish verified NIP-17
+inbox routing from other explicit private-envelope delivery.
 
 ## Stage 3: Signing
 
@@ -133,6 +150,13 @@ broker initialization or teardown state where applicable, and correlation ids
 for parked continuations. Shells should not infer signer completion from missing
 errors, URI callbacks, or side effects.
 
+NIP-46-style signer protocols should own only transport-agnostic protocol state:
+handshake sequencing, RPC envelope build/parse, NIP-44 wrapping, request ids, and
+response correlation. Runtime crates or platform capabilities own sockets,
+threads, browser workers, OS callbacks, and process execution. A signer protocol
+crate that owns transport/process lifecycle is the wrong boundary; a host that
+builds NIP-46 envelopes in native code is also the wrong boundary.
+
 Minimum signer matrix:
 
 | Signer path | Native/web role | Rust-owned state |
@@ -144,6 +168,16 @@ Minimum signer matrix:
 | Android/iOS platform signer (NIP-55-style) | execute external signer IPC/app callback | capability correlation, selected signer, pending/cancel/failure state |
 | named product/agent signer | execute configured signer capability | signer registry, permission, product policy, publish continuation |
 | imported pre-signed event | no signing, only validation/capability import if needed | validation result, route provenance, status/retry policy |
+
+Podcast Player adds a concrete signer proof:
+
+| Podcast signer need | Required model |
+|---|---|
+| active user publishes a normal social note/comment | active account signer plus automatic or protocol route provenance |
+| per-podcast key publishes NIP-F4 show/feed/episode events | named product signer with explicit ownership, permission, status, and key storage capability |
+| agent publishes or mutates podcast-owned data | agent signer path with product permission and publish correlation |
+| NIP-46/bunker signer | parked continuation with timeout/failure owned by Rust, not Swift `Task.sleep` UI policy |
+| NIP-55/platform signer | external signer capability result mapped back to the same signer/publish status stream |
 
 The output is a signed event plus signer status updates.
 
@@ -203,6 +237,22 @@ allows read-your-writes. Projections update from the store path, not from native
 optimism. The publish engine owns relay dispatch, ack classification, retry,
 resume, cancellation, and publish status projections.
 
+Podcast NIP-F4 is a required publish proof, not an optional downstream nicety:
+
+```text
+NIP-F4 show event       kind:10154
+NIP-F4 episode event    kind:54
+podcast/follow/feed     kind:10064 or successor if the spec changes
+Blossom references      server/blob references with explicit server provenance
+```
+
+The final architecture is not proven while these paths return only constructed
+event JSON or `relay_pending`. They must build, sign, route, store, publish, and
+emit ack/error/retry/exhausted status through the same Rust-owned publish stream.
+Blossom server selection follows the same rule as relay selection: native may
+execute upload/download capabilities, but Rust owns which server list is valid,
+why an explicit server is allowed, and how that status is reported.
+
 ## Generated Builders And Actions
 
 The app-facing API can look like builders, but the runtime boundary should be a
@@ -227,8 +277,8 @@ Builder examples:
 react_to(event, "+")
 reply_to(event).content("nice")
 article().title("Hello World").content(body)
-nip29.publish_to_group(article, group_id)
-nip29.reply_to_group_event(event).content("nice")
+nip29.publish_group_event(group_id, article().title("Hello World").content(body))
+nip29.publish_group_event(group_id, reply_to(event).content("nice"))
 podcast.publish_episode(show_id, episode_id, signer, relays)
 highlighter.share_artifact_to_room(artifact_id, room_id)
 ```
@@ -241,6 +291,14 @@ comments, lists, or podcast events, but they still must carry correlation,
 validation, route/privacy context, signer selection, and publish-status output
 through the same actor-owned flow. Fire-and-forget event writes are not a
 separate app runtime.
+
+Highlighter acceptance requires a write inventory. Web NDK paths that build,
+sign, and publish onboarding profile events, Blossom lists, interest lists,
+group invites/membership/metadata, highlights, comments, capture events, or
+artifact shares must either move behind typed Rust actions/builders or be
+classified by ADR as SSR-only, diagnostic, or migration-scoped with deletion
+criteria. Native/Rust raw publish paths need the same correlation and status
+proof; "the event was sent" is not enough.
 
 ## Compatibility Boundaries
 
