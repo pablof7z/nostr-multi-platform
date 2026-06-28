@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Browser platform adapter for NMP: Worker event loop, browser relay transport, capability/signer provider registry, and the BrowserAppBuilder composition root. This crate (not nmp-wasm) owns the browser runtime."
+description = "Browser platform adapter for NMP: Worker event loop, browser relay transport, capability/signer provider registry, and the BrowserAppBuilder composition root. This crate (superseding the retired nmp-wasm) owns the browser runtime."
 
 [lib]
 crate-type = ["cdylib", "rlib"]
