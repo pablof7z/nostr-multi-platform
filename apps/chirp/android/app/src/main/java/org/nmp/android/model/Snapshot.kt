@@ -16,22 +16,12 @@ import kotlinx.serialization.Serializable
 data class KernelUpdate(
     val rev: Long = 0,
     val running: Boolean = false,
-    val relayUrl: String = "",
-    @SerialName("items") val legacyItems: List<TimelineItem> = emptyList(),
     val modularTimeline: ChirpOpFeedSnapshot = ChirpOpFeedSnapshot(),
     val metrics: KernelMetricsLite? = null,
     val relayStatuses: List<RelayStatus> = emptyList(),
     val lastErrorToast: String? = null,
     val projections: SnapshotProjections? = null,
 ) {
-    // NOTE(#920): the kernel no longer emits a top-level `items` field nor the
-    // `"timeline"` projection key (both removed in PR #924), so `legacyItems`
-    // is now always empty — the home feed ships solely via `modularTimeline`
-    // (the typed `nmp.feed.home` OP-feed). This legacy fallback is retained as
-    // a separate UI-path migration; see follow-up issue.
-    val items: List<TimelineItem>
-        get() = legacyItems
-
     val activeAccount: String
         get() = projections?.activeAccount.orEmpty()
 }

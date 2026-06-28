@@ -143,21 +143,6 @@ class KernelBridge {
     }
 
     /**
-     * Dispatch a pre-built `(namespace, bodyJson)` action through the UniFFI
-     * byte doorway (M14-0; replaces `nativeDispatchActionBytes`).
-     *
-     * Called by sibling extension files: [KernelBridgeOutboxRelay],
-     * [KernelBridgeMarmotActions], [KernelBridgeWalletActions].
-     * D6: null/dead handle returns [DispatchResult.Failure].
-     */
-    internal fun dispatchActionJson(namespace: String, bodyJson: String): DispatchResult {
-        if (handle == 0L) return DispatchResult.Failure("dispatch returned a null handle")
-        val ack = appHandle?.dispatchActionJson(namespace, bodyJson)
-            ?: return DispatchResult.Failure("dispatch returned a null handle")
-        return DispatchResult.fromAck(ack)
-    }
-
-    /**
      * Dispatch a pre-encoded `DispatchEnvelope` FlatBuffers byte buffer through
      * the typed byte doorway (M14-1 / #2145 — generated builder path).
      *
