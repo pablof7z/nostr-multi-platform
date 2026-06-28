@@ -1,6 +1,6 @@
 # ADR-0063 — Reference resolution: a unified keyed, shape-demanded `RefResolver` primitive
 
-- **Status:** Accepted (owner-decided via [#1671](https://github.com/issues/1671); parent of [#1635](https://github.com/issues/1635)).
+- **Status:** Accepted (owner-decided via [#1671](https://github.com/issues/1671); parent of [#1635](https://github.com/issues/1635)); amended by ADR-0070.
 - **Date:** 2026-06-21
 - **Decides:** Collapse the three-way profile surface
   (`claimed_profiles` / `mention_profiles` / `resolved_profiles`) and the legacy
@@ -39,6 +39,11 @@
 - **Doctrines touched:** D0 (substrate names no app noun), D4 (single writer per
   fact / kernel owns truth), D5 (snapshots bounded by what is open / declared), D6
   (errors never cross FFI; fail closed), D8 (no polling; observer-driven reactivity).
+
+- **Current disposition:** the keyed resolver invariant survives, but public
+  ref APIs should converge on typed `ProfileRef`/`EventEmbed` sessions or
+  generated adapters. Raw `resolve_ref`/`release_ref` worker or shell protocols
+  are compatibility, diagnostic, or private machinery once typed sessions land.
 
 ---
 

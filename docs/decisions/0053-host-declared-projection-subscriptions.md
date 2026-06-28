@@ -1,6 +1,6 @@
 # ADR-0053 — Host-declared projection subscriptions: the kernel serializes only the projections a host declares it consumes
 
-- **Status:** Accepted (2026-06-13)
+- **Status:** Accepted (2026-06-13); amended by ADR-0070
 - **Amends / partially supersedes:** **ADR-0039** (push projection seam is canonical).
   ADR-0039's Decision 1 (PUSH is the single canonical seam) and its rejection of a
   generic *pull* accessor stand unchanged. This ADR **corrects ADR-0039's reasoning
@@ -24,6 +24,11 @@
 - **Scope:** WHICH projection keys are serialized into each pushed `SnapshotFrame`.
   NOT their content (owned by each projection's producer), NOT their decode path
   (owned by each shell), NOT per-tick change-diffing (a separate future optimization).
+
+**Current disposition:** bounded pushed output remains the UI-state path. The
+app-facing composition language changes: projection declarations and tiers are
+executor machinery, not the normal production app API. Typed read sessions own
+output demand, replay, status, and teardown for product reads.
 
 ## Context
 

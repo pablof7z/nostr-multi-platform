@@ -1,9 +1,16 @@
 # ADR 0009: App Extension Kernel Boundary
 
 **Date:** 2026-05-17
-**Status:** accepted
+**Status:** accepted; amended by ADR-0069 and ADR-0072
 **Current design:** `docs/design/app-extension-kernel.md`
 **Companion ADR:** ADR-0010
+
+**Current disposition:** This ADR still owns the core boundary: `nmp-core`
+contains reusable Nostr substrate, app/product logic belongs in app Rust crates,
+and shells render plus execute capabilities. ADR-0069 replaces the
+defaults-era composition wording below: production apps use explicit feature
+composition, and `nmp-defaults::register_defaults` is not the production app
+architecture.
 
 ## Context
 

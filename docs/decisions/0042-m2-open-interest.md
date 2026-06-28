@@ -1,10 +1,16 @@
 # ADR-0042 — M2 migration: generic interests and dynamic feed read paths
 
-- Status: Accepted (mechanism). Read-path admission/projection finalized by ADR-0057.
+- Status: Accepted as substrate mechanism; app-visible read model amended by
+  ADR-0070.
 - Date: 2026-06-03
 - Replaces the bespoke per-verb feed primitives scheduled for removal in
   `crates/nmp-core/src/kernel/requests/profile.rs` and the deleted
   `kernel/requests/thread.rs` stub.
+
+Current disposition: raw `open_interest` remains acquisition machinery for
+substrate, protocol-internal, diagnostic/test/export, or migration scopes. It is
+not the production app read API. Product reads use typed read sessions or
+generated per-feature helpers over typed session descriptors.
 
 ## 1. Context
 
@@ -37,10 +43,13 @@ A long-form reader app may declare `[30023]`; a media app may declare `[20]`.
 
 The M2 migration introduced two raw C-ABI interest symbols as the low-level
 static subscription seam. They replaced the old bespoke author/thread/tag
-subscription verbs, but they are not the current app feed API. App feeds are
-declared through typed `FeedParams` and opened with `open_feed`; `open_interest`
+subscription verbs, but they are not the production app read API. At the time of
+M2, app feeds were declared through typed `FeedParams` and opened with
+`open_feed`. ADR-0070 supersedes that app-facing read shape: product reads use
+typed read sessions or generated helpers over session descriptors. `open_interest`
 is for callers that need to attach an owner to a concrete, already-materialized
-Nostr filter.
+Nostr filter in substrate, protocol-internal, diagnostic/test/export, or
+migration scopes.
 
 ```c
 // Register (or attach an owner to) a concrete tailing interest.

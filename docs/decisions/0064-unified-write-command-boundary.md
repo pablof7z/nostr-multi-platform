@@ -2,7 +2,7 @@
 
 - **Status:** Accepted and implemented for the production binding transport
   (owner-decided 2026-06-21; confirmed 2026-06-25 after the JSON-dispatch
-  cleanup landed).
+  cleanup landed); amended by ADR-0071.
 - **Date:** 2026-06-21
 - **Decides:** Collapse the write/command path to **one boundary shape, shared by
   the native FFI and the wasm worker**: a single generic *byte* transport doorway
@@ -46,6 +46,12 @@
 - **Doctrines touched:** D0 (open seam, no app noun in core), D4 (one writer / one
   dispatch authority), D6 (errors are state), D7 (capabilities report, kernel
   decides), D8 (no polling; completions wake the actor as explicit events).
+
+- **Current disposition under ADR-0071:** the one typed byte/action doorway
+  remains. Event construction, finalization, signing, and publishing are distinct
+  Rust-owned stages, and publish status must preserve durable intent identity and
+  structured route provenance. Anonymous explicit relay lists are not sufficient
+  product publish state.
 
 ---
 

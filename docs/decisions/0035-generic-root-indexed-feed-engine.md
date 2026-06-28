@@ -1,8 +1,13 @@
 # ADR-0035 - Generic root-indexed feed engine in `nmp-feed`
 
-Status: accepted
+Status: accepted; folded under ADR-0070 for app-visible read lifecycles
 
 Date: 2026-05-28
+
+Current disposition: the root-indexed feed engine may remain private or
+feature-internal machinery, but app-visible feed reads are owned by typed read
+sessions per ADR-0070. This ADR must not be read as preserving a separate public
+feed lifecycle beside typed sessions.
 
 ## Context
 
