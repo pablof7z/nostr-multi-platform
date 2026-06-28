@@ -24,7 +24,9 @@ pub static CONVERSION_COUNT: std::sync::atomic::AtomicUsize =
 
 /// Reset the materialization counter to zero.
 ///
-/// Call before each sub-test that asserts on the count.
+/// This counter is process-global. Tests that assert on it must serialize the
+/// full reset -> query -> assert window against sibling tests that call
+/// `query_visit`.
 #[cfg(any(test, feature = "test-support"))]
 pub fn reset_conversion_count() {
     CONVERSION_COUNT.store(0, std::sync::atomic::Ordering::Relaxed);

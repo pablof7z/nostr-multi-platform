@@ -12,11 +12,14 @@
 #![cfg(feature = "lmdb-backend")]
 
 use std::ops::ControlFlow;
+use std::sync::Mutex;
 
 use crate::types::{InsertOutcome, RawEvent, StoreQuery};
 use crate::EventStore;
 
 use super::test_fixtures::{open_tmp, signed_event, signed_event_with_keys, verified};
+
+static QUERY_VISIT_SERIAL: Mutex<()> = Mutex::new(());
 
 // ─── Insert / outcome parity ─────────────────────────────────────────────────
 
@@ -139,6 +142,9 @@ fn nip40_expired_on_arrival_rejected() {
 
 #[test]
 fn query_visit_early_stop_after_10() {
+    let _guard = QUERY_VISIT_SERIAL
+        .lock()
+        .expect("query_visit tests must serialize the global conversion counter seam");
     use nostr::prelude::*;
     let (store, _dir) = open_tmp();
     let keys = Keys::generate();
@@ -288,6 +294,9 @@ fn tombstone_max_merge_takes_newer_deleted_at() {
 /// boundary read).
 #[test]
 fn streaming_visit_does_not_over_materialize() {
+    let _guard = QUERY_VISIT_SERIAL
+        .lock()
+        .expect("query_visit tests must serialize the global conversion counter seam");
     use nostr::prelude::*;
 
     let (store, _dir) = open_tmp();
@@ -337,6 +346,9 @@ fn streaming_visit_does_not_over_materialize() {
 /// matching the MemEventStore tie-break contract.
 #[test]
 fn tie_break_order_matches_mem() {
+    let _guard = QUERY_VISIT_SERIAL
+        .lock()
+        .expect("query_visit tests must serialize the global conversion counter seam");
     use nostr::prelude::*;
 
     let (store, _dir) = open_tmp();
