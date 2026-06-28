@@ -300,22 +300,6 @@ pub const ACTION_CONTRACT: &[ActionContract] = &[
         public_re_export: PUBLIC_REEXPORT,
         typed_dispatch: TYPED_ONLY,
     },
-    // nmp-relations — visible note relations claim/release (ComponentRegistered — not in nmp-defaults).
-    ActionContract {
-        namespace: "nmp.nip01.visible_note_relations",
-        producer: "nmp-relations action",
-        module_type: "nmp_relations::VisibleNoteRelationsModule",
-        payload_type: "nmp_relations::VisibleNoteRelationsAction",
-        schema_id: "nmp.nip01.visible_note_relations",
-        schema_path: "crates/nmp-relations/schema/visible_note_relations_action.fbs",
-        root_type: "VisibleNoteRelationsPayload",
-        schema_version: 1,
-        file_identifier: "NR01",
-        default_tier: ActionDefaultTier::ComponentRegistered,
-        builder_support: BuilderSupport::GeneratedFlatTable,
-        public_re_export: PUBLIC_REEXPORT,
-        typed_dispatch: TYPED_ONLY,
-    },
     // nmp-core — relay-pinned browse action (ComponentRegistered — opt-in action module).
     ActionContract {
         namespace: "nmp.browse_relay",

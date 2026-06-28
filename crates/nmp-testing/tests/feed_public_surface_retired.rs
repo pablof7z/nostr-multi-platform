@@ -1,10 +1,11 @@
 //! #1740 step 9 — the NEGATIVE matrix: the raw feed lanes are NO LONGER public.
 //!
-//! Feed public-surface migration retired the raw lanes and the older app-local
-//! feed FFI exports. This grep-gate asserts the retirement is real: retired
-//! public symbols/strings are gone from the public surface, not merely shadowed
-//! by a parallel path. It fails if any reappears, so a future change cannot
-//! silently re-expose them.
+//! Feed public-surface migration made `NmpApp::open_feed` /
+//! `NmpApp::close_feed` the typed feed doorway, and retired the raw lanes plus
+//! older app-local feed FFI exports. This grep-gate asserts the retirement is
+//! real: retired public symbols/strings are gone from the public surface, not
+//! merely shadowed by a parallel path. It fails if any reappears, so a future
+//! change cannot silently re-expose them.
 //!
 //! What is asserted GONE (public surface only):
 //!   * the old feed C-ABI symbols (no `#[no_mangle]` definition, no `pub use`
@@ -270,6 +271,61 @@ fn claimed_event_embeds_key_is_not_used_in_public_surfaces() {
         "retired public projection key `claimed_event_embeds` reappeared in a \
          production/public surface; use `refs.event.envelopes` derived from \
          authoritative `refs.event` rows instead:\n{}",
+        violations.join("\n")
+    );
+}
+#[test]
+fn typed_open_feed_doorway_symbols_exist() {
+    // The POSITIVE companion: the ONE public doorway must be DEFINED. This guards
+    // against an over-zealous future cleanup deleting the replacement along with
+    // the retired lanes (which would leave NO public way to open a feed).
+    let feed_rs = repo_root().join("crates/nmp-native-runtime/src/feed_session.rs");
+    let text = fs::read_to_string(&feed_rs)
+        .unwrap_or_else(|e| panic!("the public feed doorway file must exist: {e}"));
+    for sym in ["open_feed", "close_feed"] {
+        assert!(
+            text.contains(&format!("pub fn {sym}")),
+            "the public typed feed doorway `{sym}` must be defined in {}",
+            feed_rs.display()
+        );
+    }
+}
+
+#[test]
+fn old_public_open_feed_doorway_symbols_are_not_defined_or_reexported() {
+    // Chirp's in-repo app-local feed FFI was removed. Do not resurrect those
+    // old C symbols as a replacement for the typed-session direction.
+    const RETIRED_FEED_SYMBOLS: &[&str] = &["nmp_app_open_feed", "nmp_app_close_feed"];
+
+    let root = repo_root();
+    let mut files = Vec::new();
+    for sub in ["crates", "apps"] {
+        rust_files(&root.join(sub), &mut files);
+    }
+    assert!(!files.is_empty(), "must scan some Rust sources");
+
+    let mut violations = Vec::new();
+    for file in &files {
+        if file.ends_with("tests/feed_public_surface_retired.rs") {
+            continue;
+        }
+        let Ok(text) = fs::read_to_string(file) else {
+            continue;
+        };
+        for (n, line) in text.lines().enumerate() {
+            let code = code_only(line);
+            for sym in RETIRED_FEED_SYMBOLS {
+                if code.contains(sym) {
+                    violations.push(format!("{}:{}: {}", file.display(), n + 1, line.trim()));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "retired open_feed C-ABI symbols reappeared in code; typed sessions must \
+         replace this surface rather than restoring the old app-local feed FFI:\n{}",
         violations.join("\n")
     );
 }

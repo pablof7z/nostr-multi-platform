@@ -78,11 +78,6 @@ impl NotificationsProjection {
     }
 
     #[must_use]
-    pub fn viewer_pubkey(&self) -> &str {
-        &self.viewer_pubkey
-    }
-
-    #[must_use]
     pub fn snapshot(&self) -> NotificationsSnapshot {
         let Ok(rows) = self.rows.lock() else {
             return NotificationsSnapshot {
@@ -242,4 +237,5 @@ fn first_event_tag(tags: &[Vec<String>]) -> Option<String> {
 }
 
 #[cfg(test)]
+#[path = "projection_tests.rs"]
 mod tests;

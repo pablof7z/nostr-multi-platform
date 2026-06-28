@@ -2,7 +2,7 @@ namespace nmp.relations;
 
 // Typed FlatBuffers wire for the cross-protocol notification snapshot.
 //
-// The producer is `nmp_relations::NotificationsProjection`, a bounded observed
+// The producer is browser-runtime `NotificationsProjection`, a bounded observed
 // projection over interaction events that p-tag the active account. Raw Nostr
 // facts only: the shell may format times, shorten ids, and choose icons, but it
 // must not classify events or own notification state.

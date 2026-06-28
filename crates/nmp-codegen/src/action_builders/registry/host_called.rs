@@ -172,29 +172,6 @@ pub(super) const BLOSSOM_UPLOAD: ActionBuilder = ActionBuilder {
     doc: "Upload a file via BUD-02 to one or more Blossom servers.",
 };
 
-pub(super) const VISIBLE_NOTE_RELATIONS: ActionBuilder = ActionBuilder {
-    namespace: "nmp.nip01.visible_note_relations",
-    method: "visibleNoteRelations",
-    fields: &[
-        PayloadField {
-            name: "op",
-            kind: FieldKind::Ubyte,
-            optional: false,
-        },
-        PayloadField {
-            name: "eventId",
-            kind: FieldKind::Str,
-            optional: false,
-        },
-        PayloadField {
-            name: "consumerId",
-            kind: FieldKind::Str,
-            optional: false,
-        },
-    ],
-    doc: "Claim or release the tailing interest for a note's visible relations (NIP-01).",
-};
-
 pub(super) const BROWSE_RELAY: ActionBuilder = ActionBuilder {
     namespace: "nmp.browse_relay",
     method: "browseRelay",
