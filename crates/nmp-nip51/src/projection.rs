@@ -73,6 +73,47 @@ use nmp_core::ObservedProjectionSink;
 use nmp_kinds::KIND_MUTE_LIST;
 use serde::Serialize;
 
+// --- Canonical kind:10000 tag parser (shared with nmp-wot) ------------------
+
+/// `true` when `s` is a 64-character ASCII hex string.
+///
+/// Used to validate pubkeys (`p` tags) and event ids (`e` tags) before
+/// inserting them into the mute set. Invalid entries are silently dropped
+/// (D6 — degrade gracefully, never panic or admit garbage).
+fn is_hex64(s: &str) -> bool {
+    s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+/// Extract muted pubkeys from kind:10000 `["p", <pubkey>]` tags.
+///
+/// This is the **canonical** parser for kind:10000 `p` tags, shared by two
+/// distinct consumers:
+///
+/// - [`MuteListProjection`] — **hard timeline suppression**: hide cards whose
+///   author the active account has muted.
+/// - `nmp-wot::WotGraph::ingest_mute_list` — **soft trust scoring**: subtract
+///   `SELF_MUTE_SCORE` / `FOLLOWED_MUTE_SCORE` from a candidate's WoT rank.
+///
+/// A single canonical parser (GitHub issue #964 consolidation) guarantees
+/// both consumers ingest the same pubkey set from the same event. `nmp-wot`
+/// takes a legal Layer-4 sibling dependency on `nmp-nip51` for this function
+/// rather than maintaining its own duplicate `p`-tag scanner.
+///
+/// Each extracted value is validated as a 64-character ASCII hex string;
+/// non-hex, too-short, or too-long values are silently dropped (D6).
+#[must_use]
+pub fn mute_pubkeys_from_tags(tags: &[Vec<String>]) -> BTreeSet<String> {
+    tags.iter()
+        .filter_map(|tag| {
+            if tag.first().is_some_and(|t| t == "p") {
+                tag.get(1).filter(|v| is_hex64(v)).cloned()
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
 /// Built-in `nmp-feed::ListId` value for treating the active account's public
 /// mute-list `p` tags as a reduced pubkey source.
 ///
@@ -260,24 +301,16 @@ impl ObservedProjectionSink for MuteListProjection {
             return;
         }
 
-        let pubkeys: HashSet<String> = event
-            .tags
-            .iter()
-            .filter_map(|tag| {
-                if tag.first().is_some_and(|t| t == "p") {
-                    tag.get(1).cloned()
-                } else {
-                    None
-                }
-            })
-            .collect();
+        // Use the canonical shared parser (also used by nmp-wot for trust
+        // scoring) so both consumers ingest identical pubkey sets (#964).
+        let pubkeys: HashSet<String> = mute_pubkeys_from_tags(&event.tags).into_iter().collect();
 
         let event_ids: HashSet<String> = event
             .tags
             .iter()
             .filter_map(|tag| {
                 if tag.first().is_some_and(|t| t == "e") {
-                    tag.get(1).cloned()
+                    tag.get(1).filter(|v| is_hex64(v)).cloned()
                 } else {
                     None
                 }

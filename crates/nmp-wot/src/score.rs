@@ -3,6 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::Serialize;
 
 use crate::interest::{is_hex_pubkey, KIND_CONTACT_LIST, KIND_MUTE_LIST};
+use nmp_nip51::mute_pubkeys_from_tags;
 
 /// Trust score awarded to the viewer for itself. Always sorts first and is
 /// never hidden.
@@ -66,11 +67,17 @@ impl WotGraph {
     }
 
     /// Ingest a kind:10000 mute-list event.
+    ///
+    /// Delegates pubkey extraction to [`nmp_nip51::mute_pubkeys_from_tags`],
+    /// the canonical shared parser for kind:10000 `p` tags (GitHub issue #964
+    /// consolidation). `MuteListProjection` (timeline suppression) drives
+    /// through the same function, so both consumers always ingest identical
+    /// pubkey sets from the same event.
     pub fn ingest_mute_list(&mut self, author: &str, tags: &[Vec<String>]) {
         if !is_hex_pubkey(author) {
             return;
         }
-        let mutes = p_tags(tags);
+        let mutes = mute_pubkeys_from_tags(tags);
         self.mutes_by_author.insert(author.to_string(), mutes);
     }
 
