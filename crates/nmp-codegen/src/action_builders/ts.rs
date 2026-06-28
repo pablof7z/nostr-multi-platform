@@ -250,12 +250,16 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
                      \x20     if ({n} == null || {n}.length === 0) return 0;\n\
                      \x20     const tagOffsets = {n}.map((row) => {{\n\
                      \x20       const valOffsets = row.map((s) => fbb.createString(s));\n\
-                     \x20       const valsVec = fbb.createObjectOffsetList(valOffsets);\n\
+                     \x20       fbb.startVector(4, valOffsets.length, 4);\n\
+                     \x20       for (let i = valOffsets.length - 1; i >= 0; i--) fbb.addOffset(valOffsets[i]!);\n\
+                     \x20       const valsVec = fbb.endVector();\n\
                      \x20       fbb.startObject(1);\n\
                      \x20       fbb.addFieldOffset(0, valsVec, 0); // StringTag slot 0: values\n\
                      \x20       return fbb.endObject();\n\
                      \x20     }});\n\
-                     \x20     return fbb.createObjectOffsetList(tagOffsets);\n\
+                     \x20     fbb.startVector(4, tagOffsets.length, 4);\n\
+                     \x20     for (let i = tagOffsets.length - 1; i >= 0; i--) fbb.addOffset(tagOffsets[i]!);\n\
+                     \x20     return fbb.endVector();\n\
                      \x20   }})();\n",
                     n = field.name
                 ));

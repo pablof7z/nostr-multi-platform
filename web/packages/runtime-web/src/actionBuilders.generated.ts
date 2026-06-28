@@ -733,12 +733,16 @@ export const GeneratedActionBuilders = {
       if (tags == null || tags.length === 0) return 0;
       const tagOffsets = tags.map((row) => {
         const valOffsets = row.map((s) => fbb.createString(s));
-        const valsVec = fbb.createObjectOffsetList(valOffsets);
+        fbb.startVector(4, valOffsets.length, 4);
+        for (let i = valOffsets.length - 1; i >= 0; i--) fbb.addOffset(valOffsets[i]!);
+        const valsVec = fbb.endVector();
         fbb.startObject(1);
         fbb.addFieldOffset(0, valsVec, 0); // StringTag slot 0: values
         return fbb.endObject();
       });
-      return fbb.createObjectOffsetList(tagOffsets);
+      fbb.startVector(4, tagOffsets.length, 4);
+      for (let i = tagOffsets.length - 1; i >= 0; i--) fbb.addOffset(tagOffsets[i]!);
+      return fbb.endVector();
     })();
     fbb.startObject(5);
     fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
