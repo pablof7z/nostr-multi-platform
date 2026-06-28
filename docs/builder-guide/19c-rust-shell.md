@@ -9,13 +9,14 @@ native shell.
 
 ## The entry point: `NmpAppBuilder`
 
-Today `nmp-defaults` exports `NmpAppBuilder`, a typestate-guarded native runtime
-composition root. That placement is migration debt under ADR-0068/#2205: #2210
-moves the builder to `nmp-native-runtime`, the durable native runtime owner.
+`nmp-native-runtime` exports `NmpAppBuilder`, a typestate-guarded native runtime
+composition root.
 The typestate enforces at compile time that:
 
 1. A storage choice (`.in_memory()` or `.storage_path(p)`) is made before `start()`.
-2. `start()` is callable exactly once and consumes the builder — no setter is
+2. A projection-consumption decision is made before `start()`.
+3. An initial-relay decision is made before `start()`.
+4. `start()` is callable exactly once and consumes the builder — no setter is
    reachable post-start.
 
 Add the dependency:
@@ -23,7 +24,7 @@ Add the dependency:
 ```toml
 # Cargo.toml of your app-core crate (or a top-level binary crate)
 [dependencies]
-nmp-defaults = { path = "/path/to/nmp/crates/nmp-defaults" }
+nmp-native-runtime = { path = "/path/to/nmp/crates/nmp-native-runtime" }
 nmp-ffi = { path = "/path/to/nmp/crates/nmp-ffi" } # only when using the C ABI
 ```
 
@@ -31,7 +32,7 @@ nmp-ffi = { path = "/path/to/nmp/crates/nmp-ffi" } # only when using the C ABI
 
 ```rust
 use std::sync::{Arc, Mutex};
-use nmp_defaults::{NmpAppBuilder, RunConfig};
+use nmp_native_runtime::{NmpAppBuilder, RunConfig};
 use nmp_ffi::{nmp_app_free, nmp_app_stop};
 
 // Import your app-core crate — see 19a for how it's structured.
@@ -59,10 +60,13 @@ fn main() {
         128,
     ));
 
-    // Commit the storage choice and start the kernel.
-    // .in_memory()  →  NmpAppBuilder<StorageSet>  →  .start()  →  *mut NmpApp
-    // Omitting .in_memory()/.storage_path() is a COMPILE ERROR (V-94).
-    let app = builder.in_memory().start(RunConfig::default());
+    // Commit storage, projection, and relay decisions, then start the kernel.
+    // Omitting any gate is a COMPILE ERROR (V-94 / ADR-0053 / #1493).
+    let app = builder
+        .in_memory()
+        .declare_consumed_projections([FEED_SNAPSHOT_KEY])
+        .without_initial_relays()
+        .start(RunConfig::default());
 
     // The kernel is now running: relay manager started, actor thread live.
     // Read the snapshot whenever you want:

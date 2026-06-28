@@ -1,0 +1,297 @@
+# v1 Runtime And Component Migration Guide
+
+> **Status:** v1 durable guide. This document describes the settled migration
+> target, not the history of how the target landed. Tactical release status
+> stays in GitHub Issues.
+
+Use this guide when moving a downstream app or example from the pre-v1 runtime,
+projection, and component shape to the v1 NMP surface.
+
+## Target Shape
+
+The v1 split is:
+
+| Surface | Owns | Must not own |
+|---|---|---|
+| `nmp-defaults` | Pure Layer-5 `AppHost` composition: default NMP modules, routing, planners, registrars, and runtime handles returned to app cores when needed. | Platform runtime handles, C ABI symbols, operator policy, app defaults. |
+| `nmp-native-runtime` | Native runtime handle, actor lifecycle, native typestate builder, runtime slots, pre-start configuration, and native Rust APIs. | C ABI conversion or app/product policy. |
+| `nmp-ffi` / `nmp-android-ffi` | Thin ABI shells over the native runtime: symbols, pointers, strings, panic guards, callbacks, JNI/UniFFI glue. | Runtime ownership, composition policy, protocol logic. |
+| `nmp-browser-runtime` | Browser Worker runtime, wasm-bindgen export, browser typestate builder, storage/signing/capability provider registration. | UI rendering, TypeScript crypto fallbacks, protocol policy. |
+| `nmp-wasm` | Serializable protocol types retained for older Rust consumers. | Runtime, ABI, app construction, worker ownership. |
+
+App shells remain thin. They render snapshots, execute platform capabilities,
+and hold only ephemeral presentation state. Rust owns protocol behavior, durable
+state, routing, signing policy, and projection derivation.
+
+## Native Runtime Split
+
+Before, examples often treated `nmp-defaults` or `nmp-ffi` as the native
+runtime owner:
+
+```rust
+use nmp_defaults::{NmpAppBuilder, RunConfig};
+
+let app = NmpAppBuilder::new()
+    .in_memory()
+    .start(RunConfig::default());
+```
+
+After migration, native runtime construction comes from `nmp-native-runtime` and
+must pass the typestate gates:
+
+```rust
+use nmp_native_runtime::{NmpAppBuilder, RunConfig};
+
+let app = NmpAppBuilder::new()
+    .in_memory()
+    .declare_consumed_projections(["refs.profile", "refs.event"])
+    .with_relays([("wss://relay.example", "both")])
+    .start(RunConfig::default());
+```
+
+If the app has no startup relays, make that explicit:
+
+```rust
+let app = NmpAppBuilder::new()
+    .in_memory()
+    .declare_consumed_projections(["refs.profile"])
+    .without_initial_relays()
+    .start(RunConfig::default());
+```
+
+Swift, Kotlin, and C callers still use ABI symbols such as
+`nmp_app_new`, `nmp_app_start`, `nmp_app_set_update_callback`, and
+`nmp_app_dispatch_action_bytes`. The migration is about ownership: new native
+runtime behavior belongs in `nmp-native-runtime`; ABI crates only expose and
+marshal it.
+
+## Defaults Composition
+
+Before, downstream apps copied template wiring or expected generated per-app
+composition:
+
+```rust
+// Bad v1 shape: copied framework wiring or a generated composition crate.
+pub fn register_everything(app: &mut NmpApp) {
+    copy_router_setup(app);
+    copy_profile_setup(app);
+    app.register_action(MyActionModule);
+}
+```
+
+After migration, the app core is the composition root. It calls
+`register_defaults` once, then registers app-specific seams:
+
+```rust
+use nmp_core::substrate::AppHost;
+
+pub fn register(app: &mut impl AppHost) {
+    nmp_defaults::register_defaults(app);
+    my_app_core::register_actions(app);
+    my_app_core::register_projections(app);
+}
+```
+
+App-owned relays, seed follows, signer permissions, and product defaults stay
+in the leaf app Rust crate or operator config. They do not move into
+`nmp-defaults`.
+
+## Browser Runtime
+
+Before, browser code often looked at `nmp-wasm` or TypeScript as the runtime
+owner:
+
+```ts
+// Bad v1 shape: app code treats wasm/TS as a policy owner.
+worker.postMessage({
+  type: "dispatch_json",
+  action_namespace: "nmp.nip17.send",
+  body: JSON.stringify(payload),
+});
+```
+
+After migration, `nmp-browser-runtime` owns the Worker runtime and the browser
+builder. App writes use a finished `DispatchEnvelope` byte buffer:
+
+```ts
+import { GeneratedActionBuilders } from "@nmp/runtime-web";
+
+const bytes = GeneratedActionBuilders.sendDm(
+  correlationId,
+  recipientPubkey,
+  content,
+  null,
+);
+
+worker.postMessage({ type: "dispatch_bytes", bytes }, [bytes.buffer]);
+```
+
+The Worker routes those bytes through the same typed action doorway as native
+`nmp_app_dispatch_action_bytes`. There is no wasm-only write vocabulary.
+
+Signer capability is not uniform across browser backends:
+
+- `local_key` sessions satisfy signing and NIP-44 inside Rust for the current
+  browser session.
+- `nip46` sessions route signing and NIP-44 through the Rust-owned NIP-46
+  provider path.
+- `nip07` sessions can sign through the extension bridge, but NIP-44 only works
+  when the extension exposes `window.nostr.nip44.encrypt` and
+  `window.nostr.nip44.decrypt`.
+
+Do not call `window.nostr.nip44` directly from UI code. The detailed browser
+private-flow matrix lives in `docs/wasm-surface.md` and the NIP summary lives in
+`docs/nips.md`; #2255 tracks the docs correction that established that model.
+
+## Reference Projections
+
+The live content reference shape is:
+
+- `refs.profile`: authoritative keyed profile rows.
+- `refs.event`: authoritative keyed event-reference rows.
+- `refs.event.envelopes`: derived render envelopes produced from `refs.event`
+  by `nmp-content`.
+
+Before:
+
+```swift
+// Bad v1 shape: whole-map legacy projection.
+let profile = snapshot.projections["resolved_profiles"]?[pubkey]
+let embed = snapshot.projections["claimed_event_embeds"]?[eventId]
+```
+
+After:
+
+```swift
+// Host mirror fed by typed row-delta sidecars.
+let profile = keyedRefCache.profileCard(forPubkey: pubkey)
+let eventRow = keyedRefCache.eventRef(forKey: primaryId)
+let envelope = embedHost.envelope(primaryId: primaryId)
+```
+
+`refs.event` is the source of truth. `refs.event.envelopes` is render data. A
+shell or component package must not parse raw Nostr event JSON, dispatch on
+kinds, or assemble embed envelopes itself.
+
+## Component Host Adoption
+
+The component-host contract is one app root provider over app-owned projection
+mirrors and resolvers:
+
+- SwiftUI installs `NmpComponentHost` once near the app or screen root.
+- Compose installs `NmpComponentHostProvider(...)` once near the app or screen
+  root.
+- Web/Solid installs `NmpComponentHostProvider(...)` from
+  `@nmp/components-web` once near the app root.
+
+Leaf components render and manage visible claim/release lifecycle only. They do
+not import `nmp-ffi`, `nmp-native-runtime`, `nmp-browser-runtime`, `nmp-wasm`,
+kernel handles, worker handles, or relay/runtime internals.
+
+Before:
+
+```kotlin
+// Bad v1 shape: every screen builds its own low-level bridge.
+EmbeddedEvent(
+    rawEventJson = raw,
+    resolve = { kernelHandle.resolveEvent(it) },
+)
+```
+
+After:
+
+```kotlin
+NmpComponentHostProvider(
+    profileHost = appProfileHost,
+    resolvedEventEmbeds = refsEventEnvelopesMirror,
+    eventRefResolver = appEventRefResolver,
+) {
+    EmbeddedEvent(uri = uri, primaryId = primaryId)
+}
+```
+
+#2257 owns the mechanical conformance kit: fake/in-memory hosts, component
+fixtures, dependency guards, and registry/export checks that prove components
+stay on the host/provider path. Do not claim component-host integration is
+mechanically guarded until the #2257 checks are present and green.
+
+## Typed Action Dispatch
+
+Before:
+
+```swift
+// Bad v1 shape: shell spells namespaces and JSON body by hand.
+bridge.dispatch(namespace: "nmp.nip25.react", bodyJson: body)
+```
+
+After:
+
+```swift
+let bytes = GeneratedActionBuilders.react(
+    correlationId: correlationId,
+    targetEventId: eventId,
+    reaction: "+",
+    targetAuthorPubkey: nil
+)
+bridge.dispatchBytes(bytes)
+```
+
+The generated builder owns the action namespace and payload encoding. Native and
+web hosts only mint correlation ids, pass typed input into generated builders,
+and send the resulting bytes through the dispatch doorway.
+
+## Validation Commands
+
+Run the smallest app-specific tests first, then the gates that prove boundary
+behavior:
+
+```bash
+cargo test -p <your-app-core>
+cargo build -p <your-native-shell-crate>
+cargo test -p nmp-testing --test doctrine_lint_smoke -- --test-threads=1
+git diff --check
+```
+
+If you changed public symbols, dependency paths, generated action builders, or
+workspace members, also run:
+
+```bash
+cargo build --workspace
+cargo run -p nmp-codegen -- gen action-builders --platform ts \
+  --out web/packages/runtime-web/src/actionBuilders.generated.ts
+cargo test -p nmp-cli --test component_registry_metadata
+```
+
+For browser runtime work, add the browser-runtime checks from the current CI
+workflow:
+
+```bash
+cargo test -p nmp-browser-runtime
+cargo build -p nmp-wasm --target wasm32-unknown-unknown
+cargo build -p nmp-browser-runtime --target wasm32-unknown-unknown --features wasm
+```
+
+For component-host migrations, keep local host/provider tests until #2257 lands,
+then run the #2257 conformance kit for the affected SwiftUI, Compose, and/or web
+component package.
+
+## Downstream App Checklist
+
+- Runtime construction imports `NmpAppBuilder` / `RunConfig` from
+  `nmp-native-runtime` for native Rust hosts, or `BrowserAppBuilder` /
+  `NmpWasmRuntime` from `nmp-browser-runtime` for browser hosts.
+- `nmp-defaults` is called as pure composition through `AppHost`; no app copies
+  default wiring blocks.
+- App/operator policy stays in the leaf app Rust crate or config, not in
+  `nmp-defaults`.
+- Native and web writes go through generated action builders and dispatch bytes.
+- Shells no longer spell action namespaces as ad hoc strings.
+- Profile UI reads `refs.profile`, not `resolved_profiles`.
+- Event/embed UI reads authoritative `refs.event` plus derived
+  `refs.event.envelopes`, not `claimed_event_embeds`.
+- Component packages receive one app-level host/provider and do not import
+  runtime, ABI, worker, or kernel handles.
+- Browser signer docs distinguish local-key, NIP-46, and NIP-07 NIP-44 support;
+  keep `docs/wasm-surface.md` and `docs/nips.md` aligned with that matrix.
+- The app has a regenerated binding/decoder/action-builder baseline and the
+  validation commands above pass.

@@ -7,7 +7,7 @@
 ```text
 nmp init [<path>]                    Scaffold a thin NMP app.
 nmp add ios | android | desktop      Add a native platform shell.
-nmp add web                          Add the post-v1 wasm/web shell.
+nmp add web                          Add a browser-runtime web shell.
 nmp add module <crate>               Add an app/protocol module dependency.
 nmp gen swift                        Regenerate Swift host bindings.
 nmp gen typed-decoders               Regenerate typed decoder bindings.
@@ -21,9 +21,8 @@ nmp upgrade                          Bump NMP dependencies and run migrations.
 ```
 
 Composition is a library call through `nmp-defaults` plus the selected platform
-runtime builder. The native target builder is `nmp-native-runtime::NmpAppBuilder`
-after #2210; until that migration lands, the current runnable export remains
-`nmp_defaults::NmpAppBuilder`. Web uses `BrowserAppBuilder`.
+runtime builder. Native uses `nmp-native-runtime::NmpAppBuilder`; web uses
+`nmp-browser-runtime::BrowserAppBuilder`.
 
 ## `nmp init`
 
@@ -44,7 +43,8 @@ is added through Rust modules, actions, observers, projections, and capabilities
 - iOS links the Rust static library/XCFramework into a SwiftUI shell.
 - Android links per-ABI Rust libraries into a Compose shell.
 - Desktop may link Rust directly.
-- Web uses the post-v1 wasm/browser runtime.
+- Web uses the browser runtime (`nmp-browser-runtime`) and the retained
+  `nmp-wasm` protocol-type crate where needed.
 - `just` remains the primary local build entrypoint.
 
 CI should verify generated bindings, Rust tests, doctrine lint, and the platform

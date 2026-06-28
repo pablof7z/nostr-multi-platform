@@ -1,8 +1,8 @@
 # FFI Surface Reference
 
 > **Reviewed:** 2026-06-26. The production C/JNI ABI lives in
-> `crates/nmp-ffi`; the durable target is for `nmp-ffi` to delegate runtime
-> ownership to `nmp-native-runtime` (ADR-0068). `nmp-core` owns the actor/kernel
+> `crates/nmp-ffi`; `nmp-ffi` delegates runtime ownership to
+> `nmp-native-runtime` (ADR-0068). `nmp-core` owns the actor/kernel
 > and FlatBuffers transport types. Update callbacks carry binary
 > `nmp.transport.UpdateFrame` (`NMPU`) frames only; the old JSON runtime snapshot
 > path is gone.
@@ -16,9 +16,9 @@
 > marmot, identity, feeds) are unchanged.
 
 The native delivery surface ships a flat `extern "C"` raw C ABI regardless of
-Rust module layout. Today those symbols are implemented in `nmp-ffi`; under the
-#2205 target split, `nmp-ffi` is the ABI shell and `nmp-native-runtime` owns the
-native handle, actor lifecycle, runtime slots, and typed Rust builder.
+Rust module layout. Those symbols are implemented in `nmp-ffi`, which is now the
+ABI shell over `nmp-native-runtime`: the native runtime owns the handle, actor
+lifecycle, runtime slots, and typed Rust builder.
 Most production functions accept a `*mut NmpApp` opaque handle and return void
 (or `*mut c_char` for `dispatch_capability`). Init-only configuration symbols
 return `NmpConfigStatus` codes so post-start wiring mistakes are loud while
@@ -48,15 +48,15 @@ helper symbols.
 
 ---
 
-## 2. NIP-46 actor-lane runtime (`nmp-ffi/src/signer_broker.rs`)
+## 2. NIP-46 actor-lane ABI entrypoints (`nmp-ffi/src/signer_broker.rs`)
 
 PR-B2 (#2119): `nmp-signer-broker` is deleted. NIP-46 is now driven through
 the actor-relay lane (`nmp-nip46-runtime`) — the same shared relay socket the
 kernel uses for all outbound Nostr traffic. D0 is preserved: `nmp-core` still
-does not depend on `nmp-signers`; the runtime wiring currently lives in
-`nmp-ffi` (above `nmp-core` in the DAG) behind the `signer-broker` cargo
-feature. That placement is native-runtime migration debt under #2205/#2210, not
-the durable C-ABI boundary.
+does not depend on `nmp-signers`; native C callers reach the lane through
+`nmp-ffi` symbols (above `nmp-core` in the DAG) behind the `signer-broker` cargo
+feature. Runtime ownership lives in `nmp-native-runtime`; `nmp-ffi` exposes the
+C-ABI entrypoints and marshals native-runtime state.
 
 | Symbol | Signature | Behavior | Callers | Threading | D6 | D7 |
 |---|---|---|---|---|---|---|

@@ -54,6 +54,7 @@ by importance — out-of-order reading will leave you missing prerequisites.
                           │                                 │
                           ▼                                 ├──▶ 19c Rust shell
         21 framework-magic contract                         ▼
+              ../migration.md (v1 runtime/components)        ▼
                                                26 FAQ / troubleshooting
 ```
 
@@ -115,6 +116,9 @@ master delivers, correct the owning doc in place. If the mismatch represents act
 - **Reading sections out of order.** The graph above is a dependency order,
   not a suggestion. Section 12 (publishing) assumes 05 (traits + seams) and
   11 (signers); skipping them yields confusion that looks like a doc error.
+- **Skipping the v1 migration guide when updating an existing app.**
+  `../migration.md` is the compact map from retired runtime/component surfaces
+  to the current v1 shape; the numbered guide explains the pieces in depth.
 - **Copying PLANNED code into a real app.** PLANNED sections cite plan files,
   never `crates/` `path:line`. There is no code behind them yet. Treat their
   code blocks as design intent, not API.

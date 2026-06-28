@@ -6,11 +6,11 @@
 
 ## Context
 
-`nmp-ffi` currently looks like the durable native composition root because it
-owns the `NmpApp` handle, actor-thread lifecycle, native session registries, and
-some higher-order runtime orchestration. That makes the wrong work look local:
-new native sessions, builder state, and platform lifecycle logic tend to land in
-the C ABI crate instead of a typed native runtime owner.
+Before #2205 landed, `nmp-ffi` looked like the durable native composition root
+because it owned the `NmpApp` handle, actor-thread lifecycle, native session
+registries, and some higher-order runtime orchestration. That made the wrong
+work look local: new native sessions, builder state, and platform lifecycle
+logic tended to land in the C ABI crate instead of a typed native runtime owner.
 
 At the same time, `nmp-defaults` must remain the reusable Layer-5 composition
 library. Its job is to register generic NMP mechanisms through `AppHost`; it must
@@ -43,24 +43,23 @@ for browser apps:
 adapter and wasm-bindgen Worker export. `nmp-wasm` is retained only as a
 serializable protocol-type crate for older Rust consumers.
 
-## Current migration debt
+## Landed State
 
-Until #2210-#2214 land, the live tree still has native runtime ownership in
-`nmp-ffi` and native coupling in `nmp-defaults`. That state is accepted only as
-migration debt under #2205. It is not a doctrine exception and must not be cited
-as precedent for adding more runtime or composition logic to `nmp-ffi`.
+#2210-#2214 landed the split described here. The live tree has
+`nmp-native-runtime` as the native runtime owner, `nmp-ffi` as the C ABI shell,
+and `nmp-defaults` as pure `AppHost` composition. This landed state is the
+precedent; the old `nmp-ffi` runtime ownership must not be recreated.
 
 Release sequencing and v1 gating are tactical queue state and stay in GitHub
 Issues (#2205 and #2121). This ADR owns the durable crate-boundary rule.
 
 ## Consequences
 
-- Builder/scaffold docs should teach `nmp-native-runtime::NmpAppBuilder` as the
-  native runtime entry point, with any current `nmp-defaults` export described as
-  migration debt.
+- Builder/scaffold docs teach `nmp-native-runtime::NmpAppBuilder` as the native
+  runtime entry point.
 - `nmp-defaults` must be usable by native and browser runtimes without depending
   on either runtime.
 - `nmp-ffi` can keep C ABI compatibility only by delegating to runtime APIs; it
   cannot preserve old crate paths as a reason to retain runtime ownership.
-- Boundary gates should eventually catch any restored `nmp-defaults -> nmp-ffi`
-  dependency and any restored `nmp-ffi` runtime/session ownership.
+- Boundary gates catch restored `nmp-defaults -> nmp-ffi` dependencies and
+  restored `nmp-ffi` runtime/session ownership.
