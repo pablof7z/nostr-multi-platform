@@ -1,6 +1,7 @@
 name: native-tests
 
 # Consumer-side native test gate (issue #973, audit Finding 2).
+# Promoted to fully-blocking PR gate per issue #2124.
 #
 # The native test suites are the consumer half of the Rust→Swift/Kotlin codegen
 # contract: `codegen-drift.yml` catches a diff in the *generated* decoder files,
@@ -19,48 +20,57 @@ name: native-tests
 #                        smoke tests self-`XCTSkip` unless `NMP_SMOKE=1`.
 #   Phase 3: ChirpUITests (XCUITest) nightly on macOS + booted simulator —
 #                        see `.github/workflows/ios-ui-nightly.yml`.
+#   Phase 4 (#2124): Android Gradle assembleDebug (Kotlin + Compose compile) +
+#                        desktop cargo-check (chirp-desktop + nmp-gallery-desktop).
 #
-# Why path-filtered: `android/**` and `apps/chirp/crates/nmp-chirp-android-ffi/**` are
-# the obvious Android triggers; `ios/**` and `crates/nmp-ffi/**` are the iOS triggers;
-# `crates/nmp-codegen/**`, `crates/nmp-core/**`, and the Tier-1 NIP projection
-# producer crates are included on both because they are the source of truth for
-# native-consumed projection shapes. A producer crate can change a generated
-# decoder without touching the handwritten Swift/Kotlin consumers; these tests
-# are the compile gate for that consumer half.
-# `apps/nmp-gallery/android/**` and `apps/nmp-gallery/crates/nmp-app-gallery/**` are included so
-# the gallery JUnit suite (VendorDriftGateTest + NIP-55 login-block tests) runs
-# whenever the gallery's Kotlin or Rust code changes.
+# Why path-filtered: `apps/chirp/android/**` and
+# `apps/chirp/crates/nmp-chirp-android-ffi/**` are the Android triggers;
+# `apps/chirp/ios/**` and `crates/nmp-ffi/**` are the iOS triggers;
+# `apps/chirp/chirp-desktop/**` and `apps/nmp-gallery/desktop/**` are the
+# desktop triggers; `crates/nmp-codegen/**`, `crates/nmp-core/**`, and the
+# Tier-1 NIP projection producer crates are included on all because they are
+# the source of truth for native-consumed projection shapes.
+#
+# Path-filter correction (issue #2124): the prior `ios/**` and `android/**`
+# patterns matched top-level directories that do not exist in tracked files.
+# The Chirp iOS app lives at `apps/chirp/ios/**` and the Android app lives at
+# `apps/chirp/android/**`. These are now corrected so the gate actually fires
+# when Swift/Kotlin sources change.
 
 on:
   push:
     branches: ["**"]
     paths:
       - ".github/workflows/native-tests.yml"
-      - "android/**"
+      - "apps/chirp/android/**"
       - "apps/nmp-gallery/android/**"
       - "apps/chirp/crates/nmp-chirp-android-ffi/**"
       - "apps/nmp-gallery/crates/nmp-app-gallery/**"
+      - "apps/chirp/ios/**"
+      - "apps/chirp/chirp-desktop/**"
+      - "apps/nmp-gallery/desktop/**"
       - "crates/nmp-codegen/**"
       - "crates/nmp-core/**"
       - "crates/nmp-nip17/**"
       - "crates/nmp-nip29/**"
       - "crates/nmp-nip51/**"
-      - "ios/**"
       - "crates/nmp-ffi/**"
   pull_request:
     branches: ["**"]
     paths:
       - ".github/workflows/native-tests.yml"
-      - "android/**"
+      - "apps/chirp/android/**"
       - "apps/nmp-gallery/android/**"
       - "apps/chirp/crates/nmp-chirp-android-ffi/**"
       - "apps/nmp-gallery/crates/nmp-app-gallery/**"
+      - "apps/chirp/ios/**"
+      - "apps/chirp/chirp-desktop/**"
+      - "apps/nmp-gallery/desktop/**"
       - "crates/nmp-codegen/**"
       - "crates/nmp-core/**"
       - "crates/nmp-nip17/**"
       - "crates/nmp-nip29/**"
       - "crates/nmp-nip51/**"
-      - "ios/**"
       - "crates/nmp-ffi/**"
 
 jobs:
@@ -274,3 +284,114 @@ jobs:
           name: ios-unit-output-${{ github.run_id }}
           path: ios_unit_output.txt
           if-no-files-found: ignore
+
+  android-gradle-assemble:
+    # Phase 4 of #2124 — Android Gradle compile gate (Kotlin + Compose).
+    #
+    # Closes the gap between the JVM-unit-tests lane (android-junit, which skips
+    # cargoNdk) and the NDK-only lane (android-ffi in test.yml, which never
+    # touches Gradle). Together these three lanes form the complete Android gate:
+    #
+    #   android-junit         : Kotlin JVM unit tests (hermetic, Rust-free)
+    #   android-ffi (test.yml): Rust NDK cross-compile for x86_64 + cargo check
+    #   android-gradle-assemble (this job): Kotlin + Compose compile + APK package
+    #
+    # This job catches Kotlin/Compose compile errors, AGP version conflicts,
+    # dependency resolution failures, and packaging failures — none of which are
+    # visible to the other two lanes. cargoNdk is excluded (-x cargoNdk) because
+    # the NDK/Rust compilation is already validated by android-ffi in test.yml;
+    # duplicating it here would add ~15 min of arm64 cross-compile for no coverage
+    # gain. The assembled APK contains no native libraries, which is expected and
+    # correct for a compile-only gate.
+    name: Android Gradle assembleDebug (Kotlin + Compose, -x cargoNdk)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # AGP 8.5.2 + Kotlin 1.9.24 require JDK 17.
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # Caches Gradle wrapper, dependency metadata, and build cache.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # assembleDebug compiles Kotlin, processes Compose, merges the manifest,
+      # and packages the APK. -x cargoNdk skips the Rust cross-compile (handled
+      # separately in the android-ffi job in test.yml). The resulting APK has no
+      # native libraries — that is expected and does not cause the Gradle task to
+      # fail; jniLibs is an optional source set.
+      - name: assembleDebug (-x cargoNdk)
+        working-directory: apps/chirp/android
+        run: ./gradlew :app:assembleDebug -x cargoNdk --stacktrace
+
+      - name: Upload build output on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-assemble-output-${{ github.run_id }}
+          path: |
+            apps/chirp/android/app/build/outputs/
+            apps/chirp/android/app/build/reports/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  desktop-check:
+    # Phase 4 of #2124 — desktop build gate.
+    #
+    # Neither chirp-desktop nor nmp-gallery-desktop is compiled by the main
+    # workspace nextest sweep: they are binary crates with no test targets so
+    # nextest skips them entirely. A breaking change in either desktop crate
+    # (or in a core crate they depend on) would be invisible to CI until someone
+    # ran a local build. This job closes that blind spot.
+    #
+    # `cargo check` is sufficient here: it type-checks, compiles build scripts
+    # (catching build.rs failures), and verifies the full dep graph without
+    # invoking the linker. Both desktop crates pull in winit (via eframe/egui for
+    # chirp-desktop and via iced for nmp-gallery-desktop), whose build.rs probes
+    # for X11 and Wayland headers via pkg-config. The apt packages installed
+    # below satisfy those probes on a bare ubuntu-latest runner.
+    name: cargo check (chirp-desktop + nmp-gallery-desktop)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # winit (eframe/iced) probes for these via pkg-config in its build.rs.
+      # Without them, `cargo check` fails at the build-script phase even though
+      # no C linking occurs.
+      - name: Install system graphics libraries
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends \
+            libxkbcommon-dev \
+            libwayland-dev \
+            libx11-dev \
+            libxrandr-dev \
+            libxi-dev \
+            libxcursor-dev \
+            libxcb-render0-dev \
+            libxcb-shape0-dev \
+            libxcb-xfixes0-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: desktop-check
+
+      # chirp-desktop: Chirp native desktop shell (eframe + egui).
+      - name: cargo check (chirp-desktop)
+        run: cargo check -p chirp-desktop
+
+      # nmp-gallery-desktop: NMP component gallery (iced). Explicitly excluded
+      # from the workspace nextest run in test.yml (see that file's comment);
+      # this is the dedicated compile gate for it.
+      - name: cargo check (nmp-gallery-desktop)
+        run: cargo check -p nmp-gallery-desktop
