@@ -135,6 +135,17 @@ pub trait IdentityChangeRegistrar {
         F: Fn(Option<String>) + Send + Sync + 'static;
 }
 
+/// Register a Rust-side callback for configured-relay changes.
+pub trait ConfiguredRelaysChangeRegistrar {
+    /// Register a callback that fires when the configured relay set changes.
+    ///
+    /// The callback receives no payload; consumers that need rows should read
+    /// the shared [`AppRelaySlot`] returned by [`HostCapabilities`].
+    fn register_configured_relays_change_observer<F>(&self, f: F)
+    where
+        F: Fn() + Send + Sync + 'static;
+}
+
 /// Install the host's `REQ`-frame interceptor (subscription-plan rewrite seam).
 pub trait ReqFrameInterceptorRegistrar {
     fn set_req_frame_interceptor(&self, interceptor: Arc<dyn ReqFrameInterceptor>);
@@ -368,6 +379,7 @@ pub trait PreferredRelaySource: Send + Sync {
 /// same `nmp-defaults` composition path without exposing reducer internals.
 pub trait AppHost:
     ActionRegistrar
+    + ConfiguredRelaysChangeRegistrar
     + SnapshotProjectionRegistrar
     + IngestParserRegistrar
     + ObservedProjectionRegistrar
@@ -388,6 +400,7 @@ pub trait AppHost:
 
 impl<T> AppHost for T where
     T: ActionRegistrar
+        + ConfiguredRelaysChangeRegistrar
         + SnapshotProjectionRegistrar
         + IngestParserRegistrar
         + ObservedProjectionRegistrar

@@ -1,4 +1,4 @@
-//! Tick-observer seam tests for the NIP-17 DM relay-list reconciler
+//! Event-observer seam tests for the NIP-17 DM relay-list reconciler
 //! ([`super::DmRuntimeController`]) — Finding C + Blocker A.
 //!
 //! The reconciler must:
@@ -10,8 +10,8 @@
 //!    and assert the active-account gift-wrap inbox interest is ensured — proving
 //!    the reconciler reads identity, never secret key material.
 //!
-//! 2. Fire from the **tick observer** seam, NOT from the projection closure
-//!    (Blocker A): the `DmRuntimeController::tick` method must emit the inbox
+//! 2. Fire from the event observer seam, NOT from the projection closure
+//!    (Blocker A): the `DmRuntimeController::sync` method must emit the inbox
 //!    interest ensure; a pure-read call to `typed_relay_list` must NOT emit effects.
 //!    This proves reconciliation cannot be lost by dropping the JSON projection
 //!    lane.
@@ -60,7 +60,7 @@ fn controller() -> (
     (controller, active_pubkey, rx)
 }
 
-/// Drain whatever the controller enqueued this tick (ADR-0050 §D3a: the inbox
+/// Drain whatever the controller enqueued (ADR-0050 §D3a: the inbox
 /// carries `ActorMail`).
 fn drained(rx: &Receiver<nmp_core::ActorMail>) -> Vec<ActorCommand> {
     rx.try_iter()
@@ -75,8 +75,8 @@ fn drained(rx: &Receiver<nmp_core::ActorMail>) -> Vec<ActorCommand> {
 /// relay-list runtime. With ONLY the hex pubkey present (no secret keys), the
 /// reconciler must push the active-account gift-wrap inbox interest.
 ///
-/// Blocker A seam proof: the push is driven by `DmRuntimeController::tick`
-/// (the tick observer), NOT by the projection closure. The tick observer is
+/// Blocker A seam proof: the push is driven by `DmRuntimeController::sync`
+/// (the event observer), NOT by the projection closure. The event observer is
 /// the ONLY path that calls `state.reconcile(...)` → `apply(...)`.
 #[test]
 fn bunker_only_account_activates_dm_relay_list_runtime() {
@@ -86,9 +86,9 @@ fn bunker_only_account_activates_dm_relay_list_runtime() {
     // Pubkey-only sign-in (bunker shape): hex pubkey present, zero secrets.
     *slot.lock().unwrap() = Some(keys.public_key().to_hex());
 
-    // `tick` drives reconciliation once per tick — this is
-    // the tick-observer seam, NOT the projection closure.
-    controller.tick();
+    // `sync` drives reconciliation from event observers, NOT the projection
+    // closure.
+    controller.sync();
 
     let cmds: Vec<ActorCommand> = drained(&rx);
     let pushed_inbox = cmds.iter().any(|cmd| {
@@ -101,7 +101,7 @@ fn bunker_only_account_activates_dm_relay_list_runtime() {
     });
     assert!(
         pushed_inbox,
-        "a bunker account must still ensure the DM gift-wrap inbox interest via tick(); got {cmds:?}"
+        "a bunker account must still ensure the DM gift-wrap inbox interest via sync(); got {cmds:?}"
     );
 }
 
@@ -109,7 +109,7 @@ fn bunker_only_account_activates_dm_relay_list_runtime() {
 #[test]
 fn no_account_enqueues_no_inbox_interest() {
     let (controller, _slot, rx) = controller();
-    controller.tick();
+    controller.sync();
     let cmds: Vec<ActorCommand> = drained(&rx);
     assert!(
         !cmds.iter().any(|cmd| matches!(
@@ -122,13 +122,13 @@ fn no_account_enqueues_no_inbox_interest() {
     );
 }
 
-/// Blocker A — prove the tick observer seam drives reconciliation and the
+/// Blocker A — prove the event observer seam drives reconciliation and the
 /// pure-read path (`typed_relay_list`) does NOT emit effects.
 ///
-/// This test would FAIL if `tick()` were removed or if reconciliation were
+/// This test would FAIL if `sync()` were removed or if reconciliation were
 /// moved into the projection closure (`typed_relay_list`).
 #[test]
-fn reconciliation_fires_from_tick_observer_not_from_projection_read() {
+fn reconciliation_fires_from_event_observer_not_from_projection_read() {
     let (controller, slot, rx) = controller();
     let keys = Keys::generate();
     *slot.lock().unwrap() = Some(keys.public_key().to_hex());
@@ -141,8 +141,8 @@ fn reconciliation_fires_from_tick_observer_not_from_projection_read() {
         "typed_relay_list (pure read) must not emit actor commands; got {cmds_after_read:?}"
     );
 
-    // Only tick() emits the ensure — this is the tick-observer seam.
-    controller.tick();
+    // Only sync() emits the ensure — this is the event-observer seam.
+    controller.sync();
     let cmds_after_tick: Vec<ActorCommand> = drained(&rx);
     let pushed = cmds_after_tick.iter().any(|cmd| {
         matches!(
@@ -154,12 +154,12 @@ fn reconciliation_fires_from_tick_observer_not_from_projection_read() {
     });
     assert!(
         pushed,
-        "tick() must emit the inbox-interest ensure; got {cmds_after_tick:?}"
+        "sync() must emit the inbox-interest ensure; got {cmds_after_tick:?}"
     );
 
-    // A second tick with the same pubkey must NOT re-ensure (idempotent after
+    // A second sync with the same pubkey must NOT re-ensure (idempotent after
     // the state machine has already ensured for this pubkey).
-    controller.tick();
+    controller.sync();
     let cmds_second_tick: Vec<ActorCommand> = drained(&rx);
     let pushed_again = cmds_second_tick.iter().any(|cmd| {
         matches!(
@@ -171,7 +171,7 @@ fn reconciliation_fires_from_tick_observer_not_from_projection_read() {
     });
     assert!(
         !pushed_again,
-        "a second tick with the same pubkey must NOT re-ensure; got {cmds_second_tick:?}"
+        "a second sync with the same pubkey must NOT re-ensure; got {cmds_second_tick:?}"
     );
 }
 

@@ -14,11 +14,11 @@ use std::sync::Arc;
 
 use crate::NmpApp;
 use nmp_core::substrate::{
-    BlockedRelayLookupRegistrar, CoverageHookRegistrar, DmInboxRelayRegistrar, HostCapabilities,
-    IdentityChangeRegistrar, IngestParserRegistrar, InputScopeRegistrar, KernelReaderRegistrar,
-    ObservedProjection, ObservedProjectionRegistrar, RelayConnectedHookRegistrar,
-    RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar,
-    SearchScopeRegistrar, SnapshotProjectionRegistrar,
+    BlockedRelayLookupRegistrar, ConfiguredRelaysChangeRegistrar, CoverageHookRegistrar,
+    DmInboxRelayRegistrar, HostCapabilities, IdentityChangeRegistrar, IngestParserRegistrar,
+    InputScopeRegistrar, KernelReaderRegistrar, ObservedProjection, ObservedProjectionRegistrar,
+    RelayConnectedHookRegistrar, RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar,
+    RoutingFactoryRegistrar, SearchScopeRegistrar, SnapshotProjectionRegistrar,
 };
 
 use super::*;
@@ -34,18 +34,6 @@ impl<S> SnapshotProjectionRegistrar for NmpAppBuilder<S> {
         // writes to (ADR-0037 Commitment 4: typed + generic share the key
         // space). Fully qualified to the inherent `NmpApp` method.
         NmpApp::register_typed_snapshot_projection(app, key, f);
-    }
-
-    fn register_snapshot_tick_observer<F>(&self, f: F)
-    where
-        F: Fn() + Send + Sync + 'static,
-    {
-        let app: &NmpApp = unsafe { &*self.app };
-        // Forwards into the same shared registry the projection seams write to;
-        // tick observers live alongside the projection closures (one slot, bound
-        // onto the kernel and surviving `Reset`). Fully qualified to the
-        // inherent `NmpApp` method.
-        NmpApp::register_snapshot_tick_observer(app, f);
     }
 
     fn declare_consumed_projections<I, K>(&self, keys: I)
@@ -322,5 +310,15 @@ impl<S> IdentityChangeRegistrar for NmpAppBuilder<S> {
     {
         let app: &NmpApp = unsafe { &*self.app };
         app.register_identity_change_observer(f);
+    }
+}
+
+impl<S> ConfiguredRelaysChangeRegistrar for NmpAppBuilder<S> {
+    fn register_configured_relays_change_observer<F>(&self, f: F)
+    where
+        F: Fn() + Send + Sync + 'static,
+    {
+        let app: &NmpApp = unsafe { &*self.app };
+        app.register_configured_relays_change_observer(f);
     }
 }

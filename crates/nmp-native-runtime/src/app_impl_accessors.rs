@@ -114,6 +114,15 @@ impl NmpApp {
         crate::app_struct::unregister_identity_change_observer(&self.identity_change_observers, id);
     }
 
+    pub fn register_configured_relays_change_observer<F>(&self, callback: F)
+    where
+        F: Fn() + Send + Sync + 'static,
+    {
+        if let Ok(mut observers) = self.configured_relays_change_observers.lock() {
+            observers.push(Arc::new(callback));
+        }
+    }
+
     /// V-83 — clone of the kernel's `EventStore` publish-back slot (`Arc`).
     #[must_use]
     pub fn event_store_handle(&self) -> EventStoreSlot {
@@ -339,9 +348,7 @@ impl NmpApp {
     /// Test-only: run every registered **typed** snapshot projection directly
     /// against the app's shared registry, bypassing the actor/kernel tick.
     #[cfg(any(test, feature = "test-support"))]
-    pub fn run_typed_snapshot_projections_for_test(
-        &self,
-    ) -> Vec<nmp_core::TypedProjectionData> {
+    pub fn run_typed_snapshot_projections_for_test(&self) -> Vec<nmp_core::TypedProjectionData> {
         self.snapshot_projections
             .lock()
             .map(|mut registry| registry.run_typed())
@@ -350,11 +357,7 @@ impl NmpApp {
 
     /// Test-only direct execution path into the action registry.
     #[cfg(any(test, feature = "test-support"))]
-    pub fn test_execute_action(
-        &self,
-        namespace: &str,
-        action_json: &str,
-    ) -> Result<(), String> {
+    pub fn test_execute_action(&self, namespace: &str, action_json: &str) -> Result<(), String> {
         let ctx =
             nmp_core::substrate::ActionContext::with_event_store_slot(self.event_store_handle());
         self.action_registry

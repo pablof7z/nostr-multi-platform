@@ -14,10 +14,11 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use nmp_core::substrate::{
-    BlockedRelayLookupRegistrar, CoverageHookRegistrar, DmInboxRelayRegistrar, HostCapabilities,
-    IdentityChangeRegistrar, IngestParserRegistrar, InputScopeRegistrar, KernelReaderRegistrar,
-    RelayConnectedHookRegistrar, RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar,
-    RoutingFactoryRegistrar, SearchScopeRegistrar, SnapshotProjectionRegistrar,
+    BlockedRelayLookupRegistrar, ConfiguredRelaysChangeRegistrar, CoverageHookRegistrar,
+    DmInboxRelayRegistrar, HostCapabilities, IdentityChangeRegistrar, IngestParserRegistrar,
+    InputScopeRegistrar, KernelReaderRegistrar, RelayConnectedHookRegistrar,
+    RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar,
+    SearchScopeRegistrar, SnapshotProjectionRegistrar,
 };
 
 use super::*;
@@ -29,13 +30,6 @@ impl SnapshotProjectionRegistrar for NmpApp {
         F: Fn() -> Option<nmp_core::TypedProjectionData> + Send + Sync + 'static,
     {
         NmpApp::register_typed_snapshot_projection(self, key, f);
-    }
-
-    fn register_snapshot_tick_observer<F>(&self, f: F)
-    where
-        F: Fn() + Send + Sync + 'static,
-    {
-        NmpApp::register_snapshot_tick_observer(self, f);
     }
 
     fn declare_consumed_projections<I, K>(&self, keys: I)
@@ -262,5 +256,14 @@ impl IdentityChangeRegistrar for NmpApp {
         F: Fn(Option<String>) + Send + Sync + 'static,
     {
         NmpApp::register_identity_change_observer(self, f);
+    }
+}
+
+impl ConfiguredRelaysChangeRegistrar for NmpApp {
+    fn register_configured_relays_change_observer<F>(&self, f: F)
+    where
+        F: Fn() + Send + Sync + 'static,
+    {
+        NmpApp::register_configured_relays_change_observer(self, f);
     }
 }

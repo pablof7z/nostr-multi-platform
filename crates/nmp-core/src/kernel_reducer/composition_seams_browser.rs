@@ -174,17 +174,6 @@ impl super::KernelReducer {
         }
     }
 
-    /// Register a per-tick observer (no-result side-effect callback).
-    /// Bridges `SnapshotProjectionRegistrar::register_snapshot_tick_observer`.
-    pub fn register_snapshot_tick_observer<F>(&self, f: F)
-    where
-        F: Fn() + Send + Sync + 'static,
-    {
-        if let Ok(mut guard) = self.snapshot_slot.lock() {
-            guard.register_tick_observer(f);
-        }
-    }
-
     // ── Ingest-dispatcher bridges (&self, via Arc<RwLock<EventIngestDispatcher>>) ──
 
     /// Slot-keyed replace for a kind's ingest parser.

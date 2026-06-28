@@ -4,20 +4,21 @@
 //! kernel itself cannot do (D0 — `nmp-core` ships no DM/zap nouns).
 //!
 //! `register_dm_runtime` wires the kind:1059 DM inbox parser/projection and a
-//! tick observer that reconciles gift-wrap inbox interests, kind:10050 relay
+//! event observers that reconcile gift-wrap inbox interests, kind:10050 relay
 //! list hydration, and own relay-list publishes. The paired
 //! `"nmp.nip17.dm_relay_list"` typed projection is a pure read.
 //!
-//! `register_zap_receipts_runtime` wires the NIP-57 self-zap receipt tick
+//! `register_zap_receipts_runtime` wires the NIP-57 self-zap receipt identity
 //! observer. Both controllers degrade silently on lock poisoning or channel
-//! disconnect (D6) and use `register_snapshot_tick_observer` for effects.
+//! disconnect (D6) and use account/relay/ingest events for effects.
 
 use std::sync::{Arc, Mutex};
 
 use nmp_core::actor::ActorCommand;
 use nmp_core::actor::{InterestsCommand, PublishCommand};
 use nmp_core::substrate::{
-    HostCapabilities, IdentityChangeRegistrar, IngestParserRegistrar, SnapshotProjectionRegistrar,
+    ConfiguredRelaysChangeRegistrar, HostCapabilities, IdentityChangeRegistrar,
+    IngestParserRegistrar, SnapshotProjectionRegistrar,
 };
 use nmp_core::{read_eligible_relay_urls, AppRelaySlot};
 use nmp_nip17::{
@@ -32,9 +33,9 @@ use nmp_nip17::{
 /// projection, then captures a `DmRuntimeController` that:
 ///
 /// 1. Drives reconciliation (active-account gift-wrap inbox interest +
-///    kind:10050 relay-list publishes) once per tick via a
-///    **per-tick observer** — the same seam the zap-receipts runtime uses.
-///    This is a pure side-effect path; it produces no projection data.
+///    kind:10050 relay-list publishes) from account, relay-list, and inbox
+///    ingest events. This is a pure side-effect path; it produces no
+///    projection data.
 /// 2. Emits the `"nmp.nip17.dm_relay_list"` typed FlatBuffers sidecar
 ///    via a **separate** typed projection closure that is a PURE READ.
 ///
@@ -48,6 +49,7 @@ use nmp_nip17::{
 pub fn register_dm_runtime(
     app: &(impl HostCapabilities
           + IdentityChangeRegistrar
+          + ConfiguredRelaysChangeRegistrar
           + IngestParserRegistrar
           + SnapshotProjectionRegistrar),
 ) {
@@ -65,17 +67,24 @@ pub fn register_dm_runtime(
         inbox_projection,
     });
 
-    // Per-tick reconciler: drives the active-account gift-wrap inbox interest +
-    // kind:10050 relay-list publish side-effects once per tick. Produces no
-    // projection data — this is the correct seam for pure side-effect work
-    // (same pattern as `register_zap_receipts_runtime`). Reconciliation fires
-    // independently of whether any host consumes the typed projection below.
-    let controller_tick = Arc::clone(&controller);
-    app.register_snapshot_tick_observer(move || controller_tick.tick());
+    let controller_for_identity = Arc::clone(&controller);
+    app.register_identity_change_observer(move |_| controller_for_identity.sync());
+    let controller_for_relays = Arc::clone(&controller);
+    app.register_configured_relays_change_observer(move || controller_for_relays.sync());
+    let controller_for_ingest = Arc::clone(&controller);
+    app.replace_ingest_parser(
+        1059_u32,
+        nmp_nip17::DM_INBOX_INGEST_SLOT,
+        Arc::new(DmRuntimeIngestParser {
+            projection: Arc::clone(&controller_for_ingest.inbox_projection),
+            controller: controller_for_ingest,
+        }) as Arc<dyn nmp_core::substrate::IngestParser>,
+    );
+    controller.sync();
 
     // Typed FlatBuffers sidecar (ADR-0037, Wave A): PURE READ — reads the
     // relay-list state and encodes it. Reconciliation (push/withdraw) is
-    // handled exclusively by the tick observer above so this closure is
+    // handled exclusively by event observers above so this closure is
     // side-effect-free (D0).
     let controller_typed = Arc::clone(&controller);
     app.register_typed_snapshot_projection("nmp.nip17.dm_relay_list", move || {
@@ -183,6 +192,32 @@ fn register_inbox_projection(
     projection
 }
 
+struct DmRuntimeIngestParser {
+    projection: Arc<DmInboxProjection>,
+    controller: Arc<DmRuntimeController>,
+}
+
+impl nmp_core::substrate::IngestParser for DmRuntimeIngestParser {
+    fn parse(&self, evt: &nmp_store::VerifiedEvent) {
+        self.parse_at_source(evt, 0, None);
+    }
+
+    fn parse_at_source(
+        &self,
+        evt: &nmp_store::VerifiedEvent,
+        now_secs: u64,
+        source_relay_url: Option<&str>,
+    ) {
+        <DmInboxProjection as nmp_core::substrate::IngestParser>::parse_at_source(
+            &self.projection,
+            evt,
+            now_secs,
+            source_relay_url,
+        );
+        self.controller.sync();
+    }
+}
+
 /// Lifecycle controller for the DM inbox projection.
 ///
 /// Detects active-account changes and clears the inbox projection so
@@ -270,7 +305,7 @@ struct DmRuntimeController {
 }
 
 impl DmRuntimeController {
-    /// Per-tick reconciler — runs once per snapshot tick as a tick observer.
+    /// Event-driven reconciler.
     ///
     /// Reads the current relay-list state, runs [`DmRuntimeState::reconcile`]
     /// against it, and applies any resulting effects (push/withdraw inbox
@@ -280,7 +315,7 @@ impl DmRuntimeController {
     ///
     /// D6: a poisoned state mutex degrades to a no-op (no effects emitted,
     /// no crash on the actor thread). D8: channel send is non-blocking.
-    pub(crate) fn tick(&self) {
+    pub(crate) fn sync(&self) {
         let relay_list = self.typed_relay_list();
         let mut state = self
             .state
@@ -298,10 +333,8 @@ impl DmRuntimeController {
     /// Read the current `(active_pubkey, read_relay_urls)` into the SINGLE
     /// `nmp_nip17::DmRelayList` read model. A PURE READ — it deliberately does
     /// NOT run `reconcile`, so the push/withdraw actor traffic stays driven
-    /// exclusively by [`Self::tick`] (exactly once per tick via the tick
-    /// observer). The typed projection closure observes the same
-    /// single-threaded actor tick, so it mirrors the reconciler's view
-    /// field-for-field.
+    /// exclusively by [`Self::sync`]. The typed projection closure is
+    /// side-effect-free and mirrors the reconciler's read model.
     pub(crate) fn typed_relay_list(&self) -> nmp_nip17::DmRelayList {
         nmp_nip17::DmRelayList {
             active_pubkey: self.active_pubkey(),

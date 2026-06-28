@@ -3,9 +3,9 @@
 //!
 //! The reconciler moved OFF the dynamic snapshot-projection registry (which it
 //! abused with a `Value::Null` projection purely to obtain a per-tick callback)
-//! ONTO the generic `AppHost::register_snapshot_tick_observer` seam. Its
+//! ONTO the generic `AppHost::register_identity_change_observer` seam. Its
 //! ensure/drop-owner logic is unchanged — these tests pin that logic by driving
-//! the same `tick()` the observer now calls and asserting the emitted
+//! the same `sync()` the observer now calls and asserting the emitted
 //! [`ActorCommand`] sequence across sign-in / account-switch / sign-out.
 //!
 //! The `"nmp.nip57.zap_subscription"` key is no longer a projection at all; the
@@ -50,7 +50,7 @@ fn sign_in(slot: &ActiveAccountSlot, keys: &Keys) {
     *slot.lock().unwrap() = Some(keys.public_key().to_hex());
 }
 
-/// Drain whatever the controller enqueued this tick.
+/// Drain whatever the controller enqueued.
 fn drained(rx: &Receiver<nmp_core::ActorMail>) -> Vec<ActorCommand> {
     rx.try_iter()
         .map(|mail| match mail {
@@ -60,7 +60,7 @@ fn drained(rx: &Receiver<nmp_core::ActorMail>) -> Vec<ActorCommand> {
         .collect()
 }
 
-/// Sign-in ensures exactly one interest for the active pubkey; a steady tick
+/// Sign-in ensures exactly one interest for the active pubkey; a steady sync
 /// afterwards enqueues nothing (the common fast path).
 #[test]
 fn sign_in_pushes_interest_once_then_idles() {
@@ -69,18 +69,18 @@ fn sign_in_pushes_interest_once_then_idles() {
     let pubkey = keys.public_key().to_hex();
 
     // Cold start before sign-in: no actor traffic.
-    controller.tick();
+    controller.sync();
     assert!(drained(&rx).is_empty(), "cold start must enqueue nothing");
 
     // Sign in → exactly one interest for this pubkey.
     sign_in(&slot, &keys);
-    controller.tick();
+    controller.sync();
     let cmds = drained(&rx);
     assert_eq!(cmds.len(), 1, "sign-in enqueues exactly one command");
     assert_push_for(&cmds[0], &pubkey);
 
     // Steady state: no change → no further traffic.
-    controller.tick();
+    controller.sync();
     assert!(
         drained(&rx).is_empty(),
         "no active-pubkey change must enqueue nothing"
@@ -97,11 +97,11 @@ fn account_switch_withdraws_then_pushes() {
     let second_pubkey = second.public_key().to_hex();
 
     sign_in(&slot, &first);
-    controller.tick();
+    controller.sync();
     let _ = drained(&rx); // first sign-in push already proven above
 
     sign_in(&slot, &second);
-    controller.tick();
+    controller.sync();
     let cmds = drained(&rx);
     assert_eq!(cmds.len(), 2, "switch enqueues drop + ensure");
     assert_withdraw(&cmds[0]);
@@ -109,21 +109,21 @@ fn account_switch_withdraws_then_pushes() {
 }
 
 /// Sign-out (active → none) drops the standing owner once, then a
-/// subsequent idle tick enqueues nothing.
+/// subsequent idle sync enqueues nothing.
 #[test]
 fn sign_out_withdraws_interest_once() {
     let (controller, slot, rx) = controller();
     sign_in(&slot, &Keys::generate());
-    controller.tick();
+    controller.sync();
     let _ = drained(&rx);
 
     *slot.lock().unwrap() = None;
-    controller.tick();
+    controller.sync();
     let cmds = drained(&rx);
     assert_eq!(cmds.len(), 1, "sign-out enqueues exactly one command");
     assert_withdraw(&cmds[0]);
 
-    controller.tick();
+    controller.sync();
     assert!(
         drained(&rx).is_empty(),
         "already signed out → no further traffic"
@@ -142,7 +142,7 @@ fn bunker_only_account_activates_self_zap_receipts() {
 
     // Pubkey-only sign-in (bunker shape): hex pubkey present, zero secrets.
     sign_in(&slot, &keys);
-    controller.tick();
+    controller.sync();
 
     let cmds = drained(&rx);
     assert_eq!(

@@ -2,20 +2,22 @@ use std::sync::{Arc, Mutex};
 
 use nmp_core::actor::ActorCommand;
 use nmp_core::actor::InterestsCommand;
-use nmp_core::substrate::{HostCapabilities, SnapshotProjectionRegistrar};
+use nmp_core::substrate::{HostCapabilities, IdentityChangeRegistrar};
 use nmp_nip57::{self_zap_receipts_identity, self_zap_receipts_interest};
 
 /// Wire the NIP-57 self-zap-receipts subscription runtime into `app`.
-pub fn register_zap_receipts_runtime(app: &(impl HostCapabilities + SnapshotProjectionRegistrar)) {
+pub fn register_zap_receipts_runtime(app: &(impl HostCapabilities + IdentityChangeRegistrar)) {
     let controller = Arc::new(ZapReceiptsRuntimeController {
         active_pubkey: app.active_pubkey(),
         tx: app.actor_sender(),
         last_pushed_pubkey: Mutex::new(None),
     });
-    app.register_snapshot_tick_observer(move || controller.tick());
+    let controller_for_identity = Arc::clone(&controller);
+    app.register_identity_change_observer(move |_| controller_for_identity.sync());
+    controller.sync();
 }
 
-/// Per-tick reconciler for the active-account zap-receipts interest.
+/// Event-driven reconciler for the active-account zap-receipts interest.
 pub(crate) struct ZapReceiptsRuntimeController {
     /// Pubkey-only identity slot (Finding C): populated for every backend,
     /// including bunker. Identity only, never secret key material.
@@ -25,10 +27,9 @@ pub(crate) struct ZapReceiptsRuntimeController {
 }
 
 impl ZapReceiptsRuntimeController {
-    /// Reconcile the active-account zap-receipts interest once per snapshot
-    /// tick. Produces no snapshot data, only scoped interest commands on
-    /// account changes.
-    pub(crate) fn tick(&self) {
+    /// Reconcile the active-account zap-receipts interest after account
+    /// changes. Produces no snapshot data, only scoped interest commands.
+    pub(crate) fn sync(&self) {
         let active = self.active_pubkey();
         let mut last = self
             .last_pushed_pubkey
