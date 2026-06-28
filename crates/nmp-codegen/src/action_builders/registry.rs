@@ -75,6 +75,10 @@ pub enum FieldKind {
     /// default 0 = Both). Role strings are mapped to bytes by the generated
     /// `relayMarkerByte` helper — no role logic in host code.
     RelayListEntryVec,
+    /// A `ubyte` scalar field (u8) — encoded inline with default 0. Used for enum
+    /// discriminants declared as FlatBuffers `ubyte` enums (e.g.
+    /// `VisibleNoteRelationsOp`). The host passes the raw discriminant value.
+    Ubyte,
 }
 
 impl PayloadField {

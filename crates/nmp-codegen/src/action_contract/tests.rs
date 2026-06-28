@@ -45,7 +45,9 @@ fn generated_builders_match_contract() {
         .filter(|c| {
             matches!(
                 c.builder_support,
-                BuilderSupport::GeneratedFlatTable | BuilderSupport::GeneratedBookmarkItemTable
+                BuilderSupport::GeneratedFlatTable
+                    | BuilderSupport::GeneratedBookmarkItemTable
+                    | BuilderSupport::GeneratedBookmarkSetItemTable
             )
         })
         .map(|c| c.namespace)
@@ -59,7 +61,9 @@ fn generated_builders_match_contract() {
         assert!(
             matches!(
                 contract.builder_support,
-                BuilderSupport::GeneratedFlatTable | BuilderSupport::GeneratedBookmarkItemTable
+                BuilderSupport::GeneratedFlatTable
+                    | BuilderSupport::GeneratedBookmarkItemTable
+                    | BuilderSupport::GeneratedBookmarkSetItemTable
             ),
             "builder namespace {} has non-generated contract support {:?}",
             builder.namespace,
