@@ -42,6 +42,9 @@
 //!    tag intersection, proving the `event_tags` index-served LMDB parity.
 //! 10. `query_visit_budget` — the streaming visitor honours the per-call budget
 //!     (budget 2 visits exactly the two newest rows).
+//! 11. `relay_kind_privacy_gate` — relay-kind coverage/count hides private
+//!     NIP-04/17/59 kinds even though SQLite derives the projection from
+//!     provenance rows.
 //!
 //! ## How it grows as the engine lands
 //!
@@ -60,6 +63,8 @@ use std::ops::ControlFlow;
 
 use nmp_sqlite_wasm::{EngineEvent, EngineQuery, InsertOutcome, OpfsSqliteStore};
 use wasm_bindgen::prelude::*;
+
+mod relay_kind_privacy;
 
 /// One recorded conformance assertion: its stable name, pass/fail, and a
 /// human-readable detail (success summary or the failing reason).
@@ -171,7 +176,10 @@ async fn run() -> Report {
     let id = match event.id_bytes() {
         Some(id) => id,
         None => {
-            report.record("fixture_id", Err("fixture id is not 64-char hex".to_owned()));
+            report.record(
+                "fixture_id",
+                Err("fixture id is not 64-char hex".to_owned()),
+            );
             return report;
         }
     };
@@ -264,6 +272,9 @@ async fn run() -> Report {
     // ── Steps 6–10: PR-4 scan / query read paths ──────────────────────────
     scan_corpus_steps(&mut report, &store2);
 
+    // ── Step 11: #2223 relay-kind privacy gate ────────────────────────────
+    relay_kind_privacy::record(&mut report, &store2);
+
     report
 }
 
@@ -347,80 +358,74 @@ fn scan_corpus_steps(report: &mut Report, store: &OpfsSqliteStore) {
     );
 
     // ── Step 8: scan_by_authors_kind — GLOBAL order across A and B ────────
-    report.record(
-        "scan_by_authors_kind_global_order",
-        {
-            let authors: BTreeSet<[u8; 32]> = [a, b].into_iter().collect();
-            match store.scan_by_authors_kind(&authors, &[1], None, None, 100) {
-                Ok(rows) => {
-                    let got: Vec<String> = rows.into_iter().map(|s| s.event.id).collect();
-                    // Interleaved by created_at desc, NOT grouped by author:
-                    // B2(4000), A2(3000), B1(2000), A1(1000).
-                    let want = vec![id(0xB2), id(0xA2), id(0xB1), id(0xA1)];
-                    if got == want {
-                        Ok("merged newest-first across A+B: [B2, A2, B1, A1]".to_owned())
-                    } else {
-                        Err(format!("got {got:?}, want {want:?}"))
-                    }
+    report.record("scan_by_authors_kind_global_order", {
+        let authors: BTreeSet<[u8; 32]> = [a, b].into_iter().collect();
+        match store.scan_by_authors_kind(&authors, &[1], None, None, 100) {
+            Ok(rows) => {
+                let got: Vec<String> = rows.into_iter().map(|s| s.event.id).collect();
+                // Interleaved by created_at desc, NOT grouped by author:
+                // B2(4000), A2(3000), B1(2000), A1(1000).
+                let want = vec![id(0xB2), id(0xA2), id(0xB1), id(0xA1)];
+                if got == want {
+                    Ok("merged newest-first across A+B: [B2, A2, B1, A1]".to_owned())
+                } else {
+                    Err(format!("got {got:?}, want {want:?}"))
                 }
-                Err(e) => Err(format!("scan failed: {e}")),
             }
-        },
-    );
+            Err(e) => Err(format!("scan failed: {e}")),
+        }
+    });
 
     // ── Step 9: scan_by_tags — AND across #e/#p, OR within #e values ──────
-    report.record(
-        "scan_by_tags_index_served",
-        {
-            let mut tags: BTreeMap<char, BTreeSet<String>> = BTreeMap::new();
-            tags.insert('e', ["evx".to_owned(), "evy".to_owned()].into_iter().collect());
-            tags.insert('p', ["p1".to_owned()].into_iter().collect());
-            // authors/kinds empty = any: prove the tag index alone selects.
-            match store.scan_by_tags(&BTreeSet::new(), &[], &tags, None, None, 100) {
-                Ok(rows) => {
-                    let got: Vec<String> = rows.into_iter().map(|s| s.event.id).collect();
-                    // Only T2(6000) and T1(5000): T3 lacks #p, T4 lacks #e, T5's
-                    // #e=evz ∉ {evx,evy}. Newest-first.
-                    let want = vec![id(0x72), id(0x71)];
-                    if got == want {
-                        Ok("AND(#e∈{evx,evy}, #p=p1) ⇒ [T2, T1] via tag index".to_owned())
-                    } else {
-                        Err(format!("got {got:?}, want {want:?}"))
-                    }
+    report.record("scan_by_tags_index_served", {
+        let mut tags: BTreeMap<char, BTreeSet<String>> = BTreeMap::new();
+        tags.insert(
+            'e',
+            ["evx".to_owned(), "evy".to_owned()].into_iter().collect(),
+        );
+        tags.insert('p', ["p1".to_owned()].into_iter().collect());
+        // authors/kinds empty = any: prove the tag index alone selects.
+        match store.scan_by_tags(&BTreeSet::new(), &[], &tags, None, None, 100) {
+            Ok(rows) => {
+                let got: Vec<String> = rows.into_iter().map(|s| s.event.id).collect();
+                // Only T2(6000) and T1(5000): T3 lacks #p, T4 lacks #e, T5's
+                // #e=evz ∉ {evx,evy}. Newest-first.
+                let want = vec![id(0x72), id(0x71)];
+                if got == want {
+                    Ok("AND(#e∈{evx,evy}, #p=p1) ⇒ [T2, T1] via tag index".to_owned())
+                } else {
+                    Err(format!("got {got:?}, want {want:?}"))
                 }
-                Err(e) => Err(format!("scan failed: {e}")),
             }
-        },
-    );
+            Err(e) => Err(format!("scan failed: {e}")),
+        }
+    });
 
     // ── Step 10: query_visit budget — visit only `budget` rows ────────────
-    report.record(
-        "query_visit_budget",
-        {
-            let query = EngineQuery::AuthorsKind {
-                authors: [a, b].into_iter().collect(),
-                kinds: vec![1],
-                since: None,
-                until: None,
-            };
-            let mut seen: Vec<String> = Vec::new();
-            match store.query_visit(&query, 2, &mut |ev| {
-                seen.push(ev.event.id.clone());
-                ControlFlow::Continue(())
-            }) {
-                Ok(()) => {
-                    // Budget 2 ⇒ exactly the two newest: B2(4000), A2(3000).
-                    let want = vec![id(0xB2), id(0xA2)];
-                    if seen == want {
-                        Ok("budget=2 visited exactly [B2, A2] (newest-first)".to_owned())
-                    } else {
-                        Err(format!("visited {seen:?}, want {want:?}"))
-                    }
+    report.record("query_visit_budget", {
+        let query = EngineQuery::AuthorsKind {
+            authors: [a, b].into_iter().collect(),
+            kinds: vec![1],
+            since: None,
+            until: None,
+        };
+        let mut seen: Vec<String> = Vec::new();
+        match store.query_visit(&query, 2, &mut |ev| {
+            seen.push(ev.event.id.clone());
+            ControlFlow::Continue(())
+        }) {
+            Ok(()) => {
+                // Budget 2 ⇒ exactly the two newest: B2(4000), A2(3000).
+                let want = vec![id(0xB2), id(0xA2)];
+                if seen == want {
+                    Ok("budget=2 visited exactly [B2, A2] (newest-first)".to_owned())
+                } else {
+                    Err(format!("visited {seen:?}, want {want:?}"))
                 }
-                Err(e) => Err(format!("query_visit failed: {e}")),
             }
-        },
-    );
+            Err(e) => Err(format!("query_visit failed: {e}")),
+        }
+    });
 }
 
 /// Dedicated-Worker entry point.

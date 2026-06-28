@@ -9,7 +9,7 @@ use std::ops::Bound;
 use std::sync::Arc;
 
 use super::{provenance, Inner};
-use crate::types::EventId;
+use crate::types::{is_relay_provenance_private, EventId};
 use crate::StoreError;
 
 /// Return the ids of events whose provenance includes `relay_url`.
@@ -27,7 +27,10 @@ pub(super) fn list_events_seen_on(
         .read_txn()
         .map_err(|e| StoreError::Io(format!("read_txn: {e}")))?;
     let (lo, hi) = provenance::relay_index_prefix_bounds(relay_url);
-    let range = (Bound::Included(lo.as_slice()), Bound::Excluded(hi.as_slice()));
+    let range = (
+        Bound::Included(lo.as_slice()),
+        Bound::Excluded(hi.as_slice()),
+    );
     let mut out = Vec::new();
     for entry in inner
         .relay_index
@@ -58,7 +61,10 @@ pub(super) fn relay_kind_coverage(
         .map_err(|e| StoreError::Io(format!("read_txn: {e}")))?;
     let lo = provenance::relay_kind_relay_lo(relay_url);
     let hi = provenance::relay_kind_relay_hi(relay_url);
-    let range = (Bound::Included(lo.as_slice()), Bound::Excluded(hi.as_slice()));
+    let range = (
+        Bound::Included(lo.as_slice()),
+        Bound::Excluded(hi.as_slice()),
+    );
     let mut kinds: BTreeSet<u32> = BTreeSet::new();
     for entry in inner
         .relay_kind
@@ -67,7 +73,9 @@ pub(super) fn relay_kind_coverage(
     {
         let (k, _) = entry.map_err(|e| StoreError::Io(format!("relay_kind step: {e}")))?;
         if let Some(kind) = provenance::relay_kind_kind_from_key(k, relay_url.len()) {
-            kinds.insert(kind);
+            if !is_relay_provenance_private(kind) {
+                kinds.insert(kind);
+            }
         }
     }
     Ok(kinds.into_iter().collect())
@@ -84,13 +92,19 @@ pub(super) fn relay_kind_count(
     relay_url: &str,
     kind: u32,
 ) -> Result<u64, StoreError> {
+    if is_relay_provenance_private(kind) {
+        return Ok(0);
+    }
     let txn = inner
         .env
         .read_txn()
         .map_err(|e| StoreError::Io(format!("read_txn: {e}")))?;
     let lo = provenance::relay_kind_kind_lo(relay_url, kind);
     let hi = provenance::relay_kind_kind_hi(relay_url, kind);
-    let range = (Bound::Included(lo.as_slice()), Bound::Excluded(hi.as_slice()));
+    let range = (
+        Bound::Included(lo.as_slice()),
+        Bound::Excluded(hi.as_slice()),
+    );
     let mut count: u64 = 0;
     for entry in inner
         .relay_kind

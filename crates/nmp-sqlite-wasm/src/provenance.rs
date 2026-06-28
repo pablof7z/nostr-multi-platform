@@ -46,11 +46,7 @@ pub(crate) fn upsert(
     } else if entries.len() >= MAX_PROVENANCE_ENTRIES {
         // Capacity full → overwrite the oldest non-primary entry (index 0 is the
         // primary after the sort, so skip it). `entries` is sorted by the read.
-        if let Some(victim) = entries
-            .iter_mut()
-            .skip(1)
-            .min_by_key(|e| e.last_seen_ms)
-        {
+        if let Some(victim) = entries.iter_mut().skip(1).min_by_key(|e| e.last_seen_ms) {
             victim.relay_url = relay_url.to_string();
             victim.first_seen_ms = received_at_ms;
             victim.last_seen_ms = received_at_ms;
@@ -94,7 +90,11 @@ fn read_entries(conn: &SqliteConn, id: &EventId) -> Result<Vec<Entry>, SqliteWas
     Ok(out)
 }
 
-fn write_entries(conn: &SqliteConn, id: &EventId, entries: &[Entry]) -> Result<(), SqliteWasmError> {
+fn write_entries(
+    conn: &SqliteConn,
+    id: &EventId,
+    entries: &[Entry],
+) -> Result<(), SqliteWasmError> {
     exec_write(
         conn,
         "DELETE FROM provenance WHERE event_id = ?1",
@@ -184,8 +184,9 @@ impl OpfsSqliteStore {
     ///
     /// Derived from the per-event provenance × `events.kind` projection (the
     /// reverse index the LMDB backend keeps as a dedicated sub-db is subsumed by
-    /// `idx_prov_relay` + the join). Privacy-gated kinds never appear because
-    /// they are excluded at write time, not here.
+    /// `idx_prov_relay` + the join). Privacy-gated kinds are filtered here
+    /// because SQLite derives relay-kind coverage from provenance rows instead
+    /// of maintaining a separate relay-kind table.
     pub fn relay_kind_coverage(&self, relay_url: &str) -> Result<Vec<u32>, SqliteWasmError> {
         let conn = self.conn().borrow();
         let stmt = conn.prepare(
@@ -196,7 +197,10 @@ impl OpfsSqliteStore {
         stmt.bind_text(1, relay_url)?;
         let mut out = Vec::new();
         while stmt.step()? {
-            out.push(stmt.column_int64(0)? as u32);
+            let kind = stmt.column_int64(0)? as u32;
+            if !nmp_kinds::is_private_relay_provenance_kind(kind) {
+                out.push(kind);
+            }
         }
         Ok(out)
     }
@@ -205,11 +209,10 @@ impl OpfsSqliteStore {
     ///
     /// `(event_id, relay_url)` is the provenance primary key, so each event is
     /// counted once. Same projection as [`Self::relay_kind_coverage`].
-    pub fn relay_kind_count(
-        &self,
-        relay_url: &str,
-        kind: u32,
-    ) -> Result<u64, SqliteWasmError> {
+    pub fn relay_kind_count(&self, relay_url: &str, kind: u32) -> Result<u64, SqliteWasmError> {
+        if nmp_kinds::is_private_relay_provenance_kind(kind) {
+            return Ok(0);
+        }
         let conn = self.conn().borrow();
         let stmt = conn.prepare(
             "SELECT COUNT(*) FROM provenance p \

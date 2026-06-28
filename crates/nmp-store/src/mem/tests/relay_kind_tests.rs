@@ -5,7 +5,7 @@
 //! the LMDB backend: insert recording, duplicate de-dup, multi-kind coverage,
 //! the NIP-04/17/59 privacy gate, delete cleanup, supersession, and GC.
 
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 
 use crate::types::{DeleteFilter, GcBudget, RawEvent, VerifiedEvent};
 use crate::{EventStore, MemEventStore};
@@ -34,7 +34,11 @@ const RELAY_B: &str = "wss://b.relay.example.com";
 fn insert_records_relay_kind() {
     let store = MemEventStore::new();
     store
-        .insert(unchecked(make_event(0x01, 1, 1000)), &RELAY_A.to_string(), 1_000_000)
+        .insert(
+            unchecked(make_event(0x01, 1, 1000)),
+            &RELAY_A.to_string(),
+            1_000_000,
+        )
         .unwrap();
 
     assert_eq!(store.relay_kind_coverage(RELAY_A).unwrap(), vec![1]);
@@ -78,16 +82,31 @@ fn duplicate_from_second_relay() {
 fn distinct_kinds_coverage() {
     let store = MemEventStore::new();
     store
-        .insert(unchecked(make_event(0x04, 1, 1000)), &RELAY_A.to_string(), 1_000_000)
+        .insert(
+            unchecked(make_event(0x04, 1, 1000)),
+            &RELAY_A.to_string(),
+            1_000_000,
+        )
         .unwrap();
     store
-        .insert(unchecked(make_event(0x05, 7, 1001)), &RELAY_A.to_string(), 1_000_001)
+        .insert(
+            unchecked(make_event(0x05, 7, 1001)),
+            &RELAY_A.to_string(),
+            1_000_001,
+        )
         .unwrap();
     store
-        .insert(unchecked(make_event(0x06, 30000, 1002)), &RELAY_A.to_string(), 1_000_002)
+        .insert(
+            unchecked(make_event(0x06, 30000, 1002)),
+            &RELAY_A.to_string(),
+            1_000_002,
+        )
         .unwrap();
 
-    assert_eq!(store.relay_kind_coverage(RELAY_A).unwrap(), vec![1, 7, 30000]);
+    assert_eq!(
+        store.relay_kind_coverage(RELAY_A).unwrap(),
+        vec![1, 7, 30000]
+    );
 }
 
 /// Privacy gate: NIP-04/17/59 kinds never enter the index.
@@ -95,12 +114,20 @@ fn distinct_kinds_coverage() {
 fn privacy_gate_excludes_private_kinds() {
     let store = MemEventStore::new();
     store
-        .insert(unchecked(make_event(0x07, 1, 1000)), &RELAY_A.to_string(), 1_000_000)
+        .insert(
+            unchecked(make_event(0x07, 1, 1000)),
+            &RELAY_A.to_string(),
+            1_000_000,
+        )
         .unwrap();
     let mut idb = 0x10u8;
     for k in [4u32, 13, 14, 15, 1059, 1060] {
         store
-            .insert(unchecked(make_event(idb, k, 2000)), &RELAY_A.to_string(), 2_000_000)
+            .insert(
+                unchecked(make_event(idb, k, 2000)),
+                &RELAY_A.to_string(),
+                2_000_000,
+            )
             .unwrap();
         idb += 1;
         assert_eq!(
@@ -110,6 +137,26 @@ fn privacy_gate_excludes_private_kinds() {
         );
     }
     assert_eq!(store.relay_kind_coverage(RELAY_A).unwrap(), vec![1]);
+}
+
+/// Defense-in-depth: even if a stale/private row exists in the derived map,
+/// read-side coverage and count must not expose it.
+#[test]
+fn read_backstop_hides_stale_private_relay_kind_entries() {
+    let store = MemEventStore::new();
+    {
+        let mut st = store.lock().unwrap();
+        let relay = st.relay_kind.entry(RELAY_A.to_string()).or_default();
+        relay.entry(1).or_default().insert("11".repeat(32));
+        relay
+            .entry(1059)
+            .or_insert_with(BTreeSet::new)
+            .insert("22".repeat(32));
+    }
+
+    assert_eq!(store.relay_kind_coverage(RELAY_A).unwrap(), vec![1]);
+    assert_eq!(store.relay_kind_count(RELAY_A, 1).unwrap(), 1);
+    assert_eq!(store.relay_kind_count(RELAY_A, 1059).unwrap(), 0);
 }
 
 /// Deleting an event removes its relay×kind entry.
@@ -123,7 +170,9 @@ fn delete_removes_relay_kind() {
         .unwrap();
     assert_eq!(store.relay_kind_count(RELAY_A, 1).unwrap(), 1);
 
-    store.delete_by_filter(DeleteFilter::ByIds(vec![id])).unwrap();
+    store
+        .delete_by_filter(DeleteFilter::ByIds(vec![id]))
+        .unwrap();
 
     assert_eq!(store.relay_kind_count(RELAY_A, 1).unwrap(), 0);
     assert!(store.relay_kind_coverage(RELAY_A).unwrap().is_empty());
@@ -168,10 +217,18 @@ fn replaceable_supersession_updates_relay_kind() {
 fn gc_lru_eviction_removes_relay_kind() {
     let store = MemEventStore::new();
     store
-        .insert(unchecked(make_event(0x40, 1, 1000)), &RELAY_A.to_string(), 1_000_000)
+        .insert(
+            unchecked(make_event(0x40, 1, 1000)),
+            &RELAY_A.to_string(),
+            1_000_000,
+        )
         .unwrap();
     store
-        .insert(unchecked(make_event(0x41, 1, 1001)), &RELAY_A.to_string(), 1_000_001)
+        .insert(
+            unchecked(make_event(0x41, 1, 1001)),
+            &RELAY_A.to_string(),
+            1_000_001,
+        )
         .unwrap();
     assert_eq!(store.relay_kind_count(RELAY_A, 1).unwrap(), 2);
 
@@ -191,6 +248,14 @@ fn gc_lru_eviction_removes_relay_kind() {
 #[test]
 fn unknown_relay_is_empty() {
     let store = MemEventStore::new();
-    assert!(store.relay_kind_coverage("wss://never.example.com").unwrap().is_empty());
-    assert_eq!(store.relay_kind_count("wss://never.example.com", 1).unwrap(), 0);
+    assert!(store
+        .relay_kind_coverage("wss://never.example.com")
+        .unwrap()
+        .is_empty());
+    assert_eq!(
+        store
+            .relay_kind_count("wss://never.example.com", 1)
+            .unwrap(),
+        0
+    );
 }
