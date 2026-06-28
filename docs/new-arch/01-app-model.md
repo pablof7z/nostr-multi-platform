@@ -23,9 +23,9 @@ The exact names above are illustrative. The rule is not illustrative:
 show the substrate and feature methods they install. A typestate or equivalent
 builder is attractive because it can require storage and substrate before start,
 make the app immutable after build, and remove idempotency bugs from repeated
-registration. If a monolithic preset survives temporarily, it is a tutorial or
-migration shim with explicit callers and a deletion target, not the architecture
-real products should copy.
+registration. If a monolithic preset survives as a migration path, it is a
+tutorial or migration shim with explicit callers and a deletion target, not the
+architecture real products should copy.
 For a migration shim, the bar is higher than "maybe a consumer exists": name the
 live consumers, support window, owner, and deletion/formalization gate. If those
 cannot be proven against current call sites, the preset is deleted rather than
@@ -53,17 +53,16 @@ The substrate is the correctness floor: actor, store, indexes, signer ports,
 capabilities, planner, publish engine, and typed update delivery. Feature
 installers sit on top of it.
 
-## Feature Bundles
+## Feature Installers
 
-"Feature bundle" is descriptive vocabulary, not permission to add a new public
-framework object. Prefer explicit installer functions and existing builder
-extension traits over a broad `dyn AppFeature`, new app-builder trait, or
-AppHost-wide method pile. The first implementation may add at most one new public
-noun: typed session descriptor/handle. Everything else must be an existing seam,
-private machinery, or rejected until a slice deletes or narrows equal or larger
-old public surface.
+Avoid adding a public "feature bundle" object. Prefer explicit installer
+functions and existing builder extension traits over a broad `dyn AppFeature`,
+new app-builder trait, or AppHost-wide method pile. The first implementation may
+add at most one new public noun: typed session descriptor/handle. Everything
+else must be an existing seam, private machinery, or rejected until a slice
+deletes or narrows equal or larger old public surface.
 
-A feature bundle is not an open screen. It installs reusable capability:
+A feature installer is not an open screen. It installs reusable capability:
 
 - read/query descriptors;
 - typed projection producers;
@@ -74,11 +73,11 @@ A feature bundle is not an open screen. It installs reusable capability:
 - protocol-owned state;
 - publish route policy where the protocol owns it.
 
-NMP feature bundles provide reusable Nostr mechanisms: NIP-02 follows, NIP-29
+NMP feature installers provide reusable Nostr mechanisms: NIP-02 follows, NIP-29
 groups, NIP-17 DMs, NIP-65 routing, profile refs, event refs, search, generic
 thread reduction, generic live counts, and publish policy.
 
-App feature bundles provide product behavior that is not reusable Nostr
+App feature installers provide product behavior that is not reusable Nostr
 infrastructure: Highlighter capture/OCR/share queues/article chrome, podcast
 playback/downloads/feed fetching/transcripts/agents, or gallery showcase
 catalog state. They use NMP features, but they do not become NMP crates unless

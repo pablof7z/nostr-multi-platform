@@ -200,6 +200,12 @@ derived dependencies, and generated output rows. If a feature needs a visible
 clear, it emits a typed `Cleared` or tombstone output instead of leaving stale
 rows in shell state.
 
+Handle ownership is not the same as an event/model cache claim. A session handle
+says "this owner currently needs this output." A cache/model claim says "this
+event, profile, ref, or derived model must remain addressable or warm across
+handle churn." Keep-warm, eviction, and durable identity policies belong to the
+store/model-cache owner, not to shell refcounts or open handles.
+
 Owners are not only visible screens. App-lifetime services, widgets,
 AppIntents, CarPlay, remote commands, background downloads, and signer/runtime
 flows may own sessions when they need resident state. Their sessions still need
@@ -207,11 +213,12 @@ typed identity, lifecycle, bounded output, injected time, capability result
 channels, and deterministic teardown; they are not permission for hidden native
 stores or polling loops.
 
-Service sessions are a design hypothesis, not settled doctrine. They are included
-because Podcast Player, widgets, AppIntents, CarPlay, Live Activities, Handoff,
-and signer/runtime work expose a real gap in the screen-only model. The ADR must
-prove they can reuse the normal session/action/capability machinery without
-becoming a second app model or a runtime-specific framework.
+Headless or service-like owners are a design hypothesis, not settled doctrine.
+They are included because Podcast Player, widgets, AppIntents, CarPlay, Live
+Activities, Handoff, and signer/runtime work expose a real gap in the
+screen-only model. The ADR must prove they can reuse the normal session/action/
+capability machinery without becoming a second app model or a runtime-specific
+framework.
 Until that proof exists, "service session" is not initial public vocabulary and
 must not become a crate, module, generated binding family, or app-developer
 concept. Service-like flows should first be expressed as typed actions into the
@@ -220,16 +227,17 @@ last-emitted Rust mirror frames.
 Podcast is the falsification case: an AppIntent that only enqueues into a
 foreground singleton, a CarPlay surface that polls until the UI store appears, or
 an OS callback that reports success before Rust emits completion proves the
-service-session model is not solved. Highlighter is the caution in the other
+headless/service owner model is not solved. Highlighter is the caution in the other
 direction: share extensions, NIP-05, SSR, and background work do not justify a
 broad service layer if typed actions, short-lived headless invocation, or raw
 capability results can carry the invariant.
 Before accepting a service-session abstraction, prove the cheaper forms fail:
 a typed action into the normal runtime, a short-lived headless runtime invocation,
-or a last Rust-emitted mirror frame. If the proposed service session needs a
+or a last Rust-emitted mirror frame. If the proposed abstraction needs a
 second lifecycle, output, wake, store, or status model, reject or narrow it.
 
-Any future service abstraction would need an explicit lifecycle contract:
+Any future headless/service abstraction would need an explicit lifecycle
+contract:
 
 | Surface | Opens or resumes | Reports back | Must not own |
 |---|---|---|---|
@@ -286,7 +294,7 @@ secure-key capability result, media cache pointer, or downloaded file handle.
 They cannot be read back as the source of playback queue, signer state, relay
 policy, publish status, account identity, or durable Nostr/app facts.
 
-Each service-session family needs proof for:
+Each service-like family needs proof for:
 
 - cold start with no foreground UI process;
 - resume into an already-running app runtime;
@@ -302,8 +310,8 @@ Each service-session family needs proof for:
 
 ## ObservedProjection
 
-`ObservedProjection` is the safe event-to-read-model pattern used inside a live
-query. It is internal machinery, not a concept app developers assemble.
+`ObservedProjection` is the safe event-to-read-model pattern used inside a typed
+read session. It is internal machinery, not a concept app developers assemble.
 More precisely, it may remain a feature/runtime-internal API where reusable NMP
 features compile descriptors into replay-before-live observed sessions. It must
 not be shell-facing, product-app assembly language, or a reason to preserve
@@ -325,8 +333,8 @@ events before it starts receiving future live events, and future delivery is
 scoped to the declared shape. This avoids both late hydration misses and the old
 filterless observer problem.
 
-App developers should not manually assemble this. A feature or live query
-descriptor uses it internally.
+App developers should not manually assemble this. A feature/session descriptor
+uses it internally.
 
 Delivery is not population. Fixing a missing projection by seeding the store,
 pre-warming a cache, or asking the shell to retry claims is still a lifecycle
@@ -671,9 +679,9 @@ meaning, routing, sorting, replay, persistence, policy, or cross-platform
 parity, it belongs in Rust output. If it is only how one platform displays the
 same fact, it belongs in the shell.
 
-Opening a dynamic live query is the demand declaration for its output. Always-on
-app chrome may still need explicit declared outputs, but screen and session
-state should be scoped to open handles, not to a global projection list.
+Opening a dynamic read session is the demand declaration for its output.
+Always-on app chrome may still need explicit declared outputs, but screen and
+session state should be scoped to open handles, not to a global projection list.
 
 The simplest destination is that session open declares scoped output demand, and
 global declared projections remain only for always-on app chrome or

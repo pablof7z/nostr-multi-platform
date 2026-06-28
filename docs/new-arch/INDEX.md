@@ -165,7 +165,7 @@ private or deleted: everything else unless a named invariant, live owner,
 The first executable proof may introduce at most one new public noun, and only
 if it deletes or privatizes old public nouns in the same slice. A clean-room app
 author must not need to learn `ObservedProjection`, `ReducedSource`/source tiers,
-route-provenance carrier internals, service-session mechanics, feed-controller
+route-provenance carrier internals, headless/capability-flow mechanics, feed-controller
 registries, or runtime lifecycle FFI to build a normal feature.
 
 | Concept | Status | Rule |
@@ -218,7 +218,7 @@ for a disputed module, crate, public method, or executor mechanism is:
 delete it
   -> or collapse it into an existing owner
   -> or make it private executor machinery
-  -> or keep it temporarily with live consumers and a removal gate
+  -> or migration-scope it with live consumers and a removal gate
   -> only then add a new public concept
 ```
 
@@ -230,7 +230,7 @@ shims, and fewer places a feature author must edit to make one behavior work.
 
 A new module or crate is justified only when it makes one of those counts go
 down or protects an invariant that cannot be protected by narrowing existing
-code. If the first implementation of `FeatureSession`, route provenance,
+code. If the first implementation of typed descriptor/handle, route provenance,
 generated adapters, or source reconciliation adds a layer while the old layer
 remains an equal production path, the design has failed its simplification
 claim.
@@ -486,14 +486,16 @@ Required dossier sections:
 - a PR-sized first-slice plan for route provenance that tries the smallest
   carrier preserving the invariant, with dead explicit-route concepts deleted or
   left unrevived;
-- downstream matrices for Highlighter, Podcast Player, and `nmp-gallery`, with
-  each row at least classified and the first one to five migrated rows selected;
-- browser runtime/storage direction gate, including whether the first proof is
-  gallery wasm/Worker, OPFS conformance, or degraded-mode deletion;
+- one real caller proof selected for the descriptor shape, plus issue-backed
+  downstream classification for Highlighter, Podcast Player, and `nmp-gallery`;
+- browser runtime/storage feasibility split, including whether the first proof is
+  storage-only Worker/OPFS conformance, full gallery wasm/Worker, or degraded-mode
+  deletion;
 - generated catalog/manifest direction gate naming the first catalog to
   single-source;
-- #2320 source-of-truth classification dossier showing where each stale ADR/doc
-  fact will fold after the redesign ADR is accepted;
+- pre-ADR source-of-truth classification dossier showing where each stale ADR/doc
+  fact will fold after the redesign ADR is accepted, with #2320 owning the actual
+  ADR reset after acceptance;
 - subjective product calls explicitly resolved, including Highlighter web,
   tutorial preset, downstream release gates, and manual explicit relay UX.
 
@@ -628,9 +630,9 @@ episode/wiki decisions:
 
 | #2313 concern | Design answer | Proof gate |
 |---|---|---|
-| `register_defaults()` hides the app's real architecture. | Production apps use explicit feature composition; presets are tutorial/test/migration only with owner and deletion/formalization gate. | P0/P8 classify and migrate defaults, `nmp init`, gallery, Highlighter, Podcast Player, and builder-guide teaching. |
+| `register_defaults()` hides the app's real architecture. | Production apps use explicit feature composition; presets are tutorial/test/migration only with owner and deletion/formalization gate. | P0/P8 classify and migrate defaults, `nmp init`, browser start, gallery, Highlighter, Podcast Player, and builder-guide teaching. |
 | `declare_consumed_projections` looks like a complete manifest but is not. | Session open declares scoped output demand; always-on app chrome is explicit composition; projection tiers/declarations are private executor or compatibility machinery. | P3 proves scoped output demand and stops teaching projection tiers as app concepts. |
-| `nmp.follow_list` belongs to reusable NIP-02/NMP, not Chirp/FFI glue. | Reusable protocol projections live in protocol/NMP feature crates; app crates consume them through sessions/outputs. | FF-020 plus P0 owner inventory for every reusable protocol projection. |
+| `nmp.follow_list` belongs to reusable NIP-02/NMP, not Chirp/FFI glue. | Reusable protocol projections live in protocol/NMP feature crates; app crates consume them through sessions/outputs. Live code has already moved the canonical follow-list projection into `nmp-nip02`; the remaining work is regression coverage and stale-door cleanup. | FF-020 plus P0 owner inventory for every reusable protocol projection. |
 | Interest and projection are wired separately, causing silent desync. | A typed session contract owns acquisition, route planning, replay, sink, admission, output, wakes, status, and teardown. | P1 lifecycle-owner proof and FF-018 per-session contract table. |
 | `nmp_app_open_interest` is only half an API. | Raw acquisition remains substrate/diagnostic/test/migration only; product reads use typed session handles with pushed typed output. | FF-001 raw-read ratchet and P-1 public-door disposition ledger. |
 | `open_*` features leak replay/observer/sidecar/teardown ritual. | Existing safe machinery is compiled behind typed session descriptors; app developers never assemble `ObservedProjection` or sidecars. | P1 proves first descriptor over observed replay; P4/P5 migrate refs/feed/group/search families. |
@@ -854,8 +856,8 @@ The names are deliberately provisional ADR candidates. They describe invariants
 the design must preserve, not a commitment to add new public types or keep
 current internal types:
 
-- `Typed session` or `FeatureSession` means a typed descriptor and handle for the
-  live lifecycle a screen, component, widget, or app service opens. `LiveQuery`
+- `Typed session` means a typed descriptor and handle for the live lifecycle a
+  screen, component, widget, or app service opens. `LiveQuery`
   is not first-ADR public vocabulary; a later ADR may reuse the name only for
   this contract, not for a second public engine.
 - `ObservedProjection` means the internal safe pattern for replaying cached
@@ -987,8 +989,8 @@ tests, and downstream migrations.
 These do not need subjective product input unless the evidence produces two
 valid endpoints:
 
-- final public naming: `typed session`, `FeatureSession`, or per-feature open
-  helpers over one descriptor model;
+- final public naming: `typed session` or per-feature open helpers over one
+  descriptor/handle model;
 - whether private `ObservedProjection` can be narrowed or should remain as the
   internal replay-before-live primitive;
 - whether private feed-shaped `ReducedSource` is amended, renamed, replaced by a
@@ -1002,7 +1004,7 @@ valid endpoints:
 
 **Human/product-scope calls**
 
-These can be documented and worked around temporarily, but the relevant slice
+These can be documented and scoped as unresolved, but the relevant slice
 cannot count as proof until the decision is made or explicitly scoped out:
 
 - whether Highlighter web is an NMP target runtime, an SSR/migration exception,
@@ -1018,8 +1020,10 @@ cannot count as proof until the decision is made or explicitly scoped out:
   audit language/ownership the product wants users to see.
 - whether Podcast per-podcast keys may remain file-backed as a named product
   signer store or must become a secure-store capability;
-- which service-session form wins for widgets, AppIntents, Siri, CarPlay, remote
-  commands, Live Activities, Handoff, and deep links.
+- whether any service-session abstraction is needed for widgets, AppIntents,
+  Siri, CarPlay, remote commands, Live Activities, Handoff, and deep links, or
+  whether typed actions, headless invocation, capability results, and mirror
+  frames cover the cases.
 
 Decision register for rolling-horizon planning:
 
