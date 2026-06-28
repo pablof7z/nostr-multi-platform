@@ -172,15 +172,18 @@ private or deleted:
   it must survive
 ```
 
-The first executable proof may introduce at most one new clean-room framework
-noun, and only if it deletes or privatizes old public nouns in the same slice.
-Per-feature helper names are allowed when generated from an app-Rust contract;
-they do not justify new framework vocabulary by themselves. A clean-room app
-author must not need to learn `ObservedProjection`, `ReducedSource`/source tiers,
-route-provenance carrier internals, headless/capability-flow mechanics,
-feed-controller registries, or runtime lifecycle FFI to build a normal feature.
-An app-Rust author may learn descriptor/output/action concepts, but those concepts
-must still delete old lifecycle recipes rather than sit beside them.
+The first executable proof may introduce at most one new read-lifecycle
+clean-room framework noun, and only if it deletes or privatizes old public nouns
+in the same slice. Existing boundary concepts such as typed actions, capability
+results, typed outputs, and publish status may be retained or refined only when
+they narrow old doors instead of adding parallel vocabulary. Per-feature helper
+names are allowed when generated from an app-Rust contract; they do not justify
+new framework vocabulary by themselves. A clean-room app author must not need to
+learn `ObservedProjection`, `ReducedSource`/source tiers, route-provenance
+carrier internals, headless/capability-flow mechanics, feed-controller
+registries, or runtime lifecycle FFI to build a normal feature. An app-Rust
+author may learn descriptor/output/action concepts, but those concepts must
+still delete old lifecycle recipes rather than sit beside them.
 
 | Concept | Status | Rule |
 |---|---|---|
@@ -300,7 +303,7 @@ state has one owner, one handle, one teardown path, one output contract, and one
 route policy.
 
 This hypothesis must be enforced by the ratchets in [Internal
-Machinery](04-internal-machinery.md), especially FF-001 through FF-031. A prose
+Machinery](04-internal-machinery.md), especially FF-001 through FF-032. A prose
 claim that the new model is simpler is insufficient without those checks moving
 old-pattern counts down or keeping them from growing.
 
@@ -397,6 +400,11 @@ ordinary migration debt.
   count as conforming while its app root depends on hidden defaults plus manual
   sidecar projection registration, or while room/session state remains singleton
   projection lifecycle outside typed owner open/close.
+- App chrome needs a semantic/presentation split. Rust owns current route,
+  selected room/feed/ref, unread/product state, and cross-platform navigation
+  meaning. Native/web may own transient tabs, sheets, popovers, FAB expansion,
+  scroll position, and animation state only when those values are derivable and
+  cannot become durable product truth.
 
 Highlighter server/web exceptions need their own matrix. "SSR" is not a magic
 bucket that can hide product state:
@@ -480,7 +488,8 @@ remain direction gates: they tell us what must become true before that area can
 count as proof of the North Star.
 
 The near-term proof selector lives in
-[Internal Machinery](04-internal-machinery.md#implementation-plan). Use it to
+[Internal Machinery](04-internal-machinery.md#adr-dossier-and-rolling-proof-requirements).
+Use it to
 choose the next slice by the question being answered, not by a full downstream
 migration roadmap.
 
@@ -488,12 +497,17 @@ migration roadmap.
 |---|---|
 | Highlighter web runtime inventory | Every `@nostr-dev-kit`, `$subscribe`, `fetchEvents`, direct sign/publish, relay-set, cache, and tag-parser product path is classified as NMP target-runtime migration, SSR-only, diagnostic, deleted, or explicitly out of scope, with owner and deletion/formalization criterion. Direct NDK cannot remain both violation and normal runtime. |
 | Highlighter iOS/session policy | Wi-Fi/offline/cache policy is Rust-owned from raw platform capability facts; profile/event/embed refs use typed owner handles with close/clear tests; production app roots do not rely on hidden `register_defaults()` or `consume_all_builtin_projections()` except labeled migration/tutorial paths. |
+| Highlighter app chrome boundary | Semantic route/session/view/product state is Rust-owned; tabs, sheets, FABs, scroll, and visual affordances stay native only when ephemeral and derivable from Rust output plus typed actions. |
 | Highlighter semantic parsing | `tagsJson`, manual NIP-10/NIP-21/NIP-22/NIP-29 parsing, article/highlight card derivation, and discussion-root inference either move behind Rust descriptors/generated adapters or are proven presentation-only. |
+| Highlighter share/deep-link contract | Share extensions, URLs, NIP-19/NIP-21 refs, room links, artifact links, and app scopes enter one Rust-owned classifier/action path; shells report raw activation facts and do not parse protocol meaning independently. |
+| Highlighter feedback protocol reuse | Feedback stays protocol-only reusable surface where appropriate; Highlighter product behavior owns routing, optimistic UI, and app-specific state without forcing every NMP app into the Highlighter runtime shape. |
 | Podcast service/capability flows | Widget, AppIntent/Siri, CarPlay, remote command, Live Activity, Handoff, and suspended/cold start flows work through typed actions, headless invocation, app-lifetime typed sessions where proven, or typed capability results, not UI-process singletons or shell-local durable state. Results report Rust-owned pending/error/completion, not only dispatch acceptance. |
 | Podcast NIP-F4 publish | Show, episode, feed/list, Blossom references/server provenance, named/per-podcast signer, key-storage capability, route provenance, local ingest, relay ack/error/retry/exhausted status, and user-visible completion are proven end to end. Constructed JSON, queued-only status, `publish_dispatched`, or `relay_pending` is not enough. |
+| Podcast app-feature jobs | RSS/OPML, STT/TTS, provider calls, agents, transcript/media work, and generated artifacts use durable Rust job rows with injected clock, restart recovery, cancellation, retry/backoff, progress/cost/result, and explicit provider-polling exceptions where push/webhook is impossible. |
+| Podcast dependency baseline | Downstream apps pin one coherent NMP workspace/revision baseline, including protocol companion crates; mixed path/git/released NMP revisions are not architecture evidence. |
 | `nmp-gallery` web/ref lifecycle | The app package's own wasm build, Worker startup, OPFS lifecycle, generated ref adapter, and Playwright path consume the same artifact; missing wasm/worker fails closed; ref APIs are generated/typed; no correctness `setInterval` release/reclaim loop is needed; and component refs clear by owner lifecycle across web/iOS/Android/TUI/desktop. Generic browser-runtime conformance or TS-only checks are not enough. |
 | `nmp-gallery` auth/signing matrix | Android NIP-55, web NIP-07, iOS, TUI, desktop, local/no-auth, remote signer, and unauthenticated modes are classified independently; one shell's proof cannot stand in for another. |
-| Generated merge/cache parity | Full, delta, clear/tombstone, stale-frame, decode-poison, and baseline recovery behavior match across every shell used by a migrated feature. |
+| Gallery generated merge/cache parity | Full, delta, clear/tombstone, stale-frame, decode-poison, empty-baseline, and baseline recovery behavior match across every shell used by a migrated feature through `gallery_merge_cache_contract` or an equivalent Rust-oracle fixture. |
 | Publish route provenance | Status payloads expose provenance class and reason, not just relay URLs or queued/signed. Manual, host-pinned, verified inbox, imported/verbatim, and diagnostic routes remain distinguishable through dispatch, signing, retry/resume, local ingest, and status. |
 | App-feature API classification | Every cross-boundary app API is generated typed, capability/result, diagnostic/test, or migration-with-deletion. Event-producing APIs always route through typed action/publish status, never hand-authored JSON/event doors. |
 | Downstream no-polling | Downstream timers are classified as presentation/capability sampling or deleted. Service/session/signer/product-state retry, refresh, and reconciliation timers fail the gate. |
@@ -551,7 +565,7 @@ Required dossier sections:
 - full-scope coverage map review showing every concern is either selected for
   the first proof, assigned to a later gate with a ratchet, or explicitly scoped
   as a human/product decision;
-- current baseline counts for every old-pattern family in FF-001 through FF-031;
+- current baseline counts for every old-pattern family in FF-001 through FF-032;
 - disposition of every public door in P-1: delete, privatize, formalize, or
   migration-scope with owner/support window/removal gate;
 - a PR-sized first-slice plan proving the descriptor work reduces lifecycle
@@ -711,7 +725,7 @@ episode/wiki decisions:
 |---|---|---|
 | `register_defaults()` hides the app's real architecture. | Production apps use explicit feature composition; presets are tutorial/test/migration only with owner and deletion/formalization gate. | P0/P8 classify and migrate defaults, `nmp init`, browser start, gallery, Highlighter, Podcast Player, and builder-guide teaching. |
 | `declare_consumed_projections` looks like a complete manifest but is not. | Session open declares scoped output demand; always-on app chrome is explicit composition; projection tiers/declarations are private executor or compatibility machinery. | P3 proves scoped output demand and stops teaching projection tiers as app concepts. |
-| `nmp.follow_list` belongs to reusable NIP-02/NMP, not Chirp/FFI glue. | Reusable protocol projections live in protocol/NMP feature crates; app crates consume them through sessions/outputs. Live code has already moved the canonical follow-list projection into `nmp-nip02`; the remaining work is regression coverage and stale-door cleanup. | FF-020 plus P0 owner inventory for every reusable protocol projection. |
+| `nmp.follow_list` belongs to reusable NIP-02/NMP, not Chirp/FFI glue. | Reusable protocol projections live in protocol/NMP feature crates; app crates consume them through sessions/outputs. Live code has already moved the canonical follow-list projection into `nmp-nip02`, but stale contract metadata and docs still name Chirp/FFI ownership and must be corrected instead of treated as authority. | FF-020 plus P0 owner inventory for every reusable protocol projection. |
 | Interest and projection are wired separately, causing silent desync. | A typed session contract owns acquisition, route planning, replay, sink, admission, output, wakes, status, and teardown. | P1 lifecycle-owner proof and FF-018 per-session contract table. |
 | `nmp_app_open_interest` is only half an API. | Raw acquisition remains substrate/diagnostic/test/migration only; product reads use typed session handles with pushed typed output. | FF-001 raw-read ratchet and P-1 public-door disposition ledger. |
 | `open_*` features leak replay/observer/sidecar/teardown ritual. | Existing safe machinery is compiled behind typed session descriptors; app developers never assemble `ObservedProjection` or sidecars. | P1 proves first descriptor over observed replay; P4/P5 migrate refs/feed/group/search families. |
@@ -816,7 +830,8 @@ apps/<app> Rust crate
   -> depends on NMP crates
 
 crates/nmp-defaults and protocol crates
-  -> provide reusable feature installers, builders, descriptors, parsers, policy
+  -> provide reusable feature installers, builders, descriptors, parsers,
+     and reusable protocol/runtime policy
   -> depend on nmp-core seams
 
 crates/nmp-core
@@ -847,7 +862,7 @@ app screen/component
   -> nmp-planner / routing policy
   -> nmp-network relay IO when live acquisition is needed
   -> nmp-store / indexed event storage for replay and ingest
-  -> nmp-core ObservedProjection and reducers
+  -> nmp-core replay-before-live observed-session machinery and reducers
   -> typed UpdateFrame/output manifest
   -> nmp-ffi, nmp-native-runtime, or nmp-browser-runtime adapter
   -> shell render cache
@@ -902,8 +917,8 @@ into native code.
 - [App Model](01-app-model.md) explains how an app is assembled, what feature
   installers provide, and where app-specific Rust domains belong.
 - [Live Queries](02-live-queries.md) explains how screens subscribe to data,
-  including `ObservedProjection`, dynamic source reconciliation, component refs,
-  and projection delivery.
+  including replay-before-live internals, dynamic source reconciliation,
+  component refs, and projection delivery.
 - [Write Flow](03-write-flow.md) explains the split between event construction,
   event finalization, signing, and publishing.
 - [Internal Machinery](04-internal-machinery.md) explains what NMP does under

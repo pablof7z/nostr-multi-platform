@@ -95,9 +95,10 @@ generalize or narrow `open_feed`, `resolve_ref`, `ObservedProjectionRegistrar`,
 dependent interests, and current feature sessions first. If those can express
 the lifecycle with clearer names and smaller public API, prefer that over adding
 a public `LiveQuery` object.
-The default first proof is the existing feed/session family unless P-1 selects a
-better real caller. That proof must retire or narrow old surface in the same
-slice:
+P-1 selects the smallest live deletion proof. An existing feed/session path is a
+likely first candidate only if it retires more old surface than alternatives and
+does not depend on unresolved tick-repair work. That proof must retire or narrow
+old surface in the same slice:
 
 - one `open_*`/feed-session recipe stops requiring caller-authored interest,
   replay, sink, sidecar/output, and close wiring;
@@ -791,14 +792,18 @@ parity, it belongs in Rust output. If it is only how one platform displays the
 same fact, it belongs in the shell.
 
 Opening a dynamic read session is the demand declaration for its output.
-Always-on app chrome may still need explicit declared outputs, but screen and
-session state should be scoped to open handles, not to a global projection list.
+Always-on app chrome uses the same typed output ownership/schema contract as screen
+state; it is merely opened by app composition or app lifetime rather than by a
+visible screen handle. Legacy global declared projections remain compatibility
+or private cost-brake machinery only. They are not the future app manifest and
+they cannot bypass output ownership, schema owner/version, collision rules, or
+merge contracts.
 
-The simplest destination is that session open declares scoped output demand, and
-global declared projections remain only for always-on app chrome or
-compatibility. A fuller typed output manifest is justified only if it preserves
-measured wire, CPU, schema, or codegen benefits that session-scoped demand cannot
-reproduce:
+The simplest destination is that session open declares scoped output demand, app
+composition declares always-on chrome outputs through the same ownership rules,
+and global declared projections remain only as compatibility. A fuller typed
+output manifest is justified only if it preserves measured wire, CPU, schema, or
+codegen benefits that session-scoped demand cannot reproduce:
 
 ```text
 feature installs output schemas

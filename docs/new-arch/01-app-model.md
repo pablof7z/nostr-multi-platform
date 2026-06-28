@@ -69,9 +69,12 @@ installers sit on top of it.
 Avoid adding a public "feature bundle" object. Prefer explicit installer
 functions and existing builder extension traits over a broad `dyn AppFeature`,
 new app-builder trait, or AppHost-wide method pile. The first implementation may
-add at most one new public noun: typed session descriptor/handle. Everything
-else must be an existing seam, private machinery, or rejected until a slice
-deletes or narrows equal or larger old public surface.
+add at most one new read-lifecycle public noun: typed session
+descriptor/handle. Existing boundary concepts such as typed actions,
+capability results, typed outputs, and publish status may be retained or refined
+only when they delete, privatize, or narrow equal or larger old public surface.
+Everything else must be an existing seam, private machinery, or rejected until a
+slice proves it removes more architecture than it adds.
 
 A feature installer is not an open screen. It installs reusable capability:
 
@@ -307,6 +310,16 @@ mechanics, not durable product truth:
 | secure storage/keychain | secret-bearing capability store | signer policy, permission model, or publish continuation owner |
 | native app database/UserDefaults | migration/import/export staging or render cache with Rust owner | durable product store for Nostr/account/playback/feed facts |
 
+App chrome follows the same rule. Rust owns semantic navigation state: current
+route, selected room/feed/ref, active account scope, unread/product state,
+cross-platform tab meaning, and any state a widget, deep link, or second
+platform must reproduce to stay correct. Native/web may own ephemeral
+presentation state such as selected visual tab affordance, sheets, popovers,
+FAB expansion, scroll position, focus, split-view column width, and animations
+when those values are derivable and dispatch typed Rust actions for semantic
+changes. If a chrome value affects routing, protocol policy, persistence,
+notifications, access control, or cross-platform behavior, it is Rust-owned.
+
 Podcast is the stress case for this boundary:
 
 | Podcast surface | Rust/app owner | Native or service role |
@@ -509,17 +522,50 @@ outputs, generated/contract-tested adapters, and web component/package ownership
 `nmp_app_gallery_register`, browser `start()`, and Android byte-dispatch action
 sets must be classified as explicit composition, tutorial/test compatibility, or
 migration shims with owner, support window, and deletion/formalization gate.
+Gallery web is not proven by generic browser-runtime conformance or a TS-only
+demo. The package that ships gallery web needs its own wasm/Worker/OPFS proof,
+generated or contract-tested ref handles, no correctness `setInterval`
+release/reclaim loop, and `gallery_merge_cache_contract` coverage for full,
+delta, clear, tombstone/stale, decode-poison, baseline, and empty-baseline
+behavior. Raw `search_open`, `group_events_open`, and worker `resolve_ref` lanes
+must be classified as typed session targets, diagnostics, or migration shims.
+Silent in-memory fallback can be a diagnostic mode; it cannot count as product
+architecture proof.
 
 Highlighter needs NMP features plus Highlighter-owned feature modules for
 capture, share, article reading, curation, room chrome, comments, feedback, and
 podcast surfaces. Its native shells should execute Keychain, OCR, share extension,
 camera, AVPlayer, NIP-55, and connectivity capabilities, then report raw
 results to Rust.
+Highlighter web needs a scope decision before it can count as architecture
+evidence: NMP target runtime, SSR/migration exception, or out of scope. Direct
+NDK reads/writes/signing, direct Blossom/NIP-05 flows, LocalStorage sessions,
+fire-and-forget publish, and TypeScript protocol parsing must not remain both
+shipping product paths and known violations. The Go relay/server boundary stays
+app-owned: NIP-29 group lifecycle/moderation, NIP-42 admission, Blossom,
+LiveKit, search/admin state, and operator policy cross to clients as typed
+server/relay provenance rather than moving into generic NMP crates. Feedback
+can remain reusable protocol surface where appropriate, but Highlighter product
+behavior must not force every NMP app into the Highlighter runtime shape.
+Share extensions and deep links enter one Rust-owned classifier/action path;
+shells report raw activation data rather than parsing protocol meaning.
 
 Podcast Player needs NMP features plus podcast-owned feature modules for playback,
 queue, downloads, feed subscription, OPML/import, transcripts, widgets,
 Blossom-backed publish flows, and agent behavior. RSS, playback, queue, and
 transcript logic must stay in the app Rust crate.
+Podcast service surfaces and app-feature jobs are acceptance tests for the
+Rust-owned boundary. AppIntents, Siri, CarPlay, remote commands, Live
+Activities, Handoff, RSS/OPML, STT/TTS, provider jobs, agents, transcripts, and
+generated artifacts need typed app-feature APIs, durable Rust job rows, injected
+clocks, restart recovery, cancellation, retry/backoff, progress/cost/result, and
+explicit provider-polling exceptions when external providers offer no push or
+webhook. NIP-F4 publishing needs terminal relay/server status, not optimistic
+timestamps. Per-podcast keys must be accepted by ADR as a file-backed named
+product signer store with a clear threat model or replaced by a secure-storage
+capability; there is no "temporary but final" key path. Podcast and other
+downstream apps also need one coherent NMP revision baseline, not mixed
+workspace/path/git/released NMP crates used as architecture proof.
 
 Secondary downstream apps such as 29er and Olas are useful sanity checks but not
 permission to add product nouns to NMP. 29er should prove NIP-29/raw-event/group

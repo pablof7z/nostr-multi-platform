@@ -94,7 +94,12 @@ branching or duplicate route/privacy/protocol state elsewhere.
 
 Current first-slice recommendation: add narrow internal provenance and intent
 records, then carry them through existing publish carriers. A broad
-`PublishContext` is the fallback, not the target. The likely shape is:
+`PublishContext` is the fallback, not the target. Current code does not yet
+satisfy the offline-first ledger rule for all publish paths: durable records are
+too often created after signing or target resolution, and some downstream paths
+report queued/dispatch state as if it were publish completion. P6 must prove a
+real pre-sign durable intent identity before claiming the write architecture is
+solved. The likely shape is:
 
 ```text
 PublishTarget::Explicit {
@@ -103,22 +108,47 @@ PublishTarget::Explicit {
 }
 
 PublishIntentRecord {
-    correlation_id,
-    kind,
+    durable_intent_id,
+    host_correlation_id?,
+    owner,
     stage,
-    event_id?,
+    draft_kind?,
+    signer_selector?,
     signer_pubkey?,
+    event_id?,
+    naddr?,
     route_provenance?,
     route_plan?,
+    local_store_state,
+    signer_state,
+    relay_outcomes,
+    retry_state,
+    cancellation_state,
     error?,
 }
 ```
+
+`durable_intent_id` is not the event id and not just a process correlation id.
+It exists before signing, survives remote-signer parking, restart, retry, cancel,
+and route replanning, and is the identity status outputs use until an event id or
+addressable id exists.
 
 `PublishRouteProvenance` should describe the class, owner, subject, and
 guarantee of an explicit route. Automatic public routing stays `Auto` plus
 resolver reasons. Explicit route classes are protocol host pin, verified private
 inbox, manual override, imported/verbatim, and diagnostic. Product code should
 not be able to construct an unclassified explicit relay list.
+
+Hard route rules:
+
+- private kinds and private envelopes require verified private-inbox provenance;
+  a non-empty `Explicit` relay list is not enough;
+- `h`-tagged/group writes require NIP-29 host-pin provenance or remain
+  imported/manual raw writes with reduced guarantees;
+- pre-signed/imported events never upgrade themselves into protocol-owned
+  provenance after the fact;
+- manual explicit routes are audited opt-outs with owner, reason, and status,
+  not a silent replacement for failed outbox planning.
 
 The missing invariant is route provenance, not a broad context wrapper. The
 publish path must know whether an explicit relay set is a manual override, a
@@ -227,6 +257,20 @@ protocol envelope rules that may depend on the publish call:
   Blossom references, preserve Blossom server provenance, select per-podcast or
   active-account signers, and preserve explicit write-relay provenance.
 - App builders can attach correlation ids and product publish state.
+
+The finalizer result should be narrow. It should return the few facts the
+publish engine needs rather than a broad context object that every protocol can
+mutate freely:
+
+```text
+FinalizedDraft {
+    unsigned_event,
+    signer_selector,
+    route_provenance,
+    privacy_class,
+    local_store_policy,
+}
+```
 
 Finalization must fail before signing if the required context is missing. A
 group publish without a group route, an unknown private inbox, or an unsupported
@@ -449,6 +493,11 @@ The layering is the point: reply, reaction, article, podcast, and app-specific
 builders construct drafts; NIP-29 only finalizes an already-constructed draft for
 group context and host routing. NIP-29 must not depend on NIP-22 or learn reply
 semantics to publish a reply-shaped draft into a group.
+Existing or proposed helpers such as `react_in_group`, `share_event_in_group`,
+or `repost_in_group` are acceptable only as thin compatibility/generated
+wrappers over the one kind-agnostic group finalizer. If they need separate route,
+tag, signer, or status logic, they should be removed from the app-facing model
+instead of becoming another publish namespace.
 
 The app-facing shape should make the three stages visible without making the
 shell own protocol policy:
@@ -585,12 +634,16 @@ migration-scoped with deletion criteria.
 Publish status is a first-class output, not a native side table:
 
 ```text
-correlation id
+durable intent id
+  -> host correlation id
+  -> owner and draft kind
   -> draft accepted/rejected
-  -> signer pending/signed/failed
-  -> locally stored/skipped
+  -> signer selected/pending/signed/failed/cancelled
+  -> locally stored/skipped/rejected
+  -> route class, route owner, redacted context, guarantees
   -> route planned/rejected
-  -> relay ack/error/retry/exhausted
+  -> relay/server ack/error/retry/exhausted
+  -> retry/cancel state
   -> product completion state
 ```
 
