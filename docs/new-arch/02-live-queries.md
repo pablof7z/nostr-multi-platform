@@ -1,7 +1,9 @@
 # Live Queries
 
-A screen, component, widget, or app service opens a typed session for the state
-it wants to render or keep resident:
+A screen or component opens a typed session for the state it wants to render.
+Headless/service-like surfaces use typed actions, short-lived headless
+invocation, capability results, or last Rust-emitted mirror frames first; they
+open typed sessions only after a proof shows resident state is required:
 
 ```text
 open(HomeFeed { account })
@@ -352,6 +354,12 @@ Host-declared demand must also persist before an active account exists. A
 feed-kind or output declaration that only appears after login, Android imperative
 open, or a shell retry can mask a kernel lifecycle bug. The kernel should know
 the dormant demand, then activate or replan it when account state arrives.
+Cache serve is more precise than "replay before live." The first visible frame
+must be allowed to drain the bounded store/cache replay for the declared shape;
+drains are budgeted by visited events, not by arbitrary author caps; completion
+keys wake only the affected sessions; cache-served events notify the projection
+owner without re-entering `store.insert`; and local publish still enters through
+the same read-your-writes store path.
 
 The reconciler must be event-driven. Identity changes, source changes, mailbox
 updates, refcount changes, and store ingest should trigger reconciliation. A
@@ -524,6 +532,11 @@ For author-scoped public reads, planned means outbox/NIP-65 routing unless a
 protocol or feature explicitly proves another route. NIP-29 group hosts,
 protocol-private inboxes, and audited explicit relay reads are exceptions that
 must be visible in the descriptor and in test coverage.
+`LogicalInterest` is semantic acquisition demand, not a demand for one relay
+subscription per author or one product-specific filter recipe. One interest and
+one store query may legitimately cover many authors or kinds when the descriptor
+owns routing, replay, admission, and output. Arbitrary per-author caps are not an
+architecture boundary; bounded replay and wake fanout are.
 
 App-facing examples:
 
@@ -544,7 +557,8 @@ room = app.open(GroupTimeline {
 In the first case NMP resolves author write relays, splits per relay, replays
 cache/store data, and delivers one typed output under the session handle. In the
 second case NMP pins reads to the group host context and rejects replay/live
-events that lack group-route provenance. The shell sees one handle in both cases.
+events that lack read admission proof for that group/relay context. The shell
+sees one handle in both cases.
 
 This rule covers the `nmp_app_open_interest` confusion in #2313: the app should
 not decide whether a profile, feed, group, search, or embed opens a naked
@@ -597,6 +611,10 @@ the target event, the target author's profile, media metadata, relay hints,
 article-card fields, and child refs discovered from the event body. Those child
 claims should share the parent owner lifecycle so closing the embed releases the
 whole demand tree.
+Ref sessions dedupe by ref identity and owner, close explicitly when the owner
+goes away, and guard recursive embeds by depth or cycle identity. A view that
+renders `nprofile`, `note`, `nevent`, or `naddr` text creates data demand, but it
+does not get its own manual relay retry path or shell-owned ref cache.
 
 URI decoding, canonical ref keys, event-reference hints, relay hints, embed kind
 classification, typed article-card fields, and NIP-22 parent/thread identity
@@ -634,6 +652,12 @@ Correctness timers are specifically banned here. A copied-label timer is
 presentation. A `setInterval` that reclaims refs, retries after relay readiness,
 clears dedupe state to make data appear, or repairs missing component output is
 session machinery leaking into the shell and fails the architecture gate.
+Gallery web proof is app-local. Generic browser-runtime OPFS conformance,
+storage-only wasm checks, or TypeScript typechecks do not prove `nmp-gallery`
+unless the package's own wasm build, Worker startup, OPFS lifecycle, generated
+ref adapter, and Playwright path consume the same artifact. Missing wasm or
+Worker support may produce typed diagnostics, but it cannot silently become a
+successful in-memory product runtime for proof purposes.
 
 ## Composite Sessions
 

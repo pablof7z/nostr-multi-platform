@@ -306,6 +306,12 @@ Podcast Player adds a concrete signer proof:
 | NIP-46/bunker signer | parked continuation with timeout/failure owned by Rust, not Swift `Task.sleep` UI policy |
 | NIP-55/platform signer | external signer capability result mapped back to the same signer/publish status stream |
 
+Named product signers stay tied to the publish ledger until every dependent
+show, episode, deletion, upload, or retry record reaches a terminal ack, error,
+retry-exhausted, or cancelled state. Dispatch acceptance, queued/signed status,
+or a timestamp written at enqueue time is not terminal and cannot release the
+signer/key ownership obligation.
+
 The output is a signed event plus signer status updates.
 
 Publishing a pre-signed event is an integration/import path. It still enters
@@ -323,6 +329,12 @@ Default public events use automatic routing:
 author write relays via NIP-65
 plus protocol-required recipient inboxes where applicable
 ```
+
+Relay planning is lane-aware. The pool owns connections, not product policy.
+Outbox routing, NIP-29 host pins, verified NIP-17 inboxes, indexer/search
+relays, fallback/app relays, and manual diagnostic overrides are different route
+classes with different audit guarantees. Collapsing them into one explicit relay
+list is the architecture problem.
 
 Manual relay selection is an explicit opt-out:
 
@@ -378,6 +390,11 @@ The final architecture is not proven while these paths return only constructed
 event JSON, `queued`/`signed`, `relay_pending`, optimistic timestamps, or
 `publish_dispatched`. They must build, sign, route, store, publish, and emit
 ack/error/retry/exhausted status through the same Rust-owned publish stream.
+Capability results that affect signed event bytes are prerequisites, not
+post-signing mutations. For NIP-F4 this means media upload, content hash,
+Blossom server selection, and the final media reference must complete or fail as
+Rust-owned state before the show/episode event is finalized and signed. A
+post-hoc Blossom reference rewrite after signing is invalid.
 Blossom server selection follows the same rule as relay selection: native may
 execute upload/download capabilities, but Rust owns which server list is valid,
 why an explicit server is allowed, and how that status is reported.

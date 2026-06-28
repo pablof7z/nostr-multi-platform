@@ -84,7 +84,7 @@ catalog state. They use NMP features, but they do not become NMP crates unless
 the mechanism is useful to other Nostr apps.
 
 Home feed is a composition proof case, not a privileged framework feature. A
-microblog app may install a home-feed bundle that uses NIP-02 follows, NIP-65
+microblog app may install a home-feed feature set that uses NIP-02 follows, NIP-65
 outbox routing, profile refs, event refs, ranking, mute policy, and app-owned
 fallbacks. Those reusable mechanisms belong in NMP; the product meaning of
 "home" belongs in the app or a reusable feed crate only if it is genuinely a
@@ -237,6 +237,11 @@ binding generation may be worth pulling forward if it retires duplicated JNI
 work; a full iOS binding migration is a separate decision unless the ADR
 explicitly reopens it. Binding churn that preserves the same old read/write
 doors is not simplification.
+Generated transport work must carry real drift gates: pinned schema/tool
+versions, ABI/header checks, cross-language golden fixtures for Rust, Swift,
+Kotlin, and TypeScript where shipped, decode validation, `u64`/BigInt handling,
+and case-conversion collision tests. A generated adapter that compiles but can
+silently decode a different payload shape is just a cleaner-looking old bug.
 
 The binding maintenance tax is real. Highlighter, Podcast Player, and gallery
 all show hand-maintained Swift/Kotlin/TypeScript/TUI glue, row caches, JNI/C-ABI
@@ -464,13 +469,13 @@ Today's gallery bridge still teaches old architecture through
 URI/ref adapters; the migration proof is not complete until those are replaced
 or explicitly scoped as tutorial/showcase compatibility.
 
-Highlighter needs NMP features plus Highlighter-owned bundles for capture,
-share, article reading, curation, room chrome, comments, feedback, and podcast
-surfaces. Its native shells should execute Keychain, OCR, share extension,
+Highlighter needs NMP features plus Highlighter-owned feature modules for
+capture, share, article reading, curation, room chrome, comments, feedback, and
+podcast surfaces. Its native shells should execute Keychain, OCR, share extension,
 camera, AVPlayer, NIP-55, and connectivity capabilities, then report raw
 results to Rust.
 
-Podcast Player needs NMP features plus podcast-owned bundles for playback,
+Podcast Player needs NMP features plus podcast-owned feature modules for playback,
 queue, downloads, feed subscription, OPML/import, transcripts, widgets,
 Blossom-backed publish flows, and agent behavior. RSS, playback, queue, and
 transcript logic must stay in the app Rust crate.

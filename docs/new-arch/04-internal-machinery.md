@@ -373,6 +373,11 @@ is polling, not media sampling.
 
 Every remaining tick observer or timer that touches reducer/session state needs
 an explicit invariant, owner, and deletion or formalization decision.
+This includes `recv_timeout` or timeout-based cancellation loops when they are
+used as readiness checks. Blocking receive, explicit cancellation messages, OS
+callbacks, capability results, and actor wake events are fine; "wake up every N
+milliseconds and see whether the condition changed" is polling regardless of the
+primitive used.
 
 Downstream audits must classify timers before judging them. The
 `no_polling_downstream_gate` should report at least these buckets:
@@ -431,7 +436,7 @@ The ladder is useful because it names the forces that must keep converging:
 | C. Session descriptor | one typed lifecycle owner over acquisition, replay, sink, output, and teardown | one simple real session migrated without a new engine or public `ObservedProjection` API |
 | D. Shape/source reconciliation | follow/list/group/thread/embed/account/ref source sets | private reconciler proof for source arrival, withdrawal, empty-source fail-closed, fallback, account switch, replay, route replanning, and teardown |
 | E. Output/projection contract | projection ownership, schema/version, sidecars, host caches | one owner per output key, collision failure, shared merge semantics across generated/host adapters |
-| F. Read routing/admission | outbox routing, relay-pinned sessions, private reads, explicit overrides | route provenance in read descriptors and replay/live admission; no shell relay policy |
+| F. Read routing/admission | outbox routing, relay-pinned sessions, private reads, explicit overrides | read route policy plus relay/source admission proof in descriptors and replay/live admission; no shell relay policy |
 | G. Write routing/publish | publish intent ledger, event construction/finalization, signer selection, publish route provenance | one publish doorway distinguishes automatic, host-pinned, verified inbox, manual, and imported routes while preserving local offline-first status |
 | H. Input/ref/action classification | user text, NIP refs, relay URLs, NIP-05, search, app scopes, diagnostics | one Rust-owned classifier maps arbitrary input into typed refs, sessions, actions, or rejection; no shell protocol parsing |
 | I. Signer/status runtime | local, NIP-07, NIP-46, NIP-55-style, named product, agent, imported event | Rust-owned pending/ready/failed/signed status and parked continuation model across platforms |
@@ -527,6 +532,23 @@ after the route-provenance carrier can be attempted inside the existing publish
 path. Do not start with a clean-room demo unless the goal is only documentation
 UAT; it cannot prove old surfaces shrink.
 
+Near-term slice contracts:
+
+| Slice | First seam to try | PR-sized acceptance | Failing answer |
+|---|---|---|---|
+| P-1a source-of-truth/public-door dossier | live symbols, current issue bodies, current ADR/doc owners | every old read/write/defaults/projection/runtime door is classified as delete, private, formalize, diagnostic/test, or migration with owner/support window/removal gate | stale docs or closed issue text are treated as compatibility requirements |
+| P0a ratchet baseline | `rg` inventories plus `nmp-testing` doctrine gates | old-pattern counts have exact commands, path exclusions, baseline commit, owner, and "does not increase" enforcement path | illustrative grep counts become a fake gate no one can reproduce |
+| P0b explicit composition/defaults proof | existing `register_substrate`, native/browser builders, explicit installers | one production start/scaffold stops hiding social defaults while substrate remains easy to install; any preset is labeled tutorial/migration/test with consumers and deletion/formalization gate | a new builder/bundle object wraps `register_defaults()` while hidden composition remains the normal path |
+| P1 first typed read descriptor proof | existing feed/session or observed-session machinery, not a new engine | one real caller owns acquisition, route/admission, replay, sink, output, wakes, status, and teardown; one old open/replay/output/close recipe is deleted, privatized, or migration-scoped | descriptor/handle is a facade and the caller still assembles `open_interest`, `ObservedProjection`, sidecars, output declarations, or close tokens |
+| P2 event-driven reconciliation proof | existing identity/source/mailbox/refcount event hooks and #2307 controller copies | tick-polled account/source observed-projection repair is deleted where events exist; remaining tick use is classified with owner and deletion/formalization gate | a fifth reconciler or compatibility alias is added around the old polling semantics |
+| P6 route-provenance proof, if write risk replaces P2/P1 | existing `PublishTarget`, `RelaySelectionReason`, `PublishRecord`, parked signer obligation, and status pipeline | one producer that still knows route meaning supplies provenance class/reason through build/finalize, signing, retry/resume, local ingest, and status without reviving `RoutingContext::explicit_targets` | route provenance requires a broad second publish context while `Explicit { relays }` remains product-equal and anonymous |
+
+The first implementation wave should normally choose P-1a, P0a, P0b, P1, and
+P2. Swap P6 into that wave only if write provenance is the current ADR-blocking
+risk. Downstream matrices, browser storage, generated catalogs, and broader
+P3-P8 gates guide the next selection, but they are not excuses to delay the
+smallest proof that one old lifecycle recipe can actually disappear.
+
 Every implementation slice should have this shape:
 
 ```text
@@ -592,19 +614,20 @@ normal path.
 
 | Rung | Proof | Continue only if | Stop or narrow if |
 |---|---|---|---|
-| 0. Classified baseline | every old door is production/internal/test/doc/migration/delete, with live issue state checked | the team knows what is being deleted, privatized, or formalized; closed issue bodies are treated as invariants, not active architecture mandates | important callers remain unclassified or stale issue/wiki wording is treated as current truth |
-| 1. Clean-room app path | a generated/scaffolded app opens and renders one feature without old internals | the app author never touches `open_interest`, projection tiers, or sidecars | tutorial still teaches hidden defaults or low-level read machinery |
-| 2. First lifecycle owner | one simple real session owns acquisition, replay, sink, output, wakes, status, and teardown | old recipe count decreases or is compatibility-scoped | typed descriptor/handle wraps the old recipe without retiring it |
-| 3. Event-driven reconciliation | #2307-style reconcilers collapse and tick polling is removed where event hooks exist | duplicate controllers and account/source polling disappear | a fifth reconciler or compatibility alias is added |
+| 0. Classified baseline | every old door is production/internal/test/doc/migration/delete, with live issue state checked | the team knows what is being deleted, privatized, or formalized; closed issue bodies are treated as evidence, not active architecture mandates | important callers remain unclassified or stale issue/wiki wording is treated as current truth |
+| 1. First lifecycle owner | one simple real session owns acquisition, replay, sink, output, wakes, status, and teardown | old recipe count decreases or is compatibility-scoped | typed descriptor/handle wraps the old recipe without retiring it |
+| 2. Event-driven reconciliation | #2307-style reconcilers collapse and tick polling is removed where event hooks exist | duplicate controllers and account/source polling disappear | a fifth reconciler or compatibility alias is added |
+| 3. Clean-room app UAT | a generated/scaffolded app opens and renders one migrated feature after a real lifecycle proof exists | the app author never touches `open_interest`, projection tiers, or sidecars | tutorial/demo code is used as proof while old callers remain untouched |
 | 4. Output/adapter contract | one output uses generated/contract-tested full/delta/clear/stale/poison semantics across shells | shell caches are render adapters only | any shell owns independent merge or product cache semantics |
-| 5. Route provenance | explicit publish/read routes retain class and reason through status/replay/retry | anonymous explicit-route paths collapse to one carrier or are deleted | provenance requires a broad new wrapper while old routes remain |
+| 5. Publish route provenance and read admission proof | write routes retain class/reason through status/retry, and reads reject replay/live events without route/source proof | anonymous explicit-route and relay-pinned read paths collapse to one carrier or are deleted | publish provenance requires broad wrapper plumbing or read-side proof leaks into shell relay policy |
 | 6. Downstream proof | Highlighter, Podcast Player, and gallery matrices pass or trigger kill criteria | no app exports Nostr policy into native shells or NMP app nouns | a downstream app needs native-owned policy to ship |
 | 7. Retirement | accepted facts move into durable docs/issues and `docs/new-arch` is retired | this packet is no longer needed as current authority | docs/new-arch becomes a parallel plan |
 
-Each rung has a stop point. If rungs 1-3 do not reduce concepts or call sites,
-the architecture should be narrowed before touching downstream apps. If rungs
-4-6 require app shells to own Nostr policy, the architecture is preserving NMP by
-exporting complexity and should be rejected.
+Each rung has a stop point. If rungs 1-2 do not reduce concepts or call sites,
+the architecture should be narrowed before touching downstream apps. If rung 3
+works only as a demo while real callers still use old recipes, it is not proof.
+If rungs 4-6 require app shells to own Nostr policy, the architecture is
+preserving NMP by exporting complexity and should be rejected.
 
 **P-1: Concept disposition and live-consumer audit.**
 Before P0 inventory turns into implementation work, classify every disputed
@@ -710,7 +733,10 @@ reconcilers, `register_defaults`, `declare_consumed_projections` /
 `consume_all_builtin_projections`, explicit publish routes, snapshot tick
 observers, browser degraded-runtime fallbacks, and gallery reclaim loops.
 
-The output is a public-door disposition ledger:
+The output is a public-door disposition ledger. The table below is the required
+template; the actual P-1 artifact is incomplete until every `classify` placeholder
+is replaced with live `rg` evidence, owner issue, support window if retained, and
+target disposition.
 
 | Door/concept | Live production callers | Non-production callers | Target disposition | First deletion/formalization proof |
 |---|---:|---:|---|---|
@@ -792,10 +818,14 @@ Gates: `cargo test -p nmp-testing --test doctrine_lint_smoke` and
 Add the smallest private descriptor facade that compiles into
 `ObservedProjection::from_shape`, `OpenObservedInterest`, replay limits,
 consumer ids, relay pins, and close. Do not add a new lifecycle engine. Use one
-real session as proof. Acceptance: replay-before-live and close-both invariants
+real session as proof. The default first candidate is the existing feed-session
+path because it already owns compile, teardown, and close; choose a different
+caller only if the P-1 dossier names the specific surface and why it is a better
+proof. Acceptance: replay-before-live and close-both invariants
 still pass in observer replay, descriptor idempotence, reducer parity, and
 `nmp-defaults` feed open/close tests; no new public API is taught. The proof
-must cover relay pins, cache replay, source changes, and open/close teardown.
+must cover the chosen caller's route policy, cache replay, dependency/source
+changes if that caller has them, and open/close teardown.
 The migrated session must publish a session-family contract covering
 acquisition, route planning, replay, live sink, admission, output, wakes,
 teardown, and error/status state. If any fragment remains caller-authored
@@ -897,7 +927,10 @@ product state.
 Missing wasm, missing Worker storage, or OPFS/SQLite open failure may produce
 typed diagnostics, but it cannot silently become a successful in-memory product
 runtime for proof purposes. The web runtime either proves the durable worker path
-or the e2e gate fails closed.
+or the e2e gate fails closed. P4 may classify and fail-close web without
+counting that as browser proof. It counts as browser proof only when the app
+package's own wasm build, Worker startup, OPFS lifecycle, generated ref adapter,
+and Playwright path consume the same artifact.
 P4 starts only after P1 proves the descriptor lifecycle and P3 proves output
 ownership/merge semantics. It is the first real migrated session family across
 all shells, not a prerequisite for the minimal descriptor proof.
@@ -1041,7 +1074,7 @@ Required gallery matrix shape:
 
 | Flow family | Current path to classify | Target proof | Deletion/exception criterion |
 |---|---|---|---|
-| Web runtime | deferred `build:wasm`, TS-only app check, raw Worker `resolve_ref`/`release_ref`, retry/reclaim loop | `web/nmp-gallery build:wasm` stages the `nmp-browser-runtime::wasm` artifact; gallery build plus Playwright run in CI; degraded/no-wasm/no-worker mode fails closed | no correctness `setInterval`; raw worker protocol hidden or deleted |
+| Web runtime | deferred `build:wasm`, TS-only app check, raw Worker `resolve_ref`/`release_ref`, retry/reclaim loop | `web/nmp-gallery build:wasm`, Worker startup, OPFS lifecycle, generated ref adapter, and Playwright consume the same `nmp-browser-runtime::wasm` artifact; degraded/no-wasm/no-worker mode fails closed | no correctness `setInterval`; raw worker protocol hidden or deleted; generic browser conformance is not used as gallery proof |
 | Component refs/embeds | Swift/Kotlin/TS/TUI/desktop URI/ref adapters, raw namespace/shape/liveness constants, worker payloads, and claim loops | typed `ProfileRef`/`EventEmbed` sessions plus generated or contract-tested host handles; refs survive relay readiness/reconnect without shell retry; open/close tests reject duplicate/stale rows | shell adapters are generated/lifecycle-only, not protocol policy |
 | Merge/cache parity | hand caches and `projection_merge_cache` variants | full/delta/clear/tombstone/stale/decode-poison/baseline tests across shells | no platform owns independent merge semantics |
 | Browser storage/degraded mode | OPFS/SQLite/Worker preparation, in-memory fallback, Web Locks/tab contention, quota/private-mode failure | durable second-launch, offline read, offline publish queue, second-tab policy, private/quota failure, and explicit gallery UI/status behavior for in-memory fallback | no silent in-memory success in product proof |
