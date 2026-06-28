@@ -271,7 +271,7 @@ The proof app is the substrate for cross-platform consistency tests (§3.5): the
 | `docs/aim.md` | North star | Stable |
 | `docs/product-spec.md` | This doc | Stable, versioned |
 | `docs/design/*.md` | Per-subsystem design docs (filled in by the next session) | Iterates |
-| `docs/recipes/*.md` | How to build common features (timeline, thread, zap, DM, group) | Iterates |
+| [`docs/recipes/`](../recipes/) | Recipe book for common app shapes and feature integrations | Iterates |
 | [`docs/nips.md`](../nips.md) | NIP support matrix and browser signer capability caveats | Iterates |
 | `docs/migration.md` | Upgrade guidance per minor/major | Iterates |
 
@@ -372,9 +372,9 @@ Registry components promise:
   composition, but they are not the happy path for app screens.
 - **Self-managed reactivity.** A mounted component resolves the Rust-owned facts
   it needs, observes the Rust-produced projection for that reference
-  (`refs.profile` for profile rows, resolved event-ref/embed envelope maps for
-  event embeds), redraws through the native UI mechanism, and releases the
-  reference when no longer visible.
+  (`refs.profile` for profile rows, authoritative `refs.event` rows plus
+  derived `refs.event.envelopes` render data for event embeds), redraws through
+  the native UI mechanism, and releases the reference when no longer visible.
 - **One shell adapter.** Apps wire the registry host once at the platform shell
   boundary (`.nmpComponentHost(...)` for SwiftUI,
   `NmpComponentHostProvider(...)` for Compose). Feature screens do not call
