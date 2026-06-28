@@ -6,7 +6,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use crate::ObservedProjectionHandle;
+use nmp_core::substrate::ObservedProjectionCommandHandle;
 use nmp_core::substrate::ObservedProjection;
 use nmp_core::{ObservedProjectionId, ObservedProjectionSink};
 use nmp_feed::TeardownAction;
@@ -16,7 +16,7 @@ type LiveShape = Arc<dyn Fn() -> Option<InterestShape> + Send + Sync>;
 
 #[derive(Clone)]
 pub(super) struct DynamicObservedProjection {
-    handle: ObservedProjectionHandle,
+    handle: ObservedProjectionCommandHandle,
     observer: Arc<dyn ObservedProjectionSink>,
     consumer_id: String,
     scope: u32,
@@ -27,7 +27,7 @@ pub(super) struct DynamicObservedProjection {
 
 impl DynamicObservedProjection {
     pub(super) fn new(
-        handle: ObservedProjectionHandle,
+        handle: ObservedProjectionCommandHandle,
         observer: Arc<dyn ObservedProjectionSink>,
         consumer_id: impl Into<String>,
         scope: u32,

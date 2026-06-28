@@ -58,16 +58,16 @@ pub use builder::{
 pub use debug_info::{empty_debug_info_json, DOMAIN_COMPOSITION, DOMAIN_MERGED, DOMAIN_ROUTING};
 pub use feed::{
     decode_and_validate_feed_params, validate_feed_params, FeedAdmission, FeedHandle, FeedParams,
-    FeedParamsDecodeError, FeedParamsError, FeedRanking, FeedRender, FeedScope, FeedSessionId,
-    FeedWindow, ProjectionKey, PubkeySetExpr,
+    FeedParamsDecodeError, FeedRanking, FeedRender, FeedScope, FeedSessionId, FeedWindow,
+    ProjectionKey, PubkeySetExpr,
 };
+pub use nmp_nip18::PrimaryKindError;
 pub use feed_session::{handle_projection_key, FeedCompiler, FeedOpenError, FeedTeardown};
 pub use group_feed::{GroupFeedToken, DISCOVERED_GROUPS_KEY, GROUP_EVENTS_KEY, JOINED_GROUPS_KEY};
 pub use intent::InputIntentDispatch;
 pub use nmp_core::substrate::ObservedProjectionCommandHandle;
 pub use nmp_feed::FeedSessionBuild;
 pub use nmp_nip50::SearchRequest;
-pub use observed_projection_handle::ObservedProjectionHandle;
 pub use op_feed_defaults::{
     compile_feed_params, register_op_feed_defaults, register_op_feed_defaults_with_mute,
     OpFeedDefaults,

@@ -66,10 +66,10 @@ mod timeline;
 
 pub use nmp_native_runtime::{
     decode_and_validate_feed_params, handle_projection_key, validate_feed_params, FeedAdmission,
-    FeedCompiler, FeedHandle, FeedOpenError, FeedParams, FeedParamsDecodeError, FeedParamsError,
-    FeedRanking, FeedRender, FeedScope, FeedSessionBuild, FeedSessionId, FeedTeardown, FeedWindow,
-    GroupFeedToken, IdentityChangeObserverId, NmpApp, NmpConfigStatus,
-    ObservedProjectionCommandHandle, ProjectionKey, PubkeySetExpr,
+    FeedCompiler, FeedHandle, FeedOpenError, FeedParams, FeedParamsDecodeError, FeedRanking,
+    FeedRender, FeedScope, FeedSessionBuild, FeedSessionId, FeedTeardown, FeedWindow, GroupFeedToken,
+    IdentityChangeObserverId, NmpApp, NmpConfigStatus, ObservedProjectionCommandHandle,
+    PrimaryKindError, ProjectionKey, PubkeySetExpr,
 };
 
 pub use app_ctor::nmp_app_new;

@@ -47,7 +47,7 @@ use nmp_feed::{
 pub enum FeedOpenError {
     /// The declared [`FeedParams`] failed primary-kind validation (wrapper /
     /// delete / empty primary kinds). Carries the underlying typed error.
-    InvalidParams(crate::FeedParamsError),
+    InvalidParams(nmp_nip18::PrimaryKindError),
     /// The declared [`nmp_feed::FeedScope`] is recognised by the model but not
     /// yet wired by this step. Step 3 (the full perspective compiler) lands the
     /// remaining variants; until then they fail closed with this typed error
