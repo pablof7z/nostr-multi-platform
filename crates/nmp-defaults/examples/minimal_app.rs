@@ -7,8 +7,8 @@
 //!
 //! 1. `NmpAppBuilder` is the single entry-point for Rust composition roots.
 //! 2. `register_defaults` is the one function a new Nostr app calls to get the
-//!    standard NMP wiring (NIPs 02/17/57/65, routing substrate, coverage hook,
-//!    DM-inbox + zap-receipts runtimes, WOT bootstrap).
+//!    standard NMP wiring (NIPs 02/17/65, routing substrate, coverage hook,
+//!    DM-inbox runtime, WOT bootstrap).
 //! 3. The builder's typestate enforces that a storage decision AND an
 //!    ADR-0053 projection-consumption decision are both made before `start()`
 //!    — if `.in_memory()` (or `.storage_path(p)`) or the projection step
@@ -24,10 +24,10 @@ fn main() {
     // 1. Start the builder.
     let mut builder = NmpAppBuilder::new();
 
-    // 2. Inherit the canonical NMP composition: NIP-02/17/57/65 action
+    // 2. Inherit the canonical NMP composition: NIP-02/17/65 action
     //    modules, NIP-17 ingest parser (kind:10050), production routing
     //    substrate (GenericOutboxRouter + InMemoryMailboxCache), D2 coverage
-    //    hook, and the DM-inbox + zap-receipts + WOT runtime controllers.
+    //    hook, and the DM-inbox + WOT runtime controllers.
     nmp_defaults::register_defaults(&mut builder);
 
     // 3. (Optional) Register any app-specific projections / actions / search
@@ -60,11 +60,10 @@ fn main() {
     println!("nmp-defaults: NmpAppBuilder → start() complete.");
     println!("  - NIP-02 social actions wired");
     println!("  - NIP-17 DM action + kind:10050 ingest parser wired");
-    println!("  - NIP-57 zap action wired");
     println!("  - NIP-65 kind:10002 publish action wired");
     println!("  - GenericOutboxRouter + InMemoryMailboxCache substrate installed");
     println!("  - D2 coverage hook installed");
-    println!("  - DM-inbox + zap-receipts + WOT runtime controllers registered");
+    println!("  - DM-inbox + WOT runtime controllers registered");
     println!("  - Kernel started (in-memory store)");
 
     // 5. Tear down.

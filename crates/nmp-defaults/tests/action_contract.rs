@@ -84,10 +84,11 @@ fn contract_matches_modules_and_default_payload_reexports() {
             nmp_nip17::PublishDmRelayListAction,
             action_payloads::PublishDmRelayListInput,
         >("nmp.nip17.publish_relay_list"),
-        assert_contract::<nmp_nip57::ZapAction, action_payloads::ZapInput>("nmp.nip57.zap"),
         assert_contract::<nmp_nip84::PublishHighlightModule, action_payloads::PublishHighlightAction>(
             "nmp.nip84.publish_highlight",
         ),
+        // Zaps are post-v1 and no longer part of `register_defaults`; checked
+        // directly below like other opt-in protocol surfaces.
         // Wallet (opt-in via `with_wallet`; nmp_nip47 available via the
         // `native` default feature). Not in `action_payloads` (only default
         // registrations appear there), so checked directly from nmp_nip47.
@@ -103,15 +104,17 @@ fn contract_matches_modules_and_default_payload_reexports() {
     ];
 
     let checked: BTreeSet<&str> = checked.into_iter().collect();
+    // `ActionDefaultTier::Zaps` is post-v1 opt-in (#2318).
     // `ActionDefaultTier::Marmot` is a feature-gated dep (`nmp-marmot`) not
     // available in `nmp-defaults`. `ActionDefaultTier::ComponentRegistered` covers
     // crates (nmp-blossom, nmp-relations) wired at app-assembly time, not by
-    // nmp-defaults. Filter both from the contract set so the set-equality assertion
-    // does not require those crates as deps here.
+    // nmp-defaults. Filter those from the contract set so the set-equality assertion
+    // does not require non-default rows or crates here.
     let contract: BTreeSet<&str> = nmp_codegen::ACTION_CONTRACT
         .iter()
         .filter(|c| {
-            c.default_tier != nmp_codegen::ActionDefaultTier::Marmot
+            c.default_tier != nmp_codegen::ActionDefaultTier::Zaps
+                && c.default_tier != nmp_codegen::ActionDefaultTier::Marmot
                 && c.default_tier != nmp_codegen::ActionDefaultTier::ComponentRegistered
         })
         .map(|c| c.namespace)
@@ -120,6 +123,7 @@ fn contract_matches_modules_and_default_payload_reexports() {
         checked, contract,
         "every action contract row must be checked against its module \
          namespace and payload type (wallet rows checked via nmp_nip47 directly; \
+         zap rows excluded — post-v1 opt-in, not a default payload surface; \
          marmot rows excluded — nmp-marmot is a feature-gated dep not available \
          in nmp-defaults; component-registered rows excluded — wired at app-assembly \
          time, not by nmp-defaults)"
@@ -135,6 +139,11 @@ fn component_registered_contract_rows_match_available_modules() {
         nmp_defaults::topic_articles::TopicArticlesModule,
         nmp_defaults::topic_articles::TopicArticlesAction,
     >("nmp.app.topic_articles");
+}
+
+#[test]
+fn opt_in_zap_contract_row_matches_protocol_module() {
+    assert_contract::<nmp_nip57::ZapAction, nmp_nip57::ZapInput>("nmp.nip57.zap");
 }
 
 #[test]

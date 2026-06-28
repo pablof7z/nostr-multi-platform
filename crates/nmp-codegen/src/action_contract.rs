@@ -20,7 +20,10 @@ pub enum ActionDefaultTier {
     Social,
     /// Registered when `NmpDefaults.dms` is enabled.
     DirectMessages,
-    /// Registered when `NmpDefaults.zaps` is enabled.
+    /// Registered only when an app explicitly opts into post-v1
+    /// `NmpDefaults.zaps` wiring. Excluded from
+    /// [`canonical_default_action_namespaces`] because zaps are not v1
+    /// defaults (#2318).
     Zaps,
     /// Registered opt-in via `NmpAppBuilder::with_wallet` — NOT part of the
     /// default composition. Excluded from [`canonical_default_action_namespaces`]
@@ -138,13 +141,14 @@ pub fn contract_for(namespace: &str) -> &'static ActionContract {
 }
 
 /// Sorted namespaces for the canonical default composition, including the
-/// `nmp-core` built-in publish action. Wallet and Marmot namespaces are opt-in
-/// and are excluded from this set so the `register_defaults` matching test stays
-/// green on both no-wallet and no-marmot builds.
+/// `nmp-core` built-in publish action. Wallet, Zap, Marmot, and
+/// component-registered namespaces are opt-in and are excluded from this set so
+/// the `register_defaults` matching test stays green on the default build.
 #[must_use]
 pub fn canonical_default_action_namespaces() -> Vec<&'static str> {
     sorted_namespaces(|c| {
         c.default_tier != ActionDefaultTier::Wallet
+            && c.default_tier != ActionDefaultTier::Zaps
             && c.default_tier != ActionDefaultTier::Marmot
             && c.default_tier != ActionDefaultTier::ComponentRegistered
     })

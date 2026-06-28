@@ -228,7 +228,7 @@ fn register_substrate_is_routable_but_social_free() {
 
 /// `register_defaults_with(default)` ≡ `register_defaults`: the same action
 /// namespaces register, and the same social runtimes appear. This pins the
-/// "zero behaviour change for `register_defaults()`" contract.
+/// no-arg composition contract.
 #[test]
 fn register_defaults_with_default_equals_register_defaults() {
     // Reference app via the legacy entry point.
@@ -299,9 +299,12 @@ fn register_defaults_with_toggles_skip_their_blocks() {
             is_registered(app, "nmp.nip65.publish_relay_list"),
             "substrate must remain wired regardless of social toggle"
         );
-        // Other toggles untouched.
+        // Other v1 toggles untouched.
         assert!(is_registered(app, "nmp.nip17.send"), "dms still on");
-        assert!(is_registered(app, "nmp.nip57.zap"), "zaps still on");
+        assert!(
+            !is_registered(app, "nmp.nip57.zap"),
+            "zaps are post-v1 and default off"
+        );
         free_app_ptr(app);
     }
 
@@ -325,7 +328,7 @@ fn register_defaults_with_toggles_skip_their_blocks() {
         free_app_ptr(app);
     }
 
-    // `zaps: false` → no nip57 action.
+    // `zaps: false` remains the default → no nip57 action.
     {
         let app = new_app_ptr();
         let cfg = nmp_defaults::NmpDefaults {
@@ -336,6 +339,22 @@ fn register_defaults_with_toggles_skip_their_blocks() {
         assert!(
             !is_registered(app, "nmp.nip57.zap"),
             "zaps:false must skip nip57"
+        );
+        assert!(is_registered(app, "nmp.follow"), "social still on");
+        free_app_ptr(app);
+    }
+
+    // Explicit post-v1 opt-in still wires the existing NIP-57 action bundle.
+    {
+        let app = new_app_ptr();
+        let cfg = nmp_defaults::NmpDefaults {
+            zaps: true,
+            ..Default::default()
+        };
+        nmp_defaults::register_defaults_with(unsafe { &mut *app }, cfg);
+        assert!(
+            is_registered(app, "nmp.nip57.zap"),
+            "zaps:true must opt into nip57"
         );
         assert!(is_registered(app, "nmp.follow"), "social still on");
         free_app_ptr(app);
