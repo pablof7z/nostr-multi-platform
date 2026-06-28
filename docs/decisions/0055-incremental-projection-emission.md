@@ -431,16 +431,15 @@ full replacement of that projection (state, not patches); (2) the host advances
 discipline: semantic change ⇒ rev advances; an emitted row ⇒
 `last_emitted = rev`.
 
-### HA-5. Tier-1 host projections stay always-Changed — `D3-7`
+### HA-5. Dynamically registered output stays always-Changed — `D3-7`
 
-Tier-1 host projections (feed, follow_list, wallet, dm_inbox, marmot, zaps, …)
-are NOT rev-gated in this iteration. The invariant that makes this safe (rather
-than a stale-cache hazard) is strict: an unregistered Tier-1 projection is
-emitted (`Changed`) whenever it is live and explicitly `Cleared` when it goes
-absent — **never silently omitted** (the host cache-merge would otherwise retain
-a stale Tier-1 value forever). The cache-merge layer treats a Tier-1 key (no
-manifest entry, default `state = Changed`) as always-overwrite. Tier-1 rev
-registration / feed row-deltas are a later rung (D8).
+Dynamically registered output keys (feed, follow_list, wallet, dm_inbox, marmot,
+zaps, and similar session/protocol outputs) are not rev-gated in this iteration.
+The invariant that makes this safe rather than a stale-cache hazard is strict: a
+registered key is emitted (`Changed`) whenever it is live and explicitly
+`Cleared` when it goes absent, never silently omitted. The host cache-merge layer
+treats these keys as always-overwrite. Per-key rev registration and feed
+row-deltas are later D8 work.
 
 ### HA-6. `Cleared` is a synthesized payload-less typed row, never a manifest tombstone
 
@@ -455,8 +454,8 @@ that HA-4 deliberately removes. This keeps the host apply path a pure cache-merg
 over the typed row set (`Cleared` ⇒ `cache.remove(key)`), with no second wire
 surface, which is the HA-3/HA-4 invariant. The `Cleared` edge is edge-triggered
 (fires exactly once on the transition) and is never synthesized for an
-unconditional Tier-2 key (a `Changed`-but-absent unconditional key is a producer
-bug, asserted, never silently cleared).
+unconditional built-in key (a `Changed`-but-absent unconditional key is a
+producer bug, asserted, never silently cleared).
 
 ---
 

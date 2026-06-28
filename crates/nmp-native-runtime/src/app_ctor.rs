@@ -8,10 +8,10 @@ use std::thread;
 
 use crate::passive_start::ActorStarter;
 use nmp_core::__ffi_internal::{
-    ActorChannels, ActorConfigSources, ActorRuntimeSlots, default_registry, new_app_relay_slot,
-    new_bunker_handshake_slot, new_capability_callback_slot, new_event_observer_slot,
-    new_lifecycle_observer_slot, new_signer_state_slot, new_snapshot_projection_slot,
-    run_actor_with_observers,
+    default_registry, new_app_relay_slot, new_bunker_handshake_slot, new_capability_callback_slot,
+    new_event_observer_slot, new_lifecycle_observer_slot, new_signer_state_slot,
+    new_snapshot_projection_slot, run_actor_with_observers, ActorChannels, ActorConfigSources,
+    ActorRuntimeSlots,
 };
 use nmp_core::slots::{
     new_active_account_slot, new_active_local_keys_slot, new_event_store_slot,
@@ -24,8 +24,9 @@ use nmp_core::subs::PlanCoverageHook;
 use nmp_core::substrate::new_external_event_sink_dispatcher_slot;
 
 use crate::app_struct::{
-    NmpApp, new_identity_change_observer_slot, new_search_relay_source_slot,
-    new_update_listener_slot, notify_identity_change_observers,
+    new_configured_relays_change_observer_slot, new_identity_change_observer_slot,
+    new_search_relay_source_slot, new_update_listener_slot,
+    notify_configured_relays_change_observers, notify_identity_change_observers, NmpApp,
 };
 use crate::app_sub_structs::{CapabilityPorts, CompositionConfig, ReadHandles};
 
@@ -86,6 +87,11 @@ pub fn new_app() -> NmpApp {
     let listener_identity_change_observers = Arc::clone(&identity_change_observers);
     let listener_active_account = Arc::clone(&active_account_handle);
     let listener_last_active_account = Arc::new(Mutex::new(None));
+    let configured_relays_change_observers = new_configured_relays_change_observer_slot();
+    let listener_configured_relays_change_observers =
+        Arc::clone(&configured_relays_change_observers);
+    let listener_configured_relays = Arc::clone(&configured_relays);
+    let listener_last_configured_relays = Arc::new(Mutex::new(Vec::new()));
     // V-83 — event-store publish-back slot.
     let event_store_handle = new_event_store_slot();
     let actor_event_store = Arc::clone(&event_store_handle);
@@ -265,6 +271,11 @@ pub fn new_app() -> NmpApp {
                 &listener_last_active_account,
                 &listener_identity_change_observers,
             );
+            notify_configured_relays_change_observers(
+                &listener_configured_relays,
+                &listener_last_configured_relays,
+                &listener_configured_relays_change_observers,
+            );
             // Quiescence-safe callback invocation (option b — Condvar drain).
             let listener = {
                 // D6 fail-loud: recover from poisoned lock rather than silently
@@ -300,6 +311,7 @@ pub fn new_app() -> NmpApp {
         update_listener,
         identity_change_observers,
         next_identity_change_observer_id: AtomicU64::new(1),
+        configured_relays_change_observers,
         capability_callback,
         lifecycle_observer,
         event_observers,

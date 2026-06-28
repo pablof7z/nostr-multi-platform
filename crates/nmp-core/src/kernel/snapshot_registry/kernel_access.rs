@@ -3,8 +3,8 @@
 //! Extracted from `snapshot_registry.rs` to keep that file within its LOC
 //! ceiling. These are the methods `make_update` (and the `Reset` dispatch arm)
 //! call to read the host-extensible registry through the `Arc<Mutex<…>>` slot the
-//! actor binds onto the kernel: the typed projection runs, the per-tick
-//! observers, and — ADR-0053 — the host-declared consumed-projection set.
+//! actor binds onto the kernel: the typed projection runs and — ADR-0053 — the
+//! host-declared consumed-projection set.
 
 use super::super::Kernel;
 use super::{DeclaredProjections, SnapshotProjectionSlot};
@@ -47,22 +47,6 @@ impl Kernel {
                 .map(|mut registry| registry.run_typed_at(self.now_secs()))
                 .unwrap_or_default(),
             None => Vec::new(),
-        }
-    }
-
-    /// Fire every registered per-tick observer.
-    ///
-    /// A no-op when no slot is bound or the mutex is poisoned — D6: an observer
-    /// dispatch failure is silently absorbed, never a panic at the boundary.
-    /// Shares the slot (and therefore the registry) with
-    /// [`Self::run_typed_projections`]; called from `make_update` on every
-    /// tick. The per-observer `catch_unwind` (D6) lives in
-    /// [`SnapshotRegistry::run_tick_observers`](super::SnapshotRegistry::run_tick_observers).
-    pub(in crate::kernel) fn run_tick_observers(&self) {
-        if let Some(slot) = &self.snapshot_projections {
-            if let Ok(registry) = slot.lock() {
-                registry.run_tick_observers();
-            }
         }
     }
 

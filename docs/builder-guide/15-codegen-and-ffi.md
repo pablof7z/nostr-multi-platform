@@ -34,32 +34,29 @@ protocol = ["nmp-nip01"]
 app      = ["microblog-core"]
 ```
 
-## Composition: depend on `nmp-defaults`, call `register_defaults`
+## Composition: install explicit features
 
-The canonical way to compose an app is a library call. In your app-core crate:
+The canonical way to compose an app is explicit Rust composition. An app-core
+crate installs the substrate, the reusable Nostr protocol features it wants, its
+own app features, and any capability contracts its shell must execute.
+`nmp-defaults` remains a reusable installer library; a hidden
+`register_defaults()` preset is tutorial/test/migration compatibility, not
+production architecture.
 
 ```rust
-// microblog-core/src/lib.rs
-use nmp_defaults::register_defaults;
-use nmp_core::substrate::AppHost;
-
+// Shape only: exact installer names are owned by the live crates.
 pub fn register(app: &mut impl AppHost) {
-    // Inherit the canonical NMP composition (routing, outbox, DMs, zaps, WOT, ...).
-    register_defaults(app);
-
-    // Register app-specific modules / projections on top.
-    // microblog_core::register_actions(app);
+    install_substrate(app);
+    install_protocol_features(app, [follows, dms, routing]);
+    install_publish_and_signing(app);
+    install_app_features(app);
+    declare_capability_contracts(app);
 }
 ```
 
-For a non-social app, make that choice inside the same app-core composition
-root: call `nmp_defaults::register_substrate(app, gate)` instead of
-`register_defaults(app)` when the app only needs the routable substrate. For
-fine-grained feature toggles or policy overrides, use
-`nmp_defaults::register_defaults_with(app, NmpDefaults { social: false,
-..NmpDefaults::default() })`. See
-`crates/nmp-defaults/src/lib.rs` and `crates/nmp-defaults/src/tiers.rs` for the
-full API.
+The exact installer names may change as #2320 cleanup proceeds. The invariant is
+stable: the production root must show what substrate, protocol features,
+publish/signing helpers, app features, and capability contracts are installed.
 
 ## What still gets generated
 
@@ -84,8 +81,8 @@ Deleting the old `gen modules` scaffolder did not touch them.
 │ The update callback carries one binary `nmp.transport.UpdateFrame`   │
 │ with file identifier `NMPU`: Snapshot or Panic. There is no JSON     │
 │ runtime snapshot fallback and no pull/drain update symbol.           │
-│ There is NO generated per-app FFI crate; the app core calls          │
-│ `nmp_defaults::register_defaults` and the raw C-ABI surface is shared. │
+│ There is NO generated per-app FFI crate; the app core owns explicit │
+│ Rust composition and the raw C-ABI surface is shared.               │
 │ apps/chirp/ios consumes NmpCore.h backed by nmp-ffi plus Chirp wrappers.    │
 ├─ FlatBuffers runtime transport (SHIPS) ─────────────────────────────┤
 │ One canonical transport frame carries typed SnapshotEnvelope fields  │
@@ -110,7 +107,7 @@ Deleting the old `gen modules` scaffolder did not touch them.
 │ capability, marmot, identity, feeds) are staged for future migration.  │
 ├─ `nmp` CLI (SHIPS, crates/nmp-cli/) ────────────────────────────────┤
 │ `nmp init <app>` scaffolds a thin Rust shell: a `<name>-core` crate  │
-│ that calls `register_defaults`, plus a headless `examples/shell.rs`   │
+│ with an explicit composition root, plus a headless `examples/shell.rs`│
 │ that drives it through nmp-native-runtime's `NmpAppBuilder`. No      │
 │ `gen modules` step                                                   │
 │ and no                                                               │
@@ -126,35 +123,26 @@ master.** Live `nmp-codegen` emits maintained host and runtime artifacts
 `gen builtin-keys`). UniFFI remains planned, and JSON is not a runtime fallback
 for the update stream.
 
-## How to add a snapshot projection to your app
+## How typed output reaches the shell
 
-> **Disambiguation — read this first.** This guide uses the word *projection*
-> in two senses. The `ObservedProjectionSink`-driven view system (a reactive event
-> fan-out into an app-owned store, described in [05a](05a-substrate-traits.md) +
-> [06](06-reactivity-contract.md)) is one sense. **This section** is the other:
-> a **snapshot projection** — an app/module-owned slice of state emitted inside
-> the kernel's pushed update frame. In production host shells, that slice should
-> be a typed FlatBuffers sidecar in `SnapshotFrame.typed_projections`, registered
-> via `register_typed_snapshot_projection`.
+Typed output is the transport shape, not the app-facing read lifecycle. A
+production screen opens a typed read session or generated helper. The session
+executor may register typed output internally, but app developers should not
+assemble raw interest, observer, replay, and projection wiring by hand.
 
-**What it is.** A snapshot projection is a named slice of app- or module-owned
-state, keyed by a dotted `nmp.*` namespace (e.g. `nmp.feed.home`,
-`nmp.nip29.group_events`, `nmp.follow_list`, scoped relation-count projections),
-that rides the kernel's reactive snapshot
-push frame ([06 — Reactivity contract](06-reactivity-contract.md)) into the host.
-The kernel pushes a **whole frame every emit tick when state changed**; hosts
-decode the binary `UpdateFrame`, apply its `SnapshotEnvelope` fields, then read
-projection sidecars by key. **No polling, no pull symbol** — render state arrives
-on the callback path as part of the same frame as every other field.
+The shell receives a pushed binary `UpdateFrame`, applies the
+`SnapshotEnvelope`, and reads typed sidecars by key. No polling or generic pull
+snapshot getter is allowed. Projection keys, sidecars, manifests, and change
+gates are runtime/output machinery governed by ADR-0070 and ADR-0055.
 
 Do not model zap counts as a global snapshot projection. Zap counts are
 visible-note relation data: the owning card or detail view claims a bounded
 `nmp.nip01.visible_note_relations` interest for its `#e=<event_id>` target.
 
-### Production seam — `register_typed_snapshot_projection`
+### Internal seam — typed output registration
 
-Register host-rendered projection state as a typed sidecar with the native
-runtime registration API. Current C-ABI registration support lives in
+Session and protocol executors register host-rendered state as typed sidecars
+with the runtime registration API. Current C-ABI registration support lives in
 `crates/nmp-ffi/src/snapshot.rs` until the ADR-0068 split moves runtime
 ownership into `nmp-native-runtime`. The closure returns
 `Option<TypedProjectionData>`:
@@ -181,14 +169,13 @@ the schema. If a `Changed` row cannot be decoded, the host keeps the prior
 value, does not advance the per-key applied rev, and requests/resumes from a
 fresh baseline instead of committing an empty substitute.
 
-The OP feed wiring is the canonical high-volume exemplar:
-`nmp-defaults` registers the `nmp.feed.home` typed sidecar, `nmp-nip01` owns the
-feed schema and encoder, and iOS decodes it through `TypedHomeFeedDecoder`
-before assigning the corresponding `KernelModel` slot.
+The OP feed wiring is an implementation exemplar, not the public app API:
+the session owner registers typed output, the protocol crate owns the schema and
+encoder, and the host decodes the sidecar into a render cache.
 
-> **D8 + D6 — the projector runs on the actor thread inside the snapshot tick.**
+> **D8 + D6 — typed output producers run on the actor update path.**
 > It MUST be cheap and non-blocking — no I/O, no mutex waits (D8); a blocking
-> closure stalls every subsequent snapshot and freezes the host's update stream.
+> producer stalls every subsequent update and freezes the host's update stream.
 > Each closure is panic-isolated (`catch_unwind` per closure, D6:
 > `crates/nmp-core/src/kernel/snapshot_registry.rs:125`), so a panic in one
 > projector never aborts the snapshot.

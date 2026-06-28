@@ -1,14 +1,15 @@
 //! #1740 step 9 — the NEGATIVE matrix: the raw feed lanes are NO LONGER public.
 //!
-//! Steps 7+8 made `NmpApp::open_feed` / `NmpApp::close_feed` the ONE public
-//! app-facing way to open a feed and retired the raw lanes. This grep-gate
-//! asserts the retirement is REAL — the retired public symbols/strings are GONE
-//! from the public surface, not merely shadowed by a parallel path. It fails the
-//! build if any reappears, so a future change cannot silently re-expose them.
+//! Feed public-surface migration made `NmpApp::open_feed` /
+//! `NmpApp::close_feed` the typed feed doorway, and retired the raw lanes plus
+//! older app-local feed FFI exports. This grep-gate asserts the retirement is
+//! real: retired public symbols/strings are gone from the public surface, not
+//! merely shadowed by a parallel path. It fails if any reappears, so a future
+//! change cannot silently re-expose them.
 //!
 //! What is asserted GONE (public surface only):
-//!   * the `nmp_app_open_contact_feed` / `nmp_app_close_contact_feed` C-ABI
-//!     symbols (no `#[no_mangle]` definition, no `pub use` re-export anywhere);
+//!   * the old feed C-ABI symbols (no `#[no_mangle]` definition, no `pub use`
+//!     re-export anywhere);
 //!   * the Chirp-specific `nmp_app_chirp_open/close_{home,author,thread}_feed`
 //!     production symbols and callers;
 //!   * the raw wasm feed-verb dispatch STRINGS (`nmp.kernel.open_interest`,
@@ -230,7 +231,7 @@ fn raw_wasm_feed_verb_dispatch_strings_are_not_routed() {
     assert!(
         violations.is_empty(),
         "retired raw wasm feed-verb dispatch strings reappeared in the codebase \
-         (the public open_feed doorway is the only feed-open surface; \
+         (feed product screens must not route retired raw feed verbs; \
          nmp-wasm was deleted in #2202 and these strings must not be re-routed):\n{}",
         violations.join("\n")
     );
@@ -268,7 +269,7 @@ fn claimed_event_embeds_key_is_not_used_in_public_surfaces() {
 }
 
 #[test]
-fn public_open_feed_doorway_symbols_exist() {
+fn typed_open_feed_doorway_symbols_exist() {
     // The POSITIVE companion: the ONE public doorway must be DEFINED. This guards
     // against an over-zealous future cleanup deleting the replacement along with
     // the retired lanes (which would leave NO public way to open a feed).
@@ -282,4 +283,43 @@ fn public_open_feed_doorway_symbols_exist() {
             feed_rs.display()
         );
     }
+}
+
+#[test]
+fn old_public_open_feed_doorway_symbols_are_not_defined_or_reexported() {
+    // Chirp's in-repo app-local feed FFI was removed. Do not resurrect those
+    // old C symbols as a replacement for the typed-session direction.
+    const RETIRED_FEED_SYMBOLS: &[&str] = &["nmp_app_open_feed", "nmp_app_close_feed"];
+
+    let root = repo_root();
+    let mut files = Vec::new();
+    for sub in ["crates", "apps"] {
+        rust_files(&root.join(sub), &mut files);
+    }
+    assert!(!files.is_empty(), "must scan some Rust sources");
+
+    let mut violations = Vec::new();
+    for file in &files {
+        if file.ends_with("tests/feed_public_surface_retired.rs") {
+            continue;
+        }
+        let Ok(text) = fs::read_to_string(file) else {
+            continue;
+        };
+        for (n, line) in text.lines().enumerate() {
+            let code = code_only(line);
+            for sym in RETIRED_FEED_SYMBOLS {
+                if code.contains(sym) {
+                    violations.push(format!("{}:{}: {}", file.display(), n + 1, line.trim()));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "retired open_feed C-ABI symbols reappeared in code; typed sessions must \
+         replace this surface rather than restoring the old app-local feed FFI:\n{}",
+        violations.join("\n")
+    );
 }

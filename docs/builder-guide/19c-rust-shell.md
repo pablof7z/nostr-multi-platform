@@ -158,11 +158,12 @@ unsafe { nmp_app_create_new_account(app, null_ptr, null_ptr, false) };
 The account is created and activated synchronously. The kernel's signer slot is
 filled; subsequent `PostNote` dispatches will use this key.
 
-## Standard NIP wiring (`register_defaults`)
+## Standard NIP Wiring
 
 For a full Nostr social app scaffolded by `nmp init`, call your app-core
-composition root before `start`. That root calls `register_defaults` exactly
-once, then wires app-specific seams:
+composition root before `start`. That root installs explicit substrate,
+protocol, app, publish/signing, and capability features, then wires
+app-specific seams:
 
 ```rust
 let mut builder = NmpAppBuilder::new();
@@ -170,9 +171,10 @@ my_app_core::register(&mut builder);
 let app = builder.in_memory().start(RunConfig::default());
 ```
 
-`register_defaults` is the function the app-core composition root uses to wire
-the standard NMP protocol suite. Shells should not call it separately; doing so
-creates a second composition path and risks duplicate default registration.
+Compatibility presets, if used, must live inside the app-core root and be
+labeled as tutorial/test/migration support. Shells should not compose NMP
+separately; doing so creates a second composition path and risks duplicate
+registration.
 
 ## Lifecycle summary
 

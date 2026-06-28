@@ -37,8 +37,8 @@ The shipped seams are:
 - `register_typed_snapshot_projection` and typed projection registration for host
   state output.
 - `CapabilityModule` and capability sockets for native facts.
-- `NmpAppBuilder`, `AppHost`, and `nmp-defaults::register_defaults` for
-  composition.
+- `NmpAppBuilder`, `AppHost`, and explicit app-owned composition using reusable
+  NMP installers.
 - app/protocol-owned Rust state where the concept is not a generic Nostr
   substrate concern.
 

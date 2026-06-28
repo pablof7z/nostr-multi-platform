@@ -1,11 +1,16 @@
 # ADR-0049: Defaults yield; composition is observable
 
-Status: ACCEPTED (owner-approved 2026-06-12)
+Status: ACCEPTED (owner-approved 2026-06-12); amended by ADR-0069
 
 > Numbering note: `0048` is the highest decision in `docs/decisions/` on master
 > at authoring time (there is a known `0041` duplicate, both accepted). This ADR
 > takes the next free number, `0049`, per the repo's single-source-of-truth /
 > no-duplicate-id discipline.
+
+Current disposition: composition observability survives. The ledger must explain
+an explicit production composition root, including what installers registered,
+skipped, yielded, or require from the runtime. It must not justify hidden
+production `register_defaults()` behavior.
 
 ## Context
 

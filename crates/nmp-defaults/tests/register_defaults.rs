@@ -146,8 +146,8 @@ fn register_defaults_longform_is_typed_only_not_in_json_map() {
 }
 
 /// The NIP-57 zap-subscription reconciler no longer registers a snapshot
-/// projection: it was re-homed onto the generic per-tick observer seam
-/// (`AppHost::register_snapshot_tick_observer`) because it only diffs the active
+/// projection: it was re-homed onto the identity-change observer seam
+/// (`AppHost::register_identity_change_observer`) because it only diffs the active
 /// pubkey and enqueues `EnsureInterest` / `DropInterestOwner` — it produced no
 /// projection data. After the re-home (and with the entire JSON lane deleted per
 /// rule A6 / PR #1525), `"nmp.nip57.zap_subscription"` must NOT appear in the
@@ -166,7 +166,7 @@ fn register_defaults_zap_subscription_is_no_longer_a_projection_key() {
     assert!(
         !typed_keys.contains(&"nmp.nip57.zap_subscription".to_string()),
         "zap_subscription must NOT appear in the typed projections registry — it is a \
-         per-tick observer now, not a projection"
+         identity-change observer now, not a projection"
     );
 
     free_app_ptr(app);

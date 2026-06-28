@@ -1,4 +1,4 @@
-//! Snapshot / typed / tick projection registration and the incremental
+//! Snapshot / typed projection registration and the incremental
 //! emission contract (ADR-0037 / ADR-0055).
 //!
 //! Split out of `app_host/mod.rs` (D6 work) to keep that file under the 500-LOC
@@ -23,11 +23,11 @@ pub enum IncrementalApplyError {
     RegistryUnavailable,
 }
 
-/// Register snapshot / typed / tick projections and configure the incremental
+/// Register snapshot / typed projections and configure the incremental
 /// emission contract (ADR-0037 / ADR-0055).
 ///
 /// The projection-registration concern: snapshot data closures, typed
-/// FlatBuffers sidecars, per-tick observers, the consumed-projection
+/// FlatBuffers sidecars, the consumed-projection
 /// declaration, and the incremental-apply / frame-identity handles a producer
 /// captures to keep its omit-memory in lockstep with the host cache.
 pub trait SnapshotProjectionRegistrar {
@@ -54,34 +54,6 @@ pub trait SnapshotProjectionRegistrar {
     where
         K: Into<String>,
         F: Fn() -> Option<TypedProjectionData> + Send + Sync + 'static;
-
-    /// Register a **per-tick observer** — a no-result callback fired once on
-    /// every snapshot tick, the generic projection-free counterpart to
-    /// [`Self::register_snapshot_projection`].
-    ///
-    /// Where a projection closure produces snapshot *data* under a key, a tick
-    /// observer produces nothing: it is a pure per-tick side-effect seam for
-    /// host-side reconcilers that need a "the kernel just ticked" callback but
-    /// contribute no projection output. The canonical consumer is an
-    /// active-account subscription reconciler that diffs the active pubkey each
-    /// tick and enqueues `EnsureInterest` / `DropInterestOwner` actor commands —
-    /// previously such reconcilers abused the projection registry by returning a
-    /// `Value::Null` projection purely to obtain the per-tick callback.
-    ///
-    /// This method lives on the trait — not only on the concrete `NmpApp` — so
-    /// reusable protocol/runtime crates that register through `&impl
-    /// SnapshotProjectionRegistrar` (e.g. `register_zap_receipts_runtime`) can
-    /// wire a per-tick reconciler without depending on the C-ABI crate. It
-    /// mirrors `register_snapshot_projection`: `&self` (the registry mutation is
-    /// a lock-and-push), and the same shared registry/slot.
-    ///
-    /// Like a projection closure, `f` runs on the actor thread inside the
-    /// snapshot tick — it MUST be non-blocking (D8: enqueue only, no I/O or
-    /// lock waits). A panicking observer is contained (D6) and cannot crash the
-    /// tick.
-    fn register_snapshot_tick_observer<F>(&self, f: F)
-    where
-        F: Fn() + Send + Sync + 'static;
 
     /// ADR-0055 Rung 3 — declare that this host runtime owns the NMP
     /// cache-merge layer (D3-3) and is ready to receive frames with

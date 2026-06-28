@@ -174,10 +174,11 @@ render.
   generic protocol/ref facts; shells do not reimplement content resolution.
 
 ```rust
+// Shape only: exact installer names are owned by the live crates.
 pub const GROUP_TIMELINE_KEY: &str = "myapp.group.timeline";
 
 pub fn register(app: &mut impl AppHost, groups: GroupStore) {
-    nmp_defaults::register_defaults(app);
+    install_substrate_and_protocol_features(app);
     myapp_groups::register_protocol_seams(app, groups.clone());
 
     app.register_typed_snapshot_projection(GROUP_TIMELINE_KEY, move || {

@@ -91,6 +91,14 @@ pub(crate) fn new_identity_change_observer_slot() -> IdentityChangeObserverSlot 
     Arc::new(Mutex::new(Vec::new()))
 }
 
+pub(crate) type ConfiguredRelaysChangeCallback = Arc<dyn Fn() + Send + Sync>;
+pub(crate) type ConfiguredRelaysChangeObserverSlot =
+    Arc<Mutex<Vec<ConfiguredRelaysChangeCallback>>>;
+
+pub(crate) fn new_configured_relays_change_observer_slot() -> ConfiguredRelaysChangeObserverSlot {
+    Arc::new(Mutex::new(Vec::new()))
+}
+
 pub(crate) fn unregister_identity_change_observer(
     observers: &IdentityChangeObserverSlot,
     id: IdentityChangeObserverId,
@@ -152,6 +160,39 @@ pub(crate) fn notify_identity_change_observers(
     }
 }
 
+pub(crate) fn notify_configured_relays_change_observers(
+    configured_relays: &nmp_core::AppRelaySlot,
+    last_notified: &Arc<Mutex<Vec<(String, String)>>>,
+    observers: &ConfiguredRelaysChangeObserverSlot,
+) {
+    let current = configured_relays
+        .lock()
+        .map(|rows| {
+            rows.as_slice()
+                .iter()
+                .map(|row| (row.url().to_string(), row.role().to_string()))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    {
+        let Ok(mut last) = last_notified.lock() else {
+            return;
+        };
+        if *last == current {
+            return;
+        }
+        *last = current;
+    }
+
+    let callbacks = observers
+        .lock()
+        .map(|guard| guard.clone())
+        .unwrap_or_default();
+    for callback in callbacks {
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| callback()));
+    }
+}
+
 // ── NmpApp struct ─────────────────────────────────────────────────────────────
 
 pub struct NmpApp {
@@ -162,6 +203,7 @@ pub struct NmpApp {
     /// it forwards the same update frame to the native callback.
     pub(crate) identity_change_observers: IdentityChangeObserverSlot,
     pub(crate) next_identity_change_observer_id: AtomicU64,
+    pub(crate) configured_relays_change_observers: ConfiguredRelaysChangeObserverSlot,
     pub(crate) capability_callback: CapabilityCallbackSlot,
     /// T118 / G3 — lifecycle observer slot.
     pub(crate) lifecycle_observer: LifecycleObserverSlot,

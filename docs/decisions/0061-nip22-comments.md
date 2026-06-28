@@ -112,8 +112,9 @@ decoder reading old bytes sees a known-zero comment count
 ### 6. Defaults runtime — `register_comment_runtime`
 
 Installs the shared `CommentThreadProjection` as the kind:1111 observer and
-registers the post-comment action (mirrors `register_bookmark_runtime`). Wired
-into the social-features bundle in `register_defaults`.
+registers the post-comment action (mirrors `register_bookmark_runtime`). An app
+that wants comments installs this protocol feature explicitly in its composition
+root.
 
 ## Doctrine compliance
 

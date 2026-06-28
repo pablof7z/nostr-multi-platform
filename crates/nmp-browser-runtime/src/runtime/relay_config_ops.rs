@@ -78,6 +78,7 @@ impl BrowserRuntimeHandle {
         }
 
         self.runtime.reducer.set_configured_relays(rows);
+        self.notify_configured_relays_changed();
         let outbound = self
             .runtime
             .relay_pool
@@ -145,6 +146,13 @@ impl BrowserRuntimeHandle {
 
         if changed {
             self.runtime.reducer.set_configured_relays(merged);
+            self.notify_configured_relays_changed();
+        }
+    }
+
+    fn notify_configured_relays_changed(&self) {
+        for observer in &self.runtime.configured_relays_change_observers {
+            observer();
         }
     }
 

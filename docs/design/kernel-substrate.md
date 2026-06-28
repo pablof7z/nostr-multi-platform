@@ -4,17 +4,16 @@ This file describes the current extension substrate.
 
 ## 1. Composition
 
-Composition is a library call:
+Composition is app-owned Rust code using reusable installers:
 
 1. Create an `NmpAppBuilder`.
-2. Declare storage, projections, relays, and capabilities.
-3. Call `nmp_defaults::register_defaults` or the narrower substrate tier.
-4. Register app/protocol-specific actions, observed projections, and output
-   projections.
+2. Declare storage, output contracts, relays, and capabilities.
+3. Install explicit substrate/protocol/app features.
+4. Register app/protocol-specific actions, sessions, and typed outputs.
 5. Start the app.
 
-`nmp-core` provides the substrate. `nmp-defaults` wires the default Nostr
-composition. App crates add only their own Rust-owned product logic.
+`nmp-core` provides the substrate. `nmp-defaults` provides reusable installers,
+not hidden production app policy. App crates own their Rust product logic.
 
 ## 2. ActionModule
 

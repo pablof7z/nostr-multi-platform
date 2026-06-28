@@ -23,9 +23,9 @@ Four layers, strict ownership. Built from the bottom up:
 └────────────────────────────────▲───────────────────────────────────────┘
                                   │ FlatBuffers payload; UniFFI = lifecycle/bindings
 ┌────────────────────────────────┴───────────────────────────────────────┐
-│ C-ABI + COMPOSITION     nmp-ffi (shared `nmp_app_*` C-ABI surface)        │
-│                         nmp-defaults (canonical composition: one call)  │
-│  owns: lifecycle / action / capability FFI + `register_defaults` glue    │
+│ RUNTIME + COMPOSITION   nmp-ffi (shared `nmp_app_*` C-ABI surface)        │
+│                         app core + explicit NMP installers               │
+│  owns: lifecycle/action/capability ABI + explicit Rust composition       │
 │  D6 ► no Result<T,E> crosses here; envelopes only                        │
 └────────────────────────────────▲───────────────────────────────────────┘
                                   │ `NmpApp` seams + `AppHost` traits
@@ -50,7 +50,7 @@ Four layers, strict ownership. Built from the bottom up:
 Representative crates are labelled in their layer above:
 `nmp-core` (kernel), `nmp-nip29` / `nmp-nip42` / `nmp-nip77` / `nmp-signers`
 (protocol modules), `apps/chirp/crates/nmp-app-chirp` + `microblog-core` (app cores),
-`nmp-defaults` (canonical composition library), `nmp-native-runtime` (native
+`nmp-defaults` (reusable installer library), `nmp-native-runtime` (native
 runtime owner), and `nmp-ffi` (C-ABI shell over the native runtime).
 `nmp-codegen` still emits host bindings (`gen swift`, `gen typed-decoders`);
 it no longer generates per-app composition crates (ADR-0046). Chirp is the
@@ -75,9 +75,10 @@ active product shell.
 
 ## The 3 extension seams
 
-Extension crates plug into a vanilla `NmpApp` through exactly three seams
-(`crates/nmp-ffi/src/lib.rs:1087-1599`). A crate uses one, two, or all three;
-it never reaches into kernel internals.
+Extension crates plug into a vanilla `NmpApp` through a small set of Rust seams.
+A crate uses only the seams it owns and never reaches into kernel internals.
+Production app screens should see typed read sessions and typed action builders;
+raw observer/projection plumbing is executor machinery behind those sessions.
 
 ### Seam 1 — `register_action(module)`
 
@@ -90,34 +91,20 @@ its `execute()` enqueues `ActorCommand`s into the actor. The registered module
 receives every typed dispatch envelope whose namespace matches
 `MyActionModule::NAMESPACE`.
 
-### Seam 2 — `register_typed_snapshot_projection(key, closure)`
+### Seam 2 — typed output registration
 
-```rust
-app.register_typed_snapshot_projection("nmp.myapp.items", move || {
-    store.lock().ok().map(|g| encode_items_projection(&g))
-});
-```
+Registers a typed sidecar pushed under `typed_projections["nmp.myapp.items"]`.
+This is output transport machinery. A production read session may use it
+internally, but an app screen should open the session/helper rather than wire
+projection keys directly. The producer runs on the actor update path and must be
+cheap and non-blocking (D8).
 
-Registers a typed sidecar pushed under `typed_projections["nmp.myapp.items"]` on
-every snapshot tick. The closure runs on the **actor thread**; it must be
-cheap and non-blocking (D8). Registered under dotted `nmp.*` namespaces.
+### Seam 3 — observed delivery, internal to read sessions
 
-### Seam 3 — `open_observed_projection(decl)`
-
-```rust
-app.open_observed_projection(ObservedProjection::from_kinds(
-    Arc::new(MyObserver { store: Arc::clone(&store) }),
-    "nmp.myapp.items",
-    0,
-    [KIND_NOTE],
-    128,
-));
-```
-
-Registers a `ObservedProjectionSink` behind a declared shape. The kernel opens
-the matching interest, replays cached/store-backed rows to the muted sink, then
-activates future delivery scoped to that shape. App/product read models do not
-subscribe to a public filterless accepted-event observer.
+Registers scoped observed delivery behind a declared shape. The kernel opens
+the matching demand, replays cached/store-backed rows to the muted sink, then
+activates future delivery scoped to that shape. Under ADR-0070 this is private
+read-session executor machinery, not the normal production app API.
 
 ### The two kernel-defined extension traits
 
@@ -177,37 +164,28 @@ function expects from `nmp-defaults` and what the shell expects back:
 | `accepted() -> Update` | fn | success variant for dispatch result |
 | `Update` | enum | update variants (at minimum `ActionAccepted`) |
 
-`register()` is the composition root. From the microblog walkthrough
-([19a](19a-walkthrough-microblog.md)):
+`register()` is the app composition root. Its job is to make installed features
+visible, not to hide them behind a broad preset:
 
 ```rust
 pub fn register(app: &mut impl AppHost) -> FeedStore {
     let store = FEED_STORE.get_or_init(|| Arc::new(Mutex::new(Vec::new()))).clone();
-    // Inherit canonical NMP composition (routing, outbox, DMs, zaps, WOT).
-    nmp_defaults::register_defaults(app);
-    // App-specific seams.
+
+    // Shape only: exact installer names are owned by the live crates.
+    install_substrate(app);
+    install_protocol_features(app, [follows, routing, publish]);
+    install_app_features(app);
+
     app.register_action(NoteActionModule);
-    app.open_observed_projection(ObservedProjection::from_kinds(
-        Arc::new(FeedObserver { store: Arc::clone(&store) }),
-        FEED_SNAPSHOT_KEY,
-        0,
-        [KIND_NOTE],
-        128,
-    ));
-    let projector = Arc::clone(&store);
-    app.register_typed_snapshot_projection(FEED_SNAPSHOT_KEY, move || {
-        match projector.lock() {
-            Ok(g) => project_feed(&g),
-            Err(_) => None,   // D6: no panic on poison
-        }
-    });
+    register_microblog_read_session(app, Arc::clone(&store));
+
     store
 }
 ```
 
-A thin staticlib shell (`nmp-app-<name>`) or an `examples/shell.rs` then calls
-only `<app>_core::register(app)`. The `register_defaults` call lives inside the
-app-core composition root, so the canonical defaults are installed exactly once.
+A thin staticlib shell (`nmp-app-<name>`) or an `examples/shell.rs` calls only
+`<app>_core::register(app)`. Compatibility presets such as `register_defaults`
+must stay tutorial/test/migration-scoped unless formalized by a later ADR.
 `nmp-codegen` still exists for host bindings (`gen swift`, `gen typed-decoders`),
 but it does not generate composition wiring.
 
@@ -261,14 +239,13 @@ changes to `nmp-core`**.
    exact abstraction error ADR-0009 exists to forbid — it turns the kernel
    into a junk drawer of every consumer's domain concepts. App nouns go in
    app-core crates; protocol nouns in `nmp-nip*` crates.
-2. **Bypassing the shipped seams.** Use `register_typed_snapshot_projection` for
-   named read output, `open_observed_projection` for declared event-driven
-   read models, and `register_action` for the write path.
-3. **Bypassing `register_typed_snapshot_projection` to render raw events in
-   SwiftUI.** Decoding `kind:1` JSON in Swift re-implements the kernel's
-   reactive contract in the shell, duplicates state ownership (D4 violation),
-   and breaks D5 bounding. Every read goes through a registered projection or
-   an `ObservedProjectionSink`-driven view with a declared shape.
+2. **Bypassing typed sessions and actions.** Use typed read sessions or
+   generated helpers for product reads, and `register_action` / typed action
+   builders for writes.
+3. **Rendering raw events in SwiftUI/Kotlin/TypeScript.** Decoding `kind:1`
+   JSON in the shell re-implements the kernel's reactive contract, duplicates
+   state ownership (D4 violation), and breaks D5 bounding. Product reads render
+   Rust-owned typed output.
 4. **Adding a 4th registration seam without an ADR.** The three seams are the
    extension contract. A new seam is a kernel change that requires its own ADR.
 

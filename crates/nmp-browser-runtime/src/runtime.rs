@@ -169,6 +169,8 @@ pub(crate) struct BrowserRuntime {
     pub(crate) relay_connected_hooks: Vec<Arc<dyn RelayConnectedHook>>,
     /// Identity-change callbacks invoked on each identity-switch transition.
     pub(crate) identity_change_observers: Vec<Box<dyn Fn(Option<String>) + Send + Sync + 'static>>,
+    /// Configured-relay callbacks invoked when the relay set changes.
+    pub(crate) configured_relays_change_observers: Vec<Box<dyn Fn() + Send + Sync + 'static>>,
     /// Browser relay pool — WebSocket drivers + inbound queue + maintenance
     /// timer (#2050). On native test builds holds only the queue and timer
     /// (no actual sockets).

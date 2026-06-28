@@ -1,9 +1,16 @@
 # ADR 0009: App Extension Kernel Boundary
 
 **Date:** 2026-05-17
-**Status:** accepted
+**Status:** accepted; amended by ADR-0069 and ADR-0072
 **Current design:** `docs/design/app-extension-kernel.md`
 **Companion ADR:** ADR-0010
+
+**Current disposition:** This ADR still owns the core boundary: `nmp-core`
+contains reusable Nostr substrate, app/product logic belongs in app Rust crates,
+and shells render plus execute capabilities. ADR-0069 replaces the
+defaults-era composition wording below: production apps use explicit feature
+composition, and `nmp-defaults::register_defaults` is not the production app
+architecture.
 
 ## Context
 
@@ -36,12 +43,10 @@ concepts live in app Rust crates. Native shells render and report native facts.
 The shipped extension seams are:
 
 - `ActionModule` plus `register_action` for write intents,
-- `open_observed_projection` for event-driven Rust projections that declare
-  shape, scope, owner, and replay before receiving events,
-- `register_typed_snapshot_projection` for host
-  state,
+- typed read sessions for product reads, backed internally by scoped observed
+  delivery and typed output,
 - `CapabilityModule` and capability sockets for native facts,
-- `AppHost` and `nmp-defaults::register_defaults` for composition, plus
+- `AppHost` and explicit app-owned composition using reusable installers, plus
   platform runtime builders such as `nmp-native-runtime::NmpAppBuilder`.
 
 If implementing an app requires adding that app's nouns to `nmp-core`, the

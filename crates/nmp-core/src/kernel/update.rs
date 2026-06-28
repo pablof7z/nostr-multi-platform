@@ -276,16 +276,6 @@ impl Kernel {
                                                // D8: these closures run on this actor thread inside the tick;
                                                // `run_typed_projections` documents the non-blocking contract.
         let typed = self.run_typed_projections();
-        // Fire every host-registered per-tick observer (the generic, data-free
-        // counterpart to the projection registry — see
-        // `SnapshotRegistry::run_tick_observers`). These contribute no snapshot
-        // output; they are pure per-tick side-effect reconcilers (e.g. the
-        // NIP-57 zap-subscription reconciler that diffs the active pubkey and
-        // enqueues Push/Withdraw interest each tick). D8: they run on this actor
-        // thread inside the tick and MUST be non-blocking (enqueue only); D6:
-        // each is wrapped in `catch_unwind` so a panicking observer can never
-        // unwind the actor thread into a terminal `Panic` frame.
-        self.run_tick_observers();
         // ADR-0063 D7 (#1671 Lane H, BLOCKING 2) — STRUCTURAL emitted-set guardrail
         // (debug-only): warn for any author a feed emitted with no resolver demand.
         #[cfg(debug_assertions)]
