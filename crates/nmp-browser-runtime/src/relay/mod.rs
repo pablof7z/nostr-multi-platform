@@ -104,7 +104,7 @@ impl RelayPool {
     }
 
     /// Install the "please pump now" hook. Called once by the host after start
-    /// (e.g. the nmp-wasm bridge sets a closure that schedules a 0ms timer
+    /// (e.g. the wasm bridge sets a closure that schedules a 0ms timer
     /// which calls the wasm-exported pump function). Not called in native tests
     /// — tests invoke pump() directly.
     ///

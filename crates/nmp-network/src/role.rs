@@ -7,7 +7,7 @@
 //! NIP-42 driver state, and `wire_subs` for the diagnostic surface.
 //!
 //! V-01 Stage 3 — promoted to `pub` so the wasm32 `BrowserRelayDriver` in
-//! `nmp-wasm` can name the role when handing a frame to
+//! `nmp-browser-runtime` can name the role when handing a frame to
 //! `KernelReducer::handle_relay_frame`. Substrate-grade (D0): the type
 //! carries no app/protocol nouns.
 

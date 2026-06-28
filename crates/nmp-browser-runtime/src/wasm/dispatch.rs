@@ -157,7 +157,7 @@ impl NmpRuntimeCore {
         match install_identity(handle, &mut req) {
             Ok(outcome) => {
                 // Merge identity-provided relays BEFORE seeding the active account
-                // (#2139 HIGH 4: restores nmp-wasm signer.rs:151 behaviour).
+                // (#2139 HIGH 4: restores behaviour from retired nmp-wasm signer.rs:151).
                 if !req.identity_relays.is_empty() {
                     let rows = identity_relays_to_rows(&req.identity_relays);
                     if !rows.is_empty() {

@@ -248,8 +248,8 @@ impl BrowserRuntimeHandle {
     }
 
     /// Install the wake hook: the relay pool calls it when inbound events
-    /// arrive to signal a `pump()` turn is needed. On wasm32 the nmp-wasm
-    /// bridge sets this to a 0ms-timer; tests call `pump()` directly.
+    /// arrive to signal a `pump()` turn is needed. On wasm32 the `nmp-browser-runtime`
+    /// wasm bridge sets this to a 0ms-timer; tests call `pump()` directly.
     /// Seam documented in the plan (#2050 O3).
     pub fn set_wake(&mut self, wake: Rc<dyn Fn()>) {
         self.runtime.relay_pool.set_wake(wake);
@@ -435,7 +435,7 @@ impl BrowserRuntimeHandle {
     ///
     /// Lets the native injection-identity test assert that the store passed to
     /// `BrowserAppBuilder::inject_store` is the exact `Arc` the reducer ends up
-    /// holding — the live-path analog of the nmp-wasm hook test (#1007 PR-7).
+    /// holding — the live-path analog of the retired nmp-wasm hook test (#1007 PR-7).
     #[cfg(any(test, feature = "test-support"))]
     #[must_use]
     pub fn event_store_handle(&self) -> std::sync::Arc<dyn nmp_store::EventStore> {

@@ -289,8 +289,8 @@ impl std::error::Error for UpdateFrameDecodeError {}
 /// Encode a snapshot frame from a typed [`SnapshotEnvelope`] plus an optional
 /// typed-projection sidecar.
 ///
-/// This is the auxiliary-producer encoder: non-kernel producers (`nmp-wasm`'s
-/// browser runtime, test fixtures, benches) build a [`SnapshotEnvelope`] and
+/// This is the auxiliary-producer encoder: non-kernel producers (`nmp-browser-runtime`,
+/// test fixtures, benches) build a [`SnapshotEnvelope`] and
 /// encode it here. The production kernel path is
 /// `encode_snapshot_with_envelope` (tier3_frame.rs), which writes the FULL
 /// Tier-3 field set straight off `KernelSnapshot`; this function writes the

@@ -1,7 +1,7 @@
 //! Delivery logic for settled sign round-trips in the browser runtime (#2049).
 //!
-//! BrowserRuntime owns the reducer directly (not through the retired
-//! `nmp-wasm` `RefCell` path) and settles async signatures through the `mpsc`
+//! BrowserRuntime owns the reducer directly (not through the retired `nmp-wasm`
+//! `RefCell` path) and settles async signatures through the `mpsc`
 //! completion channel model.
 //!
 //! # D4 single-writer

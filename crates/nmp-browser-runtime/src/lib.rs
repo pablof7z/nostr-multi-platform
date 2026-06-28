@@ -12,7 +12,7 @@
 //! - routing/outbox policy (that is `nmp-router`/kernel);
 //! - signing policy or signer-provider choice semantics (that is `nmp-signers`);
 //! - NIP modules, protocol defaults, app defaults, projection policy, persistence policy;
-//! - legacy `nmp-wasm` protocol compatibility concerns.
+//! - protocol compatibility concerns of the retired `nmp-wasm` ABI crate.
 //!
 //! # Public API (issues #2046 / #2057 / #2058)
 //!
@@ -51,7 +51,7 @@ pub fn install_panic_hook() {
 mod smoke_tests {
     /// Smoke test: verify nmp-browser-runtime can depend on composition/protocol
     /// layer crates (nmp-store, nmp-network, nmp-signer-iface) without inverting
-    /// the dependency graph to nmp-wasm. This proves the crate-graph allows browser
+    /// the dependency graph to the retired nmp-wasm. This proves the crate-graph allows browser
     /// runtime composition roots to wire up Nostr protocol behaviour.
     #[test]
     fn composition_crates_accessible() {

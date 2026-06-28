@@ -141,7 +141,7 @@ impl KernelReducer {
         self.kernel.now_secs()
     }
 
-    /// Clock injection for non-actor runtimes such as `nmp-wasm`.
+    /// Clock injection for non-actor runtimes such as `nmp-browser-runtime`.
     pub fn set_clock_for_test(&mut self, clock: std::sync::Arc<dyn crate::Clock>) {
         self.kernel.set_clock(clock);
     }

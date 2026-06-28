@@ -172,7 +172,7 @@ impl BrowserRuntimeHandle {
     }
 
     /// Apply a `DispatchEnvelope` byte payload through the action registry and
-    /// kernel (ADR-0064 / S3 #1751). Mirrors `nmp-wasm`'s `dispatch_bytes` /
+    /// kernel (ADR-0064 / S3 #1751). Mirrors the retired `nmp-wasm`'s `dispatch_bytes` /
     /// `route_decoded_dispatch` but operates on the owned `BrowserRuntime`
     /// fields (not `Rc<RefCell<>>`) so it is usable from `BrowserRuntimeHandle`
     /// methods.

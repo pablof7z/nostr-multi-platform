@@ -357,7 +357,7 @@ impl super::KernelReducer {
     /// Each `role` string is canonicalised via the kernel's own
     /// `canonical_relay_role` pass (same normalisation the native actor
     /// applies on every relay-edit write). [`crate::kernel::AppRelay`] is
-    /// `pub(crate)`; external crates (e.g. `nmp-wasm`) pass raw string
+    /// `pub(crate)`; external callers (e.g. `nmp-browser-runtime`) pass raw string
     /// pairs and let this method build the typed rows internally.
     ///
     /// Calling this before the first `make_update_frame` ensures the
