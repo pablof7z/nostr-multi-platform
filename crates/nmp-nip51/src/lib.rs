@@ -76,11 +76,16 @@
 //! follow-graph scoring. The two crates serve different consumers:
 //! `nmp-nip51` serves the **timeline suppression** (hard mute — hide the card
 //! entirely), `nmp-wot` serves **trust scoring** (soft signal — deprioritize
-//! in a ranked feed). The duplication of the kind:10000 `p`-tag parse is an
-//! acknowledged overlap tracked as GitHub issue #964. Consolidating both onto
-//! `nmp-nip51`'s decode would
-//! require `nmp-wot` to depend on `nmp-nip51` — a legal Layer-4 sibling edge
-//! per the spec. That consolidation is a future clean-up step, not v1 scope.
+//! in a ranked feed). Both consumers previously maintained independent
+//! kind:10000 `p`-tag scanners (GitHub issue #964 — acknowledged overlap).
+//!
+//! That duplication is now **eliminated**: [`mute_pubkeys_from_tags`] is the
+//! single canonical parser for kind:10000 `p` tags. `nmp-wot` takes a legal
+//! Layer-4 sibling dependency on `nmp-nip51` and calls this function instead
+//! of its own internal scanner, while `MuteListProjection::on_kernel_event`
+//! also drives through the same function. The distinction between **hard
+//! suppression** (this crate) and **soft trust scoring** (`nmp-wot`) is
+//! preserved — only the tag-parse step is shared.
 
 pub mod bookmark_sets;
 pub mod bookmarks;
@@ -109,7 +114,9 @@ pub use bookmarks::{
     RemoveBookmarkAction,
 };
 pub use people_list::{PeopleListProjection, PeopleListSnapshot};
-pub use projection::{MuteListProjection, MuteListSnapshot, ACTIVE_MUTE_LIST_PUBKEY_SOURCE_ID};
+pub use projection::{
+    mute_pubkeys_from_tags, MuteListProjection, MuteListSnapshot, ACTIVE_MUTE_LIST_PUBKEY_SOURCE_ID,
+};
 pub use search_relays::{SearchRelayListProjection, SearchRelayListSnapshot};
 pub use web_bookmarks::{
     build_web_bookmark_event, register_web_bookmark_actions, PublishWebBookmarkAction,
