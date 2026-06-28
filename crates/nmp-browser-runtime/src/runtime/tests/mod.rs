@@ -21,7 +21,9 @@ use nmp_signers::{LocalKeySigner, Signer};
 use super::event::BrowserRuntimeEvent;
 use super::pump::{drain_inbox, BROWSER_COMMAND_DRAIN_BUDGET};
 use crate::relay::WakeCell;
-use crate::signer::{CapabilityProviderRegistry, SignerCompletion, SignerCompletionTx};
+use crate::signer::{
+    CapabilityProviderRegistry, PendingSignerCompletions, SignerCompletion, SignerCompletionTx,
+};
 
 mod composition;
 mod contract;

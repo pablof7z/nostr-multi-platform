@@ -4456,6 +4456,8 @@ dependencies = [
  "nmp-nip02",
  "nmp-nip18",
  "nmp-nip29",
+ "nmp-nip46",
+ "nmp-nip46-runtime",
  "nmp-nip50",
  "nmp-planner",
  "nmp-relations",

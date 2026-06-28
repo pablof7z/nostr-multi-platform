@@ -412,14 +412,14 @@ impl<S> BrowserAppBuilder<S> {
     /// state and are moved into the `CapabilityProviderRegistry` at `start()`.
     /// Multiple providers for the same pubkey are last-write-wins.
     ///
-    /// Supported providers in this track (#2049/#2066/#2067):
+    /// Supported providers for direct builder injection (#2049/#2066/#2067):
     /// - `nmp_signers::LocalKeySigner` — synchronous in-memory signing.
     /// - `nmp_signers::Nip07Signer` — async via browser extension; active on
     ///   `wasm32 + feature = "wasm"` builds only. On native builds the
     ///   provider is unresolvable and the runtime emits `SignRequest` for
     ///   host-brokering instead.
-    ///
-    /// NIP-46 bunker:// providers (#2068) are a follow-up.
+    /// Browser NIP-46 bunker sign-in is started through `set_identity
+    /// kind=nip46` so the runtime can own the handshake lifecycle.
     pub fn with_capability_providers(
         &self,
         providers: impl IntoIterator<Item = std::sync::Arc<dyn nmp_signers::Signer>>,

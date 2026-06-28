@@ -7,16 +7,17 @@
 //!   (#2049 / #2065).
 //! - [`completion`] — `SignerCompletion` channel types + `broker_sign_request`
 //!   helper (#2049 / #2066 / #2067).
-//!
-//! NIP-46 (bunker://) provider wiring is #2068 (follow-up PR, out of scope here).
+//! - [`nip46`] — browser NIP-46 bunker lifecycle bridge.
 
 pub(crate) mod completion;
+pub(crate) mod nip46;
 pub(crate) mod registry;
 
 pub(crate) use completion::{
-    broker_sign_request, enqueue_completion, SignerCompletion, SignerCompletionRx,
-    SignerCompletionTx,
+    broker_sign_request, enqueue_completion, PendingSignerCompletions, SignerCompletion,
+    SignerCompletionRx, SignerCompletionTx,
 };
+pub(crate) use nip46::BrowserNip46Runtime;
 // `CapabilityEnvelope` is re-exported publicly so `lib.rs` can expose it as
 // a crate-root type. `CapabilityProviderRegistry` stays `pub(crate)`.
 pub use registry::CapabilityEnvelope;

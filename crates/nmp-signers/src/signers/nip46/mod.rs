@@ -49,7 +49,9 @@ use nmp_signer_iface::SignerOp;
 // without depending on `nmp-signers` (doctrine **D0**).
 use nmp_signer_iface::{Nip46Rpc, Nip46Transport};
 
-use mapper::{escape_json, generate_request_id, map_response_to_event};
+use mapper::{
+    escape_json, generate_request_id, map_response_to_event, parse_signed_event_response,
+};
 
 /// Pending RPC table: request id -> one-shot sender.
 type PendingMap = HashMap<String, Sender<Result<String, SignerError>>>;
@@ -299,6 +301,30 @@ impl Nip46Signer {
         SignerOp::Pending(rx)
     }
 
+    /// Queue a NIP-46 `sign_event` RPC and return the raw signed-event JSON
+    /// response.
+    ///
+    /// Browser runtimes use this no-thread variant so they can parse the
+    /// response during their event-driven pump after `ingest_rpc_response`
+    /// resolves the underlying channel.
+    pub fn sign_event_response_json(&self, unsigned: &UnsignedEvent) -> SignerOp<String> {
+        let params_json = match serde_json::to_string(unsigned) {
+            Ok(s) => format!("[{s}]"),
+            Err(e) => {
+                return SignerOp::err(SignerError::Backend(format!("serialize unsigned: {e}")))
+            }
+        };
+        self.enqueue("sign_event", &params_json)
+    }
+
+    /// Parse and verify a NIP-46 `sign_event` response for `expected_pubkey`.
+    pub fn parse_sign_event_response(
+        response_json: &str,
+        expected_pubkey: PublicKey,
+    ) -> Result<SignedEvent, SignerError> {
+        parse_signed_event_response(response_json, expected_pubkey)
+    }
+
     /// Number of in-flight RPCs awaiting a response.  Test-only — lets unit
     /// tests assert that failed sends do not leak entries into `pending`.
     #[cfg(test)]
@@ -317,13 +343,7 @@ impl Signer for Nip46Signer {
     }
 
     fn sign(&self, unsigned: UnsignedEvent) -> SignerOp<SignedEvent> {
-        let params_json = match serde_json::to_string(&unsigned) {
-            Ok(s) => format!("[{s}]"),
-            Err(e) => {
-                return SignerOp::err(SignerError::Backend(format!("serialize unsigned: {e}")))
-            }
-        };
-        let raw_op = self.enqueue("sign_event", &params_json);
+        let raw_op = self.sign_event_response_json(&unsigned);
         map_response_to_event(raw_op, unsigned, self.remote_user_pubkey)
     }
 

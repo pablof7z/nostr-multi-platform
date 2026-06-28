@@ -17,7 +17,7 @@ use crate::runtime::{RelayConfigAction as RuntimeRelayConfigAction, RelayConfigR
 use crate::{BrowserAppBuilder, BrowserRunConfig};
 
 use super::core::NmpRuntimeCore;
-use super::identity::install_identity;
+use super::identity::{install_identity, IdentityInstallOutcome};
 use super::protocol::{
     relay_bootstrap_from_config, BeginSign, ClientHello, DeliverSignerResponse,
     IdentityRelayPermission, PublishRelayPreferences, RelayConfig, ReleaseRef, ResolveRef,
@@ -157,7 +157,7 @@ impl NmpRuntimeCore {
         };
 
         match install_identity(handle, &mut req) {
-            Ok(canonical_hex) => {
+            Ok(outcome) => {
                 // Merge identity-provided relays BEFORE seeding the active account
                 // (#2139 HIGH 4: restores nmp-wasm signer.rs:151 behaviour).
                 if !req.identity_relays.is_empty() {
@@ -166,8 +166,15 @@ impl NmpRuntimeCore {
                         handle.apply_identity_relays(rows);
                     }
                 }
-                let outbound = handle.apply_set_active_account(canonical_hex);
-                handle.fan_out_outbound(outbound);
+                match outcome {
+                    IdentityInstallOutcome::ActiveAccount(canonical_hex) => {
+                        let outbound = handle.apply_set_active_account(canonical_hex);
+                        handle.fan_out_outbound(outbound);
+                    }
+                    IdentityInstallOutcome::PendingBunker(outbound) => {
+                        handle.fan_out_outbound(outbound);
+                    }
+                }
                 vec![WorkerEvent::ActionAccepted {
                     action_type: "nmp.set_identity".to_string(),
                     correlation_id: req.correlation_id,

@@ -31,7 +31,8 @@ use super::{BrowserRuntime, PumpOutcome};
 use crate::builder::BrowserBuilderInner;
 use crate::relay::RelayPool;
 use crate::signer::{
-    enqueue_completion, CapabilityEnvelope, CapabilityProviderRegistry, SignerCompletion,
+    enqueue_completion, BrowserNip46Runtime, CapabilityEnvelope, CapabilityProviderRegistry,
+    SignerCompletion,
 };
 
 use super::NoopRoutingTrace;
@@ -165,8 +166,8 @@ impl BrowserRuntimeHandle {
         register_signer_state_projection(&inner.reducer, Arc::clone(&signer_state_slot));
         // Seed signer-state readiness from the SOLE registered provider so the
         // projection reflects reality (a signer is available + ready) rather
-        // than silently empty. Multi-provider per-account selection and the
-        // full sign-success/failure/reconnecting lifecycle are deferred (#2068).
+        // than silently empty. Browser NIP-46 progress/ready/failed updates are
+        // driven later by the NIP-46 runtime bridge.
         if let Some(backend) = signer_registry.sole_backend() {
             update_signer_state(&signer_state_slot, Some(ready_model(&backend)));
         }
@@ -176,6 +177,11 @@ impl BrowserRuntimeHandle {
         let preferred_relay_source = inner.preferred_relay_source.take();
         let inbox_rx = inner.inbox_rx;
         let inbox_tx = inner.inbox_tx.clone();
+        let nip46 = BrowserNip46Runtime::install(
+            &mut inner.relay_text_interceptors,
+            &mut inner.relay_connected_hooks,
+            CommandSender::new(inbox_tx.clone()),
+        );
         let observed_projection_registrar = inner.reducer.observed_projection_command_handle(
             Arc::clone(&inner.observed_projection_sessions),
             CommandSender::new(inbox_tx.clone()),
@@ -188,8 +194,10 @@ impl BrowserRuntimeHandle {
             inbox_tx: inbox_tx.clone(),
             pending_signed_publishes: HashMap::new(),
             signer_registry,
+            nip46,
             signer_completion_tx,
             signer_completion_rx,
+            signer_state_slot: Arc::clone(&signer_state_slot),
             relay_text_interceptors: inner.relay_text_interceptors,
             relay_connected_hooks: inner.relay_connected_hooks,
             identity_change_observers: inner.identity_change_observers,
@@ -347,6 +355,24 @@ impl BrowserRuntimeHandle {
         self.runtime.signer_registry.insert(signer);
         self.set_signer_state(Some(ready_model(&backend)));
         pubkey
+    }
+
+    /// Begin a browser NIP-46 bunker signer handshake.
+    pub(crate) fn begin_nip46_bunker(
+        &mut self,
+        bunker_uri: &str,
+    ) -> Result<Vec<nmp_core::OutboundMessage>, String> {
+        let now_secs = self.runtime.reducer.now_secs();
+        let mut outbound = self.runtime.nip46.start_bunker(bunker_uri, now_secs)?;
+        outbound.extend(
+            self.runtime
+                .reducer
+                .run_relay_idle_tick(&self.runtime.relay_text_interceptors),
+        );
+        let (nip46_outbound, nip46_events) = self.runtime.drain_nip46_events_and_completions();
+        outbound.extend(nip46_outbound);
+        self.runtime.pending_startup_events.extend(nip46_events);
+        Ok(outbound)
     }
 
     // ── #2074 — signer-state slot writer ─────────────────────────────────────

@@ -39,12 +39,16 @@
 //!    connected hook; returns REQ replay effects for the SPECIFIC relay.
 //! 6. **Clear**: [`clear_runtime`] — drops session state (PR-B2 teardown).
 
+use nmp_core::CommandSender;
 use nmp_nip46::decode_inbound_response;
 use nmp_nip46::reducer::SessionState;
-use nmp_nip46::Effect;
-use nmp_nip46::{build_req_frame, start_bunker, start_restore, start_nostrconnect};
+use nmp_nip46::{build_req_frame, start_bunker, start_nostrconnect, start_restore};
+use nmp_nip46::{Effect, SignerReady};
+use nmp_signers::{Nip46Signer, Nip46SignerHandle};
 use nostr::{Keys, PublicKey};
 use std::sync::{Arc, Mutex};
+
+use crate::transport::ActorLaneTransport;
 
 // ─── Nip46Runtime ────────────────────────────────────────────────────────────
 
@@ -136,7 +140,10 @@ impl Nip46Runtime {
         // relay (canonical form, so the reconnect preamble keys the same pool row).
         let pubkey_hex = self.local_keys.public_key().to_hex();
         let frame = build_req_frame(&self.sub_id, &pubkey_hex, now_secs);
-        vec![Effect::Subscribe { relay_url: incoming, frame }]
+        vec![Effect::Subscribe {
+            relay_url: incoming,
+            frame,
+        }]
     }
 
     /// The primary bunker relay URL (first in `relay_urls`, or empty string if
@@ -244,10 +251,16 @@ pub fn init_bunker(
         });
         for relay in &relay_urls[1..] {
             if let Some(frame) = &req_frame {
-                effects.push(Effect::Subscribe { relay_url: relay.clone(), frame: frame.clone() });
+                effects.push(Effect::Subscribe {
+                    relay_url: relay.clone(),
+                    frame: frame.clone(),
+                });
             }
             if let Some(text) = &connect_frame {
-                effects.push(Effect::SendFrame { relay_url: relay.clone(), text: text.clone() });
+                effects.push(Effect::SendFrame {
+                    relay_url: relay.clone(),
+                    text: text.clone(),
+                });
             }
         }
     }
@@ -395,6 +408,88 @@ pub fn record_signer_ready(handle: &Nip46RuntimeHandle, remote_pubkey: PublicKey
             rt.remote_pubkey = remote_pubkey;
         }
     }
+}
+
+/// Mark the active session's persistent subscription as registered.
+///
+/// Used by runtimes that register the initial `Subscribe` effects directly
+/// during effect translation.
+pub fn mark_persistent_sub_registered(handle: &Nip46RuntimeHandle) {
+    if let Ok(mut guard) = handle.lock() {
+        if let Some(rt) = guard.as_mut() {
+            rt.persistent_sub_registered = true;
+        }
+    }
+}
+
+/// Return the relay/subscription rows that still need persistent registration.
+///
+/// The returned rows are marked as registered atomically with the read so
+/// callers can register them with their kernel without duplicate idle-tick
+/// work. `None` means no active runtime, poisoned mutex, or already registered.
+#[must_use]
+pub fn take_persistent_registration(handle: &Nip46RuntimeHandle) -> Option<(Vec<String>, String)> {
+    let mut guard = handle.lock().ok()?;
+    let rt = guard.as_mut()?;
+    if rt.persistent_sub_registered {
+        return None;
+    }
+    rt.persistent_sub_registered = true;
+    Some((rt.relay_urls.clone(), rt.sub_id.clone()))
+}
+
+/// Build a fully connected [`Nip46Signer`] from a completed NIP-46 handshake.
+///
+/// This is shared by the native actor interceptor and the browser runtime
+/// bridge. It records the learned remote signer pubkey, captures the session's
+/// relay list and local keypair, and installs an [`ActorLaneTransport`] that
+/// fans later signer RPCs to every bunker relay.
+pub fn complete_signer_from_ready(
+    handle: &Nip46RuntimeHandle,
+    ready: SignerReady,
+    sender: CommandSender,
+) -> Result<Nip46Signer, String> {
+    let remote_signer_pubkey = PublicKey::from_hex(&ready.remote_signer_pubkey_hex)
+        .map_err(|_| "invalid remote signer pubkey in SignerReady".to_string())?;
+    let user_pubkey = PublicKey::from_hex(&ready.user_pubkey_hex)
+        .map_err(|_| "invalid user pubkey in SignerReady".to_string())?;
+
+    record_signer_ready(handle, remote_signer_pubkey);
+
+    let (relay_urls, local_keys) = {
+        let guard = handle
+            .lock()
+            .map_err(|_| "runtime handle mutex poisoned".to_string())?;
+        let rt = guard
+            .as_ref()
+            .ok_or_else(|| "nip46 runtime is not initialized".to_string())?;
+        (rt.relay_urls.clone(), rt.local_keys.clone())
+    };
+
+    let transport = ActorLaneTransport::new_multi(
+        sender,
+        local_keys.clone(),
+        remote_signer_pubkey,
+        relay_urls.clone(),
+    );
+
+    let relay_params: String = relay_urls
+        .iter()
+        .map(|u| format!("&relay={}", nmp_nip46::percent_encode_query_value(u)))
+        .collect();
+    let synthetic_uri = format!(
+        "bunker://{}?{}",
+        remote_signer_pubkey.to_hex(),
+        relay_params.trim_start_matches('&'),
+    );
+
+    let signer_handle = Nip46SignerHandle::from_bunker_uri_with_local_key(
+        &synthetic_uri,
+        local_keys.secret_key().clone(),
+    )
+    .map_err(|e| format!("internal: signer handle build failed: {e}"))?;
+
+    Ok(signer_handle.complete(Arc::new(transport), user_pubkey))
 }
 
 // ─── relay canonicalization ───────────────────────────────────────────────────

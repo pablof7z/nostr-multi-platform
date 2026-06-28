@@ -343,6 +343,7 @@ impl BrowserRuntimeHandle {
         let wake = self.runtime.relay_pool.wake_cell();
         if !broker_sign_request(
             &self.runtime.signer_registry,
+            &mut self.runtime.nip46.pending_signs,
             correlation_id,
             account_pubkey,
             unsigned_json,

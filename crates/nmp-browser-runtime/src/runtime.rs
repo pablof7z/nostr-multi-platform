@@ -38,11 +38,13 @@ use nmp_core::substrate::{
 };
 use nmp_core::time::Instant;
 use nmp_core::{ActionRegistry, CommandSender, KernelReducer, OutboundMessage, UpdateFrameBytes};
+use nmp_signers::SignerBackend;
 
 use crate::builder::BrowserRunConfig;
 use crate::relay::RelayPool;
 use crate::signer::{
-    CapabilityProviderRegistry, SignerCompletion, SignerCompletionRx, SignerCompletionTx,
+    BrowserNip46Runtime, CapabilityProviderRegistry, SignerCompletion, SignerCompletionRx,
+    SignerCompletionTx,
 };
 
 use std::sync::mpsc;
@@ -69,6 +71,10 @@ pub(crate) use search::BrowserSearchSession;
 pub mod diagnostics;
 mod handle;
 pub(crate) mod signer_state;
+use signer_state::{
+    nip46_failed_model, nip46_progress_model, ready_model, update_signer_state,
+    BrowserSignerStateSlot,
+};
 pub mod snapshot;
 
 pub use diagnostics::BrowserRuntimeDiagnostics;
@@ -148,12 +154,14 @@ pub(crate) struct BrowserRuntime {
     /// Capability/signer-provider registry (#2049 / #2065). Populated from
     /// `BrowserBuilderInner::capability_providers` at `start()`.
     pub(crate) signer_registry: CapabilityProviderRegistry,
+    pub(crate) nip46: BrowserNip46Runtime,
     /// Sender end of the sign-completion channel. Cloned into `drain_inbox`
     /// so the broker can send completions; drained in `pump()` after the
     /// command drain.
     pub(crate) signer_completion_tx: SignerCompletionTx,
     /// Receiver end of the sign-completion channel. Drained in `pump()`.
     pub(crate) signer_completion_rx: SignerCompletionRx,
+    pub(crate) signer_state_slot: BrowserSignerStateSlot,
     /// Relay-text interceptors — invoked during the inbound relay drain (#2050)
     /// for every inbound text frame (D0: substrate-generic, no app nouns here).
     pub(crate) relay_text_interceptors: Vec<Arc<dyn RelayTextInterceptor>>,
@@ -203,6 +211,7 @@ impl BrowserRuntime {
             &self.inbox_rx,
             &mut self.pending_signed_publishes,
             &self.signer_registry,
+            &mut self.nip46.pending_signs,
             &self.signer_completion_tx,
             &wake,
             &cmd_sender,
@@ -241,6 +250,7 @@ impl BrowserRuntime {
             &self.relay_connected_hooks,
             &cmd_sender,
         );
+        let nip46_after_relay = self.drain_nip46_events_and_completions();
 
         // Relay ingest can synchronously trigger observed-projection callbacks
         // that enqueue follow-up commands through the same inbox. Drain one more
@@ -251,6 +261,7 @@ impl BrowserRuntime {
             &self.inbox_rx,
             &mut self.pending_signed_publishes,
             &self.signer_registry,
+            &mut self.nip46.pending_signs,
             &self.signer_completion_tx,
             &wake,
             &cmd_sender,
@@ -261,6 +272,7 @@ impl BrowserRuntime {
             &self.inbox_rx,
             &mut self.pending_signed_publishes,
             &self.signer_registry,
+            &mut self.nip46.pending_signs,
             &self.signer_completion_tx,
             &wake,
             &cmd_sender,
@@ -273,6 +285,7 @@ impl BrowserRuntime {
         let idle_outbound = self
             .reducer
             .run_relay_idle_tick(&self.relay_text_interceptors);
+        let nip46_after_idle = self.drain_nip46_events_and_completions();
 
         // ── 4. Maintenance tick (tick_at + arm next deadline) ─────────────────
         let now = Instant::now();
@@ -283,9 +296,11 @@ impl BrowserRuntime {
         all_outbound.extend(cmd_drain.outbound);
         all_outbound.extend(completion_outbound);
         all_outbound.extend(relay_drain.outbound);
+        all_outbound.extend(nip46_after_relay.0);
         all_outbound.extend(post_relay_cmd_drain.outbound);
         all_outbound.extend(post_completion_cmd_drain.outbound);
         all_outbound.extend(idle_outbound);
+        all_outbound.extend(nip46_after_idle.0);
         all_outbound.extend(tick_outbound);
 
         // ── 6. Fan outbound to relay drivers (wasm32: actual sends; native: no-op)
@@ -296,8 +311,10 @@ impl BrowserRuntime {
         events.extend(cmd_drain.events);
         events.extend(completion_events);
         events.extend(relay_drain.events);
+        events.extend(nip46_after_relay.1);
         events.extend(post_relay_cmd_drain.events);
         events.extend(post_completion_cmd_drain.events);
+        events.extend(nip46_after_idle.1);
         let budget_events = self.relay_pool.fan_out_outbound(&all_outbound);
         events.extend(budget_events);
 
@@ -319,6 +336,60 @@ impl BrowserRuntime {
 
     pub(crate) fn make_update_frame(&mut self, running: bool) -> UpdateFrameBytes {
         self.reducer.make_update_frame(running)
+    }
+
+    pub(crate) fn drain_nip46_events_and_completions(
+        &mut self,
+    ) -> (Vec<OutboundMessage>, Vec<BrowserRuntimeEvent>) {
+        let mut outbound = Vec::new();
+        let mut events = Vec::new();
+        for event in self.nip46.drain_events() {
+            match event {
+                crate::signer::nip46::BrowserNip46Event::Progress {
+                    stage,
+                    code,
+                    detail,
+                } => {
+                    update_signer_state(
+                        &self.signer_state_slot,
+                        Some(nip46_progress_model(&stage, code, detail)),
+                    );
+                }
+                crate::signer::nip46::BrowserNip46Event::Failed { reason } => {
+                    update_signer_state(&self.signer_state_slot, Some(nip46_failed_model(reason)));
+                }
+                crate::signer::nip46::BrowserNip46Event::InstallSigner { signer } => {
+                    let pubkey = signer.remote_user_pubkey().to_hex();
+                    self.signer_registry.insert_nip46(Arc::clone(&signer));
+                    self.nip46.remember_signer(signer);
+                    update_signer_state(
+                        &self.signer_state_slot,
+                        Some(ready_model(&SignerBackend::Nip46)),
+                    );
+                    let before = self
+                        .reducer
+                        .active_account_handle()
+                        .lock()
+                        .ok()
+                        .and_then(|guard| guard.clone());
+                    outbound.extend(self.reducer.set_active_account(pubkey.clone()));
+                    if before.as_deref() != Some(pubkey.as_str()) {
+                        for observer in &self.identity_change_observers {
+                            observer(Some(pubkey.clone()));
+                        }
+                    }
+                }
+                crate::signer::nip46::BrowserNip46Event::SignerResponse { response_json } => {
+                    self.nip46.deliver_response_to_signers(&response_json);
+                }
+            }
+        }
+        for completion in self.nip46.drain_ready_signs() {
+            let (completion_outbound, completion_events) = self.deliver_one_completion(completion);
+            outbound.extend(completion_outbound);
+            events.extend(completion_events);
+        }
+        (outbound, events)
     }
 }
 

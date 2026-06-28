@@ -29,12 +29,10 @@ use nmp_core::substrate::RelayTextInterceptor;
 use nmp_core::{CommandSender, Kernel, OutboundMessage, SignerSource};
 use nmp_network::role::RelayRole;
 use nmp_nip46::{Effect, SignerReady};
-use nmp_signers::{Nip46SignerHandle, Nip46Signer};
 use nmp_signer_iface::RemoteSignerHandle;
-use nostr::PublicKey;
+use nmp_signers::Nip46Signer;
 
-use crate::runtime::Nip46RuntimeHandle;
-use crate::transport::ActorLaneTransport;
+use crate::runtime::{complete_signer_from_ready, Nip46RuntimeHandle};
 
 /// Relay-text interceptor that drives the NIP-46 session state machine.
 ///
@@ -93,9 +91,16 @@ impl RelayTextInterceptor for Nip46Interceptor {
             };
 
             let needs_reg = !rt.persistent_sub_registered;
-            let relay_url =
-                if needs_reg { Some(rt.relay_urls.first().cloned().unwrap_or_default()) } else { None };
-            let sub_id = if needs_reg { Some(rt.sub_id.clone()) } else { None };
+            let relay_url = if needs_reg {
+                Some(rt.relay_urls.first().cloned().unwrap_or_default())
+            } else {
+                None
+            };
+            let sub_id = if needs_reg {
+                Some(rt.sub_id.clone())
+            } else {
+                None
+            };
             // Tick for 60 s step timeout.
             let tick_effects = rt.tick(now);
 
@@ -149,13 +154,20 @@ impl Nip46Interceptor {
                 Effect::SendFrame { relay_url, text } => {
                     outbound.push(OutboundMessage::new(RelayRole::Signer, relay_url, text));
                 }
-                Effect::Progress { stage, code, detail } => {
+                Effect::Progress {
+                    stage,
+                    code,
+                    detail,
+                } => {
                     self.sender.bunker_handshake_progress(stage, code, detail);
                 }
                 Effect::SignerReady(ready) => {
                     self.handle_signer_ready(ready, kernel);
                 }
-                Effect::DeliverResponse { correlation_id: _, result } => {
+                Effect::DeliverResponse {
+                    correlation_id: _,
+                    result,
+                } => {
                     // Steady-state RPC response: deliver to the signer's parked op.
                     self.sender.deliver_signer_response(result);
                 }
@@ -190,89 +202,16 @@ impl Nip46Interceptor {
     /// The `Nip46Signer` receives subsequent inbound responses via the actor's
     /// `DeliverSignerResponse` path (§D3b fan-out) and resolves parked sign
     /// operations via `ingest_rpc_response`.
-    fn handle_signer_ready(&self, ready: SignerReady, kernel: &mut Kernel) {
-        // Resolve the remote signer pubkey from the SignerReady hex string.
-        let Ok(remote_signer_pubkey) = PublicKey::from_hex(&ready.remote_signer_pubkey_hex) else {
-            tracing::warn!(
-                signer_pubkey = %ready.remote_signer_pubkey_hex,
-                "nip46-runtime: SignerReady remote_signer_pubkey_hex unparseable"
-            );
-            self.sender.bunker_handshake_progress(
-                "failed".to_string(),
-                None,
-                Some("invalid remote signer pubkey in SignerReady".to_string()),
-            );
-            return;
-        };
-
-        // Resolve the user pubkey (the account's actual public key).
-        let Ok(user_pubkey) = PublicKey::from_hex(&ready.user_pubkey_hex) else {
-            tracing::warn!(
-                user_pubkey = %ready.user_pubkey_hex,
-                "nip46-runtime: SignerReady user_pubkey_hex unparseable"
-            );
-            self.sender.bunker_handshake_progress(
-                "failed".to_string(),
-                None,
-                Some("invalid user pubkey in SignerReady".to_string()),
-            );
-            return;
-        };
-
-        // BLOCKER 1: persist the learned remote signer pubkey so steady-state
-        // decode (`Nip46Runtime::on_relay_text`) decrypts with the correct key.
-        // For bunker this is a no-op (URI already carried it); for nostrconnect
-        // it replaces the local-pubkey placeholder.
-        crate::runtime::record_signer_ready(&self.runtime, remote_signer_pubkey);
-
-        // Capture session transport params from the runtime handle.
-        let (relay_urls, local_keys) = {
-            let Ok(guard) = self.runtime.lock() else { return };
-            let Some(rt) = guard.as_ref() else { return };
-            (rt.relay_urls.clone(), rt.local_keys.clone())
-        };
-
-        // Build the multi-relay transport (fans each RPC to ALL relay URLs).
-        let transport = ActorLaneTransport::new_multi(
-            self.sender.clone(),
-            local_keys.clone(),
-            remote_signer_pubkey,
-            relay_urls.clone(),
-        );
-
-        // Build a synthetic bunker:// URI so Nip46SignerHandle can parse the
-        // remote pubkey and relay list.  Uses the session's local secret key so
-        // the signer encrypts with the same ephemeral key used during the
-        // handshake.
-        let relay_params: String = relay_urls
-            .iter()
-            .map(|u| format!("&relay={}", nmp_nip46::percent_encode_query_value(u)))
-            .collect();
-        let synthetic_uri = format!(
-            "bunker://{}?{}",
-            remote_signer_pubkey.to_hex(),
-            relay_params.trim_start_matches('&'),
-        );
-
-        let local_sk = local_keys.secret_key().clone();
-        let signer_handle = match Nip46SignerHandle::from_bunker_uri_with_local_key(
-            &synthetic_uri,
-            local_sk,
-        ) {
-            Ok(h) => h,
-            Err(e) => {
-                tracing::warn!(error = %e, "nip46-runtime: failed to build Nip46SignerHandle");
-                self.sender.bunker_handshake_progress(
-                    "failed".to_string(),
-                    None,
-                    Some(format!("internal: signer handle build failed: {e}")),
-                );
+    fn handle_signer_ready(&self, ready: SignerReady, _kernel: &mut Kernel) {
+        let signer = match complete_signer_from_ready(&self.runtime, ready, self.sender.clone()) {
+            Ok(signer) => signer,
+            Err(reason) => {
+                tracing::warn!(error = %reason, "nip46-runtime: failed to complete signer");
+                self.sender
+                    .bunker_handshake_progress("failed".to_string(), None, Some(reason));
                 return;
             }
         };
-
-        // Complete the signer (handshake already done — supply user pubkey directly).
-        let signer: Nip46Signer = signer_handle.complete(Arc::new(transport), user_pubkey);
 
         // Wrap in ArcRemoteSigner. The Arc is needed so that the sign call
         // (which parks in `Nip46Signer::pending`) and the response delivery
@@ -286,9 +225,9 @@ impl Nip46Interceptor {
             Some("NIP-46 signer ready".to_string()),
         );
         // ConnectionStateChanged preservation (V-14 / signer_broker:76).
-        self.sender.bunker_connection_state_changed("connected".to_string(), None);
+        self.sender
+            .bunker_connection_state_changed("connected".to_string(), None);
 
-        let _ = kernel.now_secs(); // touch kernel to silence unused-mut warning
         self.sender.add_signer(signer_source, true);
     }
 }
@@ -336,15 +275,26 @@ impl RemoteSignerHandle for ArcRemoteSigner {
         self.0.persistence_payload_json()
     }
 
-    fn sign(&self, unsigned: &nmp_signer_iface::signing::UnsignedEvent) -> nmp_signer_iface::SignerOp<nmp_signer_iface::signing::SignedEvent> {
+    fn sign(
+        &self,
+        unsigned: &nmp_signer_iface::signing::UnsignedEvent,
+    ) -> nmp_signer_iface::SignerOp<nmp_signer_iface::signing::SignedEvent> {
         self.0.sign(unsigned)
     }
 
-    fn nip44_encrypt(&self, recipient_pubkey: &str, plaintext: &str) -> nmp_signer_iface::SignerOp<String> {
+    fn nip44_encrypt(
+        &self,
+        recipient_pubkey: &str,
+        plaintext: &str,
+    ) -> nmp_signer_iface::SignerOp<String> {
         self.0.nip44_encrypt(recipient_pubkey, plaintext)
     }
 
-    fn nip44_decrypt(&self, sender_pubkey: &str, ciphertext: &str) -> nmp_signer_iface::SignerOp<String> {
+    fn nip44_decrypt(
+        &self,
+        sender_pubkey: &str,
+        ciphertext: &str,
+    ) -> nmp_signer_iface::SignerOp<String> {
         self.0.nip44_decrypt(sender_pubkey, ciphertext)
     }
 

@@ -12,15 +12,13 @@
 //!
 //! Encrypt/decrypt (`nip04`/`nip44`) are **ADVERTISED as metadata only** — no
 //! kernel encrypt-roundtrip seam exists yet. Wire-routing encrypt/decrypt through
-//! the kernel is a follow-up to this PR; this honest annotation keeps the seam
+//! the kernel remains tracked by #2195; this honest annotation keeps the seam
 //! boundary visible without a silent omission.
-//!
-//! NIP-46 bunker:// providers are not wired in this track — see #2068.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use nmp_signers::{Signer, SignerBackend};
+use nmp_signers::{Nip46Signer, Signer, SignerBackend};
 
 /// Advertised capability envelope derived from a registered [`Signer`].
 ///
@@ -32,7 +30,7 @@ use nmp_signers::{Signer, SignerBackend};
 ///
 /// `nip04`/`nip44` are advertised as metadata only. No kernel
 /// encrypt-roundtrip seam exists in this track; encrypt/decrypt routing
-/// is a follow-up (#2068 NIP-46 / encrypt-decrypt scope).
+/// is tracked by #2195.
 #[derive(Clone, Debug)]
 pub struct CapabilityEnvelope {
     /// The signer can sign events (always `true` for a registered provider).
@@ -62,6 +60,7 @@ impl CapabilityEnvelope {
 /// One registered entry: signer + pre-computed capability envelope.
 pub(crate) struct ProviderEntry {
     pub(crate) signer: Arc<dyn Signer>,
+    pub(crate) nip46_signer: Option<Arc<Nip46Signer>>,
     pub(crate) envelope: CapabilityEnvelope,
 }
 
@@ -86,8 +85,33 @@ impl CapabilityProviderRegistry {
     pub(crate) fn insert(&mut self, signer: Arc<dyn Signer>) {
         let pubkey_hex = signer.pubkey().to_hex();
         let envelope = CapabilityEnvelope::from_signer(signer.as_ref());
-        self.providers
-            .insert(pubkey_hex, ProviderEntry { signer, envelope });
+        self.providers.insert(
+            pubkey_hex,
+            ProviderEntry {
+                signer,
+                nip46_signer: None,
+                envelope,
+            },
+        );
+    }
+
+    /// Insert a browser-owned NIP-46 signer, preserving its concrete type.
+    ///
+    /// The erased `Signer` trait object is still used for capability metadata
+    /// and generic lookups, while the typed `Arc<Nip46Signer>` lets the browser
+    /// pump parse NIP-46 sign responses without a native helper thread.
+    pub(crate) fn insert_nip46(&mut self, signer: Arc<Nip46Signer>) {
+        let pubkey_hex = signer.pubkey().to_hex();
+        let erased: Arc<dyn Signer> = signer.clone();
+        let envelope = CapabilityEnvelope::from_signer(erased.as_ref());
+        self.providers.insert(
+            pubkey_hex,
+            ProviderEntry {
+                signer: erased,
+                nip46_signer: Some(signer),
+                envelope,
+            },
+        );
     }
 
     /// Resolve a provider for `account_pubkey` (lowercase hex).
@@ -105,8 +129,8 @@ impl CapabilityProviderRegistry {
     ///
     /// Used at `start()` to seed the signer-state projection to a `ready` state
     /// for the single-signer browser case. Returns `None` when zero or multiple
-    /// providers are registered — per-account selection across multiple signers
-    /// is deferred to the lifecycle follow-up (#2068).
+    /// providers are registered; dynamic NIP-46 selection is driven by the
+    /// browser NIP-46 runtime bridge after the bunker handshake completes.
     pub(crate) fn sole_backend(&self) -> Option<SignerBackend> {
         if self.providers.len() == 1 {
             self.providers

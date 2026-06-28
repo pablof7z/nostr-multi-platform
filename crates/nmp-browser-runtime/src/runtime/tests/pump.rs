@@ -30,6 +30,7 @@ fn applied_command_produces_no_events_and_no_pending() {
         LifecycleCommand::MarkChangedSinceEmit,
     )]);
     let mut pending = HashMap::new();
+    let mut pending_signs = PendingSignerCompletions::new();
     let (reg, tx) = empty_broker();
 
     let out = drain_inbox(
@@ -37,6 +38,7 @@ fn applied_command_produces_no_events_and_no_pending() {
         &rx,
         &mut pending,
         &reg,
+        &mut pending_signs,
         &tx,
         &noop_wake(),
         &test_command_sender(),
@@ -55,6 +57,7 @@ fn protocol_command_expands_before_headless_interpretation() {
         ReactionProtocolCommand,
     ))]);
     let mut pending = HashMap::new();
+    let mut pending_signs = PendingSignerCompletions::new();
     let (reg, tx) = empty_broker();
 
     let out = drain_inbox(
@@ -62,6 +65,7 @@ fn protocol_command_expands_before_headless_interpretation() {
         &rx,
         &mut pending,
         &reg,
+        &mut pending_signs,
         &tx,
         &noop_wake(),
         &test_command_sender(),
@@ -93,6 +97,7 @@ fn needs_sign_parks_continuation_and_emits_sign_request() {
     });
     let rx = enqueue(vec![cmd]);
     let mut pending = HashMap::new();
+    let mut pending_signs = PendingSignerCompletions::new();
     let (reg, tx) = empty_broker();
 
     let out = drain_inbox(
@@ -100,6 +105,7 @@ fn needs_sign_parks_continuation_and_emits_sign_request() {
         &rx,
         &mut pending,
         &reg,
+        &mut pending_signs,
         &tx,
         &noop_wake(),
         &test_command_sender(),
@@ -150,6 +156,7 @@ fn local_event_for_account_invokes_continuation_inline() {
     let mut reducer = KernelReducer::new();
     reducer.set_active_account_for_test(pubkey.clone());
     let mut pending = HashMap::new();
+    let mut pending_signs = PendingSignerCompletions::new();
     let (tx, _rx) = mpsc::channel::<SignerCompletion>();
 
     let out = drain_inbox(
@@ -157,6 +164,7 @@ fn local_event_for_account_invokes_continuation_inline() {
         &rx,
         &mut pending,
         &reg,
+        &mut pending_signs,
         &tx,
         &noop_wake(),
         &test_command_sender(),
@@ -182,6 +190,7 @@ fn unsupported_command_surfaces_command_failed() {
     let mut reducer = KernelReducer::new();
     let rx = enqueue(vec![ActorCommand::Lifecycle(LifecycleCommand::Stop)]);
     let mut pending = HashMap::new();
+    let mut pending_signs = PendingSignerCompletions::new();
     let (reg, tx) = empty_broker();
 
     let out = drain_inbox(
@@ -189,6 +198,7 @@ fn unsupported_command_surfaces_command_failed() {
         &rx,
         &mut pending,
         &reg,
+        &mut pending_signs,
         &tx,
         &noop_wake(),
         &test_command_sender(),
@@ -237,6 +247,7 @@ fn nip44_decrypt_for_account_resolves_local_key_continuation() {
         },
     )]);
     let mut pending = HashMap::new();
+    let mut pending_signs = PendingSignerCompletions::new();
     let mut reg = CapabilityProviderRegistry::new();
     reg.insert(Arc::new(recipient) as Arc<dyn Signer>);
     let (_unused_reg, tx) = empty_broker();
@@ -246,6 +257,7 @@ fn nip44_decrypt_for_account_resolves_local_key_continuation() {
         &rx,
         &mut pending,
         &reg,
+        &mut pending_signs,
         &tx,
         &noop_wake(),
         &test_command_sender(),
@@ -279,6 +291,7 @@ fn drain_is_bounded_by_budget_and_remainder_drains_next_pump() {
         .collect();
     let rx = enqueue(cmds);
     let mut pending = HashMap::new();
+    let mut pending_signs = PendingSignerCompletions::new();
     let (reg, tx) = empty_broker();
 
     let sender = test_command_sender();
@@ -287,6 +300,7 @@ fn drain_is_bounded_by_budget_and_remainder_drains_next_pump() {
         &rx,
         &mut pending,
         &reg,
+        &mut pending_signs,
         &tx,
         &noop_wake(),
         &sender,
@@ -303,6 +317,7 @@ fn drain_is_bounded_by_budget_and_remainder_drains_next_pump() {
         &rx,
         &mut pending,
         &reg,
+        &mut pending_signs,
         &tx,
         &noop_wake(),
         &sender,

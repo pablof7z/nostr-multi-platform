@@ -32,11 +32,10 @@
 //! [`ready_model`] maps a [`SignerBackend`] to a `ready` [`SignerStateModel`].
 //! At `start()` the runtime seeds the slot from the SOLE registered provider's
 //! backend (see `CapabilityProviderRegistry::sole_backend`) so the projection
-//! reflects "a signer is available and ready" rather than silently empty. The
-//! full sign-success / failure / reconnecting lifecycle (and per-account
-//! selection when multiple providers are registered) is deferred — see #2068
-//! (NIP-46 encrypt/decrypt + lifecycle). [`update_signer_state`] is the writer
-//! seam those transitions will drive.
+//! reflects "a signer is available and ready" rather than silently empty.
+//! Browser NIP-46 handshake progress, readiness, and terminal failure also
+//! write this slot through the NIP-46 runtime bridge. Encrypt/decrypt provider
+//! wire-routing remains tracked by #2195.
 //!
 //! D4 — single writer: [`update_signer_state`] is the ONLY writer; the closure
 //! only reads (plus resetting its own one-shot tombstone). D6 — total: a
@@ -106,6 +105,49 @@ pub fn ready_model(backend: &SignerBackend) -> SignerStateModel {
         is_ready: true,
         ..Default::default()
     }
+}
+
+/// Browser NIP-46 handshake progress mapped onto the shared signer-state
+/// vocabulary.
+#[must_use]
+pub fn nip46_progress_model(
+    stage: &str,
+    _code: Option<String>,
+    detail: Option<String>,
+) -> SignerStateModel {
+    let state = stage_to_state(stage);
+    SignerStateModel {
+        signer_kind: "nip46".to_string(),
+        is_awaiting_approval: state == "awaiting_approval",
+        is_reconnecting: state == "reconnecting",
+        is_ready: state == "ready",
+        is_failed: state == "failed",
+        state,
+        reason: detail,
+        ..Default::default()
+    }
+}
+
+/// Terminal browser NIP-46 failure state.
+#[must_use]
+pub fn nip46_failed_model(reason: String) -> SignerStateModel {
+    SignerStateModel {
+        signer_kind: "nip46".to_string(),
+        state: "failed".to_string(),
+        is_failed: true,
+        reason: Some(reason),
+        ..Default::default()
+    }
+}
+
+fn stage_to_state(stage: &str) -> String {
+    match stage {
+        "ready" => "ready",
+        "failed" => "failed",
+        "reconnecting" | "connecting" => "reconnecting",
+        _ => "awaiting_approval",
+    }
+    .to_string()
 }
 
 /// Register the typed `"signer_state"` projection closure on `reducer`.

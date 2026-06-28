@@ -14,6 +14,7 @@
 
 use std::sync::Arc;
 
+use nmp_core::OutboundMessage;
 use nmp_signers::{LocalKeySigner, Signer};
 use zeroize::Zeroize;
 
@@ -36,12 +37,17 @@ impl IdentityError {
     pub(crate) fn detail(&self) -> String {
         match self {
             Self::UnsupportedKind(kind) => format!(
-                "unsupported_signer_kind: \"{kind}\" — only \"nip07\" is wired. \
-                 NIP-46 bunker signing is deferred to #2119/#2068."
+                "unsupported_signer_kind: \"{kind}\" — supported signer kinds are \
+                 \"nip07\", \"local_key\", and \"nip46\"."
             ),
             Self::InvalidPubkey(detail) => format!("invalid_signer_pubkey: {detail}"),
         }
     }
+}
+
+pub(crate) enum IdentityInstallOutcome {
+    ActiveAccount(String),
+    PendingBunker(Vec<OutboundMessage>),
 }
 
 /// Return `true` iff `value` is exactly 64 lowercase-or-uppercase ASCII hex digits.
@@ -85,11 +91,11 @@ pub(crate) fn canonical_pubkey_from_kind(
 pub(crate) fn install_identity(
     handle: &mut BrowserRuntimeHandle,
     req: &mut SetIdentity,
-) -> Result<String, String> {
+) -> Result<IdentityInstallOutcome, String> {
     match req.kind.as_str() {
-        "nip07" => {
-            canonical_pubkey_from_kind(&req.kind, &req.pubkey_hex).map_err(|err| err.detail())
-        }
+        "nip07" => canonical_pubkey_from_kind(&req.kind, &req.pubkey_hex)
+            .map(IdentityInstallOutcome::ActiveAccount)
+            .map_err(|err| err.detail()),
         "local_key" => {
             let Some(mut secret) = req
                 .secret_key_bech32
@@ -104,11 +110,24 @@ pub(crate) fn install_identity(
                 .map_err(|err| format!("invalid_local_key: {err}"));
             secret.zeroize();
             let signer = signer?;
-            Ok(handle.install_signer_provider(Arc::new(signer) as Arc<dyn Signer>))
+            Ok(IdentityInstallOutcome::ActiveAccount(
+                handle.install_signer_provider(Arc::new(signer) as Arc<dyn Signer>),
+            ))
+        }
+        "nip46" => {
+            let Some(mut bunker_uri) = req.bunker_uri.take().filter(|value| !value.is_empty())
+            else {
+                return Err(
+                    "missing_nip46_bunker_uri: bunker_uri is required for nip46".to_string()
+                );
+            };
+            let outbound = handle.begin_nip46_bunker(&bunker_uri);
+            bunker_uri.zeroize();
+            outbound.map(IdentityInstallOutcome::PendingBunker)
         }
         other => Err(format!(
-            "unsupported_signer_kind: \"{other}\" — supported signer kinds are \"nip07\" and \
-             \"local_key\". NIP-46 bunker signing is deferred to #2119/#2068."
+            "unsupported_signer_kind: \"{other}\" — supported signer kinds are \"nip07\", \
+             \"local_key\", and \"nip46\"."
         )),
     }
 }

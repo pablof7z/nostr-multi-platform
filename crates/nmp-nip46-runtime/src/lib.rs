@@ -76,8 +76,9 @@ pub use ffi_support::{
 };
 pub use register::register_nip46;
 pub use runtime::{
-    clear_runtime, init_bunker, init_nostrconnect, init_restore, new_nip46_runtime_handle,
-    record_signer_ready, Nip46Runtime, Nip46RuntimeHandle,
+    clear_runtime, complete_signer_from_ready, init_bunker, init_nostrconnect, init_restore,
+    mark_persistent_sub_registered, new_nip46_runtime_handle, record_signer_ready,
+    take_persistent_registration, Nip46Runtime, Nip46RuntimeHandle,
 };
 pub use transport::ActorLaneTransport;
 

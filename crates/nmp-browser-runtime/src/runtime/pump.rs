@@ -33,7 +33,9 @@ use nmp_signers::PublicKey;
 use super::event::BrowserRuntimeEvent;
 use super::PendingSignedPublish;
 use crate::relay::WakeCell;
-use crate::signer::{broker_sign_request, CapabilityProviderRegistry, SignerCompletionTx};
+use crate::signer::{
+    broker_sign_request, CapabilityProviderRegistry, PendingSignerCompletions, SignerCompletionTx,
+};
 
 /// Maximum number of commands applied per `pump()` turn.
 ///
@@ -70,6 +72,7 @@ pub(super) fn drain_inbox(
     rx: &Receiver<ActorMail>,
     pending: &mut HashMap<String, PendingSignedPublish>,
     registry: &CapabilityProviderRegistry,
+    pending_signer_completions: &mut PendingSignerCompletions,
     completion_tx: &SignerCompletionTx,
     wake: &WakeCell,
     command_sender: &CommandSender,
@@ -136,6 +139,7 @@ pub(super) fn drain_inbox(
                     // (never silently drop — D6).
                     let brokered = broker_sign_request(
                         registry,
+                        pending_signer_completions,
                         &request.correlation_id,
                         &request.account_pubkey,
                         &request.unsigned_json,
@@ -255,7 +259,10 @@ fn run_sign_event(
     match op.poll() {
         Some(Ok(signed)) => Ok(signed),
         Some(Err(error)) => Err(error.to_string()),
-        None => Err("browser sign: pending signer providers are not wired yet".to_string()),
+        None => Err(
+            "browser sign: pending provider cannot resolve through the synchronous continuation path"
+                .to_string(),
+        ),
     }
 }
 
@@ -287,6 +294,8 @@ fn run_nip44_cipher(
     match op.poll() {
         Some(Ok(value)) => Ok(value),
         Some(Err(error)) => Err(error.to_string()),
-        None => Err("browser nip44: pending signer providers are not wired yet".to_string()),
+        None => Err(
+            "browser nip44: pending provider cipher routing is tracked by #2195".to_string(),
+        ),
     }
 }
