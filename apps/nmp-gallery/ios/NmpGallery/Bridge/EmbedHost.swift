@@ -39,11 +39,10 @@ final class EmbedHost: EmbedEnvelopeSource {
     var count: Int { envelopesByPrimaryID.count }
 
     /// Called on every snapshot tick with the pre-resolved embed envelope map.
-    /// A nil or empty value leaves the
-    /// previous state intact (stable, not flicker) — matches the one-tick-lag
-    /// semantics of the Rust sidecar (D6: graceful degradation).
+    /// A nil value means the projection was absent, so the previous state stays
+    /// intact. An explicit empty map is authoritative and clears stale embeds.
     func update(resolvedEventEmbeds: [String: EmbeddedEventEnvelope]?) {
-        guard let embeds = resolvedEventEmbeds, !embeds.isEmpty else { return }
+        guard let embeds = resolvedEventEmbeds else { return }
         envelopesByPrimaryID = embeds
     }
 
