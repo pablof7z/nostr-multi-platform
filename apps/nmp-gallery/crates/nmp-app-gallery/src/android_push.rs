@@ -1,12 +1,6 @@
 //! JNI push listeners for gallery update frames and NIP-55 signer requests
 //! (issue #614 / issue #1612 — D8 no-polling).
 //!
-//! Mirrors the Chirp push-listener types:
-//! - [`GalleryUpdateListener`] ← `UpdatePushListener` in
-//!   `apps/chirp/crates/nmp-chirp-android-ffi/src/session.rs`
-//! - [`SignerRequestPushListener`] ← `SignerRequestPushListener` in
-//!   `apps/chirp/crates/nmp-chirp-android-ffi/src/signer_request_listener.rs`
-//!
 //! Both are extracted here so `android.rs` stays under the 500-LOC ceiling.
 //!
 //! Teardown / UAF safety

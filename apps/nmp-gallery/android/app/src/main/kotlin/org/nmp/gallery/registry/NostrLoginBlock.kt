@@ -63,10 +63,8 @@ import androidx.compose.ui.unit.dp
 /**
  * Minimal ADR-0048 D6 signer-state projection consumed by [NostrLoginBlock].
  *
- * The full [org.nmp.android.model.SignerState] shape is the authoritative
- * version in the Chirp app; this is a gallery-local mirror to keep the
- * login-block self-contained (the gallery does not depend on the Chirp app
- * module). Both shapes must match the Rust `SignerStateDto` wire.
+ * This is the gallery-local mirror that keeps the login-block self-contained.
+ * External app copies must match the Rust `SignerStateDto` wire.
  */
 @kotlinx.serialization.Serializable
 data class LoginBlockSignerState(

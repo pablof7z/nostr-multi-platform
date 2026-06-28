@@ -5,7 +5,7 @@ package org.nmp.gallery.bridge
  *
  * Rust invokes [onUpdate] from the kernel's update-listener thread (a native
  * background thread), NOT the Android main thread. [frame] is one FlatBuffers
- * snapshot frame. Mirrors the Chirp `KernelUpdateListener`.
+ * snapshot frame.
  */
 fun interface KernelUpdateListener {
     fun onUpdate(frame: ByteArray)
@@ -20,7 +20,7 @@ fun interface KernelUpdateListener {
  * main thread. The NIP-55 launch Intent must run on the main thread, so
  * implementations marshal there themselves. [requestJson] is one
  * `ExternalSignerRequest` JSON for `ExternalSignerCapabilityBridge.handleJson`.
- * Mirrors the Chirp `KernelSignerRequestListener`.
+ * Mirrors the update-listener push contract.
  */
 fun interface KernelSignerRequestListener {
     fun onSignerRequest(requestJson: String)
@@ -28,7 +28,7 @@ fun interface KernelSignerRequestListener {
 
 /**
  * Thin JNI wrapper around `libnmp_app_gallery.so` — the gallery-specific
- * Rust shim that links the SAME `nmp-core` kernel that Chirp / iOS consume.
+ * Rust shim that links the same `nmp-core` kernel as the other platform shells.
  *
  * Doctrine: no business logic or cached state (D5/D8). Errors never cross
  * FFI (D6) — natives return only a handle / bytes / void; outcomes arrive
@@ -54,7 +54,7 @@ class KernelBridge {
      *
      * @param eventsPerSec Optional Rust ingest cap (0 disables).
      * @param visibleLimit Per-projection ring buffer size.
-     * @param emitHz       Snapshot emission frequency (Hz). Chirp uses 4 Hz.
+     * @param emitHz       Snapshot emission frequency (Hz).
      */
     fun start(eventsPerSec: Int = 0, visibleLimit: Int = 80, emitHz: Int = 4) {
         if (handle != 0L) nativeStart(handle, eventsPerSec, visibleLimit, emitHz)

@@ -1,8 +1,8 @@
 //! `nmp-app-gallery` — composition root for the **NmpGallery** app.
 //!
-//! Sibling of `nmp-app-chirp` and `nmp-app-notes`, distinguished by what it
-//! does NOT carry: no `ModularTimelineProjection`, no Marmot, no wallet
-//! runtime. The gallery is a pure framework showcase: it is assembled from the
+//! NMP's framework showcase composition root, distinguished by what it does
+//! NOT carry: no app timeline projection, no Marmot policy, no wallet runtime.
+//! The gallery is assembled from the
 //! canonical [`nmp_defaults::register_defaults`] one-shot and exposes only the
 //! app-shell adapters needed to render that framework state.
 //!
@@ -42,8 +42,8 @@
 //! # D0 — no protocol nouns
 //!
 //! `Cargo.toml` depends on `nmp-ffi` + `nmp-defaults` + `serde_json`
-//! only. No `nmp-nip*`, no `nmp-app-chirp`, no `nmp-marmot`, no
-//! `nmp-nwc`. The crate name does not appear in any per-NIP Cargo file.
+//! only. No `nmp-nip*`, no app-specific social feed crate, no `nmp-marmot`,
+//! no `nmp-nwc`. The crate name does not appear in any per-NIP Cargo file.
 
 // JNI shim for the Android shell — `Java_org_nmp_gallery_bridge_KernelBridge_*`
 // symbols that `KernelBridge.kt` binds via `System.loadLibrary`. Only compiled

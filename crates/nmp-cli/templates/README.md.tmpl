@@ -4,11 +4,11 @@ Scaffolded by `nmp init {{name}}`.
 
 ## Composition is a library (ADR-0046)
 
-`crates/{{pkg}}` is a **thin composition shell** over the NMP framework, not a
-fork of Chirp. Its `register` function inherits the canonical NMP composition
-with one call to `nmp_defaults::register_defaults` — the Bevy-`DefaultPlugins`
-/ Spring-Boot-starter pattern. There is no generated FFI crate: you depend on
-the framework's default composition, you do not generate it.
+`crates/{{pkg}}` is a **thin composition shell** over the NMP framework. Its
+`register` function inherits the canonical NMP composition with one call to
+`nmp_defaults::register_defaults` — the Bevy-`DefaultPlugins` /
+Spring-Boot-starter pattern. There is no generated FFI crate: you depend on the
+framework's default composition, you do not generate it.
 
 ## Starter contract
 

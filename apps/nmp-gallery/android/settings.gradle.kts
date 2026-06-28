@@ -1,5 +1,4 @@
-// Standalone NMP Gallery Android project. NOT a module of the Chirp
-// multi-module project in `android/` — this is its own root build.
+// Standalone NMP Gallery Android project; this is its own root build.
 pluginManagement {
     repositories {
         google()

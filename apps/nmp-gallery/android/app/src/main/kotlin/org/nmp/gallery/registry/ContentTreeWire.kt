@@ -252,9 +252,9 @@ public sealed class WireNode {
 
 /**
  * Deterministic identicon helpers for a hex pubkey. Apps that don't supply an
- * avatar URL can render the color as a circle background. Ported from
- * Chirp's djb2-based palette so installed apps stay visually consistent with
- * the SwiftUI implementation.
+ * avatar URL can render the color as a circle background. The shared
+ * djb2-based palette keeps installed apps visually consistent with the SwiftUI
+ * implementation.
  */
 public object NostrIdenticon {
     /** Stable HSL [Color] derived from a hex pubkey (or any string). */

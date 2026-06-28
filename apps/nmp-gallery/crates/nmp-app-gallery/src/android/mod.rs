@@ -1,8 +1,7 @@
 //! JNI shim: Android ⇄ the nmp-core kernel for the NmpGallery app.
 //!
 //! Exports `Java_org_nmp_gallery_bridge_KernelBridge_*` symbols matching the
-//! `KernelBridge.kt` `external fun` declarations. Pattern mirrors
-//! `apps/chirp/crates/nmp-chirp-android-ffi` which does the same for the Chirp app.
+//! `KernelBridge.kt` `external fun` declarations.
 //!
 //! Doctrine: no business logic or cached state (D5/D8) — pure transport.
 //! Errors never cross FFI (D6); outcomes arrive in the next FlatBuffers
@@ -238,7 +237,7 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeReleasePro
 
 /// Register (or clear) the JNI push listener for kernel update frames
 /// (issue #614 — D8 no-polling; replaces the deleted `nativeNextUpdate`
-/// blocking drain). Mirrors the Chirp `nativeSetUpdateListener`.
+/// blocking drain).
 ///
 /// `listener` must implement `fun onUpdate(frame: ByteArray)`. Frames are
 /// pushed from the kernel's update-listener thread; pass `null` to deregister.

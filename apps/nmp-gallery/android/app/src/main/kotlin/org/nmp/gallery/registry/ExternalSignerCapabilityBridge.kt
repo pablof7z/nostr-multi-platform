@@ -169,9 +169,9 @@ class ExternalSignerCapabilityBridge(
      * Selects the transport path mechanically from `forceInteractive` +
      * `grantedPermissions`, then dispatches. D7: no policy decisions here.
      *
-     * For the gallery showcase this is called with a stateless callback
-     * wired to `onResult`. For Chirp it is wired into the kernel via
-     * `nativeDeliverSignerResponse` (see `KernelBridge`).
+     * For the gallery showcase this is called with a stateless callback wired
+     * to `onResult`. App shells can wire the same result into their kernel via
+     * their bridge layer.
      */
     fun handle(request: ExternalSignerRequest) {
         if (shouldUseContentResolver(request)) {
