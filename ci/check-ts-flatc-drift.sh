@@ -22,7 +22,7 @@
 # This script regenerates ALL schemas with the PINNED flatc version into one
 # temp dir and fails on any file difference so checked-in bindings can never
 # drift from the schemas. The version is intentionally different from the
-# Rust+Swift pin (25.12.19) and the Kotlin pin (25.2.10); see the comment at
+# Rust pin (25.12.19) and the Kotlin runtime pin (25.2.10); see the comment at
 # the top of crates/nmp-core/schema/nmp_update.fbs for the rationale.
 #
 # Usage:
@@ -93,7 +93,7 @@ if ! command -v flatc >/dev/null 2>&1; then
     echo "  Install flatc ${EXPECTED_FLATC_VERSION} from:" >&2
     echo "  https://github.com/google/flatbuffers/releases/tag/v${EXPECTED_FLATC_VERSION}" >&2
     echo "  (Note: the Web/TS pin is ${EXPECTED_FLATC_VERSION}, distinct from the" >&2
-    echo "   Rust+Swift pin ${FLATC_PIN_RUST_SWIFT} and the Kotlin pin ${FLATC_PIN_KOTLIN}.)" >&2
+    echo "   Rust pin ${FLATC_PIN_RUST_SWIFT} and the Kotlin runtime pin ${FLATC_PIN_KOTLIN}.)" >&2
     exit 1
 fi
 
@@ -108,8 +108,8 @@ if [[ "${ACTUAL_FLATC_VERSION}" != "${EXPECTED_FLATC_VERSION}" ]]; then
     echo "  https://github.com/google/flatbuffers/releases/tag/v${EXPECTED_FLATC_VERSION}" >&2
     echo "" >&2
     echo "NOTE: the Web/TS pin (${EXPECTED_FLATC_VERSION}) is intentionally different from" >&2
-    echo "the Rust+Swift pin (${FLATC_PIN_RUST_SWIFT}) and the Kotlin pin (${FLATC_PIN_KOTLIN})." >&2
-    echo "Do not regenerate TypeScript bindings with the Rust/Swift or Kotlin flatc." >&2
+    echo "the Rust pin (${FLATC_PIN_RUST_SWIFT}) and the Kotlin runtime pin (${FLATC_PIN_KOTLIN})." >&2
+    echo "Do not regenerate TypeScript bindings with the Rust or Kotlin flatc." >&2
     exit 1
 fi
 

@@ -23,8 +23,7 @@
 //! zap-receipts + WOT runtimes, the long-form typed projection, …). It does
 //! NOT generate an FFI crate — a generated FfiApp never called
 //! `register_defaults` and was a non-functional Nostr app. This is the
-//! Bevy-`DefaultPlugins` / Spring-Boot-starter pattern every real NMP consumer
-//! already uses (Chirp, the external podcast-player).
+//! Bevy-`DefaultPlugins` / Spring-Boot-starter pattern real NMP consumers use.
 //!
 //! # Dependency policy
 //!

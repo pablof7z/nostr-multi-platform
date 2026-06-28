@@ -1,36 +1,17 @@
 name: codegen-drift
 
-# V6 Stage 1 — Swift `Decodable` emitter drift gate. The Rust projection
-# types in their owning Rust crates are the single source of truth for the Swift `Decodable`
-# mirrors at `apps/chirp/ios/Chirp/Bridge/Generated/KernelTypes.generated.swift`.
-# This workflow runs the emitter in `--check` mode and fails any PR whose
-# generated Swift differs from a fresh run.
+# Codegen and FlatBuffers binding drift gates. Fails any PR whose generated
+# outputs or checked-in bindings differ from a fresh run.
 #
-# Regenerate locally with:
-#   cargo run -p nmp-core --features codegen-schema --bin dump_projection_schemas \
-#     | cargo run -p nmp-codegen -- gen swift \
-#       --out apps/chirp/ios/Chirp/Bridge/Generated/KernelTypes.generated.swift
-#
-# See `crates/nmp-codegen/src/swift.rs` for the emitter itself.
-#
-# This workflow also hosts the per-language `flatc` binding drift gates that
+# This workflow hosts the per-language `flatc` binding drift gates that
 # byte-diff the checked-in FlatBuffers bindings against a fresh pinned-flatc
-# run, so .fbs schemas and their Rust/Swift/Kotlin/TS bindings can never
-# silently drift apart:
+# run, so .fbs schemas and their Rust/TS bindings can never silently drift:
 #   rust-flatc-drift            all checked-in Rust *_generated.rs bindings
 #                               under crates/*/src, auto-paired with
 #                               crates/*/schema/*.fbs (Rust, 25.12.19)
-#   swift-flatc-drift           all `.fbs` Swift bindings (Swift,  25.12.19)
-#   kotlin-flatc-drift          nmp_update.fbs (transport)
-#                               + every nmp.kernel root schema (kernel, #1288)
-#                                                         (Kotlin, 25.2.10)
 #   typescript-flatc-drift      transport + feed + KRPR
 #                               + KRDG, for every checked-in web TS tree
 #                                                         (TS,     25.9.23)
-#   marmot-{swift,kotlin}-flatc-drift
-#                               marmot_{snapshot,messages}.fbs (#1240);
-#                               Rust Marmot bindings are covered by
-#                               rust-flatc-drift's auto-discovery.
 # Regenerate all checked-in flatc bindings locally with:
 #   bash ci/regenerate-flatbuffers.sh
 # Each gate prints that single entrypoint on failure.
@@ -42,8 +23,8 @@ on:
     branches: [master]
 
 jobs:
-  swift-codegen-drift:
-    name: Swift codegen drift (KernelTypes.generated.swift vs Rust)
+  registry-codegen-drift:
+    name: registry codegen drift (Rust/TS surfaces)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -52,28 +33,6 @@ jobs:
 
       - name: Check FlatBuffers runtime pins
         run: bash ci/check-flatbuffers-version-pins.sh
-
-      # Compile + run the schema-owner dump bin; pipe its JSON stream into the
-      # emitter's `--check` mode. The dump bin requires the `codegen-schema`
-      # feature; the emitter does not.
-      # `--out` is now explicit: the generic tool carries no app-specific
-      # default path (issue #1613).
-      - name: Check Swift codegen is up to date
-        run: |
-          cargo run --quiet -p nmp-core --features codegen-schema --bin dump_projection_schemas \
-            | cargo run --quiet -p nmp-codegen -- gen swift --check \
-                --out apps/chirp/ios/Chirp/Bridge/Generated/KernelTypes.generated.swift
-
-      # V6 Stage 4 (consumer-side) — the generated typed-FlatBuffer-sidecar
-      # decoders (`TypedProjectionDecoders.generated.swift`). Driven by the
-      # registry's `typed_sidecar` metadata; no schema-document stdin needed.
-      # Fails any PR whose generated Swift differs from a fresh run, so the
-      # decoders cannot drift from the registry.
-      # `--out` is now explicit (issue #1613).
-      - name: Check typed-decoder codegen is up to date
-        run: |
-          cargo run --quiet -p nmp-codegen -- gen typed-decoders --check \
-            --out apps/chirp/ios/Chirp/Bridge/Generated/TypedProjectionDecoders.generated.swift
 
       # ADR-0053 / Workstream-E4 — the kernel built-in projection key const
       # (crates/nmp-core/src/kernel/update/builtin_projection_keys.generated.rs)
@@ -116,46 +75,12 @@ jobs:
       - name: Check per-projection producer-const codegen is up to date
         run: cargo run --quiet -p nmp-codegen -- gen producer-consts --check
 
-      # #1493 P9 — the native known-signer detection lists (Kotlin
-      # KnownSigners.generated.kt × 3 + Swift KnownSigners.generated.swift × 2)
-      # are GENERATED from the Rust catalog (nmp_core::signer_catalog) via the
-      # dump_signer_catalog binary. This gate also asserts the AndroidManifest
-      # <queries> / Info.plist LSApplicationQueriesSchemes schemes match the
-      # catalog. Fails any PR whose generated lists or declared schemes differ
-      # from a fresh run, so the native surfaces cannot drift from Rust.
-      - name: Check native signer-catalog codegen is up to date
-        run: |
-          cargo run --quiet -p nmp-core --bin dump_signer_catalog \
-            | cargo run --quiet -p nmp-codegen -- gen signer-catalog --check
-
-      # ADR-0063 Lane A (#1671) — the generated per-key (row-keyed) reference
-      # caches (`KeyedRefCache.generated.swift` + `KeyedRefCache.kt`) are
-      # DERIVED from `KEYED_PROJECTIONS`. Fails any PR whose checked-in cache
-      # differs from a fresh run, so the keyed caches cannot drift from the
-      # registry (or from each other / the Rust reference model).
-      - name: Check keyed-ref-cache codegen is up to date
-        run: |
-          cargo run --quiet -p nmp-codegen -- gen keyed-ref-cache --check \
-            --out apps/chirp/ios/Chirp/Bridge/Generated/KeyedRefCache.generated.swift
-          cargo run --quiet -p nmp-codegen -- gen keyed-ref-cache --platform kotlin --check \
-            --out apps/chirp/android/app/src/main/java/org/nmp/android/KeyedRefCache.kt
-
       # ADR-0064 §3 (#1783) — the generated typed action-builders
-      # (`ActionBuilders.generated.swift` + `ActionBuilders.kt`) are DERIVED from
-      # the `ACTION_BUILDERS` registry. They emit the host-facing typed write
-      # builders that construct the `DispatchEnvelope` bytes for the native byte
-      # doorway (`nmp_app_dispatch_action_bytes`, #1752) so the iOS/Android shells
-      # never spell an `action_namespace` or hand-assemble FlatBuffers. Fails any
-      # PR whose checked-in builders differ from a fresh run, so the builders
-      # cannot drift from the registered modules (and stay in sync across the two
-      # hosts). The wire shape they emit is round-trip-tested against the S2
-      # `decode_dispatch_envelope` in `nmp-nip25`'s dispatch_integration test.
+      # (`ActionBuilders.generated.ts`) are DERIVED from the `ACTION_BUILDERS`
+      # registry. Fails any PR whose checked-in builders differ from a fresh run,
+      # so the builders cannot drift from the registered modules.
       - name: Check action-builder codegen is up to date
         run: |
-          cargo run --quiet -p nmp-codegen -- gen action-builders --platform swift --check \
-            --out apps/chirp/ios/Chirp/Bridge/Generated/ActionBuilders.generated.swift
-          cargo run --quiet -p nmp-codegen -- gen action-builders --platform kotlin --check \
-            --out apps/chirp/android/app/src/main/java/org/nmp/android/ActionBuilders.kt
           cargo run --quiet -p nmp-codegen -- gen action-builders --platform ts --check \
             --out web/packages/runtime-web/src/actionBuilders.generated.ts
 
@@ -212,73 +137,11 @@ jobs:
       - name: DispatchEnvelope fail-closed gates hold for the live schema
         run: bash ci/check-dispatch-envelope-gates.sh
 
-  # Swift flatc binding drift gate. The checked-in `flatc --swift` Swift
-  # binding files at apps/chirp/ios/Chirp/Bridge/Generated/*.generated.swift (every
-  # `.generated.swift` EXCEPT KernelTypes.generated.swift and
-  # TypedProjectionDecoders.generated.swift, which are nmp-codegen outputs
-  # covered by the `swift-codegen-drift` job above) must be byte-identical to a
-  # fresh `flatc --swift` run over their source `.fbs` schemas, with flatc
-  # pinned to the Rust+Swift runtime pin (25.12.19, the SAME pin as
-  # rust-flatc-drift, distinct from Android 25.2.10 and Web 25.9.23).
-  # Regenerate locally per the instructions ci/check-swift-flatc-drift.sh prints.
-  swift-flatc-drift:
-    name: Swift flatc drift (ios/.../Bridge/Generated/*.generated.swift vs *.fbs)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install pinned flatc 25.12.19
-        run: |
-          curl -fsSL -o /tmp/flatc.zip \
-            https://github.com/google/flatbuffers/releases/download/v25.12.19/Linux.flatc.binary.clang++-18.zip
-          unzip -o /tmp/flatc.zip -d /tmp/flatc-bin
-          sudo install -m 0755 /tmp/flatc-bin/flatc /usr/local/bin/flatc
-          flatc --version
-
-      - name: Check Swift FlatBuffers bindings are in sync with the schemas
-        run: bash ci/check-swift-flatc-drift.sh
-
-  # Issue #1093 (transport) + issue #1288 (kernel) — Kotlin flatc binding drift
-  # gate. The checked-in Kotlin bindings at apps/chirp/android/app/src/main/java/nmp/transport/*.kt
-  # (from nmp_update.fbs) AND apps/chirp/android/app/src/main/java/nmp/kernel/*.kt (from every
-  # `namespace nmp.kernel` root schema in crates/nmp-core/schema/*.fbs, derived by
-  # grep — not hard-coded) must be identical to a fresh `flatc --kotlin` run, with
-  # flatc pinned to the Android/Kotlin runtime pin (25.2.10, distinct from the
-  # Rust+Swift pin of 25.12.19). Regenerate locally per the instructions in
-  # ci/check-kotlin-flatc-drift.sh.
-  kotlin-flatc-drift:
-    name: Kotlin flatc drift (android/.../nmp/{transport,kernel}/*.kt vs schemas)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install pinned flatc 25.2.10
-        run: |
-          curl -fsSL -o /tmp/flatc.zip \
-            https://github.com/google/flatbuffers/releases/download/v25.2.10/Linux.flatc.binary.clang++-18.zip
-          unzip -o /tmp/flatc.zip -d /tmp/flatc-bin
-          sudo install -m 0755 /tmp/flatc-bin/flatc /usr/local/bin/flatc
-          flatc --version
-
-      - name: Check Kotlin transport + kernel bindings are in sync with the schemas
-        run: bash ci/check-kotlin-flatc-drift.sh
-
-      # Issue #1093 — golden fixture parity gate. The two copies of
-      # update_frame_tier3_golden_v1.fb.hex (Rust crate + Android resources)
-      # must be byte-identical. Regenerate both via:
-      #   cargo test -p nmp-core -- tier3_golden_fixture_matches_encoder --nocapture
-      - name: Assert golden fixture copies are byte-identical
-        run: |
-          cmp \
-            crates/nmp-core/tests/fixtures/update_frame_tier3_golden_v1.fb.hex \
-            apps/chirp/android/app/src/test/resources/fixtures/update_frame_tier3_golden_v1.fb.hex \
-          || { echo "golden fixture copies diverged — regenerate BOTH via tier3_golden_fixture_matches_encoder"; exit 1; }
-
   # Issue #1209 + #1512 — TypeScript flatc drift gate. Every checked-in web TS
   # tree (e.g. web/nmp-gallery) must be byte-identical to a fresh `flatc --ts`
   # run over the transport/feed/KRPR/KRDG schemas, with flatc pinned to the
-  # Web/TypeScript runtime pin (25.9.23, distinct from the Rust+Swift pin of
-  # 25.12.19 and the Kotlin pin of 25.2.10). Regenerate locally with
+  # Web/TypeScript runtime pin (25.9.23, distinct from the Rust pin of
+  # 25.12.19). Regenerate locally with
   # `bash ci/regenerate-flatbuffers.sh`.
   typescript-flatc-drift:
     name: TypeScript flatc drift (web TS generated trees vs schemas)
@@ -296,61 +159,3 @@ jobs:
 
       - name: Check TypeScript transport bindings are in sync with the schema
         run: bash ci/check-ts-flatc-drift.sh
-
-  # Issue #1240 — marmot (NMMS) Swift/Kotlin flatc binding drift gates. Rust
-  # Marmot bindings are covered by rust-flatc-drift's checked-in binding
-  # auto-discovery; Swift/Kotlin keep their platform-specific scripts and pins.
-  marmot-swift-flatc-drift:
-    name: Marmot Swift flatc drift (Marmot{Snapshot,Messages}.generated.swift vs marmot_*.fbs)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install pinned flatc 25.12.19
-        run: |
-          curl -fsSL -o /tmp/flatc.zip \
-            https://github.com/google/flatbuffers/releases/download/v25.12.19/Linux.flatc.binary.clang++-18.zip
-          unzip -o /tmp/flatc.zip -d /tmp/flatc-bin
-          sudo install -m 0755 /tmp/flatc-bin/flatc /usr/local/bin/flatc
-          flatc --version
-
-      - name: Check Swift marmot bindings are in sync with the schemas
-        run: bash ci/check-marmot-flatc-drift.sh swift
-
-  marmot-kotlin-flatc-drift:
-    name: Marmot Kotlin flatc drift (android/.../nmp/marmot/*.kt vs marmot_*.fbs)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install pinned flatc 25.2.10
-        run: |
-          curl -fsSL -o /tmp/flatc.zip \
-            https://github.com/google/flatbuffers/releases/download/v25.2.10/Linux.flatc.binary.clang++-18.zip
-          unzip -o /tmp/flatc.zip -d /tmp/flatc-bin
-          sudo install -m 0755 /tmp/flatc-bin/flatc /usr/local/bin/flatc
-          flatc --version
-
-      - name: Check Kotlin marmot bindings are in sync with the schemas
-        run: bash ci/check-marmot-flatc-drift.sh kotlin
-
-  # M14-0 (#2129) — UniFFI Kotlin binding drift gate. The checked-in UniFFI
-  # binding at apps/chirp/android/app/src/main/java/org/nmp/android/uniffi/nmp_android_ffi.kt
-  # is GENERATED from the proc-macro definitions in
-  # apps/chirp/crates/nmp-chirp-android-ffi/src/uniffi_app_loop.rs (AppHandle
-  # object + UpdateSink callback interface + DispatchAck record). The script
-  # builds the HOST cdylib (no Android NDK — uniffi-bindgen introspects metadata
-  # via dlopen) and runs the pinned vendored uniffi-bindgen, then byte-diffs
-  # against the checked-in file. Fails any PR whose Rust binding definitions and
-  # the generated Kotlin have drifted apart. Regenerate locally with:
-  #   bash ci/check-uniffi-kotlin-drift.sh --write
-  uniffi-kotlin-drift:
-    name: UniFFI Kotlin drift (android/.../uniffi/nmp_android_ffi.kt vs Rust proc-macros)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - name: Check UniFFI Kotlin binding is in sync with the Rust definitions
-        run: bash ci/check-uniffi-kotlin-drift.sh

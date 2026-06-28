@@ -102,8 +102,8 @@ public struct NostrAvatar: View, Equatable {
     private var identicon: some View {
         // #2224: the deterministic 5×5 symmetric grid is the single shared
         // fallback across every platform. `NostrIdenticon` (defined once in
-        // `ContentTreeWire.swift`) renders the same pattern as Chirp iOS and
-        // the Android Compose avatar for a given pubkey.
+        // `ContentTreeWire.swift`) renders the same pattern as Android Compose
+        // for a given pubkey.
         NostrIdenticon.identiconView(forPubkey: pubkey, size: size)
             .clipShape(Circle())
     }

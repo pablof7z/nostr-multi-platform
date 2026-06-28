@@ -27,13 +27,11 @@ name: perf-gates
 # Live firehose (relay-dependent) stays in real-relay-nightly.yml — relay
 # flake makes it unsuitable for PR blocking.
 #
-# Path filter: any change under crates/ or apps/chirp/crates/ can shift
-# kernel throughput, so we gate broadly rather than risk a silent miss from
-# a narrow filter.
+# Path filter: any change under crates/ can shift kernel throughput, so we
+# gate broadly rather than risk a silent miss from a narrow filter.
 #
-# Build note: nmp-testing's regular dep tree includes nmp-app-chirp (needed
-# by sanity-gate). The first cold build is heavy (openmls + marmot +
-# nmp-core); Swatinem/rust-cache makes subsequent runs incremental. The two
+# Build note: The first cold build is heavy (openmls + marmot + nmp-core);
+# Swatinem/rust-cache makes subsequent runs incremental. The two
 # jobs each carry a DISTINCT rust-cache key (reactivity-bench / firehose-bench)
 # and do not share release artifacts, so each pays its own cold openmls+marmot
 # build on a cold or evicted cache. The 45-minute timeout gives that cold path
@@ -47,7 +45,6 @@ on:
     paths:
       - ".github/workflows/perf-gates.yml"
       - "crates/**"
-      - "apps/chirp/crates/**"
 
 jobs:
   reactivity-bench:
@@ -57,8 +54,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # The nmp-testing + nmp-app-chirp dep tree can exhaust ~14 GB free on a
-      # bare ubuntu-latest runner. Drop pre-installed SDKs we never use to
+      # The nmp-testing dep tree can exhaust ~14 GB free on a bare
+      # ubuntu-latest runner. Drop pre-installed SDKs we never use to
       # reclaim ~25 GB before building (same pattern as test.yml).
       - name: Free disk space
         run: |

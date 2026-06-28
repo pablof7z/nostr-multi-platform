@@ -34,7 +34,7 @@ When validating your own work locally, **scope `cargo test` to the crates
 you touched** — not the whole workspace. Examples:
 
 - Touched only `crates/nmp-nip17/`? Run `cargo test -p nmp-nip17` and
-  the obvious downstream consumers (`cargo test -p nmp-app-chirp`,
+  the obvious downstream consumers (`cargo test -p nmp-defaults`,
   `cargo test -p nmp-core --lib nip17` for substrate-side coverage).
 - Touched a substrate seam in `crates/nmp-core/src/substrate/`? Run
   `cargo test -p nmp-core --lib substrate` plus every Layer-4 crate

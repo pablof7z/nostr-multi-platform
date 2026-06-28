@@ -11,8 +11,8 @@ struct RelayListPage: View {
     /// Resolve each showcase relay's role into the kernel-emitted
     /// `label`/`tint` tokens from `projections.relay_role_options` (issue
     /// #996). No role→label/tint derivation happens in Swift; the page just
-    /// looks the role up in the kernel's options, exactly as Chirp's
-    /// `RelayConfigRow` does. While the kernel options are still in flight the
+    /// looks the role up in the kernel's options. While the kernel options are
+    /// still in flight the
     /// row falls back to the raw role token with an `accent` tint.
     private var relayRows: [NostrRelayEditRow] {
         GALLERY_SHOWCASE.relays.map { relay in

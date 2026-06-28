@@ -17,8 +17,8 @@ REPO_ROOT = SCRIPT_DIR.parent
 REGISTRY_DIR_REL = Path("crates/nmp-codegen/src/action_builders")
 REGISTRY_REL = REGISTRY_DIR_REL / "registry.rs"
 SCAN_ROOT_RELS = [
-    Path("apps/chirp/ios/Chirp"),
-    Path("apps/chirp/android/app/src/main/java/org/nmp/android"),
+    Path("apps/nmp-gallery/ios/NmpGallery"),
+    Path("apps/nmp-gallery/android/app/src/main/kotlin/org/nmp/gallery"),
 ]
 
 
@@ -178,11 +178,11 @@ pub const MARMOT_NAMESPACE: &str = "nmp.marmot";
             ' payload_file_identifier: "NST0", payload_schema_version: 1, fields: &[], doc: "" },\n'
             '];\n',
         )
-        write(tmp / "apps/chirp/ios/Chirp/Bridge/Generated/ActionBuilders.generated.swift", '"nmp.follow"\n')
-        write(tmp / "apps/chirp/android/app/src/main/java/org/nmp/android/ActionBuilders.kt", '"nmp.publish"\n')
-        write(tmp / "apps/chirp/ios/Chirp/Bridge/KernelBridge.swift", "GeneratedActionBuilders.follow(...)\n")
-        write(tmp / "apps/chirp/android/app/src/main/java/org/nmp/android/SocialActions.kt", "GeneratedActionBuilders.follow()\n")
-        write(tmp / "apps/chirp/ios/Chirp/Features/Notes.swift", '/// "nmp.follow" in docs is not executable.\n')
+        write(tmp / "apps/nmp-gallery/ios/NmpGallery/Bridge/Generated/ActionBuilders.generated.swift", '"nmp.follow"\n')
+        write(tmp / "apps/nmp-gallery/android/app/src/main/kotlin/org/nmp/gallery/ActionBuilders.kt", '"nmp.publish"\n')
+        write(tmp / "apps/nmp-gallery/ios/NmpGallery/Bridge/KernelBridge.swift", "GeneratedActionBuilders.follow(...)\n")
+        write(tmp / "apps/nmp-gallery/android/app/src/main/kotlin/org/nmp/gallery/SocialActions.kt", "GeneratedActionBuilders.follow()\n")
+        write(tmp / "apps/nmp-gallery/ios/NmpGallery/Gallery/Notes.swift", '/// "nmp.follow" in docs is not executable.\n')
         if check(tmp) != 0:
             fail("self-test valid fixture unexpectedly failed")
         print("native-action-boundary: self-test OK - generated files and comments may spell namespaces")
@@ -191,7 +191,7 @@ pub const MARMOT_NAMESPACE: &str = "nmp.marmot";
         # verify the boundary check catches a host literal for it.  A regression
         # that removed nested scanning would still pass the top-level check above,
         # making this the minimal sentinel for the registry/*.rs scan path.
-        nested_offender = tmp / "apps/chirp/ios/Chirp/Features/BadNested.swift"
+        nested_offender = tmp / "apps/nmp-gallery/ios/NmpGallery/Gallery/BadNested.swift"
         write(nested_offender, 'let ns = "nmp.selftest.nested"\n')
         stdout_n = StringIO()
         stderr_n = StringIO()
@@ -202,7 +202,7 @@ pub const MARMOT_NAMESPACE: &str = "nmp.marmot";
             fail("self-test nested registry namespace did not trip")
         print("native-action-boundary: self-test OK - hand-spelled nested registry namespace trips")
 
-        offender = tmp / "apps/chirp/ios/Chirp/Features/Bad.swift"
+        offender = tmp / "apps/nmp-gallery/ios/NmpGallery/Gallery/Bad.swift"
         write(offender, 'let namespace = "nmp.follow"\n')
         stdout = StringIO()
         stderr = StringIO()

@@ -99,17 +99,20 @@ correct pubkey to the gallery's kernel.
 The gallery's `signer_state` projection should transition to `ready` state carrying
 the pubkey-only `SignerPayload::Nip55`.
 
-### 7. Publish leg — kind:1 through the full kernel pipeline (Chirp)
+### 7. Publish leg — kind:1 through the full kernel pipeline (external Chirp)
 
 The gallery showcase has no publish surface, so the `sign_event` leg runs on
-Chirp Android (same vendored bridge, same kernel):
+Chirp Android from the standalone Chirp repository (same vendored bridge, same
+kernel):
 
 ```sh
+cd ../chirp
+
 # Chirp native lib (arm64 only; the marmot feature needs an Android-target
 # OpenSSL for sqlcipher and is irrelevant to this leg)
-cargo ndk --manifest-path apps/chirp/crates/nmp-chirp-android-ffi/Cargo.toml \
-  -t arm64-v8a -o apps/chirp/android/app/src/main/jniLibs build --release
-cd apps/chirp/android && ./gradlew :app:assembleDebug -x cargoNdk
+cargo ndk --manifest-path crates/nmp-chirp-android-ffi/Cargo.toml \
+  -t arm64-v8a -o android/app/src/main/jniLibs build --release
+cd android && ./gradlew :app:assembleDebug -x cargoNdk
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 

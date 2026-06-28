@@ -7,7 +7,7 @@ description = "NmpGallery composition root — thin wrapper around `nmp-ffi` + `
 
 [lib]
 # `staticlib` so the iOS shell can link `-lnmp_app_gallery` alongside the
-# other NMP archives (same posture as `nmp-app-chirp`), `cdylib` so the
+# other NMP archives, `cdylib` so the
 # Android NDK build produces `libnmp_app_gallery.so` directly (rather than
 # going through a parallel JNI shim crate like `nmp-android-ffi`), and
 # `rlib` so Rust-side consumers (integration tests, future Android JNI

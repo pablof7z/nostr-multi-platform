@@ -8,11 +8,12 @@ import java.io.File
 /**
  * ADR-0048 Stage 2 — vendoring drift gate.
  *
- * The gallery is the canonical source of the `login-block` component; Chirp,
- * the web registry, and the CLI install registry carry vendored copies. The
- * contract is **byte-identical except the `package` declaration line** — any
- * other divergence is silent logic drift across the vendoring boundary and
- * fails here.
+ * The gallery is the canonical source of the `login-block` component; the CLI
+ * install registry carries the in-repo vendored copy. The contract is
+ * **byte-identical except the `package` declaration line** — any other
+ * divergence is silent logic drift across the vendoring boundary and fails
+ * here. External apps that vendor this component own their drift gates in their
+ * own repositories.
  *
  * Cheap insurance recommended by the Opus review on PR #1153: the copies had
  * already diverged at first landing (491 vs 306 LOC); this gate makes that
@@ -80,20 +81,14 @@ class VendorDriftGateTest {
     )
 
     /**
-     * Copy locations. Chirp does not vendor the Compose UI (it has its own screens).
-     *
      * The web showcase no longer carries a hand-copied vendor fork: it reads the
      * Compose source straight out of the gated `registry.json` export (generated
      * from `crates/nmp-cli/registry/`, verified by `crates/nmp-cli/tests/export.rs`).
      * So the CLI registry copy below is the only remaining vendored copy on the
      * web path, and the gallery -> CLI -> registry.json chain stays fully gated.
      */
-    private fun copyPaths(file: String): List<String> = buildList {
-        if (file != "NostrLoginBlock.kt") {
-            add("apps/chirp/android/app/src/main/java/org/nmp/android/$file")
-        }
-        add("crates/nmp-cli/registry/compose/login-block/$file")
-    }
+    private fun copyPaths(file: String): List<String> =
+        listOf("crates/nmp-cli/registry/compose/login-block/$file")
 
     @Test
     fun allVendoredCopiesMatchGalleryCanonical() {

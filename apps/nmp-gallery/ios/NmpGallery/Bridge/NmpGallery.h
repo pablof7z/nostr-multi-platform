@@ -8,8 +8,8 @@
 // It links one aggregate Rust archive — `libnmp_app_gallery.a` — that bundles
 // the NMP kernel symbols plus a gallery-tailored projection. The subset of the
 // NMP C-ABI declared below is exactly what the gallery shell needs; matching
-// declarations live in `apps/chirp/ios/Chirp/Bridge/NmpCore.h` (kept hand-in-sync by
-// `ci/check-ffi-header-drift.sh`).
+// declarations in app repositories must stay source-compatible with this
+// framework-facing subset.
 
 // ── Kernel lifecycle ─────────────────────────────────────────────────────
 
@@ -68,9 +68,7 @@ void nmp_app_release_event_ref(void *app, const char *key,
 // real socket. The kernel uses the resulting `app_relays` set for routing
 // when there is no logged-in user and threads it through the planner so
 // kind:0 / kind:10002 lookups can reach a peer. `role` accepts `"read"`,
-// `"write"`, or `"both"` (NULL → `"both"`). Mirrors the corresponding entry
-// in Chirp's `NmpCore.h`; kept hand-in-sync by
-// `ci/check-ffi-header-drift.sh`.
+// `"write"`, or `"both"` (NULL → `"both"`).
 void nmp_app_add_relay(void *app, const char *url, const char *role);
 void nmp_app_remove_relay(void *app, const char *url);
 
@@ -99,7 +97,7 @@ void nmp_app_signin_nsec(void *app, const char *secret, uint8_t make_active);
 // Profile-data flow (CRITICAL): all kernel state arrives via the push
 // callback registered with `nmp_app_set_update_callback`; the FlatBuffers
 // update frame the kernel passes to that callback carries the full snapshot.
-// Identical to Chirp's update-channel pattern. There is no pull-side snapshot
+// This is the canonical update-channel pattern. There is no pull-side snapshot
 // accessor — kernel liveness is observed through `nmp_app_is_alive`.
 //
 // Flow:

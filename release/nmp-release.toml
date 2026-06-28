@@ -12,12 +12,11 @@ npm_cli_package = "@nmp/cli"
 npm_publish_mode = "trusted-publishing"
 
 required_gates = [
-  "cargo test --workspace --exclude nmp-chirp-android-ffi --exclude nmp-app-chirp",
+  "cargo test --workspace",
   "cargo test -p nmp-testing --test doctrine_lint_smoke",
   "bash ci/check-release-manifest.sh",
   "bash ci/release-package-dry-run.sh",
   "bash ci/check-flatbuffers-version-pins.sh",
-  "bash ci/check-ffi-header-drift.sh",
 ]
 
 [[public_crates]]
@@ -268,26 +267,6 @@ path = "crates/nmp-browser-runtime-conformance"
 reason = "Dedicated-Worker OPFS durability conformance vehicle for nmp-browser-runtime (#1007 PR-9); a wasm-bindgen cdylib test harness driving hydration/reload + offline-publish-queue survival, never published"
 
 [[private_packages]]
-name = "nmp-chirp-android-ffi"
-path = "apps/chirp/crates/nmp-chirp-android-ffi"
-reason = "Chirp-owned Android JNI cdylib; standalone workspace, not published through root cargo package dry-run"
-
-[[private_packages]]
-name = "nmp-app-chirp"
-path = "apps/chirp/crates/nmp-app-chirp"
-reason = "app composition crate"
-
-[[private_packages]]
-name = "nmp-chirp-config"
-path = "apps/chirp/crates/nmp-chirp-config"
-reason = "Chirp-specific configuration crate"
-
-[[private_packages]]
-name = "chirp-tui"
-path = "apps/chirp/chirp-tui"
-reason = "Chirp reference TUI application"
-
-[[private_packages]]
 name = "nmp-app-gallery"
 path = "apps/nmp-gallery/crates/nmp-app-gallery"
 reason = "gallery app composition crate"
@@ -301,11 +280,6 @@ reason = "gallery reference TUI application"
 name = "nmp-gallery-desktop"
 path = "apps/nmp-gallery/desktop"
 reason = "gallery reference desktop (egui) application"
-
-[[private_packages]]
-name = "chirp-desktop"
-path = "apps/chirp/chirp-desktop"
-reason = "Chirp reference desktop (egui) application"
 
 [[private_packages]]
 name = "nmp-example-login-timeline"

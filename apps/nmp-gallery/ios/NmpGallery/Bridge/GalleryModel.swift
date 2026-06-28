@@ -56,7 +56,7 @@ struct GalleryShowcaseRelay: Decodable, Sendable {
 /// canonical role token paired with the kernel-emitted human-readable `label`
 /// and semantic `tint`. The relay-list component consumes `label`/`tint` from
 /// here directly; no role→label/tint derivation lives in Swift (ADR-0041,
-/// issue #996). Mirrors Chirp's `RelayRoleOption`.
+/// issue #996).
 struct GalleryRelayRoleOption: Decodable, Equatable, Sendable {
     let value: String
     let label: String
@@ -121,8 +121,8 @@ struct GallerySnapshot: Decodable, Equatable, Sendable {
     let resolvedEventEmbeds: [String: EmbeddedEventEnvelope]?
     /// Kernel-emitted relay-role presentation tokens from
     /// `projections.relay_role_options` (issue #996). The relay-list page
-    /// looks `configured_relays.role` up here for `label`/`tint`, exactly as
-    /// Chirp's `RelayConfigRow` does — no Swift-side role derivation.
+    /// looks `configured_relays.role` up here for `label`/`tint`; no Swift-side
+    /// role derivation.
     let relayRoleOptions: [GalleryRelayRoleOption]
 
     static let empty = GallerySnapshot(running: false, profiles: [:], accounts: [], resolvedEventEmbeds: nil)
@@ -400,8 +400,7 @@ final class GalleryModel: NostrProfileHost {
 
     /// Kernel-emitted relay-role presentation tokens (issue #996). The
     /// relay-list page resolves each `configured_relays.role` against this
-    /// list for its `label`/`tint` — the same kernel source of truth Chirp
-    /// uses, with no Swift-side role derivation.
+    /// list for its `label`/`tint`, with no Swift-side role derivation.
     var relayRoleOptions: [GalleryRelayRoleOption] {
         snapshot.relayRoleOptions
     }

@@ -112,8 +112,7 @@ final class GalleryKernelHandle {
         retainedUpdateSink = nil
     }
 
-    /// Configure the kernel and start the actor thread. The arguments mirror
-    /// Chirp's defaults: 80 visible items, 4 Hz emit rate.
+    /// Configure the kernel and start the actor thread.
     func start() {
         nmp_app_start(raw, 80, 4)
     }
