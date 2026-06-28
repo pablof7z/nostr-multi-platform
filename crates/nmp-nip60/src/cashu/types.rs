@@ -48,9 +48,6 @@ pub struct MintQuoteResponse {
     pub paid: bool,
 }
 
-/// Response from `GET /v1/mint/quote/bolt11/{quote_id}`.
-pub type MintQuoteStatusResponse = MintQuoteResponse;
-
 // ─── Minting (NUT-04) ──────────────────────────────────────────────────────
 
 /// A blinded message sent to the mint for signing.
