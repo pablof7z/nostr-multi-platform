@@ -1,9 +1,15 @@
 # NoteActionsRow Gallery Extraction — Preflight Contract
 
 > **Status**: Preflight only. This doc defines the extraction contract so the
-> actual work is mechanical and low-risk. Extraction is explicitly post-v1
-> (#997, phase:post-v1). Do **not** implement the extraction until F-08
-> (registry) and post-v1 action/dispatch stability land.
+> actual work is *predictable and gated*, not a leap. Note: the two platforms
+> are materially divergent today (text-vs-icon rendering, button order,
+> optimistic-like behavior, dialog ownership), so the extraction is **not** a
+> pure mechanical move — it requires an Android reskin, two dialog
+> relocations, new optimistic-like behavior, and a render-parity gate (§5.3,
+> B10–B12). Extraction is explicitly post-v1 (#997, phase:post-v1). Do **not**
+> implement the extraction until F-08 (registry) and post-v1 action/dispatch
+> stability land, and not before the §5.4 `authorLnurl` decision has owner
+> sign-off.
 >
 > **Related**: GitHub issue #997.
 
@@ -107,7 +113,10 @@ resolution occurs inside the component.
 
 ## 4. Coupling / Blocker Checklist
 
-Ordered by dependency: each must be done before the next can ship.
+Twelve blockers (B1–B12). B1–B8 are decouplings; B10 (reply-dialog
+relocation), B11 (render-parity gate), and B12 (a11y contract) close the gaps
+the parity audit surfaced; B9 is a post-extraction follow-up. Numbering is
+kept stable for cross-references; the *execution* order is §7.
 
 ### B1: Define `NoteRelationCountsWire` as a registry-owned type
 
@@ -228,17 +237,30 @@ inside the extracted component file.
 
 **Why**: The composable directly calls `model.react(...)`, `model.repost(...)`,
 `model.zapNote(...)`, `model.publishNote(...)`. Registry components must not
-depend on app-level kernel handles (doc: `crates/nmp-cli/registry/registry.toml`
-component contract: "Components must not import runtime, C ABI/JNI, or kernel
-handles directly").
+depend on app-level kernel handles. The real doctrine source is the component
+contract in `docs/cli.md:164-172`:
+
+> "Components are pure renderers. They do not fetch, retry, cache, route, or
+> decide policy. Apps hydrate display models … Component packages must not
+> import runtime, C ABI/JNI/WASM, worker, or kernel handles directly."
+
+and the thin-shell conformance gate in
+`docs/builder-guide/21-framework-magic.md:133-134`:
+
+> "The doctrine smoke gate enforces the negative side: component packages must
+> not import runtime, ABI/JNI/WASM, worker, or kernel handles directly."
+
+(The doctrine-lint smoke gate, `cargo test -p nmp-testing --test
+doctrine_lint_smoke`, enforces this negative side.)
 
 **Fix**: Remove the `model: KernelModel?` parameter. Replace every dispatch
 call with a callback:
 - `model.react(card.id, "❤")` → `onLike?()`
 - `model.repost(card.id, card.authorPubkey)` → `onRepost?()`
-- `model.zapNote(...)` → `onZap?()`
-- `model.publishNote(content, card.id)` inside reply dialog → replace with
-  `onReply?()` (host presents compose screen).
+- `model.zapNote(...)` → `onZap?()` (zap dialog relocates per B7)
+- `model.publishNote(content, card.id)` → `onReply?()` (reply dialog relocates
+  per B10; see that blocker — this is not a one-line swap, the inline
+  `ComposeNoteDialog` must move to the host).
 
 The `ChirpEventCard` parameter is also replaced with scalar inputs (see B6).
 
@@ -286,9 +308,10 @@ var onZap: (() -> Void)?   // lnurl confirmed by caller; tap fires this
 // Compose
 val onZap: (() -> Unit)? = null
 ```
-The `authorLnurl: String?` parameter controls whether the zap button is
-rendered enabled (non-nil) or muted (nil). The callback carries no arguments;
-the caller already has the eventId, authorPubkey, and lnurl at the call site.
+Whether the zap button renders enabled or muted is governed by the §5.4
+design decision (recommended: a host-supplied `zapEnabled: Bool`, not shell
+lnurl parsing). The callback carries no arguments; the caller already has the
+eventId, authorPubkey, and any lnurl it needs at the call site.
 
 **Android migration**: Remove `ZapAmountDialog` from `NoteActions.kt` and
 move it to the Chirp app layer (e.g., into a `ZapSheet.kt` composable owned
@@ -311,19 +334,87 @@ any host app can import them after installation.
 
 ---
 
-### B9: Decide ThreadNoteRow.swift fate
+### B10: Relocate Android reply dialog to the host
 
-**Why**: `ThreadNoteRow.swift:109-143` is a manually-maintained copy of the
-same button set. After extraction, the thread view should call
-`NostrNoteActionsRow` directly (at the cost of accepting the `reply/repost/like`
-layout which currently uses `HStack(spacing: 28)` instead of `HStack(spacing: 0)
-+ Spacer()`). Alternatively, it can remain divergent with a clear doc comment.
+**Why**: `NoteActions.kt:100-111` owns an inline `ComposeNoteDialog` that calls
+`model.publishNote(content, card.id)` on confirm. This is the same class of
+violation as the zap dialog (B7): a registry component must not own a dialog
+that dispatches to the kernel. The B5 mapping "`model.publishNote → onReply?()`"
+is therefore **not** a one-line swap — the dialog and its publish call must
+move out.
 
-**Recommendation**: thread view adopts the registry component with an optional
-`spacing` parameter or by using a modifier at the call site. This is a
-follow-up task gated on the extraction landing, not a blocker for the registry
-component itself. Document this here so the extraction PR author knows to file
-a follow-up issue.
+**Fix**: Delete `ComposeNoteDialog` from `NoteActions.kt`. The component fires
+`onReply?()`. The host (e.g. `TimelineScreen`) owns the compose/reply surface
+and the `model.publishNote(...)` dispatch — mirroring how iOS already presents
+`ComposeView` from `NoteRowView`'s `.sheet`.
+
+**Acceptance criterion**: `NoteActions.kt` contains no `ComposeNoteDialog` and
+no `model.publishNote` call; reply is a pure callback on both platforms.
+
+---
+
+### B11: Render-parity golden gate (mandatory)
+
+**Why**: §5.3 documents real visual/behavioral divergence (text-vs-icon,
+button order, optimistic-like). This is exactly the drift class that #2268
+closed for the identicon by adding cross-platform golden tests
+(`IdenticonGoldenTests.swift` + `IdenticonGoldenTest.kt`) and the
+`ComponentVendorDriftGateTest` source-parity gate. Without an equivalent gate,
+the two `NostrNoteActionsRow` implementations will re-diverge.
+
+**Fix**: Add a render/behavior parity gate analogous to #2268:
+- A golden/snapshot assertion that the same inputs (eventID, counts,
+  zapEnabled) produce the same logical layout — button set, order, enabled
+  state, and which counts are shown — on iOS (XCTest) and Android (JUnit).
+- If the registry ships a Chirp vendored copy, a source-parity gate
+  (`ComponentVendorDriftGateTest` style) asserting the vendored file matches
+  the registry SSOT.
+
+**Acceptance criterion**: a failing-on-drift test exists on both platforms;
+button order / set / enabled-state divergence breaks CI.
+
+---
+
+### B12: Pin the accessibility contract on both platforms
+
+**Why**: iOS already exposes `.accessibilityLabel` and
+`.accessibilityIdentifier` on each action (`NoteRowView.swift:349-394`:
+`note-zap-button`, "Zap", "Reply", "Repost", "Like"). Android's
+`RelationActionLabel` (`NoteActions.kt:183-199`) is a bare `clickable` `Text`
+with no semantics, role, or test identifier. Extraction must not lose the iOS
+a11y surface, and Android must gain it.
+
+**Fix**: Define the a11y contract the registry component guarantees on both
+platforms:
+- Accessibility label per action: "Reply", "Repost", "Like", "Zap".
+- Button role/trait (iOS `.isButton` via `Button`; Compose
+  `Modifier.semantics { role = Role.Button }` / `onClickLabel`).
+- Stable test identifiers (iOS `accessibilityIdentifier`, Compose
+  `Modifier.testTag`) — e.g. `note-action-reply/repost/like/zap` — used by the
+  B11 parity tests.
+
+**Acceptance criterion**: both platforms expose identical labels, button
+roles, and test identifiers; a UI test can find each action by a shared
+identifier.
+
+---
+
+### B9: Decide ThreadNoteRow.swift fate (follow-up, not a blocker)
+
+**Why**: `ThreadNoteRow.swift:109-143` is a manually-maintained copy — but a
+*reduced* one: it has only **Reply, Repost, Like** with **no zap button and no
+counts** (it renders icon-only `threadActionLabel`s with no count text).
+Adopting `NostrNoteActionsRow` there is therefore a **behavior addition** (zap
+affordance + relation counts appear in the thread view), not just spacing
+reconciliation. Layout also differs (`HStack(spacing: 28)` vs `spacing: 0` +
+`Spacer()`).
+
+**Recommendation**: thread view adopts the registry component once it lands,
+which intentionally *adds* zap + counts to the focused-note row (a product
+decision — confirm it's wanted). Needs either an optional `spacing` parameter
+or a call-site layout modifier, plus host wiring for the new zap/counts. This
+is a follow-up issue gated on the extraction landing, **not** a blocker for the
+registry component itself. File the follow-up when extraction begins.
 
 ---
 
@@ -350,12 +441,14 @@ public struct NostrNoteActionsRow: View {
     // ── Inputs ─────────────────────────────────────────────────────
     public let eventID: String
     public let authorPubkey: String
-    /// Pre-extracted from the author's kind:0 `lud16`/`lud06` keyed
-    /// profile sidecar (Rust side). Nil means "no lightning address" →
-    /// zap button renders muted/disabled so layout stays stable.
-    public let authorLnurl: String?
     /// Relation counts from the kernel projection. Nil = not yet loaded.
     public let counts: NoteRelationCountsWire?
+    /// Controls zap-button enablement. PROVISIONAL — see §5.4 DESIGN DECISION.
+    /// Recommended (option a): `zapEnabled: Bool` (host-supplied, Rust-derived
+    /// zapability; no lnurl in the shell). Current iOS shape is
+    /// `authorLnurl: String?`; whether to keep it is flagged for owner
+    /// sign-off because it changes this signature and the zap-visibility rule.
+    public let zapEnabled: Bool   // provisional; or `authorLnurl: String?` per §5.4
 
     // ── Callbacks ───────────────────────────────────────────────────
     /// Tapping reply fires this; host is responsible for presenting the
@@ -394,32 +487,92 @@ Public surface:
 public fun NostrNoteActionsRow(
     eventId: String,
     authorPubkey: String,
-    /** Pre-extracted from author kind:0 lud16/lud06 by caller. Null = muted zap. */
-    authorLnurl: String? = null,
     /** Relation counts from the kernel projection. Null = not yet loaded. */
     counts: NoteRelationCountsWire? = null,
+    /** Controls zap-button enablement. See §5.4 DESIGN DECISION — this field's
+     *  shape (String? lnurl vs Bool zapEnabled) is unresolved and flagged for
+     *  owner sign-off. */
+    zapEnabled: Boolean = true,
     onReply: (() -> Unit)? = null,
     onRepost: (() -> Unit)? = null,
     onLike: (() -> Unit)? = null,
-    /** Fired only when authorLnurl != null AND this callback is non-null. */
+    /** Fired only when zapEnabled AND this callback is non-null. */
     onZap: (() -> Unit)? = null,
 )
 ```
 
-### 5.3 Cross-platform parity requirements
+> **Note**: the SwiftUI surface in §5.1 currently shows `authorLnurl: String?`.
+> Whether both platforms expose `authorLnurl` (shell-side gating) or a
+> platform-neutral `zapEnabled: Bool` (host/Rust decides zapability) is an
+> open design decision — see **§5.4**. The signatures above are provisional on
+> that decision.
 
-The following behaviors must be identical between iOS and Android after
-extraction (mirrors the identicon parity constraint from the user-avatar
-work):
+### 5.3 Cross-platform parity — Current (divergent) vs Target
 
-| Behavior | Target |
-|----------|--------|
-| Button order | Reply, Repost, Like, Zap (left to right) |
-| Zap visibility | Hidden (muted icon placeholder) when `authorLnurl == nil/null` OR `onZap == nil/null` |
-| Like state | Optimistic UI: icon fills and accent-colors on first tap; tapping again is a no-op (idempotent guard) |
-| Counts display | Only shown when `> 0`; omitted when nil/loading or zero |
-| Like color | System accent (`.tint`) on iOS; `MaterialTheme.colorScheme.primary` on Compose |
-| Haptics | iOS: `UIImpactFeedbackGenerator` in the component (platform capability); Android: optional `HapticFeedback` via `LocalHapticFeedback` |
+**The two platforms are materially divergent today.** Extraction is NOT a
+pure mechanical move: reaching a single registry component requires reskinning
+one platform's visuals and adding new behavior to Android. This table makes the
+real deltas explicit (each row that differs is a concrete change, not a
+rename).
+
+| Behavior | iOS current | Android current | Target | Delta |
+|----------|-------------|-----------------|--------|-------|
+| Render style | **SF Symbol icons** (`bubble.left`, `arrow.2.squarepath`, `heart`, `bolt`) — `NoteRowView.swift:303-354` | **Plain TEXT labels** ("Reply", "React", "Repost", "Zap") — `NoteActions.kt:189` `RelationActionLabel` | Icons (SF Symbols ↔ Material icons) | **Android must be reskinned from text to icons.** Largest single gap. |
+| Button order | Reply, **Repost, Like**, Zap | Reply, **React, Repost**, Zap (swapped) — `NoteActions.kt:74-91` | Reply, Repost, Like, Zap | Android reorders React/Repost. |
+| Like / React label | "Like" (heart) | "React" (❤ glyph) | One canonical term + icon | Naming + glyph reconciliation. |
+| Optimistic like | Guards `!likeTapped`, fills `heart.fill`, accent color, spring scale — `NoteRowView.swift:364-376` | Dispatches **every** tap, no local state, no animation — `NoteActions.kt:77-80` | Optimistic: fill+accent on first tap, idempotent no-op after | **NEW Android behavior** (local state + idempotency + animation). |
+| Counts display | Shown only when `> 0`; `"..."`-free | Shown as `"$label $count"`, prints `"..."` when null — `NoteActions.kt:190` | Shown only when `> 0`; no loading text | Android drops the `"..."` placeholder. |
+| Like color | `ChirpColor.accent` → target `Color.accentColor` (B4) | `MaterialTheme.colorScheme.primary` | System accent per platform | Already each-platform-idiomatic; OK. |
+| Haptics | `UIImpactFeedbackGenerator` in component | none | iOS keeps haptic; Android optional `LocalHapticFeedback` | Android may add haptic (optional). |
+| Zap gating | `onZap` + `authorLnurl != nil` → enabled; else muted placeholder — `NoteRowView.swift:338-360` | Zap shown **unconditionally**, muted styling, fails closed in Rust — `NoteActions.kt:52-54,86-91` | **See §5.4 — open decision** | Resolution depends on §5.4. |
+| Zap amount UX | Callback → host presents `ZapAmountSheet` | Component owns inline `ZapAmountDialog` — `NoteActions.kt:113-179` | Callback-only, host-owned (B7) | Android moves dialog to host. |
+| Reply UX | Callback → host presents `ComposeView` sheet | Component owns inline `ComposeNoteDialog` — `NoteActions.kt:100-111` | Callback-only, host-owned (B10) | Android moves dialog to host. |
+
+Render parity must be locked by a golden test (see **B11**), the direct
+analogue of the #2268 identicon source-parity gate.
+
+### 5.4 DESIGN DECISION — `authorLnurl` shape (owner sign-off required)
+
+The platforms disagree on where zapability is decided, and this is **not** a
+detail to settle silently:
+
+- **iOS** passes `authorLnurl: String?` into the component; the shell resolved
+  it via `model.profileCard(forPubkey:)?.lnurl` before injection. The component
+  hides/mutes the zap button when lnurl is nil.
+- **Android** deliberately carries **no** `authorLnurl`. Its doc comment is
+  explicit (`NoteActions.kt:52-54`): *"the recipient `lnurl` is resolved
+  kernel-side from the author's kind:0 … and a missing LN address fails closed
+  in Rust rather than in the shell."* Zap is shown unconditionally.
+
+Mandating `authorLnurl: String?` on the Android surface (as the first draft of
+this doc did) would **push lnurl resolution into the Android shell** — a
+thin-shell regression — and **change Android zap-visibility behavior** (from
+always-shown to conditionally-muted). Per the thin-shell doctrine
+(`docs/cli.md:164-172`: components "do not … decide policy"; the shell does not
+parse metadata), the shell deciding zapability from a parsed lud16/lud06 is the
+wrong layer.
+
+**Options:**
+
+- **(a) Rust-fail-closed (RECOMMENDED).** The component exposes a
+  platform-neutral `zapEnabled: Bool` (default `true`), and the *host* (not the
+  component, not raw metadata parsing in the shell) supplies it from a
+  Rust-derived zapability fact. When `zapEnabled == true` the zap button is
+  enabled and `onZap` fires; Rust still fails closed if no lnurl exists at
+  dispatch time. This keeps lnurl out of both shells, matches the existing
+  Android posture, and removes the iOS shell's `profileCard.lnurl` lookup
+  (a small thin-shell improvement on iOS too). The host may compute
+  `zapEnabled` from the same keyed-profile sidecar the kernel already
+  produces — no new shell parsing.
+- **(b) iOS-style shell gating.** Keep `authorLnurl: String?` on both
+  platforms; Android gains an lnurl lookup in the shell. Rejected as a
+  thin-shell regression; listed only for completeness.
+
+**Recommendation: (a).** It is the more doctrine-correct option and the
+smaller net change (it *removes* shell lnurl handling rather than adding it).
+**Flagged for owner sign-off** — this changes the public component signature
+(§5.1/§5.2) and a user-visible zap-visibility rule, so it should not be settled
+by the extraction PR author alone.
 
 ---
 
@@ -489,26 +642,40 @@ role = "source"
 
 When F-08 (registry) is ready and this preflight is approved:
 
+0. **§5.4 sign-off** — resolve the `authorLnurl` vs `zapEnabled` decision with
+   the owner BEFORE coding; it fixes the public signature (§5.1/§5.2) and a
+   zap-visibility rule. Blocks all surface-shaping steps.
 1. **B1** — Define `NoteRelationCountsWire` (standalone component). Adds two files
    (Swift + Kotlin), zero Chirp changes.
-2. **B2 + B3** (iOS, parallelisable with B5+B6) — Internalize `likeTapped`
-   state; replace `showReply` binding with `onReply` callback. One-file change
-   (`NoteRowView.swift`) touches only the call site.
+2. **B2 + B3** (iOS) — Internalize `likeTapped` state; replace `showReply`
+   binding with `onReply` callback. One-file change (`NoteRowView.swift`) at
+   the call site.
 3. **B4** (iOS) — Swap `ChirpColor.accent` for `Color.accentColor`. One-line
    change, zero behavior change (Chirp sets `.tint(ChirpColor.accent)` at root).
 4. **B5 + B6** (Android) — Remove `KernelModel` and `ChirpEventCard` params;
-   add callbacks. Move `ZapAmountDialog` to `TimelineScreen` (caller).
-5. **B7** (both) — Align zap UX: callback-only, host-owned dialog. Android gets
-   `ZapSheet.kt` or equivalent at the app layer.
-6. **B8** (Android) — Make composable `public`.
-7. **Move + rename**: copy cleaned iOS `NoteActionsRow` to the registry source
-   tree as `swiftui/note-actions-row/NostrNoteActionsRow.swift`; copy cleaned
-   Android composable to `compose/note-actions-row/NostrNoteActionsRow.kt`.
-   Update `registry.swiftui.toml` and `registry.compose.toml`.
-8. **Chirp wiring**: replace in-file definitions with `nmp add component`
-   installations; update `NoteRowView.swift` and `NoteActions.kt` call sites.
-9. **B9 follow-up**: file a separate issue to migrate `ThreadNoteRow` to use
-   `NostrNoteActionsRow`.
+   add callbacks.
+5. **B7 + B10** (both/Android) — Relocate the zap dialog AND the reply dialog
+   to the host (`TimelineScreen` / `ZapSheet.kt`); component fires callbacks
+   only. This is the largest Android change — not mechanical.
+6. **Android reskin** (Android) — convert text labels → Material icons, fix
+   button order (React/Repost), add optimistic-like local state + idempotency +
+   animation, drop the `"..."` loading text. This is NEW behavior, gated by B11.
+7. **B8** (Android) — Make composable `public`.
+8. **B12** (both) — Pin the a11y contract (labels, button roles, shared test
+   identifiers) used by the parity tests.
+9. **B11** (both) — Add the render/behavior parity golden gate + (if vendored)
+   the source-parity drift gate, #2268-style. Must be green before move.
+10. **Move + rename**: copy cleaned iOS `NoteActionsRow` to
+    `swiftui/note-actions-row/NostrNoteActionsRow.swift`; cleaned Android
+    composable to `compose/note-actions-row/NostrNoteActionsRow.kt`. Update
+    `registry.swiftui.toml` and `registry.compose.toml`.
+11. **Chirp wiring**: replace in-file definitions with `nmp add component`
+    installations; update `NoteRowView.swift` and `NoteActions.kt` call sites.
+12. **B9 follow-up**: file a separate issue to migrate `ThreadNoteRow` (note:
+    that adds zap + counts to the thread view — confirm it's wanted).
 
-Steps 2–3 and 4–6 are parallelisable across iOS and Android worktrees (disjoint
-files). Steps 7–9 are sequential.
+Steps 2–3 (iOS) and 4–6 (Android) are parallelisable across worktrees (disjoint
+files). Steps 8–11 are sequential. **This is not a mechanical move**: the
+Android reskin (step 6), the two dialog relocations (step 5), and the new
+optimistic-like behavior are substantive — the parity gate (step 9) is what
+keeps the result honest.
