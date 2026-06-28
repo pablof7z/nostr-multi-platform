@@ -925,7 +925,7 @@ into native code.
 
 - [App Model](01-app-model.md) explains how an app is assembled, what feature
   installers provide, and where app-specific Rust domains belong.
-- [Live Queries](02-live-queries.md) explains how screens subscribe to data,
+- [Typed Read Sessions](02-live-queries.md) explains how screens subscribe to data,
   including replay-before-live internals, dynamic source reconciliation,
   component refs, and projection delivery.
 - [Write Flow](03-write-flow.md) explains the split between event construction,
@@ -1017,57 +1017,41 @@ implementation satisfies these constraints:
 - Timers are allowed for capability sampling or presentation affordances, not for
   reducer/session reconciliation or projection repair.
 
-## ADR Readiness Bar
+## ADR Direction Bar
 
-This packet is ready to turn into durable ADR and architecture edits only after
-the North Star is falsifiable and the first rolling-horizon slices are concrete:
+This packet is ready to turn into durable ADR and architecture edits when the
+direction is falsifiable and the first rolling-horizon slices are concrete. It
+does not require implementing every downstream migration first.
+
+Direction acceptance requires:
 
 - the public vocabulary is reduced to explicit feature composition, typed
   feature/ref open helpers, typed actions/builders, capability results, and typed
   outputs/status, with a separate app-Rust authoring layer for descriptors,
   output schemas, reducers, and capability contracts;
 - `LiveQuery`, `ObservedProjection`, `ReducedSource`, route provenance, generated
-  adapters, and wake indexes are classified as public, private, migration-scoped,
-  or rejected;
-- every accepted session family has a contract for acquisition, routing, replay,
-  live sink, admission, output, wakes, teardown, and error/status behavior;
-- one simple session, plus a dynamic-source session only if the selected first
-  caller depends on dynamic sources, proves the descriptor can sit on existing
-  safe machinery without creating a second read lifecycle;
-- bounded route-planning/admission and wake-fanout contracts exist for the first
-  accepted session family, including replay rejection when relay-pinned cached
-  events lack stored relay provenance or another protocol-approved proof;
-- construction/finalization, signing, and publishing are proven separable without
-  splitting into native-owned routes or publish JSON paths;
-- signer status is a Rust-owned output contract across the supported signer
-  subset for the first write proof, not inferred from native callbacks;
-- if write flow is included in the accepted ADR, the P6 carrier plan and
-  `publish_route_provenance_contract` are part of ADR acceptance; otherwise writes
-  are explicitly out of scope for the accepted ADR and cannot be cited as solved;
-- the typed input classifier remains the only production route from arbitrary
-  user text into refs, relays, app commands, or search;
-- the publish path preserves offline-first local intent/status before signing,
-  routing, relay sockets, retry, or cancel;
-- schema, binding, render-cache, and storage migrations have one writer,
-  fixture/codegen gates, compatibility windows, fail-closed behavior, and
-  deletion/support-window triggers for old paths;
-- browser runtime/storage chooses an ADR proof tier before browser proof is
-  counted: storage-only Worker/OPFS conformance, full gallery web proof, or
-  browser out of scope. Degraded/no-worker/no-wasm mode is never product proof;
-- Highlighter, Podcast Player, and `nmp-gallery` have classified acceptance
-  matrices, with the first one to five rows selected for actual migration or
-  decision work;
-- the first executable ratchets are identified, with baseline counts and owners;
-- stale docs and examples have a retirement path instead of becoming a competing
-  source of truth;
-- the ADR acceptance PR at least marks known-stale durable docs as redirected,
-  retired, or pending #2320 cleanup, so old public architecture is not left as
-  equal current guidance while the deeper P8 rewrite waits.
+  adapters, wake indexes, and service-session language are classified as public,
+  private, migration-scoped, or rejected;
+- the first selected read proof has one named caller family, one old lifecycle
+  recipe to delete/privatize/scope, and a fallback if #2307/P2 tick repair must
+  precede it;
+- the first selected write proof is either included with the P6 carrier plan and
+  publish intent/provenance gates, or writes are explicitly out of scope and not
+  cited as solved;
+- Highlighter, Podcast Player, gallery, browser runtime, and docs/source-of-truth
+  rows are classified as falsifier rows with owner, evidence required if
+  selected, and failure condition;
+- the first executable ratchet issue will carry exact baseline commands, commit
+  SHA, roots, exclusions, and owners rather than relying on this packet as a
+  count authority;
+- stale durable docs have a #2320 retirement path so the accepted ADR does not
+  coexist with old app-facing architecture as equal current guidance.
 
-ADR readiness is not the same as completing every downstream migration. It means
-the next slices are specific enough to execute and the remaining matrices are
-specific enough to tell whether later work is moving toward or away from the
-North Star.
+Selected proof rows are stricter than direction acceptance. If Highlighter web,
+Podcast NIP-F4, gallery web, browser storage, or another downstream row is used
+as proof, its package-local gates become blocking for that proof. If a row is not
+selected, it remains a falsifier and future issue candidate, not proof that the
+architecture is already implemented.
 
 ## Decision Taxonomy
 

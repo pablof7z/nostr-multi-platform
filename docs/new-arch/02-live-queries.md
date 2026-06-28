@@ -1,4 +1,4 @@
-# Live Queries
+# Typed Read Sessions
 
 A screen or component opens a typed session for the state it wants to render.
 Headless/service-like surfaces use typed actions, short-lived headless
@@ -92,9 +92,13 @@ models must use declared sessions or private observed sinks.
 
 The proof must start from existing surfaces, not from a fresh abstraction. Try to
 generalize or narrow `open_feed`, `resolve_ref`, `ObservedProjectionRegistrar`,
-dependent interests, and current feature sessions first. If those can express
-the lifecycle with clearer names and smaller public API, prefer that over adding
-a public `LiveQuery` object.
+dependent interests, and current feature sessions first. `open_feed(FeedParams)`
+is the strongest feed-specific incumbent: it may become the first typed-session
+proof, a generated per-feature helper over the descriptor model, or a
+compatibility shim. It must not remain a separate public lifecycle model beside
+typed read sessions. If existing seams can express the lifecycle with clearer
+names and smaller public API, prefer that over adding a public `LiveQuery`
+object.
 Typed session descriptors must compile into these seams until evidence proves a
 new seam is needed. The current action/codegen registry is write/action-ready,
 not a generic read-module runtime; a descriptor that requires a new module
@@ -563,12 +567,14 @@ removes feature-local recipes without importing feed policy into the core.
 The base query capacity proof is part of this split. If a source family needs
 hundreds or thousands of authors, tags, addresses, or event refs, the selected
 session must prove the store/query and route-planning shape can handle that
-demand without a per-feature workaround. Per-pubkey loops, arbitrary global
-author caps, cache-warming shortcuts, per-author versus global recency hacks, and
-relay-sharding folklore are not feed policy; they are evidence that the
-substrate/session query primitive is missing or underspecified. The right proof
-names the bounded query primitive, admission rules, recency/window semantics,
-relay planning behavior, and fallback when the source set is empty or too large.
+demand without a per-feature workaround. `StoreQuery::AuthorsKind`-style
+multi-author capacity is substrate/session machinery; feed recency windows,
+ranking, and product caps are feed policy. Per-pubkey loops, arbitrary global
+author caps, cache-warming shortcuts, and relay-sharding folklore are evidence
+that the substrate/session query primitive is missing or underspecified, not a
+reason to bake feed policy into the core. The right proof names the bounded query
+primitive, admission rules, recency/window semantics, relay planning behavior,
+and fallback when the source set is empty or too large.
 
 ## Routing
 

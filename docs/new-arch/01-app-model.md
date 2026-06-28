@@ -217,6 +217,13 @@ brands, signer permission defaults, or product onboarding choices. Leaf app Rust
 crates provide that policy explicitly, preferably through typed builders that
 make the "with policy" versus "without policy" decision visible at compile time.
 
+Account creation follows the same boundary. Native and web shells may collect
+raw user input and execute signer/keychain/browser capabilities, but account
+admission, onboarding defaults, seeded relay/follow choices, and first-run
+publish actions belong to app Rust or reusable protocol features. Passing opaque
+policy JSON through native composition is just hidden defaults with a different
+file extension.
+
 Client identity follows the same single-source rule. An app declares client
 identity once in its Rust composition root. NMP can derive User-Agent headers and
 optional NIP-89 client tags from that one declaration during outbound
@@ -350,10 +357,12 @@ binary provenance needed for later event construction, durable result state, and
 any publish action that follows.
 
 Headless and OS-owned surfaces are not exempt. A widget, AppIntent, CarPlay
-scene, remote command, Live Activity, extension, or suspended-process resume may
-open app-lifetime typed sessions, dispatch typed actions through a headless
-runtime, or submit capability results, but it must not own a parallel playback
-queue, signer state, relay policy, or publish result model.
+scene, remote command, Live Activity, extension, or suspended-process resume
+should first use typed actions, short-lived headless invocation, capability
+results, or last Rust-emitted mirror frames. App-lifetime typed sessions are
+allowed only for a selected proof row that uses the same lifecycle contract as a
+visible screen. None of these surfaces may own a parallel playback queue, signer
+state, relay policy, deep-link admission policy, or publish result model.
 
 This distinguishes legitimate app runtime surface from forbidden protocol
 escape hatches. A Whisper upload, playback seek, provider-key read, or local
@@ -525,6 +534,9 @@ outputs, generated/contract-tested adapters, and web component/package ownership
 `nmp_app_gallery_register`, browser `start()`, and Android byte-dispatch action
 sets must be classified as explicit composition, tutorial/test compatibility, or
 migration shims with owner, support window, and deletion/formalization gate.
+Existing Gallery helpers such as `openAuthor`, `claimProfile`, and
+`nmp_app_gallery_snapshot` are readiness smells until their owner is clear:
+typed session, generated adapter, diagnostic export, or migration shim.
 Gallery web is not proven by generic browser-runtime conformance or a TS-only
 demo. The package that ships gallery web needs its own wasm/Worker/OPFS proof,
 generated or contract-tested ref handles, no correctness `setInterval`

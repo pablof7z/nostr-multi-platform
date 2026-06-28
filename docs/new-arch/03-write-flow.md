@@ -225,9 +225,10 @@ Existing explicit-relay callers need provenance on the surviving publish path:
 | test/diagnostic explicit relays | diagnostic/test | not reachable from product shell APIs |
 
 Older docs and wiki pages mention `RoutingContext::explicit_targets` as the
-place NIP-17 or NIP-29 explicit routes should land. That is stale: #1538 was
-closed by PR #1600, which removed the dead routing-context explicit-target seam
-and kept `PublishTarget::Explicit` as the single live explicit-relay mechanism.
+place NIP-17 or NIP-29 explicit routes should land. Live GitHub state verifies
+#1538 was closed by merged PR #1600, which removed the dead routing-context
+explicit-target seam and kept `PublishTarget::Explicit` as the single live
+explicit-relay mechanism.
 P6 must not reintroduce a broad routing context or second explicit route lane to
 solve provenance. The remaining work is to carry provenance class and reason
 through the existing publish target/reason/status pipeline.
@@ -483,7 +484,7 @@ reply_to(event).content("nice")                 # NIP-10/NIP-22/app reply builde
 article().title("Hello World").content(body)    # NIP-23/app article builder
 nip29.publish_group_event(group_id, article_draft)
 nip29.publish_group_event(group_id, reply_draft)
-podcast.publish_episode(show_id, episode_id, signer, relays)
+podcast.publish_episode(show_id, episode_id, signer, route_policy)
 highlighter.share_artifact_to_room(artifact_id, room_id)
 ```
 
@@ -581,7 +582,7 @@ Highlighter write/read rows that must be classified independently:
 | SSR search/featured/room reads | read-only public-data cache or Rust/app-server-owned product state with durability and injected seams |
 
 Podcast proves the same rule for non-primary signers. Per-podcast keys, agent
-signers, Blossom server references, configured write relays, and NIP-F4
+signers, Blossom server references, configured write routes, and NIP-F4
 show/episode/list events cannot update `last_published_at` or equivalent product
 state on construction, signing, or queued dispatch. Product completion follows
 from the publish ledger reaching a terminal ack/error/retry-exhausted state.
@@ -593,6 +594,10 @@ hash, size, signer identity, event id/naddr, correlation id, retry/cancel, and
 restart recovery. Uploads or provider capabilities that affect signed bytes must
 complete before signing; capabilities that happen after publish must be modeled as
 separate follow-up writes.
+The selected NIP-F4 proof must include executable checks for these three
+failures: Blossom reference not complete before signing, `last_published_at`
+mutated before terminal relay/server status, and dispatch/enqueue reported as
+publish success.
 
 ## Compatibility Boundaries
 
