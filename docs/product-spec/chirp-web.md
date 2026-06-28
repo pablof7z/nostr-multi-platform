@@ -4,6 +4,23 @@ Chirp Web is the browser reference client for NMP. It must prove the WASM
 worker can read, render, sign, publish, and diagnose real Nostr traffic without
 TypeScript protocol policy.
 
+## Production Deployment Contract
+
+Chirp Web production deploys must use a normal Vercel remote build from the
+monorepo root. The source bundle must include the Rust workspace crates, Chirp's
+app Rust workspace members, `web/packages`, and `web/chirp` so the deploy builds
+`nmp-browser-runtime` WASM from source before bundling the thin TypeScript
+shell. The canonical command path is the root `vercel.json`: install the web
+workspace, run `@nmp/chirp-web`'s `build:vercel`, and publish
+`web/chirp/dist`.
+
+Prebuilt uploads are diagnostic or emergency artifacts only. They are not the
+canonical production path and do not satisfy production-proof acceptance for
+first-run relay bootstrap. A production proof must come from a fresh normal
+remote build that serves `/nmp-wasm/nmp_browser_runtime.js`,
+`/nmp-wasm/nmp_browser_runtime_bg.wasm`, and the SQLite WASM vendor files
+staged by the runtime build script.
+
 ## First-Run Contract
 
 New browser profiles must open into usable product, not a dead demo, with
