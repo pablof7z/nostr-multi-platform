@@ -4,16 +4,11 @@ version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 repository.workspace = true
-description = "Cross-protocol social-relation aggregation for NMP — the engagement classifier that tallies reactions (NIP-25), reposts (NIP-18), zaps (NIP-57), and comments (NIP-22) onto a note, plus the visible-note-relations interest action. Split out of nmp-nip01 (#1728) so the base note/profile/reply crate owns no cross-protocol aggregation."
+description = "Legacy cross-protocol social-relation classifier for NMP — tallies reactions (NIP-25), reposts (NIP-18), zaps (NIP-57), and comments (NIP-22) onto a note. Split out of nmp-nip01 (#1728) so the base note/profile/reply crate owns no cross-protocol aggregation."
 
 [dependencies]
-# Kernel substrate: KernelEvent, ActionModule, ActorCommand, the
-# NoteRelationClassifier seam (owned by nmp-nip01), subs identity types.
+# Kernel substrate: KernelEvent and the NoteRelationClassifier seam input.
 nmp-core = { path = "../nmp-core", default-features = false }
-# Layer-0 kind constants used by the cross-protocol notification projection.
-nmp-kinds = { path = "../nmp-kinds" }
-# Interest types for the visible-note-relations action.
-nmp-planner = { path = "../nmp-planner", default-features = false }
 # Base note crate — owns the relation-count vocabulary, the `NoteRelationIndex`,
 # and the `NoteRelationClassifier` trait this crate implements, plus the kind:1
 # reply decoder. This crate depends UP-the-stack on nmp-nip01 (one direction);
@@ -25,10 +20,6 @@ nmp-nip01 = { path = "../nmp-nip01", default-features = false }
 nmp-nip18 = { path = "../nmp-nip18" }
 nmp-nip22 = { path = "../nmp-nip22" }
 nmp-nip57 = { path = "../nmp-nip57", default-features = false }
-serde = { workspace = true, features = ["derive"] }
-# Typed FlatBuffers action payload codec (ADR-0064 / Cut-B #1756).
-# Workspace-pinned to 25.12.19, enforced by ci/check-flatbuffers-version-pins.sh.
-flatbuffers = { workspace = true }
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"] }

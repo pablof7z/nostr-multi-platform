@@ -5,11 +5,15 @@ use std::sync::Arc;
 use nmp_core::substrate::ObservedProjection;
 use nmp_core::{ObservedProjectionId, TypedProjectionData};
 use nmp_feed::DEFAULT_FEED_WINDOW_LIMIT;
-use nmp_relations::{
-    encode_notifications_snapshot, notifications_file_identifier, notifications_interest_shape,
-    NotificationsProjection, NOTIFICATIONS_KEY, NOTIFICATIONS_SCHEMA_ID,
-    NOTIFICATIONS_SCHEMA_VERSION,
+
+mod projection;
+mod wire;
+
+use projection::{
+    notifications_interest_shape, NotificationsProjection, NOTIFICATIONS_KEY,
+    NOTIFICATIONS_SCHEMA_ID, NOTIFICATIONS_SCHEMA_VERSION,
 };
+use wire::{encode_notifications_snapshot, notifications_file_identifier};
 
 use super::handle::BrowserRuntimeHandle;
 

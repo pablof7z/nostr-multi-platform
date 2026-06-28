@@ -50,7 +50,7 @@ nmp-nip29 = { path = "../nmp-nip29" }
 nmp-nip46 = { path = "../nmp-nip46" }
 nmp-nip46-runtime = { path = "../nmp-nip46-runtime", default-features = false }
 nmp-nip50 = { path = "../nmp-nip50" }
-nmp-relations = { path = "../nmp-relations" }
+nmp-nip57 = { path = "../nmp-nip57", default-features = false }
 nmp-planner = { path = "../nmp-planner", default-features = false }
 # Signer trait + LocalKeySigner / Nip07Signer implementations used by the
 # capability-provider registry (#2049/#2066/#2067). `default-features = false`
@@ -63,6 +63,7 @@ nmp-signers = { path = "../nmp-signers", default-features = false }
 nmp-defaults = { path = "../nmp-defaults", default-features = false }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+flatbuffers = { workspace = true }
 nostr = { workspace = true, features = ["std"] }
 tracing = "0.1"
 zeroize = { workspace = true }

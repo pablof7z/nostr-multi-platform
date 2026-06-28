@@ -1,4 +1,4 @@
-//! Typed FlatBuffers codec for [`crate::NotificationsSnapshot`].
+//! Typed FlatBuffers codec for browser notification snapshots.
 
 #[allow(
     clippy::all,
@@ -16,7 +16,7 @@ pub mod generated;
 use flatbuffers::{FlatBufferBuilder, WIPOffset};
 use generated::nmp::relations as fb;
 
-use crate::{
+use super::super::projection::{
     NotificationRow, NotificationsSnapshot, NOTIFICATIONS_FILE_IDENTIFIER,
     NOTIFICATIONS_SCHEMA_VERSION,
 };
