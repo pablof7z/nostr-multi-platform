@@ -697,6 +697,125 @@ export const GeneratedActionBuilders = {
     return encodeDispatchEnvelope(correlationId, "nmp.app.topic_articles", payload);
   },
 
+  /** Discover NIP-29 groups hosted on a relay. */
+  discoverGroups(
+    correlationId: string,
+    relayUrl: string,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const relayUrlOffset = fbb.createString(relayUrl);
+    fbb.startObject(2);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldOffset(1, relayUrlOffset, 0); // slot 1: relayUrl
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "N29D");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.nip29.discover", payload);
+  },
+
+  /** Publish an event to a NIP-29 group (any kind). */
+  publishGroupEvent(
+    correlationId: string,
+    group: { hostRelayUrl: string; localId: string },
+    kind: number,
+    content: string | null,
+    tags: string[][] | null,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const groupHostRelayUrlOffset = fbb.createString(group.hostRelayUrl);
+    const groupLocalIdOffset = fbb.createString(group.localId);
+    fbb.startObject(2);
+    fbb.addFieldOffset(0, groupHostRelayUrlOffset, 0); // GroupRef slot 0: host_relay_url
+    fbb.addFieldOffset(1, groupLocalIdOffset, 0); // GroupRef slot 1: local_id
+    const groupOffset = fbb.endObject();
+    const contentOffset = content === null ? 0 : fbb.createString(content);
+    const tagsOffset = (() => {
+      if (tags == null || tags.length === 0) return 0;
+      const tagOffsets = tags.map((row) => {
+        const valOffsets = row.map((s) => fbb.createString(s));
+        const valsVec = fbb.createObjectOffsetList(valOffsets);
+        fbb.startObject(1);
+        fbb.addFieldOffset(0, valsVec, 0); // StringTag slot 0: values
+        return fbb.endObject();
+      });
+      return fbb.createObjectOffsetList(tagOffsets);
+    })();
+    fbb.startObject(5);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldOffset(1, groupOffset, 0); // slot 1: group
+    fbb.addFieldInt32(2, kind, 0); // slot 2: kind
+    if (contentOffset !== 0) fbb.addFieldOffset(3, contentOffset, 0); // slot 3: content
+    if (tagsOffset !== 0) fbb.addFieldOffset(4, tagsOffset, 0); // slot 4: tags
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "N29G");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.nip29.publish_group_event", payload);
+  },
+
+  /** Request membership in a NIP-29 group. */
+  joinGroup(
+    correlationId: string,
+    group: { hostRelayUrl: string; localId: string },
+    inviteCode: string | null,
+    reason: string | null,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const groupHostRelayUrlOffset = fbb.createString(group.hostRelayUrl);
+    const groupLocalIdOffset = fbb.createString(group.localId);
+    fbb.startObject(2);
+    fbb.addFieldOffset(0, groupHostRelayUrlOffset, 0); // GroupRef slot 0: host_relay_url
+    fbb.addFieldOffset(1, groupLocalIdOffset, 0); // GroupRef slot 1: local_id
+    const groupOffset = fbb.endObject();
+    const inviteCodeOffset = inviteCode === null ? 0 : fbb.createString(inviteCode);
+    const reasonOffset = reason === null ? 0 : fbb.createString(reason);
+    fbb.startObject(4);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldOffset(1, groupOffset, 0); // slot 1: group
+    if (inviteCodeOffset !== 0) fbb.addFieldOffset(2, inviteCodeOffset, 0); // slot 2: inviteCode
+    if (reasonOffset !== 0) fbb.addFieldOffset(3, reasonOffset, 0); // slot 3: reason
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "N29J");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.nip29.join", payload);
+  },
+
+  /** Create a new public NIP-29 group. */
+  createPublicGroup(
+    correlationId: string,
+    group: { hostRelayUrl: string; localId: string },
+    name: string,
+    about: string | null,
+    picture: string | null,
+    visibility: number,
+    access: number,
+    parent: string | null,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const groupHostRelayUrlOffset = fbb.createString(group.hostRelayUrl);
+    const groupLocalIdOffset = fbb.createString(group.localId);
+    fbb.startObject(2);
+    fbb.addFieldOffset(0, groupHostRelayUrlOffset, 0); // GroupRef slot 0: host_relay_url
+    fbb.addFieldOffset(1, groupLocalIdOffset, 0); // GroupRef slot 1: local_id
+    const groupOffset = fbb.endObject();
+    const nameOffset = fbb.createString(name);
+    const aboutOffset = about === null ? 0 : fbb.createString(about);
+    const pictureOffset = picture === null ? 0 : fbb.createString(picture);
+    const parentOffset = parent === null ? 0 : fbb.createString(parent);
+    fbb.startObject(8);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldOffset(1, groupOffset, 0); // slot 1: group
+    fbb.addFieldOffset(2, nameOffset, 0); // slot 2: name
+    if (aboutOffset !== 0) fbb.addFieldOffset(3, aboutOffset, 0); // slot 3: about
+    if (pictureOffset !== 0) fbb.addFieldOffset(4, pictureOffset, 0); // slot 4: picture
+    fbb.addFieldInt8(5, visibility, 0); // slot 5: visibility
+    fbb.addFieldInt8(6, access, 0); // slot 6: access
+    if (parentOffset !== 0) fbb.addFieldOffset(7, parentOffset, 0); // slot 7: parent
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "N29P");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.nip29.create_public_group", payload);
+  },
+
   /** Sign-and-publish an arbitrary event kind (generic publish path; NIP-65 outbox or explicit relays). */
   publishRaw(
     correlationId: string,
