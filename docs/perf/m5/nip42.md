@@ -73,7 +73,7 @@ test result: ok. 25 passed; 0 failed
 
 1. **Wire-frame pause / flush queue.** T46 (M8-subs) already shipped `subs::auth_gate::AuthGate` — owns the per-relay pending REQ buffer, partitions wire frames, drains on `Authenticated`. T40 (this crate) feeds it via the `CompileTrigger::RelayAuthStateChanged` inbox seam.
 2. **Kernel-side `handle_text` integration.** The kernel's `kernel/ingest/mod.rs::handle_text` still has `"OK" => {}` and no `"AUTH" =>` arm. Wiring the kernel to call `nmp_nip42::parse_auth_frame` / `Nip42Driver` is the M2-phase-2 wiring task (subscription-lifecycle §5, pinned by `crates/nmp-testing/tests/m8_subscription_lifecycle.rs`) — that task replaces the kernel's hand-rolled `req`/`defer_outbound` calls with `SubscriptionLifecycle::drain_tick` + `ConnectionPool::send`. Doing it inside T40 would conflict with that task's scope.
-3. **Signer wiring.** T43 (M6) shipped `nmp_signers::Signer::sign(unsigned) -> SignerOp<SignedEvent>`. The protocol module accepts a generic signer closure (`FnMut(&UnsignedEvent) -> Result<SignedEvent, Nip42Error>`); the M6 wiring task adapts the canonical `Signer` trait to that signature at the call site. The publish engine's `publish::traits::Signer::sign_auth` shim is the M7-side path for AUTH-REQUIRED publish retries — different code path, kept separate intentionally.
+3. **Signer wiring.** T43 (M6) shipped `nmp_signers::Signer::sign(unsigned) -> SignerOp<SignedEvent>`. The protocol module accepts a generic signer closure (`FnMut(&UnsignedEvent) -> Result<SignedEvent, Nip42Error>`); the M6 wiring task adapts the canonical `Signer` trait to that signature at the call site. The publish engine does not own a separate AUTH signer shim.
 4. **iOS bridging-header changes.** No FFI surface added — the signer integration is internal Rust, bound by M6's account-manager. The C FFI surface in `NmpCore.h` is unchanged.
 5. **Toast field on the FFI snapshot.** Failure reasons surface as state through the current FFI/update surface; this crate exposes `failure_reason` in `HandshakeOutcome` for that bridge.
 
@@ -131,15 +131,11 @@ Independent. NIP-77 reconciliation runs over an already-authenticated subscripti
 
 ### For the per-relay publish engine in `nmp_core::publish`
 
-The publish engine has its own `Signer::sign_auth` shim for the `AUTH-REQUIRED` publish-retry classification (`publish/state.rs::AckClass::AuthRequired`). Per the advisor review: that's a different code path. The two paths can coexist; the publish engine handles AUTH-REQUIRED responses to its OWN publishes, while `nmp-nip42` handles relay-initiated AUTH challenges. If a future cleanup wants to consolidate, the natural seam is: publish engine uses `nmp_nip42::run_handshake` for its retry, replacing the inline `sign_auth` call. Out of scope here.
-
-> Correction (2026-06-12): the consolidation landed in the *other* direction —
-> the publish engine never performs AUTH itself (no `sign_auth` call, no
-> `run_handshake` call from the engine). The settled shape is an **availability
-> gate**: a relay answering AUTH-REQUIRED is treated as unavailable for publish
-> until the existing `nmp-nip42` driver authenticates it; on `Authenticated`
-> the engine re-dispatches the pending publish, exactly like
-> `mark_publish_relay_available`. There is ONE auth code path: `nmp-nip42`.
+The publish engine never performs AUTH itself. A relay answering AUTH-REQUIRED is
+treated as unavailable for publish until the existing `nmp-nip42` driver
+authenticates it; on `Authenticated` the engine re-dispatches the pending
+publish, exactly like `mark_publish_relay_available`. There is one auth code
+path: `nmp-nip42`.
 
 ---
 
