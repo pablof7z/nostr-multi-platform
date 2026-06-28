@@ -6,19 +6,52 @@
 //! 3. Cold TOFU — only **kind:39000** establishes the pin; 39001/39002/39003
 //!    are quarantined (max 64 per group) until 39000 lands.
 //! 4. Signer mismatch → reject with `MetadataSignerChanged`; do not mutate.
+//!
+//! ## Persistence (D4-compliant, #2286)
+//!
+//! [`TofuSignerCache::open`] loads pinned-signer and NIP-11 state from the
+//! `nmp.nip29.tofu_signer` domain namespace on startup. Every mutation that
+//! changes the pinned map writes through immediately. The quarantine buffer
+//! is transient-only: it holds 39001/39002/39003 events before the first
+//! 39000 pins a signer; after a warm-cache restart the pinned map is loaded
+//! and quarantine is irrelevant. Persisting quarantine would add complexity
+//! with no security benefit.
 
 use std::collections::{BTreeMap, VecDeque};
 
+use nmp_store::{DomainHandle, EventStore, StoreError};
+
 use crate::group_id::{GroupId, RelayUrl};
 
-#[derive(Clone, Debug, Default)]
+/// Domain namespace for the durable NIP-29 TOFU signer cache.
+const TOFU_NAMESPACE: &str = "nmp.nip29.tofu_signer";
+/// Key prefix byte for per-group pinned-signer rows.
+const PREFIX_PINNED: u8 = b'p';
+/// Key prefix byte for per-host NIP-11 declared-pubkey rows.
+const PREFIX_NIP11: u8 = b'n';
+
 pub struct TofuSignerCache {
     /// Per-group pinned signer (the pubkey we accepted in the first 39000).
     pinned: BTreeMap<GroupId, String>,
     /// Per-host NIP-11 declared pubkey (policy A: strict match).
     nip11_pubkey: BTreeMap<RelayUrl, String>,
     /// Quarantine buffer: 39001/39002/39003 events held until a 39000 lands.
+    /// Not persisted — transient cold-start buffer only.
     quarantine: BTreeMap<GroupId, VecDeque<QuarantinedEvent>>,
+    /// Durable domain handle. `None` in the pure in-memory variant (tests).
+    /// `Some` in the persistent variant opened via [`Self::open`].
+    domain: Option<DomainHandle>,
+}
+
+impl Default for TofuSignerCache {
+    fn default() -> Self {
+        Self {
+            pinned: BTreeMap::new(),
+            nip11_pubkey: BTreeMap::new(),
+            quarantine: BTreeMap::new(),
+            domain: None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -44,15 +77,43 @@ pub enum TrustCheckOutcome {
 }
 
 impl TofuSignerCache {
-    #[must_use] 
+    /// Construct a pure in-memory cache (no persistence). For tests and
+    /// contexts that have no durable store.
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Open a store-backed, durable cache.
+    ///
+    /// Loads existing pinned-signer and NIP-11 state from the
+    /// `nmp.nip29.tofu_signer` domain namespace; subsequent mutations that
+    /// establish or update pins write through to the store immediately.
+    ///
+    /// Single-writer per D4: the caller serialises access via whatever
+    /// synchronisation primitive owns the returned struct.
+    ///
+    /// # Errors
+    ///
+    /// Returns `StoreError` if the domain namespace cannot be opened or if the
+    /// startup scan fails.
+    pub fn open(store: &dyn EventStore) -> Result<Self, StoreError> {
+        let domain = store.domain_open(TOFU_NAMESPACE)?;
+        let mut cache = Self {
+            domain: Some(domain),
+            ..Default::default()
+        };
+        cache.load()?;
+        Ok(cache)
     }
 
     /// Record NIP-11-declared pubkey for a host. When present, policy A
     /// (strict match) is active for the host's metadata events.
     pub fn set_nip11_pubkey(&mut self, host: impl Into<RelayUrl>, pubkey: impl Into<String>) {
-        self.nip11_pubkey.insert(host.into(), pubkey.into());
+        let host = host.into();
+        let pubkey = pubkey.into();
+        self.persist_nip11(&host, &pubkey);
+        self.nip11_pubkey.insert(host, pubkey);
     }
 
     /// Evaluate trust for a metadata event per the §4.3 step ladder. Caller
@@ -86,6 +147,7 @@ impl TofuSignerCache {
         // kinds are quarantined per §4.3.
         if kind == crate::kinds::KIND_GROUP_METADATA {
             self.pinned.insert(group.clone(), signer_pubkey.to_string());
+            self.persist_pinned(group, signer_pubkey);
             TrustCheckOutcome::Accepted
         } else {
             self.push_quarantine(group, kind, signer_pubkey, event_id, created_at);
@@ -140,49 +202,90 @@ impl TofuSignerCache {
     pub fn pinned_signer(&self, group: &GroupId) -> Option<&str> {
         self.pinned.get(group).map(String::as_str)
     }
+
+    // ── Persistence helpers ───────────────────────────────────────────────────
+
+    /// Load pinned-signer and NIP-11 rows from the domain store into memory.
+    fn load(&mut self) -> Result<(), StoreError> {
+        let rows = match &self.domain {
+            Some(d) => d.scan_prefix(b"")?.collect::<Result<Vec<_>, _>>()?,
+            None => return Ok(()),
+        };
+        for (key, val) in rows {
+            match key.first().copied() {
+                Some(PREFIX_PINNED) if key.len() > 2 => {
+                    // key: [PREFIX_PINNED, 0x00, ...host_relay_url..., 0x00, ...local_id...]
+                    let rest = &key[2..]; // skip [prefix, 0x00]
+                    if let Some(sep) = rest.iter().position(|&b| b == 0) {
+                        if let (Ok(host), Ok(local), Ok(pk)) = (
+                            std::str::from_utf8(&rest[..sep]),
+                            std::str::from_utf8(&rest[sep + 1..]),
+                            std::str::from_utf8(&val),
+                        ) {
+                            if !host.is_empty() && !local.is_empty() && !pk.is_empty() {
+                                self.pinned.insert(GroupId::new(host, local), pk.to_string());
+                            }
+                        }
+                    }
+                }
+                Some(PREFIX_NIP11) if key.len() > 2 => {
+                    // key: [PREFIX_NIP11, 0x00, ...relay_url...]
+                    let rest = &key[2..]; // skip [prefix, 0x00]
+                    if let (Ok(relay), Ok(pk)) =
+                        (std::str::from_utf8(rest), std::str::from_utf8(&val))
+                    {
+                        if !relay.is_empty() && !pk.is_empty() {
+                            self.nip11_pubkey.insert(relay.to_string(), pk.to_string());
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+
+    /// Write-through: persist a newly-pinned signer to the domain store.
+    fn persist_pinned(&self, group: &GroupId, pubkey: &str) {
+        if let Some(d) = &self.domain {
+            let _ = d.put(&pinned_key(group), pubkey.as_bytes());
+        }
+    }
+
+    /// Write-through: persist a NIP-11 declared pubkey to the domain store.
+    fn persist_nip11(&self, relay: &str, pubkey: &str) {
+        if let Some(d) = &self.domain {
+            let _ = d.put(&nip11_key(relay), pubkey.as_bytes());
+        }
+    }
+}
+
+/// Build the domain key for a pinned-signer row.
+///
+/// Format: `[PREFIX_PINNED, 0x00, host_relay_url_bytes, 0x00, local_id_bytes]`
+/// Both relay URLs and local IDs are ASCII-safe with no embedded null bytes.
+fn pinned_key(group: &GroupId) -> Vec<u8> {
+    let mut k =
+        Vec::with_capacity(2 + group.host_relay_url.len() + 1 + group.local_id.len());
+    k.push(PREFIX_PINNED);
+    k.push(0u8);
+    k.extend_from_slice(group.host_relay_url.as_bytes());
+    k.push(0u8);
+    k.extend_from_slice(group.local_id.as_bytes());
+    k
+}
+
+/// Build the domain key for a NIP-11 declared-pubkey row.
+///
+/// Format: `[PREFIX_NIP11, 0x00, relay_url_bytes]`
+fn nip11_key(relay_url: &str) -> Vec<u8> {
+    let mut k = Vec::with_capacity(2 + relay_url.len());
+    k.push(PREFIX_NIP11);
+    k.push(0u8);
+    k.extend_from_slice(relay_url.as_bytes());
+    k
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn group() -> GroupId {
-        GroupId::new("wss://h.example.com", "g1")
-    }
-
-    #[test]
-    fn tofu_first_39000_pins_signer() {
-        let mut t = TofuSignerCache::new();
-        let g = group();
-        let r = t.evaluate(crate::kinds::KIND_GROUP_METADATA, &g, "relay-pk", "evt-id", 1);
-        assert_eq!(r, TrustCheckOutcome::Accepted);
-        assert_eq!(t.pinned_signer(&g), Some("relay-pk"));
-        let r = t.evaluate(crate::kinds::KIND_GROUP_ADMINS, &g, "relay-pk", "evt-2", 2);
-        assert_eq!(r, TrustCheckOutcome::Accepted);
-    }
-
-    #[test]
-    fn tofu_quarantines_39001_before_39000() {
-        let mut t = TofuSignerCache::new();
-        let g = group();
-        let r = t.evaluate(crate::kinds::KIND_GROUP_ADMINS, &g, "spoofer", "evt-a", 1);
-        assert_eq!(r, TrustCheckOutcome::Quarantined);
-        assert_eq!(t.pinned_signer(&g), None);
-        let r = t.evaluate(crate::kinds::KIND_GROUP_METADATA, &g, "relay-pk", "evt-b", 2);
-        assert_eq!(r, TrustCheckOutcome::Accepted);
-        let replayed = t.replay_quarantine(&g);
-        assert_eq!(replayed.len(), 1);
-        assert_eq!(replayed[0].1, TrustCheckOutcome::Rejected);
-    }
-
-    #[test]
-    fn nip11_strict_match_rejects_mismatch() {
-        let mut t = TofuSignerCache::new();
-        let g = group();
-        t.set_nip11_pubkey(g.host_relay_url.clone(), "declared-pk");
-        let r = t.evaluate(crate::kinds::KIND_GROUP_METADATA, &g, "other-pk", "evt", 1);
-        assert_eq!(r, TrustCheckOutcome::Rejected);
-        let r = t.evaluate(crate::kinds::KIND_GROUP_METADATA, &g, "declared-pk", "evt", 1);
-        assert_eq!(r, TrustCheckOutcome::Accepted);
-    }
-}
+#[path = "tofu/tests.rs"]
+mod tests;
