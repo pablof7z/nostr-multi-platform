@@ -351,6 +351,48 @@ proof, publish-provenance proof, or downstream matrix shows the model adds more
 permanent concepts than it deletes, the correct result is to reject or narrow
 the architecture rather than carry the new names forward.
 
+## Deletion-First Bias
+
+The preferred outcome is not "a new architecture layer." The preferred outcome
+is a smaller NMP: fewer permanent public doors, fewer kernel concepts, fewer
+crate-level extension seams, fewer binding-specific tables, and fewer recipes an
+app developer has to memorize.
+
+For every proposed module, crate, or kernel responsibility, the signoff question
+is subtraction-first:
+
+```text
+can this concept be deleted entirely?
+can it be private implementation detail instead of public API?
+can two mechanisms collapse into one existing owner?
+does this protect an invariant that cannot live in an app or protocol crate?
+does it reduce the number of app-visible recipes?
+does it delete more old surface than it adds?
+```
+
+The kernel should be boring infrastructure: lifecycle admission, session/output
+ownership, event ingestion, routing handoff, publish orchestration, replay-safe
+state transitions, and capability/effect correlation. Protocol behavior belongs
+in protocol crates. App-specific behavior belongs in app Rust. If a kernel
+module cannot name a cross-app invariant it alone protects, it should move down,
+collapse into an existing mechanism, or disappear.
+
+This is especially important for names used in this packet. `ObservedProjection`,
+`ReducedSource`, projection manifests, route provenance carriers, generated
+adapters, and publish contexts are candidate ways to preserve invariants. They
+are not automatically permanent architecture. If typed sessions can absorb
+observed projection lifecycle, delete the public registrar. If source planning
+can be local to session descriptors, do not invent a reusable source framework.
+If explicit publish routing can be one private route-provenance value, delete
+the dead second seam.
+
+The only kind of simplification that counts is net simplification. It is not
+simpler to remove a kernel module by making Highlighter, Podcast Player, the
+gallery, Swift, TypeScript, or app code reimplement relay routing, signing
+policy, privacy gates, cache invalidation, route provenance, or protocol parsing.
+That would shrink NMP by exporting its complexity. The target is to delete
+concepts while keeping single ownership of the real invariants.
+
 ## Complexity Budget
 
 This proposal does not assume today's internal machinery is automatically right.

@@ -721,6 +721,54 @@ mode before implementation starts.
 | FF-025 | Metadata privacy gate is centralized. | outbound finalizers, NIP-89/client identity, public and explicit publish arms | client metadata appears only on public-routable unsigned events and never on private/imported/pre-signed/reserved surfaces | metadata privacy contract tests |
 | FF-026 | Binding generation reduces drift instead of moving old doors. | C-ABI, JNI, UniFFI experiments, FlatBuffers, runtime workers | generated binding work deletes hand-maintained drift or narrows compatibility; it does not preserve old public semantics under new glue | binding-surface diff review plus codegen drift gate |
 
+## Current Baseline Snapshot
+
+This is an initial 2026-06-28 snapshot from live grep counts. It is evidence for
+the dossier, not a durable source of truth. These counts include docs and tests
+unless noted, so signoff still requires manual classification into production,
+test, historical doc, tutorial compatibility, diagnostic, or delete.
+
+| Surface | Count | What it means |
+|---|---:|---|
+| NMP `open_interest` family, excluding `docs/new-arch` | 45 files / 122 matches | old read door is still broadly taught and tested |
+| NMP defaults/projection declarations | 144 files / 526 matches | hidden defaults and projection-declaration language are not a small local cleanup |
+| NMP `ObservedProjection` family | 190 files / 885 matches | observed projection is a major existing concept and must be deleted, privatized, or explicitly justified |
+| NMP explicit publish route family | 198 files / 2148 matches | route provenance cannot be fixed by naming alone; dead/live explicit seams need one owner |
+| NMP tick/polling markers | 33 files / 53 matches | every retained tick needs presentation/capability classification or deletion |
+| Highlighter direct Nostr/policy markers | 116 files / 609 matches | Highlighter web/runtime migration is a first-class gate, not a footnote |
+| Podcast service/publish markers | 229 files / 773 matches | service sessions and publish status are downstream proof obligations |
+| `nmp-gallery` old registration/ref/wasm markers | 48 files / 242 matches | gallery is useful proof only after wasm/ref lifecycle and defaults are resolved |
+
+The raw counts are intentionally uncomfortable. They argue against layering a
+new architecture beside the current one. The first implementation slices must
+produce a before/after deletion ledger:
+
+```text
+old public doors deleted or privatized:
+old docs corrected or retired:
+old tests moved to compatibility/historical:
+new public concepts added:
+net permanent concepts:
+```
+
+If a slice adds `FeatureSession`, `ObservedProjection`, `ReducedSource`, route
+metadata, generated adapters, or binding machinery without removing an equal or
+larger old surface, it fails the simplification test even if it is internally
+coherent.
+
+Current dossier status:
+
+| Area | Status | Required next proof |
+|---|---|---|
+| Typed feature sessions | Partial | first feature session deletes old lifecycle recipes or proves they are migration-only |
+| `ObservedProjection` | Unproven | public registrar is deleted/privatized, or a cross-app invariant justifies it |
+| `ReducedSource` | Unproven | source planning stays descriptor-local unless multiple features prove one shared abstraction |
+| Publish route provenance | High risk | one carrier survives through build, sign, retry, local ingest, status, and replay |
+| Downstream apps | Not ready | Highlighter, Podcast Player, and gallery matrices classify every old-pattern row |
+| Browser runtime/storage | Not ready | real wasm/Worker/OPFS lifecycle proof exists and fail-closed behavior is tested |
+| Generated catalogs/manifests | Not ready | one writer is named and drift gates run in check mode |
+| Durable docs | Not ready | old architecture teaching is corrected in place or retired |
+
 Useful baseline commands:
 
 ```bash
