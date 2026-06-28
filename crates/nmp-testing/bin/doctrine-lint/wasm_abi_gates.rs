@@ -76,13 +76,13 @@ fn nmp_wasm_directory_does_not_exist() {
 #[test]
 fn nmp_wasm_is_not_reintroduced_as_live_crate_in_source() {
     let root = workspace_root();
-    // Scan Cargo.toml files throughout the workspace.
+    // Scan Cargo.toml files throughout the workspace. Only flag declarations
+    // that would reconstitute the crate (a `[package] name` or member `path`),
+    // not bare dependency mentions.
     let toml_roots = [root.join("Cargo.toml"), root.join("release")];
     let banned_phrases = [
         r#"name = "nmp-wasm""#,
         r#"path = "crates/nmp-wasm""#,
-        // Bracket-normalised variants.
-        "\"nmp-wasm\"",
     ];
 
     let mut violations = Vec::new();
@@ -112,12 +112,7 @@ fn nmp_wasm_is_not_reintroduced_as_live_crate_in_source() {
                     if trimmed.starts_with('#') {
                         continue;
                     }
-                    // Narrow: only flag name/path declarations, not e.g. dep names.
                     for phrase in banned {
-                        if *phrase == r#""nmp-wasm""# {
-                            // Skip the broad phrase for non-member/name lines.
-                            continue;
-                        }
                         if line.contains(phrase) {
                             violations.push(format!(
                                 "{}:{}: {}",

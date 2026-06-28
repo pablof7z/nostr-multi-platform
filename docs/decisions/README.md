@@ -91,5 +91,5 @@ status; if they disagree, fix the index.
 | 0064 | Unified write/command boundary: one byte transport, open FlatBuffers payloads, signing as a capability round-trip | Accepted/implemented | Extends 0027, 0050, 0040; folds in the worker write/signing contract from 0047 |
 | 0065 | `ActorCommand` sub-enum collapse | Accepted | Aligns the in-process command vocabulary with 0064 |
 | 0066 | Delegated NIP-44 decrypt sessions for bunker DM backfill | Accepted for staged implementation | Extends 0050 §D7; NIP-46 transport principle from 0031 (superseded; now via nmp-nip46-runtime) |
-| 0067 | Browser runtime ownership split (`nmp-browser-runtime` owns the Worker) | Accepted | Amends 0047 and 0054 |
+| 0067 | Browser runtime ownership split — `nmp-browser-runtime::wasm` is the ABI glue | Accepted; nmp-wasm deleted (#2202) | Amends 0047 and 0054 |
 | 0068 | Native runtime ownership split (nmp-ffi is C ABI glue) | Accepted | Relates to 0030, 0046, 0067; encodes #2205/#2209 |
