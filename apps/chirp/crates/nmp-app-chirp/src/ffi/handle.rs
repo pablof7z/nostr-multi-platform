@@ -30,6 +30,9 @@ pub struct ChirpHandle {
     /// `unregister`-time teardown has the app to reach. Not dereferenced after
     /// the rung-7 cut-over — the kernel owns the engine/follow-set observer
     /// registrations and tears them down on `nmp_app_free`.
+    // Retained for lifetime-contract documentation only; never read after rung-7
+    // cut-over (see doc above). `dead_code` suppressed because this deliberate
+    // lifetime anchor must not be removed by an automated cleanup.
     #[allow(dead_code)]
     pub(super) app: *mut NmpApp,
 }
