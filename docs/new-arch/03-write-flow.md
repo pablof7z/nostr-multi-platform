@@ -182,6 +182,23 @@ highlighter.share_artifact_to_room(artifact_id, room_id)
 These examples are interface sketches. The settled API should prefer generated,
 typed, field-complete builders over JSON action strings or raw tag mutation.
 
+## Compatibility Boundaries
+
+Event-producing writes go through the typed action/publish doorway:
+
+```text
+generated builder or typed action
+  -> DispatchEnvelope
+  -> ActionModule
+  -> actor-owned sign/finalize/publish path
+```
+
+Lifecycle and capability control calls may keep dedicated APIs when they do not
+construct events, but new event-producing FFI symbols, bespoke `send_cmd` paths,
+or native-built `PublishRaw` JSON are out of bounds. Explicit relay publishing
+must have one canonical internal representation, so group pins, podcast write
+relays, and expert overrides do not fork into parallel routing paths.
+
 ## Publish Status
 
 Publish status is a first-class output, not a native side table:

@@ -5,6 +5,19 @@
 > naming, migration order, compatibility scope, and implementation details before
 > code changes.
 
+## Authority And Retirement
+
+This packet is a local design workspace for the current architecture iteration.
+It is not the canonical tactical queue, not a durable replacement for existing
+architecture docs, and not mergeable as a parallel authority in this form.
+
+Before this work becomes a PR, the surviving decisions must move into the
+appropriate durable homes: ADRs, existing architecture/design docs, builder-guide
+pages, product specs, and GitHub issues for migration work. Anything that remains
+only as an exploration artifact should be deleted or explicitly retired. The
+point of this directory is to converge on the right shape before editing the
+canonical docs, not to add another source of truth.
+
 This is the high-level entry point for the proposed architecture. It explains how
 an NMP app feels from the app developer's perspective, then shows how data flows
 through NMP's crates. The other docs go deeper into app assembly, live reads,
@@ -52,7 +65,7 @@ invariants to prove, not commitments to add new Rust types. If
 `ObservedProjection`, `ReducedSource`, projection manifests, generated adapters,
 publish context, live counts, or any other mechanism cannot defend its cost
 against a simpler design, it should be deleted, collapsed, or kept as
-compatibility-only during migration.
+migration-scoped compatibility with an owner and deletion/formalization criteria.
 
 ## Developer-Level Model
 
@@ -275,8 +288,8 @@ The ADR can rename any of these. The shape is the important part.
 This design addresses the concerns behind #2313 and #2316 only if the final
 implementation satisfies these constraints:
 
-- `open_interest` stops being taught as the app read model. It may remain as a
-  substrate, debug, test, or expert acquisition primitive.
+- `open_interest` stops being taught as the app read model. It may remain only
+  in named substrate, protocol-internal, diagnostic, test, or migration scopes.
 - `register_defaults()` stops being the mental model for real products. It may
   remain as a named preset for examples, tests, and simple apps.
 - Projection tiers stay internal. The app sees typed outputs and handles, not

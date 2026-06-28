@@ -65,11 +65,38 @@ The event store and indexes stay inside Rust. Shells receive typed projection
 state, not raw store handles. Raw signed events may be exposed through explicit
 inspection/export features, but not as the default app data path.
 
-Projection delivery must preserve current hard requirements: typed FlatBuffers
-or equivalent schemas, incremental apply, stale-frame drops, tombstones, clear
-messages, full-pull cold start paths, bounded replay, output namespaces, and
-generated host adapters. Hiding projection tiers from app developers cannot mean
-deleting these executor guarantees.
+Projection delivery must preserve hard invariants: typed schema identity,
+stale-frame drops, clear/tombstone semantics, full-pull cold start paths,
+bounded replay, deterministic row ownership, and one merge contract per output.
+Hiding projection tiers from app developers cannot mean deleting these executor
+guarantees.
+
+The mechanisms are not automatically sacred. FlatBuffers, sidecar registration,
+projection manifests, output namespaces, incremental apply, and generated host
+adapters each need an invariant and a rejected simpler alternative. Keep them
+where they are the cheapest way to preserve cross-platform decode, stale-frame
+protection, render-cache correctness, or wire/CPU bounds. Collapse or delete
+them where session-scoped output demand gives the same guarantee with less
+surface area.
+
+## Existing Primitive Mapping
+
+The new model should reuse or retire current primitives deliberately:
+
+- `LogicalInterest` and the interest registry remain acquisition internals.
+  Product apps should not compose them directly.
+- cache-serve and store replay remain hydration internals behind observed
+  sessions.
+- `ObservedProjectionRegistrar` is the replay-before-live primitive to prove
+  descriptor sessions against first.
+- dependent interests are the current dynamic-source substrate; they either stay
+  internal or collapse into a smaller reconciler/source core.
+- `SnapshotRegistry`, `DeclaredProjections`, typed sidecars, incremental apply,
+  and `UpdateFrame` remain executor machinery until session-scoped demand proves
+  which pieces can be deleted.
+- `ActionModule`, `DispatchEnvelope`, `PublishTarget`, publish policy, signer
+  ports, and the publish engine remain the one write doorway.
+- explicit relay seams remain audited route policy, not native relay choice.
 
 ## Complexity Justification Gate
 
@@ -111,7 +138,8 @@ Examples of complexity that must be justified, not inherited:
 - whether opening a session can be the scoped output declaration, leaving global
   declared projections only for always-on app chrome or compatibility;
 - whether generated host adapters are enough, or whether hand-authored row
-  caches still have any valid ownership;
+  caches can conform to one shared merge contract without becoming product
+  state;
 - whether `PublishContext` is a real missing type or only a naming layer over
   existing publish target, behavior, command, and policy data;
 - whether off-actor feed mutation and feed-render memo/provider machinery can be
@@ -139,44 +167,100 @@ The ADR should record rejected simpler alternatives. If the only defense is
 - Do not let compatibility paths remain public teaching examples once the typed
   lifecycle exists.
 
-## Migration Milestones
+## Implementation Plan
 
-1. Red/blue-team the complexity budget. Map `FeatureSession`/`LiveQuery`,
-   `ObservedProjection`, `ReducedSource`, unsigned-event finalization, publish
-   routing context, and live-count output to existing symbols, compare them
-   against simpler alternatives, and declare which public APIs become
-   substrate/debug/test/expert-only.
-2. Extract the smallest private shape reconciler around observed-projection
-   open/close and prove one descriptor-backed session compiles into it. Preserve
-   muted replay before activation and close interest plus observer together.
-3. Delete tick-observer dependencies where event hooks already exist. Keep tick
-   observers only as compatibility, or with evidence that a required readiness
-   transition has no event source and cannot cheaply gain one.
-4. Test whether source-specific reducers can share one source-reduction core.
-   Promote the core only for families with the same diff, fail-closed, teardown,
-   and dependent-interest semantics. Empty demand must fail closed unless the
-   feature declares a fallback source.
-5. Make session open the scoped output declaration. Keep global declared
-   projections only for always-on chrome, compatibility, or measured wins that
-   session-scoped demand cannot reproduce.
-6. Migrate component refs and gallery embeds first. This proves profile/event ref
-   sessions, URI decoding, generated caches, and no shell retry timers.
-7. Migrate feed, group, search, pointer-source, and live-count outputs.
-   Composite sessions should use the same descriptor model.
-8. Define generated write builders over existing action and publish machinery.
-   Preserve signer continuations, private routing, explicit relay policy, and
-   read-your-writes tests.
-9. Migrate downstream app roots. Highlighter and Podcast Player install explicit
-   NMP features plus app-owned feature bundles instead of treating defaults as
-   the architecture.
-10. Delete or demote old teaching surfaces. Builder docs, examples, and starter
-   apps should teach typed sessions/actions, not raw interest/projection recipes.
+Each phase must leave the repo shippable and reduce at least one public concept,
+duplicate lifecycle recipe, or hidden desync state.
 
-The same pass must correct durable docs in place. Likely targets include
-architecture API-surface docs, overview and DX docs, builder-guide pages for
+**P0: Baseline and freeze old patterns.**
+Inventory public read/write doors and duplicate lifecycle recipes in
+`nmp-core`, `nmp-defaults`, `nmp-native-runtime`, `nmp-browser-runtime`,
+`nmp-ffi`, `nmp-codegen`, `nmp-gallery`, Highlighter, and Podcast Player. Add or
+extend grep gates so new product code cannot add raw `open_interest` app reads,
+new tick reconcilers, native relay timers, or native publish/tag construction.
+Classify every existing raw read/write door as substrate, protocol-internal,
+diagnostic/test, migration shim, or product API to remove/formalize.
+Gates: `cargo test -p nmp-testing --test doctrine_lint_smoke` and
+`cargo test -p nmp-testing --test feed_public_surface_retired`.
+
+**P1: Prove a descriptor over existing safe machinery.**
+Add the smallest private descriptor facade that compiles into
+`ObservedProjection::from_shape`, `OpenObservedInterest`, replay limits,
+consumer ids, relay pins, and close. Do not add a new lifecycle engine. Use one
+real session as proof. Acceptance: replay-before-live and close-both invariants
+still pass in observer replay, descriptor idempotence, reducer parity, and
+`nmp-defaults` feed open/close tests; no new public API is taught.
+
+**P2: Extract shape reconciliation and delete tick use where events exist.**
+Consolidate the duplicated open/close-on-shape-change controllers behind one
+private reconciler. Migrate active-account, browser feed, native feed, and
+pointer-source controllers only where their semantics match. Delete
+`register_snapshot_tick_observer` usage for identity/source/mailbox/refcount
+changes that already have event hooks. For each remaining tick observer, either
+add the missing explicit event source or document a bounded actor-scheduled
+invariant with a staged deletion gate. "Compatibility" alone is not a reason to
+keep it.
+
+**P3: Make scoped session demand own scoped output demand.**
+Prove that opening a session can declare its typed output. Keep
+`DeclaredProjections` only for always-on app chrome, compatibility, or measured
+wire/CPU wins. Acceptance: `public_typed_projection_decode` still proves
+external decode; generated adapters still handle full, delta, clear, stale-frame,
+and baseline semantics.
+
+**P4: Migrate component refs and gallery embeds first.**
+Move `ProfileRef`, `EventEmbed`, URI decoding, relay hints, embed envelopes, and
+row-delta caches behind typed sessions and generated adapters. Delete shell
+retry timers and duplicated URI decoding where the Rust path owns it. This is
+the first cross-shell proof because gallery exercises Swift, Kotlin, web, TUI,
+and desktop rendering without app-domain policy. Fix gallery's timer-based copy
+affordance before treating the registry as a copyable downstream template.
+
+**P5: Migrate dynamic and composite reads only after P1-P4 hold.**
+Feed, group, search, pointer-source, thread refs, and live-count outputs move to
+the same descriptor model. Source-specific reducers stay local unless a shared
+core deletes duplication. Acceptance: feed reduced-source tests, real-relay
+reduced-source tests, group/search tests, and empty-source fail-closed tests
+cover account switch, source change, relay pin, cache replay, and teardown.
+
+**P6: Collapse write variants by invariant, not by new names.**
+Generated builders keep using `DispatchEnvelope` and `ActionModule`. First try
+to unify `UnsignedEvent`, `UnsignedEventToRelays`, pre-signed publish, signer
+selection, `PublishTarget`, correlation id, and policy validation without adding
+new public types. Add a named draft/context type only if it deletes branching or
+duplicate route/privacy/protocol state. Gates: publish policy, D10 private
+routing, signer continuation, generated builder round-trip, and action-result
+tests.
+
+**P7: Prove downstream apps before declaring the architecture final.**
+Highlighter must express home feed, room chat, search, comments, share-to-room,
+capture, feedback, signer flows, artifact share, article lookup, and room
+discussion through app-owned Rust bundles and NMP runtime dispatch. Direct web
+NDK relay/filter/tag/sign/publish paths, Swift rich-text protocol projection,
+and Swift-owned sync policy must be removed or formally rejected by the ADR.
+
+Podcast Player must express playback, queue, feed subscription, NIP-F4, Blossom
+publish, explicit write relays, widgets, settings actions, signer runtime, and
+feedback without moving podcast nouns into NMP. Bespoke durable FFI, silent
+compatibility paths, stale Swift-store docs, and `nmp-signer-broker` pinning
+must converge on generic typed dispatch/projection/capability seams and the
+current NIP-46 runtime direction.
+
+`nmp-gallery` must express component refs and embeds without shell protocol
+state or timer-based state clearing. It becomes the conformance fixture for
+refs/profile, refs/event envelopes, copied/native components, typed dispatch,
+and renderer caches only after those constraints hold.
+
+Any downstream flow that requires native-owned policy or a bespoke framework
+door is a design failure, not downstream migration debt.
+
+**P8: Correct durable docs and delete compatibility teaching paths.**
+Update architecture API-surface docs, overview/DX docs, builder-guide pages for
 subscription planning, publish and ledger, walkthroughs, action-triggered
-subscriptions, and ADRs that currently expose projection tiers or defaults as
-app-facing concepts.
+subscriptions, ADRs, wiki pages, and any episode/transcript-derived teaching
+material that currently presents projection tiers or defaults as app-facing
+concepts. Compatibility APIs may remain only with scope labels, doctrine gates,
+and deletion criteria.
 
 ## Fitness Checks
 
@@ -185,12 +269,14 @@ The destination is not reached until these are true:
 - No public builder guide asks product apps to manually pair raw interest open,
   observer registration, replay, projection sidecar, and teardown.
 - No production state reconciliation depends on snapshot tick polling.
-- New app reads enter through typed session descriptors or documented expert
-  acquisition scopes.
+- New app reads enter through typed session descriptors or named
+  substrate/protocol-internal/diagnostic/test/migration acquisition scopes.
 - Every dynamic source has deterministic diffing, explicit fallback policy, and
   no wildcard result from empty demand.
 - Projection tiers are absent from app-facing docs and starter apps.
-- Generated host adapters are the only owner of rendering row/delta caches.
+- Rendering row/delta caches implement one shared/generated merge contract.
+  Hand-authored caches may exist only as thin, proven adapters; they cannot own
+  product facts or independent merge semantics.
 - Publish builders route through the existing typed action doorway and publish
   engine.
 - Publish/action status is visible as typed Rust-owned output.
@@ -217,3 +303,8 @@ The ADR for #2316 must settle:
 - how `register_defaults()` is positioned after explicit feature composition is
   the taught model;
 - which compatibility APIs remain available and what scopes may call them.
+- whether current `ReducedSource`/`open_feed` machinery is amended, renamed, or
+  replaced by a smaller descriptor/reconciler model;
+- whether `nmp init` generates a production scaffold or a tutorial preset, and
+  how docs label that choice;
+- which downstream app migrations are release gates versus follow-up issues.

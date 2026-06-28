@@ -23,6 +23,12 @@ The exact names above are illustrative. The rule is not illustrative:
 may remain a convenience preset, but product apps should show the features they
 install.
 
+The ADR must also decide how `nmp init` teaches this. If the generated app is a
+production scaffold, it should emit explicit feature composition and policy
+builders. If it is a starter/tutorial scaffold, it may call a small preset, but
+the docs must say that the preset is an example convenience rather than the
+architecture real products should copy.
+
 The substrate is the correctness floor: actor, store, indexes, signer ports,
 capabilities, planner, publish engine, and typed update delivery. Feature bundles
 sit on top of it.
@@ -76,6 +82,13 @@ pile of unrelated methods on `nmp-core::AppHost`.
 Composition should be idempotent where practical and explicit across browser,
 native, TUI, and test roots. A browser `start()` path should not silently install
 a different product architecture from the native root.
+
+`nmp-defaults` is a reusable composition library, not a leaf app. It may install
+generic routing, mailbox, parser, signer, and publish substrate, but it must not
+own operator policy such as seed follows, bootstrap relay lists, app relay
+brands, signer permission defaults, or product onboarding choices. Leaf app Rust
+crates provide that policy explicitly, preferably through typed builders that
+make the "with policy" versus "without policy" decision visible at compile time.
 
 ## Developer Mental Model
 

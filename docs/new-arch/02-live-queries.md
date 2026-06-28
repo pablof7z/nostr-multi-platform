@@ -53,9 +53,27 @@ implementation should prove the descriptor can sit on top of the safe
 `ObservedProjection` pattern and dependent-interest machinery before adding any
 new public lifecycle surface. `open_interest` is only acquisition. It can fetch
 events without making them visible to the app, so it should not be the public
-app read model. It can remain available to substrate, debug, test, and expert
+app read model. It can remain available to substrate, debug, test, and migration
 code that is explicitly acquiring events without claiming an app-visible output
 lifecycle.
+
+The proof must start from existing surfaces, not from a fresh abstraction. Try to
+generalize or narrow `open_feed`, `resolve_ref`, `ObservedProjectionRegistrar`,
+dependent interests, and current feature sessions first. If those can express
+the lifecycle with clearer names and smaller public API, prefer that over adding
+a public `LiveQuery` object.
+
+Allowed `open_interest` scopes should be exact:
+
+- substrate internals that only acquire events;
+- protocol feature implementations hidden behind typed sessions;
+- diagnostics, tests, export/inspection tools, and migration shims with deletion
+  criteria;
+- no product screen, app shell, starter template, or builder-guide example.
+
+"Expert" cannot be a permanent escape hatch. Any public product caller that
+still needs raw acquisition after typed sessions exist needs an issue, an owner,
+and a removal or formalization decision.
 
 ## Session Identity
 
@@ -111,9 +129,20 @@ The reconciler must be event-driven. Identity changes, source changes, mailbox
 updates, refcount changes, and store ingest should trigger reconciliation. A
 snapshot tick observer is not the model.
 
+Relay-pinned observed projections must also prove provenance. A NIP-29 or other
+host-pinned session should not accept a matching event merely because the filter
+shape matches; replay and live admission must know the event came through the
+declared relay context or another protocol-approved source.
+
 ## ReducedSource
 
 `ReducedSource` is the model for dynamic query inputs.
+
+Decision status: current NMP docs and code already contain `ReducedSource` and
+`open_feed`-style machinery, so the ADR must decide whether that model is being
+amended, renamed, or replaced. Until then, this document uses `ReducedSource` to
+name the dynamic-source invariant, not to assert that the current type shape is
+settled or that a new public primitive is required.
 
 Examples:
 
@@ -245,6 +274,14 @@ UpdateFrame carries full, delta, clear, status, and error variants
 
 Existing projection machinery can remain the internal executor. The public
 contract should be output ownership and lifecycle, not projection tier mechanics.
+
+`declare_consumed_projections` should be treated as legacy cost-brake machinery,
+not as the future manifest. It narrows built-in emission after the system has
+already learned how to produce more state than the app wants, and it does not
+describe host-registered outputs. The target model is: feature installation
+declares available output schemas, app composition declares always-on chrome, and
+session open declares scoped demand. Tier names, built-in collision precedence,
+and declaration gates stay private executor details or compatibility.
 
 ## Live Counts
 
