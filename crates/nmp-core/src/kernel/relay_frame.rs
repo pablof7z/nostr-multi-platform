@@ -6,10 +6,10 @@
 //!
 //! # Direction of conversion
 //!
-//! The native `nmp_network::relay_worker` reads `tungstenite::Message` off
-//! the WebSocket and `actor::dispatch::tungstenite_message_to_relay_frame`
-//! converts each frame to a [`RelayFrame`] *before* handing it to
-//! [`crate::kernel::Kernel::handle_message`]. The kernel itself never names
+//! The native `nmp_network` relay worker reads `tungstenite::Message` off
+//! the WebSocket and `nmp_network::pool::frame::tungstenite_to_relay_frame`
+//! converts each frame to a [`RelayFrame`] *before* it reaches the kernel via
+//! the [`nmp_network::pool::Pool`] push surface. The kernel itself never names
 //! `tungstenite`. A non-native transport (wasm32 fetch / WebSocket) is
 //! responsible for its own equivalent conversion.
 //!
