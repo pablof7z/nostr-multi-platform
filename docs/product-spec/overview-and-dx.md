@@ -16,7 +16,17 @@
 
 The framework treats common Nostr-correctness failures — stale replaceable events, lost subscriptions, mis-routed publishes, double-publication, multi-account desync, leaked secrets across FFI, naive cache invalidation, withheld cached data, blocking-on-fetch UI patterns — as **product defects in the framework** rather than as developer mistakes. The public API is designed so that the wrong thing is hard to type.
 
-NMP is a Cargo workspace shipping a Nostr-native **app kernel** (`nmp-core`), reusable **Nostr protocol modules** (`nmp-nip01`, `nmp-nip17`, `nmp-nip65`, etc.), app-owned extension modules, a composition-root library (`nmp-defaults`) that wires the standard module set in one call, host-binding codegen (`gen swift` / `gen typed-decoders`), a scaffolding CLI (`nmp init`), a registry of app-owned reactive native UI components, reference native platform shells, and a browser Worker runtime (`nmp-browser-runtime`) with web component-host support. Full web product readiness remains gated by component-host conformance and clean-room onboarding proof.
+NMP is a Cargo workspace shipping a Nostr-native **app kernel** (`nmp-core`),
+reusable **Nostr protocol modules** (`nmp-nip01`, `nmp-nip17`, `nmp-nip65`,
+etc.), app-owned extension modules, reusable composition installers
+(`nmp-defaults`), host-binding codegen (`gen swift` / `gen typed-decoders`), a
+scaffolding CLI (`nmp init`), a registry of app-owned reactive native UI
+components, reference native platform shells, and a browser Worker runtime
+(`nmp-browser-runtime`) with web component-host support. Production app roots
+compose explicit substrate, protocol, app, publish/signing, and capability
+features; hidden one-call defaults are not the production architecture. Full web
+product readiness remains gated by component-host conformance and clean-room
+onboarding proof.
 
 The kernel composes the `rust-nostr` crate family plus OS capability crates into a substrate. It owns actor runtime, verified event store, subscription planner, relay routing pipeline, signer/session plumbing, durable action ledger, domain-store substrate, typed view registry, capability bridge, platform shadow/codegen machinery, diagnostics, and test harnesses.
 
@@ -206,7 +216,7 @@ The on-disk layout from `aim.md` §5 is canonical. The long-term workspace conta
 |---|---|---|
 | `nmp-core` | Kernel substrate: actor, store, planner, ledger, registries, extension traits, diagnostics | Pure Rust |
 | `nmp-codegen` | Host binding emitters and drift gates for typed projections/decoders (`gen swift`, `gen typed-decoders`) | Binary + library |
-| `nmp-defaults` | Composition-root library: `register_defaults` / `register_substrate` / `NmpDefaults` config (ADR-0046) | Pure Rust |
+| `nmp-defaults` | Reusable composition installers: substrate, protocol features, routing, signer ports, and publish helpers. Production apps compose explicit installers; `register_defaults` is tutorial/test/migration compatibility, not hidden production architecture (ADR-0069). | Pure Rust |
 | `nmp-ffi` | UniFFI building blocks used by generated app crates | UniFFI |
 | `nmp-browser-runtime` | Browser Worker/runtime adapter and sole wasm-bindgen ABI glue; owns Worker protocol types (ADR-0067; `nmp-wasm` deleted #2202) | wasm-bindgen |
 | `nmp-nip01` | Event, Filter, Profile/Timeline views, SendNote/Delete actions | Pure Rust |
@@ -414,12 +424,11 @@ This is binding on every registry family: `user-*`, `content-*`, embedded-event
 kind handlers, relay/provenance widgets, and future app blocks. A registry API
 that requires every feature screen to hand-roll hydration is not complete.
 
-Feed APIs follow the same rule. App authors declare `FeedParams` with primary
-content kinds and a closed `FeedScope` / `PubkeySetExpr` source. Protocol and
-defaults code reduce that source into planner-owned interests. Secondary facts
-that a rendered component needs are dependent interests resolved by that
-component or read model, never native-owned caches or ad hoc relay fetches.
-The default reducers include active-account follows and NIP-51 pubkey-list
-sources such as people-list members and public mute-list `p` tags.
+Read APIs follow the same rule. App authors open typed sessions or generated
+helpers over session descriptors. The session owner names primary content kinds,
+source expressions, admission, ranking, output, and teardown; protocol/defaults
+code reduces that descriptor into planner-owned interests. Secondary facts that a
+rendered component needs are dependent interests resolved by that component or
+read model, never native-owned caches or ad hoc relay fetches.
 
 ---

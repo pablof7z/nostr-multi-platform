@@ -28,8 +28,8 @@ runtime builder. Native uses `nmp-native-runtime::NmpAppBuilder`; web uses
 
 The scaffold creates a small app workspace:
 
-- app Rust core that calls `nmp_defaults::register_defaults` or the narrower
-  substrate tier,
+- app Rust core with an explicit composition root for substrate, protocol, app,
+  publish/signing, and capability features,
 - native shells for selected platforms,
 - generated bindings/decoder targets,
 - build orchestration,

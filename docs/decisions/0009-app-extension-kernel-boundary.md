@@ -43,12 +43,10 @@ concepts live in app Rust crates. Native shells render and report native facts.
 The shipped extension seams are:
 
 - `ActionModule` plus `register_action` for write intents,
-- `open_observed_projection` for event-driven Rust projections that declare
-  shape, scope, owner, and replay before receiving events,
-- `register_typed_snapshot_projection` for host
-  state,
+- typed read sessions for product reads, backed internally by scoped observed
+  delivery and typed output,
 - `CapabilityModule` and capability sockets for native facts,
-- `AppHost` and `nmp-defaults::register_defaults` for composition, plus
+- `AppHost` and explicit app-owned composition using reusable installers, plus
   platform runtime builders such as `nmp-native-runtime::NmpAppBuilder`.
 
 If implementing an app requires adding that app's nouns to `nmp-core`, the

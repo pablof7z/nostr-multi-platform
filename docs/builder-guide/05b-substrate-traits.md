@@ -4,9 +4,8 @@
 
 [05a](05a-substrate-traits.md) gave you the seam signatures and the "which
 seam?" tree. This half is the proof the boundary works: an annotated walkthrough
-of the `microblog-core` app crate (from [19a](19a-walkthrough-microblog.md)), a
-sidebar showing how a real Nostr protocol crate uses the same seams, and how
-modules compose through `nmp-defaults`.
+of a small app crate, a sidebar showing how a real Nostr protocol crate uses the
+same Rust seams, and how modules compose through an explicit app root.
 
 ## Annotated walkthrough: `microblog-core`
 
@@ -109,11 +108,10 @@ impl ObservedProjectionSink for FeedObserver {
 }
 ```
 
-Register the sink through `ObservedProjection::from_kinds(..., [1], ...)`.
-The kernel replays matching cached rows first, then delivers only accepted
-kind:1 events that match the declared shape. This is the same contract
-`nmp-app-chirp` uses to drive the live timeline projection; it is not a
-filterless all-event observer.
+This is the low-level observer contract that typed read sessions use internally:
+the kernel replays matching cached rows first, then delivers only accepted events
+that match the declared shape. Product screens should open a typed session or
+generated helper, not wire `ObservedProjectionSink` directly.
 
 ### The snapshot projection
 
@@ -132,9 +130,8 @@ app.register_typed_snapshot_projection(FEED_SNAPSHOT_KEY, move || {
 });
 ```
 
-This is D8 + D6 in one line: the closure is cheap (one lock + encode), and
-panic-safe (returns `null` on mutex poison rather than aborting the snapshot
-tick).
+This is D8 + D6 in one line: the producer is cheap and panic-safe. It is output
+transport machinery, not the public read lifecycle.
 
 ### The codegen convention exports
 
@@ -152,15 +149,14 @@ pub enum Update { ActionAccepted }
 
 The thin staticlib shell (`apps/microblog/nmp-app-microblog/src/lib.rs`) calls
 `microblog_core::register(app)`. That app-core function is the composition
-root: it calls `nmp_defaults::register_defaults(app)` once, then wires
-microblog-specific seams.
+root: it installs the substrate/protocol features it needs, then wires
+microblog-specific actions and sessions.
 See [19b](19b-walkthrough-microblog.md) for the shell.
 
 ### What `microblog-core` proves
 
 1. A complete app module with writes (`ActionModule`), event-driven view
-   (`ObservedProjectionSink`), and read output (`register_snapshot_projection`
-   or `register_typed_snapshot_projection`)
+   (`ObservedProjectionSink` as internal machinery), and typed read output
    — **without touching `nmp-core`**.
 2. App state is app-owned (`Arc<Mutex<Vec<NoteRecord>>>`). The kernel never
    stores, migrates, or indexes `NoteRecord`. The module owns its data.
@@ -216,10 +212,9 @@ model.
 
 ## Module composition: app-core `register()`
 
-Every app-core `register()` fn is called once at host init. Under ADR-0046 the
-app-core composition root inherits the canonical NMP composition through one
-library call, then adds app-specific seams on top. The microblog staticlib shell
-does not call defaults itself:
+Every app-core `register()` fn is called once at host init. Under ADR-0069 the
+app-core composition root installs explicit substrate, protocol, app, and
+capability features. The microblog staticlib shell does not compose NMP itself:
 
 ```rust
 // apps/microblog/nmp-app-microblog/src/lib.rs
@@ -234,28 +229,27 @@ For a headless example, the same composition fits in `examples/shell.rs`
 using the native runtime builder:
 
 ```rust
+// Shape only: exact builder names are owned by the live runtime crates.
 use nmp_native_runtime::{NmpAppBuilder, RunConfig};
 
 let mut builder = NmpAppBuilder::new();
 microblog_core::register(&mut builder);
 let app = builder
     .in_memory()
-    .declare_consumed_projections(["microblog.items"])
+    .with_typed_output_contract(["microblog.items"])
     .without_initial_relays()
     .start(RunConfig::default());
 // Native C callers drive the same runtime through `nmp_ffi` ABI symbols.
 ```
 
-`nmp_defaults::register_defaults` installs the production routing substrate,
-outbox resolver, NIP-02/17/57/65 action modules, DM-inbox + zap-receipts
-runtimes, WOT bootstrap, and the NIP-23 long-form typed projection. The app-core
-composition root adds only app-specific projections and actions (here, the
-microblog feed).
+Reusable installers may provide routing substrate, outbox resolver, protocol
+actions, runtime helpers, WOT bootstrap, and typed protocol outputs. The
+production app root chooses those installers explicitly and keeps app-specific
+policy in the app crate.
 
-Registration order matters for last-writer-wins slots, but ADR-0049 made the
-canonical defaults *yield* to app registrations: an app registering under a
-default namespace before or after `register_defaults` wins. App-over-app
-namespace collisions remain a bug and are recorded in the composition ledger
+Registration order matters for last-writer-wins slots, but ADR-0049 made
+reusable installers *yield* to app registrations. App-over-app namespace
+collisions remain a bug and are recorded in the composition ledger
 (`nmp_app_debug_info(app, domain=1)` — composition-report domain; domain=0 for routing trace, domain=2 for both merged).
 
 ## Anti-patterns
@@ -266,27 +260,25 @@ namespace collisions remain a bug and are recorded in the composition ledger
 2. **Business policy in a `CapabilityModule` (D7 violation).** A capability
    returns a fact (e.g. keychain has a key). It must not decide retry, routing,
    or "should we publish." Policy lives in the `ActionModule::execute` body.
-3. **Blocking inside `register_typed_snapshot_projection`.** The closure runs on the
-   actor thread inside every snapshot tick. Any blocking I/O or long-held lock
-   stalls all relay ingest behind it (D8 violation). Delegate to a precomputed
-   value; the snapshot projector should read, never compute.
+3. **Blocking inside typed output producers.** They run on the actor update path.
+   Any blocking I/O or long-held lock stalls the host update stream (D8
+   violation). Delegate to a precomputed value; output producers should read,
+   never perform slow work.
 4. **Registering the same NAMESPACE twice.** `register_action` accepts the
    second registration silently (last-writer-wins by `namespace` key), but two
    modules sharing a NAMESPACE will race for dispatch. Pick unique dotted
    namespaces per module.
-5. **Hand-copying substrate wiring instead of calling `register_defaults`.**
-   The shared `Arc<InMemoryMailboxCache>` and coverage gate must reach multiple
-   collaborators with the same instance; copying the block by hand desyncs
-   them (V-48).
-6. **Bypassing the shipped seams.** Use `ActionModule`,
-   `ObservedProjectionSink` through `open_observed_projection`,
-   snapshot/typed projection registration, and capabilities as shown in
-   [05a](05a-substrate-traits.md).
+5. **Hand-copying substrate wiring instead of using reusable installers.**
+   Shared collaborators such as mailbox caches and coverage gates must be
+   installed once and passed by the composition root. Copying wiring blocks by
+   hand desyncs them.
+6. **Bypassing the shipped seams.** Use typed actions, typed read sessions,
+   typed output, and capabilities as shown in [05a](05a-substrate-traits.md).
 
 ## Deliverables (this half)
 
-- **Annotated `microblog-core` walkthrough** (above) — the copyable three-seam
-  template: ActionModule + declared observed projection + snapshot projection.
+- **Annotated `microblog-core` walkthrough** (above) — a low-level seam proof:
+  ActionModule + internal observed delivery + typed output.
 - **`nmp-nip29` sidebar** (above) — how the same seams scale to a real
   protocol with zero kernel nouns; plus the ADR-0046 composition pattern.
 

@@ -43,9 +43,9 @@ The #2320 cleanup classifies each older ADR as one of:
 - still-current standalone invariant;
 - retired/deleted because it is milestone-specific, stale, or superseded.
 
-`docs/new-arch/` is a temporary candidate packet. Once its surviving decisions
-are represented by ADRs, durable docs, and GitHub issues, it must be deleted or
-explicitly retired so it does not become another architecture authority.
+The temporary `docs/new-arch/` candidate packet is retired once its surviving
+decisions are represented by ADRs, durable docs, and GitHub issues. It must not
+survive as another architecture authority.
 
 Migration proceeds by rolling horizon. At any point, only the next one to five
 PR-sized slices need implementation-level detail. After each slice, the project
@@ -106,4 +106,5 @@ net permanent concepts:
 - #2320: ADR reset.
 - #2316: foundational feature-state decomposition.
 - #2313: app-developer API complexity.
-- `docs/new-arch/`: temporary candidate packet to retire after durable migration.
+- #2320: retires the temporary `docs/new-arch/` candidate packet after durable
+  migration.

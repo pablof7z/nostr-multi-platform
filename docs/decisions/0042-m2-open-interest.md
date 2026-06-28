@@ -1,304 +1,61 @@
-# ADR-0042 — M2 migration: generic interests and dynamic feed read paths
+# ADR-0042: Generic Interests Are Substrate Machinery
 
-- Status: Accepted as substrate mechanism; app-visible read model amended by
-  ADR-0070.
-- Date: 2026-06-03
-- Replaces the bespoke per-verb feed primitives scheduled for removal in
-  `crates/nmp-core/src/kernel/requests/profile.rs` and the deleted
-  `kernel/requests/thread.rs` stub.
+## Status
 
-Current disposition: raw `open_interest` remains acquisition machinery for
-substrate, protocol-internal, diagnostic/test/export, or migration scopes. It is
-not the production app read API. Product reads use typed read sessions or
-generated per-feature helpers over typed session descriptors.
+Folded into ADR-0070 for app-visible read lifecycles.
 
-## 1. Context
+## Context
 
-Five named C-ABI feed entry points encoded **app-domain decisions inside the
-substrate**:
+This ADR originally removed bespoke app-feed FFI verbs such as
+`open_author`, `open_thread`, and `open_firehose_tag` and replaced them with a
+smaller generic interest seam. That deletion was correct: `nmp-core` must not
+encode product concepts like "social timeline", "author page", or "thread
+screen".
 
-| Deleted C-ABI symbol          | Deleted `ActorCommand` | App decision it smuggled into `nmp-core`                       |
-| ----------------------------- | ---------------------- | ------------------------------------------------------------- |
-| `nmp_app_open_author`         | `OpenAuthor`           | "an author feed is a Chirp note feed plus repost wrappers"     |
-| `nmp_app_open_thread`         | `OpenThread`           | "a thread is a Chirp note feed plus repost wrappers on `#e`"    |
-| `nmp_app_open_firehose_tag`   | `OpenFirehoseTag`      | "a hashtag feed is kind `{1}` on `#t`"                         |
-| `nmp_app_close_author`        | `CloseAuthor`          | (refcounted teardown of the above)                            |
-| `nmp_app_close_thread`        | `CloseThread`          | (refcounted teardown of the above)                            |
+The follow-on mistake was treating raw `open_interest` as if it could become the
+normal app read API. Issue #2316 showed why that fails: acquiring relay events is
+only one part of a product read. A screen also needs bounded replay, admission,
+source reconciliation, typed output, status, teardown, and route provenance.
 
-Each variant drove a bespoke kernel machine (`author_view` / `thread_view` /
-`diagnostic_firehose` state, `author_requests` / `firehose_requests` /
-`prepare_thread_requests` request builders, per-view refcounting, and the
-`close_subscriptions_with_prefixes` string-prefix close path). This duplicates
-what the generic `InterestRegistry` + `SubscriptionCompiler` path already does
-for every other subscription (`EnsureInterest` / `DropInterestOwner`,
-`registry_mut().ensure_sub` / `drop_owner`, `CompileTrigger`).
+## Current Decision
 
-The kind and wrapper decisions living in `nmp-core` (and in `nmp-ffi` shims)
-were a **D0 violation**: the substrate must not name an app concept like "a
-social timeline." A feed declaration names primary content kinds and a
-reactive source; protocol adapters derive wrapper acquisition and provenance.
-A long-form reader app may declare `[30023]`; a media app may declare `[20]`.
+`open_interest` and `close_interest` are low-level acquisition machinery. They
+may exist for substrate, protocol-internal, diagnostic, export, test, or
+explicit migration scopes with an owner and removal/formalization trigger.
 
-## 2. Decision — raw `open_interest` / `close_interest`
+They are not the production app read API.
 
-The M2 migration introduced two raw C-ABI interest symbols as the low-level
-static subscription seam. They replaced the old bespoke author/thread/tag
-subscription verbs, but they are not the production app read API. At the time of
-M2, app feeds were declared through typed `FeedParams` and opened with
-`open_feed`. ADR-0070 supersedes that app-facing read shape: product reads use
-typed read sessions or generated helpers over session descriptors. `open_interest`
-is for callers that need to attach an owner to a concrete, already-materialized
-Nostr filter in substrate, protocol-internal, diagnostic/test/export, or
-migration scopes.
+Production reads are typed read sessions or generated helpers over typed session
+descriptors, as defined by ADR-0070. A typed session owns the whole lifecycle:
+acquisition demand, replay, admission, output, wake sources, route policy,
+status, and close.
 
-```c
-// Register (or attach an owner to) a concrete tailing interest.
-// filter_json: standard Nostr REQ filter, e.g. {"kinds":[30023],"authors":["<hex>"]}
-// consumer_id: refcount owner key — deduplicates across call sites
-// scope: 0 = ActiveAccount (re-routes on account switch), 1 = Global
-void nmp_app_open_interest(NmpApp *app, const char *filter_json,
-                           const char *consumer_id, uint32_t scope);
+Dynamic product reads such as "events from people I follow" do not become a raw
+filter with a mutable authors list. They are session-owned source
+reconciliation. Empty dynamic source sets fail closed unless the owning feature
+declares a fallback.
 
-// Detach one owner. Drops the live subscription when the last owner leaves.
-void nmp_app_close_interest(NmpApp *app, const char *filter_json,
-                            const char *consumer_id, uint32_t scope);
-```
+## Consequences
 
-Internal routing (`nmp-core`):
+- The old bespoke app-feed verbs stay deleted.
+- `open_interest` remains available only as a scoped internal or diagnostic
+  substrate door.
+- App screens must not hand-author relay filters, owner ids, teardown recipes,
+  or projection registrations for normal product reads.
+- Feed-specific helpers such as `open_feed` may survive only as generated or
+  compatibility helpers over typed sessions, not as an equal lifecycle model.
 
-- `ActorCommand::OpenInterest { filter_json, consumer_id, scope }` /
-  `CloseInterest { … }`.
-- Dispatch parses `filter_json` → `InterestShape` via the new
-  `InterestShape::from_filter_json` (the inverse of
-  `subs::wire::filter_json_for`), builds a `SubIdentity`
-  (`owner = hash(consumer_id)`, `key = hash(InterestShape)`,
-  `scope` from the param), and calls the **existing**
-  `registry_mut().ensure_sub` / `drop_owner` + enqueues
-  `CompileTrigger::InvalidateCompile` — byte-for-byte the body the
-  `EnsureInterest` / `DropInterestOwner` arms already run.
-- Lifecycle is always **`Tailing`** — `open_interest` keeps a concrete filter
-  live until its owners close. It does not compile feed policy, primary-kind
-  declarations, wrapper acquisition, or dynamic source reduction.
+## Fitness Functions
 
-### 2.1 Deterministic dedup via the `InterestShape` hash
+- Product shells and starter templates must not introduce new raw
+  `open_interest` read flows.
+- Existing `open_interest` call sites must be classified as substrate,
+  protocol-internal, diagnostic/export/test, or migration.
+- Session contract tests must cover replay-before-live, source arrival,
+  source withdrawal, empty-source fail-closed behavior, and owner close.
 
-`SubKey = SubKey::new(InterestShape)`. Because every `InterestShape` collection
-is a sorted container (`BTreeSet`/`BTreeMap`), two call sites passing the same
-filter — regardless of JSON key ordering or array element ordering — produce the
-same shape, hence the same `(scope, key)` slot. The registry refcounts owners
-and keeps one live subscription. `consumer_id` is the owner: distinct call
-sites for the same filter share the live sub and the last `close_interest`
-tears it down.
+## Historical Note
 
-### 2.2 Scope mapping
-
-The `scope` param maps to `crate::planner::InterestScope` on the
-`LogicalInterest` (`0 → ActiveAccount`, `1 → Global`). The registry's
-`SubScope` (used in the `SubIdentity` key) has no `ActiveAccount` variant, so
-`ActiveAccount` folds to `SubScope::Global` for the dedup key — identical to the
-existing `InterestRegistry::legacy_scope` convention — while the real
-`InterestScope::ActiveAccount` rides on the `LogicalInterest` so the compiler
-re-routes the concrete filter on account switch. Dynamic feed sources such as
-active-user follows do not use this raw lane directly; they compile from
-`FeedParams` into ReducedSource-owned dependent interests. A visited author or
-open thread is keyed to a concrete pubkey/root id and uses scope `1` (Global);
-it does not reroute on account switch. Hashtag feeds also use scope `1`.
-
-## 3. Net symbol delta
-
-−5 (`open_author`, `open_thread`, `open_firehose_tag`, `close_author`,
-`close_thread`) +2 (`open_interest`, `close_interest`) = **−3**. The surface
-shrinks. Per `docs/wiki/ffi-surface-freeze-gate.md` the freeze gate tracks
-net-new symbol *names*; a net-negative delta is within policy. This ADR
-satisfies the gate's ADR requirement for the surface change.
-
-## 4. Kept primitives (deliberately NOT migrated)
-
-- `nmp_app_open_uri` — a `nostr:` URI router, genuinely different (resolves an
-  entity, not a tailing filter).
-- Refcounted reference resolution — a different lifecycle (one-shot fetch that
-  drives reference projections; not a tailing feed). ADR-0063 later folded the
-  bespoke profile/event claim lifecycle into `resolve_ref` / `release_ref`.
-
-## 5. App-composes pattern for context hydration (read-path)
-
-`open_author` previously co-triggered three things the kernel decided on the
-app's behalf: (a) the author's note feed and repost wrappers, (b) a kind:0/kind:10002
-**profile + relay-list discovery probe**, and (c) surfaced the result as the
-`author_view` snapshot projection carrying both the **profile card** and the
-**rendered note list** (`AuthorViewPayload.items`). `open_thread` likewise
-carried the reply list via `ThreadViewPayload.items` plus root/focused
-navigation counts. These two projections were the **sole** read path for the
-Chirp `ProfileView` / `ThreadScreen` (and the gallery equivalents) — they are
-gated separately from the home-feed `timeline`/`inserted`/`updated`/`removed`
-cluster (which only carries the follow-set), so deleting them leaves those
-screens with no event source.
-
-The migration replaces the kernel's bundled decision with **explicit app
-composition**:
-
-- **Notes / replies feed** → the app crate declares the primary content kinds
-  and source it wants. The protocol adapter compiles that declaration into the
-  concrete raw interests, including derived wrapper kinds where needed. Chirp
-  declares primary kind `[1]`; the app does not declare wrapper kinds as
-  primary feed content.
-- **Profile card** → `claim_profile(pubkey, "author-page-<pk>", …)` → the
-  highest-precedence `claimed_profiles` projection tier. The deleted author-view
-  profile tier no longer participates in profile resolution.
-- **Thread root hydration** → decode `nostr:nevent...`, then
-  `resolve_ref(namespace=event, key, "thread-root-<id>", ...)` → `refs.event`.
-  When the root URI cannot be determined from context the call is skipped (a
-  follow-up, not a refactor blocker).
-- **Thread navigation affordances** (previous/next counts, root/focused ids)
-  and the profile **primary action** (follow/unfollow) → app-composed from the
-  feed + follow-state the host already has.
-
-### 5.1 The read path: register through the existing `nmp-feed` seam (NOT a new projection)
-
-The read path is finalized by **ADR-0057**: admission is valid-signature-only,
-every validly-signed non-ephemeral event is persisted unconditionally, and
-`Kernel::should_store_event` is demoted to a read-time timeline-*view* predicate
-(it selects what enters the in-memory curated `self.timeline`, never what is
-durably stored). So a non-followed author's events for a generic `open_interest`
-are **already in the store**; the only gap is *exposure*, not storage.
-
-The resolution reuses the existing feed seam rather than adding a bespoke
-`interest_feeds` kernel projection:
-
-- `nmp-feed` (ADR-0033) owns the keyed `FeedRegistry`, cursors, windowing, and
-  the viewport FFI; `RootIndexedFeed<R, A, C>` (ADR-0035) is the
-  protocol-agnostic engine and `nmp-nip01::register_op_feed` (ADR-0038) is the
-  NIP-10 instance behind `nmp.feed.home`. The engine ingests via declared
-  observed projections, so future delivery is scoped to the feed's shapes.
-- Author and thread feeds are additional **feed instances registered under their
-  own keys** (`nmp.feed.author.<pubkey>` / `nmp.feed.thread.<event_id>`) through
-  the same registry, observed-projection, and typed-sidecar composition. Chirp's
-  app crate owns them: open registers a feed + declared observed projection +
-  `NOFS` typed projection and opens the matching interest; close unregisters
-  the dynamic key (emitting one `Cleared` row so host caches drop it) and closes
-  the interest.
-
-A parallel `interest_feeds` snapshot projection would be the "substrate theater"
-the repo forbids; the existing seam is the architecturally-right home. Per
-ADR-0057 there is no store-admission gate to generalise and no shape-matching on
-the ingest hot path.
-
-### 5.2 Why the original task framing under-counted the scope
-
-The task framed this as "−5 +2 = −3 surface, within freeze policy." That is
-true for the *subscribe* surface and for the `diagnostic_firehose` verb (which
-has zero projection / Swift coupling — a clean mechanical delete). It is **not**
-true for the author/thread verbs: their `author_view` / `thread_view`
-projections were the sole read path for Chirp's `ProfileView` / `ThreadScreen`.
-Deleting them forced the feed-registration read-path work above. That
-architecture-significant half is now implemented by app-owned dynamic
-FlatFeeds and explicit typed-projection teardown.
-
-## 6. Consequences
-
-- D0: the substrate no longer names "social timeline" / "thread" / "hashtag
-  feed" or their app feed kind policies. Primary-kind declarations and wrapper
-  derivation live above `nmp-core`.
-- The bespoke `author_view` / `thread_view` / `diagnostic_firehose` kernel
-  state, their request builders, per-view refcounts, and
-  `close_subscriptions_with_prefixes` are deleted; the generic registry +
-  compiler path is the single subscription machine.
-- All non-Chirp Rust callers of the five deleted symbols (chirp-desktop,
-  chirp-tui, nmp-gallery android/ios/tui, nmp-android-ffi, the ffi-stress
-  binaries) migrate to `open_interest`/`close_interest`.
-- `ffi-surface.md` and the codegen Swift projection registry are updated;
-  generated Swift types are regenerated.
-
-## Amendment — typed feed sessions (current rule, #1740)
-
-The current app-facing primitive for all feed declarations is the **typed
-`FeedParams` feed-session model** defined in `nmp-feed`
-(`crates/nmp-feed/src/params.rs`). It provides explicit acquisition /
-admission / ranking / window / projection phases plus primary content kinds.
-Apps build a `FeedParams` value, validate it with
-`nmp_feed::validate_primary_kinds` (fail-closed: wrapper kinds 6/16 and delete
-kind 5 are rejected), and open a session via `open_feed` to receive a
-`FeedHandle`. **Steps 1–7 (#1740) landed the typed model + validation, the
-`NmpApp::open_feed` session registry, the perspective compiler, and the ONE
-public C-ABI doorway `nmp_app_open_feed(app, params_json) -> handle_json` /
-`nmp_app_close_feed(app, handle_json)` — in the app-composition crate (which can
-name the compiler; `nmp-ffi` stays D0-clean).**
-
-**Step 8 (#1740) — the raw interest lane is now INTERNAL/test-only as app feed
-surface.** The `nmp_app_open_contact_feed` / `nmp_app_close_contact_feed` C-ABI
-active-follows shims are DELETED; the raw wasm feed-verb dispatch strings
-(`nmp.kernel.open_interest` / `close_interest`,
-`nmp.feed.declare_active_follows` / `clear_active_follows`) are removed from the
-router. The generic `nmp_app_open_interest` / `close_interest` C symbols (§2)
-remain ONLY as a low-level NON-feed interest seam (avatar / `nostr:` URI
-resolution); they are not an app feed-open surface — the ONLY public way to open
-a feed is `open_feed`. The `declare_active_follows_feed` /
-`clear_active_follows_feed` Rust methods are also deleted; the
-`ActiveUserFollows` arm is one ReducedSource reducer that replaces child
-interests through the generic dependent-interest path.
-
-The active-user follow feed is **not** expressible as one static
-`open_interest` (§2): its author set is reactive perspective state derived from
-the active account's kind:3, re-evaluated on source changes, and re-routed on
-account switch. In `FeedParams`, "active-user follows" is expressed as
-`FeedScope::ActiveUserFollows` inside `FeedParams.acquisition` — not as a
-named verb, native follow snapshot, or static author list.
-
-The general model for that class is a **ReducedSource** plus dependent
-interests: app/protocol/defaults code declares a closed source expression, a
-protocol reducer turns current source state into materialized interest shapes,
-and those interests go through the same registry/planner/router/cache path as
-any other `LogicalInterest`. `open_interest` remains the low-level static
-interest seam; it is not a feed API and not a place to encode dynamic
-source-reduction policy.
-
-Apps/defaults declare via `FeedParams`:
-
-- the primary content kinds they intend to render (`primary_kinds`);
-- the reactive source / perspective (`acquisition: FeedScope::ActiveUserFollows`
-  or a relay-set expression);
-- admission, ranking, window, and projection policy.
-
-The app never supplies concrete follow pubkeys and never declares repost
-wrappers as primary feed kinds. Protocol adapters derive wrapper acquisition
-(`6` for kind `1`, `16` for non-kind-1 targets) from the declared primary kinds
-before the kernel stores the concrete acquisition set for subscription
-compilation.
-
-Relay-set feed declarations follow the same `FeedParams` pattern with a
-different `acquisition` expression: the app names primary kinds plus the relay
-set, and acquisition is scoped/routed to those relays without synthesizing
-`authors`, `#p`, `#a`, or `#e` filters. WoT, mute/block, and app-defined
-quality rules are caller-owned admission/ranking/sorting policy within
-`FeedParams`; they are not new kernel feed kinds and do not change the
-primary-kind declaration.
-
-Pagination is admission-aware. `load_older` must make rendered progress, not
-merely consume one acquisition page: if a page contains deleted, muted,
-blocked, superseded, or otherwise non-admitted rows, the pull controller keeps
-advancing through the event log until it either grows the visible window or
-reaches exhaustion under the current perspective.
-
-Chirp author/thread/home feeds use the generic app-layer feed doorway: construct
-typed `FeedParams`, call `nmp_app_open_feed`, retain the returned opaque handle,
-and pass that handle to `nmp_app_close_feed`. App feed verbs compose through the
-same generic session machinery instead of keeping Chirp-specific feed symbols.
-
-### Consequences
-
-- D5 cluster gating is driven by the feed session handle and its projection
-  key. Closing the handle clears the typed feed row; an empty reduced source
-  yields no wildcard acquisition and no stale child interests.
-- The `timeline_requested` milestone is unaffected: it is flipped by ingest at
-  `kernel/ingest/timeline.rs:309-337`, not by the open/close verb.
-- All Chirp shells (iOS, Android, TUI, desktop) open home, author, and thread
-  feeds through `nmp_app_open_feed` with typed `FeedParams`; Chirp-specific
-  primary kinds are derived below that app-facing API.
-- Dynamic feed sources compile to materialized interests before planner input.
-  `nmp-core` / `nmp-planner` may carry authors, tags, ids, and addresses as
-  filter data, but they must not name contact-list, mute-list, follow-pack, or
-  app feed concepts.
-- `nmp_app_open_timeline`, `nmp_app_open_contact_feed`, and every active-follows
-  declaration helper are removed from `nmp-ffi` and `NmpCore.h`. No compatibility
-  wrapper remains for the old home-feed code path.
-- Completes V-68 Stage 2 (#911).
+The original M2 symbol delta was useful: it deleted app-specific feed verbs from
+the substrate. Its surviving lesson is deletion and D0 cleanup, not a public raw
+subscription API.

@@ -6,6 +6,10 @@ ADR-0068 / #2205 later moved the durable native runtime owner to
 resolved as: consume-and-return typestate, phantom-typed states,
 builder-is-the-AppHost.
 
+ADR-0069 later replaced defaults-era production composition. References below to
+`register_defaults` describe the historical caller shape this typestate work had
+to support, not the current production app architecture.
+
 Issue: V-94 (#618). Co-designed with F-08 (NmpAppBuilder) and V-95 (issue
 #619, WalletRuntime init order). Follow-up #618 Stage 1 (2026-06-16) moved the
 native actor spawn from `nmp_app_new` to `nmp_app_start`: `nmp_app_new` is now a

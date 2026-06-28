@@ -423,10 +423,11 @@ justify a narrower trait):
    `KernelReducer` (D4), so it constructs the inbox and `CommandSender` itself;
    the resolution is a wasm-safe headless inbox constructor in `nmp-core` plus the
    builder's Worker loop — not a trait change.
-2. **wasm-safe defaults (#2047 / #2060).** Browser delivery roots that cannot
+2. **wasm-safe installers (#2047 / #2060).** Browser delivery roots that cannot
    yet implement the full AppHost tier use the `nmp-substrate-defaults` floor
-   (§9). Full `register_defaults` reuse requires a browser runtime handle that
-   can supply the same AppHost-rooted registrar surface as the native runtime.
+   (§9). Full explicit feature composition requires a browser runtime handle
+   that can supply the same AppHost-rooted registrar surface as the native
+   runtime.
 
 ---
 

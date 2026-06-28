@@ -75,11 +75,11 @@ is both the runtime adapter and the wasm-bindgen ABI shell for the browser targe
 ### Shared composition surface
 
 Both native (`NmpAppBuilder` in `nmp-native-runtime`, per ADR-0068) and browser
-(`BrowserAppBuilder` in `nmp-browser-runtime`) register NMP defaults/protocol
-modules through the **same** `nmp_core::substrate::AppHost`-rooted registration
-surface. Runtime builders must not hand-copy action-module registration,
-router/mailbox construction, publish-resolver installation, or parser wiring;
-they call `nmp_defaults::register_defaults`.
+(`BrowserAppBuilder` in `nmp-browser-runtime`) compose NMP through the **same**
+`nmp_core::substrate::AppHost`-rooted registration surface. Runtime builders
+must not hand-copy action-module registration, router/mailbox construction,
+publish-resolver installation, or parser wiring; they use the same explicit
+installers as native app roots.
 
 ## Consequences
 

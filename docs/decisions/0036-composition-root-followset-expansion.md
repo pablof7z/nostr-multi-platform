@@ -1,156 +1,55 @@
-# ADR-0036 - Active follow-set source and follow-feed expansion
+# ADR-0036: Active Follow Source Reconciliation
 
-Status: accepted; amended by ADR-0070
+## Status
 
-Date: 2026-05-28
-
-Current disposition: the active-follow-set invariant survives, but
-`ReducedSource` is no longer an app-facing architecture noun. Dynamic source
-reconciliation is private machinery behind typed read sessions unless a later
-ADR proves a real public need. Empty source sets fail closed unless the owning
-feature declares an explicit fallback.
+Folded into ADR-0070 for typed read sessions.
 
 ## Context
 
-App feeds need two different facts from the active account's follow set:
+App feeds need a live source such as "the active account's follows" without
+moving social-feed policy into `nmp-core` or native shells. The original ADR
+introduced a `ReducedSource`-style model so the framework could recompile
+materialized interests when the active account, contact list, mute/block state,
+or replacement events changed.
 
-1. a live membership predicate so a projection can decide whether an author's
-   event or reference is relevant to the current active user;
-2. a reactive perspective so a feed declaration can acquire primary content
-   kinds from the active user's current follows and recompile when the list
-   changes.
+That invariant still matters. What changes under ADR-0070 is the public shape:
+`ReducedSource` is not app-facing architecture vocabulary. It is private source
+reconciliation machinery behind a typed read session unless a later ADR proves a
+specific public need.
 
-The framework must not encode a Chirp-specific "social timeline" shape in the
-planner or in `nmp-feed`. A media app, a long-form app, or a relay-set app must
-be able to use the same machinery with different primary content kinds and
-different admission/ranking rules.
+## Current Decision
 
-## Decision
+The active follow set has one Rust owner. Product reads may depend on that owner
+through a typed session descriptor such as:
 
-The active follow set has one producer. Feed declarations, not a special
-kernel-owned home-feed API, consume it. The general pattern is a
-**ReducedSource**: a closed, serializable source expression in the
-app/protocol/defaults layer that is reduced into materialized
-`LogicalInterest`s before it reaches the planner.
-
-- `nmp-nip02::ActiveFollowSet` produces a reactive pubkey set and a closure
-  predicate.
-- app/defaults composition declares a feed as primary content kinds from a
-  perspective such as "the active account's follows".
-- `nmp-core` executes the resulting active-account follow interest and rewires
-  it when the active account, kind:3, mute/block, delete, or replacement inputs
-  change. It does not own a built-in home-feed product shape or primary
-  kind policy.
-
-The composition root wires consumers and declares the feed. It does not pass a
-static follow list snapshot to the kernel or to native code.
-
-Follow-set expansion is therefore one ReducedSource instance, not a special
-framework exception. Other protocol crates may define their own reducers for
-public list, mute-list, follow-pack, or similar pubkey sources, but `nmp-core`
-and `nmp-planner` see only generic source ownership and materialized interest
-shapes.
-
-## Producer
-
-`ActiveFollowSet` owns an `Arc<RwLock<BTreeSet<String>>>` of the active
-account's follows plus the active account's own pubkey. It keeps the set
-current by observing kind `3` ingest and by receiving explicit account-change
-notifications from the app composition root.
-
-Its public surface is closure-shaped:
-
-```rust
-impl ActiveFollowSet {
-    pub fn new(active_pubkey: ActiveAccountSlot) -> Arc<Self>;
-    pub fn follows(&self) -> Vec<String>;
-    pub fn predicate(&self) -> Arc<dyn Fn(&str) -> bool + Send + Sync>;
-    pub fn on_change(&self, callback: Box<dyn Fn() + Send + Sync>);
-    pub fn notify_account_changed(&self);
-}
+```text
+read long-form articles
+  where authors are active-account follows
+  plus articles those follows reacted to or commented on
 ```
 
-`predicate()` captures the shared set. A predicate handed to a feed engine
-before a kind `3` update observes the new membership after that update without
-re-registration.
+The session compiler turns that descriptor into concrete acquisition demand,
+route policy, replay, admission, and output. Native shells never pass a static
+copy of follows, expand source sets, or re-subscribe when follow state changes.
 
-`ActiveFollowSet::new` takes `ActiveAccountSlot`, not `&NmpApp`, so
-`nmp-nip02` does not depend on `nmp-ffi`.
-
-## Feed Declaration
-
-The app/defaults layer declares a feed as a typed `FeedParams`
-(`crates/nmp-feed/src/params.rs`, #1740) with explicit phases:
-
-- primary content kinds (`FeedParams.primary_kinds`);
-- an acquisition source (`FeedParams.acquisition: FeedScope`); for this ADR the
-  active account's follows is `FeedScope::ActiveUserFollows` — a closed-algebra
-  variant, **not** a `declare_active_follows_feed` helper verb and **not** a
-  static copy of the follow set. `FeedScope` / `PubkeySetExpr` is the current
-  app-facing ReducedSource expression model;
-- an admission policy, a ranking/order, a window, and a projection key
-  (`FeedParams.admission` / `.ranking` / `.window` / `.projection`) that select
-  which acquired rows render, how they are ordered and bounded, and how they are
-  rendered.
-
-App-defined admission/ranking enters as an opaque `CustomPerspectiveId`, never a
-`Perspective` trait the app implements and never a native closure crossing FFI.
-
-The acquisition kinds are app-declared primary content kinds transformed by the
-relevant protocol adapter before they reach the kernel. A Chirp notes feed
-declares primary kind `[1]`; the NIP-18/NIP-01 adapter may derive kind `6`
-wrapper acquisition. A non-kind-1 feed declares its primary kind, and generic
-repost wrapper acquisition is kind `16`. The app never declares wrapper kinds as
-primary feed content.
-
-Admission, ranking, and sorting are also composition-owned. A WoT preset,
-relay-set rule, mute/block rule, or app-defined quality function can change
-which already-acquired rows render and how they are ordered without becoming a
-new kernel feed kind. Changing any of those rules is a perspective change: the
-feed window resets and regrows from the current store/pull contract.
-
-The app must not pass a static copy of "the current user's follows" to native
-or to the kernel. It selects a reactive source such as active-user follows.
-The active-follow producer and kernel subscription machinery react to kind `3`,
-list, account, mute/block, delete, and replacement changes and reset/regrow the
-declared feed without UI code re-declaring it.
-
-Secondary facts are not part of the source expression. Profiles, event refs,
-address refs, relation counts, repost targets, and meta-target hydration are
-dependent interests owned by the component/read model that renders them. They
-use normal planner lifecycle, dedup, close, diagnostics, and cache behavior.
-
-## Composition Root
-
-`nmp-defaults::register_op_feed_defaults` and app-specific registration code
-wire:
-
-- the `ActiveFollowSet` observer;
-- the typed `FeedParams` with `acquisition: FeedScope::ActiveUserFollows` and its
-  primary content kinds (replacing the old active-follows declaration helper);
-- the feed engine's membership predicate, admission/ranking policy, and reset
-  hook;
-- event lookup and claim/release closures;
-- identity-change reset hooks;
-- typed projection registration.
-
-They do not also open a separate home-feed API or pass concrete follow
-pubkeys. Duplicating the active-follows declaration would violate D4 and produce
-duplicate wire subscriptions.
+Dynamic source reconciliation is fail-closed. If the source is empty,
+unavailable, or revoked, the session emits an empty/blocked typed state unless
+the session explicitly declares a fallback source.
 
 ## Consequences
 
-- `nmp-feed` remains a mechanics crate: windows, controllers, cursors,
-  provenance containers, and bounded paging.
-- `nmp-core` stores and executes the adapter-derived acquisition shape declared
-  by apps/defaults, but owns neither app feed semantics nor primary-kind,
-  admission, ranking, or sorting policy.
-- protocol crates derive wrapper kinds and target provenance.
-- app Rust crates choose feed keys, primary kinds, source expressions,
-  admission/ranking policy, and row projections.
-- native shells render snapshots and execute capabilities only.
-- native shells never expand follow/list sources, run meta-subscribe cascades,
-  or compute dependent hydration filters.
+- The follow-set source remains a reusable input to feeds, refs, search, groups,
+  and other protocol reads.
+- `nmp-core` still does not own a built-in "home feed" product shape.
+- App Rust crates own primary content kinds, ranking, admission, and app policy.
+- Native/web shells render typed output and execute capabilities only.
+- `ReducedSource`-named APIs should move inward or be classified as migration
+  surfaces with an owner and deletion/formalization trigger.
 
-This document is the current rule. If the implementation changes, edit this
-document in place instead of adding a later correction document.
+## Fitness Functions
+
+- No product shell expands follow/list/source sets itself.
+- Session tests cover source arrival, source replacement, source withdrawal,
+  account switch, and empty-source fail-closed behavior.
+- New source families must prove shared semantics before introducing a public
+  abstraction.
