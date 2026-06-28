@@ -36,3 +36,4 @@ serde_json = "1"
 # lives in `nmp-ffi`, so the tests live next to it. `nmp-nip29` no longer names
 # `nmp-ffi` (and the dev-dep edge is dropped, keeping the dep graph clean).
 nmp-core = { path = "../nmp-core", features = ["test-support", "native"] }
+nmp-store = { path = "../nmp-store", features = ["test-support"] }

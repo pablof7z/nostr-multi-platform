@@ -7,7 +7,8 @@
 //! [`JoinedHostsCache::open`] loads existing membership rows from the
 //! `nmp.nip29.joined_hosts` domain namespace on startup. Every call to
 //! [`insert`](JoinedHostsCache::insert) writes the new row through to the
-//! store immediately. Single-writer per D4.
+//! store before updating memory. Store-backed write failure returns
+//! `StoreError` and does not record membership in memory. Single-writer per D4.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -69,7 +70,21 @@ impl JoinedHostsCache {
     /// Record verified membership (from any of the four trusted sources in
     /// `routing.md` §4.3: own write, invite redeem, explicit import, verified
     /// bootstrap).
-    pub fn insert(&mut self, pubkey: &str, group: &GroupId) {
+    ///
+    /// # Errors
+    ///
+    /// Returns `StoreError` when this cache is store-backed and the durable
+    /// write fails. The membership is not recorded in memory on failure.
+    pub fn insert(&mut self, pubkey: &str, group: &GroupId) -> Result<(), StoreError> {
+        let already_present = self
+            .by_pubkey
+            .get(pubkey)
+            .and_then(|by_host| by_host.get(&group.host_relay_url))
+            .is_some_and(|groups| groups.contains(&group.local_id));
+        if already_present {
+            return Ok(());
+        }
+        self.persist_membership(pubkey, group)?;
         let is_new = self
             .by_pubkey
             .entry(pubkey.to_string())
@@ -77,9 +92,8 @@ impl JoinedHostsCache {
             .entry(group.host_relay_url.clone())
             .or_default()
             .insert(group.local_id.clone());
-        if is_new {
-            self.persist_membership(pubkey, group);
-        }
+        debug_assert!(is_new, "membership presence was checked before insert");
+        Ok(())
     }
 
     /// All host relays carrying at least one group for `pubkey`. Used by
@@ -135,11 +149,12 @@ impl JoinedHostsCache {
     }
 
     /// Write-through: persist a membership row to the domain store.
-    fn persist_membership(&self, pubkey: &str, group: &GroupId) {
+    fn persist_membership(&self, pubkey: &str, group: &GroupId) -> Result<(), StoreError> {
         if let Some(d) = &self.domain {
             let key = membership_key(pubkey, group);
-            let _ = d.put(&key, b"1");
+            d.put(&key, b"1")?;
         }
+        Ok(())
     }
 }
 
@@ -170,17 +185,39 @@ fn membership_key(pubkey: &str, group: &GroupId) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nmp_store::MemEventStore;
+    use nmp_store::{failing_put_domain_handle_for_test, MemEventStore};
 
     #[test]
     fn joined_hosts_fans_out() {
         let mut jhc = JoinedHostsCache::new();
-        jhc.insert("alice", &GroupId::new("wss://a", "g1"));
-        jhc.insert("alice", &GroupId::new("wss://b", "g2"));
-        jhc.insert("alice", &GroupId::new("wss://a", "g3"));
+        jhc.insert("alice", &GroupId::new("wss://a", "g1")).unwrap();
+        jhc.insert("alice", &GroupId::new("wss://b", "g2")).unwrap();
+        jhc.insert("alice", &GroupId::new("wss://a", "g3")).unwrap();
         let hosts = jhc.hosts_for("alice");
         assert_eq!(hosts.len(), 2);
         assert_eq!(jhc.groups_for("alice", "wss://a").len(), 2);
+    }
+
+    #[test]
+    fn joined_hosts_write_failure_does_not_mutate() {
+        let mut cache = JoinedHostsCache {
+            by_pubkey: BTreeMap::new(),
+            domain: Some(failing_put_domain_handle_for_test("test.nip29.hosts")),
+        };
+        let g = GroupId::new("wss://relay.example.com", "room");
+
+        let err = cache
+            .insert("alice-pk", &g)
+            .expect_err("store-backed membership insert must fail when persistence fails");
+
+        assert!(
+            err.to_string().contains("test domain put failure"),
+            "expected failing domain error, got {err:?}"
+        );
+        assert!(cache.hosts_for("alice-pk").is_empty());
+        assert!(cache
+            .groups_for("alice-pk", "wss://relay.example.com")
+            .is_empty());
     }
 
     // ── Persistence tests ─────────────────────────────────────────────────────
@@ -197,9 +234,9 @@ mod tests {
         // Session 1: register membership.
         {
             let mut cache = JoinedHostsCache::open(&store).expect("open session 1");
-            cache.insert("alice-pk", &g1);
-            cache.insert("alice-pk", &g2);
-            cache.insert("alice-pk", &g3);
+            cache.insert("alice-pk", &g1).unwrap();
+            cache.insert("alice-pk", &g2).unwrap();
+            cache.insert("alice-pk", &g3).unwrap();
         }
 
         // Session 2: re-open the same store — membership must be loaded.
@@ -216,7 +253,11 @@ mod tests {
                 "second host present"
             );
             let relay_groups = cache.groups_for("alice-pk", "wss://relay.example.com");
-            assert_eq!(relay_groups.len(), 2, "two groups on first host must survive");
+            assert_eq!(
+                relay_groups.len(),
+                2,
+                "two groups on first host must survive"
+            );
             assert!(relay_groups.contains(&"room-a".to_string()));
             assert!(relay_groups.contains(&"room-b".to_string()));
             let other_groups = cache.groups_for("alice-pk", "wss://other.example.com");
@@ -233,16 +274,22 @@ mod tests {
 
         {
             let mut cache = JoinedHostsCache::open(&store).expect("open");
-            cache.insert("alice-pk", &g);
-            cache.insert("bob-pk", &g);
+            cache.insert("alice-pk", &g).unwrap();
+            cache.insert("bob-pk", &g).unwrap();
         }
 
         {
             let cache = JoinedHostsCache::open(&store).expect("reopen");
-            assert_eq!(cache.hosts_for("alice-pk").len(), 1, "alice must have one host");
+            assert_eq!(
+                cache.hosts_for("alice-pk").len(),
+                1,
+                "alice must have one host"
+            );
             assert_eq!(cache.hosts_for("bob-pk").len(), 1, "bob must have one host");
             assert_eq!(
-                cache.groups_for("alice-pk", "wss://relay.example.com").len(),
+                cache
+                    .groups_for("alice-pk", "wss://relay.example.com")
+                    .len(),
                 1
             );
             assert_eq!(
@@ -260,15 +307,17 @@ mod tests {
 
         {
             let mut cache = JoinedHostsCache::open(&store).expect("open");
-            cache.insert("alice-pk", &g);
-            cache.insert("alice-pk", &g); // duplicate
+            cache.insert("alice-pk", &g).unwrap();
+            cache.insert("alice-pk", &g).unwrap(); // duplicate
         }
 
         {
             let cache = JoinedHostsCache::open(&store).expect("reopen");
             // Should see exactly one group, not two
             assert_eq!(
-                cache.groups_for("alice-pk", "wss://relay.example.com").len(),
+                cache
+                    .groups_for("alice-pk", "wss://relay.example.com")
+                    .len(),
                 1
             );
         }

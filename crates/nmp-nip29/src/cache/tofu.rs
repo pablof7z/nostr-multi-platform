@@ -11,11 +11,12 @@
 //!
 //! [`TofuSignerCache::open`] loads pinned-signer and NIP-11 state from the
 //! `nmp.nip29.tofu_signer` domain namespace on startup. Every mutation that
-//! changes the pinned map writes through immediately. The quarantine buffer
-//! is transient-only: it holds 39001/39002/39003 events before the first
-//! 39000 pins a signer; after a warm-cache restart the pinned map is loaded
-//! and quarantine is irrelevant. Persisting quarantine would add complexity
-//! with no security benefit.
+//! changes durable trust state writes through before updating memory and
+//! returns `StoreError` on write failure. The quarantine buffer is
+//! transient-only: it holds 39001/39002/39003 events before the first 39000
+//! pins a signer; after a warm-cache restart the pinned map is loaded and
+//! quarantine is irrelevant. Persisting quarantine would add complexity with no
+//! security benefit.
 
 use std::collections::{BTreeMap, VecDeque};
 
@@ -109,16 +110,33 @@ impl TofuSignerCache {
 
     /// Record NIP-11-declared pubkey for a host. When present, policy A
     /// (strict match) is active for the host's metadata events.
-    pub fn set_nip11_pubkey(&mut self, host: impl Into<RelayUrl>, pubkey: impl Into<String>) {
+    ///
+    /// # Errors
+    ///
+    /// Returns `StoreError` when this cache is store-backed and the durable
+    /// write fails. The in-memory map is not updated on failure.
+    pub fn set_nip11_pubkey(
+        &mut self,
+        host: impl Into<RelayUrl>,
+        pubkey: impl Into<String>,
+    ) -> Result<(), StoreError> {
         let host = host.into();
         let pubkey = pubkey.into();
-        self.persist_nip11(&host, &pubkey);
+        self.persist_nip11(&host, &pubkey)?;
         self.nip11_pubkey.insert(host, pubkey);
+        Ok(())
     }
 
     /// Evaluate trust for a metadata event per the §4.3 step ladder. Caller
     /// passes the event's `kind` (must be 39000-39003), `group`, and
     /// `signer_pubkey`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `StoreError` when accepting a first 39000 would establish a
+    /// durable TOFU pin but the store-backed write fails. In that case no
+    /// in-memory pin is recorded and the caller must not treat the event as
+    /// accepted.
     pub fn evaluate(
         &mut self,
         kind: u32,
@@ -126,32 +144,32 @@ impl TofuSignerCache {
         signer_pubkey: &str,
         event_id: &str,
         created_at: u64,
-    ) -> TrustCheckOutcome {
+    ) -> Result<TrustCheckOutcome, StoreError> {
         // Step 1: NIP-11 strict match if declared.
         if let Some(declared) = self.nip11_pubkey.get(&group.host_relay_url) {
-            return if declared == signer_pubkey {
+            return Ok(if declared == signer_pubkey {
                 TrustCheckOutcome::Accepted
             } else {
                 TrustCheckOutcome::Rejected
-            };
+            });
         }
         // Step 2: TOFU steady state.
         if let Some(pinned) = self.pinned.get(group) {
-            return if pinned == signer_pubkey {
+            return Ok(if pinned == signer_pubkey {
                 TrustCheckOutcome::Accepted
             } else {
                 TrustCheckOutcome::Rejected
-            };
+            });
         }
         // Step 3: cold TOFU. Only kind:39000 may establish the pin; other
         // kinds are quarantined per §4.3.
         if kind == crate::kinds::KIND_GROUP_METADATA {
+            self.persist_pinned(group, signer_pubkey)?;
             self.pinned.insert(group.clone(), signer_pubkey.to_string());
-            self.persist_pinned(group, signer_pubkey);
-            TrustCheckOutcome::Accepted
+            Ok(TrustCheckOutcome::Accepted)
         } else {
             self.push_quarantine(group, kind, signer_pubkey, event_id, created_at);
-            TrustCheckOutcome::Quarantined
+            Ok(TrustCheckOutcome::Quarantined)
         }
     }
 
@@ -223,7 +241,8 @@ impl TofuSignerCache {
                             std::str::from_utf8(&val),
                         ) {
                             if !host.is_empty() && !local.is_empty() && !pk.is_empty() {
-                                self.pinned.insert(GroupId::new(host, local), pk.to_string());
+                                self.pinned
+                                    .insert(GroupId::new(host, local), pk.to_string());
                             }
                         }
                     }
@@ -246,17 +265,19 @@ impl TofuSignerCache {
     }
 
     /// Write-through: persist a newly-pinned signer to the domain store.
-    fn persist_pinned(&self, group: &GroupId, pubkey: &str) {
+    fn persist_pinned(&self, group: &GroupId, pubkey: &str) -> Result<(), StoreError> {
         if let Some(d) = &self.domain {
-            let _ = d.put(&pinned_key(group), pubkey.as_bytes());
+            d.put(&pinned_key(group), pubkey.as_bytes())?;
         }
+        Ok(())
     }
 
     /// Write-through: persist a NIP-11 declared pubkey to the domain store.
-    fn persist_nip11(&self, relay: &str, pubkey: &str) {
+    fn persist_nip11(&self, relay: &str, pubkey: &str) -> Result<(), StoreError> {
         if let Some(d) = &self.domain {
-            let _ = d.put(&nip11_key(relay), pubkey.as_bytes());
+            d.put(&nip11_key(relay), pubkey.as_bytes())?;
         }
+        Ok(())
     }
 }
 
@@ -265,8 +286,7 @@ impl TofuSignerCache {
 /// Format: `[PREFIX_PINNED, 0x00, host_relay_url_bytes, 0x00, local_id_bytes]`
 /// Both relay URLs and local IDs are ASCII-safe with no embedded null bytes.
 fn pinned_key(group: &GroupId) -> Vec<u8> {
-    let mut k =
-        Vec::with_capacity(2 + group.host_relay_url.len() + 1 + group.local_id.len());
+    let mut k = Vec::with_capacity(2 + group.host_relay_url.len() + 1 + group.local_id.len());
     k.push(PREFIX_PINNED);
     k.push(0u8);
     k.extend_from_slice(group.host_relay_url.as_bytes());

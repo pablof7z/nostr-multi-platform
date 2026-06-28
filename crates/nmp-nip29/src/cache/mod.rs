@@ -15,7 +15,7 @@
 //! Both caches expose a `new()` constructor for pure in-memory use (tests /
 //! no-store contexts) and an `open(store)` constructor that loads state from
 //! the durable store on startup and writes through on every mutation (D4:
-//! single-writer, write-through on update). Persistence fixes #2286.
+//! single-writer, persist-before-memory update). Persistence fixes #2286.
 
 mod hosts;
 mod recent;
