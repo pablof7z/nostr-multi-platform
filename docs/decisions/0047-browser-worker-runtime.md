@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-06-12
 - **Amended-by:** ADR-0067 (`nmp-browser-runtime` owns the worker runtime and
-  wasm-bindgen export; `nmp-wasm` is retained only for protocol types)
+  wasm-bindgen export; `nmp-wasm` was subsequently deleted in #2202)
 - **Relates to:** ADR-0009 (app-extension kernel boundary), ADR-0024 (async capability protocol), ADR-0037 (typed FlatBuffers runtime projections), ADR-0040 (capability-worker seam)
 - **Reference:** `docs/wasm-surface.md` (living contract — the single source of truth for the wire protocol)
 
@@ -26,8 +26,8 @@ None of that execution model is available in single-threaded WebAssembly.
 ### 1. The Worker event loop IS the actor
 
 NMP's browser runtime is a `KernelReducer` driven on a dedicated Worker's
-event loop, **owned by `nmp-browser-runtime`** (see ADR-0067). `nmp-wasm` is
-retained only as a serializable protocol-type crate for older Rust consumers.
+event loop, **owned by `nmp-browser-runtime`** (see ADR-0067). `nmp-wasm` was
+deleted in #2202; its protocol types are now owned by `nmp-browser-runtime`.
 There is no ported copy of the native thread + flume + tokio actor.
 The Worker thread is the single writer of kernel state (D4), and `wasm-bindgen`
 closures parked on `WebSocket::onmessage` deliver relay frames **synchronously**
@@ -103,8 +103,8 @@ callback-per-dispatch.
 
 - **`crates/nmp-browser-runtime` is the framework-level browser delivery
   surface.** Its Worker protocol is documented at `docs/wasm-surface.md`.
-  Example apps consume this surface; they do not define it. `crates/nmp-wasm`
-  is retained only as serializable protocol types for older Rust consumers.
+  Example apps consume this surface; they do not define it. (`crates/nmp-wasm`
+  was deleted in #2202; its protocol types now live in `nmp-browser-runtime`.)
 - **Durable browser persistence is owned by ADR-0054.** OPFS-SQLite store open,
   degraded-open diagnostics, hydration/reload proof, and Web Locks
   durable-tab arbitration now live in `nmp-browser-runtime`.

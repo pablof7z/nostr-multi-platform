@@ -27,10 +27,11 @@
 //! ## Scope (`file_in_scope`)
 //!
 //! Only wasm-reachable crates are scanned:
-//! `nmp-core`, `nmp-store`, `nmp-network`, `nmp-signers`, `nmp-wasm`,
+//! `nmp-core`, `nmp-store`, `nmp-network`, `nmp-signers`,
 //! `nmp-browser-runtime`, `nmp-planner`, `nmp-chirp-config`,
 //! `nmp-signer-iface` (#1161 added the last three — they pull into the wasm
-//! dependency graph transitively; #2082 added the browser runtime crate).
+//! dependency graph transitively; #2082 added the browser runtime crate;
+//! `nmp-wasm` was removed when the crate was deleted in #2202).
 //!
 //! Within those crates, three subtrees are excluded because they never compile
 //! to `wasm32` (the actor *runtime*, the relay-worker I/O loop, and the LMDB
@@ -67,7 +68,6 @@ const WASM_REACHABLE_CRATES: &[&str] = &[
     "nmp-store",
     "nmp-network",
     "nmp-signers",
-    "nmp-wasm",
     "nmp-browser-runtime",
     "nmp-planner",
     "nmp-chirp-config",

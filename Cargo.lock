@@ -5303,14 +5303,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nmp-wasm"
-version = "0.8.4"
-dependencies = [
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "nmp-wot"
 version = "0.8.4"
 dependencies = [

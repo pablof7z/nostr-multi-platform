@@ -190,9 +190,9 @@ fn contact_feed_c_abi_symbols_are_not_defined_or_reexported() {
 #[test]
 fn raw_wasm_feed_verb_dispatch_strings_are_not_routed() {
     // The raw public wasm feed-verb action strings must not be routed by any
-    // `action_type` match arm. We assert they do not appear in a NON-comment
-    // line under crates/nmp-wasm/src (the dispatch router). A doc/comment naming
-    // the retired string is allowed.
+    // `action_type` match arm. nmp-wasm was deleted in #2202; we now scan
+    // crates/ and apps/ broadly to guard against re-routing. A doc/comment
+    // naming the retired string is allowed.
     const RETIRED_DISPATCH_STRINGS: &[&str] = &[
         "nmp.kernel.open_interest",
         "nmp.kernel.close_interest",
@@ -200,16 +200,22 @@ fn raw_wasm_feed_verb_dispatch_strings_are_not_routed() {
         "nmp.feed.clear_active_follows",
     ];
 
-    let wasm_src = repo_root().join("crates").join("nmp-wasm").join("src");
+    // nmp-wasm was deleted in #2202. Now scan the full crates/ and apps/ trees
+    // to guard against the retired strings being routed anywhere.
+    let root = repo_root();
     let mut files = Vec::new();
-    rust_files(&wasm_src, &mut files);
-    assert!(!files.is_empty(), "must scan nmp-wasm sources");
+    for sub in ["crates", "apps"] {
+        rust_files(&root.join(sub), &mut files);
+    }
+    assert!(!files.is_empty(), "must scan some Rust sources");
 
     let mut violations = Vec::new();
     for file in &files {
-        // The router's own tests file is excluded — but step 8 deleted those
-        // tests, so this is belt-and-suspenders; a routed arm in any non-comment
-        // line is the violation.
+        // Skip this gate file itself — it NAMES the retired strings as the
+        // literals it searches for, so it would self-flag.
+        if file.ends_with("tests/feed_public_surface_retired.rs") {
+            continue;
+        }
         let Ok(text) = fs::read_to_string(file) else {
             continue;
         };
@@ -224,8 +230,9 @@ fn raw_wasm_feed_verb_dispatch_strings_are_not_routed() {
     }
     assert!(
         violations.is_empty(),
-        "retired raw wasm feed-verb dispatch strings reappeared in the router \
-         (the public open_feed doorway is the only feed-open surface):\n{}",
+        "retired raw wasm feed-verb dispatch strings reappeared in the codebase \
+         (the public open_feed doorway is the only feed-open surface; \
+         nmp-wasm was deleted in #2202 and these strings must not be re-routed):\n{}",
         violations.join("\n")
     );
 }

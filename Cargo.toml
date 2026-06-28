@@ -64,7 +64,6 @@ members = [
     "crates/nmp-signers",
     "crates/nmp-testing",
     "crates/nmp-threading",
-    "crates/nmp-wasm",
 ]
 # PARKED CRATES — excluded from the default workspace build.
 #
