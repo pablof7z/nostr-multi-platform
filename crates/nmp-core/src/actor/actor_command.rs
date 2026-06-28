@@ -69,12 +69,11 @@ pub enum ActorCommand {
     /// serialized and pushed on the update channel. `OpenUri` registers the
     /// resolved interest through the single-writer registry (D4).
     Kernel(KernelAction),
-    /// D6 — surface an error toast from the FFI boundary. Used when the FFI
-    /// layer detects a malformed argument (e.g. unparseable JSON) and cannot
-    /// call `kernel.set_last_error_toast` directly (the FFI only has a channel
-    /// sender, not a kernel reference). The actor thread receives this command
-    /// and routes it to `kernel.set_last_error_toast` so the error becomes
-    /// observable state, never a silent no-op.
+    /// D6 — legacy raw-prose boundary ingress for callers that only have a
+    /// command sender. New kernel/core producers must use `ShowErrorToken` so
+    /// the snapshot carries a stable `last_error_category`; this variant remains
+    /// only for older protocol/FFI edges that still need a channel-routed error
+    /// until their owning crates define token codes.
     ShowToast { message: String },
     /// D6 + issue #1682 — surface a structured error [`UiToken`] from an
     /// off-actor worker thread (e.g. the NIP-17 gift-wrap publish

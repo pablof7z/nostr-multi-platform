@@ -11,6 +11,12 @@
 use crate::kernel::Kernel;
 use crate::relay::OutboundMessage;
 
+fn set_publish_error(kernel: &mut Kernel, code: &'static str, fallback: String) {
+    kernel.set_last_error_token(
+        &crate::ui_token::UiToken::error(code, fallback.clone()).with_detail(fallback),
+    );
+}
+
 /// Set a "no active account" toast and — when a dispatched action is waiting
 /// on a `correlation_id` — record the matching `Failed` terminal so the host
 /// spinner clears.
@@ -28,9 +34,11 @@ pub(super) fn toast_no_account(
     action: &str,
     correlation_id: Option<String>,
 ) -> Vec<OutboundMessage> {
-    kernel.set_last_error_toast(Some(format!(
-        "cannot {action}: no active account — sign in first"
-    )));
+    let toast = format!("cannot {action}: no active account — sign in first");
+    kernel.set_last_error_token(
+        &crate::ui_token::UiToken::error(crate::ui_token::codes::PUBLISH_NO_ACTIVE_ACCOUNT, toast)
+            .with_subject(action),
+    );
     if let Some(id) = correlation_id {
         let code = crate::ui_token::codes::LIFECYCLE_NO_ACTIVE_ACCOUNT;
         kernel.record_action_failure_coded(id, "no active account".into(), Some(code), None);
@@ -56,7 +64,11 @@ pub(super) fn fail_publish(
     reason: String,
     correlation_id: Option<String>,
 ) -> Vec<OutboundMessage> {
-    kernel.set_last_error_toast(Some(reason.clone()));
+    set_publish_error(
+        kernel,
+        crate::ui_token::codes::PUBLISH_SIGN_FAILED,
+        reason.clone(),
+    );
     if let Some(id) = correlation_id {
         // Prose-only (#1735): caller-supplied diagnostic text, not curated copy.
         kernel.record_action_failure(id, reason);
@@ -70,7 +82,11 @@ pub(super) fn fail_invalid_target(
     correlation_id: Option<String>,
 ) -> Vec<OutboundMessage> {
     let toast = format!("explicit publish target rejected: {reason}");
-    kernel.set_last_error_toast(Some(toast.clone()));
+    set_publish_error(
+        kernel,
+        crate::ui_token::codes::PUBLISH_INVALID_TARGET,
+        toast.clone(),
+    );
     if let Some(id) = correlation_id {
         // Prose-only (#1735): wraps caller-supplied upstream diagnostic text.
         kernel.record_action_failure(id, toast);

@@ -120,7 +120,13 @@ impl Kernel {
             self.publish_engine
                 .record_engine_error(&err, &handle, "", now_ms);
             let (toast, _, _) = describe_engine_error(&err);
-            self.set_last_error_toast(Some(toast));
+            self.set_last_error_token(
+                &crate::ui_token::UiToken::error(
+                    crate::ui_token::codes::PUBLISH_RETRY_FAILED,
+                    toast.clone(),
+                )
+                .with_detail(toast),
+            );
             self.bump_publish_if_engine_view_changed(engine_rev_before);
             return Vec::new();
         }

@@ -104,7 +104,13 @@ pub(super) fn publish_reply(
         crate::kernel_reducer::reply::build_reply_tags_from_kernel(ctx.kernel, &reply_to_event_id)
     else {
         let reason = format!("reply_target_unknown: {reply_to_event_id}");
-        ctx.kernel.set_last_error_toast(Some(reason.clone()));
+        ctx.kernel.set_last_error_token(
+            &crate::ui_token::UiToken::error(
+                crate::ui_token::codes::PUBLISH_REPLY_TARGET_UNKNOWN,
+                reason.clone(),
+            )
+            .with_subject(reply_to_event_id),
+        );
         if let Some(id) = correlation_id {
             ctx.kernel.record_action_failure(id, reason);
         }

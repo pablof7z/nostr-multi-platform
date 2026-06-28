@@ -10,3 +10,7 @@ fn build_profile_card(pubkey: &str) -> ProfileCard {
         created_at_display: ts,
     }
 }
+
+fn publish_error(kernel: &mut Kernel) {
+    kernel.set_last_error_toast(Some("publish failed".to_string()));
+}

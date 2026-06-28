@@ -334,15 +334,15 @@ impl super::Kernel {
         self.projection_rev_tracker.source_versions.bump_publish();
     }
 
-    /// Surface a coarse error string to the UI (D6: errors are state, never
-    /// exceptions across FFI). `None` clears the toast.
+    /// Crate-private legacy boundary for raw error prose. New kernel/core
+    /// producers must use [`Self::set_last_error_token`]. `None` clears.
     ///
     /// This legacy uncategorized path also clears `last_error_category`: a
     /// newer toast set here must not leave a stale category from an earlier
-    /// `set_error_toast_with_category` call shadowing it (iOS would branch on
+    /// token/category call shadowing it (iOS would branch on
     /// a category that no longer matches the visible toast). Callers that
-    /// *know* the error class should use `set_error_toast_with_category`.
-    pub fn set_last_error_toast(&mut self, toast: Option<String>) {
+    /// know the error class must use `set_last_error_token`.
+    pub(crate) fn set_last_error_toast(&mut self, toast: Option<String>) {
         if self.last_error_toast != toast || self.last_error_category.is_some() {
             self.last_error_toast = toast;
             self.last_error_category = None;

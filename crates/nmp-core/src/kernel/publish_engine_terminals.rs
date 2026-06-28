@@ -151,8 +151,9 @@ impl Kernel {
                 // `NoTargets` / pre-sign-step path is handled separately by
                 // `record_engine_error`.
                 if status == "failed" {
-                    self.set_last_error_toast(Some(
-                        "Couldn't reach any relay — your post is in the Outbox".to_string(),
+                    self.set_last_error_token(&crate::ui_token::UiToken::error(
+                        crate::ui_token::codes::PUBLISH_ALL_RELAYS_FAILED,
+                        "Couldn't reach any relay — your post is in the Outbox",
                     ));
                 }
             }

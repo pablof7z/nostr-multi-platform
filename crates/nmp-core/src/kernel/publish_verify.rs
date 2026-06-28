@@ -74,7 +74,13 @@ impl Kernel {
         // Step 1 — target validation (inline fail_invalid_target logic).
         if let Err(reason) = validate_publish_target(&target) {
             let toast = format!("explicit publish target rejected: {reason}");
-            self.set_last_error_toast(Some(toast.clone()));
+            self.set_last_error_token(
+                &crate::ui_token::UiToken::error(
+                    crate::ui_token::codes::PUBLISH_INVALID_TARGET,
+                    toast.clone(),
+                )
+                .with_detail(reason),
+            );
             if let Some(id) = correlation_id {
                 self.record_action_failure(id, toast);
             }
@@ -109,7 +115,13 @@ impl Kernel {
                 "publish_externally_signed refused: private/encrypted envelope without \
                  an explicit relay pin would leak through the author's public outbox (D10).",
             );
-            self.set_last_error_toast(Some(reason.clone()));
+            self.set_last_error_token(
+                &crate::ui_token::UiToken::error(
+                    crate::ui_token::codes::LIFECYCLE_PUBLISH_NO_EXPLICIT_TARGET,
+                    reason.clone(),
+                )
+                .with_detail(reason.clone()),
+            );
             if let Some(id) = correlation_id {
                 let code = crate::ui_token::codes::LIFECYCLE_PUBLISH_NO_EXPLICIT_TARGET;
                 self.record_action_failure_coded(id, reason, Some(code), None);

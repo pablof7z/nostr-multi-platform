@@ -160,7 +160,13 @@ impl Kernel {
                  outbox (D10 violation). Caller must supply PublishTarget::Explicit \
                  with a non-empty recipient-inbox relay set."
             );
-            self.set_last_error_toast(Some(reason.clone()));
+            self.set_last_error_token(
+                &crate::ui_token::UiToken::error(
+                    crate::ui_token::codes::LIFECYCLE_PUBLISH_NO_EXPLICIT_TARGET,
+                    reason.clone(),
+                )
+                .with_detail(reason.clone()),
+            );
             // Broken-promise fix: a dispatched action carries a correlation_id
             // and the host is waiting on `action_results`; record the terminal
             // failure so its spinner clears. No-op for `None` (internal /

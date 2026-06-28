@@ -324,9 +324,17 @@ fn add_and_remove_relay_edits_projection() {
     assert!(kernel
         .last_error_toast_snapshot()
         .is_some_and(|t| t.contains("invalid relay URL")));
+    assert_eq!(
+        kernel.last_error_category_snapshot().map(String::as_str),
+        Some(crate::ui_token::codes::RELAY_INVALID_URL)
+    );
     // Invalid role — returns None.
     let bad_role = add_relay(&mut kernel, "wss://nos.lol", "superwrite");
     assert_eq!(bad_role, None);
+    assert_eq!(
+        kernel.last_error_category_snapshot().map(String::as_str),
+        Some(crate::ui_token::codes::RELAY_INVALID_ROLE)
+    );
     remove_relay(&mut kernel, "wss://nos.lol");
     assert_eq!(kernel.configured_relays_snapshot().len(), 1);
     assert_eq!(
