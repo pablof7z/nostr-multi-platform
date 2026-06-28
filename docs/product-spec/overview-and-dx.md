@@ -375,8 +375,9 @@ Registry components promise:
   event embeds), redraws through the native UI mechanism, and releases the
   reference when no longer visible.
 - **One shell adapter.** Apps wire the registry host once at the platform shell
-  boundary. Feature screens do not call per-row resolve/release or equivalent
-  lifecycle APIs for each rendered row.
+  boundary (`.nmpComponentHost(...)` for SwiftUI,
+  `NmpComponentHostProvider(...)` for Compose). Feature screens do not call
+  per-row resolve/release or equivalent lifecycle APIs for each rendered row.
 - **Rust-owned truth.** Relay choice, fetch policy, cache mutation, replaceable
   supersession, and profile/embed resolution stay in Rust. Native components
   may emit lifecycle intent, render snapshots, and format raw projection fields

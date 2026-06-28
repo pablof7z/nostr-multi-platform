@@ -7,7 +7,6 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -15,9 +14,12 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.nmp.gallery.bridge.GalleryModel
+import org.nmp.gallery.bridge.toComponentHostEnvelope
 import org.nmp.gallery.navigation.GalleryNavigation
+import org.nmp.gallery.registry.EventRefResolver
 import org.nmp.gallery.registry.ExternalSignerCapabilityBridge
-import org.nmp.gallery.registry.LocalNostrProfileHost
+import org.nmp.gallery.registry.NmpComponentHostProvider
+import org.nmp.gallery.registry.NostrKindRegistry
 import org.nmp.gallery.registry.NostrProfileHost
 
 /**
@@ -47,6 +49,7 @@ class MainActivity : ComponentActivity() {
         }
         setContent {
             val profiles by model.profileMap.collectAsStateWithLifecycle()
+            val resolvedEventEmbeds by model.resolvedEventEmbeds.collectAsStateWithLifecycle()
             val latestProfiles = rememberUpdatedState(profiles)
             val profileHost = remember(model) {
                 object : NostrProfileHost {
@@ -62,9 +65,31 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+            val eventRefResolver = remember(model) {
+                object : EventRefResolver {
+                    override fun resolveEventRef(uri: String, consumerId: String) {
+                        model.resolveEventRef(uri, consumerId)
+                    }
+
+                    override fun releaseEventRef(uri: String, consumerId: String) {
+                        model.releaseEventRef(uri, consumerId)
+                    }
+                }
+            }
+            val kindRegistry = remember { NostrKindRegistry.makeDefault() }
+            val componentEventEmbeds = remember(resolvedEventEmbeds) {
+                resolvedEventEmbeds.mapNotNull { (key, envelope) ->
+                    envelope.toComponentHostEnvelope()?.let { key to it }
+                }.toMap()
+            }
 
             MaterialTheme {
-                CompositionLocalProvider(LocalNostrProfileHost provides profileHost) {
+                NmpComponentHostProvider(
+                    profileHost = profileHost,
+                    resolvedEventEmbeds = componentEventEmbeds,
+                    eventRefResolver = eventRefResolver,
+                    kindRegistry = kindRegistry,
+                ) {
                     Surface(modifier = Modifier.fillMaxSize()) {
                         GalleryNavigation(model = model)
                     }

@@ -134,6 +134,20 @@ target = "Components/NostrContent/EmbeddedEvent.swift"
 role = "source"
 
 [[components]]
+id = "swiftui/component-host"
+version = "0.1.0"
+target = "swiftui"
+description = "SwiftUI app-root component host that binds NostrProfileHost, EmbedEnvelopeSource, EventRefResolverProtocol, and NostrKindRegistry in one modifier or wrapper."
+dependencies = [
+    "swiftui/user-avatar",
+    "swiftui/content-kind-registry",
+]
+[[components.files]]
+source = "swiftui/component-host/NmpComponentHost.swift"
+target = "Components/NmpComponentHost/NmpComponentHost.swift"
+role = "source"
+
+[[components]]
 id = "swiftui/content-kind-30023"
 version = "0.1.0"
 target = "swiftui"

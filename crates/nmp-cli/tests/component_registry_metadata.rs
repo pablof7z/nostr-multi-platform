@@ -21,6 +21,8 @@ const WEB_REGISTRY_TYPES: &str = include_str!("../../../web/registry/src/registr
 const WEB_REGISTRY_CONTENT: &str = include_str!("../../../web/registry/src/registry/content.ts");
 const WEB_REGISTRY_CONTENT_KIND_COMPONENTS: &str =
     include_str!("../../../web/registry/src/registry/contentKindComponents.ts");
+const WEB_REGISTRY_COMPONENT_HOST: &str =
+    include_str!("../../../web/registry/src/registry/componentHost.ts");
 const WEB_REGISTRY_AUTH: &str = include_str!("../../../web/registry/src/registry/auth.ts");
 const WEB_REGISTRY_USER: &str = include_str!("../../../web/registry/src/registry/user.ts");
 const WEB_REGISTRY_RELAY: &str = include_str!("../../../web/registry/src/registry/relay.ts");
@@ -99,6 +101,7 @@ fn web_registry_source() -> String {
         WEB_REGISTRY_TYPES,
         WEB_REGISTRY_CONTENT,
         WEB_REGISTRY_CONTENT_KIND_COMPONENTS,
+        WEB_REGISTRY_COMPONENT_HOST,
         WEB_REGISTRY_AUTH,
         WEB_REGISTRY_USER,
         WEB_REGISTRY_RELAY,

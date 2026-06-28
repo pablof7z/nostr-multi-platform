@@ -13,16 +13,19 @@ import { authComponents } from "./registry/auth";
 import { userComponents } from "./registry/user";
 import { relayComponents } from "./registry/relay";
 import { embedComponents } from "./registry/embeds";
+import { componentHostComponents } from "./registry/componentHost";
 
 export type { Component, ComponentFile, Platform, PlatformImpl, Section } from "./registry/types";
 export { PLATFORM_LABELS, PLATFORM_ORDER } from "./registry/types";
+
+const embedAndKindComponents = [...componentHostComponents, ...embedComponents];
 
 export const COMPONENTS: Component[] = [
   ...contentComponents,
   ...authComponents,
   ...userComponents,
   ...relayComponents,
-  ...embedComponents,
+  ...embedAndKindComponents,
 ];
 
 export const SECTIONS: Section[] = [
@@ -30,7 +33,7 @@ export const SECTIONS: Section[] = [
   { label: "Auth", components: authComponents },
   { label: "User", components: userComponents },
   { label: "Relay", components: relayComponents },
-  { label: "Embeds & Kinds", components: embedComponents },
+  { label: "Embeds & Kinds", components: embedAndKindComponents },
 ];
 
 export function findComponent(routeId: string): Component | undefined {

@@ -159,7 +159,7 @@ export const contentComponents: Component[] = [
         screenshots: ["content-view-ios-gallery-preview.png"],
         customization: [
           "`NostrContentView` walks a `ContentTreeWire` decoded from `nmp-content`. Each tree node maps to a sub-component you installed alongside it.",
-          "Event refs render through the kind-dispatch registry (`content-kind-registry`): bind an `EmbedEnvelopeSource` over Rust-derived `refs.event.envelopes` plus `NostrKindRegistry` via `.embedEnvelopeSource(...)`.",
+          "Event refs render through the kind-dispatch registry (`content-kind-registry`): bind `NostrProfileHost`, `EmbedEnvelopeSource`, `EventRefResolverProtocol`, and `NostrKindRegistry` once via `.nmpComponentHost(...)`.",
         ],
       },
       compose: {
@@ -171,7 +171,7 @@ export const contentComponents: Component[] = [
         screenshots: ["content-view-kotlin-preview.png"],
         customization: [
           "`NostrContentView` walks a `ContentTreeWire` and dispatches each block-level group to the matching sub-component. Customizing usually means editing the sub-component rather than this dispatcher.",
-          "Event refs render through the kind-dispatch registry (`content-kind-registry`): provide `LocalResolvedEventEmbeds` from derived `refs.event.envelopes`, plus `LocalEventRefResolver` and `LocalNostrKindRegistry`.",
+          "Event refs render through the kind-dispatch registry (`content-kind-registry`): bind `LocalNostrProfileHost`, `LocalResolvedEventEmbeds`, `LocalEventRefResolver`, and `LocalNostrKindRegistry` once via `NmpComponentHostProvider(...)`.",
         ],
       },
       tui: {

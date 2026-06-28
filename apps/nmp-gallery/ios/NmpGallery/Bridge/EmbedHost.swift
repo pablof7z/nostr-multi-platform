@@ -28,7 +28,7 @@ private let ehLog = Logger(subsystem: "org.nmp.gallery", category: "EmbedHost")
 /// callback; SwiftUI invalidates dependent views via `@Observable`.
 @MainActor
 @Observable
-final class EmbedHost {
+final class EmbedHost: EmbedEnvelopeSource {
     /// Resolved envelopes keyed by `primary_id` (event-id hex for nevent/note,
     /// `"kind:pubkey:d"` coordinate for naddr). Latest-snapshot-wins; rebuilt
     /// from the pre-resolved embed envelope projection on each non-nil push.
@@ -39,11 +39,10 @@ final class EmbedHost {
     var count: Int { envelopesByPrimaryID.count }
 
     /// Called on every snapshot tick with the pre-resolved embed envelope map.
-    /// A nil or empty value leaves the
-    /// previous state intact (stable, not flicker) — matches the one-tick-lag
-    /// semantics of the Rust sidecar (D6: graceful degradation).
+    /// A nil value means the projection was absent, so the previous state stays
+    /// intact. An explicit empty map is authoritative and clears stale embeds.
     func update(resolvedEventEmbeds: [String: EmbeddedEventEnvelope]?) {
-        guard let embeds = resolvedEventEmbeds, !embeds.isEmpty else { return }
+        guard let embeds = resolvedEventEmbeds else { return }
         envelopesByPrimaryID = embeds
     }
 
@@ -68,8 +67,17 @@ final class EmbedHost {
 
 // MARK: - Environment wiring
 
-private struct EmbedHostKey: EnvironmentKey {
-    static let defaultValue: EmbedHost? = nil
+/// Read-only source of resolved embed envelopes the app-level host receives
+/// from Rust on every snapshot frame.
+@MainActor
+public protocol EmbedEnvelopeSource {
+    func envelopeForPrimaryID(_ id: String) -> EmbeddedEventEnvelope?
+    func envelopeForURI(_ uri: String) -> EmbeddedEventEnvelope?
+}
+
+private struct EmbedEnvelopeSourceKey: EnvironmentKey {
+    nonisolated(unsafe)
+    static let defaultValue: EmbedEnvelopeSource? = nil
 }
 
 private struct EmbedEventRefResolverKey: EnvironmentKey {
@@ -86,9 +94,14 @@ private struct NostrKindRegistryKey: EnvironmentKey {
 }
 
 extension EnvironmentValues {
-    var embedHost: EmbedHost? {
-        get { self[EmbedHostKey.self] }
-        set { self[EmbedHostKey.self] = newValue }
+    var embedEnvelopeSource: EmbedEnvelopeSource? {
+        get { self[EmbedEnvelopeSourceKey.self] }
+        set { self[EmbedEnvelopeSourceKey.self] = newValue }
+    }
+
+    var embedHost: EmbedEnvelopeSource? {
+        get { self[EmbedEnvelopeSourceKey.self] }
+        set { self[EmbedEnvelopeSourceKey.self] = newValue }
     }
 
     var embedEventRefResolver: EventRefResolverProtocol? {
@@ -99,5 +112,18 @@ extension EnvironmentValues {
     var nostrKindRegistry: NostrKindRegistry? {
         get { self[NostrKindRegistryKey.self] }
         set { self[NostrKindRegistryKey.self] = newValue }
+    }
+}
+
+extension View {
+    func embedEnvelopeSource(
+        _ source: EmbedEnvelopeSource?,
+        eventRefResolver: EventRefResolverProtocol? = nil,
+        registry: NostrKindRegistry? = nil
+    ) -> some View {
+        self
+            .environment(\.embedEnvelopeSource, source)
+            .environment(\.embedEventRefResolver, eventRefResolver)
+            .environment(\.nostrKindRegistry, registry)
     }
 }

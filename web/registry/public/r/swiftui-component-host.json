@@ -1,0 +1,19 @@
+{
+  "name": "swiftui-component-host",
+  "type": "registry:ui",
+  "title": "Component Host (SwiftUI)",
+  "description": "SwiftUI app-root component host that binds NostrProfileHost, EmbedEnvelopeSource, EventRefResolverProtocol, and NostrKindRegistry in one modifier or wrapper.",
+  "dependencies": [],
+  "registryDependencies": [
+    "swiftui-user-avatar",
+    "swiftui-content-kind-registry"
+  ],
+  "files": [
+    {
+      "path": "registry/swiftui/component-host/NmpComponentHost.swift",
+      "type": "registry:ui",
+      "target": "Components/NmpComponentHost/NmpComponentHost.swift",
+      "content": "import SwiftUI\n\n/// App-root binding for NMP registry components.\n///\n/// The host installs the existing profile and embed environment values in one\n/// place. Apps still own the concrete bridge objects: profile data comes from\n/// `refs.profile`, event envelopes come from the Rust-derived\n/// `refs.event.envelopes` sidecar, and components only render plus manage\n/// visible resolve/release lifecycle.\npublic struct NmpComponentHost<Content: View>: View {\n    private let profileHost: NostrProfileHost?\n    private let embedSource: EmbedEnvelopeSource?\n    private let eventRefResolver: EventRefResolverProtocol?\n    private let kindRegistry: NostrKindRegistry?\n    private let content: Content\n\n    public init(\n        profileHost: NostrProfileHost?,\n        embedSource: EmbedEnvelopeSource?,\n        eventRefResolver: EventRefResolverProtocol? = nil,\n        kindRegistry: NostrKindRegistry? = nil,\n        @ViewBuilder content: () -> Content\n    ) {\n        self.profileHost = profileHost\n        self.embedSource = embedSource\n        self.eventRefResolver = eventRefResolver\n        self.kindRegistry = kindRegistry\n        self.content = content()\n    }\n\n    public var body: some View {\n        content.nmpComponentHost(\n            profileHost: profileHost,\n            embedSource: embedSource,\n            eventRefResolver: eventRefResolver,\n            kindRegistry: kindRegistry\n        )\n    }\n}\n\npublic extension View {\n    /// Install the standard NMP registry component host at an app or screen root.\n    ///\n    /// This is DX glue over the lower-level environment keys. It does not own a\n    /// kernel handle, parse Nostr events, or maintain profile/embed caches.\n    func nmpComponentHost(\n        profileHost: NostrProfileHost?,\n        embedSource: EmbedEnvelopeSource?,\n        eventRefResolver: EventRefResolverProtocol? = nil,\n        kindRegistry: NostrKindRegistry? = nil\n    ) -> some View {\n        self\n            .environment(\\.nostrProfileHost, profileHost)\n            .embedEnvelopeSource(\n                embedSource,\n                eventRefResolver: eventRefResolver,\n                registry: kindRegistry\n            )\n    }\n}\n"
+    }
+  ]
+}
