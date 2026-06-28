@@ -208,9 +208,13 @@ path = "crates/nmp-blossom"
 name = "nmp-nip59"
 path = "crates/nmp-nip59"
 
-[[public_crates]]
-name = "nmp-nip59-decrypt-only"
-path = "crates/nmp-nip59-decrypt-only"
+# nmp-nip59-decrypt-only is PARKED — excluded from the default workspace (see
+# top-level Cargo.toml [workspace] exclude, issue #2289). It is not a workspace
+# member, so it must NOT appear here: this manifest is the release-readiness
+# source of truth and the dry-run runs `cargo package -p` over every
+# public_crate. Re-add when the external iOS notification-extension consumer
+# (issue #2289) is wired up:
+#   nmp-nip59-decrypt-only → NIP-59 decrypt-only staticlib (#2289)
 
 [[public_crates]]
 name = "nmp-nip77"

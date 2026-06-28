@@ -39,7 +39,6 @@ members = [
     "crates/nmp-nip57",
     "crates/nmp-nip68",
     "crates/nmp-nip59",
-    "crates/nmp-nip59-decrypt-only",
     "crates/nmp-nip77",
     "crates/nmp-nip78",
     "crates/nmp-relay-url",
@@ -73,6 +72,11 @@ members = [
 #   nmp-nip60    — Cashu / nutzaps (NIP-60). Re-activate when issue
 #                  #1001 enters scope.
 #
+#   nmp-nip59-decrypt-only — NIP-59 decrypt-only staticlib; intended consumer
+#                            is an external iOS notification-service extension
+#                            that links it as a staticlib. Parked pending
+#                            issue #2289.
+#
 # NOTE: nmp-blossom was previously parked here but is in fact a v1 crate —
 # it is complete (no Unsupported stubs) and shipped by external consumers
 # (hl, podcast-player). Un-parked into [workspace].members so CI builds and
@@ -80,7 +84,9 @@ members = [
 #
 # To build a parked crate on demand:
 #   cargo build --manifest-path crates/nmp-nip60/Cargo.toml
+#   cargo build --manifest-path crates/nmp-nip59-decrypt-only/Cargo.toml
 exclude = [
+    "crates/nmp-nip59-decrypt-only",
     "crates/nmp-nip60",
 ]
 resolver = "2"
