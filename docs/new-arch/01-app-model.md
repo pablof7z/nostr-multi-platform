@@ -26,6 +26,16 @@ make the app immutable after build, and remove idempotency bugs from repeated
 registration. If a monolithic preset survives temporarily, it is a tutorial or
 migration shim with explicit callers and a deletion target, not the architecture
 real products should copy.
+For a migration shim, the bar is higher than "maybe a consumer exists": name the
+live consumers, support window, owner, and deletion/formalization gate. If those
+cannot be proven against current call sites, the preset is deleted rather than
+documented as a compatibility surface.
+Known live surfaces to classify include `nmp-defaults` itself, `nmp-cli`
+templates/help, browser builder `start()` composition, `nmp-gallery`'s
+composition root, examples, docs, and downstream app roots. The future doc
+cannot simply say "rejected" while those surfaces keep teaching it as the normal
+production path; each surface must migrate to explicit feature composition or be
+labeled tutorial/migration with the support window and deletion gate above.
 
 `nmp init` should teach production architecture by default: explicit feature
 composition and policy builders. A separate tutorial preset can exist only when
@@ -83,6 +93,16 @@ contract, actions, event builders, and capability needs for its own domain, then
 compose those with NMP protocol features. What it must not do is push raw relay
 subscriptions, projection declarations, tag mutation, or publish routing into
 the native shell just because the feature is app-specific.
+
+This is the answer to the NDK comparison in #2313. NMP should feel like a
+one-call subscribe from Swift, Kotlin, TypeScript, or TUI after the app Rust
+crate has defined the session, but the production model is not arbitrary
+shell-authored Nostr subscriptions. If a product needs "kind 999999 from these
+authors" or "events from this relay-pinned group," the app or protocol Rust
+feature owns that descriptor once, and generated host APIs expose the pleasant
+open/close/render surface to every shell. Shell-only raw streams stay
+diagnostic, test, export, prototype, or migration tools; they are not the
+architecture for shipped product behavior.
 
 ## Composition Gates
 
@@ -178,6 +198,18 @@ An app developer should know:
 - whether publishing uses automatic routing, protocol-pinned routing, or an
   explicit relay override;
 - when to close query handles.
+
+For custom product behavior, the developer should expect one Rust definition
+plus generated shell calls:
+
+```text
+define app/protocol Rust session once
+  -> generate Swift/Kotlin/TypeScript/TUI open/close/action helpers
+  -> shell opens the typed session and renders typed output
+```
+
+That is the "door." It is not a framework PR for every feature, and it is not a
+native callback that streams arbitrary raw events.
 
 An app developer should not need to know:
 

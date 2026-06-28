@@ -24,7 +24,7 @@ decision.
 The app receives a handle:
 
 ```text
-LiveQueryHandle {
+SessionHandle {
     query_key,
     owner_id,
     output_key,
@@ -41,6 +41,8 @@ or own durable product caches.
 choose typed per-feature open helpers, a generic descriptor API, or a hybrid, but
 the accepted shape must let NMP crates and app Rust crates define new read
 models without requiring native shells to hand-author relay subscriptions.
+The handle name above is deliberately generic: the public concept is a typed
+session lifecycle, not a new `LiveQuery` engine.
 
 The candidate should start as a small typed descriptor plus handle, not a new
 lifecycle engine. It compiles into existing or consolidated machinery:
@@ -73,6 +75,20 @@ generalize or narrow `open_feed`, `resolve_ref`, `ObservedProjectionRegistrar`,
 dependent interests, and current feature sessions first. If those can express
 the lifecycle with clearer names and smaller public API, prefer that over adding
 a public `LiveQuery` object.
+
+An NDK-style `subscribe(filter)` is a useful DX comparison, but not the
+production NMP boundary. The equivalent NMP experience is:
+
+```text
+app/protocol Rust defines typed session descriptor
+  -> generated host API exposes open/close/render helpers
+  -> NMP owns routing, replay, admission, projection, and teardown
+```
+
+A raw shell-level event stream would make the native or web shell responsible
+for protocol parsing, route policy, and read-model ownership again. That may
+exist only as diagnostic, test, export, prototype, or migration tooling with
+scope labels and deletion/formalization criteria.
 
 A custom app feature follows the same rule as a protocol feature: it owns a typed
 descriptor, source expression, output schema, reducer, route policy, and
@@ -114,6 +130,26 @@ replay             bounded replay shape and replay limit
 output_key         typed output namespace and row/delta contract
 ```
 
+Each session family must also have a contract that covers every lifecycle
+fragment named in #2316. This is not necessarily one public Rust type, but it
+must be one owned proof:
+
+| Fragment | Session contract must state |
+|---|---|
+| acquisition | what interest, ref, local index, or capability demand is opened |
+| route planning | planned, relay-pinned, private, or audited explicit route policy |
+| replay | which cached/store rows hydrate before live activation and what bounds apply |
+| live sink | which internal observed sink or reducer receives future events |
+| admission | what event/source/provenance shape is accepted and what fails closed |
+| output | output key, schema owner/version, full/delta/clear/stale-frame merge contract |
+| wakes | event/store/source/mailbox/capability changes that re-run reconciliation |
+| teardown | owner/refcount close behavior, child demand release, and clear/tombstone output |
+| errors/status | typed state emitted when source, route, replay, decode, or capability work fails |
+
+If a feature still requires a separate caller-authored interest, replay, sink,
+projection, tick observer, or close token outside that contract, the architecture
+has only renamed the old local recipe.
+
 Multiple owners may share the same `query_key`. Opening increments ownership;
 closing decrements it. The final close tears down acquisition, observed sinks,
 derived dependencies, and generated output rows. If a feature needs a visible
@@ -146,6 +182,10 @@ retry with timers.
 
 `ObservedProjection` is the safe event-to-read-model pattern used inside a live
 query. It is internal machinery, not a concept app developers assemble.
+More precisely, it may remain a feature/runtime-internal API where reusable NMP
+features compile descriptors into replay-before-live observed sessions. It must
+not be shell-facing, product-app assembly language, or a reason to preserve
+tick-polled controller behavior.
 
 High-level behavior:
 
@@ -189,12 +229,13 @@ protocol-approved admission proof; a matching `#h` tag alone is not enough.
 `ReducedSource` is the model for dynamic query inputs.
 
 Decision status: current NMP docs and code already contain `ReducedSource` and
-`open_feed`-style machinery, but the live type is feed-session shaped. The ADR
-must decide whether that model is amended, renamed, kept private, or replaced by
-a smaller shape reconciler plus dependent-interest replacement set. Until then,
-this document uses `ReducedSource` to name the dynamic-source invariant, not to
-assert that the current type shape is settled or that a new public primitive is
-required.
+`open_feed`-style machinery, but the live type is private native-feed compiler
+machinery. Pointer-source, browser feed, defaults runtimes, and active-account
+controllers have adjacent source-reconciliation patterns. The ADR must decide
+whether these are semantically the same family before extracting anything
+generic. Until then, this document uses `ReducedSource` to name the
+dynamic-source invariant, not to assert that the current type shape is settled
+or that a new public primitive is required.
 
 Examples:
 
@@ -349,8 +390,8 @@ Gallery is the first component-ref proof, and it must include every live shell:
 |---|---|---|
 | iOS/Swift | `refs.profile`, `refs.event`, embed envelopes, sign-in surface | shell URI/ref adapter should become generated descriptor/adapter glue |
 | Android/Kotlin | `refs.profile`, `refs.event.envelopes`, NIP-55 signer bridge | auth/signing proof is strongest here; it cannot stand in for other shells |
-| Web/TypeScript | `web/nmp-gallery` runtime and component registry | wasm build is deferred; raw worker `resolve_ref` messages and retry/reclaim loop remain |
-| TUI | pushed snapshots and visible-profile claims | render-time URI/ref adapter must stay lifecycle-only, not protocol policy |
+| Web/TypeScript | `web/nmp-gallery` runtime and component registry | browser runtime exists, but gallery packaging/CI is still deferred; raw worker `resolve_ref` messages and retry/reclaim loop remain |
+| TUI | pushed snapshots and visible-profile claims | render-time URI/ref adapter and smoke retry behavior must stay lifecycle-only, not protocol policy |
 | Desktop | live bridge and embed/profile display | claim-every-render/tick behavior must be replaced by deterministic owner lifecycle |
 
 ## Composite Sessions

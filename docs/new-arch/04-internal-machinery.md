@@ -21,10 +21,12 @@ opens a live query
 Protocol crates own the meaning of protocol queries. The live query machinery
 owns lifecycle, replay ordering, dependency tracking, and teardown.
 
-The current `ObservedProjection` path is the closest internal primitive and
-should be reused. The goal is not a parallel read path or a broad new engine. It
-is to prove that a small typed descriptor can compile into the safe recipe
-feature authors need.
+The current `ObservedProjection` path contains the closest replay-before-live
+and scoped-admission invariant. Reuse or narrow that invariant first; do not
+preserve tick-polled `ActiveObservedProjection` controller semantics just because
+they share the name. The goal is not a parallel read path or a broad new engine.
+It is to prove that a small typed descriptor can compile into the safe recipe
+feature authors need while deleting polling-based lifecycle repair.
 
 Dynamic source implementations should be consolidated only as far as their
 semantics truly match. Start with one private shape reconciler around
@@ -279,7 +281,7 @@ workstreams that converge into the same endpoint:
 | Workstream | Scope | Must deliver before signoff |
 |---|---|---|
 | A. Baseline and ratchets | old public doors, tick users, direct publish paths, downstream native policy | counted baseline, owner for each count, and CI/doctrine gate for "does not increase" |
-| B. Composition/defaults | `register_defaults`, `nmp init`, app roots, protocol feature installers | explicit feature composition as the production model; presets labeled tutorial/compatibility or deleted |
+| B. Composition/defaults | `register_defaults`, `nmp init`, app roots, protocol feature installers | explicit feature composition as the production model; presets labeled tutorial/compatibility with live consumers, support window, owner, and deletion/formalization gate, or deleted |
 | C. Session descriptor | one typed lifecycle owner over acquisition, replay, sink, output, and teardown | one simple real session migrated without a new engine or public `ObservedProjection` API |
 | D. Dynamic sources | follow/list/group/thread/embed source sets | private reconciler proof for source arrival, withdrawal, empty-source fail-closed, fallback, and teardown |
 | E. Output/projection contract | projection ownership, schema/version, sidecars, host caches | one owner per output key, collision failure, shared merge semantics across generated/host adapters |
@@ -327,10 +329,10 @@ concept and public door:
 
 | Surface | Target disposition | Required evidence |
 |---|---|---|
-| `register_defaults()` | production use rejected; tutorial/migration shim only if retained | live callers, generated scaffold behavior, deletion target, scaffold gate change |
+| `register_defaults()` | production use rejected; tutorial/migration shim only if retained | live callers, support window, owner, generated scaffold behavior, deletion/formalization target, scaffold gate change |
 | `nmp init` scaffold | production scaffold emits explicit feature composition | `nmp-cli` template and `dx_scaffold_gate` updated or separate tutorial command created |
 | raw `open_interest` / `nmp_app_open_interest` | substrate/protocol/diagnostic/migration only | current callers classified; public docs stop marking it as product PASS without scope |
-| `open_feed`, `open_observed_projection`, `resolve_ref` | existing surfaces to unify under typed descriptor contract | contract map showing which lifecycle rows they already own and which they miss |
+| `NmpApp::open_feed`, `open_observed_projection`, `nmp_app_open_interest`, `resolve_ref` | existing surfaces to unify under typed descriptor contract | contract map showing which lifecycle rows they already own and which they miss; do not invent migration evidence for stale or missing symbols |
 | `ObservedProjection` | private replay-before-live machinery | minimal proof that descriptor can reuse it without exposing it |
 | `ReducedSource` / source reconcilers | private until cross-family proof | feed, pointer, account, group/list/thread sources compared by semantics |
 | projection tiers / declared projections | private executor/cost machinery | output ownership and session-scoped demand plan |
@@ -353,6 +355,9 @@ the full migration is done:
   named substrate/protocol-internal/diagnostic/test/migration scope.
 - New app-facing examples and templates must not teach `register_defaults()` as
   the production mental model.
+- New compatibility shims or aliases must not be added unless the caller list,
+  support window, owner, and deletion/formalization gate are declared at the same
+  time.
 - New output keys must declare one owner, schema version, merge contract, and
   collision behavior.
 - New dynamic sources must specify empty-source behavior and must fail closed
@@ -380,13 +385,16 @@ teaching `register_defaults()` as production architecture, tick observers,
 `declare_consumed_projections` app-facing docs, duplicate explicit-relay publish
 representations, native-owned relay/policy/tag construction, hand-authored
 projection merge caches, downstream direct NDK/FFI publish paths,
+protocol read/projection producers registered from app or FFI glue instead of
+their reusable NMP feature crate, especially `nmp.follow_list`,
 `@nostr-dev-kit/ndk` product fetch/sign/publish usage, direct `NDKEvent`
 construction, `event.publish`/raw relay publish calls, native-owned network
 policy such as `hl.network.wifi_only`, shell-side `tagsJson`/`p:`/`e:`/`a:`
 protocol parsing, fire-and-forget event writes, unsupported local-key/NIP-46
-bridges in web runtimes, and public `nmp_app_open_feed` or
-`nmp_app_open_interest` app doors. The first PR should add ratchets so these
-counts cannot grow.
+bridges in web runtimes, `NmpApp::open_feed`, stale `nmp_app_open_feed`
+docs/tests, and `nmp_app_open_interest` app doors. The first PR should add
+ratchets so these counts cannot grow and stale surface names do not become fake
+compatibility requirements.
 Gates: `cargo test -p nmp-testing --test doctrine_lint_smoke` and
 `cargo test -p nmp-testing --test feed_public_surface_retired`.
 
@@ -398,6 +406,10 @@ real session as proof. Acceptance: replay-before-live and close-both invariants
 still pass in observer replay, descriptor idempotence, reducer parity, and
 `nmp-defaults` feed open/close tests; no new public API is taught. The proof
 must cover relay pins, cache replay, source changes, and open/close teardown.
+The migrated session must publish a session-family contract covering
+acquisition, route planning, replay, live sink, admission, output, wakes,
+teardown, and error/status state. If any fragment remains caller-authored
+outside that contract, P1 has not solved #2316.
 It may use an existing feed/search/group-style observed session, but it should
 not also claim gallery/component-ref migration. P1 proves the lifecycle owner;
 P4 proves the first cross-shell ref/embed migration.
@@ -431,12 +443,14 @@ retry timers, claim-every-render behavior, and duplicated URI decoding where the
 Rust path owns it. This is the first cross-shell proof because gallery exercises
 Swift, Kotlin, web, TUI, and desktop rendering without app-domain policy.
 Include gallery auth/signing component coverage. The live tree already has a
-gallery web root; the proof must account for the deferred wasm build, raw worker
-ref API, and web retry/reclaim loop instead of pretending the web shell does not
-exist. Fix ref/projection retry timers and desktop/TUI claim-on-render or
-claim-on-tick behavior before treating the registry as a copyable downstream
-template. Copy-to-clipboard timers are presentation affordances; they are not
-the architecture failure unless they start owning product state.
+gallery web root and browser runtime crate; the proof must account for deferred
+gallery packaging/CI, `web/nmp-gallery build:wasm`, raw worker ref API, silent
+runtime degradation, and web retry/reclaim loop instead of pretending the web
+shell does not exist. Fix ref/projection retry timers and desktop/TUI
+claim-on-render or claim-on-tick behavior before treating the registry as a
+copyable downstream template. Copy-to-clipboard timers are presentation
+affordances; they are not the architecture failure unless they start owning
+product state.
 P4 starts only after P1 proves the descriptor lifecycle and P3 proves output
 ownership/merge semantics. It is the first real migrated session family across
 all shells, not a prerequisite for the minimal descriptor proof.
@@ -487,8 +501,8 @@ Required Highlighter matrix shape:
 
 | Flow family | Current path to classify | Target proof | Deletion/exception criterion |
 |---|---|---|---|
-| Web onboarding/profile | NDK event build/sign/publish, local signer/session storage | typed Rust action/builder, signer status, route provenance, cache policy | NDK path deleted, or ADR labels SSR/diagnostic/out-of-scope with owner and removal gate |
-| Web rooms/invites/members/chat | NDK relay sets, `$subscribe`, direct publish, tag parsing | NIP-29 group session/action through Rust, kind-agnostic read, host route status | direct NDK group runtime count ratchets down to zero unless explicitly excluded |
+| Web onboarding/profile | NDK event build/sign/publish, `$subscribe`/`fetchEvents`, local signer/session storage | typed Rust action/builder, signer status, route provenance, cache policy | NDK path deleted, or ADR labels SSR/diagnostic/out-of-scope with owner and removal gate |
+| Web rooms/invites/members/chat | NDK relay sets, `$subscribe`, direct sign/publish, tag parsing | NIP-29 group session/action through Rust, kind-agnostic read, host route status | direct NDK group runtime count ratchets down to zero unless explicitly excluded |
 | Highlights/comments/capture/share | TS/Swift tag walkers, `tagsJson`, raw comments/replies | Rust descriptors for NIP-10/NIP-22/article/highlight refs and typed publish status | semantic parsing removed from shells; presentation-only transforms documented |
 | Blossom/NIP-05/search/SSR | web direct fetch/cache/publish paths | typed capability/result or labeled SSR cache boundary | cache/write owner named; no hidden product truth in web storage |
 | Signer/session/offline policy | web/local/native signer inference and Wi-Fi/cache policy | Rust-owned signer/offline/cache state plus raw native capability facts | shells stop deciding signer completion, retry, route, or offline eligibility |
@@ -517,10 +531,10 @@ Required Podcast matrix shape:
 |---|---|---|---|
 | Playback/queue/gestures | Swift state, remote/headphone gestures, App Group mirrors | Rust-owned playback/queue state; native reports raw media/command facts | Swift can render/execute only; no queue mutation or gesture policy outside Rust |
 | Feed/subscription/catalog/search/transcripts | app Rust plus Swift stores/import surfaces | app Rust sessions/actions and capability results; no NMP podcast nouns | native DB/UserDefaults classified as render/import cache or deleted |
-| Widget/AppIntent/Siri/CarPlay/remote/LiveActivity/Handoff | UI-process singleton, polling, App Group snapshots, OS surfaces | service/app-lifetime sessions or typed capability results; cold-start proof | no `KernelModel.shared` correctness dependency; no polling wait loop |
-| NIP-F4/Blossom publish | constructed JSON, `relay_pending`, explicit write relays/server lists | build/sign/route/store/publish/status with route/server provenance | user-facing e2e proves ack/error/retry/exhausted status; stale diagnostics deleted |
-| Signers/relays/settings | local, NIP-46, NIP-55, per-podcast key, agent, legacy relay settings | one signer/status/route provenance model | native no longer infers signer timeout, relay policy, or publish success |
-| Generated app APIs | hand-authored C/Swift action glue | generated or contract-tested typed app APIs | hand glue is app-local and non-protocol, or generated/drift-gated |
+| Widget/AppIntent/Siri/CarPlay/remote/LiveActivity/Handoff | UI-process singleton, `KernelModel.shared`, polling, App Group snapshots, OS surfaces | service/app-lifetime sessions or typed capability results; cold-start proof | no `KernelModel.shared` correctness dependency; no polling wait loop |
+| NIP-F4/Blossom publish | constructed JSON, `relay_pending`, `publish_dispatched`, explicit write relays/server lists | build/sign/route/store/publish/status with route/server provenance and key-storage capability | user-facing e2e proves ack/error/retry/exhausted status; stale diagnostics deleted |
+| Signers/relays/settings | local, NIP-46, NIP-55, per-podcast key, agent, legacy relay settings, plaintext key stores | one signer/status/route provenance model plus secure key capability | native no longer infers signer timeout, relay policy, key ownership, or publish success |
+| Generated app APIs | hand-authored C/Swift action glue, JSON/pointer FFI, direct `KernelModel.shared` handles | generated or contract-tested typed app APIs | hand glue is app-local and non-protocol, or generated/drift-gated; event-producing APIs use typed publish/status |
 
 `nmp-gallery` must express component refs, embeds, auth/signing components, and
 renderer caches without shell protocol state, raw worker ref protocols,
@@ -589,12 +603,18 @@ mode before implementation starts.
 | FF-015 | Session wake fanout is bounded. | observer lists, logical-interest registries, source reconcilers, downstream ref claims | each migrated session family declares max wake scope or measured fanout budget | reactivity benchmark or targeted stress test |
 | FF-016 | Active-session memory scales with open owners, not event history. | ref caches, feed sessions, projection caches, gallery component refs | memory bound documented and tested for repeated open/close and embed storms | leak/refcount stress test |
 | FF-017 | FFI/update cadence is coalesced and bounded. | snapshot tick observers, UpdateFrame emission, downstream render caches | no migrated view emits above view budget or serializes one frame per event without proof | update cadence benchmark or fixture |
+| FF-018 | Every accepted session family has one lifecycle contract. | P1/P4/P5/P7 migrated sessions and current hand-wired open/replay/projection recipes | acquisition, route, replay, live sink, admission, output, wakes, teardown, and error/status are owned by one session contract | `live_query_descriptor_contract` plus per-session contract tables |
+| FF-019 | Default public author reads use planned outbox routing. | feed/search/ref sessions, `GenericOutboxRouter`, mailbox cache, direct NDK comparisons | author-scoped public reads prove NIP-65/mailbox routing, mailbox-change replanning, unified output delivery, and explicit exceptions for relay-pinned/private/search routes | `read_route_planning_contract` or targeted planner/session tests |
+| FF-020 | Reusable protocol projections are owned by their protocol/NMP feature crate. | `nmp.follow_list` and other protocol projections registered from app/FFI glue | app crates consume protocol outputs; they do not register reusable protocol read models | architecture ratchet over projection owner registry and app/FFI call sites |
+| FF-021 | Legacy aliases and compatibility shims require live consumers and deletion gates. | JSON dispatch, defaults presets, old open/read/publish doors, stale aliases, downstream-claimed callers | no retained shim lacks caller list, support window, owner, and deletion/formalization criterion; zero live consumers means delete | `compatibility_surface_contract` plus live call-site audit |
 
 Useful baseline commands:
 
 ```bash
 rg -n "nmp_app_open_interest|open_interest" crates apps docs --glob '!target/**'
 rg -n "register_defaults|declare_consumed_projections" crates docs apps --glob '!target/**'
+rg -n "nmp\\.follow_list|follow_list|register_.*projection|open_observed_projection" crates apps docs --glob '!target/**'
+rg -n "GenericOutboxRouter|MailboxCache|Nip65|NIP-65|outbox" crates apps docs --glob '!target/**'
 rg -n "register_snapshot_tick_observer|sleep|Timer|setInterval" crates apps /path/to/downstream --glob '!target/**'
 rg -n "PublishTarget::Explicit|PublishRaw|UnsignedEventToRelays" crates --glob '!target/**'
 rg -n "short_npub|format_ago|SF Symbol|status_label|display_label|avatar_initials" crates docs --glob '!target/**'
@@ -654,6 +674,13 @@ cargo test -p nmp-testing --test downstream_architecture_acceptance
 cargo test -p nmp-testing --test service_session_contract
 cargo test -p nmp-testing --test gallery_web_runtime_contract
 cargo test -p nmp-testing --test highlighter_web_runtime_ratchet
+cargo test -p nmp-testing --test highlighter_component_session_contract
+cargo test -p nmp-testing --test podcast_nipf4_publish_contract
+cargo test -p nmp-testing --test app_feature_api_classification
+cargo test -p nmp-testing --test no_polling_downstream_gate
+cargo test -p nmp-testing --test read_route_planning_contract
+cargo test -p nmp-testing --test protocol_projection_ownership_contract
+cargo test -p nmp-testing --test compatibility_surface_contract
 cargo test -p nmp-testing --test session_wake_fanout_contract
 cargo test -p nmp-testing --test active_session_memory_contract
 cargo test -p nmp-testing --test update_cadence_contract
@@ -732,9 +759,17 @@ The destination is not reached until these are true:
   milestone is allowed to add a second route, projection, or publish lifecycle
   while claiming progress toward simplification.
 
-## ADR Resolution Scope
+## Candidate Direction For ADR
 
-The ADR should not reopen the core direction. This packet already resolves:
+This packet is a candidate direction for the ADR, not the accepted ADR. It
+should be the starting point because it is grounded in #2313/#2316, current
+code, downstream app audits, and prior transcript evidence, but P-1/P1 evidence
+may still reject or narrow parts of it. The ADR should preserve, amend, or
+discard these candidate decisions explicitly instead of treating this directory
+as authority.
+
+Candidate decisions that now have enough evidence to carry forward unless P-1/P1
+contradicts them:
 
 - app-facing reads use typed sessions/descriptors, not raw `open_interest`;
 - default public reads are planned/outbox-routed unless a descriptor explicitly

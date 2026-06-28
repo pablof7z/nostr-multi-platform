@@ -115,8 +115,11 @@ protocol envelope rules that may depend on the publish call:
 - NIP-22 reply helpers can choose reply tags based on the target kind.
 - NIP-65 relay-list publishing can enforce the correct public route policy.
 - Client identity finalization can append the app's declared NIP-89 client tag to
-  eligible public events from one composition-root declaration, while User-Agent
-  uses the same identity through the transport path.
+  eligible public-routable content events from one composition-root declaration,
+  while User-Agent uses the same identity through the transport path. It must
+  not mutate DMs, gift wraps, private envelopes, imported/pre-signed events, or
+  reserved/profile/metadata events unless a protocol-specific ADR explicitly
+  allows that surface.
 - Podcast publishing can construct NIP-F4 show/feed/episode/list events, attach
   Blossom references, select per-podcast or active-account signers, and preserve
   explicit write-relay provenance.
@@ -125,6 +128,10 @@ protocol envelope rules that may depend on the publish call:
 Finalization must fail before signing if the required context is missing. A
 group publish without a group route, an unknown private inbox, or an unsupported
 explicit relay policy should not create a signed event.
+If a protocol finalizer needs recent context, it reads that context through the
+Rust store/query seam. NIP-29 previous-tag anti-spam context, for example, must
+come from a kernel/store-backed query over group events, not from a
+`RecentGroupEvents`-style side cache owned by the action module or shell.
 Generic raw publishing cannot silently bypass protocol invariants. A NIP-29
 group write is not `comment_in_group`, `reply_in_group`, or a namespace of
 kind-specific actions; it is one kind-agnostic content publish surface over an
@@ -284,16 +291,20 @@ Builder examples:
 
 ```text
 react_to(event, "+")
-reply_to(event).content("nice")
-article().title("Hello World").content(body)
-nip29.publish_group_event(group_id, article().title("Hello World").content(body))
-nip29.publish_group_event(group_id, reply_to(event).content("nice"))
+reply_to(event).content("nice")                 # NIP-10/NIP-22/app reply builder
+article().title("Hello World").content(body)    # NIP-23/app article builder
+nip29.publish_group_event(group_id, article_draft)
+nip29.publish_group_event(group_id, reply_draft)
 podcast.publish_episode(show_id, episode_id, signer, relays)
 highlighter.share_artifact_to_room(artifact_id, room_id)
 ```
 
 These examples are interface sketches. The settled API should prefer generated,
 typed, field-complete builders over JSON action strings or raw tag mutation.
+The layering is the point: reply, reaction, article, podcast, and app-specific
+builders construct drafts; NIP-29 only finalizes an already-constructed draft for
+group context and host routing. NIP-29 must not depend on NIP-22 or learn reply
+semantics to publish a reply-shaped draft into a group.
 App-owned raw event templates are acceptable only inside Rust typed actions or
 generated builders. They may construct app-specific kinds such as highlights,
 comments, lists, or podcast events, but they still must carry correlation,
