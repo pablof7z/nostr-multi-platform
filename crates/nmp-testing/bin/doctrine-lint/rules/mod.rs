@@ -30,4 +30,5 @@ pub mod d7;
 pub mod d8;
 pub mod d9;
 pub mod no_raw_tap_reintroduction;
+pub mod product_raw_read;
 pub mod split_call;

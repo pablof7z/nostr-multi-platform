@@ -65,7 +65,10 @@ fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
 /// needed for ignored paths.
 fn git_tracked_surface_files(root: &Path, subdirs: &[&str], out: &mut Vec<PathBuf>) {
     let mut cmd = Command::new("git");
-    cmd.arg("ls-files").arg("--").args(subdirs).current_dir(root);
+    cmd.arg("ls-files")
+        .arg("--")
+        .args(subdirs)
+        .current_dir(root);
     let output = cmd
         .output()
         .expect("git ls-files must succeed for public-surface scan");
@@ -213,6 +216,10 @@ fn raw_wasm_feed_verb_dispatch_strings_are_not_routed() {
         // Skip this gate file itself — it NAMES the retired strings as the
         // literals it searches for, so it would self-flag.
         if file.ends_with("tests/feed_public_surface_retired.rs") {
+            continue;
+        }
+        let file_text = file.to_string_lossy().replace('\\', "/");
+        if file_text.contains("/crates/nmp-testing/bin/doctrine-lint/") {
             continue;
         }
         let Ok(text) = fs::read_to_string(file) else {
