@@ -23,8 +23,10 @@ use nmp_core::actor::ActionLedgerCommand;
 #[cfg(feature = "native")]
 use nmp_core::actor::RefsCommand;
 use nmp_core::substrate::{ProtocolCommand, ProtocolCommandContext, ProtocolCommandError};
+use nmp_core::ui_token::UiToken;
 
 pub mod parse;
+pub mod ui_codes;
 
 // The blocking `.well-known/nostr.json` GET uses `ureq` + `std::thread::spawn`
 // — native only (mirrors `nmp_nip57::lnurl`, which is itself `#[cfg(native)]`).
@@ -62,7 +64,7 @@ const NIP05_RESOLVE_CONSUMER_ID: &str = "nip05-reverse-resolve";
 /// [`ActorCommand::ResolveRef`] (`RefNamespace::Profile`), so the resolved
 /// profile lands in the `refs.profile` projection exactly as a tapped
 /// `nmp_app_resolve_ref` call would. On any failure it emits a diagnostic
-/// [`ActorCommand::ShowToast`] (and, when a `correlation_id` is present, a
+/// [`ActorCommand::ShowErrorToken`] (and, when a `correlation_id` is present, a
 /// `RecordActionFailure`) — the failure is never swallowed.
 #[derive(Debug)]
 pub struct ResolveNip05Command {
@@ -100,16 +102,18 @@ impl ProtocolCommand for ResolveNip05Command {
             let (name, domain) = match validated {
                 Some(parts) => parts,
                 None => {
-                    let message =
-                        format!("NIP-05 lookup rejected `{name}@{domain}`: not a valid identifier");
-                    ctx.send(ActorCommand::ShowToast {
-                        message: message.clone(),
-                    });
+                    let token = UiToken::error(
+                        ui_codes::LOOKUP_INVALID,
+                        "That NIP-05 identifier isn't valid.",
+                    )
+                    .with_subject(format!("{name}@{domain}"));
+                    let prose = token.fallback_prose().to_string();
+                    ctx.send(ActorCommand::ShowErrorToken { token });
                     if let Some(cid) = correlation_id {
                         ctx.send(ActorCommand::ActionLedger(
                             ActionLedgerCommand::RecordFailure {
                                 correlation_id: cid,
-                                reason: message,
+                                reason: prose,
                             },
                         ));
                     }
@@ -143,16 +147,22 @@ impl ProtocolCommand for ResolveNip05Command {
                     Err(reason) => {
                         // D6 — surface the failure as observable state; never
                         // swallow it. The reason is human-readable and never
-                        // echoes the response body verbatim.
-                        let message = format!("NIP-05 lookup failed for {name}@{domain}: {reason}");
-                        let _ = worker_tx.send(ActorCommand::ShowToast {
-                            message: message.clone(),
-                        });
+                        // echoes the response body verbatim. issue #1682: emit
+                        // a structured token (machine code + English fallback)
+                        // so the shell renders localized prose.
+                        let token = UiToken::error(
+                            ui_codes::LOOKUP_FAILED,
+                            "NIP-05 lookup failed.",
+                        )
+                        .with_subject(format!("{name}@{domain}"))
+                        .with_detail(reason);
+                        let prose = token.fallback_prose().to_string();
+                        let _ = worker_tx.send(ActorCommand::ShowErrorToken { token });
                         if let Some(cid) = correlation_id {
                             let _ = worker_tx.send(ActorCommand::ActionLedger(
                                 ActionLedgerCommand::RecordFailure {
                                     correlation_id: cid,
-                                    reason: message,
+                                    reason: prose,
                                 },
                             ));
                         }
@@ -171,16 +181,18 @@ impl ProtocolCommand for ResolveNip05Command {
                 domain,
                 correlation_id,
             } = *self;
-            let message =
-                format!("NIP-05 lookup for {name}@{domain} requires the native HTTP fetcher");
-            ctx.send(ActorCommand::ShowToast {
-                message: message.clone(),
-            });
+            let token = UiToken::error(
+                ui_codes::LOOKUP_NATIVE_UNAVAILABLE,
+                "NIP-05 lookup isn't available in this build.",
+            )
+            .with_subject(format!("{name}@{domain}"));
+            let prose = token.fallback_prose().to_string();
+            ctx.send(ActorCommand::ShowErrorToken { token });
             if let Some(cid) = correlation_id {
                 ctx.send(ActorCommand::ActionLedger(
                     ActionLedgerCommand::RecordFailure {
                         correlation_id: cid,
-                        reason: message,
+                        reason: prose,
                     },
                 ));
             }

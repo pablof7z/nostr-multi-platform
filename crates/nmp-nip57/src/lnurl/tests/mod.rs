@@ -29,6 +29,7 @@ use nmp_core::substrate::{
     ProtocolCommandContextParts, RecipientRelayLookup,
 };
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
+use nostr::Keys;
 
 mod bolt11_validation;
 mod port_run;

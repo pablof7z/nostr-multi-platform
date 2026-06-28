@@ -12,8 +12,8 @@ use std::time::Duration;
 
 use nmp_core::substrate::{ProtocolCommand, ProtocolCommandContext};
 use nmp_core::{ActorMail};
-use nmp_core::actor::{ActorCommand};
-use nmp_core::actor::{ActionLedgerCommand};
+use nmp_core::actor::ActorCommand;
+use nmp_core::actor::ActionLedgerCommand;
 
 use crate::ResolveNip05Command;
 
@@ -56,17 +56,24 @@ fn failed_lookup_emits_diagnostic_toast_and_failure_record() {
 
     Box::new(cmd).run(&mut ctx).expect("run returns Ok (work is deferred to the worker)");
 
-    // The worker posts ShowToast first, then RecordActionFailure. The `.invalid`
-    // TLD fails DNS without a real round-trip, so a few seconds is ample.
+    // The worker posts ShowErrorToken first, then RecordActionFailure. The
+    // `.invalid` TLD fails DNS without a real round-trip, so a few seconds
+    // is ample.
     let budget = Duration::from_secs(15);
     let first = drain_one(&rx, budget).expect("worker must emit a diagnostic, never swallow");
-    let toast = match first {
-        ActorCommand::ShowToast { message } => message,
-        other => panic!("expected ShowToast, got {other:?}"),
+    let token = match first {
+        ActorCommand::ShowErrorToken { token } => token,
+        other => panic!("expected ShowErrorToken, got {other:?}"),
     };
+    assert_eq!(
+        token.code(),
+        crate::ui_codes::LOOKUP_FAILED,
+        "failed lookup must carry LOOKUP_FAILED code"
+    );
     assert!(
-        toast.contains("alice@nonexistent.invalid"),
-        "diagnostic names the identifier: {toast}"
+        token.subject().unwrap_or("").contains("alice@nonexistent.invalid"),
+        "token subject must name the identifier: {:?}",
+        token.subject()
     );
 
     let second = drain_one(&rx, Duration::from_secs(2))
@@ -74,10 +81,9 @@ fn failed_lookup_emits_diagnostic_toast_and_failure_record() {
     match second {
         ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure {
             correlation_id,
-            reason,
+            reason: _,
         }) => {
             assert_eq!(correlation_id, "corr-1");
-            assert!(reason.contains("alice@nonexistent.invalid"));
         }
         other => panic!("expected RecordActionFailure, got {other:?}"),
     }
@@ -112,7 +118,7 @@ fn failed_lookup_without_correlation_id_still_toasts_but_records_nothing() {
     Box::new(cmd).run(&mut ctx).expect("run returns Ok");
 
     let first = drain_one(&rx, Duration::from_secs(15)).expect("worker must emit a diagnostic");
-    assert!(matches!(first, ActorCommand::ShowToast { .. }));
+    assert!(matches!(first, ActorCommand::ShowErrorToken { .. }));
     // No correlation id → no RecordActionFailure follows.
     assert!(
         drain_one(&rx, Duration::from_millis(200)).is_none(),

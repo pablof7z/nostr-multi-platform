@@ -187,7 +187,7 @@ fun TimelineScreen(model: KernelModel, modifier: Modifier = Modifier) {
                             ?: s.activeAccount,
                         hasAccount = s.activeAccount.isNotEmpty(),
                         hasSnapshot = snapshotCount > 0,
-                        lastErrorToast = s.lastErrorToast,
+                        lastErrorToast = s.localizedErrorToast,
                         onCreateAccount = { model.createLocalAccount() },
                     )
                 } else {

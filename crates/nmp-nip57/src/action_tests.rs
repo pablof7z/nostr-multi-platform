@@ -20,8 +20,13 @@ struct StubPaymentPort;
 
 impl PaymentPort for StubPaymentPort {
     fn pay_invoice(&self, intent: PaymentIntent) -> ActorCommand {
-        ActorCommand::ShowToast {
-            message: format!("pay {}", intent.bolt11),
+        // Test stub: return an error token (these tests assert on the emitted
+        // FetchLnurlInvoiceCommand, not on the payment command).
+        ActorCommand::ShowErrorToken {
+            token: nmp_core::ui_token::UiToken::error(
+                "stub_payment_intent",
+                format!("stub: pay {}", intent.bolt11),
+            ),
         }
     }
 }

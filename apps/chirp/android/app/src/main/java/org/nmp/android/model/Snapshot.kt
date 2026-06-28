@@ -20,10 +20,25 @@ data class KernelUpdate(
     val metrics: KernelMetricsLite? = null,
     val relayStatuses: List<RelayStatus> = emptyList(),
     val lastErrorToast: String? = null,
+    /** Stable machine code from the kernel's `last_error_category` FlatBuffers field
+     * (issue #1682 / #2285). Null when the kernel emitted no categorized error on
+     * this tick. Read [localizedErrorToast] to get the host-facing string. */
+    val lastErrorCategory: String? = null,
     val projections: SnapshotProjections? = null,
 ) {
     val activeAccount: String
         get() = projections?.activeAccount.orEmpty()
+
+    /**
+     * The host-facing error toast: the localized [lastErrorCategory] copy when
+     * the code is recognized by [UiErrorProse], else the English [lastErrorToast]
+     * fallback the wire always carries (issue #1682 / #2285). Mirrors iOS
+     * `KernelUpdate.localizedErrorToast`.
+     */
+    val localizedErrorToast: String?
+        get() = lastErrorCategory
+            ?.let { UiErrorProse.localized(it) }
+            ?: lastErrorToast
 }
 
 @Serializable
@@ -152,26 +167,6 @@ data class ActionLifecycleEntry(
         get() = reasonCode
             ?.let { UiLifecycleReasonProse.localized(it, reasonSubject) }
             ?: reason
-}
-
-/**
- * Maps a kernel `action_lifecycle` `reason_code` (#1735) to user-facing failure
- * copy — the Android parallel of iOS `UiLifecycleReasonProse`. The kernel ships a
- * stable code only for its OWN curated copy; opaque upstream / diagnostic text
- * stays prose-only (`reason_code` absent), so the caller falls back to the
- * English `reason` the wire carries. Returns `null` for an unrecognized key.
- *
- * Android has no localized string-resource layer yet, so these return inlined
- * English copy (kept in lockstep with the iOS `NSLocalizedString` defaults); the
- * surface is wire-ready for a future `R.string` migration.
- */
-object UiLifecycleReasonProse {
-    fun localized(code: String, subject: String?): String? = when (code) {
-        "lifecycle_no_active_account" -> "Sign in to an account first."
-        "lifecycle_publish_no_explicit_target" ->
-            "This private note needs an explicit relay to publish to."
-        else -> null
-    }
 }
 
 @Serializable

@@ -90,9 +90,10 @@ fn run_emits_sign_event_for_account_port_with_active_account() {
 }
 
 /// V-78 reconcile — the genuine no-account / sign-error case still fails
-/// closed: driving the port continuation with `Err(reason)` emits the toast +
-/// `RecordActionFailure` through the worker channel. (In production the
-/// dispatch arm produces this `Err` when there is no active account.)
+/// closed: driving the port continuation with `Err(reason)` emits a
+/// structured `ShowErrorToken` + `RecordActionFailure` through the worker
+/// channel. (In production the dispatch arm produces this `Err` when there
+/// is no active account.)
 #[test]
 fn continuation_err_fails_closed_with_toast_and_failure() {
     let cap = run_and_capture_port(Some("cid-none".to_string()));
@@ -103,16 +104,17 @@ fn continuation_err_fails_closed_with_toast_and_failure() {
     assert_eq!(
         sends.len(),
         2,
-        "expected ShowToast + RecordActionFailure: {sends:?}"
+        "expected ShowErrorToken + RecordActionFailure: {sends:?}"
     );
     match &sends[0] {
-        ActorCommand::ShowToast { message } => {
-            assert!(
-                message.to_lowercase().contains("zap failed"),
-                "toast must surface the zap failure: {message}"
+        ActorCommand::ShowErrorToken { token } => {
+            assert_eq!(
+                token.code(),
+                crate::ui_codes::ZAP_SIGN_FAILED,
+                "sign-failure token must carry ZAP_SIGN_FAILED code"
             );
         }
-        other => panic!("expected ShowToast, got {other:?}"),
+        other => panic!("expected ShowErrorToken, got {other:?}"),
     }
     match &sends[1] {
         ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure { correlation_id, .. }) => {
@@ -122,8 +124,9 @@ fn continuation_err_fails_closed_with_toast_and_failure() {
     }
 }
 
-/// Without a `correlation_id`, a sign-error continuation emits ONLY the toast
-/// (no `RecordActionFailure` — there is no spinner to clear).
+/// Without a `correlation_id`, a sign-error continuation emits ONLY the
+/// structured error token (no `RecordActionFailure` — there is no spinner
+/// to clear).
 #[test]
 fn continuation_err_without_correlation_emits_only_toast() {
     let cap = run_and_capture_port(None);
@@ -131,8 +134,8 @@ fn continuation_err_without_correlation_emits_only_toast() {
     cap.continuation.call(Err("no active account".to_string()));
 
     let sends: Vec<ActorCommand> = cap.worker_rx.try_iter().map(nmp_core_unwrap_mail).collect();
-    assert_eq!(sends.len(), 1, "expected only ShowToast: {sends:?}");
-    assert!(matches!(&sends[0], ActorCommand::ShowToast { .. }));
+    assert_eq!(sends.len(), 1, "expected only ShowErrorToken: {sends:?}");
+    assert!(matches!(&sends[0], ActorCommand::ShowErrorToken { .. }));
 }
 
 /// V-78 reconcile — the core proof. Whether the active account is a local
@@ -140,7 +143,7 @@ fn continuation_err_without_correlation_emits_only_toast() {
 /// `Ok(signed)` (proven backend-transparent in `nmp-core`). Driving this
 /// command's continuation with that `Ok(signed)` spawns the off-actor HTTP
 /// worker — NO synchronous fail-closed toast/failure. The worker fails at the
-/// parse-failing LNURL leg (off-thread), surfacing a `ShowToast` +
+/// parse-failing LNURL leg (off-thread), surfacing a `ShowErrorToken` +
 /// `RecordActionFailure` through the worker channel, NOT a "no local keys"
 /// rejection. This is the bunker zap working through the unified seam.
 #[test]
@@ -163,13 +166,15 @@ fn continuation_ok_spawns_worker_carrying_signed_event() {
             .expect("worker must post a terminal after the LNURL leg fails"),
     );
     match first {
-        ActorCommand::ShowToast { message } => {
-            assert!(
-                message.to_lowercase().contains("zap failed"),
-                "worker surfaces the LNURL failure (NOT a no-local-keys rejection): {message}"
+        ActorCommand::ShowErrorToken { token } => {
+            assert_eq!(
+                token.code(),
+                crate::ui_codes::ZAP_FETCH_FAILED,
+                "worker surfaces the LNURL fetch failure with ZAP_FETCH_FAILED code \
+                 (NOT a no-local-keys rejection)"
             );
         }
-        other => panic!("expected ShowToast from the worker, got {other:?}"),
+        other => panic!("expected ShowErrorToken from the worker, got {other:?}"),
     }
     // The matching RecordActionFailure follows (correlation present).
     let second = nmp_core_unwrap_mail(
