@@ -21,6 +21,7 @@ import { RefEventStore, REFS_EVENT_KEY, type ClaimedEventWire } from "./refEvent
 import { RefProfileStore } from "./refProfileStore";
 import type { ProfileWire } from "@nmp/components-web/src/user-avatar/ProfileWire";
 import type { NostrProfileHost } from "@nmp/components-web/src/user-avatar/NostrProfileHost";
+import type { EventRefResolver } from "@nmp/components-web/src/component-host/EventRefResolver";
 import type { EmbeddedEventModel } from "@nmp/components-web/src/content-kind-registry/NostrKindRegistry";
 
 export { tagValue, type ClaimedEventWire } from "./refEventStore";
@@ -33,6 +34,7 @@ export { tagValue, type ClaimedEventWire } from "./refEventStore";
 const REF_NS_PROFILE = 0;
 const REF_NS_EVENT = 1;
 const REF_SHAPE_PROFILE_REF = 0;
+const REF_SHAPE_EVENT_EMBED = 0;
 const REF_SHAPE_EVENT_RAW = 1;
 const REF_LIVENESS_CACHE_OK = 0;
 
@@ -48,6 +50,8 @@ export type RelayStatusRow = {
 export type GalleryRuntime = {
   /** The profile host wired into the registry user-* components. */
   host: NostrProfileHost;
+  /** The event-ref resolver wired into the component host provider. */
+  eventRefResolver: EventRefResolver;
   /** Boot the kernel against the given relays and return once Start is acked. */
   start(relays: { url: string; role: string }[]): Promise<void>;
   /** Reactive — current runtime status. */
@@ -80,6 +84,8 @@ export type GalleryRuntime = {
    *  `refs.event` row, keyed by `primary_id`. Undefined until the event row
    *  resolves. */
   refEventEnvelope: (primaryId: string) => EmbeddedEventModel | undefined;
+  /** Reactive — all render-facing embed envelopes decoded from `refs.event.envelopes`. */
+  refEventEmbeds: Accessor<Map<string, EmbeddedEventModel>>;
   /** Request the Rust-encoded npub for a pubkey (idempotent; fires once per
    *  pubkey). The result lands reactively in `npub(pubkey)`. */
   requestNpub: (pubkey: string) => void;
@@ -272,8 +278,34 @@ export function createGalleryRuntime(): GalleryRuntime {
     },
   };
 
+  const eventRefResolver: EventRefResolver = {
+    resolveEventRef(target): void {
+      void request({
+        type: "resolve_ref",
+        namespace: REF_NS_EVENT,
+        key: target.primaryId,
+        consumer_id: target.consumerId,
+        shape: REF_SHAPE_EVENT_EMBED,
+        liveness: REF_LIVENESS_CACHE_OK,
+        hints: target.relays,
+        event_author: target.author ?? null,
+        correlation_id: `resolve-event-embed-${claimSeq++}`,
+      });
+    },
+    releaseEventRef(target): void {
+      void request({
+        type: "release_ref",
+        namespace: REF_NS_EVENT,
+        key: target.primaryId,
+        consumer_id: target.consumerId,
+        correlation_id: `release-event-embed-${claimSeq++}`,
+      });
+    },
+  };
+
   return {
     host,
+    eventRefResolver,
     async start(relayList) {
       await helloReady;
       await request({
@@ -321,6 +353,7 @@ export function createGalleryRuntime(): GalleryRuntime {
     },
     claimedEvent: (primaryId: string) => claimedEvents().get(primaryId),
     refEventEnvelope: (primaryId: string) => refEventEnvelopes().get(primaryId),
+    refEventEmbeds: refEventEnvelopes,
     requestNpub(pubkey: string) {
       if (requestedNpubs.has(pubkey)) return;
       requestedNpubs.add(pubkey);

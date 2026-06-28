@@ -16,7 +16,7 @@
  * Rust-resolved fields into each card's model.
  */
 import type { JSX } from "solid-js";
-import { Match, Switch } from "solid-js";
+import { createContext, Match, Switch, useContext } from "solid-js";
 import { NostrArticleCard, type NostrArticleCardModel } from "../content-kind-30023/NostrArticleCard";
 import { NostrHighlightCard, type NostrHighlightCardModel } from "../content-kind-9802/NostrHighlightCard";
 import { NostrQuoteCard, type NostrQuoteCardModel } from "../content-quote-card/NostrQuoteCard";
@@ -124,6 +124,53 @@ export type EmbeddedEventModel = {
   collapseReason?: string | null;
 };
 
+export type NostrEmbeddedEventProps = {
+  event: EmbeddedEventModel;
+  /** Current unix-seconds, forwarded to the quote card's relative-time label. */
+  nowSeconds: number;
+  /**
+   * Host-resolved author byline (name + picture). The kernel-resolved
+   * projection carries `None` for the author on the non-Profile variants by
+   * design — the displaying host resolves the byline from its live
+   * `refs.profile` store and threads it here. Omit it for the highlight card,
+   * which has no byline. See {@link EmbedAuthor}.
+   */
+  author?: EmbedAuthor;
+};
+
+export interface NostrKindRegistry {
+  renderEvent(props: NostrEmbeddedEventProps): JSX.Element;
+}
+
+const DEFAULT_NOSTR_KIND_REGISTRY: NostrKindRegistry = {
+  renderEvent: (props) => <DefaultNostrEmbeddedEvent {...props} />,
+};
+
+const NostrKindRegistryContext = createContext<NostrKindRegistry>();
+
+export function createDefaultNostrKindRegistry(): NostrKindRegistry {
+  return DEFAULT_NOSTR_KIND_REGISTRY;
+}
+
+export function NostrKindRegistryProvider(props: {
+  registry: NostrKindRegistry;
+  children: JSX.Element;
+}): JSX.Element {
+  return (
+    <NostrKindRegistryContext.Provider value={props.registry}>
+      {props.children}
+    </NostrKindRegistryContext.Provider>
+  );
+}
+
+export function useOptionalNostrKindRegistry(): NostrKindRegistry | undefined {
+  return useContext(NostrKindRegistryContext);
+}
+
+export function useNostrKindRegistry(): NostrKindRegistry {
+  return useOptionalNostrKindRegistry() ?? DEFAULT_NOSTR_KIND_REGISTRY;
+}
+
 /** Coalesce nullable optional strings to `undefined` for the card models. */
 function opt(value: string | null | undefined): string | undefined {
   return value ?? undefined;
@@ -218,19 +265,11 @@ function toQuote(
   }
 }
 
-export function NostrEmbeddedEvent(props: {
-  event: EmbeddedEventModel;
-  /** Current unix-seconds, forwarded to the quote card's relative-time label. */
-  nowSeconds: number;
-  /**
-   * Host-resolved author byline (name + picture). The kernel-resolved
-   * projection carries `None` for the author on the non-Profile variants by
-   * design — the displaying host resolves the byline from its live
-   * `refs.profile` store and threads it here. Omit it for the highlight card,
-   * which has no byline. See {@link EmbedAuthor}.
-   */
-  author?: EmbedAuthor;
-}): JSX.Element {
+export function NostrEmbeddedEvent(props: NostrEmbeddedEventProps): JSX.Element {
+  return useNostrKindRegistry().renderEvent(props);
+}
+
+export function DefaultNostrEmbeddedEvent(props: NostrEmbeddedEventProps): JSX.Element {
   // `Match` narrows on its `when`, so the typed accessors below return the
   // correct projection payload (or `undefined` for the other variants, which
   // `<Show keyed>` gates the render on).
