@@ -110,3 +110,30 @@ These are expected from the ecosystem convergence between `nostr@0.44.2` (pins r
 1. **instant**: File a tracking issue against the `nostr` crate; watch for `nostr@0.45+` which should migrate to `web-time`.
 2. **paste**: Replace `paste!` macro usage in `nmp-testing` with `pastey` or `with_builtin_macros` if the crate continues to show security advisories.
 3. **deny advisories**: Once the two `ignore` IDs are added to `deny.toml [advisories].ignore`, the CI job will be fully green. Only add them after confirming no upgrade path exists.
+
+---
+
+## Post-baseline advisory: RUSTSEC-2026-0124
+
+**Advisory**: RUSTSEC-2026-0124  
+**Crate**: `libcrux-aead` v0.0.7  
+**Affected dependency chain**: `hpke-rs-libcrux` → `libcrux-aead ^0.0.7`  
+**Detected**: 2026-06 (after baseline capture)
+
+`hpke-rs-libcrux` pins `libcrux-aead ^0.0.7`. The advisory targets `libcrux-aead`
+versions below 0.0.8. A compatible `hpke-rs-libcrux` release that accepts
+`libcrux-aead 0.0.8+` had not been published at the time of issue #2204.
+
+**Current mitigation**: `cargo audit --ignore RUSTSEC-2026-0124` in
+`.github/workflows/supply-chain.yml`. This is a **temporary ignore**; it
+must be removed as soon as the Cargo.lock no longer pulls in `libcrux-aead
+0.0.7`. The `deny.toml [advisories].ignore` list is intentionally **not**
+updated for this advisory: `cargo-deny` sees it as an error on the same
+unmaintained path, but the `supply-chain.yml` `deny` job already soft-passes
+advisory errors (see job comments). Re-evaluate both the `cargo audit` ignore
+and the `deny.toml` at every quarterly supply-chain review.
+
+**Resolution path**: When `hpke-rs-libcrux` publishes a release compatible
+with `libcrux-aead 0.0.8+`, bump the transitive dep, verify `cargo audit`
+passes without `--ignore RUSTSEC-2026-0124`, and remove the ignore flag from
+`supply-chain.yml`.

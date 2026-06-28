@@ -37,11 +37,15 @@ jobs:
       - name: Run cargo audit
         # Exit 0 on warnings (unmaintained crates) to avoid blocking PRs for
         # issues with no available fix. Actual vulnerabilities still fail the
-        # build. See docs/perf/supply-chain-baseline.md for current warnings.
+        # build. See docs/perf/supply-chain-baseline.md for current warnings
+        # and the full advisory inventory including RUSTSEC-2026-0124.
         #
-        # RUSTSEC-2026-0124 currently comes from hpke-rs-libcrux's pinned
-        # libcrux-aead ^0.0.7 path; upstream has not yet published a compatible
-        # hpke-rs-libcrux release that can consume libcrux-aead 0.0.8.
+        # RUSTSEC-2026-0124 (libcrux-aead < 0.0.8) is a temporary ignore:
+        # hpke-rs-libcrux pins libcrux-aead ^0.0.7 and upstream has not yet
+        # published a compatible release for libcrux-aead 0.0.8+.
+        # REMOVE this --ignore flag as soon as Cargo.lock no longer pulls in
+        # libcrux-aead 0.0.7. See docs/perf/supply-chain-baseline.md §Post-
+        # baseline advisory: RUSTSEC-2026-0124 for the resolution path.
         run: cargo audit --ignore RUSTSEC-2026-0124
 
   deny:

@@ -1,0 +1,57 @@
+name: review-dump-gate
+
+# Enforces two "never recreate" hygiene constraints from AGENTS.md:
+#
+#   - docs/perf/codex-reviews/ must contain no committed files.
+#     AI code review output (codex reviews, direction reviews, post-merge
+#     review notes) must never be committed; actionable findings belong in
+#     GitHub Issues, lasting insights in durable docs.
+#
+#   - docs/perf/pending-user-decisions.md must not exist.
+#     The file is retired; new pending decisions belong in GitHub Issues.
+#
+# See AGENTS.md §"Planning discipline" — "Never commit code reviews."
+# See docs/retired/removed-documents.md for the retirement record.
+# See ci/check-no-review-dumps.sh for the script this workflow runs.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  review-dump-check:
+    name: No committed review dumps or retired planning surfaces
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for committed review dumps
+        run: bash ci/check-no-review-dumps.sh
+
+      - name: Smoke test — gate catches a committed review dump
+        run: |
+          tmpdir=$(mktemp -d)
+          mkdir -p "$tmpdir/docs/perf/codex-reviews"
+          echo "fake review" > "$tmpdir/docs/perf/codex-reviews/test-review.md"
+          if REPO_ROOT="$tmpdir" bash ci/check-no-review-dumps.sh 2>&1; then
+            echo "SMOKE TEST FAILED: gate did not catch the review dump" >&2
+            rm -rf "$tmpdir"
+            exit 1
+          fi
+          rm -rf "$tmpdir"
+          echo "Smoke test passed — gate correctly rejects committed review dump."
+
+      - name: Smoke test — gate catches retired pending-user-decisions
+        run: |
+          tmpdir=$(mktemp -d)
+          mkdir -p "$tmpdir/docs/perf"
+          echo "decisions" > "$tmpdir/docs/perf/pending-user-decisions.md"
+          if REPO_ROOT="$tmpdir" bash ci/check-no-review-dumps.sh 2>&1; then
+            echo "SMOKE TEST FAILED: gate did not catch pending-user-decisions" >&2
+            rm -rf "$tmpdir"
+            exit 1
+          fi
+          rm -rf "$tmpdir"
+          echo "Smoke test passed — gate correctly rejects pending-user-decisions."
