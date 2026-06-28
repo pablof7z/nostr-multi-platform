@@ -42,6 +42,7 @@
 //! - the kernel fan-out integration: `kernel/event_observer.rs`
 //! - a host registering `ObservedProjection` through `ObservedProjectionRegistrar`
 
+pub mod active_observed_projection;
 mod action;
 mod action_context;
 mod app_host;
@@ -183,6 +184,8 @@ pub use routing_trace::{
     SubscriptionTrace,
 };
 pub use view::{EventId, KernelEvent, ProjectionChange, ViewContext, ViewDependencies};
+
+pub use active_observed_projection::ObservedProjectionReconciler;
 
 // NIP-10 / tag codec lives in `crate::tags` (a protocol codec, like nip19 /
 // nip21 — not a per-kind decoder, so D0-clean). Re-exported here so the

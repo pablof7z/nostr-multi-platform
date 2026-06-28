@@ -1,15 +1,15 @@
-//! Unit tests for the NIP-51 mute-list active observed-projection reconciler.
+//! Unit tests for the NIP-51 mute-list observed-projection reconciler.
 
 use std::sync::{Arc, Mutex};
 
 use nmp_core::slots::ActiveAccountSlot;
-use nmp_core::substrate::{KernelEvent, ObservedProjection, ObservedProjectionRegistrar};
+use nmp_core::substrate::{
+    KernelEvent, ObservedProjection, ObservedProjectionReconciler, ObservedProjectionRegistrar,
+};
 use nmp_core::{ObservedProjectionId, ObservedProjectionSink};
 use nmp_nip51::active_mute_list_interest;
 use nmp_planner::InterestShape;
 use nostr::Keys;
-
-use super::active_observed_projection::ActiveObservedProjection;
 
 #[derive(Clone)]
 struct OpenRecord {
@@ -68,20 +68,23 @@ impl ObservedProjectionSink for NoopSink {
 }
 
 fn controller() -> (
-    ActiveObservedProjection,
+    ObservedProjectionReconciler,
     ActiveAccountSlot,
     Arc<RecordingRegistrar>,
 ) {
     let active_pubkey: ActiveAccountSlot = Arc::new(Mutex::new(None));
     let registrar = Arc::new(RecordingRegistrar::default());
-    let controller = ActiveObservedProjection::new(
-        Arc::clone(&active_pubkey),
+    let slot = Arc::clone(&active_pubkey);
+    let controller = ObservedProjectionReconciler::new(
         registrar.clone(),
         Arc::new(NoopSink),
         "nmp.nip51.mute_list",
         1,
         128,
-        Arc::new(|pubkey| active_mute_list_interest(pubkey).shape),
+        Arc::new(move || {
+            let pubkey = slot.lock().ok()?.clone()?;
+            Some(active_mute_list_interest(&pubkey).shape)
+        }),
     );
     (controller, active_pubkey, registrar)
 }
@@ -140,6 +143,32 @@ fn sign_out_closes_observer_once() {
 
     controller.sync();
     assert_eq!(registrar.closed(), vec![first_id], "signed-out idle tick");
+}
+
+/// Verify the identity-change callback drives the open without any tick firing.
+///
+/// Wire a callback that calls `sync()` directly (mimicking
+/// `register_identity_change_observer`), sign in, fire the callback once, and
+/// assert `current_id()` is non-zero — no tick needed.
+#[test]
+fn identity_change_callback_opens_without_tick() {
+    let (controller, slot, registrar) = controller();
+
+    // Wire the identity-change callback.
+    let controller_for_cb = controller.clone();
+    let identity_cb = move || controller_for_cb.sync();
+
+    // Sign in, fire the callback directly.
+    sign_in(&slot, &Keys::generate());
+    identity_cb();
+
+    // The reconciler must have opened a projection — no tick fired.
+    assert_ne!(
+        controller.current_id().0,
+        0,
+        "identity-change callback must open the projection without a tick"
+    );
+    assert_eq!(registrar.opened().len(), 1, "exactly one open");
 }
 
 fn assert_open_for(record: &OpenRecord, pubkey: &str) {
