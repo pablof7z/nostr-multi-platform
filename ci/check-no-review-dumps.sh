@@ -11,7 +11,7 @@
 #
 #   2. docs/perf/pending-user-decisions.md must not exist.
 #      The file was a historical append-only queue; it is retired.  New
-#      pending decisions belong in GitHub Issues with status:decision label.
+#      pending decisions belong in GitHub Issues with status:needs-decision label.
 #
 # See AGENTS.md §"Planning discipline" rule "Never commit code reviews."
 #
@@ -49,7 +49,7 @@ if [[ -f "$PUD_FILE" ]]; then
     echo "" >&2
     echo "  This file is retired (docs/retired/removed-documents.md)." >&2
     echo "  New pending decisions belong in GitHub Issues" >&2
-    echo "  (label: status:decision or category:decision)." >&2
+    echo "  (label: status:needs-decision or category:decision)." >&2
     FAIL=1
 fi
 
