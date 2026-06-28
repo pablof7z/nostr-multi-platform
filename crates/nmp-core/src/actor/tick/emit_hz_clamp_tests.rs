@@ -5,9 +5,9 @@
 //! host-requested 10 kHz rate is clamped (the actor cannot spin faster than the
 //! ceiling). Split out of `tick.rs` to keep that file within its LOC ceiling.
 
-use super::{clamp_emit_hz, EMIT_HZ_MAX};
+use super::{EMIT_HZ_MAX, clamp_emit_hz};
 use crate::actor::LifecycleCommand;
-use crate::actor::{spawn_test_actor, ActorCommand, ActorMail, CommandSender};
+use crate::actor::{ActorCommand, CommandSender, spawn_test_actor};
 use crate::update_envelope::UpdateFrameBytes;
 use std::sync::mpsc;
 use std::thread;
@@ -54,8 +54,7 @@ fn clamp_emit_hz_enforces_ceiling() {
 /// catching a regression that removes the clamp.
 #[test]
 fn high_emit_hz_is_clamped_to_ceiling_end_to_end() {
-    let (inbox_tx, cmd_rx) = mpsc::channel::<ActorMail>();
-    let cmd_tx = CommandSender::new(inbox_tx);
+    let (cmd_tx, cmd_rx) = CommandSender::bounded_channel();
     let (upd_tx, upd_rx) = mpsc::channel::<UpdateFrameBytes>();
     let actor_self_tx = cmd_tx.clone();
     thread::spawn(move || spawn_test_actor(cmd_rx, actor_self_tx, upd_tx));

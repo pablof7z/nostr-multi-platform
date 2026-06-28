@@ -165,7 +165,7 @@ const USAGE: &str = r#"Usage: ffi-stress <scenario> [options]
 
 Scenarios:
   mount-unmount              S1 — view-handle wrapper refcount churn
-  dispatch-flood             S2 — mpsc backpressure (10k/s, 4 threads)
+  dispatch-flood             S2 — bounded actor command lane (10k/s, 4 threads)
   snapshot-pressure          S3 — AppUpdate::FullState serialization pressure
   reconciler-backpressure    S4 — 250 ms main-thread stall simulation
   reentrancy                 S5 — dispatch from inside reconciler callback

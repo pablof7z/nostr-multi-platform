@@ -24,12 +24,14 @@
 
 #[cfg(feature = "native")]
 use std::collections::VecDeque;
-use std::sync::mpsc::{Receiver, RecvTimeoutError, SendError, Sender, TryRecvError};
+#[cfg(feature = "native")]
+use std::sync::mpsc::Receiver;
+#[cfg(feature = "native")]
+use std::sync::mpsc::{RecvTimeoutError, TryRecvError};
 
 #[cfg(feature = "native")]
 use super::fairness::{CommandDrain, COMMAND_DRAIN_BUDGET};
 use super::ActorCommand;
-use super::LifecycleCommand;
 #[cfg(feature = "native")]
 use nmp_network::pool::PoolEvent;
 
@@ -86,86 +88,6 @@ impl std::fmt::Debug for ActorMail {
     }
 }
 
-/// Error returned when an [`ActorCommand`] cannot be delivered because the
-/// actor (and therefore its inbox receiver) is gone.
-///
-/// Carries the undelivered command back to the caller — the same contract as
-/// `std::sync::mpsc::SendError<ActorCommand>`, so existing call sites that only
-/// observe `.is_err()` / `.expect(..)` / `let _ = ..` are behaviour-preserved.
-#[derive(Debug)]
-pub struct CommandSendError(pub ActorCommand);
-
-impl std::fmt::Display for CommandSendError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("sending on a closed actor inbox")
-    }
-}
-
-impl std::error::Error for CommandSendError {}
-
-/// A cheap, cloneable handle for sending [`ActorCommand`]s into the actor
-/// inbox.
-///
-/// This is the single command-send seam (ADR-0050 §D3a). It replaces the bare
-/// `std::sync::mpsc::Sender<ActorCommand>` that used to be handed out to host
-/// code, capability/protocol workers, the broker adapter, and the actor's own
-/// self-feedback path. Because every send now lands on the *one* inbox the
-/// actor blocks on, **any** command send is a genuine wake.
-///
-/// `send` mirrors `mpsc::Sender::send`: it returns `Ok(())` on success and an
-/// error carrying the undelivered command when the actor is gone. The wrapped
-/// `Sender<ActorMail>` is `Clone`, so `CommandSender` is too — clones target
-/// the same inbox.
-#[derive(Clone, Debug)]
-pub struct CommandSender {
-    tx: Sender<ActorMail>,
-}
-
-impl CommandSender {
-    /// Wrap an inbox sender. Construction is the only place that knows the
-    /// mail type; everything downstream speaks [`ActorCommand`].
-    #[must_use]
-    pub fn new(tx: Sender<ActorMail>) -> Self {
-        Self { tx }
-    }
-
-    /// Derive the relay-side sink for the same inbox, to hand to
-    /// `Pool::new`. Relay events delivered through it land as
-    /// [`ActorMail::Relay`] on the one channel the actor blocks on.
-    #[cfg(feature = "native")]
-    pub(super) fn relay_sink(&self) -> RelayMailSink {
-        RelayMailSink::new(self.tx.clone())
-    }
-
-    /// Send a command into the actor inbox, waking the actor.
-    ///
-    /// On a closed inbox the command is handed back inside
-    /// [`CommandSendError`] (mirroring `mpsc::SendError`); the value is not
-    /// lost to the caller.
-    pub fn send(&self, command: ActorCommand) -> Result<(), CommandSendError> {
-        // `send` only ever enqueues `Command` mail, so the error payload (when
-        // the inbox is closed) is exactly the command we just tried to send.
-        // We recover it with `if let` (never `unreachable!`, D6) and fall back
-        // to a no-payload-loss `Shutdown` only on the structurally-impossible
-        // relay arm rather than panicking.
-        self.tx
-            .send(ActorMail::Command(command))
-            .map_err(|SendError(mail)| {
-                if let ActorMail::Command(cmd) = mail {
-                    CommandSendError(cmd)
-                } else {
-                    CommandSendError(ActorCommand::Lifecycle(LifecycleCommand::Shutdown))
-                }
-            })
-    }
-}
-
-// Typed dispatch methods extracted to keep inbox.rs under the 500 LOC
-// hard cap (AGENTS.md). Implements `CommandSender` typed convenience
-// methods that callers use instead of constructing `ActorCommand` variants
-// directly (#1721 slice 3b-iii).
-mod typed_sender;
-
 /// The actor's receiving end of the inbox — the loop's single blocking point.
 #[cfg(feature = "native")]
 pub(super) struct Inbox {
@@ -190,34 +112,6 @@ impl Inbox {
     /// Non-blocking drain of one mail, if any is queued.
     pub(super) fn try_recv(&self) -> Result<ActorMail, TryRecvError> {
         self.rx.try_recv()
-    }
-}
-
-/// The relay-side sink the pool's translator thread pushes into. Wraps the
-/// inbox sender and tags each [`PoolEvent`](nmp_network::pool::PoolEvent) as
-/// [`ActorMail::Relay`] so relay traffic and commands share the one waking
-/// channel.
-///
-/// Send failures are dropped: a gone receiver means the actor is gone, which
-/// is exactly the prior bare-`Sender<PoolEvent>` behaviour (the translator
-/// stops translating when its workers exit on pool shutdown).
-#[cfg(feature = "native")]
-#[derive(Clone)]
-pub(super) struct RelayMailSink {
-    tx: Sender<ActorMail>,
-}
-
-#[cfg(feature = "native")]
-impl RelayMailSink {
-    pub(super) fn new(tx: Sender<ActorMail>) -> Self {
-        Self { tx }
-    }
-}
-
-#[cfg(feature = "native")]
-impl nmp_network::pool::PoolEventSink for RelayMailSink {
-    fn send_event(&self, event: nmp_network::pool::PoolEvent) {
-        let _ = self.tx.send(ActorMail::Relay(event));
     }
 }
 

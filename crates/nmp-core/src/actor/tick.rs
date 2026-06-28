@@ -148,7 +148,7 @@ mod command_wakes_blocked_actor_tests;
 
 #[cfg(test)]
 mod tests {
-    use crate::actor::{spawn_test_actor, ActorCommand, ActorMail, CommandSender};
+    use crate::actor::{spawn_test_actor, ActorCommand, CommandSender};
     use crate::actor::{IdentityCommand, LifecycleCommand, RefsCommand};
     use crate::app::KernelAction;
     use crate::kernel::refs::{ProfileShape, RefLiveness, RefNamespace, RefShape};
@@ -190,8 +190,7 @@ mod tests {
     /// should produce additional snapshots (state has not changed).
     #[test]
     fn idle_ticks_do_not_emit_snapshots_when_state_unchanged() {
-        let (inbox_tx, cmd_rx) = mpsc::channel::<ActorMail>();
-        let cmd_tx = CommandSender::new(inbox_tx);
+        let (cmd_tx, cmd_rx) = CommandSender::bounded_channel();
         let (upd_tx, upd_rx) = mpsc::channel::<UpdateFrameBytes>();
         let actor_self_tx = cmd_tx.clone();
         thread::spawn(move || spawn_test_actor(cmd_rx, actor_self_tx, upd_tx));
@@ -223,8 +222,7 @@ mod tests {
     /// shipped-but-inert), but the periodic snapshot still flows.
     #[test]
     fn live_actor_frames_are_all_decodable_envelopes() {
-        let (inbox_tx, cmd_rx) = mpsc::channel::<ActorMail>();
-        let cmd_tx = CommandSender::new(inbox_tx);
+        let (cmd_tx, cmd_rx) = CommandSender::bounded_channel();
         let (upd_tx, upd_rx) = mpsc::channel::<UpdateFrameBytes>();
         let actor_self_tx = cmd_tx.clone();
         thread::spawn(move || spawn_test_actor(cmd_rx, actor_self_tx, upd_tx));
@@ -284,8 +282,7 @@ mod tests {
     /// cannot regress.
     #[test]
     fn view_dispatches_do_not_emit_snapshots_when_not_running() {
-        let (inbox_tx, cmd_rx) = mpsc::channel::<ActorMail>();
-        let cmd_tx = CommandSender::new(inbox_tx);
+        let (cmd_tx, cmd_rx) = CommandSender::bounded_channel();
         let (upd_tx, upd_rx) = mpsc::channel::<UpdateFrameBytes>();
         let actor_self_tx = cmd_tx.clone();
         thread::spawn(move || spawn_test_actor(cmd_rx, actor_self_tx, upd_tx));
@@ -398,8 +395,7 @@ mod tests {
     /// Verify create_account emits a snapshot with activeAccount set.
     #[test]
     fn create_account_emits_snapshot_with_active_account() {
-        let (inbox_tx, cmd_rx) = mpsc::channel::<ActorMail>();
-        let cmd_tx = CommandSender::new(inbox_tx);
+        let (cmd_tx, cmd_rx) = CommandSender::bounded_channel();
         let (upd_tx, upd_rx) = mpsc::channel::<UpdateFrameBytes>();
         let actor_self_tx = cmd_tx.clone();
         thread::spawn(move || spawn_test_actor(cmd_rx, actor_self_tx, upd_tx));

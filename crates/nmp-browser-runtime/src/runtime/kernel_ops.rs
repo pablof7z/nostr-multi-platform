@@ -238,7 +238,7 @@ impl BrowserRuntimeHandle {
         }
 
         let mut all_outbound: Vec<OutboundMessage> = Vec::new();
-        let command_sender = nmp_core::CommandSender::new(self.runtime.inbox_tx.clone());
+        let command_sender = nmp_core::CommandSender::new_bounded(self.runtime.inbox_tx.clone());
         let (cmds, protocol_outbound) = match self
             .runtime
             .reducer

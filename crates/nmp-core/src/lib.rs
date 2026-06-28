@@ -337,13 +337,14 @@ pub use actor::{CipherContinuation, SignContinuation, SignerSource};
 // ADR-0050 §D3a — the unified actor-inbox transport seam. `CommandSender` is
 // the single command-send handle passed to relay-connected hooks, DM inbox
 // chains, and similar substrate seams that post commands from worker threads.
-// `CommandSendError` is `send`'s error (mpsc-`SendError` parity).
+// `CommandSendError` is `send`'s disconnect error (mpsc-`SendError` parity);
+// full-inbox shed-load is counted and reported as `CommandSendStatus`.
 // `ActorMail` is the raw inbox discriminant — test-support only (#1608: not
 // part of the stable public API; external code that needs a test channel
 // should use `nmp_core::testing::spawn_actor()` instead).
 #[cfg(any(test, feature = "test-support"))]
 pub use actor::ActorMail;
-pub use actor::{CommandSendError, CommandSender};
+pub use actor::{CommandSendError, CommandSendStatus, CommandSender};
 
 // Every `nmp_app_*` `extern "C"` symbol that used to be re-exported from
 // `ffi::` now lives in the standalone `nmp-ffi` crate (see
@@ -400,11 +401,11 @@ pub mod __ffi_internal {
         LifecycleObserverSlot, ObservedProjectionSinkSlot, LIFECYCLE_PHASE_BACKGROUND,
         LIFECYCLE_PHASE_FOREGROUND,
     };
-    // `ActorMail` is the raw inbox discriminant used by `nmp-ffi::nmp_app_new`
-    // to create the mpsc channel that feeds the actor thread. Not part of the
+    // `ActorMail` is the raw inbox discriminant used by the bounded actor
+    // inbox shared by native/FFI runtime construction. Not part of the
     // stable public surface (#1608); exposed only through this sealed seam so
-    // the FFI layer can construct the channel without making `ActorMail` a
-    // general API export.
+    // the FFI layer can name the mail type without making `ActorMail` a general
+    // API export.
     pub use crate::actor::ActorMail;
     // V-38: `WalletStatusSlot` / `new_wallet_status_slot` moved to `nmp-nip47`.
     // The host (per-app crate) constructs the slot itself and registers the typed

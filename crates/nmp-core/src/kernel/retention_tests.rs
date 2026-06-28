@@ -39,7 +39,7 @@
 //!
 //! | Path                         | Structure                          | Pre-fix    | Bound                                |
 //! |------------------------------|------------------------------------|------------|---------------------------------------|
-//! | FFI command channel          | `command_tx` mpsc                  | unbounded  | unbounded (ADR-0029's bounded shed-load design was never built — see ADR-0029, marked Not implemented); depth is observable via `actor_queue_depth` |
+//! | FFI command channel          | bounded `CommandSender` inbox      | unbounded  | `ACTOR_INBOX_CAPACITY=4096` — drop-newest + `command_drops` |
 //! | view-command emit gate       | per-dispatch `emit_now`            | unconditional | `maybe_emit_after_dispatch` skips when `running=false` (this fix — load-bearing) |
 //! | `resolve_ref`                | `profile_claims[pk]: BTreeSet`     | unbounded  | `MAX_CLAIMS_PER_PUBKEY=256` — drop-newest + `claim_drops_total` |
 //! | latency sketch (harness)     | `Vec<u64>` per-sample              | unbounded  | fixed 32-bucket log2 histogram (`s2_dispatch_flood.rs::LatencyHistogram`) — 256 B per thread |
@@ -54,11 +54,11 @@
 //!
 //! Under the S2 spec mix, `claim_drops_total = 0` at flood end — the cap is
 //! not being exercised. That is the correct outcome: the working set (50
-//! pubkeys × ≤256 consumers) fits inside the bound. The cap surfaces on
+//! pubkeys × ≤256 consumers) fits inside the bound. The claim cap surfaces on
 //! `Metrics` (`update.rs`) for diagnostic visibility; its unit tests below pin
-//! the drop-newest semantics for the pathological cases. (The FFI command
-//! channel itself is unbounded — ADR-0029's bounded shed-load design was never
-//! built — so there is no FFI-channel drop counter.)
+//! the drop-newest semantics for the pathological cases. The FFI command lane
+//! is separately bounded by ADR-0029 and exposes its shed-load counter on the
+//! shared `CommandSender` / test-support FFI stats path.
 //!
 //! Production paths that DO populate `wire_subs` (post-`Start`) are bounded
 //! by the planner CLOSE diff (`drain_lifecycle_tick` behind `close_interest`)

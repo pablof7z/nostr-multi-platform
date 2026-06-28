@@ -8,10 +8,10 @@ use std::thread;
 
 use crate::passive_start::ActorStarter;
 use nmp_core::__ffi_internal::{
-    default_registry, new_app_relay_slot, new_bunker_handshake_slot, new_capability_callback_slot,
-    new_event_observer_slot, new_lifecycle_observer_slot, new_signer_state_slot,
-    new_snapshot_projection_slot, run_actor_with_observers, ActorChannels, ActorConfigSources,
-    ActorRuntimeSlots,
+    ActorChannels, ActorConfigSources, ActorRuntimeSlots, default_registry, new_app_relay_slot,
+    new_bunker_handshake_slot, new_capability_callback_slot, new_event_observer_slot,
+    new_lifecycle_observer_slot, new_signer_state_slot, new_snapshot_projection_slot,
+    run_actor_with_observers,
 };
 use nmp_core::slots::{
     new_active_account_slot, new_active_local_keys_slot, new_event_store_slot,
@@ -24,16 +24,17 @@ use nmp_core::subs::PlanCoverageHook;
 use nmp_core::substrate::new_external_event_sink_dispatcher_slot;
 
 use crate::app_struct::{
-    new_identity_change_observer_slot, new_search_relay_source_slot, new_update_listener_slot,
-    notify_identity_change_observers, NmpApp,
+    NmpApp, new_identity_change_observer_slot, new_search_relay_source_slot,
+    new_update_listener_slot, notify_identity_change_observers,
 };
 use crate::app_sub_structs::{CapabilityPorts, CompositionConfig, ReadHandles};
 
 pub fn new_app() -> NmpApp {
-    // ADR-0050 §D3a — one waking inbox of `ActorMail`. `command_tx` is the host
-    // `CommandSender` (stored on `NmpApp`); the actor receives on `command_rx`.
-    let (inbox_tx, command_rx) = std::sync::mpsc::channel::<nmp_core::__ffi_internal::ActorMail>();
-    let command_tx = nmp_core::CommandSender::new(inbox_tx);
+    // ADR-0029 / ADR-0050 §D3a — one bounded waking inbox of `ActorMail`.
+    // `command_tx` is the host `CommandSender` (stored on `NmpApp`); the actor
+    // receives on `command_rx`. Sends use nonblocking shed-load when the lane
+    // is full, so dispatch never blocks a native caller and memory is capped.
+    let (command_tx, command_rx) = nmp_core::CommandSender::bounded_channel();
     let (update_tx, update_rx) = std::sync::mpsc::channel();
     let update_listener = new_update_listener_slot();
     let listener_callback = Arc::clone(&update_listener);

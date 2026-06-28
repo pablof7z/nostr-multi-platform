@@ -21,6 +21,12 @@ impl NmpApp {
         self.queue_depth.load(Ordering::Relaxed)
     }
 
+    /// Return the actor command lane's cumulative shed-load drops.
+    #[must_use]
+    pub fn command_drops_for_test(&self) -> u64 {
+        self.tx.command_drops()
+    }
+
     /// Set the actor command channel's approximate queue depth.
     pub fn set_queue_depth_for_test(&self, depth: u64) {
         self.queue_depth.store(depth, Ordering::Relaxed);
@@ -82,5 +88,41 @@ impl NmpApp {
     #[must_use]
     pub fn wait_barrier_for_test(&self, timeout: Duration) -> bool {
         nmp_core::testing::wait_barrier(&self.actor_sender(), timeout)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use nmp_core::actor::{ActorCommand, LifecycleCommand};
+
+    #[test]
+    fn send_cmd_sheds_when_actor_inbox_is_full() {
+        let app = crate::new_app();
+        let capacity = nmp_core::actor::ACTOR_INBOX_CAPACITY as u64;
+
+        for _ in 0..capacity {
+            app.send_cmd(ActorCommand::Lifecycle(
+                LifecycleCommand::MarkChangedSinceEmit,
+            ));
+        }
+        assert_eq!(app.queue_depth_for_test(), capacity);
+        assert_eq!(app.command_drops_for_test(), 0);
+        assert_eq!(app.send_cmd_count_for_test(), capacity);
+
+        app.send_cmd(ActorCommand::Lifecycle(
+            LifecycleCommand::MarkChangedSinceEmit,
+        ));
+
+        assert_eq!(
+            app.queue_depth_for_test(),
+            capacity,
+            "dropped commands must not inflate queue depth"
+        );
+        assert_eq!(app.command_drops_for_test(), 1);
+        assert_eq!(
+            app.send_cmd_count_for_test(),
+            capacity,
+            "test send count tracks accepted commands, not dropped attempts"
+        );
     }
 }

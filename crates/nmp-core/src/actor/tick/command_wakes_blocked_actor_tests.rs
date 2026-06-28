@@ -23,7 +23,7 @@
 //! thing that can wake it before the cap. A regression to either property
 //! shows up as elapsed ≥ ~250 ms.
 
-use crate::actor::{spawn_test_actor, ActorCommand, ActorMail, CommandSender};
+use crate::actor::{ActorCommand, CommandSender, spawn_test_actor};
 use crate::actor::{LifecycleCommand, RefsCommand};
 use crate::transport::wire as fb;
 use crate::update_envelope::UpdateFrameBytes;
@@ -46,8 +46,7 @@ fn is_snapshot(frame: &[u8]) -> bool {
 /// delivered promptly through the single `drain_command_lane` path.
 #[test]
 fn command_wakes_a_relay_blocked_actor_under_the_idle_cap() {
-    let (inbox_tx, cmd_rx) = mpsc::channel::<ActorMail>();
-    let cmd_tx = CommandSender::new(inbox_tx);
+    let (cmd_tx, cmd_rx) = CommandSender::bounded_channel();
     let (upd_tx, upd_rx) = mpsc::channel::<UpdateFrameBytes>();
     let actor_self_tx = cmd_tx.clone();
     thread::spawn(move || spawn_test_actor(cmd_rx, actor_self_tx, upd_tx));

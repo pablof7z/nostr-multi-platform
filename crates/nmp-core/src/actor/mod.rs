@@ -38,6 +38,7 @@ mod auth_sign;
 mod builtin_projections;
 #[cfg(feature = "native")]
 mod capability_worker;
+mod command_sender;
 #[cfg(feature = "native")]
 mod config;
 #[cfg(feature = "native")]
@@ -52,10 +53,8 @@ mod fairness;
 #[cfg(feature = "native")]
 mod signer_port_dispatch;
 mod signer_source;
-// ADR-0050 §D3a — the single waking actor inbox. `ActorMail` + `CommandSender`
-// are always-compiled (the always-compiled `substrate::protocol` seam hands
-// `CommandSender` to workers, and `ActorCommand` itself is always-compiled);
-// the relay-side scheduler / sink / `Inbox` are `native`-gated inside.
+// ADR-0050 §D3a — always-compiled command sender and inbox mail; the relay-side
+// scheduler / sink / `Inbox` are `native`-gated inside.
 mod inbox;
 // Inbox command/relay lane priority + fairness tests, extracted from `inbox.rs`
 // to keep that file under the 500 LOC hard cap (AGENTS.md).
@@ -236,11 +235,12 @@ use capability_worker::spawn_capability_worker;
 pub use config::{ActorChannels, ActorConfig, ActorConfigSources, ActorRuntimeSlots};
 #[cfg(feature = "native")]
 use pending_sign::ParkedSignerOps;
-// ADR-0050 §D3a — always-compiled inbox transport types. `CommandSender` is the
-// single command-send seam handed to host code, protocol/capability workers,
-// the broker adapter, and the actor's self-feedback path; `ActorMail` is what
-// the unified inbox carries. Both name no protocol concept (D0).
-pub use inbox::{ActorMail, CommandSendError, CommandSender};
+// ADR-0050 §D3a — always-compiled transport types; both name no protocol
+// concept (D0).
+pub use command_sender::{
+    CommandSendError, CommandSendStatus, CommandSender, ACTOR_INBOX_CAPACITY,
+};
+pub use inbox::ActorMail;
 // ADR-0050 §D1 — always-compiled port continuations named by the (always-
 // compiled) `ActorCommand` sign / cipher verbs.
 pub use continuations::{CipherContinuation, SignContinuation};
