@@ -63,3 +63,8 @@ wasm-bindgen-futures = "0.4.71"
 # `Window` is the entry point for `window.nostr.*`; no other web-sys items
 # are needed for NIP-07 (the extension hangs off `window`, not a DOM node).
 web-sys = { version = "0.3.98", features = ["Window"] }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+# Browser-shaped NIP-07 tests install a fake `window.nostr.nip44` object and
+# drive the Promise bridge in a real headless browser.
+wasm-bindgen-test = "0.3"

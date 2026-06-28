@@ -57,9 +57,14 @@ Rust decodes the secret, derives the pubkey, registers the signer, and owns all
 signing. TypeScript may read the form value only to send that request; it must
 not decode, derive from, cache, or sign with the secret.
 
-NIP-07 remains preferred. NIP-46 bunker sign-in is a supported browser-runtime
-signer path when the shell supplies a `bunker_uri`; Rust owns the handshake,
-signer installation, and subsequent signing.
+NIP-07 remains preferred for browser-extension accounts. When the extension
+exposes both `window.nostr.nip44.encrypt` and `window.nostr.nip44.decrypt`, the
+Rust NIP-07 signer may use those methods for NIP-44 through the same signer
+trait path; extensions that lack either verb are limited for private-message
+work and must fail visibly rather than being treated as NIP-44 capable.
+TypeScript must not call `window.nostr.nip44` directly. NIP-46 bunker sign-in is
+a supported browser-runtime signer path when the shell supplies a `bunker_uri`;
+Rust owns the handshake, signer installation, and subsequent signing.
 
 ## Search Discovery Contract
 
@@ -152,11 +157,13 @@ NIP-44/signing capabilities, the send must fail visibly through Rust action
 state rather than falling back to public content relays or a shell-local
 simulation.
 
-NIP-07 outbound private-message parity remains limited until the browser runtime
-wires and feature-detects `window.nostr.nip44.{encrypt,decrypt}` (#2247). The UI may
-render the same send form, but it must treat capability failures as product
-state and must not implement private-message encryption or relay policy in
-TypeScript.
+NIP-07 and NIP-46 outbound private-message parity flows through the same
+signer-provider boundary. The browser runtime parks and resumes async NIP-44
+provider operations, and the NIP-07 signer bridge advertises NIP-44 only when
+the extension exposes both `window.nostr.nip44.encrypt` and
+`window.nostr.nip44.decrypt`. The UI may render the same send form, but it must
+treat capability failures as product state and must not implement
+private-message encryption or relay policy in TypeScript.
 
 Source relay provenance must come from the Rust ingest dispatcher. Live relay
 gift-wraps carry the delivering relay URL into the inbox projection; source-free

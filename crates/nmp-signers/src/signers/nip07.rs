@@ -8,16 +8,20 @@
 //!
 //! On wasm32 + `feature = "wasm"` builds, [`Nip07Signer::sign`] reaches into
 //! the JS event loop through `wasm-bindgen-futures::spawn_local` and calls
-//! `window.nostr.signEvent(...)`. The returned Promise is awaited off-thread
-//! and the resolved signed event is pushed back through an
-//! `std::sync::mpsc::Receiver` the [`SignerOp::Pending`] carries to the
+//! `window.nostr.signEvent(...)`. NIP-44 encryption/decryption likewise calls
+//! the optional `window.nostr.nip44.encrypt(...)` /
+//! `window.nostr.nip44.decrypt(...)` methods when the extension exposes both
+//! verbs. Returned Promises are awaited off-thread and resolved through the
+//! `std::sync::mpsc::Receiver` each [`SignerOp::Pending`] carries to the
 //! caller. The caller still drives the op synchronously via `poll()` /
 //! `wait()` — this is what lets the actor loop integrate the signer without
 //! pulling in tokio (see `nmp-signer-iface::op` for the contract).
 //!
-//! NIP-04 / NIP-44 namespaces are still `Unsupported` on every build —
-//! adding `window.nostr.nip04.*` / `nip44.*` bridges is a follow-up; the
-//! Stage 3b scope is event signing only.
+//! NIP-04 remains `Unsupported` on every build. NIP-44 is intentionally
+//! runtime-detected because real NIP-07 extensions do not all implement it:
+//! [`Signer::nip44`] returns `Some` only on wasm when both extension verbs are
+//! present, and direct trait calls still surface missing verbs as structured
+//! [`SignerError::Unsupported`] values.
 //!
 //! D6 (no panics across the public surface): `pubkey()` cannot fail because
 //! construction is gated on a cached pubkey (see `from_payload`); every
@@ -81,9 +85,8 @@ impl Nip07Signer {
                     .to_string(),
             )
         })?;
-        let pubkey = PublicKey::from_hex(hex).map_err(|e| {
-            SignerError::Backend(format!("invalid cached nip07 pubkey hex: {e}"))
-        })?;
+        let pubkey = PublicKey::from_hex(hex)
+            .map_err(|e| SignerError::Backend(format!("invalid cached nip07 pubkey hex: {e}")))?;
         Ok(Self {
             cached_pubkey: pubkey,
         })
@@ -131,7 +134,11 @@ impl Signer for Nip07Signer {
     }
 
     fn nip44(&self) -> Option<&dyn Nip44> {
-        Some(self)
+        if nip44_available() {
+            Some(self)
+        } else {
+            None
+        }
     }
 
     fn to_payload(&self) -> Result<SignerPayload, nmp_signer_iface::SignerError> {
@@ -169,6 +176,44 @@ fn sign_impl(cached_pubkey: &PublicKey, unsigned: UnsignedEvent) -> SignerOp<Sig
     wasm::sign_with_extension(*cached_pubkey, unsigned)
 }
 
+#[cfg(not(all(target_arch = "wasm32", feature = "wasm")))]
+const fn nip44_available() -> bool {
+    false
+}
+
+#[cfg(all(target_arch = "wasm32", feature = "wasm"))]
+fn nip44_available() -> bool {
+    wasm::nip44_available()
+}
+
+#[cfg(not(all(target_arch = "wasm32", feature = "wasm")))]
+fn nip44_encrypt_impl(_recipient: &PublicKey, _plaintext: &str) -> SignerOp<String> {
+    SignerOp::err(SignerError::Unsupported(
+        "NIP-07 nip44 encrypt requires wasm target + browser extension \
+         window.nostr.nip44.encrypt"
+            .to_string(),
+    ))
+}
+
+#[cfg(all(target_arch = "wasm32", feature = "wasm"))]
+fn nip44_encrypt_impl(recipient: &PublicKey, plaintext: &str) -> SignerOp<String> {
+    wasm::nip44_encrypt_with_extension(recipient, plaintext)
+}
+
+#[cfg(not(all(target_arch = "wasm32", feature = "wasm")))]
+fn nip44_decrypt_impl(_sender: &PublicKey, _payload: &str) -> SignerOp<String> {
+    SignerOp::err(SignerError::Unsupported(
+        "NIP-07 nip44 decrypt requires wasm target + browser extension \
+         window.nostr.nip44.decrypt"
+            .to_string(),
+    ))
+}
+
+#[cfg(all(target_arch = "wasm32", feature = "wasm"))]
+fn nip44_decrypt_impl(sender: &PublicKey, payload: &str) -> SignerOp<String> {
+    wasm::nip44_decrypt_with_extension(sender, payload)
+}
+
 // V-01 Stage 3c — the `wasm` submodule (window.nostr.signEvent bridge +
 // async twin) is extracted to a sibling file so this module stays under the
 // AGENTS.md 500-LOC ceiling. `#[path = "nip07/wasm.rs"]` preserves the
@@ -192,14 +237,10 @@ impl Nip04 for Nip07Signer {
 }
 
 impl Nip44 for Nip07Signer {
-    fn encrypt(&self, _recipient: &PublicKey, _plaintext: &str) -> SignerOp<String> {
-        SignerOp::err(SignerError::Unsupported(
-            "NIP-07 nip44 encrypt: wasm target required".to_string(),
-        ))
+    fn encrypt(&self, recipient: &PublicKey, plaintext: &str) -> SignerOp<String> {
+        nip44_encrypt_impl(recipient, plaintext)
     }
-    fn decrypt(&self, _sender: &PublicKey, _payload: &str) -> SignerOp<String> {
-        SignerOp::err(SignerError::Unsupported(
-            "NIP-07 nip44 decrypt: wasm target required".to_string(),
-        ))
+    fn decrypt(&self, sender: &PublicKey, payload: &str) -> SignerOp<String> {
+        nip44_decrypt_impl(sender, payload)
     }
 }
