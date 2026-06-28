@@ -1,0 +1,19 @@
+{
+  "name": "compose-component-host",
+  "type": "registry:ui",
+  "title": "Component Host (Compose)",
+  "description": "Compose app-root component host provider that binds LocalNostrProfileHost, LocalResolvedEventEmbeds, LocalEventRefResolver, and LocalNostrKindRegistry in one call.",
+  "dependencies": [],
+  "registryDependencies": [
+    "compose-user-avatar",
+    "compose-content-kind-registry"
+  ],
+  "files": [
+    {
+      "path": "registry/compose/component-host/NmpComponentHostProvider.kt",
+      "type": "registry:ui",
+      "target": "Components/NmpComponentHost/NmpComponentHostProvider.kt",
+      "content": "package org.nmp.registry\n\nimport androidx.compose.runtime.Composable\nimport androidx.compose.runtime.CompositionLocalProvider\nimport nmp.content.EmbeddedEventEnvelope\nimport nmp.content.EventRefResolver\nimport nmp.content.LocalEventRefResolver\nimport nmp.content.LocalNostrKindRegistry\nimport nmp.content.LocalResolvedEventEmbeds\nimport nmp.content.NostrKindRegistry\n\n/**\n * App-root provider for NMP registry components.\n *\n * The provider installs the existing profile and embed CompositionLocals in one\n * place. Apps still own the concrete bridge objects: profile data comes from\n * `refs.profile`, event envelopes come from the Rust-derived\n * `refs.event.envelopes` sidecar, and components only render plus manage\n * visible resolve/release lifecycle.\n */\n@Composable\nfun NmpComponentHostProvider(\n    profileHost: NostrProfileHost?,\n    resolvedEventEmbeds: Map<String, EmbeddedEventEnvelope>,\n    eventRefResolver: EventRefResolver? = null,\n    kindRegistry: NostrKindRegistry = NostrKindRegistry.makeDefault(),\n    content: @Composable () -> Unit,\n) {\n    CompositionLocalProvider(\n        LocalNostrProfileHost provides profileHost,\n        LocalResolvedEventEmbeds provides resolvedEventEmbeds,\n        LocalEventRefResolver provides eventRefResolver,\n        LocalNostrKindRegistry provides kindRegistry,\n        content = content,\n    )\n}\n"
+    }
+  ]
+}

@@ -109,6 +109,10 @@ pub(super) const BUILTIN_FILES: &[(&str, &str)] = &[
         include_str!("../../../registry/compose/content-kind-registry/EmbeddedEvent.kt"),
     ),
     (
+        "compose/component-host/NmpComponentHostProvider.kt",
+        include_str!("../../../registry/compose/component-host/NmpComponentHostProvider.kt"),
+    ),
+    (
         "compose/content-view/NostrContentView.kt",
         include_str!("../../../registry/compose/content-view/NostrContentView.kt"),
     ),
@@ -293,6 +297,10 @@ pub(super) const BUILTIN_FILES: &[(&str, &str)] = &[
     (
         "swiftui/content-kind-registry/EmbedHostEnvironment.swift",
         include_str!("../../../registry/swiftui/content-kind-registry/EmbedHostEnvironment.swift"),
+    ),
+    (
+        "swiftui/component-host/NmpComponentHost.swift",
+        include_str!("../../../registry/swiftui/component-host/NmpComponentHost.swift"),
     ),
     (
         "swiftui/content-kind-30023/ArticleEmbed.swift",

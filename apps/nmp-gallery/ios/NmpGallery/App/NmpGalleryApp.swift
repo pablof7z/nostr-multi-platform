@@ -34,10 +34,12 @@ struct NmpGalleryApp: App {
         WindowGroup {
             rootView
                 .environment(model)
-                .environment(\.nostrProfileHost, model)
-                .environment(\.embedHost, model.embedHost)
-                .environment(\.embedEventRefResolver, model.embedEventRefResolver)
-                .environment(\.nostrKindRegistry, kindRegistry)
+                .nmpComponentHost(
+                    profileHost: model,
+                    embedSource: model.embedHost,
+                    eventRefResolver: model.embedEventRefResolver,
+                    kindRegistry: kindRegistry
+                )
                 .task {
                     model.start()
                 }

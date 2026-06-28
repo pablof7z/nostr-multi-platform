@@ -50,7 +50,7 @@ export const contentKindComponents: Component[] = [
         screenshots: ["embed-article-ios-gallery-preview.png"],
         customization: [
           "Build the registry once at app start with `NostrKindRegistry.makeDefault()` then `registry.setArticle(ArticleEmbed())` / `registry.setHighlight(HighlightEmbed())` to swap in richer per-kind components.",
-          "Bind the app-level host/provider once with `.embedEnvelopeSource(source, eventRefResolver: resolver, registry: registry)` — `NostrContentView` and `EmbeddedEvent` both read the registry, resolver, and Rust-derived envelope mirror from there.",
+          "Bind the app-level host/provider once with `.nmpComponentHost(profileHost: embedSource: eventRefResolver: kindRegistry:)` — `NostrContentView` and `EmbeddedEvent` both read the registry, resolver, and Rust-derived envelope mirror from there.",
           "Conform your envelope holder to `EmbedEnvelopeSource` over the `refs.event.envelopes` sidecar and implement `EventRefResolverProtocol` against your kernel FFI; the embed view owns lifecycle, not protocol parsing.",
         ],
       },
@@ -70,7 +70,7 @@ export const contentKindComponents: Component[] = [
         screenshots: ["embed-article-kotlin-preview.png"],
         customization: [
           "Build the registry once with `NostrKindRegistry.makeDefault()` then `setArticle(...)` / `setHighlight(...)` to swap in richer per-kind composables.",
-          "Provide `LocalNostrKindRegistry`, `LocalResolvedEventEmbeds`, and `LocalEventRefResolver` at your screen root; `LocalResolvedEventEmbeds` mirrors derived `refs.event.envelopes`, not authoritative event rows.",
+          "Wrap your app root with `NmpComponentHostProvider(...)` so `LocalNostrKindRegistry`, `LocalResolvedEventEmbeds`, and `LocalEventRefResolver` are bound once; `LocalResolvedEventEmbeds` mirrors derived `refs.event.envelopes`, not authoritative event rows.",
         ],
       },
       tui: {

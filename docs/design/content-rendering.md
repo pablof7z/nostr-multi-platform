@@ -54,6 +54,17 @@ That is intentional: a product changes rendering by editing its own SwiftUI,
 Compose, TUI, or web component files rather than registering global mutable
 renderers in NMP.
 
+SwiftUI and Compose apps should bind one app-level component host at the app or
+screen root. SwiftUI uses
+`.nmpComponentHost(profileHost:embedSource:eventRefResolver:kindRegistry:)`.
+Compose uses `NmpComponentHostProvider(profileHost:resolvedEventEmbeds:eventRefResolver:kindRegistry:)`.
+These APIs only bundle existing host seams: `NostrProfileHost` reads
+`refs.profile`, the embed source/local mirrors derived `refs.event.envelopes`,
+the event-ref resolver reports visible resolve/release lifecycle to the app
+bridge, and `NostrKindRegistry` dispatches already-typed render projections.
+They must not own kernel handles, parse raw Nostr events, or maintain a second
+profile/event cache.
+
 ## Limits
 
 - No SwiftUI/Compose/iced/web UI package is framework-owned runtime state.

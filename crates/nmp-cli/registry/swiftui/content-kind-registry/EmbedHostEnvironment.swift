@@ -20,6 +20,7 @@ public protocol EmbedEnvelopeSource {
 // MARK: - Environment keys
 
 private struct EmbedEnvelopeSourceKey: EnvironmentKey {
+    nonisolated(unsafe)
     static let defaultValue: EmbedEnvelopeSource? = nil
 }
 

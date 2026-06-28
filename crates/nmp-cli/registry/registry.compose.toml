@@ -66,6 +66,20 @@ target = "Components/NostrContent/EmbeddedEvent.kt"
 role = "source"
 
 [[components]]
+id = "compose/component-host"
+version = "0.1.0"
+target = "compose"
+description = "Compose app-root component host provider that binds LocalNostrProfileHost, LocalResolvedEventEmbeds, LocalEventRefResolver, and LocalNostrKindRegistry in one call."
+dependencies = [
+    "compose/user-avatar",
+    "compose/content-kind-registry",
+]
+[[components.files]]
+source = "compose/component-host/NmpComponentHostProvider.kt"
+target = "Components/NmpComponentHost/NmpComponentHostProvider.kt"
+role = "source"
+
+[[components]]
 id = "compose/content-view"
 version = "0.2.0"
 target = "compose"
