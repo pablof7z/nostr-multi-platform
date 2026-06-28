@@ -209,12 +209,14 @@ impl BrowserRuntime {
         let cmd_drain = pump::drain_inbox(
             &mut self.reducer,
             &self.inbox_rx,
-            &mut self.pending_signed_publishes,
-            &self.signer_registry,
-            &mut self.nip46.pending_signs,
-            &self.signer_completion_tx,
-            &wake,
-            &cmd_sender,
+            pump::DrainInboxContext {
+                pending: &mut self.pending_signed_publishes,
+                registry: &self.signer_registry,
+                pending_signer_completions: &mut self.nip46.pending_signs,
+                completion_tx: &self.signer_completion_tx,
+                wake: &wake,
+                command_sender: &cmd_sender,
+            },
         );
 
         // ── 1.5. Drain sign completions (bounded — same budget as cmd drain) ───
@@ -259,23 +261,27 @@ impl BrowserRuntime {
         let post_relay_cmd_drain = pump::drain_inbox(
             &mut self.reducer,
             &self.inbox_rx,
-            &mut self.pending_signed_publishes,
-            &self.signer_registry,
-            &mut self.nip46.pending_signs,
-            &self.signer_completion_tx,
-            &wake,
-            &cmd_sender,
+            pump::DrainInboxContext {
+                pending: &mut self.pending_signed_publishes,
+                registry: &self.signer_registry,
+                pending_signer_completions: &mut self.nip46.pending_signs,
+                completion_tx: &self.signer_completion_tx,
+                wake: &wake,
+                command_sender: &cmd_sender,
+            },
         );
 
         let post_completion_cmd_drain = pump::drain_inbox(
             &mut self.reducer,
             &self.inbox_rx,
-            &mut self.pending_signed_publishes,
-            &self.signer_registry,
-            &mut self.nip46.pending_signs,
-            &self.signer_completion_tx,
-            &wake,
-            &cmd_sender,
+            pump::DrainInboxContext {
+                pending: &mut self.pending_signed_publishes,
+                registry: &self.signer_registry,
+                pending_signer_completions: &mut self.nip46.pending_signs,
+                completion_tx: &self.signer_completion_tx,
+                wake: &wake,
+                command_sender: &cmd_sender,
+            },
         );
 
         // ── 3. Relay idle-tick sweep ──────────────────────────────────────────

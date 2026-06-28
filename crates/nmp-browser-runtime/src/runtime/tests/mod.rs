@@ -19,7 +19,7 @@ use nmp_signer_iface::{SignerOp, UnsignedEvent};
 use nmp_signers::{LocalKeySigner, Signer};
 
 use super::event::BrowserRuntimeEvent;
-use super::pump::{drain_inbox, BROWSER_COMMAND_DRAIN_BUDGET};
+use super::pump::{drain_inbox, DrainInboxContext, BROWSER_COMMAND_DRAIN_BUDGET};
 use crate::relay::WakeCell;
 use crate::signer::{
     CapabilityProviderRegistry, PendingSignerCompletions, SignerCompletion, SignerCompletionTx,
@@ -59,6 +59,24 @@ fn noop_wake() -> WakeCell {
 fn test_command_sender() -> CommandSender {
     let (tx, _rx) = mpsc::channel::<ActorMail>();
     CommandSender::new(tx)
+}
+
+fn drain_context<'a>(
+    pending: &'a mut HashMap<String, super::PendingSignedPublish>,
+    registry: &'a CapabilityProviderRegistry,
+    pending_signs: &'a mut PendingSignerCompletions,
+    completion_tx: &'a SignerCompletionTx,
+    wake: &'a WakeCell,
+    command_sender: &'a CommandSender,
+) -> DrainInboxContext<'a> {
+    DrainInboxContext {
+        pending,
+        registry,
+        pending_signer_completions: pending_signs,
+        completion_tx,
+        wake,
+        command_sender,
+    }
 }
 
 fn started_handle() -> crate::BrowserRuntimeHandle {

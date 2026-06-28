@@ -36,12 +36,14 @@ fn applied_command_produces_no_events_and_no_pending() {
     let out = drain_inbox(
         &mut reducer,
         &rx,
-        &mut pending,
-        &reg,
-        &mut pending_signs,
-        &tx,
-        &noop_wake(),
-        &test_command_sender(),
+        drain_context(
+            &mut pending,
+            &reg,
+            &mut pending_signs,
+            &tx,
+            &noop_wake(),
+            &test_command_sender(),
+        ),
     );
 
     assert!(out.events.is_empty(), "Applied must emit no host event");
@@ -63,12 +65,14 @@ fn protocol_command_expands_before_headless_interpretation() {
     let out = drain_inbox(
         &mut reducer,
         &rx,
-        &mut pending,
-        &reg,
-        &mut pending_signs,
-        &tx,
-        &noop_wake(),
-        &test_command_sender(),
+        drain_context(
+            &mut pending,
+            &reg,
+            &mut pending_signs,
+            &tx,
+            &noop_wake(),
+            &test_command_sender(),
+        ),
     );
 
     assert_eq!(
@@ -103,12 +107,14 @@ fn needs_sign_parks_continuation_and_emits_sign_request() {
     let out = drain_inbox(
         &mut reducer,
         &rx,
-        &mut pending,
-        &reg,
-        &mut pending_signs,
-        &tx,
-        &noop_wake(),
-        &test_command_sender(),
+        drain_context(
+            &mut pending,
+            &reg,
+            &mut pending_signs,
+            &tx,
+            &noop_wake(),
+            &test_command_sender(),
+        ),
     );
 
     assert_eq!(out.events.len(), 1, "exactly one SignRequest expected");
@@ -162,12 +168,14 @@ fn local_event_for_account_invokes_continuation_inline() {
     let out = drain_inbox(
         &mut reducer,
         &rx,
-        &mut pending,
-        &reg,
-        &mut pending_signs,
-        &tx,
-        &noop_wake(),
-        &test_command_sender(),
+        drain_context(
+            &mut pending,
+            &reg,
+            &mut pending_signs,
+            &tx,
+            &noop_wake(),
+            &test_command_sender(),
+        ),
     );
 
     assert!(
@@ -196,12 +204,14 @@ fn unsupported_command_surfaces_command_failed() {
     let out = drain_inbox(
         &mut reducer,
         &rx,
-        &mut pending,
-        &reg,
-        &mut pending_signs,
-        &tx,
-        &noop_wake(),
-        &test_command_sender(),
+        drain_context(
+            &mut pending,
+            &reg,
+            &mut pending_signs,
+            &tx,
+            &noop_wake(),
+            &test_command_sender(),
+        ),
     );
 
     assert_eq!(out.events.len(), 1, "Unsupported must surface one failure");
@@ -255,12 +265,14 @@ fn nip44_decrypt_for_account_resolves_local_key_continuation() {
     let out = drain_inbox(
         &mut reducer,
         &rx,
-        &mut pending,
-        &reg,
-        &mut pending_signs,
-        &tx,
-        &noop_wake(),
-        &test_command_sender(),
+        drain_context(
+            &mut pending,
+            &reg,
+            &mut pending_signs,
+            &tx,
+            &noop_wake(),
+            &test_command_sender(),
+        ),
     );
 
     assert!(
@@ -298,12 +310,14 @@ fn drain_is_bounded_by_budget_and_remainder_drains_next_pump() {
     let first = drain_inbox(
         &mut reducer,
         &rx,
-        &mut pending,
-        &reg,
-        &mut pending_signs,
-        &tx,
-        &noop_wake(),
-        &sender,
+        drain_context(
+            &mut pending,
+            &reg,
+            &mut pending_signs,
+            &tx,
+            &noop_wake(),
+            &sender,
+        ),
     );
     assert_eq!(
         first.events.len(),
@@ -315,12 +329,14 @@ fn drain_is_bounded_by_budget_and_remainder_drains_next_pump() {
     let second = drain_inbox(
         &mut reducer,
         &rx,
-        &mut pending,
-        &reg,
-        &mut pending_signs,
-        &tx,
-        &noop_wake(),
-        &sender,
+        drain_context(
+            &mut pending,
+            &reg,
+            &mut pending_signs,
+            &tx,
+            &noop_wake(),
+            &sender,
+        ),
     );
     assert_eq!(second.events.len(), 10, "remainder drains on the next pump");
     assert!(

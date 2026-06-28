@@ -3,7 +3,7 @@
 #![cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 
 use super::core::NmpRuntimeCore;
-use super::dispatch::not_started_error;
+use super::dispatch_support::not_started_error;
 use super::protocol::{NotificationsClose, NotificationsMarkRead, NotificationsOpen, WorkerEvent};
 
 impl NmpRuntimeCore {

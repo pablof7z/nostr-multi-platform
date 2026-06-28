@@ -418,6 +418,7 @@ impl<S> BrowserAppBuilder<S> {
     ///   `wasm32 + feature = "wasm"` builds only. On native builds the
     ///   provider is unresolvable and the runtime emits `SignRequest` for
     ///   host-brokering instead.
+    ///
     /// Browser NIP-46 bunker sign-in is started through `set_identity
     /// kind=nip46` so the runtime can own the handshake lifecycle.
     pub fn with_capability_providers(

@@ -3,14 +3,11 @@
 #![cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 
 use super::core::NmpRuntimeCore;
-use super::dispatch::not_started_error;
+use super::dispatch_support::not_started_error;
 use super::protocol::{GroupEventsClose, GroupEventsOpen, WorkerEvent};
 
 impl NmpRuntimeCore {
-    pub(super) fn handle_group_events_open(
-        &mut self,
-        req: GroupEventsOpen,
-    ) -> Vec<WorkerEvent> {
+    pub(super) fn handle_group_events_open(&mut self, req: GroupEventsOpen) -> Vec<WorkerEvent> {
         let Some(handle) = self.handle.as_mut() else {
             return not_started_error(Some(req.correlation_id));
         };
@@ -27,10 +24,7 @@ impl NmpRuntimeCore {
         }
     }
 
-    pub(super) fn handle_group_events_close(
-        &mut self,
-        req: GroupEventsClose,
-    ) -> Vec<WorkerEvent> {
+    pub(super) fn handle_group_events_close(&mut self, req: GroupEventsClose) -> Vec<WorkerEvent> {
         let Some(handle) = self.handle.as_mut() else {
             return not_started_error(Some(req.correlation_id));
         };

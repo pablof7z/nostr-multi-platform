@@ -7,7 +7,7 @@
 use std::collections::BTreeSet;
 
 use super::core::NmpRuntimeCore;
-use super::dispatch::not_started_error;
+use super::dispatch_support::not_started_error;
 use super::protocol::{SearchClose, SearchOpen, SearchScope, SearchTargets, WorkerEvent};
 
 impl NmpRuntimeCore {

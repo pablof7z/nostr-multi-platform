@@ -56,6 +56,16 @@ pub(super) struct DrainOutcome {
     pub(super) yielded: bool,
 }
 
+/// Mutable collaborators needed while applying one command-drain turn.
+pub(super) struct DrainInboxContext<'a> {
+    pub(super) pending: &'a mut HashMap<String, PendingSignedPublish>,
+    pub(super) registry: &'a CapabilityProviderRegistry,
+    pub(super) pending_signer_completions: &'a mut PendingSignerCompletions,
+    pub(super) completion_tx: &'a SignerCompletionTx,
+    pub(super) wake: &'a WakeCell,
+    pub(super) command_sender: &'a CommandSender,
+}
+
 /// Drain up to [`BROWSER_COMMAND_DRAIN_BUDGET`] commands and apply each.
 ///
 /// Each command's [`CommandApplyOutcome`] is honored:
@@ -70,12 +80,7 @@ pub(super) struct DrainOutcome {
 pub(super) fn drain_inbox(
     reducer: &mut KernelReducer,
     rx: &Receiver<ActorMail>,
-    pending: &mut HashMap<String, PendingSignedPublish>,
-    registry: &CapabilityProviderRegistry,
-    pending_signer_completions: &mut PendingSignerCompletions,
-    completion_tx: &SignerCompletionTx,
-    wake: &WakeCell,
-    command_sender: &CommandSender,
+    ctx: DrainInboxContext<'_>,
 ) -> DrainOutcome {
     let mut outbound: Vec<OutboundMessage> = Vec::new();
     let mut events: Vec<BrowserRuntimeEvent> = Vec::new();
@@ -104,7 +109,7 @@ pub(super) fn drain_inbox(
 
         applied += 1;
         let (commands, protocol_outbound) =
-            match reducer.expand_protocol_commands(vec![cmd], command_sender.clone()) {
+            match reducer.expand_protocol_commands(vec![cmd], ctx.command_sender.clone()) {
                 Ok(expanded) => expanded,
                 Err(reason) => {
                     events.push(BrowserRuntimeEvent::CommandFailed { reason });
@@ -113,7 +118,7 @@ pub(super) fn drain_inbox(
             };
         outbound.extend(protocol_outbound);
         for cmd in commands {
-            let Some(cmd) = apply_browser_cipher_command(reducer, registry, cmd) else {
+            let Some(cmd) = apply_browser_cipher_command(reducer, ctx.registry, cmd) else {
                 continue;
             };
             match reducer.apply_actor_command(cmd) {
@@ -126,7 +131,7 @@ pub(super) fn drain_inbox(
                     action_correlation_id,
                 } => {
                     // Park the publish continuation under the sign correlation id.
-                    pending.insert(
+                    ctx.pending.insert(
                         request.correlation_id.clone(),
                         PendingSignedPublish {
                             action_correlation_id,
@@ -138,13 +143,13 @@ pub(super) fn drain_inbox(
                     // If no provider is found, emit SignRequest for host-brokering
                     // (never silently drop — D6).
                     let brokered = broker_sign_request(
-                        registry,
-                        pending_signer_completions,
+                        ctx.registry,
+                        ctx.pending_signer_completions,
                         &request.correlation_id,
                         &request.account_pubkey,
                         &request.unsigned_json,
-                        completion_tx,
-                        wake,
+                        ctx.completion_tx,
+                        ctx.wake,
                     );
                     if !brokered {
                         events.push(BrowserRuntimeEvent::SignRequest {
@@ -294,8 +299,8 @@ fn run_nip44_cipher(
     match op.poll() {
         Some(Ok(value)) => Ok(value),
         Some(Err(error)) => Err(error.to_string()),
-        None => Err(
-            "browser nip44: pending provider cipher routing is tracked by #2195".to_string(),
-        ),
+        None => {
+            Err("browser nip44: pending provider cipher routing is tracked by #2195".to_string())
+        }
     }
 }
