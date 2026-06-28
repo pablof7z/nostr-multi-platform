@@ -27,9 +27,9 @@ use nmp_core::substrate::{
     RelayConnectedHook, RelayTextInterceptor, ReqFrameInterceptor, RoutingTraceObserver,
 };
 use nmp_core::{
-    ActionRegistry, AppRelaySlot, Clock, KernelReducer,
     publish::OutboxResolver,
     slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot},
+    ActionRegistry, AppRelaySlot, Clock, KernelReducer,
 };
 
 // Type aliases matching AppHost factory shapes.
@@ -128,6 +128,7 @@ pub(crate) struct BrowserBuilderInner {
     pub(crate) relay_text_interceptors: Vec<Arc<dyn RelayTextInterceptor>>,
     pub(crate) relay_connected_hooks: Vec<Arc<dyn RelayConnectedHook>>,
     pub(crate) identity_change_observers: Vec<Box<dyn Fn(Option<String>) + Send + Sync + 'static>>,
+    pub(crate) configured_relays_change_observers: Vec<Box<dyn Fn() + Send + Sync + 'static>>,
     /// Capability/signer providers accumulated via
     /// `BrowserAppBuilder::with_capability_providers`. Moved into the
     /// `CapabilityProviderRegistry` in `from_builder_inner` at `start()`.
@@ -188,6 +189,7 @@ impl BrowserBuilderInner {
             relay_text_interceptors: Vec::new(),
             relay_connected_hooks: Vec::new(),
             identity_change_observers: Vec::new(),
+            configured_relays_change_observers: Vec::new(),
             capability_providers: Vec::new(),
             relay_bootstrap: Vec::new(),
             clock: None,

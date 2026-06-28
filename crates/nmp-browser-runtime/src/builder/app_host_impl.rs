@@ -18,11 +18,12 @@ use std::sync::Arc;
 
 use nmp_core::substrate::{ActionRegistrar, PreferredRelaySource};
 use nmp_core::substrate::{
-    BlockedRelayLookupRegistrar, ContactsLookup, CoverageHookRegistrar, DmInboxRelayRegistrar,
-    HostCapabilities, IdentityChangeRegistrar, IncrementalApplyError, IngestParserRegistrar,
-    InputScopeRegistrar, KernelReaderRegistrar, ObservedProjection, ObservedProjectionRegistrar,
-    RelayConnectedHookRegistrar, RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar,
-    RoutingFactoryRegistrar, SearchScopeRegistrar, SnapshotProjectionRegistrar,
+    BlockedRelayLookupRegistrar, ConfiguredRelaysChangeRegistrar, ContactsLookup,
+    CoverageHookRegistrar, DmInboxRelayRegistrar, HostCapabilities, IdentityChangeRegistrar,
+    IncrementalApplyError, IngestParserRegistrar, InputScopeRegistrar, KernelReaderRegistrar,
+    ObservedProjection, ObservedProjectionRegistrar, RelayConnectedHookRegistrar,
+    RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar,
+    SearchScopeRegistrar, SnapshotProjectionRegistrar,
 };
 use nmp_core::{AppRelaySlot, CommandSender, ObservedProjectionId, TypedProjectionData};
 
@@ -45,14 +46,6 @@ impl<S> SnapshotProjectionRegistrar for BrowserAppBuilder<S> {
     {
         let Ok(g) = self.inner.lock() else { return };
         g.reducer.register_typed_snapshot_projection(key, f);
-    }
-
-    fn register_snapshot_tick_observer<F>(&self, f: F)
-    where
-        F: Fn() + Send + Sync + 'static,
-    {
-        let Ok(g) = self.inner.lock() else { return };
-        g.reducer.register_snapshot_tick_observer(f);
     }
 
     fn declare_consumed_projections<I, K>(&self, keys: I)
@@ -200,6 +193,16 @@ impl<S> IdentityChangeRegistrar for BrowserAppBuilder<S> {
     {
         let Ok(mut g) = self.inner.lock() else { return };
         g.identity_change_observers.push(Box::new(f));
+    }
+}
+
+impl<S> ConfiguredRelaysChangeRegistrar for BrowserAppBuilder<S> {
+    fn register_configured_relays_change_observer<F>(&self, f: F)
+    where
+        F: Fn() + Send + Sync + 'static,
+    {
+        let Ok(mut g) = self.inner.lock() else { return };
+        g.configured_relays_change_observers.push(Box::new(f));
     }
 }
 

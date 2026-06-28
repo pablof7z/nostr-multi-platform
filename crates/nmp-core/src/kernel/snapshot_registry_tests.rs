@@ -2,9 +2,9 @@
 //! FlatBuffers sidecar seam (ADR-0037).
 //!
 //! The generic (`serde_json::Value`) projection lane has been removed; only
-//! typed projections and per-tick observers are tested here. Tests that
-//! previously exercised `SnapshotRegistry::register` / `run` have been
-//! deleted alongside that deleted API.
+//! typed projections are tested here. Tests that previously exercised
+//! `SnapshotRegistry::register` / `run` have been deleted alongside that
+//! deleted API.
 
 use super::snapshot_registry::{new_snapshot_projection_slot, SnapshotRegistry};
 use super::*;
@@ -257,92 +257,4 @@ fn typed_projection_surfaces_through_kernel_run_typed_projections() {
     assert_eq!(typed.len(), 1);
     assert_eq!(typed[0].key, "nmp.feed.home");
     assert_eq!(typed[0].payload, vec![0xab, 0xcd]);
-}
-
-// ───────────────────────────────────────────────────────────────────────
-// Per-tick observer seam — generic no-result callback fired once per
-// `make_update` (the re-home target for per-tick reconcilers like the NIP-57
-// zap-subscription, which produced no projection data and only abused the
-// projection registry for a per-tick callback).
-// ───────────────────────────────────────────────────────────────────────
-
-/// A tick observer bound onto the kernel fires **exactly once per
-/// `make_update`** — driven through the real frame path, NOT
-/// `run_tick_observers()` in isolation. This is the load-bearing proof that the
-/// `make_update` wiring exists: a test that called `run_tick_observers()`
-/// directly would pass even if the per-tick invocation point were never wired.
-#[test]
-fn tick_observer_fires_once_per_make_update() {
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::Arc;
-
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    let slot = new_snapshot_projection_slot();
-    let count = Arc::new(AtomicUsize::new(0));
-    let count_for_obs = Arc::clone(&count);
-    slot.lock().unwrap().register_tick_observer(move || {
-        count_for_obs.fetch_add(1, Ordering::SeqCst);
-    });
-    kernel.set_snapshot_projection_handle(slot);
-
-    let _ = kernel.make_update_json_for_test(true);
-    assert_eq!(
-        count.load(Ordering::SeqCst),
-        1,
-        "a registered tick observer must fire exactly once per make_update tick"
-    );
-
-    let _ = kernel.make_update_json_for_test(true);
-    assert_eq!(
-        count.load(Ordering::SeqCst),
-        2,
-        "a second make_update tick fires the observer again"
-    );
-}
-
-/// D6 — a panicking tick observer must NOT break the tick: `make_update` still
-/// produces a valid snapshot frame, and every sibling observer in the same tick
-/// still fires. A host tick observer is untrusted plugin code running on the
-/// actor thread inside the snapshot tick; an unguarded panic would unwind the
-/// actor thread into a terminal `Panic` frame and permanently kill the kernel.
-#[test]
-fn panicking_tick_observer_does_not_break_the_tick() {
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::Arc;
-
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    let slot = new_snapshot_projection_slot();
-    let sibling = Arc::new(AtomicUsize::new(0));
-    let sibling_for_obs = Arc::clone(&sibling);
-    {
-        let mut registry = slot.lock().unwrap();
-        registry.register_tick_observer(|| panic!("hostile tick observer"));
-        registry.register_tick_observer(move || {
-            sibling_for_obs.fetch_add(1, Ordering::SeqCst);
-        });
-    }
-    kernel.set_snapshot_projection_handle(slot);
-
-    // The tick completes and produces a valid frame despite the panicking hook.
-    let snapshot_json = kernel.make_update_json_for_test(true);
-    let parsed: serde_json::Value =
-        serde_json::from_str(&snapshot_json).expect("snapshot must be valid JSON despite a panic");
-    assert!(
-        parsed.get("projections").is_some(),
-        "the tick still emits a snapshot frame"
-    );
-    assert_eq!(
-        sibling.load(Ordering::SeqCst),
-        1,
-        "a sibling tick observer still fires when another observer panics"
-    );
-}
-
-/// `run_tick_observers` with no slot bound is a no-op — D6: a kernel
-/// constructed outside the actor never panics on the tick-observer path.
-#[test]
-fn unbound_slot_tick_observers_is_a_noop() {
-    let kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    // No slot bound: invoking the tick observers must not panic.
-    kernel.run_tick_observers();
 }

@@ -44,7 +44,6 @@ impl Kernel {
             self.build_snapshot_struct(running, last_tick_ms, emit_started, last_event_to_emit_ms);
         let before_serialize = super::super::Instant::now();
         let typed = self.run_typed_projections();
-        self.run_tick_observers();
         // Drain and capture before merge so `captured_*` fields are set.
         self.drain_and_capture_projections();
         let mut typed = self.merge_builtin_typed_projections(typed);
@@ -107,17 +106,15 @@ impl Kernel {
     }
 
     /// PR-B (#991/#979): run a full tick (identical to `make_update`, including
-    /// `run_tick_observers`, `run_typed_projections`, and
-    /// `merge_builtin_typed_projections`), then serialize the `KernelSnapshot`
-    /// struct to `serde_json::Value` for test assertions.
+    /// `run_typed_projections` and `merge_builtin_typed_projections`), then
+    /// serialize the `KernelSnapshot` struct to `serde_json::Value` for test
+    /// assertions.
     ///
     /// The `payload:Value` slot is no longer emitted on the wire (the decoder
     /// itself is deleted), so JSON-shaped assertions cannot come off the frame.
     /// Test helpers serialize the struct directly — equivalent coverage,
     /// no wire roundtrip.
     ///
-    /// `run_tick_observers()` is called, matching production semantics (tests
-    /// that count observer invocations get exact per-tick counts).
     pub(crate) fn make_update_value_for_test(&mut self, running: bool) -> serde_json::Value {
         let emit_started = super::super::Instant::now();
         let last_tick_ms = self.now_ms();
@@ -129,11 +126,7 @@ impl Kernel {
             .map(|last_event_at| emit_started.duration_since(last_event_at).as_millis());
         let snapshot =
             self.build_snapshot_struct(running, last_tick_ms, emit_started, last_event_to_emit_ms);
-        // Run the same side-effect hooks that `make_update` runs, so tests
-        // observing tick observers / typed projection closures see the same
-        // per-tick semantics.
         let _typed_host = self.run_typed_projections();
-        self.run_tick_observers();
         // Drain and capture before merge so `captured_*` fields are set.
         self.drain_and_capture_projections();
         let mut typed_merged = self.merge_builtin_typed_projections(_typed_host);

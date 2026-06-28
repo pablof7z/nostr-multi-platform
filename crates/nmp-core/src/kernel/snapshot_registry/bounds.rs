@@ -4,9 +4,8 @@
 //! views. An unbounded registry would let a misconfigured or adversarial host
 //! grow the per-tick serialisation cost without limit, violating D5 and D8
 //! (snapshot cost must be proportional to open views). These constants and the
-//! [`admit_keyed`] / [`admit_additive`] helpers are the runtime enforcement of
-//! that bound; the [`super::SnapshotRegistry`] `register*` methods call them
-//! before inserting.
+//! [`admit_keyed`] helper is the runtime enforcement of that bound; the
+//! [`super::SnapshotRegistry`] `register*` methods call it before inserting.
 
 /// D5 — maximum number of distinct keys in the generic (`projections`) or
 /// typed (`typed_projections`) projection registries.
@@ -23,14 +22,6 @@
 /// follows the D6 contract: configuration-time errors are never panics, but
 /// they MUST be observable.
 pub const MAX_SNAPSHOT_PROJECTIONS: usize = 64;
-
-/// D5 — maximum number of per-tick observer closures in the `tick_observers`
-/// list.
-///
-/// Tick observers are additive (no key dedup), so they have their own bound.
-/// Production wires exactly **1** today; 16 gives generous headroom while
-/// capping runaway registration.
-pub const MAX_TICK_OBSERVERS: usize = 16;
 
 /// Decide whether a **keyed** registration may be admitted.
 ///
@@ -49,21 +40,6 @@ pub(super) fn admit_keyed(len: usize, key_exists: bool, key: &str, registry: &st
             limit = MAX_SNAPSHOT_PROJECTIONS,
             "D5: {registry} registry is full — registration of '{key}' \
              dropped (limit: {MAX_SNAPSHOT_PROJECTIONS})"
-        );
-        return false;
-    }
-    true
-}
-
-/// Decide whether an **additive** (tick-observer) registration may be admitted.
-///
-/// Returns `false` (loud no-op) once the list is at [`MAX_TICK_OBSERVERS`].
-pub(super) fn admit_additive(len: usize) -> bool {
-    if len >= MAX_TICK_OBSERVERS {
-        tracing::warn!(
-            limit = MAX_TICK_OBSERVERS,
-            "D5: tick-observer list is full — registration dropped \
-             (limit: {MAX_TICK_OBSERVERS})"
         );
         return false;
     }

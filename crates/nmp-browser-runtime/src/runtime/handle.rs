@@ -14,7 +14,7 @@
 
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::{Arc, mpsc};
+use std::sync::{mpsc, Arc};
 
 use nmp_core::substrate::{ObservedProjectionCommandHandle, PreferredRelaySource};
 use nmp_core::{AppRelayList, CommandSender, SignerStateModel, UpdateFrameBytes};
@@ -23,16 +23,16 @@ use nmp_signers::Signer;
 use super::diagnostics::BrowserRuntimeDiagnostics;
 use super::event::BrowserRuntimeEvent;
 use super::signer_state::{
-    BrowserSignerStateSlot, new_signer_state_slot, ready_model, register_signer_state_projection,
-    update_signer_state,
+    new_signer_state_slot, ready_model, register_signer_state_projection, update_signer_state,
+    BrowserSignerStateSlot,
 };
 use super::snapshot::{BrowserSnapshotCache, SnapshotOutcome};
 use super::{BrowserRuntime, PumpOutcome};
 use crate::builder::BrowserBuilderInner;
 use crate::relay::RelayPool;
 use crate::signer::{
-    BrowserNip46Runtime, CapabilityEnvelope, CapabilityProviderRegistry, PendingCipherCompletions,
-    SignerCompletion, enqueue_completion,
+    enqueue_completion, BrowserNip46Runtime, CapabilityEnvelope, CapabilityProviderRegistry,
+    PendingCipherCompletions, SignerCompletion,
 };
 
 use super::NoopRoutingTrace;
@@ -148,6 +148,9 @@ impl BrowserRuntimeHandle {
             inner
                 .reducer
                 .set_configured_relays(std::mem::take(&mut inner.relay_bootstrap));
+            for observer in &inner.configured_relays_change_observers {
+                observer();
+            }
         }
 
         // ── Build relay pool ──────────────────────────────────────────────────
@@ -205,6 +208,7 @@ impl BrowserRuntimeHandle {
             relay_text_interceptors: inner.relay_text_interceptors,
             relay_connected_hooks: inner.relay_connected_hooks,
             identity_change_observers: inner.identity_change_observers,
+            configured_relays_change_observers: inner.configured_relays_change_observers,
             relay_pool,
             pending_startup_events: Vec::new(),
         };

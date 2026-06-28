@@ -42,9 +42,9 @@
 //! - the kernel fan-out integration: `kernel/event_observer.rs`
 //! - a host registering `ObservedProjection` through `ObservedProjectionRegistrar`
 
-pub mod active_observed_projection;
 mod action;
 mod action_context;
+pub mod active_observed_projection;
 mod app_host;
 mod blocked_relays;
 mod bounded;
@@ -91,12 +91,12 @@ pub use action_context::{
     ActionContext, ActionLocalStore, ActionReadError, ACTION_LOCAL_STORE_MAX_EVENTS,
 };
 pub use app_host::{
-    AppHost, BlockedRelayLookupRegistrar, CoverageHookRegistrar, DmInboxRelayRegistrar,
-    HostCapabilities, IdentityChangeRegistrar, IncrementalApplyError, IngestParserRegistrar,
-    KernelReaderRegistrar, ObservedProjection, ObservedProjectionCommandHandle,
-    ObservedProjectionRegistrar, ObservedProjectionSessionMap, PreferredRelaySource,
-    RelayConnectedHookRegistrar, RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar,
-    RoutingFactoryRegistrar, SnapshotProjectionRegistrar,
+    AppHost, BlockedRelayLookupRegistrar, ConfiguredRelaysChangeRegistrar, CoverageHookRegistrar,
+    DmInboxRelayRegistrar, HostCapabilities, IdentityChangeRegistrar, IncrementalApplyError,
+    IngestParserRegistrar, KernelReaderRegistrar, ObservedProjection,
+    ObservedProjectionCommandHandle, ObservedProjectionRegistrar, ObservedProjectionSessionMap,
+    PreferredRelaySource, RelayConnectedHookRegistrar, RelayTextInterceptorRegistrar,
+    ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar, SnapshotProjectionRegistrar,
 };
 pub use blocked_relays::{empty_blocked_relay_lookup, BlockedRelayLookup, EmptyBlockedRelayLookup};
 // #1811 — FTS scope registry surface.
@@ -151,12 +151,12 @@ pub use nmp_store::{DomainMigration, MigrationTx};
 pub use placeholder::{picture_placeholder, Placeholder};
 pub use protocol::{
     build_nip44_decrypt_for_account, build_nip44_encrypt_for_account, build_record_action_failure,
-    build_record_action_success, build_sign_event_for_account, ActionStageTracker,
-    ErrorSurface, HostOpHandlerAccess, KernelClock, LocalSignerAccess, NoopActionStageTracker,
-    NoopErrorSurface, NoopHostOpHandlerAccess, NoopKernelClock, NoopLocalSignerAccess,
-    NoopRecipientRelayLookup, NoopWalletKernelAccess, NoopZapProfileLookup, ProtocolCommand,
-    ProtocolCommandContext, ProtocolCommandContextParts, ProtocolCommandError,
-    RecipientRelayLookup, WalletKernelAccess, ZapProfileLookup,
+    build_record_action_success, build_sign_event_for_account, ActionStageTracker, ErrorSurface,
+    HostOpHandlerAccess, KernelClock, LocalSignerAccess, NoopActionStageTracker, NoopErrorSurface,
+    NoopHostOpHandlerAccess, NoopKernelClock, NoopLocalSignerAccess, NoopRecipientRelayLookup,
+    NoopWalletKernelAccess, NoopZapProfileLookup, ProtocolCommand, ProtocolCommandContext,
+    ProtocolCommandContextParts, ProtocolCommandError, RecipientRelayLookup, WalletKernelAccess,
+    ZapProfileLookup,
 };
 pub use raw_event_forwarding::{RawEventForwardPolicyContext, RawEventForwardTarget};
 pub use relay_connected::{

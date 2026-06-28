@@ -33,26 +33,6 @@ use crate::update_envelope::{TypedProjectionData, WireProjectionState};
 pub type TypedProjectionFn =
     Box<dyn Fn(u64) -> Option<TypedProjectionData> + Send + Sync + 'static>;
 
-/// A host-registered **per-tick observer** closure — a no-result callback fired
-/// once on every snapshot tick.
-///
-/// Unlike a [`TypedProjectionFn`] (which produces snapshot
-/// *data* under a key), a tick observer produces nothing: it is a pure per-tick
-/// side-effect seam for host-side reconcilers that need a "the kernel just
-/// ticked" callback but contribute no projection output (e.g. an active-account
-/// subscription reconciler that diffs the active pubkey each tick and enqueues
-/// `EnsureInterest` / `DropInterestOwner` actor commands). Such reconcilers
-/// previously abused the projection registry — registering a `ProjectionFn` that
-/// returned `Value::Null` purely to get the per-tick callback, leaving a phantom
-/// null-valued key in every snapshot.
-///
-/// `Send + Sync` because the box lives behind an `Arc<Mutex<…>>` shared with the
-/// actor thread. D8: like a projection closure, it runs inside the snapshot tick
-/// and MUST be non-blocking — it may only enqueue work, never do I/O or wait on
-/// a lock.
-pub type TickObserverFn = Box<dyn Fn() + Send + Sync + 'static>;
-type TickObserverEntry = (Option<String>, TickObserverFn);
-
 /// A feed-author-set provider (ADR-0063 D7, #1671 Lane H).
 ///
 /// Returns the set of raw author keys a feed projection will RENDER for its
@@ -69,12 +49,11 @@ type TickObserverEntry = (Option<String>, TickObserverFn);
 /// no lock the actor thread could be holding.
 pub type FeedAuthorProviderFn = Box<dyn Fn() -> Vec<String> + Send + Sync + 'static>;
 
-// D5 — registration-count ceilings and the loud-no-op admission helpers
-// (`MAX_SNAPSHOT_PROJECTIONS` / `MAX_TICK_OBSERVERS` + `admit_keyed` /
-// `admit_additive`). Extracted to a `pub` submodule so the registry file stays
-// within its LOC ceiling; the constants are part of the public D5 contract.
+// D5 — registration-count ceilings and the loud-no-op admission helper.
+// Extracted to a `pub` submodule so the registry file stays within its LOC
+// ceiling; the constant is part of the public D5 contract.
 pub mod bounds;
-use bounds::{admit_additive, admit_keyed};
+use bounds::admit_keyed;
 
 /// Result of a [`SnapshotRegistry::register_typed`] call (Blocker C).
 ///
@@ -124,12 +103,6 @@ pub struct SnapshotRegistry {
     /// the registry. Tier-1 keys are not in the built-in manifest, so Rung 3
     /// cannot synthesize these clears from `ProjectionPresence`.
     pending_typed_clears: Vec<String>,
-    /// Per-tick observers — no-result callbacks fired once per snapshot tick.
-    ///
-    /// Additive entries use `None`; lifecycle-bound observers use a keyed
-    /// entry so account-scoped protocol modules can replace or remove their
-    /// hook without accumulating stale callbacks.
-    tick_observers: Vec<TickObserverEntry>,
     /// ADR-0063 D7 (#1671 Lane H) — feed-author-set providers, keyed by the feed
     /// snapshot key (e.g. `"nmp.feed.home"`) so a re-registration replaces (not
     /// duplicates) the provider and an `unregister_feed` removes it. Each closure
@@ -306,7 +279,7 @@ impl SnapshotRegistry {
     /// This is the narrow variant for protocol projections that render
     /// time-derived fields (for example age/staleness) from kernel-authored
     /// time. The closure must still be read-only: state transitions belong in
-    /// actor commands or tick observers that enqueue actor commands.
+    /// actor commands or explicit event observers.
     pub fn register_typed_with_time(
         &mut self,
         key: impl Into<String>,
@@ -372,83 +345,10 @@ impl SnapshotRegistry {
         out
     }
 
-    /// Register a per-tick observer closure — a no-result callback fired once
-    /// on every snapshot tick.
-    ///
-    /// The generic, projection-free counterpart to [`Self::register_typed`]: where a
-    /// typed projection produces snapshot data under a key, a tick observer produces
-    /// nothing — it is a pure per-tick side-effect seam (see [`TickObserverFn`]).
-    /// Registrations are additive (no key, no replace-by-key); each fires on
-    /// every tick. D8: the closure runs inside the snapshot tick and MUST be
-    /// non-blocking.
-    ///
-    /// D5: if the observer list already holds [`MAX_TICK_OBSERVERS`](bounds::MAX_TICK_OBSERVERS) entries the
-    /// registration is a loud no-op (D6: `tracing::warn!`, no panic).
-    pub fn register_tick_observer(&mut self, f: impl Fn() + Send + Sync + 'static) {
-        if !admit_additive(self.tick_observers.len()) {
-            return;
-        }
-        self.tick_observers.push((None, Box::new(f)));
-    }
-
-    /// Register or replace a lifecycle-bound per-tick observer under `key`.
-    ///
-    /// This is the keyed counterpart to [`Self::register_tick_observer`] for
-    /// app/protocol modules whose observer is owned by a replaceable account or
-    /// runtime. Re-registering the same key replaces the old closure without
-    /// growing the observer list; absent keys are admitted under the D5 cap.
-    pub fn replace_tick_observer(
-        &mut self,
-        key: impl Into<String>,
-        f: impl Fn() + Send + Sync + 'static,
-    ) {
-        let key = key.into();
-        if let Some((_, observer)) = self
-            .tick_observers
-            .iter_mut()
-            .find(|(slot_key, _)| slot_key.as_deref() == Some(key.as_str()))
-        {
-            *observer = Box::new(f);
-            return;
-        }
-        if !admit_additive(self.tick_observers.len()) {
-            return;
-        }
-        self.tick_observers.push((Some(key), Box::new(f)));
-    }
-
-    /// Remove a keyed per-tick observer. Additive observers are unaffected.
-    pub fn remove_tick_observer(&mut self, key: &str) -> bool {
-        let before = self.tick_observers.len();
-        self.tick_observers
-            .retain(|(slot_key, _)| slot_key.as_deref() != Some(key));
-        before != self.tick_observers.len()
-    }
-
     // ADR-0053 host-declared consumed-projection methods
     // (`declare_consumed_projections`, `declared_projections`) and the
     // Workstream-E3 declared ⊆ decodable drift gate live in the `declared`
     // submodule alongside `DeclaredProjections`.
-
-    /// Run every registered per-tick observer.
-    ///
-    /// Mirrors [`Self::run_typed`]'s safety contract: each observer runs on the actor
-    /// thread inside `make_update`, so it must be non-blocking (D8). D6: each
-    /// observer is invoked inside [`catch_unwind`] — a host tick observer is
-    /// untrusted plugin code, and a panic here would otherwise unwind the actor
-    /// thread into a terminal `Panic` frame and permanently kill the kernel. A
-    /// panicking observer is swallowed (the default panic hook still prints the
-    /// payload, so the bug stays visible) and every sibling observer in the same
-    /// tick still fires.
-    pub fn run_tick_observers(&self) {
-        for (_, observer) in &self.tick_observers {
-            // `AssertUnwindSafe`: a boxed `Fn` closure is not `UnwindSafe`, but a
-            // panic here is fully contained — nothing the closure touched is
-            // observed again after it unwinds, so there is no broken-invariant
-            // hazard.
-            let _ = catch_unwind(AssertUnwindSafe(observer));
-        }
-    }
 
     // ADR-0063 D7 (#1671 Lane H) — the feed-author-provider + emitted-author-sink
     // methods (`register_feed_author_provider`, `remove_feed_author_provider`,
@@ -476,7 +376,7 @@ pub fn new_snapshot_projection_slot() -> SnapshotProjectionSlot {
 }
 
 // Kernel-side accessors over the shared slot (set/take handle, run typed
-// projections, run tick observers, ADR-0053 declared-set snapshot) live in
+// projections and ADR-0053 declared-set snapshot) live in
 // the `kernel_access` submodule to keep this file within its LOC ceiling.
 mod kernel_access;
 
