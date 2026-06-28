@@ -102,10 +102,9 @@ otherwise. No app does HTTP, JSON, or knows what NIP-11 is — it reads
 
 - Highlighter deletes `probe_nip11` and its `Nip11Document` model; its
   integration becomes a thin field-map from the diagnostics `info` child.
-- `nmp-wasm` is unaffected: it does not depend on `nmp-nip11` (the `ureq`-using
-  crate), exactly as it does not depend on `nmp-blossom`/`nmp-nip57`. The
-  `RelayConnectedHook` slot is generic and HTTP-free, so `nmp-core` stays
-  wasm-clean.
+- `nmp-wasm` was deleted in #2202 and is no longer a factor. The
+  `RelayConnectedHook` slot is generic and HTTP-free, so `nmp-core` and
+  `nmp-browser-runtime` stay wasm-clean without any dependency on `nmp-nip11`.
 - Capability data is surfaced via diagnostics (D7 report), not via a
   pool-internal map. The pool stays substrate-grade.
 

@@ -1,21 +1,26 @@
-//! nmp-wasm protocol-only gates (#2064 / #2202).
+//! Retired-crate gate: `nmp-wasm` is DELETED (#2202).
 //!
-//! These are cargo/source smoke gates for the boundary that doctrine-lint runs
-//! in every `doctrine_lint_smoke` pass. They deliberately enforce only the
-//! narrow facts that should be mechanically stable:
-//! - `nmp-wasm` must not depend on runtime, app, router/default composition, or
-//!   signer implementation crates.
-//! - it must build as an rlib-only Rust crate, not as a browser wasm artifact.
-//! - the retired raw adapter path must stay deleted.
+//! `nmp-wasm` was a dead parallel browser runtime crate. Its ABI
+//! responsibilities now live in `crates/nmp-browser-runtime::wasm` (the
+//! wasm-bindgen Worker export over `NmpRuntimeCore`). These gates enforce that
+//! the retirement is permanent:
+//!
+//! 1. No package named `nmp-wasm` may appear in `cargo metadata`.
+//! 2. The `crates/nmp-wasm` directory must not exist.
+//! 3. No live Rust or TOML source may reintroduce `nmp-wasm` as a live crate
+//!    (i.e. as a `[package] name = "nmp-wasm"` or workspace member path).
+//!
+//! These are a permanent backstop so a future change cannot silently
+//! re-introduce the deleted crate.
 
 use std::process::Command;
 
 use super::workspace_root;
 
-const ALLOWED_WASM_DEPS: &[&str] = &["serde", "serde_json"];
+// ─── Gate 1: cargo metadata must not know of nmp-wasm ────────────────────────
 
 #[test]
-fn nmp_wasm_dependencies_stay_protocol_only() {
+fn nmp_wasm_crate_is_not_in_cargo_metadata() {
     let root = workspace_root();
     let output = Command::new(env!("CARGO"))
         .current_dir(&root)
@@ -32,100 +37,123 @@ fn nmp_wasm_dependencies_stay_protocol_only() {
 
     let metadata: serde_json::Value =
         serde_json::from_slice(&output.stdout).expect("cargo metadata JSON must parse");
-    let package = metadata["packages"]
+    let has_nmp_wasm = metadata["packages"]
         .as_array()
         .expect("cargo metadata packages must be an array")
         .iter()
-        .find(|package| package["name"] == "nmp-wasm")
-        .expect("nmp-wasm package must exist");
-
-    let dependencies = package["dependencies"]
-        .as_array()
-        .expect("nmp-wasm dependencies must be an array");
-    let mut violations = Vec::new();
-    for dependency in dependencies {
-        let dep_name = dependency["name"].as_str().unwrap_or("<unnamed>");
-        if ALLOWED_WASM_DEPS.contains(&dep_name) {
-            continue;
-        }
-        violations.push(dep_name.to_string());
-    }
+        .any(|pkg| pkg["name"] == "nmp-wasm");
 
     assert!(
-        violations.is_empty(),
-        "nmp-wasm must remain protocol types only. Add browser/runtime composition to \
-         nmp-browser-runtime or lower crates, not nmp-wasm. Forbidden deps:\n{}",
-        violations.join("\n")
-    );
-
-    let targets = package["targets"]
-        .as_array()
-        .expect("nmp-wasm targets must be an array");
-    let lib_target = targets
-        .iter()
-        .find(|target| target["name"].as_str() == Some("nmp_wasm"))
-        .expect("nmp-wasm must have a lib target");
-    let crate_types: Vec<&str> = lib_target["crate_types"]
-        .as_array()
-        .expect("nmp-wasm crate_types must be an array")
-        .iter()
-        .filter_map(|ty| ty.as_str())
-        .collect();
-    assert_eq!(
-        crate_types,
-        ["rlib"],
-        "nmp-wasm is not a browser artifact crate; nmp-browser-runtime owns wasm-bindgen exports"
+        !has_nmp_wasm,
+        "nmp-wasm is a RETIRED crate (deleted in #2202). It must not appear in \
+         cargo metadata. Browser ABI glue belongs in nmp-browser-runtime::wasm."
     );
 }
 
+// ─── Gate 2: the crates/nmp-wasm directory must not exist ────────────────────
+
 #[test]
-fn nmp_wasm_raw_adapter_path_is_retired() {
+fn nmp_wasm_directory_does_not_exist() {
     let root = workspace_root();
-    let retired_paths = [
-        "crates/nmp-wasm/src/runtime.rs",
-        "crates/nmp-wasm/src/runtime/actions.rs",
-        "crates/nmp-wasm/src/runtime/default.rs",
-        "crates/nmp-wasm/src/runtime/diagnostics.rs",
-        "crates/nmp-wasm/src/runtime/dispatch.rs",
-        "crates/nmp-wasm/src/runtime/feed.rs",
-        "crates/nmp-wasm/src/runtime/lifecycle.rs",
-        "crates/nmp-wasm/src/runtime/signer.rs",
-        "crates/nmp-wasm/src/runtime/test_support.rs",
-        "crates/nmp-wasm/src/relay_pool.rs",
-        "crates/nmp-wasm/src/relay_plan.rs",
-        "crates/nmp-wasm/src/dispatch_routing.rs",
-        "crates/nmp-wasm/src/signer_slot.rs",
-        "crates/nmp-wasm/src/snapshot.rs",
-        "crates/nmp-wasm/src/tick.rs",
+    let wasm_dir = root.join("crates").join("nmp-wasm");
+    assert!(
+        !wasm_dir.exists(),
+        "crates/nmp-wasm must not exist — it is a retired crate (deleted in #2202). \
+         Browser ABI glue belongs in crates/nmp-browser-runtime."
+    );
+}
+
+// ─── Gate 3: no live source reintroduces nmp-wasm as a crate name ────────────
+
+/// Scans every `Cargo.toml` under `crates/` and `apps/` for evidence that
+/// `nmp-wasm` has been re-introduced as a live crate. Specifically:
+///
+/// - `[package] name = "nmp-wasm"` — would declare a new crate with that name.
+/// - `path = "crates/nmp-wasm"` — would re-add it as a workspace member.
+///
+/// Comments and doc-string mentions are allowed (they may explain the deletion);
+/// only bare code-line occurrences are flagged.
+#[test]
+fn nmp_wasm_is_not_reintroduced_as_live_crate_in_source() {
+    let root = workspace_root();
+    // Scan Cargo.toml files throughout the workspace. Only flag declarations
+    // that would reconstitute the crate (a `[package] name` or member `path`),
+    // not bare dependency mentions.
+    let toml_roots = [root.join("Cargo.toml"), root.join("release")];
+    let banned_phrases = [
+        r#"name = "nmp-wasm""#,
+        r#"path = "crates/nmp-wasm""#,
     ];
 
     let mut violations = Vec::new();
-    for relative in retired_paths {
-        if root.join(relative).exists() {
-            violations.push(relative);
+
+    fn scan_toml_dir(
+        dir: &std::path::Path,
+        banned: &[&str],
+        violations: &mut Vec<String>,
+    ) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                if path.file_name().map_or(false, |n| n == "target") {
+                    continue;
+                }
+                scan_toml_dir(&path, banned, violations);
+            } else if path.extension().map_or(false, |e| e == "toml") {
+                let Ok(text) = std::fs::read_to_string(&path) else {
+                    continue;
+                };
+                for (n, line) in text.lines().enumerate() {
+                    let trimmed = line.trim_start();
+                    // Allow comment lines that document the deletion.
+                    if trimmed.starts_with('#') {
+                        continue;
+                    }
+                    for phrase in banned {
+                        if line.contains(phrase) {
+                            violations.push(format!(
+                                "{}:{}: {}",
+                                path.display(),
+                                n + 1,
+                                line.trim()
+                            ));
+                        }
+                    }
+                }
+            }
         }
     }
 
+    // Check the root Cargo.toml (workspace members list).
+    {
+        let text = std::fs::read_to_string(&toml_roots[0])
+            .expect("root Cargo.toml must be readable");
+        for (n, line) in text.lines().enumerate() {
+            let trimmed = line.trim_start();
+            if trimmed.starts_with('#') {
+                continue;
+            }
+            if line.contains("crates/nmp-wasm") {
+                violations.push(format!(
+                    "Cargo.toml:{}: {}",
+                    n + 1,
+                    line.trim()
+                ));
+            }
+        }
+    }
+
+    // Check release/ TOML files (nmp-release.toml public_crates list).
+    scan_toml_dir(&toml_roots[1], &banned_phrases, &mut violations);
+
     assert!(
         violations.is_empty(),
-        "legacy nmp-wasm runtime/adapter files must stay retired; browser \
-         runtime behavior belongs in nmp-browser-runtime:\n{}",
+        "nmp-wasm has been reintroduced as a live crate in TOML source. \
+         It is a RETIRED crate (deleted in #2202); browser ABI glue belongs \
+         in nmp-browser-runtime::wasm. Violations:\n{}",
         violations.join("\n")
-    );
-}
-
-#[test]
-fn nmp_wasm_exports_hidden_raw_adapter_not_runtime_facade() {
-    let root = workspace_root();
-    let lib = std::fs::read_to_string(root.join("crates/nmp-wasm/src/lib.rs"))
-        .expect("nmp-wasm lib.rs must read");
-
-    assert!(
-        !lib.contains("pub use runtime::{WasmRuntime"),
-        "nmp-wasm must not re-export the old public WasmRuntime facade"
-    );
-    assert!(
-        !lib.contains("RawWasmAbiAdapter"),
-        "nmp-wasm must not expose the retired RawWasmAbiAdapter"
     );
 }

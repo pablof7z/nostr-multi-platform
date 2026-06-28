@@ -4,15 +4,16 @@
 > `crates/nmp-browser-runtime/src/wasm/` and `web/packages/runtime-web/src/`.
 > This document is the single source of truth for the browser worker protocol.
 > `nmp-browser-runtime` owns the wasm-bindgen Worker export, worker composition,
-> platform adaptation, signer registration, storage registration, and the typed
-> app builder (ADR-0067). `crates/nmp-wasm` is retained only as a serializable
-> protocol-type crate for older Rust consumers.
+> platform adaptation, signer registration, storage registration, the typed
+> app builder (ADR-0067), and the serializable browser Worker protocol types.
+> `crates/nmp-wasm` was deleted in #2202 — `nmp-browser-runtime::wasm` is the
+> sole browser ABI glue.
 
 `crates/nmp-browser-runtime` exports `NmpWasmRuntime` for the dedicated browser
 Worker. That Worker event loop drives a `KernelReducer` (D4): it is the single
 writer of kernel state, and composition, storage registration,
-signer/capability provider registration, and app-builder policy live in
-`nmp-browser-runtime`, not `nmp-wasm`.
+signer/capability provider registration, and app-builder policy all live in
+`nmp-browser-runtime`.
 TypeScript renders snapshots and executes browser capabilities; Rust owns
 policy, routing, replay, Nostr protocol behaviour, and state transitions.
 

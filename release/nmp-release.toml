@@ -49,10 +49,6 @@ name = "nmp-native-runtime"
 path = "crates/nmp-native-runtime"
 
 [[public_crates]]
-name = "nmp-wasm"
-path = "crates/nmp-wasm"
-
-[[public_crates]]
 name = "nmp-browser-runtime"
 path = "crates/nmp-browser-runtime"
 

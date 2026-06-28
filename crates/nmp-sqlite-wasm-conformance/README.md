@@ -8,7 +8,7 @@ Dedicated-Worker OPFS conformance vehicle for `nmp-sqlite-wasm` (issue #1007, PR
 ("opfs-sahpool"). The synchronous file primitive it is built on,
 `createSyncAccessHandle()`, **only exists inside a dedicated Web Worker** — it is
 absent on the page main thread. The repository's existing wasm tests
-(`crates/nmp-wasm/tests/`, `wasm_bindgen_test_configure!(run_in_browser)`) run on
+(`crates/nmp-browser-runtime/tests/`, `wasm_bindgen_test_configure!(run_in_browser)`) run on
 the **main thread**, so they structurally cannot exercise this backend. This
 crate is the missing vehicle: a `wasm-bindgen --target web` cdylib whose single
 entry point is invoked from inside a dedicated Worker and driven by a headless

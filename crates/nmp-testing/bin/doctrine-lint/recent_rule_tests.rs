@@ -178,7 +178,6 @@ fn wasm_reachable_crates_are_d20_clean() {
         "nmp-store",
         "nmp-network",
         "nmp-signers",
-        "nmp-wasm",
         "nmp-planner",
         "nmp-chirp-config",
         "nmp-signer-iface",

@@ -4,7 +4,7 @@
   injection, degraded-open diagnostics, hydration/reload proof, and Web Locks
   durable-tab arbitration have shipped through #1007 and #2202.
 - **Date:** 2026-06-13
-- **Blocked-by:** ADR-0067 / #2045 (browser-runtime ownership split) — OPFS store is injected via the browser builder storage decision, not constructed in nmp-wasm.
+- **Unblocked:** ADR-0067 / #2045 (browser-runtime ownership split) resolved. OPFS store is injected via the browser builder storage decision in `nmp-browser-runtime` (`nmp-wasm` deleted in #2202).
 - **Relates to:** ADR-0045 (store→projection replay), ADR-0047 (browser worker
   runtime contract), ADR-0040 (capability-worker seam), ADR-0044 (Tier-3
   snapshot envelope typing)
@@ -171,7 +171,7 @@ The kernel's innermost constructor is split into a store-agnostic
 native path (`build_event_store` in
 `crates/nmp-core/src/kernel/store_init.rs`). `KernelReducer` can replace the
 startup store before browser composition captures store-backed handles. Under
-ADR-0067 the seam lives in `nmp-browser-runtime`, not in `nmp-wasm`:
+ADR-0067 the seam lives in `nmp-browser-runtime` (`nmp-wasm` deleted in #2202):
 `NmpWasmRuntime::prepare_store` opens the durable store asynchronously before
 `Start` and parks it on `NmpRuntimeCore`; `handle_start` consumes that store and
 advances `BrowserAppBuilder` through `inject_store`. With no injected store the

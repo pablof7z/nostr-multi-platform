@@ -40,8 +40,8 @@ you touched** — not the whole workspace. Examples:
   `cargo test -p nmp-core --lib substrate` plus every Layer-4 crate
   that imports the seam (`grep -l 'use nmp_core::substrate' crates/`).
 - Touched the kernel? Run `cargo test -p nmp-core --lib kernel` and
-  the binding crates (`cargo test -p nmp-wasm`, `cargo test -p nmp-ffi`
-  if either exists).
+  the binding crates (`cargo test -p nmp-browser-runtime`,
+  `cargo test -p nmp-ffi` if either exists).
 
 `cargo test --workspace` is reserved for the merging agent (the
 supervisor running this conversation) and CI. A workspace-wide run can
