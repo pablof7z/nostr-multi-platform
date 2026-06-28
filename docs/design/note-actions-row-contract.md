@@ -238,20 +238,25 @@ inside the extracted component file.
 **Why**: The composable directly calls `model.react(...)`, `model.repost(...)`,
 `model.zapNote(...)`, `model.publishNote(...)`. Registry components must not
 depend on app-level kernel handles. The real doctrine source is the component
-contract in `docs/cli.md:164-172`:
+contract in `docs/cli.md:158`:
 
 > "Components are pure renderers. They do not fetch, retry, cache, route, or
-> decide policy. Apps hydrate display models … Component packages must not
-> import runtime, C ABI/JNI/WASM, worker, or kernel handles directly."
+> decide policy. Apps hydrate display models such as `NostrQuoteCardModel`
+> from their own state."
 
-and the thin-shell conformance gate in
-`docs/builder-guide/21-framework-magic.md:133-134`:
+and the callback boundary one bullet down (`docs/cli.md:161-163`):
 
-> "The doctrine smoke gate enforces the negative side: component packages must
-> not import runtime, ABI/JNI/WASM, worker, or kernel handles directly."
+> "User actions leave components through `NostrContentCallbacks` /
+> `LocalNostrContentRenderer`; the embedding app decides navigation and OS
+> capability execution."
 
-(The doctrine-lint smoke gate, `cargo test -p nmp-testing --test
-doctrine_lint_smoke`, enforces this negative side.)
+A component holding a `KernelModel` handle and dispatching to the kernel
+directly violates this — it is precisely the "no native business logic" rule
+of `docs/aim.md` §2 (commandment #4: native is "rendering plus capability
+execution. Nothing else.") and doctrine **D7** ("Capabilities report; never
+decide policy") in `docs/builder-guide/03-doctrine-d0-d8.md:38`. The negative
+side is backstopped in CI by the `doctrine-lint` D7 grep gate, exercised via
+`cargo test -p nmp-testing --test doctrine_lint_smoke`.
 
 **Fix**: Remove the `model: KernelModel?` parameter. Replace every dispatch
 call with a callback:
@@ -548,7 +553,7 @@ Mandating `authorLnurl: String?` on the Android surface (as the first draft of
 this doc did) would **push lnurl resolution into the Android shell** — a
 thin-shell regression — and **change Android zap-visibility behavior** (from
 always-shown to conditionally-muted). Per the thin-shell doctrine
-(`docs/cli.md:164-172`: components "do not … decide policy"; the shell does not
+(`docs/cli.md:158`: components "do not … decide policy"; the shell does not
 parse metadata), the shell deciding zapability from a parsed lud16/lud06 is the
 wrong layer.
 
