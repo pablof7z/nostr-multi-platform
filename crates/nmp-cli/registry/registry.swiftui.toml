@@ -146,6 +146,10 @@ dependencies = [
 source = "swiftui/component-host/NmpComponentHost.swift"
 target = "Components/NmpComponentHost/NmpComponentHost.swift"
 role = "source"
+[[components.files]]
+source = "swiftui/component-host/NmpComponentHostConformance.swift"
+target = "Components/NmpComponentHost/Fixtures/NmpComponentHostConformance.swift"
+role = "fixture"
 
 [[components]]
 id = "swiftui/content-kind-30023"

@@ -13,7 +13,7 @@ export const PLATFORM_LABELS: Record<Platform, string> = {
 export type ComponentFile = {
   source: string;
   target: string;
-  role: "source" | "example";
+  role: "source" | "example" | "fixture";
   content: string | null;
 };
 

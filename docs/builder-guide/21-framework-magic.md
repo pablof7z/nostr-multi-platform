@@ -122,6 +122,17 @@ an ADR (`docs/design/framework-magic/intro.md` §4). To add C14:
   (`test-scaffolding.md` §1); renaming it or its tests breaks the meta-test and
   needs an ADR.
 
+## Component-host conformance gate
+
+Reference-first registry components are another instance of the same contract:
+the app wires one host/provider, then component source consumes `refs.profile`,
+`refs.event`, and derived `refs.event.envelopes` rows through that host. Native
+registries ship optional `component-host` fixture files (`--with fixture`) and
+the web component package exports `createComponentHostConformanceFixture()` so
+apps can test profile and embed rendering without a live kernel. The doctrine
+smoke gate enforces the negative side: component packages must not import
+runtime, ABI/JNI/WASM, worker, or kernel handles directly.
+
 ## Replaceable event freshness (F-TTL)
 
 The kernel automatically tracks when replaceable events (kind:0 profiles, kind:10002 mailboxes, parameterized replaceables) should be re-verified based on kind-specific TTLs. This avoids apps manually implementing profile-refresh polls or stale-data checks.

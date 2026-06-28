@@ -49,4 +49,6 @@ nmp doctor                # confirm the dependency policy
 1. Add your app-specific module registrations inside `register` in
    `crates/{{pkg}}/src/lib.rs`.
 2. Replace the example `Entry` domain with your real nouns.
-3. Build a platform shell (SwiftUI / Compose / …) over the `NmpApp` C-ABI.
+3. Install a component host with fixtures while wiring UI tests, for example
+   `nmp add component swiftui/component-host --with fixture`.
+4. Build a platform shell (SwiftUI / Compose / …) over the `NmpApp` C-ABI.

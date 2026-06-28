@@ -379,6 +379,11 @@ Registry components promise:
   boundary (`.nmpComponentHost(...)` for SwiftUI,
   `NmpComponentHostProvider(...)` for Compose). Feature screens do not call
   per-row resolve/release or equivalent lifecycle APIs for each rendered row.
+- **Conformance without a live kernel.** Component-host packages ship optional
+  fixtures that provide fake `refs.profile`, `refs.event`, and
+  `refs.event.envelopes` data, and the web component package exports the same
+  fixture path. The fixture proves reference-first components consume the host
+  contract mechanically before an app wires the real runtime.
 - **Rust-owned truth.** Relay choice, fetch policy, cache mutation, replaceable
   supersession, and profile/embed resolution stay in Rust. Native components
   may emit lifecycle intent, render snapshots, and format raw projection fields
@@ -401,6 +406,10 @@ Registry components promise:
 - **App-owned source.** Components are copied into the app tree so teams can edit
   styling, layout, accessibility, and callbacks. `nmp update component` preserves
   local edits against an upstream baseline.
+- **Runtime boundary guards.** Registry component packages are renderer/source
+  packages. They must not import runtime, C ABI/JNI/WASM, worker, or kernel
+  handles; the doctrine smoke gate enforces that boundary for native registry
+  sources and the web component package.
 
 This is binding on every registry family: `user-*`, `content-*`, embedded-event
 kind handlers, relay/provenance widgets, and future app blocks. A registry API
