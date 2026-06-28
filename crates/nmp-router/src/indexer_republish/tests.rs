@@ -23,6 +23,19 @@ fn make_raw(kind: u32, id_byte: u8) -> RawEvent {
     }
 }
 
+fn make_raw_with_d_tag(kind: u32, id_byte: u8, d_value: &str) -> RawEvent {
+    let id = format!("{:02x}{}", id_byte, "00".repeat(31));
+    RawEvent {
+        id,
+        pubkey: "11".repeat(32),
+        created_at: 1_700_000_000,
+        kind,
+        tags: vec![vec!["d".to_string(), d_value.to_string()]],
+        content: String::new(),
+        sig: "22".repeat(64),
+    }
+}
+
 fn context_with_indexers(urls: &[&str]) -> RawEventForwardPolicyContext {
     let slot = new_indexer_relays_slot();
     {
@@ -127,10 +140,12 @@ fn skips_when_source_is_an_indexer() {
 }
 
 #[test]
-fn skips_non_replaceable_kinds() {
+fn skips_ephemeral_and_regular_non_replaceable_kinds() {
     let policy = IndexerRepublishPolicy::enabled(context_with_indexers(&["wss://indexer/"]));
 
-    for kind in [1u32, 7, 5, 9_999, 20_000, 30_023, 40_000] {
+    // Regular (non-replaceable), ephemeral, and above-addressable kinds must NOT forward.
+    // kind:30023 is addressable and is covered by the positive test below.
+    for kind in [1u32, 7, 5, 9_999, 20_000, 40_000] {
         let frame = make_frame(
             make_raw(kind, 0x10 | (kind as u8 & 0x0f)),
             Some("wss://content-relay/"),
@@ -138,9 +153,48 @@ fn skips_non_replaceable_kinds() {
         let dests = policy.destinations(&frame);
         assert!(
             dests.is_empty(),
-            "non-replaceable kind {kind} must not forward"
+            "kind {kind} must not forward (not replaceable or addressable)"
         );
     }
+}
+
+#[test]
+fn forwards_addressable_kind_to_indexer() {
+    // kind:30023 = NIP-23 long-form; addressable / parameterized replaceable.
+    let policy = IndexerRepublishPolicy::enabled(context_with_indexers(&[
+        "wss://indexer-a/",
+        "wss://indexer-b/",
+    ]));
+    let frame = make_frame(
+        make_raw_with_d_tag(30_023, 0x20, "my-article"),
+        Some("wss://content-relay/"),
+    );
+
+    let dests = policy.destinations(&frame);
+
+    assert_eq!(dests.len(), 2, "addressable kind 30023 must forward to all indexers");
+    let urls = relay_urls(&dests);
+    assert!(urls.contains(&"wss://indexer-a/".to_string()));
+    assert!(urls.contains(&"wss://indexer-b/".to_string()));
+    assert!(all_indexer_role(&dests));
+}
+
+#[test]
+fn addressable_kind_dedup_on_event_id_and_target() {
+    // Dedup key is (event_id, target_relay_url) — two different addressable events
+    // with the same kind/pubkey/d-tag are still independently forwarded.
+    let policy = IndexerRepublishPolicy::enabled(context_with_indexers(&["wss://indexer/"]));
+
+    let raw_a = make_raw_with_d_tag(30_000, 0x21, "follow-set");
+    let raw_b = make_raw_with_d_tag(30_000, 0x22, "follow-set"); // same d-tag, different id
+
+    let first = policy.destinations(&make_frame(raw_a.clone(), Some("wss://content-relay/")));
+    let second_same = policy.destinations(&make_frame(raw_a, Some("wss://content-relay/")));
+    let third_different = policy.destinations(&make_frame(raw_b, Some("wss://content-relay/")));
+
+    assert_eq!(first.len(), 1, "first event must forward");
+    assert!(second_same.is_empty(), "same event_id must be deduped");
+    assert_eq!(third_different.len(), 1, "different event_id must forward even if same d-tag");
 }
 
 #[test]
