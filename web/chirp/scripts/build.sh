@@ -35,8 +35,22 @@ fi
 # 0. Ensure clang (required by secp256k1-sys when cross-compiling to wasm32)
 # ---------------------------------------------------------------------------
 if ! command -v clang &>/dev/null; then
-    echo "[build] clang not found — installing via dnf..."
-    dnf install -y clang
+    if command -v apt-get &>/dev/null; then
+        echo "[build] clang not found — installing via apt-get..."
+        if command -v sudo &>/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y clang lld llvm
+        else
+            apt-get update
+            apt-get install -y clang lld llvm
+        fi
+    elif command -v dnf &>/dev/null; then
+        echo "[build] clang not found — installing via dnf..."
+        dnf install -y clang lld llvm
+    else
+        echo "ERROR: clang not found and no supported package manager is available."
+        exit 1
+    fi
 fi
 
 # ---------------------------------------------------------------------------
@@ -77,7 +91,15 @@ fi
 # 3. Build the nmp-browser-runtime wasm package
 # ---------------------------------------------------------------------------
 echo "[build] Building nmp-browser-runtime (target: web, out: $PKG_OUT)..."
-CC_wasm32_unknown_unknown=clang bash "$CRATE_SCRIPT"
+: "${CC_wasm32_unknown_unknown:=clang}"
+if [ -z "${AR_wasm32_unknown_unknown:-}" ] && command -v llvm-ar &>/dev/null; then
+    export AR_wasm32_unknown_unknown=llvm-ar
+fi
+export CC_wasm32_unknown_unknown
+if [ -n "${AR_wasm32_unknown_unknown:-}" ]; then
+    export AR_wasm32_unknown_unknown
+fi
+bash "$CRATE_SCRIPT"
 
 # ---------------------------------------------------------------------------
 # 4. Copy wasm output to the chirp public directory
@@ -87,6 +109,27 @@ rm -rf "$DEST_DIR"
 mkdir -p "$DEST_DIR"
 cp -r "$PKG_OUT/." "$DEST_DIR/"
 cp "$DEST_DIR/nmp_browser_runtime.js" "$DEST_DIR/nmp-browser-runtime.js"
+
+echo "[build] Verifying wasm public artifacts..."
+shopt -s nullglob
+SQLITE_MJS=("$DEST_DIR"/snippets/nmp-sqlite-wasm-*/vendor/sqlite-wasm/sqlite3.mjs)
+SQLITE_WASM=("$DEST_DIR"/snippets/nmp-sqlite-wasm-*/vendor/sqlite-wasm/sqlite3.wasm)
+if [ ! -f "$DEST_DIR/nmp_browser_runtime.js" ]; then
+    echo "ERROR: missing $DEST_DIR/nmp_browser_runtime.js"
+    exit 1
+fi
+if [ ! -f "$DEST_DIR/nmp_browser_runtime_bg.wasm" ]; then
+    echo "ERROR: missing $DEST_DIR/nmp_browser_runtime_bg.wasm"
+    exit 1
+fi
+if [ "${#SQLITE_MJS[@]}" -eq 0 ]; then
+    echo "ERROR: missing sqlite3.mjs under $DEST_DIR/snippets/nmp-sqlite-wasm-*/vendor/sqlite-wasm/"
+    exit 1
+fi
+if [ "${#SQLITE_WASM[@]}" -eq 0 ]; then
+    echo "ERROR: missing sqlite3.wasm under $DEST_DIR/snippets/nmp-sqlite-wasm-*/vendor/sqlite-wasm/"
+    exit 1
+fi
 
 # ---------------------------------------------------------------------------
 # 5. Build the Chirp web app (TypeScript check + Vite bundle)
