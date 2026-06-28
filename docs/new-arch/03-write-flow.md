@@ -38,8 +38,9 @@ Construction may be layered:
 - A reply builder can inspect the target and choose the right reply shape, such
   as NIP-22 behavior when replying to a non-kind:1 event.
 - NIP-29 does not construct replies, reactions, articles, or app-specific
-  events. It can finalize an already-constructed event into a group context by
-  adding or validating NIP-29 group envelope data and host-relay route context.
+  events. Its content write surface is exactly "publish this already-constructed
+  event in this group context." It finalizes the event by adding or validating
+  NIP-29 group envelope data and host-relay route context.
 - A DM helper can build the correct private-event envelope and mark the write as
   private-inbox-routed.
 - An app crate can compose protocol builders without making protocol crates
@@ -78,6 +79,10 @@ NIP-29 host pin, a verified private inbox, an imported/verbatim external event,
 or another protocol-owned route. The exact representation is an ADR decision,
 but the distinction must survive signing, remote-signer parking, retry/resume,
 local ingest, and status emission.
+Publish/action status must expose that provenance class and reason. A status row
+that says only `queued`, `signed`, `sent`, or lists relay URLs is insufficient:
+the app and audits must be able to tell whether the route was automatic,
+host-pinned, verified-private, manual/audited, imported/verbatim, or diagnostic.
 
 Minimum route-provenance matrix:
 
@@ -109,6 +114,9 @@ protocol envelope rules that may depend on the publish call:
 - NIP-17 can construct private envelopes and opt out of public outbox routing.
 - NIP-22 reply helpers can choose reply tags based on the target kind.
 - NIP-65 relay-list publishing can enforce the correct public route policy.
+- Client identity finalization can append the app's declared NIP-89 client tag to
+  eligible public events from one composition-root declaration, while User-Agent
+  uses the same identity through the transport path.
 - Podcast publishing can construct NIP-F4 show/feed/episode/list events, attach
   Blossom references, select per-podcast or active-account signers, and preserve
   explicit write-relay provenance.
@@ -118,11 +126,12 @@ Finalization must fail before signing if the required context is missing. A
 group publish without a group route, an unknown private inbox, or an unsupported
 explicit relay policy should not create a signed event.
 Generic raw publishing cannot silently bypass protocol invariants. A NIP-29
-group write is not `comment_in_group` or `reply_in_group`; it is "publish this
-already-constructed event in this group context." The base event is constructed
-by the appropriate NMP/app builder, then the NIP-29 finalizer adds or verifies
-the group envelope and host route. An `h`-tagged write that did not pass through
-that group-route proof is imported/verbatim/manual raw publish with reduced
+group write is not `comment_in_group`, `reply_in_group`, or a namespace of
+kind-specific actions; it is one kind-agnostic content publish surface over an
+already-constructed event plus group context. The base event is constructed by
+the appropriate NMP/app builder, then the NIP-29 finalizer adds or verifies the
+group envelope and host route. An `h`-tagged write that did not pass through that
+group-route proof is imported/verbatim/manual raw publish with reduced
 guarantees. Likewise, private-event publishes must distinguish verified NIP-17
 inbox routing from other explicit private-envelope delivery.
 

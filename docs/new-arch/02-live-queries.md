@@ -253,10 +253,10 @@ group, host relay, or member set, it should fail closed or emit a typed missing
 context state instead of falling through to a broad public query.
 
 Follow-list ownership is a concrete acceptance criterion from #2313. The
-follow-list read model is a reusable NIP-02/NMP feature output, not Chirp-owned
+follow-list read model is a reusable NIP-02/NMP feature output, not app-owned
 FFI glue. The destination is that `nmp.follow_list` or its replacement is owned
-by the reusable follow feature, while Chirp, Highlighter, gallery, and other apps
-are consumers that open sessions or render outputs.
+by the reusable follow feature, while Chirp, Highlighter, gallery, or any other
+app is only a consumer that opens sessions or renders outputs.
 
 ## Routing
 
@@ -291,6 +291,16 @@ This rule covers the `nmp_app_open_interest` confusion in #2313: the app should
 not decide whether a profile, feed, group, search, or embed opens a naked
 interest. It opens the typed session; the descriptor supplies route policy.
 
+NIP-29 group reads are relay-pinned by group context, not by content kind. The
+group feature owns host relay provenance, group id, admin/member metadata, and
+`h`-tag admission. It must not default to `kind:9`, chat/share kinds, or another
+consumer-specific kind filter. A group timeline session should admit every valid
+group-context event that the product has asked to display; product-specific
+views may filter or rank those typed outputs after NIP-29 has done only its own
+group/host admission. If a reply, reaction, article, share, or custom event has
+valid group context, NIP-29 should not silently hide it because the kind is not a
+chat kind.
+
 ## Component Refs
 
 Small UI components create real data demand. The framework should model that
@@ -323,6 +333,12 @@ classification, typed article-card fields, and NIP-22 parent/thread identity
 should live in Rust descriptors or generated adapters, not be reimplemented from
 `p:`/`e:`/`a:` strings, `tagsJson`, or ad hoc JSON shapes in Swift, Kotlin,
 TypeScript, and TUI shells.
+The boundary is semantic versus presentational. Parsing tags to decide parentage,
+reply roots, relay hints, article/highlight card facts, group context, route
+provenance, or embed demand is semantic and belongs in Rust descriptors or
+generated adapters. Formatting already-projected facts into labels, icons,
+localized strings, visual grouping, or platform-specific layout is presentation
+and stays in the shell.
 Generated ref caches must share the same full/delta/clear/stale-frame merge
 contract as other outputs; schema drift between Rust payloads and Swift/Kotlin/
 TypeScript mirrors is a correctness bug, not a UI adapter preference.

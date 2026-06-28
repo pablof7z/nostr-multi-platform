@@ -19,24 +19,24 @@ let app = NmpApp::builder()
 ```
 
 The exact names above are illustrative. The rule is not illustrative:
-`register_defaults()` should not be the taught mental model for real apps. It
-may remain a compatibility or tutorial preset only if the ADR keeps it. Product
-apps should show the substrate and feature methods they install. A typestate or
-equivalent builder is attractive because it can require storage and substrate
-before start, make the app immutable after build, and remove idempotency bugs
-from repeated registration.
+`register_defaults()` is rejected as production app architecture. Product apps
+show the substrate and feature methods they install. A typestate or equivalent
+builder is attractive because it can require storage and substrate before start,
+make the app immutable after build, and remove idempotency bugs from repeated
+registration. If a monolithic preset survives temporarily, it is a tutorial or
+migration shim with explicit callers and a deletion target, not the architecture
+real products should copy.
 
-The ADR must also decide how `nmp init` teaches this. If the generated app is a
-production scaffold, it should emit explicit feature composition and policy
-builders. If it is a starter/tutorial scaffold, it may call a small preset, but
-the docs must say that the preset is an example convenience rather than the
-architecture real products should copy.
+`nmp init` should teach production architecture by default: explicit feature
+composition and policy builders. A separate tutorial preset can exist only when
+the generated text labels it as tutorial/sample convenience and points production
+apps at explicit feature composition.
 
-That decision must update the scaffold gates. A production scaffold test should
-reject hidden `register_defaults()` and `declare_consumed_projections` teaching
-paths. A tutorial scaffold test may allow them only if the generated text labels
-the preset as tutorial/sample convenience and points production apps at explicit
-feature composition.
+The scaffold gates must flip with this design. Production scaffold tests reject
+hidden `register_defaults()` and `declare_consumed_projections` teaching paths.
+Tutorial scaffold tests may allow a preset only when the generated text labels
+the preset as tutorial/sample convenience and the production path is separately
+tested.
 
 The substrate is the correctness floor: actor, store, indexes, signer ports,
 capabilities, planner, publish engine, and typed update delivery. Feature bundles
@@ -96,6 +96,9 @@ The composition root should make these gates explicit:
 - `output contract`: typed outputs the shell may render or cache for rendering.
 - `capability contract`: native/web capabilities Rust may request and the raw
   results the shell reports back.
+- `client identity`: one declared app identity such as name/version/handler that
+  feeds User-Agent and opt-in NIP-89 client tags through one Rust-owned outbound
+  finalization path.
 
 This keeps framework defaults useful without hiding the product architecture.
 Feature-install helpers should live in feature composition crates such as
@@ -113,6 +116,12 @@ own operator policy such as seed follows, bootstrap relay lists, app relay
 brands, signer permission defaults, or product onboarding choices. Leaf app Rust
 crates provide that policy explicitly, preferably through typed builders that
 make the "with policy" versus "without policy" decision visible at compile time.
+
+Client identity follows the same single-source rule. An app declares client
+identity once in its Rust composition root. NMP can derive User-Agent headers and
+optional NIP-89 client tags from that one declaration during outbound
+finalization. Native shells do not maintain parallel client-label, version, or
+tag tables, and protocol crates do not hard-code product identity.
 
 ## App Feature Runtime Contract
 

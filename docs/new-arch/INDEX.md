@@ -55,22 +55,27 @@ projection delivery, signing, and publish policy disappear.
 ## Concept Status
 
 The design must not turn every existing internal mechanism into a new permanent
-API. The intended vocabulary is deliberately small:
+API. The intended public vocabulary is deliberately small and the rest is
+classified by target disposition:
 
 | Concept | Status | Rule |
 |---|---|---|
-| Feature bundle | Public app-developer concept | Installs typed sessions, actions, outputs, builders, and capability needs through narrow registrars or builder methods. Avoid a broad `dyn AppFeature` object unless it deletes existing complexity. |
-| Typed session | Public app-developer concept | The app opens typed demand and receives a handle plus typed output. This is the public replacement for hand-wiring interest, replay, observer, projection, and teardown. |
-| Typed action / generated builder | Public app-developer concept | User intent enters Rust through typed action data with correlation ids, validation, signer route, and status. |
-| Capability result | Public boundary concept | Native/web executes OS or platform capabilities and reports raw results back into Rust. |
-| Typed projection/status output | Public render contract | Rust emits semantic state, publish status, signer status, and app output; shells render it. |
-| `LiveQuery` | Provisional name only | Keep or rename only if it means typed session descriptor/handle. It must not become a second lifecycle engine. |
-| `ObservedProjection` | Internal machinery | Keep if it protects replay-before-live, scoped delivery, relay provenance, and close semantics. App developers should not assemble it. |
-| `ReducedSource` | Internal/provisional machinery | Treat as the dynamic-source invariant, not a public noun. The current feed-shaped type generalizes only after another source family proves identical semantics. |
-| Reverse wake/admission indexes | Internal machinery when proven | Wake sources and bounded admission are mandatory; specific indexes are added only when scoped fanout cannot prove the invariant. |
-| Route provenance | Internal invariant surfaced in status | Exact relays are insufficient. Publish routing must preserve why a route is valid: automatic, host-pinned, verified private inbox, manual override, or imported/verbatim. |
-| Generated adapters | Contract machinery | Use for schema, merge/cache, and action-builder drift prevention. Do not require generation for every app feature until it removes real duplication. |
-| Compatibility doors | Migration-scoped | Raw `open_interest`, defaults presets, JSON dispatch, and explicit relay escape paths need scope labels, live consumers, and deletion/formalization criteria. |
+| Feature bundle | Accepted public concept | Installs typed sessions, actions, outputs, builders, and capability needs through narrow registrars or builder methods. Avoid a broad `dyn AppFeature` object unless it deletes existing complexity. |
+| Typed session / session descriptor | Accepted public concept | The app opens typed demand and receives a handle plus typed output. This is the public replacement for hand-wiring interest, replay, observer, projection, and teardown. |
+| Typed action / generated builder | Accepted public concept | User intent enters Rust through typed action data with correlation ids, validation, signer route, and status. |
+| Capability result | Accepted boundary concept | Native/web executes OS or platform capabilities and reports raw results back into Rust. |
+| Typed projection/status output | Accepted render contract | Rust emits semantic state, publish status, signer status, and app output; shells render it. |
+| Route provenance | Accepted internal contract surfaced in status | Exact relays are insufficient. Publish routing must preserve why a route is valid: automatic, host-pinned, verified private inbox, manual override, or imported/verbatim. |
+| `ObservedProjection` | Private machinery | Keep if it protects replay-before-live, scoped delivery, relay provenance, and close semantics. App developers should not assemble it. |
+| `ReducedSource` / shape reconciler | Private/provisional machinery | Treat as the dynamic-source invariant, not a public noun. The current feed-shaped type generalizes only after another source family proves identical semantics. |
+| Reverse wake/admission indexes | Private machinery when proven | Wake sources and bounded admission are mandatory; specific indexes are added only when scoped fanout cannot prove the invariant. |
+| Projection tiers / `SnapshotRegistry` / `DeclaredProjections` | Private executor machinery | They may remain internally only where they preserve bounded output and merge correctness. They are not app-facing composition language. |
+| Generated adapters | Contract machinery | Use for schema, merge/cache, and action-builder drift prevention. Generation is mandatory where hand-authored adapters cannot prove the same contract. |
+| Public `LiveQuery` engine | Rejected public concept | A typed session descriptor may be named `LiveQuery`, but it must not become a second lifecycle engine or protocol owner. |
+| Public `ReducedSource` | Rejected public concept | Dynamic source reconciliation stays behind typed sessions unless a later ADR proves a real app-facing need. |
+| Raw `open_interest` app reads | Rejected public product model | Keep only substrate, protocol-internal, diagnostic/test/export, or migration scopes with deletion/formalization criteria. |
+| `register_defaults()` production composition | Rejected public product model | Production composition is explicit feature opt-in. A preset may exist only as tutorial or migration compatibility with a deletion target. |
+| Compatibility doors | Migration-scoped | Raw `open_interest`, defaults presets, JSON dispatch, and explicit relay escape paths need scope labels, live consumers, and deletion/formalization criteria. Zero live consumers means delete. |
 
 ## Design Hypothesis
 
@@ -94,7 +99,7 @@ state has one owner, one handle, one teardown path, one output contract, and one
 route policy.
 
 This hypothesis must be enforced by the ratchets in [Internal
-Machinery](04-internal-machinery.md), especially FF-001 through FF-014. A prose
+Machinery](04-internal-machinery.md), especially FF-001 through FF-017. A prose
 claim that the new model is simpler is insufficient without those checks moving
 old-pattern counts down or keeping them from growing.
 
@@ -203,6 +208,21 @@ whether the destination architecture is real.
 - The gallery composition root must move off hidden `register_defaults()` /
   `consume_all_builtin_projections()` teaching, or label that path as
   tutorial/showcase compatibility.
+
+## Signoff Gates
+
+The architecture is not signoff-ready until these downstream gates either pass
+or trigger a named kill criterion. They are not follow-up polish.
+
+| Gate | Required proof |
+|---|---|
+| Highlighter web classification | Every direct NDK product path is classified as NMP target-runtime migration, SSR/diagnostic exception with deletion criteria, or explicitly out of scope. Direct NDK cannot remain both violation and normal runtime. |
+| Highlighter semantic parsing | `tagsJson`, manual NIP-10/NIP-21/NIP-22/NIP-29 parsing, article/highlight card derivation, and discussion-root inference either move behind Rust descriptors/generated adapters or are proven presentation-only. |
+| Podcast service sessions | Widget, AppIntent/Siri, CarPlay, remote command, Live Activity, Handoff, and suspended/cold start flows work through app/service sessions or typed capability results, not UI-process singletons or shell-local durable state. |
+| Podcast NIP-F4 publish | Show, episode, feed/list, Blossom references, signer choice, route provenance, local ingest, relay ack/error/retry/exhausted status, and user-visible completion are proven end to end. Constructed JSON, queued-only status, or `relay_pending` is not enough. |
+| `nmp-gallery` web/ref lifecycle | wasm/worker runtime builds, ref APIs are generated/typed, no correctness `setInterval` release/reclaim loop is needed, and component refs clear by owner lifecycle across web/iOS/Android/TUI/desktop. |
+| Generated merge/cache parity | Full, delta, clear/tombstone, stale-frame, decode-poison, and baseline recovery behavior match across every shell used by a migrated feature. |
+| Publish route provenance | Status payloads expose provenance class and reason, not just relay URLs or queued/signed. Manual, host-pinned, verified inbox, imported/verbatim, and diagnostic routes remain distinguishable through dispatch, signing, retry/resume, local ingest, and status. |
 
 ## Complexity Budget
 
@@ -513,3 +533,59 @@ This packet is ready to turn into durable ADR and architecture edits only after:
 - the first executable ratchets are identified, with baseline counts and owners;
 - stale docs and examples have a retirement path instead of becoming a competing
   source of truth.
+
+## Decision Taxonomy
+
+Do not treat every unresolved item as a human product decision. Most are
+technical proof questions that the implementation plan should answer with code,
+tests, and downstream migrations.
+
+**Direction this packet already chooses**
+
+- The public app model is feature composition, typed sessions, typed actions or
+  generated builders, capability results, and typed output/status.
+- `open_interest`, projection tiers, `ObservedProjection`, raw sidecar rituals,
+  and snapshot ticks are not app-developer concepts.
+- `register_defaults()` is not the production mental model. If retained, it is a
+  tutorial, compatibility, or test preset with explicit scope and deletion target.
+- NIP-29 is a kind-agnostic group-publish finalizer/route wrapper over already
+  constructed events, not a reply/comment/article helper namespace. NIP-29 group
+  reads are likewise kind-agnostic over valid group-context events; product
+  filtering belongs to consumers.
+- Route provenance is required. Exact relay lists alone cannot represent manual
+  override, host pin, verified private inbox, automatic route, and imported event
+  semantics.
+- App-specific Rust crates own product domains; NMP crates own reusable Nostr
+  mechanisms. Native/web shells render and execute capabilities only.
+
+**Technical ADR questions**
+
+These do not need subjective product input unless the evidence produces two
+valid endpoints:
+
+- final public naming: `typed session`, `FeatureSession`, or per-feature open
+  helpers over one descriptor model;
+- whether private `ObservedProjection` can be narrowed or should remain as the
+  internal replay-before-live primitive;
+- whether private feed-shaped `ReducedSource` is amended, renamed, replaced by a
+  smaller reconciler, or kept private until another source family proves it;
+- exactly how route provenance fits in existing publish target/command fields or
+  one narrow internal enum/type;
+- how far generation must go before schema/action/cache drift is actually
+  prevented;
+- which compatibility doors have live consumers and which should be deleted
+  rather than formalized.
+
+**Human/product-scope calls**
+
+These can be documented and worked around temporarily, but final signoff needs a
+real decision if the evidence does not force one:
+
+- whether Highlighter web is an NMP target runtime, an SSR/migration exception,
+  or deliberately out of scope;
+- whether a separate tutorial preset should exist in addition to the production
+  `nmp init` scaffold;
+- which downstream migrations are release gates versus tracked follow-up work
+  after the architecture is accepted;
+- whether manual explicit relay selection is a product affordance, and what
+  audit language/ownership the product wants users to see.
