@@ -29,7 +29,6 @@ nmp_app_new
 nmp_app_nostrconnect_uri
 nmp_app_open_interest
 nmp_app_open_uri
-nmp_app_probe_relay_info
 nmp_app_read_author_event_ids
 nmp_app_read_command_lane_stats
 nmp_app_read_projection_churn_stats
@@ -58,7 +57,6 @@ nmp_app_set_capability_callback
 nmp_app_set_lifecycle_callback
 nmp_app_set_storage_path
 nmp_app_set_update_callback
-nmp_app_sign_event_for_return
 nmp_app_signin_bunker
 nmp_app_signin_nip55
 nmp_app_signin_nsec
