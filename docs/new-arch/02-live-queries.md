@@ -205,6 +205,13 @@ because Podcast Player, widgets, AppIntents, CarPlay, Live Activities, Handoff,
 and signer/runtime work expose a real gap in the screen-only model. The ADR must
 prove they can reuse the normal session/action/capability machinery without
 becoming a second app model or a runtime-specific framework.
+Podcast is the falsification case: an AppIntent that only enqueues into a
+foreground singleton, a CarPlay surface that polls until the UI store appears, or
+an OS callback that reports success before Rust emits completion proves the
+service-session model is not solved. Highlighter is the caution in the other
+direction: share extensions, NIP-05, SSR, and background work do not justify a
+broad service layer if typed actions, short-lived headless invocation, or raw
+capability results can carry the invariant.
 Before accepting a service-session abstraction, prove the cheaper forms fail:
 a typed action into the normal runtime, a short-lived headless runtime invocation,
 or a last Rust-emitted mirror frame. If the proposed service session needs a

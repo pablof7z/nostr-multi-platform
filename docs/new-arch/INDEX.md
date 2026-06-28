@@ -119,6 +119,7 @@ Known contradiction ledger for P8:
 | Surface | Current wiki/doc signal | Required resolution before durable docs |
 |---|---|---|
 | `docs/wiki/guides/reduced-source.md` | treats `ReducedSource`, `open_feed(FeedParams)`, and `FeedParams` as typed app-facing dynamic-feed architecture | either the ADR keeps that public surface, or the page is rewritten around typed sessions with private source reconciliation |
+| `docs/wiki/guides/store-first-interest-registration.md` | says a projection pushes its own interest and frames registration ordering around projection assembly | rewrite around session/output-owned demand: the owner declares demand, installs replay/output, activates live delivery, and tears down as one lifecycle |
 | `docs/wiki/guides/publish-outbox-pipeline.md` and `docs/wiki/guides/nip29-wiring.md` | still record the old `RoutingContext::explicit_targets` versus live `PublishTarget::Explicit` split, even though #1538/#1600 removed the dead routing-context branch | preserve the route-reason/status lessons, but rewrite around the surviving `PublishTarget::Explicit` path; do not reintroduce a broad routing context just to match stale prose |
 | `docs/wiki/guides/nmp-gallery-app.md` | still records gallery registration through `register_defaults()` and snapshot/readiness probes | gallery must move to explicit composition or be labeled tutorial/showcase compatibility with owner and removal gate |
 | `docs/wiki/guides/operator-data-leaf-apps-only.md` | reinforces leaf-app ownership for relays, seed follows, NIP-46 permissions, and signer labels | this packet must preserve that boundary; no defaults rewrite may reintroduce operator policy into NMP crates |
@@ -359,6 +360,10 @@ whether the destination architecture is real.
   policy behind Rust-owned state with explicit native capability mirrors.
 - Product event writes must be correlated typed actions with publish/status
   outputs; fire-and-forget raw writes fail the proof.
+- Startup/defaults and room reads are separate proof points. Highlighter cannot
+  count as conforming while its app root depends on hidden defaults plus manual
+  sidecar projection registration, or while room/session state remains singleton
+  projection lifecycle outside typed owner open/close.
 
 **Podcast Player**
 
@@ -382,6 +387,10 @@ whether the destination architecture is real.
 - App-specific Rust is correct; hand-authored app FFI/action glue is not a final
   framework proof unless it is generated, typed, or explicitly app-local with no
   protocol-policy leakage.
+- Podcast is the service-session falsification target. AppIntents that depend on
+  a foreground `KernelModel.shared`, CarPlay flows that refresh with polling, and
+  optimistic publish timestamps prove the architecture is not done until those
+  surfaces report typed Rust-owned results and status.
 
 **nmp-gallery**
 
@@ -399,6 +408,13 @@ whether the destination architecture is real.
 - The gallery composition root must move off hidden `register_defaults()` /
   `consume_all_builtin_projections()` teaching, or label that path as
   tutorial/showcase compatibility.
+- Generated adapters are part of the proof, not polish. If Swift, Kotlin,
+  TypeScript, TUI, and desktop keep hand-parsing refs, projection rows, relay
+  role fields, or worker namespace/shape/liveness constants, gallery proves only
+  that the old drift moved to new files.
+- Web proof must be real browser proof: placeholder wasm builds, TS-only
+  Playwright checks, silent degraded runtime paths, or correctness
+  `setInterval` loops fail the gate.
 
 ## Direction Gates
 

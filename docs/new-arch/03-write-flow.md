@@ -464,6 +464,18 @@ artifact shares must either move behind typed Rust actions/builders or be
 classified by ADR as SSR-only, diagnostic, or migration-scoped with deletion
 criteria. Native/Rust raw publish paths need the same correlation and status
 proof; "the event was sent" is not enough.
+Highlighter also proves that near-correct writes can still fail the architecture:
+share-to-room, discussion, capture, relay app-data, and web publish flows must
+carry the same correlation id, draft validation, signer continuation, route
+provenance, local ingest, retry, and terminal status. A fire-and-forget raw
+publish, `correlation_id: None`, or dispatch-accepted UI success is a retained
+old door.
+
+Podcast proves the same rule for non-primary signers. Per-podcast keys, agent
+signers, Blossom server references, configured write relays, and NIP-F4
+show/episode/list events cannot update `last_published_at` or equivalent product
+state on construction, signing, or queued dispatch. Product completion follows
+from the publish ledger reaching a terminal ack/error/retry-exhausted state.
 
 ## Compatibility Boundaries
 

@@ -459,10 +459,10 @@ Current rolling-horizon recommendation:
 
 | Step | Slice | Why this is first | Must get smaller |
 |---|---|---|---|
-| 1 | P-1/P0 public-door disposition and ratchets | freezes the old architecture before any new name lands | raw `open_interest`, hidden defaults teaching, projection-tier teaching, snapshot-tick reconciliation, filterless observer doors stop growing |
+| 1 | P-1/P0 public-door and downstream proof disposition | freezes the old architecture before any new name lands and stops downstream exceptions from being counted as proof | raw `open_interest`, hidden defaults teaching, projection-tier teaching, snapshot-tick reconciliation, filterless observer doors, direct NDK paths, service singleton/polling paths, and fire-and-forget publish paths stop growing |
 | 2 | #2307 event-driven observed-projection reconciler | deletes duplicated lifecycle repair before adding a session abstraction | duplicated `ActiveObservedProjection`/`DynamicObservedProjection` modules and account/source snapshot-tick usage |
-| 3 | first descriptor proof over an existing real session | proves #2316 lifecycle ownership only after old reconciler duplication moves down | one hand-wired open/replay/sink/output/teardown recipe becomes private or compatibility-scoped |
-| 4 | smallest publish provenance / publish-intent carrier | proves write-side direction without a broad `PublishContext` layer | anonymous explicit route status and fire-and-forget publish paths shrink or become scoped |
+| 3 | first descriptor proof over an existing real session | proves #2316 lifecycle ownership only after old reconciler duplication moves down | one hand-wired open/replay/sink/output/teardown recipe becomes private or compatibility-scoped; candidate proofs are Highlighter RoomHome or gallery EventEmbed, not a clean-room demo |
+| 4 | smallest publish provenance / publish-intent carrier | proves write-side direction without a broad `PublishContext` layer | anonymous explicit route status, Highlighter raw/fire-and-forget writes, and Podcast optimistic NIP-F4 publish state shrink or become scoped |
 | 5 | #2320 ADR/source-of-truth fold for accepted facts | prevents this packet and stale ADRs from becoming parallel architecture | stale ADR/index/builder-guide teaching is folded, corrected, retired, or linked to issues |
 
 Only these rows should be treated as near-term plan. Later P3-P8 material is a
@@ -975,6 +975,7 @@ possibly stale architecture claims:
 | Page | Why it matters | Resolution rule |
 |---|---|---|
 | `docs/wiki/guides/reduced-source.md` | describes `ReducedSource`, `FeedParams`, and `open_feed` as app-facing dynamic-feed architecture | keep only if the ADR explicitly accepts that public surface; otherwise rewrite around typed sessions and private source reconciliation |
+| `docs/wiki/guides/store-first-interest-registration.md` | frames demand as something a projection pushes and preserves registration-order terminology from the old lifecycle recipe | rewrite around session/output-owned demand, replay-before-live, and one owner for interest, sink, output, activation, and teardown |
 | `docs/wiki/guides/publish-outbox-pipeline.md` | documents both per-relay reasons and the dead/live explicit-route split | preserve route-reason/status lessons, but resolve `RoutingContext::explicit_targets` versus `PublishTarget::Explicit` to one real seam |
 | `docs/wiki/guides/nip29-wiring.md` | contains both correct NMP/app ownership boundaries and older explicit-target wording | keep the ownership boundary; update route wording to match the chosen publish seam |
 | `docs/wiki/guides/nmp-gallery-app.md` | records `nmp_app_gallery_register` calling `register_defaults()` and older claim/open-author behavior | migrate to explicit composition or label as gallery/tutorial compatibility with owner and removal gate |
