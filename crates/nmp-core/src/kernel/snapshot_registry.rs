@@ -461,7 +461,7 @@ impl SnapshotRegistry {
 
 /// Shared snapshot-projection registry handle.
 ///
-/// One `Arc` clone lives on [`NmpApp`](crate::ffi::NmpApp); another is
+/// One `Arc` clone lives on `NmpApp` (`nmp-native-runtime`); another is
 /// threaded to the actor thread and bound onto the kernel via
 /// [`Kernel::set_snapshot_projection_handle`]. Registrations made through the
 /// `NmpApp` clone are visible to the kernel without crossing the FFI boundary

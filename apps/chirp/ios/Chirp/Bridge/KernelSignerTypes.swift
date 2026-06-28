@@ -21,7 +21,7 @@ import Foundation
 ///
 /// The flag fields are optional so an older kernel build that predates the
 /// doctrine fix still decodes (D1); call sites that fall back to `stage` are
-/// correct (but should migrate once the kernel rebuild lands).
+/// correct; the flag fields are live and call sites should migrate to them.
 struct BunkerHandshake: Decodable, Equatable {
     let stage: String
     let message: String?

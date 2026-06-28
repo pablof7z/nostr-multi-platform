@@ -130,8 +130,9 @@ pub(in crate::action) fn dispatch_action_bytes(app: Option<&NmpApp>, bytes: &[u8
     // mints an id only after validation, but this doorway discards it and uses
     // the host-supplied `decoded.correlation_id` as the operation identity.
     // This stamp never feeds reducer state, event `created_at`, diagnostics, or
-    // snapshot metadata; it is retained only because `ActionRegistry::start_*`
-    // still returns an id for the legacy JSON twin.
+    // snapshot metadata; `start_bytes` needs it to mint its internal id, which
+    // is then discarded (`Ok(_validated)` below) in favour of the host-supplied
+    // `correlation_id` (the JSON doorway `nmp_app_dispatch_action` is deleted).
     let dispatch_now_ms = {
         use std::time::{SystemTime, UNIX_EPOCH};
         SystemTime::now()

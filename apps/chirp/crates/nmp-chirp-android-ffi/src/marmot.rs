@@ -7,9 +7,10 @@
 //! every identity mutation). Once registered, the kernel pushes the
 //! `nmp.marmot.snapshot` / `nmp.marmot.messages` projections on every snapshot
 //! frame (V-107 / ADR-0039) and Kotlin reads Marmot state reactively from them;
-//! write ops (create_group / invite / send / accept_welcome …) route through the
-//! already-wired generic `nativeDispatchAction("nmp.marmot", …)` seam in
-//! `lib.rs` — no bespoke per-op JNI symbol.
+//! write ops (create_group / invite / send / accept_welcome …) route through
+//! the byte doorway — `bridge.dispatchMarmotBytes` → `bridge.dispatchBytes`
+//! on the Kotlin side (M14-1c / ADR-0064 migration) — no bespoke per-op JNI
+//! symbol.
 //!
 //! WHY this module exists at all: calling `nmp_marmot_register_active` /
 //! `nmp_marmot_unregister` through the `nmp_app_chirp::` RUST path (rather than

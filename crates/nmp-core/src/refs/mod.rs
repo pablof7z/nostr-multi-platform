@@ -50,8 +50,10 @@ pub use rowdelta::{
     RefRowDeltaDecodeError, RefRowState,
 };
 pub use tracker::{RefRowDeltaTracker, RefRowRevSource};
-// `MapRowRevSource` is a TEST-ONLY in-memory Lane B stub (deleted when Lane B's
-// real `RefResolver` lands); it is not part of the public crate surface.
+// `MapRowRevSource` is a TEST-ONLY in-memory Lane B stub, retained as a
+// `#[cfg(test)]` unit-test fixture; Lane B is realized in production via
+// `impl RefRowRevSource for Kernel` in `kernel/ref_row_source.rs`. Not
+// part of the public crate surface.
 #[cfg(test)]
 pub(crate) use tracker::MapRowRevSource;
 
