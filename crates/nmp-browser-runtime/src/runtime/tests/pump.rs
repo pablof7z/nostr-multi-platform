@@ -30,16 +30,20 @@ fn applied_command_produces_no_events_and_no_pending() {
         LifecycleCommand::MarkChangedSinceEmit,
     )]);
     let mut pending = HashMap::new();
+    let mut pending_signs = PendingSignerCompletions::new();
     let (reg, tx) = empty_broker();
 
     let out = drain_inbox(
         &mut reducer,
         &rx,
-        &mut pending,
-        &reg,
-        &tx,
-        &noop_wake(),
-        &test_command_sender(),
+        drain_context(
+            &mut pending,
+            &reg,
+            &mut pending_signs,
+            &tx,
+            &noop_wake(),
+            &test_command_sender(),
+        ),
     );
 
     assert!(out.events.is_empty(), "Applied must emit no host event");
@@ -55,16 +59,20 @@ fn protocol_command_expands_before_headless_interpretation() {
         ReactionProtocolCommand,
     ))]);
     let mut pending = HashMap::new();
+    let mut pending_signs = PendingSignerCompletions::new();
     let (reg, tx) = empty_broker();
 
     let out = drain_inbox(
         &mut reducer,
         &rx,
-        &mut pending,
-        &reg,
-        &tx,
-        &noop_wake(),
-        &test_command_sender(),
+        drain_context(
+            &mut pending,
+            &reg,
+            &mut pending_signs,
+            &tx,
+            &noop_wake(),
+            &test_command_sender(),
+        ),
     );
 
     assert_eq!(
@@ -93,16 +101,20 @@ fn needs_sign_parks_continuation_and_emits_sign_request() {
     });
     let rx = enqueue(vec![cmd]);
     let mut pending = HashMap::new();
+    let mut pending_signs = PendingSignerCompletions::new();
     let (reg, tx) = empty_broker();
 
     let out = drain_inbox(
         &mut reducer,
         &rx,
-        &mut pending,
-        &reg,
-        &tx,
-        &noop_wake(),
-        &test_command_sender(),
+        drain_context(
+            &mut pending,
+            &reg,
+            &mut pending_signs,
+            &tx,
+            &noop_wake(),
+            &test_command_sender(),
+        ),
     );
 
     assert_eq!(out.events.len(), 1, "exactly one SignRequest expected");
@@ -150,16 +162,20 @@ fn local_event_for_account_invokes_continuation_inline() {
     let mut reducer = KernelReducer::new();
     reducer.set_active_account_for_test(pubkey.clone());
     let mut pending = HashMap::new();
+    let mut pending_signs = PendingSignerCompletions::new();
     let (tx, _rx) = mpsc::channel::<SignerCompletion>();
 
     let out = drain_inbox(
         &mut reducer,
         &rx,
-        &mut pending,
-        &reg,
-        &tx,
-        &noop_wake(),
-        &test_command_sender(),
+        drain_context(
+            &mut pending,
+            &reg,
+            &mut pending_signs,
+            &tx,
+            &noop_wake(),
+            &test_command_sender(),
+        ),
     );
 
     assert!(
@@ -182,16 +198,20 @@ fn unsupported_command_surfaces_command_failed() {
     let mut reducer = KernelReducer::new();
     let rx = enqueue(vec![ActorCommand::Lifecycle(LifecycleCommand::Stop)]);
     let mut pending = HashMap::new();
+    let mut pending_signs = PendingSignerCompletions::new();
     let (reg, tx) = empty_broker();
 
     let out = drain_inbox(
         &mut reducer,
         &rx,
-        &mut pending,
-        &reg,
-        &tx,
-        &noop_wake(),
-        &test_command_sender(),
+        drain_context(
+            &mut pending,
+            &reg,
+            &mut pending_signs,
+            &tx,
+            &noop_wake(),
+            &test_command_sender(),
+        ),
     );
 
     assert_eq!(out.events.len(), 1, "Unsupported must surface one failure");
@@ -237,6 +257,7 @@ fn nip44_decrypt_for_account_resolves_local_key_continuation() {
         },
     )]);
     let mut pending = HashMap::new();
+    let mut pending_signs = PendingSignerCompletions::new();
     let mut reg = CapabilityProviderRegistry::new();
     reg.insert(Arc::new(recipient) as Arc<dyn Signer>);
     let (_unused_reg, tx) = empty_broker();
@@ -244,11 +265,14 @@ fn nip44_decrypt_for_account_resolves_local_key_continuation() {
     let out = drain_inbox(
         &mut reducer,
         &rx,
-        &mut pending,
-        &reg,
-        &tx,
-        &noop_wake(),
-        &test_command_sender(),
+        drain_context(
+            &mut pending,
+            &reg,
+            &mut pending_signs,
+            &tx,
+            &noop_wake(),
+            &test_command_sender(),
+        ),
     );
 
     assert!(
@@ -279,17 +303,21 @@ fn drain_is_bounded_by_budget_and_remainder_drains_next_pump() {
         .collect();
     let rx = enqueue(cmds);
     let mut pending = HashMap::new();
+    let mut pending_signs = PendingSignerCompletions::new();
     let (reg, tx) = empty_broker();
 
     let sender = test_command_sender();
     let first = drain_inbox(
         &mut reducer,
         &rx,
-        &mut pending,
-        &reg,
-        &tx,
-        &noop_wake(),
-        &sender,
+        drain_context(
+            &mut pending,
+            &reg,
+            &mut pending_signs,
+            &tx,
+            &noop_wake(),
+            &sender,
+        ),
     );
     assert_eq!(
         first.events.len(),
@@ -301,11 +329,14 @@ fn drain_is_bounded_by_budget_and_remainder_drains_next_pump() {
     let second = drain_inbox(
         &mut reducer,
         &rx,
-        &mut pending,
-        &reg,
-        &tx,
-        &noop_wake(),
-        &sender,
+        drain_context(
+            &mut pending,
+            &reg,
+            &mut pending_signs,
+            &tx,
+            &noop_wake(),
+            &sender,
+        ),
     );
     assert_eq!(second.events.len(), 10, "remainder drains on the next pump");
     assert!(

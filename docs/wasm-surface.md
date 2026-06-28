@@ -56,7 +56,7 @@ Source: `crates/nmp-browser-runtime/src/wasm/protocol.rs`.
 | `"release_ref"` | `ReleaseRef(ReleaseRef)` | `namespace: u32`, `key: String`, `consumer_id: String`, `correlation_id: String` | ADR-0063 structured reference release. |
 | `"dispatch_bytes"` | `DispatchBytes(DispatchBytes)` | `bytes: Vec<u8>` | **ADR-0064 typed write doorway.** `bytes` are a finished `DispatchEnvelope` FlatBuffers root (file id `NMPD`) carrying `correlation_id` + generated `action_namespace` + opaque typed `payload`. Production browser hosts call `handle_dispatch_bytes(bytes)` for this request instead of JSON-stringifying the `bytes` field. Decoded through `nmp_core::dispatch_envelope::decode_dispatch_envelope` — the SAME path the native FFI `nmp_app_dispatch_action_bytes` uses. There is no wasm-only write vocabulary. |
 | `"capability_result"` | `CapabilityResult(CapabilityResult)` | `capability: String`, `correlation_id: String`, `payload: Value` | Browser-side capability completion. Returns `CapabilityFailure` with reason `browser_actor_driver_missing` — the native actor capability handler is not available on wasm. |
-| `"set_identity"` | `SetIdentity(SetIdentity)` | `kind: String`, `pubkey_hex: String`, `correlation_id: String`, optional `secret_key_bech32: String`, optional `identity_relays: Vec<{url, read, write}>` | Set the active identity. `kind = "nip07"` uses `pubkey_hex` from `await window.nostr.getPublicKey()` and signs through `begin_sign`/`deliver_signer_response`. `kind = "local_key"` requires `secret_key_bech32`; Rust decodes the `nsec`, derives the pubkey, installs a `LocalKeySigner`, and redacts request debug. `identity_relays` forwards raw identity relay permissions; Rust canonicalizes and merges them before active-account bootstrap. |
+| `"set_identity"` | `SetIdentity(SetIdentity)` | `kind: String`, `correlation_id: String`, optional `pubkey_hex: String`, optional `secret_key_bech32: String`, optional `bunker_uri: String`, optional `identity_relays: Vec<{url, read, write}>` | Set the active identity. `kind = "nip07"` uses `pubkey_hex` from `await window.nostr.getPublicKey()` and signs through `begin_sign`/`deliver_signer_response`. `kind = "local_key"` requires `secret_key_bech32`; Rust decodes the `nsec`, derives the pubkey, installs a `LocalKeySigner`, and redacts request debug. `kind = "nip46"` requires `bunker_uri`; Rust owns the NIP-46 bunker handshake, installs the signer after `get_public_key`, and redacts the URI. `identity_relays` forwards raw identity relay permissions; Rust canonicalizes and merges them before active-account bootstrap. |
 | `"begin_sign"` | `BeginSign(BeginSign)` | `account_pubkey: String`, `unsigned_json: String` | ADR-0050 sign capability round-trip. Parks a sign op and emits `sign_request` for the main-thread broker to fulfil via `window.nostr.signEvent`. Pure message re-entry (D8). |
 | `"deliver_signer_response"` | `DeliverSignerResponse(DeliverSignerResponse)` | `correlation_id: String`, `signed_json?: String`, `error?: String` | The broker delivers the signer response (success or rejection). Drives the parked op exactly once from this message handler — no polling (D8). Account-pinned. |
 
@@ -200,9 +200,10 @@ Signing is a message-driven capability round-trip:
 
 The signer backend (local key / NIP-07 / NIP-46 / NIP-55) is invisible to the
 action vocabulary; the action payload carries no signer hint (V-78). In the
-browser runtime, `local_key` signers satisfy publish signing inside Rust through
-the registered `LocalKeySigner`; NIP-07 remains the main-thread
-`sign_request` capability round-trip.
+browser runtime, `local_key` signers satisfy publish signing inside Rust
+through the registered `LocalKeySigner`; NIP-46 bunker signers satisfy publish
+signing through the Rust-owned browser NIP-46 runtime; NIP-07 remains the
+main-thread `sign_request` capability round-trip.
 
 ### Browser local-key storage policy
 
@@ -268,10 +269,12 @@ Source: `crates/nmp-browser-runtime/src/wasm/dispatch.rs`,
 | `invalid_ref_request` | `invalid_ref_request_reason()` | A structured `resolve_ref` / `release_ref` control request carried an unknown namespace, shape, or liveness discriminant. |
 | `dispatch_envelope_rejected` | `dispatch_bytes` decode | The `DispatchBytes` buffer is not a valid `DispatchEnvelope` (bad file identifier, schema_version mismatch, oversize, missing routing fields). Surfaced as `WorkerEvent::Error`, not `CapabilityFailure`. |
 | `browser_actor_driver_missing` | `browser_driver_missing_reason()` | `CapabilityResult` received; no native actor to route it. The wasm runtime drains the JS pending state and returns this reason. |
-| `unsupported_signer_kind` | `install_identity` | `SetIdentity.kind` is not `"nip07"` or `"local_key"`. NIP-46 remains deferred to #2119/#2068. |
+| `unsupported_signer_kind` | `install_identity` | `SetIdentity.kind` is not `"nip07"`, `"local_key"`, or `"nip46"`. |
 | `invalid_signer_pubkey` | `SignerInstallError::InvalidPubkey` | `SetIdentity.pubkey_hex` failed secp256k1 x-only pubkey parse. |
 | `missing_local_key` | `install_identity` | `SetIdentity.kind = "local_key"` omitted `secret_key_bech32`. |
 | `invalid_local_key` | `install_identity` | The supplied `secret_key_bech32` did not decode as a valid nsec. |
+| `missing_nip46_bunker_uri` | `install_identity` | `SetIdentity.kind = "nip46"` omitted `bunker_uri`. |
+| `invalid_nip46_bunker_uri` | `install_identity` | The supplied NIP-46 `bunker_uri` did not parse or did not contain a relay. |
 
 ---
 
@@ -311,6 +314,7 @@ routing-inspector renderer can work across both surfaces.
   (`crates/nmp-browser-runtime/src/wasm/store_failure.rs`). IndexedDB is not the
   chosen backend: it is async-only and cannot satisfy the synchronous
   `EventStore` contract.
-- **NIP-46 (bunker) / NIP-55 signer on wasm.** `SetIdentity` only accepts
-  `kind = "nip07"`. Other backends join as ADR-0050 sign capability fulfillers
-  on the same `begin_sign` / `deliver_signer_response` round-trip.
+- **NIP-55 signer on wasm.** Android external-signer intents are not a browser
+  runtime capability. NIP-46 bunker signing is wired through `kind = "nip46"`;
+  browser NIP-44 encrypt/decrypt provider routing remains tracked separately
+  by #2195.

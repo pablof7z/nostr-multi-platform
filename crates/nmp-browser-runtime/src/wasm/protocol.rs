@@ -69,9 +69,12 @@ pub(crate) struct RelayBootstrapEntry {
 #[derive(Deserialize)]
 pub(crate) struct SetIdentity {
     pub kind: String,
+    #[serde(default)]
     pub pubkey_hex: String,
     #[serde(default)]
     pub secret_key_bech32: Option<String>,
+    #[serde(default)]
+    pub bunker_uri: Option<String>,
     pub correlation_id: String,
     #[serde(default)]
     pub identity_relays: Vec<IdentityRelayPermission>,
@@ -85,6 +88,10 @@ impl std::fmt::Debug for SetIdentity {
             .field(
                 "secret_key_bech32",
                 &self.secret_key_bech32.as_ref().map(|_| "[redacted]"),
+            )
+            .field(
+                "bunker_uri",
+                &self.bunker_uri.as_ref().map(|_| "[redacted]"),
             )
             .field("correlation_id", &self.correlation_id)
             .field("identity_relays", &self.identity_relays)

@@ -57,8 +57,9 @@ Rust decodes the secret, derives the pubkey, registers the signer, and owns all
 signing. TypeScript may read the form value only to send that request; it must
 not decode, derive from, cache, or sign with the secret.
 
-NIP-07 remains preferred. NIP-46 is not a web onboarding path until the browser
-runtime wires a bunker signer end to end.
+NIP-07 remains preferred. NIP-46 bunker sign-in is a supported browser-runtime
+signer path when the shell supplies a `bunker_uri`; Rust owns the handshake,
+signer installation, and subsequent signing.
 
 ## Search Discovery Contract
 
@@ -150,11 +151,11 @@ is missing, or if the active signer cannot satisfy the required NIP-44/signing
 capabilities, the send must fail visibly through Rust action state rather than
 falling back to public content relays or a shell-local simulation.
 
-NIP-07 and NIP-46 outbound send parity remains limited until the browser runtime
-wires async signer-provider NIP-44 encryption for those signer kinds. The UI may
-render the same send form, but it must treat capability failures as product
-state and must not implement private-message encryption or relay policy in
-TypeScript.
+NIP-07 and NIP-46 outbound private-message parity remains limited until the
+browser runtime wires async signer-provider NIP-44 encryption for those signer
+kinds (#2195). The UI may render the same send form, but it must treat
+capability failures as product state and must not implement private-message
+encryption or relay policy in TypeScript.
 
 Source relay provenance must come from the Rust ingest dispatcher. Live relay
 gift-wraps carry the delivering relay URL into the inbox projection; source-free

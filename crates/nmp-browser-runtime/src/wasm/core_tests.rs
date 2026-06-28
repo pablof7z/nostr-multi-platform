@@ -359,3 +359,62 @@ fn local_key_identity_derives_account_and_redacts_debug() {
         .expect("active account after local-key sign in");
     assert_eq!(active, expected_pubkey);
 }
+
+#[test]
+fn nip46_identity_accepts_bunker_uri_without_pubkey_and_redacts_debug() {
+    let mut core = NmpRuntimeCore::new();
+    let _ = core.handle_json_request(&start_req());
+    let remote = nostr::Keys::generate();
+    let bunker_uri = format!(
+        "bunker://{}?relay=wss://relay.example.com&secret=super-secret",
+        remote.public_key().to_hex()
+    );
+
+    let req = serde_json::json!({
+        "type": "set_identity",
+        "kind": "nip46",
+        "bunker_uri": bunker_uri,
+        "correlation_id": "id-nip46"
+    });
+    let parsed: super::WorkerRequest =
+        serde_json::from_str(&req.to_string()).expect("set_identity parses");
+    let debug = format!("{parsed:?}");
+    assert!(
+        !debug.contains("super-secret"),
+        "debug formatting must never expose bunker secrets: {debug}"
+    );
+    assert!(
+        debug.contains("[redacted]"),
+        "debug formatting must mark the redacted bunker URI: {debug}"
+    );
+
+    let resp = core.handle_json_request(&req.to_string());
+    assert!(resp.contains("action_accepted"), "resp={resp}");
+    assert!(
+        core.handle
+            .as_ref()
+            .and_then(|handle| handle.active_account_pubkey_inner())
+            .is_none(),
+        "NIP-46 account is selected after SignerReady, not from host pubkey"
+    );
+}
+
+#[test]
+fn nip46_identity_requires_bunker_uri() {
+    let mut core = NmpRuntimeCore::new();
+    let _ = core.handle_json_request(&start_req());
+    let resp = core.handle_json_request(
+        &serde_json::json!({
+            "type": "set_identity",
+            "kind": "nip46",
+            "correlation_id": "id-nip46-missing"
+        })
+        .to_string(),
+    );
+
+    assert!(resp.contains("capability_failure"), "resp={resp}");
+    assert!(
+        resp.contains("missing_nip46_bunker_uri"),
+        "missing bunker URI must surface stable error: {resp}"
+    );
+}

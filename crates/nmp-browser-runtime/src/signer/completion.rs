@@ -22,13 +22,17 @@
 //! - **NIP-07** on `wasm32 + feature="wasm"`: `sign_event_via_extension` via
 //!   `spawn_local`; completion arrives on `tx` when the JS Promise resolves.
 //!   No `SignRequest` event emitted.
-//! - **NIP-07 off-wasm**, NIP-46, NIP-55, Custom: unresolvable → `false`.
-//!   NIP-46 is #2068 (follow-up PR).
+//! - **NIP-46**: the browser-owned `Nip46Signer` queues the RPC and parks the
+//!   returned `SignerOp` in `PendingSignerCompletions`. Relay responses are
+//!   delivered to the signer by the NIP-46 bridge; the next pump drains the
+//!   ready op and completes the kernel sign round-trip.
+//! - **NIP-07 off-wasm**, NIP-55, Custom: unresolvable → `false`.
 
+use std::collections::HashMap;
 use std::sync::mpsc;
 
-use nmp_signer_iface::{SignerOp, UnsignedEvent};
-use nmp_signers::{Signer, SignerBackend};
+use nmp_signer_iface::{SignerError, SignerOp, UnsignedEvent};
+use nmp_signers::{Nip46Signer, PublicKey, Signer, SignerBackend};
 
 use super::registry::CapabilityProviderRegistry;
 use crate::relay::{fire_wake, WakeCell};
@@ -46,6 +50,85 @@ pub(crate) struct SignerCompletion {
 pub(crate) type SignerCompletionTx = mpsc::Sender<SignerCompletion>;
 /// Receiver end of the signer-completion channel.
 pub(crate) type SignerCompletionRx = mpsc::Receiver<SignerCompletion>;
+
+enum PendingSignerCompletion {
+    Nip46Sign {
+        op: SignerOp<String>,
+        expected_pubkey: PublicKey,
+    },
+}
+
+impl PendingSignerCompletion {
+    fn poll(&mut self) -> Option<Result<String, String>> {
+        match self {
+            Self::Nip46Sign {
+                op,
+                expected_pubkey,
+            } => match op.poll() {
+                Some(Ok(response_json)) => Some(
+                    Nip46Signer::parse_sign_event_response(&response_json, *expected_pubkey)
+                        .map(|signed| signed.to_nip01_json())
+                        .map_err(format_signer_error),
+                ),
+                Some(Err(error)) => Some(Err(format!("nip46 sign error: {error}"))),
+                None => None,
+            },
+        }
+    }
+}
+
+/// Pending provider-backed sign operations that resolve from relay/capability
+/// re-entry rather than from a host `deliver_signer_response` call.
+#[derive(Default)]
+pub(crate) struct PendingSignerCompletions {
+    pending: HashMap<String, PendingSignerCompletion>,
+}
+
+impl PendingSignerCompletions {
+    /// Construct an empty pending-op table.
+    pub(crate) fn new() -> Self {
+        Self::default()
+    }
+
+    fn insert_nip46(
+        &mut self,
+        correlation_id: String,
+        op: SignerOp<String>,
+        expected_pubkey: PublicKey,
+    ) {
+        self.pending.insert(
+            correlation_id,
+            PendingSignerCompletion::Nip46Sign {
+                op,
+                expected_pubkey,
+            },
+        );
+    }
+
+    /// Poll pending signer operations once and return every settled completion.
+    ///
+    /// D8: this performs one non-blocking `SignerOp::poll()` per parked op when
+    /// `pump()` has already been scheduled by relay/capability re-entry.
+    pub(crate) fn drain_ready(&mut self) -> Vec<SignerCompletion> {
+        let keys: Vec<String> = self.pending.keys().cloned().collect();
+        let mut ready = Vec::new();
+        for correlation_id in keys {
+            let Some(result) = self
+                .pending
+                .get_mut(&correlation_id)
+                .and_then(PendingSignerCompletion::poll)
+            else {
+                continue;
+            };
+            self.pending.remove(&correlation_id);
+            ready.push(SignerCompletion {
+                correlation_id,
+                result,
+            });
+        }
+        ready
+    }
+}
 
 /// Enqueue a settled completion and fire the wake so a pump is scheduled.
 ///
@@ -107,6 +190,7 @@ fn parse_unsigned_json(unsigned_json: &str) -> Result<UnsignedEvent, String> {
 /// See module-level doc for backend dispatch rules.
 pub(crate) fn broker_sign_request(
     registry: &CapabilityProviderRegistry,
+    pending: &mut PendingSignerCompletions,
     correlation_id: &str,
     account_pubkey: &str,
     unsigned_json: &str,
@@ -132,30 +216,59 @@ pub(crate) fn broker_sign_request(
     };
 
     dispatch_by_backend(
-        entry.signer.as_ref(),
-        entry.signer.backend(),
+        BackendDispatch {
+            signer: entry.signer.as_ref(),
+            nip46_signer: entry.nip46_signer.as_deref(),
+            backend: entry.signer.backend(),
+            pending,
+            tx,
+            wake,
+        },
         correlation_id,
         unsigned,
-        tx,
-        wake,
     )
 }
 
-fn dispatch_by_backend(
-    signer: &dyn Signer,
+struct BackendDispatch<'a> {
+    signer: &'a dyn Signer,
+    nip46_signer: Option<&'a Nip46Signer>,
     backend: SignerBackend,
+    pending: &'a mut PendingSignerCompletions,
+    tx: &'a SignerCompletionTx,
+    wake: &'a WakeCell,
+}
+
+fn dispatch_by_backend(
+    dispatch: BackendDispatch<'_>,
     correlation_id: &str,
     unsigned: UnsignedEvent,
-    tx: &SignerCompletionTx,
-    wake: &WakeCell,
 ) -> bool {
-    match backend {
+    match dispatch.backend {
         SignerBackend::LocalKey => {
-            dispatch_local_key(signer, correlation_id, unsigned, tx);
+            dispatch_local_key(dispatch.signer, correlation_id, unsigned, dispatch.tx);
             true
         }
-        SignerBackend::Nip07 => dispatch_nip07(signer, correlation_id, unsigned, tx, wake),
-        // NIP-46 (#2068 follow-up), NIP-55, Custom: not wired in this track.
+        SignerBackend::Nip07 => dispatch_nip07(
+            dispatch.signer,
+            correlation_id,
+            unsigned,
+            dispatch.tx,
+            dispatch.wake,
+        ),
+        SignerBackend::Nip46 => {
+            let Some(nip46_signer) = dispatch.nip46_signer else {
+                return false;
+            };
+            dispatch_nip46(
+                nip46_signer,
+                dispatch.pending,
+                correlation_id,
+                unsigned,
+                dispatch.tx,
+            );
+            true
+        }
+        // NIP-55 and Custom providers are not wired in the browser runtime.
         _ => false,
     }
 }
@@ -178,6 +291,41 @@ fn dispatch_local_key(
         correlation_id: correlation_id.to_string(),
         result,
     });
+}
+
+fn format_signer_error(error: SignerError) -> String {
+    error.to_string()
+}
+
+fn dispatch_nip46(
+    signer: &Nip46Signer,
+    pending: &mut PendingSignerCompletions,
+    correlation_id: &str,
+    unsigned: UnsignedEvent,
+    tx: &SignerCompletionTx,
+) {
+    let expected_pubkey = signer.pubkey();
+    let mut op = signer.sign_event_response_json(&unsigned);
+    match op.poll() {
+        Some(Ok(response_json)) => {
+            let result = Nip46Signer::parse_sign_event_response(&response_json, expected_pubkey)
+                .map(|signed| signed.to_nip01_json())
+                .map_err(format_signer_error);
+            let _ = tx.send(SignerCompletion {
+                correlation_id: correlation_id.to_string(),
+                result,
+            });
+        }
+        Some(Err(error)) => {
+            let _ = tx.send(SignerCompletion {
+                correlation_id: correlation_id.to_string(),
+                result: Err(format!("nip46 sign error: {error}")),
+            });
+        }
+        None => {
+            pending.insert_nip46(correlation_id.to_string(), op, expected_pubkey);
+        }
+    }
 }
 
 /// NIP-07 async dispatch (wasm32 + `feature = "wasm"` path).
@@ -238,119 +386,4 @@ fn dispatch_nip07(
 }
 
 #[cfg(test)]
-mod tests {
-    use std::sync::{mpsc, Arc};
-
-    use nmp_signers::LocalKeySigner;
-    use nmp_signers::Signer;
-
-    use super::*;
-    use crate::signer::registry::CapabilityProviderRegistry;
-
-    /// A no-op wake cell for broker tests that don't assert on wake firing.
-    fn noop_wake() -> WakeCell {
-        use std::cell::RefCell;
-        use std::rc::Rc;
-        Rc::new(RefCell::new(Rc::new(|| {}) as Rc<dyn Fn()>))
-    }
-
-    fn make_registry_with_local_key(secret_hex: &str) -> (CapabilityProviderRegistry, String) {
-        let signer = LocalKeySigner::from_secret_hex(secret_hex).expect("valid secret");
-        let pubkey_hex = signer.pubkey().to_hex();
-        let mut reg = CapabilityProviderRegistry::new();
-        reg.insert(Arc::new(signer) as Arc<dyn Signer>);
-        (reg, pubkey_hex)
-    }
-
-    /// A minimal unsigned event JSON in the flat wire shape.
-    fn unsigned_json(pubkey: &str) -> String {
-        serde_json::json!({
-            "pubkey": pubkey,
-            "kind": 1,
-            "tags": [],
-            "content": "test",
-            "created_at": 1_700_000_000u64,
-        })
-        .to_string()
-    }
-
-    #[test]
-    fn local_key_broker_sends_completion() {
-        let secret = "bb".repeat(32);
-        let (reg, pubkey_hex) = make_registry_with_local_key(&secret);
-        let (tx, rx) = mpsc::channel::<SignerCompletion>();
-        let ujson = unsigned_json(&pubkey_hex);
-
-        let brokered = broker_sign_request(&reg, "corr-1", &pubkey_hex, &ujson, &tx, &noop_wake());
-
-        assert!(brokered, "LocalKey should be brokered");
-        let completion = rx.try_recv().expect("completion must arrive synchronously");
-        assert_eq!(completion.correlation_id, "corr-1");
-        assert!(
-            completion.result.is_ok(),
-            "LocalKey sign must succeed: {:?}",
-            completion.result
-        );
-    }
-
-    #[test]
-    fn unknown_pubkey_returns_false() {
-        let (reg, _) = make_registry_with_local_key(&"cc".repeat(32));
-        let (tx, _rx) = mpsc::channel::<SignerCompletion>();
-
-        let brokered = broker_sign_request(&reg, "corr-2", "deadbeef", "{}", &tx, &noop_wake());
-        assert!(!brokered, "unknown pubkey must not be brokered");
-    }
-
-    #[test]
-    fn enqueue_completion_fires_wake_and_queues() {
-        use std::cell::{Cell, RefCell};
-        use std::rc::Rc;
-
-        // Build a wake cell with a counting closure (what set_wake installs).
-        let count = Rc::new(Cell::new(0u32));
-        let count_clone = Rc::clone(&count);
-        let wake: WakeCell = Rc::new(RefCell::new(Rc::new(move || {
-            count_clone.set(count_clone.get() + 1);
-        }) as Rc<dyn Fn()>));
-
-        let (tx, rx) = mpsc::channel::<SignerCompletion>();
-        enqueue_completion(
-            &tx,
-            &wake,
-            SignerCompletion {
-                correlation_id: "corr-wake".to_string(),
-                result: Ok("{}".to_string()),
-            },
-        );
-
-        assert_eq!(count.get(), 1, "enqueue_completion must fire the wake once");
-        let completion = rx.try_recv().expect("completion must be queued");
-        assert_eq!(completion.correlation_id, "corr-wake");
-    }
-
-    #[test]
-    fn malformed_unsigned_json_sends_error_completion() {
-        let secret = "dd".repeat(32);
-        let (reg, pubkey_hex) = make_registry_with_local_key(&secret);
-        let (tx, rx) = mpsc::channel::<SignerCompletion>();
-
-        let brokered = broker_sign_request(
-            &reg,
-            "corr-3",
-            &pubkey_hex,
-            "not-valid-json",
-            &tx,
-            &noop_wake(),
-        );
-        assert!(
-            brokered,
-            "malformed json still triggers broker (error path)"
-        );
-        let completion = rx.try_recv().expect("error completion must arrive");
-        assert!(
-            completion.result.is_err(),
-            "malformed JSON must produce error completion"
-        );
-    }
-}
+mod tests;

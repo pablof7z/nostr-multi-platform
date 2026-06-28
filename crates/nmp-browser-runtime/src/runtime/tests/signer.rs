@@ -52,6 +52,104 @@ fn capability_envelope_reflects_local_key_signer() {
 }
 
 #[test]
+fn nip46_bunker_start_emits_signer_relay_frames_and_progress_state() {
+    let mut handle = started_handle();
+    let remote = nostr::Keys::generate();
+    let uri = format!(
+        "bunker://{}?relay=wss://relay.example.com",
+        remote.public_key().to_hex()
+    );
+
+    let outbound = handle.begin_nip46_bunker(&uri).expect("start bunker");
+
+    assert!(
+        outbound
+            .iter()
+            .any(|msg| msg.role() == nmp_network::role::RelayRole::Signer
+                && msg.text().starts_with("[\"REQ\"")),
+        "bunker start must emit a Signer-lane REQ: {outbound:?}"
+    );
+    assert!(
+        outbound
+            .iter()
+            .any(|msg| msg.role() == nmp_network::role::RelayRole::Signer
+                && msg.text().starts_with("[\"EVENT\"")),
+        "bunker start must emit a Signer-lane connect EVENT: {outbound:?}"
+    );
+    let diagnostics = handle.diagnostics();
+    assert_eq!(diagnostics.signer_kind.as_deref(), Some("nip46"));
+    assert!(
+        matches!(
+            diagnostics.signer_state.as_deref(),
+            Some("reconnecting" | "awaiting_approval")
+        ),
+        "start must expose in-flight NIP-46 signer state: {diagnostics:?}"
+    );
+    assert!(
+        handle.active_account_pubkey_inner().is_none(),
+        "NIP-46 active account is learned only after SignerReady"
+    );
+}
+
+#[derive(Debug, Default)]
+struct RuntimeStubTransport;
+
+impl nmp_signer_iface::Nip46Transport for RuntimeStubTransport {
+    fn send_rpc(
+        &self,
+        _rpc: nmp_signer_iface::Nip46Rpc,
+    ) -> Result<(), nmp_signer_iface::SignerError> {
+        Ok(())
+    }
+}
+
+fn completed_nip46_signer(remote_user: &LocalKeySigner) -> nmp_signers::Nip46Signer {
+    let uri = format!(
+        "bunker://{}?relay=wss://relay.example.com",
+        remote_user.pubkey().to_hex()
+    );
+    let handle = nmp_signers::Nip46SignerHandle::from_bunker_uri(&uri).expect("bunker uri");
+    handle.complete(Arc::new(RuntimeStubTransport), remote_user.pubkey())
+}
+
+#[test]
+fn nip46_signer_ready_installs_provider_and_selects_active_account() {
+    let mut handle = started_handle();
+    let remote_user = LocalKeySigner::generate();
+    let pubkey = remote_user.pubkey().to_hex();
+    let signer = Arc::new(completed_nip46_signer(&remote_user));
+
+    handle
+        .runtime
+        .nip46
+        .push_event_for_test(crate::signer::nip46::BrowserNip46Event::InstallSigner { signer });
+    let (outbound, events) = handle.runtime.drain_nip46_events_and_completions();
+
+    assert!(
+        outbound.is_empty(),
+        "install alone should not emit relay frames"
+    );
+    assert!(
+        events.is_empty(),
+        "install alone should not emit host events"
+    );
+    assert_eq!(
+        handle.active_account_pubkey_inner().as_deref(),
+        Some(pubkey.as_str())
+    );
+    let envelope = handle
+        .capability_envelope(&pubkey)
+        .expect("NIP-46 provider registered");
+    assert!(matches!(
+        envelope.backend,
+        nmp_signers::SignerBackend::Nip46
+    ));
+    let diagnostics = handle.diagnostics();
+    assert_eq!(diagnostics.signer_kind.as_deref(), Some("nip46"));
+    assert_eq!(diagnostics.signer_state.as_deref(), Some("ready"));
+}
+
+#[test]
 fn deliver_signer_response_failure_enqueues_fires_wake_and_applies_on_pump() {
     let mut handle = started_handle();
     handle.set_active_account_for_test("ab".repeat(32));
