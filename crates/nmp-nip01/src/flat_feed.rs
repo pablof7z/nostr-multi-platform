@@ -43,14 +43,7 @@ use nmp_planner::InterestShape;
 use crate::timeline_projection::RepostAttribution;
 use crate::{Nip10ReplyAttribution, TimelineEventCard};
 
-/// Admission predicate: `true` when `event` belongs in this flat feed.
-///
-/// The host/protocol adapter builds this from the declared perspective and the
-/// compiled acquisition kind set — e.g. `move |e| e.author == pk && (e.kind == 1
-/// || e.kind == 6)` for an author feed, or a root-plus-`#e`-referrers test for a
-/// thread feed. Keeping the predicate supplied from above the substrate is what
-/// keeps primary-kind policy out of `nmp-core` (D0).
-pub type FlatFeedPredicate = Arc<dyn Fn(&KernelEvent) -> bool + Send + Sync>;
+pub use nmp_feed::FlatFeedPredicate;
 
 /// A flat, predicate-gated note feed. Wire-compatible with the home feed's
 /// [`RootFeedSnapshot`] (empty `attribution`).

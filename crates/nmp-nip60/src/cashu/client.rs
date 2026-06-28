@@ -112,7 +112,7 @@ impl MintClient {
     }
 
     /// Poll the status of an existing mint quote.
-    pub fn get_mint_quote_status(&self, quote_id: &str) -> Result<MintQuoteStatusResponse, Nip60Error> {
+    pub fn get_mint_quote_status(&self, quote_id: &str) -> Result<MintQuoteResponse, Nip60Error> {
         self.get(&format!("/v1/mint/quote/bolt11/{quote_id}"))
     }
 
