@@ -69,8 +69,8 @@ impl FakeExternalSignerTransport {
         })
     }
 
-    /// Drain and return all captured requests (oldest first).
-    #[allow(dead_code)]
+    /// Drain and return all captured requests (oldest first). Called from
+    /// `overlapping_interactive_sign_requests_are_rejected`.
     pub fn drain_requests(&self) -> Vec<ExternalSignerRequest> {
         self.inner.lock().unwrap().requests.drain(..).collect()
     }

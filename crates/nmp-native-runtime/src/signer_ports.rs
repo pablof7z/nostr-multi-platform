@@ -18,6 +18,10 @@ impl NmpApp {
     /// `start_bunker_connect` / `restore_session` dispatch). Called by
     /// `nmp_signer_broker_init`. Replaces the deleted `register_bunker_hook`
     /// process-global write.
+    // Live only under `signer-broker` (production) or `test`/`test-support`
+    // (via `signer_ports_test_support`). cfg-gated to avoid a dead_code warning
+    // in plain `native` builds.
+    #[cfg(any(feature = "signer-broker", test, feature = "test-support"))]
     pub(crate) fn install_bunker_hook(&self, hook: nmp_core::BunkerHookFn) {
         nmp_core::install_bunker_hook(&self.composition.bunker_hook, hook);
     }
@@ -25,6 +29,10 @@ impl NmpApp {
     /// ADR-0052 §D3 — install the per-app NIP-55 external-signer restore hook.
     /// Called by `nmp_external_signer_init`. Replaces the deleted
     /// `register_external_signer_hook` process-global write.
+    // Live only under `external-signer` (production) or `test`/`test-support`
+    // (via `signer_ports_test_support`). cfg-gated to avoid a dead_code warning
+    // in plain `native` builds.
+    #[cfg(any(feature = "external-signer", test, feature = "test-support"))]
     pub(crate) fn install_external_signer_hook(&self, hook: nmp_core::ExternalSignerHookFn) {
         nmp_core::install_external_signer_hook(&self.capability_ports.external_signer_hook, hook);
     }
