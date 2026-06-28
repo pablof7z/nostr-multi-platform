@@ -13,7 +13,7 @@
 // The wasm module path must match the path the worker loads — both point at
 // the wasm composition root (see #2038) output.
 
-const defaultModulePath = "/nmp-wasm/nmp-browser-runtime.js";
+const defaultModulePath = "/nmp-browser-runtime/nmp_browser_runtime.js";
 
 type EncodeNpubFn = (hex: string) => string | undefined | null;
 
