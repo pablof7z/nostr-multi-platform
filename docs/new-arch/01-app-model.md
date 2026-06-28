@@ -94,6 +94,15 @@ compose those with NMP protocol features. What it must not do is push raw relay
 subscriptions, projection declarations, tag mutation, or publish routing into
 the native shell just because the feature is app-specific.
 
+This should reduce NMP, not grow it. When a downstream app exposes a missing
+piece, the first question is whether NMP lacks a reusable Nostr mechanism or the
+app lacks an app-owned Rust feature. If the behavior is podcast playback,
+Highlighter capture, gallery showcase state, OCR, catalog search, local agents,
+or another product domain, keeping it in the app crate is the simpler
+architecture. NMP crates should shrink toward reusable protocol/runtime
+mechanisms and delete framework doors that exist only because app crates could
+not previously define typed sessions/actions cleanly.
+
 This is the answer to the NDK comparison in #2313. NMP should feel like a
 one-call subscribe from Swift, Kotlin, TypeScript, or TUI after the app Rust
 crate has defined the session, but the production model is not arbitrary

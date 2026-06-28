@@ -116,8 +116,11 @@ The new model should reuse or retire current primitives deliberately:
   and `UpdateFrame` remain executor machinery until session-scoped demand proves
   which pieces can be deleted.
 - `ActionModule`, `DispatchEnvelope`, `PublishTarget`, publish policy, signer
-  ports, and the publish engine remain the one write doorway.
-- explicit relay seams remain audited route policy, not native relay choice.
+  ports, and the publish engine remain the one write doorway. `PublishTarget`
+  as it exists today may need to be widened or paired with provenance; the
+  invariant to retain is one doorway, not the exact current enum shape.
+- explicit relay seams must carry audited route provenance, not native relay
+  choice or an anonymous relay list.
 
 ## Complexity Justification Gate
 
@@ -323,9 +326,44 @@ Do not merge a slice that only adds the new owner while leaving the old public
 path as an equally valid production path. Dual paths are allowed only as
 migration-scoped compatibility with owner, consumers, and deletion criteria.
 
+Each slice also needs a deletion ledger:
+
+| Question | Required answer |
+|---|---|
+| What module/crate/public method/code path gets smaller or disappears? | Name the target. "Cleaner API" is not enough. |
+| What old pattern count moves down or is frozen? | Link to the baseline grep/test/manual inventory. |
+| What simpler alternative was tried first? | Delete, inline, narrow, or reuse before adding a new layer. |
+| What invariant prevents deletion today? | Replay, route proof, privacy, parity, boundedness, or live external consumers. |
+| What proves the new owner replaces the old path? | Migrated caller, test/ratchet, docs correction, and old-path deletion/privatization. |
+
+New modules are allowed, but they start unproven. A new crate, registry, adapter,
+context object, or executor tier must delete or privatize at least one existing
+public concept or duplicate lifecycle recipe in the same milestone, or it remains
+an ADR question rather than implementation work. This is how the migration avoids
+turning `FeatureSession`, route provenance, generated adapters, and service
+sessions into additive layers over the old machinery.
+
 **P-1: Concept disposition and live-consumer audit.**
 Before P0 inventory turns into implementation work, classify every disputed
 concept and public door:
+
+Current recipe inventory to verify against live code before implementation:
+
+| Current recipe/surface | Owns today | Misses or leaks |
+|---|---|---|
+| raw `open_interest` / `nmp_app_open_interest` | acquisition and store/cache eligibility | no typed output, admission owner, projection lifecycle, or app-visible delivery contract |
+| `open_observed_projection` | replay-before-live sink registration, scoped future delivery, close token | still asks feature authors to pair acquisition/output/schema/route policy manually |
+| `open_feed` / feed sessions | one feed-shaped source compiler, dependent interests, observed sinks, feed output | feed-local semantics; not proof that group/thread/ref/search sources share one public primitive |
+| group/search feature `open_*` recipes | feature-specific route/source/projection bundle | repeated lifecycle recipe; not a general session contract for app-defined features |
+| refs/embeds / `resolve_ref` | component demand and some typed ref outputs | cross-shell raw worker/ref adapters, claim/reclaim loops, and hand caches still need convergence |
+| `declare_consumed_projections` | cost brake for some built-in push outputs | incomplete manifest; not tied to session demand or host-registered outputs |
+| snapshot tick observers | periodic repair/reconcile hook for some runtimes | hides missing event-driven wakes; cannot remain product-state scheduler |
+| `PublishTarget::Explicit` / `UnsignedEventToRelays` | exact relay set and route bypass | loses whether the route is host-pinned, private-inbox verified, manual, diagnostic, or imported |
+
+The implementation plan can amend this table as live code changes, but it must
+not remove a row by rephrasing the old recipe as the new architecture. A row is
+retired only when its old public surface is deleted, privatized, or scoped to
+diagnostic/test/migration with live consumers and a removal/formalization gate.
 
 | Surface | Target disposition | Required evidence |
 |---|---|---|
@@ -465,11 +503,14 @@ cover account switch, source change, relay pin, cache replay, and teardown.
 **P6: Collapse write variants by invariant, not by new names.**
 Generated builders keep using `DispatchEnvelope` and `ActionModule`. First try
 to unify `UnsignedEvent`, `UnsignedEventToRelays`, pre-signed publish, signer
-selection, `PublishTarget`, correlation id, and policy validation without adding
-new public types. Add a named draft/context type only if it deletes branching or
-duplicate route/privacy/protocol state. Gates: publish policy, D10 private
-routing, signer continuation, generated builder round-trip, and action-result
-tests. Explicit relay cleanup is part of this phase: delete dead explicit-target
+selection, target/provenance, correlation id, and policy validation without
+adding new public types. Existing `PublishTarget` may be widened or paired with a
+small provenance field; using it unchanged is not sufficient because
+`Explicit { relays }` lacks the audit class/reason. Add a named draft/context
+type only if it deletes branching or duplicate route/privacy/protocol state.
+Gates: publish policy, D10 private routing, signer continuation, generated
+builder round-trip, and action-result tests. Explicit relay cleanup is part of
+this phase: delete dead explicit-target
 fields or route every explicit publish through one canonical internal seam with
 one attribution/status model. Route provenance is the critical missing invariant:
 manual explicit relay, NIP-29 host pin, verified NIP-17 inbox, and
@@ -477,6 +518,13 @@ external/verbatim publish must not collapse into an indistinguishable
 `Explicit` bucket. Tests must prove generic raw publish cannot accidentally
 bypass NIP-29 `h`-tag/group-route proof or NIP-17 verified-inbox policy, and
 that remote signer continuations preserve route provenance plus correlation id.
+The first implementation slice should attempt the smallest carrier change:
+extend or split the existing target/reason/status pipeline so provenance class
+travels through `PublishCommand`, parked signer publish obligations, engine
+records, retry/resume, and status output. A broad draft/context object is a
+second-choice representation, not the destination. If the audit finds two
+explicit-relay variants that are genuinely different invariants, document both;
+if they differ only by caller history, collapse them.
 
 **P7: Prove downstream apps before declaring the architecture final.**
 Highlighter must express home feed, room chat, search, comments, share-to-room,
@@ -531,7 +579,7 @@ Required Podcast matrix shape:
 |---|---|---|---|
 | Playback/queue/gestures | Swift state, remote/headphone gestures, App Group mirrors | Rust-owned playback/queue state; native reports raw media/command facts | Swift can render/execute only; no queue mutation or gesture policy outside Rust |
 | Feed/subscription/catalog/search/transcripts | app Rust plus Swift stores/import surfaces | app Rust sessions/actions and capability results; no NMP podcast nouns | native DB/UserDefaults classified as render/import cache or deleted |
-| Widget/AppIntent/Siri/CarPlay/remote/LiveActivity/Handoff | UI-process singleton, `KernelModel.shared`, polling, App Group snapshots, OS surfaces | service/app-lifetime sessions or typed capability results; cold-start proof | no `KernelModel.shared` correctness dependency; no polling wait loop |
+| Widget/AppIntent/Siri/CarPlay/remote/LiveActivity/Handoff | UI-process singleton, `KernelModel.shared`, polling, App Group snapshots, OS surfaces | service/app-lifetime sessions or typed capability results; cold-start proof; action completion/result distinct from dispatch acceptance | no `KernelModel.shared` correctness dependency; no polling wait loop; native only reports raw OS command/capability facts |
 | NIP-F4/Blossom publish | constructed JSON, `relay_pending`, `publish_dispatched`, explicit write relays/server lists | build/sign/route/store/publish/status with route/server provenance and key-storage capability | user-facing e2e proves ack/error/retry/exhausted status; stale diagnostics deleted |
 | Signers/relays/settings | local, NIP-46, NIP-55, per-podcast key, agent, legacy relay settings, plaintext key stores | one signer/status/route provenance model plus secure key capability | native no longer infers signer timeout, relay policy, key ownership, or publish success |
 | Generated app APIs | hand-authored C/Swift action glue, JSON/pointer FFI, direct `KernelModel.shared` handles | generated or contract-tested typed app APIs | hand glue is app-local and non-protocol, or generated/drift-gated; event-producing APIs use typed publish/status |
@@ -550,9 +598,9 @@ Required gallery matrix shape:
 
 | Flow family | Current path to classify | Target proof | Deletion/exception criterion |
 |---|---|---|---|
-| Web runtime | deferred `build:wasm`, raw Worker `resolve_ref`/`release_ref`, retry/reclaim loop | wasm/worker build passes; generated typed ref API; deterministic owner close | no correctness `setInterval`; raw worker protocol hidden or deleted |
-| Component refs/embeds | Swift/Kotlin/TS/TUI/desktop URI/ref adapters and claim loops | typed `ProfileRef`/`EventEmbed` sessions plus generated cache contract | shell adapters are generated/lifecycle-only, not protocol policy |
-| Merge/cache parity | hand caches and `projection_merge_cache` variants | full/delta/clear/stale/decode-poison/baseline tests across shells | no platform owns independent merge semantics |
+| Web runtime | deferred `build:wasm`, TS-only app check, raw Worker `resolve_ref`/`release_ref`, retry/reclaim loop | `web/nmp-gallery build:wasm` builds/stages runtime artifact; gallery e2e fails in degraded/no-wasm mode; generated typed ref API; deterministic owner close | no correctness `setInterval`; raw worker protocol hidden or deleted |
+| Component refs/embeds | Swift/Kotlin/TS/TUI/desktop URI/ref adapters, raw namespace/shape/liveness constants, and claim loops | typed `ProfileRef`/`EventEmbed` sessions plus generated or contract-tested host handles | shell adapters are generated/lifecycle-only, not protocol policy |
+| Merge/cache parity | hand caches and `projection_merge_cache` variants | full/delta/clear/tombstone/stale/decode-poison/baseline tests across shells | no platform owns independent merge semantics |
 | Auth/signing components | Android NIP-55 proof plus partial/visual other shells | per-shell read-only/local/remote/unauthenticated matrix | generic "auth/signing covered" claim removed until each shell is classified |
 | Composition root | `register_defaults()` and `consume_all_builtin_projections()` showcase path | explicit feature composition or labeled tutorial compatibility | production examples stop teaching hidden defaults |
 

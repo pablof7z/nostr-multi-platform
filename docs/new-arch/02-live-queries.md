@@ -90,6 +90,31 @@ for protocol parsing, route policy, and read-model ownership again. That may
 exist only as diagnostic, test, export, prototype, or migration tooling with
 scope labels and deletion/formalization criteria.
 
+## Push/Pull Boundary
+
+Typed sessions are the UI-state path. They produce pushed, bounded, typed
+outputs owned by Rust and merged by generated or contract-tested host adapters.
+They are not host-polled snapshot getters, raw event callbacks, or arbitrary
+event-log streams.
+
+Pull/event-log surfaces still have a job: import/export, diagnostics, raw-event
+inspection, pagination over event history, mirrors, and tests. They do not own
+screen state, route policy, protocol parsing, or projection lifecycle. A product
+screen that uses a pull cursor or raw event stream to reconstruct live UI state
+has recreated the old `open_interest` problem under a different name.
+
+The split is:
+
+```text
+typed session -> pushed typed output -> render state
+pull cursor / raw event log -> inspection, history, export, diagnostics
+```
+
+If a feature needs pagination or backfill, that capability belongs inside the
+session contract or behind a typed "load more" action. The shell should not
+switch from pushed typed output to owning a raw event cursor because the first
+page was inconvenient.
+
 A custom app feature follows the same rule as a protocol feature: it owns a typed
 descriptor, source expression, output schema, reducer, route policy, and
 teardown semantics in Rust. It may use NMP routing, store, refs, planner,
@@ -177,6 +202,54 @@ Service sessions need an explicit lifecycle contract:
 Opening before relay, mailbox, identity, or source readiness is allowed. Rust
 queues and replans the session when dependencies arrive. The shell should not
 retry with timers.
+
+Minimum service-session shape:
+
+```text
+ServiceSession {
+  owner_id: widget | app_intent | carplay_scene | remote_command |
+            live_activity | handoff | app_lifetime
+  account_scope: active account, explicit account, or no-account capability
+  opened_by: UI runtime, extension runtime, OS callback, or cold-start worker
+  output: typed status/result frame or last Rust-emitted mirror frame
+  capabilities: raw OS/API effects this owner may execute
+}
+```
+
+The service session is still a normal Rust-owned session. It may run in a
+minimal/headless runtime, but it is not a second app model. A cold-start
+AppIntent or widget refresh must hydrate the store/kernel state it needs, dispatch
+one typed action or open one typed session, emit a typed result or mirror frame,
+and shut down or suspend deterministically. It must not depend on a foreground UI
+singleton already being alive.
+
+Dispatch acceptance is not completion. A service surface such as an AppIntent,
+Siri command, CarPlay tap, headphone remote command, widget action, or Live
+Activity update needs a typed result/status from Rust before it can report
+success to the OS/user. A foreground-fallback string like "open the app first,"
+a returned correlation id, or the absence of a thrown native error is not proof
+that the action completed. Rust owns the operation status; native/web shells
+render or hand that status to the OS.
+
+Allowed native mirrors are write-only render/capability products of Rust state:
+last widget frame, `MPNowPlayingInfo`, ActivityKit payload, Handoff payload,
+secure-key capability result, media cache pointer, or downloaded file handle.
+They cannot be read back as the source of playback queue, signer state, relay
+policy, publish status, account identity, or durable Nostr/app facts.
+
+Each service-session family needs proof for:
+
+- cold start with no foreground UI process;
+- resume into an already-running app runtime;
+- explicit close/suspend behavior;
+- no polling or sleep-wait loop for readiness;
+- capability failure reported as typed Rust state;
+- typed action completion/result distinct from dispatch acceptance;
+- raw OS command reports for CarPlay/remote/headphone inputs, with Rust deciding
+  skip interval, rate ladder, queue mutation, chapter seek, and next/previous
+  policy;
+- native mirror corruption or absence not corrupting Rust truth;
+- repeated open/close without leaking handles or stale output rows.
 
 ## ObservedProjection
 
@@ -383,6 +456,13 @@ and stays in the shell.
 Generated ref caches must share the same full/delta/clear/stale-frame merge
 contract as other outputs; schema drift between Rust payloads and Swift/Kotlin/
 TypeScript mirrors is a correctness bug, not a UI adapter preference.
+Host code should not spell raw ref namespaces, shape ids, liveness flags, worker
+message names, or `resolve_ref` / `release_ref` payloads in product components.
+Those are transport details. The target is generated or contract-tested
+`ProfileRef`, `EventEmbed`, and child-ref owner handles that compile to the raw
+FFI/worker controls underneath. Keeping the raw controls public for diagnostics
+or migration is allowed only with the same scope labels and deletion/formalization
+gate as `open_interest`.
 
 Gallery is the first component-ref proof, and it must include every live shell:
 
@@ -390,9 +470,14 @@ Gallery is the first component-ref proof, and it must include every live shell:
 |---|---|---|
 | iOS/Swift | `refs.profile`, `refs.event`, embed envelopes, sign-in surface | shell URI/ref adapter should become generated descriptor/adapter glue |
 | Android/Kotlin | `refs.profile`, `refs.event.envelopes`, NIP-55 signer bridge | auth/signing proof is strongest here; it cannot stand in for other shells |
-| Web/TypeScript | `web/nmp-gallery` runtime and component registry | browser runtime exists, but gallery packaging/CI is still deferred; raw worker `resolve_ref` messages and retry/reclaim loop remain |
-| TUI | pushed snapshots and visible-profile claims | render-time URI/ref adapter and smoke retry behavior must stay lifecycle-only, not protocol policy |
+| Web/TypeScript | `web/nmp-gallery` runtime and component registry | browser runtime exists, but gallery packaging/CI is still deferred; raw worker `resolve_ref` messages, raw numeric namespace/shape/liveness, hand ref cache, and retry/reclaim loop remain |
+| TUI | pushed snapshots and visible-profile claims | render-time URI/ref adapter and claim-on-render behavior must become generated/lifecycle-only, not protocol policy |
 | Desktop | live bridge and embed/profile display | claim-every-render/tick behavior must be replaced by deterministic owner lifecycle |
+
+Correctness timers are specifically banned here. A copied-label timer is
+presentation. A `setInterval` that reclaims refs, retries after relay readiness,
+clears dedupe state to make data appear, or repairs missing component output is
+session machinery leaking into the shell and fails the architecture gate.
 
 ## Composite Sessions
 

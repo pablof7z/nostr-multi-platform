@@ -68,8 +68,10 @@ PublishContext {
 ```
 
 Names are illustrative and are not type commitments. The first implementation
-should try to collapse existing publish variants behind existing `PublishTarget`,
-publish command, policy, signer, and correlation data. New `EventDraft` or
+should keep the existing one publish doorway, but widen or augment the existing
+target/reason/status carriers so the missing audit facts survive. Reusing
+`PublishTarget` as-is is not enough: today's `Explicit { relays }` says only
+"send here," not why that exact route is valid. New `EventDraft` or
 `PublishContext` types are justified only if they remove branching or duplicate
 route/privacy/protocol state elsewhere.
 
@@ -93,6 +95,43 @@ Minimum route-provenance matrix:
 | verified private inbox | recipient inbox proof from protocol-specific lookup | publish only to verified inbox relays | fail closed when unknown |
 | manual explicit override | app/protocol owner, purpose, tests, and relay set | send exactly there, with no hidden fallback | marked manual/audited |
 | imported/verbatim external event | caller declares reduced guarantees and supplies signed bytes | validate/store/publish only within explicit policy | status says imported/verbatim |
+| diagnostic/test route | test, export, or diagnostic owner and non-product scope | may bypass product planner only in that scope | hidden from product APIs |
+
+Minimum implementation shape:
+
+```text
+route_provenance {
+  class: automatic | host_pin | verified_private_inbox |
+         manual_override | imported_verbatim | diagnostic
+  owner: protocol | app | substrate | diagnostic/test
+  context: typed, redacted facts needed to audit the class
+  guarantees: what the route proves and what it explicitly does not prove
+}
+```
+
+This is not a commitment to a new public `RouteProvenance` type. The cheapest
+implementation may be to extend existing `PublishTarget`, `RelaySelectionReason`,
+`PublishCommand`, `ParkedOp::Publish`, `PublishRecord`, and publish-status
+payloads. That is the preferred path if it deletes branching and keeps one
+publish stack. What is not acceptable is preserving today's ambiguity where NIP-29
+host pins, NIP-17 inbox pins, manual overrides, cold-start account publishes,
+and imported pre-signed events all become an indistinguishable
+`Explicit { relays }` fact before status/retry/resume.
+
+The class and reason must survive these edges:
+
+- generated builder or typed action decode;
+- finalizer mutation before signing;
+- active/local signer and remote-signer parked continuation;
+- signed-event validation and local ingest;
+- publish-engine route planning, persistence, retry, resume, and cancel;
+- publish/action status projection;
+- diagnostic/export surfaces.
+
+If provenance can be preserved by adding one field to the existing target/reason
+pipeline, do that. A broad `PublishContext` object is justified only if the live
+code audit proves the existing pipeline cannot carry the invariant without
+duplicating route/privacy/protocol state.
 
 Existing explicit-relay seams need to be classified before they are collapsed:
 
@@ -101,7 +140,8 @@ Existing explicit-relay seams need to be classified before they are collapsed:
 | `PublishTarget::Explicit` from app/manual caller | manual explicit override | caller owns purpose/reason; no hidden fallback; status marks manual |
 | NIP-29 group publish plan | protocol host pin | group id, host relay, `h` tag/previous-group tags where applicable; reject missing group context |
 | NIP-17/gift-wrap relay set | verified private inbox | recipient inbox proof; fail closed when unknown |
-| `UnsignedEventToRelays` / pre-signed import | imported/verbatim or protocol host pin | imported status and reduced guarantees unless a protocol plan proves stronger provenance |
+| `UnsignedEventToRelays` host-pinned unsigned event | protocol host pin or manual override | caller-supplied provenance before signing; host pin keeps typed context such as group id/source |
+| pre-signed `SignedEvent` / imported event | imported/verbatim unless a protocol plan proves stronger provenance | imported status, validation result, and reduced guarantees; no silent upgrade to protocol-owned route |
 | test/diagnostic explicit relays | diagnostic/test | not reachable from product shell APIs |
 
 ## Stage 2: Finalization

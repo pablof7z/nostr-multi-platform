@@ -52,6 +52,30 @@ The destination is simpler because the public unit becomes a whole feature
 session lifecycle. It is not simpler because Nostr routing, replay ordering,
 projection delivery, signing, and publish policy disappear.
 
+## Evidence Map
+
+This packet is grounded in current repo/issues rather than the authority of the
+existing architecture text:
+
+- **#2313:** app-developer API pain. The missing door is not a shell-owned raw
+  event stream; home feed is not special.
+- **#2316:** root cause. One feature's state is split across acquisition,
+  replay, sink, admission, sidecar, projection emission, ticks, dependencies,
+  and teardown.
+- **#2088/#2089/#2090/#2091/#2092/#2113:** replay-before-live, no public
+  filterless observers, dynamic sources, pointer/ref demand, and related
+  lifecycle fragments must become one owned session contract.
+- **Projection and pull-cursor ADRs:** pushed typed outputs remain the app UI
+  state path; raw event-log/pull surfaces are not a replacement for screen state.
+- **Downstream audits:** Highlighter, Podcast Player, and `nmp-gallery` are
+  acceptance tests for whether the public model hides NMP internals without
+  moving policy into native shells.
+
+Current durable docs still teach some of the old architecture. That is evidence
+of migration debt, not a contradiction this packet should absorb as truth. The
+P8 retirement phase must correct those owners in place before this packet becomes
+durable documentation.
+
 ## Concept Status
 
 The design must not turn every existing internal mechanism into a new permanent
@@ -85,6 +109,40 @@ private or deleted: everything else unless a named invariant, live owner,
 | Raw `open_interest` app reads | Rejected public product model | Keep only substrate, protocol-internal, diagnostic/test/export, or migration scopes with deletion/formalization criteria. |
 | `register_defaults()` production composition | Rejected public product model | Production composition is explicit feature opt-in. A preset may exist only as tutorial or migration compatibility with live consumers, support window, owner, and deletion/formalization gate. |
 | Compatibility doors | Migration-scoped | Raw `open_interest`, defaults presets, JSON dispatch, and explicit relay escape paths need scope labels, live consumers, and deletion/formalization criteria. Zero live consumers means delete. |
+
+Compatibility clarification: `nmp-defaults` can survive as a reusable
+composition crate if it contains explicit installers and shared substrate
+building blocks. What is rejected is a hidden production `register_defaults()`
+mental model where the app root cannot tell which protocol features, runtimes,
+policy, projections, and route machinery are installed. A preset can remain only
+as tutorial/migration/test compatibility with named live consumers, owner,
+support window, and deletion/formalization gate.
+
+## Deletion-First Rule
+
+The architecture should remove more concepts than it adds. The preferred outcome
+for a disputed module, crate, public method, or executor mechanism is:
+
+```text
+delete it
+  -> or collapse it into an existing owner
+  -> or make it private executor machinery
+  -> or keep it temporarily with live consumers and a removal gate
+  -> only then add a new public concept
+```
+
+Fewer modules is usually better, but module count is not the primary metric.
+Combining unrelated owners into one large crate would hide complexity rather
+than remove it. The real metric is fewer permanent public nouns, fewer lifecycle
+recipes, fewer sources of truth, fewer publish/read doorways, fewer compatibility
+shims, and fewer places a feature author must edit to make one behavior work.
+
+A new module or crate is justified only when it makes one of those counts go
+down or protects an invariant that cannot be protected by narrowing existing
+code. If the first implementation of `FeatureSession`, route provenance,
+generated adapters, or source reconciliation adds a layer while the old layer
+remains an equal production path, the design has failed its simplification
+claim.
 
 ## Design Hypothesis
 
@@ -171,8 +229,11 @@ whether the destination architecture is real.
 **Highlighter**
 
 - Decide whether Highlighter web is an NMP target runtime, an SSR/migration
-  exception, or out of scope. Direct NDK cannot remain both a violation and a
-  normal shipping path.
+  exception, or out of scope. There is no mixed answer: if web is a product
+  runtime, direct NDK reads/writes/signing must migrate behind NMP typed
+  sessions/actions or be deleted; if it is SSR/migration/out-of-scope, that
+  boundary needs an owner and formal criteria. Direct NDK cannot remain both a
+  violation and a normal shipping path.
 - Replace or classify web NDK product runtime paths for onboarding/profile,
   rooms/invites/membership, highlights, comments, capture, Blossom, NIP-05,
   search/SSR, and signer sessions.
