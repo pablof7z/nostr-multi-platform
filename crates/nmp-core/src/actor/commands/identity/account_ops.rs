@@ -135,8 +135,9 @@ fn add_local_signer(
     app_managed: bool,
 ) -> Vec<OutboundMessage> {
     let Some(keys) = parse_secret(secret.as_str()) else {
-        kernel.set_last_error_toast(Some(
-            "invalid secret key — expected nsec1… or 64-hex".to_string(),
+        kernel.set_last_error_token(&crate::ui_token::UiToken::error(
+            crate::ui_token::codes::IDENTITY_INVALID_SECRET_KEY,
+            "invalid secret key — expected nsec1… or 64-hex",
         ));
         return Vec::new();
     };
@@ -206,13 +207,23 @@ pub(crate) fn switch_active(
     if !identity.keys.contains_key(identity_id)
         && !identity.remote_signers.contains_key(identity_id)
     {
-        kernel.set_last_error_toast(Some(format!("account not found: {identity_id}")));
+        kernel.set_last_error_token(
+            &crate::ui_token::UiToken::error(
+                crate::ui_token::codes::IDENTITY_ACCOUNT_NOT_FOUND,
+                format!("account not found: {identity_id}"),
+            )
+            .with_subject(identity_id),
+        );
         return Vec::new();
     }
     if identity.is_app_managed(identity_id) {
-        kernel.set_last_error_toast(Some(format!(
-            "account is app-managed and cannot be made active: {identity_id}"
-        )));
+        kernel.set_last_error_token(
+            &crate::ui_token::UiToken::error(
+                crate::ui_token::codes::IDENTITY_APP_MANAGED_ACCOUNT,
+                format!("account is app-managed and cannot be made active: {identity_id}"),
+            )
+            .with_subject(identity_id),
+        );
         return Vec::new();
     }
     if identity.active.as_deref() == Some(identity_id) {

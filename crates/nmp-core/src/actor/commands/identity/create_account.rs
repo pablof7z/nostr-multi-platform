@@ -17,6 +17,19 @@ use super::sign::sign_active_nonblocking;
 
 const DEFAULT_ONBOARDING_OVERRIDE_ROLE: &str = "both,indexer";
 
+fn set_create_account_error(
+    kernel: &mut Kernel,
+    code: &'static str,
+    fallback: impl Into<String>,
+    detail: Option<String>,
+) {
+    let mut token = crate::ui_token::UiToken::error(code, fallback);
+    if let Some(detail) = detail {
+        token = token.with_detail(detail);
+    }
+    kernel.set_last_error_token(&token);
+}
+
 pub(crate) fn create_account(
     identity: &mut IdentityRuntime,
     kernel: &mut Kernel,
@@ -61,7 +74,13 @@ pub(crate) fn create_account(
     let kind0_content = match serde_json::to_string(profile) {
         Ok(json) => json,
         Err(e) => {
-            kernel.set_last_error_toast(Some(format!("profile serialisation: {e}")));
+            let detail = e.to_string();
+            set_create_account_error(
+                kernel,
+                crate::ui_token::codes::IDENTITY_PROFILE_SERIALIZATION_FAILED,
+                format!("profile serialisation: {detail}"),
+                Some(detail),
+            );
             String::new()
         }
     };
@@ -101,9 +120,12 @@ pub(crate) fn create_account(
                     // D6: no usable cold-start relay — surface a toast, never
                     // panic. The account still exists locally; the user can add
                     // relays and re-publish their profile from Settings.
-                    kernel.set_last_error_toast(Some(
-                        "could not publish profile — no cold-start relays available".to_string(),
-                    ));
+                    set_create_account_error(
+                        kernel,
+                        crate::ui_token::codes::IDENTITY_PROFILE_NO_COLD_START_RELAYS,
+                        "could not publish profile — no cold-start relays available",
+                        None,
+                    );
                 } else {
                     publish_outbound.extend(kernel.publish_signed_to(
                         &signed,
@@ -118,7 +140,12 @@ pub(crate) fn create_account(
                 // D6: sign failed — surface toast, skip publish. The
                 // debug_assert above ensures this arm is unreachable on the
                 // guaranteed local-key path (V-111 / #972).
-                kernel.set_last_error_toast(Some(reason));
+                set_create_account_error(
+                    kernel,
+                    crate::ui_token::codes::IDENTITY_COLD_START_SIGN_FAILED,
+                    reason.clone(),
+                    Some(reason),
+                );
             }
         }
     }
@@ -164,9 +191,12 @@ pub(crate) fn create_account(
                     // D6: no usable cold-start relay — surface a toast, never
                     // panic. The account still exists locally; the user can add
                     // relays and re-publish from Settings.
-                    kernel.set_last_error_toast(Some(
-                        "could not publish relay list — no cold-start relays available".to_string(),
-                    ));
+                    set_create_account_error(
+                        kernel,
+                        crate::ui_token::codes::IDENTITY_RELAY_LIST_NO_COLD_START_RELAYS,
+                        "could not publish relay list — no cold-start relays available",
+                        None,
+                    );
                 } else {
                     publish_outbound.extend(kernel.publish_signed_to(
                         &signed,
@@ -181,7 +211,12 @@ pub(crate) fn create_account(
                 // D6: sign failed — surface toast, skip publish. The
                 // debug_assert above ensures this arm is unreachable on the
                 // guaranteed local-key path (V-111 / #972).
-                kernel.set_last_error_toast(Some(reason));
+                set_create_account_error(
+                    kernel,
+                    crate::ui_token::codes::IDENTITY_COLD_START_SIGN_FAILED,
+                    reason.clone(),
+                    Some(reason),
+                );
             }
         }
     }
@@ -330,9 +365,12 @@ fn publish_initial_follows(
                 // panic. The follow set is already pre-populated locally
                 // (`prepopulate_contacts`); the user can re-publish
                 // their contacts once relays are configured.
-                kernel.set_last_error_toast(Some(
-                    "could not publish contacts — no cold-start relays available".to_string(),
-                ));
+                set_create_account_error(
+                    kernel,
+                    crate::ui_token::codes::IDENTITY_CONTACTS_NO_COLD_START_RELAYS,
+                    "could not publish contacts — no cold-start relays available",
+                    None,
+                );
                 Vec::new()
             } else {
                 kernel.publish_signed_to(
@@ -345,7 +383,12 @@ fn publish_initial_follows(
             }
         }
         Err(reason) => {
-            kernel.set_last_error_toast(Some(reason));
+            set_create_account_error(
+                kernel,
+                crate::ui_token::codes::IDENTITY_COLD_START_SIGN_FAILED,
+                reason.clone(),
+                Some(reason),
+            );
             Vec::new()
         }
     }

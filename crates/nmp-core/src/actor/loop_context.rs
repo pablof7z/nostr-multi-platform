@@ -385,7 +385,12 @@ pub(super) fn run_idle_work(lc: &mut LoopContext<'_>) {
                     correlation_id_override,
                     reason_code,
                 } => {
-                    lc.kernel.set_last_error_toast(Some(toast.clone()));
+                    let toast_code =
+                        reason_code.unwrap_or(crate::ui_token::codes::PUBLISH_SIGN_FAILED);
+                    lc.kernel.set_last_error_token(
+                        &crate::ui_token::UiToken::error(toast_code, toast.clone())
+                            .with_detail(toast.clone()),
+                    );
                     if let Some(id) = correlation_id_override {
                         lc.kernel
                             .record_action_failure_coded(id, toast, reason_code, None);

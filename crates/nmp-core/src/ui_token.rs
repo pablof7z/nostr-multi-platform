@@ -174,10 +174,44 @@ impl UiToken {
 /// substrate concepts (keyring, relay processing, signer bootstrap), not
 /// protocol nouns. Each is a stable wire key; the shells localize them.
 pub mod codes {
+    /// Relay settings rejected a malformed URL.
+    pub const RELAY_INVALID_URL: &str = "core_relay_invalid_url";
+    /// Relay settings rejected an unknown relay role.
+    pub const RELAY_INVALID_ROLE: &str = "core_relay_invalid_role";
     /// Keychain/keyring write for an account failed (session may not persist).
     pub const KEYRING_WRITE_FAILED: &str = "core_keyring_write_failed";
     /// A relay event handler panicked and was contained (processing continues).
     pub const RELAY_PROCESSING_ERROR: &str = "core_relay_processing_error";
+    /// Local sign-in rejected a malformed secret key.
+    pub const IDENTITY_INVALID_SECRET_KEY: &str = "identity_invalid_secret_key";
+    /// Account switching named an account that is not in the roster.
+    pub const IDENTITY_ACCOUNT_NOT_FOUND: &str = "identity_account_not_found";
+    /// Account switching targeted an app-managed account.
+    pub const IDENTITY_APP_MANAGED_ACCOUNT: &str = "identity_app_managed_account";
+    /// Cold-start account creation could not serialize kind:0 metadata.
+    pub const IDENTITY_PROFILE_SERIALIZATION_FAILED: &str = "identity_profile_serialization_failed";
+    /// Cold-start kind:0 publish had no usable relay target.
+    pub const IDENTITY_PROFILE_NO_COLD_START_RELAYS: &str = "identity_profile_no_cold_start_relays";
+    /// Cold-start kind:10002 publish had no usable relay target.
+    pub const IDENTITY_RELAY_LIST_NO_COLD_START_RELAYS: &str =
+        "identity_relay_list_no_cold_start_relays";
+    /// Cold-start kind:3 publish had no usable relay target.
+    pub const IDENTITY_CONTACTS_NO_COLD_START_RELAYS: &str =
+        "identity_contacts_no_cold_start_relays";
+    /// Cold-start local signing failed unexpectedly.
+    pub const IDENTITY_COLD_START_SIGN_FAILED: &str = "identity_cold_start_sign_failed";
+    /// A publish command needs an active account.
+    pub const PUBLISH_NO_ACTIVE_ACCOUNT: &str = "publish_no_active_account";
+    /// An explicit publish target failed validation.
+    pub const PUBLISH_INVALID_TARGET: &str = "publish_invalid_target";
+    /// A publish command could not construct or sign the event.
+    pub const PUBLISH_SIGN_FAILED: &str = "publish_sign_failed";
+    /// A reply publish named an event that is not in the local reply context.
+    pub const PUBLISH_REPLY_TARGET_UNKNOWN: &str = "publish_reply_target_unknown";
+    /// Retrying a publish failed before frames could be re-dispatched.
+    pub const PUBLISH_RETRY_FAILED: &str = "publish_retry_failed";
+    /// Every relay failed the publish after retry policy completed.
+    pub const PUBLISH_ALL_RELAYS_FAILED: &str = "publish_all_relays_failed";
     /// A `bunker://` (NIP-46) URI was structurally invalid.
     pub const SIGNER_BUNKER_INVALID_URI: &str = "signer_bunker_invalid_uri";
     /// The NIP-46 signer broker was not initialised before a URI reached it.

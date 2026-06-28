@@ -1,5 +1,5 @@
 //! Smoke tests for the two newest doctrine rules — D19 (display-formatting
-//! banned from kernel projection builders) and D20 (no raw `std::time` on the
+//! and English-only error toasts banned from core producers) and D20 (no raw `std::time` on the
 //! wasm-compiled path, #1173/#1161). Split out of `tests.rs` to keep that file
 //! within the file-size hard cap; the shared
 //! `run_lint`/`workspace_root`/`fixture_path` helpers live in the parent
@@ -7,7 +7,7 @@
 
 use super::{fixture_path, run_lint, workspace_root};
 
-// ─── D19 (display formatting banned from kernel projection builders) ──────────
+// ─── D19 (display formatting / English-only error toasts banned) ────────────
 
 #[test]
 fn d19_positive_fixture_fires() {
@@ -20,8 +20,8 @@ fn d19_positive_fixture_fires() {
     std::fs::copy(&pos_src, tmp.join("pos.rs")).expect("copy pos fixture");
 
     let tmp_str = tmp.to_string_lossy().into_owned();
-    // D19 is path-scoped to kernel projection builder files — the staged
-    // fixture under `target/` falls outside that scope, so
+    // D19 is path-scoped to kernel projection/error producer files — the
+    // staged fixture under `target/` falls outside that scope, so
     // `--d19-extra-scope` opts it in (mirrors `--d17-extra-scope`).
     let (code, stdout, stderr) = run_lint(&[
         "--path",
@@ -48,6 +48,11 @@ fn d19_positive_fixture_fires() {
     assert!(
         stdout.contains("ADR-0032"),
         "d19 finding message must reference ADR-0032; stdout:\n{}",
+        stdout
+    );
+    assert!(
+        stdout.contains("set_last_error_toast") && stdout.contains("UiToken"),
+        "d19 finding must catch English-only error toasts; stdout:\n{}",
         stdout
     );
 }

@@ -40,6 +40,10 @@ fn sign_in_nsec_rejects_garbage_with_toast() {
     assert!(kernel
         .last_error_toast_snapshot()
         .is_some_and(|t| t.contains("invalid secret key")));
+    assert_eq!(
+        kernel.last_error_category_snapshot().map(String::as_str),
+        Some(crate::ui_token::codes::IDENTITY_INVALID_SECRET_KEY)
+    );
 }
 
 #[test]
@@ -363,6 +367,10 @@ fn switch_to_unknown_account_toasts_and_no_op() {
     assert!(kernel
         .last_error_toast_snapshot()
         .is_some_and(|t| t.contains("account not found")));
+    assert_eq!(
+        kernel.last_error_category_snapshot().map(String::as_str),
+        Some(crate::ui_token::codes::IDENTITY_ACCOUNT_NOT_FOUND)
+    );
 }
 
 #[test]

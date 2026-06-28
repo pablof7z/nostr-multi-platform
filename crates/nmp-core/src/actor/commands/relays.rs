@@ -146,14 +146,16 @@ pub(crate) fn build_relay_list_event(rows: &[AppRelay]) -> Option<UnsignedEvent>
 /// (an error toast is set on the kernel in that case).
 pub(crate) fn add_relay(kernel: &mut Kernel, url: &str, role: &str) -> Option<String> {
     let Some(canonical) = canonical_relay_url(url) else {
-        kernel.set_last_error_toast(Some(
-            "invalid relay URL — expected wss:// or ws://".to_string(),
+        kernel.set_last_error_token(&crate::ui_token::UiToken::error(
+            crate::ui_token::codes::RELAY_INVALID_URL,
+            "invalid relay URL — expected wss:// or ws://",
         ));
         return None;
     };
     let Some(role) = normalize_role(role) else {
-        kernel.set_last_error_toast(Some(
-            "invalid relay role — expected read | write | both | indexer".to_string(),
+        kernel.set_last_error_token(&crate::ui_token::UiToken::error(
+            crate::ui_token::codes::RELAY_INVALID_ROLE,
+            "invalid relay role — expected read | write | both | indexer",
         ));
         return None;
     };

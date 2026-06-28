@@ -10,6 +10,13 @@ fn build_profile_card(pubkey: &str, created_at: u64) -> ProfileCard {
     }
 }
 
+fn publish_error(kernel: &mut Kernel) {
+    kernel.set_last_error_token(&crate::ui_token::UiToken::error(
+        crate::ui_token::codes::PUBLISH_SIGN_FAILED,
+        "publish failed",
+    ));
+}
+
 // Calling display helpers in the display module itself is fine — not in scope.
 // (This file is placed under /fixtures/ so it is never matched by the scope
 // check — just confirming the shape of compliant code.)
