@@ -49,10 +49,18 @@ fn forward_commands(
             }
         }
     }
-    // The upstream control sender was dropped. Wake the poller so the worker
-    // can drain the now-disconnected internal channel and see
-    // `ControlDrain::Disconnected` on its next `drain_pending` call, rather
-    // than blocking in `poller.wait()` until the keepalive deadline fires.
+    // The upstream control sender was dropped.  Explicitly drop the internal
+    // `tx` BEFORE waking the poller.  If we wake first and the worker thread
+    // is scheduled before this function returns (which would implicitly drop
+    // `tx`), the worker calls `drain_pending` → `try_recv` and sees
+    // `TryRecvError::Empty` (the channel is live but empty) rather than
+    // `TryRecvError::Disconnected`.  It returns `ControlDrain::Continue` and
+    // goes back to sleep until the keepalive deadline — the root cause of the
+    // flaky `disconnected_control_sender_emits_terminal_closed_event` test.
+    // Dropping `tx` here establishes a happens-before edge: the channel is
+    // disconnected *before* the wake fires, so `drain_pending` reliably sees
+    // `Disconnected` on its very next call.
+    drop(tx);
     if let Ok(slot) = wake.lock() {
         if let Some(waker) = slot.as_ref() {
             let _ = waker.wake();
