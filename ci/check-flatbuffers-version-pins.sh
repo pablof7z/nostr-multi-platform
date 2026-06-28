@@ -13,7 +13,8 @@
 # package.json), the generated-binding runtime guard calls, and the per-job
 # `flatc` installs in .github/workflows/codegen-drift.yml — are asserted HERE to
 # equal the pins-file values. A version bump is therefore one edit in
-# `ci/flatc-pins.sh`; any surface left behind fails this gate.
+# `ci/flatc-pins.sh`; any in-repo surface left behind fails this gate. Apps
+# outside this repository own their platform-runtime pin checks in their own CI.
 
 set -euo pipefail
 
@@ -53,14 +54,10 @@ no_stale_kotlin_gradle_pin() {
 }
 
 # ── Runtime-library pins (cannot source the shell file) ─────────────────────
-# Rust + Swift.
+# Rust.
 require_line "Cargo.toml" "flatbuffers = \"${FLATC_PIN_RUST_SWIFT}\""
-require_line "apps/chirp/ios/project.yml" "from: ${FLATC_PIN_RUST_SWIFT}"
-require_line "apps/chirp/ios/Chirp.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved" "\"version\" : \"${FLATC_PIN_RUST_SWIFT}\""
-# Android/Kotlin — both gradle files, every dependency line (impl + testImpl).
-require_line "apps/chirp/android/app/build.gradle.kts" "flatbuffers-java:${FLATC_PIN_KOTLIN}"
+# Android/Kotlin — every in-repo Gradle dependency line (impl + testImpl).
 require_line "apps/nmp-gallery/android/app/build.gradle.kts" "flatbuffers-java:${FLATC_PIN_KOTLIN}"
-no_stale_kotlin_gradle_pin "apps/chirp/android/app/build.gradle.kts"
 no_stale_kotlin_gradle_pin "apps/nmp-gallery/android/app/build.gradle.kts"
 # Web/TypeScript — every package.json that pins flatbuffers + the lockfile.
 require_line "web/nmp-gallery/package.json" "\"flatbuffers\": \"^${FLATC_PIN_TS}\""
@@ -100,10 +97,11 @@ if [[ -n "${lock_stale}" ]]; then
 fi
 
 # ── CI workflow per-job flatc installs (YAML cannot source the shell file) ──
-# Each drift job downloads a pinned flatc release tarball. Rather than count
-# per-version occurrences (which would pass if one job were bumped and another
-# left stale), assert that EVERY `flatbuffers/releases/download/v…` URL in the
-# workflow names one of the three current pins — so any stale install URL fails.
+# Each drift job downloads a pinned flatc release tarball. Assert that EVERY
+# `flatbuffers/releases/download/v…` URL in the workflow names one of the
+# current pins, so any stale install URL fails. Not every runtime pin has an
+# in-repo generated-binding drift job: external app repos own their Swift/Kotlin
+# generated bindings.
 WORKFLOW=".github/workflows/codegen-drift.yml"
 stale_urls="$(grep -oE 'flatbuffers/releases/download/v[0-9]+\.[0-9]+\.[0-9]+' "${REPO_ROOT}/${WORKFLOW}" \
     | sort -u \
@@ -115,23 +113,12 @@ if [[ -n "${stale_urls}" ]]; then
     echo "  (pin from ci/flatc-pins.sh — bump there, then update every install site)" >&2
     exit 1
 fi
-# And assert each pin is actually installed by at least one job (no pin silently
-# dropped from CI).
-for pin in "${FLATC_PIN_RUST_SWIFT}" "${FLATC_PIN_KOTLIN}" "${FLATC_PIN_TS}"; do
-    if ! grep -qF "flatbuffers/releases/download/v${pin}/" "${REPO_ROOT}/${WORKFLOW}"; then
-        echo "flatbuffers-version-pins: ${WORKFLOW} has no flatc install for pin v${pin}" >&2
-        echo "  (every pin in ci/flatc-pins.sh must be installed by a drift job)" >&2
-        exit 1
-    fi
-done
-
 # ── Generated-binding runtime guard calls (baked into flatc output) ─────────
 # flatc emits a `FLATBUFFERS_<MAJOR>_<MINOR>_<PATCH>()` guard call in each Kotlin
 # binding; it MUST match the Kotlin runtime pin. Derive the needle from the pin.
 KOTLIN_GUARD="FLATBUFFERS_${FLATC_PIN_KOTLIN//./_}()"
 
 for kotlin_root in \
-    "${REPO_ROOT}/apps/chirp/android/app/src/main/java/nmp" \
     "${REPO_ROOT}/apps/nmp-gallery/android/app/src/main/kotlin/nmp/transport"
 do
     [[ -d "${kotlin_root}" ]] || continue

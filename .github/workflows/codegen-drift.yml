@@ -23,8 +23,8 @@ on:
     branches: [master]
 
 jobs:
-  swift-codegen-drift:
-    name: Swift codegen drift (KernelTypes.generated.swift vs Rust)
+  registry-codegen-drift:
+    name: registry codegen drift (Rust/TS surfaces)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -140,8 +140,8 @@ jobs:
   # Issue #1209 + #1512 — TypeScript flatc drift gate. Every checked-in web TS
   # tree (e.g. web/nmp-gallery) must be byte-identical to a fresh `flatc --ts`
   # run over the transport/feed/KRPR/KRDG schemas, with flatc pinned to the
-  # Web/TypeScript runtime pin (25.9.23, distinct from the Rust+Swift pin of
-  # 25.12.19 and the Kotlin pin of 25.2.10). Regenerate locally with
+  # Web/TypeScript runtime pin (25.9.23, distinct from the Rust pin of
+  # 25.12.19). Regenerate locally with
   # `bash ci/regenerate-flatbuffers.sh`.
   typescript-flatc-drift:
     name: TypeScript flatc drift (web TS generated trees vs schemas)
@@ -159,4 +159,3 @@ jobs:
 
       - name: Check TypeScript transport bindings are in sync with the schema
         run: bash ci/check-ts-flatc-drift.sh
-

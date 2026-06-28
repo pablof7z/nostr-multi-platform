@@ -4,7 +4,7 @@ name: test
 # build/test gate in CI — the other workflows (doctrine-lint, file-size-gate,
 # supply-chain) lint and audit but never compile or run the test suite.
 #
-# The test suite is split into FIVE parallel jobs to cut wall time from ~21m
+# The test suite is split into four parallel jobs to cut wall time from ~21m
 # (single sequential job) to ~10m (parallel critical path). Each job restores
 # its own slice of the target cache via Swatinem/rust-cache, which does
 # fingerprinted incremental caching instead of the old all-or-nothing 9.8GB
@@ -218,4 +218,3 @@ jobs:
       # emulator. Host-target check only.
       - name: cargo check (nmp-app-gallery --features android-ffi)
         run: cargo check -p nmp-app-gallery --features android-ffi
-

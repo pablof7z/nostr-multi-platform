@@ -12,8 +12,6 @@
 # cleanup issue owns the remaining split. It never permits sub-500 entries.
 # Genuinely generated/output files belong in .file-size-ignore, not here.
 
-apps/chirp/android/app/src/test/java/org/nmp/android/OpFeedDecoderTest.kt	527
-apps/chirp/chirp-desktop/src/app.rs	960
 apps/nmp-gallery/android/app/src/main/kotlin/org/nmp/gallery/registry/NostrContentView.kt	634
 apps/nmp-gallery/desktop/src/gallery.rs	646
 apps/nmp-gallery/tui/src/main.rs	680
@@ -62,6 +60,4 @@ crates/nmp-threading/src/grouper.rs	595
 crates/nmp-threading/tests/grouper.rs	657
 docs/design/relay-roles.md	613
 docs/research/applesauce-app-relay-model.md	535
-apps/chirp/ios/Chirp/Bridge/TypedProjectionGlue.swift	822
-apps/chirp/ios/ChirpTests/OpFeedDecoderTests.swift	506
 web/registry/public/registry.json	1221

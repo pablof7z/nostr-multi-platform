@@ -2,11 +2,8 @@
 #
 # Regenerate every checked-in FlatBuffers binding surface covered by CI drift
 # gates, using each platform's pinned flatc version:
-#   Rust + Swift:      25.12.19
-#   Android/Kotlin:   25.2.10
+#   Rust:              25.12.19
 #   Web/TypeScript:   25.9.23
-#   Marmot/NMMS:      Rust covered by the unified Rust gate; Swift 25.12.19,
-#                     Kotlin 25.2.10
 #
 # Usage:
 #   bash ci/regenerate-flatbuffers.sh
@@ -122,12 +119,7 @@ require_command rustfmt
 cd "${REPO_ROOT}"
 
 run_with_flatc "${FLATC_PIN_RUST_SWIFT}" bash ci/check-rust-flatc-drift.sh --write
-run_with_flatc "${FLATC_PIN_RUST_SWIFT}" bash ci/check-swift-flatc-drift.sh --write
-run_with_flatc "${FLATC_PIN_KOTLIN}" bash ci/check-kotlin-flatc-drift.sh --write
 run_with_flatc "${FLATC_PIN_TS}" bash ci/check-ts-flatc-drift.sh --write
-
-run_with_flatc "${FLATC_PIN_RUST_SWIFT}" bash ci/check-marmot-flatc-drift.sh swift --write
-run_with_flatc "${FLATC_PIN_KOTLIN}" bash ci/check-marmot-flatc-drift.sh kotlin --write
 
 echo "regenerate-flatbuffers: complete"
 echo "regenerate-flatbuffers: verify via the codegen-drift workflow or local pinned-flatc drift checks"
