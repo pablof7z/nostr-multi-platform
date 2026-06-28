@@ -39,6 +39,7 @@ mod event_flow_rule_tests; // D23/D24/D25 event-flow gate smoke tests — siblin
 mod file_size_gate_tests; // File-size baseline ratchet smoke tests — sibling module.
 mod kind_predicate_authority_tests; // D4 nmp-kinds predicate ownership gate.
 mod manifest_gates; // App Cargo.toml production dependency gates — sibling module.
+mod native_runtime_boundary_gates; // Native runtime / C-ABI split boundary gates.
 mod no_raw_tap_rule_tests; // no_raw_tap step-5 native-sink fixture tests — sibling module.
 mod recent_rule_tests; // D19/D20/D21 fixture smoke tests — sibling module (file-size cap).
 mod tests_a6; // A6 schema-less snapshot-projection lane smoke tests — sibling module.
