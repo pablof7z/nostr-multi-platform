@@ -112,6 +112,9 @@ pub struct ActionContract {
 }
 
 mod table;
+// NIP-29 group action entries split out of `table.rs` for 500-LOC cap.
+// Referenced by `table.rs` via `super::nip29::*`.
+mod nip29;
 pub use table::{ACTION_CONTRACT, PUBLISH_NAMESPACE};
 
 /// Look up an action contract by routing namespace.

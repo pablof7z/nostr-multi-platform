@@ -43,13 +43,19 @@ mod registry_marmot;
 
 pub mod kotlin;
 mod kotlin_bookmark_set;
+// NIP-51 bookmark helpers split out of `kotlin.rs` for 500-LOC cap compliance.
+mod kotlin_nip51;
 pub mod kotlin_marmot;
 pub mod kotlin_publish;
 pub mod swift;
 mod swift_bookmark_set;
+// NIP-51 bookmark helpers split out of `swift.rs` for 500-LOC cap compliance.
+mod swift_nip51;
 pub mod swift_marmot;
 pub mod swift_publish;
 pub mod ts;
+// NIP-51 bookmark helpers split out of `ts.rs` for 500-LOC cap compliance.
+mod ts_nip51;
 pub mod ts_marmot;
 pub mod ts_publish;
 

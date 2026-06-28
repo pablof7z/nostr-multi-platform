@@ -1,7 +1,15 @@
 //! #1939 — [`super::ACTION_CONTRACT`] data table.
+//!
+//! NIP-29 group action entries live in the sibling `nip29` submodule (size
+//! management — 500-LOC hard cap) and are imported by name here. The `nip29`
+//! module is declared in the parent `action_contract.rs`.
 
 use super::{
     ActionContract, ActionDefaultTier, BuilderSupport, PublicReExportPolicy, TypedDispatchPolicy,
+};
+// NIP-29 entries (split out for 500-LOC cap): discover, publish_group_event, join, create_public_group.
+use super::nip29::{
+    NIP29_CREATE_PUBLIC_GROUP, NIP29_DISCOVER, NIP29_JOIN, NIP29_PUBLISH_GROUP_EVENT,
 };
 
 const PUBLIC_REEXPORT: PublicReExportPolicy = PublicReExportPolicy::DefaultsActionPayloads;
@@ -455,65 +463,9 @@ pub const ACTION_CONTRACT: &[ActionContract] = &[
         public_re_export: PUBLIC_REEXPORT,
         typed_dispatch: TYPED_ONLY,
     },
-    // nmp-nip29 — NIP-29 group actions (issue #2170).
-    ActionContract {
-        namespace: "nmp.nip29.discover",
-        producer: "nmp-nip29 action",
-        module_type: "nmp_nip29::DiscoverGroupsAction",
-        payload_type: "nmp_nip29::DiscoverGroupsInput",
-        schema_id: "nmp.nip29.discover",
-        schema_path: "crates/nmp-nip29/schema/discover_groups_action.fbs",
-        root_type: "DiscoverGroupsPayload",
-        schema_version: 1,
-        file_identifier: "N29D",
-        default_tier: ActionDefaultTier::ComponentRegistered,
-        builder_support: BuilderSupport::GeneratedFlatTable,
-        public_re_export: PUBLIC_REEXPORT,
-        typed_dispatch: TYPED_ONLY,
-    },
-    ActionContract {
-        namespace: "nmp.nip29.publish_group_event",
-        producer: "nmp-nip29 action",
-        module_type: "nmp_nip29::PublishGroupEventAction",
-        payload_type: "nmp_nip29::PublishGroupEventInput",
-        schema_id: "nmp.nip29.publish_group_event",
-        schema_path: "crates/nmp-nip29/schema/publish_group_event_action.fbs",
-        root_type: "PublishGroupEventPayload",
-        schema_version: 1,
-        file_identifier: "N29G",
-        default_tier: ActionDefaultTier::ComponentRegistered,
-        builder_support: BuilderSupport::GeneratedFlatTable,
-        public_re_export: PUBLIC_REEXPORT,
-        typed_dispatch: TYPED_ONLY,
-    },
-    ActionContract {
-        namespace: "nmp.nip29.join",
-        producer: "nmp-nip29 action",
-        module_type: "nmp_nip29::JoinGroupAction",
-        payload_type: "nmp_nip29::JoinGroupInput",
-        schema_id: "nmp.nip29.join",
-        schema_path: "crates/nmp-nip29/schema/join_group_action.fbs",
-        root_type: "JoinGroupPayload",
-        schema_version: 1,
-        file_identifier: "N29J",
-        default_tier: ActionDefaultTier::ComponentRegistered,
-        builder_support: BuilderSupport::GeneratedFlatTable,
-        public_re_export: PUBLIC_REEXPORT,
-        typed_dispatch: TYPED_ONLY,
-    },
-    ActionContract {
-        namespace: "nmp.nip29.create_public_group",
-        producer: "nmp-nip29 action",
-        module_type: "nmp_nip29::CreatePublicGroupAction",
-        payload_type: "nmp_nip29::CreatePublicGroupInput",
-        schema_id: "nmp.nip29.create_public_group",
-        schema_path: "crates/nmp-nip29/schema/create_public_group_action.fbs",
-        root_type: "CreatePublicGroupPayload",
-        schema_version: 1,
-        file_identifier: "N29P",
-        default_tier: ActionDefaultTier::ComponentRegistered,
-        builder_support: BuilderSupport::GeneratedFlatTable,
-        public_re_export: PUBLIC_REEXPORT,
-        typed_dispatch: TYPED_ONLY,
-    },
+    // nmp-nip29 — NIP-29 group actions (issue #2170). Full entries in `nip29.rs`.
+    NIP29_DISCOVER,
+    NIP29_PUBLISH_GROUP_EVENT,
+    NIP29_JOIN,
+    NIP29_CREATE_PUBLIC_GROUP,
 ];
