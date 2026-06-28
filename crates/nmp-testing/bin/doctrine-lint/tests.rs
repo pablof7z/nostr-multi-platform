@@ -25,6 +25,7 @@
 //! | `d27_rule_tests.rs`       | D27                                   |
 //! | `event_flow_rule_tests.rs`| D23/D24/D25                           |
 //! | `no_raw_tap_rule_tests.rs`| no_raw_tap                            |
+//! | `product_raw_read_tests.rs`| product raw-read/session ratchet      |
 //! | `recent_rule_tests.rs`    | D19/D20/D21                           |
 //! | `tests_a6.rs`             | A6                                    |
 //! | `browser_boundary_gates.rs` | browser-runtime/runtime-web boundary |
@@ -42,6 +43,7 @@ mod kind_predicate_authority_tests; // D4 nmp-kinds predicate ownership gate.
 mod manifest_gates; // App Cargo.toml production dependency gates — sibling module.
 mod native_runtime_boundary_gates; // Native runtime / C-ABI split boundary gates.
 mod no_raw_tap_rule_tests; // no_raw_tap step-5 native-sink fixture tests — sibling module.
+mod product_raw_read_tests; // Product raw-read/session ratchet smoke tests.
 mod recent_rule_tests; // D19/D20/D21 fixture smoke tests — sibling module (file-size cap).
 mod tests_a6; // A6 schema-less snapshot-projection lane smoke tests — sibling module.
 mod tests_d0_to_d9; // D0, D6, D7, D8, D9, action_namespace — sibling module.
