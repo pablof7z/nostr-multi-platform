@@ -1,51 +1,88 @@
 # Live Queries
 
-A screen opens a live query for the state it wants to render:
+A screen, component, widget, or app service opens a typed session for the state
+it wants to render or keep resident:
 
 ```text
 open(HomeFeed { account })
 open(Profile { pubkey })
 open(GroupFeed { group_id, host_relay })
 open(Search { query })
-open(CustomEvents { source, route, output })
+open(ProfileRef { pubkey, owner })
+open(EventEmbed { event_ref, owner })
+open(ReactiveCount { source, filter, owner })
+open(PodcastPlayback { owner = AppLifetime })
+open(CustomFeature { source, route, output })
 ```
 
 The app receives a handle:
 
 ```text
 LiveQueryHandle {
-    id,
-    projection_key,
+    query_key,
+    owner_id,
+    output_key,
+    scope,
 }
 ```
 
-Native and web shells render the typed projection associated with that handle.
-When the screen goes away, the app closes the handle. The shell does not open
-raw relay subscriptions, replay cache rows, register observers, or maintain a
-parallel cache.
+Native and web shells render the typed output associated with that handle. When
+the owner goes away, the app closes the handle. The shell does not open raw relay
+subscriptions, replay cache rows, register observers, compute dynamic sources,
+or own durable product caches.
 
-`LiveQuery` is the proposed owner for one live read lifecycle:
+`LiveQuery` is the proposed owner for one live lifecycle:
 
 ```text
 source expression
   -> acquisition demand
+  -> route policy
   -> cache/store replay
   -> observed sink
   -> admission predicate
   -> dynamic dependency tracking
   -> typed projection output
+  -> generated adapter/cache contract
   -> delivery through UpdateFrame
   -> teardown
 ```
 
 This is the architectural door missing from the current API. `open_interest` is
 only acquisition. It can fetch events without making them visible to the app, so
-it should not be the public app read model.
+it should not be the public app read model. It can remain available to substrate,
+debug, test, and expert code that is explicitly acquiring events without
+claiming an app-visible output lifecycle.
+
+## Session Identity
+
+A session descriptor should carry enough identity to make sharing and teardown
+deterministic:
+
+```text
+query_key          stable identity for equivalent demand
+owner_id           screen/component/widget/service owner
+scope              account, global, protocol context, or app lifetime
+source             static or reduced source expression
+route_policy       outbox, relay-pinned, explicit relay set, private route
+projection         typed reducer/output producer
+replay             bounded replay shape and replay limit
+output_key         typed output namespace and row/delta contract
+```
+
+Multiple owners may share the same `query_key`. Opening increments ownership;
+closing decrements it. The final close tears down acquisition, observed sinks,
+derived dependencies, and generated output rows. If a feature needs a visible
+clear, it emits a typed `Cleared` or tombstone output instead of leaving stale
+rows in shell state.
+
+Opening before relay, mailbox, identity, or source readiness is allowed. Rust
+queues and replans the session when dependencies arrive. The shell should not
+retry with timers.
 
 ## ObservedProjection
 
 `ObservedProjection` is the safe event-to-read-model pattern used inside a live
-query.
+query. It is internal machinery, not a concept app developers assemble.
 
 High-level behavior:
 
@@ -66,6 +103,10 @@ filterless observer problem.
 App developers should not manually assemble this. A feature or live query
 descriptor uses it internally.
 
+The reconciler must be event-driven. Identity changes, source changes, mailbox
+updates, refcount changes, and store ingest should trigger reconciliation. A
+snapshot tick observer is not the model.
+
 ## ReducedSource
 
 `ReducedSource` is the model for dynamic query inputs.
@@ -77,6 +118,7 @@ Examples:
 - replies to currently visible thread roots;
 - target events pointed to by a stream of pointer events;
 - group content from groups the account has joined.
+- embeds referenced by currently visible event bodies.
 
 The source set is not a static list. It is derived from other events or account
 state:
@@ -97,6 +139,74 @@ follow lists, group membership, list members, WoT expansion, or target refs.
 `ReducedSource` is one building block under `LiveQuery`, not a separate app API
 the shell has to orchestrate.
 
+Fail-closed mechanics and product fallback policy are separate. A HomeFeed may
+choose an explicit public fallback source when the active account has no follows.
+That fallback must be declared by the feature; it must not appear accidentally
+because an empty author set became an unrestricted relay subscription.
+
+Useful reduced-source dimensions include:
+
+- `AuthorSet`: active account follows, list members, WoT expansion, group
+  members, or app-owned author resolvers.
+- `EventSet`: visible roots, quoted events, article refs, replies, bookmarks, or
+  app-owned pointers.
+- `AddressSet`: parameterized replaceable addresses and relay hints.
+- `RelaySet`: host relay, explicit read relay, inbox relay, or protocol relay
+  context.
+- `TermSet`: search strings or structured query tokens.
+
+Group membership is a first-class blocker. If a feature cannot prove the joined
+group, host relay, or member set, it should fail closed or emit a typed missing
+context state instead of falling through to a broad public query.
+
+## Routing
+
+Read routing should default to outbox planning for author-scoped public data.
+Protocol features can pin routing when the protocol owns the relay context, such
+as a NIP-29 host relay. Apps can request explicit relay sets only through an
+audited descriptor field. A relay override is a routing policy, not shell-side
+subscription code.
+
+This rule covers the `nmp_app_open_interest` confusion in #2313: the app should
+not decide whether a profile, feed, group, search, or embed opens a naked
+interest. It opens the typed session; the descriptor supplies route policy.
+
+## Component Refs
+
+Small UI components create real data demand. The framework should model that
+directly instead of making every app invent ref stores.
+
+Examples:
+
+```text
+NostrAvatar(pubkey)
+  -> ProfileRef { pubkey, owner = component_id }
+  -> output refs.profile rows
+
+NostrContentView(event_ref)
+  -> EventEmbed { event_ref, owner = component_id }
+  -> output refs.event rows and embed envelopes
+```
+
+Generated host adapters may keep row-delta caches for these outputs. Those
+caches are rendering infrastructure. They do not decide what to fetch, how to
+route, or when a ref is durable product state.
+
+URI decoding, event-reference hints, relay hints, and embed kind classification
+should live in Rust descriptors or generated adapters, not be reimplemented in
+Swift, Kotlin, TypeScript, and TUI shells.
+
+## Composite Sessions
+
+Some features are not a single relay filter. A `HomeFeed` can merge article,
+highlight, interaction, and reply cursors from a follows source. A `RoomChat`
+can combine group metadata, membership, host-relay routing, and message events.
+A `Search` can combine relay-backed NIP-50 search with local profile indexes.
+
+The descriptor should support composite children while preserving one public
+handle. Child interests, cursors, sources, observed projections, and local
+indexes remain owned by Rust.
+
 ## Projection Delivery
 
 The app-facing model should not expose Tier-1 versus Tier-2 projections. That
@@ -110,3 +220,33 @@ this feature/query produces this typed output
 Opening a dynamic live query is the demand declaration for its output. Always-on
 app chrome may still need explicit declared outputs, but screen and session
 state should be scoped to open handles, not to a global projection list.
+
+The replacement for `DeclaredProjections` is a typed output manifest:
+
+```text
+feature installs output schemas
+app composition declares always-on outputs
+session descriptors declare scoped outputs
+generated adapters own row/delta caches
+UpdateFrame carries full, delta, clear, status, and error variants
+```
+
+Existing projection machinery can remain the internal executor. The public
+contract should be output ownership and lifecycle, not projection tier mechanics.
+
+## Reactive Counts
+
+Counts should use the same lifecycle model:
+
+```text
+ReactiveCount {
+    source,
+    filter,
+    route_policy,
+    output_key,
+}
+```
+
+NMP owns the generic live count machinery. Apps own the product meaning of the
+count, such as reactions, replies, bookmarks, listens, or unread items. This
+replaces hard-coded relation counters with a reusable primitive.
