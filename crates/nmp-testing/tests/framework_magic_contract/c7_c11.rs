@@ -10,7 +10,7 @@
 use std::sync::Arc;
 
 use nmp_core::publish::{
-    InMemoryPublishStore, NoopOutboxResolver, NoopSigner, PublishAction, PublishEngine,
+    InMemoryPublishStore, NoopOutboxResolver, PublishAction, PublishEngine,
     PublishEngineError, PublishTarget, RelayAck, RelayUrl, ReplayDispatcher, RetryPolicy,
     StaticOutbox,
 };
@@ -49,7 +49,6 @@ fn engine_with_outbox(outbox: StaticOutbox, dispatcher: Arc<ReplayDispatcher>) -
         Arc::new(outbox),
         dispatcher,
         Arc::new(InMemoryPublishStore::new()),
-        Arc::new(NoopSigner),
         RetryPolicy::default(),
     )
 }
@@ -121,7 +120,6 @@ fn c7_publish_routes_outbox_and_private_fails_closed() {
         Arc::new(NoopOutboxResolver),
         noop_dispatcher,
         Arc::new(InMemoryPublishStore::new()),
-        Arc::new(NoopSigner),
         RetryPolicy::default(),
     );
 

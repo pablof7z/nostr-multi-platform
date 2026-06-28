@@ -219,17 +219,6 @@ impl MemState {
         }
     }
 
-    #[allow(dead_code)] // Available for future dump/debug helpers.
-    pub(super) fn events_sorted_newest_first(&self) -> Vec<&StoredEvent> {
-        let mut v: Vec<&StoredEvent> = self.events.values().collect();
-        v.sort_by(|a, b| {
-            b.raw
-                .created_at
-                .cmp(&a.raw.created_at)
-                .then(a.raw.id.cmp(&b.raw.id))
-        });
-        v
-    }
 }
 
 // ─── MemEventStore ───────────────────────────────────────────────────────────

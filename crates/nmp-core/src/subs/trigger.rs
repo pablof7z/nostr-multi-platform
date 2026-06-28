@@ -128,6 +128,8 @@ impl CompileTrigger {
     /// Kept `pub` so that the M4 / M5 / M7 in-flight tasks (T39/T40/T45) can
     /// classify triggers as they fan them into the inbox without re-encoding
     /// the rule.
+    // `allow(dead_code)`: cross-crate callers in M4/M5/M7 task fanout —
+    // per-crate lint false positive for pub items used outside nmp-core.
     #[allow(dead_code)]
     #[must_use]
     pub fn requires_recompile(&self) -> bool {

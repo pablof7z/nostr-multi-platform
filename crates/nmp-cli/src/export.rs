@@ -21,9 +21,12 @@ use std::path::{Component as PathComponent, Path, PathBuf};
 // don't pierce its pub(super) boundary).
 // ---------------------------------------------------------------------------
 
+// Fields with `#[allow(dead_code)]` below are decoded from the manifest JSON
+// for schema completeness (forward-compat / round-trip fidelity) but are not
+// used by the current export logic.
 #[derive(serde::Deserialize)]
 struct Manifest {
-    #[allow(dead_code)]
+    #[allow(dead_code)] // decoded for schema completeness; not used in export
     registry_id: String,
     #[serde(default)]
     components: Vec<ManifestComponent>,
@@ -32,9 +35,9 @@ struct Manifest {
 #[derive(serde::Deserialize)]
 struct ManifestComponent {
     id: String,
-    #[allow(dead_code)]
+    #[allow(dead_code)] // decoded for schema completeness; not used in export
     version: String,
-    #[allow(dead_code)]
+    #[allow(dead_code)] // decoded for schema completeness; not used in export
     target: String,
     description: String,
     #[serde(default)]
@@ -47,7 +50,7 @@ struct ManifestComponent {
 struct ManifestFile {
     source: String,
     target: String,
-    #[allow(dead_code)]
+    #[allow(dead_code)] // decoded for schema completeness; not used in export
     role: String,
 }
 

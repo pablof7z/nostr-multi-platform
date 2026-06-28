@@ -43,8 +43,8 @@ mod runtime;
 mod terminals;
 
 use crate::publish::{
-    NoopOutboxResolver, NoopSigner, OutboxResolver, PublishAction, PublishEngine, PublishStore,
-    PublishTarget, QueueDispatcher, RelayAck, RelayDispatcher, RetryPolicy,
+    NoopOutboxResolver, OutboxResolver, PublishAction, PublishEngine, PublishStore, PublishTarget,
+    QueueDispatcher, RelayAck, RelayDispatcher, RetryPolicy,
 };
 use crate::relay::OutboundMessage;
 use nmp_network::role::RelayRole;
@@ -76,7 +76,6 @@ pub(super) fn build_engine(
         resolver,
         dispatcher as Arc<dyn RelayDispatcher>,
         publish_store,
-        Arc::new(NoopSigner),
         RetryPolicy::default(),
     )
 }

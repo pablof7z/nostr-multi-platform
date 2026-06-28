@@ -7,8 +7,8 @@
 use std::sync::Arc;
 
 use nmp_core::publish::{
-    InMemoryPublishStore, NoopSigner, PerRelayState, PublishAction, PublishEngine, PublishStore,
-    PublishTarget, QueueDispatcher, RelayAck, RelayDispatcher, RetryPolicy, StaticOutbox,
+    InMemoryPublishStore, PerRelayState, PublishAction, PublishEngine, PublishStore, PublishTarget,
+    QueueDispatcher, RelayAck, RelayDispatcher, RetryPolicy, StaticOutbox,
 };
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
@@ -34,7 +34,6 @@ fn queue_engine(
         Arc::new(StaticOutbox::default()),
         dispatcher as Arc<dyn RelayDispatcher>,
         store,
-        Arc::new(NoopSigner),
         RetryPolicy::default(),
     )
 }

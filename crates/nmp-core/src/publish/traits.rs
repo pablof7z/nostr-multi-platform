@@ -60,45 +60,6 @@ pub struct ResolvedRelay {
     pub reason: RelaySelectionReason,
 }
 
-// ---------------- Signer (M6 / task #43) ----------------
-
-/// What the publish engine needs from the signer for `AUTH-REQUIRED` retries.
-///
-/// The full `Signer` trait lands in M6 (sessions + signers + write path). This
-/// shim names only the operation the publish engine triggers: produce an
-/// `AUTH` event for a given relay challenge.
-pub trait Signer: Send + Sync {
-    fn sign_auth(&self, challenge: &str, relay_url: &str) -> Result<SignedEvent, SignerError>;
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum SignerError {
-    Unavailable(String),
-    Rejected(String),
-}
-
-impl std::fmt::Display for SignerError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Unavailable(msg) => write!(f, "signer unavailable: {msg}"),
-            Self::Rejected(msg) => write!(f, "signing rejected: {msg}"),
-        }
-    }
-}
-
-impl std::error::Error for SignerError {}
-
-/// Test-only signer that refuses every AUTH request. Used in tests that
-/// exercise non-auth paths.
-#[derive(Clone, Debug, Default)]
-pub struct NoopSigner;
-
-impl Signer for NoopSigner {
-    fn sign_auth(&self, _challenge: &str, _relay_url: &str) -> Result<SignedEvent, SignerError> {
-        Err(SignerError::Unavailable("noop signer".to_string()))
-    }
-}
-
 // ---------------- Outbox resolver (M2 / NIP-65) ----------------
 
 /// Resolve `PublishTarget::Auto` to a concrete relay set per NIP-65.

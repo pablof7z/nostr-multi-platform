@@ -69,16 +69,6 @@ impl Kernel {
         Self::with_optional_publish_store_and_path(visible_limit, Some(publish_store), None)
     }
 
-    /// Inner constructor: externally-supplied publish store + optional persistent `storage_path`.
-    #[allow(dead_code)]
-    pub(crate) fn with_publish_store_and_path(
-        visible_limit: usize,
-        publish_store: Arc<dyn crate::publish::PublishStore>,
-        storage_path: Option<&str>,
-    ) -> Self {
-        Self::with_optional_publish_store_and_path(visible_limit, Some(publish_store), storage_path)
-    }
-
     fn with_optional_publish_store_and_path(
         visible_limit: usize,
         publish_store: Option<Arc<dyn crate::publish::PublishStore>>,

@@ -40,7 +40,6 @@ use nmp_core::time::Instant;
 use nmp_core::{ActionRegistry, CommandSender, KernelReducer, OutboundMessage, UpdateFrameBytes};
 use nmp_signers::SignerBackend;
 
-use crate::builder::BrowserRunConfig;
 use crate::relay::RelayPool;
 use crate::signer::{
     BrowserNip46Runtime, CapabilityProviderRegistry, PendingCipherCompletions, SignerCompletion,
@@ -141,8 +140,6 @@ pub struct PumpOutcome {
 /// use `BrowserRuntimeHandle`.
 pub(crate) struct BrowserRuntime {
     pub(crate) reducer: KernelReducer,
-    /// Action registry kept for future broker resolution of action modules.
-    #[allow(dead_code)]
     pub(crate) action_registry: ActionRegistry,
     pub(crate) inbox_rx: mpsc::Receiver<ActorMail>,
     /// A sender clone stored here so relay connected-hooks can post follow-up
@@ -170,11 +167,8 @@ pub(crate) struct BrowserRuntime {
     /// when a relay socket opens. Hooks spawn async work and return immediately
     /// (D8 no-blocking).
     pub(crate) relay_connected_hooks: Vec<Arc<dyn RelayConnectedHook>>,
-    /// Identity-change callbacks (stored for future identity-change wiring).
-    #[allow(dead_code)]
+    /// Identity-change callbacks invoked on each identity-switch transition.
     pub(crate) identity_change_observers: Vec<Box<dyn Fn(Option<String>) + Send + Sync + 'static>>,
-    #[allow(dead_code)]
-    pub(crate) run_config: Option<BrowserRunConfig>,
     /// Browser relay pool — WebSocket drivers + inbound queue + maintenance
     /// timer (#2050). On native test builds holds only the queue and timer
     /// (no actual sockets).

@@ -24,8 +24,9 @@ pub enum IdentityCommand {
     /// split. D0: the `RemoteHandle` arm's `Box<dyn RemoteSignerHandle>`
     /// concrete type lives in `nmp-signers`; `nmp-core` sees only the trait
     /// object.
+    // `allow(dead_code)`: live cross-crate constructors in nmp-ffi — per-crate
+    // lint false positive for enum variants constructed outside nmp-core.
     #[allow(dead_code)]
-    // live cross-crate constructors in nmp-ffi — per-crate lint false positive
     AddSigner {
         source: SignerSource,
         make_active: bool,

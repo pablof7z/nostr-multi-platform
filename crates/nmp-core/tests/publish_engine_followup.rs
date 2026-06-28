@@ -18,10 +18,10 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use nmp_core::publish::{
-    engine_error_to_failure, outcome_of, InMemoryPublishStore, NoopSigner, PerRelayState,
-    PublishAction, PublishEngine, PublishEngineError, PublishOutcome, PublishStore,
-    PublishStoreError, PublishTarget, RelayAck, RelayDispatcher, RelayUrl, ReplayDispatcher,
-    RetryPolicy, StaticOutbox, ENGINE_FAILURE_RELAY_URL,
+    engine_error_to_failure, outcome_of, InMemoryPublishStore, PerRelayState, PublishAction,
+    PublishEngine, PublishEngineError, PublishOutcome, PublishStore, PublishStoreError,
+    PublishTarget, RelayAck, RelayDispatcher, RelayUrl, ReplayDispatcher, RetryPolicy, StaticOutbox,
+    ENGINE_FAILURE_RELAY_URL,
 };
 use nmp_core::substrate::*;
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
@@ -58,12 +58,10 @@ fn engine(
     dispatcher: Arc<ReplayDispatcher>,
     store: Arc<dyn PublishStore>,
 ) -> PublishEngine {
-    let signer = Arc::new(NoopSigner);
     PublishEngine::new(
         outbox,
         dispatcher as Arc<dyn RelayDispatcher>,
         store,
-        signer,
         RetryPolicy::default(),
     )
 }

@@ -154,6 +154,8 @@ pub(crate) fn build_connect_params(
 /// Available for callers that need steady-state request IDs outside the
 /// reducer (which uses its own `req_counter` field instead). NOT on any
 /// reducer code path — `SystemTime` is safe here (native-only).
+// `allow(dead_code)`: helper for out-of-reducer callers; no in-crate call site
+// today but it is part of the NIP-46 public(crate) seam — not genuinely dead.
 #[allow(dead_code)]
 pub(crate) fn new_request_id() -> String {
     use std::sync::atomic::{AtomicU64, Ordering as AOrd};

@@ -22,9 +22,8 @@
 use std::sync::Arc;
 
 use nmp_core::publish::{
-    InMemoryPublishStore, NoopSigner, OutboxResolver, PublishAction, PublishEngine, PublishStore,
-    PublishTarget, RelayDispatcher, RelaySelectionReason, RelayUrl, ReplayDispatcher,
-    ResolvedRelay, RetryPolicy,
+    InMemoryPublishStore, OutboxResolver, PublishAction, PublishEngine, PublishStore, PublishTarget,
+    RelayDispatcher, RelaySelectionReason, RelayUrl, ReplayDispatcher, ResolvedRelay, RetryPolicy,
 };
 use nmp_core::substrate::BlockedRelaySet;
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
@@ -52,7 +51,6 @@ fn engine(
         outbox,
         dispatcher as Arc<dyn RelayDispatcher>,
         store,
-        Arc::new(NoopSigner),
         RetryPolicy::default(),
     )
 }

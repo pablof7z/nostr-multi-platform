@@ -35,12 +35,6 @@ pub const GATE_M6: &str = "M6";
 pub const GATE_M7: &str = "M7";
 pub const GATE_M8: &str = "M8";
 
-/// Asserts a per-test 5-second ceiling as documented in the task spec.
-/// Replace this with `#[tokio::test(timeout = ...)]` when the async
-/// executor is introduced in M2/M8.
-#[allow(dead_code)]
-const PER_TEST_TIMEOUT_SECS: u64 = 5;
-
 use nmp_core::actor::{IdentityCommand, LifecycleCommand, PublishCommand, TestSupportCommand};
 
 // ---------------------------------------------------------------------------
@@ -292,8 +286,8 @@ fn kind3_update_rewires_subscriptions() {
 #[test]
 fn publish_roundtrip_via_outbox() {
     use nmp_core::publish::{
-        InMemoryPublishStore, NoopSigner, PublishAction, PublishEngine, PublishTarget, RelayAck,
-        RelayUrl, ReplayDispatcher, RetryPolicy, StaticOutbox,
+        InMemoryPublishStore, PublishAction, PublishEngine, PublishTarget, RelayAck, RelayUrl,
+        ReplayDispatcher, RetryPolicy, StaticOutbox,
     };
     use nmp_signer_iface::{SignedEvent, UnsignedEvent};
     use std::sync::Arc;
@@ -318,7 +312,6 @@ fn publish_roundtrip_via_outbox() {
         Arc::new(outbox),
         Arc::clone(&dispatcher) as Arc<dyn nmp_core::publish::RelayDispatcher>,
         Arc::new(InMemoryPublishStore::new()),
-        Arc::new(NoopSigner),
         RetryPolicy::default(),
     );
 

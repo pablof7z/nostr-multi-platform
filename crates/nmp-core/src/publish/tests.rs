@@ -9,9 +9,7 @@ use super::engine::PublishEngine;
 use super::state::{
     apply_ack, classify_ack, AckClass, PerRelayState, RelayAck, RetryPolicy, RetryVerdict,
 };
-use super::traits::{
-    InMemoryPublishStore, NoopSigner, OutboxResolver, ReplayDispatcher, StaticOutbox,
-};
+use super::traits::{InMemoryPublishStore, OutboxResolver, ReplayDispatcher, StaticOutbox};
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 fn signed_event(id: &str, author: &str, kind: u32, p_tags: &[&str]) -> SignedEvent {
@@ -42,12 +40,10 @@ fn engine_with(
     Arc<ReplayDispatcher>,
 ) {
     let store = Arc::new(InMemoryPublishStore::new());
-    let signer = Arc::new(NoopSigner);
     let engine = PublishEngine::new(
         outbox,
         dispatcher.clone() as Arc<dyn super::traits::RelayDispatcher>,
         store.clone(),
-        signer,
         policy,
     );
     (engine, store, dispatcher)

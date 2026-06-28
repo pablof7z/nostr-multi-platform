@@ -50,6 +50,8 @@ use reasons::{build_reasons, RelayConnectionReason};
 /// decoder in `KernelBridge.swift`. The hard-coded key in `update.rs`
 /// (`"relay_diagnostics"`) is the wire string; this constant exists to make
 /// the choice greppable from the projection module.
+// `allow(dead_code)`: grep anchor — the parent module uses the string literal
+// directly; this constant ensures the key string stays findable from here.
 #[allow(dead_code)]
 pub(super) const RELAY_DIAGNOSTICS_PROJECTION_KEY: &str = "relay_diagnostics";
 

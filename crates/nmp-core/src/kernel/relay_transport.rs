@@ -29,7 +29,8 @@ pub(super) struct RelayTransportMap {
 #[derive(Clone, Debug)]
 struct InfoEntry {
     doc: RelayInfoDoc,
-    /// Only read by `info_is_fresh`, which is `#[cfg(test)]`-guarded.
+    // `allow(dead_code)`: field is written unconditionally but only READ by
+    // `info_is_fresh`, which is `#[cfg(test)]`-gated; the lint fires in non-test builds.
     #[allow(dead_code)]
     fetched_at: Instant,
 }

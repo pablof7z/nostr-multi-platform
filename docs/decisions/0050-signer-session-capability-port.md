@@ -295,8 +295,8 @@ Decision:
   2026-06-12 revision; this ADR is the prerequisite-seam spec that revision names.
 - **#960 Stage 3 ("drive the broker RPC synchronously")** — NIP-42 AUTH signing for
   bunker accounts rides the §D1 port (sign verb + continuation) instead. The publish
-  engine's `Signer::sign_auth` shim is unaffected here; consolidating it onto the port is
-  follow-up under #960, not K1.
+  engine does not own a separate AUTH signer shim; AUTH-REQUIRED publish retries wait on
+  the shared `nmp-nip42` authenticated-relay state.
 - **ADR-0026 Phase 2 execution model** — `RemoteSignerForSeal` and the driver-thread
   chain are deleted (§D5). ADR-0026's *trait verbs* on `RemoteSignerHandle` are the
   foundation this ADR builds on and remain.

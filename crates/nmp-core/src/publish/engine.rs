@@ -49,7 +49,7 @@ use serde::{Deserialize, Serialize};
 use super::action::{PublishAction, PublishHandle, PublishTarget, RelayUrl};
 use super::state::{apply_ack, classify_ack, AckClass, PerRelayState, RelayAck, RetryPolicy};
 use super::traits::{
-    OutboxResolver, PublishStore, PublishStoreError, RelayDispatcher, RelaySelectionReason, Signer,
+    OutboxResolver, PublishStore, PublishStoreError, RelayDispatcher, RelaySelectionReason,
 };
 use super::view::{PublishStatusSnapshot, PublishStatusState, RecentFailure};
 use crate::substrate::{empty_blocked_relay_lookup, BlockedRelayLookup};
@@ -84,8 +84,6 @@ pub struct PublishEngine {
     blocked_relays: Arc<dyn BlockedRelayLookup>,
     dispatcher: Arc<dyn RelayDispatcher>,
     store: Arc<dyn PublishStore>,
-    #[allow(dead_code)]
-    signer: Arc<dyn Signer>,
     /// Set when a handle was just removed from `in_flight` (completed or
     /// cancelled) — `flush_view` consults this so the snapshot's `in_flight`
     /// vector clears the stale row even though nothing in the live map is
@@ -106,7 +104,6 @@ impl PublishEngine {
         outbox: Arc<dyn OutboxResolver>,
         dispatcher: Arc<dyn RelayDispatcher>,
         store: Arc<dyn PublishStore>,
-        signer: Arc<dyn Signer>,
         policy: RetryPolicy,
     ) -> Self {
         Self {
@@ -118,7 +115,6 @@ impl PublishEngine {
             blocked_relays: empty_blocked_relay_lookup(),
             dispatcher,
             store,
-            signer,
             needs_in_flight_rebuild: false,
             pending_terminals: Vec::new(),
         }
@@ -462,8 +458,8 @@ impl PublishEngine {
     /// inspect a classification without re-deriving the rules; outside callers
     /// must drive the engine through `on_ack` / `tick`.
     ///
-    /// `dead_code` allowed because the FFI bridge that calls it lands with
-    /// M6 (actor ledger wiring); the in-crate test asserts the routing.
+    // `allow(dead_code)`: the FFI bridge caller lands with M6 (actor ledger
+    // wiring); in-crate test already asserts the routing via the private fn.
     #[allow(dead_code)]
     pub(crate) fn classify_ack(&self, ack: &RelayAck) -> AckClass {
         classify_ack(ack)

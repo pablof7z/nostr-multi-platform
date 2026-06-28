@@ -162,6 +162,8 @@ impl Kernel {
     /// `unregister_feed` path drops the provider and lets the next-tick reconcile
     /// sweep release-all, so the kernel-only Lane H has no direct caller yet — a
     /// later lane's `ActorCommand` teardown will call this for same-call release.
+    // `allow(dead_code)`: exercised in this module's tests; production caller
+    // lands with the actor teardown seam (Lane H, no live call site yet).
     #[allow(dead_code)]
     pub(in crate::kernel) fn release_feed_author_refs_for_feed(
         &mut self,
