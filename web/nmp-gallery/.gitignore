@@ -1,6 +1,6 @@
 node_modules
 dist
-public/nmp-wasm
+public/nmp-browser-runtime
 
 # Playwright / proof capture output (canonical screenshots live in web/registry/public/screenshots)
 screenshots

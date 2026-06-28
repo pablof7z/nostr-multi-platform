@@ -7,9 +7,9 @@ import { defineConfig, devices } from "@playwright/test";
  * The webServer block serves the production build via `vite preview`. The build
  * itself does NOT require the wasm artifact (the worker loads it lazily at
  * runtime via a `@vite-ignore` dynamic import), so `vite build` + `vite preview`
- * work whether or not `public/nmp-wasm/` is populated:
+ * work whether or not `public/nmp-browser-runtime/` is populated:
  *
- *   • Tests tagged `@wasm` need the real wasm artifact under public/nmp-wasm/ and
+ *   • Tests tagged `@wasm` need the real wasm artifact under public/nmp-browser-runtime/ and
  *     run in the nightly full-e2e CI job (see .github/workflows/
  *     chirp-web-acceptance.yml). Without the artifact the worker stays degraded
  *     and these tests fail honestly.

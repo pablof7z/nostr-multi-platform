@@ -19,7 +19,7 @@ WEB_CHIRP_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$WEB_CHIRP_DIR/../.." && pwd)"
 CRATE_SCRIPT="$REPO_ROOT/crates/nmp-browser-runtime/scripts/build-wasm.sh"
 PKG_OUT="$REPO_ROOT/pkg/nmp-browser-runtime"
-DEST_DIR="$WEB_CHIRP_DIR/public/nmp-wasm"
+DEST_DIR="$WEB_CHIRP_DIR/public/nmp-browser-runtime"
 
 # $HOME/.cargo/bin may not exist if cargo was installed system-wide.
 mkdir -p "$HOME/.cargo/bin"
@@ -108,7 +108,6 @@ echo "[build] Copying wasm output to $DEST_DIR..."
 rm -rf "$DEST_DIR"
 mkdir -p "$DEST_DIR"
 cp -r "$PKG_OUT/." "$DEST_DIR/"
-cp "$DEST_DIR/nmp_browser_runtime.js" "$DEST_DIR/nmp-browser-runtime.js"
 
 echo "[build] Verifying wasm public artifacts..."
 shopt -s nullglob

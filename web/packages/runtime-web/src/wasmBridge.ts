@@ -2,7 +2,7 @@ import type { WorkerEvent, WorkerRequest } from "./protocol";
 
 // Module path for the wasm composition root emitted by wasm-pack
 // (`nmp_browser_runtime.js`, underscore form from the crate name).
-const defaultModulePath = "/nmp-wasm/nmp_browser_runtime.js";
+const defaultModulePath = "/nmp-browser-runtime/nmp_browser_runtime.js";
 
 type SnapshotCallback = (bytes: Uint8Array) => void;
 
@@ -129,7 +129,7 @@ export class WasmBridge {
             {
               type: "error",
               code: "routing_decisions_unavailable",
-              message: "nmp-wasm module loaded without recent_routing_decisions export",
+              message: "nmp-browser-runtime module loaded without recent_routing_decisions export",
               correlation_id: request.correlation_id,
             },
           ];
@@ -163,21 +163,21 @@ export async function loadWasmBridge(
   try {
     const moduleUrl = new URL(modulePath, workerOrigin()).toString();
     if (!(await moduleAssetAvailable(moduleUrl))) {
-      return unavailable(`nmp-wasm module is not available at ${modulePath}`);
+      return unavailable(`nmp-browser-runtime module is not available at ${modulePath}`);
     }
     const wasmModule = (await import(/* @vite-ignore */ moduleUrl)) as NmpWasmModule;
     if (typeof wasmModule.default === "function") {
       await wasmModule.default();
     }
     if (typeof wasmModule.NmpWasmRuntime !== "function") {
-      return unavailable("nmp-wasm module loaded without NmpWasmRuntime export");
+      return unavailable("nmp-browser-runtime module loaded without NmpWasmRuntime export");
     }
     return {
       type: "loaded",
       bridge: new WasmBridge(new wasmModule.NmpWasmRuntime(), onUpdateBytes, wasmModule.nmp_encode_npub),
     };
   } catch (error) {
-    return unavailable(`nmp-wasm module could not be loaded from ${modulePath}`);
+    return unavailable(`nmp-browser-runtime module could not be loaded from ${modulePath}`);
   }
 }
 

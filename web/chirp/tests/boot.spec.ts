@@ -11,7 +11,7 @@
  *     `start`, and renders the three data-* hooks with honest degraded values.
  *
  *   • Real wasm boot (@wasm) — requires the built wasm artifact under
- *     public/nmp-wasm/, so it runs in the nightly full-e2e job. It proves the
+ *     public/nmp-browser-runtime/, so it runs in the nightly full-e2e job. It proves the
  *     real NmpWasmRuntime boots in a worker, reaches "running", emits at least
  *     one UpdateFrame (data-has-snapshot="true"), and dials the fixture relay.
  *

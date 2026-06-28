@@ -21,7 +21,7 @@ import {
 export class InProcessNmpClient extends BaseClient {
   private readonly runtime = new DegradedRuntime(
     "browser_bridge_unavailable",
-    "Web Worker support is unavailable, so the nmp-wasm bridge cannot start",
+    "Web Worker support is unavailable, so the nmp-browser-runtime bridge cannot start",
   );
   private nextCorrelationId = 0;
 

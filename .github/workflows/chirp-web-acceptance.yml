@@ -159,7 +159,7 @@ jobs:
           VER="$(node -p "require('./node_modules/rolldown/package.json').optionalDependencies['@rolldown/binding-linux-x64-gnu']")"
           npm install --no-save --no-package-lock "@rolldown/binding-linux-x64-gnu@${VER}"
 
-      - name: Build wasm artifact (nmp-browser-runtime → public/nmp-wasm)
+      - name: Build wasm artifact (nmp-browser-runtime → public/nmp-browser-runtime)
         env:
           CC_wasm32_unknown_unknown: clang
           AR_wasm32_unknown_unknown: llvm-ar
@@ -167,7 +167,7 @@ jobs:
         working-directory: web/chirp
 
       - name: Show wasm artifact contents
-        run: ls -la web/chirp/public/nmp-wasm || echo "wasm artifact missing"
+        run: ls -la web/chirp/public/nmp-browser-runtime || echo "wasm artifact missing"
 
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
