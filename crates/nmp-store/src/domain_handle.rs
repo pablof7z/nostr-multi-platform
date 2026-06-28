@@ -34,6 +34,8 @@ pub(crate) enum DomainHandleInner {
         namespace: &'static str,
         backend: Arc<nmp_sqlite_wasm::OpfsSqliteStore>,
     },
+    #[cfg(any(test, feature = "test-support"))]
+    FailingPut { namespace: &'static str },
 }
 
 /// Type alias for domain scan iterators.
@@ -64,9 +66,13 @@ impl DomainHandle {
                 crate::lmdb::domain::put(backend, namespace, key, value)
             }
             #[cfg(all(target_arch = "wasm32", feature = "opfs-sqlite-backend"))]
-            DomainHandleInner::Opfs { namespace, backend } => {
-                backend.domain_put(namespace, key, value).map_err(crate::opfs::store_err)
-            }
+            DomainHandleInner::Opfs { namespace, backend } => backend
+                .domain_put(namespace, key, value)
+                .map_err(crate::opfs::store_err),
+            #[cfg(any(test, feature = "test-support"))]
+            DomainHandleInner::FailingPut { namespace } => Err(StoreError::Io(format!(
+                "test domain put failure: {namespace}"
+            ))),
         }
     }
 
@@ -83,9 +89,11 @@ impl DomainHandle {
                 crate::lmdb::domain::get(backend, namespace, key)
             }
             #[cfg(all(target_arch = "wasm32", feature = "opfs-sqlite-backend"))]
-            DomainHandleInner::Opfs { namespace, backend } => {
-                backend.domain_get(namespace, key).map_err(crate::opfs::store_err)
-            }
+            DomainHandleInner::Opfs { namespace, backend } => backend
+                .domain_get(namespace, key)
+                .map_err(crate::opfs::store_err),
+            #[cfg(any(test, feature = "test-support"))]
+            DomainHandleInner::FailingPut { .. } => Ok(None),
         }
     }
 
@@ -102,9 +110,13 @@ impl DomainHandle {
                 crate::lmdb::domain::delete(backend, namespace, key)
             }
             #[cfg(all(target_arch = "wasm32", feature = "opfs-sqlite-backend"))]
-            DomainHandleInner::Opfs { namespace, backend } => {
-                backend.domain_delete(namespace, key).map_err(crate::opfs::store_err)
-            }
+            DomainHandleInner::Opfs { namespace, backend } => backend
+                .domain_delete(namespace, key)
+                .map_err(crate::opfs::store_err),
+            #[cfg(any(test, feature = "test-support"))]
+            DomainHandleInner::FailingPut { namespace } => Err(StoreError::Io(format!(
+                "test domain delete failure: {namespace}"
+            ))),
         }
     }
 
@@ -133,7 +145,16 @@ impl DomainHandle {
                     .map_err(crate::opfs::store_err)?;
                 Ok(Box::new(rows.into_iter().map(Ok)))
             }
+            #[cfg(any(test, feature = "test-support"))]
+            DomainHandleInner::FailingPut { .. } => Ok(Box::new(std::iter::empty())),
         }
     }
+}
 
+#[cfg(feature = "test-support")]
+#[must_use]
+pub fn failing_put_domain_handle_for_test(namespace: &'static str) -> DomainHandle {
+    DomainHandle {
+        inner: DomainHandleInner::FailingPut { namespace },
+    }
 }

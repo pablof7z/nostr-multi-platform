@@ -84,6 +84,9 @@ pub use types::{
 // Re-export error types from types (defined there to avoid circular imports).
 pub use types::{StoreError, VerifyError};
 
+#[cfg(feature = "test-support")]
+pub use domain_handle::failing_put_domain_handle_for_test;
+
 // ── Test-support: LMDB materialization counter ────────────────────────────────
 //
 // Re-exported so `nmp-testing` integration tests can reach
