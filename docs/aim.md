@@ -12,7 +12,7 @@ We are designing a **Rust multiplatform framework for building Nostr application
 
 The framing concern is one sentence: **make it nearly impossible to build a broken Nostr application.** Today, building a Nostr client involves dozens of subtle correctness pitfalls — stale replaceable events, lost subscriptions, wrong relays for wrong events, race conditions between local state and relay state, leaked signing operations, multi-account state desync. The framework's job is to make each of those classes of bug structurally impossible through the safe app-kernel and FFI API: not merely documented as a footgun or caught by a linter, but ruled out by the type system, actor ownership, and public API surface. A capability the sound design cannot express through a typed seam is a design gap to close, not an exception to whitelist. The only mechanically-gated exception is test-only synthetic injection behind a `cfg`/`test-support` gate; external consumers read through the store via a bounded, backpressured cursor (the pull model), never a kernel bypass — see [`docs/escape-hatches.md`](escape-hatches.md).
 
-The success criterion is qualitative: **a developer should be able to one-shot a working Nostr application** — login, timeline, compose, profile, DMs, wallet — using the framework's CLI scaffold and a few hundred lines of platform UI code, and have it ship with sane defaults on the v1 native platforms without the developer ever touching relay routing, cache invalidation, replaceable-event semantics, or subscription lifecycle. Web/wasm earns that same claim in the post-v1 web milestone. If they don't go out of their way to defeat the framework, the app will be correct.
+The success criterion is qualitative: **a developer should be able to one-shot a working Nostr application** — login, timeline, compose, profile, and eventually DMs and wallet — using the framework's CLI scaffold and a few hundred lines of platform UI code, and have it ship with sane defaults on the v1 native platforms without the developer ever touching relay routing, cache invalidation, replaceable-event semantics, or subscription lifecycle. The current per-NIP v1 support boundary, including browser signer caveats, lives in [`docs/nips.md`](nips.md). If they don't go out of their way to defeat the framework, the app will be correct.
 
 ---
 
@@ -101,7 +101,7 @@ Two existing TypeScript libraries in the broader Nostr ecosystem, **NDK** and **
 
 The translation is selective. Applesauce is a strong reference for reactive event stores, derived models, fallback loaders, action runners, relay adapters, and product-layer packages, but its RxJS streams, mutable symbol metadata, and browser-first API surface are not the architecture we ship. NDK is a strong reference for relay pools, cache adapters, subscription grouping, per-relay provenance, sessions, sync, wallet, Blossom, WoT, and messaging modules, but NMP should avoid growing one monolithic cache trait or embedding product policy in the v1 kernel.
 
-The architectural delta is the core idea of this project: use the Rust Nostr SDK family for protocol primitives, then build a new Rust application kernel above it. We are not forking the Rust SDK and we are not porting Applesauce or NDK APIs. We are creating the missing multiplatform app layer: actor-owned state, bounded FFI projections, canonical store semantics, subscription and action lifecycle, storage/metrics/test harnesses, and extension seams for later product modules.
+The architectural delta is the core idea of this project: use the Rust Nostr SDK family for protocol primitives, then build a new Rust application kernel above it. We are not forking the Rust SDK and we are not porting Applesauce or NDK APIs. We are creating the missing multiplatform app layer: actor-owned state, bounded FFI projections, canonical store semantics, subscription and action lifecycle, storage/metrics/test harnesses, and extension seams for later product modules. The subsections below describe the target capability set; [`docs/nips.md`](nips.md) is the release-status source for what is supported, partial, experimental, blocked, or post-v1 today.
 
 ### 4.1 Reactive single source of truth ("EventStore")
 
@@ -123,7 +123,7 @@ Views are **cached and shared**. Two UI components asking for the same view get 
 
 ### 4.3 Action-based writes
 
-Every write path goes through an **action** — an asynchronous operation that takes an action context (event store, signer, publish function, current user) and produces zero or more signed events that are published and added to the store atomically. The framework ships actions for the common cases: send a note, follow/unfollow a user, update profile, send a DM, zap, repost, react, publish a long-form article, manage lists, configure relays. Actions compose: one action can run another as a sub-action. Custom actions are first-class.
+Every write path goes through an **action** — an asynchronous operation that takes an action context (event store, signer, publish function, current user) and produces zero or more signed events that are published and added to the store atomically. The framework's action model covers the common cases: send a note, follow/unfollow a user, update profile, send a DM, zap, repost, react, publish a long-form article, manage lists, configure relays. Current v1 support varies by NIP and platform; consult [`docs/nips.md`](nips.md) before treating any one of those actions as a complete product surface. Actions compose: one action can run another as a sub-action. Custom actions are first-class.
 
 The read/write split is rigid. **Reads happen via store subscriptions. Writes happen via actions.** There is no API that lets a developer "build an event, sign it, publish it, and remember to also update local state." Actions do that atomically and the developer cannot forget the local-state step because it is the action's responsibility, not theirs.
 
@@ -141,7 +141,7 @@ The actor maintains a **global subscription planner**. Concurrent UI subscriptio
 
 **Sessions are state.** `AppState` carries a vector of accounts and an active pubkey. Each account has a signer reference, a derived profile view, a follow list view, a mute list view, a relay-list view, and a status flag (e.g., loading, syncing, online). Switching the active account is an action; the UI re-renders against the new context with no further work.
 
-Account persistence is automatic via the OS keyring crate (Keychain / Credential Manager / Secret Service). Signers cover the spectrum: private key (encrypted at rest), NIP-49 password-encrypted, NIP-07 browser extension (with a proxy for native apps), NIP-46 bunker (Nostr Connect), and platform-native external signers (e.g. the Android Amber app via NIP-55, a capability bridge in RMP terms).
+Account persistence is automatic via OS keychain-style capabilities where a native shell provides them. Signer support is deliberately backend-specific: local keys, NIP-46 bunker/Nostr Connect, browser NIP-07, and Android NIP-55 each have different platform and NIP-44 capability boundaries. The supported matrix and caveats are tracked in [`docs/nips.md`](nips.md), not inferred from upstream protocol-crate features.
 
 ### 4.7 Web of Trust
 
@@ -153,11 +153,11 @@ A **high-level synchronization API** wraps NIP-77 negentropy set reconciliation:
 
 ### 4.9 Wallet integration
 
-A unified **wallet abstraction** exposes Cashu (NIP-60), Nostr Wallet Connect (NIP-47), nutzaps (NIP-61), and LUD-16 Lightning zaps (NIP-57). The wallet is part of `AppState`: balance is a reactive field, payment status flows through state, pending nutzaps appear in a queue the UI renders directly. The developer sets a wallet implementation; the rest is automatic.
+The target wallet abstraction is Rust-owned and spans Nostr Wallet Connect (NIP-47), LUD-16 Lightning zaps (NIP-57), and later Cashu/nutzap work (NIP-60/NIP-61). Current v1 status is narrower: NIP-47 and NIP-57 have reusable runtime/action pieces, while NIP-60/NIP-61 are post-v1; see [`docs/nips.md`](nips.md) and [#1001](https://github.com/pablof7z/nostr-multi-platform/issues/1001).
 
 ### 4.10 Messaging
 
-A **conversation layer** wraps NIP-17 private DMs (gift-wrapped via NIP-59, encrypted via NIP-44) into a conversation-list and message-list view. Sending a DM is an action; receiving DMs is a subscription. Decryption happens in the Rust core, never in platform code. On mobile this includes background-decryption via a platform-specific notification service extension that calls into the Rust core.
+The target conversation layer wraps NIP-17 private DMs (gift-wrapped via NIP-59, encrypted via NIP-44) into conversation-list and message-list views. Current v1 support is partial and signer-dependent: enabled private-message paths keep plaintext inside Rust, while browser extension support depends on `window.nostr.nip44` and NIP-46 delegated decrypt backfill remains staged. See [`docs/nips.md`](nips.md), [#2255](https://github.com/pablof7z/nostr-multi-platform/issues/2255), and [#1259](https://github.com/pablof7z/nostr-multi-platform/issues/1259).
 
 ### 4.11 Blossom media
 
@@ -173,7 +173,7 @@ The framework ships **test utilities**: a mock relay (already provided by the re
 
 ### 4.14 Scaffolding CLI
 
-A **scaffolding CLI** (`<framework> init`) generates a complete starter project: the Rust core crate, the binding layer (today: hand-rolled C-ABI; symbol counts and governance are temporal facts tracked in GitHub Issues; UniFFI migration deferred to M14 when the write surface stabilizes — see **ADR-0030** (`docs/decisions/0030-uniffi-vs-c-abi.md`)), an iOS SwiftUI app, an Android Compose app, a desktop (egui) app, the `justfile` build orchestrator, and an optional Nix flake. A web wasm shell is a post-v1 scaffold target, not part of the v1 starter contract. The starter app implements login, a timeline, compose, a profile screen, and DMs. It builds and runs on the v1 native platforms (iOS, Android, desktop) immediately. This is modeled directly on RMP's `rmp init`.
+A **scaffolding CLI** (`<framework> init`) generates a complete starter project: the Rust core crate, the binding layer (today: hand-rolled C-ABI; symbol counts and governance are temporal facts tracked in GitHub Issues; UniFFI migration deferred to M14 when the write surface stabilizes — see **ADR-0030** (`docs/decisions/0030-uniffi-vs-c-abi.md`)), an iOS SwiftUI app, an Android Compose app, a desktop (egui) app, the `justfile` build orchestrator, and an optional Nix flake. The v1 starter prioritizes login, timeline, compose, and profile flows; DM and wallet starter claims must follow the support matrix rather than the north-star target text. It builds and runs on the v1 native platforms (iOS, Android, desktop) immediately. This is modeled directly on RMP's `rmp init`.
 
 ---
 

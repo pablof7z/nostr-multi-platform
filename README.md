@@ -1,18 +1,18 @@
 # NMP — Nostr Multi-Platform
 
 A Rust framework for building Nostr apps. One Rust core, native shells for v1
-(iOS SwiftUI, Android Compose, desktop egui), and web/wasm as a post-v1 target.
-The core owns everything that touches the protocol — relays, state,
-subscriptions, signing, decryption, replaceable-event resolution, time. The
-shells render. That's it.
+(iOS SwiftUI, Android Compose, desktop egui), and a browser/wasm runtime whose
+per-NIP support is tracked in the v1 support matrix. The core owns everything
+that touches the protocol — relays, state, subscriptions, signing, decryption,
+replaceable-event resolution, time. The shells render. That's it.
 
 Most cross-platform Nostr clients fragment into incompatible bugs because protocol logic gets reimplemented per platform. Three times. Badly. NMP writes it once, tests it once, and ships it everywhere. The division between protocol and presentation is absolute. That's not a guideline. That's the framework.
 
 ## The core idea
 
-You don't pick relays per operation. NIP-65 outbox routing is on by default — posts go where they should, reads come from where they live. You don't handle stale replaceable events; the store will not let you hold a stale kind:0, kind:3, or parameterized-replaceable version. You don't write subscription cleanup; when a view goes away, so do its subscriptions. You don't decrypt DMs in Swift or Kotlin; NIP-17 plaintext never leaves the kernel.
+You don't pick relays per operation. NIP-65 outbox routing is on by default — posts go where they should, reads come from where they live. You don't handle stale replaceable events; the store will not let you hold a stale kind:0, kind:3, or parameterized-replaceable version. You don't write subscription cleanup; when a view goes away, so do its subscriptions. For the NIP-17 private-message paths that are enabled, plaintext stays in the Rust kernel; Swift, Kotlin, and TypeScript shells do not decrypt DMs.
 
-Every one of those statements is enforced by the type system and the FFI surface, not by documentation. The Swift code can't get NIP-17 wrong because it never sees NIP-17. The Kotlin code can't mis-route a post because it never picks a relay.
+Every one of those statements is enforced by the type system and the FFI surface, not by documentation. Platform code can't re-route a post because it never picks a relay, and private-flow support is gated by the signer capabilities listed in the NIP matrix.
 
 ## Architecture
 
@@ -34,6 +34,7 @@ The scaffold compiles on first try and is wired to the local `nmp-core`. From th
 
 - **[nostr-mp.f7z.io](https://nostr-mp.f7z.io)** — landing page, component registry, doctrine in full.
 - **[`docs/builder-guide/00-how-to-read.md`](docs/builder-guide/00-how-to-read.md)** — the framework guide. Start here for building on NMP.
+- **[`docs/nips.md`](docs/nips.md)** — v1 NIP support matrix with platform and signer caveats.
 - **[`docs/aim.md`](docs/aim.md)** — the architectural north star.
 - **[`AGENTS.md`](AGENTS.md)** — contributor guide, file-size rules, planning discipline.
 
