@@ -118,7 +118,7 @@ pub(super) struct MemState {
     /// (relay_url, kind, event_id) triple here; every removal prunes it.
     ///
     /// Privacy-gated: NIP-04/17/59 kinds never enter (checked in
-    /// `relay_kind_add` via `crate::lmdb::provenance::is_relay_provenance_private`).
+    /// `relay_kind_add` via `crate::types::is_relay_provenance_private`).
     ///
     /// Used by `EventStore::relay_kind_coverage` / `relay_kind_count`.
     pub(super) relay_kind: HashMap<RelayUrl, HashMap<u32, BTreeSet<String>>>,
@@ -416,13 +416,20 @@ pub(super) fn relay_kind_coverage(st: &MemState, relay_url: &str) -> Vec<u32> {
     let Some(kinds) = st.relay_kind.get(relay_url) else {
         return Vec::new();
     };
-    let mut out: Vec<u32> = kinds.keys().copied().collect();
+    let mut out: Vec<u32> = kinds
+        .keys()
+        .copied()
+        .filter(|kind| !super::types::is_relay_provenance_private(*kind))
+        .collect();
     out.sort_unstable();
     out
 }
 
 /// Count of distinct events of `kind` seen on `relay_url`.
 pub(super) fn relay_kind_count(st: &MemState, relay_url: &str, kind: u32) -> u64 {
+    if super::types::is_relay_provenance_private(kind) {
+        return 0;
+    }
     st.relay_kind
         .get(relay_url)
         .and_then(|kinds| kinds.get(&kind))

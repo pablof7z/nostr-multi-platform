@@ -109,18 +109,9 @@ pub enum SearchScopeDisposition {
     YieldedToExisting,
 }
 
-/// Private/encrypted kinds that MUST never enter a public FTS index (D10).
-///
-/// NIP-04 DM (4), NIP-17 sealed/gift-wrap + private DM (13/14/15/1059/1060),
-/// NIP-59 seal/gift-wrap (1059/1060 — same numbers). A `PublicIndexable` scope
-/// that names one of these has the kind dropped by the compiler. This list is
-/// intentionally conservative; the precise private-kind catalog is owned by the
-/// relevant NIP crates, and a `LocalOnlyPrivate` scope is dropped wholesale.
-const PRIVATE_KINDS: &[u32] = &[4, 13, 14, 15, 1059, 1060];
-
 #[inline]
 fn is_private_kind(kind: u32) -> bool {
-    PRIVATE_KINDS.contains(&kind)
+    nmp_kinds::is_private_relay_provenance_kind(kind)
 }
 
 /// The crate-registered scope registry. Lives behind a `Mutex` so a shared

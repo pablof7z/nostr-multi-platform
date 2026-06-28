@@ -89,10 +89,18 @@ fn distinct_kinds_coverage() {
     let (store, _dir) = open_tmp();
     // kinds 1, 7, 30023 on relay A.
     store
-        .insert(verified(signed_event(1, 1_000, "note", None)), &RELAY_A.into(), 1_000_000)
+        .insert(
+            verified(signed_event(1, 1_000, "note", None)),
+            &RELAY_A.into(),
+            1_000_000,
+        )
         .unwrap();
     store
-        .insert(verified(signed_event(7, 1_001, "+", None)), &RELAY_A.into(), 1_000_001)
+        .insert(
+            verified(signed_event(7, 1_001, "+", None)),
+            &RELAY_A.into(),
+            1_000_001,
+        )
         .unwrap();
     store
         .insert(
@@ -119,7 +127,11 @@ fn privacy_gate_excludes_private_kinds() {
     let (store, _dir) = open_tmp();
     // A non-private kind to prove the relay is otherwise indexed.
     store
-        .insert(verified(signed_event(1, 1_000, "note", None)), &RELAY_A.into(), 1_000_000)
+        .insert(
+            verified(signed_event(1, 1_000, "note", None)),
+            &RELAY_A.into(),
+            1_000_000,
+        )
         .unwrap();
     for k in [4u32, 13, 14, 15, 1059, 1060] {
         store
@@ -140,6 +152,39 @@ fn privacy_gate_excludes_private_kinds() {
         vec![1],
         "coverage must contain only the non-private kind"
     );
+}
+
+/// Defense-in-depth: even if an old database or manual corruption leaves a
+/// private relay-kind key behind, the read path must not expose it.
+#[test]
+fn read_backstop_hides_stale_private_relay_kind_entries() {
+    let (store, _dir) = open_tmp();
+    let inner = store.inner_for_test();
+    let stale_private_id = [0x99u8; 32];
+    let stale_public_id = [0x88u8; 32];
+    let key = |kind: u32, id: &[u8; 32]| {
+        let mut key = Vec::with_capacity(RELAY_A.len() + 1 + 4 + 32);
+        key.extend_from_slice(RELAY_A.as_bytes());
+        key.push(0);
+        key.extend_from_slice(&kind.to_be_bytes());
+        key.extend_from_slice(id);
+        key
+    };
+
+    let mut txn = inner.env.write_txn().expect("write_txn");
+    inner
+        .relay_kind
+        .put(&mut txn, &key(1, &stale_public_id), &[])
+        .expect("put public stale key");
+    inner
+        .relay_kind
+        .put(&mut txn, &key(1059, &stale_private_id), &[])
+        .expect("put private stale key");
+    txn.commit().expect("commit");
+
+    assert_eq!(store.relay_kind_coverage(RELAY_A).unwrap(), vec![1]);
+    assert_eq!(store.relay_kind_count(RELAY_A, 1).unwrap(), 1);
+    assert_eq!(store.relay_kind_count(RELAY_A, 1059).unwrap(), 0);
 }
 
 /// Deleting an event removes its relay×kind entry — no dangling references.
@@ -197,10 +242,18 @@ fn gc_lru_eviction_removes_relay_kind() {
     let (store, _dir) = open_tmp();
     // Two distinct kind-1 events on relay A.
     store
-        .insert(verified(signed_event(1, 1_000, "a", None)), &RELAY_A.into(), 1_000_000)
+        .insert(
+            verified(signed_event(1, 1_000, "a", None)),
+            &RELAY_A.into(),
+            1_000_000,
+        )
         .unwrap();
     store
-        .insert(verified(signed_event(1, 1_001, "b", None)), &RELAY_A.into(), 1_000_001)
+        .insert(
+            verified(signed_event(1, 1_001, "b", None)),
+            &RELAY_A.into(),
+            1_000_001,
+        )
         .unwrap();
     assert_eq!(store.relay_kind_count(RELAY_A, 1).unwrap(), 2);
 
@@ -227,10 +280,18 @@ fn relay_kind_survives_reopen() {
     {
         let store = LmdbEventStore::open(dir.path()).expect("open");
         store
-            .insert(verified(signed_event(1, 1_000, "persist", None)), &RELAY_A.into(), 1_000_000)
+            .insert(
+                verified(signed_event(1, 1_000, "persist", None)),
+                &RELAY_A.into(),
+                1_000_000,
+            )
             .unwrap();
         store
-            .insert(verified(signed_event(7, 1_001, "+", None)), &RELAY_A.into(), 1_000_001)
+            .insert(
+                verified(signed_event(7, 1_001, "+", None)),
+                &RELAY_A.into(),
+                1_000_001,
+            )
             .unwrap();
         assert_eq!(store.relay_kind_coverage(RELAY_A).unwrap(), vec![1, 7]);
     }
@@ -253,11 +314,19 @@ fn relay_kind_backfilled_on_open() {
     {
         let store = LmdbEventStore::open(dir.path()).expect("open");
         store
-            .insert(verified(signed_event(1, 1_000, "backfill-me", None)), &RELAY_A.into(), 1_000_000)
+            .insert(
+                verified(signed_event(1, 1_000, "backfill-me", None)),
+                &RELAY_A.into(),
+                1_000_000,
+            )
             .unwrap();
         // A private kind that must stay out of the index even via backfill.
         store
-            .insert(verified(signed_event(4, 1_001, "dm", None)), &RELAY_A.into(), 1_000_001)
+            .insert(
+                verified(signed_event(4, 1_001, "dm", None)),
+                &RELAY_A.into(),
+                1_000_001,
+            )
             .unwrap();
 
         // Simulate a pre-#1518 store: wipe the relay-kind sub-db and the one-shot
