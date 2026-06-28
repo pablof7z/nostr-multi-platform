@@ -253,6 +253,79 @@ define app/protocol Rust session once
 That is the "door." It is not a framework PR for every feature, and it is not a
 native callback that streams arbitrary raw events.
 
+## Clean-Room Developer Path
+
+This is illustrative, not an API commitment. The point is the developer
+experience the architecture must make possible.
+
+An app root should read like explicit product composition:
+
+```text
+app = NmpApp::new()
+  .install(nmp::substrate())
+  .install(nip02::follow_lists())
+  .install(nip29::groups())
+  .install(nip17::direct_messages())
+  .install(app::rooms())
+  .install(app::playback())
+  .with_client_identity(app_client)
+  .with_app_policy(app_policy)
+  .build()
+```
+
+A screen should open what it renders:
+
+```text
+room = app.open(RoomTimeline { group_id })
+author = app.open(ProfileRef { pubkey, owner: room })
+playback = app.open(PodcastPlayback { owner: app_lifetime })
+
+render(room.output)
+render(author.output)
+render(playback.output)
+```
+
+A product-specific read should be one Rust-owned feature definition plus generated
+host calls:
+
+```text
+feature SavedHighlights {
+  source: active_account_bookmarks + app_filter
+  route: planned_outbox
+  replay: bounded_before_live
+  output: HighlightRows
+  actions: OpenHighlight, ShareToRoom
+}
+```
+
+The generated shell surface should be boring:
+
+```text
+handle = app.open_saved_highlights(filter)
+view.render(app.saved_highlights(handle))
+app.dispatch(share_highlight_to_room(highlight_id, room_id))
+```
+
+For writes, construction, signing, and publishing stay separable without making
+the shell own protocol policy:
+
+```text
+draft = reply_to(event).content("nice")
+app.publish(draft)
+
+article = article().title("Hello").content(body)
+app.publish_to_group(article, group_id)
+
+episode = podcast_episode(show_id, media_ref)
+app.publish_episode(episode, signer: podcast_key)
+```
+
+The shell should not need to know whether the implementation used
+`ObservedProjection`, a dependent interest, a store replay cursor, a signer
+parking continuation, a route planner, or a row-delta cache. If a clean-room app
+still has to wire those pieces by hand, the destination architecture has failed
+the #2313/#2316 test.
+
 An app developer should not need to know:
 
 - projection tiers;

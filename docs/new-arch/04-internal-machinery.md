@@ -382,6 +382,28 @@ an ADR question rather than implementation work. This is how the migration avoid
 turning `FeatureSession`, route provenance, generated adapters, and service
 sessions into additive layers over the old machinery.
 
+## Proof Ladder
+
+The implementation plan should advance only if each rung proves both behavior and
+simplification. A green test is not enough if the old public recipe remains a
+normal path.
+
+| Rung | Proof | Continue only if | Stop or narrow if |
+|---|---|---|---|
+| 0. Classified baseline | every old door is production/internal/test/doc/migration/delete | the team knows what is being deleted, privatized, or formalized | important callers remain unclassified |
+| 1. Clean-room app path | a generated/scaffolded app opens and renders one feature without old internals | the app author never touches `open_interest`, projection tiers, or sidecars | tutorial still teaches hidden defaults or low-level read machinery |
+| 2. First lifecycle owner | one simple real session owns acquisition, replay, sink, output, wakes, status, and teardown | old recipe count decreases or is compatibility-scoped | `FeatureSession` wraps the old recipe without retiring it |
+| 3. Event-driven reconciliation | #2307-style reconcilers collapse and tick polling is removed where event hooks exist | duplicate controllers and account/source polling disappear | a fifth reconciler or compatibility alias is added |
+| 4. Output/adapter contract | one output uses generated/contract-tested full/delta/clear/stale/poison semantics across shells | shell caches are render adapters only | any shell owns independent merge or product cache semantics |
+| 5. Route provenance | explicit publish/read routes retain class and reason through status/replay/retry | anonymous explicit-route paths collapse to one carrier or are deleted | provenance requires a broad new wrapper while old routes remain |
+| 6. Downstream proof | Highlighter, Podcast Player, and gallery matrices pass or trigger kill criteria | no app exports Nostr policy into native shells or NMP app nouns | a downstream app needs native-owned policy to ship |
+| 7. Retirement | accepted facts move into durable docs/issues and `docs/new-arch` is retired | this packet is no longer needed as current authority | docs/new-arch becomes a parallel plan |
+
+Each rung has a stop point. If rungs 1-3 do not reduce concepts or call sites,
+the architecture should be narrowed before touching downstream apps. If rungs
+4-6 require app shells to own Nostr policy, the architecture is preserving NMP by
+exporting complexity and should be rejected.
+
 **P-1: Concept disposition and live-consumer audit.**
 Before P0 inventory turns into implementation work, classify every disputed
 concept and public door:

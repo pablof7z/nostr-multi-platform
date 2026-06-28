@@ -657,8 +657,8 @@ into native code.
 - [App Model](01-app-model.md) explains how an app is assembled, what feature
   bundles provide, and where app-specific Rust domains belong.
 - [Live Queries](02-live-queries.md) explains how screens subscribe to data,
-  including `ObservedProjection`, `ReducedSource`, component refs, and
-  projection delivery.
+  including `ObservedProjection`, dynamic source reconciliation, component refs,
+  and projection delivery.
 - [Write Flow](03-write-flow.md) explains the split between event construction,
   event finalization, signing, and publishing.
 - [Internal Machinery](04-internal-machinery.md) explains what NMP does under
@@ -691,8 +691,9 @@ current internal types:
   live lifecycle a screen, component, widget, or app service opens.
 - `ObservedProjection` means the internal safe pattern for replaying cached
   events into a scoped projection before accepting future live events.
-- `ReducedSource` means the internal pattern for dynamic query inputs derived
-  from other events or account state.
+- `ReducedSource` means one current private feed-local implementation candidate
+  for dynamic source reconciliation. It is not the architecture noun unless the
+  ADR proves the same semantics across non-feed source families.
 - `EventDraft` means the invariant that unsigned event bytes may still be
   finalized before signing. It is not necessarily a new public type.
 - `PublishContext` means the invariant that route, privacy, and protocol policy
