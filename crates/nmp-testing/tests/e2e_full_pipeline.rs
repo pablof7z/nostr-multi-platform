@@ -286,8 +286,8 @@ fn kind3_update_rewires_subscriptions() {
 #[test]
 fn publish_roundtrip_via_outbox() {
     use nmp_core::publish::{
-        InMemoryPublishStore, NoopSigner, PublishAction, PublishEngine, PublishTarget, RelayAck,
-        RelayUrl, ReplayDispatcher, RetryPolicy, StaticOutbox,
+        InMemoryPublishStore, PublishAction, PublishEngine, PublishTarget, RelayAck, RelayUrl,
+        ReplayDispatcher, RetryPolicy, StaticOutbox,
     };
     use nmp_signer_iface::{SignedEvent, UnsignedEvent};
     use std::sync::Arc;
@@ -312,7 +312,6 @@ fn publish_roundtrip_via_outbox() {
         Arc::new(outbox),
         Arc::clone(&dispatcher) as Arc<dyn nmp_core::publish::RelayDispatcher>,
         Arc::new(InMemoryPublishStore::new()),
-        Arc::new(NoopSigner),
         RetryPolicy::default(),
     );
 

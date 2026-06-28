@@ -23,7 +23,7 @@
 //!
 //! - **D0** — no app nouns. The crate exposes only protocol primitives
 //!   (challenge, auth state, signed-event template) and a stateful driver.
-//! - **D7** — the [`Signer`](nmp_core::publish::traits::Signer) reports a
+//! - **D7** — the signer (the caller-supplied `nmp_signers::Signer`) reports a
 //!   signed event; this crate decides the FSM transitions and what to emit
 //!   on the wire. Pause/flush of held REQs is owned by
 //!   [`nmp_core::subs::auth_gate::AuthGate`], not here.
@@ -38,8 +38,8 @@
 //! ## What this crate does NOT do
 //!
 //! - It does not own the wire pause/flush queue — that's `subs::AuthGate`.
-//! - It does not own publish-side AUTH-REQUIRED retry — that's the publish
-//!   engine using its own `publish::traits::Signer::sign_auth` shim.
+//! - It does not own publish-side AUTH-REQUIRED retry — that path lives in the
+//!   publish engine.
 //! - It does not call the signer asynchronously — `LocalKeySigner` is
 //!   synchronous via `SignerOp::Ready`, sufficient for M5; NIP-46 async is
 //!   M6 follow-up.

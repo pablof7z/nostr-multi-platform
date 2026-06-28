@@ -16,11 +16,9 @@
 //!   RelayAuthState` and this crate's [`RelayAuthState`] are the same
 //!   substrate type, so no translation is required.
 //!
-//! Signer integration is via a small trait the caller adapts to either
-//! `nmp_core::publish::traits::Signer::sign_auth` (the M7 shim) or
-//! `nmp_signers::Signer::sign` (the M6 canonical trait). Both will be
-//! available; the choice is the caller's because the two have different
-//! lifetimes and SignerOp return shapes.
+//! Signer integration is via a small trait the caller adapts to
+//! `nmp_signers::Signer::sign` (the canonical signer trait); the caller owns
+//! how the unsigned AUTH event is bridged into that signer.
 
 use nmp_signer_iface::SignedEvent;
 
@@ -253,8 +251,7 @@ impl Nip42Driver {
 ///
 /// `signer` receives the unsigned event and returns either a signed event
 /// or a `Nip42Error::SignerFailed`. The caller chooses how to bridge to
-/// `nmp_core::publish::traits::Signer::sign_auth` (returns `SignedEvent`
-/// synchronously) or `nmp_signers::Signer::sign` (returns `SignerOp`).
+/// `nmp_signers::Signer::sign` (returns `SignerOp`).
 #[must_use]
 pub fn run_handshake<F>(
     driver: &mut Nip42Driver,

@@ -94,9 +94,9 @@ pub(crate) use policy::{
 pub use state::{PerRelayState, PublishAttempt, RelayAck, RelayPlan, RetryPolicy, RetryVerdict};
 pub use store::DomainPublishStore;
 pub use traits::{
-    InMemoryPublishStore, NoopOutboxResolver, NoopSigner, OutboxResolver, PublishRecord,
-    PublishStore, PublishStoreError, QueueDispatcher, RelayDispatcher, RelaySelectionReason,
-    ReplayDispatcher, ResolvedRelay, Signer, SignerError, StaticOutbox,
+    InMemoryPublishStore, NoopOutboxResolver, OutboxResolver, PublishRecord, PublishStore,
+    PublishStoreError, QueueDispatcher, RelayDispatcher, RelaySelectionReason, ReplayDispatcher,
+    ResolvedRelay, StaticOutbox,
 };
 // Spec §271 (2026-05-25) test-only NIP-65 resolver. Gated on
 // `test-support` so production builds never link it; the canonical
