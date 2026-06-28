@@ -454,7 +454,7 @@ impl PublishEngine {
 
     /// Engine-owned classification of a raw `RelayAck` (per D7 — capabilities
     /// report; the engine decides policy). The dispatcher MUST NOT call this.
-    /// Exposed `pub(crate)` so the FFI bridge (in `crate::ffi::*`) can
+    /// Exposed `pub(crate)` so the FFI bridge (in `nmp-ffi`) can
     /// inspect a classification without re-deriving the rules; outside callers
     /// must drive the engine through `on_ack` / `tick`.
     ///

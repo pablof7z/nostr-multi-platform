@@ -67,14 +67,13 @@ pub(super) fn start(
     // T127: boot-resume for the publish engine. Closes Residual 3
     // from T117 — `accepted_locally` rows persisted by a previous
     // process come back as `InFlight` and any due retries dispatch
-    // immediately. Today the production store is fresh in-memory
-    // per process so this is a no-op; once the M3 LMDB store lands
-    // the resume call will drive the resurrected rows back through
-    // the actor's normal outbound path. `spawn_missing_relays`
-    // above ran first, so workers will spawn on demand for any
-    // URL the resumed frames target (idempotent via
-    // `ensure_relay_worker`). Frames flow through the regular
-    // `send_all_outbound` call in `run_actor`.
+    // immediately. The production store is `FsPublishStore` (durable)
+    // when a storage path was set via `nmp_app_set_storage_path`; this
+    // call is load-bearing, driving persisted rows back through the
+    // actor's normal outbound path. `spawn_missing_relays` above ran
+    // first, so workers will spawn on demand for any URL the resumed
+    // frames target (idempotent via `ensure_relay_worker`). Frames flow
+    // through the regular `send_all_outbound` call in `run_actor`.
     outbound.extend(ctx.kernel.resume_publish_engine());
     Some(outbound)
 }

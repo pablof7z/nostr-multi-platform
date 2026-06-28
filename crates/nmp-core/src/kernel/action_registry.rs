@@ -11,7 +11,7 @@
 //! `(namespace, family, type_name)` strings — nothing ever read them back."
 //! This registry stores live `dyn ErasedActionModule` trait objects and
 //! [`ActionRegistry::start`] actually *invokes* `ActionModule::start`. The
-//! read-back path is real: [`crate::ffi`]'s `nmp_app_dispatch_action` calls
+//! read-back path is real: `nmp_ffi`'s `nmp_app_dispatch_action_bytes` calls
 //! [`ActionRegistry::start`] and returns the resulting correlation id.
 //!
 //! # Scope (validation + execution, both in the registry)

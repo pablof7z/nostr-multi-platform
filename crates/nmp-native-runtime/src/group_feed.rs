@@ -32,10 +32,12 @@
 //!    matching `close_*` can reverse the observed projection and remove the
 //!    sidecar.
 //!
-//! The durable-store tail (events evicted from the bounded in-memory read-cache)
-//! hydrates once the general single-letter (`#h`) `StoreQuery` index lands (a
-//! separate effort generalizing `nmp-store`'s tag index); the in-memory replay
-//! — the #2088 user-visible bug — is fixed here and now.
+//! The `StoreQuery::Tags` single-letter tag index landed (#2100), but the
+//! durable-store leg of the `open_observed_projection` catch-up path is not yet
+//! wired: `replay_read_cache_to_observer` scans only the in-memory `events`
+//! cache and does not query the LMDB store for evicted events. Track in the
+//! GitHub issue queue. The in-memory replay — the #2088 user-visible bug — is
+//! fixed here and now.
 //!
 //! ## Read-model parity
 //!

@@ -185,8 +185,9 @@ pub struct TransportError {
 /// receives it pushed on a [`super::PoolEvent::Health`]).
 ///
 /// Phase B keeps this minimal — V-13's per-relay latency histogram is
-/// deferred to phases C/D where the signer-broker migration motivates the
-/// wider surface.
+/// still deferred; the `nmp-signer-broker` motivation is gone (#2119
+/// deleted that crate), so the feature tracks independently in the issue
+/// queue.
 ///
 /// NIP-11 relay information is NO LONGER a pool concern: per ADR-0051 it is
 /// fetched by the `nmp-nip11` protocol crate on connect and surfaced through
@@ -229,8 +230,9 @@ pub enum HealthState {
 /// Pool configuration knobs.
 ///
 /// Phase B ships the substrate; the storm-protection knobs
-/// (`per_relay_reconnect_rate`, `socket_budget`) land in phases C/D when the
-/// wasm driver and signer-broker migration motivate them. (NIP-11 is handled
+/// (`per_relay_reconnect_rate`, `socket_budget`) are still deferred — the
+/// original `nmp-signer-broker` motivation is gone (#2119 deleted that crate),
+/// so they track independently in the issue queue. (NIP-11 is handled
 /// out-of-band by `nmp-nip11` per ADR-0051, not a pool config knob.) Defaults
 /// preserve today's `relay_worker` behaviour bit-for-bit.
 #[derive(Clone, Debug)]

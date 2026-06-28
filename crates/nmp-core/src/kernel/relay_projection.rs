@@ -165,7 +165,7 @@ pub type LocalWriteRelaysSlot = Arc<Mutex<RelayUrls>>;
 /// FFI `NmpApp` so per-app crates (e.g. `nmp-marmot`) can read the live
 /// relay list without crossing FFI.
 ///
-/// `pub` so `crate::ffi::NmpApp` can name the slot type in its field
+/// `pub` so `nmp_native_runtime::NmpApp` can name the slot type in its field
 /// declaration (the field itself is private; only the *type alias* needs
 /// to be importable).
 pub type AppRelaySlot = Arc<Mutex<AppRelayList>>;

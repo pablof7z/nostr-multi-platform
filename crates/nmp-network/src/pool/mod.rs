@@ -51,11 +51,11 @@
 //!   NIP-42 frame shape via `nmp-nip42-types::parse_auth_frame`.
 //!   `nmp-network` still does NOT name `AuthGate`, kind:22242, or the
 //!   `RelayAuthState` enum.
-//! - **Actor migration** off the legacy `RelayEvent`/`RelayCommand`
-//!   API. Today's actor (`crates/nmp-core/src/actor/relay_mgmt.rs`)
-//!   still drives `spawn_relay_worker` directly. The legacy entry
-//!   points stay re-exported alongside `Pool` so the actor compiles
-//!   unchanged; the follow-up belongs in the GitHub issue queue.
+//! - **Actor migration** (Phase F) is shipped. The actor in
+//!   `crates/nmp-core/src/actor/relay_mgmt.rs` now drives every
+//!   per-URL socket through [`Pool::ensure_open_with_role`]; it no
+//!   longer calls `spawn_relay_worker` directly. `relay_worker` is
+//!   now `pub(crate)` — no out-of-crate re-exports remain.
 //!
 //! ## Why phase B ships as additive
 //!

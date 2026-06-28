@@ -42,7 +42,7 @@ pub enum ActionLedgerCommand {
     /// ACK lifecycle) and `action_results` (the drain, for the host's spinner
     /// cleanup).
     ///
-    /// Originates from [`crate::ffi::action::dispatch_action_json`] on the FFI
+    /// Originates from `nmp_ffi::action::dispatch_action_json` on the FFI
     /// thread when the executor returned an `Err` (including a
     /// `catch_unwind`-converted panic). Idempotent w.r.t. a buggy host that
     /// re-sends — `record_action_failure` records a second `Failed` stage,
