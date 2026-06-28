@@ -2,28 +2,31 @@
 
 An app has a Rust composition root. The composition root installs the mandatory
 substrate and then opts into named reusable NMP features and app-owned product
-features. The preferred production shape is a builder or explicit registration
-expression where substrate, storage, policy, and feature opt-ins are visible:
+features. The preferred production shape uses the existing native/browser/TUI
+runtime builders or composition root plus narrow installer functions, where
+substrate, storage, policy, and feature opt-ins are visible:
 
 ```rust
-let app = NmpApp::builder()
-    .storage_path(policy.storage)
-    .with_substrate(policy.substrate)
-    .with_nip02_follow_list()
-    .with_nip51_lists()
-    .with_nip50_search(policy.search)
-    .with_nip29_groups(policy.groups)
-    .with_home_feed(policy.home_feed)
-    .with_app_feature(highlighter_app::feature(policy.highlighter))
-    .build();
+let mut app = runtime_builder.storage_path(policy.storage).build_core();
+
+nmp_defaults::register_substrate(&mut app, policy.substrate);
+nmp_nip02::install_follow_list(&mut app);
+nmp_nip51::install_lists(&mut app);
+nmp_nip50::install_search(&mut app, policy.search);
+nmp_nip29::install_groups(&mut app, policy.groups);
+microblog_app::install_home_feed(&mut app, policy.home_feed);
+highlighter_app::install_feature(&mut app, policy.highlighter);
 ```
 
 The exact names above are illustrative. The rule is not illustrative:
 `register_defaults()` is rejected as production app architecture. Product apps
 show the substrate and feature methods they install. A typestate or equivalent
-builder is attractive because it can require storage and substrate before start,
-make the app immutable after build, and remove idempotency bugs from repeated
-registration. If a monolithic preset survives as a migration path, it is a
+runtime builder is attractive because it can require storage and substrate
+before start, make the app immutable after build, and remove idempotency bugs
+from repeated registration. Do not add a broad app-builder or `AppHost` feature
+bucket before proving the existing runtime builders, `register_substrate`,
+narrow registrars, and installer extension traits cannot carry the selected
+slice. If a monolithic preset survives as a migration path, it is a
 tutorial or migration shim with explicit callers and a deletion target, not the
 architecture real products should copy.
 For a migration shim, the bar is higher than "maybe a consumer exists": name the

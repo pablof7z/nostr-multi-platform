@@ -551,7 +551,9 @@ share-to-room, discussion, capture, relay app-data, and web publish flows must
 carry the same correlation id, draft validation, signer continuation, route
 provenance, local ingest, retry, and terminal status. A fire-and-forget raw
 publish, `correlation_id: None`, or dispatch-accepted UI success is a retained
-old door.
+old door. A typed namespace does not save the design if the caller gets a
+correlation/status handle and then discards it; losing terminal status is still
+fire-and-forget publishing under a cleaner name.
 Managed NIP-05 is a write workflow, not a generic SSR exception. The contract
 must name the owner of the auth event kind/schema, injected clock/expiry,
 uniqueness/idempotency, durable name mapping, profile-publish coupling,

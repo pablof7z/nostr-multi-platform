@@ -63,16 +63,16 @@ lifecycle engine. It compiles into existing or consolidated machinery:
 
 ```text
 source expression
-  -> acquisition demand
-  -> route policy
-  -> cache/store replay
-  -> observed sink
-  -> admission predicate
-  -> dynamic dependency tracking
-  -> typed projection output
+  -> acquisition demand / OpenObservedInterest
+  -> route policy / relay pin / planner mode
+  -> cache-store replay limits and replay-before-live open
+  -> observed sink / ObservedProjectionCommandHandle
+  -> admission predicate and owner id
+  -> dynamic dependency tracking / ReplaceDependentInterestSet
+  -> typed output key, schema owner, and status projection
   -> generated adapter/cache contract
   -> delivery through UpdateFrame
-  -> teardown
+  -> close handle / dependent-interest replacement / sink teardown
 ```
 
 This is the architectural door missing from the current API. The first
@@ -95,6 +95,10 @@ generalize or narrow `open_feed`, `resolve_ref`, `ObservedProjectionRegistrar`,
 dependent interests, and current feature sessions first. If those can express
 the lifecycle with clearer names and smaller public API, prefer that over adding
 a public `LiveQuery` object.
+Typed session descriptors must compile into these seams until evidence proves a
+new seam is needed. The current action/codegen registry is write/action-ready,
+not a generic read-module runtime; a descriptor that requires a new module
+registry before it can express one real read family is suspect.
 P-1 selects the smallest live deletion proof. An existing feed/session path is a
 likely first candidate only if it retires more old surface than alternatives and
 does not depend on unresolved tick-repair work. That proof must retire or narrow
@@ -555,6 +559,16 @@ If the only reason a proposed substrate primitive exists is that one feed path
 needed it, keep it private to that feature until another source family proves the
 same semantics. If the primitive is genuinely reusable, the proof is that it
 removes feature-local recipes without importing feed policy into the core.
+
+The base query capacity proof is part of this split. If a source family needs
+hundreds or thousands of authors, tags, addresses, or event refs, the selected
+session must prove the store/query and route-planning shape can handle that
+demand without a per-feature workaround. Per-pubkey loops, arbitrary global
+author caps, cache-warming shortcuts, per-author versus global recency hacks, and
+relay-sharding folklore are not feed policy; they are evidence that the
+substrate/session query primitive is missing or underspecified. The right proof
+names the bounded query primitive, admission rules, recency/window semantics,
+relay planning behavior, and fallback when the source set is empty or too large.
 
 ## Routing
 
