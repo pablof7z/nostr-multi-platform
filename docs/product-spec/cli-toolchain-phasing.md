@@ -43,8 +43,8 @@ is added through Rust modules, actions, observers, projections, and capabilities
 - iOS links the Rust static library/XCFramework into a SwiftUI shell.
 - Android links per-ABI Rust libraries into a Compose shell.
 - Desktop may link Rust directly.
-- Web uses the browser runtime (`nmp-browser-runtime`) and the retained
-  `nmp-wasm` protocol-type crate where needed.
+- Web uses the browser runtime (`nmp-browser-runtime`), which also owns the
+  wasm-bindgen ABI glue (`nmp-browser-runtime::wasm`).
 - `just` remains the primary local build entrypoint.
 
 CI should verify generated bindings, Rust tests, doctrine lint, and the platform

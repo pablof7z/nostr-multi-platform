@@ -16,8 +16,7 @@ The v1 split is:
 | `nmp-defaults` | Pure Layer-5 `AppHost` composition: default NMP modules, routing, planners, registrars, and runtime handles returned to app cores when needed. | Platform runtime handles, C ABI symbols, operator policy, app defaults. |
 | `nmp-native-runtime` | Native runtime handle, actor lifecycle, native typestate builder, runtime slots, pre-start configuration, and native Rust APIs. | C ABI conversion or app/product policy. |
 | `nmp-ffi` / `nmp-android-ffi` | Thin ABI shells over the native runtime: symbols, pointers, strings, panic guards, callbacks, JNI/UniFFI glue. | Runtime ownership, composition policy, protocol logic. |
-| `nmp-browser-runtime` | Browser Worker runtime, wasm-bindgen export, browser typestate builder, storage/signing/capability provider registration. | UI rendering, TypeScript crypto fallbacks, protocol policy. |
-| `nmp-wasm` | Serializable protocol types retained for older Rust consumers. | Runtime, ABI, app construction, worker ownership. |
+| `nmp-browser-runtime` | Browser Worker runtime, wasm-bindgen export, wasm-bindgen ABI glue (`nmp-browser-runtime::wasm`), browser typestate builder, storage/signing/capability provider registration. | UI rendering, TypeScript crypto fallbacks, protocol policy. |
 
 App shells remain thin. They render snapshots, execute platform capabilities,
 and hold only ephemeral presentation state. Rust owns protocol behavior, durable
@@ -98,8 +97,7 @@ in the leaf app Rust crate or operator config. They do not move into
 
 ## Browser Runtime
 
-Before, browser code often looked at `nmp-wasm` or TypeScript as the runtime
-owner:
+Before, browser code often looked at TypeScript as the runtime owner:
 
 ```ts
 // Bad v1 shape: app code treats wasm/TS as a policy owner.
@@ -185,8 +183,8 @@ mirrors and resolvers:
   `@nmp/components-web` once near the app root.
 
 Leaf components render and manage visible claim/release lifecycle only. They do
-not import `nmp-ffi`, `nmp-native-runtime`, `nmp-browser-runtime`, `nmp-wasm`,
-kernel handles, worker handles, or relay/runtime internals.
+not import `nmp-ffi`, `nmp-native-runtime`, `nmp-browser-runtime`, kernel
+handles, worker handles, or relay/runtime internals.
 
 Before:
 
@@ -267,7 +265,6 @@ workflow:
 
 ```bash
 cargo test -p nmp-browser-runtime
-cargo build -p nmp-wasm --target wasm32-unknown-unknown
 cargo build -p nmp-browser-runtime --target wasm32-unknown-unknown --features wasm
 ```
 
