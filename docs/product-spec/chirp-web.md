@@ -17,9 +17,9 @@ workspace, run `@nmp/chirp-web`'s `build:vercel`, and publish
 Prebuilt uploads are diagnostic or emergency artifacts only. They are not the
 canonical production path and do not satisfy production-proof acceptance for
 first-run relay bootstrap. A production proof must come from a fresh normal
-remote build that serves `/nmp-wasm/nmp_browser_runtime.js`,
-`/nmp-wasm/nmp_browser_runtime_bg.wasm`, and the SQLite WASM vendor files
-staged by the runtime build script.
+remote build that serves `/nmp-browser-runtime/nmp_browser_runtime.js`,
+`/nmp-browser-runtime/nmp_browser_runtime_bg.wasm`, and the SQLite WASM vendor
+files staged by the runtime build script.
 
 ## First-Run Contract
 
@@ -37,8 +37,7 @@ next without reading developer diagnostics.
 
 Chirp's production relay bootstrap is app/operator policy, single-sourced in
 `apps/chirp/crates/nmp-chirp-config`. It is not an NMP framework default and
-must not be duplicated in `nmp-core`, `nmp-defaults`, `nmp-wasm`, or
-`nmp-browser-runtime`. The production default set uses
+must not be duplicated in `nmp-core`, `nmp-defaults`, or `nmp-browser-runtime`. The production default set uses
 `wss://relay.primal.net` with role `"both,indexer"` because current
 production-browser evidence shows that role shape can keep a connected
 write-capable lane and produce signed kind:1 acceptance, which the first-run

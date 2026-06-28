@@ -40,8 +40,9 @@ for browser apps:
    retry policy, session semantics, or account state.
 
 `nmp-browser-runtime` remains the browser analogue: it owns the browser runtime
-adapter and wasm-bindgen Worker export. `nmp-wasm` is retained only as a
-serializable protocol-type crate for older Rust consumers.
+adapter, wasm-bindgen Worker export, and the wasm-bindgen ABI glue
+(`nmp-browser-runtime::wasm`). The `nmp-wasm` crate was deleted in #2202;
+`nmp-browser-runtime::wasm` is the sole browser WASM ABI surface.
 
 ## Landed State
 

@@ -29,6 +29,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 /// Repo root (CARGO_MANIFEST_DIR is `crates/nmp-testing`).
 fn repo_root() -> PathBuf {
@@ -57,29 +58,27 @@ fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-fn public_surface_files(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            if path.file_name().is_some_and(|n| {
-                matches!(
-                    n.to_str(),
-                    Some("target" | "build" | ".gradle" | "node_modules" | "DerivedData")
-                )
-            }) {
-                continue;
-            }
-            public_surface_files(&path, out);
-        } else if path.extension().is_some_and(|ext| {
+/// Collect git-tracked source files in `subdirs` (relative to `root`) that
+/// have a relevant public-surface extension.  Shells out to `git ls-files` so
+/// gitignored generated output (e.g. `web/chirp/dist/`, `nmp-browser-runtime/`
+/// wasm artifact dirs) is automatically excluded — no directory-skip list is
+/// needed for ignored paths.
+fn git_tracked_surface_files(root: &Path, subdirs: &[&str], out: &mut Vec<PathBuf>) {
+    let mut cmd = Command::new("git");
+    cmd.arg("ls-files").arg("--").args(subdirs).current_dir(root);
+    let output = cmd
+        .output()
+        .expect("git ls-files must succeed for public-surface scan");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        let rel: &Path = Path::new(line);
+        if rel.extension().is_some_and(|ext| {
             matches!(
                 ext.to_str(),
                 Some("rs" | "swift" | "kt" | "kts" | "ts" | "tsx" | "js" | "json")
             )
         }) {
-            out.push(path);
+            out.push(root.join(rel));
         }
     }
 }
@@ -241,9 +240,7 @@ fn raw_wasm_feed_verb_dispatch_strings_are_not_routed() {
 fn claimed_event_embeds_key_is_not_used_in_public_surfaces() {
     let root = repo_root();
     let mut files = Vec::new();
-    for sub in ["crates", "apps", "web"] {
-        public_surface_files(&root.join(sub), &mut files);
-    }
+    git_tracked_surface_files(&root, &["crates", "apps", "web"], &mut files);
     assert!(!files.is_empty(), "must scan public source surfaces");
 
     let mut violations = Vec::new();
