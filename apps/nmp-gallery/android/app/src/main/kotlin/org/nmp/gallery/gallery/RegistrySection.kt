@@ -13,7 +13,6 @@ import kotlinx.serialization.json.Json
  *
  * The live registry is sourced from `bridge.registryJson()` (the canonical
  * `registry.json` embedded in the Rust crate) via [parseRegistryJson].
- * [REGISTRY_SECTIONS] is kept as a compile-time fallback only.
  */
 data class RegistrySection(
     val id: String,
@@ -56,91 +55,32 @@ private val registryJsonParser = Json {
 
 /**
  * Parse the JSON produced by `bridge.registryJson()` into a typed list.
- *
- * Returns `null` on any parse failure so callers can fall back to
- * [REGISTRY_SECTIONS].
  */
-fun parseRegistryJson(raw: String): List<RegistrySection>? {
-    if (raw.isBlank()) return null
-    return runCatching {
-        val wire = registryJsonParser.decodeFromString(RegistryJson.serializer(), raw)
-        wire.sections.map { s ->
-            RegistrySection(
-                id = s.id,
-                label = s.label,
-                components = s.components.map { c ->
-                    RegistryComponent(id = c.id, label = c.label, description = c.description)
-                },
-            )
-        }.takeIf { it.isNotEmpty() }
-    }.getOrNull()
+fun parseRegistryJson(raw: String): List<RegistrySection> {
+    require(raw.isNotBlank()) { "gallery registry JSON is empty" }
+    val wire = registryJsonParser.decodeFromString(RegistryJson.serializer(), raw)
+    require(wire.schema == "nmp.gallery.registry/1") {
+        "unexpected gallery registry schema: ${wire.schema}"
+    }
+    val sections = wire.sections.map { s ->
+        RegistrySection(
+            id = s.id,
+            label = s.label,
+            components = s.components.map { c ->
+                RegistryComponent(id = c.id, label = c.label, description = c.description)
+            },
+        )
+    }
+    require(sections.isNotEmpty() && sections.all { it.components.isNotEmpty() }) {
+        "gallery registry must contain non-empty sections"
+    }
+    return sections
 }
-
-// ── Compile-time fallback ─────────────────────────────────────────────────────
-
-/**
- * Hardcoded fallback used only when [parseRegistryJson] returns null (e.g.
- * during unit tests that do not link the native library). Production paths
- * should always use the live JSON returned by `bridge.registryJson()`.
- */
-val REGISTRY_SECTIONS: List<RegistrySection> = listOf(
-    RegistrySection(
-        id = "auth",
-        label = "Auth",
-        components = listOf(
-            RegistryComponent(
-                "login-block",
-                "NostrLoginBlock",
-                "Login UI with Amber and other local Nostr signer detection, plus a manual key entry fallback",
-            ),
-        ),
-    ),
-    RegistrySection(
-        id = "relay",
-        label = "Relay",
-        components = listOf(
-            RegistryComponent("relay-list", "NostrRelayList", "Relay URLs with role badges and connection status dots"),
-        ),
-    ),
-    RegistrySection(
-        id = "user",
-        label = "User",
-        components = listOf(
-            RegistryComponent("user-avatar", "NostrAvatar", "Circular avatar with identicon fallback"),
-            RegistryComponent("user-name", "NostrProfileName", "Display name with npub fallback"),
-            RegistryComponent("user-nip05", "NostrNip05Badge", "NIP-05 verified identity badge"),
-            RegistryComponent("user-npub", "NostrNpubChip", "Copyable npub chip"),
-            RegistryComponent("user-card", "NostrUserCard", "Compact avatar + name + nip05 row"),
-        ),
-    ),
-    RegistrySection(
-        id = "content",
-        label = "Content",
-        components = listOf(
-            RegistryComponent("content-core", "ContentTreeWire", "Wire type + identicon renderer"),
-            RegistryComponent("content-view", "NostrContentView", "Full rich content renderer"),
-            RegistryComponent("content-mention-chip", "NostrMentionChip", "Tappable @mention chip"),
-            RegistryComponent("content-minimal", "NostrMinimalContentView", "Flow-layout minimal renderer"),
-            RegistryComponent("content-media-grid", "NostrMediaGrid", "Photo-style image grid"),
-            RegistryComponent("content-quote-card", "NostrQuoteCard", "Embedded event quote card"),
-        ),
-    ),
-    RegistrySection(
-        id = "embeds",
-        label = "Embeds & Kinds",
-        components = listOf(
-            RegistryComponent("embed-article", "ArticleEmbed", "Kind:30023 long-form article — hero image, title, summary"),
-            RegistryComponent("embed-profile", "ProfileEmbed", "Inline npub mention chip — kind:0 profile"),
-            RegistryComponent("embed-note", "NoteEmbed", "Kind:1 short text note via nevent claim"),
-            RegistryComponent("embed-highlight", "HighlightEmbed", "Kind:9802 highlight — pull-quote + source"),
-        ),
-    ),
-)
 
 /** Resolve a component id back to its (section, component) tuple. */
 fun findComponent(
     componentId: String,
-    sections: List<RegistrySection> = REGISTRY_SECTIONS,
+    sections: List<RegistrySection>,
 ): Pair<RegistrySection, RegistryComponent>? {
     for (section in sections) {
         section.components.firstOrNull { it.id == componentId }?.let { return section to it }
@@ -151,5 +91,5 @@ fun findComponent(
 /** Resolve a section id back to its [RegistrySection]. */
 fun findSection(
     sectionId: String,
-    sections: List<RegistrySection> = REGISTRY_SECTIONS,
+    sections: List<RegistrySection>,
 ): RegistrySection? = sections.firstOrNull { it.id == sectionId }

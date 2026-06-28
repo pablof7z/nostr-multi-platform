@@ -111,6 +111,7 @@ void nmp_app_signin_nsec(void *app, const char *secret, uint8_t make_active);
 // Fire-and-forget: every entry point degrades silently on null pointers,
 // poisoned mutexes, or serialization failure (D6).
 void nmp_app_gallery_register(void *app);
+const char *nmp_app_gallery_registry_json(void);
 const char *nmp_app_gallery_showcase_references_json(void);
 
 // ── refs.* host mirrors (ADR-0063 #1671) ─────────────────────────────────

@@ -39,9 +39,8 @@ pub fn raw_json() -> &'static str {
 
 pub fn registry() -> &'static GalleryRegistry {
     static REGISTRY: OnceLock<GalleryRegistry> = OnceLock::new();
-    REGISTRY.get_or_init(|| {
-        serde_json::from_str(RAW_JSON).expect("registry.json must match schema")
-    })
+    REGISTRY
+        .get_or_init(|| serde_json::from_str(RAW_JSON).expect("registry.json must match schema"))
 }
 
 /// Borrowed pointer to the same JSON used by Rust hosts.
@@ -100,18 +99,27 @@ mod tests {
 
     #[test]
     fn app_hosts_do_not_copy_registry_section_arrays() {
-        // Verify that hardcoded REGISTRY_SECTIONS arrays cannot be re-declared.
-        // After migration to registry.json, platform code must source from the
-        // canonical JSON, never maintain separate declarations.
-        //
-        // This test is a migration guard: it will catch accidental duplication
-        // once platforms are switched to consume registry.json. For now, it
-        // serves as documentation of the intent.
-        let reg = registry();
-        assert!(!reg.sections.is_empty(), "registry must have sections");
+        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let app_root = manifest_dir
+            .parent()
+            .and_then(Path::parent)
+            .expect("nmp-app-gallery lives under apps/nmp-gallery/crates");
+        let source_file = manifest_dir.join("src/registry.rs");
+        let banned_patterns = [
+            "REGISTRY_SECTIONS",
+            "pub const COMPONENTS",
+            "const RELAY_COMPONENTS",
+            "const USER_COMPONENTS",
+            "const CONTENT_COMPONENTS",
+            "const EMBED_COMPONENTS",
+        ];
+        let mut offenders = Vec::new();
+        visit_source_files(app_root, &source_file, &banned_patterns, &mut offenders)
+            .expect("scan gallery sources");
         assert!(
-            reg.sections.iter().all(|s| !s.components.is_empty()),
-            "each section must have components"
+            offenders.is_empty(),
+            "gallery hosts must read apps/nmp-gallery/registry.json instead of copying registry arrays:\n{}",
+            offenders.join("\n")
         );
     }
 
@@ -128,7 +136,10 @@ mod tests {
                 .and_then(|name| name.to_str())
                 .unwrap_or("");
             if path.is_dir() {
-                if matches!(file_name, ".git" | ".gradle" | "build" | "target" | ".claude") {
+                if matches!(
+                    file_name,
+                    ".git" | ".gradle" | "build" | "target" | ".claude"
+                ) {
                     continue;
                 }
                 visit_source_files(&path, source_file, banned_patterns, offenders)?;

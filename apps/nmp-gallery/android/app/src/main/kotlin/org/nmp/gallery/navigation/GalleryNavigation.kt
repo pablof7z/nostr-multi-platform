@@ -27,8 +27,7 @@ import org.nmp.gallery.screens.SectionListScreen
  * a back-trip to find-by-id (handy if the user opens the app deep-linked).
  *
  * The section list is driven by [GalleryModel.registrySections] — the live
- * registry JSON returned by the Rust kernel — rather than the compile-time
- * [org.nmp.gallery.gallery.REGISTRY_SECTIONS] constant.
+ * registry JSON embedded by the Rust gallery crate.
  */
 @Composable
 fun GalleryNavigation(model: GalleryModel) {

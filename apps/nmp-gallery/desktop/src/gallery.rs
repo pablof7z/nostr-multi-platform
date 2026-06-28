@@ -12,16 +12,11 @@ use nmp_content::embed_projection::EmbedKindProjection;
 use nmp_gallery_tui::content_tree_wire::{WireNode, WireUri};
 use nmp_gallery_tui::data::{GalleryData, LiveProfileMap};
 use nmp_gallery_tui::embed_host::EmbedHostState;
-use nmp_gallery_tui::gallery::{component_at, component_index, ComponentSpec, REGISTRY_SECTIONS};
+use nmp_gallery_tui::gallery::{component_at, component_index, registry_sections, ComponentSpec};
 use nmp_gallery_tui::live::{primary_pubkey, GalleryTypedSnapshot};
 
 use crate::bridge::GalleryBridge;
-use crate::components::embed_article::ArticleCard;
-use crate::components::user_avatar::UserAvatar;
-use crate::components::user_card::UserCard;
-use crate::components::user_name::UserName;
-use crate::components::user_nip05::Nip05Badge;
-use crate::components::user_npub::NpubChip;
+use crate::components::{embed_article::ArticleCard, gallery_misc, user_avatar::UserAvatar, user_card::UserCard, user_name::UserName, user_nip05::Nip05Badge, user_npub::NpubChip};
 
 const CONSUMER_ID: &str = "nmp-gallery-desktop.preview";
 
@@ -296,9 +291,9 @@ fn build_sidebar(selected: usize) -> Element<'static, Message> {
     .spacing(2)
     .padding([8, 8]);
 
-    for section in REGISTRY_SECTIONS {
+    for section in registry_sections() {
         col = col.push(
-            text(section.label)
+            text(section.label.as_str())
                 .size(12)
                 .font(Font::MONOSPACE)
                 .style(|_| text::Style {
@@ -306,12 +301,12 @@ fn build_sidebar(selected: usize) -> Element<'static, Message> {
                 }),
         );
 
-        for comp in section.components {
+        for comp in &section.components {
             let idx = flat_index;
             let is_active = idx == selected;
             flat_index += 1;
 
-            let label = comp.label;
+            let label = comp.label.as_str();
             let btn = button(text(label).size(13).style(move |_| text::Style {
                 color: Some(if is_active {
                     Color::WHITE
@@ -385,6 +380,7 @@ fn render_component<'a>(spec: ComponentSpec, app: &'a GalleryApp) -> Element<'a,
     let primary = app.profiles.resolve(primary_pubkey());
 
     match spec.id {
+        "relay-list" => gallery_misc::relay_list(),
         "user-avatar" => {
             let mut av = UserAvatar::new(&primary.pubkey)
                 .display_name(primary.display_name.as_deref())
@@ -542,6 +538,7 @@ fn render_component<'a>(spec: ComponentSpec, app: &'a GalleryApp) -> Element<'a,
             },
         ),
 
+        "login-block" => gallery_misc::login_block(),
         _ => text("Unknown component").into(),
     }
 }

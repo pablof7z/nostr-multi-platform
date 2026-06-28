@@ -6,26 +6,11 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Widget},
 };
 
-use crate::{data::GalleryData, render, render::EmbedFrameContext};
+use nmp_app_gallery::registry::{
+    registry, ComponentSpec as RegistryComponentSpec, RegistrySection,
+};
 
-pub const COMPONENTS: &[&str] = &[
-    "relay-list",
-    "user-avatar",
-    "user-name",
-    "user-nip05",
-    "user-npub",
-    "user-card",
-    "content-core",
-    "content-view",
-    "content-mention-chip",
-    "content-minimal",
-    "content-media-grid",
-    "content-kind-registry",
-    "embed-article",
-    "embed-profile",
-    "embed-note",
-    "embed-highlight",
-];
+use crate::{data::GalleryData, render, render::EmbedFrameContext};
 
 #[derive(Clone, Copy)]
 pub struct ComponentSpec {
@@ -33,122 +18,6 @@ pub struct ComponentSpec {
     pub label: &'static str,
     pub description: &'static str,
 }
-
-pub struct RegistrySectionSpec {
-    pub label: &'static str,
-    pub components: &'static [ComponentSpec],
-}
-
-const RELAY_COMPONENTS: &[ComponentSpec] = &[
-    ComponentSpec {
-        id: "relay-list",
-        label: "NostrRelayList",
-        description: "Relay URLs with role badges and connection-status indicators",
-    },
-];
-
-const USER_COMPONENTS: &[ComponentSpec] = &[
-    ComponentSpec {
-        id: "user-avatar",
-        label: "NostrAvatar",
-        description: "Live kind:0 picture with identicon fallback",
-    },
-    ComponentSpec {
-        id: "user-name",
-        label: "NostrProfileName",
-        description: "Display name with npub fallback",
-    },
-    ComponentSpec {
-        id: "user-nip05",
-        label: "NostrNip05Badge",
-        description: "NIP-05 verified identity badge",
-    },
-    ComponentSpec {
-        id: "user-npub",
-        label: "NostrNpubChip",
-        description: "Rust-truncated npub identity chip",
-    },
-    ComponentSpec {
-        id: "user-card",
-        label: "NostrUserCard",
-        description: "Compact avatar, name, and NIP-05 row",
-    },
-];
-
-const CONTENT_COMPONENTS: &[ComponentSpec] = &[
-    ComponentSpec {
-        id: "content-core",
-        label: "ContentTreeWire",
-        description: "Wire tree decoded from live event content",
-    },
-    ComponentSpec {
-        id: "content-view",
-        label: "NostrContentView",
-        description: "Full rich content renderer",
-    },
-    ComponentSpec {
-        id: "content-mention-chip",
-        label: "NostrMentionChip",
-        description: "Reactive @mention with deterministic color",
-    },
-    ComponentSpec {
-        id: "content-minimal",
-        label: "NostrMinimalContent",
-        description: "Inline text, mentions, links, and hashtags",
-    },
-    ComponentSpec {
-        id: "content-media-grid",
-        label: "NostrMediaGrid",
-        description: "Inline media projected from content",
-    },
-    ComponentSpec {
-        id: "content-kind-registry",
-        label: "EmbeddedEvent",
-        description: "Kind-dispatched embedded event (ADR-0034)",
-    },
-];
-
-const EMBED_COMPONENTS: &[ComponentSpec] = &[
-    ComponentSpec {
-        id: "embed-article",
-        label: "Embedded Article",
-        description: "Real kind:30023 referenced inside surrounding text (card preview)",
-    },
-    ComponentSpec {
-        id: "embed-profile",
-        label: "Embedded Profile",
-        description: "nostr:npub mention rendered inline",
-    },
-    ComponentSpec {
-        id: "embed-note",
-        label: "Embedded Note",
-        description: "kind:1 nevent as a block card with proper content",
-    },
-    ComponentSpec {
-        id: "embed-highlight",
-        label: "Embedded Highlight",
-        description: "NIP-84 highlight as a styled embed",
-    },
-];
-
-pub const REGISTRY_SECTIONS: &[RegistrySectionSpec] = &[
-    RegistrySectionSpec {
-        label: "Relay",
-        components: RELAY_COMPONENTS,
-    },
-    RegistrySectionSpec {
-        label: "User",
-        components: USER_COMPONENTS,
-    },
-    RegistrySectionSpec {
-        label: "Content",
-        components: CONTENT_COMPONENTS,
-    },
-    RegistrySectionSpec {
-        label: "Embeds & Kinds",
-        components: EMBED_COMPONENTS,
-    },
-];
 
 pub struct GalleryView<'a> {
     selected_index: usize,
@@ -199,45 +68,64 @@ impl Widget for GalleryView<'_> {
     }
 }
 
+pub fn registry_sections() -> &'static [RegistrySection] {
+    &registry().sections
+}
+
+fn component_spec(component: &'static RegistryComponentSpec) -> ComponentSpec {
+    ComponentSpec {
+        id: component.id.as_str(),
+        label: component.label.as_str(),
+        description: component.description.as_str(),
+    }
+}
+
+fn component_specs() -> impl Iterator<Item = ComponentSpec> {
+    registry_sections()
+        .iter()
+        .flat_map(|section| section.components.iter())
+        .map(component_spec)
+}
+
+pub fn component_ids() -> impl Iterator<Item = &'static str> {
+    component_specs().map(|component| component.id)
+}
+
 pub fn is_component(id: &str) -> bool {
-    COMPONENTS.contains(&id)
+    component_specs().any(|component| component.id == id)
 }
 
 pub fn component_count() -> usize {
-    REGISTRY_SECTIONS
+    registry_sections()
         .iter()
         .map(|section| section.components.len())
         .sum()
 }
 
 pub fn component_index(id: &str) -> usize {
-    REGISTRY_SECTIONS
-        .iter()
-        .flat_map(|section| section.components)
+    component_specs()
         .position(|component| component.id == id)
         .unwrap_or(0)
 }
 
 pub fn component_at(index: usize) -> ComponentSpec {
-    REGISTRY_SECTIONS
-        .iter()
-        .flat_map(|section| section.components)
+    component_specs()
         .nth(index.min(component_count().saturating_sub(1)))
-        .copied()
-        .unwrap_or(USER_COMPONENTS[0])
+        .or_else(|| component_specs().next())
+        .expect("registry.json must contain at least one component")
 }
 
 fn render_sidebar(area: Rect, selected_index: usize, buf: &mut Buffer) {
     let selected = component_at(selected_index).id;
     let mut rows = Vec::new();
-    for section in REGISTRY_SECTIONS {
+    for section in registry_sections() {
         rows.push(Line::from(Span::styled(
-            section.label,
+            section.label.as_str(),
             Style::default()
                 .fg(Color::Rgb(125, 211, 252))
                 .add_modifier(Modifier::BOLD),
         )));
-        for component in section.components {
+        for component in &section.components {
             let active = component.id == selected;
             let style = if active {
                 Style::default()
@@ -249,7 +137,7 @@ fn render_sidebar(area: Rect, selected_index: usize, buf: &mut Buffer) {
             };
             rows.push(Line::from(vec![
                 Span::styled(if active { "› " } else { "  " }, style),
-                Span::styled(component.label, style),
+                Span::styled(component.label.as_str(), style),
             ]));
         }
         rows.push(Line::from(""));
