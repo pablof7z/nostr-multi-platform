@@ -1939,14 +1939,17 @@ checksum = "f0efe882e02d206d8d279c20eb40e03baf7cb5136a1476dc084a324fbc3ec42d"
 name = "nmp-app-chirp"
 version = "0.8.4"
 dependencies = [
+ "flatbuffers",
  "nmp-chirp-config",
  "nmp-core",
  "nmp-defaults",
  "nmp-feed",
  "nmp-ffi",
  "nmp-marmot",
+ "nmp-native-runtime",
  "nmp-nip01",
  "nmp-nip02",
+ "nmp-nip05",
  "nmp-nip17",
  "nmp-nip18",
  "nmp-nip25",
@@ -2037,10 +2040,7 @@ dependencies = [
  "nmp-content",
  "nmp-core",
  "nmp-coverage-gate",
- "nmp-feed",
- "nmp-ffi",
  "nmp-kinds",
- "nmp-nip01",
  "nmp-nip02",
  "nmp-nip11",
  "nmp-nip17",
@@ -2048,7 +2048,6 @@ dependencies = [
  "nmp-nip22",
  "nmp-nip25",
  "nmp-nip29",
- "nmp-nip47",
  "nmp-nip50",
  "nmp-nip51",
  "nmp-nip57",
@@ -2084,15 +2083,10 @@ version = "0.8.4"
 dependencies = [
  "nmp-content",
  "nmp-core",
- "nmp-feed",
- "nmp-intent",
- "nmp-nip05",
- "nmp-nip18",
- "nmp-nip29",
+ "nmp-native-runtime",
+ "nmp-nip11",
  "nmp-nip46",
  "nmp-nip46-runtime",
- "nmp-nip50",
- "nmp-nip51",
  "nmp-planner",
  "nmp-signer-iface",
  "nmp-signers",
@@ -2136,6 +2130,39 @@ dependencies = [
  "nostr",
  "serde",
  "serde_json",
+ "zeroize",
+]
+
+[[package]]
+name = "nmp-native-runtime"
+version = "0.8.4"
+dependencies = [
+ "nmp-content",
+ "nmp-core",
+ "nmp-feed",
+ "nmp-intent",
+ "nmp-kinds",
+ "nmp-nip01",
+ "nmp-nip02",
+ "nmp-nip05",
+ "nmp-nip11",
+ "nmp-nip18",
+ "nmp-nip29",
+ "nmp-nip46",
+ "nmp-nip46-runtime",
+ "nmp-nip47",
+ "nmp-nip50",
+ "nmp-nip51",
+ "nmp-nip57",
+ "nmp-planner",
+ "nmp-signer-iface",
+ "nmp-signers",
+ "nmp-store",
+ "nmp-wot",
+ "nostr",
+ "serde",
+ "serde_json",
+ "tracing",
  "zeroize",
 ]
 
@@ -2493,6 +2520,7 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+ "web-time",
  "zeroize",
 ]
 
@@ -2501,6 +2529,7 @@ name = "nmp-store"
 version = "0.8.4"
 dependencies = [
  "heed",
+ "nmp-kinds",
  "nmp-nostr-lmdb",
  "nostr",
  "nostr-database",
