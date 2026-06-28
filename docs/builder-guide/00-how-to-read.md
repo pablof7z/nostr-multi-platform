@@ -133,4 +133,4 @@ master delivers, correct the owning doc in place. If the mismatch represents act
   Builders who ignore D1/D4 re-introduce the spinner-gating and parallel-cache
   bugs NMP exists to prevent.
 
-See also: [01 — What NMP is + why it exists](01-what-nmp-is.md), [02 — Mental model — kernel + extension seams](02-mental-model.md), [22 — Doctrine compliance checklist](22-doctrine-checklist.md), [NIP support matrix](../nips.md).
+See also: [01 — What NMP is + why it exists](01-what-nmp-is.md), [02 — Mental model — kernel + extension seams](02-mental-model.md), [22 — Doctrine compliance checklist](22-doctrine-checklist.md), [NIP support matrix](../nips.md), and the [recipe book](../recipes/).

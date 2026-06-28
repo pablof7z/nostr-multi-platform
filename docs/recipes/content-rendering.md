@@ -1,8 +1,24 @@
-# Recipe: Nostr Content Rendering with NMP Components
+# Recipe: Nostr Content Rendering With NMP Components
 
-Nostr content arrives as plaintext with embedded NIP-27 mentions, hashtags, and note references. Rendering it correctly — on every screen, in every context — is exactly the detail you should not be reimplementing per app.
+Nostr content arrives as plaintext with mentions, hashtags, links, media, and
+event references. Rendering it correctly is shared NMP work, not per-screen app
+work. The app chooses the product projection; NMP content components render the
+already-projected data.
 
-Three patterns. Copy the component, edit to taste, ship.
+## Ownership
+
+- Reusable NMP: `nmp-content`, `ContentTreeWire`, component registry entries,
+  `refs.profile`, authoritative `refs.event`, and derived
+  `refs.event.envelopes`.
+- App Rust core: decides which rows exist, which product projection surfaces
+  them, and whether a new event kind needs a typed projection.
+- Platform shell: decodes snapshots, installs one component host/provider, and
+  maps typed render models to native views.
+- Runtime/component host: owns `resolve_ref` / `release_ref` and provider
+  wiring. Components below it never import runtime, ABI, worker, or kernel
+  handles.
+- Single writers: Rust writes content/projection facts; shell renderers write
+  only presentation.
 
 ## Prerequisites
 
@@ -14,10 +30,10 @@ cd nostr-multi-platform
 cargo install --path crates/nmp-cli
 ```
 
-## Recipe 1 — Minimal Inline Text
+## Recipe 1 - Minimal Inline Text
 
-Best for: notifications, DM previews, compact list rows where layout space
-is tight and you only need inline text, mentions, hashtags, and links.
+Best for notifications, previews, and compact rows where you only need inline
+text, mentions, hashtags, and links.
 
 ### Install
 
@@ -25,60 +41,36 @@ is tight and you only need inline text, mentions, hashtags, and links.
 nmp add component swiftui/content-minimal
 ```
 
-This copies two files into your project:
-- `Components/NostrContent/NostrContentRenderer.swift` — theming environment
-- `Components/NostrContent/NostrMinimalContentView.swift` — the view
+This copies:
+
+- `Components/NostrContent/NostrContentRenderer.swift`
+- `Components/NostrContent/NostrMinimalContentView.swift`
 
 ### Usage
 
-```swift
-import SwiftUI
+`NostrMinimalContentView` consumes `NostrContentRun` values. The installed
+component includes a `ContentTreeWire.nostrMinimalRuns()` adapter, so flatten
+the Rust-owned content tree instead of carrying a second shell-owned content
+model:
 
-struct NoteRow: View {
-    // content_runs comes from your NMP projection snapshot
-    let runs: [NostrContentRun]
+```swift
+struct NotePreview: View {
+    let contentTree: ContentTreeWire
 
     var body: some View {
-        NostrMinimalContentView(runs: runs)
+        NostrMinimalContentView(runs: contentTree.nostrMinimalRuns())
             .lineLimit(3)
     }
 }
 ```
 
-### Wiring to NMP projections
+The shell may set colors through `NostrContentRenderer`; it must not re-tokenize
+raw Nostr content.
 
-The `content_runs` field is produced by `nmp-content` and shipped in the
-`TimelineEventCard` snapshot. In Swift:
+## Recipe 2 - Full Content View
 
-```swift
-let runs = snapshot.content_runs.map { r in
-    NostrContentRun(
-        id: r.id,
-        label: r.label,
-        kind: r.kind
-    )
-}
-```
-
-### Theming
-
-Wrap the root of your view hierarchy with a renderer:
-
-```swift
-ContentView()
-    .nostrContentRenderer(NostrContentRenderer(
-        mentionColor: .accentColor,
-        hashtagColor: .purple,
-        linkColor: .teal
-    ))
-```
-
----
-
-## Recipe 2 — Social Timeline with Full Content Kit
-
-Best for: a Nostr social timeline where notes have images, quote cards,
-inline mentions with avatars, and rich markdown rendering.
+Best for timelines and detail screens where notes may include block markdown,
+media, mentions, event references, and embedded cards.
 
 ### Host conformance
 
@@ -98,118 +90,124 @@ or kernel handles directly.
 ### Install
 
 ```sh
+nmp add component swiftui/component-host
 nmp add component swiftui/content-view
 ```
 
-This resolves and installs the full tree:
-- `swiftui/content-core` — `ContentTreeWire.swift` + renderer environment
-- `swiftui/content-media-grid` — photo grid (1/2/3/4+ images)
-- `swiftui/content-mention-chip` — avatar mention chip
-- `swiftui/content-quote-card` — embedded event card
-- `swiftui/content-view` — the main renderer
-
-To also include examples:
+For Android:
 
 ```sh
-nmp add component swiftui/content-view --with example
+nmp add component compose/component-host
+nmp add component compose/content-view
 ```
 
-### Usage
+The content view depends on the kind-dispatch registry. Event refs render
+through the app-root component host, which reads `refs.event.envelopes` derived
+from authoritative `refs.event` rows.
+
+### SwiftUI Usage
 
 ```swift
-import SwiftUI
+let registry = NostrKindRegistry.makeDefault()
 
-struct NoteRow: View {
-    let tree: ContentTreeWire           // from your NMP snapshot
-    let mentionProfiles: [String: Profile]
-    let quotedEvents: [String: QuotedEvent]
-
-    var body: some View {
-        NostrContentView(
-            tree: tree,
-            mentionLabel: { uri in
-                mentionProfiles[uri.primaryId]?.displayName ?? shortenHex(uri.primaryId)
-            },
-            quoteCardProvider: { uri in
-                guard let event = quotedEvents[uri.primaryId] else { return nil }
-                return NostrQuoteCardModel(
-                    id: event.id,
-                    authorDisplayName: event.authorDisplayName,
-                    content: event.contentPreview,
-                    mediaThumbnailUrl: event.firstImageUrl,
-                    createdAtDisplay: event.relativeTime
-                )
-            }
-        )
-    }
+NmpComponentHost(
+    profileHost: profileHost,
+    embedSource: embedStore,
+    eventRefResolver: resolver,
+    kindRegistry: registry
+) {
+    NostrContentView(
+        tree: row.contentTree,
+        mentionLabel: { uri in displayLabel(for: uri.primaryId) }
+    )
 }
 ```
 
-### Decoding `ContentTreeWire` from JSON
+### Web Usage
 
-If your snapshot ships `content_tree_wire` as JSON (the default NMP codegen
-output), decode it once and pass the struct:
-
-```swift
-let decoder = JSONDecoder()
-let tree = try decoder.decode(ContentTreeWire.self, from: jsonData)
+```tsx
+<NmpComponentHostProvider
+  profileHost={profileHost}
+  resolvedEventEmbeds={resolvedEventEmbeds}
+  eventRefResolver={eventRefResolver}
+>
+  <NostrContentView tree={row.contentTree} fallback={row.rawContent} />
+</NmpComponentHostProvider>
 ```
 
-### Quote card states
+### Host Contract
 
-The quote card has four variants controlled by what you pass to
-`quoteCardProvider`:
+The component host consumes:
 
-| State | How to trigger |
-|---|---|
-| `.collapsed` | Pass `nil` for `quoteCardProvider` |
-| `.rich` | Provider returns a `NostrQuoteCardModel` |
-| `.missing` | Provider is set but returns `nil` |
-| `.compact` | App calls `NostrQuoteCard(model:variant:.compact)` directly |
+- `refs.profile` for profile rows;
+- `refs.event` as the authoritative event-ref row projection;
+- `refs.event.envelopes` as derived render data;
+- an event-ref resolver that forwards visible refs to structured
+  `resolve_ref` / `release_ref`.
 
----
+Do not restore whole-map names such as `resolved_profiles` or
+`claimed_event_embeds`. They are not live data sources.
 
-## Recipe 3 — App-Local Renderer Override
+## Recipe 3 - Long-Form Article Body
 
-Best for: when you need to replace just one rendering behavior — for example,
-using a richer mention preview or adding a custom kind card — without forking
-the entire kit.
-
-### Override a single behavior
-
-Because you own the source, the simplest override is to edit the file:
-
-```sh
-# After installing the kit, edit the mention chip to use your design system
-$EDITOR Components/NostrContent/NostrMentionChip.swift
-```
-
-The `nmp update component` command will detect the edit and show you a diff
-when upstream releases a new version — your local change is never silently
-overwritten.
-
-### Add a custom event kind card
-
-Open `NostrContentView.swift` in your project and extend `eventRefView(_:)`:
+Best for NIP-23 reader screens. Rust parses kind `30023` as markdown into
+`ContentTreeWire`; SwiftUI can opt into article-mode selection and decoration
+support by enabling `selectionEnabled` or supplying decorations.
 
 ```swift
-private func eventRefView(_ uri: NostrWireUri) -> some View {
-    // Add your app-specific kind card here before the default path
-    if uri.eventKind == 30023 {
-        return AnyView(ArticleCard(uri: uri))
+NostrContentView(
+    tree: article.contentTree,
+    decorations: article.highlightDecorations,
+    selectionEnabled: true
+)
+```
+
+Article cards inside another note still render through the kind registry:
+`refs.event.envelopes` contains the resolved article projection and the
+registered renderer decides how it looks.
+
+## Recipe 4 - App-Local Renderer Override
+
+Best when you need to replace one card renderer without forking shared
+components.
+
+Create a renderer for the already-resolved projection and register it on the
+app-root `NostrKindRegistry`:
+
+```swift
+struct MagazineArticleRenderer: KindRenderer {
+    func body(
+        projection: EmbedKindProjection,
+        registry: NostrKindRegistry
+    ) -> AnyView {
+        guard case .article(let article) = projection else {
+            return AnyView(EmptyView())
+        }
+        return AnyView(MagazineArticleCard(article: article))
     }
-    // ... existing logic
 }
+
+let registry = NostrKindRegistry.makeDefault()
+registry.setArticle(MagazineArticleRenderer())
 ```
 
-### Override colors at the call site
-
-The renderer environment is per-subtree, so different timelines can use
-different themes:
+For a numeric kind that does not yet have a typed projection variant, register
+an unknown-kind renderer:
 
 ```swift
-// DM thread — quieter palette
-DMBubble(tree: tree)
+registry.registerUnknown(kind: 30402, renderer: BadgeRenderer())
+```
+
+If that kind becomes product-significant across platforms, add a Rust-owned
+projection variant instead of teaching every shell to decode raw tags.
+
+## Recipe 5 - Theming
+
+The renderer environment is per subtree, so different surfaces can use
+different visual treatment without changing content facts:
+
+```swift
+NostrContentView(tree: message.contentTree)
     .nostrContentRenderer(NostrContentRenderer(
         mentionColor: .secondary,
         hashtagColor: .secondary,
@@ -217,24 +215,10 @@ DMBubble(tree: tree)
     ))
 ```
 
-### Update while keeping your overrides
+Colors, fonts, and spacing are presentation. Routing, embeds, and profile
+resolution remain Rust/component-host facts.
 
-```sh
-nmp update component swiftui/content-view
-```
-
-For files you edited, the CLI reports a conflict instead of overwriting:
-
-```
-conflict: Components/NostrContent/NostrContentView.swift
-  upstream changed, local edits detected — merge manually
-```
-
-Files you left untouched are updated silently.
-
----
-
-## Updating the kit
+## Updating Components
 
 After NMP releases new component versions:
 
@@ -242,14 +226,12 @@ After NMP releases new component versions:
 nmp update component swiftui/content-view
 ```
 
-The lock file records each file's upstream SHA-256. Files you haven't
-touched are updated silently. Files with local edits show a conflict
-report so you can cherry-pick the upstream changes manually.
-
----
+Keep custom renderers in app-owned files. Shared component files can then update
+without merging a local fork of the renderer kit.
 
 ## See Also
 
-- ADR-0032 and ADR-0034 in `docs/decisions/` — content-rendering decision records; component registry (F-08) shipped (issue #980 closed)
-- [`crates/nmp-cli/registry/registry.toml`](../../crates/nmp-cli/registry/registry.toml) — registry manifest
-- [`web/registry/`](../../web/registry/) — component showcase website
+- [Common app shapes](app-shapes.md)
+- [`crates/nmp-cli/registry/registry.swiftui.toml`](../../crates/nmp-cli/registry/registry.swiftui.toml)
+- [`crates/nmp-cli/registry/registry.compose.toml`](../../crates/nmp-cli/registry/registry.compose.toml)
+- [Browser signer/private-flow capability model](../wasm-surface.md#browser-signerprivate-flow-capability-model)
