@@ -9,6 +9,8 @@ name: doctrine-lint
 #         + no polling — `thread::sleep` is banned in non-test kernel code
 #
 # D0/D6/D7 + the hot-path half of D8 are nmp-core-scoped.
+# D6/D7/D8 are also applied to app-layer Rust crates (nmp-app-chirp) to
+# enforce the thin-shell rule: no panics at app-layer FFI boundaries.
 # The no-polling half of D8 is universally applicable; `--workspace-d8`
 # re-runs *only* that check across every production crate AND app crate.
 #
@@ -52,6 +54,9 @@ jobs:
 
       - name: Run doctrine-lint against nmp-core
         run: cargo run --quiet -p nmp-testing --bin doctrine-lint -- --crate nmp-core
+
+      - name: Run D6/D7/D8 against nmp-app-chirp (thin-shell rule)
+        run: cargo run --quiet -p nmp-testing --bin doctrine-lint -- --path apps/chirp/crates/nmp-app-chirp/src
 
       - name: Run doctrine-lint against nmp-browser-runtime
         run: cargo run --quiet -p nmp-testing --bin doctrine-lint -- --path crates/nmp-browser-runtime/src

@@ -16,7 +16,7 @@ name: browser-runtime-conformance
 
 on:
   schedule:
-    - cron: "30 4 * * *" # 04:30 UTC daily.
+    - cron: "30 4 * * *" # 04:30 UTC, after chirp-web-acceptance (04:00).
   workflow_dispatch: {}
 
 permissions:

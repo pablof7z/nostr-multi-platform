@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- The Rust kernel opens relay websockets directly. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!--
+        ADR-0048 Stage 2: NIP-55 signer detection via PackageManager.
+
+        Android 11+ (API 30+) package visibility: without this block,
+        PackageManager.queryIntentActivities returns an empty list even when
+        Amber (com.greenart7c3.nostrsigner) is installed.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="nostrsigner" />
+        </intent>
+        <!-- Primal (net.primal.android) registers the `primal://` scheme and
+             supports NIP-55 sign-in. Without this entry PackageManager returns
+             an empty result on Android 11+ even when Primal is installed. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="primal" />
+        </intent>
+    </queries>
+
+    <application
+        android:allowBackup="false"
+        android:label="Chirp"
+        android:supportsRtl="true"
+        android:theme="@android:style/Theme.Material.NoActionBar">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

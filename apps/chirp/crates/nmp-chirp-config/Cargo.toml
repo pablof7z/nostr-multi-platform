@@ -1,0 +1,8 @@
+[package]
+name = "nmp-chirp-config"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Shared Chirp app configuration used by every platform shell."
+
+[dependencies]

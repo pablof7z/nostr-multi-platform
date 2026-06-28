@@ -1,0 +1,9 @@
+# UniFFI configuration for nmp-chirp-android-ffi (M14-0 / issue #2129).
+#
+# cdylib_name must match the [lib] name in Cargo.toml ("nmp_android_ffi") so
+# the generated Kotlin loads the same .so that JNI symbols already live in.
+# package_name is the Kotlin package for the generated binding file.
+
+[bindings.kotlin]
+package_name = "org.nmp.android.uniffi"
+cdylib_name = "nmp_android_ffi"

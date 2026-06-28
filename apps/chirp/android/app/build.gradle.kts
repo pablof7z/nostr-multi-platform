@@ -1,0 +1,94 @@
+import org.gradle.internal.os.OperatingSystem
+
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.serialization")
+}
+
+android {
+    namespace = "org.nmp.android"
+    compileSdk = 34
+
+    defaultConfig {
+        applicationId = "org.nmp.android"
+        minSdk = 26
+        targetSdk = 34
+        versionCode = 1
+        versionName = "0.1.0"
+        ndk { abiFilters += listOf("arm64-v8a") }
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+        }
+    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    kotlinOptions { jvmTarget = "17" }
+    buildFeatures {
+        compose = true
+        buildConfig = true // required for BuildConfig.DEBUG (E2E test seams gate)
+    }
+    composeOptions { kotlinCompilerExtensionVersion = "1.5.14" }
+    // .so files are produced by cargo-ndk into src/main/jniLibs (see cargoNdk).
+    sourceSets["main"].jniLibs.srcDirs("src/main/jniLibs")
+    testOptions {
+        // OpFeedDecoderTest's fallback paths log via android.util.Log; return
+        // default (no-op) values so the pure-JVM unit test needs no Robolectric.
+        unitTests.isReturnDefaultValues = true
+    }
+}
+
+dependencies {
+    implementation(platform("androidx.compose:compose-bom:2024.06.00"))
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material:material-icons-extended")
+    implementation("androidx.activity:activity-compose:1.9.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.2")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
+    implementation("org.jetbrains.kotlin:kotlin-reflect:1.9.24")
+    // Coil image loader — backs the registry NostrAvatar component's
+    // SubcomposeAsyncImage so profile pictures actually load. The prior
+    // hand-rolled initials-only avatars decoded `pictureUrl` but never rendered
+    // it; this is the dependency that fixes that.
+    implementation("io.coil-kt:coil-compose:2.6.0")
+    // FlatBuffers Java/Kotlin runtime. Pin matches nmp_update.fbs header comment
+    // ("Android/Kotlin runtime: 25.2.10") and the Rust+Swift pin asymmetry table.
+    implementation("com.google.flatbuffers:flatbuffers-java:25.2.10")
+    // JNA Android runtime — required by UniFFI-generated Kotlin bindings (M14-0 /
+    // issue #2129).  Version 5.14.0 is the latest stable that ships an AAR for
+    // Android.  The `@aar` classifier forces Gradle to fetch the Android variant
+    // rather than the plain JAR (which lacks the arm64/x86 JNI loaders).
+    implementation("net.java.dev.jna:jna:5.14.0@aar")
+    // JVM unit tests (e.g. OpFeedDecoderTest — ADR-0038 Stage T4 golden parity).
+    testImplementation("junit:junit:4.13.2")
+}
+
+// ── cargo-ndk: cross-compile the JNI shim that links the SAME nmp-core kernel
+// the iOS app uses. Output lands directly in jniLibs for both shipped ABIs.
+val cargoNdk by tasks.registering(Exec::class) {
+    workingDir = rootProject.projectDir.parentFile.parentFile.parentFile // repo root
+    val cargo = "${System.getProperty("user.home")}/.cargo/bin/cargo"
+    val bin = if (OperatingSystem.current().isWindows) "$cargo.exe" else cargo
+    // `--features marmot` mirrors the iOS `justfile` targets, which pass
+    // `--features marmot` to every Chirp build so the shell links the
+    // `nmp_marmot_*` MLS-over-Nostr symbols. The flag forwards through the
+    // `nmp-chirp-android-ffi` `marmot` feature to `nmp-app-chirp/marmot`;
+    // without it the Android .so ships without Marmot, exactly as it did
+    // pre-V-109.
+    commandLine(
+        bin, "ndk",
+        "--manifest-path", "apps/chirp/crates/nmp-chirp-android-ffi/Cargo.toml",
+        "-t", "arm64-v8a",
+        "-o", "apps/chirp/android/app/src/main/jniLibs",
+        "build", "--release", "--features", "marmot",
+    )
+}
+
+tasks.named("preBuild") { dependsOn(cargoNdk) }

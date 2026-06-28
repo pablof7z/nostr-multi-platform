@@ -1,0 +1,82 @@
+[package]
+name = "chirp-tui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Ratatui terminal shell for the Chirp Nostr client."
+
+[lib]
+name = "chirp_tui"
+path = "src/lib.rs"
+
+[[bin]]
+name = "chirp-tui"
+path = "src/main.rs"
+
+[dependencies]
+nmp-app-chirp = { path = "../crates/nmp-app-chirp", default-features = false, features = ["marmot", "wallet"] }
+nmp-chirp-config = { path = "../crates/nmp-chirp-config" }
+nmp-content = { path = "../../../crates/nmp-content" }
+# Canonical Nostr kind-integer registry (Layer-0, zero-dep). Source of the
+# `is_encrypted_content_kind` predicate the outbox preview reads instead of
+# hardcoding the encrypted-kind set (#1769).
+nmp-kinds = { path = "../../../crates/nmp-kinds" }
+# `test-support` is a TEST-ONLY feature ("Never enable in production builds" —
+# nmp-core/Cargo.toml). It compiles the ADR-0055 Rung-1 projection-rev oracle,
+# whose `run_projection_oracle` PANICS on any missed stamp. Enabling it on the
+# runtime dependency shipped that test harness inside the chirp-tui binary, so a
+# latent boot-time stale-stamp crashed the app and froze the terminal. The
+# feature is re-pinned under [dev-dependencies] below for the cfg(test) round-trip
+# test (`nmp_core::testing::spawn_actor`); it is never linked into the binary.
+nmp-core = { path = "../../../crates/nmp-core" }
+# ADR-0038: typed FlatBuffers sidecar decode for the `nmp.feed.home`
+# OP-centric feed projection (`nmp.nip01.opfeed` schema, descriptor `NOFS`).
+# The host prefers the typed `NOFS` payload when present and falls back to the
+# generic `Value` tree otherwise (ADR-0037 Commitment 4).
+nmp-nip01 = { path = "../../../crates/nmp-nip01" }
+# PR-B: typed sidecar decoders for host-registered projections. Direct imports
+# needed so `FeatureSnapshot::from_flatbuffer` can decode the typed sidecars
+# without going through the generic `payload:Value` tree.
+nmp-nip02 = { path = "../../../crates/nmp-nip02" }
+nmp-nip17 = { path = "../../../crates/nmp-nip17" }
+nmp-nip29 = { path = "../../../crates/nmp-nip29" }
+nmp-nip47 = { path = "../../../crates/nmp-nip47" }
+# C-ABI surface (`NmpApp`, `nmp_app_*` symbols) — extracted from
+# `nmp-core::ffi` in step 11-final.
+# V-38: nmp-core no longer has a `wallet` feature; nmp-ffi exposes wallet
+# shims unconditionally that route through dispatch_action to `nmp-nip47`.
+# Runtime needs only the default `native` C-ABI surface (e.g.
+# `nmp_app_ack_action_stage`, which is `native`-gated — NOT test-support). The
+# `nmp_app_inject_*` / `nmp_app_read_projection_*` injectors are test-support and
+# are reached only by the cfg(test) round-trip test, so test-support is re-pinned
+# under [dev-dependencies] below rather than on the shipping binary.
+nmp-ffi = { path = "../../../crates/nmp-ffi" }
+nmp-feed = { path = "../../../crates/nmp-feed" }
+clap = { version = "4", features = ["derive"] }
+color-eyre = "0.6"
+crossterm = "0.29"
+fastrand = "2"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+ratatui = { version = "0.30", features = ["crossterm"] }
+ratatui-image = { version = "11.0.2", default-features = false, features = ["crossterm"] }
+serde_json = "1.0"
+# Image media cache HTTP fetches (`media_cache.rs`). NIP-05/lightning-address
+# zap resolution is Rust-owned in `nmp-app-chirp`, not the TUI shell.
+ureq = { version = "2", default-features = false, features = ["tls", "json"] }
+
+[dev-dependencies]
+insta = { version = "1", features = ["yaml"] }
+# `test-support` re-pin — TEST-ONLY. Enables nmp-core's `testing::spawn_actor` /
+# `ActorCommand` and the nmp-ffi `nmp_app_inject_*` injectors that the cfg(test)
+# round-trip test drives, AND the ADR-0055 projection-rev oracle (so the test
+# suite still fails loud on a missed stamp). Because these live in
+# [dev-dependencies], `cargo build`/`cargo run` of the binary never link them —
+# the oracle is present for `cargo test` only.
+nmp-core = { path = "../../../crates/nmp-core", features = ["test-support"] }
+nmp-ffi = { path = "../../../crates/nmp-ffi", features = ["test-support"] }
+# PR-B round-trip test: drives a REAL kernel actor (nmp_core::testing::spawn_actor)
+# and signs in with a local nsec, so the frame under test comes from the
+# production encoder (`encode_snapshot_with_envelope`).
+zeroize = { workspace = true }
+rexpect = "0.7.1"
+vt100 = "0.16.2"
