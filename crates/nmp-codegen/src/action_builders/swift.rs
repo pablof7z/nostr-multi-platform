@@ -174,6 +174,10 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
         render_bookmark_update(builder, out);
         return;
     }
+    if is_bookmark_set_builder(builder) {
+        crate::action_builders::swift_bookmark_set::render_bookmark_set_update(builder, out);
+        return;
+    }
     let contract = contract_for(builder.namespace);
     let method = builder.method;
     // Doc + signature.
@@ -230,6 +234,22 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
                     ));
                 }
             }
+            FieldKind::UintVec => {
+                if field.optional {
+                    out.push_str(&format!(
+                        "        let {n}Offset: Offset = {{\n\
+                         \x20           guard let values = {n}, !values.isEmpty else {{ return Offset() }}\n\
+                         \x20           return fbb.createVector(values)\n\
+                         \x20       }}()\n",
+                        n = field.name
+                    ));
+                } else {
+                    out.push_str(&format!(
+                        "        let {n}Offset = fbb.createVector({n})\n",
+                        n = field.name
+                    ));
+                }
+            }
             FieldKind::RelayListEntryVec => {
                 // Build each RelayListEntry table (url + marker) then a vector
                 // of those entry offsets.
@@ -246,7 +266,10 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
                     n = field.name
                 ));
             }
-            FieldKind::Uint | FieldKind::Ulong | FieldKind::UlongWithPresenceFlag { .. } => {}
+            FieldKind::Uint
+            | FieldKind::Ulong
+            | FieldKind::UlongWithPresenceFlag { .. }
+            | FieldKind::Ubyte => {}
         }
     }
     // Table: 1 (schema_version slot) + sum of each field's slot_count.
@@ -262,7 +285,10 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
     for field in builder.fields {
         let vtoffset = 4 + slot * 2;
         match field.kind {
-            FieldKind::Str | FieldKind::StrVec | FieldKind::RelayListEntryVec => {
+            FieldKind::Str
+            | FieldKind::StrVec
+            | FieldKind::UintVec
+            | FieldKind::RelayListEntryVec => {
                 if field.optional {
                     out.push_str(&format!(
                         "        if {n}Offset.o != 0 {{ fbb.add(offset: {n}Offset, at: {vt}) }} // slot {slot}: {n}\n",
@@ -314,6 +340,13 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
                     flag = flag_name,
                 ));
             }
+            FieldKind::Ubyte => {
+                out.push_str(&format!(
+                    "        fbb.add(element: {n}, def: UInt8(0), at: {vt}) // slot {slot}: {n}\n",
+                    n = field.name,
+                    vt = vtoffset
+                ));
+            }
         }
         slot += field.slot_count();
     }
@@ -339,6 +372,13 @@ fn is_bookmark_builder(builder: &ActionBuilder) -> bool {
     matches!(
         builder.namespace,
         "nmp.nip51.add_bookmark" | "nmp.nip51.remove_bookmark"
+    )
+}
+
+fn is_bookmark_set_builder(builder: &ActionBuilder) -> bool {
+    matches!(
+        builder.namespace,
+        "nmp.nip51.add_bookmark_set_item" | "nmp.nip51.remove_bookmark_set_item"
     )
 }
 
@@ -405,6 +445,8 @@ fn swift_param_type(field: &PayloadField) -> String {
         (FieldKind::Uint, true) => "UInt32?".to_string(),
         (FieldKind::StrVec, false) => "[String]".to_string(),
         (FieldKind::StrVec, true) => "[String]?".to_string(),
+        (FieldKind::UintVec, false) => "[UInt32]".to_string(),
+        (FieldKind::UintVec, true) => "[UInt32]?".to_string(),
         (FieldKind::Ulong, false) => "UInt64".to_string(),
         (FieldKind::Ulong, true) => "UInt64?".to_string(),
         // UlongWithPresenceFlag is always presented as optional — the flag
@@ -412,6 +454,9 @@ fn swift_param_type(field: &PayloadField) -> String {
         (FieldKind::UlongWithPresenceFlag { .. }, _) => "UInt64?".to_string(),
         // RelayListEntry vector: named-tuple array (url + role string).
         (FieldKind::RelayListEntryVec, _) => "[(url: String, role: String)]".to_string(),
+        // Ubyte scalar (u8) — used for FlatBuffers ubyte enum discriminants.
+        (FieldKind::Ubyte, false) => "UInt8".to_string(),
+        (FieldKind::Ubyte, true) => "UInt8?".to_string(),
     }
 }
 

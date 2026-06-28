@@ -21,6 +21,8 @@ pub(crate) fn register_social_defaults(
     handles.wot = nmp_wot::register_runtime(app);
     handles.mute = Some(runtimes::register_mute_runtime(app));
     let _ = runtimes::register_bookmark_runtime(app);
+    runtimes::register_bookmark_set_runtime(app);
+    runtimes::register_web_bookmark_runtime(app);
     handles.search_relays = Some(runtimes::register_search_relay_runtime_with(
         app,
         search_defaults,

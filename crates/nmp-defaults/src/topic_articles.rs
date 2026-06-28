@@ -63,7 +63,8 @@ use nmp_core::actor::ActorCommand;
 use nmp_core::actor::InterestsCommand;
 use nmp_core::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 use nmp_core::substrate::{
-    ActionContext, ActionModule, ActionRegistrar, ActionRejection, ViewDependencies,
+    ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRegistrar,
+    ActionRejection, ViewDependencies,
 };
 pub use nmp_kinds::KIND_LONG_FORM_ARTICLE;
 use nmp_planner::stable_hash::stable_hash64;
@@ -228,6 +229,10 @@ pub struct TopicArticlesModule;
 impl ActionModule for TopicArticlesModule {
     const NAMESPACE: &'static str = TOPIC_ARTICLES_NAMESPACE;
     type Action = TopicArticlesAction;
+
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<Self::Action as ActionPayload>::decode(bytes))
+    }
 
     fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         let (topic, consumer_id) = action.parts();

@@ -52,7 +52,11 @@ use crate::planner::{
 };
 use crate::relay::CanonicalRelayUrl;
 use crate::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
-use crate::substrate::{ActionContext, ActionModule, ActionRejection};
+use crate::substrate::{
+    ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
+};
+
+mod wire;
 
 /// V-52: relay browsing action — `nmp.browse_relay` namespace.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -114,6 +118,10 @@ impl ActionModule for BrowseRelayModule {
     const NAMESPACE: &'static str = "nmp.browse_relay";
 
     type Action = BrowseRelayAction;
+
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<Self::Action as ActionPayload>::decode(bytes))
+    }
 
     fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         match &action {

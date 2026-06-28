@@ -20,6 +20,7 @@ native = [
 ]
 
 [dependencies]
+flatbuffers = { workspace = true }
 # Kernel substrate — `ActorCommand`, observer traits, the routing
 # substrate factory seam, and the app-neutral `AppHost` registration trait.
 # `default-features = false` keeps wasm32 free of mio/lmdb; `nmp-core/native`

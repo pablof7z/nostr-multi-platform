@@ -7,6 +7,10 @@
 //! (`ci/check_native_action_boundary.py`) scans `registry/*.rs`, so the moved
 //! namespace literals stay visible to the gate.
 
+use super::host_called::{
+    ADD_BOOKMARK_SET_ITEM, BLOSSOM_UPLOAD, BROWSE_RELAY, POST_COMMENT, PUBLISH_HIGHLIGHT,
+    PUBLISH_WEB_BOOKMARK, REMOVE_BOOKMARK_SET_ITEM, TOPIC_ARTICLES, VISIBLE_NOTE_RELATIONS,
+};
 use super::{ActionBuilder, FieldKind, PayloadField};
 
 /// The flat-table builders (ADR-0064 §3 acceptance scope).
@@ -17,8 +21,8 @@ use super::{ActionBuilder, FieldKind, PayloadField};
 /// The publish builders are described by [`PUBLISH_BUILDERS`] and hand-modelled
 /// by the emitters' `render_publish_*` paths. This registry covers every
 /// flat-table namespace end-to-end: every primitive (string, uint, optional
-/// string, string vector, ulong-with-presence-flag, relay-list-entry-vec) is
-/// exercised.
+/// string, string vector, uint vector, ulong-with-presence-flag,
+/// relay-list-entry-vec) is exercised.
 pub const ACTION_BUILDERS: &[ActionBuilder] = &[
     // nip25 — react / unreact (react.fbs / unreact.fbs).
     ActionBuilder {
@@ -340,4 +344,14 @@ pub const ACTION_BUILDERS: &[ActionBuilder] = &[
         ],
         doc: "Publish a NIP-57 zap request for a recipient (optionally a target event).",
     },
+    // Host-called typed actions added after the original registry slice.
+    PUBLISH_HIGHLIGHT,
+    POST_COMMENT,
+    ADD_BOOKMARK_SET_ITEM,
+    REMOVE_BOOKMARK_SET_ITEM,
+    PUBLISH_WEB_BOOKMARK,
+    BLOSSOM_UPLOAD,
+    VISIBLE_NOTE_RELATIONS,
+    BROWSE_RELAY,
+    TOPIC_ARTICLES,
 ];

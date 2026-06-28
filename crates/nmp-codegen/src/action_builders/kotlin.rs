@@ -176,6 +176,10 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
         render_bookmark_update(builder, out);
         return;
     }
+    if is_bookmark_set_builder(builder) {
+        crate::action_builders::kotlin_bookmark_set::render_bookmark_set_update(builder, out);
+        return;
+    }
     let contract = contract_for(builder.namespace);
     out.push_str(&format!("    /// {}\n", builder.doc));
     out.push_str(&format!(
@@ -236,6 +240,30 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
                     ));
                 }
             }
+            FieldKind::UintVec => {
+                if field.optional {
+                    out.push_str(&format!(
+                        "        val {n}Offset = run {{\n\
+                         \x20           val values = {n}\n\
+                         \x20           if (values == null || values.isEmpty()) 0 else {{\n\
+                         \x20               fbb.startVector(4, values.size, 4)\n\
+                         \x20               for (i in values.size - 1 downTo 0) fbb.addInt(values[i])\n\
+                         \x20               fbb.endVector()\n\
+                         \x20           }}\n\
+                         \x20       }}\n",
+                        n = field.name
+                    ));
+                } else {
+                    out.push_str(&format!(
+                        "        val {n}Offset = run {{\n\
+                         \x20           fbb.startVector(4, {n}.size, 4)\n\
+                         \x20           for (i in {n}.size - 1 downTo 0) fbb.addInt({n}[i])\n\
+                         \x20           fbb.endVector()\n\
+                         \x20       }}\n",
+                        n = field.name
+                    ));
+                }
+            }
             FieldKind::RelayListEntryVec => {
                 // Build each RelayListEntry table (url + marker) then a vector
                 // of those table offsets.
@@ -256,7 +284,10 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
                     n = field.name
                 ));
             }
-            FieldKind::Uint | FieldKind::Ulong | FieldKind::UlongWithPresenceFlag { .. } => {}
+            FieldKind::Uint
+            | FieldKind::Ulong
+            | FieldKind::UlongWithPresenceFlag { .. }
+            | FieldKind::Ubyte => {}
         }
     }
     // Table: 1 (schema_version slot) + sum of each field's slot_count.
@@ -269,7 +300,10 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
     let mut slot = 1usize; // slot 0 = schema_version
     for field in builder.fields {
         match field.kind {
-            FieldKind::Str | FieldKind::StrVec | FieldKind::RelayListEntryVec => {
+            FieldKind::Str
+            | FieldKind::StrVec
+            | FieldKind::UintVec
+            | FieldKind::RelayListEntryVec => {
                 if field.optional {
                     out.push_str(&format!(
                         "        if ({n}Offset != 0) fbb.addOffset({slot}, {n}Offset, 0) // slot {slot}: {n}\n",
@@ -314,6 +348,12 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
                     flag = flag_name,
                 ));
             }
+            FieldKind::Ubyte => {
+                out.push_str(&format!(
+                    "        fbb.addByte({slot}, {n}, 0) // slot {slot}: {n}\n",
+                    n = field.name
+                ));
+            }
         }
         slot += field.slot_count();
     }
@@ -338,6 +378,13 @@ fn is_bookmark_builder(builder: &ActionBuilder) -> bool {
     matches!(
         builder.namespace,
         "nmp.nip51.add_bookmark" | "nmp.nip51.remove_bookmark"
+    )
+}
+
+fn is_bookmark_set_builder(builder: &ActionBuilder) -> bool {
+    matches!(
+        builder.namespace,
+        "nmp.nip51.add_bookmark_set_item" | "nmp.nip51.remove_bookmark_set_item"
     )
 }
 
@@ -404,6 +451,8 @@ fn kotlin_param_type(field: &PayloadField) -> String {
         (FieldKind::Uint, true) => "Int?".to_string(),
         (FieldKind::StrVec, false) => "List<String>".to_string(),
         (FieldKind::StrVec, true) => "List<String>?".to_string(),
+        (FieldKind::UintVec, false) => "List<Int>".to_string(),
+        (FieldKind::UintVec, true) => "List<Int>?".to_string(),
         (FieldKind::Ulong, false) => "Long".to_string(),
         (FieldKind::Ulong, true) => "Long?".to_string(),
         // UlongWithPresenceFlag is always presented as optional — the flag
@@ -411,6 +460,9 @@ fn kotlin_param_type(field: &PayloadField) -> String {
         (FieldKind::UlongWithPresenceFlag { .. }, _) => "Long?".to_string(),
         // RelayListEntry vector: list of (url, role) pairs.
         (FieldKind::RelayListEntryVec, _) => "List<Pair<String, String>>".to_string(),
+        // Ubyte scalar (u8) — used for FlatBuffers ubyte enum discriminants.
+        (FieldKind::Ubyte, false) => "Byte".to_string(),
+        (FieldKind::Ubyte, true) => "Byte?".to_string(),
     }
 }
 
