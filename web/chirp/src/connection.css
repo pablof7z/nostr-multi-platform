@@ -1,0 +1,104 @@
+/* Chirp Web — inspector / connection panel styles.
+ *
+ * Used by the optional diagnostics panel. Restored from pre-deletion shell;
+ * Item D (signing) and Inspector features can extend this.
+ */
+
+.inspector {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  background: #eef2f5;
+  padding: 18px;
+}
+
+.runtime-card {
+  border: 1px solid #d5dde3;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 16px;
+}
+
+.card-heading,
+.status-line {
+  gap: 9px;
+}
+
+.card-heading h2 {
+  margin-bottom: 0;
+}
+
+.connection-card {
+  display: grid;
+  gap: 12px;
+}
+
+.status-line {
+  min-height: 36px;
+  border-top: 1px solid #edf0f2;
+  color: #52616d;
+  font-size: 13px;
+}
+
+.status-line strong {
+  margin-left: auto;
+  color: #172027;
+  font-weight: 760;
+  text-align: right;
+}
+
+.status-icon {
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 8px;
+  background: #dce8e7;
+  color: #12685f;
+}
+
+.relay-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+  border-top: 1px solid #edf0f2;
+  padding: 10px 0;
+  color: #45525d;
+  font-size: 13px;
+}
+
+.relay-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.relay-row small {
+  border-radius: 999px;
+  background: #edf6f2;
+  color: #12685f;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 760;
+  text-transform: uppercase;
+}
+
+.events pre {
+  overflow: auto;
+  max-height: 180px;
+  border-radius: 8px;
+  background: #151a1f;
+  color: #e8f0f2;
+  padding: 12px;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+@media (max-width: 920px) {
+  .inspector {
+    border-top: 1px solid #d5dde3;
+  }
+}

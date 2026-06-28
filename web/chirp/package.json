@@ -1,0 +1,36 @@
+{
+  "name": "@nmp/chirp-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "codegen:chirp-config": "node scripts/gen-chirp-config.mjs",
+    "prebuild": "npm run codegen:chirp-config",
+    "build": "tsc --noEmit && vite build",
+    "build:wasm": "bash ../../crates/nmp-browser-runtime/scripts/build-wasm.sh && mkdir -p public && rm -rf public/nmp-browser-runtime && cp -R ../../pkg/nmp-browser-runtime public/nmp-browser-runtime",
+    "build:vercel": "bash scripts/build.sh",
+    "preview": "vite preview --host 0.0.0.0",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "typecheck": "tsc --noEmit",
+    "typecheck:e2e": "tsc --noEmit -p tsconfig.e2e.json"
+  },
+  "dependencies": {
+    "@nmp/components-web": "*",
+    "@nmp/runtime-web": "*",
+    "flatbuffers": "^25.9.23",
+    "solid-js": "^1.9.13"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.50.1",
+    "@types/node": "^25.9.3",
+    "@types/ws": "^8.5.14",
+    "nostr-tools": "^2.23.5",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.14",
+    "vite-plugin-solid": "^2.11.12",
+    "vitest": "^4.1.7",
+    "ws": "^8.18.2"
+  }
+}

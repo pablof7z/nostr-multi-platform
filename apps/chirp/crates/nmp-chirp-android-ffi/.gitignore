@@ -1,0 +1,3 @@
+target/
+# CI-only NDK cross-compile output (.github/workflows/test.yml x86_64 gate).
+jniLibs-ci/

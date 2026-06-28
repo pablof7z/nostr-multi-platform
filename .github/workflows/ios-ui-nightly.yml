@@ -1,0 +1,110 @@
+name: ios-ui nightly
+
+# Phase 3 of #973 — the ChirpUITests (XCUITest) consumer suite, run nightly.
+#
+# These are end-to-end UI tests that drive the real Chirp app on a booted iOS
+# simulator: NIP-46 bunker sign-in, MLS/Marmot round-trips, fresh-account seed
+# timelines, profile-name regression. They are slow (full simulator boot per
+# class) and flake-prone (live broker/relay, async UI settle), so — exactly like
+# `real-relay-nightly.yml` — they do NOT gate every PR. Putting them on the PR
+# boundary would make the gate flaky and slow, the failure mode that workflow was
+# built to avoid.
+#
+# A nightly red here is a REAL regression, not a flake to re-run-and-ignore (per
+# the `feedback_verify_running_result` discipline). Tests whose external resource
+# is unavailable (no `NMP_TEST_BUNKER_URI`, no live relay, no resolvable author)
+# self-`XCTSkip` explicitly rather than silently passing — that skip is visible
+# in the run log and is the contract for "resource unavailable", never "test
+# passed".
+
+on:
+  schedule:
+    # 04:00 UTC daily — one hour after real-relay-nightly so the two macOS/relay
+    # nightlies do not contend.
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+    # Allow manual on-demand runs.
+
+jobs:
+  ios-ui:
+    name: ChirpUITests (XCUITest, booted simulator)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The Chirp scheme links libnmp_app_chirp.a built WITH `--features marmot`;
+      # a bare `cargo build` omits Marmot and the link fails (per the
+      # `feedback_ios_sim_build` discipline). `just rust-ios-sim` is the single
+      # source of truth for that build.
+      - name: Install Rust toolchain (+ iOS simulator target)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios-sim
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-ios-ui-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-ios-ui-
+
+      - name: Install just + xcodegen
+        run: brew install just xcodegen
+
+      - name: Build Rust iOS simulator archives
+        run: just rust-ios-sim
+
+      - name: Generate Xcode project
+        run: just gen-ios
+
+      # Resolve and boot a concrete iPhone simulator. Unlike the unit lane, the
+      # XCUITest suite drives the real app UI, so the simulator must be booted.
+      - name: Boot a simulator
+        id: sim
+        run: |
+          DEVICE=$(xcrun simctl list devices available --json \
+            | python3 -c "import sys,json; d=json.load(sys.stdin)['devices']; \
+                ids=[dev['udid'] for rt,devs in d.items() if 'iOS' in rt for dev in devs if dev.get('isAvailable') and 'iPhone' in dev['name']]; \
+                print(ids[0] if ids else '')")
+          if [ -z "$DEVICE" ]; then
+            echo "::error ::No available iOS Simulator iPhone device on the runner"
+            xcrun simctl list devices available
+            exit 1
+          fi
+          echo "udid=$DEVICE" >> "$GITHUB_OUTPUT"
+          xcrun simctl boot "$DEVICE" || true
+          xcrun simctl bootstatus "$DEVICE" -b || true
+          echo "Booted simulator UDID: $DEVICE"
+
+      # Run ONLY the ChirpUITests target on the booted simulator. The scheme's
+      # test action exports `NMP_MARMOT_MOCK_KEYRING=1` (see apps/chirp/ios/project.yml)
+      # so Marmot credential paths take the mock branch headlessly. Tests whose
+      # external resource (bunker URI / live relay / resolvable author) is absent
+      # self-`XCTSkip` — a skip is the explicit "resource unavailable" signal, not
+      # a silent pass.
+      #
+      # `NMP_REPO_ROOT` is forwarded to the runner so tests that need to locate
+      # repo fixtures (e.g. profile-name regression) can resolve them.
+      - name: xcodebuild test (ChirpUITests only)
+        env:
+          NMP_REPO_ROOT: ${{ github.workspace }}
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project apps/chirp/ios/Chirp.xcodeproj \
+            -scheme Chirp \
+            -only-testing:ChirpUITests \
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
+            -derivedDataPath apps/chirp/ios/DerivedData \
+            | tee ios_ui_output.txt
+
+      - name: Upload test output on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ui-output-${{ github.run_id }}
+          path: ios_ui_output.txt
+          if-no-files-found: ignore

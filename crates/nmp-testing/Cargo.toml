@@ -35,6 +35,11 @@ nmp-native-runtime = { path = "../nmp-native-runtime", features = ["test-support
 # register_op_feed_defaults to wire the home feed into each NmpApp instance.
 nmp-defaults = { path = "../nmp-defaults" }
 nmp-nip77 = { path = "../nmp-nip77" }
+# sanity-gate binary drives the REAL Chirp composition via the public FFI
+# (nmp_app_chirp_register + home-feed verbs) and signs corpus events. These are
+# also dev-deps below for the integration tests; the binary needs them as
+# regular deps because Cargo binaries cannot see dev-dependencies.
+nmp-app-chirp = { path = "../../apps/chirp/crates/nmp-app-chirp" }
 nostr = { version = "0.44", features = ["std", "nip04", "nip44"] }
 paste = "1.0"
 serde = { version = "1.0", features = ["derive"] }
@@ -45,6 +50,7 @@ rustls = { version = "0.23", default-features = false, features = ["ring"] }
 tungstenite = { version = "0.24", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
 
 [dev-dependencies]
+nmp-app-chirp = { path = "../../apps/chirp/crates/nmp-app-chirp" }
 # real_relay_nip17_cold_start_kernel.rs — drives the canonical NMP composition
 # (`register_defaults`) through a real `NmpApp`/Kernel so the F-02 closure-gate
 # scenario (kind:10050 → DmRelayCache → planner-compiled kind:1059 #p REQ →
@@ -94,6 +100,10 @@ nmp-nip59 = { path = "../nmp-nip59" }
 # cache-serve on sign-in, with no relay delivery.
 nmp-nip51 = { path = "../nmp-nip51" }
 nmp-coverage-gate = { path = "../nmp-coverage-gate" }
+# F-04 zap E2E harness (zap_e2e_nwc_roundtrip.rs) — the fake NIP-47 wallet
+# service reuses the canonical NWC NIP-04 crypto (`nmp_nwc::crypto`) to
+# decrypt kind:23194 requests and encrypt kind:23195 responses, so the wire
+# bytes match exactly what `nmp_nip47::handle_nwc_text` parses.
 nmp-nwc = { path = "../nmp-nwc" }
 # V-51 phase 4 validation harness — `routing_trace_real_nostr` test
 # constructs `GenericOutboxRouter` + `InMemoryMailboxCache` + the
@@ -149,6 +159,18 @@ path = "bin/nip77-real-relay-tui/main.rs"
 [[bin]]
 name = "ffi-stress"
 path = "bin/ffi-stress/main.rs"
+
+# New-architecture sanity-gate harness — ABSOLUTE thresholds, not deltas.
+# Drives the real kernel via the public `nmp_app_*` FFI (sign-in-as-account,
+# add relays, start, open home feed) against a LOCAL `nak serve` relay (or
+# `--live` public relays) and asserts idle-CPU / no-spin / memory / latency /
+# correctness gates. The OS-metric side (CPU%, RSS-over-time, per-thread CPU)
+# is captured by the sibling `scripts/perf-sanity/` orchestrator and merged.
+# See `scripts/perf-sanity/README.md`.
+# `cargo run -p nmp-testing --bin sanity-gate -- --phase cold_start --relay ws://127.0.0.1:10547`
+[[bin]]
+name = "sanity-gate"
+path = "bin/sanity-gate/main.rs"
 
 # Doctrine-lint — D0+D6+D7+D8 grep gates (Tier 1 item #8 from
 # docs/perf/parallel-work-brainstorm-2026-05-18.md). Grep-based static
@@ -366,6 +388,16 @@ required-features = ["real-relay"]
 [[test]]
 name = "op_feed_doctrine_lint"
 path = "tests/op_feed_doctrine_lint.rs"
+
+# M15 — Cross-platform consistency smoke tests. Validates that ChirpClient
+# (and other action builders) produce correctly-formed action envelopes across
+# all platforms. Unit-level tests (no network, no kernel execution) focus on
+# envelope shape invariants: required fields present, JSON valid, deterministic
+# serialization.
+# `cargo test -p nmp-testing --test cross_platform_parity`
+[[test]]
+name = "cross_platform_parity"
+path = "tests/cross_platform_parity.rs"
 
 # DX Scaffold Gate — empirical developer-experience assertions (docs/aim.md §1).
 # Turns the headline one-shot claim (init → compile → run with zero policy code)

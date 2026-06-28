@@ -1,0 +1,24 @@
+appId: com.example.Chirp
+---
+- launchApp:
+    appId: com.example.Chirp
+    clearState: true
+    clearKeychain: true
+    arguments:
+      CHIRP_MAESTRO_RELAY_URL: ws://127.0.0.1:10547
+- assertVisible:
+    id: onboarding-create-account-button
+- tapOn:
+    id: onboarding-create-account-button
+- assertVisible:
+    id: onboarding-display-name-field
+- tapOn:
+    id: onboarding-display-name-field
+- eraseText
+- inputText: Maestro Chirp Smoke
+- hideKeyboard
+- tapOn:
+    id: onboarding-submit-create-account-button
+    optional: true
+- assertVisible:
+    id: home-feed
