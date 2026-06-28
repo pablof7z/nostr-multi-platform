@@ -74,7 +74,8 @@ impl IndexerRepublishPolicy {
     pub fn replaceable_kind_filter() -> KindFilter {
         let kinds = std::iter::once(0u32)
             .chain(std::iter::once(3u32))
-            .chain(10_000u32..20_000u32);
+            .chain(10_000u32..20_000u32)
+            .chain(30_000u32..40_000u32); // NIP-33 addressable / parameterized replaceable
         KindFilter::from_kinds(kinds)
     }
 
@@ -110,7 +111,7 @@ impl ExternalEventSinkPolicy for IndexerRepublishPolicy {
         let raw = frame.raw.as_ref();
         let source_relay_url = frame.source_relay.as_deref();
 
-        if !self.enabled || !raw.is_replaceable() {
+        if !self.enabled || (!raw.is_replaceable() && !raw.is_param_replaceable()) {
             return Vec::new();
         }
 
