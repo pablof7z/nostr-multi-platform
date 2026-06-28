@@ -434,6 +434,11 @@ Only the first one to five moves need a PR-ready plan at any time. Later rows
 remain direction gates: they tell us what must become true before that area can
 count as proof of the North Star.
 
+The near-term proof selector lives in
+[Internal Machinery](04-internal-machinery.md#implementation-plan). Use it to
+choose the next slice by the question being answered, not by a full downstream
+migration roadmap.
+
 | Gate | Required proof |
 |---|---|
 | Highlighter web runtime inventory | Every `@nostr-dev-kit`, `$subscribe`, `fetchEvents`, direct sign/publish, relay-set, cache, and tag-parser product path is classified as NMP target-runtime migration, SSR-only, diagnostic, deleted, or explicitly out of scope, with owner and deletion/formalization criterion. Direct NDK cannot remain both violation and normal runtime. |

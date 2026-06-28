@@ -469,6 +469,24 @@ Only these rows should be treated as near-term plan. Later P3-P8 material is a
 direction map and acceptance matrix; choose later slices after the counts and
 ratchets from steps 1-5 are real.
 
+Current downstream proof selector:
+
+| Question to answer now | Best first proof | Counts only if this old surface shrinks | Falsifies the direction if |
+|---|---|---|---|
+| Can one typed lifecycle owner replace hand-wired read recipes? | Highlighter `RoomHome` or gallery `EventEmbed` on existing observed/replay machinery | raw open/replay/sink/output/teardown wiring becomes private, deleted, or compatibility-scoped for that caller | the proof needs a second read engine or still asks the app to assemble `ObservedProjection`, sidecars, source repair, and teardown |
+| Can browser/runtime support the same architecture as native? | gallery `EventEmbed` plus real wasm/Worker startup and generated host handle | placeholder `build:wasm`, raw worker ref messages, and correctness `setInterval` release/reclaim loops disappear or become diagnostic only | web can only pass by silently degrading to no-wasm/no-worker/in-memory runtime behavior |
+| Can headless/service surfaces use the same model? | Podcast AppIntent or CarPlay action returning Rust-owned pending/error/completion state | `KernelModel.shared`, App Group correctness mirrors, and polling wait loops stop being correctness paths | a second service-session framework is needed or native must own queue/playback policy |
+| Can write-side provenance remain small? | Highlighter share-to-room or Podcast NIP-F4 publish through the existing publish doorway | fire-and-forget raw writes, anonymous explicit relay status, and optimistic `last_published_at` shrink or become scoped | the only fix is a broad publish stack while old raw publish paths stay production-equal |
+| Can docs stop recreating the old architecture? | #2320 ADR/source-of-truth fold after #2316 accepts direction | stale ADRs, builder-guide pages, and wiki pages stop teaching `register_defaults`, raw `open_interest`, projection tiers, or public `ReducedSource` | the accepted redesign has to coexist with old ADR guidance as a parallel public architecture |
+
+Selection rule: after the P-1/P0 baseline and #2307-style event-driven
+reconciler work, pick the proof whose risk is currently blocking adoption. Use
+Highlighter `RoomHome` or gallery `EventEmbed` to prove the descriptor shape;
+use Podcast only when the open question is service/headless behavior; use the
+publish proof only after the route-provenance carrier can be attempted inside
+the existing publish path. Do not start with a clean-room demo unless the goal is
+only documentation UAT; it cannot prove old surfaces shrink.
+
 Every implementation slice should have this shape:
 
 ```text
