@@ -296,6 +296,13 @@ Minimum signer matrix:
 | named product/agent signer | execute configured signer capability | signer registry, permission, product policy, publish continuation |
 | imported pre-signed event | no signing, only validation/capability import if needed | validation result, route provenance, status/retry policy |
 
+Signer storage authority must be explicit. Active-user keys, named product
+signers such as per-podcast keys, agent signers, NIP-46 session material,
+NIP-55/platform signer references, provider API keys, and imported pre-signed
+events are different security classes. Each signer class needs a storage owner,
+rehydration behavior, restart/retry/cancel/delete semantics, and a rule for which
+publish ledger records keep it alive.
+
 Podcast Player adds a concrete signer proof:
 
 | Podcast signer need | Required model |
@@ -496,12 +503,45 @@ carry the same correlation id, draft validation, signer continuation, route
 provenance, local ingest, retry, and terminal status. A fire-and-forget raw
 publish, `correlation_id: None`, or dispatch-accepted UI success is a retained
 old door.
+Managed NIP-05 is a write workflow, not a generic SSR exception. The contract
+must name the owner of the auth event kind/schema, injected clock/expiry,
+uniqueness/idempotency, durable name mapping, profile-publish coupling,
+compensation on partial failure, and typed status. A web route that validates
+with server wall clock, mutates KV/memory, and publishes profile/Blossom/list
+events directly is a product architecture choice that needs an explicit owner.
+Highlighter Blossom/capture follows the same pre-sign rule as Podcast NIP-F4:
+server selection, blob descriptor, hash, size/media metadata, upload result,
+retry/failure status, and route/provenance must complete before any profile,
+highlight, picture, share, or room event that references the blob is finalized
+and signed.
+
+Highlighter write/read rows that must be classified independently:
+
+| Flow | Required owner/proof |
+|---|---|
+| room chat | NIP-29 group context, route/admission, signer path, local ingest, final publish status |
+| room discussion roots/replies | NIP-22/thread parentage in Rust descriptors/builders, not TS/Swift tag assembly |
+| public highlight comments | `#E`/root/comment admission and publish builders with typed status |
+| reactions/bookmarks | protocol builders plus route provenance and read-your-writes projection |
+| highlight publish | kind `9802` draft/build/sign/publish/status owned by Highlighter Rust |
+| highlight repost/share | kind `16`/share-to-room composition through app Rust plus NIP-29 finalizer when needed |
+| group invites/membership/admin | group feature/app Rust actions with host-route proof and status |
+| relay app-data | classified as server/relay product policy, diagnostic, or migrated typed action |
+| SSR search/featured/room reads | read-only public-data cache or Rust/app-server-owned product state with durability and injected seams |
 
 Podcast proves the same rule for non-primary signers. Per-podcast keys, agent
 signers, Blossom server references, configured write relays, and NIP-F4
 show/episode/list events cannot update `last_published_at` or equivalent product
 state on construction, signing, or queued dispatch. Product completion follows
 from the publish ledger reaching a terminal ack/error/retry-exhausted state.
+`publish_dispatched`, `relay_pending`, or "agent request accepted" is never
+user-visible or agent-visible publish success for NIP-F4. NIP-F4 proof must cover
+show kind `10154`, episode kind `54`, author/feed/list kind `10064` or successor,
+deletion kind `5` when used, Blossom upload provenance, selected server, URL,
+hash, size, signer identity, event id/naddr, correlation id, retry/cancel, and
+restart recovery. Uploads or provider capabilities that affect signed bytes must
+complete before signing; capabilities that happen after publish must be modeled as
+separate follow-up writes.
 
 ## Compatibility Boundaries
 

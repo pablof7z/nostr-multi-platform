@@ -33,6 +33,13 @@ registration should drain matching store/cache rows before the first visible
 frame is considered satisfied, and that drain must not re-enter `store.insert`.
 Wakeups should be keyed by completed served-interest/admission shapes so a
 session does not double-serve the same cached rows when live delivery resumes.
+The operational contract is stricter: cache and relay delivery use one
+acquisition path; the initial store/cache drain is synchronous enough that the
+session does not render a false blank first frame; replay budgets count visited
+events, not only emitted rows; completion keys coalesce wakeups through a bounded
+set; account/source invalidation requeues affected keys; and local
+read-your-writes publish ingest reaches projections through the same store/serve
+path as relay events.
 
 Dynamic source implementations should be consolidated only as far as their
 semantics truly match. Start with one private shape reconciler around
@@ -131,10 +138,20 @@ wasm CI gate may remain blocked until the `secp256k1-sys` C wasm sysroot problem
 is solved or the runtime is split around that dependency. Do not let that block
 hide storage regressions, and do not pretend a TS-only or no-wasm shell proves
 the Rust runtime.
+The reusable storage gate starts with the existing `nmp-sqlite-wasm`
+conformance vehicle or its successor: real Chrome/Worker OPFS open, write, scan,
+query, close, reopen, budget accounting, and scan/query parity. Compile-only wasm
+checks and Node/JSDOM-style tests are useful smoke tests, but they do not prove
+durable browser storage or `query_visit`-style budget semantics.
 
 This also bounds `nmp-gallery` web proof. A gallery web app that builds only its
 TypeScript shell, uses a placeholder wasm build, or degrades when the worker is
 missing cannot prove the runtime architecture.
+Degraded browser mode needs a named product policy. In-memory or no-worker
+runtime can exist as diagnostic/demo/offline-unavailable behavior only when the
+UI exposes typed degraded/failure state and the proof explicitly excludes it.
+It must not count as durable product success, browser runtime proof, offline
+queue proof, or second-launch proof.
 
 Minimum browser worker contract:
 
@@ -548,6 +565,11 @@ P2. Swap P6 into that wave only if write provenance is the current ADR-blocking
 risk. Downstream matrices, browser storage, generated catalogs, and broader
 P3-P8 gates guide the next selection, but they are not excuses to delay the
 smallest proof that one old lifecycle recipe can actually disappear.
+Write architecture is part of this packet, so P6 cannot remain a vague future
+idea. If the redesign ADR claims construction/signing/publishing, the ADR dossier
+must include the P6 carrier plan and `publish_route_provenance_contract` even if
+the first implementation PR lands P1/P2 before the write carrier. If that contract
+is deferred, the ADR must explicitly scope writes out of the accepted design.
 
 Every implementation slice should have this shape:
 
@@ -1075,9 +1097,9 @@ Required gallery matrix shape:
 | Flow family | Current path to classify | Target proof | Deletion/exception criterion |
 |---|---|---|---|
 | Web runtime | deferred `build:wasm`, TS-only app check, raw Worker `resolve_ref`/`release_ref`, retry/reclaim loop | `web/nmp-gallery build:wasm`, Worker startup, OPFS lifecycle, generated ref adapter, and Playwright consume the same `nmp-browser-runtime::wasm` artifact; degraded/no-wasm/no-worker mode fails closed | no correctness `setInterval`; raw worker protocol hidden or deleted; generic browser conformance is not used as gallery proof |
-| Component refs/embeds | Swift/Kotlin/TS/TUI/desktop URI/ref adapters, raw namespace/shape/liveness constants, worker payloads, and claim loops | typed `ProfileRef`/`EventEmbed` sessions plus generated or contract-tested host handles; refs survive relay readiness/reconnect without shell retry; open/close tests reject duplicate/stale rows | shell adapters are generated/lifecycle-only, not protocol policy |
+| Component refs/embeds | Swift/Kotlin/TS/TUI/desktop URI/ref adapters, raw namespace/shape/liveness constants, worker payloads, render-time claims, and claim/reclaim loops | typed `ProfileRef`/`EventEmbed` sessions plus generated or contract-tested host handles; refs survive relay readiness/reconnect without shell retry; explicit owner open/close, release-on-owner-dispose, stale-frame rejection, recursive-depth guard, clear/delete, and duplicate/stale-row tests pass | shell adapters are generated/lifecycle-only, not protocol policy; product `setInterval`/sleep/retry correctness loops are gone |
 | Merge/cache parity | hand caches and `projection_merge_cache` variants | full/delta/clear/tombstone/stale/decode-poison/baseline tests across shells | no platform owns independent merge semantics |
-| Browser storage/degraded mode | OPFS/SQLite/Worker preparation, in-memory fallback, Web Locks/tab contention, quota/private-mode failure | durable second-launch, offline read, offline publish queue, second-tab policy, private/quota failure, and explicit gallery UI/status behavior for in-memory fallback | no silent in-memory success in product proof |
+| Browser storage/degraded mode | OPFS/SQLite/Worker preparation, in-memory fallback, Web Locks/tab contention, quota/private-mode failure | durable second-launch, offline read, offline publish queue, second-tab policy, private/quota failure, and explicit gallery UI/status behavior for in-memory/no-worker fallback | no silent in-memory success in product proof; degraded mode is diagnostic/demo or typed fail-closed, not architecture proof |
 | Auth/signing components | Android NIP-55 proof plus partial/visual other shells; browser NIP-07/local/NIP-46 wiring incomplete | per-shell read-only/local/remote/unauthenticated matrix, including browser NIP-07, local key, NIP-46, rejection, wrong-account, unavailable extension, and degraded cases | generic "auth/signing covered" claim removed until each shell is classified |
 | Composition root | `register_defaults()` and `consume_all_builtin_projections()` showcase path | explicit feature composition or labeled tutorial compatibility | production examples stop teaching hidden defaults |
 
@@ -1318,6 +1340,18 @@ implementable. These protect the first executable slice and the core
 simplification rules; broader downstream conformance remains issue-backed
 post-ADR work.
 
+These names are not claims that the tests exist today. The ADR dossier must
+either add them or replace them with equivalently scoped executable gates before
+claiming the design is implementable:
+
+| Gate file | Required before ADR acceptance | Pass/fail shape |
+|---|---|---|
+| `crates/nmp-testing/tests/architecture_surface_ratchet.rs` | P-1/P0 | baselines raw read/write/defaults/projection/runtime doors with path exclusions and fails if counts increase without owner/support-window/deletion metadata |
+| `crates/nmp-testing/tests/typed_session_descriptor_contract.rs` | P1 | opens the selected first session family and proves acquisition, route/admission, replay-before-live, live sink activation, output, wakes, close teardown, and old-recipe privatization |
+| `crates/nmp-testing/tests/publish_route_provenance_contract.rs` | P6/write acceptance | proves automatic, host-pinned, verified inbox, manual, imported/verbatim, and diagnostic routes remain distinguishable through dispatch, signer parking, retry/resume, local ingest, durable record, and status |
+| `crates/nmp-testing/tests/docs_architecture_teaching_ratchet.rs` | P0/P8 | fails public docs/templates/examples that teach production `register_defaults()`, app-facing projection tiers, raw `open_interest`, public `ReducedSource`, or anonymous explicit publish as the normal model |
+| `crates/nmp-testing/tests/existing_seam_first_contract.rs` | every first slice | requires the implementation note or test fixture to show which existing seam was reused/narrowed and which old public door was deleted, privatized, or migration-scoped |
+
 ```bash
 cargo test -p nmp-testing --test architecture_surface_ratchet
 cargo test -p nmp-testing --test typed_session_descriptor_contract
@@ -1339,6 +1373,18 @@ If browser is used as the first proof target, add a small fail-closed browser
 direction gate before ADR acceptance. Full
 `browser_storage_lifecycle_contract` remains post-ADR unless browser is selected
 as the proof slice.
+If gallery is used as an ADR proof target, the gallery gates below are not
+post-ADR backlog: `gallery_ref_lifecycle_contract` is required for component-ref
+proof, and `gallery_web_runtime_contract` / `gallery_auth_signing_matrix_contract`
+are required for any claim that web or auth/signing is proven. If gallery is not
+selected, classify those rows as downstream direction gates and do not cite them
+as evidence that the architecture is implemented.
+If Podcast is used as an ADR proof target, `podcast_service_completion_contract`
+and the NIP-F4/publish-provenance proof are not post-ADR backlog. The selected
+Podcast slice must prove Rust-owned pending/error/completion state rather than
+dispatch acceptance, and it must remove or scope the corresponding
+`KernelModel.shared`, polling, optimistic timestamp, or `relay_pending` path for
+that caller.
 
 Post-ADR issue backlog candidates, not proof that must all exist before the ADR:
 

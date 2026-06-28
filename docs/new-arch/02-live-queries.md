@@ -96,6 +96,20 @@ generalize or narrow `open_feed`, `resolve_ref`, `ObservedProjectionRegistrar`,
 dependent interests, and current feature sessions first. If those can express
 the lifecycle with clearer names and smaller public API, prefer that over adding
 a public `LiveQuery` object.
+The default first proof is the existing feed/session family unless P-1 selects a
+better real caller. That proof must retire or narrow old surface in the same
+slice:
+
+- one `open_*`/feed-session recipe stops requiring caller-authored interest,
+  replay, sink, sidecar/output, and close wiring;
+- the equivalent raw `open_interest` product path is deleted, made private, or
+  migration-scoped with owner/support-window/removal gate;
+- feed controller, load-older, perspective, and source-compiler public surfaces
+  used by that caller are either private under the session or explicitly
+  compatibility-scoped;
+- docs/templates for that caller stop teaching projection tiers,
+  `ObservedProjection`, `ReducedSource`, or raw close tokens as app-developer
+  vocabulary.
 
 An NDK-style `subscribe(filter)` is a useful DX comparison, but not the
 production NMP boundary. The equivalent NMP experience is:
@@ -310,6 +324,19 @@ Each service-like family needs proof for:
 - native mirror corruption or absence not corrupting Rust truth;
 - repeated open/close without leaking handles or stale output rows.
 
+Podcast Player is the concrete acceptance matrix for this family. Each surface
+must classify its current path and target contract:
+
+| Surface | Target contract |
+|---|---|
+| Widget | reads the last Rust-emitted widget frame or performs a bounded headless typed action; App Group files are mirrors only |
+| AppIntent/Siri | cold-start safe typed action with Rust-owned pending/completion/error result; no foreground `KernelModel.shared` requirement |
+| CarPlay scene | scene attach opens/resumes typed playback/navigation state; detach closes/suspends; no Task.sleep readiness loop |
+| Remote/headphone command | native reports raw command metadata; Rust decides play/pause, skip interval, rate ladder, queue mutation, chapter seek, and next/previous policy |
+| Live Activity | ActivityKit receives Rust semantic state and raw executor results; native does not decide current episode or activity existence |
+| Handoff/Spotlight/deep link | OS payload is decoded as capability input and dispatched to Rust; navigation/playback/account truth remains Rust-owned |
+| Provider/STT/TTS/agent job | classified as immediate foreground call, long-running job, capability request/result, provider catalog, agent tool, or publish action, each with correlation id, cancellation, timeout/retry, cold-start, and result semantics |
+
 ## ObservedProjection
 
 `ObservedProjection` is the safe event-to-read-model pattern used inside a typed
@@ -398,6 +425,11 @@ pointer-source work showed that target hydration is not solved merely by adding 
 subscription helper. Source arrival, withdrawal, target replay, route planning,
 and output ownership have to move together under the session contract, or the
 system recreates the same #2088/#2090/#2091 family of partial-read bugs.
+The shipped dependent-interest pattern is the reference shape: a source opens as
+an observed projection; extracted refs/authors/addresses/tags become
+planner-routed dependent interests; acquisition and union delivery stay separate;
+derived state such as `pointedBy` remains projection state; and sort/rank changes
+must not reopen or reacquire relay demand unless the source set actually changes.
 
 Examples:
 
@@ -532,6 +564,12 @@ For author-scoped public reads, planned means outbox/NIP-65 routing unless a
 protocol or feature explicitly proves another route. NIP-29 group hosts,
 protocol-private inboxes, and audited explicit relay reads are exceptions that
 must be visible in the descriptor and in test coverage.
+Planning is lane-aware: author outbox, AppRelay/fallback, indexer/search,
+protocol host, private inbox, and diagnostic/manual lanes are different policies,
+not just different URL lists. The planner should expose `unroutable_authors` or
+equivalent diagnostics when it cannot route a public author set, and source
+families that need NIP-51/search/indexer lanes must declare that lane rather than
+smuggling fallback relays through shell options.
 `LogicalInterest` is semantic acquisition demand, not a demand for one relay
 subscription per author or one product-specific filter recipe. One interest and
 one store query may legitimately cover many authors or kinds when the descriptor
@@ -611,6 +649,11 @@ the target event, the target author's profile, media metadata, relay hints,
 article-card fields, and child refs discovered from the event body. Those child
 claims should share the parent owner lifecycle so closing the embed releases the
 whole demand tree.
+The concrete representation can be renamed, but the invariant should look like a
+typed embed projection, a canonical content-tree wire payload, and an owner token
+that generated or contract-tested adapters can pass around without understanding
+NIP tags. Host component registries may hold render handles; Rust owns the
+semantic ref tree, recursion context, and liveness rules.
 Ref sessions dedupe by ref identity and owner, close explicitly when the owner
 goes away, and guard recursive embeds by depth or cycle identity. A view that
 renders `nprofile`, `note`, `nevent`, or `naddr` text creates data demand, but it
@@ -637,6 +680,10 @@ Those are transport details. The target is generated or contract-tested
 FFI/worker controls underneath. Keeping the raw controls public for diagnostics
 or migration is allowed only with the same scope labels and deletion/formalization
 gate as `open_interest`.
+If web keeps a component registry for copied/rendered NMP components, the copied
+registry needs a source SHA/version baseline and fixture coverage against the Rust
+payload contract. The registry may choose how to mount a component; it must not
+be the source of semantic ref shape, liveness, recursion, or release policy.
 
 Gallery is the first component-ref proof, and it must include every live shell:
 
@@ -652,6 +699,11 @@ Correctness timers are specifically banned here. A copied-label timer is
 presentation. A `setInterval` that reclaims refs, retries after relay readiness,
 clears dedupe state to make data appear, or repairs missing component output is
 session machinery leaking into the shell and fails the architecture gate.
+The executable ref proof needs more than a visual gallery screen: no product
+`setInterval`/sleep/retry correctness loop, typed or generated ref handles only,
+explicit owner open/close, release-on-owner-dispose, stale-frame rejection,
+clear/delete behavior, duplicate-row rejection, recursive embed bounds, and
+relay-readiness/reconnect tests that pass without shell retry.
 Gallery web proof is app-local. Generic browser-runtime OPFS conformance,
 storage-only wasm checks, or TypeScript typechecks do not prove `nmp-gallery`
 unless the package's own wasm build, Worker startup, OPFS lifecycle, generated
@@ -741,6 +793,11 @@ under a documented compatibility rule.
 The proof must include generated merge-contract tests for full, delta, clear,
 stale-frame, decode-poison, and baseline recovery behavior. Public typed decode
 tests are necessary but not sufficient if generated host caches can still drift.
+Web `ProjectionMergeCache`-style helpers and generated TypeScript relay/config
+tables are adapters, not product authorities. Their schema version, output keys,
+relay policy, and merge semantics must derive from Rust/app manifest owners or
+be contract-tested against them; a web-only cache/config table that outlives its
+source owner is another hidden source of truth.
 
 ## Live Counts
 

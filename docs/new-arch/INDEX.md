@@ -387,6 +387,18 @@ ordinary migration debt.
   sidecar projection registration, or while room/session state remains singleton
   projection lifecycle outside typed owner open/close.
 
+Highlighter server/web exceptions need their own matrix. "SSR" is not a magic
+bucket that can hide product state:
+
+| Surface | Allowed owner | Boundary |
+|---|---|---|
+| Croissant relay / managed room service | app/server product boundary | route, admission, moderation, search, Blossom, or LiveKit facts that affect NMP clients cross as typed state/status |
+| NIP-05 API | app/server identity registry | signed auth, expiry clock, uniqueness, durability, compensation, and profile coupling are explicit write workflow facts |
+| `.well-known` | public read-only projection from the identity registry | never the hidden source of profile/session truth |
+| Blossom/NIP-96 | capability/server policy with provenance | selected server, hash, size, URL, retry, and failure enter Rust action/publish status before signed references rely on them |
+| search/featured-room/front-page lists | read-only public cache or Rust/app-server-owned product state | cache TTL/durability owner is named; no authenticated session or signer truth hides in the cache |
+| OG/artifact previews | public rendering cache | no durable product state, signer state, or relay policy ownership |
+
 **Podcast Player**
 
 - Real NIP-F4 publish must leave `relay_pending` diagnostics behind: show, episode,
@@ -480,6 +492,35 @@ migration roadmap.
 | Metadata privacy gate | Client/NIP-89 metadata is appended only at one outbound-finalization site, only for public-routable unsigned events, and never for private/imported/pre-signed/reserved surfaces. |
 | Binding strategy | Generated bindings or UniFFI work is accepted only when it deletes drift or narrows old public doors; binding churn alone is not an architecture proof. |
 
+## Full-Scope Coverage Map
+
+The plan cannot predict every migration PR, but it must cover every concern that
+could falsify the destination. "Full scope" means each area has a target owner,
+proof gate, and failure condition before implementation starts:
+
+| Concern | Destination | Proof gate | Fails if |
+|---|---|---|---|
+| App composition | production apps install explicit feature installers and policy through existing builders or narrow registrars | P0b composition/defaults proof and scaffold/docs ratchet | hidden `register_defaults()` remains the normal production path |
+| Read lifecycle | one typed session contract owns acquisition, route planning, replay, sink, admission, output, wakes, status, and teardown | P1 over one real session, then P4/P5 expansion | typed descriptor wraps `open_interest`, sidecars, observers, and close tokens without retiring them |
+| Dynamic sources | source arrival/withdrawal/diff/replan is private Rust machinery behind session descriptors | P2/P5 source-family proof with empty-source fail-closed tests | `ReducedSource` becomes public vocabulary or empty demand becomes wildcard data |
+| Output/schema delivery | outputs have one owner, schema version, collision behavior, and shared merge semantics across generated/host adapters | P3/P4 merge and decode-poison fixtures | host caches own product facts or different shells merge the same output differently |
+| Component refs | profile/event/content refs are typed sessions with owner close, dedupe, recursion guard, and generated adapters | P4 gallery ref lifecycle across shells | render-time claims, retry/reclaim timers, or shell URI/tag parsing stay required for correctness |
+| Writes | construction, finalization, signing, and publishing are separate phases inside one typed action/publish path rooted in a local intent ledger | P6 publish intent/provenance/status contracts | fire-and-forget publish, anonymous explicit relays, or native publish JSON remain product paths |
+| Signers | local, NIP-07, NIP-46, NIP-55-style, named product, agent, and imported events report Rust-owned pending/signed/error/status | signer matrix plus first write proof | native infers completion from callbacks, timestamps, or dispatch acceptance |
+| Protocol routes | public reads default to planned/outbox routing; relay-pinned/private/manual routes carry explicit class and admission/provenance proof | read route/admission and publish provenance gates | exact relay URLs are the only durable explanation of why a route was valid |
+| Browser runtime/storage | browser runtime owns async-before-start Worker/OPFS lifecycle and fails closed when missing | FF-022 substrate proof plus app-local gallery web proof when selected | TypeScript-only checks, placeholder wasm, or silent in-memory fallback count as product success |
+| App-feature APIs | app Rust crates own product domains and expose typed app-feature APIs or capability requests | downstream app-feature classification gates | podcast/highlighter/gallery nouns move into NMP crates or native shells own product policy |
+| Headless/service surfaces | widgets, AppIntents, CarPlay, remote commands, Live Activities, Handoff, and deep links use typed actions, short-lived headless invocation, capability results, or proven sessions | Podcast service/capability matrix | a second lifecycle/output/store/status model appears for service-like flows |
+| Capability results | native/web executes OS/provider/file/media capabilities and reports raw results; Rust owns interpretation and durable state | capability-flow rows in downstream matrices | capability callbacks decide retry, routing, signer policy, product completion, or durable state |
+| Performance/reactivity | wakes are event-driven, bounded, coalesced, and scoped to active demand | no-polling, wake-fanout, and update-cadence gates | correctness depends on sleep/check loops, broad fanout, or unbounded snapshots |
+| Input/ref classification | user text, URLs, relays, NIP ids, NIP-05, app scopes, search, and secret rejection route through one Rust-owned classifier | typed input classifier contract | Swift/TypeScript shells parse protocol meaning independently |
+| Documentation/source of truth | accepted facts move into durable ADR/docs/issues and stale current guidance is corrected in place | #2320 ADR reset after redesign acceptance | `docs/new-arch` or stale ADRs remain required reading for current architecture |
+
+If a row cannot be assigned to one of these owners without adding a new public
+concept, the default answer is to narrow the scope or delete an old surface, not
+to invent another framework layer. If a downstream app can satisfy a row only by
+keeping native-owned Nostr policy, the design is wrong for that area.
+
 ## ADR Dossier
 
 Before the ADR can say "this is the right North Star," there must be a concrete
@@ -490,6 +531,9 @@ smaller architecture instead of adding a wrapper layer.
 
 Required dossier sections:
 
+- full-scope coverage map review showing every concern is either selected for
+  the first proof, assigned to a later gate with a ratchet, or explicitly scoped
+  as a human/product decision;
 - current baseline counts for every old-pattern family in FF-001 through FF-031;
 - disposition of every public door in P-1: delete, privatize, formalize, or
   migration-scope with owner/support window/removal gate;

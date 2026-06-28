@@ -38,6 +38,17 @@ teaching it as the normal production path; each surface must migrate to explicit
 feature composition or be labeled tutorial/migration with the support window and
 deletion gate above.
 
+Composition classification is a P0 artifact, not a vague audit note:
+
+| Surface | Default target |
+|---|---|
+| `nmp-defaults` | reusable installer library; no leaf-app policy or magic production preset |
+| `nmp-cli` and templates | production scaffold teaches explicit feature composition; tutorial preset is separately labeled |
+| `BrowserAppBuilder::start` | starts an already-explicit browser composition and reports unmet runtime/storage capabilities |
+| `nmp-gallery` root | explicit showcase composition or tutorial/showcase compatibility with deletion/formalization gate |
+| examples and docs | teach typed sessions/actions and explicit composition, not projection tiers or raw interests |
+| downstream app roots | app-specific policy stays in app Rust crates; NMP crates get only reusable Nostr mechanisms |
+
 `nmp init` should teach production architecture by default: explicit feature
 composition and policy builders. A separate tutorial preset can exist only when
 the generated text labels it as tutorial/sample convenience and points production
@@ -242,6 +253,12 @@ versions, ABI/header checks, cross-language golden fixtures for Rust, Swift,
 Kotlin, and TypeScript where shipped, decode validation, `u64`/BigInt handling,
 and case-conversion collision tests. A generated adapter that compiles but can
 silently decode a different payload shape is just a cleaner-looking old bug.
+Hand-authored host adapters are allowed only as migration-scoped or
+contract-tested transport glue. They must not spell product policy, protocol tag
+semantics, route policy, signer completion, or durable state. If they still spell
+raw ref namespaces, shape ids, liveness flags, worker message names, or update
+merge rules, they need parity fixtures against the Rust/source schema and a
+generation or deletion gate.
 
 The binding maintenance tax is real. Highlighter, Podcast Player, and gallery
 all show hand-maintained Swift/Kotlin/TypeScript/TUI glue, row caches, JNI/C-ABI
@@ -289,6 +306,17 @@ mechanics, not durable product truth:
 | image/profile/render caches | bounded render cache for already-projected data | protocol cache, profile truth, relay policy, or ref lifecycle owner |
 | secure storage/keychain | secret-bearing capability store | signer policy, permission model, or publish continuation owner |
 | native app database/UserDefaults | migration/import/export staging or render cache with Rust owner | durable product store for Nostr/account/playback/feed facts |
+
+Podcast is the stress case for this boundary:
+
+| Podcast surface | Rust/app owner | Native or service role |
+|---|---|---|
+| playback queue and current episode | podcast Rust feature | audio engine executes requested command and reports raw progress/result |
+| widget/App Group frame | last Rust-emitted widget output | WidgetKit-readable snapshot only |
+| AppIntent/Siri/CarPlay/remote command | typed action/headless invocation result | raw OS command, activation, or error |
+| Live Activity/Handoff/deep link | Rust semantic state and action result | OS payload/display/update mechanics |
+| per-podcast signer and provider keys | named product signer/security decision plus capability result | keychain/file/provider capability only after ADR decision |
+| NIP-F4/Blossom publish status | publish ledger/status output | upload/signing/storage capabilities report raw results |
 
 Optimistic native mirrors are allowed only as latency/presentation aids. A
 bookmark toggle may animate immediately if Rust remains authoritative and the
