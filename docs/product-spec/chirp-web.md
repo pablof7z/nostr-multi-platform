@@ -141,21 +141,22 @@ store plaintext outside the rendered snapshot, or infer private-message policy.
 When no active account exists, the UI must render a signed-out state. When
 `decrypt_state` is `limited`, the UI must surface `undecrypted_count` as state.
 
-Outbound NIP-17 send is supported for browser local-key sessions through the
-typed `nmp.nip17.send` action. TypeScript may collect a recipient pubkey and
-plaintext draft, but the action must cross the generated `dispatch_bytes`
-builder; Rust owns recipient and self-copy kind:10050 relay-list lookup,
-gift-wrap construction, NIP-44 encryption, signing, explicit relay routing,
-outbox diagnostics, and fail-closed errors. If either receiver's DM relay list
-is missing, or if the active signer cannot satisfy the required NIP-44/signing
-capabilities, the send must fail visibly through Rust action state rather than
-falling back to public content relays or a shell-local simulation.
+Outbound NIP-17 send is supported for browser local-key and NIP-46 sessions
+through the typed `nmp.nip17.send` action. TypeScript may collect a recipient
+pubkey and plaintext draft, but the action must cross the generated
+`dispatch_bytes` builder; Rust owns recipient and self-copy kind:10050
+relay-list lookup, gift-wrap construction, NIP-44 encryption, signing, explicit
+relay routing, outbox diagnostics, and fail-closed errors. If either receiver's
+DM relay list is missing, or if the active signer cannot satisfy the required
+NIP-44/signing capabilities, the send must fail visibly through Rust action
+state rather than falling back to public content relays or a shell-local
+simulation.
 
-NIP-07 and NIP-46 outbound private-message parity remains limited until the
-browser runtime wires async signer-provider NIP-44 encryption for those signer
-kinds (#2195). The UI may render the same send form, but it must treat
-capability failures as product state and must not implement private-message
-encryption or relay policy in TypeScript.
+NIP-07 outbound private-message parity remains limited until the browser runtime
+wires and feature-detects `window.nostr.nip44.{encrypt,decrypt}` (#2247). The UI may
+render the same send form, but it must treat capability failures as product
+state and must not implement private-message encryption or relay policy in
+TypeScript.
 
 Source relay provenance must come from the Rust ingest dispatcher. Live relay
 gift-wraps carry the delivering relay URL into the inbox projection; source-free

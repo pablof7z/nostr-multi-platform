@@ -10,10 +10,10 @@
 //! `CapabilityEnvelope` advertises sign/nip04/nip44 presence derived from the
 //! registered `Signer` at registration time.
 //!
-//! Encrypt/decrypt (`nip04`/`nip44`) are **ADVERTISED as metadata only** — no
-//! kernel encrypt-roundtrip seam exists yet. Wire-routing encrypt/decrypt through
-//! the kernel remains tracked by #2195; this honest annotation keeps the seam
-//! boundary visible without a silent omission.
+//! NIP-44 encrypt/decrypt commands are routed through the same signer-provider
+//! seam by `runtime::pump`; providers that return `Unsupported` surface that as
+//! a data-shaped continuation failure. NIP-04 remains capability metadata until
+//! a browser consumer needs that older namespace.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -28,18 +28,15 @@ use nmp_signers::{Nip46Signer, Signer, SignerBackend};
 ///
 /// # Scope boundary
 ///
-/// `nip04`/`nip44` are advertised as metadata only. No kernel
-/// encrypt-roundtrip seam exists in this track; encrypt/decrypt routing
-/// is tracked by #2195.
+/// `nip44` is both introspection and a routed browser capability. `nip04` is
+/// still introspection only because no browser-runtime command consumes it.
 #[derive(Clone, Debug)]
 pub struct CapabilityEnvelope {
     /// The signer can sign events (always `true` for a registered provider).
     pub sign_event: bool,
-    /// The signer exposes a NIP-04 encrypt/decrypt namespace (metadata only —
-    /// not wire-routed in this track).
+    /// The signer exposes a NIP-04 encrypt/decrypt namespace (metadata only).
     pub nip04: bool,
-    /// The signer exposes a NIP-44 encrypt/decrypt namespace (metadata only —
-    /// not wire-routed in this track).
+    /// The signer exposes a NIP-44 encrypt/decrypt namespace.
     pub nip44: bool,
     /// Backend discriminator (LocalKey / Nip07 / …).
     pub backend: SignerBackend,

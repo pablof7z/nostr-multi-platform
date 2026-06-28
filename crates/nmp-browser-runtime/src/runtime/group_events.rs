@@ -112,11 +112,7 @@ impl BrowserRuntimeHandle {
             .remove_snapshot_projection(&session.projection_key);
     }
 
-    fn register_group_events_sidecar(
-        &mut self,
-        key: &str,
-        projection: Arc<GroupEventsProjection>,
-    ) {
+    fn register_group_events_sidecar(&mut self, key: &str, projection: Arc<GroupEventsProjection>) {
         let key_for_row = key.to_string();
         self.runtime
             .reducer

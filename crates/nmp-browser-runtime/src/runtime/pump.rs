@@ -28,13 +28,13 @@ use std::sync::mpsc::{Receiver, TryRecvError};
 use nmp_core::actor::{ActorCommand, ActorMail, SignCommand};
 use nmp_core::{CommandApplyOutcome, CommandSender, KernelReducer, OutboundMessage};
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
-use nmp_signers::PublicKey;
 
 use super::event::BrowserRuntimeEvent;
 use super::PendingSignedPublish;
 use crate::relay::WakeCell;
 use crate::signer::{
-    broker_sign_request, CapabilityProviderRegistry, PendingSignerCompletions, SignerCompletionTx,
+    broker_sign_request, dispatch_nip44_cipher, CapabilityProviderRegistry, Nip44CipherMode,
+    PendingCipherCompletions, PendingSignerCompletions, SignerCompletionTx,
 };
 
 /// Maximum number of commands applied per `pump()` turn.
@@ -61,6 +61,7 @@ pub(super) struct DrainInboxContext<'a> {
     pub(super) pending: &'a mut HashMap<String, PendingSignedPublish>,
     pub(super) registry: &'a CapabilityProviderRegistry,
     pub(super) pending_signer_completions: &'a mut PendingSignerCompletions,
+    pub(super) pending_cipher_completions: &'a mut PendingCipherCompletions,
     pub(super) completion_tx: &'a SignerCompletionTx,
     pub(super) wake: &'a WakeCell,
     pub(super) command_sender: &'a CommandSender,
@@ -80,7 +81,7 @@ pub(super) struct DrainInboxContext<'a> {
 pub(super) fn drain_inbox(
     reducer: &mut KernelReducer,
     rx: &Receiver<ActorMail>,
-    ctx: DrainInboxContext<'_>,
+    mut ctx: DrainInboxContext<'_>,
 ) -> DrainOutcome {
     let mut outbound: Vec<OutboundMessage> = Vec::new();
     let mut events: Vec<BrowserRuntimeEvent> = Vec::new();
@@ -118,7 +119,7 @@ pub(super) fn drain_inbox(
             };
         outbound.extend(protocol_outbound);
         for cmd in commands {
-            let Some(cmd) = apply_browser_cipher_command(reducer, ctx.registry, cmd) else {
+            let Some(cmd) = apply_browser_cipher_command(reducer, &mut ctx, cmd) else {
                 continue;
             };
             match reducer.apply_actor_command(cmd) {
@@ -178,7 +179,7 @@ pub(super) fn drain_inbox(
 
 fn apply_browser_cipher_command(
     reducer: &KernelReducer,
-    registry: &CapabilityProviderRegistry,
+    ctx: &mut DrainInboxContext<'_>,
     command: ActorCommand,
 ) -> Option<ActorCommand> {
     match command {
@@ -188,7 +189,7 @@ fn apply_browser_cipher_command(
             continuation,
         }) => {
             let result = resolve_signer_pubkey(reducer, signer_pubkey, "browser sign")
-                .and_then(|account| run_sign_event(registry, &account, unsigned));
+                .and_then(|account| run_sign_event(ctx.registry, &account, unsigned));
             continuation.call(result);
             None
         }
@@ -198,18 +199,18 @@ fn apply_browser_cipher_command(
             signer_pubkey,
             continuation,
         }) => {
-            let result = resolve_signer_pubkey(reducer, signer_pubkey, "browser nip44").and_then(
-                |account| {
-                    run_nip44_cipher(
-                        registry,
-                        &account,
-                        &peer_pubkey,
-                        &plaintext,
-                        CipherMode::Encrypt,
-                    )
-                },
-            );
-            continuation.call(result);
+            match resolve_signer_pubkey(reducer, signer_pubkey, "browser nip44") {
+                Ok(account) => dispatch_nip44_cipher(
+                    ctx.registry,
+                    ctx.pending_cipher_completions,
+                    &account,
+                    &peer_pubkey,
+                    &plaintext,
+                    Nip44CipherMode::Encrypt,
+                    continuation,
+                ),
+                Err(reason) => continuation.call(Err(reason)),
+            }
             None
         }
         ActorCommand::Sign(SignCommand::Nip44DecryptForAccount {
@@ -218,18 +219,18 @@ fn apply_browser_cipher_command(
             signer_pubkey,
             continuation,
         }) => {
-            let result = resolve_signer_pubkey(reducer, signer_pubkey, "browser nip44").and_then(
-                |account| {
-                    run_nip44_cipher(
-                        registry,
-                        &account,
-                        &peer_pubkey,
-                        &ciphertext,
-                        CipherMode::Decrypt,
-                    )
-                },
-            );
-            continuation.call(result);
+            match resolve_signer_pubkey(reducer, signer_pubkey, "browser nip44") {
+                Ok(account) => dispatch_nip44_cipher(
+                    ctx.registry,
+                    ctx.pending_cipher_completions,
+                    &account,
+                    &peer_pubkey,
+                    &ciphertext,
+                    Nip44CipherMode::Decrypt,
+                    continuation,
+                ),
+                Err(reason) => continuation.call(Err(reason)),
+            }
             None
         }
         other => Some(other),
@@ -268,39 +269,5 @@ fn run_sign_event(
             "browser sign: pending provider cannot resolve through the synchronous continuation path"
                 .to_string(),
         ),
-    }
-}
-
-enum CipherMode {
-    Encrypt,
-    Decrypt,
-}
-
-fn run_nip44_cipher(
-    registry: &CapabilityProviderRegistry,
-    account_pubkey: &str,
-    peer_pubkey: &str,
-    text: &str,
-    mode: CipherMode,
-) -> Result<String, String> {
-    let entry = registry
-        .resolve(account_pubkey)
-        .ok_or_else(|| format!("browser nip44: no signer for account {account_pubkey}"))?;
-    let nip44 = entry
-        .signer
-        .nip44()
-        .ok_or_else(|| format!("browser nip44: signer {account_pubkey} has no nip44 capability"))?;
-    let peer = PublicKey::from_hex(peer_pubkey)
-        .map_err(|e| format!("browser nip44: invalid peer pubkey: {e}"))?;
-    let mut op = match mode {
-        CipherMode::Encrypt => nip44.encrypt(&peer, text),
-        CipherMode::Decrypt => nip44.decrypt(&peer, text),
-    };
-    match op.poll() {
-        Some(Ok(value)) => Ok(value),
-        Some(Err(error)) => Err(error.to_string()),
-        None => {
-            Err("browser nip44: pending provider cipher routing is tracked by #2195".to_string())
-        }
     }
 }
