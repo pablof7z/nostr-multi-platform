@@ -71,6 +71,13 @@ publish command, policy, signer, and correlation data. New `EventDraft` or
 `PublishContext` types are justified only if they remove branching or duplicate
 route/privacy/protocol state elsewhere.
 
+The missing invariant is route provenance, not a broad context wrapper. The
+publish path must know whether an explicit relay set is a manual override, a
+NIP-29 host pin, a verified private inbox, an imported/verbatim external event,
+or another protocol-owned route. The exact representation is an ADR decision,
+but the distinction must survive signing, remote-signer parking, retry/resume,
+local ingest, and status emission.
+
 ## Stage 2: Finalization
 
 Finalization is the last mutation point before signing. It applies route and
@@ -86,6 +93,11 @@ protocol envelope rules that may depend on the publish call:
 Finalization must fail before signing if the required context is missing. A
 group publish without a group route, an unknown private inbox, or an unsupported
 explicit relay policy should not create a signed event.
+Generic raw publishing cannot silently bypass protocol invariants. An `h`-tagged
+NIP-29 write either comes from the NIP-29 builder/plan with group-route proof or
+is explicitly classified as imported/verbatim/manual raw publish with reduced
+guarantees. Likewise, private-event publishes must distinguish verified
+NIP-17 inbox routing from other explicit private-envelope delivery.
 
 ## Stage 3: Signing
 
@@ -105,11 +117,18 @@ capability round trips, failure state, and replayability. The action vocabulary
 does not encode a native signing backend. Native executes keychain or signer
 capabilities and reports raw results; Rust decides the next state.
 
-The output is a signed event.
+Signer runtime state is an output contract. Local, NIP-46, NIP-55, agent, and
+named signer paths should expose typed pending/ready/failed/remote/local status,
+broker initialization or teardown state where applicable, and correlation ids
+for parked continuations. Shells should not infer signer completion from missing
+errors, URI callbacks, or side effects.
 
-Publishing a pre-signed event is an expert path. It still enters Rust with route
-and privacy context, validation result, correlation id, and route policy. It
-must not create a second native publish API.
+The output is a signed event plus signer status updates.
+
+Publishing a pre-signed event is an integration/import path. It still enters
+Rust with route and privacy context, validation result, correlation id, and route
+policy. It must not create a second native publish API or bypass local validation,
+store ingest, publish status, retry/cancel, or privacy gates.
 
 ## Stage 4: Publishing
 
@@ -131,6 +150,13 @@ publish(event, relays = [...])
 There should be one canonical explicit-relay representation internally. The API
 can expose convenient builders, but it should not grow parallel explicit-route
 paths that bypass the publish policy table.
+
+Existing explicit-relay seams must converge before this is considered clean. If
+`PublishTarget::Explicit`, protocol publish plans, routing contexts, and
+pre-signed publish APIs all represent "send exactly here," the ADR must either
+collapse them to one internal representation or document why each remaining seam
+protects a different invariant. Dead explicit-target fields should be deleted,
+not taught as part of the architecture.
 
 Protocol crates can define stricter routing:
 
@@ -181,6 +207,12 @@ highlighter.share_artifact_to_room(artifact_id, room_id)
 
 These examples are interface sketches. The settled API should prefer generated,
 typed, field-complete builders over JSON action strings or raw tag mutation.
+App-owned raw event templates are acceptable only inside Rust typed actions or
+generated builders. They may construct app-specific kinds such as highlights,
+comments, lists, or podcast events, but they still must carry correlation,
+validation, route/privacy context, signer selection, and publish-status output
+through the same actor-owned flow. Fire-and-forget event writes are not a
+separate app runtime.
 
 ## Compatibility Boundaries
 
@@ -197,7 +229,22 @@ Lifecycle and capability control calls may keep dedicated APIs when they do not
 construct events, but new event-producing FFI symbols, bespoke `send_cmd` paths,
 or native-built `PublishRaw` JSON are out of bounds. Explicit relay publishing
 must have one canonical internal representation, so group pins, podcast write
-relays, and expert overrides do not fork into parallel routing paths.
+relays, and audited app/protocol relay overrides do not fork into parallel
+routing paths.
+
+Public runtime surfaces should be classified explicitly:
+
+- substrate internals;
+- protocol-internal actions and sessions;
+- generated app-feature APIs;
+- capability control and result reporting;
+- diagnostic/test tools;
+- migration shims with deletion criteria.
+
+Generated app-feature APIs are allowed for non-event product work such as
+playback, downloads, provider credentials, STT/TTS, local agents, catalog fetches,
+or imports. They become a violation only when they construct Nostr events, choose
+Nostr relays, infer protocol tags, or own publish/sign status outside Rust.
 
 ## Publish Status
 

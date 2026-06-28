@@ -1,9 +1,10 @@
 # High-Level Architecture Overview
 
-> **Status:** Proposed design capture for issues #2313 and #2316. This is not a
-> shipped API contract. It records the desired shape so an ADR can settle final
-> naming, migration order, compatibility scope, and implementation details before
-> code changes.
+> **Status:** Candidate architecture for issues #2313 and #2316, written for ADR
+> review. This is not a shipped API contract and not a settled solution. It
+> records the desired shape, rejection tests, and migration questions so an ADR
+> can decide final naming, migration order, compatibility scope, and
+> implementation details before code changes.
 
 ## Authority And Retirement
 
@@ -46,6 +47,27 @@ The destination is simpler because the public unit becomes a whole feature
 session lifecycle. It is not simpler because Nostr routing, replay ordering,
 projection delivery, signing, and publish policy disappear.
 
+## Design Hypothesis
+
+This is the right destination only if it reduces the public model to a few
+concepts while making the existing correctness invariants harder to violate:
+
+```text
+feature composition
+session lifecycle
+typed output
+typed action / generated builder
+capability result
+publish status
+```
+
+It is the wrong destination if implementation adds a new `LiveQuery` layer while
+leaving product apps to keep using raw `open_interest`, manual projection
+declarations, tick observers, native relay selection, or native publish JSON. The
+test is not whether the names are nicer; the test is whether one feature's live
+state has one owner, one handle, one teardown path, one output contract, and one
+route policy.
+
 ## Complexity Budget
 
 This proposal does not assume today's internal machinery is automatically right.
@@ -66,6 +88,31 @@ invariants to prove, not commitments to add new Rust types. If
 publish context, live counts, or any other mechanism cannot defend its cost
 against a simpler design, it should be deleted, collapsed, or kept as
 migration-scoped compatibility with an owner and deletion/formalization criteria.
+
+## Prior Concern Coverage
+
+This packet is meant to capture the essence of the prior long-form questions and
+episode/wiki decisions:
+
+- **#2313:** Home feed is not special. Default subscriptions should be planned by
+  NMP, usually through outbox routing, and relay-pinned subscriptions are the
+  explicit exception.
+- **#2316:** Serving one feature's state is fragmented across acquisition,
+  replay, sink, admission, projection, tick, dependency tracking, and teardown.
+  The design must collapse that lifecycle; a convenience helper is not enough.
+- **Operator policy:** reusable NMP composition must not own app relays, seed
+  follows, bootstrap relays, signer permissions, onboarding defaults, or product
+  policy.
+- **No polling:** cache-serve wakeups and session reconciliation should be
+  event-driven. A snapshot tick is not a hidden scheduler for product logic.
+- **Projection contract:** clear/tombstone, stale-frame, transactional merge,
+  baseline, and D6 poison semantics are correctness requirements, not optional
+  optimization details.
+- **Publish routing:** explicit relay paths, NIP-17 private routing, and NIP-29
+  host pins must converge on one publish doorway while keeping fail-closed
+  protocol policy outside native shells.
+- **Temporal source of truth:** this directory is not a new planning authority.
+  Final decisions move into ADRs, durable docs, and GitHub issues.
 
 ## Developer-Level Model
 
@@ -265,7 +312,9 @@ An NMP app should be understandable from a small set of concepts:
 
 ## Terms Used Here
 
-The names are deliberately provisional:
+The names are deliberately provisional ADR candidates. They describe invariants
+the design must preserve, not a commitment to add new public types or keep
+current internal types:
 
 - `FeatureSession` or `LiveQuery` means a typed descriptor and handle for the
   live lifecycle a screen, component, widget, or app service opens.
@@ -298,5 +347,13 @@ implementation satisfies these constraints:
   roots, embeds, and source fallbacks are Rust-owned descriptors.
 - Writes preserve three separable phases: construction/finalization, signing,
   and publishing. They still run through one Rust-owned action/publish path.
+- Explicit write routes preserve provenance: manual overrides, NIP-29 host pins,
+  verified private inboxes, and imported/verbatim events are not one anonymous
+  relay bucket.
 - App crates can define product sessions and builders without moving podcast,
   highlighter, playback, capture, queue, or RSS behavior into NMP crates.
+- Generated app-feature APIs are valid for playback, STT/TTS, agents, provider
+  catalogs, imports, and capability control, but event-producing work still goes
+  through typed actions and publish status.
+- Timers are allowed for capability sampling or presentation affordances, not for
+  reducer/session reconciliation or projection repair.

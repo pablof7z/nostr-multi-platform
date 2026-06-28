@@ -11,7 +11,7 @@ pub fn register(app: &mut impl AppHost, policy: AppPolicy) {
     nmp_defaults::features::nip51_lists(app);
     nmp_defaults::features::nip50_search(app, policy.search);
     nmp_defaults::features::nip29_groups(app, policy.groups);
-    nmp_defaults::features::home_feed(app, policy.home_feed);
+    app_feed::features::home_feed(app, policy.home_feed);
 
     highlighter_app::features::register(app, policy.highlighter);
     podcast_app::features::register(app, policy.podcast);
@@ -56,10 +56,24 @@ playback/downloads/feed fetching/transcripts/agents, or gallery showcase
 catalog state. They use NMP features, but they do not become NMP crates unless
 the mechanism is useful to other Nostr apps.
 
+Home feed is a composition proof case, not a privileged framework feature. A
+microblog app may install a home-feed bundle that uses NIP-02 follows, NIP-65
+outbox routing, profile refs, event refs, ranking, mute policy, and app-owned
+fallbacks. Those reusable mechanisms belong in NMP; the product meaning of
+"home" belongs in the app or a reusable feed crate only if it is genuinely a
+generic Nostr feed mechanism.
+
 The app crate is also the right owner for cross-protocol product composition.
 For example, publishing a highlight and then sharing it into a NIP-29 room is
 Highlighter behavior. The highlight feature and NIP-29 feature do not need to
 import each other's domain types.
+
+Custom app features should not require a framework PR. An app Rust crate can
+define a typed session descriptor, output schema, reducer, generated adapter
+contract, actions, event builders, and capability needs for its own domain, then
+compose those with NMP protocol features. What it must not do is push raw relay
+subscriptions, projection declarations, tag mutation, or publish routing into
+the native shell just because the feature is app-specific.
 
 ## Composition Gates
 
@@ -89,6 +103,29 @@ own operator policy such as seed follows, bootstrap relay lists, app relay
 brands, signer permission defaults, or product onboarding choices. Leaf app Rust
 crates provide that policy explicitly, preferably through typed builders that
 make the "with policy" versus "without policy" decision visible at compile time.
+
+## App Feature Runtime Contract
+
+App-owned Rust crates may need runtime services that are not reusable Nostr
+protocol machinery. Podcast playback, queueing, downloads, transcript work,
+provider catalogs, STT/TTS, local agents, and import/export flows are valid app
+features. They should have generated app-feature APIs or typed capability
+requests, not be forced through NMP protocol crates and not be mistaken for
+legacy FFI just because they are app-specific.
+
+The contract is still Rust-owned:
+
+- app Rust owns durable state, policy, reducers, shutdown, scheduled work, and
+  injected clocks;
+- native/web executes platform capabilities and reports raw results;
+- generated app-feature APIs are typed and versioned;
+- capability result channels re-enter the Rust reducer path;
+- event-producing operations still use the typed action/publish doorway.
+
+This distinguishes legitimate app runtime surface from forbidden protocol
+escape hatches. A Whisper upload, playback seek, provider-key read, or local
+agent tool call may be an app-feature API. A native-built Nostr event,
+native-chosen relay route, or native-owned publish status is not.
 
 ## Developer Mental Model
 
@@ -133,6 +170,11 @@ Projection caches generated for Swift, Kotlin, TypeScript, C, or TUI are not
 product state. They are render adapters for typed Rust outputs. A shell may keep
 row-delta caches for profiles, event refs, playback rows, or domain slices when
 the adapter owns their lifecycle and Rust remains the durable source of truth.
+
+Connectivity follows the same rule. Native may report raw platform facts such
+as `NWPath` state, metered network flags, background mode, or reachability. Rust
+owns app policy such as Wi-Fi-only publishing, relay-pool pause/resume, retry
+eligibility, and whether pending work may continue on the current connection.
 
 ## Downstream App Shape
 

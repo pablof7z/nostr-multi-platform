@@ -152,6 +152,49 @@ Examples of complexity that must be justified, not inherited:
 The ADR should record rejected simpler alternatives. If the only defense is
 "this is how the current code works," the mechanism is not justified.
 
+## Stress Tests
+
+The design must survive these cases before implementation starts:
+
+- **NDK-style subscribe:** a developer asks for kind:1 notes by a dynamic author
+  set and receives one typed output while NMP splits the work across author
+  relays, cache replay, live relays, and later mailbox changes.
+- **NIP-29 group:** a group view is host-relay-pinned, admits only events with
+  valid relay provenance/context, fails closed without group context, and tears
+  down with the handle.
+- **Component embed storm:** many visible event bodies create profile/event/embed
+  claims; repeated refs share demand; closing components releases demand and
+  generated/host caches clear without stale rows.
+- **Account switch:** active-account sessions replan sources and routes without
+  native timers, wildcard fallthrough, or stale projections from the old account.
+- **Malformed or stale frame:** generated/host merge code applies updates
+  transactionally; decode poison cannot corrupt the baseline; clear/tombstone
+  frames remove rows.
+- **Read-your-writes:** a locally signed event enters the store/ingest path before
+  relay delivery, so projections update through the same reducer path as relay
+  events, not native optimism.
+- **Private routing:** NIP-17 and similar private writes never fall back to public
+  outbox routes when recipient inboxes are unknown.
+- **Downstream proof:** Highlighter web, Highlighter iOS, Podcast Player, and
+  gallery can all express their flows without native-owned protocol policy or
+  app-domain nouns in NMP crates.
+
+## Timer Boundary
+
+The no-polling rule applies to product state reconciliation, session routing,
+source tracking, relay planning, projection refresh, and reducer correctness.
+Those must be event-driven.
+
+Capability executors and presentation affordances may still use timers when the
+platform API is inherently sampled or throttled: media playback position,
+download progress throttling, speech/audio progress, animation affordances, or a
+"copied" label clearing after a delay. Those timers report raw capability or
+presentation facts; they do not decide durable state, open relay demand, refresh
+projections, or repair missed reducer work.
+
+Every remaining tick observer or timer that touches reducer/session state needs
+an explicit invariant, owner, and deletion or formalization decision.
+
 ## Non-Goals
 
 - Do not expose a generic raw event callback as the main app API.
@@ -180,6 +223,16 @@ extend grep gates so new product code cannot add raw `open_interest` app reads,
 new tick reconcilers, native relay timers, or native publish/tag construction.
 Classify every existing raw read/write door as substrate, protocol-internal,
 diagnostic/test, migration shim, or product API to remove/formalize.
+Record baseline counts for: raw `open_interest` public callers, `nmp init`
+teaching `register_defaults()` as production architecture, tick observers,
+`declare_consumed_projections` app-facing docs, duplicate explicit-relay publish
+representations, native-owned relay/policy/tag construction, hand-authored
+projection merge caches, downstream direct NDK/FFI publish paths,
+`@nostr-dev-kit/ndk` product fetch/sign/publish usage, native-owned network
+policy such as `hl.network.wifi_only`, shell-side `tagsJson`/`p:`/`e:`/`a:`
+protocol parsing, fire-and-forget event writes, and public `nmp_app_open_feed`
+or `nmp_app_open_interest` app doors. The first PR should add ratchets so these
+counts cannot grow.
 Gates: `cargo test -p nmp-testing --test doctrine_lint_smoke` and
 `cargo test -p nmp-testing --test feed_public_surface_retired`.
 
@@ -189,7 +242,9 @@ Add the smallest private descriptor facade that compiles into
 consumer ids, relay pins, and close. Do not add a new lifecycle engine. Use one
 real session as proof. Acceptance: replay-before-live and close-both invariants
 still pass in observer replay, descriptor idempotence, reducer parity, and
-`nmp-defaults` feed open/close tests; no new public API is taught.
+`nmp-defaults` feed open/close tests; no new public API is taught. The proof
+must cover relay pins, cache replay, source changes, open/close teardown, and at
+least one component-ref/gallery embed path under the same session lifecycle.
 
 **P2: Extract shape reconciliation and delete tick use where events exist.**
 Consolidate the duplicated open/close-on-shape-change controllers behind one
@@ -199,14 +254,16 @@ pointer-source controllers only where their semantics match. Delete
 changes that already have event hooks. For each remaining tick observer, either
 add the missing explicit event source or document a bounded actor-scheduled
 invariant with a staged deletion gate. "Compatibility" alone is not a reason to
-keep it.
+keep it. Use the existing cache-serve wakeup pattern as the reference: live/store
+events enqueue coalesced work, and actor ticks only drain already-declared work.
 
 **P3: Make scoped session demand own scoped output demand.**
 Prove that opening a session can declare its typed output. Keep
 `DeclaredProjections` only for always-on app chrome, compatibility, or measured
 wire/CPU wins. Acceptance: `public_typed_projection_decode` still proves
 external decode; generated adapters still handle full, delta, clear, stale-frame,
-and baseline semantics.
+baseline, transactional merge, and D6 poison semantics. `declare_consumed_projections`
+must stop being taught as the app manifest for screen/session outputs.
 
 **P4: Migrate component refs and gallery embeds first.**
 Move `ProfileRef`, `EventEmbed`, URI decoding, relay hints, embed envelopes, and
@@ -230,14 +287,23 @@ selection, `PublishTarget`, correlation id, and policy validation without adding
 new public types. Add a named draft/context type only if it deletes branching or
 duplicate route/privacy/protocol state. Gates: publish policy, D10 private
 routing, signer continuation, generated builder round-trip, and action-result
-tests.
+tests. Explicit relay cleanup is part of this phase: delete dead explicit-target
+fields or route every explicit publish through one canonical internal seam with
+one attribution/status model. Route provenance is the critical missing invariant:
+manual explicit relay, NIP-29 host pin, verified NIP-17 inbox, and
+external/verbatim publish must not collapse into an indistinguishable
+`Explicit` bucket. Tests must prove generic raw publish cannot accidentally
+bypass NIP-29 `h`-tag/group-route proof or NIP-17 verified-inbox policy, and
+that remote signer continuations preserve route provenance plus correlation id.
 
 **P7: Prove downstream apps before declaring the architecture final.**
 Highlighter must express home feed, room chat, search, comments, share-to-room,
 capture, feedback, signer flows, artifact share, article lookup, and room
 discussion through app-owned Rust bundles and NMP runtime dispatch. Direct web
 NDK relay/filter/tag/sign/publish paths, Swift rich-text protocol projection,
-and Swift-owned sync policy must be removed or formally rejected by the ADR.
+Swift-owned sync policy, Swift `tagsJson` parsing, and fire-and-forget writes
+must be removed or formally rejected by the ADR. SSR-only fetches and migration
+shims must be labeled as such; they cannot be the product runtime model.
 
 Podcast Player must express playback, queue, feed subscription, NIP-F4, Blossom
 publish, explicit write relays, widgets, settings actions, signer runtime, and
@@ -259,8 +325,15 @@ Update architecture API-surface docs, overview/DX docs, builder-guide pages for
 subscription planning, publish and ledger, walkthroughs, action-triggered
 subscriptions, ADRs, wiki pages, and any episode/transcript-derived teaching
 material that currently presents projection tiers or defaults as app-facing
-concepts. Compatibility APIs may remain only with scope labels, doctrine gates,
-and deletion criteria.
+concepts. The `nmp init` template must be corrected according to the ADR
+decision: either production scaffold with explicit feature composition and
+policy builders, or clearly labeled tutorial preset. Compatibility APIs may
+remain only with scope labels, doctrine gates, and deletion criteria.
+At minimum, audit and rewrite stale guidance in `docs/product-spec/api-surface.md`,
+builder-guide mental-model/codegen/walkthrough pages, subscription planning and
+publish guides, wiki app-composition pages, and any generated template that
+teaches `register_defaults`, `open_interest`, projection tiers, or
+`declare_consumed_projections` as the normal product architecture.
 
 ## Fitness Checks
 
@@ -286,6 +359,9 @@ The destination is not reached until these are true:
   pages, or old design chats.
 - Every retained internal mechanism has a written invariant, rejected simpler
   alternative, and deletion/consolidation decision.
+- Baseline counts for old patterns move down or stay flat behind ratchets; no
+  milestone is allowed to add a second route, projection, or publish lifecycle
+  while claiming progress toward simplification.
 
 ## Follow-Up ADR Decisions
 
@@ -294,15 +370,26 @@ The ADR for #2316 must settle:
 - final names for `LiveQuery`, `LiveView`, `ProjectionSession`, or another term;
 - whether the public app door is one generic `open_query` or typed per-feature
   open helpers backed by one descriptor model;
+- which simpler solution was rejected, and what evidence proves the selected
+  shape is not another convenience layer over the old lifecycle split;
+- whether default public reads are always planned/outbox-routed unless a
+  descriptor explicitly declares relay-pinned, private, or audited explicit
+  routing;
+- how app Rust crates define custom sessions, outputs, reducers, builders, and
+  capability needs without changing NMP crates or moving protocol work to native;
 - how existing feed, group, search, ref, and pointer-source sessions migrate;
-- how projection producer ownership replaces public Tier-1/Tier-2 language;
+- how projection producer ownership replaces public Tier-1/Tier-2 language, and
+  how schema keys, owner/version metadata, collision failures, and alias/replace
+  rules work;
 - how event draft construction, signer selection, and publish routing are
   represented in generated builders;
+- whether route provenance can be represented with existing publish fields or
+  needs one narrow internal type;
 - what doctrine lint blocks reintroduction of raw observer, tick, or polling
-  recipes.
+  recipes;
 - how `register_defaults()` is positioned after explicit feature composition is
   the taught model;
-- which compatibility APIs remain available and what scopes may call them.
+- which compatibility APIs remain available and what scopes may call them;
 - whether current `ReducedSource`/`open_feed` machinery is amended, renamed, or
   replaced by a smaller descriptor/reconciler model;
 - whether `nmp init` generates a production scaffold or a tutorial preset, and
