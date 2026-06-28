@@ -80,10 +80,19 @@ pub(crate) fn fetch_lnurl_invoice_blocking(
     let separator = if callback.contains('?') { '&' } else { '?' };
     // Encode the well-known URL as bech32 for the `lnurl=` callback param.
     // If encoding fails we still attempt the request — some providers omit
-    // the check, and failing silently here is preferable to aborting the zap.
+    // the check, so aborting the zap would be too aggressive.  The failure
+    // is unexpected (the URL was just fetched successfully), so emit a
+    // warning so the root cause is diagnosable.
     let lnurl_param = pay::url_to_bech32_lnurl(&well_known_url)
         .map(|b| format!("&lnurl={}", url_encode_query(&b)))
-        .unwrap_or_default();
+        .unwrap_or_else(|e| {
+            tracing::warn!(
+                well_known_url = %well_known_url,
+                error = %e,
+                "nip57: bech32 encode of well-known URL failed; proceeding with empty lnurl= param"
+            );
+            String::new()
+        });
     let callback_url = format!(
         "{callback}{separator}amount={amount_msats}&nostr={}{lnurl_param}",
         url_encode_query(signed_zap_request_json),
