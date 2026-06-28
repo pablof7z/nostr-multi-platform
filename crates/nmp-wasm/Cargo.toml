@@ -4,55 +4,12 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Browser-facing NMP worker protocol and wasm runtime facade."
+description = "Serializable browser worker protocol types retained for older NMP Rust consumers."
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+crate-type = ["rlib"]
 
 
 [dependencies]
-# V-01 Phase 1b: nmp-core compiled with `default-features = false` so the
-# wasm32 build sees only the pure kernel + ActorCommand data type + substrate
-# traits. Phase 1c (PR #341) gated actor/, relay_worker/, and tungstenite
-# behind `#[cfg(feature = "native")]`, which unblocked this dep. Phase 2 will
-# wire browser runtime composition through a WASM-compatible transport
-# (web_sys::WebSocket + OPFS-SQLite store injection).
-nmp-core = { path = "../nmp-core", default-features = false }
-nmp-store = { path = "../nmp-store" }
-# #1740 step 1 — the typed feed-session param model lives in nmp-feed (single
-# source, D4). The wasm runtime re-exports its param types and the boundary
-# decode/validation surface; it adds no parallel model.
-nmp-feed = { path = "../nmp-feed" }
-nmp-nip18 = { path = "../nmp-nip18" }
-# Step 8 phase A: the `relay_protocol` constants moved from
-# `nmp-core::relay_protocol` to `nmp-network::relay_protocol`. Wasm32 uses the
-# pure-Rust `native = false` slice of nmp-network (no tungstenite/mio/rustls).
-nmp-network = { path = "../nmp-network", default-features = false }
-nmp-signer-iface = { path = "../nmp-signer-iface" }
-nostr = { workspace = true, features = ["std"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-wasm-bindgen = "0.2.121"
-
-[dev-dependencies]
-nmp-core = { path = "../nmp-core", features = ["test-support"], default-features = false }
-# W1 — headless wasm boot test (`tests/wasm_boot.rs`). Version must match the
-# `wasm-bindgen` pin above so the test binary's abi token matches the CLI.
-wasm-bindgen-test = "0.3"
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-# W1 — surface any future wasm panic in the browser DevTools console instead
-# of an opaque `RuntimeError: unreachable` swallowed by the worker harness.
-# Net-new to Cargo.lock (was not a transitive dep before).
-console_error_panic_hook = "0.1"
-# `js_sys::Function` (snapshot callback slot) + `js_sys::Promise`
-# (used by the wasm-bindgen entrypoint in lib.rs).
-js-sys = "0.3.98"
-# Step 8 phase C moved `BrowserRelayDriver` + its `web_sys::WebSocket`
-# lifecycle into `nmp-network::browser_driver`. This crate no longer needs
-# a direct `web-sys` dependency — the driver is consumed through
-# `nmp-network` (which has its own wasm32-gated `web-sys` dep).
-# #1937 — one-shot runtime deadline driver. `gloo_timers::callback::Timeout`
-# fires a single browser deadline; dropping it cancels the pending callback.
-# In 0.3.x the callback API ships in the default crate (no extra feature flag).
-gloo-timers = "0.3"

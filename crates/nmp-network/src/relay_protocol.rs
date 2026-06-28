@@ -27,8 +27,8 @@
 //!
 //! The socket I/O loop itself (`mio` readiness, `tungstenite::write` /
 //! `tungstenite::read`, thread spawning) stays in [`crate::relay_worker`]. The
-//! `web_sys::WebSocket` driver in `nmp-wasm` is callback-driven and cannot
-//! share that loop — only the data-plane primitives above. The native worker
+//! `web_sys::WebSocket` driver used by `nmp-browser-runtime` is callback-driven
+//! and cannot share that loop — only the data-plane primitives above. The native worker
 //! re-exports these constants directly.
 
 use std::time::Duration;

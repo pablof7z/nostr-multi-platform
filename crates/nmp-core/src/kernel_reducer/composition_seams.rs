@@ -71,8 +71,8 @@ impl super::KernelReducer {
     /// Rebuild the wrapped kernel around `store` while preserving the reducer's
     /// headless observer/projection slots.
     ///
-    /// Called by `nmp-wasm` at the top of `Start`, before relay drivers and
-    /// runtime deadlines capture the reducer. The caller must only use this as
+    /// Called by `nmp-browser-runtime` at the top of `Start`, before relay
+    /// drivers and runtime deadlines capture the reducer. The caller must only use this as
     /// a boot-time seam: swapping stores mid-session would fork publish,
     /// coverage, and query state across two backends.
     pub fn replace_store_for_start(&mut self, store: Arc<dyn EventStore>) {

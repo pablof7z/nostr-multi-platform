@@ -278,23 +278,3 @@ pub enum WorkerEvent {
         correlation_id: Option<String>,
     },
 }
-
-/// Normalise the relay bootstrap list from a [`StartConfig`]: if
-/// `relay_bootstrap` is non-empty, it is the authoritative list; otherwise
-/// synthesise one `RelayBootstrapEntry` per URL string in `relays` with
-/// `role = "both"`.
-pub(crate) fn relay_bootstrap_from_config(
-    relays: Vec<String>,
-    relay_bootstrap: Vec<RelayBootstrapEntry>,
-) -> Vec<RelayBootstrapEntry> {
-    if !relay_bootstrap.is_empty() {
-        return relay_bootstrap;
-    }
-    relays
-        .into_iter()
-        .map(|url| RelayBootstrapEntry {
-            url,
-            role: "both".to_string(),
-        })
-        .collect()
-}

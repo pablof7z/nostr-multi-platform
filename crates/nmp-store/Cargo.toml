@@ -45,7 +45,7 @@ unicode-normalization = "0.1"
 # targets `web-time` re-exports `std::time` verbatim (zero-cost, zero-drift).
 # `MemEventStore::gc_step` uses `Instant` only for its wall-clock budget check
 # (`max_duration_ms`); that path is wasm-reachable (nmp-store → nmp-core →
-# nmp-wasm), so the bare `std::time::Instant::now()` call panicked at runtime.
+# nmp-browser-runtime), so the bare `std::time::Instant::now()` call panicked at runtime.
 web-time = "1.1"
 
 # LMDB backend deps — feature-gated. The fork at crates/nmp-nostr-lmdb carries

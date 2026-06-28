@@ -3,9 +3,10 @@
 > **Reviewed:** 2026-06-26. Sourced directly from
 > `crates/nmp-browser-runtime/src/wasm/` and `web/packages/runtime-web/src/`.
 > This document is the single source of truth for the browser worker protocol.
-> `crates/nmp-wasm` remains the lower ABI-glue crate; `nmp-browser-runtime`
-> owns worker composition, platform adaptation, signer registration, storage
-> registration, and the typed app builder (ADR-0067).
+> `nmp-browser-runtime` owns the wasm-bindgen Worker export, worker composition,
+> platform adaptation, signer registration, storage registration, and the typed
+> app builder (ADR-0067). `crates/nmp-wasm` is retained only as a serializable
+> protocol-type crate for older Rust consumers.
 
 `crates/nmp-browser-runtime` exports `NmpWasmRuntime` for the dedicated browser
 Worker. That Worker event loop drives a `KernelReducer` (D4): it is the single
@@ -319,14 +320,15 @@ routing-inspector renderer can work across both surfaces.
 - **OPFS-SQLite browser store (shipping under #1007).** The durable backend and
   the async-open-before-`Start` injection seam are live: the worker `await`s
   `prepare_store(app_id, database_name)` before dispatching `Start` so the kernel
-  injects the per-app OPFS store instead of running in memory. On open failure the
-  session falls back to in-memory and reports a stable `store_open_failure` reason
-  on the Tier-3 snapshot (Safari < 17.4 / OPFS-SAH unavailable, private browsing,
-  quota denied, handle loss, second-tab pool-lock). Taxonomy + the multi-tab
-  "second tab is an explicit ephemeral tier" decision live in ADR-0054 §9
-  (`crates/nmp-browser-runtime/src/wasm/store_failure.rs`). IndexedDB is not the
-  chosen backend: it is async-only and cannot satisfy the synchronous
-  `EventStore` contract.
+  injects the per-app OPFS store instead of running in memory. Before opening
+  OPFS, `prepare_store` attempts a Web Locks `ifAvailable` exclusive lock keyed
+  by the same database name. The lock-holder is the only durable tab; non-holders
+  fall back to in-memory and report `opfs_store_open_failure:
+  second_tab_pool_lock` on the Tier-3 snapshot. Other open failures report the
+  stable taxonomy in `crates/nmp-browser-runtime/src/wasm/store_failure.rs`
+  (Safari < 17.4 / OPFS-SAH unavailable, private browsing, quota denied, handle
+  loss, unknown). IndexedDB is not the chosen backend: it is async-only and
+  cannot satisfy the synchronous `EventStore` contract.
 - **NIP-55 signer on wasm.** Android external-signer intents are not a browser
   runtime capability. NIP-46 bunker signing and NIP-44 encrypt/decrypt routing
   are wired through `kind = "nip46"` and the browser provider registry. The

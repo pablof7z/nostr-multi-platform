@@ -9,4 +9,4 @@ source_refs:
 
 # crates/nmp-wasm
 
-ABI glue shell (actively being trimmed down); contains wasm-bindgen exports, byte transport, callbacks, panic guards, and lifecycle mechanics without owning routing, signing policy, NIP modules, protocol defaults, projection policy, persistence policy, or retry policy
+Serializable browser worker protocol-type crate retained for older Rust consumers; contains request/event wire structs without owning wasm-bindgen exports, Worker lifecycle, routing, signing policy, NIP modules, protocol defaults, projection policy, persistence policy, or retry policy

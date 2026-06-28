@@ -6,12 +6,13 @@
 //! - the capability/signer provider registry;
 //! - browser timer/clock seams;
 //! - the `BrowserAppBuilder` typed composition root.
+//! - the wasm-bindgen Worker entry point (`wasm::NmpWasmRuntime`).
 //!
 //! # Does NOT own
 //! - routing/outbox policy (that is `nmp-router`/kernel);
 //! - signing policy or signer-provider choice semantics (that is `nmp-signers`);
 //! - NIP modules, protocol defaults, app defaults, projection policy, persistence policy;
-//! - the wasm-bindgen ABI surface (that is the sibling `nmp-wasm` ABI shell).
+//! - legacy `nmp-wasm` protocol compatibility concerns.
 //!
 //! # Public API (issues #2046 / #2057 / #2058)
 //!

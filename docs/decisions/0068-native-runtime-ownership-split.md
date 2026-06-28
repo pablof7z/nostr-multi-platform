@@ -39,9 +39,9 @@ for browser apps:
    protocol defaults, app defaults, projection policy, persistence policy,
    retry policy, session semantics, or account state.
 
-`nmp-browser-runtime` / `nmp-wasm` remain the browser analogue:
-`nmp-browser-runtime` owns the browser runtime adapter and `nmp-wasm` owns wasm
-ABI glue.
+`nmp-browser-runtime` remains the browser analogue: it owns the browser runtime
+adapter and wasm-bindgen Worker export. `nmp-wasm` is retained only as a
+serializable protocol-type crate for older Rust consumers.
 
 ## Current migration debt
 

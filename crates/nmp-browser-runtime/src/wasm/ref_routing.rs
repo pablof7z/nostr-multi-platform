@@ -4,9 +4,8 @@
 
 //! ADR-0063 reference-resolution routing helpers for `NmpRuntimeCore` (#2038).
 //!
-//! Mirrors `nmp-wasm/src/dispatch_routing.rs` (the `RefDispatch` arm only).
 //! Defined here so `nmp-browser-runtime` can handle `resolve_ref` /
-//! `release_ref` without depending on the `nmp-wasm` ABI crate. The
+//! `release_ref` without depending on the retained `nmp-wasm` protocol crate. The
 //! discriminant encoding is identical to the native FFI (namespace 0=profile,
 //! 1=event; shape per-namespace; liveness 0=CacheOk, 1=Live).
 //!

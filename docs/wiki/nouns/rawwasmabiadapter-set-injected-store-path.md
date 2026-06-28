@@ -9,4 +9,4 @@ source_refs:
 
 # RawWasmAbiAdapter::set_injected_store path
 
-legacy prior art still compiled and tested but not on the live composition path
+Retired prior art deleted from `nmp-wasm`; store injection now lives in `nmp-browser-runtime`.

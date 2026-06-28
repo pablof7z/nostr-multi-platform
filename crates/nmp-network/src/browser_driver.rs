@@ -2,18 +2,12 @@
 //!
 //! # Step 8 phase C — relocation
 //!
-//! Moved verbatim from `nmp-wasm/src/relay_driver.rs` so both transports
-//! (native `relay_worker` + browser `BrowserRelayDriver`) live side-by-side in
-//! `nmp-network`, matching spec §3.8. The driver's behavior is unchanged; the
-//! only structural difference vs. the prior location is that the kernel
-//! handle is no longer `Rc<RefCell<KernelReducer>>` — `nmp-network` cannot
-//! depend on `nmp-core` (that direction would close a Cargo-level dep cycle
-//! since `nmp-core` already depends on `nmp-network`). Instead the driver now
-//! holds a [`BrowserKernelHandlers`] bag of `Rc<dyn Fn(...)>` closures that
-//! `nmp-wasm::relay_pool` constructs from its `KernelReducer` handle. The
-//! closures still own the same four kernel touchpoints — they just live one
-//! crate up. The data-flow shape (driver -> handler -> kernel -> outbound
-//! sink -> drivers) is identical; only the indirection changed.
+//! Moved out of the retired `nmp-wasm` runtime path so both transports (native
+//! `relay_worker` + browser `BrowserRelayDriver`) live side-by-side in
+//! `nmp-network`, matching spec §3.8. The browser runtime now installs a
+//! [`BrowserKernelHandlers`] bag of `Rc<dyn Fn(...)>` closures, keeping the
+//! driver free of any `nmp-core` dependency. The data-flow shape is
+//! driver -> handler -> kernel -> outbound sink -> drivers.
 //!
 //! # V-01 Stage 3 — the wasm32 transport
 //!
@@ -93,10 +87,10 @@ const MAX_PENDING_FRAMES: usize = 256;
 /// be a cycle), while preserving the driver's exact event ordering and
 /// borrow semantics.
 ///
-/// All six closures are required — `nmp-wasm::relay_pool::build_handlers`
-/// is the single construction site and supplies all six. The driver never
-/// sees `RelayFrame`, `OutboundMessage`, or any other kernel type; it hands
-/// raw text / bytes / close reasons through and the closures translate.
+/// All six closures are required. `nmp-browser-runtime` is the single
+/// construction site and supplies all six. The driver never sees `RelayFrame`,
+/// `OutboundMessage`, or any other kernel type; it hands raw text / bytes /
+/// close reasons through and the closures translate.
 #[derive(Clone)]
 pub struct BrowserKernelHandlers {
     /// Called from `onopen`. `is_reconnect` is `true` for every connect
@@ -131,7 +125,7 @@ pub struct BrowserRelayDriver {
     url: String,
     role: RelayRole,
     state: RefCell<DriverState>,
-    /// Kernel-touchpoint closures installed by `nmp-wasm::relay_pool`. The
+    /// Kernel-touchpoint closures installed by `nmp-browser-runtime`. The
     /// closures are already `Rc<dyn Fn>` internally — cheap to invoke without
     /// any `RefCell` borrow on the driver's part.
     kernel: BrowserKernelHandlers,

@@ -148,7 +148,7 @@ export class WasmBridge {
         {
           type: "error",
           code: "wasm_runtime_error",
-          message: messageFrom(error, "nmp-wasm runtime failed"),
+          message: messageFrom(error, "browser runtime failed"),
           correlation_id: requestCorrelationId(request),
         },
       ];
@@ -213,7 +213,7 @@ function decodeWorkerEvents(value: unknown): WorkerEvent[] {
   const events = Array.isArray(event) ? event : [event];
   for (const item of events) {
     if (!isWorkerEvent(item)) {
-      throw new Error("nmp-wasm returned an invalid worker event");
+      throw new Error("browser runtime returned an invalid worker event");
     }
   }
   return events;

@@ -1,9 +1,8 @@
 # ADR-0054 — Web persistence (OPFS-SQLite sync VFS) + offline-queue durability
 
-- **Status:** Accepted for Stage #5 (store-injection seam); Stages #6–#9
-  Proposed with open implementation gates (see "Risks and implementation
-  gates"). Stage #6 must not start until the gates marked *blocking #6* are
-  resolved.
+- **Status:** Accepted and implemented. OPFS-SQLite, async-before-`Start`
+  injection, degraded-open diagnostics, hydration/reload proof, and Web Locks
+  durable-tab arbitration have shipped through #1007 and #2202.
 - **Date:** 2026-06-13
 - **Blocked-by:** ADR-0067 / #2045 (browser-runtime ownership split) — OPFS store is injected via the browser builder storage decision, not constructed in nmp-wasm.
 - **Relates to:** ADR-0045 (store→projection replay), ADR-0047 (browser worker
@@ -22,8 +21,8 @@
 
 ## Context
 
-NMP's browser runtime (`crates/nmp-browser-runtime`, with `crates/nmp-wasm` as
-the ABI shell per ADR-0067) runs the `KernelReducer` on a
+NMP's browser runtime (`crates/nmp-browser-runtime`, per ADR-0067) runs the
+`KernelReducer` on a
 dedicated Worker event loop (ADR-0047). The kernel holds the single
 authoritative event store as `store: Arc<dyn EventStore>`
 (`crates/nmp-core/src/kernel/mod.rs:587`). Today the wasm build always
@@ -107,8 +106,8 @@ the existing `lmdb-backend` feature, `crates/nmp-store/Cargo.toml:18`). **The
 optional dependency on `nmp-sqlite-wasm` is declared under
 `[target.'cfg(target_arch="wasm32")'.dependencies]`** and referenced via `dep:`
 in the feature — mirroring the wasm-only dependency block already used in
-`crates/nmp-wasm/Cargo.toml:44` — so that native `cargo build/check
---all-features` never tries to compile the wasm-only crate. (`lmdb-backend`'s
+the browser-runtime wasm-only dependency blocks — so that native
+`cargo build/check --all-features` never tries to compile the wasm-only crate. (`lmdb-backend`'s
 plain-`[dependencies]` pattern is *not* copied: `heed` builds on every target;
 `nmp-sqlite-wasm` does not.)
 
@@ -165,53 +164,35 @@ true, and the `compile_error!` guard makes that invariant load-bearing rather
 than incidental. The `unsafe impl` is `#[cfg(target_arch = "wasm32")]`, lives
 **only** in `nmp-sqlite-wasm`, and never appears in `nmp-core` or `nmp-store`.
 
-### 4. Store injection seam in `nmp-wasm` (Stage #5), backend-agnostic
+### 4. Store injection seam in `nmp-browser-runtime` (Stage #5), backend-agnostic
 
 The kernel's innermost constructor is split into a store-agnostic
 `Kernel::from_parts(...)` plus a thin path-based wrapper that preserves the
 native path (`build_event_store` in
-`crates/nmp-core/src/kernel/store_init.rs:41`). `KernelReducer` gains a
-`with_store(Arc<dyn EventStore>)` constructor
-(`crates/nmp-core/src/kernel_reducer.rs:72`). The hidden raw wasm ABI adapter gains an
-`injected_store: Rc<RefCell<Option<Arc<dyn EventStore>>>>` slot
-(`crates/nmp-wasm/src/runtime.rs:65,108`) and a `set_injected_store()` setter.
-At the **top** of the raw wasm ABI adapter's `start()` path — before relay drivers and the tick
-loop capture `Rc` clones of the reducer (`runtime.rs:264-271`) and before
-`reduce(Start)` (`runtime.rs:229`) — if a store was injected, the reducer cell
-is rebuilt:
+`crates/nmp-core/src/kernel/store_init.rs`). `KernelReducer` can replace the
+startup store before browser composition captures store-backed handles. Under
+ADR-0067 the seam lives in `nmp-browser-runtime`, not in `nmp-wasm`:
+`NmpWasmRuntime::prepare_store` opens the durable store asynchronously before
+`Start` and parks it on `NmpRuntimeCore`; `handle_start` consumes that store and
+advances `BrowserAppBuilder` through `inject_store`. With no injected store the
+builder must choose `.in_memory()` explicitly.
 
-```rust
-if let Some(store) = self.injected_store.borrow_mut().take() {
-    *self.reducer.borrow_mut() = KernelReducer::with_store(store);
-}
-```
-
-Because the swap mutates the existing `Rc<RefCell<KernelReducer>>` in place, any
-handle taken via `reducer_handle()` (`runtime.rs:136`) before Start keeps
-pointing at the same cell — now holding the store-injected reducer. This
-sidesteps the stale-captured-clone trap (the watermark_fn / PublishStore /
-PublishEngine clones captured in `Kernel`'s constructor). Stage #5 is **pure
-plumbing**: with no injected store the default `MemEventStore` path is byte-for-
-byte unchanged, and the seam lands and is tested with `MemEventStore` *before*
-the OPFS backend (#6) exists.
-
-App composition that captures `event_store_handle()` must run through
-the raw wasm ABI adapter's pre-start hook. The hook runs after the injected store has
-rebuilt the reducer and before relay drivers, publish routing, observers, or
-typed projections capture handles. A composition root that registers feed
-engines at constructor time would keep reading the original `MemEventStore`
-after OPFS injection, so constructor-time store capture is forbidden.
+App composition that captures `event_store_handle()` must run through the
+browser builder start sequence after the storage decision is made and before
+relay drivers, publish routing, observers, or typed projections capture handles.
+A composition root that registers feed engines against a constructor-time
+`MemEventStore` would keep reading the wrong store after OPFS injection, so
+constructor-time store capture is forbidden.
 
 ### 5. Async OPFS open happens in the composition root, once, before Start
 
-The OPFS SAH pool is opened **async exactly once** in the composition root's
-async init hook (the wasm binding layer, to be re-established under the new
-browser-runtime architecture — see #2052), using `database_name` from
-`StartConfig` as the file key. The opened `OpfsSqliteStore` is installed via
-`set_injected_store()`; then `start()` rebuilds the reducer (§4). The handle is
-**never re-acquired mid-session** unless the user explicitly clears it (reload,
-sign-out). This keeps the async boundary at Start and the kernel path fully
-synchronous thereafter.
+The OPFS SAH pool is opened **async exactly once** in the browser-runtime wasm
+binding layer, using `app_id` + `database_name` from `StartConfig` as the file
+key. `prepare_store` first acquires the Web Locks durable-tab lock (§9), then
+opens `OpfsSqliteStore`; `handle_start` injects the opened store into
+`BrowserAppBuilder`. The handle is **never re-acquired mid-session** unless the
+user explicitly clears it (reload, sign-out). This keeps the async boundary at
+Start and the kernel path fully synchronous thereafter.
 
 ### 6. Degraded mode mirrors the existing `store_open_failure` contract (D6)
 
@@ -250,16 +231,16 @@ Stage #6 must validate the backend **byte-for-byte** against the existing
 `MemEventStore`/`LmdbEventStore` conformance paths through the `nmp-testing`
 harness. **`wasm_bindgen_test_configure!(run_in_browser)` cannot be used for
 this**: it executes on the page main thread
-(`crates/nmp-wasm/tests/wasm_boot.rs:36`) where `createSyncAccessHandle` does
-not exist (OPFS SAH is dedicated-Worker-only — Context fact 1). The conformance
+the page main thread where `createSyncAccessHandle` does not exist (OPFS SAH is
+dedicated-Worker-only — Context fact 1). The conformance
 gate therefore runs the backend **inside a real dedicated Worker**, driven by
 the Playwright harness in the browser-runtime composition layer
-(see #2052/#2038), which spawns the nmp-wasm Worker and reports
+(see #2052/#2038), which spawns the browser-runtime Worker and reports
 results back to the test runner; a bespoke Worker test runner is the only
 alternative. This vehicle must be scoped and stood up *before* #6 begins — it is
 the sole mitigation for #6's HIGH risk.
 
-### 9. Degraded-open reason taxonomy + multi-tab decision (PR-8, shipped)
+### 9. Degraded-open reason taxonomy + Web Locks multi-tab arbitration
 
 §6's contract is realised in the browser-runtime composition root (#1007 PR-8).
 The async pre-`Start` hook (`NmpWasmRuntime::prepare_store`,
@@ -273,7 +254,7 @@ the taxonomy lives in one place, `crates/nmp-browser-runtime/src/wasm/store_fail
 | `opfs_store_open_failure: private_browsing` | OPFS blocked by a `SecurityError` in a private window |
 | `opfs_store_open_failure: quota_denied` | Origin storage quota exhausted at pool pre-allocation |
 | `opfs_store_open_failure: handle_loss` | A `SyncAccessHandle` was lost / invalidated (`InvalidStateError`) |
-| `opfs_store_open_failure: second_tab_pool_lock` | Another tab holds the exclusive sahpool for this `database_name` |
+| `opfs_store_open_failure: second_tab_pool_lock` | Another tab already holds durable ownership for this `database_name`, or the exclusive sahpool lock could not be acquired |
 | `opfs_store_open_failure: unknown` | Open failed outside the known taxonomy (never silently dropped) |
 
 The reason is parked on the runtime core and threaded at `Start` through
@@ -285,15 +266,14 @@ The reason is parked on the runtime core and threaded at `Start` through
 case-insensitive substring matching on the JS `DOMException` text (D6: engine
 text only, no private content).
 
-**Multi-tab decision (resolves the *Multi-tab correctness* risk):** a second tab
-on the same `database_name` is an **explicit ephemeral tier**, not an error. The
-sahpool is exclusive per origin+name; the second opener's `open` fails, is
-classified `second_tab_pool_lock`, and the tab predictably degrades to an
-in-memory `MemEventStore` with that reason surfaced through the snapshot (honest
-banner via §6). Full Web-Locks single-durable-tab *arbitration* (electing one
-lock-holder that runs the durable store while others knowingly run ephemeral) is
-a **documented follow-up** — the predictable degrade above is the shipped
-behaviour and is correct regardless of which arbitration we later add.
+**Multi-tab decision (resolves the *Multi-tab correctness* risk):** Web Locks
+elect exactly one durable tab per database name. `prepare_store` requests an
+exclusive `navigator.locks` entry with `ifAvailable`; the lock-holder opens
+OPFS-SQLite and keeps the lock for the runtime lifetime. A non-holder does not
+attempt a durable open: it starts with an in-memory `MemEventStore` and surfaces
+`second_tab_pool_lock` through the snapshot (honest banner via §6). If the
+sahpool still rejects the durable holder, that engine error is classified
+through the same taxonomy.
 
 **Mid-session quota (resolves the *Mid-session write-failure* risk):** a quota
 exhaustion on `insert` surfaces as `StoreError::Io` and is handled at the kernel
@@ -366,17 +346,9 @@ implementation starts.
   SAH pool VFS holds an exclusive lock; a second tab opening the same
   `database_name` cannot acquire the handle and would silently fall back to an
   ephemeral `MemEventStore`, losing its writes (including the #8 publish queue)
-  on close. *Resolution (decide before #6):* either elect a single durable
-  tab via the Web Locks API (only the lock-holder runs the durable store), or
-  explicitly enumerate "tab-2 is ephemeral" as an accepted degraded tier in #9's
-  `docs/wasm-surface.md` contract with an honest banner via §6. The exact
-  `opfs-sahpool` behavior on a concurrent second opener (throw vs block vs
-  degrade) is unverified from the repo and needs a browser test.
-  *Resolved in PR-8 (§9):* the explicit-ephemeral-tier option is chosen — the
-  second tab degrades predictably to in-memory with reason `second_tab_pool_lock`
-  on the Tier-3 snapshot. Web-Locks single-durable-tab arbitration remains a
-  documented follow-up. (A browser test confirming the exact sahpool throw/block
-  behaviour is still owed once the Worker conformance vehicle lands.)
+  on close. *Resolved in #2202 (§9):* Web Locks elect a single durable tab; a
+  non-holder degrades predictably to in-memory with reason
+  `second_tab_pool_lock` on the Tier-3 snapshot before OPFS is opened.
 
 - **Performance is behavioral parity, not perf parity (LOW, addressed in §2/§8).**
   `EventIter: Send` (`events.rs:22-23`) forces every scan to materialize owned

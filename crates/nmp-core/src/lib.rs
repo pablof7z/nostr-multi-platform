@@ -252,7 +252,7 @@ pub use kernel::routing_trace_dto::{projection_to_json, ROUTING_TRACE_SCHEMA_VER
 // Promoted to the public surface so the wasm32 `BrowserRelayDriver` (lives
 // in `nmp-network::browser_driver`) can be bridged from
 // `web_sys::MessageEvent` / `CloseEvent` through the
-// `nmp-wasm::relay_pool::build_handlers` callback bag.
+// `nmp-browser-runtime` relay handler callback bag.
 // Substrate-grade (D0): no app/protocol nouns.
 pub use kernel::{
     kernel_ports::{

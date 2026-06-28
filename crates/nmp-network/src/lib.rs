@@ -62,17 +62,13 @@
 //! ## Step 8 phase C — [`browser_driver`] move (this PR)
 //!
 //! Adds the [`browser_driver`] module — the wasm32 equivalent of
-//! [`relay_worker`], moved verbatim from `nmp-wasm/src/relay_driver.rs`.
-//! Both transports now live in this crate, behind their respective target
-//! gates: `relay_worker` under `#[cfg(feature = "native")]`,
-//! `browser_driver` under `#[cfg(target_arch = "wasm32")]`. The driver's
-//! kernel touchpoints were converted from a `Rc<RefCell<KernelReducer>>`
-//! reference to a small [`browser_driver::BrowserKernelHandlers`] struct of
-//! `Rc<dyn Fn>` callbacks; `nmp-wasm::relay_pool` constructs the callbacks
-//! from its own `KernelReducer` handle. This preserves the layering
-//! invariant (`nmp-network` MUST NOT depend on `nmp-core`) while keeping
-//! the driver's behavior, event ordering, and borrow semantics identical
-//! to the pre-move version.
+//! [`relay_worker`], moved out of the retired `nmp-wasm` runtime path. Both
+//! transports now live in this crate, behind their respective target gates:
+//! `relay_worker` under `#[cfg(feature = "native")]`, `browser_driver` under
+//! `#[cfg(target_arch = "wasm32")]`. The driver's kernel touchpoints are a
+//! small [`browser_driver::BrowserKernelHandlers`] struct of `Rc<dyn Fn>`
+//! callbacks supplied by `nmp-browser-runtime`. This preserves the layering
+//! invariant (`nmp-network` MUST NOT depend on `nmp-core`).
 //!
 //! ## Step 8 phase D — NIP-46 transport rides `Pool` (shipped)
 //!

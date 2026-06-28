@@ -22,7 +22,8 @@ name: browser-runtime
 #   Mode C — true wasm32:
 #     `cargo build --target wasm32-unknown-unknown`
 #     This catches cfg(target_arch = "wasm32") code that native feature-shaping
-#     cannot compile, including the OPFS-SQLite store path and wasm ABI glue.
+#     cannot compile, including the OPFS-SQLite store path, the browser runtime
+#     wasm artifact, and the retained nmp-wasm protocol crate.
 #     secp256k1-sys' vendored C library needs a C compiler with a wasm backend,
 #     so the gate installs clang + lld and points the wasm32 C build at them.
 
@@ -160,7 +161,7 @@ jobs:
           AR_wasm32_unknown_unknown: llvm-ar
         run: cargo build -p nmp-store --target wasm32-unknown-unknown --features opfs-sqlite-backend
 
-      - name: Build nmp-wasm ABI glue (wasm32-unknown-unknown)
+      - name: Build retained nmp-wasm protocol crate (wasm32-unknown-unknown)
         env:
           CC_wasm32_unknown_unknown: clang
           AR_wasm32_unknown_unknown: llvm-ar

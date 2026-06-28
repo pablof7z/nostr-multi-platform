@@ -28,11 +28,12 @@ use budgets::MAX_CONCURRENT_SOCKETS;
 pub(crate) mod budgets;
 pub(crate) mod handlers;
 pub(crate) mod inbound;
+pub(crate) mod info_fetch;
 pub(crate) mod plan;
 pub(crate) mod spawn;
 pub(crate) mod timer;
 
-use inbound::{drain_inbound, InboundDrainOutcome, InboundQueue};
+use inbound::{InboundDrainOutcome, InboundQueue, drain_inbound};
 use timer::CancelableTimer;
 
 /// Stable wake indirection shared between the relay pool, the JS driver
@@ -72,16 +73,6 @@ pub(crate) struct RelayPool {
     /// When it fires it calls wake() which schedules a pump().
     maintenance_timer: CancelableTimer,
 
-    /// User-agent string for the NIP-11 info-document GET. The browser WS
-    /// handshake cannot set custom headers, so this UA can only ever ride the
-    /// NIP-11 `application/nostr+json` fetch — and that fetch uses `fetch()`
-    /// rather than the native `ureq` path, so it is wired as part of the
-    /// Chirp-web real-relay work in #2038 (not on this transport-only adapter).
-    /// Stored here rather than dropped so the host-configured value survives to
-    /// that consumer instead of being silently lost at the builder boundary.
-    #[allow(dead_code)] // consumed by the #2038 browser NIP-11 info-document fetch
-    user_agent: Option<String>,
-
     /// Live WebSocket drivers, one per distinct relay URL. wasm32-only — native
     /// builds have no actual sockets.
     #[cfg(target_arch = "wasm32")]
@@ -96,7 +87,7 @@ pub(crate) struct RelayPool {
 impl RelayPool {
     /// Construct an idle pool. Call [`Self::spawn_bootstrap`] on wasm32 to open
     /// sockets for the configured relay list.
-    pub(crate) fn new(user_agent: Option<String>) -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             inbound: InboundQueue::new(),
             // Stable cell; inner closure is a no-op placeholder until the host
@@ -105,7 +96,6 @@ impl RelayPool {
             // set_wake) still observe the real wake once it is swapped in.
             wake: Rc::new(RefCell::new(Rc::new(|| {}) as Rc<dyn Fn()>)),
             maintenance_timer: CancelableTimer::new(),
-            user_agent,
             #[cfg(target_arch = "wasm32")]
             drivers: Vec::new(),
             #[cfg(target_arch = "wasm32")]
@@ -301,7 +291,7 @@ mod tests {
 
     #[test]
     fn new_pool_is_idle() {
-        let pool = RelayPool::new(None);
+        let pool = RelayPool::new();
         assert_eq!(pool.driver_count(), 0);
         assert!(pool.inbound.queue.borrow().is_empty());
     }
@@ -312,7 +302,7 @@ mod tests {
         // `next_runtime_deadline_delay_ms()` returns None and `tick_and_arm`
         // must NOT arm a fallback timer (arming one would re-wake the runtime
         // every second forever — the busy loop the doctrine forbids).
-        let mut pool = RelayPool::new(None);
+        let mut pool = RelayPool::new();
         let mut reducer = KernelReducer::new();
         assert_eq!(
             reducer.next_runtime_deadline_delay_ms(),
@@ -331,7 +321,7 @@ mod tests {
     #[test]
     fn set_wake_installs_through_stable_cell() {
         use std::cell::Cell;
-        let mut pool = RelayPool::new(None);
+        let mut pool = RelayPool::new();
         let called = Rc::new(Cell::new(false));
         let called_clone = Rc::clone(&called);
         pool.set_wake(Rc::new(move || called_clone.set(true)));
@@ -348,7 +338,7 @@ mod tests {
         // THEN the host installs the real wake via set_wake. An inbound event
         // arriving afterwards must still schedule a pump (counter increments) —
         // proving the indirection is stable, not a captured-stale no-op.
-        let mut pool = RelayPool::new(None);
+        let mut pool = RelayPool::new();
 
         // 1. "Handler" captures the cell during bootstrap (wake still no-op).
         let captured = pool.wake_cell();
@@ -385,7 +375,7 @@ mod tests {
     fn socket_budget_exceeded_event_on_wasm32_spawn() {
         // On native this test verifies the pool gracefully handles no drivers.
         // The budget-exceeded path is wasm32-only and tested indirectly.
-        let pool = RelayPool::new(None);
+        let pool = RelayPool::new();
         assert_eq!(pool.driver_count(), 0);
     }
 
@@ -394,7 +384,7 @@ mod tests {
         use nmp_core::actor::ActorMail;
         use std::sync::mpsc;
 
-        let pool = RelayPool::new(None);
+        let pool = RelayPool::new();
         let mut reducer = KernelReducer::new();
         let (tx, _rx) = mpsc::channel::<ActorMail>();
         let sender = CommandSender::new(tx);

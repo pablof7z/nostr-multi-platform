@@ -32,15 +32,12 @@ export const SHOWCASE_HIGHLIGHT = {
 // Content relays where the showcase EVENTS actually live. Both the note's
 // `nevent` and the article's `naddr` embed `wss://nos.lol` as their relay hint
 // (NIP-19 TLV type 1) — i.e. the events themselves point here. We must declare
-// these up-front because the WASM transport, unlike native, does NOT dial relay
-// hints on demand: `crates/nmp-wasm/src/relay_pool.rs` spawns one WebSocket per
-// bootstrap entry at Start and silently drops any outbound REQ to a relay it has
-// no driver for (a deliberate "host declares its relay policy up-front" design).
-// Native's `actor::relay_mgmt::send_outbound` spawns workers on demand; the web
-// transport has no equivalent. Declaring the hinted content relay is honoring
-// the event's own routing, not a workaround — the content still resolves from a
-// real relay, parsed by the real kernel. The capability gap itself is tracked
-// separately (see WIP.md / wasm-on-demand-relay-dial memory).
+// these up-front to make the showcase deterministic and warm on first paint.
+// The browser runtime can spawn relay drivers on miss, but the showcase should
+// not depend on a cold relay dial before the user can inspect the component.
+// Declaring the hinted content relay is honoring the event's own routing, not a
+// workaround — the content still resolves from a real relay, parsed by the real
+// kernel.
 const CONTENT_RELAYS: { url: string; role: string }[] = [
   { url: "wss://nos.lol", role: "both" },
   // Redundant content relay: the showcase note + article are also on damus, so a

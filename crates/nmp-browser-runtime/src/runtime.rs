@@ -101,10 +101,10 @@ impl NoopRoutingTrace {
 
 /// A publish parked between `NeedsSign` and the signed-response delivery.
 ///
-/// Mirrors `nmp-wasm`'s `PendingSignedPublish`. The runtime stores one of these
-/// keyed on the sign `correlation_id` whenever a publish command needs an async
-/// signature. Consumed by `signer_delivery::deliver_one_completion` when the
-/// signed response arrives (broker side: `signer/completion.rs`).
+/// Browser-runtime sign continuation keyed on the sign `correlation_id`
+/// whenever a publish command needs an async signature. Consumed by
+/// `signer_delivery::deliver_one_completion` when the signed response arrives
+/// (broker side: `signer/completion.rs`).
 #[derive(Debug, Clone)]
 pub(crate) struct PendingSignedPublish {
     /// The action-level correlation id the host uses to settle the result, or

@@ -4,10 +4,10 @@
 
 //! Wire protocol types for the `NmpWasmRuntime` entry point (#2038 item A).
 //!
-//! Mirrors `nmp-wasm/src/protocol.rs` but defined here so `nmp-browser-runtime`
-//! (the ADR-0067 composition root) stays free of a dep on the `nmp-wasm` ABI
-//! crate. Both sets of types share the same JSON wire format consumed by
-//! `web/packages/runtime-web/src/protocol.ts`.
+//! Defined here so `nmp-browser-runtime` (the ADR-0067 composition root) owns
+//! the live Worker protocol without depending on the retained `nmp-wasm`
+//! protocol-type crate. Both sets of types share the same JSON wire format
+//! consumed by `web/packages/runtime-web/src/protocol.ts`.
 //!
 //! Always-compiled (no `cfg(wasm32)` gate here): the Serde derives work on
 //! native so `NmpRuntimeCore` can be unit-tested without a wasm target.
@@ -349,7 +349,7 @@ pub(crate) fn serialize_one(event: WorkerEvent) -> String {
 ///
 /// If `relay_bootstrap` is non-empty it is used verbatim (explicit role
 /// assignment wins). Otherwise synthesize one entry per URL with `role =
-/// "both"` (matches `nmp-wasm::protocol::relay_bootstrap_from_config`).
+/// "both"`.
 pub(crate) fn relay_bootstrap_from_config(
     relays: Vec<String>,
     relay_bootstrap: Vec<RelayBootstrapEntry>,

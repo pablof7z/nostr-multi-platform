@@ -79,6 +79,15 @@ wasm-bindgen-futures = "0.4.71"
 # Honest-fallback log when the OPFS-SQLite open fails (#1007 PR-7). The repo's
 # logging facade; wasm-safe. Scoped to the wasm path where prepare_store lives.
 tracing = "0.1"
+web-sys = { version = "0.3.98", features = [
+    "Headers",
+    "Request",
+    "RequestInit",
+    "RequestMode",
+    "Response",
+    "Window",
+    "WorkerGlobalScope",
+] }
 
 [dev-dependencies]
 flatbuffers = { workspace = true }

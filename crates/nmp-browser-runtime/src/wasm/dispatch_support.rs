@@ -64,9 +64,8 @@ pub(super) fn not_started_error(correlation_id: Option<String>) -> Vec<WorkerEve
 /// Map identity relay permissions to canonical `(url, role)` pairs for merging
 /// into the kernel's configured relay list (#2139 HIGH 4).
 ///
-/// Mirrors `nmp-wasm/src/runtime/signer.rs`'s `identity_relay_entry` and
-/// `role_for_identity_relay`. Skips entries with no read/write permissions and
-/// skips non-canonical URLs.
+/// Converts identity relay permissions into the kernel's configured relay rows.
+/// Skips entries with no read/write permissions and skips non-canonical URLs.
 pub(super) fn identity_relays_to_rows(relays: &[IdentityRelayPermission]) -> Vec<(String, String)> {
     relays
         .iter()

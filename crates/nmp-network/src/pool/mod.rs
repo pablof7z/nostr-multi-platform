@@ -38,10 +38,10 @@
 //!
 //! ## What this PR does NOT do
 //!
-//! - **Phase C** (`nmp-wasm::BrowserRelayDriver` move into this crate)
-//!   is a separate PR. Today's `Pool` is native-only (gated by the
-//!   `native` Cargo feature); the wasm driver still lives in
-//!   `nmp-wasm`.
+//! - **Phase C** (browser relay driver move into this crate) shipped. Today's
+//!   `Pool` is still native-only (gated by the `native` Cargo feature), while
+//!   the wasm driver lives in `nmp-network::browser_driver` and is owned at
+//!   runtime by `nmp-browser-runtime`.
 //! - **Phase D** (NIP-46 transport onto `Pool`) is shipped. NIP-46 rides the
 //!   actor's shared `Pool` relay lane via `nmp-nip46-runtime` (#2119 retired
 //!   the standalone `nmp-signer-broker` `PoolRelayClient`; V-13 Stage 2 dedupe).

@@ -48,7 +48,7 @@ mod tests_d10_d11_d12; // D10, D11, D12 fixture smoke tests — sibling module.
 mod tests_d13_d14_d15; // D13, D14, D15 fixture smoke tests — sibling module.
 mod tests_d16_workspace; // D16, --workspace-d8, end-to-end clean — sibling module.
 mod tests_d17_misc; // D17 and cache-serve seal — sibling module.
-mod wasm_abi_gates; // nmp-wasm ABI-only dependency/public-surface gates.
+mod wasm_abi_gates; // nmp-wasm protocol-only dependency/public-surface gates.
 
 const FIXTURE_ROOT: &str = "crates/nmp-testing/bin/doctrine-lint/fixtures";
 
