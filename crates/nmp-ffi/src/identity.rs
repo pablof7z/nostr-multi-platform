@@ -13,72 +13,7 @@
 //! Swift bridge sees a flat C ABI regardless of the Rust module split.
 
 use super::{app_ref, c_optional_string_argument, c_string_argument, NmpApp};
-use std::ffi::{c_char, CString};
-
-/// Mint a unique correlation id for a `SignEventForReturn` round-trip.
-///
-/// Same shape and rationale as `nmp-core`'s `new_action_id`: a wall-clock
-/// millisecond stamp concatenated with a process-lifetime atomic counter, so
-/// two ids minted in the same millisecond still differ. This is a correlation
-/// handle, not a security token — no cryptographic randomness is required. The
-/// host treats it as an opaque key into the `signed_events` projection.
-fn new_sign_return_correlation_id() -> String {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    use std::time::{SystemTime, UNIX_EPOCH};
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let now_ms = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0);
-    let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
-    format!("{now_ms:016x}{seq:016x}")
-}
-
-/// Sign an event draft and park the signed JSON in the `signed_events`
-/// snapshot projection. Returns an opaque `correlation_id` C string the caller
-/// uses to retrieve the result. Caller frees with `nmp_free_string`.
-///
-/// This is the D13 sign-and-return seam: a host that needs a signed auth event
-/// (e.g. a Blossom upload `Authorization: Nostr …` header, or a feedback
-/// event) gets it signed by the kernel's active or named signer WITHOUT ever
-/// reading raw private key bytes across the FFI boundary — which is impossible
-/// for NIP-46 bunker users. The signed event is NEVER published.
-///
-/// `account_pubkey_hex` — hex pubkey of the signer to use; pass the empty
-/// string to use the active account.
-///
-/// `unsigned_json` — `{"kind":N,"content":"...","tags":[...],"created_at":N}`.
-/// `created_at` is advisory; the kernel re-stamps it from its own clock (D7).
-///
-/// The host registers a `signed_events`-keyed continuation BEFORE calling this
-/// (the return-then-suspend ordering guarantees the id exists before the first
-/// projection tick that could carry it). A null `app` returns a freshly minted
-/// id whose result will never appear — the caller's continuation must time out
-/// (the kernel never saw the command).
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-#[no_mangle]
-pub extern "C" fn nmp_app_sign_event_for_return(
-    app: *mut NmpApp,
-    account_pubkey_hex: *const c_char,
-    unsigned_json: *const c_char,
-) -> *mut c_char {
-    let correlation_id = new_sign_return_correlation_id();
-    // Mint and return the id regardless of arg validity: the caller suspends on
-    // this id, and a malformed/empty draft surfaces as an `Err` verdict under
-    // the SAME id once the kernel records it (D6 — never a crash, the promise
-    // always resolves). A null `app` is the one case the kernel never sees;
-    // the caller's continuation times out.
-    if let Some(app) = app_ref(app) {
-        let account_pubkey = c_string_argument(account_pubkey_hex).unwrap_or_default();
-        let unsigned_json = c_string_argument(unsigned_json).unwrap_or_default();
-        app.sign_event_for_return(account_pubkey, unsigned_json, correlation_id.clone());
-    }
-    // The id is plain hex — no interior NUL — so `CString::new` cannot fail in
-    // practice; the empty-string fallback keeps the boundary panic-free (D6).
-    CString::new(correlation_id)
-        .unwrap_or_else(|_| c"".to_owned())
-        .into_raw()
-}
+use std::ffi::c_char;
 
 /// Sign in with a local nsec and optionally make it the active account.
 ///
