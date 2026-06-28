@@ -343,11 +343,21 @@ jobs:
   desktop-check:
     # Phase 4 of #2124 — desktop build gate.
     #
-    # Neither chirp-desktop nor nmp-gallery-desktop is compiled by the main
-    # workspace nextest sweep: they are binary crates with no test targets so
-    # nextest skips them entirely. A breaking change in either desktop crate
-    # (or in a core crate they depend on) would be invisible to CI until someone
-    # ran a local build. This job closes that blind spot.
+    # The real blind spot is `nmp-gallery-desktop`: it is explicitly EXCLUDED
+    # from the workspace nextest sweep (test.yml `--exclude nmp-gallery-desktop`,
+    # because its iced/winit dep needs the system X11/Wayland headers that the
+    # bare nextest runner does not install). So a breaking change there — or in a
+    # core crate it depends on — is invisible to the main test job until someone
+    # runs a local build. This job closes that gap.
+    #
+    # `chirp-desktop` is NOT excluded from the workspace sweep: it is a regular
+    # workspace member with a bin target plus in-crate `#[cfg(test)]` suites
+    # (keyring_tests.rs, snapshot_decode_*_tests.rs), so `cargo nextest run
+    # --workspace` already builds and tests it on the Linux runner. It is kept in
+    # this job as additive defense-in-depth — the `cargo check` here exercises
+    # the same crate under the desktop-graphics system libraries, a different
+    # environment from the headless nextest lane — at negligible marginal cost
+    # since the dep graph is already warm in the shared cache.
     #
     # `cargo check` is sufficient here: it type-checks, compiles build scripts
     # (catching build.rs failures), and verifies the full dep graph without
@@ -386,12 +396,14 @@ jobs:
         with:
           key: desktop-check
 
-      # chirp-desktop: Chirp native desktop shell (eframe + egui).
+      # chirp-desktop: Chirp native desktop shell (eframe + egui). Already built
+      # + tested by the workspace nextest sweep (test.yml); re-checked here under
+      # the desktop-graphics system libraries as defense-in-depth.
       - name: cargo check (chirp-desktop)
         run: cargo check -p chirp-desktop
 
-      # nmp-gallery-desktop: NMP component gallery (iced). Explicitly excluded
-      # from the workspace nextest run in test.yml (see that file's comment);
-      # this is the dedicated compile gate for it.
+      # nmp-gallery-desktop: NMP component gallery (iced). Explicitly EXCLUDED
+      # from the workspace nextest run in test.yml (`--exclude
+      # nmp-gallery-desktop`); this job is its only dedicated compile gate.
       - name: cargo check (nmp-gallery-desktop)
         run: cargo check -p nmp-gallery-desktop

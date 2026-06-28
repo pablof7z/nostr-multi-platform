@@ -33,9 +33,11 @@ name: perf-gates
 #
 # Build note: nmp-testing's regular dep tree includes nmp-app-chirp (needed
 # by sanity-gate). The first cold build is heavy (openmls + marmot +
-# nmp-core); Swatinem/rust-cache makes subsequent runs incremental. A
-# 30-minute timeout accommodates cold builds; cached runs typically finish
-# in 5–10 min.
+# nmp-core); Swatinem/rust-cache makes subsequent runs incremental. The two
+# jobs each carry a DISTINCT rust-cache key (reactivity-bench / firehose-bench)
+# and do not share release artifacts, so each pays its own cold openmls+marmot
+# build on a cold or evicted cache. The 45-minute timeout gives that cold path
+# comfortable headroom; cached runs typically finish in 7–10 min.
 
 on:
   push:
@@ -51,7 +53,7 @@ jobs:
   reactivity-bench:
     name: reactivity-bench (quick, --fail-on-gate)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -105,7 +107,7 @@ jobs:
   firehose-bench:
     name: firehose-bench replay (quick, --fail-on-gate)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
