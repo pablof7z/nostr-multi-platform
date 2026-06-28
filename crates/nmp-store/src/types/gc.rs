@@ -14,9 +14,6 @@
 /// historical 10,000-event policy available for explicit tests/configuration.
 pub const DEFAULT_DURABLE_EVENT_CEILING: usize = 10_000;
 
-/// Backward-compatible alias for the old durable row ceiling name.
-pub const HOT_EVENT_CEILING: usize = DEFAULT_DURABLE_EVENT_CEILING;
-
 /// Production per-step event budget (`docs/design/lmdb/gc.md` §3).
 pub const GC_MAX_EVENTS_PER_STEP: usize = 2_000;
 

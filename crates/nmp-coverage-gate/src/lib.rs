@@ -128,15 +128,6 @@ impl CoverageGate {
             }
     }
 
-    /// Backward-compatible helper for callers that have not yet been upgraded
-    /// from author-only counting. New code should call
-    /// [`Self::should_use_negentropy_for_filter`] so multi-kind filters are
-    /// counted correctly.
-    #[must_use]
-    pub fn should_use_negentropy(&self, total_author_count: usize) -> bool {
-        self.should_use_negentropy_for_filter(FilterFanout::new(total_author_count, 1), true)
-    }
-
     /// Compute a `since` bump (seconds) to add to the existing `since`
     /// watermark, given the age of the most-recent stored event.
     ///
@@ -281,13 +272,6 @@ mod tests {
         let gate = CoverageGate::default();
         assert!(gate.should_use_negentropy_for_result_surface(ResultSurface::Unbounded, true));
         assert!(!gate.should_use_negentropy_for_result_surface(ResultSurface::Unbounded, false));
-    }
-
-    #[test]
-    fn author_only_helper_preserves_legacy_semantics() {
-        let gate = CoverageGate::default();
-        assert!(!gate.should_use_negentropy(49));
-        assert!(gate.should_use_negentropy(50));
     }
 
     #[test]

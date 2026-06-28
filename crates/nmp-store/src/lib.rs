@@ -78,7 +78,7 @@ pub use types::{
     DumpFormat, DumpStats, EventId, GcBudget, GcReport, InsertOutcome, ProvenanceEntry, PubKey,
     RawEvent, RejectReason, RelayUrl, StoreQuery, StoredEvent, TargetInteractionCounts,
     TombstoneOrigin, TombstoneRow, VerifiedEvent, COVERAGE_KEY_SEP, DEFAULT_DURABLE_EVENT_CEILING,
-    GC_MAX_DURATION_MS, GC_MAX_EVENTS_PER_STEP, HOT_EVENT_CEILING,
+    GC_MAX_DURATION_MS, GC_MAX_EVENTS_PER_STEP,
 };
 
 // Re-export error types from types (defined there to avoid circular imports).
