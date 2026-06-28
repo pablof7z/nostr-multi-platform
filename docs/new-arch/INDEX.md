@@ -1,27 +1,23 @@
 # High-Level Architecture Overview
 
-> **Status:** Candidate architecture for issues #2313, #2316, and #2320,
-> written for ADR review. This is not a shipped API contract, not a settled
-> solution, and not the durable ADR set. It records the desired shape, rejection
-> tests, and first rolling-horizon moves so the accepted facts can be folded into
-> a smaller current ADR/doc set before broad migration work.
+> **Status:** Superseded working packet. The current redesign spine is
+> ADR-0069 through ADR-0073 in `docs/decisions/`. This packet is retained only as
+> source material for #2320 cleanup and should be deleted or fully retired once
+> remaining useful details are folded into durable docs or GitHub issues.
 
 ## Authority And Retirement
 
-This packet is a local design workspace for the current architecture iteration.
-It is not the canonical tactical queue, not a durable replacement for existing
+This packet was the local design workspace for the architecture iteration. It is
+not the canonical tactical queue, not a durable replacement for existing
 architecture docs, and not mergeable as a parallel authority in this form.
 Downstream issue text, copied component-registry examples, and stale wiki
 episodes are evidence to audit. They are not product authority by themselves once
 current code, product specs, AGENTS.md, or open GitHub issues say otherwise.
 
-Before this packet is promoted into durable architecture, the surviving
-decisions must move into the appropriate durable homes: a smaller redesign ADR
-set, existing architecture/design docs, builder-guide pages, product specs, and
-GitHub issues for migration work. Anything that remains only as an exploration
-artifact should be deleted or explicitly retired. The point of this directory is
-to converge on the right shape before editing the canonical docs, not to add
-another source of truth.
+The main surviving decisions have moved into ADR-0069 through ADR-0073. Remaining
+details must either move into existing architecture/design docs, builder-guide
+pages, product specs, or GitHub issues for migration work, or be deleted as
+exploration material.
 
 This directory should not survive as a parallel plan. The final migration must
 turn accepted facts into durable docs/ADRs, turn tactical work into GitHub
@@ -30,27 +26,20 @@ be read to understand current architecture after the redesign ADRs land, P8
 failed.
 
 #2320 is the source-of-truth cleanup gate for this packet. It rejects preserving
-dozens of stale ADRs as historical-but-current guidance. Once #2316 accepts the
-architecture direction, each old ADR should be classified as folded into the
-redesign ADR, folded into another durable owner, still-current standalone
-guidance, or deleted/retired. The preferred outcome is a smaller ADR directory
-whose remaining files cannot be mistaken for the old public architecture.
-
-The ordering is deliberate: candidate packet, redesign ADR acceptance, first
-implementation slices, then the #2320 ADR reset/retirement pass. Before the
-redesign ADR is accepted, #2320 work should be a source-of-truth classification
-dossier only. It should not trigger blind deletion of ADRs or durable docs while
-the target architecture is still being argued.
+dozens of stale ADRs as historical-but-current guidance. After ADR-0069 through
+ADR-0073, each old ADR should be classified as folded into the redesign spine,
+folded into another durable owner, still-current standalone guidance, or
+deleted/retired. The preferred outcome is a smaller ADR directory whose
+remaining files cannot be mistaken for the old public architecture.
 
 The fitness matrix in this packet is transitional: it becomes real only when it
 is executable work. Each accepted ratchet must graduate into a doctrine lint,
 `nmp-testing` gate, CI check, GitHub issue acceptance criterion, or ADR
 enforcement section before this directory is retired.
 
-This is the high-level entry point for the proposed architecture. It explains how
-an NMP app feels from the app developer's perspective, then shows how data flows
-through NMP's crates. The other docs go deeper into app assembly, live reads,
-writes, and internal migration.
+This was the high-level entry point for the proposed architecture. ADR-0069
+through ADR-0073 are now the current entry point; this packet remains only as
+supporting detail until #2320 retires it.
 
 It treats #2316 as the problem statement, not as a settled solution.
 
@@ -498,7 +487,7 @@ migration roadmap.
 
 | Gate | Required proof |
 |---|---|
-| ADR/source-of-truth reset | After the redesign ADR is accepted, #2320 classifies every existing ADR as folded into redesign, folded into another durable owner, still-current standalone, or deleted/retired; stale references from product specs, builder guides, recipes, wiki pages, and generated templates are corrected in place; `docs/new-arch` is deleted or retired. |
+| ADR/source-of-truth reset | After ADR-0069 through ADR-0073, #2320 classifies every existing ADR as folded into redesign, folded into another durable owner, still-current standalone, or deleted/retired; stale references from product specs, builder guides, recipes, wiki pages, and generated templates are corrected in place; `docs/new-arch` is deleted or retired. |
 | Highlighter web runtime inventory | Every `@nostr-dev-kit`, `$subscribe`, `fetchEvents`, direct sign/publish, relay-set, cache, and tag-parser product path is classified as NMP target-runtime migration, SSR-only, diagnostic, deleted, or explicitly out of scope, with owner and deletion/formalization criterion. Direct NDK cannot remain both violation and normal runtime. |
 | Highlighter iOS/session policy | Wi-Fi/offline/cache policy is Rust-owned from raw platform capability facts; profile/event/embed refs use typed owner handles with close/clear tests; production app roots do not rely on hidden `register_defaults()` or `consume_all_builtin_projections()` except labeled migration/tutorial paths. |
 | Highlighter app chrome boundary | Semantic route/session/view/product state is Rust-owned; tabs, sheets, FABs, scroll, and visual affordances stay native only when ephemeral and derivable from Rust output plus typed actions. |
@@ -589,9 +578,9 @@ Required dossier sections:
   deletion;
 - generated catalog/manifest direction gate naming the first catalog to
   single-source;
-- pre-ADR source-of-truth classification dossier showing where each stale ADR/doc
-  fact will fold after the redesign ADR is accepted, with #2320 owning the actual
-  ADR reset after acceptance;
+- source-of-truth classification dossier showing where each stale ADR/doc fact
+  folds after ADR-0069 through ADR-0073, with #2320 owning the remaining ADR
+  reset and reference cleanup;
 - subjective product calls either resolved or explicitly scoped out of the first
   proof, including Highlighter web, tutorial preset, downstream release gates,
   and manual explicit relay UX.

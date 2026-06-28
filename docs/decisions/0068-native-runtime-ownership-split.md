@@ -1,8 +1,13 @@
 # ADR-0068 — Native runtime ownership split (nmp-ffi is C ABI glue)
 
-- **Status:** Accepted
+- **Status:** Accepted; amended by ADR-0069 and ADR-0072
 - **Date:** 2026-06-28
 - **Relates to:** ADR-0030 (UniFFI vs C-ABI), ADR-0046 (composition is a library), ADR-0067 (browser runtime split), #2205, #2209
+
+**Current disposition:** the native runtime ownership split survives. ADR-0069
+narrows composition: `nmp-defaults` is reusable explicit composition, not hidden
+production app policy. ADR-0072 keeps `nmp-ffi` as ABI glue only; native shells
+render, execute capabilities, and hold ephemeral presentation state.
 
 ## Context
 

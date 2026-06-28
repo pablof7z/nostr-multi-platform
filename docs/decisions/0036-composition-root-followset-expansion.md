@@ -1,8 +1,14 @@
 # ADR-0036 - Active follow-set source and follow-feed expansion
 
-Status: accepted
+Status: accepted; amended by ADR-0070
 
 Date: 2026-05-28
+
+Current disposition: the active-follow-set invariant survives, but
+`ReducedSource` is no longer an app-facing architecture noun. Dynamic source
+reconciliation is private machinery behind typed read sessions unless a later
+ADR proves a real public need. Empty source sets fail closed unless the owning
+feature declares an explicit fallback.
 
 ## Context
 

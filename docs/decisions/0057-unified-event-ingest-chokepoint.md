@@ -5,7 +5,8 @@
   (`crates/nmp-core/src/kernel/ingest/`), with `record_local_publish_intent` /
   `local_publish_intent.rs` / `pre_kind3_buffer` deleted; coverage in
   `crates/nmp-core/src/kernel/chokepoint_tests.rs` and
-  `contacts_chokepoint_pr3_tests.rs`.
+  `contacts_chokepoint_pr3_tests.rs`. App-visible read ownership is amended by
+  ADR-0070.
 - **Date:** 2026-06-15
 - **Issues:** #1440 (ghost-post — no optimistic local echo for non-replaceable
   kinds), #1442 (persistence entangled with relevance — the authoritative store
@@ -28,6 +29,11 @@
   registration), crate-boundaries.md §4.2 (the `IngestParser` migration this
   finishes), ADR-0064 and the D26 doctrine gate for the separate signer authority
   and action/projection lifecycle problem domain.
+
+**Current disposition:** the accepted-event chokepoint remains the persistence
+and ingest authority. ADR-0070 moves app-visible read lifecycles to typed read
+sessions; it does not reopen kind-specific ingest ladders or public filterless
+event observers.
 
 ---
 

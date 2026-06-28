@@ -1,8 +1,14 @@
 # ADR-0039 — Push projection seam is canonical
 
-- **Status:** Accepted / amended by ADR-0053
+- **Status:** Accepted / amended by ADR-0053 and ADR-0070
 - **Date:** 2026-05-31
 - **Relates to:** ADR-0025, ADR-0037, ADR-0053
+
+**Current disposition:** pushed typed output remains the UI-state path. ADR-0070
+changes the app-facing ownership model: production reads are opened as typed read
+sessions that own demand, replay, output, status, and teardown. Projection keys
+and sidecars are executor/output contract machinery, not the public way an app
+author assembles a product read lifecycle.
 
 ## Context
 

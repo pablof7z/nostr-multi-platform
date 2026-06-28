@@ -1,8 +1,14 @@
 # ADR-0046 — Composition is a library
 
-- **Status:** Accepted / implemented
+- **Status:** Accepted / implemented; amended by ADR-0069
 - **Date:** 2026-06-12
 - **Relates to:** ADR-0010, ADR-0030
+
+**Current disposition:** Composition remains live Rust code, not generated
+framework scaffolding. ADR-0069 narrows the production shape: apps install
+explicit substrate, protocol, and app feature installers. `register_defaults()`
+is no longer the standard production composition surface; any preset is
+tutorial/test/migration compatibility with owner and removal/formalization gate.
 
 ## Context
 
@@ -24,10 +30,12 @@ A downstream app:
    capabilities;
 4. starts the app.
 
-`nmp-defaults::register_defaults` is the standard full Nostr composition.
-`nmp-defaults::register_substrate` is the narrower correctness substrate for
-apps that need lower-level assembly. `nmp-defaults` owns those registration
-functions, not the platform runtime builder or ABI surface.
+`nmp-defaults::register_substrate` is the correctness substrate for apps that
+need lower-level assembly. Other `nmp-defaults` installers may provide reusable
+protocol composition. ADR-0069 rejects `register_defaults()` as the standard
+production app root; if it remains, it is tutorial/test/migration compatibility
+with owner and removal/formalization gate. `nmp-defaults` owns reusable
+registration functions, not the platform runtime builder or ABI surface.
 
 ## Boundaries
 

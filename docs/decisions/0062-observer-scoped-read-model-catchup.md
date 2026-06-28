@@ -1,6 +1,6 @@
 # ADR-0062 — Observer-scoped read-model catch-up: delivery ≠ population
 
-- **Status:** Accepted (2026-06-26)
+- **Status:** Accepted (2026-06-26); amended by ADR-0070
 - **Date:** 2026-06-21
 - **Issues:** #1645 (delete redundant explicit LMDB hydration in
   `open_author_feed`), #1646 (the thread-root half). This ADR is the prerequisite
@@ -23,6 +23,12 @@
   `ObservedProjectionRegistrar::open_observed_projection` /
   `close_observed_projection` door is the canonical realization of this ADR's
   delivery invariant.
+
+- **Current disposition under ADR-0070:** observer-scoped catch-up is private
+  machinery behind typed read sessions. App developers should not wire
+  `ObservedProjectionRegistrar` directly for production product reads unless the
+  caller is explicitly protocol-internal or migration-scoped with an owner and
+  removal/formalization gate.
 
 ---
 

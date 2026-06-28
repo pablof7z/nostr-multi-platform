@@ -1,10 +1,16 @@
 # ADR-0067 — Browser runtime ownership split (`nmp-browser-runtime` owns the Worker)
 
-- **Status:** Accepted; `nmp-wasm` deleted in #2202 (residual cleanup tail)
+- **Status:** Accepted; `nmp-wasm` deleted in #2202 (residual cleanup tail);
+  amended by ADR-0069 and ADR-0072
 - **Date:** 2026-06-25
 - **Supersedes-in-part:** ADR-0047 (browser worker runtime contract), ADR-0054 (web persistence OPFS-SQLite)
 - **Relates to:** crate-boundaries.md §10 (binding crates), §9 (app composition), ADR-0053 (host-declared projections), ADR-0050 (signer-session capability)
 - **Tracking epic:** #2045; crate deletion tracked in #2202
+
+**Current disposition:** the browser runtime ownership split survives. ADR-0069
+narrows composition: browser runtimes start explicit app composition, not hidden
+production defaults. ADR-0072 adds the durable Worker/storage/capability rule:
+silent in-memory or no-worker degradation cannot count as product runtime proof.
 
 ## Context
 
