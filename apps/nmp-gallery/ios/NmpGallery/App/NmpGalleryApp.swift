@@ -72,7 +72,7 @@ struct NmpGalleryApp: App {
 
     /// Find the `RegistryComponent` row matching the given slug.
     static func component(for slug: String) -> RegistryComponent? {
-        for section in REGISTRY_SECTIONS {
+        for section in GALLERY_SECTIONS {
             if let match = section.components.first(where: { $0.id == slug }) {
                 return match
             }

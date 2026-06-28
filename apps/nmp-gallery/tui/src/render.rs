@@ -67,7 +67,8 @@ pub fn plain_lines(
         "content-view" => content_view_lines(&data.content_view, width),
         "content-mention-chip" => content_view_lines(&data.content_mention_chip, width),
         "content-media-grid" => content_view_lines(&data.content_media_grid, width),
-        "content-kind-registry" => content_view_lines(&data.content_quote_card, width),
+        "content-kind-registry" | "content-quote-card" => content_view_lines(&data.content_quote_card, width),
+        "login-block" => crate::login_block::plain_lines(),
         "user-avatar" => vec![format!("avatar {}", primary.initials())],
         "user-name" => vec![primary.display().to_string()],
         "user-nip05" => vec![primary.nip05().unwrap_or("").to_string()],
@@ -137,12 +138,11 @@ pub fn render_body(
             &media_images,
             embed_ctx,
         ),
-        "content-kind-registry" => {
-            render_embed_showcase("embed-note", area, buf, data, &media_images, embed_ctx)
-        }
+        "content-kind-registry" | "content-quote-card" => render_embed_showcase("embed-note", area, buf, data, &media_images, embed_ctx),
         "embed-article" | "embed-profile" | "embed-note" | "embed-highlight" => {
             render_embed_showcase(id, area, buf, data, &media_images, embed_ctx)
         }
+        "login-block" => crate::login_block::render(area, buf),
         "user-avatar" => render_avatar(area, buf, data, embed_ctx),
         "user-name" => {
             let primary = embed_ctx.profiles.resolve(&data.primary_pubkey);

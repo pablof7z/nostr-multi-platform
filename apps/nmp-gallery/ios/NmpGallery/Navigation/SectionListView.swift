@@ -4,7 +4,7 @@ import SwiftUI
 struct SectionListView: View {
     var body: some View {
         List {
-            ForEach(REGISTRY_SECTIONS) { section in
+            ForEach(GALLERY_SECTIONS) { section in
                 NavigationLink(value: section) {
                     HStack(spacing: 12) {
                         Image(systemName: symbolName(for: section.id))

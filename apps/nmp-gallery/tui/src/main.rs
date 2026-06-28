@@ -50,7 +50,7 @@ enum GalleryEvent {
 fn main() -> io::Result<()> {
     let args = parse_args();
     if args.list {
-        for component in gallery::COMPONENTS {
+        for component in gallery::component_ids() {
             println!("{component}");
         }
         return Ok(());

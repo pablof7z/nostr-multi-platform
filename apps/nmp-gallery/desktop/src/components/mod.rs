@@ -5,6 +5,7 @@
 //! mutability and do not depend on the NMP kernel.
 
 pub mod embed_article;
+pub mod gallery_misc;
 pub mod user_avatar;
 pub mod user_card;
 pub mod user_name;

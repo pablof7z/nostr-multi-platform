@@ -4670,6 +4670,7 @@ version = "0.8.4"
 dependencies = [
  "iced",
  "image",
+ "nmp-app-gallery",
  "nmp-content",
  "nmp-core",
  "nmp-gallery-tui",

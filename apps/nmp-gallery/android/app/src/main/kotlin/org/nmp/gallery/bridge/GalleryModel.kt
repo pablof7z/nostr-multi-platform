@@ -20,7 +20,6 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
-import org.nmp.gallery.gallery.REGISTRY_SECTIONS
 import org.nmp.gallery.gallery.RegistrySection
 import org.nmp.gallery.gallery.parseRegistryJson
 import org.nmp.gallery.registry.LoginBlockSignerState
@@ -40,8 +39,8 @@ import org.nmp.gallery.registry.ProfileWire
  * Rust; this host owns no precedence merge).
  *
  * The registry section list is sourced once from `bridge.registryJson()` at
- * startup; [REGISTRY_SECTIONS] is used as a fallback if the JSON is absent or
- * unparseable.
+ * startup. The JSON is embedded by the Rust gallery crate from the canonical
+ * `apps/nmp-gallery/registry.json`.
  */
 class GalleryModel : ViewModel() {
 
@@ -50,7 +49,7 @@ class GalleryModel : ViewModel() {
         GalleryShowcaseReferences.decode(bridge.showcaseReferencesJson())
 
     private val _registrySections = MutableStateFlow<List<RegistrySection>>(
-        parseRegistryJson(bridge.registryJson()) ?: REGISTRY_SECTIONS,
+        parseRegistryJson(bridge.registryJson()),
     )
     val registrySections: StateFlow<List<RegistrySection>> = _registrySections.asStateFlow()
 
