@@ -24,8 +24,8 @@
 //! relies on (exactly like [`crate::swift`] / [`crate::swift_typed_decoders`]).
 
 use crate::action_builders::registry::{
-    ActionBuilder, FieldKind, PayloadField, ACTION_BUILDERS, DISPATCH_ENVELOPE_FILE_IDENTIFIER,
-    DISPATCH_ENVELOPE_SCHEMA_VERSION,
+    ActionBuilder, FieldKind, PayloadField, ACTION_BUILDERS, COMPONENT_BUILDERS,
+    DISPATCH_ENVELOPE_FILE_IDENTIFIER, DISPATCH_ENVELOPE_SCHEMA_VERSION,
 };
 use crate::action_contract::contract_for;
 
@@ -67,10 +67,18 @@ pub fn render(builders: &[ActionBuilder]) -> String {
         out.push('\n');
         render_one(builder, &mut out);
     }
-    // The `nmp.publish` UNION builders (separate emitter — different encode
-    // shape; see `swift_publish`). Only emitted for the default registry, which
-    // is what `render_default` (and therefore the CLI + drift gate) uses.
+    // The `ComponentRegistered`-tier flat-table builders + the `nmp.publish` /
+    // `nmp.marmot` UNION builders (separate emitters) are only emitted for the
+    // default registry, which is what `render_default` (and therefore the CLI +
+    // drift gate) uses. The component builders render through the same
+    // `render_one` flat-table path, right after `ACTION_BUILDERS`.
     if std::ptr::eq(builders.as_ptr(), ACTION_BUILDERS.as_ptr()) {
+        for builder in COMPONENT_BUILDERS {
+            out.push('\n');
+            render_one(builder, &mut out);
+        }
+        // The `nmp.publish` UNION builders (separate emitter — different encode
+        // shape; see `swift_publish`).
         crate::action_builders::swift_publish::render_publish(&mut out);
         // The `nmp.marmot` UNION builders (M14-1c / #2169 — 9-arm union).
         crate::action_builders::swift_marmot::render_marmot(&mut out);
@@ -170,12 +178,13 @@ fn relay_marker_byte_helper() -> String {
 
 /// Render one typed builder function.
 fn render_one(builder: &ActionBuilder, out: &mut String) {
-    if is_bookmark_builder(builder) {
-        render_bookmark_update(builder, out);
+    use crate::action_builders::swift_bookmarks;
+    if swift_bookmarks::is_bookmark_builder(builder) {
+        swift_bookmarks::render_bookmark_update(builder, out);
         return;
     }
-    if is_bookmark_set_builder(builder) {
-        render_bookmark_set_update(builder, out);
+    if swift_bookmarks::is_bookmark_set_builder(builder) {
+        swift_bookmarks::render_bookmark_set_update(builder, out);
         return;
     }
     let contract = contract_for(builder.namespace);
@@ -335,135 +344,6 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
     ));
     out.push_str("        let payload = fbb.sizedByteArray\n");
     // Wrap in the envelope.
-    out.push_str(&format!(
-        "        return encodeDispatchEnvelope(\n\
-         \x20           correlationId: correlationId,\n\
-         \x20           actionNamespace: {:?},\n\
-         \x20           payload: payload\n\
-         \x20       )\n",
-        builder.namespace
-    ));
-    out.push_str("    }\n");
-}
-
-fn is_bookmark_builder(builder: &ActionBuilder) -> bool {
-    matches!(
-        builder.namespace,
-        "nmp.nip51.add_bookmark" | "nmp.nip51.remove_bookmark"
-    )
-}
-
-fn is_bookmark_set_builder(builder: &ActionBuilder) -> bool {
-    matches!(
-        builder.namespace,
-        "nmp.nip51.add_bookmark_set_item" | "nmp.nip51.remove_bookmark_set_item"
-    )
-}
-
-fn render_bookmark_update(builder: &ActionBuilder, out: &mut String) {
-    let contract = contract_for(builder.namespace);
-    let method = builder.method;
-    out.push_str(&format!("    /// {}\n", builder.doc));
-    out.push_str(&format!(
-        "    /// Builds the `{}` `DispatchEnvelope` bytes for the byte doorway.\n",
-        builder.namespace
-    ));
-    out.push_str(&format!(
-        "    public static func {method}(\n\
-         \x20       correlationId: String,\n\
-         \x20       accountPubkey: String,\n\
-         \x20       itemKind: UInt8,\n\
-         \x20       value: String,\n\
-         \x20       relay: String?\n\
-         \x20   ) -> [UInt8] {{\n"
-    ));
-    out.push_str("        var fbb = FlatBufferBuilder()\n");
-    out.push_str("        let accountPubkeyOffset = fbb.create(string: accountPubkey)\n");
-    out.push_str("        let valueOffset = fbb.create(string: value)\n");
-    out.push_str(
-        "        let relayOffset: Offset = relay.map { fbb.create(string: $0) } ?? Offset()\n",
-    );
-    out.push_str("        let itemStart = fbb.startTable(with: 3)\n");
-    out.push_str("        fbb.add(element: itemKind, def: UInt8(0), at: 4) // slot 0: kind\n");
-    out.push_str("        fbb.add(offset: valueOffset, at: 6) // slot 1: value\n");
-    out.push_str(
-        "        if relayOffset.o != 0 { fbb.add(offset: relayOffset, at: 8) } // slot 2: relay\n",
-    );
-    out.push_str("        let itemRoot = Offset(offset: fbb.endTable(at: itemStart))\n");
-    out.push_str("        let payloadStart = fbb.startTable(with: 3)\n");
-    out.push_str(&format!(
-        "        fbb.add(element: UInt32({}), def: UInt32(0), at: 4) // slot 0: schema_version\n",
-        contract.schema_version
-    ));
-    out.push_str("        fbb.add(offset: accountPubkeyOffset, at: 6) // slot 1: account_pubkey\n");
-    out.push_str("        fbb.add(offset: itemRoot, at: 8) // slot 2: item\n");
-    out.push_str("        let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))\n");
-    out.push_str(&format!(
-        "        fbb.finish(offset: payloadRoot, fileId: {:?})\n",
-        contract.file_identifier
-    ));
-    out.push_str("        let payload = fbb.sizedByteArray\n");
-    out.push_str(&format!(
-        "        return encodeDispatchEnvelope(\n\
-         \x20           correlationId: correlationId,\n\
-         \x20           actionNamespace: {:?},\n\
-         \x20           payload: payload\n\
-         \x20       )\n",
-        builder.namespace
-    ));
-    out.push_str("    }\n");
-}
-
-fn render_bookmark_set_update(builder: &ActionBuilder, out: &mut String) {
-    let contract = contract_for(builder.namespace);
-    let method = builder.method;
-    out.push_str(&format!("    /// {}\n", builder.doc));
-    out.push_str(&format!(
-        "    /// Builds the `{}` `DispatchEnvelope` bytes for the byte doorway.\n",
-        builder.namespace
-    ));
-    out.push_str(&format!(
-        "    public static func {method}(\n\
-         \x20       correlationId: String,\n\
-         \x20       accountPubkey: String,\n\
-         \x20       setKind: UInt8,\n\
-         \x20       identifier: String,\n\
-         \x20       itemKind: UInt8,\n\
-         \x20       value: String,\n\
-         \x20       relay: String?\n\
-         \x20   ) -> [UInt8] {{\n"
-    ));
-    out.push_str("        var fbb = FlatBufferBuilder()\n");
-    out.push_str("        let accountPubkeyOffset = fbb.create(string: accountPubkey)\n");
-    out.push_str("        let identifierOffset = fbb.create(string: identifier)\n");
-    out.push_str("        let valueOffset = fbb.create(string: value)\n");
-    out.push_str(
-        "        let relayOffset: Offset = relay.map { fbb.create(string: $0) } ?? Offset()\n",
-    );
-    // Build nested BookmarkItem table (3 slots: kind ubyte, value string, relay string)
-    out.push_str("        let itemStart = fbb.startTable(with: 3)\n");
-    out.push_str("        fbb.add(element: itemKind, def: UInt8(0), at: 4) // slot 0: kind\n");
-    out.push_str("        fbb.add(offset: valueOffset, at: 6) // slot 1: value\n");
-    out.push_str(
-        "        if relayOffset.o != 0 { fbb.add(offset: relayOffset, at: 8) } // slot 2: relay\n",
-    );
-    out.push_str("        let itemRoot = Offset(offset: fbb.endTable(at: itemStart))\n");
-    // Build BookmarkSetUpdatePayload root table (5 slots: schema_version, account_pubkey, set_kind, identifier, item)
-    out.push_str("        let payloadStart = fbb.startTable(with: 5)\n");
-    out.push_str(&format!(
-        "        fbb.add(element: UInt32({}), def: UInt32(0), at: 4) // slot 0: schema_version\n",
-        contract.schema_version
-    ));
-    out.push_str("        fbb.add(offset: accountPubkeyOffset, at: 6) // slot 1: account_pubkey\n");
-    out.push_str("        fbb.add(element: setKind, def: UInt8(0), at: 8) // slot 2: set_kind\n");
-    out.push_str("        fbb.add(offset: identifierOffset, at: 10) // slot 3: identifier\n");
-    out.push_str("        fbb.add(offset: itemRoot, at: 12) // slot 4: item\n");
-    out.push_str("        let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))\n");
-    out.push_str(&format!(
-        "        fbb.finish(offset: payloadRoot, fileId: {:?})\n",
-        contract.file_identifier
-    ));
-    out.push_str("        let payload = fbb.sizedByteArray\n");
     out.push_str(&format!(
         "        return encodeDispatchEnvelope(\n\
          \x20           correlationId: correlationId,\n\

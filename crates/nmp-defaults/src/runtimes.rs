@@ -477,14 +477,10 @@ impl ZapReceiptsRuntimeController {
     }
 }
 
-// ───────────────────────────────────────────────────────────────────────
-// NIP-51 mute-list runtime
-// ───────────────────────────────────────────────────────────────────────
-//
-// Extracted to `runtimes/mute_runtime.rs` to hold this module under the 500-LOC
-// hard ceiling (AGENTS.md: extract, never bump the baseline). Re-exported here so
-// `runtimes::register_mute_runtime` (and the `nmp_defaults::register_mute_runtime`
-// facade in `lib.rs`) stay unchanged.
+// NIP-51 mute-list runtime. Extracted to `runtimes/mute_runtime.rs` to hold this
+// module under the 500-LOC hard ceiling (AGENTS.md: extract, never bump the
+// baseline). Re-exported here so `runtimes::register_mute_runtime` (and the
+// `nmp_defaults::register_mute_runtime` facade in `lib.rs`) stay unchanged.
 mod mute_runtime;
 pub use mute_runtime::register_mute_runtime;
 

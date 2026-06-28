@@ -1,7 +1,7 @@
 //! #1939 — fail-closed gates for the neutral action contract.
 
 use super::*;
-use crate::action_builders::registry::{ACTION_BUILDERS, PUBLISH_BUILDERS};
+use crate::action_builders::registry::{ACTION_BUILDERS, COMPONENT_BUILDERS, PUBLISH_BUILDERS};
 
 #[test]
 fn namespaces_are_unique() {
@@ -38,8 +38,11 @@ fn schema_files_match_contract_identity() {
 
 #[test]
 fn generated_builders_match_contract() {
-    let builder_namespaces: std::collections::BTreeSet<&str> =
-        ACTION_BUILDERS.iter().map(|b| b.namespace).collect();
+    let builder_namespaces: std::collections::BTreeSet<&str> = ACTION_BUILDERS
+        .iter()
+        .chain(COMPONENT_BUILDERS.iter())
+        .map(|b| b.namespace)
+        .collect();
     let contract_generated: std::collections::BTreeSet<&str> = ACTION_CONTRACT
         .iter()
         .filter(|c| {
@@ -56,7 +59,7 @@ fn generated_builders_match_contract() {
         builder_namespaces, contract_generated,
         "ACTION_BUILDERS must equal contract rows with generated host builders"
     );
-    for builder in ACTION_BUILDERS {
+    for builder in ACTION_BUILDERS.iter().chain(COMPONENT_BUILDERS.iter()) {
         let contract = contract_for(builder.namespace);
         assert!(
             matches!(

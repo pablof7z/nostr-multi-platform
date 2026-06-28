@@ -74,35 +74,25 @@ extension KernelHandle {
     }
 
     func claimVisibleNoteRelations(eventID: String) {
-        dispatchVisibleNoteRelations(op: "claim", eventID: eventID)
+        // VisibleNoteRelationsOp.Claim ubyte discriminant (= 0).
+        dispatchVisibleNoteRelations(op: 0, eventID: eventID)
     }
 
     func releaseVisibleNoteRelations(eventID: String) {
-        dispatchVisibleNoteRelations(op: "release", eventID: eventID)
+        // VisibleNoteRelationsOp.Release ubyte discriminant (= 1).
+        dispatchVisibleNoteRelations(op: 1, eventID: eventID)
     }
 
-    private func dispatchVisibleNoteRelations(op: String, eventID: String) {
-        let body: [String: String] = [
-            "op": op,
-            "event_id": eventID,
-            "consumer_id": "ios.visible-note:\(eventID)"
-        ]
-        guard
-            JSONSerialization.isValidJSONObject(body),
-            let data = try? JSONSerialization.data(withJSONObject: body),
-            let json = String(data: data, encoding: .utf8)
-        else { return }
-        dispatchVisibleNoteRelations(bodyJson: json)
-    }
-
-    private func dispatchVisibleNoteRelations(bodyJson: String) {
-        let namespace = "nmp.nip01.visible_note_relations"
-        bodyJson.withCString { jsonPtr in
-            namespace.withCString { nsPtr in
-                if let ptr = nmp_app_chirp_dispatch_action_bytes(raw, nsPtr, jsonPtr) {
-                    nmp_free_string(ptr)
-                }
-            }
-        }
+    /// Dispatch a `nmp.nip01.visible_note_relations` claim/release through the
+    /// typed FlatBuffers byte builder (#2197). The generated builder stamps the
+    /// namespace + envelope; the host never hand-spells either. Fire-and-forget.
+    private func dispatchVisibleNoteRelations(op: UInt8, eventID: String) {
+        let bytes = GeneratedActionBuilders.visibleNoteRelations(
+            correlationId: UUID().uuidString,
+            op: op,
+            eventId: eventID,
+            consumerId: "ios.visible-note:\(eventID)"
+        )
+        _ = dispatchBytes(bytes)
     }
 }

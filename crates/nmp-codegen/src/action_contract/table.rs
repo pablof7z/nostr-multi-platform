@@ -6,10 +6,6 @@ use super::{
 
 const PUBLIC_REEXPORT: PublicReExportPolicy = PublicReExportPolicy::DefaultsActionPayloads;
 const TYPED_ONLY: TypedDispatchPolicy = TypedDispatchPolicy::TypedOnly;
-const NO_GENERATED_BUILDER: BuilderSupport = BuilderSupport::NotGenerated {
-    reason: "No generated host builder has been requested for this default action yet; \
-             the typed payload is public through nmp-defaults::action_payloads.",
-};
 
 /// Contract namespace for the core publish action. Kept here so emitters do not
 /// own the publish routing key.

@@ -32,7 +32,7 @@ fn ts_emits_every_namespace_and_method() {
     // The web reuses the hand-written envelope wrapper rather than re-emitting
     // one — assert the import is present (single web source of truth).
     assert!(s.contains("import { encodeDispatchEnvelope } from \"./dispatchEnvelope\";"));
-    for b in ACTION_BUILDERS {
+    for b in ACTION_BUILDERS.iter().chain(COMPONENT_BUILDERS.iter()) {
         assert!(
             s.contains(&format!("  {}(", b.method)),
             "missing ts builder method `{}`",
@@ -64,7 +64,7 @@ fn ts_emits_the_publish_union_builders() {
 fn swift_emits_every_namespace_and_method() {
     let s = render(Platform::Swift);
     assert!(s.contains("public enum GeneratedActionBuilders"));
-    for b in ACTION_BUILDERS {
+    for b in ACTION_BUILDERS.iter().chain(COMPONENT_BUILDERS.iter()) {
         assert!(
             s.contains(&format!("public static func {}(", b.method)),
             "missing swift builder method `{}`",
@@ -85,7 +85,7 @@ fn swift_emits_every_namespace_and_method() {
 fn kotlin_emits_every_namespace_and_method() {
     let s = render(Platform::Kotlin);
     assert!(s.contains("object GeneratedActionBuilders"));
-    for b in ACTION_BUILDERS {
+    for b in ACTION_BUILDERS.iter().chain(COMPONENT_BUILDERS.iter()) {
         assert!(
             s.contains(&format!("fun {}(", b.method)),
             "missing kotlin builder method `{}`",

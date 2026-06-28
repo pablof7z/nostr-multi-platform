@@ -34,7 +34,9 @@
 //! fixed template per builder. That stability is what the `--check` drift gate
 //! relies on (exactly like [`crate::action_builders::kotlin`]).
 
-use crate::action_builders::registry::{ActionBuilder, FieldKind, PayloadField, ACTION_BUILDERS};
+use crate::action_builders::registry::{
+    ActionBuilder, FieldKind, PayloadField, ACTION_BUILDERS, COMPONENT_BUILDERS,
+};
 use crate::action_contract::contract_for;
 
 const HEADER: &str = "\
@@ -75,10 +77,17 @@ pub fn render(builders: &[ActionBuilder]) -> String {
     for builder in builders {
         render_one(builder, &mut out);
     }
-    // The `nmp.publish` UNION builders (separate emitter — different encode
-    // shape; see `ts_publish`). Only emitted for the default registry, which is
-    // what `render_default` (and therefore the CLI + drift gate) uses.
+    // The `ComponentRegistered`-tier flat-table builders + the `nmp.publish` /
+    // `nmp.marmot` UNION builders (separate emitters) are only emitted for the
+    // default registry, which is what `render_default` (and therefore the CLI +
+    // drift gate) uses. The component builders render through the same
+    // `render_one` flat-table path, right after `ACTION_BUILDERS`.
     if std::ptr::eq(builders.as_ptr(), ACTION_BUILDERS.as_ptr()) {
+        for builder in COMPONENT_BUILDERS {
+            render_one(builder, &mut out);
+        }
+        // The `nmp.publish` UNION builders (separate emitter — different encode
+        // shape; see `ts_publish`).
         crate::action_builders::ts_publish::render_publish(&mut out);
         // The `nmp.marmot` UNION builders (M14-1c / #2169 — 9-arm union).
         crate::action_builders::ts_marmot::render_marmot(&mut out);
@@ -137,12 +146,13 @@ fn shared_helpers() -> String {
 /// Render one typed builder method (a property on the `GeneratedActionBuilders`
 /// object literal).
 fn render_one(builder: &ActionBuilder, out: &mut String) {
-    if is_bookmark_builder(builder) {
-        render_bookmark_update(builder, out);
+    use crate::action_builders::ts_bookmarks;
+    if ts_bookmarks::is_bookmark_builder(builder) {
+        ts_bookmarks::render_bookmark_update(builder, out);
         return;
     }
-    if is_bookmark_set_builder(builder) {
-        render_bookmark_set_update(builder, out);
+    if ts_bookmarks::is_bookmark_set_builder(builder) {
+        ts_bookmarks::render_bookmark_set_update(builder, out);
         return;
     }
     let contract = contract_for(builder.namespace);
@@ -272,115 +282,6 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
         }
         slot += field.slot_count();
     }
-    out.push_str("    const payloadRoot = fbb.endObject();\n");
-    out.push_str(&format!(
-        "    fbb.finish(payloadRoot, {:?});\n",
-        contract.file_identifier
-    ));
-    out.push_str("    const payload = fbb.asUint8Array();\n");
-    out.push_str(&format!(
-        "    return encodeDispatchEnvelope(correlationId, {:?}, payload);\n",
-        builder.namespace
-    ));
-    out.push_str("  },\n\n");
-}
-
-fn is_bookmark_builder(builder: &ActionBuilder) -> bool {
-    matches!(
-        builder.namespace,
-        "nmp.nip51.add_bookmark" | "nmp.nip51.remove_bookmark"
-    )
-}
-
-fn is_bookmark_set_builder(builder: &ActionBuilder) -> bool {
-    matches!(
-        builder.namespace,
-        "nmp.nip51.add_bookmark_set_item" | "nmp.nip51.remove_bookmark_set_item"
-    )
-}
-
-fn render_bookmark_update(builder: &ActionBuilder, out: &mut String) {
-    let contract = contract_for(builder.namespace);
-    out.push_str(&format!("  /** {} */\n", builder.doc));
-    out.push_str(&format!(
-        "  {}(\n\
-         \x20   correlationId: string,\n\
-         \x20   accountPubkey: string,\n\
-         \x20   itemKind: number,\n\
-         \x20   value: string,\n\
-         \x20   relay: string | null,\n\
-         \x20 ): Uint8Array {{\n",
-        builder.method
-    ));
-    out.push_str("    const fbb = new flatbuffers.Builder(64);\n");
-    out.push_str("    const accountPubkeyOffset = fbb.createString(accountPubkey);\n");
-    out.push_str("    const valueOffset = fbb.createString(value);\n");
-    out.push_str("    const relayOffset = relay === null ? 0 : fbb.createString(relay);\n");
-    out.push_str("    fbb.startObject(3);\n");
-    out.push_str("    fbb.addFieldInt8(0, itemKind, 0); // slot 0: kind\n");
-    out.push_str("    fbb.addFieldOffset(1, valueOffset, 0); // slot 1: value\n");
-    out.push_str(
-        "    if (relayOffset !== 0) fbb.addFieldOffset(2, relayOffset, 0); // slot 2: relay\n",
-    );
-    out.push_str("    const itemRoot = fbb.endObject();\n");
-    out.push_str("    fbb.startObject(3);\n");
-    out.push_str(&format!(
-        "    fbb.addFieldInt32(0, {}, 0); // slot 0: schema_version\n",
-        contract.schema_version
-    ));
-    out.push_str("    fbb.addFieldOffset(1, accountPubkeyOffset, 0); // slot 1: account_pubkey\n");
-    out.push_str("    fbb.addFieldOffset(2, itemRoot, 0); // slot 2: item\n");
-    out.push_str("    const payloadRoot = fbb.endObject();\n");
-    out.push_str(&format!(
-        "    fbb.finish(payloadRoot, {:?});\n",
-        contract.file_identifier
-    ));
-    out.push_str("    const payload = fbb.asUint8Array();\n");
-    out.push_str(&format!(
-        "    return encodeDispatchEnvelope(correlationId, {:?}, payload);\n",
-        builder.namespace
-    ));
-    out.push_str("  },\n\n");
-}
-
-fn render_bookmark_set_update(builder: &ActionBuilder, out: &mut String) {
-    let contract = contract_for(builder.namespace);
-    out.push_str(&format!("  /** {} */\n", builder.doc));
-    out.push_str(&format!(
-        "  {}(\n\
-         \x20   correlationId: string,\n\
-         \x20   accountPubkey: string,\n\
-         \x20   setKind: number,\n\
-         \x20   identifier: string,\n\
-         \x20   itemKind: number,\n\
-         \x20   value: string,\n\
-         \x20   relay: string | null,\n\
-         \x20 ): Uint8Array {{\n",
-        builder.method
-    ));
-    out.push_str("    const fbb = new flatbuffers.Builder(64);\n");
-    out.push_str("    const accountPubkeyOffset = fbb.createString(accountPubkey);\n");
-    out.push_str("    const identifierOffset = fbb.createString(identifier);\n");
-    out.push_str("    const valueOffset = fbb.createString(value);\n");
-    out.push_str("    const relayOffset = relay === null ? 0 : fbb.createString(relay);\n");
-    // Build nested BookmarkItem table (3 slots: kind ubyte, value string, relay string)
-    out.push_str("    fbb.startObject(3);\n");
-    out.push_str("    fbb.addFieldInt8(0, itemKind, 0); // slot 0: kind\n");
-    out.push_str("    fbb.addFieldOffset(1, valueOffset, 0); // slot 1: value\n");
-    out.push_str(
-        "    if (relayOffset !== 0) fbb.addFieldOffset(2, relayOffset, 0); // slot 2: relay\n",
-    );
-    out.push_str("    const itemRoot = fbb.endObject();\n");
-    // Build BookmarkSetUpdatePayload root table (5 slots: schema_version, account_pubkey, set_kind, identifier, item)
-    out.push_str("    fbb.startObject(5);\n");
-    out.push_str(&format!(
-        "    fbb.addFieldInt32(0, {}, 0); // slot 0: schema_version\n",
-        contract.schema_version
-    ));
-    out.push_str("    fbb.addFieldOffset(1, accountPubkeyOffset, 0); // slot 1: account_pubkey\n");
-    out.push_str("    fbb.addFieldInt8(2, setKind, 0); // slot 2: set_kind\n");
-    out.push_str("    fbb.addFieldOffset(3, identifierOffset, 0); // slot 3: identifier\n");
-    out.push_str("    fbb.addFieldOffset(4, itemRoot, 0); // slot 4: item\n");
     out.push_str("    const payloadRoot = fbb.endObject();\n");
     out.push_str(&format!(
         "    fbb.finish(payloadRoot, {:?});\n",

@@ -127,6 +127,13 @@ pub struct ActionBuilder {
 mod table;
 pub use table::ACTION_BUILDERS;
 
+// The `ActionDefaultTier::ComponentRegistered` flat-table builders
+// (`nmp.blossom.upload`, `nmp.nip01.visible_note_relations`) live in the sibling
+// `table_components.rs` (size-management seam — V-12). They render through the
+// same emitter `render_one` path as [`ACTION_BUILDERS`], in a dedicated pass.
+mod table_components;
+pub use table_components::COMPONENT_BUILDERS;
+
 // ── nmp.publish — the UNION-bodied builders (ADR-0064 §3) ────────────────────
 // `nmp.publish` is the namespace EVERY second-app consumer (hl / tenex-off /
 // podcast, iOS + Android) actually writes through, so the typed builders don't
