@@ -1,9 +1,9 @@
 //! The actual `window.nostr.signEvent(...)` bridge.
 //!
-//! Single responsibility: turn an [`UnsignedEvent`] into either a
+//! Single responsibility: turn NIP-07 extension Promises into either
 //! [`SignerOp::Pending(rx)`] (the trait-compatible synchronous-by-default
-//! shape `Signer::sign()` returns) OR a real `Future` (the pure-async twin
-//! the wasm runtime's Promise wrapper awaits — see
+//! shape `Signer::sign()` and `Nip44` return) OR a real `Future` (the
+//! pure-async twin the wasm runtime's Promise wrapper awaits — see
 //! [`sign_event_via_extension`]).
 //!
 //! Split out of `nip07.rs` to keep that file under the AGENTS.md 500-LOC
@@ -37,6 +37,8 @@
 //!
 //! - Missing `window` or `window.nostr` → `SignerError::Backend` (no
 //!   extension installed).
+//! - Missing `window.nostr.nip44` or one of its verbs →
+//!   `SignerError::Unsupported` (extension capability not present).
 //! - Promise rejection (user denied / extension internal error) →
 //!   `SignerError::Rejected`.
 //! - Pubkey mismatch (extension signed with a different key than the one
@@ -170,26 +172,175 @@ pub async fn sign_event_via_extension(
     signed_event_from_js(&signed_js, &unsigned, cached_pubkey)
 }
 
+#[derive(Clone, Copy, Debug)]
+enum Nip44Verb {
+    Encrypt,
+    Decrypt,
+}
+
+impl Nip44Verb {
+    fn js_name(self) -> &'static str {
+        match self {
+            Self::Encrypt => "encrypt",
+            Self::Decrypt => "decrypt",
+        }
+    }
+}
+
+struct Nip44Method {
+    receiver: JsValue,
+    function: Function,
+}
+
+pub(super) fn nip44_available() -> bool {
+    resolve_nip44_fn(Nip44Verb::Encrypt).is_ok() && resolve_nip44_fn(Nip44Verb::Decrypt).is_ok()
+}
+
+pub(super) fn nip44_encrypt_with_extension(
+    recipient: &PublicKey,
+    plaintext: &str,
+) -> SignerOp<String> {
+    nip44_with_extension(Nip44Verb::Encrypt, &recipient.to_hex(), plaintext)
+}
+
+pub(super) fn nip44_decrypt_with_extension(sender: &PublicKey, payload: &str) -> SignerOp<String> {
+    nip44_with_extension(Nip44Verb::Decrypt, &sender.to_hex(), payload)
+}
+
+fn nip44_with_extension(verb: Nip44Verb, peer_pubkey: &str, text: &str) -> SignerOp<String> {
+    let (tx, rx) = mpsc::channel::<Result<String, SignerError>>();
+    let promise = match invoke_nip44(verb, peer_pubkey, text) {
+        Ok(promise) => promise,
+        Err(error) => {
+            let _ = tx.send(Err(error));
+            return SignerOp::Pending(rx);
+        }
+    };
+
+    spawn_local(async move {
+        let result = await_nip44_string(verb, promise).await;
+        let _ = tx.send(result);
+    });
+
+    SignerOp::Pending(rx)
+}
+
+#[cfg(test)]
+async fn nip44_via_extension(
+    verb: Nip44Verb,
+    peer_pubkey: &str,
+    text: &str,
+) -> Result<String, SignerError> {
+    let promise = invoke_nip44(verb, peer_pubkey, text)?;
+    await_nip44_string(verb, promise).await
+}
+
+async fn await_nip44_string(verb: Nip44Verb, promise: Promise) -> Result<String, SignerError> {
+    let value = JsFuture::from(promise).await.map_err(|error| {
+        SignerError::Rejected(format!(
+            "window.nostr.nip44.{} rejected: {error:?}",
+            verb.js_name()
+        ))
+    })?;
+    string_from_nip44_js(verb, &value)
+}
+
+fn invoke_nip44(verb: Nip44Verb, peer_pubkey: &str, text: &str) -> Result<Promise, SignerError> {
+    let method = resolve_nip44_fn(verb)?;
+    let value = method
+        .function
+        .call2(
+            &method.receiver,
+            &JsValue::from_str(peer_pubkey),
+            &JsValue::from_str(text),
+        )
+        .map_err(|error| {
+            SignerError::Backend(format!(
+                "window.nostr.nip44.{} invocation threw: {error:?}",
+                verb.js_name()
+            ))
+        })?;
+    value.dyn_into::<Promise>().map_err(|other| {
+        SignerError::Backend(format!(
+            "window.nostr.nip44.{} returned non-Promise: {other:?}",
+            verb.js_name()
+        ))
+    })
+}
+
+fn resolve_nip44_fn(verb: Nip44Verb) -> Result<Nip44Method, SignerError> {
+    let window = web_sys::window().ok_or_else(|| {
+        SignerError::Unsupported(
+            "no `window` global; NIP-07 NIP-44 requires a browser context".to_string(),
+        )
+    })?;
+    let nostr = Reflect::get(&window, &JsValue::from_str("nostr"))
+        .map_err(|e| SignerError::Backend(format!("window.nostr lookup threw: {e:?}")))?;
+    if nostr.is_undefined() || nostr.is_null() {
+        return Err(SignerError::Unsupported(
+            "no `window.nostr`; install a NIP-07 browser extension".to_string(),
+        ));
+    }
+    let nip44 = Reflect::get(&nostr, &JsValue::from_str("nip44"))
+        .map_err(|e| SignerError::Backend(format!("window.nostr.nip44 lookup threw: {e:?}")))?;
+    if nip44.is_undefined() || nip44.is_null() {
+        return Err(SignerError::Unsupported(
+            "window.nostr.nip44 is unavailable; extension does not support NIP-44".to_string(),
+        ));
+    }
+    let method = Reflect::get(&nip44, &JsValue::from_str(verb.js_name())).map_err(|e| {
+        SignerError::Backend(format!(
+            "window.nostr.nip44.{} lookup threw: {e:?}",
+            verb.js_name()
+        ))
+    })?;
+    let function = method.dyn_into::<Function>().map_err(|other| {
+        SignerError::Unsupported(format!(
+            "window.nostr.nip44.{} is not a function: {other:?}",
+            verb.js_name()
+        ))
+    })?;
+    Ok(Nip44Method {
+        receiver: nip44,
+        function,
+    })
+}
+
+fn string_from_nip44_js(verb: Nip44Verb, value: &JsValue) -> Result<String, SignerError> {
+    value.as_string().ok_or_else(|| {
+        SignerError::Backend(format!(
+            "window.nostr.nip44.{} resolved to a non-string value: {value:?}",
+            verb.js_name()
+        ))
+    })
+}
+
 /// Build the JS object the extension expects (`{kind, content, tags,
 /// created_at}`). Per NIP-07, `pubkey`/`id`/`sig` are filled in by the
 /// extension; supplying them is allowed but optional.
 fn build_template(unsigned: &UnsignedEvent) -> Result<JsValue, SignerError> {
     let obj = Object::new();
-    Reflect::set(&obj, &JsValue::from_str("kind"), &JsValue::from_f64(f64::from(unsigned.kind)))
-        .map_err(|e| {
-            SignerError::Backend(format!("failed to set kind on JS template: {e:?}"))
-        })?;
-    Reflect::set(&obj, &JsValue::from_str("content"), &JsValue::from_str(&unsigned.content))
-        .map_err(|e| {
-            SignerError::Backend(format!("failed to set content on JS template: {e:?}"))
-        })?;
+    Reflect::set(
+        &obj,
+        &JsValue::from_str("kind"),
+        &JsValue::from_f64(f64::from(unsigned.kind)),
+    )
+    .map_err(|e| SignerError::Backend(format!("failed to set kind on JS template: {e:?}")))?;
+    Reflect::set(
+        &obj,
+        &JsValue::from_str("content"),
+        &JsValue::from_str(&unsigned.content),
+    )
+    .map_err(|e| SignerError::Backend(format!("failed to set content on JS template: {e:?}")))?;
     // f64 precision covers Unix timestamps for ~285M years — safe.
     #[allow(clippy::cast_precision_loss)]
     let created_at = unsigned.created_at as f64;
-    Reflect::set(&obj, &JsValue::from_str("created_at"), &JsValue::from_f64(created_at))
-        .map_err(|e| {
-            SignerError::Backend(format!("failed to set created_at on JS template: {e:?}"))
-        })?;
+    Reflect::set(
+        &obj,
+        &JsValue::from_str("created_at"),
+        &JsValue::from_f64(created_at),
+    )
+    .map_err(|e| SignerError::Backend(format!("failed to set created_at on JS template: {e:?}")))?;
     // Pre-supplying `pubkey` lets the extension cross-check (some
     // implementations error if the template's pubkey disagrees with the
     // active extension account — surfacing a mismatch early is better
@@ -199,9 +350,7 @@ fn build_template(unsigned: &UnsignedEvent) -> Result<JsValue, SignerError> {
         &JsValue::from_str("pubkey"),
         &JsValue::from_str(&unsigned.pubkey),
     )
-    .map_err(|e| {
-        SignerError::Backend(format!("failed to set pubkey on JS template: {e:?}"))
-    })?;
+    .map_err(|e| SignerError::Backend(format!("failed to set pubkey on JS template: {e:?}")))?;
 
     // tags is a `string[][]`. Build a JS array of arrays mirroring the
     // Rust `Vec<Vec<String>>` shape verbatim.
@@ -213,9 +362,8 @@ fn build_template(unsigned: &UnsignedEvent) -> Result<JsValue, SignerError> {
         }
         tags.push(&inner);
     }
-    Reflect::set(&obj, &JsValue::from_str("tags"), &tags).map_err(|e| {
-        SignerError::Backend(format!("failed to set tags on JS template: {e:?}"))
-    })?;
+    Reflect::set(&obj, &JsValue::from_str("tags"), &tags)
+        .map_err(|e| SignerError::Backend(format!("failed to set tags on JS template: {e:?}")))?;
 
     Ok(obj.into())
 }
@@ -224,21 +372,17 @@ fn build_template(unsigned: &UnsignedEvent) -> Result<JsValue, SignerError> {
 /// hop is missing. Hot path is the user has an extension installed.
 fn resolve_sign_event_fn() -> Result<Function, SignerError> {
     let window = web_sys::window().ok_or_else(|| {
-        SignerError::Backend(
-            "no `window` global; NIP-07 requires a browser context".to_string(),
-        )
+        SignerError::Backend("no `window` global; NIP-07 requires a browser context".to_string())
     })?;
-    let nostr = Reflect::get(&window, &JsValue::from_str("nostr")).map_err(|e| {
-        SignerError::Backend(format!("window.nostr lookup threw: {e:?}"))
-    })?;
+    let nostr = Reflect::get(&window, &JsValue::from_str("nostr"))
+        .map_err(|e| SignerError::Backend(format!("window.nostr lookup threw: {e:?}")))?;
     if nostr.is_undefined() || nostr.is_null() {
         return Err(SignerError::Backend(
             "no `window.nostr`; install a NIP-07 browser extension".to_string(),
         ));
     }
-    let sign_event = Reflect::get(&nostr, &JsValue::from_str("signEvent")).map_err(|e| {
-        SignerError::Backend(format!("window.nostr.signEvent lookup threw: {e:?}"))
-    })?;
+    let sign_event = Reflect::get(&nostr, &JsValue::from_str("signEvent"))
+        .map_err(|e| SignerError::Backend(format!("window.nostr.signEvent lookup threw: {e:?}")))?;
     sign_event.dyn_into::<Function>().map_err(|other| {
         SignerError::Backend(format!(
             "window.nostr.signEvent is not a function: {other:?}"
@@ -268,9 +412,7 @@ fn signed_event_from_js(
         })?
         .as_string()
         .ok_or_else(|| {
-            SignerError::Backend(
-                "JSON.stringify(signedEvent) returned non-string".to_string(),
-            )
+            SignerError::Backend("JSON.stringify(signedEvent) returned non-string".to_string())
         })?;
 
     // NIP-07 returns flat events (`{id, pubkey, kind, tags, content,
@@ -286,9 +428,8 @@ fn signed_event_from_js(
         created_at: u64,
         sig: String,
     }
-    let flat: FlatNip07Event = serde_json::from_str(&json).map_err(|e| {
-        SignerError::Backend(format!("signed event JSON did not parse: {e}"))
-    })?;
+    let flat: FlatNip07Event = serde_json::from_str(&json)
+        .map_err(|e| SignerError::Backend(format!("signed event JSON did not parse: {e}")))?;
 
     if flat.pubkey != cached_pubkey.to_hex() {
         return Err(SignerError::Backend(format!(
@@ -322,3 +463,7 @@ fn signed_event_from_js(
         },
     })
 }
+
+#[cfg(test)]
+#[path = "wasm_tests.rs"]
+mod tests;

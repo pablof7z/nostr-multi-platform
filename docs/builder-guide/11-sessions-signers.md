@@ -48,8 +48,10 @@ small contract:
   template (invariant 2 — the applesauce `SignerMismatchError`
   post-condition).
 - `nip04()` / `nip44()` — `Option<&dyn ...>`; callers **must** check
-  (invariant 3). A `LocalKeySigner` returns `Some`; a non-wasm
-  `Nip07Signer` returns `Some` but every op yields `Unsupported`.
+  (invariant 3). A `LocalKeySigner` and NIP-46/NIP-55 signers return `Some`
+  for NIP-44. `Nip07Signer` returns `None` off-wasm and, on wasm, returns
+  `Some` only when the installed extension exposes both
+  `window.nostr.nip44.encrypt` and `window.nostr.nip44.decrypt`.
 - `to_payload() -> SignerPayload` — serialize for persistence;
   round-trips via the kind-specific constructor.
 
@@ -65,7 +67,7 @@ exception. Variants: `NotReady`, `Unsupported`, `Rejected`, `Mismatch`,
 |---|---|---|---|---|---|
 | `LocalKeySigner` | `generate` / `from_nsec` / `from_ncryptsec` / `from_secret_hex` (`signers/local.rs:43-104`) | `SignerOp::Ready` — synchronous, microseconds | Raw key in process; NIP-49-at-rest if constructed from `ncryptsec` (`local.rs:71-83`, `log_n` default 16, never < 14 for real keys) | No prompt; instant | None (pure crypto) |
 | `Nip46Signer` | handshake → `Nip46SignerHandle::complete` (`signers/nip46/mod.rs:133-146`) | `SignerOp::Pending(rx)` — relay round-trip, seconds | Key never leaves remote bunker; local ephemeral key only | Remote-approve prompt per op | `Nip46Transport` injected by kernel (D7 — kernel owns relays) |
-| `Nip07Signer` | `from_cached_pubkey` / `from_payload` (`signers/nip07.rs:53-80`) | Browser `window.nostr.*` on wasm; **non-wasm = `Unsupported`** | Key in extension; pubkey cached so `pubkey()` is sync | Extension dialog per op | wasm target + `feature = "wasm"` (`nip07.rs:83-85`) |
+| `Nip07Signer` | `from_cached_pubkey` / `from_payload` (`signers/nip07.rs:53-80`) | Browser `window.nostr.signEvent` on wasm; NIP-44 only when the extension exposes both `window.nostr.nip44` verbs; **non-wasm = `Unsupported` / no NIP-44 capability** | Key in extension; pubkey cached so `pubkey()` is sync | Extension dialog per op | wasm target + `feature = "wasm"` (`nip07.rs:83-85`) plus extension capability detection |
 | Amber NIP-55 (future) | via `CapabilityModule` (`SignerBackend::Custom`) | Android intent round-trip | Key in Amber app | System intent prompt | `ExternalSigner` capability — see [16 — capabilities](16-capabilities.md) |
 
 Every backend's `pubkey()` is sync because construction is gated: NIP-46

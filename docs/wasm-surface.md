@@ -185,9 +185,10 @@ local-key sessions satisfy the required NIP-44 capability synchronously. Browser
 NIP-46 sessions route `nip44_encrypt` / `nip44_decrypt` through the registered
 `Nip46Signer`: the runtime parks the `SignerOp<String>` continuation, relay
 re-entry delivers the NIP-46 RPC response, and the next pump resumes the
-continuation. TypeScript never implements NIP-44 crypto or relay policy. NIP-07
-private-message parity remains limited until `window.nostr.nip44` support is
-wired and feature-detected (#2247).
+continuation. The NIP-07 signer bridge is separate: `nmp-signers` probes
+`window.nostr.nip44` and exposes NIP-44 only when the extension provides both
+`encrypt(pubkey, plaintext)` and `decrypt(pubkey, ciphertext)`. TypeScript and
+UI code must not call `window.nostr.nip44` directly.
 
 ### Signing — the ADR-0050 capability round-trip
 
@@ -208,6 +209,14 @@ browser runtime, `local_key` signers satisfy publish signing inside Rust
 through the registered `LocalKeySigner`; NIP-46 bunker signers satisfy publish
 signing and NIP-44 cipher operations through the Rust-owned browser NIP-46
 runtime; NIP-07 remains the main-thread `sign_request` capability round-trip.
+
+NIP-44 follows the same signer-owned boundary. Local-key accounts encrypt and
+decrypt inline in Rust. NIP-07 accounts call the optional
+`window.nostr.nip44.encrypt/decrypt` methods from the signer implementation only
+when both verbs are present; missing namespace, missing verb, rejected Promise,
+thrown JS error, or non-string result is surfaced as a normal signer/runtime
+failure. NIP-46 accounts use signer-provider RPC. Parking and resuming pending
+NIP-07/NIP-46 NIP-44 operations is owned by the browser runtime.
 
 ### Browser local-key storage policy
 
@@ -320,8 +329,6 @@ routing-inspector renderer can work across both surfaces.
   `EventStore` contract.
 - **NIP-55 signer on wasm.** Android external-signer intents are not a browser
   runtime capability. NIP-46 bunker signing and NIP-44 encrypt/decrypt routing
-  are wired through `kind = "nip46"` and the browser provider registry.
-- **NIP-07 NIP-44 bridge.** The browser runtime does not yet call
-  `window.nostr.nip44.{encrypt,decrypt}`. NIP-07 can sign through the
-  main-thread broker, but private-message send/decrypt parity still needs a
-  separate feature-detected extension bridge (#2247).
+  are wired through `kind = "nip46"` and the browser provider registry. The
+  NIP-07 `window.nostr.nip44` bridge lives in `nmp-signers` and advertises
+  capability only for extensions that expose both verbs.
