@@ -181,9 +181,13 @@ selected peer pubkey, recipient pubkey, optional reply id, and draft content
 into those builders, but the runtime and `nmp-nip17` own NIP-17 relay-list
 lookup and interest shape, NIP-44 encryption/decryption, gift-wrap
 construction, signing, explicit relay routing, and fail-closed errors. Browser
-local-key sessions satisfy the required NIP-44 capability synchronously; async
-signer-provider send parity is limited until those providers expose NIP-44
-encryption through the same port.
+local-key sessions satisfy the required NIP-44 capability synchronously. Browser
+NIP-46 sessions route `nip44_encrypt` / `nip44_decrypt` through the registered
+`Nip46Signer`: the runtime parks the `SignerOp<String>` continuation, relay
+re-entry delivers the NIP-46 RPC response, and the next pump resumes the
+continuation. TypeScript never implements NIP-44 crypto or relay policy. NIP-07
+private-message parity remains limited until `window.nostr.nip44` support is
+wired and feature-detected (#2247).
 
 ### Signing — the ADR-0050 capability round-trip
 
@@ -202,8 +206,8 @@ The signer backend (local key / NIP-07 / NIP-46 / NIP-55) is invisible to the
 action vocabulary; the action payload carries no signer hint (V-78). In the
 browser runtime, `local_key` signers satisfy publish signing inside Rust
 through the registered `LocalKeySigner`; NIP-46 bunker signers satisfy publish
-signing through the Rust-owned browser NIP-46 runtime; NIP-07 remains the
-main-thread `sign_request` capability round-trip.
+signing and NIP-44 cipher operations through the Rust-owned browser NIP-46
+runtime; NIP-07 remains the main-thread `sign_request` capability round-trip.
 
 ### Browser local-key storage policy
 
@@ -315,6 +319,9 @@ routing-inspector renderer can work across both surfaces.
   chosen backend: it is async-only and cannot satisfy the synchronous
   `EventStore` contract.
 - **NIP-55 signer on wasm.** Android external-signer intents are not a browser
-  runtime capability. NIP-46 bunker signing is wired through `kind = "nip46"`;
-  browser NIP-44 encrypt/decrypt provider routing remains tracked separately
-  by #2195.
+  runtime capability. NIP-46 bunker signing and NIP-44 encrypt/decrypt routing
+  are wired through `kind = "nip46"` and the browser provider registry.
+- **NIP-07 NIP-44 bridge.** The browser runtime does not yet call
+  `window.nostr.nip44.{encrypt,decrypt}`. NIP-07 can sign through the
+  main-thread broker, but private-message send/decrypt parity still needs a
+  separate feature-detected extension bridge (#2247).

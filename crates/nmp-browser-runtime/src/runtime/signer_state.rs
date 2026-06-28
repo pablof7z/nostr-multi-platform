@@ -34,8 +34,9 @@
 //! backend (see `CapabilityProviderRegistry::sole_backend`) so the projection
 //! reflects "a signer is available and ready" rather than silently empty.
 //! Browser NIP-46 handshake progress, readiness, and terminal failure also
-//! write this slot through the NIP-46 runtime bridge. Encrypt/decrypt provider
-//! wire-routing remains tracked by #2195.
+//! write this slot through the NIP-46 runtime bridge. NIP-44 encrypt/decrypt
+//! provider failures surface through the signer-port continuation rather than
+//! by mutating readiness state.
 //!
 //! D4 — single writer: [`update_signer_state`] is the ONLY writer; the closure
 //! only reads (plus resetting its own one-shot tombstone). D6 — total: a

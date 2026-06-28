@@ -32,7 +32,7 @@ use crate::builder::BrowserBuilderInner;
 use crate::relay::RelayPool;
 use crate::signer::{
     enqueue_completion, BrowserNip46Runtime, CapabilityEnvelope, CapabilityProviderRegistry,
-    SignerCompletion,
+    PendingCipherCompletions, SignerCompletion,
 };
 
 use super::NoopRoutingTrace;
@@ -195,6 +195,7 @@ impl BrowserRuntimeHandle {
             pending_signed_publishes: HashMap::new(),
             signer_registry,
             nip46,
+            pending_cipher_completions: PendingCipherCompletions::new(),
             signer_completion_tx,
             signer_completion_rx,
             signer_state_slot: Arc::clone(&signer_state_slot),

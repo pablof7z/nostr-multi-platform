@@ -22,7 +22,8 @@ use super::event::BrowserRuntimeEvent;
 use super::pump::{drain_inbox, DrainInboxContext, BROWSER_COMMAND_DRAIN_BUDGET};
 use crate::relay::WakeCell;
 use crate::signer::{
-    CapabilityProviderRegistry, PendingSignerCompletions, SignerCompletion, SignerCompletionTx,
+    CapabilityProviderRegistry, PendingCipherCompletions, PendingSignerCompletions,
+    SignerCompletion, SignerCompletionTx,
 };
 
 mod composition;
@@ -65,6 +66,7 @@ fn drain_context<'a>(
     pending: &'a mut HashMap<String, super::PendingSignedPublish>,
     registry: &'a CapabilityProviderRegistry,
     pending_signs: &'a mut PendingSignerCompletions,
+    pending_ciphers: &'a mut PendingCipherCompletions,
     completion_tx: &'a SignerCompletionTx,
     wake: &'a WakeCell,
     command_sender: &'a CommandSender,
@@ -73,6 +75,7 @@ fn drain_context<'a>(
         pending,
         registry,
         pending_signer_completions: pending_signs,
+        pending_cipher_completions: pending_ciphers,
         completion_tx,
         wake,
         command_sender,

@@ -43,8 +43,8 @@ use nmp_signers::SignerBackend;
 use crate::builder::BrowserRunConfig;
 use crate::relay::RelayPool;
 use crate::signer::{
-    BrowserNip46Runtime, CapabilityProviderRegistry, SignerCompletion, SignerCompletionRx,
-    SignerCompletionTx,
+    BrowserNip46Runtime, CapabilityProviderRegistry, PendingCipherCompletions, SignerCompletion,
+    SignerCompletionRx, SignerCompletionTx,
 };
 
 use std::sync::mpsc;
@@ -155,6 +155,7 @@ pub(crate) struct BrowserRuntime {
     /// `BrowserBuilderInner::capability_providers` at `start()`.
     pub(crate) signer_registry: CapabilityProviderRegistry,
     pub(crate) nip46: BrowserNip46Runtime,
+    pub(crate) pending_cipher_completions: PendingCipherCompletions,
     /// Sender end of the sign-completion channel. Cloned into `drain_inbox`
     /// so the broker can send completions; drained in `pump()` after the
     /// command drain.
@@ -213,6 +214,7 @@ impl BrowserRuntime {
                 pending: &mut self.pending_signed_publishes,
                 registry: &self.signer_registry,
                 pending_signer_completions: &mut self.nip46.pending_signs,
+                pending_cipher_completions: &mut self.pending_cipher_completions,
                 completion_tx: &self.signer_completion_tx,
                 wake: &wake,
                 command_sender: &cmd_sender,
@@ -253,6 +255,7 @@ impl BrowserRuntime {
             &cmd_sender,
         );
         let nip46_after_relay = self.drain_nip46_events_and_completions();
+        self.pending_cipher_completions.drain_ready();
 
         // Relay ingest can synchronously trigger observed-projection callbacks
         // that enqueue follow-up commands through the same inbox. Drain one more
@@ -265,6 +268,7 @@ impl BrowserRuntime {
                 pending: &mut self.pending_signed_publishes,
                 registry: &self.signer_registry,
                 pending_signer_completions: &mut self.nip46.pending_signs,
+                pending_cipher_completions: &mut self.pending_cipher_completions,
                 completion_tx: &self.signer_completion_tx,
                 wake: &wake,
                 command_sender: &cmd_sender,
@@ -278,6 +282,7 @@ impl BrowserRuntime {
                 pending: &mut self.pending_signed_publishes,
                 registry: &self.signer_registry,
                 pending_signer_completions: &mut self.nip46.pending_signs,
+                pending_cipher_completions: &mut self.pending_cipher_completions,
                 completion_tx: &self.signer_completion_tx,
                 wake: &wake,
                 command_sender: &cmd_sender,
@@ -292,6 +297,7 @@ impl BrowserRuntime {
             .reducer
             .run_relay_idle_tick(&self.relay_text_interceptors);
         let nip46_after_idle = self.drain_nip46_events_and_completions();
+        self.pending_cipher_completions.drain_ready();
 
         // ── 4. Maintenance tick (tick_at + arm next deadline) ─────────────────
         let now = Instant::now();

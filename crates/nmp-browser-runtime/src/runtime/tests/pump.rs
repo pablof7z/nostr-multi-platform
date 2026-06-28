@@ -31,6 +31,7 @@ fn applied_command_produces_no_events_and_no_pending() {
     )]);
     let mut pending = HashMap::new();
     let mut pending_signs = PendingSignerCompletions::new();
+    let mut pending_ciphers = PendingCipherCompletions::new();
     let (reg, tx) = empty_broker();
 
     let out = drain_inbox(
@@ -40,6 +41,7 @@ fn applied_command_produces_no_events_and_no_pending() {
             &mut pending,
             &reg,
             &mut pending_signs,
+            &mut pending_ciphers,
             &tx,
             &noop_wake(),
             &test_command_sender(),
@@ -60,6 +62,7 @@ fn protocol_command_expands_before_headless_interpretation() {
     ))]);
     let mut pending = HashMap::new();
     let mut pending_signs = PendingSignerCompletions::new();
+    let mut pending_ciphers = PendingCipherCompletions::new();
     let (reg, tx) = empty_broker();
 
     let out = drain_inbox(
@@ -69,6 +72,7 @@ fn protocol_command_expands_before_headless_interpretation() {
             &mut pending,
             &reg,
             &mut pending_signs,
+            &mut pending_ciphers,
             &tx,
             &noop_wake(),
             &test_command_sender(),
@@ -102,6 +106,7 @@ fn needs_sign_parks_continuation_and_emits_sign_request() {
     let rx = enqueue(vec![cmd]);
     let mut pending = HashMap::new();
     let mut pending_signs = PendingSignerCompletions::new();
+    let mut pending_ciphers = PendingCipherCompletions::new();
     let (reg, tx) = empty_broker();
 
     let out = drain_inbox(
@@ -111,6 +116,7 @@ fn needs_sign_parks_continuation_and_emits_sign_request() {
             &mut pending,
             &reg,
             &mut pending_signs,
+            &mut pending_ciphers,
             &tx,
             &noop_wake(),
             &test_command_sender(),
@@ -163,6 +169,7 @@ fn local_event_for_account_invokes_continuation_inline() {
     reducer.set_active_account_for_test(pubkey.clone());
     let mut pending = HashMap::new();
     let mut pending_signs = PendingSignerCompletions::new();
+    let mut pending_ciphers = PendingCipherCompletions::new();
     let (tx, _rx) = mpsc::channel::<SignerCompletion>();
 
     let out = drain_inbox(
@@ -172,6 +179,7 @@ fn local_event_for_account_invokes_continuation_inline() {
             &mut pending,
             &reg,
             &mut pending_signs,
+            &mut pending_ciphers,
             &tx,
             &noop_wake(),
             &test_command_sender(),
@@ -199,6 +207,7 @@ fn unsupported_command_surfaces_command_failed() {
     let rx = enqueue(vec![ActorCommand::Lifecycle(LifecycleCommand::Stop)]);
     let mut pending = HashMap::new();
     let mut pending_signs = PendingSignerCompletions::new();
+    let mut pending_ciphers = PendingCipherCompletions::new();
     let (reg, tx) = empty_broker();
 
     let out = drain_inbox(
@@ -208,6 +217,7 @@ fn unsupported_command_surfaces_command_failed() {
             &mut pending,
             &reg,
             &mut pending_signs,
+            &mut pending_ciphers,
             &tx,
             &noop_wake(),
             &test_command_sender(),
@@ -258,6 +268,7 @@ fn nip44_decrypt_for_account_resolves_local_key_continuation() {
     )]);
     let mut pending = HashMap::new();
     let mut pending_signs = PendingSignerCompletions::new();
+    let mut pending_ciphers = PendingCipherCompletions::new();
     let mut reg = CapabilityProviderRegistry::new();
     reg.insert(Arc::new(recipient) as Arc<dyn Signer>);
     let (_unused_reg, tx) = empty_broker();
@@ -269,6 +280,7 @@ fn nip44_decrypt_for_account_resolves_local_key_continuation() {
             &mut pending,
             &reg,
             &mut pending_signs,
+            &mut pending_ciphers,
             &tx,
             &noop_wake(),
             &test_command_sender(),
@@ -304,6 +316,7 @@ fn drain_is_bounded_by_budget_and_remainder_drains_next_pump() {
     let rx = enqueue(cmds);
     let mut pending = HashMap::new();
     let mut pending_signs = PendingSignerCompletions::new();
+    let mut pending_ciphers = PendingCipherCompletions::new();
     let (reg, tx) = empty_broker();
 
     let sender = test_command_sender();
@@ -314,6 +327,7 @@ fn drain_is_bounded_by_budget_and_remainder_drains_next_pump() {
             &mut pending,
             &reg,
             &mut pending_signs,
+            &mut pending_ciphers,
             &tx,
             &noop_wake(),
             &sender,
@@ -333,6 +347,7 @@ fn drain_is_bounded_by_budget_and_remainder_drains_next_pump() {
             &mut pending,
             &reg,
             &mut pending_signs,
+            &mut pending_ciphers,
             &tx,
             &noop_wake(),
             &sender,
