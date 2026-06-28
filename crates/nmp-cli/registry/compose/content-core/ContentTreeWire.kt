@@ -268,8 +268,8 @@ public object NostrIdenticon {
      *  Uses djb2 hash mapped to hue with fixed S=0.55, V=0.75 for legibility.
      */
     public fun colorForPubkey(pubkey: String): Color {
-        val hue = (djb2(pubkey) % 360u).toFloat() / 360f
-        return Color.hsv(hue * 360f, 0.55f, 0.75f)
+        val hue = (djb2(pubkey) % 360u).toFloat()
+        return Color.hsv(hue, 0.55f, 0.75f)
     }
 
     /**

@@ -93,25 +93,44 @@ public struct NostrAvatar: View {
 
 // MARK: - Identicon
 
-/// 5×5 symmetric pixel-grid identicon for a hex pubkey. Algorithm:
-///   1. djb2 hash of the pubkey's UTF-8 bytes (32-bit unsigned, wrapping).
-///   2. Color: `hue = hash % 360 / 360`, HSB with S=0.55, B=0.75.
-///   3. Cells: lower 15 bits of hash encode a 5-row × 3-col left half;
-///      columns 3–4 mirror columns 1–0, yielding a horizontally symmetric grid.
-///
-/// This algorithm is byte-identical to the Kotlin implementation in
-/// `compose/user-avatar/NostrAvatar.kt` and
-/// `compose/content-core/ContentTreeWire.kt`. Same pubkey → same grid and
-/// color on every platform.
+/// Deterministic identicon for a hex pubkey. Apps that don't supply an avatar
+/// URL can render the geometric `identiconView(forPubkey:)` (a 5×5 symmetric
+/// pixel grid in the GitHub-style — same input always produces the same
+/// pattern). `color(forPubkey:)` is still exposed so apps can theme borders
+/// or backgrounds with the same palette. Ported from Chirp's djb2-based
+/// palette so installed apps stay visually consistent.
 public enum NostrIdenticon {
-    /// Returns a stable `Color` derived from a hex pubkey via djb2 → HSB.
+    /// Returns a stable `Color` derived from a hex pubkey (or any string).
+    /// Uses the djb2 hash mapped to HSL with fixed S/L for legibility.
     public static func color(forPubkey pubkey: String) -> Color {
         let hue = Double(djb2(pubkey) % 360) / 360.0
         return Color(hue: hue, saturation: 0.55, brightness: 0.75)
     }
 
+    /// Single-character monogram derived from a hex pubkey (first char,
+    /// uppercased). Retained for backward compatibility with v0.1 apps that
+    /// still render a text initial overlay on top of `color(forPubkey:)`;
+    /// new code should prefer `identiconView(forPubkey:)`.
+    public static func initials(forPubkey pubkey: String) -> String {
+        let trimmed = pubkey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return "?" }
+        return String(trimmed.prefix(1)).uppercased()
+    }
+
+    /// 5×5 symmetric pixel-grid identicon, GitHub-style. Deterministic from
+    /// the pubkey via djb2: the lower 15 bits of the hash decide which of
+    /// the 15 left-half cells (3 columns × 5 rows) are filled; the right
+    /// half is a horizontal mirror so the result is visually symmetric.
+    ///
+    /// The cell colour comes from `color(forPubkey:)`; empty cells use the
+    /// same hue at 15% opacity so the overall tile reads as a tinted patch
+    /// rather than blank.
+    public static func identiconView(forPubkey pubkey: String, size: CGFloat = 40) -> some View {
+        IdenticonGridView(pubkey: pubkey, size: size)
+    }
+
     /// Returns the 5×5 symmetric fill pattern for a pubkey. Cell at
-    /// `(row, col)` is filled iff `cells[row][col]` is `true`. Exposed for
+    /// `(row, col)` is filled iff `cells[row][col]` is true. Exposed for
     /// snapshot tests and apps that want to render the same pattern in a
     /// non-SwiftUI surface (e.g. `Canvas` exports).
     public static func cells(forPubkey pubkey: String) -> [[Bool]] {
@@ -132,13 +151,6 @@ public enum NostrIdenticon {
             rows.append(line)
         }
         return rows
-    }
-
-    /// Returns a SwiftUI view rendering the 5×5 identicon grid at `size`×`size`
-    /// points. The view is NOT clipped — callers apply `.clipShape(Circle())`
-    /// or any other clip as needed; `NostrAvatar` does this automatically.
-    public static func identiconView(forPubkey pubkey: String, size: CGFloat = 40) -> some View {
-        IdenticonGridView(pubkey: pubkey, size: size)
     }
 
     private static func djb2(_ value: String) -> UInt32 {
@@ -162,7 +174,7 @@ private struct IdenticonGridView: View {
         let color = NostrIdenticon.color(forPubkey: pubkey)
         return Canvas { context, canvasSize in
             let gridCount: CGFloat = 5
-            // 1pt spacing between cells (visually crisp at any size >= 20pt).
+            // 1pt spacing between cells (visually crisp at any size ≥ 20pt).
             let spacing: CGFloat = 1
             let totalSpacing = spacing * (gridCount - 1)
             let cell = max(0, (min(canvasSize.width, canvasSize.height) - totalSpacing) / gridCount)

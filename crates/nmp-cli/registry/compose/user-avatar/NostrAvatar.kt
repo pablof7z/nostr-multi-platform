@@ -96,8 +96,8 @@ fun NostrAvatar(
  */
 internal object NostrIdenticon {
     fun colorForPubkey(pubkey: String): Color {
-        val hue = (djb2(pubkey) % 360u).toFloat() / 360f
-        return Color.hsv(hue * 360f, 0.55f, 0.75f)
+        val hue = (djb2(pubkey) % 360u).toFloat()
+        return Color.hsv(hue, 0.55f, 0.75f)
     }
 
     /** Returns 5 rows of 5 booleans: true = filled cell, false = empty. */

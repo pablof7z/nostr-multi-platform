@@ -2,7 +2,6 @@ package org.nmp.android
 
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotEquals
 import org.junit.Test
 import org.nmp.android.components.NostrIdenticon
 
@@ -60,6 +59,41 @@ class IdenticonGoldenTest {
         assertArrayEquals("row 2", booleanArrayOf(false, false, true,  false, false), cells[2])
         assertArrayEquals("row 3", booleanArrayOf(false, true,  false, true,  false), cells[3])
         assertArrayEquals("row 4", booleanArrayOf(true,  false, false, false, true),  cells[4])
+    }
+
+    // ── Real 64-hex pubkey full-grid golden ───────────────────────────────────
+    //
+    // pubkey = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"
+    // djb2(pubkey) = 1119655360
+    // lower 15 bits = 1119655360 & 0x7FFF = 5568 = 0b001_0101_1100_0000
+    //   set bits: {6, 7, 8, 10, 12}; all others 0
+    //
+    // Row 0: [F,F,F,F,F]   Row 1: [F,F,F,F,F]   Row 2: [T,T,T,T,T]
+    // Row 3: [F,T,F,T,F]   Row 4: [T,F,F,F,T]
+    //
+    // Hardcoded identically in the Swift golden IdenticonGoldenTests.swift.
+
+    @Test
+    fun cellsForRealHexPubkey_matchesSwiftGolden() {
+        val pubkey = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"
+        val cells = NostrIdenticon.cellsForPubkey(pubkey)
+        assertArrayEquals("row 0", booleanArrayOf(false, false, false, false, false), cells[0])
+        assertArrayEquals("row 1", booleanArrayOf(false, false, false, false, false), cells[1])
+        assertArrayEquals("row 2", booleanArrayOf(true,  true,  true,  true,  true),  cells[2])
+        assertArrayEquals("row 3", booleanArrayOf(false, true,  false, true,  false), cells[3])
+        assertArrayEquals("row 4", booleanArrayOf(true,  false, false, false, true),  cells[4])
+    }
+
+    @Test
+    fun colorForRealHexPubkey_rgbMatchesHsvFormula() {
+        // 1119655360 % 360 = 280; Color.hsv(280f, 0.55f, 0.75f)
+        // HSV→RGB: (R, G, B) = (0.6125, 0.3375, 0.75)
+        val color = NostrIdenticon.colorForPubkey(
+            "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
+        )
+        assertEquals("red ≈ 0.6125",  0.6125f, color.red,   0.01f)
+        assertEquals("green ≈ 0.3375", 0.3375f, color.green, 0.01f)
+        assertEquals("blue = 0.75",   0.75f,   color.blue,  0.01f)
     }
 
     // ── Symmetry invariant ────────────────────────────────────────────────────

@@ -65,6 +65,43 @@ final class IdenticonGoldenTests: XCTestCase {
         XCTAssertEqual(cells[4], [true,  false, false, false, true],  "row 4")
     }
 
+    // MARK: - Real 64-hex pubkey full-grid golden
+    //
+    // pubkey = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"
+    // djb2(pubkey) = 1119655360
+    // lower 15 bits = 1119655360 & 0x7FFF = 5568 = 0b001_0101_1100_0000
+    //   set bits: {6, 7, 8, 10, 12}; all others 0
+    //
+    // Row 0: bits 0,1,2  = 0,0,0  → cols [F,F,F] → mirror → [F,F,F,F,F]
+    // Row 1: bits 3,4,5  = 0,0,0  → cols [F,F,F] → mirror → [F,F,F,F,F]
+    // Row 2: bits 6,7,8  = 1,1,1  → cols [T,T,T] → mirror → [T,T,T,T,T]
+    // Row 3: bits 9,10,11= 0,1,0  → cols [F,T,F] → mirror → [F,T,F,T,F]
+    // Row 4: bits 12,13,14=1,0,0  → cols [T,F,F] → mirror → [T,F,F,F,T]
+    //
+    // These exact values are hardcoded identically in the Kotlin golden
+    // `IdenticonGoldenTest.kt` (cross-platform parity anchor).
+
+    func testCellsForRealHexPubkey() {
+        let pubkey = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"
+        let cells = NostrIdenticon.cells(forPubkey: pubkey)
+        XCTAssertEqual(cells[0], [false, false, false, false, false], "row 0")
+        XCTAssertEqual(cells[1], [false, false, false, false, false], "row 1")
+        XCTAssertEqual(cells[2], [true,  true,  true,  true,  true],  "row 2")
+        XCTAssertEqual(cells[3], [false, true,  false, true,  false], "row 3")
+        XCTAssertEqual(cells[4], [true,  false, false, false, true],  "row 4")
+    }
+
+    func testColorHueForRealHexPubkey() {
+        // 1119655360 % 360 = 280; hue = 280/360 ≈ 0.7778
+        let color = NostrIdenticon.color(forPubkey:
+            "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d")
+        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        UIColor(color).getHue(&h, saturation: &s, brightness: &b, alpha: &a)
+        XCTAssertEqual(Double(h), 280.0 / 360.0, accuracy: 0.001, "hue for fiatjaf pubkey")
+        XCTAssertEqual(Double(s), 0.55, accuracy: 0.001, "saturation fixed at 0.55")
+        XCTAssertEqual(Double(b), 0.75, accuracy: 0.001, "brightness fixed at 0.75")
+    }
+
     // MARK: - Symmetry invariant
 
     func testCellsAreAlwaysHorizontallySymmetric() {
