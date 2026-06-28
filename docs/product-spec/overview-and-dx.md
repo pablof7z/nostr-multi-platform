@@ -16,7 +16,7 @@
 
 The framework treats common Nostr-correctness failures — stale replaceable events, lost subscriptions, mis-routed publishes, double-publication, multi-account desync, leaked secrets across FFI, naive cache invalidation, withheld cached data, blocking-on-fetch UI patterns — as **product defects in the framework** rather than as developer mistakes. The public API is designed so that the wrong thing is hard to type.
 
-NMP is a Cargo workspace shipping a Nostr-native **app kernel** (`nmp-core`), reusable **Nostr protocol modules** (`nmp-nip01`, `nmp-nip17`, `nmp-nip65`, etc.), app-owned extension modules, a composition-root library (`nmp-defaults`) that wires the standard module set in one call, host-binding codegen (`gen swift` / `gen typed-decoders`), a scaffolding CLI (`nmp init`), a registry of app-owned reactive native UI components, and reference native platform shells. TypeScript/wasm bindings and the web shell are still part of the long-term framework shape, but they are post-v1.
+NMP is a Cargo workspace shipping a Nostr-native **app kernel** (`nmp-core`), reusable **Nostr protocol modules** (`nmp-nip01`, `nmp-nip17`, `nmp-nip65`, etc.), app-owned extension modules, a composition-root library (`nmp-defaults`) that wires the standard module set in one call, host-binding codegen (`gen swift` / `gen typed-decoders`), a scaffolding CLI (`nmp init`), a registry of app-owned reactive native UI components, reference native platform shells, and a browser Worker runtime (`nmp-browser-runtime`) with web component-host support. Full web product readiness remains gated by component-host conformance and clean-room onboarding proof.
 
 The kernel composes the `rust-nostr` crate family plus OS capability crates into a substrate. It owns actor runtime, verified event store, subscription planner, relay routing pipeline, signer/session plumbing, durable action ledger, domain-store substrate, typed view registry, capability bridge, platform shadow/codegen machinery, diagnostics, and test harnesses.
 
@@ -109,7 +109,7 @@ A change that cannot satisfy all five is either an escape hatch (named in `docs/
 
 ## 2. Audience and use cases
 
-**Primary audience.** Application developers building Nostr clients for production distribution on iOS, Android, and desktop — including LLM-driven developers and teams who want to ship correct Nostr apps without becoming Nostr protocol experts first. Web/wasm developers are in scope after the post-v1 web milestone.
+**Primary audience.** Application developers building Nostr clients for production distribution on iOS, Android, desktop, and browser runtimes — including LLM-driven developers and teams who want to ship correct Nostr apps without becoming Nostr protocol experts first. Browser private-flow support is capability-dependent and documented through the v1 DX issues.
 
 **Secondary audience.** Existing Nostr client teams considering a port to Rust + multi-platform, who want a substrate they can compose rather than reimplement.
 
@@ -144,7 +144,7 @@ nmp init my-app
 cd my-app && just run-ios   # works
 just run-android            # works
 just run-desktop            # works
-# web/wasm is added by the post-v1 web milestone
+# browser/web shells use nmp-browser-runtime and the v1 web DX docs
 ```
 
 Result on each v1 platform: a starter app with login (private key + NIP-46 bunker), a "following" timeline, compose, profile view, profile edit, and a DM inbox + thread. End-to-end build + first launch <= 5 minutes on a developer laptop with the framework's `nix develop` shell active, <= 15 minutes from cold without Nix.
@@ -158,7 +158,7 @@ Across the v1 native platform shells of the starter app, total non-generated pla
 | iOS (SwiftUI) | ≤ 400 |
 | Android (Compose) | ≤ 400 |
 | Desktop (iced) | ≤ 600 (iced is more verbose than SwiftUI/Compose) |
-| Web (wasm + TS/JSX shell) | Post-v1 target; budget set when the web milestone starts |
+| Web (wasm + TS/JSX shell) | Budget set by the browser-shell DX gate; same thin-shell rule applies |
 
 Exceeding any budget is a framework-design failure: it means rendering logic is being forced to compensate for missing surface in the core.
 
@@ -192,7 +192,7 @@ We treat this as a property of the spec: if it fails repeatedly with capable LLM
 
 ### 3.5 Cross-platform consistency
 
-A scripted action sequence (defined in `crates/nmp-testing`) run against the starter app on iOS, Android, and desktop produces byte-identical decoded `AppState` snapshots after each action. The runtime transport is FlatBuffers; JSON may be used only as a deterministic test/export representation for comparison. Divergence is a framework defect, not a platform issue. Web joins this same consistency gate after the post-v1 web milestone.
+A scripted action sequence (defined in `crates/nmp-testing`) run against the starter app on iOS, Android, desktop, and browser runtimes produces byte-identical decoded `AppState` snapshots after each action where the same capability set is available. The runtime transport is FlatBuffers; JSON may be used only as a deterministic test/export representation for comparison. Divergence is a framework defect, not a platform issue.
 
 ---
 
@@ -242,7 +242,7 @@ The CLI scaffolds a complete starter project. Behavior is detailed in §8.
 
 ### 4.5 The proof app (`nmp-proof`)
 
-A kitchen-sink stress-test app, built using the framework, on the v1 native platforms. It is **not** the starter app — the starter stays minimal so newcomers can read it. The proof app exists to validate the framework at scale and to gate v1 release. The web proof app is post-v1.
+A kitchen-sink stress-test app, built using the framework, on the v1 native platforms. It is **not** the starter app — the starter stays minimal so newcomers can read it. The proof app exists to validate the framework at scale and to gate v1 release. Browser runtime support is current; adding the web proof app to the release gate waits on browser-shell DX and component-host conformance.
 
 Feature set:
 
@@ -262,7 +262,7 @@ Feature set:
 
 The proof app also ships a **performance overlay** (toggleable, debug-build default-on) rendering the live counters and budgets from §7.16. The overlay is implemented entirely in platform code reading from `AppState.debug` — no Rust-side UI logic.
 
-The proof app is the substrate for cross-platform consistency tests (§3.5): the same scripted action sequence runs against the proof app on the v1 native platforms and decoded `AppState` snapshots must match. Any JSON in that harness is a comparison artifact, not the runtime update transport. Web joins this harness after its post-v1 milestone.
+The proof app is the substrate for cross-platform consistency tests (§3.5): the same scripted action sequence runs against the proof app on the v1 native platforms and decoded `AppState` snapshots must match. Any JSON in that harness is a comparison artifact, not the runtime update transport. Browser joins this harness when the browser-shell DX and component-host conformance gates are installed.
 
 ### 4.6 Documentation set
 
@@ -286,9 +286,9 @@ The architectural foundation stays upstream at `rust-multiplatform/rmp`; we link
 ```
 $ npx @nmp/cli init relay-cat
 ? Organization (reverse-DNS): com.example
-? Platforms: ◉ iOS  ◉ Android  ◉ Desktop  ○ Web (post-v1)
+? Platforms: ◉ iOS  ◉ Android  ◉ Desktop  ◉ Web (browser-runtime)
 ? Storage backend (default for non-web): ◉ LMDB  ○ SQLite  ○ nostrdb  ○ In-memory
-? Web storage backend: deferred until post-v1 web milestone
+? Web storage backend: ◉ Browser runtime default  ○ In-memory
 ? Default relays (comma-separated): wss://relay.damus.io,wss://nos.lol
 ? Wallet: ◉ NWC  ○ Cashu  ○ None
 ? Signers to include: ◉ Local key  ◉ NIP-46 bunker  ◉ NIP-07 (web)  ◉ Amber (Android)
@@ -303,7 +303,7 @@ $ cd relay-cat && nix develop
 $ just run-desktop      # native window opens to login screen in ~30s
 $ just run-ios          # simulator boots, app launches
 $ just run-android      # emulator boots, app launches
-# $ just run-web        # post-v1 web milestone
+# $ just run-web        # when the selected web shell's v1 DX gates are installed
 ```
 
 The starter app on first launch presents login. Logging in with a private key or pairing a bunker yields a working following-timeline with live updates, compose, profile, and DMs.
@@ -372,9 +372,9 @@ Registry components promise:
   composition, but they are not the happy path for app screens.
 - **Self-managed reactivity.** A mounted component resolves the Rust-owned facts
   it needs, observes the Rust-produced projection for that reference
-  (`refs.profile` for profile rows, resolved event-ref/embed envelope maps for
-  event embeds), redraws through the native UI mechanism, and releases the
-  reference when no longer visible.
+  (`refs.profile` for profile rows, authoritative `refs.event` rows plus
+  derived `refs.event.envelopes` render data for event embeds), redraws through
+  the native UI mechanism, and releases the reference when no longer visible.
 - **One shell adapter.** Apps wire the registry host once at the platform shell
   boundary (`.nmpComponentHost(...)` for SwiftUI,
   `NmpComponentHostProvider(...)` for Compose). Feature screens do not call

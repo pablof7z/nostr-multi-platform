@@ -77,10 +77,10 @@ Deleting the old `gen modules` scaffolder did not touch them.
 ```
 ┌─ TODAY (SHIPS) ─────────────────────────────────────────────────────┐
 │ Raw C/JNI lifecycle/action/capability ABI in crates/nmp-ffi. It      │
-│ currently exports `nmp_app_*` (`new`, `start`, byte action dispatch, │
-│ capability callbacks, projection/observer registration, etc.).         │
-│ Target split (#2205/ADR-0068): nmp-ffi is only the C ABI shell over  │
-│ nmp-native-runtime, which owns NmpApp, runtime slots, and builder.    │
+│ exports `nmp_app_*` (`new`, `start`, byte action dispatch, capability │
+│ callbacks, projection/observer registration, etc.) as the C ABI shell │
+│ over nmp-native-runtime, which owns NmpApp, runtime slots, and        │
+│ NmpAppBuilder.                                                       │
 │ The update callback carries one binary `nmp.transport.UpdateFrame`   │
 │ with file identifier `NMPU`: Snapshot or Panic. There is no JSON     │
 │ runtime snapshot fallback and no pull/drain update symbol.           │
@@ -111,8 +111,8 @@ Deleting the old `gen modules` scaffolder did not touch them.
 ├─ `nmp` CLI (SHIPS, crates/nmp-cli/) ────────────────────────────────┤
 │ `nmp init <app>` scaffolds a thin Rust shell: a `<name>-core` crate  │
 │ that calls `register_defaults`, plus a headless `examples/shell.rs`   │
-│ that drives it through the current `NmpAppBuilder` export. #2210     │
-│ moves that builder into nmp-native-runtime. No `gen modules` step     │
+│ that drives it through nmp-native-runtime's `NmpAppBuilder`. No      │
+│ `gen modules` step                                                   │
 │ and no                                                               │
 │ generated `apps/` tree. Full multi-platform starter is a future       │
 │ milestone.                                                            │

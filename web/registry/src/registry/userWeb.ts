@@ -14,7 +14,7 @@ export const webUserCore: PlatformImpl = {
   version: "0.1.0",
   dependencies: [],
   longDescription:
-    "`ProfileWire` is the web-side mirror of the kernel's `resolved_profiles` (KRPR) projection — the shared wire type every web user-* component renders. It carries display-ready fields (display name, picture URL, nip05, lnurl, optional Rust-formatted `npubShort`) plus pure helpers (`avatarUrl`, `displayLabel`, `shortHex`). The hex fallback is honest raw protocol data — npubs are never bech32-encoded in the browser (aim.md §6.9). On web this type co-locates with `user-avatar` (web doesn't split the renderer from the wire type the way the Rust platforms do), so installing any user-* component brings it in.",
+    "`ProfileWire` is the web-side render model hydrated from the kernel's `refs.profile` row projection — the shared wire type every web user-* component renders. It carries display-ready fields (display name, picture URL, nip05, lnurl, optional Rust-formatted `npubShort`) plus pure helpers (`avatarUrl`, `displayLabel`, `shortHex`). The hex fallback is honest raw protocol data — npubs are never bech32-encoded in the browser (aim.md §6.9). On web this type co-locates with `user-avatar` (web doesn't split the renderer from the wire type the way the Rust platforms do), so installing any user-* component brings it in.",
   files: [
     { source: "web/user-avatar/ProfileWire.ts", target: "src/components/nostr-user/ProfileWire.ts", role: "source", content: profileWireWeb },
   ],

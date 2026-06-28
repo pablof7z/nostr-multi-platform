@@ -28,13 +28,17 @@ nmp init my-app                        # scaffolds an immediately-buildable app
 cd my-app && cargo build
 ```
 
-The scaffold compiles on first try and is wired to the local `nmp-core`. From there, generate the per-app FFI surface with `nmp gen modules` and link it from your platform shell. The registry at [nostr-mp.f7z.io](https://nostr-mp.f7z.io) ships SwiftUI and Compose components you can drop in.
+The scaffold compiles on first try and is wired through app-owned Rust
+composition. From there, generate maintained host bindings/decoders and link a
+thin platform shell. The registry at [nostr-mp.f7z.io](https://nostr-mp.f7z.io)
+ships SwiftUI, Compose, and web components you can drop in.
 
 ## Where to go
 
 - **[nostr-mp.f7z.io](https://nostr-mp.f7z.io)** — landing page, component registry, doctrine in full.
 - **[`docs/builder-guide/00-how-to-read.md`](docs/builder-guide/00-how-to-read.md)** — the framework guide. Start here for building on NMP.
 - **[`docs/nips.md`](docs/nips.md)** — v1 NIP support matrix with platform and signer caveats.
+- **[`docs/migration.md`](docs/migration.md)** — v1 runtime and component migration guide.
 - **[`docs/aim.md`](docs/aim.md)** — the architectural north star.
 - **[`AGENTS.md`](AGENTS.md)** — contributor guide, file-size rules, planning discipline.
 

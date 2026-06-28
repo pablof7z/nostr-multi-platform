@@ -1,8 +1,10 @@
 # V-94 design — type-and-runtime enforcement of pre-start wiring order
 
-Status: IMPLEMENTED (2026-05-30) — `NmpAppBuilder<S>` typestate shipped in PR #858;
-the three open design decisions (§7.i-iii) are resolved as: consume-and-return
-typestate, phantom-typed states, builder-is-the-AppHost.
+Status: IMPLEMENTED (2026-05-30) — `NmpAppBuilder<S>` typestate shipped in PR #858.
+ADR-0068 / #2205 later moved the durable native runtime owner to
+`nmp-native-runtime`; the three open design decisions (§7.i-iii) remain
+resolved as: consume-and-return typestate, phantom-typed states,
+builder-is-the-AppHost.
 
 Issue: V-94 (#618). Co-designed with F-08 (NmpAppBuilder) and V-95 (issue
 #619, WalletRuntime init order). Follow-up #618 Stage 1 (2026-06-16) moved the
@@ -66,11 +68,12 @@ already blesses (docs/architecture/crate-boundaries.md:269, :835). V-94's
 
 ## 3. Recommended architecture (end-state)
 
-### 3.1 `NmpAppBuilder` in `nmp-defaults` (the Rust enforcement, (a) + F-08)
+### 3.1 `NmpAppBuilder` in `nmp-native-runtime` (the Rust enforcement, (a) + F-08)
 
 A single config/builder type that owns the wiring phase and makes start the only
-terminal transition. It is the home V-48 (`nmp-defaults`) was created to be
-and the type F-08 names.
+terminal transition. PR #858 first proved the V-94/F-08 builder shape; ADR-0068
+settled the durable crate owner as `nmp-native-runtime`, while `nmp-defaults`
+remains pure `AppHost` composition.
 
 - `NmpAppBuilder::new()` — begins a config session. Owns the in-construction
   `NmpApp` (or its slots) in an un-started state.
@@ -91,7 +94,7 @@ graceful-degradation and test ergonomics). It enforces (1) ordering by move
 semantics and (2) the single genuinely-required field by an explicit terminal
 precondition.
 
-**Implementation (PR #858):** `NmpAppBuilder<S>` uses phantom-typed states
+**Implementation:** `nmp-native-runtime::NmpAppBuilder<S>` uses phantom-typed states
 (`Unstarted` → `StorageSet`) and the consume-and-return pattern. The builder
 implements `AppHost + ActionRegistrar` directly (builder-is-the-AppHost). The
 `start()` method exists only on `NmpAppBuilder<StorageSet>` — calling it without
@@ -120,7 +123,7 @@ ADR-0049 composition ledger. No update-channel `LateWiring` frame is used.
 ### 3.3 V-95 folded in
 
 `install_wallet_runtime` and the other "before-first-dispatch" runtime injections
-route through the same builder phase: `nmp-defaults`'s wallet wiring becomes
+route through the same builder phase: the native runtime's wallet wiring becomes
 a builder step, so the runtime is installed during config, before `start`. The
 runtime-guard diagnostic (§3.2) covers the C-ABI path for the same defect class
 (a wallet action dispatched before the runtime is installed already returns a
@@ -129,8 +132,8 @@ only the *use* mistake).
 
 **Status (issue #619 — DONE):** the reusable wallet wiring lives in
 `nmp_nip47::register_wallet(&mut impl AppHost, storage_path)` (lifted out of the
-app-private `nmp-app-chirp::wallet_runtime`), and `nmp-defaults` exposes it as
-the typed `NmpAppBuilder::<Unstarted>::with_wallet()` builder step. Because
+app-private `nmp-app-chirp::wallet_runtime`), and `nmp-native-runtime` exposes
+it as the typed `NmpAppBuilder::<Unstarted>::with_wallet()` builder step. Because
 `start(self, RunConfig)` consumes the builder by move, a Rust caller cannot
 reach `start()` without `.with_wallet()` having already installed the runtime —
 the install-before-dispatch ordering is now expressed in the type system, not in
@@ -143,10 +146,11 @@ alongside the `active_wallet_runtime()` `Err` guard in each wallet
 
 ## 4. New crates / types
 
-- No new crate. `nmp-defaults` (exists, V-48) gains `NmpAppBuilder`.
+- No new crate for V-94. `nmp-native-runtime` now owns `NmpAppBuilder`;
+  `nmp-defaults` remains the pure composition library called through `AppHost`.
 - New types:
-  - `nmp_defaults::NmpAppBuilder` (config-phase host; implements `AppHost`).
-  - `nmp_defaults::RunConfig` (the visible_limit / emit_hz that
+  - `nmp_native_runtime::NmpAppBuilder` (config-phase host; implements `AppHost`).
+  - `nmp_native_runtime::RunConfig` (the visible_limit / emit_hz that
     `nmp_app_start` takes today, made a typed value passed to `builder.start`).
   - `NmpConfigStatus` (`Ok`, `NullApp`, `AlreadyStarted`, `Unavailable`) for
     init-only C/JNI config calls that must be loud without throwing across FFI.
@@ -159,7 +163,7 @@ alongside the `active_wallet_runtime()` `Err` guard in each wallet
 2. Add `NmpApp::started: AtomicBool`; set it in the Start dispatch arm. Guard
    each init-only config setter: if `started`, return `AlreadyStarted` and
    record `DroppedLateWiring` instead of mutating an already-read slot.
-3. Introduce `NmpAppBuilder` in `nmp-defaults` implementing `AppHost`;
+3. Introduce `NmpAppBuilder` implementing `AppHost` in the native runtime;
    move `register_defaults` to operate on it (free-fn-taking-`&mut impl AppHost`
    keeps working). Add `RunConfig` + terminal `start(self, RunConfig)`.
 4. Make `storage_path` the one required field on `start` (or explicit
@@ -176,7 +180,8 @@ alongside the `active_wallet_runtime()` `Err` guard in each wallet
 8. Update prose: replace the 18 "MUST be called before nmp_app_start" doc blocks
    with one pointer to the builder contract + the diagnostic.
 
-**Steps 3-5 are complete as of PR #858.** Steps 1-2 and 6-8 remain open.
+**Steps 3-5 are complete as of PR #858, with durable ownership moved to
+`nmp-native-runtime` by ADR-0068 / #2205.** Steps 1-2 and 6-8 remain open.
 
 ## 6. Risks
 
