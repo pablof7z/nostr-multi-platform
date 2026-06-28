@@ -60,6 +60,18 @@ fn contract_matches_modules_and_default_payload_reexports() {
         assert_contract::<nmp_nip51::RemoveBookmarkAction, action_payloads::BookmarkUpdateInput>(
             "nmp.nip51.remove_bookmark",
         ),
+        assert_contract::<
+            nmp_nip51::AddBookmarkSetItemAction,
+            action_payloads::BookmarkSetUpdateInput,
+        >("nmp.nip51.add_bookmark_set_item"),
+        assert_contract::<
+            nmp_nip51::RemoveBookmarkSetItemAction,
+            action_payloads::BookmarkSetUpdateInput,
+        >("nmp.nip51.remove_bookmark_set_item"),
+        assert_contract::<
+            nmp_nip51::PublishWebBookmarkAction,
+            action_payloads::PublishWebBookmarkInput,
+        >("nmp.nip51.publish_web_bookmark"),
         assert_contract::<nmp_nip22::PostCommentModule, action_payloads::PostCommentAction>(
             "nmp.nip22.post_comment",
         ),
@@ -92,11 +104,16 @@ fn contract_matches_modules_and_default_payload_reexports() {
 
     let checked: BTreeSet<&str> = checked.into_iter().collect();
     // `ActionDefaultTier::Marmot` is a feature-gated dep (`nmp-marmot`) not
-    // available in `nmp-defaults`. Filter it from the contract set so the
-    // set-equality assertion does not require adding `nmp-marmot` here.
+    // available in `nmp-defaults`. `ActionDefaultTier::ComponentRegistered` covers
+    // crates (nmp-blossom, nmp-relations) wired at app-assembly time, not by
+    // nmp-defaults. Filter both from the contract set so the set-equality assertion
+    // does not require those crates as deps here.
     let contract: BTreeSet<&str> = nmp_codegen::ACTION_CONTRACT
         .iter()
-        .filter(|c| c.default_tier != nmp_codegen::ActionDefaultTier::Marmot)
+        .filter(|c| {
+            c.default_tier != nmp_codegen::ActionDefaultTier::Marmot
+                && c.default_tier != nmp_codegen::ActionDefaultTier::ComponentRegistered
+        })
         .map(|c| c.namespace)
         .collect();
     assert_eq!(
@@ -104,7 +121,8 @@ fn contract_matches_modules_and_default_payload_reexports() {
         "every action contract row must be checked against its module \
          namespace and payload type (wallet rows checked via nmp_nip47 directly; \
          marmot rows excluded — nmp-marmot is a feature-gated dep not available \
-         in nmp-defaults)"
+         in nmp-defaults; component-registered rows excluded — wired at app-assembly \
+         time, not by nmp-defaults)"
     );
 }
 

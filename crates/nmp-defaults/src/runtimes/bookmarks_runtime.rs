@@ -78,6 +78,25 @@ pub fn register_bookmark_runtime(
     projection
 }
 
+/// Wire add/remove bookmark-set-item actions (kind:30003 / kind:30004) into `app`.
+///
+/// Creates one [`nmp_nip51::BookmarkSetsProjection`] and registers both
+/// [`nmp_nip51::AddBookmarkSetItemAction`] and
+/// [`nmp_nip51::RemoveBookmarkSetItemAction`] against it.
+pub fn register_bookmark_set_runtime(app: &mut (impl ActionRegistrar + HostCapabilities)) {
+    let projection = Arc::new(nmp_nip51::BookmarkSetsProjection::new(app.active_pubkey()));
+    nmp_nip51::register_bookmark_set_actions(app, projection);
+}
+
+/// Wire the publish-web-bookmark action (kind:39701 NIP-B0) into `app`.
+///
+/// Creates one [`nmp_nip51::WebBookmarksProjection`] and registers
+/// [`nmp_nip51::PublishWebBookmarkAction`] against it.
+pub fn register_web_bookmark_runtime(app: &mut (impl ActionRegistrar + HostCapabilities)) {
+    let projection = Arc::new(nmp_nip51::WebBookmarksProjection::new(app.active_pubkey()));
+    nmp_nip51::register_web_bookmark_actions(app, projection);
+}
+
 // Co-located bookmark active observed-projection reconciler tests live in a
 // sibling file to hold this module under the 300-LOC ceiling.
 #[cfg(test)]

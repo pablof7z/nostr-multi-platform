@@ -24,7 +24,6 @@ use nmp_nip17::{
     active_giftwrap_inbox_identity, active_giftwrap_inbox_interest, peer_dm_relay_list_identity,
     peer_dm_relay_list_interest, DmInboxProjection, DmRuntimeEffect, DmRuntimeState,
 };
-use nmp_nip57::{self_zap_receipts_identity, self_zap_receipts_interest};
 
 /// Wire the NIP-17 DM runtime into `app`.
 ///
@@ -377,106 +376,6 @@ impl DmRuntimeController {
     }
 }
 
-/// Wire the NIP-57 self-zap-receipts subscription runtime into `app`.
-///
-/// Registers a **per-tick observer** (`register_snapshot_tick_observer`) whose
-/// body reconciles the active-account kind:9735 inbox interest against the
-/// last-applied pubkey, emitting at most one ensure (on account change /
-/// first sign-in) and at most one drop-owner (on logout / before the
-/// re-ensure) per tick. It contributes NO snapshot data — it is a pure per-tick
-/// reconciler, so it uses the generic tick-observer seam rather than the
-/// projection registry (which it previously abused by returning a `Value::Null`
-/// projection purely to obtain the per-tick callback).
-///
-/// Visible-card zap counts are acquired through the scoped
-/// `nmp.nip01.visible_note_relations` action/interest path; the template ships
-/// only this active-account receipt reconciler.
-///
-/// Called by [`super::register_defaults`]; exposed `pub` so an app crate
-/// that opts out of the wholesale defaults can still wire just the zap
-/// subscription by itself.
-pub fn register_zap_receipts_runtime(app: &(impl HostCapabilities + SnapshotProjectionRegistrar)) {
-    let controller = Arc::new(ZapReceiptsRuntimeController {
-        // Pubkey-only identity (Finding C): the self-zap-receipts reconciler
-        // only needs the active pubkey for the kind:9735 `#p` subscription —
-        // never secret keys — so bunker accounts activate it too.
-        active_pubkey: app.active_pubkey(),
-        tx: app.actor_sender(),
-        last_pushed_pubkey: Mutex::new(None),
-    });
-    app.register_snapshot_tick_observer(move || controller.tick());
-}
-
-/// Per-tick reconciler for the active-account zap-receipts interest.
-struct ZapReceiptsRuntimeController {
-    /// Pubkey-only identity slot (Finding C): the active account's hex pubkey,
-    /// populated for every backend including bunker. Identity only — never
-    /// secret key material.
-    active_pubkey: nmp_core::slots::ActiveAccountSlot,
-    tx: nmp_core::CommandSender,
-    last_pushed_pubkey: Mutex<Option<String>>,
-}
-
-impl ZapReceiptsRuntimeController {
-    /// Reconcile the active-account zap-receipts interest once per snapshot
-    /// tick. Produces no snapshot data — it only diffs the active pubkey against
-    /// the last-pushed one and enqueues scoped interest commands on change (D8:
-    /// enqueue-only, non-blocking).
-    fn tick(&self) {
-        let active = self.active_pubkey();
-
-        // D6 — a poisoned slot is silently treated as "no prior ensure" so
-        // the next sign-in still ensures the interest.
-        let mut last = self
-            .last_pushed_pubkey
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-
-        match (active.as_deref(), last.as_deref()) {
-            // No change — common case, fast path, no actor traffic.
-            (Some(now), Some(prev)) if now == prev => {}
-            // Sign-in (or first-ever push).
-            (Some(now), None) => {
-                let _ = self
-                    .tx
-                    .send(ActorCommand::Interests(InterestsCommand::EnsureInterest {
-                        identity: self_zap_receipts_identity(),
-                        interest: self_zap_receipts_interest(now),
-                    }));
-                *last = Some(now.to_string());
-            }
-            // Account switch: drop old scoped owner, then ensure new shape.
-            (Some(now), Some(_prev)) => {
-                let _ = self.tx.send(ActorCommand::Interests(
-                    InterestsCommand::DropInterestOwner(self_zap_receipts_identity()),
-                ));
-                let _ = self
-                    .tx
-                    .send(ActorCommand::Interests(InterestsCommand::EnsureInterest {
-                        identity: self_zap_receipts_identity(),
-                        interest: self_zap_receipts_interest(now),
-                    }));
-                *last = Some(now.to_string());
-            }
-            // Logout: drop standing owner, clear slot.
-            (None, Some(_)) => {
-                let _ = self.tx.send(ActorCommand::Interests(
-                    InterestsCommand::DropInterestOwner(self_zap_receipts_identity()),
-                ));
-                *last = None;
-            }
-            // Cold start before sign-in: nothing to do.
-            (None, None) => {}
-        }
-    }
-
-    fn active_pubkey(&self) -> Option<String> {
-        // Identity straight from the pubkey slot — already hex, no keypair
-        // derivation. `None` on a poisoned lock or no signed-in account.
-        self.active_pubkey.lock().ok().and_then(|slot| slot.clone())
-    }
-}
-
 // ───────────────────────────────────────────────────────────────────────
 // NIP-51 mute-list runtime
 // ───────────────────────────────────────────────────────────────────────
@@ -490,7 +389,9 @@ pub use mute_runtime::register_mute_runtime;
 
 pub(crate) mod active_observed_projection;
 mod bookmarks_runtime;
-pub use bookmarks_runtime::register_bookmark_runtime;
+pub use bookmarks_runtime::{
+    register_bookmark_runtime, register_bookmark_set_runtime, register_web_bookmark_runtime,
+};
 
 mod comments_runtime;
 pub use comments_runtime::register_comment_runtime;
@@ -507,12 +408,8 @@ pub use comments_runtime::register_comment_runtime;
 mod search_relay_runtime;
 pub use search_relay_runtime::{register_search_relay_runtime, register_search_relay_runtime_with};
 
-// Co-located zap-reconciler unit tests live in a sibling file (kept out of this
-// module body to hold it under the 300-LOC ceiling) but compile as a child
-// module so they reach the private `ZapReceiptsRuntimeController`.
-#[cfg(test)]
-#[path = "runtimes_zap_tests.rs"]
-mod zap_tests;
+mod zap_receipts_runtime;
+pub use zap_receipts_runtime::register_zap_receipts_runtime;
 
 // Mute-list active observed-projection reconciler tests.
 #[cfg(test)]

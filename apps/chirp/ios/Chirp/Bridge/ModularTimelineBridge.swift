@@ -1,5 +1,10 @@
 import Foundation
 
+private enum VisibleNoteRelationsOp {
+    static let claim: UInt8 = 0
+    static let release: UInt8 = 1
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // Modular-timeline FFI bridge.
 //
@@ -74,35 +79,21 @@ extension KernelHandle {
     }
 
     func claimVisibleNoteRelations(eventID: String) {
-        dispatchVisibleNoteRelations(op: "claim", eventID: eventID)
+        dispatchVisibleNoteRelations(op: VisibleNoteRelationsOp.claim, eventID: eventID)
     }
 
     func releaseVisibleNoteRelations(eventID: String) {
-        dispatchVisibleNoteRelations(op: "release", eventID: eventID)
+        dispatchVisibleNoteRelations(op: VisibleNoteRelationsOp.release, eventID: eventID)
     }
 
-    private func dispatchVisibleNoteRelations(op: String, eventID: String) {
-        let body: [String: String] = [
-            "op": op,
-            "event_id": eventID,
-            "consumer_id": "ios.visible-note:\(eventID)"
-        ]
-        guard
-            JSONSerialization.isValidJSONObject(body),
-            let data = try? JSONSerialization.data(withJSONObject: body),
-            let json = String(data: data, encoding: .utf8)
-        else { return }
-        dispatchVisibleNoteRelations(bodyJson: json)
-    }
-
-    private func dispatchVisibleNoteRelations(bodyJson: String) {
-        let namespace = "nmp.nip01.visible_note_relations"
-        bodyJson.withCString { jsonPtr in
-            namespace.withCString { nsPtr in
-                if let ptr = nmp_app_chirp_dispatch_action_bytes(raw, nsPtr, jsonPtr) {
-                    nmp_free_string(ptr)
-                }
-            }
-        }
+    private func dispatchVisibleNoteRelations(op: UInt8, eventID: String) {
+        let correlationId = UUID().uuidString
+        let consumerId = "ios.visible-note:\(eventID)"
+        let bytes = GeneratedActionBuilders.visibleNoteRelations(
+            correlationId: correlationId,
+            op: op,
+            eventId: eventID,
+            consumerId: consumerId)
+        _ = dispatchBytes(bytes)
     }
 }

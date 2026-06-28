@@ -176,6 +176,10 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
         render_bookmark_update(builder, out);
         return;
     }
+    if is_bookmark_set_builder(builder) {
+        crate::action_builders::kotlin_bookmark_set::render_bookmark_set_update(builder, out);
+        return;
+    }
     let contract = contract_for(builder.namespace);
     out.push_str(&format!("    /// {}\n", builder.doc));
     out.push_str(&format!(
@@ -256,7 +260,10 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
                     n = field.name
                 ));
             }
-            FieldKind::Uint | FieldKind::Ulong | FieldKind::UlongWithPresenceFlag { .. } => {}
+            FieldKind::Uint
+            | FieldKind::Ulong
+            | FieldKind::UlongWithPresenceFlag { .. }
+            | FieldKind::Ubyte => {}
         }
     }
     // Table: 1 (schema_version slot) + sum of each field's slot_count.
@@ -314,6 +321,12 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
                     flag = flag_name,
                 ));
             }
+            FieldKind::Ubyte => {
+                out.push_str(&format!(
+                    "        fbb.addByte({slot}, {n}, 0) // slot {slot}: {n}\n",
+                    n = field.name
+                ));
+            }
         }
         slot += field.slot_count();
     }
@@ -338,6 +351,13 @@ fn is_bookmark_builder(builder: &ActionBuilder) -> bool {
     matches!(
         builder.namespace,
         "nmp.nip51.add_bookmark" | "nmp.nip51.remove_bookmark"
+    )
+}
+
+fn is_bookmark_set_builder(builder: &ActionBuilder) -> bool {
+    matches!(
+        builder.namespace,
+        "nmp.nip51.add_bookmark_set_item" | "nmp.nip51.remove_bookmark_set_item"
     )
 }
 
@@ -411,6 +431,9 @@ fn kotlin_param_type(field: &PayloadField) -> String {
         (FieldKind::UlongWithPresenceFlag { .. }, _) => "Long?".to_string(),
         // RelayListEntry vector: list of (url, role) pairs.
         (FieldKind::RelayListEntryVec, _) => "List<Pair<String, String>>".to_string(),
+        // Ubyte scalar (u8) — used for FlatBuffers ubyte enum discriminants.
+        (FieldKind::Ubyte, false) => "Byte".to_string(),
+        (FieldKind::Ubyte, true) => "Byte?".to_string(),
     }
 }
 

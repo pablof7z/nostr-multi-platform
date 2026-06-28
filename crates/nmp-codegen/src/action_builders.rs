@@ -42,9 +42,11 @@ pub mod registry;
 mod registry_marmot;
 
 pub mod kotlin;
+mod kotlin_bookmark_set;
 pub mod kotlin_marmot;
 pub mod kotlin_publish;
 pub mod swift;
+mod swift_bookmark_set;
 pub mod swift_marmot;
 pub mod swift_publish;
 pub mod ts;

@@ -174,6 +174,10 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
         render_bookmark_update(builder, out);
         return;
     }
+    if is_bookmark_set_builder(builder) {
+        crate::action_builders::swift_bookmark_set::render_bookmark_set_update(builder, out);
+        return;
+    }
     let contract = contract_for(builder.namespace);
     let method = builder.method;
     // Doc + signature.
@@ -246,7 +250,10 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
                     n = field.name
                 ));
             }
-            FieldKind::Uint | FieldKind::Ulong | FieldKind::UlongWithPresenceFlag { .. } => {}
+            FieldKind::Uint
+            | FieldKind::Ulong
+            | FieldKind::UlongWithPresenceFlag { .. }
+            | FieldKind::Ubyte => {}
         }
     }
     // Table: 1 (schema_version slot) + sum of each field's slot_count.
@@ -314,6 +321,13 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
                     flag = flag_name,
                 ));
             }
+            FieldKind::Ubyte => {
+                out.push_str(&format!(
+                    "        fbb.add(element: {n}, def: UInt8(0), at: {vt}) // slot {slot}: {n}\n",
+                    n = field.name,
+                    vt = vtoffset
+                ));
+            }
         }
         slot += field.slot_count();
     }
@@ -339,6 +353,13 @@ fn is_bookmark_builder(builder: &ActionBuilder) -> bool {
     matches!(
         builder.namespace,
         "nmp.nip51.add_bookmark" | "nmp.nip51.remove_bookmark"
+    )
+}
+
+fn is_bookmark_set_builder(builder: &ActionBuilder) -> bool {
+    matches!(
+        builder.namespace,
+        "nmp.nip51.add_bookmark_set_item" | "nmp.nip51.remove_bookmark_set_item"
     )
 }
 
@@ -412,6 +433,9 @@ fn swift_param_type(field: &PayloadField) -> String {
         (FieldKind::UlongWithPresenceFlag { .. }, _) => "UInt64?".to_string(),
         // RelayListEntry vector: named-tuple array (url + role string).
         (FieldKind::RelayListEntryVec, _) => "[(url: String, role: String)]".to_string(),
+        // Ubyte scalar (u8) — used for FlatBuffers ubyte enum discriminants.
+        (FieldKind::Ubyte, false) => "UInt8".to_string(),
+        (FieldKind::Ubyte, true) => "UInt8?".to_string(),
     }
 }
 
