@@ -7,8 +7,8 @@
 //!
 //! The app-loop shape is now:
 //!   Kotlin creates `AppHandle` via UniFFI → `start()` → dispatch/update
-//!   loop (via `dispatch_action_bytes` / `dispatch_action_json` +
-//!   `set_update_sink`) → `stop()` → `close()`.
+//!   loop (via `dispatch_action_bytes` + `set_update_sink`) → `stop()` →
+//!   `close()`.
 //!
 //! FlatBuffers bytes are preserved byte-for-byte across the boundary.
 //!
@@ -54,8 +54,8 @@ use std::ffi::CStr;
 use std::sync::Arc;
 
 use nmp_app_chirp::{
-    dispatch_action_bytes_for, nmp_app_chirp_declare_consumed_projections, nmp_app_chirp_register,
-    nmp_signer_broker_init, NmpRegisterStatus,
+    nmp_app_chirp_declare_consumed_projections, nmp_app_chirp_register, nmp_signer_broker_init,
+    NmpRegisterStatus,
 };
 use nmp_ffi::{
     nmp_app_declare_incremental_apply, nmp_app_dispatch_action_bytes, nmp_app_free, nmp_app_new,
@@ -177,22 +177,6 @@ impl AppHandle {
                 parse_dispatch_ack(&json)
             }
         }
-    }
-
-    /// Dispatch from a `(namespace, body_json)` pair.
-    ///
-    /// JSON adapter for namespaces that pre-date the FlatBuffers write boundary:
-    /// kept as a RESIDUAL for the Marmot hybrid builder path (#2169) and the
-    /// terminal-UI (TUI) consumer. The intent/action-spec path is GONE (M14-1 /
-    /// #2145); all Chirp social write verbs use `dispatch_action_bytes` with
-    /// generated builders. Routes through the same typed byte doorway
-    /// (`nmp_app_dispatch_action_bytes`) as `dispatch_action_bytes`.
-    /// Never throws (D6).
-    pub fn dispatch_action_json(&self, namespace: String, body_json: String) -> DispatchAck {
-        let result = self
-            .session
-            .with_app(|app| dispatch_action_bytes_for(app, &namespace, &body_json));
-        dispatch_result_to_ack(result)
     }
 
     /// Register a UniFFI update sink for kernel frames (D8: push, no polling).
@@ -347,23 +331,6 @@ pub(crate) fn parse_dispatch_ack(json: &str) -> DispatchAck {
             correlation_id: None,
             error: Some(format!("malformed dispatch result (not JSON): {json}")),
         }
-    }
-}
-
-fn dispatch_result_to_ack(result: Option<Result<String, String>>) -> DispatchAck {
-    match result {
-        None => DispatchAck {
-            correlation_id: None,
-            error: Some("inert or closed handle — dispatch rejected".to_string()),
-        },
-        Some(Ok(cid)) => DispatchAck {
-            correlation_id: Some(cid),
-            error: None,
-        },
-        Some(Err(e)) => DispatchAck {
-            correlation_id: None,
-            error: Some(e),
-        },
     }
 }
 

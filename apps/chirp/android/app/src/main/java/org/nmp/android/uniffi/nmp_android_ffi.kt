@@ -751,8 +751,6 @@ internal open class UniffiVTableCallbackInterfaceUpdateSink(
 
 
 
-
-
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -771,8 +769,6 @@ internal interface IntegrityCheckingUniffiLib : Library {
     fun uniffi_nmp_android_ffi_checksum_method_apphandle_clear_update_sink(
 ): Short
 fun uniffi_nmp_android_ffi_checksum_method_apphandle_dispatch_action_bytes(
-): Short
-fun uniffi_nmp_android_ffi_checksum_method_apphandle_dispatch_action_json(
 ): Short
 fun uniffi_nmp_android_ffi_checksum_method_apphandle_legacy_jni_session_id(
 ): Short
@@ -847,8 +843,6 @@ fun uniffi_nmp_android_ffi_fn_constructor_apphandle_new(uniffi_out_err: UniffiRu
 fun uniffi_nmp_android_ffi_fn_method_apphandle_clear_update_sink(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_nmp_android_ffi_fn_method_apphandle_dispatch_action_bytes(`ptr`: Pointer,`bytes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
-fun uniffi_nmp_android_ffi_fn_method_apphandle_dispatch_action_json(`ptr`: Pointer,`namespace`: RustBuffer.ByValue,`bodyJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_nmp_android_ffi_fn_method_apphandle_legacy_jni_session_id(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
@@ -992,9 +986,6 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_android_ffi_checksum_method_apphandle_dispatch_action_bytes() != 18528.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
-    if (lib.uniffi_nmp_android_ffi_checksum_method_apphandle_dispatch_action_json() != 60943.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_android_ffi_checksum_method_apphandle_legacy_jni_session_id() != 38281.toShort()) {
@@ -1460,19 +1451,6 @@ public interface AppHandleInterface {
     fun `dispatchActionBytes`(`bytes`: kotlin.ByteArray): DispatchAck
     
     /**
-     * Dispatch from a `(namespace, body_json)` pair.
-     *
-     * JSON adapter for namespaces that pre-date the FlatBuffers write boundary:
-     * kept as a RESIDUAL for the Marmot hybrid builder path (#2169) and the
-     * terminal-UI (TUI) consumer. The intent/action-spec path is GONE (M14-1 /
-     * #2145); all Chirp social write verbs use `dispatch_action_bytes` with
-     * generated builders. Routes through the same typed byte doorway
-     * (`nmp_app_dispatch_action_bytes`) as `dispatch_action_bytes`.
-     * Never throws (D6).
-     */
-    fun `dispatchActionJson`(`namespace`: kotlin.String, `bodyJson`: kotlin.String): DispatchAck
-    
-    /**
      * Session registry id for residual JNI lanes.
      *
      * Returns the `jlong` handle that signer, capability, marmot, and
@@ -1679,29 +1657,6 @@ open class AppHandle: Disposable, AutoCloseable, AppHandleInterface
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_nmp_android_ffi_fn_method_apphandle_dispatch_action_bytes(
         it, FfiConverterByteArray.lower(`bytes`),_status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Dispatch from a `(namespace, body_json)` pair.
-     *
-     * JSON adapter for namespaces that pre-date the FlatBuffers write boundary:
-     * kept as a RESIDUAL for the Marmot hybrid builder path (#2169) and the
-     * terminal-UI (TUI) consumer. The intent/action-spec path is GONE (M14-1 /
-     * #2145); all Chirp social write verbs use `dispatch_action_bytes` with
-     * generated builders. Routes through the same typed byte doorway
-     * (`nmp_app_dispatch_action_bytes`) as `dispatch_action_bytes`.
-     * Never throws (D6).
-     */override fun `dispatchActionJson`(`namespace`: kotlin.String, `bodyJson`: kotlin.String): DispatchAck {
-            return FfiConverterTypeDispatchAck.lift(
-    callWithPointer {
-    uniffiRustCall() { _status ->
-    UniffiLib.INSTANCE.uniffi_nmp_android_ffi_fn_method_apphandle_dispatch_action_json(
-        it, FfiConverterString.lower(`namespace`),FfiConverterString.lower(`bodyJson`),_status)
 }
     }
     )

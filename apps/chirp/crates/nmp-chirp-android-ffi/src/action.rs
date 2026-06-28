@@ -2,9 +2,9 @@
 //!
 //! NOTE (M14-0 / issue #2129): `nativeDispatchIntentBytes` and
 //! `nativeDispatchActionBytes` have been **deleted** — action dispatch for the
-//! app-loop lane is now served by `AppHandle::dispatch_action_json` /
-//! `dispatch_action_bytes` in `uniffi_app_loop.rs`. Social writes go through the
-//! generated `GeneratedActionBuilders` bytes → `dispatch_action_bytes` (M14-1 /
+//! app-loop lane is now served by `AppHandle::dispatch_action_bytes` in
+//! `uniffi_app_loop.rs`. Social writes go through the generated
+//! `GeneratedActionBuilders` bytes → `dispatch_action_bytes` (M14-1 /
 //! issue #2145); the `ChirpActionIntent` JSON lane has been retired.
 //!
 //! Retained symbols: `nativeAckActionStage`, `nativeRetryPublish`,

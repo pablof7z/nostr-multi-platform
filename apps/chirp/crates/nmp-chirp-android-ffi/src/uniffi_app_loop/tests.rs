@@ -136,20 +136,6 @@ fn dispatch_action_bytes_returns_error_on_inert_handle() {
 }
 
 #[test]
-fn dispatch_action_json_returns_error_on_inert_handle() {
-    let handle = Arc::new(AppHandle {
-        session: Session::inert_session(),
-        handle: 0,
-    });
-    let ack = handle.dispatch_action_json(
-        "nmp.test.action".to_string(),
-        r#"{"key":"value"}"#.to_string(),
-    );
-    assert!(ack.correlation_id.is_none());
-    assert!(ack.error.is_some());
-}
-
-#[test]
 fn parse_dispatch_ack_correlation_id_path() {
     let ack = parse_dispatch_ack(r#"{"correlation_id":"chirp-42"}"#);
     assert_eq!(ack.correlation_id.as_deref(), Some("chirp-42"));
