@@ -251,16 +251,41 @@ public sealed class WireNode {
 }
 
 /**
- * Deterministic identicon helpers for a hex pubkey. Apps that don't supply an
- * avatar URL can render the color as a circle background. Ported from
- * Chirp's djb2-based palette so installed apps stay visually consistent with
- * the SwiftUI implementation.
+ * Deterministic identicon helpers for a hex pubkey.
+ *
+ * Algorithm is the 5×5 symmetric djb2 grid (GitHub-style): the lower 15 bits
+ * of the djb2 hash determine which of the 15 left-half cells (3 cols × 5 rows)
+ * are filled; columns 3–4 mirror columns 1–0 so the result is horizontally
+ * symmetric. Color uses djb2 % 360 as the HSV hue with S=0.55, V=0.75.
+ *
+ * This algorithm is byte-identical to the Swift implementation in
+ * `swiftui/content-core/ContentTreeWire.swift` and
+ * `swiftui/user-avatar/NostrAvatar.swift`. Same pubkey → same grid and color
+ * on every platform.
  */
 public object NostrIdenticon {
-    /** Stable HSL [Color] derived from a hex pubkey (or any string). */
+    /** Stable HSV [Color] derived from a hex pubkey (or any string).
+     *  Uses djb2 hash mapped to hue with fixed S=0.55, V=0.75 for legibility.
+     */
     public fun colorForPubkey(pubkey: String): Color {
         val hue = (djb2(pubkey) % 360u).toFloat() / 360f
         return Color.hsv(hue * 360f, 0.55f, 0.75f)
+    }
+
+    /**
+     * Returns a 5×5 symmetric fill pattern for a pubkey. Row-major: `cells[row][col]`
+     * is `true` iff that cell is filled. The left 3 columns (0–2) are determined by
+     * the lower 15 bits of djb2; columns 3–4 mirror columns 1–0.
+     */
+    public fun cellsForPubkey(pubkey: String): Array<BooleanArray> {
+        val hash = djb2(pubkey)
+        return Array(5) { row ->
+            BooleanArray(5) { col ->
+                val mirrorCol = if (col < 3) col else 4 - col
+                val bit = row * 3 + mirrorCol
+                (hash shr bit) and 1u == 1u
+            }
+        }
     }
 
     /**
@@ -276,7 +301,7 @@ public object NostrIdenticon {
     private fun djb2(value: String): UInt {
         var hash: UInt = 5381u
         for (byte in value.encodeToByteArray()) {
-            hash = (hash * 33u) + byte.toUByte().toUInt()
+            hash = hash * 33u + byte.toUByte().toUInt()
         }
         return hash
     }

@@ -160,17 +160,11 @@ struct ModularBlockView: View {
     /// the inter-row gap without disturbing the parent layout.
     private func avatarColumn(card: ChirpEventCard?, isLast: Bool) -> some View {
         let pubkey = card?.authorPubkey ?? ""
-        // ADR-0032: initials and avatar tint are derived locally from the
-        // raw pubkey hex via `PubkeyFormatting.swift`. Picture URL falls
-        // back to the identicon URI when no kind:0 has arrived.
         let pictureUrl = model.profileCard(forPubkey: pubkey)?.pictureUrl
             ?? card?.authorPictureUrl
-            ?? "identicon:\(pubkey.prefix(16))"
         return NostrAvatar(
             pubkey: pubkey,
             url: pictureUrl,
-            initials: pubkey.displayInitials,
-            colorHex: pubkey.pubkeyColorHex,
             size: ModuleLayout.avatarSize
         )
         .equatable()

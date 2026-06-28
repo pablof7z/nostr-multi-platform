@@ -193,8 +193,6 @@ private struct GroupChatMessageRow: View {
             NostrAvatar(
                 pubkey: message.pubkey,
                 url: nil,
-                initials: message.pubkey.displayInitials,
-                colorHex: message.pubkey.pubkeyColorHex,
                 size: 36
             )
             .equatable()

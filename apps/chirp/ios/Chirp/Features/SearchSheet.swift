@@ -189,8 +189,6 @@ private struct SearchHitRow: View {
         HStack(alignment: .top, spacing: ChirpSpace.m) {
             NostrAvatar(
                 pubkey: hit.author,
-                initials: hit.author.displayInitials,
-                colorHex: hit.author.pubkeyColorHex,
                 size: 40
             )
             .equatable()

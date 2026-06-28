@@ -261,8 +261,7 @@ struct MarmotGroupChatView: View {
 //
 // ADR-0032: `MarmotMessage` carries the raw sender pubkey (hex) and the
 // raw `created_at` timestamp. This row derives the abbreviated pubkey
-// label, the 2-char initials, the avatar tint, and the relative-time
-// stamp locally via `PubkeyFormatting.swift`.
+// label and relative-time stamp locally via `PubkeyFormatting.swift`.
 
 private struct MarmotMessageRow: View {
     let message: MarmotMessage
@@ -272,8 +271,6 @@ private struct MarmotMessageRow: View {
             NostrAvatar(
                 pubkey: message.senderPubkeyHex,
                 url: nil,
-                initials: message.senderPubkeyHex.displayInitials,
-                colorHex: message.senderPubkeyHex.pubkeyColorHex,
                 size: 36
             )
             .equatable()

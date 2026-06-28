@@ -21,12 +21,6 @@ struct ThreadNoteRow: View {
             ?? card.authorPubkey.shortHex
     }
 
-    private var authorAvatarInitials: String {
-        let name = model.profile(forPubkey: card.authorPubkey)?.display
-            ?? card.authorDisplayName
-        return (name ?? card.authorPubkey).displayInitials
-    }
-
     /// Icon-only action glyph sized to match the home-feed action bar (15pt
     /// regular symbol inside a 44×32 hit target).
     private func threadActionLabel(icon: String) -> some View {
@@ -45,8 +39,6 @@ struct ThreadNoteRow: View {
                 NostrAvatar(
                     pubkey: card.authorPubkey,
                     url: card.authorPictureUrl,
-                    initials: authorAvatarInitials,
-                    colorHex: card.authorPubkey.pubkeyColorHex,
                     size: isFocused ? 46 : 38
                 )
                 .equatable()

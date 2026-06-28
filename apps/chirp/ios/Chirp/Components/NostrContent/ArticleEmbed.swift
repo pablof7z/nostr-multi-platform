@@ -61,8 +61,6 @@ struct ArticleEmbed: KindRenderer {
                     NostrAvatar(
                         pubkey: article.authorPubkey,
                         url: article.authorPictureUrl,
-                        initials: article.authorPubkey.displayInitials,
-                        colorHex: article.authorPubkey.pubkeyColorHex,
                         size: 24
                     )
                     .equatable()

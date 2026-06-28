@@ -140,13 +140,11 @@ private struct DmConversationRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             // The avatar self-claims the peer's kind:0. Its picture comes
-            // from the Rust-owned profile projection; fallback initials are
-            // purely presentational.
+            // from the Rust-owned profile projection; identicon fallback is
+            // deterministic from the pubkey.
             NostrAvatar(
                 pubkey: conversation.peerPubkey,
                 url: nil,
-                initials: peerDisplayLabel.displayInitials,
-                colorHex: conversation.peerPubkey.pubkeyColorHex,
                 size: 40
             )
             .equatable()
@@ -250,8 +248,6 @@ private struct DmComposeSheet: View {
                                     NostrAvatar(
                                         pubkey: follow.pubkey,
                                         url: nil,
-                                        initials: contactLabel.displayInitials,
-                                        colorHex: follow.pubkey.pubkeyColorHex,
                                         size: 32
                                     )
                                     .equatable()

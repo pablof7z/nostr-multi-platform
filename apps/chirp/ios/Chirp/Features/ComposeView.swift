@@ -74,8 +74,6 @@ struct ComposeView: View {
             NostrAvatar(
                 pubkey: account.id,
                 url: account.pictureUrl,
-                initials: (account.displayName ?? account.id).displayInitials,
-                colorHex: account.id.pubkeyColorHex,
                 size: 42
             )
             .equatable()

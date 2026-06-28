@@ -2,24 +2,17 @@ import SwiftUI
 import Foundation
 
 /// Circular avatar for a Nostr pubkey. Shows the profile picture when the
-/// caller (or the host projection) has it; falls back to Chirp's brand
-/// gradient fill plus initials until the picture URL arrives.
+/// caller (or the host projection) has it; falls back to the deterministic
+/// 5×5 symmetric identicon from `NostrIdenticon` (defined in
+/// `Components/NostrContent/ContentTreeWire.swift`).
 ///
-/// Registry component `swiftui/user-avatar`, installed into Chirp and
-/// customized per the registry's documented extension point ("edit the
-/// fallback to match your app's brand palette"). The load-bearing shared
-/// behaviour — claiming/releasing the profile interest through
-/// `NostrProfileHost`, reading the current Rust-owned projection, and the
-/// `AsyncImage` load — is unchanged from the registry source. Only the
-/// fallback rendering uses Chirp's gradient + caller-supplied initials so
-/// there is no visual regression versus the previous `ChirpAvatar`.
-///
-/// The bundled registry `NostrIdenticon` enum is intentionally *not* shipped
-/// here: Chirp already vendors a richer `NostrIdenticon` (5×5 grid identicon)
-/// in `Components/NostrContent/ContentTreeWire.swift`. Re-declaring it would be
-/// a duplicate public symbol. The color fallback therefore reuses Chirp's
-/// `ChirpColor.avatar(from:)` gradient keyed off the kernel-supplied
-/// `colorHex`, matching every other avatar surface in the app.
+/// Registry component `swiftui/user-avatar`, installed into Chirp. The
+/// load-bearing shared behaviour — claiming/releasing the profile interest
+/// through `NostrProfileHost`, reading the current Rust-owned projection, and
+/// the `AsyncImage` load — is unchanged from the registry source. The fallback
+/// uses the shared `NostrIdenticon.identiconView` so iOS main-avatar, iOS
+/// mention chip, and Android all render the same pixel pattern for a given
+/// pubkey (closes #2224).
 struct NostrAvatar: View, Equatable {
     @Environment(\.nostrProfileHost) private var profileHost
 
@@ -28,12 +21,6 @@ struct NostrAvatar: View, Equatable {
     /// timeline snapshot). When `nil`, the current profile projection is read
     /// from the host.
     let url: String?
-    /// Brand initials shown on the gradient fallback. When `nil`, derived from
-    /// the pubkey so the component still works without a caller-supplied label.
-    let initials: String?
-    /// Hex color the kernel supplies (`avatarColor`) that keys the gradient.
-    /// When `nil`, derived from the pubkey.
-    let colorHex: String?
     var size: CGFloat = 44
 
     @State private var generatedConsumerID: String
@@ -53,23 +40,17 @@ struct NostrAvatar: View, Equatable {
     nonisolated static func == (lhs: NostrAvatar, rhs: NostrAvatar) -> Bool {
         lhs.pubkey == rhs.pubkey
             && lhs.url == rhs.url
-            && lhs.initials == rhs.initials
-            && lhs.colorHex == rhs.colorHex
             && lhs.size == rhs.size
     }
 
     init(
         pubkey: String,
         url: String? = nil,
-        initials: String? = nil,
-        colorHex: String? = nil,
         size: CGFloat = 44,
         consumerID: String? = nil
     ) {
         self.pubkey = pubkey
         self.url = url
-        self.initials = initials
-        self.colorHex = colorHex
         self.size = size
         self._generatedConsumerID = State(
             initialValue: consumerID ?? "nostr-avatar.\(UUID().uuidString)")
@@ -81,19 +62,7 @@ struct NostrAvatar: View, Equatable {
         self.init(
             pubkey: profile.pubkey,
             url: profile.pictureUrl,
-            initials: nil,
-            colorHex: nil,
             size: size)
-    }
-
-    private var resolvedInitials: String {
-        if let initials, !initials.isEmpty { return initials }
-        return pubkey.displayInitials
-    }
-
-    private var resolvedColorHex: String {
-        if let colorHex, !colorHex.isEmpty { return colorHex }
-        return pubkey.pubkeyColorHex
     }
 
     var body: some View {
@@ -105,21 +74,19 @@ struct NostrAvatar: View, Equatable {
         let resolvedUrl = url ?? profileHost?.profile(forPubkey: pubkey)?.pictureUrl
 
         ZStack {
-            // Monochrome grayscale fallback (no per-pubkey color) so generated
-            // avatars stay quiet on a monochrome screen. Real profile pictures
-            // render in full color over this.
-            Circle().fill(ChirpColor.avatarFallbackBackground)
             if let resolvedUrl, let u = URL(string: resolvedUrl) {
+                // Gray placeholder visible while the image loads.
+                Circle().fill(ChirpColor.avatarFallbackBackground)
                 AsyncImage(url: u) { phase in
                     if let img = phase.image {
                         FadingImage(image: img)
                     }
                 }
-            }
-            if resolvedUrl == nil || resolvedUrl?.isEmpty == true {
-                Text(resolvedInitials)
-                    .font(.system(size: size * 0.38, weight: .medium))
-                    .foregroundStyle(ChirpColor.avatarFallbackForeground)
+            } else {
+                // No URL yet: render the 5x5 identicon (same algorithm as
+                // iOS mention chips and Android avatars — closes #2224).
+                NostrIdenticon.identiconView(forPubkey: pubkey, size: size)
+                    .clipShape(Circle())
             }
         }
         .frame(width: size, height: size)
