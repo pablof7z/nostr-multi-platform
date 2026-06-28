@@ -81,6 +81,20 @@ pub enum FieldKind {
     /// discriminants declared as FlatBuffers `ubyte` enums. The host passes the
     /// raw discriminant value.
     Ubyte,
+    /// A `byte` scalar field (i8) — encoded inline with default 0. Used for enum
+    /// discriminants declared as FlatBuffers `byte` enums (e.g.
+    /// `GroupVisibility`, `GroupAccess`). The host passes the raw discriminant value.
+    Sbyte,
+    /// A nested `GroupRef` table with two required string sub-fields:
+    /// `host_relay_url` (slot 0) and `local_id` (slot 1). Occupies a single
+    /// FlatBuffers offset slot in the parent table. Generated builders receive a
+    /// named tuple `(hostRelayUrl: String, localId: String)` in Swift /
+    /// a `Pair<String, String>` (first = hostRelayUrl) in Kotlin.
+    GroupRef,
+    /// A `[StringTag]` vector field where each `StringTag` is a FlatBuffers table
+    /// with a single `values: [string]` field (slot 0). Always optional in the
+    /// generated builders — absent → the Rust decoder yields an empty `Vec`.
+    StringTagVec,
 }
 
 impl PayloadField {

@@ -266,10 +266,43 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
                     n = field.name
                 ));
             }
-            FieldKind::Uint
+        FieldKind::GroupRef => {
+            // Build the GroupRef nested table (two required string slots) before
+            // the parent table — FlatBuffers requires nested objects finished first.
+            out.push_str(&format!(
+                "        let {n}HostRelayUrlOffset = fbb.create(string: {n}.hostRelayUrl)\n\
+                 \x20       let {n}LocalIdOffset = fbb.create(string: {n}.localId)\n\
+                 \x20       let {n}TableStart = fbb.startTable(with: 2)\n\
+                 \x20       fbb.add(offset: {n}HostRelayUrlOffset, at: 4) // GroupRef slot 0: host_relay_url\n\
+                 \x20       fbb.add(offset: {n}LocalIdOffset, at: 6)       // GroupRef slot 1: local_id\n\
+                 \x20       let {n}Offset = Offset(offset: fbb.endTable(at: {n}TableStart))\n",
+                n = field.name
+            ));
+        }
+        FieldKind::StringTagVec => {
+            // Build a vector of StringTag tables (each wrapping a [string] values
+            // vector). Always optional — nil/absent → Offset() → slot skipped.
+            out.push_str(&format!(
+                "        let {n}Offset: Offset = {{\n\
+                 \x20           guard let tagRows = {n}, !tagRows.isEmpty else {{ return Offset() }}\n\
+                 \x20           var tagOffsets: [Offset] = []\n\
+                 \x20           for row in tagRows {{\n\
+                 \x20               let valOffsets = row.map {{ fbb.create(string: $0) }}\n\
+                 \x20               let valsVec = fbb.createVector(ofOffsets: valOffsets)\n\
+                 \x20               let tagStart = fbb.startTable(with: 1)\n\
+                 \x20               fbb.add(offset: valsVec, at: 4) // StringTag slot 0: values\n\
+                 \x20               tagOffsets.append(Offset(offset: fbb.endTable(at: tagStart)))\n\
+                 \x20           }}\n\
+                 \x20           return fbb.createVector(ofOffsets: tagOffsets)\n\
+                 \x20       }}()\n",
+                n = field.name
+            ));
+        }
+        FieldKind::Uint
             | FieldKind::Ulong
             | FieldKind::UlongWithPresenceFlag { .. }
-            | FieldKind::Ubyte => {}
+            | FieldKind::Ubyte
+            | FieldKind::Sbyte => {}
         }
     }
     // Table: 1 (schema_version slot) + sum of each field's slot_count.
@@ -346,6 +379,28 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
                     n = field.name,
                     vt = vtoffset
                 ));
+            }
+            FieldKind::Sbyte => {
+                out.push_str(&format!(
+                    "        fbb.add(element: {n}, def: Int8(0), at: {vt}) // slot {slot}: {n}\n",
+                    n = field.name,
+                    vt = vtoffset
+                ));
+            }
+            FieldKind::GroupRef | FieldKind::StringTagVec => {
+                if field.optional {
+                    out.push_str(&format!(
+                        "        if {n}Offset.o != 0 {{ fbb.add(offset: {n}Offset, at: {vt}) }} // slot {slot}: {n}\n",
+                        n = field.name,
+                        vt = vtoffset
+                    ));
+                } else {
+                    out.push_str(&format!(
+                        "        fbb.add(offset: {n}Offset, at: {vt}) // slot {slot}: {n}\n",
+                        n = field.name,
+                        vt = vtoffset
+                    ));
+                }
             }
         }
         slot += field.slot_count();
@@ -457,6 +512,13 @@ fn swift_param_type(field: &PayloadField) -> String {
         // Ubyte scalar (u8) — used for FlatBuffers ubyte enum discriminants.
         (FieldKind::Ubyte, false) => "UInt8".to_string(),
         (FieldKind::Ubyte, true) => "UInt8?".to_string(),
+        // Sbyte scalar (i8) — used for FlatBuffers byte enum discriminants.
+        (FieldKind::Sbyte, false) => "Int8".to_string(),
+        (FieldKind::Sbyte, true) => "Int8?".to_string(),
+        // GroupRef nested table — two required string sub-fields.
+        (FieldKind::GroupRef, _) => "(hostRelayUrl: String, localId: String)".to_string(),
+        // StringTagVec — always optional array of string arrays.
+        (FieldKind::StringTagVec, _) => "[[String]]?".to_string(),
     }
 }
 

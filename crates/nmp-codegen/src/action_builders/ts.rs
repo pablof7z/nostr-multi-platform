@@ -226,10 +226,38 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
                     n = field.name
                 ));
             }
+            FieldKind::GroupRef => {
+                out.push_str(&format!(
+                    "    const {n}HostRelayUrlOffset = fbb.createString({n}.hostRelayUrl);\n\
+                     \x20   const {n}LocalIdOffset = fbb.createString({n}.localId);\n\
+                     \x20   fbb.startObject(2);\n\
+                     \x20   fbb.addFieldOffset(0, {n}HostRelayUrlOffset, 0); // GroupRef slot 0: host_relay_url\n\
+                     \x20   fbb.addFieldOffset(1, {n}LocalIdOffset, 0); // GroupRef slot 1: local_id\n\
+                     \x20   const {n}Offset = fbb.endObject();\n",
+                    n = field.name
+                ));
+            }
+            FieldKind::StringTagVec => {
+                out.push_str(&format!(
+                    "    const {n}Offset = (() => {{\n\
+                     \x20     if ({n} == null || {n}.length === 0) return 0;\n\
+                     \x20     const tagOffsets = {n}.map((row) => {{\n\
+                     \x20       const valOffsets = row.map((s) => fbb.createString(s));\n\
+                     \x20       const valsVec = fbb.createObjectOffsetList(valOffsets);\n\
+                     \x20       fbb.startObject(1);\n\
+                     \x20       fbb.addFieldOffset(0, valsVec, 0); // StringTag slot 0: values\n\
+                     \x20       return fbb.endObject();\n\
+                     \x20     }});\n\
+                     \x20     return fbb.createObjectOffsetList(tagOffsets);\n\
+                     \x20   }})();\n",
+                    n = field.name
+                ));
+            }
             FieldKind::Uint
             | FieldKind::Ulong
             | FieldKind::UlongWithPresenceFlag { .. }
-            | FieldKind::Ubyte => {}
+            | FieldKind::Ubyte
+            | FieldKind::Sbyte => {}
         }
     }
     // Table: 1 (schema_version slot) + sum of each field's slot_count.
@@ -295,6 +323,25 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
                     "    fbb.addFieldInt8({slot}, {n}, 0); // slot {slot}: {n}\n",
                     n = field.name
                 ));
+            }
+            FieldKind::Sbyte => {
+                out.push_str(&format!(
+                    "    fbb.addFieldInt8({slot}, {n}, 0); // slot {slot}: {n}\n",
+                    n = field.name
+                ));
+            }
+            FieldKind::GroupRef | FieldKind::StringTagVec => {
+                if field.optional {
+                    out.push_str(&format!(
+                        "    if ({n}Offset !== 0) fbb.addFieldOffset({slot}, {n}Offset, 0); // slot {slot}: {n}\n",
+                        n = field.name
+                    ));
+                } else {
+                    out.push_str(&format!(
+                        "    fbb.addFieldOffset({slot}, {n}Offset, 0); // slot {slot}: {n}\n",
+                        n = field.name
+                    ));
+                }
             }
         }
         slot += field.slot_count();
@@ -442,6 +489,12 @@ fn ts_param_type(field: &PayloadField) -> String {
         (FieldKind::RelayListEntryVec, _) => "Array<{ url: string; role: string }>".to_string(),
         // Ubyte scalar (u8) — used for FlatBuffers ubyte enum discriminants.
         (FieldKind::Ubyte, _) => "number".to_string(),
+        // Sbyte scalar (i8) — used for FlatBuffers byte enum discriminants.
+        (FieldKind::Sbyte, _) => "number".to_string(),
+        // GroupRef nested table.
+        (FieldKind::GroupRef, _) => "{ hostRelayUrl: string; localId: string }".to_string(),
+        // StringTagVec — vector of tag rows.
+        (FieldKind::StringTagVec, _) => "string[][] | null".to_string(),
     }
 }
 
