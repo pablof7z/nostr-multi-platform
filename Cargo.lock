@@ -4583,6 +4583,7 @@ version = "0.8.4"
 name = "nmp-defaults"
 version = "0.8.4"
 dependencies = [
+ "flatbuffers",
  "nmp-codegen",
  "nmp-content",
  "nmp-core",

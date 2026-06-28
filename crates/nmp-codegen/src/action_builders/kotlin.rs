@@ -240,6 +240,30 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
                     ));
                 }
             }
+            FieldKind::UintVec => {
+                if field.optional {
+                    out.push_str(&format!(
+                        "        val {n}Offset = run {{\n\
+                         \x20           val values = {n}\n\
+                         \x20           if (values == null || values.isEmpty()) 0 else {{\n\
+                         \x20               fbb.startVector(4, values.size, 4)\n\
+                         \x20               for (i in values.size - 1 downTo 0) fbb.addInt(values[i])\n\
+                         \x20               fbb.endVector()\n\
+                         \x20           }}\n\
+                         \x20       }}\n",
+                        n = field.name
+                    ));
+                } else {
+                    out.push_str(&format!(
+                        "        val {n}Offset = run {{\n\
+                         \x20           fbb.startVector(4, {n}.size, 4)\n\
+                         \x20           for (i in {n}.size - 1 downTo 0) fbb.addInt({n}[i])\n\
+                         \x20           fbb.endVector()\n\
+                         \x20       }}\n",
+                        n = field.name
+                    ));
+                }
+            }
             FieldKind::RelayListEntryVec => {
                 // Build each RelayListEntry table (url + marker) then a vector
                 // of those table offsets.
@@ -276,7 +300,10 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
     let mut slot = 1usize; // slot 0 = schema_version
     for field in builder.fields {
         match field.kind {
-            FieldKind::Str | FieldKind::StrVec | FieldKind::RelayListEntryVec => {
+            FieldKind::Str
+            | FieldKind::StrVec
+            | FieldKind::UintVec
+            | FieldKind::RelayListEntryVec => {
                 if field.optional {
                     out.push_str(&format!(
                         "        if ({n}Offset != 0) fbb.addOffset({slot}, {n}Offset, 0) // slot {slot}: {n}\n",
@@ -424,6 +451,8 @@ fn kotlin_param_type(field: &PayloadField) -> String {
         (FieldKind::Uint, true) => "Int?".to_string(),
         (FieldKind::StrVec, false) => "List<String>".to_string(),
         (FieldKind::StrVec, true) => "List<String>?".to_string(),
+        (FieldKind::UintVec, false) => "List<Int>".to_string(),
+        (FieldKind::UintVec, true) => "List<Int>?".to_string(),
         (FieldKind::Ulong, false) => "Long".to_string(),
         (FieldKind::Ulong, true) => "Long?".to_string(),
         // UlongWithPresenceFlag is always presented as optional — the flag

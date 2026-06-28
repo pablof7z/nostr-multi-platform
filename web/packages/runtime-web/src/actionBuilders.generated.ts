@@ -32,6 +32,13 @@ function stringVector(fbb: flatbuffers.Builder, values: string[]): flatbuffers.O
   return fbb.endVector();
 }
 
+/** Encode a `[uint]` FlatBuffers vector and return its offset. */
+function uintVector(fbb: flatbuffers.Builder, values: number[]): flatbuffers.Offset {
+  fbb.startVector(4, values.length, 4);
+  for (let i = values.length - 1; i >= 0; i--) fbb.addInt32(values[i]!);
+  return fbb.endVector();
+}
+
 /** Map a relay role string to the RelayMarker ubyte (Both=0, Read=1, Write=2, Indexer=3),
 * mirroring `RelayMarker::from_role_string` in `nmp-router` EXACTLY — including rejection.
 * Unknown tokens or no-flag input (e.g. empty string) encode as 255 (out-of-range sentinel)
@@ -662,6 +669,53 @@ export const GeneratedActionBuilders = {
     fbb.finish(payloadRoot, "NR01");
     const payload = fbb.asUint8Array();
     return encodeDispatchEnvelope(correlationId, "nmp.nip01.visible_note_relations", payload);
+  },
+
+  /** Open or close a relay-pinned browse subscription. */
+  browseRelay(
+    correlationId: string,
+    op: number,
+    relayUrl: string | null,
+    kinds: number[] | null,
+    lifecycle: number,
+    interestId: bigint,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const relayUrlOffset = relayUrl === null ? 0 : fbb.createString(relayUrl);
+    const kindsOffset =
+      kinds === null || kinds.length === 0 ? 0 : uintVector(fbb, kinds);
+    fbb.startObject(6);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldInt8(1, op, 0); // slot 1: op
+    if (relayUrlOffset !== 0) fbb.addFieldOffset(2, relayUrlOffset, 0); // slot 2: relayUrl
+    if (kindsOffset !== 0) fbb.addFieldOffset(3, kindsOffset, 0); // slot 3: kinds
+    fbb.addFieldInt8(4, lifecycle, 0); // slot 4: lifecycle
+    fbb.addFieldInt64(5, interestId, BigInt(0)); // slot 5: interestId
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "NBRW");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.browse_relay", payload);
+  },
+
+  /** Claim or release a NIP-23 topic-articles subscription. */
+  topicArticles(
+    correlationId: string,
+    op: number,
+    topic: string,
+    consumerId: string,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const topicOffset = fbb.createString(topic);
+    const consumerIdOffset = fbb.createString(consumerId);
+    fbb.startObject(4);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldInt8(1, op, 0); // slot 1: op
+    fbb.addFieldOffset(2, topicOffset, 0); // slot 2: topic
+    fbb.addFieldOffset(3, consumerIdOffset, 0); // slot 3: consumerId
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "NTPC");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.app.topic_articles", payload);
   },
 
   /** Sign-and-publish an arbitrary event kind (generic publish path; NIP-65 outbox or explicit relays). */

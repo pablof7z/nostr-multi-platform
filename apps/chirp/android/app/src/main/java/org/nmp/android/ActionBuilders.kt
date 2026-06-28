@@ -854,6 +854,69 @@ object GeneratedActionBuilders {
         )
     }
 
+    /// Open or close a relay-pinned browse subscription.
+    /// Builds the `nmp.browse_relay` `DispatchEnvelope` bytes for the byte doorway.
+    fun browseRelay(
+        correlationId: String,
+        op: Byte,
+        relayUrl: String?,
+        kinds: List<Int>?,
+        lifecycle: Byte,
+        interestId: Long,
+    ): ByteArray {
+        val fbb = FlatBufferBuilder()
+        val relayUrlOffset = relayUrl?.let { fbb.createString(it) } ?: 0
+        val kindsOffset = run {
+            val values = kinds
+            if (values == null || values.isEmpty()) 0 else {
+                fbb.startVector(4, values.size, 4)
+                for (i in values.size - 1 downTo 0) fbb.addInt(values[i])
+                fbb.endVector()
+            }
+        }
+        fbb.startTable(6)
+        fbb.addInt(0, 1, 0) // slot 0: schema_version
+        fbb.addByte(1, op, 0) // slot 1: op
+        if (relayUrlOffset != 0) fbb.addOffset(2, relayUrlOffset, 0) // slot 2: relayUrl
+        if (kindsOffset != 0) fbb.addOffset(3, kindsOffset, 0) // slot 3: kinds
+        fbb.addByte(4, lifecycle, 0) // slot 4: lifecycle
+        fbb.addLong(5, interestId, 0L) // slot 5: interestId
+        val payloadRoot = fbb.endTable()
+        fbb.finish(payloadRoot, "NBRW")
+        val payload = fbb.sizedByteArray()
+        return encodeDispatchEnvelope(
+            correlationId = correlationId,
+            actionNamespace = "nmp.browse_relay",
+            payload = payload,
+        )
+    }
+
+    /// Claim or release a NIP-23 topic-articles subscription.
+    /// Builds the `nmp.app.topic_articles` `DispatchEnvelope` bytes for the byte doorway.
+    fun topicArticles(
+        correlationId: String,
+        op: Byte,
+        topic: String,
+        consumerId: String,
+    ): ByteArray {
+        val fbb = FlatBufferBuilder()
+        val topicOffset = fbb.createString(topic)
+        val consumerIdOffset = fbb.createString(consumerId)
+        fbb.startTable(4)
+        fbb.addInt(0, 1, 0) // slot 0: schema_version
+        fbb.addByte(1, op, 0) // slot 1: op
+        fbb.addOffset(2, topicOffset, 0) // slot 2: topic
+        fbb.addOffset(3, consumerIdOffset, 0) // slot 3: consumerId
+        val payloadRoot = fbb.endTable()
+        fbb.finish(payloadRoot, "NTPC")
+        val payload = fbb.sizedByteArray()
+        return encodeDispatchEnvelope(
+            correlationId = correlationId,
+            actionNamespace = "nmp.app.topic_articles",
+            payload = payload,
+        )
+    }
+
     /// Sign-and-publish an arbitrary event kind (generic publish path; NIP-65 outbox or explicit relays).
     /// Builds the `nmp.publish` `DispatchEnvelope` bytes (body `PublishRaw`) for the byte doorway.
     fun publishRaw(

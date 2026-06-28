@@ -823,6 +823,65 @@ public enum GeneratedActionBuilders {
         )
     }
 
+    /// Open or close a relay-pinned browse subscription.
+    /// Builds the `nmp.browse_relay` `DispatchEnvelope` bytes for the byte doorway.
+    public static func browseRelay(
+        correlationId: String,
+        op: UInt8,
+        relayUrl: String?,
+        kinds: [UInt32]?,
+        lifecycle: UInt8,
+        interestId: UInt64
+    ) -> [UInt8] {
+        var fbb = FlatBufferBuilder()
+        let relayUrlOffset: Offset = relayUrl.map { fbb.create(string: $0) } ?? Offset()
+        let kindsOffset: Offset = {
+            guard let values = kinds, !values.isEmpty else { return Offset() }
+            return fbb.createVector(values)
+        }()
+        let payloadStart = fbb.startTable(with: 6)
+        fbb.add(element: UInt32(1), def: UInt32(0), at: 4) // slot 0: schema_version
+        fbb.add(element: op, def: UInt8(0), at: 6) // slot 1: op
+        if relayUrlOffset.o != 0 { fbb.add(offset: relayUrlOffset, at: 8) } // slot 2: relayUrl
+        if kindsOffset.o != 0 { fbb.add(offset: kindsOffset, at: 10) } // slot 3: kinds
+        fbb.add(element: lifecycle, def: UInt8(0), at: 12) // slot 4: lifecycle
+        fbb.add(element: interestId, def: UInt64(0), at: 14) // slot 5: interestId
+        let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))
+        fbb.finish(offset: payloadRoot, fileId: "NBRW")
+        let payload = fbb.sizedByteArray
+        return encodeDispatchEnvelope(
+            correlationId: correlationId,
+            actionNamespace: "nmp.browse_relay",
+            payload: payload
+        )
+    }
+
+    /// Claim or release a NIP-23 topic-articles subscription.
+    /// Builds the `nmp.app.topic_articles` `DispatchEnvelope` bytes for the byte doorway.
+    public static func topicArticles(
+        correlationId: String,
+        op: UInt8,
+        topic: String,
+        consumerId: String
+    ) -> [UInt8] {
+        var fbb = FlatBufferBuilder()
+        let topicOffset = fbb.create(string: topic)
+        let consumerIdOffset = fbb.create(string: consumerId)
+        let payloadStart = fbb.startTable(with: 4)
+        fbb.add(element: UInt32(1), def: UInt32(0), at: 4) // slot 0: schema_version
+        fbb.add(element: op, def: UInt8(0), at: 6) // slot 1: op
+        fbb.add(offset: topicOffset, at: 8) // slot 2: topic
+        fbb.add(offset: consumerIdOffset, at: 10) // slot 3: consumerId
+        let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))
+        fbb.finish(offset: payloadRoot, fileId: "NTPC")
+        let payload = fbb.sizedByteArray
+        return encodeDispatchEnvelope(
+            correlationId: correlationId,
+            actionNamespace: "nmp.app.topic_articles",
+            payload: payload
+        )
+    }
+
     /// Sign-and-publish an arbitrary event kind (generic publish path; NIP-65 outbox or explicit relays).
     /// Builds the `nmp.publish` `DispatchEnvelope` bytes (body `PublishRaw`) for the byte doorway.
     public static func publishRaw(

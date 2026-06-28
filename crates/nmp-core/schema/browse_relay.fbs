@@ -1,0 +1,23 @@
+namespace nmp.core;
+
+enum BrowseRelayOp:ubyte {
+  Open = 0,
+  Close = 1,
+}
+
+enum BrowseRelayLifecycle:ubyte {
+  Tailing = 0,
+  OneShot = 1,
+}
+
+table BrowseRelayPayload {
+  schema_version:uint;
+  op:BrowseRelayOp;
+  relay_url:string;
+  kinds:[uint];
+  lifecycle:BrowseRelayLifecycle;
+  interest_id:ulong;
+}
+
+root_type BrowseRelayPayload;
+file_identifier "NBRW";

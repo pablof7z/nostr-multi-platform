@@ -108,6 +108,13 @@ fn shared_helpers() -> String {
          \x20 return fbb.endVector();\n\
          }\n\
          \n\
+         /** Encode a `[uint]` FlatBuffers vector and return its offset. */\n\
+         function uintVector(fbb: flatbuffers.Builder, values: number[]): flatbuffers.Offset {\n\
+         \x20 fbb.startVector(4, values.length, 4);\n\
+         \x20 for (let i = values.length - 1; i >= 0; i--) fbb.addInt32(values[i]!);\n\
+         \x20 return fbb.endVector();\n\
+         }\n\
+         \n\
          /** Map a relay role string to the RelayMarker ubyte (Both=0, Read=1, Write=2, Indexer=3),\n\
           * mirroring `RelayMarker::from_role_string` in `nmp-router` EXACTLY — including rejection.\n\
           * Unknown tokens or no-flag input (e.g. empty string) encode as 255 (out-of-range sentinel)\n\
@@ -186,6 +193,20 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
                     ));
                 }
             }
+            FieldKind::UintVec => {
+                if field.optional {
+                    out.push_str(&format!(
+                        "    const {n}Offset =\n\
+                         \x20     {n} === null || {n}.length === 0 ? 0 : uintVector(fbb, {n});\n",
+                        n = field.name
+                    ));
+                } else {
+                    out.push_str(&format!(
+                        "    const {n}Offset = uintVector(fbb, {n});\n",
+                        n = field.name
+                    ));
+                }
+            }
             FieldKind::RelayListEntryVec => {
                 // Build each RelayListEntry table (url + marker) then a vector
                 // of those table offsets.
@@ -205,7 +226,10 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
                     n = field.name
                 ));
             }
-            FieldKind::Uint | FieldKind::Ulong | FieldKind::UlongWithPresenceFlag { .. } | FieldKind::Ubyte => {}
+            FieldKind::Uint
+            | FieldKind::Ulong
+            | FieldKind::UlongWithPresenceFlag { .. }
+            | FieldKind::Ubyte => {}
         }
     }
     // Table: 1 (schema_version slot) + sum of each field's slot_count.
@@ -218,7 +242,10 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
     let mut slot = 1usize; // slot 0 = schema_version
     for field in builder.fields {
         match field.kind {
-            FieldKind::Str | FieldKind::StrVec | FieldKind::RelayListEntryVec => {
+            FieldKind::Str
+            | FieldKind::StrVec
+            | FieldKind::UintVec
+            | FieldKind::RelayListEntryVec => {
                 if field.optional {
                     out.push_str(&format!(
                         "    if ({n}Offset !== 0) fbb.addFieldOffset({slot}, {n}Offset, 0); // slot {slot}: {n}\n",
@@ -405,14 +432,14 @@ fn ts_param_type(field: &PayloadField) -> String {
         (FieldKind::Uint, true) => "number | null".to_string(),
         (FieldKind::StrVec, false) => "string[]".to_string(),
         (FieldKind::StrVec, true) => "string[] | null".to_string(),
+        (FieldKind::UintVec, false) => "number[]".to_string(),
+        (FieldKind::UintVec, true) => "number[] | null".to_string(),
         (FieldKind::Ulong, false) => "bigint".to_string(),
         (FieldKind::Ulong, true) => "bigint | null".to_string(),
         // UlongWithPresenceFlag is always presented as optional.
         (FieldKind::UlongWithPresenceFlag { .. }, _) => "bigint | null".to_string(),
         // RelayListEntry vector: array of {url, role} objects.
-        (FieldKind::RelayListEntryVec, _) => {
-            "Array<{ url: string; role: string }>".to_string()
-        }
+        (FieldKind::RelayListEntryVec, _) => "Array<{ url: string; role: string }>".to_string(),
         // Ubyte scalar (u8) — used for FlatBuffers ubyte enum discriminants.
         (FieldKind::Ubyte, _) => "number".to_string(),
     }

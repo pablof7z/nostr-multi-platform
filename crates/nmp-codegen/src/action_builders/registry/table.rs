@@ -8,8 +8,8 @@
 //! namespace literals stay visible to the gate.
 
 use super::host_called::{
-    ADD_BOOKMARK_SET_ITEM, BLOSSOM_UPLOAD, POST_COMMENT, PUBLISH_HIGHLIGHT, PUBLISH_WEB_BOOKMARK,
-    REMOVE_BOOKMARK_SET_ITEM, VISIBLE_NOTE_RELATIONS,
+    ADD_BOOKMARK_SET_ITEM, BLOSSOM_UPLOAD, BROWSE_RELAY, POST_COMMENT, PUBLISH_HIGHLIGHT,
+    PUBLISH_WEB_BOOKMARK, REMOVE_BOOKMARK_SET_ITEM, TOPIC_ARTICLES, VISIBLE_NOTE_RELATIONS,
 };
 use super::{ActionBuilder, FieldKind, PayloadField};
 
@@ -21,8 +21,8 @@ use super::{ActionBuilder, FieldKind, PayloadField};
 /// The publish builders are described by [`PUBLISH_BUILDERS`] and hand-modelled
 /// by the emitters' `render_publish_*` paths. This registry covers every
 /// flat-table namespace end-to-end: every primitive (string, uint, optional
-/// string, string vector, ulong-with-presence-flag, relay-list-entry-vec) is
-/// exercised.
+/// string, string vector, uint vector, ulong-with-presence-flag,
+/// relay-list-entry-vec) is exercised.
 pub const ACTION_BUILDERS: &[ActionBuilder] = &[
     // nip25 — react / unreact (react.fbs / unreact.fbs).
     ActionBuilder {
@@ -352,4 +352,6 @@ pub const ACTION_BUILDERS: &[ActionBuilder] = &[
     PUBLISH_WEB_BOOKMARK,
     BLOSSOM_UPLOAD,
     VISIBLE_NOTE_RELATIONS,
+    BROWSE_RELAY,
+    TOPIC_ARTICLES,
 ];

@@ -61,6 +61,8 @@ pub enum FieldKind {
     Uint,
     /// A `[string]` vector field — encoded as a vector of string offsets.
     StrVec,
+    /// A `[uint]` vector field — encoded as a vector of u32 scalars.
+    UintVec,
     /// A `ulong` (u64) scalar field — encoded inline with default `0`.
     Ulong,
     /// A `ulong` scalar + a companion `bool` presence flag (two FlatBuffers
@@ -122,8 +124,8 @@ pub struct ActionBuilder {
 /// publish builders are described by [`PUBLISH_BUILDERS`] and hand-modelled by
 /// the emitters' `render_publish_*` paths. The flat-table registry covers every
 /// flat-table namespace end-to-end: every primitive (string, uint, optional
-/// string, string vector, ulong, ulong-with-presence-flag, relay-list-entry-vec)
-/// is exercised.
+/// string, string vector, uint vector, ulong, ulong-with-presence-flag,
+/// relay-list-entry-vec) is exercised.
 #[path = "registry/host_called.rs"]
 mod host_called;
 mod table;

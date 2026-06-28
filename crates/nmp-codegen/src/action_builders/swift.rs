@@ -234,6 +234,22 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
                     ));
                 }
             }
+            FieldKind::UintVec => {
+                if field.optional {
+                    out.push_str(&format!(
+                        "        let {n}Offset: Offset = {{\n\
+                         \x20           guard let values = {n}, !values.isEmpty else {{ return Offset() }}\n\
+                         \x20           return fbb.createVector(values)\n\
+                         \x20       }}()\n",
+                        n = field.name
+                    ));
+                } else {
+                    out.push_str(&format!(
+                        "        let {n}Offset = fbb.createVector({n})\n",
+                        n = field.name
+                    ));
+                }
+            }
             FieldKind::RelayListEntryVec => {
                 // Build each RelayListEntry table (url + marker) then a vector
                 // of those entry offsets.
@@ -269,7 +285,10 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
     for field in builder.fields {
         let vtoffset = 4 + slot * 2;
         match field.kind {
-            FieldKind::Str | FieldKind::StrVec | FieldKind::RelayListEntryVec => {
+            FieldKind::Str
+            | FieldKind::StrVec
+            | FieldKind::UintVec
+            | FieldKind::RelayListEntryVec => {
                 if field.optional {
                     out.push_str(&format!(
                         "        if {n}Offset.o != 0 {{ fbb.add(offset: {n}Offset, at: {vt}) }} // slot {slot}: {n}\n",
@@ -426,6 +445,8 @@ fn swift_param_type(field: &PayloadField) -> String {
         (FieldKind::Uint, true) => "UInt32?".to_string(),
         (FieldKind::StrVec, false) => "[String]".to_string(),
         (FieldKind::StrVec, true) => "[String]?".to_string(),
+        (FieldKind::UintVec, false) => "[UInt32]".to_string(),
+        (FieldKind::UintVec, true) => "[UInt32]?".to_string(),
         (FieldKind::Ulong, false) => "UInt64".to_string(),
         (FieldKind::Ulong, true) => "UInt64?".to_string(),
         // UlongWithPresenceFlag is always presented as optional — the flag

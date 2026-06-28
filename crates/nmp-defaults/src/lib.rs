@@ -107,6 +107,7 @@ pub mod runtimes;
 pub mod search_defaults;
 pub mod tiers;
 pub mod topic_articles;
+mod topic_articles_wire;
 
 pub use runtimes::{
     register_bookmark_runtime, register_comment_runtime, register_mute_runtime,

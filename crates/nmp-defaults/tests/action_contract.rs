@@ -127,6 +127,17 @@ fn contract_matches_modules_and_default_payload_reexports() {
 }
 
 #[test]
+fn component_registered_contract_rows_match_available_modules() {
+    assert_contract::<nmp_core::browse::BrowseRelayModule, nmp_core::browse::BrowseRelayAction>(
+        "nmp.browse_relay",
+    );
+    assert_contract::<
+        nmp_defaults::topic_articles::TopicArticlesModule,
+        nmp_defaults::topic_articles::TopicArticlesAction,
+    >("nmp.app.topic_articles");
+}
+
+#[test]
 fn live_default_action_registry_matches_contract() {
     let app = new_app_ptr();
     assert!(!app.is_null(), "nmp_app_new returned null");
