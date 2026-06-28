@@ -24,8 +24,10 @@
 //!
 //! ## Doctrine
 //!
-//! - **D0** — the DTOs are built in `nmp-core` (no app nouns); this file is
-//!   just the C-ABI wrapper.
+//! - **D0** — domain dispatch and DTO construction live canonically in
+//!   `nmp-native-runtime` (`NmpApp::debug_info_json` /
+//!   `nmp_native_runtime::empty_debug_info_json`); this file is a thin
+//!   C-ABI wrapper with no duplicated logic.
 //! - **D6** — a null `app`, a pre-start kernel (projection not yet published),
 //!   a poisoned slot, or a serialization failure all collapse to a well-formed
 //!   payload (empty rings / empty ledger / `{}`). Never returns NULL for a
@@ -35,40 +37,9 @@
 
 use std::ffi::{c_char, c_int, CString};
 
-use nmp_core::projection_to_json;
 use serde_json::json;
 
 use super::{app_ref, NmpApp};
-
-// ── Domain codes (stable, wire-stable) ──────────────────────────────────────
-/// domain 0 — routing trace only.
-const DOMAIN_ROUTING: c_int = 0;
-/// domain 1 — composition report only.
-const DOMAIN_COMPOSITION: c_int = 1;
-/// domain 2 — both merged under `{"routing":{...},"composition":{...}}`.
-const DOMAIN_MERGED: c_int = 2;
-
-// ── Internal helpers ─────────────────────────────────────────────────────────
-
-fn routing_json(app: &NmpApp) -> serde_json::Value {
-    let Some(projection) = app.routing_trace() else {
-        return empty_routing_value();
-    };
-    projection_to_json(&projection)
-}
-
-fn empty_routing_value() -> serde_json::Value {
-    json!({
-        "schema_version": nmp_core::ROUTING_TRACE_SCHEMA_VERSION,
-        "capacity": 0,
-        "publishes": [],
-        "subscriptions": [],
-    })
-}
-
-fn composition_json(app: &NmpApp) -> serde_json::Value {
-    app.composition_ledger().to_json()
-}
 
 fn value_to_ptr(v: serde_json::Value) -> *mut c_char {
     let s = serde_json::to_string(&v).unwrap_or_else(|_| String::from("{}"));
@@ -104,35 +75,11 @@ pub extern "C" fn nmp_app_debug_info(app: *mut NmpApp, domain: c_int) -> *mut c_
 
 fn debug_info_impl(app: *mut NmpApp, domain: c_int) -> *mut c_char {
     let Some(app) = app_ref(app) else {
-        // D6: return well-formed empty for the requested domain.
-        return match domain {
-            DOMAIN_ROUTING => value_to_ptr(empty_routing_value()),
-            DOMAIN_COMPOSITION => value_to_ptr(json!({
-                "schema_version": nmp_core::COMPOSITION_REPORT_SCHEMA_VERSION,
-                "count": 0,
-                "records": [],
-            })),
-            DOMAIN_MERGED => value_to_ptr(json!({
-                "routing": empty_routing_value(),
-                "composition": json!({
-                    "schema_version": nmp_core::COMPOSITION_REPORT_SCHEMA_VERSION,
-                    "count": 0,
-                    "records": [],
-                }),
-            })),
-            _ => value_to_ptr(json!({})),
-        };
+        // D6: delegate to canonical empty-payload helper so domain semantics
+        // have exactly one owner (nmp_native_runtime::empty_debug_info_json).
+        return value_to_ptr(nmp_native_runtime::empty_debug_info_json(domain));
     };
-
-    match domain {
-        DOMAIN_ROUTING => value_to_ptr(routing_json(app)),
-        DOMAIN_COMPOSITION => value_to_ptr(composition_json(app)),
-        DOMAIN_MERGED => value_to_ptr(json!({
-            "routing": routing_json(app),
-            "composition": composition_json(app),
-        })),
-        _ => value_to_ptr(json!({})),
-    }
+    value_to_ptr(app.debug_info_json(domain))
 }
 
 #[cfg(test)]
