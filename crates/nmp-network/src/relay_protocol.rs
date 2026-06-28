@@ -2,7 +2,7 @@
 //!
 //! V-01 Stage 3 — splits the parts of the relay-worker FSM that are pure
 //! (constants + helpers) out of the native-only [`crate::relay_worker`] module
-//! so a non-native transport (today: `web_sys::WebSocket` in `nmp-wasm`) can
+//! so a non-native transport (today: `web_sys::WebSocket` in `nmp-browser-runtime`) can
 //! reuse the same backoff, keepalive thresholds, and error classification
 //! without depending on `tungstenite`/`mio`/`rustls`.
 //!

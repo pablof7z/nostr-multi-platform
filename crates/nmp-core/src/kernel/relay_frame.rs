@@ -26,7 +26,7 @@
 /// One inbound WebSocket frame, observed by the kernel.
 ///
 /// V-01 Stage 3 — promoted to `pub` so the wasm32 `BrowserRelayDriver` in
-/// `nmp-wasm` can construct frames from `web_sys::MessageEvent` /
+/// `nmp-browser-runtime` can construct frames from `web_sys::MessageEvent` /
 /// `web_sys::CloseEvent` and hand them to
 /// [`crate::KernelReducer::handle_relay_frame`]. Substrate-grade (D0): the
 /// enum carries no app/protocol nouns.

@@ -14,7 +14,7 @@ crate-type = ["rlib"]
 # Native I/O layer — gates the relay_worker (tungstenite/mio/rustls).
 # The `relay_protocol` module compiles unconditionally so wasm32 callers
 # (the `browser_driver` here in this crate, and any future direct callers
-# from `nmp-wasm`) can share the same constants.
+# from `nmp-browser-runtime`) can share the same constants.
 default = ["native"]
 native = ["dep:tungstenite", "dep:mio", "dep:rustls"]
 
@@ -29,7 +29,7 @@ native = ["dep:tungstenite", "dep:mio", "dep:rustls"]
 # to the kernel's frame enum at the actor seam). Phase C
 # (`BrowserRelayDriver` move) preserves the same direction: the browser
 # driver takes its kernel touchpoints through an `Rc<dyn Fn>` callback
-# bag (`BrowserKernelHandlers`) constructed in `nmp-wasm`, so the driver
+# bag (`BrowserKernelHandlers`) constructed in `nmp-browser-runtime`, so the driver
 # itself never names a kernel type.
 #
 # Native-only I/O deps — gated behind `native`, mirroring the old
@@ -56,7 +56,7 @@ nmp-relay-url = { path = "../nmp-relay-url" }
 serde_json = "1"
 
 # Step 8 phase C — `BrowserRelayDriver` owns the `web_sys::WebSocket`
-# lifecycle. Feature set kept minimal (mirrors what `nmp-wasm` carried
+# lifecycle. Feature set kept minimal (mirrors what the retired `nmp-wasm` carried
 # before the move): `WebSocket` itself for send/close, `MessageEvent` to
 # read incoming frames, `CloseEvent` for the close reason, `ErrorEvent`
 # to surface socket errors, `BinaryType` to opt into ArrayBuffer payloads.

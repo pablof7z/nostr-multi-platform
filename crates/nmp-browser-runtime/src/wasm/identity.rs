@@ -4,7 +4,7 @@
 
 //! Active-identity validation for `WorkerRequest::SetIdentity` (#2038 item A).
 //!
-//! Mirrors `nmp-wasm/src/signer_slot.rs` but defined here so
+//! Mirrors the retired `nmp-wasm/src/signer_slot.rs` (historical) but defined here so
 //! `nmp-browser-runtime` stays free of a dep on the ABI crate. The validation
 //! logic keeps NIP-07 pubkey canonicalization and browser local-key signer
 //! installation in Rust. TypeScript never decodes or signs with a pasted nsec.

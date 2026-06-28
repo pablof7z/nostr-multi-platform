@@ -1,7 +1,7 @@
 //! #1753 S6 — functional tests for the wasm signing capability round-trip.
 //!
 //! These run on native (`cargo test -p nmp-core`) AND wasm (`cargo test -p
-//! nmp-wasm` exercises the public `KernelReducer` seam) — the seam is
+//! nmp-browser-runtime` exercises the public `KernelReducer` seam) — the seam is
 //! target-agnostic. They pin the round-trip shape, account-pinning, the
 //! sign-only reducer terminal, and the totality (D6) contracts. The
 //! NO-POLLING proof lives in the sibling `no_polling_oracle_tests` module.

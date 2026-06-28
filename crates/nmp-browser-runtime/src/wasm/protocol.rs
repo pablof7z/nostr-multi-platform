@@ -5,7 +5,7 @@
 //! Wire protocol types for the `NmpWasmRuntime` entry point (#2038 item A).
 //!
 //! Defined here so `nmp-browser-runtime` (the ADR-0067 composition root) owns
-//! the live Worker protocol without depending on the retained `nmp-wasm`
+//! the live Worker protocol without depending on the retired `nmp-wasm`
 //! protocol-type crate. Both sets of types share the same JSON wire format
 //! consumed by `web/packages/runtime-web/src/protocol.ts`.
 //!

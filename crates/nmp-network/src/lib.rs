@@ -32,7 +32,7 @@
 //! `nmp_core::actor::dispatch` at the actor seam. The phase-C browser
 //! driver preserves the same direction by taking its kernel touchpoints
 //! through a `Rc<dyn Fn>` callback bag (`BrowserKernelHandlers`)
-//! constructed in `nmp-wasm`.
+//! constructed in `nmp-browser-runtime`.
 //!
 //! ## Step 8 phase B — push-model [`pool::Pool`] API (shipped)
 //!
@@ -120,8 +120,8 @@ pub mod pool;
 
 // Step 8 phase C — wasm32 browser driver. Gated to `wasm32` because it
 // depends on `web_sys`/`js-sys`/`wasm-bindgen`; the native build of
-// `nmp-network` does not see this module. `nmp-wasm` is the sole caller
-// today (it constructs `BrowserKernelHandlers` from its own kernel handle
+// `nmp-network` does not see this module. `nmp-browser-runtime` is the sole
+// caller (it constructs `BrowserKernelHandlers` from its own kernel handle
 // and feeds them into `BrowserRelayDriver::new`).
 #[cfg(target_arch = "wasm32")]
 pub mod browser_driver;

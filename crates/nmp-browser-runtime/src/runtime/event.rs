@@ -1,8 +1,8 @@
 //! Host-facing runtime events emitted by `BrowserRuntime::pump()`.
 //!
-//! These mirror the relevant `nmp-wasm` `WorkerEvent` variants but live in the
+//! These mirror the retired `nmp-wasm` `WorkerEvent` variants but live in the
 //! browser-runtime crate so the runtime can surface sign requests and command
-//! failures without depending on the ABI-glue crate (epic #2045: nmp-wasm is
+//! failures without depending on the ABI-glue crate (epic #2045: nmp-wasm was
 //! ABI-only, the browser runtime owns platform behaviour).
 //!
 //! The host (the wasm Worker bridge, #2048) translates these into the wire
@@ -44,7 +44,7 @@ pub enum BrowserRuntimeEvent {
     /// promises keyed on `correlation_id`. The worker has already applied the
     /// signed event to the kernel (publish path) before emitting this.
     ///
-    /// Mirrors `nmp-wasm`'s `WorkerEvent::SignCompleted` (#2139 BLOCKER 2).
+    /// Mirrors the retired `nmp-wasm`'s `WorkerEvent::SignCompleted` (#2139 BLOCKER 2).
     SignCompleted {
         /// The sign correlation id (echoes the id from the original `SignRequest`).
         correlation_id: String,
@@ -54,7 +54,7 @@ pub enum BrowserRuntimeEvent {
     /// A sign round-trip settled but could not be matched to a parked publish,
     /// or the kernel reported an unknown/stale correlation id. Surfaced so a
     /// stranded or duplicate sign delivery is observable rather than silently
-    /// dropped (D6-honest). Mirrors `nmp-wasm`'s `WorkerEvent::SignFailed`.
+    /// dropped (D6-honest). Mirrors the retired `nmp-wasm`'s `WorkerEvent::SignFailed`.
     SignFailed {
         /// The sign correlation id that failed to resolve.
         correlation_id: String,
