@@ -37,12 +37,12 @@ the owner goes away, the app closes the handle. The shell does not open raw rela
 subscriptions, replay cache rows, register observers, compute dynamic sources,
 or own durable product caches.
 
-`LiveQuery` is the candidate name for the missing app-facing door. The ADR may
+The public read noun is a typed session descriptor plus handle. The ADR may
 choose typed per-feature open helpers, a generic descriptor API, or a hybrid, but
 the accepted shape must let NMP crates and app Rust crates define new read
 models without requiring native shells to hand-author relay subscriptions.
-The handle name above is deliberately generic: the public concept is a typed
-session lifecycle, not a new `LiveQuery` engine.
+`LiveQuery` may survive as shorthand or final naming only if it means this
+descriptor/handle contract. It must not become a second public lifecycle engine.
 
 #2316 rules out a thin convenience wrapper. A session is real only when one
 contract owns acquisition, route planning, replay, observed sink, admission,
@@ -365,12 +365,12 @@ empty-source behavior, explicit fallback behavior, account switch, teardown, and
 route replanning. These are contract tests for the session model, not merely
 feed-specific tests.
 
-`ReducedSource` is one possible building block under `LiveQuery`, not a separate
-app API the shell has to orchestrate. It should not start as a grand abstraction.
-The first implementation should extract the smallest private shape reconciler
-around observed-projection open/close. A general reduced-source core is justified
-only if real source families share the same diff, fail-closed, teardown, and
-dependent-interest semantics without special casing.
+`ReducedSource` is one possible private building block under typed sessions, not
+a separate app API the shell has to orchestrate. It should not start as a grand
+abstraction. The first implementation should extract the smallest private shape
+reconciler around observed-projection open/close. A general reduced-source core
+is justified only if real source families share the same diff, fail-closed,
+teardown, and dependent-interest semantics without special casing.
 If feed, group, thread, pointer, account, and embed sources do not share those
 semantics, the simpler architecture is not to force them under one generic
 `ReducedSource`. Keep separate private reconcilers or feature-local reducers and
@@ -402,6 +402,38 @@ FFI glue. The destination is that `nmp.follow_list` or its replacement is owned
 by the reusable follow feature, while Chirp, Highlighter, gallery, or any other
 app is only a consumer that opens sessions or renders outputs.
 
+## Base Query Primitive Versus Feed Policy
+
+The bad follow-feed history must not define substrate architecture. A
+multi-author or tag-derived event query is a base NMP capability: it may need
+source reduction, dependent interests, NIP-65 planning, cache replay, relay
+provenance, and teardown. A follow feed is one product use of that capability,
+with its own ranking, recency, fallback, and viewport policy.
+
+This split matters because a bad feed implementation can otherwise leak upward
+and downward at the same time. A parse-time author cap, cache-warming workaround,
+or follow-feed-specific replay shortcut must not become substrate policy. The
+substrate should expose the smallest private capability that can route and
+hydrate dynamic source demand correctly; feed, room, search, thread, and app
+features decide their own product ranking and fallback on top.
+
+Concrete examples:
+
+```text
+NotesByAuthors { authors = follow_list, kinds = [1] }
+  -> substrate/session capability: source diff, outbox route, replay, output
+  -> feed policy: ranking, recency window, fallback when follows are empty
+
+GroupTimeline { group_id, host_relay }
+  -> substrate/session capability: relay pin, replay provenance, output
+  -> group policy: NIP-29 admission, membership/admin context, product filters
+```
+
+If the only reason a proposed substrate primitive exists is that one feed path
+needed it, keep it private to that feature until another source family proves the
+same semantics. If the primitive is genuinely reusable, the proof is that it
+removes feature-local recipes without importing feed policy into the core.
+
 ## Routing
 
 Every session descriptor must declare one routing mode. This is feature/protocol
@@ -430,6 +462,27 @@ For author-scoped public reads, planned means outbox/NIP-65 routing unless a
 protocol or feature explicitly proves another route. NIP-29 group hosts,
 protocol-private inboxes, and audited explicit relay reads are exceptions that
 must be visible in the descriptor and in test coverage.
+
+App-facing examples:
+
+```text
+// planned/outbox-routed by default
+timeline = app.open(NotesByAuthors {
+  authors: FollowList(active_account),
+  kinds: [1],
+})
+
+// relay-pinned by protocol context
+room = app.open(GroupTimeline {
+  group_id,
+  host_relay,
+})
+```
+
+In the first case NMP resolves author write relays, splits per relay, replays
+cache/store data, and delivers one typed output under the session handle. In the
+second case NMP pins reads to the group host context and rejects replay/live
+events that lack group-route provenance. The shell sees one handle in both cases.
 
 This rule covers the `nmp_app_open_interest` confusion in #2313: the app should
 not decide whether a profile, feed, group, search, or embed opens a naked

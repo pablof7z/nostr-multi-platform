@@ -457,6 +457,15 @@ episode/wiki decisions:
 - **#2316:** Serving one feature's state is fragmented across acquisition,
   replay, sink, admission, projection, tick, dependency tracking, and teardown.
   The design must collapse that lifecycle; a convenience helper is not enough.
+- **Cache warming:** delivery must happen because a session owns demand,
+  replay, activation, output, and teardown. Pre-warming the store, seeding
+  caches, or asking shells to retry is a lifecycle bug if the open path still
+  cannot hydrate its output by construction.
+- **Base query primitive vs feed policy:** multi-author dynamic query/routing is
+  substrate/session capability. Follow-feed ranking, recency, viewport windows,
+  and fallback behavior are feature policy. A bad feed implementation must not
+  become a substrate cap, cache-warming workaround, or public `ReducedSource`
+  concept.
 - **NDK-style subscribe:** the comparable DX target is not a shell-owned raw
   event stream. It is a Rust-owned session descriptor plus generated host API so
   every shell gets a one-call open/render surface without owning Nostr policy.
@@ -479,6 +488,21 @@ episode/wiki decisions:
   protocol policy outside native shells.
 - **Temporal source of truth:** this directory is not a new planning authority.
   Final decisions move into ADRs, durable docs, and GitHub issues.
+
+## Issue #2313 Traceability
+
+| #2313 concern | Design answer | Proof gate |
+|---|---|---|
+| `register_defaults()` hides the app's real architecture. | Production apps use explicit feature composition; presets are tutorial/test/migration only with owner and deletion/formalization gate. | P0/P8 classify and migrate defaults, `nmp init`, gallery, Highlighter, Podcast Player, and builder-guide teaching. |
+| `declare_consumed_projections` looks like a complete manifest but is not. | Session open declares scoped output demand; always-on app chrome is explicit composition; projection tiers/declarations are private executor or compatibility machinery. | P3 proves scoped output demand and stops teaching projection tiers as app concepts. |
+| `nmp.follow_list` belongs to reusable NIP-02/NMP, not Chirp/FFI glue. | Reusable protocol projections live in protocol/NMP feature crates; app crates consume them through sessions/outputs. | FF-020 plus P0 owner inventory for every reusable protocol projection. |
+| Interest and projection are wired separately, causing silent desync. | A typed session contract owns acquisition, route planning, replay, sink, admission, output, wakes, status, and teardown. | P1 lifecycle-owner proof and FF-018 per-session contract table. |
+| `nmp_app_open_interest` is only half an API. | Raw acquisition remains substrate/diagnostic/test/migration only; product reads use typed session handles with pushed typed output. | FF-001 raw-read ratchet and P-1 public-door disposition ledger. |
+| `open_*` features leak replay/observer/sidecar/teardown ritual. | Existing safe machinery is compiled behind typed session descriptors; app developers never assemble `ObservedProjection` or sidecars. | P1 proves first descriptor over observed replay; P4/P5 migrate refs/feed/group/search families. |
+| NDK/applesauce offer a one-call subscribe mental model. | NMP equivalent is one generated open/render API over a Rust-defined session, with outbox planning, replay, admission, and teardown hidden. | Clean-room app path plus planned/outbox and relay-pinned examples in `02-live-queries.md`. |
+| Home feed is not special; default reads should use outbox routing. | Planned routing is the default for public author-scoped reads; relay-pinned/private/explicit routes are named exceptions with provenance. | FF-019 read-route planning contract and P5 dynamic/composite reads. |
+| A helper would hide but not fix fragmentation. | Every phase must delete, privatize, or compatibility-scope an old door; layering a new facade over old public recipes fails. | Proof ladder rungs 0-3 and per-slice deletion ledger. |
+| Writes should separate construction, signing, and publishing. | Builders construct drafts; finalizers add protocol envelope/route context before signing; signer and publish status stay Rust-owned. | P6 publish route provenance, generated builder, signer continuation, retry/resume, and status tests. |
 
 ## Developer-Level Model
 
@@ -687,8 +711,10 @@ The names are deliberately provisional ADR candidates. They describe invariants
 the design must preserve, not a commitment to add new public types or keep
 current internal types:
 
-- `FeatureSession` or `LiveQuery` means a typed descriptor and handle for the
-  live lifecycle a screen, component, widget, or app service opens.
+- `Typed session`, `FeatureSession`, or `LiveQuery` means a typed descriptor and
+  handle for the live lifecycle a screen, component, widget, or app service
+  opens. `LiveQuery` is acceptable only as naming for that contract, not as a
+  second public engine.
 - `ObservedProjection` means the internal safe pattern for replaying cached
   events into a scoped projection before accepting future live events.
 - `ReducedSource` means one current private feed-local implementation candidate

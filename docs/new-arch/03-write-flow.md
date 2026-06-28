@@ -375,6 +375,40 @@ The layering is the point: reply, reaction, article, podcast, and app-specific
 builders construct drafts; NIP-29 only finalizes an already-constructed draft for
 group context and host routing. NIP-29 must not depend on NIP-22 or learn reply
 semantics to publish a reply-shaped draft into a group.
+
+The app-facing shape should make the three stages visible without making the
+shell own protocol policy:
+
+```text
+reply = reply_to(event).content("nice")
+app.publish(reply)
+
+group_share = highlighter.share_artifact(artifact_id)
+app.publish_to_group(group_share, group_id)
+
+episode = podcast.episode(show_id, episode_id).with_blossom(blob_ref)
+app.publish(episode, signer: podcast_key, route: podcast_write_policy)
+```
+
+In all three cases the builder constructs an unsigned draft, the publish call or
+protocol finalizer supplies the final envelope/route context, Rust selects or
+uses the requested signer, and status arrives as typed output. The shell never
+adds `h` tags, chooses NIP-65 relays, stores publish success, or decides whether
+an explicit relay/server list is valid.
+
+Highlighter's group-share/repost flow is the concrete field-completeness test.
+The app draft may need artifact id, selected text, source metadata, article/card
+refs, app tags, and discussion context before NIP-29 adds group envelope data and
+host route provenance. A generic `comment_in_group` or native-built raw event is
+not enough if it cannot carry those product fields through construction,
+signing, local ingest, route status, retry, and diagnostics.
+
+Podcast publishing is the concrete non-primary-signer test. NIP-F4 show/feed/
+episode/list events, Blossom references, per-podcast keys, agent signers, write
+relay policy, and server provenance must all use the same publish status stream.
+Returning constructed JSON, `relay_pending`, or `publish_dispatched` without
+ack/error/retry/exhausted status does not prove publishing.
+
 App-owned raw event templates are acceptable only inside Rust typed actions or
 generated builders. They may construct app-specific kinds such as highlights,
 comments, lists, or podcast events, but they still must carry correlation,

@@ -8,7 +8,7 @@ make it correct across platforms.
 For reads, NMP internally:
 
 ```text
-opens a live query
+opens a typed session descriptor
   -> compiles source expressions into interests/dependent interests
   -> plans relays with outbox routing or explicit relay pins
   -> records reverse admission/wake indexes for the session
@@ -18,7 +18,7 @@ opens a live query
   -> tears everything down when the handle closes
 ```
 
-Protocol crates own the meaning of protocol queries. The live query machinery
+Protocol crates own the meaning of protocol queries. The typed session machinery
 owns lifecycle, replay ordering, dependency tracking, and teardown.
 
 The current `ObservedProjection` path contains the closest replay-before-live
@@ -121,6 +121,47 @@ policy before implementation. Silent degradation is not allowed.
 This also bounds `nmp-gallery` web proof. A gallery web app that builds only its
 TypeScript shell, uses a placeholder wasm build, or degrades when the worker is
 missing cannot prove the runtime architecture.
+
+Minimum browser worker contract:
+
+```text
+main thread loads app shell
+  -> Worker loads the wasm runtime from a known served path/content type
+  -> main/worker handshake proves runtime version and capability set
+  -> Worker prepares durable storage before start when durable mode is required
+  -> snapshot/update callback is installed before app start
+  -> app start installs explicit features and pending wake handlers
+  -> NIP-07 or browser-only capabilities round trip through main-thread brokers
+  -> missing worker/wasm/storage emits typed failure state or fails the proof
+```
+
+`hello -> prepare_store -> start` ordering is architectural, not cosmetic. A
+runtime that starts first and silently substitutes in-memory storage because OPFS
+or wasm setup was inconvenient has changed persistence semantics. A runtime that
+registers the snapshot callback after start can lose initial state. A runtime
+that lets the worker touch `window.nostr` directly has crossed the browser
+capability boundary; the worker must emit a signer request, the main thread
+executes `window.nostr`, and the response re-enters Rust through the same signer
+continuation/status path.
+
+Browser degraded mode must be explicit per app. A tutorial or diagnostic page may
+run in degraded mode if the UI says so and no product-runtime proof depends on
+it. A shipping product runtime, gallery conformance proof, or downstream web
+migration cannot count degraded/no-wasm/no-worker behavior as success. Missing
+wasm, missing Worker support, OPFS failure, Web Locks contention, or unsupported
+signer capability should surface as typed runtime status, not as silent success.
+
+Current worker requests should converge on the same public concepts as native
+and TUI:
+
+| Current worker/request family | Target concept | Retirement rule |
+|---|---|---|
+| `resolve_ref` / `release_ref` | typed `ProfileRef` / `EventEmbed` sessions | raw worker protocol hidden or diagnostic only after generated handles land |
+| `search_open` / `search_close` | typed `Search` session | no separate search lifecycle recipe if descriptor can express it |
+| `group_events_open` / discovery | typed NIP-29 group sessions | host route provenance and admission owned by group feature |
+| `dispatch_bytes` | typed action / generated builder doorway | remains transport, not an app-authored JSON/event publish door |
+| `begin_sign` / `deliver_signer_response` | signer capability result | parked continuation and status owned by Rust |
+| relay config / diagnostics | typed output or diagnostic session | product relay policy stays Rust-owned |
 
 ## Protocol Taxonomy And Kind Ownership
 
@@ -292,6 +333,16 @@ download progress throttling, speech/audio progress, animation affordances, or a
 presentation facts; they do not decide durable state, open relay demand, refresh
 projections, or repair missed reducer work.
 
+Media has a fast path, not an exemption. Volatile playback position, buffered
+range, download byte progress, waveform/speech progress, or haptic cadence may
+flow as throttled capability/render facts so the UI does not churn full snapshots
+at audio tick rate. Durable state such as queue order, current episode, sleep
+timer policy, auto-advance, segment boundary, persisted position, downloaded
+file ownership, and publish/share result remains Rust-owned and enters through
+actions or capability results. A CarPlay, AppIntent, remote command, widget, or
+Live Activity loop that sleeps and rechecks Rust state to repair UI correctness
+is polling, not media sampling.
+
 Every remaining tick observer or timer that touches reducer/session state needs
 an explicit invariant, owner, and deletion or formalization decision.
 
@@ -381,6 +432,20 @@ public concept or duplicate lifecycle recipe in the same milestone, or it remain
 an ADR question rather than implementation work. This is how the migration avoids
 turning `FeatureSession`, route provenance, generated adapters, and service
 sessions into additive layers over the old machinery.
+
+Per-phase retirement checklist:
+
+| Question | Failing answer |
+|---|---|
+| Which old public door did this phase delete, privatize, or scope? | "None; new code will use the new path later." |
+| Which docs/templates stopped teaching the old recipe? | "Docs will be updated after implementation." |
+| Which live callers still use the old path and why? | "Unknown" or "maybe downstream." |
+| What makes the old path impossible to grow? | "Code review discipline." |
+| What is the removal/formalization trigger? | "When we have time." |
+
+A phase that adds typed sessions, route provenance, generated adapters, or
+service sessions while leaving old public recipes as equally valid production
+paths fails even if the new tests pass.
 
 ## Proof Ladder
 

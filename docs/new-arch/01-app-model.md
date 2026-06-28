@@ -185,6 +185,14 @@ work; a full iOS binding migration is a separate decision unless the ADR
 explicitly reopens it. Binding churn that preserves the same old read/write
 doors is not simplification.
 
+The binding maintenance tax is real. Highlighter, Podcast Player, and gallery
+all show hand-maintained Swift/Kotlin/TypeScript/TUI glue, row caches, JNI/C-ABI
+wrappers, and compatibility facades that can drift from Rust. Generation is
+worth pulling forward when it deletes those duplicated surfaces, closes an
+Android/iOS/web parity gap, or makes action/output/schema drift fail in check
+mode. It is not worth doing when it only wraps the old public doors in new
+generated code.
+
 ## App Feature Runtime Contract
 
 App-owned Rust crates may need runtime services that are not reusable Nostr
@@ -216,6 +224,19 @@ mechanics, not durable product truth:
 | image/profile/render caches | bounded render cache for already-projected data | protocol cache, profile truth, relay policy, or ref lifecycle owner |
 | secure storage/keychain | secret-bearing capability store | signer policy, permission model, or publish continuation owner |
 | native app database/UserDefaults | migration/import/export staging or render cache with Rust owner | durable product store for Nostr/account/playback/feed facts |
+
+Optimistic native mirrors are allowed only as latency/presentation aids. A
+bookmark toggle may animate immediately if Rust remains authoritative and the
+next typed output reconciles the truth. A Wi-Fi-only publish policy, relay list,
+signer timeout, queue mutation, or publish success state is not an optimistic
+mirror; it is product policy and must be Rust-owned.
+
+File and binary capabilities follow the same boundary. OCR, camera, share
+extensions, Blossom upload/download, STT/TTS, local AI/model calls, and media
+transcoding may hand native/web a file handle, temp path, blob id, or provider
+request to execute. Rust owns the request intent, temp-file lifecycle decision,
+binary provenance needed for later event construction, durable result state, and
+any publish action that follows.
 
 Headless and OS-owned surfaces are not exempt. A widget, AppIntent, CarPlay
 scene, remote command, Live Activity, extension, or suspended-process resume may
