@@ -4242,7 +4242,6 @@ dependencies = [
  "nmp-nip01",
  "nmp-nip18",
  "nmp-nip22",
- "nmp-nip57",
 ]
 
 [[package]]

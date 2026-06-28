@@ -4,7 +4,7 @@ version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 repository.workspace = true
-description = "Legacy cross-protocol social-relation classifier for NMP — tallies reactions (NIP-25), reposts (NIP-18), zaps (NIP-57), and comments (NIP-22) onto a note. Split out of nmp-nip01 (#1728) so the base note/profile/reply crate owns no cross-protocol aggregation."
+description = "Legacy cross-protocol social-relation classifier for NMP — tallies reactions (NIP-25), reposts (NIP-18), and comments (NIP-22) onto a note. Split out of nmp-nip01 (#1728) so the base note/profile/reply crate owns no cross-protocol aggregation."
 
 [dependencies]
 # Kernel substrate: KernelEvent and the NoteRelationClassifier seam input.
@@ -14,12 +14,10 @@ nmp-core = { path = "../nmp-core", default-features = false }
 # reply decoder. This crate depends UP-the-stack on nmp-nip01 (one direction);
 # nmp-nip01 never depends back on nmp-relations (#1728).
 nmp-nip01 = { path = "../nmp-nip01", default-features = false }
-# Cross-protocol relation sources: reposts (NIP-18), comments (NIP-22),
-# zaps (NIP-57). nmp-nip01 no longer depends on these — the aggregation lives
-# here.
+# Cross-protocol relation sources: reposts (NIP-18) and comments (NIP-22).
+# nmp-nip01 no longer depends on these — the aggregation lives here.
 nmp-nip18 = { path = "../nmp-nip18" }
 nmp-nip22 = { path = "../nmp-nip22" }
-nmp-nip57 = { path = "../nmp-nip57", default-features = false }
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"] }

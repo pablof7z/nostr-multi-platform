@@ -1,8 +1,8 @@
 //! Cross-protocol relation counting in `nmp_nip01::ModularTimelineProjection`,
 //! driven by the `nmp-relations` `DefaultNoteRelationClassifier` injected via
 //! `with_relation_classifier`. Moved out of `nmp-nip01` (#1728): asserting
-//! reaction (NIP-25) / repost (NIP-18) / zap (NIP-57) counts requires those NIP
-//! crates, which the base note crate no longer depends on.
+//! reaction (NIP-25), repost (NIP-18), and comment (NIP-22) counts requires
+//! those NIP crates, which the base note crate no longer depends on.
 
 use nmp_core::substrate::KernelEvent;
 use nmp_core::ObservedProjectionSink;
@@ -31,7 +31,7 @@ fn note(id: &str, ts: u64) -> KernelEvent {
 }
 
 #[test]
-fn relation_counts_include_reactions_reposts_and_zaps() {
+fn relation_counts_include_reactions_reposts_and_comments() {
     let target = "R";
     let proj = ModularTimelineProjection::new(&spec())
         .with_relation_classifier(default_note_relation_classifier());
@@ -55,25 +55,27 @@ fn relation_counts_include_reactions_reposts_and_zaps() {
         relay_provenance: Vec::new(),
     });
     proj.on_kernel_event(&KernelEvent {
-        id: "zap".into(),
-        author: "ln".into(),
-        kind: nmp_nip57::KIND_ZAP_RECEIPT,
+        id: "comment".into(),
+        author: "carol".into(),
+        kind: nmp_nip22::KIND_NIP22_COMMENT,
         created_at: 4,
         tags: vec![
-            vec!["p".into(), "recipient".into()],
+            vec!["E".into(), target.into()],
+            vec!["K".into(), "1".into()],
             vec!["e".into(), target.into()],
+            vec!["k".into(), "1".into()],
         ],
-        content: String::new(),
+        content: "comment".into(),
         relay_provenance: Vec::new(),
     });
     proj.on_kernel_event(&KernelEvent {
-        id: "unrelated-zap".into(),
+        id: "zap".into(),
         author: "ln".into(),
-        kind: nmp_nip57::KIND_ZAP_RECEIPT,
+        kind: 9735,
         created_at: 5,
         tags: vec![
             vec!["p".into(), "recipient".into()],
-            vec!["e".into(), "OTHER".into()],
+            vec!["e".into(), target.into()],
         ],
         content: String::new(),
         relay_provenance: Vec::new(),
@@ -87,5 +89,6 @@ fn relation_counts_include_reactions_reposts_and_zaps() {
         .expect("root card");
     assert_eq!(root.relation_counts.reactions, RelationCount::known(1));
     assert_eq!(root.relation_counts.reposts, RelationCount::known(1));
-    assert_eq!(root.relation_counts.zaps, RelationCount::known(1));
+    assert_eq!(root.relation_counts.comments, RelationCount::known(1));
+    assert_eq!(root.relation_counts.zaps, RelationCount::known(0));
 }
