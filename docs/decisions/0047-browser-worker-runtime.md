@@ -2,13 +2,15 @@
 
 - **Status:** Accepted
 - **Date:** 2026-06-12
-- **Amended-by:** ADR-0067 (nmp-wasm is ABI glue; nmp-browser-runtime owns the worker runtime)
+- **Amended-by:** ADR-0067 (`nmp-browser-runtime` owns the worker runtime and
+  wasm-bindgen export; `nmp-wasm` is retained only for protocol types)
 - **Relates to:** ADR-0009 (app-extension kernel boundary), ADR-0024 (async capability protocol), ADR-0037 (typed FlatBuffers runtime projections), ADR-0040 (capability-worker seam)
 - **Reference:** `docs/wasm-surface.md` (living contract — the single source of truth for the wire protocol)
 
 ## Context
 
-NMP ships a browser-host delivery surface (`crates/nmp-wasm`). This ADR
+NMP ships a browser-host delivery surface through `crates/nmp-browser-runtime`.
+This ADR
 supersedes the prior `docs/design/chirp-web-runtime.md` design doc, which was
 named after one example app (Chirp) and carried stale plan content and
 inaccurate JSON-transport framing. A framework contract must not live under an
@@ -24,7 +26,8 @@ None of that execution model is available in single-threaded WebAssembly.
 ### 1. The Worker event loop IS the actor
 
 NMP's browser runtime is a `KernelReducer` driven on a dedicated Worker's
-event loop, **owned by `nmp-browser-runtime`** (see ADR-0067). `nmp-wasm` is the ABI shell only.
+event loop, **owned by `nmp-browser-runtime`** (see ADR-0067). `nmp-wasm` is
+retained only as a serializable protocol-type crate for older Rust consumers.
 There is no ported copy of the native thread + flume + tokio actor.
 The Worker thread is the single writer of kernel state (D4), and `wasm-bindgen`
 closures parked on `WebSocket::onmessage` deliver relay frames **synchronously**
@@ -98,12 +101,13 @@ callback-per-dispatch.
 
 ## Consequences
 
-- **`crates/nmp-wasm` is the framework-level WASM delivery surface.** Its
-  protocol is documented at `docs/wasm-surface.md`. Example apps (including
-  Chirp) consume this surface; they do not define it.
-- **IndexedDB persistence is not yet wired.** The kernel still runs in memory
-  and resets on page reload. This is not a design decision — it is follow-on
-  work (see `docs/wasm-surface.md` §7).
+- **`crates/nmp-browser-runtime` is the framework-level browser delivery
+  surface.** Its Worker protocol is documented at `docs/wasm-surface.md`.
+  Example apps consume this surface; they do not define it. `crates/nmp-wasm`
+  is retained only as serializable protocol types for older Rust consumers.
+- **Durable browser persistence is owned by ADR-0054.** OPFS-SQLite store open,
+  degraded-open diagnostics, hydration/reload proof, and Web Locks
+  durable-tab arbitration now live in `nmp-browser-runtime`.
 - **The worker write/signing contract is owned by
   [ADR-0064](0064-unified-write-command-boundary.md).** Writes ride the one
   `DispatchBytes` byte doorway (open `DispatchEnvelope` + typed per-crate

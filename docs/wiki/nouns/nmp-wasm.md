@@ -11,4 +11,4 @@ source_refs:
 
 # nmp-wasm
 
-ABI glue shell containing wasm-bindgen exports, byte transport, callbacks, panic guards, and lifecycle mechanics; does NOT own routing, signing policy, NIP modules, protocol defaults, projection policy, or persistence policy
+Serializable browser worker protocol-type crate retained for older Rust consumers; does NOT own wasm-bindgen exports, Worker lifecycle, routing, signing policy, NIP modules, protocol defaults, projection policy, or persistence policy

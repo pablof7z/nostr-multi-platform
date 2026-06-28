@@ -10,10 +10,9 @@
 //! - [`CommandApplyOutcome::Unsupported`] — the command requires the native
 //!   actor thread (roster management, contacts follow, protocol dispatch, etc.).
 //!
-//! The interpreter consolidates the partial dispatch that previously lived
-//! inline in `nmp-wasm/src/runtime/dispatch.rs`, so there is now ONE command-
-//! application path shared by the browser runtime and any future headless
-//! runtime.
+//! The interpreter consolidates the browser/headless partial dispatch, so there
+//! is now ONE command-application path shared by the browser runtime and any
+//! future headless runtime.
 //!
 //! **Handled set (Group A → `Applied`):**
 //! `Interests(EnsureInterest)`, `Interests(DropInterestOwner)`,

@@ -325,13 +325,15 @@ ref/dependent-interest lifecycles.
 
 ## 10. Binding Crates
 
-`nmp-native-runtime`, `nmp-browser-runtime`, `nmp-ffi`, `nmp-android-ffi`, and
-`nmp-wasm` are delivery surfaces. Runtime adapter crates own platform runtime
-lifecycle and typed builders; ABI-glue binding crates own ABI shape, pointer or
-byte conversion, panic guards, callbacks, lifecycle handle exposure, and
-platform-specific bridge mechanics. They do not own business policy, app
-defaults, or example-app namespaces unless they are explicitly app-owned
-delivery crates.
+`nmp-native-runtime`, `nmp-browser-runtime`, `nmp-ffi`, and `nmp-android-ffi`
+are delivery surfaces. Runtime adapter crates own platform runtime lifecycle
+and typed builders; ABI-glue binding crates own ABI shape, pointer or byte
+conversion, panic guards, callbacks, lifecycle handle exposure, and
+platform-specific bridge mechanics. `nmp-wasm` is retained as a browser worker
+protocol-type crate for older Rust consumers: it owns serializable wire structs
+only, not runtime, binding, or composition behavior. These crates do not own
+business policy, app defaults, or example-app namespaces unless they are
+explicitly app-owned delivery crates.
 
 Native target split (#2205/#2209):
 
@@ -347,8 +349,8 @@ Native target split (#2205/#2209):
   APIs for lanes not served by UniFFI.
 
 `nmp-browser-runtime` is the browser composition-root delivery surface
-described in §10a. `nmp-wasm` is the wasm ABI shell over that runtime, analogous
-to `nmp-ffi` over `nmp-native-runtime`.
+described in §10a. It owns the wasm-bindgen Worker export. `nmp-wasm` is not a
+runtime shell; it is a retained protocol-type crate for older Rust consumers.
 
 The pre-v1 ABI surface is governed, not compatibility-frozen. Net-new
 `nmp_app_*` symbols require an ADR or an accepted GitHub issue that explicitly
@@ -377,18 +379,20 @@ binding-crate rule that all siblings avoid each other.
 - Browser timer and clock seams for `nmp-core` injection.
 - The typed `BrowserAppBuilder` composition root (browser twin of the native
   runtime's `NmpAppBuilder`).
+- The wasm-bindgen Worker ABI surface (`NmpWasmRuntime`) and JS callback
+  registration.
 
 `nmp-browser-runtime` must not own:
 
 - Routing or outbox policy (that is `nmp-router` / kernel).
 - Signing policy or signer-provider semantics (that is `nmp-signers`).
 - NIP modules, protocol defaults, app defaults, projection policy, persistence policy.
-- The wasm-bindgen ABI surface (that is the sibling `nmp-wasm` ABI shell).
+- Legacy `nmp-wasm` protocol compatibility concerns.
 
 Dependency direction: `nmp-browser-runtime` depends on `nmp-defaults` and protocol
-crates in Layers 0–5. `nmp-wasm` and leaf web apps depend on `nmp-browser-runtime`
-for the typed builder, not vice versa. No Layer 0-5 crate depends on
-`nmp-browser-runtime`.
+crates in Layers 0–5. Leaf web apps depend on `nmp-browser-runtime` for the
+typed builder and Worker export. `nmp-wasm` is not in the app construction path.
+No Layer 0-5 crate depends on `nmp-browser-runtime`.
 
 ### Shared composition target: reuse `AppHost` (#2059, ADR-0067)
 

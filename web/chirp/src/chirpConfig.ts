@@ -56,7 +56,7 @@ function parseRelayBootstrapParam(value: string | null): ChirpRelayBootstrapEntr
 
 /** Resolve the `relays` + `relay_bootstrap` the Chirp web host supplies in the
  *  Start request. Relay policy is Chirp app/operator policy (#1125/#1493):
- *  the nmp-wasm protocol has no built-in defaults, so the host always sends an
+ *  the browser worker protocol has no built-in defaults, so the host always sends an
  *  explicit list.
  *
  *  Tests and local dev may pass role-explicit relay entries to preserve the

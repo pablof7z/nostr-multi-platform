@@ -1,10 +1,11 @@
-//! nmp-wasm ABI-only gates (#2064).
+//! nmp-wasm protocol-only gates (#2064 / #2202).
 //!
 //! These are cargo/source smoke gates for the boundary that doctrine-lint runs
 //! in every `doctrine_lint_smoke` pass. They deliberately enforce only the
 //! narrow facts that should be mechanically stable:
 //! - `nmp-wasm` must not depend on runtime, app, router/default composition, or
 //!   signer implementation crates.
+//! - it must build as an rlib-only Rust crate, not as a browser wasm artifact.
 //! - the retired raw adapter path must stay deleted.
 
 use std::process::Command;
@@ -14,7 +15,7 @@ use super::workspace_root;
 const ALLOWED_WASM_DEPS: &[&str] = &["serde", "serde_json"];
 
 #[test]
-fn nmp_wasm_dependencies_stay_abi_only() {
+fn nmp_wasm_dependencies_stay_protocol_only() {
     let root = workspace_root();
     let output = Command::new(env!("CARGO"))
         .current_dir(&root)
@@ -52,9 +53,28 @@ fn nmp_wasm_dependencies_stay_abi_only() {
 
     assert!(
         violations.is_empty(),
-        "nmp-wasm must remain ABI glue. Add browser/runtime composition to \
+        "nmp-wasm must remain protocol types only. Add browser/runtime composition to \
          nmp-browser-runtime or lower crates, not nmp-wasm. Forbidden deps:\n{}",
         violations.join("\n")
+    );
+
+    let targets = package["targets"]
+        .as_array()
+        .expect("nmp-wasm targets must be an array");
+    let lib_target = targets
+        .iter()
+        .find(|target| target["name"].as_str() == Some("nmp_wasm"))
+        .expect("nmp-wasm must have a lib target");
+    let crate_types: Vec<&str> = lib_target["crate_types"]
+        .as_array()
+        .expect("nmp-wasm crate_types must be an array")
+        .iter()
+        .filter_map(|ty| ty.as_str())
+        .collect();
+    assert_eq!(
+        crate_types,
+        ["rlib"],
+        "nmp-wasm is not a browser artifact crate; nmp-browser-runtime owns wasm-bindgen exports"
     );
 }
 

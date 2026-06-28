@@ -3,9 +3,10 @@
 > **Reviewed:** 2026-06-26. Sourced directly from
 > `crates/nmp-browser-runtime/src/wasm/` and `web/packages/runtime-web/src/`.
 > This document is the single source of truth for the browser worker protocol.
-> `crates/nmp-wasm` remains the lower ABI-glue crate; `nmp-browser-runtime`
-> owns worker composition, platform adaptation, signer registration, storage
-> registration, and the typed app builder (ADR-0067).
+> `nmp-browser-runtime` owns the wasm-bindgen Worker export, worker composition,
+> platform adaptation, signer registration, storage registration, and the typed
+> app builder (ADR-0067). `crates/nmp-wasm` is retained only as a serializable
+> protocol-type crate for older Rust consumers.
 
 `crates/nmp-browser-runtime` exports `NmpWasmRuntime` for the dedicated browser
 Worker. That Worker event loop drives a `KernelReducer` (D4): it is the single

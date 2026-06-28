@@ -33,7 +33,7 @@ Code audit of current master reveals ADR-0067 (2026-06-25, 'Supersedes-in-part A
 
 ## Decision
 
-Adopt ADR-0067 as the authoritative architecture. nmp-browser-runtime owns 'browser storage initialization and lifecycle' (crate-boundaries.md §10a). Create a new async-before-Start seam: NmpWasmRuntime opens OPFS pool, stores Arc<dyn EventStore> on NmpRuntimeCore, handle_start consults it instead of hardcoding .in_memory(). Crate ownership: nmp-sqlite-wasm (new storage-engine crate Layer 0/1) owned by nmp-store contract layer, not nmp-wasm ABI glue. Abandon stale branch; rebuild from current master with 9-PR breakdown grounded in ADR-0067.
+Adopt ADR-0067 as the authoritative architecture. nmp-browser-runtime owns 'browser storage initialization and lifecycle' (crate-boundaries.md §10a). Create a new async-before-Start seam: NmpWasmRuntime opens OPFS pool, stores Arc<dyn EventStore> on NmpRuntimeCore, handle_start consults it instead of hardcoding .in_memory(). Crate ownership: nmp-sqlite-wasm (new storage-engine crate Layer 0/1) owned by nmp-store contract layer, not the retained nmp-wasm protocol crate. Abandon stale branch; rebuild from current master with 9-PR breakdown grounded in ADR-0067.
 
 ## Consequences
 

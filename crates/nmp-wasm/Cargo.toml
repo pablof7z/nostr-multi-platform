@@ -4,10 +4,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Browser-facing NMP worker protocol and wasm runtime facade."
+description = "Serializable browser worker protocol types retained for older NMP Rust consumers."
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+crate-type = ["rlib"]
 
 
 [dependencies]

@@ -194,7 +194,8 @@ The repository is a Cargo workspace plus per-platform shells. The layout below i
 │   │                              # governance tracked in GitHub Issues.
 │   │                              # UniFFI migration deferred to M14 — see
 │   │                              # ADR-0030.
-│   ├── <framework>-wasm         # wasm-bindgen wrapper for web/Node/RN.
+│   ├── <framework>-browser-runtime
+│   │                              # wasm-bindgen Worker export + browser runtime.
 │   ├── <framework>-actions      # Built-in actions: send, follow, profile,
 │   │                              # zap, react, repost, list management, DM, etc.
 │   ├── <framework>-views        # Derived view types (profile, timeline,
@@ -226,7 +227,7 @@ The repository is a Cargo workspace plus per-platform shells. The layout below i
 └── flake.nix
 ```
 
-The core crate compiles as `cdylib + staticlib + rlib`. Desktop and CLI consumers link the rlib directly (no FFI). iOS links the staticlib via xcframework. Android links the cdylib via cargo-ndk. Web compiles to wasm32-unknown-unknown via the wasm crate; OPFS-SQLite persistence (#1007) and the NmpApp-actor-in-Worker browser runtime (nmp-browser-runtime, ADR-0067) have shipped. **One source of truth; v1 delivery = iOS, Android, and desktop (egui); web is fully supported post-v0.8.**
+The core crate compiles as `cdylib + staticlib + rlib`. Desktop and CLI consumers link the rlib directly (no FFI). iOS links the staticlib via xcframework. Android links the cdylib via cargo-ndk. Web compiles to wasm32-unknown-unknown through `nmp-browser-runtime`; OPFS-SQLite persistence (#1007) and the NmpApp-actor-in-Worker browser runtime (nmp-browser-runtime, ADR-0067) have shipped. **One source of truth; v1 delivery = iOS, Android, and desktop (egui); web is fully supported post-v0.8.**
 
 ---
 

@@ -17,7 +17,7 @@ impl Kernel {
     /// Construct a Kernel from an externally-opened event store.
     ///
     /// This is the store-agnostic constructor used by non-native composition
-    /// roots such as `nmp-wasm`: async or platform-specific store open happens
+    /// roots such as `nmp-browser-runtime`: async or platform-specific store open happens
     /// before the kernel exists, then the already-opened synchronous
     /// [`EventStore`](nmp_store::EventStore) is injected here. Native callers
     /// should keep using [`Self::with_storage_path`], which owns the LMDB

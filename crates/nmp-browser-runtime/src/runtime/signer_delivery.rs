@@ -1,8 +1,8 @@
 //! Delivery logic for settled sign round-trips in the browser runtime (#2049).
 //!
-//! Mirrors the `deliver_signer_response` implementation in
-//! `nmp-wasm/src/runtime/signer.rs` but adapted for `BrowserRuntime`'s owned
-//! (not `RefCell`) reducer and the `mpsc` completion channel model.
+//! BrowserRuntime owns the reducer directly (not through the retired
+//! `nmp-wasm` `RefCell` path) and settles async signatures through the `mpsc`
+//! completion channel model.
 //!
 //! # D4 single-writer
 //!
@@ -62,7 +62,7 @@ pub(super) fn deliver_one_completion(
 /// On `Failed`: emits `SignFailed` (not `CommandFailed`) — the wire protocol
 /// expects a correlation-keyed sign terminal the main-thread broker can resolve.
 /// On `Unknown` (stale/duplicate delivery): surfaces a `SignFailed` event
-/// (D6 — never a silent drop; mirrors `nmp-wasm`'s `WorkerEvent::SignFailed`).
+/// (D6 — never a silent drop).
 fn settle_outcome(
     reducer: &mut KernelReducer,
     pending: &mut HashMap<String, PendingSignedPublish>,

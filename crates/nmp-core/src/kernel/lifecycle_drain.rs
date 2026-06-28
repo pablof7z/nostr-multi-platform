@@ -68,7 +68,7 @@ impl Kernel {
     /// This is the wasm/`KernelReducer`-side analogue of the native
     /// actor's `wire_frames_to_outbound` bridge
     /// (`actor/outbound.rs`). It exists because `KernelReducer` (used
-    /// by `nmp-wasm`) does NOT have an actor idle loop; without an
+    /// by `nmp-browser-runtime`) does NOT have an actor idle loop; without an
     /// inline conversion, a `CompileTrigger::ViewOpened` enqueued by a
     /// `startup_requests`-style helper would never be drained on the
     /// wasm path and the REQs would never reach the wire.

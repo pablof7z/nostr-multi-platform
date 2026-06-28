@@ -266,8 +266,7 @@ impl BrowserRuntimeHandle {
                     target,
                     action_correlation_id,
                 } => {
-                    // Park the publish continuation keyed on the sign correlation
-                    // id (mirrors nmp-wasm/src/runtime/dispatch.rs).
+                    // Park the publish continuation keyed on the sign correlation id.
                     let action_cid =
                         action_correlation_id.unwrap_or_else(|| correlation_id.clone());
                     self.runtime.pending_signed_publishes.insert(

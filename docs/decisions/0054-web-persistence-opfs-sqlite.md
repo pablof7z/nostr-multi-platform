@@ -1,9 +1,8 @@
 # ADR-0054 — Web persistence (OPFS-SQLite sync VFS) + offline-queue durability
 
-- **Status:** Accepted for Stage #5 (store-injection seam); Stages #6–#9
-  Proposed with open implementation gates (see "Risks and implementation
-  gates"). Stage #6 must not start until the gates marked *blocking #6* are
-  resolved.
+- **Status:** Accepted and implemented. OPFS-SQLite, async-before-`Start`
+  injection, degraded-open diagnostics, hydration/reload proof, and Web Locks
+  durable-tab arbitration have shipped through #1007 and #2202.
 - **Date:** 2026-06-13
 - **Blocked-by:** ADR-0067 / #2045 (browser-runtime ownership split) — OPFS store is injected via the browser builder storage decision, not constructed in nmp-wasm.
 - **Relates to:** ADR-0045 (store→projection replay), ADR-0047 (browser worker
@@ -22,8 +21,8 @@
 
 ## Context
 
-NMP's browser runtime (`crates/nmp-browser-runtime`, with `crates/nmp-wasm` as
-the ABI shell per ADR-0067) runs the `KernelReducer` on a
+NMP's browser runtime (`crates/nmp-browser-runtime`, per ADR-0067) runs the
+`KernelReducer` on a
 dedicated Worker event loop (ADR-0047). The kernel holds the single
 authoritative event store as `store: Arc<dyn EventStore>`
 (`crates/nmp-core/src/kernel/mod.rs:587`). Today the wasm build always
@@ -107,8 +106,8 @@ the existing `lmdb-backend` feature, `crates/nmp-store/Cargo.toml:18`). **The
 optional dependency on `nmp-sqlite-wasm` is declared under
 `[target.'cfg(target_arch="wasm32")'.dependencies]`** and referenced via `dep:`
 in the feature — mirroring the wasm-only dependency block already used in
-`crates/nmp-wasm/Cargo.toml:44` — so that native `cargo build/check
---all-features` never tries to compile the wasm-only crate. (`lmdb-backend`'s
+the browser-runtime wasm-only dependency blocks — so that native
+`cargo build/check --all-features` never tries to compile the wasm-only crate. (`lmdb-backend`'s
 plain-`[dependencies]` pattern is *not* copied: `heed` builds on every target;
 `nmp-sqlite-wasm` does not.)
 
@@ -165,7 +164,7 @@ true, and the `compile_error!` guard makes that invariant load-bearing rather
 than incidental. The `unsafe impl` is `#[cfg(target_arch = "wasm32")]`, lives
 **only** in `nmp-sqlite-wasm`, and never appears in `nmp-core` or `nmp-store`.
 
-### 4. Store injection seam in `nmp-wasm` (Stage #5), backend-agnostic
+### 4. Store injection seam in `nmp-browser-runtime` (Stage #5), backend-agnostic
 
 The kernel's innermost constructor is split into a store-agnostic
 `Kernel::from_parts(...)` plus a thin path-based wrapper that preserves the
@@ -232,11 +231,11 @@ Stage #6 must validate the backend **byte-for-byte** against the existing
 `MemEventStore`/`LmdbEventStore` conformance paths through the `nmp-testing`
 harness. **`wasm_bindgen_test_configure!(run_in_browser)` cannot be used for
 this**: it executes on the page main thread
-(`crates/nmp-wasm/tests/wasm_boot.rs:36`) where `createSyncAccessHandle` does
-not exist (OPFS SAH is dedicated-Worker-only — Context fact 1). The conformance
+the page main thread where `createSyncAccessHandle` does not exist (OPFS SAH is
+dedicated-Worker-only — Context fact 1). The conformance
 gate therefore runs the backend **inside a real dedicated Worker**, driven by
 the Playwright harness in the browser-runtime composition layer
-(see #2052/#2038), which spawns the nmp-wasm Worker and reports
+(see #2052/#2038), which spawns the browser-runtime Worker and reports
 results back to the test runner; a bespoke Worker test runner is the only
 alternative. This vehicle must be scoped and stood up *before* #6 begins — it is
 the sole mitigation for #6's HIGH risk.

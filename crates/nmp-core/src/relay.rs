@@ -117,8 +117,9 @@ impl RelayRoleTestExt for RelayRole {
 /// cold-start [`BOOTSTRAP_DISCOVERY_RELAYS`] seed (first kind:10002 discovery).
 /// `role` is retained only for the diagnostics/transport lane it belongs to.
 ///
-/// V-01 Stage 3 — promoted to `pub` so the wasm32 `BrowserRelayDriver` in
-/// `nmp-wasm` can route the kernel's outbound frames over `WebSocket::send_with_str`.
+/// V-01 Stage 3 — promoted to `pub` so the wasm32 `BrowserRelayDriver` used by
+/// `nmp-browser-runtime` can route the kernel's outbound frames over
+/// `WebSocket::send_with_str`.
 /// Fields stay `pub(crate)` because mutating them is reserved to the kernel's
 /// own outbound producers (publish engine, view-request planner, AUTH driver);
 /// external callers read via the accessors below. Substrate-grade (D0): the

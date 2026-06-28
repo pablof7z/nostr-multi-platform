@@ -208,7 +208,8 @@ The on-disk layout from `aim.md` §5 is canonical. The long-term workspace conta
 | `nmp-codegen` | Host binding emitters and drift gates for typed projections/decoders (`gen swift`, `gen typed-decoders`) | Binary + library |
 | `nmp-defaults` | Composition-root library: `register_defaults` / `register_substrate` / `NmpDefaults` config (ADR-0046) | Pure Rust |
 | `nmp-ffi` | UniFFI building blocks used by generated app crates | UniFFI |
-| `nmp-wasm` | Post-v1 wasm-bindgen building blocks used by generated app crates | wasm-bindgen |
+| `nmp-browser-runtime` | Browser Worker/runtime adapter used by generated web app crates | wasm-bindgen |
+| `nmp-wasm` | Serializable browser Worker protocol types retained for older Rust consumers | Pure Rust |
 | `nmp-nip01` | Event, Filter, Profile/Timeline views, SendNote/Delete actions | Pure Rust |
 | `nmp-nip02` | Contacts view convenience module | Pure Rust |
 | `nmp-nip10` | Reply marker/thread modules | Pure Rust |

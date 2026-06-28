@@ -1,6 +1,7 @@
 # runtime-web
 
-ABI/worker client for nmp-wasm byte transport. **NOT the NMP browser runtime owner** — that is the `nmp-browser-runtime` Rust crate.
+Worker client for the `nmp-browser-runtime` byte transport. **NOT the NMP
+browser runtime owner** — that is the `nmp-browser-runtime` Rust crate.
 
 ## Purpose
 
@@ -11,7 +12,8 @@ This package provides generic TypeScript glue for the worker-based ABI surface:
 - **DegradedRuntime** — fallback message handler when the wasm bridge is unavailable.
 - **Worker shim** — postMessage client that routes requests/responses between main thread and worker.
 
-No Nostr protocol, signing, or routing policy is implemented here. All such logic lives in Rust (`nmp-wasm` and `nmp-browser-runtime` crates).
+No Nostr protocol, signing, or routing policy is implemented here. All such
+logic lives in Rust (`nmp-browser-runtime` and lower NMP crates).
 
 ## Usage
 

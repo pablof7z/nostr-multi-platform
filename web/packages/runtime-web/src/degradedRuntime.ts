@@ -8,7 +8,7 @@ export class DegradedRuntime {
 
   constructor(
     private readonly mode: DegradedRuntimeMode = "browser_actor_driver_missing",
-    private readonly unavailableReason = "nmp-wasm actor driver is not linked into the web worker yet",
+    private readonly unavailableReason = "browser runtime actor driver is not linked into the web worker yet",
   ) {}
 
   /** Uniform with {@link WasmBridge.prepareForStart}: the degraded runtime has no

@@ -2,10 +2,11 @@
 //!
 //! # Purpose
 //!
-//! `nmp-wasm` is ABI glue only — it does **not** own:
+//! `nmp-wasm` is a protocol-type crate only — it does **not** own:
 //! - Routing, signing policy, or signer-provider choice (Wave 3 provider registry)
 //! - NIP modules, protocol defaults, or app defaults
 //! - Projection policy, persistence policy, retry policy, or account state
+//! - wasm-bindgen exports, Worker lifecycle, storage open, or JS callbacks
 //!
 //! The browser runtime (composition, lifecycle, wasm-bindgen exports, and
 //! policy) is owned by `nmp-browser-runtime`. This crate now owns only the

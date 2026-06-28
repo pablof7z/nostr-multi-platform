@@ -7,9 +7,10 @@
 //! `wake()`. They NEVER borrow or mutate the `KernelReducer`. The reducer is
 //! mutated exclusively inside `pump()` via [`super::inbound::drain_inbound`].
 //!
-//! This is the key difference from `nmp-wasm/src/relay_pool.rs` — where the
-//! handler closures called `reducer.borrow_mut()` directly. That pattern breaks
-//! D4 (sole-writer) on the browser runtime's owned-by-value architecture.
+//! This is the key difference from the retired `nmp-wasm` relay-pool
+//! implementation, where the handler closures called `reducer.borrow_mut()`
+//! directly. That pattern breaks D4 (sole-writer) on the browser runtime's
+//! owned-by-value architecture.
 //!
 //! # Wake contract
 //!
