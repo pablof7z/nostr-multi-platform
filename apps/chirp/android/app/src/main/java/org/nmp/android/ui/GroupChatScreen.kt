@@ -49,9 +49,10 @@ import org.nmp.android.model.MarmotSnapshot
  * projection (passed in by [GroupsScreen]) and a compose row.
  *
  * Thin-shell rule (aim.md §2): no protocol logic. Sending routes through
- * [MarmotActions.sendGroupMessage] → `dispatch_action("nmp.marmot", {"op":"send",…})`;
- * the sent message reappears on the next snapshot tick via the push projection
- * (D8 — no poll, no optimistic local echo).
+ * [MarmotActions.sendGroupMessage] → generated Marmot FlatBuffers action bytes
+ * → `KernelBridge.dispatchBytes`; the sent message reappears on the next
+ * snapshot tick via the push projection (D8 — no poll, no optimistic local
+ * echo).
  *
  * The overflow menu wires the iOS `MarmotBridge` op surface (Invite, Remove,
  * Leave, clear-pending). The Android UI additionally exposes Remove (per-member),

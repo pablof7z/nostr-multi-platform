@@ -32,9 +32,10 @@ codegen problem, not a UniFFI problem.
 The Android app-loop lane has been migrated from JNI to UniFFI proc-macro
 bindings (pinned `uniffi = "=0.29.5"`). The `AppHandle` UniFFI object now
 exposes `new()`, `start()`, `stop()`, `close()`, `dispatch_action_bytes()`,
-`dispatch_action_json()`, `dispatch_intent_json()`, `set_update_sink()`, and
-`clear_update_sink()`. The `UpdateSink` callback interface delivers FlatBuffers
-frames push-side (D8). The deleted JNI symbols are:
+`set_update_sink()`, and `clear_update_sink()`. The `UpdateSink` callback
+interface delivers FlatBuffers frames push-side (D8). Android action writes use
+generated FlatBuffers builders and the byte doorway; JSON action adapters are
+retired, not a staged fallback. The deleted JNI symbols are:
 `nativeNew`, `nativeStart`, `nativeStop`, `nativeClose`, `nativeFree`,
 `nativeSetUpdateListener`, `nativeClearUpdateListener`,
 `nativeDispatchIntentBytes`, `nativeDispatchActionBytes`.

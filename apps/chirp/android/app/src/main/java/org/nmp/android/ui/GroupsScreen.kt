@@ -41,7 +41,8 @@ import org.nmp.android.model.MarmotSnapshot
  *
  * Thin-shell rule (aim.md §2): ZERO protocol logic here. State is read from the
  * `nmp.marmot.snapshot` / `nmp.marmot.messages` push projections; every write
- * is a [KernelModel] call that routes through `dispatch_action("nmp.marmot", …)`.
+ * is a [KernelModel] call that routes through [MarmotActions] generated
+ * FlatBuffers bytes and the `KernelBridge.dispatchBytes` doorway.
  *
  * Create-group and invite semantics (PR-3 of marmot-create-fix ladder):
  *   • On dispatch, stash the kernel-minted correlation id.

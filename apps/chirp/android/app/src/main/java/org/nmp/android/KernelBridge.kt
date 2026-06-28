@@ -273,8 +273,8 @@ class KernelBridge {
      *
      * Once registered the kernel pushes `nmp.marmot.snapshot` /
      * `nmp.marmot.messages` projections on every snapshot tick (V-107 /
-     * ADR-0039); group write ops route through [dispatchAction] with the
-     * `"nmp.marmot"` namespace — there is no per-op native symbol.
+     * ADR-0039); group write ops route generated Marmot FlatBuffers action bytes
+     * through [dispatchBytes] — there is no per-op native symbol.
      */
     fun marmotRegisterActive(dbDir: String): Boolean =
         if (handle != 0L) nativeMarmotRegisterActive(handle, dbDir) else false

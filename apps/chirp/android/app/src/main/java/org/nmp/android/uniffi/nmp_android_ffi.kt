@@ -985,7 +985,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_nmp_android_ffi_checksum_method_apphandle_clear_update_sink() != 36599.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_nmp_android_ffi_checksum_method_apphandle_dispatch_action_bytes() != 18528.toShort()) {
+    if (lib.uniffi_nmp_android_ffi_checksum_method_apphandle_dispatch_action_bytes() != 48363.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_android_ffi_checksum_method_apphandle_legacy_jni_session_id() != 38281.toShort()) {
@@ -1444,9 +1444,9 @@ public interface AppHandleInterface {
      * payload). Returns `DispatchAck.correlation_id` on acceptance or
      * `DispatchAck.error` on rejection; never throws (D6).
      *
-     * This is the primary byte-accurate dispatch method. Kotlin callers that
-     * already produce encoded action envelopes should use this over the
-     * legacy JSON adapters below.
+     * This is Android's sole UniFFI action-dispatch method. Kotlin callers
+     * produce encoded action envelopes through generated builders and pass the
+     * bytes through this doorway.
      */
     fun `dispatchActionBytes`(`bytes`: kotlin.ByteArray): DispatchAck
     
@@ -1648,9 +1648,9 @@ open class AppHandle: Disposable, AutoCloseable, AppHandleInterface
      * payload). Returns `DispatchAck.correlation_id` on acceptance or
      * `DispatchAck.error` on rejection; never throws (D6).
      *
-     * This is the primary byte-accurate dispatch method. Kotlin callers that
-     * already produce encoded action envelopes should use this over the
-     * legacy JSON adapters below.
+     * This is Android's sole UniFFI action-dispatch method. Kotlin callers
+     * produce encoded action envelopes through generated builders and pass the
+     * bytes through this doorway.
      */override fun `dispatchActionBytes`(`bytes`: kotlin.ByteArray): DispatchAck {
             return FfiConverterTypeDispatchAck.lift(
     callWithPointer {

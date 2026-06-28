@@ -95,7 +95,6 @@ Deleting the old `gen modules` scaffolder did not touch them.
 ├─ M14-0 — UniFFI Android app-loop lane (SHIPS — issue #2129) ────────┤
 │ `AppHandle` UniFFI object (proc-macro, uniffi 0.29.5): `new()`,      │
 │ `start()`, `stop()`, `close()`, `dispatch_action_bytes()`,           │
-│ `dispatch_action_json()`, `dispatch_intent_json()`,                  │
 │ `set_update_sink()`, `clear_update_sink()`. `UpdateSink` callback    │
 │ interface delivers NMPU FlatBuffers frames (D8 push, no polling).    │
 │ `DispatchAck` record: `correlation_id?`, `error?` (D6 — no throws). │

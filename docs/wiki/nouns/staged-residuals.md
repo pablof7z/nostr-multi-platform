@@ -9,4 +9,7 @@ source_refs:
 
 # Staged residuals
 
-Pre-existing JSON write adapters (dispatch_action_json, dispatch_intent_json) kept in scope as tracked future work, routed through Rust byte doorway, planned for M14-1 migration (#2145)
+Historical staging label for temporary migration leftovers. The Android
+`dispatch_action_json` and `dispatch_intent_json` write adapters are no longer
+staged residuals: M14-1 moved Android action writes to generated FlatBuffers
+builders plus the byte doorway, and the JSON adapters were deleted.

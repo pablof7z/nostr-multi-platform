@@ -9,4 +9,7 @@ source_refs:
 
 # JSON dispatch helpers
 
-pre-existing Android dispatch pattern (callers hand-assemble JSON, Rust encodes to FlatBuffers) retained as staged residuals pending M14-1 (#2145) migration
+Retired Android dispatch pattern where callers hand-assembled JSON and Rust
+encoded it into FlatBuffers. M14-1 replaced this with generated FlatBuffers
+action builders feeding the byte doorway, so production Android writes no longer
+use JSON dispatch helpers.

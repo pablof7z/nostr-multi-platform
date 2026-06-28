@@ -153,9 +153,9 @@ impl AppHandle {
     /// payload). Returns `DispatchAck.correlation_id` on acceptance or
     /// `DispatchAck.error` on rejection; never throws (D6).
     ///
-    /// This is the primary byte-accurate dispatch method. Kotlin callers that
-    /// already produce encoded action envelopes should use this over the
-    /// legacy JSON adapters below.
+    /// This is Android's sole UniFFI action-dispatch method. Kotlin callers
+    /// produce encoded action envelopes through generated builders and pass the
+    /// bytes through this doorway.
     pub fn dispatch_action_bytes(&self, bytes: Vec<u8>) -> DispatchAck {
         let result_ptr = self.session.with_app(|app| {
             nmp_app_dispatch_action_bytes(app, bytes.as_ptr(), bytes.len())
