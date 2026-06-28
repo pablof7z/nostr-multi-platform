@@ -133,7 +133,7 @@ pipeline, do that. A broad `PublishContext` object is justified only if the live
 code audit proves the existing pipeline cannot carry the invariant without
 duplicating route/privacy/protocol state.
 
-Existing explicit-relay seams need to be classified before they are collapsed:
+Existing explicit-relay callers need provenance on the surviving publish path:
 
 | Current shape | Required provenance class | Required proof |
 |---|---|---|
@@ -142,25 +142,21 @@ Existing explicit-relay seams need to be classified before they are collapsed:
 | NIP-17/gift-wrap relay set | verified private inbox | recipient inbox proof; fail closed when unknown |
 | `UnsignedEventToRelays` host-pinned unsigned event | protocol host pin or manual override | caller-supplied provenance before signing; host pin keeps typed context such as group id/source |
 | account/bootstrap relay-list publish | automatic public route or app-owned bootstrap policy | distinguish NIP-65 relay-list update from app onboarding/bootstrap defaults; status shows planner or policy source |
-| router/context-port explicit routes | host pin, verified inbox, manual, bootstrap, imported, or diagnostic | no context-port bypass may enter publish without a provenance class and status mapping |
 | pre-signed `SignedEvent` / imported event | imported/verbatim unless a protocol plan proves stronger provenance | imported status, validation result, and reduced guarantees; no silent upgrade to protocol-owned route |
 | test/diagnostic explicit relays | diagnostic/test | not reachable from product shell APIs |
 
 Older docs and wiki pages mention `RoutingContext::explicit_targets` as the
-place NIP-17 or NIP-29 explicit routes should land. That is not an instruction
-to implement dead plumbing. The current live publish path uses
-`PublishTarget::Explicit`-style relay targeting, while
-`RoutingContext::explicit_targets` has been documented as a parallel/dead seam.
-P6 must choose one of two outcomes:
+place NIP-17 or NIP-29 explicit routes should land. That is stale: #1538 was
+closed by PR #1600, which removed the dead routing-context explicit-target seam
+and kept `PublishTarget::Explicit` as the single live explicit-relay mechanism.
+P6 must not reintroduce a broad routing context or second explicit route lane to
+solve provenance. The remaining work is to carry provenance class and reason
+through the existing publish target/reason/status pipeline.
 
-- delete the dead routing-context explicit-target seam and carry provenance on
-  the live publish path; or
-- migrate the live publish path through the routing context so that the seam is
-  actually populated and tested end to end.
-
-Any partial change that merely threads NIP-29 or NIP-17 data into an unused
-field fails the architecture gate. The goal is fewer explicit-route mechanisms,
-not a new compatibility alias for each historical lane.
+Any partial change that merely adds a compatibility alias for historical routing
+terminology fails the architecture gate. The goal is fewer explicit-route
+mechanisms plus richer audit status, not a new wrapper around an already deleted
+seam.
 
 ## Stage 2: Finalization
 

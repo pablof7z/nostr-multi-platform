@@ -75,8 +75,9 @@ existing architecture text:
   into one event-driven reconciler, then `register_snapshot_tick_observer` should
   be deleted once sibling consumers migrate.
 - **#2088/#2089/#2090/#2091/#2092/#2113:** replay-before-live, no public
-  filterless observers, dynamic sources, pointer/ref demand, and related
-  lifecycle fragments must become one owned session contract.
+  filterless `KernelEventObserver`/`register_event_observer`/C-ABI observer
+  door, dynamic sources, pointer/ref demand, and related lifecycle fragments
+  must become one owned session contract.
 - **Projection and pull-cursor ADRs:** pushed typed outputs remain the app UI
   state path; raw event-log/pull surfaces are not a replacement for screen state.
 - **Downstream audits:** Highlighter, Podcast Player, and `nmp-gallery` are
@@ -98,7 +99,7 @@ Known contradiction ledger for P8:
 | Surface | Current wiki/doc signal | Required resolution before signoff |
 |---|---|---|
 | `docs/wiki/guides/reduced-source.md` | treats `ReducedSource`, `open_feed(FeedParams)`, and `FeedParams` as typed app-facing dynamic-feed architecture | either the ADR keeps that public surface, or the page is rewritten around typed sessions with private source reconciliation |
-| `docs/wiki/guides/publish-outbox-pipeline.md` and `docs/wiki/guides/nip29-wiring.md` | record the old `RoutingContext::explicit_targets` versus live `PublishTarget::Explicit` split | implementation must delete or migrate the dead seam; no work may route NIP-29/NIP-17 through dead plumbing for cosmetic consistency |
+| `docs/wiki/guides/publish-outbox-pipeline.md` and `docs/wiki/guides/nip29-wiring.md` | still record the old `RoutingContext::explicit_targets` versus live `PublishTarget::Explicit` split, even though #1538/#1600 removed the dead routing-context branch | preserve the route-reason/status lessons, but rewrite around the surviving `PublishTarget::Explicit` path; do not reintroduce a broad routing context just to match stale prose |
 | `docs/wiki/guides/nmp-gallery-app.md` | still records gallery registration through `register_defaults()` and snapshot/readiness probes | gallery must move to explicit composition or be labeled tutorial/showcase compatibility with owner and removal gate |
 | `docs/wiki/guides/operator-data-leaf-apps-only.md` | reinforces leaf-app ownership for relays, seed follows, NIP-46 permissions, and signer labels | this packet must preserve that boundary; no defaults rewrite may reintroduce operator policy into NMP crates |
 | `docs/wiki/guides/signer-broker-handshake-loop.md` and NIP-46 research pages | protocol state must not own transport/process loops; reconnect/cancel must be event-driven | signer/session phases must prove transport-agnostic protocol core plus runtime-owned execution, not a second signer runtime framework |
@@ -123,6 +124,12 @@ private or deleted: everything else unless a named invariant, live owner,
         and kill criterion prove it must survive
 ```
 
+The first executable proof may introduce at most one new public noun, and only
+if it deletes or privatizes old public nouns in the same slice. A clean-room app
+author must not need to learn `ObservedProjection`, `ReducedSource`/source tiers,
+route-provenance carrier internals, service-session mechanics, feed-controller
+registries, or runtime lifecycle FFI to build a normal feature.
+
 | Concept | Status | Rule |
 |---|---|---|
 | Feature bundle | Candidate public concept pending ADR | Installs typed sessions, actions, outputs, builders, and capability needs through narrow registrars or builder methods. Avoid a broad `dyn AppFeature` object unless it deletes existing complexity. |
@@ -132,6 +139,7 @@ private or deleted: everything else unless a named invariant, live owner,
 | Typed projection/status output | Candidate render contract pending ADR | Rust emits semantic state, publish status, signer status, and app output; shells render it. |
 | Route provenance | Candidate internal contract surfaced in status | Exact relays are insufficient. Publish routing must preserve why a route is valid: automatic, host-pinned, verified private inbox, manual override, or imported/verbatim. |
 | `ObservedProjection` | Private machinery | Keep if it protects replay-before-live, scoped delivery, relay provenance, and close semantics. App developers should not assemble it. |
+| `KernelEventObserver` / filterless event observers | Rejected public product model | Parser/cache internals may observe accepted events, but product read models must not receive a public all-event fanout and self-filter later. Existing Rust/C/WASM observer doors are diagnostic/test/migration only until deleted or made private. |
 | `ReducedSource` / shape reconciler | Private/provisional machinery | Treat as the dynamic-source invariant, not a public noun. The current private feed machinery and adjacent pointer/browser/defaults reconcilers generalize only after semantic proof across source families. |
 | Reverse wake/admission indexes | Private machinery when proven | Wake sources and bounded admission are mandatory; specific indexes are added only when scoped fanout cannot prove the invariant. |
 | Projection tiers / `SnapshotRegistry` / `DeclaredProjections` | Private executor machinery | They may remain internally only where they preserve bounded output and merge correctness. They are not app-facing composition language. |
@@ -139,6 +147,9 @@ private or deleted: everything else unless a named invariant, live owner,
 | Public `LiveQuery` engine | Rejected public concept | A typed session descriptor may be named `LiveQuery`, but it must not become a second lifecycle engine or protocol owner. |
 | Public `ReducedSource` | Rejected public concept | Dynamic source reconciliation stays behind typed sessions unless a later ADR proves a real app-facing need. |
 | Raw `open_interest` app reads | Rejected public product model | Keep only substrate, protocol-internal, diagnostic/test/export, or migration scopes with deletion/formalization criteria. |
+| `nmp.browse_relay` / relay browser | Rejected production read model unless formalized | A single-relay browse action is diagnostic/prototype/manual inspection unless an app Rust feature owns it as an audited relay-pinned session with output and teardown. |
+| Pull cursor / mirror raw log ABI | Non-screen utility | Keep for mirror/export/history/pagination/diagnostics. It must not become the way product screens reconstruct live state. |
+| Runtime lifecycle FFI | Runtime/capability boundary | `start`, `stop`, `reset`, foreground/background, liveness, and callbacks are host runtime controls, not product feature/session lifecycle or app state recipes. |
 | `register_defaults()` production composition | Rejected public product model | Production composition is explicit feature opt-in. A preset may exist only as tutorial or migration compatibility with live consumers, support window, owner, and deletion/formalization gate. |
 | Compatibility doors | Migration-scoped | Raw `open_interest`, defaults presets, JSON dispatch, and explicit relay escape paths need scope labels, live consumers, and deletion/formalization criteria. Zero live consumers means delete. |
 
@@ -252,6 +263,8 @@ The design should make these changes materially cheaper:
 New code must make these states hard or impossible:
 
 - a product screen opens raw relay interest and then forgets to declare output;
+- a product read model registers filterless accepted-event fanout and self-filters
+  instead of declaring demand;
 - a projection emits app-visible rows without an owning feature/session demand;
 - native code chooses Nostr relays, mutates protocol tags, or infers publish
   success;
@@ -461,6 +474,11 @@ episode/wiki decisions:
   replay, activation, output, and teardown. Pre-warming the store, seeding
   caches, or asking shells to retry is a lifecycle bug if the open path still
   cannot hydrate its output by construction.
+- **Store-first observer ordering:** a projection cannot borrow an earlier
+  standing subscription and hope cache-serve happened after the observer was
+  registered. The session or feature output must declare its own demand, replay
+  with the sink installed, then activate future delivery. Otherwise
+  read-your-writes may work while cold-start hydration still fails.
 - **Base query primitive vs feed policy:** multi-author dynamic query/routing is
   substrate/session capability. Follow-feed ranking, recency, viewport windows,
   and fallback behavior are feature policy. A bad feed implementation must not
@@ -502,6 +520,7 @@ episode/wiki decisions:
 | NDK/applesauce offer a one-call subscribe mental model. | NMP equivalent is one generated open/render API over a Rust-defined session, with outbox planning, replay, admission, and teardown hidden. | Clean-room app path plus planned/outbox and relay-pinned examples in `02-live-queries.md`. |
 | Home feed is not special; default reads should use outbox routing. | Planned routing is the default for public author-scoped reads; relay-pinned/private/explicit routes are named exceptions with provenance. | FF-019 read-route planning contract and P5 dynamic/composite reads. |
 | A helper would hide but not fix fragmentation. | Every phase must delete, privatize, or compatibility-scope an old door; layering a new facade over old public recipes fails. | Proof ladder rungs 0-3 and per-slice deletion ledger. |
+| Public observers and intent/browse/feed doors can recreate the old model under new names. | Filterless observers, URI/input intents that open raw interests, `nmp.browse_relay`, feed controllers/perspectives, and pull cursors must be classified by scope before implementation. | P-1 public-door disposition ledger and FF-021/FF-027. |
 | Writes should separate construction, signing, and publishing. | Builders construct drafts; finalizers add protocol envelope/route context before signing; signer and publish status stay Rust-owned. | P6 publish route provenance, generated builder, signer continuation, retry/resume, and status tests. |
 
 ## Developer-Level Model
@@ -834,3 +853,13 @@ real decision if the evidence does not force one:
   after the architecture is accepted;
 - whether manual explicit relay selection is a product affordance, and what
   audit language/ownership the product wants users to see.
+
+Decision register for signoff:
+
+| Decision | Required before | Default if unresolved | Kill/defer outcome |
+|---|---|---|---|
+| Highlighter web target runtime vs SSR/migration exception vs out of scope | ADR signoff / P7 matrix | not accepted as proof | no architecture acceptance while direct NDK is both product path and violation |
+| Tutorial preset in addition to production `nmp init` | P0/P8 scaffold correction | production scaffold only | delete preset or label tutorial with owner/support window |
+| Downstream migrations that are release gates | P7 signoff dossier | core/gallery proof first, downstream rows become issues | cannot claim downstream-ready architecture |
+| Manual explicit relay UX/audit text | P6 publish provenance | internal/audited app-Rust only | no user-facing manual relay affordance |
+| Service-session product shape | before P7 Podcast acceptance | use normal typed action/headless runtime/mirror frame first | reject if it creates a second lifecycle model |

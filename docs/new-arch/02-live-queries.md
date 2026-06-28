@@ -75,6 +75,12 @@ acquisition. It can fetch events without making them visible to the app, so it
 should not be the public app read model. It can remain available to substrate,
 debug, test, and migration code that is explicitly acquiring events without
 claiming an app-visible output lifecycle.
+The same is true for public filterless observers. A `KernelEventObserver`,
+`register_event_observer`, C-ABI observer callback, or worker equivalent that
+receives accepted events and self-filters later is not a session contract. It
+lacks scoped acquisition, replay identity, relay provenance, bounded output, and
+close ownership. Parser/cache internals may observe accepted events; product read
+models must use declared sessions or private observed sinks.
 
 The proof must start from existing surfaces, not from a fresh abstraction. Try to
 generalize or narrow `open_feed`, `resolve_ref`, `ObservedProjectionRegistrar`,
@@ -199,6 +205,10 @@ because Podcast Player, widgets, AppIntents, CarPlay, Live Activities, Handoff,
 and signer/runtime work expose a real gap in the screen-only model. The ADR must
 prove they can reuse the normal session/action/capability machinery without
 becoming a second app model or a runtime-specific framework.
+Before accepting a service-session abstraction, prove the cheaper forms fail:
+a typed action into the normal runtime, a short-lived headless runtime invocation,
+or a last Rust-emitted mirror frame. If the proposed service session needs a
+second lifecycle, output, wake, store, or status model, reject or narrow it.
 
 Service sessions need an explicit lifecycle contract:
 
@@ -210,6 +220,7 @@ Service sessions need an explicit lifecycle contract:
 | Remote command | command action into Rust playback/session state | raw OS command metadata | queue mutation or gesture policy outside Rust |
 | Live Activity | app/service session decides desired activity state | ActivityKit executor result, throttling/failure facts | decision about current episode or activity existence |
 | Handoff/resume | resume action with OS payload decoded as capability input | raw resume/handoff capability result | second navigation, playback, or account source of truth |
+| Inbound OS activation / deep link / Spotlight / voice mode | typed action or short-lived headless invocation with decoded OS payload | raw activation payload and capability result | Swift-only URL policy, navigation truth, playback decision, or hidden foreground dependency |
 
 "Dispatch accepted" is not the operation result. AppIntents, Siri, CarPlay,
 remote commands, widgets, Live Activities, Handoff, and cold-start workers may
@@ -303,6 +314,13 @@ pre-warming a cache, or asking the shell to retry claims is still a lifecycle
 bug if the session open did not own observer registration, cache replay,
 activation, output emission, and teardown. The feature/session door must make
 hydration happen by construction, not by after-the-fact cache warming.
+A session must not depend on a broader startup interest that happened to serve
+the right rows before its sink existed. Demand and sink installation are one
+contract: install the muted sink/output owner, declare the replay shape, replay
+matching store rows into that owner, then activate future delivery. This is the
+store-first/read-your-writes lesson from the follow-list cold-start bug: local
+publish fanout can be correct and the view can still be wrong if initial
+hydration raced ahead of the projection owner.
 
 The reconciler must be event-driven. Identity changes, source changes, mailbox
 updates, refcount changes, and store ingest should trigger reconciliation. A
@@ -487,6 +505,17 @@ events that lack group-route provenance. The shell sees one handle in both cases
 This rule covers the `nmp_app_open_interest` confusion in #2313: the app should
 not decide whether a profile, feed, group, search, or embed opens a naked
 interest. It opens the typed session; the descriptor supplies route policy.
+URI and input-intent doors follow the same rule. An opened `nostr:` URI, shared
+text payload, relay URL, or deep link should become a typed `ProfileRef`,
+`EventEmbed`, `Search`, group session, publish/action intent, or app-owned
+action. It should not route directly to a raw interest view unless the surface is
+diagnostic or migration-scoped.
+
+`nmp.browse_relay` is therefore not a normal product read model. A relay browser
+can exist as diagnostic/manual-inspection tooling, or as an app Rust feature
+that declares a relay-pinned typed session with output, status, and teardown.
+Leaving it as a generic public relay-pinned escape hatch would preserve the old
+raw-read architecture under a narrower name.
 
 NIP-29 group reads are relay-pinned by group context, not by content kind. The
 group feature owns host relay provenance, group id, admin/member metadata, and

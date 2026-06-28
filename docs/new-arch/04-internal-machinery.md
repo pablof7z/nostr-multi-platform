@@ -346,6 +346,24 @@ is polling, not media sampling.
 Every remaining tick observer or timer that touches reducer/session state needs
 an explicit invariant, owner, and deletion or formalization decision.
 
+Downstream audits must classify timers before judging them. The
+`no_polling_downstream_gate` should report at least these buckets:
+
+- correctness polling: sleeps, intervals, retry loops, claim loops, or refresh
+  tasks that make Rust/session/projection state eventually correct;
+- OS timeline fallback: WidgetKit, Live Activity, Handoff, or CarPlay loops that
+  substitute native mirrors for Rust-owned state;
+- external provider polling: STT/TTS/LLM/transcript APIs that expose no push
+  callback, with Rust-owned job state and cancellation;
+- media-clock sampling: volatile playback/download/progress facts only;
+- tests and diagnostics: bounded waits that do not ship as product behavior;
+- animation/presentation timers: purely visual affordances.
+
+Correctness polling and OS timeline fallback fail unless an ADR records a narrow
+architectural exception and a deletion/formalization gate. External provider
+polling, media sampling, tests, diagnostics, and presentation timers may remain
+only if they cannot mutate durable product truth or hide missed session wakes.
+
 ## Non-Goals
 
 - Do not expose a generic raw event callback as the main app API.
@@ -433,6 +451,12 @@ an ADR question rather than implementation work. This is how the migration avoid
 turning `FeatureSession`, route provenance, generated adapters, and service
 sessions into additive layers over the old machinery.
 
+Do not create `nmp-live-query`, `nmp-source`, `nmp-service-session`,
+`nmp-route-provenance`, or similar new crates before at least two migrated
+callers prove the same abstraction and one old public door is retired. Start in
+the existing feature, protocol, app, or substrate owner; promote only after the
+shared invariant is demonstrated.
+
 Per-phase retirement checklist:
 
 | Question | Failing answer |
@@ -477,11 +501,15 @@ Current recipe inventory to verify against live code before implementation:
 
 | Current recipe/surface | Owns today | Misses or leaks |
 |---|---|---|
+| filterless `KernelEventObserver` / `register_event_observer` | all accepted-event fanout to caller-owned filtering | no declared acquisition, replay shape, relay pin, bounded owner, typed output, or teardown; encourages live-only/global read models |
 | raw `open_interest` / `nmp_app_open_interest` | acquisition and store/cache eligibility | no typed output, admission owner, projection lifecycle, or app-visible delivery contract |
+| `KernelAction::OpenUri` / input-intent dispatch | URI/text/action classification plus direct raw interest/view routing | can bypass typed ref/session descriptors unless mapped to `ProfileRef`, `EventEmbed`, search, or app-owned actions |
+| `nmp.browse_relay` | relay-pinned interest from host action | diagnostic/prototype unless wrapped by an audited app Rust descriptor with output/status/teardown |
 | `open_observed_projection` | replay-before-live sink registration, scoped future delivery, close token | still asks feature authors to pair acquisition/output/schema/route policy manually |
-| `open_feed` / feed sessions | one feed-shaped source compiler, dependent interests, observed sinks, feed output | feed-local semantics; not proof that group/thread/ref/search sources share one public primitive |
+| `open_feed` / feed sessions / feed controllers | one feed-shaped source compiler, dependent interests, observed sinks, feed output, pull/load-older controllers, perspectives | feed-local public machinery; `FeedRegistry`, `FeedController`, `PullFeedController`, `FeedPullPager`, and custom perspectives need private/session disposition |
 | group/search feature `open_*` recipes | feature-specific route/source/projection bundle | repeated lifecycle recipe; not a general session contract for app-defined features |
 | refs/embeds / `resolve_ref` | component demand and some typed ref outputs | cross-shell raw worker/ref adapters, claim/reclaim loops, and hand caches still need convergence |
+| pull cursor / `nmp_mirror_pull_page` | raw ingest-log pagination for mirror/export/history | must not become screen-state reconstruction or a bypass around typed output sessions |
 | `declare_consumed_projections` | cost brake for some built-in push outputs | incomplete manifest; not tied to session demand or host-registered outputs |
 | snapshot tick observers | periodic repair/reconcile hook for some runtimes | hides missing event-driven wakes; cannot remain product-state scheduler |
 | `PublishTarget::Explicit` / `UnsignedEventToRelays` | exact relay set and route bypass | loses whether the route is host-pinned, private-inbox verified, manual, diagnostic, or imported |
@@ -495,8 +523,14 @@ diagnostic/test/migration with live consumers and a removal/formalization gate.
 |---|---|---|
 | `register_defaults()` | production use rejected; tutorial/migration shim only if retained | live callers, support window, owner, generated scaffold behavior, deletion/formalization target, scaffold gate change |
 | `nmp init` scaffold | production scaffold emits explicit feature composition | `nmp-cli` template and `dx_scaffold_gate` updated or separate tutorial command created |
+| `KernelEventObserver` / `register_event_observer` / C-ABI observer callbacks | parser/cache internals only; product filterless fanout rejected | Rust/C/WASM public observer symbols classified; doctrine no-raw-tap gate forbids production reintroduction; old docs corrected around declared sessions |
 | raw `open_interest` / `nmp_app_open_interest` | substrate/protocol/diagnostic/migration only | current callers classified; public docs stop marking it as product PASS without scope |
+| `KernelAction::OpenUri`, input intents, `nmp_app_open_uri`, intent classify/dispatch | typed ref/search/action entrypoints or delete dead variants | no direct raw-interest routing remains in production; `Start/Stop/OpenView/CloseView/RunDiagnostics` are runtime/diagnostic or removed |
+| `nmp.browse_relay` | diagnostic/prototype or audited app-Rust relay-pinned session | owner, purpose, non-product scope, or output/status/teardown contract |
 | `NmpApp::open_feed`, `open_observed_projection`, `nmp_app_open_interest`, `resolve_ref` | existing surfaces to unify under typed descriptor contract | contract map showing which lifecycle rows they already own and which they miss; do not invent migration evidence for stale or missing symbols |
+| feed registries/controllers/perspectives/load-older | private machinery or compatibility behind sessions | `FeedRegistry`, `FeedController`, `PullFeedController`, `FeedPullPager`, `PerspectiveRegistry`, custom perspectives, and `nmp_app_load_older_feed` classified by live callers |
+| pull cursor / `nmp_mirror_pull_page` / raw-log ABI | mirror/export/history/pagination/diagnostic only | no product screen uses raw log pull to reconstruct live UI state |
+| runtime lifecycle FFI | runtime control only | start/configure/stop/reset/foreground/background/liveness/callbacks cannot encode product lifecycle policy |
 | `ObservedProjection` | private replay-before-live machinery | minimal proof that descriptor can reuse it without exposing it |
 | `ReducedSource` / source reconcilers | private until cross-family proof | feed, pointer, account, group/list/thread sources compared by semantics |
 | projection tiers / declared projections | private executor/cost machinery | output ownership and session-scoped demand plan |
@@ -551,7 +585,10 @@ migration shim with owner and deletion/formalization gate
 delete now
 ```
 
-Run this classification for `open_interest`, `open_feed`/feed sessions,
+Run this classification for `open_interest`, `KernelEventObserver` /
+`register_event_observer` / C-ABI observer callbacks, `open_feed`/feed sessions,
+feed controllers/perspectives/load-older, `KernelAction`/input-intent URI doors,
+`nmp.browse_relay`, pull cursors/mirror ABI, runtime lifecycle FFI,
 `resolve_ref`/component refs, `ObservedProjection`, `ReducedSource`/source
 reconcilers, `register_defaults`, `declare_consumed_projections` /
 `consume_all_builtin_projections`, explicit publish routes, snapshot tick
@@ -561,8 +598,14 @@ The output is a public-door disposition ledger:
 
 | Door/concept | Live production callers | Non-production callers | Target disposition | First deletion/formalization proof |
 |---|---:|---:|---|---|
+| filterless `KernelEventObserver` / event-observer ABI | classify | classify | parser/cache internal, diagnostic/test, or delete | declared session/observed sink migrates any product read model |
 | raw `open_interest` / `nmp_app_open_interest` | classify | classify | internal/diagnostic/compat or delete | first typed session migrates equivalent product read |
+| URI/input intent raw routing | classify | classify | typed ref/search/action or diagnostic/delete | OpenUri maps to typed sessions without raw interest bypass |
+| `nmp.browse_relay` | classify | classify | diagnostic/prototype or audited app session | relay browser is scoped or formalized with output/teardown |
 | `open_feed` / feed session APIs | classify | classify | narrow into typed session or compatibility | feed/session convergence proof |
+| feed controllers/perspectives/load-older | classify | classify | private under sessions or compatibility | pagination/action model replaces public feed machinery |
+| pull cursor / mirror raw-log ABI | classify | classify | mirror/export/history/pagination only | product screens use typed outputs, not raw log pull |
+| runtime lifecycle FFI | classify | classify | runtime/capability control only | no product feature lifecycle hidden in start/stop/reset/callbacks |
 | `resolve_ref` / worker ref protocol | classify | classify | generated typed ref session or diagnostic | gallery ref lifecycle proof |
 | `ObservedProjection` public registrar | classify | classify | private machinery or narrowed seam | descriptor proof over replay-before-live |
 | `ReducedSource` / feed source compiler | classify | classify | private dynamic-source reconciliation | two source-family proof before generalizing |
@@ -586,6 +629,9 @@ teaching `register_defaults()` as production architecture, tick observers,
 `declare_consumed_projections` app-facing docs, duplicate explicit-relay publish
 representations, native-owned relay/policy/tag construction, hand-authored
 projection merge caches, downstream direct NDK/FFI publish paths,
+filterless event-observer public symbols and product call sites,
+input-intent/URI action doors, `nmp.browse_relay`, feed controller/perspective
+public APIs, pull cursor/mirror raw-log APIs, runtime lifecycle FFI,
 protocol read/projection producers registered from app or FFI glue instead of
 their reusable NMP feature crate, especially `nmp.follow_list`,
 `@nostr-dev-kit/ndk` product fetch/sign/publish usage, direct `NDKEvent`
@@ -690,10 +736,12 @@ small provenance field; using it unchanged is not sufficient because
 `Explicit { relays }` lacks the audit class/reason. Add a named draft/context
 type only if it deletes branching or duplicate route/privacy/protocol state.
 Gates: publish policy, D10 private routing, signer continuation, generated
-builder round-trip, and action-result tests. Explicit relay cleanup is part of
-this phase: delete dead explicit-target
-fields or route every explicit publish through one canonical internal seam with
-one attribution/status model. Route provenance is the critical missing invariant:
+builder round-trip, and action-result tests. #1538 was closed by PR #1600, so
+the dead `RoutingContext::explicit_targets` seam is already gone. Explicit relay
+cleanup is no longer about choosing between two seams; it is about preserving
+provenance through the surviving `PublishTarget::Explicit`/publish-status path.
+Do not reintroduce a broad routing context to solve this. Route provenance is
+the critical missing invariant:
 manual explicit relay, NIP-29 host pin, verified NIP-17 inbox, and
 external/verbatim publish must not collapse into an indistinguishable
 `Explicit` bucket. Tests must prove generic raw publish cannot accidentally
@@ -703,9 +751,7 @@ The first implementation slice should attempt the smallest carrier change:
 extend or split the existing target/reason/status pipeline so provenance class
 travels through `PublishCommand`, parked signer publish obligations, engine
 records, retry/resume, and status output. A broad draft/context object is a
-second-choice representation, not the destination. If the audit finds two
-explicit-relay variants that are genuinely different invariants, document both;
-if they differ only by caller history, collapse them.
+second-choice representation, not the destination.
 
 **P7: Prove downstream apps before declaring the architecture final.**
 Highlighter must express home feed, room chat, search, comments, share-to-room,
@@ -726,6 +772,13 @@ publish-status output, and deletion or exception criterion for the current
 Swift/TypeScript path. A row is not migrated if it only wraps the old NDK or
 native JSON publish door with a friendlier name.
 
+Highlighter web needs an inventory table before the ADR can count it as covered:
+path, flow, product-runtime vs SSR-only vs diagnostic, target Rust session/action,
+signer path, route policy, cache owner, status output, and deletion gate. A broad
+"SSR exception" is not enough. SSR exceptions are read-only public data by
+default, with explicit cache TTL/durability, no signer/session truth, no silent
+production memory fallback, and separate treatment for NIP-05 server writes.
+
 Required Highlighter matrix shape:
 
 | Flow family | Current path to classify | Target proof | Deletion/exception criterion |
@@ -735,6 +788,10 @@ Required Highlighter matrix shape:
 | Highlights/comments/capture/share | TS/Swift tag walkers, `tagsJson`, raw comments/replies | Rust descriptors for NIP-10/NIP-22/article/highlight refs and typed publish status | semantic parsing removed from shells; presentation-only transforms documented |
 | Blossom/NIP-05/search/SSR | web direct fetch/cache/publish paths | typed capability/result or labeled SSR cache boundary | cache/write owner named; no hidden product truth in web storage |
 | Signer/session/offline policy | web/local/native signer inference and Wi-Fi/cache policy | Rust-owned signer/offline/cache state plus raw native capability facts | shells stop deciding signer completion, retry, route, or offline eligibility |
+| iOS native state/capabilities | Wi-Fi preference, App Group community mirror, pending share queue, image/profile caches, relay URL bridge | each surface classified as Rust-owned policy, native render cache, capability inbox, or migration exception | no UserDefaults/App Group/relay bridge owns durable policy or product truth |
+| Capture/OCR/share/Blossom | share extension drain, OCR results, camera/file handles, Blossom upload/download | raw capability results into Rust actions, queue corruption/retry, OCR failure, Blossom failure, publish retry/status proof | native performs capability only; Rust owns temp-file/result/publish lifecycle |
+| Semantic parsing | TS/Swift group metadata, NIP-10/NIP-22 parents, artifact refs, comment trees, relay hints, route semantics | Rust descriptors/generated adapters own protocol parentage, canonical refs, group access/admin/member facts, and artifact canonicalization | only visual grouping/formatting remains shell-side with parity tests |
+| Highlighter publish/signing | profile, NIP-05, Blossom, room create/invite/join, chat, comments, reactions, highlights, artifacts, capture, share-to-room | typed builders/actions with correlation ids, signer route, route provenance, final publish/action status | no direct `event.publish()`, raw NDK sign/publish, or dispatch-accepted-as-success path |
 
 Podcast Player must express playback, queue, feed subscription, NIP-F4, Blossom
 publish, explicit write relays, widgets, settings actions, signer runtime, and
@@ -758,11 +815,13 @@ Required Podcast matrix shape:
 
 | Flow family | Current path to classify | Target proof | Deletion/exception criterion |
 |---|---|---|---|
-| Playback/queue/gestures | Swift state, remote/headphone gestures, App Group mirrors | Rust-owned playback/queue state; native reports raw media/command facts | Swift can render/execute only; no queue mutation or gesture policy outside Rust |
+| Audio execution / Now Playing mirror | AVPlayer/mpv/audio host, Now Playing state, App Group mirrors | native executes audio and reports raw progress/availability; Rust owns current episode, persisted position, sleep timer, auto-advance, queue truth | OS mirrors never become queue/playback source of truth |
+| Queue mutation / gestures / remote commands | Swift reorder/prune/dedupe, headphone gestures, CarPlay/remote command mapping | Rust-owned queue and command policy; native reports raw gesture/command metadata | no queue mutation, skip interval, chapter seek, next/previous, or gesture policy outside Rust |
 | Feed/subscription/catalog/search/transcripts | app Rust plus Swift stores/import surfaces | app Rust sessions/actions and capability results; no NMP podcast nouns | native DB/UserDefaults classified as render/import cache or deleted |
-| Widget/AppIntent/Siri/CarPlay/remote/LiveActivity/Handoff | UI-process singleton, `KernelModel.shared`, polling, App Group snapshots, OS surfaces | service/app-lifetime sessions or typed capability results; cold-start proof; action completion/result distinct from dispatch acceptance | no `KernelModel.shared` correctness dependency; no polling wait loop; native only reports raw OS command/capability facts |
-| NIP-F4/Blossom publish | constructed JSON, `relay_pending`, `publish_dispatched`, explicit write relays/server lists | build/sign/route/store/publish/status with route/server provenance and key-storage capability | user-facing e2e proves ack/error/retry/exhausted status; stale diagnostics deleted |
-| Signers/relays/settings | local, NIP-46, NIP-55, per-podcast key, agent, legacy relay settings, plaintext key stores | one signer/status/route provenance model plus secure key capability | native no longer infers signer timeout, relay policy, key ownership, or publish success |
+| Widget/AppIntent/Siri/CarPlay/remote/LiveActivity/Handoff/deep link | UI-process singleton, `KernelModel.shared`, polling, URL/Spotlight/voice-mode policy, App Group snapshots | normal typed action, short-lived headless invocation, service/app-lifetime session, or typed capability result; cold-start/locked-device proof; action completion/result distinct from dispatch acceptance | no `KernelModel.shared` correctness dependency; no polling wait loop; native only reports raw OS activation/command/capability facts |
+| NIP-F4/Blossom publish | constructed JSON, `relay_pending`, `publish_dispatched`, explicit write relays/server lists | show/episode/list/deletion/backfill build/sign/route/store/publish/status with correlation id, signer, event id/naddr, write-relay route provenance, Blossom server provenance, retry state, and key-storage capability | user-facing e2e proves ack/error/retry/exhausted terminal status; stale diagnostics deleted |
+| Signers/relays/settings/credentials | local nsec, NIP-46, NIP-55, per-podcast key, agent signer, BYOK/provider keys, Blossom/app/agent relays, legacy relay settings | one signer/status/route/server provenance model plus secure key/provider capability | native no longer infers signer timeout, relay/server policy, key ownership, provider truth, or publish success |
+| Agent/provider job lifecycle | STT/TTS/local agents, OpenRouter/Ollama/ElevenLabs/AssemblyAI/Perplexity jobs, transcript/TTS generation | typed app-feature API with credential source, provider request, cancellation, retry/backoff, progress, cost/status, result, and explicit external-polling exception when provider lacks push | provider polling classified separately from correctness polling; job state remains Rust-owned |
 | Generated app APIs | hand-authored C/Swift action glue, JSON/pointer FFI, direct `KernelModel.shared` handles | generated or contract-tested typed app APIs | hand glue is app-local and non-protocol, or generated/drift-gated; event-producing APIs use typed publish/status |
 
 `nmp-gallery` must express component refs, embeds, auth/signing components, and
@@ -779,10 +838,11 @@ Required gallery matrix shape:
 
 | Flow family | Current path to classify | Target proof | Deletion/exception criterion |
 |---|---|---|---|
-| Web runtime | deferred `build:wasm`, TS-only app check, raw Worker `resolve_ref`/`release_ref`, retry/reclaim loop | `web/nmp-gallery build:wasm` builds/stages runtime artifact; gallery e2e fails in degraded/no-wasm mode; generated typed ref API; deterministic owner close | no correctness `setInterval`; raw worker protocol hidden or deleted |
-| Component refs/embeds | Swift/Kotlin/TS/TUI/desktop URI/ref adapters, raw namespace/shape/liveness constants, and claim loops | typed `ProfileRef`/`EventEmbed` sessions plus generated or contract-tested host handles | shell adapters are generated/lifecycle-only, not protocol policy |
+| Web runtime | deferred `build:wasm`, TS-only app check, raw Worker `resolve_ref`/`release_ref`, retry/reclaim loop | `web/nmp-gallery build:wasm` stages the `nmp-browser-runtime::wasm` artifact; gallery build plus Playwright run in CI; degraded/no-wasm/no-worker mode fails closed | no correctness `setInterval`; raw worker protocol hidden or deleted |
+| Component refs/embeds | Swift/Kotlin/TS/TUI/desktop URI/ref adapters, raw namespace/shape/liveness constants, worker payloads, and claim loops | typed `ProfileRef`/`EventEmbed` sessions plus generated or contract-tested host handles; refs survive relay readiness/reconnect without shell retry; open/close tests reject duplicate/stale rows | shell adapters are generated/lifecycle-only, not protocol policy |
 | Merge/cache parity | hand caches and `projection_merge_cache` variants | full/delta/clear/tombstone/stale/decode-poison/baseline tests across shells | no platform owns independent merge semantics |
-| Auth/signing components | Android NIP-55 proof plus partial/visual other shells | per-shell read-only/local/remote/unauthenticated matrix | generic "auth/signing covered" claim removed until each shell is classified |
+| Browser storage/degraded mode | OPFS/SQLite/Worker preparation, in-memory fallback, Web Locks/tab contention, quota/private-mode failure | durable second-launch, offline read, offline publish queue, second-tab policy, private/quota failure, and explicit gallery UI/status behavior for in-memory fallback | no silent in-memory success in product proof |
+| Auth/signing components | Android NIP-55 proof plus partial/visual other shells; browser NIP-07/local/NIP-46 wiring incomplete | per-shell read-only/local/remote/unauthenticated matrix, including browser NIP-07, local key, NIP-46, rejection, wrong-account, unavailable extension, and degraded cases | generic "auth/signing covered" claim removed until each shell is classified |
 | Composition root | `register_defaults()` and `consume_all_builtin_projections()` showcase path | explicit feature composition or labeled tutorial compatibility | production examples stop teaching hidden defaults |
 
 Any downstream flow that requires native-owned policy or a bespoke framework
@@ -798,10 +858,12 @@ decision: either production scaffold with explicit feature composition and
 policy builders, or clearly labeled tutorial preset. Compatibility APIs may
 remain only with scope labels, doctrine gates, and deletion criteria.
 At minimum, audit and rewrite stale guidance in `docs/product-spec/api-surface.md`,
+`docs/architecture/external-consumers.md`, `docs/recipes/app-shapes.md`,
 builder-guide mental-model/codegen/walkthrough pages, subscription planning and
-publish guides, wiki app-composition pages, and any generated template that
-teaches `register_defaults`, `open_interest`, projection tiers, or
-`declare_consumed_projections` as the normal product architecture.
+publish guides, wiki app-composition pages, `crates/nmp-testing/tests/dx_scaffold_gate.rs`,
+and any generated template that teaches `register_defaults`, `open_interest`,
+projection tiers, or `declare_consumed_projections` as the normal product
+architecture.
 Also audit wiki pages that still teach `nmp.feed.home`, generic defaults,
 sidecar projection rituals, raw/pre-signed publish branches, or direct taps as
 current architecture. They should either be corrected in place or explicitly
@@ -864,6 +926,7 @@ mode before implementation starts.
 | FF-024 | Protocol taxonomy and kind predicates are single-sourced. | `nmp-kinds`, protocol crates, router/planner/store generic layers | generic layers do not switch on per-NIP tables; protocol-aware callers pass semantic class/context | kind-predicate authority lint and router generic-layer tests |
 | FF-025 | Metadata privacy gate is centralized. | outbound finalizers, NIP-89/client identity, public and explicit publish arms | client metadata appears only on public-routable unsigned events and never on private/imported/pre-signed/reserved surfaces | metadata privacy contract tests |
 | FF-026 | Binding generation reduces drift instead of moving old doors. | C-ABI, JNI, UniFFI experiments, FlatBuffers, runtime workers | generated binding work deletes hand-maintained drift or narrows compatibility; it does not preserve old public semantics under new glue | binding-surface diff review plus codegen drift gate |
+| FF-027 | Filterless accepted-event observers are not a product read-model door. | `KernelEventObserver`, `register_event_observer`, `nmp_app_register_event_observer`, `NmpEventObserverCallback`, worker observer equivalents | parser/cache internals may observe accepted events; product read models use declared sessions or private observed sinks | no-raw-tap doctrine lint plus compatibility surface audit |
 
 ## Current Baseline Snapshot
 
@@ -874,7 +937,13 @@ test, historical doc, tutorial compatibility, diagnostic, or delete.
 
 | Surface | Count | What it means |
 |---|---:|---|
+| NMP filterless observer family, excluding `docs/new-arch` | 13 files / 32 matches | the old observer door is mostly lint/docs after cleanup, but must stay classified so stale transcripts do not resurrect it as architecture |
 | NMP `open_interest` family, excluding `docs/new-arch` | 45 files / 122 matches | old read door is still broadly taught and tested |
+| NMP URI/input intent action family | 26 files / 106 matches | URI/action classify doors can bypass typed sessions if left as raw-interest routing |
+| NMP `nmp.browse_relay` family | 10 files / 172 matches | single-relay browse is a public escape hatch unless scoped diagnostic or formalized |
+| NMP feed controller/perspective/load-older family | 44 files / 220 matches | `open_feed` is not the whole surface; public feed controllers need disposition |
+| NMP pull cursor/mirror raw-log family | 36 files / 206 matches | raw history pull is useful but must not become product screen state |
+| NMP runtime lifecycle FFI family | 113 files / 413 matches | lifecycle FFI is large enough to require runtime-only classification, not accidental product lifecycle |
 | NMP defaults/projection declarations | 144 files / 526 matches | hidden defaults and projection-declaration language are not a small local cleanup |
 | NMP `ObservedProjection` family | 190 files / 885 matches | observed projection is a major existing concept and must be deleted, privatized, or explicitly justified |
 | NMP explicit publish route family | 198 files / 2148 matches | route provenance cannot be fixed by naming alone; dead/live explicit seams need one owner |
@@ -917,6 +986,12 @@ Useful baseline commands:
 
 ```bash
 rg -n "nmp_app_open_interest|open_interest" crates apps docs --glob '!target/**'
+rg -n "KernelEventObserver|register_event_observer|nmp_app_register_event_observer|NmpEventObserverCallback" crates apps docs --glob '!target/**'
+rg -n "KernelAction|OpenUri|nmp_app_open_uri|nmp_app_intent_classify|nmp_app_intent_dispatch" crates apps docs --glob '!target/**'
+rg -n "nmp\\.browse_relay|BrowseRelay" crates apps docs web --glob '!target/**'
+rg -n "FeedRegistry|FeedController|PullFeedController|FeedPullPager|FeedSessionBuild|PerspectiveRegistry|CustomPerspectiveDef|register_custom_perspective|nmp_app_load_older_feed" crates apps docs --glob '!target/**'
+rg -n "nmp_mirror_pull_page|PullCursor|PullCursorRegistration|pull_page_over" crates apps docs --glob '!target/**'
+rg -n "nmp_app_start|nmp_app_configure|nmp_app_stop|nmp_app_reset|nmp_app_lifecycle_foreground|nmp_app_lifecycle_background|nmp_app_is_alive|nmp_app_set_update_callback" crates apps docs --glob '!target/**'
 rg -n "register_defaults|declare_consumed_projections" crates docs apps --glob '!target/**'
 rg -n "nmp\\.follow_list|follow_list|register_.*projection|open_observed_projection" crates apps docs --glob '!target/**'
 rg -n "GenericOutboxRouter|MailboxCache|Nip65|NIP-65|outbox" crates apps docs --glob '!target/**'
@@ -967,7 +1042,7 @@ cargo test -p nmp-testing --test dx_login_timeline_gate
 cargo test -p nmp-testing --test conformance_catalog_complete
 ```
 
-Missing gates to create before declaring the design implementable:
+ADR-blocking proof gates to create before declaring the design implementable:
 
 ```bash
 cargo test -p nmp-testing --test architecture_surface_ratchet
@@ -975,6 +1050,13 @@ cargo test -p nmp-testing --test live_query_descriptor_contract
 cargo test -p nmp-testing --test projection_merge_contract
 cargo test -p nmp-testing --test publish_route_provenance_contract
 cargo test -p nmp-testing --test docs_architecture_teaching_ratchet
+cargo test -p nmp-testing --test compatibility_surface_contract
+cargo test -p nmp-testing --test no_filterless_observer_contract
+```
+
+Post-ADR issue backlog candidates, not proof that must all exist before the ADR:
+
+```bash
 cargo test -p nmp-testing --test downstream_architecture_acceptance
 cargo test -p nmp-testing --test service_session_contract
 cargo test -p nmp-testing --test podcast_service_completion_contract
@@ -989,7 +1071,6 @@ cargo test -p nmp-testing --test app_feature_api_classification
 cargo test -p nmp-testing --test no_polling_downstream_gate
 cargo test -p nmp-testing --test read_route_planning_contract
 cargo test -p nmp-testing --test protocol_projection_ownership_contract
-cargo test -p nmp-testing --test compatibility_surface_contract
 cargo test -p nmp-testing --test session_wake_fanout_contract
 cargo test -p nmp-testing --test active_session_memory_contract
 cargo test -p nmp-testing --test update_cadence_contract
@@ -1022,6 +1103,15 @@ Stop, redesign, or ask for a human decision if any of these become true:
   old public doors and downstream policy leaks.
 - P1 cannot prove one lifecycle owner without creating a second read engine or
   preserving the old public door as an equal production path.
+- The public filterless observer door reappears as "advanced" app API instead of
+  parser/cache internal machinery, diagnostic tooling, or migration-scoped
+  compatibility.
+- The first clean-room app requires app authors to understand `ObservedProjection`,
+  `ReducedSource`/source tiers, route provenance internals, service-session
+  mechanics, feed controller registries, or runtime lifecycle FFI.
+- Service sessions require a second lifecycle/output/wake/store/status model
+  instead of reusing typed actions, typed sessions, headless invocation, or
+  last-emitted Rust mirror frames.
 - The team cannot decide whether Highlighter web is target-runtime, SSR/
   migration exception, or out of scope.
 - `nmp init` cannot generate production architecture without hidden defaults, and
@@ -1054,6 +1144,8 @@ The destination is not reached until these are true:
 - No production state reconciliation depends on snapshot tick polling.
 - New app reads enter through typed session descriptors or named
   substrate/protocol-internal/diagnostic/test/migration acquisition scopes.
+- No product read model uses filterless accepted-event fanout and self-filters
+  instead of declaring acquisition, replay, output, and teardown.
 - Every dynamic source has deterministic diffing, explicit fallback policy, and
   no wildcard result from empty demand.
 - Projection tiers are absent from app-facing docs and starter apps.
@@ -1085,7 +1177,8 @@ as authority.
 Candidate decisions that now have enough evidence to carry forward unless P-1/P1
 contradicts them:
 
-- app-facing reads use typed sessions/descriptors, not raw `open_interest`;
+- app-facing reads use typed sessions/descriptors, not raw `open_interest` or
+  filterless `KernelEventObserver`/event-observer fanout;
 - default public reads are planned/outbox-routed unless a descriptor explicitly
   declares relay-pinned, private, or audited explicit routing;
 - app Rust crates may define custom sessions, outputs, reducers, builders, and

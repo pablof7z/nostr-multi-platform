@@ -32,10 +32,11 @@ cannot be proven against current call sites, the preset is deleted rather than
 documented as a compatibility surface.
 Known live surfaces to classify include `nmp-defaults` itself, `nmp-cli`
 templates/help, browser builder `start()` composition, `nmp-gallery`'s
-composition root, examples, docs, and downstream app roots. The future doc
-cannot simply say "rejected" while those surfaces keep teaching it as the normal
-production path; each surface must migrate to explicit feature composition or be
-labeled tutorial/migration with the support window and deletion gate above.
+composition root, `nmp-example-login-timeline`, examples, docs, and downstream
+app roots. The future doc cannot simply say "rejected" while those surfaces keep
+teaching it as the normal production path; each surface must migrate to explicit
+feature composition or be labeled tutorial/migration with the support window and
+deletion gate above.
 
 `nmp init` should teach production architecture by default: explicit feature
 composition and policy builders. A separate tutorial preset can exist only when
@@ -192,6 +193,13 @@ worth pulling forward when it deletes those duplicated surfaces, closes an
 Android/iOS/web parity gap, or makes action/output/schema drift fail in check
 mode. It is not worth doing when it only wraps the old public doors in new
 generated code.
+
+Runtime lifecycle FFI stays separate from product architecture. Calls such as
+`nmp_app_start`, `nmp_app_configure`, `nmp_app_stop`, `nmp_app_reset`,
+foreground/background notifications, liveness probes, and update callbacks are
+host runtime controls. They may start, stop, quiesce, and deliver update frames;
+they must not become feature-session lifecycle, product state, retry policy, or
+app read/write recipes.
 
 ## App Feature Runtime Contract
 
