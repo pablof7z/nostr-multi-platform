@@ -3,8 +3,8 @@
 //! This composition helper installs one shared [`BookmarkListProjection`] as
 //! the kind:10003 read model and read-modify-write state backing the default
 //! add/remove bookmark actions. It also owns an active-account observed
-//! projection reconciler registered via the generic **per-tick observer** seam
-//! (`register_snapshot_tick_observer`) that opens / closes the concrete
+//! projection reconciler registered via the **identity-change observer** seam
+//! (`register_identity_change_observer`) that opens / closes the concrete
 //! kind:10003 `authors=[pubkey]` observed projection on sign-in / account
 //! switch / sign-out.
 //!
@@ -18,15 +18,14 @@
 use std::sync::Arc;
 
 use nmp_core::substrate::{
-    ActionRegistrar, HostCapabilities, ObservedProjectionRegistrar, SnapshotProjectionRegistrar,
+    ActionRegistrar, HostCapabilities, IdentityChangeRegistrar, ObservedProjectionReconciler,
+    ObservedProjectionRegistrar, SnapshotProjectionRegistrar,
 };
 use nmp_core::ObservedProjectionSink;
 use nmp_nip51::{active_bookmark_list_interest, BookmarkListProjection};
 
-use super::active_observed_projection::ActiveObservedProjection;
-
 /// Wire active-account kind:10003 bookmark projection and safe write actions,
-/// and register the per-tick interest reconciler.
+/// and register the identity-change interest reconciler.
 ///
 /// 1. Creates one [`BookmarkListProjection`] shared across the observer and the
 ///    action modules.
@@ -38,7 +37,8 @@ pub fn register_bookmark_runtime(
     app: &mut (impl ActionRegistrar
               + ObservedProjectionRegistrar
               + HostCapabilities
-              + SnapshotProjectionRegistrar),
+              + SnapshotProjectionRegistrar
+              + IdentityChangeRegistrar),
 ) -> Arc<BookmarkListProjection> {
     // ── 1. Projection ────────────────────────────────────────────────────
     let projection = Arc::new(BookmarkListProjection::new(app.active_pubkey()));
@@ -62,18 +62,27 @@ pub fn register_bookmark_runtime(
     });
 
     // ── 4. Active observed-projection reconciler ─────────────────────────
+    //
+    // Identity-change-driven: no tick polling. The live_shape closure reads the
+    // active pubkey slot directly, returning Some(shape) when signed in and
+    // None on logout/reset so no stale subscription lingers.
     let observer = Arc::clone(&projection) as Arc<dyn ObservedProjectionSink>;
-    let controller = Arc::new(ActiveObservedProjection::new(
-        app.active_pubkey(),
+    let active_pubkey = app.active_pubkey();
+    let reconciler = ObservedProjectionReconciler::new(
         app.observed_projection_registrar_handle(),
         observer,
         "nmp.nip51.bookmarks",
         1,
         128,
-        Arc::new(|pubkey| active_bookmark_list_interest(pubkey).shape),
-    ));
-    let controller_tick = Arc::clone(&controller);
-    app.register_snapshot_tick_observer(move || controller_tick.sync());
+        Arc::new(move || {
+            let pubkey = active_pubkey.lock().ok()?.clone()?;
+            Some(active_bookmark_list_interest(&pubkey).shape)
+        }),
+    );
+    let reconciler_for_identity = reconciler.clone();
+    app.register_identity_change_observer(move |_| reconciler_for_identity.sync());
+    // Eager sync for cold-start: account may already be set.
+    reconciler.sync();
 
     projection
 }

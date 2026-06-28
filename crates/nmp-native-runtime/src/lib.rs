@@ -46,9 +46,6 @@ pub mod builder;
 pub mod op_feed_defaults;
 pub mod op_pointer_source;
 
-pub(crate) mod runtimes {
-    pub(crate) mod active_observed_projection;
-}
 
 pub use app_ctor::new_app;
 pub use app_struct::{IdentityChangeObserverId, NmpApp, UpdateListener};

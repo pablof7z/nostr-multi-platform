@@ -387,7 +387,6 @@ impl DmRuntimeController {
 mod mute_runtime;
 pub use mute_runtime::register_mute_runtime;
 
-pub(crate) mod active_observed_projection;
 mod bookmarks_runtime;
 pub use bookmarks_runtime::{
     register_bookmark_runtime, register_bookmark_set_runtime, register_web_bookmark_runtime,

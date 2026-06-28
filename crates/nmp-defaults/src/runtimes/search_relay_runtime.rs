@@ -18,9 +18,9 @@
 //!
 //! # How kind:10007 events reach the projection (#1817)
 //!
-//! A per-tick active observed-projection reconciler opens one concrete
-//! `authors=[active] / kinds=[10007]` observed projection after sign-in and
-//! closes/reopens it on account switches. Opening through the observed
+//! An identity-change-driven active observed-projection reconciler opens one
+//! concrete `authors=[active] / kinds=[10007]` observed projection after sign-in
+//! and closes/reopens it on account switches. Opening through the observed
 //! projection path replays matching cached rows before live activation, so
 //! `effective_search_relays()` hydrates on cold start without a broad kind-only
 //! observer.
@@ -30,14 +30,14 @@
 use std::sync::Arc;
 
 use nmp_core::substrate::{
-    HostCapabilities, ObservedProjectionRegistrar, SnapshotProjectionRegistrar,
+    HostCapabilities, IdentityChangeRegistrar, ObservedProjectionReconciler,
+    ObservedProjectionRegistrar, SnapshotProjectionRegistrar,
 };
 use nmp_core::ObservedProjectionSink;
 use nmp_nip50::SearchRelaySource;
 use nmp_nip51::SearchRelayListProjection;
 use nmp_planner::InterestShape;
 
-use super::active_observed_projection::ActiveObservedProjection;
 use crate::search_defaults::SearchDefaults;
 
 /// Wire the NIP-51 search-relay-list projection into `app` and return the
@@ -65,7 +65,7 @@ use crate::search_defaults::SearchDefaults;
 /// changed between the last kind:10007 ingest and the read, methods return a
 /// default empty list — stale data from the prior account is invisible. The
 /// active observed-projection reconciler closes the prior author shape and
-/// opens the new one on the next tick.
+/// opens the new one on account change.
 ///
 /// # D0 hygiene
 ///
@@ -78,7 +78,10 @@ use crate::search_defaults::SearchDefaults;
 /// opts out of the wholesale defaults can still wire just the search-relay
 /// projection by itself.
 pub fn register_search_relay_runtime(
-    app: &(impl ObservedProjectionRegistrar + HostCapabilities + SnapshotProjectionRegistrar),
+    app: &(impl ObservedProjectionRegistrar
+          + HostCapabilities
+          + SnapshotProjectionRegistrar
+          + IdentityChangeRegistrar),
 ) -> Arc<SearchRelayListProjection> {
     register_search_relay_runtime_with(app, SearchDefaults::default())
 }
@@ -88,29 +91,41 @@ pub fn register_search_relay_runtime(
 /// source. `register_search_relay_runtime` is the `SearchDefaults::default()`
 /// convenience, which declares no app-default relay.
 pub fn register_search_relay_runtime_with(
-    app: &(impl ObservedProjectionRegistrar + HostCapabilities + SnapshotProjectionRegistrar),
+    app: &(impl ObservedProjectionRegistrar
+          + HostCapabilities
+          + SnapshotProjectionRegistrar
+          + IdentityChangeRegistrar),
     defaults: SearchDefaults,
 ) -> Arc<SearchRelayListProjection> {
     // ── 1. Active-pubkey slot ────────────────────────────────────────────────
     let projection = Arc::new(SearchRelayListProjection::new(app.active_pubkey()));
 
     // ── 2. Active observed projection ──────────────────────────────────────
+    //
+    // Identity-change-driven: no tick polling. The live_shape closure reads the
+    // active pubkey slot directly, returning Some(shape) when signed in and
+    // None on logout/reset so no stale subscription lingers.
     let observer = Arc::clone(&projection) as Arc<dyn ObservedProjectionSink>;
-    let controller = Arc::new(ActiveObservedProjection::new(
-        app.active_pubkey(),
+    let active_pubkey = app.active_pubkey();
+    let reconciler = ObservedProjectionReconciler::new(
         app.observed_projection_registrar_handle(),
         observer,
         "nmp.nip51.search_relays",
         1,
         64,
-        Arc::new(|pubkey| InterestShape {
-            kinds: [nmp_kinds::KIND_SEARCH_RELAYS].into_iter().collect(),
-            authors: [pubkey.to_string()].into_iter().collect(),
-            ..Default::default()
+        Arc::new(move || {
+            let pubkey = active_pubkey.lock().ok()?.clone()?;
+            Some(InterestShape {
+                kinds: [nmp_kinds::KIND_SEARCH_RELAYS].into_iter().collect(),
+                authors: [pubkey].into_iter().collect(),
+                ..Default::default()
+            })
         }),
-    ));
-    let controller_tick = Arc::clone(&controller);
-    app.register_snapshot_tick_observer(move || controller_tick.sync());
+    );
+    let reconciler_for_identity = reconciler.clone();
+    app.register_identity_change_observer(move |_| reconciler_for_identity.sync());
+    // Eager sync for cold-start: account may already be set.
+    reconciler.sync();
 
     // ── 3. TRANSPARENCY GLUE — auto-wire the default search-relay source ──────
     //

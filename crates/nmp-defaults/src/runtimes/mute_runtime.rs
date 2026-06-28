@@ -1,6 +1,6 @@
 //! NIP-51 mute-list runtime — wires the kind:10000 [`MuteListProjection`] into
 //! an [`AppHost`] (active observed projection + typed `NMUT` sidecar +
-//! per-tick reconciler).
+//! identity-change reconciler).
 //!
 //! Extracted from `runtimes.rs` to hold that module under the 500-LOC hard
 //! ceiling (AGENTS.md file-size rule: extract, never bump the baseline). The
@@ -11,13 +11,11 @@
 use std::sync::Arc;
 
 use nmp_core::substrate::{
-    HostCapabilities, IdentityChangeRegistrar, ObservedProjectionRegistrar,
-    SnapshotProjectionRegistrar,
+    HostCapabilities, IdentityChangeRegistrar, ObservedProjectionReconciler,
+    ObservedProjectionRegistrar, SnapshotProjectionRegistrar,
 };
 use nmp_core::ObservedProjectionSink;
 use nmp_nip51::{active_mute_list_interest, MuteListProjection};
-
-use super::active_observed_projection::ActiveObservedProjection;
 
 /// Wire the NIP-51 mute-list observer into `app` and return the
 /// [`MuteListProjection`] so the caller can connect it to a timeline
@@ -37,9 +35,11 @@ use super::active_observed_projection::ActiveObservedProjection;
 ///    (ADR-0037, `NMUT`) under the `"nmp.nip51.mute_list"` key. Reads the same
 ///    `MuteListSnapshot` read model so it cannot structurally diverge from the
 ///    projection.
-/// 4. **Tick observer** — registered LAST. On every snapshot tick reconciles
-///    the active pubkey against the currently opened observed projection,
-///    closing the old author shape and opening the new one as needed.
+/// 4. **Identity-change observer** — registered LAST. On every account change
+///    reconciles the active pubkey against the currently opened observed
+///    projection, closing the old author shape and opening the new one as
+///    needed. An eager `sync()` after wiring covers cold-start (account may
+///    already be set before this registration).
 /// 5. **Returns the `Arc<MuteListProjection>`** — the caller wires
 ///    `set_suppression` on whichever `ModularTimelineProjection` it owns.
 ///
@@ -115,18 +115,27 @@ pub fn register_mute_runtime(
     app.register_identity_change_observer(move |_| mute_for_identity.notify_account_changed());
 
     // ── 4. Active observed-projection reconciler — LAST ─────────────────────
+    //
+    // Identity-change-driven: no tick polling. The live_shape closure reads the
+    // active pubkey slot directly, returning Some(shape) when signed in and
+    // None on logout/reset so no stale subscription lingers.
     let observer = Arc::clone(&mute) as Arc<dyn ObservedProjectionSink>;
-    let controller = Arc::new(ActiveObservedProjection::new(
-        app.active_pubkey(),
+    let active_pubkey = app.active_pubkey();
+    let reconciler = ObservedProjectionReconciler::new(
         app.observed_projection_registrar_handle(),
         observer,
         "nmp.nip51.mute_list",
         1,
         128,
-        Arc::new(|pubkey| active_mute_list_interest(pubkey).shape),
-    ));
-    let controller_tick = Arc::clone(&controller);
-    app.register_snapshot_tick_observer(move || controller_tick.sync());
+        Arc::new(move || {
+            let pubkey = active_pubkey.lock().ok()?.clone()?;
+            Some(active_mute_list_interest(&pubkey).shape)
+        }),
+    );
+    let reconciler_for_identity = reconciler.clone();
+    app.register_identity_change_observer(move |_| reconciler_for_identity.sync());
+    // Eager sync for cold-start: account may already be set.
+    reconciler.sync();
 
     mute
 }

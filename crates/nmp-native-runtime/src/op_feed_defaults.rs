@@ -109,7 +109,8 @@ use std::sync::{Arc, Mutex};
 
 use crate::NmpApp;
 use nmp_core::substrate::{
-    empty_suppression_lookup, KernelEvent, ObservedProjectionRegistrar, SuppressionLookup,
+    empty_suppression_lookup, KernelEvent, ObservedProjectionReconciler, ObservedProjectionRegistrar,
+    SuppressionLookup,
 };
 use nmp_core::ObservedProjectionSink;
 use nmp_feed::{ClosureInterestShape, FeedAdvance, FeedApply, FeedController, PullFeedController};
@@ -121,7 +122,6 @@ use nmp_nip51::MuteListProjection;
 use nmp_planner::InterestShape;
 
 mod active_shape;
-use crate::runtimes::active_observed_projection::ActiveObservedProjection;
 mod dynamic_observer;
 use active_shape::{live_active_follows_shape, read_active};
 
@@ -227,23 +227,24 @@ fn register_op_feed_defaults_inner(
     // active account's kind:3 ingest keeps the set current. No observer opens
     // before sign-in; once the active pubkey is known the observer is opened
     // with `authors=[active] / kinds=[3]`, replaying matching cached events
-    // before live activation.
+    // before live activation. Identity-change-driven: no tick polling.
     let follow_set_observer: Arc<dyn ObservedProjectionSink> = follow_set.clone();
-    let follow_set_observer = Arc::new(ActiveObservedProjection::new(
-        active_account_slot.clone(),
+    let follow_set_account_slot = active_account_slot.clone();
+    let follow_set_observer = ObservedProjectionReconciler::new(
         app.observed_projection_registrar_handle(),
         follow_set_observer,
         "nmp.feed.home.follow_set",
         1,
         64,
-        Arc::new(|pubkey| nmp_planner::InterestShape {
-            kinds: [nmp_kinds::KIND_CONTACT_LIST].into_iter().collect(),
-            authors: [pubkey.to_string()].into_iter().collect(),
-            ..Default::default()
+        Arc::new(move || {
+            let pubkey = follow_set_account_slot.lock().ok()?.clone()?;
+            Some(nmp_planner::InterestShape {
+                kinds: [nmp_kinds::KIND_CONTACT_LIST].into_iter().collect(),
+                authors: [pubkey].into_iter().collect(),
+                ..Default::default()
+            })
         }),
-    ));
-    let follow_set_observer_tick = Arc::clone(&follow_set_observer);
-    app.register_snapshot_tick_observer(move || follow_set_observer_tick.sync());
+    );
 
     // ── 2. Event lookup (V-83 — real synchronous kernel event read) ──────
     //
@@ -449,7 +450,7 @@ fn register_op_feed_defaults_inner(
     }));
 
     let follow_set_for_identity = follow_set.clone();
-    let follow_set_observer_for_identity = Arc::clone(&follow_set_observer);
+    let follow_set_observer_for_identity = follow_set_observer.clone();
     // Identity changes are pushed from `NmpApp` after the actor has written the
     // active-account slot. This is the canonical app/FFI composition seam for
     // OP-feed account reset; hosts do not call `notify_account_changed` manually.
@@ -457,6 +458,8 @@ fn register_op_feed_defaults_inner(
         follow_set_for_identity.notify_account_changed();
         follow_set_observer_for_identity.sync();
     });
+    // Eager sync for cold-start: account may already be set before registration.
+    follow_set_observer.sync();
 
     OpFeedDefaults {
         engine,
