@@ -6,8 +6,8 @@
 //! [`nmp_chirp_config::chirp_default_relay_bootstrap`] so the relay default set
 //! has ONE source of truth (`apps/chirp/crates/nmp-chirp-config`). Before this module
 //! existed the iOS shell (`RelaySeeding.swift`) hardcoded its own relay URLs,
-//! which had already drifted from the canonical config (`wss://r.f7z.io` vs the
-//! real `wss://relay.primal.net`).
+//! which had already drifted from the canonical config's current
+//! `wss://relay.primal.net` content lane.
 //!
 //! Two entry points, mirroring Android:
 //!
@@ -31,7 +31,7 @@ use nmp_ffi::{nmp_app_add_relay, NmpApp};
 /// Returns `true` when at least one relay was handed to the kernel, `false`
 /// when `app` is null (D6). The canonical set comes from
 /// `nmp_chirp_config::chirp_default_relay_bootstrap` — the same source the
-/// Android shell and `nmp-wasm` use.
+/// Android shell, iOS shell, TUI, desktop shell, and generated web config use.
 #[no_mangle]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn nmp_app_chirp_seed_default_relays(app: *mut NmpApp) -> bool {
@@ -124,7 +124,10 @@ mod tests {
     #[test]
     fn json_seed_on_null_app_returns_false() {
         // Even valid JSON must short-circuit to false when the app is null.
-        assert!(!seed_relays_from_json_str(null_app(), r#"[["wss://x","both"]]"#));
+        assert!(!seed_relays_from_json_str(
+            null_app(),
+            r#"[["wss://x","both"]]"#
+        ));
     }
 
     #[test]

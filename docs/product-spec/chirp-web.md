@@ -18,6 +18,18 @@ workspaces (read feed, discovery, private messages, diagnostics) so a new user
 can see what is available now, what is locked behind identity, and where to go
 next without reading developer diagnostics.
 
+Chirp's production relay bootstrap is app/operator policy, single-sourced in
+`apps/chirp/crates/nmp-chirp-config`. It is not an NMP framework default and
+must not be duplicated in `nmp-core`, `nmp-defaults`, `nmp-wasm`, or
+`nmp-browser-runtime`. The production default set uses
+`wss://relay.primal.net` with role `"both,indexer"` because current
+production-browser evidence shows that role shape can keep a connected
+write-capable lane and produce signed kind:1 acceptance, which the first-run
+proof needs for a terminal relay verdict. `wss://purplepag.es` remains role
+`"indexer"` as an additional discovery/profile relay-list lane and must not be
+counted as a write-proof target. The generated Chirp web config is regenerated
+from the Rust source rather than hand-edited.
+
 `#signing` is the first-level account workspace, not a Setup alias. It must
 mark Signer active, keep signer status primary, and hide unrelated feed panes.
 

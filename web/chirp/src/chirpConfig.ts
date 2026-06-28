@@ -1,8 +1,9 @@
 // Chirp web composition-root relay policy — single-sourced from the Rust crate.
 //
-// Relay defaults are HOST policy, not framework policy (#1125). The authoritative
-// values live in apps/chirp/crates/nmp-chirp-config/src/lib.rs; chirpConfig.generated.ts
-// is produced from them by scripts/gen-chirp-config.mjs so the web host can never
+// Relay defaults are Chirp app/operator policy, not framework policy
+// (#1125/#1493). The authoritative values live in
+// apps/chirp/crates/nmp-chirp-config/src/lib.rs; chirpConfig.generated.ts is
+// produced from them by scripts/gen-chirp-config.mjs so the web host can never
 // drift (#1546 F6). Run `npm run codegen:chirp-config -w @nmp/chirp-web` to
 // regenerate.
 //
@@ -54,8 +55,9 @@ function parseRelayBootstrapParam(value: string | null): ChirpRelayBootstrapEntr
 }
 
 /** Resolve the `relays` + `relay_bootstrap` the Chirp web host supplies in the
- *  Start request. Relay policy is host policy (#1125): the nmp-wasm protocol
- *  has no built-in defaults, so the host always sends an explicit list.
+ *  Start request. Relay policy is Chirp app/operator policy (#1125/#1493):
+ *  the nmp-wasm protocol has no built-in defaults, so the host always sends an
+ *  explicit list.
  *
  *  Tests and local dev may pass role-explicit relay entries to preserve the
  *  same outbox topology used by iOS/Android: indexer-only relays remain

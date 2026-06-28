@@ -1,7 +1,8 @@
 //! Shared Chirp app configuration.
 //!
 //! This crate is intentionally dependency-free so platform-facing crates such
-//! as `nmp-wasm` can share Chirp defaults without depending on `nmp-core`.
+//! as `nmp-app-chirp`, Chirp TUI/desktop, and web codegen can share Chirp
+//! defaults without depending on `nmp-core`.
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ChirpRelayBootstrapEntry {
@@ -9,15 +10,23 @@ pub struct ChirpRelayBootstrapEntry {
     pub role: &'static str,
 }
 
-pub const CHIRP_CONTENT_RELAY_URL: &str = "wss://nos.lol";
+pub const CHIRP_CONTENT_RELAY_URL: &str = "wss://relay.primal.net";
 pub const CHIRP_INDEXER_RELAY_URL: &str = "wss://purplepag.es";
 pub const CHIRP_SEARCH_RELAY_URL: &str = "wss://relay.nostr.band";
 pub const CHIRP_PUBLIC_GROUP_RELAY_URL: &str = "wss://relay.groups.nip29.com";
 
+/// Chirp's app-owned production bootstrap.
+///
+/// `CHIRP_CONTENT_RELAY_URL` is intentionally write-capable (`role:
+/// "both,indexer"`) so a fresh browser session can prove publish acceptance
+/// with a real terminal relay verdict while also retaining a connected
+/// discovery lane. `purplepag.es` remains a pure discovery/index lane and must
+/// not be counted as a write-proof target. These are Chirp operator choices,
+/// not NMP framework defaults.
 pub const CHIRP_RELAY_BOOTSTRAP: &[ChirpRelayBootstrapEntry] = &[
     ChirpRelayBootstrapEntry {
         url: CHIRP_CONTENT_RELAY_URL,
-        role: "both",
+        role: "both,indexer",
     },
     ChirpRelayBootstrapEntry {
         url: CHIRP_INDEXER_RELAY_URL,
@@ -96,3 +105,30 @@ pub fn chirp_nostrconnect_perms() -> &'static str {
 /// `keyring_service_id` parameter. Chirp-specific so other Marmot host apps
 /// use their own namespace and never collide with Chirp's stored key (D0).
 pub const CHIRP_MARMOT_KEYRING_SERVICE_ID: &str = "nmp.chirp.marmot";
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn production_content_lane_is_write_capable_primal_indexer() {
+        let content = CHIRP_RELAY_BOOTSTRAP
+            .iter()
+            .find(|entry| entry.url == CHIRP_CONTENT_RELAY_URL)
+            .expect("content relay must be present in bootstrap");
+
+        assert_eq!(CHIRP_CONTENT_RELAY_URL, "wss://relay.primal.net");
+        assert_eq!(content.role, "both,indexer");
+    }
+
+    #[test]
+    fn purplepages_remains_indexer_only() {
+        let indexer = CHIRP_RELAY_BOOTSTRAP
+            .iter()
+            .find(|entry| entry.url == CHIRP_INDEXER_RELAY_URL)
+            .expect("indexer relay must be present in bootstrap");
+
+        assert_eq!(CHIRP_INDEXER_RELAY_URL, "wss://purplepag.es");
+        assert_eq!(indexer.role, "indexer");
+    }
+}

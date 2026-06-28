@@ -85,10 +85,13 @@ close / route. `send_all_outbound` (`relay_mgmt.rs:77-93`) is the **single
 choke point**: every view-open path routes through it, and it runs
 `kernel.partition_auth_paused` before the wire so AUTH-paused REQs are
 diverted regardless of which kernel method built them. The live worker still
-uses the two hardcoded constants `wss://relay.primal.net` +
-`wss://purplepag.es` (`crates/nmp-core/src/relay.rs:1-2`) — the planner can
-route to mailboxes but is not yet wired into the actor's REQ path (see
-GitHub Issues or the owning doc for this wiring gap).
+has exactly one URL-keyed transport pool: `Start` spawns workers for the
+app-declared bootstrap relay set, and later outbound messages spawn additional
+workers on demand for their resolved target URL. `RelayRole::all()` enumerates
+transport/diagnostic lanes only; production relay URLs do not live in
+`nmp-core`. Chirp's default production relay set is leaf-app policy in
+`apps/chirp/crates/nmp-chirp-config`, while `crates/nmp-core/src/relay.rs`
+retains only test/test-support fallback URLs.
 
 ## NIP-42: challenge → response → re-emit
 
