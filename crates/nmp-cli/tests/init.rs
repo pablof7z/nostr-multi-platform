@@ -37,11 +37,38 @@ fn init_scaffold_is_a_compiling_composition_shell() {
         lib.contains("nmp_defaults::register_defaults"),
         "scaffolded `register` must call nmp_defaults::register_defaults:\n{lib}"
     );
+    assert!(
+        lib.contains("starter_projection_keys")
+            && lib.contains("starter_builtin_projection_keys")
+            && lib.contains("starter_home_feed_params")
+            && lib.contains("\"nmp.feed.home\"")
+            && lib.contains("\"refs.profile\"")
+            && lib.contains("\"refs.event\"")
+            && lib.contains("\"refs.event.envelopes\"")
+            && lib.contains("\"publish_outbox\""),
+        "scaffolded starter must declare current v1 profile/content projections:\n{lib}"
+    );
+    assert!(
+        lib.contains("GeneratedActionBuilders.publishRaw")
+            && lib.contains("GeneratedActionBuilders.publishReply")
+            && lib.contains("GeneratedActionBuilders.publishProfile"),
+        "scaffolded starter must point shells at generated publish builders:\n{lib}"
+    );
+    assert!(
+        !lib.contains("resolved_profiles") && !lib.contains("claimed_event_embeds"),
+        "scaffolded starter must not teach legacy projection names:\n{lib}"
+    );
     let shell = std::fs::read_to_string(root.join("crates/demoapp-core/examples/shell.rs"))
         .expect("read scaffolded shell.rs");
     assert!(
         shell.contains("NmpAppBuilder") && shell.contains("::register("),
         "scaffolded shell must build via NmpAppBuilder and call register:\n{shell}"
+    );
+    assert!(
+        shell.contains(
+            ".declare_consumed_projections(demoapp_core::starter_builtin_projection_keys())"
+        ),
+        "scaffolded shell must declare kernel built-in starter projections:\n{shell}"
     );
     assert!(
         !root.join("apps").exists(),

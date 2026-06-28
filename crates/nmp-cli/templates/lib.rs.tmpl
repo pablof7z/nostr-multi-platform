@@ -3,8 +3,8 @@
 //!
 //! # Composition is a library (ADR-0046)
 //!
-//! This crate is a **thin composition shell**. [`register`] inherits the
-//! canonical NMP composition by calling
+//! This crate is a **thin composition shell** and starter contract, separate
+//! from Chirp. [`register`] inherits the canonical NMP composition by calling
 //! [`nmp_defaults::register_defaults`] — one call that wires the
 //! NIP-01/02/17/57/65 action modules, the production routing substrate, the
 //! DM-inbox + zap-receipts + WOT runtime controllers, and the long-form typed
@@ -58,6 +58,65 @@ pub fn register(app: &mut impl AppHost) {
 
 /// The app module identifier. Namespaces below derive from it.
 pub const APP_MODULE: &str = "{{name}}.entries";
+
+pub const HOME_TIMELINE_PROJECTION: &str = "nmp.feed.home";
+pub const PROFILE_REF_PROJECTION: &str = "refs.profile";
+pub const EVENT_REF_PROJECTION: &str = "refs.event";
+pub const EVENT_ENVELOPES_PROJECTION: &str = "refs.event.envelopes";
+pub const PUBLISH_OUTBOX_PROJECTION: &str = "publish_outbox";
+pub const STARTER_PRIMARY_NOTE_KIND: u32 = 1;
+
+/// Projection keys this starter is built around: timeline, profile rows,
+/// authoritative event refs, derived embed envelopes, and publish feedback.
+pub fn starter_projection_keys() -> [&'static str; 5] {
+    [
+        HOME_TIMELINE_PROJECTION,
+        PROFILE_REF_PROJECTION,
+        EVENT_REF_PROJECTION,
+        EVENT_ENVELOPES_PROJECTION,
+        PUBLISH_OUTBOX_PROJECTION,
+    ]
+}
+
+/// Kernel built-in projection keys declared through ADR-0053 before `start()`.
+///
+/// Tier-1 projections such as [`HOME_TIMELINE_PROJECTION`] and
+/// [`EVENT_ENVELOPES_PROJECTION`] are runtime/protocol projections that
+/// self-gate by registration. Only kernel built-ins are passed to
+/// `declare_consumed_projections`.
+pub fn starter_builtin_projection_keys() -> [&'static str; 3] {
+    [
+        PROFILE_REF_PROJECTION,
+        EVENT_REF_PROJECTION,
+        PUBLISH_OUTBOX_PROJECTION,
+    ]
+}
+
+/// Typed home-feed declaration for the starter read surface.
+///
+/// A real platform shell opens this feed through the runtime and renders the
+/// emitted projection. The shell does not derive relay policy, parse protocol
+/// wrappers, or keep a domain cache.
+pub fn starter_home_feed_params() -> nmp_native_runtime::FeedParams {
+    nmp_native_runtime::FeedParams {
+        primary_kinds: vec![STARTER_PRIMARY_NOTE_KIND],
+        render: nmp_native_runtime::FeedRender::OpCentric,
+        acquisition: nmp_native_runtime::FeedScope::ActiveUserFollows,
+        admission: nmp_native_runtime::FeedAdmission::All,
+        ranking: nmp_native_runtime::FeedRanking::ChronologicalDesc,
+        window: nmp_native_runtime::FeedWindow { initial_limit: 80 },
+        projection: nmp_native_runtime::ProjectionKey(HOME_TIMELINE_PROJECTION.to_string()),
+    }
+}
+
+/// Host-side typed write builders this starter expects platform shells to use.
+pub fn starter_action_builder_paths() -> [&'static str; 3] {
+    [
+        "GeneratedActionBuilders.publishRaw",
+        "GeneratedActionBuilders.publishReply",
+        "GeneratedActionBuilders.publishProfile",
+    ]
+}
 
 /// An app-owned record. This is a *generic* example — not a social-app
 /// noun. Make it whatever your app stores.
@@ -247,5 +306,42 @@ mod tests {
             result,
             Err(ActionRejection::Invalid("entry label is empty".to_string()))
         );
+    }
+
+    #[test]
+    fn starter_contract_uses_current_projection_names() {
+        let keys = starter_projection_keys();
+        let builtins = starter_builtin_projection_keys();
+
+        assert!(keys.contains(&"nmp.feed.home"));
+        assert!(keys.contains(&"refs.profile"));
+        assert!(keys.contains(&"refs.event"));
+        assert!(keys.contains(&"refs.event.envelopes"));
+        assert!(builtins.iter().all(|key| keys.contains(key)));
+        assert!(!builtins.contains(&"nmp.feed.home"));
+        assert!(keys.iter().all(|key| !key.starts_with("resolved_")));
+        assert!(keys.iter().all(|key| !key.starts_with("claimed_")));
+    }
+
+    #[test]
+    fn starter_contract_uses_generated_action_builders() {
+        let builders = starter_action_builder_paths();
+
+        assert!(builders
+            .iter()
+            .all(|builder| builder.starts_with("GeneratedActionBuilders.")));
+        assert!(builders.iter().any(|builder| builder.ends_with("publishRaw")));
+    }
+
+    #[test]
+    fn starter_home_feed_is_typed() {
+        let feed = starter_home_feed_params();
+
+        assert_eq!(feed.primary_kinds, vec![1]);
+        assert_eq!(
+            feed.projection,
+            nmp_native_runtime::ProjectionKey("nmp.feed.home".to_string())
+        );
+        assert_eq!(feed.acquisition, nmp_native_runtime::FeedScope::ActiveUserFollows);
     }
 }

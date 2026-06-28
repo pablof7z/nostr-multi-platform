@@ -23,22 +23,26 @@ fn main() {
     //    `nmp_defaults::register_defaults`) is the whole point of ADR-0046.
     {{crate_ident}}::register(&mut builder);
 
-    // 3. Commit the storage choice, declare the consumed projections, decide
-    //    the initial relay set, and start the kernel. `.in_memory()` advances
-    //    to `StorageSet`; `.consume_all_builtin_projections()` makes the
-    //    ADR-0053 decision (this headless shell reads the full built-in set)
-    //    and advances to `ProjectionsDeclared`; `.without_initial_relays()`
-    //    makes the #1493 relay decision (this app ships no built-in relays —
-    //    add your own with `.with_relays([("wss://your.relay", "both")])`) and
-    //    advances to `RelaysDeclared`, unlocking `.start()`. For production
-    //    replace `.in_memory()` with `.storage_path("/path/to/lmdb")`, prefer
-    //    `.declare_consumed_projections([..])` to narrow to the keys your UI
-    //    actually reads, and declare your relay set with `.with_relays([..])`.
-    //    Omitting ANY decision is a COMPILE ERROR (storage = V-94,
-    //    projections = ADR-0053 DEBT 2, relays = #1493).
+    // 3. Commit the storage choice, declare the kernel built-in projections,
+    //    decide the initial relay set, and start the kernel. `.in_memory()`
+    //    advances to `StorageSet`; `.declare_consumed_projections(...)` makes
+    //    the ADR-0053 decision for built-ins: profile rows (`refs.profile`),
+    //    authoritative event refs (`refs.event`), and publish feedback
+    //    (`publish_outbox`). Tier-1 starter projections such as
+    //    `nmp.feed.home` and `refs.event.envelopes` self-gate by registration,
+    //    so they are named in `starter_projection_keys()` but not declared
+    //    through this kernel built-in gate. `.without_initial_relays()` makes
+    //    the #1493 relay decision (this app ships no built-in relays — add
+    //    your own with
+    //    `.with_relays([("wss://your.relay", "both")])`) and advances to
+    //    `RelaysDeclared`, unlocking `.start()`. For production replace
+    //    `.in_memory()` with `.storage_path("/path/to/lmdb")` and declare your
+    //    relay set with `.with_relays([..])`. Omitting ANY decision is a
+    //    COMPILE ERROR (storage = V-94, projections = ADR-0053 DEBT 2,
+    //    relays = #1493).
     let app = builder
         .in_memory()
-        .consume_all_builtin_projections()
+        .declare_consumed_projections({{crate_ident}}::starter_builtin_projection_keys())
         .without_initial_relays()
         .start(RunConfig::default());
 
