@@ -31,7 +31,7 @@
 //! * **platform.rs**: `nativeSetStoragePath`, `nativeLifecycleForeground`,
 //!   `nativeLifecycleBackground`, `nativeIsAlive`
 //! * **action.rs**: `nativeAckActionStage`, `nativeRetryPublish`,
-//!   `nativeCancelPublish`, `nativeDispatchAction`
+//!   `nativeCancelPublish`
 //! * **flat_feed.rs**: `nativeOpenHomeFeed`, `nativeOpenThread`,
 //!   `nativeCloseThread`, `nativeOpenAuthor`, `nativeCloseAuthor`,
 //!   `nativeCloseFeed`, `nativeLoadOlderFeed`
