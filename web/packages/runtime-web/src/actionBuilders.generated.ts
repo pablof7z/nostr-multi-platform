@@ -650,27 +650,6 @@ export const GeneratedActionBuilders = {
     return encodeDispatchEnvelope(correlationId, "nmp.blossom.upload", payload);
   },
 
-  /** Claim or release the tailing interest for a note's visible relations (NIP-01). */
-  visibleNoteRelations(
-    correlationId: string,
-    op: number,
-    eventId: string,
-    consumerId: string,
-  ): Uint8Array {
-    const fbb = new flatbuffers.Builder(64);
-    const eventIdOffset = fbb.createString(eventId);
-    const consumerIdOffset = fbb.createString(consumerId);
-    fbb.startObject(4);
-    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
-    fbb.addFieldInt8(1, op, 0); // slot 1: op
-    fbb.addFieldOffset(2, eventIdOffset, 0); // slot 2: eventId
-    fbb.addFieldOffset(3, consumerIdOffset, 0); // slot 3: consumerId
-    const payloadRoot = fbb.endObject();
-    fbb.finish(payloadRoot, "NR01");
-    const payload = fbb.asUint8Array();
-    return encodeDispatchEnvelope(correlationId, "nmp.nip01.visible_note_relations", payload);
-  },
-
   /** Open or close a relay-pinned browse subscription. */
   browseRelay(
     correlationId: string,

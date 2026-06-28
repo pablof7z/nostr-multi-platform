@@ -1,6 +1,6 @@
 //! #1740 step 9 — the NEGATIVE matrix: the raw feed lanes are NO LONGER public.
 //!
-//! Steps 7+8 made `nmp_app_open_feed` / `nmp_app_close_feed` the ONE public
+//! Steps 7+8 made `NmpApp::open_feed` / `NmpApp::close_feed` the ONE public
 //! app-facing way to open a feed and retired the raw lanes. This grep-gate
 //! asserts the retirement is REAL — the retired public symbols/strings are GONE
 //! from the public surface, not merely shadowed by a parallel path. It fails the
@@ -272,13 +272,13 @@ fn public_open_feed_doorway_symbols_exist() {
     // The POSITIVE companion: the ONE public doorway must be DEFINED. This guards
     // against an over-zealous future cleanup deleting the replacement along with
     // the retired lanes (which would leave NO public way to open a feed).
-    let feed_rs = repo_root().join("apps/chirp/crates/nmp-app-chirp/src/ffi/feed.rs");
+    let feed_rs = repo_root().join("crates/nmp-native-runtime/src/feed_session.rs");
     let text = fs::read_to_string(&feed_rs)
         .unwrap_or_else(|e| panic!("the public feed doorway file must exist: {e}"));
-    for sym in ["nmp_app_open_feed", "nmp_app_close_feed"] {
+    for sym in ["open_feed", "close_feed"] {
         assert!(
-            text.contains(&format!("pub extern \"C\" fn {sym}")),
-            "the public feed doorway `{sym}` must be defined in {}",
+            text.contains(&format!("pub fn {sym}")),
+            "the public typed feed doorway `{sym}` must be defined in {}",
             feed_rs.display()
         );
     }
