@@ -312,11 +312,13 @@ Podcast is the stress case for this boundary:
 | Podcast surface | Rust/app owner | Native or service role |
 |---|---|---|
 | playback queue and current episode | podcast Rust feature | audio engine executes requested command and reports raw progress/result |
+| RSS/OPML/import/export | podcast Rust feature owns parsing, normalization, stable ids, row errors, conditional request metadata, injected time, and durable subscription results | file picker/share-sheet/temp-file/network capability and rendering only |
 | widget/App Group frame | last Rust-emitted widget output | WidgetKit-readable snapshot only |
 | AppIntent/Siri/CarPlay/remote command | typed action/headless invocation result | raw OS command, activation, or error |
 | Live Activity/Handoff/deep link | Rust semantic state and action result | OS payload/display/update mechanics |
 | per-podcast signer and provider keys | named product signer/security decision plus capability result | keychain/file/provider capability only after ADR decision |
 | NIP-F4/Blossom publish status | publish ledger/status output | upload/signing/storage capabilities report raw results |
+| provider/agent jobs | durable Rust job state, typed trigger, injected clock, retry/cancel/progress/cost/result | external provider or media capability executes raw request and returns raw status/result |
 
 Optimistic native mirrors are allowed only as latency/presentation aids. A
 bookmark toggle may animate immediately if Rust remains authoritative and the
@@ -392,12 +394,16 @@ A screen should open what it renders:
 ```text
 room = app.open(RoomTimeline { group_id })
 author = app.open(ProfileRef { pubkey, owner: room })
-playback = app.open(PodcastPlayback { owner: app_lifetime })
 
 render(room.output)
 render(author.output)
-render(playback.output)
+dispatch(PlaybackCommand { command: TogglePlayPause })
+render(last_rust_emitted_playback_frame)
 ```
+
+If Podcast later proves it needs resident playback state under a typed session,
+that can become a selected service-surface proof. It is not the default clean-room
+screen model.
 
 A product-specific read should be one Rust-owned feature definition plus generated
 host calls:
@@ -496,6 +502,13 @@ Today's gallery bridge still teaches old architecture through
 `register_defaults()` / `consume_all_builtin_projections()` and platform-local
 URI/ref adapters; the migration proof is not complete until those are replaced
 or explicitly scoped as tutorial/showcase compatibility.
+Gallery acceptance needs an explicit composition manifest rather than another
+defaults wrapper: installed reusable features, app showcase features, output
+schemas, ref descriptors, signer capabilities, relay/bootstrap policy, consumed
+outputs, generated/contract-tested adapters, and web component/package ownership.
+`nmp_app_gallery_register`, browser `start()`, and Android byte-dispatch action
+sets must be classified as explicit composition, tutorial/test compatibility, or
+migration shims with owner, support window, and deletion/formalization gate.
 
 Highlighter needs NMP features plus Highlighter-owned feature modules for
 capture, share, article reading, curation, room chrome, comments, feedback, and

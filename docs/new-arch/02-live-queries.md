@@ -13,7 +13,6 @@ open(Search { query })
 open(ProfileRef { pubkey, owner })
 open(EventEmbed { event_ref, owner })
 open(LiveCountOutput { source, filter, owner })
-open(PodcastPlayback { owner = AppLifetime })
 open(AppDefinedTimeline { descriptor_id })
 ```
 
@@ -252,6 +251,18 @@ a typed action into the normal runtime, a short-lived headless runtime invocatio
 or a last Rust-emitted mirror frame. If the proposed abstraction needs a
 second lifecycle, output, wake, store, or status model, reject or narrow it.
 
+The default service-like example is therefore not `open(PodcastPlayback {
+owner = AppLifetime })`. It is:
+
+```text
+dispatch(PlaybackCommand { source = AppIntent, command })
+report_capability_result(AudioCommandResult { correlation_id, raw_result })
+render(last_rust_emitted_widget_or_now_playing_frame)
+```
+
+Only after that shape fails should a resident `PodcastPlayback` session become
+part of the accepted model, and then only for the selected Podcast proof row.
+
 Any future headless/service abstraction would need an explicit lifecycle
 contract:
 
@@ -335,7 +346,15 @@ must classify its current path and target contract:
 | Remote/headphone command | native reports raw command metadata; Rust decides play/pause, skip interval, rate ladder, queue mutation, chapter seek, and next/previous policy |
 | Live Activity | ActivityKit receives Rust semantic state and raw executor results; native does not decide current episode or activity existence |
 | Handoff/Spotlight/deep link | OS payload is decoded as capability input and dispatched to Rust; navigation/playback/account truth remains Rust-owned |
-| Provider/STT/TTS/agent job | classified as immediate foreground call, long-running job, capability request/result, provider catalog, agent tool, or publish action, each with correlation id, cancellation, timeout/retry, cold-start, and result semantics |
+| RSS/OPML/import/export | Rust parses/exports, normalizes feed URLs, dedupes stable ids, records row-level errors, conditional-fetch metadata, injected timestamps, and durable subscription results; native only provides file/share/temp/network capability facts |
+| Provider/STT/TTS/agent job | classified as immediate foreground call, long-running job, capability request/result, provider catalog, agent tool, or publish action, each with durable Rust job state, typed trigger source, injected clock, correlation id, cancellation, timeout, retry/backoff, progress, cost/status, restart recovery, and terminal result/error |
+
+Provider polling is an external-protocol exception, not a general NMP scheduling
+model. It is allowed only when the provider lacks push/webhook semantics or the
+provider contract explicitly requires polling. Generic "run due every N seconds"
+correctness loops need a documented actor-timer invariant, injected clock,
+bounded wake behavior, and a deletion/formalization gate; otherwise they are the
+same polling problem under an app-feature name.
 
 ## ObservedProjection
 
@@ -538,8 +557,9 @@ removes feature-local recipes without importing feed policy into the core.
 
 ## Routing
 
-Every session descriptor must declare one routing mode. This is feature/protocol
-policy, not a casual caller option passed by the shell:
+Every acquisition child or source lane must declare a routing mode. A simple
+session usually has one lane; a composite session owns a route-policy tree. This
+is feature/protocol policy, not a casual caller option passed by the shell:
 
 - **planned route:** the normal case. NMP owns relay planning, including NIP-65
   outbox routing for author-scoped reads, mailbox/inbox discovery where relevant,
@@ -570,6 +590,11 @@ not just different URL lists. The planner should expose `unroutable_authors` or
 equivalent diagnostics when it cannot route a public author set, and source
 families that need NIP-51/search/indexer lanes must declare that lane rather than
 smuggling fallback relays through shell options.
+Composite sessions may mix lanes under one public handle: a room view might have
+a NIP-29 host-pinned message lane, planned author/profile ref lanes, local index
+lanes, and diagnostic/status lanes. The descriptor owns the route-policy tree and
+admission/provenance for each child. The shell still sees one handle and one typed
+output contract.
 `LogicalInterest` is semantic acquisition demand, not a demand for one relay
 subscription per author or one product-specific filter recipe. One interest and
 one store query may legitimately cover many authors or kinds when the descriptor
@@ -684,6 +709,11 @@ If web keeps a component registry for copied/rendered NMP components, the copied
 registry needs a source SHA/version baseline and fixture coverage against the Rust
 payload contract. The registry may choose how to mount a component; it must not
 be the source of semantic ref shape, liveness, recursion, or release policy.
+Web must also be classified deliberately. If web is part of the canonical gallery
+component registry, each shipped component needs source/version/SHA ownership and
+Rust-payload fixture gates. If `components-web` is a first-party source package
+instead, it should be described that way and the copied-registry proof should not
+claim web coverage.
 
 Gallery is the first component-ref proof, and it must include every live shell:
 
@@ -710,6 +740,11 @@ unless the package's own wasm build, Worker startup, OPFS lifecycle, generated
 ref adapter, and Playwright path consume the same artifact. Missing wasm or
 Worker support may produce typed diagnostics, but it cannot silently become a
 successful in-memory product runtime for proof purposes.
+The package-local proof shape is explicit: `web/nmp-gallery` must build the wasm
+artifact it serves, build the app, and run the browser e2e path against that same
+artifact with Worker startup and mandatory durable-store preparation in proof
+mode. Typed degraded/no-wasm/no-worker state may be tested, but it is excluded
+from success.
 
 ## Composite Sessions
 

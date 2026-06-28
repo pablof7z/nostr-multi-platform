@@ -133,7 +133,7 @@ Known contradiction ledger for P8:
 |---|---|---|
 | `docs/wiki/guides/reduced-source.md` | treats `ReducedSource`, `open_feed(FeedParams)`, and `FeedParams` as typed app-facing dynamic-feed architecture | either the ADR keeps that public surface, or the page is rewritten around typed sessions with private source reconciliation |
 | `docs/wiki/guides/store-first-interest-registration.md` | says a projection pushes its own interest and frames registration ordering around projection assembly | rewrite around session/output-owned demand: the owner declares demand, installs replay/output, activates live delivery, and tears down as one lifecycle |
-| `docs/wiki/guides/publish-outbox-pipeline.md` and `docs/wiki/guides/nip29-wiring.md` | still record the old `RoutingContext::explicit_targets` versus live `PublishTarget::Explicit` split, even though #1538/#1600 removed the dead routing-context branch | preserve the route-reason/status lessons, but rewrite around the surviving `PublishTarget::Explicit` path; do not reintroduce a broad routing context just to match stale prose |
+| `docs/wiki/guides/publish-outbox-pipeline.md` and `docs/wiki/guides/nip29-wiring.md` | still record the old `RoutingContext::explicit_targets` versus live `PublishTarget::Explicit` split, and older route-display strings such as `relay_reason`, `format_relay_reason()`, or queue titles can look like durable model facts | preserve the route-reason/status lessons, but rewrite around structured route provenance on the surviving `PublishTarget::Explicit` path; do not reintroduce a broad routing context or durable display-string model just to match stale prose |
 | `docs/wiki/guides/nmp-gallery-app.md` | still records gallery registration through `register_defaults()` and snapshot/readiness probes | gallery must move to explicit composition or be labeled tutorial/showcase compatibility with owner and removal gate |
 | `docs/wiki/guides/operator-data-leaf-apps-only.md` | reinforces leaf-app ownership for relays, seed follows, NIP-46 permissions, and signer labels | this packet must preserve that boundary; no defaults rewrite may reintroduce operator policy into NMP crates |
 | `docs/wiki/guides/signer-broker-handshake-loop.md` and NIP-46 research pages | protocol state must not own transport/process loops; reconnect/cancel must be event-driven | signer/session phases must prove transport-agnostic protocol core plus runtime-owned execution, not a second signer runtime framework |
@@ -148,7 +148,7 @@ Known contradiction ledger for P8:
 | `docs/decisions/README.md` and ADR set as a whole | currently indexes many accepted records, including records that may no longer be current after the redesign | #2320 should classify each ADR as folded into redesign, folded into another durable owner, still-current standalone, or deleted/retired |
 | `docs/product-spec/api-surface.md`, `docs/product-spec/cli-toolchain-phasing.md`, `docs/ffi-surface.md`, `docs/wasm-surface.md`, and `docs/recipes/app-shapes.md` | still expose old public read/write/init surfaces as normal product API | rewrite around typed sessions/actions, explicit feature composition, and scoped compatibility doors |
 | `docs/retired/removed-api-surface.md` | still describes `register_event_observer` and `register_defaults` as current seams/starters despite being retired guidance | correct or retire the breadcrumb so retired notes do not preserve stale current guidance |
-| wiki noun/topic pages for `nmp-defaults`, `ObservedProjection`, `read-surface`, `write-register-surface`, `nmp-wasm`, and `nmp-browser-runtime` | generated pages may preserve stale surface names as facts | regenerate, correct in place, or retire after durable owners are updated |
+| wiki noun/topic pages for `nmp-defaults`, `ObservedProjection`, `read-surface`, `write-register-surface`, `nmp-wasm`, and `nmp-browser-runtime`, plus `wiki/wiki` and `wiki/raw/repos` snapshots | generated pages and raw repo snapshots may preserve stale surface names as facts; raw snapshots are historical evidence, not current authority | regenerate, correct in place, or retire after durable owners are updated; classify generated/raw wiki material under #2320 as evidence only |
 
 ## Concept Status
 
@@ -159,17 +159,28 @@ classified by target disposition:
 Survivor vocabulary budget:
 
 ```text
-public: feature composition, typed sessions, typed actions/builders,
-        capability results, typed outputs/status
-private or deleted: everything else unless a named invariant, live owner,
-        and kill criterion prove it must survive
+clean-room app API:
+  install features, open typed feature/ref helpers, dispatch typed actions or
+  builders, render typed outputs/status
+
+app-Rust author API:
+  define typed session descriptors, output schemas, reducers, action/builders,
+  capability contracts, and app-owned feature installers
+
+private or deleted:
+  everything else unless a named invariant, live owner, and kill criterion prove
+  it must survive
 ```
 
-The first executable proof may introduce at most one new public noun, and only
-if it deletes or privatizes old public nouns in the same slice. A clean-room app
+The first executable proof may introduce at most one new clean-room framework
+noun, and only if it deletes or privatizes old public nouns in the same slice.
+Per-feature helper names are allowed when generated from an app-Rust contract;
+they do not justify new framework vocabulary by themselves. A clean-room app
 author must not need to learn `ObservedProjection`, `ReducedSource`/source tiers,
-route-provenance carrier internals, headless/capability-flow mechanics, feed-controller
-registries, or runtime lifecycle FFI to build a normal feature.
+route-provenance carrier internals, headless/capability-flow mechanics,
+feed-controller registries, or runtime lifecycle FFI to build a normal feature.
+An app-Rust author may learn descriptor/output/action concepts, but those concepts
+must still delete old lifecycle recipes rather than sit beside them.
 
 | Concept | Status | Rule |
 |---|---|---|
@@ -521,6 +532,12 @@ concept, the default answer is to narrow the scope or delete an old surface, not
 to invent another framework layer. If a downstream app can satisfy a row only by
 keeping native-owned Nostr policy, the design is wrong for that area.
 
+The execution counterpart to this map lives in
+[Internal Machinery](04-internal-machinery.md#full-scope-execution-map). It does
+not enumerate every migration PR; it defines the track owner, first move,
+completion evidence, and failure condition for each area so later work cannot
+claim progress while skipping a corner.
+
 ## ADR Dossier
 
 Before the ADR can say "this is the right North Star," there must be a concrete
@@ -644,6 +661,11 @@ episode/wiki decisions:
   registered. The session or feature output must declare its own demand, replay
   with the sink installed, then activate future delivery. Otherwise
   read-your-writes may work while cold-start hydration still fails.
+- **Input classifier precedence:** arbitrary text first rejects secrets, then
+  recognizes NIP-19/NIP-21 refs, relay URLs, pure NIP-05 parse, registered app
+  recognizers/scopes, and finally free-text search. Cache-only behavior is an
+  implicit execution policy for classified targets, not a separate target kind
+  the shell can choose.
 - **Base query primitive vs feed policy:** multi-author dynamic query/routing is
   substrate/session capability. Follow-feed ranking, recency, viewport windows,
   and fallback behavior are feature policy. A bad feed implementation must not
@@ -725,14 +747,13 @@ install app-owned playback
 
 open RoomChat(group)
 open NostrAvatar(pubkey)
-open PodcastPlayback(app_lifetime)
 
 render room messages
 render profile row
-render playback state
 
 dispatch SendGroupMessage(...)
 dispatch TogglePlayback(...)
+render last Rust-emitted playback frame
 classify "npub1..."
 ```
 
@@ -978,7 +999,9 @@ This packet is ready to turn into durable ADR and architecture edits only after
 the North Star is falsifiable and the first rolling-horizon slices are concrete:
 
 - the public vocabulary is reduced to explicit feature composition, typed
-  sessions, typed actions/builders, capability results, and typed outputs/status;
+  feature/ref open helpers, typed actions/builders, capability results, and typed
+  outputs/status, with a separate app-Rust authoring layer for descriptors,
+  output schemas, reducers, and capability contracts;
 - `LiveQuery`, `ObservedProjection`, `ReducedSource`, route provenance, generated
   adapters, and wake indexes are classified as public, private, migration-scoped,
   or rejected;
@@ -994,6 +1017,9 @@ the North Star is falsifiable and the first rolling-horizon slices are concrete:
   splitting into native-owned routes or publish JSON paths;
 - signer status is a Rust-owned output contract across the supported signer
   subset for the first write proof, not inferred from native callbacks;
+- if write flow is included in the accepted ADR, the P6 carrier plan and
+  `publish_route_provenance_contract` are part of ADR acceptance; otherwise writes
+  are explicitly out of scope for the accepted ADR and cannot be cited as solved;
 - the typed input classifier remains the only production route from arbitrary
   user text into refs, relays, app commands, or search;
 - the publish path preserves offline-first local intent/status before signing,
@@ -1001,15 +1027,18 @@ the North Star is falsifiable and the first rolling-horizon slices are concrete:
 - schema, binding, render-cache, and storage migrations have one writer,
   fixture/codegen gates, compatibility windows, fail-closed behavior, and
   deletion/support-window triggers for old paths;
-- browser runtime/storage has at least a direction gate for fail-closed
-  wasm/Worker/storage behavior before browser proof is counted; full browser
-  conformance can remain post-ADR;
+- browser runtime/storage chooses an ADR proof tier before browser proof is
+  counted: storage-only Worker/OPFS conformance, full gallery web proof, or
+  browser out of scope. Degraded/no-worker/no-wasm mode is never product proof;
 - Highlighter, Podcast Player, and `nmp-gallery` have classified acceptance
   matrices, with the first one to five rows selected for actual migration or
   decision work;
 - the first executable ratchets are identified, with baseline counts and owners;
 - stale docs and examples have a retirement path instead of becoming a competing
-  source of truth.
+  source of truth;
+- the ADR acceptance PR at least marks known-stale durable docs as redirected,
+  retired, or pending #2320 cleanup, so old public architecture is not left as
+  equal current guidance while the deeper P8 rewrite waits.
 
 ADR readiness is not the same as completing every downstream migration. It means
 the next slices are specific enough to execute and the remaining matrices are
@@ -1041,6 +1070,9 @@ tests, and downstream migrations.
 - Route provenance is required. Exact relay lists alone cannot represent manual
   override, host pin, verified private inbox, automatic route, and imported event
   semantics.
+- Headless/service-like product surfaces use typed actions, short-lived headless
+  invocation, capability results, or last Rust-emitted mirror frames first.
+  Resident service sessions are a proof result, not initial public vocabulary.
 - App-specific Rust crates own product domains; NMP crates own reusable Nostr
   mechanisms. Native/web shells render and execute capabilities only.
 - Schema, binding, runtime storage, and render-cache migrations are architecture
