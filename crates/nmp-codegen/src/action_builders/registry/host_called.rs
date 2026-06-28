@@ -227,3 +227,110 @@ pub(super) const TOPIC_ARTICLES: ActionBuilder = ActionBuilder {
     ],
     doc: "Claim or release a NIP-23 topic-articles subscription.",
 };
+
+// ── NIP-29 group actions ──────────────────────────────────────────────────────
+
+pub(super) const DISCOVER_GROUPS: ActionBuilder = ActionBuilder {
+    namespace: "nmp.nip29.discover",
+    method: "discoverGroups",
+    fields: &[PayloadField {
+        name: "relayUrl",
+        kind: FieldKind::Str,
+        optional: false,
+    }],
+    doc: "Discover NIP-29 groups hosted on a relay.",
+};
+
+pub(super) const PUBLISH_GROUP_EVENT: ActionBuilder = ActionBuilder {
+    namespace: "nmp.nip29.publish_group_event",
+    method: "publishGroupEvent",
+    fields: &[
+        PayloadField {
+            name: "group",
+            kind: FieldKind::GroupRef,
+            optional: false,
+        },
+        PayloadField {
+            name: "kind",
+            kind: FieldKind::Uint,
+            optional: false,
+        },
+        PayloadField {
+            name: "content",
+            kind: FieldKind::Str,
+            optional: true,
+        },
+        PayloadField {
+            name: "tags",
+            kind: FieldKind::StringTagVec,
+            optional: true,
+        },
+    ],
+    doc: "Publish an event to a NIP-29 group (any kind).",
+};
+
+pub(super) const JOIN_GROUP: ActionBuilder = ActionBuilder {
+    namespace: "nmp.nip29.join",
+    method: "joinGroup",
+    fields: &[
+        PayloadField {
+            name: "group",
+            kind: FieldKind::GroupRef,
+            optional: false,
+        },
+        PayloadField {
+            name: "inviteCode",
+            kind: FieldKind::Str,
+            optional: true,
+        },
+        PayloadField {
+            name: "reason",
+            kind: FieldKind::Str,
+            optional: true,
+        },
+    ],
+    doc: "Request membership in a NIP-29 group.",
+};
+
+pub(super) const CREATE_PUBLIC_GROUP: ActionBuilder = ActionBuilder {
+    namespace: "nmp.nip29.create_public_group",
+    method: "createPublicGroup",
+    fields: &[
+        PayloadField {
+            name: "group",
+            kind: FieldKind::GroupRef,
+            optional: false,
+        },
+        PayloadField {
+            name: "name",
+            kind: FieldKind::Str,
+            optional: false,
+        },
+        PayloadField {
+            name: "about",
+            kind: FieldKind::Str,
+            optional: true,
+        },
+        PayloadField {
+            name: "picture",
+            kind: FieldKind::Str,
+            optional: true,
+        },
+        PayloadField {
+            name: "visibility",
+            kind: FieldKind::Sbyte,
+            optional: false,
+        },
+        PayloadField {
+            name: "access",
+            kind: FieldKind::Sbyte,
+            optional: false,
+        },
+        PayloadField {
+            name: "parent",
+            kind: FieldKind::Str,
+            optional: true,
+        },
+    ],
+    doc: "Create a new public NIP-29 group.",
+};

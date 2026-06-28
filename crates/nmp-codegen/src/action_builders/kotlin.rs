@@ -24,10 +24,15 @@
 //! fixed template per builder (same contract as the Swift twin).
 
 use crate::action_builders::registry::{
-    ActionBuilder, FieldKind, PayloadField, ACTION_BUILDERS, DISPATCH_ENVELOPE_FILE_IDENTIFIER,
+    ActionBuilder, FieldKind, ACTION_BUILDERS, DISPATCH_ENVELOPE_FILE_IDENTIFIER,
     DISPATCH_ENVELOPE_SCHEMA_VERSION,
 };
 use crate::action_contract::contract_for;
+// NIP-51 bookmark helpers: render_bookmark_update, is_bookmark_builder,
+// is_bookmark_set_builder, kotlin_param_type. Module declared in parent
+// `action_builders.rs` (sibling module) for 500-LOC cap compliance.
+use super::kotlin_nip51::{is_bookmark_builder, is_bookmark_set_builder, kotlin_param_type,
+    render_bookmark_update};
 
 const HEADER: &str = "\
 // ─────────────────────────────────────────────────────────────────────────────
@@ -284,10 +289,45 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
                     n = field.name
                 ));
             }
+            FieldKind::GroupRef => {
+                out.push_str(&format!(
+                    "        val {n}HostRelayUrlOffset = fbb.createString({n}.first)\n\
+                     \x20       val {n}LocalIdOffset = fbb.createString({n}.second)\n\
+                     \x20       fbb.startTable(2)\n\
+                     \x20       fbb.addOffset(0, {n}HostRelayUrlOffset, 0) // GroupRef slot 0: host_relay_url\n\
+                     \x20       fbb.addOffset(1, {n}LocalIdOffset, 0) // GroupRef slot 1: local_id\n\
+                     \x20       val {n}Offset = fbb.endTable()\n",
+                    n = field.name
+                ));
+            }
+            FieldKind::StringTagVec => {
+                out.push_str(&format!(
+                    "        val {n}Offset = run {{\n\
+                     \x20           val tagRows = {n}\n\
+                     \x20           if (tagRows == null || tagRows.isEmpty()) 0 else {{\n\
+                     \x20               val tagOffsets = IntArray(tagRows.size) {{ i ->\n\
+                     \x20                   val row = tagRows[i]\n\
+                     \x20                   val valOffsets = IntArray(row.size) {{ j -> fbb.createString(row[j]) }}\n\
+                     \x20                   fbb.startVector(4, valOffsets.size, 4)\n\
+                     \x20                   for (k in valOffsets.size - 1 downTo 0) fbb.addOffset(valOffsets[k])\n\
+                     \x20                   val valsVec = fbb.endVector()\n\
+                     \x20                   fbb.startTable(1)\n\
+                     \x20                   fbb.addOffset(0, valsVec, 0) // StringTag slot 0: values\n\
+                     \x20                   fbb.endTable()\n\
+                     \x20               }}\n\
+                     \x20               fbb.startVector(4, tagOffsets.size, 4)\n\
+                     \x20               for (i in tagOffsets.size - 1 downTo 0) fbb.addOffset(tagOffsets[i])\n\
+                     \x20               fbb.endVector()\n\
+                     \x20           }}\n\
+                     \x20       }}\n",
+                    n = field.name
+                ));
+            }
             FieldKind::Uint
             | FieldKind::Ulong
             | FieldKind::UlongWithPresenceFlag { .. }
-            | FieldKind::Ubyte => {}
+            | FieldKind::Ubyte
+            | FieldKind::Sbyte => {}
         }
     }
     // Table: 1 (schema_version slot) + sum of each field's slot_count.
@@ -354,6 +394,25 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
                     n = field.name
                 ));
             }
+            FieldKind::Sbyte => {
+                out.push_str(&format!(
+                    "        fbb.addByte({slot}, {n}, 0) // slot {slot}: {n}\n",
+                    n = field.name
+                ));
+            }
+            FieldKind::GroupRef | FieldKind::StringTagVec => {
+                if field.optional {
+                    out.push_str(&format!(
+                        "        if ({n}Offset != 0) fbb.addOffset({slot}, {n}Offset, 0) // slot {slot}: {n}\n",
+                        n = field.name
+                    ));
+                } else {
+                    out.push_str(&format!(
+                        "        fbb.addOffset({slot}, {n}Offset, 0) // slot {slot}: {n}\n",
+                        n = field.name
+                    ));
+                }
+            }
         }
         slot += field.slot_count();
     }
@@ -374,97 +433,6 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
     out.push_str("    }\n");
 }
 
-fn is_bookmark_builder(builder: &ActionBuilder) -> bool {
-    matches!(
-        builder.namespace,
-        "nmp.nip51.add_bookmark" | "nmp.nip51.remove_bookmark"
-    )
-}
-
-fn is_bookmark_set_builder(builder: &ActionBuilder) -> bool {
-    matches!(
-        builder.namespace,
-        "nmp.nip51.add_bookmark_set_item" | "nmp.nip51.remove_bookmark_set_item"
-    )
-}
-
-fn render_bookmark_update(builder: &ActionBuilder, out: &mut String) {
-    let contract = contract_for(builder.namespace);
-    out.push_str(&format!("    /// {}\n", builder.doc));
-    out.push_str(&format!(
-        "    /// Builds the `{}` `DispatchEnvelope` bytes for the byte doorway.\n",
-        builder.namespace
-    ));
-    out.push_str(&format!(
-        "    fun {}(\n\
-         \x20       correlationId: String,\n\
-         \x20       accountPubkey: String,\n\
-         \x20       itemKind: Int,\n\
-         \x20       value: String,\n\
-         \x20       relay: String?,\n\
-         \x20   ): ByteArray {{\n",
-        builder.method
-    ));
-    out.push_str("        val fbb = FlatBufferBuilder()\n");
-    out.push_str("        val accountPubkeyOffset = fbb.createString(accountPubkey)\n");
-    out.push_str("        val valueOffset = fbb.createString(value)\n");
-    out.push_str("        val relayOffset = relay?.let { fbb.createString(it) } ?: 0\n");
-    out.push_str("        fbb.startTable(3)\n");
-    out.push_str("        fbb.addByte(0, itemKind.toByte(), 0) // slot 0: kind\n");
-    out.push_str("        fbb.addOffset(1, valueOffset, 0) // slot 1: value\n");
-    out.push_str(
-        "        if (relayOffset != 0) fbb.addOffset(2, relayOffset, 0) // slot 2: relay\n",
-    );
-    out.push_str("        val itemRoot = fbb.endTable()\n");
-    out.push_str("        fbb.startTable(3)\n");
-    out.push_str(&format!(
-        "        fbb.addInt(0, {}, 0) // slot 0: schema_version\n",
-        contract.schema_version
-    ));
-    out.push_str("        fbb.addOffset(1, accountPubkeyOffset, 0) // slot 1: account_pubkey\n");
-    out.push_str("        fbb.addOffset(2, itemRoot, 0) // slot 2: item\n");
-    out.push_str("        val payloadRoot = fbb.endTable()\n");
-    out.push_str(&format!(
-        "        fbb.finish(payloadRoot, {:?})\n",
-        contract.file_identifier
-    ));
-    out.push_str("        val payload = fbb.sizedByteArray()\n");
-    out.push_str(&format!(
-        "        return encodeDispatchEnvelope(\n\
-         \x20           correlationId = correlationId,\n\
-         \x20           actionNamespace = {:?},\n\
-         \x20           payload = payload,\n\
-         \x20       )\n",
-        builder.namespace
-    ));
-    out.push_str("    }\n");
-}
-
-/// Kotlin parameter type for a field. `uint` → `Int` (FlatBuffers Kotlin
-/// carries u32 as a signed `Int`); `ulong` → `Long` (u64 carried as signed
-/// `Long` at the byte level).
-fn kotlin_param_type(field: &PayloadField) -> String {
-    match (field.kind, field.optional) {
-        (FieldKind::Str, false) => "String".to_string(),
-        (FieldKind::Str, true) => "String?".to_string(),
-        (FieldKind::Uint, false) => "Int".to_string(),
-        (FieldKind::Uint, true) => "Int?".to_string(),
-        (FieldKind::StrVec, false) => "List<String>".to_string(),
-        (FieldKind::StrVec, true) => "List<String>?".to_string(),
-        (FieldKind::UintVec, false) => "List<Int>".to_string(),
-        (FieldKind::UintVec, true) => "List<Int>?".to_string(),
-        (FieldKind::Ulong, false) => "Long".to_string(),
-        (FieldKind::Ulong, true) => "Long?".to_string(),
-        // UlongWithPresenceFlag is always presented as optional — the flag
-        // encodes Some vs None so the parameter is always `T?`.
-        (FieldKind::UlongWithPresenceFlag { .. }, _) => "Long?".to_string(),
-        // RelayListEntry vector: list of (url, role) pairs.
-        (FieldKind::RelayListEntryVec, _) => "List<Pair<String, String>>".to_string(),
-        // Ubyte scalar (u8) — used for FlatBuffers ubyte enum discriminants.
-        (FieldKind::Ubyte, false) => "Byte".to_string(),
-        (FieldKind::Ubyte, true) => "Byte?".to_string(),
-    }
-}
 
 /// Render the full file for the default registry.
 #[must_use]

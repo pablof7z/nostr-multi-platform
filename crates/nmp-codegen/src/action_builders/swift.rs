@@ -24,10 +24,15 @@
 //! relies on (exactly like [`crate::swift`] / [`crate::swift_typed_decoders`]).
 
 use crate::action_builders::registry::{
-    ActionBuilder, FieldKind, PayloadField, ACTION_BUILDERS, DISPATCH_ENVELOPE_FILE_IDENTIFIER,
+    ActionBuilder, FieldKind, ACTION_BUILDERS, DISPATCH_ENVELOPE_FILE_IDENTIFIER,
     DISPATCH_ENVELOPE_SCHEMA_VERSION,
 };
 use crate::action_contract::contract_for;
+// NIP-51 bookmark helpers: render_bookmark_update, is_bookmark_builder,
+// is_bookmark_set_builder, swift_param_type. Module declared in parent
+// `action_builders.rs` (sibling module) for 500-LOC cap compliance.
+use super::swift_nip51::{is_bookmark_builder, is_bookmark_set_builder, render_bookmark_update,
+    swift_param_type};
 
 const HEADER: &str = "\
 // ─────────────────────────────────────────────────────────────────────────────
@@ -266,10 +271,43 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
                     n = field.name
                 ));
             }
-            FieldKind::Uint
+        FieldKind::GroupRef => {
+            // Build the GroupRef nested table (two required string slots) before
+            // the parent table — FlatBuffers requires nested objects finished first.
+            out.push_str(&format!(
+                "        let {n}HostRelayUrlOffset = fbb.create(string: {n}.hostRelayUrl)\n\
+                 \x20       let {n}LocalIdOffset = fbb.create(string: {n}.localId)\n\
+                 \x20       let {n}TableStart = fbb.startTable(with: 2)\n\
+                 \x20       fbb.add(offset: {n}HostRelayUrlOffset, at: 4) // GroupRef slot 0: host_relay_url\n\
+                 \x20       fbb.add(offset: {n}LocalIdOffset, at: 6)       // GroupRef slot 1: local_id\n\
+                 \x20       let {n}Offset = Offset(offset: fbb.endTable(at: {n}TableStart))\n",
+                n = field.name
+            ));
+        }
+        FieldKind::StringTagVec => {
+            // Build a vector of StringTag tables (each wrapping a [string] values
+            // vector). Always optional — nil/absent → Offset() → slot skipped.
+            out.push_str(&format!(
+                "        let {n}Offset: Offset = {{\n\
+                 \x20           guard let tagRows = {n}, !tagRows.isEmpty else {{ return Offset() }}\n\
+                 \x20           var tagOffsets: [Offset] = []\n\
+                 \x20           for row in tagRows {{\n\
+                 \x20               let valOffsets = row.map {{ fbb.create(string: $0) }}\n\
+                 \x20               let valsVec = fbb.createVector(ofOffsets: valOffsets)\n\
+                 \x20               let tagStart = fbb.startTable(with: 1)\n\
+                 \x20               fbb.add(offset: valsVec, at: 4) // StringTag slot 0: values\n\
+                 \x20               tagOffsets.append(Offset(offset: fbb.endTable(at: tagStart)))\n\
+                 \x20           }}\n\
+                 \x20           return fbb.createVector(ofOffsets: tagOffsets)\n\
+                 \x20       }}()\n",
+                n = field.name
+            ));
+        }
+        FieldKind::Uint
             | FieldKind::Ulong
             | FieldKind::UlongWithPresenceFlag { .. }
-            | FieldKind::Ubyte => {}
+            | FieldKind::Ubyte
+            | FieldKind::Sbyte => {}
         }
     }
     // Table: 1 (schema_version slot) + sum of each field's slot_count.
@@ -347,6 +385,28 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
                     vt = vtoffset
                 ));
             }
+            FieldKind::Sbyte => {
+                out.push_str(&format!(
+                    "        fbb.add(element: {n}, def: Int8(0), at: {vt}) // slot {slot}: {n}\n",
+                    n = field.name,
+                    vt = vtoffset
+                ));
+            }
+            FieldKind::GroupRef | FieldKind::StringTagVec => {
+                if field.optional {
+                    out.push_str(&format!(
+                        "        if {n}Offset.o != 0 {{ fbb.add(offset: {n}Offset, at: {vt}) }} // slot {slot}: {n}\n",
+                        n = field.name,
+                        vt = vtoffset
+                    ));
+                } else {
+                    out.push_str(&format!(
+                        "        fbb.add(offset: {n}Offset, at: {vt}) // slot {slot}: {n}\n",
+                        n = field.name,
+                        vt = vtoffset
+                    ));
+                }
+            }
         }
         slot += field.slot_count();
     }
@@ -368,97 +428,6 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
     out.push_str("    }\n");
 }
 
-fn is_bookmark_builder(builder: &ActionBuilder) -> bool {
-    matches!(
-        builder.namespace,
-        "nmp.nip51.add_bookmark" | "nmp.nip51.remove_bookmark"
-    )
-}
-
-fn is_bookmark_set_builder(builder: &ActionBuilder) -> bool {
-    matches!(
-        builder.namespace,
-        "nmp.nip51.add_bookmark_set_item" | "nmp.nip51.remove_bookmark_set_item"
-    )
-}
-
-fn render_bookmark_update(builder: &ActionBuilder, out: &mut String) {
-    let contract = contract_for(builder.namespace);
-    let method = builder.method;
-    out.push_str(&format!("    /// {}\n", builder.doc));
-    out.push_str(&format!(
-        "    /// Builds the `{}` `DispatchEnvelope` bytes for the byte doorway.\n",
-        builder.namespace
-    ));
-    out.push_str(&format!(
-        "    public static func {method}(\n\
-         \x20       correlationId: String,\n\
-         \x20       accountPubkey: String,\n\
-         \x20       itemKind: UInt8,\n\
-         \x20       value: String,\n\
-         \x20       relay: String?\n\
-         \x20   ) -> [UInt8] {{\n"
-    ));
-    out.push_str("        var fbb = FlatBufferBuilder()\n");
-    out.push_str("        let accountPubkeyOffset = fbb.create(string: accountPubkey)\n");
-    out.push_str("        let valueOffset = fbb.create(string: value)\n");
-    out.push_str(
-        "        let relayOffset: Offset = relay.map { fbb.create(string: $0) } ?? Offset()\n",
-    );
-    out.push_str("        let itemStart = fbb.startTable(with: 3)\n");
-    out.push_str("        fbb.add(element: itemKind, def: UInt8(0), at: 4) // slot 0: kind\n");
-    out.push_str("        fbb.add(offset: valueOffset, at: 6) // slot 1: value\n");
-    out.push_str(
-        "        if relayOffset.o != 0 { fbb.add(offset: relayOffset, at: 8) } // slot 2: relay\n",
-    );
-    out.push_str("        let itemRoot = Offset(offset: fbb.endTable(at: itemStart))\n");
-    out.push_str("        let payloadStart = fbb.startTable(with: 3)\n");
-    out.push_str(&format!(
-        "        fbb.add(element: UInt32({}), def: UInt32(0), at: 4) // slot 0: schema_version\n",
-        contract.schema_version
-    ));
-    out.push_str("        fbb.add(offset: accountPubkeyOffset, at: 6) // slot 1: account_pubkey\n");
-    out.push_str("        fbb.add(offset: itemRoot, at: 8) // slot 2: item\n");
-    out.push_str("        let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))\n");
-    out.push_str(&format!(
-        "        fbb.finish(offset: payloadRoot, fileId: {:?})\n",
-        contract.file_identifier
-    ));
-    out.push_str("        let payload = fbb.sizedByteArray\n");
-    out.push_str(&format!(
-        "        return encodeDispatchEnvelope(\n\
-         \x20           correlationId: correlationId,\n\
-         \x20           actionNamespace: {:?},\n\
-         \x20           payload: payload\n\
-         \x20       )\n",
-        builder.namespace
-    ));
-    out.push_str("    }\n");
-}
-
-/// Swift parameter type for a field.
-fn swift_param_type(field: &PayloadField) -> String {
-    match (field.kind, field.optional) {
-        (FieldKind::Str, false) => "String".to_string(),
-        (FieldKind::Str, true) => "String?".to_string(),
-        (FieldKind::Uint, false) => "UInt32".to_string(),
-        (FieldKind::Uint, true) => "UInt32?".to_string(),
-        (FieldKind::StrVec, false) => "[String]".to_string(),
-        (FieldKind::StrVec, true) => "[String]?".to_string(),
-        (FieldKind::UintVec, false) => "[UInt32]".to_string(),
-        (FieldKind::UintVec, true) => "[UInt32]?".to_string(),
-        (FieldKind::Ulong, false) => "UInt64".to_string(),
-        (FieldKind::Ulong, true) => "UInt64?".to_string(),
-        // UlongWithPresenceFlag is always presented as optional — the flag
-        // encodes Some vs None so the parameter is always `T?`.
-        (FieldKind::UlongWithPresenceFlag { .. }, _) => "UInt64?".to_string(),
-        // RelayListEntry vector: named-tuple array (url + role string).
-        (FieldKind::RelayListEntryVec, _) => "[(url: String, role: String)]".to_string(),
-        // Ubyte scalar (u8) — used for FlatBuffers ubyte enum discriminants.
-        (FieldKind::Ubyte, false) => "UInt8".to_string(),
-        (FieldKind::Ubyte, true) => "UInt8?".to_string(),
-    }
-}
 
 /// Render the full file for the default registry.
 #[must_use]

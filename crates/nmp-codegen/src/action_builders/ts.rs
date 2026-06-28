@@ -34,8 +34,15 @@
 //! fixed template per builder. That stability is what the `--check` drift gate
 //! relies on (exactly like [`crate::action_builders::kotlin`]).
 
-use crate::action_builders::registry::{ActionBuilder, FieldKind, PayloadField, ACTION_BUILDERS};
+use crate::action_builders::registry::{ActionBuilder, FieldKind, ACTION_BUILDERS};
 use crate::action_contract::contract_for;
+// NIP-51 bookmark helpers: render_bookmark_update, render_bookmark_set_update,
+// is_bookmark_builder, is_bookmark_set_builder, ts_param_type. Module declared
+// in parent `action_builders.rs` (sibling module) for 500-LOC cap compliance.
+use super::ts_nip51::{
+    is_bookmark_builder, is_bookmark_set_builder, render_bookmark_set_update,
+    render_bookmark_update, ts_param_type,
+};
 
 const HEADER: &str = "\
 // ─────────────────────────────────────────────────────────────────────────────
@@ -226,10 +233,42 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
                     n = field.name
                 ));
             }
+            FieldKind::GroupRef => {
+                out.push_str(&format!(
+                    "    const {n}HostRelayUrlOffset = fbb.createString({n}.hostRelayUrl);\n\
+                     \x20   const {n}LocalIdOffset = fbb.createString({n}.localId);\n\
+                     \x20   fbb.startObject(2);\n\
+                     \x20   fbb.addFieldOffset(0, {n}HostRelayUrlOffset, 0); // GroupRef slot 0: host_relay_url\n\
+                     \x20   fbb.addFieldOffset(1, {n}LocalIdOffset, 0); // GroupRef slot 1: local_id\n\
+                     \x20   const {n}Offset = fbb.endObject();\n",
+                    n = field.name
+                ));
+            }
+            FieldKind::StringTagVec => {
+                out.push_str(&format!(
+                    "    const {n}Offset = (() => {{\n\
+                     \x20     if ({n} == null || {n}.length === 0) return 0;\n\
+                     \x20     const tagOffsets = {n}.map((row) => {{\n\
+                     \x20       const valOffsets = row.map((s) => fbb.createString(s));\n\
+                     \x20       fbb.startVector(4, valOffsets.length, 4);\n\
+                     \x20       for (let i = valOffsets.length - 1; i >= 0; i--) fbb.addOffset(valOffsets[i]!);\n\
+                     \x20       const valsVec = fbb.endVector();\n\
+                     \x20       fbb.startObject(1);\n\
+                     \x20       fbb.addFieldOffset(0, valsVec, 0); // StringTag slot 0: values\n\
+                     \x20       return fbb.endObject();\n\
+                     \x20     }});\n\
+                     \x20     fbb.startVector(4, tagOffsets.length, 4);\n\
+                     \x20     for (let i = tagOffsets.length - 1; i >= 0; i--) fbb.addOffset(tagOffsets[i]!);\n\
+                     \x20     return fbb.endVector();\n\
+                     \x20   }})();\n",
+                    n = field.name
+                ));
+            }
             FieldKind::Uint
             | FieldKind::Ulong
             | FieldKind::UlongWithPresenceFlag { .. }
-            | FieldKind::Ubyte => {}
+            | FieldKind::Ubyte
+            | FieldKind::Sbyte => {}
         }
     }
     // Table: 1 (schema_version slot) + sum of each field's slot_count.
@@ -296,6 +335,25 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
                     n = field.name
                 ));
             }
+            FieldKind::Sbyte => {
+                out.push_str(&format!(
+                    "    fbb.addFieldInt8({slot}, {n}, 0); // slot {slot}: {n}\n",
+                    n = field.name
+                ));
+            }
+            FieldKind::GroupRef | FieldKind::StringTagVec => {
+                if field.optional {
+                    out.push_str(&format!(
+                        "    if ({n}Offset !== 0) fbb.addFieldOffset({slot}, {n}Offset, 0); // slot {slot}: {n}\n",
+                        n = field.name
+                    ));
+                } else {
+                    out.push_str(&format!(
+                        "    fbb.addFieldOffset({slot}, {n}Offset, 0); // slot {slot}: {n}\n",
+                        n = field.name
+                    ));
+                }
+            }
         }
         slot += field.slot_count();
     }
@@ -312,138 +370,6 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
     out.push_str("  },\n\n");
 }
 
-fn is_bookmark_builder(builder: &ActionBuilder) -> bool {
-    matches!(
-        builder.namespace,
-        "nmp.nip51.add_bookmark" | "nmp.nip51.remove_bookmark"
-    )
-}
-
-fn is_bookmark_set_builder(builder: &ActionBuilder) -> bool {
-    matches!(
-        builder.namespace,
-        "nmp.nip51.add_bookmark_set_item" | "nmp.nip51.remove_bookmark_set_item"
-    )
-}
-
-fn render_bookmark_update(builder: &ActionBuilder, out: &mut String) {
-    let contract = contract_for(builder.namespace);
-    out.push_str(&format!("  /** {} */\n", builder.doc));
-    out.push_str(&format!(
-        "  {}(\n\
-         \x20   correlationId: string,\n\
-         \x20   accountPubkey: string,\n\
-         \x20   itemKind: number,\n\
-         \x20   value: string,\n\
-         \x20   relay: string | null,\n\
-         \x20 ): Uint8Array {{\n",
-        builder.method
-    ));
-    out.push_str("    const fbb = new flatbuffers.Builder(64);\n");
-    out.push_str("    const accountPubkeyOffset = fbb.createString(accountPubkey);\n");
-    out.push_str("    const valueOffset = fbb.createString(value);\n");
-    out.push_str("    const relayOffset = relay === null ? 0 : fbb.createString(relay);\n");
-    out.push_str("    fbb.startObject(3);\n");
-    out.push_str("    fbb.addFieldInt8(0, itemKind, 0); // slot 0: kind\n");
-    out.push_str("    fbb.addFieldOffset(1, valueOffset, 0); // slot 1: value\n");
-    out.push_str(
-        "    if (relayOffset !== 0) fbb.addFieldOffset(2, relayOffset, 0); // slot 2: relay\n",
-    );
-    out.push_str("    const itemRoot = fbb.endObject();\n");
-    out.push_str("    fbb.startObject(3);\n");
-    out.push_str(&format!(
-        "    fbb.addFieldInt32(0, {}, 0); // slot 0: schema_version\n",
-        contract.schema_version
-    ));
-    out.push_str("    fbb.addFieldOffset(1, accountPubkeyOffset, 0); // slot 1: account_pubkey\n");
-    out.push_str("    fbb.addFieldOffset(2, itemRoot, 0); // slot 2: item\n");
-    out.push_str("    const payloadRoot = fbb.endObject();\n");
-    out.push_str(&format!(
-        "    fbb.finish(payloadRoot, {:?});\n",
-        contract.file_identifier
-    ));
-    out.push_str("    const payload = fbb.asUint8Array();\n");
-    out.push_str(&format!(
-        "    return encodeDispatchEnvelope(correlationId, {:?}, payload);\n",
-        builder.namespace
-    ));
-    out.push_str("  },\n\n");
-}
-
-fn render_bookmark_set_update(builder: &ActionBuilder, out: &mut String) {
-    let contract = contract_for(builder.namespace);
-    out.push_str(&format!("  /** {} */\n", builder.doc));
-    out.push_str(&format!(
-        "  {}(\n\
-         \x20   correlationId: string,\n\
-         \x20   accountPubkey: string,\n\
-         \x20   setKind: number,\n\
-         \x20   identifier: string,\n\
-         \x20   itemKind: number,\n\
-         \x20   value: string,\n\
-         \x20   relay: string | null,\n\
-         \x20 ): Uint8Array {{\n",
-        builder.method
-    ));
-    out.push_str("    const fbb = new flatbuffers.Builder(64);\n");
-    out.push_str("    const accountPubkeyOffset = fbb.createString(accountPubkey);\n");
-    out.push_str("    const identifierOffset = fbb.createString(identifier);\n");
-    out.push_str("    const valueOffset = fbb.createString(value);\n");
-    out.push_str("    const relayOffset = relay === null ? 0 : fbb.createString(relay);\n");
-    // Build nested BookmarkItem table (3 slots: kind ubyte, value string, relay string)
-    out.push_str("    fbb.startObject(3);\n");
-    out.push_str("    fbb.addFieldInt8(0, itemKind, 0); // slot 0: kind\n");
-    out.push_str("    fbb.addFieldOffset(1, valueOffset, 0); // slot 1: value\n");
-    out.push_str(
-        "    if (relayOffset !== 0) fbb.addFieldOffset(2, relayOffset, 0); // slot 2: relay\n",
-    );
-    out.push_str("    const itemRoot = fbb.endObject();\n");
-    // Build BookmarkSetUpdatePayload root table (5 slots: schema_version, account_pubkey, set_kind, identifier, item)
-    out.push_str("    fbb.startObject(5);\n");
-    out.push_str(&format!(
-        "    fbb.addFieldInt32(0, {}, 0); // slot 0: schema_version\n",
-        contract.schema_version
-    ));
-    out.push_str("    fbb.addFieldOffset(1, accountPubkeyOffset, 0); // slot 1: account_pubkey\n");
-    out.push_str("    fbb.addFieldInt8(2, setKind, 0); // slot 2: set_kind\n");
-    out.push_str("    fbb.addFieldOffset(3, identifierOffset, 0); // slot 3: identifier\n");
-    out.push_str("    fbb.addFieldOffset(4, itemRoot, 0); // slot 4: item\n");
-    out.push_str("    const payloadRoot = fbb.endObject();\n");
-    out.push_str(&format!(
-        "    fbb.finish(payloadRoot, {:?});\n",
-        contract.file_identifier
-    ));
-    out.push_str("    const payload = fbb.asUint8Array();\n");
-    out.push_str(&format!(
-        "    return encodeDispatchEnvelope(correlationId, {:?}, payload);\n",
-        builder.namespace
-    ));
-    out.push_str("  },\n\n");
-}
-
-/// TypeScript parameter type for a field. An optional field is `T | null`
-/// (mirrors the Swift `T?` / Kotlin `T?`); the builder omits the field when it
-/// is `null`, so the Rust decoder reads `None`.
-fn ts_param_type(field: &PayloadField) -> String {
-    match (field.kind, field.optional) {
-        (FieldKind::Str, false) => "string".to_string(),
-        (FieldKind::Str, true) => "string | null".to_string(),
-        (FieldKind::Uint, false) => "number".to_string(),
-        (FieldKind::Uint, true) => "number | null".to_string(),
-        (FieldKind::StrVec, false) => "string[]".to_string(),
-        (FieldKind::StrVec, true) => "string[] | null".to_string(),
-        (FieldKind::UintVec, false) => "number[]".to_string(),
-        (FieldKind::UintVec, true) => "number[] | null".to_string(),
-        (FieldKind::Ulong, false) => "bigint".to_string(),
-        (FieldKind::Ulong, true) => "bigint | null".to_string(),
-        // UlongWithPresenceFlag is always presented as optional.
-        (FieldKind::UlongWithPresenceFlag { .. }, _) => "bigint | null".to_string(),
-        // RelayListEntry vector: array of {url, role} objects.
-        (FieldKind::RelayListEntryVec, _) => "Array<{ url: string; role: string }>".to_string(),
-        // Ubyte scalar (u8) — used for FlatBuffers ubyte enum discriminants.
-        (FieldKind::Ubyte, _) => "number".to_string(),
-    }
-}
 
 /// Render the full file for the default registry.
 #[must_use]
