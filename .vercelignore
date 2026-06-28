@@ -4,15 +4,12 @@
 /.maestro
 /.vercel
 /.xcodebuildmcp
-/apps/nmp-gallery
+/apps/nmp-gallery/android
+/apps/nmp-gallery/ios
 /apps/chirp/android
-/apps/chirp/chirp-desktop
-/apps/chirp/chirp-tui
-/apps/chirp/crates/nmp-app-chirp
 /apps/chirp/crates/nmp-chirp-android-ffi
 /apps/chirp/ios
 /ci
-/crates
 /docs
 /pkg
 /release

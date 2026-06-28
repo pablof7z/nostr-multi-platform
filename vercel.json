@@ -1,0 +1,12 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "npm --prefix web install",
+  "buildCommand": "npm --prefix web run build:vercel --workspace @nmp/chirp-web",
+  "outputDirectory": "web/chirp/dist",
+  "git": {
+    "deploymentEnabled": {
+      "**": false,
+      "master": true
+    }
+  }
+}
