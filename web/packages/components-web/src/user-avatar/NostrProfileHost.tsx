@@ -39,11 +39,18 @@ export function NostrProfileHostProvider(props: {
  *  user-* component requires a host so a missing one is a wiring bug, not a
  *  silent degraded render. */
 export function useNostrProfileHost(): NostrProfileHost {
-  const host = useContext(NostrProfileHostContext);
+  const host = useOptionalNostrProfileHost();
   if (!host) {
     throw new Error(
       "NostrProfileHost is missing — wrap your tree in <NostrProfileHostProvider host={...}>.",
     );
   }
   return host;
+}
+
+/** Read the ambient profile host when graceful fallback is valid. Content event
+ *  refs use this so missing app-level host wiring degrades to raw links instead
+ *  of crashing previews/tests. */
+export function useOptionalNostrProfileHost(): NostrProfileHost | undefined {
+  return useContext(NostrProfileHostContext);
 }

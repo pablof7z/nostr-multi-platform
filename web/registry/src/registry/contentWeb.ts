@@ -3,6 +3,9 @@ import type { PlatformImpl } from "./types";
 import webArticleCardTsx from "@nmp/components-web/src/content-kind-30023/NostrArticleCard.tsx?raw";
 import webHighlightCardTsx from "@nmp/components-web/src/content-kind-9802/NostrHighlightCard.tsx?raw";
 import webKindRegistryTsx from "@nmp/components-web/src/content-kind-registry/NostrKindRegistry.tsx?raw";
+import webEventRefResolverTsx from "@nmp/components-web/src/component-host/EventRefResolver.tsx?raw";
+import webComponentHostProviderTsx from "@nmp/components-web/src/component-host/NmpComponentHostProvider.tsx?raw";
+import webResolvedEventEmbedsTsx from "@nmp/components-web/src/component-host/ResolvedEventEmbeds.tsx?raw";
 import webContentCoreTs from "@nmp/components-web/src/content-core/decodeContentTree.ts?raw";
 import webMediaGridTsx from "@nmp/components-web/src/content-media-grid/NostrMediaGrid.tsx?raw";
 import webMentionChipTsx from "@nmp/components-web/src/content-mention-chip/NostrMentionChip.tsx?raw";
@@ -48,9 +51,9 @@ export const webContentView: PlatformImpl = {
   status: "stable",
   installId: "web/content-view",
   version: "0.1.0",
-  dependencies: [],
+  dependencies: ["content-kind-registry"],
   longDescription:
-    "`<NostrContentView tree={...} fallback={...} />` is a SolidJS component that walks a kernel-decoded `ContentTreeWire` (NFCT) — the `nmp-content` tokenizer running behind the kernel's content-parser seam — into HTML: paragraphs, headings, lists, blockquotes, code, inline emphasis/strong/links, hashtags, URLs, emoji, media, and `nostr:` mention/event-ref anchors. It never parses, fetches, or mocks; when no tree is present it renders the raw `fallback` string verbatim (honest-empty per D6). Verified live in the NMP web gallery: a real kind:1 note and a real kind:30023 long-form article, both claimed from real relays and parsed by the real WASM kernel.",
+    "`<NostrContentView tree={...} fallback={...} />` is a SolidJS component that walks a kernel-decoded `ContentTreeWire` (NFCT) — the `nmp-content` tokenizer running behind the kernel's content-parser seam — into HTML: paragraphs, headings, lists, blockquotes, code, inline emphasis/strong/links, hashtags, URLs, emoji, media, and Nostr references. Mention refs render as raw `nostr:` anchors. Event refs render through the app-provided `NmpComponentHostProvider` when the host has a resolved `refs.event.envelopes` entry, and fall back to raw links when the host or embed is missing. It never parses, fetches, or mocks; when no tree is present it renders the raw `fallback` string verbatim (honest-empty per D6). Verified live in the NMP web gallery: a real kind:1 note and a real kind:30023 long-form article, both claimed from real relays and parsed by the real WASM kernel.",
   files: [
     { source: "web/content-view/NostrContentView.tsx", target: "src/components/nostr-content/NostrContentView.tsx", role: "source", content: webContentViewTsx },
   ],
@@ -58,7 +61,7 @@ export const webContentView: PlatformImpl = {
   customization: [
     "Style via the `nostr-*` element classes (`nostr-p`, `nostr-h`, `nostr-url`, `nostr-blockquote`, `nostr-code-block`, …); the component emits semantic HTML with no inline styles.",
     "The `tree` prop is a decoded `ContentTreeWire` from your kernel snapshot's `refs.event` row payload or feed projection; decode the NFCT bytes once in your runtime and pass the root object — the component is a pure walker.",
-    "Mention and event-ref nodes render as `nostr:` anchors; install the embed-component layer to upgrade them to profile chips and quoted-event cards.",
+    "Bind `NmpComponentHostProvider` at the app root to upgrade event-ref nodes to resolved cards. The provider consumes your app's `refs.event.envelopes` mirror and event-ref resolver; `NostrContentView` still renders raw links while an embed is unresolved.",
   ],
 };
 
@@ -66,16 +69,20 @@ export const webContentKindRegistry: PlatformImpl = {
   status: "stable",
   installId: "web/content-kind-registry",
   version: "0.1.0",
-  dependencies: ["content-kind-30023", "content-kind-9802", "content-quote-card"],
+  dependencies: ["content-kind-30023", "content-kind-9802", "content-quote-card", "user-avatar"],
   longDescription:
-    "`<NostrEmbeddedEvent event={...} />` is the web kind-dispatch table. The host passes a fully resolved `EmbeddedEventModel` decoded from the Rust-generated `refs.event.envelopes` / NEMB sidecar; that sidecar is composed from authoritative `refs.event` rows by `nmp-content`. The registry routes on `projection.variant`: `article` -> `NostrArticleCard`, `highlight` -> `NostrHighlightCard`, everything else -> `NostrQuoteCard`. It maps the pre-resolved projection fields into each card's model and does not re-parse raw NIP-23/NIP-84 tags. Verified live in the NMP web gallery dispatching a real article, highlight, and note. The web twin of the SwiftUI/TUI `NostrKindRegistry` + `EmbeddedEvent`.",
+    "`<NmpComponentHostProvider ...>` is the web app-root host for `@nmp/components-web`: it binds `NostrProfileHost`, the decoded `refs.event.envelopes` map, an app-owned event-ref resolver, and the `NostrKindRegistry` context once. `<NostrEmbeddedEvent event={...} />` is the web kind-dispatch table underneath that host. The host passes fully resolved `EmbeddedEventModel` values decoded from the Rust-generated `refs.event.envelopes` / NEMB sidecar; that sidecar is composed from authoritative `refs.event` rows by `nmp-content`. The registry routes on `projection.variant`: `article` -> `NostrArticleCard`, `highlight` -> `NostrHighlightCard`, everything else -> `NostrQuoteCard`. It maps the pre-resolved projection fields into each card's model and does not re-parse raw NIP-23/NIP-84 tags. Verified live in the NMP web gallery dispatching a real article, highlight, and note. The web twin of the SwiftUI/TUI `NostrKindRegistry` + `EmbeddedEvent`.",
   files: [
+    { source: "web/component-host/EventRefResolver.tsx", target: "src/components/nostr-content/EventRefResolver.tsx", role: "source", content: webEventRefResolverTsx },
+    { source: "web/component-host/ResolvedEventEmbeds.tsx", target: "src/components/nostr-content/ResolvedEventEmbeds.tsx", role: "source", content: webResolvedEventEmbedsTsx },
+    { source: "web/component-host/NmpComponentHostProvider.tsx", target: "src/components/nostr-content/NmpComponentHostProvider.tsx", role: "source", content: webComponentHostProviderTsx },
     { source: "web/content-kind-registry/NostrKindRegistry.tsx", target: "src/components/nostr-content/NostrKindRegistry.tsx", role: "source", content: webKindRegistryTsx },
   ],
   screenshots: ["content-kind-registry-web-preview.png"],
   customization: [
-    "Add a kind by registering the variant in the Rust resolver (`nmp-content`) and extending the `Switch` to map the new `projection.data` fields into a card model — the cards themselves stay pure model renderers and the web never parses raw tags.",
-    "The host owns the claim/resolve lifecycle and passes a fully resolved envelope; the registry only chooses the renderer.",
+    "Bind the provider once at the app root: `profileHost` reads `refs.profile`, `resolvedEventEmbeds` mirrors derived `refs.event.envelopes`, `eventRefResolver` forwards visible event refs to `resolve_ref(Event, Embed, CacheOk)`, and `kindRegistry` is optional when the default handlers are enough.",
+    "Add a kind by registering the variant in the Rust resolver (`nmp-content`) and extending the registry renderer to map the new `projection.data` fields into a card model — the cards themselves stay pure model renderers and the web never parses raw tags.",
+    "`refs.event` remains the event-ref source of truth. `refs.event.envelopes` is render data derived from it by `nmp-content`; do not populate the embed map from raw event JSON or legacy whole-map claims.",
   ],
 };
 

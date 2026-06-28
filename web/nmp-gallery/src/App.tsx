@@ -1,5 +1,5 @@
 import { Show, createEffect, createMemo, createSignal, onCleanup, type JSX } from "solid-js";
-import { NostrProfileHostProvider } from "@nmp/components-web/src/user-avatar/NostrProfileHost";
+import { NmpComponentHostProvider } from "@nmp/components-web/src/component-host/NmpComponentHostProvider";
 import { NostrAvatar } from "@nmp/components-web/src/user-avatar/NostrAvatar";
 import { NostrProfileName } from "@nmp/components-web/src/user-name/NostrProfileName";
 import { NostrNip05Badge } from "@nmp/components-web/src/user-nip05/NostrNip05Badge";
@@ -210,7 +210,7 @@ export default function App(): JSX.Element {
   const resolvedProfile = createMemo(() => (ready() ? profile() : undefined));
 
   return (
-    <NostrProfileHostProvider host={runtime.host}>
+    <NmpComponentHostProvider profileHost={runtime.host} resolvedEventEmbeds={runtime.refEventEmbeds} eventRefResolver={runtime.eventRefResolver}>
       <div class="gallery">
         <StatusBar
           status={runtime.status()}
@@ -296,7 +296,7 @@ export default function App(): JSX.Element {
               <Show when={noteEvent()} fallback={<Resolving />} keyed>
                 {(ev) => (
                   <div data-testid="content-note" class="nostr-content">
-                    <NostrContentView tree={ev.contentTree} fallback={ev.content} />
+                    <NostrContentView tree={ev.contentTree} fallback={ev.content} nowSeconds={nowSeconds} />
                   </div>
                 )}
               </Show>
@@ -306,7 +306,7 @@ export default function App(): JSX.Element {
               <Show when={articleEvent()} fallback={<Resolving />} keyed>
                 {(ev) => (
                   <div data-testid="content-article" class="nostr-content nostr-content--article">
-                    <NostrContentView tree={ev.contentTree} fallback={ev.content} />
+                    <NostrContentView tree={ev.contentTree} fallback={ev.content} nowSeconds={nowSeconds} />
                   </div>
                 )}
               </Show>
@@ -490,7 +490,7 @@ export default function App(): JSX.Element {
           </div>
         </Section>
       </div>
-    </NostrProfileHostProvider>
+    </NmpComponentHostProvider>
   );
 }
 
