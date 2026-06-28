@@ -92,7 +92,6 @@ fn encode_payload_for_namespace(namespace: &str, json: &str) -> Result<Vec<u8>, 
         "nmp.nip51.add_bookmark" | "nmp.nip51.remove_bookmark" => {
             encode::<action_payloads::BookmarkUpdateInput>(namespace, json)
         }
-        "nmp.nip57.zap" => encode::<action_payloads::ZapInput>(namespace, json),
         "nmp.nip65.publish_relay_list" => {
             encode::<action_payloads::PublishRelayListInput>(namespace, json)
         }

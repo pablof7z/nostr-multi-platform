@@ -145,28 +145,26 @@ fn register_defaults_longform_is_typed_only_not_in_json_map() {
     free_app_ptr(app);
 }
 
-/// The NIP-57 zap-subscription reconciler no longer registers a snapshot
-/// projection: it was re-homed onto the identity-change observer seam
-/// (`AppHost::register_identity_change_observer`) because it only diffs the active
-/// pubkey and enqueues `EnsureInterest` / `DropInterestOwner` — it produced no
-/// projection data. After the re-home (and with the entire JSON lane deleted per
-/// rule A6 / PR #1525), `"nmp.nip57.zap_subscription"` must NOT appear in the
-/// typed projection registry at all.
+/// NIP-57 zaps are post-v1/private (#2318), so default composition must not
+/// wire the zap action namespace or the retired zap-subscription projection key.
 #[test]
-fn register_defaults_zap_subscription_is_no_longer_a_projection_key() {
+fn register_defaults_does_not_wire_zaps() {
     let app = new_app_ptr();
     assert!(!app.is_null(), "nmp_app_new returned null");
 
     // SAFETY: `app` is a valid non-null pointer fresh from `nmp_app_new`.
     nmp_defaults::register_defaults(unsafe { &mut *app });
 
-    // The generic JSON lane is deleted (rule A6). Check the typed registry.
+    assert!(
+        !is_registered(app, "nmp.nip57.zap"),
+        "zaps are post-v1/private and must not be registered by defaults"
+    );
+
     let app_ref: &NmpApp = unsafe { &*app };
     let typed_keys = app_ref.registered_typed_projection_keys();
     assert!(
         !typed_keys.contains(&"nmp.nip57.zap_subscription".to_string()),
-        "zap_subscription must NOT appear in the typed projections registry — it is a \
-         identity-change observer now, not a projection"
+        "zap_subscription must NOT appear in the typed projections registry"
     );
 
     free_app_ptr(app);
@@ -200,7 +198,8 @@ fn register_substrate_is_routable_but_social_free() {
         );
     }
 
-    // Social actions are NOT wired — the discriminating half of the proof.
+    // Feature/post-v1 actions are NOT wired — the discriminating half of the
+    // proof.
     for ns in nmp_codegen::social_action_namespaces()
         .into_iter()
         .chain(nmp_codegen::dm_action_namespaces())
@@ -208,8 +207,8 @@ fn register_substrate_is_routable_but_social_free() {
     {
         assert!(
             !is_registered(app, ns),
-            "social namespace `{ns}` must NOT be wired by `register_substrate` alone \
-             (substrate tier is social-free)"
+            "feature namespace `{ns}` must NOT be wired by `register_substrate` \
+             alone (substrate tier is feature-free)"
         );
     }
 
@@ -301,7 +300,10 @@ fn register_defaults_with_toggles_skip_their_blocks() {
         );
         // Other toggles untouched.
         assert!(is_registered(app, "nmp.nip17.send"), "dms still on");
-        assert!(is_registered(app, "nmp.nip57.zap"), "zaps still on");
+        assert!(
+            !is_registered(app, "nmp.nip57.zap"),
+            "zaps remain post-v1/private even when social is enabled"
+        );
         free_app_ptr(app);
     }
 
@@ -320,22 +322,6 @@ fn register_defaults_with_toggles_skip_their_blocks() {
         assert!(
             read_projection(app, "nmp.nip17.dm_relay_list").is_none(),
             "dms:false must skip the DM runtime projection"
-        );
-        assert!(is_registered(app, "nmp.follow"), "social still on");
-        free_app_ptr(app);
-    }
-
-    // `zaps: false` → no nip57 action.
-    {
-        let app = new_app_ptr();
-        let cfg = nmp_defaults::NmpDefaults {
-            zaps: false,
-            ..Default::default()
-        };
-        nmp_defaults::register_defaults_with(unsafe { &mut *app }, cfg);
-        assert!(
-            !is_registered(app, "nmp.nip57.zap"),
-            "zaps:false must skip nip57"
         );
         assert!(is_registered(app, "nmp.follow"), "social still on");
         free_app_ptr(app);

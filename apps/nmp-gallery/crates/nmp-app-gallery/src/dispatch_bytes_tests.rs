@@ -192,17 +192,6 @@ fn namespace_nip22_post_comment_encodes_and_decodes() {
 }
 
 #[test]
-fn namespace_nip57_zap_encodes_and_decodes() {
-    use action_payloads::ZapInput;
-    let decoded: ZapInput = encode_then_decode(
-        "nmp.nip57.zap",
-        r#"{"recipient_pubkey":"deadbeef","amount_msats":1000}"#,
-    );
-    assert_eq!(decoded.recipient_pubkey, "deadbeef");
-    assert_eq!(decoded.amount_msats, 1000);
-}
-
-#[test]
 fn namespace_nip65_publish_relay_list_encodes_and_decodes() {
     use action_payloads::PublishRelayListInput;
     let decoded: PublishRelayListInput = encode_then_decode(

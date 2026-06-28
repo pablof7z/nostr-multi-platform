@@ -84,7 +84,6 @@ fn contract_matches_modules_and_default_payload_reexports() {
             nmp_nip17::PublishDmRelayListAction,
             action_payloads::PublishDmRelayListInput,
         >("nmp.nip17.publish_relay_list"),
-        assert_contract::<nmp_nip57::ZapAction, action_payloads::ZapInput>("nmp.nip57.zap"),
         assert_contract::<nmp_nip84::PublishHighlightModule, action_payloads::PublishHighlightAction>(
             "nmp.nip84.publish_highlight",
         ),
@@ -104,14 +103,16 @@ fn contract_matches_modules_and_default_payload_reexports() {
 
     let checked: BTreeSet<&str> = checked.into_iter().collect();
     // `ActionDefaultTier::Marmot` is a feature-gated dep (`nmp-marmot`) not
-    // available in `nmp-defaults`. `ActionDefaultTier::ComponentRegistered` covers
-    // crates (nmp-blossom, nmp-relations) wired at app-assembly time, not by
-    // nmp-defaults. Filter both from the contract set so the set-equality assertion
-    // does not require those crates as deps here.
+    // available in `nmp-defaults`. `ActionDefaultTier::Zaps` is post-v1/private
+    // (#2318). `ActionDefaultTier::ComponentRegistered` covers crates
+    // (nmp-blossom, nmp-relations) wired at app-assembly time, not by
+    // nmp-defaults. Filter these from the contract set so the set-equality
+    // assertion does not require those crates as deps here.
     let contract: BTreeSet<&str> = nmp_codegen::ACTION_CONTRACT
         .iter()
         .filter(|c| {
             c.default_tier != nmp_codegen::ActionDefaultTier::Marmot
+                && c.default_tier != nmp_codegen::ActionDefaultTier::Zaps
                 && c.default_tier != nmp_codegen::ActionDefaultTier::ComponentRegistered
         })
         .map(|c| c.namespace)
@@ -120,9 +121,10 @@ fn contract_matches_modules_and_default_payload_reexports() {
         checked, contract,
         "every action contract row must be checked against its module \
          namespace and payload type (wallet rows checked via nmp_nip47 directly; \
-         marmot rows excluded — nmp-marmot is a feature-gated dep not available \
-         in nmp-defaults; component-registered rows excluded — wired at app-assembly \
-         time, not by nmp-defaults)"
+         zap rows excluded — post-v1/private per #2318; marmot rows excluded — \
+         nmp-marmot is a feature-gated dep not available in nmp-defaults; \
+         component-registered rows excluded — wired at app-assembly time, not \
+         by nmp-defaults)"
     );
 }
 

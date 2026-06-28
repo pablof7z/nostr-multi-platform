@@ -545,46 +545,6 @@ object GeneratedActionBuilders {
         )
     }
 
-    /// Publish a NIP-57 zap request for a recipient (optionally a target event).
-    /// Builds the `nmp.nip57.zap` `DispatchEnvelope` bytes for the byte doorway.
-    fun zap(
-        correlationId: String,
-        recipientPubkey: String,
-        amountMsats: Long,
-        lnurl: String?,
-        relays: List<String>,
-        targetEventId: String?,
-        comment: String?,
-    ): ByteArray {
-        val fbb = FlatBufferBuilder()
-        val recipientPubkeyOffset = fbb.createString(recipientPubkey)
-        val lnurlOffset = lnurl?.let { fbb.createString(it) } ?: 0
-        val relaysOffset = run {
-            val offsets = IntArray(relays.size) { i -> fbb.createString(relays[i]) }
-            fbb.startVector(4, offsets.size, 4)
-            for (i in offsets.size - 1 downTo 0) fbb.addOffset(offsets[i])
-            fbb.endVector()
-        }
-        val targetEventIdOffset = targetEventId?.let { fbb.createString(it) } ?: 0
-        val commentOffset = comment?.let { fbb.createString(it) } ?: 0
-        fbb.startTable(7)
-        fbb.addInt(0, 1, 0) // slot 0: schema_version
-        fbb.addOffset(1, recipientPubkeyOffset, 0) // slot 1: recipientPubkey
-        fbb.addLong(2, amountMsats, 0L) // slot 2: amountMsats
-        if (lnurlOffset != 0) fbb.addOffset(3, lnurlOffset, 0) // slot 3: lnurl
-        fbb.addOffset(4, relaysOffset, 0) // slot 4: relays
-        if (targetEventIdOffset != 0) fbb.addOffset(5, targetEventIdOffset, 0) // slot 5: targetEventId
-        if (commentOffset != 0) fbb.addOffset(6, commentOffset, 0) // slot 6: comment
-        val payloadRoot = fbb.endTable()
-        fbb.finish(payloadRoot, "N57Z")
-        val payload = fbb.sizedByteArray()
-        return encodeDispatchEnvelope(
-            correlationId = correlationId,
-            actionNamespace = "nmp.nip57.zap",
-            payload = payload,
-        )
-    }
-
     /// Publish a NIP-84 kind:9802 highlight annotation.
     /// Builds the `nmp.nip84.publish_highlight` `DispatchEnvelope` bytes for the byte doorway.
     fun publishHighlight(

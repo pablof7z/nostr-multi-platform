@@ -87,7 +87,8 @@ The framework does not reimplement the Nostr protocol. The Rust ecosystem alread
 - A **NIP-46 (Nostr Connect / bunker) signer crate** for remote signing.
 - A **NIP-07 browser signer crate** plus a native-side proxy to use NIP-07 from desktop/mobile.
 - An **OS keyring crate** wrapping macOS Keychain, Windows Credential Manager, and Secret Service.
-- A **NIP-47 NWC client crate** for wallet operations.
+- Post-v1 **NIP-47 NWC client mechanics** for wallet operations. NMP v1 does
+  not claim wallet product support.
 - A **Blossom client crate** for media storage.
 - A **relay builder crate** providing `LocalRelay` (full in-process relay) and `MockRelay` (ephemeral, for tests).
 
@@ -123,7 +124,7 @@ Views are **cached and shared**. Two UI components asking for the same view get 
 
 ### 4.3 Action-based writes
 
-Every write path goes through an **action** — an asynchronous operation that takes an action context (event store, signer, publish function, current user) and produces zero or more signed events that are published and added to the store atomically. The framework's action model covers the common cases: send a note, follow/unfollow a user, update profile, send a DM, zap, repost, react, publish a long-form article, manage lists, configure relays. Current v1 support varies by NIP and platform; consult [`docs/nips.md`](nips.md) before treating any one of those actions as a complete product surface. Actions compose: one action can run another as a sub-action. Custom actions are first-class.
+Every write path goes through an **action** — an asynchronous operation that takes an action context (event store, signer, publish function, current user) and produces zero or more signed events that are published and added to the store atomically. The framework's action model covers the common cases: send a note, follow/unfollow a user, update profile, send a DM, repost, react, publish a long-form article, manage lists, configure relays, and post-v1 wallet surfaces such as zaps. Current v1 support varies by NIP and platform; consult [`docs/nips.md`](nips.md) before treating any one of those actions as a complete product surface. Actions compose: one action can run another as a sub-action. Custom actions are first-class.
 
 The read/write split is rigid. **Reads happen via store subscriptions. Writes happen via actions.** There is no API that lets a developer "build an event, sign it, publish it, and remember to also update local state." Actions do that atomically and the developer cannot forget the local-state step because it is the action's responsibility, not theirs.
 
@@ -153,7 +154,7 @@ A **high-level synchronization API** wraps NIP-77 negentropy set reconciliation:
 
 ### 4.9 Wallet integration
 
-The target wallet abstraction is Rust-owned and spans Nostr Wallet Connect (NIP-47), LUD-16 Lightning zaps (NIP-57), and later Cashu/nutzap work (NIP-60/NIP-61). Current v1 status is narrower: NIP-47 and NIP-57 have reusable runtime/action pieces, while NIP-60/NIP-61 are post-v1; see [`docs/nips.md`](nips.md) and [#1001](https://github.com/pablof7z/nostr-multi-platform/issues/1001).
+The target wallet abstraction is Rust-owned and spans Nostr Wallet Connect (NIP-47), LUD-16 Lightning zaps (NIP-57), and later Cashu/nutzap work (NIP-60/NIP-61). This is not v1 scope: NIP-47/NWC, NIP-57/zaps, and NIP-60/NIP-61 are post-v1; see [`docs/nips.md`](nips.md), [#2318](https://github.com/pablof7z/nostr-multi-platform/issues/2318), and [#1001](https://github.com/pablof7z/nostr-multi-platform/issues/1001).
 
 ### 4.10 Messaging
 
@@ -197,13 +198,13 @@ The repository is a Cargo workspace plus per-platform shells. The layout below i
 │   ├── <framework>-browser-runtime
 │   │                              # wasm-bindgen Worker export + browser runtime.
 │   ├── <framework>-actions      # Built-in actions: send, follow, profile,
-│   │                              # zap, react, repost, list management, DM, etc.
+│   │                              # react, repost, list management, DM, etc.
 │   ├── <framework>-views        # Derived view types (profile, timeline,
 │   │                              # thread, contacts, reactions) and the
 │   │                              # view-handle subscription protocol.
 │   ├── <framework>-wot          # Web of Trust graph + auto-filter.
 │   ├── <framework>-sync         # NIP-77 high-level sync API.
-│   ├── <framework>-wallet       # NIP-47/57/60/61 unified wallet.
+│   ├── <framework>-wallet       # Post-v1 NIP-47/57/60/61 wallet mechanics.
 │   ├── <framework>-messages     # NIP-17 conversation layer.
 │   ├── <framework>-blossom      # Blossom client wrapper.
 │   ├── <framework>-guardrails   # Debug-build runtime checks.

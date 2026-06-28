@@ -1,16 +1,15 @@
 //! Canonical host-side runtime controllers wired by [`super::register_defaults`].
 //!
 //! Runtime controllers own active-account scoped interest bookkeeping the
-//! kernel itself cannot do (D0 — `nmp-core` ships no DM/zap nouns).
+//! kernel itself cannot do (D0 — `nmp-core` ships no DM nouns).
 //!
 //! `register_dm_runtime` wires the kind:1059 DM inbox parser/projection and a
 //! event observers that reconcile gift-wrap inbox interests, kind:10050 relay
 //! list hydration, and own relay-list publishes. The paired
 //! `"nmp.nip17.dm_relay_list"` typed projection is a pure read.
 //!
-//! `register_zap_receipts_runtime` wires the NIP-57 self-zap receipt identity
-//! observer. Both controllers degrade silently on lock poisoning or channel
-//! disconnect (D6) and use account/relay/ingest events for effects.
+//! The DM controller degrades silently on lock poisoning or channel disconnect
+//! (D6) and uses account/relay/ingest events for effects.
 
 use std::sync::{Arc, Mutex};
 
@@ -439,9 +438,6 @@ pub use comments_runtime::register_comment_runtime;
 // a stable path.
 mod search_relay_runtime;
 pub use search_relay_runtime::{register_search_relay_runtime, register_search_relay_runtime_with};
-
-mod zap_receipts_runtime;
-pub use zap_receipts_runtime::register_zap_receipts_runtime;
 
 // Mute-list active observed-projection reconciler tests.
 #[cfg(test)]

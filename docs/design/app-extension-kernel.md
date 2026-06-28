@@ -17,8 +17,8 @@ app-specific nouns baked into `nmp-core`.
 - diagnostics and doctrine gates.
 
 Protocol crates own reusable Nostr concepts such as NIP-17 DMs, NIP-29
-groups, NIP-47 wallet actions, NIP-57 zaps, NIP-65 mailbox routing, NIP-77
-coverage, and Blossom.
+groups, post-v1 NIP-47 wallet actions and NIP-57 zaps, NIP-65 mailbox
+routing, NIP-77 coverage, and Blossom.
 
 App crates own app domain concepts. A podcast episode, Highlighter artifact,
 TENEX workspace, daily plan, or weight log belongs in that app's Rust core,
