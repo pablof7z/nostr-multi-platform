@@ -197,6 +197,12 @@ The new model should reuse or retire current primitives deliberately:
   ports, and the publish engine remain the one write doorway. `PublishTarget`
   as it exists today may need to be widened or paired with provenance; the
   invariant to retain is one doorway, not the exact current enum shape.
+- the intent classifier remains the one route from arbitrary user text into
+  refs, relay URLs, NIP-05, app scopes, search, or rejection. Product shells may
+  collect input; they do not parse Nostr meaning or route secrets.
+- offline-first publish intent/ledger state remains the write root. Signing,
+  route resolution, relay IO, retry, resume, cancel, local ingest, and status
+  attach to one replayable publish identity instead of scattered callbacks.
 - explicit relay seams must carry audited route provenance, not native relay
   choice or an anonymous relay list.
 
@@ -290,6 +296,14 @@ The design must survive these cases before implementation starts:
 - **Read-your-writes:** a locally signed event enters the store/ingest path before
   relay delivery, so projections update through the same reducer path as relay
   events, not native optimism.
+- **Input classifier:** a pasted value or typed command is rejected as a secret,
+  resolved as NIP-19/NIP-21, relay URL, NIP-05, registered app scope, or search
+  through one Rust-owned classifier. A Swift/TypeScript shell cannot invent a
+  parallel protocol parser for convenience.
+- **Offline publish:** a write created while offline records local publish
+  intent/status first, then later signs, resolves routes, retries, cancels, or
+  exhausts through the same publish identity. A relay call with no local status
+  ledger fails the proof.
 - **Private routing:** NIP-17 and similar private writes never fall back to public
   outbox routes when recipient inboxes are unknown.
 - **Downstream proof:** Highlighter web, Highlighter iOS, Podcast Player, and
@@ -395,7 +409,7 @@ workstreams that converge into the same endpoint:
 | D. Shape/source reconciliation | follow/list/group/thread/embed/account/ref source sets | private reconciler proof for source arrival, withdrawal, empty-source fail-closed, fallback, account switch, replay, route replanning, and teardown |
 | E. Output/projection contract | projection ownership, schema/version, sidecars, host caches | one owner per output key, collision failure, shared merge semantics across generated/host adapters |
 | F. Read routing/admission | outbox routing, relay-pinned sessions, private reads, explicit overrides | route provenance in read descriptors and replay/live admission; no shell relay policy |
-| G. Write routing/publish | event construction/finalization, signer selection, publish route provenance | one publish doorway distinguishes automatic, host-pinned, verified inbox, manual, and imported routes |
+| G. Write routing/publish | publish intent ledger, event construction/finalization, signer selection, publish route provenance | one publish doorway distinguishes automatic, host-pinned, verified inbox, manual, and imported routes while preserving local offline-first status |
 | H. Signer/status runtime | local, NIP-07, NIP-46, NIP-55-style, named product, agent, imported event | Rust-owned pending/ready/failed/signed status and parked continuation model across platforms |
 | I. Service/capability sessions | widgets, AppIntents, CarPlay, remote commands, Live Activities, Handoff, media/STT/AI | app/service sessions or typed capability results; no `KernelModel.shared` UI-process dependency for correctness |
 | J. Generated adapters/codegen | action builders, output schemas, row caches, FFI/runtime bridges | generated or contract-tested drift prevention for every cross-platform payload used by migrated flows |
@@ -457,6 +471,12 @@ callers prove the same abstraction and one old public door is retired. Start in
 the existing feature, protocol, app, or substrate owner; promote only after the
 shared invariant is demonstrated.
 
+If a new crate is still justified, the release manifest is a blocking
+architecture gate, not release clerical work. The crate must be explicitly
+classified in `release/nmp-release.toml` as public or private, with a reason for
+private packages and normal release gates (`ci/check-release-manifest.sh`,
+package dry-run) proving it is not an accidental framework surface.
+
 Per-phase retirement checklist:
 
 | Question | Failing answer |
@@ -479,7 +499,7 @@ normal path.
 
 | Rung | Proof | Continue only if | Stop or narrow if |
 |---|---|---|---|
-| 0. Classified baseline | every old door is production/internal/test/doc/migration/delete | the team knows what is being deleted, privatized, or formalized | important callers remain unclassified |
+| 0. Classified baseline | every old door is production/internal/test/doc/migration/delete, with live issue state checked | the team knows what is being deleted, privatized, or formalized; closed issue bodies are treated as invariants, not active architecture mandates | important callers remain unclassified or stale issue/wiki wording is treated as current truth |
 | 1. Clean-room app path | a generated/scaffolded app opens and renders one feature without old internals | the app author never touches `open_interest`, projection tiers, or sidecars | tutorial still teaches hidden defaults or low-level read machinery |
 | 2. First lifecycle owner | one simple real session owns acquisition, replay, sink, output, wakes, status, and teardown | old recipe count decreases or is compatibility-scoped | `FeatureSession` wraps the old recipe without retiring it |
 | 3. Event-driven reconciliation | #2307-style reconcilers collapse and tick polling is removed where event hooks exist | duplicate controllers and account/source polling disappear | a fifth reconciler or compatibility alias is added |
@@ -778,16 +798,28 @@ signer path, route policy, cache owner, status output, and deletion gate. A broa
 "SSR exception" is not enough. SSR exceptions are read-only public data by
 default, with explicit cache TTL/durability, no signer/session truth, no silent
 production memory fallback, and separate treatment for NIP-05 server writes.
+The Highlighter NMP bridge itself is not proof while the actual product runtime
+still depends on NDK/Blossom/session packages for product reads, writes, local
+sessions, caches, and signer behavior. The ADR must classify those paths as
+target-runtime migration, SSR/public-cache exception, diagnostic, or out of
+scope before Highlighter web is used as evidence.
 
 Required Highlighter matrix shape:
 
 | Flow family | Current path to classify | Target proof | Deletion/exception criterion |
 |---|---|---|---|
 | Web onboarding/profile | NDK event build/sign/publish, `$subscribe`/`fetchEvents`, local signer/session storage | typed Rust action/builder, signer status, route provenance, cache policy | NDK path deleted, or ADR labels SSR/diagnostic/out-of-scope with owner and removal gate |
+| Web runtime cutover | NMP web bridge plus real product NDK/Blossom/session packages, degraded fallback, LocalStorage sessions | product runtime uses typed NMP sessions/actions or is explicitly out of NMP proof scope | bridge/demo paths stop counting as product proof while old runtime remains |
+| SSR/public reads | server NDK reads, route loaders, Upstash cache, timeouts, front-page/room/search/artifact previews | explicit SSR/public-cache boundary with TTL, durability, no signer truth, and no product-session semantics | NDK allowed only inside labeled SSR exception or deleted |
+| Managed NIP-05 | web signed auth event, API verification, KV/memory mapping, `.well-known` serving | app/server feature owns auth, durability, status, and public serving contract | not hidden under generic SSR read exception; KV/memory fallback classified |
+| Blossom/media policy | direct `NDKBlossom`, avatar/media uploads, Blossom server lists, relay-advertised NIP-96 | typed capability/action with server provenance, signer status, retry/error output | web does not own Blossom route/server policy unless labeled server capability |
 | Web rooms/invites/members/chat | NDK relay sets, `$subscribe`, direct sign/publish, tag parsing | NIP-29 group session/action through Rust, kind-agnostic read, host route status | direct NDK group runtime count ratchets down to zero unless explicitly excluded |
-| Highlights/comments/capture/share | TS/Swift tag walkers, `tagsJson`, raw comments/replies | Rust descriptors for NIP-10/NIP-22/article/highlight refs and typed publish status | semantic parsing removed from shells; presentation-only transforms documented |
+| Highlights/capture/import | web capture, selection popover, Kindle import, `NDKHighlight`, throttled publish | Rust app-feature builders/actions with publish intent/status and capability results | no direct web event build/sign/publish for shipped product path |
+| Comments/discussions/reactions | TS NIP-22 parsing, filters, comment trees, reaction publish; iOS/Rust typed path partially exists | Rust descriptors for NIP-10/NIP-22/article/highlight refs and typed publish status, with per-platform status | semantic parsing removed from shells; presentation-only transforms documented |
 | Blossom/NIP-05/search/SSR | web direct fetch/cache/publish paths | typed capability/result or labeled SSR cache boundary | cache/write owner named; no hidden product truth in web storage |
 | Signer/session/offline policy | web/local/native signer inference and Wi-Fi/cache policy | Rust-owned signer/offline/cache state plus raw native capability facts | shells stop deciding signer completion, retry, route, or offline eligibility |
+| Cache/offline surfaces | NDK LocalStorage sessions, server Upstash cache, NIP-05 KV/memory, UserDefaults Wi-Fi, App Group queue, ISBN/image caches | each cache classified as durable Rust/app state, server cache, render cache, capability inbox, or migration exception | no cache owns hidden product truth or contradicts Rust state |
+| Direct publish/read paths | Rust `ActorCommand::Publish(RawEvent)`, NDK publish, relay constants, fire-and-forget writes | typed builders/actions through publish intent, route provenance, signer continuation, and final status | Rust-owned but raw/fire-and-forget paths still count as violations until migrated or scoped |
 | iOS native state/capabilities | Wi-Fi preference, App Group community mirror, pending share queue, image/profile caches, relay URL bridge | each surface classified as Rust-owned policy, native render cache, capability inbox, or migration exception | no UserDefaults/App Group/relay bridge owns durable policy or product truth |
 | Capture/OCR/share/Blossom | share extension drain, OCR results, camera/file handles, Blossom upload/download | raw capability results into Rust actions, queue corruption/retry, OCR failure, Blossom failure, publish retry/status proof | native performs capability only; Rust owns temp-file/result/publish lifecycle |
 | Semantic parsing | TS/Swift group metadata, NIP-10/NIP-22 parents, artifact refs, comment trees, relay hints, route semantics | Rust descriptors/generated adapters own protocol parentage, canonical refs, group access/admin/member facts, and artifact canonicalization | only visual grouping/formatting remains shell-side with parity tests |
@@ -810,6 +842,12 @@ agent signer paths, explicit relay/server lists, legacy settings, and generated
 app FFI. NIP-F4 is not migrated while the path only returns `relay_pending`,
 stores constructed JSON, or requires the app to infer relays/signers in native
 code.
+Podcast also proves that service-session success cannot mean "the command was
+accepted." AppIntents, CarPlay, remote commands, Live Activities, widgets, deep
+links, provider jobs, and NIP-F4 publishes need typed completion/error/status
+owned by Rust. Foreground singletons, native sleep loops, and Swift policy for
+skip/rate/chapter/deep-link playback are failures unless explicitly narrowed to
+raw capability reporting.
 
 Required Podcast matrix shape:
 
@@ -822,6 +860,8 @@ Required Podcast matrix shape:
 | NIP-F4/Blossom publish | constructed JSON, `relay_pending`, `publish_dispatched`, explicit write relays/server lists | show/episode/list/deletion/backfill build/sign/route/store/publish/status with correlation id, signer, event id/naddr, write-relay route provenance, Blossom server provenance, retry state, and key-storage capability | user-facing e2e proves ack/error/retry/exhausted terminal status; stale diagnostics deleted |
 | Signers/relays/settings/credentials | local nsec, NIP-46, NIP-55, per-podcast key, agent signer, BYOK/provider keys, Blossom/app/agent relays, legacy relay settings | one signer/status/route/server provenance model plus secure key/provider capability | native no longer infers signer timeout, relay/server policy, key ownership, provider truth, or publish success |
 | Agent/provider job lifecycle | STT/TTS/local agents, OpenRouter/Ollama/ElevenLabs/AssemblyAI/Perplexity jobs, transcript/TTS generation | typed app-feature API with credential source, provider request, cancellation, retry/backoff, progress, cost/status, result, and explicit external-polling exception when provider lacks push | provider polling classified separately from correctness polling; job state remains Rust-owned |
+| Native TTS/generated episode artifacts | Swift synthesis/stitching, timed transcript files, generated media import | native executes binary/audio capability; Rust owns temp lifecycle, provenance, durable episode result, failure, and cleanup | Swift file writes cannot silently become product truth |
+| Key storage/product signers | `podcast-keys.json`, Keychain/provider keys, per-podcast signer, agent signer | named product signer/key-storage capability decision with explicit security model and status | file-backed keys accepted or rejected by ADR; no ambiguous "temporary/final" split |
 | Generated app APIs | hand-authored C/Swift action glue, JSON/pointer FFI, direct `KernelModel.shared` handles | generated or contract-tested typed app APIs | hand glue is app-local and non-protocol, or generated/drift-gated; event-producing APIs use typed publish/status |
 
 `nmp-gallery` must express component refs, embeds, auth/signing components, and
@@ -881,9 +921,16 @@ possibly stale architecture claims:
 | `docs/wiki/guides/operator-data-leaf-apps-only.md` | correctly states operator policy belongs only in leaf apps | carry this into durable composition/defaults docs so simplification does not reintroduce hidden defaults |
 | `docs/wiki/guides/signer-broker-handshake-loop.md` and NIP-46 research pages | record event-driven signer reconnect/cancel and protocol/transport separation | signer runtime plan must preserve this split and avoid a signer-specific second framework |
 | `docs/wiki/guides/action-module-adr.md` | records the typed action/effect boundary and remaining dual-action seam | write-flow work must retire dual dispatch seams rather than layering generated builders over them |
+| `docs/builder-guide/05b-substrate-traits.md` | teaches `nmp_defaults::register_defaults(app)` as normal composition and not using it as an anti-pattern | rewrite around explicit production composition; any preset is tutorial/migration/test compatibility only |
+| `docs/builder-guide/21-framework-magic.md`, `docs/builder-guide/23-glossary.md`, and `docs/design/framework-magic/test-scaffolding.md` | teach public `ReducedSource`, `open_feed`, `open_interest`, `resolve_ref`, and framework-magic scaffolding surfaces | update to typed sessions/actions and private source reconciliation, or mark historical |
+| `docs/decisions/0020-intent-classed-routing-and-search.md` and `docs/design/intent-routing/types.md` | preserve the one-classifier rule for user text, protocol refs, relay URLs, NIP-05, app scopes, search, and secret rejection | carry the typed input classifier into the public app model and reject shell-local protocol parsing |
+| `docs/design/offline-first-publish-intents.md` and `docs/builder-guide/12-publish-and-ledger.md` | preserve local publish intent before signer, route planner, sockets, retry, or cancel | absorb this as the write-flow root and attach route provenance/status to the same ledger identity |
 | `docs/decisions/0009-app-extension-kernel-boundary.md` | teaches app extension/read-model assembly through extension seams and observed projection wiring | update once service sessions and typed sessions own extension/app-service demand |
+| `docs/decisions/0036-composition-root-followset-expansion.md`, `docs/decisions/0042-m2-open-interest.md`, and `docs/decisions/0063-reference-resolution.md` | older ADRs can preserve defaults/open-interest/reference-resolution as public recipes | correct in place so `open_feed`, `open_interest`, and `resolve_ref` cannot survive as renamed typed sessions without lifecycle ownership |
 | `docs/decisions/0046-composition-is-a-library-not-a-generator.md` | treats defaults composition as the reusable app assembly model | amend around explicit production composition and labeled tutorial/compat presets |
 | `docs/decisions/0053-host-declared-projection-subscriptions.md` and `docs/decisions/0062-observer-scoped-read-model-catchup.md` | preserve host-declared projection/tier and observed catchup language | rewrite around session-scoped output demand while preserving replay-before-live invariant |
+| `docs/product-spec/overview-and-dx.md`, `docs/product-spec/doctrine.md`, and `docs/product-spec/subsystems.md` | expose old feed/projection vocabulary in durable product docs | rewrite around typed sessions, explicit composition, and private executor machinery |
+| wiki source-authority and raw app-composition pages | can preserve pre-GitHub-issues planning authority and defaults-as-canonical composition | mark historical or correct against AGENTS/GitHub-issues-only tactical authority and explicit composition |
 | builder-guide 02, 15, 19a/19b/19c, 20, and 28 | teach mental model, codegen, walkthrough, protocol-module, and action-triggered-subscription flows using old public seams | update examples to typed sessions/actions and explicit composition, or label them historical |
 | `docs/product-spec/api-surface.md`, `docs/product-spec/cli-toolchain-phasing.md`, `docs/ffi-surface.md`, `docs/wasm-surface.md`, `docs/recipes/app-shapes.md` | expose old app API, CLI, FFI, wasm, and recipe surfaces as product architecture | rewrite public API story around typed sessions/actions, browser-runtime ownership, and compatibility allowlists |
 
@@ -927,6 +974,9 @@ mode before implementation starts.
 | FF-025 | Metadata privacy gate is centralized. | outbound finalizers, NIP-89/client identity, public and explicit publish arms | client metadata appears only on public-routable unsigned events and never on private/imported/pre-signed/reserved surfaces | metadata privacy contract tests |
 | FF-026 | Binding generation reduces drift instead of moving old doors. | C-ABI, JNI, UniFFI experiments, FlatBuffers, runtime workers | generated binding work deletes hand-maintained drift or narrows compatibility; it does not preserve old public semantics under new glue | binding-surface diff review plus codegen drift gate |
 | FF-027 | Filterless accepted-event observers are not a product read-model door. | `KernelEventObserver`, `register_event_observer`, `nmp_app_register_event_observer`, `NmpEventObserverCallback`, worker observer equivalents | parser/cache internals may observe accepted events; product read models use declared sessions or private observed sinks | no-raw-tap doctrine lint plus compatibility surface audit |
+| FF-028 | Existing seams are tried before new framework surface. | `NmpAppBuilder`, `BrowserAppBuilder`, `AppHost` narrow registrars, `ObservedProjectionRegistrar`, dependent interests, intent classifier, `ActionModule`, publish engine | first implementation records why existing seams were reused, narrowed, or insufficient; no new crate/engine lands without retiring an old public door | `existing_seam_first_contract` plus design-review checklist |
+| FF-029 | Typed input classification has one production owner. | `nmp-intent`, URI/search/ref/open-action doors, shell text parsers | user text, NIP refs, relay URLs, NIP-05, app scopes, search, and secret rejection route through one Rust-owned classifier | `typed_intent_classifier_contract` |
+| FF-030 | Publish status is offline-first and intent-rooted. | `PublishAction`, `PublishCommand`, publish records/status, retry/cancel, explicit route callers | signing, route resolution, relay IO, retry/resume/cancel, local ingest, and status attach to one local publish intent identity | `publish_intent_ledger_contract` plus route-provenance contract |
 
 ## Current Baseline Snapshot
 
@@ -1052,6 +1102,9 @@ cargo test -p nmp-testing --test publish_route_provenance_contract
 cargo test -p nmp-testing --test docs_architecture_teaching_ratchet
 cargo test -p nmp-testing --test compatibility_surface_contract
 cargo test -p nmp-testing --test no_filterless_observer_contract
+cargo test -p nmp-testing --test existing_seam_first_contract
+cargo test -p nmp-testing --test typed_intent_classifier_contract
+cargo test -p nmp-testing --test publish_intent_ledger_contract
 ```
 
 Post-ADR issue backlog candidates, not proof that must all exist before the ADR:
@@ -1087,6 +1140,9 @@ Stop, redesign, or ask for a human decision if any of these become true:
 
 - The first descriptor proof cannot sit on existing `ObservedProjection` /
   dependent-interest machinery without creating a second read lifecycle.
+- The first implementation reaches for a new crate, engine, registry, or broad
+  `AppHost` extension before proving existing builders, narrow registrars,
+  intent, observed-session, and publish seams cannot carry the invariant.
 - Typed sessions reduce names but not the number of public concepts a product
   author must understand.
 - Route provenance requires broad publish-context plumbing that adds more
@@ -1134,6 +1190,10 @@ Stop, redesign, or ask for a human decision if any of these become true:
   the product cannot specify its owner, audit text, and route guarantees.
 - Generated app-feature APIs expand into a second framework instead of deleting
   hand-written glue and old public doors.
+- Input intent simplification lets shells parse NIP refs, relay URLs, NIP-05,
+  app scopes, or secrets independently.
+- Publish simplification removes local offline-first publish intent/status and
+  turns writes into signer or relay callbacks.
 
 ## Fitness Checks
 

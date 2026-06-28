@@ -3,7 +3,8 @@
 Writes have separable stages:
 
 ```text
-construct draft -> finalize envelope -> sign event -> publish signed event
+record local publish intent -> construct draft -> finalize envelope
+  -> sign event -> publish signed event
 ```
 
 They are separate because apps sometimes need to construct a draft, sign with a
@@ -14,6 +15,15 @@ retry, infer tags, or maintain publish state.
 The public doorway should still be typed actions or generated builders that
 become typed actions. The internal publish path should remain one path through
 the actor, signer port, publish policy, local store, and publish engine.
+
+Before a write touches a signer, relay socket, or publish planner, it becomes a
+local publish intent/status fact owned by Rust. That is the offline-first root:
+the app can show pending, failed, cancelled, signed, stored, planned, sent, and
+exhausted states from one replayable ledger even when signing or network
+delivery is delayed. Route provenance should attach to that intent or its target
+resolution record, then survive through finalization, signer parking, retry,
+resume, local ingest, and status emission. A fire-and-forget relay publish call
+is not the NMP write architecture.
 
 ## Stage 1: Construction
 
@@ -51,9 +61,16 @@ Construction may be layered:
 All event mutations happen before signing. After signing, the event id and
 signature are immutable.
 
-The conceptual result is unsigned event data plus route/privacy/protocol context:
+The conceptual result is a local publish intent plus unsigned event data and
+route/privacy/protocol context:
 
 ```text
+PublishIntent {
+    correlation_id,
+    owner,
+    status,
+}
+
 EventDraft {
     kind,
     tags,
@@ -69,11 +86,11 @@ PublishContext {
 
 Names are illustrative and are not type commitments. The first implementation
 should keep the existing one publish doorway, but widen or augment the existing
-target/reason/status carriers so the missing audit facts survive. Reusing
+intent/target/reason/status carriers so the missing audit facts survive. Reusing
 `PublishTarget` as-is is not enough: today's `Explicit { relays }` says only
-"send here," not why that exact route is valid. New `EventDraft` or
-`PublishContext` types are justified only if they remove branching or duplicate
-route/privacy/protocol state elsewhere.
+"send here," not why that exact route is valid. New `PublishIntent`,
+`EventDraft`, or `PublishContext` types are justified only if they remove
+branching or duplicate route/privacy/protocol state elsewhere.
 
 The missing invariant is route provenance, not a broad context wrapper. The
 publish path must know whether an explicit relay set is a manual override, a

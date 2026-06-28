@@ -42,7 +42,9 @@ The core idea is:
 install features
   -> open typed feature/ref sessions
   -> render typed Rust-owned outputs
+  -> classify user input through typed intents
   -> dispatch typed intents
+  -> record local publish intents
   -> construct/finalize event drafts
   -> sign through a selected signer
   -> publish through Rust-owned routing and status
@@ -74,10 +76,15 @@ existing architecture text:
   `ActiveObservedProjection`/`DynamicObservedProjection` copies should collapse
   into one event-driven reconciler, then `register_snapshot_tick_observer` should
   be deleted once sibling consumers migrate.
-- **#2088/#2089/#2090/#2091/#2092/#2113:** replay-before-live, no public
-  filterless `KernelEventObserver`/`register_event_observer`/C-ABI observer
-  door, dynamic sources, pointer/ref demand, and related lifecycle fragments
-  must become one owned session contract.
+- **#2088/#2089/#2090/#2091/#2092/#2113:** closed issue bodies and
+  regression tests establish replay-before-live, no public filterless
+  `KernelEventObserver`/`register_event_observer`/C-ABI observer door, dynamic
+  sources, pointer/ref demand, and related lifecycle invariants. They are
+  evidence and guardrails, not active queue items to preserve as architecture.
+- **Intent and publish design docs:** input text must pass through one typed
+  classifier before becoming a ref/search/action, and every publish starts as a
+  local intent/ledger record before signing, route resolution, or sockets.
+  Simplifying reads must not lose those two existing invariants.
 - **Projection and pull-cursor ADRs:** pushed typed outputs remain the app UI
   state path; raw event-log/pull surfaces are not a replacement for screen state.
 - **Downstream audits:** Highlighter, Podcast Player, and `nmp-gallery` are
@@ -104,7 +111,12 @@ Known contradiction ledger for P8:
 | `docs/wiki/guides/operator-data-leaf-apps-only.md` | reinforces leaf-app ownership for relays, seed follows, NIP-46 permissions, and signer labels | this packet must preserve that boundary; no defaults rewrite may reintroduce operator policy into NMP crates |
 | `docs/wiki/guides/signer-broker-handshake-loop.md` and NIP-46 research pages | protocol state must not own transport/process loops; reconnect/cancel must be event-driven | signer/session phases must prove transport-agnostic protocol core plus runtime-owned execution, not a second signer runtime framework |
 | `docs/wiki/guides/action-module-adr.md` | dual action seams and typed external-effect rules remain part of the evidence base | write-flow migration must converge on typed actions/builders and explicit capability results, not create another dispatch door |
+| `docs/builder-guide/05b-substrate-traits.md` | teaches `register_defaults(app)` as the normal composition root and frames not using it as an anti-pattern | rewrite around explicit production composition; any preset becomes tutorial/migration/test compatibility with owner and removal gate |
+| `docs/builder-guide/21-framework-magic.md`, `docs/builder-guide/23-glossary.md`, and `docs/design/framework-magic/test-scaffolding.md` | still teach public `ReducedSource`, `open_feed`, `open_interest`, `resolve_ref`, or framework-magic scaffolding surfaces | update to typed sessions/actions and private source reconciliation, or mark historical |
+| `docs/design/offline-first-publish-intents.md` and builder-guide publish docs | preserve the stronger rule that publishing begins as a local `PublishIntent`/ledger fact | absorb this as the write-flow root; route provenance should attach to the intent or target-resolution record, not only to relay dispatch |
+| `docs/decisions/0020-intent-classed-routing-and-search.md` and `docs/design/intent-routing/types.md` | preserve one typed input classifier for NIP-19/NIP-21, relay URLs, NIP-05, app scopes, search, and secret rejection | make typed input intent a first-class app API concept instead of letting shells parse user text ad hoc |
 | ADR-0009, ADR-0046, ADR-0053, ADR-0062 and builder-guide 02/15/19/28 | teach app assembly through defaults, observed projections, projection tiers, or action-triggered subscription recipes | amend or retire once typed sessions, explicit composition, and session-scoped output demand are accepted |
+| ADR-0036, ADR-0042, ADR-0063 and product-spec overview/doctrine/subsystems docs | preserve followset/open-interest/reference-resolution/feed/projection vocabulary from the old public model | correct in place so `open_feed`, `open_interest`, and `resolve_ref` cannot be renamed as typed sessions while retaining old lifecycle fragments |
 | ADR-0049 composition ledger/yield behavior | records useful observability for what composition installed and yielded | preserve observable composition ledgers when deleting hidden defaults; do not lose auditability while simplifying |
 | `docs/product-spec/api-surface.md`, `docs/product-spec/cli-toolchain-phasing.md`, `docs/ffi-surface.md`, `docs/wasm-surface.md`, and `docs/recipes/app-shapes.md` | still expose old public read/write/init surfaces as normal product API | rewrite around typed sessions/actions, explicit feature composition, and scoped compatibility doors |
 | wiki noun/topic pages for `nmp-defaults`, `ObservedProjection`, `read-surface`, `write-register-surface`, `nmp-wasm`, and `nmp-browser-runtime` | generated pages may preserve stale surface names as facts | regenerate, correct in place, or retire after durable owners are updated |
@@ -135,6 +147,8 @@ registries, or runtime lifecycle FFI to build a normal feature.
 | Feature bundle | Candidate public concept pending ADR | Installs typed sessions, actions, outputs, builders, and capability needs through narrow registrars or builder methods. Avoid a broad `dyn AppFeature` object unless it deletes existing complexity. |
 | Typed session / session descriptor | Candidate public concept pending ADR | The app opens typed demand and receives a handle plus typed output. This is the public replacement for hand-wiring interest, replay, observer, projection, and teardown. |
 | Typed action / generated builder | Candidate public concept pending ADR | User intent enters Rust through typed action data with correlation ids, validation, signer route, and status. |
+| Typed input intent classifier | Candidate public concept pending ADR | User-entered text, URLs, NIP-19/NIP-21 values, relay URLs, NIP-05 names, registered app scopes, and search strings enter through one Rust-owned classifier. Shells may collect text; they do not parse protocol meaning or route secrets. |
+| Publish intent / publish ledger | Candidate internal contract surfaced in status | A write becomes a local intent/status fact before signing, routing, sockets, or retry. This preserves offline-first behavior and makes publish state replayable instead of a fire-and-forget relay call. |
 | Capability result | Candidate boundary concept pending ADR | Native/web executes OS or platform capabilities and reports raw results back into Rust. |
 | Typed projection/status output | Candidate render contract pending ADR | Rust emits semantic state, publish status, signer status, and app output; shells render it. |
 | Route provenance | Candidate internal contract surfaced in status | Exact relays are insufficient. Publish routing must preserve why a route is valid: automatic, host-pinned, verified private inbox, manual override, or imported/verbatim. |
@@ -487,6 +501,10 @@ episode/wiki decisions:
 - **NDK-style subscribe:** the comparable DX target is not a shell-owned raw
   event stream. It is a Rust-owned session descriptor plus generated host API so
   every shell gets a one-call open/render surface without owning Nostr policy.
+- **Input routing:** user text is not a shell parsing problem. One Rust-owned
+  classifier rejects secrets, recognizes NIP-19/NIP-21 values, relay URLs,
+  NIP-05 identifiers, registered app scopes, and product commands, then falls
+  through to search only when no stronger class applies.
 - **`nmp.follow_list`:** reusable protocol outputs belong to reusable protocol
   or NMP feature crates. `nmp.follow_list` cannot live in Chirp/FFI glue while
   pretending other apps have a coherent social primitive.
@@ -504,6 +522,13 @@ episode/wiki decisions:
 - **Publish routing:** explicit relay paths, NIP-17 private routing, and NIP-29
   host pins must converge on one publish doorway while keeping fail-closed
   protocol policy outside native shells.
+- **Offline-first publish:** every write starts as a local publish intent/status
+  fact before signing, route resolution, sockets, retry, or cancel. Route
+  provenance attaches to that lifecycle instead of appearing only at final relay
+  dispatch.
+- **Browser proof:** TS-only gallery builds, silent wasm/storage degradation, and
+  shell retry/reclaim loops are evidence of unretired compatibility paths, not
+  proof that the browser runtime architecture works.
 - **Temporal source of truth:** this directory is not a new planning authority.
   Final decisions move into ADRs, durable docs, and GitHub issues.
 
@@ -525,15 +550,18 @@ episode/wiki decisions:
 
 ## Developer-Level Model
 
-From an app developer's perspective, an NMP app is built out of five things:
+From an app developer's perspective, an NMP app is built out of six things:
 
 1. A Rust app crate defines the product and installs features.
 2. Screens, components, widgets, and app services open typed sessions for the
    state they need.
 3. Rust emits typed outputs; generated adapters make those outputs pleasant to
    render in Swift, Kotlin, TypeScript, TUI, or another shell.
-4. User actions become typed intents or generated builder calls.
-5. Native/web shells render UI and execute capabilities. Rust decides what those
+4. User text goes through the typed input classifier before becoming refs,
+   relays, search, app scopes, or rejections.
+5. User actions become typed intents or generated builder calls; publish actions
+   create local publish intent/status first.
+6. Native/web shells render UI and execute capabilities. Rust decides what those
    capability results mean.
 
 The app developer should think in terms of product features and typed sessions:
@@ -553,6 +581,7 @@ render playback state
 
 dispatch SendGroupMessage(...)
 dispatch TogglePlayback(...)
+classify "npub1..."
 ```
 
 For a new product-specific stream, the developer writes the Rust session once
@@ -714,13 +743,16 @@ An NMP app should be understandable from a small set of concepts:
 - A Rust composition root installs explicit feature bundles.
 - Screens, components, widgets, and app services open typed sessions for the
   data they render or keep resident.
+- User-entered text, links, NIP identifiers, relay URLs, and product commands
+  enter through one typed input classifier before becoming ref sessions, search
+  sessions, or actions.
 - Shells render typed outputs produced by Rust and hold only projection caches
   generated for rendering.
 - Event construction is composable, protocol-aware, and app-crate extensible.
 - Signing is explicit enough to choose a signer, but Rust-owned enough to keep
   native backends interchangeable.
-- Publishing applies route policy, protocol pins, delivery, retry, and status in
-  Rust.
+- Publishing begins as a local intent/ledger fact, then applies route policy,
+  protocol pins, delivery, retry, and status in Rust.
 - Native and web shells render UI and execute capabilities. They do not own
   protocol correctness, durable state, relay planning, or product logic.
 
@@ -741,6 +773,10 @@ current internal types:
   ADR proves the same semantics across non-feed source families.
 - `EventDraft` means the invariant that unsigned event bytes may still be
   finalized before signing. It is not necessarily a new public type.
+- `InputIntent` means the invariant that shell-collected text is classified once
+  by Rust before it becomes a ref, relay browse, search, app action, or rejection.
+- `PublishIntent` means the invariant that a publish has a local replayable
+  status identity before signing, route resolution, sockets, retry, or cancel.
 - `PublishContext` means the invariant that route, privacy, and protocol policy
   travel with a draft or signed event. It is not necessarily a new type.
 - `ReactiveCount` means the invariant for live counts derived from a source and
@@ -762,10 +798,12 @@ implementation satisfies these constraints:
   gate.
 - Projection tiers stay internal. The app sees typed outputs and handles, not
   `SnapshotRegistry` categories or sidecar rituals.
+- Input parsing is centralized. The shell does not decide whether user text is a
+  secret, NIP-19/NIP-21 ref, relay URL, NIP-05, registered app scope, or search.
 - Dynamic sources are first-class. Follow lists, group members, visible thread
   roots, embeds, and source fallbacks are Rust-owned descriptors.
-- Writes preserve three separable phases: construction/finalization, signing,
-  and publishing. They still run through one Rust-owned action/publish path.
+- Writes preserve local publish intent, construction/finalization, signing, and
+  publishing. They still run through one Rust-owned action/publish path.
 - Explicit write routes preserve provenance: manual overrides, NIP-29 host pins,
   verified private inboxes, and imported/verbatim events are not one anonymous
   relay bucket.
@@ -792,6 +830,10 @@ This packet is ready to turn into durable ADR and architecture edits only after:
   on existing safe machinery without creating a second read lifecycle;
 - construction/finalization, signing, and publishing are proven separable without
   splitting into native-owned routes or publish JSON paths;
+- the typed input classifier remains the only production route from arbitrary
+  user text into refs, relays, app commands, or search;
+- the publish path preserves offline-first local intent/status before signing,
+  routing, relay sockets, retry, or cancel;
 - Highlighter, Podcast Player, and `nmp-gallery` pass their acceptance matrices
   or trigger a named kill criterion;
 - the first executable ratchets are identified, with baseline counts and owners;
@@ -808,6 +850,10 @@ tests, and downstream migrations.
 
 - The public app model is feature composition, typed sessions, typed actions or
   generated builders, capability results, and typed output/status.
+- Arbitrary user text enters through one typed input classifier; shell-local
+  parsing of Nostr identifiers, relay URLs, app scopes, or secrets is rejected.
+- Publishing starts as a local replayable intent/status fact, not as a relay
+  socket operation.
 - `open_interest`, projection tiers, `ObservedProjection`, raw sidecar rituals,
   and snapshot ticks are not app-developer concepts.
 - `register_defaults()` is not the production mental model. If retained, it is a
@@ -847,19 +893,28 @@ real decision if the evidence does not force one:
 
 - whether Highlighter web is an NMP target runtime, an SSR/migration exception,
   or deliberately out of scope;
+- which Highlighter web/server surfaces are permanent SSR or server-product
+  exceptions: NIP-05, `.well-known`, OG/artifact previews, room/search/front
+  page reads, Blossom/media policy, and public caches;
 - whether a separate tutorial preset should exist in addition to the production
   `nmp init` scaffold;
 - which downstream migrations are release gates versus tracked follow-up work
   after the architecture is accepted;
 - whether manual explicit relay selection is a product affordance, and what
   audit language/ownership the product wants users to see.
+- whether Podcast per-podcast keys may remain file-backed as a named product
+  signer store or must become a secure-store capability;
+- which service-session form wins for widgets, AppIntents, Siri, CarPlay, remote
+  commands, Live Activities, Handoff, and deep links.
 
 Decision register for signoff:
 
 | Decision | Required before | Default if unresolved | Kill/defer outcome |
 |---|---|---|---|
 | Highlighter web target runtime vs SSR/migration exception vs out of scope | ADR signoff / P7 matrix | not accepted as proof | no architecture acceptance while direct NDK is both product path and violation |
+| Highlighter server/web exceptions | P7 Highlighter matrix | SSR/public-cache only for read-only public data; NIP-05/Blossom get explicit owners | no broad "web exception" that hides product state, signer truth, or route policy |
 | Tutorial preset in addition to production `nmp init` | P0/P8 scaffold correction | production scaffold only | delete preset or label tutorial with owner/support window |
 | Downstream migrations that are release gates | P7 signoff dossier | core/gallery proof first, downstream rows become issues | cannot claim downstream-ready architecture |
 | Manual explicit relay UX/audit text | P6 publish provenance | internal/audited app-Rust only | no user-facing manual relay affordance |
 | Service-session product shape | before P7 Podcast acceptance | use normal typed action/headless runtime/mirror frame first | reject if it creates a second lifecycle model |
+| Podcast per-podcast key storage | P7 Podcast signer matrix | treat as named product signer with explicit storage/security owner | no ambiguous temporary/final key-store split |

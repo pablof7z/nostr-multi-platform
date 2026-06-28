@@ -95,6 +95,25 @@ compose those with NMP protocol features. What it must not do is push raw relay
 subscriptions, projection declarations, tag mutation, or publish routing into
 the native shell just because the feature is app-specific.
 
+The intended authoring contract is concrete:
+
+1. Define the app-owned state/output types and the events or capability results
+   that can change them.
+2. Define typed session descriptors for read demand, including route policy,
+   replay/admission rules, status, and teardown.
+3. Define typed actions/builders for user intent, including any publish intent
+   and signer requirements.
+4. Register the feature through the app composition root or a narrow installer.
+5. Generate or contract-test host adapters so Swift/Kotlin/TypeScript/TUI code
+   opens sessions, dispatches actions, renders outputs, and reports capability
+   results without reimplementing protocol policy.
+
+If that authoring path needs a new NMP module before the first app feature can
+work, the module starts as suspect. First try the existing builder,
+`AppHost`/registrar, action, observed-session, and publish seams; promote a new
+framework surface only after the app feature proves a repeated invariant and an
+old public door is retired.
+
 This should reduce NMP, not grow it. When a downstream app exposes a missing
 piece, the first question is whether NMP lacks a reusable Nostr mechanism or the
 app lacks an app-owned Rust feature. If the behavior is podcast playback,
@@ -135,6 +154,17 @@ Feature-install helpers should live in feature composition crates such as
 defaults, runtimes, protocol crates, or app crates, usually as builder extension
 traits or explicit registration helpers. They should not become a pile of
 unrelated methods on `nmp-core::AppHost`.
+
+Existing composition seams are the first place to prove this. Native already has
+`nmp-native-runtime::NmpAppBuilder`; browser already has
+`nmp-browser-runtime::BrowserAppBuilder`; reusable installers already compose
+through the platform-neutral `AppHost` super-trait and the narrow registrar
+traits beneath it. A new app-builder trait, `AppHost` extension surface, or
+composition crate is justified only after the first implementation shows why
+those existing seams cannot express explicit feature composition without
+retaining hidden defaults or broad public machinery. `AppHost` remains a
+composition-root target, not an app-developer API and not a protocol-module
+dependency.
 
 Composition should be idempotent where practical and explicit across browser,
 native, TUI, and test roots. A browser `start()` path should not silently install
