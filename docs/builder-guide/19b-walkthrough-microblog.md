@@ -5,9 +5,9 @@
 staticlib shell, wires the publish path through a real signer, runs on the iOS
 simulator, and gives the "what ships today vs tomorrow" milestone matrix.
 
-There is **no codegen step**. Composition is a library call
-(`nmp_defaults::register_defaults`), not a generated per-app FFI crate
-(ADR-0046). The shell you create here is a handful of lines of glue.
+There is **no codegen step**. Composition is explicit Rust in the app-core crate,
+not a generated per-app FFI crate (ADR-0069). The shell you create here is a
+handful of lines of glue.
 
 ## Build / run cheatsheet
 

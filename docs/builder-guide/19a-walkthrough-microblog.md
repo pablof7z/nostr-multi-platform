@@ -15,21 +15,19 @@ app-defined record. That separation *is* the D0 demo — see the callout below.
 > If you find yourself adding `enum Tweet` to `nmp-core`, stop — that is the
 > exact D0 violation this walkthrough exists to prevent.
 
-> **Composition model.** This walkthrough uses ADR-0046: a downstream app
-> depends on `nmp-defaults` and calls `register_defaults`. See
-> [15 — Codegen: bindings + FFI surface](15-codegen-and-ffi.md) for the
-> binding and composition split.
+> **Composition model.** This walkthrough uses ADR-0069: a downstream app owns
+> an explicit Rust composition root. `nmp-defaults` may provide reusable
+> installers, but hidden `register_defaults()` presets are compatibility or
+> tutorial surfaces, not production architecture. See
+> [15 — Codegen: bindings + FFI surface](15-codegen-and-ffi.md).
 
 ## The structural model
 
-Two seams are wired in `register()`: `register_action` for the write path and
-`register_snapshot_projection` or `register_typed_snapshot_projection` for the
-read path. An `ObservedProjectionSink` feeds
-raw kind:1 events into an app-owned feed store. The difference from the old
-fixture model is that `register()` is the app-core composition root: it **first
-inherits the canonical NMP composition** through
-`nmp_defaults::register_defaults(app)` exactly once, then adds the app-specific
-seams on top.
+The example shows low-level seams: `register_action` for the write path and
+typed output for the read path. In production, product screens should open typed
+read sessions or generated helpers; raw observed delivery is executor machinery
+behind those sessions. `register()` is the app-core composition root: it installs
+explicit substrate/protocol/app features, then adds the app-specific seams.
 
 The app crate you create for your product should open with the D0 boundary
 comment verbatim:
@@ -47,7 +45,7 @@ apps/microblog/
 └── nmp-app-microblog/               # thin staticlib shell (created in 19b)
     ├── Cargo.toml
     └── src/
-        └── lib.rs                   # re-export + register defaults + app register
+        └── lib.rs                   # re-export + app register
 crates/microblog-core/               # hand-written app-core crate (you write this)
 ├── Cargo.toml
 └── src/
@@ -212,8 +210,9 @@ pub fn register(app: &mut impl AppHost) -> FeedStore {
         .get_or_init(|| Arc::new(Mutex::new(Vec::new())))
         .clone();
 
-    // 1. Inherit the canonical NMP composition (routing, outbox, DMs, zaps, WOT).
-    nmp_defaults::register_defaults(app);
+    // 1. Install explicit substrate/protocol/app features.
+    // Shape only: exact installer names are owned by the live crates.
+    install_microblog_stack(app);
 
     // 2. Write path.
     app.register_action(NoteActionModule);
@@ -282,13 +281,11 @@ That shell is the analog of `nmp_app_chirp_register` in `apps/chirp/crates/nmp-a
 - **Making the example Twitter-shaped.** `Tweet`/`Retweet`/`Like` enums
   defeat the entire D0 demonstration. kind:1 is the wire format; the app
   noun is the only place an app concept appears.
-- **Hand-copying substrate wiring instead of calling `register_defaults` or
-  `register_substrate`.** The shared `Arc<InMemoryMailboxCache>` and coverage
-  gate must reach multiple collaborators with the same instance; copying the
-  block by hand desyncs them (V-48).
-- **Skipping `open_observed_projection` and rendering raw events in Swift.**
-  The feed store is the source of truth; the snapshot projection carries it.
-  Raw event arrays across FFI violate D5.
+- **Hand-copying substrate wiring instead of using reusable installers.** Shared
+  collaborators such as mailbox caches and coverage gates must reach multiple
+  collaborators with the same instance; copying the block by hand desyncs them.
+- **Rendering raw events in Swift/Kotlin/TypeScript.** Rust-owned typed read
+  output is the source of truth. Raw event arrays across FFI violate D5.
 - **Inventing a new extension family.** Use the shipped action, observer,
   projection, capability, and composition seams unless an ADR changes the
   substrate.

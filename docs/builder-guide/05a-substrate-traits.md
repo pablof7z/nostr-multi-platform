@@ -200,7 +200,7 @@ output, treat them as stale. The correct replacements:
 | `ViewModule` (typed reactive projection) | `open_observed_projection` + `register_snapshot_projection` |
 | `DomainModule` (kernel-owned domain store) | app-owned `Arc<Mutex<T>>` + `register_snapshot_projection` |
 | `IdentityModule` (signer scope) | `nmp-signers` crate + keyring capability |
-| `ModuleRegistry` (composition root) | an app-core `register()` fn that calls `nmp_defaults::register_defaults` once, then app/protocol `register()` fns |
+| `ModuleRegistry` (composition root) | an app-core `register()` fn that installs explicit substrate/protocol/app features |
 | `ActionPlan` / `ActionTransition` / `reduce()` | `execute()` dispatching `ActorCommand` |
 
 ## Deliverables (this half)

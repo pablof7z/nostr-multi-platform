@@ -370,8 +370,8 @@ actor's `changed_since_emit` flag whenever an event lands. See
 pub fn register(app: &mut impl AppHost) {
     let state = Arc::new(Mutex::new(DiscoveryState::default()));
 
-    // 1. Standard NIP stack first if this app wants the social defaults.
-    nmp_defaults::register_defaults(app);
+    // 1. Install the explicit NIP/protocol stack this app wants.
+    install_protocol_stack(app);
 
     // 2. Declared observed projection before any app action can trigger ingest.
     app.open_observed_projection(ObservedProjection::from_kinds(

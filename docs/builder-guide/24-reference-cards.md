@@ -34,7 +34,7 @@ monotonic `rev`; platforms drop updates with `rev` ≤ last seen.
 | **ActionModule** (trait) | write seam shape | `NAMESPACE`, `type Action`, `start()`, `execute()` | `action.rs:56` |
 | **CapabilityModule** (trait) | native bridge shape | request → native → result envelope (D7) | `capability.rs:11` |
 
-Module composition: the app-core crate exports `pub fn register(app: &mut impl AppHost) -> Store`; that function calls `nmp_defaults::register_defaults(app)` once, then app-specific `register()` fns. Thin staticlib shells and `examples/shell.rs` call only the app-core `register()`.
+Module composition: the app-core crate exports `pub fn register(app: &mut impl AppHost) -> Store`; that function installs explicit substrate/protocol/app features. Thin staticlib shells and `examples/shell.rs` call only the app-core `register()`.
 
 ## Card 3 — v1 capability catalog (`docs/product-spec/api-surface.md:192-229` §6.5)
 

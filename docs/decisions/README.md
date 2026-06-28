@@ -1,119 +1,115 @@
-# Architecture Decision Records — status index
+# Architecture Decision Records
 
-This directory holds NMP's Architecture Decision Records (ADRs). ADRs preserve
-durable decision context, but the current rule must stay readable in the owning
-ADR. When later work removes or reverses a mechanism, edit the ADR in place so it
-describes the current design rather than preserving incorrect guidance.
+This directory holds NMP's live architecture decisions. ADRs preserve context,
+but they are not immutable monuments: when current architecture changes, the ADR
+that owns the concept must be edited, folded, or retired so it does not teach a
+competing rule.
 
-This index is a navigation aid. The ADR file itself is authoritative for its own
-status; if they disagree, fix the index.
+## Current Spine
 
-## Current redesign spine
+ADR-0069 through ADR-0073 are the active redesign spine for #2313, #2316, and
+#2320:
 
-ADR-0069 through ADR-0073 are the current architecture-redesign spine for
-#2313, #2316, and #2320:
+- **0069**: explicit feature composition and app-owned product policy.
+- **0070**: typed read sessions, with `open_interest`, `ObservedProjection`, and
+  source reconciliation treated as private/substrate machinery.
+- **0071**: publish intents, composable event drafts, signing/publishing
+  separation, and route provenance.
+- **0072**: runtime, capability, and shell boundaries.
+- **0073**: ADR reset discipline and rolling architecture ratchets.
 
-- **0069** owns explicit feature composition and app-owned product policy.
-- **0070** owns typed read sessions and the public/private disposition of
-  `open_interest`, `open_feed`, `ObservedProjection`, and `ReducedSource`.
-- **0071** owns publish intent identity, composable event construction,
-  signing/publishing separation, and route provenance.
-- **0072** owns runtime, capability, shell, browser-worker, and headless/OS
-  boundaries.
-- **0073** owns the ADR reset and rolling ratchet discipline.
+Older ADRs remain authoritative only where they do not conflict with that spine.
+If an older ADR teaches a superseded public API, read its status line and current
+disposition first.
 
-Older ADRs remain authoritative only for current invariants that do not conflict
-with the redesign spine. When older ADRs teach superseded app-facing surfaces,
-their current disposition should be corrected in place and #2320 should classify
-them as folded, still-current, or retired.
+## Status Terms
 
-## Numbering notes
+- **Current**: still owns a live invariant.
+- **Amended**: still useful, but current guidance is narrowed by the listed ADR.
+- **Folded**: the surviving rule is now owned by a later ADR or durable doc.
+- **Retired**: historical or superseded; do not use as current architecture.
 
-- ADR **0014** (LMDB write-path policy) was originally filed as 0012, which
-  collided with 0012 (`relay_pin` / third routing lane). It was renumbered to the
-  free number 0014; the `relay_pin` ADR keeps 0012.
-- ADR **0016** (F-TTL FFI surface) was originally filed as 0041, which collided
-  with 0041 (relay-edit-row raw projection). It was renumbered to the free number
-  0016; the relay-edit ADR keeps 0041.
-- The ADR-0055 "Rung 3" family (pr-ladder, rung3, implementation-gates,
-  s1b-cleared-signal) was collapsed into the single ADR-0055; the durable
-  host-apply contract now lives in its "Host apply contract" section. The
-  planning-time rung ladder is preserved in git history.
+## Classification
 
-## Index
+| ADR | Status | Current owner / note |
+|---|---|---|
+| 0001 | Current | Composite dependency keys remain reverse-index machinery. |
+| 0002 | Folded | Per-view delta budgeting belongs in D8/perf-reactivity docs. |
+| 0003 | Current | Working-set memory remains bounded by active demand. |
+| 0004 | Folded | Allocation measurement belongs in perf/testing docs. |
+| 0005 | Folded | Platform shadows survive as transport/cache machinery under ADR-0070. |
+| 0006 | Retired | Phase-1 delivery positioning; historical only. |
+| 0007 | Current | Diagnostics/non-Nostr bridge data remains a valid boundary. |
+| 0008 | Retired | Initial Chirp demo target; historical only. |
+| 0009 | Amended | App/kernel boundary survives; production composition is ADR-0069. |
+| 0010 | Folded | Runtime registration is governed by ADR-0069 through ADR-0072. |
+| 0011 | Current | NMP owns LMDB environment injection. |
+| 0012 | Current | Relay pin/third routing lane survives as route provenance input. |
+| 0013 | Current | NIP-29 metadata-signer trust model survives. |
+| 0014 | Current | LMDB write-path policy survives. |
+| 0015 | Current | Signer crate/session boundary survives. |
+| 0016 | Retired | Old F-TTL ABI history unless cited from current `ffi-surface`. |
+| 0017 | Folded | Raw absent-fact rule belongs under ADR-0032/doctrine. |
+| 0018 | Current | ContentTree wire projection survives as typed output. |
+| 0019 | Current | Failed NIP-42 AUTH remains fail-closed. |
+| 0020 | Current | Intent-classed routing/search survives. |
+| 0021 | Current | Relay roles survive unless replaced by a later relay ADR. |
+| 0022 | Current | NMP-owned relay transport survives. |
+| 0023 | Folded | Capability execution is now governed by ADR-0072. |
+| 0024 | Folded | Async capability protocol is now governed by ADR-0072. |
+| 0025 | Amended | Marmot exception is narrowed by ADR-0039/0070. |
+| 0026 | Current | Signer NIP-44 seam survives; extended by 0050/0066. |
+| 0027 | Current | Unified `ActionModule` trait survives. |
+| 0028 | Folded | Liveness probe is FFI/diagnostic surface detail. |
+| 0029 | Current | Actor queue observability/backpressure survives. |
+| 0030 | Current | UniFFI/C-ABI split remains binding guidance, amended by ADR-0072. |
+| 0031 | Retired | `nmp-signer-broker` was deleted; NIP-46 uses actor-lane runtime. |
+| 0032 | Current | Raw semantic data to shells remains doctrine. |
+| 0033 | Folded | Feed viewport mechanics survive behind ADR-0070 sessions. |
+| 0034 | Current | Kind-dispatched rendering registry survives. |
+| 0035 | Folded | Root-indexed feed mechanics survive as private machinery under ADR-0070. |
+| 0036 | Folded | Active-follow source lessons survive under ADR-0070. |
+| 0037 | Current | Typed FlatBuffers sidecars survive. |
+| 0038 | Folded | OP feed schema belongs to feed/protocol docs, not public read architecture. |
+| 0039 | Amended | Push output survives; typed read lifecycle is ADR-0070. |
+| 0040 | Current | Capability worker seam remains live, under ADR-0072 boundary rules. |
+| 0041 | Folded | Relay-settings raw projection cleanup belongs under ADR-0032/docs. |
+| 0042 | Folded | Raw interest surface is substrate only; product reads are ADR-0070. |
+| 0043 | Current | `nmp-blossom` protocol crate survives. |
+| 0044 | Current | Typed snapshot envelope fields survive. |
+| 0045 | Current | Store-to-projection replay survives as internal catch-up. |
+| 0046 | Folded | Composition-as-library survives under ADR-0069. |
+| 0047 | Folded | Browser worker boundary is governed by ADR-0072. |
+| 0048 | Current | NIP-55 external signer capability survives. |
+| 0049 | Folded | Composition observability survives under ADR-0069 explicit roots. |
+| 0050 | Current | Signer-session capability port survives. |
+| 0051 | Current | NIP-11 relay info survives. |
+| 0052 | Current | Instance-scoped extension seams survive. |
+| 0053 | Folded | Projection declarations are output machinery under ADR-0070. |
+| 0054 | Current | Web persistence/OPFS constraints survive under ADR-0072. |
+| 0055 | Current | Incremental projection emission survives. |
+| 0056 | Folded | K3 coverage ledger is implemented test/coverage process. |
+| 0057 | Current | Unified accepted-event ingest chokepoint survives. |
+| 0058 | Current | Pull event-log consumption survives for diagnostics/export. |
+| 0059 | Current | Account lifecycle remains separate from bootstrap publish. |
+| 0060 | Amended | NIP-29 admin/joined-groups survives; app-facing reads are ADR-0070. |
+| 0061 | Amended | NIP-22 comments survives; publish/read surfaces follow 0070/0071. |
+| 0062 | Folded | Observer catch-up survives as private read-session machinery. |
+| 0063 | Amended | Reference resolution survives; typed session ownership is ADR-0070. |
+| 0064 | Amended | One write doorway survives; intents/provenance are ADR-0071. |
+| 0065 | Current | `ActorCommand` sub-enum collapse survives. |
+| 0066 | Current | Delegated NIP-44 decrypt sessions survive as staged work. |
+| 0067 | Folded | Browser runtime split is governed by ADR-0072. |
+| 0068 | Folded | Native runtime split is governed by ADR-0072. |
+| 0069 | Current | Redesign spine: explicit feature composition. |
+| 0070 | Current | Redesign spine: typed read sessions. |
+| 0071 | Current | Redesign spine: write intents and route provenance. |
+| 0072 | Current | Redesign spine: runtime/capability/shell boundary. |
+| 0073 | Current | Redesign spine: ADR reset and ratchets. |
 
-| Number | Title | Status | Related updates |
-|---|---|---|---|
-| 0001 | Composite dependency keys as primary reverse-index entries | Accepted | — |
-| 0002 | Delta-volume budget is per-view, not absolute | Accepted | — |
-| 0003 | Memory budget is for working set, not total cached events | Accepted | — |
-| 0004 | Allocation measurement plumbed via counting allocator | Accepted | — |
-| 0005 | Domain-keyed platform shadow with refcounted component wrappers | Accepted | — |
-| 0006 | Vertical-slice-first delivery for Phase 1 | Accepted (positioning modified by 0009) | Positioning amended by 0009; demo target updated by 0008 |
-| 0007 | Diagnostics and non-Nostr domain data over the app bridge | Accepted | — |
-| 0008 | Initial Chirp social baseline on iOS as the Phase 1a demo target | Accepted (positioning modified by 0009) | Updates 0006 demo target; positioning amended by 0009 |
-| 0009 | App-extension kernel boundary | Accepted / amended | 0069, 0072 |
-| 0010 | Runtime registration at the FFI boundary | Accepted | — |
-| 0011 | NMP owns the LMDB environment and injects it into nostr-lmdb | Accepted | — |
-| 0012 | `relay_pin` and the third routing lane | Accepted | Extended by 0020 (intent-classed routing) |
-| 0013 | NIP-29 metadata-signer trust model | Accepted | — |
-| 0014 | LMDB write-path policy — MemEventStore canonical, fork compensates | Accepted | (renumbered from 0012) |
-| 0015 | Signer crate boundary and session ownership | Accepted | — |
-| 0016 | F-TTL FFI surface — `force` argument on the claim functions | Accepted | (renumbered from 0041) |
-| 0017 | Missing display facts remain raw absent facts | Accepted / reconciled | 0032 |
-| 0018 | ContentTree FFI wire projection (`ContentTreeWire`) | Accepted | — |
-| 0019 | Failed NIP-42 AUTH is fail-closed | Accepted | — |
-| 0020 | Intent-classed routing + NIP-50 search | Accepted | Extends 0012 |
-| 0021 | Relay roles: Indexer + AppRelay | Accepted | — |
-| 0022 | NMP owns its relay transport (not `nostr-sdk` relay pool) | Accepted | — |
-| 0023 | HTTP work runs off the actor | Accepted | Refined by 0040 |
-| 0024 | Async capability protocol for non-blocking executors | Accepted | Refined by 0040 |
-| 0025 | Marmot read/lifecycle FFI exception | Accepted / narrowed | 0039 |
-| 0026 | Signer NIP-44 encryption seam | Accepted / implemented | 0050 |
-| 0027 | Unify the `ActionModule` trait | Accepted (implemented) | — |
-| 0028 | Actor-liveness probe FFI (`nmp_app_is_alive`) | Accepted | — |
-| 0029 | Actor queue observability and backpressure policy | Accepted | — |
-| 0030 | UniFFI vs C-ABI: the two-surface binding decision | Accepted | — |
-| 0031 | `nmp-signer-broker` owns the NIP-46 relay transport | Superseded | Superseded by the actor-lane design (#2119); `nmp-signer-broker` deleted, NIP-46 rides the actor `Pool` lane via `nmp-nip46-runtime` |
-| 0032 | Backend sends raw data; presentation layers format | Accepted | Aligned with aim.md §2 raw-data doctrine; partial completion by 0041 |
-| 0033 | NMP feed viewport FFI | Accepted | — |
-| 0034 | Kind-dispatched content rendering with open widget registry | Accepted | — |
-| 0035 | Generic root-indexed feed engine in `nmp-feed` | Accepted / folded under read-session direction | 0070 |
-| 0036 | Composition-root expansion of the follow-set timeline | Accepted / amended | 0070 |
-| 0037 | Typed FlatBuffers sidecars for runtime projections | Accepted / implemented | 0044 |
-| 0038 | Typed FlatBuffers sidecar for the OP-centric home feed | Accepted/implemented | — |
-| 0039 | Push projection seam is canonical | Accepted / amended | 0053, 0058 |
-| 0040 | Capability worker seam | Accepted / implemented | 0024 |
-| 0041 | Relay-settings cluster: strip presentation strings | Decided | Partial completion of 0032 |
-| 0042 | M2: generic `open_interest` replacing per-verb feed primitives | Accepted substrate mechanism; app API amended | 0057, 0070 |
-| 0043 | `nmp-blossom` protocol crate | Accepted / implemented | — |
-| 0044 | Typed snapshot envelope fields | Accepted / implemented | — |
-| 0045 | Store→projection replay (offline / second-launch render) | Accepted / implemented (single always-on cache-serve) | Self (Rev 2/3 single-mechanism) |
-| 0046 | Composition is a library, not a generator | Accepted / amended | 0069 |
-| 0047 | NMP browser worker runtime contract | Accepted | Write/signing contract → 0064 |
-| 0048 | NIP-55 Android signer (Amber) via `ExternalSignerCapability` | Accepted (shipped) | — |
-| 0049 | Defaults yield; composition is observable | Accepted / amended | 0069 |
-| 0050 | Signer-session capability port | Implemented | Updates 0026 seal-exec model; §D7 extended by 0066 |
-| 0051 | First-class NIP-11 relay-information documents in NMP | Accepted / implemented | — |
-| 0052 | Instance-scoped extension seams — register values, not types | Accepted / implemented | — |
-| 0053 | Host-declared projection subscriptions | Accepted / amended | Amends 0039; amended by 0070 |
-| 0054 | Web persistence (OPFS-SQLite sync VFS) + offline-queue durability | Accepted (implemented; Stages 5–9 shipped via #2147–#2165) | — |
-| 0055 | Incremental projection emission (per-projection revision transport) | Accepted (implemented; Rungs 0-3 + capstone) | Amends aim.md §10 + Doctrine #12 |
-| 0056 | K3 coverage ledger | Accepted / implemented | — |
-| 0057 | Unified kind-agnostic accepted-event ingest chokepoint | Accepted / implemented | Amends 0042 (finalizes its read path) |
-| 0058 | Cursor-based event-log consumption (the "pull" model) | Accepted / implemented | Reconciles 0039 (does not reverse it) |
-| 0059 | Account lifecycle is separate from bootstrap publish | Accepted / implemented | — |
-| 0060 | NIP-29 admin actions and joined-groups projection | Accepted / implemented | — |
-| 0061 | NIP-22 comments | Accepted / implemented | — |
-| 0062 | Observer-scoped read-model catch-up | Accepted / amended | 0070 |
-| 0063 | Reference resolution: unified keyed `RefResolver` primitive | Accepted / amended | Amends 0042; extends 0053, 0055; amended by 0070 |
-| 0064 | Unified write/command boundary: one byte transport, open FlatBuffers payloads, signing as a capability round-trip | Accepted/implemented / amended | Extends 0027, 0050, 0040; folds in the worker write/signing contract from 0047; amended by 0071 |
-| 0065 | `ActorCommand` sub-enum collapse | Accepted | Aligns the in-process command vocabulary with 0064 |
-| 0066 | Delegated NIP-44 decrypt sessions for bunker DM backfill | Accepted for staged implementation | Extends 0050 §D7; NIP-46 transport principle from 0031 (superseded; now via nmp-nip46-runtime) |
-| 0067 | Browser runtime ownership split — `nmp-browser-runtime::wasm` is the ABI glue | Accepted / amended; nmp-wasm deleted (#2202) | Amends 0047 and 0054; amended by 0069, 0072 |
-| 0068 | Native runtime ownership split (nmp-ffi is C ABI glue) | Accepted / amended | Relates to 0030, 0046, 0067; encodes #2205/#2209; amended by 0069, 0072 |
-| 0069 | Explicit feature composition and app-owned product policy | Accepted for redesign direction | Amends 0009, 0046, 0049, 0067, 0068 |
-| 0070 | Typed read sessions own app-visible read lifecycles | Accepted for redesign direction | Amends 0035, 0036, 0039, 0042, 0053, 0057, 0062, 0063 |
-| 0071 | Publish intents, composable event drafts, and route provenance | Accepted for redesign direction | Extends 0064; records #1538/#1600 explicit-route disposition |
-| 0072 | Runtime, capability, and shell boundary | Accepted for redesign direction | Extends 0067 and 0068 |
-| 0073 | ADR reset and rolling architecture ratchets | Accepted for redesign direction | Owns #2320 cleanup discipline |
+## Follow-Up Rule
+
+When a future PR touches a folded or amended ADR's implementation area, it must
+either keep the old public surface count flat/decreasing or update the owning ADR
+in place. Do not add a new correction document that leaves stale current guidance
+behind.

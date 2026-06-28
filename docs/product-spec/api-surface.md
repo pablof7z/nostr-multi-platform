@@ -62,21 +62,24 @@ owns its action payload, validation, execution, capability requests, and any
 state it projects. `nmp-core` does not grow app-specific verbs to satisfy one
 consumer.
 
-### 6.4 Reads, Interests, And Projections
+### 6.4 Reads, Sessions, And Projections
 
-Low-level app reads enter through declared interests or typed app feed/open-ref
-surfaces. The current C/JNI surface includes:
+Production product reads are typed sessions, or generated per-feature helpers
+over typed session descriptors. A session owns acquisition demand, bounded replay,
+admission, source reconciliation, typed output, status, and teardown.
 
-- `nmp_app_open_feed` / `nmp_app_close_feed` for app-facing feed sessions.
-- `nmp_app_open_interest` / `nmp_app_close_interest` for low-level NIP-01 filter
-  interests.
-- `nmp_app_resolve_ref` / `nmp_app_release_ref` for refcounted typed hydration
-  across the closed `profile` and `event` namespaces. Profile rows resolve
-  through the same seam and are read from the keyed `refs.profile` projection.
+Raw `nmp_app_open_interest` / `nmp_app_close_interest` is low-level acquisition
+machinery for substrate, protocol-internal, diagnostic, export, test, or
+migration scopes. It is not the app-facing read model for product screens.
 
-Projection delivery is typed. Current projection registration and sidecar
-encoding are covered by ADR-0037, ADR-0044, and
-[`docs/ffi-surface.md`](../ffi-surface.md).
+Current app-visible read helpers include feed/session and ref-resolution
+surfaces, but their durable contract is ADR-0070's typed-session lifecycle.
+`nmp_app_resolve_ref` / `nmp_app_release_ref` remain the refcounted typed
+hydration surface for profile and event refs.
+
+Projection delivery is typed output transport. Projection keys, typed sidecars,
+manifests, and change gates are how Rust pushes bounded session/app state to the
+host; they are not the lifecycle an app developer hand-assembles.
 
 ### 6.5 Capabilities
 
