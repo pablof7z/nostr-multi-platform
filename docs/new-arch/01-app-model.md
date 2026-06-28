@@ -123,6 +123,15 @@ architecture. NMP crates should shrink toward reusable protocol/runtime
 mechanisms and delete framework doors that exist only because app crates could
 not previously define typed sessions/actions cleanly.
 
+Do not confuse that with "fewer crates at any cost." Browser runtime, FFI,
+intent classification, feed mechanics, conformance, and testing can be real
+boundaries when they protect platform, ABI, protocol, runtime, or enforcement
+invariants. The first deletion target is hidden production surface such as
+monolithic `register_defaults()`, raw app-facing read/write doors, and duplicated
+lifecycle controllers. Merging browser runtime into FFI, feed mechanics into
+defaults, intent parsing into core, or gallery policy into framework defaults
+would reduce file count while hiding the same complexity behind worse ownership.
+
 This is the answer to the NDK comparison in #2313. NMP should feel like a
 one-call subscribe from Swift, Kotlin, TypeScript, or TUI after the app Rust
 crate has defined the session, but the production model is not arbitrary

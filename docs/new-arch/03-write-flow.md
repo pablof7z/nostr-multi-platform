@@ -92,6 +92,34 @@ intent/target/reason/status carriers so the missing audit facts survive. Reusing
 `EventDraft`, or `PublishContext` types are justified only if they remove
 branching or duplicate route/privacy/protocol state elsewhere.
 
+Current first-slice recommendation: add narrow internal provenance and intent
+records, then carry them through existing publish carriers. A broad
+`PublishContext` is the fallback, not the target. The likely shape is:
+
+```text
+PublishTarget::Explicit {
+    relays,
+    provenance: PublishRouteProvenance,
+}
+
+PublishIntentRecord {
+    correlation_id,
+    kind,
+    stage,
+    event_id?,
+    signer_pubkey?,
+    route_provenance?,
+    route_plan?,
+    error?,
+}
+```
+
+`PublishRouteProvenance` should describe the class, owner, subject, and
+guarantee of an explicit route. Automatic public routing stays `Auto` plus
+resolver reasons. Explicit route classes are protocol host pin, verified private
+inbox, manual override, imported/verbatim, and diagnostic. Product code should
+not be able to construct an unclassified explicit relay list.
+
 The missing invariant is route provenance, not a broad context wrapper. The
 publish path must know whether an explicit relay set is a manual override, a
 NIP-29 host pin, a verified private inbox, an imported/verbatim external event,

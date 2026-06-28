@@ -398,10 +398,15 @@ only if they cannot mutate durable product truth or hide missed session wakes.
 Each phase must leave the repo shippable and reduce at least one public concept,
 duplicate lifecycle recipe, or hidden desync state.
 
-The milestone ladder below is not a big-bang rewrite. It is a proof program with
-workstreams that converge into the same endpoint:
+The milestone ladder below is not a fixed full-trajectory plan. It is a
+direction map. Keep only the next one to five slices PR-ready, execute one,
+measure what changed, then choose the next one to five. A detailed plan for every
+downstream app would become stale and would violate the repo's planning
+discipline by turning into a parallel backlog.
 
-| Workstream | Scope | Must deliver before signoff |
+The ladder is useful because it names the forces that must keep converging:
+
+| Workstream | Scope | Direction proof before area counts as architecture evidence |
 |---|---|---|
 | A. Baseline and ratchets | old public doors, tick users, direct publish paths, downstream native policy | counted baseline, owner for each count, and CI/doctrine gate for "does not increase" |
 | B. Composition/defaults | `register_defaults`, `nmp init`, app roots, protocol feature installers | explicit feature composition as the production model; presets labeled tutorial/compatibility with live consumers, support window, owner, and deletion/formalization gate, or deleted |
@@ -413,7 +418,7 @@ workstreams that converge into the same endpoint:
 | H. Signer/status runtime | local, NIP-07, NIP-46, NIP-55-style, named product, agent, imported event | Rust-owned pending/ready/failed/signed status and parked continuation model across platforms |
 | I. Service/capability sessions | widgets, AppIntents, CarPlay, remote commands, Live Activities, Handoff, media/STT/AI | app/service sessions or typed capability results; no `KernelModel.shared` UI-process dependency for correctness |
 | J. Generated adapters/codegen | action builders, output schemas, row caches, FFI/runtime bridges | generated or contract-tested drift prevention for every cross-platform payload used by migrated flows |
-| K. Downstream/browser proofs | Highlighter, Podcast Player, `nmp-gallery`, browser runtime, sanity checks from 29er/Olas | each acceptance matrix passes or triggers a named kill criterion; downstream app nouns stay out of NMP crates; degraded wasm/worker/runtime modes fail closed |
+| K. Downstream/browser proofs | Highlighter, Podcast Player, `nmp-gallery`, browser runtime, sanity checks from 29er/Olas | each selected slice moves a classified acceptance row toward migrated/deleted/scoped/ratcheted; downstream app nouns stay out of NMP crates; degraded wasm/worker/runtime modes fail closed |
 | L. Durable docs/ADR retirement | ADR, builder guide, product specs, templates, wiki, issues | local packet retired; durable docs corrected in place; tactical work lives only in GitHub issues |
 
 Ordering rules:
@@ -431,8 +436,38 @@ Ordering rules:
   Podcast NIP-F4, or pre-signed/imported flows migrate.
 - H and I are required for real apps, not follow-up polish. A design that only
   works while the foreground UI process is open is not the NMP app architecture.
-- K is a signoff gate, not a post-ADR chore.
+- K is a direction gate, not post-ADR polish. A downstream row cannot count as
+  proof until it is classified and moved by an actual slice.
 - L prevents this packet from becoming another parallel source of truth.
+
+Rolling planning loop:
+
+```text
+select 1-5 slices from the highest-risk gates
+  -> verify existing seams first
+  -> migrate one real caller family
+  -> delete, privatize, or scope an old path
+  -> add the ratchet that prevents backsliding
+  -> re-baseline counts and choose again
+```
+
+Do not keep a stale per-phase roadmap alive after reality changes. If a slice
+does not reduce old-pattern counts or produce a stronger ratchet, the next move
+is to narrow or reject the abstraction, not to continue down the old plan.
+
+Current rolling-horizon recommendation:
+
+| Step | Slice | Why this is first | Must get smaller |
+|---|---|---|---|
+| 1 | P-1/P0 public-door disposition and ratchets | freezes the old architecture before any new name lands | raw `open_interest`, hidden defaults teaching, projection-tier teaching, snapshot-tick reconciliation, filterless observer doors stop growing |
+| 2 | #2307 event-driven observed-projection reconciler | deletes duplicated lifecycle repair before adding a session abstraction | duplicated `ActiveObservedProjection`/`DynamicObservedProjection` modules and account/source snapshot-tick usage |
+| 3 | first descriptor proof over an existing real session | proves #2316 lifecycle ownership only after old reconciler duplication moves down | one hand-wired open/replay/sink/output/teardown recipe becomes private or compatibility-scoped |
+| 4 | smallest publish provenance / publish-intent carrier | proves write-side direction without a broad `PublishContext` layer | anonymous explicit route status and fire-and-forget publish paths shrink or become scoped |
+| 5 | #2320 ADR/source-of-truth fold for accepted facts | prevents this packet and stale ADRs from becoming parallel architecture | stale ADR/index/builder-guide teaching is folded, corrected, retired, or linked to issues |
+
+Only these rows should be treated as near-term plan. Later P3-P8 material is a
+direction map and acceptance matrix; choose later slices after the counts and
+ratchets from steps 1-5 are real.
 
 Every implementation slice should have this shape:
 
@@ -681,6 +716,13 @@ It may use an existing feed/search/group-style observed session, but it should
 not also claim gallery/component-ref migration. P1 proves the lifecycle owner;
 P4 proves the first cross-shell ref/embed migration.
 
+Rolling-horizon note: if #2307 remains open, run the P2 reconciler deletion slice
+before this descriptor proof. A descriptor that sits on duplicated tick-repair
+machinery can pass tests while leaving the old lifecycle problem intact. The
+first descriptor proof should start only after account/source observed-projection
+reconciliation is event-driven or explicitly scoped as migration debt with an
+owner and removal gate.
+
 **P2: Extract shape reconciliation and delete tick use where events exist.**
 Consolidate the duplicated open/close-on-shape-change controllers behind one
 private reconciler. Migrate active-account, browser feed, native feed, and
@@ -708,6 +750,24 @@ existing `ObservedProjectionRegistrar` and `IdentityChangeRegistrar`, migrates
 current active-account consumers, deletes the duplicate controllers, and adds a
 ratchet against reintroducing snapshot-tick account sampling. A compatibility
 alias or a fifth reconciler fails P2.
+
+Near-term P2 scope:
+
+- add one small private `ObservedProjectionReconciler` under existing substrate
+  ownership, not a new crate and not a public app API;
+- delete the defaults/native/browser active/dynamic observed-projection copies
+  that only differ by runtime placement;
+- remove account/source `register_snapshot_tick_observer` usage where
+  sign-in/sign-out/account-switch/source-change events already exist;
+- keep any still-unmigrated tick users on an explicit allowlist with owner,
+  reason, and deletion/formalization issue;
+- add tests for no-account no-op, sign-in opens once, account switch closes then
+  opens, sign-out closes, failed open leaves no stale current id, and no
+  snapshot-tick account sampling regression.
+
+If this slice cannot delete the duplicate controllers without creating a new
+read engine or broad `AppHost` extension, stop and narrow the architecture before
+adding typed-session surface.
 
 **P3: Make scoped session demand own scoped output demand.**
 Prove that opening a session can declare its typed output. Keep
@@ -982,8 +1042,8 @@ mode before implementation starts.
 
 This is an initial 2026-06-28 snapshot from live grep counts. It is evidence for
 the dossier, not a durable source of truth. These counts include docs and tests
-unless noted, so signoff still requires manual classification into production,
-test, historical doc, tutorial compatibility, diagnostic, or delete.
+unless noted, so any selected slice still requires manual classification into
+production, test, historical doc, tutorial compatibility, diagnostic, or delete.
 
 | Surface | Count | What it means |
 |---|---:|---|

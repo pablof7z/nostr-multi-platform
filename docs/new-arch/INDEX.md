@@ -1,10 +1,10 @@
 # High-Level Architecture Overview
 
-> **Status:** Candidate architecture for issues #2313 and #2316, written for ADR
-> review. This is not a shipped API contract and not a settled solution. It
-> records the desired shape, rejection tests, and migration questions so an ADR
-> can decide final naming, migration order, compatibility scope, and
-> implementation details before code changes.
+> **Status:** Candidate architecture for issues #2313, #2316, and #2320,
+> written for ADR review. This is not a shipped API contract, not a settled
+> solution, and not the durable ADR set. It records the desired shape, rejection
+> tests, and first rolling-horizon moves so the accepted facts can be folded into
+> a smaller current ADR/doc set before code changes.
 
 ## Authority And Retirement
 
@@ -13,16 +13,25 @@ It is not the canonical tactical queue, not a durable replacement for existing
 architecture docs, and not mergeable as a parallel authority in this form.
 
 Before this work becomes a PR, the surviving decisions must move into the
-appropriate durable homes: ADRs, existing architecture/design docs, builder-guide
-pages, product specs, and GitHub issues for migration work. Anything that remains
-only as an exploration artifact should be deleted or explicitly retired. The
-point of this directory is to converge on the right shape before editing the
-canonical docs, not to add another source of truth.
+appropriate durable homes: a smaller redesign ADR set, existing
+architecture/design docs, builder-guide pages, product specs, and GitHub issues
+for migration work. Anything that remains only as an exploration artifact should
+be deleted or explicitly retired. The point of this directory is to converge on
+the right shape before editing the canonical docs, not to add another source of
+truth.
 
 This directory should not survive as a parallel plan. The final migration must
 turn accepted facts into durable docs/ADRs, turn tactical work into GitHub
 issues, and then delete or retire `docs/new-arch`. If this packet still needs to
-be read to understand current architecture after signoff, P8 failed.
+be read to understand current architecture after the redesign ADRs land, P8
+failed.
+
+#2320 is the source-of-truth cleanup gate for this packet. It rejects preserving
+dozens of stale ADRs as historical-but-current guidance. Once #2316 accepts the
+architecture direction, each old ADR should be classified as folded into the
+redesign ADR, folded into another durable owner, still-current standalone
+guidance, or deleted/retired. The preferred outcome is a smaller ADR directory
+whose remaining files cannot be mistaken for the old public architecture.
 
 The fitness matrix in this packet is transitional: it becomes real only when it
 is executable work. Each accepted ratchet must graduate into a doctrine lint,
@@ -72,6 +81,10 @@ existing architecture text:
 - **#2316 rescope:** the fix is not a convenience `open_feature()` wrapper. It is
   a foundational decomposition problem: one concept must own the whole lifecycle,
   or the wrapper only hides fragmentation for one more layer.
+- **#2320:** documentation/source-of-truth reset. Surviving decisions from this
+  packet must be folded into a smaller current ADR/doc set; stale ADRs that
+  teach old public architecture should be removed or retired, not contradicted by
+  another appendix.
 - **#2307:** concrete deletion proof for the same root. Tick-polling
   `ActiveObservedProjection`/`DynamicObservedProjection` copies should collapse
   into one event-driven reconciler, then `register_snapshot_tick_observer` should
@@ -103,7 +116,7 @@ durable documentation.
 
 Known contradiction ledger for P8:
 
-| Surface | Current wiki/doc signal | Required resolution before signoff |
+| Surface | Current wiki/doc signal | Required resolution before durable docs |
 |---|---|---|
 | `docs/wiki/guides/reduced-source.md` | treats `ReducedSource`, `open_feed(FeedParams)`, and `FeedParams` as typed app-facing dynamic-feed architecture | either the ADR keeps that public surface, or the page is rewritten around typed sessions with private source reconciliation |
 | `docs/wiki/guides/publish-outbox-pipeline.md` and `docs/wiki/guides/nip29-wiring.md` | still record the old `RoutingContext::explicit_targets` versus live `PublishTarget::Explicit` split, even though #1538/#1600 removed the dead routing-context branch | preserve the route-reason/status lessons, but rewrite around the surviving `PublishTarget::Explicit` path; do not reintroduce a broad routing context just to match stale prose |
@@ -118,7 +131,9 @@ Known contradiction ledger for P8:
 | ADR-0009, ADR-0046, ADR-0053, ADR-0062 and builder-guide 02/15/19/28 | teach app assembly through defaults, observed projections, projection tiers, or action-triggered subscription recipes | amend or retire once typed sessions, explicit composition, and session-scoped output demand are accepted |
 | ADR-0036, ADR-0042, ADR-0063 and product-spec overview/doctrine/subsystems docs | preserve followset/open-interest/reference-resolution/feed/projection vocabulary from the old public model | correct in place so `open_feed`, `open_interest`, and `resolve_ref` cannot be renamed as typed sessions while retaining old lifecycle fragments |
 | ADR-0049 composition ledger/yield behavior | records useful observability for what composition installed and yielded | preserve observable composition ledgers when deleting hidden defaults; do not lose auditability while simplifying |
+| `docs/decisions/README.md` and ADR set as a whole | currently indexes many accepted records, including records that may no longer be current after the redesign | #2320 should classify each ADR as folded into redesign, folded into another durable owner, still-current standalone, or deleted/retired |
 | `docs/product-spec/api-surface.md`, `docs/product-spec/cli-toolchain-phasing.md`, `docs/ffi-surface.md`, `docs/wasm-surface.md`, and `docs/recipes/app-shapes.md` | still expose old public read/write/init surfaces as normal product API | rewrite around typed sessions/actions, explicit feature composition, and scoped compatibility doors |
+| `docs/retired/removed-api-surface.md` | still describes `register_event_observer` and `register_defaults` as current seams/starters despite being retired guidance | correct or retire the breadcrumb so retired notes do not preserve stale current guidance |
 | wiki noun/topic pages for `nmp-defaults`, `ObservedProjection`, `read-surface`, `write-register-surface`, `nmp-wasm`, and `nmp-browser-runtime` | generated pages may preserve stale surface names as facts | regenerate, correct in place, or retire after durable owners are updated |
 
 ## Concept Status
@@ -208,6 +223,35 @@ code. If the first implementation of `FeatureSession`, route provenance,
 generated adapters, or source reconciliation adds a layer while the old layer
 remains an equal production path, the design has failed its simplification
 claim.
+
+## Rolling-Horizon Rule
+
+Do not try to plan the whole migration up front. The durable decision is the
+North Star plus the tests that show whether a slice moves toward it. The tactical
+plan should cover only the next one to five PR-sized moves with enough precision
+to implement, verify, and delete old surface.
+
+After every slice:
+
+```text
+recount old patterns
+  -> record what was deleted, privatized, or scoped
+  -> verify the ratchets
+  -> update the contradiction/decision ledger
+  -> choose the next one to five slices
+```
+
+A long plan that predicts every downstream migration would become stale before
+it became useful. What must not drift is the direction test:
+
+- fewer app-facing concepts;
+- existing seams tried before new framework surface;
+- old public doors shrinking or frozen by ratchets;
+- Rust remains the owner of protocol, routing, signing, privacy, durable state,
+  and product policy;
+- every compatibility path has live consumers, owner, support window, and
+  removal/formalization trigger;
+- downstream evidence can falsify the design, not merely populate a backlog.
 
 ## Design Hypothesis
 
@@ -301,7 +345,7 @@ whether the destination architecture is real.
   sessions/actions or be deleted; if it is SSR/migration/out-of-scope, that
   boundary needs an owner and formal criteria. Direct NDK cannot remain both a
   violation and a normal shipping path.
-- Treat this as a hard signoff blocker, not an implementation detail. If
+- Treat this as a hard proof blocker for Highlighter web, not an implementation detail. If
   Highlighter web remains a shipping runtime, every direct NDK fetch, subscribe,
   sign, publish, cache, relay-set, and tag-parser product path must be migrated
   behind NMP or explicitly classified with owner and deletion/formalization gate.
@@ -356,10 +400,23 @@ whether the destination architecture is real.
   `consume_all_builtin_projections()` teaching, or label that path as
   tutorial/showcase compatibility.
 
-## Signoff Gates
+## Direction Gates
 
-The architecture is not signoff-ready until these downstream gates either pass
-or trigger a named kill criterion. They are not follow-up polish.
+The architecture should be judged by whether each slice moves these gates in the
+right direction. These are not a demand to finish every downstream migration
+before the first PR. They are the evidence matrix that prevents a slice from
+claiming progress while preserving the old architecture under new names.
+
+A gate can be in one of five states:
+
+```text
+unclassified -> classified -> first slice planned -> migrated/deleted/scoped
+             -> ratcheted
+```
+
+Only the first one to five moves need a PR-ready plan at any time. Later rows
+remain direction gates: they tell us what must become true before that area can
+count as proof of the North Star.
 
 | Gate | Required proof |
 |---|---|
@@ -380,27 +437,30 @@ or trigger a named kill criterion. They are not follow-up polish.
 | Metadata privacy gate | Client/NIP-89 metadata is appended only at one outbound-finalization site, only for public-routable unsigned events, and never for private/imported/pre-signed/reserved surfaces. |
 | Binding strategy | Generated bindings or UniFFI work is accepted only when it deletes drift or narrows old public doors; binding churn alone is not an architecture proof. |
 
-## Signoff Dossier
+## ADR Dossier
 
-Before the ADR can say "this is the right architecture," there must be a concrete
-dossier that proves the claim. A clean narrative is not enough.
+Before the ADR can say "this is the right North Star," there must be a concrete
+dossier that proves the direction and the first moves. A clean narrative is not
+enough. The dossier does not need a complete trajectory for every downstream app;
+it does need enough evidence that the next slices are moving the system toward a
+smaller architecture instead of adding a wrapper layer.
 
 Required dossier sections:
 
 - current baseline counts for every old-pattern family in FF-001 through FF-026;
 - disposition of every public door in P-1: delete, privatize, formalize, or
   migration-scope with owner/support window/removal gate;
-- proof that the first descriptor slice reduces lifecycle recipe count rather
-  than adding a parallel read engine;
-- proof that route provenance uses the smallest carrier that preserves the
-  invariant, with the dead explicit-route seam deleted or given a real owner;
+- a PR-sized first-slice plan proving the descriptor work reduces lifecycle
+  recipe count rather than adding a parallel read engine;
+- a PR-sized first-slice plan for route provenance that tries the smallest
+  carrier preserving the invariant, with dead explicit-route concepts deleted or
+  left unrevived;
 - downstream matrices for Highlighter, Podcast Player, and `nmp-gallery`, with
-  each row marked migrated, deleted, diagnostic/test, SSR-only, out-of-scope, or
-  kill-criterion-triggered;
-- browser runtime/storage proof, including OPFS worker conformance and
-  multi-tab/ephemeral-tab policy;
-- generated catalog/manifest proof that native/web tables derive from Rust or a
-  manifest source of truth;
+  each row at least classified and the first one to five migrated rows selected;
+- browser runtime/storage direction gate, including whether the first proof is
+  gallery wasm/Worker, OPFS conformance, or degraded-mode deletion;
+- generated catalog/manifest direction gate naming the first catalog to
+  single-source;
 - durable-doc retirement list with each stale doc corrected in place or retired;
 - subjective product calls explicitly resolved, including Highlighter web,
   tutorial preset, downstream release gates, and manual explicit relay UX.
@@ -417,8 +477,8 @@ is a smaller NMP: fewer permanent public doors, fewer kernel concepts, fewer
 crate-level extension seams, fewer binding-specific tables, and fewer recipes an
 app developer has to memorize.
 
-For every proposed module, crate, or kernel responsibility, the signoff question
-is subtraction-first:
+For every proposed module, crate, or kernel responsibility, the direction
+question is subtraction-first:
 
 ```text
 can this concept be deleted entirely?
@@ -817,7 +877,8 @@ implementation satisfies these constraints:
 
 ## ADR Readiness Bar
 
-This packet is ready to turn into durable ADR and architecture edits only after:
+This packet is ready to turn into durable ADR and architecture edits only after
+the North Star is falsifiable and the first rolling-horizon slices are concrete:
 
 - the public vocabulary is reduced to feature bundles, typed sessions, typed
   actions/builders, capability results, and typed outputs/status;
@@ -834,11 +895,17 @@ This packet is ready to turn into durable ADR and architecture edits only after:
   user text into refs, relays, app commands, or search;
 - the publish path preserves offline-first local intent/status before signing,
   routing, relay sockets, retry, or cancel;
-- Highlighter, Podcast Player, and `nmp-gallery` pass their acceptance matrices
-  or trigger a named kill criterion;
+- Highlighter, Podcast Player, and `nmp-gallery` have classified acceptance
+  matrices, with the first one to five rows selected for actual migration or
+  decision work;
 - the first executable ratchets are identified, with baseline counts and owners;
 - stale docs and examples have a retirement path instead of becoming a competing
   source of truth.
+
+ADR readiness is not the same as completing every downstream migration. It means
+the next slices are specific enough to execute and the remaining matrices are
+specific enough to tell whether later work is moving toward or away from the
+North Star.
 
 ## Decision Taxonomy
 
@@ -888,8 +955,8 @@ valid endpoints:
 
 **Human/product-scope calls**
 
-These can be documented and worked around temporarily, but final signoff needs a
-real decision if the evidence does not force one:
+These can be documented and worked around temporarily, but the relevant slice
+cannot count as proof until the decision is made or explicitly scoped out:
 
 - whether Highlighter web is an NMP target runtime, an SSR/migration exception,
   or deliberately out of scope;
@@ -907,7 +974,7 @@ real decision if the evidence does not force one:
 - which service-session form wins for widgets, AppIntents, Siri, CarPlay, remote
   commands, Live Activities, Handoff, and deep links.
 
-Decision register for signoff:
+Decision register for rolling-horizon planning:
 
 | Decision | Required before | Default if unresolved | Kill/defer outcome |
 |---|---|---|---|
