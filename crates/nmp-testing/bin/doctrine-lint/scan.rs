@@ -12,7 +12,9 @@ use std::path::Path;
 use crate::cli::Config;
 use crate::event_flow_gates;
 use crate::report;
-use crate::rules::{d0, d10, d11, d12, d13, d14, d15, d6, d7, d8, no_raw_tap_reintroduction};
+use crate::rules::{
+    d0, d10, d11, d12, d13, d14, d15, d6, d7, d8, no_raw_tap_reintroduction, product_raw_read,
+};
 use crate::scope::{
     action_namespace_file_in_scope, d10_file_in_scope, d12_file_in_scope, d13_file_extra_in_scope,
     d14_file_in_scope, d15_file_in_scope, d16_file_in_scope, d17_file_in_scope, d19_file_in_scope,
@@ -60,6 +62,7 @@ pub(super) struct FileContext {
     d6_test_file: bool,
     d8_test_file: bool,
     no_raw_tap_in_scope: bool,
+    product_raw_read_in_scope: bool,
     action_namespace_in_scope: bool,
     d7_in_scope: bool,
     d8_in_scope: bool,
@@ -100,6 +103,7 @@ impl FileContext {
             d6_test_file,
             d8_test_file: d6_test_file && !(cfg.workspace_d8 && is_nmp_testing_harness_bin(path)),
             no_raw_tap_in_scope: no_raw_tap_reintroduction::file_in_scope(path),
+            product_raw_read_in_scope: product_raw_read::file_in_scope(path),
             action_namespace_in_scope: action_namespace_file_in_scope(path),
             d7_in_scope: d7::file_in_scope(path),
             d8_in_scope: d8::file_in_scope(path, &cfg.d8_extra_scopes),

@@ -4,7 +4,7 @@ use std::path::Path;
 
 use crate::rules::{
     action_namespace, d0, d10, d11, d13, d14, d15, d16, d17, d19, d20, d21, d26, d27, d6, d7, d8,
-    d9, no_raw_tap_reintroduction,
+    d9, no_raw_tap_reintroduction, product_raw_read,
 };
 use crate::{allow, event_flow_gates, report, scope::is_doctrine_lint_source, walker::ScannedLine};
 
@@ -205,6 +205,24 @@ pub(super) fn scan_line(
                 path,
                 sl,
                 no_raw_tap_reintroduction::ID,
+                hit,
+                allow::line_allows_with_reason,
+                findings,
+            );
+        }
+    }
+
+    if !ctx.workspace_d8
+        && ctx.product_raw_read_in_scope
+        && !ctx.d6_test_file
+        && !sl.in_test_cfg
+        && !is_doctrine_lint_source(path)
+    {
+        for hit in product_raw_read::check(sl.text, sl.is_comment, sl.in_test_cfg) {
+            emit_unless_allowed(
+                path,
+                sl,
+                product_raw_read::ID,
                 hit,
                 allow::line_allows_with_reason,
                 findings,

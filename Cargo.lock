@@ -4133,14 +4133,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nmp-nip59-decrypt-only"
-version = "0.8.4"
-dependencies = [
- "nmp-nip59",
- "nostr",
-]
-
-[[package]]
 name = "nmp-nip68"
 version = "0.8.4"
 dependencies = [
