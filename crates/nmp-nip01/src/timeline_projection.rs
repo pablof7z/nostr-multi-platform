@@ -376,7 +376,7 @@ impl ModularTimelineProjection {
 
     /// Wire the cross-protocol relation classifier (e.g.
     /// `nmp_relations::default_note_relation_classifier()`), so the timeline
-    /// cards tally reactions / reposts / zaps / comments alongside the native
+    /// cards tally reactions / reposts / comments alongside the native
     /// kind:1 reply counts. Called once at composition time, immediately after
     /// [`Self::new`], before the projection ingests events.
     ///
@@ -385,7 +385,7 @@ impl ModularTimelineProjection {
     /// The [`NoteRelationClassifier`] trait lives in this crate; the concrete
     /// cross-protocol implementation lives in `nmp-relations` (Layer 4) and is
     /// injected by composition (#1728), so the base note crate carries no
-    /// dependency on NIP-18 / NIP-22 / NIP-25 / NIP-57.
+    /// dependency on sibling NIP engagement crates.
     #[must_use]
     pub fn with_relation_classifier(self, classifier: Arc<dyn NoteRelationClassifier>) -> Self {
         if let Ok(mut inner) = self.inner.lock() {

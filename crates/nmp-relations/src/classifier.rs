@@ -3,18 +3,18 @@
 //!
 //! `nmp-nip01` counts its own kind:1 NIP-10 replies natively and exposes the
 //! [`NoteRelationClassifier`] seam for everything else. This module supplies the
-//! concrete classifier that recognises the cross-protocol relation sources —
-//! reactions (NIP-25 kind:7), reposts (NIP-18 kind:6), zaps (NIP-57 kind:9735),
-//! and comments (NIP-22 kind:1111) — so the base note crate carries no
-//! dependency on those NIP crates.
+//! concrete classifier that recognises the v1 default cross-protocol relation
+//! sources: reactions (NIP-25 kind:7), reposts (NIP-18 kind:6), and comments
+//! (NIP-22 kind:1111). The base note crate carries no dependency on those NIP
+//! crates.
 
 use std::sync::Arc;
 
 use nmp_core::substrate::KernelEvent;
 use nmp_nip01::{ClassifiedRelation, NoteRelationClassifier, RelationKind};
 
-/// Production [`NoteRelationClassifier`]: classifies reactions, reposts, zaps,
-/// and comments onto the note they reference. kind:1 replies are NOT classified
+/// Production [`NoteRelationClassifier`]: classifies reactions, reposts, and
+/// comments onto the note they reference. kind:1 replies are NOT classified
 /// here — `nmp-nip01` owns its own reply detection.
 pub struct DefaultNoteRelationClassifier;
 
@@ -48,13 +48,7 @@ impl NoteRelationClassifier for DefaultNoteRelationClassifier {
                 kind: RelationKind::Reaction,
             });
         }
-        // NIP-57 kind:9735 zap receipt — counted against the zapped event.
-        nmp_nip57::try_from_kernel_event(event)
-            .and_then(|zap| zap.zapped_event_id)
-            .map(|target| ClassifiedRelation {
-                target,
-                kind: RelationKind::Zap,
-            })
+        None
     }
 }
 

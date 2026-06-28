@@ -115,9 +115,10 @@ pub struct TargetRelationCounts {
 /// The kind of social relation an event expresses toward a target note.
 ///
 /// `Reply` is native to NIP-01 (a kind:1 NIP-10 threaded reply). The other
-/// variants are cross-protocol and are produced by an injected
-/// [`NoteRelationClassifier`] (see `nmp-relations`), so this base crate carries
-/// no dependency on NIP-18 / NIP-22 / NIP-25 / NIP-57.
+/// variants are cross-protocol or sibling-protocol counts produced by this
+/// crate's feed code or an injected [`NoteRelationClassifier`] (see
+/// `nmp-relations`), so this base crate does not own the full cross-protocol
+/// aggregation policy.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RelationKind {
     Reply,
@@ -142,11 +143,12 @@ pub struct ClassifiedRelation {
 /// it expresses toward a target note, or `None` if it is not a relation event.
 ///
 /// NIP-01 handles its own kind:1 replies natively; this trait is the injection
-/// point for the cross-protocol relation sources (reactions, reposts, zaps,
-/// comments) so that aggregation lives in `nmp-relations`, not in the base note
-/// crate (#1728). Inject a concrete classifier via [`NoteRelationIndex::new`]
-/// or [`crate::ModularTimelineProjection::with_relation_classifier`]; absent
-/// one, only kind:1 replies are tallied.
+/// point for cross-protocol relation sources (reactions, reposts, comments, or
+/// a future app/protocol-supplied relation kind) so that aggregation lives in
+/// `nmp-relations`, not in the base note crate (#1728). Inject a concrete
+/// classifier via [`NoteRelationIndex::new`] or
+/// [`crate::ModularTimelineProjection::with_relation_classifier`]; absent one,
+/// only kind:1 replies are tallied.
 pub trait NoteRelationClassifier: Send + Sync {
     /// Classify `event`, returning the relation it expresses or `None`.
     fn classify(&self, event: &KernelEvent) -> Option<ClassifiedRelation>;
@@ -155,7 +157,7 @@ pub trait NoteRelationClassifier: Send + Sync {
 pub struct NoteRelationIndex {
     counts: HashMap<String, TargetRelationCounts>,
     relation_by_event: BoundedMessageMap<String, IndexedRelation>,
-    /// Cross-protocol relation classifier (reactions/reposts/zaps/comments).
+    /// Cross-protocol relation classifier (reactions/reposts/comments/etc.).
     /// `None` → only NIP-01 kind:1 replies are counted.
     classifier: Option<Arc<dyn NoteRelationClassifier>>,
 }
@@ -170,7 +172,7 @@ impl NoteRelationIndex {
     /// Construct an index with an optional cross-protocol
     /// [`NoteRelationClassifier`]. Pass
     /// `Some(nmp_relations::default_note_relation_classifier())` to count
-    /// reactions/reposts/zaps/comments alongside the native kind:1 replies.
+    /// reactions/reposts/comments alongside the native kind:1 replies.
     #[must_use]
     pub fn new(classifier: Option<Arc<dyn NoteRelationClassifier>>) -> Self {
         Self {
@@ -216,10 +218,14 @@ impl NoteRelationIndex {
     /// relation kind is delegated to the injected cross-protocol classifier.
     fn classify(&self, event: &KernelEvent) -> Option<IndexedRelation> {
         if let Some(note) = try_from_kernel_event(event) {
-            return note.refs.reply.or(note.refs.root).map(|reply| IndexedRelation {
-                target: reply.id,
-                kind: RelationKind::Reply,
-            });
+            return note
+                .refs
+                .reply
+                .or(note.refs.root)
+                .map(|reply| IndexedRelation {
+                    target: reply.id,
+                    kind: RelationKind::Reply,
+                });
         }
         self.classifier
             .as_ref()
@@ -376,10 +382,10 @@ mod tests {
         assert_eq!(counts.comments, RelationCount::Known { count: 0 });
     }
 
-    /// Cross-protocol classification (reactions/reposts/zaps/comments) is owned
+    /// Cross-protocol classification (reactions/reposts/comments/etc.) is owned
     /// by `nmp-relations`; this test verifies the seam — an injected classifier
     /// drives the non-reply buckets. The concrete cross-protocol classifier and
-    /// its NIP-22/18/57 coverage are tested in `nmp-relations`.
+    /// its NIP-22/18 coverage are tested in `nmp-relations`.
     #[test]
     fn injected_classifier_drives_cross_protocol_counts() {
         struct AlwaysRepost;
