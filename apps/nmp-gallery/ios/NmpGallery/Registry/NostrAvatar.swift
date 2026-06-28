@@ -100,12 +100,12 @@ public struct NostrAvatar: View, Equatable {
     }
 
     private var identicon: some View {
-        ZStack {
-            Circle().fill(NostrIdenticon.color(forPubkey: pubkey))
-            Text(NostrIdenticon.initials(forPubkey: pubkey))
-                .font(.system(size: size * 0.35, weight: .semibold))
-                .foregroundStyle(.white)
-        }
+        // #2224: the deterministic 5×5 symmetric grid is the single shared
+        // fallback across every platform. `NostrIdenticon` (defined once in
+        // `ContentTreeWire.swift`) renders the same pattern as Chirp iOS and
+        // the Android Compose avatar for a given pubkey.
+        NostrIdenticon.identiconView(forPubkey: pubkey, size: size)
+            .clipShape(Circle())
     }
 }
 
@@ -113,13 +113,7 @@ public struct NostrAvatar: View, Equatable {
 //
 // NOTE (gallery local edit): the `NostrIdenticon` enum that originally lived
 // here in the upstream `swiftui/user-avatar` registry component has been
-// removed. The richer version defined in `ContentTreeWire.swift`
-// (`swiftui/content-core`) provides the same `color(forPubkey:)` and
-// `initials(forPubkey:)` API plus the geometric `identiconView(...)`
-// used by `NostrMentionChip` and `NostrQuoteCard`. Keeping both definitions
-// in the same Swift module is a redeclaration error.
-//
-// The task's literal instruction was to dedup the OTHER direction (strip
-// from ContentTreeWire.swift), but that would remove `identiconView(...)`
-// — which the other registry components call. The dedup was inverted here
-// after verifying the call sites; see the PR body for the rationale.
+// removed. The single definition lives in `ContentTreeWire.swift`
+// (`swiftui/content-core`) and is kept byte-identical to the registry source
+// by the cross-platform identicon drift gate (#2224). Keeping both
+// definitions in the same Swift module is a redeclaration error.

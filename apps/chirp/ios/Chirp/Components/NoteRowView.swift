@@ -79,17 +79,6 @@ struct NoteRowView: View {
             ?? shortHex
     }
 
-    private var authorAvatarInitials: String {
-        let name = model.profile(forPubkey: item.authorPubkey)?.display
-            ?? item.authorDisplayName                         // ← baked into snapshot, claim-independent
-            ?? eventCards[item.id]?.authorDisplayName
-        return (name ?? item.authorPubkey).displayInitials
-    }
-
-    private var authorAvatarColorHex: String {
-        item.authorPubkey.pubkeyColorHex
-    }
-
     private var authorPictureUrl: String? {
         model.profileCard(forPubkey: item.authorPubkey)?.pictureUrl
             ?? item.authorPictureUrl
@@ -159,8 +148,6 @@ struct NoteRowView: View {
             NostrAvatar(
                 pubkey: item.authorPubkey,
                 url: authorPictureUrl,
-                initials: authorAvatarInitials,
-                colorHex: authorAvatarColorHex,
                 size: 44
             )
             .equatable()

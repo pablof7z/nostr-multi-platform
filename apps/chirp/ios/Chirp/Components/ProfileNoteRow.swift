@@ -23,12 +23,6 @@ struct ProfileNoteRow: View {
             ?? card.authorPubkey.shortHex
     }
 
-    private var authorAvatarInitials: String {
-        let name = model.profile(forPubkey: card.authorPubkey)?.display
-            ?? card.authorDisplayName
-        return (name ?? card.authorPubkey).displayInitials
-    }
-
     private var displayContent: String {
         card.contentPreview.isEmpty ? card.content : card.contentPreview
     }
@@ -40,8 +34,6 @@ struct ProfileNoteRow: View {
                     NostrAvatar(
                         pubkey: card.authorPubkey,
                         url: card.authorPictureUrl,
-                        initials: authorAvatarInitials,
-                        colorHex: card.authorPubkey.pubkeyColorHex,
                         size: 40
                     )
                     .equatable()

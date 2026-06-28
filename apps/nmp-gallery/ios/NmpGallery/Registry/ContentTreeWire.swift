@@ -234,7 +234,7 @@ public enum NostrWireNode: Decodable, Equatable, Sendable {
 /// palette so installed apps stay visually consistent.
 public enum NostrIdenticon {
     /// Returns a stable `Color` derived from a hex pubkey (or any string).
-    /// Uses the djb2 hash mapped to HSL with fixed S/L for legibility.
+    /// Uses the djb2 hash mapped to HSB with fixed S/B for legibility.
     public static func color(forPubkey pubkey: String) -> Color {
         let hue = Double(djb2(pubkey) % 360) / 360.0
         return Color(hue: hue, saturation: 0.55, brightness: 0.75)
