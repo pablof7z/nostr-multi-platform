@@ -62,31 +62,24 @@
 //!   `ModularTimelineProjection`, group-chat projection, Marmot, etc.).
 //!   App-core composition crates call `register_defaults` once, then wire
 //!   those app-specific registrations themselves.
-//! * It does not own a C-ABI surface. The `nmp_app_*` FFI lives in
-//!   `nmp-ffi` (and per-app `nmp_app_<app>_*` shells live in the app
-//!   crate). This crate is pure Rust composition.
+//! * It does not own a C-ABI surface. Generic `nmp_app_*` symbols live in the
+//!   C ABI wrapper crate, and per-app `nmp_app_<app>_*` shells live in the app
+//!   crate. This crate is pure Rust composition.
 //! * It does not call `nmp_app_start`. The caller drives
 //!   lifecycle.
 //!
 //! # Usage
 //!
 //! ```ignore
-//! use nmp_defaults::{NmpAppBuilder, RunConfig};
+//! use nmp_core::substrate::AppHost;
 //!
-//! // 1. Construct the builder in the shell.
-//! let mut builder = NmpAppBuilder::new();
+//! fn compose_app(host: &mut impl AppHost) {
+//!     // 1. Install the shared NMP defaults exactly once.
+//!     nmp_defaults::register_defaults(host);
 //!
-//! // 2. Call the app-core composition root. It calls `register_defaults`
-//! //    exactly once, then registers app-specific projections/actions.
-//! my_app_core::register(&mut builder);
-//!
-//! // 3. Drive the lifecycle.
-//! let app = builder
-//!     .in_memory()
-//!     .consume_all_builtin_projections()
-//!     .start(RunConfig::default());
-//!
-//! // 4. Tear down through the shell's normal FFI/runtime owner.
+//!     // 2. Register app-specific projections/actions in the app core.
+//!     my_app_core::register(host);
+//! }
 //! ```
 //!
 //! # Ordering contract
@@ -108,30 +101,13 @@ use nmp_core::substrate::{
     AppHost, ObservedProjection, ObservedProjectionRegistrar, SnapshotProjectionRegistrar,
 };
 pub mod action_payloads;
-#[cfg(feature = "native")]
-pub mod builder;
 mod composition;
-#[cfg(feature = "native")]
-pub mod op_feed_defaults;
 pub mod op_pointer_source;
-#[cfg(feature = "native")]
-pub(crate) mod relay_config;
-#[cfg(feature = "native")]
-pub mod relay_info_probe;
 pub mod runtimes;
 pub mod search_defaults;
 pub mod tiers;
 pub mod topic_articles;
 
-#[cfg(feature = "native")]
-pub use builder::{NmpAppBuilder, ProjectionsDeclared, RunConfig, StorageSet, Unstarted};
-#[cfg(feature = "native")]
-pub use op_feed_defaults::{
-    compile_feed_params, register_op_feed_defaults, register_op_feed_defaults_with_mute,
-    OpFeedDefaults,
-};
-#[cfg(feature = "native")]
-pub use relay_info_probe::{nmp_app_probe_relay_info, RelayInfoProbeCallback};
 pub use runtimes::{
     register_bookmark_runtime, register_comment_runtime, register_mute_runtime,
     register_search_relay_runtime, register_search_relay_runtime_with,

@@ -12,7 +12,7 @@
 //!
 //! [`nmp_ffi::NmpApp::open_feed`] takes a `compiler` — the scope→registration
 //! step that names the OP-feed engine / follow set / typed sidecar. That wiring
-//! lives in [`nmp_defaults::compile_feed_params`], ABOVE `nmp-ffi` in the DAG,
+//! lives in [`nmp_native_runtime::compile_feed_params`], ABOVE `nmp-ffi` in the DAG,
 //! so `nmp-ffi` stays D0-clean (it matches on no `FeedScope` variant). The
 //! generic C-ABI doorway therefore lives HERE — the composition layer that can
 //! name both `NmpApp` and the compiler — and hands the same single canonical
@@ -46,7 +46,7 @@ fn compiler(
     params: &FeedParams,
     kinds: &std::collections::BTreeSet<u32>,
 ) -> Result<nmp_feed::FeedSessionBuild, FeedOpenError> {
-    nmp_defaults::compile_feed_params(app, params, kinds)
+    nmp_native_runtime::compile_feed_params(app, params, kinds)
 }
 
 /// Serialize a minted handle to the `{"projection_key":"…","session_id":N}`

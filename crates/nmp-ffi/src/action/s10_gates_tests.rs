@@ -157,17 +157,13 @@ fn cancel_action_enqueues_cancel_publish_command_for_original_correlation_id() {
     );
 
     // Snapshot the monotone send counter before cancel.
-    let sends_before = app_ref
-        .send_cmd_count
-        .load(std::sync::atomic::Ordering::Relaxed);
+    let sends_before = app_ref.send_cmd_count_for_test();
 
     // Cancel by the original correlation_id (not the event id — PD-036).
     let cid_cstr = std::ffi::CString::new(corr_id).unwrap();
     crate::publish::nmp_app_cancel_action(app, cid_cstr.as_ptr());
 
-    let sends_after = app_ref
-        .send_cmd_count
-        .load(std::sync::atomic::Ordering::Relaxed);
+    let sends_after = app_ref.send_cmd_count_for_test();
 
     // `send_cmd_count` is a one-way ratchet — it can only increase.
     // A cancel must enqueue at least one ActorCommand (CancelPublish).
@@ -184,11 +180,7 @@ fn cancel_action_enqueues_cancel_publish_command_for_original_correlation_id() {
     // if `nmp_app_cancel_action` accidentally sent `RetryPublish` or another
     // `ActorCommand`. `last_cmd_tag` captures the discriminant of the most
     // recently sent command in `send_cmd`.
-    let last_tag = app_ref
-        .last_cmd_tag
-        .lock()
-        .ok()
-        .and_then(|guard| *guard);
+    let last_tag = app_ref.last_cmd_tag_for_test();
     assert_eq!(
         last_tag,
         Some("CancelPublish"),
@@ -212,14 +204,10 @@ fn cancel_action_null_app_is_noop() {
 #[test]
 fn cancel_action_null_correlation_id_is_noop() {
     let app = crate::nmp_app_new();
-    let sends_before = unsafe { &*app }
-        .send_cmd_count
-        .load(std::sync::atomic::Ordering::Relaxed);
+    let sends_before = unsafe { &*app }.send_cmd_count_for_test();
     // Must not enqueue a command AND must not crash.
     crate::publish::nmp_app_cancel_action(app, std::ptr::null());
-    let sends_after = unsafe { &*app }
-        .send_cmd_count
-        .load(std::sync::atomic::Ordering::Relaxed);
+    let sends_after = unsafe { &*app }.send_cmd_count_for_test();
     assert_eq!(
         sends_before, sends_after,
         "a null correlation_id must not enqueue any CancelPublish command"

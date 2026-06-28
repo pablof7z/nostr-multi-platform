@@ -4,7 +4,8 @@ use std::sync::Mutex;
 
 use nmp_core::substrate::{EventId, KernelEvent};
 use nmp_core::ObservedProjectionSink;
-use nmp_ffi::{nmp_app_free, nmp_app_new, NmpApp};
+mod common;
+use common::*;
 
 static SERIAL: Mutex<()> = Mutex::new(());
 
@@ -66,7 +67,7 @@ fn set_app_active(app: *mut NmpApp, active: Option<&str>) {
 #[test]
 fn mute_replacement_resets_visible_op_feed_immediately() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    let app = nmp_app_new();
+    let app = new_app_ptr();
     assert!(!app.is_null(), "nmp_app_new returned null");
     set_app_active(app, Some(ALICE));
 
@@ -75,7 +76,7 @@ fn mute_replacement_resets_visible_op_feed_immediately() {
         nmp_defaults::NmpDefaults::default(),
     );
     let mute = handles.mute.expect("social defaults install mute runtime");
-    let defaults = nmp_defaults::register_op_feed_defaults_with_mute(
+    let defaults = nmp_native_runtime::register_op_feed_defaults_with_mute(
         unsafe { &*app },
         ALICE.to_string(),
         vec![1],
@@ -104,5 +105,5 @@ fn mute_replacement_resets_visible_op_feed_immediately() {
         "active-account mute replacement must reset the current feed window immediately"
     );
 
-    nmp_app_free(app);
+    free_app_ptr(app);
 }

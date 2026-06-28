@@ -10,11 +10,12 @@
 //! That asymmetry is the lightest proof the template actually wires what it
 //! claims to wire.
 
-use nmp_ffi::{nmp_app_free, nmp_app_new};
+mod common;
+use common::*;
 
 #[test]
 fn register_defaults_wires_every_canonical_namespace() {
-    let app = nmp_app_new();
+    let app = new_app_ptr();
     assert!(!app.is_null(), "nmp_app_new returned null");
 
     // SAFETY: `app` is a valid non-null pointer fresh from `nmp_app_new`.
@@ -34,7 +35,7 @@ fn register_defaults_wires_every_canonical_namespace() {
         "control case: an unregistered namespace must NOT appear in the action registry"
     );
 
-    nmp_app_free(app);
+    free_app_ptr(app);
 }
 
 #[test]
@@ -45,34 +46,34 @@ fn register_defaults_is_repeatable_for_routing_and_runtime_slots() {
     // slots are last-writer-wins; ingest parsers register additively (a
     // duplicate parser is harmless — the kernel calls all parsers for a
     // kind). The proof: a second call does not panic.
-    let app = nmp_app_new();
+    let app = new_app_ptr();
     // SAFETY: same as above.
     nmp_defaults::register_defaults(unsafe { &mut *app });
     nmp_defaults::register_defaults(unsafe { &mut *app });
-    nmp_app_free(app);
+    free_app_ptr(app);
 }
 
 #[test]
 fn register_defaults_wires_wot_bootstrap_projection() {
-    let app = nmp_app_new();
+    let app = new_app_ptr();
     assert!(!app.is_null(), "nmp_app_new returned null");
 
     nmp_defaults::register_defaults(unsafe { &mut *app });
 
     // The generic JSON lane is deleted (rule A6). Check via the typed registry.
-    let app_ref: &nmp_ffi::NmpApp = unsafe { &*app };
+    let app_ref: &NmpApp = unsafe { &*app };
     let typed_keys = app_ref.registered_typed_projection_keys();
     assert!(
         typed_keys.contains(&"nmp.wot.bootstrap".to_string()),
         "WOT bootstrap typed projection was not registered"
     );
 
-    nmp_app_free(app);
+    free_app_ptr(app);
 }
 
 #[test]
 fn register_defaults_with_handles_returns_wot_runtime_when_social_is_enabled() {
-    let app = nmp_app_new();
+    let app = new_app_ptr();
     assert!(!app.is_null(), "nmp_app_new returned null");
 
     let handles = nmp_defaults::register_defaults_with_handles(
@@ -84,7 +85,7 @@ fn register_defaults_with_handles_returns_wot_runtime_when_social_is_enabled() {
         handles.wot.is_some(),
         "default social composition must return the installed WOT runtime handle"
     );
-    let app_ref: &nmp_ffi::NmpApp = unsafe { &*app };
+    let app_ref: &NmpApp = unsafe { &*app };
     assert!(
         app_ref
             .registered_typed_projection_keys()
@@ -92,12 +93,12 @@ fn register_defaults_with_handles_returns_wot_runtime_when_social_is_enabled() {
         "handle-returning entry point must preserve WOT bootstrap projection registration"
     );
 
-    nmp_app_free(app);
+    free_app_ptr(app);
 }
 
 #[test]
 fn register_defaults_with_handles_omits_wot_runtime_when_social_is_disabled() {
-    let app = nmp_app_new();
+    let app = new_app_ptr();
     assert!(!app.is_null(), "nmp_app_new returned null");
 
     let handles = nmp_defaults::register_defaults_with_handles(
@@ -112,7 +113,7 @@ fn register_defaults_with_handles_omits_wot_runtime_when_social_is_disabled() {
         handles.wot.is_none(),
         "social:false must not install or return the WOT runtime handle"
     );
-    let app_ref: &nmp_ffi::NmpApp = unsafe { &*app };
+    let app_ref: &NmpApp = unsafe { &*app };
     assert!(
         !app_ref
             .registered_typed_projection_keys()
@@ -120,12 +121,12 @@ fn register_defaults_with_handles_omits_wot_runtime_when_social_is_disabled() {
         "social:false must not register the WOT bootstrap projection"
     );
 
-    nmp_app_free(app);
+    free_app_ptr(app);
 }
 
 #[test]
 fn register_defaults_longform_is_typed_only_not_in_json_map() {
-    let app = nmp_app_new();
+    let app = new_app_ptr();
     assert!(!app.is_null(), "nmp_app_new returned null");
 
     // SAFETY: `app` is a valid non-null pointer fresh from `nmp_app_new`.
@@ -134,14 +135,14 @@ fn register_defaults_longform_is_typed_only_not_in_json_map() {
     // The generic JSON lane is fully deleted (rule A6). The NIP-23 longform
     // projection was already typed-only before this PR; that contract now holds
     // trivially for all projections. Verify the typed projection IS registered.
-    let app_ref: &nmp_ffi::NmpApp = unsafe { &*app };
+    let app_ref: &NmpApp = unsafe { &*app };
     let typed_keys = app_ref.registered_typed_projection_keys();
     assert!(
         typed_keys.contains(&"nmp.nip23.articles".to_string()),
         "longform projection must be registered in the typed projection registry"
     );
 
-    nmp_app_free(app);
+    free_app_ptr(app);
 }
 
 /// The NIP-57 zap-subscription reconciler no longer registers a snapshot
@@ -153,14 +154,14 @@ fn register_defaults_longform_is_typed_only_not_in_json_map() {
 /// typed projection registry at all.
 #[test]
 fn register_defaults_zap_subscription_is_no_longer_a_projection_key() {
-    let app = nmp_app_new();
+    let app = new_app_ptr();
     assert!(!app.is_null(), "nmp_app_new returned null");
 
     // SAFETY: `app` is a valid non-null pointer fresh from `nmp_app_new`.
     nmp_defaults::register_defaults(unsafe { &mut *app });
 
     // The generic JSON lane is deleted (rule A6). Check the typed registry.
-    let app_ref: &nmp_ffi::NmpApp = unsafe { &*app };
+    let app_ref: &NmpApp = unsafe { &*app };
     let typed_keys = app_ref.registered_typed_projection_keys();
     assert!(
         !typed_keys.contains(&"nmp.nip57.zap_subscription".to_string()),
@@ -168,7 +169,7 @@ fn register_defaults_zap_subscription_is_no_longer_a_projection_key() {
          per-tick observer now, not a projection"
     );
 
-    nmp_app_free(app);
+    free_app_ptr(app);
 }
 
 // ───────────────────────────────────────────────────────────────────────
@@ -181,7 +182,7 @@ fn register_defaults_zap_subscription_is_no_longer_a_projection_key() {
 /// consumer (podcast-player, hl) stands on without swallowing the social bundle.
 #[test]
 fn register_substrate_is_routable_but_social_free() {
-    let app = nmp_app_new();
+    let app = new_app_ptr();
     assert!(!app.is_null(), "nmp_app_new returned null");
 
     // Substrate tier ONLY — note the default coverage gate, matching what
@@ -222,7 +223,7 @@ fn register_substrate_is_routable_but_social_free() {
         "DM runtime must NOT be wired by `register_substrate` alone"
     );
 
-    nmp_app_free(app);
+    free_app_ptr(app);
 }
 
 /// `register_defaults_with(default)` ≡ `register_defaults`: the same action
@@ -231,11 +232,11 @@ fn register_substrate_is_routable_but_social_free() {
 #[test]
 fn register_defaults_with_default_equals_register_defaults() {
     // Reference app via the legacy entry point.
-    let app_ref = nmp_app_new();
+    let app_ref = new_app_ptr();
     nmp_defaults::register_defaults(unsafe { &mut *app_ref });
 
     // Candidate app via the new config entry point with the default config.
-    let app_cfg = nmp_app_new();
+    let app_cfg = new_app_ptr();
     nmp_defaults::register_defaults_with(
         unsafe { &mut *app_cfg },
         nmp_defaults::NmpDefaults::default(),
@@ -269,8 +270,8 @@ fn register_defaults_with_default_equals_register_defaults() {
         );
     }
 
-    nmp_app_free(app_ref);
-    nmp_app_free(app_cfg);
+    free_app_ptr(app_ref);
+    free_app_ptr(app_cfg);
 }
 
 /// Each social toggle, when `false`, skips exactly its own block and leaves the
@@ -279,7 +280,7 @@ fn register_defaults_with_default_equals_register_defaults() {
 fn register_defaults_with_toggles_skip_their_blocks() {
     // `social: false` → no nip02 actions, no WOT runtime; substrate still routable.
     {
-        let app = nmp_app_new();
+        let app = new_app_ptr();
         let cfg = nmp_defaults::NmpDefaults {
             social: false,
             ..Default::default()
@@ -301,12 +302,12 @@ fn register_defaults_with_toggles_skip_their_blocks() {
         // Other toggles untouched.
         assert!(is_registered(app, "nmp.nip17.send"), "dms still on");
         assert!(is_registered(app, "nmp.nip57.zap"), "zaps still on");
-        nmp_app_free(app);
+        free_app_ptr(app);
     }
 
     // `dms: false` → no nip17 actions, no DM runtime projection.
     {
-        let app = nmp_app_new();
+        let app = new_app_ptr();
         let cfg = nmp_defaults::NmpDefaults {
             dms: false,
             ..Default::default()
@@ -321,12 +322,12 @@ fn register_defaults_with_toggles_skip_their_blocks() {
             "dms:false must skip the DM runtime projection"
         );
         assert!(is_registered(app, "nmp.follow"), "social still on");
-        nmp_app_free(app);
+        free_app_ptr(app);
     }
 
     // `zaps: false` → no nip57 action.
     {
-        let app = nmp_app_new();
+        let app = new_app_ptr();
         let cfg = nmp_defaults::NmpDefaults {
             zaps: false,
             ..Default::default()
@@ -337,14 +338,14 @@ fn register_defaults_with_toggles_skip_their_blocks() {
             "zaps:false must skip nip57"
         );
         assert!(is_registered(app, "nmp.follow"), "social still on");
-        nmp_app_free(app);
+        free_app_ptr(app);
     }
 
     // `longform: false` is observed via the TYPED registry, not the JSON map
     // (longform is typed-only). We can at least assert the rest stay on and the
     // call doesn't panic; the typed-projection absence is asserted in-crate.
     {
-        let app = nmp_app_new();
+        let app = new_app_ptr();
         let cfg = nmp_defaults::NmpDefaults {
             longform: false,
             ..Default::default()
@@ -355,7 +356,7 @@ fn register_defaults_with_toggles_skip_their_blocks() {
             is_registered(app, "nmp.nip65.publish_relay_list"),
             "substrate still on"
         );
-        nmp_app_free(app);
+        free_app_ptr(app);
     }
 }
 
@@ -365,7 +366,7 @@ fn register_defaults_with_toggles_skip_their_blocks() {
 /// URL — so a leaf app supplies `Some(url)` here.)
 #[test]
 fn register_defaults_with_accepts_custom_bootstrap_relay() {
-    let app = nmp_app_new();
+    let app = new_app_ptr();
     let cfg = nmp_defaults::NmpDefaults {
         nostrconnect_bootstrap_relay: Some("wss://relay.example.test".to_string()),
         ..Default::default()
@@ -374,7 +375,7 @@ fn register_defaults_with_accepts_custom_bootstrap_relay() {
     // Substrate + social still wired.
     assert!(is_registered(app, "nmp.nip65.publish_relay_list"));
     assert!(is_registered(app, "nmp.follow"));
-    nmp_app_free(app);
+    free_app_ptr(app);
 }
 
 /// A custom `nostrconnect_perms` is consumed without panic (#1493 P9). NMP ships
@@ -384,7 +385,7 @@ fn register_defaults_with_accepts_custom_bootstrap_relay() {
 /// `nostrconnect://` URI built on the FFI thread.
 #[test]
 fn register_defaults_with_accepts_custom_nostrconnect_perms() {
-    let app = nmp_app_new();
+    let app = new_app_ptr();
     let cfg = nmp_defaults::NmpDefaults {
         nostrconnect_perms: Some("sign_event:1,sign_event:7".to_string()),
         ..Default::default()
@@ -393,7 +394,7 @@ fn register_defaults_with_accepts_custom_nostrconnect_perms() {
     // Substrate + social still wired.
     assert!(is_registered(app, "nmp.nip65.publish_relay_list"));
     assert!(is_registered(app, "nmp.follow"));
-    nmp_app_free(app);
+    free_app_ptr(app);
 }
 
 /// `true` when `namespace` is present in the app's action registry — read
@@ -402,10 +403,10 @@ fn register_defaults_with_accepts_custom_nostrconnect_perms() {
 /// probe). Registration presence is exactly what every caller asserts, so the
 /// introspection view is both more direct and more correct than inferring it
 /// from a dispatch error envelope.
-fn is_registered(app: *mut nmp_ffi::NmpApp, namespace: &str) -> bool {
+fn is_registered(app: *mut NmpApp, namespace: &str) -> bool {
     // SAFETY: `app` is a valid non-null pointer from `nmp_app_new`, live for
     // the duration of this read; no aliasing `&mut` is held at the call sites.
-    let app_ref: &nmp_ffi::NmpApp = unsafe { &*app };
+    let app_ref: &NmpApp = unsafe { &*app };
     app_ref
         .registered_action_namespaces()
         .iter()
@@ -413,8 +414,8 @@ fn is_registered(app: *mut nmp_ffi::NmpApp, namespace: &str) -> bool {
 }
 
 /// Check typed projection registry for key presence — replaces deleted JSON lane (rule A6).
-fn read_projection(app: *mut nmp_ffi::NmpApp, key: &str) -> Option<String> {
-    let app_ref: &nmp_ffi::NmpApp = unsafe { &*app };
+fn read_projection(app: *mut NmpApp, key: &str) -> Option<String> {
+    let app_ref: &NmpApp = unsafe { &*app };
     let typed_keys = app_ref.registered_typed_projection_keys();
     if typed_keys.contains(&key.to_string()) {
         // Return a sentinel non-null string; callers using `.is_some()` / `.is_none()` still work.
@@ -423,4 +424,3 @@ fn read_projection(app: *mut nmp_ffi::NmpApp, key: &str) -> Option<String> {
         None
     }
 }
-

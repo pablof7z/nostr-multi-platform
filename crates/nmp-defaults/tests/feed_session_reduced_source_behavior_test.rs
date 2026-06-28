@@ -8,17 +8,18 @@
 #[path = "feed_session_reduced_source_support.rs"]
 mod support;
 
-use nmp_ffi::nmp_app_new;
+mod common;
+use common::*;
 use support::*;
 
 #[test]
 fn active_user_follows_prelogin_signin_replays_cached_follow_set_and_rows() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     let rx = install_update_signal();
-    let app = nmp_app_new();
-    nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
+    let app = new_app_ptr();
+    set_c_update_listener(app, std::ptr::null_mut(), Some(update_signal_callback));
     let app_ref = unsafe { &*app };
-    nmp_app_start(app, 256, 8);
+    start_app(app, 256, 8);
 
     let alice = keys_from_byte(21);
     let bob = keys_from_byte(22);
@@ -50,7 +51,7 @@ fn active_user_follows_prelogin_signin_replays_cached_follow_set_and_rows() {
             && flat_feed_ids(app_ref, key) == std::slice::from_ref(&bob_note_id)
     });
 
-    nmp_app_free(app);
+    free_app_ptr(app);
     uninstall_update_signal();
 }
 
@@ -58,10 +59,10 @@ fn active_user_follows_prelogin_signin_replays_cached_follow_set_and_rows() {
 fn active_user_follows_replacement_recompiles_rows() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     let rx = install_update_signal();
-    let app = nmp_app_new();
-    nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
+    let app = new_app_ptr();
+    set_c_update_listener(app, std::ptr::null_mut(), Some(update_signal_callback));
     let app_ref = unsafe { &*app };
-    nmp_app_start(app, 256, 8);
+    start_app(app, 256, 8);
 
     let alice = keys_from_byte(24);
     let bob = keys_from_byte(25);
@@ -93,7 +94,7 @@ fn active_user_follows_replacement_recompiles_rows() {
     inject_event(app, &rx, app_ref, &clear_id, &clear_json);
     wait_feed_ids(&rx, app_ref, key, &[]);
 
-    nmp_app_free(app);
+    free_app_ptr(app);
     uninstall_update_signal();
 }
 
@@ -101,10 +102,10 @@ fn active_user_follows_replacement_recompiles_rows() {
 fn active_user_follows_account_switch_replays_new_account_source() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     let rx = install_update_signal();
-    let app = nmp_app_new();
-    nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
+    let app = new_app_ptr();
+    set_c_update_listener(app, std::ptr::null_mut(), Some(update_signal_callback));
     let app_ref = unsafe { &*app };
-    nmp_app_start(app, 256, 8);
+    start_app(app, 256, 8);
 
     let alice = keys_from_byte(27);
     let bob = keys_from_byte(28);
@@ -145,7 +146,7 @@ fn active_user_follows_account_switch_replays_new_account_source() {
         },
     );
 
-    nmp_app_free(app);
+    free_app_ptr(app);
     uninstall_update_signal();
 }
 
@@ -153,10 +154,10 @@ fn active_user_follows_account_switch_replays_new_account_source() {
 fn list_members_cache_first_open_derives_members_and_replays_rows() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     let rx = install_update_signal();
-    let app = nmp_app_new();
-    nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
+    let app = new_app_ptr();
+    set_c_update_listener(app, std::ptr::null_mut(), Some(update_signal_callback));
     let app_ref = unsafe { &*app };
-    nmp_app_start(app, 256, 8);
+    start_app(app, 256, 8);
 
     let alice = keys_from_byte(1);
     let bob = keys_from_byte(2);
@@ -179,7 +180,7 @@ fn list_members_cache_first_open_derives_members_and_replays_rows() {
 
     wait_feed_ids(&rx, app_ref, key, std::slice::from_ref(&bob_note_id));
 
-    nmp_app_free(app);
+    free_app_ptr(app);
     uninstall_update_signal();
 }
 
@@ -187,10 +188,10 @@ fn list_members_cache_first_open_derives_members_and_replays_rows() {
 fn active_mute_list_source_reuses_reduced_source_for_non_follow_members() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     let rx = install_update_signal();
-    let app = nmp_app_new();
-    nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
+    let app = new_app_ptr();
+    set_c_update_listener(app, std::ptr::null_mut(), Some(update_signal_callback));
     let app_ref = unsafe { &*app };
-    nmp_app_start(app, 256, 8);
+    start_app(app, 256, 8);
 
     let alice = keys_from_byte(11);
     let bob = keys_from_byte(12);
@@ -222,7 +223,7 @@ fn active_mute_list_source_reuses_reduced_source_for_non_follow_members() {
     inject_event(app, &rx, app_ref, &clear_id, &clear_json);
     wait_feed_ids(&rx, app_ref, key, &[]);
 
-    nmp_app_free(app);
+    free_app_ptr(app);
     uninstall_update_signal();
 }
 
@@ -230,10 +231,10 @@ fn active_mute_list_source_reuses_reduced_source_for_non_follow_members() {
 fn active_mute_list_source_account_switch_replays_new_account_source() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     let rx = install_update_signal();
-    let app = nmp_app_new();
-    nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
+    let app = new_app_ptr();
+    set_c_update_listener(app, std::ptr::null_mut(), Some(update_signal_callback));
     let app_ref = unsafe { &*app };
-    nmp_app_start(app, 256, 8);
+    start_app(app, 256, 8);
 
     let alice = keys_from_byte(14);
     let bob = keys_from_byte(15);
@@ -274,7 +275,7 @@ fn active_mute_list_source_account_switch_replays_new_account_source() {
         },
     );
 
-    nmp_app_free(app);
+    free_app_ptr(app);
     uninstall_update_signal();
 }
 
@@ -282,10 +283,10 @@ fn active_mute_list_source_account_switch_replays_new_account_source() {
 fn list_members_replacement_and_clear_recompile_acquisition_and_rows() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     let rx = install_update_signal();
-    let app = nmp_app_new();
-    nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
+    let app = new_app_ptr();
+    set_c_update_listener(app, std::ptr::null_mut(), Some(update_signal_callback));
     let app_ref = unsafe { &*app };
-    nmp_app_start(app, 256, 8);
+    start_app(app, 256, 8);
 
     let alice = keys_from_byte(4);
     let bob = keys_from_byte(5);
@@ -317,7 +318,7 @@ fn list_members_replacement_and_clear_recompile_acquisition_and_rows() {
     inject_event(app, &rx, app_ref, &clear_id, &clear_json);
     wait_feed_ids(&rx, app_ref, key, &[]);
 
-    nmp_app_free(app);
+    free_app_ptr(app);
     uninstall_update_signal();
 }
 
@@ -325,10 +326,10 @@ fn list_members_replacement_and_clear_recompile_acquisition_and_rows() {
 fn list_members_account_switch_withdraws_old_source_and_reacquires_new_account() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     let rx = install_update_signal();
-    let app = nmp_app_new();
-    nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
+    let app = new_app_ptr();
+    set_c_update_listener(app, std::ptr::null_mut(), Some(update_signal_callback));
     let app_ref = unsafe { &*app };
-    nmp_app_start(app, 256, 8);
+    start_app(app, 256, 8);
 
     let alice = keys_from_byte(7);
     let bob = keys_from_byte(8);
@@ -367,6 +368,6 @@ fn list_members_account_switch_withdraws_old_source_and_reacquires_new_account()
         },
     );
 
-    nmp_app_free(app);
+    free_app_ptr(app);
     uninstall_update_signal();
 }

@@ -299,9 +299,8 @@ belong only in leaf app Rust crates (`apps/<app>/...`, e.g.
 The native and browser runtime builders enforce this at compile time: an app
 must declare its initial relay set with `.with_relays(...)` or explicitly opt
 out with `.without_initial_relays()` before `start()` — there is no framework
-relay default to inherit silently. The current `NmpAppBuilder` location in
-`nmp-defaults` is migration debt under #2205/#2210/#2212, not the durable
-composition boundary.
+relay default to inherit silently. The native `NmpAppBuilder` belongs to
+`nmp-native-runtime`; `nmp-defaults` remains pure reusable AppHost composition.
 
 App crates under `apps/<app>/` compose `nmp-defaults` plus app-specific
 state **and own all operator policy** (relays, seed follows, signer perms).
@@ -346,12 +345,6 @@ Native target split (#2205/#2209):
   glue, and C-compatible allocation/freeing only.
 - `nmp-android-ffi` is JNI/Android delivery glue over the same native runtime
   APIs for lanes not served by UniFFI.
-
-The current code still lets `nmp-ffi` own `NmpApp`, the actor-thread runtime,
-native NIP-29/NIP-50/intent session orchestration, and part of the builder path;
-`nmp-defaults` also still has native-runtime coupling. That state is migration
-debt until #2210-#2214 land. It is not a durable composition-root exception for
-`nmp-ffi`, and it is not permission for `nmp-defaults` to depend on `nmp-ffi`.
 
 `nmp-browser-runtime` is the browser composition-root delivery surface
 described in §10a. `nmp-wasm` is the wasm ABI shell over that runtime, analogous
@@ -427,12 +420,10 @@ justify a narrower trait):
    `KernelReducer` (D4), so it constructs the inbox and `CommandSender` itself;
    the resolution is a wasm-safe headless inbox constructor in `nmp-core` plus the
    builder's Worker loop — not a trait change.
-2. **wasm-safe defaults (#2047 / #2060, reconciled with #2205/#2212).** §10a
-   sets the target dependency `nmp-browser-runtime -> nmp-defaults`, but
-   `nmp-defaults` currently has native-runtime coupling through `nmp-ffi`. That
-   must be removed so neutral `register_defaults` registrations compile for the
-   browser and native runtimes alike. Until that lands, the browser builder uses
-   the `nmp-substrate-defaults` floor (§9).
+2. **wasm-safe defaults (#2047 / #2060).** Browser delivery roots that cannot
+   yet implement the full AppHost tier use the `nmp-substrate-defaults` floor
+   (§9). Full `register_defaults` reuse requires a browser runtime handle that
+   can supply the same AppHost-rooted registrar surface as the native runtime.
 
 ---
 

@@ -1,7 +1,7 @@
 //! Input-intent resolver C-ABI (issue #1804).
 //!
-//! Two symbols bridge the one-box / paste / search field to the pure
-//! [`nmp_intent::classify`] orchestrator and its dispatch lanes:
+//! Two symbols bridge the one-box / paste / search field to the native runtime's
+//! input-intent classification and dispatch API:
 //!
 //! * [`nmp_app_intent_classify`] — STATELESS / sync / side-effect-free. Parses a
 //!   request JSON into an [`InputIntentRequest`], snapshots the app's registered
@@ -10,9 +10,8 @@
 //!   [`crate::nip21_ffi::nmp_nip21_decode_uri`]: it never mutates kernel/view
 //!   state and never touches the network. A `SecretLike` rejection carries **no**
 //!   copy of the input — the returned JSON never echoes the secret.
-//! * [`nmp_app_intent_dispatch`] — classifies, then ACTS on the top candidate
-//!   (open-uri / search / NIP-05 reverse lookup) and returns the chosen
-//!   candidate (or the rejection) as JSON. See [`dispatch`].
+//! * [`nmp_app_intent_dispatch`] — calls the runtime dispatch API and returns
+//!   the chosen candidate (or the rejection) as JSON. See [`dispatch`].
 //!
 //! Both return a heap-owned C string the caller MUST release through
 //! `nmp_free_string`. D6: never NULL; a malformed/missing argument yields a small
@@ -70,16 +69,16 @@ pub extern "C" fn nmp_app_intent_classify(
     into_c_string(output)
 }
 
-/// Classify `request_json`, then DISPATCH the top candidate to the matching
-/// seam and return the chosen candidate (or the rejection) as JSON.
+/// Classify `request_json`, then ask the native runtime to dispatch the top
+/// candidate and return the chosen candidate (or the rejection) as JSON.
 ///
 /// Routing of the top candidate (the first of `Candidates`):
-/// * `DirectRef` → `nmp_app_open_uri` (kernel `OpenUri`),
-/// * `TextQuery` → `nmp_app_search_open(app, request_json, session_id)`,
-/// * `Nip05` → enqueue `nmp_nip05::ResolveNip05Command` (HTTP reverse lookup →
-///   follow-up `ResolveRef` profile claim),
-/// * `RelayUrl` / `Registered` → no in-FFI seam; the candidate is returned for
-///   the host to route (relay-metadata view / the owning crate's handler).
+/// Runtime routing of the top candidate:
+/// * `DirectRef` → kernel `OpenUri`,
+/// * `TextQuery` → native-runtime search session open,
+/// * `Nip05` → NIP-05 reverse lookup command,
+/// * `RelayUrl` / `Registered` → no generic side effect; the candidate is
+///   returned for the host or owning crate to route.
 ///
 /// `session_id` keys the search session when the top candidate is a `TextQuery`
 /// (ignored otherwise). The returned JSON is
@@ -107,8 +106,8 @@ pub extern "C" fn nmp_app_intent_dispatch(
     into_c_string(output)
 }
 
-/// Shared classify path: resolve the app, parse the request, snapshot the
-/// recognizers, and run the pure orchestrator. Used by both symbols.
+/// Shared classify path: resolve the app, parse the request, and call the
+/// runtime's pure classification API.
 pub(crate) fn classify_request(
     app: *mut NmpApp,
     request_json: *const c_char,
@@ -117,8 +116,7 @@ pub(crate) fn classify_request(
     let request_json = c_string_argument(request_json).ok_or("invalid-input")?;
     let request: InputIntentRequest =
         serde_json::from_str(&request_json).map_err(|_| "unparseable-request")?;
-    let recognizers = app.composition.input_scope_registry.recognizers();
-    Ok(nmp_intent::classify(&request, &recognizers))
+    Ok(app.classify_input_intent(&request))
 }
 
 #[derive(Serialize)]

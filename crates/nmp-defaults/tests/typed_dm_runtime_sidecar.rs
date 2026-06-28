@@ -18,7 +18,8 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use nmp_core::{decode_snapshot_typed_projections, TypedProjectionData};
-use nmp_ffi::{nmp_app_free, nmp_app_new, nmp_app_set_update_callback, nmp_app_start, NmpApp};
+mod common;
+use common::*;
 use nmp_nip17::{
     decode_dm_inbox_snapshot, decode_dm_relay_list, DM_INBOX_FILE_IDENTIFIER, DM_INBOX_SCHEMA_ID,
     DM_RELAY_LIST_FILE_IDENTIFIER, DM_RELAY_LIST_SCHEMA_ID,
@@ -43,15 +44,15 @@ extern "C" fn collect_frame(_ctx: *mut c_void, bytes: *const u8, len: usize) {
 
 fn boot() -> *mut NmpApp {
     FRAMES.lock().unwrap_or_else(|p| p.into_inner()).clear();
-    let app = nmp_app_new();
-    nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(collect_frame));
-    nmp_app_start(app, 64, 8); // emit_hz=8 → ~125 ms cadence
+    let app = new_app_ptr();
+    set_c_update_listener(app, std::ptr::null_mut(), Some(collect_frame));
+    start_app(app, 64, 8); // emit_hz=8 → ~125 ms cadence
     app
 }
 
 fn teardown(app: *mut NmpApp) {
-    nmp_app_set_update_callback(app, std::ptr::null_mut(), None);
-    nmp_app_free(app);
+    set_c_update_listener(app, std::ptr::null_mut(), None);
+    free_app_ptr(app);
 }
 
 /// Poll collected frames until a tick carries a typed sidecar entry under `key`

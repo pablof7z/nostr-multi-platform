@@ -16,12 +16,12 @@
 //! outcome handling (`finish_dispatch`) and the small JSON helpers stay in
 //! `action.rs` and are reached here through `super::`.
 
-use std::ffi::{CString, c_char};
+use std::ffi::{c_char, CString};
 
-use super::super::{NmpApp, app_ref};
+use super::super::{app_ref, NmpApp};
 use super::{error_json, finish_dispatch, rejection_json};
 use nmp_core::dispatch_envelope::{
-    DispatchDecodeError, MAX_DISPATCH_ENVELOPE_BYTES, decode_dispatch_envelope,
+    decode_dispatch_envelope, DispatchDecodeError, MAX_DISPATCH_ENVELOPE_BYTES,
 };
 use nmp_core::substrate::ActionContext;
 
@@ -154,14 +154,14 @@ pub(in crate::action) fn dispatch_action_bytes(app: Option<&NmpApp>, bytes: &[u8
     // proved the envelope carries a non-empty `correlation_id` (it rejects
     // `MissingCorrelationId`), so this id is always present and routable.
     let correlation_id = decoded.correlation_id;
-    match app.action_registry.start_bytes(
+    match app.action_registry().start_bytes(
         &mut ctx,
         dispatch_now_ms,
         &decoded.action_namespace,
         &decoded.payload,
     ) {
         Ok(_validated) => {
-            let outcome = app.action_registry.execute_bytes(
+            let outcome = app.action_registry().execute_bytes(
                 &ctx,
                 &decoded.action_namespace,
                 &decoded.payload,

@@ -185,9 +185,9 @@ pub extern "C" fn nmp_app_chirp_register(
     // logout, and reset proactively clear stale OP-feed state.
     let defaults = match default_handles.mute {
         Some(mute) => {
-            nmp_defaults::register_op_feed_defaults_with_mute(app_ref, viewer, vec![1], mute)
+            nmp_native_runtime::register_op_feed_defaults_with_mute(app_ref, viewer, vec![1], mute)
         }
-        None => nmp_defaults::register_op_feed_defaults(app_ref, viewer, vec![1]),
+        None => nmp_native_runtime::register_op_feed_defaults(app_ref, viewer, vec![1]),
     };
 
     // ADR-0037 typed sidecar for nmp.feed.home IS wired:

@@ -1,6 +1,7 @@
 use std::sync::Mutex;
 
-use nmp_ffi::{nmp_app_free, nmp_app_new, NmpApp};
+mod common;
+use common::*;
 
 use nmp_feed::{
     FeedAdmission, FeedParams, FeedRanking, FeedRender, FeedScope, FeedWindow, ProjectionKey,
@@ -31,14 +32,14 @@ fn compiler(
     app: &NmpApp,
     params: &FeedParams,
     kinds: &std::collections::BTreeSet<u32>,
-) -> Result<nmp_feed::FeedSessionBuild, nmp_ffi::FeedOpenError> {
-    nmp_defaults::compile_feed_params(app, params, kinds)
+) -> Result<nmp_feed::FeedSessionBuild, FeedOpenError> {
+    nmp_native_runtime::compile_feed_params(app, params, kinds)
 }
 
 #[test]
 fn active_follows_accepts_generic_render_and_projection() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    let app = nmp_app_new();
+    let app = new_app_ptr();
     set_app_active(app, Some(ALICE));
     let app_ref: &NmpApp = unsafe { &*app };
 
@@ -59,5 +60,5 @@ fn active_follows_accepts_generic_render_and_projection() {
         2,
         "sessions stay owned by the generic feed path"
     );
-    nmp_app_free(app);
+    free_app_ptr(app);
 }

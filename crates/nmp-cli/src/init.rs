@@ -122,6 +122,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
     let nmp_core_dep = nmp_crate_dependency(&nmp_dependency, "nmp-core");
     let nmp_ffi_dep = nmp_crate_dependency(&nmp_dependency, "nmp-ffi");
     let nmp_defaults_dep = nmp_crate_dependency(&nmp_dependency, "nmp-defaults");
+    let nmp_native_runtime_dep = nmp_crate_dependency(&nmp_dependency, "nmp-native-runtime");
     let nmp_manifest = nmp_manifest_block(&nmp_dependency);
 
     let render = |tmpl: &str| -> String {
@@ -132,6 +133,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
             .replace("{{nmp_core_dep}}", &nmp_core_dep)
             .replace("{{nmp_ffi_dep}}", &nmp_ffi_dep)
             .replace("{{nmp_defaults_dep}}", &nmp_defaults_dep)
+            .replace("{{nmp_native_runtime_dep}}", &nmp_native_runtime_dep)
             .replace("{{nmp_manifest}}", &nmp_manifest)
     };
 

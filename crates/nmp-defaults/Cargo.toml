@@ -7,17 +7,12 @@ repository.workspace = true
 description = "The framework's default composition for an NMP-based Nostr application (ADR-0046 — composition is a library, not a generator). One call (`register_defaults`) wires the default action modules (NIP-01 publish, NIP-02 follow/react, NIP-17 send + DM-relay-list publish, NIP-57 zap, NIP-65 publish_relay_list), the default ingest parsers (kind:10050 → `DmRelayCache`), the production routing substrate (`GenericOutboxRouter` + `InMemoryMailboxCache`), indexer-republish policy, the canonical DM-inbox + zap-receipts runtimes, and the D2 coverage hook. The Bevy-`DefaultPlugins` / Spring-Boot-starter pattern. Closes V-48 (see `docs/architecture/crate-boundaries.md` §10)."
 
 [features]
-# Default-on so existing native consumers (nmp-app-chirp, nmp-ffi shells,
-# etc.) are byte-for-byte unchanged. Disable with `default-features = false`
-# for wasm32 / pure-Rust compilation: the neutral
-# `register_defaults`/`register_substrate` path compiles without the
-# native-only crates (nmp-ffi, nmp-feed, nmp-nip01, nmp-nip47, nmp-nip11).
+# Default-on so existing native consumers keep the production substrate.
+# Disable with `default-features = false` for wasm32 / pure-Rust compilation:
+# the neutral `register_defaults`/`register_substrate` path compiles without
+# native-only crates.
 default = ["native"]
 native = [
-    "dep:nmp-ffi",
-    "dep:nmp-feed",
-    "dep:nmp-nip01",
-    "dep:nmp-nip47",
     "dep:nmp-nip11",
     "nmp-core/native",
     "nmp-router/native",
@@ -64,12 +59,6 @@ nmp-nip22 = { path = "../nmp-nip22" }
 # optional so the neutral wasm path does not require native I/O.
 nmp-nip11 = { path = "../nmp-nip11", optional = true }
 nmp-nip17 = { path = "../nmp-nip17" }
-# NIP-47 Nostr Wallet Connect: `register_wallet` is wired through the
-# `NmpAppBuilder::with_wallet` typed builder step so the wallet runtime is
-# installed during the config phase, before `start()` consumes the builder
-# (V-95 / issue #619 — install-before-dispatch enforced by move semantics).
-# Optional — used only in the `builder` module (native feature).
-nmp-nip47 = { path = "../nmp-nip47", optional = true }
 # `default-features = false` keeps wasm32 free of ureq; `nmp-nip57/native`
 # re-enables it via the `native` feature above.
 nmp-nip57 = { path = "../nmp-nip57", default-features = false }
@@ -105,33 +94,21 @@ nmp-content = { path = "../nmp-content" }
 # policy data); this assembly crate is one of the layers entitled to depend
 # on both `nmp-core` and the coverage-gate crate.
 nmp-coverage-gate = { path = "../nmp-coverage-gate" }
-# V-80 rung 6 (`register_op_feed_defaults`): the OP-centric home-feed
-# composition. The composition root is the ONE crate entitled to name
-# `NmpApp` (`nmp-ffi`) in production — every other crate goes through the
-# `AppHost` trait or `nmp-core` primitives to avoid the dependency-graph
-# inversion rungs 4/5 rejected. `nmp-nip01` supplies the NIP-10 OP-feed
-# instance (`register_op_feed`); `nmp-feed` supplies the `FeedController` /
-# `EventLookup` types the engine is cast to.
-# All three are optional — only compiled when the `native` feature is on.
-nmp-ffi = { path = "../nmp-ffi", optional = true }
-nmp-nip01 = { path = "../nmp-nip01", optional = true }
 nmp-nip18 = { path = "../nmp-nip18" }
-nmp-feed = { path = "../nmp-feed", optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = "1.0"
 nostr = { version = "0.44", default-features = false, features = ["std"] }
 
 [dev-dependencies]
-# Test-support gates expose the FFI `nmp_app_new` / `nmp_app_free` symbols
-# through a normal Rust path so the integration test can spin up a real
-# `NmpApp`, call `register_defaults`, and inspect the resulting registry
-# entries. Mirrors the per-NIP-crate test pattern (`nmp-nip17`,
-# `nmp-app-chirp`).
+# Test-support gates let integration tests spin up a native `NmpApp`, call
+# `register_defaults`, and inspect the resulting registry entries without a
+# dependency on the C ABI wrapper crate.
 nmp-core = { path = "../nmp-core", features = ["test-support"] }
 nmp-codegen = { path = "../nmp-codegen" }
-# Same posture for the extracted FFI crate so dev/test builds see
-# `nmp_app_new`/`nmp_app_free`.
-nmp-ffi = { path = "../nmp-ffi", features = ["test-support"] }
+nmp-native-runtime = { path = "../nmp-native-runtime", features = ["test-support"] }
+nmp-feed = { path = "../nmp-feed" }
+nmp-nip01 = { path = "../nmp-nip01" }
+nmp-nip47 = { path = "../nmp-nip47" }
 # nmp-nip59: used by runtimes_dm_inbox_tests to build gift-wrap envelopes for
 # the account-switch clear test (issue #1138). nmp-nip17 already depends on
 # nmp-nip59 transitively; this adds a direct dev-dep for the test helpers.

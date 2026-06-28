@@ -35,7 +35,8 @@ use std::sync::Arc;
 
 use nmp_core::substrate::{EventId, KernelEvent};
 use nmp_core::ObservedProjectionSink;
-use nmp_ffi::{nmp_app_free, nmp_app_new};
+mod common;
+use common::*;
 use nmp_nip51::SearchRelayListProjection;
 
 // kind:10007 — NIP-51 search relays. Numeric literal: nmp_kinds is not a direct
@@ -78,15 +79,15 @@ fn search_relay_event(author: &str, created_at: u64, relays: &[&str]) -> KernelE
 fn boot_with_search_handle(
     search_defaults: nmp_defaults::SearchDefaults,
 ) -> (
-    *mut nmp_ffi::NmpApp,
+    *mut NmpApp,
     nmp_core::slots::ActiveAccountSlot,
     Arc<SearchRelayListProjection>,
 ) {
-    let app = nmp_app_new();
+    let app = new_app_ptr();
     assert!(!app.is_null(), "nmp_app_new returned null");
 
     // SAFETY: `app` is a valid non-null pointer from `nmp_app_new`.
-    let app_ref: &nmp_ffi::NmpApp = unsafe { &*app };
+    let app_ref: &NmpApp = unsafe { &*app };
 
     let defaults = nmp_defaults::NmpDefaults {
         search_defaults,
@@ -126,7 +127,7 @@ fn register_defaults_wires_empty_search_relay_fallback_by_default() {
         "with no published kind:10007 and no app default, effective search relays must be empty"
     );
 
-    nmp_app_free(app);
+    free_app_ptr(app);
 }
 
 #[test]
@@ -141,7 +142,7 @@ fn app_supplied_search_defaults_are_used_when_user_has_no_list() {
         "with no published kind:10007, explicit app defaults must be the fallback"
     );
 
-    nmp_app_free(app);
+    free_app_ptr(app);
 }
 
 #[test]
@@ -176,7 +177,7 @@ fn ingested_kind10007_makes_effective_search_relays_the_user_list() {
          so open_search(UserPreferred) fans out to her chosen relays"
     );
 
-    nmp_app_free(app);
+    free_app_ptr(app);
 }
 
 #[test]
@@ -215,5 +216,5 @@ fn account_switch_does_not_leak_prior_account_search_relays() {
         "BOB's own kind:10007 must resolve to BOB's relays after switch"
     );
 
-    nmp_app_free(app);
+    free_app_ptr(app);
 }

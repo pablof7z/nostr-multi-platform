@@ -18,9 +18,15 @@ use nmp_example_login_timeline::short_pubkey;
 fn main() {
     let result = run_demo();
 
-    println!("Signed in. Following author {}", short_pubkey(&result.followed_author));
+    println!(
+        "Signed in. Following author {}",
+        short_pubkey(&result.followed_author)
+    );
     println!();
-    println!("Following timeline after login ({} row(s)):", result.after_login.len());
+    println!(
+        "Following timeline after login ({} row(s)):",
+        result.after_login.len()
+    );
     for row in &result.after_login {
         println!("  {}", row.render_line());
     }
@@ -43,5 +49,7 @@ fn main() {
         "a live note from the followed author must add a row"
     );
     println!();
-    println!("OK — login → following-timeline render → live update, zero relay/sub code in the shell.");
+    println!(
+        "OK — login → following-timeline render → live update, zero relay/sub code in the shell."
+    );
 }

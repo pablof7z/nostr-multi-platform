@@ -221,7 +221,7 @@ impl Default for NmpDefaults {
 /// # Shared host target
 ///
 /// The substrate tier is intentionally expressed only in terms of narrow
-/// `nmp_core::substrate` registrar traits. It does not require `nmp-ffi`,
+/// `nmp_core::substrate` registrar traits. It does not require C ABI glue,
 /// native storage, OS handles, or reducer internals. Host-backed browser and
 /// native builders can therefore implement the same registrars and receive the
 /// same routing/mailbox/profile/contact floor through this function; reducer-

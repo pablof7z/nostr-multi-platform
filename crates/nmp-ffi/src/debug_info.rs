@@ -33,12 +33,12 @@
 //! - **D8** — the read is a `RwLock::read()` + JSON encode per call; never on
 //!   the producer path.
 
-use std::ffi::{CString, c_char, c_int};
+use std::ffi::{c_char, c_int, CString};
 
 use nmp_core::projection_to_json;
 use serde_json::json;
 
-use super::{NmpApp, app_ref};
+use super::{app_ref, NmpApp};
 
 // ── Domain codes (stable, wire-stable) ──────────────────────────────────────
 /// domain 0 — routing trace only.

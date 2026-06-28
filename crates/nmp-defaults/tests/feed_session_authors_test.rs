@@ -12,7 +12,8 @@
 use std::sync::{Arc, Mutex};
 
 use nmp_core::WireProjectionState;
-use nmp_ffi::{nmp_app_free, nmp_app_new, FeedOpenError, NmpApp};
+mod common;
+use common::*;
 
 use nmp_feed::{
     FeedAdmission, FeedParams, FeedRanking, FeedRender, FeedScope, FeedWindow, ProjectionKey,
@@ -114,13 +115,13 @@ fn compiler(
     params: &FeedParams,
     kinds: &std::collections::BTreeSet<u32>,
 ) -> Result<nmp_feed::FeedSessionBuild, FeedOpenError> {
-    nmp_defaults::compile_feed_params(app, params, kinds)
+    nmp_native_runtime::compile_feed_params(app, params, kinds)
 }
 
 #[test]
 fn authors_flat_open_replays_cached_primary_kind_rows() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    let app = nmp_app_new();
+    let app = new_app_ptr();
     set_app_active(app, Some(ALICE));
     let app_ref: &NmpApp = unsafe { &*app };
 
@@ -145,13 +146,13 @@ fn authors_flat_open_replays_cached_primary_kind_rows() {
         "open_feed must replay cached author rows immediately and reject non-primary kinds"
     );
 
-    nmp_app_free(app);
+    free_app_ptr(app);
 }
 
 #[test]
 fn referrer_flat_open_replays_cached_root_and_replies() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    let app = nmp_app_new();
+    let app = new_app_ptr();
     set_app_active(app, Some(ALICE));
     let app_ref: &NmpApp = unsafe { &*app };
 
@@ -178,13 +179,13 @@ fn referrer_flat_open_replays_cached_root_and_replies() {
         "open_feed must replay cached thread root/replies immediately and reject non-primary kinds"
     );
 
-    nmp_app_free(app);
+    free_app_ptr(app);
 }
 
 #[test]
 fn authors_scope_opens_and_closes_over_session_engine() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    let app = nmp_app_new();
+    let app = new_app_ptr();
     set_app_active(app, Some(ALICE));
     let app_ref: &NmpApp = unsafe { &*app };
 
@@ -213,13 +214,13 @@ fn authors_scope_opens_and_closes_over_session_engine() {
     assert_eq!(app_ref.live_feed_session_count(), 0, "no live sessions");
     assert!(!app_ref.close_feed(&handle), "second close is a no-op");
 
-    nmp_app_free(app);
+    free_app_ptr(app);
 }
 
 #[test]
 fn empty_authors_scope_fails_closed_and_registers_nothing() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    let app = nmp_app_new();
+    let app = new_app_ptr();
     set_app_active(app, Some(ALICE));
     let app_ref: &NmpApp = unsafe { &*app };
 
@@ -246,5 +247,5 @@ fn empty_authors_scope_fails_closed_and_registers_nothing() {
         "no sidecar registered for a fail-closed open"
     );
 
-    nmp_app_free(app);
+    free_app_ptr(app);
 }

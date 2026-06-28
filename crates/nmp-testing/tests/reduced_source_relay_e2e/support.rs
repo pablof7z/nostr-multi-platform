@@ -191,7 +191,7 @@ pub(crate) fn compiler(
     params: &FeedParams,
     kinds: &BTreeSet<u32>,
 ) -> Result<nmp_feed::FeedSessionBuild, FeedOpenError> {
-    nmp_defaults::compile_feed_params(app, params, kinds)
+    nmp_native_runtime::compile_feed_params(app, params, kinds)
 }
 
 pub(crate) fn flat_feed_ids(app: &NmpApp, key: &str) -> Vec<String> {

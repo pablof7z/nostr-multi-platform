@@ -1,133 +1,81 @@
-//! Path-A raw C FFI surface. Struct definition, constructor, and `impl`
-//! blocks live in the split submodules below; this file carries the
-//! lifecycle/argument helpers and the re-export facade.
+//! Raw C FFI surface for native shells.
+//!
+//! The Rust runtime owner is `nmp-native-runtime`. This crate owns only C ABI
+//! symbols, raw pointer/string conversion, panic-safe callback glue, and
+//! Rust-side re-exports of those symbols for app composition crates.
 
 mod action;
 #[cfg(test)]
 #[path = "active_account_handle_tests.rs"]
 mod active_account_handle_tests;
-mod app_config_hooks;
-mod app_config_intent;
-mod app_config_search;
-mod app_config_substrate;
-mod app_host_impl;
+mod app_ctor;
+mod app_lifecycle_ffi;
 mod capability;
 #[cfg(test)]
 #[path = "capability_quiescence_tests.rs"]
 mod capability_quiescence_tests;
 mod content_ffi;
-mod declared_projections;
-mod keyring_forget;
-#[cfg(test)]
-#[path = "passive_start_tests.rs"]
-mod passive_start_tests;
-#[cfg(test)]
-#[path = "update_callback_quiescence_tests.rs"]
-mod update_callback_quiescence_tests; // ADR-0053/E4: `impl NmpApp` consumed-projection-intent methods (LOC ceiling).
-                                      // `nmp_app_active_following_count` deleted (#1726): follow count is in the
-                                      // `nmp.follow_list` typed projection (`follows.len()`). Callers that
-                                      // previously read this sync sentinel should read `follows.len()` from the
-                                      // `nmp.follow_list` projection instead.
-                                      // #1726 — unified diagnostic pull accessor (domain 0=routing, 1=composition, 2=merged).
 mod debug_info;
-
-// Canonical cross-cutting string-free symbol. Every `*mut c_char` returned
-// by any NMP FFI function must be freed via `nmp_free_string`.
 #[cfg(test)]
 #[path = "event_by_id_tests.rs"]
 mod event_by_id_tests;
 #[cfg(feature = "external-signer")]
 mod external_signer;
 mod feed;
-mod feed_session;
 mod free;
 mod group_feed;
 mod identity;
-mod incremental_apply;
 mod intent_ffi;
 #[cfg(test)]
 #[path = "interest_feed_tests.rs"]
 mod interest_feed_tests;
+#[cfg(test)]
+#[path = "keyring_forget_tests.rs"]
+mod keyring_forget_tests;
 mod lifecycle;
 mod nip19_ffi;
 mod nip21_ffi;
-mod observed_projection_handle;
-mod passive_start;
-mod prestart_config;
+#[cfg(test)]
+#[path = "passive_start_tests.rs"]
+mod passive_start_tests;
 mod publish;
 pub mod pull;
-mod relay_config;
-#[cfg(test)]
-#[path = "sign_event_for_return_tests.rs"]
-mod sign_event_for_return_tests;
-#[cfg(feature = "signer-broker")]
-mod signer_broker;
-mod signer_ports;
-// #1726: `mod routing_trace` and `mod composition_report` deleted.
-// Callers use `nmp_app_debug_info(app, domain)` instead (domain 0 = routing,
-// 1 = composition, 2 = merged). No compat shims kept.
-// ADR-0063 Lane D — ref-resolution C-ABI symbols. Hosts should prefer the typed
-// adapters; the raw resolve_ref/release_ref surface remains as the compatibility
-// boundary for generated or legacy bindings.
+#[cfg(feature = "native")]
+mod relay_info_probe;
 mod resolve_ref;
 #[cfg(test)]
 #[path = "resolve_ref_tests.rs"]
 mod resolve_ref_tests;
 mod search;
+#[cfg(test)]
+#[path = "sign_event_for_return_tests.rs"]
+mod sign_event_for_return_tests;
+#[cfg(feature = "signer-broker")]
+mod signer_broker;
+#[cfg(any(test, feature = "test-support"))]
+mod signer_ports_test_support;
 mod snapshot;
 mod storage;
-mod timeline;
-
 #[cfg(any(test, feature = "test-support"))]
 mod testing;
 #[cfg(any(test, feature = "test-support"))]
 mod testing_sync;
+mod timeline;
 
-#[cfg(any(test, feature = "test-support"))]
-mod signer_ports_test_support;
+pub use nmp_native_runtime::{
+    decode_and_validate_feed_params, handle_projection_key, validate_feed_params, FeedAdmission,
+    FeedCompiler, FeedHandle, FeedOpenError, FeedParams, FeedParamsDecodeError, FeedParamsError,
+    FeedRanking, FeedRender, FeedScope, FeedSessionBuild, FeedSessionId, FeedTeardown, FeedWindow,
+    GroupFeedToken, IdentityChangeObserverId, NmpApp, NmpConfigStatus,
+    ObservedProjectionCommandHandle, ProjectionKey, PubkeySetExpr,
+};
 
-// ── Split submodules ──────────────────────────────────────────────────────
-mod app_ctor;
-mod app_impl_accessors;
-mod app_impl_core;
-mod app_impl_feeds;
-mod app_lifecycle_ffi;
-mod app_struct;
-mod app_sub_structs;
-
-// ── Re-exports from split modules ────────────────────────────────────────
-pub use app_struct::{IdentityChangeObserverId, NmpApp};
-// Make update-callback types accessible via `super::` from inline test
-// modules (passive_start_tests, update_callback_quiescence_tests).
 pub use app_ctor::nmp_app_new;
 pub use app_lifecycle_ffi::{
     nmp_app_configure, nmp_app_free, nmp_app_reset, nmp_app_set_update_callback, nmp_app_start,
-    nmp_app_stop,
+    nmp_app_stop, UpdateCallback,
 };
-#[cfg(test)]
-pub(crate) use app_struct::{UpdateCallback, UpdateCallbackGate, UpdateCallbackRegistration};
 
-// ── Native re-export surface ──────────────────────────────────────────────
-// Hoist every per-submodule FFI entry-point into the `ffi::` namespace so
-// any native (non-WASM) Rust-side caller — composition-root crates
-// (`nmp-defaults`, `nmp-app-*`), out-of-crate integration tests, the
-// Android JNI shim — can name them through the rlib without an `extern "C"`
-// block. The symbols themselves stay `#[no_mangle] extern "C"` in their
-// owning submodules, so the Swift/C ABI is unaffected; the `pub use` only
-// affects Rust-side reach.
-//
-// Gated on `native` (the default feature) so wasm32 (`--no-default-features`)
-// continues to compile without these symbols. `android-ffi` implies `native`
-// (see [features] in Cargo.toml), so the Android JNI surface inherits this
-// block — the small `android-ffi` delta below adds only the four symbols
-// that are android-only (account removal, bunker sign-in, full-actor stop,
-// active-account switch). Likewise `test-support` implies `native` in
-// practice (the `ffi` module itself is `#[cfg(feature = "native")]`), so the
-// test-support delta only adds the harness-only injectors / read helpers.
-//
-// `allow(unused_imports)`: in-crate `tests` modules reach these symbols by
-// their `super::` / module path, so the facade re-export is only consumed by
-// out-of-crate clients; keeps `cargo test -p nmp-core --lib` clean.
 #[cfg(feature = "native")]
 #[allow(unused_imports)]
 pub use action::{
@@ -141,25 +89,9 @@ pub use content_ffi::nmp_content_tokenize_text;
 #[cfg(feature = "native")]
 pub use feed::nmp_app_load_older_feed;
 #[cfg(feature = "native")]
-pub use feed::{
-    decode_and_validate_feed_params, validate_feed_params, FeedAdmission, FeedHandle, FeedParams,
-    FeedParamsDecodeError, FeedRanking, FeedRender, FeedScope, FeedSessionId,
-    FeedWindow, ProjectionKey, PubkeySetExpr,
-};
-#[cfg(feature = "native")]
-pub use feed_session::{handle_projection_key, FeedCompiler, FeedOpenError, FeedTeardown};
-#[cfg(feature = "native")]
-pub use nmp_feed::FeedSessionBuild;
-#[cfg(feature = "native")]
 pub use free::nmp_free_string;
 #[cfg(feature = "native")]
-pub use nmp_core::substrate::ObservedProjectionCommandHandle;
-// #2088 — the NIP-29 per-open read-view opaque handle (group discovery). The
-// `open_group_*` / `close_group_*` methods are inherent `NmpApp` methods reached
-// through the `NmpApp` type itself; only the handle type needs hoisting so the
-// Chirp C-ABI shell can name it.
-#[cfg(feature = "native")]
-pub use group_feed::GroupFeedHandle;
+pub use group_feed::{open_group_discovery_handle, GroupFeedHandle};
 #[cfg(feature = "native")]
 pub use identity::{
     create_new_account_with_initial_follows, nmp_app_add_relay, nmp_app_create_new_account,
@@ -178,6 +110,8 @@ pub use nip19_ffi::nmp_app_encode_profile;
 pub use nip21_ffi::nmp_nip21_decode_uri;
 #[cfg(feature = "native")]
 pub use publish::{nmp_app_cancel_action, nmp_app_retry_publish};
+#[cfg(feature = "native")]
+pub use relay_info_probe::{nmp_app_probe_relay_info, RelayInfoProbeCallback};
 // #1726 — unified diagnostic pull accessor (routing/composition/merged).
 // Replaces the deleted `nmp_app_recent_routing_decisions` and
 // `nmp_app_composition_report` symbols. No compat shims kept.
@@ -187,7 +121,6 @@ pub use debug_info::nmp_app_debug_info;
 pub use external_signer::{
     nmp_app_deliver_external_signer_response, nmp_app_signin_nip55, nmp_external_signer_init,
 };
-pub use prestart_config::NmpConfigStatus;
 #[cfg(feature = "signer-broker")]
 pub use signer_broker::{
     nmp_app_cancel_bunker_handshake, nmp_app_nostrconnect_uri, nmp_signer_broker_init,

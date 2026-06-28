@@ -45,6 +45,10 @@ name = "nmp-ffi"
 path = "crates/nmp-ffi"
 
 [[public_crates]]
+name = "nmp-native-runtime"
+path = "crates/nmp-native-runtime"
+
+[[public_crates]]
 name = "nmp-wasm"
 path = "crates/nmp-wasm"
 

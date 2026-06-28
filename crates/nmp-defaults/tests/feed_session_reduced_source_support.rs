@@ -1,4 +1,4 @@
-use std::ffi::{c_void, CString};
+use std::ffi::c_void;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
@@ -8,10 +8,9 @@ use nmp_feed::{
     FeedAdmission, FeedParams, FeedRanking, FeedRender, FeedScope, FeedWindow, ListId,
     ProjectionKey,
 };
-pub(crate) use nmp_ffi::{
-    nmp_app_free, nmp_app_set_update_callback, nmp_app_start, FeedOpenError, NmpApp,
-};
-use nmp_ffi::{nmp_app_inject_signed_event_json, nmp_app_signin_nsec, nmp_app_wait_barrier};
+#[path = "common/mod.rs"]
+pub(crate) mod common;
+use common::*;
 use nostr::prelude::*;
 use nostr::{EventBuilder, Kind, Tag, Timestamp};
 
@@ -61,8 +60,7 @@ pub(crate) fn keys_from_byte(byte: u8) -> Keys {
 
 pub(crate) fn sign_in(app: *mut NmpApp, keys: &Keys) {
     let nsec = keys.secret_key().to_bech32().expect("nsec bech32");
-    let secret = CString::new(nsec).expect("nsec has no nul");
-    nmp_app_signin_nsec(app, secret.as_ptr(), 1);
+    signin_nsec(app, &nsec, true);
 }
 
 pub(crate) fn wait_active(rx: &Receiver<()>, app: &NmpApp, pubkey: &str) {
@@ -78,13 +76,12 @@ pub(crate) fn inject_event(
     id: &str,
     json: &str,
 ) {
-    let event = CString::new(json).expect("event json has no nul");
     assert!(
-        nmp_app_inject_signed_event_json(app, event.as_ptr()),
+        inject_signed_event_json(app, json),
         "signed event must verify and inject"
     );
     assert!(
-        nmp_app_wait_barrier(app, 5_000),
+        wait_barrier(app, 5_000),
         "actor must process injected event before the test continues"
     );
     wait_for(rx, "event readable", || app_ref.event_by_id(id).is_some());
@@ -197,7 +194,7 @@ pub(crate) fn compiler(
     params: &FeedParams,
     kinds: &std::collections::BTreeSet<u32>,
 ) -> Result<nmp_feed::FeedSessionBuild, FeedOpenError> {
-    nmp_defaults::compile_feed_params(app, params, kinds)
+    nmp_native_runtime::compile_feed_params(app, params, kinds)
 }
 
 pub(crate) fn flat_feed_ids(app: &NmpApp, key: &str) -> Vec<String> {

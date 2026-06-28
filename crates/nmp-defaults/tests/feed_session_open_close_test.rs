@@ -12,7 +12,8 @@
 
 use std::sync::Mutex;
 
-use nmp_ffi::{nmp_app_free, nmp_app_new, FeedOpenError, NmpApp};
+mod common;
+use common::*;
 
 use nmp_feed::{
     CustomPerspectiveDef, CustomPerspectiveId, FeedAdmission, FeedParams, FeedRanking, FeedRender,
@@ -46,7 +47,7 @@ fn home_params() -> FeedParams {
 #[test]
 fn open_feed_active_follows_before_account_still_registers_for_later_reconcile() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    let app = nmp_app_new();
+    let app = new_app_ptr();
     assert!(!app.is_null());
     set_app_active(app, None);
     let app_ref: &NmpApp = unsafe { &*app };
@@ -65,7 +66,7 @@ fn open_feed_active_follows_before_account_still_registers_for_later_reconcile()
     );
 
     assert!(app_ref.close_feed(&handle), "handle close tears down");
-    nmp_app_free(app);
+    free_app_ptr(app);
 }
 
 /// Adapter so `compile_feed_params` (a free fn) satisfies `open_feed`'s compiler.
@@ -74,13 +75,13 @@ fn compiler(
     params: &FeedParams,
     kinds: &std::collections::BTreeSet<u32>,
 ) -> Result<nmp_feed::FeedSessionBuild, FeedOpenError> {
-    nmp_defaults::compile_feed_params(app, params, kinds)
+    nmp_native_runtime::compile_feed_params(app, params, kinds)
 }
 
 #[test]
 fn open_feed_active_follows_over_real_op_feed_then_close_tears_down() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    let app = nmp_app_new();
+    let app = new_app_ptr();
     assert!(!app.is_null());
     set_app_active(app, Some(ALICE));
     let app_ref: &NmpApp = unsafe { &*app };
@@ -140,13 +141,13 @@ fn open_feed_active_follows_over_real_op_feed_then_close_tears_down() {
     assert!(!app_ref.close_feed(&handle), "second close is a no-op");
     assert!(!app_ref.close_feed(&handle), "third close is a no-op");
 
-    nmp_app_free(app);
+    free_app_ptr(app);
 }
 
 #[test]
 fn unsupported_scope_fails_closed_and_registers_nothing() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    let app = nmp_app_new();
+    let app = new_app_ptr();
     set_app_active(app, Some(ALICE));
     let app_ref: &NmpApp = unsafe { &*app };
 
@@ -184,7 +185,7 @@ fn unsupported_scope_fails_closed_and_registers_nothing() {
         .any(|p| p.key == "test.feed.relayset" || p.key == "nmp.feed.home");
     assert!(!any_sidecar, "no sidecar registered for a fail-closed open");
 
-    nmp_app_free(app);
+    free_app_ptr(app);
 }
 
 #[test]
@@ -195,7 +196,7 @@ fn custom_admission_or_ranking_fails_closed_and_registers_nothing() {
     // the typed error and register NOTHING — never silently open with default
     // behavior, which would render the feed wider/mis-ordered vs the declaration.
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    let app = nmp_app_new();
+    let app = new_app_ptr();
     set_app_active(app, Some(ALICE));
     let app_ref: &NmpApp = unsafe { &*app };
 
@@ -253,13 +254,13 @@ fn custom_admission_or_ranking_fails_closed_and_registers_nothing() {
         "no session leaked for a fail-closed custom admission/ranking open"
     );
 
-    nmp_app_free(app);
+    free_app_ptr(app);
 }
 
 #[test]
 fn tag_scope_opens_and_closes_over_session_engine() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    let app = nmp_app_new();
+    let app = new_app_ptr();
     set_app_active(app, Some(ALICE));
     let app_ref: &NmpApp = unsafe { &*app };
 
@@ -292,7 +293,7 @@ fn tag_scope_opens_and_closes_over_session_engine() {
     assert!(!app_ref.feed_session_is_open(&handle));
     assert_eq!(app_ref.live_feed_session_count(), 0, "no live sessions");
 
-    nmp_app_free(app);
+    free_app_ptr(app);
 }
 
 // ── #1740 step 4 — CustomPerspectiveId registration over the SAME compiler ──
@@ -300,7 +301,7 @@ fn tag_scope_opens_and_closes_over_session_engine() {
 #[test]
 fn registered_custom_perspective_opens_unregistered_fails_closed() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    let app = nmp_app_new();
+    let app = new_app_ptr();
     set_app_active(app, Some(ALICE));
     let app_ref: &NmpApp = unsafe { &*app };
 
@@ -370,13 +371,13 @@ fn registered_custom_perspective_opens_unregistered_fails_closed() {
     assert!(!app_ref.feed_session_is_open(&handle));
     assert_eq!(app_ref.live_feed_session_count(), 0, "no live sessions");
 
-    nmp_app_free(app);
+    free_app_ptr(app);
 }
 
 #[test]
 fn custom_admission_resolves_when_registered_fails_closed_when_not() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    let app = nmp_app_new();
+    let app = new_app_ptr();
     set_app_active(app, Some(ALICE));
     let app_ref: &NmpApp = unsafe { &*app };
 
@@ -417,13 +418,13 @@ fn custom_admission_resolves_when_registered_fails_closed_when_not() {
     assert!(app_ref.close_feed(&handle), "close tears the session down");
     assert_eq!(app_ref.live_feed_session_count(), 0, "no live sessions");
 
-    nmp_app_free(app);
+    free_app_ptr(app);
 }
 
 #[test]
 fn custom_ranking_resolves_when_registered_fails_closed_when_not() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    let app = nmp_app_new();
+    let app = new_app_ptr();
     set_app_active(app, Some(ALICE));
     let app_ref: &NmpApp = unsafe { &*app };
 
@@ -484,5 +485,5 @@ fn custom_ranking_resolves_when_registered_fails_closed_when_not() {
         "no session leaked across the custom-ranking opens"
     );
 
-    nmp_app_free(app);
+    free_app_ptr(app);
 }

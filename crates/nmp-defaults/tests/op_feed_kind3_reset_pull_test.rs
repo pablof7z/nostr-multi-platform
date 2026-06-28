@@ -8,6 +8,8 @@
 
 use std::sync::{Arc, Mutex};
 
+mod common;
+use common::*;
 use nmp_core::substrate::KernelEvent;
 use nmp_core::ObservedProjectionSink;
 use nmp_core::{decode_snapshot_typed_projections, encode_snapshot_frame, SnapshotEnvelope};
@@ -58,18 +60,18 @@ fn kind3(id: &str, follows: &[&str]) -> KernelEvent {
     }
 }
 
-fn set_active_account(app: &nmp_ffi::NmpApp, pubkey: &str) {
+fn set_active_account(app: &NmpApp, pubkey: &str) {
     *app.active_account_handle()
         .lock()
         .expect("active account slot") = Some(pubkey.to_string());
 }
 
-fn publish_store(app: &nmp_ffi::NmpApp, store: Arc<MemEventStore>) {
+fn publish_store(app: &NmpApp, store: Arc<MemEventStore>) {
     let store: Arc<dyn EventStore> = store;
     *app.event_store_handle().lock().expect("event store slot") = Some(store);
 }
 
-fn typed_home_ids_from_snapshot_frame(app: &nmp_ffi::NmpApp) -> Vec<String> {
+fn typed_home_ids_from_snapshot_frame(app: &NmpApp) -> Vec<String> {
     let typed = app.run_typed_snapshot_projections();
     let frame = encode_snapshot_frame(&SnapshotEnvelope::default(), &typed);
     let rows = decode_snapshot_typed_projections(&frame).expect("snapshot frame sidecar decodes");
@@ -88,7 +90,7 @@ fn typed_home_ids_from_snapshot_frame(app: &nmp_ffi::NmpApp) -> Vec<String> {
 #[test]
 fn kind3_replacement_clears_typed_home_and_replays_new_follow_rows_from_store() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    let app = nmp_ffi::nmp_app_new();
+    let app = new_app_ptr();
     assert!(!app.is_null());
     let app_ref = unsafe { &*app };
     set_active_account(app_ref, ALICE);
@@ -96,7 +98,8 @@ fn kind3_replacement_clears_typed_home_and_replays_new_follow_rows_from_store() 
     let store = Arc::new(MemEventStore::new());
     publish_store(app_ref, Arc::clone(&store));
 
-    let defaults = nmp_defaults::register_op_feed_defaults(app_ref, ALICE.to_string(), vec![1]);
+    let defaults =
+        nmp_native_runtime::register_op_feed_defaults(app_ref, ALICE.to_string(), vec![1]);
 
     let bob_note = "1".repeat(64);
     let carol_note = "2".repeat(64);
@@ -143,5 +146,5 @@ fn kind3_replacement_clears_typed_home_and_replays_new_follow_rows_from_store() 
         "the same opened feed regrows from the store using the new follow set only"
     );
 
-    nmp_ffi::nmp_app_free(app);
+    free_app_ptr(app);
 }

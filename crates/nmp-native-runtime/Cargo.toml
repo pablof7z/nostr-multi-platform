@@ -1,0 +1,65 @@
+[package]
+name = "nmp-native-runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Native Rust runtime owner for NMP applications: NmpApp, actor lifecycle, runtime slots, native builder, and AppHost integration."
+
+[lib]
+name = "nmp_native_runtime"
+crate-type = ["rlib"]
+
+[features]
+default = ["native"]
+native = [
+    "nmp-core/native",
+    "nmp-nip05/native",
+    "nmp-nip57/native",
+]
+signer-broker = [
+    "native",
+    "dep:nmp-nip46-runtime",
+    "dep:nmp-nip46",
+    "dep:nmp-signer-iface",
+    "dep:nmp-signers",
+]
+external-signer = [
+    "native",
+    "dep:nmp-signer-iface",
+    "dep:nmp-signers",
+]
+android-ffi = ["native", "external-signer"]
+test-support = ["native", "nmp-core/test-support"]
+
+[dependencies]
+nmp-core = { path = "../nmp-core", default-features = false }
+nmp-planner = { path = "../nmp-planner", default-features = false }
+nmp-store = { path = "../nmp-store" }
+nmp-content = { path = "../nmp-content" }
+nmp-feed = { path = "../nmp-feed" }
+nmp-kinds = { path = "../nmp-kinds" }
+nmp-nip01 = { path = "../nmp-nip01" }
+nmp-nip02 = { path = "../nmp-nip02" }
+nmp-nip05 = { path = "../nmp-nip05" }
+nmp-nip11 = { path = "../nmp-nip11" }
+nmp-nip18 = { path = "../nmp-nip18" }
+nmp-nip29 = { path = "../nmp-nip29" }
+nmp-nip46 = { path = "../nmp-nip46", optional = true }
+nmp-nip46-runtime = { path = "../nmp-nip46-runtime", optional = true }
+nmp-nip47 = { path = "../nmp-nip47" }
+nmp-nip50 = { path = "../nmp-nip50" }
+nmp-nip51 = { path = "../nmp-nip51" }
+nmp-nip57 = { path = "../nmp-nip57", default-features = false }
+nmp-intent = { path = "../nmp-intent" }
+nmp-wot = { path = "../nmp-wot" }
+nmp-signer-iface = { path = "../nmp-signer-iface", optional = true }
+nmp-signers = { path = "../nmp-signers", optional = true }
+nostr = { workspace = true, features = ["nip44", "nip59"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, features = ["raw_value"] }
+tracing = "0.1"
+zeroize = { workspace = true }
+
+[dev-dependencies]
+nmp-core = { path = "../nmp-core", features = ["test-support"] }

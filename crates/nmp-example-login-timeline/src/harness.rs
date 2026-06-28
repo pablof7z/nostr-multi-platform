@@ -34,11 +34,11 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use nmp_defaults::{NmpAppBuilder, RunConfig};
 use nmp_ffi::{
     nmp_app_free, nmp_app_inject_signed_event_json, nmp_app_set_update_callback,
     nmp_app_signin_nsec, nmp_app_stop, NmpApp,
 };
+use nmp_native_runtime::{NmpAppBuilder, RunConfig};
 use nostr::{EventBuilder, JsonUtil, Keys, Kind, PublicKey, Tag, Timestamp};
 
 use crate::{register, register_following_timeline, render_home_rows, TimelineRow};
@@ -179,7 +179,10 @@ impl DemoApp {
         let deadline = Instant::now() + timeout;
         while Instant::now() < deadline {
             let remaining = deadline.saturating_duration_since(Instant::now());
-            match self.ticks.recv_timeout(remaining.min(Duration::from_secs(1))) {
+            match self
+                .ticks
+                .recv_timeout(remaining.min(Duration::from_secs(1)))
+            {
                 // A REAL kernel update tick fired: only now do we re-read the
                 // projection. The reactive proof depends on this callback path.
                 Ok(()) => {
@@ -209,7 +212,10 @@ impl DemoApp {
         let deadline = Instant::now() + timeout;
         while Instant::now() < deadline {
             let remaining = deadline.saturating_duration_since(Instant::now());
-            match self.ticks.recv_timeout(remaining.min(Duration::from_secs(1))) {
+            match self
+                .ticks
+                .recv_timeout(remaining.min(Duration::from_secs(1)))
+            {
                 Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
                     if pred(self) {
                         return;
@@ -316,7 +322,11 @@ pub fn run_demo() -> DemoResult {
 
     // LIVE UPDATE: a brand-new note from the same followed author shows up
     // without the host doing any subscription work.
-    let second = note(&author, 1_200, "live update - a fresh note, no refresh button");
+    let second = note(
+        &author,
+        1_200,
+        "live update - a fresh note, no refresh button",
+    );
     assert!(demo.ingest(&second), "second note must verify");
     let after_live_update = demo.rows_when(Duration::from_secs(5), |rows| {
         rows.iter()

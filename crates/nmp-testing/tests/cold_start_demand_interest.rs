@@ -84,10 +84,11 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use nmp_coverage_gate::CoverageGate;
-use nmp_defaults::{register_bookmark_runtime, register_substrate, NmpAppBuilder, RunConfig};
+use nmp_defaults::{register_bookmark_runtime, register_substrate};
 use nmp_ffi::{
     nmp_app_free, nmp_app_set_update_callback, nmp_app_signin_nsec, nmp_app_stop, NmpApp,
 };
+use nmp_native_runtime::{NmpAppBuilder, RunConfig};
 use nmp_nip51::{BookmarkItem, BookmarkListProjection};
 use nmp_store::{RawEvent, VerifiedEvent};
 use nostr::{EventBuilder, Keys, Kind, Tag, Timestamp};
