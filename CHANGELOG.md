@@ -186,8 +186,10 @@ do not need call-site changes.
 
 ## nmp-v0.6.1 — 2026-06-12
 
-**Additive C-ABI change**: one NEW symbol, `nmp_app_probe_relay_info` (no
-existing symbol changed or removed). Rust API is additive.
+**Additive NIP-11 change**: the original release added a relay-info preview
+surface alongside the Rust API. The unused C-ABI preview symbol was later
+retired after native callers standardized on relay diagnostics and Rust-owned
+composition. Rust API is additive.
 
 ### Added
 
@@ -202,10 +204,10 @@ existing symbol changed or removed). Rust API is additive.
   `relay_diagnostics` row — serde JSON and the `KRDG` typed FlatBuffers
   sidecar both carry it, so consumer apps render relay names and icons with
   zero HTTP, JSON, or NIP-11 awareness of their own. On-demand
-  `nmp_nip11::probe_relay_info` (Rust) and `nmp_app_probe_relay_info` (C-ABI,
-  callback-borrowed string) cover add-relay preview flows for relays not yet
-  in the pool. `nmp-core` names no NIP-11 noun and imports no HTTP crate
-  (D0); `nmp-wasm` stays `ureq`-free.
+  `nmp_nip11::probe_relay_info` (Rust) covers add-relay preview flows for
+  relays not yet in the pool; the unused C-ABI preview symbol was retired in a
+  later pre-v1 cleanup. `nmp-core` names no NIP-11 noun and imports no HTTP
+  crate (D0); `nmp-wasm` stays `ureq`-free.
 
 ### Fixed
 
@@ -762,11 +764,17 @@ surface is available.
 
 ### Added
 
-- **`nmp_app_sign_event_for_return(app, account_pubkey_hex, unsigned_json) → correlation_id`**: sign any unsigned event draft with the named account's signer (local nsec or NIP-46 bunker) and park the result in `projections["signed_events"][correlation_id]` on the next snapshot tick. The host never touches raw key bytes (D13). Works for both local keys (resolves synchronously) and NIP-46 bunkers (parks on the non-blocking `PendingSignReturn` idle loop, resolves within 5s or surfaces an error verdict).
+- **Sign-event-for-return C-ABI path**: this release originally exposed a C
+  symbol for signing an unsigned event draft with the named account's signer
+  (local nsec or NIP-46 bunker) and parking the result in
+  `projections["signed_events"][correlation_id]` on the next snapshot tick. The
+  unused C-ABI symbol was later retired; the internal Rust signing path remains
+  backend-transparent and host key material still never crosses the boundary
+  (D13).
 
 ### Changed
 
-- **`nmp_app_signin_nsec(app, secret, make_active: u8)`** — added `make_active` parameter. Pass `1` for the normal sign-in path (was the only behaviour before). Pass `0` to register the signer without activating it — for agent/secondary keys that sign via `nmp_app_sign_event_for_return` without disturbing the active account. **All callers must add `, 1`.**
+- **`nmp_app_signin_nsec(app, secret, make_active: u8)`** — added `make_active` parameter. Pass `1` for the normal sign-in path (was the only behaviour before). Pass `0` to register the signer without activating it — for agent/secondary keys or other secondary-account flows that must not disturb the active account. **All callers must add `, 1`.**
 
 - **`nmp_app_signin_bunker(app, uri, make_active: u8)`** — same `make_active` treatment as `signin_nsec`. **All callers must add `, 1`.**
 

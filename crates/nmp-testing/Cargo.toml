@@ -425,11 +425,11 @@ path = "tests/nip46_req_before_event_on_reconnect.rs"
 name = "nip46_actor_lane_signing"
 path = "tests/nip46_actor_lane_signing.rs"
 
-# T122 — NIP-46 bunker signing through the production C-ABI seam (#2119 PR-B2).
-# Drives nmp_signer_broker_init + nmp_app_signin_bunker + nmp_app_sign_event_for_return
-# against MockBunkerRelay and asserts AddSigner + observed connect/get_public_key/
-# sign_event + a schnorr-valid signed event. Covers FFI init-wiring, app-slot
-# storage, and double-init idempotence that the lower-level tests do not.
+# T122 — NIP-46 bunker sign-in through the production C-ABI seam (#2119 PR-B2).
+# Drives nmp_signer_broker_init + nmp_app_signin_bunker against MockBunkerRelay
+# and asserts AddSigner + observed connect/get_public_key. Covers FFI
+# init-wiring, app-slot storage, and double-init idempotence that the lower-level
+# tests do not.
 # `cargo test -p nmp-testing --test nip46_ffi_production_path`
 [[test]]
 name = "nip46_ffi_production_path"

@@ -70,12 +70,12 @@ the dispatch arm stores it on the kernel's transport row and marks the snapshot
 dirty. Failures are non-fatal: the relay simply has no document, and the TTL
 gate prevents a hot retry loop.
 
-**(b) On-demand probe.** An async FFI entry point
-`nmp_app_probe_relay_info(url)` lets apps preview a relay that is **not** in the
-pool (the "add relay" flow). It runs the same `fetch_relay_info_blocking` on a
-worker and returns the same `RelayInfoDoc` JSON. The pool-relay path needs *no*
-explicit per-relay probe call from the app — the data appears in diagnostics as
-it resolves.
+**(b) On-demand probe.** The Rust `nmp_nip11::probe_relay_info` helper lets
+apps preview a relay that is **not** in the pool (the "add relay" flow). It
+runs the same `fetch_relay_info_blocking` on a worker and returns the same
+`RelayInfoDoc` JSON. The former C-ABI preview symbol was retired after it had no
+native callers; the pool-relay path needs *no* explicit per-relay probe call
+from the app — the data appears in diagnostics as it resolves.
 
 **Cache / TTL.** Freshness is governed by `nmp_core::util::TimeCached` (whose
 doc-comment already cites NIP-11 as its motivating use case, 5-minute TTL). The
