@@ -8,8 +8,11 @@ const EMPTY_EMBEDS: ResolvedEventEmbeds = new Map();
 
 const ResolvedEventEmbedsContext = createContext<Accessor<ResolvedEventEmbeds>>();
 
-function asAccessor(input: ResolvedEventEmbedsInput): Accessor<ResolvedEventEmbeds> {
-  return typeof input === "function" ? input : () => input;
+function asAccessor(input: Accessor<ResolvedEventEmbedsInput>): Accessor<ResolvedEventEmbeds> {
+  return () => {
+    const value = input();
+    return typeof value === "function" ? value() : value;
+  };
 }
 
 export function ResolvedEventEmbedsProvider(props: {
@@ -17,7 +20,7 @@ export function ResolvedEventEmbedsProvider(props: {
   children: JSX.Element;
 }): JSX.Element {
   return (
-    <ResolvedEventEmbedsContext.Provider value={asAccessor(props.resolvedEventEmbeds)}>
+    <ResolvedEventEmbedsContext.Provider value={asAccessor(() => props.resolvedEventEmbeds)}>
       {props.children}
     </ResolvedEventEmbedsContext.Provider>
   );
