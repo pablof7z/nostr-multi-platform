@@ -113,6 +113,7 @@ app tree and records the installed upstream baseline in `nmp.components.lock`.
 ```sh
 nmp add component swiftui/content-minimal
 nmp add component swiftui/content-minimal --path /tmp/my-app --with example
+nmp add component swiftui/component-host --with fixture
 ```
 
 - `--path` — app root to install into (default: current directory).
@@ -145,6 +146,11 @@ nmp add component compose/content-view
 
 Each full renderer installs the platform `content-core` wire mirror, media
 grid, quote card, grouping logic, and main `NostrContentView` dispatcher.
+Reference-first user and content components should be paired with one
+app-root component host. `swiftui/component-host --with fixture` and
+`compose/component-host --with fixture` copy no-kernel conformance providers for
+`refs.profile`, `refs.event`, and `refs.event.envelopes`; production apps
+replace those fixtures with their real shell bridge.
 
 Component contract:
 
@@ -158,6 +164,9 @@ Component contract:
 - Components are pure renderers. They do not fetch, retry, cache, route, or
   decide policy. Apps hydrate display models such as `NostrQuoteCardModel`
   from their own state.
+- Component packages must not import runtime, C ABI/JNI/WASM, worker, or kernel
+  handles directly. They consume the app-level component host/provider and
+  projection rows; app-specific rich projections belong in the app Rust core.
 - User actions leave components through `NostrContentCallbacks` /
   `LocalNostrContentRenderer`; the embedding app decides navigation and OS
   capability execution.

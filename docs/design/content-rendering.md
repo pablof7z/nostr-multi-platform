@@ -65,6 +65,18 @@ bridge, and `NostrKindRegistry` dispatches already-typed render projections.
 They must not own kernel handles, parse raw Nostr events, or maintain a second
 profile/event cache.
 
+The host contract has conformance fixtures on every installable surface. Native
+apps can install `swiftui/component-host --with fixture` or
+`compose/component-host --with fixture` to get in-memory `refs.profile`,
+`refs.event`, and `refs.event.envelopes` providers that exercise profile and
+embed rendering without a live kernel. Web components export
+`createComponentHostConformanceFixture()` for the same no-runtime path. The
+doctrine smoke gate treats component packages as renderer/source packages: they
+must not import runtime, C ABI/JNI/WASM, worker, or kernel handles directly.
+Screens that need richer product projections should add those projections in
+their app Rust core and pass the typed output through the host/provider, not
+teach a reusable component to become a runtime.
+
 ## Limits
 
 - No SwiftUI/Compose/iced/web UI package is framework-owned runtime state.

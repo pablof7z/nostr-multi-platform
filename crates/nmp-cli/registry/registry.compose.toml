@@ -78,6 +78,10 @@ dependencies = [
 source = "compose/component-host/NmpComponentHostProvider.kt"
 target = "Components/NmpComponentHost/NmpComponentHostProvider.kt"
 role = "source"
+[[components.files]]
+source = "compose/component-host/NmpComponentHostConformance.kt"
+target = "Components/NmpComponentHost/Fixtures/NmpComponentHostConformance.kt"
+role = "fixture"
 
 [[components]]
 id = "compose/content-view"

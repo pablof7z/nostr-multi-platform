@@ -80,6 +80,21 @@ ContentView()
 Best for: a Nostr social timeline where notes have images, quote cards,
 inline mentions with avatars, and rich markdown rendering.
 
+### Host conformance
+
+Full reference-first components expect an app-root component host/provider.
+Install it with the fixture role while wiring your shell tests:
+
+```sh
+nmp add component swiftui/component-host --with fixture
+```
+
+The fixture provides fake `refs.profile`, `refs.event`, and
+`refs.event.envelopes` rows so profile and embed components can be rendered
+without a live kernel. The production app still supplies its real host bridge at
+the app or screen root; component source must not import runtime, ABI, worker,
+or kernel handles directly.
+
 ### Install
 
 ```sh

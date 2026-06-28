@@ -41,7 +41,15 @@ export default function GetStarted() {
         app crate wired to the framework's actor, event store, and routing substrate.
       </p>
 
-      <h2>3. Install a content kit</h2>
+      <h2>3. Install a component host</h2>
+      <p>
+        Reference-first components read profile and event data through one
+        app-root host. Include the fixture while wiring tests that should run
+        without a live kernel:
+      </p>
+      <InstallCommand command="nmp add component swiftui/component-host --with fixture" />
+
+      <h2>4. Install a content kit</h2>
       <p>
         Pick a component — the easiest start is the minimal renderer:
       </p>
@@ -55,7 +63,7 @@ export default function GetStarted() {
         registry manifest.
       </p>
 
-      <h2>4. Customize</h2>
+      <h2>5. Customize</h2>
       <p>
         Open the installed Swift file in your editor. Change the colors,
         swap the layout, add new <code class="inline-code">NostrContentRun.Kind</code>{" "}
@@ -70,7 +78,7 @@ export default function GetStarted() {
         updates.
       </div>
 
-      <h2>5. Update safely</h2>
+      <h2>6. Update safely</h2>
       <p>
         When the registry pushes a new version of a component, run:
       </p>
