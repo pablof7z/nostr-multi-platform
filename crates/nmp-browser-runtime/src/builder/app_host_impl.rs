@@ -186,7 +186,7 @@ impl<S> ObservedProjectionRegistrar for BrowserAppBuilder<S> {
         };
         Arc::new(g.reducer.observed_projection_command_handle(
             Arc::clone(&g.observed_projection_sessions),
-            CommandSender::new(g.inbox_tx.clone()),
+            CommandSender::new_bounded(g.inbox_tx.clone()),
         ))
     }
 }
@@ -383,10 +383,11 @@ impl<S> HostCapabilities for BrowserAppBuilder<S> {
     fn actor_sender(&self) -> CommandSender {
         let Ok(g) = self.inner.lock() else {
             // D6: return a sender that will always fail to send (detached channel).
-            let (tx, _rx) = std::sync::mpsc::channel::<nmp_core::actor::ActorMail>();
-            return CommandSender::new(tx);
+            let (tx, rx) = std::sync::mpsc::sync_channel::<nmp_core::actor::ActorMail>(0);
+            drop(rx);
+            return CommandSender::new_bounded(tx);
         };
-        CommandSender::new(g.inbox_tx.clone())
+        CommandSender::new_bounded(g.inbox_tx.clone())
     }
 
     fn configured_relays_handle(&self) -> AppRelaySlot {

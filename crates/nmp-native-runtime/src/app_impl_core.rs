@@ -5,13 +5,13 @@
 //! action-registry methods, composition-ledger helpers,
 //! `set_pending_mls_autopublish`, `take_pending_mls_autopublish`.
 
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
-use nmp_core::actor::ActorCommand;
 use nmp_core::actor::LifecycleCommand;
 #[cfg(any(test, feature = "test-support"))]
 use nmp_core::actor::PublishCommand;
+use nmp_core::actor::{ActorCommand, CommandSendStatus};
 
 use crate::app_struct::NmpApp;
 
@@ -111,28 +111,37 @@ impl NmpApp {
     /// received (or will receive) the terminal panic frame and is expected
     /// to surface a fatal error rather than keep sending.
     pub fn send_cmd(&self, cmd: ActorCommand) {
-        // G-S4 — straddle counter: increment before the send so the kernel
-        // never observes a command "in flight" with a stale-low depth. The
-        // actor decrements as it dequeues. `Relaxed` is sufficient — the value
-        // is approximate observability, not a synchronization edge.
+        #[cfg(any(test, feature = "test-support"))]
+        let cmd_tag = match &cmd {
+            ActorCommand::Publish(PublishCommand::CancelPublish { .. }) => "CancelPublish",
+            ActorCommand::Publish(PublishCommand::RetryPublish { .. }) => "RetryPublish",
+            _ => "_other",
+        };
+        // G-S4 — straddle counter: increment before the send so the actor
+        // cannot dequeue an accepted command before depth observes it. If the
+        // bounded send sheds or the actor is gone, roll the increment back.
+        // `Relaxed` is sufficient — the value is approximate observability, not
+        // a synchronization edge.
         self.queue_depth.fetch_add(1, Ordering::Relaxed);
-        // Test-only monotone counter: never decremented.
-        #[cfg(any(test, feature = "test-support"))]
-        self.send_cmd_count.fetch_add(1, Ordering::Relaxed);
-        // Test-only last-variant tag: records which `ActorCommand` was most
-        // recently sent, so tests can assert the SPECIFIC variant (e.g.
-        // `CancelPublish`, not just "some command") without inspecting the actor's
-        // internal state. Only the discriminant names needed by existing tests are
-        // listed; the `_` arm covers all others.
-        #[cfg(any(test, feature = "test-support"))]
-        if let Ok(mut tag) = self.last_cmd_tag.lock() {
-            *tag = Some(match &cmd {
-                ActorCommand::Publish(PublishCommand::CancelPublish { .. }) => "CancelPublish",
-                ActorCommand::Publish(PublishCommand::RetryPublish { .. }) => "RetryPublish",
-                _ => "_other",
-            });
+        if matches!(self.tx.send(cmd), Ok(CommandSendStatus::Enqueued)) {
+            // Test-only monotone counter: never decremented.
+            #[cfg(any(test, feature = "test-support"))]
+            self.send_cmd_count.fetch_add(1, Ordering::Relaxed);
+            // Test-only last-variant tag: records which `ActorCommand` was most
+            // recently accepted, so tests can assert the SPECIFIC variant (e.g.
+            // `CancelPublish`, not just "some command") without inspecting the
+            // actor's internal state.
+            #[cfg(any(test, feature = "test-support"))]
+            if let Ok(mut tag) = self.last_cmd_tag.lock() {
+                *tag = Some(cmd_tag);
+            }
+        } else {
+            self.queue_depth
+                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |d| {
+                    Some(d.saturating_sub(1))
+                })
+                .ok();
         }
-        let _ = self.tx.send(cmd);
     }
 
     /// Surface a user-visible toast message (D6: best-effort delivery).

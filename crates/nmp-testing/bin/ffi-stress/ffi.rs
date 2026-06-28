@@ -13,8 +13,9 @@
 // ADR-0063 Lane H: nmp_app_claim_profile / nmp_app_release_profile deleted;
 // harnesses migrated to nmp_app_resolve_ref / nmp_app_release_ref.
 pub(crate) use nmp_ffi::{
-    nmp_app_configure, nmp_app_free, nmp_app_inject_signed_events, nmp_app_new,
-    nmp_app_release_ref, nmp_app_resolve_ref, nmp_app_set_update_callback, NmpApp,
+    NmpApp, nmp_app_configure, nmp_app_free, nmp_app_inject_signed_events, nmp_app_new,
+    nmp_app_read_command_lane_stats, nmp_app_release_ref, nmp_app_resolve_ref,
+    nmp_app_set_update_callback,
 };
 // ADR-0055 Rung 3 S5 — needed by the S6 Phase B measurement to enable
 // incremental-apply on the second NmpApp instance.
@@ -79,11 +80,7 @@ pub(crate) fn process_rss_bytes() -> u64 {
                 &mut count,
             )
         };
-        if ret == 0 {
-            info.resident_size
-        } else {
-            0
-        }
+        if ret == 0 { info.resident_size } else { 0 }
     }
     #[cfg(not(target_os = "macos"))]
     {

@@ -8,9 +8,8 @@
 //! the `actor` module rather than inside `inbox` itself.
 
 use super::fairness::COMMAND_DRAIN_BUDGET;
-use super::inbox::{ActorMail, CommandSender, Inbox, LoopStep, MailScheduler};
-use super::ActorCommand;
-use super::LifecycleCommand;
+use super::inbox::{Inbox, LoopStep, MailScheduler};
+use super::{ActorCommand, ActorMail, CommandSendStatus, CommandSender, LifecycleCommand};
 use nmp_network::pool::PoolEvent;
 use std::sync::mpsc::channel;
 use std::thread;
@@ -30,8 +29,7 @@ fn pool_event() -> PoolEvent {
 /// wait out the timeout. This is the regression the whole change fixes.
 #[test]
 fn command_send_wakes_a_blocked_inbox() {
-    let (tx, rx) = channel::<ActorMail>();
-    let sender = CommandSender::new(tx);
+    let (sender, rx) = CommandSender::bounded_channel();
     let inbox = Inbox::new(rx);
 
     let waiter = thread::spawn(move || {
@@ -63,6 +61,41 @@ fn command_send_wakes_a_blocked_inbox() {
         "command send must wake the blocked inbox promptly, not wait the \
          10s timeout (elapsed: {elapsed:?})"
     );
+}
+
+/// ADR-0029 / #2221: dispatch is fire-and-forget and bounded. When the actor
+/// inbox is full, a new command is shed immediately, accepted-command order is
+/// preserved, and the drop is observable on the shared sender.
+#[test]
+fn full_bounded_inbox_sheds_new_command_and_counts_drop() {
+    let (sender, rx) = CommandSender::bounded_channel_with_capacity(1);
+
+    assert_eq!(
+        sender
+            .send(ActorCommand::Lifecycle(LifecycleCommand::Start {
+                visible_limit: 50,
+                emit_hz: 30,
+                initial_relays: Vec::new(),
+            }))
+            .expect("first command accepted"),
+        CommandSendStatus::Enqueued
+    );
+    assert_eq!(
+        sender
+            .send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown))
+            .expect("full lane sheds without disconnecting"),
+        CommandSendStatus::DroppedFull
+    );
+    assert_eq!(sender.command_drops(), 1);
+
+    match rx.try_recv().expect("first command remains queued") {
+        ActorMail::Command(ActorCommand::Lifecycle(LifecycleCommand::Start { .. })) => {}
+        other => panic!("expected accepted Start command, got {other:?}"),
+    }
+    assert!(matches!(
+        rx.try_recv(),
+        Err(std::sync::mpsc::TryRecvError::Empty)
+    ));
 }
 
 /// Priority: when commands and relay mail are interleaved in the channel,

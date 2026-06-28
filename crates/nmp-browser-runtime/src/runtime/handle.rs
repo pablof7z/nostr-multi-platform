@@ -14,7 +14,7 @@
 
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::{mpsc, Arc};
+use std::sync::{Arc, mpsc};
 
 use nmp_core::substrate::{ObservedProjectionCommandHandle, PreferredRelaySource};
 use nmp_core::{AppRelayList, CommandSender, SignerStateModel, UpdateFrameBytes};
@@ -23,8 +23,8 @@ use nmp_signers::Signer;
 use super::diagnostics::BrowserRuntimeDiagnostics;
 use super::event::BrowserRuntimeEvent;
 use super::signer_state::{
-    new_signer_state_slot, ready_model, register_signer_state_projection, update_signer_state,
-    BrowserSignerStateSlot,
+    BrowserSignerStateSlot, new_signer_state_slot, ready_model, register_signer_state_projection,
+    update_signer_state,
 };
 use super::snapshot::{BrowserSnapshotCache, SnapshotOutcome};
 use super::{BrowserRuntime, PumpOutcome};
@@ -51,7 +51,7 @@ pub struct BrowserRuntimeHandle {
     pub(super) runtime: BrowserRuntime,
     /// Sender clone kept alive so [`Self::command_sender`] can hand out fresh
     /// `CommandSender`s post-start.
-    pub(super) inbox_tx: mpsc::Sender<nmp_core::actor::ActorMail>,
+    pub(super) inbox_tx: mpsc::SyncSender<nmp_core::actor::ActorMail>,
     /// Shared relay slot. Read-only to callers — see [`Self::configured_relays`].
     pub(super) configured_relays: nmp_core::AppRelaySlot,
 
@@ -180,11 +180,11 @@ impl BrowserRuntimeHandle {
         let nip46 = BrowserNip46Runtime::install(
             &mut inner.relay_text_interceptors,
             &mut inner.relay_connected_hooks,
-            CommandSender::new(inbox_tx.clone()),
+            CommandSender::new_bounded(inbox_tx.clone()),
         );
         let observed_projection_registrar = inner.reducer.observed_projection_command_handle(
             Arc::clone(&inner.observed_projection_sessions),
-            CommandSender::new(inbox_tx.clone()),
+            CommandSender::new_bounded(inbox_tx.clone()),
         );
 
         let runtime = BrowserRuntime {
@@ -291,7 +291,7 @@ impl BrowserRuntimeHandle {
 
     /// Return a `CommandSender` for this runtime's inbox.
     pub fn command_sender(&self) -> CommandSender {
-        CommandSender::new(self.inbox_tx.clone())
+        CommandSender::new_bounded(self.inbox_tx.clone())
     }
 
     /// Read a snapshot of the configured relay list.

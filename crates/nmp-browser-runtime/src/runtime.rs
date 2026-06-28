@@ -147,7 +147,7 @@ pub(crate) struct BrowserRuntime {
     pub(crate) inbox_rx: mpsc::Receiver<ActorMail>,
     /// A sender clone stored here so relay connected-hooks can post follow-up
     /// commands back through the inbox during `pump()`.
-    pub(crate) inbox_tx: mpsc::Sender<ActorMail>,
+    pub(crate) inbox_tx: mpsc::SyncSender<ActorMail>,
     /// Publishes parked awaiting an async signature, keyed on sign correlation
     /// id. Populated on `NeedsSign`; drained by `signer_delivery` on completion.
     pub(crate) pending_signed_publishes: HashMap<String, PendingSignedPublish>,
@@ -205,7 +205,7 @@ impl BrowserRuntime {
         // broker path can fire it from a future JS task; cloning here avoids
         // holding a borrow on the pool across the &mut reducer drain.
         let wake = self.relay_pool.wake_cell();
-        let cmd_sender = CommandSender::new(self.inbox_tx.clone());
+        let cmd_sender = CommandSender::new_bounded(self.inbox_tx.clone());
         let cmd_drain = pump::drain_inbox(
             &mut self.reducer,
             &self.inbox_rx,

@@ -1,4 +1,4 @@
-//! S2 — Dispatch flood (mpsc backpressure).
+//! S2 — Dispatch flood (bounded actor command-lane pressure).
 //!
 //! Spec: docs/retired/ffi-hardening-m10-5.md §S2
 //! Gate: docs/retired/ffi-hardening-m10-5.md §G-S2
@@ -9,19 +9,21 @@
 //! Former 30/30/20/20 open_author/close_author/claim/release mix is now
 //! 60/40 resolve/release (open_author+claim combined → resolve; close_author+release → release).
 //!
-//! D8 (reactivity contract, <=60 Hz/view): actor mpsc backlog never exceeds 10,000.
+//! D8 (reactivity contract, <=60 Hz/view): actor command backlog is bounded and
+//! shed-load drops are counted.
 //! Bible #3 (fire-and-forget): every send call returns within p99 <= 1 ms.
 
-use crate::allocator::{alloc_snapshot, AllocSnapshot};
+use crate::allocator::{AllocSnapshot, alloc_snapshot};
 use crate::ffi::{
-    nmp_app_configure, nmp_app_free, nmp_app_new, nmp_app_release_ref, nmp_app_resolve_ref,
-    nmp_app_set_update_callback, process_rss_bytes, test_pubkeys, NmpApp,
+    NmpApp, nmp_app_configure, nmp_app_free, nmp_app_new, nmp_app_read_command_lane_stats,
+    nmp_app_release_ref, nmp_app_resolve_ref, nmp_app_set_update_callback, process_rss_bytes,
+    test_pubkeys,
 };
 use crate::gate::Gate;
 use crate::report::ScenarioMetrics;
 use crate::s2_latency_hist::LatencyHistogram;
 use serde_json::json;
-use std::ffi::{c_void, CString};
+use std::ffi::{CString, c_void};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Barrier};
 use std::time::{Duration, Instant};
@@ -140,14 +142,7 @@ pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
                         0..=5 => {
                             let consumer =
                                 CString::new(format!("t{thread_idx}-{seq}")).expect("no nuls");
-                            nmp_app_resolve_ref(
-                                app_ptr,
-                                0,
-                                pk.as_ptr(),
-                                consumer.as_ptr(),
-                                0,
-                                0,
-                            );
+                            nmp_app_resolve_ref(app_ptr, 0, pk.as_ptr(), consumer.as_ptr(), 0, 0);
                         }
                         _ => {
                             let consumer =
@@ -289,13 +284,13 @@ pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
         ),
     );
 
-    // G-S2: dropped sends (mpsc disconnected) == 0.
-    // All dispatches must be accepted by the actor channel.
-    // total_dispatches counts only SUCCESSFUL sends in the worker thread.
+    // G-S2: caller-side dispatch attempts reach nominal cadence.
+    // The FFI entrypoint is fire-and-forget and returns void; accepted-vs-shed
+    // command pressure is reported by `command_drops_total` below.
     let failed_sends = nominal.saturating_sub(total_dispatches);
     report.gates.push(
         Gate::eq("failed_sends", failed_sends as f64, 0.0)
-            .with_note("G-S2: all sends accepted (no mpsc disconnects during flood)"),
+            .with_note("G-S2: caller threads submitted the nominal dispatch count"),
     );
 
     // G-S2: main-thread hitches > 16 ms between dispatches == 0.
@@ -314,17 +309,18 @@ pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
         nominal, total_dispatches, p50_ms, p99_ms, failed_sends,
     ));
     report.notes.push(
-        "Actor mpsc backlog depth: not directly observable from caller thread; \
-         RSS growth is the proxy gate (bounded channel growth = bounded RSS). \
-         Hitch gate uses p99 as proxy for individual send latencies."
+        "Actor command backlog depth and command drops are reported through the \
+         test-support FFI stats path; RSS growth remains the process-level \
+         bounded-memory proxy. Hitch gate uses p99 as proxy for individual send \
+         latencies."
             .to_string(),
     );
     let verdict = if retained_after_drain.max(0) as f64 <= 1024.0 * 1024.0 {
         "TRANSIENT backpressure spike — backlog fully reclaimed after drain; \
          peak is recoverable, supports a justified peak-threshold revision"
     } else {
-        "RETAINED under load — heap NOT reclaimed after drain; genuine \
-         unbounded growth, a bounded-channel/backpressure fix is mandatory"
+        "RETAINED under load — heap NOT reclaimed after drain; investigate \
+         accepted-command drain or another retained working set"
     };
     report.notes.push(format!(
         "S2-drain: peak_net_heap={} B, retained_after_drain={} B, \
@@ -337,11 +333,17 @@ pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
         verdict,
     ));
 
-    // T114b — surface the per-pubkey claim drop counter from the kernel's last
-    // snapshot. This proves the cap was exercised (D6 fire-and-forget
-    // bookkeeping) and quantifies per-dispatch pressure. (The FFI command
-    // channel is unbounded — ADR-0029's bounded shed-load design was never
-    // built — so there is no FFI-channel drop counter to report.)
+    let mut command_queue_depth = 0_u64;
+    let mut command_drops_total = 0_u64;
+    nmp_app_read_command_lane_stats(
+        app,
+        &mut command_queue_depth as *mut u64,
+        &mut command_drops_total as *mut u64,
+    );
+
+    // T114b / #2221 — surface bounded command-lane drops and the per-pubkey
+    // claim drop counter. The command lane is shed-load bounded; the claim cap
+    // is the actor-side working-set defense.
     let claim_drops_total = {
         let last = LAST_PAYLOAD.lock().ok().and_then(|guard| guard.clone());
         match last
@@ -359,8 +361,9 @@ pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
         }
     };
     report.notes.push(format!(
-        "T114b counters: claim_drops_total={claim_drops_total} \
-         (per-pubkey cap exercised when >0)",
+        "T114b counters: command_queue_depth={command_queue_depth}, \
+         command_drops_total={command_drops_total}, \
+         claim_drops_total={claim_drops_total} (caps exercised when >0)",
     ));
 
     report.measurements = json!({
@@ -386,6 +389,8 @@ pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
         "latency_samples": total_samples,
         "hitches_proxy": hitches_proxy,
         "claim_drops_total": claim_drops_total,
+        "command_queue_depth": command_queue_depth,
+        "command_drops_total": command_drops_total,
     });
 
     // Teardown.

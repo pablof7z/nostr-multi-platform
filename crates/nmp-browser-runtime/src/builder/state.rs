@@ -27,9 +27,9 @@ use nmp_core::substrate::{
     RelayConnectedHook, RelayTextInterceptor, ReqFrameInterceptor, RoutingTraceObserver,
 };
 use nmp_core::{
+    ActionRegistry, AppRelaySlot, Clock, KernelReducer,
     publish::OutboxResolver,
     slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot},
-    ActionRegistry, AppRelaySlot, Clock, KernelReducer,
 };
 
 // Type aliases matching AppHost factory shapes.
@@ -66,8 +66,9 @@ pub(crate) struct BrowserBuilderInner {
     pub(crate) action_registry: ActionRegistry,
 
     // ── HostCapabilities ──────────────────────────────────────────────────────
-    /// Sender half of the builder-owned mailbox. Cloned into `CommandSender`s.
-    pub(crate) inbox_tx: std::sync::mpsc::Sender<ActorMail>,
+    /// Bounded sender half of the builder-owned mailbox. Cloned into
+    /// `CommandSender`s.
+    pub(crate) inbox_tx: std::sync::mpsc::SyncSender<ActorMail>,
     /// Receiver half — moved into `BrowserRuntime` at start().
     pub(crate) inbox_rx: std::sync::mpsc::Receiver<ActorMail>,
     /// Shared relay-list slot (builder holds it, kernel gets a clone at start).
@@ -151,7 +152,8 @@ impl BrowserBuilderInner {
     /// Construct a fresh inner state with an empty `KernelReducer` and wired
     /// mailbox channel + relay slot.
     pub(crate) fn new() -> Self {
-        let (inbox_tx, inbox_rx) = std::sync::mpsc::channel::<ActorMail>();
+        let (inbox_tx, inbox_rx) =
+            std::sync::mpsc::sync_channel::<ActorMail>(nmp_core::actor::ACTOR_INBOX_CAPACITY);
         let configured_relays_slot: AppRelaySlot =
             Arc::new(Mutex::new(nmp_core::AppRelayList::default()));
         Self {

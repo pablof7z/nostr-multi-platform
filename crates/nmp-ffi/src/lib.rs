@@ -59,6 +59,8 @@ mod storage;
 #[cfg(any(test, feature = "test-support"))]
 mod testing;
 #[cfg(any(test, feature = "test-support"))]
+mod testing_stats;
+#[cfg(any(test, feature = "test-support"))]
 mod testing_sync;
 mod timeline;
 
@@ -176,6 +178,8 @@ pub use testing::{
     nmp_app_inject_unpinned_events_for_gc, nmp_app_read_author_event_ids,
     nmp_app_read_projection_churn_stats, nmp_app_read_ram_eviction_stats, nmp_app_trigger_gc_step,
 };
+#[cfg(any(test, feature = "test-support"))]
+pub use testing_stats::nmp_app_read_command_lane_stats;
 #[cfg(any(test, feature = "test-support"))]
 pub use testing_sync::nmp_app_wait_barrier;
 

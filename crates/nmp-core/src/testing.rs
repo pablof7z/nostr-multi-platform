@@ -2,7 +2,7 @@
 //! file-size ownership). Gated by `test-support`/`native`; re-exports the
 //! actor test entrypoints and the NIP golden-tag conformance harness.
 
-pub use crate::actor::{spawn_test_actor, ActorCommand, TestSupportCommand};
+pub use crate::actor::{ActorCommand, TestSupportCommand, spawn_test_actor};
 pub use crate::kernel::{
     PROCESS_PROJECTIONS_CHANGED, PROCESS_PROJECTIONS_SERIALIZED, PROCESS_RAM_EVENTS_EVICTED,
     PROCESS_STORE_LRU_EVICTED,
@@ -27,12 +27,12 @@ pub fn spawn_actor() -> (
     crate::CommandSender,
     mpsc::Receiver<crate::update_envelope::UpdateFrameBytes>,
 ) {
-    // ADR-0050 §D3a — one waking inbox of `ActorMail`. The host handle and
-    // the actor's self-feedback handle are both `CommandSender`s over this
-    // one channel, so any command send wakes the actor.
-    let (inbox_tx, command_rx) = mpsc::channel::<crate::ActorMail>();
+    // ADR-0029 / ADR-0050 §D3a — one bounded waking inbox of `ActorMail`.
+    // The host handle and the actor's self-feedback handle are both
+    // `CommandSender`s over this one channel, so any accepted command wakes the
+    // actor without giving the FFI lane unbounded memory.
+    let (command_tx, command_rx) = crate::CommandSender::bounded_channel();
     let (update_tx, update_rx) = mpsc::channel();
-    let command_tx = crate::CommandSender::new(inbox_tx);
     // Hand the actor a clone of the command sender so dispatch arms
     // that spawn workers (currently the LNURL-pay round-trip) can
     // send follow-up `ActorCommand`s back into the loop. The outer
@@ -57,14 +57,13 @@ pub fn spawn_actor_with_storage_path(
     mpsc::Receiver<crate::update_envelope::UpdateFrameBytes>,
 ) {
     use crate::actor::{
-        run_actor_with_observers, ActorChannels, ActorConfigSources, ActorRuntimeSlots,
+        ActorChannels, ActorConfigSources, ActorRuntimeSlots, run_actor_with_observers,
     };
     use crate::slots::new_storage_path_slot;
-    use std::sync::{atomic::AtomicU64, Arc, Mutex};
+    use std::sync::{Arc, Mutex, atomic::AtomicU64};
 
-    let (inbox_tx, command_rx) = mpsc::channel::<crate::ActorMail>();
+    let (command_tx, command_rx) = crate::CommandSender::bounded_channel();
     let (update_tx, update_rx) = mpsc::channel();
-    let command_tx = crate::CommandSender::new(inbox_tx);
     let actor_command_tx_self = command_tx.clone();
 
     // Pre-populate the storage path slot so the actor reads it at startup.
@@ -181,6 +180,7 @@ pub fn inject_signed_events(
     tx.send(ActorCommand::TestSupport(
         TestSupportCommand::IngestPreVerifiedEvents(events),
     ))
+    .map(|_| ())
 }
 
 /// Send a [`ActorCommand::Barrier`] and block until the actor acknowledges

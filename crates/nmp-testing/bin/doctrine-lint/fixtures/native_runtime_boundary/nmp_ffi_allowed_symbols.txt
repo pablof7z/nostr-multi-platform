@@ -31,6 +31,7 @@ nmp_app_open_interest
 nmp_app_open_uri
 nmp_app_probe_relay_info
 nmp_app_read_author_event_ids
+nmp_app_read_command_lane_stats
 nmp_app_read_projection_churn_stats
 nmp_app_read_ram_eviction_stats
 nmp_app_register_action_result_observer
