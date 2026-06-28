@@ -4,7 +4,7 @@
 > written for ADR review. This is not a shipped API contract, not a settled
 > solution, and not the durable ADR set. It records the desired shape, rejection
 > tests, and first rolling-horizon moves so the accepted facts can be folded into
-> a smaller current ADR/doc set before code changes.
+> a smaller current ADR/doc set before broad migration work.
 
 ## Authority And Retirement
 
@@ -32,6 +32,12 @@ architecture direction, each old ADR should be classified as folded into the
 redesign ADR, folded into another durable owner, still-current standalone
 guidance, or deleted/retired. The preferred outcome is a smaller ADR directory
 whose remaining files cannot be mistaken for the old public architecture.
+
+The ordering is deliberate: candidate packet, redesign ADR acceptance, first
+implementation slices, then the #2320 ADR reset/retirement pass. Before the
+redesign ADR is accepted, #2320 work should be a source-of-truth classification
+dossier only. It should not trigger blind deletion of ADRs or durable docs while
+the target architecture is still being argued.
 
 The fitness matrix in this packet is transitional: it becomes real only when it
 is executable work. Each accepted ratchet must graduate into a doctrine lint,
@@ -94,6 +100,10 @@ existing architecture text:
   `KernelEventObserver`/`register_event_observer`/C-ABI observer door, dynamic
   sources, pointer/ref demand, and related lifecycle invariants. They are
   evidence and guardrails, not active queue items to preserve as architecture.
+- **Dependent-source history:** `$metaSubscribe`, pointer-source hydration, and
+  follow-feed fixes showed that target hydration is not solved by another
+  subscription helper. Source arrival, withdrawal, route planning, replay, output
+  ownership, and teardown must move as one typed session contract.
 - **Intent and publish design docs:** input text must pass through one typed
   classifier before becoming a ref/search/action, and every publish starts as a
   local intent/ledger record before signing, route resolution, or sockets.
@@ -160,7 +170,7 @@ registries, or runtime lifecycle FFI to build a normal feature.
 
 | Concept | Status | Rule |
 |---|---|---|
-| Feature bundle | Candidate public concept pending ADR | Installs typed sessions, actions, outputs, builders, and capability needs through narrow registrars or builder methods. Avoid a broad `dyn AppFeature` object unless it deletes existing complexity. |
+| Explicit feature composition / installer | Candidate public concept pending ADR | Installs typed sessions, actions, outputs, builders, and capability needs through existing builders, extension traits, narrow registrars, or explicit registration helpers. Reject a broad `dyn AppFeature`/framework object unless it deletes equal or larger old public surface. |
 | Typed session / session descriptor | Candidate public concept pending ADR | The app opens typed demand and receives a handle plus typed output. This is the public replacement for hand-wiring interest, replay, observer, projection, and teardown. |
 | Typed action / generated builder | Candidate public concept pending ADR | User intent enters Rust through typed action data with correlation ids, validation, signer route, and status. |
 | Typed input intent classifier | Candidate public concept pending ADR | User-entered text, URLs, NIP-19/NIP-21 values, relay URLs, NIP-05 names, registered app scopes, and search strings enter through one Rust-owned classifier. Shells may collect text; they do not parse protocol meaning or route secrets. |
@@ -174,7 +184,7 @@ registries, or runtime lifecycle FFI to build a normal feature.
 | Reverse wake/admission indexes | Private machinery when proven | Wake sources and bounded admission are mandatory; specific indexes are added only when scoped fanout cannot prove the invariant. |
 | Projection tiers / `SnapshotRegistry` / `DeclaredProjections` | Private executor machinery | They may remain internally only where they preserve bounded output and merge correctness. They are not app-facing composition language. |
 | Generated adapters | Contract machinery | Use for schema, merge/cache, and action-builder drift prevention. Generation is mandatory where hand-authored adapters cannot prove the same contract. |
-| Public `LiveQuery` engine | Rejected public concept | A typed session descriptor may be named `LiveQuery`, but it must not become a second lifecycle engine or protocol owner. |
+| Public `LiveQuery` engine | Rejected public concept | Do not publicize `LiveQuery` in the first ADR. A later ADR may reuse the name only if it means typed descriptor/handle and deletes old read recipes. |
 | Public `ReducedSource` | Rejected public concept | Dynamic source reconciliation stays behind typed sessions unless a later ADR proves a real app-facing need. |
 | Raw `open_interest` app reads | Rejected public product model | Keep only substrate, protocol-internal, diagnostic/test/export, or migration scopes with deletion/formalization criteria. |
 | `nmp.browse_relay` / relay browser | Rejected production read model unless formalized | A single-relay browse action is diagnostic/prototype/manual inspection unless an app Rust feature owns it as an audited relay-pinned session with output and teardown. |
@@ -276,7 +286,7 @@ state has one owner, one handle, one teardown path, one output contract, and one
 route policy.
 
 This hypothesis must be enforced by the ratchets in [Internal
-Machinery](04-internal-machinery.md), especially FF-001 through FF-026. A prose
+Machinery](04-internal-machinery.md), especially FF-001 through FF-031. A prose
 claim that the new model is simpler is insufficient without those checks moving
 old-pattern counts down or keeping them from growing.
 
@@ -371,9 +381,9 @@ whether the destination architecture is real.
   and feed/list events must build, sign, route, store, publish, and report relay
   ack/error/retry status through Rust.
 - Widgets, AppIntents/Siri, CarPlay, remote commands, Live Activities, Handoff,
-  and suspended/cold starts must use app-lifetime/service sessions or typed
-  capability results. They must not own playback queue, signer state, relay
-  policy, or publish status.
+  and suspended/cold starts must use typed actions, headless runtime invocation,
+  app-lifetime typed sessions where proven, or typed capability results. They
+  must not own playback queue, signer state, relay policy, or publish status.
 - "Dispatch accepted" is not completion. OS-owned surfaces must get Rust-owned
   operation result, pending, error, or completion state rather than treating a
   foreground singleton enqueue as user-visible success.
@@ -387,7 +397,7 @@ whether the destination architecture is real.
 - App-specific Rust is correct; hand-authored app FFI/action glue is not a final
   framework proof unless it is generated, typed, or explicitly app-local with no
   protocol-policy leakage.
-- Podcast is the service-session falsification target. AppIntents that depend on
+- Podcast is the service/capability-flow falsification target. AppIntents that depend on
   a foreground `KernelModel.shared`, CarPlay flows that refresh with polling, and
   optimistic publish timestamps prove the architecture is not done until those
   surfaces report typed Rust-owned results and status.
@@ -444,7 +454,7 @@ migration roadmap.
 | Highlighter web runtime inventory | Every `@nostr-dev-kit`, `$subscribe`, `fetchEvents`, direct sign/publish, relay-set, cache, and tag-parser product path is classified as NMP target-runtime migration, SSR-only, diagnostic, deleted, or explicitly out of scope, with owner and deletion/formalization criterion. Direct NDK cannot remain both violation and normal runtime. |
 | Highlighter iOS/session policy | Wi-Fi/offline/cache policy is Rust-owned from raw platform capability facts; profile/event/embed refs use typed owner handles with close/clear tests; production app roots do not rely on hidden `register_defaults()` or `consume_all_builtin_projections()` except labeled migration/tutorial paths. |
 | Highlighter semantic parsing | `tagsJson`, manual NIP-10/NIP-21/NIP-22/NIP-29 parsing, article/highlight card derivation, and discussion-root inference either move behind Rust descriptors/generated adapters or are proven presentation-only. |
-| Podcast service sessions | Widget, AppIntent/Siri, CarPlay, remote command, Live Activity, Handoff, and suspended/cold start flows work through app/service sessions or typed capability results, not UI-process singletons or shell-local durable state. Results report Rust-owned pending/error/completion, not only dispatch acceptance. |
+| Podcast service/capability flows | Widget, AppIntent/Siri, CarPlay, remote command, Live Activity, Handoff, and suspended/cold start flows work through typed actions, headless invocation, app-lifetime typed sessions where proven, or typed capability results, not UI-process singletons or shell-local durable state. Results report Rust-owned pending/error/completion, not only dispatch acceptance. |
 | Podcast NIP-F4 publish | Show, episode, feed/list, Blossom references/server provenance, named/per-podcast signer, key-storage capability, route provenance, local ingest, relay ack/error/retry/exhausted status, and user-visible completion are proven end to end. Constructed JSON, queued-only status, `publish_dispatched`, or `relay_pending` is not enough. |
 | `nmp-gallery` web/ref lifecycle | wasm/worker runtime builds, missing wasm/worker fails closed, ref APIs are generated/typed, no correctness `setInterval` release/reclaim loop is needed, and component refs clear by owner lifecycle across web/iOS/Android/TUI/desktop. |
 | `nmp-gallery` auth/signing matrix | Android NIP-55, web NIP-07, iOS, TUI, desktop, local/no-auth, remote signer, and unauthenticated modes are classified independently; one shell's proof cannot stand in for another. |
@@ -468,7 +478,7 @@ smaller architecture instead of adding a wrapper layer.
 
 Required dossier sections:
 
-- current baseline counts for every old-pattern family in FF-001 through FF-026;
+- current baseline counts for every old-pattern family in FF-001 through FF-031;
 - disposition of every public door in P-1: delete, privatize, formalize, or
   migration-scope with owner/support window/removal gate;
 - a PR-sized first-slice plan proving the descriptor work reduces lifecycle
@@ -482,7 +492,8 @@ Required dossier sections:
   gallery wasm/Worker, OPFS conformance, or degraded-mode deletion;
 - generated catalog/manifest direction gate naming the first catalog to
   single-source;
-- durable-doc retirement list with each stale doc corrected in place or retired;
+- #2320 source-of-truth classification dossier showing where each stale ADR/doc
+  fact will fold after the redesign ADR is accepted;
 - subjective product calls explicitly resolved, including Highlighter web,
   tutorial preset, downstream release gates, and manual explicit relay UX.
 
@@ -724,7 +735,7 @@ apps/<app> Rust crate
   -> depends on NMP crates
 
 crates/nmp-defaults and protocol crates
-  -> provide reusable feature bundles, builders, descriptors, parsers, policy
+  -> provide reusable feature installers, builders, descriptors, parsers, policy
   -> depend on nmp-core seams
 
 crates/nmp-core
@@ -808,7 +819,7 @@ into native code.
 ## Documents
 
 - [App Model](01-app-model.md) explains how an app is assembled, what feature
-  bundles provide, and where app-specific Rust domains belong.
+  installers provide, and where app-specific Rust domains belong.
 - [Live Queries](02-live-queries.md) explains how screens subscribe to data,
   including `ObservedProjection`, dynamic source reconciliation, component refs,
   and projection delivery.
@@ -821,7 +832,7 @@ into native code.
 
 An NMP app should be understandable from a small set of concepts:
 
-- A Rust composition root installs explicit feature bundles.
+- A Rust composition root installs explicit feature installers.
 - Screens, components, widgets, and app services open typed sessions for the
   data they render or keep resident.
 - User-entered text, links, NIP identifiers, relay URLs, and product commands
@@ -843,10 +854,10 @@ The names are deliberately provisional ADR candidates. They describe invariants
 the design must preserve, not a commitment to add new public types or keep
 current internal types:
 
-- `Typed session`, `FeatureSession`, or `LiveQuery` means a typed descriptor and
-  handle for the live lifecycle a screen, component, widget, or app service
-  opens. `LiveQuery` is acceptable only as naming for that contract, not as a
-  second public engine.
+- `Typed session` or `FeatureSession` means a typed descriptor and handle for the
+  live lifecycle a screen, component, widget, or app service opens. `LiveQuery`
+  is not first-ADR public vocabulary; a later ADR may reuse the name only for
+  this contract, not for a second public engine.
 - `ObservedProjection` means the internal safe pattern for replaying cached
   events into a scoped projection before accepting future live events.
 - `ReducedSource` means one current private feed-local implementation candidate
@@ -901,8 +912,8 @@ implementation satisfies these constraints:
 This packet is ready to turn into durable ADR and architecture edits only after
 the North Star is falsifiable and the first rolling-horizon slices are concrete:
 
-- the public vocabulary is reduced to feature bundles, typed sessions, typed
-  actions/builders, capability results, and typed outputs/status;
+- the public vocabulary is reduced to explicit feature composition, typed
+  sessions, typed actions/builders, capability results, and typed outputs/status;
 - `LiveQuery`, `ObservedProjection`, `ReducedSource`, route provenance, generated
   adapters, and wake indexes are classified as public, private, migration-scoped,
   or rejected;
@@ -910,12 +921,23 @@ the North Star is falsifiable and the first rolling-horizon slices are concrete:
   live sink, admission, output, wakes, teardown, and error/status behavior;
 - one simple session and one dynamic-source session prove the descriptor can sit
   on existing safe machinery without creating a second read lifecycle;
+- bounded route-planning/admission and wake-fanout contracts exist for the first
+  accepted session family, including replay rejection when relay-pinned cached
+  events lack stored relay provenance or another protocol-approved proof;
 - construction/finalization, signing, and publishing are proven separable without
   splitting into native-owned routes or publish JSON paths;
+- signer status is a Rust-owned output contract across the supported signer
+  subset for the first write proof, not inferred from native callbacks;
 - the typed input classifier remains the only production route from arbitrary
   user text into refs, relays, app commands, or search;
 - the publish path preserves offline-first local intent/status before signing,
   routing, relay sockets, retry, or cancel;
+- schema, binding, render-cache, and storage migrations have one writer,
+  fixture/codegen gates, compatibility windows, fail-closed behavior, and
+  deletion/support-window triggers for old paths;
+- browser runtime/storage has at least a direction gate for fail-closed
+  wasm/Worker/storage behavior before browser proof is counted; full browser
+  conformance can remain post-ADR;
 - Highlighter, Podcast Player, and `nmp-gallery` have classified acceptance
   matrices, with the first one to five rows selected for actual migration or
   decision work;
@@ -955,6 +977,10 @@ tests, and downstream migrations.
   semantics.
 - App-specific Rust crates own product domains; NMP crates own reusable Nostr
   mechanisms. Native/web shells render and execute capabilities only.
+- Schema, binding, runtime storage, and render-cache migrations are architecture
+  gates, not adapter chores. Generated glue is accepted only when it deletes
+  drift or narrows old doors; every compatibility path needs one writer, fixture
+  or codegen gate, support window, fail-closed behavior, and deletion trigger.
 
 **Technical ADR questions**
 

@@ -12,7 +12,7 @@ open(ProfileRef { pubkey, owner })
 open(EventEmbed { event_ref, owner })
 open(LiveCountOutput { source, filter, owner })
 open(PodcastPlayback { owner = AppLifetime })
-open(CustomFeature { source, route, output })
+open(AppDefinedTimeline { descriptor_id })
 ```
 
 `HomeFeed` is an example feature, not a privileged framework primitive. If the
@@ -41,8 +41,15 @@ The public read noun is a typed session descriptor plus handle. The ADR may
 choose typed per-feature open helpers, a generic descriptor API, or a hybrid, but
 the accepted shape must let NMP crates and app Rust crates define new read
 models without requiring native shells to hand-author relay subscriptions.
-`LiveQuery` may survive as shorthand or final naming only if it means this
-descriptor/handle contract. It must not become a second public lifecycle engine.
+Do not publicize `LiveQuery` in the first ADR. If a later ADR uses the name, it
+must mean this descriptor/handle contract and must not become a second public
+lifecycle engine.
+
+The examples above are Rust-defined descriptor helpers or generated host
+bindings. They are not permission for a shell to pass `filter_json`, relay lists,
+output schemas, or reducer names as a raw subscription dictionary. A generic
+custom feature is acceptable only when an app Rust crate owns the descriptor,
+route/admission policy, output schema, and teardown contract.
 
 #2316 rules out a thin convenience wrapper. A session is real only when one
 contract owns acquisition, route planning, replay, observed sink, admission,
@@ -205,6 +212,11 @@ because Podcast Player, widgets, AppIntents, CarPlay, Live Activities, Handoff,
 and signer/runtime work expose a real gap in the screen-only model. The ADR must
 prove they can reuse the normal session/action/capability machinery without
 becoming a second app model or a runtime-specific framework.
+Until that proof exists, "service session" is not initial public vocabulary and
+must not become a crate, module, generated binding family, or app-developer
+concept. Service-like flows should first be expressed as typed actions into the
+normal runtime, short-lived headless runtime invocation, capability results, or
+last-emitted Rust mirror frames.
 Podcast is the falsification case: an AppIntent that only enqueues into a
 foreground singleton, a CarPlay surface that polls until the UI store appears, or
 an OS callback that reports success before Rust emits completion proves the
@@ -217,15 +229,15 @@ a typed action into the normal runtime, a short-lived headless runtime invocatio
 or a last Rust-emitted mirror frame. If the proposed service session needs a
 second lifecycle, output, wake, store, or status model, reject or narrow it.
 
-Service sessions need an explicit lifecycle contract:
+Any future service abstraction would need an explicit lifecycle contract:
 
 | Surface | Opens or resumes | Reports back | Must not own |
 |---|---|---|---|
-| Widget refresh | app-lifetime/widget session or last Rust-emitted widget frame | WidgetKit timeline request / display result if relevant | playback queue, episode truth, relay state |
-| AppIntent/Siri | cold service session or dispatch into existing app runtime | typed intent result or capability failure | hidden singleton-only app state that fails unless UI is open |
+| Widget refresh | app-lifetime typed session, typed action, or last Rust-emitted widget frame | WidgetKit timeline request / display result if relevant | playback queue, episode truth, relay state |
+| AppIntent/Siri | headless typed action/session or dispatch into existing app runtime | typed intent result or capability failure | hidden singleton-only app state that fails unless UI is open |
 | CarPlay scene | scene owner session on attach, close on detach | selection/transport actions and raw CarPlay capability state | parallel navigation/playback model or polling wait loop |
 | Remote command | command action into Rust playback/session state | raw OS command metadata | queue mutation or gesture policy outside Rust |
-| Live Activity | app/service session decides desired activity state | ActivityKit executor result, throttling/failure facts | decision about current episode or activity existence |
+| Live Activity | Rust typed state decides desired activity state | ActivityKit executor result, throttling/failure facts | decision about current episode or activity existence |
 | Handoff/resume | resume action with OS payload decoded as capability input | raw resume/handoff capability result | second navigation, playback, or account source of truth |
 | Inbound OS activation / deep link / Spotlight / voice mode | typed action or short-lived headless invocation with decoded OS payload | raw activation payload and capability result | Swift-only URL policy, navigation truth, playback decision, or hidden foreground dependency |
 
@@ -240,10 +252,10 @@ Opening before relay, mailbox, identity, or source readiness is allowed. Rust
 queues and replans the session when dependencies arrive. The shell should not
 retry with timers.
 
-Minimum service-session shape:
+Minimum future contract shape, if cheaper forms fail:
 
 ```text
-ServiceSession {
+HeadlessOwnerContract {
   owner_id: widget | app_intent | carplay_scene | remote_command |
             live_activity | handoff | app_lifetime
   account_scope: active account, explicit account, or no-account capability
@@ -253,12 +265,12 @@ ServiceSession {
 }
 ```
 
-The service session is still a normal Rust-owned session. It may run in a
-minimal/headless runtime, but it is not a second app model. A cold-start
-AppIntent or widget refresh must hydrate the store/kernel state it needs, dispatch
-one typed action or open one typed session, emit a typed result or mirror frame,
-and shut down or suspend deterministically. It must not depend on a foreground UI
-singleton already being alive.
+If this contract becomes necessary, it is still a normal Rust-owned typed action
+or session. It may run in a minimal/headless runtime, but it is not a second app
+model. A cold-start AppIntent or widget refresh must hydrate the store/kernel
+state it needs, dispatch one typed action or open one typed session, emit a typed
+result or mirror frame, and shut down or suspend deterministically. It must not
+depend on a foreground UI singleton already being alive.
 
 Dispatch acceptance is not completion. A service surface such as an AppIntent,
 Siri command, CarPlay tap, headphone remote command, widget action, or Live
@@ -328,6 +340,10 @@ matching store rows into that owner, then activate future delivery. This is the
 store-first/read-your-writes lesson from the follow-list cold-start bug: local
 publish fanout can be correct and the view can still be wrong if initial
 hydration raced ahead of the projection owner.
+Host-declared demand must also persist before an active account exists. A
+feed-kind or output declaration that only appears after login, Android imperative
+open, or a shell retry can mask a kernel lifecycle bug. The kernel should know
+the dormant demand, then activate or replan it when account state arrives.
 
 The reconciler must be event-driven. Identity changes, source changes, mailbox
 updates, refcount changes, and store ingest should trigger reconciliation. A
@@ -360,6 +376,12 @@ settled API. If the ADR keeps any feed-specific public door, it must prove why a
 typed session descriptor cannot express the same demand with fewer concepts and
 must name the deletion or formalization target for every other dynamic-source
 door.
+
+The dependent-source issue cluster matters here. The old `$metaSubscribe` and
+pointer-source work showed that target hydration is not solved merely by adding a
+subscription helper. Source arrival, withdrawal, target replay, route planning,
+and output ownership have to move together under the session contract, or the
+system recreates the same #2088/#2090/#2091 family of partial-read bugs.
 
 Examples:
 
@@ -441,6 +463,13 @@ or follow-feed-specific replay shortcut must not become substrate policy. The
 substrate should expose the smallest private capability that can route and
 hydrate dynamic source demand correctly; feed, room, search, thread, and app
 features decide their own product ranking and fallback on top.
+
+The concrete lesson is multi-author query shape. A per-pubkey fanout loop or
+arbitrary 500-author cap is usually evidence that the store/query primitive is
+wrong for the feature, not proof that the framework needs relay-sharding folklore
+or feed-specific cache warming. If a `StoreQuery::AuthorsKind`-style primitive is
+the missing reusable capability, add that small store/session primitive and keep
+feed ranking/pagination policy above it.
 
 Concrete examples:
 

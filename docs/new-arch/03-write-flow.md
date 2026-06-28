@@ -130,6 +130,10 @@ Publish/action status must expose that provenance class and reason. A status row
 that says only `queued`, `signed`, `sent`, or lists relay URLs is insufficient:
 the app and audits must be able to tell whether the route was automatic,
 host-pinned, verified-private, manual/audited, imported/verbatim, or diagnostic.
+That status is structured data. Rust emits provenance class, reason, owner,
+terminal state, relay/server facts, and correlation ids; shells render labels,
+tone, icons, and copy. Do not reintroduce display strings such as
+`relay_reason`/`format_relay_reason()` as the durable route model.
 
 Minimum route-provenance matrix:
 
@@ -348,8 +352,9 @@ Protocol crates can define stricter routing:
 - NIP-29 group events are host-relay-pinned. The group feature supplies the host
   relay context and rejects an `h`-tagged publish that lacks that context.
 - NIP-17 DMs do not use normal public outbox publishing. The DM feature owns
-  private envelope construction and recipient inbox routing, and unknown inboxes
-  fail closed.
+  private envelope construction and dynamic recipient inbox lookup. Verified
+  inbox provenance is distinct from static relay pins, and unknown inboxes fail
+  closed.
 - Cross-protocol flows are composed in the app crate. For example, a highlighter
   app can publish a highlight through the highlight feature, then share it into a
   NIP-29 group through the group feature. Neither protocol crate imports the
@@ -370,8 +375,9 @@ Blossom references      server/blob references with explicit server provenance
 ```
 
 The final architecture is not proven while these paths return only constructed
-event JSON or `relay_pending`. They must build, sign, route, store, publish, and
-emit ack/error/retry/exhausted status through the same Rust-owned publish stream.
+event JSON, `queued`/`signed`, `relay_pending`, optimistic timestamps, or
+`publish_dispatched`. They must build, sign, route, store, publish, and emit
+ack/error/retry/exhausted status through the same Rust-owned publish stream.
 Blossom server selection follows the same rule as relay selection: native may
 execute upload/download capabilities, but Rust owns which server list is valid,
 why an explicit server is allowed, and how that status is reported.
@@ -379,6 +385,9 @@ A NIP-F4 event that contains a Blossom URL without recording which server
 contract produced it has the same audit problem as an explicit relay list
 without route provenance. Server provenance must survive construction,
 publish status, retry/resume, and user diagnostics.
+Republish or repair work cannot be driven by snapshot-tick polling. Blossom
+upload completion, relay ack/error, user retry, credential changes, and job-state
+events may enqueue work; a "check every snapshot" loop is the old architecture.
 
 ## Generated Builders And Actions
 

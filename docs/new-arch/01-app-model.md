@@ -50,10 +50,18 @@ the preset as tutorial/sample convenience and the production path is separately
 tested.
 
 The substrate is the correctness floor: actor, store, indexes, signer ports,
-capabilities, planner, publish engine, and typed update delivery. Feature bundles
-sit on top of it.
+capabilities, planner, publish engine, and typed update delivery. Feature
+installers sit on top of it.
 
 ## Feature Bundles
+
+"Feature bundle" is descriptive vocabulary, not permission to add a new public
+framework object. Prefer explicit installer functions and existing builder
+extension traits over a broad `dyn AppFeature`, new app-builder trait, or
+AppHost-wide method pile. The first implementation may add at most one new public
+noun: typed session descriptor/handle. Everything else must be an existing seam,
+private machinery, or rejected until a slice deletes or narrows equal or larger
+old public surface.
 
 A feature bundle is not an open screen. It installs reusable capability:
 
@@ -208,6 +216,12 @@ maintained policy tables. A parity gate that compares Swift to Kotlin but not
 back to the Rust/catalog source is not enough; drift prevention must point at the
 single writer.
 
+Signer catalog generation is the sharp example. The Rust signer catalog is the
+source of truth for signer identity, capability metadata, and platform exposure.
+Android manifest queries, iOS plist URL schemes, generated runtime catalogs, and
+docs derive from that source; scheme-only native identity is insufficient and
+native-maintained signer tables are drift.
+
 Generated app-feature APIs mean typed action, output, runtime, and capability
 adapters. They do not mean resurrecting generated per-app framework composition
 or hiding product policy inside generated native glue. If a generated API
@@ -287,9 +301,9 @@ any publish action that follows.
 
 Headless and OS-owned surfaces are not exempt. A widget, AppIntent, CarPlay
 scene, remote command, Live Activity, extension, or suspended-process resume may
-open app-lifetime/service sessions or submit capability results, but it must not
-own a parallel playback queue, signer state, relay policy, or publish result
-model.
+open app-lifetime typed sessions, dispatch typed actions through a headless
+runtime, or submit capability results, but it must not own a parallel playback
+queue, signer state, relay policy, or publish result model.
 
 This distinguishes legitimate app runtime surface from forbidden protocol
 escape hatches. A Whisper upload, playback seek, provider-key read, or local
@@ -425,6 +439,9 @@ emit raw signer kind/state tokens, pubkeys, timestamps, event refs, route status
 and domain state. Shells may choose labels, icons, colors, typography,
 truncation, local date formatting, and animation as long as those choices do not
 change behavior, routing, policy, identity, replay, sorting, or protocol meaning.
+Relay diagnostics and publish status follow the same boundary: Rust emits
+structured status and provenance, not display tone. Shells derive color,
+severity labels, icons, and copy from semantic fields.
 
 Projection caches generated for Swift, Kotlin, TypeScript, C, or TUI are not
 product state. They are render adapters for typed Rust outputs. A shell may keep
