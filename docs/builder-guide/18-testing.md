@@ -155,8 +155,11 @@ policy live in Rust; the platform shells ferry the raw strings verbatim.
 | `NMP_TEST_RELAYS` | `[["ws://…","role"],…]` JSON | Replace default relay bootstrap with this set |
 
 Both are read in `KernelModel.start()`. When `NMP_TEST_RELAYS` is absent the
-production defaults (`wss://r.f7z.io` + `wss://purplepag.es`) are used. When
-present the JSON array **entirely replaces** the defaults — no merging.
+Chirp app defaults from `nmp-chirp-config` are used:
+`wss://relay.primal.net` with role `"both,indexer"` for write-capable content
+proof plus connected discovery, and `wss://purplepag.es` with role `"indexer"`
+for an additional discovery lane. When present the JSON array **entirely
+replaces** the defaults — no merging.
 
 Example XCUITest launch arg:
 

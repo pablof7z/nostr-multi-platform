@@ -7,13 +7,13 @@ import XCTest
 /// that coverage lives against real user-facing behavior in Chirp rather than
 /// an isolated test harness.
 ///
-/// These hit real relays (`relay.primal.net` + `purplepag.es` — the kernel's
-/// fixed `RelayRole::all()` pair) so, like the Rust `#[ignore]` smoke suite,
-/// they are gated behind `NMP_SMOKE=1` and skipped otherwise.
+/// These hit the real relays from Chirp's app-owned default bootstrap
+/// (`relay.primal.net` as write-capable content/indexer + `purplepag.es` as
+/// indexer), so, like the Rust `#[ignore]` smoke suite, they are gated behind
+/// `NMP_SMOKE=1` and skipped otherwise.
 ///
 /// Two design choices forced by empirically-observed crashes (both are
-/// REPORT-finding gaps; `crates/**` is off-limits so neither is fixed in
-/// Rust here):
+/// historical smoke-harness constraints):
 ///
 ///  1. **Process-shared kernel.** `nmp_app_new()` → `nmp_app_free()` →
 ///     `nmp_app_new()` in one process SEGVs when relay sockets were live
@@ -36,13 +36,11 @@ import XCTest
 ///    hardcodes `nip77_negentropy: "unknown"`. Scenario 3 asserts the
 ///    *reachable subset*: events arrive + a relay connects (REQ-fallback path
 ///    proven over a real socket).
-///  - **`nmp_app_add_relay` does not open a wire socket.**
-///    `crates/nmp-core/src/actor/commands/relays.rs::add_relay` only mutates
-///    the `configured_relays` projection; the wire layer iterates the fixed
-///    `RelayRole::all()` pair, neither AUTH-required. Scenario 4 asserts the
-///    reachable subset (AUTH state machine wired, default relays report
-///    `not_required`, no false challenge). Full NIP-42 transition coverage
-///    lives in the Rust `crates/nmp-core/src/kernel/auth_tests.rs` suite.
+///  - **Scenario 4 does not inject an AUTH-required relay.** It asserts the
+///    reachable subset against Chirp's default bootstrap: the AUTH state
+///    machine is wired, default relays report `not_required`, and no false
+///    challenge appears. Full NIP-42 transition coverage lives in the Rust
+///    `crates/nmp-core/src/kernel/auth_tests.rs` suite.
 @MainActor
 final class SmokeScenariosTests: XCTestCase {
     /// Pre-baked fixture key (matches `crates/nmp-testing/fixtures/test_nsec.txt`).
@@ -163,9 +161,8 @@ final class SmokeScenariosTests: XCTestCase {
 
     // MARK: - Scenario 4 — NIP-42 AUTH (reachable subset asserted)
 
-    /// The default wire relays are not AUTH-required and `nmp_app_add_relay`
-    /// does not open a third socket (REPORT gap), so a real NIP-42 handshake
-    /// cannot be driven in-sim from the app surface. Assert the reachable
+    /// The default Chirp bootstrap relays are not AUTH-required, and this
+    /// smoke does not inject an AUTH-required test relay. Assert the reachable
     /// subset: the AUTH state machine is wired and the default relays settle
     /// to `not_required` with no spurious challenge. Full handshake coverage
     /// is the Rust `kernel/auth_tests.rs` suite.
