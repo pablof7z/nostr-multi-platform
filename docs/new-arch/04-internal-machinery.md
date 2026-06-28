@@ -21,13 +21,15 @@ Protocol crates own the meaning of protocol queries. The live query machinery
 owns lifecycle, replay ordering, dependency tracking, and teardown.
 
 The current `ObservedProjection` path is the closest internal primitive and
-should be reused. The goal is not a parallel read path; it is to lift the safe
-recipe into a descriptor-driven lifecycle that feature authors use consistently.
+should be reused. The goal is not a parallel read path or a broad new engine. It
+is to prove that a small typed descriptor can compile into the safe recipe
+feature authors need.
 
-Dynamic source implementations should collapse into one source-reduction core:
-follow/list/group/member sources, pointer sources, visible refs, browser feed
-sources, app-specific sources, and count sources all use the same diff and
-dependent-interest semantics.
+Dynamic source implementations should be consolidated only as far as their
+semantics truly match. Start with one private shape reconciler around
+observed-projection open/close, keep source-specific reducers local, and promote
+a general source-reduction core only after multiple source families prove they
+share the same diff, fail-closed, teardown, and dependent-interest rules.
 
 ## Write Pipeline
 
@@ -35,7 +37,7 @@ For writes, NMP internally:
 
 ```text
 receives a typed write intent
-  -> constructs or finalizes an EventDraft through the owning feature
+  -> constructs or finalizes unsigned event data through the owning feature
   -> signs with the selected signer through the capability/signer port
   -> stores the signed event when appropriate
   -> plans publish relays
@@ -47,10 +49,10 @@ receives a typed write intent
 Protocol crates own protocol-specific draft and route policy. App crates compose
 protocol flows when product behavior spans protocols.
 
-Existing one-door pieces should remain the substrate: dispatch envelope,
-action modules, signer port, publish policy, publish command, publish engine,
-local store, retry/cancel controls, and typed status outputs. `EventDraft` and
-`PublishContext` are names for the missing shape across those pieces, not
+Existing one-door pieces should remain the substrate: dispatch envelope, action
+modules, signer port, publish policy, publish command, publish engine, local
+store, retry/cancel controls, and typed status outputs. `EventDraft` and
+`PublishContext` name invariants across those pieces, not automatic new types or
 permission to add a second publish stack.
 
 ## Actor And Store Rules
@@ -69,6 +71,59 @@ messages, full-pull cold start paths, bounded replay, output namespaces, and
 generated host adapters. Hiding projection tiers from app developers cannot mean
 deleting these executor guarantees.
 
+## Complexity Justification Gate
+
+No internal mechanism in this proposal is accepted just because it already
+exists. Before implementation, each mechanism must be red/blue-team reviewed:
+
+```text
+mechanism
+  -> simplest plausible alternative
+  -> invariant defended by the complex design
+  -> evidence that the simpler alternative fails
+  -> consolidation/deletion opportunity
+  -> public/private/compatibility classification
+```
+
+The default outcome should be deletion or consolidation unless the mechanism
+protects one of these invariants:
+
+- replay correctness: cached data is seen before future live data;
+- privacy: private events cannot leak to public relays;
+- routing correctness: outbox, inbox, host relay, and explicit routes are not
+  guessed by shells;
+- single-writer state: product facts have one Rust owner;
+- cross-platform parity: Swift, Kotlin, TypeScript, TUI, and browser shells do
+  not reimplement protocol behavior;
+- bounded reactivity: hot paths do not poll, wake unnecessarily, or ship
+  unbounded snapshots;
+- downstream necessity: `nmp-gallery`, Highlighter, or Podcast Player cannot
+  express a real flow with the simpler design.
+
+Examples of complexity that must be justified, not inherited:
+
+- whether `ObservedProjection` needs its current shape or can be a smaller
+  replay-before-live helper under sessions;
+- whether `ReducedSource`, dependent interests, pointer sources, and active
+  observed projection controllers can collapse into one source-reduction core;
+- whether projection tiers need to remain as executor internals, and whether the
+  app-facing output manifest can hide them completely;
+- whether opening a session can be the scoped output declaration, leaving global
+  declared projections only for always-on app chrome or compatibility;
+- whether generated host adapters are enough, or whether hand-authored row
+  caches still have any valid ownership;
+- whether `PublishContext` is a real missing type or only a naming layer over
+  existing publish target, behavior, command, and policy data;
+- whether off-actor feed mutation and feed-render memo/provider machinery can be
+  deleted by routing viewport/load-older through actor/session actions;
+- whether live counts can remain typed projections instead of a dedicated
+  primitive;
+- whether compatibility APIs such as raw `open_interest` need to remain public,
+  and if so which scopes may call them.
+
+The ADR should record rejected simpler alternatives. If the only defense is
+"this is how the current code works," the mechanism is not justified.
+
 ## Non-Goals
 
 - Do not expose a generic raw event callback as the main app API.
@@ -86,22 +141,27 @@ deleting these executor guarantees.
 
 ## Migration Milestones
 
-1. Map terms to current code. Tie `FeatureSession`/`LiveQuery`,
-   `ObservedProjection`, `ReducedSource`, `EventDraft`, `PublishContext`, and
-   `ReactiveCount` to existing symbols and declare which public APIs become
+1. Red/blue-team the complexity budget. Map `FeatureSession`/`LiveQuery`,
+   `ObservedProjection`, `ReducedSource`, unsigned-event finalization, publish
+   routing context, and live-count output to existing symbols, compare them
+   against simpler alternatives, and declare which public APIs become
    substrate/debug/test/expert-only.
-2. Wrap one existing observed projection as a descriptor-backed session. Preserve
+2. Extract the smallest private shape reconciler around observed-projection
+   open/close and prove one descriptor-backed session compiles into it. Preserve
    muted replay before activation and close interest plus observer together.
-3. Extract reusable source reduction from pointer/dependent-interest/feed
-   patterns. Empty demand must fail closed unless the feature declares a fallback
-   source.
-4. Replace tick-based observed projection reconciliation with event-driven
-   reconciliation from identity, source, mailbox, store, and refcount events.
-5. Add typed output manifests over `SnapshotRegistry` and declared projections.
-   Generated adapters own row/delta caches and clear semantics.
+3. Delete tick-observer dependencies where event hooks already exist. Keep tick
+   observers only as compatibility, or with evidence that a required readiness
+   transition has no event source and cannot cheaply gain one.
+4. Test whether source-specific reducers can share one source-reduction core.
+   Promote the core only for families with the same diff, fail-closed, teardown,
+   and dependent-interest semantics. Empty demand must fail closed unless the
+   feature declares a fallback source.
+5. Make session open the scoped output declaration. Keep global declared
+   projections only for always-on chrome, compatibility, or measured wins that
+   session-scoped demand cannot reproduce.
 6. Migrate component refs and gallery embeds first. This proves profile/event ref
    sessions, URI decoding, generated caches, and no shell retry timers.
-7. Migrate feed, group, search, pointer-source, and reactive-count features.
+7. Migrate feed, group, search, pointer-source, and live-count outputs.
    Composite sessions should use the same descriptor model.
 8. Define generated write builders over existing action and publish machinery.
    Preserve signer continuations, private routing, explicit relay policy, and
@@ -138,6 +198,8 @@ The destination is not reached until these are true:
   flows without native-owned protocol state or app-domain logic inside NMP.
 - Clean-room app docs can build a simple app without reading ADRs, issues, wiki
   pages, or old design chats.
+- Every retained internal mechanism has a written invariant, rejected simpler
+  alternative, and deletion/consolidation decision.
 
 ## Follow-Up ADR Decisions
 

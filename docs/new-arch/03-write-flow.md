@@ -49,7 +49,7 @@ Construction may be layered:
 All event mutations happen before signing. After signing, the event id and
 signature are immutable.
 
-The conceptual result is an event draft plus publish context:
+The conceptual result is unsigned event data plus route/privacy/protocol context:
 
 ```text
 EventDraft {
@@ -65,8 +65,11 @@ PublishContext {
 }
 ```
 
-Names are illustrative. The shape matters: event bytes and routing/privacy
-context travel together until signing and publishing finalize the operation.
+Names are illustrative and are not type commitments. The first implementation
+should try to collapse existing publish variants behind existing `PublishTarget`,
+publish command, policy, signer, and correlation data. New `EventDraft` or
+`PublishContext` types are justified only if they remove branching or duplicate
+route/privacy/protocol state elsewhere.
 
 ## Stage 2: Finalization
 
@@ -104,9 +107,9 @@ capabilities and reports raw results; Rust decides the next state.
 
 The output is a signed event.
 
-Publishing a pre-signed event is an expert path. It still enters Rust with a
-`PublishContext`, validation result, correlation id, and route policy. It must
-not create a second native publish API.
+Publishing a pre-signed event is an expert path. It still enters Rust with route
+and privacy context, validation result, correlation id, and route policy. It
+must not create a second native publish API.
 
 ## Stage 4: Publishing
 

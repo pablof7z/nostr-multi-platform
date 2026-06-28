@@ -10,7 +10,7 @@ open(GroupFeed { group_id, host_relay })
 open(Search { query })
 open(ProfileRef { pubkey, owner })
 open(EventEmbed { event_ref, owner })
-open(ReactiveCount { source, filter, owner })
+open(LiveCountOutput { source, filter, owner })
 open(PodcastPlayback { owner = AppLifetime })
 open(CustomFeature { source, route, output })
 ```
@@ -31,7 +31,8 @@ the owner goes away, the app closes the handle. The shell does not open raw rela
 subscriptions, replay cache rows, register observers, compute dynamic sources,
 or own durable product caches.
 
-`LiveQuery` is the proposed owner for one live lifecycle:
+`LiveQuery` should start as a small typed descriptor plus handle, not a new
+lifecycle engine. It compiles into existing or consolidated machinery:
 
 ```text
 source expression
@@ -47,11 +48,14 @@ source expression
   -> teardown
 ```
 
-This is the architectural door missing from the current API. `open_interest` is
-only acquisition. It can fetch events without making them visible to the app, so
-it should not be the public app read model. It can remain available to substrate,
-debug, test, and expert code that is explicitly acquiring events without
-claiming an app-visible output lifecycle.
+This is the architectural door missing from the current API. The first
+implementation should prove the descriptor can sit on top of the safe
+`ObservedProjection` pattern and dependent-interest machinery before adding any
+new public lifecycle surface. `open_interest` is only acquisition. It can fetch
+events without making them visible to the app, so it should not be the public
+app read model. It can remain available to substrate, debug, test, and expert
+code that is explicitly acquiring events without claiming an app-visible output
+lifecycle.
 
 ## Session Identity
 
@@ -136,8 +140,12 @@ targets, opens new targets, and recompiles relay subscriptions. Empty output
 fails closed; it never becomes wildcard acquisition. Native shells never compute
 follow lists, group membership, list members, WoT expansion, or target refs.
 
-`ReducedSource` is one building block under `LiveQuery`, not a separate app API
-the shell has to orchestrate.
+`ReducedSource` is one possible building block under `LiveQuery`, not a separate
+app API the shell has to orchestrate. It should not start as a grand abstraction.
+The first implementation should extract the smallest private shape reconciler
+around observed-projection open/close. A general reduced-source core is justified
+only if real source families share the same diff, fail-closed, teardown, and
+dependent-interest semantics without special casing.
 
 Fail-closed mechanics and product fallback policy are separate. A HomeFeed may
 choose an explicit public fallback source when the active account has no follows.
@@ -221,7 +229,11 @@ Opening a dynamic live query is the demand declaration for its output. Always-on
 app chrome may still need explicit declared outputs, but screen and session
 state should be scoped to open handles, not to a global projection list.
 
-The replacement for `DeclaredProjections` is a typed output manifest:
+The simplest destination is that session open declares scoped output demand, and
+global declared projections remain only for always-on app chrome or
+compatibility. A fuller typed output manifest is justified only if it preserves
+measured wire, CPU, schema, or codegen benefits that session-scoped demand cannot
+reproduce:
 
 ```text
 feature installs output schemas
@@ -234,12 +246,12 @@ UpdateFrame carries full, delta, clear, status, and error variants
 Existing projection machinery can remain the internal executor. The public
 contract should be output ownership and lifecycle, not projection tier mechanics.
 
-## Reactive Counts
+## Live Counts
 
 Counts should use the same lifecycle model:
 
 ```text
-ReactiveCount {
+LiveCountOutput {
     source,
     filter,
     route_policy,
@@ -247,6 +259,9 @@ ReactiveCount {
 }
 ```
 
-NMP owns the generic live count machinery. Apps own the product meaning of the
-count, such as reactions, replies, bookmarks, listens, or unread items. This
-replaces hard-coded relation counters with a reusable primitive.
+The invariant is generic: apps own the product meaning of the count, such as
+reactions, replies, bookmarks, listens, or unread items. NMP should first model
+counts as typed projections over a session/source/filter. A dedicated
+`ReactiveCount` primitive is justified only if it deletes duplicated count
+machinery and has tests for relay `COUNT`, local index counts, empty-source
+behavior, and teardown.
