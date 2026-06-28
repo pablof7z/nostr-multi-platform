@@ -144,6 +144,22 @@ Existing explicit-relay seams need to be classified before they are collapsed:
 | pre-signed `SignedEvent` / imported event | imported/verbatim unless a protocol plan proves stronger provenance | imported status, validation result, and reduced guarantees; no silent upgrade to protocol-owned route |
 | test/diagnostic explicit relays | diagnostic/test | not reachable from product shell APIs |
 
+Older docs and wiki pages mention `RoutingContext::explicit_targets` as the
+place NIP-17 or NIP-29 explicit routes should land. That is not an instruction
+to implement dead plumbing. The current live publish path uses
+`PublishTarget::Explicit`-style relay targeting, while
+`RoutingContext::explicit_targets` has been documented as a parallel/dead seam.
+P6 must choose one of two outcomes:
+
+- delete the dead routing-context explicit-target seam and carry provenance on
+  the live publish path; or
+- migrate the live publish path through the routing context so that the seam is
+  actually populated and tested end to end.
+
+Any partial change that merely threads NIP-29 or NIP-17 data into an unused
+field fails the architecture gate. The goal is fewer explicit-route mechanisms,
+not a new compatibility alias for each historical lane.
+
 ## Stage 2: Finalization
 
 Finalization is the last mutation point before signing. It applies route and
@@ -172,6 +188,14 @@ If a protocol finalizer needs recent context, it reads that context through the
 Rust store/query seam. NIP-29 previous-tag anti-spam context, for example, must
 come from a kernel/store-backed query over group events, not from a
 `RecentGroupEvents`-style side cache owned by the action module or shell.
+Client metadata has a hard privacy gate. A NIP-89 client tag, analytics marker,
+or any other app identity metadata may be added only at one outbound-finalization
+decision site, only before signing, and only for events classified as public
+routable. The gate must exclude encrypted/private content, gift wraps, DMs,
+profile/metadata writes, reserved builder-only kinds, diagnostic imports, and
+pre-signed events. A protocol/app builder may request metadata, but the final
+decision belongs to the shared finalizer so explicit-relay, automatic, and
+protocol-pinned publish paths cannot diverge.
 Generic raw publishing cannot silently bypass protocol invariants. A NIP-29
 group write is not `comment_in_group`, `reply_in_group`, or a namespace of
 kind-specific actions; it is one kind-agnostic content publish surface over an

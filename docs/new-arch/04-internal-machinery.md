@@ -100,6 +100,43 @@ protection, render-cache correctness, or wire/CPU bounds. Collapse or delete
 them where session-scoped output demand gives the same guarantee with less
 surface area.
 
+## Browser Runtime And Storage Lifecycle
+
+Browser runtime architecture is part of the signoff surface, not a separate web
+afterthought. The browser storage owner is `nmp-browser-runtime` or its successor
+runtime crate, not legacy `nmp-wasm` ABI glue. OPFS/SQLite-style storage needs an
+async-before-start seam so the runtime can open the store, inject the
+`Arc<dyn EventStore>` or equivalent, and only then dispatch synchronous app
+start. A browser path that silently falls back to in-memory storage because async
+initialization was inconvenient fails the architecture gate.
+
+Dedicated Worker constraints are real architecture constraints. OPFS
+`SyncAccessHandle` storage works only in a dedicated Worker, so compile-only
+wasm tests or main-thread browser smoke tests do not prove the storage path.
+The proof is a Worker conformance gate that opens, writes, reads, closes, and
+reopens durable data in a real browser. Multi-tab contention is an ADR question:
+choose a durable-tab/Web-Locks policy or an explicit ephemeral secondary-tab
+policy before implementation. Silent degradation is not allowed.
+
+This also bounds `nmp-gallery` web proof. A gallery web app that builds only its
+TypeScript shell, uses a placeholder wasm build, or degrades when the worker is
+missing cannot prove the runtime architecture.
+
+## Protocol Taxonomy And Kind Ownership
+
+Generic layers must not grow per-NIP or per-kind branch tables. Kind constants,
+replaceable/addressable predicates, and reusable kind taxonomy live in the
+canonical kinds/protocol owner, such as `nmp-kinds` or the protocol crate that
+owns the semantic rule. Generic routing, store, planner, and runtime layers
+receive semantic context from the protocol-aware caller; they do not rediscover
+NIP meaning by switching on raw kind numbers.
+
+This is the same simplification rule as route provenance: keep one canonical
+definition of protocol facts, pass typed context through the seam, and delete
+duplicate local classifiers. A generic layer may inspect generic event shape
+needed for storage or routing, but it must not encode "NIP-29 means X" or
+"NIP-17 means Y" in a table that protocol crates must later fight.
+
 ## Existing Primitive Mapping
 
 The new model should reuse or retire current primitives deliberately:
@@ -626,6 +663,29 @@ sidecar projection rituals, raw/pre-signed publish branches, or direct taps as
 current architecture. They should either be corrected in place or explicitly
 retired before this packet becomes durable documentation.
 
+Named wiki/doc pages to reconcile, because they currently encode important but
+possibly stale architecture claims:
+
+| Page | Why it matters | Resolution rule |
+|---|---|---|
+| `docs/wiki/guides/reduced-source.md` | describes `ReducedSource`, `FeedParams`, and `open_feed` as app-facing dynamic-feed architecture | keep only if the ADR explicitly accepts that public surface; otherwise rewrite around typed sessions and private source reconciliation |
+| `docs/wiki/guides/publish-outbox-pipeline.md` | documents both per-relay reasons and the dead/live explicit-route split | preserve route-reason/status lessons, but resolve `RoutingContext::explicit_targets` versus `PublishTarget::Explicit` to one real seam |
+| `docs/wiki/guides/nip29-wiring.md` | contains both correct NMP/app ownership boundaries and older explicit-target wording | keep the ownership boundary; update route wording to match the chosen publish seam |
+| `docs/wiki/guides/nmp-gallery-app.md` | records `nmp_app_gallery_register` calling `register_defaults()` and older claim/open-author behavior | migrate to explicit composition or label as gallery/tutorial compatibility with owner and removal gate |
+| `docs/wiki/guides/operator-data-leaf-apps-only.md` | correctly states operator policy belongs only in leaf apps | carry this into durable composition/defaults docs so simplification does not reintroduce hidden defaults |
+| `docs/wiki/guides/signer-broker-handshake-loop.md` and NIP-46 research pages | record event-driven signer reconnect/cancel and protocol/transport separation | signer runtime plan must preserve this split and avoid a signer-specific second framework |
+| `docs/wiki/guides/action-module-adr.md` | records the typed action/effect boundary and remaining dual-action seam | write-flow work must retire dual dispatch seams rather than layering generated builders over them |
+| `docs/decisions/0009-app-extension-kernel-boundary.md` | teaches app extension/read-model assembly through extension seams and observed projection wiring | update once service sessions and typed sessions own extension/app-service demand |
+| `docs/decisions/0046-composition-is-a-library-not-a-generator.md` | treats defaults composition as the reusable app assembly model | amend around explicit production composition and labeled tutorial/compat presets |
+| `docs/decisions/0053-host-declared-projection-subscriptions.md` and `docs/decisions/0062-observer-scoped-read-model-catchup.md` | preserve host-declared projection/tier and observed catchup language | rewrite around session-scoped output demand while preserving replay-before-live invariant |
+| builder-guide 02, 15, 19a/19b/19c, 20, and 28 | teach mental model, codegen, walkthrough, protocol-module, and action-triggered-subscription flows using old public seams | update examples to typed sessions/actions and explicit composition, or label them historical |
+| `docs/product-spec/api-surface.md`, `docs/product-spec/cli-toolchain-phasing.md`, `docs/ffi-surface.md`, `docs/wasm-surface.md`, `docs/recipes/app-shapes.md` | expose old app API, CLI, FFI, wasm, and recipe surfaces as product architecture | rewrite public API story around typed sessions/actions, browser-runtime ownership, and compatibility allowlists |
+
+P8 is not a doc-polish phase. If a stale wiki or builder-guide page remains as
+normal guidance, new agents will rebuild the old architecture from that page.
+The architecture is not finalized until the surviving facts have one durable
+owner and the stale pages are corrected or retired.
+
 ## Fitness Functions And Ratchets
 
 P0 should convert the new-code rules into repeatable checks. The exact scripts
@@ -655,6 +715,11 @@ mode before implementation starts.
 | FF-019 | Default public author reads use planned outbox routing. | feed/search/ref sessions, `GenericOutboxRouter`, mailbox cache, direct NDK comparisons | author-scoped public reads prove NIP-65/mailbox routing, mailbox-change replanning, unified output delivery, and explicit exceptions for relay-pinned/private/search routes | `read_route_planning_contract` or targeted planner/session tests |
 | FF-020 | Reusable protocol projections are owned by their protocol/NMP feature crate. | `nmp.follow_list` and other protocol projections registered from app/FFI glue | app crates consume protocol outputs; they do not register reusable protocol read models | architecture ratchet over projection owner registry and app/FFI call sites |
 | FF-021 | Legacy aliases and compatibility shims require live consumers and deletion gates. | JSON dispatch, defaults presets, old open/read/publish doors, stale aliases, downstream-claimed callers | no retained shim lacks caller list, support window, owner, and deletion/formalization criterion; zero live consumers means delete | `compatibility_surface_contract` plus live call-site audit |
+| FF-022 | Browser storage/runtime lifecycle is runtime-owned and worker-proven. | `nmp-wasm`, `nmp-browser-runtime`, OPFS/SQLite crates, gallery web build, browser conformance workflows | browser storage opens before start, runs in the right Worker context, proves durability in real Chrome, and fails loudly when wasm/worker is missing | `browser_storage_lifecycle_contract` plus gallery web e2e |
+| FF-023 | Generated catalogs/manifests have one writer. | signer catalog, Android manifest queries, iOS plists, TS relay config, release manifest, client identity | native/web artifacts derive from Rust or release manifests; drift gates compare back to the true source, not only peer artifacts | codegen `--check`, release-manifest gate, signer-catalog parity tests |
+| FF-024 | Protocol taxonomy and kind predicates are single-sourced. | `nmp-kinds`, protocol crates, router/planner/store generic layers | generic layers do not switch on per-NIP tables; protocol-aware callers pass semantic class/context | kind-predicate authority lint and router generic-layer tests |
+| FF-025 | Metadata privacy gate is centralized. | outbound finalizers, NIP-89/client identity, public and explicit publish arms | client metadata appears only on public-routable unsigned events and never on private/imported/pre-signed/reserved surfaces | metadata privacy contract tests |
+| FF-026 | Binding generation reduces drift instead of moving old doors. | C-ABI, JNI, UniFFI experiments, FlatBuffers, runtime workers | generated binding work deletes hand-maintained drift or narrows compatibility; it does not preserve old public semantics under new glue | binding-surface diff review plus codegen drift gate |
 
 Useful baseline commands:
 
@@ -732,6 +797,11 @@ cargo test -p nmp-testing --test compatibility_surface_contract
 cargo test -p nmp-testing --test session_wake_fanout_contract
 cargo test -p nmp-testing --test active_session_memory_contract
 cargo test -p nmp-testing --test update_cadence_contract
+cargo test -p nmp-testing --test browser_storage_lifecycle_contract
+cargo test -p nmp-testing --test generated_catalog_manifest_contract
+cargo test -p nmp-testing --test protocol_taxonomy_authority_contract
+cargo test -p nmp-testing --test metadata_privacy_gate_contract
+cargo test -p nmp-testing --test binding_surface_strategy_contract
 ```
 
 ## Kill Criteria

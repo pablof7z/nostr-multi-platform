@@ -309,6 +309,13 @@ whether these are semantically the same family before extracting anything
 generic. Until then, this document uses `ReducedSource` to name the
 dynamic-source invariant, not to assert that the current type shape is settled
 or that a new public primitive is required.
+This deliberately conflicts with older generated wiki guidance that described
+`ReducedSource`, `FeedParams`, and `open_feed(FeedParams)` as the app-facing
+architecture. Treat that guidance as a historical checkpoint to re-audit, not as
+settled API. If the ADR keeps any feed-specific public door, it must prove why a
+typed session descriptor cannot express the same demand with fewer concepts and
+must name the deletion or formalization target for every other dynamic-source
+door.
 
 Examples:
 
@@ -345,6 +352,10 @@ The first implementation should extract the smallest private shape reconciler
 around observed-projection open/close. A general reduced-source core is justified
 only if real source families share the same diff, fail-closed, teardown, and
 dependent-interest semantics without special casing.
+If feed, group, thread, pointer, account, and embed sources do not share those
+semantics, the simpler architecture is not to force them under one generic
+`ReducedSource`. Keep separate private reconcilers or feature-local reducers and
+unify only the session lifecycle contract they compile into.
 
 Fail-closed mechanics and product fallback policy are separate. A HomeFeed may
 choose an explicit public fallback source when the active account has no follows.

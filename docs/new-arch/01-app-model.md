@@ -152,6 +152,32 @@ optional NIP-89 client tags from that one declaration during outbound
 finalization. Native shells do not maintain parallel client-label, version, or
 tag tables, and protocol crates do not hard-code product identity.
 
+Generated catalogs and manifests follow the same rule. Known signer apps,
+signer capabilities, Android package/query declarations, iOS URL-scheme plist
+entries, generated TypeScript relay/config tables, release manifest entries, and
+similar platform-visible catalogs must have one Rust or manifest system of
+record. Native/web files may contain generated artifacts, not independently
+maintained policy tables. A parity gate that compares Swift to Kotlin but not
+back to the Rust/catalog source is not enough; drift prevention must point at the
+single writer.
+
+Generated app-feature APIs mean typed action, output, runtime, and capability
+adapters. They do not mean resurrecting generated per-app framework composition
+or hiding product policy inside generated native glue. If a generated API
+constructs Nostr events, chooses relays, signs, publishes, parses protocol tags,
+or owns durable product state, it is the wrong boundary unless the Rust app or
+protocol feature is the actual owner and the generated surface is only transport.
+
+FFI binding strategy is an implementation lane, not the architecture itself.
+FlatBuffers/update frames can remain the update payload transport while typed
+sessions/actions and generated adapters improve the public model. UniFFI,
+C-ABI, JNI, and browser-worker bindings are allowed to change only when the
+change deletes hand-written drift or narrows a public door. Targeted Android
+binding generation may be worth pulling forward if it retires duplicated JNI
+work; a full iOS binding migration is a separate decision unless the ADR
+explicitly reopens it. Binding churn that preserves the same old read/write
+doors is not simplification.
+
 ## App Feature Runtime Contract
 
 App-owned Rust crates may need runtime services that are not reusable Nostr

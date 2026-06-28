@@ -70,11 +70,30 @@ existing architecture text:
 - **Downstream audits:** Highlighter, Podcast Player, and `nmp-gallery` are
   acceptance tests for whether the public model hides NMP internals without
   moving policy into native shells.
+- **Wiki/episode evidence:** prior generated wiki pages are useful evidence, but
+  not authority. Some pages already encode later corrections; others still teach
+  old surfaces such as app-facing `ReducedSource`/`open_feed`,
+  `register_defaults()` gallery registration, or `RoutingContext::explicit_targets`
+  as if those were settled destinations.
 
 Current durable docs still teach some of the old architecture. That is evidence
 of migration debt, not a contradiction this packet should absorb as truth. The
 P8 retirement phase must correct those owners in place before this packet becomes
 durable documentation.
+
+Known contradiction ledger for P8:
+
+| Surface | Current wiki/doc signal | Required resolution before signoff |
+|---|---|---|
+| `docs/wiki/guides/reduced-source.md` | treats `ReducedSource`, `open_feed(FeedParams)`, and `FeedParams` as typed app-facing dynamic-feed architecture | either the ADR keeps that public surface, or the page is rewritten around typed sessions with private source reconciliation |
+| `docs/wiki/guides/publish-outbox-pipeline.md` and `docs/wiki/guides/nip29-wiring.md` | record the old `RoutingContext::explicit_targets` versus live `PublishTarget::Explicit` split | implementation must delete or migrate the dead seam; no work may route NIP-29/NIP-17 through dead plumbing for cosmetic consistency |
+| `docs/wiki/guides/nmp-gallery-app.md` | still records gallery registration through `register_defaults()` and snapshot/readiness probes | gallery must move to explicit composition or be labeled tutorial/showcase compatibility with owner and removal gate |
+| `docs/wiki/guides/operator-data-leaf-apps-only.md` | reinforces leaf-app ownership for relays, seed follows, NIP-46 permissions, and signer labels | this packet must preserve that boundary; no defaults rewrite may reintroduce operator policy into NMP crates |
+| `docs/wiki/guides/signer-broker-handshake-loop.md` and NIP-46 research pages | protocol state must not own transport/process loops; reconnect/cancel must be event-driven | signer/session phases must prove transport-agnostic protocol core plus runtime-owned execution, not a second signer runtime framework |
+| `docs/wiki/guides/action-module-adr.md` | dual action seams and typed external-effect rules remain part of the evidence base | write-flow migration must converge on typed actions/builders and explicit capability results, not create another dispatch door |
+| ADR-0009, ADR-0046, ADR-0053, ADR-0062 and builder-guide 02/15/19/28 | teach app assembly through defaults, observed projections, projection tiers, or action-triggered subscription recipes | amend or retire once typed sessions, explicit composition, and session-scoped output demand are accepted |
+| `docs/product-spec/api-surface.md`, `docs/product-spec/cli-toolchain-phasing.md`, `docs/ffi-surface.md`, `docs/wasm-surface.md`, and `docs/recipes/app-shapes.md` | still expose old public read/write/init surfaces as normal product API | rewrite around typed sessions/actions, explicit feature composition, and scoped compatibility doors |
+| wiki noun/topic pages for `nmp-defaults`, `ObservedProjection`, `read-surface`, `write-register-surface`, `nmp-wasm`, and `nmp-browser-runtime` | generated pages may preserve stale surface names as facts | regenerate, correct in place, or retire after durable owners are updated |
 
 ## Concept Status
 
@@ -166,7 +185,7 @@ state has one owner, one handle, one teardown path, one output contract, and one
 route policy.
 
 This hypothesis must be enforced by the ratchets in [Internal
-Machinery](04-internal-machinery.md), especially FF-001 through FF-021. A prose
+Machinery](04-internal-machinery.md), especially FF-001 through FF-026. A prose
 claim that the new model is simpler is insufficient without those checks moving
 old-pattern counts down or keeping them from growing.
 
@@ -296,6 +315,41 @@ or trigger a named kill criterion. They are not follow-up polish.
 | Publish route provenance | Status payloads expose provenance class and reason, not just relay URLs or queued/signed. Manual, host-pinned, verified inbox, imported/verbatim, and diagnostic routes remain distinguishable through dispatch, signing, retry/resume, local ingest, and status. |
 | App-feature API classification | Every cross-boundary app API is generated typed, capability/result, diagnostic/test, or migration-with-deletion. Event-producing APIs always route through typed action/publish status, never hand-authored JSON/event doors. |
 | Downstream no-polling | Downstream timers are classified as presentation/capability sampling or deleted. Service/session/signer/product-state retry, refresh, and reconciliation timers fail the gate. |
+| Browser runtime/storage lifecycle | Browser storage initializes through runtime-owned async-before-start, OPFS/SQLite runs in a dedicated Worker with real-browser conformance, and missing wasm/worker paths fail instead of silently degrading. |
+| Generated catalogs/manifests | Signer catalogs, platform manifests/plists, relay config, release manifests, and client identity derive from one Rust or manifest source of truth with drift gates. |
+| Protocol taxonomy ownership | Kind predicates and protocol taxonomy are single-sourced; generic layers do not add per-NIP/per-kind branch tables. |
+| Metadata privacy gate | Client/NIP-89 metadata is appended only at one outbound-finalization site, only for public-routable unsigned events, and never for private/imported/pre-signed/reserved surfaces. |
+| Binding strategy | Generated bindings or UniFFI work is accepted only when it deletes drift or narrows old public doors; binding churn alone is not an architecture proof. |
+
+## Signoff Dossier
+
+Before the ADR can say "this is the right architecture," there must be a concrete
+dossier that proves the claim. A clean narrative is not enough.
+
+Required dossier sections:
+
+- current baseline counts for every old-pattern family in FF-001 through FF-026;
+- disposition of every public door in P-1: delete, privatize, formalize, or
+  migration-scope with owner/support window/removal gate;
+- proof that the first descriptor slice reduces lifecycle recipe count rather
+  than adding a parallel read engine;
+- proof that route provenance uses the smallest carrier that preserves the
+  invariant, with the dead explicit-route seam deleted or given a real owner;
+- downstream matrices for Highlighter, Podcast Player, and `nmp-gallery`, with
+  each row marked migrated, deleted, diagnostic/test, SSR-only, out-of-scope, or
+  kill-criterion-triggered;
+- browser runtime/storage proof, including OPFS worker conformance and
+  multi-tab/ephemeral-tab policy;
+- generated catalog/manifest proof that native/web tables derive from Rust or a
+  manifest source of truth;
+- durable-doc retirement list with each stale doc corrected in place or retired;
+- subjective product calls explicitly resolved, including Highlighter web,
+  tutorial preset, downstream release gates, and manual explicit relay UX.
+
+The dossier should make a negative answer possible. If the first descriptor
+proof, publish-provenance proof, or downstream matrix shows the model adds more
+permanent concepts than it deletes, the correct result is to reject or narrow
+the architecture rather than carry the new names forward.
 
 ## Complexity Budget
 
