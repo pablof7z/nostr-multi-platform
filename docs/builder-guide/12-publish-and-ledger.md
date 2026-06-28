@@ -101,7 +101,8 @@ PublishAction::Publish(handle, signed_event, target)
    ┌──────────────────────────────────────────────────────────┐
    │  Pending ──dispatch──► InFlight{sent_at_ms, attempt}        │
    │                              │                              │
-   │            RelayAck arrives (on_ack) → classify_ack         │
+   │    RelayAck arrives (OK frame or verified EVENT echo)       │
+   │            on_ack → classify_ack                            │
    │      ┌───────────────┬──────────────────┬───────────────┐  │
    │   ok=true        AckClass::         AckClass::       AckClass:: │
    │      │           Permanent         AuthRequired      Transient  │
@@ -161,6 +162,15 @@ proof-of-work without re-signing the event into a different id. `ok=true`
 never reaches the classifier. The dispatcher trait
 (`crates/nmp-core/src/publish/traits.rs:121-123`) returns
 `Vec<RelayAck>` and **must not** call `classify_ack`.
+
+Direct NIP-20 `OK` frames are the primary relay verdict signal. As a
+fallback, if the same canonical relay later delivers a live `EVENT` echo
+for an active in-flight publish, and that event passes the normal accepted-
+event verification path with the same signed event id, the kernel translates
+the echo into `RelayAck::ok(relay_url)` and feeds it through the same
+`PublishEngine::on_ack` path. This is Rust-owned D7 policy: native and
+TypeScript shells must not infer acceptance from echoed events, cache replay
+must not trigger it, and a non-target relay echo remains an engine no-op.
 
 ## Durable retry queue + resume
 

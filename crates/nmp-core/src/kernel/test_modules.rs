@@ -108,6 +108,8 @@ mod publish_completion_forget_tests; // D8 — forget handle↔correlation on co
 #[cfg(test)]
 mod publish_engine_tests;
 #[cfg(test)]
+mod publish_event_echo_tests;
+#[cfg(test)]
 mod publish_relay_identity_tests;
 #[cfg(test)]
 mod publish_relay_receipt_tests;

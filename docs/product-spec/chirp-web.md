@@ -186,6 +186,10 @@ and relay diagnostics show per-relay acceptance or failure. Local validation mus
 assert that a fixture relay receives a signed kind:0 event with the requested
 metadata.
 
+The first-run publish proof follows the Rust terminal relay verdict, including
+the verified same-relay event-echo fallback documented in the publish engine
+builder guide.
+
 ## Reaction Publish Contract
 
 Chirp Web must let a signed-in user react to a feed or thread note through the
