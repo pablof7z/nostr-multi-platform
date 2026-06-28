@@ -18,7 +18,7 @@ use super::PublishEngine;
 use crate::publish::action::{PublishAction, PublishTarget};
 use crate::publish::state::{PerRelayState, RelayAck, RetryPolicy};
 use crate::publish::traits::{
-    InMemoryPublishStore, NoopSigner, RelayDispatcher, ReplayDispatcher, StaticOutbox,
+    InMemoryPublishStore, RelayDispatcher, ReplayDispatcher, StaticOutbox,
 };
 use crate::publish::TerminalOutcome;
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
@@ -64,7 +64,6 @@ fn engine_routed_to(relay: &str, dispatcher: Arc<ReplayDispatcher>) -> PublishEn
         Arc::new(outbox),
         dispatcher as Arc<dyn RelayDispatcher>,
         Arc::new(InMemoryPublishStore::new()),
-        Arc::new(NoopSigner),
         RetryPolicy::default(),
     )
 }

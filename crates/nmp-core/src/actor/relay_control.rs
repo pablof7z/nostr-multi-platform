@@ -22,6 +22,8 @@ pub(in crate::actor) struct RelayControl {
     /// Strictly-monotonic per-actor stamp assigned at `ensure_relay_worker`
     /// time. Phase F: no longer the worker-side generation; kept as a
     /// diagnostic field for the FFI surface and spawn-order tests.
+    // `allow(dead_code)`: diagnostic stamp used by spawn-order tests; not yet
+    // read by production code (F surface lands with M11 health diagnostic).
     #[allow(dead_code)]
     pub(super) generation: u64,
     #[allow(dead_code)] // Diagnostic lane label; per-URL health is M11.

@@ -56,6 +56,8 @@ pub const SCHEMA_VERSION: u32 = 1;
 /// FlatBuffers file identifier embedded in every buffer this codec emits.
 /// (Used by the round-trip tests + documents the wire magic; the generated
 /// `publish_payload_buffer_has_identifier` is what the decode actually checks.)
+// `allow(dead_code)`: asserted in the tests submodule's round-trip test;
+// the per-crate lint sees only non-test callers when compiling without tests.
 #[allow(dead_code)]
 pub const FILE_IDENTIFIER: &[u8; 4] = b"NPUB";
 

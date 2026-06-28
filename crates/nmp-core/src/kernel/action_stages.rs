@@ -153,10 +153,8 @@ impl ActionStage {
     /// one tick after observing a terminal stage; non-terminal stages stay in
     /// the snapshot mirror until the eventual ack.
     ///
-    /// `allow(dead_code)`: used by callers outside the crate (the iOS
-    /// shell's `KernelBridge` decodes the stage and reads this to gate the
-    /// auto-ack path); no internal `nmp-core` site consumes it, so rustc's
-    /// per-crate dead-code lint cannot see the live usage.
+    // `allow(dead_code)`: iOS `KernelBridge` reads this to gate the auto-ack
+    // path; no nmp-core caller exists so the per-crate lint fires spuriously.
     #[allow(dead_code)]
     pub fn is_terminal(&self) -> bool {
         matches!(self, Self::Accepted | Self::Failed { .. } | Self::Cancelled)

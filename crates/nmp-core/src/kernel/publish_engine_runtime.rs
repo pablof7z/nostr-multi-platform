@@ -126,6 +126,8 @@ impl Kernel {
     /// `recent_errors` after driving the kernel through `publish_signed` +
     /// `handle_publish_ok`. The FFI-side projection bridge will read this
     /// through `make_update` in a follow-up wiring task.
+    // `allow(dead_code)`: called from kernel integration tests today; the
+    // production FFI projection bridge wires this in a follow-up task.
     #[allow(dead_code)]
     pub(crate) fn publish_status_snapshot(&self) -> &crate::publish::PublishStatusSnapshot {
         self.publish_engine.snapshot()

@@ -141,6 +141,8 @@ impl Kernel {
     /// to call `run_cache_serve_step`. (Live via that loop in default/native
     /// builds; the loop is gated out of the wasm build — see the analogous note
     /// in `pull_cursor.rs`.)
+    // `allow(dead_code)`: live via the native actor loop; that loop is
+    // feature-gated out of the wasm build so the method appears dead there.
     #[allow(dead_code)]
     #[must_use]
     pub(crate) fn has_cache_serve_wakeups(&self) -> bool {
@@ -149,6 +151,7 @@ impl Kernel {
 
     /// Whether either wake arm has work pending. (Used by tests today; the
     /// actor loop gate adopts it alongside the pull emit seam in step 3b.)
+    // `allow(dead_code)`: used by tests; the actor loop adoption lands in step 3b.
     #[allow(dead_code)]
     #[must_use]
     pub(crate) fn has_store_wakeups(&self) -> bool {

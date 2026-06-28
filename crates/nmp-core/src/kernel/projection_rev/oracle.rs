@@ -77,6 +77,8 @@ pub enum OracleViolationKind {
     /// The rev advanced but the cache unit did NOT change. Wasted bandwidth, not
     /// a correctness bug; Rung 3 will enforce this direction once omit-unchanged
     /// lands. Declared now so the contract is visible.
+    // `allow(dead_code)`: the Rung-3 omit-unchanged enforcement that produces
+    // this violation is not yet wired; variant pre-declared for contract visibility.
     #[allow(dead_code)]
     SpuriousBump,
 }

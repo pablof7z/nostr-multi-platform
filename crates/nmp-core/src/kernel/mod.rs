@@ -387,7 +387,6 @@ pub struct Kernel {
     /// Buffered `(relay_url, frame)` pairs produced by the publish engine.
     publish_dispatcher: Arc<crate::publish::QueueDispatcher>,
     /// Durable publish-state store.
-    #[allow(dead_code)]
     publish_store: Arc<dyn crate::publish::PublishStore>,
     /// T131 per-URL novelty counters fed at the ingest chokepoint.
     pub(in crate::kernel) event_provenance: provenance::EventProvenance,

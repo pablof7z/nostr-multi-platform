@@ -43,6 +43,8 @@ use serde::Deserialize;
 pub struct SignerApp {
     pub app_id: String,
     pub display_label: String,
+    // `allow(dead_code)`: decoded from the JSON catalog for schema completeness;
+    // presence is validated in tests but the Rust side does not consume the list.
     #[allow(dead_code)]
     pub capabilities: Vec<String>,
     #[serde(default)]

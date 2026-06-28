@@ -192,7 +192,6 @@ impl InterestRegistry {
     }
 
     /// Owner refcount for a `(scope, key)` slot (diagnostics / tests).
-    #[allow(dead_code)]
     #[must_use]
     pub fn owner_count(&self, scope: &SubScope, key: &SubKey) -> usize {
         self.slots
@@ -201,13 +200,11 @@ impl InterestRegistry {
     }
 
     /// Count of registered `(scope, key)` slots.
-    #[allow(dead_code)]
     #[must_use]
     pub fn len(&self) -> usize {
         self.slots.len()
     }
 
-    #[allow(dead_code)]
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.slots.is_empty()

@@ -60,8 +60,9 @@ use crate::projection::state::MarmotProjection;
 ///
 /// Kind integers come from the `nmp-kinds` registry (via `crate::interest`),
 /// not literals — one source of truth shared with the publish/cache sites.
-// Used by the feature-gated `ffi` module and tests; not dead code.
-#[allow(dead_code)]
+// Used by the `ffi` module (feature-gated) and tests; `cfg_attr` confines the
+// allow to non-ffi, non-test builds where the constants appear unused.
+#[cfg_attr(not(any(feature = "ffi", test)), allow(dead_code))]
 pub(crate) const TAP_KINDS: [u32; 4] = [
     KIND_MARMOT_WELCOME,
     KIND_MARMOT_GROUP_MESSAGE,
@@ -72,8 +73,8 @@ pub(crate) const TAP_KINDS: [u32; 4] = [
 /// Slot key used with `EventIngestDispatcher::replace_kind_parser`.
 /// Distinct from the NIP-17 `"nip17.dm_inbox"` slot so both parsers
 /// coexist on kind:1059 without evicting each other.
-// Used by the feature-gated `ffi` module and tests; not dead code.
-#[allow(dead_code)]
+// Used by the `ffi` module (feature-gated) and tests; same scope as `TAP_KINDS`.
+#[cfg_attr(not(any(feature = "ffi", test)), allow(dead_code))]
 pub(crate) const MARMOT_INGEST_SLOT: &str = "marmot";
 
 /// `IngestParser` that bridges the substrate dispatcher into the Marmot

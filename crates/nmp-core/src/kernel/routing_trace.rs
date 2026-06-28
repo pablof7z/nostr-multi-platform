@@ -45,6 +45,8 @@ use crate::substrate::{
 pub const DEFAULT_ROUTING_TRACE_CAPACITY: usize = 64;
 
 /// One captured `route_publish` call.
+// `allow(dead_code)`: struct fields are written by the router observer;
+// the phase-2 FFI snapshot tick that reads them lands in a follow-up task.
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct PublishTraceEntry {
@@ -59,6 +61,7 @@ pub struct PublishTraceEntry {
 }
 
 /// One captured `route_subscription` call.
+// `allow(dead_code)`: same as `PublishTraceEntry` — phase-2 FFI read lands later.
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct SubscriptionTraceEntry {
@@ -75,6 +78,8 @@ pub struct SubscriptionTraceEntry {
 /// snapshot tick can read them through the [`crate::kernel::Kernel::routing_trace`]
 /// accessor; the `#[allow(dead_code)]` keeps the build clean until that
 /// consumer lands.
+// `allow(dead_code)`: the struct fields and impl block are consumed by phase-2
+// FFI; the router observer already writes them — the read side lands later.
 #[allow(dead_code)]
 pub struct RoutingTraceProjection {
     publishes: RwLock<VecDeque<PublishTraceEntry>>,
@@ -83,6 +88,8 @@ pub struct RoutingTraceProjection {
     capacity: usize,
 }
 
+// `allow(dead_code)`: all public accessors — consumed by phase-2 FFI snapshot
+// tick and by tests; the impl-block allow silences the unused-method lint.
 #[allow(dead_code)]
 impl RoutingTraceProjection {
     /// Construct a projection with [`DEFAULT_ROUTING_TRACE_CAPACITY`].
@@ -226,11 +233,9 @@ fn push_bounded<T>(q: &mut VecDeque<T>, entry: T, capacity: usize) {
     q.push_back(entry);
 }
 
-// Suppress dead-code warnings on the public type's accessors when no caller
-// in the crate exercises them yet (Kernel accessor lands below; FFI surface
-// lands in phase 2). `Pubkey` is re-exported so the type is reachable through
-// this module path for downstream phases — silence the unused-import lint
-// until they consume it.
+// `allow(dead_code)`: `Pubkey` is re-exported via this module for downstream
+// phase-2 consumers; this stub silences the unused-import lint until the FFI
+// read path is wired. Remove together with that import once consumed.
 #[allow(dead_code)]
 fn _silence_unused_pubkey(_p: Pubkey) {}
 

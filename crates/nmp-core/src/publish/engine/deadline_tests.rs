@@ -6,7 +6,7 @@ use super::{PublishEngine, PublishQueueTerminal};
 use crate::publish::action::{PublishAction, PublishTarget};
 use crate::publish::state::RetryPolicy;
 use crate::publish::traits::{
-    InMemoryPublishStore, NoopSigner, QueueDispatcher, RelayDispatcher, StaticOutbox,
+    InMemoryPublishStore, QueueDispatcher, RelayDispatcher, StaticOutbox,
 };
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
@@ -40,7 +40,6 @@ fn next_deadline_reports_inflight_timeout_and_due_tick_settles() {
         Arc::new(outbox),
         dispatcher as Arc<dyn RelayDispatcher>,
         Arc::new(InMemoryPublishStore::new()),
-        Arc::new(NoopSigner),
         policy,
     );
 

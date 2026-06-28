@@ -35,12 +35,6 @@ pub const GATE_M6: &str = "M6";
 pub const GATE_M7: &str = "M7";
 pub const GATE_M8: &str = "M8";
 
-/// Asserts a per-test 5-second ceiling as documented in the task spec.
-/// Replace this with `#[tokio::test(timeout = ...)]` when the async
-/// executor is introduced in M2/M8.
-#[allow(dead_code)]
-const PER_TEST_TIMEOUT_SECS: u64 = 5;
-
 use nmp_core::actor::{IdentityCommand, LifecycleCommand, PublishCommand, TestSupportCommand};
 
 // ---------------------------------------------------------------------------

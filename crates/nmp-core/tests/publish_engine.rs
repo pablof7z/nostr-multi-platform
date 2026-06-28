@@ -10,8 +10,8 @@
 use std::sync::Arc;
 
 use nmp_core::publish::{
-    outcome_of, InMemoryPublishStore, NoopSigner, PublishAction, PublishEngine, PublishOutcome,
-    PublishStore, PublishTarget, RelayAck, RetryPolicy, StaticOutbox,
+    outcome_of, InMemoryPublishStore, PublishAction, PublishEngine, PublishOutcome, PublishStore,
+    PublishTarget, RelayAck, RetryPolicy, StaticOutbox,
 };
 use nmp_core::publish::{
     OutboxResolver, PerRelayState, PublishStoreError, RelayDispatcher, ReplayDispatcher,
@@ -61,12 +61,10 @@ fn engine(
     dispatcher: Arc<ReplayDispatcher>,
     store: Arc<dyn PublishStore>,
 ) -> PublishEngine {
-    let signer = Arc::new(NoopSigner);
     PublishEngine::new(
         outbox,
         dispatcher as Arc<dyn RelayDispatcher>,
         store,
-        signer,
         RetryPolicy::default(),
     )
 }

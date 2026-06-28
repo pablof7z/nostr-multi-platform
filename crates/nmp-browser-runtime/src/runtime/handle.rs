@@ -205,7 +205,6 @@ impl BrowserRuntimeHandle {
             relay_text_interceptors: inner.relay_text_interceptors,
             relay_connected_hooks: inner.relay_connected_hooks,
             identity_change_observers: inner.identity_change_observers,
-            run_config: inner.run_config,
             relay_pool,
             pending_startup_events: Vec::new(),
         };

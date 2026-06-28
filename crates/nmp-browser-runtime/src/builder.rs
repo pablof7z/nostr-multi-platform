@@ -327,13 +327,9 @@ impl BrowserAppBuilder<RelaysDeclared> {
     /// providers (NIP-07, NIP-46, local-key) are registered by the browser
     /// capability + signer-provider registry in #2049. When that lands, the
     /// provider set is supplied through `config` here; the gate itself stays.
-    pub fn decide_providers(self, config: BrowserRunConfig) -> BrowserAppBuilder<ProvidersDecided> {
-        {
-            let Ok(mut g) = self.inner.lock() else {
-                return self.advance();
-            };
-            g.run_config = Some(config);
-        }
+    pub fn decide_providers(self, _config: BrowserRunConfig) -> BrowserAppBuilder<ProvidersDecided> {
+        // `BrowserRunConfig` carries future capability-provider parameters;
+        // no fields are consumed yet — the typestate gate is the API contract.
         self.advance()
     }
 }

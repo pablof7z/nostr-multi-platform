@@ -245,6 +245,8 @@ fn run_idle_ticks(app: *mut NmpApp) {
 // ── Config ────────────────────────────────────────────────────────────────────
 
 pub(crate) struct S7Config {
+    // `allow(dead_code)`: zero-sized reserved slot for future per-scenario
+    // configuration; follows the Rust reserved-field pattern (underscore prefix).
     #[allow(dead_code)]
     pub(crate) _reserved: (),
 }

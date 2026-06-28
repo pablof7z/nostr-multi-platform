@@ -6,8 +6,8 @@ use super::*;
 
 impl Kernel {
     /// Swap the kernel's wall-clock (test/replay seam; production never calls this).
-    // `allow(dead_code)`: called from `#[cfg(test)]` code only in nmp-core;
-    // external crate integration tests reach it via the `test-support` feature.
+    // `allow(dead_code)`: `test-support` consumers reach this via the feature
+    // gate; in non-test, non-feature builds the method is unreachable by design.
     #[allow(dead_code)]
     #[cfg(any(test, feature = "test-support"))]
     pub fn set_clock(&mut self, clock: Arc<dyn Clock>) {
@@ -15,6 +15,9 @@ impl Kernel {
         self.clock = clock;
     }
 
+    // `allow(dead_code)`: the non-test variant is intentionally private and
+    // has no in-crate caller; it exists so non-test builds still compile
+    // cleanly when `set_clock` is called through a generic seam.
     #[allow(dead_code)]
     #[cfg(not(any(test, feature = "test-support")))]
     pub(crate) fn set_clock(&mut self, clock: Arc<dyn Clock>) {

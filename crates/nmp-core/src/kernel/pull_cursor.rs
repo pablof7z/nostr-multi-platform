@@ -179,6 +179,8 @@ pub enum PullCursorMode {
 /// seam; `consumer_id` / `mode` are carried for step-4 (retention claims) and
 /// diagnostics — written here but not yet read, so `allow(dead_code)` documents
 /// the forward-looking fields rather than masking genuine dead code.
+// `allow(dead_code)`: `consumer_id` / `mode` are step-4 retention/diagnostic
+// fields written now but not yet consumed; the struct-level allow silences all.
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct PullCursorRegistration {
@@ -278,11 +280,10 @@ impl PullCursorRegistry {
 
 // ─── Kernel methods ──────────────────────────────────────────────────────────
 
-// The three command methods + their wake helper are live via the actor
-// dispatch loop in default/native builds; that loop is feature-gated out of the
-// `--no-default-features` (wasm) build, where they read as dead. They are also
-// exercised by `pull_cursor_wake_tests`. `allow(dead_code)` documents the
-// feature-conditional liveness rather than masking genuine dead code.
+// `allow(dead_code)`: the three command methods below are live via the actor
+// dispatch loop in native builds; that loop is feature-gated out of the
+// `--no-default-features` (wasm) build so they appear dead there. Exercised by
+// `pull_cursor_wake_tests`. This allow documents feature-conditional liveness.
 #[allow(dead_code)]
 impl Kernel {
     /// Reconcile this cursor's pull wake against the store head.

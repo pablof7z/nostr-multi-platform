@@ -94,6 +94,8 @@ pub(crate) struct BrowserBuilderInner {
     /// Read-only `MailboxCache` for the NIP-19 `nprofile` encoder. Stored here;
     /// consumed when the browser snapshot/projection/encoding contract wires the
     /// identity encoder — seam: #2051.
+    // `allow(dead_code)`: stored at builder time; consumed by the #2051
+    // identity-encoder wiring in `from_builder_inner` (not yet implemented).
     #[allow(dead_code)]
     pub(crate) mailbox_cache_reader: Option<Arc<dyn MailboxCache>>,
     pub(crate) routing_substrate_factory: Option<RoutingSubstrateFactory>,
@@ -101,20 +103,25 @@ pub(crate) struct BrowserBuilderInner {
     /// Raw-event forward (external sink) policy factory. Stored here; consumed by
     /// the browser relay transport's outbound-forward path — seam: bounded
     /// transport-only relay adapter (#2050).
+    // `allow(dead_code)`: stored at builder time; consumed by the relay transport
+    // outbound-forward path in `from_builder_inner` (wiring pending).
     #[allow(dead_code)]
     pub(crate) external_event_sink_policy_factory: Option<ExternalEventSinkPolicyFactory>,
     pub(crate) outbound_public_tags: Vec<Vec<String>>,
     /// NIP-46 `nostrconnect://` bootstrap relay URL. Stored here; consumed by the
     /// browser NIP-46 signer provider — seam: signer-provider registry (#2049).
+    // `allow(dead_code)`: stored at builder time; consumed by the NIP-46 signer
+    // provider in `from_builder_inner` (capability registry wiring pending).
     #[allow(dead_code)]
     pub(crate) nostrconnect_bootstrap_relay: Option<String>,
     /// NIP-46 requested permissions. Stored here; consumed by the browser NIP-46
     /// signer provider — seam: signer-provider registry (#2049).
+    // `allow(dead_code)`: same as `nostrconnect_bootstrap_relay` — NIP-46
+    // signer provider wiring pending in `from_builder_inner`.
     #[allow(dead_code)]
     pub(crate) nostrconnect_perms: Option<String>,
     /// Relay-handshake User-Agent. Stored here; consumed by the browser relay
     /// driver when it opens sockets — seam: relay transport adapter (#2050).
-    #[allow(dead_code)]
     pub(crate) relay_user_agent: Option<String>,
 
     // ── Collections handed to BrowserRuntime at start() ───────────────────────
@@ -129,8 +136,6 @@ pub(crate) struct BrowserBuilderInner {
     // ── Gate-specific fields set by typestate-advancing builder methods ────────
     /// Relay bootstrap list set at `set_relays()` gate; applied at `start()`.
     pub(crate) relay_bootstrap: Vec<(String, String)>,
-    /// Run config set at `decide_providers()` gate.
-    pub(crate) run_config: Option<crate::builder::BrowserRunConfig>,
 
     // ── #1007 PR-8 — degraded OPFS open diagnostic ────────────────────────────
     /// Stable reason string for a failed/degraded durable-store open, set via
@@ -185,7 +190,6 @@ impl BrowserBuilderInner {
             identity_change_observers: Vec::new(),
             capability_providers: Vec::new(),
             relay_bootstrap: Vec::new(),
-            run_config: None,
             clock: None,
             store_open_failure: None,
         }

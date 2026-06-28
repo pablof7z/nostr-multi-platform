@@ -19,8 +19,7 @@ use super::PublishEngine;
 use crate::publish::action::{PublishAction, PublishTarget};
 use crate::publish::state::{RelayAck, RetryPolicy};
 use crate::publish::traits::{
-    InMemoryPublishStore, NoopSigner, QueueDispatcher, RelayDispatcher, ReplayDispatcher,
-    StaticOutbox,
+    InMemoryPublishStore, QueueDispatcher, RelayDispatcher, ReplayDispatcher, StaticOutbox,
 };
 use crate::publish::TerminalOutcome;
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
@@ -61,7 +60,6 @@ fn engine_with(outbox: Arc<StaticOutbox>, dispatcher: Arc<ReplayDispatcher>) -> 
         outbox,
         dispatcher as Arc<dyn RelayDispatcher>,
         Arc::new(InMemoryPublishStore::new()),
-        Arc::new(NoopSigner),
         RetryPolicy::default(),
     )
 }
@@ -406,7 +404,6 @@ fn inflight_timeout_sweep_transitions_stuck_relay_through_retry_to_failure() {
         Arc::new(outbox),
         dispatcher.clone() as Arc<dyn RelayDispatcher>,
         Arc::new(InMemoryPublishStore::new()),
-        Arc::new(NoopSigner),
         policy,
     );
 

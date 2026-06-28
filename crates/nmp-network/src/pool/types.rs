@@ -78,6 +78,8 @@ pub enum WireFrame {
     Text(String),
     /// Opaque binary payload. Reserved for future binary NIPs; today no
     /// caller emits this variant.
+    // `allow(dead_code)`: reserved for future binary NIP frames; variant exists
+    // to make the type exhaustive and document the planned binary path.
     #[allow(dead_code)]
     Binary(Vec<u8>),
 }
