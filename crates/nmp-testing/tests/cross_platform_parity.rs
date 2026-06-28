@@ -20,58 +20,6 @@ use serde_json::{json, Value};
 // Test helpers: envelope shape validators
 // ────────────────────────────────────────────────────────────────────────────
 
-/// Asserts that a JSON value is a valid action envelope with required fields.
-///
-/// An action envelope from `nmp_app_dispatch_action` has one of two forms:
-///   - Success: `{"correlation_id":"<32-hex>"}`
-///   - Error: `{"error":"<message>"}`
-///
-/// This validator asserts the JSON is one of these shapes.
-#[allow(dead_code)]
-fn assert_valid_envelope(envelope: &Value, action_name: &str) {
-    assert!(
-        envelope.is_object(),
-        "{}: envelope must be a JSON object, got type: {}",
-        action_name,
-        match envelope {
-            Value::Null => "null",
-            Value::Bool(_) => "bool",
-            Value::Number(_) => "number",
-            Value::String(_) => "string",
-            Value::Array(_) => "array",
-            Value::Object(_) => "object",
-        }
-    );
-
-    let has_corr_id = envelope
-        .get("correlation_id")
-        .and_then(Value::as_str)
-        .map(|id| !id.is_empty())
-        .unwrap_or(false);
-
-    let has_error = envelope
-        .get("error")
-        .and_then(Value::as_str)
-        .map(|e| !e.is_empty())
-        .unwrap_or(false);
-
-    assert!(
-        has_corr_id || has_error,
-        "{}: envelope must have either 'correlation_id' (non-empty string) or 'error' (non-empty string)",
-        action_name
-    );
-
-    // Correlation ID must be 32 hex chars if present.
-    if let Some(id) = envelope.get("correlation_id").and_then(Value::as_str) {
-        assert!(
-            id.len() == 32 && id.chars().all(|c| c.is_ascii_hexdigit()),
-            "{}: correlation_id must be 32 hex characters, got '{}'",
-            action_name,
-            id
-        );
-    }
-}
-
 /// Asserts that a dispatch action JSON contains the expected top-level keys.
 ///
 /// Used to validate that the action builder (ChirpClient or raw JSON) is

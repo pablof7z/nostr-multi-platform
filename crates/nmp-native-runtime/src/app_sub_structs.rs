@@ -84,6 +84,11 @@ pub(crate) struct CompositionConfig {
     /// ADR-0052 §D3 — per-app bunker-URI hook slot. Belongs here (not in
     /// `CapabilityPorts`) because `nmp_signer_broker_init` guards it with
     /// `ensure_prestart_config` — it cannot be refreshed after start.
+    // Feature-conditionally live: read only under the `signer-broker` feature
+    // (via `install_bunker_hook`) or `test`/`test-support` (via
+    // `signer_ports_test_support`). Always constructed to keep
+    // `CompositionConfig` layout uniform across feature combinations.
+    #[allow(dead_code)]
     pub(crate) bunker_hook: nmp_core::BunkerHookSlot,
 }
 
@@ -109,6 +114,11 @@ pub(crate) struct CapabilityPorts {
     /// ADR-0052 §D3 — per-app NIP-55 restore hook slot. Lives here (not in
     /// `CompositionConfig`) because `nmp_external_signer_init` can refresh it
     /// after start.
+    // Feature-conditionally live: read only under the `external-signer` feature
+    // (via `install_external_signer_hook`) or `test`/`test-support` (via
+    // `signer_ports_test_support`). Always constructed to keep `CapabilityPorts`
+    // layout uniform across feature combinations.
+    #[allow(dead_code)]
     pub(crate) external_signer_hook: nmp_core::ExternalSignerHookSlot,
 }
 

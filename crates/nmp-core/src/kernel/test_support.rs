@@ -3,56 +3,21 @@
 //! Test-only injection paths for production ingest hot-paths without real
 //! secp256k1 signatures.
 //!
-use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet};
-
 use super::*;
 
+mod claim_expansion;
 mod preverified_support;
+
+// Claim-expansion test-observation registry (thread-local). Re-exported so the
+// existing `test_support::<fn>` call sites in `relay_score_record.rs` and the
+// claim-expansion tests keep resolving after the split for the file-size cap.
+pub(crate) use self::claim_expansion::{
+    clear_claim_expansion_subs, get_claim_expansion_author, mark_claim_expansion_match_seen,
+    register_claim_expansion_sub, take_claim_expansion_match_seen,
+};
 
 pub(crate) fn test_support_now() -> Instant {
     Instant::now()
-}
-
-thread_local! {
-    static CLAIM_EXPANSION_SUBS: RefCell<BTreeMap<String, String>> =
-        RefCell::new(BTreeMap::new());
-    static CLAIM_EXPANSION_MATCHES: RefCell<BTreeSet<(String, String)>> =
-        RefCell::new(BTreeSet::new());
-}
-
-pub(crate) fn register_claim_expansion_sub(sub_id: &str, author: &str) {
-    CLAIM_EXPANSION_SUBS.with(|m| {
-        m.borrow_mut()
-            .insert(sub_id.to_string(), author.to_string());
-    });
-}
-
-pub(crate) fn get_claim_expansion_author(sub_id: &str) -> Option<String> {
-    CLAIM_EXPANSION_SUBS.with(|m| m.borrow().get(sub_id).cloned())
-}
-
-pub(crate) fn mark_claim_expansion_match_seen(sub_id: &str, relay_url: &str) {
-    CLAIM_EXPANSION_MATCHES.with(|m| {
-        m.borrow_mut().insert((
-            sub_id.to_string(),
-            CanonicalRelayUrl::parse_or_raw(relay_url).into_string(),
-        ));
-    });
-}
-
-pub(crate) fn take_claim_expansion_match_seen(sub_id: &str, relay_url: &str) -> bool {
-    CLAIM_EXPANSION_MATCHES.with(|m| {
-        m.borrow_mut().remove(&(
-            sub_id.to_string(),
-            CanonicalRelayUrl::parse_or_raw(relay_url).into_string(),
-        ))
-    })
-}
-
-pub(crate) fn clear_claim_expansion_subs() {
-    CLAIM_EXPANSION_SUBS.with(|m| m.borrow_mut().clear());
-    CLAIM_EXPANSION_MATCHES.with(|m| m.borrow_mut().clear());
 }
 
 impl Kernel {
@@ -214,6 +179,9 @@ impl Kernel {
     /// uncached fallback. Bypasses the store entirely — purely a read-cache
     /// fixture. The `tags` argument can carry whatever NIP-10 structure the
     /// test needs.
+    // Test-support helper: `pub(crate)` so in-crate `#[cfg(test)]` modules can call
+    // it, but those call sites are invisible to the `test-support` feature build,
+    // so the compiler warns without this allow.
     #[allow(dead_code)]
     pub(crate) fn seed_kind1_for_reply_test(
         &mut self,
@@ -255,6 +223,9 @@ impl Kernel {
     /// frames MUST call this before any publish command.
     ///
     /// Test-support only — gated on `cfg(any(test, feature = "test-support"))`.
+    // Test-support helper: `pub(crate)` so in-crate `#[cfg(test)]` modules can call
+    // it, but those call sites are invisible to the `test-support` feature build,
+    // so the compiler warns without this allow.
     #[allow(dead_code)]
     pub(crate) fn seed_kind10002_for_test(&mut self, author_pubkey: &str, write_urls: &[&str]) {
         // Use the author's pubkey as the synthetic event ID — guaranteed
@@ -297,6 +268,9 @@ impl Kernel {
     /// keep the convenient `NostrEvent`-taking signature.
     ///
     /// Test-support only — gated on `cfg(any(test, feature = "test-support"))`.
+    // Test-support helper: `pub(in crate::kernel)` so kernel-submodule test code
+    // can call it; those call sites are `#[cfg(test)]`-gated and therefore
+    // invisible to the `test-support` feature build, so the compiler warns.
     #[allow(dead_code)]
     pub(in crate::kernel) fn inject_profile(&mut self, event: NostrEvent) {
         let verified = crate::store::VerifiedEvent::from_raw_unchecked(crate::store::RawEvent {
@@ -329,6 +303,9 @@ impl Kernel {
     /// `NostrEvent`-taking signature.
     ///
     /// Test-support only — gated on `cfg(any(test, feature = "test-support"))`.
+    // Test-support helper: `pub(in crate::kernel)` so kernel-submodule test code
+    // can call it; those call sites are `#[cfg(test)]`-gated and therefore
+    // invisible to the `test-support` feature build, so the compiler warns.
     #[allow(dead_code)]
     pub(in crate::kernel) fn inject_contacts(&mut self, event: NostrEvent) {
         let verified = crate::store::VerifiedEvent::from_raw_unchecked(crate::store::RawEvent {
@@ -368,6 +345,9 @@ impl Kernel {
     /// Test-support only — production composition installs
     /// `nmp_nip17::DmRelayCache` via
     /// [`Kernel::set_dm_inbox_relay_lookup`] instead.
+    // Test-support helper: `pub(crate)` so in-crate `#[cfg(test)]` modules can call
+    // it, but those call sites are invisible to the `test-support` feature build,
+    // so the compiler warns without this allow.
     #[allow(dead_code)]
     pub(crate) fn test_dm_relay_cache(
         &mut self,
@@ -400,6 +380,9 @@ impl Kernel {
     /// enqueued a `DmRelayListChanged` trigger inline.
     ///
     /// Test-support only — gated on `cfg(any(test, feature = "test-support"))`.
+    // Test-support helper: `pub(crate)` so in-crate `#[cfg(test)]` modules can call
+    // it, but those call sites are invisible to the `test-support` feature build,
+    // so the compiler warns without this allow.
     #[allow(dead_code)]
     pub(crate) fn seed_kind10050_for_test(&mut self, author_pubkey: &str, dm_relay_urls: &[&str]) {
         self.test_dm_relay_cache()
