@@ -19,6 +19,11 @@ only as an exploration artifact should be deleted or explicitly retired. The
 point of this directory is to converge on the right shape before editing the
 canonical docs, not to add another source of truth.
 
+The fitness matrix in this packet is transitional: it becomes real only when it
+is executable work. Each accepted ratchet must graduate into a doctrine lint,
+`nmp-testing` gate, CI check, GitHub issue acceptance criterion, or ADR
+enforcement section before this directory is retired.
+
 This is the high-level entry point for the proposed architecture. It explains how
 an NMP app feels from the app developer's perspective, then shows how data flows
 through NMP's crates. The other docs go deeper into app assembly, live reads,
@@ -67,6 +72,62 @@ declarations, tick observers, native relay selection, or native publish JSON. Th
 test is not whether the names are nicer; the test is whether one feature's live
 state has one owner, one handle, one teardown path, one output contract, and one
 route policy.
+
+This hypothesis must be enforced by the ratchets in [Internal
+Machinery](04-internal-machinery.md), especially FF-001 through FF-014. A prose
+claim that the new model is simpler is insufficient without those checks moving
+old-pattern counts down or keeping them from growing.
+
+## Current Forces
+
+The architecture is hard to change today because one product behavior is split
+across too many independently wired mechanisms:
+
+- `register_defaults()` hides which protocol features, runtimes, policies, and
+  projections are active.
+- Interest acquisition and projection output can be registered separately, so
+  invalid states are representable: data fetched but invisible, or output
+  declared without demand.
+- Projection tiers leak an executor detail into app composition. The app thinks
+  it declared what it consumes, but host-registered outputs bypass that manifest.
+- Dynamic source sets are re-derived by feature recipes instead of being a
+  reusable Rust-owned session capability.
+- Publish variants can all say "explicit relay" while losing why the route is
+  valid.
+- Downstream apps still have direct web NDK paths, Swift protocol parsing,
+  app-side signer inference, and native policy/state that should be Rust-owned.
+
+The target is worthwhile only if it reduces those forces. If it leaves the same
+number of lifecycle recipes, manifests, route paths, and shell policy sites, it
+is not simplification.
+
+## What Becomes Easier
+
+The design should make these changes materially cheaper:
+
+- add a new Nostr read feature without inventing a new open/replay/projection
+  recipe;
+- add a custom app read model without modifying NMP crates or moving relay logic
+  to native;
+- migrate one feature across Swift, Kotlin, TypeScript, TUI, and browser without
+  reimplementing protocol parsing in every shell;
+- reason about publish status, retries, signer continuations, and route proof
+  from one Rust-owned status stream;
+- audit app composition by reading the app root instead of spelunking defaults.
+
+## What Becomes Impossible
+
+New code must make these states hard or impossible:
+
+- a product screen opens raw relay interest and then forgets to declare output;
+- a projection emits app-visible rows without an owning feature/session demand;
+- native code chooses Nostr relays, mutates protocol tags, or infers publish
+  success;
+- an empty dynamic author/source set becomes a wildcard subscription;
+- NIP-29 and NIP-17 routes degrade to a generic explicit-relay bucket with no
+  route provenance;
+- a starter template teaches projection tiers, `register_defaults()`, or
+  `open_interest` as normal product architecture.
 
 ## Complexity Budget
 

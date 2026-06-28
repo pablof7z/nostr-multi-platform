@@ -29,6 +29,12 @@ builders. If it is a starter/tutorial scaffold, it may call a small preset, but
 the docs must say that the preset is an example convenience rather than the
 architecture real products should copy.
 
+That decision must update the scaffold gates. A production scaffold test should
+reject hidden `register_defaults()` and `declare_consumed_projections` teaching
+paths. A tutorial scaffold test may allow them only if the generated text labels
+the preset as tutorial/sample convenience and points production apps at explicit
+feature composition.
+
 The substrate is the correctness floor: actor, store, indexes, signer ports,
 capabilities, planner, publish engine, and typed update delivery. Feature bundles
 sit on top of it.
@@ -108,7 +114,8 @@ make the "with policy" versus "without policy" decision visible at compile time.
 
 App-owned Rust crates may need runtime services that are not reusable Nostr
 protocol machinery. Podcast playback, queueing, downloads, transcript work,
-provider catalogs, STT/TTS, local agents, and import/export flows are valid app
+provider catalogs, STT/TTS, local agents, widgets, AppIntents, CarPlay, remote
+commands, Live Activities, Handoff, and import/export flows are valid app
 features. They should have generated app-feature APIs or typed capability
 requests, not be forced through NMP protocol crates and not be mistaken for
 legacy FFI just because they are app-specific.
@@ -121,6 +128,12 @@ The contract is still Rust-owned:
 - generated app-feature APIs are typed and versioned;
 - capability result channels re-enter the Rust reducer path;
 - event-producing operations still use the typed action/publish doorway.
+
+Headless and OS-owned surfaces are not exempt. A widget, AppIntent, CarPlay
+scene, remote command, Live Activity, extension, or suspended-process resume may
+open app-lifetime/service sessions or submit capability results, but it must not
+own a parallel playback queue, signer state, relay policy, or publish result
+model.
 
 This distinguishes legitimate app runtime surface from forbidden protocol
 escape hatches. A Whisper upload, playback seek, provider-key read, or local
@@ -166,6 +179,12 @@ Native and web shells have three jobs:
 The discriminating test stays simple: if a second platform would have to
 reimplement the behavior to stay correct, the behavior belongs in Rust.
 
+Rust outputs carry semantic facts, not presentation formatting. A projection may
+emit raw signer kind/state tokens, pubkeys, timestamps, event refs, route status,
+and domain state. Shells may choose labels, icons, colors, typography,
+truncation, local date formatting, and animation as long as those choices do not
+change behavior, routing, policy, identity, replay, sorting, or protocol meaning.
+
 Projection caches generated for Swift, Kotlin, TypeScript, C, or TUI are not
 product state. They are render adapters for typed Rust outputs. A shell may keep
 row-delta caches for profiles, event refs, playback rows, or domain slices when
@@ -178,9 +197,10 @@ eligibility, and whether pending work may continue on the current connection.
 
 ## Downstream App Shape
 
-`nmp-gallery` mostly exercises NMP features directly. It needs component-scoped
-profile and event refs, generated ref caches, embed resolution, and no shell
-retry timers.
+`nmp-gallery` mostly exercises NMP features directly across iOS, Android, TUI,
+and desktop in this checkout. It needs component-scoped profile and event refs,
+generated ref caches, embed resolution, auth/signing component coverage, and no
+shell retry timers.
 
 Highlighter needs NMP features plus Highlighter-owned bundles for capture,
 share, article reading, curation, room chrome, comments, feedback, and podcast

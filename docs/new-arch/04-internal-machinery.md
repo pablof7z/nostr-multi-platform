@@ -11,6 +11,7 @@ For reads, NMP internally:
 opens a live query
   -> compiles source expressions into interests/dependent interests
   -> plans relays with outbox routing or explicit relay pins
+  -> records reverse admission/wake indexes for the session
   -> replays cached/store data
   -> admits matching live events into Rust-owned read state
   -> emits bounded typed projections
@@ -30,6 +31,13 @@ semantics truly match. Start with one private shape reconciler around
 observed-projection open/close, keep source-specific reducers local, and promote
 a general source-reduction core only after multiple source families prove they
 share the same diff, fail-closed, teardown, and dependent-interest rules.
+
+Event-to-session admission is a protected invariant. Live sessions need
+Rust-owned reverse indexes or wake queues that map an ingested event to the
+sessions and outputs it can affect. The destination is not a flat filter-poll
+loop over every active interest and not a native-owned refresh trigger. Store
+ingest, relay delivery, source changes, and mailbox changes should enqueue
+bounded, coalesced work for the owning session/output.
 
 ## Write Pipeline
 
@@ -70,6 +78,12 @@ stale-frame drops, clear/tombstone semantics, full-pull cold start paths,
 bounded replay, deterministic row ownership, and one merge contract per output.
 Hiding projection tiers from app developers cannot mean deleting these executor
 guarantees.
+
+Wake/admission indexes are in the same category. They are internal machinery,
+but they are not optional if the simpler descriptor model would otherwise
+degrade to polling, broad scans, or missed hydration. The ADR must name which
+event/store/source changes wake each session family and how stale wakes are
+deduped or dropped.
 
 The mechanisms are not automatically sacred. FlatBuffers, sidecar registration,
 projection manifests, output namespaces, incremental apply, and generated host
@@ -124,6 +138,8 @@ protects one of these invariants:
   not reimplement protocol behavior;
 - bounded reactivity: hot paths do not poll, wake unnecessarily, or ship
   unbounded snapshots;
+- wake correctness: event ingest and dependency changes reach affected sessions
+  without broad polling or native refresh code;
 - downstream necessity: `nmp-gallery`, Highlighter, or Podcast Player cannot
   express a real flow with the simpler design.
 
@@ -215,6 +231,31 @@ an explicit invariant, owner, and deletion or formalization decision.
 Each phase must leave the repo shippable and reduce at least one public concept,
 duplicate lifecycle recipe, or hidden desync state.
 
+## New-Code Rules
+
+Once the ADR accepts this direction, new code must obey these rules even before
+the full migration is done:
+
+- Product screens and shells must not call raw `open_interest` or equivalent
+  relay-subscription doors.
+- Product reads must enter through a typed feature/ref/session descriptor or a
+  named substrate/protocol-internal/diagnostic/test/migration scope.
+- New app-facing examples and templates must not teach `register_defaults()` as
+  the production mental model.
+- New output keys must declare one owner, schema version, merge contract, and
+  collision behavior.
+- New dynamic sources must specify empty-source behavior and must fail closed
+  unless the feature declares an explicit fallback.
+- New timer/tick logic must prove it is capability sampling or presentation
+  affordance, not reducer/session/projection reconciliation.
+- New session families must declare their event/store/source wake conditions and
+  reverse-index or queue strategy.
+- New event-producing writes must enter through typed actions/builders and
+  publish status, never native JSON publish paths.
+- New explicit relay writes must preserve route provenance.
+- New app-feature APIs are allowed for app runtime capabilities, but they must
+  be typed/versioned and may not own Nostr protocol policy.
+
 **P0: Baseline and freeze old patterns.**
 Inventory public read/write doors and duplicate lifecycle recipes in
 `nmp-core`, `nmp-defaults`, `nmp-native-runtime`, `nmp-browser-runtime`,
@@ -269,8 +310,10 @@ must stop being taught as the app manifest for screen/session outputs.
 Move `ProfileRef`, `EventEmbed`, URI decoding, relay hints, embed envelopes, and
 row-delta caches behind typed sessions and generated adapters. Delete shell
 retry timers and duplicated URI decoding where the Rust path owns it. This is
-the first cross-shell proof because gallery exercises Swift, Kotlin, web, TUI,
-and desktop rendering without app-domain policy. Fix gallery's timer-based copy
+the first cross-shell proof because gallery exercises Swift, Kotlin, TUI, and
+desktop rendering without app-domain policy. Include gallery auth/signing
+component coverage; the live checkout does not contain a gallery web root, so
+web proof must come from another app/runtime. Fix gallery's timer-based copy
 affordance before treating the registry as a copyable downstream template.
 
 **P5: Migrate dynamic and composite reads only after P1-P4 hold.**
@@ -303,19 +346,24 @@ discussion through app-owned Rust bundles and NMP runtime dispatch. Direct web
 NDK relay/filter/tag/sign/publish paths, Swift rich-text protocol projection,
 Swift-owned sync policy, Swift `tagsJson` parsing, and fire-and-forget writes
 must be removed or formally rejected by the ADR. SSR-only fetches and migration
-shims must be labeled as such; they cannot be the product runtime model.
+shims must be labeled as such; they cannot be the product runtime model. The ADR
+must decide whether Highlighter web is in the NMP target runtime, a labeled
+SSR/migration exception, or deliberately out of scope.
 
 Podcast Player must express playback, queue, feed subscription, NIP-F4, Blossom
 publish, explicit write relays, widgets, settings actions, signer runtime, and
 feedback without moving podcast nouns into NMP. Bespoke durable FFI, silent
 compatibility paths, stale Swift-store docs, and `nmp-signer-broker` pinning
 must converge on generic typed dispatch/projection/capability seams and the
-current NIP-46 runtime direction.
+current NIP-46 runtime direction. Widget extensions, AppIntents/Siri, CarPlay,
+remote commands, Live Activities/Handoff, and cold/suspended process behavior
+must prove app-runtime/service sessions rather than native-owned state.
 
-`nmp-gallery` must express component refs and embeds without shell protocol
-state or timer-based state clearing. It becomes the conformance fixture for
-refs/profile, refs/event envelopes, copied/native components, typed dispatch,
-and renderer caches only after those constraints hold.
+`nmp-gallery` must express component refs, embeds, auth/signing components, and
+renderer caches without shell protocol state or timer-based state clearing. It
+becomes the conformance fixture for refs/profile, refs/event envelopes,
+copied/native components, typed dispatch, and renderer caches only after those
+constraints hold.
 
 Any downstream flow that requires native-owned policy or a bespoke framework
 door is a design failure, not downstream migration debt.
@@ -334,6 +382,127 @@ builder-guide mental-model/codegen/walkthrough pages, subscription planning and
 publish guides, wiki app-composition pages, and any generated template that
 teaches `register_defaults`, `open_interest`, projection tiers, or
 `declare_consumed_projections` as the normal product architecture.
+Also audit wiki pages that still teach `nmp.feed.home`, generic defaults,
+sidecar projection rituals, raw/pre-signed publish branches, or direct taps as
+current architecture. They should either be corrected in place or explicitly
+retired before this packet becomes durable documentation.
+
+## Fitness Functions And Ratchets
+
+P0 should convert the new-code rules into repeatable checks. The exact scripts
+can change, but each check needs an owner, baseline, target, and enforcement
+mode before implementation starts.
+
+| ID | Rule | Baseline Source | Target | Enforcement |
+|---|---|---|---|---|
+| FF-001 | Product code does not add raw `open_interest` app reads. | grep public FFI/runtime/shell callers and builder-guide examples | count never increases; product callers trend to zero | doctrine lint or `nmp-testing` grep gate |
+| FF-002 | `register_defaults()` is not the production app mental model. | `nmp-cli` templates, examples, builder guide, gallery/podcast composition roots | templates teach explicit feature composition or labeled tutorial preset | template test plus doc grep gate |
+| FF-003 | App-facing docs do not expose projection tiers or `declare_consumed_projections` for screen/session output. | docs/product-spec, builder guide, wiki, templates | public docs teach typed outputs and session-scoped demand | docs lint grep gate |
+| FF-004 | Product state reconciliation does not use snapshot tick polling. | `register_snapshot_tick_observer` call sites and downstream timers | reducer/session/projection tick users trend to zero or have explicit invariant | grep gate plus owner list |
+| FF-005 | Dynamic sources fail closed. | feed/source/dependent-interest tests | every migrated source has empty-source and fallback tests | crate tests for source families |
+| FF-006 | Output keys have one owner and collision behavior. | projection contract table, host-registered projections, built-ins | composition fails on unowned/colliding keys unless alias/replace is declared | registry test/codegen check |
+| FF-007 | Generated/host caches share merge semantics. | Swift/Kotlin/TS/TUI ref caches and `projection_merge_cache` | full/delta/clear/stale-frame behavior covered for generated adapters | cross-language decode/merge tests |
+| FF-008 | Explicit relay publishes preserve route provenance. | `PublishTarget::Explicit`, protocol plans, pre-signed publish APIs | manual, NIP-29, verified inbox, and imported/verbatim routes are distinguishable | publish policy and retry/resume tests |
+| FF-009 | Private routes fail closed. | D10 tests, NIP-17 inbox tests, Marmot/private publish paths | no unknown-inbox fallback to public/outbox | `nmp-core`, `nmp-nip17`, doctrine tests |
+| FF-010 | Downstream shell protocol policy decreases. | Highlighter NDK usage, Swift `tagsJson`, native Wi-Fi policy, Podcast signer inference, gallery URI parsing | counts do not increase; release gates drive them down | downstream grep gates or migration checklists |
+| FF-011 | App-feature APIs stay typed and non-protocol unless event-producing. | Podcast STT/TTS/agent/provider APIs and generated FFI | app runtime APIs are classified; event-producing ones use typed publish | API-surface classification test |
+| FF-012 | Clean-room app docs work without issue/wiki spelunking. | generated app plus builder guide | new app can open/read/write one feature with typed sessions/actions | walkthrough test or manual UAT checklist |
+| FF-013 | Session wakes are indexed and event-driven. | cache-serve wakeups, logical-interest indexes, tick observers, downstream refresh pulls | no session family depends on broad polling or native refresh triggers | session wake/admission tests |
+| FF-014 | Rust outputs semantic facts; shells format presentation. | signer labels, SF Symbols, short npubs, relative time, display strings in Rust projections | semantic tokens only in Rust outputs; presentation helpers stay in shells/TUI/test fixtures | grep gate plus projection review |
+
+Useful baseline commands:
+
+```bash
+rg -n "nmp_app_open_interest|open_interest" crates apps docs --glob '!target/**'
+rg -n "register_defaults|declare_consumed_projections" crates docs apps --glob '!target/**'
+rg -n "register_snapshot_tick_observer|sleep|Timer|setInterval" crates apps /path/to/downstream --glob '!target/**'
+rg -n "PublishTarget::Explicit|PublishRaw|UnsignedEventToRelays" crates --glob '!target/**'
+rg -n "short_npub|format_ago|SF Symbol|status_label|display_label|avatar_initials" crates docs --glob '!target/**'
+rg -n "@nostr-dev-kit|tagsJson|hl.network.wifi_only" /Users/pablofernandez/Work/hl --glob '!**/.git/**'
+rg -n "Nip46|signer|dispatchSilent|snapshot\\(" /Users/pablofernandez/Work/podcast-player --glob '!**/.git/**'
+```
+
+Counts are not success by themselves. They are ratchets: they prevent new old
+patterns while the milestone ladder deletes or privatizes the existing ones.
+
+Baseline every architecture milestone with the existing gates. The file-size
+hook applies to code and other enforced repo surfaces, not as a constraint on
+the length of this design packet:
+
+```bash
+git status -sb
+git diff --check
+cargo test -p nmp-testing --test doctrine_lint_smoke
+cargo run -p nmp-testing --bin doctrine-lint -- --workspace-d8
+cargo run -p nmp-testing --bin doctrine-lint -- --workspace-native
+cargo test -p nmp-testing --test doctrine_native_smoke
+cargo test -p nmp-testing --bin doctrine-lint
+bash .githooks/check-file-size.sh --from-ref <base-ref> --to-ref HEAD --baseline-ref <base-ref>
+```
+
+When touching actions, publish, FFI, or codegen:
+
+```bash
+bash ci/check-native-action-boundary.sh --self-test && bash ci/check-native-action-boundary.sh
+bash ci/check-dispatch-envelope-gates.sh --self-test && bash ci/check-dispatch-envelope-gates.sh
+cargo run --quiet -p nmp-codegen -- gen action-builders --platform ts --check --out web/packages/runtime-web/src/actionBuilders.generated.ts
+```
+
+Existing NMP tests that should become phase gates where relevant:
+
+```bash
+cargo test -p nmp-testing --test feed_public_surface_retired
+cargo test -p nmp-testing --test public_typed_projection_decode
+cargo test -p nmp-testing --test cache_serve_replay_fixtures
+cargo test -p nmp-testing --test reduced_source_relay_e2e
+cargo test -p nmp-testing --test m2_subscription_compilation_audit
+cargo test -p nmp-testing --test m8_subscription_lifecycle
+cargo test -p nmp-testing --test framework_magic_contract
+cargo test -p nmp-testing --test nip17_dm_inbox_routing
+cargo test -p nmp-testing --test dx_scaffold_gate
+cargo test -p nmp-testing --test dx_login_timeline_gate
+cargo test -p nmp-testing --test conformance_catalog_complete
+```
+
+Missing gates to create before declaring the design implementable:
+
+```bash
+cargo test -p nmp-testing --test architecture_surface_ratchet
+cargo test -p nmp-testing --test live_query_descriptor_contract
+cargo test -p nmp-testing --test projection_merge_contract
+cargo test -p nmp-testing --test publish_route_provenance_contract
+cargo test -p nmp-testing --test docs_architecture_teaching_ratchet
+```
+
+## Kill Criteria
+
+Stop, redesign, or ask for a human decision if any of these become true:
+
+- The first descriptor proof cannot sit on existing `ObservedProjection` /
+  dependent-interest machinery without creating a second read lifecycle.
+- Typed sessions reduce names but not the number of public concepts a product
+  author must understand.
+- Route provenance requires broad publish-context plumbing that adds more
+  permanent concepts than it removes.
+- A downstream app can express its real flows only by keeping native-owned Nostr
+  policy, direct NDK subscriptions, native publish JSON, or app-domain nouns in
+  NMP crates.
+- Generated adapter/schema work cannot prevent cross-platform payload drift.
+- Ratchets cannot be automated or reviewed cheaply enough to stop new
+  old-pattern usage.
+- Two milestones pass without reducing at least one measured old-pattern count
+  or deleting one duplicated lifecycle recipe.
+- The team cannot decide whether Highlighter web is target-runtime, SSR/
+  migration exception, or out of scope.
+- The team cannot decide whether `nmp init` generates production architecture or
+  a labeled tutorial preset.
+- The team cannot decide which downstream migrations are release gates versus
+  follow-up issues.
+- Podcast headless/runtime surfaces require native-owned state to work.
+- The signer support matrix cannot converge on one Rust-owned status and
+  continuation model.
+- Explicit relay selection is meant to be a user-visible product affordance, but
+  the product cannot specify its owner, audit text, and route guarantees.
 
 ## Fitness Checks
 
@@ -385,6 +554,9 @@ The ADR for #2316 must settle:
   represented in generated builders;
 - whether route provenance can be represented with existing publish fields or
   needs one narrow internal type;
+- the supported signer matrix across local keys, NIP-07, NIP-46 browser/native,
+  NIP-55-style platform signers, named product signers, agent signers, and
+  imported pre-signed events;
 - what doctrine lint blocks reintroduction of raw observer, tick, or polling
   recipes;
 - how `register_defaults()` is positioned after explicit feature composition is
@@ -394,4 +566,8 @@ The ADR for #2316 must settle:
   replaced by a smaller descriptor/reconciler model;
 - whether `nmp init` generates a production scaffold or a tutorial preset, and
   how docs label that choice;
+- whether Highlighter web is an NMP target-runtime migration gate, an SSR/
+  migration exception, or out of scope for this architecture;
+- how app-runtime/service sessions cover widgets, AppIntents, CarPlay, remote
+  commands, Live Activities/Handoff, and suspended-process resume;
 - which downstream app migrations are release gates versus follow-up issues.

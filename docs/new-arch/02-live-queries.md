@@ -88,6 +88,12 @@ Allowed `open_interest` scopes should be exact:
   criteria;
 - no product screen, app shell, starter template, or builder-guide example.
 
+This should become a machine allowlist, not a review convention. The future gate
+should classify each `open_interest` symbol/call site as substrate,
+protocol-internal, diagnostic/test/export, or migration-with-deletion-criteria,
+and fail any product shell, product screen, starter template, or public teaching
+caller.
+
 "Expert" cannot be a permanent escape hatch. Any public product caller that
 still needs raw acquisition after typed sessions exist needs an issue, an owner,
 and a removal or formalization decision.
@@ -113,6 +119,13 @@ closing decrements it. The final close tears down acquisition, observed sinks,
 derived dependencies, and generated output rows. If a feature needs a visible
 clear, it emits a typed `Cleared` or tombstone output instead of leaving stale
 rows in shell state.
+
+Owners are not only visible screens. App-lifetime services, widgets,
+AppIntents, CarPlay, remote commands, background downloads, and signer/runtime
+flows may own sessions when they need resident state. Their sessions still need
+typed identity, lifecycle, bounded output, injected time, capability result
+channels, and deterministic teardown; they are not permission for hidden native
+stores or polling loops.
 
 Opening before relay, mailbox, identity, or source readiness is allowed. Rust
 queues and replans the session when dependencies arrive. The shell should not
@@ -150,6 +163,9 @@ Relay-pinned observed projections must also prove provenance. A NIP-29 or other
 host-pinned session should not accept a matching event merely because the filter
 shape matches; replay and live admission must know the event came through the
 declared relay context or another protocol-approved source.
+Replay tests must cover this, not only live delivery. A store replay for a
+relay-pinned session needs either stored relay provenance or another explicit
+protocol-approved admission proof; a matching `#h` tag alone is not enough.
 
 ## ReducedSource
 
@@ -185,6 +201,10 @@ When the source changes, NMP diffs the old and new targets, closes withdrawn
 targets, opens new targets, and recompiles relay subscriptions. Empty output
 fails closed; it never becomes wildcard acquisition. Native shells never compute
 follow lists, group membership, list members, WoT expansion, or target refs.
+Each migrated source family needs tests for source arrival, source withdrawal,
+empty-source behavior, explicit fallback behavior, account switch, teardown, and
+route replanning. These are contract tests for the session model, not merely
+feed-specific tests.
 
 `ReducedSource` is one possible building block under `LiveQuery`, not a separate
 app API the shell has to orchestrate. It should not start as a grand abstraction.
@@ -315,6 +335,14 @@ directly, others are registered closures. The app should see only:
 this feature/query produces this typed output
 ```
 
+Projection payloads should carry semantic facts, not final presentation. A
+profile output can carry pubkey, name, picture URL, verification state, and
+status tokens; the shell chooses short display strings, initials, colors, icon
+names, localization, and relative timestamps. If a value affects protocol
+meaning, routing, sorting, replay, persistence, policy, or cross-platform
+parity, it belongs in Rust output. If it is only how one platform displays the
+same fact, it belongs in the shell.
+
 Opening a dynamic live query is the demand declaration for its output. Always-on
 app chrome may still need explicit declared outputs, but screen and session
 state should be scoped to open handles, not to a global projection list.
@@ -350,6 +378,9 @@ Built-in and host-registered producers must not silently collide with
 "built-ins win" precedence. If two producers claim the same key, composition
 should fail early unless the owner deliberately aliases or replaces the output
 under a documented compatibility rule.
+The proof must include generated merge-contract tests for full, delta, clear,
+stale-frame, decode-poison, and baseline recovery behavior. Public typed decode
+tests are necessary but not sufficient if generated host caches can still drift.
 
 ## Live Counts
 
@@ -370,3 +401,6 @@ counts as typed projections over a session/source/filter. A dedicated
 `ReactiveCount` primitive is justified only if it deletes duplicated count
 machinery and has tests for relay `COUNT`, local index counts, empty-source
 behavior, and teardown.
+Counts must also inherit session identity, route policy, source diffing, and
+teardown semantics. A count-specific primitive that reintroduces a separate
+open/close/replay recipe fails the design.

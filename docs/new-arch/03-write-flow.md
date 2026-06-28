@@ -78,6 +78,16 @@ or another protocol-owned route. The exact representation is an ADR decision,
 but the distinction must survive signing, remote-signer parking, retry/resume,
 local ingest, and status emission.
 
+Minimum route-provenance matrix:
+
+| Route provenance | Required proof | Allowed planner behavior | Status/reporting |
+|---|---|---|---|
+| automatic public route | author/recipient context plus NIP-65/mailbox lookup | planner chooses relays and replans on mailbox change | route planned/rejected with reasons |
+| protocol host pin | protocol context such as NIP-29 group id and host relay | publish only to the host/protocol relays | host pin visible in status |
+| verified private inbox | recipient inbox proof from protocol-specific lookup | publish only to verified inbox relays | fail closed when unknown |
+| manual explicit override | app/protocol owner, purpose, tests, and relay set | send exactly there, with no hidden fallback | marked manual/audited |
+| imported/verbatim external event | caller declares reduced guarantees and supplies signed bytes | validate/store/publish only within explicit policy | status says imported/verbatim |
+
 ## Stage 2: Finalization
 
 Finalization is the last mutation point before signing. It applies route and
@@ -123,6 +133,18 @@ broker initialization or teardown state where applicable, and correlation ids
 for parked continuations. Shells should not infer signer completion from missing
 errors, URI callbacks, or side effects.
 
+Minimum signer matrix:
+
+| Signer path | Native/web role | Rust-owned state |
+|---|---|---|
+| local app key | execute secure key access capability | selected account, permission, pending/failed/signed status |
+| browser NIP-07 | invoke browser signer capability | action correlation, capability result, route/privacy continuation |
+| NIP-46/browser bunker | execute relay/RPC transport capability where hosted outside Rust | broker lifecycle, parked continuation, signer identity, timeout/failure state |
+| NIP-46/native broker | execute OS/network capability if delegated | broker lifecycle, reconnect state, parked continuation, status output |
+| Android/iOS platform signer (NIP-55-style) | execute external signer IPC/app callback | capability correlation, selected signer, pending/cancel/failure state |
+| named product/agent signer | execute configured signer capability | signer registry, permission, product policy, publish continuation |
+| imported pre-signed event | no signing, only validation/capability import if needed | validation result, route provenance, status/retry policy |
+
 The output is a signed event plus signer status updates.
 
 Publishing a pre-signed event is an integration/import path. It still enters
@@ -144,7 +166,7 @@ plus protocol-required recipient inboxes where applicable
 Manual relay selection is an explicit opt-out:
 
 ```text
-publish(event, relays = [...])
+typed_publish_action.with_audited_explicit_route(relays, reason)
 ```
 
 There should be one canonical explicit-relay representation internally. The API
@@ -157,6 +179,12 @@ pre-signed publish APIs all represent "send exactly here," the ADR must either
 collapse them to one internal representation or document why each remaining seam
 protects a different invariant. Dead explicit-target fields should be deleted,
 not taught as part of the architecture.
+
+The phase gate is not only D10/D11. It needs focused tests that prove route
+provenance survives dispatch-envelope decode, codegen builders, signer
+continuation park/drain, retry/resume, local ingest, and publish-status
+projection. D10/D11 prevent some bypasses; they do not prove provenance was
+preserved.
 
 Protocol crates can define stricter routing:
 
@@ -245,6 +273,11 @@ Generated app-feature APIs are allowed for non-event product work such as
 playback, downloads, provider credentials, STT/TTS, local agents, catalog fetches,
 or imports. They become a violation only when they construct Nostr events, choose
 Nostr relays, infer protocol tags, or own publish/sign status outside Rust.
+
+The same boundary applies to web/TypeScript. Direct NDK subscriptions, direct
+web publish/sign paths, and web-side tag/protocol parsing are product-runtime
+violations unless an ADR classifies them as SSR-only, diagnostic, or
+migration-scoped with deletion criteria.
 
 ## Publish Status
 
