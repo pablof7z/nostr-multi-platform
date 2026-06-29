@@ -56,9 +56,15 @@ mechanism". Some complexity is paying for real Nostr correctness. The target is
 fewer public doors, fewer duplicate lifecycle recipes, fewer shell policy sites,
 and fewer permanent concepts an app author must understand.
 
-For the non-ADR overview of how an app is built and how the pieces flow through
-NMP crates, see
+ADR-0069..0073 are the decision spine: they carry rationale, migration history,
+and the "why" behind each constraint. They are not the fast developer
+architecture guide.
+
+For the canonical developer-facing overview of the clean-break architecture —
+how an app is structured, how data flows, and what the public surface looks like
+— see
 [`docs/architecture/high-level-app-architecture.md`](../architecture/high-level-app-architecture.md).
+That document is the narrative companion to this ADR spine.
 
 ## Status Terms
 

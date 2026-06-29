@@ -19,6 +19,16 @@ Each section header carries an **audience** tag (`builders` / `agents` /
 whether the section describes code you can run today or a milestone not yet
 landed.
 
+## Where the current architecture lives
+
+Before reading the numbered sections, orient yourself with the two canonical
+architecture references:
+
+- **[`docs/architecture/high-level-app-architecture.md`](../architecture/high-level-app-architecture.md)** — the canonical clean-break architecture overview. Explains how an app is structured, how data flows, the public surface, and what each named mechanism does or does not expose. Start here if you want the "what and how" of the current design.
+- **[`docs/decisions/README.md`](../decisions/README.md)** — the ADR index. ADR-0069 through ADR-0073 are the decision spine for the clean-break redesign; start here for rationale and migration history (the "why").
+
+The numbered guide sections below assume you have read the architecture overview.
+
 ## Status legend — read this before trusting any code block
 
 | Flag | Means | What it cites |

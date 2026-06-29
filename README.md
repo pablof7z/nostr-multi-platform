@@ -45,10 +45,11 @@ ships SwiftUI, Compose, and web components you can drop in.
 
 - **[nostr-mp.f7z.io](https://nostr-mp.f7z.io)** — landing page, component registry, doctrine in full.
 - **[`docs/builder-guide/00-how-to-read.md`](docs/builder-guide/00-how-to-read.md)** — the framework guide. Start here for building on NMP.
-- **[`docs/architecture/high-level-app-architecture.md`](docs/architecture/high-level-app-architecture.md)** — high-level app/developer model and internal flow.
+- **[`docs/architecture/high-level-app-architecture.md`](docs/architecture/high-level-app-architecture.md)** — **canonical clean-break architecture overview**: how an app is structured, how data flows, and what the public surface looks like. Start here to understand the current architecture.
+- **[`docs/decisions/README.md`](docs/decisions/README.md)** — ADR index. ADR-0069..0073 are the decision spine for the clean-break redesign; start here for rationale and migration history.
 - **[`docs/nips.md`](docs/nips.md)** — v1 NIP support matrix with platform and signer caveats.
 - **[`docs/migration.md`](docs/migration.md)** — v1 runtime and component migration guide.
-- **[`docs/aim.md`](docs/aim.md)** — the architectural north star.
+- **[`docs/aim.md`](docs/aim.md)** — the architectural north star (immutable foundation, not the current API guide).
 - **[`AGENTS.md`](AGENTS.md)** — contributor guide, file-size rules, planning discipline.
 
 NMP is open source and in active development. Issues and pull requests are read by people who care about correctness. If you find a bug, the framework has a place where that class of bug can never happen again — and we'll put it there.
