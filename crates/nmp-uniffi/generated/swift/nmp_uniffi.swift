@@ -528,8 +528,8 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
      * The `frame` bytes passed to `on_update` are a freshly-copied `Vec<u8>`;
      * no Rust state is held across the foreign call.
      *
-     * # UniFFI 0.28 type note
-     * UniFFI 0.28 passes callback interface implementations as `Box<dyn Trait>`
+     * # UniFFI 0.29 type note
+     * UniFFI 0.29 passes callback interface implementations as `Box<dyn Trait>`
      * (unique ownership). The sink is moved into the update-listener closure
      * which is then owned by the runtime's `Arc<UpdateListenerGate>`.
      */
@@ -683,8 +683,8 @@ open func reset()  {try! rustCall() {
      * The `frame` bytes passed to `on_update` are a freshly-copied `Vec<u8>`;
      * no Rust state is held across the foreign call.
      *
-     * # UniFFI 0.28 type note
-     * UniFFI 0.28 passes callback interface implementations as `Box<dyn Trait>`
+     * # UniFFI 0.29 type note
+     * UniFFI 0.29 passes callback interface implementations as `Box<dyn Trait>`
      * (unique ownership). The sink is moved into the update-listener closure
      * which is then owned by the runtime's `Arc<UpdateListenerGate>`.
      */
@@ -1081,7 +1081,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_reset() != 45009) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_nmp_uniffi_checksum_method_nmpapp_set_update_sink() != 35690) {
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_set_update_sink() != 12723) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_shutdown() != 58029) {

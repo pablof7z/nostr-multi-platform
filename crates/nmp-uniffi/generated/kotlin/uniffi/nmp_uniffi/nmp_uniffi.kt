@@ -991,7 +991,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_reset() != 45009.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_set_update_sink() != 35690.toShort()) {
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_set_update_sink() != 12723.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_shutdown() != 58029.toShort()) {
@@ -1428,8 +1428,8 @@ public interface NmpAppInterface {
      * The `frame` bytes passed to `on_update` are a freshly-copied `Vec<u8>`;
      * no Rust state is held across the foreign call.
      *
-     * # UniFFI 0.28 type note
-     * UniFFI 0.28 passes callback interface implementations as `Box<dyn Trait>`
+     * # UniFFI 0.29 type note
+     * UniFFI 0.29 passes callback interface implementations as `Box<dyn Trait>`
      * (unique ownership). The sink is moved into the update-listener closure
      * which is then owned by the runtime's `Arc<UpdateListenerGate>`.
      */
@@ -1628,8 +1628,8 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
      * The `frame` bytes passed to `on_update` are a freshly-copied `Vec<u8>`;
      * no Rust state is held across the foreign call.
      *
-     * # UniFFI 0.28 type note
-     * UniFFI 0.28 passes callback interface implementations as `Box<dyn Trait>`
+     * # UniFFI 0.29 type note
+     * UniFFI 0.29 passes callback interface implementations as `Box<dyn Trait>`
      * (unique ownership). The sink is moved into the update-listener closure
      * which is then owned by the runtime's `Arc<UpdateListenerGate>`.
      */override fun `setUpdateSink`(`sink`: UpdateSink?)

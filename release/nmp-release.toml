@@ -48,6 +48,10 @@ name = "nmp-native-runtime"
 path = "crates/nmp-native-runtime"
 
 [[public_crates]]
+name = "nmp-uniffi"
+path = "crates/nmp-uniffi"
+
+[[public_crates]]
 name = "nmp-browser-runtime"
 path = "crates/nmp-browser-runtime"
 
