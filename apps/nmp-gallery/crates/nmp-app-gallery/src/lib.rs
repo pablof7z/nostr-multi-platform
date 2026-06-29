@@ -35,8 +35,8 @@
 //! synchronous FFI call without breaking D8. Hosts that want bespoke
 //! pull-side state register a host-side projection through
 //! [`nmp_ffi::nmp_app_register_snapshot_projection`] (read via the push
-//! callback as well). Kernel liveness is available through the
-//! [`nmp_ffi::nmp_app_is_alive`] D7 probe.
+//! callback as well). Kernel liveness is exposed by the native runtime
+//! lifecycle API.
 //!
 //! # D0 — no protocol nouns
 //!
@@ -78,7 +78,7 @@ pub mod showcase;
 #[allow(unused_imports)]
 pub use nmp_ffi::*;
 
-use std::ffi::{c_char, c_void, CStr, CString};
+use std::ffi::{CStr, CString, c_char, c_void};
 
 /// Dispatch a gallery action through the typed byte doorway (ADR-0064 / Cut-B,
 /// #1756).
@@ -301,16 +301,17 @@ mod tests {
         // the explicit gallery composition via the gallery's one-shot. The
         // only test that exercises a real-app registration (the null-path test
         // above covers the D6 degrade). `nmp_app_new` is passive;
-        // `nmp_app_start` spawns the actor before the D7 liveness probe can
-        // report alive.
+        // `nmp_app_start` spawns the actor before the native runtime liveness
+        // method can report alive.
         let app = nmp_ffi::nmp_app_new();
         assert!(!app.is_null(), "nmp_app_new must produce a non-null app");
 
         nmp_app_gallery_register(app as *mut c_void);
         nmp_ffi::nmp_app_start(app as *mut nmp_ffi::NmpApp, 256, 4);
+        let app_ref = unsafe { &*app };
         assert!(
-            nmp_ffi::nmp_app_is_alive(app as *mut nmp_ffi::NmpApp) != 0,
-            "registered app must report alive via the D7 probe"
+            app_ref.is_alive(),
+            "registered app must report alive via the native runtime"
         );
 
         nmp_ffi::nmp_app_free(app);

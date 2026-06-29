@@ -16,8 +16,8 @@ private let kbLog = Logger(subsystem: "org.nmp.gallery", category: "GalleryKerne
 ///   • Event embed envelopes follow the same path through `refs.event`: Rust
 ///     merges the event row-delta store, kind-dispatches with `nmp-content`,
 ///     and materialises `projections."refs.event.envelopes"[primaryId]`.
-///   • There is no pull-side snapshot accessor; kernel liveness is observed
-///     through `nmp_app_is_alive` and all state arrives via the push callback.
+///   • There is no pull-side snapshot accessor; all state arrives via the push
+///     callback.
 ///
 /// Lifetime:
 ///   1. `init()`         — `nmp_app_new()` then `nmp_app_gallery_register(raw)`.

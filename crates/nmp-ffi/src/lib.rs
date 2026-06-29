@@ -31,7 +31,6 @@ mod interest_feed_tests;
 #[cfg(test)]
 #[path = "keyring_forget_tests.rs"]
 mod keyring_forget_tests;
-mod lifecycle;
 #[cfg(test)]
 #[path = "passive_start_tests.rs"]
 mod passive_start_tests;
@@ -93,12 +92,6 @@ pub use identity::{
     create_new_account_with_initial_follows, nmp_app_add_relay, nmp_app_create_new_account,
     nmp_app_register_agent_nsec, nmp_app_remove_account, nmp_app_remove_relay,
     nmp_app_signin_bunker, nmp_app_signin_nsec, nmp_app_switch_active,
-};
-#[cfg(feature = "native")]
-#[allow(unused_imports)]
-pub use lifecycle::{
-    nmp_app_is_alive, nmp_app_lifecycle_background, nmp_app_lifecycle_foreground,
-    nmp_app_set_lifecycle_callback,
 };
 #[cfg(feature = "native")]
 pub use publish::{nmp_app_cancel_action, nmp_app_retry_publish};

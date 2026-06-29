@@ -98,7 +98,7 @@ void nmp_app_signin_nsec(void *app, const char *secret, uint8_t make_active);
 // callback registered with `nmp_app_set_update_callback`; the FlatBuffers
 // update frame the kernel passes to that callback carries the full snapshot.
 // This is the canonical update-channel pattern. There is no pull-side snapshot
-// accessor — kernel liveness is observed through `nmp_app_is_alive`.
+// accessor — shell state arrives through the push update channel.
 //
 // Flow:
 // 1. Call `nmp_app_gallery_register(app)` once after `nmp_app_new()` succeeds
