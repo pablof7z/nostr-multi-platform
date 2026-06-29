@@ -43,6 +43,10 @@ ratatui = { version = "0.30", features = ["crossterm"] }
 crossterm = "0.29"
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
 tungstenite = { version = "0.24", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
+# ffi-transport-bench: links the REAL uniffi_core runtime crate to exercise
+# the genuine RustBuffer lowering path (FfiConverter::lower) for Vec<u8>.
+# No generated bindings are produced; uniffi_core is a pure Rust library dep.
+uniffi_core = "0.29"
 
 [dev-dependencies]
 # real_relay_nip17_cold_start_kernel.rs — drives the canonical NMP composition
@@ -134,6 +138,16 @@ required-features = ["lmdb-backend"]
 [[bin]]
 name = "reactivity-bench"
 path = "bin/reactivity-bench/main.rs"
+
+# SLICE-NS-M14-002 (#2388) — FFI transport A/B microbench comparing the C-lane
+# (extern "C" ptr/len + shell copy) against the UniFFI lane (real RustBuffer
+# lowering via uniffi_core + foreign-trait vtable dispatch + lower-bound
+# foreign-consume stub).  Reports p50/p95/p99 per bucket + weighted-p99 delta
+# + pre-registered COLLAPSE/ESCALATE/KEEP-INTERNAL verdict.
+# Run: cargo run -p nmp-testing --bin ffi-transport-bench --release -- --standard
+[[bin]]
+name = "ffi-transport-bench"
+path = "bin/ffi-transport-bench/main.rs"
 
 [[bin]]
 name = "firehose-bench"
