@@ -316,7 +316,7 @@ the Rust action modules derive signing identity and routing policy.
 | `nmp_app_add_relay` | PASS | PASS | |
 | `nmp_app_remove_relay` | PASS | PASS | |
 | `nmp_app_load_older_feed` | PASS | PASS | Viewport command only; Rust owns feed page policy |
-| `nmp_app_open_interest` | PASS | PASS | M2 (ADR-0042) — generic low-level interest seam (non-feed avatar/uri resolution); its feed-lane retirement is tracked in #1740 |
+| `nmp_app_open_interest` | PASS | PASS | M2 (ADR-0042) — generic low-level interest seam (non-feed avatar/uri resolution); public raw-interest retirement is tracked in #2344 |
 | `nmp_app_close_interest` | PASS | PASS | M2 (ADR-0042) |
 | `nmp_app_open_uri` | PASS | PASS | |
 | `nmp_app_claim_profile` | PASS | PASS | |
