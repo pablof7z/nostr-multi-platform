@@ -151,6 +151,9 @@ pub use swift_typed_decoders::{
 // shells never spell an `action_namespace` or hand-assemble FlatBuffers.
 pub mod action_builders;
 pub use action_builders::{
-    check_action_builders, generate_action_builders, render as render_action_builders,
-    ActionBuildersCheckOutcome, Platform as ActionBuilderPlatform,
+    check_action_builders, check_action_builders_from_registry, generate_action_builders,
+    generate_action_builders_from_registry, load_app_action_builder_registry,
+    parse_app_action_builder_registry, render as render_action_builders,
+    render_from_registry as render_action_builders_from_registry, ActionBuildersCheckOutcome,
+    AppActionBuilderOutputs, LoadedAppActionBuilderRegistry, Platform as ActionBuilderPlatform,
 };

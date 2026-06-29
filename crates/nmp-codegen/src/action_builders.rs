@@ -35,7 +35,10 @@
 
 use std::path::Path;
 
+mod app_registry;
+mod app_registry_format;
 pub mod registry;
+mod registry_input;
 // M14-1c / #2169 — the `nmp.marmot` union-builder registry slice, split out of
 // `registry.rs` for the 500-LOC ceiling (V-12). `registry` re-exports it via
 // `pub use super::registry_marmot::*;` so the flat `registry::` surface is kept.
@@ -44,24 +47,31 @@ mod registry_marmot;
 pub mod kotlin;
 mod kotlin_bookmark_set;
 // NIP-51 bookmark helpers split out of `kotlin.rs` for 500-LOC cap compliance.
-mod kotlin_nip51;
 pub mod kotlin_marmot;
+mod kotlin_nip51;
 pub mod kotlin_publish;
 pub mod swift;
 mod swift_bookmark_set;
 // NIP-51 bookmark helpers split out of `swift.rs` for 500-LOC cap compliance.
-mod swift_nip51;
 pub mod swift_marmot;
+mod swift_nip51;
 pub mod swift_publish;
 pub mod ts;
 // NIP-51 bookmark helpers split out of `ts.rs` for 500-LOC cap compliance.
-mod ts_nip51;
 pub mod ts_marmot;
+mod ts_nip51;
 pub mod ts_publish;
 
+pub use app_registry::{
+    load_app_action_builder_registry, parse_app_action_builder_registry, AppActionBuilderOutputs,
+    LoadedAppActionBuilderRegistry,
+};
 pub use registry::{
     ActionBuilder, FieldKind, MarmotBodyShape, MarmotBuilder, PayloadField, ACTION_BUILDERS,
     MARMOT_BUILDERS, MARMOT_NAMESPACE,
+};
+pub use registry_input::{
+    ActionBuilderRegistry, ActionBuilderWireContract, AppActionBuilderWireContract,
 };
 
 /// Which host language to emit.
@@ -103,6 +113,16 @@ pub fn render(platform: Platform) -> String {
     }
 }
 
+/// Render generated action-builders for `platform` from an explicit registry.
+#[must_use]
+pub fn render_from_registry(platform: Platform, registry: &ActionBuilderRegistry<'_>) -> String {
+    match platform {
+        Platform::Swift => swift::render_registry(registry),
+        Platform::Kotlin => kotlin::render_registry(registry),
+        Platform::Ts => ts::render_registry(registry),
+    }
+}
+
 /// Outcome of a `--check` run. Mirrors the other codegen check outcomes.
 #[derive(Debug)]
 pub struct ActionBuildersCheckOutcome {
@@ -120,6 +140,23 @@ pub struct ActionBuildersCheckOutcome {
 /// Filesystem I/O failures.
 pub fn generate_action_builders(platform: Platform, out_path: &Path) -> std::io::Result<()> {
     let rendered = render(platform);
+    write_rendered(out_path, rendered)
+}
+
+/// Write generated builder source for an explicit registry to `out_path`.
+///
+/// # Errors
+/// Filesystem I/O failures.
+pub fn generate_action_builders_from_registry(
+    platform: Platform,
+    registry: &ActionBuilderRegistry<'_>,
+    out_path: &Path,
+) -> std::io::Result<()> {
+    let rendered = render_from_registry(platform, registry);
+    write_rendered(out_path, rendered)
+}
+
+fn write_rendered(out_path: &Path, rendered: String) -> std::io::Result<()> {
     if let Some(parent) = out_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -137,6 +174,26 @@ pub fn check_action_builders(
     out_path: &Path,
 ) -> std::io::Result<ActionBuildersCheckOutcome> {
     let rendered = render(platform);
+    check_rendered(out_path, rendered)
+}
+
+/// Diff an explicit-registry generated output against the file at `out_path`.
+///
+/// # Errors
+/// Filesystem I/O failures other than NotFound.
+pub fn check_action_builders_from_registry(
+    platform: Platform,
+    registry: &ActionBuilderRegistry<'_>,
+    out_path: &Path,
+) -> std::io::Result<ActionBuildersCheckOutcome> {
+    let rendered = render_from_registry(platform, registry);
+    check_rendered(out_path, rendered)
+}
+
+fn check_rendered(
+    out_path: &Path,
+    rendered: String,
+) -> std::io::Result<ActionBuildersCheckOutcome> {
     let actual = match std::fs::read_to_string(out_path) {
         Ok(s) => s,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => {

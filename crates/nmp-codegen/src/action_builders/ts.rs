@@ -34,8 +34,8 @@
 //! fixed template per builder. That stability is what the `--check` drift gate
 //! relies on (exactly like [`crate::action_builders::kotlin`]).
 
-use crate::action_builders::registry::{ActionBuilder, FieldKind, ACTION_BUILDERS};
-use crate::action_contract::contract_for;
+use crate::action_builders::registry::{ActionBuilder, FieldKind};
+use crate::action_builders::ActionBuilderRegistry;
 // NIP-51 bookmark helpers: render_bookmark_update, render_bookmark_set_update,
 // is_bookmark_builder, is_bookmark_set_builder, ts_param_type. Module declared
 // in parent `action_builders.rs` (sibling module) for 500-LOC cap compliance.
@@ -74,18 +74,24 @@ import { encodeDispatchEnvelope } from \"./dispatchEnvelope\";
 /// Render the generated TypeScript action-builders for the given registry.
 #[must_use]
 pub fn render(builders: &[ActionBuilder]) -> String {
+    render_registry(&ActionBuilderRegistry::builtin_slice(builders))
+}
+
+/// Render the generated TypeScript action-builders for the given registry context.
+#[must_use]
+pub fn render_registry(registry: &ActionBuilderRegistry<'_>) -> String {
     let mut out = String::from(HEADER);
     out.push('\n');
     out.push_str(&shared_helpers());
     out.push('\n');
     out.push_str("export const GeneratedActionBuilders = {\n");
-    for builder in builders {
-        render_one(builder, &mut out);
+    for builder in registry.builders {
+        render_one(builder, registry, &mut out);
     }
     // The `nmp.publish` UNION builders (separate emitter — different encode
     // shape; see `ts_publish`). Only emitted for the default registry, which is
     // what `render_default` (and therefore the CLI + drift gate) uses.
-    if std::ptr::eq(builders.as_ptr(), ACTION_BUILDERS.as_ptr()) {
+    if registry.is_full_builtin() {
         crate::action_builders::ts_publish::render_publish(&mut out);
         // The `nmp.marmot` UNION builders (M14-1c / #2169 — 9-arm union).
         crate::action_builders::ts_marmot::render_marmot(&mut out);
@@ -161,7 +167,7 @@ fn shared_helpers() -> String {
 
 /// Render one typed builder method (a property on the `GeneratedActionBuilders`
 /// object literal).
-fn render_one(builder: &ActionBuilder, out: &mut String) {
+fn render_one(builder: &ActionBuilder, registry: &ActionBuilderRegistry<'_>, out: &mut String) {
     if is_bookmark_builder(builder) {
         render_bookmark_update(builder, out);
         return;
@@ -170,7 +176,7 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
         render_bookmark_set_update(builder, out);
         return;
     }
-    let contract = contract_for(builder.namespace);
+    let contract = registry.wire_contract_for(builder.namespace);
     out.push_str(&format!("  /** {} */\n", builder.doc));
     out.push_str(&format!("  {}(\n", builder.method));
     out.push_str("    correlationId: string");
@@ -384,5 +390,5 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
 /// Render the full file for the default registry.
 #[must_use]
 pub fn render_default() -> String {
-    render(ACTION_BUILDERS)
+    render_registry(&ActionBuilderRegistry::builtin())
 }

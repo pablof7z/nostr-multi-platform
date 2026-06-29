@@ -3,9 +3,9 @@
 //! Kept in its own module (not `cli.rs`) purely as a size-management seam so
 //! `cli.rs` stays under the 500-LOC ceiling (AGENTS.md / V-12). Mirrors the
 //! `run_gen_projection_cache` arg-parsing shape: `--platform swift|kotlin`,
-//! required `--out`, `--check` drift mode.
+//! required `--out`, optional `--registry`, `--check` drift mode.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use nmp_codegen::ActionBuilderPlatform;
 
@@ -31,6 +31,7 @@ pub fn run_gen_action_builders(args: Vec<String>, help: &str) -> Result<(), Stri
     let mut platform_arg: Option<String> = None;
     let mut check = false;
     let mut out: Option<PathBuf> = None;
+    let mut registry_path: Option<PathBuf> = None;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
@@ -50,25 +51,54 @@ pub fn run_gen_action_builders(args: Vec<String>, help: &str) -> Result<(), Stri
                         .ok_or_else(|| "--out requires a path".to_string())?,
                 );
             }
+            "--registry" => {
+                index += 1;
+                registry_path = Some(
+                    args.get(index)
+                        .map(PathBuf::from)
+                        .ok_or_else(|| "--registry requires a path".to_string())?,
+                );
+            }
             "--check" => check = true,
             other => return Err(format!("unknown argument {other}\n{help}")),
         }
         index += 1;
     }
 
-    let platform_arg = platform_arg
-        .ok_or_else(|| format!("--platform is required (swift|kotlin|ts)\n{help}"))?;
-    let platform = ActionBuilderPlatform::parse(&platform_arg).map_err(|e| format!("{e}\n{help}"))?;
+    let platform_arg =
+        platform_arg.ok_or_else(|| format!("--platform is required (swift|kotlin|ts)\n{help}"))?;
+    let platform =
+        ActionBuilderPlatform::parse(&platform_arg).map_err(|e| format!("{e}\n{help}"))?;
 
-    let out = out.ok_or_else(|| {
-        "--out is required (e.g. --out <app-path>/ActionBuilders.generated.swift for \
-         --platform swift, or --out <app-path>/ActionBuilders.kt for --platform kotlin)"
-            .to_string()
-    })?;
+    let loaded_registry = registry_path
+        .as_ref()
+        .map(|path| nmp_codegen::load_app_action_builder_registry(path))
+        .transpose()?;
+
+    let out = match (out, loaded_registry.as_ref(), registry_path.as_ref()) {
+        (Some(out), _, _) => out,
+        (None, Some(registry), Some(path)) => {
+            resolve_registry_output(path, registry.output_for(platform))
+        }
+        (None, _, _) => {
+            return Err(
+                "--out is required unless --registry points to a contract with platform outputs"
+                    .to_string(),
+            );
+        }
+    };
 
     if check {
-        let outcome =
-            nmp_codegen::check_action_builders(platform, &out).map_err(|e| e.to_string())?;
+        let outcome = if let Some(registry) = loaded_registry.as_ref() {
+            nmp_codegen::check_action_builders_from_registry(
+                platform,
+                &registry.as_registry(),
+                &out,
+            )
+        } else {
+            nmp_codegen::check_action_builders(platform, &out)
+        }
+        .map_err(|e| e.to_string())?;
         if outcome.up_to_date {
             println!(
                 "nmp gen action-builders --platform {platform_arg} --check: ok ({})",
@@ -83,15 +113,40 @@ pub fn run_gen_action_builders(args: Vec<String>, help: &str) -> Result<(), Stri
             Err(format!(
                 "action-builders ({platform_arg}) codegen stale at {}{where_diff}.\n\
                  Regenerate with:\n  \
-                 cargo run -p nmp-codegen -- gen action-builders --platform {platform_arg} \
+                 cargo run -p nmp-codegen -- gen action-builders --platform {platform_arg}{} \
                  --out {}",
                 out.display(),
+                registry_arg(registry_path.as_ref()),
                 out.display()
             ))
         }
     } else {
-        nmp_codegen::generate_action_builders(platform, &out).map_err(|e| e.to_string())?;
+        if let Some(registry) = loaded_registry.as_ref() {
+            nmp_codegen::generate_action_builders_from_registry(
+                platform,
+                &registry.as_registry(),
+                &out,
+            )
+        } else {
+            nmp_codegen::generate_action_builders(platform, &out)
+        }
+        .map_err(|e| e.to_string())?;
         println!("wrote {}", out.display());
         Ok(())
     }
+}
+
+fn resolve_registry_output(registry_path: &Path, output: &Path) -> PathBuf {
+    if output.is_absolute() {
+        return output.to_path_buf();
+    }
+    registry_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(output)
+}
+
+fn registry_arg(path: Option<&PathBuf>) -> String {
+    path.map(|path| format!(" --registry {}", path.display()))
+        .unwrap_or_default()
 }
