@@ -1,6 +1,7 @@
 //! Smoke tests for the product raw-read/session ratchet.
 
 use super::{fixture_path, run_lint, workspace_root};
+use std::path::Path;
 
 #[path = "rules/product_raw_read.rs"]
 mod product_raw_read;
@@ -105,6 +106,66 @@ fn starter_templates_remain_product_raw_read_clean() {
         checked += 1;
     }
     assert!(checked > 0, "expected at least one Rust starter template");
+}
+
+#[test]
+fn native_runtime_nmp_app_does_not_expose_raw_interest_methods() {
+    let workspace = workspace_root();
+    let runtime_src = workspace.join("crates/nmp-native-runtime/src");
+    let mut checked_impls = 0usize;
+
+    for entry in std::fs::read_dir(&runtime_src).expect("read native-runtime src") {
+        let entry = entry.expect("read native-runtime src entry");
+        let path = entry.path();
+        if path.extension().and_then(|ext| ext.to_str()) != Some("rs") {
+            continue;
+        }
+        checked_impls += count_nmp_app_impls_without_raw_interest_public_methods(&path);
+    }
+
+    assert!(
+        checked_impls > 0,
+        "expected to scan native NmpApp impl blocks"
+    );
+}
+
+fn count_nmp_app_impls_without_raw_interest_public_methods(path: &Path) -> usize {
+    let body = std::fs::read_to_string(path).expect("read native-runtime source");
+    let mut in_nmp_app_impl = false;
+    let mut brace_depth = 0isize;
+    let mut checked_impls = 0usize;
+
+    for (idx, line) in body.lines().enumerate() {
+        if !in_nmp_app_impl && line.trim_start().starts_with("impl NmpApp") {
+            in_nmp_app_impl = true;
+            brace_depth = 0;
+            checked_impls += 1;
+        }
+
+        if in_nmp_app_impl {
+            let trimmed = line.trim_start();
+            assert!(
+                !trimmed.starts_with("pub fn open_interest("),
+                "{}:{} must not expose public NmpApp::open_interest",
+                path.display(),
+                idx + 1
+            );
+            assert!(
+                !trimmed.starts_with("pub fn close_interest("),
+                "{}:{} must not expose public NmpApp::close_interest",
+                path.display(),
+                idx + 1
+            );
+
+            brace_depth += line.matches('{').count() as isize;
+            brace_depth -= line.matches('}').count() as isize;
+            if brace_depth == 0 {
+                in_nmp_app_impl = false;
+            }
+        }
+    }
+
+    checked_impls
 }
 
 #[test]

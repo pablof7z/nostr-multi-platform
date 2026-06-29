@@ -1,9 +1,8 @@
 //! Feed-management `impl NmpApp` methods — extracted from `lib.rs` to keep
 //! each file under the 500-LOC ceiling (AGENTS.md file-size rule).
 //!
-//! Covers: `register_feed`, `load_older_feed`, `open_interest`,
-//! `close_interest`, `open_observed_interest`, `open_observed_interest_pinned`,
-//! `close_interest_pinned`, `unregister_feed`, and the
+//! Covers: `register_feed`, `load_older_feed`, `open_observed_interest`,
+//! `open_observed_interest_pinned`, `close_interest_pinned`, `unregister_feed`, and the
 //! [`ObservedProjectionRegistrar`] impl (`open_observed_projection` /
 //! `close_observed_projection`).
 
@@ -37,43 +36,6 @@ impl NmpApp {
             self.mark_changed_since_emit();
         }
         changed
-    }
-
-    /// Register (or attach an owner to) a generic tailing feed interest.
-    ///
-    /// Typed wrapper for [`ActorCommand::OpenInterest`]. The caller supplies a
-    /// verbatim NIP-01 REQ filter JSON; the kernel parses it into an
-    /// `InterestShape` and refcounts by `(filter, consumer_id, scope)`.
-    ///
-    /// * `scope` — `0` = `ActiveAccount` (re-route on account switch),
-    ///   `1` = `Global` (account-agnostic).
-    ///
-    /// D6: a malformed filter is a no-op (the caller should validate first via
-    /// `InterestShape::from_filter_json` and surface a toast if needed).
-    pub fn open_interest(&self, filter_json: String, consumer_id: String, scope: u32) {
-        self.send_cmd(ActorCommand::Interests(InterestsCommand::OpenInterest {
-            filter_json,
-            consumer_id,
-            scope,
-        }));
-    }
-
-    /// Detach one owner from an interest registered via [`Self::open_interest`].
-    ///
-    /// Typed wrapper for [`ActorCommand::CloseInterest`] with `relay_pin: None`
-    /// (the normal outbox-routed path). For relay-pinned closes use
-    /// [`Self::close_interest_pinned`].
-    ///
-    /// The `(filter_json, consumer_id, scope)` triple MUST match the open call
-    /// so the reconstructed `InterestShape` hash lands on the same registry
-    /// slot. D6: a close of a non-existent slot is harmless.
-    pub fn close_interest(&self, filter_json: String, consumer_id: String, scope: u32) {
-        self.send_cmd(ActorCommand::Interests(InterestsCommand::CloseInterest {
-            filter_json,
-            consumer_id,
-            scope,
-            relay_pin: None,
-        }));
     }
 
     /// ADR-0062 — open an interest with read-model catch-up replay to the
@@ -148,7 +110,7 @@ impl NmpApp {
     /// [`Self::open_observed_interest_pinned`] open. The `(filter_json,
     /// consumer_id, scope, relay_pin)` tuple MUST match the open so the
     /// reconstructed `InterestShape` hash lands on the same registry slot.
-    pub fn close_interest_pinned(
+    pub(crate) fn close_interest_pinned(
         &self,
         filter_json: &str,
         consumer_id: &str,
