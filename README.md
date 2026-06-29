@@ -16,6 +16,14 @@ Every one of those statements is enforced by the type system and the FFI surface
 
 ## Architecture
 
+**Current architecture:** start with
+[`docs/architecture/high-level-app-architecture.md`](docs/architecture/high-level-app-architecture.md).
+It is the canonical developer-facing overview for the clean-break architecture:
+how app-owned composition, typed read sessions, typed writes, runtime
+boundaries, and thin shells fit together. The ADR spine records why those
+decisions exist; the overview is the fastest way to understand what builders
+should use now.
+
 The kernel is [The Elm Architecture](https://guide.elm-lang.org/architecture/)
 ported to Rust and pinned to a single actor thread. One `AppState`, typed read
 sessions, typed write workflows, one pure update path. Platform code opens a
@@ -45,7 +53,7 @@ ships SwiftUI, Compose, and web components you can drop in.
 
 - **[nostr-mp.f7z.io](https://nostr-mp.f7z.io)** — landing page, component registry, doctrine in full.
 - **[`docs/builder-guide/00-how-to-read.md`](docs/builder-guide/00-how-to-read.md)** — the framework guide. Start here for building on NMP.
-- **[`docs/architecture/high-level-app-architecture.md`](docs/architecture/high-level-app-architecture.md)** — high-level app/developer model and internal flow.
+- **[`docs/architecture/high-level-app-architecture.md`](docs/architecture/high-level-app-architecture.md)** — canonical clean-break architecture overview for builders.
 - **[`docs/nips.md`](docs/nips.md)** — v1 NIP support matrix with platform and signer caveats.
 - **[`docs/migration.md`](docs/migration.md)** — v1 runtime and component migration guide.
 - **[`docs/aim.md`](docs/aim.md)** — the architectural north star.

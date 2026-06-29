@@ -39,6 +39,16 @@ builder-guide plan file. Doctrine canon: `docs/product-spec/doctrine.md`
 For per-NIP release claims, use [`../nips.md`](../nips.md); it is the v1 support
 matrix and includes platform, signer, read/write/decrypt, and follow-up caveats.
 
+## Current architecture
+
+Start with
+[`../architecture/high-level-app-architecture.md`](../architecture/high-level-app-architecture.md)
+when you need the current clean-break architecture. It is the canonical
+developer-facing overview for app-owned composition, typed reads, typed writes,
+runtime/capability boundaries, and thin shells. ADR-0069 through ADR-0073 are
+the decision spine; this guide explains role-specific builder workflows under
+that architecture.
+
 ## Two reading paths
 
 Pick the one that matches your goal. Sections are numbered by dependency, not

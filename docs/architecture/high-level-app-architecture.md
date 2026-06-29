@@ -13,6 +13,24 @@ It should not feel like it is assembling relay filters, replay order, projection
 sinks, signer parking, source replacement, route planning, local ingest, retry,
 and teardown by hand.
 
+## Authority And Document Roles
+
+This is the canonical developer-facing overview for NMP's clean-break
+architecture. Start here when you need the current builder model: app-owned
+composition, typed read sessions, typed write workflows, runtime/capability
+boundaries, and thin platform shells.
+
+Document roles:
+
+- ADR-0069 through ADR-0073 are the decision spine: they record the architecture
+  decisions and ratchets behind this overview.
+- `docs/new-arch/` is retired; do not use it as current guidance.
+- `docs/aim.md` is the north star and foundation, not the detailed current
+  architecture guide.
+- Doctrine, crate-boundary docs, product specs, and the builder guide are
+  subordinate role-specific docs. When they conflict with this overview and the
+  ADR-0069 through ADR-0073 spine, correct the owning doc in place.
+
 ## Developer Model
 
 An NMP app has one Rust composition root. That root declares:
@@ -169,18 +187,23 @@ Capabilities are raw OS/browser work:
 The shell executes the raw operation and reports raw result data. Rust decides
 policy and state transitions.
 
-## What Should Disappear
+## Public Surface Disposition
 
 The migration should remove public concepts when they are only artifacts of the
-old internal shape:
+old internal shape. Some mechanisms can remain inside NMP when they are the
+right implementation machinery, but they should stop being builder-facing doors.
 
-- production `register_defaults()` as the normal app root;
-- app-facing raw `open_interest`;
-- app-facing `ObservedProjection` or `ObservedProjectionSink` recipes;
-- public `ReducedSource` vocabulary;
-- special `nmp.feed.home` singleton wiring;
-- duplicate native/browser open/close recipes for the same feature;
-- anonymous explicit relay lists as product publish state.
+| Surface | Current disposition |
+|---|---|
+| production `register_defaults()` as the normal app root | Retire as production architecture. Production apps should expose explicit app-owned composition; defaults can survive only as tutorial, test, or migration helpers with an owner and deletion trigger. |
+| app-facing raw `open_interest` | Retire as a product read door. It can remain low-level acquisition machinery behind typed sessions/helpers. |
+| `open_feed` | Retire duplicate generic feed doors as product architecture. App crates should expose product-shaped feed/session helpers rather than shell-owned feed assembly. |
+| app-facing `ObservedProjection` | Retire as a builder recipe. Observed projections can remain scoped internal delivery/replay machinery behind typed read sessions. |
+| public `ReducedSource` vocabulary | Retire from app-facing setup. Dynamic source reconciliation belongs behind the session compiler/runtime. |
+| special `nmp.feed.home` singleton wiring | Retire as a special app architecture. A home feed may be a projection key or compatibility example, not the public model for new product reads. |
+| `PublishRaw` | Keep only as a low-level write/action payload where a protocol or app-owned typed builder lowers into it; shells should not hand-author publish policy. |
+| pre-signed publish | Keep as imported/manual publish with explicit provenance. Pre-signed events do not acquire protocol guarantees after signing. |
+| anonymous explicit relay lists as product publish state | Retire. Manual relay routing must carry typed route provenance. |
 
 Some of those mechanisms may remain internally. The success metric is fewer
 public doors, fewer lifecycle recipes, fewer shell policy sites, and fewer
