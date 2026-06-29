@@ -751,22 +751,38 @@ internal open class UniffiVTableCallbackInterfaceUpdateSink(
 
 
 
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
-// N.B. the name of the extension is very misleading, since it is 
-// rather `InterfaceTooLargeException`, caused by too many methods 
+// N.B. the name of the extension is very misleading, since it is
+// rather `InterfaceTooLargeException`, caused by too many methods
 // in the interface for large crates.
 //
 // By splitting the otherwise huge interface into two parts
-// * UniffiLib 
+// * UniffiLib
 // * IntegrityCheckingUniffiLib (this)
 // we allow for ~2x as many methods in the UniffiLib interface.
-// 
-// The `ffi_uniffi_contract_version` method and all checksum methods are put 
+//
+// The `ffi_uniffi_contract_version` method and all checksum methods are put
 // into `IntegrityCheckingUniffiLib` and these methods are called only once,
 // when the library is loaded.
 internal interface IntegrityCheckingUniffiLib : Library {
     // Integrity check functions only
-    fun uniffi_nmp_uniffi_checksum_method_nmpapp_configure(
+    fun uniffi_nmp_uniffi_checksum_func_classify_intent(
+): Short
+fun uniffi_nmp_uniffi_checksum_func_decode_nostr_uri(
+): Short
+fun uniffi_nmp_uniffi_checksum_func_encode_profile(
+): Short
+fun uniffi_nmp_uniffi_checksum_func_tokenize_content(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_configure(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_dispatch_action(
 ): Short
@@ -796,8 +812,8 @@ internal interface UniffiLib : Library {
         internal val INSTANCE: UniffiLib by lazy {
             val componentName = "nmp_uniffi"
             // For large crates we prevent `MethodTooLargeException` (see #2340)
-            // N.B. the name of the extension is very misleading, since it is 
-            // rather `InterfaceTooLargeException`, caused by too many methods 
+            // N.B. the name of the extension is very misleading, since it is
+            // rather `InterfaceTooLargeException`, caused by too many methods
             // in the interface for large crates.
             //
             // By splitting the otherwise huge interface into two parts
@@ -805,7 +821,7 @@ internal interface UniffiLib : Library {
             // * IntegrityCheckingUniffiLib
             // And all checksum methods are put into `IntegrityCheckingUniffiLib`
             // we allow for ~2x as many methods in the UniffiLib interface.
-            // 
+            //
             // Thus we first load the library with `loadIndirect` as `IntegrityCheckingUniffiLib`
             // so that we can (optionally!) call `uniffiCheckApiChecksums`...
             loadIndirect<IntegrityCheckingUniffiLib>(componentName)
@@ -820,13 +836,13 @@ internal interface UniffiLib : Library {
             // to trigger this issue, the performance impact is negligible, running on
             // a macOS M1 machine the `loadIndirect` call takes ~50ms.
             val lib = loadIndirect<UniffiLib>(componentName)
-            // No need to check the contract version and checksums, since 
+            // No need to check the contract version and checksums, since
             // we already did that with `IntegrityCheckingUniffiLib` above.
             uniffiCallbackInterfaceUpdateSink.register(lib)
             // Loading of library with integrity check done.
             lib
         }
-        
+
         // The Cleaner for the whole library
         internal val CLEANER: UniffiCleaner by lazy {
             UniffiCleaner.create()
@@ -834,35 +850,43 @@ internal interface UniffiLib : Library {
     }
 
     // FFI functions
-    fun uniffi_nmp_uniffi_fn_clone_nmpapp(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+    fun uniffi_nmp_uniffi_fn_clone_nmpapp(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
 ): Pointer
-fun uniffi_nmp_uniffi_fn_free_nmpapp(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+fun uniffi_nmp_uniffi_fn_free_nmpapp(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
-fun uniffi_nmp_uniffi_fn_constructor_nmpapp_new(uniffi_out_err: UniffiRustCallStatus, 
+fun uniffi_nmp_uniffi_fn_constructor_nmpapp_new(uniffi_out_err: UniffiRustCallStatus,
 ): Pointer
-fun uniffi_nmp_uniffi_fn_method_nmpapp_configure(`ptr`: Pointer,`visibleLimit`: Int,`emitHz`: Int,uniffi_out_err: UniffiRustCallStatus, 
+fun uniffi_nmp_uniffi_fn_method_nmpapp_configure(`ptr`: Pointer,`visibleLimit`: Int,`emitHz`: Int,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
-fun uniffi_nmp_uniffi_fn_method_nmpapp_dispatch_action(`ptr`: Pointer,`envelope`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+fun uniffi_nmp_uniffi_fn_method_nmpapp_dispatch_action(`ptr`: Pointer,`envelope`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
 ): RustBuffer.ByValue
-fun uniffi_nmp_uniffi_fn_method_nmpapp_reset(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+fun uniffi_nmp_uniffi_fn_method_nmpapp_reset(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
-fun uniffi_nmp_uniffi_fn_method_nmpapp_set_update_sink(`ptr`: Pointer,`sink`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+fun uniffi_nmp_uniffi_fn_method_nmpapp_set_update_sink(`ptr`: Pointer,`sink`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
-fun uniffi_nmp_uniffi_fn_method_nmpapp_shutdown(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+fun uniffi_nmp_uniffi_fn_method_nmpapp_shutdown(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
-fun uniffi_nmp_uniffi_fn_method_nmpapp_start(`ptr`: Pointer,`visibleLimit`: Int,`emitHz`: Int,uniffi_out_err: UniffiRustCallStatus, 
+fun uniffi_nmp_uniffi_fn_method_nmpapp_start(`ptr`: Pointer,`visibleLimit`: Int,`emitHz`: Int,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
-fun uniffi_nmp_uniffi_fn_method_nmpapp_stop(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+fun uniffi_nmp_uniffi_fn_method_nmpapp_stop(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
 fun uniffi_nmp_uniffi_fn_init_callback_vtable_updatesink(`vtable`: UniffiVTableCallbackInterfaceUpdateSink,
 ): Unit
-fun ffi_nmp_uniffi_rustbuffer_alloc(`size`: Long,uniffi_out_err: UniffiRustCallStatus, 
+fun uniffi_nmp_uniffi_fn_func_classify_intent(`app`: Pointer,`input`: RustBuffer.ByValue,`scopes`: RustBuffer.ByValue,`textTargets`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
 ): RustBuffer.ByValue
-fun ffi_nmp_uniffi_rustbuffer_from_bytes(`bytes`: ForeignBytes.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+fun uniffi_nmp_uniffi_fn_func_decode_nostr_uri(`input`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
 ): RustBuffer.ByValue
-fun ffi_nmp_uniffi_rustbuffer_free(`buf`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+fun uniffi_nmp_uniffi_fn_func_encode_profile(`app`: Pointer,`pubkeyHex`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+): RustBuffer.ByValue
+fun uniffi_nmp_uniffi_fn_func_tokenize_content(`content`: RustBuffer.ByValue,`tags`: RustBuffer.ByValue,`mode`: RustBuffer.ByValue,`kind`: Int,uniffi_out_err: UniffiRustCallStatus,
+): RustBuffer.ByValue
+fun ffi_nmp_uniffi_rustbuffer_alloc(`size`: Long,uniffi_out_err: UniffiRustCallStatus,
+): RustBuffer.ByValue
+fun ffi_nmp_uniffi_rustbuffer_from_bytes(`bytes`: ForeignBytes.ByValue,uniffi_out_err: UniffiRustCallStatus,
+): RustBuffer.ByValue
+fun ffi_nmp_uniffi_rustbuffer_free(`buf`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
-fun ffi_nmp_uniffi_rustbuffer_reserve(`buf`: RustBuffer.ByValue,`additional`: Long,uniffi_out_err: UniffiRustCallStatus, 
+fun ffi_nmp_uniffi_rustbuffer_reserve(`buf`: RustBuffer.ByValue,`additional`: Long,uniffi_out_err: UniffiRustCallStatus,
 ): RustBuffer.ByValue
 fun ffi_nmp_uniffi_rust_future_poll_u8(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
 ): Unit
@@ -870,7 +894,7 @@ fun ffi_nmp_uniffi_rust_future_cancel_u8(`handle`: Long,
 ): Unit
 fun ffi_nmp_uniffi_rust_future_free_u8(`handle`: Long,
 ): Unit
-fun ffi_nmp_uniffi_rust_future_complete_u8(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+fun ffi_nmp_uniffi_rust_future_complete_u8(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
 ): Byte
 fun ffi_nmp_uniffi_rust_future_poll_i8(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
 ): Unit
@@ -878,7 +902,7 @@ fun ffi_nmp_uniffi_rust_future_cancel_i8(`handle`: Long,
 ): Unit
 fun ffi_nmp_uniffi_rust_future_free_i8(`handle`: Long,
 ): Unit
-fun ffi_nmp_uniffi_rust_future_complete_i8(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+fun ffi_nmp_uniffi_rust_future_complete_i8(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
 ): Byte
 fun ffi_nmp_uniffi_rust_future_poll_u16(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
 ): Unit
@@ -886,7 +910,7 @@ fun ffi_nmp_uniffi_rust_future_cancel_u16(`handle`: Long,
 ): Unit
 fun ffi_nmp_uniffi_rust_future_free_u16(`handle`: Long,
 ): Unit
-fun ffi_nmp_uniffi_rust_future_complete_u16(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+fun ffi_nmp_uniffi_rust_future_complete_u16(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
 ): Short
 fun ffi_nmp_uniffi_rust_future_poll_i16(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
 ): Unit
@@ -894,7 +918,7 @@ fun ffi_nmp_uniffi_rust_future_cancel_i16(`handle`: Long,
 ): Unit
 fun ffi_nmp_uniffi_rust_future_free_i16(`handle`: Long,
 ): Unit
-fun ffi_nmp_uniffi_rust_future_complete_i16(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+fun ffi_nmp_uniffi_rust_future_complete_i16(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
 ): Short
 fun ffi_nmp_uniffi_rust_future_poll_u32(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
 ): Unit
@@ -902,7 +926,7 @@ fun ffi_nmp_uniffi_rust_future_cancel_u32(`handle`: Long,
 ): Unit
 fun ffi_nmp_uniffi_rust_future_free_u32(`handle`: Long,
 ): Unit
-fun ffi_nmp_uniffi_rust_future_complete_u32(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+fun ffi_nmp_uniffi_rust_future_complete_u32(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
 ): Int
 fun ffi_nmp_uniffi_rust_future_poll_i32(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
 ): Unit
@@ -910,7 +934,7 @@ fun ffi_nmp_uniffi_rust_future_cancel_i32(`handle`: Long,
 ): Unit
 fun ffi_nmp_uniffi_rust_future_free_i32(`handle`: Long,
 ): Unit
-fun ffi_nmp_uniffi_rust_future_complete_i32(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+fun ffi_nmp_uniffi_rust_future_complete_i32(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
 ): Int
 fun ffi_nmp_uniffi_rust_future_poll_u64(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
 ): Unit
@@ -918,7 +942,7 @@ fun ffi_nmp_uniffi_rust_future_cancel_u64(`handle`: Long,
 ): Unit
 fun ffi_nmp_uniffi_rust_future_free_u64(`handle`: Long,
 ): Unit
-fun ffi_nmp_uniffi_rust_future_complete_u64(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+fun ffi_nmp_uniffi_rust_future_complete_u64(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
 ): Long
 fun ffi_nmp_uniffi_rust_future_poll_i64(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
 ): Unit
@@ -926,7 +950,7 @@ fun ffi_nmp_uniffi_rust_future_cancel_i64(`handle`: Long,
 ): Unit
 fun ffi_nmp_uniffi_rust_future_free_i64(`handle`: Long,
 ): Unit
-fun ffi_nmp_uniffi_rust_future_complete_i64(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+fun ffi_nmp_uniffi_rust_future_complete_i64(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
 ): Long
 fun ffi_nmp_uniffi_rust_future_poll_f32(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
 ): Unit
@@ -934,7 +958,7 @@ fun ffi_nmp_uniffi_rust_future_cancel_f32(`handle`: Long,
 ): Unit
 fun ffi_nmp_uniffi_rust_future_free_f32(`handle`: Long,
 ): Unit
-fun ffi_nmp_uniffi_rust_future_complete_f32(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+fun ffi_nmp_uniffi_rust_future_complete_f32(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
 ): Float
 fun ffi_nmp_uniffi_rust_future_poll_f64(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
 ): Unit
@@ -942,7 +966,7 @@ fun ffi_nmp_uniffi_rust_future_cancel_f64(`handle`: Long,
 ): Unit
 fun ffi_nmp_uniffi_rust_future_free_f64(`handle`: Long,
 ): Unit
-fun ffi_nmp_uniffi_rust_future_complete_f64(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+fun ffi_nmp_uniffi_rust_future_complete_f64(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
 ): Double
 fun ffi_nmp_uniffi_rust_future_poll_pointer(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
 ): Unit
@@ -950,7 +974,7 @@ fun ffi_nmp_uniffi_rust_future_cancel_pointer(`handle`: Long,
 ): Unit
 fun ffi_nmp_uniffi_rust_future_free_pointer(`handle`: Long,
 ): Unit
-fun ffi_nmp_uniffi_rust_future_complete_pointer(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+fun ffi_nmp_uniffi_rust_future_complete_pointer(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
 ): Pointer
 fun ffi_nmp_uniffi_rust_future_poll_rust_buffer(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
 ): Unit
@@ -958,7 +982,7 @@ fun ffi_nmp_uniffi_rust_future_cancel_rust_buffer(`handle`: Long,
 ): Unit
 fun ffi_nmp_uniffi_rust_future_free_rust_buffer(`handle`: Long,
 ): Unit
-fun ffi_nmp_uniffi_rust_future_complete_rust_buffer(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+fun ffi_nmp_uniffi_rust_future_complete_rust_buffer(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
 ): RustBuffer.ByValue
 fun ffi_nmp_uniffi_rust_future_poll_void(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
 ): Unit
@@ -966,7 +990,7 @@ fun ffi_nmp_uniffi_rust_future_cancel_void(`handle`: Long,
 ): Unit
 fun ffi_nmp_uniffi_rust_future_free_void(`handle`: Long,
 ): Unit
-fun ffi_nmp_uniffi_rust_future_complete_void(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+fun ffi_nmp_uniffi_rust_future_complete_void(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
 
 }
@@ -982,6 +1006,18 @@ private fun uniffiCheckContractApiVersion(lib: IntegrityCheckingUniffiLib) {
 }
 @Suppress("UNUSED_PARAMETER")
 private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
+    if (lib.uniffi_nmp_uniffi_checksum_func_classify_intent() != 15464.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_func_decode_nostr_uri() != 56218.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_func_encode_profile() != 22164.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_func_tokenize_content() != 58037.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_configure() != 62391.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1081,7 +1117,7 @@ inline fun <T : Disposable?, R> T.use(block: (T) -> R) =
         }
     }
 
-/** 
+/**
  * Used to instantiate an interface without an actual pointer, for fakes in tests, mostly.
  *
  * @suppress
@@ -1393,13 +1429,13 @@ public object FfiConverterByteArray: FfiConverterRustBuffer<ByteArray> {
  * 5. `shutdown()` — explicit teardown; `Arc` drop is the fallback.
  */
 public interface NmpAppInterface {
-    
+
     /**
      * Reconfigure rendering limits without restarting. Same clamp rules as
      * `start`.
      */
     fun `configure`(`visibleLimit`: kotlin.UInt, `emitHz`: kotlin.UInt)
-    
+
     /**
      * Dispatch an NMPD FlatBuffers action envelope and return the outcome.
      *
@@ -1412,12 +1448,12 @@ public interface NmpAppInterface {
      * `DispatchOutcome.error`. D8: non-blocking channel send.
      */
     fun `dispatchAction`(`envelope`: kotlin.ByteArray): DispatchOutcome
-    
+
     /**
      * Signal the kernel to reset (clears transient state).
      */
     fun `reset`()
-    
+
     /**
      * Register (or clear) the NMPU frame observer.
      *
@@ -1434,7 +1470,7 @@ public interface NmpAppInterface {
      * which is then owned by the runtime's `Arc<UpdateListenerGate>`.
      */
     fun `setUpdateSink`(`sink`: UpdateSink?)
-    
+
     /**
      * Explicit idempotent teardown: clears the update sink, sends Shutdown,
      * and joins the actor + listener threads. Safe to call multiple times.
@@ -1443,7 +1479,7 @@ public interface NmpAppInterface {
      * friction discovered in #2149. `Arc` drop is the fallback.
      */
     fun `shutdown`()
-    
+
     /**
      * Start the runtime actor with the given rendering limits.
      *
@@ -1452,12 +1488,12 @@ public interface NmpAppInterface {
      * * `emit_hz == 0` → use default (6 Hz). Otherwise clamp(1..=12).
      */
     fun `start`(`visibleLimit`: kotlin.UInt, `emitHz`: kotlin.UInt)
-    
+
     /**
      * Signal the kernel to pause event processing (no data loss).
      */
     fun `stop`()
-    
+
     companion object
 }
 
@@ -1565,22 +1601,22 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
         }
     }
 
-    
+
     /**
      * Reconfigure rendering limits without restarting. Same clamp rules as
      * `start`.
      */override fun `configure`(`visibleLimit`: kotlin.UInt, `emitHz`: kotlin.UInt)
-        = 
+        =
     callWithPointer {
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_configure(
         it, FfiConverterUInt.lower(`visibleLimit`),FfiConverterUInt.lower(`emitHz`),_status)
 }
     }
-    
-    
 
-    
+
+
+
     /**
      * Dispatch an NMPD FlatBuffers action envelope and return the outcome.
      *
@@ -1601,23 +1637,23 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
     }
     )
     }
-    
 
-    
+
+
     /**
      * Signal the kernel to reset (clears transient state).
      */override fun `reset`()
-        = 
+        =
     callWithPointer {
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_reset(
         it, _status)
 }
     }
-    
-    
 
-    
+
+
+
     /**
      * Register (or clear) the NMPU frame observer.
      *
@@ -1633,17 +1669,17 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
      * (unique ownership). The sink is moved into the update-listener closure
      * which is then owned by the runtime's `Arc<UpdateListenerGate>`.
      */override fun `setUpdateSink`(`sink`: UpdateSink?)
-        = 
+        =
     callWithPointer {
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_set_update_sink(
         it, FfiConverterOptionalTypeUpdateSink.lower(`sink`),_status)
 }
     }
-    
-    
 
-    
+
+
+
     /**
      * Explicit idempotent teardown: clears the update sink, sends Shutdown,
      * and joins the actor + listener threads. Safe to call multiple times.
@@ -1651,17 +1687,17 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
      * Named `shutdown` (NOT `close`) to avoid Kotlin `AutoCloseable`
      * friction discovered in #2149. `Arc` drop is the fallback.
      */override fun `shutdown`()
-        = 
+        =
     callWithPointer {
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_shutdown(
         it, _status)
 }
     }
-    
-    
 
-    
+
+
+
     /**
      * Start the runtime actor with the given rendering limits.
      *
@@ -1669,36 +1705,36 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
      * * `visible_limit == 0` → use default (100). Otherwise clamp(1..=500).
      * * `emit_hz == 0` → use default (6 Hz). Otherwise clamp(1..=12).
      */override fun `start`(`visibleLimit`: kotlin.UInt, `emitHz`: kotlin.UInt)
-        = 
+        =
     callWithPointer {
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_start(
         it, FfiConverterUInt.lower(`visibleLimit`),FfiConverterUInt.lower(`emitHz`),_status)
 }
     }
-    
-    
 
-    
+
+
+
     /**
      * Signal the kernel to pause event processing (no data loss).
      */override fun `stop`()
-        = 
+        =
     callWithPointer {
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_stop(
         it, _status)
 }
     }
-    
-    
 
-    
 
-    
-    
+
+
+
+
+
     companion object
-    
+
 }
 
 /**
@@ -1742,14 +1778,14 @@ public object FfiConverterTypeNmpApp: FfiConverter<NmpApp, Pointer> {
  * the C-ABI side.
  */
 data class DispatchOutcome (
-    var `correlationId`: kotlin.String?, 
-    var `error`: kotlin.String?, 
+    var `correlationId`: kotlin.String?,
+    var `error`: kotlin.String?,
     /**
      * Machine-readable code for coded rejections; `None` for plain errors.
      */
     var `code`: kotlin.String?
 ) {
-    
+
     companion object
 }
 
@@ -1780,6 +1816,844 @@ public object FfiConverterTypeDispatchOutcome: FfiConverterRustBuffer<DispatchOu
 
 
 
+/**
+ * A classification candidate: which scope matched and the target it produced.
+ *
+ * Mirrors `nmp_core::substrate::InputIntentCandidate`.
+ */
+data class IntentCandidate (
+    var `scope`: IntentScope,
+    var `target`: IntentTarget
+) {
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeIntentCandidate: FfiConverterRustBuffer<IntentCandidate> {
+    override fun read(buf: ByteBuffer): IntentCandidate {
+        return IntentCandidate(
+            FfiConverterTypeIntentScope.read(buf),
+            FfiConverterTypeIntentTarget.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: IntentCandidate) = (
+            FfiConverterTypeIntentScope.allocationSize(value.`scope`) +
+            FfiConverterTypeIntentTarget.allocationSize(value.`target`)
+    )
+
+    override fun write(value: IntentCandidate, buf: ByteBuffer) {
+            FfiConverterTypeIntentScope.write(value.`scope`, buf)
+            FfiConverterTypeIntentTarget.write(value.`target`, buf)
+    }
+}
+
+
+
+/**
+ * Identifies a registered input scope (namespace + name two-part label).
+ *
+ * Mirrors `nmp_core::substrate::InputScopeId`.
+ */
+data class IntentScope (
+    var `namespace`: kotlin.String,
+    var `name`: kotlin.String
+) {
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeIntentScope: FfiConverterRustBuffer<IntentScope> {
+    override fun read(buf: ByteBuffer): IntentScope {
+        return IntentScope(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: IntentScope) = (
+            FfiConverterString.allocationSize(value.`namespace`) +
+            FfiConverterString.allocationSize(value.`name`)
+    )
+
+    override fun write(value: IntentScope, buf: ByteBuffer) {
+            FfiConverterString.write(value.`namespace`, buf)
+            FfiConverterString.write(value.`name`, buf)
+    }
+}
+
+
+
+/**
+ * Render mode passed to `tokenize_content`.
+ *
+ * Mirrors the `mode` discriminant constants in the C-ABI
+ * `nmp_content_tokenize_text` (`0` = Plain, `1` = Markdown, `2` = Auto).
+ */
+
+enum class ContentRenderMode {
+
+    /**
+     * Inline tokenization only (no block-level Markdown parsing).
+     */
+    PLAIN,
+    /**
+     * Full Markdown block + inline tokenization.
+     */
+    MARKDOWN,
+    /**
+     * Sniff mode by `kind`: NIP-23/NIP-54 content uses Markdown; all other
+     * kinds use plain-text inline tokenization.
+     */
+    AUTO;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeContentRenderMode: FfiConverterRustBuffer<ContentRenderMode> {
+    override fun read(buf: ByteBuffer) = try {
+        ContentRenderMode.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: ContentRenderMode) = 4UL
+
+    override fun write(value: ContentRenderMode, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * The result of intent classification.
+ *
+ * Mirrors `nmp_core::substrate::InputIntentClassification`.
+ */
+sealed class IntentClassification {
+
+    /**
+     * One or more candidates (ranked; caller picks / disambiguates).
+     */
+    data class Candidates(
+        val `candidates`: List<IntentCandidate>) : IntentClassification() {
+        companion object
+    }
+
+    /**
+     * The input could not be classified into any allowed candidate.
+     */
+    data class Rejection(
+        val `rejection`: IntentRejection) : IntentClassification() {
+        companion object
+    }
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeIntentClassification : FfiConverterRustBuffer<IntentClassification>{
+    override fun read(buf: ByteBuffer): IntentClassification {
+        return when(buf.getInt()) {
+            1 -> IntentClassification.Candidates(
+                FfiConverterSequenceTypeIntentCandidate.read(buf),
+                )
+            2 -> IntentClassification.Rejection(
+                FfiConverterTypeIntentRejection.read(buf),
+                )
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: IntentClassification) = when(value) {
+        is IntentClassification.Candidates -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterSequenceTypeIntentCandidate.allocationSize(value.`candidates`)
+            )
+        }
+        is IntentClassification.Rejection -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterTypeIntentRejection.allocationSize(value.`rejection`)
+            )
+        }
+    }
+
+    override fun write(value: IntentClassification, buf: ByteBuffer) {
+        when(value) {
+            is IntentClassification.Candidates -> {
+                buf.putInt(1)
+                FfiConverterSequenceTypeIntentCandidate.write(value.`candidates`, buf)
+                Unit
+            }
+            is IntentClassification.Rejection -> {
+                buf.putInt(2)
+                FfiConverterTypeIntentRejection.write(value.`rejection`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+
+
+
+
+/**
+ * Why an input could not be classified into any allowed candidate.
+ *
+ * `SecretLike` carries **no** copy of the input — same guarantee as the
+ * C-ABI `nmp_app_intent_classify`.
+ *
+ * Mirrors `nmp_core::substrate::InputIntentRejection`.
+ */
+sealed class IntentRejection {
+
+    /**
+     * The input contains a secret key (`nsec` / `nostr:nsec` / `ncryptsec`).
+     */
+    object SecretLike : IntentRejection()
+
+
+    /**
+     * The input matched no recognizer and is not usable as free text.
+     */
+    object Unparseable : IntentRejection()
+
+
+    /**
+     * The input matched a recognizer whose scope is not registered.
+     */
+    data class UnregisteredScope(
+        val `namespace`: kotlin.String,
+        val `name`: kotlin.String) : IntentRejection() {
+        companion object
+    }
+
+    /**
+     * The input resolved to a target whose scope is outside the allowed set.
+     */
+    data class DisallowedScope(
+        val `namespace`: kotlin.String,
+        val `name`: kotlin.String) : IntentRejection() {
+        companion object
+    }
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeIntentRejection : FfiConverterRustBuffer<IntentRejection>{
+    override fun read(buf: ByteBuffer): IntentRejection {
+        return when(buf.getInt()) {
+            1 -> IntentRejection.SecretLike
+            2 -> IntentRejection.Unparseable
+            3 -> IntentRejection.UnregisteredScope(
+                FfiConverterString.read(buf),
+                FfiConverterString.read(buf),
+                )
+            4 -> IntentRejection.DisallowedScope(
+                FfiConverterString.read(buf),
+                FfiConverterString.read(buf),
+                )
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: IntentRejection) = when(value) {
+        is IntentRejection.SecretLike -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is IntentRejection.Unparseable -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is IntentRejection.UnregisteredScope -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`namespace`)
+                + FfiConverterString.allocationSize(value.`name`)
+            )
+        }
+        is IntentRejection.DisallowedScope -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`namespace`)
+                + FfiConverterString.allocationSize(value.`name`)
+            )
+        }
+    }
+
+    override fun write(value: IntentRejection, buf: ByteBuffer) {
+        when(value) {
+            is IntentRejection.SecretLike -> {
+                buf.putInt(1)
+                Unit
+            }
+            is IntentRejection.Unparseable -> {
+                buf.putInt(2)
+                Unit
+            }
+            is IntentRejection.UnregisteredScope -> {
+                buf.putInt(3)
+                FfiConverterString.write(value.`namespace`, buf)
+                FfiConverterString.write(value.`name`, buf)
+                Unit
+            }
+            is IntentRejection.DisallowedScope -> {
+                buf.putInt(4)
+                FfiConverterString.write(value.`namespace`, buf)
+                FfiConverterString.write(value.`name`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+
+
+
+
+/**
+ * A single resolved intent target.
+ *
+ * Mirrors `nmp_core::substrate::InputIntentTarget`.
+ */
+sealed class IntentTarget {
+
+    /**
+     * A NIP-19/21 reference; `uri` is the canonical `nostr:`-form.
+     */
+    data class DirectRef(
+        val `uri`: kotlin.String) : IntentTarget() {
+        companion object
+    }
+
+    /**
+     * A NIP-05-shaped identifier (`name@domain`), shape-only (no IO).
+     */
+    data class Nip05(
+        val `identifier`: kotlin.String) : IntentTarget() {
+        companion object
+    }
+
+    /**
+     * A normalised relay URL (`ws://` / `wss://`).
+     */
+    data class RelayUrl(
+        val `url`: kotlin.String) : IntentTarget() {
+        companion object
+    }
+
+    /**
+     * Free-text search; `request_json` is an opaque serialised `SearchRequest`.
+     */
+    data class TextQuery(
+        val `requestJson`: kotlin.String) : IntentTarget() {
+        companion object
+    }
+
+    /**
+     * A recognizer-specific target; `payload_json` is opaque to core.
+     */
+    data class Registered(
+        val `payloadJson`: kotlin.String) : IntentTarget() {
+        companion object
+    }
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeIntentTarget : FfiConverterRustBuffer<IntentTarget>{
+    override fun read(buf: ByteBuffer): IntentTarget {
+        return when(buf.getInt()) {
+            1 -> IntentTarget.DirectRef(
+                FfiConverterString.read(buf),
+                )
+            2 -> IntentTarget.Nip05(
+                FfiConverterString.read(buf),
+                )
+            3 -> IntentTarget.RelayUrl(
+                FfiConverterString.read(buf),
+                )
+            4 -> IntentTarget.TextQuery(
+                FfiConverterString.read(buf),
+                )
+            5 -> IntentTarget.Registered(
+                FfiConverterString.read(buf),
+                )
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: IntentTarget) = when(value) {
+        is IntentTarget.DirectRef -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`uri`)
+            )
+        }
+        is IntentTarget.Nip05 -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`identifier`)
+            )
+        }
+        is IntentTarget.RelayUrl -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`url`)
+            )
+        }
+        is IntentTarget.TextQuery -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`requestJson`)
+            )
+        }
+        is IntentTarget.Registered -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`payloadJson`)
+            )
+        }
+    }
+
+    override fun write(value: IntentTarget, buf: ByteBuffer) {
+        when(value) {
+            is IntentTarget.DirectRef -> {
+                buf.putInt(1)
+                FfiConverterString.write(value.`uri`, buf)
+                Unit
+            }
+            is IntentTarget.Nip05 -> {
+                buf.putInt(2)
+                FfiConverterString.write(value.`identifier`, buf)
+                Unit
+            }
+            is IntentTarget.RelayUrl -> {
+                buf.putInt(3)
+                FfiConverterString.write(value.`url`, buf)
+                Unit
+            }
+            is IntentTarget.TextQuery -> {
+                buf.putInt(4)
+                FfiConverterString.write(value.`requestJson`, buf)
+                Unit
+            }
+            is IntentTarget.Registered -> {
+                buf.putInt(5)
+                FfiConverterString.write(value.`payloadJson`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+
+
+
+
+/**
+ * Free-text search-target choice for `TextQuery` fall-through.
+ *
+ * Mirrors `nmp_core::substrate::TextSearchTargets`.
+ */
+sealed class IntentTextTargets {
+
+    /**
+     * The active account's published search relays.
+     */
+    object UserPreferred : IntentTextTargets()
+
+
+    /**
+     * The app-declared default search relays.
+     */
+    object AppDefault : IntentTextTargets()
+
+
+    /**
+     * An explicit caller-supplied relay list.
+     */
+    data class Explicit(
+        val `relays`: List<kotlin.String>) : IntentTextTargets() {
+        companion object
+    }
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeIntentTextTargets : FfiConverterRustBuffer<IntentTextTargets>{
+    override fun read(buf: ByteBuffer): IntentTextTargets {
+        return when(buf.getInt()) {
+            1 -> IntentTextTargets.UserPreferred
+            2 -> IntentTextTargets.AppDefault
+            3 -> IntentTextTargets.Explicit(
+                FfiConverterSequenceString.read(buf),
+                )
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: IntentTextTargets) = when(value) {
+        is IntentTextTargets.UserPreferred -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is IntentTextTargets.AppDefault -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is IntentTextTargets.Explicit -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterSequenceString.allocationSize(value.`relays`)
+            )
+        }
+    }
+
+    override fun write(value: IntentTextTargets, buf: ByteBuffer) {
+        when(value) {
+            is IntentTextTargets.UserPreferred -> {
+                buf.putInt(1)
+                Unit
+            }
+            is IntentTextTargets.AppDefault -> {
+                buf.putInt(2)
+                Unit
+            }
+            is IntentTextTargets.Explicit -> {
+                buf.putInt(3)
+                FfiConverterSequenceString.write(value.`relays`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+
+
+
+
+
+
+/**
+ * UniFFI-exported error for stateless fns that can fail.
+ *
+ * `encode_profile` (NIP-19) never fails — it echoes the raw input on any
+ * encode failure per D6 — and does NOT use this type. The other three
+ * surfaces use it for decode/tokenize/classify failures.
+ */
+sealed class NmpException: kotlin.Exception() {
+
+    /**
+     * The caller supplied a null, empty, or structurally invalid input.
+     */
+    class InvalidInput(
+        ) : NmpException() {
+        override val message
+            get() = ""
+    }
+
+    /**
+     * The input could not be parsed as the expected NIP-19/21 entity.
+     */
+    class Unparseable(
+        ) : NmpException() {
+        override val message
+            get() = ""
+    }
+
+    /**
+     * A NIP-19 `nsec` key was detected. The key is NEVER echoed back.
+     */
+    class NsecForbidden(
+        ) : NmpException() {
+        override val message
+            get() = ""
+    }
+
+    /**
+     * The render-mode discriminant supplied to `tokenize_content` is unknown.
+     */
+    class InvalidMode(
+        ) : NmpException() {
+        override val message
+            get() = ""
+    }
+
+    /**
+     * An internal encoding step failed (e.g. FlatBuffers write error).
+     */
+    class EncodeFailed(
+        ) : NmpException() {
+        override val message
+            get() = ""
+    }
+
+
+    companion object ErrorHandler : UniffiRustCallStatusErrorHandler<NmpException> {
+        override fun lift(error_buf: RustBuffer.ByValue): NmpException = FfiConverterTypeNmpError.lift(error_buf)
+    }
+
+
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeNmpError : FfiConverterRustBuffer<NmpException> {
+    override fun read(buf: ByteBuffer): NmpException {
+
+
+        return when(buf.getInt()) {
+            1 -> NmpException.InvalidInput()
+            2 -> NmpException.Unparseable()
+            3 -> NmpException.NsecForbidden()
+            4 -> NmpException.InvalidMode()
+            5 -> NmpException.EncodeFailed()
+            else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: NmpException): ULong {
+        return when(value) {
+            is NmpException.InvalidInput -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is NmpException.Unparseable -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is NmpException.NsecForbidden -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is NmpException.InvalidMode -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is NmpException.EncodeFailed -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+        }
+    }
+
+    override fun write(value: NmpException, buf: ByteBuffer) {
+        when(value) {
+            is NmpException.InvalidInput -> {
+                buf.putInt(1)
+                Unit
+            }
+            is NmpException.Unparseable -> {
+                buf.putInt(2)
+                Unit
+            }
+            is NmpException.NsecForbidden -> {
+                buf.putInt(3)
+                Unit
+            }
+            is NmpException.InvalidMode -> {
+                buf.putInt(4)
+                Unit
+            }
+            is NmpException.EncodeFailed -> {
+                buf.putInt(5)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+
+}
+
+
+
+/**
+ * The decoded target of a `nostr:` URI or bare NIP-19 bech32 input.
+ *
+ * Corresponds to the `"target"` discriminant in the JSON emitted by the
+ * C-ABI `nmp_nip21_decode_uri` (`"profile"`, `"event"`, `"address"`).
+ */
+sealed class NostrUriTarget {
+
+    /**
+     * An `npub` / `nprofile` — identifies a Nostr public key.
+     */
+    data class Profile(
+        val `pubkey`: kotlin.String,
+        val `relays`: List<kotlin.String>) : NostrUriTarget() {
+        companion object
+    }
+
+    /**
+     * A `note` / `nevent` — identifies a Nostr event.
+     */
+    data class Event(
+        val `eventId`: kotlin.String,
+        val `relays`: List<kotlin.String>,
+        val `author`: kotlin.String?,
+        val `kind`: kotlin.UInt?) : NostrUriTarget() {
+        companion object
+    }
+
+    /**
+     * An `naddr` — identifies a parameterised replaceable event.
+     */
+    data class Address(
+        val `identifier`: kotlin.String,
+        val `pubkey`: kotlin.String,
+        val `kind`: kotlin.UInt,
+        val `relays`: List<kotlin.String>) : NostrUriTarget() {
+        companion object
+    }
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeNostrUriTarget : FfiConverterRustBuffer<NostrUriTarget>{
+    override fun read(buf: ByteBuffer): NostrUriTarget {
+        return when(buf.getInt()) {
+            1 -> NostrUriTarget.Profile(
+                FfiConverterString.read(buf),
+                FfiConverterSequenceString.read(buf),
+                )
+            2 -> NostrUriTarget.Event(
+                FfiConverterString.read(buf),
+                FfiConverterSequenceString.read(buf),
+                FfiConverterOptionalString.read(buf),
+                FfiConverterOptionalUInt.read(buf),
+                )
+            3 -> NostrUriTarget.Address(
+                FfiConverterString.read(buf),
+                FfiConverterString.read(buf),
+                FfiConverterUInt.read(buf),
+                FfiConverterSequenceString.read(buf),
+                )
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: NostrUriTarget) = when(value) {
+        is NostrUriTarget.Profile -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`pubkey`)
+                + FfiConverterSequenceString.allocationSize(value.`relays`)
+            )
+        }
+        is NostrUriTarget.Event -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`eventId`)
+                + FfiConverterSequenceString.allocationSize(value.`relays`)
+                + FfiConverterOptionalString.allocationSize(value.`author`)
+                + FfiConverterOptionalUInt.allocationSize(value.`kind`)
+            )
+        }
+        is NostrUriTarget.Address -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`identifier`)
+                + FfiConverterString.allocationSize(value.`pubkey`)
+                + FfiConverterUInt.allocationSize(value.`kind`)
+                + FfiConverterSequenceString.allocationSize(value.`relays`)
+            )
+        }
+    }
+
+    override fun write(value: NostrUriTarget, buf: ByteBuffer) {
+        when(value) {
+            is NostrUriTarget.Profile -> {
+                buf.putInt(1)
+                FfiConverterString.write(value.`pubkey`, buf)
+                FfiConverterSequenceString.write(value.`relays`, buf)
+                Unit
+            }
+            is NostrUriTarget.Event -> {
+                buf.putInt(2)
+                FfiConverterString.write(value.`eventId`, buf)
+                FfiConverterSequenceString.write(value.`relays`, buf)
+                FfiConverterOptionalString.write(value.`author`, buf)
+                FfiConverterOptionalUInt.write(value.`kind`, buf)
+                Unit
+            }
+            is NostrUriTarget.Address -> {
+                buf.putInt(3)
+                FfiConverterString.write(value.`identifier`, buf)
+                FfiConverterString.write(value.`pubkey`, buf)
+                FfiConverterUInt.write(value.`kind`, buf)
+                FfiConverterSequenceString.write(value.`relays`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+
+
+
+
 
 
 /**
@@ -1789,7 +2663,7 @@ public object FfiConverterTypeDispatchOutcome: FfiConverterRustBuffer<DispatchOu
  * `on_update` — reentrancy is forbidden (the quiescence gate would deadlock).
  */
 public interface UpdateSink {
-    
+
     /**
      * Called on every NMPU frame emitted by the runtime.
      *
@@ -1797,7 +2671,7 @@ public interface UpdateSink {
      * foreign call so no Rust state is held across the Swift/Kotlin call.
      */
     fun `onUpdate`(`frame`: kotlin.ByteArray)
-    
+
     companion object
 }
 
@@ -1842,6 +2716,38 @@ internal object uniffiCallbackInterfaceUpdateSink {
  * @suppress
  */
 public object FfiConverterTypeUpdateSink: FfiConverterCallbackInterface<UpdateSink>()
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalUInt: FfiConverterRustBuffer<kotlin.UInt?> {
+    override fun read(buf: ByteBuffer): kotlin.UInt? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterUInt.read(buf)
+    }
+
+    override fun allocationSize(value: kotlin.UInt?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterUInt.allocationSize(value)
+        }
+    }
+
+    override fun write(value: kotlin.UInt?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterUInt.write(value, buf)
+        }
+    }
+}
 
 
 
@@ -1907,3 +2813,219 @@ public object FfiConverterOptionalTypeUpdateSink: FfiConverterRustBuffer<UpdateS
     }
 }
 
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceString: FfiConverterRustBuffer<List<kotlin.String>> {
+    override fun read(buf: ByteBuffer): List<kotlin.String> {
+        val len = buf.getInt()
+        return List<kotlin.String>(len) {
+            FfiConverterString.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<kotlin.String>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterString.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<kotlin.String>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterString.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeIntentCandidate: FfiConverterRustBuffer<List<IntentCandidate>> {
+    override fun read(buf: ByteBuffer): List<IntentCandidate> {
+        val len = buf.getInt()
+        return List<IntentCandidate>(len) {
+            FfiConverterTypeIntentCandidate.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<IntentCandidate>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeIntentCandidate.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<IntentCandidate>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeIntentCandidate.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeIntentScope: FfiConverterRustBuffer<List<IntentScope>> {
+    override fun read(buf: ByteBuffer): List<IntentScope> {
+        val len = buf.getInt()
+        return List<IntentScope>(len) {
+            FfiConverterTypeIntentScope.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<IntentScope>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeIntentScope.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<IntentScope>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeIntentScope.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceSequenceString: FfiConverterRustBuffer<List<List<kotlin.String>>> {
+    override fun read(buf: ByteBuffer): List<List<kotlin.String>> {
+        val len = buf.getInt()
+        return List<List<kotlin.String>>(len) {
+            FfiConverterSequenceString.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<List<kotlin.String>>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterSequenceString.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<List<kotlin.String>>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterSequenceString.write(it, buf)
+        }
+    }
+}
+        /**
+         * Classify one untyped input string against the app's registered recognizers.
+         *
+         * # Arguments
+         *
+         * * `app`          — the runtime app handle (provides the recognizer snapshot).
+         * * `input`        — the raw, untrusted input string.
+         * * `scopes`       — the app's allow-list of acceptable result classes.
+         * * `text_targets` — search-relay choice for the `TextQuery` fall-through.
+         *
+         * # Returns
+         *
+         * An `IntentClassification` — either `Candidates` (one or more matches) or
+         * a `Rejection` (with a typed reason). Never throws.
+         *
+         * `SecretLike` rejections carry **no** copy of `input` — the secret is never
+         * echoed back.
+         *
+         * Mirrors `nmp_app_intent_classify` — same recognizer snapshot read, same
+         * pure classification, typed output instead of JSON.
+         */ fun `classifyIntent`(`app`: NmpApp, `input`: kotlin.String, `scopes`: List<IntentScope>, `textTargets`: IntentTextTargets): IntentClassification {
+            return FfiConverterTypeIntentClassification.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_func_classify_intent(
+        FfiConverterTypeNmpApp.lower(`app`),FfiConverterString.lower(`input`),FfiConverterSequenceTypeIntentScope.lower(`scopes`),FfiConverterTypeIntentTextTargets.lower(`textTargets`),_status)
+}
+    )
+    }
+
+
+        /**
+         * Decode a `nostr:` URI or bare NIP-19 bech32 into a typed target.
+         *
+         * Accepted inputs: `npub`, `nprofile`, `note`, `nevent`, `naddr`, and their
+         * `nostr:` prefixed forms.
+         *
+         * Rejected: any `nsec` form (returns `NmpError::NsecForbidden`; the key is
+         * never echoed). Malformed inputs return `NmpError::Unparseable`.
+         *
+         * Mirrors the C-ABI `nmp_nip21_decode_uri` — same decoding logic, typed
+         * output instead of JSON. Stateless: no kernel IO, no actor round-trip.
+         */
+    @Throws(NmpException::class) fun `decodeNostrUri`(`input`: kotlin.String): NostrUriTarget {
+            return FfiConverterTypeNostrUriTarget.lift(
+    uniffiRustCallWithError(NmpException) { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_func_decode_nostr_uri(
+        FfiConverterString.lower(`input`),_status)
+}
+    )
+    }
+
+
+        /**
+         * Encode a 64-char hex pubkey as a NIP-19 display identifier.
+         *
+         * Prefers `nprofile1…` (pubkey + relay TLVs) when the runtime already holds
+         * kind:10002 relay hints in the mailbox cache. Falls back to a bare `npub1…`
+         * when no hints are cached (or when `app` has no mailbox cache configured).
+         *
+         * D6: never throws. An invalid or unrecognisable `pubkey_hex` degrades to
+         * returning the raw input string — same fallback as `nmp_app_encode_profile`.
+         *
+         * Mirrors the C-ABI `nmp_app_encode_profile` (same mailbox-cache read, same
+         * `MAX_NPROFILE_RELAYS` truncation, same D6 fallback chain).
+         */ fun `encodeProfile`(`app`: NmpApp, `pubkeyHex`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_func_encode_profile(
+        FfiConverterTypeNmpApp.lower(`app`),FfiConverterString.lower(`pubkeyHex`),_status)
+}
+    )
+    }
+
+
+        /**
+         * Tokenize Nostr event content and return a FlatBuffers `ContentTreeWire` buffer.
+         *
+         * # Arguments
+         *
+         * * `content` — the raw event content string to tokenize.
+         * * `tags`    — the event's tag array (`[[string]]`), used for NIP-30 emoji
+         * resolution. Pass an empty `Vec` when the event has no tags.
+         * * `mode`    — render mode (Plain / Markdown / Auto).
+         * * `kind`    — event kind; only meaningful when `mode` is `Auto` (used to
+         * sniff whether Markdown parsing applies).
+         *
+         * # Returns
+         *
+         * `Ok(Vec<u8>)` — a FlatBuffers `NFCT` buffer (schema `nmp.content.tree`,
+         * file identifier `NFCT`) decodable with the generated Swift/Kotlin accessors.
+         *
+         * `Err(NmpError::InvalidInput)` — `content` is empty.
+         * `Err(NmpError::EncodeFailed)` — internal FlatBuffers encoding error (rare).
+         *
+         * Mirrors `nmp_content_tokenize_text` — same tokenizer core, FlatBuffers
+         * output instead of JSON.
+         */
+    @Throws(NmpException::class) fun `tokenizeContent`(`content`: kotlin.String, `tags`: List<List<kotlin.String>>, `mode`: ContentRenderMode, `kind`: kotlin.UInt): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(NmpException) { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_func_tokenize_content(
+        FfiConverterString.lower(`content`),FfiConverterSequenceSequenceString.lower(`tags`),FfiConverterTypeContentRenderMode.lower(`mode`),FfiConverterUInt.lower(`kind`),_status)
+}
+    )
+    }

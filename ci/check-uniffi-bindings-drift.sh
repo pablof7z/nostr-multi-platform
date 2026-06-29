@@ -51,6 +51,12 @@ echo "Generating Kotlin bindings..."
 cargo run -p nmp-uniffi --features bindgen --bin uniffi-bindgen \
     -- generate --library "$DYLIB" --language kotlin --out-dir "$TMPDIR_KOTLIN" --no-format
 
+# UniFFI's Swift/Kotlin generators currently emit trailing spaces in several
+# type declarations. Normalize generated text here so the canonical drift gate
+# and `git diff --check` agree.
+find "$TMPDIR_SWIFT" "$TMPDIR_KOTLIN" -type f -print0 \
+    | xargs -0 perl -0pi -e 's/[ \t]+$//mg; s/\n+\z/\n/'
+
 # ── Step 3: diff against checked-in bindings ─────────────────────────────────
 GENERATED_SWIFT="${REPO_ROOT}/crates/nmp-uniffi/generated/swift"
 GENERATED_KOTLIN="${REPO_ROOT}/crates/nmp-uniffi/generated/kotlin"
