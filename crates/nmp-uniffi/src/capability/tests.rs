@@ -1,41 +1,5 @@
 //! Rust-side tests for the M14-C4 capability / action-lane / publish UniFFI
 //! surface.
-//!
-//! # Coverage
-//!
-//! ## CapabilitySink (full quiescence — Condvar + in_flight drain)
-//! * `capability_sink_register_and_clear` — register, clear, clear again
-//!   (idempotent).
-//! * `capability_sink_replace_is_atomic` — replace A with B; after return A
-//!   is neither registered nor in-flight.
-//! * `capability_sink_dispatch_routes_to_registered_sink` — after
-//!   registration, `dispatch_capability_json` reaches `on_capability_request`.
-//! * `capability_sink_panic_is_contained` — a panicking sink does not crash
-//!   the dispatch thread; subsequent dispatch returns an error envelope.
-//! * `capability_sink_clear_waits_for_in_flight` — full Barrier-style drain
-//!   test: `set_capability_callback(None)` blocks while a callback is
-//!   in-flight and returns only after it completes. Proof mirrors
-//!   `clear_waits_for_in_flight_callback` from `tests.rs`.
-//! * `capability_sink_shutdown_during_in_flight_no_uaf` — `shutdown()` while
-//!   a callback is in-flight completes cleanly (no UAF / deadlock).
-//!
-//! ## ActionResultObserver (mutex-exclusion quiescence — no drain gate)
-//! * `action_result_observer_fires_on_dispatch` — after registration, a
-//!   dispatched action that is accepted calls `on_action_result`.
-//! * `action_result_observer_replace_is_safe` — replacing the observer
-//!   before re-dispatching routes to the new observer only.
-//! * NOTE: Barrier-style teardown tests are absent — see module-level
-//!   quiescence note in `action.rs`.
-//!
-//! ## ack_action_stage
-//! * `ack_action_stage_empty_id_is_noop` — empty string is a silent no-op.
-//! * `ack_action_stage_valid_id_sends_cmd` — a valid id reaches the actor.
-//!
-//! ## retry_publish / cancel_action
-//! * `retry_publish_empty_handle_is_noop` — empty string is a silent no-op.
-//! * `cancel_action_empty_id_is_noop` — empty string is a silent no-op.
-//! * `retry_publish_valid_handle_sends_cmd` — non-empty handle sends command.
-//! * `cancel_action_valid_id_sends_cmd` — non-empty id sends command.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
@@ -510,4 +474,3 @@ fn cancel_action_valid_id_sends_cmd() {
     let app = NmpApp::new();
     app.cancel_action("corr-cancel-1".to_string());
 }
-
