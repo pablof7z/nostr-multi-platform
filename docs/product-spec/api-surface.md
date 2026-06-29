@@ -82,14 +82,29 @@ Production product reads are typed sessions, or generated per-feature helpers
 over typed session descriptors. A session owns acquisition demand, bounded replay,
 admission, source reconciliation, typed output, status, and teardown.
 
-Raw `nmp_app_open_interest` / `nmp_app_close_interest` is low-level acquisition
-machinery for substrate, protocol-internal, diagnostic, export, test, or
-migration scopes. It is not the app-facing read model for product screens.
+The public raw-interest C ABI (`nmp_app_open_interest` /
+`nmp_app_close_interest`) is retired. Raw `open_interest` remains low-level
+acquisition machinery for substrate, protocol-internal, diagnostic, export,
+test, or migration scopes, but it is not the app-facing read model for product
+screens and is not exported as a public native-app door.
 
 Current app-visible read helpers include feed/session and ref-resolution
 surfaces, but their durable contract is ADR-0070's typed-session lifecycle.
 `nmp_app_resolve_ref` / `nmp_app_release_ref` remain the refcounted typed
 hydration surface for profile and event refs.
+
+Deletion ledger for the typed-feed doorway migration:
+
+- old public doors deleted or privatized: `nmp_app_open_interest` /
+  `nmp_app_close_interest` moved out of the public C ABI; internal Rust
+  `open_interest` machinery remains for substrate/protocol use.
+- old compatibility paths scoped: no C shim accepts raw filters for product
+  reads; close paths use typed handles, not re-derived filters.
+- new public concepts added: `nmp_app_open_feed(params_json)` returns a
+  serialized `FeedHandle`; `nmp_app_close_feed(handle_json)` tears down that
+  opaque session.
+- net permanent concepts: one typed feed-session door, one opaque feed handle,
+  and typed projection/ref-resolution outputs.
 
 Projection delivery is typed output transport. Projection keys, typed sidecars,
 manifests, and change gates are how Rust pushes bounded session/app state to the

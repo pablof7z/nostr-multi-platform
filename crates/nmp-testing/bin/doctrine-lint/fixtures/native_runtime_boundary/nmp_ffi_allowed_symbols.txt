@@ -2,7 +2,7 @@ nmp_app_ack_action_stage
 nmp_app_add_relay
 nmp_app_cancel_action
 nmp_app_cancel_bunker_handshake
-nmp_app_close_interest
+nmp_app_close_feed
 nmp_app_configure
 nmp_app_configure_gc_budget
 nmp_app_consume_all_builtin_projections
@@ -27,7 +27,7 @@ nmp_app_lifecycle_foreground
 nmp_app_load_older_feed
 nmp_app_new
 nmp_app_nostrconnect_uri
-nmp_app_open_interest
+nmp_app_open_feed
 nmp_app_open_uri
 nmp_app_read_author_event_ids
 nmp_app_read_command_lane_stats
