@@ -6,12 +6,14 @@
 //! external pull cursor.
 //!
 //! Current classification:
-//! - allowed: `nmp-core`, `nmp-ffi`, `nmp-native-runtime`, protocol crates,
+//! - allowed: `nmp-core`, `nmp-ffi`, native-runtime internals, protocol crates,
 //!   diagnostics, tests, and export/pull consumers;
 //! - denied: Rust app shells under `apps/**/src/**` and starter templates under
 //!   `crates/nmp-cli/templates/**`.
 //!
-//! This deliberately does not retire the existing low-level runtime behavior.
+//! This deliberately does not retire the existing low-level runtime behavior,
+//! but native `NmpApp` must not expose public raw `open_interest` /
+//! `close_interest` methods.
 
 use std::path::Path;
 
