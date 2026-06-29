@@ -85,15 +85,23 @@ Key teaching points:
   The `execute` body is a static method (no `&self`), so it reads the store
   from the process-wide slot that `register()` initializes.
 
-### The observed projection sink
+### The typed read-session helper
 
 ```rust
-pub struct FeedObserver {
+pub struct MicroblogFeedSession {
     store: FeedStore,
 }
 
-impl ObservedProjectionSink for FeedObserver {
-    fn on_kernel_event(&self, event: &KernelEvent) {
+impl MicroblogFeedSession {
+    pub fn claim(&self, consumer_id: &str) -> ActorCommand {
+        claim_microblog_feed_session(consumer_id)
+    }
+
+    pub fn release(&self, consumer_id: &str) -> ActorCommand {
+        release_microblog_feed_session(consumer_id)
+    }
+
+    fn ingest_note(&self, event: &KernelEvent) {
         if event.kind != 1 { return; }
         let record = NoteRecord {
             id:         event.id.clone(),
@@ -108,10 +116,10 @@ impl ObservedProjectionSink for FeedObserver {
 }
 ```
 
-This is the low-level observer contract that typed read sessions use internally:
-the kernel replays matching cached rows first, then delivers only accepted events
-that match the declared shape. Product screens should open a typed session or
-generated helper, not wire `ObservedProjectionSink` directly.
+This is the app-facing read shape: product code claims or releases a typed
+session, and the helper owns acquisition, replay-before-live, delivery, and
+teardown. The app keeps its projection state (`NoteRecord`) in its own crate and
+does not wire low-level kernel delivery directly.
 
 ### The snapshot projection
 
@@ -155,8 +163,8 @@ See [19b](19b-walkthrough-microblog.md) for the shell.
 
 ### What `microblog-core` proves
 
-1. A complete app module with writes (`ActionModule`), event-driven view
-   (`ObservedProjectionSink` as internal machinery), and typed read output
+1. A complete app module with writes (`ActionModule`), typed read sessions, and
+   typed read output
    — **without touching `nmp-core`**.
 2. App state is app-owned (`Arc<Mutex<Vec<NoteRecord>>>`). The kernel never
    stores, migrates, or indexes `NoteRecord`. The module owns its data.

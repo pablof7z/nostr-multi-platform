@@ -124,12 +124,12 @@ app.register_typed_snapshot_projection("nmp.myapp.key", move || {
 - **Use it when** you want module state visible in the host's `apply()`
   callback alongside the built-in named fields.
 
-## open_observed_projection — the event-driven read-model seam
+## Observed delivery — internal read-session machinery
 
-Registers an in-process `ObservedProjectionSink` only after the read model has
-declared the events it needs. The host calls
-`ObservedProjectionRegistrar::open_observed_projection` with an
-`ObservedProjection` declaration; the kernel registers the sink muted, opens the
+This is the substrate implementation seam behind typed read sessions and
+protocol helpers. It is not product app API. A session helper may register an
+in-process `ObservedProjectionSink` after it has declared the events it needs
+with an `ObservedProjection`; the kernel registers the sink muted, opens the
 declared interest, replays matching cached/store-backed rows, then activates
 future delivery scoped to the declaration.
 
@@ -138,23 +138,17 @@ pub trait ObservedProjectionSink: Send + Sync {
     // Fires only for events matching the projection's declared shapes.
     fn on_kernel_event(&self, event: &KernelEvent);
 }
-
-let observer_id = app.open_observed_projection(ObservedProjection::from_kinds(
-    Arc::new(MyObserver { store: arc_store.clone() }),
-    "nmp.myapp.items",
-    0,
-    [KIND_NOTE],
-    128,
-));
 ```
 
 - **Lifecycle:** the sink body runs synchronously on the **actor thread**. Must
   be cheap; no blocking I/O. Duplicates, supersessions, and rejections do NOT
   fire the observer.
-- **Use it when** you need to maintain an in-process read model from Nostr
-  events. The declaration must name the scope by kind, author, id, tag, relay
-  pin, search shape, source reducer, or bounded dependency before events are
-  delivered.
+- **Use it when** you are implementing a reusable typed session, protocol
+  projection, or substrate helper that maintains an in-process read model from
+  Nostr events. Product app code opens the typed session/helper instead.
+- **Declare first:** the declaration must name the scope by kind, author, id,
+  tag, relay pin, search shape, source reducer, or bounded dependency before
+  events are delivered.
 - **Never:** production app/product code must not register a blanket all-event
   observer. A remaining event slot is kernel-internal plumbing only.
 
@@ -169,8 +163,11 @@ I want to ...
 ├─ expose a typed sidecar to the host shell  → register_typed_snapshot_projection
 │     └─ cheap + non-blocking closure
 │
-├─ maintain an in-process typed projection      → ObservedProjectionSink
-│     (declared shape + replay + scoped delivery)   + open_observed_projection
+├─ read Nostr data in a product screen       → typed read session/helper
+│     (claim/release + typed output)             with owned projection state
+│
+├─ implement a typed session/protocol helper → internal observed delivery
+│     (declared shape + replay + scoped delivery)   + typed snapshot output
 │
 ├─ report OS-native facts to the kernel        → CapabilityModule
 │     (keychain, push, audio, network)             (native C-ABI callback)
@@ -179,9 +176,8 @@ I want to ...
       (in-memory store, no relay traffic)          no kernel seam needed
 ```
 
-A real app typically combines several: `microblog-core` uses
-`register_action` + `open_observed_projection` +
-`register_snapshot_projection`/`register_typed_snapshot_projection`.
+A real app typically combines several: `microblog-core` uses typed actions,
+typed read-session/output helpers, and app-owned projection state.
 Walkthroughs are in
 [05b](05b-substrate-traits.md) and [19a](19a-walkthrough-microblog.md).
 
@@ -197,7 +193,7 @@ output, treat them as stale. The correct replacements:
 
 | Removed concept | Replacement |
 |---|---|
-| `ViewModule` (typed reactive projection) | `open_observed_projection` + `register_snapshot_projection` |
+| `ViewModule` (typed reactive projection) | typed read-session helper + app-owned projection state + typed snapshot output |
 | `DomainModule` (kernel-owned domain store) | app-owned `Arc<Mutex<T>>` + `register_snapshot_projection` |
 | `IdentityModule` (signer scope) | `nmp-signers` crate + keyring capability |
 | `ModuleRegistry` (composition root) | an app-core `register()` fn that installs explicit substrate/protocol/app features |

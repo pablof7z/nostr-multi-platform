@@ -12,8 +12,7 @@ events → typed output updates" as a typed read session claim/release. The acti
 records the user's intent to claim or release a session. The session helper owns
 the internal acquisition, replay-before-live, output, status, and teardown.
 
-`ActorCommand::EnsureInterest`, `DropInterestOwner`,
-`open_observed_projection`, and `ObservedProjectionSink` are implementation
+Raw actor acquisition commands and observed-delivery sinks are implementation
 machinery behind that helper. They are not the app-facing production recipe
 under ADR-0070.
 
@@ -167,12 +166,12 @@ storage, ordering, and pagination over events that have arrived through the
 normal acquisition path.
 
 If the acquisition source itself is dynamic, the action does not snapshot the
-current author/tag/id set. It declares the closed source expression and lets an
-internal Rust ReducedSource owner materialize child interests. Active-user follows,
-NIP-51 list membership, follow packs, and pointer-event target hydration all
-have this shape: source interest/state changes, reducer replaces the derived
-set, and those children enter the same registry/planner path as the static
-materialized interests owned by the session helper.
+current author/tag/id set. It declares the closed source expression and lets the
+Rust session compiler materialize child interests. Active-user follows, NIP-51
+list membership, follow packs, and pointer-event target hydration all have this
+shape: source interest/state changes, the compiler replaces the derived set, and
+those children enter the same registry/planner path as the static materialized
+interests owned by the session helper.
 
 `load_older` is rendered-progress pagination. It may scan past event-log rows
 that are deleted, muted, blocked, superseded, replaced, or rejected by the
@@ -307,41 +306,28 @@ not work around it by exposing a static subscription key to product code.
 
 ## The session executor — populating the read model
 
-The read session helper owns the executor machinery. Today that machinery may
-include a declared observed projection and a typed sidecar. The declaration
-names the shape before any event is delivered; the kernel registers the sink
-muted, opens the declared interest, replays cached/store-backed rows, then
-activates future delivery scoped to the same shape.
+The read session helper owns the executor machinery. It declares the shape
+before any event is delivered, replays cached/store-backed rows before live
+delivery, and updates app-owned projection state on the actor path.
 
 ```rust
 // Inside the typed read-session helper, not in shell or product-screen code:
 let state = Arc::new(Mutex::new(DiscoveryState::default()));
 
-let state_obs = state.clone();
-app.open_observed_projection(ObservedProjection::from_kinds(
-    Arc::new(ArticleObserver { state: state_obs }),
-    "myapp.discover_results",
-    1,
-    [KIND_LONG_FORM_ARTICLE],
-    128,
-));
-
-// Observer impl — cheap, must not panic (D6):
-impl ObservedProjectionSink for ArticleObserver {
-    fn on_kernel_event(&self, event: &KernelEvent) {
-        if event.kind == KIND_LONG_FORM_ARTICLE {
-            if let Ok(mut s) = self.state.lock() {
-                s.ingest(event);
-            }
-        }
-    }
-}
+claim_topic_articles_session(
+    TopicArticlesDescriptor {
+        topic: "bitcoin".to_string(),
+        primary_kinds: vec![KIND_LONG_FORM_ARTICLE],
+        limit: 128,
+    },
+    "discover-view",
+);
 ```
 
-The observer fires synchronously on the actor thread. Keep it fast: no I/O, no
-blocking, no panics. Production session helpers do not attach to a filterless
-all-event fanout; they declare kind, author, id, tag, relay pin, search shape,
-source reducer, or bounded dependencies up front.
+The executor path must stay cheap: no I/O, no blocking, no panics. Production
+session helpers do not attach to a filterless all-event fanout; they declare
+kind, author, id, tag, relay pin, search shape, source expression, or bounded
+dependencies up front.
 
 ## The snapshot projection — delivering to the shell
 

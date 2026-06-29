@@ -146,11 +146,11 @@ This rules out:
 
 *View-dependent cluster (only present when the view is subscribed): `timeline`,
 `inserted`, `updated`, `removed` appear only when the app/defaults layer declares
-a feed of primary content kinds from a ReducedSource such as the active account's
-reactive follows perspective. Chirp declares primary kind `[1]`; protocol
-adapters derive repost wrapper acquisition below that app-facing declaration.
-The shell does not pass concrete follow pubkeys and does not own follow-feed
-lifecycle policy. Author and thread screens no longer use built-in
+a typed feed/session over primary content kinds and a Rust-owned perspective such
+as the active account's reactive follows. Chirp declares primary kind `[1]`;
+protocol adapters derive repost wrapper acquisition below that app-facing
+declaration. The shell does not pass concrete follow pubkeys and does not own
+follow-feed lifecycle policy. Author and thread screens no longer use built-in
 `author_view` / `thread_view` projections; Chirp opens app-owned dynamic
 FlatFeed sidecars keyed as `nmp.feed.author.<pubkey>` /
 `nmp.feed.thread.<event_id>` and unregisters them on close. Secondary profile,

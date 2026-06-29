@@ -21,8 +21,8 @@ A cache miss is authoritative only when coverage proves the relevant
 ## Subscription Planner
 
 The planner maps materialized `LogicalInterest`s to relay-scoped wire REQs.
-ReducedSources and dependent interests compile to logical interests before the
-planner sees them.
+Typed feed/session compilers and dependent interests materialize logical
+interests before the planner sees them.
 
 The planner owns:
 

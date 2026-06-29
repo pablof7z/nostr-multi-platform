@@ -56,16 +56,17 @@ entry links to the file that defines it on master.
 - **kernel** — `nmp-core`: substrate + planner + store + subs + publish. Holds
   no app nouns (D0). Apps assemble from kernel + protocol modules + an
   app-core crate. *defined in:* `crates/nmp-core/src/lib.rs`.
-- **ObservedProjectionSink** — the in-process event-delivery trait: a single
+- **ObservedProjectionSink** — **[internal/substrate]** the in-process
+  event-delivery trait behind typed read sessions and protocol helpers: a single
   `on_kernel_event(&self, event: &KernelEvent)` method, fired on the actor
   thread only for a declared observed projection's matching events. The kernel
   opens the declared interest, replays cached/store rows, then activates scoped
-  future delivery. Production code registers it only through
-  `ObservedProjectionRegistrar`, never as a filterless observer. *defined in:*
+  future delivery. Product app code opens typed sessions/helpers instead of
+  registering this trait directly. *defined in:*
   `crates/nmp-core/src/actor/commands/event_observer.rs:189`.
-- **KernelEvent** — the substrate-level event passed to `ObservedProjectionSink`
-  callbacks; carries `id`, `author`, `kind`,
-  `created_at`, `tags`, `content`. *defined in:*
+- **KernelEvent** — the substrate-level event passed to internal
+  observed-delivery callbacks; carries `id`, `author`, `kind`, `created_at`,
+  `tags`, `content`. *defined in:*
   `crates/nmp-core/src/substrate/view.rs`.
 - **LogicalInterest** — what a consumer wants alive on the wire (id, scope,
   shape, hints, lifecycle). Compiler input — *not* a Nostr filter. *defined
@@ -95,12 +96,12 @@ entry links to the file that defines it on master.
 - **rev** — the monotonic `u64` carried on every `AppState`/update; platforms
   enforce a stale-guard (drop updates with `rev` ≤ last seen). *defined in:*
   `crates/nmp-core/src/app.rs:28`.
-- **ReducedSource** — an app/protocol-owned source expression plus deterministic
-  reducer that turns source events/state into materialized interest shapes
-  (authors, tags, ids, or addresses). Core/planner see only the resulting
-  `LogicalInterest`s; NIP nouns such as contact list or mute list stay in the
-  protocol/defaults crate that owns the reducer. *defined by:* #2092 and
-  ADR-0036/ADR-0042 amendments.
+- **ReducedSource** — **[internal/compiler]** source-reconciliation state used
+  by typed feed/session compilers to turn source events/state into materialized
+  interest shapes (authors, tags, ids, or addresses). Core/planner see only the
+  resulting `LogicalInterest`s; product app code declares the typed feed/session
+  perspective and does not construct this type. *defined in:*
+  `crates/nmp-native-runtime/src/op_feed_defaults/session_compile/source.rs`.
 - **scope** — `InterestScope`: the account context for mailbox resolution
   (`ActiveAccount` / `Account(id)` / `Global`). Distinct from *session* and
   *account*. *defined in:* `crates/nmp-planner/src/interest.rs`.
@@ -137,8 +138,8 @@ entry links to the file that defines it on master.
 - **coverage row** — per-`(filter_hash, relay)` completed sync floor used by
   the K3 coverage ledger. *defined in:* `crates/nmp-store/src/types/coverage.rs`.
 - **ViewModule** — **[removed]** proposed v2 typed reactive projection trait
-  (`Spec`/`Payload`/`Delta`/`Key`/`State`). Never shipped. Use
-  `open_observed_projection` + `register_snapshot_projection` instead. See
+  (`Spec`/`Payload`/`Delta`/`Key`/`State`). Never shipped. Use typed read-session
+  helpers, app-owned projection state, and typed snapshot output instead. See
   [05a](05a-substrate-traits.md) §Removed v2 traits.
 - **ViewPayload** — **[removed]** associated type on the removed `ViewModule`
   trait. See **ViewModule** entry.

@@ -93,17 +93,17 @@ surfaces, but their durable contract is ADR-0070's typed-session lifecycle.
 `nmp_app_resolve_ref` / `nmp_app_release_ref` remain the refcounted typed
 hydration surface for profile and event refs.
 
-Deletion ledger for the typed-feed doorway migration:
+Deletion ledger for the typed read-session doorway migration:
 
 - old public doors deleted or privatized: `nmp_app_open_interest` /
   `nmp_app_close_interest` moved out of the public C ABI; internal Rust
   `open_interest` machinery remains for substrate/protocol use.
-- old compatibility paths scoped: no C shim accepts raw filters for product
-  reads; close paths use typed handles, not re-derived filters.
-- new public concepts added: `nmp_app_open_feed(params_json)` returns a
-  serialized `FeedHandle`; `nmp_app_close_feed(handle_json)` tears down that
-  opaque session.
-- net permanent concepts: one typed feed-session door, one opaque feed handle,
+- old compatibility paths scoped: no C shim accepts raw filters or raw feed
+  params for product reads; close paths use typed session handles, not
+  re-derived filters.
+- app-visible concepts retained: generated/app-owned typed session helpers,
+  opaque session handles, and typed output/ref-resolution payloads.
+- net permanent concepts: typed read sessions/helpers, opaque session handles,
   and typed projection/ref-resolution outputs.
 
 Projection delivery is typed output transport. Projection keys, typed sidecars,
