@@ -20,8 +20,8 @@
 //! * `NmpError::RegistryUnavailable` maps from `NmpConfigStatus::Unavailable`
 //!   and `IncrementalApplyError::RegistryUnavailable` (mutex poisoned).
 
-use nmp_native_runtime::NmpConfigStatus;
 use nmp_core::substrate::IncrementalApplyError;
+use nmp_native_runtime::NmpConfigStatus;
 
 use crate::{NmpApp, NmpError};
 
@@ -106,8 +106,7 @@ mod tests {
     #[test]
     fn parity_set_storage_path_before_start_ok() {
         let app = NmpApp::new();
-        let path = std::env::temp_dir()
-            .join(format!("nmp-uniffi-storage-{}", std::process::id()));
+        let path = std::env::temp_dir().join(format!("nmp-uniffi-storage-{}", std::process::id()));
         std::fs::create_dir_all(&path).expect("create temp dir");
         let result = app.set_storage_path(Some(path.to_string_lossy().to_string()));
         assert!(result.is_ok(), "set_storage_path before start must be Ok");
@@ -143,7 +142,10 @@ mod tests {
     fn parity_declare_incremental_apply_before_start_ok() {
         let app = NmpApp::new();
         let result = app.declare_incremental_apply();
-        assert!(result.is_ok(), "declare_incremental_apply before start must be Ok");
+        assert!(
+            result.is_ok(),
+            "declare_incremental_apply before start must be Ok"
+        );
     }
 
     /// Parity with C-ABI return-code `1 = AlreadyStarted`:

@@ -66,9 +66,14 @@ impl std::fmt::Display for NmpError {
                 write!(f, "already started: configuration after runtime start")
             }
             NmpError::FeedOpenFailed => {
-                write!(f, "feed open failed: scope not wired or registry unavailable")
+                write!(
+                    f,
+                    "feed open failed: scope not wired or registry unavailable"
+                )
             }
-            NmpError::RegistryUnavailable => write!(f, "registry unavailable: internal mutex poisoned"),
+            NmpError::RegistryUnavailable => {
+                write!(f, "registry unavailable: internal mutex poisoned")
+            }
         }
     }
 }

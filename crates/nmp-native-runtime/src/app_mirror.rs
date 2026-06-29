@@ -185,7 +185,10 @@ pub fn encode_page(page: PullPage, raw_byte_cap: usize) -> Result<Vec<u8>, u32> 
     let mut kept: Vec<(StoreLogEntry, Option<Vec<u8>>)> = Vec::new();
     let mut raw_total: usize = 0;
     for entry in page.entries {
-        let json = entry.raw_event.as_ref().and_then(|r| serde_json::to_vec(r).ok());
+        let json = entry
+            .raw_event
+            .as_ref()
+            .and_then(|r| serde_json::to_vec(r).ok());
         let raw_len = json.as_ref().map_or(0, Vec::len);
         if kept.is_empty() {
             // First row: a raw event that alone overflows the cap cannot fit.

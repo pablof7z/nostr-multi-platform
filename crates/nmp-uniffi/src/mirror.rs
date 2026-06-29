@@ -114,9 +114,11 @@ impl NmpApp {
         max_entries: u32,
         max_total_raw_bytes: u32,
     ) -> MirrorPullResult {
-        let raw = self
-            .inner
-            .mirror_pull_page_raw_bytes(cursor_id, max_entries, max_total_raw_bytes as usize);
+        let raw = self.inner.mirror_pull_page_raw_bytes(
+            cursor_id,
+            max_entries,
+            max_total_raw_bytes as usize,
+        );
         parse_raw(raw)
     }
 }
@@ -135,21 +137,29 @@ fn parse_raw(raw: Vec<u8>) -> MirrorPullResult {
             let has_more = raw[17] != 0;
             // bytes[18..] = u32_LE entry_count + entries (the full entry section).
             let bytes = raw[PAGE_HDR..].to_vec();
-            MirrorPullResult::Page { next_after_seq, latest_seq, has_more, bytes }
+            MirrorPullResult::Page {
+                next_after_seq,
+                latest_seq,
+                has_more,
+                bytes,
+            }
         }
         Some(1) if raw.len() >= GAP_LEN => {
-            let requested_after_seq =
-                u64::from_le_bytes(raw[1..9].try_into().unwrap_or([0; 8]));
-            let first_available_seq =
-                u64::from_le_bytes(raw[9..17].try_into().unwrap_or([0; 8]));
-            MirrorPullResult::Gap { requested_after_seq, first_available_seq }
+            let requested_after_seq = u64::from_le_bytes(raw[1..9].try_into().unwrap_or([0; 8]));
+            let first_available_seq = u64::from_le_bytes(raw[9..17].try_into().unwrap_or([0; 8]));
+            MirrorPullResult::Gap {
+                requested_after_seq,
+                first_available_seq,
+            }
         }
         Some(2) if raw.len() >= ERROR_LEN => {
             let code = u32::from_le_bytes(raw[1..5].try_into().unwrap_or([0; 4]));
             MirrorPullResult::Error { code }
         }
         // Malformed response (should never happen from mirror_pull_page_raw_bytes).
-        _ => MirrorPullResult::Error { code: app_mirror::error::PANIC },
+        _ => MirrorPullResult::Error {
+            code: app_mirror::error::PANIC,
+        },
     }
 }
 
@@ -278,9 +288,7 @@ mod tests {
         let mut got_unknown = false;
         for _ in 0..50 {
             match app.mirror_pull_page(999, 256, 1 << 20) {
-                MirrorPullResult::Error { code }
-                    if code == app_mirror::error::UNKNOWN_CURSOR =>
-                {
+                MirrorPullResult::Error { code } if code == app_mirror::error::UNKNOWN_CURSOR => {
                     got_unknown = true;
                     break;
                 }
@@ -325,7 +333,10 @@ mod tests {
                 assert_eq!(next_after_seq, 2, "cursor advanced to seq 2");
 
                 // bytes = u32_LE entry_count + entries (same binary as C-ABI [18..]).
-                assert!(bytes.len() >= 4, "entry section must have at least the count");
+                assert!(
+                    bytes.len() >= 4,
+                    "entry section must have at least the count"
+                );
                 let entry_count = u32::from_le_bytes(bytes[0..4].try_into().unwrap());
                 assert_eq!(entry_count, 2, "both events in entry section");
             }
@@ -444,5 +455,4 @@ mod tests {
             other => panic!("expected Gap, got {other:?}"),
         }
     }
-
 }

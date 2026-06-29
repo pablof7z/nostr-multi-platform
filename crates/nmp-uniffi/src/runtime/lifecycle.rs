@@ -164,24 +164,13 @@ mod tests {
             .expect("clear returns after lifecycle callback drains");
         app.shutdown();
     }
-}
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
-#[cfg(test)]
-mod tests {
-    use crate::NmpApp;
-
     /// Parity with `nmp_app_is_alive` C-ABI test
     /// `is_alive_after_new_returns_zero_before_start`: `is_alive()` must
     /// return `false` before `start()`.
     #[test]
     fn parity_is_alive_false_before_start() {
         let app = NmpApp::new();
-        assert!(
-            !app.is_alive(),
-            "actor must not be alive before start()"
-        );
+        assert!(!app.is_alive(), "actor must not be alive before start()");
     }
 
     /// Parity with `nmp_app_is_alive` C-ABI test

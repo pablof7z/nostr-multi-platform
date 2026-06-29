@@ -80,16 +80,15 @@ impl NmpApp {
     ///
     /// D6: never throws. Routing side effects (OpenUri, search-session open,
     /// NIP-05 lookup) happen as fire-and-forget on the actor channel.
-    pub fn intent_dispatch(
-        &self,
-        request_json: String,
-        session_id: Option<String>,
-    ) -> String {
+    pub fn intent_dispatch(&self, request_json: String, session_id: Option<String>) -> String {
         let request: InputIntentRequest = match serde_json::from_str(&request_json) {
             Ok(r) => r,
             Err(_) => return error_json("unparseable-request"),
         };
-        match self.inner.dispatch_input_intent(&request, session_id.as_deref()) {
+        match self
+            .inner
+            .dispatch_input_intent(&request, session_id.as_deref())
+        {
             InputIntentDispatch::Dispatched(candidate) => dispatched_json(&candidate),
             InputIntentDispatch::Rejection(rejection) => rejection_json(&rejection),
         }
@@ -126,11 +125,14 @@ mod tests {
     fn parity_debug_info_domain0_well_formed() {
         let app = NmpApp::new();
         let json = app.debug_info(0);
-        let v: serde_json::Value = serde_json::from_str(&json)
-            .expect("debug_info domain 0 must be valid JSON");
+        let v: serde_json::Value =
+            serde_json::from_str(&json).expect("debug_info domain 0 must be valid JSON");
         assert_eq!(v["schema_version"], 1, "schema_version must be 1");
         assert!(v["publishes"].is_array(), "publishes must be an array");
-        assert!(v["subscriptions"].is_array(), "subscriptions must be an array");
+        assert!(
+            v["subscriptions"].is_array(),
+            "subscriptions must be an array"
+        );
     }
 
     /// Parity with C-ABI test `fresh_app_domain1_is_well_formed`:
@@ -139,8 +141,8 @@ mod tests {
     fn parity_debug_info_domain1_well_formed() {
         let app = NmpApp::new();
         let json = app.debug_info(1);
-        let v: serde_json::Value = serde_json::from_str(&json)
-            .expect("debug_info domain 1 must be valid JSON");
+        let v: serde_json::Value =
+            serde_json::from_str(&json).expect("debug_info domain 1 must be valid JSON");
         assert_eq!(v["schema_version"], 1, "schema_version must be 1");
         assert!(v["records"].is_array(), "records must be an array");
         assert!(v["count"].is_u64(), "count must be u64");
@@ -153,10 +155,13 @@ mod tests {
     fn parity_debug_info_domain2_merged() {
         let app = NmpApp::new();
         let json = app.debug_info(2);
-        let v: serde_json::Value = serde_json::from_str(&json)
-            .expect("debug_info domain 2 must be valid JSON");
+        let v: serde_json::Value =
+            serde_json::from_str(&json).expect("debug_info domain 2 must be valid JSON");
         assert!(v["routing"].is_object(), "routing must be an object");
-        assert!(v["composition"].is_object(), "composition must be an object");
+        assert!(
+            v["composition"].is_object(),
+            "composition must be an object"
+        );
     }
 
     /// Parity with C-ABI test `unknown_domain_returns_empty_object`:
@@ -165,8 +170,8 @@ mod tests {
     fn parity_debug_info_unknown_domain_empty_object() {
         let app = NmpApp::new();
         let json = app.debug_info(99);
-        let v: serde_json::Value = serde_json::from_str(&json)
-            .expect("debug_info unknown domain must be valid JSON");
+        let v: serde_json::Value =
+            serde_json::from_str(&json).expect("debug_info unknown domain must be valid JSON");
         assert!(v.is_object(), "unknown domain must return a JSON object");
     }
 
@@ -178,8 +183,8 @@ mod tests {
     fn parity_intent_dispatch_malformed_request_returns_error() {
         let app = NmpApp::new();
         let result = app.intent_dispatch("not-json".to_string(), None);
-        let v: serde_json::Value = serde_json::from_str(&result)
-            .expect("result must be valid JSON");
+        let v: serde_json::Value =
+            serde_json::from_str(&result).expect("result must be valid JSON");
         assert_eq!(v["ok"], false, "malformed request must have ok=false");
         assert!(v["error"].is_string(), "error field must be present");
     }
@@ -198,8 +203,8 @@ mod tests {
         })
         .to_string();
         let result = app.intent_dispatch(request_json, None);
-        let v: serde_json::Value = serde_json::from_str(&result)
-            .expect("result must be valid JSON");
+        let v: serde_json::Value =
+            serde_json::from_str(&result).expect("result must be valid JSON");
         // The classifier should return ok=true with either dispatched or rejection.
         assert!(v["ok"].as_bool().unwrap_or(false), "ok must be true");
     }
