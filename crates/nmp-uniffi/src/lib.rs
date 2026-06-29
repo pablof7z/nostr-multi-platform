@@ -54,8 +54,8 @@ pub use capability::{ActionResultObserver, CapabilitySink};
 pub mod sessions;
 pub use sessions::FeedSessionHandle;
 
-// ── Runtime lifecycle (C6 tail) ──────────────────────────────────────────────
-pub mod lifecycle;
+// ── Lifecycle signals, storage config, projection config, diagnostics (C6) ───
+pub mod runtime;
 
 // ── Typed dispatch outcome ────────────────────────────────────────────────────
 
