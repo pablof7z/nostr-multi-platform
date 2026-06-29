@@ -2,17 +2,11 @@
 //! builds a typed-sidecar entry (`TypedProjectionData`) whose `payload` decodes
 //! back to the same `MarmotSnapshot` via the generated `NMMS` bindings.
 //!
-//! `typed_projection` returns exactly the `TypedProjectionData` the kernel's
-//! `SnapshotRegistry::run_typed` collects into a frame's `typed_projections`
-//! sidecar. The trait→sidecar surface itself is proven generically by
-//! `nmp-ffi::snapshot::typed_projection_registered_through_trait_surfaces_in_sidecar`
-//! (anything registered via `register_typed` surfaces in `run_typed`); the
-//! inherent `NmpApp::register_typed_snapshot_projection` marmot uses delegates
-//! to the SAME `snapshot_projections.register_typed` registry (snapshot.rs:53),
-//! so that generic test covers the marmot registration path too. `nmp-marmot`'s
-//! `run_typed` helper is `pub(crate)` to `nmp-ffi`, so this in-crate test proves
-//! the marmot-specific schema identity + encode/decode round-trip on populated,
-//! nested, Option-bearing data (the wallet/wot template pattern).
+//! `typed_projection` returns exactly the `TypedProjectionData` a host-owned
+//! projection producer should attach to a frame's `typed_projections` sidecar.
+//! This in-crate test proves the Marmot-specific schema identity + encode/decode
+//! round-trip on populated, nested, Option-bearing data (the wallet/wot template
+//! pattern).
 
 use super::{decode_marmot_snapshot, typed_projection, FILE_IDENTIFIER, SCHEMA_ID, SCHEMA_VERSION};
 use crate::projection::payload::{

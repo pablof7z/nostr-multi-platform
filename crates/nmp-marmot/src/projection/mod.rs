@@ -1,11 +1,10 @@
-//! Marmot FFI projection layer — the typed translation layer a C-ABI /
-//! actor consumer needs (opaque hex `group_id`, string errors, flat serde
-//! DTOs). Migrated out of the Chirp app so any NMP app can reuse it; Chirp
-//! is now a thin `#[no_mangle] extern "C"` shell over these modules.
+//! Marmot projection layer — the typed translation layer host runtimes need
+//! (opaque hex `group_id`, string errors, flat serde DTOs) without importing
+//! MDK/OpenMLS types.
 //!
 //! * [`payload`] — flat, decoder-free DTOs (a host shell mirrors the serde
 //!   shape verbatim).
-//! * [`state`] — [`state::MarmotProjection`]: owns the service + FFI-local
+//! * [`state`] — [`state::MarmotProjection`]: owns the service + projection
 //!   bookkeeping (pending-welcome cache, key-package publish timestamp);
 //!   implements `ObservedProjectionSink` (metadata-only).
 //! * [`ops`] — dispatch + read-projection handlers; the ONLY place

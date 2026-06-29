@@ -5,13 +5,11 @@ namespace nmp.marmot;
 // [MarmotMessageRow] }`).
 //
 // This is the typed sidecar (ADR-0037) carried ALONGSIDE the existing generic
-// `serde_json::Value` projection registered under the same key in
-// `crate::ffi::register_with_keys`. The serde shape stays authoritative; this
-// buffer mirrors it so a host with an `NMMG` decoder can read typed accessors
-// instead of JSON reflection. An un-updated host falls back to the generic
-// `Value` subtree. Purely additive — the dynamic
-// `register_snapshot_projection("nmp.marmot.messages")` call and
-// `messages_all_groups_json` are unchanged and remain the source of truth.
+// `serde_json::Value` projection registered under the same key by a host-owned
+// projection producer. The serde shape stays authoritative; this buffer mirrors
+// it so a host with an `NMMG` decoder can read typed accessors instead of JSON
+// reflection. An un-updated host falls back to the generic `Value` subtree.
+// `messages_all_groups_json` remains the serde source of truth.
 //
 // Map flattening: FlatBuffers has no map type, so the JSON object keyed by
 // `group_id_hex` is flattened to a vector of `MarmotGroupMessages`, sorted by

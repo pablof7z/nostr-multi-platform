@@ -2,10 +2,10 @@
 //! (`MarmotProjection::messages_all_groups_json` — `{ group_id_hex ->
 //! [MarmotMessageRow] }`).
 //!
-//! The authoritative FFI shape is the serde JSON map registered via
-//! `register_snapshot_projection` in `crate::ffi::register_with_keys`. This
-//! module adds a **typed FlatBuffers** encoding of the same data carried in the
-//! `typed_projections` sidecar (ADR-0037). The serde shape stays authoritative.
+//! The authoritative shape is the serde JSON map emitted by
+//! `MarmotProjection::messages_all_groups_json`. This module adds a **typed
+//! FlatBuffers** encoding of the same data carried in the `typed_projections`
+//! sidecar (ADR-0037). The serde shape stays authoritative.
 //!
 //! Map flattening: FlatBuffers has no map type, so the per-group map is
 //! flattened to a vector of `MarmotGroupMessages` **sorted by `group_id_hex`

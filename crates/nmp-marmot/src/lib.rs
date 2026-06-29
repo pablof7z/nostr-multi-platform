@@ -10,7 +10,7 @@
 //! - No other NMP crate depends on MLS types. The substrate module impls
 //!   (`domain` / `view` / `action`) expose only NMP-native record / payload /
 //!   plan shapes; MDK types appear only in [`service`], which is consumed
-//!   in-crate (tests) and by a future actor/FFI bridge.
+//!   in-crate by tests and protocol projection code.
 //!
 //! ## Storage seam — D4 (one writer per fact)
 //!
@@ -43,15 +43,13 @@
 //!    Marmot write capabilities (key-package publish, group-scoped ops:
 //!    `CreateGroup`, `Invite`, `Send`, `Leave`, `Remove`, etc.) are dispatched
 //!    through the substrate-generic [`projection::action::MarmotActionModule`]
-//!    registered under the `"nmp.marmot"` namespace — the host calls
-//!    `nmp_app_dispatch_action("nmp.marmot", action_json)` and a typed
-//!    `MarmotProtocolCommand` runs the op against the live `MarmotProjection`
-//!    on the actor thread. The legacy bespoke `nmp_marmot_dispatch` C symbol
-//!    (ADR-0025) was DELETED in PR 3 (2026-05-23); the ADR-0025 *write-path*
-//!    exception is retired (the read/lifecycle cluster + `mls_local_nsec` slot
-//!    exception remains in force). In-process Rust callers that need the
-//!    synchronous rich envelope use the Rust-native
-//!    [`ffi::MarmotHandle::dispatch`] accessor (REPL / TUI / integration tests).
+//!    registered under the `"nmp.marmot"` namespace. The runtime's normal
+//!    action dispatcher targets that namespace, and a typed
+//!    [`projection::action::MarmotProtocolCommand`] runs the op against the
+//!    live `MarmotProjection` on the actor thread. The legacy bespoke
+//!    `nmp_marmot_dispatch` C symbol (ADR-0025) was DELETED in PR 3
+//!    (2026-05-23), and the remaining `nmp_marmot_*` C shell was deleted
+//!    in #2232.
 //! 2. **Service layer** ([`service::MarmotService`]) — the real MDK-driving
 //!    API. Holds an `MDK<S>` + `nostr::Keys`. This is what the in-crate
 //!    round-trip tests exercise and what a headless integration-test driver
@@ -81,46 +79,6 @@ mod service_reads;
 pub mod view;
 pub mod wire;
 
-// ── C-ABI shell ──────────────────────────────────────────────────────────
-//
-// The `ffi` / `identity` / `credential_store` modules expose the
-// `nmp_marmot_*` C-ABI symbols. The surviving native-facing cluster
-// (`nmp_marmot_register_active`, `_unregister`) is kernel-shaped
-// per-app FFI (observer / projection / opaque-handle lifecycle) — NOT a
-// `dispatch_action` violation. No native-facing `nmp_marmot_*` symbol carries
-// secret key material: `register_active` reads the actor-owned
-// `mls_local_nsec` slot (ADR-0025), and the secret-bearing synchronous
-// registration (`ffi::register_with_secret_hex`, used only by the in-process
-// Rust app-shell on the nsec sign-in path to avoid the async slot-population
-// race) is a plain
-// Rust fn, not an `extern "C"` symbol (#1727). The `_snapshot`,
-// `_group_messages`, `_string_free` pull symbols were deleted in V-107
-// (ADR-0039) — Swift reads state from push projections. The vestigial
-// `_fetch_key_packages` symbol was deleted in #1727 (the same key-package
-// fetch interest is pushed internally by the invite/group flow). The
-// ADR-0025 bespoke write-side dispatch
-// (`nmp_marmot_dispatch`) was deleted in PR 3 (2026-05-23) — its *write-path*
-// exception is retired, while the read/lifecycle cluster + `mls_local_nsec`
-// slot exception remains in force. The C-ABI shell follows the same pattern Chirp's
-// `nmp_app_chirp_*` cluster uses; Marmot lives at `crates/nmp-marmot/`
-// (step 12 — returned from `apps/marmot/` 2026-05-25) as a Layer-4 NIP
-// crate, with the per-app FFI cluster as its host-bridge surface. App-owned
-// identity/keyring wrappers stay in app crates; this crate only provides
-// caller-supplied keyring helpers. Chirp's iOS shell links the symbols
-// transparently: `nmp-marmot` is pulled in as an `rlib`, and its
-// `#[no_mangle]` symbols flow through `libnmp_app_chirp.a` (the staticlib
-// the iOS target actually links against).
-//
-// Feature-gated behind `ffi` so consumers that only want the protocol
-// types (in-process REPL, headless tests) do not have to pull in
-// `keyring-core` / `base64`.
-#[cfg(feature = "ffi")]
-pub mod credential_store;
-#[cfg(feature = "ffi")]
-pub mod ffi;
-#[cfg(feature = "ffi")]
-pub mod identity;
-
 /// Re-exports of the handful of `mdk-core` types that appear in the public
 /// [`service::MarmotService`] signature. Callers that drive the service
 /// (round-trip tests in-crate; the diagnostic REPL out-of-crate) need to
@@ -142,8 +100,7 @@ pub mod mls_types {
 // dispatched through `projection::action::MarmotActionModule` registered
 // under the `"nmp.marmot"` namespace; the legacy bespoke
 // `nmp_marmot_dispatch` C cluster (ADR-0025) was DELETED in PR 3
-// (2026-05-23) — the ADR-0025 *write-path* exception is retired (the
-// read/lifecycle cluster + `mls_local_nsec` slot exception remains in force).
+// (2026-05-23), and #2232 deleted the remaining Marmot C-ABI shell.
 
 #[cfg(test)]
 mod tests;

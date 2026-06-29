@@ -722,7 +722,7 @@ fn keyring_unavailable_is_surfaced_in_snapshot() {
     use crate::projection::state::MarmotProjection;
 
     let service = in_memory_service(Keys::generate());
-    // `credential_store::initialize()` returned `Some(true)` (mock store).
+    // Host registration initialized Marmot with a degraded credential store.
     let proj = MarmotProjection::new(service, Some(MarmotInitError::KeyringUnavailable));
     let snap = proj.snapshot(0);
     assert_eq!(
@@ -739,7 +739,7 @@ fn keyring_available_not_flagged_in_snapshot() {
     use crate::projection::state::MarmotProjection;
 
     let service = in_memory_service(Keys::generate());
-    // `credential_store::initialize()` returned `Some(false)` (real Keychain).
+    // Host registration initialized Marmot with a healthy credential store.
     let proj = MarmotProjection::new(service, None);
     let snap = proj.snapshot(0);
     assert_eq!(

@@ -220,8 +220,9 @@ fn symbol_allowlist_negative_fixture_fires() {
 #[test]
 fn no_nmp_app_c_abi_symbols_in_crates() {
     // M14-D ratchet: the nmp-ffi C-ABI crate is deleted. No code in crates/*/src/
-    // may re-introduce #[no_mangle] extern "C" fn nmp_app_* symbols. New platform
-    // API must go through nmp-native-runtime Rust methods or nmp-uniffi.
+    // may re-introduce #[no_mangle] extern "C" fn nmp_app_* symbols. #2232
+    // extends this to the deleted nmp_marmot_* shell. New platform API must go
+    // through nmp-native-runtime Rust methods or nmp-uniffi.
     let (root, files) = crate_native_rs_files();
     let mut violations = Vec::new();
 
@@ -235,9 +236,9 @@ fn no_nmp_app_c_abi_symbols_in_crates() {
         };
         for (idx, live) in rust_live_lines(&body).into_iter().enumerate() {
             if let Some(symbol) = exported_native_nmp_symbol(&live) {
-                if symbol.starts_with("nmp_app_") {
+                if symbol.starts_with("nmp_app_") || symbol.starts_with("nmp_marmot_") {
                     violations.push(format!(
-                        "{}:{} banned C-ABI symbol `{symbol}` — nmp-ffi is deleted (M14-D);                          use nmp-native-runtime Rust API or nmp-uniffi instead",
+                        "{}:{} banned C-ABI symbol `{symbol}` — crate-layer C ABI is deleted (M14-D/#2232);                          use nmp-native-runtime Rust API or nmp-uniffi instead",
                         relative_to(&root, path).display(),
                         idx + 1,
                     ));
@@ -248,7 +249,7 @@ fn no_nmp_app_c_abi_symbols_in_crates() {
 
     assert!(
         violations.is_empty(),
-        "crates/*/src must not contain #[no_mangle] extern \"C\" fn nmp_app_* symbols.          The nmp-ffi C-ABI layer was deleted in M14-D. Platform callers must use          nmp-native-runtime directly:\n{}",
+        "crates/*/src must not contain #[no_mangle] extern \"C\" fn nmp_app_* or nmp_marmot_* symbols.          The nmp-ffi C-ABI layer was deleted in M14-D and the Marmot C shell in #2232. Platform callers must use          nmp-native-runtime or nmp-uniffi:\n{}",
         violations.join("\n")
     );
 }

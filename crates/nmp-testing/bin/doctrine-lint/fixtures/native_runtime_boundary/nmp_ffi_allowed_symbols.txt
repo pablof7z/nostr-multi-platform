@@ -1,5 +1,4 @@
 # Symbols exported from crates/*/src/ via #[no_mangle] extern "C" fn nmp_*.
-# Updated for M14-D: nmp-ffi deleted; only nmp-marmot C-ABI symbols remain in crates/.
-# nmp_app_* symbols are now fully deleted from crates/ (they lived in nmp-ffi).
-nmp_marmot_register_active
-nmp_marmot_unregister
+# Updated for #2232: no crate-layer public C ABI is allowlisted. Native hosts
+# must use nmp-native-runtime Rust APIs or nmp-uniffi, not nmp_app_* or
+# nmp_marmot_* exported symbols.

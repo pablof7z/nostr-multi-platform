@@ -3964,13 +3964,10 @@ version = "0.8.4"
 name = "nmp-marmot"
 version = "0.8.4"
 dependencies = [
- "base64",
  "flatbuffers",
- "keyring-core",
  "mdk-core",
  "mdk-sqlite-storage",
  "nmp-core",
- "nmp-native-runtime",
  "nmp-nip59",
  "nmp-planner",
  "nmp-store",

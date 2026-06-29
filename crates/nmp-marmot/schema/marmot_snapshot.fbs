@@ -5,13 +5,11 @@ namespace nmp.marmot;
 // `MarmotProjection::snapshot(now)` serialises).
 //
 // This is the typed sidecar (ADR-0037) carried ALONGSIDE the existing generic
-// `serde_json::Value` projection registered under the same key in
-// `crate::ffi::register_with_keys`. The serde shape stays authoritative; this
-// buffer mirrors it field-for-field so a host with an `NMMS` decoder can read
-// typed accessors instead of JSON reflection. An un-updated host falls back to
-// the generic `Value` subtree (the permanent fallback from ADR-0037). Purely
-// additive — the dynamic `register_snapshot_projection("nmp.marmot.snapshot")`
-// call is unchanged and remains the source of truth.
+// `serde_json::Value` projection registered under the same key by a host-owned
+// projection producer. The serde shape stays authoritative; this buffer mirrors
+// it field-for-field so a host with an `NMMS` decoder can read typed accessors
+// instead of JSON reflection. An un-updated host falls back to the generic
+// `Value` subtree (the permanent fallback from ADR-0037).
 //
 // Raw data only (aim.md §2): hex group ids / pubkeys, Unix-second timestamps,
 // raw counts. Presentation layers (Swift, Kotlin, TUI, web) own all fallback

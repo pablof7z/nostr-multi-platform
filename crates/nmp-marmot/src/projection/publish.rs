@@ -1,8 +1,8 @@
 //! Internal relay-publish bridge — the CLOSED outbound Marmot seam.
 //!
 //! Historically the Marmot dispatch ops returned ready-to-publish signed
-//! event JSON (`events` / `welcome_rumors` / `event`) for a Swift relay
-//! layer to publish. No such Swift hook ever existed (the only Swift
+//! event JSON (`events` / `welcome_rumors` / `event`) for a host relay
+//! layer to publish. No such host hook ever existed (the only native
 //! publish symbol used to be `nmp_app_publish_unsigned_event`, which signs
 //! kernel-side and therefore cannot carry an MLS-credential-signed kind:445
 //! or an ephemeral-key gift-wrap verbatim — see `MarmotBridge.swift`'s
@@ -80,7 +80,7 @@ mod tests {
     use nostr::{EventBuilder, Kind};
 
     /// Test-only helper exposing the D10 predicate so a unit test can
-    /// assert the gate's behavior without crossing FFI. Mirrors the inline
+    /// assert the gate's behavior without crossing a host boundary. Mirrors the inline
     /// check in [`publish_to`] exactly — a change here that diverges from
     /// the production guard would be a real bug.
     fn is_d10_blocked(event: &Event, relays: &[RelayUrl]) -> bool {
