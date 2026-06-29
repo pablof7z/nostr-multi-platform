@@ -170,23 +170,47 @@ fn only_expected_kinds_are_reserved_across_full_sweep() {
 // ─── Enforcement of the PrivateFailClosed routing invariant ─────────────────
 
 /// `validate_publish_routing` is the typed one-door routing gate. A private
-/// envelope (gift-wrap kind:1059, sealed kind:14) with `Auto` / empty
-/// `Explicit` (`is_explicit_nonempty == false`) is REJECTED; with an explicit
-/// non-empty relay set it is ALLOWED. Public/reserved kinds pass routing
-/// regardless of target (their relay selection is the resolver's concern).
+/// envelope (gift-wrap kind:1059, sealed kind:14) with `Auto`, empty
+/// `Explicit`, or an explicit route whose class is not `VerifiedPrivateInbox`
+/// is REJECTED; with a verified private inbox relay set it is ALLOWED.
+/// Public/reserved kinds pass routing regardless of target (their relay
+/// selection is the resolver's concern).
 #[test]
-fn private_kinds_require_explicit_relays_for_routing() {
-    // Private + Auto/empty → rejected.
+fn private_kinds_require_verified_private_inbox_for_routing() {
+    use crate::publish::{PublishRouteClass, PublishTarget};
+
     for kind in [KIND_GIFT_WRAP, KIND_CHAT_MESSAGE] {
-        let err = validate_publish_routing(kind, false)
-            .expect_err("private kind with Auto/empty target must be rejected");
-        assert!(
-            err.contains(&format!("kind:{kind}")) && err.contains("D10"),
-            "rejection must name the kind and cite D10; got: {err}"
-        );
-        // Private + explicit non-empty → allowed.
-        validate_publish_routing(kind, true)
-            .expect("private kind WITH an explicit non-empty relay set must be allowed");
+        for target in [
+            PublishTarget::Auto,
+            PublishTarget::manual_override(vec!["wss://relay.example".to_string()]),
+            PublishTarget::explicit(
+                vec!["wss://relay.example".to_string()],
+                PublishRouteClass::GroupHostPin,
+            ),
+            PublishTarget::explicit(
+                vec!["wss://relay.example".to_string()],
+                PublishRouteClass::Diagnostic,
+            ),
+            PublishTarget::explicit(Vec::new(), PublishRouteClass::VerifiedPrivateInbox),
+        ] {
+            let err = validate_publish_routing(kind, &target)
+                .expect_err("private kind without verified inbox provenance must be rejected");
+            assert!(
+                err.contains(&format!("kind:{kind}"))
+                    && err.contains("verified_private_inbox")
+                    && err.contains("D10"),
+                "rejection must name the kind, provenance class, and D10; got: {err}"
+            );
+        }
+
+        validate_publish_routing(
+            kind,
+            &PublishTarget::explicit(
+                vec!["wss://relay.example".to_string()],
+                PublishRouteClass::VerifiedPrivateInbox,
+            ),
+        )
+        .expect("private kind with verified private inbox route must be allowed");
     }
 }
 
@@ -202,26 +226,15 @@ fn non_private_kinds_route_with_any_target() {
         KIND_RELAY_LIST,
         30_023,
     ] {
-        validate_publish_routing(kind, false)
+        use crate::publish::PublishTarget;
+        validate_publish_routing(kind, &PublishTarget::Auto)
             .unwrap_or_else(|e| panic!("kind:{kind} must route with Auto; got: {e}"));
-        validate_publish_routing(kind, true)
-            .unwrap_or_else(|e| panic!("kind:{kind} must route with Explicit; got: {e}"));
+        validate_publish_routing(
+            kind,
+            &PublishTarget::manual_override(vec!["wss://relay.example".to_string()]),
+        )
+        .unwrap_or_else(|e| panic!("kind:{kind} must route with Explicit; got: {e}"));
     }
-}
-
-/// The shared structural predicate over `PublishTarget` used at every
-/// enforcement site, so the "has an explicit relay pin" fact is derived one
-/// way everywhere.
-#[test]
-fn explicit_nonempty_predicate_matches_target_shape() {
-    use crate::publish::PublishTarget;
-    assert!(!target_is_explicit_nonempty(&PublishTarget::Auto));
-    assert!(!target_is_explicit_nonempty(
-        &PublishTarget::manual_override(Vec::new())
-    ));
-    assert!(target_is_explicit_nonempty(
-        &PublishTarget::manual_override(vec!["wss://relay.example".to_string()])
-    ));
 }
 
 #[path = "tests/gate.rs"]

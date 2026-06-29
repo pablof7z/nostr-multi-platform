@@ -209,7 +209,7 @@ fn publish_raw_rejects_sealed_chat_with_auto_target() {
 }
 
 #[test]
-fn publish_raw_allows_gift_wrap_with_explicit_nonempty_relays() {
+fn publish_raw_allows_gift_wrap_with_verified_private_inbox_relays() {
     // The legitimate DM path: a kind:1059 envelope pinned to an explicit
     // non-empty recipient-inbox relay set is ALLOWED — fail-closed means
     // "no Auto", not "no publish".
@@ -225,7 +225,25 @@ fn publish_raw_allows_gift_wrap_with_explicit_nonempty_relays() {
     };
     PublishModule
         .start(&mut ctx(), action)
-        .expect("kind:1059 with an explicit non-empty relay set must be allowed");
+        .expect("kind:1059 with a verified private inbox relay set must be allowed");
+}
+
+#[test]
+fn publish_raw_rejects_gift_wrap_with_manual_explicit_relays() {
+    let action = PublishAction::PublishRaw {
+        kind: 1059,
+        tags: Vec::new(),
+        content: "encrypted".to_string(),
+        target: PublishTarget::manual_override(vec!["wss://manual.example".to_string()]),
+        signer_pubkey: None,
+    };
+    let err = PublishModule
+        .start(&mut ctx(), action)
+        .expect_err("kind:1059 manual explicit target must fail closed");
+    assert!(
+        matches!(&err, ActionRejection::Invalid(msg) if msg.contains("verified_private_inbox") && msg.contains("D10")),
+        "rejection must require verified private inbox provenance; got: {err:?}"
+    );
 }
 
 #[test]
@@ -249,7 +267,7 @@ fn publish_signed_rejects_gift_wrap_with_auto_target() {
 }
 
 #[test]
-fn publish_signed_allows_gift_wrap_with_explicit_nonempty_relays() {
+fn publish_signed_allows_gift_wrap_with_verified_private_inbox_relays() {
     let mut event = signed_event();
     event.unsigned.kind = 1059;
     let action = PublishAction::Publish {
@@ -262,7 +280,7 @@ fn publish_signed_allows_gift_wrap_with_explicit_nonempty_relays() {
     };
     PublishModule
         .start(&mut ctx(), action)
-        .expect("signed kind:1059 with an explicit non-empty relay set must be allowed");
+        .expect("signed kind:1059 with a verified private inbox relay set must be allowed");
 }
 
 #[test]

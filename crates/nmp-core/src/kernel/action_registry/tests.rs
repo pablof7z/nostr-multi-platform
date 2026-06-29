@@ -167,7 +167,7 @@ fn publish_raw_executor_threads_correlation_id_onto_actor_command() {
     let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
 
     let minted_correlation_id = "fe".repeat(16);
-    let action_json = r#"{"PublishRaw":{"kind":1,"tags":[],"content":"hello","target":{"Explicit":{"relays":["wss://relay.example"]}}}}"#;
+    let action_json = r#"{"PublishRaw":{"kind":1,"tags":[],"content":"hello","target":{"Explicit":{"relays":["wss://relay.example"],"route_class":"manual_override"}}}}"#;
     registry
         .execute(
             &ctx(),
@@ -212,6 +212,19 @@ fn publish_raw_executor_threads_correlation_id_onto_actor_command() {
         }
         other => panic!("expected ActorCommand::PublishRawEvent, got {other:?}"),
     }
+}
+
+#[test]
+fn publish_raw_executor_rejects_anonymous_explicit_target() {
+    let registry = default_registry();
+    let action_json = r#"{"PublishRaw":{"kind":1,"tags":[],"content":"hello","target":{"Explicit":{"relays":["wss://relay.example"]}}}}"#;
+    let err = registry
+        .execute(&ctx(), "nmp.publish", action_json, "cid", &|_| {})
+        .expect_err("anonymous explicit relay target must fail decode/validation");
+    assert!(
+        err.message.contains("route_class") || err.message.contains("missing field"),
+        "rejection must mention the missing route class; got: {err:?}"
+    );
 }
 
 /// Regression for #1748 Fix 1: the pre-signed `Publish` executor threads the
