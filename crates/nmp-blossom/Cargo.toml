@@ -34,7 +34,7 @@ tracing = "0.1"
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support", "native"] }
-# Crate-level integration test drives the REAL action registry end-to-end via
-# the FFI app (register_action → sign-in nsec → dispatch nmp.blossom.upload).
-nmp-ffi = { path = "../nmp-ffi", features = ["test-support"] }
+# Crate-level integration tests drive the real action registry end-to-end
+# via the native runtime.
+nmp-native-runtime = { path = "../nmp-native-runtime", features = ["test-support"] }
 serde_json = "1"

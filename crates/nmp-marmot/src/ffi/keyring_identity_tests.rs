@@ -73,12 +73,13 @@ fn nmp_marmot_identity_policy_owns_keyring_store_recall_forget() {
     // Verifies the full persist → recall → forget cycle through the two
     // `nmp-marmot::identity` entry points, which are the sole owners of
     // keyring-aware sign-in logic (relocated from `NmpApp` — issue #622).
-    let app = nmp_ffi::nmp_app_new();
-    nmp_ffi::nmp_app_set_capability_callback(
-        app,
-        std::ptr::null_mut(),
-        Some(mock_keyring_callback),
-    );
+    let app = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
+    unsafe { &*app }.capability_callback_slot().set_registration(Some(
+        nmp_core::__ffi_internal::CapabilityCallbackRegistration {
+            context: std::ptr::null_mut::<std::ffi::c_void>() as usize,
+            callback: mock_keyring_callback,
+        }
+    ));
     let app_ref = unsafe { &*app };
 
     // Persist via sign_in_nsec_with_keyring_account (returns null: no db_dir).
@@ -98,5 +99,5 @@ fn nmp_marmot_identity_policy_owns_keyring_store_recall_forget() {
     app_ref.remove_account_forgetting_keyring("test.keyring.acct", "missing".to_string());
     assert_eq!(app_ref.recall_local_nsec("test.keyring.acct"), None);
 
-    nmp_ffi::nmp_app_free(app);
+    unsafe { drop(Box::from_raw(app)) };
 }

@@ -22,7 +22,7 @@
 //! and are responsible for their own keyring management.
 
 use nmp_core::substrate::KeyringIdentityWiring;
-use nmp_ffi::NmpApp;
+use nmp_native_runtime::NmpApp;
 use nostr::Keys;
 use zeroize::Zeroizing;
 
@@ -201,12 +201,13 @@ mod tests {
     }
 
     fn new_app_with_keyring() -> *mut NmpApp {
-        let app = nmp_ffi::nmp_app_new();
-        nmp_ffi::nmp_app_set_capability_callback(
-            app,
-            std::ptr::null_mut(),
-            Some(mock_keyring_callback),
-        );
+        let app = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
+        unsafe { &*app }.capability_callback_slot().set_registration(Some(
+            nmp_core::__ffi_internal::CapabilityCallbackRegistration {
+                context: std::ptr::null_mut::<std::ffi::c_void>() as usize,
+                callback: mock_keyring_callback,
+            }
+        ));
         app
     }
 
@@ -234,7 +235,7 @@ mod tests {
         );
         drop(slots);
 
-        nmp_ffi::nmp_app_free(app);
+        unsafe { drop(Box::from_raw(app)) };
     }
 
     #[test]
@@ -255,6 +256,6 @@ mod tests {
         assert!(!slots.contains_key("example.marmot.remove.local_secret"));
         drop(slots);
 
-        nmp_ffi::nmp_app_free(app);
+        unsafe { drop(Box::from_raw(app)) };
     }
 }

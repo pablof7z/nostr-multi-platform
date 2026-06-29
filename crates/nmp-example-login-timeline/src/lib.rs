@@ -41,7 +41,7 @@
 //! is platform-agnostic.
 
 use nmp_core::substrate::{ActionRegistrar, AppHost};
-use nmp_ffi::NmpApp;
+use nmp_native_runtime::NmpApp;
 use nmp_nip01::op_feed::{decode_op_feed_snapshot, OP_FEED_SNAPSHOT_KEY};
 
 #[cfg(feature = "harness")]

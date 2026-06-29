@@ -103,10 +103,9 @@ pub trait UpdateSink: Send + Sync {
 #[derive(uniffi::Object)]
 pub struct NmpApp {
     /// Inner runtime handle. `pub` so `nmp-app-gallery::nmp_app_gallery_register_uniffi`
-    /// can bridge to the C-ABI gallery composition installer during the M14 UniFFI
-    /// shell migration. Not exposed through UniFFI — Swift/Kotlin never see this field.
-    /// Revert to `pub(crate)` (or remove the accessor) when M14-D deletes the C-ABI
-    /// gallery composition entry points.
+    /// and `nmp_uniffi_set_storage_path` can access the inner `RuntimeApp` for
+    /// gallery-specific pre-start composition and storage-path bridging. Not exposed
+    /// through UniFFI — Swift/Kotlin never see this field.
     pub inner: RuntimeApp,
     search_handles: Mutex<BTreeMap<String, nmp_native_runtime::Nip50SearchHandle>>,
 }

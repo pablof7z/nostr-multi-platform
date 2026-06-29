@@ -26,7 +26,6 @@
 //! `ActiveFollowSet` is registered on the SAME slot, so once the signal lands
 //! the set is already updated.
 
-use std::ffi::{CStr, CString};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
@@ -37,10 +36,7 @@ use nmp_core::substrate::{
     ActionPayload, KernelEvent, ObservedProjection, ObservedProjectionRegistrar,
 };
 use nmp_core::ObservedProjectionSink;
-use nmp_ffi::{
-    nmp_app_dispatch_action_bytes, nmp_app_free, nmp_app_inject_signed_event_json, nmp_app_new,
-    nmp_app_signin_nsec, nmp_app_start, nmp_free_string, NmpApp,
-};
+use nmp_native_runtime::NmpApp;
 use nostr::prelude::*;
 
 /// A kind:3-gated observer that signals `tx` from the actor thread each time an
@@ -81,15 +77,11 @@ fn dispatch_ok(app: *mut NmpApp, namespace: &str, pubkey: &str) {
         DISPATCH_ENVELOPE_SCHEMA_VERSION,
         &payload,
     );
-    let ptr = nmp_app_dispatch_action_bytes(app, envelope.as_ptr(), envelope.len());
-    assert!(!ptr.is_null(), "{namespace}: dispatch must not return null");
-    // SAFETY: `ptr` is a valid heap C string from the FFI; copied then freed.
-    let out = unsafe { CStr::from_ptr(ptr) }.to_str().unwrap().to_owned();
-    nmp_free_string(ptr);
-    let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
+    // SAFETY: app is a valid, non-null pointer.
+    let outcome = nmp_native_runtime::dispatch_action_bytes_typed(unsafe { &*app }, &envelope);
     assert!(
-        parsed.get("correlation_id").is_some(),
-        "{namespace} must be accepted (got {parsed})"
+        outcome.correlation_id.is_some(),
+        "{namespace} must be accepted (got error: {:?})", outcome.error
     );
 }
 
@@ -124,7 +116,7 @@ fn local_follow_then_unfollow_updates_active_follow_set_live() {
 
     let bob = nostr::Keys::generate().public_key().to_hex();
 
-    let app = nmp_app_new();
+    let app = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
     assert!(!app.is_null(), "nmp_app_new must return a valid app");
     // SAFETY: `app` is a live pointer from `nmp_app_new`; sole `&mut` for the
     // registration call, dropped before any other access.
@@ -203,14 +195,13 @@ fn local_follow_then_unfollow_updates_active_follow_set_live() {
     unsafe { &*app }.set_kernel_clock_for_test(clock.clone());
 
     // Start the actor: constructs the kernel and binds the observer slot.
-    nmp_app_start(app, 256, 4);
+    unsafe { &*app }.start_runtime(256, 4);
 
     // Sign in (make active) so the dispatched follow has an authoring identity.
     // FIFO on the actor command channel guarantees this `AddSigner` is processed
     // before the later follow dispatch; a local nsec signs synchronously on the
     // actor thread.
-    let nsec_c = CString::new(nsec).unwrap();
-    nmp_app_signin_nsec(app, nsec_c.as_ptr(), 1);
+    unsafe { &*app }.signin_nsec_for_test(&nsec, true);
 
     // Give the active account a kind:10002 write relay so the publish engine
     // resolves an outbox target (the local fan-out runs only on the publish
@@ -286,7 +277,7 @@ fn local_follow_then_unfollow_updates_active_follow_set_live() {
         "baseline + follow + unfollow each fan out exactly once"
     );
 
-    nmp_app_free(app);
+    unsafe { drop(Box::from_raw(app)) };
 }
 
 /// Inject a self-authored, real-signature kind:3 with an EMPTY `p` section so
@@ -301,8 +292,7 @@ fn inject_self_kind3_empty(app: *mut NmpApp, keys: &nostr::Keys, created_at: u64
         .sign_with_keys(keys)
         .expect("sign kind:3");
     let json = event.as_json();
-    let json_c = CString::new(json).unwrap();
-    let ok = nmp_app_inject_signed_event_json(app, json_c.as_ptr());
+    let ok = unsafe { &*app }.inject_signed_event_json_for_test(&json);
     assert!(ok, "kind:3 baseline injection must verify and accept");
 }
 
@@ -314,7 +304,6 @@ fn inject_self_kind10002(app: *mut NmpApp, keys: &nostr::Keys, write_relay: &str
         .sign_with_keys(keys)
         .expect("sign kind:10002");
     let json = event.as_json();
-    let json_c = CString::new(json).unwrap();
-    let ok = nmp_app_inject_signed_event_json(app, json_c.as_ptr());
+    let ok = unsafe { &*app }.inject_signed_event_json_for_test(&json);
     assert!(ok, "kind:10002 injection must verify and accept");
 }

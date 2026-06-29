@@ -84,10 +84,7 @@ use std::sync::{Mutex, OnceLock};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use nmp_ffi::{
-    nmp_app_add_relay, nmp_app_free, nmp_app_new, nmp_app_set_update_callback,
-    nmp_app_signin_nsec, nmp_app_start, NmpApp,
-};
+use nmp_native_runtime::NmpApp;
 use nmp_nip59::gift_wrap_local;
 use nostr::nips::nip59::RANGE_RANDOM_TIMESTAMP_TWEAK;
 use nostr::util::JsonUtil as _;
@@ -379,8 +376,10 @@ fn run_scenario() -> Result<bool, String> {
 
     // ── PHASE 2: Bob cold-starts a REAL kernel ──────────────────────────────
     let rx = install_update_signal();
-    let app = nmp_app_new();
-    nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
+    let app = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
+    unsafe { &*app }.set_update_listener(Some(std::sync::Arc::new(|bytes: &[u8]| {
+        update_signal_callback(std::ptr::null_mut(), bytes.as_ptr(), bytes.len());
+    })));
 
     // The canonical NMP composition (exactly what Chirp's
     // `nmp_app_chirp_register` inherits): kind:10050 `Kind10050Parser` +
@@ -397,17 +396,14 @@ fn run_scenario() -> Result<bool, String> {
     //     here.
     //   - `read` so the DmRuntimeController's reconcile observes a non-empty
     //     read-relay set and pushes the inbox interest.
-    nmp_app_start(app, 256, 8); // emit_hz=8 → ~125ms snapshot cadence
-    let relay_c = CString::new(RELAY).expect("relay url has no nul");
-    let role_c = CString::new("both,indexer").expect("role has no nul");
-    nmp_app_add_relay(app, relay_c.as_ptr(), role_c.as_ptr());
+    unsafe { &*app }.start_runtime(256, 8); // emit_hz=8 → ~125ms snapshot cadence
+    unsafe { &*app }.add_relay(RELAY.to_owned(), "both,indexer".to_owned());
 
     // Sign Bob in. This is the trigger: the kernel fetches Bob's kind:10050,
     // populates the DmRelayCache (the F-02 fix detects this transition and
     // enqueues DmRelayListChanged), and the reconciler pushes the kind:1059
     // `#p` interest — all driven by the kernel, no hand-rolled REQ.
-    let nsec_c = CString::new(bob_nsec).expect("nsec has no nul");
-    nmp_app_signin_nsec(app, nsec_c.as_ptr(), 1);
+    unsafe { &*app }.signin_nsec_for_test(bob_nsec, true);
     println!(
         "[f02-kernel] PHASE 2: Bob signed in — kernel drives kind:10050 bootstrap → \
          DmRelayListChanged trigger → planner REQ → backfill"
@@ -417,8 +413,8 @@ fn run_scenario() -> Result<bool, String> {
     let result = wait_for_dm(&rx, app, KERNEL_DELIVERY_BUDGET);
 
     // Teardown regardless of outcome.
-    nmp_app_set_update_callback(app, std::ptr::null_mut(), None);
-    nmp_app_free(app);
+    unsafe { &*app }.set_update_listener(None);
+    unsafe { drop(Box::from_raw(app)) };
     uninstall_update_signal();
 
     let (peer, content) = result?;

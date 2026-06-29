@@ -24,10 +24,6 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
 [dev-dependencies]
-# Brings in `nmp_app_new` / `nmp_app_free` and `TestContactsCache` so the
-# integration tests can exercise `register_follow_state_runtime` and
-# `FollowListProjection` end-to-end against a real `NmpApp` — same
-# pattern the other `nmp-nip*` crates use.
 nmp-core = { path = "../nmp-core", features = ["test-support"] }
-nmp-ffi = { path = "../nmp-ffi", features = ["test-support"] }
+nmp-native-runtime = { path = "../nmp-native-runtime", features = ["test-support"] }
 nostr = { workspace = true, features = ["std"] }

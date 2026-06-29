@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use nmp_ffi::NmpApp;
+use nmp_native_runtime::NmpApp;
 
 use crate::projection::action::MarmotActionModule;
 use crate::projection::state::MarmotProjection;

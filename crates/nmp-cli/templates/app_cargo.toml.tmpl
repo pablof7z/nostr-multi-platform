@@ -10,9 +10,6 @@ license.workspace = true
 nmp-defaults = {{nmp_defaults_dep}}
 # Native runtime owner: `NmpAppBuilder` plus Rust-native lifecycle helpers.
 nmp-native-runtime = {{nmp_native_runtime_dep}}
-# The `NmpApp` C-ABI handle (`nmp_app_new` / `nmp_app_free` / `nmp_app_stop`)
-# the headless shell example drives.
-nmp-ffi = {{nmp_ffi_dep}}
 # Kernel substrate — `AppHost`, action/observer traits, the reducer. Your
 # app-owned nouns live in THIS crate, never in `nmp-core` (doctrine D0).
 nmp-core = {{nmp_core_dep}}

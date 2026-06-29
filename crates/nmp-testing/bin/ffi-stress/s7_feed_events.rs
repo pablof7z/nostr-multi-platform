@@ -13,7 +13,7 @@
 use nmp_store::{RawEvent, VerifiedEvent};
 use nmp_core::actor::ActorCommand;
 use nmp_core::actor::{TestSupportCommand};
-use nmp_ffi::NmpApp;
+use nmp_native_runtime::NmpApp;
 
 /// 64-hex viewer pubkey (the active account; self-inclusion makes it a "follow"
 /// so its root events qualify for the feed).

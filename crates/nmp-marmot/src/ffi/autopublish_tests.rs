@@ -86,9 +86,14 @@ extern "C" fn mock_keyring_callback(
 }
 
 /// Build an `NmpApp` with the mock keyring capability installed.
-fn app_with_mock_keyring() -> *mut nmp_ffi::NmpApp {
-    let app = nmp_ffi::nmp_app_new();
-    nmp_ffi::nmp_app_set_capability_callback(app, std::ptr::null_mut(), Some(mock_keyring_callback));
+fn app_with_mock_keyring() -> *mut nmp_native_runtime::NmpApp {
+    let app = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
+    unsafe { &*app }.capability_callback_slot().set_registration(Some(
+        nmp_core::__ffi_internal::CapabilityCallbackRegistration {
+            context: std::ptr::null_mut::<std::ffi::c_void>() as usize,
+            callback: mock_keyring_callback,
+        }
+    ));
     app
 }
 
@@ -118,7 +123,7 @@ fn register_after_signin_nsec_consumes_autopublish_flag() {
     // Active local-key sign-in — the path that was broken before PR-4. This is
     // the entry point that arms the flag (via `add_signer`).
     let nsec = CString::new(TEST_NSEC).unwrap();
-    nmp_ffi::nmp_app_signin_nsec(app, nsec.as_ptr(), 1);
+    unsafe { &*app }.signin_nsec_for_test(TEST_NSEC, true);
 
     let tmp = temp_db_dir("pr4");
     let db_dir = CString::new(tmp.to_string_lossy().as_bytes()).unwrap();
@@ -146,7 +151,7 @@ fn register_after_signin_nsec_consumes_autopublish_flag() {
     );
 
     nmp_marmot_unregister(handle);
-    nmp_ffi::nmp_app_free(app);
+    unsafe { drop(Box::from_raw(app)) };
     let _ = std::fs::remove_dir_all(&tmp);
 }
 
@@ -161,7 +166,7 @@ fn second_register_without_new_signin_does_not_set_autopublish() {
     let nsec = CString::new(TEST_NSEC).unwrap();
 
     // Sign in + register (flag set at sign-in, consumed at register).
-    nmp_ffi::nmp_app_signin_nsec(app, nsec.as_ptr(), 1);
+    unsafe { &*app }.signin_nsec_for_test(TEST_NSEC, true);
     let tmp = temp_db_dir("pr4_idempotence");
     let db_dir = CString::new(tmp.to_string_lossy().as_bytes()).unwrap();
     let h1 =
@@ -179,6 +184,6 @@ fn second_register_without_new_signin_does_not_set_autopublish() {
         "flag must remain false without a new sign-in"
     );
 
-    nmp_ffi::nmp_app_free(app);
+    unsafe { drop(Box::from_raw(app)) };
     let _ = std::fs::remove_dir_all(&tmp);
 }
