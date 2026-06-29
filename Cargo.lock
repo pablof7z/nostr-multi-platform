@@ -4565,6 +4565,7 @@ dependencies = [
  "nmp-native-runtime",
  "serde_json",
  "uniffi",
+ "zeroize",
 ]
 
 [[package]]

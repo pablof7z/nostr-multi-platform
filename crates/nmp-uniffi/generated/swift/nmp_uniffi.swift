@@ -422,6 +422,30 @@ fileprivate struct FfiConverterUInt32: FfiConverterPrimitive {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterBool : FfiConverter {
+    typealias FfiType = Int8
+    typealias SwiftType = Bool
+
+    public static func lift(_ value: Int8) throws -> Bool {
+        return value != 0
+    }
+
+    public static func lower(_ value: Bool) -> Int8 {
+        return value ? 1 : 0
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Bool {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: Bool, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterString: FfiConverter {
     typealias SwiftType = String
     typealias FfiType = RustBuffer
@@ -495,10 +519,55 @@ fileprivate struct FfiConverterData: FfiConverterRustBuffer {
 public protocol NmpAppProtocol: AnyObject, Sendable {
 
     /**
+     * Add a relay to the active account's relay list.
+     *
+     * `role` — `"read"`, `"write"`, or `"both"`. Defaults to `"both"` when
+     * `None`, matching the C-ABI `nmp_app_add_relay` null-role default.
+     */
+    func addRelay(url: String, role: String?)
+
+    /**
+     * Cancel an in-flight NIP-46 bunker handshake, if any.
+     *
+     * No-op when no handshake is in progress. Mirrors
+     * `nmp_app_cancel_bunker_handshake`.
+     */
+    func cancelBunkerHandshake()
+
+    /**
      * Reconfigure rendering limits without restarting. Same clamp rules as
      * `start`.
      */
     func configure(visibleLimit: UInt32, emitHz: UInt32)
+
+    /**
+     * Create a new account (generate keypair, publish kind:0 + kind:10002).
+     *
+     * `profile` — display-name, picture, about, etc. as key-value pairs.
+     * `relays`  — initial relay list; each entry carries a URL and a role
+     * string (`"read"`, `"write"`, or `"both"`).
+     * `mls`     — arm MLS key-package auto-publish for this account.
+     * `make_active` — make the new account active immediately.
+     *
+     * Auto-follows nobody: generic framework create-account policy (operator
+     * policy lives in the leaf app, not in framework FFI — #1493).
+     */
+    func createNewAccount(profile: [String: String], relays: [RelayConfigEntry], mls: Bool, makeActive: Bool)
+
+    /**
+     * Deliver a raw NIP-55 response JSON from the host capability bridge
+     * back into the Rust signer driver.
+     *
+     * Called by the host after the external signer (e.g. Amber) returns a
+     * response Intent / resolver result. The JSON is forwarded opaquely to
+     * the `Nip55Driver` inside `nmp-signers`.
+     *
+     * D6: malformed JSON degrades to a timeout on the pending signer
+     * operation — never a panic.
+     *
+     * Mirrors `nmp_app_deliver_external_signer_response`.
+     */
+    func deliverExternalSignerResponse(responseJson: String)
 
     /**
      * Dispatch an NMPD FlatBuffers action envelope and return the outcome.
@@ -512,6 +581,61 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
      * `DispatchOutcome.error`. D8: non-blocking channel send.
      */
     func dispatchAction(envelope: Data)  -> DispatchOutcome
+
+    /**
+     * Initialise the NIP-55 external-signer capability transport.
+     *
+     * Must be called before `signin_nip55` to wire up the
+     * `external_signer` capability namespace. Idempotent — a second call is
+     * a no-op.
+     *
+     * Mirrors `nmp_external_signer_init`.
+     */
+    func initExternalSigner()
+
+    /**
+     * Initialise the NIP-46 actor-lane runtime for bunker / nostrconnect
+     * sign-in.
+     *
+     * Must be called before `signin_bunker` / `nostrconnect_uri` can
+     * complete a handshake. Idempotent (first-writer-wins): a second call
+     * before start is a no-op returning `Ok(())`.
+     *
+     * Returns `Err(NmpError::AlreadyStarted)` if called after the runtime
+     * has started — mirrors the C-ABI `NmpConfigStatus::AlreadyStarted`
+     * (u32 code 2) return value of `nmp_signer_broker_init`.
+     */
+    func initSignerBroker() throws
+
+    /**
+     * Generate a fresh `nostrconnect://` URI for app-initiated NIP-46 flows.
+     *
+     * Returns `None` when called before `init_signer_broker` or when relay
+     * selection fails. The optional `callback_scheme` is platform metadata
+     * appended as `&callback=<encoded>` — it does NOT affect relay selection
+     * (D3: relay selection is Rust-owned).
+     *
+     * Mirrors `nmp_app_nostrconnect_uri`.
+     */
+    func nostrconnectUri(callbackScheme: String?)  -> String?
+
+    /**
+     * Register a persisted app-managed local signer (hidden from account
+     * projections, never becomes the active account).
+     *
+     * D13: the nsec is wrapped in `Zeroizing` immediately.
+     */
+    func registerAgentNsec(secret: String)
+
+    /**
+     * Remove an account from the active session.
+     */
+    func removeAccount(identityId: String)
+
+    /**
+     * Remove a relay from the active account's relay list.
+     */
+    func removeRelay(url: String)
 
     /**
      * Signal the kernel to reset (clears transient state).
@@ -545,6 +669,44 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
     func shutdown()
 
     /**
+     * Connect a NIP-46 bunker signer.
+     *
+     * `make_active = true`: handshake completes and the resolved pubkey
+     * becomes the active account (the normal bunker sign-in path).
+     *
+     * `make_active = false`: registers the bunker signer WITHOUT activating
+     * it once the handshake completes — for agent/secondary keys.
+     */
+    func signinBunker(uri: String, makeActive: Bool)
+
+    /**
+     * Initiate a NIP-55 (external-signer, e.g. Amber) sign-in flow.
+     *
+     * `signer_package` — optional opaque package hint forwarded to the
+     * registered capability callback (e.g. the Amber app's package name on
+     * Android). `None` means no hint.
+     *
+     * Mirrors `nmp_app_signin_nip55`.
+     */
+    func signinNip55(signerPackage: String?)
+
+    /**
+     * Sign in with a local nsec and optionally make it the active account.
+     *
+     * `make_active = true` (the common path): registers the signer AND makes
+     * it the active account. Sets `pending_mls_autopublish` so the next
+     * `nmp_marmot_register[_active]` call automatically publishes a key
+     * package.
+     *
+     * `make_active = false`: registers a visible secondary signer without
+     * activating it.
+     *
+     * D13: the nsec is wrapped in `Zeroizing` immediately; no raw key bytes
+     * are retained past the command dispatch.
+     */
+    func signinNsec(secret: String, makeActive: Bool)
+
+    /**
      * Start the runtime actor with the given rendering limits.
      *
      * Clamp rules (parity with C-ABI `nmp_app_start`):
@@ -557,6 +719,11 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
      * Signal the kernel to pause event processing (no data loss).
      */
     func stop()
+
+    /**
+     * Switch the active account to `identity_id` (hex pubkey or account id).
+     */
+    func switchActive(identityId: String)
 
 }
 /**
@@ -634,6 +801,32 @@ public convenience init() {
 
 
     /**
+     * Add a relay to the active account's relay list.
+     *
+     * `role` — `"read"`, `"write"`, or `"both"`. Defaults to `"both"` when
+     * `None`, matching the C-ABI `nmp_app_add_relay` null-role default.
+     */
+open func addRelay(url: String, role: String?)  {try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_add_relay(self.uniffiClonePointer(),
+        FfiConverterString.lower(url),
+        FfiConverterOptionString.lower(role),$0
+    )
+}
+}
+
+    /**
+     * Cancel an in-flight NIP-46 bunker handshake, if any.
+     *
+     * No-op when no handshake is in progress. Mirrors
+     * `nmp_app_cancel_bunker_handshake`.
+     */
+open func cancelBunkerHandshake()  {try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_cancel_bunker_handshake(self.uniffiClonePointer(),$0
+    )
+}
+}
+
+    /**
      * Reconfigure rendering limits without restarting. Same clamp rules as
      * `start`.
      */
@@ -641,6 +834,48 @@ open func configure(visibleLimit: UInt32, emitHz: UInt32)  {try! rustCall() {
     uniffi_nmp_uniffi_fn_method_nmpapp_configure(self.uniffiClonePointer(),
         FfiConverterUInt32.lower(visibleLimit),
         FfiConverterUInt32.lower(emitHz),$0
+    )
+}
+}
+
+    /**
+     * Create a new account (generate keypair, publish kind:0 + kind:10002).
+     *
+     * `profile` — display-name, picture, about, etc. as key-value pairs.
+     * `relays`  — initial relay list; each entry carries a URL and a role
+     * string (`"read"`, `"write"`, or `"both"`).
+     * `mls`     — arm MLS key-package auto-publish for this account.
+     * `make_active` — make the new account active immediately.
+     *
+     * Auto-follows nobody: generic framework create-account policy (operator
+     * policy lives in the leaf app, not in framework FFI — #1493).
+     */
+open func createNewAccount(profile: [String: String], relays: [RelayConfigEntry], mls: Bool, makeActive: Bool)  {try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_create_new_account(self.uniffiClonePointer(),
+        FfiConverterDictionaryStringString.lower(profile),
+        FfiConverterSequenceTypeRelayConfigEntry.lower(relays),
+        FfiConverterBool.lower(mls),
+        FfiConverterBool.lower(makeActive),$0
+    )
+}
+}
+
+    /**
+     * Deliver a raw NIP-55 response JSON from the host capability bridge
+     * back into the Rust signer driver.
+     *
+     * Called by the host after the external signer (e.g. Amber) returns a
+     * response Intent / resolver result. The JSON is forwarded opaquely to
+     * the `Nip55Driver` inside `nmp-signers`.
+     *
+     * D6: malformed JSON degrades to a timeout on the pending signer
+     * operation — never a panic.
+     *
+     * Mirrors `nmp_app_deliver_external_signer_response`.
+     */
+open func deliverExternalSignerResponse(responseJson: String)  {try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_deliver_external_signer_response(self.uniffiClonePointer(),
+        FfiConverterString.lower(responseJson),$0
     )
 }
 }
@@ -662,6 +897,90 @@ open func dispatchAction(envelope: Data) -> DispatchOutcome  {
         FfiConverterData.lower(envelope),$0
     )
 })
+}
+
+    /**
+     * Initialise the NIP-55 external-signer capability transport.
+     *
+     * Must be called before `signin_nip55` to wire up the
+     * `external_signer` capability namespace. Idempotent — a second call is
+     * a no-op.
+     *
+     * Mirrors `nmp_external_signer_init`.
+     */
+open func initExternalSigner()  {try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_init_external_signer(self.uniffiClonePointer(),$0
+    )
+}
+}
+
+    /**
+     * Initialise the NIP-46 actor-lane runtime for bunker / nostrconnect
+     * sign-in.
+     *
+     * Must be called before `signin_bunker` / `nostrconnect_uri` can
+     * complete a handshake. Idempotent (first-writer-wins): a second call
+     * before start is a no-op returning `Ok(())`.
+     *
+     * Returns `Err(NmpError::AlreadyStarted)` if called after the runtime
+     * has started — mirrors the C-ABI `NmpConfigStatus::AlreadyStarted`
+     * (u32 code 2) return value of `nmp_signer_broker_init`.
+     */
+open func initSignerBroker()throws   {try rustCallWithError(FfiConverterTypeNmpError_lift) {
+    uniffi_nmp_uniffi_fn_method_nmpapp_init_signer_broker(self.uniffiClonePointer(),$0
+    )
+}
+}
+
+    /**
+     * Generate a fresh `nostrconnect://` URI for app-initiated NIP-46 flows.
+     *
+     * Returns `None` when called before `init_signer_broker` or when relay
+     * selection fails. The optional `callback_scheme` is platform metadata
+     * appended as `&callback=<encoded>` — it does NOT affect relay selection
+     * (D3: relay selection is Rust-owned).
+     *
+     * Mirrors `nmp_app_nostrconnect_uri`.
+     */
+open func nostrconnectUri(callbackScheme: String?) -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_nostrconnect_uri(self.uniffiClonePointer(),
+        FfiConverterOptionString.lower(callbackScheme),$0
+    )
+})
+}
+
+    /**
+     * Register a persisted app-managed local signer (hidden from account
+     * projections, never becomes the active account).
+     *
+     * D13: the nsec is wrapped in `Zeroizing` immediately.
+     */
+open func registerAgentNsec(secret: String)  {try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_register_agent_nsec(self.uniffiClonePointer(),
+        FfiConverterString.lower(secret),$0
+    )
+}
+}
+
+    /**
+     * Remove an account from the active session.
+     */
+open func removeAccount(identityId: String)  {try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_remove_account(self.uniffiClonePointer(),
+        FfiConverterString.lower(identityId),$0
+    )
+}
+}
+
+    /**
+     * Remove a relay from the active account's relay list.
+     */
+open func removeRelay(url: String)  {try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_remove_relay(self.uniffiClonePointer(),
+        FfiConverterString.lower(url),$0
+    )
+}
 }
 
     /**
@@ -709,6 +1028,61 @@ open func shutdown()  {try! rustCall() {
 }
 
     /**
+     * Connect a NIP-46 bunker signer.
+     *
+     * `make_active = true`: handshake completes and the resolved pubkey
+     * becomes the active account (the normal bunker sign-in path).
+     *
+     * `make_active = false`: registers the bunker signer WITHOUT activating
+     * it once the handshake completes — for agent/secondary keys.
+     */
+open func signinBunker(uri: String, makeActive: Bool)  {try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_signin_bunker(self.uniffiClonePointer(),
+        FfiConverterString.lower(uri),
+        FfiConverterBool.lower(makeActive),$0
+    )
+}
+}
+
+    /**
+     * Initiate a NIP-55 (external-signer, e.g. Amber) sign-in flow.
+     *
+     * `signer_package` — optional opaque package hint forwarded to the
+     * registered capability callback (e.g. the Amber app's package name on
+     * Android). `None` means no hint.
+     *
+     * Mirrors `nmp_app_signin_nip55`.
+     */
+open func signinNip55(signerPackage: String?)  {try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_signin_nip55(self.uniffiClonePointer(),
+        FfiConverterOptionString.lower(signerPackage),$0
+    )
+}
+}
+
+    /**
+     * Sign in with a local nsec and optionally make it the active account.
+     *
+     * `make_active = true` (the common path): registers the signer AND makes
+     * it the active account. Sets `pending_mls_autopublish` so the next
+     * `nmp_marmot_register[_active]` call automatically publishes a key
+     * package.
+     *
+     * `make_active = false`: registers a visible secondary signer without
+     * activating it.
+     *
+     * D13: the nsec is wrapped in `Zeroizing` immediately; no raw key bytes
+     * are retained past the command dispatch.
+     */
+open func signinNsec(secret: String, makeActive: Bool)  {try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_signin_nsec(self.uniffiClonePointer(),
+        FfiConverterString.lower(secret),
+        FfiConverterBool.lower(makeActive),$0
+    )
+}
+}
+
+    /**
      * Start the runtime actor with the given rendering limits.
      *
      * Clamp rules (parity with C-ABI `nmp_app_start`):
@@ -728,6 +1102,16 @@ open func start(visibleLimit: UInt32, emitHz: UInt32)  {try! rustCall() {
      */
 open func stop()  {try! rustCall() {
     uniffi_nmp_uniffi_fn_method_nmpapp_stop(self.uniffiClonePointer(),$0
+    )
+}
+}
+
+    /**
+     * Switch the active account to `identity_id` (hex pubkey or account id).
+     */
+open func switchActive(identityId: String)  {try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_switch_active(self.uniffiClonePointer(),
+        FfiConverterString.lower(identityId),$0
     )
 }
 }
@@ -1029,6 +1413,83 @@ public func FfiConverterTypeIntentScope_lift(_ buf: RustBuffer) throws -> Intent
 #endif
 public func FfiConverterTypeIntentScope_lower(_ value: IntentScope) -> RustBuffer {
     return FfiConverterTypeIntentScope.lower(value)
+}
+
+
+/**
+ * A relay URL + role pair used when creating a new account.
+ *
+ * Mirrors the `Vec<(String, String)>` shape that the C-ABI
+ * `nmp_app_create_new_account` parses from a JSON string — but typed.
+ * `role` is a string like `"read"`, `"write"`, or `"both"`.
+ */
+public struct RelayConfigEntry {
+    public var url: String
+    public var role: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(url: String, role: String) {
+        self.url = url
+        self.role = role
+    }
+}
+
+#if compiler(>=6)
+extension RelayConfigEntry: Sendable {}
+#endif
+
+
+extension RelayConfigEntry: Equatable, Hashable {
+    public static func ==(lhs: RelayConfigEntry, rhs: RelayConfigEntry) -> Bool {
+        if lhs.url != rhs.url {
+            return false
+        }
+        if lhs.role != rhs.role {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(url)
+        hasher.combine(role)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeRelayConfigEntry: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RelayConfigEntry {
+        return
+            try RelayConfigEntry(
+                url: FfiConverterString.read(from: &buf),
+                role: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: RelayConfigEntry, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.url, into: &buf)
+        FfiConverterString.write(value.role, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRelayConfigEntry_lift(_ buf: RustBuffer) throws -> RelayConfigEntry {
+    return try FfiConverterTypeRelayConfigEntry.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRelayConfigEntry_lower(_ value: RelayConfigEntry) -> RustBuffer {
+    return FfiConverterTypeRelayConfigEntry.lower(value)
 }
 
 // Note that we don't yet support `indirect` for enums.
@@ -1545,11 +2006,12 @@ extension IntentTextTargets: Equatable, Hashable {}
 
 
 /**
- * UniFFI-exported error for stateless fns that can fail.
+ * UniFFI-exported error for fns that can fail.
  *
  * `encode_profile` (NIP-19) never fails — it echoes the raw input on any
  * encode failure per D6 — and does NOT use this type. The other three
- * surfaces use it for decode/tokenize/classify failures.
+ * stateless surfaces and the M14-C2 identity/signer surfaces use it for
+ * decode/tokenize/classify failures and configuration-phase errors.
  */
 public enum NmpError: Swift.Error {
 
@@ -1575,6 +2037,11 @@ public enum NmpError: Swift.Error {
      * An internal encoding step failed (e.g. FlatBuffers write error).
      */
     case EncodeFailed
+    /**
+     * A pre-start configuration call was made after the runtime had already
+     * started (M14-C2: maps from `NmpConfigStatus::AlreadyStarted`).
+     */
+    case AlreadyStarted
 }
 
 
@@ -1596,6 +2063,7 @@ public struct FfiConverterTypeNmpError: FfiConverterRustBuffer {
         case 3: return .NsecForbidden
         case 4: return .InvalidMode
         case 5: return .EncodeFailed
+        case 6: return .AlreadyStarted
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -1626,6 +2094,10 @@ public struct FfiConverterTypeNmpError: FfiConverterRustBuffer {
 
         case .EncodeFailed:
             writeInt(&buf, Int32(5))
+
+
+        case .AlreadyStarted:
+            writeInt(&buf, Int32(6))
 
         }
     }
@@ -2047,6 +2519,31 @@ fileprivate struct FfiConverterSequenceTypeIntentScope: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeRelayConfigEntry: FfiConverterRustBuffer {
+    typealias SwiftType = [RelayConfigEntry]
+
+    public static func write(_ value: [RelayConfigEntry], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeRelayConfigEntry.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [RelayConfigEntry] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [RelayConfigEntry]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeRelayConfigEntry.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceSequenceString: FfiConverterRustBuffer {
     typealias SwiftType = [[String]]
 
@@ -2066,6 +2563,32 @@ fileprivate struct FfiConverterSequenceSequenceString: FfiConverterRustBuffer {
             seq.append(try FfiConverterSequenceString.read(from: &buf))
         }
         return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterDictionaryStringString: FfiConverterRustBuffer {
+    public static func write(_ value: [String: String], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for (key, value) in value {
+            FfiConverterString.write(key, into: &buf)
+            FfiConverterString.write(value, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [String: String] {
+        let len: Int32 = try readInt(&buf)
+        var dict = [String: String]()
+        dict.reserveCapacity(Int(len))
+        for _ in 0..<len {
+            let key = try FfiConverterString.read(from: &buf)
+            let value = try FfiConverterString.read(from: &buf)
+            dict[key] = value
+        }
+        return dict
     }
 }
 /**
@@ -2200,10 +2723,40 @@ private let initializationResult: InitializationResult = {
     if (uniffi_nmp_uniffi_checksum_func_tokenize_content() != 58037) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_add_relay() != 32447) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_cancel_bunker_handshake() != 1296) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_configure() != 62391) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_create_new_account() != 39416) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_deliver_external_signer_response() != 57348) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_dispatch_action() != 17275) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_init_external_signer() != 33809) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_init_signer_broker() != 39820) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_nostrconnect_uri() != 966) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_register_agent_nsec() != 63704) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_remove_account() != 39031) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_remove_relay() != 18778) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_reset() != 45009) {
@@ -2215,10 +2768,22 @@ private let initializationResult: InitializationResult = {
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_shutdown() != 58029) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_signin_bunker() != 3699) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_signin_nip55() != 50006) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_signin_nsec() != 46919) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_start() != 30773) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_stop() != 57333) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_switch_active() != 15872) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_constructor_nmpapp_new() != 62883) {

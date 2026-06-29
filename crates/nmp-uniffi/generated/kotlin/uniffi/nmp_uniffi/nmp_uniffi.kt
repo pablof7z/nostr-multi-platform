@@ -759,6 +759,34 @@ internal open class UniffiVTableCallbackInterfaceUpdateSink(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is
 // rather `InterfaceTooLargeException`, caused by too many methods
@@ -782,9 +810,29 @@ fun uniffi_nmp_uniffi_checksum_func_encode_profile(
 ): Short
 fun uniffi_nmp_uniffi_checksum_func_tokenize_content(
 ): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_add_relay(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_cancel_bunker_handshake(
+): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_configure(
 ): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_create_new_account(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_deliver_external_signer_response(
+): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_dispatch_action(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_init_external_signer(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_init_signer_broker(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_nostrconnect_uri(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_register_agent_nsec(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_remove_account(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_remove_relay(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_reset(
 ): Short
@@ -792,9 +840,17 @@ fun uniffi_nmp_uniffi_checksum_method_nmpapp_set_update_sink(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_shutdown(
 ): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_signin_bunker(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_signin_nip55(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_signin_nsec(
+): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_start(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_stop(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_switch_active(
 ): Short
 fun uniffi_nmp_uniffi_checksum_constructor_nmpapp_new(
 ): Short
@@ -856,19 +912,47 @@ fun uniffi_nmp_uniffi_fn_free_nmpapp(`ptr`: Pointer,uniffi_out_err: UniffiRustCa
 ): Unit
 fun uniffi_nmp_uniffi_fn_constructor_nmpapp_new(uniffi_out_err: UniffiRustCallStatus,
 ): Pointer
+fun uniffi_nmp_uniffi_fn_method_nmpapp_add_relay(`ptr`: Pointer,`url`: RustBuffer.ByValue,`role`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+): Unit
+fun uniffi_nmp_uniffi_fn_method_nmpapp_cancel_bunker_handshake(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
+): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_configure(`ptr`: Pointer,`visibleLimit`: Int,`emitHz`: Int,uniffi_out_err: UniffiRustCallStatus,
+): Unit
+fun uniffi_nmp_uniffi_fn_method_nmpapp_create_new_account(`ptr`: Pointer,`profile`: RustBuffer.ByValue,`relays`: RustBuffer.ByValue,`mls`: Byte,`makeActive`: Byte,uniffi_out_err: UniffiRustCallStatus,
+): Unit
+fun uniffi_nmp_uniffi_fn_method_nmpapp_deliver_external_signer_response(`ptr`: Pointer,`responseJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_dispatch_action(`ptr`: Pointer,`envelope`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
 ): RustBuffer.ByValue
+fun uniffi_nmp_uniffi_fn_method_nmpapp_init_external_signer(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
+): Unit
+fun uniffi_nmp_uniffi_fn_method_nmpapp_init_signer_broker(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
+): Unit
+fun uniffi_nmp_uniffi_fn_method_nmpapp_nostrconnect_uri(`ptr`: Pointer,`callbackScheme`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+): RustBuffer.ByValue
+fun uniffi_nmp_uniffi_fn_method_nmpapp_register_agent_nsec(`ptr`: Pointer,`secret`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+): Unit
+fun uniffi_nmp_uniffi_fn_method_nmpapp_remove_account(`ptr`: Pointer,`identityId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+): Unit
+fun uniffi_nmp_uniffi_fn_method_nmpapp_remove_relay(`ptr`: Pointer,`url`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_reset(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_set_update_sink(`ptr`: Pointer,`sink`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_shutdown(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
+fun uniffi_nmp_uniffi_fn_method_nmpapp_signin_bunker(`ptr`: Pointer,`uri`: RustBuffer.ByValue,`makeActive`: Byte,uniffi_out_err: UniffiRustCallStatus,
+): Unit
+fun uniffi_nmp_uniffi_fn_method_nmpapp_signin_nip55(`ptr`: Pointer,`signerPackage`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+): Unit
+fun uniffi_nmp_uniffi_fn_method_nmpapp_signin_nsec(`ptr`: Pointer,`secret`: RustBuffer.ByValue,`makeActive`: Byte,uniffi_out_err: UniffiRustCallStatus,
+): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_start(`ptr`: Pointer,`visibleLimit`: Int,`emitHz`: Int,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_stop(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
+): Unit
+fun uniffi_nmp_uniffi_fn_method_nmpapp_switch_active(`ptr`: Pointer,`identityId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
 fun uniffi_nmp_uniffi_fn_init_callback_vtable_updatesink(`vtable`: UniffiVTableCallbackInterfaceUpdateSink,
 ): Unit
@@ -1018,10 +1102,40 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_nmp_uniffi_checksum_func_tokenize_content() != 58037.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_add_relay() != 32447.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_cancel_bunker_handshake() != 1296.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_configure() != 62391.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_create_new_account() != 39416.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_deliver_external_signer_response() != 57348.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_dispatch_action() != 17275.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_init_external_signer() != 33809.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_init_signer_broker() != 39820.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_nostrconnect_uri() != 966.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_register_agent_nsec() != 63704.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_remove_account() != 39031.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_remove_relay() != 18778.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_reset() != 45009.toShort()) {
@@ -1033,10 +1147,22 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_shutdown() != 58029.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_signin_bunker() != 3699.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_signin_nip55() != 50006.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_signin_nsec() != 46919.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_start() != 30773.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_stop() != 57333.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_switch_active() != 15872.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_constructor_nmpapp_new() != 62883.toShort()) {
@@ -1245,6 +1371,29 @@ public object FfiConverterUInt: FfiConverter<UInt, Int> {
 /**
  * @suppress
  */
+public object FfiConverterBoolean: FfiConverter<Boolean, Byte> {
+    override fun lift(value: Byte): Boolean {
+        return value.toInt() != 0
+    }
+
+    override fun read(buf: ByteBuffer): Boolean {
+        return lift(buf.get())
+    }
+
+    override fun lower(value: Boolean): Byte {
+        return if (value) 1.toByte() else 0.toByte()
+    }
+
+    override fun allocationSize(value: Boolean) = 1UL
+
+    override fun write(value: Boolean, buf: ByteBuffer) {
+        buf.put(lower(value))
+    }
+}
+
+/**
+ * @suppress
+ */
 public object FfiConverterString: FfiConverter<String, RustBuffer.ByValue> {
     // Note: we don't inherit from FfiConverterRustBuffer, because we use a
     // special encoding when lowering/lifting.  We can use `RustBuffer.len` to
@@ -1431,10 +1580,55 @@ public object FfiConverterByteArray: FfiConverterRustBuffer<ByteArray> {
 public interface NmpAppInterface {
 
     /**
+     * Add a relay to the active account's relay list.
+     *
+     * `role` — `"read"`, `"write"`, or `"both"`. Defaults to `"both"` when
+     * `None`, matching the C-ABI `nmp_app_add_relay` null-role default.
+     */
+    fun `addRelay`(`url`: kotlin.String, `role`: kotlin.String?)
+
+    /**
+     * Cancel an in-flight NIP-46 bunker handshake, if any.
+     *
+     * No-op when no handshake is in progress. Mirrors
+     * `nmp_app_cancel_bunker_handshake`.
+     */
+    fun `cancelBunkerHandshake`()
+
+    /**
      * Reconfigure rendering limits without restarting. Same clamp rules as
      * `start`.
      */
     fun `configure`(`visibleLimit`: kotlin.UInt, `emitHz`: kotlin.UInt)
+
+    /**
+     * Create a new account (generate keypair, publish kind:0 + kind:10002).
+     *
+     * `profile` — display-name, picture, about, etc. as key-value pairs.
+     * `relays`  — initial relay list; each entry carries a URL and a role
+     * string (`"read"`, `"write"`, or `"both"`).
+     * `mls`     — arm MLS key-package auto-publish for this account.
+     * `make_active` — make the new account active immediately.
+     *
+     * Auto-follows nobody: generic framework create-account policy (operator
+     * policy lives in the leaf app, not in framework FFI — #1493).
+     */
+    fun `createNewAccount`(`profile`: Map<kotlin.String, kotlin.String>, `relays`: List<RelayConfigEntry>, `mls`: kotlin.Boolean, `makeActive`: kotlin.Boolean)
+
+    /**
+     * Deliver a raw NIP-55 response JSON from the host capability bridge
+     * back into the Rust signer driver.
+     *
+     * Called by the host after the external signer (e.g. Amber) returns a
+     * response Intent / resolver result. The JSON is forwarded opaquely to
+     * the `Nip55Driver` inside `nmp-signers`.
+     *
+     * D6: malformed JSON degrades to a timeout on the pending signer
+     * operation — never a panic.
+     *
+     * Mirrors `nmp_app_deliver_external_signer_response`.
+     */
+    fun `deliverExternalSignerResponse`(`responseJson`: kotlin.String)
 
     /**
      * Dispatch an NMPD FlatBuffers action envelope and return the outcome.
@@ -1448,6 +1642,61 @@ public interface NmpAppInterface {
      * `DispatchOutcome.error`. D8: non-blocking channel send.
      */
     fun `dispatchAction`(`envelope`: kotlin.ByteArray): DispatchOutcome
+
+    /**
+     * Initialise the NIP-55 external-signer capability transport.
+     *
+     * Must be called before `signin_nip55` to wire up the
+     * `external_signer` capability namespace. Idempotent — a second call is
+     * a no-op.
+     *
+     * Mirrors `nmp_external_signer_init`.
+     */
+    fun `initExternalSigner`()
+
+    /**
+     * Initialise the NIP-46 actor-lane runtime for bunker / nostrconnect
+     * sign-in.
+     *
+     * Must be called before `signin_bunker` / `nostrconnect_uri` can
+     * complete a handshake. Idempotent (first-writer-wins): a second call
+     * before start is a no-op returning `Ok(())`.
+     *
+     * Returns `Err(NmpError::AlreadyStarted)` if called after the runtime
+     * has started — mirrors the C-ABI `NmpConfigStatus::AlreadyStarted`
+     * (u32 code 2) return value of `nmp_signer_broker_init`.
+     */
+    fun `initSignerBroker`()
+
+    /**
+     * Generate a fresh `nostrconnect://` URI for app-initiated NIP-46 flows.
+     *
+     * Returns `None` when called before `init_signer_broker` or when relay
+     * selection fails. The optional `callback_scheme` is platform metadata
+     * appended as `&callback=<encoded>` — it does NOT affect relay selection
+     * (D3: relay selection is Rust-owned).
+     *
+     * Mirrors `nmp_app_nostrconnect_uri`.
+     */
+    fun `nostrconnectUri`(`callbackScheme`: kotlin.String?): kotlin.String?
+
+    /**
+     * Register a persisted app-managed local signer (hidden from account
+     * projections, never becomes the active account).
+     *
+     * D13: the nsec is wrapped in `Zeroizing` immediately.
+     */
+    fun `registerAgentNsec`(`secret`: kotlin.String)
+
+    /**
+     * Remove an account from the active session.
+     */
+    fun `removeAccount`(`identityId`: kotlin.String)
+
+    /**
+     * Remove a relay from the active account's relay list.
+     */
+    fun `removeRelay`(`url`: kotlin.String)
 
     /**
      * Signal the kernel to reset (clears transient state).
@@ -1481,6 +1730,44 @@ public interface NmpAppInterface {
     fun `shutdown`()
 
     /**
+     * Connect a NIP-46 bunker signer.
+     *
+     * `make_active = true`: handshake completes and the resolved pubkey
+     * becomes the active account (the normal bunker sign-in path).
+     *
+     * `make_active = false`: registers the bunker signer WITHOUT activating
+     * it once the handshake completes — for agent/secondary keys.
+     */
+    fun `signinBunker`(`uri`: kotlin.String, `makeActive`: kotlin.Boolean)
+
+    /**
+     * Initiate a NIP-55 (external-signer, e.g. Amber) sign-in flow.
+     *
+     * `signer_package` — optional opaque package hint forwarded to the
+     * registered capability callback (e.g. the Amber app's package name on
+     * Android). `None` means no hint.
+     *
+     * Mirrors `nmp_app_signin_nip55`.
+     */
+    fun `signinNip55`(`signerPackage`: kotlin.String?)
+
+    /**
+     * Sign in with a local nsec and optionally make it the active account.
+     *
+     * `make_active = true` (the common path): registers the signer AND makes
+     * it the active account. Sets `pending_mls_autopublish` so the next
+     * `nmp_marmot_register[_active]` call automatically publishes a key
+     * package.
+     *
+     * `make_active = false`: registers a visible secondary signer without
+     * activating it.
+     *
+     * D13: the nsec is wrapped in `Zeroizing` immediately; no raw key bytes
+     * are retained past the command dispatch.
+     */
+    fun `signinNsec`(`secret`: kotlin.String, `makeActive`: kotlin.Boolean)
+
+    /**
      * Start the runtime actor with the given rendering limits.
      *
      * Clamp rules (parity with C-ABI `nmp_app_start`):
@@ -1493,6 +1780,11 @@ public interface NmpAppInterface {
      * Signal the kernel to pause event processing (no data loss).
      */
     fun `stop`()
+
+    /**
+     * Switch the active account to `identity_id` (hex pubkey or account id).
+     */
+    fun `switchActive`(`identityId`: kotlin.String)
 
     companion object
 }
@@ -1603,6 +1895,40 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
 
 
     /**
+     * Add a relay to the active account's relay list.
+     *
+     * `role` — `"read"`, `"write"`, or `"both"`. Defaults to `"both"` when
+     * `None`, matching the C-ABI `nmp_app_add_relay` null-role default.
+     */override fun `addRelay`(`url`: kotlin.String, `role`: kotlin.String?)
+        =
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_add_relay(
+        it, FfiConverterString.lower(`url`),FfiConverterOptionalString.lower(`role`),_status)
+}
+    }
+
+
+
+
+    /**
+     * Cancel an in-flight NIP-46 bunker handshake, if any.
+     *
+     * No-op when no handshake is in progress. Mirrors
+     * `nmp_app_cancel_bunker_handshake`.
+     */override fun `cancelBunkerHandshake`()
+        =
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_cancel_bunker_handshake(
+        it, _status)
+}
+    }
+
+
+
+
+    /**
      * Reconfigure rendering limits without restarting. Same clamp rules as
      * `start`.
      */override fun `configure`(`visibleLimit`: kotlin.UInt, `emitHz`: kotlin.UInt)
@@ -1611,6 +1937,53 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_configure(
         it, FfiConverterUInt.lower(`visibleLimit`),FfiConverterUInt.lower(`emitHz`),_status)
+}
+    }
+
+
+
+
+    /**
+     * Create a new account (generate keypair, publish kind:0 + kind:10002).
+     *
+     * `profile` — display-name, picture, about, etc. as key-value pairs.
+     * `relays`  — initial relay list; each entry carries a URL and a role
+     * string (`"read"`, `"write"`, or `"both"`).
+     * `mls`     — arm MLS key-package auto-publish for this account.
+     * `make_active` — make the new account active immediately.
+     *
+     * Auto-follows nobody: generic framework create-account policy (operator
+     * policy lives in the leaf app, not in framework FFI — #1493).
+     */override fun `createNewAccount`(`profile`: Map<kotlin.String, kotlin.String>, `relays`: List<RelayConfigEntry>, `mls`: kotlin.Boolean, `makeActive`: kotlin.Boolean)
+        =
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_create_new_account(
+        it, FfiConverterMapStringString.lower(`profile`),FfiConverterSequenceTypeRelayConfigEntry.lower(`relays`),FfiConverterBoolean.lower(`mls`),FfiConverterBoolean.lower(`makeActive`),_status)
+}
+    }
+
+
+
+
+    /**
+     * Deliver a raw NIP-55 response JSON from the host capability bridge
+     * back into the Rust signer driver.
+     *
+     * Called by the host after the external signer (e.g. Amber) returns a
+     * response Intent / resolver result. The JSON is forwarded opaquely to
+     * the `Nip55Driver` inside `nmp-signers`.
+     *
+     * D6: malformed JSON degrades to a timeout on the pending signer
+     * operation — never a panic.
+     *
+     * Mirrors `nmp_app_deliver_external_signer_response`.
+     */override fun `deliverExternalSignerResponse`(`responseJson`: kotlin.String)
+        =
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_deliver_external_signer_response(
+        it, FfiConverterString.lower(`responseJson`),_status)
 }
     }
 
@@ -1637,6 +2010,117 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
     }
     )
     }
+
+
+
+    /**
+     * Initialise the NIP-55 external-signer capability transport.
+     *
+     * Must be called before `signin_nip55` to wire up the
+     * `external_signer` capability namespace. Idempotent — a second call is
+     * a no-op.
+     *
+     * Mirrors `nmp_external_signer_init`.
+     */override fun `initExternalSigner`()
+        =
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_init_external_signer(
+        it, _status)
+}
+    }
+
+
+
+
+    /**
+     * Initialise the NIP-46 actor-lane runtime for bunker / nostrconnect
+     * sign-in.
+     *
+     * Must be called before `signin_bunker` / `nostrconnect_uri` can
+     * complete a handshake. Idempotent (first-writer-wins): a second call
+     * before start is a no-op returning `Ok(())`.
+     *
+     * Returns `Err(NmpError::AlreadyStarted)` if called after the runtime
+     * has started — mirrors the C-ABI `NmpConfigStatus::AlreadyStarted`
+     * (u32 code 2) return value of `nmp_signer_broker_init`.
+     */
+    @Throws(NmpException::class)override fun `initSignerBroker`()
+        =
+    callWithPointer {
+    uniffiRustCallWithError(NmpException) { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_init_signer_broker(
+        it, _status)
+}
+    }
+
+
+
+
+    /**
+     * Generate a fresh `nostrconnect://` URI for app-initiated NIP-46 flows.
+     *
+     * Returns `None` when called before `init_signer_broker` or when relay
+     * selection fails. The optional `callback_scheme` is platform metadata
+     * appended as `&callback=<encoded>` — it does NOT affect relay selection
+     * (D3: relay selection is Rust-owned).
+     *
+     * Mirrors `nmp_app_nostrconnect_uri`.
+     */override fun `nostrconnectUri`(`callbackScheme`: kotlin.String?): kotlin.String? {
+            return FfiConverterOptionalString.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_nostrconnect_uri(
+        it, FfiConverterOptionalString.lower(`callbackScheme`),_status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * Register a persisted app-managed local signer (hidden from account
+     * projections, never becomes the active account).
+     *
+     * D13: the nsec is wrapped in `Zeroizing` immediately.
+     */override fun `registerAgentNsec`(`secret`: kotlin.String)
+        =
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_register_agent_nsec(
+        it, FfiConverterString.lower(`secret`),_status)
+}
+    }
+
+
+
+
+    /**
+     * Remove an account from the active session.
+     */override fun `removeAccount`(`identityId`: kotlin.String)
+        =
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_remove_account(
+        it, FfiConverterString.lower(`identityId`),_status)
+}
+    }
+
+
+
+
+    /**
+     * Remove a relay from the active account's relay list.
+     */override fun `removeRelay`(`url`: kotlin.String)
+        =
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_remove_relay(
+        it, FfiConverterString.lower(`url`),_status)
+}
+    }
+
 
 
 
@@ -1699,6 +2183,71 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
 
 
     /**
+     * Connect a NIP-46 bunker signer.
+     *
+     * `make_active = true`: handshake completes and the resolved pubkey
+     * becomes the active account (the normal bunker sign-in path).
+     *
+     * `make_active = false`: registers the bunker signer WITHOUT activating
+     * it once the handshake completes — for agent/secondary keys.
+     */override fun `signinBunker`(`uri`: kotlin.String, `makeActive`: kotlin.Boolean)
+        =
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_signin_bunker(
+        it, FfiConverterString.lower(`uri`),FfiConverterBoolean.lower(`makeActive`),_status)
+}
+    }
+
+
+
+
+    /**
+     * Initiate a NIP-55 (external-signer, e.g. Amber) sign-in flow.
+     *
+     * `signer_package` — optional opaque package hint forwarded to the
+     * registered capability callback (e.g. the Amber app's package name on
+     * Android). `None` means no hint.
+     *
+     * Mirrors `nmp_app_signin_nip55`.
+     */override fun `signinNip55`(`signerPackage`: kotlin.String?)
+        =
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_signin_nip55(
+        it, FfiConverterOptionalString.lower(`signerPackage`),_status)
+}
+    }
+
+
+
+
+    /**
+     * Sign in with a local nsec and optionally make it the active account.
+     *
+     * `make_active = true` (the common path): registers the signer AND makes
+     * it the active account. Sets `pending_mls_autopublish` so the next
+     * `nmp_marmot_register[_active]` call automatically publishes a key
+     * package.
+     *
+     * `make_active = false`: registers a visible secondary signer without
+     * activating it.
+     *
+     * D13: the nsec is wrapped in `Zeroizing` immediately; no raw key bytes
+     * are retained past the command dispatch.
+     */override fun `signinNsec`(`secret`: kotlin.String, `makeActive`: kotlin.Boolean)
+        =
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_signin_nsec(
+        it, FfiConverterString.lower(`secret`),FfiConverterBoolean.lower(`makeActive`),_status)
+}
+    }
+
+
+
+
+    /**
      * Start the runtime actor with the given rendering limits.
      *
      * Clamp rules (parity with C-ABI `nmp_app_start`):
@@ -1724,6 +2273,20 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_stop(
         it, _status)
+}
+    }
+
+
+
+
+    /**
+     * Switch the active account to `identity_id` (hex pubkey or account id).
+     */override fun `switchActive`(`identityId`: kotlin.String)
+        =
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_switch_active(
+        it, FfiConverterString.lower(`identityId`),_status)
 }
     }
 
@@ -1885,6 +2448,45 @@ public object FfiConverterTypeIntentScope: FfiConverterRustBuffer<IntentScope> {
     override fun write(value: IntentScope, buf: ByteBuffer) {
             FfiConverterString.write(value.`namespace`, buf)
             FfiConverterString.write(value.`name`, buf)
+    }
+}
+
+
+
+/**
+ * A relay URL + role pair used when creating a new account.
+ *
+ * Mirrors the `Vec<(String, String)>` shape that the C-ABI
+ * `nmp_app_create_new_account` parses from a JSON string — but typed.
+ * `role` is a string like `"read"`, `"write"`, or `"both"`.
+ */
+data class RelayConfigEntry (
+    var `url`: kotlin.String,
+    var `role`: kotlin.String
+) {
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeRelayConfigEntry: FfiConverterRustBuffer<RelayConfigEntry> {
+    override fun read(buf: ByteBuffer): RelayConfigEntry {
+        return RelayConfigEntry(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: RelayConfigEntry) = (
+            FfiConverterString.allocationSize(value.`url`) +
+            FfiConverterString.allocationSize(value.`role`)
+    )
+
+    override fun write(value: RelayConfigEntry, buf: ByteBuffer) {
+            FfiConverterString.write(value.`url`, buf)
+            FfiConverterString.write(value.`role`, buf)
     }
 }
 
@@ -2389,11 +2991,12 @@ public object FfiConverterTypeIntentTextTargets : FfiConverterRustBuffer<IntentT
 
 
 /**
- * UniFFI-exported error for stateless fns that can fail.
+ * UniFFI-exported error for fns that can fail.
  *
  * `encode_profile` (NIP-19) never fails — it echoes the raw input on any
  * encode failure per D6 — and does NOT use this type. The other three
- * surfaces use it for decode/tokenize/classify failures.
+ * stateless surfaces and the M14-C2 identity/signer surfaces use it for
+ * decode/tokenize/classify failures and configuration-phase errors.
  */
 sealed class NmpException: kotlin.Exception() {
 
@@ -2442,6 +3045,16 @@ sealed class NmpException: kotlin.Exception() {
             get() = ""
     }
 
+    /**
+     * A pre-start configuration call was made after the runtime had already
+     * started (M14-C2: maps from `NmpConfigStatus::AlreadyStarted`).
+     */
+    class AlreadyStarted(
+        ) : NmpException() {
+        override val message
+            get() = ""
+    }
+
 
     companion object ErrorHandler : UniffiRustCallStatusErrorHandler<NmpException> {
         override fun lift(error_buf: RustBuffer.ByValue): NmpException = FfiConverterTypeNmpError.lift(error_buf)
@@ -2463,6 +3076,7 @@ public object FfiConverterTypeNmpError : FfiConverterRustBuffer<NmpException> {
             3 -> NmpException.NsecForbidden()
             4 -> NmpException.InvalidMode()
             5 -> NmpException.EncodeFailed()
+            6 -> NmpException.AlreadyStarted()
             else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
         }
     }
@@ -2489,6 +3103,10 @@ public object FfiConverterTypeNmpError : FfiConverterRustBuffer<NmpException> {
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4UL
             )
+            is NmpException.AlreadyStarted -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
         }
     }
 
@@ -2512,6 +3130,10 @@ public object FfiConverterTypeNmpError : FfiConverterRustBuffer<NmpException> {
             }
             is NmpException.EncodeFailed -> {
                 buf.putInt(5)
+                Unit
+            }
+            is NmpException.AlreadyStarted -> {
+                buf.putInt(6)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
@@ -2903,6 +3525,34 @@ public object FfiConverterSequenceTypeIntentScope: FfiConverterRustBuffer<List<I
 /**
  * @suppress
  */
+public object FfiConverterSequenceTypeRelayConfigEntry: FfiConverterRustBuffer<List<RelayConfigEntry>> {
+    override fun read(buf: ByteBuffer): List<RelayConfigEntry> {
+        val len = buf.getInt()
+        return List<RelayConfigEntry>(len) {
+            FfiConverterTypeRelayConfigEntry.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<RelayConfigEntry>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeRelayConfigEntry.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<RelayConfigEntry>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeRelayConfigEntry.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceSequenceString: FfiConverterRustBuffer<List<List<kotlin.String>>> {
     override fun read(buf: ByteBuffer): List<List<kotlin.String>> {
         val len = buf.getInt()
@@ -2921,6 +3571,45 @@ public object FfiConverterSequenceSequenceString: FfiConverterRustBuffer<List<Li
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterSequenceString.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterMapStringString: FfiConverterRustBuffer<Map<kotlin.String, kotlin.String>> {
+    override fun read(buf: ByteBuffer): Map<kotlin.String, kotlin.String> {
+        val len = buf.getInt()
+        return buildMap<kotlin.String, kotlin.String>(len) {
+            repeat(len) {
+                val k = FfiConverterString.read(buf)
+                val v = FfiConverterString.read(buf)
+                this[k] = v
+            }
+        }
+    }
+
+    override fun allocationSize(value: Map<kotlin.String, kotlin.String>): ULong {
+        val spaceForMapSize = 4UL
+        val spaceForChildren = value.map { (k, v) ->
+            FfiConverterString.allocationSize(k) +
+            FfiConverterString.allocationSize(v)
+        }.sum()
+        return spaceForMapSize + spaceForChildren
+    }
+
+    override fun write(value: Map<kotlin.String, kotlin.String>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        // The parens on `(k, v)` here ensure we're calling the right method,
+        // which is important for compatibility with older android devices.
+        // Ref https://blog.danlew.net/2017/03/16/kotlin-puzzler-whose-line-is-it-anyways/
+        value.forEach { (k, v) ->
+            FfiConverterString.write(k, buf)
+            FfiConverterString.write(v, buf)
         }
     }
 }

@@ -38,6 +38,9 @@ uniffi::setup_scaffolding!();
 pub mod stateless;
 pub use stateless::NmpError;
 
+// ── Identity / signer / relay (C2 — account, relay, broker, external) ────────
+pub mod identity;
+
 // ── Typed dispatch outcome ────────────────────────────────────────────────────
 
 /// Typed outcome of a `dispatch_action` call.

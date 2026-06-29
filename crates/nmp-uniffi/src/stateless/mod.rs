@@ -21,11 +21,12 @@ pub mod nip21;
 
 // ── Shared error type ─────────────────────────────────────────────────────────
 
-/// UniFFI-exported error for stateless fns that can fail.
+/// UniFFI-exported error for fns that can fail.
 ///
 /// `encode_profile` (NIP-19) never fails — it echoes the raw input on any
 /// encode failure per D6 — and does NOT use this type. The other three
-/// surfaces use it for decode/tokenize/classify failures.
+/// stateless surfaces and the M14-C2 identity/signer surfaces use it for
+/// decode/tokenize/classify failures and configuration-phase errors.
 #[derive(Debug, uniffi::Error)]
 pub enum NmpError {
     /// The caller supplied a null, empty, or structurally invalid input.
@@ -38,6 +39,9 @@ pub enum NmpError {
     InvalidMode,
     /// An internal encoding step failed (e.g. FlatBuffers write error).
     EncodeFailed,
+    /// A pre-start configuration call was made after the runtime had already
+    /// started (M14-C2: maps from `NmpConfigStatus::AlreadyStarted`).
+    AlreadyStarted,
 }
 
 impl std::fmt::Display for NmpError {
@@ -48,6 +52,7 @@ impl std::fmt::Display for NmpError {
             NmpError::NsecForbidden => write!(f, "nsec forbidden: secret key rejected"),
             NmpError::InvalidMode => write!(f, "invalid render mode"),
             NmpError::EncodeFailed => write!(f, "encode failed"),
+            NmpError::AlreadyStarted => write!(f, "already started: configuration after runtime start"),
         }
     }
 }
