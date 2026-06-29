@@ -1,11 +1,7 @@
 //! Intent dispatch and diagnostic info UniFFI methods — M14-C6.
 //!
-//! Migrates the intent-dispatch and debug-info C-ABI symbols:
-//!
-//! | UniFFI method    | C-ABI counterpart               |
-//! |------------------|---------------------------------|
-//! | `intent_dispatch`| `nmp_app_intent_dispatch`       |
-//! | `debug_info`     | `nmp_app_debug_info`            |
+//! Owns the intent-dispatch and debug-info UniFFI methods after the migrated
+//! C-ABI symbols were deleted.
 //!
 //! ## Design notes
 //!
@@ -177,7 +173,7 @@ mod tests {
 
     // ── intent_dispatch ───────────────────────────────────────────────────
 
-    /// Parity with C-ABI `nmp_app_intent_dispatch`:
+    /// Parity with the former C-ABI intent-dispatch surface:
     /// a malformed request JSON returns `{"ok":false,"error":"…"}`.
     #[test]
     fn parity_intent_dispatch_malformed_request_returns_error() {

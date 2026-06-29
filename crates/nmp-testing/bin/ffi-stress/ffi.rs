@@ -12,10 +12,6 @@ pub(crate) use nmp_ffi::{
     nmp_app_resolve_ref,
 };
 pub(crate) use nmp_native_runtime::NmpApp;
-// ADR-0055 Rung 3 S5 — needed by the S6 Phase B measurement to enable
-// incremental-apply on the second NmpApp instance.
-#[allow(unused_imports)]
-pub(crate) use nmp_ffi::nmp_app_declare_incremental_apply;
 // nmp_app_inject_pre_verified_events is retained for possible future harness use
 // but S3/S4/S5 all use nmp_app_inject_signed_events (T44 round-4).
 #[allow(unused_imports)]
@@ -57,6 +53,13 @@ pub(crate) fn set_update_listener(
         }) as nmp_native_runtime::UpdateListener
     });
     unsafe { (&*app).set_update_listener(listener) };
+}
+
+pub(crate) fn declare_incremental_apply(app: *mut NmpApp) {
+    assert!(!app.is_null(), "app pointer must be non-null");
+    unsafe { &*app }
+        .declare_incremental_apply()
+        .expect("declare_incremental_apply before start must succeed");
 }
 
 /// Generate N deterministic lowercase 64-hex-char pubkeys suitable for all

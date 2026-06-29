@@ -1,13 +1,7 @@
 //! Storage path and projection config UniFFI methods — M14-C6.
 //!
-//! Migrates the pre-start configuration C-ABI symbols:
-//!
-//! | UniFFI method                     | C-ABI counterpart                           |
-//! |-----------------------------------|---------------------------------------------|
-//! | `set_storage_path`                | `nmp_app_set_storage_path`                  |
-//! | `declare_incremental_apply`       | `nmp_app_declare_incremental_apply`         |
-//! | `declare_consumed_projections`    | `nmp_app_declare_consumed_projections`      |
-//! | `consume_all_builtin_projections` | `nmp_app_consume_all_builtin_projections`   |
+//! Owns the pre-start configuration UniFFI methods after the migrated C-ABI
+//! symbols were deleted.
 //!
 //! ## Design notes
 //!

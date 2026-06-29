@@ -209,13 +209,11 @@ No `_drop` or `_cancel` symbols exist outside that module.
 
 ---
 
-## 10. Diagnostics (`nmp-ffi/src/debug_info.rs`)
+## 10. Diagnostics
 
-`nmp_app_debug_info(app, domain: c_int) -> *mut c_char` — unified pull accessor
-(#1726). `domain 0` = routing trace, `domain 1` = composition report,
-`domain 2` = both merged. Unknown domain → `{}`. Never NULL for non-null app.
-Caller frees with `nmp_free_string`. Replaces the former split symbols
-`nmp_app_recent_routing_decisions` and `nmp_app_composition_report`.
+Diagnostics are exposed through the UniFFI/native-runtime `debug_info(domain)`
+method. `domain 0` = routing trace, `domain 1` = composition report,
+`domain 2` = both merged. Unknown domain returns `{}`.
 
 Telemetry for the diagnostics screen also rides the standard update-callback
 FlatBuffers frame (relay connection state, NIP-77 reconciler counters, publish
@@ -332,7 +330,6 @@ the Rust action modules derive signing identity and routing policy.
 | UniFFI `openUri` | PASS | PASS | |
 | `nmp_app_resolve_ref` (namespace=1/event) | PASS | PASS | Unified event-ref resolution (`nmp_app_claim_profile` deleted) |
 | `nmp_app_release_ref` (namespace=1/event) | PASS | PASS | Unified event-ref release (`nmp_app_release_profile` deleted) |
-| `nmp_app_debug_info` | PASS — `{}` for unknown domain/null app, never NULL for non-null app | PASS | Diagnostic pull accessor |
 | ~~`nmp_app_wallet_connect/disconnect/pay_invoice`~~ | DELETED | DELETED | Removed; NIP-47 goes through byte action doorway |
 
 **Zero D6 violations. Zero D7 violations.**

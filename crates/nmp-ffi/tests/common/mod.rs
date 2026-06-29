@@ -21,7 +21,7 @@ use std::time::{Duration, Instant};
 use nmp_core::actor::ActorCommand;
 use nmp_core::actor::TestSupportCommand;
 use nmp_core::{decode_snapshot_typed_projections, TypedProjectionData};
-use nmp_ffi::{nmp_app_consume_all_builtin_projections, NmpApp};
+use nmp_ffi::NmpApp;
 use nmp_store::{RawEvent, VerifiedEvent};
 
 /// NmpApp instances spawn global actor threads that do not cleanly isolate
@@ -158,11 +158,11 @@ pub fn boot() -> *mut NmpApp {
     let app = test_app_new();
     test_app_set_update_callback(app, std::ptr::null_mut(), Some(collect_frame));
     // Declare projection-consumption intent like a real host (ADR-0053 / E4).
-    // Without it `nmp_app_start` trips its forgotten-declaration guard in a
+    // Without it start trips its forgotten-declaration guard in a
     // non-`test-support` build — which is how `nmp-ffi`'s own integration tests
     // link the lib (the prior `nmp-nip29` location enabled test-support via its
     // dev-dep; here the production guard is live, so we satisfy it honestly).
-    nmp_app_consume_all_builtin_projections(app);
+    unsafe { &*app }.consume_all_builtin_projections();
     test_app_start(app, 64, 8); // emit_hz=8 → ~125 ms cadence
     app
 }

@@ -3,7 +3,7 @@
 //! Extracted per repo file-size doctrine (500-LOC hard ceiling).
 //!
 //! This is the capstone measurement that empirically proves the whole-product
-//! feed-gating win: once `nmp_app_declare_incremental_apply` is set and the feed
+//! feed-gating win: once incremental apply is set and the feed
 //! has been registered via `register_op_feed_defaults`, idle ticks produce ~0
 //! feed bytes (the byte-equality gate fires and omits the `nmp.feed.home` row).
 //!
