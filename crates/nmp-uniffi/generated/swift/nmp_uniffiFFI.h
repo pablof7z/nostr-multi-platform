@@ -332,6 +332,11 @@ void uniffi_nmp_uniffi_fn_method_nmpapp_cancel_action(void*_Nonnull ptr, RustBuf
 void uniffi_nmp_uniffi_fn_method_nmpapp_cancel_bunker_handshake(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_CLOSE_FEED_SESSION
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_CLOSE_FEED_SESSION
+int8_t uniffi_nmp_uniffi_fn_method_nmpapp_close_feed_session(void*_Nonnull ptr, uint64_t session_id, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_CONFIGURE
 #define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_CONFIGURE
 void uniffi_nmp_uniffi_fn_method_nmpapp_configure(void*_Nonnull ptr, uint32_t visible_limit, uint32_t emit_hz, RustCallStatus *_Nonnull out_status
@@ -367,9 +372,24 @@ void uniffi_nmp_uniffi_fn_method_nmpapp_init_external_signer(void*_Nonnull ptr, 
 void uniffi_nmp_uniffi_fn_method_nmpapp_init_signer_broker(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_LOAD_OLDER_FEED
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_LOAD_OLDER_FEED
+int8_t uniffi_nmp_uniffi_fn_method_nmpapp_load_older_feed(void*_Nonnull ptr, RustBuffer key, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_NOSTRCONNECT_URI
 #define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_NOSTRCONNECT_URI
 RustBuffer uniffi_nmp_uniffi_fn_method_nmpapp_nostrconnect_uri(void*_Nonnull ptr, RustBuffer callback_scheme, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_OPEN_FEED_JSON
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_OPEN_FEED_JSON
+RustBuffer uniffi_nmp_uniffi_fn_method_nmpapp_open_feed_json(void*_Nonnull ptr, RustBuffer params_json, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_OPEN_URI
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_OPEN_URI
+void uniffi_nmp_uniffi_fn_method_nmpapp_open_uri(void*_Nonnull ptr, RustBuffer uri, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_REGISTER_ACTION_RESULT_OBSERVER
@@ -455,6 +475,21 @@ void uniffi_nmp_uniffi_fn_method_nmpapp_resolve_ref_with_metadata(void*_Nonnull 
 #ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_RETRY_PUBLISH
 #define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_RETRY_PUBLISH
 void uniffi_nmp_uniffi_fn_method_nmpapp_retry_publish(void*_Nonnull ptr, RustBuffer handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_SEARCH_CLOSE
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_SEARCH_CLOSE
+void uniffi_nmp_uniffi_fn_method_nmpapp_search_close(void*_Nonnull ptr, RustBuffer session_id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_SEARCH_OPEN
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_SEARCH_OPEN
+void uniffi_nmp_uniffi_fn_method_nmpapp_search_open(void*_Nonnull ptr, RustBuffer request_json, RustBuffer session_id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_SEARCH_SNAPSHOT
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_SEARCH_SNAPSHOT
+RustBuffer uniffi_nmp_uniffi_fn_method_nmpapp_search_snapshot(void*_Nonnull ptr, RustBuffer session_id, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_SET_CAPABILITY_CALLBACK
@@ -865,6 +900,12 @@ uint16_t uniffi_nmp_uniffi_checksum_method_nmpapp_cancel_bunker_handshake(void
 
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_CLOSE_FEED_SESSION
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_CLOSE_FEED_SESSION
+uint16_t uniffi_nmp_uniffi_checksum_method_nmpapp_close_feed_session(void
+
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_CONFIGURE
 #define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_CONFIGURE
 uint16_t uniffi_nmp_uniffi_checksum_method_nmpapp_configure(void
@@ -907,9 +948,27 @@ uint16_t uniffi_nmp_uniffi_checksum_method_nmpapp_init_signer_broker(void
 
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_LOAD_OLDER_FEED
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_LOAD_OLDER_FEED
+uint16_t uniffi_nmp_uniffi_checksum_method_nmpapp_load_older_feed(void
+
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_NOSTRCONNECT_URI
 #define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_NOSTRCONNECT_URI
 uint16_t uniffi_nmp_uniffi_checksum_method_nmpapp_nostrconnect_uri(void
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_OPEN_FEED_JSON
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_OPEN_FEED_JSON
+uint16_t uniffi_nmp_uniffi_checksum_method_nmpapp_open_feed_json(void
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_OPEN_URI
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_OPEN_URI
+uint16_t uniffi_nmp_uniffi_checksum_method_nmpapp_open_uri(void
 
 );
 #endif
@@ -1012,6 +1071,24 @@ uint16_t uniffi_nmp_uniffi_checksum_method_nmpapp_resolve_ref_with_metadata(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_RETRY_PUBLISH
 #define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_RETRY_PUBLISH
 uint16_t uniffi_nmp_uniffi_checksum_method_nmpapp_retry_publish(void
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_SEARCH_CLOSE
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_SEARCH_CLOSE
+uint16_t uniffi_nmp_uniffi_checksum_method_nmpapp_search_close(void
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_SEARCH_OPEN
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_SEARCH_OPEN
+uint16_t uniffi_nmp_uniffi_checksum_method_nmpapp_search_open(void
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_SEARCH_SNAPSHOT
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_SEARCH_SNAPSHOT
+uint16_t uniffi_nmp_uniffi_checksum_method_nmpapp_search_snapshot(void
 
 );
 #endif
