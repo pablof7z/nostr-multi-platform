@@ -7,13 +7,15 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use super::app_registry_format::{
-    ActionContractRow, ContractFieldKind, DispatchKind, FieldRow, RegistryDocument,
-};
+use super::app_registry_format::{ContractFieldKind, FieldRow, RegistryDocument};
 use super::app_registry_schema::AppActionBuilderSchema;
 use super::registry::{ActionBuilder, FieldKind, PayloadField};
 use super::Platform;
 use super::{ActionBuilderRegistry, ActionBuilderWireContract, AppActionBuilderWireContract};
+
+#[path = "app_registry_validation.rs"]
+mod app_registry_validation;
+use app_registry_validation::validate_action_contract_row;
 
 /// Parsed app-local action-builder registry.
 pub struct LoadedAppActionBuilderRegistry {
@@ -91,7 +93,7 @@ pub fn parse_app_action_builder_registry(
     let mut schemas = Vec::with_capacity(doc.actions.len());
 
     for action in doc.actions {
-        validate_action(&action)?;
+        validate_action_contract_row(&action)?;
         if !namespaces.insert(action.action_namespace.clone()) {
             return Err(format!(
                 "duplicate action_namespace {:?}",
@@ -170,69 +172,6 @@ pub fn parse_app_action_builder_registry(
         },
         schemas,
     })
-}
-
-fn validate_action(action: &ActionContractRow) -> Result<(), String> {
-    if action.action_namespace.trim().is_empty() {
-        return Err("action_namespace must not be empty".to_string());
-    }
-    if action.schema.schema_id.trim().is_empty() {
-        return Err(format!(
-            "action {:?} schema_id must not be empty",
-            action.action_namespace
-        ));
-    }
-    if action.schema.schema_path.as_os_str().is_empty() {
-        return Err(format!(
-            "action {:?} schema_path must not be empty",
-            action.action_namespace
-        ));
-    }
-    if action.schema.root_type.trim().is_empty() {
-        return Err(format!(
-            "action {:?} root_type must not be empty",
-            action.action_namespace
-        ));
-    }
-    if action.schema.file_identifier.len() != 4 || !action.schema.file_identifier.is_ascii() {
-        return Err(format!(
-            "action {:?} file_identifier must be exactly four ASCII bytes",
-            action.action_namespace
-        ));
-    }
-    if action.schema.schema_version == 0 {
-        return Err(format!(
-            "action {:?} schema_version must be non-zero",
-            action.action_namespace
-        ));
-    }
-    if action.builder.method.trim().is_empty() {
-        return Err(format!(
-            "action {:?} builder.method must not be empty",
-            action.action_namespace
-        ));
-    }
-    if action.builder.doc.trim().is_empty() {
-        return Err(format!(
-            "action {:?} builder.doc must not be empty",
-            action.action_namespace
-        ));
-    }
-    if action.rust.rust_crate.trim().is_empty()
-        || action.rust.module.trim().is_empty()
-        || action.rust.payload_type.trim().is_empty()
-        || action.rust.action_module.trim().is_empty()
-    {
-        return Err(format!(
-            "action {:?} rust owner fields must not be empty",
-            action.action_namespace
-        ));
-    }
-    let _ = action.event_kind;
-    match action.dispatch {
-        DispatchKind::PublishesEvent | DispatchKind::AppLocal => {}
-    }
-    Ok(())
 }
 
 fn payload_field(row: FieldRow) -> Result<PayloadField, String> {
