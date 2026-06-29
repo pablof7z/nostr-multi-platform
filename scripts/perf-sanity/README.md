@@ -1,5 +1,11 @@
 # perf-sanity — new-architecture sanity pressure test
 
+**Status (2026-06-29): design sketch, not a runnable gate on `master`.** This
+README describes the intended successor shape for a narrow architecture sanity
+signal, but `crates/nmp-testing/bin/sanity-gate/` is not present in the current
+tree. Do not wire `scripts/perf-sanity/run.sh` into automatic CI until that Rust
+driver exists and the surviving clean-break read/native surfaces have settled.
+
 **Goal (not before/after):** detect whether the **current** NMP architecture
 **misbehaves** under real load — CPU pegging / busy-spin / polling, memory leaks
 (unbounded RSS), latency cliffs, dropped events, or correctness breaks. The gates
