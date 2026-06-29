@@ -9,10 +9,13 @@
 //! 2. The `crates/nmp-wasm` directory must not exist.
 //! 3. No live Rust or TOML source may reintroduce `nmp-wasm` as a live crate
 //!    (i.e. as a `[package] name = "nmp-wasm"` or workspace member path).
+//! 4. No other crate may grow the browser Worker ABI entry point owned by
+//!    `nmp-browser-runtime`.
 //!
 //! These are a permanent backstop so a future change cannot silently
 //! re-introduce the deleted crate.
 
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use super::workspace_root;
@@ -80,18 +83,11 @@ fn nmp_wasm_is_not_reintroduced_as_live_crate_in_source() {
     // that would reconstitute the crate (a `[package] name` or member `path`),
     // not bare dependency mentions.
     let toml_roots = [root.join("Cargo.toml"), root.join("release")];
-    let banned_phrases = [
-        r#"name = "nmp-wasm""#,
-        r#"path = "crates/nmp-wasm""#,
-    ];
+    let banned_phrases = [r#"name = "nmp-wasm""#, r#"path = "crates/nmp-wasm""#];
 
     let mut violations = Vec::new();
 
-    fn scan_toml_dir(
-        dir: &std::path::Path,
-        banned: &[&str],
-        violations: &mut Vec<String>,
-    ) {
+    fn scan_toml_dir(dir: &std::path::Path, banned: &[&str], violations: &mut Vec<String>) {
         let Ok(entries) = std::fs::read_dir(dir) else {
             return;
         };
@@ -129,19 +125,15 @@ fn nmp_wasm_is_not_reintroduced_as_live_crate_in_source() {
 
     // Check the root Cargo.toml (workspace members list).
     {
-        let text = std::fs::read_to_string(&toml_roots[0])
-            .expect("root Cargo.toml must be readable");
+        let text =
+            std::fs::read_to_string(&toml_roots[0]).expect("root Cargo.toml must be readable");
         for (n, line) in text.lines().enumerate() {
             let trimmed = line.trim_start();
             if trimmed.starts_with('#') {
                 continue;
             }
             if line.contains("crates/nmp-wasm") {
-                violations.push(format!(
-                    "Cargo.toml:{}: {}",
-                    n + 1,
-                    line.trim()
-                ));
+                violations.push(format!("Cargo.toml:{}: {}", n + 1, line.trim()));
             }
         }
     }
@@ -156,4 +148,151 @@ fn nmp_wasm_is_not_reintroduced_as_live_crate_in_source() {
          in nmp-browser-runtime::wasm. Violations:\n{}",
         violations.join("\n")
     );
+}
+
+// ─── Gate 4: browser Worker ABI entrypoints have one crate owner ─────────────
+
+/// The rule is deliberately narrower than "no wasm-bindgen outside
+/// nmp-browser-runtime": storage shims, NIP-07 browser helpers, and conformance
+/// harnesses are valid wasm crates. What must not regrow is a second Worker
+/// runtime surface with `NmpWasmRuntime` or its exported control methods.
+#[test]
+fn browser_worker_abi_entrypoints_stay_in_browser_runtime() {
+    let root = workspace_root();
+    let mut violations = Vec::new();
+    let mut rust_files = Vec::new();
+
+    collect_rust_files(&root.join("crates"), &mut rust_files);
+    collect_rust_files(&root.join("apps"), &mut rust_files);
+
+    for path in rust_files {
+        if is_allowed_wasm_entrypoint_owner(&root, &path) {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let lines: Vec<&str> = text.lines().collect();
+        for (idx, line) in lines.iter().enumerate() {
+            let trimmed = line.trim_start();
+            if is_comment_or_blank(trimmed) {
+                continue;
+            }
+
+            if contains_worker_runtime_type(trimmed) {
+                violations.push(format!("{}:{}: {}", path.display(), idx + 1, trimmed));
+                continue;
+            }
+
+            if trimmed.starts_with("#[wasm_bindgen")
+                && next_code_line_exports_worker_method(&lines, idx + 1)
+            {
+                violations.push(format!("{}:{}: {}", path.display(), idx + 1, trimmed));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "Browser Worker ABI entrypoints must stay in crates/nmp-browser-runtime. \
+         Storage/conformance wasm crates may use wasm-bindgen, but they must not \
+         export NmpWasmRuntime or its Worker control methods. Violations:\n{}",
+        violations.join("\n")
+    );
+}
+
+fn collect_rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if matches!(name, "target" | ".git" | "vendor") {
+                continue;
+            }
+            collect_rust_files(&path, out);
+        } else if path.extension().map_or(false, |e| e == "rs") {
+            out.push(path);
+        }
+    }
+}
+
+fn is_allowed_wasm_entrypoint_owner(root: &Path, path: &Path) -> bool {
+    let relative = path.strip_prefix(root).unwrap_or(path);
+    [
+        Path::new("crates/nmp-browser-runtime"),
+        Path::new("crates/nmp-browser-runtime-conformance"),
+        Path::new("crates/nmp-sqlite-wasm"),
+        Path::new("crates/nmp-sqlite-wasm-conformance"),
+    ]
+    .iter()
+    .any(|allowed| relative.starts_with(allowed))
+}
+
+fn is_comment_or_blank(trimmed: &str) -> bool {
+    trimmed.is_empty()
+        || trimmed.starts_with("//")
+        || trimmed.starts_with("///")
+        || trimmed.starts_with("//!")
+        || trimmed.starts_with('*')
+}
+
+fn contains_worker_runtime_type(line: &str) -> bool {
+    let code = line.split("//").next().unwrap_or(line);
+    code.contains("NmpWasmRuntime")
+        && (code.contains("pub struct")
+            || code.contains("struct ")
+            || code.contains("impl ")
+            || code.contains("pub use")
+            || code.contains("type "))
+}
+
+fn next_code_line_exports_worker_method(lines: &[&str], start: usize) -> bool {
+    for line in lines.iter().skip(start) {
+        let trimmed = line.trim_start();
+        if is_comment_or_blank(trimmed) || trimmed.starts_with("#[") {
+            continue;
+        }
+        return exports_worker_method(trimmed);
+    }
+    false
+}
+
+fn exports_worker_method(line: &str) -> bool {
+    let code = line.split("//").next().unwrap_or(line);
+    [
+        "pub fn handle_json",
+        "pub fn handle_dispatch_bytes",
+        "pub fn set_snapshot_callback",
+        "pub async fn prepare_store",
+        "pub fn recent_routing_decisions",
+        "pub fn nmp_encode_npub",
+    ]
+    .iter()
+    .any(|needle| code.contains(needle))
+}
+
+#[test]
+fn browser_worker_abi_detection_flags_runtime_exports() {
+    let runtime = ["Nmp", "Wasm", "Runtime"].concat();
+    assert!(contains_worker_runtime_type(&format!(
+        "pub struct {runtime} {{"
+    )));
+    assert!(contains_worker_runtime_type(&format!("impl {runtime} {{")));
+    assert!(next_code_line_exports_worker_method(
+        &[
+            "#[wasm_bindgen]",
+            "pub fn handle_json(&mut self, request: &str) -> JsValue {",
+        ],
+        1
+    ));
+    assert!(!next_code_line_exports_worker_method(
+        &[
+            "#[wasm_bindgen]",
+            "pub async fn run_conformance() -> Result<JsValue, JsValue> {",
+        ],
+        1
+    ));
 }
