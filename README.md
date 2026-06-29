@@ -41,12 +41,19 @@ composition. From there, generate maintained host bindings/decoders and link a
 thin platform shell. The registry at [nostr-mp.f7z.io](https://nostr-mp.f7z.io)
 ships SwiftUI, Compose, and web components you can drop in.
 
+## Clean-Room Developer Path
+
+These are the public inputs for building a new app without issue-history context:
+
+- **[`docs/architecture/high-level-app-architecture.md`](docs/architecture/high-level-app-architecture.md)** — start here for the surviving architecture: explicit app composition, typed read sessions, typed write flows, native UniFFI bindings, and browser wasm-bindgen runtime boundaries.
+- **[`docs/product-spec.md`](docs/product-spec.md)** — product and DX contract: what the public API promises and what app/native/browser shells must not own.
+- **[`docs/builder-guide/00-how-to-read.md`](docs/builder-guide/00-how-to-read.md)** — implementation guide for composing an app, opening typed sessions, dispatching writes, and wiring thin shells.
+- **[`docs/ffi-surface.md`](docs/ffi-surface.md)** — binding status and migration notes. Native app code targets UniFFI; browser code targets `nmp-browser-runtime` wasm-bindgen exports.
+
 ## Where to go
 
 - **[nostr-mp.f7z.io](https://nostr-mp.f7z.io)** — landing page, component registry, doctrine in full.
-- **[`docs/builder-guide/00-how-to-read.md`](docs/builder-guide/00-how-to-read.md)** — the framework guide. Start here for building on NMP.
-- **[`docs/architecture/high-level-app-architecture.md`](docs/architecture/high-level-app-architecture.md)** — **canonical clean-break architecture overview**: how an app is structured, how data flows, and what the public surface looks like. Start here to understand the current architecture.
-- **[`docs/decisions/README.md`](docs/decisions/README.md)** — ADR index. ADR-0069..0073 are the decision spine for the clean-break redesign; start here for rationale and migration history.
+- **[`docs/decisions/README.md`](docs/decisions/README.md)** — ADR index. ADR-0069..0073 are the decision spine for the clean-break redesign; use them for rationale and migration history after reading the current API docs.
 - **[`docs/nips.md`](docs/nips.md)** — v1 NIP support matrix with platform and signer caveats.
 - **[`docs/migration.md`](docs/migration.md)** — v1 runtime and component migration guide.
 - **[`docs/aim.md`](docs/aim.md)** — the architectural north star (immutable foundation, not the current API guide).

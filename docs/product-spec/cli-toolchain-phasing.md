@@ -20,9 +20,11 @@ nmp doctor                           Diagnose toolchain and build environment.
 nmp upgrade                          Bump NMP dependencies and run migrations.
 ```
 
-Composition is a library call through `nmp-defaults` plus the selected platform
-runtime builder. Native uses `nmp-native-runtime::NmpAppBuilder`; web uses
-`nmp-browser-runtime::BrowserAppBuilder`.
+Composition is an app-owned Rust root that calls explicit named installers from
+`nmp-defaults`, protocol crates, and app modules, then hands the composed app to
+the selected platform runtime builder. Native uses
+`nmp-native-runtime::NmpAppBuilder` surfaced through UniFFI; web uses
+`nmp-browser-runtime::BrowserAppBuilder` surfaced through wasm-bindgen.
 
 ## `nmp init`
 
@@ -31,12 +33,13 @@ The scaffold creates a small app workspace:
 - app Rust core with an explicit composition root for substrate, protocol, app,
   publish/signing, and capability features,
 - native shells for selected platforms,
-- generated bindings/decoder targets,
+- generated UniFFI bindings and typed decoder targets,
 - build orchestration,
 - CI wiring.
 
-The scaffold does not generate a framework-owned FFI crate. App-specific logic
-is added through Rust modules, actions, observers, projections, and capabilities.
+The scaffold does not generate a second framework runtime crate. App-specific
+logic is added through Rust modules, actions, typed sessions, projections, and
+capabilities.
 
 ## Build Pipeline
 
