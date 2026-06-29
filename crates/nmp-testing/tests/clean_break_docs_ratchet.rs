@@ -90,6 +90,106 @@ const PATTERNS: &[Pattern] = &[
     ),
 ];
 
+const CLEAN_ROOM_INPUTS: &[&str] = &[
+    "README.md",
+    "docs/product-spec.md",
+    "docs/product-spec/api-surface.md",
+    "docs/product-spec/appendices.md",
+    "docs/product-spec/cli-toolchain-phasing.md",
+    "docs/product-spec/doctrine.md",
+    "docs/product-spec/offline-first.md",
+    "docs/product-spec/overview-and-dx.md",
+    "docs/product-spec/subsystems.md",
+];
+
+const CLEAN_ROOM_FORBIDDEN: &[Pattern] = &[
+    (
+        "raw C/JNI",
+        "raw_native_binding",
+        "clean-room docs must route native app developers to UniFFI",
+    ),
+    (
+        "C ABI",
+        "raw_native_binding",
+        "clean-room docs must route native app developers to UniFFI",
+    ),
+    (
+        "C-ABI",
+        "raw_native_binding",
+        "clean-room docs must route native app developers to UniFFI",
+    ),
+    (
+        "JNI",
+        "raw_native_binding",
+        "clean-room docs must route native app developers to UniFFI",
+    ),
+    (
+        "nmp_app_",
+        "raw_native_symbol",
+        "clean-room docs should use UniFFI/native-runtime concepts, not raw native symbols",
+    ),
+    (
+        "register_defaults",
+        "hidden_defaults",
+        "clean-room docs should teach explicit named composition installers",
+    ),
+    (
+        "open_interest",
+        "raw_interest",
+        "clean-room docs should teach typed read sessions/helpers",
+    ),
+    (
+        "ObservedProjectionSink",
+        "observed_projection",
+        "clean-room docs should not expose observed projection internals",
+    ),
+    (
+        "ObservedProjection",
+        "observed_projection",
+        "clean-room docs should not expose observed projection internals",
+    ),
+    (
+        "ReducedSource",
+        "reduced_source",
+        "clean-room docs should not expose source-reconciliation internals",
+    ),
+    (
+        "sidecar",
+        "projection_sidecar",
+        "clean-room docs should teach typed session outputs, not sidecar rituals",
+    ),
+    (
+        "PublishRaw",
+        "write_raw_publish",
+        "clean-room docs should teach typed write builders",
+    ),
+    (
+        "publishRaw",
+        "write_raw_publish_method",
+        "clean-room docs should teach typed write builders",
+    ),
+    (
+        "pre-signed",
+        "write_presigned_publish",
+        "clean-room docs should not make imported/verbatim publish part of onboarding",
+    ),
+    (
+        "manual_override",
+        "write_manual_override_route",
+        "clean-room docs should teach typed route provenance",
+    ),
+    (
+        "signer_pubkey",
+        "write_raw_signer_pubkey",
+        "clean-room docs should teach typed signer provenance",
+    ),
+    (
+        "signerPubkey",
+        "write_raw_signer_pubkey",
+        "clean-room docs should teach typed signer provenance",
+    ),
+];
+
 // path, token, required line text (empty means whole file), reason.
 // New hits must be corrected in place or added here with a concrete reason.
 #[rustfmt::skip]
@@ -106,13 +206,7 @@ const ALLOWLIST: &[Allow] = &[
     ("docs/architecture/high-level-app-architecture.md", "register_defaults()", "production `register_defaults()` as the normal app root", "deletion-target list"),
     ("docs/architecture/high-level-app-architecture.md", "anonymous explicit relay", "anonymous explicit relay lists as product publish state", "deletion-target list"),
     ("docs/architecture/external-consumers.md", "open_interest", "Raw `open_interest` is low-level internal acquisition machinery", "external-consumer non-public inventory"),
-    ("docs/product-spec/api-surface.md", "nmp_app_open_interest", "The public raw-interest C ABI (`nmp_app_open_interest`", "deletion ledger"),
-    ("docs/product-spec/api-surface.md", "nmp_app_open_interest", "old public doors deleted or privatized: `nmp_app_open_interest`", "deletion ledger"),
-    ("docs/product-spec/api-surface.md", "open_interest", "Raw `open_interest` remains low-level", "internal machinery"),
-    ("docs/product-spec/api-surface.md", "open_interest", "`open_interest` machinery remains for substrate/protocol use", "deletion ledger"),
-    ("docs/product-spec/subsystems.md", "ReducedSource", "ReducedSources and dependent interests compile", "internal subsystem compiler vocabulary"),
     ("docs/product-spec/subsystems.md", "anonymous explicit relay", "Anonymous explicit relay lists are not product state", "negative rule"),
-    ("docs/product-spec/doctrine.md", "ReducedSource", "from a ReducedSource such as the active account", "doctrine example names internal compiler"),
     ("docs/ffi-surface.md", "ReducedSource", "active-follows is one ReducedSource instance", "FFI migration note"),
     ("docs/recipes/app-shapes.md", "nmp.feed.home", "\"projection\": \"nmp.feed.home\"", "projection-key example"),
     ("docs/recipes/app-shapes.md", "open_interest", "Use low-level `open_interest` only for static non-feed", "demotes raw interest"),
@@ -247,6 +341,42 @@ fn contains_identifier(line: &str, token: &str) -> bool {
 
 fn is_ident_char(ch: Option<char>) -> bool {
     ch.is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+}
+
+#[test]
+fn clean_room_inputs_do_not_reintroduce_retired_public_vocabulary() {
+    let root = repo_root();
+    let mut violations = Vec::new();
+
+    for rel in CLEAN_ROOM_INPUTS {
+        let path = root.join(rel);
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
+        for (line_idx, line) in text.lines().enumerate() {
+            for &(token, label, guidance) in CLEAN_ROOM_FORBIDDEN {
+                if token_matches(line, token) {
+                    violations.push(format!(
+                        "{}:{}: error[clean_room_input:{}]: `{}` - {}\n    {}",
+                        rel,
+                        line_idx + 1,
+                        label,
+                        token,
+                        guidance,
+                        line.trim()
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "clean-room input docs contain retired public vocabulary. #2256's \
+         allowed input set must teach explicit composition, typed sessions, \
+         typed writes, UniFFI native bindings, and wasm-bindgen browser \
+         bindings without stale onboarding terms.\n{}",
+        violations.join("\n")
+    );
 }
 
 #[test]

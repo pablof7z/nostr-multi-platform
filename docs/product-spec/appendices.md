@@ -2,13 +2,14 @@
 
 [Back to Product Specification - Nostr Multi-Platform Framework](../product-spec.md)
 
-## Appendix A. FFI Architecture In Detail
+## Appendix A. Binding Architecture In Detail
 
 The current runtime contract is:
 
-- raw C/JNI lifecycle and capability ABI;
+- native public app bindings through UniFFI;
+- browser public bindings through `nmp-browser-runtime` wasm-bindgen exports;
 - binary `UpdateFrame` push callbacks for state;
-- typed projection sidecars for host-rendered views;
+- typed projection payloads for host-rendered views;
 - ADR-0064 dispatch envelopes for writes;
 - no generic JSON snapshot payload and no platform polling for app data.
 

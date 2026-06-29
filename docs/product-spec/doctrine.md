@@ -9,7 +9,7 @@ Eleven principles in total. Every API decision answers to at least one; conflict
 
 **Pre-v1 interface cleanup.** Until v1, NMP optimizes for the clean permanent
 interface, not for preserving old call sites. If an exported Rust API, FFI
-symbol, JNI method, wasm wire tag, projection key, schema field, generated
+symbol, binding method, wasm wire tag, projection key, schema field, generated
 binding, CLI command, or documented contract is legacy, example-named,
 duplicative, or architecturally wrong, the default fix is to rename, remove, or
 replace it in place. Do not keep aliases, wrappers, compatibility trees, old
@@ -145,21 +145,19 @@ This rules out:
 *Static cluster (always present regardless of open views): identity pair (`accounts`, `active_account`), publish cluster (`publish_queue`, `publish_outbox`, `outbox_summary`, `configured_relays`, `relay_role_options`, `settings_hub`), diagnostics (`relay_diagnostics`), and profile card (`profile`). Demand-driven profile and event references cross the boundary through keyed row-delta projections (`refs.profile`, `refs.event`) only when a host opens the corresponding interest; the old whole-map claim projections are not part of the live snapshot contract.*
 
 *View-dependent cluster (only present when the view is subscribed): `timeline`,
-`inserted`, `updated`, `removed` appear only when the app/defaults layer declares
-a feed of primary content kinds from a ReducedSource such as the active account's
-reactive follows perspective. Chirp declares primary kind `[1]`; protocol
-adapters derive repost wrapper acquisition below that app-facing declaration.
-The shell does not pass concrete follow pubkeys and does not own follow-feed
-lifecycle policy. Author and thread screens no longer use built-in
-`author_view` / `thread_view` projections; Chirp opens app-owned dynamic
-FlatFeed sidecars keyed as `nmp.feed.author.<pubkey>` /
-`nmp.feed.thread.<event_id>` and unregisters them on close. Secondary profile,
-event, address, and count dependencies are dependent interests owned by the
-component/read model that renders them. Under incremental apply, omitted keys
-mean retain cached state and an explicit `Cleared` row means drop it. Domain
-empty states are encoded in their payloads, not inferred from absence. The event
-store, gossip cache, sync watermarks, working set, and signer state live
-exclusively in the Rust actor.*
+`inserted`, `updated`, `removed` appear only when the app/defaults layer opens a
+typed feed session over declared primary content kinds and source expressions.
+Chirp declares primary kind `[1]`; protocol adapters derive repost wrapper
+acquisition below that app-facing declaration. The shell does not pass concrete
+follow pubkeys and does not own follow-feed lifecycle policy. Author and thread
+screens open app-owned dynamic typed feed sessions keyed by author or event id
+and close those handles on teardown. Secondary profile, event, address, and
+count dependencies are dependent interests owned by the component/read model
+that renders them. Under incremental apply, omitted keys mean retain cached
+state and an explicit `Cleared` row means drop it. Domain empty states are
+encoded in their payloads, not inferred from absence. The event store, gossip
+cache, sync watermarks, working set, and signer state live exclusively in the
+Rust actor.*
 
 *Read-model declaration rule: production app/product read models are declared
 resources, not ambient event taps. A read model MUST NOT subscribe to a public,
@@ -170,8 +168,8 @@ projection is ordered as: register muted sink, open declared interest, replay
 matching cached/store-backed rows to that sink, then activate future delivery
 scoped to the declared shapes. Future delivery MUST NOT join an all-event fanout.
 Any remaining event slot is kernel-internal plumbing for parsers, tests, or
-migration and must not be exported through Rust, C ABI, JNI, WASM, builder
-guides, or app templates.*
+migration and must not be exported through public Rust APIs, native bindings,
+browser bindings, builder guides, or app templates.*
 
 ---
 

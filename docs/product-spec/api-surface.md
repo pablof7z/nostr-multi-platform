@@ -9,32 +9,33 @@ capability sockets, typed projection registration, and one write doorway. Relay
 routing, cache invalidation, subscription lifecycle, signing orchestration, and
 store admission stay inside Rust.
 
-The native ABI is the hand-maintained raw C/JNI surface documented in
-[`docs/ffi-surface.md`](../ffi-surface.md). Hot Rust-to-host updates are binary
+Native app bindings target `crates/nmp-uniffi` over
+`crates/nmp-native-runtime::NmpAppBuilder`. Browser bindings target
+`nmp-browser-runtime` wasm-bindgen exports. Hot Rust-to-host updates are binary
 `nmp.transport.UpdateFrame` frames. The frame carries a `SnapshotEnvelope` plus
-typed projection sidecars; production hosts decode typed frame data.
-Generated Swift/Kotlin/TypeScript helpers decode those typed frames, but they do
-not define a second runtime transport.
+typed projection payloads; production hosts decode typed frame data. Generated
+Swift/Kotlin/TypeScript helpers decode those typed frames, but they do not define
+a second runtime transport.
 
 External interface policy: every public surface must earn its place before v1.
-FFI symbols, JNI methods, wasm wire tags, FlatBuffers fields, projection keys,
-action namespaces, generated bindings, CLI commands, and docs are cleaned in
-place when the design improves. NMP does not retain pre-v1 compatibility shims,
-dead parameters, app/example names, generic payload fallbacks, deprecated schema
+binding methods, wasm wire tags, FlatBuffers fields, projection keys, action
+namespaces, generated bindings, CLI commands, and docs are cleaned in place when
+the design improves. NMP does not retain pre-v1 compatibility shims, dead
+parameters, app/example names, generic payload fallbacks, deprecated schema
 slots, or old generated module paths solely to protect old callers.
 
 ### 6.1 App Handle And Lifecycle
 
-Native hosts allocate one `NmpApp` opaque handle with `nmp_app_new`, configure
-callbacks and capabilities before start, then call `nmp_app_start`. `nmp_app_free`
-is the only handle release path. All app data updates arrive through
-`nmp_app_set_update_callback` as byte frames; the callee copies bytes before the
-callback returns.
+Native hosts construct one UniFFI `NmpApp`, configure update sinks,
+capabilities, storage, and projection declarations before start, then call the
+UniFFI lifecycle method. Swift and Kotlin hold normal generated object handles;
+Rust owns actor lifetime and teardown. All app data updates arrive through the
+UniFFI update sink as byte frames; the callee copies bytes before the callback
+returns.
 
-`nmp_app_start` and `nmp_app_configure` retain a dead pre-v1
-`events_per_second` argument only for existing ABI shape. New callers must not
-copy that parameter into new surfaces; start/configure behavior is governed by
-visible-limit and emit-Hz clamps plus Rust-owned policy.
+Start/configure behavior is governed by visible-limit and emit-Hz clamps plus
+Rust-owned policy. New public surfaces must not copy legacy transport parameters
+or expose runtime policy as host-owned knobs.
 
 ### 6.2 Host State
 
@@ -51,8 +52,8 @@ source of truth; native maps are render caches.
 
 ### 6.3 Actions And Write Transport
 
-Production write transport is ADR-0064 `DispatchEnvelope` bytes through
-`nmp_app_dispatch_action_bytes` or the equivalent wasm/browser runtime channel.
+Production write transport is ADR-0064 `DispatchEnvelope` bytes through the
+UniFFI dispatch method or the equivalent wasm/browser runtime channel.
 Host-facing builders expose typed intent methods; those builders encode the
 per-module payload, stamp the namespace, and send the finished envelope through
 the single doorway.
@@ -67,9 +68,9 @@ Write APIs separate three concerns:
   signing, chooses route policy, publishes, ingests locally, and reports status.
 
 Protocol helpers may override default outbox planning only through typed route
-provenance, such as verified private inbox, group host pin, manual override,
-imported event, or diagnostic route. Anonymous relay lists are not durable
-product publish state.
+provenance, such as verified private inbox, group host pin, user-confirmed
+override, imported event, or diagnostic route. Anonymous relay lists are not
+durable product publish state.
 
 Action modules are registered in Rust with `NmpApp::register_action`. A module
 owns its action payload, validation, execution, capability requests, and any
@@ -79,34 +80,24 @@ consumer.
 ### 6.4 Reads, Sessions, And Projections
 
 Production product reads are typed sessions, or generated per-feature helpers
-over typed session descriptors. A session owns acquisition demand, bounded replay,
-admission, source reconciliation, typed output, status, and teardown.
-
-The public raw-interest C ABI (`nmp_app_open_interest` /
-`nmp_app_close_interest`) is retired. Raw `open_interest` remains low-level
-acquisition machinery for substrate, protocol-internal, diagnostic, export,
-test, or migration scopes, but it is not the app-facing read model for product
-screens and is not exported as a public native-app door.
+over typed session descriptors. A session owns acquisition demand, bounded
+catch-up, admission, source reconciliation, typed output, status, and teardown.
+Raw acquisition machinery is substrate/protocol internals, not the app-facing
+read model for product screens and not a public native-app door.
 
 Current app-visible read helpers include feed/session and ref-resolution
 surfaces, but their durable contract is ADR-0070's typed-session lifecycle.
-`nmp_app_resolve_ref` / `nmp_app_release_ref` remain the refcounted typed
-hydration surface for profile and event refs.
+`NmpApp` reference-resolution methods remain the refcounted typed hydration
+surface for profile and event refs.
 
-Deletion ledger for the typed-feed doorway migration:
+Current permanent concepts:
 
-- old public doors deleted or privatized: `nmp_app_open_interest` /
-  `nmp_app_close_interest` moved out of the public C ABI; internal Rust
-  `open_interest` machinery remains for substrate/protocol use.
-- old compatibility paths scoped: no C shim accepts raw filters for product
-  reads; close paths use typed handles, not re-derived filters.
-- new public concepts added: `nmp_app_open_feed(params_json)` returns a
-  serialized `FeedHandle`; `nmp_app_close_feed(handle_json)` tears down that
-  opaque session.
-- net permanent concepts: one typed feed-session door, one opaque feed handle,
-  and typed projection/ref-resolution outputs.
+- typed session constructors for product reads;
+- opaque session handles for teardown;
+- generated helpers over the same session descriptors;
+- typed projection/ref-resolution outputs.
 
-Projection delivery is typed output transport. Projection keys, typed sidecars,
+Projection delivery is typed output transport. Projection keys, typed payloads,
 manifests, and change gates are how Rust pushes bounded session/app state to the
 host; they are not the lifecycle an app developer hand-assembles.
 
@@ -124,9 +115,10 @@ typed result envelopes and never require native retry policy.
 
 ### 6.6 CLI And Generated Bindings
 
-`nmp init` scaffolds a thin Rust app shell that composes `nmp-defaults` and
-app-owned modules. `nmp gen swift` and `nmp gen typed-decoders` emit host helpers
-from the live ABI/schema.
+`nmp init` scaffolds a thin Rust app shell with an explicit composition root for
+selected substrate, protocol, app, signing/publish, and capability features.
+`nmp gen swift`, `nmp gen kotlin`, and `nmp gen typed-decoders` emit host helpers
+from the live UniFFI/schema surface.
 
 ### 6.7 API Doctrine
 

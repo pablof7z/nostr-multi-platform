@@ -6,9 +6,12 @@
 
 > **Working name:** `nmp` (Nostr Multi-Platform). Final name TBD per `aim.md` §7.7. Crate names below use the `nmp-*` prefix; substitute when renamed.
 
-> **Status:** Draft 0, revised for ADR-0009 and ADR-0010. The kernel/module split is now architectural ground truth; product modules still graduate by the phased plan tracked in GitHub Issues.
+> **Status:** Clean-break public-DX baseline. The kernel/module split is now
+> architectural ground truth; product modules still graduate by the tactical
+> queue tracked in GitHub Issues.
 
-> **Required prior reading:** `docs/aim.md`.
+> **Required prior reading:** `docs/architecture/high-level-app-architecture.md`
+> for the current API shape and `docs/aim.md` for the long-term north star.
 
 ---
 
@@ -216,8 +219,8 @@ The on-disk layout from `aim.md` §5 is canonical. The long-term workspace conta
 |---|---|---|
 | `nmp-core` | Kernel substrate: actor, store, planner, ledger, registries, extension traits, diagnostics | Pure Rust |
 | `nmp-codegen` | Host binding emitters and drift gates for typed projections/decoders (`gen swift`, `gen typed-decoders`) | Binary + library |
-| `nmp-defaults` | Reusable composition installers: substrate, protocol features, routing, signer ports, and publish helpers. Production apps compose explicit installers; `register_defaults` is tutorial/test/migration compatibility, not hidden production architecture (ADR-0069). | Pure Rust |
-| `nmp-ffi` | UniFFI building blocks used by generated app crates | UniFFI |
+| `nmp-defaults` | Reusable composition installers: substrate, protocol features, routing, signer ports, and publish helpers. Production apps compose explicit named installers; hidden presets are not production architecture (ADR-0069). | Pure Rust |
+| `nmp-uniffi` | Public native binding surface over `nmp-native-runtime` for generated Swift/Kotlin app crates | UniFFI |
 | `nmp-browser-runtime` | Browser Worker/runtime adapter and sole wasm-bindgen ABI glue; owns Worker protocol types (ADR-0067; `nmp-wasm` deleted #2202) | wasm-bindgen |
 | `nmp-nip01` | Event, Filter, Profile/Timeline views, SendNote/Delete actions | Pure Rust |
 | `nmp-nip02` | Contacts view convenience module | Pure Rust |
@@ -416,7 +419,7 @@ Registry components promise:
   styling, layout, accessibility, and callbacks. `nmp update component` preserves
   local edits against an upstream baseline.
 - **Runtime boundary guards.** Registry component packages are renderer/source
-  packages. They must not import runtime, C ABI/JNI/WASM, worker, or kernel
+  packages. They must not import runtime handles, binding transports, worker, or kernel
   handles; the doctrine smoke gate enforces that boundary for native registry
   sources and the web component package.
 

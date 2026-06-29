@@ -21,8 +21,8 @@ A cache miss is authoritative only when coverage proves the relevant
 ## Subscription Planner
 
 The planner maps materialized `LogicalInterest`s to relay-scoped wire REQs.
-ReducedSources and dependent interests compile to logical interests before the
-planner sees them.
+Typed session descriptors and dependent interests compile to logical interests
+before the planner sees them.
 
 The planner owns:
 
@@ -68,7 +68,7 @@ diagnostics. Errors do not cross FFI as exceptions.
 
 ## Projections
 
-Hosts render snapshots and typed projection sidecars. Protocol/defaults/app
+Hosts render snapshots and typed projection payloads. Protocol/defaults/app
 crates register the projections they own. A projection is an output surface, not
 a second source of truth.
 
