@@ -4560,6 +4560,7 @@ dependencies = [
 name = "nmp-uniffi"
 version = "0.8.4"
 dependencies = [
+ "nmp-content",
  "nmp-core",
  "nmp-native-runtime",
  "serde_json",

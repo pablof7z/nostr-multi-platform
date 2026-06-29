@@ -33,6 +33,11 @@ use nmp_native_runtime::{
 
 uniffi::setup_scaffolding!();
 
+// ── Stateless helpers (C1 — NIP-19, NIP-21, content, intent) ─────────────────
+// Each sub-surface lives in its own file; this keeps C2–C7 file-disjoint.
+pub mod stateless;
+pub use stateless::NmpError;
+
 // ── Typed dispatch outcome ────────────────────────────────────────────────────
 
 /// Typed outcome of a `dispatch_action` call.

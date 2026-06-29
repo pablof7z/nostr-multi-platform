@@ -322,6 +322,26 @@ void uniffi_nmp_uniffi_fn_method_nmpapp_stop(void*_Nonnull ptr, RustCallStatus *
 void uniffi_nmp_uniffi_fn_init_callback_vtable_updatesink(const UniffiVTableCallbackInterfaceUpdateSink* _Nonnull vtable
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_FUNC_CLASSIFY_INTENT
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_FUNC_CLASSIFY_INTENT
+RustBuffer uniffi_nmp_uniffi_fn_func_classify_intent(void*_Nonnull app, RustBuffer input, RustBuffer scopes, RustBuffer text_targets, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_FUNC_DECODE_NOSTR_URI
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_FUNC_DECODE_NOSTR_URI
+RustBuffer uniffi_nmp_uniffi_fn_func_decode_nostr_uri(RustBuffer input, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_FUNC_ENCODE_PROFILE
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_FUNC_ENCODE_PROFILE
+RustBuffer uniffi_nmp_uniffi_fn_func_encode_profile(void*_Nonnull app, RustBuffer pubkey_hex, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_FUNC_TOKENIZE_CONTENT
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_FUNC_TOKENIZE_CONTENT
+RustBuffer uniffi_nmp_uniffi_fn_func_tokenize_content(RustBuffer content, RustBuffer tags, RustBuffer mode, uint32_t kind, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_FFI_NMP_UNIFFI_RUSTBUFFER_ALLOC
 #define UNIFFI_FFIDEF_FFI_NMP_UNIFFI_RUSTBUFFER_ALLOC
 RustBuffer ffi_nmp_uniffi_rustbuffer_alloc(uint64_t size, RustCallStatus *_Nonnull out_status
@@ -600,6 +620,30 @@ void ffi_nmp_uniffi_rust_future_free_void(uint64_t handle
 #ifndef UNIFFI_FFIDEF_FFI_NMP_UNIFFI_RUST_FUTURE_COMPLETE_VOID
 #define UNIFFI_FFIDEF_FFI_NMP_UNIFFI_RUST_FUTURE_COMPLETE_VOID
 void ffi_nmp_uniffi_rust_future_complete_void(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_FUNC_CLASSIFY_INTENT
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_FUNC_CLASSIFY_INTENT
+uint16_t uniffi_nmp_uniffi_checksum_func_classify_intent(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_FUNC_DECODE_NOSTR_URI
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_FUNC_DECODE_NOSTR_URI
+uint16_t uniffi_nmp_uniffi_checksum_func_decode_nostr_uri(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_FUNC_ENCODE_PROFILE
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_FUNC_ENCODE_PROFILE
+uint16_t uniffi_nmp_uniffi_checksum_func_encode_profile(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_FUNC_TOKENIZE_CONTENT
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_FUNC_TOKENIZE_CONTENT
+uint16_t uniffi_nmp_uniffi_checksum_func_tokenize_content(void
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_CONFIGURE
