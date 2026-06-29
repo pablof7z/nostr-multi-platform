@@ -3,7 +3,7 @@
 - **Status:** Accepted — amended for clean-break native binding target
 - **Date:** 2026-05-23
 - **Updated:** 2026-06-26 (M14-0 / issue #2129 — Android app-loop lane migrated to UniFFI)
-- **Updated:** 2026-06-29 (clean-break scope: one native public UniFFI surface; FlatBuffers bytes remain payload)
+- **Updated:** 2026-06-29 (after #2403/#2463: migrated raw native ABI deleted; UniFFI is the native public surface)
 - **Relates to:** ADR-0009, ADR-0010, ADR-0037, ADR-0044, ADR-0069..ADR-0073
 
 ## Context
@@ -29,11 +29,14 @@ The clean-break target is:
 - browser hosts expose the `wasm-bindgen` worker/runtime surface;
 - FlatBuffers `Vec<u8>` / `ByteArray` payloads remain the action/update transport
   through those bindings;
-- separate native C/JNI byte lanes are deleted unless a measured hot-path
+- migrated native C/JNI byte lanes are deleted unless a measured hot-path
   exception proves UniFFI byte passing is insufficient for that exact lane.
 
-The current raw C/JNI ABI remains a transitional native delivery surface until
-the UniFFI migration lands. It is not a second long-term app-facing API.
+#2403 completed the migrated raw native ABI deletion tracker, and #2463 deleted
+the migrated runtime config/diagnostics C ABI. Any retained raw `nmp-ffi` or
+app-owned C/JNI surface is internal/transitional compatibility, test support, or
+app delivery glue with an owning issue. It is not a second app-facing native
+binding family.
 
 Generate and check in typed read decoders for the update stream through
 `nmp-codegen` and schema-owned FlatBuffers generation. The read surface is typed
@@ -56,10 +59,11 @@ FlatBuffers remains the byte payload format for both action dispatch (NMPD
 envelopes) and update delivery (NMPU frames). UniFFI wraps the transport;
 it does not own or transcode it.
 
-The generated Kotlin binding and drift gate moved with the external Chirp app.
-This repository currently retains the raw C ABI in `crates/nmp-ffi`; issue
-#2125 owns collapsing that native public binding surface to UniFFI after the
-clean-break public read/write/capability surface is stable enough to bind.
+The original generated Kotlin binding moved with the external Chirp app. This
+repository now owns `crates/nmp-uniffi`, checked-in Swift/Kotlin bindings, and
+the `ci/check-uniffi-bindings-drift.sh` drift gate. Residual raw C/JNI exports
+are not the native public target; #2125 owns deleting, hiding, or formally
+scoping any remaining compatibility lanes after their UniFFI replacement exists.
 
 ## Rules
 
