@@ -73,8 +73,8 @@ pub(crate) use action::validate_publish_target;
 // invariant holds for resume-from-store and retry, not just initial publish;
 // `classify_publish_behavior` table is the single home for kind→policy.
 pub use action::{
-    PublishAction, PublishHandle, PublishModule, PublishOutcome, PublishRouteClass, PublishTarget,
-    RelayUrl,
+    PublishAction, PublishHandle, PublishModule, PublishOutcome, PublishRouteClass, PublishSigner,
+    PublishSignerProvenance, PublishTarget, RelayUrl,
 };
 pub use engine::{
     engine_error_to_failure, outcome_of, LastTerminal, PublishEngine, PublishEngineError,

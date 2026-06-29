@@ -11,11 +11,17 @@ use serde::{Deserialize, Serialize};
 use crate::actor::ActorCommand;
 use crate::actor::PublishCommand;
 use crate::publish::policy::{classify_publish_behavior, validate_publish_routing};
-use crate::relay::CanonicalRelayUrl;
 use crate::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
 };
 use nmp_signer_iface::SignedEvent;
+
+mod signer;
+mod target;
+
+pub use signer::{PublishSigner, PublishSignerProvenance};
+pub(crate) use target::{validate_explicit_relays, validate_publish_target};
+pub use target::{PublishRouteClass, PublishTarget};
 
 /// Stable handle returned to the caller of `Publish`. Used to key snapshot
 /// entries and to address the action in the ledger when M6 wires the ledger.
@@ -26,196 +32,6 @@ pub type PublishHandle = String;
 /// crate-wide definition lives in `crate::relay`; re-exported here so
 /// `publish` import paths are unchanged.
 pub use crate::relay::RelayUrl;
-
-/// Why a publish bypasses default outbox planning.
-///
-/// D3 still makes `Auto` the default. This enum exists only for explicit relay
-/// pins so the write stack can distinguish manual overrides from protocol-owned
-/// routing such as NIP-29 group hosts or verified DM inboxes.
-#[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum PublishRouteClass {
-    ManualOverride,
-    GroupHostPin,
-    VerifiedPrivateInbox,
-    ImportedOrPresigned,
-    Diagnostic,
-}
-
-/// Why a publish action is allowed to select a registered signer directly.
-///
-/// The selector is still resolved by the actor-owned signer roster. Provenance
-/// is app-facing intent, not authority: an unknown pubkey still fails in the
-/// signing stage with the structured "no signer for account ..." failure.
-#[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum PublishSignerProvenance {
-    AppManaged,
-    UserSelected,
-    ProtocolPinned,
-    Diagnostic,
-}
-
-impl Default for PublishSignerProvenance {
-    fn default() -> Self {
-        Self::AppManaged
-    }
-}
-
-impl PublishSignerProvenance {
-    #[must_use]
-    pub fn wire_token(self) -> &'static str {
-        match self {
-            Self::AppManaged => "app_managed",
-            Self::UserSelected => "user_selected",
-            Self::ProtocolPinned => "protocol_pinned",
-            Self::Diagnostic => "diagnostic",
-        }
-    }
-
-    #[must_use]
-    pub fn from_wire_token(token: &str) -> Option<Self> {
-        Some(match token {
-            "app_managed" => Self::AppManaged,
-            "user_selected" => Self::UserSelected,
-            "protocol_pinned" => Self::ProtocolPinned,
-            "diagnostic" => Self::Diagnostic,
-            _ => return None,
-        })
-    }
-}
-
-/// Signer selected for a sign-and-publish action.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum PublishSigner {
-    /// Resolve and sign with the active account at actor execution time.
-    Active,
-    /// Resolve and sign with a registered roster signer by pubkey.
-    Registered {
-        pubkey: String,
-        provenance: PublishSignerProvenance,
-    },
-}
-
-impl Default for PublishSigner {
-    fn default() -> Self {
-        Self::Active
-    }
-}
-
-impl PublishSigner {
-    #[must_use]
-    pub fn registered(pubkey: String, provenance: PublishSignerProvenance) -> Self {
-        Self::Registered { pubkey, provenance }
-    }
-
-    #[must_use]
-    pub(crate) fn signer_pubkey(&self) -> Option<String> {
-        match self {
-            Self::Active => None,
-            Self::Registered { pubkey, .. } => Some(pubkey.clone()),
-        }
-    }
-}
-
-impl Default for PublishRouteClass {
-    fn default() -> Self {
-        Self::ManualOverride
-    }
-}
-
-impl PublishRouteClass {
-    #[must_use]
-    pub fn wire_token(self) -> &'static str {
-        match self {
-            Self::ManualOverride => "manual_override",
-            Self::GroupHostPin => "group_host_pin",
-            Self::VerifiedPrivateInbox => "verified_private_inbox",
-            Self::ImportedOrPresigned => "imported_or_presigned",
-            Self::Diagnostic => "diagnostic",
-        }
-    }
-
-    #[must_use]
-    pub fn from_wire_token(token: &str) -> Option<Self> {
-        Some(match token {
-            "manual_override" => Self::ManualOverride,
-            "group_host_pin" => Self::GroupHostPin,
-            "verified_private_inbox" => Self::VerifiedPrivateInbox,
-            "imported_or_presigned" => Self::ImportedOrPresigned,
-            "diagnostic" => Self::Diagnostic,
-            _ => return None,
-        })
-    }
-}
-
-/// Where a publish should go.
-///
-/// `Auto` defers to the `OutboxResolver` (NIP-65 + indexer fallback per D3).
-/// `Explicit` is the named opt-out and must carry both relays and provenance.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum PublishTarget {
-    Auto,
-    Explicit {
-        relays: Vec<RelayUrl>,
-        route_class: PublishRouteClass,
-    },
-}
-
-impl PublishTarget {
-    #[must_use]
-    pub fn explicit(relays: Vec<RelayUrl>, route_class: PublishRouteClass) -> Self {
-        Self::Explicit {
-            relays,
-            route_class,
-        }
-    }
-
-    #[must_use]
-    pub fn manual_override(relays: Vec<RelayUrl>) -> Self {
-        Self::explicit(relays, PublishRouteClass::ManualOverride)
-    }
-}
-
-/// `Auto` is the unambiguous default — the kernel resolves via NIP-65 (D3).
-/// `Explicit` requires deliberate caller intent (a relay set), so it would
-/// never make sense as a default. Needed by `#[serde(default)]` on
-/// `PublishAction::PublishRaw::target` so a host JSON payload that omits
-/// the field gets outbox routing rather than a deserialize error.
-impl Default for PublishTarget {
-    fn default() -> Self {
-        Self::Auto
-    }
-}
-
-/// Validate a publish target before it can cross the action/actor boundary.
-///
-/// `Auto` is always valid: it deliberately asks the kernel to resolve via
-/// NIP-65. `Explicit` is fail-closed: an empty or malformed relay set is a
-/// caller bug, not a request to silently widen to `Auto`.
-#[must_use]
-pub(crate) fn validate_publish_target(target: &PublishTarget) -> Result<(), String> {
-    match target {
-        PublishTarget::Auto => Ok(()),
-        PublishTarget::Explicit { relays, .. } => validate_explicit_relays(relays),
-    }
-}
-
-#[must_use]
-pub(crate) fn validate_explicit_relays(relays: &[RelayUrl]) -> Result<(), String> {
-    if relays.is_empty() {
-        return Err("explicit publish target requires at least one relay".to_string());
-    }
-    for relay in relays {
-        if CanonicalRelayUrl::parse(relay).is_none() {
-            return Err(format!(
-                "explicit publish target relay '{relay}' must be a ws:// or wss:// relay URL"
-            ));
-        }
-    }
-    Ok(())
-}
 
 /// The single public publish action.
 ///
