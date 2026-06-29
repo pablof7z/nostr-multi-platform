@@ -17,8 +17,10 @@
 use super::{app_ref, NmpApp};
 use nmp_core::__ffi_internal::{
     capability_error_envelope, dispatch_capability, CapabilityCallback,
-    CapabilityCallbackRegistration, CapabilityCallbackSlot,
+    CapabilityCallbackRegistration,
 };
+#[cfg(test)]
+use nmp_core::__ffi_internal::CapabilityCallbackSlot;
 use std::ffi::{c_char, c_void, CString};
 
 /// Register the native capability handler. The kernel routes every

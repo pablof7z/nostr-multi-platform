@@ -143,13 +143,14 @@ pub type NmpActionResultObserver = unsafe extern "C" fn(*const c_char);
 /// action was *accepted and enqueued*, not that the actor has finished
 /// publishing.
 ///
-/// THREADING: this call takes `&NmpApp` (the observer lives behind an
-/// `Arc<Mutex<…>>` slot), so — unlike the typed `register_action::<M>()`
+/// THREADING: this call takes `&NmpApp` (the observer lives behind a
+/// quiescence gate), so — unlike the typed `register_action::<M>()`
 /// Rust seam — it may be invoked before *or after* `nmp_app_start`. A second
-/// registration replaces the first.
+/// registration replaces the first and waits for any in-flight callback to
+/// drain before returning.
 ///
-/// A null `app` or a null `observer` is a silent no-op (D6: a bad
-/// registration argument never crashes the host).
+/// A null `app` is a silent no-op. A null `observer` clears the current
+/// observer and drains in-flight callbacks before returning.
 ///
 /// # Safety
 /// `app` must be a valid pointer from [`super::nmp_app_new`] (or null).
@@ -165,6 +166,7 @@ pub extern "C" fn nmp_app_register_action_result_observer(
         return;
     };
     let Some(observer) = observer else {
+        app.clear_action_result_observer();
         return;
     };
     app.register_action_result_observer(move |result: ActionResult| {

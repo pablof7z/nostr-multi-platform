@@ -76,6 +76,74 @@ fn set_result_observer_second_registration_replaces_first() {
 }
 
 #[test]
+fn clear_result_observer_waits_for_in_flight_callback() {
+    use std::sync::mpsc;
+    use std::sync::{Arc, Barrier};
+    use std::time::Duration;
+
+    let registry = Arc::new(default_registry());
+    let callback_barrier = Arc::new(Barrier::new(2));
+    let callback_barrier_observer = Arc::clone(&callback_barrier);
+    let (entered_tx, entered_rx) = mpsc::sync_channel::<()>(1);
+    let (clear_started_tx, clear_started_rx) = mpsc::sync_channel::<()>(1);
+    let (clear_done_tx, clear_done_rx) = mpsc::sync_channel::<()>(1);
+
+    registry.set_result_observer(move |_result| {
+        entered_tx.send(()).unwrap();
+        callback_barrier_observer.wait();
+    });
+
+    let registry_for_delivery = Arc::clone(&registry);
+    let delivery = std::thread::spawn(move || {
+        registry_for_delivery.deliver_result(ActionResult {
+            correlation_id: "in-flight".to_string(),
+            result_json: serde_json::Value::Null,
+        });
+    });
+    entered_rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("observer entered");
+
+    let registry_for_clear = Arc::clone(&registry);
+    let clear = std::thread::spawn(move || {
+        clear_started_tx.send(()).unwrap();
+        registry_for_clear.clear_result_observer();
+        clear_done_tx.send(()).unwrap();
+    });
+    clear_started_rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("clear started");
+    assert!(
+        clear_done_rx
+            .recv_timeout(Duration::from_millis(100))
+            .is_err(),
+        "clear returned while action-result observer was still in-flight",
+    );
+
+    callback_barrier.wait();
+    delivery.join().unwrap();
+    clear.join().unwrap();
+    clear_done_rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("clear returns after observer drains");
+
+    let fired_after_clear = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let fired_after_clear_observer = Arc::clone(&fired_after_clear);
+    registry.set_result_observer(move |_| {
+        fired_after_clear_observer.store(true, std::sync::atomic::Ordering::SeqCst);
+    });
+    registry.clear_result_observer();
+    registry.deliver_result(ActionResult {
+        correlation_id: "after-clear".to_string(),
+        result_json: serde_json::Value::Null,
+    });
+    assert!(
+        !fired_after_clear.load(std::sync::atomic::Ordering::SeqCst),
+        "clear must unregister the observer",
+    );
+}
+
+#[test]
 fn correlation_ids_are_unique_across_calls() {
     let registry = default_registry();
     let action_json = r#"{"PublishRaw":{"kind":1,"tags":[],"content":"x","target":"Auto"}}"#;

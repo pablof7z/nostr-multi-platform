@@ -345,6 +345,12 @@ impl NmpApp {
         self.action_registry.set_result_observer(f);
     }
 
+    /// Clear the host-supplied action-result observer and drain any in-flight
+    /// callback before returning.
+    pub fn clear_action_result_observer(&self) {
+        self.action_registry.clear_result_observer();
+    }
+
     /// Test-only: run every registered **typed** snapshot projection directly
     /// against the app's shared registry, bypassing the actor/kernel tick.
     #[cfg(any(test, feature = "test-support"))]

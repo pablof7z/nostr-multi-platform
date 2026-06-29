@@ -191,7 +191,10 @@ pub(super) use lifecycle::handle_lifecycle_event;
 // are reached by `nmp-ffi` through `nmp_core::__ffi_internal::*` (after the
 // step 11-final extraction).
 #[cfg(feature = "native")]
-pub use lifecycle::{new_observer_slot, LifecycleObserverRegistration, LifecycleObserverSlot};
+pub use lifecycle::{
+    new_observer_slot, LifecycleObserverRegistration, LifecycleObserverSlot,
+    NativeLifecycleObserver,
+};
 // `pub` (not `pub(crate)`) so the test-support re-export in `lib.rs` works.
 // `commands` is crate-private (`mod commands;`), so external Rust code only
 // sees these through the gated `pub use` in lib.rs. The downstream re-export

@@ -32,7 +32,7 @@
 
 use super::{app_ref, NmpApp};
 use nmp_core::__ffi_internal::{
-    LifecycleObserverFn, LifecycleObserverRegistration, LifecyclePhase,
+    LifecycleObserverFn, LifecycleObserverRegistration,
 };
 use std::ffi::c_void;
 
@@ -73,10 +73,11 @@ pub extern "C" fn nmp_app_lifecycle_background(app: *mut NmpApp) {
 /// * `0` ([`nmp_core::__ffi_internal::LIFECYCLE_PHASE_FOREGROUND`]) — entered foreground.
 /// * `1` ([`nmp_core::__ffi_internal::LIFECYCLE_PHASE_BACKGROUND`]) — entered background.
 ///
-/// Passing `None` unregisters. The callback executes on the actor thread;
-/// it must be cheap and re-entrancy-safe (the actor releases its internal
-/// mutex before invoking the callback, so re-registering inside the
-/// callback is legal). Mirrors `nmp_app_set_capability_callback`.
+/// Passing `None` unregisters and waits for any in-flight lifecycle callback
+/// to finish before returning. The callback executes on the actor thread; it
+/// must be cheap and must not call `nmp_app_set_lifecycle_callback` for the
+/// same app from inside the callback because the setter drains in-flight
+/// callbacks before returning. Mirrors `nmp_app_set_capability_callback`.
 #[no_mangle]
 pub extern "C" fn nmp_app_set_lifecycle_callback(
     app: *mut NmpApp,

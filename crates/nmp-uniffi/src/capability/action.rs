@@ -5,23 +5,9 @@
 //!
 //! ## Quiescence note for `register_action_result_observer`
 //!
-//! The `ActionRegistry::deliver_result` implementation holds the
-//! `Arc<Mutex>` lock ACROSS the observer call (mutual-exclusion quiescence)
-//! rather than using the `Condvar` + `in_flight` pattern from
-//! `UpdateListenerGate` / `CapabilityCallbackGate`. There is also no
-//! `clear_result_observer` API on the registry.
-//!
-//! Per M14-C4 spec this is a **stop-and-report**: a proper drain gate for
-//! the action-result observer is out of scope for this slice. The UniFFI
-//! binding therefore:
-//! * Supports registration and replacement (mutex exclusion makes replacement
-//!   safe: `set_result_observer` waits for the mutex, which `deliver_result`
-//!   holds across the callback, so the old observer has completed when the
-//!   new one is installed).
-//! * Does NOT expose a `clear` API (mirrors the C-ABI where null observer is a
-//!   silent no-op).
-//! * Does NOT include Barrier-style quiescence/teardown tests for this
-//!   observer (those require the drain-gate pattern).
+//! `ActionRegistry` uses the same `in_flight` + `Condvar` drain pattern as
+//! `UpdateListenerGate` / `CapabilityCallbackGate`. Replacement and clear wait
+//! for any in-flight callback before returning.
 //!
 //! ## Threading
 //!
@@ -35,8 +21,8 @@ use std::sync::Arc;
 
 use nmp_core::substrate::ActionResult;
 
-use crate::NmpApp;
 use super::ActionResultObserver;
+use crate::NmpApp;
 
 #[uniffi::export]
 impl NmpApp {
@@ -55,9 +41,10 @@ impl NmpApp {
         if correlation_id.is_empty() {
             return;
         }
-        self.inner.send_cmd(nmp_core::actor::ActorCommand::ActionLedger(
-            nmp_core::actor::ActionLedgerCommand::Ack(correlation_id),
-        ));
+        self.inner
+            .send_cmd(nmp_core::actor::ActorCommand::ActionLedger(
+                nmp_core::actor::ActionLedgerCommand::Ack(correlation_id),
+            ));
     }
 
     /// Register a host-supplied action-result observer — the *push*
@@ -70,9 +57,10 @@ impl NmpApp {
     /// the action was *accepted and enqueued*, not that the actor has finished
     /// publishing.
     ///
-    /// A second registration replaces the first. There is no clear API:
-    /// passing `None` would be a no-op (mirrors the C-ABI null-observer
-    /// behaviour). See the module-level quiescence note.
+    /// A second registration replaces the first and drains the previous sink
+    /// before returning. Re-entrancy is forbidden: calling this or
+    /// `clear_action_result_observer` from inside `on_action_result` deadlocks
+    /// the quiescence gate.
     pub fn register_action_result_observer(&self, observer: Box<dyn ActionResultObserver>) {
         let observer: Arc<dyn ActionResultObserver> = Arc::from(observer);
         self.inner
@@ -89,5 +77,11 @@ impl NmpApp {
                     o.on_action_result(json);
                 }));
             });
+    }
+
+    /// Clear the action-result observer and wait for any in-flight callback to
+    /// finish before returning.
+    pub fn clear_action_result_observer(&self) {
+        self.inner.clear_action_result_observer();
     }
 }
