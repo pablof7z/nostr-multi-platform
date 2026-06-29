@@ -628,6 +628,36 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
     func registerAgentNsec(secret: String)
 
     /**
+     * Release an event ref acquired through a typed event adapter.
+     *
+     * Mirrors `nmp_app_release_event_ref`. Idempotent (D6).
+     */
+    func releaseEventRef(key: String, consumerId: String)
+
+    /**
+     * Release a profile ref acquired through a typed profile adapter.
+     *
+     * Mirrors `nmp_app_release_profile_ref`. Idempotent (D6).
+     */
+    func releaseProfileRef(key: String, consumerId: String)
+
+    /**
+     * Release a reference previously registered via `resolve_ref`.
+     *
+     * Mirrors `nmp_app_release_ref`. Decrements the refcount for
+     * `consumer_id`'s stake in `(namespace, key)`. The resolver slot is torn
+     * down when the last consumer releases.
+     *
+     * This is the teardown call for **both** `CacheOk` and `Live` resolves.
+     * For `Live` resolves the tailing subscription is quiesced before the
+     * slot is dropped (no further callbacks or UAF).
+     *
+     * D6: null/invalid arguments and unknown triples are silent no-ops
+     * (idempotent). D8: fire-and-forget.
+     */
+    func releaseRef(namespace: RefNamespace, key: String, consumerId: String)
+
+    /**
      * Remove an account from the active session.
      */
     func removeAccount(identityId: String)
@@ -641,6 +671,89 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
      * Signal the kernel to reset (clears transient state).
      */
     func reset()
+
+    /**
+     * Resolve an event embed with CacheOk liveness and no URI metadata.
+     *
+     * Mirrors `nmp_app_resolve_event_embed`.
+     * D6: invalid key is a no-op at the kernel. D8: fire-and-forget.
+     */
+    func resolveEventEmbed(key: String, consumerId: String)
+
+    /**
+     * Resolve a live event embed (tailing subscription).
+     *
+     * Mirrors `nmp_app_resolve_event_embed_live`.
+     */
+    func resolveEventEmbedLive(key: String, consumerId: String)
+
+    /**
+     * Resolve a live event embed with caller-decoded relay/author metadata.
+     *
+     * Mirrors `nmp_app_resolve_event_embed_live_with_metadata`.
+     */
+    func resolveEventEmbedLiveWithMetadata(key: String, consumerId: String, metadata: ResolveMetadata)
+
+    /**
+     * Resolve an event embed with caller-decoded relay/author metadata,
+     * CacheOk liveness.
+     *
+     * Mirrors `nmp_app_resolve_event_embed_with_metadata`.
+     */
+    func resolveEventEmbedWithMetadata(key: String, consumerId: String, metadata: ResolveMetadata)
+
+    /**
+     * Resolve a live profile card (full-card shape, Live liveness).
+     *
+     * Typed adapter: fixes namespace=Profile, shape=Card, liveness=Live.
+     * Use for open profile screens. Mirrors `nmp_app_resolve_profile_card_live`.
+     *
+     * D6: invalid `key` is a silent no-op. D8: fire-and-forget.
+     */
+    func resolveProfileCardLive(key: String, consumerId: String)
+
+    /**
+     * Resolve a profile ref (feed-avatar shape, CacheOk liveness).
+     *
+     * Typed adapter: fixes namespace=Profile, shape=Ref, liveness=CacheOk.
+     * Use for feed-row avatars. Mirrors `nmp_app_resolve_profile_ref`.
+     *
+     * D6: invalid `key` is a silent no-op. D8: fire-and-forget.
+     */
+    func resolveProfileRef(key: String, consumerId: String)
+
+    /**
+     * Register (or upgrade) a consumer's interest in `(namespace, key)`.
+     *
+     * Mirrors `nmp_app_resolve_ref`. The kernel refcounts per `consumer_id`;
+     * a key already held by another consumer is deduped to one resolver slot
+     * with the widest requested shape and the highest liveness (`Live` wins).
+     *
+     * `namespace` — `Profile` or `Event`.
+     * `key` — 64-hex pubkey (Profile); hex event-id, `"kind:pubkey:d"`, or
+     * `"i:<external-id>"` (Event). Not a `nostr:` URI.
+     * `consumer_id` — caller-chosen refcount owner key (e.g. SwiftUI view id).
+     * The same string MUST be passed to `release_ref` to tear down.
+     * `shape` — determines which projection field is populated.
+     * `liveness` — `CacheOk` (background) or `Live` (open screen).
+     *
+     * D6: invalid keys, null arguments, and namespace/shape mismatches are
+     * silent no-ops. D8: fire-and-forget; the actor processes asynchronously.
+     */
+    func resolveRef(namespace: RefNamespace, key: String, consumerId: String, shape: RefShape, liveness: RefLiveness)
+
+    /**
+     * Register (or upgrade) a consumer's interest with caller-decoded relay
+     * and author metadata.
+     *
+     * Mirrors `nmp_app_resolve_ref_with_metadata`. `metadata.hints` are relay
+     * URL hints decoded from NIP-19/NIP-21 TLVs by the caller. The `key` is
+     * always raw — never a `nostr:` URI.
+     *
+     * D6: all validation rules from `resolve_ref` apply; invalid metadata is
+     * a silent no-op (caller is expected to pass valid decoded values).
+     */
+    func resolveRefWithMetadata(namespace: RefNamespace, key: String, consumerId: String, shape: RefShape, liveness: RefLiveness, metadata: ResolveMetadata)
 
     /**
      * Register (or clear) the NMPU frame observer.
@@ -964,6 +1077,55 @@ open func registerAgentNsec(secret: String)  {try! rustCall() {
 }
 
     /**
+     * Release an event ref acquired through a typed event adapter.
+     *
+     * Mirrors `nmp_app_release_event_ref`. Idempotent (D6).
+     */
+open func releaseEventRef(key: String, consumerId: String)  {try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_release_event_ref(self.uniffiClonePointer(),
+        FfiConverterString.lower(key),
+        FfiConverterString.lower(consumerId),$0
+    )
+}
+}
+
+    /**
+     * Release a profile ref acquired through a typed profile adapter.
+     *
+     * Mirrors `nmp_app_release_profile_ref`. Idempotent (D6).
+     */
+open func releaseProfileRef(key: String, consumerId: String)  {try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_release_profile_ref(self.uniffiClonePointer(),
+        FfiConverterString.lower(key),
+        FfiConverterString.lower(consumerId),$0
+    )
+}
+}
+
+    /**
+     * Release a reference previously registered via `resolve_ref`.
+     *
+     * Mirrors `nmp_app_release_ref`. Decrements the refcount for
+     * `consumer_id`'s stake in `(namespace, key)`. The resolver slot is torn
+     * down when the last consumer releases.
+     *
+     * This is the teardown call for **both** `CacheOk` and `Live` resolves.
+     * For `Live` resolves the tailing subscription is quiesced before the
+     * slot is dropped (no further callbacks or UAF).
+     *
+     * D6: null/invalid arguments and unknown triples are silent no-ops
+     * (idempotent). D8: fire-and-forget.
+     */
+open func releaseRef(namespace: RefNamespace, key: String, consumerId: String)  {try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_release_ref(self.uniffiClonePointer(),
+        FfiConverterTypeRefNamespace_lower(namespace),
+        FfiConverterString.lower(key),
+        FfiConverterString.lower(consumerId),$0
+    )
+}
+}
+
+    /**
      * Remove an account from the active session.
      */
 open func removeAccount(identityId: String)  {try! rustCall() {
@@ -988,6 +1150,146 @@ open func removeRelay(url: String)  {try! rustCall() {
      */
 open func reset()  {try! rustCall() {
     uniffi_nmp_uniffi_fn_method_nmpapp_reset(self.uniffiClonePointer(),$0
+    )
+}
+}
+
+    /**
+     * Resolve an event embed with CacheOk liveness and no URI metadata.
+     *
+     * Mirrors `nmp_app_resolve_event_embed`.
+     * D6: invalid key is a no-op at the kernel. D8: fire-and-forget.
+     */
+open func resolveEventEmbed(key: String, consumerId: String)  {try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_resolve_event_embed(self.uniffiClonePointer(),
+        FfiConverterString.lower(key),
+        FfiConverterString.lower(consumerId),$0
+    )
+}
+}
+
+    /**
+     * Resolve a live event embed (tailing subscription).
+     *
+     * Mirrors `nmp_app_resolve_event_embed_live`.
+     */
+open func resolveEventEmbedLive(key: String, consumerId: String)  {try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_resolve_event_embed_live(self.uniffiClonePointer(),
+        FfiConverterString.lower(key),
+        FfiConverterString.lower(consumerId),$0
+    )
+}
+}
+
+    /**
+     * Resolve a live event embed with caller-decoded relay/author metadata.
+     *
+     * Mirrors `nmp_app_resolve_event_embed_live_with_metadata`.
+     */
+open func resolveEventEmbedLiveWithMetadata(key: String, consumerId: String, metadata: ResolveMetadata)  {try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_resolve_event_embed_live_with_metadata(self.uniffiClonePointer(),
+        FfiConverterString.lower(key),
+        FfiConverterString.lower(consumerId),
+        FfiConverterTypeResolveMetadata_lower(metadata),$0
+    )
+}
+}
+
+    /**
+     * Resolve an event embed with caller-decoded relay/author metadata,
+     * CacheOk liveness.
+     *
+     * Mirrors `nmp_app_resolve_event_embed_with_metadata`.
+     */
+open func resolveEventEmbedWithMetadata(key: String, consumerId: String, metadata: ResolveMetadata)  {try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_resolve_event_embed_with_metadata(self.uniffiClonePointer(),
+        FfiConverterString.lower(key),
+        FfiConverterString.lower(consumerId),
+        FfiConverterTypeResolveMetadata_lower(metadata),$0
+    )
+}
+}
+
+    /**
+     * Resolve a live profile card (full-card shape, Live liveness).
+     *
+     * Typed adapter: fixes namespace=Profile, shape=Card, liveness=Live.
+     * Use for open profile screens. Mirrors `nmp_app_resolve_profile_card_live`.
+     *
+     * D6: invalid `key` is a silent no-op. D8: fire-and-forget.
+     */
+open func resolveProfileCardLive(key: String, consumerId: String)  {try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_resolve_profile_card_live(self.uniffiClonePointer(),
+        FfiConverterString.lower(key),
+        FfiConverterString.lower(consumerId),$0
+    )
+}
+}
+
+    /**
+     * Resolve a profile ref (feed-avatar shape, CacheOk liveness).
+     *
+     * Typed adapter: fixes namespace=Profile, shape=Ref, liveness=CacheOk.
+     * Use for feed-row avatars. Mirrors `nmp_app_resolve_profile_ref`.
+     *
+     * D6: invalid `key` is a silent no-op. D8: fire-and-forget.
+     */
+open func resolveProfileRef(key: String, consumerId: String)  {try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_resolve_profile_ref(self.uniffiClonePointer(),
+        FfiConverterString.lower(key),
+        FfiConverterString.lower(consumerId),$0
+    )
+}
+}
+
+    /**
+     * Register (or upgrade) a consumer's interest in `(namespace, key)`.
+     *
+     * Mirrors `nmp_app_resolve_ref`. The kernel refcounts per `consumer_id`;
+     * a key already held by another consumer is deduped to one resolver slot
+     * with the widest requested shape and the highest liveness (`Live` wins).
+     *
+     * `namespace` — `Profile` or `Event`.
+     * `key` — 64-hex pubkey (Profile); hex event-id, `"kind:pubkey:d"`, or
+     * `"i:<external-id>"` (Event). Not a `nostr:` URI.
+     * `consumer_id` — caller-chosen refcount owner key (e.g. SwiftUI view id).
+     * The same string MUST be passed to `release_ref` to tear down.
+     * `shape` — determines which projection field is populated.
+     * `liveness` — `CacheOk` (background) or `Live` (open screen).
+     *
+     * D6: invalid keys, null arguments, and namespace/shape mismatches are
+     * silent no-ops. D8: fire-and-forget; the actor processes asynchronously.
+     */
+open func resolveRef(namespace: RefNamespace, key: String, consumerId: String, shape: RefShape, liveness: RefLiveness)  {try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_resolve_ref(self.uniffiClonePointer(),
+        FfiConverterTypeRefNamespace_lower(namespace),
+        FfiConverterString.lower(key),
+        FfiConverterString.lower(consumerId),
+        FfiConverterTypeRefShape_lower(shape),
+        FfiConverterTypeRefLiveness_lower(liveness),$0
+    )
+}
+}
+
+    /**
+     * Register (or upgrade) a consumer's interest with caller-decoded relay
+     * and author metadata.
+     *
+     * Mirrors `nmp_app_resolve_ref_with_metadata`. `metadata.hints` are relay
+     * URL hints decoded from NIP-19/NIP-21 TLVs by the caller. The `key` is
+     * always raw — never a `nostr:` URI.
+     *
+     * D6: all validation rules from `resolve_ref` apply; invalid metadata is
+     * a silent no-op (caller is expected to pass valid decoded values).
+     */
+open func resolveRefWithMetadata(namespace: RefNamespace, key: String, consumerId: String, shape: RefShape, liveness: RefLiveness, metadata: ResolveMetadata)  {try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_resolve_ref_with_metadata(self.uniffiClonePointer(),
+        FfiConverterTypeRefNamespace_lower(namespace),
+        FfiConverterString.lower(key),
+        FfiConverterString.lower(consumerId),
+        FfiConverterTypeRefShape_lower(shape),
+        FfiConverterTypeRefLiveness_lower(liveness),
+        FfiConverterTypeResolveMetadata_lower(metadata),$0
     )
 }
 }
@@ -1492,6 +1794,87 @@ public func FfiConverterTypeRelayConfigEntry_lower(_ value: RelayConfigEntry) ->
     return FfiConverterTypeRelayConfigEntry.lower(value)
 }
 
+
+/**
+ * Optional caller-supplied relay + author metadata for a raw-key resolve.
+ *
+ * Used by app-owned URI adapters that decode `nostr:` / NIP-19 values
+ * before crossing the FFI boundary. The key is always raw (never a URI).
+ *
+ * `hints` — relay URLs decoded from NIP-19/NIP-21 TLVs.
+ * `event_author` — optional hex-pubkey author decoded from a nevent
+ * author TLV. Ignored for profile refs and superseded by
+ * coordinate-derived authors for naddr keys.
+ */
+public struct ResolveMetadata {
+    public var hints: [String]
+    public var eventAuthor: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(hints: [String], eventAuthor: String?) {
+        self.hints = hints
+        self.eventAuthor = eventAuthor
+    }
+}
+
+#if compiler(>=6)
+extension ResolveMetadata: Sendable {}
+#endif
+
+
+extension ResolveMetadata: Equatable, Hashable {
+    public static func ==(lhs: ResolveMetadata, rhs: ResolveMetadata) -> Bool {
+        if lhs.hints != rhs.hints {
+            return false
+        }
+        if lhs.eventAuthor != rhs.eventAuthor {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(hints)
+        hasher.combine(eventAuthor)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeResolveMetadata: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ResolveMetadata {
+        return
+            try ResolveMetadata(
+                hints: FfiConverterSequenceString.read(from: &buf),
+                eventAuthor: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ResolveMetadata, into buf: inout [UInt8]) {
+        FfiConverterSequenceString.write(value.hints, into: &buf)
+        FfiConverterOptionString.write(value.eventAuthor, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeResolveMetadata_lift(_ buf: RustBuffer) throws -> ResolveMetadata {
+    return try FfiConverterTypeResolveMetadata.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeResolveMetadata_lower(_ value: ResolveMetadata) -> RustBuffer {
+    return FfiConverterTypeResolveMetadata.lower(value)
+}
+
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 /**
@@ -1579,6 +1962,82 @@ public func FfiConverterTypeContentRenderMode_lower(_ value: ContentRenderMode) 
 
 
 extension ContentRenderMode: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * Shape discriminant for the `Event` namespace.
+ *
+ * `Embed` — the render-an-embed-card subset.
+ * `Raw` — the full raw event.
+ */
+
+public enum EventShape {
+
+    case embed
+    case raw
+}
+
+
+#if compiler(>=6)
+extension EventShape: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeEventShape: FfiConverterRustBuffer {
+    typealias SwiftType = EventShape
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> EventShape {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        case 1: return .embed
+
+        case 2: return .raw
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: EventShape, into buf: inout [UInt8]) {
+        switch value {
+
+
+        case .embed:
+            writeInt(&buf, Int32(1))
+
+
+        case .raw:
+            writeInt(&buf, Int32(2))
+
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeEventShape_lift(_ buf: RustBuffer) throws -> EventShape {
+    return try FfiConverterTypeEventShape.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeEventShape_lower(_ value: EventShape) -> RustBuffer {
+    return FfiConverterTypeEventShape.lower(value)
+}
+
+
+extension EventShape: Equatable, Hashable {}
 
 
 
@@ -2241,6 +2700,323 @@ extension NostrUriTarget: Equatable, Hashable {}
 
 
 
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * Shape discriminant for the `Profile` namespace.
+ *
+ * `Ref` — minimal feed-avatar shape `{pubkey, display_name, picture_url}`.
+ * `Card` — full `ProfileCard`; used for open profile screens.
+ */
+
+public enum ProfileShape {
+
+    case ref
+    case card
+}
+
+
+#if compiler(>=6)
+extension ProfileShape: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeProfileShape: FfiConverterRustBuffer {
+    typealias SwiftType = ProfileShape
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ProfileShape {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        case 1: return .ref
+
+        case 2: return .card
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ProfileShape, into buf: inout [UInt8]) {
+        switch value {
+
+
+        case .ref:
+            writeInt(&buf, Int32(1))
+
+
+        case .card:
+            writeInt(&buf, Int32(2))
+
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeProfileShape_lift(_ buf: RustBuffer) throws -> ProfileShape {
+    return try FfiConverterTypeProfileShape.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeProfileShape_lower(_ value: ProfileShape) -> RustBuffer {
+    return FfiConverterTypeProfileShape.lower(value)
+}
+
+
+extension ProfileShape: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * Freshness policy for a reference resolution.
+ *
+ * `CacheOk` — serve from store + one-shot fetch on miss; no live sub.
+ * Use for feed-row avatars and background embed claims.
+ * `Live` — keep a tailing subscription open while the consumer holds
+ * the key. Use for open profile screens and live-updating embeds.
+ * `Live` wins on dedup when multiple consumers resolve the same key.
+ */
+
+public enum RefLiveness {
+
+    case cacheOk
+    case live
+}
+
+
+#if compiler(>=6)
+extension RefLiveness: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeRefLiveness: FfiConverterRustBuffer {
+    typealias SwiftType = RefLiveness
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RefLiveness {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        case 1: return .cacheOk
+
+        case 2: return .live
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: RefLiveness, into buf: inout [UInt8]) {
+        switch value {
+
+
+        case .cacheOk:
+            writeInt(&buf, Int32(1))
+
+
+        case .live:
+            writeInt(&buf, Int32(2))
+
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRefLiveness_lift(_ buf: RustBuffer) throws -> RefLiveness {
+    return try FfiConverterTypeRefLiveness.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRefLiveness_lower(_ value: RefLiveness) -> RustBuffer {
+    return FfiConverterTypeRefLiveness.lower(value)
+}
+
+
+extension RefLiveness: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * Reference namespace discriminant.
+ *
+ * `Profile` — key is a 64-hex-char lowercase pubkey.
+ * `Event` — key is a hex event-id, `"kind:pubkey:d"` coordinate, or
+ * `"i:<external-id>"` NIP-73 external reference.
+ */
+
+public enum RefNamespace {
+
+    case profile
+    case event
+}
+
+
+#if compiler(>=6)
+extension RefNamespace: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeRefNamespace: FfiConverterRustBuffer {
+    typealias SwiftType = RefNamespace
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RefNamespace {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        case 1: return .profile
+
+        case 2: return .event
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: RefNamespace, into buf: inout [UInt8]) {
+        switch value {
+
+
+        case .profile:
+            writeInt(&buf, Int32(1))
+
+
+        case .event:
+            writeInt(&buf, Int32(2))
+
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRefNamespace_lift(_ buf: RustBuffer) throws -> RefNamespace {
+    return try FfiConverterTypeRefNamespace.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRefNamespace_lower(_ value: RefNamespace) -> RustBuffer {
+    return FfiConverterTypeRefNamespace.lower(value)
+}
+
+
+extension RefNamespace: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * Combined namespace+shape discriminant.
+ *
+ * UniFFI uses struct-style variant fields for associated data.
+ * Variant `Profile` is only valid with `RefNamespace::Profile`;
+ * variant `Event` is only valid with `RefNamespace::Event`.
+ * The kernel's `resolve_ref` front door validates the pairing and
+ * fails closed (D6) on mismatch.
+ */
+
+public enum RefShape {
+
+    case profile(shape: ProfileShape
+    )
+    case event(shape: EventShape
+    )
+}
+
+
+#if compiler(>=6)
+extension RefShape: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeRefShape: FfiConverterRustBuffer {
+    typealias SwiftType = RefShape
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RefShape {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        case 1: return .profile(shape: try FfiConverterTypeProfileShape.read(from: &buf)
+        )
+
+        case 2: return .event(shape: try FfiConverterTypeEventShape.read(from: &buf)
+        )
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: RefShape, into buf: inout [UInt8]) {
+        switch value {
+
+
+        case let .profile(shape):
+            writeInt(&buf, Int32(1))
+            FfiConverterTypeProfileShape.write(shape, into: &buf)
+
+
+        case let .event(shape):
+            writeInt(&buf, Int32(2))
+            FfiConverterTypeEventShape.write(shape, into: &buf)
+
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRefShape_lift(_ buf: RustBuffer) throws -> RefShape {
+    return try FfiConverterTypeRefShape.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRefShape_lower(_ value: RefShape) -> RustBuffer {
+    return FfiConverterTypeRefShape.lower(value)
+}
+
+
+extension RefShape: Equatable, Hashable {}
+
+
+
+
+
+
 
 
 
@@ -2753,6 +3529,15 @@ private let initializationResult: InitializationResult = {
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_register_agent_nsec() != 63704) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_release_event_ref() != 15502) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_release_profile_ref() != 9114) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_release_ref() != 25184) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_remove_account() != 39031) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -2760,6 +3545,30 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_reset() != 45009) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_resolve_event_embed() != 3958) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_resolve_event_embed_live() != 39189) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_resolve_event_embed_live_with_metadata() != 19955) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_resolve_event_embed_with_metadata() != 36266) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_resolve_profile_card_live() != 16284) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_resolve_profile_ref() != 62079) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_resolve_ref() != 59544) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_resolve_ref_with_metadata() != 2281) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_set_update_sink() != 12723) {

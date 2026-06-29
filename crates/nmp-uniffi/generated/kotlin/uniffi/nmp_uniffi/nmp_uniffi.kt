@@ -787,6 +787,28 @@ internal open class UniffiVTableCallbackInterfaceUpdateSink(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is
 // rather `InterfaceTooLargeException`, caused by too many methods
@@ -830,11 +852,33 @@ fun uniffi_nmp_uniffi_checksum_method_nmpapp_nostrconnect_uri(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_register_agent_nsec(
 ): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_release_event_ref(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_release_profile_ref(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_release_ref(
+): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_remove_account(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_remove_relay(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_reset(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_resolve_event_embed(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_resolve_event_embed_live(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_resolve_event_embed_live_with_metadata(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_resolve_event_embed_with_metadata(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_resolve_profile_card_live(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_resolve_profile_ref(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_resolve_ref(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_resolve_ref_with_metadata(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_set_update_sink(
 ): Short
@@ -932,11 +976,33 @@ fun uniffi_nmp_uniffi_fn_method_nmpapp_nostrconnect_uri(`ptr`: Pointer,`callback
 ): RustBuffer.ByValue
 fun uniffi_nmp_uniffi_fn_method_nmpapp_register_agent_nsec(`ptr`: Pointer,`secret`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
+fun uniffi_nmp_uniffi_fn_method_nmpapp_release_event_ref(`ptr`: Pointer,`key`: RustBuffer.ByValue,`consumerId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+): Unit
+fun uniffi_nmp_uniffi_fn_method_nmpapp_release_profile_ref(`ptr`: Pointer,`key`: RustBuffer.ByValue,`consumerId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+): Unit
+fun uniffi_nmp_uniffi_fn_method_nmpapp_release_ref(`ptr`: Pointer,`namespace`: RustBuffer.ByValue,`key`: RustBuffer.ByValue,`consumerId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_remove_account(`ptr`: Pointer,`identityId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_remove_relay(`ptr`: Pointer,`url`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_reset(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
+): Unit
+fun uniffi_nmp_uniffi_fn_method_nmpapp_resolve_event_embed(`ptr`: Pointer,`key`: RustBuffer.ByValue,`consumerId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+): Unit
+fun uniffi_nmp_uniffi_fn_method_nmpapp_resolve_event_embed_live(`ptr`: Pointer,`key`: RustBuffer.ByValue,`consumerId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+): Unit
+fun uniffi_nmp_uniffi_fn_method_nmpapp_resolve_event_embed_live_with_metadata(`ptr`: Pointer,`key`: RustBuffer.ByValue,`consumerId`: RustBuffer.ByValue,`metadata`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+): Unit
+fun uniffi_nmp_uniffi_fn_method_nmpapp_resolve_event_embed_with_metadata(`ptr`: Pointer,`key`: RustBuffer.ByValue,`consumerId`: RustBuffer.ByValue,`metadata`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+): Unit
+fun uniffi_nmp_uniffi_fn_method_nmpapp_resolve_profile_card_live(`ptr`: Pointer,`key`: RustBuffer.ByValue,`consumerId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+): Unit
+fun uniffi_nmp_uniffi_fn_method_nmpapp_resolve_profile_ref(`ptr`: Pointer,`key`: RustBuffer.ByValue,`consumerId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+): Unit
+fun uniffi_nmp_uniffi_fn_method_nmpapp_resolve_ref(`ptr`: Pointer,`namespace`: RustBuffer.ByValue,`key`: RustBuffer.ByValue,`consumerId`: RustBuffer.ByValue,`shape`: RustBuffer.ByValue,`liveness`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+): Unit
+fun uniffi_nmp_uniffi_fn_method_nmpapp_resolve_ref_with_metadata(`ptr`: Pointer,`namespace`: RustBuffer.ByValue,`key`: RustBuffer.ByValue,`consumerId`: RustBuffer.ByValue,`shape`: RustBuffer.ByValue,`liveness`: RustBuffer.ByValue,`metadata`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_set_update_sink(`ptr`: Pointer,`sink`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
@@ -1132,6 +1198,15 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_register_agent_nsec() != 63704.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_release_event_ref() != 15502.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_release_profile_ref() != 9114.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_release_ref() != 25184.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_remove_account() != 39031.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1139,6 +1214,30 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_reset() != 45009.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_resolve_event_embed() != 3958.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_resolve_event_embed_live() != 39189.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_resolve_event_embed_live_with_metadata() != 19955.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_resolve_event_embed_with_metadata() != 36266.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_resolve_profile_card_live() != 16284.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_resolve_profile_ref() != 62079.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_resolve_ref() != 59544.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_resolve_ref_with_metadata() != 2281.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_set_update_sink() != 12723.toShort()) {
@@ -1689,6 +1788,36 @@ public interface NmpAppInterface {
     fun `registerAgentNsec`(`secret`: kotlin.String)
 
     /**
+     * Release an event ref acquired through a typed event adapter.
+     *
+     * Mirrors `nmp_app_release_event_ref`. Idempotent (D6).
+     */
+    fun `releaseEventRef`(`key`: kotlin.String, `consumerId`: kotlin.String)
+
+    /**
+     * Release a profile ref acquired through a typed profile adapter.
+     *
+     * Mirrors `nmp_app_release_profile_ref`. Idempotent (D6).
+     */
+    fun `releaseProfileRef`(`key`: kotlin.String, `consumerId`: kotlin.String)
+
+    /**
+     * Release a reference previously registered via `resolve_ref`.
+     *
+     * Mirrors `nmp_app_release_ref`. Decrements the refcount for
+     * `consumer_id`'s stake in `(namespace, key)`. The resolver slot is torn
+     * down when the last consumer releases.
+     *
+     * This is the teardown call for **both** `CacheOk` and `Live` resolves.
+     * For `Live` resolves the tailing subscription is quiesced before the
+     * slot is dropped (no further callbacks or UAF).
+     *
+     * D6: null/invalid arguments and unknown triples are silent no-ops
+     * (idempotent). D8: fire-and-forget.
+     */
+    fun `releaseRef`(`namespace`: RefNamespace, `key`: kotlin.String, `consumerId`: kotlin.String)
+
+    /**
      * Remove an account from the active session.
      */
     fun `removeAccount`(`identityId`: kotlin.String)
@@ -1702,6 +1831,89 @@ public interface NmpAppInterface {
      * Signal the kernel to reset (clears transient state).
      */
     fun `reset`()
+
+    /**
+     * Resolve an event embed with CacheOk liveness and no URI metadata.
+     *
+     * Mirrors `nmp_app_resolve_event_embed`.
+     * D6: invalid key is a no-op at the kernel. D8: fire-and-forget.
+     */
+    fun `resolveEventEmbed`(`key`: kotlin.String, `consumerId`: kotlin.String)
+
+    /**
+     * Resolve a live event embed (tailing subscription).
+     *
+     * Mirrors `nmp_app_resolve_event_embed_live`.
+     */
+    fun `resolveEventEmbedLive`(`key`: kotlin.String, `consumerId`: kotlin.String)
+
+    /**
+     * Resolve a live event embed with caller-decoded relay/author metadata.
+     *
+     * Mirrors `nmp_app_resolve_event_embed_live_with_metadata`.
+     */
+    fun `resolveEventEmbedLiveWithMetadata`(`key`: kotlin.String, `consumerId`: kotlin.String, `metadata`: ResolveMetadata)
+
+    /**
+     * Resolve an event embed with caller-decoded relay/author metadata,
+     * CacheOk liveness.
+     *
+     * Mirrors `nmp_app_resolve_event_embed_with_metadata`.
+     */
+    fun `resolveEventEmbedWithMetadata`(`key`: kotlin.String, `consumerId`: kotlin.String, `metadata`: ResolveMetadata)
+
+    /**
+     * Resolve a live profile card (full-card shape, Live liveness).
+     *
+     * Typed adapter: fixes namespace=Profile, shape=Card, liveness=Live.
+     * Use for open profile screens. Mirrors `nmp_app_resolve_profile_card_live`.
+     *
+     * D6: invalid `key` is a silent no-op. D8: fire-and-forget.
+     */
+    fun `resolveProfileCardLive`(`key`: kotlin.String, `consumerId`: kotlin.String)
+
+    /**
+     * Resolve a profile ref (feed-avatar shape, CacheOk liveness).
+     *
+     * Typed adapter: fixes namespace=Profile, shape=Ref, liveness=CacheOk.
+     * Use for feed-row avatars. Mirrors `nmp_app_resolve_profile_ref`.
+     *
+     * D6: invalid `key` is a silent no-op. D8: fire-and-forget.
+     */
+    fun `resolveProfileRef`(`key`: kotlin.String, `consumerId`: kotlin.String)
+
+    /**
+     * Register (or upgrade) a consumer's interest in `(namespace, key)`.
+     *
+     * Mirrors `nmp_app_resolve_ref`. The kernel refcounts per `consumer_id`;
+     * a key already held by another consumer is deduped to one resolver slot
+     * with the widest requested shape and the highest liveness (`Live` wins).
+     *
+     * `namespace` — `Profile` or `Event`.
+     * `key` — 64-hex pubkey (Profile); hex event-id, `"kind:pubkey:d"`, or
+     * `"i:<external-id>"` (Event). Not a `nostr:` URI.
+     * `consumer_id` — caller-chosen refcount owner key (e.g. SwiftUI view id).
+     * The same string MUST be passed to `release_ref` to tear down.
+     * `shape` — determines which projection field is populated.
+     * `liveness` — `CacheOk` (background) or `Live` (open screen).
+     *
+     * D6: invalid keys, null arguments, and namespace/shape mismatches are
+     * silent no-ops. D8: fire-and-forget; the actor processes asynchronously.
+     */
+    fun `resolveRef`(`namespace`: RefNamespace, `key`: kotlin.String, `consumerId`: kotlin.String, `shape`: RefShape, `liveness`: RefLiveness)
+
+    /**
+     * Register (or upgrade) a consumer's interest with caller-decoded relay
+     * and author metadata.
+     *
+     * Mirrors `nmp_app_resolve_ref_with_metadata`. `metadata.hints` are relay
+     * URL hints decoded from NIP-19/NIP-21 TLVs by the caller. The `key` is
+     * always raw — never a `nostr:` URI.
+     *
+     * D6: all validation rules from `resolve_ref` apply; invalid metadata is
+     * a silent no-op (caller is expected to pass valid decoded values).
+     */
+    fun `resolveRefWithMetadata`(`namespace`: RefNamespace, `key`: kotlin.String, `consumerId`: kotlin.String, `shape`: RefShape, `liveness`: RefLiveness, `metadata`: ResolveMetadata)
 
     /**
      * Register (or clear) the NMPU frame observer.
@@ -2097,6 +2309,63 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
 
 
     /**
+     * Release an event ref acquired through a typed event adapter.
+     *
+     * Mirrors `nmp_app_release_event_ref`. Idempotent (D6).
+     */override fun `releaseEventRef`(`key`: kotlin.String, `consumerId`: kotlin.String)
+        =
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_release_event_ref(
+        it, FfiConverterString.lower(`key`),FfiConverterString.lower(`consumerId`),_status)
+}
+    }
+
+
+
+
+    /**
+     * Release a profile ref acquired through a typed profile adapter.
+     *
+     * Mirrors `nmp_app_release_profile_ref`. Idempotent (D6).
+     */override fun `releaseProfileRef`(`key`: kotlin.String, `consumerId`: kotlin.String)
+        =
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_release_profile_ref(
+        it, FfiConverterString.lower(`key`),FfiConverterString.lower(`consumerId`),_status)
+}
+    }
+
+
+
+
+    /**
+     * Release a reference previously registered via `resolve_ref`.
+     *
+     * Mirrors `nmp_app_release_ref`. Decrements the refcount for
+     * `consumer_id`'s stake in `(namespace, key)`. The resolver slot is torn
+     * down when the last consumer releases.
+     *
+     * This is the teardown call for **both** `CacheOk` and `Live` resolves.
+     * For `Live` resolves the tailing subscription is quiesced before the
+     * slot is dropped (no further callbacks or UAF).
+     *
+     * D6: null/invalid arguments and unknown triples are silent no-ops
+     * (idempotent). D8: fire-and-forget.
+     */override fun `releaseRef`(`namespace`: RefNamespace, `key`: kotlin.String, `consumerId`: kotlin.String)
+        =
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_release_ref(
+        it, FfiConverterTypeRefNamespace.lower(`namespace`),FfiConverterString.lower(`key`),FfiConverterString.lower(`consumerId`),_status)
+}
+    }
+
+
+
+
+    /**
      * Remove an account from the active session.
      */override fun `removeAccount`(`identityId`: kotlin.String)
         =
@@ -2132,6 +2401,161 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_reset(
         it, _status)
+}
+    }
+
+
+
+
+    /**
+     * Resolve an event embed with CacheOk liveness and no URI metadata.
+     *
+     * Mirrors `nmp_app_resolve_event_embed`.
+     * D6: invalid key is a no-op at the kernel. D8: fire-and-forget.
+     */override fun `resolveEventEmbed`(`key`: kotlin.String, `consumerId`: kotlin.String)
+        =
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_resolve_event_embed(
+        it, FfiConverterString.lower(`key`),FfiConverterString.lower(`consumerId`),_status)
+}
+    }
+
+
+
+
+    /**
+     * Resolve a live event embed (tailing subscription).
+     *
+     * Mirrors `nmp_app_resolve_event_embed_live`.
+     */override fun `resolveEventEmbedLive`(`key`: kotlin.String, `consumerId`: kotlin.String)
+        =
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_resolve_event_embed_live(
+        it, FfiConverterString.lower(`key`),FfiConverterString.lower(`consumerId`),_status)
+}
+    }
+
+
+
+
+    /**
+     * Resolve a live event embed with caller-decoded relay/author metadata.
+     *
+     * Mirrors `nmp_app_resolve_event_embed_live_with_metadata`.
+     */override fun `resolveEventEmbedLiveWithMetadata`(`key`: kotlin.String, `consumerId`: kotlin.String, `metadata`: ResolveMetadata)
+        =
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_resolve_event_embed_live_with_metadata(
+        it, FfiConverterString.lower(`key`),FfiConverterString.lower(`consumerId`),FfiConverterTypeResolveMetadata.lower(`metadata`),_status)
+}
+    }
+
+
+
+
+    /**
+     * Resolve an event embed with caller-decoded relay/author metadata,
+     * CacheOk liveness.
+     *
+     * Mirrors `nmp_app_resolve_event_embed_with_metadata`.
+     */override fun `resolveEventEmbedWithMetadata`(`key`: kotlin.String, `consumerId`: kotlin.String, `metadata`: ResolveMetadata)
+        =
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_resolve_event_embed_with_metadata(
+        it, FfiConverterString.lower(`key`),FfiConverterString.lower(`consumerId`),FfiConverterTypeResolveMetadata.lower(`metadata`),_status)
+}
+    }
+
+
+
+
+    /**
+     * Resolve a live profile card (full-card shape, Live liveness).
+     *
+     * Typed adapter: fixes namespace=Profile, shape=Card, liveness=Live.
+     * Use for open profile screens. Mirrors `nmp_app_resolve_profile_card_live`.
+     *
+     * D6: invalid `key` is a silent no-op. D8: fire-and-forget.
+     */override fun `resolveProfileCardLive`(`key`: kotlin.String, `consumerId`: kotlin.String)
+        =
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_resolve_profile_card_live(
+        it, FfiConverterString.lower(`key`),FfiConverterString.lower(`consumerId`),_status)
+}
+    }
+
+
+
+
+    /**
+     * Resolve a profile ref (feed-avatar shape, CacheOk liveness).
+     *
+     * Typed adapter: fixes namespace=Profile, shape=Ref, liveness=CacheOk.
+     * Use for feed-row avatars. Mirrors `nmp_app_resolve_profile_ref`.
+     *
+     * D6: invalid `key` is a silent no-op. D8: fire-and-forget.
+     */override fun `resolveProfileRef`(`key`: kotlin.String, `consumerId`: kotlin.String)
+        =
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_resolve_profile_ref(
+        it, FfiConverterString.lower(`key`),FfiConverterString.lower(`consumerId`),_status)
+}
+    }
+
+
+
+
+    /**
+     * Register (or upgrade) a consumer's interest in `(namespace, key)`.
+     *
+     * Mirrors `nmp_app_resolve_ref`. The kernel refcounts per `consumer_id`;
+     * a key already held by another consumer is deduped to one resolver slot
+     * with the widest requested shape and the highest liveness (`Live` wins).
+     *
+     * `namespace` — `Profile` or `Event`.
+     * `key` — 64-hex pubkey (Profile); hex event-id, `"kind:pubkey:d"`, or
+     * `"i:<external-id>"` (Event). Not a `nostr:` URI.
+     * `consumer_id` — caller-chosen refcount owner key (e.g. SwiftUI view id).
+     * The same string MUST be passed to `release_ref` to tear down.
+     * `shape` — determines which projection field is populated.
+     * `liveness` — `CacheOk` (background) or `Live` (open screen).
+     *
+     * D6: invalid keys, null arguments, and namespace/shape mismatches are
+     * silent no-ops. D8: fire-and-forget; the actor processes asynchronously.
+     */override fun `resolveRef`(`namespace`: RefNamespace, `key`: kotlin.String, `consumerId`: kotlin.String, `shape`: RefShape, `liveness`: RefLiveness)
+        =
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_resolve_ref(
+        it, FfiConverterTypeRefNamespace.lower(`namespace`),FfiConverterString.lower(`key`),FfiConverterString.lower(`consumerId`),FfiConverterTypeRefShape.lower(`shape`),FfiConverterTypeRefLiveness.lower(`liveness`),_status)
+}
+    }
+
+
+
+
+    /**
+     * Register (or upgrade) a consumer's interest with caller-decoded relay
+     * and author metadata.
+     *
+     * Mirrors `nmp_app_resolve_ref_with_metadata`. `metadata.hints` are relay
+     * URL hints decoded from NIP-19/NIP-21 TLVs by the caller. The `key` is
+     * always raw — never a `nostr:` URI.
+     *
+     * D6: all validation rules from `resolve_ref` apply; invalid metadata is
+     * a silent no-op (caller is expected to pass valid decoded values).
+     */override fun `resolveRefWithMetadata`(`namespace`: RefNamespace, `key`: kotlin.String, `consumerId`: kotlin.String, `shape`: RefShape, `liveness`: RefLiveness, `metadata`: ResolveMetadata)
+        =
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_resolve_ref_with_metadata(
+        it, FfiConverterTypeRefNamespace.lower(`namespace`),FfiConverterString.lower(`key`),FfiConverterString.lower(`consumerId`),FfiConverterTypeRefShape.lower(`shape`),FfiConverterTypeRefLiveness.lower(`liveness`),FfiConverterTypeResolveMetadata.lower(`metadata`),_status)
 }
     }
 
@@ -2493,6 +2917,49 @@ public object FfiConverterTypeRelayConfigEntry: FfiConverterRustBuffer<RelayConf
 
 
 /**
+ * Optional caller-supplied relay + author metadata for a raw-key resolve.
+ *
+ * Used by app-owned URI adapters that decode `nostr:` / NIP-19 values
+ * before crossing the FFI boundary. The key is always raw (never a URI).
+ *
+ * `hints` — relay URLs decoded from NIP-19/NIP-21 TLVs.
+ * `event_author` — optional hex-pubkey author decoded from a nevent
+ * author TLV. Ignored for profile refs and superseded by
+ * coordinate-derived authors for naddr keys.
+ */
+data class ResolveMetadata (
+    var `hints`: List<kotlin.String>,
+    var `eventAuthor`: kotlin.String?
+) {
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeResolveMetadata: FfiConverterRustBuffer<ResolveMetadata> {
+    override fun read(buf: ByteBuffer): ResolveMetadata {
+        return ResolveMetadata(
+            FfiConverterSequenceString.read(buf),
+            FfiConverterOptionalString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ResolveMetadata) = (
+            FfiConverterSequenceString.allocationSize(value.`hints`) +
+            FfiConverterOptionalString.allocationSize(value.`eventAuthor`)
+    )
+
+    override fun write(value: ResolveMetadata, buf: ByteBuffer) {
+            FfiConverterSequenceString.write(value.`hints`, buf)
+            FfiConverterOptionalString.write(value.`eventAuthor`, buf)
+    }
+}
+
+
+
+/**
  * Render mode passed to `tokenize_content`.
  *
  * Mirrors the `mode` discriminant constants in the C-ABI
@@ -2531,6 +2998,42 @@ public object FfiConverterTypeContentRenderMode: FfiConverterRustBuffer<ContentR
     override fun allocationSize(value: ContentRenderMode) = 4UL
 
     override fun write(value: ContentRenderMode, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * Shape discriminant for the `Event` namespace.
+ *
+ * `Embed` — the render-an-embed-card subset.
+ * `Raw` — the full raw event.
+ */
+
+enum class EventShape {
+
+    EMBED,
+    RAW;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeEventShape: FfiConverterRustBuffer<EventShape> {
+    override fun read(buf: ByteBuffer) = try {
+        EventShape.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: EventShape) = 4UL
+
+    override fun write(value: EventShape, buf: ByteBuffer) {
         buf.putInt(value.ordinal + 1)
     }
 }
@@ -3266,6 +3769,197 @@ public object FfiConverterTypeNostrUriTarget : FfiConverterRustBuffer<NostrUriTa
                 FfiConverterString.write(value.`pubkey`, buf)
                 FfiConverterUInt.write(value.`kind`, buf)
                 FfiConverterSequenceString.write(value.`relays`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+
+
+
+
+/**
+ * Shape discriminant for the `Profile` namespace.
+ *
+ * `Ref` — minimal feed-avatar shape `{pubkey, display_name, picture_url}`.
+ * `Card` — full `ProfileCard`; used for open profile screens.
+ */
+
+enum class ProfileShape {
+
+    REF,
+    CARD;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeProfileShape: FfiConverterRustBuffer<ProfileShape> {
+    override fun read(buf: ByteBuffer) = try {
+        ProfileShape.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: ProfileShape) = 4UL
+
+    override fun write(value: ProfileShape, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * Freshness policy for a reference resolution.
+ *
+ * `CacheOk` — serve from store + one-shot fetch on miss; no live sub.
+ * Use for feed-row avatars and background embed claims.
+ * `Live` — keep a tailing subscription open while the consumer holds
+ * the key. Use for open profile screens and live-updating embeds.
+ * `Live` wins on dedup when multiple consumers resolve the same key.
+ */
+
+enum class RefLiveness {
+
+    CACHE_OK,
+    LIVE;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeRefLiveness: FfiConverterRustBuffer<RefLiveness> {
+    override fun read(buf: ByteBuffer) = try {
+        RefLiveness.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: RefLiveness) = 4UL
+
+    override fun write(value: RefLiveness, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * Reference namespace discriminant.
+ *
+ * `Profile` — key is a 64-hex-char lowercase pubkey.
+ * `Event` — key is a hex event-id, `"kind:pubkey:d"` coordinate, or
+ * `"i:<external-id>"` NIP-73 external reference.
+ */
+
+enum class RefNamespace {
+
+    PROFILE,
+    EVENT;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeRefNamespace: FfiConverterRustBuffer<RefNamespace> {
+    override fun read(buf: ByteBuffer) = try {
+        RefNamespace.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: RefNamespace) = 4UL
+
+    override fun write(value: RefNamespace, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * Combined namespace+shape discriminant.
+ *
+ * UniFFI uses struct-style variant fields for associated data.
+ * Variant `Profile` is only valid with `RefNamespace::Profile`;
+ * variant `Event` is only valid with `RefNamespace::Event`.
+ * The kernel's `resolve_ref` front door validates the pairing and
+ * fails closed (D6) on mismatch.
+ */
+sealed class RefShape {
+
+    data class Profile(
+        val `shape`: ProfileShape) : RefShape() {
+        companion object
+    }
+
+    data class Event(
+        val `shape`: EventShape) : RefShape() {
+        companion object
+    }
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeRefShape : FfiConverterRustBuffer<RefShape>{
+    override fun read(buf: ByteBuffer): RefShape {
+        return when(buf.getInt()) {
+            1 -> RefShape.Profile(
+                FfiConverterTypeProfileShape.read(buf),
+                )
+            2 -> RefShape.Event(
+                FfiConverterTypeEventShape.read(buf),
+                )
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: RefShape) = when(value) {
+        is RefShape.Profile -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterTypeProfileShape.allocationSize(value.`shape`)
+            )
+        }
+        is RefShape.Event -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterTypeEventShape.allocationSize(value.`shape`)
+            )
+        }
+    }
+
+    override fun write(value: RefShape, buf: ByteBuffer) {
+        when(value) {
+            is RefShape.Profile -> {
+                buf.putInt(1)
+                FfiConverterTypeProfileShape.write(value.`shape`, buf)
+                Unit
+            }
+            is RefShape.Event -> {
+                buf.putInt(2)
+                FfiConverterTypeEventShape.write(value.`shape`, buf)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
