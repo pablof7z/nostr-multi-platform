@@ -13,9 +13,8 @@ This section covers the generated *bindings* and the *FFI boundary*. The public
 native binding is UniFFI for lifecycle, callbacks, and capability/object
 bindings. Binary FlatBuffers remains the hot action/update payload through that
 binding; UniFFI and FlatBuffers are complementary, not alternatives.
-Browser/wasm uses the separate `wasm-bindgen` runtime surface. Any remaining
-legacy native symbols are internal/transitional compatibility, not starter-app
-API.
+Browser/wasm uses the separate `wasm-bindgen` runtime surface. App-owned raw
+glue is delivery-specific and is not starter-app API.
 The full multi-platform starter remains M16.
 
 ## The `nmp.toml` manifest
@@ -201,7 +200,7 @@ actions.
 │ UniFFI exposes lifecycle, callbacks, capability objects, and byte     │
 │ action/update doorways to Swift/Kotlin/desktop native hosts.          │
 │ Native shells import generated UniFFI modules; they do not call       │
-│ legacy native symbols as starter-app API.                             │
+│ deleted framework symbols as starter-app API.                         │
 │ The update callback carries one binary `nmp.transport.UpdateFrame`   │
 │ with file identifier `NMPU`: Snapshot or Panic. There is no JSON     │
 │ runtime snapshot fallback and no pull/drain update symbol.           │
@@ -216,11 +215,11 @@ actions.
 │ and typed projection rows from Rust to frontend shells. JSON is      │
 │ allowed for Nostr relay frames, capability envelopes, diagnostics,   │
 │ goldens, or tests. It is not a second production update transport.   │
-├─ TRANSITIONAL / INTERNAL COMPATIBILITY ──────────────────────────────┤
-│ Historical legacy native symbols may remain for migration, tests, or │
-│ narrow runtime internals. Do not teach them as the new app path; any │
-│ residual byte lane must stay behind the public binding and be        │
-│ justified by measurement, not exposed as a second API.               │
+├─ APP-OWNED DELIVERY GLUE ────────────────────────────────────────────┤
+│ App-specific raw glue may exist for local adapters such as Gallery.  │
+│ It is not reusable framework API; any residual byte lane must stay   │
+│ behind the public binding and be justified by measurement, not       │
+│ exposed as a second API.                                             │
 ├─ `nmp` CLI (SHIPS, crates/nmp-cli/) ────────────────────────────────┤
 │ `nmp init <app>` scaffolds a thin Rust shell: a `<name>-core` crate  │
 │ with an explicit composition root, plus a headless `examples/shell.rs`│

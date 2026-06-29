@@ -33,10 +33,9 @@ The clean-break target is:
   exception proves UniFFI byte passing is insufficient for that exact lane.
 
 #2403 completed the migrated raw native ABI deletion tracker, and #2463 deleted
-the migrated runtime config/diagnostics C ABI. Any retained raw `nmp-ffi` or
-app-owned C/JNI surface is internal/transitional compatibility, test support, or
-app delivery glue with an owning issue. It is not a second app-facing native
-binding family.
+the migrated runtime config/diagnostics C ABI. App-owned C/JNI glue may remain
+only as local delivery code with an owning issue. It is not a second
+app-facing native binding family.
 
 Generate and check in typed read decoders for the update stream through
 `nmp-codegen` and schema-owned FlatBuffers generation. The read surface is typed
@@ -61,9 +60,9 @@ it does not own or transcode it.
 
 The original generated Kotlin binding moved with the external Chirp app. This
 repository now owns `crates/nmp-uniffi`, checked-in Swift/Kotlin bindings, and
-the `ci/check-uniffi-bindings-drift.sh` drift gate. Residual raw C/JNI exports
-are not the native public target; #2125 owns deleting, hiding, or formally
-scoping any remaining compatibility lanes after their UniFFI replacement exists.
+the `ci/check-uniffi-bindings-drift.sh` drift gate. Raw C/JNI exports are not
+the native public target; app-owned delivery glue must not recreate framework
+binding API.
 
 ## Rules
 

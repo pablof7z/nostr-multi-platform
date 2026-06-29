@@ -14,7 +14,7 @@
 
 This document describes the maintained binding direction after the M14 raw
 native ABI deletion work. It is not a compatibility catalog for deleted
-`nmp-ffi` C symbols. Deleted framework native C symbols are not current public
+framework C symbols. Deleted framework native C symbols are not current public
 API and must not be reintroduced unless #2125 records a measured internal
 exception behind the UniFFI API.
 
