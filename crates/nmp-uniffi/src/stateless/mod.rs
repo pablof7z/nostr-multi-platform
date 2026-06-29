@@ -1,15 +1,15 @@
 //! Stateless (no-kernel-IO) UniFFI helpers — M14-C1 per-surface layout.
 //!
 //! Each sub-module owns one surface and carries parity tests that verify
-//! equivalence with the corresponding `nmp-ffi` C-ABI path. All four functions
+//! equivalence with the migrated or retained native path. All four functions
 //! migrated here are synchronous and side-effect-free:
 //!
-//! | Module        | UniFFI fn              | C-ABI counterpart            |
+//! | Module        | UniFFI fn              | Retired/retained C-ABI       |
 //! |---------------|------------------------|------------------------------|
-//! | `nip19`       | `encode_profile`       | `nmp_app_encode_profile`     |
+//! | `nip19`       | `encode_profile`       | retired `nmp_app_encode_profile` |
 //! | `nip21`       | `decode_nostr_uri`     | `nmp_nip21_decode_uri`       |
 //! | `content`     | `tokenize_content`     | `nmp_content_tokenize_text`  |
-//! | `intent`      | `classify_intent`      | `nmp_app_intent_classify`    |
+//! | `intent`      | `classify_intent`      | retired `nmp_app_intent_classify` |
 //!
 //! The layout ensures C2–C7 slices stay file-disjoint (no merge conflicts
 //! from parallel branches touching different surfaces).
@@ -52,7 +52,9 @@ impl std::fmt::Display for NmpError {
             NmpError::NsecForbidden => write!(f, "nsec forbidden: secret key rejected"),
             NmpError::InvalidMode => write!(f, "invalid render mode"),
             NmpError::EncodeFailed => write!(f, "encode failed"),
-            NmpError::AlreadyStarted => write!(f, "already started: configuration after runtime start"),
+            NmpError::AlreadyStarted => {
+                write!(f, "already started: configuration after runtime start")
+            }
         }
     }
 }

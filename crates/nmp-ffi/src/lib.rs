@@ -33,7 +33,6 @@ mod interest_feed_tests;
 #[path = "keyring_forget_tests.rs"]
 mod keyring_forget_tests;
 mod lifecycle;
-mod nip19_ffi;
 mod nip21_ffi;
 #[cfg(test)]
 #[path = "passive_start_tests.rs"]
@@ -102,8 +101,6 @@ pub use lifecycle::{
     nmp_app_is_alive, nmp_app_lifecycle_background, nmp_app_lifecycle_foreground,
     nmp_app_set_lifecycle_callback,
 };
-#[cfg(feature = "native")]
-pub use nip19_ffi::nmp_app_encode_profile;
 #[cfg(feature = "native")]
 pub use nip21_ffi::nmp_nip21_decode_uri;
 #[cfg(feature = "native")]

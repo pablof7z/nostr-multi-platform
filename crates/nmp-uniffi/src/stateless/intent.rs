@@ -1,19 +1,18 @@
 //! Input-intent classifier — UniFFI surface (M14-C1).
 //!
-//! Mirrors `nmp-ffi/src/intent_ffi/mod.rs::nmp_app_intent_classify`.
+//! Replaces the retired C-ABI `nmp_app_intent_classify` door.
 //!
 //! ## Core-fn provenance
 //!
-//! The C-ABI deserialises `request_json: *const c_char` into an
-//! `InputIntentRequest`, calls `NmpApp::classify_input_intent`, then
-//! serialises the `InputIntentClassification` to JSON. This wrapper takes
-//! typed UniFFI structs, calls the same `classify_input_intent` method, and
-//! returns typed UniFFI enums — no JSON.
+//! The retired C-ABI deserialised JSON, called
+//! `NmpApp::classify_input_intent`, then serialised the classification back to
+//! JSON. This wrapper keeps that public native surface as typed UniFFI records
+//! and enums.
 //!
 //! ## Stateless guarantee
 //!
-//! Identical to the C-ABI: classifies the registered recognizer snapshot only
-//! — no kernel mutation, no IO, no actor round-trip (mirrors `nmp-ffi`'s doc).
+//! Matches the retired C-ABI behavior: classifies the registered recognizer
+//! snapshot only — no kernel mutation, no IO, no actor round-trip.
 
 use std::sync::Arc;
 
@@ -124,8 +123,8 @@ impl From<InputIntentCandidate> for IntentCandidate {
 
 /// Why an input could not be classified into any allowed candidate.
 ///
-/// `SecretLike` carries **no** copy of the input — same guarantee as the
-/// C-ABI `nmp_app_intent_classify`.
+/// `SecretLike` carries **no** copy of the input — same no-echo guarantee as
+/// the retired C-ABI helper.
 ///
 /// Mirrors `nmp_core::substrate::InputIntentRejection`.
 #[derive(Debug, Clone, PartialEq, uniffi::Enum)]
@@ -200,7 +199,7 @@ impl From<InputIntentClassification> for IntentClassification {
 /// `SecretLike` rejections carry **no** copy of `input` — the secret is never
 /// echoed back.
 ///
-/// Mirrors `nmp_app_intent_classify` — same recognizer snapshot read, same
+/// Preserves the retired C-ABI behavior: same recognizer snapshot read, same
 /// pure classification, typed output instead of JSON.
 #[uniffi::export]
 pub fn classify_intent(
@@ -223,7 +222,7 @@ pub fn classify_intent(
 mod tests {
     use super::*;
 
-    // Parity: the C-ABI `nmp_app_intent_classify` calls
+    // The retired C-ABI `nmp_app_intent_classify` called
     // `NmpApp::classify_input_intent` internally. These tests call the same
     // method directly on `app.inner` and compare with the UniFFI fn output.
 
@@ -237,7 +236,7 @@ mod tests {
             IntentTextTargets::AppDefault,
         );
 
-        // Parity: same call the C-ABI classify_request makes internally.
+        // Retired C-ABI parity: same call classify_request made internally.
         let request = InputIntentRequest {
             input: "not-anything-parseable".to_string(),
             scopes: vec![],
@@ -246,16 +245,17 @@ mod tests {
         let core_result = app.inner.classify_input_intent(&request);
         let expected: IntentClassification = core_result.into();
 
-        assert_eq!(result, expected, "UniFFI classify_intent must match the core fn");
+        assert_eq!(
+            result, expected,
+            "UniFFI classify_intent must match the core fn"
+        );
     }
 
     #[test]
     fn parity_secret_key_produces_secretlike_rejection() {
         use nmp_core::nip19::encode_nsec;
-        let nsec = encode_nsec(
-            "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
-        )
-        .unwrap();
+        let nsec = encode_nsec("3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d")
+            .unwrap();
 
         let app = crate::NmpApp::new();
         let result = classify_intent(

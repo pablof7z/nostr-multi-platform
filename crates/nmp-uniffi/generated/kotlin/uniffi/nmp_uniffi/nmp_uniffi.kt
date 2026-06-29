@@ -1156,13 +1156,13 @@ private fun uniffiCheckContractApiVersion(lib: IntegrityCheckingUniffiLib) {
 }
 @Suppress("UNUSED_PARAMETER")
 private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
-    if (lib.uniffi_nmp_uniffi_checksum_func_classify_intent() != 15464.toShort()) {
+    if (lib.uniffi_nmp_uniffi_checksum_func_classify_intent() != 43755.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_func_decode_nostr_uri() != 56218.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_nmp_uniffi_checksum_func_encode_profile() != 22164.toShort()) {
+    if (lib.uniffi_nmp_uniffi_checksum_func_encode_profile() != 4850.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_func_tokenize_content() != 58037.toShort()) {
@@ -3126,8 +3126,8 @@ public object FfiConverterTypeIntentClassification : FfiConverterRustBuffer<Inte
 /**
  * Why an input could not be classified into any allowed candidate.
  *
- * `SecretLike` carries **no** copy of the input — same guarantee as the
- * C-ABI `nmp_app_intent_classify`.
+ * `SecretLike` carries **no** copy of the input — same no-echo guarantee as
+ * the retired C-ABI helper.
  *
  * Mirrors `nmp_core::substrate::InputIntentRejection`.
  */
@@ -4325,7 +4325,7 @@ public object FfiConverterMapStringString: FfiConverterRustBuffer<Map<kotlin.Str
          * `SecretLike` rejections carry **no** copy of `input` — the secret is never
          * echoed back.
          *
-         * Mirrors `nmp_app_intent_classify` — same recognizer snapshot read, same
+         * Preserves the retired C-ABI behavior: same recognizer snapshot read, same
          * pure classification, typed output instead of JSON.
          */ fun `classifyIntent`(`app`: NmpApp, `input`: kotlin.String, `scopes`: List<IntentScope>, `textTargets`: IntentTextTargets): IntentClassification {
             return FfiConverterTypeIntentClassification.lift(
@@ -4367,10 +4367,10 @@ public object FfiConverterMapStringString: FfiConverterRustBuffer<Map<kotlin.Str
          * when no hints are cached (or when `app` has no mailbox cache configured).
          *
          * D6: never throws. An invalid or unrecognisable `pubkey_hex` degrades to
-         * returning the raw input string — same fallback as `nmp_app_encode_profile`.
+         * returning the raw input string — same fallback as the retired C-ABI helper.
          *
-         * Mirrors the C-ABI `nmp_app_encode_profile` (same mailbox-cache read, same
-         * `MAX_NPROFILE_RELAYS` truncation, same D6 fallback chain).
+         * Preserves the retired C-ABI helper behavior: same mailbox-cache read, same
+         * `MAX_NPROFILE_RELAYS` truncation, same D6 fallback chain.
          */ fun `encodeProfile`(`app`: NmpApp, `pubkeyHex`: kotlin.String): kotlin.String {
             return FfiConverterString.lift(
     uniffiRustCall() { _status ->

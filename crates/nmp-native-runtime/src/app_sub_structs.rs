@@ -75,7 +75,7 @@ pub(crate) struct CompositionConfig {
     /// Substrate [`nmp_core::substrate::BlockedRelayLookup`] slot.
     pub(crate) blocked_relays_slot: Arc<Mutex<Arc<dyn nmp_core::substrate::BlockedRelayLookup>>>,
     /// H4 — read-only [`nmp_core::substrate::MailboxCache`] handle used by the
-    /// `nmp_app_encode_profile` NIP-19 identity encoder.
+    /// UniFFI NIP-19 `encode_profile` identity helper.
     pub(crate) mailbox_cache_reader: Mutex<Option<Arc<dyn nmp_core::substrate::MailboxCache>>>,
     /// #1811 — shared crate-registered FTS scope registry.
     pub(crate) search_scope_registry: Arc<nmp_core::substrate::SearchScopeRegistry>,

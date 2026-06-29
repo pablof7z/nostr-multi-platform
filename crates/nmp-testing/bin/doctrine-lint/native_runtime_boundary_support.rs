@@ -83,7 +83,7 @@ pub(super) fn lower_layer_crates() -> Vec<&'static str> {
     .collect()
 }
 
-pub(super) fn allowed_nmp_ffi_symbols() -> BTreeSet<String> {
+pub(super) fn allowed_native_nmp_symbols() -> BTreeSet<String> {
     fixture_items(include_str!(
         "fixtures/native_runtime_boundary/nmp_ffi_allowed_symbols.txt"
     ))
@@ -95,6 +95,22 @@ pub(super) fn nmp_ffi_rs_files() -> (PathBuf, Vec<PathBuf>) {
     let root = workspace_root();
     let mut files = Vec::new();
     collect_rs_files(&root.join("crates/nmp-ffi/src"), &mut files);
+    (root, files)
+}
+
+pub(super) fn crate_native_rs_files() -> (PathBuf, Vec<PathBuf>) {
+    let root = workspace_root();
+    let mut files = Vec::new();
+    let crates_dir = root.join("crates");
+    if let Ok(entries) = std::fs::read_dir(crates_dir) {
+        for entry in entries.filter_map(Result::ok) {
+            let src = entry.path().join("src");
+            if src.is_dir() {
+                collect_rs_files(&src, &mut files);
+            }
+        }
+    }
+    files.sort();
     (root, files)
 }
 
@@ -137,11 +153,11 @@ pub(super) fn composition_findings(line: &str) -> Vec<&'static str> {
         .collect()
 }
 
-pub(super) fn exported_nmp_app_symbol(line: &str) -> Option<&str> {
+pub(super) fn exported_native_nmp_symbol(line: &str) -> Option<&str> {
     if !line.contains("extern \"C\"") {
         return None;
     }
-    let fn_idx = line.find("fn nmp_app_")?;
+    let fn_idx = line.find("fn nmp_")?;
     let rest = &line[fn_idx + "fn ".len()..];
     rest.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
         .next()

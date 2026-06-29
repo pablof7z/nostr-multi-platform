@@ -253,7 +253,7 @@ impl NmpApp {
     }
 
     /// H4 — install the read-only [`nmp_core::substrate::MailboxCache`] handle
-    /// the `nmp_app_encode_profile` NIP-19 encoder reads kind:10002 relay
+    /// the UniFFI NIP-19 `encode_profile` helper reads kind:10002 relay
     /// hints from. Mirrors [`Self::set_blocked_relay_lookup`] /
     /// [`Self::set_dm_inbox_relay_lookup`]: a poisoned lock is a silent no-op
     /// (D6).

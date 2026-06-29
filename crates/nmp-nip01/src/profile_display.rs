@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// ADR-0032 / V-115: `npub` (bech32) has been removed — Rust must not
 /// encode presentation-layer bech32 in projection types. Shells that
-/// need bech32 must call `nmp_app_encode_profile` / their own encoder.
+/// need bech32 must call the UniFFI `encode_profile` helper or their own encoder.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct AuthorDisplay {
     /// Display name from kind:0 (`display_name` / `displayName` / `name`).
