@@ -22,7 +22,7 @@
 
 use crate::common::{extract_rev, inject_signed_events, revs_strictly_increasing};
 use crate::ffi::{
-    nmp_app_configure, nmp_app_free, nmp_app_new, nmp_app_resolve_ref, nmp_app_set_update_callback,
+    configure_app, free_app_ptr, new_app_ptr, nmp_app_resolve_ref, set_update_listener,
     test_pubkeys, NmpApp,
 };
 use crate::gate::Gate;
@@ -74,8 +74,7 @@ extern "C" fn reentrant_cb(ctx: *mut c_void, payload: *const u8, payload_len: us
             return;
         };
         let pk = state.pubkeys[emit_n as usize % state.pubkeys.len()].clone();
-        let consumer =
-            std::ffi::CString::new(format!("s5-reentrant-{emit_n}")).unwrap_or_default();
+        let consumer = std::ffi::CString::new(format!("s5-reentrant-{emit_n}")).unwrap_or_default();
         let rev = if !payload.is_null() && payload_len > 0 {
             let bytes = unsafe { std::slice::from_raw_parts(payload, payload_len) };
             extract_rev(bytes).unwrap_or(0)
@@ -129,7 +128,7 @@ pub(crate) fn run(cfg: S5Config, report: &mut ScenarioMetrics) {
     let _ = EPOCH.set(Instant::now());
     CB_IN_FLIGHT_TS_MS.store(0, Ordering::Release);
 
-    let app: *mut NmpApp = nmp_app_new();
+    let app: *mut NmpApp = new_app_ptr();
     let pubkeys = test_pubkeys(10);
     let state = Box::new(Mutex::new(ReentryState {
         app_usize: app as usize,
@@ -139,8 +138,8 @@ pub(crate) fn run(cfg: S5Config, report: &mut ScenarioMetrics) {
     }));
     let ctx = Box::into_raw(state) as *mut c_void;
 
-    nmp_app_set_update_callback(app, ctx, Some(reentrant_cb));
-    nmp_app_configure(app, 80, 4);
+    set_update_listener(app, ctx, Some(reentrant_cb));
+    configure_app(app, 80, 4);
 
     // Inject real Schnorr-signed events via try_from_raw verify path.
     // S5 uses full verify (D0: 200 events ~6-10 ms; acceptable for setup).
@@ -189,7 +188,7 @@ pub(crate) fn run(cfg: S5Config, report: &mut ScenarioMetrics) {
     let mut next_tick = Instant::now();
 
     while wall_start.elapsed() < cfg.duration {
-        nmp_app_configure(app, 80, 4);
+        configure_app(app, 80, 4);
         next_tick += interval;
         if let Some(sleep) = next_tick.checked_duration_since(Instant::now()) {
             std::thread::sleep(sleep); // doctrine-allow: D8 — event-rate pacer (dispatch cadence under test)
@@ -205,8 +204,8 @@ pub(crate) fn run(cfg: S5Config, report: &mut ScenarioMetrics) {
     drop(done_tx);
     let _ = watchdog.join();
 
-    nmp_app_set_update_callback(app, std::ptr::null_mut(), None);
-    nmp_app_free(app);
+    set_update_listener(app, std::ptr::null_mut(), None);
+    free_app_ptr(app);
 
     let state = unsafe { Box::from_raw(ctx as *mut Mutex<ReentryState>) };
     let state = state.lock().unwrap();

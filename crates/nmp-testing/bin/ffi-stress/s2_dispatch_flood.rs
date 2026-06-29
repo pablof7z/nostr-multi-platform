@@ -13,17 +13,16 @@
 //! shed-load drops are counted.
 //! Bible #3 (fire-and-forget): every send call returns within p99 <= 1 ms.
 
-use crate::allocator::{AllocSnapshot, alloc_snapshot};
+use crate::allocator::{alloc_snapshot, AllocSnapshot};
 use crate::ffi::{
-    NmpApp, nmp_app_configure, nmp_app_free, nmp_app_new, nmp_app_read_command_lane_stats,
-    nmp_app_release_ref, nmp_app_resolve_ref, nmp_app_set_update_callback, process_rss_bytes,
-    test_pubkeys,
+    configure_app, free_app_ptr, new_app_ptr, nmp_app_read_command_lane_stats, nmp_app_release_ref,
+    nmp_app_resolve_ref, process_rss_bytes, set_update_listener, test_pubkeys, NmpApp,
 };
 use crate::gate::Gate;
 use crate::report::ScenarioMetrics;
 use crate::s2_latency_hist::LatencyHistogram;
 use serde_json::json;
-use std::ffi::{CString, c_void};
+use std::ffi::{c_void, CString};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Barrier};
 use std::time::{Duration, Instant};
@@ -77,13 +76,13 @@ impl Default for S2Config {
 pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
     let wall_start = Instant::now();
 
-    // Configure-not-Start: nmp_app_configure sets emit_hz/visible_limit without spawning
+    // Configure-not-Start: configure_app sets emit_hz/visible_limit without spawning
     // relay worker threads. S2 floods resolve_ref/release_ref at 10k/sec; spawning
     // relay workers would send 3k+ REQ/CLOSE per second to real external relays, filling
     // the TCP write buffer and blocking relay threads indefinitely — causing a hang at teardown.
-    let app: *mut NmpApp = nmp_app_new();
-    nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(sink_cb));
-    nmp_app_configure(app, 80, 4);
+    let app: *mut NmpApp = new_app_ptr();
+    set_update_listener(app, std::ptr::null_mut(), Some(sink_cb));
+    configure_app(app, 80, 4);
 
     let baseline_rss = process_rss_bytes();
     // Counting-allocator baseline. NET live heap (alloc-minus-free) is immune to
@@ -394,8 +393,8 @@ pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
     });
 
     // Teardown.
-    nmp_app_set_update_callback(app, std::ptr::null_mut(), None);
-    nmp_app_free(app);
+    set_update_listener(app, std::ptr::null_mut(), None);
+    free_app_ptr(app);
 
     report.finish(wall_elapsed);
 }

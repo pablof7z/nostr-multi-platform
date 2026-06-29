@@ -12,9 +12,9 @@ use nmp_feed::{
     ProjectionKey,
 };
 use nmp_ffi::{
-    nmp_app_add_relay, nmp_app_inject_signed_event_json, nmp_app_new, nmp_app_set_update_callback,
-    nmp_app_signin_nsec, nmp_app_start, nmp_app_wait_barrier, FeedOpenError, NmpApp,
+    nmp_app_add_relay, nmp_app_inject_signed_event_json, nmp_app_signin_nsec, nmp_app_wait_barrier,
 };
+use nmp_native_runtime::{FeedOpenError, NmpApp};
 use nostr::{Event, EventBuilder, JsonUtil, Keys, Kind, Tag, Timestamp, ToBech32};
 
 pub(crate) use relay::{has_author, has_kind, RecordingRelay};
@@ -47,20 +47,44 @@ pub(crate) fn uninstall_update_signal() {
 
 pub(crate) fn new_started_default_app() -> *mut NmpApp {
     let app = new_default_app_before_start();
-    nmp_app_start(app, 256, 8);
+    start_app(app);
     app
 }
 
 pub(crate) fn new_default_app_before_start() -> *mut NmpApp {
-    let app = nmp_app_new();
-    assert!(!app.is_null(), "nmp_app_new returned null");
+    let app = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
+    assert!(!app.is_null(), "new_app returned null");
     nmp_defaults::register_defaults(unsafe { &mut *app });
-    nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
+    set_update_signal(app);
     app
 }
 
 pub(crate) fn start_app(app: *mut NmpApp) {
-    nmp_app_start(app, 256, 8);
+    if app.is_null() {
+        return;
+    }
+    unsafe { (&*app).start_runtime(256, 8) };
+}
+
+pub(crate) fn free_app(app: *mut NmpApp) {
+    if app.is_null() {
+        return;
+    }
+    unsafe {
+        (&*app).stop_runtime();
+        drop(Box::from_raw(app));
+    }
+}
+
+fn set_update_signal(app: *mut NmpApp) {
+    if app.is_null() {
+        return;
+    }
+    unsafe {
+        (&*app).set_update_listener(Some(std::sync::Arc::new(|payload: &[u8]| {
+            update_signal_callback(std::ptr::null_mut(), payload.as_ptr(), payload.len());
+        })));
+    }
 }
 
 pub(crate) fn add_relay(app: *mut NmpApp, relay: &str) {

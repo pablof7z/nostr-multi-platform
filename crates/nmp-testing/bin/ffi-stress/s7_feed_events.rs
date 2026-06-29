@@ -10,10 +10,10 @@
 //! `ActorCommand::IngestPreVerifiedEvents` (the test-support path, cfg-gated in
 //! `nmp-core`); `VerifiedEvent::from_raw_unchecked` is the test-support bypass.
 
-use nmp_store::{RawEvent, VerifiedEvent};
 use nmp_core::actor::ActorCommand;
-use nmp_core::actor::{TestSupportCommand};
+use nmp_core::actor::TestSupportCommand;
 use nmp_ffi::NmpApp;
+use nmp_store::{RawEvent, VerifiedEvent};
 
 /// 64-hex viewer pubkey (the active account; self-inclusion makes it a "follow"
 /// so its root events qualify for the feed).
@@ -81,19 +81,21 @@ fn unknown_root_id(seed: u64) -> String {
 
 /// Send a batch of pre-verified events through the actor channel.
 ///
-/// SAFETY: `app` must be a valid non-null pointer from `nmp_app_new`.
+/// SAFETY: `app` must be a valid non-null pointer from `new_app_ptr`.
 fn send_events(app: *mut NmpApp, events: Vec<VerifiedEvent>) {
     let app_ref = unsafe { &*app };
     app_ref
         .actor_sender()
-        .send(ActorCommand::TestSupport(TestSupportCommand::IngestPreVerifiedEvents(events)))
+        .send(ActorCommand::TestSupport(
+            TestSupportCommand::IngestPreVerifiedEvents(events),
+        ))
         .ok();
 }
 
 /// Inject `count` ROOT events from `pubkey`, ids derived from `id_base + i`,
 /// timestamps `base_ts + i` (monotonically increasing → newest = highest i).
 ///
-/// SAFETY: `app` must be a valid non-null pointer from `nmp_app_new`.
+/// SAFETY: `app` must be a valid non-null pointer from `new_app_ptr`.
 pub(crate) fn inject_events_from(
     app: *mut NmpApp,
     pubkey: &str,
@@ -128,13 +130,18 @@ pub(crate) fn inject_events_from(
 /// "engine touched, rendered output unchanged" case that exercises the gate as
 /// the suppressor.
 ///
-/// SAFETY: `app` must be a valid non-null pointer from `nmp_app_new`.
+/// SAFETY: `app` must be a valid non-null pointer from `new_app_ptr`.
 pub(crate) fn inject_followed_reply_to_unknown_root(
     app: *mut NmpApp,
     created_at: u64,
     id_seed: u64,
 ) {
-    let ev = make_reply(VIEWER_PUBKEY, &unknown_root_id(id_seed), created_at, id_seed);
+    let ev = make_reply(
+        VIEWER_PUBKEY,
+        &unknown_root_id(id_seed),
+        created_at,
+        id_seed,
+    );
     send_events(app, vec![ev]);
 }
 
@@ -149,15 +156,17 @@ pub(crate) fn inject_followed_reply_to_unknown_root(
 /// engine surfaces all roots regardless of author, so a stranger root would
 /// (correctly) change the feed.
 ///
-/// SAFETY: `app` must be a valid non-null pointer from `nmp_app_new`.
-pub(crate) fn inject_stranger_replies(
-    app: *mut NmpApp,
-    created_at: u64,
-    id_base: u64,
-    count: u32,
-) {
+/// SAFETY: `app` must be a valid non-null pointer from `new_app_ptr`.
+pub(crate) fn inject_stranger_replies(app: *mut NmpApp, created_at: u64, id_base: u64, count: u32) {
     let events: Vec<VerifiedEvent> = (0..count as u64)
-        .map(|i| make_reply(STRANGER_PUBKEY, &unknown_root_id(50_000 + i), created_at + i, id_base + i))
+        .map(|i| {
+            make_reply(
+                STRANGER_PUBKEY,
+                &unknown_root_id(50_000 + i),
+                created_at + i,
+                id_base + i,
+            )
+        })
         .collect();
     send_events(app, events);
 }

@@ -44,7 +44,7 @@
 //! # Why this is a REAL e2e test, not a kernel shortcut
 //!
 //! * The kernel runs behind the production actor thread spawned by
-//!   `nmp_app_start` — every step crosses the real `ActorCommand` mpsc seam.
+//!   `NmpAppBuilder::start` — every step crosses the real `ActorCommand` mpsc seam.
 //! * The bookmark observer + the per-tick `BookmarksRuntimeController` are
 //!   installed by `register_bookmark_runtime`, the SAME composition helper
 //!   `nmp_defaults::register_defaults` calls. Nothing in this test pushes the
@@ -78,17 +78,14 @@
 //! `EnsureInterest`; `signin_surfaces_stored_bookmark_via_cold_start_cache_serve`
 //! then fails with an empty snapshot. Verified RED during authoring; restored.
 
-use std::ffi::{c_void, CString};
+use std::ffi::c_void;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use nmp_coverage_gate::CoverageGate;
 use nmp_defaults::{register_bookmark_runtime, register_substrate};
-use nmp_ffi::{
-    nmp_app_free, nmp_app_set_update_callback, nmp_app_signin_nsec, nmp_app_stop, NmpApp,
-};
-use nmp_native_runtime::{NmpAppBuilder, RunConfig};
+use nmp_native_runtime::{NmpApp, NmpAppBuilder, RunConfig};
 use nmp_nip51::{BookmarkItem, BookmarkListProjection};
 use nmp_store::{RawEvent, VerifiedEvent};
 use nostr::{EventBuilder, Keys, Kind, Tag, Timestamp};
@@ -156,7 +153,7 @@ impl BookmarkApp {
         let (tx, ticks) = channel::<()>();
         let slot = UPDATE_TX.get_or_init(|| Mutex::new(None));
         *slot.lock().unwrap_or_else(|p| p.into_inner()) = Some(tx);
-        nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
+        common::set_c_update_listener(app, std::ptr::null_mut(), Some(update_signal_callback));
 
         Self {
             app,
@@ -222,8 +219,7 @@ impl BookmarkApp {
     /// Sign in with `nsec`, made active — the production sign-in flow that the
     /// per-tick bookmark runtime reacts to by pushing the demand interest.
     fn sign_in(&self, nsec: &str) {
-        let secret = CString::new(nsec).expect("nsec has no interior NUL");
-        nmp_app_signin_nsec(self.app, secret.as_ptr(), 1);
+        unsafe { &*self.app }.signin_nsec_for_test(nsec, true);
     }
 
     /// The current bookmarked event-ids in the typed projection snapshot.
@@ -271,12 +267,12 @@ impl BookmarkApp {
 
 impl Drop for BookmarkApp {
     fn drop(&mut self) {
-        nmp_app_set_update_callback(self.app, std::ptr::null_mut(), None);
+        common::set_c_update_listener(self.app, std::ptr::null_mut(), None);
         if let Some(slot) = UPDATE_TX.get() {
             *slot.lock().unwrap_or_else(|p| p.into_inner()) = None;
         }
-        nmp_app_stop(self.app);
-        nmp_app_free(self.app);
+        common::stop_app(self.app);
+        common::free_app_ptr(self.app);
     }
 }
 

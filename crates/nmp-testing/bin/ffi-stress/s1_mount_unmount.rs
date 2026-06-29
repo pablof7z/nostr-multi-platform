@@ -12,8 +12,8 @@
 
 use crate::allocator::{alloc_snapshot, AllocSnapshot};
 use crate::ffi::{
-    nmp_app_configure, nmp_app_free, nmp_app_new, nmp_app_release_ref, nmp_app_resolve_ref,
-    nmp_app_set_update_callback, process_rss_bytes, test_pubkeys, NmpApp,
+    configure_app, free_app_ptr, new_app_ptr, nmp_app_release_ref, nmp_app_resolve_ref,
+    process_rss_bytes, set_update_listener, test_pubkeys, NmpApp,
 };
 use crate::gate::Gate;
 use crate::report::ScenarioMetrics;
@@ -54,12 +54,12 @@ pub(crate) fn run(cfg: S1Config, report: &mut ScenarioMetrics) {
     let wall_start = Instant::now();
 
     // --- Setup ---
-    // Configure-not-Start: nmp_app_configure sets emit_hz/visible_limit without spawning
+    // Configure-not-Start: configure_app sets emit_hz/visible_limit without spawning
     // relay worker threads that would attempt TCP connections to wss://relay.primal.net.
     // S1 tests FFI dispatch latency and refcount correctness, not relay connectivity.
-    let app: *mut NmpApp = nmp_app_new();
-    nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(sink_cb));
-    nmp_app_configure(app, 80, 4);
+    let app: *mut NmpApp = new_app_ptr();
+    set_update_listener(app, std::ptr::null_mut(), Some(sink_cb));
+    configure_app(app, 80, 4);
 
     let pubkeys = test_pubkeys(cfg.pool_size);
     // Stable consumer IDs: in production, a consumer ID is a view lifecycle token
@@ -102,13 +102,13 @@ pub(crate) fn run(cfg: S1Config, report: &mut ScenarioMetrics) {
     let ss_elapsed = ss_start.elapsed().as_secs_f64();
     let ss_snap_after = alloc_snapshot();
 
-    // Capture run time before teardown; nmp_app_free joins threads and can
+    // Capture run time before teardown; free_app_ptr joins threads and can
     // add several seconds that are not part of the scenario wall time.
     let run_elapsed = wall_start.elapsed().as_secs_f64();
 
     // --- Teardown: clear callback before freeing ---
-    nmp_app_set_update_callback(app, std::ptr::null_mut(), None);
-    nmp_app_free(app);
+    set_update_listener(app, std::ptr::null_mut(), None);
+    free_app_ptr(app);
 
     // --- Metrics ---
     let wall_elapsed = run_elapsed;

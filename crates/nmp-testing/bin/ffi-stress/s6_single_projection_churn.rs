@@ -49,8 +49,8 @@
 
 use crate::common::{configure_and_await_frame, inject_signed_events, percentile_u64};
 use crate::ffi::{
-    nmp_app_configure, nmp_app_free, nmp_app_new, nmp_app_release_ref, nmp_app_resolve_ref,
-    nmp_app_set_update_callback, test_pubkeys, NmpApp,
+    configure_app, free_app_ptr, new_app_ptr, nmp_app_release_ref, nmp_app_resolve_ref,
+    set_update_listener, test_pubkeys, NmpApp,
 };
 use crate::report::ScenarioMetrics;
 use crate::s6_gates::{apply as apply_gates, PhaseMetrics, S6Outcome};
@@ -249,26 +249,31 @@ pub(crate) fn run(cfg: S6Config, report: &mut ScenarioMetrics) {
 
     // ── Phase A: baseline (incremental OFF) ──────────────────────────────────
     let (window_serialized_a, window_changed_a, records_a) = {
-        let app_a: *mut NmpApp = nmp_app_new();
+        let app_a: *mut NmpApp = new_app_ptr();
         let (signal_a, probe_a) = FrameProbe::new();
         let state_a = Box::new(Mutex::new(CallbackState {
             signal: signal_a,
             records: Vec::new(),
         }));
         let ctx_a = Box::into_raw(state_a) as *mut c_void;
-        nmp_app_set_update_callback(app_a, ctx_a, Some(measure_cb));
-        nmp_app_configure(app_a, 500, 12);
+        set_update_listener(app_a, ctx_a, Some(measure_cb));
+        configure_app(app_a, 500, 12);
         inject_signed_events(app_a, base_ts, cfg.seed_events);
         let _ = configure_and_await_frame(app_a, &probe_a, cfg.settle_ms, || {
             callback_record_count(ctx_a)
         });
 
-        let (ws, wc) = run_churn_window(app_a, churn_pubkey, &consumer_id_a, cfg.churn_cycles, &probe_a, || {
-            callback_record_count(ctx_a)
-        });
+        let (ws, wc) = run_churn_window(
+            app_a,
+            churn_pubkey,
+            &consumer_id_a,
+            cfg.churn_cycles,
+            &probe_a,
+            || callback_record_count(ctx_a),
+        );
 
-        nmp_app_set_update_callback(app_a, std::ptr::null_mut(), None);
-        nmp_app_free(app_a);
+        set_update_listener(app_a, std::ptr::null_mut(), None);
+        free_app_ptr(app_a);
 
         let boxed = unsafe { Box::from_raw(ctx_a as *mut Mutex<CallbackState>) };
         (ws, wc, boxed.into_inner().expect("lock").records)
@@ -276,7 +281,7 @@ pub(crate) fn run(cfg: S6Config, report: &mut ScenarioMetrics) {
 
     // ── Phase B: incremental ON ───────────────────────────────────────────────
     let (window_serialized_b, window_changed_b, records_b, raw_frames_b) = {
-        let app_b: *mut NmpApp = nmp_app_new();
+        let app_b: *mut NmpApp = new_app_ptr();
         // ADR-0055 Rung 3 D3-2 — declare incremental-apply capability BEFORE
         // start. The kernel emits only Changed/Cleared rows from this point; the
         // first tick after declaration is a full baseline.
@@ -293,19 +298,24 @@ pub(crate) fn run(cfg: S6Config, report: &mut ScenarioMetrics) {
             raw_frames: Vec::new(),
         }));
         let ctx_b = Box::into_raw(state_b) as *mut c_void;
-        nmp_app_set_update_callback(app_b, ctx_b, Some(measure_cb_with_bytes));
-        nmp_app_configure(app_b, 500, 12);
+        set_update_listener(app_b, ctx_b, Some(measure_cb_with_bytes));
+        configure_app(app_b, 500, 12);
         inject_signed_events(app_b, base_ts, cfg.seed_events);
         let _ = configure_and_await_frame(app_b, &probe_b, cfg.settle_ms, || {
             byte_capture_record_count(ctx_b)
         });
 
-        let (ws, wc) = run_churn_window(app_b, churn_pubkey, &consumer_id_b, cfg.churn_cycles, &probe_b, || {
-            byte_capture_record_count(ctx_b)
-        });
+        let (ws, wc) = run_churn_window(
+            app_b,
+            churn_pubkey,
+            &consumer_id_b,
+            cfg.churn_cycles,
+            &probe_b,
+            || byte_capture_record_count(ctx_b),
+        );
 
-        nmp_app_set_update_callback(app_b, std::ptr::null_mut(), None);
-        nmp_app_free(app_b);
+        set_update_listener(app_b, std::ptr::null_mut(), None);
+        free_app_ptr(app_b);
 
         let boxed = unsafe { Box::from_raw(ctx_b as *mut Mutex<ByteCapture>) };
         let locked = boxed.into_inner().expect("lock");

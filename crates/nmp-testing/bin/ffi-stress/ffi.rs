@@ -1,22 +1,17 @@
-//! Thin re-exports of the 14 `nmp_app_*` entry-points from `nmp-core`.
-//!
-//! The harness calls these directly via the Rust rlib dependency (the
-//! alternative path from `harness.md` §1.6). The functions take `*mut NmpApp`
-//! in their Rust signatures; Swift sees them as `*mut c_void` via the C ABI.
-//! Both paths exercise identical FFI-surface code paths.
-//!
-//! The symbols remain `#[no_mangle] pub extern "C"` on the nmp-core side so
-//! they are still reachable from Swift/C unchanged.
+//! Thin local adapters for ffi-stress scenarios.
 
 // V-68 / V-112 (ADR-0042): nmp_app_open_author, nmp_app_close_author,
 // nmp_app_open_thread, nmp_app_close_thread deleted from nmp-ffi.
 // ADR-0063 Lane H: nmp_app_claim_profile / nmp_app_release_profile deleted;
 // harnesses migrated to nmp_app_resolve_ref / nmp_app_release_ref.
+use std::ffi::c_void;
+use std::sync::Arc;
+
 pub(crate) use nmp_ffi::{
-    NmpApp, nmp_app_configure, nmp_app_free, nmp_app_inject_signed_events, nmp_app_new,
-    nmp_app_read_command_lane_stats, nmp_app_release_ref, nmp_app_resolve_ref,
-    nmp_app_set_update_callback,
+    nmp_app_inject_signed_events, nmp_app_read_command_lane_stats, nmp_app_release_ref,
+    nmp_app_resolve_ref,
 };
+pub(crate) use nmp_native_runtime::NmpApp;
 // ADR-0055 Rung 3 S5 — needed by the S6 Phase B measurement to enable
 // incremental-apply on the second NmpApp instance.
 #[allow(unused_imports)]
@@ -25,6 +20,44 @@ pub(crate) use nmp_ffi::nmp_app_declare_incremental_apply;
 // but S3/S4/S5 all use nmp_app_inject_signed_events (T44 round-4).
 #[allow(unused_imports)]
 pub(crate) use nmp_ffi::nmp_app_inject_pre_verified_events;
+
+pub(crate) fn new_app_ptr() -> *mut NmpApp {
+    Box::into_raw(Box::new(nmp_native_runtime::new_app()))
+}
+
+pub(crate) fn free_app_ptr(app: *mut NmpApp) {
+    if app.is_null() {
+        return;
+    }
+    unsafe {
+        (&*app).stop_runtime();
+        drop(Box::from_raw(app));
+    }
+}
+
+pub(crate) fn configure_app(app: *mut NmpApp, visible_limit: usize, emit_hz: u32) {
+    if app.is_null() {
+        return;
+    }
+    unsafe { (&*app).configure_runtime(visible_limit, emit_hz) };
+}
+
+pub(crate) fn set_update_listener(
+    app: *mut NmpApp,
+    ctx: *mut c_void,
+    callback: Option<extern "C" fn(*mut c_void, *const u8, usize)>,
+) {
+    if app.is_null() {
+        return;
+    }
+    let listener = callback.map(|callback| {
+        let ctx_addr = ctx as usize;
+        Arc::new(move |payload: &[u8]| {
+            callback(ctx_addr as *mut c_void, payload.as_ptr(), payload.len());
+        }) as nmp_native_runtime::UpdateListener
+    });
+    unsafe { (&*app).set_update_listener(listener) };
+}
 
 /// Generate N deterministic lowercase 64-hex-char pubkeys suitable for all
 /// FFI calls that require `is_hex_pubkey` validation to pass.
@@ -80,7 +113,11 @@ pub(crate) fn process_rss_bytes() -> u64 {
                 &mut count,
             )
         };
-        if ret == 0 { info.resident_size } else { 0 }
+        if ret == 0 {
+            info.resident_size
+        } else {
+            0
+        }
     }
     #[cfg(not(target_os = "macos"))]
     {

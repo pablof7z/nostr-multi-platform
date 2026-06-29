@@ -29,16 +29,14 @@
 //! This module is `harness`-feature-gated so the doctrine-clean shell in
 //! `lib.rs` never links any of it.
 
-use std::ffi::{c_void, CString};
+use std::ffi::CString;
 use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::Arc;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use nmp_ffi::{
-    nmp_app_free, nmp_app_inject_signed_event_json, nmp_app_set_update_callback,
-    nmp_app_signin_nsec, nmp_app_stop, NmpApp,
-};
-use nmp_native_runtime::{NmpAppBuilder, RunConfig};
+use nmp_ffi::{nmp_app_inject_signed_event_json, nmp_app_signin_nsec};
+use nmp_native_runtime::{NmpApp, NmpAppBuilder, RunConfig};
 use nostr::{EventBuilder, JsonUtil, Keys, Kind, PublicKey, Tag, Timestamp};
 
 use crate::{register, register_following_timeline, render_home_rows, TimelineRow};
@@ -49,7 +47,7 @@ use crate::{register, register_following_timeline, render_home_rows, TimelineRow
 // `real_relay_nip17_cold_start_kernel.rs`.
 static UPDATE_TX: OnceLock<Mutex<Option<Sender<()>>>> = OnceLock::new();
 
-extern "C" fn update_signal_callback(_ctx: *mut c_void, _ptr: *const u8, _len: usize) {
+fn update_signal_callback() {
     if let Some(slot) = UPDATE_TX.get() {
         if let Ok(guard) = slot.lock() {
             if let Some(tx) = guard.as_ref() {
@@ -104,7 +102,8 @@ impl DemoApp {
         let (tx, ticks) = channel::<()>();
         let slot = UPDATE_TX.get_or_init(|| Mutex::new(None));
         *slot.lock().unwrap_or_else(|p| p.into_inner()) = Some(tx);
-        nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
+        // SAFETY: `start` returns a valid, non-null `*mut NmpApp`.
+        unsafe { &*app }.set_update_listener(Some(Arc::new(|_| update_signal_callback())));
 
         // Step 3 — open the following timeline before sign-in.
         // SAFETY: `start` returns a valid, non-null `*mut NmpApp`.
@@ -229,12 +228,18 @@ impl DemoApp {
 
 impl Drop for DemoApp {
     fn drop(&mut self) {
-        nmp_app_set_update_callback(self.app, std::ptr::null_mut(), None);
+        // SAFETY: `self.app` is owned by this `DemoApp` until it is converted
+        // back into a `Box<NmpApp>` below.
+        let app = unsafe { &*self.app };
+        app.set_update_listener(None);
         if let Some(slot) = UPDATE_TX.get() {
             *slot.lock().unwrap_or_else(|p| p.into_inner()) = None;
         }
-        nmp_app_stop(self.app);
-        nmp_app_free(self.app);
+        app.stop_runtime();
+        app.shutdown();
+        // SAFETY: `NmpAppBuilder::start` transfers ownership as a raw
+        // `Box<NmpApp>` pointer; this `DemoApp` is the unique owner.
+        drop(unsafe { Box::from_raw(self.app) });
     }
 }
 

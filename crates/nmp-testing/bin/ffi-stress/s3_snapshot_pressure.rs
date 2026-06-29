@@ -21,8 +21,7 @@ use crate::common::{
     revs_strictly_increasing,
 };
 use crate::ffi::{
-    nmp_app_configure, nmp_app_free, nmp_app_new, nmp_app_set_update_callback, process_rss_bytes,
-    NmpApp,
+    configure_app, free_app_ptr, new_app_ptr, process_rss_bytes, set_update_listener, NmpApp,
 };
 use crate::gate::Gate;
 use crate::report::ScenarioMetrics;
@@ -93,7 +92,7 @@ impl Default for S3Config {
 pub(crate) fn run(cfg: S3Config, report: &mut ScenarioMetrics) {
     let wall_start = Instant::now();
 
-    let app: *mut NmpApp = nmp_app_new();
+    let app: *mut NmpApp = new_app_ptr();
     let baseline_rss = process_rss_bytes();
 
     let (signal, probe) = FrameProbe::new();
@@ -105,9 +104,9 @@ pub(crate) fn run(cfg: S3Config, report: &mut ScenarioMetrics) {
     }));
     let ctx = Box::into_raw(state) as *mut c_void;
 
-    nmp_app_set_update_callback(app, ctx, Some(measure_cb));
+    set_update_listener(app, ctx, Some(measure_cb));
     // Configure-not-Start: no relay workers; S3 tests emit serialization, not relay.
-    nmp_app_configure(app, 500, 12);
+    configure_app(app, 500, 12);
 
     // Inject 100k real Schnorr-signed events via the full verify path (D0: cfg-gated).
     // Each event is signed with Keys::generate(); try_from_raw verifies the signature.
@@ -130,7 +129,7 @@ pub(crate) fn run(cfg: S3Config, report: &mut ScenarioMetrics) {
     let mut last_burst_start_count = None;
     for _ in 0..cfg.configure_bursts {
         last_burst_start_count = Some(callback_frame_count(ctx));
-        nmp_app_configure(app, 500, 12);
+        configure_app(app, 500, 12);
         std::thread::sleep(cfg.burst_interval); // doctrine-allow: D8 — burst-interval cadence under test (snapshot pressure measurement)
     }
     let burst_elapsed = burst_start.elapsed();
@@ -147,8 +146,8 @@ pub(crate) fn run(cfg: S3Config, report: &mut ScenarioMetrics) {
     let wall_elapsed = wall_start.elapsed().as_secs_f64();
     let final_rss = process_rss_bytes();
 
-    nmp_app_set_update_callback(app, std::ptr::null_mut(), None);
-    nmp_app_free(app);
+    set_update_listener(app, std::ptr::null_mut(), None);
+    free_app_ptr(app);
 
     let state = unsafe { Box::from_raw(ctx as *mut Mutex<CallbackState>) };
     let state = state.lock().unwrap();
