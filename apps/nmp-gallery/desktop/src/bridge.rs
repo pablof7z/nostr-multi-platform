@@ -33,7 +33,7 @@ impl GalleryBridge {
     /// is a hard error).
     pub fn start() -> Self {
         let mut kernel = LiveKernel::new().expect("LiveKernel boot failed");
-        let app = kernel.app;
+        let app = kernel.app.clone();
         let sink = LiveKernelSink { app };
 
         let (snapshot_tx, snapshot_rx) = mpsc::unbounded_channel();

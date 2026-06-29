@@ -3,13 +3,9 @@
 //! Decodes app-local `nostr:` URI inputs and forwards them through the typed
 //! event-ref seam while preserving decoded relay/author metadata for lookup.
 
-use std::ffi::CString;
-
 use jni::objects::{JClass, JString};
 use jni::sys::jlong;
 use jni::JNIEnv;
-
-use nmp_ffi::{nmp_app_release_event_ref, nmp_app_resolve_event_embed_with_metadata};
 
 use super::session::{jstring_to_cstring, session_ref};
 
@@ -34,17 +30,14 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeResolveEve
     else {
         return;
     };
-    let Ok(key) = CString::new(event_ref.key) else {
-        return;
-    };
-    let Ok(metadata_json) = CString::new(event_ref.metadata_json) else {
-        return;
-    };
-    nmp_app_resolve_event_embed_with_metadata(
-        s.app,
-        key.as_ptr(),
-        consumer_id.as_ptr(),
-        metadata_json.as_ptr(),
+    let metadata = gallery_event_metadata(&event_ref.metadata_json);
+    s.app.resolve_ref_with_metadata(
+        nmp_core::RefNamespace::Event,
+        event_ref.key,
+        consumer_id.to_string_lossy().into_owned(),
+        nmp_core::RefShape::Event(nmp_core::EventShape::Embed),
+        nmp_core::RefLiveness::CacheOk,
+        metadata,
     );
 }
 
@@ -69,8 +62,34 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeReleaseEve
     else {
         return;
     };
-    let Ok(key) = CString::new(event_ref.key) else {
-        return;
+    s.app.release_ref(
+        nmp_core::RefNamespace::Event,
+        event_ref.key,
+        consumer_id.to_string_lossy().into_owned(),
+    );
+}
+
+fn gallery_event_metadata(json: &str) -> nmp_core::RefResolveMetadata {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
+        return nmp_core::RefResolveMetadata::default();
     };
-    nmp_app_release_event_ref(s.app, key.as_ptr(), consumer_id.as_ptr());
+    let hints = value
+        .get("hints")
+        .and_then(serde_json::Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(serde_json::Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    let event_author = value
+        .get("author")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string);
+    nmp_core::RefResolveMetadata {
+        hints,
+        event_author,
+    }
 }

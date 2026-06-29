@@ -11,10 +11,8 @@
 // declarations in app repositories must stay source-compatible with this
 // framework-facing subset.
 
-// ── Kernel lifecycle ─────────────────────────────────────────────────────
+// ── Gallery kernel lifecycle ─────────────────────────────────────────────
 
-void *nmp_app_new(void);
-void nmp_app_free(void *app);
 typedef enum NmpConfigStatus {
     NmpConfigStatus_Ok             = 0,
     NmpConfigStatus_NullApp        = 1,
@@ -24,17 +22,19 @@ typedef enum NmpConfigStatus {
 
 // Borrowed FlatBuffers `nmp.transport.UpdateFrame` bytes. The pointer is valid
 // only for the callback duration; Swift copies before decoding.
-typedef void (*NmpUpdateCallback)(void *context, const uint8_t *bytes, uintptr_t len);
-void nmp_app_set_update_callback(void *app, void *context, NmpUpdateCallback callback);
+typedef void (*GalleryUpdateCallback)(void *context, const uint8_t *bytes, uintptr_t len);
+
+void *nmp_gallery_kernel_new(void);
+void nmp_gallery_kernel_free(void *app);
+void nmp_gallery_kernel_set_update_callback(void *app, void *context, GalleryUpdateCallback callback);
+void nmp_gallery_kernel_start(void *app, unsigned int visible_limit, unsigned int emit_hz);
+void nmp_gallery_kernel_stop(void *app);
 
 // Persistent storage directory for the LMDB EventStore backend. Must be called
-// before `nmp_app_start`; a NULL or empty `path` clears it. Inert unless
+// before kernel start; a NULL or empty `path` clears it. Inert unless
 // nmp-core is built with the `lmdb-backend` feature. Returns
-// NmpConfigStatus_AlreadyStarted if called after nmp_app_start.
-uint32_t nmp_app_set_storage_path(void *app, const char *path);
-
-void nmp_app_start(void *app, unsigned int visible_limit, unsigned int emit_hz);
-void nmp_app_stop(void *app);
+// NmpConfigStatus_AlreadyStarted if called after start.
+uint32_t nmp_gallery_kernel_set_storage_path(void *app, const char *path);
 
 // ── Reference resolution (ADR-0063 #1671) ────────────────────────────────
 
@@ -44,18 +44,18 @@ void nmp_app_stop(void *app);
 // event embeds flow back through the resolved event-ref/embed projections.
 // D6: null/invalid args are silent no-ops, never panics.
 // D8: fire-and-forget; the actor processes commands asynchronously.
-void nmp_app_resolve_profile_ref(void *app, const char *key,
-                                 const char *consumer_id);
-void nmp_app_release_profile_ref(void *app, const char *key,
-                                 const char *consumer_id);
-void nmp_app_resolve_event_embed_with_metadata(void *app, const char *key,
-                                               const char *consumer_id,
-                                               const char *metadata_json);
-void nmp_app_resolve_event_embed_live_with_metadata(void *app, const char *key,
-                                                    const char *consumer_id,
-                                                    const char *metadata_json);
-void nmp_app_release_event_ref(void *app, const char *key,
-                               const char *consumer_id);
+void nmp_gallery_kernel_resolve_profile_ref(void *app, const char *key,
+                                            const char *consumer_id);
+void nmp_gallery_kernel_release_profile_ref(void *app, const char *key,
+                                            const char *consumer_id);
+void nmp_gallery_kernel_resolve_event_embed_with_metadata(void *app, const char *key,
+                                                          const char *consumer_id,
+                                                          const char *metadata_json);
+void nmp_gallery_kernel_resolve_event_embed_live_with_metadata(void *app, const char *key,
+                                                               const char *consumer_id,
+                                                               const char *metadata_json);
+void nmp_gallery_kernel_release_event_ref(void *app, const char *key,
+                                          const char *consumer_id);
 
 // ── Event-ref resolve / release (kind-dispatch embed) ────────────────────
 
@@ -69,24 +69,23 @@ void nmp_app_release_event_ref(void *app, const char *key,
 // when there is no logged-in user and threads it through the planner so
 // kind:0 / kind:10002 lookups can reach a peer. `role` accepts `"read"`,
 // `"write"`, or `"both"` (NULL → `"both"`).
-void nmp_app_add_relay(void *app, const char *url, const char *role);
-void nmp_app_remove_relay(void *app, const char *url);
+void nmp_gallery_kernel_add_relay(void *app, const char *url, const char *role);
 
 // ── Bridge-private action dispatch (phase 2 / ADR-0064 Cut-B #1756) ──────
 
 // Compatibility doorway for gallery bridge internals. App code should expose
 // typed write methods rather than `(namespace, body_json)` dispatch. Rust
 // encodes `body_json` into typed `ActionPayload` FlatBuffers bytes for
-// `namespace` and dispatches through `nmp_app_dispatch_action_bytes`. Returns a
+// `namespace` and dispatches through the native-runtime byte doorway. Returns a
 // heap-allocated JSON envelope (`{"correlation_id":"<id>"}` or
 // `{"error":"…"}`) the caller MUST free via `nmp_free_string`.
-char *nmp_app_gallery_dispatch_action_bytes(void *app, const char *namespace, const char *body_json);
+char *nmp_gallery_kernel_dispatch_action_bytes(void *app, const char *namespace, const char *body_json);
 
 // ── Showcase sign-in (phase 2) ───────────────────────────────────────────
 
 // Sign in with a raw nsec / hex secret. Fire-and-forget (D6): outcome arrives
 // through the snapshot's `accounts` / `last_error_toast` fields.
-void nmp_app_signin_nsec(void *app, const char *secret, uint8_t make_active);
+void nmp_gallery_kernel_signin_nsec(void *app, const char *secret, uint8_t make_active);
 
 // ── Gallery projection (per-app FFI) ─────────────────────────────────────
 //
@@ -95,20 +94,17 @@ void nmp_app_signin_nsec(void *app, const char *secret, uint8_t make_active);
 // letting the iOS shell link a single Rust archive.
 //
 // Profile-data flow (CRITICAL): all kernel state arrives via the push
-// callback registered with `nmp_app_set_update_callback`; the FlatBuffers
+// callback registered with `nmp_gallery_kernel_set_update_callback`; the FlatBuffers
 // update frame the kernel passes to that callback carries the full snapshot.
 // This is the canonical update-channel pattern. There is no pull-side snapshot
 // accessor — shell state arrives through the push update channel.
 //
 // Flow:
-// 1. Call `nmp_app_gallery_register(app)` once after `nmp_app_new()` succeeds
-//    and BEFORE `nmp_app_start`. Silent no-op on a NULL app (D6).
-// 2. Register the push callback via `nmp_app_set_update_callback`.
-//    FlatBuffers update frames arrive on every emit tick.
+// The app-owned kernel helpers install Gallery composition before start, then
+// push FlatBuffers update frames through `nmp_gallery_kernel_set_update_callback`.
 //
 // Fire-and-forget: every entry point degrades silently on null pointers,
 // poisoned mutexes, or serialization failure (D6).
-void nmp_app_gallery_register(void *app);
 const char *nmp_app_gallery_registry_json(void);
 const char *nmp_app_gallery_showcase_references_json(void);
 

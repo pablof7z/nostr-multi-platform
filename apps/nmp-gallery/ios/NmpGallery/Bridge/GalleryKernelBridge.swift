@@ -9,7 +9,7 @@ private let kbLog = Logger(subsystem: "org.nmp.gallery", category: "GalleryKerne
 ///
 /// Data-flow architecture (CRITICAL):
 ///   • Profile data arrives via the PUSH callback registered with
-///     `nmp_app_set_update_callback`. The callback receives a FlatBuffers
+///     `nmp_gallery_kernel_set_update_callback`. The callback receives a FlatBuffers
 ///     `UpdateFrame`; the gallery merges its `refs.profile` row-delta batch
 ///     into the session `GalleryRefStores` and reads the materialised
 ///     `projections."refs.profile"[pubkey]` card (ADR-0063 #1671).
@@ -20,7 +20,7 @@ private let kbLog = Logger(subsystem: "org.nmp.gallery", category: "GalleryKerne
 ///     callback.
 ///
 /// Lifetime:
-///   1. `init()`         — `nmp_app_new()` then `nmp_app_gallery_register(raw)`.
+///   1. `init()`         — `nmp_gallery_kernel_new()`.
 ///   2. `listen(_:)`     — registers the push callback that delivers update bytes.
 ///   3. `start()`        — turns on the actor.
 ///   4. `addRelay`       — seed bootstrap relay set (cold-start kind:0 / kind:10002
@@ -44,25 +44,16 @@ final class GalleryKernelHandle {
     let refStores: OpaquePointer?
 
     init() {
-        raw = nmp_app_new()
+        raw = nmp_gallery_kernel_new()
         Self.configureStoragePath(for: raw)
         refStores = nmp_app_gallery_ref_stores_new()
-        // Phase 1: register the gallery compatibility composition on the
-        // kernel. The call is fire-and-forget (D6) — there is no opaque handle
-        // to capture because the gallery has no per-app projection mutex.
-        nmp_app_gallery_register(raw)
     }
 
     deinit {
         // Clear the update callback before releasing the retained sink so no
         // callback fires with a dangling context pointer.
         clearUpdateCallback()
-        // NOTE: the gallery FFI doesn't expose an `nmp_app_gallery_unregister`
-        // symbol today — the parallel crate is expected to add one for clean
-        // teardown. For now the handle is dropped without explicit cleanup;
-        // `nmp_app_free` joins the actor thread so any in-flight observer
-        // callback is fenced.
-        nmp_app_free(raw)
+        nmp_gallery_kernel_free(raw)
         // ADR-0063 (#1671): release the refs.* mirrors after the kernel is
         // freed (so no in-flight decode can still touch it).
         nmp_app_gallery_ref_stores_free(refStores)
@@ -80,10 +71,10 @@ final class GalleryKernelHandle {
             try FileManager.default.createDirectory(
                 at: directory,
                 withIntermediateDirectories: true)
-            let status = directory.path.withCString { nmp_app_set_storage_path(raw, $0) }
+            let status = directory.path.withCString { nmp_gallery_kernel_set_storage_path(raw, $0) }
             if status != 0 {
-                kbLog.fault("nmp_app_set_storage_path returned \(status) — persistent storage NOT configured; init logic error")
-                assertionFailure("nmp_app_set_storage_path failed with code \(status)")
+                kbLog.fault("nmp_gallery_kernel_set_storage_path returned \(status) — persistent storage NOT configured; init logic error")
+                assertionFailure("nmp_gallery_kernel_set_storage_path failed with code \(status)")
             }
         } catch {
             kbLog.error("failed to create NmpGallery storage dir: \(error.localizedDescription, privacy: .public)")
@@ -98,7 +89,7 @@ final class GalleryKernelHandle {
         let sink = GalleryUpdateSink(handler: handler)
         let retained = Unmanaged.passRetained(sink)
         retainedUpdateSink = retained
-        nmp_app_set_update_callback(
+        nmp_gallery_kernel_set_update_callback(
             raw,
             retained.toOpaque(),
             galleryUpdateCallback)
@@ -106,24 +97,24 @@ final class GalleryKernelHandle {
 
     private func clearUpdateCallback() {
         guard let retained = retainedUpdateSink else { return }
-        nmp_app_set_update_callback(raw, nil, nil)
+        nmp_gallery_kernel_set_update_callback(raw, nil, nil)
         retained.release()
         retainedUpdateSink = nil
     }
 
     /// Configure the kernel and start the actor thread.
     func start() {
-        nmp_app_start(raw, 80, 4)
+        nmp_gallery_kernel_start(raw, 80, 4)
     }
 
     func stop() {
-        nmp_app_stop(raw)
+        nmp_gallery_kernel_stop(raw)
     }
 
     // ── Profile resolution (ADR-0063 #1671) ──────────────────────────────
 
     /// Resolve a visible profile reference for `pubkey` through
-    /// `nmp_app_resolve_profile_ref` (ADR-0063 #1671). The registry widgets call
+    /// `nmp_gallery_kernel_resolve_profile_ref` (ADR-0063 #1671). The registry widgets call
     /// this on mount; the resolved kind:0 flows back through `refs.profile`.
     /// Origin-blind: every
     /// visible author resolves at `profile.ref` / `CacheOk` (the gallery renders
@@ -131,7 +122,7 @@ final class GalleryKernelHandle {
     func resolveProfileRef(pubkey: String, consumerID: String) {
         pubkey.withCString { pkPtr in
             consumerID.withCString { cidPtr in
-                nmp_app_resolve_profile_ref(raw, pkPtr, cidPtr)
+                nmp_gallery_kernel_resolve_profile_ref(raw, pkPtr, cidPtr)
             }
         }
     }
@@ -141,7 +132,7 @@ final class GalleryKernelHandle {
     func releaseProfileRef(pubkey: String, consumerID: String) {
         pubkey.withCString { pkPtr in
             consumerID.withCString { cidPtr in
-                nmp_app_release_profile_ref(raw, pkPtr, cidPtr)
+                nmp_gallery_kernel_release_profile_ref(raw, pkPtr, cidPtr)
             }
         }
     }
@@ -162,10 +153,10 @@ final class GalleryKernelHandle {
             consumerID.withCString { cidPtr in
                 eventRef.metadataJson.withCString { metadataPtr in
                     if force {
-                        nmp_app_resolve_event_embed_live_with_metadata(
+                        nmp_gallery_kernel_resolve_event_embed_live_with_metadata(
                             raw, keyPtr, cidPtr, metadataPtr)
                     } else {
-                        nmp_app_resolve_event_embed_with_metadata(
+                        nmp_gallery_kernel_resolve_event_embed_with_metadata(
                             raw, keyPtr, cidPtr, metadataPtr)
                     }
                 }
@@ -179,7 +170,7 @@ final class GalleryKernelHandle {
         guard let eventRef = decodeEventRef(from: uri) else { return }
         eventRef.key.withCString { keyPtr in
             consumerID.withCString { cidPtr in
-                nmp_app_release_event_ref(raw, keyPtr, cidPtr)
+                nmp_gallery_kernel_release_event_ref(raw, keyPtr, cidPtr)
             }
         }
     }
@@ -214,7 +205,7 @@ final class GalleryKernelHandle {
     func addRelay(url: String, role: String) {
         url.withCString { uPtr in
             role.withCString { rPtr in
-                nmp_app_add_relay(raw, uPtr, rPtr)
+            nmp_gallery_kernel_add_relay(raw, uPtr, rPtr)
             }
         }
     }
@@ -222,7 +213,7 @@ final class GalleryKernelHandle {
     // ── Showcase sign-in (phase 2) ───────────────────────────────────────
 
     func signInNsec(_ secret: String) {
-        secret.withCString { nmp_app_signin_nsec(raw, $0, 1) }
+        secret.withCString { nmp_gallery_kernel_signin_nsec(raw, $0, 1) }
     }
 
 }
@@ -242,7 +233,7 @@ private final class GalleryUpdateSink {
 
 /// C update callback. Copies the borrowed FlatBuffers update frame
 /// immediately, then forwards the binary frame to the gallery model.
-private let galleryUpdateCallback: NmpUpdateCallback = { context, pointer, len in
+private let galleryUpdateCallback: GalleryUpdateCallback = { context, pointer, len in
     guard let context, let pointer, len > 0 else { return }
     let data = Data(bytes: pointer, count: Int(len))
     let sink = Unmanaged<GalleryUpdateSink>.fromOpaque(context).takeUnretainedValue()

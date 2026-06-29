@@ -7,7 +7,7 @@
 //! ---------------------
 //! Update listener: the gallery `on_update` trampoline reads the listener slot
 //! under the [`GalleryUpdateCtx`] mutex; `nativeFree` calls
-//! `nmp_app_set_update_callback(…, None)` (the quiescence gate — it blocks
+//! `NmpApp::set_update_listener(None)` (the quiescence gate — it blocks
 //! until any in-flight `on_update` returns) BEFORE the `GalleryUpdateCtx` box
 //! is dropped. So the `GlobalRef` is never dropped while a push is live.
 //!
@@ -20,8 +20,8 @@
 
 use std::sync::{Arc, Mutex};
 
-use jni::JavaVM;
 use jni::objects::GlobalRef;
+use jni::JavaVM;
 
 /// A Kotlin object implementing `fun onUpdate(frame: ByteArray)`.
 /// Registered by `nativeSetUpdateListener`; cleared on teardown.
@@ -64,8 +64,7 @@ impl GalleryUpdateListener {
 
 /// Update-callback context owned by the [`crate::android`] `GallerySession`.
 ///
-/// Boxed and passed as the `nmp_app_set_update_callback` context pointer. Holds
-/// the JNI push listener slot.
+/// Session-owned update listener context. Holds the JNI push listener slot.
 pub(crate) struct GalleryUpdateCtx {
     pub(crate) listener: Mutex<Option<GalleryUpdateListener>>,
 }

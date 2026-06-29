@@ -68,7 +68,7 @@ fn main() -> io::Result<()> {
                 std::process::exit(1);
             }
         };
-        let sink: Arc<LiveKernelSink> = Arc::new(LiveKernelSink { app: kernel.app });
+        let sink: Arc<LiveKernelSink> = Arc::new(LiveKernelSink { app: Arc::clone(&kernel.app) });
         let mut host = EmbedHostState::new();
         let snapshot_rx = kernel
             .take_receiver()
@@ -105,7 +105,7 @@ fn main() -> io::Result<()> {
 
     // Build the renderer's registry sink (forwards event/profile claim
     // lifecycles to the persistent kernel).
-    let sink: Arc<LiveKernelSink> = Arc::new(LiveKernelSink { app: kernel.app });
+    let sink: Arc<LiveKernelSink> = Arc::new(LiveKernelSink { app: Arc::clone(&kernel.app) });
     let mut host = EmbedHostState::new();
 
     // Reactive profile store. Every snapshot tick feeds this; the user-*
