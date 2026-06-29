@@ -4,20 +4,27 @@ version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 repository.workspace = true
-description = "Legacy cross-protocol social-relation classifier for NMP — tallies reactions (NIP-25), reposts (NIP-18), and comments (NIP-22) onto a note. Split out of nmp-nip01 (#1728) so the base note/profile/reply crate owns no cross-protocol aggregation."
+description = "Cross-protocol social-relation classifier and visible-row relation interest action for NMP."
 
 [dependencies]
+flatbuffers = { workspace = true }
 # Kernel substrate: KernelEvent and the NoteRelationClassifier seam input.
 nmp-core = { path = "../nmp-core", default-features = false }
+nmp-kinds = { path = "../nmp-kinds" }
 # Base note crate — owns the relation-count vocabulary, the `NoteRelationIndex`,
 # and the `NoteRelationClassifier` trait this crate implements, plus the kind:1
 # reply decoder. This crate depends UP-the-stack on nmp-nip01 (one direction);
 # nmp-nip01 never depends back on nmp-relations (#1728).
 nmp-nip01 = { path = "../nmp-nip01", default-features = false }
-# Cross-protocol relation sources: reposts (NIP-18) and comments (NIP-22).
-# nmp-nip01 no longer depends on these — the aggregation lives here.
+# Direct dep on nmp-planner for InterestId / InterestLifecycle / InterestScope /
+# LogicalInterest in the visible-row relation action module.
+nmp-planner = { path = "../nmp-planner", default-features = false }
+# Cross-protocol relation sources: reposts (NIP-18), comments (NIP-22), and
+# zaps (NIP-57). nmp-nip01 no longer depends on these — aggregation lives here.
 nmp-nip18 = { path = "../nmp-nip18" }
 nmp-nip22 = { path = "../nmp-nip22" }
+nmp-nip57 = { path = "../nmp-nip57", default-features = false }
+serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"] }

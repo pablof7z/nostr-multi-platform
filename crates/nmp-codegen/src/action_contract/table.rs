@@ -340,6 +340,22 @@ pub const ACTION_CONTRACT: &[ActionContract] = &[
         public_re_export: PUBLIC_REEXPORT,
         typed_dispatch: TYPED_ONLY,
     },
+    // nmp-relations — visible note row relation-count subscriptions (ComponentRegistered).
+    ActionContract {
+        namespace: "nmp.nip01.visible_note_relations",
+        producer: "nmp-relations visible_note_relations",
+        module_type: "nmp_relations::VisibleNoteRelationsModule",
+        payload_type: "nmp_relations::VisibleNoteRelationsAction",
+        schema_id: "nmp.nip01.visible_note_relations",
+        schema_path: "crates/nmp-relations/schema/visible_note_relations.fbs",
+        root_type: "VisibleNoteRelationsPayload",
+        schema_version: 1,
+        file_identifier: "VNRL",
+        default_tier: ActionDefaultTier::ComponentRegistered,
+        builder_support: BuilderSupport::GeneratedFlatTable,
+        public_re_export: PUBLIC_REEXPORT,
+        typed_dispatch: TYPED_ONLY,
+    },
     ActionContract {
         namespace: "nmp.nip17.send",
         producer: "nmp-nip17 action",

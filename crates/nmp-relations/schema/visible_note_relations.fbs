@@ -1,0 +1,27 @@
+namespace nmp.relations;
+
+// Typed FlatBuffers payload for the `nmp.nip01.visible_note_relations`
+// ActionModule.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19):
+//   flatc --rust -o crates/nmp-relations/src/wire/generated \
+//         crates/nmp-relations/schema/visible_note_relations.fbs
+
+enum VisibleNoteRelationsLifecycle:ubyte {
+  Claim = 0,
+  Release = 1,
+}
+
+table VisibleNoteRelationsPayload {
+  // Fail-closed schema_version tripwire.
+  schema_version:uint;
+  lifecycle:VisibleNoteRelationsLifecycle;
+  target_event_id:string (required);
+  target_kind:uint;
+  consumer_id:string (required);
+  target_address:string;
+}
+
+file_identifier "VNRL";
+root_type VisibleNoteRelationsPayload;

@@ -4369,10 +4369,15 @@ dependencies = [
 name = "nmp-relations"
 version = "0.8.4"
 dependencies = [
+ "flatbuffers",
  "nmp-core",
+ "nmp-kinds",
  "nmp-nip01",
  "nmp-nip18",
  "nmp-nip22",
+ "nmp-nip57",
+ "nmp-planner",
+ "serde",
 ]
 
 [[package]]

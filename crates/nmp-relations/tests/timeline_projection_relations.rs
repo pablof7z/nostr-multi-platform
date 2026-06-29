@@ -1,8 +1,9 @@
 //! Cross-protocol relation counting in `nmp_nip01::ModularTimelineProjection`,
 //! driven by the `nmp-relations` `DefaultNoteRelationClassifier` injected via
 //! `with_relation_classifier`. Moved out of `nmp-nip01` (#1728): asserting
-//! reaction (NIP-25), repost (NIP-18), and comment (NIP-22) counts requires
-//! those NIP crates, which the base note crate no longer depends on.
+//! reaction (NIP-25), repost (NIP-18), zap (NIP-57), and comment (NIP-22)
+//! counts requires those NIP crates, which the base note crate no longer
+//! depends on.
 
 use nmp_core::substrate::KernelEvent;
 use nmp_core::ObservedProjectionSink;
@@ -31,7 +32,7 @@ fn note(id: &str, ts: u64) -> KernelEvent {
 }
 
 #[test]
-fn relation_counts_include_reactions_reposts_and_comments() {
+fn relation_counts_include_reactions_reposts_zaps_and_comments() {
     let target = "R";
     let proj = ModularTimelineProjection::new(&spec())
         .with_relation_classifier(default_note_relation_classifier());
@@ -39,7 +40,7 @@ fn relation_counts_include_reactions_reposts_and_comments() {
     proj.on_kernel_event(&KernelEvent {
         id: "react".into(),
         author: "alice".into(),
-        kind: 7,
+        kind: nmp_kinds::KIND_REACTION,
         created_at: 2,
         tags: vec![vec!["e".into(), target.into()]],
         content: "+".into(),
@@ -71,7 +72,7 @@ fn relation_counts_include_reactions_reposts_and_comments() {
     proj.on_kernel_event(&KernelEvent {
         id: "zap".into(),
         author: "ln".into(),
-        kind: 9735,
+        kind: nmp_nip57::KIND_ZAP_RECEIPT,
         created_at: 5,
         tags: vec![
             vec!["p".into(), "recipient".into()],
@@ -90,5 +91,5 @@ fn relation_counts_include_reactions_reposts_and_comments() {
     assert_eq!(root.relation_counts.reactions, RelationCount::known(1));
     assert_eq!(root.relation_counts.reposts, RelationCount::known(1));
     assert_eq!(root.relation_counts.comments, RelationCount::known(1));
-    assert_eq!(root.relation_counts.zaps, RelationCount::known(0));
+    assert_eq!(root.relation_counts.zaps, RelationCount::known(1));
 }
