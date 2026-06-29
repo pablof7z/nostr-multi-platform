@@ -4563,6 +4563,7 @@ dependencies = [
  "nmp-content",
  "nmp-core",
  "nmp-native-runtime",
+ "nostr",
  "serde_json",
  "uniffi",
  "zeroize",

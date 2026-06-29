@@ -825,6 +825,25 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
     func loadOlderFeed(key: String)  -> Bool
 
     /**
+     * ADR-0058 §3 — synchronously drain one page of the kernel ingest log.
+     *
+     * Returns a typed [`MirrorPullResult`] instead of the C-ABI binary blob,
+     * eliminating the need for `nmp_mirror_free_bytes` — UniFFI owns the
+     * returned `Vec<u8>`.
+     *
+     * Parameters mirror `nmp_mirror_pull_page` exactly:
+     *
+     * - `cursor_id`           — raw u64 id from `PullCursorRegistry`.
+     * - `max_entries`         — clamped to `[1, 512]`; further bounded by
+     * the cursor's registered `limits.max_entries`.
+     * - `max_total_raw_bytes` — cumulative raw-event byte budget; capped at
+     * 4 MiB. At least one entry is always delivered so the cursor advances.
+     *
+     * D6: never throws; every error surface as `MirrorPullResult::Error`.
+     */
+    func mirrorPullPage(cursorId: UInt64, maxEntries: UInt32, maxTotalRawBytes: UInt32)  -> MirrorPullResult
+
+    /**
      * Generate a fresh `nostrconnect://` URI for app-initiated NIP-46 flows.
      *
      * Returns `None` when called before `init_signer_broker` or when relay
@@ -1645,6 +1664,33 @@ open func loadOlderFeed(key: String) -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
     uniffi_nmp_uniffi_fn_method_nmpapp_load_older_feed(self.uniffiClonePointer(),
         FfiConverterString.lower(key),$0
+    )
+})
+}
+
+    /**
+     * ADR-0058 §3 — synchronously drain one page of the kernel ingest log.
+     *
+     * Returns a typed [`MirrorPullResult`] instead of the C-ABI binary blob,
+     * eliminating the need for `nmp_mirror_free_bytes` — UniFFI owns the
+     * returned `Vec<u8>`.
+     *
+     * Parameters mirror `nmp_mirror_pull_page` exactly:
+     *
+     * - `cursor_id`           — raw u64 id from `PullCursorRegistry`.
+     * - `max_entries`         — clamped to `[1, 512]`; further bounded by
+     * the cursor's registered `limits.max_entries`.
+     * - `max_total_raw_bytes` — cumulative raw-event byte budget; capped at
+     * 4 MiB. At least one entry is always delivered so the cursor advances.
+     *
+     * D6: never throws; every error surface as `MirrorPullResult::Error`.
+     */
+open func mirrorPullPage(cursorId: UInt64, maxEntries: UInt32, maxTotalRawBytes: UInt32) -> MirrorPullResult  {
+    return try!  FfiConverterTypeMirrorPullResult_lift(try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_mirror_pull_page(self.uniffiClonePointer(),
+        FfiConverterUInt64.lower(cursorId),
+        FfiConverterUInt32.lower(maxEntries),
+        FfiConverterUInt32.lower(maxTotalRawBytes),$0
     )
 })
 }
@@ -3329,6 +3375,127 @@ extension IntentTextTargets: Equatable, Hashable {}
 
 
 
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * Typed result of a `mirror_pull_page` call.
+ *
+ * Replaces the C-ABI binary blob (`NmpMirrorBytes`) with typed variants.
+ * UniFFI owns all `Vec<u8>` payloads — no explicit free call is needed.
+ */
+
+public enum MirrorPullResult {
+
+    /**
+     * A page of log entries was returned.
+     *
+     * - `next_after_seq` — advance the cursor to this value for the next call.
+     * - `latest_seq`     — the store's current head sequence at the time of
+     * the read; use with `next_after_seq` to detect lag.
+     * - `has_more`       — `true` when the store head is ahead of
+     * `next_after_seq`; call again to drain.
+     * - `bytes`          — serialized entry section: `u32_LE entry_count`
+     * followed by `entry_count × entry` in the ADR-0058 §3 wire format.
+     * Identical to bytes `[18..]` of the C-ABI page payload, so existing
+     * binary parsers can consume it unchanged.
+     */
+    case page(nextAfterSeq: UInt64, latestSeq: UInt64, hasMore: Bool, bytes: Data
+    )
+    /**
+     * The requested `after_seq` fell before the store's earliest available
+     * entry; the host must decide how to handle the gap.
+     */
+    case gap(requestedAfterSeq: UInt64, firstAvailableSeq: UInt64
+    )
+    /**
+     * An error occurred before the pull could proceed.
+     *
+     * `code` values match the `nmp_mirror_*` C-ABI error constants:
+     * 2 = REGISTRY_UNAVAILABLE (pre-start), 3 = UNKNOWN_CURSOR,
+     * 4 = STORE_UNAVAILABLE, 5 = UNSUPPORTED_SCOPE, 6 = STORE_ERROR,
+     * 7 = INVALID_LIMITS, 8 = PANIC, 9 = RAW_TOO_LARGE.
+     */
+    case error(code: UInt32
+    )
+}
+
+
+#if compiler(>=6)
+extension MirrorPullResult: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMirrorPullResult: FfiConverterRustBuffer {
+    typealias SwiftType = MirrorPullResult
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MirrorPullResult {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        case 1: return .page(nextAfterSeq: try FfiConverterUInt64.read(from: &buf), latestSeq: try FfiConverterUInt64.read(from: &buf), hasMore: try FfiConverterBool.read(from: &buf), bytes: try FfiConverterData.read(from: &buf)
+        )
+
+        case 2: return .gap(requestedAfterSeq: try FfiConverterUInt64.read(from: &buf), firstAvailableSeq: try FfiConverterUInt64.read(from: &buf)
+        )
+
+        case 3: return .error(code: try FfiConverterUInt32.read(from: &buf)
+        )
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: MirrorPullResult, into buf: inout [UInt8]) {
+        switch value {
+
+
+        case let .page(nextAfterSeq,latestSeq,hasMore,bytes):
+            writeInt(&buf, Int32(1))
+            FfiConverterUInt64.write(nextAfterSeq, into: &buf)
+            FfiConverterUInt64.write(latestSeq, into: &buf)
+            FfiConverterBool.write(hasMore, into: &buf)
+            FfiConverterData.write(bytes, into: &buf)
+
+
+        case let .gap(requestedAfterSeq,firstAvailableSeq):
+            writeInt(&buf, Int32(2))
+            FfiConverterUInt64.write(requestedAfterSeq, into: &buf)
+            FfiConverterUInt64.write(firstAvailableSeq, into: &buf)
+
+
+        case let .error(code):
+            writeInt(&buf, Int32(3))
+            FfiConverterUInt32.write(code, into: &buf)
+
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMirrorPullResult_lift(_ buf: RustBuffer) throws -> MirrorPullResult {
+    return try FfiConverterTypeMirrorPullResult.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMirrorPullResult_lower(_ value: MirrorPullResult) -> RustBuffer {
+    return FfiConverterTypeMirrorPullResult.lower(value)
+}
+
+
+extension MirrorPullResult: Equatable, Hashable {}
+
+
+
+
+
+
 
 /**
  * UniFFI-exported error for fns that can fail.
@@ -4758,6 +4925,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_load_older_feed() != 59269) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_mirror_pull_page() != 45548) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_nostrconnect_uri() != 966) {

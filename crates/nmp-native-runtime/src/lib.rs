@@ -6,6 +6,7 @@
 //! they do not own runtime state.
 
 pub mod action_dispatch;
+pub mod app_mirror;
 mod app_config_hooks;
 mod app_config_intent;
 mod app_config_search;

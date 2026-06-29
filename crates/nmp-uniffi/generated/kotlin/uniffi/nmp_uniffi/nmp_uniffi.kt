@@ -895,6 +895,8 @@ internal open class UniffiVTableCallbackInterfaceUpdateSink(
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is
 // rather `InterfaceTooLargeException`, caused by too many methods
@@ -959,6 +961,8 @@ fun uniffi_nmp_uniffi_checksum_method_nmpapp_lifecycle_background(
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_lifecycle_foreground(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_load_older_feed(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_mirror_pull_page(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_nostrconnect_uri(
 ): Short
@@ -1134,6 +1138,8 @@ fun uniffi_nmp_uniffi_fn_method_nmpapp_lifecycle_foreground(`ptr`: Pointer,uniff
 ): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_load_older_feed(`ptr`: Pointer,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
 ): Byte
+fun uniffi_nmp_uniffi_fn_method_nmpapp_mirror_pull_page(`ptr`: Pointer,`cursorId`: Long,`maxEntries`: Int,`maxTotalRawBytes`: Int,uniffi_out_err: UniffiRustCallStatus,
+): RustBuffer.ByValue
 fun uniffi_nmp_uniffi_fn_method_nmpapp_nostrconnect_uri(`ptr`: Pointer,`callbackScheme`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
 ): RustBuffer.ByValue
 fun uniffi_nmp_uniffi_fn_method_nmpapp_open_feed_json(`ptr`: Pointer,`paramsJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
@@ -1413,6 +1419,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_load_older_feed() != 59269.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_mirror_pull_page() != 45548.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_nostrconnect_uri() != 966.toShort()) {
@@ -2253,6 +2262,25 @@ public interface NmpAppInterface {
      * already at the oldest page (D6: always succeeds, never panics).
      */
     fun `loadOlderFeed`(`key`: kotlin.String): kotlin.Boolean
+
+    /**
+     * ADR-0058 §3 — synchronously drain one page of the kernel ingest log.
+     *
+     * Returns a typed [`MirrorPullResult`] instead of the C-ABI binary blob,
+     * eliminating the need for `nmp_mirror_free_bytes` — UniFFI owns the
+     * returned `Vec<u8>`.
+     *
+     * Parameters mirror `nmp_mirror_pull_page` exactly:
+     *
+     * - `cursor_id`           — raw u64 id from `PullCursorRegistry`.
+     * - `max_entries`         — clamped to `[1, 512]`; further bounded by
+     * the cursor's registered `limits.max_entries`.
+     * - `max_total_raw_bytes` — cumulative raw-event byte budget; capped at
+     * 4 MiB. At least one entry is always delivered so the cursor advances.
+     *
+     * D6: never throws; every error surface as `MirrorPullResult::Error`.
+     */
+    fun `mirrorPullPage`(`cursorId`: kotlin.ULong, `maxEntries`: kotlin.UInt, `maxTotalRawBytes`: kotlin.UInt): MirrorPullResult
 
     /**
      * Generate a fresh `nostrconnect://` URI for app-initiated NIP-46 flows.
@@ -3193,6 +3221,35 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_load_older_feed(
         it, FfiConverterString.lower(`key`),_status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * ADR-0058 §3 — synchronously drain one page of the kernel ingest log.
+     *
+     * Returns a typed [`MirrorPullResult`] instead of the C-ABI binary blob,
+     * eliminating the need for `nmp_mirror_free_bytes` — UniFFI owns the
+     * returned `Vec<u8>`.
+     *
+     * Parameters mirror `nmp_mirror_pull_page` exactly:
+     *
+     * - `cursor_id`           — raw u64 id from `PullCursorRegistry`.
+     * - `max_entries`         — clamped to `[1, 512]`; further bounded by
+     * the cursor's registered `limits.max_entries`.
+     * - `max_total_raw_bytes` — cumulative raw-event byte budget; capped at
+     * 4 MiB. At least one entry is always delivered so the cursor advances.
+     *
+     * D6: never throws; every error surface as `MirrorPullResult::Error`.
+     */override fun `mirrorPullPage`(`cursorId`: kotlin.ULong, `maxEntries`: kotlin.UInt, `maxTotalRawBytes`: kotlin.UInt): MirrorPullResult {
+            return FfiConverterTypeMirrorPullResult.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_mirror_pull_page(
+        it, FfiConverterULong.lower(`cursorId`),FfiConverterUInt.lower(`maxEntries`),FfiConverterUInt.lower(`maxTotalRawBytes`),_status)
 }
     }
     )
@@ -4673,6 +4730,143 @@ public object FfiConverterTypeIntentTextTargets : FfiConverterRustBuffer<IntentT
             is IntentTextTargets.Explicit -> {
                 buf.putInt(3)
                 FfiConverterSequenceString.write(value.`relays`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+
+
+
+
+/**
+ * Typed result of a `mirror_pull_page` call.
+ *
+ * Replaces the C-ABI binary blob (`NmpMirrorBytes`) with typed variants.
+ * UniFFI owns all `Vec<u8>` payloads — no explicit free call is needed.
+ */
+sealed class MirrorPullResult {
+
+    /**
+     * A page of log entries was returned.
+     *
+     * - `next_after_seq` — advance the cursor to this value for the next call.
+     * - `latest_seq`     — the store's current head sequence at the time of
+     * the read; use with `next_after_seq` to detect lag.
+     * - `has_more`       — `true` when the store head is ahead of
+     * `next_after_seq`; call again to drain.
+     * - `bytes`          — serialized entry section: `u32_LE entry_count`
+     * followed by `entry_count × entry` in the ADR-0058 §3 wire format.
+     * Identical to bytes `[18..]` of the C-ABI page payload, so existing
+     * binary parsers can consume it unchanged.
+     */
+    data class Page(
+        val `nextAfterSeq`: kotlin.ULong,
+        val `latestSeq`: kotlin.ULong,
+        val `hasMore`: kotlin.Boolean,
+        val `bytes`: kotlin.ByteArray) : MirrorPullResult() {
+        companion object
+    }
+
+    /**
+     * The requested `after_seq` fell before the store's earliest available
+     * entry; the host must decide how to handle the gap.
+     */
+    data class Gap(
+        val `requestedAfterSeq`: kotlin.ULong,
+        val `firstAvailableSeq`: kotlin.ULong) : MirrorPullResult() {
+        companion object
+    }
+
+    /**
+     * An error occurred before the pull could proceed.
+     *
+     * `code` values match the `nmp_mirror_*` C-ABI error constants:
+     * 2 = REGISTRY_UNAVAILABLE (pre-start), 3 = UNKNOWN_CURSOR,
+     * 4 = STORE_UNAVAILABLE, 5 = UNSUPPORTED_SCOPE, 6 = STORE_ERROR,
+     * 7 = INVALID_LIMITS, 8 = PANIC, 9 = RAW_TOO_LARGE.
+     */
+    data class Error(
+        val `code`: kotlin.UInt) : MirrorPullResult() {
+        companion object
+    }
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMirrorPullResult : FfiConverterRustBuffer<MirrorPullResult>{
+    override fun read(buf: ByteBuffer): MirrorPullResult {
+        return when(buf.getInt()) {
+            1 -> MirrorPullResult.Page(
+                FfiConverterULong.read(buf),
+                FfiConverterULong.read(buf),
+                FfiConverterBoolean.read(buf),
+                FfiConverterByteArray.read(buf),
+                )
+            2 -> MirrorPullResult.Gap(
+                FfiConverterULong.read(buf),
+                FfiConverterULong.read(buf),
+                )
+            3 -> MirrorPullResult.Error(
+                FfiConverterUInt.read(buf),
+                )
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: MirrorPullResult) = when(value) {
+        is MirrorPullResult.Page -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterULong.allocationSize(value.`nextAfterSeq`)
+                + FfiConverterULong.allocationSize(value.`latestSeq`)
+                + FfiConverterBoolean.allocationSize(value.`hasMore`)
+                + FfiConverterByteArray.allocationSize(value.`bytes`)
+            )
+        }
+        is MirrorPullResult.Gap -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterULong.allocationSize(value.`requestedAfterSeq`)
+                + FfiConverterULong.allocationSize(value.`firstAvailableSeq`)
+            )
+        }
+        is MirrorPullResult.Error -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterUInt.allocationSize(value.`code`)
+            )
+        }
+    }
+
+    override fun write(value: MirrorPullResult, buf: ByteBuffer) {
+        when(value) {
+            is MirrorPullResult.Page -> {
+                buf.putInt(1)
+                FfiConverterULong.write(value.`nextAfterSeq`, buf)
+                FfiConverterULong.write(value.`latestSeq`, buf)
+                FfiConverterBoolean.write(value.`hasMore`, buf)
+                FfiConverterByteArray.write(value.`bytes`, buf)
+                Unit
+            }
+            is MirrorPullResult.Gap -> {
+                buf.putInt(2)
+                FfiConverterULong.write(value.`requestedAfterSeq`, buf)
+                FfiConverterULong.write(value.`firstAvailableSeq`, buf)
+                Unit
+            }
+            is MirrorPullResult.Error -> {
+                buf.putInt(3)
+                FfiConverterUInt.write(value.`code`, buf)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
