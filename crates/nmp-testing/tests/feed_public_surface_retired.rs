@@ -14,11 +14,8 @@
 //!   * the raw wasm feed-verb dispatch STRINGS (`nmp.kernel.open_interest`,
 //!     `nmp.kernel.close_interest`, `nmp.feed.declare_active_follows`,
 //!     `nmp.feed.clear_active_follows`) — no routed `action_type` arm.
-//!
-//! What is INTENTIONALLY still allowed (so this gate does not over-reach):
-//!   * `nmp_app_open_interest` / `nmp_app_close_interest` — a generic low-level
-//!     interest seam still used by non-feed callers (avatar/uri resolution); its
-//!     feed-lane retirement is tracked separately in #1740 (see PR notes).
+//!   * `nmp_app_open_interest` / `nmp_app_close_interest` — the old public raw
+//!     C-ABI interest doorway. Internal Rust open-interest machinery remains.
 //!   * comments/docs that NAME a retired symbol to document its removal.
 //!
 //! # Running
@@ -255,6 +252,12 @@ fn claimed_event_embeds_key_is_not_used_in_public_surfaces() {
         if file.ends_with("tests/feed_public_surface_retired.rs") {
             continue;
         }
+        let file_text = file.to_string_lossy().replace('\\', "/");
+        if file_text.contains("/crates/nmp-testing/bin/doctrine-lint/")
+            || file_text.ends_with("/crates/nmp-testing/tests/clean_break_docs_ratchet.rs")
+        {
+            continue;
+        }
         let Ok(text) = fs::read_to_string(file) else {
             continue;
         };
@@ -275,26 +278,24 @@ fn claimed_event_embeds_key_is_not_used_in_public_surfaces() {
 }
 #[test]
 fn typed_open_feed_doorway_symbols_exist() {
-    // The POSITIVE companion: the ONE public doorway must be DEFINED. This guards
+    // The POSITIVE companion: the public C doorway must be DEFINED. This guards
     // against an over-zealous future cleanup deleting the replacement along with
-    // the retired lanes (which would leave NO public way to open a feed).
-    let feed_rs = repo_root().join("crates/nmp-native-runtime/src/feed_session.rs");
+    // the retired raw-interest lane.
+    let feed_rs = repo_root().join("crates/nmp-ffi/src/feed.rs");
     let text = fs::read_to_string(&feed_rs)
-        .unwrap_or_else(|e| panic!("the public feed doorway file must exist: {e}"));
-    for sym in ["open_feed", "close_feed"] {
+        .unwrap_or_else(|e| panic!("the public feed FFI doorway file must exist: {e}"));
+    for sym in ["nmp_app_open_feed", "nmp_app_close_feed"] {
         assert!(
-            text.contains(&format!("pub fn {sym}")),
-            "the public typed feed doorway `{sym}` must be defined in {}",
+            text.contains(&format!("pub extern \"C\" fn {sym}")),
+            "the public typed feed C doorway `{sym}` must be defined in {}",
             feed_rs.display()
         );
     }
 }
 
 #[test]
-fn old_public_open_feed_doorway_symbols_are_not_defined_or_reexported() {
-    // Chirp's in-repo app-local feed FFI was removed. Do not resurrect those
-    // old C symbols as a replacement for the typed-session direction.
-    const RETIRED_FEED_SYMBOLS: &[&str] = &["nmp_app_open_feed", "nmp_app_close_feed"];
+fn raw_interest_c_abi_symbols_are_not_defined_or_reexported() {
+    const RETIRED_FEED_SYMBOLS: &[&str] = &["nmp_app_open_interest", "nmp_app_close_interest"];
 
     let root = repo_root();
     let mut files = Vec::new();
@@ -306,6 +307,12 @@ fn old_public_open_feed_doorway_symbols_are_not_defined_or_reexported() {
     let mut violations = Vec::new();
     for file in &files {
         if file.ends_with("tests/feed_public_surface_retired.rs") {
+            continue;
+        }
+        let file_text = file.to_string_lossy().replace('\\', "/");
+        if file_text.contains("/crates/nmp-testing/bin/doctrine-lint/")
+            || file_text.ends_with("/crates/nmp-testing/tests/clean_break_docs_ratchet.rs")
+        {
             continue;
         }
         let Ok(text) = fs::read_to_string(file) else {
@@ -323,8 +330,8 @@ fn old_public_open_feed_doorway_symbols_are_not_defined_or_reexported() {
 
     assert!(
         violations.is_empty(),
-        "retired open_feed C-ABI symbols reappeared in code; typed sessions must \
-         replace this surface rather than restoring the old app-local feed FFI:\n{}",
+        "retired raw-interest C-ABI symbols reappeared in code; typed sessions must \
+         use nmp_app_open_feed / nmp_app_close_feed instead:\n{}",
         violations.join("\n")
     );
 }
@@ -332,10 +339,10 @@ fn old_public_open_feed_doorway_symbols_are_not_defined_or_reexported() {
 #[test]
 fn c_abi_feed_docs_do_not_advertise_retired_open_close_symbols() {
     // These docs are the C-ABI/iOS-shell references most likely to be copied by
-    // host builders. They may describe Rust `NmpApp::open_feed`, but must not
-    // advertise the retired C symbol pair as live public FFI.
+    // host builders. They may describe internal Rust `open_interest`, but must
+    // not advertise the retired C raw-interest symbol pair as live public FFI.
     const DOCS: &[&str] = &["docs/ffi-surface.md", "docs/builder-guide/17-ios-shell.md"];
-    const RETIRED_FEED_SYMBOLS: &[&str] = &["nmp_app_open_feed", "nmp_app_close_feed"];
+    const RETIRED_FEED_SYMBOLS: &[&str] = &["nmp_app_open_interest", "nmp_app_close_interest"];
 
     let root = repo_root();
     let mut violations = Vec::new();

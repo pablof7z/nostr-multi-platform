@@ -60,17 +60,17 @@ mod testing_sync;
 mod timeline;
 
 pub use nmp_native_runtime::{
-    decode_and_validate_feed_params, handle_projection_key, validate_feed_params, FeedAdmission,
-    FeedCompiler, FeedHandle, FeedOpenError, FeedParams, FeedParamsDecodeError, FeedRanking,
-    FeedRender, FeedScope, FeedSessionBuild, FeedSessionId, FeedTeardown, FeedWindow, GroupFeedToken,
-    IdentityChangeObserverId, NmpApp, NmpConfigStatus, ObservedProjectionCommandHandle,
-    PrimaryKindError, ProjectionKey, PubkeySetExpr,
+    FeedAdmission, FeedCompiler, FeedHandle, FeedOpenError, FeedParams, FeedParamsDecodeError,
+    FeedRanking, FeedRender, FeedScope, FeedSessionBuild, FeedSessionId, FeedTeardown, FeedWindow,
+    GroupFeedToken, IdentityChangeObserverId, NmpApp, NmpConfigStatus,
+    ObservedProjectionCommandHandle, PrimaryKindError, ProjectionKey, PubkeySetExpr,
+    decode_and_validate_feed_params, handle_projection_key, validate_feed_params,
 };
 
 pub use app_ctor::nmp_app_new;
 pub use app_lifecycle_ffi::{
-    nmp_app_configure, nmp_app_free, nmp_app_reset, nmp_app_set_update_callback, nmp_app_start,
-    nmp_app_stop, UpdateCallback,
+    UpdateCallback, nmp_app_configure, nmp_app_free, nmp_app_reset, nmp_app_set_update_callback,
+    nmp_app_start, nmp_app_stop,
 };
 
 #[cfg(feature = "native")]
@@ -84,11 +84,11 @@ pub use capability::{nmp_app_dispatch_capability, nmp_app_set_capability_callbac
 #[cfg(feature = "native")]
 pub use content_ffi::nmp_content_tokenize_text;
 #[cfg(feature = "native")]
-pub use feed::nmp_app_load_older_feed;
+pub use feed::{nmp_app_close_feed, nmp_app_load_older_feed, nmp_app_open_feed};
 #[cfg(feature = "native")]
 pub use free::nmp_free_string;
 #[cfg(feature = "native")]
-pub use group_feed::{open_group_discovery_handle, GroupFeedHandle};
+pub use group_feed::{GroupFeedHandle, open_group_discovery_handle};
 #[cfg(feature = "native")]
 pub use identity::{
     create_new_account_with_initial_follows, nmp_app_add_relay, nmp_app_create_new_account,
@@ -137,12 +137,9 @@ pub use timeline::{
     // deleted from identity.rs.
     // ADR-0063 Lane H: nmp_app_claim_profile, nmp_app_release_profile deleted.
     // #1740/#2092: `nmp_app_open_contact_feed` / `nmp_app_close_contact_feed`
-    // and the follow-feed declare/clear helpers are deleted. Apps open typed
-    // feed sessions through app-owned Rust helpers over `NmpApp::open_feed`.
+    // and the follow-feed declare/clear helpers are deleted.
     // #1946: event URI C-ABI front doors DELETED. Callers migrate to the typed
     // event-ref adapters below.
-    nmp_app_close_interest,
-    nmp_app_open_interest,
     nmp_app_open_uri,
 };
 // ADR-0063 Lane D — ref-resolution C-ABI entry points. Hosts should prefer the
@@ -176,7 +173,7 @@ pub use testing_stats::nmp_app_read_command_lane_stats;
 pub use testing_sync::nmp_app_wait_barrier;
 
 // ── Shared FFI helpers ────────────────────────────────────────────────────
-use std::ffi::{c_char, CStr};
+use std::ffi::{CStr, c_char};
 
 #[must_use]
 pub(crate) fn app_ref<'a>(app: *mut NmpApp) -> Option<&'a NmpApp> {
