@@ -2,12 +2,12 @@
 //! snapshot-first hosts a pre-start frame through the update callback.
 
 use super::{
-    nmp_app_free, nmp_app_new, nmp_app_set_update_callback, nmp_app_start, UpdateCallback,
+    UpdateCallback, app_ref, nmp_app_free, nmp_app_new, nmp_app_set_update_callback, nmp_app_start,
 };
 use nmp_core::decode_snapshot_envelope;
 use std::ffi::c_void;
-use std::sync::mpsc::{channel, Sender};
 use std::sync::Arc;
+use std::sync::mpsc::{Sender, channel};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, UNIX_EPOCH};
 
@@ -49,12 +49,8 @@ fn passive_handle_delivers_prestart_snapshot_on_callback_registration() {
     let rx = install_capture();
     let app = nmp_app_new();
 
-    assert_eq!(
-        crate::nmp_app_is_alive(app),
-        0,
-        "new handle must be passive"
-    );
-    let app_ref = crate::app_ref(app).expect("app");
+    let app_ref = app_ref(app).expect("app");
+    assert!(!app_ref.is_alive(), "new handle must be passive");
     let clock = Arc::new(nmp_core::MonotonicSecondClock::new(
         UNIX_EPOCH + Duration::from_millis(1_700_000_123_456),
     ));
@@ -86,7 +82,7 @@ fn passive_handle_delivers_prestart_snapshot_on_callback_registration() {
     app_ref.set_queue_depth_for_test(0);
 
     nmp_app_start(app, 256, 4);
-    assert_eq!(crate::nmp_app_is_alive(app), 1, "start spawns the actor");
+    assert!(app_ref.is_alive(), "start spawns the actor");
     nmp_app_set_update_callback(app, std::ptr::null_mut(), None);
     nmp_app_free(app);
     uninstall_capture();

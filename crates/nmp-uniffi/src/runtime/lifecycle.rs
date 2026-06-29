@@ -164,18 +164,16 @@ mod tests {
             .expect("clear returns after lifecycle callback drains");
         app.shutdown();
     }
-    /// Parity with `nmp_app_is_alive` C-ABI test
-    /// `is_alive_after_new_returns_zero_before_start`: `is_alive()` must
-    /// return `false` before `start()`.
+    /// Native-runtime liveness parity: `is_alive()` must return `false`
+    /// before `start()`.
     #[test]
     fn parity_is_alive_false_before_start() {
         let app = NmpApp::new();
         assert!(!app.is_alive(), "actor must not be alive before start()");
     }
 
-    /// Parity with `nmp_app_is_alive` C-ABI test
-    /// `is_alive_after_new_returns_zero_before_start` (post-start part):
-    /// `is_alive()` returns `true` after `start()`.
+    /// Native-runtime liveness parity: `is_alive()` returns `true` after
+    /// `start()`.
     #[test]
     fn parity_is_alive_true_after_start() {
         let app = NmpApp::new();

@@ -8,20 +8,19 @@
 //! ## Why kernel-side, not native?
 //!
 //! D7 (capability vs policy): the OS reports the *fact* of scenePhase changes
-//! via the FFI; the kernel decides what *meaning* a phase has — when to
-//! reconcile NIP-77 watermarks, when to back off retries, when to keep
-//! sockets open. Native iOS code merely tells the truth (`.active` →
-//! `nmp_app_lifecycle_foreground`); every decision derived from that fact
-//! lives here.
+//! via the native runtime lifecycle API; the kernel decides what *meaning* a
+//! phase has — when to reconcile NIP-77 watermarks, when to back off retries,
+//! when to keep sockets open. Native iOS code merely tells the truth
+//! (`.active` → foreground); every decision derived from that fact lives here.
 //!
 //! ## D0 boundary
 //!
 //! A shell-side sync-trigger engine carries the `Foreground` notion, but
 //! `nmp-core` does NOT depend on any such crate (would be a dep cycle — any
 //! such crate already consumes `nmp-core::store`). The kernel therefore
-//! exposes a callback observer (`ffi::lifecycle::nmp_app_set_lifecycle_callback`)
-//! that a consumer (the Pulse/Stress app or an integration test) registers
-//! to receive transitions and fan them out to its own trigger engine.
+//! exposes a native runtime lifecycle observer that a consumer (the
+//! Pulse/Stress app or an integration test) registers to receive transitions
+//! and fan them out to its own trigger engine.
 //! Mirrors the established `capability_callback` pattern
 //! (`ffi/capability.rs`).
 //!

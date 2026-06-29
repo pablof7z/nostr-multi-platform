@@ -72,17 +72,14 @@ C-ABI entrypoints and marshals native-runtime state.
 
 ---
 
-## 3. App-lifecycle callbacks (`ffi/lifecycle.rs`)
+## 3. App-lifecycle
 
-scenePhase → kernel bridge. Swift observes `@Environment(\.scenePhase)` and
-calls `foreground`/`background`; the kernel decides what each phase means (D7).
-`.inactive` has NO symbol — the shell silently drops it.
-
-| Symbol | Signature | Behavior | Callers | Threading | D6 | D7 |
-|---|---|---|---|---|---|---|
-| `nmp_app_lifecycle_foreground` | `(app: *mut NmpApp)` | Report `scenePhase == .active`. Actor folds into `LifecyclePhase::Foreground` and fires the registered observer on a Background→Foreground (or first-after-boot) transition. Repeated calls debounce to no-op. | Native C/JNI lifecycle adapters | Fire-and-forget; observer fires on actor thread | null → early return | D7-clean: shell reports fact; kernel decides meaning |
-| `nmp_app_lifecycle_background` | `(app: *mut NmpApp)` | Report `scenePhase == .background`. Sends `LifecyclePhase::Background`. No built-in consumer reacts today but hook is present for future policy. | Native C/JNI lifecycle adapters | Fire-and-forget | null → early return | D7-clean |
-| `nmp_app_set_lifecycle_callback` | `(app: *mut NmpApp, context: *mut c_void, callback: Option<fn(*mut c_void, u32)>)` | Register observer for meaningful phase transitions. Phase codes: `0`=Foreground, `1`=Background. `None` unregisters. Callback executes on actor thread; re-registering inside the callback is legal (mutex released before invoke). Exposed for test harnesses and shell consumers that need a native lifecycle observer. | Native C/JNI lifecycle adapters | Callback fires on actor thread | null app / poisoned lock → early return | D7-clean: transport only |
+Scene-phase reporting and lifecycle observers are no longer part of the public
+C/JNI surface. Native shells use the UniFFI/native-runtime lifecycle methods:
+report foreground/background facts, register the lifecycle observer there, and
+query liveness through the runtime object. The kernel remains the authority on
+what each phase means (D7). `.inactive` has no native-runtime event; the shell
+silently drops it.
 
 ---
 
@@ -298,11 +295,10 @@ update-listener thread after copying the borrowed FlatBuffers frame.
 | `*mut NmpApp` | Opaque handle | Rust (`Box::into_raw` in `nmp_app_new`) | Rust (`Box::from_raw` in `nmp_app_free`; `Drop` joins started actor + listener) | Created on caller thread; listener starts at allocation, actor starts on first `nmp_app_start` |
 | `*const c_char` (inputs) | C string args (pubkey, uri, content, …) | Caller | Caller; Rust copies into owned `String` synchronously, never frees the C buffer | Read synchronously on calling thread |
 | `*mut c_char` (output) | Return value of any FFI function that yields a heap string | Rust (`CString::into_raw`) | Caller must call `nmp_free_string` | Calling thread |
-| `*mut c_void` | Callback context for `set_update_callback`, `set_lifecycle_callback`, `set_capability_callback` | Caller; stored as `usize`, never dereffed by Rust | Caller-owned | Passed back on the relevant callback thread |
+| `*mut c_void` | Callback context for `set_update_callback` and `set_capability_callback` | Caller; stored as `usize`, never dereffed by Rust | Caller-owned | Passed back on the relevant callback thread |
 | `c_uint` | Config scalars (`visible_limit`, `emit_hz`) | By value | n/a | Calling thread; `0` = use default |
 | `UpdateCallback` | `extern "C" fn(*mut c_void, *const u8, usize)` | Caller supplies fn pointer | n/a | Invoked on update-listener thread; FlatBuffers payload valid only for call duration |
 | `CapabilityCallback` | `extern "C" fn(*mut c_void, *const c_char) -> *mut c_char` | Caller supplies fn pointer; return value is Rust-freed | Rust frees via `CString::from_raw` inside `dispatch_capability` | Invoked on the thread calling `dispatch_capability` |
-| `LifecycleObserverFn` | `extern "C" fn(*mut c_void, u32)` | Caller supplies fn pointer | n/a | Invoked on actor thread |
 
 ---
 
@@ -332,9 +328,6 @@ the Rust action modules derive signing identity and routing policy.
 | `nmp_app_reset` | PASS | PASS | |
 | `nmp_signer_broker_init` | PASS | PASS | |
 | `nmp_app_cancel_bunker_handshake` | PASS | PASS | |
-| `nmp_app_lifecycle_foreground` | PASS | PASS | Shell reports fact; kernel decides NIP-77 trigger timing |
-| `nmp_app_lifecycle_background` | PASS | PASS | |
-| `nmp_app_set_lifecycle_callback` | PASS | PASS | |
 | `nmp_app_set_capability_callback` | PASS | PASS | |
 | `nmp_app_dispatch_capability` | PASS — error envelope, never NULL, never panic | PASS | Only transports envelopes |
 | `nmp_free_string` | PASS | PASS | |
