@@ -17,9 +17,9 @@
 //!
 //! # Synchronization — D8 (no polling)
 //!
-//! `NmpApp::start_runtime` runs the actor on a background thread, and every
-//! host command (`AddSigner`, the dispatched `Follow`) is fire-and-forget over
-//! the actor's command channel. The only deterministic edge back to the test is the
+//! `nmp_app_new` runs the actor on a background thread, and every host command
+//! (`AddSigner`, the dispatched `Follow`) is fire-and-forget over the actor's
+//! command channel. The only deterministic edge back to the test is the
 //! observer fan-out itself: a second `ObservedProjectionSink` signals an
 //! `mpsc::Sender` from the actor thread when an accepted kind:3 arrives, and the
 //! test blocks on `recv_timeout` (an OS-event wait, never a `sleep`+check spin).
@@ -36,7 +36,7 @@ use nmp_core::substrate::{
     ActionPayload, KernelEvent, ObservedProjection, ObservedProjectionRegistrar,
 };
 use nmp_core::ObservedProjectionSink;
-use nmp_native_runtime::{dispatch_action_bytes_typed, NmpApp};
+use nmp_native_runtime::NmpApp;
 use nostr::prelude::*;
 
 /// A kind:3-gated observer that signals `tx` from the actor thread each time an
@@ -65,21 +65,7 @@ impl ObservedProjectionSink for KindSignal {
 /// byte doorway and assert the synchronous accept (the doorway echoes the
 /// host-supplied `correlation_id`, NOT publish completion — that settles later
 /// on the actor thread).
-fn outcome_json(outcome: nmp_native_runtime::DispatchOutcome) -> serde_json::Value {
-    let mut parsed = serde_json::Map::new();
-    if let Some(correlation_id) = outcome.correlation_id {
-        parsed.insert("correlation_id".to_string(), correlation_id.into());
-    }
-    if let Some(error) = outcome.error {
-        parsed.insert("error".to_string(), error.into());
-    }
-    if let Some(code) = outcome.code {
-        parsed.insert("code".to_string(), code.into());
-    }
-    serde_json::Value::Object(parsed)
-}
-
-fn dispatch_ok(app: &NmpApp, namespace: &str, pubkey: &str) {
+fn dispatch_ok(app: *mut NmpApp, namespace: &str, pubkey: &str) {
     let payload = nmp_nip02::PubkeyAction {
         pubkey: pubkey.to_string(),
     }
@@ -91,10 +77,11 @@ fn dispatch_ok(app: &NmpApp, namespace: &str, pubkey: &str) {
         DISPATCH_ENVELOPE_SCHEMA_VERSION,
         &payload,
     );
-    let parsed = outcome_json(dispatch_action_bytes_typed(app, &envelope));
+    // SAFETY: app is a valid, non-null pointer.
+    let outcome = nmp_native_runtime::dispatch_action_bytes_typed(unsafe { &*app }, &envelope);
     assert!(
-        parsed.get("correlation_id").is_some(),
-        "{namespace} must be accepted (got {parsed})"
+        outcome.correlation_id.is_some(),
+        "{namespace} must be accepted (got error: {:?})", outcome.error
     );
 }
 
@@ -120,8 +107,8 @@ fn await_kind(rx: &mpsc::Receiver<u32>, want_kind: u32) {
 /// contract for the social graph.
 #[test]
 fn local_follow_then_unfollow_updates_active_follow_set_live() {
-    // Fresh local identity: test-support signin is headless (no keyring
-    // capability needed), and the local key signs synchronously on the actor
+    // Fresh local identity — `nmp_app_signin_nsec` is headless (no keyring
+    // capability needed) and the local key signs synchronously on the actor
     // thread.
     let keys = nostr::Keys::generate();
     let me = keys.public_key().to_hex();
@@ -129,8 +116,13 @@ fn local_follow_then_unfollow_updates_active_follow_set_live() {
 
     let bob = nostr::Keys::generate().public_key().to_hex();
 
-    let mut app = nmp_native_runtime::new_app();
-    nmp_nip02::register_actions(&mut app);
+    let app = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
+    assert!(!app.is_null(), "nmp_app_new must return a valid app");
+    // SAFETY: `app` is a live pointer from `nmp_app_new`; sole `&mut` for the
+    // registration call, dropped before any other access.
+    unsafe {
+        nmp_nip02::register_actions(&mut *app);
+    }
 
     // Wire the in-tree NIP-65 outbox resolver BEFORE start. The default FFI
     // `NmpApp` ships a `NoopOutboxResolver`, so every `Auto` publish fails
@@ -147,20 +139,22 @@ fn local_follow_then_unfollow_updates_active_follow_set_live() {
     // writes (D4 sole-writer preserved). It resolves the active account's write
     // targets from the kind:10002 we inject below; wiring the local-write-relays
     // + active-account slots also enables the active-account fallback.
-    app.set_publish_resolver_factory(|store, _indexer, local_write_relays, active_account| {
-        std::sync::Arc::new(
-            nmp_core::publish::TestKind10002OutboxResolver::new(store)
-                .with_local_relays(local_write_relays, active_account),
-        )
-    });
+    unsafe { &*app }.set_publish_resolver_factory(
+        |store, _indexer, local_write_relays, active_account| {
+            std::sync::Arc::new(
+                nmp_core::publish::TestKind10002OutboxResolver::new(store)
+                    .with_local_relays(local_write_relays, active_account),
+            )
+        },
+    );
 
     // Register both observed projections BEFORE start. ADR-0049:
     // the actor reads every wiring slot once at kernel construction
     // (`ActorCommand::Start`); a registration after start would be recorded as
     // `DroppedLateWiring` and never bound onto the kernel. Each observer
     // declares the event kinds it needs before receiving fan-out.
-    let follow_set = nmp_nip02::ActiveFollowSet::new(app.active_account_handle());
-    let _set_id = app.open_observed_projection(ObservedProjection::from_kinds(
+    let follow_set = nmp_nip02::ActiveFollowSet::new(unsafe { &*app }.active_account_handle());
+    let _set_id = unsafe { &*app }.open_observed_projection(ObservedProjection::from_kinds(
         follow_set.clone(),
         "test.local_publish_follow_set",
         0,
@@ -176,7 +170,7 @@ fn local_follow_then_unfollow_updates_active_follow_set_live() {
         tx: Mutex::new(tx),
         kind3_count: AtomicU32::new(0),
     });
-    let _sig_id = app.open_observed_projection(ObservedProjection::from_kinds(
+    let _sig_id = unsafe { &*app }.open_observed_projection(ObservedProjection::from_kinds(
         signal.clone(),
         "test.local_publish_signal",
         1,
@@ -198,16 +192,16 @@ fn local_follow_then_unfollow_updates_active_follow_set_live() {
     let clock = Arc::new(nmp_core::MonotonicSecondClock::new(
         std::time::UNIX_EPOCH + Duration::from_secs(1_700_000_000),
     ));
-    app.set_kernel_clock_for_test(clock.clone());
+    unsafe { &*app }.set_kernel_clock_for_test(clock.clone());
 
     // Start the actor: constructs the kernel and binds the observer slot.
-    app.start_runtime(256, 4);
+    unsafe { &*app }.start_runtime(256, 4);
 
     // Sign in (make active) so the dispatched follow has an authoring identity.
     // FIFO on the actor command channel guarantees this `AddSigner` is processed
     // before the later follow dispatch; a local nsec signs synchronously on the
     // actor thread.
-    app.signin_nsec_for_test(nsec, true);
+    unsafe { &*app }.signin_nsec_for_test(&nsec, true);
 
     // Give the active account a kind:10002 write relay so the publish engine
     // resolves an outbox target (the local fan-out runs only on the publish
@@ -215,7 +209,7 @@ fn local_follow_then_unfollow_updates_active_follow_set_live() {
     // Self-authored, real signature. Block until its fan-out confirms the relay
     // list is ingested BEFORE dispatching the follow (deterministic ordering —
     // no sleep/poll).
-    inject_self_kind10002(&app, &keys, "wss://write.example");
+    inject_self_kind10002(app, &keys, "wss://write.example");
     await_kind(&rx, 10002);
 
     // Establish the active account's kind:3 baseline (an empty-but-present
@@ -231,7 +225,7 @@ fn local_follow_then_unfollow_updates_active_follow_set_live() {
     // and being dropped as `Superseded` under NIP-01 id-tiebreak). Block on its
     // kind:3 fan-out so the contact list is loaded before the follow dispatch
     // (deterministic ordering — no sleep/poll).
-    inject_self_kind3_empty(&app, &keys, 1_699_999_999);
+    inject_self_kind3_empty(app, &keys, 1_699_999_999);
     await_kind(&rx, 3);
 
     // Precondition: BOB is not followed (only self-inclusion).
@@ -241,7 +235,7 @@ fn local_follow_then_unfollow_updates_active_follow_set_live() {
     );
 
     // ── Follow BOB ────────────────────────────────────────────────────────────
-    dispatch_ok(&app, "nmp.follow", &bob);
+    dispatch_ok(app, "nmp.follow", &bob);
     await_kind(&rx, 3);
     assert!(
         follow_set.predicate()(&bob),
@@ -261,7 +255,7 @@ fn local_follow_then_unfollow_updates_active_follow_set_live() {
     clock.advance_secs(1);
 
     // ── Unfollow BOB (the important regression) ────────────────────────────────
-    dispatch_ok(&app, "nmp.unfollow", &bob);
+    dispatch_ok(app, "nmp.unfollow", &bob);
     await_kind(&rx, 3);
     assert!(
         !follow_set.predicate()(&bob),
@@ -282,6 +276,8 @@ fn local_follow_then_unfollow_updates_active_follow_set_live() {
         3,
         "baseline + follow + unfollow each fan out exactly once"
     );
+
+    unsafe { drop(Box::from_raw(app)) };
 }
 
 /// Inject a self-authored, real-signature kind:3 with an EMPTY `p` section so
@@ -290,24 +286,24 @@ fn local_follow_then_unfollow_updates_active_follow_set_live() {
 /// requires before any edit. `created_at` is supplied by the caller so the
 /// baseline can be stamped strictly EARLIER than the kernel clock, letting the
 /// follow's locally-published kind:3 `Replace` it (not tie + `Superseded`).
-fn inject_self_kind3_empty(app: &NmpApp, keys: &nostr::Keys, created_at: u64) {
+fn inject_self_kind3_empty(app: *mut NmpApp, keys: &nostr::Keys, created_at: u64) {
     let event = nostr::EventBuilder::new(nostr::Kind::from(3u16), "")
         .custom_created_at(nostr::Timestamp::from(created_at))
         .sign_with_keys(keys)
         .expect("sign kind:3");
     let json = event.as_json();
-    let ok = app.inject_signed_event_json_for_test(&json);
+    let ok = unsafe { &*app }.inject_signed_event_json_for_test(&json);
     assert!(ok, "kind:3 baseline injection must verify and accept");
 }
 
 /// Inject a self-authored, real-signature kind:10002 (NIP-65 write relay) so
 /// the publish engine has an outbox target for the active account.
-fn inject_self_kind10002(app: &NmpApp, keys: &nostr::Keys, write_relay: &str) {
+fn inject_self_kind10002(app: *mut NmpApp, keys: &nostr::Keys, write_relay: &str) {
     let event = nostr::EventBuilder::new(nostr::Kind::from(10002u16), "")
         .tags([nostr::Tag::parse(["r", write_relay, "write"]).expect("valid r tag")])
         .sign_with_keys(keys)
         .expect("sign kind:10002");
     let json = event.as_json();
-    let ok = app.inject_signed_event_json_for_test(&json);
+    let ok = unsafe { &*app }.inject_signed_event_json_for_test(&json);
     assert!(ok, "kind:10002 injection must verify and accept");
 }

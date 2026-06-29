@@ -296,7 +296,7 @@ fn d21_negative_fixture_clean() {
 /// Integration guard (K2 / ADR-0052): every K2 blast-radius crate — the crates
 /// that hosted the five deleted process-global singletons (`ACTIVE_WALLET_RUNTIME`
 /// in nmp-nip47, the bunker/NIP-55 `HOOK`s + `kernel_mut` in nmp-core,
-/// `GLOBAL_BROKER`/`GLOBAL_DRIVER` in nmp-ffi) plus the two read-once-config
+/// the bunker/NIP-55 process-globals) plus the two read-once-config
 /// residuals (nmp-core wire_log, nmp-network socket_io) — must be D21-clean. If
 /// a future change reintroduces an ambient-authority `static`/`OnceLock`/`Lazy`/
 /// `lazy_static!` of a handle/runtime/sender/hook (outside `#[cfg(test)]`, a
@@ -306,7 +306,6 @@ fn d21_negative_fixture_clean() {
 fn k2_blast_radius_crates_are_d21_clean() {
     const K2_CRATES: &[&str] = &[
         "nmp-core",
-        "nmp-ffi",
         "nmp-nip47",
         "nmp-network",
         "nmp-nip46-runtime",

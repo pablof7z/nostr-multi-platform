@@ -44,7 +44,7 @@
 //! # Why this is a REAL e2e test, not a kernel shortcut
 //!
 //! * The kernel runs behind the production actor thread spawned by
-//!   `NmpAppBuilder::start` — every step crosses the real `ActorCommand` mpsc seam.
+//!   `nmp_app_start` — every step crosses the real `ActorCommand` mpsc seam.
 //! * The bookmark observer + the per-tick `BookmarksRuntimeController` are
 //!   installed by `register_bookmark_runtime`, the SAME composition helper
 //!   `nmp_defaults::register_defaults` calls. Nothing in this test pushes the
@@ -153,7 +153,9 @@ impl BookmarkApp {
         let (tx, ticks) = channel::<()>();
         let slot = UPDATE_TX.get_or_init(|| Mutex::new(None));
         *slot.lock().unwrap_or_else(|p| p.into_inner()) = Some(tx);
-        common::set_c_update_listener(app, std::ptr::null_mut(), Some(update_signal_callback));
+        unsafe { &*app }.set_update_listener(Some(std::sync::Arc::new(|bytes: &[u8]| {
+            update_signal_callback(std::ptr::null_mut(), bytes.as_ptr(), bytes.len());
+        })));
 
         Self {
             app,
@@ -219,6 +221,7 @@ impl BookmarkApp {
     /// Sign in with `nsec`, made active — the production sign-in flow that the
     /// per-tick bookmark runtime reacts to by pushing the demand interest.
     fn sign_in(&self, nsec: &str) {
+        // SAFETY: self.app is a valid, non-null pointer.
         unsafe { &*self.app }.signin_nsec_for_test(nsec, true);
     }
 
@@ -267,12 +270,14 @@ impl BookmarkApp {
 
 impl Drop for BookmarkApp {
     fn drop(&mut self) {
-        common::set_c_update_listener(self.app, std::ptr::null_mut(), None);
+        // Clear the listener before stopping (quiescence contract).
+        unsafe { &*self.app }.set_update_listener(None);
         if let Some(slot) = UPDATE_TX.get() {
             *slot.lock().unwrap_or_else(|p| p.into_inner()) = None;
         }
-        common::stop_app(self.app);
-        common::free_app_ptr(self.app);
+        unsafe { &*self.app }.stop_runtime();
+        // SAFETY: app was allocated by NmpAppBuilder::start (Box::into_raw).
+        unsafe { drop(std::boxed::Box::from_raw(self.app)) };
     }
 }
 

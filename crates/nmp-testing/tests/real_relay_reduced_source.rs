@@ -242,7 +242,7 @@ fn active_follows_reduced_source_over_real_relay() {
         .expect("active-follows feed opens");
 
     if !wait_feed_contains(&rx, app_ref, key, &note_id, APP_WAIT) {
-        support::free_app(app);
+        unsafe { drop(Box::from_raw(app)) };
         support::uninstall_update_signal();
         write_skip(
             &[relay],
@@ -251,7 +251,7 @@ fn active_follows_reduced_source_over_real_relay() {
         return;
     }
 
-    support::free_app(app);
+    unsafe { drop(Box::from_raw(app)) };
     support::uninstall_update_signal();
     write_report(
         FEED_REPORT,
@@ -363,7 +363,7 @@ fn try_nip65_reroute_pair(source_relay: &str, target_relay: &str) -> Result<(), 
         .expect("active mute-list feed opens");
 
     let observed = wait_feed_contains(&rx, app_ref, key, &note_id, APP_WAIT);
-    support::free_app(app);
+    unsafe { drop(Box::from_raw(app)) };
     support::uninstall_update_signal();
 
     if observed {

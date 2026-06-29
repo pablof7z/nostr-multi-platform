@@ -28,8 +28,8 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use nmp_native_runtime::{
-    dispatch_action_bytes_typed, new_app, NmpApp as RuntimeApp, UpdateListener, DEFAULT_EMIT_HZ,
-    DEFAULT_VISIBLE_LIMIT,
+    dispatch_action_bytes_typed, new_app, NmpApp as RuntimeApp, UpdateListener,
+    DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT,
 };
 
 uniffi::setup_scaffolding!();
@@ -44,7 +44,9 @@ pub mod identity;
 
 // ── Reference resolution (C3 — resolve_ref, profile, event embed) ─────────────
 pub mod refs;
-pub use refs::{EventShape, ProfileShape, RefLiveness, RefNamespace, RefShape, ResolveMetadata};
+pub use refs::{
+    EventShape, ProfileShape, RefLiveness, RefNamespace, RefShape, ResolveMetadata,
+};
 
 // ── Capability, action-lane, publish-control (C4) ────────────────────────────
 pub mod capability;
@@ -53,13 +55,6 @@ pub use capability::{ActionResultObserver, CapabilitySink};
 // ── Feed viewport, URI routing, search sessions (C5) ─────────────────────────
 pub mod sessions;
 pub use sessions::FeedSessionHandle;
-
-// ── Lifecycle signals, storage config, projection config, diagnostics (C6) ───
-pub mod runtime;
-
-// ── ADR-0058 mirror pull-page surface (C7) ───────────────────────────────────
-pub mod mirror;
-pub use mirror::MirrorPullResult;
 
 // ── Typed dispatch outcome ────────────────────────────────────────────────────
 
@@ -94,19 +89,6 @@ pub trait UpdateSink: Send + Sync {
     fn on_update(&self, frame: Vec<u8>);
 }
 
-/// Rust→shell lifecycle observer.
-///
-/// Receives the same phase codes as the C ABI:
-/// * `0` — foreground
-/// * `1` — background
-///
-/// Implementations MUST NOT call `set_lifecycle_callback` from inside this
-/// method; the setter drains in-flight callbacks before returning.
-#[uniffi::export(callback_interface)]
-pub trait LifecycleSink: Send + Sync {
-    fn on_lifecycle_phase(&self, phase: u32);
-}
-
 // ── App object ────────────────────────────────────────────────────────────────
 
 /// Arc-wrapped NMP native runtime.
@@ -120,7 +102,11 @@ pub trait LifecycleSink: Send + Sync {
 /// 5. `shutdown()` — explicit teardown; `Arc` drop is the fallback.
 #[derive(uniffi::Object)]
 pub struct NmpApp {
-    inner: RuntimeApp,
+    /// Inner runtime handle. `pub` so `nmp-app-gallery::nmp_app_gallery_register_uniffi`
+    /// and `nmp_uniffi_set_storage_path` can access the inner `RuntimeApp` for
+    /// gallery-specific pre-start composition and storage-path bridging. Not exposed
+    /// through UniFFI — Swift/Kotlin never see this field.
+    pub inner: RuntimeApp,
     search_handles: Mutex<BTreeMap<String, nmp_native_runtime::Nip50SearchHandle>>,
 }
 
@@ -195,9 +181,8 @@ impl NmpApp {
                 // Panic containment: a Swift/Kotlin abort must not unwind
                 // into the Rust update-listener thread (D6).
                 let s = Arc::clone(&s);
-                let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
-                    s.on_update(frame)
-                }));
+                let _ =
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || s.on_update(frame)));
             }) as UpdateListener
         });
         self.inner.set_update_listener(listener);

@@ -14,7 +14,7 @@ use nmp_core::substrate::{
     KeyringResult,
 };
 use std::collections::HashMap;
-use std::ffi::{CStr, CString, c_char};
+use std::ffi::{c_char, CStr, CString};
 use std::sync::{Mutex, OnceLock};
 
 // Keyed by account_id so concurrent actor-thread store operations (which use
@@ -65,17 +65,6 @@ extern "C" fn mock_keyring_callback(
         .into_raw()
 }
 
-fn mock_keyring_json(request_json: String) -> String {
-    let request = CString::new(request_json).expect("capability request has no interior NUL");
-    let raw = mock_keyring_callback(std::ptr::null_mut(), request.as_ptr());
-    if raw.is_null() {
-        return "{}".to_string();
-    }
-    unsafe { CString::from_raw(raw) }
-        .to_string_lossy()
-        .into_owned()
-}
-
 // A valid nsec1 key shared with session_persistence_tests.
 const TEST_NSEC: &str = "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
 
@@ -84,10 +73,13 @@ fn nmp_marmot_identity_policy_owns_keyring_store_recall_forget() {
     // Verifies the full persist → recall → forget cycle through the two
     // `nmp-marmot::identity` entry points, which are the sole owners of
     // keyring-aware sign-in logic (relocated from `NmpApp` — issue #622).
-    let app = nmp_ffi::nmp_app_new();
-    unsafe { &*app }
-        .capability_callback_slot()
-        .set_native_handler(Some(std::sync::Arc::new(mock_keyring_json)));
+    let app = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
+    unsafe { &*app }.capability_callback_slot().set_registration(Some(
+        nmp_core::__ffi_internal::CapabilityCallbackRegistration {
+            context: std::ptr::null_mut::<std::ffi::c_void>() as usize,
+            callback: mock_keyring_callback,
+        }
+    ));
     let app_ref = unsafe { &*app };
 
     // Persist via sign_in_nsec_with_keyring_account (returns null: no db_dir).
@@ -107,5 +99,5 @@ fn nmp_marmot_identity_policy_owns_keyring_store_recall_forget() {
     app_ref.remove_account_forgetting_keyring("test.keyring.acct", "missing".to_string());
     assert_eq!(app_ref.recall_local_nsec("test.keyring.acct"), None);
 
-    nmp_ffi::nmp_app_free(app);
+    unsafe { drop(Box::from_raw(app)) };
 }

@@ -24,8 +24,6 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
 [dev-dependencies]
-# Test-support lets integration tests exercise follow-state runtime behavior
-# against a real Rust-native `NmpApp`.
 nmp-core = { path = "../nmp-core", features = ["test-support"] }
 nmp-native-runtime = { path = "../nmp-native-runtime", features = ["test-support"] }
 nostr = { workspace = true, features = ["std"] }

@@ -22,11 +22,11 @@
 //! and are responsible for their own keyring management.
 
 use nmp_core::substrate::KeyringIdentityWiring;
-use nmp_ffi::NmpApp;
+use nmp_native_runtime::NmpApp;
 use nostr::Keys;
 use zeroize::Zeroizing;
 
-use crate::ffi::{MarmotHandle, register_with_keys};
+use crate::ffi::{register_with_keys, MarmotHandle};
 
 fn sign_in_and_register_marmot(
     app: *mut NmpApp,
@@ -106,8 +106,11 @@ pub fn sign_in_nsec_with_keyring_account(
         return std::ptr::null_mut();
     }
     let app_ref = unsafe { &*app };
-    let req =
-        KeyringIdentityWiring::persist_secret("nmp.identity.persist", keyring_account_id, &secret);
+    let req = KeyringIdentityWiring::persist_secret(
+        "nmp.identity.persist",
+        keyring_account_id,
+        &secret,
+    );
     let _ = app_ref.dispatch_capability(&req);
     // `add_signer` arms MLS autopublish for this active local-key sign-in.
     app_ref.add_signer(
@@ -140,7 +143,7 @@ mod tests {
         KeyringResult,
     };
     use std::collections::HashMap;
-    use std::ffi::{CStr, CString, c_char};
+    use std::ffi::{c_char, CStr, CString};
     use std::sync::{Mutex, OnceLock};
 
     const TEST_NSEC: &str = "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
@@ -197,22 +200,14 @@ mod tests {
             .into_raw()
     }
 
-    fn mock_keyring_json(request_json: String) -> String {
-        let request = CString::new(request_json).expect("capability request has no interior NUL");
-        let raw = mock_keyring_callback(std::ptr::null_mut(), request.as_ptr());
-        if raw.is_null() {
-            return "{}".to_string();
-        }
-        unsafe { CString::from_raw(raw) }
-            .to_string_lossy()
-            .into_owned()
-    }
-
     fn new_app_with_keyring() -> *mut NmpApp {
-        let app = nmp_ffi::nmp_app_new();
-        unsafe { &*app }
-            .capability_callback_slot()
-            .set_native_handler(Some(std::sync::Arc::new(mock_keyring_json)));
+        let app = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
+        unsafe { &*app }.capability_callback_slot().set_registration(Some(
+            nmp_core::__ffi_internal::CapabilityCallbackRegistration {
+                context: std::ptr::null_mut::<std::ffi::c_void>() as usize,
+                callback: mock_keyring_callback,
+            }
+        ));
         app
     }
 
@@ -240,7 +235,7 @@ mod tests {
         );
         drop(slots);
 
-        nmp_ffi::nmp_app_free(app);
+        unsafe { drop(Box::from_raw(app)) };
     }
 
     #[test]
@@ -261,6 +256,6 @@ mod tests {
         assert!(!slots.contains_key("example.marmot.remove.local_secret"));
         drop(slots);
 
-        nmp_ffi::nmp_app_free(app);
+        unsafe { drop(Box::from_raw(app)) };
     }
 }

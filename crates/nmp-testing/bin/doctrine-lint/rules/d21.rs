@@ -6,9 +6,7 @@
 //!
 //! - `ACTIVE_WALLET_RUNTIME: OnceLock<WalletRuntimeHandle>` (nmp-nip47) — rung 5.2
 //! - the bunker `HOOK: OnceLock<RwLock<Option<BunkerHookFn>>>` (nmp-core) — rung 5.3
-//! - `GLOBAL_BROKER: OnceLock<Arc<BunkerBroker>>` (nmp-ffi) — rung 5.3
 //! - the NIP-55 `HOOK: OnceLock<RwLock<Option<ExternalSignerHookFn>>>` (nmp-core) — rung 5.3
-//! - `GLOBAL_DRIVER: OnceLock<Arc<Nip55Driver>>` (nmp-ffi) — rung 5.3
 //!
 //! …plus `ProtocolCommandContext::kernel_mut()` (rung 5.5). Per-app state now
 //! lives as INSTANCE FIELDS threaded by `Arc`-slot from the composition root
@@ -59,10 +57,10 @@
 //! ## Scope (`file_in_scope`)
 //!
 //! Path-scoped to the K2 blast-radius crates' `src/` trees — the crates that
-//! hosted the five deleted globals (nmp-nip47, nmp-core, nmp-ffi) plus the two
+//! hosted the deleted globals (nmp-nip47, nmp-core) plus the two
 //! residuals (nmp-core, nmp-network) and the signer crates the bunker/NIP-55
 //! authority migrated to:
-//! `nmp-core`, `nmp-ffi`, `nmp-nip47`, `nmp-network`, `nmp-nip46-runtime`,
+//! `nmp-core`, `nmp-nip47`, `nmp-network`, `nmp-nip46-runtime`,
 //! `nmp-signers`, `nmp-signer-iface`. This is the regression surface that
 //! matters; the rule engine is workspace-capable but the gate watches where K2
 //! operated.
@@ -87,7 +85,6 @@ pub const ID: &str = "D21";
 /// `crates/<name>/src/` for one of these names.
 const K2_CRATES: &[&str] = &[
     "nmp-core",
-    "nmp-ffi",
     "nmp-nip47",
     "nmp-network",
     "nmp-nip46-runtime",

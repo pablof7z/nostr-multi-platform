@@ -1,93 +1,116 @@
-//! JNI shim: Android ⇄ the nmp-core kernel for the NmpGallery app.
+//! Gallery-owned Android JNI surface — post M14 shell-2.
 //!
-//! Exports `Java_org_nmp_gallery_bridge_KernelBridge_*` symbols matching the
-//! `KernelBridge.kt` `external fun` declarations.
+//! After M14 shell-2 the NmpApp lifecycle (new / free / start / stop /
+//! signin / relay / update-callback / capability-callback) is owned by the
+//! UniFFI `NmpApp` Kotlin class. Only the gallery-specific JNI symbols that
+//! have no UniFFI counterpart on the NmpApp interface remain here.
 //!
-//! Doctrine: no business logic or cached state (D5/D8) — pure transport.
-//! Errors never cross FFI (D6); outcomes arrive in the next FlatBuffers
-//! snapshot frame.
+//! # Gallery-owned JNI symbols
 //!
-//! Session state, callback trampolines, and small JNI helpers live in the
-//! [`session`] submodule (split for file-size compliance).
+//! * [`nativeShowcaseReferencesJson`] — static embedded showcase reference JSON.
+//! * [`nativeRegistryJson`] — static embedded registry JSON.
+//! * [`nativeDecodeSnapshotJson`] — FlatBuffers frame → gallery snapshot JSON.
+//!   Uses a process-global [`GALLERY_REF_STORES`] because the gallery runs
+//!   exactly one kernel session per process lifetime (ADR-0063 / #1671 —
+//!   row-delta batches must accumulate across frames).
+//!
+//! # URI-adapter symbols (still JNI — UniFFI NmpApp takes raw keys, not URIs)
+//!
+//! * [`nativeResolveEventRef`] — decodes a `nostr:` URI, calls
+//!   `resolve_ref_with_metadata` on the inner NmpApp.
+//! * [`nativeReleaseEvent`] — decodes a `nostr:` URI key, calls
+//!   `release_ref` on the inner NmpApp.
+//!
+//! Both URI adapter symbols accept an `arcPtr: Long` (a Kotlin
+//! `Pointer.nativeValue(app.uniffiClonePointer())` result) so they operate
+//! directly on the caller-owned UniFFI Arc — no process-global app pointer.
 
-use std::sync::Arc;
+use std::ffi::{CStr, CString};
+use std::sync::{Mutex, OnceLock};
 
-use jni::objects::{JByteArray, JClass, JObject, JString};
-use jni::sys::{jint, jlong, jstring};
+use jni::objects::{JByteArray, JClass, JString};
+use jni::sys::{jlong, jstring};
 use jni::JNIEnv;
 
-use nmp_core::__ffi_internal::NativeCapabilityHandler;
-use nmp_native_runtime::UpdateListener;
+// ── Process-global ref-stores (nativeDecodeSnapshotJson) ─────────────────
 
-use crate::dispatch_bytes::dispatch_action_bytes_for;
+static GALLERY_REF_STORES: OnceLock<Mutex<crate::GalleryRefStores>> = OnceLock::new();
 
-use crate::android_push::{SignerRequestListenerSlot, SignerRequestPushListener};
-
-use std::sync::Mutex;
-
-mod event_refs;
-pub(crate) mod session;
-use session::{
-    handle_capability_request, jstring_to_cstring, on_update, session_ref, set_update_listener,
-    teardown_session, GallerySession,
-};
-
-// ── JNI entry points ──────────────────────────────────────────────────────
-
-#[no_mangle]
-pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeNew(
-    _env: JNIEnv,
-    _class: JClass,
-) -> jlong {
-    let mut app = nmp_native_runtime::new_app();
-    crate::register_gallery_runtime(&mut app);
-    // Issue #614 — the update-callback context owns the JNI push listener slot.
-    let update_ctx = Arc::new(crate::android_push::GalleryUpdateCtx::new());
-    app.set_update_listener(Some(update_listener(Arc::clone(&update_ctx))));
-    // Issue #1612 / ADR-0048 Stage 2 — push-based signer-request delivery
-    // (D8 no-polling; replaces the deleted mpsc-channel + nativeNextSignerRequest drain).
-    let signer_listener: SignerRequestListenerSlot = Arc::new(Mutex::new(None));
-    let signer_listener_for_handler = Arc::clone(&signer_listener);
-    let capability_handler: NativeCapabilityHandler = Arc::new(move |request_json| {
-        handle_capability_request(&signer_listener_for_handler, &request_json)
-    });
-    app.capability_callback_slot()
-        .set_native_handler(Some(capability_handler));
-    app.init_external_signer();
-    let session = Box::new(GallerySession {
-        app,
-        update_ctx,
-        signer_listener,
-        ref_stores: Mutex::new(crate::GalleryRefStores::new()),
-    });
-    Box::into_raw(session) as jlong
+fn get_ref_stores() -> &'static Mutex<crate::GalleryRefStores> {
+    GALLERY_REF_STORES.get_or_init(|| Mutex::new(crate::GalleryRefStores::new()))
 }
 
-#[no_mangle]
-pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeFree(
-    _env: JNIEnv,
-    _class: JClass,
-    handle: jlong,
-) {
-    if handle == 0 {
-        return;
+// ── Helpers ───────────────────────────────────────────────────────────────
+
+fn jstring_to_cstring(env: &mut JNIEnv, value: &JString) -> Option<CString> {
+    let s = env.get_string(value).ok()?;
+    CString::new(s.to_string_lossy().into_owned()).ok()
+}
+
+struct EventRefFromUri {
+    key: CString,
+    metadata_json: CString,
+}
+
+/// Decode a `nostr:` URI or bare NIP-19 entity into a raw event key plus
+/// resolver metadata JSON. D6: non-event URIs or decode failures return `None`.
+fn event_ref_from_uri(uri: &CStr) -> Option<EventRefFromUri> {
+    let uri_str = uri.to_str().ok()?;
+    let (key, relays, author, kind_u64) = if uri_str.starts_with("nostr:") {
+        match nmp_core::nip21::parse_nostr_uri(uri_str).ok()? {
+            nmp_core::nip21::NostrUri::Event { event_id, relays, author, kind } => {
+                (event_id, relays, author, kind.map(|k| k as u64))
+            }
+            nmp_core::nip21::NostrUri::Address { identifier, pubkey, kind, relays } => {
+                (format!("{kind}:{pubkey}:{identifier}"), relays, None, Some(kind as u64))
+            }
+            _ => return None,
+        }
+    } else {
+        match nmp_core::nip19::parse(uri_str).ok()? {
+            nmp_core::nip19::Nip19Entity::Note(event_id) => (event_id, vec![], None, None),
+            nmp_core::nip19::Nip19Entity::Nevent(d) => {
+                (d.event_id, d.relays, d.author, d.kind.map(|k| k as u64))
+            }
+            nmp_core::nip19::Nip19Entity::Naddr(d) => {
+                (
+                    format!("{}:{}:{}", d.kind, d.pubkey, d.identifier),
+                    d.relays,
+                    None,
+                    Some(d.kind as u64),
+                )
+            }
+            _ => return None,
+        }
+    };
+    let mut metadata = serde_json::json!({ "hints": relays });
+    if let Some(a) = author {
+        metadata["author"] = serde_json::Value::String(a);
     }
-    let s = unsafe { Box::from_raw(handle as *mut GallerySession) };
-    unsafe { teardown_session(s) };
+    if let Some(k) = kind_u64 {
+        metadata["kind"] = serde_json::Value::Number(k.into());
+    }
+    Some(EventRefFromUri {
+        key: CString::new(key).ok()?,
+        metadata_json: CString::new(metadata.to_string()).ok()?,
+    })
 }
 
-#[no_mangle]
-pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeGalleryRegister(
-    _env: JNIEnv,
-    _class: JClass,
-    handle: jlong,
-) {
-    if let Some(s) = session_ref(handle) {
-        // Registration happens during `nativeNew` while the native runtime app
-        // is still uniquely owned and before `start_runtime`.
-        let _ = &s.app;
-    }
+/// Parse ref-resolve metadata JSON into `RefResolveMetadata`.
+fn parse_ref_metadata(json: &str) -> nmp_core::RefResolveMetadata {
+    serde_json::from_str::<serde_json::Value>(json)
+        .ok()
+        .and_then(|v| {
+            let hints = v.get("hints")?.as_array()?.iter()
+                .filter_map(|r| r.as_str().map(str::to_owned))
+                .collect();
+            let event_author = v.get("author").and_then(|a| a.as_str()).map(str::to_owned);
+            Some(nmp_core::RefResolveMetadata { hints, event_author })
+        })
+        .unwrap_or_default()
 }
+
+// ── Gallery-owned JNI symbols ────────────────────────────────────────────
 
 #[no_mangle]
 pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeShowcaseReferencesJson<'l>(
@@ -111,320 +134,116 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeRegistryJs
     }
 }
 
+/// Decode one FlatBuffers snapshot frame to the gallery JSON shape.
+///
+/// Uses the process-global [`GALLERY_REF_STORES`] to accumulate `refs.profile`
+/// and `refs.event` row-delta batches across frames (ADR-0063 / #1671).
+/// D6: null/empty/malformed input returns null.
 #[no_mangle]
 pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeDecodeSnapshotJson<'l>(
     env: JNIEnv<'l>,
     _class: JClass<'l>,
-    handle: jlong,
     frame: JByteArray<'l>,
 ) -> jstring {
     let null = std::ptr::null_mut();
     let Ok(bytes) = env.convert_byte_array(frame) else {
         return null;
     };
-    // ADR-0063 (#1671): merge the frame's `refs.profile` / `refs.event`
-    // row-delta batches into the session's persistent stores before building
-    // snapshot JSON. The handle is optional only for the (pre-session) error
-    // path; without it row-deltas cannot accumulate, so a missing handle yields
-    // null (D6).
-    let Some(s) = session_ref(handle) else {
+    let Ok(mut guard) = get_ref_stores().lock() else {
         return null;
     };
-    let Ok(mut store_guard) = s.ref_stores.lock() else {
+    let stores = &mut *guard;
+    let Ok(json) = crate::snapshot_json::snapshot_json_from_update_frame(
+        &bytes,
+        &mut stores.profiles,
+        &mut stores.events,
+    ) else {
         return null;
     };
-    let Ok(json) = ({
-        let stores = &mut *store_guard;
-        let ref_profiles = &mut stores.profiles;
-        let ref_events = &mut stores.events;
-        crate::snapshot_json::snapshot_json_from_update_frame(&bytes, ref_profiles, ref_events)
-    }) else {
-        return null;
-    };
-    drop(store_guard);
+    drop(guard);
     match env.new_string(json) {
         Ok(js) => js.into_raw(),
         Err(_) => null,
     }
 }
 
-#[no_mangle]
-pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeStart(
-    _env: JNIEnv,
-    _class: JClass,
-    handle: jlong,
-    _events_per_sec: jint,
-    visible_limit: jint,
-    emit_hz: jint,
-) {
-    let Some(s) = session_ref(handle) else { return };
-    for relay in &crate::showcase::references().relays {
-        let Ok(url_c) = std::ffi::CString::new(relay.url.as_str()) else {
-            continue;
-        };
-        let Ok(role_c) = std::ffi::CString::new(relay.role.as_str()) else {
-            continue;
-        };
-        s.app.add_relay(
-            url_c.to_string_lossy().into_owned(),
-            role_c.to_string_lossy().into_owned(),
-        );
-    }
-    s.app
-        .start_runtime(clamp_visible(visible_limit), clamp_emit_hz(emit_hz));
-}
+// ── URI-adapter symbols ───────────────────────────────────────────────────
 
+/// Decode a `nostr:` URI and resolve the event embed with relay metadata.
+///
+/// `arc_ptr` is a `Pointer.nativeValue(app.uniffiClonePointer())` result from
+/// Kotlin. `Arc::from_raw` takes ownership of the clone; the Arc drops at the
+/// end of the function, decrementing the refcount back to the caller's 1.
+///
+/// D6: a zero `arc_ptr`, unparseable URI, or any JNI failure is a silent no-op.
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[no_mangle]
-pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeStop(
-    _env: JNIEnv,
-    _class: JClass,
-    handle: jlong,
-) {
-    if let Some(s) = session_ref(handle) {
-        s.app.stop_runtime();
-    }
-}
-
-/// ADR-0063 (#1671) — typed profile-ref resolution for visible gallery authors.
-/// Supersedes the deleted `nativeClaimProfile` and avoids exposing raw
-/// namespace/shape/liveness discriminants to Kotlin.
-#[no_mangle]
-pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeResolveProfileRef(
+pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeResolveEventRef(
     mut env: JNIEnv,
     _class: JClass,
-    handle: jlong,
-    key: JString,
+    arc_ptr: jlong,
+    uri: JString,
     consumer_id: JString,
 ) {
-    let Some(s) = session_ref(handle) else { return };
-    let Some(key) = jstring_to_cstring(&mut env, &key) else {
+    if arc_ptr == 0 {
+        return;
+    }
+    let Some(uri_cstr) = jstring_to_cstring(&mut env, &uri) else {
         return;
     };
-    let Some(consumer_id) = jstring_to_cstring(&mut env, &consumer_id) else {
+    let Some(consumer_id_cstr) = jstring_to_cstring(&mut env, &consumer_id) else {
         return;
     };
-    s.app.resolve_ref(
-        nmp_core::RefNamespace::Profile,
-        key.to_string_lossy().into_owned(),
-        consumer_id.to_string_lossy().into_owned(),
-        nmp_core::RefShape::Profile(nmp_core::ProfileShape::Ref),
+    let Some(event_ref) = event_ref_from_uri(&uri_cstr) else {
+        return;
+    };
+    // SAFETY: arc_ptr is a uniffiClonePointer() result (refcount bumped by 1).
+    // Arc::from_raw takes ownership; drops at end decrement refcount to caller's 1.
+    let arc = unsafe { std::sync::Arc::from_raw(arc_ptr as *const nmp_uniffi::NmpApp) };
+    let metadata_str = event_ref.metadata_json.to_string_lossy();
+    let metadata = parse_ref_metadata(&metadata_str);
+    arc.inner.resolve_ref_with_metadata(
+        nmp_core::RefNamespace::Event,
+        event_ref.key.to_string_lossy().into_owned(),
+        consumer_id_cstr.to_string_lossy().into_owned(),
+        nmp_core::RefShape::Event(nmp_core::EventShape::Embed),
         nmp_core::RefLiveness::CacheOk,
+        metadata,
     );
+    // arc drops here → refcount decremented back to caller's 1
 }
 
-/// ADR-0063 (#1671) — release a profile ref previously registered via
-/// `nativeResolveProfileRef`. Pass the SAME `(key, consumer_id)`.
-/// D6: bad handles/strings/unknown int codes are silent no-ops.
+/// Decode a `nostr:` URI and release the event ref.
+///
+/// Same Arc ownership contract as [`Java_org_nmp_gallery_bridge_KernelBridge_nativeResolveEventRef`].
+/// D6: zero `arc_ptr`, bad URI, or JNI failure is a silent no-op.
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[no_mangle]
-pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeReleaseProfileRef(
+pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeReleaseEvent(
     mut env: JNIEnv,
     _class: JClass,
-    handle: jlong,
-    key: JString,
+    arc_ptr: jlong,
+    uri: JString,
     consumer_id: JString,
 ) {
-    let Some(s) = session_ref(handle) else { return };
-    let Some(key) = jstring_to_cstring(&mut env, &key) else {
+    if arc_ptr == 0 {
+        return;
+    }
+    let Some(uri_cstr) = jstring_to_cstring(&mut env, &uri) else {
         return;
     };
-    let Some(consumer_id) = jstring_to_cstring(&mut env, &consumer_id) else {
+    let Some(consumer_id_cstr) = jstring_to_cstring(&mut env, &consumer_id) else {
         return;
     };
-    s.app.release_ref(
-        nmp_core::RefNamespace::Profile,
-        key.to_string_lossy().into_owned(),
-        consumer_id.to_string_lossy().into_owned(),
+    let Some(event_ref) = event_ref_from_uri(&uri_cstr) else {
+        return;
+    };
+    // SAFETY: same as nativeResolveEventRef — uniffiClonePointer() result.
+    let arc = unsafe { std::sync::Arc::from_raw(arc_ptr as *const nmp_uniffi::NmpApp) };
+    arc.inner.release_ref(
+        nmp_core::RefNamespace::Event,
+        event_ref.key.to_string_lossy().into_owned(),
+        consumer_id_cstr.to_string_lossy().into_owned(),
     );
-}
-
-/// Register (or clear) the JNI push listener for kernel update frames
-/// (issue #614 — D8 no-polling; replaces the deleted `nativeNextUpdate`
-/// blocking drain).
-///
-/// `listener` must implement `fun onUpdate(frame: ByteArray)`. Frames are
-/// pushed from the kernel's update-listener thread; pass `null` to deregister.
-/// D6: a null/dead handle or any JNI failure is a silent no-op.
-#[no_mangle]
-pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeSetUpdateListener(
-    env: JNIEnv,
-    _class: JClass,
-    handle: jlong,
-    listener: JObject,
-) {
-    let Some(s) = session_ref(handle) else { return };
-    set_update_listener(env, s, listener);
-}
-
-/// Clear the JNI push listener without freeing the session (issue #614).
-/// D6: a null/dead handle is a silent no-op.
-#[no_mangle]
-pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeClearUpdateListener(
-    _env: JNIEnv,
-    _class: JClass,
-    handle: jlong,
-) {
-    if let Some(s) = session_ref(handle) {
-        s.update_ctx.clear_listener();
-    }
-}
-
-/// Dispatch a write through the typed BYTE doorway (ADR-0064 / Cut-B, #1756).
-///
-/// The Kotlin shell hands us `(action, payload)` — the action's host namespace
-/// and the canonical serde body for that write. The
-/// [`dispatch_action_bytes_for`] seam deserializes the body into the
-/// namespace's typed [`ActionPayload`](nmp_core::substrate::ActionPayload),
-/// wraps it in an open dispatch envelope, and hands TYPED BYTES to
-/// [`nmp_native_runtime::dispatch_action_bytes_typed`]. No JSON crosses the FFI; the
-/// JSON is an in-process intermediate only.
-///
-/// Returns the kernel's result envelope JSON (`{"correlation_id":…}` on accept,
-/// `{"error":…}` on synchronous rejection). A seam-side failure (null app,
-/// unknown / mis-shaped namespace) is surfaced to the UI as a fail-closed
-/// `{"error":…}` envelope rather than a silent null, so the unknown-namespace
-/// case is observable (D6). A null/dead handle (no live session) is still a
-/// null no-op.
-#[no_mangle]
-pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeDispatchAction<'l>(
-    mut env: JNIEnv<'l>,
-    _class: JClass<'l>,
-    handle: jlong,
-    action: JString<'l>,
-    payload: JString<'l>,
-) -> jstring {
-    let null = std::ptr::null_mut();
-    let Some(s) = session_ref(handle) else {
-        return null;
-    };
-    let Some(action_c) = jstring_to_cstring(&mut env, &action) else {
-        return null;
-    };
-    let Some(payload_c) = jstring_to_cstring(&mut env, &payload) else {
-        return null;
-    };
-    let (Ok(namespace), Ok(body)) = (action_c.to_str(), payload_c.to_str()) else {
-        return null;
-    };
-    let result = match dispatch_action_bytes_for(&s.app, namespace, body) {
-        Ok(envelope_json) => envelope_json,
-        Err(message) => serde_json::json!({ "error": message }).to_string(),
-    };
-    match env.new_string(result) {
-        Ok(js) => js.into_raw(),
-        Err(_) => null,
-    }
-}
-
-// ── NIP-55 external signer (ADR-0048 Stage 2 / issue #1612) ──────────────
-
-/// Register (or clear) the JNI push listener for outbound NIP-55
-/// external-signer requests (issue #1612 — D8 no-polling; replaces the
-/// deleted `nativeNextSignerRequest` blocking/timeout drain).
-///
-/// `listener` must implement `fun onSignerRequest(requestJson: String)`. Each
-/// request is pushed from whichever Rust thread dispatches the
-/// `external_signer` capability (a background thread), so Kotlin must marshal
-/// to the main thread itself before launching a NIP-55 Intent. Pass `null` to
-/// deregister.
-///
-/// D6: a null/dead handle, or any JNI failure obtaining the `JavaVM` / global
-/// ref, is a silent no-op.
-#[no_mangle]
-pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeSetSignerRequestListener(
-    env: JNIEnv,
-    _class: JClass,
-    handle: jlong,
-    listener: JObject,
-) {
-    let Some(s) = session_ref(handle) else { return };
-    if listener.is_null() {
-        if let Ok(mut slot) = s.signer_listener.lock() {
-            slot.take();
-        }
-        return;
-    }
-    let Ok(vm) = env.get_java_vm() else { return };
-    let Ok(global) = env.new_global_ref(&listener) else {
-        return;
-    };
-    if let Ok(mut slot) = s.signer_listener.lock() {
-        *slot = Some(Arc::new(SignerRequestPushListener::new(vm, global)));
-    }
-}
-
-/// Clear the JNI signer-request push listener without freeing the session
-/// (issue #1612). D6: a null/dead handle is a silent no-op.
-#[no_mangle]
-pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeClearSignerRequestListener(
-    _env: JNIEnv,
-    _class: JClass,
-    handle: jlong,
-) {
-    if let Some(s) = session_ref(handle) {
-        if let Ok(mut slot) = s.signer_listener.lock() {
-            slot.take();
-        }
-    }
-}
-
-/// Begin a NIP-55 sign-in. `signer_package` may be null ("let the OS
-/// resolver pick"); Rust builds the `get_public_key` + permission-batch
-/// request (D7 — Kotlin reports user intent only).
-#[no_mangle]
-pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeSignInNip55(
-    mut env: JNIEnv,
-    _class: JClass,
-    handle: jlong,
-    signer_package: JString,
-) {
-    let Some(s) = session_ref(handle) else { return };
-    let package = {
-        let obj: &jni::objects::JObject = AsRef::<jni::objects::JObject>::as_ref(&signer_package);
-        if obj.as_raw().is_null() {
-            None
-        } else {
-            jstring_to_cstring(&mut env, &signer_package)
-        }
-    };
-    s.app
-        .signin_nip55(package.map(|v| v.to_string_lossy().into_owned()));
-}
-
-/// Report a raw `ExternalSignerResponse` JSON back to the Rust driver
-/// (D7 — verbatim; the driver owns correlation routing and all policy).
-#[no_mangle]
-pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeDeliverSignerResponse(
-    mut env: JNIEnv,
-    _class: JClass,
-    handle: jlong,
-    response_json: JString,
-) {
-    let Some(s) = session_ref(handle) else { return };
-    let Some(response) = jstring_to_cstring(&mut env, &response_json) else {
-        return;
-    };
-    s.app
-        .deliver_external_signer_response(&response.to_string_lossy());
-}
-
-fn clamp_visible(visible_limit: jint) -> usize {
-    if visible_limit <= 0 {
-        nmp_core::__ffi_internal::DEFAULT_VISIBLE_LIMIT
-    } else {
-        (visible_limit as u32).clamp(1, 500) as usize
-    }
-}
-
-fn clamp_emit_hz(emit_hz: jint) -> u32 {
-    if emit_hz <= 0 {
-        nmp_core::__ffi_internal::DEFAULT_EMIT_HZ
-    } else {
-        (emit_hz as u32).clamp(1, 12)
-    }
-}
-
-fn update_listener(update_ctx: Arc<crate::android_push::GalleryUpdateCtx>) -> UpdateListener {
-    Arc::new(move |bytes: &[u8]| {
-        on_update(&update_ctx, bytes);
-    })
+    // arc drops here → refcount decremented back to caller's 1
 }

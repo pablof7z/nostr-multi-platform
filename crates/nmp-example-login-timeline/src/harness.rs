@@ -29,13 +29,11 @@
 //! This module is `harness`-feature-gated so the doctrine-clean shell in
 //! `lib.rs` never links any of it.
 
-use std::ffi::CString;
+use std::ffi::c_void;
 use std::sync::mpsc::{channel, Receiver, Sender};
-use std::sync::Arc;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use nmp_ffi::{nmp_app_inject_signed_event_json, nmp_app_signin_nsec};
 use nmp_native_runtime::{NmpApp, NmpAppBuilder, RunConfig};
 use nostr::{EventBuilder, JsonUtil, Keys, Kind, PublicKey, Tag, Timestamp};
 
@@ -47,7 +45,7 @@ use crate::{register, register_following_timeline, render_home_rows, TimelineRow
 // `real_relay_nip17_cold_start_kernel.rs`.
 static UPDATE_TX: OnceLock<Mutex<Option<Sender<()>>>> = OnceLock::new();
 
-fn update_signal_callback() {
+extern "C" fn update_signal_callback(_ctx: *mut c_void, _ptr: *const u8, _len: usize) {
     if let Some(slot) = UPDATE_TX.get() {
         if let Ok(guard) = slot.lock() {
             if let Some(tx) = guard.as_ref() {
@@ -102,16 +100,16 @@ impl DemoApp {
         let (tx, ticks) = channel::<()>();
         let slot = UPDATE_TX.get_or_init(|| Mutex::new(None));
         *slot.lock().unwrap_or_else(|p| p.into_inner()) = Some(tx);
-        // SAFETY: `start` returns a valid, non-null `*mut NmpApp`.
-        unsafe { &*app }.set_update_listener(Some(Arc::new(|_| update_signal_callback())));
+        unsafe { &*app }.set_update_listener(Some(std::sync::Arc::new(|bytes: &[u8]| {
+            update_signal_callback(std::ptr::null_mut(), bytes.as_ptr(), bytes.len());
+        })));
 
         // Step 3 — open the following timeline before sign-in.
         // SAFETY: `start` returns a valid, non-null `*mut NmpApp`.
         register_following_timeline(unsafe { &*app }, viewer.clone());
 
         // Step 4 — sign in (active).
-        let secret = CString::new(nsec).expect("nsec has no interior NUL");
-        nmp_app_signin_nsec(app, secret.as_ptr(), 1);
+        unsafe { &*app }.signin_nsec_for_test(nsec, true);
 
         let demo = Self { app, viewer, ticks };
         // Step 5 — block on ticks until the active-account slot is populated.
@@ -143,8 +141,7 @@ impl DemoApp {
     /// event verified and was enqueued.
     pub fn ingest(&self, event: &nostr::Event) -> bool {
         let json = event.as_json();
-        let c = CString::new(json).expect("event JSON has no interior NUL");
-        nmp_app_inject_signed_event_json(self.app, c.as_ptr())
+        unsafe { &*self.app }.inject_signed_event_json_for_test(&json)
     }
 
     /// The current rendered following timeline (one decode of the typed
@@ -228,18 +225,14 @@ impl DemoApp {
 
 impl Drop for DemoApp {
     fn drop(&mut self) {
-        // SAFETY: `self.app` is owned by this `DemoApp` until it is converted
-        // back into a `Box<NmpApp>` below.
-        let app = unsafe { &*self.app };
-        app.set_update_listener(None);
+        // Clear the listener before stopping (quiescence contract).
+        unsafe { &*self.app }.set_update_listener(None);
         if let Some(slot) = UPDATE_TX.get() {
             *slot.lock().unwrap_or_else(|p| p.into_inner()) = None;
         }
-        app.stop_runtime();
-        app.shutdown();
-        // SAFETY: `NmpAppBuilder::start` transfers ownership as a raw
-        // `Box<NmpApp>` pointer; this `DemoApp` is the unique owner.
-        drop(unsafe { Box::from_raw(self.app) });
+        unsafe { &*self.app }.stop_runtime();
+        // SAFETY: app was allocated by NmpAppBuilder::start (Box::into_raw).
+        unsafe { drop(std::boxed::Box::from_raw(self.app)) };
     }
 }
 

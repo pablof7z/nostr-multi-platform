@@ -3685,11 +3685,10 @@ dependencies = [
  "nmp-content",
  "nmp-core",
  "nmp-defaults",
- "nmp-ffi",
  "nmp-native-runtime",
+ "nmp-uniffi",
  "serde",
  "serde_json",
- "zeroize",
 ]
 
 [[package]]
@@ -3893,7 +3892,6 @@ dependencies = [
  "flatbuffers",
  "nmp-core",
  "nmp-defaults",
- "nmp-ffi",
  "nmp-native-runtime",
  "nmp-nip01",
  "nmp-signer-iface",
@@ -3912,29 +3910,6 @@ dependencies = [
  "nmp-threading",
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "nmp-ffi"
-version = "0.8.4"
-dependencies = [
- "nmp-content",
- "nmp-core",
- "nmp-native-runtime",
- "nmp-nip11",
- "nmp-nip29",
- "nmp-nip46",
- "nmp-nip46-runtime",
- "nmp-nip50",
- "nmp-planner",
- "nmp-signer-iface",
- "nmp-signers",
- "nmp-store",
- "nostr",
- "serde",
- "serde_json",
- "tracing",
- "zeroize",
 ]
 
 [[package]]
@@ -3994,7 +3969,7 @@ dependencies = [
  "mdk-core",
  "mdk-sqlite-storage",
  "nmp-core",
- "nmp-ffi",
+ "nmp-native-runtime",
  "nmp-nip59",
  "nmp-planner",
  "nmp-store",
@@ -4269,7 +4244,6 @@ dependencies = [
  "bech32",
  "flatbuffers",
  "nmp-core",
- "nmp-ffi",
  "nmp-kinds",
  "nmp-planner",
  "nmp-signer-iface",
@@ -4514,7 +4488,6 @@ dependencies = [
  "nmp-defaults",
  "nmp-example-login-timeline",
  "nmp-feed",
- "nmp-ffi",
  "nmp-marmot",
  "nmp-native-runtime",
  "nmp-network",
@@ -4569,7 +4542,6 @@ dependencies = [
  "nmp-core",
  "nmp-defaults",
  "nmp-native-runtime",
- "nostr",
  "serde_json",
  "uniffi",
  "zeroize",

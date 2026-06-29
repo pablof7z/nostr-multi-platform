@@ -1,7 +1,7 @@
 mod relay;
 
 use std::collections::BTreeSet;
-use std::ffi::{c_void, CString};
+use std::ffi::c_void;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
@@ -10,9 +10,6 @@ use nmp_core::WireProjectionState;
 use nmp_feed::{
     FeedAdmission, FeedParams, FeedRanking, FeedRender, FeedScope, FeedWindow, ListId,
     ProjectionKey,
-};
-use nmp_ffi::{
-    nmp_app_add_relay, nmp_app_inject_signed_event_json, nmp_app_signin_nsec, nmp_app_wait_barrier,
 };
 use nmp_native_runtime::{FeedOpenError, NmpApp};
 use nostr::{Event, EventBuilder, JsonUtil, Keys, Kind, Tag, Timestamp, ToBech32};
@@ -47,60 +44,36 @@ pub(crate) fn uninstall_update_signal() {
 
 pub(crate) fn new_started_default_app() -> *mut NmpApp {
     let app = new_default_app_before_start();
-    start_app(app);
+    unsafe { &*app }.start_runtime(256, 8);
     app
 }
 
 pub(crate) fn new_default_app_before_start() -> *mut NmpApp {
     let app = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
-    assert!(!app.is_null(), "new_app returned null");
     nmp_defaults::register_defaults(unsafe { &mut *app });
-    set_update_signal(app);
+    unsafe { &*app }.set_update_listener(Some(std::sync::Arc::new(|bytes: &[u8]| {
+        update_signal_callback(std::ptr::null_mut(), bytes.as_ptr(), bytes.len());
+    })));
     app
 }
 
 pub(crate) fn start_app(app: *mut NmpApp) {
-    if app.is_null() {
-        return;
-    }
-    unsafe { (&*app).start_runtime(256, 8) };
-}
-
-pub(crate) fn free_app(app: *mut NmpApp) {
-    if app.is_null() {
-        return;
-    }
-    unsafe {
-        (&*app).stop_runtime();
-        drop(Box::from_raw(app));
-    }
-}
-
-fn set_update_signal(app: *mut NmpApp) {
-    if app.is_null() {
-        return;
-    }
-    unsafe {
-        (&*app).set_update_listener(Some(std::sync::Arc::new(|payload: &[u8]| {
-            update_signal_callback(std::ptr::null_mut(), payload.as_ptr(), payload.len());
-        })));
-    }
+    unsafe { &*app }.start_runtime(256, 8);
 }
 
 pub(crate) fn add_relay(app: *mut NmpApp, relay: &str) {
-    let relay = CString::new(relay).expect("relay url has no nul");
-    let role = CString::new("both,indexer").unwrap();
-    nmp_app_add_relay(app, relay.as_ptr(), role.as_ptr());
+    // SAFETY: app is a valid, non-null pointer.
+    unsafe { &*app }.add_relay(relay.to_owned(), "both,indexer".to_owned());
     assert!(
-        nmp_app_wait_barrier(app, 5_000),
+        unsafe { &*app }.wait_barrier_for_test(Duration::from_millis(5_000)),
         "add relay command must drain"
     );
 }
 
 pub(crate) fn sign_in(app: *mut NmpApp, keys: &Keys) {
     let nsec = keys.secret_key().to_bech32().expect("nsec bech32");
-    let secret = CString::new(nsec).expect("nsec has no nul");
-    nmp_app_signin_nsec(app, secret.as_ptr(), 1);
+    // SAFETY: app is a valid, non-null pointer.
+    unsafe { &*app }.signin_nsec_for_test(nsec, true);
 }
 
 pub(crate) fn wait_active(rx: &Receiver<()>, app: &NmpApp, pubkey: &str) {
@@ -110,13 +83,14 @@ pub(crate) fn wait_active(rx: &Receiver<()>, app: &NmpApp, pubkey: &str) {
 }
 
 pub(crate) fn inject_event(app: *mut NmpApp, rx: &Receiver<()>, app_ref: &NmpApp, event: &Event) {
-    let event_json = CString::new(event.as_json()).expect("event json has no nul");
+    let event_json = event.as_json();
     assert!(
-        nmp_app_inject_signed_event_json(app, event_json.as_ptr()),
+        // SAFETY: app is a valid, non-null pointer.
+        unsafe { &*app }.inject_signed_event_json_for_test(&event_json),
         "signed event must verify and inject"
     );
     assert!(
-        nmp_app_wait_barrier(app, 5_000),
+        unsafe { &*app }.wait_barrier_for_test(Duration::from_millis(5_000)),
         "actor must process injected event before the test continues"
     );
     let id = event.id.to_hex();

@@ -26,7 +26,7 @@ use nmp_core::substrate::ActionPayload;
 /// payload, wraps it in a `DispatchEnvelope`, and calls
 /// [`nmp_ffi::nmp_app_dispatch_action_bytes`]. Returns the host-minted
 /// `correlation_id` (32 hex chars from the first half of a fresh nostr key).
-fn dispatch_marmot_action(app: *mut nmp_ffi::NmpApp, action_json: &str) -> String {
+fn dispatch_marmot_action(app: *mut nmp_native_runtime::NmpApp, action_json: &str) -> String {
     // Host-mint a 32-char hex correlation_id (first 32 chars of a 64-char pubkey hex).
     let correlation_id = nostr::Keys::generate().public_key().to_hex();
     let correlation_id = &correlation_id[..32];
@@ -39,32 +39,19 @@ fn dispatch_marmot_action(app: *mut nmp_ffi::NmpApp, action_json: &str) -> Strin
     // Wrap in the DispatchEnvelope and dispatch through the byte doorway.
     let envelope =
         encode_dispatch_envelope(correlation_id, MarmotAction::SCHEMA_ID, DISPATCH_ENVELOPE_SCHEMA_VERSION, &payload);
-    let out_ptr = nmp_ffi::nmp_app_dispatch_action_bytes(app, envelope.as_ptr(), envelope.len());
+    // SAFETY: app is a valid, non-null pointer.
+    let outcome = nmp_native_runtime::dispatch_action_bytes_typed(unsafe { &*app }, &envelope);
     assert!(
-        !out_ptr.is_null(),
-        "dispatch_action_bytes must return a non-null result (D6)"
+        outcome.error.is_none(),
+        "dispatch_action_bytes must not return an error; got: {:?}", outcome.error
     );
-    // SAFETY: the dispatcher returns a freshly-allocated NUL-terminated
-    // string the caller must release via `nmp_free_string`.
-    let out = unsafe { CStr::from_ptr(out_ptr) }
-        .to_string_lossy()
-        .into_owned();
-    nmp_ffi::nmp_free_string(out_ptr);
-    let parsed: serde_json::Value = serde_json::from_str(&out)
-        .unwrap_or_else(|e| panic!("dispatch result must be valid JSON; got `{out}`: {e}"));
-    assert!(
-        parsed.get("error").is_none(),
-        "dispatch_action_bytes must not return an error; got: {out}"
-    );
-    let echoed_id = parsed
-        .get("correlation_id")
-        .and_then(|v| v.as_str())
-        .unwrap_or_else(|| panic!("dispatch result must echo correlation_id; got: {out}"));
+    let echoed_id = outcome.correlation_id
+        .unwrap_or_else(|| panic!("dispatch result must echo correlation_id"));
     assert_eq!(
         echoed_id, correlation_id,
         "byte doorway must echo back the host-supplied correlation_id"
     );
-    echoed_id.to_string()
+    echoed_id
 }
 
 fn wait_for_projection_state<T>(
@@ -120,15 +107,17 @@ fn re_registering_marmot_action_module_dispatches_to_new_projection() {
     let first = Arc::new(MarmotProjection::new(in_memory(Keys::generate()), None));
     let second = Arc::new(MarmotProjection::new(in_memory(Keys::generate()), None));
 
-    let app = nmp_ffi::nmp_app_new();
+    let app = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
     // SAFETY: nmp_app_new never returns null.
     let app_mut = unsafe { &mut *app };
     first.set_actor_sender(app_mut.actor_sender());
     second.set_actor_sender(app_mut.actor_sender());
     register_marmot_action_module(app_mut, Arc::clone(&first));
     register_marmot_action_module(app_mut, Arc::clone(&second));
-    nmp_ffi::nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(capture_action_frame));
-    nmp_ffi::nmp_app_start(app, 256, 4);
+    unsafe { &*app }.set_update_listener(Some(std::sync::Arc::new(|bytes: &[u8]| {
+        capture_action_frame(std::ptr::null_mut(), bytes.as_ptr(), bytes.len());
+    })));
+    unsafe { &*app }.start_runtime(256, 4);
 
     let envelope_json = r#"{"op":"publish_key_package","relays":["wss://t.relay"]}"#;
     let _id = dispatch_marmot_action(app, envelope_json);
@@ -144,7 +133,7 @@ fn re_registering_marmot_action_module_dispatches_to_new_projection() {
     assert!(second.snapshot(1_000).key_package.published);
 
     uninstall_action_frame_capture();
-    nmp_ffi::nmp_app_free(app);
+    unsafe { drop(Box::from_raw(app)) };
 }
 
 /// End-to-end proof of the dispatch_action → MarmotProtocolCommand path.
@@ -173,7 +162,7 @@ fn dispatch_action_nmp_marmot_routes_to_projection_via_protocol_command() {
     let alice_keys = Keys::generate();
     let proj = Arc::new(MarmotProjection::new(in_memory(alice_keys.clone()), None));
 
-    let app = nmp_ffi::nmp_app_new();
+    let app = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
     // SAFETY: nmp_app_new never returns null; pointer is valid until nmp_app_free.
     let app_mut = unsafe { &mut *app };
 
@@ -181,8 +170,10 @@ fn dispatch_action_nmp_marmot_routes_to_projection_via_protocol_command() {
     // dispatch_action seam:
     proj.set_actor_sender(app_mut.actor_sender());
     let _ = app_mut.register_action(MarmotActionModule::new(Arc::clone(&proj)));
-    nmp_ffi::nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(capture_action_frame));
-    nmp_ffi::nmp_app_start(app, 256, 4);
+    unsafe { &*app }.set_update_listener(Some(std::sync::Arc::new(|bytes: &[u8]| {
+        capture_action_frame(std::ptr::null_mut(), bytes.as_ptr(), bytes.len());
+    })));
+    unsafe { &*app }.start_runtime(256, 4);
 
     // Dispatch the typed action JSON through the generic seam.
     let envelope_json = r#"{"op":"publish_key_package","relays":["wss://t.relay"]}"#;
@@ -199,7 +190,7 @@ fn dispatch_action_nmp_marmot_routes_to_projection_via_protocol_command() {
     );
 
     uninstall_action_frame_capture();
-    nmp_ffi::nmp_app_free(app);
+    unsafe { drop(Box::from_raw(app)) };
 }
 
 /// Parity test: the host (generic `dispatch_action`) seam and the
@@ -236,13 +227,15 @@ fn dispatch_action_and_bespoke_dispatch_share_one_projection() {
 
     let proj = Arc::new(MarmotProjection::new(in_memory(alice_keys.clone()), None));
 
-    let app = nmp_ffi::nmp_app_new();
+    let app = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
     // SAFETY: nmp_app_new never returns null.
     let app_mut = unsafe { &mut *app };
     proj.set_actor_sender(app_mut.actor_sender());
     let _ = app_mut.register_action(MarmotActionModule::new(Arc::clone(&proj)));
-    nmp_ffi::nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(capture_action_frame));
-    nmp_ffi::nmp_app_start(app, 256, 4);
+    unsafe { &*app }.set_update_listener(Some(std::sync::Arc::new(|bytes: &[u8]| {
+        capture_action_frame(std::ptr::null_mut(), bytes.as_ptr(), bytes.len());
+    })));
+    unsafe { &*app }.start_runtime(256, 4);
 
     // Generic seam: create the group via dispatch_action.
     let envelope = json!({
@@ -311,7 +304,7 @@ fn dispatch_action_and_bespoke_dispatch_share_one_projection() {
     assert_eq!(returned_id.len(), 32);
     assert_eq!(invite_id.len(), 32);
     uninstall_action_frame_capture();
-    nmp_ffi::nmp_app_free(app);
+    unsafe { drop(Box::from_raw(app)) };
 }
 
 #[test]
@@ -323,13 +316,15 @@ fn dispatch_action_failure_records_typed_failed_stage() {
     let alice_keys = Keys::generate();
     let proj = Arc::new(MarmotProjection::new(in_memory(alice_keys), None));
 
-    let app = nmp_ffi::nmp_app_new();
+    let app = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
     // SAFETY: nmp_app_new never returns null.
     let app_mut = unsafe { &mut *app };
     proj.set_actor_sender(app_mut.actor_sender());
     let _ = app_mut.register_action(MarmotActionModule::new(Arc::clone(&proj)));
-    nmp_ffi::nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(capture_action_frame));
-    nmp_ffi::nmp_app_start(app, 256, 4);
+    unsafe { &*app }.set_update_listener(Some(std::sync::Arc::new(|bytes: &[u8]| {
+        capture_action_frame(std::ptr::null_mut(), bytes.as_ptr(), bytes.len());
+    })));
+    unsafe { &*app }.start_runtime(256, 4);
 
     let cid = dispatch_marmot_action(
         app,
@@ -347,5 +342,5 @@ fn dispatch_action_failure_records_typed_failed_stage() {
     );
 
     uninstall_action_frame_capture();
-    nmp_ffi::nmp_app_free(app);
+    unsafe { drop(Box::from_raw(app)) };
 }
