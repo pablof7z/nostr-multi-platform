@@ -269,6 +269,28 @@ fn example_lib_rs() -> PathBuf {
 }
 
 #[test]
+fn g5_example_uses_explicit_composition() {
+    let content = std::fs::read_to_string(example_lib_rs()).expect("read example lib.rs");
+
+    let substrate = content.find("nmp_defaults::register_substrate");
+    let nip50 = content.find("nmp_defaults::register_nip50_protocol_defaults");
+    let social = content.find("nmp_defaults::register_social_protocol_defaults");
+    let dm = content.find("nmp_defaults::register_dm_protocol_defaults");
+    let longform = content.find("nmp_defaults::register_longform_projection");
+
+    assert!(
+        substrate.is_some() && substrate < nip50 && nip50 < social && social < dm && dm < longform,
+        "G5 DX GAP: login-timeline example must install named substrate/protocol \
+         installers in the starter order.\n{content}",
+    );
+    assert!(
+        !content.contains("nmp_defaults::register_defaults"),
+        "G5 DX GAP: login-timeline example must not teach hidden register_defaults.\n\
+         Use named substrate/protocol installers instead.\n{content}",
+    );
+}
+
+#[test]
 fn g6_example_shell_is_doctrine_clean() {
     // The same framework-policy / business-logic patterns dx_scaffold_gate G2/G4
     // forbid in the generated scaffold. The example must obey the doctrine it

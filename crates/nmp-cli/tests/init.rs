@@ -54,7 +54,7 @@ fn init_scaffold_is_a_compiling_composition_shell() {
             && lib.contains("HomeTimelineSession")
             && lib.contains("open_home_timeline_session")
             && lib.contains("close_home_timeline_session")
-            && lib.contains("\"nmp.feed.home\"")
+            && lib.contains("\"demoapp.timeline.home\"")
             && lib.contains("\"refs.profile\"")
             && lib.contains("\"refs.event\"")
             && lib.contains("\"refs.event.envelopes\"")
@@ -62,10 +62,10 @@ fn init_scaffold_is_a_compiling_composition_shell() {
         "scaffolded starter must declare current v1 profile/content projections:\n{lib}"
     );
     assert!(
-        lib.contains("GeneratedActionBuilders.publishRaw")
+        !lib.contains("GeneratedActionBuilders.publishRaw")
             && lib.contains("GeneratedActionBuilders.publishReply")
             && lib.contains("GeneratedActionBuilders.publishProfile"),
-        "scaffolded starter must point shells at generated publish builders:\n{lib}"
+        "scaffolded starter must point shells at typed generated publish builders, not generic publishRaw:\n{lib}"
     );
     assert!(
         !lib.contains("open_interest")
