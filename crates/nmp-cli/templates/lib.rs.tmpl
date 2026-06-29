@@ -33,7 +33,7 @@ use serde::{Deserialize, Serialize};
 /// Install the reusable NMP substrate into `app`, then wire this app's own
 /// modules and selected protocol features on top.
 ///
-/// MUST be called after `nmp_app_new` / `NmpAppBuilder::new` and BEFORE
+/// MUST be called after constructing the native runtime app/builder and BEFORE
 /// `start` — every registration must be visible to the kernel when the first
 /// event arrives (late wiring is dropped silently per D6).
 ///
