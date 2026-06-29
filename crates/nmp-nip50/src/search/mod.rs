@@ -18,6 +18,8 @@
 
 pub mod plan;
 pub mod relays;
+pub mod session;
 
 pub use plan::{search_relay_plan, RelayPinnedInterest};
 pub use relays::{install_search_relay_source, resolve_search_relays, SearchRelaySource};
+pub use session::{SearchSessionBuild, SearchSessionRegistry, SearchTeardownAction};

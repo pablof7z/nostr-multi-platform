@@ -7,24 +7,31 @@
 use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::{KernelEvent, ObservedProjection};
-use nmp_core::{ObservedProjectionId, ObservedProjectionSink, TypedProjectionData};
+use nmp_core::{ObservedProjectionSink, TypedProjectionData};
 use nmp_feed::DEFAULT_FEED_WINDOW_LIMIT;
 use nmp_nip50::{
-    encode_search_results_snapshot, search_relay_plan, SearchRequest, SearchResultsProjection,
-    SearchTargets, SEARCH_RESULTS_FILE_IDENTIFIER, SEARCH_RESULTS_SCHEMA_ID,
-    SEARCH_RESULTS_SCHEMA_VERSION,
+    encode_search_results_snapshot, resolve_search_relays, search_relay_plan, SearchRelaySource,
+    SearchRequest, SearchResultsProjection, SearchSessionBuild, SearchTeardownAction,
+    SEARCH_RESULTS_FILE_IDENTIFIER, SEARCH_RESULTS_SCHEMA_ID, SEARCH_RESULTS_SCHEMA_VERSION,
 };
 
 use super::handle::BrowserRuntimeHandle;
 
 const SCOPE_GLOBAL: u32 = 1;
 
-pub(crate) struct BrowserSearchSession {
-    projection_key: String,
-    observer_ids: Vec<ObservedProjectionId>,
-}
-
 struct SearchObserver(Arc<Mutex<SearchResultsProjection>>);
+
+struct PreferredRelaySearchSource<'a>(&'a dyn nmp_core::substrate::PreferredRelaySource);
+
+impl SearchRelaySource for PreferredRelaySearchSource<'_> {
+    fn user_preferred(&self) -> Vec<String> {
+        self.0.primary()
+    }
+
+    fn app_default(&self) -> Vec<String> {
+        self.0.fallback()
+    }
+}
 
 impl ObservedProjectionSink for SearchObserver {
     fn on_kernel_event(&self, event: &KernelEvent) {
@@ -37,8 +44,6 @@ impl ObservedProjectionSink for SearchObserver {
 
 impl BrowserRuntimeHandle {
     pub(crate) fn open_search(&mut self, request: SearchRequest, session_id: &str) -> String {
-        self.close_search(session_id);
-
         let relays = self.resolve_search_relays(&request.targets);
         let projection = Arc::new(Mutex::new(SearchResultsProjection::new(request.clone())));
 
@@ -50,7 +55,10 @@ impl BrowserRuntimeHandle {
         let key = search_key(session_id);
         self.register_search_sidecar(&key, Arc::clone(&projection));
 
-        let mut observer_ids = Vec::new();
+        let mut teardown: Vec<SearchTeardownAction> = vec![self
+            .runtime
+            .reducer
+            .remove_snapshot_projection_action(key.clone())];
         for pinned in search_relay_plan(&request, &relays) {
             let observer = Arc::new(SearchObserver(Arc::clone(&projection)));
             let decl = ObservedProjection {
@@ -67,30 +75,26 @@ impl BrowserRuntimeHandle {
             };
             let id = self.observed_projection_registrar.open_live_only(decl);
             if id.0 != 0 {
-                observer_ids.push(id);
+                let registrar = self.observed_projection_registrar.clone();
+                teardown.push(Box::new(move || {
+                    registrar.close(id);
+                }));
             }
         }
 
-        self.search_sessions.insert(
+        self.search_sessions.open(
             session_id.to_string(),
-            BrowserSearchSession {
+            SearchSessionBuild {
                 projection_key: key.clone(),
-                observer_ids,
+                relays,
+                teardown,
             },
         );
         key
     }
 
     pub(crate) fn close_search(&mut self, session_id: &str) {
-        let Some(session) = self.search_sessions.remove(session_id) else {
-            return;
-        };
-        for id in session.observer_ids {
-            self.observed_projection_registrar.close(id);
-        }
-        self.runtime
-            .reducer
-            .remove_snapshot_projection(&session.projection_key);
+        self.search_sessions.close(session_id);
     }
 
     fn register_search_sidecar(
@@ -115,27 +119,11 @@ impl BrowserRuntimeHandle {
             });
     }
 
-    fn resolve_search_relays(&self, targets: &SearchTargets) -> Vec<String> {
-        let (primary, fallback) = self
-            .preferred_relay_source
-            .as_ref()
-            .map(|source| (source.primary(), source.fallback()))
-            .unwrap_or_default();
-        let raw = match targets {
-            SearchTargets::Explicit(list) => list.clone(),
-            SearchTargets::UserPreferred => {
-                if primary.is_empty() {
-                    fallback
-                } else {
-                    primary
-                }
-            }
-            SearchTargets::AppDefault => fallback,
+    fn resolve_search_relays(&self, targets: &nmp_nip50::SearchTargets) -> Vec<String> {
+        let Some(source) = self.preferred_relay_source.as_deref() else {
+            return resolve_search_relays(targets, &(Vec::<String>::new, Vec::<String>::new));
         };
-        let mut seen = std::collections::BTreeSet::new();
-        raw.into_iter()
-            .filter(|relay| !relay.is_empty() && seen.insert(relay.clone()))
-            .collect()
+        resolve_search_relays(targets, &PreferredRelaySearchSource(source))
     }
 }
 
