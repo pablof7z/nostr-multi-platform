@@ -44,6 +44,9 @@ mod resolve_ref;
 #[path = "resolve_ref_tests.rs"]
 mod resolve_ref_tests;
 mod search;
+#[cfg(test)]
+#[path = "search_tests.rs"]
+mod search_tests;
 #[cfg(feature = "signer-broker")]
 mod signer_broker;
 #[cfg(any(test, feature = "test-support"))]
@@ -59,18 +62,18 @@ mod testing_sync;
 mod timeline;
 
 pub use nmp_native_runtime::{
-    decode_and_validate_feed_params, handle_projection_key, validate_feed_params, FeedAdmission,
-    FeedCompiler, FeedHandle, FeedOpenError, FeedParams, FeedParamsDecodeError, FeedRanking,
-    FeedRender, FeedScope, FeedSessionBuild, FeedSessionId, FeedTeardown, FeedWindow,
+    FeedAdmission, FeedCompiler, FeedHandle, FeedOpenError, FeedParams, FeedParamsDecodeError,
+    FeedRanking, FeedRender, FeedScope, FeedSessionBuild, FeedSessionId, FeedTeardown, FeedWindow,
     IdentityChangeObserverId, Nip29GroupDiscoveryHandle, Nip29GroupDiscoverySession,
     Nip29GroupEventsHandle, Nip29GroupEventsSession, NmpApp, NmpConfigStatus, PrimaryKindError,
-    ProjectionKey, PubkeySetExpr,
+    ProjectionKey, PubkeySetExpr, decode_and_validate_feed_params, handle_projection_key,
+    validate_feed_params,
 };
 
 pub use app_ctor::nmp_app_new;
 pub use app_lifecycle_ffi::{
-    nmp_app_configure, nmp_app_free, nmp_app_reset, nmp_app_set_update_callback, nmp_app_start,
-    nmp_app_stop, UpdateCallback,
+    UpdateCallback, nmp_app_configure, nmp_app_free, nmp_app_reset, nmp_app_set_update_callback,
+    nmp_app_start, nmp_app_stop,
 };
 
 #[cfg(feature = "native")]
@@ -88,7 +91,7 @@ pub use feed::nmp_app_load_older_feed;
 #[cfg(feature = "native")]
 pub use free::nmp_free_string;
 #[cfg(feature = "native")]
-pub use group_feed::{open_group_discovery_handle, GroupFeedHandle};
+pub use group_feed::{GroupFeedHandle, open_group_discovery_handle};
 #[cfg(feature = "native")]
 pub use identity::{
     create_new_account_with_initial_follows, nmp_app_add_relay, nmp_app_create_new_account,
@@ -171,7 +174,7 @@ pub use testing_stats::nmp_app_read_command_lane_stats;
 pub use testing_sync::nmp_app_wait_barrier;
 
 // ── Shared FFI helpers ────────────────────────────────────────────────────
-use std::ffi::{c_char, CStr};
+use std::ffi::{CStr, c_char};
 
 #[must_use]
 pub(crate) fn app_ref<'a>(app: *mut NmpApp) -> Option<&'a NmpApp> {

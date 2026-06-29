@@ -9,6 +9,7 @@ use std::collections::BTreeSet;
 use super::core::NmpRuntimeCore;
 use super::dispatch_support::not_started_error;
 use super::protocol::{SearchClose, SearchOpen, SearchScope, SearchTargets, WorkerEvent};
+use crate::runtime::{BrowserSearchSessionDescriptor, BrowserSearchSessionHandle};
 
 impl NmpRuntimeCore {
     pub(super) fn handle_search_open(&mut self, req: SearchOpen) -> Vec<WorkerEvent> {
@@ -22,7 +23,10 @@ impl NmpRuntimeCore {
                 reason: "invalid_search_request".to_string(),
             }];
         };
-        handle.open_search(request, &req.session_id);
+        handle.open_search_session(BrowserSearchSessionDescriptor {
+            request,
+            key: req.session_id,
+        });
         vec![WorkerEvent::ActionAccepted {
             action_type: "nmp.nip50.search.open".to_string(),
             correlation_id: req.correlation_id,
@@ -33,7 +37,7 @@ impl NmpRuntimeCore {
         let Some(handle) = self.handle.as_mut() else {
             return not_started_error(Some(req.correlation_id));
         };
-        handle.close_search(&req.session_id);
+        handle.close_search_session(BrowserSearchSessionHandle::for_key(req.session_id));
         vec![WorkerEvent::ActionAccepted {
             action_type: "nmp.nip50.search.close".to_string(),
             correlation_id: req.correlation_id,

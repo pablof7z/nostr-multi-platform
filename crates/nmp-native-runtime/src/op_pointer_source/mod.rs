@@ -118,7 +118,7 @@ pub fn register_pointer_source(
     app: &(impl ObservedProjectionRegistrar + HostCapabilities),
     params: PointerSourceParams,
 ) -> PointerSourceSession {
-    open_pointer_source(
+    open_pointer_source_internal(
         app.actor_sender(),
         app.observed_projection_registrar_handle(),
         params,
@@ -131,7 +131,7 @@ pub fn register_pointer_source(
 /// command sender and observed-projection registrar directly so it can be wired
 /// from contexts that do not hold a full app handle.
 #[must_use]
-pub fn open_pointer_source(
+fn open_pointer_source_internal(
     sender: CommandSender,
     registrar: Arc<dyn ObservedProjectionRegistrar + Send + Sync>,
     params: PointerSourceParams,

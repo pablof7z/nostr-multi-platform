@@ -19,6 +19,24 @@ use super::handle::BrowserRuntimeHandle;
 
 const SCOPE_GLOBAL: u32 = 1;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct BrowserSearchSessionDescriptor {
+    pub(crate) request: SearchRequest,
+    pub(crate) key: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct BrowserSearchSessionHandle {
+    key: String,
+}
+
+impl BrowserSearchSessionHandle {
+    #[must_use]
+    pub(crate) fn for_key(key: impl Into<String>) -> Self {
+        Self { key: key.into() }
+    }
+}
+
 struct SearchObserver(Arc<Mutex<SearchResultsProjection>>);
 
 struct PreferredRelaySearchSource<'a>(&'a dyn nmp_core::substrate::PreferredRelaySource);
@@ -43,8 +61,26 @@ impl ObservedProjectionSink for SearchObserver {
 }
 
 impl BrowserRuntimeHandle {
-    pub(crate) fn open_search(&mut self, request: SearchRequest, session_id: &str) -> String {
-        self.close_search(session_id);
+    pub(crate) fn open_search_session(
+        &mut self,
+        descriptor: BrowserSearchSessionDescriptor,
+    ) -> BrowserSearchSessionHandle {
+        self.open_search_for_key(descriptor.request, &descriptor.key);
+        BrowserSearchSessionHandle {
+            key: descriptor.key,
+        }
+    }
+
+    pub(crate) fn close_search_session(&mut self, handle: BrowserSearchSessionHandle) {
+        self.close_search_key(&handle.key);
+    }
+
+    pub(crate) fn open_search_for_key(
+        &mut self,
+        request: SearchRequest,
+        session_id: &str,
+    ) -> String {
+        self.close_search_key(session_id);
 
         let relays = self.resolve_search_relays(&request.targets);
         let projection = Arc::new(Mutex::new(SearchResultsProjection::new(request.clone())));
@@ -95,7 +131,7 @@ impl BrowserRuntimeHandle {
         key
     }
 
-    pub(crate) fn close_search(&mut self, session_id: &str) {
+    pub(crate) fn close_search_key(&mut self, session_id: &str) {
         self.search_sessions.close(session_id);
     }
 

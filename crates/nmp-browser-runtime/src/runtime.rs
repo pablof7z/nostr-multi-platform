@@ -66,9 +66,13 @@ mod group_events;
 pub use group_events::BrowserGroupEventsSessionHandle;
 pub(crate) use group_events::{BrowserGroupEventsSession, BrowserGroupEventsSessionDescriptor};
 mod notifications;
-pub(crate) use notifications::BrowserNotificationsSession;
+pub(crate) use notifications::{
+    BrowserNotificationsSession, BrowserNotificationsSessionDescriptor,
+    BrowserNotificationsSessionHandle,
+};
 mod feed_lifecycle;
 mod search;
+pub(crate) use search::{BrowserSearchSessionDescriptor, BrowserSearchSessionHandle};
 
 // ── #2051/#2073 — snapshot/projection/clock/diagnostics track ────────────────
 pub mod diagnostics;

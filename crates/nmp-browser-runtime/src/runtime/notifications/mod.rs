@@ -19,6 +19,24 @@ use super::handle::BrowserRuntimeHandle;
 
 const SCOPE_GLOBAL: u32 = 1;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct BrowserNotificationsSessionDescriptor {
+    pub(crate) account_pubkey: String,
+    pub(crate) key: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct BrowserNotificationsSessionHandle {
+    key: String,
+}
+
+impl BrowserNotificationsSessionHandle {
+    #[must_use]
+    pub(crate) fn for_key(key: impl Into<String>) -> Self {
+        Self { key: key.into() }
+    }
+}
+
 pub(crate) struct BrowserNotificationsSession {
     projection_key: String,
     projection: Arc<NotificationsProjection>,
@@ -26,20 +44,19 @@ pub(crate) struct BrowserNotificationsSession {
 }
 
 impl BrowserRuntimeHandle {
-    pub(crate) fn open_notifications(
+    pub(crate) fn open_notifications_session(
         &mut self,
-        account_pubkey: &str,
-        session_id: &str,
-    ) -> Result<String, String> {
-        let pubkey = account_pubkey.trim();
+        descriptor: BrowserNotificationsSessionDescriptor,
+    ) -> Result<BrowserNotificationsSessionHandle, String> {
+        let pubkey = descriptor.account_pubkey.trim();
         if !is_hex64(pubkey) {
             return Err("notifications require a 64-hex account pubkey".to_string());
         }
 
-        self.close_notifications(session_id);
+        self.close_notifications_key(&descriptor.key);
 
         let projection = Arc::new(NotificationsProjection::new(pubkey.to_string()));
-        let projection_key = notifications_key(session_id);
+        let projection_key = notifications_key(&descriptor.key);
         self.register_notifications_sidecar(&projection_key, Arc::clone(&projection));
 
         let shape = notifications_interest_shape(pubkey);
@@ -48,7 +65,7 @@ impl BrowserRuntimeHandle {
         let decl = ObservedProjection {
             observer,
             filter_json,
-            consumer_id: notifications_consumer(session_id, pubkey),
+            consumer_id: notifications_consumer(&descriptor.key, pubkey),
             scope: SCOPE_GLOBAL,
             relay_pin: None,
             replay_shapes: vec![shape],
@@ -58,23 +75,25 @@ impl BrowserRuntimeHandle {
         let observer_ids = if id.0 == 0 { Vec::new() } else { vec![id] };
 
         self.notifications_sessions.insert(
-            session_id.to_string(),
+            descriptor.key.clone(),
             BrowserNotificationsSession {
                 projection_key: projection_key.clone(),
                 projection,
                 observer_ids,
             },
         );
-        Ok(projection_key)
+        Ok(BrowserNotificationsSessionHandle {
+            key: descriptor.key,
+        })
     }
 
-    pub(crate) fn mark_notifications_read(
+    pub(crate) fn mark_notifications_session_read(
         &mut self,
-        session_id: &str,
+        handle: &BrowserNotificationsSessionHandle,
         event_ids: Vec<String>,
         all_visible: bool,
     ) -> Result<usize, String> {
-        let Some(session) = self.notifications_sessions.get(session_id) else {
+        let Some(session) = self.notifications_sessions.get(&handle.key) else {
             return Err("notification session is not open".to_string());
         };
         let changed = if all_visible {
@@ -85,7 +104,14 @@ impl BrowserRuntimeHandle {
         Ok(changed)
     }
 
-    pub(crate) fn close_notifications(&mut self, session_id: &str) {
+    pub(crate) fn close_notifications_session(
+        &mut self,
+        handle: BrowserNotificationsSessionHandle,
+    ) {
+        self.close_notifications_key(&handle.key);
+    }
+
+    pub(crate) fn close_notifications_key(&mut self, session_id: &str) {
         let Some(session) = self.notifications_sessions.remove(session_id) else {
             return;
         };

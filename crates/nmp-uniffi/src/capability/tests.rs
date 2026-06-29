@@ -334,7 +334,10 @@ impl ActionModule for SucceedModule {
 fn action_result_observer_fires_on_dispatch() {
     let mut inner = nmp_native_runtime::new_app();
     let _ = inner.register_action(SucceedModule);
-    let app = std::sync::Arc::new(NmpApp { inner });
+    let app = std::sync::Arc::new(NmpApp {
+        inner,
+        search_handles: Default::default(),
+    });
 
     let (observer, received) = RecordObserver::new_boxed();
     app.register_action_result_observer(observer);
@@ -365,7 +368,10 @@ fn action_result_observer_fires_on_dispatch() {
 fn action_result_observer_replace_is_safe() {
     let mut inner = nmp_native_runtime::new_app();
     let _ = inner.register_action(SucceedModule);
-    let app = std::sync::Arc::new(NmpApp { inner });
+    let app = std::sync::Arc::new(NmpApp {
+        inner,
+        search_handles: Default::default(),
+    });
 
     let (observer_a, received_a) = RecordObserver::new_boxed();
     app.register_action_result_observer(observer_a);
@@ -412,7 +418,10 @@ fn action_result_observer_panic_is_contained() {
 
     let mut inner = nmp_native_runtime::new_app();
     let _ = inner.register_action(SucceedModule);
-    let app = std::sync::Arc::new(NmpApp { inner });
+    let app = std::sync::Arc::new(NmpApp {
+        inner,
+        search_handles: Default::default(),
+    });
 
     app.register_action_result_observer(Box::new(PanickingObserver));
 

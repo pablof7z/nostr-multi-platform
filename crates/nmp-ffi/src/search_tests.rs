@@ -1,15 +1,19 @@
 //! Tests for the higher-order NIP-50 search FFI surface.
 
 use super::*;
+use crate::search::{
+    nmp_app_search_close, nmp_app_search_open, nmp_app_search_snapshot, parse_search_request,
+};
 use crate::{nmp_app_free, nmp_app_new};
 use nmp_core::substrate::SearchScopeRegistry;
 use nmp_nip50::{
-    decode_search_results_snapshot, install_search_relay_source, SearchHitSource,
-    SearchRelaySource, SearchScope, SearchTargets,
+    SearchHitSource, SearchRelaySource, SearchRequest, SearchScope, SearchTargets,
+    decode_search_results_snapshot, install_search_relay_source,
 };
 use nmp_store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
 use std::collections::BTreeSet;
 use std::ffi::CString;
+use std::sync::Arc;
 
 /// A registered `SearchRelaySource` lets `open_search` resolve `UserPreferred`
 /// to the kind:10007 set and `AppDefault` to the app default.
@@ -24,6 +28,20 @@ impl SearchRelaySource for StubSource {
     fn app_default(&self) -> Vec<String> {
         self.default.clone()
     }
+}
+
+fn open_search(app: &NmpApp, request: SearchRequest, key: &str) -> String {
+    app.open_search_session(nmp_native_runtime::Nip50SearchSession::new(request, key))
+        .projection_key()
+        .to_string()
+}
+
+fn close_search(app: &NmpApp, key: &str) {
+    app.close_search_session(&nmp_native_runtime::Nip50SearchHandle::for_key(key));
+}
+
+fn search_snapshot_bytes(app: &NmpApp, key: &str) -> Option<Vec<u8>> {
+    app.search_session_snapshot_bytes(&nmp_native_runtime::Nip50SearchHandle::for_key(key))
 }
 
 #[test]
@@ -73,16 +91,18 @@ fn open_search_registers_typed_sidecar_under_session_key() {
         Some(20),
     )
     .expect("request");
-    let key = app_ref.open_search(request, "s1");
+    let key = open_search(app_ref, request, "s1");
     assert_eq!(key, "nmp.nip50.search.s1");
 
     // The typed projection key is registered.
-    assert!(app_ref
-        .registered_typed_projection_keys()
-        .contains(&"nmp.nip50.search.s1".to_string()));
+    assert!(
+        app_ref
+            .registered_typed_projection_keys()
+            .contains(&"nmp.nip50.search.s1".to_string())
+    );
 
     // The N50S sidecar is readable + decodable (empty hits before any event).
-    let bytes = app_ref.search_snapshot_bytes("s1").expect("sidecar bytes");
+    let bytes = search_snapshot_bytes(app_ref, "s1").expect("sidecar bytes");
     let snap = decode_search_results_snapshot(&bytes).expect("decode N50S");
     assert!(snap.hits.is_empty());
 
@@ -109,19 +129,23 @@ fn close_search_tears_down_the_projection() {
         None,
     )
     .expect("request");
-    app_ref.open_search(request, "s2");
-    assert!(app_ref
-        .registered_typed_projection_keys()
-        .contains(&"nmp.nip50.search.s2".to_string()));
+    open_search(app_ref, request, "s2");
+    assert!(
+        app_ref
+            .registered_typed_projection_keys()
+            .contains(&"nmp.nip50.search.s2".to_string())
+    );
 
-    app_ref.close_search("s2");
-    assert!(!app_ref
-        .registered_typed_projection_keys()
-        .contains(&"nmp.nip50.search.s2".to_string()));
-    assert!(app_ref.search_snapshot_bytes("s2").is_none());
+    close_search(app_ref, "s2");
+    assert!(
+        !app_ref
+            .registered_typed_projection_keys()
+            .contains(&"nmp.nip50.search.s2".to_string())
+    );
+    assert!(search_snapshot_bytes(app_ref, "s2").is_none());
 
     // Idempotent: closing again is a no-op.
-    app_ref.close_search("s2");
+    close_search(app_ref, "s2");
 
     nmp_app_free(app);
 }
@@ -153,7 +177,7 @@ fn open_search_user_preferred_fans_out_to_installed_primary_relays() {
         Some(10),
     )
     .expect("request");
-    app_ref.open_search(request, "user");
+    open_search(app_ref, request, "user");
     assert_eq!(
         app_ref.search_session_relays("user"),
         vec!["wss://user-search.example/".to_string()],
@@ -175,7 +199,7 @@ fn open_search_user_preferred_fans_out_to_installed_primary_relays() {
         Some(10),
     )
     .expect("request");
-    app_ref.open_search(req2, "fallback");
+    open_search(app_ref, req2, "fallback");
     assert_eq!(
         app_ref.search_session_relays("fallback"),
         vec!["wss://app-default.example/".to_string()],
@@ -208,7 +232,7 @@ fn multi_relay_search_shares_one_kernel_observer() {
         Some(10),
     )
     .expect("request");
-    app_ref.open_search(request, "multi");
+    open_search(app_ref, request, "multi");
 
     assert_eq!(
         app_ref.search_session_relays("multi").len(),
@@ -221,7 +245,7 @@ fn multi_relay_search_shares_one_kernel_observer() {
         "three relay-pinned interests share ONE kernel observer (not one per relay)"
     );
 
-    app_ref.close_search("multi");
+    close_search(app_ref, "multi");
     assert_eq!(
         app_ref.test_observed_projection_sink_count(),
         before,
@@ -245,9 +269,9 @@ fn open_search_without_source_is_cache_only_not_a_crash() {
         None,
     )
     .expect("request");
-    let key = app_ref.open_search(request, "s3");
+    let key = open_search(app_ref, request, "s3");
     assert_eq!(key, "nmp.nip50.search.s3");
-    assert!(app_ref.search_snapshot_bytes("s3").is_some());
+    assert!(search_snapshot_bytes(app_ref, "s3").is_some());
     nmp_app_free(app);
 }
 
@@ -306,7 +330,7 @@ fn note_request(query: &str) -> SearchRequest {
 }
 
 fn decoded_hits(app: &NmpApp, session: &str) -> Vec<nmp_nip50::SearchHit> {
-    let bytes = app.search_snapshot_bytes(session).expect("sidecar bytes");
+    let bytes = search_snapshot_bytes(app, session).expect("sidecar bytes");
     decode_search_results_snapshot(&bytes)
         .expect("decode N50S")
         .hits
@@ -331,7 +355,7 @@ fn open_search_excludes_cached_events_that_do_not_match_the_query_text() {
         ],
     );
 
-    app_ref.open_search(note_request("nostr"), "cache");
+    open_search(app_ref, note_request("nostr"), "cache");
     let hits = decoded_hits(app_ref, "cache");
 
     let ids: BTreeSet<String> = hits.iter().map(|h| h.id.clone()).collect();
@@ -362,7 +386,7 @@ fn open_search_returns_text_matching_cache_hit_tagged_cache() {
     let app_ref = unsafe { &*app };
     publish_store_with_notes(app_ref, &[(7, "satoshi nakamoto wrote nostr", 200)]);
 
-    app_ref.open_search(note_request("satoshi"), "match");
+    open_search(app_ref, note_request("satoshi"), "match");
     let hits = decoded_hits(app_ref, "match");
 
     assert_eq!(hits.len(), 1, "the matching cached note is returned");
@@ -387,7 +411,7 @@ fn open_search_cache_only_never_emits_a_relay_provenance() {
     publish_store_with_notes(app_ref, &[(1, "nostr cache first", 100)]);
 
     // No relay source → cache-only fan-out. The sole hit must be Cache.
-    app_ref.open_search(note_request("nostr"), "dedupe");
+    open_search(app_ref, note_request("nostr"), "dedupe");
     let hits = decoded_hits(app_ref, "dedupe");
     assert_eq!(hits.len(), 1);
     assert_eq!(

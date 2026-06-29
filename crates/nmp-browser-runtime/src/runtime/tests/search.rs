@@ -7,8 +7,28 @@ use nmp_nip50::{
 use nmp_store::{RawEvent, VerifiedEvent};
 
 use super::started_handle;
+use crate::runtime::{BrowserSearchSessionDescriptor, BrowserSearchSessionHandle};
 
 const RELAY: &str = "wss://search.example";
+
+fn open_search(
+    handle: &mut crate::BrowserRuntimeHandle,
+    request: SearchRequest,
+    key: &str,
+) -> String {
+    handle.open_search_session(BrowserSearchSessionDescriptor {
+        request,
+        key: key.to_string(),
+    });
+    handle
+        .search_sessions
+        .projection_key(key)
+        .expect("search session was registered")
+}
+
+fn close_search(handle: &mut crate::BrowserRuntimeHandle, key: &str) {
+    handle.close_search_session(BrowserSearchSessionHandle::for_key(key));
+}
 
 #[test]
 fn browser_search_session_emits_n50s_results_from_live_relay_hits() {
@@ -21,7 +41,7 @@ fn browser_search_session_emits_n50s_results_from_live_relay_hits() {
     )
     .expect("valid search request");
 
-    let key = handle.open_search(request, "s1");
+    let key = open_search(&mut handle, request, "s1");
     assert_eq!(key, "nmp.nip50.search.s1");
 
     let opened = handle.pump();
@@ -90,7 +110,7 @@ fn browser_search_session_emits_n50s_results_from_cache_hits() {
     )
     .expect("valid search request");
 
-    handle.open_search(request, "s1");
+    open_search(&mut handle, request, "s1");
 
     let payload = search_payload(&mut handle, "nmp.nip50.search.s1");
     let snapshot = decode_search_results_snapshot(&payload).expect("N50S decodes");
@@ -110,7 +130,7 @@ fn browser_search_session_close_tears_down_projection_and_lifecycle() {
     )
     .expect("valid search request");
 
-    let key = handle.open_search(request, "s1");
+    let key = open_search(&mut handle, request, "s1");
     assert_eq!(handle.search_sessions.live_count(), 1);
     assert_eq!(
         handle.search_sessions.projection_key("s1").as_deref(),
@@ -118,14 +138,14 @@ fn browser_search_session_close_tears_down_projection_and_lifecycle() {
     );
     assert_eq!(handle.search_sessions.relays("s1"), vec![RELAY.to_string()]);
 
-    handle.close_search("s1");
+    close_search(&mut handle, "s1");
 
     assert_eq!(handle.search_sessions.live_count(), 0);
     assert!(
         !has_nonempty_search_payload(&mut handle, &key),
         "close_search must remove the typed N50S sidecar"
     );
-    handle.close_search("s1");
+    close_search(&mut handle, "s1");
     assert_eq!(handle.search_sessions.live_count(), 0);
 }
 
@@ -147,10 +167,10 @@ fn browser_search_session_replace_preserves_new_sidecar() {
     )
     .expect("valid search request");
 
-    let key = handle.open_search(first, "s1");
+    let key = open_search(&mut handle, first, "s1");
     assert!(has_nonempty_search_payload(&mut handle, &key));
 
-    let reopened = handle.open_search(second, "s1");
+    let reopened = open_search(&mut handle, second, "s1");
     assert_eq!(reopened, key);
     assert_eq!(handle.search_sessions.live_count(), 1);
     assert!(
@@ -170,7 +190,7 @@ fn browser_search_session_empty_relays_stays_cache_only_fail_closed() {
     )
     .expect("valid search request");
 
-    handle.open_search(request, "empty");
+    open_search(&mut handle, request, "empty");
 
     assert_eq!(handle.search_sessions.relays("empty"), Vec::<String>::new());
     let opened = handle.pump();
