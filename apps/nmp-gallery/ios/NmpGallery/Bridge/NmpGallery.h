@@ -6,10 +6,8 @@
 
 // NmpGallery is a developer-facing component gallery for the NMP registry.
 // It links one aggregate Rust archive — `libnmp_app_gallery.a` — that bundles
-// the NMP kernel symbols plus a gallery-tailored projection. The subset of the
-// NMP C-ABI declared below is exactly what the gallery shell needs; matching
-// declarations in app repositories must stay source-compatible with this
-// framework-facing subset.
+// the NMP kernel symbols plus gallery-tailored bridge helpers. These declarations
+// are app-owned gallery ABI, not the deleted reusable nmp-ffi framework ABI.
 
 // ── Gallery kernel lifecycle ─────────────────────────────────────────────
 
@@ -78,7 +76,7 @@ void nmp_gallery_kernel_add_relay(void *app, const char *url, const char *role);
 // encodes `body_json` into typed `ActionPayload` FlatBuffers bytes for
 // `namespace` and dispatches through the native-runtime byte doorway. Returns a
 // heap-allocated JSON envelope (`{"correlation_id":"<id>"}` or
-// `{"error":"…"}`) the caller MUST free via `nmp_free_string`.
+// `{"error":"…"}`) the caller MUST free via `nmp_app_gallery_free_string`.
 char *nmp_gallery_kernel_dispatch_action_bytes(void *app, const char *namespace, const char *body_json);
 
 // ── Showcase sign-in (phase 2) ───────────────────────────────────────────
@@ -126,7 +124,7 @@ void nmp_app_gallery_ref_stores_free(struct GalleryRefStores *stores);
 // rendered from the profile store; `refs.event.envelopes` is derived from the
 // event store).
 // `stores` MUST persist across calls for one kernel session.
-// Returns a heap string that MUST be released via `nmp_free_string`; returns
+// Returns a heap string that MUST be released via `nmp_app_gallery_free_string`; returns
 // NULL for NULL stores, malformed frames, or decode failures.
 char *nmp_app_gallery_snapshot_json_from_update_frame(struct GalleryRefStores *stores,
                                                       const uint8_t *bytes, uintptr_t len);
@@ -135,14 +133,14 @@ char *nmp_app_gallery_snapshot_json_from_update_frame(struct GalleryRefStores *s
 //
 // Decode a Gallery event-embed URI into {"key":"...","metadata_json":"..."}.
 // Returns NULL for invalid, secret-bearing, or non-event targets. Non-NULL
-// returns are heap strings and MUST be freed via nmp_free_string.
+// returns are heap strings and MUST be freed via nmp_app_gallery_free_string.
 char *nmp_app_gallery_event_ref_from_uri(const char *uri);
 
 // ── Heap-string release ──────────────────────────────────────────────────
 
-// Release a `*mut c_char` returned by any NMP FFI function. Passing NULL is a
-// no-op (D6). This is the ONLY symbol the caller must invoke to free NMP-heap
-// strings — `nmp_app_free_string` and `nmp_broker_free_string` are removed.
-void nmp_free_string(char *ptr);
+// Release a `*mut c_char` returned by a gallery C-ABI function. Passing NULL is
+// a no-op (D6). The symbol is app-scoped so the iOS shell does not retain the
+// deleted reusable nmp-ffi heap-free ABI.
+void nmp_app_gallery_free_string(char *ptr);
 
 #endif

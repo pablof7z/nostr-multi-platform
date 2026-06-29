@@ -3689,6 +3689,7 @@ dependencies = [
  "nmp-uniffi",
  "serde",
  "serde_json",
+ "zeroize",
 ]
 
 [[package]]

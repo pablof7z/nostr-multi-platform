@@ -4,7 +4,7 @@ use std::sync::Arc;
 use nmp_native_runtime::{NmpApp as NativeRuntimeApp, UpdateListener};
 use zeroize::Zeroizing;
 
-use crate::{dispatch_bytes, json_escape, register_gallery_runtime};
+use crate::{dispatch_bytes, json_escape, register_gallery_composition};
 
 pub struct GalleryNativeApp {
     app: NativeRuntimeApp,
@@ -13,7 +13,7 @@ pub struct GalleryNativeApp {
 impl GalleryNativeApp {
     fn new() -> Self {
         let mut app = nmp_native_runtime::new_app();
-        register_gallery_runtime(&mut app);
+        register_gallery_composition(&mut app);
         Self { app }
     }
 }
@@ -234,11 +234,12 @@ pub extern "C" fn nmp_gallery_kernel_dispatch_action_bytes(
     };
     let namespace = c_string(namespace).unwrap_or_default();
     let body_json = c_string(body_json).unwrap_or_default();
-    let envelope =
-        match dispatch_bytes::dispatch_action_bytes_for(&session.app, &namespace, &body_json) {
-            Ok(envelope) => envelope,
-            Err(error) => format!(r#"{{"error":{}}}"#, json_escape(&error)),
-        };
+    let app_ptr = std::ptr::addr_of!(session.app) as *mut NativeRuntimeApp;
+    let envelope = match dispatch_bytes::dispatch_action_bytes_for(app_ptr, &namespace, &body_json)
+    {
+        Ok(envelope) => envelope,
+        Err(error) => format!(r#"{{"error":{}}}"#, json_escape(&error)),
+    };
     CString::new(envelope)
         .unwrap_or_else(|_| {
             CString::new(r#"{"error":"dispatch result encoding failed"}"#).unwrap_or_default()
