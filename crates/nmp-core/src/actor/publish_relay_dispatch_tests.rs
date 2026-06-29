@@ -15,7 +15,7 @@ use super::commands::{
 use super::relay_mgmt::{close_relays, route_dispatch_outbound};
 use super::relay_runtime::RelayRuntime;
 use crate::kernel::Kernel;
-use crate::publish::PublishTarget;
+use crate::publish::{PublishRouteClass, PublishTarget};
 use crate::relay::{CanonicalRelayUrl, OutboundMessage, DEFAULT_VISIBLE_LIMIT};
 use nmp_network::pool::{Pool, PoolConfig, PoolEvent};
 use nmp_network::role::RelayRole;
@@ -66,7 +66,10 @@ fn explicit_publish_target_spawns_worker_for_unseen_relay() {
     let outbound = publish_signed_event(
         &mut kernel,
         raw,
-        PublishTarget::manual_override(vec![UNSEEN_RELAY.to_string()]),
+        PublishTarget::explicit(
+            vec![UNSEEN_RELAY.to_string()],
+            PublishRouteClass::ImportedOrPresigned,
+        ),
         None,
     );
     let mut queued_publish_outbound = Vec::new();

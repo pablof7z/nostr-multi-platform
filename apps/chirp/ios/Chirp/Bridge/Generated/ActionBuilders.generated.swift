@@ -1025,8 +1025,8 @@ public enum GeneratedActionBuilders {
         if signerOffset.o != 0 { fbb.add(offset: signerOffset, at: 12) } // slot 4: signer
         let bodyOffset = Offset(offset: fbb.endTable(at: rawStart))
         let payloadStart = fbb.startTable(with: 3)
-        fbb.add(element: UInt32(3), def: UInt32(0), at: 4) // slot 0: schema_version
-        fbb.add(element: UInt8(3), def: UInt8(0), at: 6) // slot 1: body_type
+        fbb.add(element: UInt32(4), def: UInt32(0), at: 4) // slot 0: schema_version
+        fbb.add(element: UInt8(2), def: UInt8(0), at: 6) // slot 1: body_type
         fbb.add(offset: bodyOffset, at: 8) // slot 2: body
         let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))
         fbb.finish(offset: payloadRoot, fileId: "NPUB")
@@ -1082,8 +1082,8 @@ public enum GeneratedActionBuilders {
         if signerOffset.o != 0 { fbb.add(offset: signerOffset, at: 10) } // slot 3: signer
         let bodyOffset = Offset(offset: fbb.endTable(at: replyStart))
         let payloadStart = fbb.startTable(with: 3)
-        fbb.add(element: UInt32(3), def: UInt32(0), at: 4) // slot 0: schema_version
-        fbb.add(element: UInt8(4), def: UInt8(0), at: 6) // slot 1: body_type
+        fbb.add(element: UInt32(4), def: UInt32(0), at: 4) // slot 0: schema_version
+        fbb.add(element: UInt8(3), def: UInt8(0), at: 6) // slot 1: body_type
         fbb.add(offset: bodyOffset, at: 8) // slot 2: body
         let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))
         fbb.finish(offset: payloadRoot, fileId: "NPUB")
@@ -1115,8 +1115,8 @@ public enum GeneratedActionBuilders {
         fbb.add(offset: fieldsVec, at: 4) // slot 0: fields
         let bodyOffset = Offset(offset: fbb.endTable(at: profileStart))
         let payloadStart = fbb.startTable(with: 3)
-        fbb.add(element: UInt32(3), def: UInt32(0), at: 4) // slot 0: schema_version
-        fbb.add(element: UInt8(2), def: UInt8(0), at: 6) // slot 1: body_type
+        fbb.add(element: UInt32(4), def: UInt32(0), at: 4) // slot 0: schema_version
+        fbb.add(element: UInt8(1), def: UInt8(0), at: 6) // slot 1: body_type
         fbb.add(offset: bodyOffset, at: 8) // slot 2: body
         let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))
         fbb.finish(offset: payloadRoot, fileId: "NPUB")

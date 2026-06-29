@@ -1073,8 +1073,8 @@ object GeneratedActionBuilders {
         if (signerOffset != 0) fbb.addOffset(4, signerOffset, 0) // slot 4: signer
         val bodyOffset = fbb.endTable()
         fbb.startTable(3)
-        fbb.addInt(0, 3, 0) // slot 0: schema_version
-        fbb.addByte(1, 3.toByte(), 0) // slot 1: body_type
+        fbb.addInt(0, 4, 0) // slot 0: schema_version
+        fbb.addByte(1, 2.toByte(), 0) // slot 1: body_type
         fbb.addOffset(2, bodyOffset, 0) // slot 2: body
         val payloadRoot = fbb.endTable()
         fbb.finish(payloadRoot, "NPUB")
@@ -1131,8 +1131,8 @@ object GeneratedActionBuilders {
         if (signerOffset != 0) fbb.addOffset(3, signerOffset, 0) // slot 3: signer
         val bodyOffset = fbb.endTable()
         fbb.startTable(3)
-        fbb.addInt(0, 3, 0) // slot 0: schema_version
-        fbb.addByte(1, 4.toByte(), 0) // slot 1: body_type
+        fbb.addInt(0, 4, 0) // slot 0: schema_version
+        fbb.addByte(1, 3.toByte(), 0) // slot 1: body_type
         fbb.addOffset(2, bodyOffset, 0) // slot 2: body
         val payloadRoot = fbb.endTable()
         fbb.finish(payloadRoot, "NPUB")
@@ -1168,8 +1168,8 @@ object GeneratedActionBuilders {
         fbb.addOffset(0, fieldsVec, 0) // slot 0: fields
         val bodyOffset = fbb.endTable()
         fbb.startTable(3)
-        fbb.addInt(0, 3, 0) // slot 0: schema_version
-        fbb.addByte(1, 2.toByte(), 0) // slot 1: body_type
+        fbb.addInt(0, 4, 0) // slot 0: schema_version
+        fbb.addByte(1, 1.toByte(), 0) // slot 1: body_type
         fbb.addOffset(2, bodyOffset, 0) // slot 2: body
         val payloadRoot = fbb.endTable()
         fbb.finish(payloadRoot, "NPUB")
