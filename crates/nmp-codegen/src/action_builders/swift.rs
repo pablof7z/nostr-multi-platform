@@ -24,10 +24,9 @@
 //! relies on (exactly like [`crate::swift`] / [`crate::swift_typed_decoders`]).
 
 use crate::action_builders::registry::{
-    ActionBuilder, FieldKind, ACTION_BUILDERS, DISPATCH_ENVELOPE_FILE_IDENTIFIER,
-    DISPATCH_ENVELOPE_SCHEMA_VERSION,
+    ActionBuilder, FieldKind, DISPATCH_ENVELOPE_FILE_IDENTIFIER, DISPATCH_ENVELOPE_SCHEMA_VERSION,
 };
-use crate::action_contract::contract_for;
+use crate::action_builders::ActionBuilderRegistry;
 // NIP-51 bookmark helpers: render_bookmark_update, is_bookmark_builder,
 // is_bookmark_set_builder, swift_param_type. Module declared in parent
 // `action_builders.rs` (sibling module) for 500-LOC cap compliance.
@@ -64,20 +63,26 @@ import Foundation
 /// Render the generated Swift action-builders for the given registry.
 #[must_use]
 pub fn render(builders: &[ActionBuilder]) -> String {
+    render_registry(&ActionBuilderRegistry::builtin_slice(builders))
+}
+
+/// Render the generated Swift action-builders for the given registry context.
+#[must_use]
+pub fn render_registry(registry: &ActionBuilderRegistry<'_>) -> String {
     let mut out = String::from(HEADER);
     out.push('\n');
     out.push_str("public enum GeneratedActionBuilders {\n");
     out.push_str(&publish_signer_types());
     out.push_str(&envelope_helper());
     out.push_str(&relay_marker_byte_helper());
-    for builder in builders {
+    for builder in registry.builders {
         out.push('\n');
-        render_one(builder, &mut out);
+        render_one(builder, registry, &mut out);
     }
     // The `nmp.publish` UNION builders (separate emitter — different encode
     // shape; see `swift_publish`). Only emitted for the default registry, which
     // is what `render_default` (and therefore the CLI + drift gate) uses.
-    if std::ptr::eq(builders.as_ptr(), ACTION_BUILDERS.as_ptr()) {
+    if registry.is_full_builtin() {
         crate::action_builders::swift_publish::render_publish(&mut out);
         // The `nmp.marmot` UNION builders (M14-1c / #2169 — 9-arm union).
         crate::action_builders::swift_marmot::render_marmot(&mut out);
@@ -201,7 +206,7 @@ fn relay_marker_byte_helper() -> String {
 }
 
 /// Render one typed builder function.
-fn render_one(builder: &ActionBuilder, out: &mut String) {
+fn render_one(builder: &ActionBuilder, registry: &ActionBuilderRegistry<'_>, out: &mut String) {
     if is_bookmark_builder(builder) {
         render_bookmark_update(builder, out);
         return;
@@ -210,7 +215,7 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
         crate::action_builders::swift_bookmark_set::render_bookmark_set_update(builder, out);
         return;
     }
-    let contract = contract_for(builder.namespace);
+    let contract = registry.wire_contract_for(builder.namespace);
     let method = builder.method;
     // Doc + signature.
     out.push_str(&format!("    /// {}\n", builder.doc));
@@ -458,5 +463,5 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
 /// Render the full file for the default registry.
 #[must_use]
 pub fn render_default() -> String {
-    render(ACTION_BUILDERS)
+    render_registry(&ActionBuilderRegistry::builtin())
 }

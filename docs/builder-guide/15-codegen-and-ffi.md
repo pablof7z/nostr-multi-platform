@@ -103,6 +103,24 @@ The app-private contract must name:
 - the Swift, Kotlin, and TypeScript generated-builder output targets;
 - the drift/check commands the app runs in CI.
 
+The first supported input form is a checked-in static JSON file consumed by
+`nmp-codegen`:
+
+```bash
+cargo run -p nmp-codegen -- gen action-builders \
+  --registry apps/<app>/action-builders.json \
+  --platform swift \
+  --out apps/<app>/ios/Generated/ActionBuilders.generated.swift \
+  --check
+```
+
+The JSON `actions` rows carry the namespace, event kind, dispatch kind, schema
+identity, Rust owner types, and a flat-table `builder.fields` list in
+FlatBuffers declaration order. The parser feeds only those static rows into the
+builder emitters; it does not load schemas at runtime, discover plugins, or add
+the app-private namespace to NMP's default `ACTION_CONTRACT` /
+`ACTION_BUILDERS` tables.
+
 Rust app code remains authoritative for meaning. The app crate owns validation,
 tag policy, event construction, publish intent, and `ActionModule::execute`.
 Generated builders only encode typed action bytes for the same byte doorway:
