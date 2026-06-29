@@ -51,8 +51,11 @@ Rust requests capability
   -> Rust decides state transition, retry, status, and user-visible meaning
 ```
 
-Runtime crates own runtime lifecycle and platform constraints. `nmp-native-runtime`
-owns native actor lifecycle and native builder state. `nmp-ffi` is C ABI glue.
+Runtime crates own runtime lifecycle and platform constraints.
+`nmp-native-runtime` owns native actor lifecycle and native builder state.
+`nmp-uniffi` is the public native binding surface for iOS, Android, and desktop
+hosts. Retained `nmp-ffi` C ABI symbols are transitional/internal compatibility
+or test/app glue with owning issues, not a second public native API.
 `nmp-browser-runtime` owns browser worker/runtime/wasm-bindgen ABI glue and
 browser capability brokerage. `nmp-defaults` remains reusable composition, not a
 runtime.
