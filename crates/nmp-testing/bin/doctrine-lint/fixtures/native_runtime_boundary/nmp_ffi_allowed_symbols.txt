@@ -56,6 +56,4 @@ nmp_external_signer_init
 nmp_free_string
 nmp_marmot_register_active
 nmp_marmot_unregister
-nmp_mirror_free_bytes
-nmp_mirror_pull_page
 nmp_signer_broker_init

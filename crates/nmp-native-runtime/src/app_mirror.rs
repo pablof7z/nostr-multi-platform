@@ -1,16 +1,15 @@
 //! ADR-0058 §3 mirror pull-page core — runtime-side encoding and pull logic.
 //!
-//! Extracted from `nmp-ffi/src/pull.rs` so both the C-ABI wrapper
-//! ([`nmp_ffi::pull::nmp_mirror_pull_page`]) and the UniFFI surface
-//! (`nmp_uniffi::mirror::NmpApp::mirror_pull_page`) call the SAME underlying
-//! implementation without duplication.
+//! Extracted from `nmp-ffi/src/pull.rs` so the UniFFI surface
+//! (`nmp_uniffi::mirror::NmpApp::mirror_pull_page`) and any internal tests can
+//! use the SAME underlying implementation without duplication.
 //!
-//! ## Key contract: additive, no C-ABI deletion
+//! ## Key contract: single runtime implementation
 //!
 //! `nmp-ffi/src/pull.rs` re-exports the constants and helpers from this module
-//! so existing C-ABI tests (`super::encode_gap`, `super::variant::GAP`, etc.)
-//! continue to pass with zero changes. The C-ABI symbols `nmp_mirror_pull_page`
-//! and `nmp_mirror_free_bytes` are NOT deleted; they delegate to this method.
+//! for compatibility with internal callers that still consume the binary entry
+//! section. The public C doorway was deleted; hosts call the typed UniFFI
+//! mirror pull surface.
 //!
 //! ## Wire format (little-endian)
 //!
@@ -48,8 +47,7 @@ pub const MAX_PULL_PAGE_RAW_BYTES: u32 = 4 * 1024 * 1024;
 
 /// Wire-format variant byte values.
 ///
-/// `pub` so `nmp-ffi/src/pull.rs` can re-export the module (`super::variant`)
-/// and keep existing C-ABI tests working without modification.
+/// `pub` so callers can share the same runtime encoding constants.
 pub mod variant {
     pub const PAGE: u8 = 0;
     pub const GAP: u8 = 1;
@@ -63,7 +61,7 @@ pub mod variant {
 /// `pub` so `nmp-ffi/src/pull.rs` can re-export the module (`super::error::*`)
 /// and `nmp-uniffi/src/mirror.rs` can reference `error::PANIC`.
 pub mod error {
-    /// The `app` pointer was null (C-ABI only; not reachable via UniFFI).
+    /// A legacy raw pointer caller passed a null app (not reachable via UniFFI).
     pub const NULL_APP: u32 = 1;
     /// The cursor registry handle is unavailable (pre-start, or lock poisoned).
     pub const REGISTRY_UNAVAILABLE: u32 = 2;
@@ -229,11 +227,9 @@ impl NmpApp {
     /// Synchronously drain one page of the kernel ingest log for a registered
     /// cursor, returning the result as a serialized binary payload.
     ///
-    /// This is the single implementation shared by both the C-ABI wrapper
-    /// (`nmp_mirror_pull_page` in `nmp-ffi/src/pull.rs`) and the UniFFI surface
-    /// (`NmpApp::mirror_pull_page` in `nmp-uniffi/src/mirror.rs`). The C-ABI
-    /// wraps the returned `Vec<u8>` in `NmpMirrorBytes`; the UniFFI surface
-    /// lifts the typed header fields out and forwards the entry bytes.
+    /// This is the single implementation behind the UniFFI surface
+    /// (`NmpApp::mirror_pull_page` in `nmp-uniffi/src/mirror.rs`). The UniFFI
+    /// layer lifts the typed header fields out and forwards the entry bytes.
     ///
     /// ## Parameters
     ///

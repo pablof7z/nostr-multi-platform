@@ -37,8 +37,9 @@ canonical contract, in order:
    glue belongs with the first in-repo consumer (not here — `hl` is
    out-of-tree).
 
-3. **Drain** by calling `nmp_mirror_pull_page` (synchronous, read-only) until
-   `has_more == false` or a budget is exhausted. Each `PullPage` carries
+3. **Drain** by calling UniFFI `NmpApp::mirror_pull_page` (synchronous,
+   read-only) until `has_more == false` or a budget is exhausted. Each
+   `MirrorPullResult::Page` carries
    `next_after_seq / latest_seq / has_more`.
 
 4. **Apply** each `StoreLogEntry` to the mirror store:

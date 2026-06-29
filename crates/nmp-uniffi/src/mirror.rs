@@ -1,37 +1,27 @@
 //! ADR-0058 §3 mirror pull-page surface — M14-C7 UniFFI migration.
 //!
-//! Migrates `nmp_mirror_pull_page` from the C-ABI binary-blob surface to a
-//! typed `#[uniffi::export] impl NmpApp` method. The COLLAPSE benefit: the
-//! byte payload rides UniFFI's `Vec<u8>` lifetime — no separate freer needed,
-//! and the cursor-metadata fields (`next_after_seq`, `latest_seq`, `has_more`)
-//! are typed values rather than embedded bytes.
+//! Typed `#[uniffi::export] impl NmpApp` mirror pull-page method. The
+//! COLLAPSE benefit: the byte payload rides UniFFI's `Vec<u8>` lifetime with no
+//! separate freer, and the cursor-metadata fields (`next_after_seq`,
+//! `latest_seq`, `has_more`) are typed values rather than embedded bytes.
 //!
-//! ## Symbols migrated / NOT migrated
-//!
-//! | C-ABI symbol              | UniFFI surface                         | Fate      |
-//! |---------------------------|----------------------------------------|-----------|
-//! | `nmp_mirror_pull_page`    | `NmpApp::mirror_pull_page`             | MIGRATED  |
-//! | `nmp_mirror_free_bytes`   | (none)                                 | VANISHES  |
-//!
-//! `nmp_mirror_free_bytes` is intentionally not ported. UniFFI manages the
-//! `Vec<u8>` lifetime in `MirrorPullResult::Page.bytes` — the host never
-//! touches a raw allocator pointer and needs no explicit free call. The C-ABI
-//! symbol remains for C-ABI consumers (additive — not deleted).
+//! The old public C doorway is intentionally not preserved. UniFFI manages the
+//! `Vec<u8>` lifetime in `MirrorPullResult::Page.bytes`, so the host never
+//! touches a raw allocator pointer and needs no explicit free call.
 //!
 //! ## Result variant mapping
 //!
-//! The C-ABI binary format (variant 0 = Page, 1 = Gap, 2 = Error) maps to
+//! The runtime binary format (variant 0 = Page, 1 = Gap, 2 = Error) maps to
 //! the typed `MirrorPullResult` enum. For `Page`, the typed metadata fields
 //! are extracted and the entry-payload bytes are returned as `Vec<u8>` whose
-//! format matches the C-ABI entry section (u32_LE count + entries) so existing
-//! binary parsers can consume it unchanged.
+//! format is the ADR-0058 entry section (u32_LE count + entries).
 //!
 //! ## Implementation note
 //!
 //! `mirror_pull_page` calls `self.inner.mirror_pull_page_raw_bytes(...)` — the
-//! same underlying runtime method the C-ABI wrapper calls — then lifts the
-//! binary result to a typed enum. No C symbols are called; no logic is
-//! duplicated (encoding lives in `nmp_native_runtime::app_mirror`).
+//! shared runtime method, then lifts the binary result to a typed enum. No C
+//! symbols are called; no logic is duplicated (encoding lives in
+//! `nmp_native_runtime::app_mirror`).
 
 use crate::NmpApp;
 use nmp_native_runtime::app_mirror;
@@ -40,8 +30,8 @@ use nmp_native_runtime::app_mirror;
 
 /// Typed result of a `mirror_pull_page` call.
 ///
-/// Replaces the C-ABI binary blob (`NmpMirrorBytes`) with typed variants.
-/// UniFFI owns all `Vec<u8>` payloads — no explicit free call is needed.
+/// Typed variants for the mirror pull result. UniFFI owns all `Vec<u8>`
+/// payloads, so no explicit free call is needed.
 #[derive(uniffi::Enum, Debug, Clone)]
 pub enum MirrorPullResult {
     /// A page of log entries was returned.
@@ -53,8 +43,7 @@ pub enum MirrorPullResult {
     ///   `next_after_seq`; call again to drain.
     /// - `bytes`          — serialized entry section: `u32_LE entry_count`
     ///   followed by `entry_count × entry` in the ADR-0058 §3 wire format.
-    ///   Identical to bytes `[18..]` of the C-ABI page payload, so existing
-    ///   binary parsers can consume it unchanged.
+    ///   Identical to bytes `[18..]` of the runtime page payload.
     Page {
         next_after_seq: u64,
         latest_seq: u64,
@@ -69,7 +58,7 @@ pub enum MirrorPullResult {
     },
     /// An error occurred before the pull could proceed.
     ///
-    /// `code` values match the `nmp_mirror_*` C-ABI error constants:
+    /// `code` values match the runtime mirror error constants:
     /// 2 = REGISTRY_UNAVAILABLE (pre-start), 3 = UNKNOWN_CURSOR,
     /// 4 = STORE_UNAVAILABLE, 5 = UNSUPPORTED_SCOPE, 6 = STORE_ERROR,
     /// 7 = INVALID_LIMITS, 8 = PANIC, 9 = RAW_TOO_LARGE.
@@ -95,11 +84,7 @@ const ERROR_LEN: usize = 1 + 4; // 5 bytes
 impl NmpApp {
     /// ADR-0058 §3 — synchronously drain one page of the kernel ingest log.
     ///
-    /// Returns a typed [`MirrorPullResult`] instead of the C-ABI binary blob,
-    /// eliminating the need for `nmp_mirror_free_bytes` — UniFFI owns the
-    /// returned `Vec<u8>`.
-    ///
-    /// Parameters mirror `nmp_mirror_pull_page` exactly:
+    /// Returns a typed [`MirrorPullResult`]; UniFFI owns the returned `Vec<u8>`.
     ///
     /// - `cursor_id`           — raw u64 id from `PullCursorRegistry`.
     /// - `max_entries`         — clamped to `[1, 512]`; further bounded by
@@ -278,7 +263,7 @@ mod tests {
 
     /// D6: unknown cursor returns `Error { code: UNKNOWN_CURSOR }`, never panics.
     ///
-    /// Parity with C-ABI `pull_tests::unknown_cursor_returns_serialized_error`.
+    /// Parity with the shared runtime unknown-cursor encoding.
     #[test]
     fn parity_unknown_cursor_returns_error() {
         let _g = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
@@ -304,9 +289,9 @@ mod tests {
     }
 
     /// Parity: `Page` variant carries typed metadata and binary entry bytes
-    /// that decode equivalently to the C-ABI.
+    /// that decode equivalently to the shared runtime encoding.
     ///
-    /// Parity with C-ABI `pull_tests::page_decodes_with_entries_and_cap_clamps`.
+    /// Parity with the shared runtime page encoding and cap clamps.
     #[test]
     fn parity_page_typed_metadata_and_entry_bytes_round_trip() {
         let _g = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
@@ -332,7 +317,7 @@ mod tests {
                 assert!(!has_more, "fully drained → has_more=false");
                 assert_eq!(next_after_seq, 2, "cursor advanced to seq 2");
 
-                // bytes = u32_LE entry_count + entries (same binary as C-ABI [18..]).
+                // bytes = u32_LE entry_count + entries (same binary as raw [18..]).
                 assert!(
                     bytes.len() >= 4,
                     "entry section must have at least the count"
@@ -364,9 +349,9 @@ mod tests {
     }
 
     /// Parity: bytes round-trips correctly — the entry bytes returned by
-    /// `mirror_pull_page` match what the C-ABI would return at offset [18..].
+    /// `mirror_pull_page` match the shared runtime payload at offset [18..].
     #[test]
-    fn parity_bytes_match_c_abi_entry_section() {
+    fn parity_bytes_match_runtime_entry_section() {
         let _g = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
         let (app, rx) = new_started_app();
         wait_registry_ready(&app);
@@ -375,14 +360,14 @@ mod tests {
         let (id1, json1) = signed_note("bytes-parity", 1_700_300_000);
         inject_and_wait(&app, &id1, &json1, &rx);
 
-        // Obtain the C-ABI binary payload for the same cursor/params.
+        // Obtain the runtime binary payload for the same cursor/params.
         let raw_bytes = app
             .inner
             .mirror_pull_page_raw_bytes(cursor_id, 256, 1 << 20);
 
-        // Parse the C-ABI binary to extract the entry section (offset 18+).
+        // Parse the runtime binary to extract the entry section (offset 18+).
         assert_eq!(raw_bytes[0], nmp_native_runtime::app_mirror::variant::PAGE);
-        let c_abi_entry_section = &raw_bytes[PAGE_HDR..];
+        let runtime_entry_section = &raw_bytes[PAGE_HDR..];
 
         // Now call the UniFFI surface (fresh cursor same position since we
         // just consumed the only event; re-register at seq=0 to replay).
@@ -394,8 +379,8 @@ mod tests {
             MirrorPullResult::Page { bytes, .. } => {
                 assert_eq!(
                     bytes.as_slice(),
-                    c_abi_entry_section,
-                    "UniFFI bytes must exactly match the C-ABI entry section"
+                    runtime_entry_section,
+                    "UniFFI bytes must exactly match the runtime entry section"
                 );
             }
             other => panic!("expected Page, got {other:?}"),

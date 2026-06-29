@@ -101,7 +101,7 @@ gift-wraps, build projections, accumulate per-kind views)?
 Need verbatim signed frames in an external store/relay-bridge mirror
 (e.g. an out-of-tree nostrdb mirror)?
   → pull cursor (ADR-0058): GlobalLog cursor in Protected { max_lag_entries }
-    mode → nmp.pull.wake → nmp_mirror_pull_page → apply page → persist
+    mode → nmp.pull.wake → NmpApp::mirror_pull_page → apply page → persist
     after_seq → AdvancePullCursor.
     See docs/architecture/external-consumers.md for the full contract.
 
