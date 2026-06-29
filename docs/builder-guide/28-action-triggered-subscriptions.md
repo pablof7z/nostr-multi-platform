@@ -313,29 +313,13 @@ names the shape before any event is delivered; the kernel registers the sink
 muted, opens the declared interest, replays cached/store-backed rows, then
 activates future delivery scoped to the same shape.
 
-```rust
-// Inside the typed read-session helper, not in shell or product-screen code:
-let state = Arc::new(Mutex::new(DiscoveryState::default()));
-
-let state_obs = state.clone();
-app.open_observed_projection(ObservedProjection::from_kinds(
-    Arc::new(ArticleObserver { state: state_obs }),
-    "myapp.discover_results",
-    1,
-    [KIND_LONG_FORM_ARTICLE],
-    128,
-));
-
-// Observer impl — cheap, must not panic (D6):
-impl ObservedProjectionSink for ArticleObserver {
-    fn on_kernel_event(&self, event: &KernelEvent) {
-        if event.kind == KIND_LONG_FORM_ARTICLE {
-            if let Ok(mut s) = self.state.lock() {
-                s.ingest(event);
-            }
-        }
-    }
-}
+```text
+// Shape declaration (inside the typed read-session helper — not an app recipe):
+// 1. shape:  kind:LONG_FORM_ARTICLE  |  bounded replay (depth 128)  |  scoped delivery
+// 2. output: Arc<Mutex<DiscoveryState>> — typed state populated by the session executor
+// 3. sidecar: register_typed_snapshot_projection("myapp.discover_results", encoder_fn)
+// The observed-projection sink and ensure-interest commands are internal
+// session-executor machinery — not app-facing API (ADR-0070).
 ```
 
 The observer fires synchronously on the actor thread. Keep it fast: no I/O, no

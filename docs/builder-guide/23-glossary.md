@@ -95,11 +95,14 @@ entry links to the file that defines it on master.
 - **rev** — the monotonic `u64` carried on every `AppState`/update; platforms
   enforce a stale-guard (drop updates with `rev` ≤ last seen). *defined in:*
   `crates/nmp-core/src/app.rs:28`.
-- **ReducedSource** — an app/protocol-owned source expression plus deterministic
-  reducer that turns source events/state into materialized interest shapes
-  (authors, tags, ids, or addresses). Core/planner see only the resulting
-  `LogicalInterest`s; NIP nouns such as contact list or mute list stay in the
-  protocol/defaults crate that owns the reducer. *defined by:* #2092 and
+- **ReducedSource** — **[internal]** source-reconciliation compiler vocabulary
+  internal to the protocol/defaults crate; not an app-facing noun. It is a
+  source expression plus deterministic reducer that turns source events or
+  state into a replacement set of `LogicalInterest`s. `nmp-core` and the
+  planner see only the resulting `LogicalInterest`s; NIP nouns such as
+  contact-list or mute-list stay in the protocol/defaults crate that owns the
+  reducer. App code dispatches claim/release intents; the
+  source-reconciliation detail is compiler-internal. *defined by:* #2092 and
   ADR-0036/ADR-0042 amendments.
 - **scope** — `InterestScope`: the account context for mailbox resolution
   (`ActiveAccount` / `Account(id)` / `Global`). Distinct from *session* and

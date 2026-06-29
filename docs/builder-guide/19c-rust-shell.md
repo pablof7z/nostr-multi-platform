@@ -51,14 +51,10 @@ fn main() {
         });
     }
 
-    // Seam 3: event-driven view — declared observer populates the store.
-    let _ = builder.open_observed_projection(ObservedProjection::from_kinds(
-        Arc::new(FeedObserver::new(Arc::clone(&store))),
-        FEED_SNAPSHOT_KEY,
-        0,
-        [KIND_NOTE],
-        128,
-    ));
+    // Seam 3: typed read-session helper — owns demand, replay,
+    // scoped delivery, and teardown. Observed delivery is internal
+    // executor machinery (ADR-0070); shells never call open_observed_projection.
+    nostr_feed_core::register_microblog_read_session(&mut builder, Arc::clone(&store));
 
     // Commit storage, projection, and relay decisions, then start the kernel.
     // Omitting any gate is a COMPILE ERROR (V-94 / ADR-0053 / #1493).
@@ -184,7 +180,7 @@ registration.
 NmpAppBuilder::new()
   │  register_snapshot_projection(...)         ┐ wire before
   │  register_typed_snapshot_projection(...)   │ start — all states
-  │  open_observed_projection(...)             │ declare shape/replay/scope
+  │  register_microblog_read_session(...)      │ typed helper: demand/replay/scoped-delivery
   │  register_action(M)                  ┘ accept them
   │
   ├─ .in_memory()  or  .storage_path(p)

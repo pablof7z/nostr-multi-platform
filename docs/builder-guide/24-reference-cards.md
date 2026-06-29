@@ -29,7 +29,7 @@ monotonic `rev`; platforms drop updates with `rev` ≤ last seen.
 |---|---|---|---|
 | `register_action(module)` | write path | `start()` validates, `execute()` enqueues `ActorCommand` | `action.rs:56` |
 | `register_snapshot_projection(key, fn)` | read output | JSON slice pushed under `projections[key]` on every tick | `nmp-ffi/src/lib.rs:1109` |
-| `open_observed_projection(decl)` | declared event-driven read models | registers muted sink, opens declared interest, replays matching rows, then activates scoped future delivery | `app_host/observed.rs` |
+| `open_observed_projection(decl)` *(internal session-executor machinery — not called by app code; ADR-0070)* | event-driven read models | registers muted sink, opens declared interest, replays matching rows, then activates scoped future delivery; the app-facing surface is the typed read-session helper | `app_host/observed.rs` |
 | `register_typed_snapshot_projection(key, fn)` | typed read output | typed sidecar pushed under `typed_projections[key]` on every tick | `nmp-ffi/src/snapshot.rs` |
 | **ActionModule** (trait) | write seam shape | `NAMESPACE`, `type Action`, `start()`, `execute()` | `action.rs:56` |
 | **CapabilityModule** (trait) | native bridge shape | request → native → result envelope (D7) | `capability.rs:11` |
