@@ -412,6 +412,11 @@ void uniffi_nmp_uniffi_fn_method_nmpapp_lifecycle_foreground(void*_Nonnull ptr, 
 int8_t uniffi_nmp_uniffi_fn_method_nmpapp_load_older_feed(void*_Nonnull ptr, RustBuffer key, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_MIRROR_PULL_PAGE
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_MIRROR_PULL_PAGE
+RustBuffer uniffi_nmp_uniffi_fn_method_nmpapp_mirror_pull_page(void*_Nonnull ptr, uint64_t cursor_id, uint32_t max_entries, uint32_t max_total_raw_bytes, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_NOSTRCONNECT_URI
 #define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_NOSTRCONNECT_URI
 RustBuffer uniffi_nmp_uniffi_fn_method_nmpapp_nostrconnect_uri(void*_Nonnull ptr, RustBuffer callback_scheme, RustCallStatus *_Nonnull out_status
@@ -1020,6 +1025,12 @@ uint16_t uniffi_nmp_uniffi_checksum_method_nmpapp_lifecycle_foreground(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_LOAD_OLDER_FEED
 #define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_LOAD_OLDER_FEED
 uint16_t uniffi_nmp_uniffi_checksum_method_nmpapp_load_older_feed(void
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_MIRROR_PULL_PAGE
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_MIRROR_PULL_PAGE
+uint16_t uniffi_nmp_uniffi_checksum_method_nmpapp_mirror_pull_page(void
 
 );
 #endif

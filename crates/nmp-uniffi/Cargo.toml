@@ -63,3 +63,5 @@ serde_json = { workspace = true }
 nmp-core = { path = "../nmp-core", features = ["test-support"] }
 nmp-defaults = { path = "../nmp-defaults" }
 nmp-native-runtime = { path = "../nmp-native-runtime", features = ["test-support"] }
+# M14-C7: mirror test harness uses Keys::generate and EventBuilder::text_note.
+nostr = { workspace = true }

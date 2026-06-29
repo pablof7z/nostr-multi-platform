@@ -57,6 +57,10 @@ pub use sessions::FeedSessionHandle;
 // ── Lifecycle signals, storage config, projection config, diagnostics (C6) ───
 pub mod runtime;
 
+// ── ADR-0058 mirror pull-page surface (C7) ───────────────────────────────────
+pub mod mirror;
+pub use mirror::MirrorPullResult;
+
 // ── Typed dispatch outcome ────────────────────────────────────────────────────
 
 /// Typed outcome of a `dispatch_action` call.
