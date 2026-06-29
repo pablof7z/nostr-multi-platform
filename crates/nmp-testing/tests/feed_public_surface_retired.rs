@@ -329,3 +329,34 @@ fn old_public_open_feed_doorway_symbols_are_not_defined_or_reexported() {
         violations.join("\n")
     );
 }
+
+#[test]
+fn c_abi_feed_docs_do_not_advertise_retired_open_close_symbols() {
+    // These docs are the C-ABI/iOS-shell references most likely to be copied by
+    // host builders. They may describe Rust `NmpApp::open_feed`, but must not
+    // advertise the retired C symbol pair as live public FFI.
+    const DOCS: &[&str] = &["docs/ffi-surface.md", "docs/builder-guide/17-ios-shell.md"];
+    const RETIRED_FEED_SYMBOLS: &[&str] = &["nmp_app_open_feed", "nmp_app_close_feed"];
+
+    let root = repo_root();
+    let mut violations = Vec::new();
+    for rel in DOCS {
+        let path = root.join(rel);
+        let text = fs::read_to_string(&path)
+            .unwrap_or_else(|err| panic!("{} must be readable: {err}", path.display()));
+        for (n, line) in text.lines().enumerate() {
+            for sym in RETIRED_FEED_SYMBOLS {
+                if line.contains(sym) {
+                    violations.push(format!("{}:{}: {}", rel, n + 1, line.trim()));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "C-ABI feed docs still advertise retired open/close feed symbols; document \
+         Rust typed sessions plus live C symbols instead:\n{}",
+        violations.join("\n")
+    );
+}

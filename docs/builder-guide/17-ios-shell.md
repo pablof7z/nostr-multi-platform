@@ -14,8 +14,11 @@ that keep it doctrine-clean.
 There is no UniFFI on master (that is M14; see
 [15 — Codegen: bindings + FFI surface](15-codegen-and-ffi.md)). iOS calls the `extern "C"`
 surface exported by `crates/nmp-ffi` (`nmp_app_new`, `nmp_app_start`,
-`nmp_app_dispatch_action_bytes`, the generic feed doorway, capability callbacks,
-etc.).
+`nmp_app_dispatch_action_bytes`, viewport commands such as
+`nmp_app_load_older_feed`, capability callbacks, etc.). Feed session open/close
+is not a C symbol pair: Rust app/protocol composition code owns typed
+`NmpApp::open_feed` / `NmpApp::close_feed` sessions, and iOS consumes the
+resulting snapshot/projection stream.
 One C callback delivers binary `nmp.transport.UpdateFrame` bytes with file
 identifier `NMPU`. The frame is FlatBuffers-only: `Snapshot` or `Panic`, with no
 JSON snapshot fallback.
@@ -42,20 +45,29 @@ final class KernelHandle {
             raw, Unmanaged.passUnretained(sink).toOpaque(), nmpUpdateCallback)
     }
 
-    func openFeed(paramsJson: String) {                // returns an opaque close handle.
-        paramsJson.withCString { paramsPtr in
-            guard let handle = nmp_app_open_feed(raw, paramsPtr) else { return }
-            defer { nmp_app_string_free(handle) }
-            // Store String(cString: handle) and pass it to nmp_app_close_feed.
+    func dispatchAction(_ bytes: [UInt8]) {
+        bytes.withUnsafeBufferPointer { buf in
+            guard let base = buf.baseAddress else { return }
+            guard let result = nmp_app_dispatch_action_bytes(raw, base, buf.count) else { return }
+            defer { nmp_free_string(result) }
+            // Decode only the enqueue result; terminal state arrives in snapshots.
+        }
+    }
+
+    func loadOlderFeed(key: String) {
+        key.withCString { keyPtr in
+            nmp_app_load_older_feed(raw, keyPtr)
         }
     }
     // decode(): UpdateFrame bytes → generated FlatBuffers readers → KernelModel shadow
 }
 ```
 
-Feed open returns only an opaque handle for symmetric teardown; it is not a data
-result. State change arrives later, via the callback, as a fresh snapshot. Feed
-close passes that handle back to `nmp_app_close_feed`. That is the actor model (see
+Action dispatch returns only an enqueue/validation result; it is not a state
+query. Viewport commands such as "load older feed" are also fire-and-forget.
+State change arrives later, via the callback, as a fresh snapshot. Feed
+open/close handles live on the Rust typed-session side, so Swift never
+re-derives filters or owns feed teardown policy. That is the actor model (see
 [04 — Actor model (TEA on one thread)](04-actor-and-tea.md)) crossing FFI intact.
 
 The C callback (`KernelBridge.swift:101-110`) is invoked **on a Rust thread**.
