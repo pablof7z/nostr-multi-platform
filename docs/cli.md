@@ -51,7 +51,7 @@ Produced layout:
   nmp.toml                   # NMP dependency policy (read by doctor/upgrade)
   README.md                  # per-app next steps
   crates/<name>-core/
-    Cargo.toml               # nmp-defaults + nmp-ffi + nmp-core + serde
+    Cargo.toml               # nmp-defaults + nmp-native-runtime + nmp-core + serde
     src/lib.rs               # explicit register() root + example domain
     examples/shell.rs        # NmpAppBuilder → register → start
 ```
@@ -164,9 +164,10 @@ Component contract:
 - Components are pure renderers. They do not fetch, retry, cache, route, or
   decide policy. Apps hydrate display models such as `NostrQuoteCardModel`
   from their own state.
-- Component packages must not import runtime, C ABI/JNI/WASM, worker, or kernel
-  handles directly. They consume the app-level component host/provider and
-  projection rows; app-specific rich projections belong in the app Rust core.
+- Component packages must not import runtime, raw C/JNI compatibility shims,
+  wasm Worker handles, or kernel handles directly. They consume the app-level
+  component host/provider and projection rows; app-specific rich projections
+  belong in the app Rust core.
 - User actions leave components through `NostrContentCallbacks` /
   `LocalNostrContentRenderer`; the embedding app decides navigation and OS
   capability execution.
@@ -180,7 +181,7 @@ Component contract:
    substrate explicitly, the example drives `NmpAppBuilder`, and there is no
    generated `apps/` FFI tree.
 3. `cargo check --all-targets` on the scaffold → green (links the live
-   `nmp-defaults` / `nmp-ffi` / `nmp-core` crates).
+   `nmp-defaults` / `nmp-native-runtime` / `nmp-core` crates).
 4. `cargo test -p <name>-core` → skeleton tests pass.
 
 A second test asserts invalid app names are rejected.

@@ -16,7 +16,7 @@ The generated app demonstrates the boring v1 path:
 
 | Surface | Starter shape |
 |------|------|
-| Runtime | `examples/shell.rs` uses `nmp_native_runtime::NmpAppBuilder`, calls `{{crate_ident}}::register(&mut builder)` once, declares projection consumption, declares relay policy, then starts. |
+| Runtime | `examples/shell.rs` uses `nmp_native_runtime::NmpAppBuilder`, calls `{{crate_ident}}::register(&mut builder)` once, declares projection consumption, declares relay policy, then starts. Swift/Kotlin apps should wrap the same native runtime through UniFFI bindings. |
 | Timeline/read | `starter_home_feed_params()` declares this app's typed home-timeline read surface; platform shells open/render that Rust/NMP projection instead of owning subscription or cache policy. |
 | Profile/content | Component hosts read `refs.profile`, authoritative `refs.event`, and derived `refs.event.envelopes`. Do not use pre-v1 whole-map projections. |
 | Component host | Install one app-root provider such as SwiftUI `NmpComponentHost` or Compose `NmpComponentHostProvider`; leaf components render and manage visible claim/release only. |
@@ -64,6 +64,8 @@ nmp doctor                # confirm the dependency policy
 2. Replace the example `Entry` domain with your real nouns.
 3. Install a component host with fixtures while wiring UI tests, for example
    `nmp add component swiftui/component-host --with fixture`.
-4. Build a platform shell (SwiftUI / Compose / …) over the `NmpApp` C-ABI.
+4. Build a platform shell (SwiftUI / Compose / web / TUI) over the public
+   binding for that platform: UniFFI for native Swift/Kotlin, wasm-bindgen for
+   browser Workers, or direct Rust for Rust-native shells.
 5. Read the v1 runtime/component migration guide in the NMP checkout:
    `docs/migration.md`.

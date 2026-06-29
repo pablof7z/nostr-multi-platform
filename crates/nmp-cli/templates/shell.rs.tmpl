@@ -2,8 +2,9 @@
 //!
 //! Constructs an app via `NmpAppBuilder`, installs this crate's explicit
 //! composition root through [`register`], starts the kernel, and tears it down.
-//! A real platform shell (SwiftUI / Compose / iced / wasm) drives the same
-//! `nmp-native-runtime` app surface.
+//! A real platform shell uses the public binding for its host: UniFFI for
+//! Swift/Kotlin native apps, wasm-bindgen for browser Workers, or direct Rust
+//! for Rust-native shells.
 //!
 //! Run it with:
 //!
