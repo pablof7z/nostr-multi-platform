@@ -42,8 +42,8 @@ fn upgrade_switches_manifest_to_versioned_nmp_release() {
     );
     assert!(
         app_core.contains("package = \"nmp-defaults\"")
-            && app_core.contains("package = \"nmp-ffi\""),
-        "upgrade must repoint nmp-defaults and nmp-ffi too:\n{app_core}"
+            && app_core.contains("package = \"nmp-native-runtime\""),
+        "upgrade must repoint nmp-defaults and nmp-native-runtime too:\n{app_core}"
     );
     assert!(
         !root.join("apps").exists(),

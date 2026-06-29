@@ -1,6 +1,6 @@
 # Native Binding Surface Reference
 
-> **Reviewed:** 2026-06-29 after #2403/#2463.
+> **Reviewed:** 2026-06-29 after #2403/#2463/#2484.
 >
 > **Current public native target:** UniFFI through `crates/nmp-uniffi` for
 > iOS, Android, and desktop native hosts.
@@ -14,9 +14,9 @@
 
 This document describes the maintained binding direction after the M14 raw
 native ABI deletion work. It is not a compatibility catalog for deleted
-`nmp-ffi` C symbols. If a symbol was removed by #2403 or #2463, do not teach it
-as current public API and do not add a shim unless #2125 records a measured
-internal exception behind the UniFFI API.
+`nmp-ffi` C symbols. Deleted framework native C symbols are not current public
+API and must not be reintroduced unless #2125 records a measured internal
+exception behind the UniFFI API.
 
 ## Public Native Surface
 
@@ -99,17 +99,14 @@ Historical references may name these symbols only as deleted history or test
 evidence. New native guidance must name the UniFFI method, generated binding, or
 Rust runtime seam that replaced the symbol.
 
-## Retained Raw Surfaces
+## Remaining Raw Surfaces
 
-Some raw `extern "C"` functions remain in-tree. They are not a second framework
-native public API.
+Raw `extern "C"` functions may remain in app-owned delivery glue. They are not a
+second framework native public API.
 
 | Surface | Current status | Owner |
 |---|---|---|
-| `crates/nmp-ffi` compatibility helpers for identity, signer broker, external signer, relay edits, and ref resolution | Transitional/internal compatibility while downstream and tests finish moving to UniFFI. New native app-facing work must not target these symbols. | #2125 |
-| `nmp_free_string` | Shared allocator helper for any retained C string returns. It exists because raw compatibility/app-owned C seams still return Rust-owned strings. | #2125 |
-| `crates/nmp-ffi` test-support exports | Test/perf harness only; never production binding guidance. | #2125 |
-| Gallery app/native and Android bridge shims | App-owned delivery glue for `apps/nmp-gallery`, not reusable NMP framework ABI. | #2125 / app owner |
+| Gallery app/native and Android bridge shims | App-owned delivery glue for `apps/nmp-gallery`, not reusable NMP framework ABI. | app owner |
 | Marmot native surface under `crates/nmp-marmot` | Post-v1/provisional mixed binding shape; do not promote it into a durable public native ABI. | #2232 |
 
 Any proposal to keep a raw native byte lane after its UniFFI replacement exists
@@ -122,16 +119,16 @@ thresholds, retest date, and delete trigger.
 - Native public documentation names UniFFI first.
 - Browser public documentation names `wasm-bindgen`.
 - FlatBuffers remain action/update payload bytes across both binding families.
-- `nmp-ffi` is not a runtime owner; runtime lifecycle lives in
-  `nmp-native-runtime` and is exposed to native hosts through `nmp-uniffi`.
+- `nmp-native-runtime` owns runtime lifecycle and `nmp-uniffi` exposes it to
+  native hosts.
 - Native shells do not choose relays, mutate protocol tags, infer publish
   success, own retries, or cache product truth.
 - Deleted legacy native symbols are not compatibility requirements.
 
 ## Verification Pointers
 
-- `rg -n "pub extern \"C\" fn" crates/nmp-ffi/src` shows retained raw
-  compatibility/test-support exports.
+- `rg -n "pub extern \"C\" fn" apps crates` shows any remaining app-owned raw
+  delivery glue.
 - `rg -n "uniffi::export|uniffi::Object|callback_interface" crates/nmp-uniffi/src`
   shows the current native public surface.
 - `bash ci/check-uniffi-bindings-drift.sh` verifies generated native binding

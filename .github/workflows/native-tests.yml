@@ -29,7 +29,7 @@ on:
       - "crates/nmp-nip17/**"
       - "crates/nmp-nip29/**"
       - "crates/nmp-nip51/**"
-      - "crates/nmp-ffi/**"
+      - "crates/nmp-uniffi/**"
   pull_request:
     branches: ["**"]
     paths:
@@ -42,7 +42,7 @@ on:
       - "crates/nmp-nip17/**"
       - "crates/nmp-nip29/**"
       - "crates/nmp-nip51/**"
-      - "crates/nmp-ffi/**"
+      - "crates/nmp-uniffi/**"
 
 jobs:
   gallery-android-junit:

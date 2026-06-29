@@ -169,7 +169,7 @@ jobs:
         env:
           RUSTFLAGS: ""
 
-  ffi-features:
+  native-features:
     name: cargo nextest (feature-gated surfaces)
     runs-on: ubuntu-latest
     steps:
@@ -190,25 +190,25 @@ jobs:
       - name: Cache cargo build
         uses: Swatinem/rust-cache@v2
         with:
-          key: ffi-features
+          key: native-features
 
       - name: Install cargo-nextest
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-nextest
 
-      # ADR-0048 Stage 2 NIP-55 proof gate (advances #1124).
+      # M14 native single-surface proof gate.
       #
-      # `cargo nextest --workspace` (workspace job) runs nmp-ffi with default
-      # features, which excludes the `external-signer` feature. The
-      # signin_loop_* tests in `crates/nmp-ffi/src/external_signer.rs` are
-      # therefore skipped by the default lane. This step adds the explicit
-      # `--features external-signer` pass to prove those tests are run and
-      # green.
-      - name: cargo nextest (nmp-ffi --features external-signer)
-        run: cargo nextest run -p nmp-ffi --features external-signer --no-fail-fast
+      # The deleted `nmp-ffi --features external-signer` gate used to compile
+      # the raw C-ABI lane. Keep coverage on the surviving native owner
+      # instead: UniFFI exports the app-facing methods and nmp-native-runtime
+      # owns the feature-gated NIP-46/NIP-55 runtime hooks.
+      - name: cargo nextest (UniFFI/native feature gates)
+        run: |
+          cargo nextest run -p nmp-uniffi --features native --no-fail-fast
+          cargo nextest run -p nmp-native-runtime --features signer-broker,external-signer --no-fail-fast
 
-      # ADR-0048 Stage 2 — nmp-app-gallery android-ffi feature check.
+      # Gallery app-owned Android bridge feature check.
       #
       # `nmp-app-gallery` is a workspace member, so the workspace job compiles
       # it with default features. The `android-ffi` feature enables the JNI

@@ -1,20 +1,21 @@
-//! T122 — NIP-46 bunker signing through the **production C-ABI seam** (#2119 PR-B2).
+//! T122 — NIP-46 bunker signing through the production native runtime seam.
 //!
 //! BLOCKER 1 of the PR-B2 review: the other NIP-46 integration tests drive
 //! `init_bunker` / `init_nostrconnect` directly (via `broker_adapter.rs`) or
 //! exercise the lower-level runtime — they never go through the real FFI init
 //! wiring. This test closes that gap: it constructs a real [`NmpApp`], calls the
-//! actual `nmp_signer_broker_init` C symbol (which calls `register_nip46` and
-//! installs the per-app bunker hook), starts the actor, and drives the bunker
-//! connect through `nmp_app_signin_bunker` against a real [`MockBunkerRelay`].
+//! actual `NmpApp::init_signer_broker` config path (which calls `register_nip46`
+//! and installs the per-app bunker hook), starts the actor, and drives the
+//! bunker connect through the runtime add-signer path against a real
+//! [`MockBunkerRelay`].
 //!
 //! ## What this proves that the lower-level tests do NOT
 //!
-//! 1. `nmp_signer_broker_init` actually installs the interceptor + connected
+//! 1. `NmpApp::init_signer_broker` actually installs the interceptor + connected
 //!    hook + per-app bunker hook on the `NmpApp` (init-wiring + app-slot storage).
-//! 2. A **second** `nmp_signer_broker_init` call is an idempotent no-op
+//! 2. A **second** `NmpApp::init_signer_broker` call is an idempotent no-op
 //!    (first-writer-wins; no duplicate hooks) — returns `Ok` (0).
-//! 3. `nmp_app_signin_bunker` routes through the actor → `start_bunker_handshake`
+//! 3. Bunker sign-in routes through the actor → `start_bunker_handshake`
 //!    → the real installed bunker hook → `init_bunker` → the actor relay lane
 //!    dials the mock → the registered `Nip46Interceptor` processes inbound
 //!    frames → `SignerReady` builds a real `Nip46Signer` and `AddSigner` lands
@@ -22,7 +23,7 @@
 //!
 //! ## Assertions
 //!
-//! - `nmp_signer_broker_init` returns `Ok` (0) on both the first and second call.
+//! - `NmpApp::init_signer_broker` returns `Ok` (0) on both the first and second call.
 //! - The `active_account` typed sidecar carries the bunker user's pubkey.
 //! - The mock observed `connect` and `get_public_key`.
 
@@ -35,7 +36,6 @@ use std::time::{Duration, Instant};
 
 use nmp_core::decode_snapshot_typed_projections;
 use nmp_core::typed_projections::{decode_active_account, ACTIVE_ACCOUNT_SCHEMA_ID};
-use nmp_native_runtime::NmpApp;
 use nostr::Keys;
 
 use crate::common::mock_bunker_relay::MockBunkerRelay;
@@ -69,7 +69,7 @@ extern "C" fn on_emit(context: *mut c_void, ptr: *const u8, len: usize) {
 }
 
 #[test]
-fn bunker_signin_through_production_ffi_seam() {
+fn bunker_signin_through_production_native_runtime_seam() {
     // Plain ws:// mock — no TLS — but install the ring provider defensively in
     // case the actor relay worker initialises a rustls client config.
     let _ = rustls::crypto::ring::default_provider().install_default();
@@ -99,22 +99,22 @@ fn bunker_signin_through_production_ffi_seam() {
         on_emit(ctx_usize as *mut c_void, bytes.as_ptr(), bytes.len());
     })));
 
-    // ── Production init seam: nmp_signer_broker_init ──────────────────────────
+    // ── Production init seam: NmpApp::init_signer_broker ──────────────────────
     // First call installs the interceptor + connected hook + per-app bunker hook.
     let status1 = unsafe { &*app }.init_signer_broker().code();
-    assert_eq!(status1, 0, "first nmp_signer_broker_init must return Ok (0)");
+    assert_eq!(status1, 0, "first init_signer_broker must return Ok (0)");
 
     // Second call is an idempotent no-op (first-writer-wins): no duplicate hooks.
     let status2 = unsafe { &*app }.init_signer_broker().code();
     assert_eq!(
         status2, 0,
-        "second nmp_signer_broker_init must be an idempotent no-op returning Ok (0)"
+        "second init_signer_broker must be an idempotent no-op returning Ok (0)"
     );
 
     // ── Start the actor ───────────────────────────────────────────────────────
     unsafe { &*app }.start_runtime(256, 30);
 
-    // ── Drive the bunker connect through the REAL FFI front door ──────────────
+    // ── Drive the bunker connect through the runtime front door ───────────────
     unsafe { &*app }.add_signer(nmp_core::SignerSource::BunkerUri(bunker_uri), true);
 
     // ── Wait for AddSigner via the typed active_account sidecar ───────────────
@@ -130,7 +130,7 @@ fn bunker_signin_through_production_ffi_seam() {
     assert!(
         active,
         "active_account sidecar must carry the bunker user pubkey after handshake \
-         (proves AddSigner through the production FFI seam)"
+         (proves AddSigner through the production native runtime seam)"
     );
 
     // The mock must have observed the handshake RPCs.

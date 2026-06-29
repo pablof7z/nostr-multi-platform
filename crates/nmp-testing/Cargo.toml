@@ -25,7 +25,7 @@ nmp-planner = { path = "../nmp-planner" }
 # InsertOutcome / MemEventStore — the nmp_core::store compat facade is
 # deleted (#1608). The lib src (store_harness.rs) uses these types.
 nmp-store = { path = "../nmp-store" }
-nmp-native-runtime = { path = "../nmp-native-runtime", features = ["test-support"] }
+nmp-native-runtime = { path = "../nmp-native-runtime", features = ["test-support", "signer-broker"] }
 # ADR-0055 R6-S4 — op_feed composition root needed by the feed-idle capstone
 # binary scenario (S7). The ffi-stress binary, not just tests, calls
 # register_op_feed_defaults to wire the home feed into each NmpApp instance.
@@ -152,9 +152,9 @@ path = "bin/firehose-bench/main.rs"
 name = "nip77-real-relay-tui"
 path = "bin/nip77-real-relay-tui/main.rs"
 
-# M10.5 FFI hardening harness — S1..S5 (phase 1)
-# Links nmp_app_* FFI symbols via the Rust rlib dependency with test-support
-# feature; exercises the identical code paths Swift uses via extern "C" ABI.
+# M10.5 native transport hardening harness — S1..S5 (phase 1)
+# Exercises the native runtime/update transport paths that used to sit behind
+# nmp_app_* C symbols.
 [[bin]]
 name = "ffi-stress"
 path = "bin/ffi-stress/main.rs"
@@ -402,11 +402,10 @@ path = "tests/nip46_req_before_event_on_reconnect.rs"
 name = "nip46_actor_lane_signing"
 path = "tests/nip46_actor_lane_signing.rs"
 
-# T122 — NIP-46 bunker signing through the production C-ABI seam (#2119 PR-B2).
-# Drives nmp_signer_broker_init + nmp_app_signin_bunker + nmp_app_sign_event_for_return
-# against MockBunkerRelay and asserts AddSigner + observed connect/get_public_key/
-# sign_event + a schnorr-valid signed event. Covers FFI init-wiring, app-slot
-# storage, and double-init idempotence that the lower-level tests do not.
+# T122 — NIP-46 bunker signing through the production native runtime seam.
+# Drives init_signer_broker + bunker AddSigner against MockBunkerRelay and
+# asserts AddSigner + observed connect/get_public_key. Covers init wiring,
+# app-slot storage, and double-init idempotence that lower-level tests do not.
 # `cargo test -p nmp-testing --test nip46_ffi_production_path`
 [[test]]
 name = "nip46_ffi_production_path"
