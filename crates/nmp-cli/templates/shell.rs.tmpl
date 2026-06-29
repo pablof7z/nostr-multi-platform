@@ -11,8 +11,8 @@
 //! cargo run --example shell -p {{pkg}}
 //! ```
 
-use nmp_native_runtime::{NmpAppBuilder, RunConfig};
 use nmp_ffi::{nmp_app_free, nmp_app_stop};
+use nmp_native_runtime::{NmpAppBuilder, RunConfig};
 
 fn main() {
     // 1. Start the builder.
@@ -45,9 +45,21 @@ fn main() {
         .without_initial_relays()
         .start(RunConfig::default());
 
+    let home_timeline_session = {
+        // SAFETY: `NmpAppBuilder::start` returns a valid, non-null pointer owned
+        // by this shell until `nmp_app_free` below.
+        let app_ref = unsafe { &*app };
+        {{crate_ident}}::open_home_timeline_session(app_ref).ok()
+    };
+
     println!("{{display}}: NmpAppBuilder → app register → start() complete.");
 
     // 4. Tear down.
+    if let Some(session) = home_timeline_session {
+        // SAFETY: same ownership invariant as the open call above.
+        let app_ref = unsafe { &*app };
+        let _ = {{crate_ident}}::close_home_timeline_session(app_ref, session);
+    }
     nmp_app_stop(app);
     nmp_app_free(app);
 }

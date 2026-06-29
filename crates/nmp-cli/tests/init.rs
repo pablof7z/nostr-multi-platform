@@ -46,6 +46,9 @@ fn init_scaffold_is_a_compiling_composition_shell() {
         lib.contains("starter_projection_keys")
             && lib.contains("starter_builtin_projection_keys")
             && lib.contains("starter_home_feed_params")
+            && lib.contains("HomeTimelineSession")
+            && lib.contains("open_home_timeline_session")
+            && lib.contains("close_home_timeline_session")
             && lib.contains("\"nmp.feed.home\"")
             && lib.contains("\"refs.profile\"")
             && lib.contains("\"refs.event\"")
@@ -59,6 +62,12 @@ fn init_scaffold_is_a_compiling_composition_shell() {
             && lib.contains("GeneratedActionBuilders.publishProfile"),
         "scaffolded starter must point shells at generated publish builders:\n{lib}"
     );
+    assert!(
+        !lib.contains("open_interest")
+            && !lib.contains("ObservedProjection")
+            && !lib.contains("register_defaults"),
+        "scaffolded app API must not expose raw read internals:\n{lib}"
+    );
     let legacy_embed_projection_key = ["claimed_event", "embeds"].join("_");
     assert!(
         !lib.contains("resolved_profiles") && !lib.contains(&legacy_embed_projection_key),
@@ -69,6 +78,13 @@ fn init_scaffold_is_a_compiling_composition_shell() {
     assert!(
         shell.contains("NmpAppBuilder") && shell.contains("::register("),
         "scaffolded shell must build via NmpAppBuilder and call register:\n{shell}"
+    );
+    assert!(
+        shell.contains("open_home_timeline_session")
+            && shell.contains("close_home_timeline_session")
+            && !shell.contains("compile_feed_params")
+            && !shell.contains("open_interest"),
+        "scaffolded shell must use the app-owned read helper, not raw read internals:\n{shell}"
     );
     assert!(
         shell.contains(

@@ -105,6 +105,45 @@ pub fn starter_home_feed_params() -> nmp_native_runtime::FeedParams {
     }
 }
 
+/// Opaque handle for the starter home timeline session.
+///
+/// App code keeps this handle and passes it back to close the session. It does
+/// not re-derive filters, own source reduction, or select a feed compiler.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HomeTimelineSession {
+    handle: nmp_native_runtime::FeedHandle,
+}
+
+impl HomeTimelineSession {
+    #[must_use]
+    pub fn projection_key(&self) -> &nmp_native_runtime::ProjectionKey {
+        &self.handle.projection_key
+    }
+}
+
+/// Open the starter home timeline as an app-owned typed read session.
+///
+/// This is the app-level read API. The helper builds the declaration and binds
+/// the reusable NMP compiler internally; callers receive only the session they
+/// need to render and later close.
+pub fn open_home_timeline_session(
+    app: &nmp_native_runtime::NmpApp,
+) -> Result<HomeTimelineSession, nmp_native_runtime::FeedOpenError> {
+    let handle = app.open_feed(
+        &starter_home_feed_params(),
+        &nmp_native_runtime::compile_feed_params,
+    )?;
+    Ok(HomeTimelineSession { handle })
+}
+
+/// Close a home timeline session opened by [`open_home_timeline_session`].
+pub fn close_home_timeline_session(
+    app: &nmp_native_runtime::NmpApp,
+    session: HomeTimelineSession,
+) -> bool {
+    app.close_feed(&session.handle)
+}
+
 /// Host-side typed write builders this starter expects platform shells to use.
 pub fn starter_action_builder_paths() -> [&'static str; 3] {
     [
@@ -339,5 +378,12 @@ mod tests {
             nmp_native_runtime::ProjectionKey("nmp.feed.home".to_string())
         );
         assert_eq!(feed.acquisition, nmp_native_runtime::FeedScope::ActiveUserFollows);
+    }
+
+    #[test]
+    fn starter_home_timeline_session_is_app_owned() {
+        let session_type = std::any::type_name::<HomeTimelineSession>();
+
+        assert!(session_type.ends_with("HomeTimelineSession"));
     }
 }

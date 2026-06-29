@@ -1,14 +1,13 @@
 //! #1740 step 9 — the NEGATIVE matrix: the raw feed lanes are NO LONGER public.
 //!
-//! Feed public-surface migration made `NmpApp::open_feed` /
-//! `NmpApp::close_feed` the typed feed doorway, and retired the raw lanes plus
-//! older app-local feed FFI exports. This grep-gate asserts the retirement is
-//! real: retired public symbols/strings are gone from the public surface, not
-//! merely shadowed by a parallel path. It fails if any reappears, so a future
-//! change cannot silently re-expose them.
+//! Feed public-surface migration made app-owned typed session handles the feed
+//! doorway, and retired the raw lanes plus older app-local feed FFI exports.
+//! This grep-gate asserts the retirement is real: retired public symbols/strings
+//! are gone from the public surface, not merely shadowed by a parallel path. It
+//! fails if any reappears, so a future change cannot silently re-expose them.
 //!
 //! What is asserted GONE (public surface only):
-//!   * the old feed C-ABI symbols (no `#[no_mangle]` definition, no `pub use`
+//!   * old feed C-ABI symbols (no `#[no_mangle]` definition, no `pub use`
 //!     re-export anywhere);
 //!   * the Chirp-specific `nmp_app_chirp_open/close_{home,author,thread}_feed`
 //!     production symbols and callers;

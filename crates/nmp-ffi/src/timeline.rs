@@ -3,7 +3,7 @@
 //!
 //! V-68 / V-112 (ADR-0042): `nmp_app_open_author`, `nmp_app_close_author`,
 //! `nmp_app_open_thread`, `nmp_app_close_thread` deleted here; apps now open
-//! typed feed sessions through `nmp_app_open_feed`.
+//! typed feed sessions through app-owned Rust helpers over `NmpApp::open_feed`.
 //!
 //! Split out of `ffi/mod.rs` to keep both files under the 300-LOC soft cap.
 //! These reuse the parent module's validated-argument helpers (`app_ref`,
