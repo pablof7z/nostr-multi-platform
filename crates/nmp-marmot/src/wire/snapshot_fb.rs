@@ -1,8 +1,7 @@
 //! Typed FlatBuffers wire codec for [`crate::projection::payload::MarmotSnapshot`].
 //!
-//! The authoritative FFI shape of the `nmp.marmot.snapshot` projection is the
-//! serde JSON of [`MarmotSnapshot`] (registered via `register_snapshot_projection`
-//! in `crate::ffi::register_with_keys`). This module adds a **typed FlatBuffers**
+//! The authoritative shape of the `nmp.marmot.snapshot` projection is the serde
+//! JSON of [`MarmotSnapshot`]. This module adds a **typed FlatBuffers**
 //! encoding of the same struct — a self-describing, schema-versioned,
 //! language-neutral binary the host platforms (Swift / Kotlin / TypeScript) can
 //! decode with generated accessors instead of JSON reflection. It is a sidecar

@@ -139,8 +139,8 @@ pub(super) struct Inner {
     /// on a healthy registration. `Some(KeyringUnavailable)` when the projection
     /// was built over the in-memory mock credential store (formerly the V-62
     /// `keyring_unavailable` bool). Set once at construction; never cleared.
-    /// (The `DbKeyLost` variant is carried by the degraded slot in `ffi.rs`,
-    /// which has no `MarmotProjection` to hold it — see `MarmotSlotState`.)
+    /// `DbKeyLost` is retained for host registration layers that need to
+    /// surface a lost MLS database key.
     init_error: Option<MarmotInitError>,
     /// Pending ops deferred because invitee KPs were not yet in the cache.
     /// Re-tried on every KP ingest; expired via wall-clock gate (D8).
@@ -165,9 +165,8 @@ pub(super) struct Inner {
     pub(super) captured_commands: Vec<(&'static str, String)>,
 }
 
-/// Owned Marmot projection. `Mutex` because `on_kernel_event` takes `&self`
-/// on the actor thread while the FFI snapshot / dispatch run on the Swift
-/// bridge thread (low contention; the bridge serializes its calls).
+/// Owned Marmot projection. `Mutex` because ingest and host snapshot/action
+/// reads can reach the same projection from different runtime call paths.
 pub struct MarmotProjection {
     // `pub(super)` so the sibling `resubscribe` module can lock it directly.
     pub(super) inner: Mutex<Inner>,
@@ -175,12 +174,12 @@ pub struct MarmotProjection {
 
 impl MarmotProjection {
     /// Build the projection around an already-constructed [`MarmotService`].
-    /// The FFI layer owns service construction (it must parse the signer
-    /// seam key + resolve the app-support DB path) so this stays infallible.
-    /// `actor_sender` starts absent; the FFI `register` path installs the
-    /// actor sender after constructing the projection. Tests that build the
-    /// projection directly leave it absent, so publish/interest side effects
-    /// are no-ops while state changes remain testable.
+    /// The host registration layer owns service construction (it must parse
+    /// the signer seam key + resolve the app-support DB path) so this stays
+    /// infallible. `actor_sender` starts absent; hosts install it after
+    /// constructing the projection. Tests that build the projection directly
+    /// leave it absent, so publish/interest side effects are no-ops while
+    /// state changes remain testable.
     ///
     /// `init_error` is `Some(MarmotInitError::KeyringUnavailable)` when the
     /// service was initialized with the in-memory mock credential store
@@ -213,8 +212,8 @@ impl MarmotProjection {
         }
     }
 
-    /// Borrow the inner state under the lock for an FFI op. Returns `None`
-    /// on a poisoned mutex (D6 — caller degrades to null / `{"ok":false}`).
+    /// Borrow the inner state under the lock. Returns `None` on a poisoned
+    /// mutex (D6 — caller degrades to an empty/error result).
     #[must_use]
     pub fn with_inner<R>(&self, f: impl FnOnce(&mut InnerHandle<'_>) -> R) -> Option<R> {
         let mut guard = self.inner.lock().ok()?;
@@ -240,15 +239,6 @@ impl MarmotProjection {
             port: Some(port),
         };
         Some(f(&mut h))
-    }
-
-    #[cfg(feature = "ffi")]
-    #[must_use]
-    pub(crate) fn has_pending_ops(&self) -> bool {
-        self.inner
-            .lock()
-            .map(|inner| inner.pending_ops.iter().next().is_some())
-            .unwrap_or(false)
     }
 
     /// Build the JSON snapshot. D6 — poisoned mutex → empty snapshot.
@@ -300,9 +290,9 @@ impl MarmotProjection {
             })
             .collect();
 
-        // Reaching this snapshot path means the iOS shell has a live
-        // `MarmotHandle`, so the identity IS registered. The `false` branch
-        // is only ever served by `MarmotSnapshot::empty()` on the Swift side.
+        // Reaching this snapshot path means a host has built a live Marmot
+        // projection, so the identity is registered. Hosts without Marmot state
+        // use `MarmotSnapshot::empty()`.
         let key_package = match inner.key_package_published_at {
             Some(ts) => {
                 let age = now_secs.saturating_sub(ts);

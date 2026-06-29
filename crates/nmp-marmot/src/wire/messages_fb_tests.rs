@@ -2,14 +2,10 @@
 //! flattens the per-group message map to a sorted `MarmotGroupMessages` vector
 //! and round-trips it through the generated `NMMG` bindings.
 //!
-//! The trait→sidecar surface is proven generically by
-//! `nmp-ffi::snapshot::typed_projection_registered_through_trait_surfaces_in_sidecar`
-//! (the inherent `NmpApp::register_typed_snapshot_projection` marmot uses
-//! delegates to the same registry); this in-crate test proves the
-//! marmot-specific schema identity, the map→sorted-vector flattening, and the
-//! encode/decode round-trip — including a populated case driven through the
-//! real `MarmotProjection` against an in-memory `MarmotService` (no MLS
-//! cross-client setup), mirroring `crate::ffi::tests`.
+//! This in-crate test proves the Marmot-specific schema identity, the
+//! map→sorted-vector flattening, and the encode/decode round-trip — including a
+//! populated case driven through the real `MarmotProjection` against an in-memory
+//! `MarmotService` (no MLS cross-client setup).
 
 use super::{
     decode_marmot_messages, encode_marmot_messages, typed_projection, FILE_IDENTIFIER, SCHEMA_ID,
@@ -89,9 +85,8 @@ fn decode_rejects_bytes_without_the_nmmg_identifier() {
 
 /// End-to-end over the real projection / ops code paths: publish → create_group
 /// → send, then `messages_all_groups()` (the typed sidecar's source) → encode →
-/// decode must surface the sent message. Mirrors
-/// `crate::ffi::tests::round_trip_publish_create_snapshot_send_messages`, using
-/// an in-memory `MarmotService` (no cross-client MLS).
+/// decode must surface the sent message, using an in-memory `MarmotService`
+/// (no cross-client MLS).
 #[test]
 fn messages_all_groups_typed_round_trip_over_real_projection() {
     let alice_keys = Keys::generate();

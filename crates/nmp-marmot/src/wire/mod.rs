@@ -11,11 +11,9 @@
 //! ## Read-direction (ADR-0037 snapshot sidecars)
 //!
 //! Sidecar to the authoritative serde JSON projections: the generic `Value`
-//! shape stays the source of truth (the dynamic
-//! `register_snapshot_projection` calls in `crate::ffi::register_with_keys`
-//! are unchanged), and these modules carry the typed payloads in each
-//! `SnapshotFrame`'s `typed_projections` sidecar. Purely additive — a host
-//! with the matching decoder prefers the typed payload; an un-updated host
+//! shape stays the source of truth, and these modules carry the typed payloads
+//! in each `SnapshotFrame`'s `typed_projections` sidecar. Purely additive — a
+//! host with the matching decoder prefers the typed payload; an un-updated host
 //! falls back to the generic `Value` subtree.
 //!
 //!   * [`snapshot_fb`] — `nmp.marmot.snapshot` (`NMMS`)

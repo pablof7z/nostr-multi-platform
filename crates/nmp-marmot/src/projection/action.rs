@@ -6,24 +6,12 @@
 //!
 //! # Where this fits
 //!
-//! Marmot has two op streams reaching `MarmotService`:
-//!
-//! * **the substrate-generic seam** (this module, the SOLE host entry
-//!   point) — registers a typed [`ActionModule`] under the `"nmp.marmot"`
-//!   namespace; the host calls
-//!   `nmp_app_dispatch_action("nmp.marmot", action_json)`; `execute`
-//!   sends a typed [`MarmotProtocolCommand`] through
-//!   `ActorCommand::Protocol`. Returns a `correlation_id` synchronously;
-//!   the terminal verdict surfaces on `action_stages`.
-//! * **the Rust-native accessor** ([`crate::ffi::MarmotHandle::dispatch`])
-//!   — for in-process callers (REPL / TUI / integration tests) that need
-//!   the full synchronous per-op envelope (`events`, `welcome_rumors`,
-//!   `evolution_event`, …). Not a C-ABI symbol. Reaches the SAME
-//!   [`crate::projection::ops::dispatch`] code path.
-//!
-//! Both paths reach the SAME [`crate::projection::ops::dispatch`] code so the
-//! behaviour is identical — only the entry door (and the level of detail
-//! returned to the caller) differs.
+//! Marmot writes reach `MarmotService` through the substrate-generic seam:
+//! hosts register a typed [`ActionModule`] under the `"nmp.marmot"` namespace,
+//! call `nmp_app_dispatch_action("nmp.marmot", action_json)`, and `execute`
+//! sends a typed [`MarmotProtocolCommand`] through `ActorCommand::Protocol`.
+//! Returns a `correlation_id` synchronously; the terminal verdict surfaces on
+//! `action_stages`.
 //!
 //! # JSON shape — isomorphic with the bespoke envelope
 //!

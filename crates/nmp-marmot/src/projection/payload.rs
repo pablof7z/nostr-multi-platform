@@ -218,8 +218,8 @@ pub struct MarmotSnapshot {
 
 impl MarmotSnapshot {
     /// D6 — degraded/empty snapshot (poisoned mutex, service init failure).
-    /// Returned by the iOS shell whenever no `MarmotHandle` exists; the
-    /// kernel-side snapshot path always sets `is_registered = true`.
+    /// Returned by hosts whenever no Marmot projection exists; the live
+    /// projection snapshot path always sets `is_registered = true`.
     #[must_use]
     pub fn empty() -> Self {
         let kp = KeyPackageStatus::default();

@@ -29,9 +29,9 @@
 //! ## Threading & D6
 //!
 //! `parse` fires on the kernel actor / ingest thread, between relay frames,
-//! while the FFI snapshot / dispatch run on the serialized Swift bridge thread.
-//! We take the projection's inner `Mutex` exactly as `on_kernel_event` already
-//! does (low contention; the bridge serializes its calls). The work is bounded
+//! while host snapshot / dispatch calls may read the same projection. We take
+//! the projection's inner `Mutex` exactly as `on_kernel_event` already does
+//! (low contention; host calls are expected to serialize). The work is bounded
 //! — local MDK + SQLite, never network. Every failure (poisoned mutex, parse
 //! error, duplicate / malformed event, `MarmotService` error) is a **silent
 //! no-op**: the parser discards the `ingest_signed_event_core` `Result` and
@@ -43,44 +43,13 @@ use nmp_core::substrate::IngestParser;
 use nmp_store::VerifiedEvent;
 use nostr::{Event, JsonUtil};
 
-use crate::interest::{
-    KIND_GIFT_WRAP, KIND_MARMOT_GROUP_MESSAGE, KIND_MARMOT_KEY_PACKAGE, KIND_MARMOT_WELCOME,
-};
 use crate::projection::ops::ingest_signed_event_core;
 use crate::projection::state::MarmotProjection;
 
-/// Kinds the inbound parser subscribes to per-kind registrations:
-/// - kind:30443 — key-packages, so the `kp_cache` in `MarmotService` is
-///   populated when peers' events arrive (legacy kind:443 retired 2026-05-31);
-/// - kind:1059 — gift-wrap welcome;
-/// - kind:445 — group message / commit / proposal;
-/// - kind:444 — welcome rumor, admitted defensively (the wire welcome is
-///   the kind:1059 gift-wrap, but accepting 444 costs nothing — the
-///   shared core silently skips it).
-///
-/// Kind integers come from the `nmp-kinds` registry (via `crate::interest`),
-/// not literals — one source of truth shared with the publish/cache sites.
-// Used by the `ffi` module (feature-gated) and tests; `cfg_attr` confines the
-// allow to non-ffi, non-test builds where the constants appear unused.
-#[cfg_attr(not(any(feature = "ffi", test)), allow(dead_code))]
-pub(crate) const TAP_KINDS: [u32; 4] = [
-    KIND_MARMOT_WELCOME,
-    KIND_MARMOT_GROUP_MESSAGE,
-    KIND_GIFT_WRAP,
-    KIND_MARMOT_KEY_PACKAGE,
-];
-
-/// Slot key used with `EventIngestDispatcher::replace_kind_parser`.
-/// Distinct from the NIP-17 `"nip17.dm_inbox"` slot so both parsers
-/// coexist on kind:1059 without evicting each other.
-// Used by the `ffi` module (feature-gated) and tests; same scope as `TAP_KINDS`.
-#[cfg_attr(not(any(feature = "ffi", test)), allow(dead_code))]
-pub(crate) const MARMOT_INGEST_SLOT: &str = "marmot";
-
 /// `IngestParser` that bridges the substrate dispatcher into the Marmot
-/// projection. Holds an `Arc<MarmotProjection>` (the same projection the
-/// owning `MarmotHandle` retains). The dispatcher owns this parser as an
-/// `Arc<dyn IngestParser>` until teardown via the slot-keyed replace seam.
+/// projection. Holds an `Arc<MarmotProjection>`. The dispatcher owns this
+/// parser as an `Arc<dyn IngestParser>` until teardown via the slot-keyed
+/// replace seam.
 pub struct MarmotIngestParser {
     projection: Arc<MarmotProjection>,
 }
@@ -94,7 +63,6 @@ impl MarmotIngestParser {
 
 impl IngestParser for MarmotIngestParser {
     /// One accepted inbound signed event from the substrate dispatcher.
-    /// The dispatcher registration guarantees `kind` is in `TAP_KINDS`.
     ///
     /// We reconstruct the verbatim signed NIP-01 JSON from the `RawEvent`
     /// (which includes the `sig` field — MDK requires it for gift-wrap

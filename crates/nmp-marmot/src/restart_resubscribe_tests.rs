@@ -1,18 +1,18 @@
 //! Regression test for the post-restart live-receive fix.
 //!
 //! Bug: after app restart, already-joined Marmot groups receive no new live
-//! kind:445 messages. `register_with_keys` re-pushes the giftwrap inbox
-//! interest but never re-registers the per-group kind:445 message feeds for
-//! groups loaded from the persisted MDK store. The in-memory `group_relays`
-//! cache starts empty on every launch; `subscribe_group_messages` is only
-//! called from `cache_group_relays`, whose only callers are in-session ops
-//! (create/join). After restart, both the in-memory relay cache and the relay
-//! subscriptions are absent.
+//! kind:445 messages. The host registration layer re-pushes the giftwrap inbox
+//! interest but previously did not re-register the per-group kind:445 message
+//! feeds for groups loaded from the persisted MDK store. The in-memory
+//! `group_relays` cache starts empty on every launch; `subscribe_group_messages`
+//! is only called from `cache_group_relays`, whose only callers are in-session
+//! ops (create/join). After restart, both the in-memory relay cache and the
+//! relay subscriptions are absent.
 //!
 //! Fix: `MarmotProjection::resubscribe_all_groups` enumerates persisted
 //! groups and routes each through `cache_group_relays` (the existing
 //! choke-point), seeding the in-memory cache and pushing interests.
-//! `register_with_keys` calls it right after the giftwrap inbox push.
+//! The host registration layer calls it right after the giftwrap inbox push.
 //!
 //! ## Test strategy
 //!

@@ -56,7 +56,7 @@ fn group_message_interest_id(group_id_hex: &str, relay_url: &str) -> InterestId 
 }
 
 /// Tailing `LogicalInterest` for kind:1059 `#p <pubkey>` gift-wraps — the
-/// event-driven Welcome-delivery subscription a per-app FFI bridge pushes at
+/// event-driven Welcome-delivery subscription a host registration layer pushes at
 /// Marmot registration time. This is the policy seam: kind selection, the
 /// deterministic id, the `#p` filter and the `Account` scope are protocol
 /// decisions and therefore live in `nmp-marmot`, not in any app's glue (D7).
@@ -66,7 +66,7 @@ fn group_message_interest_id(group_id_hex: &str, relay_url: &str) -> InterestId 
 /// registration and the subscription must stay pinned to it. The kernel's
 /// raw-event tap then drives every accepted event into
 /// `MarmotService::ingest_signed_event_core` automatically.
-#[must_use] 
+#[must_use]
 pub fn giftwrap_inbox_interest(pubkey: &str) -> LogicalInterest {
     let deps = nmp_core::substrate::ViewDependencies {
         kinds: vec![KIND_GIFT_WRAP],
