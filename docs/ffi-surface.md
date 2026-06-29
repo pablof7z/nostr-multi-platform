@@ -24,6 +24,13 @@ Native app shells use the generated UniFFI bindings from `crates/nmp-uniffi`.
 The checked-in Swift/Kotlin bindings are guarded by
 `ci/check-uniffi-bindings-drift.sh`.
 
+This is the native binding lane for public onboarding. Starter native apps
+should construct and configure the UniFFI object model over
+`nmp-native-runtime`; retained low-level native symbols, where they still exist
+during #2125 migration, are internal/transitional/test-support and are not
+starter requirements. Browser starter apps use the separate
+`nmp-browser-runtime` wasm-bindgen lane.
+
 The public native app object is UniFFI `NmpApp`, an `Arc`-backed wrapper over
 `nmp-native-runtime::NmpApp`. Its core lifecycle is:
 

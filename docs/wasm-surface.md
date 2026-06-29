@@ -17,6 +17,14 @@ signer/capability provider registration, and app-builder policy all live in
 TypeScript renders snapshots and executes browser capabilities; Rust owns
 policy, routing, replay, Nostr protocol behaviour, and state transitions.
 
+This is the browser binding lane. Public browser onboarding uses
+`nmp-browser-runtime` wasm-bindgen exports. Public native onboarding uses
+UniFFI/native-runtime concepts instead; low-level native symbols are not a
+browser fallback or a starter requirement. FlatBuffers remain the shared typed
+payload bytes across both lanes: browser hosts pass `DispatchEnvelope` (`NMPD`)
+bytes into wasm-bindgen and receive `UpdateFrame` (`NMPU`) bytes from the
+snapshot callback.
+
 The `NmpWasmRuntime` class exposes three channels:
 
 1. **JSON control channel** — `handle_json(request: string): string` (sync).
@@ -56,7 +64,7 @@ Source: `crates/nmp-browser-runtime/src/wasm/protocol.rs`.
 | `"stop"` | `Stop` | `correlation_id: String` | Closes relay drivers, stops the kernel. |
 | `"resolve_ref"` | `ResolveRef(ResolveRef)` | `namespace: u32`, `key: String`, `consumer_id: String`, `shape: u32`, `liveness: u32`, optional `hints: String[]`, optional `event_author: String`, `correlation_id: String` | ADR-0063 structured reference-resolution control. This is not an app-write doorway and cannot carry arbitrary action namespaces. Event refs may carry relay hints and nevent author metadata decoded by the app from NIP-19/NIP-21 TLVs. |
 | `"release_ref"` | `ReleaseRef(ReleaseRef)` | `namespace: u32`, `key: String`, `consumer_id: String`, `correlation_id: String` | ADR-0063 structured reference release. |
-| `"dispatch_bytes"` | `DispatchBytes(DispatchBytes)` | `bytes: Vec<u8>` | **ADR-0064 typed write doorway.** `bytes` are a finished `DispatchEnvelope` FlatBuffers root (file id `NMPD`) carrying `correlation_id` + generated `action_namespace` + opaque typed `payload`. Production browser hosts call `handle_dispatch_bytes(bytes)` for this request instead of JSON-stringifying the `bytes` field. Decoded through `nmp_core::dispatch_envelope::decode_dispatch_envelope` — the same dispatch envelope path native hosts use. There is no wasm-only write vocabulary. |
+| `"dispatch_bytes"` | `DispatchBytes(DispatchBytes)` | `bytes: Vec<u8>` | **ADR-0064 typed write doorway.** `bytes` are a finished `DispatchEnvelope` FlatBuffers root (file id `NMPD`) carrying `correlation_id` + generated `action_namespace` + opaque typed `payload`. Production browser hosts call `handle_dispatch_bytes(bytes)` for this request instead of JSON-stringifying the `bytes` field. Decoded through `nmp_core::dispatch_envelope::decode_dispatch_envelope` — the same Rust dispatch path reached by native UniFFI action dispatch. There is no wasm-only write vocabulary. |
 | `"capability_result"` | `CapabilityResult(CapabilityResult)` | `capability: String`, `correlation_id: String`, `payload: Value` | Browser-side capability completion. Returns `CapabilityFailure` with reason `browser_actor_driver_missing` — the native actor capability handler is not available on wasm. |
 | `"set_identity"` | `SetIdentity(SetIdentity)` | `kind: String`, `correlation_id: String`, optional `pubkey_hex: String`, optional `secret_key_bech32: String`, optional `bunker_uri: String`, optional `identity_relays: Vec<{url, read, write}>` | Set the active identity. `kind = "nip07"` uses `pubkey_hex` from `await window.nostr.getPublicKey()` and signs through `begin_sign`/`deliver_signer_response`. `kind = "local_key"` requires `secret_key_bech32`; Rust decodes the `nsec`, derives the pubkey, installs a `LocalKeySigner`, and redacts request debug. `kind = "nip46"` requires `bunker_uri`; Rust owns the NIP-46 bunker handshake, installs the signer after `get_public_key`, and redacts the URI. `identity_relays` forwards raw identity relay permissions; Rust canonicalizes and merges them before active-account bootstrap. |
 | `"begin_sign"` | `BeginSign(BeginSign)` | `account_pubkey: String`, `unsigned_json: String` | ADR-0050 sign capability round-trip. Parks a sign op and emits `sign_request` for the main-thread broker to fulfil via `window.nostr.signEvent`. Pure message re-entry (D8). |
@@ -323,9 +331,10 @@ Returns a JSON string (`schema_version: 1`) of the kernel's recent routing
 decisions ring buffer. Pull-only — call on demand (e.g. debug inspector);
 not pushed on every snapshot tick. Always returns a well-formed document;
 empty rings render as `{"schema_version":1,"capacity":0,"publishes":[],
-"subscriptions":[]}` (D6). The equivalent iOS FFI surface is
-the native debug-info helper for the routing-decisions domain, so a single
-routing-inspector renderer can work across both surfaces.
+"subscriptions":[]}` (D6). The equivalent native lane is the UniFFI
+diagnostics/debug-info surface over `nmp-native-runtime`, so a single
+routing-inspector renderer can work across native and browser without teaching
+legacy native symbols as app-facing API.
 
 ---
 
