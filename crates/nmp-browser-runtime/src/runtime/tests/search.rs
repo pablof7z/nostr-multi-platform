@@ -16,13 +16,14 @@ fn open_search(
     request: SearchRequest,
     key: &str,
 ) -> String {
+    handle.open_search_session(BrowserSearchSessionDescriptor {
+        request,
+        key: key.to_string(),
+    });
     handle
-        .open_search_session(BrowserSearchSessionDescriptor {
-            request,
-            key: key.to_string(),
-        })
-        .projection_key()
-        .to_string()
+        .search_sessions
+        .projection_key(key)
+        .expect("search session was registered")
 }
 
 fn close_search(handle: &mut crate::BrowserRuntimeHandle, key: &str) {

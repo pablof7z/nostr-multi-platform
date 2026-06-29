@@ -28,22 +28,12 @@ pub(crate) struct BrowserSearchSessionDescriptor {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct BrowserSearchSessionHandle {
     key: String,
-    projection_key: String,
 }
 
 impl BrowserSearchSessionHandle {
     #[must_use]
     pub(crate) fn for_key(key: impl Into<String>) -> Self {
-        let key = key.into();
-        Self {
-            projection_key: search_key(&key),
-            key,
-        }
-    }
-
-    #[must_use]
-    pub(crate) fn projection_key(&self) -> &str {
-        &self.projection_key
+        Self { key: key.into() }
     }
 }
 
@@ -75,10 +65,9 @@ impl BrowserRuntimeHandle {
         &mut self,
         descriptor: BrowserSearchSessionDescriptor,
     ) -> BrowserSearchSessionHandle {
-        let projection_key = self.open_search_for_key(descriptor.request, &descriptor.key);
+        self.open_search_for_key(descriptor.request, &descriptor.key);
         BrowserSearchSessionHandle {
             key: descriptor.key,
-            projection_key,
         }
     }
 

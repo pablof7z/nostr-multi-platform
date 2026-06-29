@@ -28,22 +28,12 @@ pub(crate) struct BrowserNotificationsSessionDescriptor {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct BrowserNotificationsSessionHandle {
     key: String,
-    projection_key: String,
 }
 
 impl BrowserNotificationsSessionHandle {
     #[must_use]
     pub(crate) fn for_key(key: impl Into<String>) -> Self {
-        let key = key.into();
-        Self {
-            projection_key: notifications_key(&key),
-            key,
-        }
-    }
-
-    #[must_use]
-    pub(crate) fn projection_key(&self) -> &str {
-        &self.projection_key
+        Self { key: key.into() }
     }
 }
 
@@ -94,7 +84,6 @@ impl BrowserRuntimeHandle {
         );
         Ok(BrowserNotificationsSessionHandle {
             key: descriptor.key,
-            projection_key,
         })
     }
 
