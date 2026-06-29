@@ -43,12 +43,13 @@
 //!    Marmot write capabilities (key-package publish, group-scoped ops:
 //!    `CreateGroup`, `Invite`, `Send`, `Leave`, `Remove`, etc.) are dispatched
 //!    through the substrate-generic [`projection::action::MarmotActionModule`]
-//!    registered under the `"nmp.marmot"` namespace — the host calls
-//!    `nmp_app_dispatch_action("nmp.marmot", action_json)` and a typed
-//!    `MarmotProtocolCommand` runs the op against the live `MarmotProjection`
-//!    on the actor thread. The legacy bespoke `nmp_marmot_dispatch` C symbol
-//!    (ADR-0025) was DELETED in PR 3 (2026-05-23), and the remaining
-//!    `nmp_marmot_*` C shell was deleted in #2232.
+//!    registered under the `"nmp.marmot"` namespace. The runtime's normal
+//!    action dispatcher targets that namespace, and a typed
+//!    [`projection::action::MarmotProtocolCommand`] runs the op against the
+//!    live `MarmotProjection` on the actor thread. The legacy bespoke
+//!    `nmp_marmot_dispatch` C symbol (ADR-0025) was DELETED in PR 3
+//!    (2026-05-23), and the remaining `nmp_marmot_*` C shell was deleted
+//!    in #2232.
 //! 2. **Service layer** ([`service::MarmotService`]) — the real MDK-driving
 //!    API. Holds an `MDK<S>` + `nostr::Keys`. This is what the in-crate
 //!    round-trip tests exercise and what a headless integration-test driver

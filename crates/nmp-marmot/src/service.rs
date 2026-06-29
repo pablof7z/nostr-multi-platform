@@ -1,7 +1,7 @@
 //! `MarmotService` — the real MDK-driving API layer.
 //!
 //! This is the only module in `nmp-marmot` that touches MDK types. It is
-//! consumed in-crate (round-trip tests) and by a future actor/FFI bridge; no
+//! consumed in-crate by round-trip tests and protocol projection code; no
 //! other NMP crate depends on it, so the kernel-boundary exit gate
 //! ("`nmp-marmot` is the sole importer of `mdk-core`/`openmls`") holds.
 //!
@@ -56,7 +56,7 @@ use zeroize::Zeroizing;
 use crate::interest::KIND_MARMOT_KEY_PACKAGE;
 
 /// Errors surfaced by the service. Wraps `mdk_core::Error` (kept opaque as a
-/// string so the error type does not leak MLS types across a future FFI
+/// string so the error type does not leak MLS types across the protocol
 /// boundary) plus service-level validation.
 #[derive(Debug)]
 pub enum MarmotError {

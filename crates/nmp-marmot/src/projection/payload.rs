@@ -1,13 +1,13 @@
-//! Wire-shape carried across the Marmot FFI to Swift.
+//! Wire-shape carried by Marmot projections.
 //!
-//! Every struct here is a flat, decoder-free DTO: Swift mirrors the serde
-//! shape 1:1 and renders directly. No MLS / MDK type ever appears — the
-//! `nmp-marmot` `MarmotService` is the typed translation layer (opaque
-//! `group_id` as hex string, errors as strings) and this crate flattens
-//! its outputs one more step for the C-ABI JSON boundary.
+//! Every struct here is a flat, decoder-free DTO: hosts mirror the serde shape
+//! 1:1 and render directly. No MLS / MDK type ever appears — the `nmp-marmot`
+//! `MarmotService` is the typed translation layer (opaque `group_id` as hex
+//! string, errors as strings), and this crate flattens its outputs one more
+//! step for the projection JSON boundary.
 //!
-//! The iOS shell depends on these field names VERBATIM. Treat any rename
-//! as a breaking ABI change.
+//! Hosts depend on these field names VERBATIM. Treat any rename as a breaking
+//! projection-wire change.
 //!
 //! ## Raw data only (aim.md §2)
 //!
@@ -53,7 +53,7 @@ pub enum MarmotInitError {
 }
 
 /// One group row in the snapshot. `id_hex` is the MLS group id hex-encoded
-/// (the opaque handle Swift passes back to `group_messages` / `dispatch`).
+/// (the opaque handle hosts pass back to group-message/read operations).
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct MarmotGroupRow {
     pub id_hex: String,
@@ -99,7 +99,7 @@ pub struct PendingWelcomeRow {
 
 /// KeyPackage publication health for the local identity.
 ///
-/// Raw status struct — shells (Swift, Kotlin) own all presentation formatting
+/// Raw status struct — shells own all presentation formatting
 /// (subtitles, button labels, bucketed age strings). Per aim.md §2: Rust sends
 /// raw data only. Presentation layers derive copy from `published`, `age_secs`,
 /// `stale`, and `is_registered`.

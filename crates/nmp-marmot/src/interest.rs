@@ -35,7 +35,7 @@ pub use nmp_nip59::KIND_GIFT_WRAP;
 /// Stable, deterministic `InterestId` for a pubkey's gift-wrap inbox
 /// subscription. Same hash pattern as `follow_feed_interest_id` in the
 /// kernel's contacts ingest — keying the id off the pubkey lets a per-app
-/// FFI bridge push the interest idempotently (re-registration produces the
+/// host registration layer push the interest idempotently (re-registration produces the
 /// same id, the kernel de-dupes).
 fn giftwrap_interest_id(pubkey: &str) -> InterestId {
     InterestId(stable_hash64(("marmot.giftwrap", pubkey)))

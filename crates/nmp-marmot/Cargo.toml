@@ -4,7 +4,7 @@ version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 repository.workspace = true
-description = "Marmot Protocol (MLS-over-Nostr) as a Layer-4 NIP crate. Sole importer of mdk-core/openmls; adapts MDK types to NMP Domain/View module contracts. Mutating ops dispatch through the generic nmp_app_dispatch_action(\"nmp.marmot\", …) seam (ADR-0025 retired in PR 3, 2026-05-23). API surface: docs/research/mdk-api.md."
+description = "Marmot Protocol (MLS-over-Nostr) as a Layer-4 NIP crate. Sole importer of mdk-core/openmls; adapts MDK types to NMP Domain/View module contracts. Mutating ops install a typed action module under the nmp.marmot namespace. API surface: docs/research/mdk-api.md."
 
 [dependencies]
 nmp-core = { path = "../nmp-core" }

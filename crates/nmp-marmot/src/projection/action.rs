@@ -1,5 +1,5 @@
 //! `MarmotAction` + `MarmotActionModule` — the typed [`ActionModule`] surface
-//! that routes Marmot writes through `nmp_app_dispatch_action`. This is the
+//! that routes Marmot writes through the runtime action dispatcher. This is the
 //! architecturally-correct replacement for the legacy bespoke
 //! `nmp_marmot_dispatch` C-ABI symbol (deleted in ADR-0025 PR 3,
 //! 2026-05-23 — the ADR-0025 exception is fully retired).
@@ -8,9 +8,9 @@
 //!
 //! Marmot writes reach `MarmotService` through the substrate-generic seam:
 //! hosts register a typed [`ActionModule`] under the `"nmp.marmot"` namespace,
-//! call `nmp_app_dispatch_action("nmp.marmot", action_json)`, and `execute`
-//! sends a typed [`MarmotProtocolCommand`] through `ActorCommand::Protocol`.
-//! Returns a `correlation_id` synchronously; the terminal verdict surfaces on
+//! dispatch a runtime action envelope for that namespace, and `execute` sends a
+//! typed [`MarmotProtocolCommand`] through `ActorCommand::Protocol`. Returns a
+//! `correlation_id` synchronously; the terminal verdict surfaces on
 //! `action_stages`.
 //!
 //! # JSON shape — isomorphic with the bespoke envelope
@@ -25,10 +25,9 @@
 //! {"op": "publish_key_package"}
 //! ```
 //!
-//! iOS doesn't re-encode — the ADR-0025 PR 2 migration from the legacy
-//! `nmp_marmot_dispatch(json)` symbol to `nmp_app_dispatch_action("nmp.marmot",
-//! json)` was a one-line call-site change per op (and PR 3 then deleted
-//! the legacy symbol entirely).
+//! The ADR-0025 PR 2 migration replaced the legacy `nmp_marmot_dispatch(json)`
+//! symbol with the shared action-dispatch namespace, and PR 3 then deleted the
+//! legacy symbol entirely.
 //!
 //! # `start()` validates shape; `MarmotProtocolCommand` does the work
 //!
@@ -52,8 +51,8 @@ use serde::{Deserialize, Serialize};
 use crate::projection::state::{MarmotProjection, MarmotRuntimePort};
 
 /// Namespace under which the [`MarmotActionModule`] registers in the
-/// kernel's [`nmp_core::kernel::ActionRegistry`]. Hosts dispatch via
-/// `nmp_app_dispatch_action("nmp.marmot", action_json)`.
+/// kernel's [`nmp_core::kernel::ActionRegistry`]. Hosts dispatch through the
+/// runtime action dispatcher for this namespace.
 ///
 /// Named after the Marmot protocol (the MLS-over-Nostr binding that
 /// `nmp-app-marmot` implements), not the `nmp-app-marmot` crate. A second

@@ -1,15 +1,14 @@
 //! Marmot dispatch + read-projection op handlers.
 //!
 //! All MDK-input type construction (`GroupId`, `NostrGroupConfigData`) is
-//! confined here — the FFI translation-layer exception (see `Cargo.toml`
-//! rustdoc). No MLS type crosses the C-ABI: every op consumes / produces
-//! JSON, `group_id` is hex, errors are strings.
+//! confined here. No MLS type crosses the projection/action boundary: every op
+//! consumes / produces JSON, `group_id` is hex, errors are strings.
 //!
 //! ## Outbound relay seam — CLOSED (publish direction)
 //!
 //! Every op publishes its relay-bound events INTERNALLY via
 //! [`crate::projection::publish`] through the actor/protocol runtime port — no
-//! Swift relay path. Per-kind routing:
+//! host relay path. Per-kind routing:
 //! kind:445 → `publish_group_pinned` (group's relay-pinned list; a cache
 //! MISS suppresses dispatch, never author-outbox fallback); kind:30443 key-package
 //! → `publish_explicit` (`Auto` / NIP-65 outbox; legacy kind:443 retired
@@ -53,17 +52,16 @@ use input::{
     resolve_write_relays, signed_key_package_events,
 };
 
-/// `{"ok":false,"error":"…"}` — local copy of the FFI shell's `err`
-/// helper so this layer carries no `crate::marmot::ffi` dependency
-/// (Chirp is now a thin C-ABI shell over these modules).
+/// `{"ok":false,"error":"…"}` response helper for action/read-projection
+/// handlers.
 fn err(msg: &str) -> serde_json::Value {
     serde_json::json!({ "ok": false, "error": msg })
 }
 
 /// Newest-N decrypted application messages for one group, newest first.
 ///
-/// Preserves the prior wire ordering (DESC) so existing Swift consumers
-/// keep working byte-for-byte against an extended row schema.
+/// Preserves the prior wire ordering (DESC) so existing consumers keep working
+/// byte-for-byte against an extended row schema.
 pub fn group_messages(
     h: &mut InnerHandle<'_>,
     group_id_hex: &str,
@@ -222,7 +220,8 @@ fn publish_key_package(
 /// outbox). The signed JSON still appears in the INFORMATIONAL return.
 ///
 /// Returns the signed kind:1059 JSONs (INFORMATIONAL — already submitted). A
-/// `wrap_welcome` failure → `Err` (D6 → `{"ok":false,...}`; no panic crosses FFI).
+/// `wrap_welcome` failure → `Err` (D6 → `{"ok":false,...}`; no panic crosses
+/// a host boundary).
 fn wrap_and_publish_welcomes(
     h: &InnerHandle<'_>,
     group_relays: &[RelayUrl],
@@ -506,7 +505,7 @@ fn decline_welcome(h: &mut InnerHandle<'_>, welcome_id_hex: &str) -> Result<Valu
 /// The automatic [`crate::projection::tap`] raw-event observer is the caller:
 /// the kernel delivers every accepted inbound signed kind:1059/445/30443 here.
 /// The tap discards the `Result` (D6: a poisoned/duplicate/malformed event is a
-/// silent no-op on the actor thread, never a panic across the FFI).
+/// silent no-op on the actor thread, never a panic across a host boundary).
 ///
 /// `Ok(Some(Value))` carries per-kind informational payload for tests and
 /// deferred-op retry assertions. The projection mutation (pending-welcome row,

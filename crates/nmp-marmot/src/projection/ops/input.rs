@@ -62,13 +62,11 @@ pub(super) fn parse_relays(urls: &[String]) -> Result<Vec<RelayUrl>, String> {
 
 /// Resolve the write-relay set for relay-bearing ops.
 ///
-/// The app-wired NIP-65 write relays (`h.write_relay_urls()`, recovered
-/// from the live `NmpApp`) are authoritative for the FFI host path. When
-/// the projection is driven WITHOUT an app wired (a reusable host that
-/// supplies relays directly — e.g. the FFI round-trip tests, or any
-/// non-Chirp consumer), fall back to the envelope `relays` array. This
-/// keeps `nmp-marmot::projection` host-agnostic: relays come from the
-/// kernel when available, otherwise from the caller's op envelope.
+/// The app-wired NIP-65 write relays (`h.write_relay_urls()`) are authoritative
+/// for hosted runtime paths. When the projection is driven without an app wired
+/// (for example in direct protocol tests), fall back to the envelope `relays`
+/// array. This keeps `nmp-marmot::projection` host-agnostic: relays come from
+/// the kernel when available, otherwise from the caller's op envelope.
 pub(super) fn resolve_write_relays(h: &InnerHandle<'_>, relays: &[String]) -> Vec<String> {
     let app_relays = h.write_relay_urls();
     if !app_relays.is_empty() {

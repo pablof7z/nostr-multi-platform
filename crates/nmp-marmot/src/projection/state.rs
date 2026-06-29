@@ -1,7 +1,7 @@
 //! `MarmotProjection` — the per-app Marmot state.
 //!
 //! Owns one [`MarmotService`] (the typed MDK translation layer) plus the
-//! FFI-local bookkeeping `MarmotService` does not itself surface:
+//! projection-local bookkeeping `MarmotService` does not itself surface:
 //!
 //! * a cache of pending Welcomes keyed by kind:1059 gift-wrap event-id hex.
 //!   We store the **gift-wrap `nostr::Event`** (NOT any MLS type, so the
@@ -36,7 +36,7 @@
 //!
 //! MDK is synchronous; `MarmotService` is sync and this projection invents
 //! no threading. It IS accessed from two threads — the kernel actor thread
-//! (`ObservedProjectionSink` fan-out + the ingest parser) and the host FFI
+//! (`ObservedProjectionSink` fan-out + the ingest parser) and host
 //! entry points (`snapshot` / dispatch) — so the inner `Mutex` is
 //! load-bearing for that concurrent access, not a belt-and-braces extra.
 //!
@@ -331,7 +331,7 @@ impl MarmotProjection {
     }
 }
 
-/// Lock-scoped accessor passed to FFI dispatch handlers. Keeps the `Mutex`
+/// Lock-scoped accessor passed to action/read handlers. Keeps the `Mutex`
 /// guard internal so handlers cannot leak it.
 pub struct InnerHandle<'a> {
     pub(super) inner: &'a mut Inner,

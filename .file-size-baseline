@@ -34,7 +34,7 @@ crates/nmp-core/src/kernel/state_projection_tests.rs	656
 crates/nmp-core/src/kernel/types.rs	691
 crates/nmp-core/src/subs/lifecycle_tests.rs	963
 crates/nmp-core/tests/nip_tag_conformance.rs	554
-crates/nmp-marmot/src/projection/ops.rs	594
+crates/nmp-marmot/src/projection/ops.rs	593
 crates/nmp-marmot/src/projection/state.rs	605
 crates/nmp-marmot/src/service.rs	642
 crates/nmp-marmot/src/tests.rs	749
