@@ -58,6 +58,36 @@ const PATTERNS: &[Pattern] = &[
         "anonymous_explicit_relay",
         "manual relay routes must carry typed route provenance",
     ),
+    (
+        "PublishRaw",
+        "write_raw_publish",
+        "starter/app write docs should teach typed product or protocol builders; raw publish is internal/protocol/import machinery",
+    ),
+    (
+        "publishRaw",
+        "write_raw_publish_method",
+        "starter/app write docs should not point shells at the raw publish builder",
+    ),
+    (
+        "pre-signed",
+        "write_presigned_publish",
+        "pre-signed/verbatim publish must be documented only as imported/protocol-owned escape machinery",
+    ),
+    (
+        "manual_override",
+        "write_manual_override_route",
+        "manual route tokens must not appear as anonymous app-facing defaults",
+    ),
+    (
+        "signer_pubkey",
+        "write_raw_signer_pubkey",
+        "public write docs should teach typed signer provenance, not raw optional signer_pubkey policy",
+    ),
+    (
+        "signerPubkey",
+        "write_raw_signer_pubkey",
+        "public write docs should teach typed signer provenance, not raw optional signerPubkey policy",
+    ),
 ];
 
 // path, token, required line text (empty means whole file), reason.
@@ -119,6 +149,11 @@ const ALLOWLIST: &[Allow] = &[
     ("docs/architecture/high-level-app-architecture.md", "ObservedProjection", "Internal event-delivery and replay machinery behind typed read sessions (ADR-0070)", "public-surface disposition table (#2378)"),
     ("docs/architecture/high-level-app-architecture.md", "ReducedSource", "Internal dynamic source reconciliation behind a session (ADR-0070)", "public-surface disposition table (#2378)"),
     ("docs/architecture/high-level-app-architecture.md", "nmp.feed.home", "A projection key for the typed", "public-surface disposition table (#2378)"),
+    // write-lane cleanup (#2401): allowed only where the public doc explicitly
+    // demotes the old vocabulary to internal/protocol/import machinery.
+    ("docs/architecture/high-level-app-architecture.md", "pre-signed", "Imported/pre-signed events stay imported/manual", "protocol/import escape disposition (#2401)"),
+    ("docs/architecture/high-level-app-architecture.md", "pre-signed", "imported/pre-signed events stay imported/manual", "protocol/import escape example (#2401)"),
+    ("docs/wasm-surface.md", "signer_pubkey", "`invalid_signer_pubkey`", "stable degraded-mode error prefix, not write API guidance (#2401)"),
 ];
 
 fn repo_root() -> PathBuf {

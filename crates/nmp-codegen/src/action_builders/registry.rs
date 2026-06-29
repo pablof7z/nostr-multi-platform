@@ -183,7 +183,7 @@ pub const PUBLISH_BODY_PUBLISH_REPLY: u8 = 3;
 /// nested body table from [`PublishBuilder::body`] (a `BodyShape`), then wrap it
 /// in the `PublishPayload` root with [`PublishBuilder::body_type`].
 pub struct PublishBuilder {
-    /// Host-facing method name (`publishRaw`, `publishProfile`).
+    /// Generated method name (`publishRaw`, `publishProfile`).
     pub method: &'static str,
     /// The union discriminant for this body (`PUBLISH_BODY_*`).
     pub body_type: u8,
@@ -214,7 +214,7 @@ pub const PUBLISH_BUILDERS: &[PublishBuilder] = &[
         method: "publishRaw",
         body_type: PUBLISH_BODY_PUBLISH_RAW,
         body: BodyShape::PublishRaw,
-        doc: "Sign-and-publish an arbitrary event kind (generic publish path; NIP-65 outbox or explicit relays).",
+        doc: "Low-level arbitrary-kind publish escape; starter apps should prefer protocol/product builders such as publishReply or publishProfile.",
     },
     PublishBuilder {
         method: "publishReply",

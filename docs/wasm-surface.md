@@ -248,7 +248,7 @@ until a secure-storage ADR changes this contract.
 
 | Chirp `ChirpAction` | `action_namespace` | Notes |
 |---|---|---|
-| `publish_note` | `nmp.publish` | Lowers to `PublishRaw { kind: 1 }`. `reply_to_id` is host-resolved (NIP-10), not forwarded into the envelope. |
+| `publish_note` | `nmp.publish` | Lowers to an unsigned kind:1 publish intent. `reply_to_id` is host-resolved (NIP-10), not forwarded into the envelope. |
 | `react` | `nmp.nip25.react` | `target_event_id` + `reaction` (default `"+"`). |
 | `follow` | `nmp.follow` | `pubkey`. |
 | `unfollow` | `nmp.unfollow` | `pubkey`. |

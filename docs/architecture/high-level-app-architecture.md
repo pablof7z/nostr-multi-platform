@@ -207,8 +207,8 @@ below identifies the migration targets.
 | `ObservedProjection` | Internal event-delivery and replay machinery behind typed read sessions (ADR-0070); not app-facing | `nmp-core` substrate |
 | `ReducedSource` | Internal dynamic source reconciliation behind a session (ADR-0070); not app-facing | `nmp-core` substrate |
 | `nmp.feed.home` | A projection key for the typed `OpFeedSnapshot` sidecar; not a special singleton wiring | codegen registry |
-| `PublishRaw` | Typed raw-publish body shape under the one write doorway (ADR-0071); manual route with provenance required | `BodyShape::PublishRaw` |
-| pre-signed publish | Imported/pre-signed events stay imported/manual and do not acquire protocol guarantees (ADR-0071) | dispatch doorway |
+| raw publish body | Low-level arbitrary-kind publish shape under the one write doorway (ADR-0071); reserved for protocol/import/diagnostic paths, not starter app writes | publish action schema |
+| verbatim signed-event publish | Imported/pre-signed events stay imported/manual and do not acquire protocol guarantees (ADR-0071) | protocol/import dispatch doorway |
 
 ## What Should Disappear
 

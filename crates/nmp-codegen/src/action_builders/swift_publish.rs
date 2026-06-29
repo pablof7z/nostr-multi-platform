@@ -26,6 +26,11 @@ pub(crate) fn render_publish(out: &mut String) {
 fn render_one(builder: &PublishBuilder, out: &mut String) {
     let contract = contract_for(PUBLISH_NAMESPACE);
     out.push_str(&format!("    /// {}\n", builder.doc));
+    if matches!(builder.body, BodyShape::PublishRaw) {
+        out.push_str(
+            "    /// Requires typed signer selection and route provenance for explicit targets; not the starter happy path.\n",
+        );
+    }
     out.push_str(&format!(
         "    /// Builds the `{PUBLISH_NAMESPACE}` `DispatchEnvelope` bytes (body \
          `{:?}`) for the byte doorway.\n",

@@ -801,7 +801,8 @@ export const GeneratedActionBuilders = {
     return encodeDispatchEnvelope(correlationId, "nmp.nip29.create_public_group", payload);
   },
 
-  /** Sign-and-publish an arbitrary event kind (generic publish path; NIP-65 outbox or explicit relays). */
+  /** Low-level arbitrary-kind publish escape; starter apps should prefer protocol/product builders such as publishReply or publishProfile. */
+  /** Requires typed signer selection and route provenance for explicit targets; not the starter happy path. */
   publishRaw(
     correlationId: string,
     kind: number,
