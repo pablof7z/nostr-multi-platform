@@ -30,7 +30,7 @@ crates/nmp-core/src/kernel/ingest_tests.rs	761
 crates/nmp-core/src/kernel/publish_terminal_status_tests.rs	840
 crates/nmp-core/src/kernel/retention_tests.rs	530
 crates/nmp-core/src/kernel/routing_trace_dto.rs	527
-crates/nmp-core/src/kernel/state_projection_tests.rs	662
+crates/nmp-core/src/kernel/state_projection_tests.rs	656
 crates/nmp-core/src/kernel/types.rs	691
 crates/nmp-core/src/subs/lifecycle_tests.rs	963
 crates/nmp-core/tests/nip_tag_conformance.rs	554

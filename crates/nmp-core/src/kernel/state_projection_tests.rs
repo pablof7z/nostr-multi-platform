@@ -230,10 +230,7 @@ fn publish_outbox_projects_pending_event_details_and_relays() {
     let outbound = kernel.run_publish_engine_at(
         &signed,
         &[],
-        crate::publish::PublishTarget::explicit(
-            vec!["wss://outbox.test".to_string()],
-            crate::publish::PublishRouteClass::ManualOverride,
-        ),
+        crate::publish::PublishTarget::explicit(vec!["wss://outbox.test".to_string()], crate::publish::PublishRouteClass::ManualOverride),
         None,
         0,
     );
@@ -346,10 +343,7 @@ fn publish_outbox_projects_relay_reason_from_resolver() {
     let outbound = kernel.run_publish_engine_at(
         &signed,
         &[],
-        crate::publish::PublishTarget::explicit(
-            vec!["wss://reason.test".to_string()],
-            crate::publish::PublishRouteClass::ManualOverride,
-        ),
+        crate::publish::PublishTarget::explicit(vec!["wss://reason.test".to_string()], crate::publish::PublishRouteClass::ManualOverride),
         None,
         0,
     );
@@ -475,10 +469,7 @@ fn outbox_summary_projects_sending_counters_and_strings() {
     let outbound = kernel.run_publish_engine_at(
         &signed,
         &[],
-        crate::publish::PublishTarget::explicit(
-            vec!["wss://outbox.test".to_string()],
-            crate::publish::PublishRouteClass::ManualOverride,
-        ),
+        crate::publish::PublishTarget::explicit(vec!["wss://outbox.test".to_string()], crate::publish::PublishRouteClass::ManualOverride),
         None,
         0,
     );
