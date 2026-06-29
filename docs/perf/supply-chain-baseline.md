@@ -137,3 +137,28 @@ and the `deny.toml` at every quarterly supply-chain review.
 with `libcrux-aead 0.0.8+`, bump the transitive dep, verify `cargo audit`
 passes without `--ignore RUSTSEC-2026-0124`, and remove the ignore flag from
 `supply-chain.yml`.
+
+---
+
+## Post-baseline advisory: RUSTSEC-2026-0192
+
+- **Advisory**: RUSTSEC-2026-0192
+- **Crate**: `ttf-parser` v0.25.1
+- **Affected dependency chain**: `iced` desktop rendering stack through
+  `cosmic-text`/`fontdb`, plus `winit` through `sctk-adwaita`/`ab_glyph`
+- **Detected**: 2026-06 (after baseline capture)
+
+The advisory marks `ttf-parser` as unmaintained and recommends `skrifa`.
+There is no direct NMP use of `ttf-parser`; it is pulled in by the desktop UI
+font/layout stack. No compatible `iced`/`cosmic-text`/`fontdb` path has moved
+this dependency to `skrifa` yet.
+
+**Current mitigation**: `RUSTSEC-2026-0192` is listed in
+`deny.toml [advisories].ignore` so the advisory baseline remains explicit and
+reviewable. Keep the ignore scoped to this advisory and remove it once the
+desktop rendering dependency chain no longer pulls `ttf-parser`.
+
+**Resolution path**: Track upstream `iced`, `cosmic-text`, `fontdb`, and
+`winit` releases. When a compatible stack removes `ttf-parser`, update the
+workspace lockfile, verify `cargo deny check advisories` passes without this
+ignore, and delete the ignore entry from `deny.toml`.
