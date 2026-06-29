@@ -9,7 +9,7 @@
 //!                              # `nmp doctor` / `nmp upgrade`)
 //!   README.md                  # next steps
 //!   crates/<name>-core/
-//!     Cargo.toml               # depends on nmp-defaults + nmp-ffi + nmp-core
+//!     Cargo.toml               # depends on nmp-defaults + nmp-native-runtime + nmp-core
 //!     src/lib.rs               # explicit app composition root
 //!     examples/shell.rs        # NmpAppBuilder → app register → start
 //! ```
@@ -117,7 +117,6 @@ pub fn run(args: &[String]) -> Result<(), String> {
     let display = title_case(&name);
     let nmp_dependency = nmp_dependency.unwrap_or(NmpDependency::Path(nmp_checkout_path()?));
     let nmp_core_dep = nmp_crate_dependency(&nmp_dependency, "nmp-core");
-    let nmp_ffi_dep = nmp_crate_dependency(&nmp_dependency, "nmp-ffi");
     let nmp_defaults_dep = nmp_crate_dependency(&nmp_dependency, "nmp-defaults");
     let nmp_native_runtime_dep = nmp_crate_dependency(&nmp_dependency, "nmp-native-runtime");
     let nmp_manifest = nmp_manifest_block(&nmp_dependency);
@@ -128,7 +127,6 @@ pub fn run(args: &[String]) -> Result<(), String> {
             .replace("{{crate_ident}}", &crate_ident)
             .replace("{{display}}", &display)
             .replace("{{nmp_core_dep}}", &nmp_core_dep)
-            .replace("{{nmp_ffi_dep}}", &nmp_ffi_dep)
             .replace("{{nmp_defaults_dep}}", &nmp_defaults_dep)
             .replace("{{nmp_native_runtime_dep}}", &nmp_native_runtime_dep)
             .replace("{{nmp_manifest}}", &nmp_manifest)

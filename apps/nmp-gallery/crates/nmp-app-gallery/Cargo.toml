@@ -3,7 +3,7 @@ name = "nmp-app-gallery"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "NmpGallery explicit composition root over nmp-ffi and nmp-defaults. Produces libnmp_app_gallery for iOS and Android using ADR-0069 named installers."
+description = "NmpGallery explicit composition root over nmp-native-runtime and nmp-defaults. Produces libnmp_app_gallery for iOS and Android using ADR-0069 named installers."
 
 [lib]
 # `staticlib` so the iOS shell can link `-lnmp_app_gallery` alongside the
@@ -16,27 +16,24 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [features]
 default = ["native"]
-# Mirror the `nmp-ffi` feature posture exactly. The kernel `nmp_app_*`
-# symbols are native-only (wasm uses wasm-bindgen, not C-ABI), so the
-# entire crate is gated behind `native`. Enabled by default.
-native = ["nmp-ffi/native", "nmp-uniffi/native"]
+# The gallery composition root is native-only (wasm uses wasm-bindgen, not
+# C-ABI), so the entire crate is gated behind `native`. Enabled by default.
+native = ["nmp-uniffi/native"]
 # `android-ffi` enables the JNI shim surface consumed by
 # `org.nmp.gallery.bridge.KernelBridge`. Implies `native` (the shim is a
 # native consumer). Activates the `jni` dependency so the symbols are
 # only pulled in when building the Android .so.
-android-ffi = ["nmp-ffi/android-ffi", "nmp-ffi/native", "dep:jni", "nmp-uniffi/native"]
+android-ffi = ["dep:jni", "nmp-uniffi/native"]
 
 [dependencies]
-# Substrate seam — `nmp_app_*` C-ABI symbol bodies live here. Re-exported
-# with `pub use nmp_ffi::*` so the iOS / Android shell links exactly one
-# archive (`libnmp_app_gallery.a` / `.so`) for the whole NMP surface.
-nmp-ffi = { path = "../../../../crates/nmp-ffi", default-features = false }
+# Native runtime owner — `NmpApp` handle + lifecycle API.
+nmp-native-runtime = { path = "../../../../crates/nmp-native-runtime" }
 # M14 UniFFI shell migration: the gallery iOS shell migrates from the nmp-ffi
 # C-ABI to the UniFFI Swift surface. Including nmp-uniffi here ensures every
 # `uniffi_nmp_uniffi_*` symbol lives in `libnmp_app_gallery.a` so the iOS
 # linker sees a single archive. The `nmp_app_gallery_register_uniffi` bridge
-# function (below) also relies on `nmp_uniffi::NmpApp::inner` for the Arc→C
-# pointer extraction. Remove this dep when M14-D deletes the C-ABI gallery fns.
+# function (below) also relies on `nmp_uniffi::NmpApp::inner` for the Arc→
+# native pointer extraction.
 nmp-uniffi = { path = "../../../../crates/nmp-uniffi", default-features = false }
 # Reusable composition installers. The gallery calls the named ADR-0069
 # substrate/protocol installers directly from its app composition root.
@@ -49,9 +46,8 @@ serde_json = { workspace = true }
 jni = { version = "0.21", optional = true }
 
 [dev-dependencies]
-# Test-support gates expose `nmp_app_new` / `nmp_app_free` so the
-# in-crate smoke tests can spin up a real `NmpApp`, call
+# Test-support gates expose `signin_nsec_for_test` / `inject_signed_event_json_for_test`
+# so the in-crate smoke tests can spin up a real `NmpApp`, call
 # `nmp_app_gallery_register`, and confirm the registration didn't panic
-# / didn't fail closed. Mirrors the pattern in `nmp-defaults` and
-# the per-NIP crates.
-nmp-ffi = { path = "../../../../crates/nmp-ffi", features = ["test-support"] }
+# / didn't fail closed.
+nmp-native-runtime = { path = "../../../../crates/nmp-native-runtime", features = ["test-support"] }

@@ -49,14 +49,14 @@
 
 use crate::common::{configure_and_await_frame, inject_signed_events, percentile_u64};
 use crate::ffi::{
-    nmp_app_configure, nmp_app_free, nmp_app_new, nmp_app_release_ref, nmp_app_resolve_ref,
+    nmp_app_configure, nmp_app_declare_incremental_apply, nmp_app_free, nmp_app_new,
+    nmp_app_read_projection_churn_stats, nmp_app_release_ref, nmp_app_resolve_ref,
     nmp_app_set_update_callback, test_pubkeys, NmpApp,
 };
 use crate::report::ScenarioMetrics;
 use crate::s6_gates::{apply as apply_gates, PhaseMetrics, S6Outcome};
 use crate::s6_oracle::{run_byte_identity_oracle, FrameRecord};
 use nmp_core::decode_snapshot_typed_projections;
-use nmp_ffi::{nmp_app_declare_incremental_apply, nmp_app_read_projection_churn_stats};
 use nmp_testing::harness_probe::{FrameProbe, ProbeSignal};
 use std::ffi::c_void;
 use std::sync::Mutex;

@@ -35,9 +35,9 @@
 use std::sync::{Arc, Mutex};
 
 use nmp_core::{BunkerHookRequest, ExternalSignerHookRequest};
-use nmp_ffi::{
+use nmp_native_runtime::{
     install_bunker_hook_for_test, install_external_signer_hook_for_test, invoke_bunker_connect_hook_for_test,
-    invoke_external_signer_restore_hook_for_test, nmp_app_free, nmp_app_new,
+    invoke_external_signer_restore_hook_for_test,
 };
 
 /// Two concurrent apps each route their bunker-hook invocation to their OWN
@@ -45,8 +45,8 @@ use nmp_ffi::{
 /// `OnceLock` hook means app B's invocation would land in app A's log.
 #[test]
 fn two_apps_route_bunker_hook_to_their_own_slot() {
-    let app_a = nmp_app_new();
-    let app_b = nmp_app_new();
+    let app_a = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
+    let app_b = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
 
     let log_a: Arc<Mutex<Vec<BunkerHookRequest>>> = Arc::new(Mutex::new(Vec::new()));
     let log_b: Arc<Mutex<Vec<BunkerHookRequest>>> = Arc::new(Mutex::new(Vec::new()));
@@ -68,8 +68,8 @@ fn two_apps_route_bunker_hook_to_their_own_slot() {
     let seen_a = log_a.lock().unwrap().clone();
     let seen_b = log_b.lock().unwrap().clone();
 
-    nmp_app_free(app_a);
-    nmp_app_free(app_b);
+    unsafe { drop(Box::from_raw(app_a)) };
+    unsafe { drop(Box::from_raw(app_b)) };
 
     assert_eq!(
         seen_a.as_slice(),
@@ -95,7 +95,7 @@ fn two_apps_route_bunker_hook_to_their_own_slot() {
 #[test]
 fn freed_then_recreated_app_reinstalls_bunker_hook() {
     // (1) First app installs a hook and proves it fires.
-    let first = nmp_app_new();
+    let first = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
     let first_log: Arc<Mutex<Vec<BunkerHookRequest>>> = Arc::new(Mutex::new(Vec::new()));
     {
         let log = Arc::clone(&first_log);
@@ -105,11 +105,11 @@ fn freed_then_recreated_app_reinstalls_bunker_hook() {
     assert_eq!(first_log.lock().unwrap().len(), 1);
 
     // (2) Free it (drops the per-app slot).
-    nmp_app_free(first);
+    unsafe { drop(Box::from_raw(first)) };
 
     // (3) A brand-new app installs its OWN hook and it must fire — this is the
     //     assertion the `OnceLock` global cannot satisfy.
-    let second = nmp_app_new();
+    let second = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
     let second_log: Arc<Mutex<Vec<BunkerHookRequest>>> = Arc::new(Mutex::new(Vec::new()));
     {
         let log = Arc::clone(&second_log);
@@ -117,7 +117,7 @@ fn freed_then_recreated_app_reinstalls_bunker_hook() {
     }
     let fired = invoke_bunker_connect_hook_for_test(second, "bunker://second");
     let seen = second_log.lock().unwrap().clone();
-    nmp_app_free(second);
+    unsafe { drop(Box::from_raw(second)) };
 
     assert!(
         fired,
@@ -138,7 +138,7 @@ fn freed_then_recreated_app_reinstalls_bunker_hook() {
 /// recreate works.
 #[test]
 fn external_signer_hook_is_per_app_and_survives_recreate() {
-    let app_a = nmp_app_new();
+    let app_a = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
     let log_a: Arc<Mutex<Vec<ExternalSignerHookRequest>>> = Arc::new(Mutex::new(Vec::new()));
     {
         let log = Arc::clone(&log_a);
@@ -146,7 +146,7 @@ fn external_signer_hook_is_per_app_and_survives_recreate() {
     }
     let fired_a = invoke_external_signer_restore_hook_for_test(app_a, "payload-a");
     let seen_a = log_a.lock().unwrap().clone();
-    nmp_app_free(app_a);
+    unsafe { drop(Box::from_raw(app_a)) };
 
     assert!(fired_a);
     assert_eq!(
@@ -157,7 +157,7 @@ fn external_signer_hook_is_per_app_and_survives_recreate() {
     );
 
     // Recreated app installs a fresh hook — fires cleanly (no fired-once global).
-    let app_c = nmp_app_new();
+    let app_c = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
     let log_c: Arc<Mutex<Vec<ExternalSignerHookRequest>>> = Arc::new(Mutex::new(Vec::new()));
     {
         let log = Arc::clone(&log_c);
@@ -165,7 +165,7 @@ fn external_signer_hook_is_per_app_and_survives_recreate() {
     }
     let fired_c = invoke_external_signer_restore_hook_for_test(app_c, "payload-c");
     let seen_c = log_c.lock().unwrap().clone();
-    nmp_app_free(app_c);
+    unsafe { drop(Box::from_raw(app_c)) };
 
     assert!(fired_c);
     assert_eq!(

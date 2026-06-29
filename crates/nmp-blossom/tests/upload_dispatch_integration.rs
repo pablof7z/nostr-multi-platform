@@ -15,16 +15,12 @@
 //! descriptor/aggregation shape over a real mock server in `upload/mod.rs` +
 //! `http.rs` is the non-flaky equivalent.)
 
-use std::ffi::CStr;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use nmp_blossom::UploadInput;
 use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
 use nmp_core::substrate::ActionPayload as _;
-use nmp_ffi::{
-    nmp_app_dispatch_action_bytes, nmp_app_free, nmp_app_new, nmp_app_signin_nsec, nmp_free_string,
-    NmpApp,
-};
+use nmp_native_runtime::NmpApp;
 
 /// Known-good test nsec.
 const TEST_NSEC: &str = "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
@@ -54,22 +50,19 @@ fn dispatch(app: *mut NmpApp, input: &UploadInput) -> serde_json::Value {
         DISPATCH_ENVELOPE_SCHEMA_VERSION,
         &payload,
     );
-    let ptr = nmp_app_dispatch_action_bytes(app, envelope.as_ptr(), envelope.len());
-    assert!(!ptr.is_null(), "dispatch_action_bytes never returns null");
-    let out = unsafe { CStr::from_ptr(ptr) }.to_str().unwrap().to_owned();
-    nmp_free_string(ptr);
-    serde_json::from_str(&out).unwrap()
+    // SAFETY: app is a valid, non-null pointer.
+    let outcome = nmp_native_runtime::dispatch_action_bytes_typed(unsafe { &*app }, &envelope);
+    serde_json::json!({ "correlation_id": outcome.correlation_id, "error": outcome.error })
 }
 
 fn signin(app: *mut NmpApp) {
-    let nsec = std::ffi::CString::new(TEST_NSEC).unwrap();
-    nmp_app_signin_nsec(app, nsec.as_ptr(), 1);
+    unsafe { &*app }.signin_nsec_for_test(TEST_NSEC, true);
 }
 
 #[test]
 fn dispatch_well_formed_blossom_upload_is_accepted_through_registry() {
     let _g = guard();
-    let app = nmp_app_new();
+    let app = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
     // SAFETY: `nmp_app_new` never returns null; the pointer is valid until
     // `nmp_app_free` and no aliasing `&NmpApp` is live during registration.
     nmp_blossom::register_actions(unsafe { &mut *app });
@@ -109,13 +102,13 @@ fn dispatch_well_formed_blossom_upload_is_accepted_through_registry() {
     );
 
     let _ = std::fs::remove_file(&path);
-    nmp_app_free(app);
+    unsafe { drop(Box::from_raw(app)) };
 }
 
 #[test]
 fn dispatch_rejects_empty_servers_through_registry() {
     let _g = guard();
-    let app = nmp_app_new();
+    let app = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
     // SAFETY: see above.
     nmp_blossom::register_actions(unsafe { &mut *app });
     signin(app);
@@ -136,13 +129,13 @@ fn dispatch_rejects_empty_servers_through_registry() {
         "start() rejection must reach the caller: {err}"
     );
 
-    nmp_app_free(app);
+    unsafe { drop(Box::from_raw(app)) };
 }
 
 #[test]
 fn dispatch_rejects_empty_file_path_through_registry() {
     let _g = guard();
-    let app = nmp_app_new();
+    let app = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
     // SAFETY: see above.
     nmp_blossom::register_actions(unsafe { &mut *app });
     signin(app);
@@ -160,5 +153,5 @@ fn dispatch_rejects_empty_file_path_through_registry() {
         .unwrap_or_else(|| panic!("expected error for empty file_path, got {parsed}"));
     assert!(err.contains("file_path"), "rejection reason: {err}");
 
-    nmp_app_free(app);
+    unsafe { drop(Box::from_raw(app)) };
 }

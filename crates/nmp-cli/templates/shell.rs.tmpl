@@ -11,7 +11,7 @@
 //! cargo run --example shell -p {{pkg}}
 //! ```
 
-use nmp_ffi::{nmp_app_free, nmp_app_stop};
+
 use nmp_native_runtime::{NmpAppBuilder, RunConfig};
 
 fn main() {
@@ -60,6 +60,6 @@ fn main() {
         let app_ref = unsafe { &*app };
         let _ = {{crate_ident}}::close_home_timeline_session(app_ref, session);
     }
-    nmp_app_stop(app);
-    nmp_app_free(app);
+    unsafe { &*app }.stop_runtime();
+    unsafe { drop(Box::from_raw(app)) };
 }

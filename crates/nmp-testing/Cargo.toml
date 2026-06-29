@@ -25,10 +25,6 @@ nmp-planner = { path = "../nmp-planner" }
 # InsertOutcome / MemEventStore — the nmp_core::store compat facade is
 # deleted (#1608). The lib src (store_harness.rs) uses these types.
 nmp-store = { path = "../nmp-store" }
-# C-ABI surface (`NmpApp`, `nmp_app_*` symbols) — extracted from
-# `nmp-core::ffi` in step 11-final. The `ffi-stress` harness binary
-# reaches the symbols through here.
-nmp-ffi = { path = "../nmp-ffi", features = ["test-support", "signer-broker"] }
 nmp-native-runtime = { path = "../nmp-native-runtime", features = ["test-support"] }
 # ADR-0055 R6-S4 — op_feed composition root needed by the feed-idle capstone
 # binary scenario (S7). The ffi-stress binary, not just tests, calls
@@ -70,7 +66,6 @@ nmp-example-login-timeline = { path = "../nmp-example-login-timeline", features 
 # kind:30023 supersession (param-replaceable C2) reaches the typed projection.
 nmp-content = { path = "../nmp-content" }
 zeroize = { workspace = true }
-nmp-ffi = { path = "../nmp-ffi" }
 nmp-feed = { path = "../nmp-feed" }
 nmp-nip01 = { path = "../nmp-nip01" }
 # #1740 step 3 perspective-compiler fixture: prove per-scope admission with the

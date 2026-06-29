@@ -72,7 +72,7 @@ use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::{ObservedProjection, ObservedProjectionRegistrar};
 use nmp_core::{actor::ActorCommand, ObservedProjectionId};
-use nmp_ffi::NmpApp;
+use nmp_native_runtime::NmpApp;
 use nostr::Keys;
 use serde_json::{json, Value};
 

@@ -54,7 +54,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use nmp_core::{decode_snapshot_envelope, decode_snapshot_typed_projections};
-use nmp_ffi::{
+use crate::ffi::{
     nmp_app_configure, nmp_app_declare_incremental_apply, nmp_app_free, nmp_app_new,
     nmp_app_set_update_callback, NmpApp,
 };

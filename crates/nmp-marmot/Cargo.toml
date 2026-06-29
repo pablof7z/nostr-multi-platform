@@ -21,7 +21,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 # deps (`keyring-core`, `base64`) so non-FFI consumers (in-process REPL,
 # headless tests) do not pull them in. Chirp opts in via its own `marmot`
 # feature (`nmp-marmot/ffi`).
-ffi = ["dep:keyring-core", "dep:base64", "dep:nmp-ffi"]
+ffi = ["dep:keyring-core", "dep:base64", "dep:nmp-native-runtime"]
 
 [dependencies]
 nmp-core = { path = "../nmp-core" }
@@ -32,9 +32,9 @@ nmp-planner = { path = "../nmp-planner" }
 # Direct dep on nmp-store for VerifiedEvent / RawEvent — the nmp_core::store
 # compat facade is deleted (#1608).
 nmp-store = { path = "../nmp-store" }
-# `nmp-ffi` owns the `NmpApp` C-ABI handle. Marmot's protocol behavior does
-# not depend on it; only the feature-gated ABI shell names the handle.
-nmp-ffi = { path = "../nmp-ffi", optional = true }
+# `nmp-native-runtime` owns the `NmpApp` handle. Marmot's protocol behavior does
+# not depend on it; only the feature-gated FFI shell names the handle.
+nmp-native-runtime = { path = "../nmp-native-runtime", optional = true }
 # nmp-nip59 supplies the NIP-59 gift-wrap free functions used to deliver MLS
 # Welcome (kind:444) rumors. nmp-marmot is the SOLE importer of mdk-core /
 # openmls; nip59 is a sibling protocol crate carrying no MLS types.
@@ -61,7 +61,7 @@ base64 = { version = "0.22", optional = true }
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"] }
-nmp-ffi = { path = "../nmp-ffi", features = ["test-support"] }
+nmp-native-runtime = { path = "../nmp-native-runtime", features = ["test-support"] }
 # test-utils gates MdkSqliteStorage::new_in_memory / new_unencrypted.
 mdk-sqlite-storage = { version = "0.8.0", features = ["test-utils"] }
 # `mdk-core` provides `NostrGroupConfigData` for the relocated FFI

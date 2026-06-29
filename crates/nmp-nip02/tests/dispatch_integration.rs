@@ -7,12 +7,11 @@
 //! `social_verbs_dispatch_through_action_registry` test enforces, lifted
 //! into the substrate crate that now owns the modules.
 
-use std::ffi::CStr;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use nmp_core::dispatch_envelope::{DISPATCH_ENVELOPE_SCHEMA_VERSION, encode_dispatch_envelope};
 use nmp_core::substrate::ActionPayload;
-use nmp_ffi::{NmpApp, nmp_app_dispatch_action_bytes, nmp_app_free, nmp_app_new, nmp_free_string};
+use nmp_native_runtime::NmpApp;
 
 /// Mint a process-local unique host correlation id. On the byte lane the host
 /// supplies the id and the doorway echoes it back verbatim (ADR-0064 §4) — it
@@ -38,15 +37,13 @@ fn dispatch_bytes(
         DISPATCH_ENVELOPE_SCHEMA_VERSION,
         payload,
     );
-    let ptr = nmp_app_dispatch_action_bytes(app, envelope.as_ptr(), envelope.len());
-    assert!(
-        !ptr.is_null(),
-        "dispatch_action_bytes must never return null"
-    );
-    // SAFETY: `ptr` is a valid C string from `nmp_app_dispatch_action_bytes`.
-    let out = unsafe { CStr::from_ptr(ptr) }.to_str().unwrap().to_owned();
-    nmp_free_string(ptr);
-    (correlation_id, serde_json::from_str(&out).unwrap())
+    // SAFETY: app is a valid, non-null pointer.
+    let outcome = nmp_native_runtime::dispatch_action_bytes_typed(unsafe { &*app }, &envelope);
+    let parsed = serde_json::json!({
+        "correlation_id": outcome.correlation_id,
+        "error": outcome.error,
+    });
+    (correlation_id, parsed)
 }
 
 /// After `nmp_nip02::register_actions`, the old public social bundle is
@@ -57,7 +54,7 @@ fn dispatch_bytes(
 /// are wired under each namespace.
 #[test]
 fn register_actions_wires_compat_social_bundle() {
-    let app = nmp_app_new();
+    let app = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
     assert!(!app.is_null(), "nmp_app_new must return a valid app");
     // SAFETY: `app` is a valid pointer from `nmp_app_new`; we hold the
     // sole `&mut` for the duration of the registration call and drop it
@@ -133,7 +130,7 @@ fn register_actions_wires_compat_social_bundle() {
         "malformed nmp.follow payload bytes must be rejected: {parsed}"
     );
 
-    nmp_app_free(app);
+    unsafe { drop(Box::from_raw(app)) };
 }
 
 /// ADR-0064 / S3 (#1751) — the TYPED FlatBuffers payload doorway end-to-end:
@@ -345,7 +342,7 @@ fn build_bad_version_follow_many_payload() -> Vec<u8> {
 /// only gets the three social verbs, not a wildcard).
 #[test]
 fn unregistered_namespace_is_rejected_even_after_register_actions() {
-    let app = nmp_app_new();
+    let app = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
     // SAFETY: same as `register_actions_wires_all_three_social_verbs`.
     unsafe {
         nmp_nip02::register_actions(&mut *app);
@@ -359,5 +356,5 @@ fn unregistered_namespace_is_rejected_even_after_register_actions() {
         parsed.get("error").is_some(),
         "unknown namespace must surface an error: {parsed}"
     );
-    nmp_app_free(app);
+    unsafe { drop(Box::from_raw(app)) };
 }

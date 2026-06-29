@@ -9,7 +9,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use nmp_ffi::NmpApp;
+use nmp_native_runtime::NmpApp;
 
 use super::DEFAULT_MESSAGE_PAGE;
 use crate::projection::payload::{MarmotInitError, MarmotSnapshot};

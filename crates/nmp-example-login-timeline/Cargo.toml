@@ -14,9 +14,6 @@ description = "Canonical DX worked example: login → following-timeline render 
 nmp-defaults = { path = "../nmp-defaults" }
 # Native runtime owner: typestate builder plus OP-feed registration.
 nmp-native-runtime = { path = "../nmp-native-runtime" }
-# The `NmpApp` handle the shell reads the typed projection from, and (in the
-# harness) the C-ABI login surface.
-nmp-ffi = { path = "../nmp-ffi" }
 # Kernel substrate — the `AppHost` trait `register` takes.
 nmp-core = { path = "../nmp-core" }
 # The OP-feed typed projection decoder (`decode_op_feed_snapshot`) + key.
@@ -38,7 +35,7 @@ nostr = { version = "0.44", features = ["std"], optional = true }
 # (`nmp_app_inject_signed_event_json`) — the sanctioned test-only path
 # (docs/escape-hatches.md). A real platform shell ships WITHOUT this feature and
 # receives events from the kernel's relay transport instead.
-harness = ["nmp-ffi/test-support", "dep:nostr"]
+harness = ["nmp-native-runtime/test-support", "dep:nostr"]
 
 [[example]]
 name = "login_timeline"
