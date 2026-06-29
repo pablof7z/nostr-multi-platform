@@ -1,9 +1,9 @@
-//! `nmp_free_string` — release a C string produced by a gallery C-ABI entry point.
+//! `nmp_app_gallery_free_string` — release a C string produced by a gallery C-ABI entry point.
 //!
 //! The gallery produces heap-allocated C strings from `nmp_app_gallery_snapshot_json_from_update_frame`
 //! and `nmp_app_gallery_dispatch_action_bytes`. The caller must free them via this entry point.
-//! It was previously re-exported from `nmp-ffi`; now that `nmp-ffi` is deleted, the gallery
-//! owns the symbol directly.
+//! The symbol is app-scoped so iOS callers cannot accidentally keep depending on the deleted
+//! reusable `nmp-ffi` free helper.
 
 use std::ffi::{c_char, CString};
 
@@ -17,7 +17,7 @@ use std::ffi::{c_char, CString};
 /// `nmp_app_gallery_dispatch_action_bytes`), or null. Passing any other pointer is
 /// undefined behaviour.
 #[no_mangle]
-pub unsafe extern "C" fn nmp_free_string(ptr: *mut c_char) {
+pub unsafe extern "C" fn nmp_app_gallery_free_string(ptr: *mut c_char) {
     if !ptr.is_null() {
         drop(unsafe { CString::from_raw(ptr) });
     }

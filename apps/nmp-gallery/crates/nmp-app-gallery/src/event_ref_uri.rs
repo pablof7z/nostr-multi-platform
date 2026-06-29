@@ -177,7 +177,7 @@ fn target_from_nostr_uri(target: NostrUri) -> DecodeTarget {
 ///
 /// Returns NULL on invalid input, non-event targets, serialization failure, or
 /// interior-NUL output. The caller owns non-NULL returns and must release them
-/// with `nmp_free_string`.
+/// with `nmp_app_gallery_free_string`.
 #[cfg(feature = "native")]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[no_mangle]
@@ -234,9 +234,7 @@ mod tests {
         assert_eq!(event_ref.key, EVENT_ID);
         assert_eq!(
             event_ref.metadata_json,
-            format!(
-                r#"{{"hints":["wss://relay.example"],"author":"{PUBKEY}","kind":1}}"#
-            )
+            format!(r#"{{"hints":["wss://relay.example"],"author":"{PUBKEY}","kind":1}}"#)
         );
     }
 

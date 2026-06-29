@@ -26,7 +26,7 @@ private let kbLog = Logger(subsystem: "org.nmp.gallery", category: "GalleryKerne
 ///   4. `addRelay`       — seed bootstrap relay set (cold-start kind:0 / kind:10002
 ///      routing target when no logged-in user is present).
 ///   5. `resolveProfileRef`   — component-owned profile interest (routes through
-///      `nmp_app_resolve_ref`). The kernel fetches kind:0 and surfaces the
+///      the unified ref-resolution seam. The kernel fetches kind:0 and surfaces the
 ///      resolved ProfileCard under `projections."refs.profile"[pubkey]`.
 ///   6. `dispatchAction` — generic action dispatch (phase 2).
 ///   7. `deinit`         — clears callback, frees app.
@@ -183,7 +183,7 @@ final class GalleryKernelHandle {
     private func decodeEventRef(from uri: String) -> EventRefFromUri? {
         guard let jsonStr = uri.withCString({ ptr -> String? in
             guard let cResult = nmp_app_gallery_event_ref_from_uri(ptr) else { return nil }
-            defer { nmp_free_string(cResult) }
+            defer { nmp_app_gallery_free_string(cResult) }
             return String(cString: cResult)
         }) else { return nil }
         guard let jsonData = jsonStr.data(using: .utf8),
@@ -257,7 +257,7 @@ enum GalleryFlatBufferSnapshotDecoder {
             kbLog.error("gallery typed snapshot decode failed")
             return nil
         }
-        defer { nmp_free_string(ptr) }
+        defer { nmp_app_gallery_free_string(ptr) }
         return String(cString: ptr).data(using: .utf8)
     }
 }

@@ -42,6 +42,7 @@ nmp-core = { path = "../../../../crates/nmp-core" }
 nmp-content = { path = "../../../../crates/nmp-content" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+zeroize = { workspace = true }
 # JNI surface for the Android shell — only active under `android-ffi`.
 jni = { version = "0.21", optional = true }
 

@@ -22,7 +22,7 @@
 //!   native shells.
 //!
 //! All heap-allocated C strings returned by gallery C-ABI symbols MUST be freed
-//! via [`nmp_free_string`] (owned by this crate's `free` module).
+//! via [`nmp_app_gallery_free_string`] (owned by this crate's `free` module).
 //!
 //! # Snapshot delivery — push only
 //!
@@ -52,10 +52,12 @@ mod android;
 // in-repo caller.
 #[cfg(feature = "native")]
 pub mod dispatch_bytes;
-// nmp_free_string — release C strings produced by gallery C-ABI entry points.
-// Previously re-exported from nmp-ffi; now owned by this crate post M14-D.
+pub mod event_ref_uri;
+// nmp_app_gallery_free_string — release C strings produced by gallery C-ABI entry points.
 mod free;
-pub use free::nmp_free_string;
+pub use free::nmp_app_gallery_free_string;
+#[cfg(feature = "native")]
+mod native_kernel;
 mod snapshot_json;
 
 pub mod registry;
@@ -73,7 +75,7 @@ use std::ffi::{c_char, c_void, CStr, CString};
 /// `dispatch_action_bytes_typed`. No JSON crosses the FFI to the kernel.
 ///
 /// Returns a heap-allocated JSON envelope string the caller MUST free via
-/// `nmp_free_string`:
+/// `nmp_app_gallery_free_string`:
 /// * `{"correlation_id":"<id>"}` — accepted and enqueued.
 /// * `{"error":"<message>"}` — unknown namespace, malformed body, or kernel
 ///   rejection.
@@ -189,9 +191,7 @@ pub extern "C" fn nmp_app_gallery_register_uniffi(arc_ptr: *mut c_void) {
     // SAFETY: `arc_ptr` is the raw Arc data pointer emitted by UniFFI's
     // `uniffiClonePointer()`. `Arc::from_raw` reconstructs the Arc and takes
     // ownership of the clone (will decrement the refcount on drop).
-    let arc = unsafe {
-        std::sync::Arc::from_raw(arc_ptr as *const nmp_uniffi::NmpApp)
-    };
+    let arc = unsafe { std::sync::Arc::from_raw(arc_ptr as *const nmp_uniffi::NmpApp) };
     // SAFETY: We hold the only writer to `inner` during this pre-start
     // composition call — the actor has not been started, so no concurrent
     // access exists. We use `addr_of!` to obtain a raw pointer without going
@@ -238,13 +238,14 @@ pub extern "C" fn nmp_uniffi_set_storage_path(
     if arc_ptr.is_null() || path.is_null() {
         return 0;
     }
-    let arc = unsafe {
-        std::sync::Arc::from_raw(arc_ptr as *const nmp_uniffi::NmpApp)
-    };
+    let arc = unsafe { std::sync::Arc::from_raw(arc_ptr as *const nmp_uniffi::NmpApp) };
     let inner_ptr = std::ptr::addr_of!(arc.inner) as *mut nmp_native_runtime::NmpApp;
     let inner = unsafe { &*inner_ptr };
     // Decode the C string and call the native set_storage_path.
-    let path_opt = unsafe { CStr::from_ptr(path) }.to_str().ok().map(str::to_owned);
+    let path_opt = unsafe { CStr::from_ptr(path) }
+        .to_str()
+        .ok()
+        .map(str::to_owned);
     let result = inner.set_storage_path(path_opt).code();
     // Arc drops here, releasing the clone.
     result
@@ -322,7 +323,7 @@ pub unsafe extern "C" fn nmp_app_gallery_ref_stores_free(store: *mut GalleryRefS
 /// `store` MUST persist across calls for one kernel session.
 ///
 /// Returns a heap-allocated UTF-8 JSON string on success; callers must release
-/// it with [`nmp_free_string`]. Returns NULL for NULL/empty input, a
+/// it with [`nmp_app_gallery_free_string`]. Returns NULL for NULL/empty input, a
 /// NULL `store`, malformed frames, or malformed typed sidecars (D6).
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[no_mangle]
