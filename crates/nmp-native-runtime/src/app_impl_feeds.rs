@@ -57,7 +57,9 @@ impl NmpApp {
         replay_shapes: Vec<nmp_planner::InterestShape>,
         replay_limit: usize,
     ) {
-        // Validate filter — same guard as nmp_app_open_interest.
+        // Validate filter before handing the raw acquisition request to the
+        // actor; this is internal runtime machinery, not a public raw-interest
+        // app door.
         if nmp_planner::InterestShape::from_filter_json(filter_json).is_none() {
             // D6: invalid filter is a no-op.
             return;
@@ -196,11 +198,12 @@ impl NmpApp {
     ///
     /// Returns a plain Rust closure `(scope, after_seq) -> page` that reads the
     /// kernel's published [`EventStore`](nmp_store::EventStore) directly
-    /// via [`nmp_core::pull_page_over`]. This is **not** a new C-ABI symbol and
-    /// **not** a projection accessor: it reads the raw ingest log exactly as the
-    /// existing [`crate::pull::nmp_app_pull_page`] door does (ADR-0039 §6.1
-    /// preserved — no host projection-pull accessor is added). The composition
-    /// root hands this to `PullFeedController`; the host never sees it.
+    /// via [`nmp_core::pull_page_over`]. This is **not** a C-ABI symbol and
+    /// **not** a projection accessor: it reuses the same raw ingest-log pull
+    /// machinery exposed to hosts only through the typed UniFFI
+    /// `NmpApp::mirror_pull_page` surface (ADR-0039 §6.1 preserved — no host
+    /// projection-pull accessor is added). The composition root hands this to
+    /// `PullFeedController`; the host never sees it.
     #[must_use]
     pub fn feed_pull_fn(&self) -> nmp_feed::PullFn {
         use nmp_core::{pull_page_over, PullLimits};

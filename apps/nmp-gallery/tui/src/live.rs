@@ -210,9 +210,9 @@ impl LiveKernelSink {
     }
 
     // V-112 (ADR-0042): `open_author` deleted — it wrapped the retired
-    // `nmp_app_open_author` C-ABI symbol and had zero callers. Author feeds
-    // go through the generic `nmp_app_open_interest` seam; user-avatar
-    // hydration uses component-owned `resolve_profile` above.
+    // `nmp_app_open_author` C-ABI symbol and had zero callers. Author-feed
+    // demand belongs behind typed read sessions; user-avatar hydration uses
+    // component-owned `resolve_profile` above.
 }
 
 // App-owned URI adapter over the typed event-ref resolve/release seams.
