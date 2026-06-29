@@ -4,7 +4,6 @@
 #[cfg_attr(feature = "codegen-schema", derive(schemars::JsonSchema))]
 pub(crate) struct RelayRoleOption {
     pub(crate) value: String,
-    pub(crate) tint: String,
     pub(crate) is_default: bool,
 }
 
@@ -91,34 +90,28 @@ impl Nip65Role {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct RelayRoleMetadata {
     value: &'static str,
-    tint: &'static str,
     is_default: bool,
 }
 
 const RELAY_ROLE_METADATA: &[RelayRoleMetadata] = &[
     RelayRoleMetadata {
         value: "both,indexer",
-        tint: "accent",
         is_default: false,
     },
     RelayRoleMetadata {
         value: "both",
-        tint: "accent",
         is_default: true,
     },
     RelayRoleMetadata {
         value: "read",
-        tint: "info",
         is_default: false,
     },
     RelayRoleMetadata {
         value: "write",
-        tint: "success",
         is_default: false,
     },
     RelayRoleMetadata {
         value: "indexer",
-        tint: "neutral",
         is_default: false,
     },
 ];
@@ -129,7 +122,6 @@ pub(crate) fn relay_role_options() -> Vec<RelayRoleOption> {
         .iter()
         .map(|metadata| RelayRoleOption {
             value: metadata.value.to_string(),
-            tint: metadata.tint.to_string(),
             is_default: metadata.is_default,
         })
         .collect()
@@ -233,7 +225,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["both"]
         );
-        // `label` removed from the wire (#1678, D7) — shells map value→label.
-        assert_eq!(options[0].tint, "accent");
+        // `label` and `tint` were removed from the wire (#1678/#2314, D7) —
+        // shells map value to presentation locally.
     }
 }

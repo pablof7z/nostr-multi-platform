@@ -3,25 +3,19 @@ import SwiftUI
 // MARK: - relay-list
 
 /// Renders the relay list component with current relay component rows covering
-/// every role/tint token and every connection-status dot variant.
+/// every relay role and every connection-status dot variant.
 struct RelayListPage: View {
 
     @Environment(GalleryModel.self) private var model
 
-    /// Resolve each showcase relay's role into the kernel-emitted
-    /// `label`/`tint` tokens from `projections.relay_role_options` (issue
-    /// #996). No role→label/tint derivation happens in Swift; the page just
-    /// looks the role up in the kernel's options. While the kernel options are
-    /// still in flight the
-    /// row falls back to the raw role token with an `accent` tint.
+    /// Keep showcase rows aligned with the kernel's canonical role options.
+    /// Labels and colors are derived by the Swift relay-list component.
     private var relayRows: [NostrRelayEditRow] {
         GALLERY_SHOWCASE.relays.map { relay in
             let option = model.relayRoleOptions.first { $0.value == relay.role }
             return NostrRelayEditRow(
                 url: relay.url,
-                role: relay.role,
-                roleLabel: option?.label ?? relay.role,
-                roleTint: option?.tint ?? "accent"
+                role: option?.value ?? relay.role
             )
         }
     }

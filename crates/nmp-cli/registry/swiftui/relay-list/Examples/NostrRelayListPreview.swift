@@ -6,21 +6,15 @@ struct NostrRelayListPreview: View {
             relays: [
                 NostrRelayEditRow(
                     url: "wss://relay.damus.io",
-                    role: "both",
-                    roleLabel: "Both",
-                    roleTint: "accent"
+                    role: "both"
                 ),
                 NostrRelayEditRow(
                     url: "wss://nos.lol",
-                    role: "read",
-                    roleLabel: "Read",
-                    roleTint: "info"
+                    role: "read"
                 ),
                 NostrRelayEditRow(
                     url: "wss://relay.snort.social",
-                    role: "write",
-                    roleLabel: "Write",
-                    roleTint: "success"
+                    role: "write"
                 ),
             ],
             connectionStatus: [

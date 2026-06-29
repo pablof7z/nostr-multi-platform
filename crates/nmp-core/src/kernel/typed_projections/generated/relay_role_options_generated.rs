@@ -27,7 +27,6 @@ pub mod nmp {
 
         impl<'a> RelayRoleOption<'a> {
             pub const VT_VALUE: ::flatbuffers::VOffsetT = 4;
-            pub const VT_TINT: ::flatbuffers::VOffsetT = 8;
             pub const VT_IS_DEFAULT: ::flatbuffers::VOffsetT = 10;
 
             #[inline]
@@ -45,9 +44,6 @@ pub mod nmp {
                 args: &'args RelayRoleOptionArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<RelayRoleOption<'bldr>> {
                 let mut builder = RelayRoleOptionBuilder::new(_fbb);
-                if let Some(x) = args.tint {
-                    builder.add_tint(x);
-                }
                 if let Some(x) = args.value {
                     builder.add_value(x);
                 }
@@ -65,16 +61,6 @@ pub mod nmp {
                         RelayRoleOption::VT_VALUE,
                         None,
                     )
-                }
-            }
-            #[inline]
-            pub fn tint(&self) -> Option<&'a str> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<::flatbuffers::ForwardsUOffset<&str>>(RelayRoleOption::VT_TINT, None)
                 }
             }
             #[inline]
@@ -102,11 +88,6 @@ pub mod nmp {
                         Self::VT_VALUE,
                         false,
                     )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "tint",
-                        Self::VT_TINT,
-                        false,
-                    )?
                     .visit_field::<bool>("is_default", Self::VT_IS_DEFAULT, false)?
                     .finish();
                 Ok(())
@@ -114,7 +95,6 @@ pub mod nmp {
         }
         pub struct RelayRoleOptionArgs<'a> {
             pub value: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub tint: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub is_default: bool,
         }
         impl<'a> Default for RelayRoleOptionArgs<'a> {
@@ -122,7 +102,6 @@ pub mod nmp {
             fn default() -> Self {
                 RelayRoleOptionArgs {
                     value: None,
-                    tint: None,
                     is_default: false,
                 }
             }
@@ -138,13 +117,6 @@ pub mod nmp {
                 self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
                     RelayRoleOption::VT_VALUE,
                     value,
-                );
-            }
-            #[inline]
-            pub fn add_tint(&mut self, tint: ::flatbuffers::WIPOffset<&'b str>) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    RelayRoleOption::VT_TINT,
-                    tint,
                 );
             }
             #[inline]
@@ -173,7 +145,6 @@ pub mod nmp {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 let mut ds = f.debug_struct("RelayRoleOption");
                 ds.field("value", &self.value());
-                ds.field("tint", &self.tint());
                 ds.field("is_default", &self.is_default());
                 ds.finish()
             }
