@@ -66,9 +66,7 @@ fn explicit_publish_target_spawns_worker_for_unseen_relay() {
     let outbound = publish_signed_event(
         &mut kernel,
         raw,
-        PublishTarget::Explicit {
-            relays: vec![UNSEEN_RELAY.to_string()],
-        },
+        PublishTarget::manual_override(vec![UNSEEN_RELAY.to_string()]),
         None,
     );
     let mut queued_publish_outbound = Vec::new();

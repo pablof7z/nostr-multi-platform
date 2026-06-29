@@ -110,6 +110,7 @@ pub enum PublishCommand {
     UnsignedEventToRelays {
         event: nmp_signer_iface::UnsignedEvent,
         relays: Vec<crate::publish::RelayUrl>,
+        route_class: crate::publish::PublishRouteClass,
         /// Registry-minted `correlation_id` from `dispatch_action`, when this
         /// command originates from an `ActionModule::execute` call. Threading
         /// it lets the publish engine report THAT id in `action_results` (via

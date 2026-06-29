@@ -167,9 +167,7 @@ fn publish_signed_event_publishes_kind_1059_with_explicit_pin() {
     let outbound = publish_signed_event(
         &mut kernel,
         raw,
-        PublishTarget::Explicit {
-            relays: pin.clone(),
-        },
+        PublishTarget::explicit(pin.clone(), PublishRouteClass::VerifiedPrivateInbox),
         None,
     );
 

@@ -26,7 +26,7 @@ fn explicit_publish_target_requires_non_empty_relays() {
         kind: 1,
         tags: Vec::new(),
         content: "hello".to_string(),
-        target: PublishTarget::Explicit { relays: Vec::new() },
+        target: PublishTarget::manual_override(Vec::new()),
         signer_pubkey: None,
     };
     let err = PublishModule
@@ -40,9 +40,7 @@ fn explicit_publish_target_rejects_malformed_relay_url() {
     let action = PublishAction::Publish {
         handle: "h".to_string(),
         event: signed_event(),
-        target: PublishTarget::Explicit {
-            relays: vec!["https://relay.example".to_string()],
-        },
+        target: PublishTarget::manual_override(vec!["https://relay.example".to_string()]),
     };
     let err = PublishModule
         .start(&mut ctx(), action)
@@ -56,9 +54,7 @@ fn explicit_publish_target_accepts_valid_relay_url() {
         kind: 1,
         tags: Vec::new(),
         content: "hello".to_string(),
-        target: PublishTarget::Explicit {
-            relays: vec!["wss://relay.example".to_string()],
-        },
+        target: PublishTarget::manual_override(vec!["wss://relay.example".to_string()]),
         signer_pubkey: None,
     };
     PublishModule
@@ -221,9 +217,10 @@ fn publish_raw_allows_gift_wrap_with_explicit_nonempty_relays() {
         kind: 1059,
         tags: Vec::new(),
         content: "encrypted".to_string(),
-        target: PublishTarget::Explicit {
-            relays: vec!["wss://inbox.example".to_string()],
-        },
+        target: PublishTarget::explicit(
+            vec!["wss://inbox.example".to_string()],
+            PublishRouteClass::VerifiedPrivateInbox,
+        ),
         signer_pubkey: None,
     };
     PublishModule
@@ -258,9 +255,10 @@ fn publish_signed_allows_gift_wrap_with_explicit_nonempty_relays() {
     let action = PublishAction::Publish {
         handle: "h".to_string(),
         event,
-        target: PublishTarget::Explicit {
-            relays: vec!["wss://inbox.example".to_string()],
-        },
+        target: PublishTarget::explicit(
+            vec!["wss://inbox.example".to_string()],
+            PublishRouteClass::VerifiedPrivateInbox,
+        ),
     };
     PublishModule
         .start(&mut ctx(), action)
@@ -276,7 +274,7 @@ fn publish_raw_propagates_explicit_target_validation_failure() {
         kind: 30023,
         tags: Vec::new(),
         content: "body".to_string(),
-        target: PublishTarget::Explicit { relays: Vec::new() },
+        target: PublishTarget::manual_override(Vec::new()),
         signer_pubkey: None,
     };
     let err = PublishModule

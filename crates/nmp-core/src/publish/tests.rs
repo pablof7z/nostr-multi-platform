@@ -192,9 +192,10 @@ fn engine_explicit_target_dispatches_to_named_relays() {
     let action = PublishAction::Publish {
         handle: "h1".to_string(),
         event: signed_event("ev1", "alice", 1, &[]),
-        target: PublishTarget::Explicit {
-            relays: vec!["wss://r1".to_string(), "wss://r2".to_string()],
-        },
+        target: PublishTarget::manual_override(vec![
+            "wss://r1".to_string(),
+            "wss://r2".to_string(),
+        ]),
     };
     engine.start_publish(action, 100, None).unwrap();
 

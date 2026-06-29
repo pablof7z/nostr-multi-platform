@@ -417,11 +417,13 @@ fn dispatch_publish(
         PublishCommand::UnsignedEventToRelays {
             event,
             relays,
+            route_class,
             correlation_id,
             signer_pubkey,
         } => cmd_publish::publish_unsigned_event_to_relays(
             event,
             relays,
+            route_class,
             correlation_id,
             signer_pubkey,
             ctx,

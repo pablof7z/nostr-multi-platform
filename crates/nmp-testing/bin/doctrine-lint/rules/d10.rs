@@ -9,7 +9,7 @@
 //!
 //! Legitimate destinations:
 //!
-//! - `PublishTarget::Explicit { relays }` — an EXPLICIT pin to the
+//! - `PublishTarget::Explicit { relays, route_class }` — an EXPLICIT pin to the
 //!   recipient's kind:10050 DM-inbox relays (NIP-17 § 2), the group's relays
 //!   (the Marmot inbox-routing approximation), or another caller-supplied
 //!   list.
@@ -318,7 +318,7 @@ pub fn check(line: &str, is_comment: bool, in_marked_fn: bool) -> Vec<(usize, St
                     needle
                 ),
                 format!(
-                    "route through `PublishTarget::Explicit {{ relays }}` (a \
+                    "route through `PublishTarget::Explicit {{ relays, route_class }}` (a \
                      recipient kind:10050 DM-inbox pin, the group's relays, \
                      or another explicit set) instead of `{}`; see \
                      `publish_signed_event(..., &pin, ...)` or its `_to_relays` \

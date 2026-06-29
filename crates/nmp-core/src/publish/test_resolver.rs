@@ -132,13 +132,19 @@ impl OutboxResolver for TestKind10002OutboxResolver {
         _kind: u32,
         blocked: &BlockedRelaySet,
     ) -> Vec<ResolvedRelay> {
-        if let PublishTarget::Explicit { relays } = target {
+        if let PublishTarget::Explicit {
+            relays,
+            route_class,
+        } = target
+        {
             return relays
                 .iter()
                 .filter(|url| !blocked.contains(url))
                 .map(|url| ResolvedRelay {
                     url: url.clone(),
-                    reason: RelaySelectionReason::Explicit,
+                    reason: RelaySelectionReason::Explicit {
+                        route_class: *route_class,
+                    },
                 })
                 .collect();
         }

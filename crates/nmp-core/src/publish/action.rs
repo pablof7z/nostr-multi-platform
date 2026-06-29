@@ -29,15 +29,78 @@ pub type PublishHandle = String;
 /// `publish` import paths are unchanged.
 pub use crate::relay::RelayUrl;
 
+/// Why a publish bypasses default outbox planning.
+///
+/// D3 still makes `Auto` the default. This enum exists only for explicit relay
+/// pins so the write stack can distinguish manual overrides from protocol-owned
+/// routing such as NIP-29 group hosts or verified DM inboxes.
+#[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PublishRouteClass {
+    ManualOverride,
+    GroupHostPin,
+    VerifiedPrivateInbox,
+    ImportedOrPresigned,
+    Diagnostic,
+}
+
+impl Default for PublishRouteClass {
+    fn default() -> Self {
+        Self::ManualOverride
+    }
+}
+
+impl PublishRouteClass {
+    #[must_use]
+    pub fn wire_token(self) -> &'static str {
+        match self {
+            Self::ManualOverride => "manual_override",
+            Self::GroupHostPin => "group_host_pin",
+            Self::VerifiedPrivateInbox => "verified_private_inbox",
+            Self::ImportedOrPresigned => "imported_or_presigned",
+            Self::Diagnostic => "diagnostic",
+        }
+    }
+
+    #[must_use]
+    pub fn from_wire_token(token: &str) -> Self {
+        match token {
+            "group_host_pin" => Self::GroupHostPin,
+            "verified_private_inbox" => Self::VerifiedPrivateInbox,
+            "imported_or_presigned" => Self::ImportedOrPresigned,
+            "diagnostic" => Self::Diagnostic,
+            _ => Self::ManualOverride,
+        }
+    }
+}
+
 /// Where a publish should go.
 ///
 /// `Auto` defers to the `OutboxResolver` (NIP-65 + indexer fallback per D3).
-/// `Explicit` is the named opt-out (D3: "manual relay selection is the
-/// opt-out").
+/// `Explicit` is the named opt-out and must carry both relays and provenance.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum PublishTarget {
     Auto,
-    Explicit { relays: Vec<RelayUrl> },
+    Explicit {
+        relays: Vec<RelayUrl>,
+        #[serde(default)]
+        route_class: PublishRouteClass,
+    },
+}
+
+impl PublishTarget {
+    #[must_use]
+    pub fn explicit(relays: Vec<RelayUrl>, route_class: PublishRouteClass) -> Self {
+        Self::Explicit {
+            relays,
+            route_class,
+        }
+    }
+
+    #[must_use]
+    pub fn manual_override(relays: Vec<RelayUrl>) -> Self {
+        Self::explicit(relays, PublishRouteClass::ManualOverride)
+    }
 }
 
 /// `Auto` is the unambiguous default — the kernel resolves via NIP-65 (D3).
@@ -60,7 +123,7 @@ impl Default for PublishTarget {
 pub(crate) fn validate_publish_target(target: &PublishTarget) -> Result<(), String> {
     match target {
         PublishTarget::Auto => Ok(()),
-        PublishTarget::Explicit { relays } => validate_explicit_relays(relays),
+        PublishTarget::Explicit { relays, .. } => validate_explicit_relays(relays),
     }
 }
 

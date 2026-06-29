@@ -20,7 +20,7 @@ crates/nmp-cli/registry/compose/content-view/NostrContentView.kt	599
 crates/nmp-cli/registry/tui/content-kind-registry/nostr_kind_registry.rs	826
 crates/nmp-codegen/src/swift.rs	605
 crates/nmp-codegen/src/swift_projections_registry.rs	686
-crates/nmp-core/src/actor/commands/publish.rs	537
+crates/nmp-core/src/actor/commands/publish.rs	536
 crates/nmp-core/src/actor/mod.rs	750
 crates/nmp-core/src/actor/sign_event_for_account_tests.rs	565
 crates/nmp-core/src/kernel/auth_tests.rs	762
@@ -48,14 +48,14 @@ crates/nmp-nip60/src/nip60_wallet.rs	714
 crates/nmp-nostr-lmdb/src/lib_tests.rs	867
 crates/nmp-planner/src/compiler/tests.rs	567
 crates/nmp-planner/src/interest.rs	583
-crates/nmp-router/src/nip65_resolver/tests.rs	547
+crates/nmp-router/src/nip65_resolver/tests.rs	543
 crates/nmp-router/src/router.rs	608
 crates/nmp-router/src/router/tests_v75.rs	509
 crates/nmp-signers/src/signers/nip46/handle/tests.rs	622
 crates/nmp-signers/src/signers/nip55/tests.rs	908
 crates/nmp-store/src/lmdb/tests_gc.rs	747
 crates/nmp-testing/bin/doctrine-lint/rules/d8.rs	523
-crates/nmp-testing/tests/e2e_full_pipeline.rs	850
+crates/nmp-testing/tests/e2e_full_pipeline.rs	848
 crates/nmp-threading/src/grouper.rs	595
 crates/nmp-threading/tests/grouper.rs	657
 docs/design/relay-roles.md	613

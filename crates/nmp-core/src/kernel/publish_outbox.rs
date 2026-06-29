@@ -214,8 +214,9 @@ impl Kernel {
 /// the appropriate display language.
 ///
 /// Token grammar:
-/// - Simple: `"nip65_write"`, `"local_config"`, `"explicit"`
+/// - Simple: `"nip65_write"`, `"local_config"`
 /// - Parameterised: `"discovery_indexer:{kind}"`, `"recipient_inbox:{pubkey}"`
+/// - Explicit route class: `"explicit:{route_class}"`
 pub(super) fn format_relay_reason(reason: &RelaySelectionReason) -> String {
     match reason {
         RelaySelectionReason::AuthorWriteRelay => "nip65_write".to_string(),
@@ -230,7 +231,9 @@ pub(super) fn format_relay_reason(reason: &RelaySelectionReason) -> String {
             // hex pubkey is emitted verbatim here.
             format!("recipient_inbox:{pubkey}")
         }
-        RelaySelectionReason::Explicit => "explicit".to_string(),
+        RelaySelectionReason::Explicit { route_class } => {
+            format!("explicit:{}", route_class.wire_token())
+        }
     }
 }
 

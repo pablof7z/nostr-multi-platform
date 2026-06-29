@@ -255,6 +255,7 @@ impl MarmotRuntimePort for MarmotCommandPort<'_, '_> {
                 .iter()
                 .map(std::string::ToString::to_string)
                 .collect(),
+            nmp_core::publish::PublishRouteClass::ImportedOrPresigned,
             None,
         );
     }

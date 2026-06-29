@@ -56,8 +56,9 @@
 //! * **D7** — the kernel-owned wall clock stamps `created_at`.
 //! * **D8** — zero blocking on the actor thread: each continuation only enqueues
 //!   the next port command; the seal/wrap steps are pure CPU work.
-//! * **D10** — the publish path uses `PublishTarget::Explicit { relays }` with a
-//!   non-empty slice (the `required_dm_relays` gate rejects empty/missing first).
+//! * **D10** — the publish path uses a `VerifiedPrivateInbox` explicit route
+//!   with a non-empty slice (the `required_dm_relays` gate rejects empty/missing
+//!   first).
 //! * **D13** — no raw `Keys` cross this crate; the seal is signed through the
 //!   port and only a `SignedEvent` / ciphertext is ever observed.
 
@@ -280,7 +281,10 @@ fn build_nostr_rumor(
     pubkey: PublicKey,
 ) -> Result<nostr::UnsignedEvent, String> {
     if rumor.kind > u32::from(u16::MAX) {
-        return Err(format!("invalid kind {}: must be in [0, 65535]", rumor.kind));
+        return Err(format!(
+            "invalid kind {}: must be in [0, 65535]",
+            rumor.kind
+        ));
     }
     let kind = Kind::from_u16(rumor.kind as u16);
 

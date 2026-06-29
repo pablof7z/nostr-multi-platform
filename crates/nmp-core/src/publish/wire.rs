@@ -45,14 +45,14 @@ use serde_json::Value;
 
 use generated::nmp::publish as fb;
 
-use crate::publish::action::{PublishAction, PublishTarget, RelayUrl};
+use crate::publish::action::{PublishAction, PublishRouteClass, PublishTarget, RelayUrl};
 use crate::substrate::{ActionPayload, ActionPayloadDecodeError};
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 /// Stable identity of the `nmp.publish` typed payload schema.
 pub const SCHEMA_ID: &str = "nmp.publish";
 /// Wire schema version. Bump on any breaking change to `publish.fbs`.
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 /// FlatBuffers file identifier embedded in every buffer this codec emits.
 /// (Used by the round-trip tests + documents the wire magic; the generated
 /// `publish_payload_buffer_has_identifier` is what the decode actually checks.)
@@ -80,10 +80,14 @@ fn build_target<'a>(
     fbb: &mut flatbuffers::FlatBufferBuilder<'a>,
     target: &PublishTarget,
 ) -> WIPOffset<fb::PublishTarget<'a>> {
-    let (explicit, relay_offsets) = match target {
-        PublishTarget::Auto => (false, Vec::new()),
-        PublishTarget::Explicit { relays } => (
+    let (explicit, route_class, relay_offsets) = match target {
+        PublishTarget::Auto => (false, PublishRouteClass::ManualOverride, Vec::new()),
+        PublishTarget::Explicit {
+            relays,
+            route_class,
+        } => (
             true,
+            *route_class,
             relays
                 .iter()
                 .map(|r| fbb.create_string(r))
@@ -91,11 +95,13 @@ fn build_target<'a>(
         ),
     };
     let relays = fbb.create_vector(&relay_offsets);
+    let route_class = fbb.create_string(route_class.wire_token());
     fb::PublishTarget::create(
         fbb,
         &fb::PublishTargetArgs {
             explicit,
             relays: Some(relays),
+            route_class: Some(route_class),
         },
     )
 }
@@ -108,7 +114,14 @@ fn read_target(target: fb::PublishTarget<'_>) -> PublishTarget {
         .relays()
         .map(|v| v.iter().map(|s| s.to_string()).collect())
         .unwrap_or_default();
-    PublishTarget::Explicit { relays }
+    let route_class = target
+        .route_class()
+        .map(PublishRouteClass::from_wire_token)
+        .unwrap_or_default();
+    PublishTarget::Explicit {
+        relays,
+        route_class,
+    }
 }
 
 // --- encode ------------------------------------------------------------------
@@ -438,6 +451,7 @@ pub(crate) fn encode_with_schema_version_for_test(schema_version: u32) -> Vec<u8
         &fb::PublishTargetArgs {
             explicit: false,
             relays: None,
+            route_class: None,
         },
     );
     let raw = fb::PublishRaw::create(

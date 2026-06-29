@@ -157,9 +157,7 @@ fn publish_signed_event_to_explicit_relays_routes_verbatim_to_exactly_those() {
     let outbound = publish_signed_event(
         &mut kernel,
         raw,
-        PublishTarget::Explicit {
-            relays: relays.clone(),
-        },
+        PublishTarget::explicit(relays.clone(), PublishRouteClass::ImportedOrPresigned),
         None,
     );
 
@@ -199,7 +197,7 @@ fn publish_signed_event_to_empty_explicit_relays_fails_closed() {
     let outbound = publish_signed_event(
         &mut kernel,
         raw,
-        PublishTarget::Explicit { relays: Vec::new() },
+        PublishTarget::explicit(Vec::new(), PublishRouteClass::ImportedOrPresigned),
         None,
     );
 
@@ -237,9 +235,7 @@ fn publish_signed_event_to_explicit_relays_works_with_no_active_account() {
     let outbound = publish_signed_event(
         &mut kernel,
         raw,
-        PublishTarget::Explicit {
-            relays: relays.clone(),
-        },
+        PublishTarget::explicit(relays.clone(), PublishRouteClass::ImportedOrPresigned),
         None,
     );
 
@@ -269,7 +265,12 @@ fn publish_signed_event_to_explicit_relays_still_rejects_tampered_sig() {
 
     let relays: Vec<String> = TEST_GROUP_RELAYS.iter().map(|s| s.to_string()).collect();
     let raw: crate::store::RawEvent = serde_json::from_str(&bad_json).unwrap();
-    let outbound = publish_signed_event(&mut kernel, raw, PublishTarget::Explicit { relays }, None);
+    let outbound = publish_signed_event(
+        &mut kernel,
+        raw,
+        PublishTarget::explicit(relays, PublishRouteClass::ImportedOrPresigned),
+        None,
+    );
 
     assert!(
         outbound.is_empty(),

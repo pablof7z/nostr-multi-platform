@@ -29,10 +29,10 @@
 //!   versus which are reserved to a typed builder, and the routing-class shape
 //!   that makes invalid `Auto` impossible by type.
 //! - **Private / gift-wrap fail-closed routing** is achieved by the DM publish
-//!   path using `PublishTarget::Explicit { relays }` (never `Auto`), enforced by
-//!   the D10 doctrine lint. [`PublishBehavior::PrivateFailClosed`] records that
-//!   invariant in the table so the policy is declared in one place, but the
-//!   mechanism that *enforces* it (Explicit-only routing + D10 lint) is
+//!   path using an explicit `VerifiedPrivateInbox` route (never `Auto`),
+//!   enforced by the D10 doctrine lint. [`PublishBehavior::PrivateFailClosed`]
+//!   records that invariant in the table so the policy is declared in one place,
+//!   but the mechanism that *enforces* it (Explicit-only routing + D10 lint) is
 //!   unchanged by this module — this is a refactor of how the policy is
 //!   *expressed*, not a behaviour change.
 
@@ -62,10 +62,9 @@ pub(crate) enum PublishBehavior {
     ReservedBuilderOnly(ReservedKind),
     /// Private / encrypted-envelope event (NIP-59 gift-wrap and the sealed
     /// NIP-17 chat message) that MUST fail closed: it is never routed to
-    /// `Auto` / public Content relays — only to an `Explicit` recipient-inbox
-    /// relay set (D10). The DM publish path enforces this via
-    /// `PublishTarget::Explicit`; this class declares the invariant so the
-    /// policy is visible in one place.
+    /// `Auto` / public Content relays — only to a verified recipient-inbox
+    /// relay set (D10). The DM publish path enforces this via route provenance;
+    /// this class declares the invariant so the policy is visible in one place.
     PrivateFailClosed,
     /// Replaceable / addressable kind that an app may publish raw AND that the
     /// resolver additionally fans out to discovery indexers when the author has
@@ -236,7 +235,7 @@ pub(crate) fn validate_publish_routing(
 /// same way (and so the D10 routing gate can be applied without re-importing
 /// `PublishTarget` matching logic at each call site).
 pub(crate) fn target_is_explicit_nonempty(target: &super::PublishTarget) -> bool {
-    matches!(target, super::PublishTarget::Explicit { relays } if !relays.is_empty())
+    matches!(target, super::PublishTarget::Explicit { relays, .. } if !relays.is_empty())
 }
 
 /// **The universal per-relay emit gate** (D10 fail-closed). Returns `true` when
@@ -250,9 +249,9 @@ pub(crate) fn target_is_explicit_nonempty(target: &super::PublishTarget) -> bool
 /// bypassed by a persisted row replayed on resume or a re-dispatched retry.
 ///
 /// Rule: a [`PublishBehavior::PrivateFailClosed`] kind (gift-wrap kind:1059,
-/// sealed kind:14) may ONLY be emitted to a relay the caller explicitly pinned
-/// (`RelaySelectionReason::Explicit` present in its reason set). A private event
-/// targeted at a write-relay / discovery-indexer / recipient-inbox-derived /
+/// sealed kind:14) may ONLY be emitted to a relay explicitly classified as a
+/// verified private inbox. A private event targeted at a write-relay /
+/// discovery-indexer / recipient-inbox-derived / manual override /
 /// reason-less relay is REFUSED — that is exactly the public-relay leak D10
 /// forbids. Every other (public/reserved/discovery) kind may emit to any
 /// selected relay; their relay selection is the resolver's concern (Layer 2).
@@ -263,10 +262,15 @@ pub(crate) fn relay_emit_is_sanctioned(
     if !classify_publish_behavior(kind).is_private_fail_closed() {
         return true;
     }
-    // Private kind: emit only to an explicitly-pinned relay.
-    relay_reasons
-        .iter()
-        .any(|r| matches!(r, super::RelaySelectionReason::Explicit))
+    // Private kind: emit only to a verified private inbox pin.
+    relay_reasons.iter().any(|r| {
+        matches!(
+            r,
+            super::RelaySelectionReason::Explicit {
+                route_class: super::PublishRouteClass::VerifiedPrivateInbox
+            }
+        )
+    })
 }
 
 #[cfg(test)]

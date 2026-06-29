@@ -230,9 +230,9 @@ fn publish_outbox_projects_pending_event_details_and_relays() {
     let outbound = kernel.run_publish_engine_at(
         &signed,
         &[],
-        crate::publish::PublishTarget::Explicit {
-            relays: vec!["wss://outbox.test".to_string()],
-        },
+        crate::publish::PublishTarget::manual_override(vec![
+            "wss://outbox.test".to_string(),
+        ]),
         None,
         0,
     );
@@ -341,13 +341,13 @@ fn publish_outbox_projects_relay_reason_from_resolver() {
     // `PublishTarget::Explicit` exercises the resolver's short-circuit lane —
     // the kernel's installed resolver (`Nip65OutboxResolver` /
     // `TestKind10002OutboxResolver`) emits `RelaySelectionReason::Explicit`
-    // which is formatted as the raw token `"explicit"`.
+    // which is formatted as the raw token `"explicit:manual_override"`.
     let outbound = kernel.run_publish_engine_at(
         &signed,
         &[],
-        crate::publish::PublishTarget::Explicit {
-            relays: vec!["wss://reason.test".to_string()],
-        },
+        crate::publish::PublishTarget::manual_override(vec![
+            "wss://reason.test".to_string(),
+        ]),
         None,
         0,
     );
@@ -362,7 +362,7 @@ fn publish_outbox_projects_relay_reason_from_resolver() {
     assert_eq!(relay["relay_url"].as_str(), Some("wss://reason.test"));
     assert_eq!(
         relay["relay_reason"].as_str(),
-        Some("explicit"),
+        Some("explicit:manual_override"),
         "kernel projection must surface the raw reason token (shells format it)",
     );
 }
@@ -473,9 +473,9 @@ fn outbox_summary_projects_sending_counters_and_strings() {
     let outbound = kernel.run_publish_engine_at(
         &signed,
         &[],
-        crate::publish::PublishTarget::Explicit {
-            relays: vec!["wss://outbox.test".to_string()],
-        },
+        crate::publish::PublishTarget::manual_override(vec![
+            "wss://outbox.test".to_string(),
+        ]),
         None,
         0,
     );

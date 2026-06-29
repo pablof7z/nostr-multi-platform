@@ -103,9 +103,10 @@ fn chokepoint_allows_gift_wrap_with_explicit_relays() {
     let outbound = kernel.run_publish_engine_at(
         &signed,
         &[],
-        crate::publish::PublishTarget::Explicit {
-            relays: vec![WRITE_R1.to_string()],
-        },
+        crate::publish::PublishTarget::explicit(
+            vec![WRITE_R1.to_string()],
+            crate::publish::PublishRouteClass::VerifiedPrivateInbox,
+        ),
         None,
         1_000,
     );
@@ -212,7 +213,9 @@ fn resume_and_retry_allow_persisted_gift_wrap_to_explicit_relay() {
         &publish_store,
         &signed,
         WRITE_R1,
-        crate::publish::RelaySelectionReason::Explicit,
+        crate::publish::RelaySelectionReason::Explicit {
+            route_class: crate::publish::PublishRouteClass::VerifiedPrivateInbox,
+        },
     );
 
     let mut kernel = Kernel::with_publish_store(DEFAULT_VISIBLE_LIMIT, Arc::clone(&publish_store));

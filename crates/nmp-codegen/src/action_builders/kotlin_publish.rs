@@ -95,8 +95,8 @@ fn string_vector(out: &mut String, val_name: &str, source: &str) {
 }
 
 /// Encode a `PublishTarget`: `null`/empty `relays` → `Auto` (`explicit = false`);
-/// a non-empty set → `Explicit`. Leaves the offset on `targetOffset`. Matches
-/// `build_target` in `nmp_core::publish::wire`.
+/// a non-empty set → `Explicit` manual override. Leaves the offset on
+/// `targetOffset`. Matches `build_target` in `nmp_core::publish::wire`.
 fn render_target(out: &mut String) {
     out.push_str(
         "        val targetRelays = relays ?: emptyList()\n\
@@ -104,9 +104,11 @@ fn render_target(out: &mut String) {
     );
     string_vector(out, "targetRelaysVec", "targetRelays");
     out.push_str(
-        "        fbb.startTable(2)\n\
+        "        val routeClassOffset = fbb.createString(\"manual_override\")\n\
+         \x20       fbb.startTable(3)\n\
          \x20       fbb.addBoolean(0, explicit, false) // slot 0: explicit\n\
          \x20       fbb.addOffset(1, targetRelaysVec, 0) // slot 1: relays\n\
+         \x20       if (explicit) fbb.addOffset(2, routeClassOffset, 0) // slot 2: route_class\n\
          \x20       val targetOffset = fbb.endTable()\n",
     );
 }

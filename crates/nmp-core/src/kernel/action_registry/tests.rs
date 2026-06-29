@@ -200,6 +200,7 @@ fn publish_raw_executor_threads_correlation_id_onto_actor_command() {
                 target,
                 crate::publish::PublishTarget::Explicit {
                     relays: vec!["wss://relay.example".to_string()],
+                    route_class: crate::publish::PublishRouteClass::ManualOverride,
                 },
                 "the executor must preserve the validated publish target"
             );

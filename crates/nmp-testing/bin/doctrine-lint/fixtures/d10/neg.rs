@@ -25,7 +25,14 @@ pub fn send_gift_wrap_correctly() {
     let signed = build_signed_kind_1059();
     let pin = kernel.recipient_dm_relays(receiver_hex).unwrap_or_default();
     // Explicit-pin variant — the underscore-`to` form is NOT flagged.
-    kernel.publish_signed_to(&signed, &[], PublishTarget::Explicit { relays: pin });
+    kernel.publish_signed_to(
+        &signed,
+        &[],
+        PublishTarget::Explicit {
+            relays: pin,
+            route_class: PublishRouteClass::VerifiedPrivateInbox,
+        },
+    );
 }
 
 // A marked publisher that uses the Explicit-pin variant with correlation —
@@ -34,7 +41,15 @@ pub fn send_gift_wrap_with_correlation() {
     // D10: private-kind publish
     let signed = build_signed_kind_1059();
     let pin = recipient_dm_relays(receiver_hex);
-    kernel.publish_signed_to_with_correlation(&signed, &[], PublishTarget::Explicit { relays: pin }, None);
+    kernel.publish_signed_to_with_correlation(
+        &signed,
+        &[],
+        PublishTarget::Explicit {
+            relays: pin,
+            route_class: PublishRouteClass::VerifiedPrivateInbox,
+        },
+        None,
+    );
 }
 
 // The escape hatch — a documented Auto-fallback in a legitimately-marked

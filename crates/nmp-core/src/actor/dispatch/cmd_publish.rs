@@ -63,12 +63,13 @@ pub(super) fn publish_raw_event(
             signer_pubkey,
             ctx.parked_ops,
         ),
-        crate::publish::PublishTarget::Explicit { relays } => {
+        crate::publish::PublishTarget::Explicit { relays, route_class } => {
             commands::publish_unsigned_event_to_relays(
                 ctx.identity,
                 ctx.kernel,
                 unsigned,
                 relays,
+                route_class,
                 correlation_id,
                 // Honour the `PublishRaw` signer selector: `None` signs
                 // with the active account; `Some(pubkey)` signs with that
@@ -133,12 +134,13 @@ pub(super) fn publish_reply(
             signer_pubkey,
             ctx.parked_ops,
         ),
-        crate::publish::PublishTarget::Explicit { relays } => {
+        crate::publish::PublishTarget::Explicit { relays, route_class } => {
             commands::publish_unsigned_event_to_relays(
                 ctx.identity,
                 ctx.kernel,
                 unsigned,
                 relays,
+                route_class,
                 correlation_id,
                 signer_pubkey,
                 ctx.parked_ops,
@@ -211,6 +213,7 @@ pub(super) fn publish_unsigned_event(
 pub(super) fn publish_unsigned_event_to_relays(
     mut event: nmp_signer_iface::UnsignedEvent,
     relays: Vec<String>,
+    route_class: crate::publish::PublishRouteClass,
     correlation_id: Option<String>,
     signer_pubkey: Option<String>,
     ctx: &mut ActorContext<'_>,
@@ -235,6 +238,7 @@ pub(super) fn publish_unsigned_event_to_relays(
         ctx.kernel,
         event,
         relays,
+        route_class,
         correlation_id,
         signer_pubkey,
         ctx.parked_ops,

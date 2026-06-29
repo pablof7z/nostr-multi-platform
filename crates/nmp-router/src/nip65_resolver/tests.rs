@@ -266,9 +266,7 @@ fn nip65_resolver_returns_explicit_unchanged() {
     let out = resolver.resolve(
         AUTHOR_HEX,
         &[],
-        &PublishTarget::Explicit {
-            relays: explicit.clone(),
-        },
+        &PublishTarget::manual_override(explicit.clone()),
         1,
         &no_block(),
     );
@@ -531,9 +529,7 @@ fn resolve_returns_explicit_relay_reason() {
     let out = resolver.resolve(
         AUTHOR_HEX,
         &[],
-        &PublishTarget::Explicit {
-            relays: explicit.clone(),
-        },
+        &PublishTarget::manual_override(explicit.clone()),
         1,
         &no_block(),
     );
@@ -541,7 +537,7 @@ fn resolve_returns_explicit_relay_reason() {
     for url in &explicit {
         assert!(matches!(
             find_reason(&out, url),
-            Some(RelaySelectionReason::Explicit)
+            Some(RelaySelectionReason::Explicit { route_class: nmp_core::publish::PublishRouteClass::ManualOverride })
         ));
     }
 }

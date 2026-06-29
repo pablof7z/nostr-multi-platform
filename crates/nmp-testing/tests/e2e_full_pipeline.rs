@@ -785,7 +785,7 @@ fn publish_raw_signer_pubkey_unregistered_fails_closed() {
 // hardcoded `None`, `signer_pubkey.is_none() && active.is_none()` is true →
 // `toast_no_account` raises "no active account — sign in first". Honouring
 // `Some(bob)` instead skips that guard and signs with bob — NO such toast.
-// `Explicit { relays }` exercises the second of the two dispatch call sites.
+// Manual override exercises the explicit dispatch call site.
 #[test]
 fn publish_raw_signer_pubkey_signs_with_registered_agent_key_without_active_account() {
     use nmp_core::publish::PublishTarget;
@@ -826,9 +826,7 @@ fn publish_raw_signer_pubkey_signs_with_registered_agent_key_without_active_acco
         kind: 30023,
         tags: Vec::new(),
         content: "agent-authored note".to_string(),
-        target: PublishTarget::Explicit {
-            relays: vec!["wss://relay.test".to_string()],
-        },
+        target: PublishTarget::manual_override(vec!["wss://relay.test".to_string()]),
         signer_pubkey: Some(bob_pubkey_hex.clone()),
         correlation_id: None,
     }))

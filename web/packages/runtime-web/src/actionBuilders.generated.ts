@@ -814,9 +814,11 @@ export const GeneratedActionBuilders = {
     const targetRelays = relays ?? [];
     const explicit = targetRelays.length > 0;
     const targetRelaysVec = stringVector(fbb, targetRelays);
-    fbb.startObject(2);
+    const routeClassOffset = fbb.createString("manual_override");
+    fbb.startObject(3);
     fbb.addFieldInt8(0, explicit ? 1 : 0, 0); // slot 0: explicit
     fbb.addFieldOffset(1, targetRelaysVec, 0); // slot 1: relays
+    if (explicit) fbb.addFieldOffset(2, routeClassOffset, 0); // slot 2: route_class
     const targetOffset = fbb.endObject();
     fbb.startObject(5);
     fbb.addFieldInt32(0, kind, 0); // slot 0: kind
@@ -826,7 +828,7 @@ export const GeneratedActionBuilders = {
     if (signerPubkeyOffset !== 0) fbb.addFieldOffset(4, signerPubkeyOffset, 0); // slot 4: signer_pubkey
     const bodyOffset = fbb.endObject();
     fbb.startObject(3);
-    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldInt32(0, 2, 0); // slot 0: schema_version
     fbb.addFieldInt8(1, 3, 0); // slot 1: body_type
     fbb.addFieldOffset(2, bodyOffset, 0); // slot 2: body
     const payloadRoot = fbb.endObject();
@@ -850,9 +852,11 @@ export const GeneratedActionBuilders = {
     const targetRelays = relays ?? [];
     const explicit = targetRelays.length > 0;
     const targetRelaysVec = stringVector(fbb, targetRelays);
-    fbb.startObject(2);
+    const routeClassOffset = fbb.createString("manual_override");
+    fbb.startObject(3);
     fbb.addFieldInt8(0, explicit ? 1 : 0, 0); // slot 0: explicit
     fbb.addFieldOffset(1, targetRelaysVec, 0); // slot 1: relays
+    if (explicit) fbb.addFieldOffset(2, routeClassOffset, 0); // slot 2: route_class
     const targetOffset = fbb.endObject();
     fbb.startObject(4);
     fbb.addFieldOffset(0, contentOffset, 0); // slot 0: content
@@ -861,7 +865,7 @@ export const GeneratedActionBuilders = {
     if (signerPubkeyOffset !== 0) fbb.addFieldOffset(3, signerPubkeyOffset, 0); // slot 3: signer_pubkey
     const bodyOffset = fbb.endObject();
     fbb.startObject(3);
-    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldInt32(0, 2, 0); // slot 0: schema_version
     fbb.addFieldInt8(1, 4, 0); // slot 1: body_type
     fbb.addFieldOffset(2, bodyOffset, 0); // slot 2: body
     const payloadRoot = fbb.endObject();
@@ -891,7 +895,7 @@ export const GeneratedActionBuilders = {
     fbb.addFieldOffset(0, fieldsVec, 0); // slot 0: fields
     const bodyOffset = fbb.endObject();
     fbb.startObject(3);
-    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldInt32(0, 2, 0); // slot 0: schema_version
     fbb.addFieldInt8(1, 2, 0); // slot 1: body_type
     fbb.addFieldOffset(2, bodyOffset, 0); // slot 2: body
     const payloadRoot = fbb.endObject();

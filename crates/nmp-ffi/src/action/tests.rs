@@ -99,7 +99,7 @@ fn ack_action_stage_well_formed_enqueues_command() {
     });
 }
 
-use nmp_core::publish::{PublishAction, PublishTarget};
+use nmp_core::publish::{PublishAction, PublishRouteClass, PublishTarget};
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 fn fixture_signed_event() -> SignedEvent {
@@ -153,6 +153,7 @@ fn execute_action_publish_is_ok() {
             event: fixture_signed_event(),
             target: PublishTarget::Explicit {
                 relays: vec!["wss://relay.example".to_string()],
+                route_class: PublishRouteClass::ManualOverride,
             },
         };
         let action_json = serde_json::to_string(&action).unwrap();

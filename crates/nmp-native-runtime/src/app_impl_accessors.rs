@@ -389,7 +389,10 @@ impl NmpApp {
             .collect();
         self.send_cmd(ActorCommand::Publish(PublishCommand::SignedEvent {
             raw,
-            target: nmp_core::publish::PublishTarget::Explicit { relays },
+            target: nmp_core::publish::PublishTarget::Explicit {
+                relays,
+                route_class: nmp_core::publish::PublishRouteClass::ImportedOrPresigned,
+            },
             correlation_id: None,
         }));
     }

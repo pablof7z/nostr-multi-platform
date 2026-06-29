@@ -51,9 +51,9 @@ use nmp_core::slots::{
     new_active_account_slot, new_indexer_relays_slot, new_local_write_relays_slot,
     ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot,
 };
-use nmp_store::{EventStore, PubKey, StoredEvent};
-use nmp_core::substrate::{BlockedRelaySet, canonicalize_relay_url};
+use nmp_core::substrate::{canonicalize_relay_url, BlockedRelaySet};
 use nmp_kinds::ptags_are_recipients;
+use nmp_store::{EventStore, PubKey, StoredEvent};
 
 /// Maximum distinct `#p` pubkeys that still get recipient inbox fan-out.
 ///
@@ -167,13 +167,19 @@ impl OutboxResolver for Nip65OutboxResolver {
         // 1. Explicit targets win — the caller has opted out per D3 — but a
         //    blocked relay is blocked even when explicitly named (blocking is
         //    a privacy decision the resolver honours unconditionally).
-        if let PublishTarget::Explicit { relays } = target {
+        if let PublishTarget::Explicit {
+            relays,
+            route_class,
+        } = target
+        {
             return relays
                 .iter()
                 .filter(|url| !blocked.contains(url))
                 .map(|url| ResolvedRelay {
                     url: url.clone(),
-                    reason: RelaySelectionReason::Explicit,
+                    reason: RelaySelectionReason::Explicit {
+                        route_class: *route_class,
+                    },
                 })
                 .collect();
         }

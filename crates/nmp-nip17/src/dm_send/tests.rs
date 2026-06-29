@@ -17,7 +17,7 @@ use nmp_core::substrate::{
     ProtocolCommandContextParts,
 };
 use nmp_signer_iface::{SignedEvent, UnsignedEvent as SubstrateUnsignedEvent};
-use nmp_core::publish::PublishTarget;
+use nmp_core::publish::{PublishRouteClass, PublishTarget};
 use nmp_core::{ActorMail, CommandSender};
 use nmp_core::actor::{ActorCommand};
 use nmp_core::actor::{ActionLedgerCommand, PublishCommand, SignCommand};
@@ -412,7 +412,7 @@ fn happy_path_publishes_two_envelopes_pinned_to_kind10050_relays() {
     for (raw, target, cid) in &publishes {
         assert_eq!(raw.kind, 1059, "the gift-wrap envelope is kind:1059, got {}", raw.kind);
         match target {
-            PublishTarget::Explicit { relays } => {
+            PublishTarget::Explicit { relays, route_class: PublishRouteClass::VerifiedPrivateInbox } => {
                 explicit_targets.push(((*relays).clone(), (*cid).clone()));
             }
             other => panic!("D10 — gift-wrap MUST route via PublishTarget::Explicit, got {other:?}"),
@@ -478,7 +478,7 @@ fn recipient_envelope_round_trips_to_the_original_rumor() {
         .publishes()
         .into_iter()
         .find(|(_, target, _)| {
-            matches!(target, PublishTarget::Explicit { relays } if relays.contains(&"wss://r.example".to_string()))
+            matches!(target, PublishTarget::Explicit { relays, route_class: PublishRouteClass::VerifiedPrivateInbox } if relays.contains(&"wss://r.example".to_string()))
         })
         .expect("recipient envelope present");
 
@@ -515,7 +515,7 @@ fn rumor_created_at_is_restamped_when_zero_sentinel() {
         .publishes()
         .into_iter()
         .find(|(_, target, _)| {
-            matches!(target, PublishTarget::Explicit { relays } if relays.contains(&"wss://r.example".to_string()))
+            matches!(target, PublishTarget::Explicit { relays, route_class: PublishRouteClass::VerifiedPrivateInbox } if relays.contains(&"wss://r.example".to_string()))
         })
         .expect("recipient envelope present");
     let envelope = raw_to_nostr_event(recipient_raw);
@@ -605,7 +605,7 @@ fn mid_chain_account_switch_signs_seal_with_originating_account() {
         .publishes()
         .into_iter()
         .find(|(_, target, _)| {
-            matches!(target, PublishTarget::Explicit { relays } if relays.contains(&"wss://r.example".to_string()))
+            matches!(target, PublishTarget::Explicit { relays, route_class: PublishRouteClass::VerifiedPrivateInbox } if relays.contains(&"wss://r.example".to_string()))
         })
         .expect("recipient envelope present");
     let envelope = raw_to_nostr_event(recipient_raw);

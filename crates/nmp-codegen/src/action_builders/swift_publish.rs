@@ -87,17 +87,20 @@ fn render_one(builder: &PublishBuilder, out: &mut String) {
 }
 
 /// Encode a `PublishTarget` from an optional `[String]` of relays. `nil`/empty →
-/// `Auto` (`explicit = false`); a non-empty set → `Explicit`. Leaves the offset
-/// in `targetOffset`. Matches `build_target` in `nmp_core::publish::wire`.
+/// `Auto` (`explicit = false`); a non-empty set → `Explicit` manual override.
+/// Leaves the offset in `targetOffset`. Matches `build_target` in
+/// `nmp_core::publish::wire`.
 fn render_target(out: &mut String) {
     out.push_str(
         "        let targetOffset: Offset = {\n\
          \x20           let explicit = (relays?.isEmpty == false)\n\
          \x20           let relayOffsets = (relays ?? []).map { fbb.create(string: $0) }\n\
          \x20           let relaysVec = fbb.createVector(ofOffsets: relayOffsets)\n\
-         \x20           let start = fbb.startTable(with: 2)\n\
+         \x20           let routeClassOffset = fbb.create(string: \"manual_override\")\n\
+         \x20           let start = fbb.startTable(with: 3)\n\
          \x20           fbb.add(element: explicit, def: false, at: 4) // slot 0: explicit\n\
          \x20           fbb.add(offset: relaysVec, at: 6) // slot 1: relays\n\
+         \x20           if explicit { fbb.add(offset: routeClassOffset, at: 8) } // slot 2: route_class\n\
          \x20           return Offset(offset: fbb.endTable(at: start))\n\
          \x20       }()\n",
     );
