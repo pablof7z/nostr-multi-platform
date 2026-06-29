@@ -124,9 +124,9 @@ Views are **cached and shared**. Two UI components asking for the same view get 
 
 ### 4.3 Action-based writes
 
-Every write path goes through an **action** — an asynchronous operation that takes an action context (event store, signer, publish function, current user) and produces zero or more signed events that are published and added to the store atomically. The framework's action model covers the common cases: send a note, follow/unfollow a user, update profile, send a DM, repost, react, publish a long-form article, manage lists, configure relays, and post-v1 wallet surfaces such as zaps. Current v1 support varies by NIP and platform; consult [`docs/nips.md`](nips.md) before treating any one of those actions as a complete product surface. Actions compose: one action can run another as a sub-action. Custom actions are first-class.
+Every write path goes through an **action/publish workflow** — an asynchronous operation that takes an action context (event store, signer, publish function, current user) and produces zero or more signed events that are published and added to the store atomically. The framework's action model covers the common cases: send a note, follow/unfollow a user, update profile, send a DM, repost, react, publish a long-form article, manage lists, configure relays, and post-v1 wallet surfaces such as zaps. Current v1 support varies by NIP and platform; consult [`docs/nips.md`](nips.md) before treating any one of those actions as a complete product surface. Actions compose: one action can run another as a sub-action. Custom actions are first-class.
 
-The read/write split is rigid. **Reads happen via store subscriptions. Writes happen via actions.** There is no API that lets a developer "build an event, sign it, publish it, and remember to also update local state." Actions do that atomically and the developer cannot forget the local-state step because it is the action's responsibility, not theirs.
+The read/write split is rigid. **Reads happen via store-backed typed sessions. Writes happen via actor-owned workflows.** Apps may compose unsigned event drafts through helpers such as "reply to this event", "react to this event", or "new article"; the unmanaged sequence NMP forbids is "build an event, sign it, publish it, choose relays, and remember to update local state." NMP owns finalization, signing, route policy, local ingest, retry/status, and the terminal result.
 
 ### 4.4 Outbox / smart relay routing (NIP-65)
 
@@ -238,7 +238,7 @@ These rules are the framework's identity. They derive from the TEA + actor model
 
 1. **One event store per application.** Singleton enforced at the FFI boundary.
 2. **All reads through the store.** No "fetch from relay, return to caller" API exists. Relay results land in the store; callers subscribe to the store.
-3. **All writes through actions.** No "build event, sign, publish" sequence the developer assembles manually.
+3. **All writes through actor-owned workflows.** Apps may compose unsigned drafts, but NMP owns finalization, signing, routing, local ingest, retry/status, and terminal result.
 4. **Replaceable-event invariants enforced on insert.** Stale kind-0/3/10002/parameterized-replaceable events are impossible to retain.
 5. **Outbox routing automatic.** Manual relay selection is the opt-out, not the default.
 6. **Subscriptions auto-group, auto-close, auto-dedup, auto-buffer.** The developer never writes grouping/dedup/cleanup code.

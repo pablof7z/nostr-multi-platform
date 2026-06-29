@@ -16,7 +16,15 @@ Every one of those statements is enforced by the type system and the FFI surface
 
 ## Architecture
 
-The kernel is [The Elm Architecture](https://guide.elm-lang.org/architecture/) ported to Rust and pinned to a single actor thread. One `AppState`, one set of actions, one pure update function. Platform code calls `dispatch(action)` — fire-and-forget, never blocks, never throws. State arrives back as `reconcile(update)` callbacks. The shell hops to its UI thread and renders. That's the whole contract. Eleven doctrines (D0–D10) make the contract enforceable: no app nouns in the kernel, snapshots bounded by what's open, single writer per fact, no exceptions across FFI, capabilities report but never decide.
+The kernel is [The Elm Architecture](https://guide.elm-lang.org/architecture/)
+ported to Rust and pinned to a single actor thread. One `AppState`, typed read
+sessions, typed write workflows, one pure update path. Platform code opens a
+session or dispatches a typed write — fire-and-forget, never blocks, never
+throws. State arrives back as bounded typed frames. The shell hops to its UI
+thread and renders. That's the whole contract. Eleven doctrines (D0-D10) make
+the contract enforceable: no app nouns in the kernel, snapshots bounded by
+what's open, single writer per fact, no exceptions across FFI, capabilities
+report but never decide.
 
 ## Getting started
 
@@ -37,6 +45,7 @@ ships SwiftUI, Compose, and web components you can drop in.
 
 - **[nostr-mp.f7z.io](https://nostr-mp.f7z.io)** — landing page, component registry, doctrine in full.
 - **[`docs/builder-guide/00-how-to-read.md`](docs/builder-guide/00-how-to-read.md)** — the framework guide. Start here for building on NMP.
+- **[`docs/architecture/high-level-app-architecture.md`](docs/architecture/high-level-app-architecture.md)** — high-level app/developer model and internal flow.
 - **[`docs/nips.md`](docs/nips.md)** — v1 NIP support matrix with platform and signer caveats.
 - **[`docs/migration.md`](docs/migration.md)** — v1 runtime and component migration guide.
 - **[`docs/aim.md`](docs/aim.md)** — the architectural north star.

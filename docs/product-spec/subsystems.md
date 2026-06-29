@@ -42,6 +42,12 @@ Publish state is Rust-owned. Relay attempts, ACK/NACK facts, retries, and
 terminal status are visible through publish/action projections and diagnostics.
 Native shells do not choose relays or retry policy.
 
+Event construction, finalization, signing, and publishing are separate stages in
+one actor-owned workflow. Protocol/app helpers may construct unsigned drafts;
+protocol finalizers may mutate tags or routing envelope before signing; signer
+capabilities return signed-or-rejected facts; publish routing records typed
+route provenance. Anonymous explicit relay lists are not product state.
+
 ## Sessions And Signers
 
 User-visible accounts, active account selection, signer slots, and signer
