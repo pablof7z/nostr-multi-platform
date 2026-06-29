@@ -15,8 +15,12 @@ BANNED_PATTERN='(#\s*include\s*[<"][^>"]*nmp[-_]ffi|import\s+(nmp_ffi|NmpFfi)|nm
 
 scan_live_tree() {
     cd "$REPO_ROOT"
+    local roots=(apps)
+    if [[ -d crates/nmp-cli/registry/swiftui ]]; then
+        roots+=(crates/nmp-cli/registry/swiftui)
+    fi
     rg -n -P "$BANNED_PATTERN" \
-        apps crates/nmp-cli/registry/swiftui \
+        "${roots[@]}" \
         --glob '*.{swift,h,m,mm,modulemap,pbxproj,xcconfig,yml,yaml}' \
         --glob '!apps/**/android/**' \
         --glob '!apps/**/desktop/**' \
@@ -35,8 +39,19 @@ func bad(app: UnsafeMutableRawPointer?) {
     nmp_app_start(app, 80, 4)
 }
 FIXTURE
-    if REPO_ROOT="$tmpdir" scan_live_tree >/tmp/nmp-ios-clean-break-self-test.out 2>&1; then
+    if ! REPO_ROOT="$tmpdir" scan_live_tree >/tmp/nmp-ios-clean-break-self-test.out 2>&1; then
         echo "ERROR: self-test failed to catch a deleted nmp-ffi iOS C symbol" >&2
+        cat /tmp/nmp-ios-clean-break-self-test.out >&2
+        exit 1
+    fi
+    if ! rg -q 'nmp_app_start' /tmp/nmp-ios-clean-break-self-test.out; then
+        echo "ERROR: self-test did not report the expected deleted C symbol" >&2
+        cat /tmp/nmp-ios-clean-break-self-test.out >&2
+        exit 1
+    fi
+    if rg -q 'No such file or directory' /tmp/nmp-ios-clean-break-self-test.out; then
+        echo "ERROR: self-test scan reported a missing path instead of a clean match" >&2
+        cat /tmp/nmp-ios-clean-break-self-test.out >&2
         exit 1
     fi
     echo "OK: iOS clean-break self-test catches deleted nmp-ffi C symbols."
