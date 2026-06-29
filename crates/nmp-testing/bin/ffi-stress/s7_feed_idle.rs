@@ -54,13 +54,11 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use nmp_core::{decode_snapshot_envelope, decode_snapshot_typed_projections};
-use nmp_ffi::{
-    nmp_app_configure, nmp_app_declare_incremental_apply, nmp_app_free, nmp_app_new,
-    nmp_app_set_update_callback, NmpApp,
-};
+use nmp_ffi::nmp_app_declare_incremental_apply;
 use nmp_testing::harness_probe::{FrameProbe, ProbeSignal};
 
 use crate::common::{configure_and_await_frame, percentile_u64};
+use crate::ffi::{configure_app, free_app_ptr, new_app_ptr, set_update_listener, NmpApp};
 use crate::report::ScenarioMetrics;
 use crate::s7_feed_events::{
     inject_events_from, inject_followed_reply_to_unknown_root, inject_stranger_replies,
@@ -237,7 +235,7 @@ fn settle(app: *mut NmpApp, probe: &FrameProbe, ctx: *mut std::ffi::c_void) {
 
 fn run_idle_ticks(app: *mut NmpApp) {
     for _ in 0..IDLE_TICKS {
-        nmp_app_configure(app, 500, 12);
+        configure_app(app, 500, 12);
         std::thread::sleep(Duration::from_millis(TICK_SETTLE_MS)); // doctrine-allow: D8 — idle-tick cadence under test
     }
 }
@@ -265,10 +263,10 @@ pub(crate) fn run(_cfg: S7Config, report: &mut ScenarioMetrics) {
 
     // ── Phase A: baseline (incremental OFF) ──────────────────────────────────
     let (idle_records_a, all_records_a) = {
-        let app: *mut NmpApp = nmp_app_new();
+        let app: *mut NmpApp = new_app_ptr();
 
         // Set active account: self-inclusion → viewer pubkey events qualify for feed.
-        // SAFETY: valid non-null pointer from nmp_app_new.
+        // SAFETY: valid non-null pointer from new_app_ptr.
         let slot = unsafe { &*app }.active_account_handle();
         *slot.lock().expect("active-account slot") = Some(VIEWER_PUBKEY.to_string());
 
@@ -282,7 +280,7 @@ pub(crate) fn run(_cfg: S7Config, report: &mut ScenarioMetrics) {
         let (signal_a, probe_a) = FrameProbe::new();
         let state = Box::new(Mutex::new(CaptureState::new(signal_a)));
         let ctx = Box::into_raw(state) as *mut std::ffi::c_void;
-        nmp_app_set_update_callback(app, ctx, Some(capture_cb));
+        set_update_listener(app, ctx, Some(capture_cb));
 
         // Seed events with id namespace [0, FEED_EVENT_COUNT) and timestamps
         // [base_ts, base_ts + FEED_EVENT_COUNT). The top-80 visible window is the
@@ -295,8 +293,8 @@ pub(crate) fn run(_cfg: S7Config, report: &mut ScenarioMetrics) {
         run_idle_ticks(app);
         let idle_end = ctx_record_count(ctx);
 
-        nmp_app_set_update_callback(app, std::ptr::null_mut(), None);
-        nmp_app_free(app);
+        set_update_listener(app, std::ptr::null_mut(), None);
+        free_app_ptr(app);
 
         let s = unsafe { Box::from_raw(ctx as *mut Mutex<CaptureState>) }
             .into_inner()
@@ -309,7 +307,7 @@ pub(crate) fn run(_cfg: S7Config, report: &mut ScenarioMetrics) {
 
     // ── Phase B: incremental ON ───────────────────────────────────────────────
     let (idle_records_b, oracle_raw_frames_b, out_of_window_resends, stranger_resends) = {
-        let app: *mut NmpApp = nmp_app_new();
+        let app: *mut NmpApp = new_app_ptr();
 
         // Declare BEFORE the first configure tick (settle tick = first baseline).
         let rc = nmp_app_declare_incremental_apply(app);
@@ -330,7 +328,7 @@ pub(crate) fn run(_cfg: S7Config, report: &mut ScenarioMetrics) {
         let (signal_b, probe_b) = FrameProbe::new();
         let state = Box::new(Mutex::new(CaptureState::new(signal_b)));
         let ctx = Box::into_raw(state) as *mut std::ffi::c_void;
-        nmp_app_set_update_callback(app, ctx, Some(capture_cb));
+        set_update_listener(app, ctx, Some(capture_cb));
 
         inject_events_from(app, VIEWER_PUBKEY, base_ts, 0, FEED_EVENT_COUNT);
 
@@ -355,7 +353,7 @@ pub(crate) fn run(_cfg: S7Config, report: &mut ScenarioMetrics) {
         // id namespace 10_000 to avoid any seed collision.
         let oow_start = ctx_record_count(ctx);
         inject_followed_reply_to_unknown_root(app, base_ts - 1, 10_000);
-        nmp_app_configure(app, 500, 12);
+        configure_app(app, 500, 12);
         std::thread::sleep(Duration::from_millis(TICK_SETTLE_MS)); // doctrine-allow: D8 — idle-tick cadence under test (false-resend probe)
         let oow_resends = ctx_record_count_resends(ctx, oow_start);
 
@@ -369,12 +367,12 @@ pub(crate) fn run(_cfg: S7Config, report: &mut ScenarioMetrics) {
         // byte-equality gate suppresses (would pass even with a broken gate).
         let stranger_start = ctx_record_count(ctx);
         inject_stranger_replies(app, base_ts + 200_000, 20_000, OUT_OF_WINDOW_EVENTS);
-        nmp_app_configure(app, 500, 12);
+        configure_app(app, 500, 12);
         std::thread::sleep(Duration::from_millis(TICK_SETTLE_MS)); // doctrine-allow: D8 — idle-tick cadence under test (stranger probe)
         let stranger_resends = ctx_record_count_resends(ctx, stranger_start);
 
-        nmp_app_set_update_callback(app, std::ptr::null_mut(), None);
-        nmp_app_free(app);
+        set_update_listener(app, std::ptr::null_mut(), None);
+        free_app_ptr(app);
 
         let s = unsafe { Box::from_raw(ctx as *mut Mutex<CaptureState>) }
             .into_inner()

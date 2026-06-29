@@ -17,9 +17,57 @@
 
 #![allow(dead_code)]
 
+use std::ffi::c_void;
+use std::sync::Arc;
+
 pub mod broker_adapter;
 pub mod mock_bunker_relay;
 pub mod mock_nostrconnect_signer;
 pub mod ref_commands;
 pub mod stub_relay;
 pub mod wire_log;
+
+pub fn new_app_ptr() -> *mut nmp_native_runtime::NmpApp {
+    Box::into_raw(Box::new(nmp_native_runtime::new_app()))
+}
+
+pub fn free_app_ptr(app: *mut nmp_native_runtime::NmpApp) {
+    if app.is_null() {
+        return;
+    }
+    unsafe {
+        (&*app).stop_runtime();
+        drop(Box::from_raw(app));
+    }
+}
+
+pub fn start_app(app: *mut nmp_native_runtime::NmpApp, visible_limit: usize, emit_hz: u32) {
+    if app.is_null() {
+        return;
+    }
+    unsafe { (&*app).start_runtime(visible_limit, emit_hz) };
+}
+
+pub fn stop_app(app: *mut nmp_native_runtime::NmpApp) {
+    if app.is_null() {
+        return;
+    }
+    unsafe { (&*app).stop_runtime() };
+}
+
+pub fn set_c_update_listener(
+    app: *mut nmp_native_runtime::NmpApp,
+    ctx: *mut c_void,
+    callback: Option<extern "C" fn(*mut c_void, *const u8, usize)>,
+) {
+    if app.is_null() {
+        return;
+    }
+    let listener = callback.map(|callback| {
+        let ctx_addr = ctx as usize;
+        Arc::new(move |payload: &[u8]| {
+            callback(ctx_addr as *mut c_void, payload.as_ptr(), payload.len());
+        }) as nmp_native_runtime::UpdateListener
+    });
+    unsafe { (&*app).set_update_listener(listener) };
+}

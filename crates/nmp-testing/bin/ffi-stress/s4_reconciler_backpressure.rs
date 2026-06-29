@@ -20,12 +20,10 @@
 use crate::common::{
     await_frame, extract_rev, inject_signed_events, revs_strictly_increasing, snapshot_envelope,
 };
-use crate::ffi::{
-    nmp_app_configure, nmp_app_free, nmp_app_new, nmp_app_set_update_callback, NmpApp,
-};
-use nmp_testing::harness_probe::{FrameProbe, ProbeSignal};
+use crate::ffi::{configure_app, free_app_ptr, new_app_ptr, set_update_listener, NmpApp};
 use crate::gate::Gate;
 use crate::report::ScenarioMetrics;
+use nmp_testing::harness_probe::{FrameProbe, ProbeSignal};
 use serde_json::json;
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -111,7 +109,7 @@ pub(crate) fn run(cfg: S4Config, report: &mut ScenarioMetrics) {
     EMIT_COUNT.store(0, Ordering::Relaxed);
     STALLING.store(false, Ordering::Release);
 
-    let app: *mut NmpApp = nmp_app_new();
+    let app: *mut NmpApp = new_app_ptr();
 
     let (signal, probe) = FrameProbe::new();
     let state = Box::new(Mutex::new(StallState {
@@ -123,8 +121,8 @@ pub(crate) fn run(cfg: S4Config, report: &mut ScenarioMetrics) {
     }));
     let ctx = Box::into_raw(state) as *mut c_void;
 
-    nmp_app_set_update_callback(app, ctx, Some(stall_cb));
-    nmp_app_configure(app, 80, cfg.emit_hz);
+    set_update_listener(app, ctx, Some(stall_cb));
+    configure_app(app, 80, cfg.emit_hz);
 
     // Inject real Schnorr-signed events so the kernel has authentic state.
     // S4 uses the full try_from_raw verify path (D0: cfg-gated; 500 events ~10-25 ms ok).
@@ -132,7 +130,7 @@ pub(crate) fn run(cfg: S4Config, report: &mut ScenarioMetrics) {
     inject_signed_events(app, base_ts, cfg.inject_count);
     // Settle: event-driven wait until actor processes inject + emits initial snapshot.
     let emit_count_fn = || EMIT_COUNT.load(Ordering::Relaxed) as usize;
-    nmp_app_configure(app, 80, cfg.emit_hz);
+    configure_app(app, 80, cfg.emit_hz);
     await_frame(&probe, 400, emit_count_fn);
 
     // Track per-stall pre/post emit counts, configure() latency, and resume timestamps.
@@ -161,7 +159,7 @@ pub(crate) fn run(cfg: S4Config, report: &mut ScenarioMetrics) {
             // Measure configure() latency mid-stall: actor enqueues to mpsc and returns
             // immediately; the sleeping callback does NOT block configure().
             let t_cfg = Instant::now();
-            nmp_app_configure(app, 80, cfg.emit_hz);
+            configure_app(app, 80, cfg.emit_hz);
             total_configure_calls += 1;
             configure_during_stall_us.push(t_cfg.elapsed().as_micros() as u64);
             std::thread::sleep(cfg.stall_duration + Duration::from_millis(50)); // doctrine-allow: D8 — simulated main-thread stall duration (scenario under test)
@@ -170,7 +168,7 @@ pub(crate) fn run(cfg: S4Config, report: &mut ScenarioMetrics) {
             stall_resume_ts_ms.push(wall_start.elapsed().as_millis() as u64);
             // Force immediate emit so apply_burst_ms measures pure actor→callback
             // latency, not configure-interval scheduling noise (up to 500 ms).
-            nmp_app_configure(app, 80, cfg.emit_hz);
+            configure_app(app, 80, cfg.emit_hz);
             total_configure_calls += 1;
             let post = EMIT_COUNT.load(Ordering::Relaxed);
             stall_post_counts.push(post);
@@ -179,7 +177,7 @@ pub(crate) fn run(cfg: S4Config, report: &mut ScenarioMetrics) {
         }
 
         if now >= next_configure {
-            nmp_app_configure(app, 80, cfg.emit_hz);
+            configure_app(app, 80, cfg.emit_hz);
             total_configure_calls += 1;
             next_configure = now + configure_interval;
         }
@@ -191,8 +189,8 @@ pub(crate) fn run(cfg: S4Config, report: &mut ScenarioMetrics) {
 
     let wall_elapsed = wall_start.elapsed().as_secs_f64();
 
-    nmp_app_set_update_callback(app, std::ptr::null_mut(), None);
-    nmp_app_free(app);
+    set_update_listener(app, std::ptr::null_mut(), None);
+    free_app_ptr(app);
 
     let state = unsafe { Box::from_raw(ctx as *mut Mutex<StallState>) };
     let state = state.lock().unwrap();

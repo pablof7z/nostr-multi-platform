@@ -5,7 +5,7 @@
 //! S3 switched from `inject_pre_verified_events` (from_raw_unchecked) to signed events
 //! in T44 round-4 so the signature-verification cost is included in the S3 measurement.
 
-use crate::ffi::{nmp_app_configure, nmp_app_inject_signed_events, NmpApp};
+use crate::ffi::{configure_app, nmp_app_inject_signed_events, NmpApp};
 use nmp_testing::harness_probe::FrameProbe;
 use std::time::Duration;
 
@@ -41,7 +41,7 @@ pub(crate) fn configure_and_await_frame(
     mut frame_count: impl FnMut() -> usize,
 ) -> bool {
     let before = frame_count();
-    nmp_app_configure(app, 500, 12);
+    configure_app(app, 500, 12);
     probe.recv_until(Duration::from_millis(deadline_ms), || {
         frame_count() > before
     })
@@ -49,7 +49,7 @@ pub(crate) fn configure_and_await_frame(
 
 /// Block — event-driven (Doctrine D8) — until the callback records a new frame,
 /// without calling `configure` first. Used by S4 which manages its own configure
-/// schedule: the scenario issues its own `nmp_app_configure` call, then calls
+/// schedule: the scenario issues its own `configure_app` call, then calls
 /// `await_frame` to block until the emit arrives.
 ///
 /// Returns `true` if a frame advanced before the deadline, `false` on timeout.

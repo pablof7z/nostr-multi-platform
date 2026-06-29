@@ -34,14 +34,11 @@
 
 use std::ffi::{c_void, CString};
 use std::sync::mpsc::{channel, Receiver, Sender};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use nmp_ffi::{
-    nmp_app_add_relay, nmp_app_free, nmp_app_new, nmp_app_set_update_callback, nmp_app_signin_nsec,
-    nmp_app_start,
-};
-use nmp_native_runtime::{Nip50SearchHandle, Nip50SearchSession};
+use nmp_ffi::{nmp_app_add_relay, nmp_app_signin_nsec};
+use nmp_native_runtime::{Nip50SearchHandle, Nip50SearchSession, NmpApp};
 use nmp_nip50::{SearchRequest, SearchScope, SearchTargets};
 use nostr::util::JsonUtil as _;
 use nostr::{EventBuilder, Keys, Kind, Tag, TagKind, Timestamp, ToBech32 as _};
@@ -150,18 +147,22 @@ pub(crate) fn run() {
 
     // ── Cold-start a REAL NmpApp with ONLY register_defaults ─────────────────
     let rx = install_update_signal();
-    let app = nmp_app_new();
-    nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
+    let app = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
+    unsafe {
+        (&*app).set_update_listener(Some(Arc::new(|payload: &[u8]| {
+            update_signal_callback(std::ptr::null_mut(), payload.as_ptr(), payload.len());
+        })));
+    }
 
     // The ONLY wiring. No manual search-relay-source install. No explicit relay.
-    // SAFETY: `app` is a live pointer from `nmp_app_new`; the exclusive borrow
+    // SAFETY: `app` is a live pointer from `nmp_native_runtime::new_app`; the exclusive borrow
     // is released before any other access.
     nmp_defaults::register_defaults(unsafe { &mut *app });
 
-    nmp_app_start(app, 256, 8); // emit_hz=8 → ~125ms snapshot cadence
-                                // Add R as read+indexer so (a) the kind:10007 interest routes here and
-                                // (b) the active-account bootstrap OneShot lands here. NO search relay is
-                                // added — discovery must come from the published kind:10007 alone.
+    unsafe { (&*app).start_runtime(256, 8) }; // emit_hz=8 → ~125ms snapshot cadence
+                                              // Add R as read+indexer so (a) the kind:10007 interest routes here and
+                                              // (b) the active-account bootstrap OneShot lands here. NO search relay is
+                                              // added — discovery must come from the published kind:10007 alone.
     let relay_c = CString::new(READ_RELAY).expect("relay url has no nul");
     let role_c = CString::new("both,indexer").expect("role has no nul");
     nmp_app_add_relay(app, relay_c.as_ptr(), role_c.as_ptr());
@@ -172,8 +173,11 @@ pub(crate) fn run() {
 
     let outcome = drive_and_assert(app, &rx);
 
-    nmp_app_set_update_callback(app, std::ptr::null_mut(), None);
-    nmp_app_free(app);
+    unsafe {
+        (&*app).set_update_listener(None);
+        (&*app).stop_runtime();
+        drop(Box::from_raw(app));
+    }
     uninstall_update_signal();
 
     match outcome {
@@ -210,7 +214,7 @@ enum Outcome {
 /// After sign-in: open the search, then block on the kernel's update signal,
 /// re-checking each tick whether (a) the search REQ resolved to nostr.wine in
 /// the routing trace and (b) results arrived — until satisfied or budget.
-fn drive_and_assert(app: *mut nmp_ffi::NmpApp, rx: &Receiver<()>) -> Outcome {
+fn drive_and_assert(app: *mut NmpApp, rx: &Receiver<()>) -> Outcome {
     // SAFETY: `app` is live for the duration of this call (freed by the caller
     // after we return). The reference is not held past return.
     let app_ref = unsafe { &*app };
@@ -321,7 +325,7 @@ fn drive_and_assert(app: *mut nmp_ffi::NmpApp, rx: &Receiver<()>) -> Outcome {
 /// planner (`case_e_relay_pinned`) and may bypass the `GenericOutboxRouter`'s
 /// trace observer, so this is a best-effort secondary signal — the primary
 /// proof is a search hit whose provenance names nostr.wine.
-fn search_req_hit_wine(app: &nmp_ffi::NmpApp) -> bool {
+fn search_req_hit_wine(app: &NmpApp) -> bool {
     let Some(trace) = app.routing_trace() else {
         return false;
     };
@@ -332,7 +336,7 @@ fn search_req_hit_wine(app: &nmp_ffi::NmpApp) -> bool {
 }
 
 /// Decode the current N50S search snapshot into its hits.
-fn decode_hits(app: &nmp_ffi::NmpApp, session: &str) -> Vec<nmp_nip50::SearchHit> {
+fn decode_hits(app: &NmpApp, session: &str) -> Vec<nmp_nip50::SearchHit> {
     app.search_session_snapshot_bytes(&Nip50SearchHandle::for_key(session))
         .and_then(|bytes| nmp_nip50::decode_search_results_snapshot(&bytes).ok())
         .map(|snap| snap.hits)

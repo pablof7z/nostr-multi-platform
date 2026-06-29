@@ -35,10 +35,7 @@ use std::time::{Duration, Instant};
 
 use nmp_core::decode_snapshot_typed_projections;
 use nmp_core::typed_projections::{decode_active_account, ACTIVE_ACCOUNT_SCHEMA_ID};
-use nmp_ffi::{
-    nmp_app_free, nmp_app_new, nmp_app_set_update_callback, nmp_app_signin_bunker, nmp_app_start,
-    nmp_signer_broker_init,
-};
+use nmp_ffi::{nmp_app_signin_bunker, nmp_signer_broker_init};
 use nostr::Keys;
 
 use crate::common::mock_bunker_relay::MockBunkerRelay;
@@ -90,19 +87,22 @@ fn bunker_signin_through_production_ffi_seam() {
     );
 
     // ── Construct the app + install emit signal ───────────────────────────────
-    let app = nmp_app_new();
+    let app = common::new_app_ptr();
     let last_frame: Arc<Mutex<Option<Vec<u8>>>> = Arc::new(Mutex::new(None));
     let (tx, rx) = mpsc::channel::<()>();
     let ctx = Box::into_raw(Box::new(EmitCtx {
         tx,
         last_frame: Arc::clone(&last_frame),
     }));
-    nmp_app_set_update_callback(app, ctx as *mut c_void, Some(on_emit));
+    common::set_c_update_listener(app, ctx as *mut c_void, Some(on_emit));
 
     // ── Production init seam: nmp_signer_broker_init ──────────────────────────
     // First call installs the interceptor + connected hook + per-app bunker hook.
     let status1 = nmp_signer_broker_init(app);
-    assert_eq!(status1, 0, "first nmp_signer_broker_init must return Ok (0)");
+    assert_eq!(
+        status1, 0,
+        "first nmp_signer_broker_init must return Ok (0)"
+    );
 
     // Second call is an idempotent no-op (first-writer-wins): no duplicate hooks.
     let status2 = nmp_signer_broker_init(app);
@@ -112,7 +112,7 @@ fn bunker_signin_through_production_ffi_seam() {
     );
 
     // ── Start the actor ───────────────────────────────────────────────────────
-    nmp_app_start(app, 256, 30);
+    common::start_app(app, 256, 30);
 
     // ── Drive the bunker connect through the REAL FFI front door ──────────────
     let uri_c = std::ffi::CString::new(bunker_uri).expect("uri NUL-free");
@@ -145,7 +145,7 @@ fn bunker_signin_through_production_ffi_seam() {
         "mock must have seen `get_public_key`, got {methods:?}"
     );
 
-    nmp_app_free(app);
+    common::free_app_ptr(app);
     // mock + leaked EmitCtx box drop/leak at process exit (test lifetime).
 }
 
@@ -165,7 +165,9 @@ fn wait_for_active_account(
             Some(r) => r,
             None => return active_account_matches(last_frame, expected_pubkey_hex),
         };
-        if rx.recv_timeout(remaining.min(Duration::from_millis(250))).is_err()
+        if rx
+            .recv_timeout(remaining.min(Duration::from_millis(250)))
+            .is_err()
             && Instant::now() >= deadline
         {
             return active_account_matches(last_frame, expected_pubkey_hex);
