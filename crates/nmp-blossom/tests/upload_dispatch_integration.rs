@@ -97,7 +97,7 @@ fn dispatch_well_formed_blossom_upload_is_accepted_through_registry() {
         "a well-formed dispatch echoes a correlation_id"
     );
     assert!(
-        parsed.get("error").is_none(),
+        parsed.get("error").is_none_or(serde_json::Value::is_null),
         "a well-formed dispatch is not an error: {parsed}"
     );
 

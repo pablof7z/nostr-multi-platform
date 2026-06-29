@@ -93,7 +93,7 @@ fn register_actions_wires_compat_social_bundle() {
     ] {
         let (sent_id, parsed) = dispatch_bytes(app, namespace, payload);
         assert!(
-            parsed.get("error").is_none(),
+            parsed.get("error").is_none_or(serde_json::Value::is_null),
             "{namespace}: must be accepted, got {parsed}"
         );
         let id = parsed
@@ -116,7 +116,8 @@ fn register_actions_wires_compat_social_bundle() {
     .encode();
     let (_id, parsed) = dispatch_bytes(app, "nmp.nip25.react", &default_react);
     assert!(
-        parsed.get("correlation_id").is_some() && parsed.get("error").is_none(),
+        parsed.get("correlation_id").is_some()
+            && parsed.get("error").is_none_or(serde_json::Value::is_null),
         "nmp.nip25.react with default '+' reaction should succeed: {parsed}"
     );
 

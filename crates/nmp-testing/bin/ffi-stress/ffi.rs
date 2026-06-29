@@ -22,15 +22,31 @@ pub(crate) fn nmp_app_new() -> *mut NmpApp {
 pub(crate) fn nmp_app_free(app: *mut NmpApp) {
     if !app.is_null() {
         // SAFETY: pointer was created by Box::into_raw(Box::new(...)) in nmp_app_new.
+        unsafe { &*app }.stop_runtime();
+        // SAFETY: pointer was created by Box::into_raw(Box::new(...)) in nmp_app_new.
         unsafe { drop(Box::from_raw(app)) };
     }
 }
 
+pub(crate) fn new_app_ptr() -> *mut NmpApp {
+    nmp_app_new()
+}
+
+pub(crate) fn free_app_ptr(app: *mut NmpApp) {
+    nmp_app_free(app);
+}
+
 /// Set the visible_limit and emit_hz without starting the actor threads.
 pub(crate) fn nmp_app_configure(app: *mut NmpApp, visible_limit: usize, emit_hz: u32) {
-    if app.is_null() { return; }
+    if app.is_null() {
+        return;
+    }
     // SAFETY: app is a valid non-null pointer from nmp_app_new.
     unsafe { &*app }.configure_runtime(visible_limit, emit_hz);
+}
+
+pub(crate) fn configure_app(app: *mut NmpApp, visible_limit: usize, emit_hz: u32) {
+    nmp_app_configure(app, visible_limit, emit_hz);
 }
 
 /// Install or remove the snapshot update listener.
@@ -42,7 +58,9 @@ pub(crate) fn nmp_app_set_update_callback(
     ctx: *mut c_void,
     callback: Option<extern "C" fn(*mut c_void, *const u8, usize)>,
 ) {
-    if app.is_null() { return; }
+    if app.is_null() {
+        return;
+    }
     match callback {
         Some(cb) => {
             let ctx_usize = ctx as usize;
@@ -58,10 +76,24 @@ pub(crate) fn nmp_app_set_update_callback(
     }
 }
 
+pub(crate) fn set_update_listener(
+    app: *mut NmpApp,
+    ctx: *mut c_void,
+    callback: Option<extern "C" fn(*mut c_void, *const u8, usize)>,
+) {
+    nmp_app_set_update_callback(app, ctx, callback);
+}
+
 /// Declare incremental-apply capability (ADR-0055 Rung 3).
 pub(crate) fn nmp_app_declare_incremental_apply(app: *mut NmpApp) -> i32 {
-    if app.is_null() { return -1; }
-    if unsafe { &*app }.declare_incremental_apply().is_ok() { 0 } else { -1 }
+    if app.is_null() {
+        return -1;
+    }
+    if unsafe { &*app }.declare_incremental_apply().is_ok() {
+        0
+    } else {
+        -1
+    }
 }
 
 /// Inject `count` real Schnorr-signed kind-1 events (test-support path).
@@ -69,7 +101,9 @@ pub(crate) fn nmp_app_inject_signed_events(app: *mut NmpApp, base_created_at: u6
     use nostr::{EventBuilder, Keys, Timestamp};
     use nmp_core::actor::{ActorCommand, TestSupportCommand};
 
-    if app.is_null() { return; }
+    if app.is_null() {
+        return;
+    }
     let keys = Keys::generate();
     let events: Vec<nmp_store::VerifiedEvent> = (0..count as u64)
         .filter_map(|i| {
@@ -106,7 +140,9 @@ pub(crate) fn nmp_app_inject_pre_verified_events(
 ) {
     use nmp_core::actor::{ActorCommand, TestSupportCommand};
 
-    if app.is_null() { return; }
+    if app.is_null() {
+        return;
+    }
     let prefix = if base_id_prefix.is_null() {
         "stress".to_string()
     } else {
@@ -155,7 +191,9 @@ pub(crate) fn nmp_app_read_command_lane_stats(
     out_depth: *mut u64,
     out_drops: *mut u64,
 ) {
-    if app.is_null() { return; }
+    if app.is_null() {
+        return;
+    }
     // SAFETY: app is non-null; out pointers are caller-guaranteed valid.
     let app_ref = unsafe { &*app };
     if !out_depth.is_null() {
@@ -175,7 +213,9 @@ pub(crate) fn nmp_app_resolve_ref(
     shape: c_int,
     liveness: c_int,
 ) {
-    if app.is_null() || key.is_null() || consumer_id.is_null() { return; }
+    if app.is_null() || key.is_null() || consumer_id.is_null() {
+        return;
+    }
     let ns = match namespace {
         0 => nmp_core::RefNamespace::Profile,
         1 => nmp_core::RefNamespace::Event,
@@ -208,7 +248,9 @@ pub(crate) fn nmp_app_release_ref(
     key: *const std::ffi::c_char,
     consumer_id: *const std::ffi::c_char,
 ) {
-    if app.is_null() || key.is_null() || consumer_id.is_null() { return; }
+    if app.is_null() || key.is_null() || consumer_id.is_null() {
+        return;
+    }
     let ns = match namespace {
         0 => nmp_core::RefNamespace::Profile,
         1 => nmp_core::RefNamespace::Event,
