@@ -493,13 +493,13 @@ fileprivate struct FfiConverterData: FfiConverterRustBuffer {
  * 5. `shutdown()` — explicit teardown; `Arc` drop is the fallback.
  */
 public protocol NmpAppProtocol: AnyObject, Sendable {
-    
+
     /**
      * Reconfigure rendering limits without restarting. Same clamp rules as
      * `start`.
      */
-    func configure(visibleLimit: UInt32, emitHz: UInt32) 
-    
+    func configure(visibleLimit: UInt32, emitHz: UInt32)
+
     /**
      * Dispatch an NMPD FlatBuffers action envelope and return the outcome.
      *
@@ -512,12 +512,12 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
      * `DispatchOutcome.error`. D8: non-blocking channel send.
      */
     func dispatchAction(envelope: Data)  -> DispatchOutcome
-    
+
     /**
      * Signal the kernel to reset (clears transient state).
      */
-    func reset() 
-    
+    func reset()
+
     /**
      * Register (or clear) the NMPU frame observer.
      *
@@ -533,8 +533,8 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
      * (unique ownership). The sink is moved into the update-listener closure
      * which is then owned by the runtime's `Arc<UpdateListenerGate>`.
      */
-    func setUpdateSink(sink: UpdateSink?) 
-    
+    func setUpdateSink(sink: UpdateSink?)
+
     /**
      * Explicit idempotent teardown: clears the update sink, sends Shutdown,
      * and joins the actor + listener threads. Safe to call multiple times.
@@ -542,8 +542,8 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
      * Named `shutdown` (NOT `close`) to avoid Kotlin `AutoCloseable`
      * friction discovered in #2149. `Arc` drop is the fallback.
      */
-    func shutdown() 
-    
+    func shutdown()
+
     /**
      * Start the runtime actor with the given rendering limits.
      *
@@ -551,13 +551,13 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
      * * `visible_limit == 0` → use default (100). Otherwise clamp(1..=500).
      * * `emit_hz == 0` → use default (6 Hz). Otherwise clamp(1..=12).
      */
-    func start(visibleLimit: UInt32, emitHz: UInt32) 
-    
+    func start(visibleLimit: UInt32, emitHz: UInt32)
+
     /**
      * Signal the kernel to pause event processing (no data loss).
      */
-    func stop() 
-    
+    func stop()
+
 }
 /**
  * Arc-wrapped NMP native runtime.
@@ -630,9 +630,9 @@ public convenience init() {
         try! rustCall { uniffi_nmp_uniffi_fn_free_nmpapp(pointer, $0) }
     }
 
-    
 
-    
+
+
     /**
      * Reconfigure rendering limits without restarting. Same clamp rules as
      * `start`.
@@ -644,7 +644,7 @@ open func configure(visibleLimit: UInt32, emitHz: UInt32)  {try! rustCall() {
     )
 }
 }
-    
+
     /**
      * Dispatch an NMPD FlatBuffers action envelope and return the outcome.
      *
@@ -663,7 +663,7 @@ open func dispatchAction(envelope: Data) -> DispatchOutcome  {
     )
 })
 }
-    
+
     /**
      * Signal the kernel to reset (clears transient state).
      */
@@ -672,7 +672,7 @@ open func reset()  {try! rustCall() {
     )
 }
 }
-    
+
     /**
      * Register (or clear) the NMPU frame observer.
      *
@@ -694,7 +694,7 @@ open func setUpdateSink(sink: UpdateSink?)  {try! rustCall() {
     )
 }
 }
-    
+
     /**
      * Explicit idempotent teardown: clears the update sink, sends Shutdown,
      * and joins the actor + listener threads. Safe to call multiple times.
@@ -707,7 +707,7 @@ open func shutdown()  {try! rustCall() {
     )
 }
 }
-    
+
     /**
      * Start the runtime actor with the given rendering limits.
      *
@@ -722,7 +722,7 @@ open func start(visibleLimit: UInt32, emitHz: UInt32)  {try! rustCall() {
     )
 }
 }
-    
+
     /**
      * Signal the kernel to pause event processing (no data loss).
      */
@@ -731,7 +731,7 @@ open func stop()  {try! rustCall() {
     )
 }
 }
-    
+
 
 }
 
@@ -808,7 +808,7 @@ public struct DispatchOutcome {
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(correlationId: String?, error: String?, 
+    public init(correlationId: String?, error: String?,
         /**
          * Machine-readable code for coded rejections; `None` for plain errors.
          */code: String?) {
@@ -853,8 +853,8 @@ public struct FfiConverterTypeDispatchOutcome: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DispatchOutcome {
         return
             try DispatchOutcome(
-                correlationId: FfiConverterOptionString.read(from: &buf), 
-                error: FfiConverterOptionString.read(from: &buf), 
+                correlationId: FfiConverterOptionString.read(from: &buf),
+                error: FfiConverterOptionString.read(from: &buf),
                 code: FfiConverterOptionString.read(from: &buf)
         )
     }
@@ -882,6 +882,894 @@ public func FfiConverterTypeDispatchOutcome_lower(_ value: DispatchOutcome) -> R
 }
 
 
+/**
+ * A classification candidate: which scope matched and the target it produced.
+ *
+ * Mirrors `nmp_core::substrate::InputIntentCandidate`.
+ */
+public struct IntentCandidate {
+    public var scope: IntentScope
+    public var target: IntentTarget
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(scope: IntentScope, target: IntentTarget) {
+        self.scope = scope
+        self.target = target
+    }
+}
+
+#if compiler(>=6)
+extension IntentCandidate: Sendable {}
+#endif
+
+
+extension IntentCandidate: Equatable, Hashable {
+    public static func ==(lhs: IntentCandidate, rhs: IntentCandidate) -> Bool {
+        if lhs.scope != rhs.scope {
+            return false
+        }
+        if lhs.target != rhs.target {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(scope)
+        hasher.combine(target)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeIntentCandidate: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> IntentCandidate {
+        return
+            try IntentCandidate(
+                scope: FfiConverterTypeIntentScope.read(from: &buf),
+                target: FfiConverterTypeIntentTarget.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: IntentCandidate, into buf: inout [UInt8]) {
+        FfiConverterTypeIntentScope.write(value.scope, into: &buf)
+        FfiConverterTypeIntentTarget.write(value.target, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeIntentCandidate_lift(_ buf: RustBuffer) throws -> IntentCandidate {
+    return try FfiConverterTypeIntentCandidate.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeIntentCandidate_lower(_ value: IntentCandidate) -> RustBuffer {
+    return FfiConverterTypeIntentCandidate.lower(value)
+}
+
+
+/**
+ * Identifies a registered input scope (namespace + name two-part label).
+ *
+ * Mirrors `nmp_core::substrate::InputScopeId`.
+ */
+public struct IntentScope {
+    public var namespace: String
+    public var name: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(namespace: String, name: String) {
+        self.namespace = namespace
+        self.name = name
+    }
+}
+
+#if compiler(>=6)
+extension IntentScope: Sendable {}
+#endif
+
+
+extension IntentScope: Equatable, Hashable {
+    public static func ==(lhs: IntentScope, rhs: IntentScope) -> Bool {
+        if lhs.namespace != rhs.namespace {
+            return false
+        }
+        if lhs.name != rhs.name {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(namespace)
+        hasher.combine(name)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeIntentScope: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> IntentScope {
+        return
+            try IntentScope(
+                namespace: FfiConverterString.read(from: &buf),
+                name: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: IntentScope, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.namespace, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeIntentScope_lift(_ buf: RustBuffer) throws -> IntentScope {
+    return try FfiConverterTypeIntentScope.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeIntentScope_lower(_ value: IntentScope) -> RustBuffer {
+    return FfiConverterTypeIntentScope.lower(value)
+}
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * Render mode passed to `tokenize_content`.
+ *
+ * Mirrors the `mode` discriminant constants in the C-ABI
+ * `nmp_content_tokenize_text` (`0` = Plain, `1` = Markdown, `2` = Auto).
+ */
+
+public enum ContentRenderMode {
+
+    /**
+     * Inline tokenization only (no block-level Markdown parsing).
+     */
+    case plain
+    /**
+     * Full Markdown block + inline tokenization.
+     */
+    case markdown
+    /**
+     * Sniff mode by `kind`: NIP-23/NIP-54 content uses Markdown; all other
+     * kinds use plain-text inline tokenization.
+     */
+    case auto
+}
+
+
+#if compiler(>=6)
+extension ContentRenderMode: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeContentRenderMode: FfiConverterRustBuffer {
+    typealias SwiftType = ContentRenderMode
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ContentRenderMode {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        case 1: return .plain
+
+        case 2: return .markdown
+
+        case 3: return .auto
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ContentRenderMode, into buf: inout [UInt8]) {
+        switch value {
+
+
+        case .plain:
+            writeInt(&buf, Int32(1))
+
+
+        case .markdown:
+            writeInt(&buf, Int32(2))
+
+
+        case .auto:
+            writeInt(&buf, Int32(3))
+
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeContentRenderMode_lift(_ buf: RustBuffer) throws -> ContentRenderMode {
+    return try FfiConverterTypeContentRenderMode.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeContentRenderMode_lower(_ value: ContentRenderMode) -> RustBuffer {
+    return FfiConverterTypeContentRenderMode.lower(value)
+}
+
+
+extension ContentRenderMode: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * The result of intent classification.
+ *
+ * Mirrors `nmp_core::substrate::InputIntentClassification`.
+ */
+
+public enum IntentClassification {
+
+    /**
+     * One or more candidates (ranked; caller picks / disambiguates).
+     */
+    case candidates(candidates: [IntentCandidate]
+    )
+    /**
+     * The input could not be classified into any allowed candidate.
+     */
+    case rejection(rejection: IntentRejection
+    )
+}
+
+
+#if compiler(>=6)
+extension IntentClassification: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeIntentClassification: FfiConverterRustBuffer {
+    typealias SwiftType = IntentClassification
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> IntentClassification {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        case 1: return .candidates(candidates: try FfiConverterSequenceTypeIntentCandidate.read(from: &buf)
+        )
+
+        case 2: return .rejection(rejection: try FfiConverterTypeIntentRejection.read(from: &buf)
+        )
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: IntentClassification, into buf: inout [UInt8]) {
+        switch value {
+
+
+        case let .candidates(candidates):
+            writeInt(&buf, Int32(1))
+            FfiConverterSequenceTypeIntentCandidate.write(candidates, into: &buf)
+
+
+        case let .rejection(rejection):
+            writeInt(&buf, Int32(2))
+            FfiConverterTypeIntentRejection.write(rejection, into: &buf)
+
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeIntentClassification_lift(_ buf: RustBuffer) throws -> IntentClassification {
+    return try FfiConverterTypeIntentClassification.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeIntentClassification_lower(_ value: IntentClassification) -> RustBuffer {
+    return FfiConverterTypeIntentClassification.lower(value)
+}
+
+
+extension IntentClassification: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * Why an input could not be classified into any allowed candidate.
+ *
+ * `SecretLike` carries **no** copy of the input — same guarantee as the
+ * C-ABI `nmp_app_intent_classify`.
+ *
+ * Mirrors `nmp_core::substrate::InputIntentRejection`.
+ */
+
+public enum IntentRejection {
+
+    /**
+     * The input contains a secret key (`nsec` / `nostr:nsec` / `ncryptsec`).
+     */
+    case secretLike
+    /**
+     * The input matched no recognizer and is not usable as free text.
+     */
+    case unparseable
+    /**
+     * The input matched a recognizer whose scope is not registered.
+     */
+    case unregisteredScope(namespace: String, name: String
+    )
+    /**
+     * The input resolved to a target whose scope is outside the allowed set.
+     */
+    case disallowedScope(namespace: String, name: String
+    )
+}
+
+
+#if compiler(>=6)
+extension IntentRejection: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeIntentRejection: FfiConverterRustBuffer {
+    typealias SwiftType = IntentRejection
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> IntentRejection {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        case 1: return .secretLike
+
+        case 2: return .unparseable
+
+        case 3: return .unregisteredScope(namespace: try FfiConverterString.read(from: &buf), name: try FfiConverterString.read(from: &buf)
+        )
+
+        case 4: return .disallowedScope(namespace: try FfiConverterString.read(from: &buf), name: try FfiConverterString.read(from: &buf)
+        )
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: IntentRejection, into buf: inout [UInt8]) {
+        switch value {
+
+
+        case .secretLike:
+            writeInt(&buf, Int32(1))
+
+
+        case .unparseable:
+            writeInt(&buf, Int32(2))
+
+
+        case let .unregisteredScope(namespace,name):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(namespace, into: &buf)
+            FfiConverterString.write(name, into: &buf)
+
+
+        case let .disallowedScope(namespace,name):
+            writeInt(&buf, Int32(4))
+            FfiConverterString.write(namespace, into: &buf)
+            FfiConverterString.write(name, into: &buf)
+
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeIntentRejection_lift(_ buf: RustBuffer) throws -> IntentRejection {
+    return try FfiConverterTypeIntentRejection.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeIntentRejection_lower(_ value: IntentRejection) -> RustBuffer {
+    return FfiConverterTypeIntentRejection.lower(value)
+}
+
+
+extension IntentRejection: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * A single resolved intent target.
+ *
+ * Mirrors `nmp_core::substrate::InputIntentTarget`.
+ */
+
+public enum IntentTarget {
+
+    /**
+     * A NIP-19/21 reference; `uri` is the canonical `nostr:`-form.
+     */
+    case directRef(uri: String
+    )
+    /**
+     * A NIP-05-shaped identifier (`name@domain`), shape-only (no IO).
+     */
+    case nip05(identifier: String
+    )
+    /**
+     * A normalised relay URL (`ws://` / `wss://`).
+     */
+    case relayUrl(url: String
+    )
+    /**
+     * Free-text search; `request_json` is an opaque serialised `SearchRequest`.
+     */
+    case textQuery(requestJson: String
+    )
+    /**
+     * A recognizer-specific target; `payload_json` is opaque to core.
+     */
+    case registered(payloadJson: String
+    )
+}
+
+
+#if compiler(>=6)
+extension IntentTarget: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeIntentTarget: FfiConverterRustBuffer {
+    typealias SwiftType = IntentTarget
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> IntentTarget {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        case 1: return .directRef(uri: try FfiConverterString.read(from: &buf)
+        )
+
+        case 2: return .nip05(identifier: try FfiConverterString.read(from: &buf)
+        )
+
+        case 3: return .relayUrl(url: try FfiConverterString.read(from: &buf)
+        )
+
+        case 4: return .textQuery(requestJson: try FfiConverterString.read(from: &buf)
+        )
+
+        case 5: return .registered(payloadJson: try FfiConverterString.read(from: &buf)
+        )
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: IntentTarget, into buf: inout [UInt8]) {
+        switch value {
+
+
+        case let .directRef(uri):
+            writeInt(&buf, Int32(1))
+            FfiConverterString.write(uri, into: &buf)
+
+
+        case let .nip05(identifier):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(identifier, into: &buf)
+
+
+        case let .relayUrl(url):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(url, into: &buf)
+
+
+        case let .textQuery(requestJson):
+            writeInt(&buf, Int32(4))
+            FfiConverterString.write(requestJson, into: &buf)
+
+
+        case let .registered(payloadJson):
+            writeInt(&buf, Int32(5))
+            FfiConverterString.write(payloadJson, into: &buf)
+
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeIntentTarget_lift(_ buf: RustBuffer) throws -> IntentTarget {
+    return try FfiConverterTypeIntentTarget.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeIntentTarget_lower(_ value: IntentTarget) -> RustBuffer {
+    return FfiConverterTypeIntentTarget.lower(value)
+}
+
+
+extension IntentTarget: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * Free-text search-target choice for `TextQuery` fall-through.
+ *
+ * Mirrors `nmp_core::substrate::TextSearchTargets`.
+ */
+
+public enum IntentTextTargets {
+
+    /**
+     * The active account's published search relays.
+     */
+    case userPreferred
+    /**
+     * The app-declared default search relays.
+     */
+    case appDefault
+    /**
+     * An explicit caller-supplied relay list.
+     */
+    case explicit(relays: [String]
+    )
+}
+
+
+#if compiler(>=6)
+extension IntentTextTargets: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeIntentTextTargets: FfiConverterRustBuffer {
+    typealias SwiftType = IntentTextTargets
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> IntentTextTargets {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        case 1: return .userPreferred
+
+        case 2: return .appDefault
+
+        case 3: return .explicit(relays: try FfiConverterSequenceString.read(from: &buf)
+        )
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: IntentTextTargets, into buf: inout [UInt8]) {
+        switch value {
+
+
+        case .userPreferred:
+            writeInt(&buf, Int32(1))
+
+
+        case .appDefault:
+            writeInt(&buf, Int32(2))
+
+
+        case let .explicit(relays):
+            writeInt(&buf, Int32(3))
+            FfiConverterSequenceString.write(relays, into: &buf)
+
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeIntentTextTargets_lift(_ buf: RustBuffer) throws -> IntentTextTargets {
+    return try FfiConverterTypeIntentTextTargets.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeIntentTextTargets_lower(_ value: IntentTextTargets) -> RustBuffer {
+    return FfiConverterTypeIntentTextTargets.lower(value)
+}
+
+
+extension IntentTextTargets: Equatable, Hashable {}
+
+
+
+
+
+
+
+/**
+ * UniFFI-exported error for stateless fns that can fail.
+ *
+ * `encode_profile` (NIP-19) never fails — it echoes the raw input on any
+ * encode failure per D6 — and does NOT use this type. The other three
+ * surfaces use it for decode/tokenize/classify failures.
+ */
+public enum NmpError: Swift.Error {
+
+
+
+    /**
+     * The caller supplied a null, empty, or structurally invalid input.
+     */
+    case InvalidInput
+    /**
+     * The input could not be parsed as the expected NIP-19/21 entity.
+     */
+    case Unparseable
+    /**
+     * A NIP-19 `nsec` key was detected. The key is NEVER echoed back.
+     */
+    case NsecForbidden
+    /**
+     * The render-mode discriminant supplied to `tokenize_content` is unknown.
+     */
+    case InvalidMode
+    /**
+     * An internal encoding step failed (e.g. FlatBuffers write error).
+     */
+    case EncodeFailed
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNmpError: FfiConverterRustBuffer {
+    typealias SwiftType = NmpError
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NmpError {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+
+
+
+        case 1: return .InvalidInput
+        case 2: return .Unparseable
+        case 3: return .NsecForbidden
+        case 4: return .InvalidMode
+        case 5: return .EncodeFailed
+
+         default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NmpError, into buf: inout [UInt8]) {
+        switch value {
+
+
+
+
+
+        case .InvalidInput:
+            writeInt(&buf, Int32(1))
+
+
+        case .Unparseable:
+            writeInt(&buf, Int32(2))
+
+
+        case .NsecForbidden:
+            writeInt(&buf, Int32(3))
+
+
+        case .InvalidMode:
+            writeInt(&buf, Int32(4))
+
+
+        case .EncodeFailed:
+            writeInt(&buf, Int32(5))
+
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNmpError_lift(_ buf: RustBuffer) throws -> NmpError {
+    return try FfiConverterTypeNmpError.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNmpError_lower(_ value: NmpError) -> RustBuffer {
+    return FfiConverterTypeNmpError.lower(value)
+}
+
+
+extension NmpError: Equatable, Hashable {}
+
+
+
+
+extension NmpError: Foundation.LocalizedError {
+    public var errorDescription: String? {
+        String(reflecting: self)
+    }
+}
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * The decoded target of a `nostr:` URI or bare NIP-19 bech32 input.
+ *
+ * Corresponds to the `"target"` discriminant in the JSON emitted by the
+ * C-ABI `nmp_nip21_decode_uri` (`"profile"`, `"event"`, `"address"`).
+ */
+
+public enum NostrUriTarget {
+
+    /**
+     * An `npub` / `nprofile` — identifies a Nostr public key.
+     */
+    case profile(pubkey: String, relays: [String]
+    )
+    /**
+     * A `note` / `nevent` — identifies a Nostr event.
+     */
+    case event(eventId: String, relays: [String], author: String?, kind: UInt32?
+    )
+    /**
+     * An `naddr` — identifies a parameterised replaceable event.
+     */
+    case address(identifier: String, pubkey: String, kind: UInt32, relays: [String]
+    )
+}
+
+
+#if compiler(>=6)
+extension NostrUriTarget: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNostrUriTarget: FfiConverterRustBuffer {
+    typealias SwiftType = NostrUriTarget
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NostrUriTarget {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        case 1: return .profile(pubkey: try FfiConverterString.read(from: &buf), relays: try FfiConverterSequenceString.read(from: &buf)
+        )
+
+        case 2: return .event(eventId: try FfiConverterString.read(from: &buf), relays: try FfiConverterSequenceString.read(from: &buf), author: try FfiConverterOptionString.read(from: &buf), kind: try FfiConverterOptionUInt32.read(from: &buf)
+        )
+
+        case 3: return .address(identifier: try FfiConverterString.read(from: &buf), pubkey: try FfiConverterString.read(from: &buf), kind: try FfiConverterUInt32.read(from: &buf), relays: try FfiConverterSequenceString.read(from: &buf)
+        )
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NostrUriTarget, into buf: inout [UInt8]) {
+        switch value {
+
+
+        case let .profile(pubkey,relays):
+            writeInt(&buf, Int32(1))
+            FfiConverterString.write(pubkey, into: &buf)
+            FfiConverterSequenceString.write(relays, into: &buf)
+
+
+        case let .event(eventId,relays,author,kind):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(eventId, into: &buf)
+            FfiConverterSequenceString.write(relays, into: &buf)
+            FfiConverterOptionString.write(author, into: &buf)
+            FfiConverterOptionUInt32.write(kind, into: &buf)
+
+
+        case let .address(identifier,pubkey,kind,relays):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(identifier, into: &buf)
+            FfiConverterString.write(pubkey, into: &buf)
+            FfiConverterUInt32.write(kind, into: &buf)
+            FfiConverterSequenceString.write(relays, into: &buf)
+
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNostrUriTarget_lift(_ buf: RustBuffer) throws -> NostrUriTarget {
+    return try FfiConverterTypeNostrUriTarget.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNostrUriTarget_lower(_ value: NostrUriTarget) -> RustBuffer {
+    return FfiConverterTypeNostrUriTarget.lower(value)
+}
+
+
+extension NostrUriTarget: Equatable, Hashable {}
+
+
+
+
+
+
+
 
 
 /**
@@ -891,15 +1779,15 @@ public func FfiConverterTypeDispatchOutcome_lower(_ value: DispatchOutcome) -> R
  * `on_update` — reentrancy is forbidden (the quiescence gate would deadlock).
  */
 public protocol UpdateSink: AnyObject, Sendable {
-    
+
     /**
      * Called on every NMPU frame emitted by the runtime.
      *
      * `frame` is a copy of the original `&[u8]` — the copy is made BEFORE the
      * foreign call so no Rust state is held across the Swift/Kotlin call.
      */
-    func onUpdate(frame: Data) 
-    
+    func onUpdate(frame: Data)
+
 }
 
 
@@ -928,7 +1816,7 @@ fileprivate struct UniffiCallbackInterfaceUpdateSink {
                 )
             }
 
-            
+
             let writeReturn = { () }
             uniffiTraitInterfaceCall(
                 callStatus: uniffiCallStatus,
@@ -1012,6 +1900,30 @@ public func FfiConverterCallbackInterfaceUpdateSink_lower(_ v: UpdateSink) -> UI
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionUInt32: FfiConverterRustBuffer {
+    typealias SwiftType = UInt32?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterUInt32.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterUInt32.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
     typealias SwiftType = String?
 
@@ -1057,6 +1969,210 @@ fileprivate struct FfiConverterOptionCallbackInterfaceUpdateSink: FfiConverterRu
     }
 }
 
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
+    typealias SwiftType = [String]
+
+    public static func write(_ value: [String], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterString.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [String] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [String]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterString.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeIntentCandidate: FfiConverterRustBuffer {
+    typealias SwiftType = [IntentCandidate]
+
+    public static func write(_ value: [IntentCandidate], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeIntentCandidate.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [IntentCandidate] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [IntentCandidate]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeIntentCandidate.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeIntentScope: FfiConverterRustBuffer {
+    typealias SwiftType = [IntentScope]
+
+    public static func write(_ value: [IntentScope], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeIntentScope.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [IntentScope] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [IntentScope]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeIntentScope.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceSequenceString: FfiConverterRustBuffer {
+    typealias SwiftType = [[String]]
+
+    public static func write(_ value: [[String]], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterSequenceString.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [[String]] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [[String]]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterSequenceString.read(from: &buf))
+        }
+        return seq
+    }
+}
+/**
+ * Classify one untyped input string against the app's registered recognizers.
+ *
+ * # Arguments
+ *
+ * * `app`          — the runtime app handle (provides the recognizer snapshot).
+ * * `input`        — the raw, untrusted input string.
+ * * `scopes`       — the app's allow-list of acceptable result classes.
+ * * `text_targets` — search-relay choice for the `TextQuery` fall-through.
+ *
+ * # Returns
+ *
+ * An `IntentClassification` — either `Candidates` (one or more matches) or
+ * a `Rejection` (with a typed reason). Never throws.
+ *
+ * `SecretLike` rejections carry **no** copy of `input` — the secret is never
+ * echoed back.
+ *
+ * Mirrors `nmp_app_intent_classify` — same recognizer snapshot read, same
+ * pure classification, typed output instead of JSON.
+ */
+public func classifyIntent(app: NmpApp, input: String, scopes: [IntentScope], textTargets: IntentTextTargets) -> IntentClassification  {
+    return try!  FfiConverterTypeIntentClassification_lift(try! rustCall() {
+    uniffi_nmp_uniffi_fn_func_classify_intent(
+        FfiConverterTypeNmpApp_lower(app),
+        FfiConverterString.lower(input),
+        FfiConverterSequenceTypeIntentScope.lower(scopes),
+        FfiConverterTypeIntentTextTargets_lower(textTargets),$0
+    )
+})
+}
+/**
+ * Decode a `nostr:` URI or bare NIP-19 bech32 into a typed target.
+ *
+ * Accepted inputs: `npub`, `nprofile`, `note`, `nevent`, `naddr`, and their
+ * `nostr:` prefixed forms.
+ *
+ * Rejected: any `nsec` form (returns `NmpError::NsecForbidden`; the key is
+ * never echoed). Malformed inputs return `NmpError::Unparseable`.
+ *
+ * Mirrors the C-ABI `nmp_nip21_decode_uri` — same decoding logic, typed
+ * output instead of JSON. Stateless: no kernel IO, no actor round-trip.
+ */
+public func decodeNostrUri(input: String)throws  -> NostrUriTarget  {
+    return try  FfiConverterTypeNostrUriTarget_lift(try rustCallWithError(FfiConverterTypeNmpError_lift) {
+    uniffi_nmp_uniffi_fn_func_decode_nostr_uri(
+        FfiConverterString.lower(input),$0
+    )
+})
+}
+/**
+ * Encode a 64-char hex pubkey as a NIP-19 display identifier.
+ *
+ * Prefers `nprofile1…` (pubkey + relay TLVs) when the runtime already holds
+ * kind:10002 relay hints in the mailbox cache. Falls back to a bare `npub1…`
+ * when no hints are cached (or when `app` has no mailbox cache configured).
+ *
+ * D6: never throws. An invalid or unrecognisable `pubkey_hex` degrades to
+ * returning the raw input string — same fallback as `nmp_app_encode_profile`.
+ *
+ * Mirrors the C-ABI `nmp_app_encode_profile` (same mailbox-cache read, same
+ * `MAX_NPROFILE_RELAYS` truncation, same D6 fallback chain).
+ */
+public func encodeProfile(app: NmpApp, pubkeyHex: String) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_nmp_uniffi_fn_func_encode_profile(
+        FfiConverterTypeNmpApp_lower(app),
+        FfiConverterString.lower(pubkeyHex),$0
+    )
+})
+}
+/**
+ * Tokenize Nostr event content and return a FlatBuffers `ContentTreeWire` buffer.
+ *
+ * # Arguments
+ *
+ * * `content` — the raw event content string to tokenize.
+ * * `tags`    — the event's tag array (`[[string]]`), used for NIP-30 emoji
+ * resolution. Pass an empty `Vec` when the event has no tags.
+ * * `mode`    — render mode (Plain / Markdown / Auto).
+ * * `kind`    — event kind; only meaningful when `mode` is `Auto` (used to
+ * sniff whether Markdown parsing applies).
+ *
+ * # Returns
+ *
+ * `Ok(Vec<u8>)` — a FlatBuffers `NFCT` buffer (schema `nmp.content.tree`,
+ * file identifier `NFCT`) decodable with the generated Swift/Kotlin accessors.
+ *
+ * `Err(NmpError::InvalidInput)` — `content` is empty.
+ * `Err(NmpError::EncodeFailed)` — internal FlatBuffers encoding error (rare).
+ *
+ * Mirrors `nmp_content_tokenize_text` — same tokenizer core, FlatBuffers
+ * output instead of JSON.
+ */
+public func tokenizeContent(content: String, tags: [[String]], mode: ContentRenderMode, kind: UInt32)throws  -> Data  {
+    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeNmpError_lift) {
+    uniffi_nmp_uniffi_fn_func_tokenize_content(
+        FfiConverterString.lower(content),
+        FfiConverterSequenceSequenceString.lower(tags),
+        FfiConverterTypeContentRenderMode_lower(mode),
+        FfiConverterUInt32.lower(kind),$0
+    )
+})
+}
+
 private enum InitializationResult {
     case ok
     case contractVersionMismatch
@@ -1071,6 +2187,18 @@ private let initializationResult: InitializationResult = {
     let scaffolding_contract_version = ffi_nmp_uniffi_uniffi_contract_version()
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_func_classify_intent() != 15464) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_func_decode_nostr_uri() != 56218) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_func_encode_profile() != 22164) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_func_tokenize_content() != 58037) {
+        return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_configure() != 62391) {
         return InitializationResult.apiChecksumMismatch
