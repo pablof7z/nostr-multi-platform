@@ -86,4 +86,10 @@ impl<'a> ActionBuilderRegistry<'a> {
         self.include_builtin_unions
             && std::ptr::eq(self.builders.as_ptr(), ACTION_BUILDERS.as_ptr())
     }
+
+    /// True when this registry came from an app-local `action-builders.json`.
+    #[must_use]
+    pub fn is_app_local(&self) -> bool {
+        !self.app_contracts.is_empty()
+    }
 }

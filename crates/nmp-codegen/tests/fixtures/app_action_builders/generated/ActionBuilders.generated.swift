@@ -1,23 +1,11 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// THIS FILE IS GENERATED. DO NOT EDIT BY HAND.
+// GENERATED. DO NOT EDIT BY HAND.
 //
 // Regenerate via:
-//   cargo run -p nmp-codegen -- gen action-builders --platform swift \
-//       --out apps/chirp/ios/Chirp/Bridge/Generated/ActionBuilders.generated.swift
+//   cargo run -p nmp-codegen -- gen action-builders --registry <app>/action-builders.json \
+//       --platform swift --out <output>
 //
-// Source of truth: `crates/nmp-codegen/src/action_builders/registry.rs`
-// (`ACTION_BUILDERS`). The CI gate (`.github/workflows/codegen-drift.yml`) fails
-// any PR whose generated Swift differs from a fresh run.
-//
-// ADR-0064 §3 — typed write builders. Each function below encodes the per-crate
-// FlatBuffers payload for one open-registry `action_namespace` and stamps it,
-// the namespace, and the envelope schema_version into a `DispatchEnvelope`,
-// returning the finished bytes for the native byte doorway
-// `nmp_app_dispatch_action_bytes` (#1752). App code NEVER spells a namespace
-// string or hand-assembles FlatBuffers — that lives only here, in generated
-// code. The host supplies the `correlation_id` (the operation identity end to
-// end, ADR-0064 §4) and owns the FFI call.
-// ─────────────────────────────────────────────────────────────────────────────
+// Source of truth: app-local action-builders registry JSON passed via
+// `--registry`. NOT NMP's built-in `ACTION_BUILDERS` table.
 
 import FlatBuffers
 import Foundation

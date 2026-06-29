@@ -34,7 +34,7 @@ use super::swift_nip51::{
     is_bookmark_builder, is_bookmark_set_builder, render_bookmark_update, swift_param_type,
 };
 
-const HEADER: &str = "\
+const BUILTIN_HEADER: &str = "\
 // ─────────────────────────────────────────────────────────────────────────────
 // THIS FILE IS GENERATED. DO NOT EDIT BY HAND.
 //
@@ -60,6 +60,20 @@ import FlatBuffers
 import Foundation
 ";
 
+const APP_LOCAL_HEADER: &str = "\
+// GENERATED. DO NOT EDIT BY HAND.
+//
+// Regenerate via:
+//   cargo run -p nmp-codegen -- gen action-builders --registry <app>/action-builders.json \\
+//       --platform swift --out <output>
+//
+// Source of truth: app-local action-builders registry JSON passed via
+// `--registry`. NOT NMP's built-in `ACTION_BUILDERS` table.
+
+import FlatBuffers
+import Foundation
+";
+
 /// Render the generated Swift action-builders for the given registry.
 #[must_use]
 pub fn render(builders: &[ActionBuilder]) -> String {
@@ -69,7 +83,7 @@ pub fn render(builders: &[ActionBuilder]) -> String {
 /// Render the generated Swift action-builders for the given registry context.
 #[must_use]
 pub fn render_registry(registry: &ActionBuilderRegistry<'_>) -> String {
-    let mut out = String::from(HEADER);
+    let mut out = header(registry);
     out.push('\n');
     out.push_str("public enum GeneratedActionBuilders {\n");
     out.push_str(&publish_signer_types());
@@ -89,6 +103,14 @@ pub fn render_registry(registry: &ActionBuilderRegistry<'_>) -> String {
     }
     out.push_str("}\n");
     out
+}
+
+fn header(registry: &ActionBuilderRegistry<'_>) -> String {
+    if registry.is_app_local() {
+        String::from(APP_LOCAL_HEADER)
+    } else {
+        String::from(BUILTIN_HEADER)
+    }
 }
 
 fn publish_signer_types() -> String {

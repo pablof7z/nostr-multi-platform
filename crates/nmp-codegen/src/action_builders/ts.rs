@@ -44,7 +44,7 @@ use super::ts_nip51::{
     render_bookmark_update, ts_param_type,
 };
 
-const HEADER: &str = "\
+const BUILTIN_HEADER: &str = "\
 // ─────────────────────────────────────────────────────────────────────────────
 // THIS FILE IS GENERATED. DO NOT EDIT BY HAND.
 //
@@ -71,6 +71,21 @@ import * as flatbuffers from \"flatbuffers\";
 import { encodeDispatchEnvelope } from \"./dispatchEnvelope\";
 ";
 
+const APP_LOCAL_HEADER: &str = "\
+// GENERATED. DO NOT EDIT BY HAND.
+//
+// Regenerate via:
+//   cargo run -p nmp-codegen -- gen action-builders --registry <app>/action-builders.json \\
+//       --platform ts --out <output>
+//
+// Source of truth: app-local action-builders registry JSON passed via
+// `--registry`. NOT NMP's built-in `ACTION_BUILDERS` table.
+
+import * as flatbuffers from \"flatbuffers\";
+
+import { encodeDispatchEnvelope } from \"./dispatchEnvelope\";
+";
+
 /// Render the generated TypeScript action-builders for the given registry.
 #[must_use]
 pub fn render(builders: &[ActionBuilder]) -> String {
@@ -80,7 +95,7 @@ pub fn render(builders: &[ActionBuilder]) -> String {
 /// Render the generated TypeScript action-builders for the given registry context.
 #[must_use]
 pub fn render_registry(registry: &ActionBuilderRegistry<'_>) -> String {
-    let mut out = String::from(HEADER);
+    let mut out = header(registry);
     out.push('\n');
     out.push_str(&shared_helpers());
     out.push('\n');
@@ -98,6 +113,14 @@ pub fn render_registry(registry: &ActionBuilderRegistry<'_>) -> String {
     }
     out.push_str("};\n");
     out
+}
+
+fn header(registry: &ActionBuilderRegistry<'_>) -> String {
+    if registry.is_app_local() {
+        String::from(APP_LOCAL_HEADER)
+    } else {
+        String::from(BUILTIN_HEADER)
+    }
 }
 
 /// Render the module-level FlatBuffers helpers shared by the flat-table and
