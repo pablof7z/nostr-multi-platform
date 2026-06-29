@@ -89,6 +89,7 @@ fn help() -> String {
      nmp gen projection-cache  --platform swift|kotlin --out <path> [--check]\n  \
      nmp gen keyed-ref-cache   --platform swift|kotlin --out <path> [--check]\n  \
      nmp gen action-builders   --platform swift|kotlin|ts [--registry <path>] [--out <path>] [--check]\n  \
+     nmp gen action-builders   --registry <path> --check\n  \
      nmp gen action-contract-report [--out <path>]\n  \
      nmp gen builtin-keys      [--out <path>] [--check]\n  \
      nmp gen builtin-deps      [--out <path>] [--check]\n  \

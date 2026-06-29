@@ -30,7 +30,7 @@ pub(super) enum DispatchKind {
     AppLocal,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct SchemaRow {
     pub schema_path: PathBuf,

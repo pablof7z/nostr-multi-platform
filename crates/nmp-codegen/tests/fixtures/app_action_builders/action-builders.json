@@ -1,0 +1,39 @@
+{
+  "actions": [
+    {
+      "action_namespace": "app.notes.publish_note",
+      "event_kind": 30444,
+      "dispatch": "publishes_event",
+      "schema": {
+        "schema_path": "schemas/publish_note.fbs",
+        "root_type": "PublishNotePayload",
+        "file_identifier": "APPA",
+        "schema_id": "app.notes.publish_note",
+        "schema_version": 42
+      },
+      "builder": {
+        "method": "publishNote",
+        "doc": "Publish an app-private note event.",
+        "fields": [
+          { "name": "title", "kind": "string" },
+          { "name": "retryCount", "kind": "uint" },
+          { "name": "topics", "kind": "string_vec", "optional": true }
+        ]
+      },
+      "rust": {
+        "rust_crate": "notes-app",
+        "module": "note_kind",
+        "payload_type": "PublishNotePayload",
+        "action_module": "PublishNoteActionModule"
+      }
+    }
+  ],
+  "outputs": {
+    "swift": "generated/ActionBuilders.generated.swift",
+    "kotlin": "generated/ActionBuilders.kt",
+    "ts": "generated/actionBuilders.generated.ts"
+  },
+  "drift_checks": [
+    "cargo run -p nmp-codegen -- gen action-builders --registry action-builders.json --check"
+  ]
+}

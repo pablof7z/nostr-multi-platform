@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use super::app_registry_format::{
     ActionContractRow, ContractFieldKind, DispatchKind, FieldRow, RegistryDocument,
 };
+use super::app_registry_schema::AppActionBuilderSchema;
 use super::registry::{ActionBuilder, FieldKind, PayloadField};
 use super::Platform;
 use super::{ActionBuilderRegistry, ActionBuilderWireContract, AppActionBuilderWireContract};
@@ -22,6 +23,8 @@ pub struct LoadedAppActionBuilderRegistry {
     pub wire_contracts: Vec<AppActionBuilderWireContract>,
     /// App-declared generated-builder output paths.
     pub outputs: AppActionBuilderOutputs,
+    /// App-declared schema facts used by app-local drift gates.
+    pub schemas: Vec<AppActionBuilderSchema>,
 }
 
 impl LoadedAppActionBuilderRegistry {
@@ -82,10 +85,22 @@ pub fn parse_app_action_builder_registry(
 
     let mut builders = Vec::with_capacity(doc.actions.len());
     let mut contracts_by_namespace: BTreeMap<String, ActionBuilderWireContract> = BTreeMap::new();
+    let mut namespaces = BTreeSet::new();
+    let mut schema_ids = BTreeSet::new();
     let mut methods = BTreeSet::new();
+    let mut schemas = Vec::with_capacity(doc.actions.len());
 
     for action in doc.actions {
         validate_action(&action)?;
+        if !namespaces.insert(action.action_namespace.clone()) {
+            return Err(format!(
+                "duplicate action_namespace {:?}",
+                action.action_namespace
+            ));
+        }
+        if !schema_ids.insert(action.schema.schema_id.clone()) {
+            return Err(format!("duplicate schema_id {:?}", action.schema.schema_id));
+        }
         if !methods.insert(action.builder.method.clone()) {
             return Err(format!(
                 "duplicate generated builder method {:?}",
@@ -112,6 +127,15 @@ pub fn parse_app_action_builder_registry(
                 contracts_by_namespace.insert(action.action_namespace.clone(), wire);
             }
         }
+
+        schemas.push(AppActionBuilderSchema {
+            action_namespace: action.action_namespace.clone(),
+            schema_path: action.schema.schema_path.clone(),
+            root_type: action.schema.root_type.clone(),
+            file_identifier: action.schema.file_identifier.clone(),
+            schema_version: action.schema.schema_version,
+            schema_id: action.schema.schema_id.clone(),
+        });
 
         let fields = action
             .builder
@@ -144,6 +168,7 @@ pub fn parse_app_action_builder_registry(
             kotlin: doc.outputs.kotlin,
             ts: doc.outputs.ts,
         },
+        schemas,
     })
 }
 
@@ -169,9 +194,15 @@ fn validate_action(action: &ActionContractRow) -> Result<(), String> {
             action.action_namespace
         ));
     }
-    if action.schema.file_identifier.chars().count() != 4 {
+    if action.schema.file_identifier.len() != 4 || !action.schema.file_identifier.is_ascii() {
         return Err(format!(
-            "action {:?} file_identifier must be exactly four characters",
+            "action {:?} file_identifier must be exactly four ASCII bytes",
+            action.action_namespace
+        ));
+    }
+    if action.schema.schema_version == 0 {
+        return Err(format!(
+            "action {:?} schema_version must be non-zero",
             action.action_namespace
         ));
     }

@@ -27,6 +27,10 @@ use nmp_codegen::ActionBuilderPlatform;
 ///
 /// `--check` diffs against the file on disk and exits non-zero on drift. The CI
 /// gate at `.github/workflows/codegen-drift.yml` uses this mode.
+///
+/// With an app-local `--registry`, `--check` may omit `--platform` to validate
+/// the registry's schema facts and diff all declared Swift/Kotlin/TS outputs:
+/// `nmp gen action-builders --registry apps/<app>/action-builders.json --check`.
 pub fn run_gen_action_builders(args: Vec<String>, help: &str) -> Result<(), String> {
     let mut platform_arg: Option<String> = None;
     let mut check = false;
@@ -65,8 +69,21 @@ pub fn run_gen_action_builders(args: Vec<String>, help: &str) -> Result<(), Stri
         index += 1;
     }
 
-    let platform_arg =
-        platform_arg.ok_or_else(|| format!("--platform is required (swift|kotlin|ts)\n{help}"))?;
+    if check && platform_arg.is_none() {
+        let registry_path = registry_path.ok_or_else(|| {
+            format!("--registry is required when --check omits --platform\n{help}")
+        })?;
+        if out.is_some() {
+            return Err("--out is only valid with --platform".to_string());
+        }
+        return run_check_app_registry(&registry_path);
+    }
+
+    let platform_arg = platform_arg.ok_or_else(|| {
+        format!(
+            "--platform is required (swift|kotlin|ts), unless --registry is checked as a whole\n{help}"
+        )
+    })?;
     let platform =
         ActionBuilderPlatform::parse(&platform_arg).map_err(|e| format!("{e}\n{help}"))?;
 
@@ -149,4 +166,56 @@ fn resolve_registry_output(registry_path: &Path, output: &Path) -> PathBuf {
 fn registry_arg(path: Option<&PathBuf>) -> String {
     path.map(|path| format!(" --registry {}", path.display()))
         .unwrap_or_default()
+}
+
+fn run_check_app_registry(registry_path: &Path) -> Result<(), String> {
+    let outcome = nmp_codegen::check_app_action_builder_registry(registry_path)?;
+    if outcome.up_to_date() {
+        println!(
+            "nmp gen action-builders --registry {} --check: ok ({} schemas, {} outputs)",
+            registry_path.display(),
+            outcome.schema_count,
+            outcome.outputs.len()
+        );
+        return Ok(());
+    }
+
+    let stale = outcome
+        .outputs
+        .iter()
+        .filter(|output| !output.outcome.up_to_date)
+        .map(|output| {
+            let where_diff = output
+                .outcome
+                .first_diff_line
+                .map(|n| format!("first differing line {n}"))
+                .unwrap_or_else(|| "file missing".to_string());
+            format!(
+                "- {}: {} ({where_diff})",
+                platform_name(output.platform),
+                output.out_path.display()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    Err(format!(
+        "app action-builder registry drift for {}:\n{}\n\
+         Regenerate with:\n  \
+         cargo run -p nmp-codegen -- gen action-builders --registry {} --platform swift\n  \
+         cargo run -p nmp-codegen -- gen action-builders --registry {} --platform kotlin\n  \
+         cargo run -p nmp-codegen -- gen action-builders --registry {} --platform ts",
+        registry_path.display(),
+        stale,
+        registry_path.display(),
+        registry_path.display(),
+        registry_path.display()
+    ))
+}
+
+fn platform_name(platform: ActionBuilderPlatform) -> &'static str {
+    match platform {
+        ActionBuilderPlatform::Swift => "swift",
+        ActionBuilderPlatform::Kotlin => "kotlin",
+        ActionBuilderPlatform::Ts => "ts",
+    }
 }

@@ -37,6 +37,7 @@ use std::path::Path;
 
 mod app_registry;
 mod app_registry_format;
+mod app_registry_schema;
 pub mod registry;
 mod registry_input;
 // M14-1c / #2169 — the `nmp.marmot` union-builder registry slice, split out of
@@ -66,6 +67,7 @@ pub use app_registry::{
     load_app_action_builder_registry, parse_app_action_builder_registry, AppActionBuilderOutputs,
     LoadedAppActionBuilderRegistry,
 };
+pub use app_registry_schema::{validate_app_action_builder_schema_files, AppActionBuilderSchema};
 pub use registry::{
     ActionBuilder, FieldKind, MarmotBodyShape, MarmotBuilder, PayloadField, ACTION_BUILDERS,
     MARMOT_BUILDERS, MARMOT_NAMESPACE,
@@ -133,6 +135,34 @@ pub struct ActionBuildersCheckOutcome {
     pub first_diff_line: Option<usize>,
 }
 
+/// One output checked by [`check_app_action_builder_registry`].
+#[derive(Debug)]
+pub struct AppActionBuilderOutputCheck {
+    /// Host language checked.
+    pub platform: Platform,
+    /// Output path resolved relative to the registry file.
+    pub out_path: std::path::PathBuf,
+    /// Diff result for this output.
+    pub outcome: ActionBuildersCheckOutcome,
+}
+
+/// Outcome of the app-local registry drift gate.
+#[derive(Debug)]
+pub struct AppActionBuilderRegistryCheckOutcome {
+    /// Number of schema files validated.
+    pub schema_count: usize,
+    /// Generated outputs checked against the registry.
+    pub outputs: Vec<AppActionBuilderOutputCheck>,
+}
+
+impl AppActionBuilderRegistryCheckOutcome {
+    /// `true` when every generated output is up to date.
+    #[must_use]
+    pub fn up_to_date(&self) -> bool {
+        self.outputs.iter().all(|output| output.outcome.up_to_date)
+    }
+}
+
 /// Write the generated builder source to `out_path`, replacing whatever was
 /// there.
 ///
@@ -188,6 +218,45 @@ pub fn check_action_builders_from_registry(
 ) -> std::io::Result<ActionBuildersCheckOutcome> {
     let rendered = render_from_registry(platform, registry);
     check_rendered(out_path, rendered)
+}
+
+/// Validate an app-local action-builder registry and check all generated outputs
+/// declared by that registry.
+///
+/// # Errors
+/// Invalid registry JSON, schema-file contract mismatches, or filesystem I/O
+/// failures while reading generated outputs.
+pub fn check_app_action_builder_registry(
+    registry_path: &Path,
+) -> Result<AppActionBuilderRegistryCheckOutcome, String> {
+    let loaded = load_app_action_builder_registry(registry_path)?;
+    validate_app_action_builder_schema_files(registry_path, &loaded)?;
+    let registry = loaded.as_registry();
+    let mut outputs = Vec::new();
+    for platform in [Platform::Swift, Platform::Kotlin, Platform::Ts] {
+        let out_path = resolve_registry_path(registry_path, loaded.output_for(platform));
+        let outcome = check_action_builders_from_registry(platform, &registry, &out_path)
+            .map_err(|e| format!("check {}: {e}", out_path.display()))?;
+        outputs.push(AppActionBuilderOutputCheck {
+            platform,
+            out_path,
+            outcome,
+        });
+    }
+    Ok(AppActionBuilderRegistryCheckOutcome {
+        schema_count: loaded.schemas.len(),
+        outputs,
+    })
+}
+
+fn resolve_registry_path(registry_path: &Path, output: &Path) -> std::path::PathBuf {
+    if output.is_absolute() {
+        return output.to_path_buf();
+    }
+    registry_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(output)
 }
 
 fn check_rendered(

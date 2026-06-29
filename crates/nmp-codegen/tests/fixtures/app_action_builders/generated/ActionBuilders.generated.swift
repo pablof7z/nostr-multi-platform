@@ -1,0 +1,132 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// THIS FILE IS GENERATED. DO NOT EDIT BY HAND.
+//
+// Regenerate via:
+//   cargo run -p nmp-codegen -- gen action-builders --platform swift \
+//       --out apps/chirp/ios/Chirp/Bridge/Generated/ActionBuilders.generated.swift
+//
+// Source of truth: `crates/nmp-codegen/src/action_builders/registry.rs`
+// (`ACTION_BUILDERS`). The CI gate (`.github/workflows/codegen-drift.yml`) fails
+// any PR whose generated Swift differs from a fresh run.
+//
+// ADR-0064 §3 — typed write builders. Each function below encodes the per-crate
+// FlatBuffers payload for one open-registry `action_namespace` and stamps it,
+// the namespace, and the envelope schema_version into a `DispatchEnvelope`,
+// returning the finished bytes for the native byte doorway
+// `nmp_app_dispatch_action_bytes` (#1752). App code NEVER spells a namespace
+// string or hand-assembles FlatBuffers — that lives only here, in generated
+// code. The host supplies the `correlation_id` (the operation identity end to
+// end, ADR-0064 §4) and owns the FFI call.
+// ─────────────────────────────────────────────────────────────────────────────
+
+import FlatBuffers
+import Foundation
+
+public enum GeneratedActionBuilders {
+    public enum PublishSignerProvenance: String {
+        case appManaged = "app_managed"
+        case userSelected = "user_selected"
+        case protocolPinned = "protocol_pinned"
+        case diagnostic = "diagnostic"
+    }
+
+    public enum PublishSignerSelection {
+        case active
+        case registered(pubkey: String, provenance: PublishSignerProvenance)
+    }
+
+    public enum PublishRouteClass: String {
+        case manualOverride = "manual_override"
+        case groupHostPin = "group_host_pin"
+        case verifiedPrivateInbox = "verified_private_inbox"
+        case importedOrPresigned = "imported_or_presigned"
+        case diagnostic = "diagnostic"
+    }
+
+    public enum PublishTargetSelection {
+        case auto
+        case explicit(relays: [String], routeClass: PublishRouteClass)
+    }
+
+    /// The single recognised envelope schema version — mirrors
+    /// `nmp_core::dispatch_envelope::DISPATCH_ENVELOPE_SCHEMA_VERSION`.
+    public static let dispatchEnvelopeSchemaVersion: UInt32 = 1
+
+    /// Stamp `(correlationId, actionNamespace, schemaVersion, payload)` into a
+    /// `DispatchEnvelope` and return the finished bytes (file identifier `NMPD`).
+    /// The byte-for-byte twin of `encode_dispatch_envelope` in `nmp-core`.
+    private static func encodeDispatchEnvelope(
+        correlationId: String,
+        actionNamespace: String,
+        payload: [UInt8]
+    ) -> [UInt8] {
+        var fbb = FlatBufferBuilder()
+        let correlationOffset = fbb.create(string: correlationId)
+        let namespaceOffset = fbb.create(string: actionNamespace)
+        let payloadOffset = fbb.createVector(payload)
+        let start = fbb.startTable(with: 4)
+        fbb.add(offset: correlationOffset, at: 4)   // slot 0: correlation_id
+        fbb.add(offset: namespaceOffset, at: 6)     // slot 1: action_namespace
+        fbb.add(element: dispatchEnvelopeSchemaVersion, def: UInt32(0), at: 8) // slot 2: schema_version
+        fbb.add(offset: payloadOffset, at: 10)      // slot 3: payload
+        let root = Offset(offset: fbb.endTable(at: start))
+        fbb.finish(offset: root, fileId: "NMPD")
+        return fbb.sizedByteArray
+    }
+
+    /// Map a relay role string to the RelayMarker ubyte (Both=0, Read=1, Write=2, Indexer=3),
+    /// mirroring `RelayMarker::from_role_string` in `nmp-router` EXACTLY — including rejection.
+    /// Unknown tokens or no-flag input (e.g. empty string) encode as 255 (out-of-range sentinel)
+    /// so the Rust decoder (`marker_from_wire`) fails closed instead of silently becoming Both.
+    /// Role strings may be comma-separated (e.g. `"both,indexer"`); comparisons are case-insensitive.
+    private static func relayMarkerByte(_ role: String) -> UInt8 {
+        var hasBoth = false; var hasRead = false; var hasWrite = false; var hasIndexer = false
+        var invalid = false
+        for part in role.split(separator: ",").map({ $0.trimmingCharacters(in: .whitespaces).lowercased() }) {
+            switch part {
+            case "": break
+            case "both": hasBoth = true
+            case "read": hasRead = true
+            case "write": hasWrite = true
+            case "indexer": hasIndexer = true
+            default: invalid = true
+            }
+        }
+        if invalid { return 255 }
+        if hasBoth || (hasRead && hasWrite) { return 0 }
+        if hasRead { return 1 }
+        if hasWrite { return 2 }
+        if hasIndexer { return 3 }
+        return 255
+    }
+
+    /// Publish an app-private note event.
+    /// Builds the `app.notes.publish_note` `DispatchEnvelope` bytes for the byte doorway.
+    public static func publishNote(
+        correlationId: String,
+        title: String,
+        retryCount: UInt32,
+        topics: [String]?
+    ) -> [UInt8] {
+        var fbb = FlatBufferBuilder()
+        let titleOffset = fbb.create(string: title)
+        let topicsOffset: Offset = {
+            guard let values = topics, !values.isEmpty else { return Offset() }
+            let offsets = values.map { fbb.create(string: $0) }
+            return fbb.createVector(ofOffsets: offsets)
+        }()
+        let payloadStart = fbb.startTable(with: 4)
+        fbb.add(element: UInt32(42), def: UInt32(0), at: 4) // slot 0: schema_version
+        fbb.add(offset: titleOffset, at: 6) // slot 1: title
+        fbb.add(element: UInt32(retryCount), def: UInt32(0), at: 8) // slot 2: retryCount
+        if topicsOffset.o != 0 { fbb.add(offset: topicsOffset, at: 10) } // slot 3: topics
+        let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))
+        fbb.finish(offset: payloadRoot, fileId: "APPA")
+        let payload = fbb.sizedByteArray
+        return encodeDispatchEnvelope(
+            correlationId: correlationId,
+            actionNamespace: "app.notes.publish_note",
+            payload: payload
+        )
+    }
+}
