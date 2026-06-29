@@ -24,14 +24,11 @@
 //! The gallery is a generic showcase: its `Cargo.toml` names only `nmp-ffi`,
 //! `nmp-defaults`, `nmp-core`, `nmp-content`, and `serde_json` — never a
 //! per-NIP crate. The typed payload types are therefore reached through the
-//! [`nmp_defaults::action_payloads`] re-export surface, which `nmp-defaults`
-//! owns precisely because it is the crate whose
-//! [`register_defaults`](nmp_defaults::register_defaults) installs the matching
-//! action modules. The namespaces this seam covers are exactly the ones the
-//! default bundle wires; a namespace the gallery cannot dispatch (e.g. NIP-29
-//! groups, which `register_defaults` never installs) is rejected fail-closed
-//! (D6) rather than falling back to a JSON dispatch — there is no JSON dispatch
-//! left.
+//! [`nmp_defaults::action_payloads`] re-export surface, which mirrors the
+//! gallery's current compatibility preset. The namespaces this seam covers are
+//! exactly the ones the gallery registers; a namespace the gallery cannot
+//! dispatch (e.g. NIP-29 groups) is rejected fail-closed (D6) rather than
+//! falling back to a JSON dispatch — there is no JSON dispatch left.
 
 use std::ffi::CStr;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -73,8 +70,8 @@ pub fn mint_correlation_id() -> String {
 /// (D6) for an unknown namespace or a body that does not deserialize into the
 /// namespace's typed action.
 ///
-/// Coverage is exactly the action set [`nmp_defaults::register_defaults`]
-/// installs (the only modules a gallery `NmpApp` has registered).
+/// Coverage is exactly the action set the gallery compatibility composition
+/// installs.
 fn encode_payload_for_namespace(namespace: &str, json: &str) -> Result<Vec<u8>, String> {
     match namespace {
         "nmp.publish" => encode::<action_payloads::PublishAction>(namespace, json),

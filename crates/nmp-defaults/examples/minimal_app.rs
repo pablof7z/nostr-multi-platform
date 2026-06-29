@@ -1,14 +1,14 @@
 //! Minimal end-to-end example: construct an [`NmpApp`] via `NmpAppBuilder`,
-//! inherit the canonical NMP composition, start the kernel, and tear it down.
+//! install the substrate floor explicitly, start the kernel, and tear it down.
 //!
 //! Run with: `cargo run -p nmp-defaults --example minimal_app`
 //!
 //! This example is intentionally tiny — its load-bearing claims are:
 //!
 //! 1. `NmpAppBuilder` is the single entry-point for Rust composition roots.
-//! 2. `register_defaults` is the one function a new Nostr app calls to get the
-//!    standard NMP wiring (NIPs 02/17/65, routing substrate, coverage hook,
-//!    DM-inbox runtime, WOT bootstrap).
+//! 2. `register_substrate` is the named correctness-floor installer a new app
+//!    can read in its composition root. The broader `register_defaults` preset
+//!    is compatibility/tutorial surface, not the production starter model.
 //! 3. The builder's typestate enforces that a storage decision AND an
 //!    ADR-0053 projection-consumption decision are both made before `start()`
 //!    — if `.in_memory()` (or `.storage_path(p)`) or the projection step
@@ -24,11 +24,13 @@ fn main() {
     // 1. Start the builder.
     let mut builder = NmpAppBuilder::new();
 
-    // 2. Inherit the canonical NMP composition: NIP-02/17/65 action
-    //    modules, NIP-17 ingest parser (kind:10050), production routing
-    //    substrate (GenericOutboxRouter + InMemoryMailboxCache), D2 coverage
-    //    hook, and the DM-inbox + WOT runtime controllers.
-    nmp_defaults::register_defaults(&mut builder);
+    // 2. Install the named correctness floor: routing, shared mailbox/profile/
+    //    contact caches, parsers, publish resolver, raw-event forwarding,
+    //    coverage hook, and NIP-77 sync hooks.
+    nmp_defaults::register_substrate(
+        &mut builder,
+        nmp_defaults::NmpDefaults::default().coverage_gate,
+    );
 
     // 3. (Optional) Register any app-specific projections / actions / search
     //    scopes here. A group-chat app opts into NIP-29 group-metadata
@@ -58,12 +60,9 @@ fn main() {
         .start(RunConfig::default());
 
     println!("nmp-defaults: NmpAppBuilder → start() complete.");
-    println!("  - NIP-02 social actions wired");
-    println!("  - NIP-17 DM action + kind:10050 ingest parser wired");
     println!("  - NIP-65 kind:10002 publish action wired");
-    println!("  - GenericOutboxRouter + InMemoryMailboxCache substrate installed");
-    println!("  - D2 coverage hook installed");
-    println!("  - DM-inbox + WOT runtime controllers registered");
+    println!("  - GenericOutboxRouter + shared mailbox cache substrate installed");
+    println!("  - D2 coverage + NIP-77 hooks installed");
     println!("  - Kernel started (in-memory store)");
 
     // 5. Tear down.

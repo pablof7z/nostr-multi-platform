@@ -47,7 +47,7 @@ microblog-core = { path = "../../../crates/microblog-core" }
 use nmp_ffi::NmpApp;
 
 /// Register the microblog app. `microblog_core::register` is the composition root:
-/// it installs the canonical NMP defaults once, then the microblog seams.
+/// it installs explicit substrate/protocol pieces, then the microblog seams.
 /// The iOS shell calls this after `nmp_app_new()` and before `nmp_app_start()`.
 #[no_mangle]
 pub extern "C" fn nmp_app_microblog_register(app: *mut NmpApp) {

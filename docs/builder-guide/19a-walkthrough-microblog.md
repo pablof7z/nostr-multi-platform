@@ -259,8 +259,8 @@ staticlib crate (`apps/microblog/nmp-app-microblog`) whose entire job is to:
 1. Link `nmp-defaults`, `nmp-native-runtime`, `nmp-ffi`, and `microblog-core`;
    `nmp-ffi` remains C-ABI glue.
 2. Export one registration symbol the iOS shell calls after `nmp_app_new()`.
-3. Call `microblog_core::register(app)`. The defaults call is already inside
-   that app-core composition root.
+3. Call `microblog_core::register(app)`. The substrate/protocol/app installers
+   are already inside that app-core composition root.
 
 That shell is the analog of `nmp_app_chirp_register` in `apps/chirp/crates/nmp-app-chirp`.
 

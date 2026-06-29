@@ -297,13 +297,16 @@ log "Analysing DX GAPs"
 
 DX_GAPS=""
 
-# GAP: does the shell.rs actually print "register_defaults → start" to confirm
-# the canonical path runs? (Confirms aim.md §4.14 is implemented end-to-end.)
 if grep -q "register_defaults" "$SHELL_RS"; then
-    log "  shell.rs explicitly references register_defaults: YES"
+    DX_GAPS="${DX_GAPS}GAP-1: shell.rs references register_defaults — production starters must call the app composition root, not a hidden preset.\n"
 else
-    DX_GAPS="${DX_GAPS}GAP-1: shell.rs does not reference register_defaults — "
-    DX_GAPS="${DX_GAPS}developer has no confirmation the canonical composition ran.\n"
+    log "  shell.rs avoids hidden register_defaults preset: YES"
+fi
+
+if grep -q "register_substrate" "$LIB_RS"; then
+    log "  lib.rs explicitly installs substrate: YES"
+else
+    DX_GAPS="${DX_GAPS}GAP-1b: lib.rs does not call register_substrate — starter composition is not readable as ADR-0069 explicit composition.\n"
 fi
 
 # GAP: does the scaffold include any example of opening a social timeline?
@@ -312,10 +315,7 @@ fi
 if grep -q -i "timeline\|feed\|note\|kind.*1\b" "$LIB_RS" 2>/dev/null; then
     log "  lib.rs contains timeline/feed reference: YES"
 else
-    DX_GAPS="${DX_GAPS}GAP-2: lib.rs scaffold is a generic Entry domain, not a social-app "
-    DX_GAPS="${DX_GAPS}timeline starter. aim.md §1 promises 'login, timeline, compose' as the "
-    DX_GAPS="${DX_GAPS}one-shot target. The developer must know to call register_defaults to "
-    DX_GAPS="${DX_GAPS}get NIP-01 kind:1 feed support — the scaffold doesn't show this.\n"
+    DX_GAPS="${DX_GAPS}GAP-2: lib.rs scaffold is a generic Entry domain, not a social-app timeline starter. aim.md §1 promises 'login, timeline, compose' as the one-shot target; the scaffold does not show which typed session or protocol installer opens kind:1 feed support.\n"
 fi
 
 # GAP: does the scaffold include a login action example?

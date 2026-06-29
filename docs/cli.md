@@ -1,14 +1,14 @@
 # `nmp` CLI
 
 The `nmp` command is what makes NMP **adoptable instead of hand-wired**: it
-scaffolds a new app as a thin **composition shell** over the framework's default
-composition library (`nmp-defaults`), and installs app-owned source components
-from the offline NMP component registry.
+scaffolds a new app as a thin **composition shell** over reusable framework
+installer crates, and installs app-owned source components from the offline NMP
+component registry.
 
-Per **ADR-0046** ("composition is a library, not a generator"), a downstream app
-depends on `nmp-defaults` and calls `register_defaults` — the
-Bevy-`DefaultPlugins` / Spring-Boot-starter pattern — rather than generating
-framework wiring.
+Per **ADR-0069**, a downstream app has an explicit Rust composition root:
+substrate, selected protocol features, app features, capability contracts, and
+product defaults are visible in app code rather than hidden behind a production
+preset.
 
 It ships in the `nmp-cli` crate (`crates/nmp-cli`). Install or run it:
 
@@ -52,17 +52,17 @@ Produced layout:
   README.md                  # per-app next steps
   crates/<name>-core/
     Cargo.toml               # nmp-defaults + nmp-ffi + nmp-core + serde
-    src/lib.rs               # register() → register_defaults + example domain
+    src/lib.rs               # explicit register() root + example domain
     examples/shell.rs        # NmpAppBuilder → register → start
 ```
 
-The `<name>-core` crate is a **thin composition shell** (ADR-0046): its
-`register` function forwards to `nmp_defaults::register_defaults` to inherit the
-canonical NMP composition (NIP-01/02/17/57/65 action modules, routing substrate,
-DM-inbox + zap-receipts + WOT runtimes, …). It also carries a **generic** example
-domain (an `EntryRecord` with a reactive view and a validating action),
-deliberately not social-app-shaped, to demonstrate the kernel boundary: per
-cardinal doctrine **D0**, app nouns live in `<name>-core`, never in `nmp-core`.
+The `<name>-core` crate is a **thin composition shell** (ADR-0069): its
+`register` function installs the reusable NMP substrate floor explicitly, then
+leaves selected protocol features and app-owned modules visible in the app root.
+It also carries a **generic** example domain (an `EntryRecord` with a reactive
+view and a validating action), deliberately not social-app-shaped, to
+demonstrate the kernel boundary: per cardinal doctrine **D0**, app nouns live in
+`<name>-core`, never in `nmp-core`.
 
 The shell compiles the moment it is scaffolded:
 
@@ -70,7 +70,7 @@ The shell compiles the moment it is scaffolded:
 cd my-app
 cargo check --all-targets                  # green
 cargo test -p my-app-core                  # skeleton tests pass
-cargo run --example shell -p my-app-core   # register_defaults → start → stop
+cargo run --example shell -p my-app-core   # app register → start → stop
 ```
 
 By default, `nmp init` writes `dependency_mode = "path"` and resolves the NMP
@@ -176,9 +176,9 @@ Component contract:
 `crates/nmp-cli/tests/init.rs` is the end-to-end gate:
 
 1. `nmp init` into a fresh tempdir.
-2. Assert the scaffold is a composition shell: `register` calls
-   `nmp_defaults::register_defaults`, the example drives `NmpAppBuilder`, and
-   there is no generated `apps/` FFI tree.
+2. Assert the scaffold is a composition shell: `register` installs the NMP
+   substrate explicitly, the example drives `NmpAppBuilder`, and there is no
+   generated `apps/` FFI tree.
 3. `cargo check --all-targets` on the scaffold → green (links the live
    `nmp-defaults` / `nmp-ffi` / `nmp-core` crates).
 4. `cargo test -p <name>-core` → skeleton tests pass.

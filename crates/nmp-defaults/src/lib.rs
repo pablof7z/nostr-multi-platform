@@ -1,22 +1,22 @@
-//! `nmp-defaults` — the framework's **default composition** for an NMP-based
-//! Nostr app (the Bevy-`DefaultPlugins` / Spring-Boot-starter pattern).
+//! `nmp-defaults` — reusable NMP substrate and protocol composition installers.
 //!
-//! Per **ADR-0046** ("composition is a library, not a generator") this crate is
-//! NOT a template and NOT a scaffold to copy — it is a runtime library you
-//! depend on and call. See `docs/architecture/crate-boundaries.md` §10.
-//! Closes **V-48**: "No composition-root crate — second-app developer must read
-//! 403 LOC of Chirp to understand registration".
+//! Per **ADR-0069**, production app roots compose named substrate, protocol,
+//! app, capability, and policy pieces explicitly. This crate remains a runtime
+//! library, not a template or generated scaffold to copy. See
+//! `docs/architecture/crate-boundaries.md` §10.
 //!
 //! (Renamed from `nmp-app-template` by ADR-0046; the old name lied — a
-//! "template" implies copy-and-edit, but every real consumer *calls*
-//! `register_defaults` as a library, exactly as Chirp and the external
-//! podcast-player do.)
+//! "template" implies copy-and-edit. Reusable composition belongs in library
+//! installers that app roots call deliberately.)
 //!
 //! # What this crate is
 //!
-//! A single function — [`register_defaults`] — that, given a freshly
-//! constructed host implementing [`AppHost`], wires every registration a
-//! generic Nostr app needs to participate in the standard NMP composition:
+//! The primary production installer is [`register_substrate`], the correctness
+//! floor every NMP app stands on. The legacy convenience preset
+//! [`register_defaults`] remains as tutorial/test/migration compatibility while
+//! downstream apps migrate to explicit feature composition.
+//!
+//! The compatibility preset wires:
 //!
 //! 1. **Action modules** for the common NIPs:
 //!    * `nmp.follow` / `nmp.unfollow` — [`nmp_nip02`]
@@ -58,8 +58,8 @@
 //!
 //! * It does not register any app-specific projection (Chirp's
 //!   `ModularTimelineProjection`, group-chat projection, Marmot, etc.).
-//!   App-core composition crates call `register_defaults` once, then wire
-//!   those app-specific registrations themselves.
+//!   App-core composition crates install substrate/protocol/app features in
+//!   their own roots.
 //! * It does not own a C-ABI surface. Generic `nmp_app_*` symbols live in the
 //!   C ABI wrapper crate, and per-app `nmp_app_<app>_*` shells live in the app
 //!   crate. This crate is pure Rust composition.
@@ -72,10 +72,13 @@
 //! use nmp_core::substrate::AppHost;
 //!
 //! fn compose_app(host: &mut impl AppHost) {
-//!     // 1. Install the shared NMP defaults exactly once.
-//!     nmp_defaults::register_defaults(host);
+//!     // 1. Install the shared substrate floor exactly once.
+//!     nmp_defaults::register_substrate(
+//!         host,
+//!         nmp_defaults::NmpDefaults::default().coverage_gate,
+//!     );
 //!
-//!     // 2. Register app-specific projections/actions in the app core.
+//!     // 2. Register selected protocol features and app-specific modules.
 //!     my_app_core::register(host);
 //! }
 //! ```
@@ -192,7 +195,7 @@ pub struct NmpDefaultRuntimeHandles {
 ///
 /// # Tiers
 ///
-/// `register_defaults` is the convenience entry point: it delegates to
+/// `register_defaults` is the compatibility convenience entry point: it delegates to
 /// [`register_defaults_with`] with [`NmpDefaults::default()`], which in turn
 /// calls [`register_substrate`] (the always-on correctness floor) and then
 /// layers the social-feature defaults on top. A consumer that wants the

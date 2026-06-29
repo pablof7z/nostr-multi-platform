@@ -1,20 +1,17 @@
 //! `{{pkg}}` — the app-specific core for `{{display}}`, scaffolded by
 //! `nmp init {{name}}`.
 //!
-//! # Composition is a library (ADR-0046)
+//! # Explicit feature composition (ADR-0069)
 //!
 //! This crate is a **thin composition shell** and starter contract. [`register`]
-//! inherits the canonical NMP composition by calling
-//! [`nmp_defaults::register_defaults`] — one call that wires the
-//! NIP-01/02/17/57/65 action modules, the production routing substrate, the
-//! DM-inbox + zap-receipts + WOT runtime controllers, and the long-form typed
-//! projection. This is the Bevy-`DefaultPlugins` / Spring-Boot-starter
-//! pattern: you depend on the framework's default composition, you do not
-//! generate it.
+//! installs the reusable NMP substrate floor explicitly, then leaves product
+//! protocol features and app-owned modules visible in this app root. You depend
+//! on reusable installer crates; you do not generate or copy framework wiring,
+//! and you do not hide production policy behind a wholesale preset.
 //!
-//! After `register_defaults`, register your app-specific modules (the example
-//! domain below shows the kernel boundary). Then drive the lifecycle through
-//! `NmpAppBuilder` — see `examples/shell.rs`.
+//! After the substrate call, register selected protocol features and your
+//! app-specific modules (the example domain below shows the kernel boundary).
+//! Then drive the lifecycle through `NmpAppBuilder` — see `examples/shell.rs`.
 //!
 //! # D0 — app nouns live here, never in `nmp-core`
 //!
@@ -32,27 +29,26 @@
 use nmp_core::substrate::*;
 use serde::{Deserialize, Serialize};
 
-/// Inherit the canonical NMP composition into `app`, then wire this app's own
-/// modules on top.
+/// Install the reusable NMP substrate into `app`, then wire this app's own
+/// modules and selected protocol features on top.
 ///
 /// MUST be called after `nmp_app_new` / `NmpAppBuilder::new` and BEFORE
 /// `start` — every registration must be visible to the kernel when the first
 /// event arrives (late wiring is dropped silently per D6).
 ///
-/// The single `register_defaults` call is the whole point of ADR-0046: a new
-/// Nostr app inherits the framework's default composition through a library
-/// call, not a generated FFI crate.
 pub fn register(app: &mut impl AppHost) {
-    // 1. Inherit the canonical NMP composition (NIP action modules, routing
-    //    substrate, DM-inbox + zap-receipts + WOT runtimes, …).
-    nmp_defaults::register_defaults(app);
+    // 1. Install the reusable substrate floor: routing, mailbox/profile/contact
+    //    caches, parsers, publish resolver, external event forwarding, coverage
+    //    gate, and NIP-77 sync hooks. This is correctness plumbing, not product
+    //    policy.
+    nmp_defaults::register_substrate(app, nmp_defaults::NmpDefaults::default().coverage_gate);
 
-    // 2. Register this app's own modules here, e.g.:
+    // 2. Register selected protocol features and this app's own modules here,
+    //    e.g.:
     //    app.register_action(EntryActionModule);
     //    (ADR-0052: `register_action` takes the module VALUE — a stateful
     //    module owns its dependencies, captured here at composition time.
-    //    See `nmp-defaults`'s `register_defaults` source for how the canonical
-    //    NIP modules are wired — your app modules follow the same `AppHost`
+    //    Protocol installer crates and app modules follow the same `AppHost`
     //    seam.)
 }
 
@@ -256,9 +252,9 @@ impl ActionModule for EntryActionModule {
         _correlation_id: &str,
         _send: &dyn Fn(nmp_core::actor::ActorCommand),
     ) -> Result<(), String> {
-        // Scaffold placeholder: send an nmp_core::actor::ActorCommand via `send(...)` to
-        // drive the actor. Host state can be captured in the closure passed
-        // to `NmpApp::register_snapshot_projection` on the output side.
+        // Scaffold placeholder: send an nmp_core::actor::ActorCommand via
+        // `send(...)` to drive the actor. Register typed outputs through the
+        // AppHost substrate seams in this crate's composition root.
         Ok(())
     }
 }

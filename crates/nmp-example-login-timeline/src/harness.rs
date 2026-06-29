@@ -91,7 +91,7 @@ impl DemoApp {
         let keys = Keys::parse(nsec).expect("harness: valid nsec");
         let viewer = keys.public_key().to_hex();
 
-        // Step 1 — builder → register_defaults → start. Mirrors examples/shell.rs.
+        // Step 1 — builder → tutorial compatibility register → start.
         let mut builder = NmpAppBuilder::new();
         register(&mut builder);
         let app = builder

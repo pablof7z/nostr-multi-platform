@@ -2,13 +2,13 @@
 
 Scaffolded by `nmp init {{name}}`.
 
-## Composition is a library (ADR-0046)
+## Explicit Feature Composition (ADR-0069)
 
-`crates/{{pkg}}` is a **thin composition shell** over the NMP framework. Its
-`register` function inherits the canonical NMP composition with one call to
-`nmp_defaults::register_defaults` — the Bevy-`DefaultPlugins` /
-Spring-Boot-starter pattern. There is no generated FFI crate: you depend on the
-framework's default composition, you do not generate it.
+`crates/{{pkg}}` is a **thin composition shell** over reusable NMP framework
+installers. Its `register` function installs the substrate floor explicitly,
+then leaves selected protocol features and app-owned modules visible in this app
+root. There is no generated FFI crate, and production policy is not hidden
+behind a preset.
 
 ## Starter contract
 
@@ -28,7 +28,7 @@ The generated app demonstrates the boring v1 path:
 | Path | What |
 |------|------|
 | `nmp.toml` | NMP dependency policy (read by `nmp doctor` / `nmp upgrade`). |
-| `crates/{{pkg}}/src/lib.rs` | The composition shell: `register` → `register_defaults`, plus an example app-owned domain (`EntryRecord`). **App nouns never go in `nmp-core`** (doctrine D0). |
+| `crates/{{pkg}}/src/lib.rs` | The composition shell: `register` → explicit substrate/protocol/app composition, plus an example app-owned domain (`EntryRecord`). **App nouns never go in `nmp-core`** (doctrine D0). |
 | `crates/{{pkg}}/examples/shell.rs` | Headless shell: `NmpAppBuilder` → `register` → `start`. |
 
 ## Build and run

@@ -228,7 +228,7 @@ fn g2_scaffold_has_zero_policy_loc() {
 }
 
 // ---------------------------------------------------------------------------
-// G3: ADR-0046 composition-shell contract (NmpAppBuilder + register_defaults)
+// G3: ADR-0069 composition-shell contract (NmpAppBuilder + explicit substrate)
 // ---------------------------------------------------------------------------
 
 /// G3 sub-test: the scaffolded shell drives `NmpAppBuilder` — the gateway
@@ -273,12 +273,11 @@ fn g3_shell_uses_nmp_app_builder() {
          shell.rs:\n{shell_rs}",
     );
 
-    // G3b: Shell calls the app-core register() — the composition-root call
-    // that wires register_defaults (ADR-0046).
+    // G3b: Shell calls the app-core register() — the explicit composition root.
     assert!(
         shell_rs.contains("::register("),
         "G3 DX GAP: shell.rs does not call ::register() — the composition-root\n\
-         function that calls nmp_defaults::register_defaults.\n\
+         function that installs substrate/protocol/app pieces.\n\
          shell.rs:\n{shell_rs}",
     );
 
@@ -299,16 +298,23 @@ fn g3_shell_uses_nmp_app_builder() {
          shell.rs:\n{shell_rs}",
     );
 
-    // G3e: lib.rs calls register_defaults (the canonical NMP composition).
+    // G3e: lib.rs installs the substrate explicitly and does not teach a hidden
+    // production preset.
     let lib_rs = fs::read_to_string(
         app_root.join("crates").join(pkg).join("src").join("lib.rs"),
     )
     .expect("read lib.rs");
 
     assert!(
-        lib_rs.contains("nmp_defaults::register_defaults"),
-        "G3 DX GAP: lib.rs register() does not call nmp_defaults::register_defaults.\n\
-         The scaffold must wire the canonical NMP composition (ADR-0046).\n\
+        lib_rs.contains("nmp_defaults::register_substrate"),
+        "G3 DX GAP: lib.rs register() does not install the NMP substrate explicitly.\n\
+         The scaffold must show the app composition root (ADR-0069).\n\
+         lib.rs:\n{lib_rs}",
+    );
+    assert!(
+        !lib_rs.contains("nmp_defaults::register_defaults"),
+        "G3 DX GAP: production scaffold must not call nmp_defaults::register_defaults.\n\
+         Use named substrate/protocol/app installers instead.\n\
          lib.rs:\n{lib_rs}",
     );
 

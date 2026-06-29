@@ -2,8 +2,8 @@
 //! and exposes a push-driven typed-snapshot channel to the iced subscription.
 //!
 //! Uses the same kernel flows as `nmp-gallery-tui`: `LiveKernel::new()` boots
-//! the actor, registers `nmp_app_gallery` defaults via `register_defaults`,
-//! adds the gallery relays, and installs the raw-bytes push callback. The reader
+//! the actor, registers the gallery compatibility composition, adds the gallery
+//! relays, and installs the raw-bytes push callback. The reader
 //! thread decodes inbound FlatBuffers frames via `GalleryTypedSnapshot::from_frame_bytes`
 //! and sends them on a tokio mpsc channel.
 //!

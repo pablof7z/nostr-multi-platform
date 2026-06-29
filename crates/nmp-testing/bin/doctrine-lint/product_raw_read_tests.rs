@@ -106,3 +106,46 @@ fn starter_templates_remain_product_raw_read_clean() {
     }
     assert!(checked > 0, "expected at least one Rust starter template");
 }
+
+#[test]
+fn production_starter_rejects_hidden_register_defaults_preset() {
+    let workspace = workspace_root();
+    let banned = "register_defaults";
+    let production_files = [
+        "crates/nmp-cli/src/init.rs",
+        "crates/nmp-cli/src/main.rs",
+        "crates/nmp-cli/templates/README.md.tmpl",
+        "crates/nmp-cli/templates/app_cargo.toml.tmpl",
+        "crates/nmp-cli/templates/lib.rs.tmpl",
+        "crates/nmp-cli/templates/shell.rs.tmpl",
+        "crates/nmp-cli/templates/workspace_cargo.toml.tmpl",
+        "docs/cli.md",
+    ];
+
+    for relative in production_files {
+        let path = workspace.join(relative);
+        let body = std::fs::read_to_string(&path).expect("read starter file");
+        assert!(
+            !body.contains(banned),
+            "{} must not teach `{}` as the production starter path",
+            relative,
+            banned
+        );
+    }
+
+    let scaffold_test =
+        std::fs::read_to_string(workspace.join("crates/nmp-cli/tests/init.rs"))
+            .expect("read init scaffold test");
+    assert!(
+        scaffold_test.contains("!lib.contains(\"nmp_defaults::register_defaults\")"),
+        "init scaffold test must keep a negative guard against register_defaults"
+    );
+
+    let dx_gate =
+        std::fs::read_to_string(workspace.join("crates/nmp-testing/tests/dx_scaffold_gate.rs"))
+            .expect("read dx scaffold gate");
+    assert!(
+        dx_gate.contains("!lib_rs.contains(\"nmp_defaults::register_defaults\")"),
+        "DX scaffold gate must keep a negative guard against register_defaults"
+    );
+}

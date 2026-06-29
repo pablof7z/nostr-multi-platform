@@ -10,20 +10,18 @@
 //!   README.md                  # next steps
 //!   crates/<name>-core/
 //!     Cargo.toml               # depends on nmp-defaults + nmp-ffi + nmp-core
-//!     src/lib.rs               # thin composition shell → register_defaults
-//!     examples/shell.rs        # NmpAppBuilder → register_defaults → start
+//!     src/lib.rs               # explicit app composition root
+//!     examples/shell.rs        # NmpAppBuilder → app register → start
 //! ```
 //!
-//! # ADR-0046 — composition is a library, not a generator
+//! # ADR-0069 — explicit feature composition
 //!
 //! The scaffolded `<name>-core` crate is a **thin composition shell**: it
-//! depends on the composition-root library [`nmp-defaults`] and calls
-//! `NmpAppBuilder` + `register_defaults` to inherit the canonical NMP wiring
-//! (NIP-01/02/17/57/65 action modules, the routing substrate, the DM-inbox +
-//! zap-receipts + WOT runtimes, the long-form typed projection, …). It does
-//! NOT generate an FFI crate — a generated FfiApp never called
-//! `register_defaults` and was a non-functional Nostr app. This is the
-//! Bevy-`DefaultPlugins` / Spring-Boot-starter pattern real NMP consumers use.
+//! depends on the reusable installer library [`nmp-defaults`] and installs the
+//! substrate floor explicitly before app-owned modules. It does NOT generate an
+//! FFI crate or hide production policy behind a preset. The app Rust
+//! composition root is the readable source of truth for installed substrate,
+//! protocol features, app features, capability contracts, and defaults.
 //!
 //! # Dependency policy
 //!
@@ -151,7 +149,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
     println!("next:");
     println!("  cd {}", root.display());
     println!("  cargo check                          # the {pkg} shell compiles as-is");
-    println!("  cargo run --example shell -p {pkg}   # build → register_defaults → start");
+    println!("  cargo run --example shell -p {pkg}   # build → app register → start");
     Ok(())
 }
 
