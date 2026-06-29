@@ -1,0 +1,97 @@
+{
+  "tool": "ffi-transport-bench",
+  "started_at_unix": 1782719577,
+  "build_info": {
+    "rustc_version": "unknown (set RUSTC_VERSION env var to record)",
+    "opt_level": "unknown",
+    "debug_assertions": false,
+    "target": "unknown"
+  },
+  "c_lane": {
+    "lane": "C-lane",
+    "buckets": [
+      {
+        "bucket": "small",
+        "frame_bytes_min": 256,
+        "frame_bytes_max": 2048,
+        "deliveries": 100,
+        "p50_ns": 132,
+        "p95_ns": 172,
+        "p99_ns": 175
+      },
+      {
+        "bucket": "medium",
+        "frame_bytes_min": 2048,
+        "frame_bytes_max": 8192,
+        "deliveries": 100,
+        "p50_ns": 551,
+        "p95_ns": 652,
+        "p99_ns": 756
+      },
+      {
+        "bucket": "large",
+        "frame_bytes_min": 16384,
+        "frame_bytes_max": 65536,
+        "deliveries": 100,
+        "p50_ns": 9435,
+        "p95_ns": 17908,
+        "p99_ns": 27075
+      }
+    ],
+    "weighted_p99_ns": 1607.15,
+    "baseline_ns": 0
+  },
+  "uniffi_lane": {
+    "lane": "UniFFI",
+    "buckets": [
+      {
+        "bucket": "small",
+        "frame_bytes_min": 256,
+        "frame_bytes_max": 2048,
+        "deliveries": 100,
+        "p50_ns": 817,
+        "p95_ns": 904,
+        "p99_ns": 930
+      },
+      {
+        "bucket": "medium",
+        "frame_bytes_min": 2048,
+        "frame_bytes_max": 8192,
+        "deliveries": 100,
+        "p50_ns": 2414,
+        "p95_ns": 2535,
+        "p99_ns": 2573
+      },
+      {
+        "bucket": "large",
+        "frame_bytes_min": 16384,
+        "frame_bytes_max": 65536,
+        "deliveries": 100,
+        "p50_ns": 15455,
+        "p95_ns": 15840,
+        "p99_ns": 15894
+      }
+    ],
+    "weighted_p99_ns": 1924.65,
+    "baseline_ns": 0
+  },
+  "weighted_p99_delta_raw_ns": 317,
+  "synthetic_foreign_copy_ns": 145,
+  "weighted_p99_delta_surcharged_ns": 752,
+  "surcharged_delta_pct_of_frame_budget": 0.00004511999909760002,
+  "verdict": "COLLAPSE",
+  "governing_threshold_ns": 833333,
+  "alloc_stats": [],
+  "synthetic_caveat": [
+    "SYNTHETIC (LOWER BOUND): The foreign-consume stub (sink.on_frame) copies the RustBuffer into an owned Vec<u8> via destroy_into_vec(), modeling the floor cost of Swift Data / Kotlin ByteArray construction. Real ARC/GC bookkeeping is NOT modeled; the pre-registered 3× surcharge compensates.",
+    "SYNTHETIC (NOT EXECUTED): JNI boundary surcharge (GetByteArrayElements, SetByteArrayRegion, local-ref table) is NOT executed. It is applied only as the pre-registered conservative 3× multiplier band from published JNI numbers.",
+    "SYNTHETIC (NOT MODELED): Real cross-language thread/dispatch-queue handoff and on-device backpressure drop/reorder. In-process single listener thread; cross-language hop deferred and labeled as out-of-scope for this bench. Dropped/reordered frames = 0 by in-process construction; this is NOT a real-transport claim.",
+    "REAL (EXECUTED): C-lane indirect Arc<dyn Fn> call + ptr/len dispatch + mandatory one shell-copy (Vec::to_vec) per frame. UniFFI Rust-side cost: RustBuffer allocation, FfiConverter Lower::lower serialization (4-byte i32 prefix + per-byte write via uniffi_core 0.29.5), and indirect vtable dispatch through Box<dyn UpdateFrameSink>. Synthetic foreign-copy component (145 ns at weighted mean 3737 B, 40 ns/KB conservative estimate) multiplied by 3× surcharge in verdict."
+  ],
+  "notes": [
+    "Workload: ADR-0055 omit-unchanged regime. SMALL 256–2048 B (80%), MEDIUM 2048–8192 B (15%), LARGE 16384–65536 B (5%). 100k deliveries per bucket per lane after 10k warmup discarded. Cadence grounded in code: steady 4 Hz (DEFAULT_EMIT_HZ), burst to 12 Hz (clamp ceiling).",
+    "Empty-harness baseline (timer+index, no transport) subtracted from every per-frame measurement. SMALL baseline ≈ 0 ns, MEDIUM ≈ 0 ns, LARGE ≈ 0 ns.",
+    "Platform: macOS (Darwin 25.5.0), single-threaded, no tokio. CPU affinity unpinned (macOS does not expose CPU pinning in userspace); compensated by high iteration count + percentiles.",
+    "Pre-registered decision rule (encoded before measurement): COLLAPSE iff surcharged weighted-p99 delta < 833333 ns (5% of 16.67ms) AND UniFFI SMALL p99 < 250000 ns; KEEP iff delta >= 2500000 ns (15%); ESCALATE otherwise. No COLLAPSE permitted from synthetic evidence inside or above the ESCALATE band."
+  ]
+}
