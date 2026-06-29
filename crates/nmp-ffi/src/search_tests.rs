@@ -1,12 +1,12 @@
 //! Tests for the higher-order NIP-50 search runtime surface.
 
 use super::*;
-use crate::{nmp_app_free, nmp_app_new};
-use nmp_native_runtime::parse_search_request;
+use crate::{test_app_free, test_app_new};
 use nmp_core::substrate::SearchScopeRegistry;
+use nmp_native_runtime::parse_search_request;
 use nmp_nip50::{
-    SearchHitSource, SearchRelaySource, SearchRequest, SearchScope, SearchTargets,
-    decode_search_results_snapshot, install_search_relay_source,
+    decode_search_results_snapshot, install_search_relay_source, SearchHitSource,
+    SearchRelaySource, SearchRequest, SearchScope, SearchTargets,
 };
 use nmp_store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
 use std::collections::BTreeSet;
@@ -70,8 +70,8 @@ fn parse_search_request_runs_nip50_validation() {
 
 #[test]
 fn open_search_registers_typed_sidecar_under_session_key() {
-    let app = nmp_app_new();
-    // SAFETY: `nmp_app_new` never returns null.
+    let app = test_app_new();
+    // SAFETY: `test_app_new` never returns null.
     let app_ref = unsafe { &*app };
     install_search_relay_source(
         app_ref,
@@ -92,24 +92,22 @@ fn open_search_registers_typed_sidecar_under_session_key() {
     assert_eq!(key, "nmp.nip50.search.s1");
 
     // The typed projection key is registered.
-    assert!(
-        app_ref
-            .registered_typed_projection_keys()
-            .contains(&"nmp.nip50.search.s1".to_string())
-    );
+    assert!(app_ref
+        .registered_typed_projection_keys()
+        .contains(&"nmp.nip50.search.s1".to_string()));
 
     // The N50S sidecar is readable + decodable (empty hits before any event).
     let bytes = search_snapshot_bytes(app_ref, "s1").expect("sidecar bytes");
     let snap = decode_search_results_snapshot(&bytes).expect("decode N50S");
     assert!(snap.hits.is_empty());
 
-    nmp_app_free(app);
+    test_app_free(app);
 }
 
 #[test]
 fn close_search_tears_down_the_projection() {
-    let app = nmp_app_new();
-    // SAFETY: `nmp_app_new` never returns null.
+    let app = test_app_new();
+    // SAFETY: `test_app_new` never returns null.
     let app_ref = unsafe { &*app };
     install_search_relay_source(
         app_ref,
@@ -127,24 +125,20 @@ fn close_search_tears_down_the_projection() {
     )
     .expect("request");
     open_search(app_ref, request, "s2");
-    assert!(
-        app_ref
-            .registered_typed_projection_keys()
-            .contains(&"nmp.nip50.search.s2".to_string())
-    );
+    assert!(app_ref
+        .registered_typed_projection_keys()
+        .contains(&"nmp.nip50.search.s2".to_string()));
 
     close_search(app_ref, "s2");
-    assert!(
-        !app_ref
-            .registered_typed_projection_keys()
-            .contains(&"nmp.nip50.search.s2".to_string())
-    );
+    assert!(!app_ref
+        .registered_typed_projection_keys()
+        .contains(&"nmp.nip50.search.s2".to_string()));
     assert!(search_snapshot_bytes(app_ref, "s2").is_none());
 
     // Idempotent: closing again is a no-op.
     close_search(app_ref, "s2");
 
-    nmp_app_free(app);
+    test_app_free(app);
 }
 
 /// End-to-end transparency proof: with the default `PreferredRelaySource`
@@ -155,8 +149,8 @@ fn close_search_tears_down_the_projection() {
 /// per-relay app wiring at the call site.
 #[test]
 fn open_search_user_preferred_fans_out_to_installed_primary_relays() {
-    let app = nmp_app_new();
-    // SAFETY: `nmp_app_new` never returns null.
+    let app = test_app_new();
+    // SAFETY: `test_app_new` never returns null.
     let app_ref = unsafe { &*app };
 
     // Non-empty primary (the user's kind:10007 list) → UserPreferred uses it.
@@ -203,7 +197,7 @@ fn open_search_user_preferred_fans_out_to_installed_primary_relays() {
         "UserPreferred with an empty user list must fall back to the app default"
     );
 
-    nmp_app_free(app);
+    test_app_free(app);
 }
 
 /// Behavior-preservation invariant (#2089) — a search targeting MANY relays
@@ -212,8 +206,8 @@ fn open_search_user_preferred_fans_out_to_installed_primary_relays() {
 /// (not once per relay). Closing the session removes that single sink.
 #[test]
 fn multi_relay_search_shares_one_kernel_observer() {
-    let app = nmp_app_new();
-    // SAFETY: `nmp_app_new` never returns null.
+    let app = test_app_new();
+    // SAFETY: `test_app_new` never returns null.
     let app_ref = unsafe { &*app };
     let before = app_ref.test_observed_projection_sink_count();
 
@@ -249,13 +243,13 @@ fn multi_relay_search_shares_one_kernel_observer() {
         "closing the session removes its single shared observer"
     );
 
-    nmp_app_free(app);
+    test_app_free(app);
 }
 
 #[test]
 fn open_search_without_source_is_cache_only_not_a_crash() {
-    let app = nmp_app_new();
-    // SAFETY: `nmp_app_new` never returns null.
+    let app = test_app_new();
+    // SAFETY: `test_app_new` never returns null.
     let app_ref = unsafe { &*app };
     // No source registered → UserPreferred resolves to empty (no relay fan-out)
     // but the projection + sidecar still register (cache-only search).
@@ -269,7 +263,7 @@ fn open_search_without_source_is_cache_only_not_a_crash() {
     let key = open_search(app_ref, request, "s3");
     assert_eq!(key, "nmp.nip50.search.s3");
     assert!(search_snapshot_bytes(app_ref, "s3").is_some());
-    nmp_app_free(app);
+    test_app_free(app);
 }
 
 // ===========================================================================
@@ -340,8 +334,8 @@ fn decoded_hits(app: &NmpApp, session: &str) -> Vec<nmp_nip50::SearchHit> {
 /// unrelated note of the right kind was returned, mislabelled `Relay("")`.
 #[test]
 fn open_search_excludes_cached_events_that_do_not_match_the_query_text() {
-    let app = nmp_app_new();
-    // SAFETY: `nmp_app_new` never returns null.
+    let app = test_app_new();
+    // SAFETY: `test_app_new` never returns null.
     let app_ref = unsafe { &*app };
     publish_store_with_notes(
         app_ref,
@@ -371,15 +365,15 @@ fn open_search_excludes_cached_events_that_do_not_match_the_query_text() {
         );
     }
 
-    nmp_app_free(app);
+    test_app_free(app);
 }
 
 /// #1882 regression — a cached event whose content matches the query IS returned
 /// as a `Cache` hit (the FTS path is genuinely wired, not just suppressed).
 #[test]
 fn open_search_returns_text_matching_cache_hit_tagged_cache() {
-    let app = nmp_app_new();
-    // SAFETY: `nmp_app_new` never returns null.
+    let app = test_app_new();
+    // SAFETY: `test_app_new` never returns null.
     let app_ref = unsafe { &*app };
     publish_store_with_notes(app_ref, &[(7, "satoshi nakamoto wrote nostr", 200)]);
 
@@ -391,7 +385,7 @@ fn open_search_returns_text_matching_cache_hit_tagged_cache() {
     assert_eq!(hits[0].source, SearchHitSource::Cache);
     assert_eq!(hits[0].content, "satoshi nakamoto wrote nostr");
 
-    nmp_app_free(app);
+    test_app_free(app);
 }
 
 /// #1882 — cache↔relay first-arrival dedupe. The cache scan runs synchronously
@@ -402,8 +396,8 @@ fn open_search_returns_text_matching_cache_hit_tagged_cache() {
 /// the N50S snapshot). A bare app with no published store is relay-only.
 #[test]
 fn open_search_cache_only_never_emits_a_relay_provenance() {
-    let app = nmp_app_new();
-    // SAFETY: `nmp_app_new` never returns null.
+    let app = test_app_new();
+    // SAFETY: `test_app_new` never returns null.
     let app_ref = unsafe { &*app };
     publish_store_with_notes(app_ref, &[(1, "nostr cache first", 100)]);
 
@@ -417,5 +411,5 @@ fn open_search_cache_only_never_emits_a_relay_provenance() {
         "the synchronous cache hit wins first-arrival; no Relay(\"\") provenance leaks in"
     );
 
-    nmp_app_free(app);
+    test_app_free(app);
 }

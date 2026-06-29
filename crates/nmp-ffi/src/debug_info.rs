@@ -85,7 +85,7 @@ fn debug_info_impl(app: *mut NmpApp, domain: c_int) -> *mut c_char {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{nmp_app_free, nmp_app_new};
+    use crate::{test_app_free, test_app_new};
     use std::ffi::CStr;
 
     fn decode(ptr: *mut c_char) -> serde_json::Value {
@@ -136,37 +136,37 @@ mod tests {
 
     #[test]
     fn fresh_app_domain0_is_well_formed() {
-        let app = nmp_app_new();
+        let app = test_app_new();
         let ptr = nmp_app_debug_info(app, 0);
         let v = decode(ptr);
         assert_eq!(v["schema_version"], 1);
         assert!(v["publishes"].is_array());
         assert!(v["subscriptions"].is_array());
         crate::free::nmp_free_string(ptr);
-        nmp_app_free(app);
+        test_app_free(app);
     }
 
     #[test]
     fn fresh_app_domain1_is_well_formed() {
-        let app = nmp_app_new();
+        let app = test_app_new();
         let ptr = nmp_app_debug_info(app, 1);
         let v = decode(ptr);
         assert_eq!(v["schema_version"], 1);
         assert!(v["records"].is_array());
         assert!(v["count"].is_u64());
         crate::free::nmp_free_string(ptr);
-        nmp_app_free(app);
+        test_app_free(app);
     }
 
     #[test]
     fn fresh_app_domain2_has_both_keys() {
-        let app = nmp_app_new();
+        let app = test_app_new();
         let ptr = nmp_app_debug_info(app, 2);
         let v = decode(ptr);
         assert!(v["routing"].is_object());
         assert!(v["composition"].is_object());
         crate::free::nmp_free_string(ptr);
-        nmp_app_free(app);
+        test_app_free(app);
     }
 
     // ── #1726 negative gate: removed-symbol absence ──────────────────────────
@@ -190,7 +190,7 @@ mod tests {
         // point. This test is the positive-coverage complement to the
         // removal comment above: if nmp_app_debug_info is missing from the
         // binary or any domain returns a non-object, tests here will catch it.
-        let app = nmp_app_new();
+        let app = test_app_new();
         for domain in [0i32, 1i32, 2i32] {
             let ptr = nmp_app_debug_info(app, domain);
             let v = decode(ptr);
@@ -202,6 +202,6 @@ mod tests {
         let v = decode(ptr);
         assert!(v.is_object(), "unknown domain must return {{}} not null");
         crate::free::nmp_free_string(ptr);
-        nmp_app_free(app);
+        test_app_free(app);
     }
 }

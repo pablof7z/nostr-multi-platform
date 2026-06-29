@@ -1,13 +1,14 @@
-//! Regression tests for issue #618: `nmp_app_new` is passive and still gives
+//! Regression tests for issue #618: `test_app_new` is passive and still gives
 //! snapshot-first hosts a pre-start frame through the update callback.
 
 use super::{
-    UpdateCallback, app_ref, nmp_app_free, nmp_app_new, nmp_app_set_update_callback, nmp_app_start,
+    app_ref, test_app_free, test_app_new, test_app_set_update_callback, test_app_start,
+    TestUpdateCallback,
 };
 use nmp_core::decode_snapshot_envelope;
 use std::ffi::c_void;
+use std::sync::mpsc::{channel, Sender};
 use std::sync::Arc;
-use std::sync::mpsc::{Sender, channel};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, UNIX_EPOCH};
 
@@ -47,7 +48,7 @@ fn uninstall_capture() {
 fn passive_handle_delivers_prestart_snapshot_on_callback_registration() {
     let _guard = SERIAL.lock().unwrap();
     let rx = install_capture();
-    let app = nmp_app_new();
+    let app = test_app_new();
 
     let app_ref = app_ref(app).expect("app");
     assert!(!app_ref.is_alive(), "new handle must be passive");
@@ -57,10 +58,10 @@ fn passive_handle_delivers_prestart_snapshot_on_callback_registration() {
     app_ref.set_kernel_clock_for_test(Arc::clone(&clock));
     app_ref.set_queue_depth_for_test(7);
 
-    nmp_app_set_update_callback(
+    test_app_set_update_callback(
         app,
         std::ptr::null_mut(),
-        Some(capture_update as UpdateCallback),
+        Some(capture_update as TestUpdateCallback),
     );
 
     let frame = rx
@@ -81,9 +82,9 @@ fn passive_handle_delivers_prestart_snapshot_on_callback_registration() {
     );
     app_ref.set_queue_depth_for_test(0);
 
-    nmp_app_start(app, 256, 4);
+    test_app_start(app, 256, 4);
     assert!(app_ref.is_alive(), "start spawns the actor");
-    nmp_app_set_update_callback(app, std::ptr::null_mut(), None);
-    nmp_app_free(app);
+    test_app_set_update_callback(app, std::ptr::null_mut(), None);
+    test_app_free(app);
     uninstall_capture();
 }

@@ -4,7 +4,7 @@
 
 use super::nmp_app_intent_dispatch;
 use crate::free::nmp_free_string;
-use crate::{nmp_app_free, nmp_app_new, NmpApp};
+use crate::{test_app_free, test_app_new, NmpApp};
 use nmp_core::nip19::{encode_naddr, encode_npub, encode_nsec, NaddrData};
 use nmp_core::substrate::{
     InputIntentTarget, InputScopeId, InputScopeRecognizer, ResolvedInput, TextSearchTargets,
@@ -56,7 +56,7 @@ fn request_json(input: &str, scopes: &[(&str, &str)]) -> String {
 
 #[test]
 fn dispatch_secret_is_rejected_and_never_echoed() {
-    let app = nmp_app_new();
+    let app = test_app_new();
     let nsec = encode_nsec(SECRET_HEX).unwrap();
     let (raw, value) = dispatch(
         app,
@@ -66,14 +66,14 @@ fn dispatch_secret_is_rejected_and_never_echoed() {
     assert_eq!(value["rejection"], "SecretLike");
     assert!(!raw.contains(&nsec));
     assert!(!raw.contains(SECRET_HEX));
-    nmp_app_free(app);
+    test_app_free(app);
 }
 
 // ── dispatch: routing per target class ───────────────────────────────────────
 
 #[test]
 fn dispatch_direct_ref_returns_dispatched_candidate() {
-    let app = nmp_app_new();
+    let app = test_app_new();
     let npub = encode_npub(PUBKEY).unwrap();
     let (_, value) = dispatch(
         app,
@@ -85,12 +85,12 @@ fn dispatch_direct_ref_returns_dispatched_candidate() {
         .as_str()
         .unwrap()
         .contains("npub1"));
-    nmp_app_free(app);
+    test_app_free(app);
 }
 
 #[test]
 fn dispatch_text_query_opens_search_session() {
-    let app = nmp_app_new();
+    let app = test_app_new();
     let (_, value) = dispatch(
         app,
         &request_json("nostr", &[("nip50", "profiles")]),
@@ -99,12 +99,12 @@ fn dispatch_text_query_opens_search_session() {
     // The chosen candidate is a TextQuery and is reported dispatched; opening the
     // session must not panic (no relay source installed → cache-only search).
     assert!(value["dispatched"]["target"]["TextQuery"]["request_json"].is_string());
-    nmp_app_free(app);
+    test_app_free(app);
 }
 
 #[test]
 fn dispatch_nip05_returns_dispatched_candidate() {
-    let app = nmp_app_new();
+    let app = test_app_new();
     let (_, value) = dispatch(
         app,
         &request_json("jb55@jb55.com", &[("nip50", "profiles")]),
@@ -116,12 +116,12 @@ fn dispatch_nip05_returns_dispatched_candidate() {
         value["dispatched"]["target"]["Nip05"]["identifier"],
         "jb55@jb55.com"
     );
-    nmp_app_free(app);
+    test_app_free(app);
 }
 
 #[test]
 fn dispatch_relay_url_returns_unrouted_candidate() {
-    let app = nmp_app_new();
+    let app = test_app_new();
     let (_, value) = dispatch(
         app,
         &request_json("wss://relay.example/", &[("nip50", "notes")]),
@@ -133,14 +133,14 @@ fn dispatch_relay_url_returns_unrouted_candidate() {
         value["dispatched"]["target"]["RelayUrl"]["url"],
         "wss://relay.example"
     );
-    nmp_app_free(app);
+    test_app_free(app);
 }
 
 // ── dispatch: refusal passthrough ────────────────────────────────────────────
 
 #[test]
 fn dispatch_disallowed_scope_returns_rejection() {
-    let app = nmp_app_new();
+    let app = test_app_new();
     // A valid naddr (address-class ref) requested under a users-only scope set
     // → DisallowedScope.
     let naddr = encode_naddr(&NaddrData {
@@ -156,7 +156,7 @@ fn dispatch_disallowed_scope_returns_rejection() {
         "sess-disallowed",
     );
     assert!(value["rejection"]["DisallowedScope"].is_object());
-    nmp_app_free(app);
+    test_app_free(app);
 }
 
 // ── dispatch: registered recognizer routing ──────────────────────────────────
@@ -191,8 +191,8 @@ impl InputScopeRecognizer for DemoRecognizer {
 
 #[test]
 fn dispatch_registered_returns_unrouted_candidate() {
-    let app = nmp_app_new();
-    // SAFETY: `nmp_app_new` never returns null.
+    let app = test_app_new();
+    // SAFETY: `test_app_new` never returns null.
     let app_ref = unsafe { &*app };
     let _ = app_ref.register_input_scope(Arc::new(DemoRecognizer) as Arc<dyn InputScopeRecognizer>);
 
@@ -205,7 +205,7 @@ fn dispatch_registered_returns_unrouted_candidate() {
     // returned for the owning crate's handler to route.
     assert_eq!(value["dispatched"]["scope"]["name"], "demo");
     assert!(value["dispatched"]["target"]["Registered"]["payload_json"].is_string());
-    nmp_app_free(app);
+    test_app_free(app);
 }
 
 // ── D6: malformed input never NULL ───────────────────────────────────────────

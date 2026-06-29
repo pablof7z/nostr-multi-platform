@@ -24,12 +24,12 @@ pub extern "C" fn nmp_app_set_storage_path(app: *mut NmpApp, path: *const c_char
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{app_ref, nmp_app_free, nmp_app_new, nmp_app_start};
+    use crate::{app_ref, test_app_free, test_app_new, test_app_start};
     use std::ffi::CString;
 
     #[test]
     fn storage_path_can_be_set_after_prestart_command_before_start() {
-        let app = nmp_app_new();
+        let app = test_app_new();
         let app_ref = app_ref(app).expect("app");
         app_ref.lifecycle_foreground();
         assert_eq!(
@@ -49,15 +49,15 @@ mod tests {
 
         assert_eq!(app_ref.storage_path_for_start(), Some(path_str));
 
-        nmp_app_start(app, 256, 4);
+        test_app_start(app, 256, 4);
         assert!(app_ref.is_alive(), "start should spawn actor once");
-        nmp_app_free(app);
+        test_app_free(app);
         let _ = std::fs::remove_dir_all(path);
     }
 
     #[test]
     fn storage_path_after_start_is_rejected_and_recorded() {
-        let app = nmp_app_new();
+        let app = test_app_new();
         let first_dir =
             std::env::temp_dir().join(format!("nmp-storage-first-{}", std::process::id()));
         let second_dir =
@@ -73,7 +73,7 @@ mod tests {
             nmp_app_set_storage_path(app, c_first.as_ptr()),
             NmpConfigStatus::Ok.code()
         );
-        nmp_app_start(app, 256, 4);
+        test_app_start(app, 256, 4);
         assert_eq!(
             nmp_app_set_storage_path(app, c_second.as_ptr()),
             NmpConfigStatus::AlreadyStarted.code()
@@ -92,7 +92,7 @@ mod tests {
             "late storage setter should be visible in the composition ledger"
         );
 
-        nmp_app_free(app);
+        test_app_free(app);
         let _ = std::fs::remove_dir_all(first_dir);
         let _ = std::fs::remove_dir_all(second_dir);
     }

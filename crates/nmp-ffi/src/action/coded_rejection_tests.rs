@@ -7,7 +7,7 @@
 //!
 //! Moved out of `action/tests.rs` to keep that file at its baselined LOC cap.
 
-use super::super::{nmp_app_free, nmp_app_new};
+use super::super::{test_app_free, test_app_new};
 use super::*;
 
 /// Coded-rejection test module under `test.coded_reject` — `start()` returns
@@ -44,8 +44,8 @@ impl nmp_core::substrate::ActionModule for TestCodedRejectModule {
 /// the `error` field carries the English fallback. Both must be present.
 #[test]
 fn coded_rejection_includes_code_field_in_ffi_json() {
-    let app = nmp_app_new();
-    // SAFETY: `nmp_app_new` never returns null; pointer is valid until `nmp_app_free` below.
+    let app = test_app_new();
+    // SAFETY: `test_app_new` never returns null; pointer is valid until `test_app_free` below.
     let app_mut = unsafe { &mut *app };
     let _ = app_mut.register_action(TestCodedRejectModule);
 
@@ -77,7 +77,7 @@ fn coded_rejection_includes_code_field_in_ffi_json() {
         "a start()-phase rejection must not include a correlation_id; got: {out}"
     );
 
-    nmp_app_free(app);
+    test_app_free(app);
 }
 
 /// Bytes-capable coded-rejection test module under `test.coded_reject.bytes`.
@@ -131,10 +131,10 @@ impl nmp_core::substrate::ActionModule for TestCodedRejectBytesModule {
 /// regression. Both `"error"` and `"code"` must be present.
 #[test]
 fn coded_rejection_byte_doorway_includes_code_field() {
-    use nmp_core::dispatch_envelope::{DISPATCH_ENVELOPE_SCHEMA_VERSION, encode_dispatch_envelope};
+    use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
 
-    let app = nmp_app_new();
-    // SAFETY: `nmp_app_new` never returns null; pointer is valid until `nmp_app_free` below.
+    let app = test_app_new();
+    // SAFETY: `test_app_new` never returns null; pointer is valid until `test_app_free` below.
     let app_mut = unsafe { &mut *app };
     let _ = app_mut.register_action(TestCodedRejectBytesModule);
 
@@ -179,5 +179,5 @@ fn coded_rejection_byte_doorway_includes_code_field() {
         "a start()-phase rejection must not include a correlation_id; got: {out}"
     );
 
-    nmp_app_free(app);
+    test_app_free(app);
 }

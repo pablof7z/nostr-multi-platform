@@ -2,8 +2,9 @@
 //!
 //! The Rust runtime owner is `nmp-native-runtime`. This crate owns only C ABI
 //! symbols, raw pointer/string conversion, panic-safe callback glue, and
-//! Rust-side re-exports of those symbols for app composition crates.
+//! Rust-side re-exports of active symbols for app composition crates.
 
+#[cfg(test)]
 mod action;
 #[cfg(test)]
 #[path = "active_account_handle_tests.rs"]
@@ -51,26 +52,24 @@ mod testing_stats;
 mod testing_sync;
 
 pub use nmp_native_runtime::{
-    FeedAdmission, FeedCompiler, FeedHandle, FeedOpenError, FeedParams, FeedParamsDecodeError,
-    FeedRanking, FeedRender, FeedScope, FeedSessionBuild, FeedSessionId, FeedTeardown, FeedWindow,
+    decode_and_validate_feed_params, handle_projection_key, validate_feed_params, FeedAdmission,
+    FeedCompiler, FeedHandle, FeedOpenError, FeedParams, FeedParamsDecodeError, FeedRanking,
+    FeedRender, FeedScope, FeedSessionBuild, FeedSessionId, FeedTeardown, FeedWindow,
     IdentityChangeObserverId, Nip29GroupDiscoveryHandle, Nip29GroupDiscoverySession,
     Nip29GroupEventsHandle, Nip29GroupEventsSession, NmpApp, NmpConfigStatus, PrimaryKindError,
-    ProjectionKey, PubkeySetExpr, decode_and_validate_feed_params, handle_projection_key,
-    validate_feed_params,
+    ProjectionKey, PubkeySetExpr,
 };
 
-pub use app_ctor::nmp_app_new;
-pub use app_lifecycle_ffi::{
-    UpdateCallback, nmp_app_configure, nmp_app_free, nmp_app_reset, nmp_app_set_update_callback,
-    nmp_app_start, nmp_app_stop,
+#[cfg(test)]
+pub(crate) use app_ctor::test_app_new;
+#[cfg(test)]
+pub(crate) use app_lifecycle_ffi::{
+    test_app_free, test_app_reset, test_app_set_update_callback, test_app_start, TestUpdateCallback,
 };
 
-#[cfg(feature = "native")]
-#[allow(unused_imports)]
-pub use action::nmp_app_dispatch_action_bytes;
 pub use free::nmp_free_string;
 #[cfg(feature = "native")]
-pub use group_feed::{GroupFeedHandle, open_group_discovery_handle};
+pub use group_feed::{open_group_discovery_handle, GroupFeedHandle};
 #[cfg(feature = "native")]
 pub use identity::{
     create_new_account_with_initial_follows, nmp_app_add_relay, nmp_app_create_new_account,
@@ -132,7 +131,7 @@ pub use testing_stats::nmp_app_read_command_lane_stats;
 pub use testing_sync::nmp_app_wait_barrier;
 
 // ── Shared FFI helpers ────────────────────────────────────────────────────
-use std::ffi::{CStr, c_char};
+use std::ffi::{c_char, CStr};
 
 #[must_use]
 pub(crate) fn app_ref<'a>(app: *mut NmpApp) -> Option<&'a NmpApp> {

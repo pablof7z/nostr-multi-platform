@@ -1,4 +1,4 @@
-use super::super::{nmp_app_free, nmp_app_new};
+use super::super::{test_app_free, test_app_new};
 use super::*;
 use nmp_core::TypedProjectionData;
 use nmp_core::substrate::SnapshotProjectionRegistrar;
@@ -8,13 +8,13 @@ use std::ffi::CString;
 /// declared set (read back through the shared `NmpApp` registry clone).
 #[test]
 fn declare_consumed_projections_unions_keys_into_registry() {
-    let app = nmp_app_new();
+    let app = test_app_new();
     let k1 = CString::new("profile").unwrap();
     let k2 = CString::new("accounts").unwrap();
     let arr: [*const c_char; 2] = [k1.as_ptr(), k2.as_ptr()];
     nmp_app_declare_consumed_projections(app, arr.as_ptr(), arr.len());
 
-    // SAFETY: `nmp_app_new` never returns null.
+    // SAFETY: `test_app_new` never returns null.
     let app_ref = unsafe { &*app };
     let registry = app_ref.snapshot_projections.lock().expect("registry lock");
     let declared = registry.declared_projections();
@@ -26,7 +26,7 @@ fn declare_consumed_projections_unions_keys_into_registry() {
         "undeclared key is gated out once a non-empty set is declared"
     );
     drop(registry);
-    nmp_app_free(app);
+    test_app_free(app);
 }
 
 /// A null `app` / null `keys` / zero `len` declaration is a silent no-op (D6).
@@ -37,12 +37,12 @@ fn declare_consumed_projections_bad_args_are_noops() {
     let arr: [*const c_char; 1] = [k.as_ptr()];
     nmp_app_declare_consumed_projections(std::ptr::null_mut(), arr.as_ptr(), arr.len());
 
-    let app = nmp_app_new();
+    let app = test_app_new();
     // Null keys pointer — no-op, set stays empty (no narrowing).
     nmp_app_declare_consumed_projections(app, std::ptr::null(), 3);
     // Zero len — no-op.
     nmp_app_declare_consumed_projections(app, arr.as_ptr(), 0);
-    // SAFETY: `nmp_app_new` never returns null.
+    // SAFETY: `test_app_new` never returns null.
     let app_ref = unsafe { &*app };
     let registry = app_ref.snapshot_projections.lock().expect("registry lock");
     assert!(
@@ -50,7 +50,7 @@ fn declare_consumed_projections_bad_args_are_noops() {
         "bad-arg declarations leave the set empty (no narrowing)"
     );
     drop(registry);
-    nmp_app_free(app);
+    test_app_free(app);
 }
 
 /// ADR-0037 — the typed-projection registration seam is reachable through
@@ -80,8 +80,8 @@ fn typed_projection_registered_through_trait_surfaces_in_sidecar() {
         });
     }
 
-    let app = nmp_app_new();
-    // SAFETY: `nmp_app_new` never returns null.
+    let app = test_app_new();
+    // SAFETY: `test_app_new` never returns null.
     let app_ref = unsafe { &*app };
     register_via_trait(app_ref);
 
@@ -94,7 +94,7 @@ fn typed_projection_registered_through_trait_surfaces_in_sidecar() {
     assert_eq!(entry.schema_version, 1);
     assert_eq!(entry.file_identifier, "NFTS");
     assert_eq!(entry.payload, vec![0xde, 0xad, 0xbe, 0xef]);
-    nmp_app_free(app);
+    test_app_free(app);
 }
 
 /// ADR-0049 / Blocker C — `register_typed_snapshot_projection` records a
@@ -106,8 +106,8 @@ fn typed_projection_registered_through_trait_surfaces_in_sidecar() {
 ///   times — there is no "post-start drop" for it).
 #[test]
 fn typed_projection_records_composition_ledger_disposition() {
-    let app = nmp_app_new();
-    // SAFETY: `nmp_app_new` never returns null.
+    let app = test_app_new();
+    // SAFETY: `test_app_new` never returns null.
     let app_ref = unsafe { &*app };
 
     // First registration: Installed.
@@ -170,7 +170,7 @@ fn typed_projection_records_composition_ledger_disposition() {
         "distinct key must record Installed, not ReplacedPrevious"
     );
 
-    nmp_app_free(app);
+    test_app_free(app);
 }
 
 /// Blocker C — over-cap new key must NOT produce a false `Installed` ledger
@@ -181,8 +181,8 @@ fn typed_projection_records_composition_ledger_disposition() {
 fn over_cap_typed_projection_does_not_record_installed() {
     use nmp_core::__ffi_internal::MAX_SNAPSHOT_PROJECTIONS;
 
-    let app = nmp_app_new();
-    // SAFETY: `nmp_app_new` never returns null.
+    let app = test_app_new();
+    // SAFETY: `test_app_new` never returns null.
     let app_ref = unsafe { &*app };
 
     // Fill the registry to the exact cap with distinct keys.
@@ -238,5 +238,5 @@ fn over_cap_typed_projection_does_not_record_installed() {
         "second registration for an existing key at cap must record ReplacedPrevious"
     );
 
-    nmp_app_free(app);
+    test_app_free(app);
 }

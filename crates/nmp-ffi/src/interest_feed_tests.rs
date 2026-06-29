@@ -15,7 +15,7 @@ use std::sync::Arc;
 use nmp_core::substrate::{KernelEvent, ObservedProjection, ObservedProjectionRegistrar};
 use nmp_core::ObservedProjectionSink;
 
-use crate::{nmp_app_free, nmp_app_new};
+use crate::{test_app_free, test_app_new};
 
 struct StubObserver {
     call_count: AtomicU32,
@@ -33,7 +33,7 @@ fn stub_decl(observer: Arc<dyn ObservedProjectionSink>, consumer: &str) -> Obser
 
 #[test]
 fn open_observed_projection_returns_nonzero_id() {
-    let app = nmp_app_new();
+    let app = test_app_new();
     {
         let app_ref = crate::app_ref(app).expect("app");
         let observer = Arc::new(StubObserver {
@@ -49,14 +49,14 @@ fn open_observed_projection_returns_nonzero_id() {
         );
         app_ref.close_observed_projection(id);
     }
-    nmp_app_free(app);
+    test_app_free(app);
 }
 
 #[test]
 fn close_observed_projection_is_idempotent() {
     // A second close (e.g. a double-fired SwiftUI onDisappear) must not panic
     // and must silently no-op (D6): the sessions map has no entry for the id.
-    let app = nmp_app_new();
+    let app = test_app_new();
     {
         let app_ref = crate::app_ref(app).expect("app");
         let observer = Arc::new(StubObserver {
@@ -70,7 +70,7 @@ fn close_observed_projection_is_idempotent() {
         // Second close — session map has no entry; early-return, no panic.
         app_ref.close_observed_projection(id);
     }
-    nmp_app_free(app);
+    test_app_free(app);
 }
 
 #[test]
@@ -78,7 +78,7 @@ fn open_twice_allocates_distinct_ids() {
     // Two independent calls to open_observed_projection must each receive a
     // distinct, non-zero observer id so their lifetimes are independently
     // managed.
-    let app = nmp_app_new();
+    let app = test_app_new();
     {
         let app_ref = crate::app_ref(app).expect("app");
         let obs1 = Arc::new(StubObserver {
@@ -101,5 +101,5 @@ fn open_twice_allocates_distinct_ids() {
         app_ref.close_observed_projection(id1);
         app_ref.close_observed_projection(id2);
     }
-    nmp_app_free(app);
+    test_app_free(app);
 }

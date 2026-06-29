@@ -247,7 +247,7 @@ mod autopublish_flag_tests {
     //! Verifies that every local-key sign-in path sets `pending_mls_autopublish`
     //! and that the flag is NOT set for non-active or bunker sign-ins.
     use super::*;
-    use crate::{nmp_app_free, nmp_app_new};
+    use crate::{test_app_free, test_app_new};
     use std::ffi::CString;
 
     /// A stable, valid nsec used across sign-in flag tests.
@@ -261,7 +261,7 @@ mod autopublish_flag_tests {
     /// the next `nmp_marmot_register[_active]` publishes a key package.
     #[test]
     fn signin_nsec_make_active_sets_autopublish_flag() {
-        let app = nmp_app_new();
+        let app = test_app_new();
         let app_ref = unsafe { &*app };
         // Precondition: flag starts false.
         assert!(
@@ -281,7 +281,7 @@ mod autopublish_flag_tests {
             !app_ref.take_pending_mls_autopublish(),
             "take_pending_mls_autopublish must be one-shot"
         );
-        nmp_app_free(app);
+        test_app_free(app);
     }
 
     /// `nmp_app_signin_nsec(make_active=0)` registers a visible secondary key
@@ -289,7 +289,7 @@ mod autopublish_flag_tests {
     /// registered with Marmot).
     #[test]
     fn signin_nsec_secondary_does_not_set_autopublish_flag() {
-        let app = nmp_app_new();
+        let app = test_app_new();
         let app_ref = unsafe { &*app };
 
         nmp_app_signin_nsec(app, nsec_c().as_ptr(), 0);
@@ -297,12 +297,12 @@ mod autopublish_flag_tests {
             !app_ref.take_pending_mls_autopublish(),
             "make_active=0 sign-in must NOT set pending_mls_autopublish"
         );
-        nmp_app_free(app);
+        test_app_free(app);
     }
 
     #[test]
     fn register_agent_nsec_does_not_set_autopublish_flag() {
-        let app = nmp_app_new();
+        let app = test_app_new();
         let app_ref = unsafe { &*app };
 
         nmp_app_register_agent_nsec(app, nsec_c().as_ptr());
@@ -310,6 +310,6 @@ mod autopublish_flag_tests {
             !app_ref.take_pending_mls_autopublish(),
             "app-managed local signers are hidden agent keys, not MLS accounts"
         );
-        nmp_app_free(app);
+        test_app_free(app);
     }
 }
