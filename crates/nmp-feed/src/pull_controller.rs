@@ -1,8 +1,8 @@
 //! `PullFeedController` — ADR-0058 §8 step-6B.
 //!
 //! The single, on-demand paging path a feed rides when a host reports
-//! `nmp_app_load_older_feed`. It replaces every per-feed `created_at`
-//! window-grow `load_older` (deleted in 6B): there is now exactly ONE paging
+//! `load_older_feed` through the native session API. It replaces every
+//! per-feed `created_at` window-grow `load_older` (deleted in 6B): there is now exactly ONE paging
 //! mechanism, the seq-ordered pull drain.
 //!
 //! ## What `load_older` does

@@ -2,9 +2,9 @@
 //!
 //! | UniFFI method      | C-ABI counterpart                           |
 //! |--------------------|---------------------------------------------|
-//! | `search_open`      | `nmp_app_search_open` (`nmp-ffi/src/search.rs`)  |
-//! | `search_close`     | `nmp_app_search_close` (`nmp-ffi/src/search.rs`) |
-//! | `search_snapshot`  | `nmp_app_search_snapshot` (`nmp-ffi/src/search.rs`)|
+//! | `search_open`      | native NIP-50 session open                  |
+//! | `search_close`     | native NIP-50 session close                 |
+//! | `search_snapshot`  | native NIP-50 session snapshot              |
 //!
 //! ## Session model
 //!
@@ -33,7 +33,7 @@ use crate::NmpApp;
 impl NmpApp {
     /// Open a NIP-50 search session from a JSON query payload.
     ///
-    /// Mirrors `nmp_app_search_open`. `request_json` must be a JSON object
+    /// `request_json` must be a JSON object
     /// `{"query":"…","scope":…,"targets":…}` parseable by
     /// `nmp_native_runtime::parse_search_request`. `session_id` is a
     /// caller-chosen non-empty key that scopes the session for teardown and
@@ -64,7 +64,7 @@ impl NmpApp {
 
     /// Close a NIP-50 search session previously opened via `search_open`.
     ///
-    /// Mirrors `nmp_app_search_close`. Tears down the relay interests and
+    /// Tears down the relay interests and
     /// removes the typed snapshot projection for `session_id`. An empty or
     /// unknown `session_id` is a silent no-op (D6).
     pub fn search_close(&self, session_id: String) {
@@ -83,7 +83,7 @@ impl NmpApp {
 
     /// Copy the current typed `N50S` search-results snapshot for a session.
     ///
-    /// Mirrors `nmp_app_search_snapshot` but returns bytes directly instead of
+    /// Returns bytes directly instead of
     /// writing into a caller-provided buffer. Returns `None` when no live
     /// session is registered under `session_id` or when the session has no
     /// results yet. The returned bytes are a FlatBuffers `N50S` frame; the
@@ -109,8 +109,7 @@ impl NmpApp {
 mod tests {
     // ── Parity: search_open ───────────────────────────────────────────────
 
-    /// Parity with C-ABI `nmp_app_search_open`:
-    /// a valid request JSON + non-empty session id must not panic (D6 + D8).
+    /// A valid request JSON + non-empty session id must not panic (D6 + D8).
     #[test]
     fn parity_search_open_valid_request_no_panic() {
         let app = crate::NmpApp::new();
@@ -120,8 +119,7 @@ mod tests {
         );
     }
 
-    /// Parity with C-ABI `nmp_app_search_open` empty-session-id path:
-    /// an empty `session_id` must be a silent no-op (D6).
+    /// An empty `session_id` must be a silent no-op (D6).
     #[test]
     fn parity_search_open_empty_session_id_is_noop() {
         let app = crate::NmpApp::new();
@@ -131,8 +129,7 @@ mod tests {
         );
     }
 
-    /// Parity with C-ABI `nmp_app_search_open` null-request path:
-    /// an invalid/empty `request_json` must be a silent no-op (D6).
+    /// An invalid/empty `request_json` must be a silent no-op (D6).
     #[test]
     fn parity_search_open_invalid_request_is_noop() {
         let app = crate::NmpApp::new();
@@ -141,8 +138,7 @@ mod tests {
 
     // ── Parity: search_close ──────────────────────────────────────────────
 
-    /// Parity with C-ABI `nmp_app_search_close`:
-    /// closing an unknown session must be a silent no-op (D6).
+    /// Closing an unknown session must be a silent no-op (D6).
     #[test]
     fn parity_search_close_unknown_session_is_noop() {
         let app = crate::NmpApp::new();
@@ -158,8 +154,7 @@ mod tests {
 
     // ── Parity: search_snapshot ───────────────────────────────────────────
 
-    /// Parity with C-ABI `nmp_app_search_snapshot` null-session path:
-    /// an unknown session must return `None` (D6).
+    /// An unknown session must return `None` (D6).
     #[test]
     fn parity_search_snapshot_unknown_session_returns_none() {
         let app = crate::NmpApp::new();

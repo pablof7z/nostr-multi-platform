@@ -162,8 +162,8 @@ are fire-and-forget dispatches that cause subsequent snapshot emissions.
 
 | Symbol | Signature | Behavior | Callers | D6 | D7 |
 |---|---|---|---|---|---|
-| `nmp_app_load_older_feed` | `(app, key: *const c_char)` | Viewport command for an already-registered feed controller. The host reports "load older" by projection/feed key; Rust owns paging policy and appends through the normal snapshot/projection path. | feed views | invalid key → no-op | D7-clean: shell reports viewport intent; Rust owns page policy |
-| `nmp_app_open_uri` | `(app, uri: *const c_char)` | Route a `nostr:` URI or bare NIP-19 entity. Kernel resolves the entity and pushes `ViewOpened` or `UriRejected` via snapshot. T80/T95. | Native URI adapters | null/invalid → silent no-op | D7-clean: kernel decides routing |
+| UniFFI `loadOlderFeed` | `(key: String)` | Viewport command for an already-registered feed controller. The host reports "load older" by projection/feed key; Rust owns paging policy and appends through the normal snapshot/projection path. | feed views | invalid key → no-op | D7-clean: shell reports viewport intent; Rust owns page policy |
+| UniFFI `openUri` | `(uri: String)` | Route a `nostr:` URI or bare NIP-19 entity. Kernel resolves the entity and pushes `ViewOpened` or `UriRejected` via snapshot. T80/T95. | Native URI adapters | invalid → silent no-op | D7-clean: kernel decides routing |
 
 V-68 / V-112 (ADR-0042): `nmp_app_open_author`, `nmp_app_close_author`,
 `nmp_app_open_thread`, and `nmp_app_close_thread` were **removed** (BREAKING,
@@ -175,7 +175,7 @@ cached replay under the declared projection key; handle close tears down that
 whole session.
 SLICE-NS-READ-001: public C feed open/close was retired. App/staticlib Rust
 composition owns typed feed-session open/close helpers; native shells keep only
-rendering/progress commands such as `nmp_app_load_older_feed`.
+rendering/progress commands such as UniFFI `loadOlderFeed`.
 
 > **DELETED:** `nmp_app_claim_profile` and `nmp_app_release_profile` are removed.
 > Profile hydration uses the typed resolve-ref surface (`nmp_app_resolve_profile_ref` /
@@ -349,8 +349,8 @@ the Rust action modules derive signing identity and routing policy.
 | `nmp_app_cancel_action` | PASS | PASS | Publish/action lifecycle control (`nmp_app_cancel_publish` deleted) |
 | `nmp_app_add_relay` | PASS | PASS | |
 | `nmp_app_remove_relay` | PASS | PASS | |
-| `nmp_app_load_older_feed` | PASS | PASS | Viewport command only; Rust owns feed page policy |
-| `nmp_app_open_uri` | PASS | PASS | |
+| UniFFI `loadOlderFeed` | PASS | PASS | Viewport command only; Rust owns feed page policy |
+| UniFFI `openUri` | PASS | PASS | |
 | `nmp_app_resolve_ref` (namespace=1/event) | PASS | PASS | Unified event-ref resolution (`nmp_app_claim_profile` deleted) |
 | `nmp_app_release_ref` (namespace=1/event) | PASS | PASS | Unified event-ref release (`nmp_app_release_profile` deleted) |
 | `nmp_app_debug_info` | PASS — `{}` for unknown domain/null app, never NULL for non-null app | PASS | Diagnostic pull accessor |

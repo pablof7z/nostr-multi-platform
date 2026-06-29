@@ -2,9 +2,9 @@
 //!
 //! | UniFFI method | C-ABI counterpart                             |
 //! |---------------|-----------------------------------------------|
-//! | `open_uri`    | `nmp_app_open_uri` (`nmp-ffi/src/timeline.rs`)|
+//! | `open_uri`    | native URI routing method                    |
 //!
-//! `nmp_app_open_uri` routes a `nostr:` URI (or a bare NIP-19 entity) through
+//! `open_uri` routes a `nostr:` URI (or a bare NIP-19 entity) through
 //! the `KernelAction` reducer. A successful route registers the resolved interest
 //! and pushes a `ViewOpened` update; failure pushes `UriRejected`. This is an
 //! async fire-and-forget: the method returns before the reducer runs (D8).
@@ -19,7 +19,7 @@ use crate::NmpApp;
 impl NmpApp {
     /// Route a `nostr:` URI (or a bare NIP-19 entity) to the kernel reducer.
     ///
-    /// Mirrors `nmp_app_open_uri`. Parses `uri` as a NIP-21/NIP-19 value and
+    /// Parses `uri` as a NIP-21/NIP-19 value and
     /// dispatches a `KernelAction::OpenUri` to the actor. On success the kernel
     /// registers the resolved interest and emits a `ViewOpened` update frame;
     /// on failure it emits `UriRejected`. Both outcomes are delivered
@@ -38,8 +38,7 @@ impl NmpApp {
 mod tests {
     // ── Parity: open_uri ──────────────────────────────────────────────────
 
-    /// Parity with C-ABI `nmp_app_open_uri`:
-    /// a valid `nostr:npub` URI must not panic (D6 + D8).
+    /// A valid `nostr:npub` URI must not panic (D6 + D8).
     #[test]
     fn parity_open_uri_valid_npub_no_panic() {
         let app = crate::NmpApp::new();
@@ -49,8 +48,7 @@ mod tests {
         );
     }
 
-    /// Parity with C-ABI `nmp_app_open_uri` null-arg path:
-    /// an empty URI must be a silent no-op (D6).
+    /// An empty URI must be a silent no-op (D6).
     #[test]
     fn parity_open_uri_empty_is_noop() {
         let app = crate::NmpApp::new();

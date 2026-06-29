@@ -1459,7 +1459,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_lifecycle_foreground() != 16665.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_load_older_feed() != 59269.toShort()) {
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_load_older_feed() != 30803.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_mirror_pull_page() != 45548.toShort()) {
@@ -1471,7 +1471,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_open_feed_json() != 29546.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_open_uri() != 54191.toShort()) {
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_open_uri() != 12173.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_register_action_result_observer() != 58182.toShort()) {
@@ -1525,13 +1525,13 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_retry_publish() != 19023.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_search_close() != 7623.toShort()) {
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_search_close() != 14865.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_search_open() != 28028.toShort()) {
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_search_open() != 54540.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_search_snapshot() != 37593.toShort()) {
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_search_snapshot() != 55211.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_set_capability_callback() != 58918.toShort()) {
@@ -2308,7 +2308,7 @@ public interface NmpAppInterface {
     /**
      * Advance the feed's viewport to the next older page.
      *
-     * Mirrors `nmp_app_load_older_feed`. `key` is the projection key of the
+     * `key` is the projection key of the
      * feed to page (the same string returned in `FeedSessionHandle.projection_key`
      * or a well-known constant like `"nmp.feed.home"`). Returns `true` when the
      * viewport cursor actually changed; `false` for an unknown key or when
@@ -2369,7 +2369,7 @@ public interface NmpAppInterface {
     /**
      * Route a `nostr:` URI (or a bare NIP-19 entity) to the kernel reducer.
      *
-     * Mirrors `nmp_app_open_uri`. Parses `uri` as a NIP-21/NIP-19 value and
+     * Parses `uri` as a NIP-21/NIP-19 value and
      * dispatches a `KernelAction::OpenUri` to the actor. On success the kernel
      * registers the resolved interest and emits a `ViewOpened` update frame;
      * on failure it emits `UriRejected`. Both outcomes are delivered
@@ -2549,7 +2549,7 @@ public interface NmpAppInterface {
     /**
      * Close a NIP-50 search session previously opened via `search_open`.
      *
-     * Mirrors `nmp_app_search_close`. Tears down the relay interests and
+     * Tears down the relay interests and
      * removes the typed snapshot projection for `session_id`. An empty or
      * unknown `session_id` is a silent no-op (D6).
      */
@@ -2558,7 +2558,7 @@ public interface NmpAppInterface {
     /**
      * Open a NIP-50 search session from a JSON query payload.
      *
-     * Mirrors `nmp_app_search_open`. `request_json` must be a JSON object
+     * `request_json` must be a JSON object
      * `{"query":"…","scope":…,"targets":…}` parseable by
      * `nmp_native_runtime::parse_search_request`. `session_id` is a
      * caller-chosen non-empty key that scopes the session for teardown and
@@ -2577,7 +2577,7 @@ public interface NmpAppInterface {
     /**
      * Copy the current typed `N50S` search-results snapshot for a session.
      *
-     * Mirrors `nmp_app_search_snapshot` but returns bytes directly instead of
+     * Returns bytes directly instead of
      * writing into a caller-provided buffer. Returns `None` when no live
      * session is registered under `session_id` or when the session has no
      * results yet. The returned bytes are a FlatBuffers `N50S` frame; the
@@ -3287,7 +3287,7 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
     /**
      * Advance the feed's viewport to the next older page.
      *
-     * Mirrors `nmp_app_load_older_feed`. `key` is the projection key of the
+     * `key` is the projection key of the
      * feed to page (the same string returned in `FeedSessionHandle.projection_key`
      * or a well-known constant like `"nmp.feed.home"`). Returns `true` when the
      * viewport cursor actually changed; `false` for an unknown key or when
@@ -3389,7 +3389,7 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
     /**
      * Route a `nostr:` URI (or a bare NIP-19 entity) to the kernel reducer.
      *
-     * Mirrors `nmp_app_open_uri`. Parses `uri` as a NIP-21/NIP-19 value and
+     * Parses `uri` as a NIP-21/NIP-19 value and
      * dispatches a `KernelAction::OpenUri` to the actor. On success the kernel
      * registers the resolved interest and emits a `ViewOpened` update frame;
      * on failure it emits `UriRejected`. Both outcomes are delivered
@@ -3731,7 +3731,7 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
     /**
      * Close a NIP-50 search session previously opened via `search_open`.
      *
-     * Mirrors `nmp_app_search_close`. Tears down the relay interests and
+     * Tears down the relay interests and
      * removes the typed snapshot projection for `session_id`. An empty or
      * unknown `session_id` is a silent no-op (D6).
      */override fun `searchClose`(`sessionId`: kotlin.String)
@@ -3749,7 +3749,7 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
     /**
      * Open a NIP-50 search session from a JSON query payload.
      *
-     * Mirrors `nmp_app_search_open`. `request_json` must be a JSON object
+     * `request_json` must be a JSON object
      * `{"query":"…","scope":…,"targets":…}` parseable by
      * `nmp_native_runtime::parse_search_request`. `session_id` is a
      * caller-chosen non-empty key that scopes the session for teardown and
@@ -3777,7 +3777,7 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
     /**
      * Copy the current typed `N50S` search-results snapshot for a session.
      *
-     * Mirrors `nmp_app_search_snapshot` but returns bytes directly instead of
+     * Returns bytes directly instead of
      * writing into a caller-provided buffer. Returns `None` when no live
      * session is registered under `session_id` or when the session has no
      * results yet. The returned bytes are a FlatBuffers `N50S` frame; the

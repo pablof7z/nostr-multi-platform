@@ -32,7 +32,7 @@ Add a reusable `nmp-feed` crate. It owns:
 Add exactly one generic C ABI symbol:
 
 ```c
-void nmp_app_load_older_feed(void *app, const char *feed_key);
+void loadOlderFeed(const char *feed_key);
 ```
 
 `nmp-app-chirp` registers the reusable home feed under the snapshot-projection
@@ -44,7 +44,7 @@ update stream:
 ```
 
 When the rendered tail becomes visible, shells call
-`nmp_app_load_older_feed(app, "nmp.feed.home")`. They do not construct cursor
+`loadOlderFeed("nmp.feed.home")`. They do not construct cursor
 requests, do not know page-size or cap constants, and do not call a
 Chirp-specific feed read API.
 
@@ -64,4 +64,5 @@ in `nmp-feed`.
 - The C ABI grows by one generic feed viewport intent, not a Chirp-specific
   timeline/window protocol.
 - Chirp consumes a standard feed projection and stays a showcase app.
-- `nmp_app_load_older_feed` is the one new C symbol added by this ADR (the old freeze gate, since deleted in PR #933, was explicitly overridden for this symbol).
+- The former C viewport symbol added by this ADR was deleted after the UniFFI
+  native session API became the public native path.
