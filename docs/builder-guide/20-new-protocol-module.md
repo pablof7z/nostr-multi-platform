@@ -58,6 +58,16 @@ generated composition roots, or automatic read model/projection generation for
 an app-private kind. The app's explicit composition root still registers its
 own `ActionModule` and read surfaces.
 
+Use `crates/nmp-example-login-timeline` as the starter proof before creating a
+new protocol crate. Its `action-builders.json` declares
+`app.login_timeline.publish_status` for kind `30444`; its app-owned schema,
+generated Swift/Kotlin/TypeScript builders, `PublishStatusAction:
+ActionPayload`, and `PublishStatusModule: ActionModule` all live inside the
+example app. The generated builders produce typed `DispatchEnvelope` bytes for
+the app-owned decoder and module. They do not use `PublishRaw`, and the
+namespace is deliberately absent from the built-in NMP `ACTION_CONTRACT` and
+`ACTION_BUILDERS` tables.
+
 Promotion rule: move a private kind into an NMP protocol crate only after it is
 usable unchanged as a generic Nostr mechanism by unrelated apps. Until then,
 the kind remains app-owned even though it gets NMP-grade generated builders and

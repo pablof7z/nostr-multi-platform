@@ -156,6 +156,43 @@ discover private app registries or remote schemas; each app that consumes an
 app-local registry owns its own registry-wide `--check` command and Rust
 decode/action-module tests.
 
+### Starter proof: `nmp-example-login-timeline`
+
+`crates/nmp-example-login-timeline` is the public starter proof for one
+app-private kind. Follow these files as the smallest complete shape:
+
+- `action-builders.json` declares
+  `app.login_timeline.publish_status`, event kind `30444`,
+  `schema/publish_status.fbs`, generated builder method `publishStatus`, and
+  the app-owned Rust payload/module names.
+- `schema/publish_status.fbs` is the app-owned FlatBuffers payload schema.
+- `generated/ActionBuilders.generated.swift`, `generated/ActionBuilders.kt`,
+  and `generated/actionBuilders.generated.ts` are generated from that app-local
+  registry. They build `DispatchEnvelope` bytes for the byte doorway; they do
+  not call `PublishRaw` or `nmp.publish`.
+- `src/private_status.rs` owns `PublishStatusAction: ActionPayload`,
+  `PublishStatusModule: ActionModule`, validation, tag policy, and event
+  construction for kind `30444`.
+- `src/lib.rs` registers `PublishStatusModule` in the app composition root with
+  `ActionRegistrar::register_action`.
+- `src/private_status_tests.rs` decodes generated-builder-shaped bytes through
+  the app-owned `ActionPayload`, registers the app-owned `ActionModule`, and
+  asserts execution publishes the declared app-private kind.
+
+Regenerate and check the starter proof with:
+
+```bash
+cargo run -p nmp-codegen -- gen action-builders \
+  --registry crates/nmp-example-login-timeline/action-builders.json \
+  --check
+cargo test -p nmp-example-login-timeline
+```
+
+That path is intentionally app-local. Do not add
+`app.login_timeline.publish_status` to NMP's built-in `ACTION_CONTRACT` or
+`ACTION_BUILDERS`; the built-in tables are only for reusable default NMP
+actions.
+
 ## Public bindings and transitional internals
 
 ```
