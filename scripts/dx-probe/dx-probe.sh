@@ -191,9 +191,8 @@ if [[ "$NO_RUN" -eq 0 && "$M1_COMPILE_PASS" == "true" ]]; then
     else
         exit_code=$?
         if [[ $exit_code -eq 124 ]]; then
-            # timeout is OK — the shell has no exit trigger in headless mode
-            M3_RUN_PASS="timeout-ok"
-            pass "G3: shell example started (timed out at 30s — expected for headless)"
+            M3_RUN_PASS="false"
+            fail "G3: shell example timed out (DX GAP: headless shell must start and tear down)"
         else
             M3_RUN_PASS="false"
             fail "G3: shell example exited non-zero (DX GAP)"
@@ -297,10 +296,10 @@ log "Analysing DX GAPs"
 
 DX_GAPS=""
 
-if grep -q "register_defaults" "$SHELL_RS"; then
-    DX_GAPS="${DX_GAPS}GAP-1: shell.rs references register_defaults — production starters must call the app composition root, not a hidden preset.\n"
+if grep -Eq "register_defaults|open_interest|ObservedProjection|ReducedSource|PublishRaw|publishRaw|nmp.feed.home|resolved_profiles|claimed_event_embeds" "$LIB_RS" "$SHELL_RS"; then
+    DX_GAPS="${DX_GAPS}GAP-1: scaffold exposes retired clean-break app vocabulary — starters must use explicit composition plus typed read/write helpers.\n"
 else
-    log "  shell.rs avoids hidden register_defaults preset: YES"
+    log "  scaffold avoids hidden defaults and retired raw app vocabulary: YES"
 fi
 
 if grep -q "register_substrate" "$LIB_RS"; then
