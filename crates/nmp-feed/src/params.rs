@@ -110,6 +110,16 @@ pub enum PubkeySetExpr {
     /// event or derived wrapper that references the root via an `#e` tag.
     /// An EMPTY event_id fails closed (admits nobody).
     Referrer { event_id: String },
+    /// Target events referenced by pointer events authored by `pointers`.
+    ///
+    /// The pointer source names the authors whose pointer events are watched;
+    /// `pointer_kinds` names the pointer event kinds (for example reactions and
+    /// NIP-22 comments). The compiler extracts `e`/`a` targets from those
+    /// pointer events and hydrates only the feed's primary kinds.
+    PointerTargets {
+        pointers: Box<PubkeySetExpr>,
+        pointer_kinds: Vec<u32>,
+    },
     /// Set union of two sub-expressions.
     Union(Box<PubkeySetExpr>, Box<PubkeySetExpr>),
     /// Set intersection of two sub-expressions.

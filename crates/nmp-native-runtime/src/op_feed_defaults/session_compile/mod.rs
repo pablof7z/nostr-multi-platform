@@ -30,6 +30,7 @@ use nmp_feed::{FeedAdmission, FeedParams, FeedSessionBuild};
 mod custom;
 mod flat_replay;
 mod nip51_sources;
+mod pointer_targets;
 mod resolve;
 mod resolve_static;
 mod session_engine;

@@ -79,6 +79,7 @@ fn build_op_scope_session(
         reset_hooks,
         resolver_observer_ids,
         identity_observer_ids,
+        resolver_teardown,
     } = resolved;
 
     let viewer = match (
@@ -290,6 +291,7 @@ fn build_op_scope_session(
     for id in &identity_observer_ids {
         teardown.push(teardown_handle.revoke_identity_observer(*id));
     } // exec #3
+    teardown.extend(resolver_teardown);
     teardown.push(engine_observer.teardown_action()); // exec #2
     teardown.push(teardown_handle.unregister_feed(key.to_string())); // exec #1 (first)
 
@@ -313,6 +315,7 @@ fn build_flat_scope_session(
         reset_hooks,
         resolver_observer_ids,
         identity_observer_ids,
+        resolver_teardown,
     } = resolved;
 
     let feed = nmp_nip01::FlatFeed::new(admission);
@@ -421,6 +424,7 @@ fn build_flat_scope_session(
     for id in &identity_observer_ids {
         teardown.push(teardown_handle.revoke_identity_observer(*id));
     }
+    teardown.extend(resolver_teardown);
     teardown.push(engine_observer.teardown_action());
     teardown.push(teardown_handle.unregister_feed(key.to_string()));
 
