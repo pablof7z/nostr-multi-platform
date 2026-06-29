@@ -56,6 +56,10 @@ mechanism". Some complexity is paying for real Nostr correctness. The target is
 fewer public doors, fewer duplicate lifecycle recipes, fewer shell policy sites,
 and fewer permanent concepts an app author must understand.
 
+For the non-ADR overview of how an app is built and how the pieces flow through
+NMP crates, see
+[`docs/architecture/high-level-app-architecture.md`](../architecture/high-level-app-architecture.md).
+
 ## Status Terms
 
 - **Current**: still owns a live invariant.

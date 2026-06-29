@@ -10,9 +10,9 @@
   ADR-0025 (Marmot bespoke FFI cluster — named exception),
   ADR-0026 (signer NIP-44 seal seam),
   memory: `dual_action_seam_footgun.md`
-- Doctrine: aim.md §6 doctrine #3 ("All writes through actions — no manually
-  assembled build/sign/publish sequence") and #6 (auto-wired subscriptions —
-  by analogy, auto-wired action registrations).
+- Doctrine: aim.md §6 doctrine #3 ("All writes through actor-owned workflows")
+  and #6 (auto-wired subscriptions — by analogy, auto-wired action
+  registrations).
 
 ## Context — the dual seam
 
@@ -155,11 +155,11 @@ zero Swift / Kotlin / Objective-C callers, so deletion was empirically safe.
 
 ## Doctrine alignment
 
-- **aim.md §6 doctrine #3** — "All writes through actions. No 'build event,
-  sign, publish' sequence the developer assembles manually." Today's dual
-  seam lets a developer assemble *half* of a write path and ship it. After
-  this ADR, registering an action means implementing one trait — the
-  framework provides the dispatch side automatically.
+- **aim.md §6 doctrine #3** — app code may compose unsigned drafts, but NMP owns
+  finalization, signing, routing, local ingest, retry/status, and terminal
+  result. Today's dual seam lets a developer assemble *half* of a write path
+  and ship it. After this ADR, registering an action means implementing one
+  trait — the framework provides the dispatch side automatically.
 - **aim.md §6 doctrine #6** — auto-grouped, auto-closed subscriptions. The
   analogue at the action seam is auto-wired registration: one call, both
   halves. The doctrine's spirit (the developer never assembles the

@@ -57,6 +57,20 @@ Host-facing builders expose typed intent methods; those builders encode the
 per-module payload, stamp the namespace, and send the finished envelope through
 the single doorway.
 
+Write APIs separate three concerns:
+
+- **construction:** protocol/app helpers build unsigned drafts or typed action
+  payloads such as reply, reaction, article, group message, or DM;
+- **signing:** the actor selects or receives the signer capability and records
+  pending/rejected/signed state;
+- **publishing:** the actor applies final protocol envelope mutation before
+  signing, chooses route policy, publishes, ingests locally, and reports status.
+
+Protocol helpers may override default outbox planning only through typed route
+provenance, such as verified private inbox, group host pin, manual override,
+imported event, or diagnostic route. Anonymous relay lists are not durable
+product publish state.
+
 Action modules are registered in Rust with `NmpApp::register_action`. A module
 owns its action payload, validation, execution, capability requests, and any
 state it projects. `nmp-core` does not grow app-specific verbs to satisfy one
@@ -102,6 +116,7 @@ from the live ABI/schema.
 ### 6.7 API Doctrine
 
 - One write doorway per runtime.
+- Construction, signing, and publishing are separate Rust-owned stages.
 - Typed projections only; no schema-less payload fallback.
 - Rust owns protocol and product policy; native renders and executes
   capabilities.
