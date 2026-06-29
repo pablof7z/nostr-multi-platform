@@ -34,7 +34,9 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output, Stdio};
+use std::sync::{mpsc, OnceLock};
+use std::time::Duration;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -65,6 +67,108 @@ impl TempDir {
     fn path(&self) -> &Path {
         &self.0
     }
+}
+
+struct Scaffold {
+    _tmp: TempDir,
+    app_root: PathBuf,
+    pkg: String,
+}
+
+impl Scaffold {
+    fn new() -> Self {
+        let name = "dxdemo";
+        let tmp = TempDir::new("shared");
+        let nmp = nmp_checkout();
+        let app_root = tmp.path().join(name);
+        let pkg = format!("{name}-core");
+
+        let init = Command::new(cargo())
+            .args([
+                "run",
+                "-p",
+                "nmp-cli",
+                "--manifest-path",
+                nmp.join("Cargo.toml").to_str().unwrap(),
+                "--",
+                "init",
+                name,
+                "--path",
+                app_root.to_str().unwrap(),
+                "--nmp-path",
+                nmp.to_str().unwrap(),
+            ])
+            .output()
+            .expect("run nmp-cli");
+
+        assert!(
+            init.status.success(),
+            "`nmp init {name}` failed\nstderr: {}\nstdout: {}",
+            String::from_utf8_lossy(&init.stderr),
+            String::from_utf8_lossy(&init.stdout),
+        );
+
+        Self {
+            _tmp: tmp,
+            app_root,
+            pkg,
+        }
+    }
+
+    fn crate_dir(&self) -> PathBuf {
+        self.app_root.join("crates").join(&self.pkg)
+    }
+
+    fn lib_rs(&self) -> String {
+        fs::read_to_string(self.crate_dir().join("src").join("lib.rs")).expect("read lib.rs")
+    }
+
+    fn shell_rs(&self) -> String {
+        fs::read_to_string(self.crate_dir().join("examples").join("shell.rs"))
+            .expect("read shell.rs")
+    }
+
+    fn cargo(&self, args: &[&str]) -> Output {
+        Command::new(cargo())
+            .args(args)
+            .current_dir(&self.app_root)
+            .output()
+            .expect("run scaffold cargo command")
+    }
+
+    fn run_shell(&self) -> Output {
+        let child = Command::new(cargo())
+            .args(["run", "--example", "shell", "-p", &self.pkg])
+            .current_dir(&self.app_root)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn scaffold shell");
+        let child_id = child.id();
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(child.wait_with_output());
+        });
+
+        match rx.recv_timeout(Duration::from_secs(30)) {
+            Ok(output) => output.expect("wait for scaffold shell"),
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                let _ = Command::new("kill")
+                    .args(["-TERM", &child_id.to_string()])
+                    .status();
+                let _ = rx.recv_timeout(Duration::from_secs(5));
+                panic!("scaffold shell did not complete within 30s");
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                panic!("scaffold shell waiter disconnected")
+            }
+        }
+    }
+}
+
+fn scaffold() -> &'static Scaffold {
+    static SCAFFOLD: OnceLock<Scaffold> = OnceLock::new();
+    SCAFFOLD.get_or_init(Scaffold::new)
 }
 
 impl Drop for TempDir {
@@ -114,54 +218,24 @@ fn count_policy_loc(content: &str) -> (usize, Vec<String>) {
 
 #[test]
 fn g1_fresh_scaffold_compiles() {
-    let tmp = TempDir::new("g1");
-    let nmp = nmp_checkout();
-    let app_root = tmp.path().join("dxdemo");
-    let pkg = "dxdemo-core";
-
-    // Run `nmp init`.
-    let init = Command::new(cargo())
-        .args([
-            "run",
-            "-p",
-            "nmp-cli",
-            "--manifest-path",
-            nmp.join("Cargo.toml").to_str().unwrap(),
-            "--",
-            "init",
-            "dxdemo",
-            "--path",
-            app_root.to_str().unwrap(),
-            "--nmp-path",
-            nmp.to_str().unwrap(),
-        ])
-        .output()
-        .expect("run nmp-cli");
-
-    assert!(
-        init.status.success(),
-        "G1 DX GAP: `nmp init` failed — scaffold was not produced.\n\
-         stderr: {}\nstdout: {}",
-        String::from_utf8_lossy(&init.stderr),
-        String::from_utf8_lossy(&init.stdout),
-    );
+    let scaffold = scaffold();
 
     // Sanity: files exist.
     assert!(
-        app_root.join("crates").join(pkg).join("src").join("lib.rs").exists(),
+        scaffold.crate_dir().join("src").join("lib.rs").exists(),
         "G1 DX GAP: lib.rs missing from scaffold"
     );
     assert!(
-        app_root.join("crates").join(pkg).join("examples").join("shell.rs").exists(),
+        scaffold
+            .crate_dir()
+            .join("examples")
+            .join("shell.rs")
+            .exists(),
         "G1 DX GAP: shell.rs missing from scaffold"
     );
 
     // cargo check --all-targets with ZERO developer edits.
-    let check = Command::new(cargo())
-        .args(["check", "--all-targets"])
-        .current_dir(&app_root)
-        .output()
-        .expect("cargo check");
+    let check = scaffold.cargo(&["check", "--all-targets"]);
 
     assert!(
         check.status.success(),
@@ -169,6 +243,27 @@ fn g1_fresh_scaffold_compiles() {
          This means the developer cannot follow the init → check → run path.\n\
          stderr: {}",
         String::from_utf8_lossy(&check.stderr),
+    );
+
+    let test = scaffold.cargo(&["test", "-p", &scaffold.pkg]);
+    assert!(
+        test.status.success(),
+        "G1 DX GAP: fresh scaffold tests do not pass.\nstderr: {}",
+        String::from_utf8_lossy(&test.stderr),
+    );
+
+    let run = scaffold.run_shell();
+    assert!(
+        run.status.success(),
+        "G1 DX GAP: fresh scaffold shell does not run through headless start/stop.\n\
+         stderr: {}\nstdout: {}",
+        String::from_utf8_lossy(&run.stderr),
+        String::from_utf8_lossy(&run.stdout),
+    );
+    assert!(
+        String::from_utf8_lossy(&run.stdout).contains("NmpAppBuilder"),
+        "G1 DX GAP: shell run did not report the documented builder path.\nstdout: {}",
+        String::from_utf8_lossy(&run.stdout),
     );
 }
 
@@ -178,36 +273,9 @@ fn g1_fresh_scaffold_compiles() {
 
 #[test]
 fn g2_scaffold_has_zero_policy_loc() {
-    let tmp = TempDir::new("g2");
-    let nmp = nmp_checkout();
-    let app_root = tmp.path().join("dxdemo2");
-    let pkg = "dxdemo2-core";
-    let crate_dir = app_root.join("crates").join(pkg);
-
-    let init = Command::new(cargo())
-        .args([
-            "run",
-            "-p",
-            "nmp-cli",
-            "--manifest-path",
-            nmp.join("Cargo.toml").to_str().unwrap(),
-            "--",
-            "init",
-            "dxdemo2",
-            "--path",
-            app_root.to_str().unwrap(),
-            "--nmp-path",
-            nmp.to_str().unwrap(),
-        ])
-        .output()
-        .expect("run nmp-cli");
-
-    assert!(init.status.success(), "nmp init failed");
-
-    let lib_rs = fs::read_to_string(crate_dir.join("src").join("lib.rs"))
-        .expect("read lib.rs");
-    let shell_rs = fs::read_to_string(crate_dir.join("examples").join("shell.rs"))
-        .expect("read shell.rs");
+    let scaffold = scaffold();
+    let lib_rs = scaffold.lib_rs();
+    let shell_rs = scaffold.shell_rs();
 
     // Only check shell.rs for policy code — lib.rs contains the skeleton
     // domain stubs (EntryRecord / EntryViewModule / EntryActionModule) which
@@ -218,7 +286,8 @@ fn g2_scaffold_has_zero_policy_loc() {
     let total_policy = shell_policy_loc + lib_policy_loc;
 
     assert_eq!(
-        total_policy, 0,
+        total_policy,
+        0,
         "G2 DX GAP: scaffold contains {total_policy} line(s) of framework-policy code \
          that the developer should NEVER touch (aim.md §1).\n\
          Shell hits:\n{}\nLib hits:\n{}",
@@ -235,35 +304,8 @@ fn g2_scaffold_has_zero_policy_loc() {
 /// to "3 commands to running" (init → check → run).
 #[test]
 fn g3_shell_uses_nmp_app_builder() {
-    let tmp = TempDir::new("g3");
-    let nmp = nmp_checkout();
-    let app_root = tmp.path().join("dxdemo3");
-    let pkg = "dxdemo3-core";
-
-    let init = Command::new(cargo())
-        .args([
-            "run",
-            "-p",
-            "nmp-cli",
-            "--manifest-path",
-            nmp.join("Cargo.toml").to_str().unwrap(),
-            "--",
-            "init",
-            "dxdemo3",
-            "--path",
-            app_root.to_str().unwrap(),
-            "--nmp-path",
-            nmp.to_str().unwrap(),
-        ])
-        .output()
-        .expect("run nmp-cli");
-
-    assert!(init.status.success(), "nmp init failed");
-
-    let shell_rs = fs::read_to_string(
-        app_root.join("crates").join(pkg).join("examples").join("shell.rs"),
-    )
-    .expect("read shell.rs");
+    let scaffold = scaffold();
+    let shell_rs = scaffold.shell_rs();
 
     // G3a: Shell drives NmpAppBuilder (aim.md §4.14 — builder is the gateway).
     assert!(
@@ -292,7 +334,7 @@ fn g3_shell_uses_nmp_app_builder() {
     // G3d: Shell declares the kernel built-in starter projections.
     assert!(
         shell_rs.contains(
-            ".declare_consumed_projections(dxdemo3_core::starter_builtin_projection_keys())"
+            ".declare_consumed_projections(dxdemo_core::starter_builtin_projection_keys())"
         ),
         "G3 DX GAP: shell.rs does not declare kernel built-in starter projections.\n\
          shell.rs:\n{shell_rs}",
@@ -300,10 +342,7 @@ fn g3_shell_uses_nmp_app_builder() {
 
     // G3e: lib.rs installs the substrate explicitly and does not teach a hidden
     // production preset.
-    let lib_rs = fs::read_to_string(
-        app_root.join("crates").join(pkg).join("src").join("lib.rs"),
-    )
-    .expect("read lib.rs");
+    let lib_rs = scaffold.lib_rs();
 
     let substrate = lib_rs.find("nmp_defaults::register_substrate");
     let nip50 = lib_rs.find("nmp_defaults::register_nip50_protocol_defaults");
@@ -323,7 +362,7 @@ fn g3_shell_uses_nmp_app_builder() {
 
     // G3f: lib.rs teaches current projections and typed write builders.
     for key in [
-        "dxdemo3.timeline.home",
+        "dxdemo.timeline.home",
         "refs.profile",
         "refs.event",
         "refs.event.envelopes",
@@ -349,11 +388,27 @@ fn g3_shell_uses_nmp_app_builder() {
     );
     let legacy_embed_projection_key = ["claimed_event", "embeds"].join("_");
     assert!(
-        !lib_rs.contains("resolved_profiles")
-            && !lib_rs.contains(&legacy_embed_projection_key),
+        !lib_rs.contains("resolved_profiles") && !lib_rs.contains(&legacy_embed_projection_key),
         "G3 DX GAP: starter code must not mention legacy projection data sources.\n\
          lib.rs:\n{lib_rs}",
     );
+    for forbidden in [
+        "register_defaults",
+        "open_interest",
+        "ObservedProjection",
+        "ReducedSource",
+        "PublishRaw",
+        "publishRaw",
+        "nmp.feed.home",
+        "resolved_profiles",
+        &legacy_embed_projection_key,
+    ] {
+        assert!(
+            !lib_rs.contains(forbidden) && !shell_rs.contains(forbidden),
+            "G3 DX GAP: scaffold exposes retired app-facing vocabulary `{forbidden}`.\n\
+             lib.rs:\n{lib_rs}\nshell.rs:\n{shell_rs}",
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -362,58 +417,29 @@ fn g3_shell_uses_nmp_app_builder() {
 
 #[test]
 fn g4_shell_has_no_business_logic() {
-    let tmp = TempDir::new("g4");
-    let nmp = nmp_checkout();
-    let app_root = tmp.path().join("dxdemo4");
-    let pkg = "dxdemo4-core";
-
-    let init = Command::new(cargo())
-        .args([
-            "run",
-            "-p",
-            "nmp-cli",
-            "--manifest-path",
-            nmp.join("Cargo.toml").to_str().unwrap(),
-            "--",
-            "init",
-            "dxdemo4",
-            "--path",
-            app_root.to_str().unwrap(),
-            "--nmp-path",
-            nmp.to_str().unwrap(),
-        ])
-        .output()
-        .expect("run nmp-cli");
-
-    assert!(init.status.success(), "nmp init failed");
-
-    let shell_rs = fs::read_to_string(
-        app_root.join("crates").join(pkg).join("examples").join("shell.rs"),
-    )
-    .expect("read shell.rs");
+    let scaffold = scaffold();
+    let shell_rs = scaffold.shell_rs();
 
     // Business-logic patterns that belong in Rust core (aim.md §2 inv-4),
     // not in the native shell.  The shell must be: builder → register → start
     // → stop → free.  Nothing else.
     let business_logic_patterns: &[(&str, &str)] = &[
-        ("relay_url",      "relay URL selection"),
-        ("add_relay(",     "relay pool management"),
-        ("subscribe(",     "manual subscription management"),
-        ("cache_invalidat","cache invalidation"),
-        ("replaceable",    "replaceable-event semantics"),
+        ("relay_url", "relay URL selection"),
+        ("add_relay(", "relay pool management"),
+        ("subscribe(", "manual subscription management"),
+        ("cache_invalidat", "cache invalidation"),
+        ("replaceable", "replaceable-event semantics"),
     ];
 
     let mut violations = Vec::new();
     for (lineno, line) in shell_rs.lines().enumerate() {
         let trimmed = line.trim();
-        if trimmed.starts_with("//") { continue; }
+        if trimmed.starts_with("//") {
+            continue;
+        }
         for (pattern, label) in business_logic_patterns {
             if trimmed.contains(pattern) {
-                violations.push(format!(
-                    "  line {}: {label}: {}",
-                    lineno + 1,
-                    line
-                ));
+                violations.push(format!("  line {}: {label}: {}", lineno + 1, line));
             }
         }
     }
@@ -442,35 +468,8 @@ fn g4_shell_has_no_business_logic() {
 /// just adds `app.register_typed_snapshot_projection(...)` in register() body.
 #[test]
 fn g5_add_feature_seam_is_one_file() {
-    let tmp = TempDir::new("g5");
-    let nmp = nmp_checkout();
-    let app_root = tmp.path().join("dxdemo5");
-    let pkg = "dxdemo5-core";
-
-    let init = Command::new(cargo())
-        .args([
-            "run",
-            "-p",
-            "nmp-cli",
-            "--manifest-path",
-            nmp.join("Cargo.toml").to_str().unwrap(),
-            "--",
-            "init",
-            "dxdemo5",
-            "--path",
-            app_root.to_str().unwrap(),
-            "--nmp-path",
-            nmp.to_str().unwrap(),
-        ])
-        .output()
-        .expect("run nmp-cli");
-
-    assert!(init.status.success(), "nmp init failed");
-
-    let lib_rs = fs::read_to_string(
-        app_root.join("crates").join(pkg).join("src").join("lib.rs"),
-    )
-    .expect("read lib.rs");
+    let scaffold = scaffold();
+    let lib_rs = scaffold.lib_rs();
 
     // The `register` function must accept `&mut impl AppHost` — the substrate
     // trait that exposes `register_typed_snapshot_projection`.  If present,

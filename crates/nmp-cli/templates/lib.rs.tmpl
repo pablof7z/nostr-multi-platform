@@ -374,12 +374,13 @@ mod tests {
     fn starter_contract_uses_generated_action_builders() {
         let builders = starter_action_builder_paths();
 
-        assert!(builders
-            .iter()
-            .all(|builder| builder.starts_with("GeneratedActionBuilders.")));
-        assert!(builders.iter().all(|builder| !builder.ends_with("publishRaw")));
-        assert!(builders.iter().any(|builder| builder.ends_with("publishReply")));
-        assert!(builders.iter().any(|builder| builder.ends_with("publishProfile")));
+        assert_eq!(
+            builders,
+            [
+                "GeneratedActionBuilders.publishReply",
+                "GeneratedActionBuilders.publishProfile",
+            ]
+        );
     }
 
     #[test]
