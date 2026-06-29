@@ -22,11 +22,11 @@ Four layers, strict ownership. Built from the bottom up:
 │  owns: rendering, OS handle execution, generated binding wrappers      │
 │  D5 ► consumes ONE bounded FlatBuffers update frame; no policy nouns     │
 └────────────────────────────────▲───────────────────────────────────────┘
-                                  │ FlatBuffers payload; UniFFI = lifecycle/bindings
+                                  │ FlatBuffers payload; UniFFI native / wasm-bindgen browser bindings
 ┌────────────────────────────────┴───────────────────────────────────────┐
-│ RUNTIME + COMPOSITION   nmp-ffi (shared `nmp_app_*` C-ABI surface)        │
+│ RUNTIME + COMPOSITION   nmp-native-runtime + binding adapters            │
 │                         app core + explicit NMP installers               │
-│  owns: lifecycle/action/capability ABI + explicit Rust composition       │
+│  owns: lifecycle/action/capability binding + explicit Rust composition   │
 │  D6 ► no Result<T,E> crosses here; envelopes only                        │
 └────────────────────────────────▲───────────────────────────────────────┘
                                   │ `NmpApp` seams + `AppHost` traits
@@ -52,7 +52,8 @@ Representative crates are labelled in their layer above:
 `nmp-core` (kernel), `nmp-nip29` / `nmp-nip42` / `nmp-nip77` / `nmp-signers`
 (protocol modules), `apps/chirp/crates/nmp-app-chirp` + `microblog-core` (app cores),
 `nmp-defaults` (reusable installer library), `nmp-native-runtime` (native
-runtime owner), and `nmp-ffi` (C-ABI shell over the native runtime).
+runtime owner), and binding crates/adapters (UniFFI for native,
+wasm-bindgen for browser).
 `nmp-codegen` still emits host bindings (`gen swift`, `gen typed-decoders`);
 it no longer generates per-app composition crates (ADR-0046). Chirp is the
 active product shell.
@@ -233,9 +234,10 @@ generic seam (the relay-pin routing lane) and zero group nouns.
 No `Result<T,E>` crosses the boundary (D6) — failures arrive as data inside
 the snapshot or as capability envelopes. The hot update transport is a single
 canonical FlatBuffers schema: `UpdateFrame` carries snapshot envelopes and typed
-projection sidecars. The raw C/JNI ABI remains live for lifecycle/actions/
-capabilities, but it no longer carries JSON runtime snapshots (see
-[15](15-codegen-and-ffi.md)).
+projection sidecars. UniFFI is the public native binding for lifecycle, actions,
+callbacks, and capability objects; wasm-bindgen is the browser binding. Any
+remaining raw C/JNI symbols are transitional/internal compatibility and are not
+starter-app API (see [15](15-codegen-and-ffi.md)).
 
 ## "Where does X live?" — concrete map
 

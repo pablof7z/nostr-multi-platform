@@ -19,12 +19,11 @@ policy, or restore decision.
 
 Local nsecs inevitably cross the FFI boundary when a user imports one, and
 local-key accounts live in the actor-local identity runtime. That is allowed
-only through explicit secret-bearing doorways such as `nmp_app_signin_nsec`,
-`nmp_app_register_agent_nsec`, account-lifecycle import, and the
-`KeyringCapability` restore path. Every Rust-side copy must be wrapped in
-`Zeroizing` as soon as it is materialized, and normal snapshots, action
-history, logs, projection payloads, and debug surfaces must never contain raw
-nsecs or bearer tokens.
+only through explicit secret-bearing binding doorways such as account-lifecycle
+import, app-managed signer import, and the `KeyringCapability` restore path.
+Every Rust-side copy must be wrapped in `Zeroizing` as soon as it is
+materialized, and normal snapshots, action history, logs, projection payloads,
+and debug surfaces must never contain raw nsecs or bearer tokens.
 
 Remote signers follow the same ownership rule without local key material:
 NIP-46/NIP-55 restore stores opaque signer payloads through the keyring
@@ -120,8 +119,8 @@ The startup flow is deliberately ordered:
 For new lifecycle work, ADR-0059 is the target shape: `CreateLocal` and
 `ImportLocal` explicitly request `persist: KeyringRequired { account_id }`
 when secure storage must gate account activation and bootstrap publish. Until
-that ABI lands, builders should use the current sign-in and restore symbols
-without introducing an app-side session store.
+that shape is fully projected, builders should use the typed sign-in and restore
+binding helpers without introducing an app-side session store.
 
 ## `AccountManager` — synchronous active-switch
 
@@ -181,7 +180,7 @@ must not block (`manager.rs:60-65`).
 
 `crates/nmp-signers/src/identity/rewire.rs` is the current active-change
 signaling hook. On every transition it buffers an event; the kernel drains it
-each tick. **`nmp-signers` only signals** — ReducedSource owners and the
+each tick. **`nmp-signers` only signals** — typed session source owners and the
 planner own actual child-interest teardown/rebuild because routing and relay
 state live in Rust kernel/defaults code (D7 capability-vs-policy split).
 `current: None` means "tear down active-account source children and emit
@@ -210,25 +209,24 @@ makes the kernel sync a follow-list / relay-list for a key that has no
 human behind it. App-local agents are `AppLocal`; one-shot signers are
 `Ephemeral`.
 
-App-managed local signer slots use `nmp_app_register_agent_nsec`. The kernel
+App-managed local signer slots use the typed app-managed signer import. The kernel
 persists these slots, resolves them for typed registered-signer publish and
 upload selectors, hides them from account projections, and rejects
-`SwitchActive` for their pubkeys. `nmp_app_signin_nsec(make_active=0)` remains
-a visible secondary account import, not the hidden app-managed path.
+`SwitchActive` for their pubkeys. A visible secondary account import remains
+distinct from the hidden app-managed path.
 
 ## Builder checklist
 
 For each app shell:
 
-1. Register the native keyring capability before `nmp_app_start` or any
-   app-specific identity restore wrapper through the UniFFI/native-runtime
-   capability handler path.
+1. Register the keyring capability before runtime start or any app-specific
+   identity restore wrapper. Native hosts use the UniFFI capability object;
+   browser hosts use the wasm-bindgen capability adapter.
 2. Keep the native handler mechanical: store, retrieve, delete, and report raw
    `KeyringResult` facts. Do not store signer kind, active account, relays,
    retries, onboarding state, or "logged in" policy in native secure storage.
-3. Import user keys through `nmp_app_signin_nsec`, `nmp_app_signin_bunker`,
-   `nmp_app_signin_nip55`, or the account-lifecycle ABI once available.
-   Import app-owned automation keys through `nmp_app_register_agent_nsec`.
+3. Import user keys through the typed account-lifecycle binding. Import
+   app-owned automation keys through the typed app-managed signer binding.
 4. Let the actor restore sessions on startup. Do not read an nsec in Swift,
    Kotlin, or desktop code and then decide locally whether to show onboarding
    or switch accounts.

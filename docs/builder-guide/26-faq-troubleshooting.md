@@ -23,18 +23,17 @@ shell layer you wire yourself. See
 as the Android reference.
 
 **Q3. Where is UniFFI?**
-**M14 target, not the in-tree native surface yet.** The Android app-loop proof
-shipped in Chirp before Chirp was extracted, showing UniFFI can carry lifecycle,
-callbacks, and `Vec<u8>`/`ByteArray` FlatBuffers payloads. In this repository,
-native still ships through the transitional raw C/JNI surface while #2125 owns
-the convergence to one public UniFFI native binding. UniFFI is not the hot
-payload format: runtime updates remain binary `nmp.transport.UpdateFrame` bytes.
-See [15](15-codegen-and-ffi.md).
+UniFFI is the public native binding: lifecycle, callbacks, capability objects,
+and byte action/update doorways cross there. UniFFI is not the hot payload
+format: runtime updates remain binary `nmp.transport.UpdateFrame` bytes. Browser
+hosts use the wasm-bindgen runtime surface instead. See
+[15](15-codegen-and-ffi.md).
 
-**Q4. iOS sim build can't find the Rust symbols (`nmp_app_new`, …).**
-The static lib was not built for the simulator triple. Run
-`cargo build -p nmp-app-<app> --target aarch64-apple-ios-sim` and confirm the
-Xcode link path points at that `target/aarch64-apple-ios-sim/` output.
+**Q4. iOS sim build can't find the generated binding module.**
+Regenerate/import the UniFFI bindings for the simulator target and confirm the
+native shell links the Rust library for that same target. Raw `nmp_app_*` symbol
+lookups are a sign you are following the old transitional C-ABI path, not the
+current public native recipe.
 
 **Q5. `--features lmdb-backend` won't compile.**
 `LmdbEventStore` is real but feature-gated. The type exists in default builds,
@@ -164,11 +163,10 @@ value. `metrics` is for perf, not correctness.
 - **Debugging in Swift instead of the decoded snapshot.** The snapshot is the
   source of truth across FFI. Decode and inspect it first; Swift only
   renders what the snapshot already decided.
-- **Editing generated binding code to fix a symptom.** The `gen swift` / `gen
-  typed-decoders` emitters produce host bindings from the live C-ABI / schema
-  surface. If they drift, regenerate from source (`cargo run -p nmp-codegen --
-  gen swift ...`), don't patch the output. There is no `gen modules` step; the
-  per-app composition crate is hand-written glue.
+- **Editing generated binding code to fix a symptom.** UniFFI bindings and
+  typed decoders are projections of Rust/source schemas. If they drift,
+  regenerate from source instead of patching generated output. There is no
+  `gen modules` step; the app-core composition root is hand-written glue.
 - **Disabling the rev guard to "make the UI update".** The guard is correct;
   a non-advancing `rev` is a real upstream stall. Disabling it hides the bug
   and shows torn state.

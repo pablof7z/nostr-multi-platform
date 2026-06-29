@@ -2,11 +2,11 @@
 
 **Status: SHIPS · audience: builders.** Part 2 of 2. Continues
 [19a](19a-walkthrough-microblog.md) (scaffold). This part creates the thin
-staticlib shell, wires the publish path through a real signer, runs on the iOS
-simulator, and gives the "what ships today vs tomorrow" milestone matrix.
+binding adapter, wires the publish path through a real signer, runs from a
+native shell, and gives the clean-break capability matrix.
 
 There is **no codegen step**. Composition is explicit Rust in the app-core crate,
-not a generated per-app FFI crate (ADR-0069). The shell you create here is a
+not a generated per-app FFI crate (ADR-0069). The adapter you create here is a
 handful of lines of glue.
 
 ## Build / run cheatsheet
@@ -15,10 +15,10 @@ handful of lines of glue.
 
 ```sh
 cargo build -p microblog-core
-cargo test  -p microblog-core      # exercises register(), ActionModule, observer
+cargo test  -p microblog-core      # exercises register(), ActionModule, session helper
 ```
 
-### 2. Create the thin staticlib shell
+### 2. Create the thin binding adapter
 
 `apps/microblog/nmp-app-microblog/Cargo.toml`:
 
@@ -29,13 +29,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
-[lib]
-name = "nmp_app_microblog"
-crate-type = ["staticlib", "rlib"]
-
 [dependencies]
 nmp-core = { path = "../../../crates/nmp-core" }
-nmp-ffi = { path = "../../../crates/nmp-ffi" }
+nmp-native-runtime = { path = "../../../crates/nmp-native-runtime" }
 nmp-defaults = { path = "../../../crates/nmp-defaults" }
 microblog-core = { path = "../../../crates/microblog-core" }
 ```
@@ -43,21 +39,14 @@ microblog-core = { path = "../../../crates/microblog-core" }
 `apps/microblog/nmp-app-microblog/src/lib.rs`:
 
 ```rust
-//! Thin staticlib shell. No app logic here; everything lives in microblog-core.
-use nmp_ffi::NmpApp;
+//! Thin binding adapter. No app logic here; everything lives in microblog-core.
+use nmp_core::substrate::AppHost;
 
-/// Register the microblog app. `microblog_core::register` is the composition root:
+/// Configure the microblog app. `microblog_core::register` is the composition root:
 /// it installs explicit substrate/protocol pieces, then the microblog seams.
-/// The iOS shell calls this after `nmp_app_new()` and before `nmp_app_start()`.
-#[no_mangle]
-pub extern "C" fn nmp_app_microblog_register(app: *mut NmpApp) {
-    if app.is_null() {
-        return;
-    }
-    // SAFETY: caller guarantees `app` is a valid pointer from `nmp_app_new()`.
-    // No other reference aliases it here — the exclusive borrow is released
-    // before any shared-borrow registration calls below.
-    microblog_core::register(unsafe { &mut *app });
+/// Generated native/browser bindings call this before the runtime starts.
+pub fn configure_microblog(app: &mut impl AppHost) {
+    microblog_core::register(app);
 }
 ```
 
@@ -75,37 +64,34 @@ fn main() {
         .declare_consumed_projections(["microblog.items"])
         .with_relays([("wss://relay.example", "both")])
         .start(RunConfig::default());
-    // Native C callers drive the same runtime through `nmp_ffi` ABI symbols.
+    // Native UniFFI and browser wasm-bindgen adapters drive the same runtime.
 }
 ```
 
-### 3. Build the static lib + run on the iOS simulator
+### 3. Build the adapter + run from a native shell
 
-The reference shell is **Chirp** (`apps/chirp/ios/`, the active live iOS app).
-It links the Rust static lib and decodes the snapshot via
-`apps/chirp/ios/Chirp/Bridge/KernelBridge.swift`. For this walkthrough, point a
-shell at your static lib and call `nmp_app_microblog_register` instead of
-`nmp_app_chirp_register`.
+The reference shell imports generated UniFFI bindings, starts the configured
+runtime, dispatches typed action bytes, and decodes the pushed FlatBuffers
+`UpdateFrame`. For this walkthrough, point the binding adapter at
+`configure_microblog` before start.
 
 ```swift
-raw = nmp_app_new()
-precondition(nmp_signer_broker_init(raw) == 0)
-nmp_app_microblog_register(raw)   // your registration symbol
-nmp_app_set_update_callback(raw, ..., nmpUpdateCallback)
-nmp_app_start(raw, 0, 80, 4)
+let app = NmpAppHandle()
+app.configureMicroblog()
+app.setUpdateSink(updateSink)
+app.start()
 ```
 
 ```sh
-# 1. build the Rust staticlib for the sim target
-cargo build -p nmp-app-microblog --target aarch64-apple-ios-sim --release
-# 2. generate the Xcode project (Chirp uses xcodegen: apps/chirp/ios/project.yml)
-cd apps/chirp/ios && xcodegen generate
-# 3. build + run on a booted simulator (see section 17 for the bridge details)
+# 1. build the Rust adapter for the target
+cargo build -p nmp-app-microblog --release
+# 2. generate/import the UniFFI bindings for the native shell
+# 3. build + run the shell (see section 17 for the bridge details)
 ```
 
-The Swift side reads `projections["microblog.items"]` from the snapshot's
-`projections` map alongside the built-in fields (see
-[17 — iOS shell](17-ios-shell.md) §Reading a snapshot projection in `apply()`).
+The Swift side reads `typed_projections["microblog.items"]` from the pushed
+`SnapshotFrame` alongside the built-in fields (see
+[17 — iOS shell](17-ios-shell.md) §Reading a typed projection in `apply()`).
 
 ## How publish flows
 
@@ -115,7 +101,7 @@ The actual signing and routing is entirely the kernel's job:
 
 ```
 typed app intent: postNote(text)
-  → nmp_app_dispatch_action_bytes(DispatchEnvelope)
+  → UniFFI dispatchActionBytes(DispatchEnvelope)
   → ActionModule::start() validates (non-empty text)
   → ActionModule::execute() calls send(ActorCommand::PublishNote { … })
   → actor thread receives PublishNote
@@ -143,16 +129,17 @@ map keyed by that id.
 | NIP-46 bunker signer | ✅ M6 (DONE) | — |
 | Multi-account switch | ✅ M8 (DONE) | — |
 | Outbox auto-routing (NIP-65) | ✅ T105 (DONE) | — |
-| `ObservedProjectionSink` + `open_observed_projection` *(internal session-executor machinery; not app-facing — the typed read-session helper is the app API)* | ✅ DONE | — |
-| `register_snapshot_projection` / `register_typed_snapshot_projection` | ✅ DONE | — |
-| Raw C/JNI lifecycle/action FFI + FlatBuffers update frames | ✅ today | UniFFI binding/lifecycle bridge = **M14, PLANNED** |
+| typed read-session helpers | ✅ DONE | — |
+| typed output transport | ✅ DONE | — |
+| UniFFI native lifecycle/action binding + FlatBuffers update frames | ✅ public native path | — |
+| wasm-bindgen browser action/update binding | ✅ public browser path | — |
 | `nmp init` (thin Rust shell scaffold) | ✅ ships | Creates a `<name>-core` crate + `examples/shell.rs`; full multi-platform starter is M16. |
 | iOS shell (Chirp, active) | ✅ DONE | Additional app shells deferred until Chirp is complete |
 
-The publish substrate, the local signer, multi-account, declared observed
-projection, and snapshot projection all ship today. What is *not* shipped: the typed UniFFI
-bridge (M14) and a one-command multi-platform scaffolder (M16). The example
-above is hand-assembled — that is expected and honest, not a defect.
+The publish substrate, the local signer, multi-account, typed read sessions, and
+typed output transport all ship today. What is *not* shipped is a one-command
+multi-platform scaffolder (M16). The example above is hand-assembled — that is
+expected and honest, not a defect.
 
 ## Anti-patterns (wire & run phase)
 
@@ -162,17 +149,17 @@ above is hand-assembled — that is expected and honest, not a defect.
 - **Passing relay URLs from app code.** There is no relay parameter on the
   post action. `PublishNote` routes via NIP-65 outbox (D3). Hardcoding
   relays is the named opt-out, not the default.
-- **Manual REQ in app code to "refresh the feed."** The feed store updates
-  reactively via `on_kernel_event`. A manual REQ scan parallel to the kernel
-  is a D2/D4 violation; the feed is a projection, not something you poll.
+- **Manual REQ in app code to "refresh the feed."** The typed read-session
+  helper updates reactively. A manual REQ scan parallel to the kernel is a
+  D2/D4 violation; the feed is typed output, not something you poll.
 - **Per-platform SwiftData/Room cache parallel to `AppState`.** The decoded
   snapshot is the single source of truth across FFI. A native cache shadowing
   it drifts and violates D5.
-- **Expecting generated framework wiring.** The staticlib shell is hand-written
+- **Expecting generated framework wiring.** The binding adapter is hand-written
   glue that calls the app-core composition root; see
   [15 — Codegen: bindings + FFI surface](15-codegen-and-ffi.md).
-- **Expecting UniFFI to own hot updates.** UniFFI remains a binding/lifecycle
-  target; update payloads use the typed FlatBuffers stream.
+- **Expecting UniFFI to own hot updates.** UniFFI owns native object/callback
+  binding; update payloads use the typed FlatBuffers stream.
 
 See also: [02 — Mental model — kernel + extension seams](02-mental-model.md) ·
 [05a — Kernel substrate — traits + seams](05a-substrate-traits.md) ·

@@ -6,9 +6,10 @@ status marker; unmarked rows ship today.
 
 > The kernel enums below (`KernelAction`/`KernelUpdate`/`KernelViewSpec`) are
 > the generic kernel surface in `crates/nmp-core/src/app.rs`. Production actions
-> cross the native boundary through `nmp_app_dispatch_action_bytes`; app-core
-> crates export a small convention (`register`, namespace constants, stores, and
-> projection/update helpers) used by a thin staticlib shell. See §15.
+> cross the native boundary through the UniFFI byte-action doorway and the
+> browser boundary through wasm-bindgen; app-core crates export a small
+> convention (`register`, namespace constants, stores, and typed output helpers)
+> used by a thin binding adapter. See §15.
 
 ## Card 1 — Kernel surface (today, `crates/nmp-core/src/app.rs:1-30`)
 
@@ -23,18 +24,18 @@ status marker; unmarked rows ship today.
 `AppState = { rev: u64, open_view_count: usize }`. Every update carries a
 monotonic `rev`; platforms drop updates with `rev` ≤ last seen.
 
-## Card 2 — Extension seams + traits (`crates/nmp-core/src/substrate/`, `crates/nmp-ffi/src/lib.rs`)
+## Card 2 — Extension seams + traits (`crates/nmp-core/src/substrate/`)
 
 | Seam / trait | Owns | One-liner | Source |
 |---|---|---|---|
 | `register_action(module)` | write path | `start()` validates, `execute()` enqueues `ActorCommand` | `action.rs:56` |
-| `register_snapshot_projection(key, fn)` | read output | JSON slice pushed under `projections[key]` on every tick | `nmp-ffi/src/lib.rs:1109` |
-| `open_observed_projection(decl)` *(internal session-executor machinery — not called by app code; ADR-0070)* | event-driven read models | registers muted sink, opens declared interest, replays matching rows, then activates scoped future delivery; the app-facing surface is the typed read-session helper | `app_host/observed.rs` |
-| `register_typed_snapshot_projection(key, fn)` | typed read output | typed sidecar pushed under `typed_projections[key]` on every tick | `nmp-ffi/src/snapshot.rs` |
+| typed read-session helper | app-facing read lifecycle | owns demand, replay, status, output, dynamic source wakeups, and teardown | see §28 |
+| observed delivery *(internal session-executor machinery — not called by app code; ADR-0070)* | event-driven read models | registers muted sink, opens declared interest, replays matching rows, then activates scoped future delivery | `app_host/observed.rs` |
+| `register_typed_snapshot_projection(key, fn)` | typed read output transport | typed sidecar pushed under `typed_projections[key]` on every tick | runtime typed-output registry |
 | **ActionModule** (trait) | write seam shape | `NAMESPACE`, `type Action`, `start()`, `execute()` | `action.rs:56` |
 | **CapabilityModule** (trait) | native bridge shape | request → native → result envelope (D7) | `capability.rs:11` |
 
-Module composition: the app-core crate exports `pub fn register(app: &mut impl AppHost) -> Store`; that function installs explicit substrate/protocol/app features. Thin staticlib shells and `examples/shell.rs` call only the app-core `register()`.
+Module composition: the app-core crate exports `pub fn register(app: &mut impl AppHost) -> Store`; that function installs explicit substrate/protocol/app features. Thin binding adapters and `examples/shell.rs` call only the app-core `register()`.
 
 ## Card 3 — v1 capability catalog (`docs/product-spec/api-surface.md:192-229` §6.5)
 
@@ -116,17 +117,16 @@ evaluated in `lattice/mod.rs` order 6, 9, 1, 2, 3, 4, 5, 7, 8):
 | Field | Value |
 |---|---|
 | **What** | A named `nmp.*` slice of app/module state delivered in `typed_projections[key]` |
-| **Register** | `register_typed_snapshot_projection(key, Fn() -> Option<TypedProjectionData>)` seam (`crates/nmp-ffi/src/snapshot.rs`) |
+| **Register** | `register_typed_snapshot_projection(key, Fn() -> Option<TypedProjectionData>)` from the session/helper runtime |
 | **Delivery** | Appended to the reactive push frame every emit tick — no pull symbol, no polling |
-| **Read** | `snapshot.projections[key]` in the host `apply()` (e.g. `projections?.followList`, `KernelBridge.swift:884`) |
+| **Read** | `snapshot.typed_projections[key]` in the host `apply()` |
 | **Exemplar** | `nmp-nip29/src/register.rs:66`; Chirp `register.rs:371` (`nmp.follow_list`); scoped relation-count projections |
-| **Typed sibling** | `register_typed_snapshot_projection` → `snapshot.typedProjections` (ADR-0037), **not** `projections[key]` |
+| **Public read lifecycle** | claim/release the typed read-session helper; this card describes only its output transport |
 | **Status** | Structural permanent — `ffi-deprecation-calendar.md:61` ("keep, freeze-locked") |
 
-**Distinct from `ObservedProjectionSink`-driven view updates** (Card 2 seam 3) —
-those push typed view deltas via `ViewBatch`; this is a named JSON state slice
-in the snapshot's `projections` map. See [15](15-codegen-and-ffi.md) /
-[17](17-ios-shell.md).
+**Distinct from observed-delivery executor internals** (Card 2 seam 3). Product
+screens claim typed read sessions and render typed sidecars from the pushed
+frame. See [15](15-codegen-and-ffi.md) / [17](17-ios-shell.md).
 
 Zap counts are not a global snapshot projection. They are visible-note relation
 state claimed through `nmp.nip01.visible_note_relations`.

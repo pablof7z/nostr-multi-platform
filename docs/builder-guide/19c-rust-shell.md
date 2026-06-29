@@ -25,7 +25,6 @@ Add the dependency:
 # Cargo.toml of your app-core crate (or a top-level binary crate)
 [dependencies]
 nmp-native-runtime = { path = "/path/to/nmp/crates/nmp-native-runtime" }
-nmp-ffi = { path = "/path/to/nmp/crates/nmp-ffi" } # only when using the C ABI
 ```
 
 ## Minimal read-only shell (~30 lines)
@@ -33,10 +32,9 @@ nmp-ffi = { path = "/path/to/nmp/crates/nmp-ffi" } # only when using the C ABI
 ```rust
 use std::sync::{Arc, Mutex};
 use nmp_native_runtime::{NmpAppBuilder, RunConfig};
-use nmp_ffi::{nmp_app_free, nmp_app_stop};
 
 // Import your app-core crate — see 19a for how it's structured.
-use nostr_feed_core::{FeedObserver, NoteRecord, FEED_SNAPSHOT_KEY, project_feed};
+use nostr_feed_core::{NoteRecord, FEED_SNAPSHOT_KEY, project_feed};
 
 fn main() {
     // Wire the app modules into the builder BEFORE starting.
@@ -65,12 +63,10 @@ fn main() {
         .start(RunConfig::default());
 
     // The kernel is now running: relay manager started, actor thread live.
-    // Read the snapshot whenever you want:
-    // let snap = unsafe { read_snapshot(app) };  // see §15 / nmp_app_get_snapshot
+    // Consume pushed UpdateFrame bytes through the runtime sink/binding.
 
     // Shut down cleanly.
-    nmp_app_stop(app);
-    nmp_app_free(app);
+    app.stop();
 }
 ```
 
@@ -113,9 +109,9 @@ so neither body is ever invoked."
 ## Adding publishing (write path)
 
 Bridge-level dispatch for actions such as `PostNote` builds a typed
-`DispatchEnvelope` with a host builder and calls `nmp_app_dispatch_action_bytes`
-after `start`. App-facing APIs should expose typed intents, not namespace/body
-transport helpers:
+`DispatchEnvelope` with a host builder and calls the runtime/binding byte
+doorway after `start`. App-facing APIs should expose typed intents, not
+namespace/body transport helpers:
 
 ```rust
 let envelope: Vec<u8> = my_app_core::actions::post_note_envelope(
@@ -123,16 +119,7 @@ let envelope: Vec<u8> = my_app_core::actions::post_note_envelope(
     "Hello Nostr",
 );
 
-let result_ptr = nmp_ffi::nmp_app_dispatch_action_bytes(
-    app,
-    envelope.as_ptr(),
-    envelope.len(),
-);
-
-let result = unsafe { std::ffi::CStr::from_ptr(result_ptr) }
-    .to_string_lossy()
-    .into_owned();
-nmp_ffi::nmp_free_string(result_ptr);
+let result = app.dispatch_action_bytes(envelope);
 ```
 // {"correlation_id":"..."} = accepted; {"error":"..."} = rejected.
 ```
@@ -142,13 +129,7 @@ nmp_ffi::nmp_free_string(result_ptr);
 Before publishing you need a signer. To generate a fresh local key:
 
 ```rust
-use std::ffi::CString;
-use nmp_ffi::nmp_app_create_new_account;
-
-// All three optional args (profile JSON, relays JSON, MLS flag) can be null/false.
-let null_ptr: *const std::ffi::c_char = std::ptr::null();
-// SAFETY: app is valid; null pointers are accepted by the C-ABI (defaults apply).
-unsafe { nmp_app_create_new_account(app, null_ptr, null_ptr, false) };
+let account = app.create_new_account(CreateAccountOptions::default());
 ```
 
 The account is created and activated synchronously. The kernel's signer slot is
@@ -188,9 +169,9 @@ NmpAppBuilder::new()
   └─ .start(RunConfig::default())
         ↓ *mut NmpApp  (kernel running, relays connecting)
         │
-        ├─ nmp_app_create_new_account(...)       generate key
-        ├─ nmp_app_dispatch_action_bytes(...)    publish
-        └─ nmp_app_stop(app) + nmp_app_free(app)  shutdown
+        ├─ create_new_account(...)              generate key
+        ├─ dispatch_action_bytes(...)           publish
+        └─ stop()                               shutdown
 ```
 
 See also: [19a — scaffold](19a-walkthrough-microblog.md) · [19b — wire & run](19b-walkthrough-microblog.md) · [15 — codegen and FFI](15-codegen-and-ffi.md) · [26 — FAQ / troubleshooting](26-faq-troubleshooting.md)

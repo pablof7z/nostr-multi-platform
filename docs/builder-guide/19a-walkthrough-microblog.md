@@ -2,8 +2,8 @@
 
 **Status: SHIPS · audience: builders.** Part 1 of 2. This part scaffolds the
 hand-written `microblog-core` app crate. [19b](19b-walkthrough-microblog.md)
-creates a thin staticlib shell around it, wires the publish path, and runs it
-on the iOS simulator.
+creates a thin binding adapter around it, wires the publish path, and runs it
+from a native shell.
 
 You are building **a Nostr-shaped app, not a Twitter clone.** The kernel never
 learns the word "tweet". kind:1 is the wire; your app projects it into an
@@ -42,7 +42,7 @@ comment verbatim:
 ```
 apps/microblog/
 ├── nmp.toml                         # AppManifest (used by nmp doctor / upgrade)
-└── nmp-app-microblog/               # thin staticlib shell (created in 19b)
+└── nmp-app-microblog/               # thin binding adapter (created in 19b)
     ├── Cargo.toml
     └── src/
         └── lib.rs                   # re-export + app register
@@ -53,7 +53,7 @@ crates/microblog-core/               # hand-written app-core crate (you write th
 ```
 
 Only `crates/microblog-core/src/lib.rs` and `apps/microblog/nmp.toml` are
-hand-written here. The staticlib shell in `apps/microblog/nmp-app-microblog/`
+hand-written here. The binding adapter in `apps/microblog/nmp-app-microblog/`
 is a few lines of glue (see [19b](19b-walkthrough-microblog.md)).
 
 ## `apps/microblog/nmp.toml`
@@ -255,24 +255,24 @@ serde      = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 ```
 
-`nmp-ffi` is **not** a dependency of the app-core crate. The core writes to
-`AppHost` traits; `nmp-native-runtime` owns the `NmpApp` handle and runtime
-builder, while the thin staticlib shell (created in
-[19b](19b-walkthrough-microblog.md)) exposes only the C-ABI surface.
+Binding crates are **not** dependencies of the app-core crate. The core writes
+to `AppHost` traits; `nmp-native-runtime` owns the runtime builder, while native
+UniFFI and browser wasm-bindgen adapters expose the binding surface.
 
-## Next step: the thin staticlib shell
+## Next step: the thin binding adapter
 
 This crate contains the app logic. It has no `#[no_mangle]` symbols and no
-iOS-specific code. [19b](19b-walkthrough-microblog.md) wraps it in a
-staticlib crate (`apps/microblog/nmp-app-microblog`) whose entire job is to:
+iOS-specific code. [19b](19b-walkthrough-microblog.md) wraps it in a binding
+adapter (`apps/microblog/nmp-app-microblog`) whose entire job is to:
 
-1. Link `nmp-defaults`, `nmp-native-runtime`, `nmp-ffi`, and `microblog-core`;
-   `nmp-ffi` remains C-ABI glue.
-2. Export one registration symbol the iOS shell calls after `nmp_app_new()`.
+1. Link `nmp-defaults`, `nmp-native-runtime`, the binding adapter, and
+   `microblog-core`.
+2. Expose one configuration function the generated binding calls before start.
 3. Call `microblog_core::register(app)`. The named substrate/protocol/app
    installers are already inside that app-core composition root.
 
-That shell is the analog of `nmp_app_chirp_register` in `apps/chirp/crates/nmp-app-chirp`.
+Historical `nmp_app_*_register` symbols are transitional compatibility glue,
+not the recipe for new apps.
 
 ## Anti-patterns (scaffold phase)
 

@@ -87,11 +87,13 @@ reactive snapshot loop are all live. iOS Keychain is the production signer
 path. The Highlighter and NIP-29 modules prove the kernel/extension
 boundary holds for a second protocol surface. `nmp init` scaffolds a
 ready-to-build Rust workspace with a thin `<name>-core` crate, explicit Rust
-composition root, and headless `examples/shell.rs`. The C-ABI surface is shared
-through `nmp-ffi`; composition is app-owned Rust code using reusable installers.
+composition root, and headless `examples/shell.rs`. Native shells consume the
+Rust core through UniFFI bindings; browser shells consume it through the
+wasm-bindgen runtime. Composition is app-owned Rust code using reusable
+installers.
 
 Coming next: Blossom blob storage, continued browser-runtime hardening, and
-UniFFI to replace the raw C FFI.
+the full multi-platform starter around the same explicit composition model.
 
 ## Comparison — 6 axes
 
@@ -99,10 +101,10 @@ UniFFI to replace the raw C FFI.
 |---|---|---|---|---|
 | State ownership | app + zustand session store | app + RxJS subjects | app owns everything | single actor owns all state; app renders snapshots |
 | Outbox routing | automatic *intent*; tracker in-memory, lost on restart | caller passes relays explicitly | none — caller picks relays | automatic & durable; manual relay is the audited opt-out |
-| dynamic source tracking | kind:3 follow tracking lives in sessions/framework glue; Svelte runes / React deps still wire app filters | consumer subscribes manually | does not address | ReducedSource/framework-magic; app dispatches zero rewire code |
+| dynamic source tracking | kind:3 follow tracking lives in sessions/framework glue; Svelte runes / React deps still wire app filters | consumer subscribes manually | does not address | typed session helpers own dynamic sources; app dispatches zero rewire code |
 | Reactivity | RxJS / runes / hooks per framework | RxJS streams | does not address | actor reactive loop + bounded snapshots over FFI |
 | Signers | NIP-07/46/55 (Android); no iOS external-signer | NIP-07/46; Android native; no iOS Secure Enclave | `nostr-connect` primitive only | `nmp-signers::Signer` + Keyring capability; iOS Keychain ships today |
-| FFI / multiplatform | JS only | browser-first | Rust only | one Rust core, four delivery paths; raw C FFI today, UniFFI next |
+| FFI / multiplatform | JS only | browser-first | Rust only | one Rust core; UniFFI for native, wasm-bindgen for browser |
 
 `nostr-sdk`'s cells read "does not address" honestly: it is a protocol SDK,
 not an application framework. NMP does not claim the app-layer axes as a

@@ -69,7 +69,7 @@ Three tiers, in order. Stop at tier 2 unless tier 3's trigger fires.
    just the payload.
 
 3. **Framework-magic contract — only if the feature exercises a contract
-   behavior** (ReducedSource recompile, account-switch rebind, in-place
+   behavior** (source-reducer recompile, account-switch rebind, in-place
    placeholder refinement, …). Then follow the recipe below. A plain typed
    projection that does none of those does **not** get a contract test;
    forcing one inflates the suite and dilutes the meta-test.
@@ -187,8 +187,7 @@ debug builds** (`BuildConfig.DEBUG`). Kotlin passes them verbatim to
 `KernelModel.start(context, storagePath, testNsec, testRelays)`, where they ride
 on top of the single unconditional launch path (keyring capability + identity
 restore run in production too) → `KernelBridge.seedRelays`. Parsing the relay
-JSON and calling `nmp_app_add_relay` happens in Rust
-(`nmp-android-ffi/src/relay_seeding.rs`).
+JSON and seeding relays happens in Rust through the test-only launch path.
 
 Example adb invocation:
 
@@ -208,7 +207,7 @@ arrays `[url, role]` where role is one of `"both"`, `"read"`, `"write"`, or
 [["ws://127.0.0.1:10547","both"],["wss://purplepag.es","indexer"]]
 ```
 
-Rust validates each entry through `nmp_app_add_relay`; a malformed entry is
+Rust validates each entry through the relay-seeding helper; a malformed entry is
 silently skipped (D6). If the entire JSON array is malformed or empty, Rust
 falls back to the Chirp reference relay set so the kernel is never left without
 any relay.
