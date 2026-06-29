@@ -18,7 +18,7 @@ name: native-tests
 
 on:
   push:
-    branches: ["**"]
+    branches: [master]
     paths:
       - ".github/workflows/native-tests.yml"
       - "apps/nmp-gallery/android/**"

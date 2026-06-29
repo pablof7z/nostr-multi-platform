@@ -16,7 +16,7 @@ name: review-dump-gate
 
 on:
   push:
-    branches: ["**"]
+    branches: [master]
   pull_request:
     branches: ["**"]
 
