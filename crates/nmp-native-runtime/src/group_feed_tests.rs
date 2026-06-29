@@ -101,6 +101,68 @@ fn joined_groups_replacement_makes_old_handle_idempotent() {
 }
 
 #[test]
+fn group_feed_roster_replacement_makes_old_handle_idempotent() {
+    let app = crate::new_app();
+    let first = app.open_nip29_group_roster_session(Nip29GroupRosterSession::new(GroupId::new(
+        "wss://groups.example",
+        "first",
+    )));
+    assert_eq!(session_count(&app), 1);
+
+    let second = app.open_nip29_group_roster_session(Nip29GroupRosterSession::new(GroupId::new(
+        "wss://groups.example",
+        "second",
+    )));
+    assert_eq!(
+        session_count(&app),
+        1,
+        "replacement must tear down the old observer/session"
+    );
+
+    app.close_nip29_group_roster_session(first);
+    assert_eq!(
+        session_count(&app),
+        1,
+        "stale handles must not close the replacement session"
+    );
+
+    app.close_nip29_group_roster_session(second.clone());
+    assert_eq!(session_count(&app), 0);
+    app.close_nip29_group_roster_session(second);
+    assert_eq!(session_count(&app), 0);
+}
+
+#[test]
+fn group_feed_roster_reader_reflects_ingested_membership() {
+    use nmp_core::substrate::KernelEvent;
+    use nmp_core::ObservedProjectionSink;
+
+    let app = crate::new_app();
+    let (_handle, reader) = app.open_nip29_group_roster_session_with_reader(
+        Nip29GroupRosterSession::new(GroupId::new("wss://groups.example", "room")),
+    );
+    // Inject a relay-signed 39002 members snapshot directly into the reader —
+    // the same Arc registered as the observed projection — and confirm the
+    // roster retains the pubkeys (the seam 29er needs to render a roster).
+    reader.on_kernel_event(&KernelEvent {
+        id: "m1".into(),
+        author: "relay".into(),
+        kind: 39002,
+        created_at: 100,
+        tags: vec![
+            vec!["d".into(), "room".into()],
+            vec!["p".into(), "a".repeat(64)],
+            vec!["p".into(), "b".repeat(64)],
+        ],
+        content: String::new(),
+        relay_provenance: Vec::new(),
+    });
+    let snap = reader.snapshot();
+    assert_eq!(snap.members.len(), 2);
+    assert!(snap.members.iter().all(|m| m.is_member));
+}
+
+#[test]
 fn joined_groups_empty_active_pubkey_is_noop() {
     let app = crate::new_app();
     let handle = app.open_nip29_joined_groups_session(Nip29JoinedGroupsSession::new(

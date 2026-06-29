@@ -59,13 +59,15 @@ use std::sync::Arc;
 use nmp_core::substrate::{ObservedProjection, ObservedProjectionRegistrar};
 use nmp_core::ObservedProjectionId;
 use nmp_feed::DEFAULT_FEED_WINDOW_LIMIT;
-use nmp_nip29::group_id::group_metadata_filter_json;
+use nmp_nip29::group_id::{group_metadata_filter_json, group_roster_filter_json};
 use nmp_nip29::{
-    encode_discovered_groups_snapshot, encode_group_events_snapshot, encode_joined_groups_snapshot,
-    DiscoveredGroupsProjection, GroupEventsProjection, GroupEventsQuery, JoinedGroupsProjection,
+    encode_discovered_groups_snapshot, encode_group_events_snapshot, encode_group_roster_snapshot,
+    encode_joined_groups_snapshot, DiscoveredGroupsProjection, GroupEventsProjection,
+    GroupEventsQuery, GroupRosterProjection, JoinedGroupsProjection,
     DISCOVERED_GROUPS_FILE_IDENTIFIER, DISCOVERED_GROUPS_SCHEMA_ID,
     DISCOVERED_GROUPS_SCHEMA_VERSION, GROUP_EVENTS_FILE_IDENTIFIER, GROUP_EVENTS_SCHEMA_ID,
-    GROUP_EVENTS_SCHEMA_VERSION, JOINED_GROUPS_FILE_IDENTIFIER, JOINED_GROUPS_SCHEMA_ID,
+    GROUP_EVENTS_SCHEMA_VERSION, GROUP_ROSTER_FILE_IDENTIFIER, GROUP_ROSTER_SCHEMA_ID,
+    GROUP_ROSTER_SCHEMA_VERSION, JOINED_GROUPS_FILE_IDENTIFIER, JOINED_GROUPS_SCHEMA_ID,
     JOINED_GROUPS_SCHEMA_VERSION,
 };
 
@@ -74,7 +76,8 @@ use crate::app_struct::NmpApp;
 mod types;
 pub use types::{
     Nip29GroupDiscoveryHandle, Nip29GroupDiscoverySession, Nip29GroupEventsHandle,
-    Nip29GroupEventsSession, Nip29JoinedGroupsHandle, Nip29JoinedGroupsSession,
+    Nip29GroupEventsSession, Nip29GroupRosterHandle, Nip29GroupRosterSession,
+    Nip29JoinedGroupsHandle, Nip29JoinedGroupsSession,
 };
 
 /// `0` = `ActiveAccount` scope (re-route on account switch) — the joined-groups
@@ -90,11 +93,14 @@ pub const GROUP_EVENTS_KEY: &str = "nmp.nip29.group_events";
 pub const DISCOVERED_GROUPS_KEY: &str = "nmp.nip29.discovered_groups";
 /// Snapshot key + singleton session key for the joined-groups view.
 pub const JOINED_GROUPS_KEY: &str = "nmp.nip29.joined_groups";
+/// Snapshot key + singleton session key for the group-roster view.
+pub const GROUP_ROSTER_KEY: &str = "nmp.nip29.group_roster";
 
 /// Refcount-owner id for each (singleton) NIP-29 view's pinned interest.
 const GROUP_EVENTS_CONSUMER: &str = "nip29-group-events";
 const DISCOVERED_GROUPS_CONSUMER: &str = "nip29-discovered-groups";
 const JOINED_GROUPS_CONSUMER: &str = "nip29-joined-groups";
+const GROUP_ROSTER_CONSUMER: &str = "nip29-group-roster";
 static NEXT_GROUP_READ_HANDLE_ID: AtomicU64 = AtomicU64::new(1);
 
 /// Teardown recipe for one live NIP-29 read view (held in
@@ -364,6 +370,81 @@ impl NmpApp {
     /// Close the joined-groups typed read session represented by `handle`.
     /// Idempotent (D6).
     pub fn close_nip29_joined_groups_session(&self, handle: Nip29JoinedGroupsHandle) {
+        self.close_group_feed_handle(&handle.key, handle.handle_id);
+    }
+
+    /// Open the NIP-29 member-roster typed read session for one group.
+    /// Hydrating: a view opened after the group's 39001/39002/39003 snapshots
+    /// were cached catches them up, then tails live. Pinned `Global` (the group
+    /// host relay). Singleton: re-opening replaces the prior roster view.
+    #[must_use]
+    pub fn open_nip29_group_roster_session(
+        &self,
+        descriptor: Nip29GroupRosterSession,
+    ) -> Nip29GroupRosterHandle {
+        let (handle, _) = self.open_nip29_group_roster_session_with_reader(descriptor);
+        handle
+    }
+
+    /// Open a group-roster typed read session and return the canonical
+    /// projection reader.
+    ///
+    /// The returned [`GroupRosterProjection`] is the same `Arc` registered as
+    /// the observed projection and used by the `"nmp.nip29.group_roster"` typed
+    /// sidecar. Callers must not open a second roster observer; use this reader
+    /// and keep the sidecar, relay-pinned interest, and hydration single-owned
+    /// by this door.
+    #[must_use]
+    pub fn open_nip29_group_roster_session_with_reader(
+        &self,
+        descriptor: Nip29GroupRosterSession,
+    ) -> (Nip29GroupRosterHandle, Arc<GroupRosterProjection>) {
+        let Nip29GroupRosterSession { group_id } = descriptor;
+        let relay_pin = Some(group_id.host_relay_url.clone());
+        let filter_json = group_roster_filter_json(&group_id.local_id);
+        let projection = Arc::new(GroupRosterProjection::new(
+            group_id.host_relay_url.clone(),
+            group_id.local_id.clone(),
+        ));
+        let projection_reader = Arc::clone(&projection);
+
+        let projection_for_sidecar = Arc::clone(&projection);
+        let register_sidecar = move |app: &NmpApp| {
+            app.register_typed_snapshot_projection(GROUP_ROSTER_KEY, move || {
+                let snapshot = projection_for_sidecar.snapshot();
+                Some(nmp_core::TypedProjectionData {
+                    key: GROUP_ROSTER_KEY.to_string(),
+                    schema_id: GROUP_ROSTER_SCHEMA_ID.to_string(),
+                    schema_version: GROUP_ROSTER_SCHEMA_VERSION,
+                    file_identifier: String::from_utf8_lossy(GROUP_ROSTER_FILE_IDENTIFIER)
+                        .into_owned(),
+                    payload: encode_group_roster_snapshot(&snapshot),
+                    ..Default::default()
+                })
+            });
+        };
+
+        let handle_id = self.open_group_feed(
+            GROUP_ROSTER_KEY,
+            GROUP_ROSTER_CONSUMER,
+            SCOPE_GLOBAL,
+            relay_pin,
+            filter_json,
+            projection as Arc<dyn nmp_core::ObservedProjectionSink>,
+            register_sidecar,
+        );
+        (
+            Nip29GroupRosterHandle {
+                key: GROUP_ROSTER_KEY.to_string(),
+                handle_id,
+            },
+            projection_reader,
+        )
+    }
+
+    /// Close the group-roster typed read session represented by `handle`.
+    /// Idempotent (D6).
+    pub fn close_nip29_group_roster_session(&self, handle: Nip29GroupRosterHandle) {
         self.close_group_feed_handle(&handle.key, handle.handle_id);
     }
 

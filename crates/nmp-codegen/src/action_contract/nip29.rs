@@ -73,3 +73,19 @@ pub const NIP29_CREATE_PUBLIC_GROUP: ActionContract = ActionContract {
     public_re_export: PUBLIC_REEXPORT,
     typed_dispatch: TYPED_ONLY,
 };
+
+pub const NIP29_EDIT_METADATA: ActionContract = ActionContract {
+    namespace: "nmp.nip29.edit_metadata",
+    producer: "nmp-nip29 action",
+    module_type: "nmp_nip29::EditMetadataAction",
+    payload_type: "nmp_nip29::EditMetadataInput",
+    schema_id: "nmp.nip29.edit_metadata",
+    schema_path: "crates/nmp-nip29/schema/edit_metadata_action.fbs",
+    root_type: "EditMetadataPayload",
+    schema_version: 1,
+    file_identifier: "N29E",
+    default_tier: ActionDefaultTier::ComponentRegistered,
+    builder_support: BuilderSupport::GeneratedFlatTable,
+    public_re_export: PUBLIC_REEXPORT,
+    typed_dispatch: TYPED_ONLY,
+};

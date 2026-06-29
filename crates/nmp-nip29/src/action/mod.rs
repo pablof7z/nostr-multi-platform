@@ -19,6 +19,8 @@
 //! - `leave` — `LeaveGroup` (kind:9022, user-management request).
 //! - `admin` — `PutUser` (kind:9000) and `CreateInvite` (kind:9009).
 //! - `set_parent` — `SetParent` (kind:9002 edit-metadata, NIP-29 subgroups #2319).
+//! - `edit_metadata` — `EditMetadata` (kind:9002 edit-metadata): edit an
+//!   existing group's name/about/picture/visibility/access (admin action).
 //!
 //! NIP-29 ships public group creation, generic group-event publishing,
 //! discovery, join, and the ADR-0060 admin subset (`9000` / `9009`) in v1. The
@@ -28,6 +30,7 @@ mod admin;
 mod composed;
 mod create;
 mod discover;
+mod edit_metadata;
 mod group_event;
 mod join;
 mod leave;
@@ -43,6 +46,7 @@ pub use composed::{ReactInGroupAction, ReactInGroupInput};
 pub use publish::{PublishGroupEventAction, PublishGroupEventInput, DEFAULT_PREVIOUS_LIMIT};
 pub use create::{CreatePublicGroupAction, CreatePublicGroupInput, GroupAccess, GroupVisibility};
 pub use discover::{DiscoverGroupsAction, DiscoverGroupsInput};
+pub use edit_metadata::{EditMetadataAction, EditMetadataInput};
 pub use group_event::{
     GroupEventTarget, RepostInGroupAction, RepostInGroupInput, ShareEventInGroupAction,
     ShareEventInGroupInput,

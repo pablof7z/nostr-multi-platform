@@ -21,10 +21,10 @@ use nmp_core::substrate::{ActionContext, ActionPayload, ActionRejection};
 use nmp_nip29::GroupId;
 use nmp_nip29::action::{
     CreateInviteAction, CreateInviteInput, CreatePublicGroupAction, CreatePublicGroupInput,
-    GroupAccess, GroupEventTarget, GroupVisibility, JoinGroupAction, JoinGroupInput,
-    LeaveGroupAction, LeaveGroupInput, PublishGroupEventAction, PublishGroupEventInput,
-    PutUserAction, PutUserInput, ReactInGroupAction, ReactInGroupInput, RepostInGroupAction,
-    RepostInGroupInput, ShareEventInGroupAction, ShareEventInGroupInput,
+    EditMetadataAction, EditMetadataInput, GroupAccess, GroupEventTarget, GroupVisibility,
+    JoinGroupAction, JoinGroupInput, LeaveGroupAction, LeaveGroupInput, PublishGroupEventAction,
+    PublishGroupEventInput, PutUserAction, PutUserInput, ReactInGroupAction, ReactInGroupInput,
+    RepostInGroupAction, RepostInGroupInput, ShareEventInGroupAction, ShareEventInGroupInput,
 };
 
 /// Register every migrated nip29 event-authoring module onto a fresh registry.
@@ -45,6 +45,8 @@ fn registry() -> ActionRegistry {
     r.register(PutUserAction).expect("put user registers");
     r.register(CreateInviteAction)
         .expect("create invite registers");
+    r.register(EditMetadataAction)
+        .expect("edit metadata registers");
     r
 }
 
@@ -183,6 +185,16 @@ fn create_invite() -> CreateInviteInput {
         codes: vec!["code-1".into()],
     }
 }
+fn edit_metadata() -> EditMetadataInput {
+    EditMetadataInput {
+        group: group(),
+        name: Some("Renamed".into()),
+        about: Some("New about".into()),
+        picture: None,
+        visibility: Some(GroupVisibility::Private),
+        access: Some(GroupAccess::Closed),
+    }
+}
 
 // ---- NEGATIVE: bad-version trip for every migrated namespace ----------------
 
@@ -197,6 +209,7 @@ fn start_bytes_rejects_wrong_schema_version_for_every_namespace() {
     assert_bad_version_rejected("nmp.nip29.repost_in_group", repost().encode());
     assert_bad_version_rejected("nmp.nip29.put_user", put_user().encode());
     assert_bad_version_rejected("nmp.nip29.create_invite", create_invite().encode());
+    assert_bad_version_rejected("nmp.nip29.edit_metadata", edit_metadata().encode());
 }
 
 // ---- POSITIVE: well-formed typed payload round-trips through start_bytes ----
@@ -212,6 +225,7 @@ fn start_bytes_accepts_well_formed_typed_payload_for_every_namespace() {
     assert_good_accepted("nmp.nip29.repost_in_group", repost().encode());
     assert_good_accepted("nmp.nip29.put_user", put_user().encode());
     assert_good_accepted("nmp.nip29.create_invite", create_invite().encode());
+    assert_good_accepted("nmp.nip29.edit_metadata", edit_metadata().encode());
 }
 
 // ---- the typed doorway carries malformed bytes through as a fail-closed

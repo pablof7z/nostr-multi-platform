@@ -16,11 +16,15 @@
 //!   registration-time app config.
 //! - [`joined`] — [`JoinedGroupsProjection`]: active-account membership/admin
 //!   status derived from relay-signed 39001/39002 snapshots.
+//! - [`roster`] — [`GroupRosterProjection`]: one group's full member roster,
+//!   RETAINING the 39001/39002 pubkeys + 39003 role catalog (the read model a
+//!   group-detail screen renders).
 
 pub mod discovered;
 pub mod group_events;
 pub mod group_defaults;
 pub mod joined;
+pub mod roster;
 
 pub use discovered::{DiscoveredGroup, DiscoveredGroupsProjection, DiscoveredGroupsSnapshot};
 pub use group_events::{GroupEvent, GroupEventsProjection, GroupEventsSnapshot};
@@ -28,3 +32,6 @@ pub use group_defaults::{
     GroupDefaultsProjection, GroupDefaultsSnapshot, DEFAULT_PUBLIC_GROUP_RELAY_URL,
 };
 pub use joined::{JoinedGroup, JoinedGroupsProjection, JoinedGroupsSnapshot};
+pub use roster::{
+    GroupRole, GroupRosterMember, GroupRosterProjection, GroupRosterSnapshot,
+};
