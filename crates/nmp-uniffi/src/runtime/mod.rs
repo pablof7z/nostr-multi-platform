@@ -20,3 +20,9 @@
 pub mod config;
 pub mod diag;
 pub mod lifecycle;
+
+/// Rust→shell lifecycle observer.
+#[uniffi::export(callback_interface)]
+pub trait LifecycleSink: Send + Sync {
+    fn on_lifecycle_phase(&self, phase: u32);
+}

@@ -27,10 +27,8 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-use nmp_native_runtime::{
-    dispatch_action_bytes_typed, new_app, NmpApp as RuntimeApp, UpdateListener,
-    DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT,
-};
+use nmp_native_runtime::{new_app, NmpApp as RuntimeApp};
+pub use nmp_uniffi_support::{clamp_emit_hz, clamp_visible};
 
 uniffi::setup_scaffolding!();
 
@@ -44,9 +42,7 @@ pub mod identity;
 
 // ── Reference resolution (C3 — resolve_ref, profile, event embed) ─────────────
 pub mod refs;
-pub use refs::{
-    EventShape, ProfileShape, RefLiveness, RefNamespace, RefShape, ResolveMetadata,
-};
+pub use refs::{EventShape, ProfileShape, RefLiveness, RefNamespace, RefShape, ResolveMetadata};
 
 // ── Capability, action-lane, publish-control (C4) ────────────────────────────
 pub mod capability;
@@ -72,6 +68,16 @@ pub struct DispatchOutcome {
     pub error: Option<String>,
     /// Machine-readable code for coded rejections; `None` for plain errors.
     pub code: Option<String>,
+}
+
+impl From<nmp_uniffi_support::DispatchOutcome> for DispatchOutcome {
+    fn from(out: nmp_uniffi_support::DispatchOutcome) -> Self {
+        DispatchOutcome {
+            correlation_id: out.correlation_id,
+            error: out.error,
+            code: out.code,
+        }
+    }
 }
 
 // ── Callback interface ────────────────────────────────────────────────────────
@@ -128,15 +134,13 @@ impl NmpApp {
     /// * `visible_limit == 0` → use default (100). Otherwise clamp(1..=500).
     /// * `emit_hz == 0` → use default (6 Hz). Otherwise clamp(1..=12).
     pub fn start(&self, visible_limit: u32, emit_hz: u32) {
-        self.inner
-            .start_runtime(clamp_visible(visible_limit), clamp_emit_hz(emit_hz));
+        nmp_uniffi_support::start_runtime(&self.inner, visible_limit, emit_hz);
     }
 
     /// Reconfigure rendering limits without restarting. Same clamp rules as
     /// `start`.
     pub fn configure(&self, visible_limit: u32, emit_hz: u32) {
-        self.inner
-            .configure_runtime(clamp_visible(visible_limit), clamp_emit_hz(emit_hz));
+        nmp_uniffi_support::configure_runtime(&self.inner, visible_limit, emit_hz);
     }
 
     /// Signal the kernel to pause event processing (no data loss).
@@ -172,20 +176,9 @@ impl NmpApp {
     /// (unique ownership). The sink is moved into the update-listener closure
     /// which is then owned by the runtime's `Arc<UpdateListenerGate>`.
     pub fn set_update_sink(&self, sink: Option<Box<dyn UpdateSink>>) {
-        let listener: Option<UpdateListener> = sink.map(|s| {
-            // Wrap in Arc so the closure is `Sync` (required by UpdateListener).
-            let s: Arc<dyn UpdateSink> = Arc::from(s);
-            Arc::new(move |bytes: &[u8]| {
-                // Copy BEFORE foreign call — no Rust lock held here.
-                let frame = bytes.to_vec();
-                // Panic containment: a Swift/Kotlin abort must not unwind
-                // into the Rust update-listener thread (D6).
-                let s = Arc::clone(&s);
-                let _ =
-                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || s.on_update(frame)));
-            }) as UpdateListener
+        nmp_uniffi_support::set_update_sink(&self.inner, sink, |sink, frame| {
+            sink.on_update(frame);
         });
-        self.inner.set_update_listener(listener);
     }
 
     /// Dispatch an NMPD FlatBuffers action envelope and return the outcome.
@@ -198,34 +191,7 @@ impl NmpApp {
     /// D6 fail-closed: never throws; every error surfaces as a populated
     /// `DispatchOutcome.error`. D8: non-blocking channel send.
     pub fn dispatch_action(&self, envelope: Vec<u8>) -> DispatchOutcome {
-        let out = dispatch_action_bytes_typed(&self.inner, &envelope);
-        DispatchOutcome {
-            correlation_id: out.correlation_id,
-            error: out.error,
-            code: out.code,
-        }
-    }
-}
-
-// ── Clamp helpers (parity with nmp-ffi/src/app_lifecycle_ffi.rs) ─────────────
-
-/// Clamp `visible_limit` identically to `nmp_app_start` / `nmp_app_configure`.
-/// `0` → `DEFAULT_VISIBLE_LIMIT` (100); otherwise clamp(1..=500).
-fn clamp_visible(visible_limit: u32) -> usize {
-    if visible_limit == 0 {
-        DEFAULT_VISIBLE_LIMIT
-    } else {
-        visible_limit.clamp(1, 500) as usize
-    }
-}
-
-/// Clamp `emit_hz` identically to `nmp_app_start` / `nmp_app_configure`.
-/// `0` → `DEFAULT_EMIT_HZ` (6); otherwise clamp(1..=12).
-fn clamp_emit_hz(emit_hz: u32) -> u32 {
-    if emit_hz == 0 {
-        DEFAULT_EMIT_HZ
-    } else {
-        emit_hz.clamp(1, 12)
+        nmp_uniffi_support::dispatch_action_vec(&self.inner, envelope).into()
     }
 }
 

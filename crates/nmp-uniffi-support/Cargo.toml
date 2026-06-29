@@ -1,0 +1,16 @@
+[package]
+name = "nmp-uniffi-support"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Reusable UniFFI facade contracts and bridge helpers for NMP native app objects."
+
+[lib]
+name = "nmp_uniffi_support"
+crate-type = ["rlib"]
+
+[dependencies]
+nmp-core = { path = "../nmp-core", default-features = false }
+nmp-native-runtime = { path = "../nmp-native-runtime" }
+serde_json = { workspace = true }

@@ -16,12 +16,8 @@
 //! The `on_capability_request` string is a pre-copied `String` value —
 //! no Rust lock is held across the foreign call, matching the C-ABI contract.
 
-use std::sync::Arc;
-
-use nmp_core::__ffi_internal::{dispatch_capability, NativeCapabilityHandler};
-
-use crate::NmpApp;
 use super::CapabilitySink;
+use crate::NmpApp;
 
 #[uniffi::export]
 impl NmpApp {
@@ -41,32 +37,9 @@ impl NmpApp {
     /// counterpart to the C-ABI `CapabilityCallback` fn-ptr path; both share
     /// the same quiescence gate.
     pub fn set_capability_callback(&self, sink: Option<Box<dyn CapabilitySink>>) {
-        let handler: Option<NativeCapabilityHandler> = sink.map(|s| {
-            // Wrap in Arc so the closure is `Sync` (NativeCapabilityHandler requires
-            // `Send + Sync`).
-            let s: Arc<dyn CapabilitySink> = Arc::from(s);
-            Arc::new(move |request_json: String| -> String {
-                // `request_json` is already a pre-copied String passed in by
-                // dispatch_capability — no Rust lock is held at this point.
-                // Clone here so both the closure and the error path below can
-                // use the value.
-                let req_for_call = request_json.clone();
-                // Panic containment: a Swift/Kotlin throw must not unwind into
-                // the dispatch thread (D6).
-                let s = Arc::clone(&s);
-                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
-                    s.on_capability_request(req_for_call)
-                }));
-                result.unwrap_or_else(|_| {
-                    // D6: panics become error envelopes, never crashes.
-                    nmp_core::__ffi_internal::capability_error_envelope(
-                        &request_json,
-                        "sink-panicked",
-                    )
-                })
-            }) as NativeCapabilityHandler
+        nmp_uniffi_support::set_capability_callback(&self.inner, sink, |sink, request_json| {
+            sink.on_capability_request(request_json)
         });
-        self.inner.capability_callback_slot().set_native_handler(handler);
     }
 
     /// Route a `CapabilityRequest` JSON to the registered handler and return
@@ -81,7 +54,6 @@ impl NmpApp {
     /// handler, and after processing a request it calls this method to deliver
     /// the response back to the kernel.
     pub fn dispatch_capability_json(&self, request_json: String) -> String {
-        let slot = self.inner.capability_callback_slot();
-        dispatch_capability(&slot, &request_json)
+        nmp_uniffi_support::dispatch_capability_json(&self.inner, &request_json)
     }
 }

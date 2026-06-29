@@ -373,9 +373,15 @@ Native target split (#2205/#2209, amended by M14):
   session registries, native Rust APIs, and the native typestate builder
   (`NmpAppBuilder` / `RunConfig`). It composes `nmp-defaults` like a leaf app
   runtime.
-- `nmp-uniffi` is the one public native binding surface for iOS, Android, and
-  desktop native hosts. It exposes the runtime object model, typed records,
-  callbacks, and FlatBuffers byte payload doorways through generated bindings.
+- `nmp-uniffi` is the reusable framework native binding surface for iOS,
+  Android, and desktop native hosts. It exposes the framework runtime object
+  model, typed records, callbacks, and FlatBuffers byte payload doorways through
+  generated bindings.
+- App-owned UniFFI facade crates may expose app-specific protocol verbs in the
+  app's generated namespace. They must delegate lifecycle, update-sink,
+  capability, dispatch, quiescence, and clamp mechanics to `nmp-native-runtime`
+  / `nmp-uniffi-support` instead of copying framework bridge policy or reviving
+  raw C/JNI symbols.
 - App-owned delivery crates may keep local C/JNI glue for app-specific adapters
   such as Gallery, but that glue is not reusable framework API and must not
   revive deleted framework symbols.
