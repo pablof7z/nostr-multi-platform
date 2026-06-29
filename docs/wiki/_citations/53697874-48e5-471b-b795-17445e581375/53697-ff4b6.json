@@ -1,6 +1,0 @@
-{
-  "id": "53697-ff4b6",
-  "ts": "2026-06-26T08:20:48Z",
-  "session": "53697874-48e5-471b-b795-17445e581375",
-  "text": "Assistant: Done. 5 milestones created, all 24 open issues assigned:\n\n| Milestone | Issues |\n|---|---|\n| **v1 Blocker** | 1 — #2091 (zap observer) |\n| **Pre-v1 Hardening** | 7 — browser-runtime epic (#2045, #2053, #2068, #2082), NIP-65 cache (#2085), NIP-46 decoupling (#2119), meta-subscribe hydration (#2113) |\n| **v1 Infrastructure** | 3 — release train (#2121), native CI gates (#2124), browser CI (#2081) |\n| **v1 Developer Experience** | 2 — DX onboarding (#2122), byte-dispatch API (#2127) |\n| **Post-v1** | 11 — all issues already tagged `phase:post-v1` |\n\nThe 7 no-phase issues were bucketed by content: browser-runtime work → Pre-v1 Hardening, browser CI → v1 Infrastructure."
-}

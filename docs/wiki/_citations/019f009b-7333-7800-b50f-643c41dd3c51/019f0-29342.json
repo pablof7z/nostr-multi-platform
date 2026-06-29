@@ -1,6 +1,0 @@
-{
-  "id": "019f0-29342",
-  "ts": "2026-06-26T07:34:57Z",
-  "session": "019f009b-7333-7800-b50f-643c41dd3c51",
-  "text": "- The live app-facing feed entry is `nmp_app_open_feed`, with `FeedParams` / `FeedScope` / `PubkeySetExpr`: `apps/chirp/crates/nmp-app-chirp/src/ffi/feed.rs:96`, `crates/nmp-feed/src/params.rs:66`.\n- Current `PubkeySetExpr` already has closed dynamic cases such as `ActiveUserFollows`, `ContactList`, `ListMembers`, `Wot`, set algebra, and `CustomPerspectiveId`: `crates/nmp-feed/src/params.rs:66`. [...] - Public app feed API remains `open_feed(FeedParams)`; raw `open_interest` remains static/non-feed/internal as currently documented.\n- `rg` shows no surviving bespoke follow-feed ownership path except tests/docs intentionally updated for the new primitive. [...] Assistant: I’m adding one ignored public-relay scenario as evidence, separate from CI: source list and Bob’s kind:10002 go to relay A, Bob’s note goes only to relay B, and the app is configured with relay A only. A PASS means the kernel learned B from NIP-65 and fetched the materialized author row there; a SKIP stays honest if public relays don’t cooperate."
-}

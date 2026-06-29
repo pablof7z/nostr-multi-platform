@@ -1,6 +1,0 @@
-{
-  "id": "019f0-90154",
-  "ts": "2026-06-26T07:34:57Z",
-  "session": "019f009b-7333-7800-b50f-643c41dd3c51",
-  "text": "Add one canonical **Reduced Source** primitive.\n\nA reduced source is:\n\n```text\nReducedSource {\n  owner_id,\n  source_interest,\n  reducer_id,\n  output_targets,\n  scope,\n  lifecycle,\n}\n```\n\nThe kernel owns:\n\n1. registering the source interest;\n2. serving source rows from cache/store;\n3. marking the source dirty when relevant events/account state change;\n4. running a deterministic reducer;\n5. diffing previous vs. next reduced output;\n6. closing removed targets;\n7. opening changed/new targets through existing registries;\n8. triggering subscription recompilation.\n"
-}

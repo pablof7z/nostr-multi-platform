@@ -1,6 +1,0 @@
-{
-  "id": "019f0-f3294",
-  "ts": "2026-06-26T07:34:57Z",
-  "session": "019f009b-7333-7800-b50f-643c41dd3c51",
-  "text": "`ReducedInterest` materializes a downstream `LogicalInterest` by filling dynamic slots in an `InterestShape` template:\n\n- `authors`\n- `event_ids`\n- `addresses`\n- `tags[key]`\n [...] - `InterestShape` has `event_ids`, generic `tags`, and internal `addresses`: `crates/nmp-planner/src/interest.rs:127`.\n- JSON `open_interest` maps `ids` and `#x` tags, but not `#a` into typed `addresses`: `crates/nmp-planner/src/interest.rs:252`."
-}

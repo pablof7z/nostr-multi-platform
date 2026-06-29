@@ -1,6 +1,0 @@
-{
-  "id": "019f0-9f9d0",
-  "ts": "2026-06-26T10:52:23Z",
-  "session": "019f0340-ad2d-7292-9393-cebfc446ac68",
-  "text": "- Migrated NIP-29 off per-action `EventStoreSlot` capture and onto `ActionContext::query_local_events`."
-}
