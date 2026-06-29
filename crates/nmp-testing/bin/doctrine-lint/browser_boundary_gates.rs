@@ -63,6 +63,9 @@ const TS_BOUNDARY_TOKENS: &[(&str, &str)] = &[
     ("nsec", "raw secret material in TypeScript glue"),
 ];
 
+const BROWSER_LOCAL_FEED_SESSION_MODEL_DEFS: &[&str] =
+    &["struct FeedParams", "struct FeedSessionRegistry"];
+
 #[test]
 fn nmp_browser_runtime_is_direct_doctrine_lint_clean() {
     let (code, stdout, stderr) = run_lint(&["--path", "crates/nmp-browser-runtime/src"]);
@@ -71,6 +74,42 @@ fn nmp_browser_runtime_is_direct_doctrine_lint_clean() {
         "nmp-browser-runtime must stay clean when CI scans it directly; \
          stdout:\n{}\nstderr:\n{}",
         stdout, stderr
+    );
+}
+
+#[test]
+fn browser_runtime_uses_nmp_feed_session_model() {
+    let root = workspace_root();
+    let runtime_src = root.join("crates/nmp-browser-runtime/src");
+    let mut files = Vec::new();
+    collect_rs_files(&runtime_src, &mut files);
+    assert!(!files.is_empty(), "browser runtime Rust sources must exist");
+
+    let mut violations = Vec::new();
+    for path in files {
+        let body = std::fs::read_to_string(&path)
+            .unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()));
+        let mut in_block_comment = false;
+        for (idx, line) in body.lines().enumerate() {
+            let live = strip_line_comments(line, &mut in_block_comment);
+            for token in BROWSER_LOCAL_FEED_SESSION_MODEL_DEFS {
+                if live.contains(token) {
+                    violations.push(format!(
+                        "{}:{} local `{token}` definition",
+                        relative_to(&root, &path).display(),
+                        idx + 1
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "browser-runtime must use `nmp_feed::FeedParams` and \
+         `nmp_feed::FeedSessionRegistry` as the public feed session model; \
+         local browser-only model definitions are forbidden:\n{}",
+        violations.join("\n")
     );
 }
 
@@ -119,7 +158,7 @@ fn runtime_web_sources_have_no_policy_polling_or_secret_retention() {
             .unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()));
         let mut in_block_comment = false;
         for (idx, line) in body.lines().enumerate() {
-            let live = strip_ts_comments(line, &mut in_block_comment);
+            let live = strip_line_comments(line, &mut in_block_comment);
             for finding in ts_boundary_findings(&live) {
                 violations.push(format!(
                     "{}:{} {}",
@@ -188,6 +227,22 @@ fn collect_ts_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
+fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    let mut entries: Vec<_> = entries.filter_map(Result::ok).collect();
+    entries.sort_by_key(|entry| entry.path());
+    for entry in entries {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_rs_files(&path, out);
+        } else if matches!(path.extension().and_then(|e| e.to_str()), Some("rs")) {
+            out.push(path);
+        }
+    }
+}
+
 fn should_skip_runtime_web_source(path: &Path) -> bool {
     let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
         return true;
@@ -205,7 +260,7 @@ fn ts_boundary_findings(line: &str) -> Vec<String> {
     findings
 }
 
-fn strip_ts_comments(line: &str, in_block_comment: &mut bool) -> String {
+fn strip_line_comments(line: &str, in_block_comment: &mut bool) -> String {
     let mut out = String::new();
     let mut rest = line;
     loop {

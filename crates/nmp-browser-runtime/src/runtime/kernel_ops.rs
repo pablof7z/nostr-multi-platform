@@ -99,6 +99,7 @@ impl BrowserRuntimeHandle {
             for observer in &self.runtime.identity_change_observers {
                 observer(Some(canonical_pubkey_hex.clone()));
             }
+            self.sync_feed_sessions_after_identity_change();
         }
         outbound
     }

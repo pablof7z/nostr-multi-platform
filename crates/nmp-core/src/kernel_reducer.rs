@@ -277,6 +277,7 @@ mod react;
 mod refs;
 mod relay_lifecycle;
 pub(crate) mod reply;
+mod snapshot_teardown;
 // #1753 S6 — the wasm signing capability round-trip seam (pure message
 // re-entry). Adds `begin_sign_roundtrip` / `deliver_signed_response` to
 // `impl KernelReducer` and defines `SignRoundTripState` + its public DTOs.
