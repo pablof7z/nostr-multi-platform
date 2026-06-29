@@ -55,10 +55,11 @@ nmp-core = { path = "../nmp-core", default-features = false }
 nmp-content = { path = "../nmp-content" }
 uniffi = { version = "0.29" }
 zeroize = { workspace = true }
+# M14-C4: needed to serialize ActionResult to JSON for ActionResultObserver.
+serde_json = { workspace = true }
 
 [dev-dependencies]
 # For building test envelopes and registering test action modules.
 nmp-core = { path = "../nmp-core", features = ["test-support"] }
 nmp-defaults = { path = "../nmp-defaults" }
 nmp-native-runtime = { path = "../nmp-native-runtime", features = ["test-support"] }
-serde_json = { workspace = true }

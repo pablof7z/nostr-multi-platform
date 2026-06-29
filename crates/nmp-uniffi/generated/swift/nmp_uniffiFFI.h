@@ -251,11 +251,41 @@ typedef void (*UniffiForeignFutureCompleteVoid)(uint64_t, UniffiForeignFutureStr
     );
 
 #endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_ACTION_RESULT_OBSERVER_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_ACTION_RESULT_OBSERVER_METHOD0
+typedef void (*UniffiCallbackInterfaceActionResultObserverMethod0)(uint64_t, RustBuffer, void* _Nonnull,
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_CAPABILITY_SINK_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_CAPABILITY_SINK_METHOD0
+typedef void (*UniffiCallbackInterfaceCapabilitySinkMethod0)(uint64_t, RustBuffer, RustBuffer* _Nonnull,
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_UPDATE_SINK_METHOD0
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_UPDATE_SINK_METHOD0
 typedef void (*UniffiCallbackInterfaceUpdateSinkMethod0)(uint64_t, RustBuffer, void* _Nonnull,
         RustCallStatus *_Nonnull uniffiCallStatus
     );
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_ACTION_RESULT_OBSERVER
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_ACTION_RESULT_OBSERVER
+typedef struct UniffiVTableCallbackInterfaceActionResultObserver {
+    UniffiCallbackInterfaceActionResultObserverMethod0 _Nonnull onActionResult;
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+} UniffiVTableCallbackInterfaceActionResultObserver;
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_CAPABILITY_SINK
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_CAPABILITY_SINK
+typedef struct UniffiVTableCallbackInterfaceCapabilitySink {
+    UniffiCallbackInterfaceCapabilitySinkMethod0 _Nonnull onCapabilityRequest;
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+} UniffiVTableCallbackInterfaceCapabilitySink;
 
 #endif
 #ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_UPDATE_SINK
@@ -282,9 +312,19 @@ void*_Nonnull uniffi_nmp_uniffi_fn_constructor_nmpapp_new(RustCallStatus *_Nonnu
 
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_ACK_ACTION_STAGE
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_ACK_ACTION_STAGE
+void uniffi_nmp_uniffi_fn_method_nmpapp_ack_action_stage(void*_Nonnull ptr, RustBuffer correlation_id, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_ADD_RELAY
 #define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_ADD_RELAY
 void uniffi_nmp_uniffi_fn_method_nmpapp_add_relay(void*_Nonnull ptr, RustBuffer url, RustBuffer role, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_CANCEL_ACTION
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_CANCEL_ACTION
+void uniffi_nmp_uniffi_fn_method_nmpapp_cancel_action(void*_Nonnull ptr, RustBuffer correlation_id, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_CANCEL_BUNKER_HANDSHAKE
@@ -312,6 +352,11 @@ void uniffi_nmp_uniffi_fn_method_nmpapp_deliver_external_signer_response(void*_N
 RustBuffer uniffi_nmp_uniffi_fn_method_nmpapp_dispatch_action(void*_Nonnull ptr, RustBuffer envelope, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_DISPATCH_CAPABILITY_JSON
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_DISPATCH_CAPABILITY_JSON
+RustBuffer uniffi_nmp_uniffi_fn_method_nmpapp_dispatch_capability_json(void*_Nonnull ptr, RustBuffer request_json, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_INIT_EXTERNAL_SIGNER
 #define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_INIT_EXTERNAL_SIGNER
 void uniffi_nmp_uniffi_fn_method_nmpapp_init_external_signer(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -325,6 +370,11 @@ void uniffi_nmp_uniffi_fn_method_nmpapp_init_signer_broker(void*_Nonnull ptr, Ru
 #ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_NOSTRCONNECT_URI
 #define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_NOSTRCONNECT_URI
 RustBuffer uniffi_nmp_uniffi_fn_method_nmpapp_nostrconnect_uri(void*_Nonnull ptr, RustBuffer callback_scheme, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_REGISTER_ACTION_RESULT_OBSERVER
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_REGISTER_ACTION_RESULT_OBSERVER
+void uniffi_nmp_uniffi_fn_method_nmpapp_register_action_result_observer(void*_Nonnull ptr, uint64_t observer, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_REGISTER_AGENT_NSEC
@@ -402,6 +452,16 @@ void uniffi_nmp_uniffi_fn_method_nmpapp_resolve_ref(void*_Nonnull ptr, RustBuffe
 void uniffi_nmp_uniffi_fn_method_nmpapp_resolve_ref_with_metadata(void*_Nonnull ptr, RustBuffer namespace, RustBuffer key, RustBuffer consumer_id, RustBuffer shape, RustBuffer liveness, RustBuffer metadata, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_RETRY_PUBLISH
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_RETRY_PUBLISH
+void uniffi_nmp_uniffi_fn_method_nmpapp_retry_publish(void*_Nonnull ptr, RustBuffer handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_SET_CAPABILITY_CALLBACK
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_SET_CAPABILITY_CALLBACK
+void uniffi_nmp_uniffi_fn_method_nmpapp_set_capability_callback(void*_Nonnull ptr, RustBuffer sink, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_SET_UPDATE_SINK
 #define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_SET_UPDATE_SINK
 void uniffi_nmp_uniffi_fn_method_nmpapp_set_update_sink(void*_Nonnull ptr, RustBuffer sink, RustCallStatus *_Nonnull out_status
@@ -440,6 +500,16 @@ void uniffi_nmp_uniffi_fn_method_nmpapp_stop(void*_Nonnull ptr, RustCallStatus *
 #ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_SWITCH_ACTIVE
 #define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_SWITCH_ACTIVE
 void uniffi_nmp_uniffi_fn_method_nmpapp_switch_active(void*_Nonnull ptr, RustBuffer identity_id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_INIT_CALLBACK_VTABLE_ACTIONRESULTOBSERVER
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_INIT_CALLBACK_VTABLE_ACTIONRESULTOBSERVER
+void uniffi_nmp_uniffi_fn_init_callback_vtable_actionresultobserver(const UniffiVTableCallbackInterfaceActionResultObserver* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_INIT_CALLBACK_VTABLE_CAPABILITYSINK
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_INIT_CALLBACK_VTABLE_CAPABILITYSINK
+void uniffi_nmp_uniffi_fn_init_callback_vtable_capabilitysink(const UniffiVTableCallbackInterfaceCapabilitySink* _Nonnull vtable
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_INIT_CALLBACK_VTABLE_UPDATESINK
@@ -771,9 +841,21 @@ uint16_t uniffi_nmp_uniffi_checksum_func_tokenize_content(void
 
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_ACK_ACTION_STAGE
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_ACK_ACTION_STAGE
+uint16_t uniffi_nmp_uniffi_checksum_method_nmpapp_ack_action_stage(void
+
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_ADD_RELAY
 #define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_ADD_RELAY
 uint16_t uniffi_nmp_uniffi_checksum_method_nmpapp_add_relay(void
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_CANCEL_ACTION
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_CANCEL_ACTION
+uint16_t uniffi_nmp_uniffi_checksum_method_nmpapp_cancel_action(void
 
 );
 #endif
@@ -807,6 +889,12 @@ uint16_t uniffi_nmp_uniffi_checksum_method_nmpapp_dispatch_action(void
 
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_DISPATCH_CAPABILITY_JSON
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_DISPATCH_CAPABILITY_JSON
+uint16_t uniffi_nmp_uniffi_checksum_method_nmpapp_dispatch_capability_json(void
+
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_INIT_EXTERNAL_SIGNER
 #define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_INIT_EXTERNAL_SIGNER
 uint16_t uniffi_nmp_uniffi_checksum_method_nmpapp_init_external_signer(void
@@ -822,6 +910,12 @@ uint16_t uniffi_nmp_uniffi_checksum_method_nmpapp_init_signer_broker(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_NOSTRCONNECT_URI
 #define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_NOSTRCONNECT_URI
 uint16_t uniffi_nmp_uniffi_checksum_method_nmpapp_nostrconnect_uri(void
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_REGISTER_ACTION_RESULT_OBSERVER
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_REGISTER_ACTION_RESULT_OBSERVER
+uint16_t uniffi_nmp_uniffi_checksum_method_nmpapp_register_action_result_observer(void
 
 );
 #endif
@@ -915,6 +1009,18 @@ uint16_t uniffi_nmp_uniffi_checksum_method_nmpapp_resolve_ref_with_metadata(void
 
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_RETRY_PUBLISH
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_RETRY_PUBLISH
+uint16_t uniffi_nmp_uniffi_checksum_method_nmpapp_retry_publish(void
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_SET_CAPABILITY_CALLBACK
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_SET_CAPABILITY_CALLBACK
+uint16_t uniffi_nmp_uniffi_checksum_method_nmpapp_set_capability_callback(void
+
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_SET_UPDATE_SINK
 #define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_SET_UPDATE_SINK
 uint16_t uniffi_nmp_uniffi_checksum_method_nmpapp_set_update_sink(void
@@ -966,6 +1072,18 @@ uint16_t uniffi_nmp_uniffi_checksum_method_nmpapp_switch_active(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_CONSTRUCTOR_NMPAPP_NEW
 #define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_CONSTRUCTOR_NMPAPP_NEW
 uint16_t uniffi_nmp_uniffi_checksum_constructor_nmpapp_new(void
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_ACTIONRESULTOBSERVER_ON_ACTION_RESULT
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_ACTIONRESULTOBSERVER_ON_ACTION_RESULT
+uint16_t uniffi_nmp_uniffi_checksum_method_actionresultobserver_on_action_result(void
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_CAPABILITYSINK_ON_CAPABILITY_REQUEST
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_CAPABILITYSINK_ON_CAPABILITY_REQUEST
+uint16_t uniffi_nmp_uniffi_checksum_method_capabilitysink_on_capability_request(void
 
 );
 #endif
