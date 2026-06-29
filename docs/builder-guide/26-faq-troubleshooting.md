@@ -31,8 +31,8 @@ hosts use the wasm-bindgen runtime surface instead. See
 
 **Q4. iOS sim build can't find the generated binding module.**
 Regenerate/import the UniFFI bindings for the simulator target and confirm the
-native shell links the Rust library for that same target. Raw `nmp_app_*` symbol
-lookups are a sign you are following the old transitional C-ABI path, not the
+native shell links the Rust library for that same target. Legacy native symbol
+lookups are a sign you are following the old transitional native path, not the
 current public native recipe.
 
 **Q5. `--features lmdb-backend` won't compile.**
@@ -126,12 +126,12 @@ For normal state updates, `kind = Snapshot` and the `snapshot` table carries
 typed envelope fields plus `typed_projections`. `kind = Panic` is the terminal
 actor-thread failure frame. Hosts decode the frame with generated FlatBuffers
 readers; there is no production JSON snapshot fallback. Product view state
-comes from typed projection sidecars such as `nmp.feed.home`,
+comes from typed projection rows such as `nmp.feed.home`,
 `nmp.feed.author.<pubkey>`, and `nmp.feed.thread.<event_id>`.
 
 | Field | Type | Use |
 |---|---|---|
-| `typed_projections` | [TypedProjection] | per-key typed sidecars; host view models decode from these |
+| `typed_projections` | [TypedProjection] | per-key typed rows; host view models decode from these |
 | `rev` | u64 | monotonic emit counter; the staleness guard |
 | `kernel_schema_version` | u32 | kernel snapshot schema version |
 | `last_tick_ms` | u64 | actor liveness/timing stamp |
@@ -149,8 +149,8 @@ comes from typed projection sidecars such as `nmp.feed.home`,
 | `snapshot_epoch` / `session_id` | u64 | ADR-0055 frame-level cache identity |
 
 Debug order: `relay_statuses` → `logical_interests` → `wire_subscriptions` →
-`logs`. Product view state comes from typed projection sidecars; add a typed
-sidecar for new Swift/Kotlin UI state instead of relying on generic JSON.
+`logs`. Product view state comes from typed projection rows; add a typed row
+for new Swift/Kotlin UI state instead of relying on generic JSON.
 For dynamic typed projections, `Changed` replaces the cached value, `Cleared`
 drops it, and omission in an incremental frame means retain the last decoded
 value. `metrics` is for perf, not correctness.

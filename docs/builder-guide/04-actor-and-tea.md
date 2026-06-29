@@ -136,8 +136,8 @@ comment states the rationale verbatim: *"Test-support only (D0: not part of
 production FFI surface)."*
 
 **Why this matters for you:** `testing::spawn_actor` (`lib.rs:51-56`) and the
-`nmp_app_*` FFI re-exports (`lib.rs:23-29`) exist for benches and the
-ffi-stress harness — they let Rust-side test code drive the actor directly.
+legacy native re-exports (`lib.rs:23-29`) exist for benches and the ffi-stress
+harness — they let Rust-side test code drive the actor directly.
 They are not an app API. Production code that depends on `spawn_actor` will
 fail to compile without the feature, and turning the feature on in a shipped
 app is a D0 violation: you would be reaching past the generated FFI surface
@@ -155,7 +155,7 @@ into kernel internals.
 - **Holding mutable state in Swift/Kotlin.** Native is rendering plus
   capability execution; no caches, no derived state. Shadow the snapshot, do
   not author it.
-- **Depending on `testing::spawn_actor` / `nmp_app_*` from production.** D0
+- **Depending on `testing::spawn_actor` / legacy native exports from production.** D0
   violation — those symbols are gated test-support, not the FFI contract
   (`lib.rs:37-56`, `actor/mod.rs:46-48`).
 

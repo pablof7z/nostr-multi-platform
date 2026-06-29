@@ -93,6 +93,9 @@ const PATTERNS: &[Pattern] = &[
 const CLEAN_ROOM_INPUTS: &[&str] = &[
     "README.md",
     "docs/aim.md",
+    "docs/cli.md",
+    "docs/architecture/high-level-app-architecture.md",
+    "docs/ffi-surface.md",
     "docs/product-spec.md",
     "docs/product-spec/api-surface.md",
     "docs/product-spec/appendices.md",
@@ -101,6 +104,34 @@ const CLEAN_ROOM_INPUTS: &[&str] = &[
     "docs/product-spec/offline-first.md",
     "docs/product-spec/overview-and-dx.md",
     "docs/product-spec/subsystems.md",
+    "docs/builder-guide/00-how-to-read.md",
+    "docs/builder-guide/01-what-nmp-is.md",
+    "docs/builder-guide/02-mental-model.md",
+    "docs/builder-guide/03-doctrine-d0-d8.md",
+    "docs/builder-guide/04-actor-and-tea.md",
+    "docs/builder-guide/11-sessions-signers.md",
+    "docs/builder-guide/12-publish-and-ledger.md",
+    "docs/builder-guide/14a-app-relay-configuration.md",
+    "docs/builder-guide/15-codegen-and-ffi.md",
+    "docs/builder-guide/17-ios-shell.md",
+    "docs/builder-guide/19a-walkthrough-microblog.md",
+    "docs/builder-guide/19b-walkthrough-microblog.md",
+    "docs/builder-guide/19c-rust-shell.md",
+    "docs/builder-guide/20-new-protocol-module.md",
+    "docs/builder-guide/22-doctrine-checklist.md",
+    "docs/builder-guide/26-faq-troubleshooting.md",
+    "docs/builder-guide/conformance/SKILL.md",
+    "docs/builder-guide/conformance/catalog.md",
+    "docs/recipes/README.md",
+    "docs/recipes/app-shapes.md",
+    "docs/recipes/content-rendering.md",
+    "docs/wasm-surface.md",
+    "crates/nmp-cli/templates/README.md.tmpl",
+    "crates/nmp-cli/templates/app_cargo.toml.tmpl",
+    "crates/nmp-cli/templates/lib.rs.tmpl",
+    "crates/nmp-cli/templates/nmp.toml.tmpl",
+    "crates/nmp-cli/templates/shell.rs.tmpl",
+    "crates/nmp-cli/templates/workspace_cargo.toml.tmpl",
 ];
 
 const CLEAN_ROOM_FORBIDDEN: &[Pattern] = &[
@@ -155,7 +186,22 @@ const CLEAN_ROOM_FORBIDDEN: &[Pattern] = &[
         "clean-room docs should not expose source-reconciliation internals",
     ),
     (
-        "sidecar",
+        "typed sidecar",
+        "projection_sidecar",
+        "clean-room docs should teach typed session outputs, not sidecar rituals",
+    ),
+    (
+        "typed sidecars",
+        "projection_sidecar",
+        "clean-room docs should teach typed session outputs, not sidecar rituals",
+    ),
+    (
+        "projection sidecar",
+        "projection_sidecar",
+        "clean-room docs should teach typed session outputs, not sidecar rituals",
+    ),
+    (
+        "projection sidecars",
         "projection_sidecar",
         "clean-room docs should teach typed session outputs, not sidecar rituals",
     ),
@@ -321,7 +367,9 @@ fn allowed(rel: &str, token: &str, line: &str) -> Option<&'static str> {
 
 fn token_matches(line: &str, token: &str) -> bool {
     match token {
-        "ObservedProjection" | "open_interest" => contains_identifier(line, token),
+        "ObservedProjection" | "open_interest" | "signer_pubkey" | "signerPubkey" => {
+            contains_identifier(line, token)
+        }
         _ => line.contains(token),
     }
 }
@@ -344,6 +392,11 @@ fn is_ident_char(ch: Option<char>) -> bool {
     ch.is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '_')
 }
 
+fn clean_room_line_is_non_onboarding_contract_check(rel: &str, line: &str) -> bool {
+    rel == "crates/nmp-cli/templates/lib.rs.tmpl"
+        && line.contains("!builder.ends_with(\"publishRaw\")")
+}
+
 #[test]
 fn clean_room_inputs_do_not_reintroduce_retired_public_vocabulary() {
     let root = repo_root();
@@ -354,6 +407,9 @@ fn clean_room_inputs_do_not_reintroduce_retired_public_vocabulary() {
         let text = std::fs::read_to_string(&path)
             .unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
         for (line_idx, line) in text.lines().enumerate() {
+            if clean_room_line_is_non_onboarding_contract_check(rel, line) {
+                continue;
+            }
             for &(token, label, guidance) in CLEAN_ROOM_FORBIDDEN {
                 if token_matches(line, token) {
                     violations.push(format!(

@@ -15,7 +15,7 @@ already-projected data.
 - Platform shell: decodes snapshots, installs one component host/provider, and
   maps typed render models to native views.
 - Runtime/component host: owns `resolve_ref` / `release_ref` and provider
-  wiring. Components below it never import runtime, raw C/JNI compatibility
+  wiring. Components below it never import runtime, legacy native compatibility
   shims, worker, or kernel handles.
 - Single writers: Rust writes content/projection facts; shell renderers write
   only presentation.
@@ -84,7 +84,7 @@ nmp add component swiftui/component-host --with fixture
 The fixture provides fake `refs.profile`, `refs.event`, and
 `refs.event.envelopes` rows so profile and embed components can be rendered
 without a live kernel. The production app still supplies its real host bridge at
-the app or screen root; component source must not import runtime, raw C/JNI
+the app or screen root; component source must not import runtime, legacy native
 compatibility shims, worker, or kernel handles directly.
 
 ### Install

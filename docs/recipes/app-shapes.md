@@ -78,8 +78,8 @@ For action-triggered discovery, copy the pattern in
 [28 - Action-triggered subscriptions](../builder-guide/28-action-triggered-subscriptions.md):
 `ActionModule` dispatches a typed Claim/Release intent, and the read-session
 helper owns the internal acquisition, replay, output, status, and teardown.
-Do not expose `EnsureInterest`, observed-projection internals, or
-`ObservedProjection` as app-facing product APIs.
+Do not expose low-level interest claims or observed-delivery internals as
+app-facing product APIs.
 
 ## Long-Form Reader
 
@@ -171,7 +171,7 @@ render.
 - Shell: decodes the product snapshot, routes taps, and renders NMP content
   components for the embedded content fields.
 - Runtime/host: transports the typed app projection and the standard component
-  refs sidecars.
+  ref rows.
 - Single writers: app Rust writes product facts and projection facts; NMP writes
   generic protocol/ref facts; shells do not reimplement content resolution.
 

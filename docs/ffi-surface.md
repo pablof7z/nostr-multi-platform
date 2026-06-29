@@ -71,12 +71,12 @@ payload evolution remain owned by the FlatBuffers/codegen crates.
 
 Browser hosts use the separate `nmp-browser-runtime` `wasm-bindgen` surface. Do
 not route browser guidance through UniFFI and do not use browser/wasm as a reason
-to retain native C/JNI symbols.
+to retain legacy native symbols.
 
-## Deleted Native C/JNI Symbols
+## Deleted Legacy Native Symbols
 
 #2403 completed the migrated raw native ABI deletion tracker, and #2463 deleted
-the migrated runtime config/diagnostics C ABI. The following families are not
+the migrated runtime config/diagnostics native ABI. The following families are not
 current framework public API:
 
 - app-loop lifecycle/update callback/action doorway C symbols;
@@ -102,8 +102,8 @@ native public API.
 | `crates/nmp-ffi` compatibility helpers for identity, signer broker, external signer, relay edits, and ref resolution | Transitional/internal compatibility while downstream and tests finish moving to UniFFI. New native app-facing work must not target these symbols. | #2125 |
 | `nmp_free_string` | Shared allocator helper for any retained C string returns. It exists because raw compatibility/app-owned C seams still return Rust-owned strings. | #2125 |
 | `crates/nmp-ffi` test-support exports | Test/perf harness only; never production binding guidance. | #2125 |
-| Gallery `nmp_app_gallery_*`, `nmp_gallery_kernel_*`, and Android `Java_org_nmp_gallery_bridge_KernelBridge_*` shims | App-owned delivery glue for `apps/nmp-gallery`, not reusable NMP framework ABI. | #2125 / app owner |
-| Marmot `nmp_marmot_*` C surface under `crates/nmp-marmot` | Post-v1/provisional mixed binding shape; do not promote it into a durable public C ABI. | #2232 |
+| Gallery app/native and Android bridge shims | App-owned delivery glue for `apps/nmp-gallery`, not reusable NMP framework ABI. | #2125 / app owner |
+| Marmot native surface under `crates/nmp-marmot` | Post-v1/provisional mixed binding shape; do not promote it into a durable public native ABI. | #2232 |
 
 Any proposal to keep a raw native byte lane after its UniFFI replacement exists
 must meet ADR-0030's exception gate: measured production budget failure through
@@ -119,7 +119,7 @@ thresholds, retest date, and delete trigger.
   `nmp-native-runtime` and is exposed to native hosts through `nmp-uniffi`.
 - Native shells do not choose relays, mutate protocol tags, infer publish
   success, own retries, or cache product truth.
-- Deleted raw C/JNI symbols are not compatibility requirements.
+- Deleted legacy native symbols are not compatibility requirements.
 
 ## Verification Pointers
 
