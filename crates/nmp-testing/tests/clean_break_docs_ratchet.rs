@@ -92,6 +92,7 @@ const PATTERNS: &[Pattern] = &[
 
 const CLEAN_ROOM_INPUTS: &[&str] = &[
     "README.md",
+    "docs/aim.md",
     "docs/product-spec.md",
     "docs/product-spec/api-surface.md",
     "docs/product-spec/appendices.md",
