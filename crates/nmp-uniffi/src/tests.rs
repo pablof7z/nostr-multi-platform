@@ -360,7 +360,7 @@ fn dispatch_wrapper_passes_through_correlation_id() {
         tags: vec![],
         content: "uniffi dispatch test".to_string(),
         target: PublishTarget::Auto,
-        signer_pubkey: None,
+        signer: Default::default(),
     };
     let payload = action.encode();
     let envelope = encode_dispatch_envelope(
