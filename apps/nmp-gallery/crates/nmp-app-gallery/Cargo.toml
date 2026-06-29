@@ -19,7 +19,7 @@ default = ["native"]
 # Mirror the `nmp-ffi` feature posture exactly. The kernel `nmp_app_*`
 # symbols are native-only (wasm uses wasm-bindgen, not C-ABI), so the
 # entire crate is gated behind `native`. Enabled by default.
-native = ["nmp-ffi/native"]
+native = ["nmp-ffi/native", "nmp-uniffi/native"]
 # `android-ffi` enables the JNI shim surface consumed by
 # `org.nmp.gallery.bridge.KernelBridge`. Implies `native` (the shim is a
 # native consumer). Activates the `jni` dependency so the symbols are
@@ -31,6 +31,13 @@ android-ffi = ["nmp-ffi/android-ffi", "nmp-ffi/native", "dep:jni"]
 # with `pub use nmp_ffi::*` so the iOS / Android shell links exactly one
 # archive (`libnmp_app_gallery.a` / `.so`) for the whole NMP surface.
 nmp-ffi = { path = "../../../../crates/nmp-ffi", default-features = false }
+# M14 UniFFI shell migration: the gallery iOS shell migrates from the nmp-ffi
+# C-ABI to the UniFFI Swift surface. Including nmp-uniffi here ensures every
+# `uniffi_nmp_uniffi_*` symbol lives in `libnmp_app_gallery.a` so the iOS
+# linker sees a single archive. The `nmp_app_gallery_register_uniffi` bridge
+# function (below) also relies on `nmp_uniffi::NmpApp::inner` for the Arc→C
+# pointer extraction. Remove this dep when M14-D deletes the C-ABI gallery fns.
+nmp-uniffi = { path = "../../../../crates/nmp-uniffi", default-features = false }
 # Reusable composition installers. The gallery calls the named ADR-0069
 # substrate/protocol installers directly from its app composition root.
 nmp-defaults = { path = "../../../../crates/nmp-defaults" }

@@ -112,6 +112,29 @@ void nmp_app_gallery_register(void *app);
 const char *nmp_app_gallery_registry_json(void);
 const char *nmp_app_gallery_showcase_references_json(void);
 
+// ── M14 UniFFI shell migration bridge ────────────────────────────────────
+//
+// Registers the gallery composition on a UniFFI-managed NmpApp instance.
+// Accepts the raw Arc<NmpApp> pointer emitted by the Swift
+// `uniffiClonePointer()` call and installs the same composition that
+// `nmp_app_gallery_register` installs for a C-ABI `nmp_app_new()` pointer.
+//
+// Ownership: this function takes ownership of the Arc clone (the ref-count
+// is decremented when it returns). Pass the `uniffiClonePointer()` result
+// directly; do NOT use or free the pointer after this call.
+//
+// D6: a null pointer is a silent no-op.
+// Must be called pre-start (before `app.start(...)`).
+void nmp_app_gallery_register_uniffi(void *uniffi_arc_ptr);
+
+// Configure the storage path for a UniFFI NmpApp.
+// Bridges nmp_app_set_storage_path for the ns-ctail-uniffi-drain shell (where
+// NmpApp.setStoragePath is not yet in the generated Swift surface).
+// Takes ownership of the Arc clone from uniffiClonePointer(); do NOT use or
+// free the pointer after this call. Returns 0 on success, non-zero on error.
+// D6: null arc_ptr or null path is a silent no-op (returns 0).
+uint32_t nmp_uniffi_set_storage_path(void *uniffi_arc_ptr, const char *path);
+
 // ── refs.* host mirrors (ADR-0063 #1671) ─────────────────────────────────
 //
 // Opaque host-owned mirrors of the kernel's `refs.profile` / `refs.event`

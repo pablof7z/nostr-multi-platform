@@ -3,72 +3,71 @@ import os.log
 
 private let kbLog = Logger(subsystem: "org.nmp.gallery", category: "GalleryKernelBridge")
 
-/// Thin Swift wrapper around the gallery's per-app FFI. All relay / network
-/// I/O happens inside the kernel that `raw` points at; this class never opens
-/// a socket or parses a Nostr event itself.
+/// Thin Swift wrapper around the gallery's NmpApp instance. All relay / network
+/// I/O happens inside the kernel; this class never opens a socket or parses a
+/// Nostr event itself.
 ///
 /// Data-flow architecture (CRITICAL):
-///   • Profile data arrives via the PUSH callback registered with
-///     `nmp_app_set_update_callback`. The callback receives a FlatBuffers
-///     `UpdateFrame`; the gallery merges its `refs.profile` row-delta batch
-///     into the session `GalleryRefStores` and reads the materialised
+///   • Profile data arrives via the push sink registered with
+///     `setUpdateSink`. The sink receives a FlatBuffers `UpdateFrame`; the
+///     gallery merges its `refs.profile` row-delta batch into the session
+///     `GalleryRefStores` and reads the materialised
 ///     `projections."refs.profile"[pubkey]` card (ADR-0063 #1671).
 ///   • Event embed envelopes follow the same path through `refs.event`: Rust
 ///     merges the event row-delta store, kind-dispatches with `nmp-content`,
 ///     and materialises `projections."refs.event.envelopes"[primaryId]`.
-///   • There is no pull-side snapshot accessor; kernel liveness is observed
-///     through `nmp_app_is_alive` and all state arrives via the push callback.
+///   • There is no pull-side snapshot accessor; all state arrives via the
+///     push sink.
+///
+/// M14 migration: this class previously used the nmp-ffi C-ABI symbols
+/// (`nmp_app_new`, `nmp_app_start`, etc.). It now uses the UniFFI-generated
+/// `NmpApp` Swift class from `nmp_uniffi.swift`. The app-owned gallery C-ABI
+/// (`nmp_app_gallery_*` symbols) is kept as-is per M14 scope rules.
 ///
 /// Lifetime:
-///   1. `init()`         — `nmp_app_new()` then `nmp_app_gallery_register(raw)`.
-///   2. `listen(_:)`     — registers the push callback that delivers update bytes.
-///   3. `start()`        — turns on the actor.
-///   4. `addRelay`       — seed bootstrap relay set (cold-start kind:0 / kind:10002
-///      routing target when no logged-in user is present).
-///   5. `resolveProfileRef`   — component-owned profile interest (routes through
-///      `nmp_app_resolve_ref`). The kernel fetches kind:0 and surfaces the
-///      resolved ProfileCard under `projections."refs.profile"[pubkey]`.
-///   6. `dispatchAction` — generic action dispatch (phase 2).
-///   7. `deinit`         — clears callback, frees app.
+///   1. `init()`              — `NmpApp()` + `nmp_app_gallery_register_uniffi`.
+///   2. `listen(_:)`          — registers the push sink that delivers update bytes.
+///   3. `start()`             — turns on the actor.
+///   4. `addRelay`            — seed bootstrap relay set.
+///   5. `resolveProfileRef`   — component-owned profile interest.
+///   6. `deinit`              — clears sink, NmpApp freed by ARC.
 final class GalleryKernelHandle {
-    let raw: UnsafeMutableRawPointer
-    private var retainedUpdateSink: Unmanaged<GalleryUpdateSink>?
+    private let app: NmpApp
+    private var updateSink: GalleryUpdateSink?
     /// ADR-0063 (#1671) — host-side mirrors of the kernel's `refs.profile`
-    /// and `refs.event` row-delta projections. One per kernel session; threaded
-    /// into every snapshot decode so per-key deltas accumulate. Sole app-side
-    /// ref stores (D4). Freed in `deinit`.
-    ///
-    /// The C header imports `struct GalleryRefStores *` as
-    /// `OpaquePointer?`, so the handle is stored and passed through DIRECTLY —
-    /// no `OpaquePointer(...)` wrapping or `UnsafeMutablePointer(...)` casting.
+    /// and `refs.event` row-delta projections. One per kernel session. Freed
+    /// in `deinit`.
     let refStores: OpaquePointer?
 
     init() {
-        raw = nmp_app_new()
-        Self.configureStoragePath(for: raw)
+        let app = NmpApp()
+        Self.configureStoragePath(for: app)
         refStores = nmp_app_gallery_ref_stores_new()
-        // Phase 1: register the gallery compatibility composition on the
-        // kernel. The call is fire-and-forget (D6) — there is no opaque handle
-        // to capture because the gallery has no per-app projection mutex.
-        nmp_app_gallery_register(raw)
+        // Register the gallery composition on the UniFFI NmpApp.
+        // `uniffiClonePointer()` bumps the Arc refcount;
+        // `nmp_app_gallery_register_uniffi` takes ownership and releases the
+        // clone when it returns (Arc::from_raw semantics on the Rust side).
+        nmp_app_gallery_register_uniffi(app.uniffiClonePointer())
+        self.app = app
     }
 
     deinit {
-        // Clear the update callback before releasing the retained sink so no
-        // callback fires with a dangling context pointer.
-        clearUpdateCallback()
-        // NOTE: the gallery FFI doesn't expose an `nmp_app_gallery_unregister`
-        // symbol today — the parallel crate is expected to add one for clean
-        // teardown. For now the handle is dropped without explicit cleanup;
-        // `nmp_app_free` joins the actor thread so any in-flight observer
-        // callback is fenced.
-        nmp_app_free(raw)
-        // ADR-0063 (#1671): release the refs.* mirrors after the kernel is
-        // freed (so no in-flight decode can still touch it).
+        // Clear the sink before releasing so no callback fires during teardown
+        // (quiescence contract — mirrors the old nmp_app_set_update_callback
+        // guarantee from the C-ABI path).
+        clearUpdateSink()
+        // NmpApp is freed when ARC releases the last strong reference here.
         nmp_app_gallery_ref_stores_free(refStores)
     }
 
-    private static func configureStoragePath(for raw: UnsafeMutableRawPointer) {
+    /// Configure the persistent LMDB storage path for the kernel.
+    ///
+    /// `NmpApp.setStoragePath` is not yet in the ns-ctail-uniffi-drain generated
+    /// Swift surface (that method lands with C6). This helper bridges through
+    /// `nmp_uniffi_set_storage_path` which extracts the inner RuntimeApp pointer
+    /// from the UniFFI Arc and delegates to `nmp_app_set_storage_path`. The Arc
+    /// clone passed to the helper is consumed by it (ownership transfer).
+    private static func configureStoragePath(for app: NmpApp) {
         guard let base = FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
@@ -80,200 +79,140 @@ final class GalleryKernelHandle {
             try FileManager.default.createDirectory(
                 at: directory,
                 withIntermediateDirectories: true)
-            let status = directory.path.withCString { nmp_app_set_storage_path(raw, $0) }
+            let status = directory.path.withCString { pathPtr in
+                nmp_uniffi_set_storage_path(app.uniffiClonePointer(), pathPtr)
+            }
             if status != 0 {
-                kbLog.fault("nmp_app_set_storage_path returned \(status) — persistent storage NOT configured; init logic error")
-                assertionFailure("nmp_app_set_storage_path failed with code \(status)")
+                kbLog.fault("nmp_uniffi_set_storage_path returned \(status) — persistent storage NOT configured")
+                assertionFailure("nmp_uniffi_set_storage_path failed with code \(status)")
             }
         } catch {
             kbLog.error("failed to create NmpGallery storage dir: \(error.localizedDescription, privacy: .public)")
         }
     }
 
-    /// Register the push callback that delivers each FlatBuffers update frame. The closure
-    /// is invoked from the kernel actor thread on every emit tick. Callers are
-    /// responsible for thread-hopping if they need main-actor isolation.
+    /// Register the push sink that delivers each FlatBuffers update frame. The
+    /// sink is invoked from the kernel actor thread on every emit tick. Callers
+    /// are responsible for thread-hopping if they need main-actor isolation.
     func listen(_ handler: @escaping (Data) -> Void) {
-        clearUpdateCallback()
+        clearUpdateSink()
         let sink = GalleryUpdateSink(handler: handler)
-        let retained = Unmanaged.passRetained(sink)
-        retainedUpdateSink = retained
-        nmp_app_set_update_callback(
-            raw,
-            retained.toOpaque(),
-            galleryUpdateCallback)
+        updateSink = sink
+        app.setUpdateSink(sink: sink)
     }
 
-    private func clearUpdateCallback() {
-        guard let retained = retainedUpdateSink else { return }
-        nmp_app_set_update_callback(raw, nil, nil)
-        retained.release()
-        retainedUpdateSink = nil
+    private func clearUpdateSink() {
+        app.setUpdateSink(sink: nil)
+        updateSink = nil
     }
 
     /// Configure the kernel and start the actor thread.
     func start() {
-        nmp_app_start(raw, 80, 4)
+        app.start(visibleLimit: 80, emitHz: 4)
     }
 
     func stop() {
-        nmp_app_stop(raw)
+        app.stop()
     }
 
     // ── Profile resolution (ADR-0063 #1671) ──────────────────────────────
 
-    /// Resolve a visible profile reference for `pubkey` through
-    /// `nmp_app_resolve_profile_ref` (ADR-0063 #1671). The registry widgets call
-    /// this on mount; the resolved kind:0 flows back through `refs.profile`.
-    /// Origin-blind: every
-    /// visible author resolves at `profile.ref` / `CacheOk` (the gallery renders
-    /// only inline avatars/names, never an open-profile pane).
+    /// Resolve a visible profile reference for `pubkey` through the UniFFI
+    /// `resolveProfileRef` (ADR-0063 #1671). The resolved kind:0 flows back
+    /// through `refs.profile`.
     func resolveProfileRef(pubkey: String, consumerID: String) {
-        pubkey.withCString { pkPtr in
-            consumerID.withCString { cidPtr in
-                nmp_app_resolve_profile_ref(raw, pkPtr, cidPtr)
-            }
-        }
+        app.resolveProfileRef(key: pubkey, consumerId: consumerID)
     }
 
-    /// Release a profile reference previously resolved via `resolveProfileRef`. Pass
-    /// the SAME `(pubkey, consumerID)` so the kernel reclaims the slot.
+    /// Release a profile reference previously resolved via `resolveProfileRef`.
     func releaseProfileRef(pubkey: String, consumerID: String) {
-        pubkey.withCString { pkPtr in
-            consumerID.withCString { cidPtr in
-                nmp_app_release_profile_ref(raw, pkPtr, cidPtr)
-            }
-        }
+        app.releaseProfileRef(key: pubkey, consumerId: consumerID)
     }
 
     // ── Event-ref resolve / release ──────────────────────────────────────
 
-    // App-owned URI adapter: decode nostr: via nmp_nip21_decode_uri, then route
-    // the raw event key plus decoded relay/author metadata to typed event-ref
-    // adapters.
-
-    private struct EventRefFromUri {
+    private struct EventRefDecoded {
         let key: String
-        let metadataJson: String
+        let metadata: ResolveMetadata
     }
 
-    /// #1726 — Decode a `nostr:` URI and resolve the embedded event via the
-    /// typed event-embed ref adapter.
-    /// App-local URI adapter over the unified ref-resolution seam.
-    func resolveEventRef(uri: String, consumerID: String, force: Bool = false) {
-        guard let eventRef = decodeEventRef(from: uri) else { return }
-        eventRef.key.withCString { keyPtr in
-            consumerID.withCString { cidPtr in
-                eventRef.metadataJson.withCString { metadataPtr in
-                    if force {
-                        nmp_app_resolve_event_embed_live_with_metadata(
-                            raw, keyPtr, cidPtr, metadataPtr)
-                    } else {
-                        nmp_app_resolve_event_embed_with_metadata(
-                            raw, keyPtr, cidPtr, metadataPtr)
-                    }
-                }
-            }
-        }
-    }
-
-    /// #1726 — App-local URI adapter that releases the event via the typed
-    /// event-ref adapter.
-    func releaseEventRef(uri: String, consumerID: String) {
-        guard let eventRef = decodeEventRef(from: uri) else { return }
-        eventRef.key.withCString { keyPtr in
-            consumerID.withCString { cidPtr in
-                nmp_app_release_event_ref(raw, keyPtr, cidPtr)
-            }
-        }
-    }
-
-    /// Decode a `nostr:` URI to the canonical event key plus metadata expected by
-    /// the kernel:
-    ///   - nevent / note  → hex event_id
-    ///   - naddr          → canonical coordinate "kind:pubkey:identifier"
-    /// Returns nil on decode failure or a non-event URI (D6: silent no-op).
-    private func decodeEventRef(from uri: String) -> EventRefFromUri? {
-        guard let jsonStr = uri.withCString({ ptr -> String? in
-            guard let cResult = nmp_nip21_decode_uri(ptr) else { return nil }
-            defer { nmp_free_string(cResult) }
-            return String(cString: cResult)
-        }) else { return nil }
-        guard let jsonData = jsonStr.data(using: .utf8),
-              let obj = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
-              let ok = obj["ok"] as? Bool, ok
-        else { return nil }
-        let key: String
-        switch obj["target"] as? String {
-        case "event":
-            guard let eventId = obj["event_id"] as? String else { return nil }
-            key = eventId
-        case "address":
-            guard let kind = obj["kind"] as? NSNumber,
-                  let pubkey = obj["pubkey"] as? String,
-                  let identifier = obj["identifier"] as? String
-            else { return nil }
-            key = "\(kind.uint32Value):\(pubkey):\(identifier)"
+    /// Decode a `nostr:` URI to the canonical event key plus typed metadata.
+    /// Uses the UniFFI `decodeNostrUri` function (typed output replaces the
+    /// C-ABI `nmp_nip21_decode_uri` + JSON parse path). Returns nil on failure
+    /// or a non-event URI (D6: silent no-op).
+    private func decodeEventRef(from uri: String) -> EventRefDecoded? {
+        guard let target = try? decodeNostrUri(input: uri) else { return nil }
+        switch target {
+        case .event(let eventId, let relays, let author, _):
+            return EventRefDecoded(
+                key: eventId,
+                metadata: ResolveMetadata(hints: relays, eventAuthor: author))
+        case .address(let identifier, let pubkey, let kind, let relays):
+            let key = "\(kind):\(pubkey):\(identifier)"
+            return EventRefDecoded(
+                key: key,
+                metadata: ResolveMetadata(hints: relays, eventAuthor: nil))
         default:
             return nil
         }
-        var metadata: [String: Any] = ["hints": obj["relays"] as? [String] ?? []]
-        if let author = obj["author"] as? String {
-            metadata["author"] = author
+    }
+
+    /// Decode a `nostr:` URI and resolve the embedded event via the typed
+    /// event-embed ref adapter.
+    func resolveEventRef(uri: String, consumerID: String, force: Bool = false) {
+        guard let eventRef = decodeEventRef(from: uri) else { return }
+        if force {
+            app.resolveEventEmbedLiveWithMetadata(
+                key: eventRef.key,
+                consumerId: consumerID,
+                metadata: eventRef.metadata)
+        } else {
+            app.resolveEventEmbedWithMetadata(
+                key: eventRef.key,
+                consumerId: consumerID,
+                metadata: eventRef.metadata)
         }
-        if let kind = obj["kind"] as? NSNumber {
-            metadata["kind"] = kind.uint32Value
-        }
-        guard let data = try? JSONSerialization.data(withJSONObject: metadata),
-              let metadataJson = String(data: data, encoding: .utf8)
-        else { return nil }
-        return EventRefFromUri(key: key, metadataJson: metadataJson)
+    }
+
+    /// Release an event previously resolved via `resolveEventRef`.
+    func releaseEventRef(uri: String, consumerID: String) {
+        guard let eventRef = decodeEventRef(from: uri) else { return }
+        app.releaseEventRef(key: eventRef.key, consumerId: consumerID)
     }
 
     // ── Relay seeding ────────────────────────────────────────────────────
 
-    /// Add a relay row. The kernel canonicalizes the URL, dials the socket via
-    /// `ensure_relay_worker`, and threads the URL into the planner's
-    /// `app_relays` set so kind:0 / kind:10002 lookups have a routing target
-    /// when there is no logged-in user. `role` accepts `"read"`, `"write"`, or
-    /// `"both"`; the gallery seeds indexer/content relays as `"both"` so the
-    /// same socket serves both inbox and outbox legs.
+    /// Add a relay row. The kernel canonicalizes the URL and dials the socket.
     func addRelay(url: String, role: String) {
-        url.withCString { uPtr in
-            role.withCString { rPtr in
-                nmp_app_add_relay(raw, uPtr, rPtr)
-            }
-        }
+        app.addRelay(url: url, role: role)
     }
 
     // ── Showcase sign-in (phase 2) ───────────────────────────────────────
 
     func signInNsec(_ secret: String) {
-        secret.withCString { nmp_app_signin_nsec(raw, $0, 1) }
+        app.signinNsec(secret: secret, makeActive: true)
     }
-
 }
 
 // MARK: - Update sink
 
-/// Bridge object retained on the Swift side so the C callback's `context`
-/// pointer stays valid. The `handler` closure receives copied FlatBuffers
-/// frame bytes.
-private final class GalleryUpdateSink {
+/// UniFFI `UpdateSink` conformer retained on the Swift side so the kernel's
+/// update-listener closure can call back into Swift. The `handler` closure
+/// receives copied FlatBuffers frame bytes.
+///
+/// `@unchecked Sendable`: the `handler` closure may capture non-Sendable state
+/// (e.g. a weak `GalleryModel` reference via `Task { @MainActor [weak self] in
+/// ... }`); thread-safety is enforced by the MainActor hop inside the closure.
+private final class GalleryUpdateSink: UpdateSink, @unchecked Sendable {
     let handler: (Data) -> Void
 
     init(handler: @escaping (Data) -> Void) {
         self.handler = handler
     }
-}
 
-/// C update callback. Copies the borrowed FlatBuffers update frame
-/// immediately, then forwards the binary frame to the gallery model.
-private let galleryUpdateCallback: NmpUpdateCallback = { context, pointer, len in
-    guard let context, let pointer, len > 0 else { return }
-    let data = Data(bytes: pointer, count: Int(len))
-    let sink = Unmanaged<GalleryUpdateSink>.fromOpaque(context).takeUnretainedValue()
-    sink.handler(data)
+    func onUpdate(frame: Data) {
+        handler(frame)
+    }
 }
 
 enum GalleryFlatBufferSnapshotDecoder {

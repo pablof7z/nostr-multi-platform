@@ -102,7 +102,12 @@ pub trait UpdateSink: Send + Sync {
 /// 5. `shutdown()` — explicit teardown; `Arc` drop is the fallback.
 #[derive(uniffi::Object)]
 pub struct NmpApp {
-    inner: RuntimeApp,
+    /// Inner runtime handle. `pub` so `nmp-app-gallery::nmp_app_gallery_register_uniffi`
+    /// can bridge to the C-ABI gallery composition installer during the M14 UniFFI
+    /// shell migration. Not exposed through UniFFI — Swift/Kotlin never see this field.
+    /// Revert to `pub(crate)` (or remove the accessor) when M14-D deletes the C-ABI
+    /// gallery composition entry points.
+    pub inner: RuntimeApp,
     search_handles: Mutex<BTreeMap<String, nmp_native_runtime::Nip50SearchHandle>>,
 }
 

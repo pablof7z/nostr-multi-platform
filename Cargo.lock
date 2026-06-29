@@ -3686,6 +3686,7 @@ dependencies = [
  "nmp-core",
  "nmp-defaults",
  "nmp-ffi",
+ "nmp-uniffi",
  "serde",
  "serde_json",
 ]

@@ -182,6 +182,83 @@ pub extern "C" fn nmp_app_gallery_register(app: *mut c_void) {
     app.consume_all_builtin_projections();
 }
 
+/// M14 shell migration bridge — register gallery composition for a UniFFI `NmpApp`.
+///
+/// Accepts the raw `Arc<nmp_uniffi::NmpApp>` pointer produced by the Swift
+/// `uniffiClonePointer()` call and installs the same gallery composition that
+/// [`nmp_app_gallery_register`] installs for a C-ABI `nmp_app_new()` pointer.
+///
+/// Ownership semantics: the function calls `Arc::from_raw` internally to take
+/// ownership of the cloned Arc. The caller MUST pass a pointer obtained from
+/// `uniffiClonePointer()` (which bumps the ref-count) and MUST NOT use or free
+/// the pointer after this call — the Arc's ref-count is decremented when this
+/// function returns.
+///
+/// D6: a null pointer is a silent no-op.
+///
+/// # Safety
+///
+/// `arc_ptr` must be a valid `uniffiClonePointer()` result for an `NmpApp`
+/// that has not yet been started. Calling this twice on the same `NmpApp` is
+/// a composition bug (same caveat as [`nmp_app_gallery_register`]).
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[no_mangle]
+pub extern "C" fn nmp_app_gallery_register_uniffi(arc_ptr: *mut c_void) {
+    if arc_ptr.is_null() {
+        return;
+    }
+    // SAFETY: `arc_ptr` is the raw Arc data pointer emitted by UniFFI's
+    // `uniffiClonePointer()`. `Arc::from_raw` reconstructs the Arc and takes
+    // ownership of the clone (will decrement the refcount on drop). The Arc
+    // data pointer points directly to `nmp_uniffi::NmpApp` (Arc::into_raw
+    // semantics — no allocation header offset).
+    let arc = unsafe {
+        std::sync::Arc::from_raw(arc_ptr as *const nmp_uniffi::NmpApp)
+    };
+    // SAFETY: We hold the only writer to `inner` during this pre-start
+    // composition call — the actor has not been started, so no concurrent
+    // access exists. We use `addr_of!` to obtain a raw pointer without going
+    // through a shared reference, then cast to `*mut` to call the `&mut`
+    // methods. `UnsafeCell` is not applicable here because `NmpApp` is not
+    // our type; the mutation window is bounded to this synchronous call.
+    let inner_ptr = std::ptr::addr_of!(arc.inner) as *mut nmp_ffi::NmpApp;
+    let inner = unsafe { &mut *inner_ptr };
+    register_gallery_composition(inner);
+    inner.consume_all_builtin_projections();
+    // `arc` drops here — decrements the UniFFI Arc ref-count back to 1
+    // (the Swift `GalleryKernelHandle.app` still holds the original strong ref).
+}
+
+/// M14 shell migration bridge — configure the storage path for a UniFFI `NmpApp`.
+///
+/// Bridges the C6 `set_storage_path` call for the gallery iOS shell while
+/// `setStoragePath` is absent from the ns-ctail-uniffi-drain generated Swift
+/// surface. Accepts a `uniffiClonePointer()` result and a NUL-terminated path
+/// string. Returns 0 on success, non-zero on error (mirrors `NmpConfigStatus`).
+///
+/// Ownership: takes ownership of the Arc clone (decrements refcount on return).
+/// D6: null arc_ptr or null path is a silent no-op (returns 0).
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[no_mangle]
+pub extern "C" fn nmp_uniffi_set_storage_path(
+    arc_ptr: *mut c_void,
+    path: *const std::ffi::c_char,
+) -> u32 {
+    if arc_ptr.is_null() || path.is_null() {
+        return 0;
+    }
+    let arc = unsafe {
+        std::sync::Arc::from_raw(arc_ptr as *const nmp_uniffi::NmpApp)
+    };
+    let inner_ptr = std::ptr::addr_of!(arc.inner) as *mut nmp_ffi::NmpApp;
+    // Delegate to the existing C-ABI `nmp_app_set_storage_path` which handles
+    // AlreadyStarted and other error codes. The function expects *mut NmpApp
+    // (not void*) so pass the typed pointer directly.
+    let result = nmp_ffi::nmp_app_set_storage_path(inner_ptr, path);
+    // Arc drops here, releasing the clone.
+    result
+}
+
 fn register_gallery_composition(app: &mut impl nmp_core::substrate::AppHost) {
     let nmp_defaults::NmpDefaults {
         coverage_gate,
