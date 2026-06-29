@@ -9,7 +9,8 @@ use std::sync::Arc;
 use serde_json::Value;
 
 use super::identity::{add_signer, create_account, IdentityRuntime};
-use super::publish::{follow, publish_unsigned_event};
+use super::publish::publish_unsigned_event;
+use super::publish_contacts::follow;
 use crate::actor::SignerSource;
 use crate::kernel::Kernel;
 use crate::publish::{InMemoryPublishStore, PublishStore};

@@ -22,7 +22,7 @@ use crate::publish::{
     InMemoryPublishStore, PublishRecord, PublishRouteClass, PublishStore, PublishTarget,
 };
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
-use std::sync::Arc;
+use std::sync::{mpsc, Arc, Mutex};
 
 // ── shared constants ─────────────────────────────────────────────────────────
 
@@ -116,6 +116,74 @@ pub(super) fn sign_in_with_nip65(id: &mut IdentityRuntime, kernel: &mut Kernel) 
         .active_pubkey()
         .expect("active account after sign_in_nsec");
     kernel.seed_kind10002_for_test(&pubkey, TEST_WRITE_RELAYS);
+}
+
+#[derive(Debug)]
+pub(super) struct PendingCaptureRemoteSigner {
+    pubkey: String,
+    captured: Arc<Mutex<Vec<nmp_signer_iface::UnsignedEvent>>>,
+    senders: Mutex<
+        Vec<mpsc::Sender<Result<nmp_signer_iface::SignedEvent, nmp_signer_iface::SignerError>>>,
+    >,
+}
+
+impl PendingCaptureRemoteSigner {
+    pub(super) fn new(pubkey: &str) -> Self {
+        Self {
+            pubkey: pubkey.to_string(),
+            captured: Arc::new(Mutex::new(Vec::new())),
+            senders: Mutex::new(Vec::new()),
+        }
+    }
+
+    pub(super) fn captured_handle(&self) -> Arc<Mutex<Vec<nmp_signer_iface::UnsignedEvent>>> {
+        Arc::clone(&self.captured)
+    }
+}
+
+impl nmp_signer_iface::RemoteSignerHandle for PendingCaptureRemoteSigner {
+    fn pubkey_hex(&self) -> String {
+        self.pubkey.clone()
+    }
+
+    fn signer_kind(&self) -> &'static str {
+        "nip46"
+    }
+
+    fn sign(
+        &self,
+        unsigned: &nmp_signer_iface::UnsignedEvent,
+    ) -> nmp_signer_iface::SignerOp<nmp_signer_iface::SignedEvent> {
+        self.captured
+            .lock()
+            .expect("capture mutex")
+            .push(unsigned.clone());
+        let (tx, rx) = mpsc::channel();
+        self.senders.lock().expect("sender mutex").push(tx);
+        nmp_signer_iface::SignerOp::Pending(rx)
+    }
+
+    fn nip44_encrypt(
+        &self,
+        _recipient_pubkey: &str,
+        _plaintext: &str,
+    ) -> nmp_signer_iface::SignerOp<String> {
+        nmp_signer_iface::SignerOp::err(nmp_signer_iface::SignerError::Unsupported(
+            "test signer only supports sign".to_string(),
+        ))
+    }
+
+    fn nip44_decrypt(
+        &self,
+        _sender_pubkey: &str,
+        _ciphertext: &str,
+    ) -> nmp_signer_iface::SignerOp<String> {
+        nmp_signer_iface::SignerOp::err(nmp_signer_iface::SignerError::Unsupported(
+            "test signer only supports sign".to_string(),
+        ))
+    }
+
+    fn deliver_response(&self, _response_json: &str) {}
 }
 
 pub(super) fn record_of_kind(records: &[PublishRecord], kind: u32) -> &PublishRecord {

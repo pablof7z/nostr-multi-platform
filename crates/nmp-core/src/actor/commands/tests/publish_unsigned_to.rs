@@ -210,3 +210,80 @@ fn explicit_arm_appends_client_tag_on_public_note() {
         outbound[0].text
     );
 }
+
+#[test]
+fn explicit_arm_finalizes_before_parking_remote_sign() {
+    let (mut id, mut kernel) = fresh();
+    let signer = PendingCaptureRemoteSigner::new(&"b".repeat(64));
+    let captured = signer.captured_handle();
+    add_signer(
+        &mut id,
+        &mut kernel,
+        crate::actor::SignerSource::RemoteHandle(Box::new(signer)),
+        true,
+        false,
+    );
+    kernel.set_outbound_public_tags(vec![vec!["client".into(), "Chirp".into()]]);
+    let unsigned = nmp_signer_iface::UnsignedEvent {
+        pubkey: String::new(),
+        kind: 1,
+        tags: vec![],
+        content: "a parked explicit note".into(),
+        created_at: 0,
+    };
+    let relays: Vec<String> = TEST_GROUP_RELAYS.iter().map(|s| s.to_string()).collect();
+    let mut parked_ops = crate::actor::pending_sign::ParkedSignerOps::new();
+
+    let outbound = publish_unsigned_event_to_relays(
+        &id,
+        &mut kernel,
+        unsigned,
+        relays.clone(),
+        PublishRouteClass::ManualOverride,
+        Some("explicit-parked-cid".to_string()),
+        None,
+        &mut parked_ops,
+    );
+
+    assert!(
+        outbound.is_empty(),
+        "pending remote sign must not publish yet"
+    );
+    assert_eq!(parked_ops.len(), 1, "remote sign must be parked");
+    let captured = captured.lock().expect("capture mutex");
+    assert_eq!(captured.len(), 1);
+    assert_eq!(captured[0].created_at, kernel.now_secs());
+    assert!(
+        captured[0]
+            .tags
+            .contains(&vec!["client".to_string(), "Chirp".to_string()]),
+        "remote signer must receive the finalized unsigned event before parking"
+    );
+
+    let parked = parked_ops.into_vec();
+    let crate::actor::pending_sign::ParkedOpSink::Publish {
+        target,
+        correlation_id_override,
+        ..
+    } = &parked[0].sink
+    else {
+        panic!("expected parked publish sink");
+    };
+    let PublishTarget::Explicit {
+        relays: target_relays,
+        route_class,
+    } = target
+    else {
+        panic!("expected explicit parked target");
+    };
+    let mut got = target_relays.clone();
+    got.sort();
+    let mut want = relays;
+    want.sort();
+    assert_eq!(got, want);
+    assert_eq!(*route_class, PublishRouteClass::ManualOverride);
+    assert_eq!(
+        correlation_id_override.as_deref(),
+        Some("explicit-parked-cid")
+    );
+}
