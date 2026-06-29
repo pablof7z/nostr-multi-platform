@@ -64,6 +64,54 @@ fn group_feed_discovery_replacement_makes_old_handle_idempotent() {
     assert_eq!(session_count(&app), 0);
 }
 
+#[test]
+fn joined_groups_replacement_makes_old_handle_idempotent() {
+    let app = crate::new_app();
+    let first = app
+        .open_nip29_joined_groups_session(Nip29JoinedGroupsSession::new(
+            "a".repeat(64),
+            "wss://groups.example".to_string(),
+        ))
+        .expect("non-empty active pubkey opens a joined-groups session");
+    assert_eq!(session_count(&app), 1);
+
+    let second = app
+        .open_nip29_joined_groups_session(Nip29JoinedGroupsSession::new(
+            "b".repeat(64),
+            "wss://other-groups.example".to_string(),
+        ))
+        .expect("non-empty active pubkey opens a replacement joined-groups session");
+    assert_eq!(
+        session_count(&app),
+        1,
+        "replacement must tear down the old observer/session"
+    );
+
+    app.close_nip29_joined_groups_session(first);
+    assert_eq!(
+        session_count(&app),
+        1,
+        "stale handles must not close the replacement session"
+    );
+
+    app.close_nip29_joined_groups_session(second.clone());
+    assert_eq!(session_count(&app), 0);
+    app.close_nip29_joined_groups_session(second);
+    assert_eq!(session_count(&app), 0);
+}
+
+#[test]
+fn joined_groups_empty_active_pubkey_is_noop() {
+    let app = crate::new_app();
+    let handle = app.open_nip29_joined_groups_session(Nip29JoinedGroupsSession::new(
+        String::new(),
+        "wss://groups.example".to_string(),
+    ));
+
+    assert!(handle.is_none());
+    assert_eq!(session_count(&app), 0);
+}
+
 fn session_count(app: &NmpApp) -> usize {
     app.group_feed_sessions
         .lock()

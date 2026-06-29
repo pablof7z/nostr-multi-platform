@@ -335,7 +335,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         presence_policy: PresencePolicy::None,
     },
     ProjectionContract {
-        // Registered by `NmpApp::open_joined_groups` (NIP-29 native-runtime read session,
+        // Registered by `NmpApp::open_nip29_joined_groups_session` (NIP-29 native-runtime read session,
         // #2088 — moved off the prior bare-observer `nmp_nip29::wire_joined_groups`
         // so the view hydrates already-cached membership snapshots). A real
         // Tier-1 projection key with no iOS Swift consumer yet.
