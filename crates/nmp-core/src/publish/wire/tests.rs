@@ -2,7 +2,7 @@
 //! (ADR-0064 / S3 #1751). Every fail-closed gate asserts the NEGATIVE.
 
 use super::*;
-use crate::publish::action::{PublishAction, PublishTarget};
+use crate::publish::action::{PublishAction, PublishRouteClass, PublishTarget};
 use crate::substrate::{ActionPayload, ActionPayloadDecodeError};
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
@@ -97,9 +97,10 @@ fn publish_raw_round_trips() {
             vec!["title".to_string(), "T".to_string()],
         ],
         content: "body".to_string(),
-        target: PublishTarget::Explicit {
-            relays: vec!["wss://relay.one".to_string(), "wss://relay.two".to_string()],
-        },
+        target: PublishTarget::explicit(
+            vec!["wss://relay.one".to_string(), "wss://relay.two".to_string()],
+            PublishRouteClass::Diagnostic,
+        ),
         signer_pubkey: Some("e".repeat(64)),
     };
     let decoded = PublishAction::decode(&action.encode()).expect("decodes");
@@ -145,9 +146,10 @@ fn publish_reply_round_trips() {
     let action = PublishAction::PublishReply {
         content: "reply body".to_string(),
         reply_to_event_id: "d".repeat(64),
-        target: PublishTarget::Explicit {
-            relays: vec!["wss://relay.example".to_string()],
-        },
+        target: PublishTarget::explicit(
+            vec!["wss://relay.example".to_string()],
+            PublishRouteClass::GroupHostPin,
+        ),
         signer_pubkey: Some("e".repeat(64)),
     };
     let decoded = PublishAction::decode(&action.encode()).expect("decodes");
@@ -168,6 +170,7 @@ fn wrong_schema_version_is_rejected_before_decode() {
         &fb::PublishTargetArgs {
             explicit: false,
             relays: None,
+            route_class: None,
         },
     );
     let signed = fb::PublishSigned::create(
@@ -214,6 +217,6 @@ fn malformed_buffer_is_rejected() {
 #[test]
 fn schema_constants_are_stable() {
     assert_eq!(SCHEMA_ID, "nmp.publish");
-    assert_eq!(SCHEMA_VERSION, 1);
+    assert_eq!(SCHEMA_VERSION, 2);
     assert_eq!(FILE_IDENTIFIER, b"NPUB");
 }

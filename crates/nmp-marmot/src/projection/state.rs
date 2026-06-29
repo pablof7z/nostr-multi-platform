@@ -400,7 +400,7 @@ impl<'a> InnerHandle<'a> {
             .collect::<Vec<_>>();
         let _ = sender.send(ActorCommand::Publish(PublishCommand::SignedEvent {
             raw,
-            target: PublishTarget::Explicit { relays },
+            target: PublishTarget::explicit(relays, nmp_core::publish::PublishRouteClass::ImportedOrPresigned),
             correlation_id: None,
         }));
     }

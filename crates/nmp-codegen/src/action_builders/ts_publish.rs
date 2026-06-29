@@ -78,16 +78,18 @@ fn render_one(builder: &PublishBuilder, out: &mut String) {
 }
 
 /// Encode a `PublishTarget`: `null`/empty `relays` → `Auto` (`explicit = false`);
-/// a non-empty set → `Explicit`. Leaves the offset on `targetOffset`. Matches
-/// `build_target` in `nmp_core::publish::wire`.
+/// a non-empty set → `Explicit` manual override. Leaves the offset on
+/// `targetOffset`. Matches `build_target` in `nmp_core::publish::wire`.
 fn render_target(out: &mut String) {
     out.push_str(
         "    const targetRelays = relays ?? [];\n\
          \x20   const explicit = targetRelays.length > 0;\n\
          \x20   const targetRelaysVec = stringVector(fbb, targetRelays);\n\
-         \x20   fbb.startObject(2);\n\
+         \x20   const routeClassOffset = fbb.createString(\"manual_override\");\n\
+         \x20   fbb.startObject(3);\n\
          \x20   fbb.addFieldInt8(0, explicit ? 1 : 0, 0); // slot 0: explicit\n\
          \x20   fbb.addFieldOffset(1, targetRelaysVec, 0); // slot 1: relays\n\
+         \x20   if (explicit) fbb.addFieldOffset(2, routeClassOffset, 0); // slot 2: route_class\n\
          \x20   const targetOffset = fbb.endObject();\n",
     );
 }

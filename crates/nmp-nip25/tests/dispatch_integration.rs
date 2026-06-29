@@ -288,7 +288,7 @@ fn build_publish_raw_envelope_and_action(
 ) -> (Vec<u8>, nmp_core::publish::PublishAction) {
     use flatbuffers::{FlatBufferBuilder, VOffsetT, WIPOffset};
     use nmp_core::dispatch_envelope::encode_dispatch_envelope;
-    use nmp_core::publish::{PublishAction, PublishTarget};
+    use nmp_core::publish::{PublishAction, PublishRouteClass, PublishTarget};
 
     // --- payload: mirror the generated `publishRaw` emitter slot for slot. ---
     const PUBLISH_IDENTIFIER: &str = "NPUB";
@@ -309,16 +309,17 @@ fn build_publish_raw_envelope_and_action(
         let tags_vec = fbb.create_vector(&tag_rows);
         let content_off = fbb.create_string(content);
         let signer_off = signer_pubkey.as_ref().map(|s| fbb.create_string(s));
-        // PublishTarget: explicit:bool (slot 0 / vt 4), relays:[string] (slot 1 / vt 6).
         let target = {
             let relay_list = relays.clone().unwrap_or_default();
             let explicit = !relay_list.is_empty();
             let relay_offs: Vec<WIPOffset<&str>> =
                 relay_list.iter().map(|s| fbb.create_string(s)).collect();
             let relays_vec = fbb.create_vector(&relay_offs);
+            let route_class = fbb.create_string(PublishRouteClass::ManualOverride.wire_token());
             let start = fbb.start_table();
             fbb.push_slot::<bool>(4 as VOffsetT, explicit, false);
             fbb.push_slot_always::<WIPOffset<_>>(6 as VOffsetT, relays_vec);
+            fbb.push_slot_always::<WIPOffset<&str>>(8 as VOffsetT, route_class);
             fbb.end_table(start)
         };
         // PublishRaw: kind (vt4), tags (vt6), content (vt8), target (vt10),
@@ -335,7 +336,7 @@ fn build_publish_raw_envelope_and_action(
         // PublishPayload root: schema_version (vt4), body_type ubyte (vt6),
         // body offset (vt8).
         let start = fbb.start_table();
-        fbb.push_slot::<u32>(4 as VOffsetT, 1, 0);
+        fbb.push_slot::<u32>(4 as VOffsetT, 2, 0);
         fbb.push_slot::<u8>(6 as VOffsetT, BODY_PUBLISH_RAW, 0);
         fbb.push_slot_always::<WIPOffset<flatbuffers::TableFinishedWIPOffset>>(8 as VOffsetT, body); // slot 2: body (union value = table offset)
         let root = fbb.end_table(start);
@@ -344,9 +345,8 @@ fn build_publish_raw_envelope_and_action(
     };
     let envelope = encode_dispatch_envelope(correlation_id, "nmp.publish", 1, &payload);
 
-    // The action the builder bytes MUST decode back to.
     let target = match relays {
-        Some(r) if !r.is_empty() => PublishTarget::Explicit { relays: r },
+        Some(r) if !r.is_empty() => PublishTarget::manual_override(r),
         _ => PublishTarget::Auto,
     };
     let expected = PublishAction::PublishRaw {
@@ -458,7 +458,7 @@ fn publish_profile_builder_bytes_dispatch_through_start_bytes() {
         fbb.push_slot_always::<WIPOffset<_>>(4 as VOffsetT, fields_vec);
         let body = fbb.end_table(start);
         let start = fbb.start_table();
-        fbb.push_slot::<u32>(4 as VOffsetT, 1, 0);
+        fbb.push_slot::<u32>(4 as VOffsetT, 2, 0);
         fbb.push_slot::<u8>(6 as VOffsetT, BODY_PUBLISH_PROFILE, 0);
         fbb.push_slot_always::<WIPOffset<flatbuffers::TableFinishedWIPOffset>>(8 as VOffsetT, body); // slot 2: body (union value = table offset)
         let root = fbb.end_table(start);

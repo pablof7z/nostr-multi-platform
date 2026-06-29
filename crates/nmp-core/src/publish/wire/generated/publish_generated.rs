@@ -1183,6 +1183,7 @@ pub mod nmp {
         impl<'a> PublishTarget<'a> {
             pub const VT_EXPLICIT: ::flatbuffers::VOffsetT = 4;
             pub const VT_RELAYS: ::flatbuffers::VOffsetT = 6;
+            pub const VT_ROUTE_CLASS: ::flatbuffers::VOffsetT = 8;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -1199,6 +1200,9 @@ pub mod nmp {
                 args: &'args PublishTargetArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<PublishTarget<'bldr>> {
                 let mut builder = PublishTargetBuilder::new(_fbb);
+                if let Some(x) = args.route_class {
+                    builder.add_route_class(x);
+                }
                 if let Some(x) = args.relays {
                     builder.add_relays(x);
                 }
@@ -1231,6 +1235,18 @@ pub mod nmp {
                     >>(PublishTarget::VT_RELAYS, None)
                 }
             }
+            #[inline]
+            pub fn route_class(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        PublishTarget::VT_ROUTE_CLASS,
+                        None,
+                    )
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for PublishTarget<'_> {
@@ -1244,6 +1260,11 @@ pub mod nmp {
                     .visit_field::<::flatbuffers::ForwardsUOffset<
                         ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>,
                     >>("relays", Self::VT_RELAYS, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "route_class",
+                        Self::VT_ROUTE_CLASS,
+                        false,
+                    )?
                     .finish();
                 Ok(())
             }
@@ -1255,6 +1276,7 @@ pub mod nmp {
                     ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
                 >,
             >,
+            pub route_class: Option<::flatbuffers::WIPOffset<&'a str>>,
         }
         impl<'a> Default for PublishTargetArgs<'a> {
             #[inline]
@@ -1262,6 +1284,7 @@ pub mod nmp {
                 PublishTargetArgs {
                     explicit: false,
                     relays: None,
+                    route_class: None,
                 }
             }
         }
@@ -1289,6 +1312,13 @@ pub mod nmp {
                 );
             }
             #[inline]
+            pub fn add_route_class(&mut self, route_class: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    PublishTarget::VT_ROUTE_CLASS,
+                    route_class,
+                );
+            }
+            #[inline]
             pub fn new(
                 _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
             ) -> PublishTargetBuilder<'a, 'b, A> {
@@ -1310,6 +1340,7 @@ pub mod nmp {
                 let mut ds = f.debug_struct("PublishTarget");
                 ds.field("explicit", &self.explicit());
                 ds.field("relays", &self.relays());
+                ds.field("route_class", &self.route_class());
                 ds.finish()
             }
         }

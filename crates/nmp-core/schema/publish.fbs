@@ -81,6 +81,8 @@ table PublishTarget {
   explicit:bool;
   // Explicit relay URLs; ignored unless `explicit` is true.
   relays:[string];
+  // Explicit route provenance token. Ignored unless `explicit` is true.
+  route_class:string;
 }
 
 // The four DISPATCHABLE publish variants (Cancel is engine-internal and not

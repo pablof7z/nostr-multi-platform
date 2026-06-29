@@ -5,14 +5,14 @@
 //! continuation launches the self-copy chain ([`SelfCopyLaunch`]). Extracted from
 //! `dm_send.rs` to keep that file within its LOC ceiling.
 
+use nmp_core::actor::ActorCommand;
+use nmp_core::actor::PublishCommand;
 use nmp_core::publish::PublishTarget;
 use nmp_core::substrate::{
     build_nip44_encrypt_for_account, build_record_action_failure, build_sign_event_for_account,
 };
+use nmp_core::CommandSender;
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
-use nmp_core::{CommandSender};
-use nmp_core::actor::{ActorCommand};
-use nmp_core::actor::{PublishCommand};
 use nostr::nips::nip59::RANGE_RANDOM_TIMESTAMP_TWEAK;
 use nostr::{JsonUtil, PublicKey, Timestamp};
 
@@ -189,7 +189,12 @@ fn wrap_and_publish(
     let seal_event = match nostr::Event::from_json(signed_seal.to_nip01_json()) {
         Ok(ev) => ev,
         Err(e) => {
-            report_envelope_failure(worker_tx, label, &correlation_id, format!("seal reparse: {e}"));
+            report_envelope_failure(
+                worker_tx,
+                label,
+                &correlation_id,
+                format!("seal reparse: {e}"),
+            );
             return;
         }
     };
@@ -200,13 +205,23 @@ fn wrap_and_publish(
     // the action Failed with a D6 toast — symmetric with `parse_seal_for_decrypt`
     // on the inbox side.
     if let Err(e) = seal_event.verify() {
-        report_envelope_failure(worker_tx, label, &correlation_id, format!("seal verify: {e}"));
+        report_envelope_failure(
+            worker_tx,
+            label,
+            &correlation_id,
+            format!("seal verify: {e}"),
+        );
         return;
     }
     let envelope = match nmp_nip59::wrap_signed_seal(&receiver, &seal_event) {
         Ok(ev) => ev,
         Err(e) => {
-            report_envelope_failure(worker_tx, label, &correlation_id, format!("outer wrap: {e}"));
+            report_envelope_failure(
+                worker_tx,
+                label,
+                &correlation_id,
+                format!("outer wrap: {e}"),
+            );
             return;
         }
     };
@@ -218,7 +233,10 @@ fn wrap_and_publish(
     if worker_tx
         .send(ActorCommand::Publish(PublishCommand::SignedEvent {
             raw: nostr_event_to_raw(&envelope),
-            target: PublishTarget::Explicit { relays },
+            target: PublishTarget::Explicit {
+                relays,
+                route_class: nmp_core::publish::PublishRouteClass::VerifiedPrivateInbox,
+            },
             correlation_id,
         }))
         .is_err()
@@ -290,7 +308,11 @@ fn nostr_unsigned_to_substrate(unsigned: &nostr::UnsignedEvent) -> UnsignedEvent
     UnsignedEvent {
         pubkey: unsigned.pubkey.to_hex(),
         kind: u32::from(unsigned.kind.as_u16()),
-        tags: unsigned.tags.iter().map(|t| t.as_slice().to_vec()).collect(),
+        tags: unsigned
+            .tags
+            .iter()
+            .map(|t| t.as_slice().to_vec())
+            .collect(),
         content: unsigned.content.clone(),
         created_at: unsigned.created_at.as_secs(),
     }

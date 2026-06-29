@@ -74,7 +74,8 @@ pub(crate) use action::validate_publish_target;
 // `target_is_explicit_nonempty` is the shared structural predicate; the
 // `classify_publish_behavior` table is the single home for kind→policy.
 pub use action::{
-    PublishAction, PublishHandle, PublishModule, PublishOutcome, PublishTarget, RelayUrl,
+    PublishAction, PublishHandle, PublishModule, PublishOutcome, PublishRouteClass, PublishTarget,
+    RelayUrl,
 };
 pub use engine::{
     engine_error_to_failure, outcome_of, LastTerminal, PublishEngine, PublishEngineError,

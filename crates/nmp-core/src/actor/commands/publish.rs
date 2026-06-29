@@ -122,7 +122,7 @@ pub(crate) fn publish_unsigned_event(
 /// "build → sign with the active account" half but replaces the routing half.
 /// Where `publish_unsigned_event` routes through `Kernel::publish_signed`
 /// (`PublishTarget::Auto`, the NIP-65 outbox), this routes through
-/// `Kernel::publish_signed_to` with `PublishTarget::Explicit { relays }`.
+/// `Kernel::publish_signed_to` with an explicit route.
 ///
 /// The driving consumer is the NIP-29 group-action executor: a join request
 /// (`kind:9021`) MUST land on the group's own host relay — the author's
@@ -147,6 +147,7 @@ pub(crate) fn publish_unsigned_event_to_relays(
     kernel: &mut Kernel,
     mut unsigned: UnsignedEvent,
     relays: Vec<crate::publish::RelayUrl>,
+    route_class: crate::publish::PublishRouteClass,
     correlation_id: Option<String>,
     signer_pubkey: Option<String>,
     parked_ops: &mut ParkedSignerOps,
@@ -167,7 +168,7 @@ pub(crate) fn publish_unsigned_event_to_relays(
     }
     stamp_unsigned_if_needed(kernel, &mut unsigned);
     crate::publish::finalize_outbound_tags(unsigned.kind, &mut unsigned.tags, kernel);
-    let target = PublishTarget::Explicit { relays };
+    let target = PublishTarget::explicit(relays, route_class);
     // Non-blocking sign: a local key resolves now; a remote (NIP-46) signer
     // returns a `Pending` op parked in `parked_ops` with the explicit
     // target + correlation_id attached — the actor thread never blocks (D8).
@@ -234,9 +235,8 @@ pub(crate) fn publish_unsigned_event_to_relays(
 ///
 /// **Relay targeting.** `target` preserves the caller's intent:
 /// - `PublishTarget::Auto` routes via the author's NIP-65 kind:10002 outbox.
-/// - `PublishTarget::Explicit { relays }` dispatches to exactly those relays,
-///   bypassing the outbox resolver. Empty or malformed explicit relay sets
-///   fail closed rather than degrading to Auto.
+/// - `PublishTarget::Explicit` dispatches to exactly those relays, bypassing the
+///   outbox resolver. Empty or malformed sets fail closed rather than degrading to Auto.
 ///
 /// D6 — well-formedness verification (id-hash + Schnorr sig) runs through the
 /// shared `Kernel::verify_externally_signed_event` chokepoint; a failure
@@ -252,8 +252,7 @@ pub(crate) fn publish_unsigned_event_to_relays(
 /// **D10 defensive guard.** A kind:1059 gift-wrap with `PublishTarget::Auto` is
 /// REFUSED — Auto would resolve through the author's public-relay outbox and
 /// leak the encrypted envelope. Defense in depth at every entry into the
-/// verified-publish path; callers of kind:1059 MUST supply an explicit relay
-/// pin (`PublishTarget::Explicit { relays }`).
+/// verified-publish path; callers of kind:1059 MUST supply a `VerifiedPrivateInbox` pin.
 pub(crate) fn publish_signed_event(
     kernel: &mut Kernel,
     raw: crate::store::RawEvent,

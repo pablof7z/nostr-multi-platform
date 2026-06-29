@@ -14,8 +14,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use nmp_core::actor::PublishCommand;
 use crate::group_id::{GroupId, RelayUrl};
+use nmp_core::actor::PublishCommand;
 
 /// Routing pin: a single relay URL the publish must target exclusively.
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
@@ -27,7 +27,7 @@ pub struct RelayPin {
 }
 
 impl RelayPin {
-    #[must_use] 
+    #[must_use]
     pub fn for_group(group: &GroupId) -> Self {
         Self {
             relay_url: group.host_relay_url.clone(),
@@ -50,7 +50,12 @@ pub struct PublishPlan {
 
 impl PublishPlan {
     #[must_use]
-    pub fn pinned(group: &GroupId, kind: u32, content: impl Into<String>, tags: Vec<Vec<String>>) -> Self {
+    pub fn pinned(
+        group: &GroupId,
+        kind: u32,
+        content: impl Into<String>,
+        tags: Vec<Vec<String>>,
+    ) -> Self {
         Self {
             kind,
             content: content.into(),
@@ -108,26 +113,32 @@ impl PublishPlan {
     /// # Errors
     ///
     /// Returns a string error if `pin_to` is `None` (no relay pin set).
-    pub fn into_actor_command(self, correlation_id: Option<String>) -> Result<nmp_core::actor::ActorCommand, String> {
-        use nmp_signer_iface::UnsignedEvent;
+    pub fn into_actor_command(
+        self,
+        correlation_id: Option<String>,
+    ) -> Result<nmp_core::actor::ActorCommand, String> {
         use nmp_core::actor::ActorCommand;
+        use nmp_signer_iface::UnsignedEvent;
         let relay = self
             .pin_to
             .ok_or_else(|| "publish plan has no relay pin".to_string())?
             .relay_url;
-        Ok(ActorCommand::Publish(PublishCommand::UnsignedEventToRelays {
-            event: UnsignedEvent {
-                pubkey: String::new(),
-                kind: self.kind,
-                tags: self.tags,
-                content: self.content,
-                created_at: 0, // kernel re-stamps via now_secs() (D7)
+        Ok(ActorCommand::Publish(
+            PublishCommand::UnsignedEventToRelays {
+                event: UnsignedEvent {
+                    pubkey: String::new(),
+                    kind: self.kind,
+                    tags: self.tags,
+                    content: self.content,
+                    created_at: 0, // kernel re-stamps via now_secs() (D7)
+                },
+                relays: vec![relay],
+                route_class: nmp_core::publish::PublishRouteClass::GroupHostPin,
+                correlation_id,
+                // NIP-29 group actions always sign with the active account.
+                signer_pubkey: None,
             },
-            relays: vec![relay],
-            correlation_id,
-            // NIP-29 group actions always sign with the active account.
-            signer_pubkey: None,
-        }))
+        ))
     }
 }
 
@@ -139,9 +150,7 @@ pub enum PublishPlanError {
 impl std::fmt::Display for PublishPlanError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::MissingHostPinForGroupEvent => {
-                f.write_str("group event has no host relay pin")
-            }
+            Self::MissingHostPinForGroupEvent => f.write_str("group event has no host relay pin"),
         }
     }
 }
@@ -152,7 +161,9 @@ impl std::error::Error for PublishPlanError {}
 mod tests {
     use super::*;
 
-    fn g() -> GroupId { GroupId::new("wss://h.example.com", "room") }
+    fn g() -> GroupId {
+        GroupId::new("wss://h.example.com", "room")
+    }
 
     #[test]
     fn pinned_carries_host_relay() {
@@ -194,7 +205,12 @@ mod tests {
         use nmp_core::actor::ActorCommand;
         let p = PublishPlan::pinned(&g(), 9, "hi", vec![vec!["h".into(), "room".into()]]);
         match p.into_actor_command(None).expect("pinned plan converts") {
-            ActorCommand::Publish(PublishCommand::UnsignedEventToRelays { event, relays, correlation_id, .. }) => {
+            ActorCommand::Publish(PublishCommand::UnsignedEventToRelays {
+                event,
+                relays,
+                correlation_id,
+                ..
+            }) => {
                 // Pinned to EXACTLY the group's host relay — never the
                 // author's NIP-65 outbox.
                 assert_eq!(relays, vec!["wss://h.example.com".to_string()]);
@@ -217,7 +233,9 @@ mod tests {
             .into_actor_command(Some("test-correlation-id".to_string()))
             .expect("pinned plan converts")
         {
-            ActorCommand::Publish(PublishCommand::UnsignedEventToRelays { correlation_id, .. }) => {
+            ActorCommand::Publish(PublishCommand::UnsignedEventToRelays {
+                correlation_id, ..
+            }) => {
                 assert_eq!(correlation_id.as_deref(), Some("test-correlation-id"));
             }
             other => panic!("expected PublishUnsignedEventToRelays, got {other:?}"),

@@ -18,7 +18,9 @@
 
 use super::*;
 use crate::kernel::Kernel;
-use crate::publish::{InMemoryPublishStore, PublishRecord, PublishStore, PublishTarget};
+use crate::publish::{
+    InMemoryPublishStore, PublishRecord, PublishRouteClass, PublishStore, PublishTarget,
+};
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use std::sync::Arc;
 

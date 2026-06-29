@@ -22,8 +22,9 @@
 use std::sync::Arc;
 
 use nmp_core::publish::{
-    InMemoryPublishStore, OutboxResolver, PublishAction, PublishEngine, PublishStore, PublishTarget,
-    RelayDispatcher, RelaySelectionReason, RelayUrl, ReplayDispatcher, ResolvedRelay, RetryPolicy,
+    InMemoryPublishStore, OutboxResolver, PublishAction, PublishEngine, PublishStore,
+    PublishTarget, RelayDispatcher, RelaySelectionReason, RelayUrl, ReplayDispatcher,
+    ResolvedRelay, RetryPolicy,
 };
 use nmp_core::substrate::BlockedRelaySet;
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
@@ -69,13 +70,19 @@ impl OutboxResolver for FixedResolver {
         _kind: u32,
         blocked: &BlockedRelaySet,
     ) -> Vec<ResolvedRelay> {
-        if let PublishTarget::Explicit { relays } = target {
+        if let PublishTarget::Explicit {
+            relays,
+            route_class,
+        } = target
+        {
             return relays
                 .iter()
                 .filter(|url| !blocked.contains(url))
                 .map(|url| ResolvedRelay {
                     url: url.clone(),
-                    reason: RelaySelectionReason::Explicit,
+                    reason: RelaySelectionReason::Explicit {
+                        route_class: *route_class,
+                    },
                 })
                 .collect();
         }

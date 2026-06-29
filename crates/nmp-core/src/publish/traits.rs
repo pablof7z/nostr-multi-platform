@@ -11,7 +11,7 @@ use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 
-use super::action::{PublishHandle, PublishTarget, RelayUrl};
+use super::action::{PublishHandle, PublishRouteClass, PublishTarget, RelayUrl};
 use super::state::{PerRelayState, RelayAck};
 use crate::substrate::BlockedRelaySet;
 use nmp_signer_iface::SignedEvent;
@@ -41,9 +41,9 @@ pub enum RelaySelectionReason {
     /// shell/display layer is responsible for any abbreviation (D6 — backend
     /// projections never call `display::*` helpers).
     RecipientInbox { pubkey: String },
-    /// Caller passed `PublishTarget::Explicit { relays }` — the user or app
-    /// chose this relay directly.
-    Explicit,
+    /// Caller passed `PublishTarget::Explicit { relays, route_class }` — the
+    /// caller opted out of default outbox planning and declared why.
+    Explicit { route_class: PublishRouteClass },
 }
 
 /// A relay URL paired with the structured reason it was selected.
@@ -111,13 +111,19 @@ impl OutboxResolver for StaticOutbox {
         _kind: u32,
         blocked: &BlockedRelaySet,
     ) -> Vec<ResolvedRelay> {
-        if let PublishTarget::Explicit { relays } = target {
+        if let PublishTarget::Explicit {
+            relays,
+            route_class,
+        } = target
+        {
             return relays
                 .iter()
                 .filter(|url| !blocked.contains(url))
                 .map(|url| ResolvedRelay {
                     url: url.clone(),
-                    reason: RelaySelectionReason::Explicit,
+                    reason: RelaySelectionReason::Explicit {
+                        route_class: *route_class,
+                    },
                 })
                 .collect();
         }
@@ -184,13 +190,19 @@ impl OutboxResolver for NoopOutboxResolver {
         _kind: u32,
         blocked: &BlockedRelaySet,
     ) -> Vec<ResolvedRelay> {
-        if let PublishTarget::Explicit { relays } = target {
+        if let PublishTarget::Explicit {
+            relays,
+            route_class,
+        } = target
+        {
             return relays
                 .iter()
                 .filter(|url| !blocked.contains(url))
                 .map(|url| ResolvedRelay {
                     url: url.clone(),
-                    reason: RelaySelectionReason::Explicit,
+                    reason: RelaySelectionReason::Explicit {
+                        route_class: *route_class,
+                    },
                 })
                 .collect();
         }

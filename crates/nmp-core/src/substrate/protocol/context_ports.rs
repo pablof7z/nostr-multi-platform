@@ -260,6 +260,7 @@ impl<'a> ProtocolCommandContext<'a> {
         &self,
         event: nmp_signer_iface::UnsignedEvent,
         relays: Vec<crate::publish::RelayUrl>,
+        route_class: crate::publish::PublishRouteClass,
         correlation_id: Option<String>,
         signer_pubkey: Option<String>,
     ) {
@@ -267,6 +268,7 @@ impl<'a> ProtocolCommandContext<'a> {
             PublishCommand::UnsignedEventToRelays {
                 event,
                 relays,
+                route_class,
                 correlation_id,
                 signer_pubkey,
             },
@@ -284,6 +286,7 @@ impl<'a> ProtocolCommandContext<'a> {
         &self,
         event: nostr::Event,
         relays: Vec<crate::publish::RelayUrl>,
+        route_class: crate::publish::PublishRouteClass,
         correlation_id: Option<String>,
     ) {
         let raw = nmp_store::RawEvent {
@@ -297,7 +300,7 @@ impl<'a> ProtocolCommandContext<'a> {
         };
         self.send(ActorCommand::Publish(PublishCommand::SignedEvent {
             raw,
-            target: crate::publish::PublishTarget::Explicit { relays },
+            target: crate::publish::PublishTarget::explicit(relays, route_class),
             correlation_id,
         }));
     }

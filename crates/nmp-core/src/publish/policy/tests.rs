@@ -216,12 +216,12 @@ fn non_private_kinds_route_with_any_target() {
 fn explicit_nonempty_predicate_matches_target_shape() {
     use crate::publish::PublishTarget;
     assert!(!target_is_explicit_nonempty(&PublishTarget::Auto));
-    assert!(!target_is_explicit_nonempty(&PublishTarget::Explicit {
-        relays: Vec::new()
-    }));
-    assert!(target_is_explicit_nonempty(&PublishTarget::Explicit {
-        relays: vec!["wss://relay.example".to_string()]
-    }));
+    assert!(!target_is_explicit_nonempty(
+        &PublishTarget::manual_override(Vec::new())
+    ));
+    assert!(target_is_explicit_nonempty(
+        &PublishTarget::manual_override(vec!["wss://relay.example".to_string()])
+    ));
 }
 
 #[path = "tests/gate.rs"]
