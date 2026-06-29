@@ -33,8 +33,8 @@ pub mod signer;
 
 pub use builder::{BrowserAppBuilder, BrowserRunConfig};
 pub use runtime::{
-    BrowserRuntimeDiagnostics, BrowserRuntimeEvent, BrowserRuntimeHandle, PumpOutcome,
-    SnapshotOutcome,
+    BrowserGroupDiscoverySessionHandle, BrowserGroupEventsSessionHandle, BrowserRuntimeDiagnostics,
+    BrowserRuntimeEvent, BrowserRuntimeHandle, PumpOutcome, SnapshotOutcome,
 };
 pub use signer::CapabilityEnvelope;
 

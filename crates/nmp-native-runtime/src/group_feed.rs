@@ -59,7 +59,7 @@ use std::sync::Arc;
 use nmp_core::substrate::{ObservedProjection, ObservedProjectionRegistrar};
 use nmp_core::ObservedProjectionId;
 use nmp_feed::DEFAULT_FEED_WINDOW_LIMIT;
-use nmp_nip29::group_id::{group_metadata_filter_json, GroupId};
+use nmp_nip29::group_id::group_metadata_filter_json;
 use nmp_nip29::{
     encode_discovered_groups_snapshot, encode_group_events_snapshot, encode_joined_groups_snapshot,
     DiscoveredGroupsProjection, GroupEventsProjection, GroupEventsQuery, JoinedGroupsProjection,
@@ -70,6 +70,12 @@ use nmp_nip29::{
 };
 
 use crate::app_struct::NmpApp;
+
+mod types;
+pub use types::{
+    Nip29GroupDiscoveryHandle, Nip29GroupDiscoverySession, Nip29GroupEventsHandle,
+    Nip29GroupEventsSession,
+};
 
 /// `0` = `ActiveAccount` scope (re-route on account switch) — the joined-groups
 /// view, which is the active account's membership surface.
@@ -101,83 +107,6 @@ pub(crate) struct GroupFeedSession {
     handle_id: u64,
     /// The observed-projection kernel observer id.
     observer_id: ObservedProjectionId,
-}
-
-/// Descriptor for a NIP-29 group-events typed read session.
-///
-/// The host relay pin is explicit because NIP-29 group reads are routed to the
-/// group host relay. `kinds` is the consumer's kind selection: empty means all
-/// h-tagged group events, while chat views usually pass `[9, 11]`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Nip29GroupEventsSession {
-    group_id: GroupId,
-    kinds: Vec<u32>,
-}
-
-impl Nip29GroupEventsSession {
-    #[must_use]
-    pub fn new(group_id: GroupId, kinds: Vec<u32>) -> Self {
-        Self { group_id, kinds }
-    }
-
-    #[must_use]
-    pub fn group_id(&self) -> &GroupId {
-        &self.group_id
-    }
-
-    #[must_use]
-    pub fn kinds(&self) -> &[u32] {
-        &self.kinds
-    }
-}
-
-/// Descriptor for a NIP-29 group-discovery typed read session.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Nip29GroupDiscoverySession {
-    host_relay_url: String,
-}
-
-impl Nip29GroupDiscoverySession {
-    #[must_use]
-    pub fn new(host_relay_url: String) -> Self {
-        Self { host_relay_url }
-    }
-
-    #[must_use]
-    pub fn host_relay_url(&self) -> &str {
-        &self.host_relay_url
-    }
-}
-
-/// Runtime handle for one host-driven NIP-29 group-events read session.
-///
-/// The handle carries only the session key. It never stores an app pointer; the
-/// caller closes it by passing the handle back to the owning [`NmpApp`].
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Nip29GroupEventsHandle {
-    key: String,
-    handle_id: u64,
-}
-
-impl Nip29GroupEventsHandle {
-    #[must_use]
-    pub fn key(&self) -> &str {
-        &self.key
-    }
-}
-
-/// Runtime handle for one host-driven NIP-29 group-discovery read session.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Nip29GroupDiscoveryHandle {
-    key: String,
-    handle_id: u64,
-}
-
-impl Nip29GroupDiscoveryHandle {
-    #[must_use]
-    pub fn key(&self) -> &str {
-        &self.key
-    }
 }
 
 impl NmpApp {
@@ -533,75 +462,5 @@ impl NmpApp {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn group_feed_events_replacement_makes_old_handle_idempotent() {
-        let app = crate::new_app();
-        let first = app.open_nip29_group_events_session(Nip29GroupEventsSession::new(
-            GroupId::new("wss://groups.example", "first"),
-            vec![9],
-        ));
-        assert_eq!(session_count(&app), 1);
-
-        let second = app.open_nip29_group_events_session(Nip29GroupEventsSession::new(
-            GroupId::new("wss://groups.example", "second"),
-            vec![11],
-        ));
-        assert_eq!(
-            session_count(&app),
-            1,
-            "replacement must tear down the old observer/session"
-        );
-
-        app.close_nip29_group_events_session(first);
-        assert_eq!(
-            session_count(&app),
-            1,
-            "stale handles must not close the replacement session"
-        );
-
-        app.close_nip29_group_events_session(second.clone());
-        assert_eq!(session_count(&app), 0);
-        app.close_nip29_group_events_session(second);
-        assert_eq!(session_count(&app), 0);
-    }
-
-    #[test]
-    fn group_feed_discovery_replacement_makes_old_handle_idempotent() {
-        let app = crate::new_app();
-        let first = app.open_nip29_group_discovery_session(Nip29GroupDiscoverySession::new(
-            "wss://groups.example".to_string(),
-        ));
-        assert_eq!(session_count(&app), 1);
-
-        let second = app.open_nip29_group_discovery_session(Nip29GroupDiscoverySession::new(
-            "wss://other-groups.example".to_string(),
-        ));
-        assert_eq!(
-            session_count(&app),
-            1,
-            "replacement must tear down the old observer/session"
-        );
-
-        app.close_nip29_group_discovery_session(first);
-        assert_eq!(
-            session_count(&app),
-            1,
-            "stale handles must not close the replacement session"
-        );
-
-        app.close_nip29_group_discovery_session(second.clone());
-        assert_eq!(session_count(&app), 0);
-        app.close_nip29_group_discovery_session(second);
-        assert_eq!(session_count(&app), 0);
-    }
-
-    fn session_count(app: &NmpApp) -> usize {
-        app.group_feed_sessions
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .len()
-    }
-}
+#[path = "group_feed_tests.rs"]
+mod tests;

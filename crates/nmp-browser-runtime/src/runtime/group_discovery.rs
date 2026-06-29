@@ -33,14 +33,15 @@ pub(crate) struct BrowserGroupDiscoverySessionDescriptor {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct BrowserGroupDiscoverySessionHandle {
+pub struct BrowserGroupDiscoverySessionHandle {
     session_id: String,
     projection_key: String,
     handle_id: u64,
 }
 
 impl BrowserGroupDiscoverySessionHandle {
-    pub(crate) fn projection_key(&self) -> &str {
+    #[must_use]
+    pub fn projection_key(&self) -> &str {
         &self.projection_key
     }
 }
@@ -103,7 +104,7 @@ impl BrowserRuntimeHandle {
         })
     }
 
-    pub(crate) fn close_nip29_group_discovery_session(
+    pub fn close_nip29_group_discovery_session(
         &mut self,
         handle: BrowserGroupDiscoverySessionHandle,
     ) {

@@ -33,14 +33,15 @@ pub(crate) struct BrowserGroupEventsSessionDescriptor {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct BrowserGroupEventsSessionHandle {
+pub struct BrowserGroupEventsSessionHandle {
     session_id: String,
     projection_key: String,
     handle_id: u64,
 }
 
 impl BrowserGroupEventsSessionHandle {
-    pub(crate) fn projection_key(&self) -> &str {
+    #[must_use]
+    pub fn projection_key(&self) -> &str {
         &self.projection_key
     }
 }
@@ -115,10 +116,7 @@ impl BrowserRuntimeHandle {
         })
     }
 
-    pub(crate) fn close_nip29_group_events_session(
-        &mut self,
-        handle: BrowserGroupEventsSessionHandle,
-    ) {
+    pub fn close_nip29_group_events_session(&mut self, handle: BrowserGroupEventsSessionHandle) {
         let should_close = self
             .group_events_sessions
             .get(&handle.session_id)
