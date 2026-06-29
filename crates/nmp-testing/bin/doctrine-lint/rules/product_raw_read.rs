@@ -56,8 +56,8 @@ pub fn check(line: &str, is_comment: bool, in_test_cfg: bool) -> Vec<(usize, Str
                      event observers, or snapshot tick observers"
                 ),
                 "move the raw interest/observer work behind a typed session or \
-                 typed projection owned by Rust; external mirrors should use the \
-                 pull cursor (`nmp_app_pull_page` + `GlobalLog` cursor)"
+                 typed projection owned by Rust; external mirrors should use a \
+                 `GlobalLog` cursor plus UniFFI `NmpApp::mirror_pull_page`"
                     .to_string(),
             )];
         }

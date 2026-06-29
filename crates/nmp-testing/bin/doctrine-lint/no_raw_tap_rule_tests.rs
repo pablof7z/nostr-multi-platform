@@ -65,7 +65,7 @@ fn no_raw_tap_native_sink_positive_fires() {
 
 /// The updated negative fixture (`neg.rs`) contains both `ExternalEventSinkPolicy`
 /// (in-process relay forwarding, ALLOWED) and pull-path identifiers
-/// (`after_seq`, `AdvancePullCursor`, `on_pull_wake`, `nmp_app_pull_page`).
+/// (`after_seq`, `AdvancePullCursor`, `on_pull_wake`, `NmpApp::mirror_pull_page`).
 /// None of these should trip the rule.
 #[test]
 fn no_raw_tap_external_event_sink_policy_and_pull_path_are_clean() {

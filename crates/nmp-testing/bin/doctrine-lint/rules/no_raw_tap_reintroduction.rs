@@ -23,7 +23,7 @@
 //! External per-event consumption (e.g. the `hl` nostrdb mirror) uses the pull
 //! cursor (ADR-0058 §8 step 5): register a `GlobalLog` cursor in
 //! `Protected { max_lag_entries }` mode → receive `nmp.pull.wake` →
-//! call `nmp_app_pull_page` → apply the page → persist `after_seq` →
+//! call UniFFI `NmpApp::mirror_pull_page` → apply the page → persist `after_seq` →
 //! `AdvancePullCursor`. See `docs/architecture/external-consumers.md`.
 //!
 //! ### 3. Public filterless accepted-event observers (#2089)
@@ -100,7 +100,7 @@
 //! | `register_raw_event_observer`         | `register_ingest_parser` (kind-level)        |
 //! | `RawEventObserver` callback           | `ExternalEventSinkPolicy` + dispatcher       |
 //! | `raw_event_tap` FFI module            | `external_event_sink` substrate seam         |
-//! | `nmp_app_register_event_sink` (C-ABI) | `nmp_app_pull_page` + `GlobalLog` cursor     |
+//! | `nmp_app_register_event_sink` (C-ABI) | `NmpApp::mirror_pull_page` + `GlobalLog` cursor |
 //! | `retain_until_ack` cursor             | pull cursor `Protected { max_lag_entries }`  |
 //! | `event_sink_watermark` resync         | `after_seq` persisted by pull consumer       |
 //! | `register_live_event_tap`             | `open_observed_projection` with a shape      |
@@ -182,14 +182,14 @@ pub fn check(
                     "`{}` re-introduces a deleted external-event-delivery escape hatch \
                      (#1552 native push sink or raw event tap) — \
                      external per-event mirrors must use the pull cursor \
-                     (`nmp_app_pull_page` + `GlobalLog` cursor, ADR-0058); \
+                     (`NmpApp::mirror_pull_page` + `GlobalLog` cursor, ADR-0058); \
                      in-process relay forwarding uses `ExternalEventSinkPolicy`; \
                      kind-level parsing uses `register_ingest_parser`",
                     token
                 ),
                 "for an external store mirror: register a `GlobalLog` cursor in \
                  `Protected {{ max_lag_entries }}` mode, receive `nmp.pull.wake`, \
-                 call `nmp_app_pull_page`, apply the page, persist `after_seq`, \
+                 call `NmpApp::mirror_pull_page`, apply the page, persist `after_seq`, \
                  then `AdvancePullCursor` (ADR-0058, docs/architecture/external-consumers.md); \
                  for in-process relay forwarding: `ExternalEventSinkPolicy`; \
                  for kind-level parsing: `register_ingest_parser`"
@@ -225,7 +225,7 @@ pub fn check(
                  the native push sink (register/ack/retain-until-ack) is permanently \
                  replaced by the pull cursor (ADR-0058)"
                     .to_string(),
-                "for external mirrors use `nmp_app_pull_page` + `GlobalLog` cursor \
+                "for external mirrors use UniFFI `NmpApp::mirror_pull_page` + `GlobalLog` cursor \
                  in `Protected {{ max_lag_entries }}` mode (ADR-0058, \
                  docs/architecture/external-consumers.md)"
                     .to_string(),
