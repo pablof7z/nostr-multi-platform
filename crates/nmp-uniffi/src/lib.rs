@@ -41,6 +41,12 @@ pub use stateless::NmpError;
 // ── Identity / signer / relay (C2 — account, relay, broker, external) ────────
 pub mod identity;
 
+// ── Reference resolution (C3 — resolve_ref, profile, event embed) ─────────────
+pub mod refs;
+pub use refs::{
+    EventShape, ProfileShape, RefLiveness, RefNamespace, RefShape, ResolveMetadata,
+};
+
 // ── Typed dispatch outcome ────────────────────────────────────────────────────
 
 /// Typed outcome of a `dispatch_action` call.
