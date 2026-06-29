@@ -59,5 +59,6 @@ zeroize = { workspace = true }
 [dev-dependencies]
 # For building test envelopes and registering test action modules.
 nmp-core = { path = "../nmp-core", features = ["test-support"] }
+nmp-defaults = { path = "../nmp-defaults" }
 nmp-native-runtime = { path = "../nmp-native-runtime", features = ["test-support"] }
 serde_json = { workspace = true }
