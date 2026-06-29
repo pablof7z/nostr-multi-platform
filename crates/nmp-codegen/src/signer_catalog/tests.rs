@@ -84,7 +84,7 @@ fn swift_render_uses_typed_and_generic_kinds() {
 }
 
 #[test]
-fn manifest_and_plist_scheme_extraction() {
+fn manifest_scheme_extraction() {
     let manifest = r#"<manifest>
       <queries>
         <intent><action android:name="android.intent.action.VIEW" /><data android:scheme="nostrsigner" /></intent>
@@ -96,24 +96,5 @@ fn manifest_and_plist_scheme_extraction() {
     assert_eq!(
         manifest_query_schemes(manifest),
         vec!["nostrsigner".to_string(), "primal".to_string()]
-    );
-
-    let plist = r#"<plist><dict>
-      <key>LSApplicationQueriesSchemes</key>
-      <array>
-        <string>nostrsigner</string>
-        <string>primal</string>
-        <string>nostrconnect</string>
-      </array>
-      <key>CFBundleURLTypes</key>
-      <array><string>ignored</string></array>
-    </dict></plist>"#;
-    assert_eq!(
-        plist_query_schemes(plist),
-        vec![
-            "nostrsigner".to_string(),
-            "primal".to_string(),
-            "nostrconnect".to_string()
-        ]
     );
 }

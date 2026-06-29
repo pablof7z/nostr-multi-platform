@@ -6,9 +6,6 @@
 /.xcodebuildmcp
 /apps/nmp-gallery/android
 /apps/nmp-gallery/ios
-/apps/chirp/android
-/apps/chirp/crates/nmp-chirp-android-ffi
-/apps/chirp/ios
 /ci
 /docs
 /pkg

@@ -1,10 +1,1 @@
-# Mark the checked-in `flatc --swift` bindings as generated so they are byte-
-# for-byte the raw `flatc 25.12.19` output that ci/check-swift-flatc-drift.sh
-# diffs against (a PURE byte-diff, like the Rust/Kotlin/TS flatc gates).
-#
-# `linguist-generated` collapses them in PR diffs. `-text` opts them out of
-# any Git-side EOL/whitespace munging so the committed bytes equal flatc's
-# output exactly. The companion .editorconfig disables editor trailing-
-# whitespace trimming for the same path (flatc emits a trailing space after
-# the file-identifier accessor; trimming it re-drifts the gate).
-apps/chirp/ios/Chirp/Bridge/Generated/*.generated.swift -text linguist-generated=true
+# No active per-path attributes.

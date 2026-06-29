@@ -40,7 +40,7 @@ const BUILTIN_HEADER: &str = "\
 //
 // Regenerate via:
 //   cargo run -p nmp-codegen -- gen action-builders --platform swift \\
-//       --out apps/chirp/ios/Chirp/Bridge/Generated/ActionBuilders.generated.swift
+//       --out <app>/Bridge/Generated/ActionBuilders.generated.swift
 //
 // Source of truth: `crates/nmp-codegen/src/action_builders/registry.rs`
 // (`ACTION_BUILDERS`). The CI gate (`.github/workflows/codegen-drift.yml`) fails
