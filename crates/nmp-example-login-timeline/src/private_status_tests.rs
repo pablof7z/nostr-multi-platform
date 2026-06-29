@@ -77,6 +77,29 @@ fn generated_builder_envelope_round_trips_through_app_owned_payload_decode() {
 }
 
 #[test]
+fn checked_in_host_builders_expose_only_the_app_private_typed_path() {
+    const SWIFT: &str = include_str!("../generated/ActionBuilders.generated.swift");
+    const KOTLIN: &str = include_str!("../generated/ActionBuilders.kt");
+    const TS: &str = include_str!("../generated/actionBuilders.generated.ts");
+
+    for generated in [SWIFT, KOTLIN, TS] {
+        assert!(generated.contains("app-local action-builders registry JSON"));
+        assert!(generated.contains("NOT NMP's built-in `ACTION_BUILDERS` table"));
+        assert!(generated.contains("publishStatus"));
+        assert!(generated.contains(ACTION_NAMESPACE));
+        assert!(generated.contains("\"APPS\""));
+        assert!(
+            generated.contains("encodeDispatchEnvelope"),
+            "host builders must produce byte-doorway DispatchEnvelope payloads"
+        );
+        assert!(
+            !generated.contains("PublishRaw") && !generated.contains("nmp.publish"),
+            "starter app-private proof must not teach raw publish fallback"
+        );
+    }
+}
+
+#[test]
 fn explicit_composition_registers_app_private_action_namespace() {
     let mut registry = ActionRegistry::new();
     ActionRegistrar::register_action(&mut registry, PublishStatusModule)

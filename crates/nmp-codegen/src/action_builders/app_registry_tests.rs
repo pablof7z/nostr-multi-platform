@@ -1,8 +1,10 @@
 use super::*;
+use crate::action_builders::registry::ACTION_BUILDERS;
 use crate::action_builders::{
     check_app_action_builder_registry, render_from_registry,
     validate_app_action_builder_schema_files, AppActionBuilderOutputCheck, Platform,
 };
+use crate::action_contract::ACTION_CONTRACT;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -100,6 +102,32 @@ fn renders_app_local_swift_kotlin_and_ts_builders() {
     assert_in_order(
         &ts,
         &["slot 1: title", "slot 2: retryCount", "slot 3: topics"],
+    );
+}
+
+#[test]
+fn app_local_registry_rows_are_not_builtin_action_rows() {
+    let loaded = parse_app_action_builder_registry(FIXTURE).unwrap();
+    let builder = &loaded.builders[0];
+    let schema = &loaded.schemas[0];
+    let raw: serde_json::Value = serde_json::from_str(FIXTURE).unwrap();
+
+    assert_eq!(builder.namespace, "app.notes.publish_note");
+    assert_eq!(raw["actions"][0]["event_kind"], 30444);
+    assert_eq!(schema.action_namespace, builder.namespace);
+    assert_eq!(schema.file_identifier, "APPA");
+    assert_eq!(schema.schema_version, 42);
+    assert!(
+        ACTION_CONTRACT
+            .iter()
+            .all(|contract| contract.namespace != builder.namespace),
+        "app-private namespaces must stay out of the built-in ACTION_CONTRACT"
+    );
+    assert!(
+        ACTION_BUILDERS
+            .iter()
+            .all(|builtin| builtin.namespace != builder.namespace),
+        "app-private namespaces must stay out of the built-in ACTION_BUILDERS"
     );
 }
 
