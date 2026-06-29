@@ -59,8 +59,8 @@ void nmp_app_release_event_ref(void *app, const char *key,
 
 // ── Event-ref resolve / release (kind-dispatch embed) ────────────────────
 
-// Event URI front doors are removed. Callers decode the nostr: URI via
-// nmp_nip21_decode_uri and then route to the typed event-embed adapters above.
+// Event URI front doors are removed. The Gallery shell uses its app-owned URI
+// adapter and then routes to the typed event-embed adapters above.
 
 // ── Relay management ─────────────────────────────────────────────────────
 
@@ -135,25 +135,12 @@ void nmp_app_gallery_ref_stores_free(struct GalleryRefStores *stores);
 char *nmp_app_gallery_snapshot_json_from_update_frame(struct GalleryRefStores *stores,
                                                       const uint8_t *bytes, uintptr_t len);
 
-// ── Stateless NIP-21 / NIP-19 decode ────────────────────────────────────
+// ── Gallery event-ref URI adapter ────────────────────────────────────────
 //
-// Decode a `nostr:` URI or bare bech32 entity. Returns bounded JSON:
-//   {"ok":true,"target":"event","event_id":"<hex>", ...}
-// or {"ok":false,"error":"..."}.
-// The returned string is never NULL and MUST be freed via nmp_free_string.
-// Used by app-owned URI adapters to extract the event key before calling
-// nmp_app_resolve_ref.
-char *nmp_nip21_decode_uri(const char *input);
-
-// Stateless content tokenizer. Returns {"ok":true,"tree":ContentTreeWire}
-// using the same wire arena as the registry renderers, or
-// {"ok":false,"error":"..."}. `mode`: 0 plain, 1 markdown, 2 auto by `kind`.
-// `tags_json` may be NULL or a JSON [[string]] event-tag array for emoji tags.
-// The returned string is never NULL and MUST be freed via nmp_free_string.
-char *nmp_content_tokenize_text(const char *content,
-                                const char *tags_json,
-                                int mode,
-                                uint32_t kind);
+// Decode a Gallery event-embed URI into {"key":"...","metadata_json":"..."}.
+// Returns NULL for invalid, secret-bearing, or non-event targets. Non-NULL
+// returns are heap strings and MUST be freed via nmp_free_string.
+char *nmp_app_gallery_event_ref_from_uri(const char *uri);
 
 // ── Heap-string release ──────────────────────────────────────────────────
 

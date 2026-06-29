@@ -2512,8 +2512,7 @@ public func FfiConverterTypeResolveMetadata_lower(_ value: ResolveMetadata) -> R
 /**
  * Render mode passed to `tokenize_content`.
  *
- * Mirrors the `mode` discriminant constants in the C-ABI
- * `nmp_content_tokenize_text` (`0` = Plain, `1` = Markdown, `2` = Auto).
+ * Mirrors the stateless render-mode set: Plain, Markdown, and Auto.
  */
 
 public enum ContentRenderMode {
@@ -3242,8 +3241,7 @@ extension NmpError: Foundation.LocalizedError {
 /**
  * The decoded target of a `nostr:` URI or bare NIP-19 bech32 input.
  *
- * Corresponds to the `"target"` discriminant in the JSON emitted by the
- * C-ABI `nmp_nip21_decode_uri` (`"profile"`, `"event"`, `"address"`).
+ * Corresponds to the `"profile"`, `"event"`, and `"address"` target set.
  */
 
 public enum NostrUriTarget {
@@ -4509,8 +4507,7 @@ public func classifyIntent(app: NmpApp, input: String, scopes: [IntentScope], te
  * Rejected: any `nsec` form (returns `NmpError::NsecForbidden`; the key is
  * never echoed). Malformed inputs return `NmpError::Unparseable`.
  *
- * Mirrors the C-ABI `nmp_nip21_decode_uri` — same decoding logic, typed
- * output instead of JSON. Stateless: no kernel IO, no actor round-trip.
+ * Stateless: no kernel IO, no actor round-trip.
  */
 public func decodeNostrUri(input: String)throws  -> NostrUriTarget  {
     return try  FfiConverterTypeNostrUriTarget_lift(try rustCallWithError(FfiConverterTypeNmpError_lift) {
@@ -4560,8 +4557,8 @@ public func encodeProfile(app: NmpApp, pubkeyHex: String) -> String  {
  * `Err(NmpError::InvalidInput)` — `content` is empty.
  * `Err(NmpError::EncodeFailed)` — internal FlatBuffers encoding error (rare).
  *
- * Mirrors `nmp_content_tokenize_text` — same tokenizer core, FlatBuffers
- * output instead of JSON.
+ * Uses the same tokenizer core as the Rust registry renderers and returns
+ * FlatBuffers output.
  */
 public func tokenizeContent(content: String, tags: [[String]], mode: ContentRenderMode, kind: UInt32)throws  -> Data  {
     return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeNmpError_lift) {
@@ -4592,13 +4589,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_nmp_uniffi_checksum_func_classify_intent() != 43755) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_nmp_uniffi_checksum_func_decode_nostr_uri() != 56218) {
+    if (uniffi_nmp_uniffi_checksum_func_decode_nostr_uri() != 41104) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_func_encode_profile() != 4850) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_nmp_uniffi_checksum_func_tokenize_content() != 58037) {
+    if (uniffi_nmp_uniffi_checksum_func_tokenize_content() != 48323) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_ack_action_stage() != 30523) {

@@ -1,12 +1,10 @@
 //! Stateless NIP-21 / bare NIP-19 decode — UniFFI surface (M14-C1).
 //!
-//! Mirrors `nmp-ffi/src/nip21_ffi.rs::nmp_nip21_decode_uri`.
-//!
 //! ## Core-fn provenance
 //!
-//! The C-ABI calls `nmp_core::nip21::parse_nostr_uri` (for `nostr:` prefixed
-//! URIs) and `nmp_core::nip19::parse` (for bare bech32). This wrapper calls
-//! the same two fns but returns a typed `NostrUriTarget` instead of JSON.
+//! Calls `nmp_core::nip21::parse_nostr_uri` (for `nostr:` prefixed URIs) and
+//! `nmp_core::nip19::parse` (for bare bech32), returning a typed
+//! `NostrUriTarget`.
 //!
 //! ## D6
 //!
@@ -20,8 +18,7 @@ use crate::stateless::NmpError;
 
 /// The decoded target of a `nostr:` URI or bare NIP-19 bech32 input.
 ///
-/// Corresponds to the `"target"` discriminant in the JSON emitted by the
-/// C-ABI `nmp_nip21_decode_uri` (`"profile"`, `"event"`, `"address"`).
+/// Corresponds to the `"profile"`, `"event"`, and `"address"` target set.
 #[derive(Debug, Clone, PartialEq, uniffi::Enum)]
 pub enum NostrUriTarget {
     /// An `npub` / `nprofile` — identifies a Nostr public key.
@@ -53,8 +50,7 @@ pub enum NostrUriTarget {
 /// Rejected: any `nsec` form (returns `NmpError::NsecForbidden`; the key is
 /// never echoed). Malformed inputs return `NmpError::Unparseable`.
 ///
-/// Mirrors the C-ABI `nmp_nip21_decode_uri` — same decoding logic, typed
-/// output instead of JSON. Stateless: no kernel IO, no actor round-trip.
+/// Stateless: no kernel IO, no actor round-trip.
 #[uniffi::export]
 pub fn decode_nostr_uri(input: String) -> Result<NostrUriTarget, NmpError> {
     decode_uri_impl(&input)
@@ -164,9 +160,9 @@ mod tests {
     const PUBKEY: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
     const EVENT_ID: &str = "0000000000000000000000000000000000000000000000000000000000000001";
 
-    // Parity: the C-ABI `nmp_nip21_decode_uri` calls `nmp_core::nip19::parse`
-    // and `nmp_core::nip21::parse_nostr_uri` — the same fns used here.
-    // Each test matches a corresponding case in `nmp-ffi/src/nip21_ffi_tests.rs`.
+    // Parity: this surface calls `nmp_core::nip19::parse` and
+    // `nmp_core::nip21::parse_nostr_uri`; the tests cover each supported
+    // target shape directly.
 
     #[test]
     fn parity_bare_npub_decodes_to_profile() {

@@ -1,14 +1,10 @@
 //! Content tokenizer — UniFFI surface (M14-C1).
 //!
-//! Mirrors `nmp-ffi/src/content_ffi.rs::nmp_content_tokenize_text`.
-//!
 //! ## Core-fn provenance
 //!
-//! The C-ABI calls `nmp_content::tokenize` / `nmp_content::tokenize_with_kind`
-//! and serialises the result to JSON via serde. This wrapper calls the same
-//! tokenizer fns but encodes the `ContentTreeWire` result as FlatBuffers bytes
-//! via `nmp_content::wire::encode_content_tree` — a proper typed binary format
-//! instead of a JSON string.
+//! Calls `nmp_content::tokenize` / `nmp_content::tokenize_with_kind` and encodes
+//! the `ContentTreeWire` result as FlatBuffers bytes via
+//! `nmp_content::wire::encode_content_tree`.
 //!
 //! ## Output format
 //!
@@ -30,8 +26,7 @@ use crate::stateless::NmpError;
 
 /// Render mode passed to `tokenize_content`.
 ///
-/// Mirrors the `mode` discriminant constants in the C-ABI
-/// `nmp_content_tokenize_text` (`0` = Plain, `1` = Markdown, `2` = Auto).
+/// Mirrors the stateless render-mode set: Plain, Markdown, and Auto.
 #[derive(Debug, Clone, Copy, PartialEq, uniffi::Enum)]
 pub enum ContentRenderMode {
     /// Inline tokenization only (no block-level Markdown parsing).
@@ -72,8 +67,8 @@ impl From<ContentRenderMode> for RenderMode {
 /// `Err(NmpError::InvalidInput)` — `content` is empty.
 /// `Err(NmpError::EncodeFailed)` — internal FlatBuffers encoding error (rare).
 ///
-/// Mirrors `nmp_content_tokenize_text` — same tokenizer core, FlatBuffers
-/// output instead of JSON.
+/// Uses the same tokenizer core as the Rust registry renderers and returns
+/// FlatBuffers output.
 #[uniffi::export]
 pub fn tokenize_content(
     content: String,
@@ -103,10 +98,8 @@ mod tests {
     use nmp_content::{tokenize as core_tokenize, tokenize_with_kind as core_tokenize_with_kind};
     use nmp_content::wire::encode_content_tree as core_encode;
 
-    // Parity: the C-ABI `nmp_content_tokenize_text` calls
-    // `nmp_content::tokenize` / `nmp_content::tokenize_with_kind` then
-    // serialises to JSON. These tests verify the UniFFI fn calls the same
-    // tokenizer and produces a FlatBuffers buffer that decodes to the same
+    // Parity: these tests verify the UniFFI fn calls the same tokenizer core
+    // and produces a FlatBuffers buffer that decodes to the same
     // `ContentTreeWire` as calling the core fns directly.
 
     #[test]

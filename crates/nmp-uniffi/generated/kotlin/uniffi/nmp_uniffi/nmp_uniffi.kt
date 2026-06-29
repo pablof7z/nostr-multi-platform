@@ -1345,13 +1345,13 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_nmp_uniffi_checksum_func_classify_intent() != 43755.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_nmp_uniffi_checksum_func_decode_nostr_uri() != 56218.toShort()) {
+    if (lib.uniffi_nmp_uniffi_checksum_func_decode_nostr_uri() != 41104.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_func_encode_profile() != 4850.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_nmp_uniffi_checksum_func_tokenize_content() != 58037.toShort()) {
+    if (lib.uniffi_nmp_uniffi_checksum_func_tokenize_content() != 48323.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_ack_action_stage() != 30523.toShort()) {
@@ -3888,8 +3888,7 @@ public object FfiConverterTypeResolveMetadata: FfiConverterRustBuffer<ResolveMet
 /**
  * Render mode passed to `tokenize_content`.
  *
- * Mirrors the `mode` discriminant constants in the C-ABI
- * `nmp_content_tokenize_text` (`0` = Plain, `1` = Markdown, `2` = Auto).
+ * Mirrors the stateless render-mode set: Plain, Markdown, and Auto.
  */
 
 enum class ContentRenderMode {
@@ -4597,8 +4596,7 @@ public object FfiConverterTypeNmpError : FfiConverterRustBuffer<NmpException> {
 /**
  * The decoded target of a `nostr:` URI or bare NIP-19 bech32 input.
  *
- * Corresponds to the `"target"` discriminant in the JSON emitted by the
- * C-ABI `nmp_nip21_decode_uri` (`"profile"`, `"event"`, `"address"`).
+ * Corresponds to the `"profile"`, `"event"`, and `"address"` target set.
  */
 sealed class NostrUriTarget {
 
@@ -5586,8 +5584,7 @@ public object FfiConverterMapStringString: FfiConverterRustBuffer<Map<kotlin.Str
          * Rejected: any `nsec` form (returns `NmpError::NsecForbidden`; the key is
          * never echoed). Malformed inputs return `NmpError::Unparseable`.
          *
-         * Mirrors the C-ABI `nmp_nip21_decode_uri` — same decoding logic, typed
-         * output instead of JSON. Stateless: no kernel IO, no actor round-trip.
+         * Stateless: no kernel IO, no actor round-trip.
          */
     @Throws(NmpException::class) fun `decodeNostrUri`(`input`: kotlin.String): NostrUriTarget {
             return FfiConverterTypeNostrUriTarget.lift(
@@ -5641,8 +5638,8 @@ public object FfiConverterMapStringString: FfiConverterRustBuffer<Map<kotlin.Str
          * `Err(NmpError::InvalidInput)` — `content` is empty.
          * `Err(NmpError::EncodeFailed)` — internal FlatBuffers encoding error (rare).
          *
-         * Mirrors `nmp_content_tokenize_text` — same tokenizer core, FlatBuffers
-         * output instead of JSON.
+         * Uses the same tokenizer core as the Rust registry renderers and returns
+         * FlatBuffers output.
          */
     @Throws(NmpException::class) fun `tokenizeContent`(`content`: kotlin.String, `tags`: List<List<kotlin.String>>, `mode`: ContentRenderMode, `kind`: kotlin.UInt): kotlin.ByteArray {
             return FfiConverterByteArray.lift(
