@@ -20,8 +20,8 @@
 //!
 //! **Two-phase measurement:**
 //! Phase A (baseline, incremental OFF): all projections serialized every tick.
-//! Phase B (incremental ON): a second `NmpApp` with `nmp_app_declare_incremental_apply`
-//! called before the window — only `Changed`/`Cleared` rows emitted; `Unchanged`
+//! Phase B (incremental ON): a second `NmpApp` with incremental apply declared
+//! before the window — only `Changed`/`Cleared` rows emitted; `Unchanged`
 //! rows omitted.
 //!
 //! **Byte-identity oracle (correctness proof, fail-closed):** [`crate::s6_oracle`]
@@ -49,14 +49,14 @@
 
 use crate::common::{configure_and_await_frame, inject_signed_events, percentile_u64};
 use crate::ffi::{
-    configure_app, free_app_ptr, new_app_ptr, nmp_app_release_ref, nmp_app_resolve_ref,
-    set_update_listener, test_pubkeys, NmpApp,
+    configure_app, declare_incremental_apply, free_app_ptr, new_app_ptr, nmp_app_release_ref,
+    nmp_app_resolve_ref, set_update_listener, test_pubkeys, NmpApp,
 };
 use crate::report::ScenarioMetrics;
 use crate::s6_gates::{apply as apply_gates, PhaseMetrics, S6Outcome};
 use crate::s6_oracle::{run_byte_identity_oracle, FrameRecord};
 use nmp_core::decode_snapshot_typed_projections;
-use nmp_ffi::{nmp_app_declare_incremental_apply, nmp_app_read_projection_churn_stats};
+use nmp_ffi::nmp_app_read_projection_churn_stats;
 use nmp_testing::harness_probe::{FrameProbe, ProbeSignal};
 use std::ffi::c_void;
 use std::sync::Mutex;
@@ -285,11 +285,7 @@ pub(crate) fn run(cfg: S6Config, report: &mut ScenarioMetrics) {
         // ADR-0055 Rung 3 D3-2 — declare incremental-apply capability BEFORE
         // start. The kernel emits only Changed/Cleared rows from this point; the
         // first tick after declaration is a full baseline.
-        let rc = nmp_app_declare_incremental_apply(app_b);
-        assert_eq!(
-            rc, 0,
-            "nmp_app_declare_incremental_apply must return 0 (ok) before start; got rc={rc}"
-        );
+        declare_incremental_apply(app_b);
 
         let (signal_b, probe_b) = FrameProbe::new();
         let state_b = Box::new(Mutex::new(ByteCapture {

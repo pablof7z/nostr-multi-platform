@@ -1,7 +1,7 @@
 //! S7 — Feed-idle capstone (ADR-0055 R6-S4).
 //!
 //! **Purpose:** empirical PASS/FAIL proof that registering `nmp.feed.home` via
-//! `register_op_feed_defaults` + `nmp_app_declare_incremental_apply` reduces
+//! `register_op_feed_defaults` plus incremental apply reduces
 //! idle-tick total frame bytes by ~58.8KB — the REAL whole-product win that
 //! R3-S5 could not show because it did not register the op_feed default.
 //!
@@ -14,7 +14,7 @@
 //!   - Settle until the feed stabilises, then run IDLE_TICKS configure ticks.
 //!
 //! Phase B (incremental ON):
-//!   - `nmp_app_declare_incremental_apply` before the first configure tick.
+//!   - Declare incremental apply before the first configure tick.
 //!   - Same seed + settle + idle sequence.
 //!   - The settle tick is the first full-frame baseline; idle ticks omit the feed.
 //!
@@ -54,11 +54,13 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use nmp_core::{decode_snapshot_envelope, decode_snapshot_typed_projections};
-use nmp_ffi::nmp_app_declare_incremental_apply;
 use nmp_testing::harness_probe::{FrameProbe, ProbeSignal};
 
 use crate::common::{configure_and_await_frame, percentile_u64};
-use crate::ffi::{configure_app, free_app_ptr, new_app_ptr, set_update_listener, NmpApp};
+use crate::ffi::{
+    configure_app, declare_incremental_apply, free_app_ptr, new_app_ptr, set_update_listener,
+    NmpApp,
+};
 use crate::report::ScenarioMetrics;
 use crate::s7_feed_events::{
     inject_events_from, inject_followed_reply_to_unknown_root, inject_stranger_replies,
@@ -310,11 +312,7 @@ pub(crate) fn run(_cfg: S7Config, report: &mut ScenarioMetrics) {
         let app: *mut NmpApp = new_app_ptr();
 
         // Declare BEFORE the first configure tick (settle tick = first baseline).
-        let rc = nmp_app_declare_incremental_apply(app);
-        assert_eq!(
-            rc, 0,
-            "nmp_app_declare_incremental_apply must return 0 (ok); got {rc}"
-        );
+        declare_incremental_apply(app);
 
         let slot = unsafe { &*app }.active_account_handle();
         *slot.lock().expect("active-account slot") = Some(VIEWER_PUBKEY.to_string());

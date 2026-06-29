@@ -11,7 +11,6 @@ mod action;
 mod active_account_handle_tests;
 mod app_ctor;
 mod app_lifecycle_ffi;
-mod debug_info;
 #[cfg(test)]
 #[path = "event_by_id_tests.rs"]
 mod event_by_id_tests;
@@ -20,7 +19,6 @@ mod external_signer;
 mod free;
 mod group_feed;
 mod identity;
-mod intent_ffi;
 #[cfg(test)]
 #[path = "interest_feed_tests.rs"]
 mod interest_feed_tests;
@@ -42,8 +40,6 @@ mod search_tests;
 mod signer_broker;
 #[cfg(any(test, feature = "test-support"))]
 mod signer_ports_test_support;
-mod snapshot;
-mod storage;
 #[cfg(any(test, feature = "test-support"))]
 mod testing;
 #[cfg(any(test, feature = "test-support"))]
@@ -67,6 +63,10 @@ pub(crate) use app_lifecycle_ffi::{
     test_app_free, test_app_reset, test_app_set_update_callback, test_app_start, TestUpdateCallback,
 };
 
+#[cfg(feature = "external-signer")]
+pub use external_signer::{
+    nmp_app_deliver_external_signer_response, nmp_app_signin_nip55, nmp_external_signer_init,
+};
 pub use free::nmp_free_string;
 #[cfg(feature = "native")]
 pub use group_feed::{open_group_discovery_handle, GroupFeedHandle};
@@ -76,30 +76,15 @@ pub use identity::{
     nmp_app_register_agent_nsec, nmp_app_remove_account, nmp_app_remove_relay,
     nmp_app_signin_bunker, nmp_app_signin_nsec, nmp_app_switch_active,
 };
-// #1726 — unified diagnostic pull accessor (routing/composition/merged).
-// Replaces the deleted `nmp_app_recent_routing_decisions` and
-// `nmp_app_composition_report` symbols. No compat shims kept.
-#[cfg(feature = "native")]
-pub use debug_info::nmp_app_debug_info;
-#[cfg(feature = "external-signer")]
-pub use external_signer::{
-    nmp_app_deliver_external_signer_response, nmp_app_signin_nip55, nmp_external_signer_init,
-};
 #[cfg(feature = "signer-broker")]
 pub use signer_broker::{
     nmp_app_cancel_bunker_handshake, nmp_app_nostrconnect_uri, nmp_signer_broker_init,
 };
-#[cfg(feature = "native")]
-#[allow(unused_imports)]
-pub use snapshot::{
-    nmp_app_consume_all_builtin_projections, nmp_app_declare_consumed_projections,
-    nmp_app_declare_incremental_apply,
-};
-#[cfg(feature = "native")]
-pub use storage::nmp_app_set_storage_path;
-// `nmp_app_active_following_count` deleted (#1726). See comment near `debug_info` mod.
+// `nmp_app_active_following_count` deleted (#1726). No compatibility shim kept.
 // #2443: feed/search/URI app-session C exports were deleted after migration to
 // the typed UniFFI native session API.
+// #2454: runtime config, diagnostics, and input-intent C exports were deleted
+// after migration to UniFFI/native-runtime methods. No compatibility shims kept.
 // ADR-0063 Lane D — ref-resolution C-ABI entry points. Hosts should prefer the
 // typed adapters; the raw resolve_ref/release_ref surface remains as the
 // compatibility boundary for generated or legacy bindings.

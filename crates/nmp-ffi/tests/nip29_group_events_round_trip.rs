@@ -44,7 +44,7 @@ use std::time::Duration;
 use nmp_core::actor::{ActorCommand, TestSupportCommand};
 use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
 use nmp_core::substrate::ActionPayload;
-use nmp_ffi::{nmp_app_consume_all_builtin_projections, NmpApp};
+use nmp_ffi::NmpApp;
 use nmp_native_runtime::{dispatch_action_bytes_typed, DispatchOutcome, Nip29GroupEventsSession};
 use nmp_nip29::action::PublishGroupEventInput;
 use nmp_nip29::group_id::GroupId;
@@ -290,7 +290,7 @@ fn group_events_event_surfaces_via_kernel_snapshot_callback() {
     // Declare projection-consumption intent like a real host (ADR-0053 / E4) so
     // `test_app_start` does not trip its forgotten-declaration guard in this
     // non-`test-support` integration-test build of nmp-ffi.
-    nmp_app_consume_all_builtin_projections(app);
+    unsafe { &*app }.consume_all_builtin_projections();
 
     // test_app_start sends ActorCommand::Start; the actor enters its main loop
     // and begins emitting snapshot ticks at emit_hz rate.
