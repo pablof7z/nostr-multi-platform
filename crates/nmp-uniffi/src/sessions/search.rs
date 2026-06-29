@@ -23,9 +23,9 @@
 //! raw FlatBuffers `N50S` bytes without managing an output buffer. `None` means
 //! no session is open under `session_id` or the session has no results yet.
 //! This is the typed UniFFI form of the C-ABI's `out_buf + len_return` pair,
-//! backed by the same `NmpApp::search_snapshot_bytes` call.
+//! backed by the same `NmpApp::search_session_snapshot_bytes` call.
 
-use nmp_native_runtime::parse_search_request;
+use nmp_native_runtime::{parse_search_request, Nip50SearchSession};
 
 use crate::NmpApp;
 
@@ -53,7 +53,13 @@ impl NmpApp {
         let Some(request) = parse_search_request(&request_json) else {
             return;
         };
-        let _ = self.inner.open_search(request, &session_id);
+        let Ok(mut search_handles) = self.search_handles.lock() else {
+            return;
+        };
+        let handle = self
+            .inner
+            .open_search_session(Nip50SearchSession::new(request, session_id.clone()));
+        search_handles.insert(session_id, handle);
     }
 
     /// Close a NIP-50 search session previously opened via `search_open`.
@@ -65,7 +71,14 @@ impl NmpApp {
         if session_id.is_empty() {
             return;
         }
-        self.inner.close_search(&session_id);
+        let handle = self
+            .search_handles
+            .lock()
+            .ok()
+            .and_then(|mut search_handles| search_handles.remove(&session_id));
+        if let Some(handle) = handle {
+            self.inner.close_search_session(&handle);
+        }
     }
 
     /// Copy the current typed `N50S` search-results snapshot for a session.
@@ -81,7 +94,12 @@ impl NmpApp {
         if session_id.is_empty() {
             return None;
         }
-        self.inner.search_snapshot_bytes(&session_id)
+        let handle = self
+            .search_handles
+            .lock()
+            .ok()
+            .and_then(|search_handles| search_handles.get(&session_id).cloned())?;
+        self.inner.search_session_snapshot_bytes(&handle)
     }
 }
 

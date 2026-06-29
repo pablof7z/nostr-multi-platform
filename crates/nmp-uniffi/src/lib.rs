@@ -24,7 +24,8 @@
 //! Regenerate with:
 //!   bash ci/check-uniffi-bindings-drift.sh --regen
 
-use std::sync::Arc;
+use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex};
 
 use nmp_native_runtime::{
     dispatch_action_bytes_typed, new_app, NmpApp as RuntimeApp, UpdateListener,
@@ -102,6 +103,7 @@ pub trait UpdateSink: Send + Sync {
 #[derive(uniffi::Object)]
 pub struct NmpApp {
     inner: RuntimeApp,
+    search_handles: Mutex<BTreeMap<String, nmp_native_runtime::Nip50SearchHandle>>,
 }
 
 #[uniffi::export]
@@ -110,7 +112,10 @@ impl NmpApp {
     /// yet. Call `start` after all pre-start configuration.
     #[uniffi::constructor]
     pub fn new() -> Arc<Self> {
-        Arc::new(NmpApp { inner: new_app() })
+        Arc::new(NmpApp {
+            inner: new_app(),
+            search_handles: Mutex::new(BTreeMap::new()),
+        })
     }
 
     /// Start the runtime actor with the given rendering limits.

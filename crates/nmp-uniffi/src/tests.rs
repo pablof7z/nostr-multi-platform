@@ -423,7 +423,10 @@ fn dispatch_wrapper_passes_through_code_field() {
     let _ = inner.register_action(UniffiCodedRejectModule);
 
     // Wrap the pre-configured inner app in the UniFFI NmpApp.
-    let app = Arc::new(NmpApp { inner });
+    let app = Arc::new(NmpApp {
+        inner,
+        search_handles: Default::default(),
+    });
 
     let envelope = encode_dispatch_envelope(
         "corr-code-wrap",
