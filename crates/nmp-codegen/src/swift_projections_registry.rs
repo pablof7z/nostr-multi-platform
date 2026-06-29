@@ -337,8 +337,8 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
         swift_type: "[RelayRoleOption]",
         typed_sidecar: Some(TypedSidecar {
             // Wave B batch #2: the `flatc --swift` reader
-            // (`nmp_kernel_RelayRoleOptionsSnapshot`) ships in this PR. Four-field
-            // (value/label/tint/isDefault) copy. See
+            // (`nmp_kernel_RelayRoleOptionsSnapshot`) ships in this PR. Two-field
+            // (value/isDefault) copy. See
             // `TypedProjectionGlue.relayRoleOptions`.
             swift_reader_type: Some("nmp_kernel_RelayRoleOptionsSnapshot"),
         }),

@@ -5,7 +5,7 @@
 //! `snapshot_projections_with_publish_cluster` helper inserts under
 //! `"relay_role_options"`: the serialisation of
 //! `crate::actor::relay_role_options()`, a `Vec<RelayRoleOption>`
-//! (`{ value, label, tint, is_default }`). This module adds a **typed
+//! (`{ value, is_default }`). This module adds a **typed
 //! FlatBuffers** encoding of the same shape, carried in the `typed_projections`
 //! sidecar (ADR-0037) ALONGSIDE — never replacing — the generic `Value`
 //! projection.
@@ -44,13 +44,11 @@ include!("relay_role_options_producer_consts.generated.rs");
 /// One relay-role picker option — a field-for-field mirror of one
 /// `RelayRoleOption`.
 ///
-/// `label` removed (#1678, D7): presentation artifact; shells map
-/// `value` → label themselves (value→label mapping is static and
-/// shell-language-specific).
+/// `label` and `tint` removed (#1678/#2314, D7): presentation artifacts;
+/// shells map `value` to label and color/tint themselves.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct RelayRoleOptionRow {
     pub value: String,
-    pub tint: String,
     pub is_default: bool,
 }
 
@@ -77,12 +75,10 @@ pub(crate) fn encode_relay_role_options(model: &RelayRoleOptionsModel) -> Vec<u8
         .iter()
         .map(|option| {
             let value = fbb.create_string(&option.value);
-            let tint = fbb.create_string(&option.tint);
             fb::RelayRoleOption::create(
                 &mut fbb,
                 &fb::RelayRoleOptionArgs {
                     value: Some(value),
-                    tint: Some(tint),
                     is_default: option.is_default,
                 },
             )
@@ -118,7 +114,6 @@ pub fn decode_relay_role_options(bytes: &[u8]) -> Result<RelayRoleOptionsModel, 
         for option in fb_options.iter() {
             options.push(RelayRoleOptionRow {
                 value: option.value().unwrap_or_default().to_string(),
-                tint: option.tint().unwrap_or_default().to_string(),
                 is_default: option.is_default(),
             });
         }

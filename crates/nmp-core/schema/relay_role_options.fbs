@@ -6,7 +6,7 @@ namespace nmp.kernel;
 // The producer is `Kernel::snapshot_projections_with_publish_cluster` in
 // `crates/nmp-core/src/kernel/update/projections.rs`, which inserts the
 // `serde_json` serialisation of `crate::actor::relay_role_options()` (a
-// `Vec<RelayRoleOption { value, label, tint: String, is_default: bool }>`)
+// `Vec<RelayRoleOption { value: String, is_default: bool }>`)
 // under the JSON key `"relay_role_options"`. This typed buffer is the host-visible update-frame representation and is emitted
 // in the `SnapshotFrame`'s `typed_projections` sidecar under the SAME key.
 // A host with a `KRRO` decoder reads this payload; absent or invalid bytes fail
@@ -27,8 +27,10 @@ table RelayRoleOption {
   // `value` → label themselves.  The vtable slot is reserved as
   // `_reserved_was_label:string` to prevent accidental slot reuse.
   _reserved_was_label:string (deprecated);
-  // Semantic tint token (`accent` / `info` / `success` / `neutral`).
-  tint:string;
+  // `tint` removed (#2314, D7): presentation artifact — shells map
+  // `value` → color/tint themselves. The vtable slot is reserved as
+  // `_reserved_was_tint:string` to prevent accidental slot reuse.
+  _reserved_was_tint:string (deprecated);
   // Whether this is the default role offered for a newly-added relay.
   is_default:bool;
 }

@@ -45,12 +45,16 @@ fn snapshot_json_carries_new_projections() {
         .as_array()
         .expect("relay_role_options must be a projection array");
     assert_eq!(role_options[0]["value"].as_str(), Some("both,indexer"));
-    // `label` removed from the wire (#1678, D7) — shells map value→label.
+    // `label` and `tint` removed from the wire (#1678/#2314, D7) — shells map
+    // value to presentation locally.
     assert!(
         role_options[0].get("label").is_none(),
         "label must not appear on the wire"
     );
-    assert_eq!(role_options[0]["tint"].as_str(), Some("accent"));
+    assert!(
+        role_options[0].get("tint").is_none(),
+        "tint must not appear on the wire"
+    );
     assert_eq!(role_options[1]["value"].as_str(), Some("both"));
     assert_eq!(role_options[1]["is_default"].as_bool(), Some(true));
     let relay_rows = projections["configured_relays"]

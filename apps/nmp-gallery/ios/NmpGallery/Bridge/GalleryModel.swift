@@ -52,15 +52,11 @@ struct GalleryShowcaseRelay: Decodable, Sendable {
     let role: String
 }
 
-/// One entry of the kernel's `projections.relay_role_options` array — the
-/// canonical role token paired with the kernel-emitted human-readable `label`
-/// and semantic `tint`. The relay-list component consumes `label`/`tint` from
-/// here directly; no role→label/tint derivation lives in Swift (ADR-0041,
-/// issue #996).
+/// One entry of the kernel's `projections.relay_role_options` array. The
+/// kernel owns the canonical role token and default marker only; Swift maps
+/// role values to labels and colors locally.
 struct GalleryRelayRoleOption: Decodable, Equatable, Sendable {
     let value: String
-    let label: String
-    let tint: String
     let isDefault: Bool
 }
 
@@ -119,10 +115,8 @@ struct GallerySnapshot: Decodable, Equatable, Sendable {
     /// fully resolved `EmbeddedEventEnvelope` with `projection` already
     /// kind-dispatched in Rust. Nil when the projection is absent.
     let resolvedEventEmbeds: [String: EmbeddedEventEnvelope]?
-    /// Kernel-emitted relay-role presentation tokens from
-    /// `projections.relay_role_options` (issue #996). The relay-list page
-    /// looks `configured_relays.role` up here for `label`/`tint`; no Swift-side
-    /// role derivation.
+    /// Kernel-emitted relay-role options from `projections.relay_role_options`.
+    /// Presentation labels and colors are derived by Swift from the role value.
     let relayRoleOptions: [GalleryRelayRoleOption]
 
     static let empty = GallerySnapshot(running: false, profiles: [:], accounts: [], resolvedEventEmbeds: nil)
@@ -193,9 +187,8 @@ struct GallerySnapshot: Decodable, Equatable, Sendable {
                 [String: EmbeddedEventEnvelope].self,
                 forKey: .refEventEnvelopes
             )
-            // Issue #996: decode the kernel's relay-role presentation tokens so
-            // the relay-list page resolves label/tint from the kernel source of
-            // truth instead of deriving them in Swift.
+            // Decode kernel relay-role values and default markers. Presentation
+            // remains shell-local.
             if let opts = try? projections.decodeIfPresent(
                 [GalleryRelayRoleOption].self,
                 forKey: .relayRoleOptions
@@ -398,9 +391,8 @@ final class GalleryModel: NostrProfileHost {
         snapshot.profiles[pubkey]
     }
 
-    /// Kernel-emitted relay-role presentation tokens (issue #996). The
-    /// relay-list page resolves each `configured_relays.role` against this
-    /// list for its `label`/`tint`, with no Swift-side role derivation.
+    /// Kernel-emitted relay-role options. These provide canonical role values
+    /// and default markers; relay-list presentation is shell-local.
     var relayRoleOptions: [GalleryRelayRoleOption] {
         snapshot.relayRoleOptions
     }

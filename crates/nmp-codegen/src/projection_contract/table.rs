@@ -88,7 +88,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         producer: "nmp-core kernel/typed_projections/relay_role_options_fb",
         schema_id: "relay_role_options",
         file_identifier: "KRRO",
-        version: 1,
+        version: 2,
         declaration_policy: DeclarationPolicy::SelfDeclaredBuiltin,
         dependency_versions: &[SRC_CONFIGURED_RELAYS],
         presence_policy: PresencePolicy::RevDerived,

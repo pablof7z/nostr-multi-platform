@@ -10,4 +10,4 @@ pub const RELAY_ROLE_OPTIONS_SCHEMA_ID: &str = "relay_role_options";
 /// FlatBuffers file identifier embedded in every buffer this module emits.
 pub const RELAY_ROLE_OPTIONS_FILE_IDENTIFIER: &[u8; 4] = b"KRRO";
 /// Wire schema version. Bump on any breaking change to this projection's `.fbs`.
-pub const RELAY_ROLE_OPTIONS_SCHEMA_VERSION: u32 = 1;
+pub const RELAY_ROLE_OPTIONS_SCHEMA_VERSION: u32 = 2;

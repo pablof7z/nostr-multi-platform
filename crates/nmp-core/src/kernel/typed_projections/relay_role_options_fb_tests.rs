@@ -7,12 +7,10 @@ fn sample() -> RelayRoleOptionsModel {
         options: vec![
             RelayRoleOptionRow {
                 value: "both".to_string(),
-                tint: "accent".to_string(),
                 is_default: true,
             },
             RelayRoleOptionRow {
                 value: "indexer".to_string(),
-                tint: "neutral".to_string(),
                 is_default: false,
             },
         ],
@@ -55,7 +53,8 @@ fn decode_rejects_malformed_input() {
 /// `Kernel::builtin_typed_projections`; this asserts the codec carries every
 /// field the source produces.)
 ///
-/// `label` is no longer in the wire (#1678, D7) — shells derive it from `value`.
+/// `label` and `tint` are no longer in the wire (#1678/#2314, D7) —
+/// shells derive presentation from `value`.
 #[test]
 fn kernel_role_options_round_trip_field_for_field() {
     let options = crate::actor::relay_role_options();
@@ -64,7 +63,6 @@ fn kernel_role_options_round_trip_field_for_field() {
             .iter()
             .map(|option| RelayRoleOptionRow {
                 value: option.value.clone(),
-                tint: option.tint.clone(),
                 is_default: option.is_default,
             })
             .collect(),
