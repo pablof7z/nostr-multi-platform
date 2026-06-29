@@ -54,6 +54,15 @@ android {
     sourceSets["main"].java.srcDirs("src/main/kotlin")
     sourceSets["test"].java.srcDirs("src/test/kotlin")
 
+    // M14 shell-2: include the UniFFI-generated Kotlin bindings so the
+    // `uniffi.nmp_uniffi.NmpApp` class (and its UpdateSink / CapabilitySink
+    // callback interfaces) are available to KernelBridge without a separate
+    // Gradle module dependency.
+    sourceSets["main"].java.srcDirs(
+        "src/main/kotlin",
+        "../../../../crates/nmp-uniffi/generated/kotlin",
+    )
+
     testOptions {
         unitTests.isReturnDefaultValues = true
     }
@@ -73,6 +82,10 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("io.coil-kt:coil-compose:2.6.0")
+
+    // M14 shell-2: JNA runtime required by the UniFFI-generated nmp_uniffi.kt
+    // bindings (JNA is how UniFFI calls into Rust on Android/JVM).
+    implementation("net.java.dev.jna:jna:5.13.0@aar")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")

@@ -24,7 +24,7 @@ native = ["nmp-ffi/native", "nmp-uniffi/native"]
 # `org.nmp.gallery.bridge.KernelBridge`. Implies `native` (the shim is a
 # native consumer). Activates the `jni` dependency so the symbols are
 # only pulled in when building the Android .so.
-android-ffi = ["nmp-ffi/android-ffi", "nmp-ffi/native", "dep:jni"]
+android-ffi = ["nmp-ffi/android-ffi", "nmp-ffi/native", "dep:jni", "nmp-uniffi/native"]
 
 [dependencies]
 # Substrate seam — `nmp_app_*` C-ABI symbol bodies live here. Re-exported

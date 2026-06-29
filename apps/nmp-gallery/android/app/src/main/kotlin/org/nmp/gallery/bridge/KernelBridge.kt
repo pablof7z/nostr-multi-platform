@@ -1,5 +1,13 @@
 package org.nmp.gallery.bridge
 
+import com.sun.jna.Pointer
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import uniffi.nmp_uniffi.CapabilitySink
+import uniffi.nmp_uniffi.NmpApp
+import uniffi.nmp_uniffi.UpdateSink
+
 /**
  * Push callback for kernel update frames (issue #614 — D8 no-polling).
  *
@@ -27,46 +35,66 @@ fun interface KernelSignerRequestListener {
 }
 
 /**
- * Thin JNI wrapper around `libnmp_app_gallery.so` — the gallery-specific
- * Rust shim that links the same `nmp-core` kernel as the other platform shells.
+ * M14 shell-2 — UniFFI NmpApp wrapper for the NmpGallery Android shell.
  *
- * Doctrine: no business logic or cached state (D5/D8). Errors never cross
- * FFI (D6) — natives return only a handle / bytes / void; outcomes arrive
- * in the next FlatBuffers update frame. The Rust side is in
- * `apps/nmp-gallery/crates/nmp-app-gallery`; it MUST export
- * JNI symbols named `Java_org_nmp_gallery_bridge_KernelBridge_<methodName>`
- * to match this Kotlin class.
+ * Replaces the raw JNI Long-handle session (M14 shell-2 migration). The
+ * [NmpApp] UniFFI class owns the kernel Arc; JNA resolves all `uniffi_nmp_uniffi_*`
+ * symbols against `libnmp_app_gallery.so` via the library-override property set
+ * in the companion [init] block.
  *
- * This bridge intentionally has NO OkHttp / Ktor / WebSocket code. Every
- * relay connection lives inside the Rust kernel; Kotlin only owns the
- * UI thread and receives pushed snapshots via [setUpdateListener].
+ * Doctrine: no business logic or cached state (D5/D8). Errors never cross FFI
+ * (D6) — outcomes arrive in the next FlatBuffers update frame. Gallery-owned
+ * C-ABI symbols (`nativeShowcaseReferencesJson`, `nativeRegistryJson`,
+ * `nativeDecodeSnapshotJson`, `nativeResolveEventRef`, `nativeReleaseEvent`)
+ * remain as JNI — they have no UniFFI counterpart on the NmpApp interface.
+ *
+ * There is NO OkHttp / Ktor / WebSocket code in this bridge. Every relay
+ * connection lives inside the Rust kernel; Kotlin only owns the UI thread and
+ * receives pushed snapshots via [setUpdateListener].
  */
 class KernelBridge {
-    private var handle: Long = 0
+    private val app: NmpApp
 
     init {
         ensureLoaded()
-        handle = nativeNew()
+        app = NmpApp()
+        // Register the gallery-specific composition (installs substrate, protocol,
+        // and projection defaults) via the UniFFI Arc pointer. Must happen before
+        // start() to wire gallery projections before the actor loop begins.
+        nativeGalleryRegisterUniffi(Pointer.nativeValue(app.uniffiClonePointer()))
+        // Wire the NIP-55 external-signer capability transport. Idempotent.
+        app.initExternalSigner()
     }
 
     /**
-     * Boot the kernel + gallery projection.
+     * Start the kernel + gallery projection.
      *
-     * @param eventsPerSec Optional Rust ingest cap (0 disables).
+     * Adds the embedded showcase relays (same set as the old `nativeStart`
+     * C-ABI path) then spawns the actor loop.
+     *
+     * @param eventsPerSec Ignored (retained for API compat with old C-ABI callers).
      * @param visibleLimit Per-projection ring buffer size.
      * @param emitHz       Snapshot emission frequency (Hz).
      */
+    @Suppress("UNUSED_PARAMETER")
     fun start(eventsPerSec: Int = 0, visibleLimit: Int = 80, emitHz: Int = 4) {
-        if (handle != 0L) nativeStart(handle, eventsPerSec, visibleLimit, emitHz)
+        // Add showcase relays — previously done inside the C-ABI nativeStart.
+        val refs = GalleryShowcaseReferences.decode(showcaseReferencesJson())
+        refs.relays.forEach { relay -> app.addRelay(relay.url, relay.role) }
+        app.start(visibleLimit.toUInt(), emitHz.toUInt())
     }
 
     fun stop() {
-        if (handle != 0L) nativeStop(handle)
+        app.stop()
     }
 
-    /** Register the gallery-specific projection on the kernel actor. */
+    /**
+     * No-op: gallery composition is registered in [init] via
+     * [nativeGalleryRegisterUniffi]. Kept for API compatibility with callers
+     * that call `bridge.galleryRegister()` before `bridge.start()`.
+     */
     fun galleryRegister() {
-        if (handle != 0L) nativeGalleryRegister(handle)
+        // Gallery composition registered in init — nothing to do here.
     }
 
     fun showcaseReferencesJson(): String = nativeShowcaseReferencesJson()
@@ -74,29 +102,27 @@ class KernelBridge {
     fun registryJson(): String = nativeRegistryJson()
 
     /**
-     * ADR-0063 (#1671) — resolve a visible profile reference (supersedes the
-     * deleted `nativeClaimProfile`). Origin-blind: the gallery resolves every
-     * visible author at `profile.ref` / `CacheOk` (inline avatars/names only).
+     * ADR-0063 (#1671) — resolve a visible profile reference. Origin-blind:
+     * the gallery resolves every visible author at `profile.ref` / `CacheOk`.
      * Idempotent per (pubkey, consumerId); matching [releaseProfileRef] required
-     * when the view disappears. The resolved kind:0 flows back through the
-     * `refs.profile` row-delta projection.
+     * when the view disappears.
      */
     fun resolveProfileRef(pubkey: String, consumerId: String) {
-        if (handle != 0L) nativeResolveProfileRef(handle, pubkey, consumerId)
+        app.resolveProfileRef(pubkey, consumerId)
     }
 
     fun releaseProfileRef(pubkey: String, consumerId: String) {
-        if (handle != 0L) nativeReleaseProfileRef(handle, pubkey, consumerId)
+        app.releaseProfileRef(pubkey, consumerId)
     }
 
-    /** App-local URI adapter: nativeResolveEventRef decodes [uri] and calls resolve_ref. */
+    /** URI adapter: decodes [uri] via JNI and calls resolve_event_embed_with_metadata. */
     fun resolveEventRef(uri: String, consumerId: String) {
-        if (handle != 0L) nativeResolveEventRef(handle, uri, consumerId)
+        nativeResolveEventRef(Pointer.nativeValue(app.uniffiClonePointer()), uri, consumerId)
     }
 
-    /** App-local URI adapter: nativeReleaseEvent decodes [uri] and calls release_ref. */
+    /** URI adapter: decodes [uri] via JNI and calls release_event_ref. */
     fun releaseEventRef(uri: String, consumerId: String) {
-        if (handle != 0L) nativeReleaseEvent(handle, uri, consumerId)
+        nativeReleaseEvent(Pointer.nativeValue(app.uniffiClonePointer()), uri, consumerId)
     }
 
     /**
@@ -106,50 +132,67 @@ class KernelBridge {
      * [listener] receives each FlatBuffers snapshot frame on the kernel's
      * update-listener thread (a native background thread). Pass a new listener
      * to swap; call [clearUpdateListener] on teardown before [free]. D6: a
-     * null/dead handle is a no-op.
+     * dead app is a no-op.
      */
     fun setUpdateListener(listener: KernelUpdateListener) {
-        if (handle != 0L) nativeSetUpdateListener(handle, listener)
+        app.setUpdateSink(object : UpdateSink {
+            override fun onUpdate(frame: ByteArray) {
+                listener.onUpdate(frame)
+            }
+        })
     }
 
-    /** Deregister the push listener. Safe when none is set; D6 no-op on dead handle. */
+    /** Deregister the push listener. Safe when none is set. */
     fun clearUpdateListener() {
-        if (handle != 0L) nativeClearUpdateListener(handle)
+        app.setUpdateSink(null)
     }
 
     /**
-     * ADR-0048 Stage 2 — begin a NIP-55 sign-in routed to `signerPackage`
+     * ADR-0048 Stage 2 — begin a NIP-55 sign-in routed to [signerPackage]
      * (null = let the OS resolver pick). Rust builds the `get_public_key` +
      * permission-batch request and dispatches it through the capability socket;
-     * the request is pushed to the registered [KernelSignerRequestListener]
-     * (see [setSignerRequestListener]).
+     * the request is pushed to the registered [KernelSignerRequestListener].
      */
     fun signInNip55(signerPackage: String?) {
-        if (handle != 0L) nativeSignInNip55(handle, signerPackage)
+        app.signinNip55(signerPackage)
     }
 
     /**
      * ADR-0048 Stage 2 / issue #1612 — register a push listener for outbound
-     * NIP-55 capability requests (D8 — no polling; replaces the deleted
-     * `nativeNextSignerRequest` blocking drain).
+     * NIP-55 capability requests (D8 no-polling).
      *
-     * [listener] receives each `ExternalSignerRequest` JSON on the Rust
-     * capability-dispatch thread — a native background thread, NOT the main
-     * thread. The NIP-55 launch Intent requires the main thread, so the
-     * implementation must marshal there itself. Pass a new listener to swap;
-     * call [clearSignerRequestListener] on teardown before [free]. D6: a
-     * null/dead handle is a no-op.
+     * The UniFFI [CapabilitySink.onCapabilityRequest] receives a full capability
+     * envelope JSON. This implementation extracts the `payload_json` field (the
+     * `ExternalSignerRequest` body) and forwards it to [listener.onSignerRequest]
+     * — preserving the pre-M14 contract so callers need no changes.
      */
     fun setSignerRequestListener(listener: KernelSignerRequestListener) {
-        if (handle != 0L) nativeSetSignerRequestListener(handle, listener)
+        app.setCapabilityCallback(object : CapabilitySink {
+            private val json = Json { ignoreUnknownKeys = true }
+            override fun onCapabilityRequest(requestJson: String): String {
+                return try {
+                    val root = json.parseToJsonElement(requestJson).jsonObject
+                    val namespace = root["namespace"]?.jsonPrimitive?.content ?: ""
+                    val correlationId = root["correlation_id"]?.jsonPrimitive?.content ?: ""
+                    if (namespace != "external_signer") {
+                        return """{"namespace":"$namespace","correlation_id":"$correlationId","result_json":null,"error":"unsupported-on-android"}"""
+                    }
+                    val payload = root["payload_json"]?.jsonPrimitive?.content ?: ""
+                    listener.onSignerRequest(payload)
+                    """{"namespace":"external_signer","correlation_id":"$correlationId","result_json":"{\"status\":\"dispatched\"}"}"""
+                } catch (_: Exception) {
+                    """{"error":"capability-parse-error"}"""
+                }
+            }
+        })
     }
 
     /**
      * Deregister the push listener set by [setSignerRequestListener]. Safe to
-     * call when none is registered. D6: a null/dead handle is a no-op.
+     * call when none is registered.
      */
     fun clearSignerRequestListener() {
-        if (handle != 0L) nativeClearSignerRequestListener(handle)
+        app.setCapabilityCallback(null)
     }
 
     /**
@@ -157,51 +200,53 @@ class KernelBridge {
      * the Rust NIP-55 driver (D7: verbatim, Kotlin decides nothing).
      */
     fun deliverSignerResponse(responseJson: String) {
-        if (handle != 0L) nativeDeliverSignerResponse(handle, responseJson)
+        app.deliverExternalSignerResponse(responseJson)
     }
 
     fun free() {
-        if (handle != 0L) {
-            nativeFree(handle)
-            handle = 0
-        }
+        app.close()
     }
 
     /**
      * ADR-0063 (#1671) — decode one FlatBuffers snapshot frame to the gallery
-     * JSON shape, merging the frame's `refs.profile` row-delta batch into this
-     * session's persistent store first. Instance-scoped (the store lives in the
-     * native session keyed by [handle]). Returns null on a dead handle / decode
+     * JSON shape, merging the frame's `refs.profile` / `refs.event` row-delta
+     * batch into the process-global store first. Returns null on a decode
      * failure (D6).
      */
-    fun decodeSnapshotJson(frame: ByteArray): String? =
-        if (handle != 0L) Companion.nativeDecodeSnapshotJson(handle, frame) else null
+    fun decodeSnapshotJson(frame: ByteArray): String? = nativeDecodeSnapshotJson(frame)
 
-    private external fun nativeNew(): Long
-    private external fun nativeFree(handle: Long)
-    private external fun nativeGalleryRegister(handle: Long)
+    // ── Gallery-owned JNI (out of M14 UniFFI scope) ──────────────────────
+
+    /** M14 shell-2 — register gallery composition via UniFFI Arc pointer. */
+    private external fun nativeGalleryRegisterUniffi(arcPtr: Long)
+
+    /** URI adapter: decodes nostr: URI and resolves event embed with metadata. */
+    private external fun nativeResolveEventRef(arcPtr: Long, uri: String, consumerId: String)
+
+    /** URI adapter: decodes nostr: URI key and releases event ref. */
+    private external fun nativeReleaseEvent(arcPtr: Long, uri: String, consumerId: String)
+
+    /** Static gallery reference JSON embedded by Rust. */
     private external fun nativeShowcaseReferencesJson(): String
+
+    /** Static registry JSON embedded by Rust. */
     private external fun nativeRegistryJson(): String
-    private external fun nativeStart(handle: Long, eventsPerSec: Int, visibleLimit: Int, emitHz: Int)
-    private external fun nativeStop(handle: Long)
-    private external fun nativeResolveProfileRef(handle: Long, key: String, consumerId: String)
-    private external fun nativeReleaseProfileRef(handle: Long, key: String, consumerId: String)
-    private external fun nativeResolveEventRef(handle: Long, uri: String, consumerId: String)
-    // nativeDecodeSnapshotJson lives in the companion (static JNI) so it can be
-    // reused without an instance; the [handle] selects the session's store.
-    private external fun nativeReleaseEvent(handle: Long, uri: String, consumerId: String)
-    private external fun nativeSetUpdateListener(handle: Long, listener: KernelUpdateListener)
-    private external fun nativeClearUpdateListener(handle: Long)
-    private external fun nativeSignInNip55(handle: Long, signerPackage: String?)
-    private external fun nativeSetSignerRequestListener(handle: Long, listener: KernelSignerRequestListener)
-    private external fun nativeClearSignerRequestListener(handle: Long)
-    private external fun nativeDeliverSignerResponse(handle: Long, responseJson: String)
+
+    /**
+     * Decode one FlatBuffers frame → gallery snapshot JSON. Uses a
+     * process-global GalleryRefStores (no session handle needed post-M14).
+     */
+    private external fun nativeDecodeSnapshotJson(frame: ByteArray): String?
 
     companion object {
-        @JvmStatic
-        private external fun nativeDecodeSnapshotJson(handle: Long, frame: ByteArray): String?
-
         private val loaded: Boolean = run {
+            // Tell JNA (UniFFI runtime) to load the uniffi_nmp_uniffi_* symbols
+            // from libnmp_app_gallery.so — the single .so that bundles both the
+            // gallery C-ABI and the UniFFI surface.
+            System.setProperty(
+                "uniffi.component.nmp_uniffi.libraryOverride",
+                "nmp_app_gallery",
+            )
             System.loadLibrary("nmp_app_gallery")
             true
         }

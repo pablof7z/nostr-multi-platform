@@ -48,10 +48,11 @@
 // JNI shim for the Android shell — `Java_org_nmp_gallery_bridge_KernelBridge_*`
 // symbols that `KernelBridge.kt` binds via `System.loadLibrary`. Only compiled
 // when building with the `android-ffi` feature (cargo ndk build).
+// Post M14 shell-2: the NmpApp lifecycle is owned by the UniFFI NmpApp Kotlin
+// class; the `android` module only contains gallery-owned JNI symbols that have
+// no UniFFI counterpart (showcase/registry JSON, snapshot decode, URI adapters).
 #[cfg(feature = "android-ffi")]
 mod android;
-#[cfg(feature = "android-ffi")]
-mod android_push;
 // ADR-0064 / Cut-B (#1756) — typed byte-doorway dispatch seam. Native-only:
 // it names the `nmp_ffi` C-ABI `nmp_app_*` symbols, which exist only under the
 // `native` feature (wasm uses wasm-bindgen, not the C ABI). The `android-ffi`
@@ -227,6 +228,25 @@ pub extern "C" fn nmp_app_gallery_register_uniffi(arc_ptr: *mut c_void) {
     inner.consume_all_builtin_projections();
     // `arc` drops here — decrements the UniFFI Arc ref-count back to 1
     // (the Swift `GalleryKernelHandle.app` still holds the original strong ref).
+}
+
+/// M14 shell-2 (Android) JNI bridge — gallery composition via UniFFI Arc pointer.
+///
+/// Kotlin calls `nativeGalleryRegisterUniffi(Pointer.nativeValue(app.uniffiClonePointer()))`.
+/// This JNI wrapper converts the `jlong` and delegates to the platform-agnostic
+/// [`nmp_app_gallery_register_uniffi`] which handles Arc ownership and gallery
+/// composition registration.
+///
+/// D6: a zero `arc_ptr` is a silent no-op (mirrors the C-ABI null guard).
+#[cfg(feature = "android-ffi")]
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeGalleryRegisterUniffi(
+    _env: jni::JNIEnv,
+    _class: jni::objects::JClass,
+    arc_ptr: jni::sys::jlong,
+) {
+    // Delegate to the platform-agnostic C-ABI bridge (already present from iOS PR).
+    nmp_app_gallery_register_uniffi(arc_ptr as *mut std::ffi::c_void);
 }
 
 /// M14 shell migration bridge — configure the storage path for a UniFFI `NmpApp`.
