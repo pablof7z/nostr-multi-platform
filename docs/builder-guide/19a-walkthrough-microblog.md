@@ -17,7 +17,7 @@ app-defined record. That separation *is* the D0 demo — see the callout below.
 
 > **Composition model.** This walkthrough uses ADR-0069: a downstream app owns
 > an explicit Rust composition root. `nmp-defaults` may provide reusable
-> installers, but hidden `register_defaults()` presets are compatibility or
+> installers, but hidden broad presets are compatibility or
 > tutorial surfaces, not production architecture. See
 > [15 — Codegen: bindings + FFI surface](15-codegen-and-ffi.md).
 
@@ -167,9 +167,8 @@ impl ActionModule for NoteActionModule {
 
 Production app code opens a typed read session, or a generated helper over one.
 The session owns acquisition, replay-before-live, scoped delivery, output, and
-teardown. `ObservedProjectionSink` and `open_observed_projection` are the
-current executor machinery behind that helper; do not expose them as the app
-API or copy them into shell code.
+teardown. Observed-delivery executor machinery sits behind that helper; do not
+expose it as the app API or copy it into shell code.
 
 This walkthrough keeps the live implementation shape honest by hiding the
 substrate wiring behind one private helper. When the generated typed-session API
@@ -271,7 +270,7 @@ adapter (`apps/microblog/nmp-app-microblog`) whose entire job is to:
 3. Call `microblog_core::register(app)`. The named substrate/protocol/app
    installers are already inside that app-core composition root.
 
-Historical `nmp_app_*_register` symbols are transitional compatibility glue,
+Historical native registration symbols are transitional compatibility glue,
 not the recipe for new apps.
 
 ## Anti-patterns (scaffold phase)
@@ -287,8 +286,8 @@ not the recipe for new apps.
 - **Rendering raw events in Swift/Kotlin/TypeScript.** Rust-owned typed read
   output is the source of truth. Raw event arrays across FFI violate D5.
 - **Exposing observed delivery as the app API.** ADR-0070 makes typed read
-  sessions/helpers the app-facing read model. `ObservedProjectionSink` and
-  `open_observed_projection` are internal/protocol-substrate machinery unless a
+  sessions/helpers the app-facing read model. Observed-delivery executor
+  machinery is internal/protocol-substrate machinery unless a
   later ADR says otherwise.
 - **Inventing a new extension family.** Use the shipped action, typed read
   output, capability, and composition seams unless an ADR changes the substrate.

@@ -16,7 +16,7 @@ open/close is not a native symbol pair: Rust app/protocol composition code owns
 typed read sessions/helpers, and iOS consumes the resulting typed output stream.
 One callback delivers binary `nmp.transport.UpdateFrame` bytes with file
 identifier `NMPU`. The frame is FlatBuffers-only: `Snapshot` or `Panic`, with no
-JSON snapshot fallback. Raw `nmp_app_*` calls are transitional/internal
+JSON snapshot fallback. Legacy native calls are transitional/internal
 compatibility, not the app recipe.
 
 ### `KernelHandle` — the thin wrapper (annotated)
@@ -90,7 +90,7 @@ SwiftUI observes @Published change → diffs view tree → re-renders rows
 ```
 
 The kernel emits a **whole snapshot frame**: typed envelope fields plus typed
-projection sidecars. SwiftUI's own structural diffing turns "replace the model
+projection rows. SwiftUI's own structural diffing turns "replace the model
 slot" into minimal row updates — you do not hand-patch.
 
 ## FlatBuffers update shape + the rev guard
@@ -131,12 +131,12 @@ guard** and never derive UI truth from anything but the latest applied snapshot.
 
 The named typed fields in `apply()` (`items`, `profile`, `relayStatuses`) are
 the kernel's built-in slices. App- and module-owned state arrives in the same
-frame as keyed typed sidecars — you read the sidecar bytes by key, decode them
+frame as keyed typed rows — you read the row bytes by key, decode them
 with the generated Swift decoder, and assign the resulting value wholesale to an
-`@Published` property. Chirp's OP feed typed sidecar is the precedent:
+`@Published` property. Chirp's OP feed typed row is the precedent:
 
 ```swift
-// KernelUpdateFrameDecoder extracts the sidecars from SnapshotFrame.typedProjections.
+// KernelUpdateFrameDecoder extracts typed rows from SnapshotFrame.typedProjections.
 let typedProjections = extractTypedProjections(from: snapshot)
 let homeFeed = TypedHomeFeedDecoder.decode(from: typedProjections)
 
@@ -145,7 +145,7 @@ private func apply(result: KernelUpdateResult) {
     guard result.update.rev > rev else { return }   // same rev guard — drop reorders
     rev = result.update.rev
     relayStatuses = result.update.relayStatuses      // envelope field
-    homeFeed = result.update.homeFeed                // typed projection sidecar
+    homeFeed = result.update.homeFeed                // typed projection row
 }
 ```
 

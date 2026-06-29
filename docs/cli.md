@@ -164,7 +164,7 @@ Component contract:
 - Components are pure renderers. They do not fetch, retry, cache, route, or
   decide policy. Apps hydrate display models such as `NostrQuoteCardModel`
   from their own state.
-- Component packages must not import runtime, raw C/JNI compatibility shims,
+- Component packages must not import runtime, legacy native compatibility shims,
   wasm Worker handles, or kernel handles directly. They consume the app-level
   component host/provider and projection rows; app-specific rich projections
   belong in the app Rust core.

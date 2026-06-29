@@ -80,10 +80,10 @@ That one app-facing demand owns the whole lifecycle:
 - update when follows or relay lists change;
 - clear withdrawn output and close child demand on teardown.
 
-Internally, this may use `open_interest`, observed projection delivery,
-`ReducedSource`-style dynamic source reconciliation, replay cursors, and snapshot
-emission. Those names are internal acquisition/compiler machinery, not concepts
-an app author should copy into a shell, starter, or product module.
+Internally, this may use acquisition handles, observed delivery, dynamic source
+reconciliation, replay cursors, and snapshot emission. Those mechanisms are
+internal compiler/runtime machinery, not concepts an app author should copy into
+a shell, starter, or product module.
 
 The rule is not "delete every complex mechanism". The rule is "one product read
 has one app-facing contract and one owner." Complexity is justified only when it
@@ -123,7 +123,7 @@ typed route provenance. Examples:
 - NIP-29 group events add the group tag before signing and publish to the group
   host relay;
 - an explicit relay override is allowed only as a manual route with provenance;
-- imported/pre-signed events stay imported/manual and do not acquire protocol
+- imported/verbatim signed events stay imported/manual and do not acquire protocol
   guarantees after the fact.
 
 Once an event is signed, the signed content is immutable. Only transport and
@@ -205,17 +205,17 @@ below identifies the migration targets.
 
 | Surface | Disposition | Where it lives now |
 |---|---|---|
-| `register_defaults` | Preset installer for tutorial/test/migration compatibility only; not the production app root (ADR-0069) | `nmp-defaults` preset crate |
-| `open_interest` | Internal acquisition machinery behind typed read sessions (ADR-0070); not app-facing | `nmp-core` substrate |
+| Legacy preset installer | Tutorial/test/migration compatibility only; not the production app root (ADR-0069) | `nmp-defaults` preset crate |
+| Low-level acquisition handle | Internal machinery behind typed read sessions (ADR-0070); not app-facing | `nmp-core` substrate |
 | typed read helpers | The surviving product read door | UniFFI native session helpers / wasm structured controls / Rust app helpers |
-| `ObservedProjection` | Internal event-delivery and replay machinery behind typed read sessions (ADR-0070); not app-facing | `nmp-core` substrate |
-| `ReducedSource` | Internal dynamic source reconciliation behind a session (ADR-0070); not app-facing | `nmp-core` substrate |
-| `nmp.feed.home` | A projection key for the typed `OpFeedSnapshot` sidecar; not a special singleton wiring | codegen registry |
+| Observed delivery | Internal event-delivery and replay machinery behind typed read sessions (ADR-0070); not app-facing | `nmp-core` substrate |
+| Dynamic source reconciliation | Internal source compiler behind a session (ADR-0070); not app-facing | `nmp-core` substrate |
+| `nmp.feed.home` | A projection key for the typed `OpFeedSnapshot` row; not a special singleton wiring | codegen registry |
 | raw publish body | Low-level arbitrary-kind publish shape under the one write doorway (ADR-0071); reserved for protocol/import/diagnostic paths, not starter app writes | publish action schema |
-| verbatim signed-event publish | Imported/pre-signed events stay imported/manual and do not acquire protocol guarantees (ADR-0071) | protocol/import dispatch doorway |
+| verbatim signed-event publish | Imported signed events stay imported/manual and do not acquire protocol guarantees (ADR-0071) | protocol/import dispatch doorway |
 
 Native apps should reach these doors through the UniFFI binding. Browser apps
-use the wasm-bindgen Worker binding. Raw C/JNI symbols are not a current app
+use the wasm-bindgen Worker binding. Legacy native symbols are not a current app
 setup path; any remaining mention is compatibility or internal transport
 machinery with an owning migration issue.
 
@@ -224,10 +224,10 @@ machinery with an owning migration issue.
 The migration should remove public concepts when they are only artifacts of the
 old internal shape:
 
-- production `register_defaults()` as the normal app root;
-- app-facing raw `open_interest`;
-- app-facing `ObservedProjection` or `ObservedProjectionSink` recipes;
-- public `ReducedSource` vocabulary;
+- hidden production presets as the normal app root;
+- app-facing raw acquisition handles;
+- app-facing observed-delivery recipes;
+- public source-reconciliation vocabulary;
 - special `nmp.feed.home` singleton wiring;
 - duplicate native/browser open/close recipes for the same feature;
 - anonymous explicit relay lists as product publish state.

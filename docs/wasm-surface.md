@@ -56,7 +56,7 @@ Source: `crates/nmp-browser-runtime/src/wasm/protocol.rs`.
 | `"stop"` | `Stop` | `correlation_id: String` | Closes relay drivers, stops the kernel. |
 | `"resolve_ref"` | `ResolveRef(ResolveRef)` | `namespace: u32`, `key: String`, `consumer_id: String`, `shape: u32`, `liveness: u32`, optional `hints: String[]`, optional `event_author: String`, `correlation_id: String` | ADR-0063 structured reference-resolution control. This is not an app-write doorway and cannot carry arbitrary action namespaces. Event refs may carry relay hints and nevent author metadata decoded by the app from NIP-19/NIP-21 TLVs. |
 | `"release_ref"` | `ReleaseRef(ReleaseRef)` | `namespace: u32`, `key: String`, `consumer_id: String`, `correlation_id: String` | ADR-0063 structured reference release. |
-| `"dispatch_bytes"` | `DispatchBytes(DispatchBytes)` | `bytes: Vec<u8>` | **ADR-0064 typed write doorway.** `bytes` are a finished `DispatchEnvelope` FlatBuffers root (file id `NMPD`) carrying `correlation_id` + generated `action_namespace` + opaque typed `payload`. Production browser hosts call `handle_dispatch_bytes(bytes)` for this request instead of JSON-stringifying the `bytes` field. Decoded through `nmp_core::dispatch_envelope::decode_dispatch_envelope` — the SAME path the native FFI `nmp_app_dispatch_action_bytes` uses. There is no wasm-only write vocabulary. |
+| `"dispatch_bytes"` | `DispatchBytes(DispatchBytes)` | `bytes: Vec<u8>` | **ADR-0064 typed write doorway.** `bytes` are a finished `DispatchEnvelope` FlatBuffers root (file id `NMPD`) carrying `correlation_id` + generated `action_namespace` + opaque typed `payload`. Production browser hosts call `handle_dispatch_bytes(bytes)` for this request instead of JSON-stringifying the `bytes` field. Decoded through `nmp_core::dispatch_envelope::decode_dispatch_envelope` — the same dispatch envelope path native hosts use. There is no wasm-only write vocabulary. |
 | `"capability_result"` | `CapabilityResult(CapabilityResult)` | `capability: String`, `correlation_id: String`, `payload: Value` | Browser-side capability completion. Returns `CapabilityFailure` with reason `browser_actor_driver_missing` — the native actor capability handler is not available on wasm. |
 | `"set_identity"` | `SetIdentity(SetIdentity)` | `kind: String`, `correlation_id: String`, optional `pubkey_hex: String`, optional `secret_key_bech32: String`, optional `bunker_uri: String`, optional `identity_relays: Vec<{url, read, write}>` | Set the active identity. `kind = "nip07"` uses `pubkey_hex` from `await window.nostr.getPublicKey()` and signs through `begin_sign`/`deliver_signer_response`. `kind = "local_key"` requires `secret_key_bech32`; Rust decodes the `nsec`, derives the pubkey, installs a `LocalKeySigner`, and redacts request debug. `kind = "nip46"` requires `bunker_uri`; Rust owns the NIP-46 bunker handshake, installs the signer after `get_public_key`, and redacts the URI. `identity_relays` forwards raw identity relay permissions; Rust canonicalizes and merges them before active-account bootstrap. |
 | `"begin_sign"` | `BeginSign(BeginSign)` | `account_pubkey: String`, `unsigned_json: String` | ADR-0050 sign capability round-trip. Parks a sign op and emits `sign_request` for the main-thread broker to fulfil via `window.nostr.signEvent`. Pure message re-entry (D8). |
@@ -302,7 +302,7 @@ Source: `crates/nmp-browser-runtime/src/wasm/dispatch.rs`,
 | `dispatch_envelope_rejected` | `dispatch_bytes` decode | The `DispatchBytes` buffer is not a valid `DispatchEnvelope` (bad file identifier, schema_version mismatch, oversize, missing routing fields). Surfaced as `WorkerEvent::Error`, not `CapabilityFailure`. |
 | `browser_actor_driver_missing` | `browser_driver_missing_reason()` | `CapabilityResult` received; no native actor to route it. The wasm runtime drains the JS pending state and returns this reason. |
 | `unsupported_signer_kind` | `install_identity` | `SetIdentity.kind` is not `"nip07"`, `"local_key"`, or `"nip46"`. |
-| `invalid_signer_pubkey` | `SignerInstallError::InvalidPubkey` | `SetIdentity.pubkey_hex` failed secp256k1 x-only pubkey parse. |
+| invalid signer public key | `SignerInstallError::InvalidPubkey` | `SetIdentity.pubkey_hex` failed secp256k1 x-only pubkey parse. |
 | `missing_local_key` | `install_identity` | `SetIdentity.kind = "local_key"` omitted `secret_key_bech32`. |
 | `invalid_local_key` | `install_identity` | The supplied `secret_key_bech32` did not decode as a valid nsec. |
 | `missing_nip46_bunker_uri` | `install_identity` | `SetIdentity.kind = "nip46"` omitted `bunker_uri`. |
@@ -324,7 +324,7 @@ decisions ring buffer. Pull-only — call on demand (e.g. debug inspector);
 not pushed on every snapshot tick. Always returns a well-formed document;
 empty rings render as `{"schema_version":1,"capacity":0,"publishes":[],
 "subscriptions":[]}` (D6). The equivalent iOS FFI surface is
-`nmp_app_debug_info(app, domain=0)` (routing-decisions domain), so a single
+the native debug-info helper for the routing-decisions domain, so a single
 routing-inspector renderer can work across both surfaces.
 
 ---

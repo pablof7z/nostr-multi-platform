@@ -14,7 +14,8 @@ native binding is UniFFI for lifecycle, callbacks, and capability/object
 bindings. Binary FlatBuffers remains the hot action/update payload through that
 binding; UniFFI and FlatBuffers are complementary, not alternatives.
 Browser/wasm uses the separate `wasm-bindgen` runtime surface. Any remaining
-raw C/JNI symbols are internal/transitional compatibility, not starter-app API.
+legacy native symbols are internal/transitional compatibility, not starter-app
+API.
 The full multi-platform starter remains M16.
 
 ## The `nmp.toml` manifest
@@ -41,8 +42,8 @@ app      = ["microblog-core"]
 The canonical way to compose an app is explicit Rust composition. An app-core
 crate installs the substrate, the reusable Nostr protocol features it wants, its
 own app features, and any capability contracts its shell must execute.
-`nmp-defaults` remains a reusable installer library; a hidden
-`register_defaults()` preset is tutorial/test/migration compatibility, not
+`nmp-defaults` remains a reusable installer library; a hidden broad preset is
+tutorial/test/migration compatibility, not
 production architecture.
 
 ```rust
@@ -66,7 +67,7 @@ pub fn register(app: &mut impl AppHost) {
 
 The invariant is stable: the production root must show what substrate, protocol
 features, app features, and capability contracts are installed. `register()`
-must not collapse back to `register_defaults()` or a substrate-only starter.
+must not collapse back to a broad hidden preset or a substrate-only starter.
 
 ## What still gets generated
 
@@ -75,7 +76,7 @@ must not collapse back to `register_defaults()` or a substrate-only starter.
 - **UniFFI native bindings** — Swift/Kotlin bindings for lifecycle, callbacks,
   capability objects, and byte action/update doorways.
 - **`gen typed-decoders`** — native decoders for the typed FlatBuffers projection
-  sidecars carried in `SnapshotFrame.typed_projections`.
+  rows carried in `SnapshotFrame.typed_projections`.
 - **Typed action builders** — generated host builders for declared action
   contracts, including app-local contracts once #2408's app-private kind lane is
   implemented.
@@ -169,7 +170,7 @@ app-private kind. Follow these files as the smallest complete shape:
 - `generated/ActionBuilders.generated.swift`, `generated/ActionBuilders.kt`,
   and `generated/actionBuilders.generated.ts` are generated from that app-local
   registry. They build `DispatchEnvelope` bytes for the byte doorway; they do
-  not call `PublishRaw` or `nmp.publish`.
+  not call a raw publish escape or `nmp.publish`.
 - `src/private_status.rs` owns `PublishStatusAction: ActionPayload`,
   `PublishStatusModule: ActionModule`, validation, tag policy, and event
   construction for kind `30444`.
@@ -199,8 +200,8 @@ actions.
 ┌─ PUBLIC NATIVE BINDING ──────────────────────────────────────────────┐
 │ UniFFI exposes lifecycle, callbacks, capability objects, and byte     │
 │ action/update doorways to Swift/Kotlin/desktop native hosts.          │
-│ Native shells import generated UniFFI modules; they do not call raw   │
-│ C/JNI symbols as starter-app API.                                     │
+│ Native shells import generated UniFFI modules; they do not call       │
+│ legacy native symbols as starter-app API.                             │
 │ The update callback carries one binary `nmp.transport.UpdateFrame`   │
 │ with file identifier `NMPU`: Snapshot or Panic. There is no JSON     │
 │ runtime snapshot fallback and no pull/drain update symbol.           │
@@ -212,14 +213,14 @@ actions.
 │ adapters; they do not share the native UniFFI object model.          │
 ├─ FlatBuffers runtime transport (SHIPS) ──────────────────────────────┤
 │ One canonical transport frame carries typed SnapshotEnvelope fields  │
-│ and typed projection sidecars from Rust to frontend shells. JSON is  │
+│ and typed projection rows from Rust to frontend shells. JSON is      │
 │ allowed for Nostr relay frames, capability envelopes, diagnostics,   │
 │ goldens, or tests. It is not a second production update transport.   │
 ├─ TRANSITIONAL / INTERNAL COMPATIBILITY ──────────────────────────────┤
-│ Historical raw C/JNI `nmp_app_*` symbols may remain for migration,   │
-│ tests, or narrow runtime internals. Do not teach them as the new app │
-│ path; any residual byte lane must stay behind the public binding and │
-│ be justified by measurement, not exposed as a second API.            │
+│ Historical legacy native symbols may remain for migration, tests, or │
+│ narrow runtime internals. Do not teach them as the new app path; any │
+│ residual byte lane must stay behind the public binding and be        │
+│ justified by measurement, not exposed as a second API.               │
 ├─ `nmp` CLI (SHIPS, crates/nmp-cli/) ────────────────────────────────┤
 │ `nmp init <app>` scaffolds a thin Rust shell: a `<name>-core` crate  │
 │ with an explicit composition root, plus a headless `examples/shell.rs`│
@@ -246,8 +247,8 @@ executor may register typed output internally, but app developers should not
 assemble raw interest, observer, replay, and projection wiring by hand.
 
 The shell receives a pushed binary `UpdateFrame`, applies the
-`SnapshotEnvelope`, and reads typed sidecars by key. No polling or generic pull
-snapshot getter is allowed. Projection keys, sidecars, manifests, and change
+`SnapshotEnvelope`, and reads typed output rows by key. No polling or generic
+pull snapshot getter is allowed. Projection keys, output manifests, and change
 gates are runtime/output machinery governed by ADR-0070 and ADR-0055.
 
 Do not model zap counts as a global snapshot projection. Zap counts are
@@ -256,7 +257,7 @@ visible-note relation data: the owning card or detail view claims a bounded
 
 ### Internal seam — typed output registration
 
-Session and protocol executors register host-rendered state as typed sidecars
+Session and protocol executors register host-rendered state as typed output rows
 with the runtime registration API. Runtime ownership stays in Rust and is
 projected through the public bindings as typed output. The closure returns
 `Option<TypedProjectionData>`:
@@ -273,11 +274,11 @@ projected through the public bindings as typed output. The closure returns
 `nmp-core` treats those bytes as opaque. The host chooses the decoder by key and
 descriptor and reads the generated native model from the `typed_projections`
 vector. This is the production path for Swift/Kotlin/TS render inputs because it
-uses typed transport data. Unknown host-visible state must get a typed sidecar
+uses typed transport data. Unknown host-visible state must get a typed output row
 rather than a native JSON walker.
 
 Idle or empty projections must still encode an empty snapshot payload when the
-key is registered. Do not use `None` or sidecar absence to mean "empty wallet",
+key is registered. Do not use `None` or row absence to mean "empty wallet",
 "idle signer", "no feed rows", or "not paired"; those are domain states inside
 the schema. If a `Changed` row cannot be decoded, the host keeps the prior
 value, does not advance the per-key applied rev, and requests/resumes from a
@@ -285,7 +286,7 @@ fresh baseline instead of committing an empty substitute.
 
 The OP feed wiring is an implementation exemplar, not the public app API:
 the session owner registers typed output, the protocol crate owns the schema and
-encoder, and the host decodes the sidecar into a render cache.
+encoder, and the host decodes the output row into a render cache.
 
 > **D8 + D6 — typed output producers run on the actor update path.**
 > It MUST be cheap and non-blocking — no I/O, no mutex waits (D8); a blocking

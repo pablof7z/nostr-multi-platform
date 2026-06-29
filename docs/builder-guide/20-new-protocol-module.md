@@ -64,7 +64,7 @@ new protocol crate. Its `action-builders.json` declares
 generated Swift/Kotlin/TypeScript builders, `PublishStatusAction:
 ActionPayload`, and `PublishStatusModule: ActionModule` all live inside the
 example app. The generated builders produce typed `DispatchEnvelope` bytes for
-the app-owned decoder and module. They do not use `PublishRaw`, and the
+the app-owned decoder and module. They do not use a raw publish escape, and the
 namespace is deliberately absent from the built-in NMP `ACTION_CONTRACT` and
 `ACTION_BUILDERS` tables.
 

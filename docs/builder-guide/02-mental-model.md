@@ -111,7 +111,7 @@ pieces to app screens.
 
 ### Internal seam 2 — typed output registration
 
-Registers a typed sidecar pushed under `typed_projections["nmp.myapp.items"]`.
+Registers a typed output row pushed under `typed_projections["nmp.myapp.items"]`.
 This is output transport machinery. A production read session may use it
 internally, but an app screen should open the session/helper rather than wire
 projection keys directly. The producer runs on the actor update path and must be
@@ -204,8 +204,8 @@ pub fn register(app: &mut impl AppHost) -> FeedStore {
 ```
 
 A thin staticlib shell (`nmp-app-<name>`) or an `examples/shell.rs` calls only
-`<app>_core::register(app)`. Compatibility presets such as `register_defaults`
-must stay tutorial/test/migration-scoped unless formalized by a later ADR.
+`<app>_core::register(app)`. Broad compatibility presets must stay
+tutorial/test/migration-scoped unless formalized by a later ADR.
 `nmp-codegen` still exists for host bindings (`gen swift`, `gen typed-decoders`),
 but it does not generate composition wiring.
 
@@ -229,14 +229,14 @@ generic seam (the relay-pin routing lane) and zero group nouns.
 | Dispatched action namespaces | Action ledger, ActorCommand queue |
 | `CapabilityRequest` / `CapabilityEnvelope` | Planner, subscription pool, signer keys |
 | `rev: u64` monotonic guard | All policy / retry / routing decisions |
-| Typed projection sidecars | Kernel-internal view state |
+| Typed projection rows | Kernel-internal view state |
 
 No `Result<T,E>` crosses the boundary (D6) — failures arrive as data inside
 the snapshot or as capability envelopes. The hot update transport is a single
 canonical FlatBuffers schema: `UpdateFrame` carries snapshot envelopes and typed
-projection sidecars. UniFFI is the public native binding for lifecycle, actions,
+projection rows. UniFFI is the public native binding for lifecycle, actions,
 callbacks, and capability objects; wasm-bindgen is the browser binding. Any
-remaining raw C/JNI symbols are transitional/internal compatibility and are not
+remaining legacy native symbols are transitional/internal compatibility and are not
 starter-app API (see [15](15-codegen-and-ffi.md)).
 
 ## "Where does X live?" — concrete map
