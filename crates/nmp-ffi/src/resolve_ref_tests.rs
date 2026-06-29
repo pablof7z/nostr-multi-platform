@@ -4,14 +4,14 @@ use crate::resolve_ref::{
     nmp_app_release_profile_ref, nmp_app_resolve_event_embed_with_metadata,
     nmp_app_resolve_profile_ref,
 };
-use crate::{nmp_app_free, nmp_app_new};
+use crate::{test_app_free, test_app_new};
 
 const PROFILE_KEY: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const EVENT_KEY: &str = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 
 #[test]
 fn typed_profile_adapters_reject_malformed_keys_before_enqueue() {
-    let app = nmp_app_new();
+    let app = test_app_new();
     let app_ref = unsafe { &*app };
     let valid = CString::new(PROFILE_KEY).unwrap();
     let invalid = CString::new("not-a-profile-key").unwrap();
@@ -31,12 +31,12 @@ fn typed_profile_adapters_reject_malformed_keys_before_enqueue() {
     nmp_app_release_profile_ref(app, valid.as_ptr(), consumer.as_ptr());
     assert_eq!(app_ref.send_cmd_count_for_test(), 2);
 
-    nmp_app_free(app);
+    test_app_free(app);
 }
 
 #[test]
 fn typed_event_metadata_adapter_rejects_malformed_metadata_before_enqueue() {
-    let app = nmp_app_new();
+    let app = test_app_new();
     let app_ref = unsafe { &*app };
     let key = CString::new(EVENT_KEY).unwrap();
     let consumer = CString::new("ffi-test-event").unwrap();
@@ -63,5 +63,5 @@ fn typed_event_metadata_adapter_rejects_malformed_metadata_before_enqueue() {
     );
     assert_eq!(app_ref.send_cmd_count_for_test(), 1);
 
-    nmp_app_free(app);
+    test_app_free(app);
 }

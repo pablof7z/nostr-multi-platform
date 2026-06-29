@@ -27,7 +27,7 @@
 //! `GroupEventsProjection` (opened by a NIP-29 typed read session, #2088)
 //! accumulates it and surfaces it under
 //! `projections["nmp.nip29.group_events"]["events"]` on the next snapshot tick.
-//! The test reads that snapshot via `nmp_app_set_update_callback` — the same
+//! The test reads that snapshot via `test_app_set_update_callback` — the same
 //! path any shell (iOS KernelBridge, a TUI, a web bridge) uses.
 //!
 //! ## Why no real relay?
@@ -37,18 +37,15 @@
 //! delivered from injected events. A two-instance relay-bridged test is left
 //! for when that harness is available.
 
-use std::ffi::{c_void, CStr};
+use std::ffi::c_void;
 use std::sync::Mutex;
 use std::time::Duration;
 
 use nmp_core::actor::{ActorCommand, TestSupportCommand};
 use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
 use nmp_core::substrate::ActionPayload;
-use nmp_ffi::{
-    nmp_app_consume_all_builtin_projections, nmp_app_dispatch_action_bytes, nmp_app_free,
-    nmp_app_new, nmp_app_set_update_callback, nmp_app_start, nmp_free_string, NmpApp,
-};
-use nmp_native_runtime::Nip29GroupEventsSession;
+use nmp_ffi::{nmp_app_consume_all_builtin_projections, NmpApp};
+use nmp_native_runtime::{dispatch_action_bytes_typed, DispatchOutcome, Nip29GroupEventsSession};
 use nmp_nip29::action::PublishGroupEventInput;
 use nmp_nip29::group_id::GroupId;
 use nmp_nip29::register::register_actions;
@@ -64,7 +61,19 @@ use nmp_store::{RawEvent, VerifiedEvent};
 /// returned C string. `nmp-nip29` cannot depend on `nmp-app-chirp` (that would
 /// invert the crate stack), so the small encode-and-dispatch shape is inlined
 /// here.
-fn dispatch_publish_group_event(app: *mut NmpApp, action: &PublishGroupEventInput) -> String {
+fn outcome_to_json(outcome: DispatchOutcome) -> String {
+    match (outcome.correlation_id, outcome.error, outcome.code) {
+        (Some(cid), None, None) => format!(r#"{{"correlation_id":{cid:?}}}"#),
+        (Some(cid), Some(err), None) => {
+            format!(r#"{{"correlation_id":{cid:?},"error":{err:?}}}"#)
+        }
+        (None, Some(err), Some(code)) => format!(r#"{{"error":{err:?},"code":{code:?}}}"#),
+        (None, Some(err), None) => format!(r#"{{"error":{err:?}}}"#),
+        _ => r#"{"error":"internal: malformed dispatch outcome"}"#.to_string(),
+    }
+}
+
+fn dispatch_publish_group_event(app: &NmpApp, action: &PublishGroupEventInput) -> String {
     static NEXT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
     let correlation_id = format!(
         "nip29-test-{}",
@@ -77,12 +86,7 @@ fn dispatch_publish_group_event(app: *mut NmpApp, action: &PublishGroupEventInpu
         DISPATCH_ENVELOPE_SCHEMA_VERSION,
         &payload,
     );
-    let ptr = nmp_app_dispatch_action_bytes(app, envelope.as_ptr(), envelope.len());
-    assert!(!ptr.is_null(), "dispatch_action_bytes must not return null");
-    // SAFETY: ptr is a valid heap-owned NUL-terminated C string from the doorway.
-    let out = unsafe { CStr::from_ptr(ptr) }.to_str().unwrap().to_owned();
-    nmp_free_string(ptr);
-    out
+    outcome_to_json(dispatch_action_bytes_typed(app, &envelope))
 }
 
 // Tests that spin up NmpApp instances must be serialised: each spawns global
@@ -106,6 +110,44 @@ extern "C" fn collect_snapshot(_ctx: *mut c_void, bytes: *const u8, len: usize) 
         .push(frame.to_vec());
 }
 
+type TestUpdateCallback = extern "C" fn(*mut c_void, *const u8, usize);
+
+fn test_app_new() -> *mut NmpApp {
+    Box::into_raw(Box::new(nmp_native_runtime::new_app()))
+}
+
+fn test_app_free(app: *mut NmpApp) {
+    if !app.is_null() {
+        unsafe {
+            drop(Box::from_raw(app));
+        }
+    }
+}
+
+fn test_app_set_update_callback(
+    app: *mut NmpApp,
+    context: *mut c_void,
+    callback: Option<TestUpdateCallback>,
+) {
+    let Some(app) = (unsafe { app.as_ref() }) else {
+        return;
+    };
+    let listener = callback.map(|callback| {
+        let context = context as usize;
+        std::sync::Arc::new(move |bytes: &[u8]| {
+            callback(context as *mut c_void, bytes.as_ptr(), bytes.len());
+        }) as nmp_native_runtime::UpdateListener
+    });
+    app.set_update_listener(listener);
+}
+
+fn test_app_start(app: *mut NmpApp, visible_limit: u32, emit_hz: u32) {
+    let Some(app) = (unsafe { app.as_ref() }) else {
+        return;
+    };
+    app.start_runtime(visible_limit as usize, emit_hz);
+}
+
 /// Build a minimal kind:9 group-chat event for injection.
 fn raw_chat_event(id: &str, author: &str, local_id: &str, ts: u64, content: &str) -> RawEvent {
     RawEvent {
@@ -120,7 +162,7 @@ fn raw_chat_event(id: &str, author: &str, local_id: &str, ts: u64, content: &str
 }
 
 fn inject(app: *mut nmp_ffi::NmpApp, events: Vec<VerifiedEvent>) {
-    // SAFETY: `app` is a valid pointer from `nmp_app_new` owned by the caller.
+    // SAFETY: `app` is a valid pointer from `test_app_new` owned by the caller.
     let app_ref = unsafe { &*app };
     app_ref
         .actor_sender()
@@ -178,8 +220,8 @@ fn wait_for_group_message(content: &str) -> bool {
 fn publish_group_event_dispatch_returns_correlation_id() {
     let _g = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
 
-    let app = nmp_app_new();
-    // SAFETY: `app` is a valid pointer from `nmp_app_new`; no other reference
+    let app = test_app_new();
+    // SAFETY: `app` is a valid pointer from `test_app_new`; no other reference
     // aliases it at these call sites.
     register_actions(unsafe { &mut *app }).expect("NIP-29 actions register");
 
@@ -189,7 +231,7 @@ fn publish_group_event_dispatch_returns_correlation_id() {
         content: "hello from TUI".to_string(),
         tags: Vec::new(),
     };
-    let out = dispatch_publish_group_event(app, &action);
+    let out = dispatch_publish_group_event(unsafe { &*app }, &action);
 
     let result: serde_json::Value = serde_json::from_str(&out).unwrap();
     // On the byte lane the correlation_id is HOST-supplied (ADR-0064 §4) and
@@ -211,14 +253,14 @@ fn publish_group_event_dispatch_returns_correlation_id() {
         content: "x".to_string(),
         tags: Vec::new(),
     };
-    let out2 = dispatch_publish_group_event(app, &bad);
+    let out2 = dispatch_publish_group_event(unsafe { &*app }, &bad);
     let result2: serde_json::Value = serde_json::from_str(&out2).unwrap();
     assert!(
         result2.get("error").is_some(),
         "dispatch with a non-routable group must be rejected by the typed validator: {result2}"
     );
 
-    nmp_app_free(app);
+    test_app_free(app);
 }
 
 // ── Receive side ─────────────────────────────────────────────────────────────
@@ -232,7 +274,7 @@ fn publish_group_event_dispatch_returns_correlation_id() {
 ///    `IngestPreVerifiedEvents` — the same actor path a relay worker uses.
 /// 3. The `GroupEventsProjection` accumulates the event; on the next snapshot
 ///    tick the kernel serializes it under `projections["nmp.nip29.group_events"]`.
-/// 4. The update callback (set via `nmp_app_set_update_callback`) receives the
+/// 4. The update callback (set via `test_app_set_update_callback`) receives the
 ///    JSON string — the same path any shell reads from.
 /// 5. A decoy event for a different group must NOT appear.
 #[test]
@@ -240,22 +282,22 @@ fn group_events_event_surfaces_via_kernel_snapshot_callback() {
     let _g = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
     SNAPSHOTS.lock().unwrap_or_else(|p| p.into_inner()).clear();
 
-    let app = nmp_app_new();
+    let app = test_app_new();
 
     // Register the update callback before start so no snapshot tick is missed.
-    nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(collect_snapshot));
+    test_app_set_update_callback(app, std::ptr::null_mut(), Some(collect_snapshot));
 
     // Declare projection-consumption intent like a real host (ADR-0053 / E4) so
-    // `nmp_app_start` does not trip its forgotten-declaration guard in this
+    // `test_app_start` does not trip its forgotten-declaration guard in this
     // non-`test-support` integration-test build of nmp-ffi.
     nmp_app_consume_all_builtin_projections(app);
 
-    // nmp_app_start sends ActorCommand::Start; the actor enters its main loop
+    // test_app_start sends ActorCommand::Start; the actor enters its main loop
     // and begins emitting snapshot ticks at emit_hz rate.
-    nmp_app_start(app, 64, 8); // emit_hz=8 → ~125 ms cadence
+    test_app_start(app, 64, 8); // emit_hz=8 → ~125 ms cadence
 
     // Wire the GroupEventsProjection for "test-room".
-    // SAFETY: `app` is a valid pointer from `nmp_app_new`, live for this block.
+    // SAFETY: `app` is a valid pointer from `test_app_new`, live for this block.
     let app_ref = unsafe { &*app };
     app_ref.open_nip29_group_events_session(Nip29GroupEventsSession::new(
         GroupId::new(HOST_RELAY, "test-room"),
@@ -316,6 +358,6 @@ fn group_events_event_surfaces_via_kernel_snapshot_callback() {
 
     // Deregister callback before freeing: prevents the lingering listener
     // thread from calling into a context pointer after this frame unwinds.
-    nmp_app_set_update_callback(app, std::ptr::null_mut(), None);
-    nmp_app_free(app);
+    test_app_set_update_callback(app, std::ptr::null_mut(), None);
+    test_app_free(app);
 }

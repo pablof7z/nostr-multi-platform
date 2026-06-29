@@ -1,15 +1,15 @@
 use std::sync::{
-    Arc, Mutex,
     atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
 };
 
-use super::super::{nmp_app_free, nmp_app_new};
+use super::super::{test_app_free, test_app_new};
 use super::*;
 
 fn with_app(body: impl FnOnce(&NmpApp)) {
-    let app = nmp_app_new();
+    let app = test_app_new();
     body(unsafe { &*app });
-    nmp_app_free(app);
+    test_app_free(app);
 }
 
 static GREETING_CALLED: std::sync::OnceLock<Arc<AtomicBool>> = std::sync::OnceLock::new();
@@ -137,7 +137,7 @@ impl nmp_core::substrate::ActionModule for TestPanicModule {
 fn host_registered_executor_dispatches_successfully() {
     greeting_flag().store(false, Ordering::SeqCst);
 
-    let app = nmp_app_new();
+    let app = test_app_new();
     let app_mut = unsafe { &mut *app };
     let _ = app_mut.register_action(TestGreetingModule);
 
@@ -149,12 +149,12 @@ fn host_registered_executor_dispatches_successfully() {
         greeting_flag().load(Ordering::SeqCst),
         "host-registered executor was never invoked"
     );
-    nmp_app_free(app);
+    test_app_free(app);
 }
 
 #[test]
 fn host_registered_executor_propagates_error() {
-    let app = nmp_app_new();
+    let app = test_app_new();
     let app_mut = unsafe { &mut *app };
     let _ = app_mut.register_action(TestFailingModule);
 
@@ -162,12 +162,12 @@ fn host_registered_executor_propagates_error() {
         .test_execute_action("test.failing", "{}")
         .expect_err("a failing host executor must surface an error");
     assert_eq!(err, "host rejected the action");
-    nmp_app_free(app);
+    test_app_free(app);
 }
 
 #[test]
 fn unregistered_namespace_after_host_registration_still_errs() {
-    let app = nmp_app_new();
+    let app = test_app_new();
     let app_mut = unsafe { &mut *app };
     let _ = app_mut.register_action(TestGreetingModule);
 
@@ -178,12 +178,12 @@ fn unregistered_namespace_after_host_registration_still_errs() {
         err.contains("no executor registered") && err.contains("test.unregistered"),
         "error should name the unregistered namespace, got: {err}"
     );
-    nmp_app_free(app);
+    test_app_free(app);
 }
 
 #[test]
 fn host_registered_module_and_executor_enables_dispatch_action() {
-    let app = nmp_app_new();
+    let app = test_app_new();
     let app_mut = unsafe { &mut *app };
     let _ = app_mut.register_action(TestTodoModule);
 
@@ -197,12 +197,12 @@ fn host_registered_module_and_executor_enables_dispatch_action() {
         parsed.get("correlation_id").is_some(),
         "expected correlation_id, got: {out}"
     );
-    nmp_app_free(app);
+    test_app_free(app);
 }
 
 #[test]
 fn host_registered_module_can_reject_action() {
-    let app = nmp_app_new();
+    let app = test_app_new();
     let app_mut = unsafe { &mut *app };
     let _ = app_mut.register_action(TestTodoRejectModule);
 
@@ -216,7 +216,7 @@ fn host_registered_module_can_reject_action() {
         err.contains("host rejected: title required"),
         "rejection message should reach the host, got: {err}"
     );
-    nmp_app_free(app);
+    test_app_free(app);
 }
 
 #[test]
@@ -281,7 +281,7 @@ fn dispatch_action_does_not_deliver_result_on_rejection() {
 
 #[test]
 fn executor_failure_returns_correlation_id_and_enqueues_failed_terminal() {
-    let app = nmp_app_new();
+    let app = test_app_new();
     let app_mut = unsafe { &mut *app };
     let _ = app_mut.register_action(TestPanicModule);
 
@@ -313,5 +313,5 @@ fn executor_failure_returns_correlation_id_and_enqueues_failed_terminal() {
         "executor failure must enqueue at least one ActorCommand \
          (RecordActionFailure); sends_before={sends_before} sends_after={sends_after}"
     );
-    nmp_app_free(app);
+    test_app_free(app);
 }

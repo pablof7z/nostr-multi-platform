@@ -8,8 +8,7 @@
 //! then read it back would not rule out two divergent slots both happening to
 //! hold the right value; the `Arc::as_ptr` identity check below does.
 
-use super::*;
-use crate::{nmp_app_free, nmp_app_new, nmp_app_start};
+use crate::{test_app_free, test_app_new, test_app_start};
 use nostr::prelude::*;
 use std::ffi::c_void;
 use std::sync::mpsc::{channel, Sender};
@@ -110,8 +109,8 @@ fn active_account_handle_reflects_real_sign_in() {
     let _g = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     let rx = install_update_signal();
 
-    let app = nmp_app_new();
-    super::nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
+    let app = test_app_new();
+    super::test_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
 
     // The handle exists BEFORE the kernel is built (the actor only constructs
     // the kernel on the first command). It is the host's read end of the slot.
@@ -129,7 +128,7 @@ fn active_account_handle_reflects_real_sign_in() {
         "no account active before sign-in"
     );
 
-    nmp_app_start(app, 256, 4);
+    test_app_start(app, 256, 4);
     let secret = std::ffi::CString::new(TEST_NSEC).unwrap();
     super::nmp_app_signin_nsec(app, secret.as_ptr(), 1);
 
@@ -153,7 +152,7 @@ fn active_account_handle_reflects_real_sign_in() {
         "every accessor call returns a clone of the SAME Arc (single source of truth)"
     );
 
-    nmp_app_free(app);
+    test_app_free(app);
     uninstall_update_signal();
 }
 
@@ -162,11 +161,11 @@ fn active_account_handle_reflects_account_switch() {
     let _g = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     let rx = install_update_signal();
 
-    let app = nmp_app_new();
-    super::nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
+    let app = test_app_new();
+    super::test_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
     let handle = super::app_ref(app).expect("app").active_account_handle();
 
-    nmp_app_start(app, 256, 4);
+    test_app_start(app, 256, 4);
 
     // Sign in account A.
     let nsec_a = std::ffi::CString::new(TEST_NSEC).unwrap();
@@ -190,7 +189,7 @@ fn active_account_handle_reflects_account_switch() {
         "the slot must reflect the new active account after a switch"
     );
 
-    nmp_app_free(app);
+    test_app_free(app);
     uninstall_update_signal();
 }
 
@@ -202,12 +201,12 @@ fn active_account_handle_survives_reset() {
     let _g = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     let rx = install_update_signal();
 
-    let app = nmp_app_new();
-    super::nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
+    let app = test_app_new();
+    super::test_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
     let handle = super::app_ref(app).expect("app").active_account_handle();
     let slot_ptr = Arc::as_ptr(&handle);
 
-    nmp_app_start(app, 256, 4);
+    test_app_start(app, 256, 4);
 
     // Sign in account A, then Reset (wipes all kernel state, including the
     // active account → slot returns to `None`).
@@ -219,7 +218,7 @@ fn active_account_handle_survives_reset() {
         Ok(Some(pk_a.clone()))
     );
 
-    super::nmp_app_reset(app);
+    super::test_app_reset(app);
     // After Reset the kernel is rebuilt and no account is active. The `Result`
     // distinguishes a genuine `None` transition from a hung-actor timeout — a
     // plain `Option` return would make this assertion pass on timeout too.
@@ -249,14 +248,14 @@ fn active_account_handle_survives_reset() {
         "the host's slot Arc is stable across Reset"
     );
 
-    nmp_app_free(app);
+    test_app_free(app);
     uninstall_update_signal();
 }
 
 #[test]
 fn identity_change_observer_runs_after_slot_update() {
     let _g = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    let app = nmp_app_new();
+    let app = test_app_new();
     let app_ref = super::app_ref(app).expect("app");
     let slot = app_ref.active_account_handle();
     let (tx, rx) = channel::<(Option<String>, Option<String>)>();
@@ -267,7 +266,7 @@ fn identity_change_observer_runs_after_slot_update() {
         let _ = tx.send((active, slot_value));
     });
 
-    nmp_app_start(app, 256, 4);
+    test_app_start(app, 256, 4);
     let secret = std::ffi::CString::new(TEST_NSEC).unwrap();
     super::nmp_app_signin_nsec(app, secret.as_ptr(), 1);
 
@@ -281,15 +280,15 @@ fn identity_change_observer_runs_after_slot_update() {
         "observer argument and active-account slot must agree"
     );
 
-    nmp_app_free(app);
+    test_app_free(app);
 }
 
 #[test]
 fn identity_change_observer_can_be_unregistered() {
     let _g = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     let update_rx = install_update_signal();
-    let app = nmp_app_new();
-    super::nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
+    let app = test_app_new();
+    super::test_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
     let app_ref = super::app_ref(app).expect("app");
     let slot = app_ref.active_account_handle();
     let (observer_tx, observer_rx) = channel::<Option<String>>();
@@ -299,7 +298,7 @@ fn identity_change_observer_can_be_unregistered() {
     });
     app_ref.unregister_identity_change_observer(observer_id);
 
-    nmp_app_start(app, 256, 4);
+    test_app_start(app, 256, 4);
     let secret = std::ffi::CString::new(TEST_NSEC).unwrap();
     super::nmp_app_signin_nsec(app, secret.as_ptr(), 1);
 
@@ -317,6 +316,6 @@ fn identity_change_observer_can_be_unregistered() {
         "unregistered identity observer must not fire"
     );
 
-    nmp_app_free(app);
+    test_app_free(app);
     uninstall_update_signal();
 }

@@ -1,10 +1,10 @@
-use super::super::{nmp_app_free, nmp_app_new};
+use super::super::{test_app_free, test_app_new};
 use super::*;
 
 fn with_app(body: impl FnOnce(&NmpApp)) {
-    let app = nmp_app_new();
+    let app = test_app_new();
     body(unsafe { &*app });
-    nmp_app_free(app);
+    test_app_free(app);
 }
 
 #[test]

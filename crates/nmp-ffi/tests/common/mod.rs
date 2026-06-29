@@ -21,10 +21,7 @@ use std::time::{Duration, Instant};
 use nmp_core::actor::ActorCommand;
 use nmp_core::actor::TestSupportCommand;
 use nmp_core::{decode_snapshot_typed_projections, TypedProjectionData};
-use nmp_ffi::{
-    nmp_app_consume_all_builtin_projections, nmp_app_free, nmp_app_new,
-    nmp_app_set_update_callback, nmp_app_start, NmpApp,
-};
+use nmp_ffi::{nmp_app_consume_all_builtin_projections, NmpApp};
 use nmp_store::{RawEvent, VerifiedEvent};
 
 /// NmpApp instances spawn global actor threads that do not cleanly isolate
@@ -48,6 +45,44 @@ extern "C" fn collect_frame(_ctx: *mut c_void, bytes: *const u8, len: usize) {
         .lock()
         .unwrap_or_else(|p| p.into_inner())
         .push(frame.to_vec());
+}
+
+type TestUpdateCallback = extern "C" fn(*mut c_void, *const u8, usize);
+
+fn test_app_new() -> *mut NmpApp {
+    Box::into_raw(Box::new(nmp_native_runtime::new_app()))
+}
+
+fn test_app_free(app: *mut NmpApp) {
+    if !app.is_null() {
+        unsafe {
+            drop(Box::from_raw(app));
+        }
+    }
+}
+
+fn test_app_set_update_callback(
+    app: *mut NmpApp,
+    context: *mut c_void,
+    callback: Option<TestUpdateCallback>,
+) {
+    let Some(app) = (unsafe { app.as_ref() }) else {
+        return;
+    };
+    let listener = callback.map(|callback| {
+        let context = context as usize;
+        std::sync::Arc::new(move |bytes: &[u8]| {
+            callback(context as *mut c_void, bytes.as_ptr(), bytes.len());
+        }) as nmp_native_runtime::UpdateListener
+    });
+    app.set_update_listener(listener);
+}
+
+fn test_app_start(app: *mut NmpApp, visible_limit: u32, emit_hz: u32) {
+    let Some(app) = (unsafe { app.as_ref() }) else {
+        return;
+    };
+    app.start_runtime(visible_limit as usize, emit_hz);
 }
 
 /// Build a `RawEvent`. `id` / `author` must be 64-hex (as real Nostr ids /
@@ -120,21 +155,21 @@ pub fn wait_for_typed(
 /// Clears the shared frame buffer first (tests are serialised via [`SERIAL`]).
 pub fn boot() -> *mut NmpApp {
     FRAMES.lock().unwrap_or_else(|p| p.into_inner()).clear();
-    let app = nmp_app_new();
-    nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(collect_frame));
+    let app = test_app_new();
+    test_app_set_update_callback(app, std::ptr::null_mut(), Some(collect_frame));
     // Declare projection-consumption intent like a real host (ADR-0053 / E4).
     // Without it `nmp_app_start` trips its forgotten-declaration guard in a
     // non-`test-support` build — which is how `nmp-ffi`'s own integration tests
     // link the lib (the prior `nmp-nip29` location enabled test-support via its
     // dev-dep; here the production guard is live, so we satisfy it honestly).
     nmp_app_consume_all_builtin_projections(app);
-    nmp_app_start(app, 64, 8); // emit_hz=8 → ~125 ms cadence
+    test_app_start(app, 64, 8); // emit_hz=8 → ~125 ms cadence
     app
 }
 
 /// Deregister the callback before freeing so the listener thread never calls
 /// into a freed context pointer.
 pub fn teardown(app: *mut NmpApp) {
-    nmp_app_set_update_callback(app, std::ptr::null_mut(), None);
-    nmp_app_free(app);
+    test_app_set_update_callback(app, std::ptr::null_mut(), None);
+    test_app_free(app);
 }

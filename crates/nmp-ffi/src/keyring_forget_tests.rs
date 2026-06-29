@@ -15,12 +15,12 @@
 //!   * on `Error` the account is KEPT (the active slot still holds the pubkey),
 //!     while on `Ok` the account is removed (the slot clears).
 
-use crate::{NmpApp, nmp_app_free, nmp_app_new, nmp_app_start};
+use crate::{test_app_free, test_app_new, test_app_start, NmpApp};
 use nmp_core::substrate::KeyringStatus;
 use nostr::prelude::*;
-use std::ffi::{CStr, CString, c_char, c_void};
+use std::ffi::{c_char, c_void, CStr, CString};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{Sender, channel};
+use std::sync::mpsc::{channel, Sender};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
@@ -135,8 +135,8 @@ fn signed_in_app() -> (
     std::sync::mpsc::Receiver<()>,
 ) {
     let rx = install_update_signal();
-    let app = nmp_app_new();
-    crate::nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
+    let app = test_app_new();
+    crate::test_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
     // Install the keyring capability handler on this app's slot.
     crate::app_ref(app)
         .expect("app")
@@ -144,7 +144,7 @@ fn signed_in_app() -> (
         .set_native_handler(Some(std::sync::Arc::new(keyring_handler_json)));
     let handle = crate::app_ref(app).expect("app").active_account_handle();
 
-    nmp_app_start(app, 256, 4);
+    test_app_start(app, 256, 4);
     let secret = CString::new(TEST_NSEC).unwrap();
     crate::nmp_app_signin_nsec(app, secret.as_ptr(), 1);
 
@@ -186,7 +186,7 @@ fn keyring_forget_error_keeps_account() {
         "account must be KEPT when the keychain forget failed (no orphaned nsec)"
     );
 
-    nmp_app_free(app);
+    test_app_free(app);
     uninstall_update_signal();
     FORCE_KEYRING_ERROR.store(false, Ordering::SeqCst);
 }
@@ -217,6 +217,6 @@ fn keyring_forget_ok_removes_account() {
         "account must be removed once the keychain forget succeeded"
     );
 
-    nmp_app_free(app);
+    test_app_free(app);
     uninstall_update_signal();
 }

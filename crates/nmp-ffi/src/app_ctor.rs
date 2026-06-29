@@ -1,9 +1,9 @@
-//! C ABI constructor wrapper over `nmp-native-runtime`.
+//! Test-only constructor wrapper over `nmp-native-runtime`.
 
+#[cfg(test)]
 use crate::NmpApp;
 
-/// Allocate a new native runtime app and return its opaque C handle.
-#[no_mangle]
-pub extern "C" fn nmp_app_new() -> *mut NmpApp {
+#[cfg(test)]
+pub(crate) fn test_app_new() -> *mut NmpApp {
     Box::into_raw(Box::new(nmp_native_runtime::new_app()))
 }

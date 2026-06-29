@@ -15,11 +15,11 @@
 //! strand the reader.
 
 use super::*;
-use crate::{nmp_app_free, nmp_app_new, nmp_app_start};
-use std::ffi::c_void;
+use crate::{test_app_free, test_app_new, test_app_start};
 use nmp_core::actor::ActorCommand;
-use nmp_core::actor::{LifecycleCommand};
+use nmp_core::actor::LifecycleCommand;
 use nostr::prelude::*;
+use std::ffi::c_void;
 use std::sync::mpsc::{channel, Sender};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
@@ -95,8 +95,8 @@ fn event_by_id_reads_ingested_event_across_the_actor_boundary() {
     let _g = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     let rx = install_update_signal();
 
-    let app = nmp_app_new();
-    super::nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
+    let app = test_app_new();
+    super::test_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
 
     // Pre-start: the slot is empty → reads return None (the cold-start state,
     // matching the prior no-op the OP-feed composition root relied on).
@@ -105,11 +105,11 @@ fn event_by_id_reads_ingested_event_across_the_actor_boundary() {
         let (id, _json) = signed_note("pre-start", 1_700_000_000);
         assert!(
             app_ref.event_by_id(&id).is_none(),
-            "no store published before nmp_app_start → None"
+            "no store published before test_app_start → None"
         );
     }
 
-    nmp_app_start(app, 256, 4);
+    test_app_start(app, 256, 4);
 
     let (id, json) = signed_note("a real ingested note", 1_700_000_100);
     inject_and_wait(app, &id, &json, &rx);
@@ -125,16 +125,13 @@ fn event_by_id_reads_ingested_event_across_the_actor_boundary() {
 
     // An unknown id reads as None (and a malformed id too — no panic).
     let unknown = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
-    assert!(
-        app_ref.event_by_id(unknown).is_none(),
-        "unknown id → None"
-    );
+    assert!(app_ref.event_by_id(unknown).is_none(), "unknown id → None");
     assert!(
         app_ref.event_by_id("not-hex").is_none(),
         "malformed id → None (never panics across the FFI boundary)"
     );
 
-    nmp_app_free(app);
+    test_app_free(app);
     uninstall_update_signal();
 }
 
@@ -147,16 +144,19 @@ fn event_by_id_survives_reset() {
     let _g = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     let rx = install_update_signal();
 
-    let app = nmp_app_new();
-    super::nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
+    let app = test_app_new();
+    super::test_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
 
-    nmp_app_start(app, 256, 4);
+    test_app_start(app, 256, 4);
 
     // Ingest pre-Reset event.
     let (id_before, json_before) = signed_note("before reset", 1_700_000_200);
     inject_and_wait(app, &id_before, &json_before, &rx);
     assert!(
-        super::app_ref(app).expect("app").event_by_id(&id_before).is_some(),
+        super::app_ref(app)
+            .expect("app")
+            .event_by_id(&id_before)
+            .is_some(),
         "pre-Reset event readable"
     );
 
@@ -192,6 +192,6 @@ fn event_by_id_survives_reset() {
         "Reset wiped the store → the pre-Reset event is gone (handle reads the rebuilt store)"
     );
 
-    nmp_app_free(app);
+    test_app_free(app);
     uninstall_update_signal();
 }

@@ -9,11 +9,8 @@
 //! unknown-namespace / null-app must each come back as a data-shaped error
 //! (D6) — never a panic across the ABI.
 
-use std::ffi::CStr;
-
-use super::{dispatch_action_bytes, nmp_app_dispatch_action_bytes};
-use crate::free::nmp_free_string;
-use crate::{nmp_app_free, nmp_app_new, NmpApp};
+use super::dispatch_action_bytes;
+use crate::{test_app_free, test_app_new, NmpApp};
 use nmp_core::dispatch_envelope::{
     encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION, MAX_DISPATCH_ENVELOPE_BYTES,
 };
@@ -22,10 +19,10 @@ use nmp_core::substrate::ActionPayload;
 
 /// Run `body` against a fresh `NmpApp`, freeing it afterwards.
 fn with_app(body: impl FnOnce(&NmpApp)) {
-    let app = nmp_app_new();
-    // SAFETY: `nmp_app_new` never returns null; valid until `nmp_app_free`.
+    let app = test_app_new();
+    // SAFETY: `test_app_new` never returns null; valid until `test_app_free`.
     body(unsafe { &*app });
-    nmp_app_free(app);
+    test_app_free(app);
 }
 
 /// Build a finished `DispatchEnvelope` carrying a typed `nmp.publish`
@@ -71,53 +68,6 @@ fn dispatch_bytes_returns_host_supplied_correlation_id() {
     });
 }
 
-#[test]
-fn dispatch_bytes_drives_through_the_c_symbol() {
-    // Exercise the actual `extern "C"` entry, not just the pure core, so the
-    // ptr/len → slice path and the heap-string return are covered.
-    with_app(|app| {
-        let envelope = publish_raw_envelope("corr-c-abi");
-        let ptr = std::ptr::addr_of!(*app).cast_mut();
-        let raw = nmp_app_dispatch_action_bytes(ptr, envelope.as_ptr(), envelope.len());
-        assert!(!raw.is_null(), "non-null app must never return NULL (D6)");
-        // SAFETY: `raw` is a freshly minted NUL-terminated string from the call.
-        let out = unsafe { CStr::from_ptr(raw) }
-            .to_string_lossy()
-            .into_owned();
-        nmp_free_string(raw);
-        let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
-        assert_eq!(
-            parsed.get("correlation_id").and_then(|v| v.as_str()),
-            Some("corr-c-abi"),
-            "the C symbol echoes the host-supplied envelope correlation_id: {out}"
-        );
-    });
-}
-
-#[test]
-fn dispatch_bytes_oversize_via_c_symbol_rejects_before_slice() {
-    // The ABI gates `len > MAX_DISPATCH_ENVELOPE_BYTES` BEFORE forming a slice,
-    // so a hostile length never constructs a `&[u8]` of that span. We pass a
-    // dangling (but non-null) pointer with an oversize `len`: a correct
-    // implementation rejects on `len` alone and never dereferences `ptr`.
-    with_app(|app| {
-        let appp = std::ptr::addr_of!(*app).cast_mut();
-        // A small real allocation; the oversize `len` is a lie the gate must
-        // catch before any read. NonNull, but we assert `ptr` is never read.
-        let backing = [0u8; 8];
-        let raw =
-            nmp_app_dispatch_action_bytes(appp, backing.as_ptr(), MAX_DISPATCH_ENVELOPE_BYTES + 1);
-        assert!(!raw.is_null());
-        let out = unsafe { CStr::from_ptr(raw) }
-            .to_string_lossy()
-            .into_owned();
-        nmp_free_string(raw);
-        let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
-        let err = parsed.get("error").and_then(|v| v.as_str()).unwrap();
-        assert!(err.contains("oversize"), "got: {err}");
-    });
-}
-
 // ─── Fail-closed negatives (D6 — data, never a panic) ────────────────────────
 
 #[test]
@@ -129,22 +79,6 @@ fn dispatch_bytes_null_app_returns_error_json() {
         parsed.get("error").and_then(|v| v.as_str()),
         Some("null app")
     );
-}
-
-#[test]
-fn dispatch_bytes_null_ptr_via_c_symbol_returns_error_json() {
-    // A null `ptr` is an empty buffer — rejected fail-closed, never deref'd.
-    with_app(|app| {
-        let ptr = std::ptr::addr_of!(*app).cast_mut();
-        let raw = nmp_app_dispatch_action_bytes(ptr, std::ptr::null(), 0);
-        assert!(!raw.is_null());
-        let out = unsafe { CStr::from_ptr(raw) }
-            .to_string_lossy()
-            .into_owned();
-        nmp_free_string(raw);
-        let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
-        assert!(parsed.get("error").is_some(), "expected error: {out}");
-    });
 }
 
 #[test]

@@ -8,7 +8,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use super::super::{nmp_app_free, nmp_app_new, nmp_app_start};
+use super::super::{test_app_free, test_app_new, test_app_start};
 use super::*;
 
 // ──────────────────────────────────────────────────────────────────
@@ -123,8 +123,8 @@ fn dispatch_host_op_routes_action_json_to_installed_handler() {
         respond_ok: true,
     });
 
-    let app = nmp_app_new();
-    // SAFETY: `nmp_app_new` never returns null; valid until `nmp_app_free` below.
+    let app = test_app_new();
+    // SAFETY: `test_app_new` never returns null; valid until `test_app_free` below.
     let app_mut = unsafe { &mut *app };
 
     // Install the substrate-generic handler BEFORE dispatching — the
@@ -132,10 +132,10 @@ fn dispatch_host_op_routes_action_json_to_installed_handler() {
     // module before any `nmp_app_dispatch_action` arrives.
     app_mut.set_host_op_handler(handler as Arc<dyn nmp_core::substrate::HostOpHandler>);
     let _ = app_mut.register_action(TestHostOpModule);
-    nmp_app_start(app, 256, 4);
+    test_app_start(app, 256, 4);
 
     let out = dispatch_action_json(
-        // SAFETY: `nmp_app_new` never returns null.
+        // SAFETY: `test_app_new` never returns null.
         Some(&*app_mut),
         "test.host_op",
         r#"{"op":"create_group","name":"engineering"}"#,
@@ -183,7 +183,7 @@ fn dispatch_host_op_routes_action_json_to_installed_handler() {
         "handler must receive the same correlation_id dispatch_action returned"
     );
 
-    nmp_app_free(app);
+    test_app_free(app);
 }
 
 /// When no handler is installed, a `DispatchHostOp` command does NOT
@@ -202,7 +202,7 @@ fn dispatch_host_op_routes_action_json_to_installed_handler() {
 /// `correlation_id`) when the handler is absent.
 #[test]
 fn dispatch_host_op_without_handler_still_returns_correlation_id() {
-    let app = nmp_app_new();
+    let app = test_app_new();
     // SAFETY: see the happy-path test.
     let app_mut = unsafe { &mut *app };
     // Register the module WITHOUT installing a handler — the dispatch
@@ -210,7 +210,7 @@ fn dispatch_host_op_without_handler_still_returns_correlation_id() {
     // a normal `correlation_id` envelope because `start()` and the
     // `execute()` enqueue both succeed.
     let _ = app_mut.register_action(TestHostOpModule);
-    nmp_app_start(app, 256, 4);
+    test_app_start(app, 256, 4);
 
     let out = dispatch_action_json(Some(&*app_mut), "test.host_op", r#"{"op":"ping"}"#);
     let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
@@ -220,7 +220,7 @@ fn dispatch_host_op_without_handler_still_returns_correlation_id() {
         .unwrap_or_else(|| panic!("expected correlation_id even without handler, got: {out}"));
     assert_eq!(id.len(), 32, "correlation_id should be 32 hex chars");
 
-    nmp_app_free(app);
+    test_app_free(app);
 }
 
 /// A handler returning `{"ok": false, "error": "..."}` is routed to
@@ -243,12 +243,12 @@ fn dispatch_host_op_routes_handler_failure_through_terminal_path() {
         respond_ok: false,
     });
 
-    let app = nmp_app_new();
+    let app = test_app_new();
     // SAFETY: see the happy-path test.
     let app_mut = unsafe { &mut *app };
     app_mut.set_host_op_handler(handler as Arc<dyn nmp_core::substrate::HostOpHandler>);
     let _ = app_mut.register_action(TestHostOpModule);
-    nmp_app_start(app, 256, 4);
+    test_app_start(app, 256, 4);
 
     let out = dispatch_action_json(Some(&*app_mut), "test.host_op", r#"{"op":"ping"}"#);
     let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
@@ -272,7 +272,7 @@ fn dispatch_host_op_routes_handler_failure_through_terminal_path() {
         "handler must have been invoked exactly once"
     );
 
-    nmp_app_free(app);
+    test_app_free(app);
 }
 
 /// A `HostOpHandler` whose `handle` records the call (so we can witness it
@@ -309,8 +309,8 @@ impl nmp_core::substrate::HostOpHandler for PanickingHostHandler {
 fn host_op_panicking_handler_is_isolated_and_actor_survives() {
     let panic_seen: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
-    let app = nmp_app_new();
-    // SAFETY: `nmp_app_new` never returns null; valid until `nmp_app_free`.
+    let app = test_app_new();
+    // SAFETY: `test_app_new` never returns null; valid until `test_app_free`.
     let app_mut = unsafe { &mut *app };
     let _ = app_mut.register_action(TestHostOpModule);
 
@@ -319,7 +319,7 @@ fn host_op_panicking_handler_is_isolated_and_actor_survives() {
     app_mut.set_host_op_handler(Arc::new(PanickingHostHandler {
         seen: Arc::clone(&panic_seen),
     }) as Arc<dyn nmp_core::substrate::HostOpHandler>);
-    nmp_app_start(app, 256, 4);
+    test_app_start(app, 256, 4);
     let _ = dispatch_action_json(Some(&*app_mut), "test.host_op", r#"{"op":"boom"}"#);
 
     // The panicking handler IS reached (≤ 2 s wall-clock poll).
@@ -359,5 +359,5 @@ fn host_op_panicking_handler_is_isolated_and_actor_survives() {
         "the surviving actor processed the post-panic op"
     );
 
-    nmp_app_free(app);
+    test_app_free(app);
 }

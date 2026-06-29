@@ -10,7 +10,7 @@
 //! would record a SECOND terminal under one correlation_id (the double-terminal
 //! bug). The dispatch instead reports the action as accepted-and-enqueued.
 
-use super::super::{nmp_app_free, nmp_app_new};
+use super::super::{test_app_free, test_app_new};
 use super::*;
 
 use nmp_core::actor::ActionLedgerCommand;
@@ -52,8 +52,8 @@ impl ActionModule for EnqueueThenPanicModule {
 
 #[test]
 fn async_completing_executor_enqueue_then_panic_suppresses_failure_fanin() {
-    let app = nmp_app_new();
-    // SAFETY: `nmp_app_new` never returns null; valid until `nmp_app_free`.
+    let app = test_app_new();
+    // SAFETY: `test_app_new` never returns null; valid until `test_app_free`.
     let app_mut = unsafe { &mut *app };
     let _ = app_mut.register_action(EnqueueThenPanicModule);
 
@@ -91,5 +91,5 @@ fn async_completing_executor_enqueue_then_panic_suppresses_failure_fanin() {
          sends_before={sends_before} sends_after={sends_after}"
     );
 
-    nmp_app_free(app);
+    test_app_free(app);
 }

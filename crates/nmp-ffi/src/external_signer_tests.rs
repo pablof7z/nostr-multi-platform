@@ -268,20 +268,20 @@ fn malformed_response_is_dropped_silently() {
 #[test]
 fn nmp_app_new_installs_restore_hook_before_explicit_init() {
     let _g = SERIAL.lock().unwrap();
-    let app = crate::nmp_app_new();
+    let app = crate::test_app_new();
     assert!(!app.is_null(), "app handle must be allocated");
     let app_ref = app_ref(app).expect("app_ref");
 
     assert!(
         app_ref.external_signer_driver().is_some(),
-        "nmp_app_new must install the NIP-55 driver before Start"
+        "test_app_new must install the NIP-55 driver before Start"
     );
     assert!(
         app_ref.invoke_external_signer_restore_hook_for_test("not-json"),
         "restore hook must be callable before an explicit nmp_external_signer_init"
     );
 
-    crate::nmp_app_free(app);
+    crate::test_app_free(app);
 }
 
 #[test]

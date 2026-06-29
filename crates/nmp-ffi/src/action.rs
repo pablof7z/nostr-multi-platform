@@ -1,10 +1,9 @@
 //! FFI action-dispatch entry points.
 //!
-//! The sole outward-facing C-ABI entry point is
-//! [`nmp_app_dispatch_action_bytes`] (ADR-0064 / Cut-B, #1756) — a typed
-//! byte doorway that accepts a host-minted `correlation_id`, the action's
-//! HOST namespace, and a typed [`ActionPayload`](nmp_core::substrate::ActionPayload)
-//! FlatBuffers payload wrapped in an open
+//! The remaining test seam accepts a host-minted `correlation_id`, the
+//! action's HOST namespace, and a typed
+//! [`ActionPayload`](nmp_core::substrate::ActionPayload) FlatBuffers payload
+//! wrapped in an open
 //! [`DispatchEnvelope`](nmp_core::dispatch_envelope). The former JSON doorway
 //! (`nmp_app_dispatch_action`) has been deleted; all callers have been migrated
 //! to the typed byte path.
@@ -59,18 +58,11 @@ use nmp_core::actor::ActionLedgerCommand;
 #[cfg(any(test, feature = "test-support"))]
 use nmp_core::substrate::{ActionContext, ActionRejection, ActionResult};
 
-// ADR-0064 / S4 (#1752) — the native byte doorway lives in this sibling so
-// `action.rs` stays under its hand-authored LOC ceiling (AGENTS.md / V-12). It
-// is a size-management seam, not an API boundary: `nmp_app_dispatch_action_bytes`
-// is an ordinary `#[no_mangle]` C symbol. The dispatch core now lives in
-// `nmp_native_runtime::action_dispatch` and is shared with the UniFFI surface.
+// ADR-0064 / S4 (#1752) — the byte-dispatch JSON serialization test seam lives
+// in this sibling so `action.rs` stays under its hand-authored LOC ceiling
+// (AGENTS.md / V-12). The dispatch core lives in
+// `nmp_native_runtime::action_dispatch`.
 mod bytes;
-// ADR-0064 / Cut-B (#1756): surface the byte doorway on the Rust-side `action::`
-// path so in-repo native callers (the Chirp app crates) can reach it through the
-// rlib without an `extern "C"` block — the same facade pattern `lib.rs` uses for
-// the JSON `nmp_app_dispatch_action`. The `#[no_mangle] extern "C"` symbol name
-// is unaffected by this re-export (the C/Swift ABI is unchanged).
-pub use bytes::nmp_app_dispatch_action_bytes;
 
 /// Pure (FFI-free) core of the action dispatch logic: validate the action
 /// against the registry, drive its execution through the actor, and return

@@ -100,8 +100,8 @@ fn drift_gate_json_dispatch_doorway_absent_from_production_sources() {
 fn marmot_publish_signed_explicit_seam_is_intact_after_cut_b() {
     use nostr::{EventBuilder, Keys};
 
-    let app = crate::nmp_app_new();
-    // SAFETY: `nmp_app_new` never returns null; valid until `nmp_app_free`.
+    let app = crate::test_app_new();
+    // SAFETY: `test_app_new` never returns null; valid until `test_app_free`.
     let app_ref = unsafe { &*app };
 
     // Build a real signed nostr Event (the seam takes a `nostr::Event`,
@@ -122,7 +122,7 @@ fn marmot_publish_signed_explicit_seam_is_intact_after_cut_b() {
     // and (b) the actor channel is live enough to accept the command.
     app_ref.publish_signed_explicit(event, &[relay]);
 
-    crate::nmp_app_free(app);
+    crate::test_app_free(app);
 }
 
 // ─── Filesystem helper (no external deps) ────────────────────────────────────
