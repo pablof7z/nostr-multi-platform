@@ -61,13 +61,15 @@ use super::{app_ref, c_string_argument, NmpApp};
 use nmp_core::actor::ActionLedgerCommand;
 #[cfg(any(test, feature = "test-support"))]
 use nmp_core::substrate::ActionContext;
-use nmp_core::substrate::{ActionRejection, ActionResult};
+#[cfg(any(test, feature = "test-support"))]
+use nmp_core::substrate::ActionRejection;
+use nmp_core::substrate::ActionResult;
 
 // ADR-0064 / S4 (#1752) — the native byte doorway lives in this sibling so
 // `action.rs` stays under its hand-authored LOC ceiling (AGENTS.md / V-12). It
 // is a size-management seam, not an API boundary: `nmp_app_dispatch_action_bytes`
-// is an ordinary `#[no_mangle]` C symbol and reaches the shared post-mint
-// helpers (`finish_dispatch` / `error_json` / `rejection_message`) below.
+// is an ordinary `#[no_mangle]` C symbol. The dispatch core now lives in
+// `nmp_native_runtime::action_dispatch` and is shared with the UniFFI surface.
 mod bytes;
 // ADR-0064 / Cut-B (#1756): surface the byte doorway on the Rust-side `action::`
 // path so in-repo native callers (the Chirp app crates) can reach it through the
@@ -230,23 +232,14 @@ pub(super) fn dispatch_action_json(
     }
 }
 
-/// Shared post-mint outcome handling for the byte ([`bytes::nmp_app_dispatch_action_bytes`])
-/// doorway and the test-only JSON helper ([`dispatch_action_json`]).
+/// Post-mint outcome handling for the test-only JSON doorway
+/// ([`dispatch_action_json`]).
 ///
-/// `start()`/`start_bytes()` already minted `correlation_id`; this turns the
-/// execute outcome into the JSON result and preserves the one-terminal-per-
-/// dispatch invariant (#1676 BUG-A/B/C):
-///
-/// * `Ok(())` — accepted + enqueued; deliver the "accepted" observer signal,
-///   return `{"correlation_id":…}`.
-/// * `Err(failure)` with `enqueued` — the executor already enqueued an
-///   `ActorCommand` and then failed; that command OWNS the terminal verdict, so
-///   do NOT fan a second `RecordActionFailure` (double-terminal). Report as
-///   accepted.
-/// * `Err(failure)` without `enqueued` — nothing was enqueued; this fan-in is
-///   the SOLE terminal. Record a `Failed { reason }` so the host spinner keyed
-///   on the id resolves, and return BOTH id and error so the host can ACK +
-///   toast.
+/// `start()` already minted `correlation_id`; this turns the execute outcome
+/// into the JSON result and preserves the one-terminal-per-dispatch invariant
+/// (#1676 BUG-A/B/C). The byte doorway uses the typed equivalent in
+/// `nmp_native_runtime::action_dispatch::finish_dispatch_typed` instead.
+#[cfg(any(test, feature = "test-support"))]
 pub(super) fn finish_dispatch(
     app: &NmpApp,
     correlation_id: &str,
@@ -298,6 +291,7 @@ fn execute_action(
 ///
 /// For [`ActionRejection::InvalidCoded`] callers that need the machine code,
 /// use [`rejection_json`] directly instead.
+#[cfg(any(test, feature = "test-support"))]
 fn rejection_message(rejection: ActionRejection) -> String {
     match rejection {
         ActionRejection::Invalid(s) => s,
@@ -313,6 +307,7 @@ fn rejection_message(rejection: ActionRejection) -> String {
 /// [`ActionRejection::InvalidCoded`] carries a stable machine `code` that
 /// shells use to localize the error (issue #1734). All other variants produce
 /// the plain `{"error":"…"}` envelope (no `code` field).
+#[cfg(any(test, feature = "test-support"))]
 pub(super) fn rejection_json(rejection: ActionRejection) -> String {
     match rejection {
         ActionRejection::InvalidCoded { code, message } => {
@@ -338,6 +333,7 @@ fn error_json(msg: &str) -> String {
 /// lifecycle (`nmp_app_ack_action_stage`) once the next snapshot carries
 /// the `action_stages` entry. Both fields are JSON-escaped via
 /// [`json_string`].
+#[cfg(any(test, feature = "test-support"))]
 fn error_json_with_correlation_id(correlation_id: &str, msg: &str) -> String {
     format!(
         r#"{{"correlation_id":{},"error":{}}}"#,

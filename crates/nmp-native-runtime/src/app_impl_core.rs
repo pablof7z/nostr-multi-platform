@@ -315,4 +315,50 @@ impl NmpApp {
     pub(crate) fn shutdown_actor(&self) {
         self.send_cmd(ActorCommand::Lifecycle(LifecycleCommand::Shutdown));
     }
+
+    /// Explicit idempotent teardown: clear the update listener, send the
+    /// `Shutdown` command, and join both the actor and listener threads.
+    ///
+    /// Safe to call multiple times — the `Mutex<Option<JoinHandle>>` pattern
+    /// means a second call sees `None` and is a no-op. `Drop` calls this as a
+    /// fallback so hosts that never call `shutdown()` explicitly are still safe.
+    ///
+    /// **UniFFI contract**: named `shutdown` (not `close`) to avoid Kotlin
+    /// `AutoCloseable` friction discovered in #2149.
+    pub fn shutdown(&self) {
+        // 1. Clear the update listener so no more callbacks fire.
+        if let Ok(mut inner) = self.update_listener.inner.lock() {
+            inner.listener = None;
+        }
+        // 2. Send Shutdown so the actor exits its event loop.
+        self.shutdown_actor();
+        // 3. Drop BOTH update-channel senders so the listener thread can exit.
+        //
+        //    There are two update-tx clones alive when the actor was never started:
+        //    (a) inside actor_starter (the original update_tx captured by the Box),
+        //    (b) startup_update_tx (a clone stored in the mutex).
+        //    When the actor IS running, (a) was already transferred into the actor
+        //    thread via spawn_actor_if_needed(); dropping (a) here is a no-op since
+        //    actor_starter contains None. Either way, we must drop both.
+        if let Ok(mut starter) = self.actor_starter.lock() {
+            starter.take(); // drops original update_tx captured in the Box (pre-start only)
+        }
+        if let Ok(mut startup_tx) = self.startup_update_tx.lock() {
+            startup_tx.take(); // drops the startup clone
+        }
+        // 4. Join the actor thread (idempotent via Option::take).
+        if let Ok(mut actor) = self.actor.lock() {
+            if let Some(handle) = actor.take() {
+                let _ = handle.join();
+            }
+        }
+        // 5. Join the update-listener thread (idempotent via Option::take).
+        //    Now that all senders are dropped (or the actor thread exited), the
+        //    update_rx.recv() loop in the listener thread will return Err and exit.
+        if let Ok(mut listener) = self.update_listener_thread.lock() {
+            if let Some(handle) = listener.take() {
+                let _ = handle.join();
+            }
+        }
+    }
 }
