@@ -1,10 +1,9 @@
 //! Feed-management `impl NmpApp` methods — extracted from `lib.rs` to keep
 //! each file under the 500-LOC ceiling (AGENTS.md file-size rule).
 //!
-//! Covers: `register_feed`, `load_older_feed`, `open_observed_interest`,
-//! `open_observed_interest_pinned`, `close_interest_pinned`, `unregister_feed`, and the
-//! [`ObservedProjectionRegistrar`] impl (`open_observed_projection` /
-//! `close_observed_projection`).
+//! Covers: `register_feed`, `load_older_feed`, internal observed-interest
+//! wiring, `close_interest_pinned`, `unregister_feed`, and the
+//! [`ObservedProjectionRegistrar`] impl.
 
 use std::sync::Arc;
 
@@ -38,47 +37,17 @@ impl NmpApp {
         changed
     }
 
-    /// ADR-0062 — open an interest with read-model catch-up replay to the
-    /// muted observer identified by `observer_id`, then activate it.
-    ///
-    /// Validates the filter JSON via `InterestShape::from_filter_json` and
-    /// sends `ActorCommand::OpenObservedInterest`. A malformed filter emits a
-    /// toast (same as `nmp_app_open_interest`) and returns without sending.
-    ///
-    /// `replay_shapes` are the `InterestShape`s used to match events in the
-    /// kernel's read-cache during replay. These may differ from the filter
-    /// (e.g. a thread feed uses two shapes: `#e` replies + root-by-id).
-    pub fn open_observed_interest(
-        &self,
-        filter_json: &str,
-        consumer_id: &str,
-        scope: u32,
-        observer_id: ObservedProjectionId,
-        replay_shapes: Vec<nmp_planner::InterestShape>,
-        replay_limit: usize,
-    ) {
-        self.open_observed_interest_pinned(
-            filter_json,
-            consumer_id,
-            scope,
-            None,
-            observer_id,
-            replay_shapes,
-            replay_limit,
-        );
-    }
-
-    /// ADR-0062 + relay-pin — the [`Self::open_observed_interest`] variant that
-    /// routes the interest to exactly one relay (the planner's relay-pin lane).
+    /// ADR-0062 + relay-pin — open an observed interest and route it to exactly
+    /// one relay (the planner's relay-pin lane).
     ///
     /// `relay_pin` — `Some(host)` pins the interest to that relay, bypassing
-    /// NIP-65 outbox routing; `None` is identical to `open_observed_interest`.
+    /// NIP-65 outbox routing; `None` leaves routing unpinned.
     /// NIP-50 search (`nmp_app_search_open`) opens one pinned interest per
     /// resolved search relay. The pin participates in the `InterestShape` hash,
     /// so the matching close MUST pass the same pin (see
     /// [`Self::close_interest_pinned`]).
     #[allow(clippy::too_many_arguments)]
-    pub fn open_observed_interest_pinned(
+    pub(crate) fn open_observed_interest_pinned(
         &self,
         filter_json: &str,
         consumer_id: &str,
@@ -207,8 +176,19 @@ impl NmpApp {
     /// observed-projection sink by id on `close_feed`. Same slot
     /// [`Self::open_observed_projection`] writes into (D4).
     #[must_use]
-    pub fn event_observers_handle(&self) -> nmp_core::__ffi_internal::ObservedProjectionSinkSlot {
+    pub(crate) fn event_observers_handle(
+        &self,
+    ) -> nmp_core::__ffi_internal::ObservedProjectionSinkSlot {
         Arc::clone(&self.event_observers)
+    }
+
+    /// Test-support observer count for white-box runtime invariants.
+    ///
+    /// Exposes only the aggregate count, not the raw observer slot handle.
+    #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
+    pub fn test_observed_projection_sink_count(&self) -> usize {
+        nmp_core::__ffi_internal::rust_observer_count(&self.event_observers)
     }
 
     /// ADR-0058 §8 step-6B — the in-process pull seam a feed's

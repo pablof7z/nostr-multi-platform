@@ -194,8 +194,7 @@ fn multi_relay_search_shares_one_kernel_observer() {
     let app = nmp_app_new();
     // SAFETY: `nmp_app_new` never returns null.
     let app_ref = unsafe { &*app };
-    let observers = app_ref.event_observers_handle();
-    let before = nmp_core::__ffi_internal::rust_observer_count(&observers);
+    let before = app_ref.test_observed_projection_sink_count();
 
     // Three explicit relays → three pinned interests in one session.
     let request = SearchRequest::new(
@@ -217,14 +216,14 @@ fn multi_relay_search_shares_one_kernel_observer() {
         "the session fans out to all three explicit relays"
     );
     assert_eq!(
-        nmp_core::__ffi_internal::rust_observer_count(&observers),
+        app_ref.test_observed_projection_sink_count(),
         before + 1,
         "three relay-pinned interests share ONE kernel observer (not one per relay)"
     );
 
     app_ref.close_search("multi");
     assert_eq!(
-        nmp_core::__ffi_internal::rust_observer_count(&observers),
+        app_ref.test_observed_projection_sink_count(),
         before,
         "closing the session removes its single shared observer"
     );

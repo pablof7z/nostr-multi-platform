@@ -64,8 +64,8 @@ pub use nmp_native_runtime::{
     FeedCompiler, FeedHandle, FeedOpenError, FeedParams, FeedParamsDecodeError, FeedRanking,
     FeedRender, FeedScope, FeedSessionBuild, FeedSessionId, FeedTeardown, FeedWindow,
     IdentityChangeObserverId, Nip29GroupDiscoveryHandle, Nip29GroupDiscoverySession,
-    Nip29GroupEventsHandle, Nip29GroupEventsSession, NmpApp, NmpConfigStatus,
-    ObservedProjectionCommandHandle, PrimaryKindError, ProjectionKey, PubkeySetExpr,
+    Nip29GroupEventsHandle, Nip29GroupEventsSession, NmpApp, NmpConfigStatus, PrimaryKindError,
+    ProjectionKey, PubkeySetExpr,
 };
 
 pub use app_ctor::nmp_app_new;
