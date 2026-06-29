@@ -20,7 +20,7 @@
 //!   │  .decide_providers(config)         ADR-0067 explicit no-providers-yet gate
 //!   ▼
 //! BrowserAppBuilder<ProvidersDecided>   ← capability/signer decision recorded
-//!   │  .start()                         → compatibility preset + wires runtime
+//!   │  .start()                         → explicit browser composition + runtime
 //!   ▼
 //! BrowserRuntimeHandle                  ← pump-driven runtime handle (#2058)
 //! ```
@@ -93,8 +93,8 @@ pub struct ProvidersDecided;
 ///
 /// Wraps a `KernelReducer` and accumulates the full `AppHost` registration
 /// surface through a `Mutex<BrowserBuilderInner>`. Calling `.start()` on
-/// `BrowserAppBuilder<ProvidersDecided>` applies all deferred settings,
-/// calls the current `nmp_defaults::register_defaults` compatibility preset, and returns a
+/// `BrowserAppBuilder<ProvidersDecided>` installs the browser production
+/// composition explicitly, applies deferred settings, and returns a
 /// `BrowserRuntimeHandle`.
 ///
 /// # Example
@@ -341,17 +341,14 @@ impl BrowserAppBuilder<ProvidersDecided> {
     /// Finalise composition and return a `BrowserRuntimeHandle`.
     ///
     /// Sequence:
-    /// 1. Call the current `nmp_defaults::register_defaults` compatibility
-    ///    preset — wires substrate, action modules, and all NMP defaults.
+    /// 1. Install explicit browser substrate/protocol/runtime defaults.
     /// 2. Apply all deferred `&mut`-kernel settings (routing, coverage hook,
     ///    publish resolver, relay slot, etc.).
     /// 3. Install the search-scope registry into the event store.
     /// 4. Apply the relay bootstrap list.
     /// 5. Build `BrowserRuntime` and wrap in `BrowserRuntimeHandle`.
     pub fn start(mut self) -> BrowserRuntimeHandle {
-        // Step 1 — register the current compatibility preset (takes
-        // `&mut impl AppHost`).
-        nmp_defaults::register_defaults(&mut self);
+        install_browser_production_composition(&mut self);
 
         // Step 2 — consume the inner state and build the runtime.
         let inner = match self.inner.into_inner() {
@@ -379,6 +376,20 @@ impl BrowserAppBuilder<ProvidersDecided> {
 
         BrowserRuntimeHandle::from_builder_inner(inner)
     }
+}
+
+fn install_browser_production_composition(app: &mut BrowserAppBuilder<ProvidersDecided>) {
+    let nmp_defaults::NmpDefaults {
+        coverage_gate,
+        search_defaults,
+        ..
+    } = nmp_defaults::NmpDefaults::default();
+
+    let _mailbox_cache = nmp_defaults::register_substrate(app, coverage_gate);
+    nmp_defaults::register_nip50_protocol_defaults(app);
+    let _social_handles = nmp_defaults::register_social_protocol_defaults(app, search_defaults);
+    nmp_defaults::register_dm_protocol_defaults(app);
+    nmp_defaults::register_longform_projection(app);
 }
 
 // ── Typestate advance helper ──────────────────────────────────────────────────

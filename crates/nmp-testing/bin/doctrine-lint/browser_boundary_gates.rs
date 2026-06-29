@@ -78,6 +78,36 @@ fn nmp_browser_runtime_is_direct_doctrine_lint_clean() {
 }
 
 #[test]
+fn browser_production_start_does_not_use_hidden_defaults_preset() {
+    let root = workspace_root();
+    let builder = root.join("crates/nmp-browser-runtime/src/builder.rs");
+    let body = std::fs::read_to_string(&builder)
+        .unwrap_or_else(|err| panic!("failed to read {}: {err}", builder.display()));
+
+    let mut violations = Vec::new();
+    let mut in_block_comment = false;
+    for (idx, line) in body.lines().enumerate() {
+        let live = strip_line_comments(line, &mut in_block_comment);
+        for token in [
+            "nmp_defaults::register_defaults(",
+            "nmp_defaults::register_defaults_with(",
+            "nmp_defaults::register_defaults_with_handles(",
+        ] {
+            if live.contains(token) {
+                violations.push(format!("builder.rs:{} hidden `{token}` call", idx + 1));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "browser production composition must name substrate/protocol/runtime \
+         installers explicitly instead of hiding behind register_defaults:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn browser_runtime_uses_nmp_feed_session_model() {
     let root = workspace_root();
     let runtime_src = root.join("crates/nmp-browser-runtime/src");
