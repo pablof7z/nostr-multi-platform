@@ -678,6 +678,32 @@ export const GeneratedActionBuilders = {
     return encodeDispatchEnvelope(correlationId, "nmp.app.topic_articles", payload);
   },
 
+  /** Claim or release visible note relation-count subscriptions. */
+  visibleNoteRelations(
+    correlationId: string,
+    lifecycle: number,
+    targetEventId: string,
+    targetKind: number,
+    consumerId: string,
+    targetAddress: string | null,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const targetEventIdOffset = fbb.createString(targetEventId);
+    const consumerIdOffset = fbb.createString(consumerId);
+    const targetAddressOffset = targetAddress === null ? 0 : fbb.createString(targetAddress);
+    fbb.startObject(6);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldInt8(1, lifecycle, 0); // slot 1: lifecycle
+    fbb.addFieldOffset(2, targetEventIdOffset, 0); // slot 2: targetEventId
+    fbb.addFieldInt32(3, targetKind, 0); // slot 3: targetKind
+    fbb.addFieldOffset(4, consumerIdOffset, 0); // slot 4: consumerId
+    if (targetAddressOffset !== 0) fbb.addFieldOffset(5, targetAddressOffset, 0); // slot 5: targetAddress
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "VNRL");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.nip01.visible_note_relations", payload);
+  },
+
   /** Discover NIP-29 groups hosted on a relay. */
   discoverGroups(
     correlationId: string,
