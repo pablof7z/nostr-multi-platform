@@ -1,8 +1,7 @@
 # Scaffolded by `nmp init {{name}}`.
 #
 # The `{{pkg}}` crate is a thin composition shell over the NMP framework
-# (ADR-0046 — composition is a library, not a generator): it depends on
-# `nmp-defaults` and calls `register_defaults`. See README.md for the release
+# (ADR-0069 — explicit feature composition). See README.md for the release
 # (git-rev pin) vs. local-checkout NMP dependency modes.
 [workspace]
 members = ["crates/{{pkg}}"]

@@ -78,14 +78,14 @@ pub fn register_everything(app: &mut NmpApp) {
 }
 ```
 
-After migration, the app core is the composition root. It calls
-`register_defaults` once, then registers app-specific seams:
+After migration, the app core is the composition root. It installs the substrate
+floor and selected protocol/app seams by name:
 
 ```rust
 use nmp_core::substrate::AppHost;
 
 pub fn register(app: &mut impl AppHost) {
-    nmp_defaults::register_defaults(app);
+    nmp_defaults::register_substrate(app, nmp_defaults::NmpDefaults::default().coverage_gate);
     my_app_core::register_actions(app);
     my_app_core::register_projections(app);
 }

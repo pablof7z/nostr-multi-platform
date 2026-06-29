@@ -20,7 +20,7 @@
 //!   │  .decide_providers(config)         ADR-0067 explicit no-providers-yet gate
 //!   ▼
 //! BrowserAppBuilder<ProvidersDecided>   ← capability/signer decision recorded
-//!   │  .start()                         → calls register_defaults + wires runtime
+//!   │  .start()                         → compatibility preset + wires runtime
 //!   ▼
 //! BrowserRuntimeHandle                  ← pump-driven runtime handle (#2058)
 //! ```
@@ -94,7 +94,7 @@ pub struct ProvidersDecided;
 /// Wraps a `KernelReducer` and accumulates the full `AppHost` registration
 /// surface through a `Mutex<BrowserBuilderInner>`. Calling `.start()` on
 /// `BrowserAppBuilder<ProvidersDecided>` applies all deferred settings,
-/// calls `nmp_defaults::register_defaults`, and returns a
+/// calls the current `nmp_defaults::register_defaults` compatibility preset, and returns a
 /// `BrowserRuntimeHandle`.
 ///
 /// # Example
@@ -338,15 +338,16 @@ impl BrowserAppBuilder<ProvidersDecided> {
     /// Finalise composition and return a `BrowserRuntimeHandle`.
     ///
     /// Sequence:
-    /// 1. Call `nmp_defaults::register_defaults(self)` — wires substrate,
-    ///    action modules, and all NMP defaults.
+    /// 1. Call the current `nmp_defaults::register_defaults` compatibility
+    ///    preset — wires substrate, action modules, and all NMP defaults.
     /// 2. Apply all deferred `&mut`-kernel settings (routing, coverage hook,
     ///    publish resolver, relay slot, etc.).
     /// 3. Install the search-scope registry into the event store.
     /// 4. Apply the relay bootstrap list.
     /// 5. Build `BrowserRuntime` and wrap in `BrowserRuntimeHandle`.
     pub fn start(mut self) -> BrowserRuntimeHandle {
-        // Step 1 — register NMP defaults (takes `&mut impl AppHost`).
+        // Step 1 — register the current compatibility preset (takes
+        // `&mut impl AppHost`).
         nmp_defaults::register_defaults(&mut self);
         crate::feed::register_browser_home_feed(&self);
 

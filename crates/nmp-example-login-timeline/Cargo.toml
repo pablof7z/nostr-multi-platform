@@ -9,8 +9,8 @@ publish = false
 description = "Canonical DX worked example: login → following-timeline render → live update, a thin shell over NMP that touches zero relay/cache/subscription code (proves docs/aim.md §1)."
 
 [dependencies]
-# The composition-root library (ADR-0046): `register_defaults` +
-# substrate defaults.
+# Reusable composition installers. This tutorial crate uses the compatibility
+# preset to keep the historical login/timeline proof small.
 nmp-defaults = { path = "../nmp-defaults" }
 # Native runtime owner: typestate builder plus OP-feed registration.
 nmp-native-runtime = { path = "../nmp-native-runtime" }

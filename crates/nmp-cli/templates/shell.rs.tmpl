@@ -1,9 +1,9 @@
 //! Minimal headless shell for `{{display}}`.
 //!
-//! Models `nmp-defaults`' own `examples/minimal_app.rs`: construct an app via
-//! `NmpAppBuilder`, inherit the canonical NMP composition through this crate's
-//! [`register`], start the kernel, and tear it down. A real platform shell
-//! (SwiftUI / Compose / iced / wasm) drives the same `NmpApp` C-ABI surface.
+//! Constructs an app via `NmpAppBuilder`, installs this crate's explicit
+//! composition root through [`register`], starts the kernel, and tears it down.
+//! A real platform shell (SwiftUI / Compose / iced / wasm) drives the same
+//! `NmpApp` C-ABI surface.
 //!
 //! Run it with:
 //!
@@ -18,9 +18,8 @@ fn main() {
     // 1. Start the builder.
     let mut builder = NmpAppBuilder::new();
 
-    // 2. Inherit the canonical NMP composition + this app's modules. The
-    //    single `register` call (which forwards to
-    //    `nmp_defaults::register_defaults`) is the whole point of ADR-0046.
+    // 2. Install the explicit app composition: substrate floor, selected
+    //    protocol features, and this app's modules.
     {{crate_ident}}::register(&mut builder);
 
     // 3. Commit the storage choice, declare the kernel built-in projections,
@@ -46,7 +45,7 @@ fn main() {
         .without_initial_relays()
         .start(RunConfig::default());
 
-    println!("{{display}}: NmpAppBuilder → register_defaults → start() complete.");
+    println!("{{display}}: NmpAppBuilder → app register → start() complete.");
 
     // 4. Tear down.
     nmp_app_stop(app);

@@ -47,10 +47,9 @@ final class GalleryKernelHandle {
         raw = nmp_app_new()
         Self.configureStoragePath(for: raw)
         refStores = nmp_app_gallery_ref_stores_new()
-        // Phase 1: register the gallery composition on the kernel. The parallel
-        // `nmp-app-gallery` crate forwards to `nmp_app_template::register_defaults`;
-        // the call is fire-and-forget (D6) — there is no opaque handle to capture
-        // because the gallery has no per-app projection mutex.
+        // Phase 1: register the gallery compatibility composition on the
+        // kernel. The call is fire-and-forget (D6) — there is no opaque handle
+        // to capture because the gallery has no per-app projection mutex.
         nmp_app_gallery_register(raw)
     }
 

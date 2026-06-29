@@ -23,9 +23,10 @@
 //!
 //! # The three-function shell
 //!
-//! 1. [`register`] — inherit the canonical NMP composition (mirrors the
-//!    `nmp init` scaffold's `register`; one call to
-//!    [`nmp_defaults::register_defaults`]).
+//! 1. [`register`] — install the worked-example compatibility preset. The
+//!    `nmp init` scaffold now shows ADR-0069 explicit production composition;
+//!    this tutorial keeps the preset only to prove the historical login →
+//!    timeline path.
 //! 2. [`register_following_timeline`] — open the FOLLOWING timeline. One call
 //!    to [`nmp_native_runtime::register_op_feed_defaults`] wires the OP-centric home
 //!    feed (the following timeline): ingest fan-out, the live follow-set
@@ -52,12 +53,12 @@ pub mod harness;
 /// Repost wrappers are derived below this app-facing declaration.
 pub const FOLLOWING_PRIMARY_FEED_KINDS: [u32; 1] = [1];
 
-/// Step 1 — inherit the canonical NMP composition.
+/// Step 1 — install the tutorial compatibility composition.
 ///
-/// Identical in spirit to the `nmp init` scaffold's `register`: one call to
-/// [`nmp_defaults::register_defaults`] wires the NIP-01/02/17/57/65 action
-/// modules, the production routing substrate, and the standard runtime
-/// controllers. Call before `start`.
+/// This worked example intentionally keeps one call to
+/// [`nmp_defaults::register_defaults`] so the historical login/timeline proof
+/// remains small. Production starters should use ADR-0069 explicit substrate,
+/// protocol, and app installers instead. Call before `start`.
 pub fn register(app: &mut impl AppHost) {
     nmp_defaults::register_defaults(app);
 }

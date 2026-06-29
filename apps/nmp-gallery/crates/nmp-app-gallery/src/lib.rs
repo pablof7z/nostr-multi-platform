@@ -2,9 +2,11 @@
 //!
 //! NMP's framework showcase composition root, distinguished by what it does
 //! NOT carry: no app timeline projection, no Marmot policy, no wallet runtime.
-//! The gallery is assembled from the
-//! canonical [`nmp_defaults::register_defaults`] one-shot and exposes only the
-//! app-shell adapters needed to render that framework state.
+//! The gallery currently uses the
+//! [`nmp_defaults::register_defaults`] compatibility preset and exposes only
+//! the app-shell adapters needed to render that framework state. ADR-0069 makes
+//! explicit composition the production starter model; this showcase keeps the
+//! preset until its protocol feature list is split into named installers.
 //!
 //! # Surface
 //!
@@ -17,7 +19,7 @@
 //!
 //! The crate adds two new `#[no_mangle]` symbols of its own:
 //!
-//! * [`nmp_app_gallery_register`] — one-shot installer. Forwards to
+//! * [`nmp_app_gallery_register`] — compatibility installer. Forwards to
 //!   [`nmp_defaults::register_defaults`]. MUST be called once after
 //!   `nmp_app_new` and BEFORE `nmp_app_start`.
 //! * [`showcase::nmp_app_gallery_showcase_references_json`] — borrowed JSON
@@ -141,11 +143,10 @@ fn json_escape(s: &str) -> String {
     serde_json::to_string(s).unwrap_or_else(|_| "\"\"".to_string())
 }
 
-/// Install the canonical NMP composition into `app`.
+/// Install the gallery compatibility composition into `app`.
 ///
-/// Forwards to [`nmp_defaults::register_defaults`] — the gallery has
-/// no per-app projections, so the entire registration is "what every
-/// generic Nostr app needs". MUST be called exactly once after
+/// Forwards to [`nmp_defaults::register_defaults`] until the gallery's protocol
+/// feature list is split into named ADR-0069 installers. MUST be called exactly once after
 /// [`nmp_ffi::nmp_app_new`] and BEFORE [`nmp_ffi::nmp_app_start`].
 ///
 /// `app` is typed as `*mut c_void` to mirror the host-facing C signature

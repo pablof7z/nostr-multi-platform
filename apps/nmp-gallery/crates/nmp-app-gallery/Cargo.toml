@@ -3,7 +3,7 @@ name = "nmp-app-gallery"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "NmpGallery composition root — thin wrapper around `nmp-ffi` + `nmp-defaults`. No app-specific projections. Produces `libnmp_app_gallery.{a,so}` for iOS and Android. Step 10 follow-on to V-48 — second-app composition root that proves `register_defaults` works without any per-app glue."
+description = "NmpGallery compatibility composition root over nmp-ffi and nmp-defaults. Produces libnmp_app_gallery for iOS and Android while the showcase migrates to ADR-0069 named installers."
 
 [lib]
 # `staticlib` so the iOS shell can link `-lnmp_app_gallery` alongside the
@@ -31,11 +31,9 @@ android-ffi = ["nmp-ffi/android-ffi", "nmp-ffi/native", "dep:jni"]
 # with `pub use nmp_ffi::*` so the iOS / Android shell links exactly one
 # archive (`libnmp_app_gallery.a` / `.so`) for the whole NMP surface.
 nmp-ffi = { path = "../../../../crates/nmp-ffi", default-features = false }
-# Canonical NMP composition root (V-48). `register_defaults` wires the
-# default action modules, ingest parsers, routing substrate, publish
-# resolver, coverage hook, and the canonical DM-inbox runtime controller.
-# The gallery's `nmp_app_gallery_register` is a
-# one-line forward to this call — that is the whole point of the crate.
+# Reusable composition installers. The gallery still uses the compatibility
+# `register_defaults` preset until its showcase feature list is split into
+# named ADR-0069 installers.
 nmp-defaults = { path = "../../../../crates/nmp-defaults" }
 nmp-core = { path = "../../../../crates/nmp-core" }
 nmp-content = { path = "../../../../crates/nmp-content" }

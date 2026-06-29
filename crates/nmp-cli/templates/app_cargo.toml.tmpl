@@ -5,11 +5,8 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-# The composition-root library (ADR-0046). `register_defaults` wires the
-# canonical NMP composition — NIP-01/02/17/57/65 action modules, the routing
-# substrate, the DM-inbox + zap-receipts + WOT runtimes — in one call. This is
-# the Bevy-`DefaultPlugins` / Spring-Boot-starter pattern every real NMP
-# consumer uses.
+# Reusable NMP installer library. The starter calls named installers from its
+# app Rust composition root; production policy is not hidden behind a preset.
 nmp-defaults = {{nmp_defaults_dep}}
 # Native runtime owner: `NmpAppBuilder` plus Rust-native lifecycle helpers.
 nmp-native-runtime = {{nmp_native_runtime_dep}}

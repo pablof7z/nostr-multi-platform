@@ -1,7 +1,7 @@
 //! End-to-end: `nmp init` into a tempdir must produce a thin composition-shell
-//! scaffold (ADR-0046) that `cargo check`s green, whose tests pass, and whose
-//! `register` shell calls `nmp_defaults::register_defaults` — NOT a generated
-//! FFI crate.
+//! scaffold (ADR-0069) that `cargo check`s green, whose tests pass, and whose
+//! `register` shell installs named NMP substrate/protocol/app pieces — NOT a
+//! generated FFI crate or a hidden production preset.
 
 mod helpers;
 
@@ -27,15 +27,20 @@ fn init_scaffold_is_a_compiling_composition_shell() {
     assert!(root.join("crates/demoapp-core/src/lib.rs").exists());
     assert!(root.join("crates/demoapp-core/examples/shell.rs").exists());
 
-    // 2. ADR-0046: composition is a LIBRARY, not a generator. The scaffolded
-    //    `register` shell forwards to `register_defaults`, the headless
-    //    example drives it through `NmpAppBuilder`, and there is NO generated
-    //    `apps/` FFI tree and NO `nmp gen modules` step.
+    // 2. ADR-0069: production composition is explicit Rust, not a hidden
+    //    preset. The scaffolded `register` shell installs the reusable
+    //    substrate by name, the headless example drives it through
+    //    `NmpAppBuilder`, and there is NO generated `apps/` FFI tree and NO
+    //    `nmp gen modules` step.
     let lib = std::fs::read_to_string(root.join("crates/demoapp-core/src/lib.rs"))
         .expect("read scaffolded lib.rs");
     assert!(
-        lib.contains("nmp_defaults::register_defaults"),
-        "scaffolded `register` must call nmp_defaults::register_defaults:\n{lib}"
+        lib.contains("nmp_defaults::register_substrate"),
+        "scaffolded `register` must install the NMP substrate explicitly:\n{lib}"
+    );
+    assert!(
+        !lib.contains("nmp_defaults::register_defaults"),
+        "scaffolded production `register` must not call hidden register_defaults:\n{lib}"
     );
     assert!(
         lib.contains("starter_projection_keys")
