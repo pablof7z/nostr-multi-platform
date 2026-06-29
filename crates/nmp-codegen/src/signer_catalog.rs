@@ -9,17 +9,17 @@
 //!
 //! Generated outputs (one `val KNOWN_NOSTR_SIGNERS` / `knownSigners` literal
 //! split out of the larger hand-authored wire files):
-//!   * Kotlin `KnownSigners.generated.kt` — three byte-identical-except-package
-//!     copies (gallery canonical + the `android/` host + the CLI install
-//!     registry), holding the Android entries in catalog order.
+//!   * Kotlin `KnownSigners.generated.kt` — two byte-identical-except-package
+//!     copies (gallery canonical + the CLI install registry), holding the
+//!     Android entries in catalog order.
 //!   * Swift `KnownSigners.generated.swift` — two byte-identical copies (gallery
 //!     canonical + the CLI install registry), holding the iOS entries as an
 //!     `extension NostrSignerDetector { static let knownSigners }`.
 //!
-//! Additionally CHECK-only (never clobbered — these are large hand files with
-//! unrelated content): the `AndroidManifest <queries>` intent schemes and the
-//! iOS `Info.plist` `LSApplicationQueriesSchemes` array must stay in sync with
-//! the catalog's per-platform schemes.
+//! Additionally CHECK-only (never clobbered — this is a large hand file with
+//! unrelated content): the `AndroidManifest <queries>` intent schemes must
+//! stay in sync with the catalog's Android schemes. The iOS `Info.plist`
+//! scheme check lives in the external Chirp repo, which manages its own plist.
 //!
 //! `nmp-codegen` intentionally has NO `nmp-core` dependency (only serde /
 //! serde_json). This module parses the catalog JSON into a LOCAL typed struct,
@@ -70,9 +70,8 @@ pub struct IosSpec {
 
 // ── Output targets (relative to the repo root, the codegen cwd) ───────────────
 //
-// Same posture as `gen swift` (writes `apps/chirp/ios/...`): the binary runs from the
-// workspace root, so these relative paths resolve against the checkout root both
-// in CI and locally.
+// The binary runs from the workspace root, so these relative paths resolve
+// against the checkout root both in CI and locally.
 
 /// A Kotlin generated-file target: its on-disk path + the `package` line it must
 /// carry (VendorDriftGate enforces byte-identity across copies EXCEPT line 1).
@@ -86,11 +85,6 @@ const KOTLIN_TARGETS: &[KotlinTarget] = &[
     KotlinTarget {
         path: "apps/nmp-gallery/android/app/src/main/kotlin/org/nmp/gallery/registry/KnownSigners.generated.kt",
         package: "org.nmp.gallery.registry",
-    },
-    // Chirp Android host app copy.
-    KotlinTarget {
-        path: "apps/chirp/android/app/src/main/java/org/nmp/android/KnownSigners.generated.kt",
-        package: "org.nmp.android",
     },
     // The CLI install registry copy (vendored into consumer apps).
     KotlinTarget {
@@ -107,7 +101,6 @@ const SWIFT_TARGETS: &[&str] = &[
 ];
 
 const ANDROID_MANIFEST: &str = "apps/nmp-gallery/android/app/src/main/AndroidManifest.xml";
-const IOS_PLIST: &str = "apps/chirp/ios/Chirp/Info.plist";
 
 // ── Generated-file headers ────────────────────────────────────────────────────
 
@@ -260,13 +253,6 @@ fn android_schemes(apps: &[SignerApp]) -> Vec<String> {
         .collect()
 }
 
-/// The catalog's iOS URL schemes, in order (apps with an `ios` spec).
-fn ios_schemes(apps: &[SignerApp]) -> Vec<String> {
-    apps.iter()
-        .filter_map(|a| a.ios.as_ref().map(|s| s.url_scheme.clone()))
-        .collect()
-}
-
 /// Extract the substring between the first `open` and the next `close` marker,
 /// or `None` if either is absent. Used to scope scheme scanning to the relevant
 /// manifest `<queries>` / plist array block so unrelated schemes never match.
@@ -303,22 +289,6 @@ fn manifest_query_schemes(manifest: &str) -> Vec<String> {
     collect_attr_values(block, "android:scheme=\"")
 }
 
-/// All `<string>X</string>` values inside the `LSApplicationQueriesSchemes`
-/// array, in order.
-fn plist_query_schemes(plist: &str) -> Vec<String> {
-    let plist = strip_xml_comments(plist);
-    // The array opener is the `<array>` that follows the key. Scope to the key
-    // first so a different array elsewhere in the plist can't match.
-    let after_key = match plist.find("<key>LSApplicationQueriesSchemes</key>") {
-        Some(i) => &plist[i..],
-        None => return Vec::new(),
-    };
-    let block = match between(after_key, "<array>", "</array>") {
-        Some(b) => b,
-        None => return Vec::new(),
-    };
-    collect_tag_values(block, "<string>", "</string>")
-}
 
 /// Collect every double-quoted value following each occurrence of `attr` (e.g.
 /// `android:scheme="`), in order.
@@ -337,21 +307,6 @@ fn collect_attr_values(haystack: &str, attr: &str) -> Vec<String> {
     out
 }
 
-/// Collect every value between each `open`/`close` tag pair, in order.
-fn collect_tag_values(haystack: &str, open: &str, close: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut rest = haystack;
-    while let Some(i) = rest.find(open) {
-        let after = &rest[i + open.len()..];
-        if let Some(c) = after.find(close) {
-            out.push(after[..c].trim().to_string());
-            rest = &after[c + close.len()..];
-        } else {
-            break;
-        }
-    }
-    out
-}
 
 // ── Generate / check orchestration ────────────────────────────────────────────
 
@@ -412,13 +367,6 @@ pub fn check_signer_catalog(catalog_json: &str) -> Result<SignerCatalogCheckOutc
         &android_schemes(&apps),
         manifest_query_schemes,
         "AndroidManifest <queries> intent schemes",
-        &mut problems,
-    )?;
-    check_schemes(
-        IOS_PLIST,
-        &ios_schemes(&apps),
-        plist_query_schemes,
-        "Info.plist LSApplicationQueriesSchemes",
         &mut problems,
     )?;
 

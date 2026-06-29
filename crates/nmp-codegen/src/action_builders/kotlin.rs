@@ -40,7 +40,7 @@ const BUILTIN_HEADER: &str = "\
 //
 // Regenerate via:
 //   cargo run -p nmp-codegen -- gen action-builders --platform kotlin \\
-//       --out apps/chirp/android/app/src/main/java/org/nmp/android/ActionBuilders.kt
+//       --out <app>/src/main/java/<package>/ActionBuilders.kt
 //
 // Source of truth: `crates/nmp-codegen/src/action_builders/registry.rs`
 // (`ACTION_BUILDERS`). The CI gate (`.github/workflows/codegen-drift.yml`) fails
