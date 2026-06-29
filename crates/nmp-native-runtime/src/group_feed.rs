@@ -74,7 +74,7 @@ use crate::app_struct::NmpApp;
 mod types;
 pub use types::{
     Nip29GroupDiscoveryHandle, Nip29GroupDiscoverySession, Nip29GroupEventsHandle,
-    Nip29GroupEventsSession,
+    Nip29GroupEventsSession, Nip29JoinedGroupsHandle, Nip29JoinedGroupsSession,
 };
 
 /// `0` = `ActiveAccount` scope (re-route on account switch) — the joined-groups
@@ -275,18 +275,26 @@ impl NmpApp {
         self.close_group_feed_handle(&handle.key, handle.handle_id);
     }
 
-    /// Open the NIP-29 joined-groups read view for the active account.
+    /// Open the NIP-29 joined-groups typed read session for the active account.
     ///
     /// If `host_relay_url` is non-empty the projection is scoped to that host
     /// and the interest is pinned to it; otherwise the projection derives host
     /// identity from `KernelEvent.relay_provenance` and the interest is
     /// outbox-routed (no pin). Hydrating + `ActiveAccount`-scoped (re-routes on
     /// account switch). An empty `active_pubkey` is a no-op (D6). Singleton.
-    pub fn open_joined_groups(&self, active_pubkey: String, host_relay_url: String) {
-        let _ = self.open_joined_groups_with_reader(active_pubkey, host_relay_url);
+    ///
+    /// Returns `None` when `active_pubkey` is empty and no session was opened.
+    #[must_use]
+    pub fn open_nip29_joined_groups_session(
+        &self,
+        descriptor: Nip29JoinedGroupsSession,
+    ) -> Option<Nip29JoinedGroupsHandle> {
+        self.open_nip29_joined_groups_session_with_reader(descriptor)
+            .map(|(handle, _)| handle)
     }
 
-    /// Open joined groups and return the canonical projection reader.
+    /// Open a joined-groups typed read session and return the canonical
+    /// projection reader.
     ///
     /// This is the Rust-side app-composition API for hosts that need to fold
     /// active-account membership/admin truth into an app-owned projection. The
@@ -295,11 +303,14 @@ impl NmpApp {
     /// sidecar. Returns `None` when `active_pubkey` is empty and no view was
     /// opened.
     #[must_use]
-    pub fn open_joined_groups_with_reader(
+    pub fn open_nip29_joined_groups_session_with_reader(
         &self,
-        active_pubkey: String,
-        host_relay_url: String,
-    ) -> Option<Arc<JoinedGroupsProjection>> {
+        descriptor: Nip29JoinedGroupsSession,
+    ) -> Option<(Nip29JoinedGroupsHandle, Arc<JoinedGroupsProjection>)> {
+        let Nip29JoinedGroupsSession {
+            active_pubkey,
+            host_relay_url,
+        } = descriptor;
         if active_pubkey.is_empty() {
             return None;
         }
@@ -332,7 +343,7 @@ impl NmpApp {
             });
         };
 
-        self.open_group_feed(
+        let handle_id = self.open_group_feed(
             JOINED_GROUPS_KEY,
             JOINED_GROUPS_CONSUMER,
             SCOPE_ACTIVE_ACCOUNT,
@@ -341,13 +352,19 @@ impl NmpApp {
             projection as Arc<dyn nmp_core::ObservedProjectionSink>,
             register_sidecar,
         );
-        Some(projection_reader)
+        Some((
+            Nip29JoinedGroupsHandle {
+                key: JOINED_GROUPS_KEY.to_string(),
+                handle_id,
+            },
+            projection_reader,
+        ))
     }
 
-    /// Close the joined-groups read view opened by [`Self::open_joined_groups`].
+    /// Close the joined-groups typed read session represented by `handle`.
     /// Idempotent (D6).
-    pub fn close_joined_groups(&self) {
-        self.close_group_feed(JOINED_GROUPS_KEY);
+    pub fn close_nip29_joined_groups_session(&self, handle: Nip29JoinedGroupsHandle) {
+        self.close_group_feed_handle(&handle.key, handle.handle_id);
     }
 
     /// Shared open path for the three hydrating NIP-29 read views.

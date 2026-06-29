@@ -5,7 +5,7 @@
 //! fan-out of LIVE ingest. A view opened AFTER its events were accepted +
 //! cached hydrated live-only and silently dropped the cached tail.
 //!
-//! The fix: NIP-29 typed read sessions and `open_joined_groups` register the projection MUTED and route ingest through
+//! The fix: NIP-29 typed read sessions register the projection MUTED and route ingest through
 //! `open_observed_interest_pinned`, whose ADR-0062 read-cache replay delivers
 //! the matching cached events to the muted observer (matched by the `#h` /
 //! kind shapes built from the same wire filter) BEFORE activating it.

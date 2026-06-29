@@ -1,10 +1,11 @@
 //! NIP-29 joined-groups typed-projection sidecar proof
-//! (`NmpApp::open_joined_groups`, #2088).
+//! (`NmpApp::open_nip29_joined_groups_session`, #2088).
 
 mod common;
 
 use common::{boot, inject, raw_event, teardown, wait_for_typed, HOST, SERIAL};
 
+use nmp_native_runtime::Nip29JoinedGroupsSession;
 use nmp_nip29::{
     decode_joined_groups_snapshot, JOINED_GROUPS_FILE_IDENTIFIER, JOINED_GROUPS_SCHEMA_ID,
 };
@@ -16,7 +17,12 @@ fn joined_groups_typed_sidecar_round_trips_membership_and_admin_status() {
     let app = boot();
     let active = "a".repeat(64);
 
-    unsafe { (*app).open_joined_groups(active.clone(), HOST.to_string()) };
+    let _handle = unsafe {
+        (*app).open_nip29_joined_groups_session(Nip29JoinedGroupsSession::new(
+            active.clone(),
+            HOST.to_string(),
+        ))
+    };
 
     let meta = VerifiedEvent::from_raw_unchecked(raw_event(
         &"1".repeat(64),
@@ -106,7 +112,12 @@ fn joined_groups_sidecar_reflects_latest_relay_snapshot_only() {
     let app = boot();
     let active = "a".repeat(64);
 
-    unsafe { (*app).open_joined_groups(active.clone(), HOST.to_string()) };
+    let _handle = unsafe {
+        (*app).open_nip29_joined_groups_session(Nip29JoinedGroupsSession::new(
+            active.clone(),
+            HOST.to_string(),
+        ))
+    };
 
     let add_request = VerifiedEvent::from_raw_unchecked(raw_event(
         &"5".repeat(64),
@@ -164,7 +175,11 @@ fn joined_groups_reader_is_the_canonical_sidecar_projection() {
 
     let reader = unsafe {
         (*app)
-            .open_joined_groups_with_reader(active.clone(), HOST.to_string())
+            .open_nip29_joined_groups_session_with_reader(Nip29JoinedGroupsSession::new(
+                active.clone(),
+                HOST.to_string(),
+            ))
+            .map(|(_, reader)| reader)
             .expect("non-empty active pubkey opens a joined-groups reader")
     };
 

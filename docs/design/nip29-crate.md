@@ -71,7 +71,8 @@ hydrating view path.
 When an app-specific Rust projection needs to compose over group events,
 discovered groups, or joined groups, it must use the `nmp-ffi::group_feed`
 reader-returning open methods (`open_group_events_with_reader`,
-`open_group_discovery_with_reader`, `open_joined_groups_with_reader`). Those
+`open_group_discovery_with_reader`,
+`open_nip29_joined_groups_session_with_reader`). Those
 methods return the same projection instance that feeds the canonical typed
 sidecar, preserving one producer for each `nmp.nip29.*` projection key.
 
