@@ -43,7 +43,7 @@ implementation is injected at composition time.
 | 3 | Kernel substrate contracts and actor state | `nmp-core`, `nmp-coverage-gate` |
 | 4 | Reusable Nostr protocol/product modules | `nmp-nip01`, `nmp-nip02`, `nmp-nip17`, `nmp-nip18`, `nmp-nip29`, `nmp-nip42`, `nmp-nip47`, `nmp-nip51`, `nmp-nip57`, `nmp-nip60`, `nmp-nip77`, `nmp-nwc`, `nmp-marmot`, `nmp-relations`, `nmp-threading`, `nmp-feed`, `nmp-wot`, `nmp-content`, `nmp-content-fixtures` |
 | 5 | App composition | `nmp-defaults`, `apps/<app>/...` Rust crates |
-| 6 | Platform runtimes, bindings, and deliverables | `nmp-native-runtime`, `nmp-ffi`, `nmp-android-ffi`, `nmp-browser-runtime` |
+| 6 | Platform runtimes, bindings, and deliverables | `nmp-native-runtime`, `nmp-uniffi`, `nmp-browser-runtime`, app-owned delivery crates |
 | Sidecars | Tooling, tests, diagnostics | `nmp-cli`, `nmp-codegen`, `nmp-testing`, app shells |
 
 Sibling crates do not depend on each other unless the dependency is part of
@@ -339,13 +339,10 @@ relay default to inherit silently. The native `NmpAppBuilder` belongs to
 
 App crates under `apps/<app>/` compose `nmp-defaults` plus app-specific
 state **and own all operator policy** (relays, seed follows, signer perms).
-They may expose app-specific FFI helpers only for kernel-shaped observer,
-projection, opaque-handle, or lifecycle seams — including thin wrappers that
-inject the app's own operator policy into a generic command (e.g.
-`nmp_app_chirp_create_new_account` threading `chirp_default_follows` into
-`ActorCommand::CreateAccount`, mirroring `nmp_app_chirp_seed_default_relays`).
-Mutating product behavior should flow through registered actions or protocol
-commands.
+They may expose app-specific delivery helpers only for kernel-shaped observer,
+projection, opaque-handle, or lifecycle seams. Those helpers are app-owned glue,
+not reusable framework ABI. Mutating product behavior should flow through
+registered actions or protocol commands.
 
 Native platform shells render Rust-owned state and execute capabilities only;
 they never carry operator policy (relay URLs, seed pubkeys) — that originates
@@ -360,40 +357,40 @@ ref/dependent-interest lifecycles.
 
 ## 10. Binding Crates
 
-`nmp-native-runtime`, `nmp-browser-runtime`, `nmp-ffi`, and `nmp-android-ffi`
-are delivery surfaces. Runtime adapter crates own platform runtime lifecycle
-and typed builders; ABI-glue binding crates own ABI shape, pointer or byte
-conversion, panic guards, callbacks, lifecycle handle exposure, and
-platform-specific bridge mechanics. (`nmp-wasm` was deleted in #2202 — it was a
-dead parallel browser runtime with zero live dependents; its protocol types are
-now owned by `nmp-browser-runtime`.) These crates do not own business policy,
-app defaults, or example-app namespaces unless they are explicitly app-owned
-delivery crates.
+`nmp-native-runtime`, `nmp-uniffi`, and `nmp-browser-runtime` are the reusable
+framework delivery surfaces. Runtime adapter crates own platform runtime
+lifecycle and typed builders; binding crates own binding shape, byte conversion,
+panic guards, callbacks, lifecycle handle exposure, and platform-specific bridge
+mechanics. (`nmp-wasm` was deleted in #2202 — it was a dead parallel browser
+runtime with zero live dependents; its protocol types are now owned by
+`nmp-browser-runtime`.) These crates do not own business policy, app defaults, or
+example-app namespaces unless they are explicitly app-owned delivery crates.
 
-Native target split (#2205/#2209):
+Native target split (#2205/#2209, amended by M14):
 
 - `nmp-native-runtime` is the native platform runtime adapter. It owns the
   native `NmpApp`/handle type, actor-thread lifecycle, native runtime slots,
   session registries, native Rust APIs, and the native typestate builder
   (`NmpAppBuilder` / `RunConfig`). It composes `nmp-defaults` like a leaf app
   runtime.
-- `nmp-ffi` is a C ABI shell over `nmp-native-runtime`. It owns `extern "C"`
-  symbols, opaque pointers, C strings, panic guards, callback registration
-  glue, and C-compatible allocation/freeing only.
-- `nmp-android-ffi` is JNI/Android delivery glue over the same native runtime
-  APIs for lanes not served by UniFFI.
+- `nmp-uniffi` is the one public native binding surface for iOS, Android, and
+  desktop native hosts. It exposes the runtime object model, typed records,
+  callbacks, and FlatBuffers byte payload doorways through generated bindings.
+- App-owned delivery crates may keep local C/JNI glue for app-specific adapters
+  such as Gallery, but that glue is not reusable framework API and must not
+  revive deleted framework symbols.
 
 `nmp-browser-runtime` is the browser composition-root delivery surface
 described in §10a. It owns the wasm-bindgen Worker export
 (`nmp-browser-runtime::wasm` is the sole browser ABI glue) and the serializable
 browser Worker protocol types.
 
-The pre-v1 ABI surface is governed, not compatibility-frozen. Net-new
-`nmp_app_*` symbols require an ADR or an accepted GitHub issue that explicitly
-explains why the generic action, projection, or capability seam is insufficient.
-Renames and deletions that collapse legacy wrappers, dead parameters, app-named
-generic surfaces, or duplicate paths are preferred over compatibility aliases.
-Temporary retention requires a staged GitHub issue with a deletion gate.
+The pre-v1 binding surface is governed, not compatibility-frozen. Net-new
+framework native APIs target UniFFI, not raw exported C/JNI symbols. Renames and
+deletions that collapse legacy wrappers, dead parameters, app-named generic
+surfaces, or duplicate paths are preferred over compatibility aliases. Temporary
+retention of app-owned raw glue requires a staged GitHub issue with a deletion
+gate when it affects reusable framework behavior.
 
 ---
 

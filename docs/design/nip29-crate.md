@@ -58,23 +58,20 @@ views to open and which actions to expose.
 | Surface | Current implementation | Notes |
 |---|---|---|
 | Typed group identity | `GroupId { host_relay_url, local_id }` plus the host-pinned `group_metadata_filter_json` builder. Kind policy lives on the consumer, not on `GroupId`: a `GroupEventsQuery { group, kinds }` (with `GroupEventKinds::{All, Specific}`) builds the group read filter via `GroupEventsQuery::filter_json`. | Every read/write path carries the host relay explicitly; a bare `h` value is never enough to identify a group. NIP-29 owns only the `["h", local_id]` routing; the consumer declares which kinds it wants (issue #2187). |
-| Read projections | `GroupEventsProjection` (consumer-parameterized by group + kind set), `DiscoveredGroupsProjection`, `JoinedGroupsProjection`, and `GroupDefaultsProjection` | Per-open read views are hydrated through observed interests from `nmp-ffi::group_feed`; the default snapshot is registered directly by `wire_group_defaults*`. A chat view is a consumer that opens `GroupEventsProjection` with kinds `[9, 11]`. |
+| Read projections | `GroupEventsProjection` (consumer-parameterized by group + kind set), `DiscoveredGroupsProjection`, `JoinedGroupsProjection`, and `GroupDefaultsProjection` | Per-open read views are hydrated through typed group sessions in the native/browser runtimes; the default snapshot is registered directly by `wire_group_defaults*`. A chat view is a consumer that opens `GroupEventsProjection` with kinds `[9, 11]`. |
 | Actions | `register_actions` installs the supported NIP-29 write actions with the app action registrar | Writes remain protocol-owned and host-pinned; the app shell does not derive relay routing from UI state. |
 | Small protocol caches/helpers | `RecentGroupEvents`, `JoinedHostsCache`, input-scope recognizers, and previous-tag helpers | These are protocol-internal helpers; durable app read state is exposed through projections and snapshot sidecars. |
 
-The app-side composition in `nmp-ffi::group_feed` registers a projection muted,
-opens a host-pinned observed interest, replays matching cached events, then
-activates the projection. That is the current read-model contract for
-late-opened NIP-29 views; a plain active event observer is not a valid
-hydrating view path.
+The app-side typed group session registers a projection muted, opens a
+host-pinned observed interest, replays matching cached events, then activates
+the projection. That is the current read-model contract for late-opened NIP-29
+views; a plain active event observer is not a valid hydrating view path.
 
 When an app-specific Rust projection needs to compose over group events,
-discovered groups, or joined groups, it must use the `nmp-ffi::group_feed`
-reader-returning open methods (`open_group_events_with_reader`,
-`open_group_discovery_with_reader`,
-`open_nip29_joined_groups_session_with_reader`). Those
-methods return the same projection instance that feeds the canonical typed
-sidecar, preserving one producer for each `nmp.nip29.*` projection key.
+discovered groups, or joined groups, it must use the typed session reader path
+for group events, group discovery, or joined groups. Those methods return the
+same projection instance that feeds the canonical typed sidecar, preserving one
+producer for each `nmp.nip29.*` projection key.
 
 ### 3.1 What `nmp-nip29` does **not** ship
 

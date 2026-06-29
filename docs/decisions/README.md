@@ -106,7 +106,7 @@ That document is the narrative companion to this ADR spine.
 | 0027 | Current | Unified `ActionModule` trait survives. |
 | 0028 | Folded | Liveness probe is FFI/diagnostic surface detail. |
 | 0029 | Current | Actor queue observability/backpressure survives. |
-| 0030 | Current | UniFFI/C-ABI split remains binding guidance, amended by ADR-0072. |
+| 0030 | Current | UniFFI native binding plus FlatBuffers byte transport remains binding guidance, amended by ADR-0072. |
 | 0031 | Retired | `nmp-signer-broker` was deleted; NIP-46 uses actor-lane runtime. |
 | 0032 | Current | Raw semantic data to shells remains doctrine. |
 | 0033 | Folded | Feed viewport mechanics survive behind ADR-0070 sessions. |

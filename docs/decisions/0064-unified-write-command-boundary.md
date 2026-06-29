@@ -89,9 +89,9 @@ it is to push **typing to a generated layer above one open transport**.
   **Rejected** — compile-time exhaustive but *closes* the command set: a NIP crate
   could not add a write without editing the central enum, violating D0 and the open
   seam.
-- **N real typed C symbols** (`nmp_publish`, `nmp_react`, …). **Rejected** — every
-  symbol must be hand-bound per host (Swift/Kotlin/wasm) and breaks the C-ABI
-  doorway; adding a NIP becomes an FFI-surface change.
+- **N real typed native exports** (`publish`, `react`, ...). **Rejected** —
+  every export must be hand-bound per host (Swift/Kotlin/wasm); adding a NIP
+  becomes a binding-surface change.
 
 ---
 
@@ -101,8 +101,7 @@ it is to push **typing to a generated layer above one open transport**.
 
 The write path is a single, action-agnostic doorway carrying FlatBuffers bytes:
 
-- **Native:** `nmp_app_dispatch_action_bytes(app, ptr, len) -> accepted_or_error`
-  (returns the correlation id or a data-shaped error — D6, no `Result` across FFI).
+- **Native:** UniFFI `NmpApp::dispatch_action(bytes) -> DispatchOutcome`.
 - **Wasm:** `WorkerRequest::DispatchBytes { bytes }`.
 
 There is exactly one event-producing write doorway on each boundary.
@@ -227,9 +226,9 @@ CI gates (extending `rust-flatc-drift` and the doctrine lint) enforce:
 
 ## Implementation State
 
-As of 2026-06-25, the production binding transport is settled:
+As of 2026-06-29, the production binding transport is settled:
 
-1. Native app writes use `nmp_app_dispatch_action_bytes`; wasm app writes use
+1. Native app writes use UniFFI `NmpApp::dispatch_action`; wasm app writes use
    `dispatch_bytes` / `handle_dispatch_bytes`. Both carry the same
    `DispatchEnvelope` bytes and decode through the same Rust envelope path.
 2. Release builds expose the byte dispatch transport as the binding write path.

@@ -209,12 +209,11 @@ The repository is a Cargo workspace plus per-platform shells. The layout below i
 │   └── <framework>-cli          # Scaffolding tool.
 ├── bindings/
 │   ├── swift/                   # Generated Swift bindings, checked in.
-│   │                              # TODAY: hand-mirrored Decodables in
-│   │                              # KernelBridge.swift; nmp-codegen Swift
-│   │                              # emitter is the planned replacement
-│   │                              # (ADR-0030 §(b)). UniFFI deferred to M14.
+│   │                              # UniFFI native bindings plus generated
+│   │                              # FlatBuffers decoders/action builders.
 │   ├── kotlin/                  # Generated Kotlin bindings, checked in.
-│   │                              # Same pattern as Swift; not yet wired.
+│   │                              # UniFFI native bindings plus generated
+│   │                              # FlatBuffers decoders/action builders.
 │   └── typescript/              # Generated wasm-bindgen TS, checked in.
 ├── examples/
 │   ├── chat-ios/

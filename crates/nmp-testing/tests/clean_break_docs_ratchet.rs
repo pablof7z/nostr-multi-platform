@@ -7,6 +7,9 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+#[path = "clean_break_docs_ratchet/raw_abi.rs"]
+mod raw_abi;
+
 type Pattern = (&'static str, &'static str, &'static str);
 type Allow = (&'static str, &'static str, &'static str, &'static str);
 
@@ -135,6 +138,26 @@ const CLEAN_ROOM_INPUTS: &[&str] = &[
 ];
 
 const CLEAN_ROOM_FORBIDDEN: &[Pattern] = &[
+    (
+        "nmp-ffi",
+        "raw_native_crate",
+        "clean-room docs must route native app developers to UniFFI, not the deleted framework C ABI crate",
+    ),
+    (
+        "nmp_ffi",
+        "raw_native_crate",
+        "clean-room docs must route native app developers to UniFFI, not the deleted framework C ABI crate",
+    ),
+    (
+        "nmp-android-ffi",
+        "raw_native_crate",
+        "clean-room docs must route native app developers to UniFFI, not the deleted framework JNI crate",
+    ),
+    (
+        "NmpCore.h",
+        "raw_native_header",
+        "clean-room docs must route native app developers to generated UniFFI bindings, not raw C headers",
+    ),
     (
         "raw C/JNI",
         "raw_native_binding",
@@ -445,8 +468,9 @@ fn production_docs_do_not_grow_old_app_facing_architecture_vocabulary() {
     let mut violations = Vec::new();
     for file in files {
         let rel = rel_path(&root, &file);
-        let text = std::fs::read_to_string(&file)
-            .unwrap_or_else(|err| panic!("read {}: {err}", file.display()));
+        let bytes =
+            std::fs::read(&file).unwrap_or_else(|err| panic!("read {}: {err}", file.display()));
+        let text = String::from_utf8_lossy(&bytes);
         for (line_idx, line) in text.lines().enumerate() {
             for &(token, label, guidance) in PATTERNS {
                 if token_matches(line, token) && allowed(&rel, token, line).is_none() {

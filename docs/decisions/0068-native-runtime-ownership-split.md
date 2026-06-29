@@ -1,13 +1,14 @@
-# ADR-0068 — Native runtime ownership split (nmp-ffi is C ABI glue)
+# ADR-0068 — Native runtime ownership split
 
-- **Status:** Accepted; amended by ADR-0069 and ADR-0072
+- **Status:** Accepted; amended by ADR-0069, ADR-0072, and M14 clean-break UniFFI collapse
 - **Date:** 2026-06-28
 - **Relates to:** ADR-0030 (UniFFI vs C-ABI), ADR-0046 (composition is a library), ADR-0067 (browser runtime split), #2205, #2209
 
-**Current disposition:** the native runtime ownership split survives. ADR-0069
-narrows composition: `nmp-defaults` is reusable explicit composition, not hidden
-production app policy. ADR-0072 keeps `nmp-ffi` as ABI glue only; native shells
-render, execute capabilities, and hold ephemeral presentation state.
+**Current disposition:** the native runtime ownership split survives, but the
+old reusable C ABI shell is historical. ADR-0069 narrows composition:
+`nmp-defaults` is reusable explicit composition, not hidden production app
+policy. ADR-0072 and M14 make `nmp-uniffi` the public native binding; native
+shells render, execute capabilities, and hold ephemeral presentation state.
 
 ## Context
 
@@ -37,12 +38,13 @@ for browser apps:
    (`NmpAppBuilder` / `RunConfig`). It composes `nmp-defaults` like a leaf app
    runtime.
 
-3. **`nmp-ffi` is the C ABI delivery shell only.** It owns `extern "C"` symbols,
-   opaque pointer conversion, C strings, panic guards, callback registration
-   glue, and C-compatible allocation/freeing. It calls into
-   `nmp-native-runtime`; it does not own routing, signing policy, NIP modules,
-   protocol defaults, app defaults, projection policy, persistence policy,
-   retry policy, session semantics, or account state.
+3. **Binding shells do not own runtime policy.** The accepted split originally
+   constrained the reusable C ABI shell to pointer/string/callback glue only.
+   M14 deleted that reusable framework shell as a public app path. The surviving
+   rule is that `nmp-uniffi` exposes `nmp-native-runtime` to native hosts and no
+   binding shell owns routing, signing policy, NIP modules, protocol defaults,
+   app defaults, projection policy, persistence policy, retry policy, session
+   semantics, or account state.
 
 `nmp-browser-runtime` remains the browser analogue: it owns the browser runtime
 adapter, wasm-bindgen Worker export, and the wasm-bindgen ABI glue
@@ -51,10 +53,11 @@ adapter, wasm-bindgen Worker export, and the wasm-bindgen ABI glue
 
 ## Landed State
 
-#2210-#2214 landed the split described here. The live tree has
-`nmp-native-runtime` as the native runtime owner, `nmp-ffi` as the C ABI shell,
-and `nmp-defaults` as pure `AppHost` composition. This landed state is the
-precedent; the old `nmp-ffi` runtime ownership must not be recreated.
+#2210-#2214 landed the split described here. The current live tree has
+`nmp-native-runtime` as the native runtime owner, `nmp-uniffi` as the public
+native binding, and `nmp-defaults` as pure `AppHost` composition. This landed
+state is the precedent; the old raw binding crate's runtime ownership must not
+be recreated.
 
 Release sequencing and v1 gating are tactical queue state and stay in GitHub
 Issues (#2205 and #2121). This ADR owns the durable crate-boundary rule.
@@ -65,7 +68,7 @@ Issues (#2205 and #2121). This ADR owns the durable crate-boundary rule.
   runtime entry point.
 - `nmp-defaults` must be usable by native and browser runtimes without depending
   on either runtime.
-- `nmp-ffi` can keep C ABI compatibility only by delegating to runtime APIs; it
-  cannot preserve old crate paths as a reason to retain runtime ownership.
-- Boundary gates catch restored `nmp-defaults -> nmp-ffi` dependencies and
-  restored `nmp-ffi` runtime/session ownership.
+- Deleted raw binding crate paths cannot be preserved as a reason to retain or
+  recreate runtime ownership.
+- Boundary gates catch restored `nmp-defaults -> raw binding crate` dependencies
+  and restored raw binding runtime/session ownership.

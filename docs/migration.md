@@ -16,8 +16,8 @@ The v1 split is:
 | `nmp-defaults` | Pure Layer-5 `AppHost` composition: default NMP modules, routing, planners, registrars, and runtime handles returned to app cores when needed. | Platform runtime handles, C ABI symbols, operator policy, app defaults. |
 | `nmp-native-runtime` | Native runtime handle, actor lifecycle, native typestate builder, runtime slots, pre-start configuration, and native Rust APIs. | C ABI conversion or app/product policy. |
 | `nmp-uniffi` | Public native binding surface over the native runtime: lifecycle object, callbacks/sinks, typed dispatch bytes, typed read-session helpers, diagnostics, and generated Swift/Kotlin bindings. | Runtime ownership, composition policy, protocol logic, hot snapshot payload format. |
-| `nmp-ffi` / `nmp-android-ffi` | Legacy/internal C and JNI compatibility shims where still required below the public native API. | New app setup guidance, runtime ownership, composition policy, protocol logic. |
 | `nmp-browser-runtime` | Browser Worker runtime, wasm-bindgen export, wasm-bindgen ABI glue (`nmp-browser-runtime::wasm`), browser typestate builder, storage/signing/capability provider registration. | UI rendering, TypeScript crypto fallbacks, protocol policy. |
+| App-owned delivery glue | Local shell adapters such as Gallery-specific C/JNI helpers when a concrete app still needs them. | Reusable framework API, starter setup guidance, runtime ownership, protocol logic. |
 
 App shells remain thin. They render snapshots, execute platform capabilities,
 and hold only ephemeral presentation state. Rust owns protocol behavior, durable
@@ -25,7 +25,7 @@ state, routing, signing policy, and projection derivation.
 
 ## Native Runtime Split
 
-Before, examples often treated `nmp-defaults` or `nmp-ffi` as the native
+Before, examples often treated `nmp-defaults` or the deleted raw C ABI shell as the native
 runtime owner:
 
 ```rust
@@ -60,10 +60,8 @@ let app = NmpAppBuilder::new()
 ```
 
 Swift and Kotlin callers should use generated UniFFI bindings over the native
-runtime. The Rust headless example may still exercise raw compatibility symbols
-for start/stop/free while the remaining migration issues drain, but that is not
-the public app setup path. New native runtime behavior belongs in
-`nmp-native-runtime`; binding crates only expose and marshal it.
+runtime. New native runtime behavior belongs in `nmp-native-runtime`; binding
+crates only expose and marshal it.
 
 ## Defaults Composition
 
@@ -292,7 +290,7 @@ component package.
   `nmp-native-runtime` for native Rust hosts, or `BrowserAppBuilder` /
   `NmpWasmRuntime` from `nmp-browser-runtime` for browser hosts.
 - Swift/Kotlin app shells consume generated UniFFI bindings over the native
-  runtime; raw C/JNI compatibility symbols are not the starter setup path.
+  runtime; raw C/JNI symbols are not the starter setup path.
 - `nmp-defaults` is called as pure composition through `AppHost`; no app copies
   default wiring blocks.
 - App/operator policy stays in the leaf app Rust crate or config, not in

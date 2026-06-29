@@ -235,9 +235,9 @@ No `Result<T,E>` crosses the boundary (D6) — failures arrive as data inside
 the snapshot or as capability envelopes. The hot update transport is a single
 canonical FlatBuffers schema: `UpdateFrame` carries snapshot envelopes and typed
 projection rows. UniFFI is the public native binding for lifecycle, actions,
-callbacks, and capability objects; wasm-bindgen is the browser binding. Any
-remaining legacy native symbols are transitional/internal compatibility and are not
-starter-app API (see [15](15-codegen-and-ffi.md)).
+callbacks, and capability objects; wasm-bindgen is the browser binding. App-owned
+raw glue is delivery-specific and is not starter-app API (see
+[15](15-codegen-and-ffi.md)).
 
 ## "Where does X live?" — concrete map
 
