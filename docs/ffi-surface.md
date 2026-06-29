@@ -111,7 +111,7 @@ not part of the production surface.
 | `nmp_app_dispatch_action_bytes` | `(app, ptr: *const u8, len: usize) -> *mut c_char` | Validate a `DispatchEnvelope`, route by action namespace, and enqueue a typed app/protocol action. Returns `{"correlation_id":...}` or `{"error":...}`; caller frees with `nmp_free_string`. | Chirp, TUI, Android, protocol/app modules | non-null app never returns NULL; invalid input returns error JSON | D7-clean: shell transports action data, Rust owns execution policy |
 | `nmp_app_ack_action_stage` | `(app, correlation_id: *const c_char)` | Acknowledge a terminal `action_stages` entry after the host has reacted to it. | Chirp/TUI action UIs | invalid → early return | n/a |
 | `nmp_app_retry_publish` | `(app, handle: *const c_char)` | Retry a failed publish by publish handle. Control-plane symbol; content publish actions still go through the byte action doorway. | Chirp/TUI publish UI | invalid → early return | n/a |
-| `nmp_app_cancel_publish` | `(app, handle: *const c_char)` | Cancel an in-flight publish by publish handle. Control-plane symbol; content publish actions still go through the byte action doorway. | Chirp/TUI publish UI | invalid → early return | n/a |
+| `nmp_app_cancel_action` | `(app, correlation_id: *const c_char)` | Cancel an in-flight action by host-supplied `correlation_id`. The kernel reverse-resolves the publish handle so the `Cancelled` terminal lands under the original correlation_id (PD-036). (`nmp_app_cancel_publish` is deleted.) | Chirp/TUI publish UI | invalid → early return | n/a |
 | `nmp_app_signin_nsec` | `(app, secret: *const c_char, make_active: u8)` | Register a raw nsec signer. `make_active != 0` makes it the active account; `0` registers a secondary signer. | Chirp, TUI, Android, tests | invalid → early return | n/a |
 | `nmp_app_register_agent_nsec` | `(app, secret: *const c_char)` | Register a persisted app-managed local signer. It is signable by explicit pubkey but hidden from account projections and rejected by active-account switching. | App/protocol modules with app-owned keys | invalid → early return | D7-clean: shell imports key bytes once; Rust owns role, persistence, and signing policy |
 | `nmp_app_signin_bunker` | `(app, uri: *const c_char, make_active: u8)` | Initiate NIP-46 bunker connect via `uri`; the `make_active` flag is carried through the async handshake. Driven by the NIP-46 actor-lane runtime over the shared relay lane when `nmp_signer_broker_init` was called. | Chirp, TUI, Android | invalid → early return | n/a |
@@ -157,9 +157,6 @@ are fire-and-forget dispatches that cause subsequent snapshot emissions.
 |---|---|---|---|---|---|
 | `nmp_app_load_older_feed` | `(app, key: *const c_char)` | Viewport command for an already-registered feed controller. The host reports "load older" by projection/feed key; Rust owns paging policy and appends through the normal snapshot/projection path. | feed views | invalid key → no-op | D7-clean: shell reports viewport intent; Rust owns page policy |
 | `nmp_app_open_uri` | `(app, uri: *const c_char)` | Route a `nostr:` URI or bare NIP-19 entity. Kernel resolves the entity and pushes `ViewOpened` or `UriRejected` via snapshot. T80/T95. | declared in `NmpCore.h`; no Chirp UI caller today | null/invalid → silent no-op | D7-clean: kernel decides routing |
-| `nmp_app_claim_profile` | `(app, pubkey: *const c_char, consumer_id: *const c_char, force: int, liveness: int)` | Increment refcount for a profile (kind:0) interest. Kernel registers a kind:0 `LogicalInterest` and emits metadata while any consumer holds a claim. `force != 0` bypasses the TTL freshness gate. `liveness`: `0` = CacheOk (serve from cache; OneShot fetch on miss; no live sub), non-zero = Live (Tailing kind:0 sub for reactive profile edits). Mixed claims on one pubkey resolve to Tailing. Validates hex pubkey. | Chirp | any invalid arg → early return | n/a |
-| `nmp_app_release_profile` | `(app, pubkey: *const c_char, consumer_id: *const c_char)` | Decrement refcount. When refcount reaches zero, kernel stops fetching. Validates hex pubkey. | Chirp | any invalid arg → early return | n/a |
-
 V-68 / V-112 (ADR-0042): `nmp_app_open_author`, `nmp_app_close_author`,
 `nmp_app_open_thread`, and `nmp_app_close_thread` were **removed** (BREAKING,
 v0.3.1). Author/thread feed sessions go through Rust `NmpApp::open_feed` with
@@ -171,7 +168,10 @@ whole session.
 SLICE-NS-READ-001: public C feed open/close was retired. App/staticlib Rust
 composition owns typed feed-session open/close helpers; native shells keep only
 rendering/progress commands such as `nmp_app_load_older_feed`.
-Profile hydration uses `nmp_app_claim_profile`.
+
+> **DELETED:** `nmp_app_claim_profile` and `nmp_app_release_profile` are removed.
+> Profile hydration uses the typed resolve-ref surface (`nmp_app_resolve_profile_ref` /
+> `nmp_app_release_profile_ref`) documented in §7.
 
 ---
 
@@ -179,13 +179,15 @@ Profile hydration uses `nmp_app_claim_profile`.
 
 Lazy TTL re-verification for replaceable Nostr events (kind:0 profiles, kind:10002 mailboxes, parameterized replaceables). The kernel automatically tracks when each replaceable should be re-fetched based on kind-specific TTLs. Force-refresh is exposed as a `force` argument on the existing claim functions (see §6) — **not** a standalone symbol.
 
-There is no dedicated F-TTL symbol. `nmp_app_claim_profile` carries a trailing `force: int`; `nmp_app_resolve_ref` uses `shape: int` (projection selector) instead — force-refresh does not apply to immutable event keys and is implicit for addressable ones via the TTL gate:
+There is no dedicated F-TTL symbol. Profile freshness uses `nmp_app_resolve_profile_ref` (see §7); `nmp_app_resolve_ref` uses `shape: int` (projection selector) — force-refresh does not apply to immutable event keys and is implicit for addressable ones via the TTL gate:
+
+> **DELETED:** `nmp_app_claim_profile` is removed. Profile resolution is now through
+> `nmp_app_resolve_profile_ref` / `nmp_app_release_profile_ref` (§7).
 
 | Symbol | Signature | Behavior | Callers | D6 | D7 |
 |---|---|---|---|---|---|
-| `nmp_app_claim_profile` | `(app, pubkey: *const c_char, consumer_id: *const c_char, force: int, liveness: int)` | Refcount a kind:0 profile claim via the registry chokepoint. When the profile is cached, run the TTL freshness gate: re-verify only if `check_again_after` has elapsed (`force == 0`) or unconditionally (`force != 0`, profile screen / pull-to-refresh). `liveness`: `0` = CacheOk (feed avatars — OneShot fetch on miss, no live sub), non-zero = Live (profile screen — Tailing kind:0 sub, reactive edits). | Chirp (avatars: force=0/liveness=0; profile screen: liveness=1) | non-hex pubkey → early return | n/a |
-| `nmp_app_resolve_ref` / `nmp_app_resolve_ref_with_metadata` (namespace=1/event) | Bare: `(app, namespace: int, key: *const c_char, consumer_id: *const c_char, shape: int, liveness: int)`. Metadata variant adds `metadata_json: *const c_char`. | Refcount a raw event-key claim (namespace=1). `key` is a lowercase 64-hex event-id (`nevent`/`note`), `"kind:pubkey:d"` coordinate (`naddr`), or `"i:<external-id>"` NIP-73 external ref — **not** a `nostr:` URI. `shape`: `2`=event.embed, `3`=event.raw. App-owned URI adapters call the metadata variant after decoding NIP-19/NIP-21 so relay TLVs (`{"hints":[...]}`) and nevent author TLV (`{"author":"<hex>"}`) seed the same raw-key resolver. For cached `naddr` (addressable) identities, run the TTL gate as above; for immutable event-id keys `shape` selects the projection but there is no TTL record. | Chirp embed sink (shape=2) | unparseable key, malformed metadata, or unknown shape/namespace → early return | n/a |
-| `nmp_app_release_ref` (namespace=1/event) | `(app, namespace: int, key: *const c_char, consumer_id: *const c_char)` | Release a previously claimed event-key reference (namespace=1). `key` must match exactly what was passed to `nmp_app_resolve_ref`. Kernel decrements the per-consumer refcount and drops the row when no consumers remain. | Chirp embed sink | invalid args → early return | n/a |
+| `nmp_app_resolve_ref` / `nmp_app_resolve_ref_with_metadata` (namespace=1/event) | Bare: `(app, namespace: int, key: *const c_char, consumer_id: *const c_char, shape: int, liveness: int)`. Metadata variant adds `metadata_json: *const c_char`. | Refcount a raw event-key claim (namespace=1). `key` is a lowercase 64-hex event-id (`nevent`/`note`), `"kind:pubkey:d"` coordinate (`naddr`), or `"i:<external-id>"` NIP-73 external ref — **not** a `nostr:` URI. `shape`: `2`=event.embed, `3`=event.raw. App-owned URI adapters call the metadata variant after decoding NIP-19/NIP-21 so relay TLVs (`{"hints":[...]}`) and nevent author TLV (`{"author":"<hex>"}`) seed the same raw-key resolver. For cached `naddr` (addressable) identities, run the TTL gate as above; for immutable event-id keys `shape` selects the projection but there is no TTL record. | gallery, embed sinks (shape=2) | unparseable key, malformed metadata, or unknown shape/namespace → early return | n/a |
+| `nmp_app_release_ref` (namespace=1/event) | `(app, namespace: int, key: *const c_char, consumer_id: *const c_char)` | Release a previously claimed event-key reference (namespace=1). `key` must match exactly what was passed to `nmp_app_resolve_ref`. Kernel decrements the per-consumer refcount and drops the row when no consumers remain. | gallery, embed sinks | invalid args → early return | n/a |
 
 **Note:** force-refresh replaces the removed `nmp_app_refresh_replaceable` symbol (ADR-0041). `force != 0` is semantically "treat `check_again_after` as 0 for this claim", driving an immediate re-verification REQ. TTL management is otherwise transparent: the framework auto-re-verifies after kind-specific timeouts (default: kind:0 = 1h, kind:10002 = 6h).
 
@@ -193,16 +195,14 @@ See also: `docs/design/replaceable-freshness.md` (F-TTL design + lifecycle).
 
 ---
 
-## 8. NIP-47 Wallet Connect (`ffi/wallet.rs`)
+## 8. NIP-47 Wallet Connect
 
-All fire-and-forget. Outcomes surface via snapshot `wallet_status` and
-`last_error_toast` fields.
-
-| Symbol | Signature | Behavior | Callers | D6 | D7 |
-|---|---|---|---|---|---|
-| `nmp_app_wallet_connect` | `(app, uri: *const c_char)` | Parse a `nostr+walletconnect://` URI, subscribe for kind:23195 responses, send initial `get_info` + `get_balance`. Replaces any existing connection. | Chirp | invalid → early return | D7-clean: caller passes URI, kernel decides protocol |
-| `nmp_app_wallet_disconnect` | `(app)` | Send CLOSE to NWC relay, clear wallet state. | Chirp | null → early return | n/a |
-| `nmp_app_wallet_pay_invoice` | `(app, bolt11: *const c_char, amount_msats_json: *const c_char)` | Pay a BOLT-11 invoice. `amount_msats_json` NULL uses the invoice's embedded amount. | Chirp | null/invalid bolt11 → early return | D7-clean: payment amount policy stays with caller's intent |
+> **DELETED (2026-06-29 inventory, #2387):** `nmp_app_wallet_connect`,
+> `nmp_app_wallet_disconnect`, and `nmp_app_wallet_pay_invoice` (and
+> `ffi/wallet.rs`) have been removed. NIP-47 wallet actions now go through the
+> typed byte action doorway (`nmp_app_dispatch_action_bytes` with `nmp.wallet.*`
+> namespaces) after the host registers modules from `nmp-nip47`. See
+> `nmp-nip47/src/action/mod.rs` for the current action-based interface.
 
 ---
 
@@ -213,13 +213,17 @@ No `_drop` or `_cancel` symbols exist outside that module.
 
 ---
 
-## 10. Diagnostics
+## 10. Diagnostics (`nmp-ffi/src/debug_info.rs`)
 
-No dedicated diagnostic FFI symbols exist. Telemetry for the diagnostics screen
-rides on the standard update-callback FlatBuffers frame: the snapshot envelope
-and typed projection sidecars include relay connection state, NIP-77 reconciler
-counters, publish queue, and profile interest refcounts. No separate diag entry
-point.
+`nmp_app_debug_info(app, domain: c_int) -> *mut c_char` — unified pull accessor
+(#1726). `domain 0` = routing trace, `domain 1` = composition report,
+`domain 2` = both merged. Unknown domain → `{}`. Never NULL for non-null app.
+Caller frees with `nmp_free_string`. Replaces the former split symbols
+`nmp_app_recent_routing_decisions` and `nmp_app_composition_report`.
+
+Telemetry for the diagnostics screen also rides the standard update-callback
+FlatBuffers frame (relay connection state, NIP-77 reconciler counters, publish
+queue, profile interest refcounts).
 
 ---
 
@@ -237,7 +241,15 @@ constructs a `VerifiedEvent` only via `try_from_raw` (full Schnorr + id-hash);
 
 ---
 
-## 12. Android JNI shim (`nmp-android-ffi/src/lib.rs`)
+## 12. Android JNI shim
+
+> **Updated (#2387 inventory, 2026-06-29):** `nmp-android-ffi` no longer exists
+> as a standalone crate. The in-tree Android JNI live in
+> `apps/nmp-gallery/crates/nmp-app-gallery/src/android/` (feature
+> `android-ffi`), serving the NmpGallery app. These are **app-owned** symbols,
+> not a framework binding. The `Java_org_nmp_gallery_bridge_KernelBridge_*`
+> symbols map directly to `nmp_app_*` functions from `nmp_ffi` plus
+> gallery-specific adapters.
 
 The JNI layer is not part of the C ABI surface — it calls the Rust-path
 functions (not `extern "C"` forward-declares) so the compiler includes the
@@ -247,12 +259,19 @@ update-listener thread after copying the borrowed FlatBuffers frame.
 
 | JNI symbol | Maps to | Notes |
 |---|---|---|
-| `Java_org_nmp_android_KernelBridge_nativeNew` | `nmp_app_new` + channel setup | Returns `jlong` handle owning a boxed `Session`. |
-| `Java_org_nmp_android_KernelBridge_nativeStart` | `nmp_app_start` | `visible_limit` + `emit_hz` passed as `jint`. |
-| `Java_org_nmp_android_KernelBridge_nativeStop` | `nmp_app_stop` | — |
-| `Java_org_nmp_android_KernelBridge_nativeSetUpdateListener` | `nmp_app_set_update_callback` via `Session::set_push_listener` | Registers a Kotlin listener. Frames are pushed as `ByteArray`; pass `null` to deregister. |
-| `Java_org_nmp_android_KernelBridge_nativeClearUpdateListener` | clear push listener | Clears the listener without freeing the session. |
-| `Java_org_nmp_android_KernelBridge_nativeFree` | `nmp_app_free` + channel teardown | Clears callback before freeing `Session`; `Box::from_raw` on handle. |
+| `Java_org_nmp_gallery_bridge_KernelBridge_nativeNew` (`android/mod.rs:43`) | `nmp_app_new` + callback setup | Returns `jlong` handle owning a boxed `GallerySession`. |
+| `Java_org_nmp_gallery_bridge_KernelBridge_nativeStart` (`android/mod.rs:164`) | `nmp_app_start` | `visible_limit` + `emit_hz` passed as `jint`. |
+| `Java_org_nmp_gallery_bridge_KernelBridge_nativeStop` (`android/mod.rs:186`) | `nmp_app_stop` | — |
+| `Java_org_nmp_gallery_bridge_KernelBridge_nativeSetUpdateListener` (`android/mod.rs:246`) | `nmp_app_set_update_callback` via session push listener | Registers Kotlin listener; frames pushed as `ByteArray`. |
+| `Java_org_nmp_gallery_bridge_KernelBridge_nativeClearUpdateListener` (`android/mod.rs:259`) | clears push listener | — |
+| `Java_org_nmp_gallery_bridge_KernelBridge_nativeFree` (`android/mod.rs:81`) | `nmp_app_free` + session teardown | Clears callbacks before free. |
+| `Java_org_nmp_gallery_bridge_KernelBridge_nativeGalleryRegister` (`android/mod.rs:94`) | `nmp_app_gallery_register` | Gallery composition install. |
+| `Java_org_nmp_gallery_bridge_KernelBridge_nativeDispatchAction` (`android/mod.rs:286`) | `dispatch_action_bytes_for` | Gallery typed byte dispatch. |
+| `Java_org_nmp_gallery_bridge_KernelBridge_nativeDecodeSnapshotJson` (`android/mod.rs:127`) | `nmp_app_gallery_snapshot_json_from_update_frame` | Gallery projection decode. |
+| `Java_org_nmp_gallery_bridge_KernelBridge_nativeSignInNip55` (`android/mod.rs:372`) | `nmp_app_signin_nip55` | NIP-55 adapter. |
+| `Java_org_nmp_gallery_bridge_KernelBridge_nativeDeliverSignerResponse` (`android/mod.rs:396`) | `nmp_app_deliver_external_signer_response` | External signer response. |
+| `Java_org_nmp_gallery_bridge_KernelBridge_nativeResolveEventRef` (`android/event_refs.rs:77`) | `nmp_app_resolve_event_embed_with_metadata` | URI→event-ref adapter. |
+| `Java_org_nmp_gallery_bridge_KernelBridge_nativeReleaseEvent` (`android/event_refs.rs:105`) | `nmp_app_release_event_ref` | Event ref release. |
 
 ---
 
@@ -311,18 +330,15 @@ the Rust action modules derive signing identity and routing policy.
 | `nmp_app_dispatch_action_bytes` | PASS — acceptance/error JSON, never NULL for non-null app | PASS | Single user/app action door |
 | `nmp_app_ack_action_stage` | PASS | PASS | |
 | `nmp_app_retry_publish` | PASS | PASS | Publish lifecycle control |
-| `nmp_app_cancel_publish` | PASS | PASS | Publish lifecycle control |
+| `nmp_app_cancel_action` | PASS | PASS | Publish/action lifecycle control (`nmp_app_cancel_publish` deleted) |
 | `nmp_app_add_relay` | PASS | PASS | |
 | `nmp_app_remove_relay` | PASS | PASS | |
 | `nmp_app_load_older_feed` | PASS | PASS | Viewport command only; Rust owns feed page policy |
 | `nmp_app_open_uri` | PASS | PASS | |
-| `nmp_app_claim_profile` | PASS | PASS | |
-| `nmp_app_release_profile` | PASS | PASS | |
-| `nmp_app_resolve_ref` (namespace=1/event) | PASS | PASS | Unified event-ref resolution |
-| `nmp_app_release_ref` (namespace=1/event) | PASS | PASS | Unified event-ref release |
-| `nmp_app_wallet_connect` | PASS | PASS | |
-| `nmp_app_wallet_disconnect` | PASS | PASS | |
-| `nmp_app_wallet_pay_invoice` | PASS | PASS | |
+| `nmp_app_resolve_ref` (namespace=1/event) | PASS | PASS | Unified event-ref resolution (`nmp_app_claim_profile` deleted) |
+| `nmp_app_release_ref` (namespace=1/event) | PASS | PASS | Unified event-ref release (`nmp_app_release_profile` deleted) |
+| `nmp_app_debug_info` | PASS — `{}` for unknown domain/null app, never NULL for non-null app | PASS | Diagnostic pull accessor |
+| ~~`nmp_app_wallet_connect/disconnect/pay_invoice`~~ | DELETED | DELETED | Removed; NIP-47 goes through byte action doorway |
 
 **Zero D6 violations. Zero D7 violations.**
 
@@ -334,9 +350,11 @@ the Rust action modules derive signing identity and routing policy.
    drain symbol. Snapshot delivery is push-only via `nmp_app_set_update_callback`.
    No action needed — the architecture is intentionally push.
 
-2. **This reference still needs a generated symbol audit.** The live tree now
-   exports more symbols than the old T143 count, including app-specific Chirp,
-   Marmot, action dispatch, and snapshot projection helpers.
+2. **RESOLVED (#2387, 2026-06-29):** Full generated-symbol audit completed. See
+   the inventory comment on #2125 for the complete classified table (56
+   migrate-to-UniFFI, 6 deleted-from-code, 4 measured-internal-exceptions pending
+   #2388, 26 app-owned/external). Stale wallet / claim_profile / cancel_publish
+   entries corrected in this doc update.
 
 3. **RESOLVED (V-68 / V-112, ADR-0042):** `nmp_app_open_author`,
    `nmp_app_close_author`, `nmp_app_open_thread`, and `nmp_app_close_thread`
