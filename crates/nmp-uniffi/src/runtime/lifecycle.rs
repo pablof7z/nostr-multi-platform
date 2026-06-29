@@ -5,10 +5,6 @@
 //! so C and UniFFI lifecycle observers share the same `in_flight` + `Condvar`
 //! drain contract.
 
-use std::sync::Arc;
-
-use nmp_core::__ffi_internal::NativeLifecycleObserver;
-
 use crate::{LifecycleSink, NmpApp};
 
 #[uniffi::export]
@@ -39,16 +35,9 @@ impl NmpApp {
     /// After this returns, the previous sink is neither registered nor
     /// mid-invocation. Pass `None` to clear.
     pub fn set_lifecycle_callback(&self, sink: Option<Box<dyn LifecycleSink>>) {
-        let observer: Option<NativeLifecycleObserver> = sink.map(|s| {
-            let s: Arc<dyn LifecycleSink> = Arc::from(s);
-            Arc::new(move |phase: u32| {
-                let s = Arc::clone(&s);
-                let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
-                    s.on_lifecycle_phase(phase);
-                }));
-            }) as NativeLifecycleObserver
+        nmp_uniffi_support::set_lifecycle_callback(&self.inner, sink, |sink, phase| {
+            sink.on_lifecycle_phase(phase);
         });
-        self.inner.set_native_lifecycle_observer(observer);
     }
 
     /// Actor-liveness probe: returns `true` when the actor `JoinHandle` is

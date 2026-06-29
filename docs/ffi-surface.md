@@ -1,9 +1,11 @@
 # Native Binding Surface Reference
 
-> **Reviewed:** 2026-06-29 after #2403/#2463/#2484.
+> **Reviewed:** 2026-06-30 after #2403/#2463/#2484/#2494.
 >
-> **Current public native target:** UniFFI through `crates/nmp-uniffi` for
-> iOS, Android, and desktop native hosts.
+> **Current public native target:** UniFFI for iOS, Android, and desktop native
+> hosts. Reusable framework verbs are exposed by `crates/nmp-uniffi`; apps that
+> need app-specific protocol verbs may expose one app-owned UniFFI facade over
+> `nmp-native-runtime` and shared NMP support mechanics.
 >
 > **Browser target:** `wasm-bindgen` through `nmp-browser-runtime`; browser/wasm
 > is not part of the native ABI collapse.
@@ -20,8 +22,8 @@ exception behind the UniFFI API.
 
 ## Public Native Surface
 
-Native app shells use the generated UniFFI bindings from `crates/nmp-uniffi`.
-The checked-in Swift/Kotlin bindings are guarded by
+Native app shells use generated UniFFI bindings. The reusable framework surface
+is `crates/nmp-uniffi`, whose checked-in Swift/Kotlin bindings are guarded by
 `ci/check-uniffi-bindings-drift.sh`.
 
 This is the native binding lane for public onboarding. Starter native apps
@@ -46,6 +48,26 @@ The native shell renders and executes raw capabilities. Rust/NMP owns protocol
 policy, relay routing, signing policy, durable state, retries, publish status,
 session teardown, and cache truth.
 
+## App-Owned UniFFI Facades
+
+When an app needs app-specific protocol verbs that are not reusable framework
+verbs, it may own a single app facade crate, for example `TwentyNinerApp` in
+29er. That crate calls `uniffi::setup_scaffolding!()` and defines the
+facade-local UniFFI object, records, and callback interfaces for the generated
+Swift/Kotlin namespace.
+
+The app facade must not copy NMP lifecycle, update-sink, capability, dispatch,
+or quiescence mechanics. Those reusable mechanics live below the generated
+surface in `nmp-native-runtime` and `nmp-uniffi-support`; the app facade adapts
+its local UniFFI traits/records into those helpers. This keeps one native ABI
+family per app while avoiding a second framework ABI or duplicated runtime
+bridge policy.
+
+App facades are for app-owned verbs and composition roots, not for bypassing
+NMP ownership. Reusable Nostr protocol mechanisms still belong in NMP protocol
+crates and the native runtime; native shells still render state and execute raw
+capabilities only.
+
 ## FlatBuffers Through UniFFI
 
 FlatBuffers are still the wire payload for the hot paths:
@@ -69,7 +91,7 @@ payload evolution remain owned by the FlatBuffers/codegen crates.
 
 ## Current UniFFI Areas
 
-`crates/nmp-uniffi` is organized by migrated responsibility:
+`crates/nmp-uniffi` is organized by migrated reusable framework responsibility:
 
 | Area | Public native shape |
 |---|---|
@@ -82,6 +104,10 @@ payload evolution remain owned by the FlatBuffers/codegen crates.
 | Sessions | feed, search, and URI-routing sessions/helpers |
 | Runtime config/diagnostics/lifecycle | storage/projection config, lifecycle callback, liveness, debug info, intent dispatch |
 | Mirror pull | `mirror_pull_page` returning typed `MirrorPullResult` with byte payload variants |
+
+App-owned facades may expose additional app verbs in their own generated
+namespace while delegating the shared lifecycle/callback/dispatch mechanics to
+NMP support crates.
 
 Browser hosts use the separate `nmp-browser-runtime` `wasm-bindgen` surface. Do
 not route browser guidance through UniFFI and do not use browser/wasm as a reason
@@ -127,7 +153,10 @@ thresholds, retest date, and delete trigger.
 - Browser public documentation names `wasm-bindgen`.
 - FlatBuffers remain action/update payload bytes across both binding families.
 - `nmp-native-runtime` owns runtime lifecycle and `nmp-uniffi` exposes it to
-  native hosts.
+  reusable framework native hosts.
+- App-owned UniFFI facades may expose app-specific verbs, but exported UniFFI
+  records/callback traits live in the owning facade namespace and shared NMP
+  bridge mechanics live in `nmp-uniffi-support`.
 - Native shells do not choose relays, mutate protocol tags, infer publish
   success, own retries, or cache product truth.
 - Deleted legacy native symbols are not compatibility requirements.
@@ -138,6 +167,9 @@ thresholds, retest date, and delete trigger.
   delivery glue.
 - `rg -n "uniffi::export|uniffi::Object|callback_interface" crates/nmp-uniffi/src`
   shows the current native public surface.
+- App facade proofs should run `uniffi-bindgen generate --library` for Swift and
+  Kotlin against the app cdylib, because Rust compile alone does not prove the
+  generated native namespace.
 - `bash ci/check-uniffi-bindings-drift.sh` verifies generated native binding
   drift when UniFFI interfaces change.
 - `cargo run -p nmp-testing --bin ffi-transport-bench --release -- --standard --fail-on-gate`

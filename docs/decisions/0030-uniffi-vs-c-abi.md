@@ -4,6 +4,7 @@
 - **Date:** 2026-05-23
 - **Updated:** 2026-06-26 (M14-0 / issue #2129 — Android app-loop lane migrated to UniFFI)
 - **Updated:** 2026-06-29 (after #2403/#2463: migrated raw native ABI deleted; UniFFI is the native public surface)
+- **Updated:** 2026-06-30 (#2494: app-owned UniFFI facades may expose app-specific verbs while sharing NMP bridge mechanics)
 - **Relates to:** ADR-0009, ADR-0010, ADR-0037, ADR-0044, ADR-0069..ADR-0073
 
 ## Context
@@ -64,6 +65,20 @@ the `ci/check-uniffi-bindings-drift.sh` drift gate. Raw C/JNI exports are not
 the native public target; app-owned delivery glue must not recreate framework
 binding API.
 
+## App-Owned Facades (issue #2494)
+
+UniFFI does not provide a clean cross-crate way to extend one generated object
+from another crate, and `uniffi-bindgen --library` resolves exported records and
+callback interfaces by the owning facade namespace. Therefore app-specific
+native verbs should be exposed by an app-owned UniFFI facade when they are not
+reusable framework verbs.
+
+That facade is still part of the single native binding family: UniFFI. It is not
+a second raw ABI and it must not copy NMP runtime bridge policy. Exported
+facade-local records/callback traits live in the app crate, while reusable
+lifecycle, update-sink, capability, dispatch, panic-containment, quiescence, and
+clamp mechanics live in `nmp-native-runtime` / `nmp-uniffi-support`.
+
 ## Rules
 
 - New write verbs need a clear reason they cannot be routed through generic
@@ -74,6 +89,9 @@ binding API.
 - New native app-facing binding work targets UniFFI. A raw C/JNI exception needs
   a measured reason, a deletion trigger, and an internal wrapper behind the
   UniFFI API.
+- App-specific native verbs that cannot be framework verbs may live on one
+  app-owned UniFFI facade. The facade owns generated bindings; NMP owns reusable
+  bridge mechanics.
 - The UniFFI binding is proc-macro only (no UDL). The `cdylib_name` in
   `uniffi.toml` must match the `[lib] name` in `Cargo.toml`.
 

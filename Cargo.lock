@@ -4540,10 +4540,20 @@ dependencies = [
  "nmp-core",
  "nmp-defaults",
  "nmp-native-runtime",
+ "nmp-uniffi-support",
  "nostr",
  "serde_json",
  "uniffi",
  "zeroize",
+]
+
+[[package]]
+name = "nmp-uniffi-support"
+version = "0.8.4"
+dependencies = [
+ "nmp-core",
+ "nmp-native-runtime",
+ "serde_json",
 ]
 
 [[package]]

@@ -17,10 +17,6 @@
 //! * `register_action_result_observer` replaces the observer slot (mutex swap,
 //!   no actor involvement).
 
-use std::sync::Arc;
-
-use nmp_core::substrate::ActionResult;
-
 use super::ActionResultObserver;
 use crate::NmpApp;
 
@@ -62,26 +58,18 @@ impl NmpApp {
     /// `clear_action_result_observer` from inside `on_action_result` deadlocks
     /// the quiescence gate.
     pub fn register_action_result_observer(&self, observer: Box<dyn ActionResultObserver>) {
-        let observer: Arc<dyn ActionResultObserver> = Arc::from(observer);
-        self.inner
-            .register_action_result_observer(move |result: ActionResult| {
-                // Serialize to JSON, matching the C-ABI callback shape:
-                // {"correlation_id":"…","result_json":…}
-                let Ok(json) = serde_json::to_string(&result) else {
-                    return; // D6: serialisation failure is a silent drop
-                };
-                // Panic containment: a Swift/Kotlin throw must not unwind
-                // into the dispatch thread (D6). Clone Arc before the call.
-                let o = Arc::clone(&observer);
-                let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
-                    o.on_action_result(json);
-                }));
-            });
+        nmp_uniffi_support::register_action_result_observer(
+            &self.inner,
+            observer,
+            |observer, json| {
+                observer.on_action_result(json);
+            },
+        );
     }
 
     /// Clear the action-result observer and wait for any in-flight callback to
     /// finish before returning.
     pub fn clear_action_result_observer(&self) {
-        self.inner.clear_action_result_observer();
+        nmp_uniffi_support::clear_action_result_observer(&self.inner);
     }
 }

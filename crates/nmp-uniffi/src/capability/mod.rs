@@ -44,13 +44,6 @@ pub mod action;
 pub mod capability;
 pub mod publish;
 
-#[cfg(test)]
-pub(crate) mod action_tests;
-#[cfg(test)]
-pub(crate) mod tests;
-
-// ── Callback interfaces ───────────────────────────────────────────────────────
-
 /// Rust→shell capability round-trip: the kernel calls this to route a
 /// `CapabilityRequest` JSON to the platform (e.g. iOS Keychain) and expects a
 /// `CapabilityEnvelope` JSON back.
@@ -83,3 +76,8 @@ pub trait CapabilitySink: Send + Sync {
 pub trait ActionResultObserver: Send + Sync {
     fn on_action_result(&self, result_json: String);
 }
+
+#[cfg(test)]
+pub(crate) mod action_tests;
+#[cfg(test)]
+pub(crate) mod tests;
