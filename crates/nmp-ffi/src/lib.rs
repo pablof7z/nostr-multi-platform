@@ -20,7 +20,6 @@ mod debug_info;
 mod event_by_id_tests;
 #[cfg(feature = "external-signer")]
 mod external_signer;
-mod feed;
 mod free;
 mod group_feed;
 mod identity;
@@ -40,7 +39,6 @@ mod resolve_ref;
 #[cfg(test)]
 #[path = "resolve_ref_tests.rs"]
 mod resolve_ref_tests;
-mod search;
 #[cfg(test)]
 #[path = "search_tests.rs"]
 mod search_tests;
@@ -56,7 +54,6 @@ mod testing;
 mod testing_stats;
 #[cfg(any(test, feature = "test-support"))]
 mod testing_sync;
-mod timeline;
 
 pub use nmp_native_runtime::{
     FeedAdmission, FeedCompiler, FeedHandle, FeedOpenError, FeedParams, FeedParamsDecodeError,
@@ -81,9 +78,6 @@ pub use action::{
 };
 #[cfg(feature = "native")]
 pub use capability::{nmp_app_dispatch_capability, nmp_app_set_capability_callback};
-#[cfg(feature = "native")]
-pub use feed::nmp_app_load_older_feed;
-#[cfg(feature = "native")]
 pub use free::nmp_free_string;
 #[cfg(feature = "native")]
 pub use group_feed::{GroupFeedHandle, open_group_discovery_handle};
@@ -117,19 +111,8 @@ pub use snapshot::{
 #[cfg(feature = "native")]
 pub use storage::nmp_app_set_storage_path;
 // `nmp_app_active_following_count` deleted (#1726). See comment near `debug_info` mod.
-#[cfg(feature = "native")]
-pub use timeline::{
-    // V-68 / V-112 (ADR-0042): nmp_app_open_author, nmp_app_close_author,
-    // nmp_app_open_thread, nmp_app_close_thread deleted from timeline.rs.
-    // V-68 Stage 2 (ADR-0042 amendment 2026-06-12): nmp_app_open_timeline
-    // deleted from identity.rs.
-    // ADR-0063 Lane H: nmp_app_claim_profile, nmp_app_release_profile deleted.
-    // #1740/#2092: `nmp_app_open_contact_feed` / `nmp_app_close_contact_feed`
-    // and the follow-feed declare/clear helpers are deleted.
-    // #1946: event URI C-ABI front doors DELETED. Callers migrate to the typed
-    // event-ref adapters below.
-    nmp_app_open_uri,
-};
+// #2443: feed/search/URI app-session C exports were deleted after migration to
+// the typed UniFFI native session API.
 // ADR-0063 Lane D — ref-resolution C-ABI entry points. Hosts should prefer the
 // typed adapters; the raw resolve_ref/release_ref surface remains as the
 // compatibility boundary for generated or legacy bindings.

@@ -1,10 +1,8 @@
-//! Tests for the higher-order NIP-50 search FFI surface.
+//! Tests for the higher-order NIP-50 search runtime surface.
 
 use super::*;
-use crate::search::{
-    nmp_app_search_close, nmp_app_search_open, nmp_app_search_snapshot, parse_search_request,
-};
 use crate::{nmp_app_free, nmp_app_new};
+use nmp_native_runtime::parse_search_request;
 use nmp_core::substrate::SearchScopeRegistry;
 use nmp_nip50::{
     SearchHitSource, SearchRelaySource, SearchRequest, SearchScope, SearchTargets,
@@ -12,7 +10,6 @@ use nmp_nip50::{
 };
 use nmp_store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
 use std::collections::BTreeSet;
-use std::ffi::CString;
 use std::sync::Arc;
 
 /// A registered `SearchRelaySource` lets `open_search` resolve `UserPreferred`
@@ -420,32 +417,5 @@ fn open_search_cache_only_never_emits_a_relay_provenance() {
         "the synchronous cache hit wins first-arrival; no Relay(\"\") provenance leaks in"
     );
 
-    nmp_app_free(app);
-}
-
-#[test]
-fn c_abi_open_and_close_are_null_safe() {
-    // Null app — no crash.
-    let json = CString::new(r#"{"query":"a","scope":"Users","targets":"AppDefault"}"#).unwrap();
-    let sid = CString::new("s").unwrap();
-    nmp_app_search_open(std::ptr::null_mut(), json.as_ptr(), sid.as_ptr());
-    nmp_app_search_close(std::ptr::null_mut(), sid.as_ptr());
-    assert_eq!(
-        nmp_app_search_snapshot(std::ptr::null_mut(), sid.as_ptr(), std::ptr::null_mut(), 0),
-        0
-    );
-
-    // Real app, full C-ABI round-trip through the JSON entrypoint.
-    let app = nmp_app_new();
-    nmp_app_search_open(app, json.as_ptr(), sid.as_ptr());
-    // Size-probe: a non-zero size with a null/zero buffer returns the needed len.
-    let needed = nmp_app_search_snapshot(app, sid.as_ptr(), std::ptr::null_mut(), 0);
-    assert!(needed > 0, "an open session must have an N50S buffer");
-    let mut buf = vec![0u8; needed as usize];
-    let written = nmp_app_search_snapshot(app, sid.as_ptr(), buf.as_mut_ptr(), buf.len());
-    assert_eq!(written, needed);
-    assert!(decode_search_results_snapshot(&buf).is_ok());
-
-    nmp_app_search_close(app, sid.as_ptr());
     nmp_app_free(app);
 }

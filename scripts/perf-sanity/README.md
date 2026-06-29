@@ -55,7 +55,7 @@ scripts/perf-sanity/run.sh --live --relay wss://relay.primal.net \
 | `load-cpu-soft` | `<= 150 %` (informational, never fails) | `ps`/`top` (sidecar) | `os-sampler cpu_pct_peak` |
 | `cold-start-first-item` | `<= 800 ms` | `decode_snapshot_envelope` | `SnapshotEnvelope.visible_items >= 1` |
 | `cold-start-filled-timeline` | `<= 5000 ms` | `decode_snapshot_envelope` | `visible_items >= 200` |
-| `load-older` | `<= 5000 ms` | `nmp_app_load_older_feed` + envelope | `visible_items` growth |
+| `load-older` | `<= 5000 ms` | UniFFI `loadOlderFeed` + envelope | `visible_items` growth |
 | `ingest-to-emit-amortised` | `<= 50 ms/event` | wall clock (inject→note) | `SnapshotEnvelope.note_events` |
 | `encode-p99` | `<= 50 ms` | `decode_snapshot_envelope` | `SnapshotEnvelope.serialize_us` p99 |
 | `ramp-peak-rss` | `<= 200 MB` | `task_info(MACH_TASK_BASIC_INFO)` | `metrics::process_rss_mb` |

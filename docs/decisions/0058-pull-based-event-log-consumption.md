@@ -42,7 +42,7 @@ callback:
    store. A slow consumer pulling from the durable store is isolated from the
    actor and cannot apply backpressure through a callback.
 2. **UI "give me more"** pagination (`load_older`). The feed already grows its
-   window on demand (`crates/nmp-feed/.../engine`, `nmp_app_load_older_feed`,
+   window on demand (`crates/nmp-feed/.../engine`, UniFFI `loadOlderFeed`,
    `crates/nmp-ffi/src/feed.rs`), but each feed re-implements windowing over
    `created_at`-ordered scans. `created_at` is **not arrival-monotonic** — a relay
    can deliver an old event late, landing it *behind* a `created_at` cursor, so a

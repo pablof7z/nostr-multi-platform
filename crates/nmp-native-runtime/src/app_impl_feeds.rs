@@ -42,7 +42,7 @@ impl NmpApp {
     ///
     /// `relay_pin` — `Some(host)` pins the interest to that relay, bypassing
     /// NIP-65 outbox routing; `None` leaves routing unpinned.
-    /// NIP-50 search (`nmp_app_search_open`) opens one pinned interest per
+    /// NIP-50 search sessions open one pinned interest per
     /// resolved search relay. The pin participates in the `InterestShape` hash,
     /// so the matching close MUST pass the same pin (see
     /// [`Self::close_interest_pinned`]).

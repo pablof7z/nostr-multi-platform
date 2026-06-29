@@ -822,7 +822,7 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
     /**
      * Advance the feed's viewport to the next older page.
      *
-     * Mirrors `nmp_app_load_older_feed`. `key` is the projection key of the
+     * `key` is the projection key of the
      * feed to page (the same string returned in `FeedSessionHandle.projection_key`
      * or a well-known constant like `"nmp.feed.home"`). Returns `true` when the
      * viewport cursor actually changed; `false` for an unknown key or when
@@ -883,7 +883,7 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
     /**
      * Route a `nostr:` URI (or a bare NIP-19 entity) to the kernel reducer.
      *
-     * Mirrors `nmp_app_open_uri`. Parses `uri` as a NIP-21/NIP-19 value and
+     * Parses `uri` as a NIP-21/NIP-19 value and
      * dispatches a `KernelAction::OpenUri` to the actor. On success the kernel
      * registers the resolved interest and emits a `ViewOpened` update frame;
      * on failure it emits `UriRejected`. Both outcomes are delivered
@@ -1063,7 +1063,7 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
     /**
      * Close a NIP-50 search session previously opened via `search_open`.
      *
-     * Mirrors `nmp_app_search_close`. Tears down the relay interests and
+     * Tears down the relay interests and
      * removes the typed snapshot projection for `session_id`. An empty or
      * unknown `session_id` is a silent no-op (D6).
      */
@@ -1072,7 +1072,7 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
     /**
      * Open a NIP-50 search session from a JSON query payload.
      *
-     * Mirrors `nmp_app_search_open`. `request_json` must be a JSON object
+     * `request_json` must be a JSON object
      * `{"query":"…","scope":…,"targets":…}` parseable by
      * `nmp_native_runtime::parse_search_request`. `session_id` is a
      * caller-chosen non-empty key that scopes the session for teardown and
@@ -1091,7 +1091,7 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
     /**
      * Copy the current typed `N50S` search-results snapshot for a session.
      *
-     * Mirrors `nmp_app_search_snapshot` but returns bytes directly instead of
+     * Returns bytes directly instead of
      * writing into a caller-provided buffer. Returns `None` when no live
      * session is registered under `session_id` or when the session has no
      * results yet. The returned bytes are a FlatBuffers `N50S` frame; the
@@ -1679,7 +1679,7 @@ open func lifecycleForeground()  {try! rustCall() {
     /**
      * Advance the feed's viewport to the next older page.
      *
-     * Mirrors `nmp_app_load_older_feed`. `key` is the projection key of the
+     * `key` is the projection key of the
      * feed to page (the same string returned in `FeedSessionHandle.projection_key`
      * or a well-known constant like `"nmp.feed.home"`). Returns `true` when the
      * viewport cursor actually changed; `false` for an unknown key or when
@@ -1766,7 +1766,7 @@ open func openFeedJson(paramsJson: String)throws  -> FeedSessionHandle  {
     /**
      * Route a `nostr:` URI (or a bare NIP-19 entity) to the kernel reducer.
      *
-     * Mirrors `nmp_app_open_uri`. Parses `uri` as a NIP-21/NIP-19 value and
+     * Parses `uri` as a NIP-21/NIP-19 value and
      * dispatches a `KernelAction::OpenUri` to the actor. On success the kernel
      * registers the resolved interest and emits a `ViewOpened` update frame;
      * on failure it emits `UriRejected`. Both outcomes are delivered
@@ -2056,7 +2056,7 @@ open func retryPublish(handle: String)  {try! rustCall() {
     /**
      * Close a NIP-50 search session previously opened via `search_open`.
      *
-     * Mirrors `nmp_app_search_close`. Tears down the relay interests and
+     * Tears down the relay interests and
      * removes the typed snapshot projection for `session_id`. An empty or
      * unknown `session_id` is a silent no-op (D6).
      */
@@ -2070,7 +2070,7 @@ open func searchClose(sessionId: String)  {try! rustCall() {
     /**
      * Open a NIP-50 search session from a JSON query payload.
      *
-     * Mirrors `nmp_app_search_open`. `request_json` must be a JSON object
+     * `request_json` must be a JSON object
      * `{"query":"…","scope":…,"targets":…}` parseable by
      * `nmp_native_runtime::parse_search_request`. `session_id` is a
      * caller-chosen non-empty key that scopes the session for teardown and
@@ -2095,7 +2095,7 @@ open func searchOpen(requestJson: String, sessionId: String)  {try! rustCall() {
     /**
      * Copy the current typed `N50S` search-results snapshot for a session.
      *
-     * Mirrors `nmp_app_search_snapshot` but returns bytes directly instead of
+     * Returns bytes directly instead of
      * writing into a caller-provided buffer. Returns `None` when no live
      * session is registered under `session_id` or when the session has no
      * results yet. The returned bytes are a FlatBuffers `N50S` frame; the
@@ -5112,7 +5112,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_lifecycle_foreground() != 16665) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_nmp_uniffi_checksum_method_nmpapp_load_older_feed() != 59269) {
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_load_older_feed() != 30803) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_mirror_pull_page() != 45548) {
@@ -5124,7 +5124,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_open_feed_json() != 29546) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_nmp_uniffi_checksum_method_nmpapp_open_uri() != 54191) {
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_open_uri() != 12173) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_register_action_result_observer() != 58182) {
@@ -5178,13 +5178,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_retry_publish() != 19023) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_nmp_uniffi_checksum_method_nmpapp_search_close() != 7623) {
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_search_close() != 14865) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_nmp_uniffi_checksum_method_nmpapp_search_open() != 28028) {
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_search_open() != 54540) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_nmp_uniffi_checksum_method_nmpapp_search_snapshot() != 37593) {
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_search_snapshot() != 55211) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_set_capability_callback() != 58918) {

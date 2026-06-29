@@ -4,7 +4,7 @@
 //!
 //! | UniFFI method      | C-ABI counterpart                           |
 //! |--------------------|---------------------------------------------|
-//! | `load_older_feed`  | `nmp_app_load_older_feed` (feed.rs)         |
+//! | `load_older_feed`  | native feed viewport command               |
 //!
 //! `open_feed_json` and `close_feed_session` are NEW UniFFI-only surface: the
 //! C-ABI retired its public open/close feed symbols before M14; the Rust-native
@@ -56,7 +56,7 @@ pub struct FeedSessionHandle {
 impl NmpApp {
     /// Advance the feed's viewport to the next older page.
     ///
-    /// Mirrors `nmp_app_load_older_feed`. `key` is the projection key of the
+    /// `key` is the projection key of the
     /// feed to page (the same string returned in `FeedSessionHandle.projection_key`
     /// or a well-known constant like `"nmp.feed.home"`). Returns `true` when the
     /// viewport cursor actually changed; `false` for an unknown key or when
@@ -119,8 +119,7 @@ mod tests {
 
     // ── Parity: load_older_feed ───────────────────────────────────────────
 
-    /// Parity with C-ABI `nmp_app_load_older_feed`:
-    /// calling with an unknown key must be a silent no-op returning `false` (D6).
+    /// Calling with an unknown key must be a silent no-op returning `false` (D6).
     #[test]
     fn parity_load_older_feed_unknown_key_is_noop() {
         let app = crate::NmpApp::new();

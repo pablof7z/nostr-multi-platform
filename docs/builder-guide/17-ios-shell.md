@@ -14,7 +14,7 @@ There is no in-tree UniFFI native surface on master (that is M14; see
 [15 — Codegen: bindings + FFI surface](15-codegen-and-ffi.md)). iOS calls the `extern "C"`
 surface exported by `crates/nmp-ffi` (`nmp_app_new`, `nmp_app_start`,
 `nmp_app_dispatch_action_bytes`, viewport commands such as
-`nmp_app_load_older_feed`, capability callbacks, etc.). Feed session open/close
+UniFFI `loadOlderFeed`, capability callbacks, etc.). Feed session open/close
 is not a C symbol pair: Rust app/protocol composition code owns typed
 `NmpApp::open_feed` / `NmpApp::close_feed` sessions, and iOS consumes the
 resulting snapshot/projection stream.
@@ -54,9 +54,7 @@ final class KernelHandle {
     }
 
     func loadOlderFeed(key: String) {
-        key.withCString { keyPtr in
-            nmp_app_load_older_feed(raw, keyPtr)
-        }
+        app.loadOlderFeed(key: key)
     }
     // decode(): UpdateFrame bytes → generated FlatBuffers readers → KernelModel shadow
 }
