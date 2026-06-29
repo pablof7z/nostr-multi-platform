@@ -29,7 +29,10 @@ fn start_bytes_rejects_wrong_schema_version_for_react() {
     use nmp_core::substrate::{ActionContext, ActionRejection};
 
     let mut registry = ActionRegistry::new();
-    nmp_core::substrate::ProtocolDescriptor::register_actions(&nmp_nip25::Nip25Descriptor, &mut registry);
+    nmp_core::substrate::ProtocolDescriptor::register_actions(
+        &nmp_nip25::Nip25Descriptor,
+        &mut registry,
+    );
 
     let bad_version = build_bad_version_react_payload();
     let err = registry
@@ -57,7 +60,10 @@ fn start_bytes_rejects_wrong_schema_version_for_unreact() {
     use nmp_core::substrate::{ActionContext, ActionRejection};
 
     let mut registry = ActionRegistry::new();
-    nmp_core::substrate::ProtocolDescriptor::register_actions(&nmp_nip25::Nip25Descriptor, &mut registry);
+    nmp_core::substrate::ProtocolDescriptor::register_actions(
+        &nmp_nip25::Nip25Descriptor,
+        &mut registry,
+    );
 
     let bad_version = build_bad_version_unreact_payload();
     let err = registry
@@ -234,7 +240,10 @@ fn react_builder_bytes_dispatch_through_start_bytes() {
     use nmp_core::substrate::ActionContext;
 
     let mut registry = ActionRegistry::new();
-    nmp_core::substrate::ProtocolDescriptor::register_actions(&nmp_nip25::Nip25Descriptor, &mut registry);
+    nmp_core::substrate::ProtocolDescriptor::register_actions(
+        &nmp_nip25::Nip25Descriptor,
+        &mut registry,
+    );
 
     let event_id = "a".repeat(64);
     let bytes = build_react_dispatch_envelope("corr-react", &event_id, "+");
@@ -251,8 +260,6 @@ fn react_builder_bytes_dispatch_through_start_bytes() {
         )
         .expect("react builder bytes must dispatch + validate via start_bytes");
 
-    // LOAD-BEARING: the SAME bytes under the wrong namespace must be rejected —
-    // proving the positive above isn't vacuous (a misrouted builder fails).
     let err = registry
         .start_bytes(
             &mut ActionContext::default(),
@@ -267,17 +274,6 @@ fn react_builder_bytes_dispatch_through_start_bytes() {
     );
 }
 
-/// Build a `nmp.publish` `DispatchEnvelope` carrying a `PublishRaw` body exactly
-/// as the generated Swift/Kotlin `publishRaw` builder does (fields written in
-/// declaration/slot order, the body table nested then wrapped in the union
-/// root), and return it alongside the `PublishAction` it MUST decode back to.
-///
-/// We assert SEMANTIC identity (decode → field-equal), not byte-identity:
-/// FlatBuffers permits several valid physical layouts for the same logical
-/// buffer (the Rust generated `create()` and a slot-order hand-roll lay fields
-/// out differently but decode identically — decode is vtable-driven). The wire
-/// contract that matters for the byte doorway is that `PublishAction::decode`
-/// reads the builder bytes back field-for-field, which this proves.
 fn build_publish_raw_envelope_and_action(
     correlation_id: &str,
     kind: u32,
@@ -288,14 +284,14 @@ fn build_publish_raw_envelope_and_action(
 ) -> (Vec<u8>, nmp_core::publish::PublishAction) {
     use flatbuffers::{FlatBufferBuilder, VOffsetT, WIPOffset};
     use nmp_core::dispatch_envelope::encode_dispatch_envelope;
-    use nmp_core::publish::{PublishAction, PublishRouteClass, PublishTarget};
+    use nmp_core::publish::{
+        PublishAction, PublishRouteClass, PublishSigner, PublishSignerProvenance, PublishTarget,
+    };
 
-    // --- payload: mirror the generated `publishRaw` emitter slot for slot. ---
     const PUBLISH_IDENTIFIER: &str = "NPUB";
     const BODY_PUBLISH_RAW: u8 = 3; // union discriminant (decl order, NONE=0)
     let payload = {
         let mut fbb = FlatBufferBuilder::new();
-        // TagRows (each: values:[string] at slot 0 / vt 4), then the [TagRow] vec.
         let tag_rows: Vec<WIPOffset<_>> = tags
             .iter()
             .map(|row| {
@@ -308,7 +304,15 @@ fn build_publish_raw_envelope_and_action(
             .collect();
         let tags_vec = fbb.create_vector(&tag_rows);
         let content_off = fbb.create_string(content);
-        let signer_off = signer_pubkey.as_ref().map(|s| fbb.create_string(s));
+        let signer = signer_pubkey.as_ref().map(|pubkey| {
+            let pubkey = fbb.create_string(pubkey);
+            let provenance = fbb.create_string(PublishSignerProvenance::AppManaged.wire_token());
+            let start = fbb.start_table();
+            fbb.push_slot::<u8>(4 as VOffsetT, 1, 0); // PublishSignerMode::Registered
+            fbb.push_slot_always::<WIPOffset<&str>>(6 as VOffsetT, pubkey);
+            fbb.push_slot_always::<WIPOffset<&str>>(8 as VOffsetT, provenance);
+            fbb.end_table(start)
+        });
         let target = {
             let relay_list = relays.clone().unwrap_or_default();
             let explicit = !relay_list.is_empty();
@@ -322,21 +326,20 @@ fn build_publish_raw_envelope_and_action(
             fbb.push_slot_always::<WIPOffset<&str>>(8 as VOffsetT, route_class);
             fbb.end_table(start)
         };
-        // PublishRaw: kind (vt4), tags (vt6), content (vt8), target (vt10),
-        // signer_pubkey (vt12, optional).
         let start = fbb.start_table();
         fbb.push_slot::<u32>(4 as VOffsetT, kind, 0);
         fbb.push_slot_always::<WIPOffset<_>>(6 as VOffsetT, tags_vec);
         fbb.push_slot_always::<WIPOffset<&str>>(8 as VOffsetT, content_off);
         fbb.push_slot_always::<WIPOffset<_>>(10 as VOffsetT, target);
-        if let Some(off) = signer_off {
-            fbb.push_slot_always::<WIPOffset<&str>>(12 as VOffsetT, off);
+        if let Some(off) = signer {
+            fbb.push_slot_always::<WIPOffset<flatbuffers::TableFinishedWIPOffset>>(
+                12 as VOffsetT,
+                off,
+            );
         }
         let body = fbb.end_table(start);
-        // PublishPayload root: schema_version (vt4), body_type ubyte (vt6),
-        // body offset (vt8).
         let start = fbb.start_table();
-        fbb.push_slot::<u32>(4 as VOffsetT, 2, 0);
+        fbb.push_slot::<u32>(4 as VOffsetT, 3, 0);
         fbb.push_slot::<u8>(6 as VOffsetT, BODY_PUBLISH_RAW, 0);
         fbb.push_slot_always::<WIPOffset<flatbuffers::TableFinishedWIPOffset>>(8 as VOffsetT, body); // slot 2: body (union value = table offset)
         let root = fbb.end_table(start);
@@ -354,14 +357,13 @@ fn build_publish_raw_envelope_and_action(
         tags: tags.to_vec(),
         content: content.to_string(),
         target,
-        signer_pubkey,
+        signer: signer_pubkey
+            .map(|pubkey| PublishSigner::registered(pubkey, PublishSignerProvenance::AppManaged))
+            .unwrap_or_default(),
     };
     (envelope, expected)
 }
 
-/// publishRaw builder bytes decode field-for-field to the expected
-/// `PublishAction` and dispatch through `start_bytes` to the `nmp.publish`
-/// module. Wrong-namespace twin proves the route is real.
 #[test]
 fn publish_raw_builder_bytes_dispatch_through_start_bytes() {
     use nmp_core::__ffi_internal::ActionRegistry;
@@ -370,7 +372,9 @@ fn publish_raw_builder_bytes_dispatch_through_start_bytes() {
     use nmp_core::substrate::{ActionContext, ActionPayload, ActionRejection};
 
     let mut registry = ActionRegistry::new();
-    registry.register(nmp_core::publish::PublishModule);
+    registry
+        .register(nmp_core::publish::PublishModule)
+        .expect("register publish module");
 
     let (bytes, expected) = build_publish_raw_envelope_and_action(
         "corr-pub-raw",
@@ -389,15 +393,12 @@ fn publish_raw_builder_bytes_dispatch_through_start_bytes() {
 
     let decoded = decode_dispatch_envelope(&bytes).expect("publish envelope must decode (S2)");
     assert_eq!(decoded.action_namespace, "nmp.publish");
-    // The emitter-shaped union bytes decode back to exactly the expected action
-    // (the wire contract the byte doorway relies on).
     assert_eq!(
         PublishAction::decode(&decoded.payload).expect("builder bytes must decode"),
         expected,
         "publishRaw builder bytes must decode field-for-field"
     );
 
-    // POSITIVE: routed to nmp.publish, the union payload decodes + start() OK.
     registry
         .start_bytes(
             &mut ActionContext::default(),
@@ -407,7 +408,6 @@ fn publish_raw_builder_bytes_dispatch_through_start_bytes() {
         )
         .expect("publishRaw builder bytes must dispatch + validate via start_bytes");
 
-    // LOAD-BEARING: the same bytes under an unknown namespace fail closed.
     let err = registry
         .start_bytes(
             &mut ActionContext::default(),
@@ -422,10 +422,6 @@ fn publish_raw_builder_bytes_dispatch_through_start_bytes() {
     );
 }
 
-/// publishProfile builder bytes (the `PublishProfile` union body) decode
-/// field-for-field to `PublishAction::PublishProfile{..}` and dispatch through
-/// `start_bytes` to `nmp.publish`. This exercises the SECOND union variant (a
-/// different `body_type` discriminant + body table shape).
 #[test]
 fn publish_profile_builder_bytes_dispatch_through_start_bytes() {
     use flatbuffers::{FlatBufferBuilder, VOffsetT, WIPOffset};
@@ -435,11 +431,7 @@ fn publish_profile_builder_bytes_dispatch_through_start_bytes() {
     use nmp_core::substrate::{ActionContext, ActionPayload, ActionRejection};
     const PUBLISH_IDENTIFIER: &str = "NPUB";
     const BODY_PUBLISH_PROFILE: u8 = 2;
-    // ordered (key, value) pairs — the emitter iterates a positional list;
-    // PublishProfile decode rebuilds a map, so a single field keeps the
-    // decoded-map comparison unambiguous.
     let fields = vec![("name".to_string(), "Alice".to_string())];
-    // --- payload: mirror the generated `publishProfile` emitter. ---
     let payload = {
         let mut fbb = FlatBufferBuilder::new();
         let field_rows: Vec<WIPOffset<_>> = fields
@@ -458,7 +450,7 @@ fn publish_profile_builder_bytes_dispatch_through_start_bytes() {
         fbb.push_slot_always::<WIPOffset<_>>(4 as VOffsetT, fields_vec);
         let body = fbb.end_table(start);
         let start = fbb.start_table();
-        fbb.push_slot::<u32>(4 as VOffsetT, 2, 0);
+        fbb.push_slot::<u32>(4 as VOffsetT, 3, 0);
         fbb.push_slot::<u8>(6 as VOffsetT, BODY_PUBLISH_PROFILE, 0);
         fbb.push_slot_always::<WIPOffset<flatbuffers::TableFinishedWIPOffset>>(8 as VOffsetT, body); // slot 2: body (union value = table offset)
         let root = fbb.end_table(start);
@@ -466,14 +458,15 @@ fn publish_profile_builder_bytes_dispatch_through_start_bytes() {
         fbb.finished_data().to_vec()
     };
     let bytes = encode_dispatch_envelope("corr-pub-prof", "nmp.publish", 1, &payload);
-    // The action the builder bytes MUST decode back to.
     let mut map = serde_json::Map::new();
     for (k, v) in &fields {
         map.insert(k.clone(), serde_json::Value::String(v.clone()));
     }
     let expected = PublishAction::PublishProfile { fields: map };
     let mut registry = ActionRegistry::new();
-    registry.register(nmp_core::publish::PublishModule);
+    registry
+        .register(nmp_core::publish::PublishModule)
+        .expect("register publish module");
     let decoded = decode_dispatch_envelope(&bytes).expect("publish envelope must decode (S2)");
     assert_eq!(decoded.action_namespace, "nmp.publish");
     assert_eq!(
@@ -489,11 +482,16 @@ fn publish_profile_builder_bytes_dispatch_through_start_bytes() {
             &decoded.payload,
         )
         .expect("publishProfile builder bytes must dispatch + validate via start_bytes");
-    // LOAD-BEARING: same bytes under an unregistered namespace must be rejected,
-    // proving the positive above is not vacuous (a misrouted builder fails closed).
-    let err = registry.start_bytes(&mut ActionContext::default(), 1_700_000_000_000,
-        "nmp.nip25.react", &decoded.payload)
+    let err = registry
+        .start_bytes(
+            &mut ActionContext::default(),
+            1_700_000_000_000,
+            "nmp.nip25.react",
+            &decoded.payload,
+        )
         .expect_err("publishProfile payload routed as nmp.nip25.react must be rejected");
-    assert!(matches!(err, ActionRejection::Invalid(_)),
-        "wrong-namespace dispatch must fail closed as Invalid, got {err:?}");
+    assert!(
+        matches!(err, ActionRejection::Invalid(_)),
+        "wrong-namespace dispatch must fail closed as Invalid, got {err:?}"
+    );
 }

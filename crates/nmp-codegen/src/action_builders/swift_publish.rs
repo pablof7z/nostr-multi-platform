@@ -39,7 +39,7 @@ fn render_one(builder: &PublishBuilder, out: &mut String) {
             out.push_str("        tags: [[String]],\n");
             out.push_str("        content: String,\n");
             out.push_str("        relays: [String]? = nil,\n");
-            out.push_str("        signerPubkey: String? = nil\n");
+            out.push_str("        signer: PublishSignerSelection = .active\n");
         }
         BodyShape::PublishProfile => {
             out.push_str("        fields: [(String, String)]\n");
@@ -48,7 +48,7 @@ fn render_one(builder: &PublishBuilder, out: &mut String) {
             out.push_str("        content: String,\n");
             out.push_str("        replyToEventId: String,\n");
             out.push_str("        relays: [String]? = nil,\n");
-            out.push_str("        signerPubkey: String? = nil\n");
+            out.push_str("        signer: PublishSignerSelection = .active\n");
         }
     }
     out.push_str("    ) -> [UInt8] {\n");
@@ -106,6 +106,25 @@ fn render_target(out: &mut String) {
     );
 }
 
+fn render_signer(out: &mut String) {
+    out.push_str(
+        "        let signerOffset: Offset = {\n\
+         \x20           switch signer {\n\
+         \x20           case .active:\n\
+         \x20               return Offset()\n\
+         \x20           case .registered(let pubkey, let provenance):\n\
+         \x20               let signerPubkeyOffset = fbb.create(string: pubkey)\n\
+         \x20               let signerProvenanceOffset = fbb.create(string: provenance.rawValue)\n\
+         \x20               let start = fbb.startTable(with: 3)\n\
+         \x20               fbb.add(element: UInt8(1), def: UInt8(0), at: 4) // slot 0: mode (Registered)\n\
+         \x20               fbb.add(offset: signerPubkeyOffset, at: 6) // slot 1: pubkey\n\
+         \x20               fbb.add(offset: signerProvenanceOffset, at: 8) // slot 2: provenance\n\
+         \x20               return Offset(offset: fbb.endTable(at: start))\n\
+         \x20           }\n\
+         \x20       }()\n",
+    );
+}
+
 fn render_raw_body(out: &mut String) {
     // Nested objects (tags rows, target, content/signer strings) must be built
     // before the PublishRaw table that references them.
@@ -118,19 +137,19 @@ fn render_raw_body(out: &mut String) {
          \x20           return Offset(offset: fbb.endTable(at: start))\n\
          \x20       }\n\
          \x20       let tagsVec = fbb.createVector(ofOffsets: tagRowOffsets)\n\
-         \x20       let contentOffset = fbb.create(string: content)\n\
-         \x20       let signerPubkeyOffset: Offset = signerPubkey.map { fbb.create(string: $0) } ?? Offset()\n",
+         \x20       let contentOffset = fbb.create(string: content)\n",
     );
+    render_signer(out);
     render_target(out);
     // PublishRaw: kind (slot 0 / vt 4), tags (slot 1 / vt 6), content
-    // (slot 2 / vt 8), target (slot 3 / vt 10), signer_pubkey (slot 4 / vt 12).
+    // (slot 2 / vt 8), target (slot 3 / vt 10), signer (slot 4 / vt 12).
     out.push_str(
         "        let rawStart = fbb.startTable(with: 5)\n\
          \x20       fbb.add(element: kind, def: UInt32(0), at: 4) // slot 0: kind\n\
          \x20       fbb.add(offset: tagsVec, at: 6) // slot 1: tags\n\
          \x20       fbb.add(offset: contentOffset, at: 8) // slot 2: content\n\
          \x20       fbb.add(offset: targetOffset, at: 10) // slot 3: target\n\
-         \x20       if signerPubkeyOffset.o != 0 { fbb.add(offset: signerPubkeyOffset, at: 12) } // slot 4: signer_pubkey\n\
+         \x20       if signerOffset.o != 0 { fbb.add(offset: signerOffset, at: 12) } // slot 4: signer\n\
          \x20       let bodyOffset = Offset(offset: fbb.endTable(at: rawStart))\n",
     );
 }
@@ -155,18 +174,18 @@ fn render_profile_body(out: &mut String) {
 fn render_reply_body(out: &mut String) {
     out.push_str(
         "        let contentOffset = fbb.create(string: content)\n\
-         \x20       let replyToEventIdOffset = fbb.create(string: replyToEventId)\n\
-         \x20       let signerPubkeyOffset: Offset = signerPubkey.map { fbb.create(string: $0) } ?? Offset()\n",
+         \x20       let replyToEventIdOffset = fbb.create(string: replyToEventId)\n",
     );
+    render_signer(out);
     render_target(out);
     // PublishReply: content (slot 0 / vt 4), reply_to_event_id (slot 1 / vt 6),
-    // target (slot 2 / vt 8), signer_pubkey (slot 3 / vt 10).
+    // target (slot 2 / vt 8), signer (slot 3 / vt 10).
     out.push_str(
         "        let replyStart = fbb.startTable(with: 4)\n\
          \x20       fbb.add(offset: contentOffset, at: 4) // slot 0: content\n\
          \x20       fbb.add(offset: replyToEventIdOffset, at: 6) // slot 1: reply_to_event_id\n\
          \x20       fbb.add(offset: targetOffset, at: 8) // slot 2: target\n\
-         \x20       if signerPubkeyOffset.o != 0 { fbb.add(offset: signerPubkeyOffset, at: 10) } // slot 3: signer_pubkey\n\
+         \x20       if signerOffset.o != 0 { fbb.add(offset: signerOffset, at: 10) } // slot 3: signer\n\
          \x20       let bodyOffset = Offset(offset: fbb.endTable(at: replyStart))\n",
     );
 }

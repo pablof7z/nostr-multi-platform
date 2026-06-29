@@ -27,7 +27,7 @@ fn explicit_publish_target_requires_non_empty_relays() {
         tags: Vec::new(),
         content: "hello".to_string(),
         target: PublishTarget::manual_override(Vec::new()),
-        signer_pubkey: None,
+        signer: Default::default(),
     };
     let err = PublishModule
         .start(&mut ctx(), action)
@@ -55,7 +55,7 @@ fn explicit_publish_target_accepts_valid_relay_url() {
         tags: Vec::new(),
         content: "hello".to_string(),
         target: PublishTarget::manual_override(vec!["wss://relay.example".to_string()]),
-        signer_pubkey: None,
+        signer: Default::default(),
     };
     PublishModule
         .start(&mut ctx(), action)
@@ -72,7 +72,7 @@ fn publish_raw_rejects_kind_0_to_protect_profile_path() {
         tags: Vec::new(),
         content: "{}".to_string(),
         target: PublishTarget::Auto,
-        signer_pubkey: None,
+        signer: Default::default(),
     };
     let err = PublishModule
         .start(&mut ctx(), action)
@@ -91,7 +91,7 @@ fn publish_raw_rejects_kind_3_pending_dedicated_path() {
         tags: Vec::new(),
         content: String::new(),
         target: PublishTarget::Auto,
-        signer_pubkey: None,
+        signer: Default::default(),
     };
     let err = PublishModule
         .start(&mut ctx(), action)
@@ -106,7 +106,7 @@ fn publish_raw_rejects_kind_10003_to_protect_bookmark_builder() {
         tags: vec![vec!["e".to_string(), "a".repeat(64)]],
         content: String::new(),
         target: PublishTarget::Auto,
-        signer_pubkey: None,
+        signer: Default::default(),
     };
     let err = PublishModule
         .start(&mut ctx(), action)
@@ -125,7 +125,7 @@ fn publish_raw_accepts_arbitrary_event_kind_with_auto_target() {
         tags: vec![vec!["d".to_string(), "my-article".to_string()]],
         content: "# Hello, second app".to_string(),
         target: PublishTarget::Auto,
-        signer_pubkey: None,
+        signer: Default::default(),
     };
     PublishModule
         .start(&mut ctx(), action)
@@ -138,7 +138,7 @@ fn publish_reply_validates_parent_event_id_shape() {
         content: "reply".to_string(),
         reply_to_event_id: "not-hex".to_string(),
         target: PublishTarget::Auto,
-        signer_pubkey: None,
+        signer: Default::default(),
     };
     let err = PublishModule
         .start(&mut ctx(), action)
@@ -155,7 +155,7 @@ fn publish_reply_rejects_empty_content() {
         content: "   ".to_string(),
         reply_to_event_id: "a".repeat(64),
         target: PublishTarget::Auto,
-        signer_pubkey: None,
+        signer: Default::default(),
     };
     let err = PublishModule
         .start(&mut ctx(), action)
@@ -177,7 +177,7 @@ fn publish_raw_rejects_gift_wrap_with_auto_target() {
         tags: Vec::new(),
         content: "encrypted".to_string(),
         target: PublishTarget::Auto,
-        signer_pubkey: None,
+        signer: Default::default(),
     };
     let err = PublishModule
         .start(&mut ctx(), action)
@@ -197,7 +197,7 @@ fn publish_raw_rejects_sealed_chat_with_auto_target() {
         tags: Vec::new(),
         content: "sealed".to_string(),
         target: PublishTarget::Auto,
-        signer_pubkey: None,
+        signer: Default::default(),
     };
     let err = PublishModule
         .start(&mut ctx(), action)
@@ -221,7 +221,7 @@ fn publish_raw_allows_gift_wrap_with_verified_private_inbox_relays() {
             vec!["wss://inbox.example".to_string()],
             PublishRouteClass::VerifiedPrivateInbox,
         ),
-        signer_pubkey: None,
+        signer: Default::default(),
     };
     PublishModule
         .start(&mut ctx(), action)
@@ -235,7 +235,7 @@ fn publish_raw_rejects_gift_wrap_with_manual_explicit_relays() {
         tags: Vec::new(),
         content: "encrypted".to_string(),
         target: PublishTarget::manual_override(vec!["wss://manual.example".to_string()]),
-        signer_pubkey: None,
+        signer: Default::default(),
     };
     let err = PublishModule
         .start(&mut ctx(), action)
@@ -293,7 +293,7 @@ fn publish_raw_propagates_explicit_target_validation_failure() {
         tags: Vec::new(),
         content: "body".to_string(),
         target: PublishTarget::manual_override(Vec::new()),
-        signer_pubkey: None,
+        signer: Default::default(),
     };
     let err = PublishModule
         .start(&mut ctx(), action)
@@ -351,7 +351,7 @@ fn execute_publish_raw_emits_publish_raw_event_command() {
         tags: vec![vec!["d".to_string(), "slug".to_string()]],
         content: "body".to_string(),
         target: PublishTarget::Auto,
-        signer_pubkey: None,
+        signer: Default::default(),
     };
     let cmds = run_execute(action).expect("execute must succeed");
     assert_eq!(cmds.len(), 1, "must emit exactly one command");
@@ -389,7 +389,7 @@ fn execute_publish_raw_threads_signer_pubkey_onto_actor_command() {
         tags: Vec::new(),
         content: "agent-authored".to_string(),
         target: PublishTarget::Auto,
-        signer_pubkey: Some(agent_pk.clone()),
+        signer: PublishSigner::registered(agent_pk.clone(), PublishSignerProvenance::AppManaged),
     };
     let cmds = run_execute(action).expect("execute must succeed");
     assert_eq!(cmds.len(), 1, "must emit exactly one command");
@@ -412,7 +412,7 @@ fn execute_publish_reply_emits_publish_reply_command() {
         content: "reply".to_string(),
         reply_to_event_id: parent_id.clone(),
         target: PublishTarget::Auto,
-        signer_pubkey: None,
+        signer: Default::default(),
     };
     let cmds = run_execute(action).expect("execute must succeed");
     assert_eq!(cmds.len(), 1, "must emit exactly one command");
@@ -434,38 +434,33 @@ fn execute_publish_reply_emits_publish_reply_command() {
 }
 
 #[test]
-fn publish_raw_serde_default_signer_pubkey_is_none_when_field_omitted() {
-    // Backward-compat: dispatch JSON authored before the selector existed
-    // omits `signer_pubkey`; `#[serde(default)]` must deserialize it to `None`
-    // (active account) rather than failing the decode.
+fn publish_raw_serde_default_signer_is_active_when_field_omitted() {
+    // Backward-compat: dispatch JSON may omit `signer`; `#[serde(default)]`
+    // must deserialize it to Active rather than failing the decode.
     let json = r#"{"PublishRaw":{"kind":1,"tags":[],"content":"hi","target":"Auto"}}"#;
     let action: PublishAction =
         serde_json::from_str(json).expect("legacy PublishRaw JSON must deserialize");
     match action {
-        PublishAction::PublishRaw { signer_pubkey, .. } => {
-            assert_eq!(
-                signer_pubkey, None,
-                "an omitted signer_pubkey must default to None (active account)"
-            );
-        }
+        PublishAction::PublishRaw { signer, .. } => assert_eq!(signer, PublishSigner::Active),
         other => panic!("expected PublishRaw, got {other:?}"),
     }
 }
 
 #[test]
-fn publish_raw_serde_round_trips_explicit_signer_pubkey() {
-    // The selector must also survive the wire when a host *does* supply it, so
-    // a Swift / Kotlin shell can address an agent key by hex pubkey.
+fn publish_raw_serde_round_trips_registered_signer_provenance() {
+    // The selector must also survive the wire when a host supplies it, so
+    // a shell can address an agent key by typed provenance + hex pubkey.
     let agent_pk = "a".repeat(64);
     let json = format!(
-        r#"{{"PublishRaw":{{"kind":1,"tags":[],"content":"hi","target":"Auto","signer_pubkey":"{agent_pk}"}}}}"#
+        r#"{{"PublishRaw":{{"kind":1,"tags":[],"content":"hi","target":"Auto","signer":{{"kind":"registered","pubkey":"{agent_pk}","provenance":"app_managed"}}}}}}"#
     );
     let action: PublishAction =
-        serde_json::from_str(&json).expect("PublishRaw JSON with signer_pubkey must deserialize");
+        serde_json::from_str(&json).expect("PublishRaw JSON with typed signer must deserialize");
     match action {
-        PublishAction::PublishRaw { signer_pubkey, .. } => {
-            assert_eq!(signer_pubkey, Some(agent_pk));
-        }
+        PublishAction::PublishRaw { signer, .. } => assert_eq!(
+            signer,
+            PublishSigner::registered(agent_pk, PublishSignerProvenance::AppManaged)
+        ),
         other => panic!("expected PublishRaw, got {other:?}"),
     }
 }

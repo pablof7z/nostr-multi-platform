@@ -24,6 +24,21 @@ package org.nmp.android
 import com.google.flatbuffers.FlatBufferBuilder
 
 object GeneratedActionBuilders {
+    enum class PublishSignerProvenance(val token: String) {
+        APP_MANAGED("app_managed"),
+        USER_SELECTED("user_selected"),
+        PROTOCOL_PINNED("protocol_pinned"),
+        DIAGNOSTIC("diagnostic"),
+    }
+
+    sealed class PublishSignerSelection {
+        object Active : PublishSignerSelection()
+        data class Registered(
+            val pubkey: String,
+            val provenance: PublishSignerProvenance = PublishSignerProvenance.APP_MANAGED,
+        ) : PublishSignerSelection()
+    }
+
     /// The single recognised envelope schema version — mirrors
     /// `nmp_core::dispatch_envelope::DISPATCH_ENVELOPE_SCHEMA_VERSION`.
     const val DISPATCH_ENVELOPE_SCHEMA_VERSION: Int = 1
@@ -1005,7 +1020,7 @@ object GeneratedActionBuilders {
         tags: List<List<String>>,
         content: String,
         relays: List<String>? = null,
-        signerPubkey: String? = null,
+        signer: PublishSignerSelection = PublishSignerSelection.Active,
     ): ByteArray {
         val fbb = FlatBufferBuilder()
         val tagRowOffsets = IntArray(tags.size) { r ->
@@ -1024,7 +1039,18 @@ object GeneratedActionBuilders {
             fbb.endVector()
         }
         val contentOffset = fbb.createString(content)
-        val signerPubkeyOffset = signerPubkey?.let { fbb.createString(it) } ?: 0
+        val signerOffset = when (signer) {
+            PublishSignerSelection.Active -> 0
+            is PublishSignerSelection.Registered -> {
+                val signerPubkeyOffset = fbb.createString(signer.pubkey)
+                val signerProvenanceOffset = fbb.createString(signer.provenance.token)
+                fbb.startTable(3)
+                fbb.addByte(0, 1.toByte(), 0) // slot 0: mode (Registered)
+                fbb.addOffset(1, signerPubkeyOffset, 0) // slot 1: pubkey
+                fbb.addOffset(2, signerProvenanceOffset, 0) // slot 2: provenance
+                fbb.endTable()
+            }
+        }
         val targetRelays = relays ?: emptyList()
         val explicit = targetRelays.isNotEmpty()
         val targetRelaysVec = run {
@@ -1033,19 +1059,21 @@ object GeneratedActionBuilders {
             for (i in offsets.size - 1 downTo 0) fbb.addOffset(offsets[i])
             fbb.endVector()
         }
-        fbb.startTable(2)
+        val routeClassOffset = fbb.createString("manual_override")
+        fbb.startTable(3)
         fbb.addBoolean(0, explicit, false) // slot 0: explicit
         fbb.addOffset(1, targetRelaysVec, 0) // slot 1: relays
+        if (explicit) fbb.addOffset(2, routeClassOffset, 0) // slot 2: route_class
         val targetOffset = fbb.endTable()
         fbb.startTable(5)
         fbb.addInt(0, kind, 0) // slot 0: kind
         fbb.addOffset(1, tagsVec, 0) // slot 1: tags
         fbb.addOffset(2, contentOffset, 0) // slot 2: content
         fbb.addOffset(3, targetOffset, 0) // slot 3: target
-        if (signerPubkeyOffset != 0) fbb.addOffset(4, signerPubkeyOffset, 0) // slot 4: signer_pubkey
+        if (signerOffset != 0) fbb.addOffset(4, signerOffset, 0) // slot 4: signer
         val bodyOffset = fbb.endTable()
         fbb.startTable(3)
-        fbb.addInt(0, 1, 0) // slot 0: schema_version
+        fbb.addInt(0, 3, 0) // slot 0: schema_version
         fbb.addByte(1, 3.toByte(), 0) // slot 1: body_type
         fbb.addOffset(2, bodyOffset, 0) // slot 2: body
         val payloadRoot = fbb.endTable()
@@ -1065,12 +1093,23 @@ object GeneratedActionBuilders {
         content: String,
         replyToEventId: String,
         relays: List<String>? = null,
-        signerPubkey: String? = null,
+        signer: PublishSignerSelection = PublishSignerSelection.Active,
     ): ByteArray {
         val fbb = FlatBufferBuilder()
         val contentOffset = fbb.createString(content)
         val replyToEventIdOffset = fbb.createString(replyToEventId)
-        val signerPubkeyOffset = signerPubkey?.let { fbb.createString(it) } ?: 0
+        val signerOffset = when (signer) {
+            PublishSignerSelection.Active -> 0
+            is PublishSignerSelection.Registered -> {
+                val signerPubkeyOffset = fbb.createString(signer.pubkey)
+                val signerProvenanceOffset = fbb.createString(signer.provenance.token)
+                fbb.startTable(3)
+                fbb.addByte(0, 1.toByte(), 0) // slot 0: mode (Registered)
+                fbb.addOffset(1, signerPubkeyOffset, 0) // slot 1: pubkey
+                fbb.addOffset(2, signerProvenanceOffset, 0) // slot 2: provenance
+                fbb.endTable()
+            }
+        }
         val targetRelays = relays ?: emptyList()
         val explicit = targetRelays.isNotEmpty()
         val targetRelaysVec = run {
@@ -1079,18 +1118,20 @@ object GeneratedActionBuilders {
             for (i in offsets.size - 1 downTo 0) fbb.addOffset(offsets[i])
             fbb.endVector()
         }
-        fbb.startTable(2)
+        val routeClassOffset = fbb.createString("manual_override")
+        fbb.startTable(3)
         fbb.addBoolean(0, explicit, false) // slot 0: explicit
         fbb.addOffset(1, targetRelaysVec, 0) // slot 1: relays
+        if (explicit) fbb.addOffset(2, routeClassOffset, 0) // slot 2: route_class
         val targetOffset = fbb.endTable()
         fbb.startTable(4)
         fbb.addOffset(0, contentOffset, 0) // slot 0: content
         fbb.addOffset(1, replyToEventIdOffset, 0) // slot 1: reply_to_event_id
         fbb.addOffset(2, targetOffset, 0) // slot 2: target
-        if (signerPubkeyOffset != 0) fbb.addOffset(3, signerPubkeyOffset, 0) // slot 3: signer_pubkey
+        if (signerOffset != 0) fbb.addOffset(3, signerOffset, 0) // slot 3: signer
         val bodyOffset = fbb.endTable()
         fbb.startTable(3)
-        fbb.addInt(0, 1, 0) // slot 0: schema_version
+        fbb.addInt(0, 3, 0) // slot 0: schema_version
         fbb.addByte(1, 4.toByte(), 0) // slot 1: body_type
         fbb.addOffset(2, bodyOffset, 0) // slot 2: body
         val payloadRoot = fbb.endTable()
@@ -1127,7 +1168,7 @@ object GeneratedActionBuilders {
         fbb.addOffset(0, fieldsVec, 0) // slot 0: fields
         val bodyOffset = fbb.endTable()
         fbb.startTable(3)
-        fbb.addInt(0, 1, 0) // slot 0: schema_version
+        fbb.addInt(0, 3, 0) // slot 0: schema_version
         fbb.addByte(1, 2.toByte(), 0) // slot 1: body_type
         fbb.addOffset(2, bodyOffset, 0) // slot 2: body
         val payloadRoot = fbb.endTable()

@@ -206,12 +206,12 @@ pub struct PublishBuilder {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BodyShape {
     /// `PublishRaw { kind:uint, tags:[TagRow], content:string,
-    /// target:PublishTarget, signer_pubkey:string }`.
+    /// target:PublishTarget, signer:PublishSignerSelection }`.
     PublishRaw,
     /// `PublishProfile { fields:[ProfileField] }`.
     PublishProfile,
     /// `PublishReply { content:string, reply_to_event_id:string,
-    /// target:PublishTarget, signer_pubkey:string }`.
+    /// target:PublishTarget, signer:PublishSignerSelection }`.
     PublishReply,
 }
 

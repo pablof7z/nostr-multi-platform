@@ -98,7 +98,7 @@ fn start_bytes_publish_raw_returns_minted_correlation_id() {
         tags: vec![],
         content: "hello typed".to_string(),
         target: PublishTarget::Auto,
-        signer_pubkey: None,
+        signer: Default::default(),
     };
     let payload = action.encode();
     let id = registry

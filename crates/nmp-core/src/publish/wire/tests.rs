@@ -2,7 +2,9 @@
 //! (ADR-0064 / S3 #1751). Every fail-closed gate asserts the NEGATIVE.
 
 use super::*;
-use crate::publish::action::{PublishAction, PublishRouteClass, PublishTarget};
+use crate::publish::action::{
+    PublishAction, PublishRouteClass, PublishSigner, PublishSignerProvenance, PublishTarget,
+};
 use crate::substrate::{ActionPayload, ActionPayloadDecodeError};
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
@@ -101,7 +103,7 @@ fn publish_raw_round_trips() {
             vec!["wss://relay.one".to_string(), "wss://relay.two".to_string()],
             PublishRouteClass::Diagnostic,
         ),
-        signer_pubkey: Some("e".repeat(64)),
+        signer: PublishSigner::registered("e".repeat(64), PublishSignerProvenance::AppManaged),
     };
     let decoded = PublishAction::decode(&action.encode()).expect("decodes");
     assert_eq!(decoded, action);
@@ -114,7 +116,7 @@ fn publish_raw_auto_target_and_no_signer_round_trips() {
         tags: vec![],
         content: "note".to_string(),
         target: PublishTarget::Auto,
-        signer_pubkey: None,
+        signer: Default::default(),
     };
     let decoded = PublishAction::decode(&action.encode()).expect("decodes");
     assert_eq!(decoded, action);
@@ -141,7 +143,7 @@ fn publish_raw_payload_with_route_class(route_class: Option<&str>) -> Vec<u8> {
             tags: None,
             content: Some(content),
             target: Some(target),
-            signer_pubkey: None,
+            signer: None,
         },
     );
     let payload = fb::PublishPayload::create(
@@ -206,7 +208,7 @@ fn publish_reply_round_trips() {
             vec!["wss://relay.example".to_string()],
             PublishRouteClass::GroupHostPin,
         ),
-        signer_pubkey: Some("e".repeat(64)),
+        signer: PublishSigner::registered("e".repeat(64), PublishSignerProvenance::AppManaged),
     };
     let decoded = PublishAction::decode(&action.encode()).expect("decodes");
     assert_eq!(decoded, action);
@@ -273,6 +275,6 @@ fn malformed_buffer_is_rejected() {
 #[test]
 fn schema_constants_are_stable() {
     assert_eq!(SCHEMA_ID, "nmp.publish");
-    assert_eq!(SCHEMA_VERSION, 2);
+    assert_eq!(SCHEMA_VERSION, 3);
     assert_eq!(FILE_IDENTIFIER, b"NPUB");
 }

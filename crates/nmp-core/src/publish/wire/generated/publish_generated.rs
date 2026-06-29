@@ -12,6 +12,95 @@ pub mod nmp {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
+        pub const ENUM_MIN_PUBLISH_SIGNER_MODE: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_PUBLISH_SIGNER_MODE: u8 = 1;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_PUBLISH_SIGNER_MODE: [PublishSignerMode; 2] =
+            [PublishSignerMode::Active, PublishSignerMode::Registered];
+
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct PublishSignerMode(pub u8);
+        #[allow(non_upper_case_globals)]
+        impl PublishSignerMode {
+            pub const Active: Self = Self(0);
+            pub const Registered: Self = Self(1);
+
+            pub const ENUM_MIN: u8 = 0;
+            pub const ENUM_MAX: u8 = 1;
+            pub const ENUM_VALUES: &'static [Self] = &[Self::Active, Self::Registered];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::Active => Some("Active"),
+                    Self::Registered => Some("Registered"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for PublishSignerMode {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for PublishSignerMode {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for PublishSignerMode {
+            type Output = PublishSignerMode;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for PublishSignerMode {
+            type Scalar = u8;
+            #[inline]
+            fn to_little_endian(self) -> u8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: u8) -> Self {
+                let b = u8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for PublishSignerMode {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                u8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for PublishSignerMode {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
         pub const ENUM_MIN_PUBLISH_PAYLOAD_BODY: u8 = 0;
         #[deprecated(
             since = "2.0.0",
@@ -598,7 +687,7 @@ pub mod nmp {
             pub const VT_TAGS: ::flatbuffers::VOffsetT = 6;
             pub const VT_CONTENT: ::flatbuffers::VOffsetT = 8;
             pub const VT_TARGET: ::flatbuffers::VOffsetT = 10;
-            pub const VT_SIGNER_PUBKEY: ::flatbuffers::VOffsetT = 12;
+            pub const VT_SIGNER: ::flatbuffers::VOffsetT = 12;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -615,8 +704,8 @@ pub mod nmp {
                 args: &'args PublishRawArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<PublishRaw<'bldr>> {
                 let mut builder = PublishRawBuilder::new(_fbb);
-                if let Some(x) = args.signer_pubkey {
-                    builder.add_signer_pubkey(x);
+                if let Some(x) = args.signer {
+                    builder.add_signer(x);
                 }
                 if let Some(x) = args.target {
                     builder.add_target(x);
@@ -678,15 +767,16 @@ pub mod nmp {
                 }
             }
             #[inline]
-            pub fn signer_pubkey(&self) -> Option<&'a str> {
+            pub fn signer(&self) -> Option<PublishSignerSelection<'a>> {
                 // Safety:
                 // Created from valid Table for this object
                 // which contains a valid value in this slot
                 unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        PublishRaw::VT_SIGNER_PUBKEY,
-                        None,
-                    )
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<PublishSignerSelection>>(
+                            PublishRaw::VT_SIGNER,
+                            None,
+                        )
                 }
             }
         }
@@ -712,9 +802,9 @@ pub mod nmp {
                         Self::VT_TARGET,
                         true,
                     )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "signer_pubkey",
-                        Self::VT_SIGNER_PUBKEY,
+                    .visit_field::<::flatbuffers::ForwardsUOffset<PublishSignerSelection>>(
+                        "signer",
+                        Self::VT_SIGNER,
                         false,
                     )?
                     .finish();
@@ -730,7 +820,7 @@ pub mod nmp {
             >,
             pub content: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub target: Option<::flatbuffers::WIPOffset<PublishTarget<'a>>>,
-            pub signer_pubkey: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub signer: Option<::flatbuffers::WIPOffset<PublishSignerSelection<'a>>>,
         }
         impl<'a> Default for PublishRawArgs<'a> {
             #[inline]
@@ -740,7 +830,7 @@ pub mod nmp {
                     tags: None,
                     content: None, // required field
                     target: None,  // required field
-                    signer_pubkey: None,
+                    signer: None,
                 }
             }
         }
@@ -780,11 +870,15 @@ pub mod nmp {
                     );
             }
             #[inline]
-            pub fn add_signer_pubkey(&mut self, signer_pubkey: ::flatbuffers::WIPOffset<&'b str>) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    PublishRaw::VT_SIGNER_PUBKEY,
-                    signer_pubkey,
-                );
+            pub fn add_signer(
+                &mut self,
+                signer: ::flatbuffers::WIPOffset<PublishSignerSelection<'b>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<PublishSignerSelection>>(
+                        PublishRaw::VT_SIGNER,
+                        signer,
+                    );
             }
             #[inline]
             pub fn new(
@@ -812,7 +906,7 @@ pub mod nmp {
                 ds.field("tags", &self.tags());
                 ds.field("content", &self.content());
                 ds.field("target", &self.target());
-                ds.field("signer_pubkey", &self.signer_pubkey());
+                ds.field("signer", &self.signer());
                 ds.finish()
             }
         }
@@ -837,7 +931,7 @@ pub mod nmp {
             pub const VT_CONTENT: ::flatbuffers::VOffsetT = 4;
             pub const VT_REPLY_TO_EVENT_ID: ::flatbuffers::VOffsetT = 6;
             pub const VT_TARGET: ::flatbuffers::VOffsetT = 8;
-            pub const VT_SIGNER_PUBKEY: ::flatbuffers::VOffsetT = 10;
+            pub const VT_SIGNER: ::flatbuffers::VOffsetT = 10;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -854,8 +948,8 @@ pub mod nmp {
                 args: &'args PublishReplyArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<PublishReply<'bldr>> {
                 let mut builder = PublishReplyBuilder::new(_fbb);
-                if let Some(x) = args.signer_pubkey {
-                    builder.add_signer_pubkey(x);
+                if let Some(x) = args.signer {
+                    builder.add_signer(x);
                 }
                 if let Some(x) = args.target {
                     builder.add_target(x);
@@ -909,15 +1003,16 @@ pub mod nmp {
                 }
             }
             #[inline]
-            pub fn signer_pubkey(&self) -> Option<&'a str> {
+            pub fn signer(&self) -> Option<PublishSignerSelection<'a>> {
                 // Safety:
                 // Created from valid Table for this object
                 // which contains a valid value in this slot
                 unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        PublishReply::VT_SIGNER_PUBKEY,
-                        None,
-                    )
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<PublishSignerSelection>>(
+                            PublishReply::VT_SIGNER,
+                            None,
+                        )
                 }
             }
         }
@@ -944,9 +1039,9 @@ pub mod nmp {
                         Self::VT_TARGET,
                         true,
                     )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "signer_pubkey",
-                        Self::VT_SIGNER_PUBKEY,
+                    .visit_field::<::flatbuffers::ForwardsUOffset<PublishSignerSelection>>(
+                        "signer",
+                        Self::VT_SIGNER,
                         false,
                     )?
                     .finish();
@@ -957,7 +1052,7 @@ pub mod nmp {
             pub content: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub reply_to_event_id: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub target: Option<::flatbuffers::WIPOffset<PublishTarget<'a>>>,
-            pub signer_pubkey: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub signer: Option<::flatbuffers::WIPOffset<PublishSignerSelection<'a>>>,
         }
         impl<'a> Default for PublishReplyArgs<'a> {
             #[inline]
@@ -966,7 +1061,7 @@ pub mod nmp {
                     content: None,           // required field
                     reply_to_event_id: None, // required field
                     target: None,            // required field
-                    signer_pubkey: None,
+                    signer: None,
                 }
             }
         }
@@ -1002,11 +1097,15 @@ pub mod nmp {
                     );
             }
             #[inline]
-            pub fn add_signer_pubkey(&mut self, signer_pubkey: ::flatbuffers::WIPOffset<&'b str>) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    PublishReply::VT_SIGNER_PUBKEY,
-                    signer_pubkey,
-                );
+            pub fn add_signer(
+                &mut self,
+                signer: ::flatbuffers::WIPOffset<PublishSignerSelection<'b>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<PublishSignerSelection>>(
+                        PublishReply::VT_SIGNER,
+                        signer,
+                    );
             }
             #[inline]
             pub fn new(
@@ -1035,7 +1134,7 @@ pub mod nmp {
                 ds.field("content", &self.content());
                 ds.field("reply_to_event_id", &self.reply_to_event_id());
                 ds.field("target", &self.target());
-                ds.field("signer_pubkey", &self.signer_pubkey());
+                ds.field("signer", &self.signer());
                 ds.finish()
             }
         }
@@ -1341,6 +1440,184 @@ pub mod nmp {
                 ds.field("explicit", &self.explicit());
                 ds.field("relays", &self.relays());
                 ds.field("route_class", &self.route_class());
+                ds.finish()
+            }
+        }
+        pub enum PublishSignerSelectionOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        pub struct PublishSignerSelection<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for PublishSignerSelection<'a> {
+            type Inner = PublishSignerSelection<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> PublishSignerSelection<'a> {
+            pub const VT_MODE: ::flatbuffers::VOffsetT = 4;
+            pub const VT_PUBKEY: ::flatbuffers::VOffsetT = 6;
+            pub const VT_PROVENANCE: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                PublishSignerSelection { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args PublishSignerSelectionArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<PublishSignerSelection<'bldr>> {
+                let mut builder = PublishSignerSelectionBuilder::new(_fbb);
+                if let Some(x) = args.provenance {
+                    builder.add_provenance(x);
+                }
+                if let Some(x) = args.pubkey {
+                    builder.add_pubkey(x);
+                }
+                builder.add_mode(args.mode);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn mode(&self) -> PublishSignerMode {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<PublishSignerMode>(
+                            PublishSignerSelection::VT_MODE,
+                            Some(PublishSignerMode::Active),
+                        )
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn pubkey(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        PublishSignerSelection::VT_PUBKEY,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn provenance(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        PublishSignerSelection::VT_PROVENANCE,
+                        None,
+                    )
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for PublishSignerSelection<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<PublishSignerMode>("mode", Self::VT_MODE, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "pubkey",
+                        Self::VT_PUBKEY,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "provenance",
+                        Self::VT_PROVENANCE,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct PublishSignerSelectionArgs<'a> {
+            pub mode: PublishSignerMode,
+            pub pubkey: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub provenance: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for PublishSignerSelectionArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                PublishSignerSelectionArgs {
+                    mode: PublishSignerMode::Active,
+                    pubkey: None,
+                    provenance: None,
+                }
+            }
+        }
+
+        pub struct PublishSignerSelectionBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> PublishSignerSelectionBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_mode(&mut self, mode: PublishSignerMode) {
+                self.fbb_.push_slot::<PublishSignerMode>(
+                    PublishSignerSelection::VT_MODE,
+                    mode,
+                    PublishSignerMode::Active,
+                );
+            }
+            #[inline]
+            pub fn add_pubkey(&mut self, pubkey: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    PublishSignerSelection::VT_PUBKEY,
+                    pubkey,
+                );
+            }
+            #[inline]
+            pub fn add_provenance(&mut self, provenance: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    PublishSignerSelection::VT_PROVENANCE,
+                    provenance,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> PublishSignerSelectionBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                PublishSignerSelectionBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<PublishSignerSelection<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for PublishSignerSelection<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("PublishSignerSelection");
+                ds.field("mode", &self.mode());
+                ds.field("pubkey", &self.pubkey());
+                ds.field("provenance", &self.provenance());
                 ds.finish()
             }
         }

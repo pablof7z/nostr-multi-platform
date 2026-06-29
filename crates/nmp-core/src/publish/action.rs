@@ -11,11 +11,17 @@ use serde::{Deserialize, Serialize};
 use crate::actor::ActorCommand;
 use crate::actor::PublishCommand;
 use crate::publish::policy::{classify_publish_behavior, validate_publish_routing};
-use crate::relay::CanonicalRelayUrl;
 use crate::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
 };
 use nmp_signer_iface::SignedEvent;
+
+mod signer;
+mod target;
+
+pub use signer::{PublishSigner, PublishSignerProvenance};
+pub(crate) use target::{validate_explicit_relays, validate_publish_target};
+pub use target::{PublishRouteClass, PublishTarget};
 
 /// Stable handle returned to the caller of `Publish`. Used to key snapshot
 /// entries and to address the action in the ledger when M6 wires the ledger.
@@ -26,119 +32,6 @@ pub type PublishHandle = String;
 /// crate-wide definition lives in `crate::relay`; re-exported here so
 /// `publish` import paths are unchanged.
 pub use crate::relay::RelayUrl;
-
-/// Why a publish bypasses default outbox planning.
-///
-/// D3 still makes `Auto` the default. This enum exists only for explicit relay
-/// pins so the write stack can distinguish manual overrides from protocol-owned
-/// routing such as NIP-29 group hosts or verified DM inboxes.
-#[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum PublishRouteClass {
-    ManualOverride,
-    GroupHostPin,
-    VerifiedPrivateInbox,
-    ImportedOrPresigned,
-    Diagnostic,
-}
-
-impl Default for PublishRouteClass {
-    fn default() -> Self {
-        Self::ManualOverride
-    }
-}
-
-impl PublishRouteClass {
-    #[must_use]
-    pub fn wire_token(self) -> &'static str {
-        match self {
-            Self::ManualOverride => "manual_override",
-            Self::GroupHostPin => "group_host_pin",
-            Self::VerifiedPrivateInbox => "verified_private_inbox",
-            Self::ImportedOrPresigned => "imported_or_presigned",
-            Self::Diagnostic => "diagnostic",
-        }
-    }
-
-    #[must_use]
-    pub fn from_wire_token(token: &str) -> Option<Self> {
-        Some(match token {
-            "manual_override" => Self::ManualOverride,
-            "group_host_pin" => Self::GroupHostPin,
-            "verified_private_inbox" => Self::VerifiedPrivateInbox,
-            "imported_or_presigned" => Self::ImportedOrPresigned,
-            "diagnostic" => Self::Diagnostic,
-            _ => return None,
-        })
-    }
-}
-
-/// Where a publish should go.
-///
-/// `Auto` defers to the `OutboxResolver` (NIP-65 + indexer fallback per D3).
-/// `Explicit` is the named opt-out and must carry both relays and provenance.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum PublishTarget {
-    Auto,
-    Explicit {
-        relays: Vec<RelayUrl>,
-        route_class: PublishRouteClass,
-    },
-}
-
-impl PublishTarget {
-    #[must_use]
-    pub fn explicit(relays: Vec<RelayUrl>, route_class: PublishRouteClass) -> Self {
-        Self::Explicit {
-            relays,
-            route_class,
-        }
-    }
-
-    #[must_use]
-    pub fn manual_override(relays: Vec<RelayUrl>) -> Self {
-        Self::explicit(relays, PublishRouteClass::ManualOverride)
-    }
-}
-
-/// `Auto` is the unambiguous default — the kernel resolves via NIP-65 (D3).
-/// `Explicit` requires deliberate caller intent (a relay set), so it would
-/// never make sense as a default. Needed by `#[serde(default)]` on
-/// `PublishAction::PublishRaw::target` so a host JSON payload that omits
-/// the field gets outbox routing rather than a deserialize error.
-impl Default for PublishTarget {
-    fn default() -> Self {
-        Self::Auto
-    }
-}
-
-/// Validate a publish target before it can cross the action/actor boundary.
-///
-/// `Auto` is always valid: it deliberately asks the kernel to resolve via
-/// NIP-65. `Explicit` is fail-closed: an empty or malformed relay set is a
-/// caller bug, not a request to silently widen to `Auto`.
-#[must_use]
-pub(crate) fn validate_publish_target(target: &PublishTarget) -> Result<(), String> {
-    match target {
-        PublishTarget::Auto => Ok(()),
-        PublishTarget::Explicit { relays, .. } => validate_explicit_relays(relays),
-    }
-}
-
-#[must_use]
-pub(crate) fn validate_explicit_relays(relays: &[RelayUrl]) -> Result<(), String> {
-    if relays.is_empty() {
-        return Err("explicit publish target requires at least one relay".to_string());
-    }
-    for relay in relays {
-        if CanonicalRelayUrl::parse(relay).is_none() {
-            return Err(format!(
-                "explicit publish target relay '{relay}' must be a ws:// or wss:// relay URL"
-            ));
-        }
-    }
-    Ok(())
-}
 
 /// The single public publish action.
 ///
@@ -195,30 +88,23 @@ pub enum PublishAction {
     ///
     /// # Signer selection
     ///
-    /// `signer_pubkey` selects which registered signer signs the event:
-    /// `None` (the default) signs with the active account; `Some(hex_pubkey)`
-    /// signs with the registered signer whose pubkey matches — e.g. an agent /
-    /// per-podcast key added via `nmp_app_register_agent_nsec` and named here
-    /// by pubkey. The active account is never changed. Whether the
-    /// selected key is local (nsec, signs inline) or remote (NIP-46 bunker,
-    /// parks on the kernel's `ParkedOp` path) is transparent to the caller.
-    /// An unknown pubkey is **not** validated at dispatch time — it surfaces as
-    /// a sign-time error toast through `sign_with_account_nonblocking`'s
-    /// "no signer for account {pubkey}" path, the same contract as the rest of
-    /// the codebase (the roster isn't reachable from `start`, and a
-    /// registration enqueued just before the publish is FIFO-guaranteed to land
-    /// first).
+    /// `signer` is typed app-facing intent: `Active` signs with the active
+    /// account; `Registered { pubkey, provenance }` signs with the registered
+    /// signer whose pubkey matches while preserving why this path is allowed
+    /// (for example, an app-managed agent key). The active account is never
+    /// changed. Whether the selected key is local (nsec, signs inline) or
+    /// remote (NIP-46 bunker, parks on the kernel's `ParkedOp` path) is
+    /// transparent to the caller. An unknown pubkey is **not** validated at
+    /// dispatch time — it surfaces as a sign-time error toast through
+    /// `sign_with_account_nonblocking`'s "no signer for account {pubkey}" path.
     PublishRaw {
         kind: u32,
         tags: Vec<Vec<String>>,
         content: String,
         #[serde(default)]
         target: PublishTarget,
-        /// `None` = active account (default); `Some(hex_pubkey)` = the
-        /// registered signer whose pubkey matches. `#[serde(default)]` keeps
-        /// existing dispatch JSON that omits the field deserializing to `None`.
         #[serde(default)]
-        signer_pubkey: Option<String>,
+        signer: PublishSigner,
     },
     /// Sign-and-publish a kind:1 reply. Hosts provide only the direct parent
     /// event id and content; the reducer resolves the parent from the kernel
@@ -229,7 +115,7 @@ pub enum PublishAction {
         #[serde(default)]
         target: PublishTarget,
         #[serde(default)]
-        signer_pubkey: Option<String>,
+        signer: PublishSigner,
     },
 }
 
@@ -386,14 +272,14 @@ impl ActionModule for PublishModule {
                 tags,
                 content,
                 target,
-                signer_pubkey,
+                signer,
             } => {
                 send(ActorCommand::Publish(PublishCommand::RawEvent {
                     kind,
                     tags,
                     content,
                     target,
-                    signer_pubkey,
+                    signer_pubkey: signer.signer_pubkey(),
                     correlation_id: Some(correlation_id.to_string()),
                 }));
                 Ok(())
@@ -402,13 +288,13 @@ impl ActionModule for PublishModule {
                 content,
                 reply_to_event_id,
                 target,
-                signer_pubkey,
+                signer,
             } => {
                 send(ActorCommand::Publish(PublishCommand::Reply {
                     content,
                     reply_to_event_id,
                     target,
-                    signer_pubkey,
+                    signer_pubkey: signer.signer_pubkey(),
                     correlation_id: Some(correlation_id.to_string()),
                 }));
                 Ok(())
