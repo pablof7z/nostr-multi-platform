@@ -148,10 +148,8 @@ impl Kernel {
         // public relays — regardless of which path reached the engine. The
         // (kind, target) → allow/reject decision is the publish-policy table's;
         // this site only consults it (no raw kind literal here).
-        if let Err(reason) = crate::publish::validate_publish_routing(
-            signed.unsigned.kind,
-            crate::publish::target_is_explicit_nonempty(&target),
-        ) {
+        if let Err(reason) = crate::publish::validate_publish_routing(signed.unsigned.kind, &target)
+        {
             tracing::warn!(
                 kind = signed.unsigned.kind,
                 "run_publish_engine refused: private/encrypted envelope without an \

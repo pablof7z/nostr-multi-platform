@@ -68,10 +68,9 @@ pub(crate) use action::validate_publish_target;
 // Workstream C publish-policy one-door: the typed routing/builder gate every
 // publish path consults. `validate_publish_routing` enforces the D10
 // private-envelope invariant at the typed-target boundary (private kinds require
-// Explicit non-empty relays); `relay_emit_is_sanctioned` is the UNIVERSAL
+// verified private-inbox provenance); `relay_emit_is_sanctioned` is the UNIVERSAL
 // per-relay emit gate the engine's `dispatch_due` consults so the same
 // invariant holds for resume-from-store and retry, not just initial publish;
-// `target_is_explicit_nonempty` is the shared structural predicate; the
 // `classify_publish_behavior` table is the single home for kind→policy.
 pub use action::{
     PublishAction, PublishHandle, PublishModule, PublishOutcome, PublishRouteClass, PublishTarget,
@@ -82,9 +81,7 @@ pub use engine::{
     PublishQueueTerminal, TerminalOutcome, ENGINE_FAILURE_RELAY_URL,
 };
 pub use fs_store::FsPublishStore;
-pub(crate) use policy::{
-    relay_emit_is_sanctioned, target_is_explicit_nonempty, validate_publish_routing,
-};
+pub(crate) use policy::{relay_emit_is_sanctioned, validate_publish_routing};
 // `Nip65OutboxResolver` lives in `nmp-router` (spec §271, 2026-05-25). The
 // `OutboxResolver` trait stays here (publish-side seam); production
 // composition (`nmp-defaults::register_defaults`) installs the

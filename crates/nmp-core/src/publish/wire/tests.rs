@@ -120,6 +120,62 @@ fn publish_raw_auto_target_and_no_signer_round_trips() {
     assert_eq!(decoded, action);
 }
 
+fn publish_raw_payload_with_route_class(route_class: Option<&str>) -> Vec<u8> {
+    let mut fbb = flatbuffers::FlatBufferBuilder::new();
+    let relay = fbb.create_string("wss://relay.example");
+    let relays = fbb.create_vector(&[relay]);
+    let route_class = route_class.map(|token| fbb.create_string(token));
+    let target = fb::PublishTarget::create(
+        &mut fbb,
+        &fb::PublishTargetArgs {
+            explicit: true,
+            relays: Some(relays),
+            route_class,
+        },
+    );
+    let content = fbb.create_string("body");
+    let raw = fb::PublishRaw::create(
+        &mut fbb,
+        &fb::PublishRawArgs {
+            kind: 1,
+            tags: None,
+            content: Some(content),
+            target: Some(target),
+            signer_pubkey: None,
+        },
+    );
+    let payload = fb::PublishPayload::create(
+        &mut fbb,
+        &fb::PublishPayloadArgs {
+            schema_version: SCHEMA_VERSION,
+            body_type: fb::PublishPayloadBody::PublishRaw,
+            body: Some(raw.as_union_value()),
+        },
+    );
+    fb::finish_publish_payload_buffer(&mut fbb, payload);
+    fbb.finished_data().to_vec()
+}
+
+#[test]
+fn explicit_target_without_route_class_is_rejected() {
+    let err = PublishAction::decode(&publish_raw_payload_with_route_class(None))
+        .expect_err("explicit target without route_class must be malformed");
+    assert!(
+        matches!(&err, ActionPayloadDecodeError::Malformed { reason } if reason.contains("route_class")),
+        "error must mention route_class; got {err:?}"
+    );
+}
+
+#[test]
+fn explicit_target_with_unknown_route_class_is_rejected() {
+    let err = PublishAction::decode(&publish_raw_payload_with_route_class(Some("mystery")))
+        .expect_err("unknown explicit route_class must be malformed");
+    assert!(
+        matches!(&err, ActionPayloadDecodeError::Malformed { reason } if reason.contains("mystery")),
+        "error must mention the unknown route_class; got {err:?}"
+    );
+}
+
 #[test]
 fn publish_profile_round_trips() {
     let mut fields = serde_json::Map::new();

@@ -106,9 +106,9 @@ fn build_target<'a>(
     )
 }
 
-fn read_target(target: fb::PublishTarget<'_>) -> PublishTarget {
+fn read_target(target: fb::PublishTarget<'_>) -> Result<PublishTarget, ActionPayloadDecodeError> {
     if !target.explicit() {
-        return PublishTarget::Auto;
+        return Ok(PublishTarget::Auto);
     }
     let relays: Vec<RelayUrl> = target
         .relays()
@@ -116,12 +116,16 @@ fn read_target(target: fb::PublishTarget<'_>) -> PublishTarget {
         .unwrap_or_default();
     let route_class = target
         .route_class()
-        .map(PublishRouteClass::from_wire_token)
-        .unwrap_or_default();
-    PublishTarget::Explicit {
+        .ok_or_else(|| malformed("explicit publish target missing route_class"))?;
+    let route_class = PublishRouteClass::from_wire_token(route_class).ok_or_else(|| {
+        malformed(format!(
+            "unknown explicit publish route_class '{route_class}'"
+        ))
+    })?;
+    Ok(PublishTarget::Explicit {
         relays,
         route_class,
-    }
+    })
 }
 
 // --- encode ------------------------------------------------------------------
@@ -313,7 +317,7 @@ fn decode_publish_payload(bytes: &[u8]) -> Result<PublishAction, ActionPayloadDe
             let handle = signed.handle().to_string();
             let canonical = signed.canonical_event().bytes();
             let event = parse_nip01_event(canonical)?;
-            let target = read_target(signed.target());
+            let target = read_target(signed.target())?;
             Ok(PublishAction::Publish {
                 handle,
                 event,
@@ -356,7 +360,7 @@ fn decode_publish_payload(bytes: &[u8]) -> Result<PublishAction, ActionPayloadDe
                 kind: raw.kind(),
                 tags,
                 content: raw.content().to_string(),
-                target: read_target(raw.target()),
+                target: read_target(raw.target())?,
                 signer_pubkey,
             })
         }
@@ -367,7 +371,7 @@ fn decode_publish_payload(bytes: &[u8]) -> Result<PublishAction, ActionPayloadDe
             Ok(PublishAction::PublishReply {
                 content: reply.content().to_string(),
                 reply_to_event_id: reply.reply_to_event_id().to_string(),
-                target: read_target(reply.target()),
+                target: read_target(reply.target())?,
                 signer_pubkey: reply.signer_pubkey().map(|s| s.to_string()),
             })
         }

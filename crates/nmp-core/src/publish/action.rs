@@ -10,9 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::actor::ActorCommand;
 use crate::actor::PublishCommand;
-use crate::publish::policy::{
-    classify_publish_behavior, target_is_explicit_nonempty, validate_publish_routing,
-};
+use crate::publish::policy::{classify_publish_behavior, validate_publish_routing};
 use crate::relay::CanonicalRelayUrl;
 use crate::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
@@ -63,14 +61,15 @@ impl PublishRouteClass {
     }
 
     #[must_use]
-    pub fn from_wire_token(token: &str) -> Self {
-        match token {
+    pub fn from_wire_token(token: &str) -> Option<Self> {
+        Some(match token {
+            "manual_override" => Self::ManualOverride,
             "group_host_pin" => Self::GroupHostPin,
             "verified_private_inbox" => Self::VerifiedPrivateInbox,
             "imported_or_presigned" => Self::ImportedOrPresigned,
             "diagnostic" => Self::Diagnostic,
-            _ => Self::ManualOverride,
-        }
+            _ => return None,
+        })
     }
 }
 
@@ -83,7 +82,6 @@ pub enum PublishTarget {
     Auto,
     Explicit {
         relays: Vec<RelayUrl>,
-        #[serde(default)]
         route_class: PublishRouteClass,
     },
 }
@@ -298,7 +296,7 @@ impl ActionModule for PublishModule {
                 // empty `Explicit` target — that would Auto-route it to public
                 // relays. Reject at dispatch time so the host gets a clean
                 // error; the engine chokepoint is the deeper structural twin.
-                validate_publish_routing(event.unsigned.kind, target_is_explicit_nonempty(&target))
+                validate_publish_routing(event.unsigned.kind, &target)
                     .map_err(ActionRejection::Invalid)?;
                 Ok(())
             }
@@ -333,8 +331,7 @@ impl ActionModule for PublishModule {
                 // `Auto` or an empty `Explicit` target is refused — it must
                 // carry an explicit non-empty recipient-inbox relay set, never
                 // Auto-route to public relays.
-                validate_publish_routing(kind, target_is_explicit_nonempty(&target))
-                    .map_err(ActionRejection::Invalid)?;
+                validate_publish_routing(kind, &target).map_err(ActionRejection::Invalid)?;
                 Ok(())
             }
             PublishAction::PublishReply {
