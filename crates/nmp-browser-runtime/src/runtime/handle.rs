@@ -40,6 +40,7 @@ use super::{
     BrowserGroupDiscoverySession, BrowserGroupEventsSession, BrowserNotificationsSession,
     BrowserSearchSession,
 };
+use crate::feed::OpenedBrowserFeedSession;
 
 /// Public-facing handle to the browser runtime (issue #2058 — hides raw
 /// reducer/runtime handles).
@@ -67,6 +68,8 @@ pub struct BrowserRuntimeHandle {
     pub(super) group_discovery_sessions: HashMap<String, BrowserGroupDiscoverySession>,
     pub(super) group_events_sessions: HashMap<String, BrowserGroupEventsSession>,
     pub(super) notifications_sessions: HashMap<String, BrowserNotificationsSession>,
+    pub(crate) feed_sessions: nmp_feed::FeedSessionRegistry,
+    pub(crate) home_feed_session: Option<OpenedBrowserFeedSession>,
 }
 
 impl BrowserRuntimeHandle {
@@ -79,6 +82,7 @@ impl BrowserRuntimeHandle {
 
         let relay_slot = Arc::clone(&inner.configured_relays_slot);
         inner.reducer.set_app_relay_slot(Arc::clone(&relay_slot));
+        let startup_feed_contacts_lookup = inner.contacts_lookup.as_ref().cloned();
 
         if let Some(factory) = inner.routing_substrate_factory.take() {
             let trace_observer = NoopRoutingTrace::arc();
@@ -225,7 +229,11 @@ impl BrowserRuntimeHandle {
             group_discovery_sessions: HashMap::new(),
             group_events_sessions: HashMap::new(),
             notifications_sessions: HashMap::new(),
+            feed_sessions: nmp_feed::FeedSessionRegistry::default(),
+            home_feed_session: None,
         };
+
+        handle.open_default_startup_feed(startup_feed_contacts_lookup);
 
         // ── Spawn relay drivers from bootstrap list (wasm32 only) ────────────
         // Opens one WebSocket per distinct relay URL. On native this is a no-op

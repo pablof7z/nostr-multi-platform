@@ -49,6 +49,70 @@ fn with_store_uses_the_injected_event_store_handle() {
 }
 
 #[test]
+fn remove_feed_snapshot_projection_drops_typed_projection_and_author_provider() {
+    let mut r = KernelReducer::new();
+    let feed_key = "nmp.feed.author.alice";
+    let sibling_key = "nmp.feed.home";
+
+    r.register_typed_snapshot_projection(feed_key, || {
+        Some(crate::TypedProjectionData {
+            key: feed_key.to_string(),
+            schema_id: feed_key.to_string(),
+            schema_version: 1,
+            file_identifier: "TEST".to_string(),
+            payload: vec![0xab],
+            ..Default::default()
+        })
+    });
+    r.register_typed_snapshot_projection(sibling_key, || {
+        Some(crate::TypedProjectionData {
+            key: sibling_key.to_string(),
+            schema_id: sibling_key.to_string(),
+            schema_version: 1,
+            file_identifier: "TEST".to_string(),
+            payload: vec![0xcd],
+            ..Default::default()
+        })
+    });
+    r.register_feed_author_provider(feed_key, || vec!["a".repeat(64)]);
+    r.register_feed_author_provider(sibling_key, || vec!["b".repeat(64)]);
+
+    r.remove_feed_snapshot_projection(feed_key);
+
+    assert!(
+        !r.registered_feed_author_provider_keys()
+            .iter()
+            .any(|key| key == feed_key),
+        "teardown must remove the paired feed-author provider"
+    );
+    assert_eq!(
+        r.run_feed_author_provider_for_test(feed_key),
+        Vec::<String>::new(),
+        "removed provider must no longer run"
+    );
+    assert_eq!(
+        r.run_feed_author_provider_for_test(sibling_key),
+        vec!["b".repeat(64)],
+        "removing one feed must not disturb sibling providers"
+    );
+
+    let frame = r.make_update_frame(true);
+    let typed = crate::decode_snapshot_typed_projections(&frame).expect("typed projections decode");
+    let removed = typed
+        .iter()
+        .find(|entry| entry.key == feed_key)
+        .expect("removed typed projection emits a Cleared row");
+    assert_eq!(removed.state, crate::WireProjectionState::Cleared);
+    assert!(
+        typed
+            .iter()
+            .any(|entry| entry.key == sibling_key
+                && entry.state == crate::WireProjectionState::Changed),
+        "sibling typed projection must still emit"
+    );
+}
+
+#[test]
 fn reduce_garbage_uri_is_rejected_not_a_panic() {
     let mut r = KernelReducer::new();
     let update = r.reduce(KernelAction::OpenUri {

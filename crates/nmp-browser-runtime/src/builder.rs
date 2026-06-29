@@ -327,7 +327,10 @@ impl BrowserAppBuilder<RelaysDeclared> {
     /// providers (NIP-07, NIP-46, local-key) are registered by the browser
     /// capability + signer-provider registry in #2049. When that lands, the
     /// provider set is supplied through `config` here; the gate itself stays.
-    pub fn decide_providers(self, _config: BrowserRunConfig) -> BrowserAppBuilder<ProvidersDecided> {
+    pub fn decide_providers(
+        self,
+        _config: BrowserRunConfig,
+    ) -> BrowserAppBuilder<ProvidersDecided> {
         // `BrowserRunConfig` carries future capability-provider parameters;
         // no fields are consumed yet — the typestate gate is the API contract.
         self.advance()
@@ -349,7 +352,6 @@ impl BrowserAppBuilder<ProvidersDecided> {
         // Step 1 — register the current compatibility preset (takes
         // `&mut impl AppHost`).
         nmp_defaults::register_defaults(&mut self);
-        crate::feed::register_browser_home_feed(&self);
 
         // Step 2 — consume the inner state and build the runtime.
         let inner = match self.inner.into_inner() {

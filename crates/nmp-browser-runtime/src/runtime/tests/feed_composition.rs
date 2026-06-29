@@ -10,6 +10,76 @@ const FOLLOW_NOTE_ID: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccc
 const RELAY: &str = "wss://relay.example";
 
 #[test]
+fn browser_home_feed_startup_is_not_builder_observer_wiring() {
+    let handle = BrowserAppBuilder::new()
+        .in_memory()
+        .consume_all_builtin_projections()
+        .without_initial_relays()
+        .decide_providers(BrowserRunConfig::default())
+        .start();
+
+    assert_eq!(
+        handle.feed_sessions.live_count(),
+        1,
+        "browser home-feed startup must open one ordinary typed feed session"
+    );
+}
+
+#[test]
+fn browser_home_feed_has_no_production_register_path() {
+    let builder_source = include_str!("../../builder.rs");
+    assert!(
+        !builder_source.contains("register_browser_home_feed"),
+        "BrowserAppBuilder::start must not install browser home feed through the \
+         production register_browser_home_feed path; startup should open the \
+         typed home-feed session instead"
+    );
+}
+
+#[test]
+fn browser_home_feed_close_tears_down_projection_and_provider() {
+    let mut handle = BrowserAppBuilder::new()
+        .in_memory()
+        .consume_all_builtin_projections()
+        .without_initial_relays()
+        .decide_providers(BrowserRunConfig::default())
+        .start();
+
+    assert_eq!(handle.feed_sessions.live_count(), 1);
+    assert!(
+        handle
+            .runtime
+            .reducer
+            .registered_feed_author_provider_keys()
+            .iter()
+            .any(|key| key == nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY),
+        "opening the home feed session must pair the typed projection with a \
+         feed-author provider"
+    );
+
+    assert!(handle.close_home_feed_session());
+    assert_eq!(handle.feed_sessions.live_count(), 0);
+    assert!(!handle.close_home_feed_session());
+    assert!(
+        !handle
+            .runtime
+            .reducer
+            .registered_feed_author_provider_keys()
+            .iter()
+            .any(|key| key == nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY),
+        "closing the session must remove the paired feed-author provider"
+    );
+
+    let bytes = handle.make_update_frame(true);
+    let rows = nmp_core::decode_snapshot_typed_projections(&bytes).expect("frame decodes");
+    let row = rows
+        .iter()
+        .find(|row| row.key == nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY)
+        .expect("closed home feed projection emits a Cleared row");
+    assert_eq!(row.state, nmp_core::WireProjectionState::Cleared);
+}
+
+#[test]
 fn browser_home_feed_observer_opens_on_active_account_change() {
     let mut handle = BrowserAppBuilder::new()
         .in_memory()
@@ -17,11 +87,6 @@ fn browser_home_feed_observer_opens_on_active_account_change() {
         .set_relays(vec![(RELAY.to_string(), "both".to_string())])
         .decide_providers(BrowserRunConfig::default())
         .start();
-
-    assert!(
-        !handle.runtime.identity_change_observers.is_empty(),
-        "browser start must retain identity-change observers registered during composition"
-    );
 
     for role in [
         nmp_network::role::RelayRole::Content,

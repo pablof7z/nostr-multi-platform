@@ -65,6 +65,7 @@ mod notifications;
 pub(crate) use notifications::BrowserNotificationsSession;
 mod search;
 pub(crate) use search::BrowserSearchSession;
+mod feed_lifecycle;
 
 // ── #2051/#2073 — snapshot/projection/clock/diagnostics track ────────────────
 pub mod diagnostics;
