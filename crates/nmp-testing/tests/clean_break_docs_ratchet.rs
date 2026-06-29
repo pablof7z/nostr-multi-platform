@@ -113,6 +113,12 @@ const ALLOWLIST: &[Allow] = &[
     ("docs/builder-guide/26-faq-troubleshooting.md", "nmp.feed.home", "", "projection key sidecar"),
     ("docs/builder-guide/28-action-triggered-subscriptions.md", "ObservedProjectionSink", "are implementation", "implementation-detail guide"),
     ("docs/builder-guide/28-action-triggered-subscriptions.md", "ReducedSource", "materialize child interests", "internal Rust owner"),
+    // public-surface disposition table (#2378) — four additive entries scoped to one doc;
+    // appended last so #2366's allowlist-shrink rebases cleanly.
+    ("docs/architecture/high-level-app-architecture.md", "open_interest", "Internal acquisition machinery behind typed read sessions (ADR-0070)", "public-surface disposition table (#2378)"),
+    ("docs/architecture/high-level-app-architecture.md", "ObservedProjection", "Internal event-delivery and replay machinery behind typed read sessions (ADR-0070)", "public-surface disposition table (#2378)"),
+    ("docs/architecture/high-level-app-architecture.md", "ReducedSource", "Internal dynamic source reconciliation behind a session (ADR-0070)", "public-surface disposition table (#2378)"),
+    ("docs/architecture/high-level-app-architecture.md", "nmp.feed.home", "A projection key for the typed", "public-surface disposition table (#2378)"),
 ];
 
 fn repo_root() -> PathBuf {

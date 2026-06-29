@@ -13,6 +13,29 @@ It should not feel like it is assembling relay filters, replay order, projection
 sinks, signer parking, source replacement, route planning, local ingest, retry,
 and teardown by hand.
 
+## Document Role
+
+This is the canonical developer-facing overview of the clean-break NMP
+architecture. It is the fast reference for how an app is structured, how data
+flows, and what the public surface looks like. For decision rationale, the
+decision spine is [ADR-0069 through ADR-0073](../decisions/README.md).
+
+Document roles:
+
+- **[ADR-0069..0073](../decisions/README.md)** — the decision spine; start
+  here for rationale, migration history, and the "why" behind each constraint.
+- **[`docs/aim.md`](../aim.md)** — the immutable architectural north star and
+  foundation. It states what NMP must always be; it is not a guide to the
+  current developer API.
+- **`docs/new-arch/`** — retired; all guidance has migrated into ADR-0069..0073
+  and this document.
+- **[`docs/product-spec/doctrine.md`](../product-spec/doctrine.md)** — D0–D10
+  doctrine; authoritative for kernel constraints and agent extensions.
+- **[`docs/architecture/crate-boundaries.md`](crate-boundaries.md)** — crate
+  layer and boundary rules; authoritative for where code lives.
+- **[`docs/builder-guide/00-how-to-read.md`](../builder-guide/00-how-to-read.md)** — the
+  builder and agent guide; role-specific for app and protocol-module authors.
+
 ## Developer Model
 
 An NMP app has one Rust composition root. That root declares:
@@ -168,6 +191,24 @@ Capabilities are raw OS/browser work:
 
 The shell executes the raw operation and reports raw result data. Rust decides
 policy and state transitions.
+
+## Public-Surface Disposition
+
+The table below maps each named surface to its current disposition. Surfaces
+marked "internal machinery" survive as framework internals; they are not
+concepts an app author needs to understand. The "What Should Disappear" section
+below identifies the migration targets.
+
+| Surface | Disposition | Where it lives now |
+|---|---|---|
+| `register_defaults` | Preset installer for tutorial/test/migration compatibility only; not the production app root (ADR-0069) | `nmp-defaults` preset crate |
+| `open_interest` | Internal acquisition machinery behind typed read sessions (ADR-0070); not app-facing | `nmp-core` substrate |
+| `open_feed` | The surviving product read door | `nmp_app_open_feed` FFI / native `open_feed` |
+| `ObservedProjection` | Internal event-delivery and replay machinery behind typed read sessions (ADR-0070); not app-facing | `nmp-core` substrate |
+| `ReducedSource` | Internal dynamic source reconciliation behind a session (ADR-0070); not app-facing | `nmp-core` substrate |
+| `nmp.feed.home` | A projection key for the typed `OpFeedSnapshot` sidecar; not a special singleton wiring | codegen registry |
+| `PublishRaw` | Typed raw-publish body shape under the one write doorway (ADR-0071); manual route with provenance required | `BodyShape::PublishRaw` |
+| pre-signed publish | Imported/pre-signed events stay imported/manual and do not acquire protocol guarantees (ADR-0071) | dispatch doorway |
 
 ## What Should Disappear
 
