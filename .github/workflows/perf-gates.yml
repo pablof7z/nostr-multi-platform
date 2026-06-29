@@ -1,5 +1,39 @@
 name: perf-gates
 
+# Performance gates for hot paths with stable, current measurement surfaces.
+#
+# AUTOMATIC SIGNAL (issue #2464):
+#
+# The only automatic post-clean-break signal in this workflow is the
+# `ffi-transport-bench` job. It measures the current native hot path:
+# FlatBuffers update bytes crossing UniFFI as `Vec<u8>` through
+# `UpdateSink::on_update`. Its pre-registered failure threshold is tied to D8's
+# 60fps budget:
+#
+#   COLLAPSE iff surcharged weighted-p99 UniFFI-vs-C delta < 5% of a 16.67ms
+#   render frame and UniFFI SMALL batch-mean p99 < 250us; otherwise fail and
+#   escalate to on-device/manual investigation.
+#
+# The automatic trigger is narrow on purpose. It runs only when the native byte
+# transport, generated/native binding owner, transport schemas, benchmark, or
+# workflow changes. It deliberately does not run for broad crate churn or the
+# M14-D legacy deletion surfaces (`crates/nmp-ffi`, Gallery runtime files,
+# Marmot, or `ffi-stress`) so migration PRs are not slowed by stale gates.
+#
+# MANUAL-ONLY LEGACY BENCHES (issues #2395/#2464):
+#
+# reactivity-bench and firehose-bench remain available through
+# `workflow_dispatch`, but are not automatic PR/push signals during clean-break:
+#
+# - reactivity-bench is a synthetic model of the reverse-index/view-delta budget,
+#   not the typed-session + UniFFI surface currently being settled.
+# - firehose-bench replay mode still labels itself prototype/modelled for real
+#   relay sockets, storage, wrappers, and platform transport.
+# - neither should be restored as an automatic gate until its measured surface
+#   matches the surviving architecture again.
+#
+# Historical context for the manual jobs:
+#
 # Modelled perf benchmarks promoted to PR-blocking gates (issue #2124).
 #
 # Both benches run in DETERMINISTIC (modelled) mode — no live relays, no
@@ -27,40 +61,85 @@ name: perf-gates
 # Live firehose (relay-dependent) stays in real-relay-nightly.yml — relay
 # flake makes it unsuitable for PR blocking.
 #
-# Path filter: any change under crates/ can shift kernel throughput, so we
-# gate broadly rather than risk a silent miss from a narrow filter.
-#
 # Build note: The first cold build is heavy (openmls + marmot + nmp-core);
 # Swatinem/rust-cache makes subsequent runs incremental. The two
 # jobs each carry a DISTINCT rust-cache key (reactivity-bench / firehose-bench)
 # and do not share release artifacts, so each pays its own cold openmls+marmot
 # build on a cold or evicted cache. The 45-minute timeout gives that cold path
 # comfortable headroom; cached runs typically finish in 7–10 min.
-
-# MIGRATION-WINDOW DECISION (issue #2395, epic #2340):
-#
-# Keep this workflow manual-only while the clean-break migration is actively
-# deleting old public read/native ABI surfaces and converging native hosts on
-# UniFFI. The benches below remain useful on demand, but they are not a useful
-# automatic PR signal during this window:
-#
-# - reactivity-bench is a synthetic model of the reverse-index/view-delta budget,
-#   not the typed-session + UniFFI surface currently being settled.
-# - firehose-bench replay mode still labels itself prototype/modelled for real
-#   relay sockets, storage, wrappers, and platform transport.
-# - the intended replacement shape is a narrower architecture-sanity signal, but
-#   the documented `sanity-gate` binary is not present on current master.
-#
-# Do not restore push/pull_request triggers merely because they existed before.
-# After the M14-D native ABI deletions and clean-break docs settle, either wire a
-# narrow automatic signal for the surviving hot path or explicitly retire this
-# old automatic gate in the owning issue/docs.
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/perf-gates.yml"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/nmp-core/src/transport/**"
+      - "crates/nmp-native-runtime/**"
+      - "crates/nmp-uniffi/**"
+      - "crates/nmp-testing/bin/ffi-transport-bench/**"
+      - "crates/nmp-testing/build.rs"
+      - "docs/ffi-surface.md"
+      - "docs/product-spec/api-surface.md"
+  push:
+    branches: [master]
+    paths:
+      - ".github/workflows/perf-gates.yml"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/nmp-core/src/transport/**"
+      - "crates/nmp-native-runtime/**"
+      - "crates/nmp-uniffi/**"
+      - "crates/nmp-testing/bin/ffi-transport-bench/**"
+      - "crates/nmp-testing/build.rs"
+      - "docs/ffi-surface.md"
+      - "docs/product-spec/api-surface.md"
   workflow_dispatch:
 
 jobs:
+  uniffi-transport-bench:
+    name: UniFFI update transport (release, --fail-on-gate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /usr/local/lib/android /opt/hostedtoolcache/CodeQL \
+            /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
+          sudo docker image prune --all --force || true
+          df -h /
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ffi-transport-bench
+
+      - name: Build ffi-transport-bench (release)
+        run: cargo build --release --bin ffi-transport-bench -p nmp-testing
+
+      - name: Run ffi-transport-bench (--fail-on-gate)
+        run: |
+          set -euo pipefail
+          ./target/release/ffi-transport-bench --standard --fail-on-gate
+
+      - name: Upload bench report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffi-transport-bench-report-${{ github.run_id }}
+          path: docs/perf/ffi-transport-bench/
+          if-no-files-found: ignore
+          retention-days: 7
+
   reactivity-bench:
     name: reactivity-bench (quick, --fail-on-gate)
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -115,6 +194,7 @@ jobs:
 
   firehose-bench:
     name: firehose-bench replay (quick, --fail-on-gate)
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:

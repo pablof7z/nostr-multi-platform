@@ -12,8 +12,9 @@ owned by `crates/nmp-testing/`; the pyramid below is the canonical tier map.
                     ├───────────────────────────────┤
    per-app UI       │ XCUITest / Playwright          │  ios/<app>/UITests/
                     ├───────────────────────────────┤
-   firehose-bench   │ replay (CI) · live (real iOS)  │  bin/firehose-bench/
+   firehose-bench   │ replay (manual) · live (real iOS)│ bin/firehose-bench/
    reactivity-bench │ composite index · alloc gates  │  bin/reactivity-bench/
+   ffi-transport    │ UniFFI byte update budget (CI) │  bin/ffi-transport-bench/
                     ├───────────────────────────────┤
    native x-platform│ same scenario, AppState byte=  │  (post-M15)
    cross-FFI        │ binding round-trip             │  (post-M14)
@@ -36,11 +37,42 @@ milestone owns the contract.
 | Subsystem | `cargo test -p nmp-testing --test '*'` | `crates/nmp-testing/tests/` |
 | Reactivity bench | `reactivity-bench --standard --fail-on-gate` | `crates/nmp-testing/bin/reactivity-bench/main.rs` |
 | Firehose bench | `firehose-bench replay --standard --fail-on-gate` | `crates/nmp-testing/bin/firehose-bench/main.rs` |
+| FFI transport bench | `ffi-transport-bench --standard --fail-on-gate` | `crates/nmp-testing/bin/ffi-transport-bench/main.rs` |
 | FFI stress (M10.5) | `ffi-stress` + Chirp smoke/UI tests | `crates/nmp-testing/bin/ffi-stress/main.rs` |
 
 `nmp-testing`'s library surface stays deliberately thin
 (`crates/nmp-testing/src/lib.rs`: `store_harness` + `crate_ready()`); the value
 is in the `bin/` benches and the `tests/` suites.
+
+## Automatic performance signal
+
+The automatic performance signal after the clean-break gate reset is
+`.github/workflows/perf-gates.yml` running
+`ffi-transport-bench --standard --fail-on-gate`. It measures the current native
+hot path: FlatBuffers update bytes crossing UniFFI as `Vec<u8>` through
+`UpdateSink::on_update`.
+
+The workflow runs automatically only for changes to the native byte-transport
+owner (`crates/nmp-uniffi`, `crates/nmp-native-runtime`), the transport schema
+surface (`crates/nmp-core/src/transport`), the benchmark, dependency manifests,
+or the owning workflow/docs. It does not run for broad crate churn or legacy
+M14-D deletion surfaces such as `crates/nmp-ffi`, Gallery runtime glue, Marmot,
+or `ffi-stress`.
+
+The failure threshold is not a historical timing number. The bench's
+pre-registered rule fails unless the surcharged weighted-p99 UniFFI-vs-C delta
+stays under 5% of a 16.67ms render frame and the UniFFI SMALL batch-mean p99
+stays under 250us. A failure means the native byte lane no longer has synthetic
+evidence for the UniFFI collapse decision and should be escalated to on-device
+measurement or transport redesign.
+
+Manual commands remain:
+
+```bash
+cargo run -p nmp-testing --bin ffi-transport-bench --release -- --standard --fail-on-gate
+cargo run -p nmp-testing --bin reactivity-bench --release -- --standard --fail-on-gate
+cargo run -p nmp-testing --bin firehose-bench --release -- replay --standard --fail-on-gate
+```
 
 ## The `test-support` feature gate
 

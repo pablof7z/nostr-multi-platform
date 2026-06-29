@@ -56,6 +56,13 @@ FlatBuffers are still the wire payload for the hot paths:
 - feed/search/ref/mirror helpers may return or accept FlatBuffers bytes where
   the owned runtime contract is byte-shaped.
 
+The automatic performance signal for this lane is
+`ffi-transport-bench --standard --fail-on-gate`, wired through
+`.github/workflows/perf-gates.yml`. It is intentionally narrower than the
+legacy reactivity/firehose gates: it measures the current UniFFI byte transport
+budget and fails only when the pre-registered 60fps-derived collapse threshold
+is no longer met.
+
 The UniFFI layer owns object lifetimes, callbacks, typed records/errors, and
 host-language generation. It does not own the action/update schemas. Schema and
 payload evolution remain owned by the FlatBuffers/codegen crates.
@@ -133,3 +140,5 @@ thresholds, retest date, and delete trigger.
   shows the current native public surface.
 - `bash ci/check-uniffi-bindings-drift.sh` verifies generated native binding
   drift when UniFFI interfaces change.
+- `cargo run -p nmp-testing --bin ffi-transport-bench --release -- --standard --fail-on-gate`
+  verifies the UniFFI update-byte transport performance signal.
