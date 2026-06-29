@@ -58,7 +58,10 @@ pub use feed::{
     ProjectionKey, PubkeySetExpr,
 };
 pub use feed_session::{handle_projection_key, FeedCompiler, FeedOpenError, FeedTeardown};
-pub use group_feed::{GroupFeedToken, DISCOVERED_GROUPS_KEY, GROUP_EVENTS_KEY, JOINED_GROUPS_KEY};
+pub use group_feed::{
+    Nip29GroupDiscoveryHandle, Nip29GroupDiscoverySession, Nip29GroupEventsHandle,
+    Nip29GroupEventsSession, DISCOVERED_GROUPS_KEY, GROUP_EVENTS_KEY, JOINED_GROUPS_KEY,
+};
 pub use intent::InputIntentDispatch;
 pub use nmp_core::substrate::ObservedProjectionCommandHandle;
 pub use nmp_feed::FeedSessionBuild;

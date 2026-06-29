@@ -10,8 +10,8 @@ namespace nmp.nip29;
 // projection itself bakes in no kind policy.
 //
 // This is the typed sidecar (ADR-0037) carried alongside the existing generic
-// `serde_json::Value` projection registered under the same key in
-// `nmp-ffi`'s `NmpApp::open_group_events`. The serde shape
+// `serde_json::Value` projection registered under the same key by the NIP-29
+// group-events typed read session. The serde shape
 // (`GroupEventsProjection::snapshot_json`) stays authoritative; this buffer
 // mirrors it byte-for-byte in field semantics so a host with a `NGEV` decoder
 // can read typed accessors instead of JSON reflection. An un-updated host falls

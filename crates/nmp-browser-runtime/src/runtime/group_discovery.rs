@@ -1,5 +1,6 @@
 //! Browser-runtime NIP-29 public group-discovery sessions.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use nmp_core::substrate::ObservedProjection;
@@ -17,26 +18,48 @@ use super::handle::BrowserRuntimeHandle;
 
 const SCOPE_GLOBAL: u32 = 1;
 const DISCOVERED_GROUPS_KEY: &str = "nmp.nip29.discovered_groups";
+static NEXT_GROUP_DISCOVERY_HANDLE_ID: AtomicU64 = AtomicU64::new(1);
 
 pub(crate) struct BrowserGroupDiscoverySession {
     projection_key: String,
+    handle_id: u64,
     observer_ids: Vec<ObservedProjectionId>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct BrowserGroupDiscoverySessionDescriptor {
+    pub(crate) relay_url: String,
+    pub(crate) session_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct BrowserGroupDiscoverySessionHandle {
+    session_id: String,
+    projection_key: String,
+    handle_id: u64,
+}
+
+impl BrowserGroupDiscoverySessionHandle {
+    pub(crate) fn projection_key(&self) -> &str {
+        &self.projection_key
+    }
+}
+
 impl BrowserRuntimeHandle {
-    pub(crate) fn open_group_discovery(
+    pub(crate) fn open_nip29_group_discovery_session(
         &mut self,
-        relay_url: &str,
-        session_id: &str,
-    ) -> Result<String, String> {
-        let relay = relay_url.trim();
+        descriptor: BrowserGroupDiscoverySessionDescriptor,
+    ) -> Result<BrowserGroupDiscoverySessionHandle, String> {
+        let relay = descriptor.relay_url.trim().to_string();
         if relay.is_empty() {
             return Err("group discovery relay_url is required".to_string());
         }
+        let session_id = descriptor.session_id;
 
-        self.close_group_discovery(session_id);
+        self.close_nip29_group_discovery_session_by_id(&session_id);
+        let handle_id = NEXT_GROUP_DISCOVERY_HANDLE_ID.fetch_add(1, Ordering::Relaxed);
 
-        let projection = Arc::new(DiscoveredGroupsProjection::new(relay.to_string()));
+        let projection = Arc::new(DiscoveredGroupsProjection::new(relay.clone()));
         let projection_key = DISCOVERED_GROUPS_KEY.to_string();
         self.register_group_discovery_sidecar(&projection_key, Arc::clone(&projection));
 
@@ -48,7 +71,7 @@ impl BrowserRuntimeHandle {
             ]
             .into_iter()
             .collect(),
-            relay_pin: Some(relay.to_string()),
+            relay_pin: Some(relay.clone()),
             ..Default::default()
         };
 
@@ -56,9 +79,9 @@ impl BrowserRuntimeHandle {
         let decl = ObservedProjection {
             observer,
             filter_json: group_metadata_filter_json(),
-            consumer_id: group_discovery_consumer(session_id, relay),
+            consumer_id: group_discovery_consumer(&session_id, &relay),
             scope: SCOPE_GLOBAL,
-            relay_pin: Some(relay.to_string()),
+            relay_pin: Some(relay),
             replay_shapes: vec![shape],
             replay_limit: DEFAULT_FEED_WINDOW_LIMIT,
         };
@@ -69,13 +92,32 @@ impl BrowserRuntimeHandle {
             session_id.to_string(),
             BrowserGroupDiscoverySession {
                 projection_key: projection_key.clone(),
+                handle_id,
                 observer_ids,
             },
         );
-        Ok(projection_key)
+        Ok(BrowserGroupDiscoverySessionHandle {
+            session_id,
+            projection_key,
+            handle_id,
+        })
     }
 
-    pub(crate) fn close_group_discovery(&mut self, session_id: &str) {
+    pub(crate) fn close_nip29_group_discovery_session(
+        &mut self,
+        handle: BrowserGroupDiscoverySessionHandle,
+    ) {
+        let should_close = self
+            .group_discovery_sessions
+            .get(&handle.session_id)
+            .map(|session| session.handle_id == handle.handle_id)
+            .unwrap_or(false);
+        if should_close {
+            self.close_nip29_group_discovery_session_by_id(&handle.session_id);
+        }
+    }
+
+    pub(crate) fn close_nip29_group_discovery_session_by_id(&mut self, session_id: &str) {
         let Some(session) = self.group_discovery_sessions.remove(session_id) else {
             return;
         };

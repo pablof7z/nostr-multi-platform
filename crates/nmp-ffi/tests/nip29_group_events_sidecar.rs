@@ -1,6 +1,6 @@
 //! NIP-29 group-chat typed-projection sidecar proof.
 //!
-//! Proves `NmpApp::open_group_events` (#2088) emits a typed FlatBuffers sidecar
+//! Proves the NIP-29 group-events typed read session (#2088) emits a typed FlatBuffers sidecar
 //! (ADR-0037, `NGEV`) under `"nmp.nip29.group_events"`. Drives the full FFI
 //! snapshot path, decodes the frame with `decode_snapshot_typed_projections`,
 //! and asserts the typed payload bytes land in the `typed_projections` sidecar,
@@ -12,6 +12,7 @@ mod common;
 
 use common::{boot, inject, raw_event, teardown, wait_for_typed, HOST, SERIAL};
 
+use nmp_native_runtime::Nip29GroupEventsSession;
 use nmp_nip29::group_id::GroupId;
 use nmp_nip29::{
     decode_group_events_snapshot, GROUP_EVENTS_FILE_IDENTIFIER, GROUP_EVENTS_SCHEMA_ID,
@@ -27,7 +28,12 @@ fn group_events_typed_sidecar_round_trips() {
     let app = boot();
 
     // SAFETY: `app` is a valid pointer from `nmp_app_new`, live for this block.
-    unsafe { (*app).open_group_events(GroupId::new(HOST, "test-room"), vec![9, 11]) };
+    unsafe {
+        (*app).open_nip29_group_events_session(Nip29GroupEventsSession::new(
+            GroupId::new(HOST, "test-room"),
+            vec![9, 11],
+        ))
+    };
 
     let target = VerifiedEvent::from_raw_unchecked(raw_event(
         &"a".repeat(64),
@@ -78,15 +84,20 @@ fn group_events_typed_sidecar_empty_decodes() {
     let _g = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
     let app = boot();
 
-    unsafe { (*app).open_group_events(GroupId::new(HOST, "empty-room"), vec![9, 11]) };
+    unsafe {
+        (*app).open_nip29_group_events_session(Nip29GroupEventsSession::new(
+            GroupId::new(HOST, "empty-room"),
+            vec![9, 11],
+        ))
+    };
 
     let entry = wait_for_typed("nmp.nip29.group_events", |t| {
         decode_group_events_snapshot(&t.payload).is_ok()
     })
     .expect("group_events typed sidecar must appear even with no messages");
 
-    let snapshot = decode_group_events_snapshot(&entry.payload)
-        .expect("empty NGEV payload must still decode");
+    let snapshot =
+        decode_group_events_snapshot(&entry.payload).expect("empty NGEV payload must still decode");
     assert!(
         snapshot.events.is_empty(),
         "no events injected → empty messages, got {:?}",
@@ -100,8 +111,12 @@ fn group_events_typed_sidecar_empty_decodes() {
 fn group_events_reader_is_the_canonical_sidecar_projection() {
     let _g = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
     let app = boot();
-    let reader =
-        unsafe { (*app).open_group_events_with_reader(GroupId::new(HOST, "reader-room"), vec![9, 11]) };
+    let (_, reader) = unsafe {
+        (*app).open_nip29_group_events_session_with_reader(Nip29GroupEventsSession::new(
+            GroupId::new(HOST, "reader-room"),
+            vec![9, 11],
+        ))
+    };
 
     let msg = VerifiedEvent::from_raw_unchecked(raw_event(
         &"9".repeat(64),

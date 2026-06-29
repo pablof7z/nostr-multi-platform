@@ -1,4 +1,4 @@
-//! NIP-29 per-open read-view composition + the reusable `NmpApp` Rust API.
+//! NIP-29 per-open typed read-session composition + the reusable `NmpApp` Rust API.
 //!
 //! `nmp-native-runtime` is the composition root that owns the `NmpApp` actor
 //! handle, so the host-driving NIP-29 read-view entrypoints live here — the same
@@ -22,7 +22,7 @@
 //! `search.rs` step-for-step:
 //!
 //! 1. register the typed FlatBuffers sidecar reading the projection snapshot;
-//! 2. open a relay-pinned observed projection via
+//! 2. open a relay-pinned observed projection internally via
 //!    [`ObservedProjectionRegistrar::open_observed_projection`] — which registers
 //!    the projection muted, replays the in-memory read-cache (ADR-0062
 //!    `replay_read_cache_to_observer`, matched by the `#h` / kind shapes built
@@ -53,6 +53,7 @@
 //! bookkeeping mutex, or a malformed filter degrades to a no-op open / partial
 //! teardown rather than crossing the FFI as a panic.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use nmp_core::substrate::{ObservedProjection, ObservedProjectionRegistrar};
@@ -88,6 +89,7 @@ pub const JOINED_GROUPS_KEY: &str = "nmp.nip29.joined_groups";
 const GROUP_EVENTS_CONSUMER: &str = "nip29-group-events";
 const DISCOVERED_GROUPS_CONSUMER: &str = "nip29-discovered-groups";
 const JOINED_GROUPS_CONSUMER: &str = "nip29-joined-groups";
+static NEXT_GROUP_READ_HANDLE_ID: AtomicU64 = AtomicU64::new(1);
 
 /// Teardown recipe for one live NIP-29 read view (held in
 /// `NmpApp::group_feed_sessions`, keyed by the view's projection key). Records
@@ -95,20 +97,83 @@ const JOINED_GROUPS_CONSUMER: &str = "nip29-joined-groups";
 pub(crate) struct GroupFeedSession {
     /// The snapshot-projection key (also the session key).
     projection_key: String,
+    /// Unique id for the handle returned by this specific open.
+    handle_id: u64,
     /// The observed-projection kernel observer id.
     observer_id: ObservedProjectionId,
 }
 
-/// Runtime token for one host-driven NIP-29 read view.
+/// Descriptor for a NIP-29 group-events typed read session.
 ///
-/// The token carries only the session key. It never stores an app pointer; the
-/// caller closes it by passing the token back to the owning [`NmpApp`].
+/// The host relay pin is explicit because NIP-29 group reads are routed to the
+/// group host relay. `kinds` is the consumer's kind selection: empty means all
+/// h-tagged group events, while chat views usually pass `[9, 11]`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GroupFeedToken {
-    key: String,
+pub struct Nip29GroupEventsSession {
+    group_id: GroupId,
+    kinds: Vec<u32>,
 }
 
-impl GroupFeedToken {
+impl Nip29GroupEventsSession {
+    #[must_use]
+    pub fn new(group_id: GroupId, kinds: Vec<u32>) -> Self {
+        Self { group_id, kinds }
+    }
+
+    #[must_use]
+    pub fn group_id(&self) -> &GroupId {
+        &self.group_id
+    }
+
+    #[must_use]
+    pub fn kinds(&self) -> &[u32] {
+        &self.kinds
+    }
+}
+
+/// Descriptor for a NIP-29 group-discovery typed read session.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Nip29GroupDiscoverySession {
+    host_relay_url: String,
+}
+
+impl Nip29GroupDiscoverySession {
+    #[must_use]
+    pub fn new(host_relay_url: String) -> Self {
+        Self { host_relay_url }
+    }
+
+    #[must_use]
+    pub fn host_relay_url(&self) -> &str {
+        &self.host_relay_url
+    }
+}
+
+/// Runtime handle for one host-driven NIP-29 group-events read session.
+///
+/// The handle carries only the session key. It never stores an app pointer; the
+/// caller closes it by passing the handle back to the owning [`NmpApp`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Nip29GroupEventsHandle {
+    key: String,
+    handle_id: u64,
+}
+
+impl Nip29GroupEventsHandle {
+    #[must_use]
+    pub fn key(&self) -> &str {
+        &self.key
+    }
+}
+
+/// Runtime handle for one host-driven NIP-29 group-discovery read session.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Nip29GroupDiscoveryHandle {
+    key: String,
+    handle_id: u64,
+}
+
+impl Nip29GroupDiscoveryHandle {
     #[must_use]
     pub fn key(&self) -> &str {
         &self.key
@@ -130,11 +195,16 @@ impl NmpApp {
     /// Singleton: re-opening replaces the prior group-events view (idempotent at
     /// the registry level — the prior session is closed first, so navigating
     /// between groups never leaks the previous observer/interest).
-    pub fn open_group_events(&self, group_id: GroupId, kinds: Vec<u32>) {
-        let _ = self.open_group_events_with_reader(group_id, kinds);
+    pub fn open_nip29_group_events_session(
+        &self,
+        descriptor: Nip29GroupEventsSession,
+    ) -> Nip29GroupEventsHandle {
+        let (handle, _) = self.open_nip29_group_events_session_with_reader(descriptor);
+        handle
     }
 
-    /// Open the group-events view and return the canonical projection reader.
+    /// Open a group-events typed read session and return the canonical
+    /// projection reader.
     ///
     /// This is the Rust-side app-composition API for hosts that need to read
     /// the selected group directly. The returned [`GroupEventsProjection`] is
@@ -148,11 +218,11 @@ impl NmpApp {
     /// and the projection's accept predicate, so the wire filter and the kind
     /// gate can never diverge.
     #[must_use]
-    pub fn open_group_events_with_reader(
+    pub fn open_nip29_group_events_session_with_reader(
         &self,
-        group_id: GroupId,
-        kinds: Vec<u32>,
-    ) -> Arc<GroupEventsProjection> {
+        descriptor: Nip29GroupEventsSession,
+    ) -> (Nip29GroupEventsHandle, Arc<GroupEventsProjection>) {
+        let Nip29GroupEventsSession { group_id, kinds } = descriptor;
         let relay_pin = Some(group_id.host_relay_url.clone());
         let query = GroupEventsQuery::from_kinds(group_id, kinds);
         let filter_json = query.filter_json();
@@ -175,7 +245,7 @@ impl NmpApp {
             });
         };
 
-        self.open_group_feed(
+        let handle_id = self.open_group_feed(
             GROUP_EVENTS_KEY,
             GROUP_EVENTS_CONSUMER,
             SCOPE_GLOBAL,
@@ -184,29 +254,39 @@ impl NmpApp {
             projection as Arc<dyn nmp_core::ObservedProjectionSink>,
             register_sidecar,
         );
-        projection_reader
+        (
+            Nip29GroupEventsHandle {
+                key: GROUP_EVENTS_KEY.to_string(),
+                handle_id,
+            },
+            projection_reader,
+        )
     }
 
-    /// Close the group-chat read view opened by [`Self::open_group_events`].
-    /// Idempotent — closing an unopened view is a harmless no-op (D6).
-    pub fn close_group_events(&self) {
-        self.close_group_feed(GROUP_EVENTS_KEY);
+    /// Close a group-events typed read session. Idempotent — closing an
+    /// already-closed handle is a harmless no-op (D6).
+    pub fn close_nip29_group_events_session(&self, handle: Nip29GroupEventsHandle) {
+        self.close_group_feed_handle(&handle.key, handle.handle_id);
     }
 
-    /// Open the NIP-29 group-discovery read view for one host relay. Hydrating:
+    /// Open the NIP-29 group-discovery typed read session for one host relay. Hydrating:
     /// a view opened after the relay's kind:39000/39001/39002 catalog was
     /// cached catches it up (#2088), then tails live. Pinned `Global`.
     ///
-    /// Returns a [`GroupFeedToken`] the caller passes to
-    /// [`Self::close_group_feed_token`] on teardown.
+    /// Returns a [`Nip29GroupDiscoveryHandle`] the caller passes to
+    /// [`Self::close_nip29_group_discovery_session`] on teardown.
     /// Singleton: re-opening replaces the prior discovery view.
     #[must_use]
-    pub fn open_group_discovery(&self, host_relay_url: String) -> GroupFeedToken {
-        let (token, _) = self.open_group_discovery_with_reader(host_relay_url);
-        token
+    pub fn open_nip29_group_discovery_session(
+        &self,
+        descriptor: Nip29GroupDiscoverySession,
+    ) -> Nip29GroupDiscoveryHandle {
+        let (handle, _) = self.open_nip29_group_discovery_session_with_reader(descriptor);
+        handle
     }
 
-    /// Open group discovery and return the canonical projection reader.
+    /// Open a group-discovery typed read session and return the canonical
+    /// projection reader.
     ///
     /// This is the Rust-side app-composition API for hosts that need to fold
     /// discovered groups into an app-owned projection. The returned
@@ -216,10 +296,11 @@ impl NmpApp {
     /// to compose over the catalog; use this reader and keep the sidecar,
     /// relay-pinned interest, and #2088 hydration single-owned by this door.
     #[must_use]
-    pub fn open_group_discovery_with_reader(
+    pub fn open_nip29_group_discovery_session_with_reader(
         &self,
-        host_relay_url: String,
-    ) -> (GroupFeedToken, Arc<DiscoveredGroupsProjection>) {
+        descriptor: Nip29GroupDiscoverySession,
+    ) -> (Nip29GroupDiscoveryHandle, Arc<DiscoveredGroupsProjection>) {
+        let Nip29GroupDiscoverySession { host_relay_url } = descriptor;
         let relay_pin = Some(host_relay_url.clone());
         let projection = Arc::new(DiscoveredGroupsProjection::new(host_relay_url));
         let projection_reader = Arc::clone(&projection);
@@ -240,7 +321,7 @@ impl NmpApp {
             });
         };
 
-        self.open_group_feed(
+        let handle_id = self.open_group_feed(
             DISCOVERED_GROUPS_KEY,
             DISCOVERED_GROUPS_CONSUMER,
             SCOPE_GLOBAL,
@@ -251,22 +332,18 @@ impl NmpApp {
         );
 
         (
-            GroupFeedToken {
+            Nip29GroupDiscoveryHandle {
                 key: DISCOVERED_GROUPS_KEY.to_string(),
+                handle_id,
             },
             projection_reader,
         )
     }
 
-    /// Close the group-discovery read view opened by
-    /// [`Self::open_group_discovery`]. Idempotent (D6).
-    pub fn close_group_discovery(&self) {
-        self.close_group_feed(DISCOVERED_GROUPS_KEY);
-    }
-
-    /// Close the NIP-29 read view represented by `token`.
-    pub fn close_group_feed_token(&self, token: GroupFeedToken) {
-        self.close_group_feed(&token.key);
+    /// Close the group-discovery typed read session represented by `handle`.
+    /// Idempotent (D6).
+    pub fn close_nip29_group_discovery_session(&self, handle: Nip29GroupDiscoveryHandle) {
+        self.close_group_feed_handle(&handle.key, handle.handle_id);
     }
 
     /// Open the NIP-29 joined-groups read view for the active account.
@@ -361,12 +438,13 @@ impl NmpApp {
         filter_json: String,
         observer: Arc<dyn nmp_core::ObservedProjectionSink>,
         register_sidecar: impl FnOnce(&NmpApp),
-    ) {
+    ) -> u64 {
         // Singleton: drop any prior session under this key first. Teardown must
         // run BEFORE the replacement registers — both sessions share the same
         // projection key, so a late key-based teardown would remove the new
         // view's sidecar.
         self.close_group_feed(key);
+        let handle_id = NEXT_GROUP_READ_HANDLE_ID.fetch_add(1, Ordering::Relaxed);
 
         register_sidecar(self);
 
@@ -395,21 +473,23 @@ impl NmpApp {
         });
         if observer_id.0 == 0 {
             self.remove_snapshot_projection(key);
-            return;
+            return handle_id;
         }
 
         let Ok(mut sessions) = self.group_feed_sessions.lock() else {
             self.close_observed_projection(observer_id);
             self.remove_snapshot_projection(key);
-            return;
+            return handle_id;
         };
         sessions.insert(
             key.to_string(),
             GroupFeedSession {
                 projection_key: key.to_string(),
+                handle_id,
                 observer_id,
             },
         );
+        handle_id
     }
 
     /// Tear down the NIP-29 read view registered under `key`: detach the pinned
@@ -426,5 +506,102 @@ impl NmpApp {
         };
         self.close_observed_projection(session.observer_id);
         self.remove_snapshot_projection(&session.projection_key);
+    }
+
+    fn close_group_feed_handle(&self, key: &str, handle_id: u64) {
+        let session = self
+            .group_feed_sessions
+            .lock()
+            .ok()
+            .and_then(|mut sessions| {
+                let should_remove = sessions
+                    .get(key)
+                    .map(|session| session.handle_id == handle_id)
+                    .unwrap_or(false);
+                if should_remove {
+                    sessions.remove(key)
+                } else {
+                    None
+                }
+            });
+        let Some(session) = session else {
+            return;
+        };
+        self.close_observed_projection(session.observer_id);
+        self.remove_snapshot_projection(&session.projection_key);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn group_feed_events_replacement_makes_old_handle_idempotent() {
+        let app = crate::new_app();
+        let first = app.open_nip29_group_events_session(Nip29GroupEventsSession::new(
+            GroupId::new("wss://groups.example", "first"),
+            vec![9],
+        ));
+        assert_eq!(session_count(&app), 1);
+
+        let second = app.open_nip29_group_events_session(Nip29GroupEventsSession::new(
+            GroupId::new("wss://groups.example", "second"),
+            vec![11],
+        ));
+        assert_eq!(
+            session_count(&app),
+            1,
+            "replacement must tear down the old observer/session"
+        );
+
+        app.close_nip29_group_events_session(first);
+        assert_eq!(
+            session_count(&app),
+            1,
+            "stale handles must not close the replacement session"
+        );
+
+        app.close_nip29_group_events_session(second.clone());
+        assert_eq!(session_count(&app), 0);
+        app.close_nip29_group_events_session(second);
+        assert_eq!(session_count(&app), 0);
+    }
+
+    #[test]
+    fn group_feed_discovery_replacement_makes_old_handle_idempotent() {
+        let app = crate::new_app();
+        let first = app.open_nip29_group_discovery_session(Nip29GroupDiscoverySession::new(
+            "wss://groups.example".to_string(),
+        ));
+        assert_eq!(session_count(&app), 1);
+
+        let second = app.open_nip29_group_discovery_session(Nip29GroupDiscoverySession::new(
+            "wss://other-groups.example".to_string(),
+        ));
+        assert_eq!(
+            session_count(&app),
+            1,
+            "replacement must tear down the old observer/session"
+        );
+
+        app.close_nip29_group_discovery_session(first);
+        assert_eq!(
+            session_count(&app),
+            1,
+            "stale handles must not close the replacement session"
+        );
+
+        app.close_nip29_group_discovery_session(second.clone());
+        assert_eq!(session_count(&app), 0);
+        app.close_nip29_group_discovery_session(second);
+        assert_eq!(session_count(&app), 0);
+    }
+
+    fn session_count(app: &NmpApp) -> usize {
+        app.group_feed_sessions
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .len()
     }
 }
