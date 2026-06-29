@@ -273,6 +273,41 @@ shared crate needs to help an app, the acceptable shape is a reusable substrate
 seam or protocol mechanism that other apps can compose. Otherwise the work
 stays in the leaf app's Rust crate.
 
+### App-private event kinds (#2408)
+
+App-private Nostr kinds are first-class app code, not failed protocol crates.
+If a kind's semantics, tag policy, validation, publish intent, or read model
+only make sense for one product, its schema and action contract live beside the
+leaf app Rust crate (`apps/<app>/...` in this repository, or the external app's
+Rust crate). They do not move under `crates/` merely to receive typed builders,
+native/web bindings, or drift checks.
+
+The accepted #2408 boundary is:
+
+- The app Rust crate owns the event construction semantics, validation rules,
+  tag policy, publish intent, app-private state, and `ActionModule`.
+- NMP owns the reusable substrate and tooling: `ActionModule` /
+  `ActionRegistrar`, `DispatchEnvelope`, signing/publish routing, typed action
+  builder generation, Swift/Kotlin/TypeScript binding generation, and
+  correctness/drift gates.
+- The app-private contract is app-local codegen input. It is not a global NMP
+  registry entry and not a runtime-loaded schema.
+
+An app-private action/kind contract must identify the action namespace stamped
+into `DispatchEnvelope.action_namespace`; the event kind number and whether the
+action publishes an event or only starts app work; the FlatBuffers schema path,
+root type, file identifier, schema id, and schema version; the generated builder
+method name and flat-table field list/order; the owning Rust crate/module/type
+names for the app's `ActionPayload` and `ActionModule`; the Swift, Kotlin, and
+TypeScript builder output targets; and the drift/check commands the app runs in
+CI.
+
+This lane deliberately excludes plugin-platform features: no runtime schema
+loading, no plugin marketplace or dynamic module discovery, no generated
+composition root, no generic tag ontology, and no automatic read-model or
+projection generation. Reusable protocols still graduate to Layer 4 NMP crates;
+app-private kinds stay app-owned while using NMP tooling.
+
 ---
 
 ## 9. App Composition

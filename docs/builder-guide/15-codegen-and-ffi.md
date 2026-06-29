@@ -75,9 +75,45 @@ must not collapse back to `register_defaults()` or a substrate-only starter.
 - **`gen swift`** — Swift bindings for the C-ABI surface (`nmp_app_*`).
 - **`gen typed-decoders`** — native decoders for the typed FlatBuffers projection
   sidecars carried in `SnapshotFrame.typed_projections`.
+- **Typed action builders** — generated host builders for declared action
+  contracts, including app-local contracts once #2408's app-private kind lane is
+  implemented.
 
 These are *bindings* (projections of a typed surface), not *composition wiring*.
 Deleting the old `gen modules` scaffolder did not touch them.
+
+## App-private kind contracts (#2408)
+
+An app can own a made-up event kind without upstreaming it into NMP and without
+hand-rolling every builder. The durable contract is app-local input to NMP
+tooling: it lives next to the app Rust crate and FlatBuffers schema, and it
+describes the typed action surface that codegen should project into native and
+web builders.
+
+The app-private contract must name:
+
+- the action namespace written into `DispatchEnvelope.action_namespace`;
+- the event kind number and whether dispatch publishes a Nostr event or starts
+  app-local work only;
+- the FlatBuffers schema path, root type, file identifier, schema id, and schema
+  version;
+- the generated builder method name and flat-table field list/order;
+- the owning Rust crate/module/type names for the app's `ActionPayload` and
+  `ActionModule`;
+- the Swift, Kotlin, and TypeScript generated-builder output targets;
+- the drift/check commands the app runs in CI.
+
+Rust app code remains authoritative for meaning. The app crate owns validation,
+tag policy, event construction, publish intent, and `ActionModule::execute`.
+Generated builders only encode typed action bytes for the same byte doorway:
+UniFFI native dispatch for Swift/Kotlin and wasm `dispatch_bytes` for
+TypeScript. They do not install modules, choose relays, create a per-app FFI
+crate, or generate a composition root.
+
+This is distinct from reusable NMP protocols. A generic Nostr mechanism that an
+unrelated second app can consume unchanged belongs in a Layer-4 NMP crate and
+may be wired by `nmp-defaults`. A product-private kind stays with the app while
+using NMP's builder, binding, and drift-check machinery.
 
 ## Current vs future FFI — read this box carefully
 

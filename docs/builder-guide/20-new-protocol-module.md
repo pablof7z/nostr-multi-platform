@@ -15,6 +15,7 @@ new protocol module copies. This section is the recipe.
 | Does it encode app-specific *policy* (ranking, UX rules)? | no — mechanism only | yes |
 | Does it own app domain records? | no — protocol nouns only | yes |
 | Does it import another `nmp-nip*`? | **never** — compose at app layer | may depend on several |
+| Can it declare an app-private Nostr kind? | no — reusable kinds only | yes — schema + contract live with the app |
 
 Heuristic: a protocol crate is a **reusable mechanism**; an app core is
 **policy + app nouns**. "I might reuse this someday" does **not** justify a
@@ -30,6 +31,37 @@ playback state, or one-product compatibility shims to `crates/`. If the
 implementation would still make sense with the app name removed and a second
 unrelated Nostr app consuming it, it can be a protocol/substrate crate.
 Otherwise it belongs in the app core.
+
+## App-private kind contracts are not protocol modules (#2408)
+
+An app-private kind is the app-core path for product-specific Nostr data. It is
+not a reason to create `crates/nmp-<app>` or to push the kind into `nmp-nip*`.
+The app Rust crate owns the schema, semantics, validation, tag policy, publish
+intent, `ActionPayload`, and `ActionModule`; NMP tooling projects that contract
+into typed builders, native/web bindings, and drift checks.
+
+Keep the contract next to the app Rust crate and FlatBuffers schema. It must
+declare:
+
+- `DispatchEnvelope.action_namespace`;
+- the event kind number and publish-vs-local-work behavior;
+- FlatBuffers schema path, root type, file identifier, schema id, and schema
+  version;
+- generated builder method name and flat-table field list/order;
+- owning Rust crate/module/type names for `ActionPayload` and `ActionModule`;
+- Swift, Kotlin, and TypeScript generated-builder output targets;
+- app CI drift/check commands.
+
+The contract is static codegen input. Do not build runtime schema loading,
+dynamic module discovery, a plugin marketplace, a generic tag ontology,
+generated composition roots, or automatic read model/projection generation for
+an app-private kind. The app's explicit composition root still registers its
+own `ActionModule` and read surfaces.
+
+Promotion rule: move a private kind into an NMP protocol crate only after it is
+usable unchanged as a generic Nostr mechanism by unrelated apps. Until then,
+the kind remains app-owned even though it gets NMP-grade generated builders and
+drift checks.
 
 ## Per-seam checklist
 
@@ -79,7 +111,7 @@ never the author's NIP-65 outbox (D3's third routing lane, ADR-0012).
 
 ## Default typed action contract
 
-If a protocol action is wired by `nmp-defaults`, add one
+If a reusable protocol action is wired by `nmp-defaults`, add one
 `ActionContract` row in `crates/nmp-codegen/src/action_contract/table.rs`.
 That row is the source for the default action surface; do not duplicate these
 facts in tests, generated builders, or docs.
@@ -107,6 +139,10 @@ cargo test -p nmp-defaults --test action_contract
 cargo test -p nmp-defaults --test typed_only_action_doorway_gate
 cargo run -p nmp-codegen -- gen action-contract-report
 ```
+
+App-private kind contracts do not get added to the default NMP action contract
+table merely to obtain codegen. They are app-local contract inputs, and the
+app's CI owns its drift gate.
 
 ## PR-ready file list
 
