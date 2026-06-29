@@ -220,7 +220,7 @@ The on-disk layout from `aim.md` §5 is canonical. The long-term workspace conta
 | `nmp-core` | Kernel substrate: actor, store, planner, ledger, registries, extension traits, diagnostics | Pure Rust |
 | `nmp-codegen` | Host binding emitters and drift gates for typed projections/decoders (`gen swift`, `gen typed-decoders`) | Binary + library |
 | `nmp-defaults` | Reusable composition installers: substrate, protocol features, routing, signer ports, and publish helpers. Production apps compose explicit named installers; hidden presets are not production architecture (ADR-0069). | Pure Rust |
-| `nmp-ffi` | UniFFI building blocks used by generated app crates | UniFFI |
+| `nmp-uniffi` | Public native binding surface over `nmp-native-runtime` for generated Swift/Kotlin app crates | UniFFI |
 | `nmp-browser-runtime` | Browser Worker/runtime adapter and sole wasm-bindgen ABI glue; owns Worker protocol types (ADR-0067; `nmp-wasm` deleted #2202) | wasm-bindgen |
 | `nmp-nip01` | Event, Filter, Profile/Timeline views, SendNote/Delete actions | Pure Rust |
 | `nmp-nip02` | Contacts view convenience module | Pure Rust |
