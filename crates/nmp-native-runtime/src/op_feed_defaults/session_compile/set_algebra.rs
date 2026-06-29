@@ -70,6 +70,19 @@ pub(super) fn resolve_set_op(
             SetOp::Difference => std::sync::Arc::new(move |ev: &KernelEvent| lp(ev) && !rp(ev)),
         }
     };
+    let attribution: nmp_feed::FollowPredicate = {
+        let lp = l.attribution.clone();
+        let rp = r.attribution.clone();
+        match op {
+            SetOp::Union => std::sync::Arc::new(move |pubkey: &str| lp(pubkey) || rp(pubkey)),
+            SetOp::Intersection => {
+                std::sync::Arc::new(move |pubkey: &str| lp(pubkey) && rp(pubkey))
+            }
+            SetOp::Difference => {
+                std::sync::Arc::new(move |pubkey: &str| lp(pubkey) && !rp(pubkey))
+            }
+        }
+    };
 
     // ── Acquisition combine ───────────────────────────────────────────────
     //
@@ -125,6 +138,7 @@ pub(super) fn resolve_set_op(
     Ok(ReducedSource {
         op_session_identity,
         admission,
+        attribution,
         interests,
         live_shape,
         extra_acquisition,

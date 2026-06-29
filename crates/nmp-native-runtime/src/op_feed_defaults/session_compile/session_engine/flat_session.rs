@@ -25,6 +25,7 @@ pub(super) fn build_flat_scope_session(
     let ReducedSource {
         op_session_identity: _,
         admission,
+        attribution: _,
         interests,
         live_shape,
         extra_acquisition,

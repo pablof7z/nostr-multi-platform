@@ -49,6 +49,7 @@ pub(super) fn resolve_pointer_targets(
     pointer_dynamic.sync();
 
     let admission = target_admission(&model, primary_kinds);
+    let attribution = pointer_source.attribution.clone();
     let live_shape = target_live_shape(&model, primary_kinds);
 
     let mut reset_hooks = Vec::new();
@@ -73,6 +74,7 @@ pub(super) fn resolve_pointer_targets(
     Ok(ReducedSource {
         op_session_identity: pointer_source.op_session_identity,
         admission,
+        attribution,
         interests: pointer_source.interests,
         live_shape,
         extra_acquisition,

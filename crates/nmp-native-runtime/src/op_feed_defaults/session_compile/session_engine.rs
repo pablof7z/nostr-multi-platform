@@ -93,6 +93,7 @@ fn build_op_scope_session(
     let ReducedSource {
         op_session_identity,
         admission,
+        attribution,
         interests,
         live_shape,
         extra_acquisition,
@@ -116,38 +117,14 @@ fn build_op_scope_session(
         }
     };
 
-    // ── 1. Engine over the COMPILED, EVENT-AWARE admission predicate ──────
+    // ── 1. Engine over separate root-admission and attribution predicates ──
     //
-    // The compiled predicate IS the engine's ROOT-admission gate (#1740 step 3):
-    // a root whose author/tags the perspective does not admit never enters the
-    // feed — the perspective filters the rendered feed itself, not merely reply
-    // attribution. It is built inside the framework (from resolved DATA or a
-    // live framework projection) — nothing app-supplied crosses the seam. A
-    // permissive follow-attribution predicate is NOT needed here (a session's
-    // attribution still flows through the engine's `follow` gate, which the home
-    // path sets; sessions reuse the same observer wiring). We pass the compiled
-    // perspective as BOTH so a session admits roots AND attributes replies from
-    // in-scope authors only.
+    // Root admission gates events that may enter the feed as roots. Attribution
+    // gates authors whose replies/reposts may surface or annotate roots. These
+    // are related but not the same: a followed reply can surface a non-followed
+    // root in the default home feed.
     let root_admission: RootAdmission = admission;
-    let follow_predicate: nmp_feed::FollowPredicate = {
-        let root_admission = root_admission.clone();
-        Arc::new(move |pk: &str| {
-            // Reply attribution: gate on the author alone (build a minimal
-            // author-only event view). For author-scope perspectives this is the
-            // exact membership test; tag-scope perspectives never qualify a reply
-            // as attribution (a reply carrying no scope tag is correctly dropped).
-            let probe = nmp_core::substrate::KernelEvent {
-                id: String::new(),
-                author: pk.to_string(),
-                kind: 0,
-                created_at: 0,
-                tags: Vec::new(),
-                content: String::new(),
-                relay_provenance: Vec::new(),
-            };
-            root_admission(&probe)
-        })
-    };
+    let follow_predicate = attribution;
     let event_store = app.event_store_handle();
     let event_lookup: nmp_feed::EventLookup = Arc::new(move |id: &nmp_core::substrate::EventId| {
         nmp_core::slots::event_by_id_from_store(&event_store, id)
@@ -272,8 +249,10 @@ fn build_op_scope_session(
     };
     sync_acquisition(&extra_acquisition);
 
-    // Wire each underlying-set change to (a) re-sync acquisition for the new
-    // members, then (b) reset the window so it regrows under the new perspective.
+    // Wire each underlying-set change to re-sync acquisition for the new
+    // members, then reset the window/cursor. `load_older` remains the single
+    // on-demand replay path, so a source-set change must not secretly consume
+    // the pull cursor before the host reports viewport intent.
     for hook in reset_hooks {
         let controller_for_reset = controller.clone();
         let extra = extra_acquisition.clone();
@@ -283,9 +262,7 @@ fn build_op_scope_session(
         let reset_trigger: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
             sync_observer.sync();
             sync_acquisition(&extra);
-            let reset = controller_for_reset.reset();
-            let replayed = controller_for_reset.load_older();
-            if reset || replayed {
+            if controller_for_reset.reset() {
                 notify.mark_changed_since_emit();
             }
         });
