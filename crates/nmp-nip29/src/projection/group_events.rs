@@ -31,9 +31,9 @@
 //! [`GroupEventsProjection::snapshot`] — a cheap, non-blocking, no-argument read
 //! — so the host can encode it into a typed sidecar.
 //!
-//! Wiring that closure is the host app composition crate's job (`nmp-ffi`,
-//! `NmpApp::open_group_events`); this crate only provides the projection type
-//! and a snapshot read that is safe to call from inside a tick.
+//! Wiring that closure is the host app composition crate's job through the
+//! NIP-29 group-events typed read session; this crate only provides the
+//! projection type and a snapshot read that is safe to call from inside a tick.
 //!
 //! ## D8 — non-blocking
 //!
@@ -118,9 +118,7 @@ impl GroupEventsSnapshot {
     /// poisoned internal mutex, D6) reports.
     #[must_use]
     pub fn empty() -> Self {
-        Self {
-            events: Vec::new(),
-        }
+        Self { events: Vec::new() }
     }
 }
 

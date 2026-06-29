@@ -462,8 +462,8 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
         typed_sidecar: Some(TypedSidecar {
             // Wave B Tier-1 #4: the `flatc --swift` reader
             // (`nmp_nip29_GroupEventsSnapshot`) ships in this PR. Host-registered
-            // producer in `crates/nmp-ffi/src/group_feed.rs` (#2187):
-            // `NmpApp::open_group_events` → `register_typed_snapshot_projection`.
+            // producer is the NIP-29 group-events typed read session (#2187):
+            // descriptor open → `register_typed_snapshot_projection`.
             // Flat field-for-field copy: `{ events: [GroupEvent] }`,
             // each row `{ id, pubkey, content, created_at, kind }`. See
             // `TypedProjectionGlue.groupEvents`.
@@ -512,8 +512,8 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
         typed_sidecar: Some(TypedSidecar {
             // Wave B Tier-1 #4: the `flatc --swift` reader
             // (`nmp_nip29_DiscoveredGroupsSnapshot`) ships in this PR.
-            // Host-registered producer in `crates/nmp-ffi/src/group_feed.rs`
-            // (#2088): `NmpApp::open_group_discovery` → typed snapshot projection.
+            // Host-registered producer is the NIP-29 group-discovery typed read
+            // session (#2088): descriptor open → typed snapshot projection.
             // Flat copy: `{ host_relay_url, groups: [DiscoveredGroup] }`. The
             // `name`/`picture`/`about` wire strings are bare (absent == None) and
             // map to the domain's `String?` preserving nil — NOT `?? ""` — so

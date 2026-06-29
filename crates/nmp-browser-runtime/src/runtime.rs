@@ -58,9 +58,13 @@ pub(crate) use kernel_ops::DispatchBytesResult;
 mod relay_config_ops;
 pub(crate) use relay_config_ops::{RelayConfigAction, RelayConfigResult};
 mod group_discovery;
-pub(crate) use group_discovery::BrowserGroupDiscoverySession;
+pub use group_discovery::BrowserGroupDiscoverySessionHandle;
+pub(crate) use group_discovery::{
+    BrowserGroupDiscoverySession, BrowserGroupDiscoverySessionDescriptor,
+};
 mod group_events;
-pub(crate) use group_events::BrowserGroupEventsSession;
+pub use group_events::BrowserGroupEventsSessionHandle;
+pub(crate) use group_events::{BrowserGroupEventsSession, BrowserGroupEventsSessionDescriptor};
 mod notifications;
 pub(crate) use notifications::BrowserNotificationsSession;
 mod feed_lifecycle;

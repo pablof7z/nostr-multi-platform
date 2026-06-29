@@ -5,13 +5,20 @@
 use super::core::NmpRuntimeCore;
 use super::dispatch_support::not_started_error;
 use super::protocol::{GroupEventsClose, GroupEventsOpen, WorkerEvent};
+use crate::runtime::BrowserGroupEventsSessionDescriptor;
 
 impl NmpRuntimeCore {
     pub(super) fn handle_group_events_open(&mut self, req: GroupEventsOpen) -> Vec<WorkerEvent> {
         let Some(handle) = self.handle.as_mut() else {
             return not_started_error(Some(req.correlation_id));
         };
-        match handle.open_group_events(&req.relay_url, &req.group_id, req.kinds, &req.session_id) {
+        let descriptor = BrowserGroupEventsSessionDescriptor {
+            relay_url: req.relay_url,
+            group_id: req.group_id,
+            kinds: req.kinds,
+            session_id: req.session_id,
+        };
+        match handle.open_nip29_group_events_session(descriptor) {
             Ok(_) => vec![WorkerEvent::ActionAccepted {
                 action_type: "nmp.nip29.group_events.open".to_string(),
                 correlation_id: req.correlation_id,
@@ -28,7 +35,7 @@ impl NmpRuntimeCore {
         let Some(handle) = self.handle.as_mut() else {
             return not_started_error(Some(req.correlation_id));
         };
-        handle.close_group_events(&req.session_id);
+        handle.close_nip29_group_events_session_by_id(&req.session_id);
         vec![WorkerEvent::ActionAccepted {
             action_type: "nmp.nip29.group_events.close".to_string(),
             correlation_id: req.correlation_id,

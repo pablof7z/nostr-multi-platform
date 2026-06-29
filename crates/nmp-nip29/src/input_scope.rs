@@ -31,8 +31,7 @@
 //! ```
 //!
 //! The dispatch layer (shell / FFI) deserializes this back into a [`GroupId`] and
-//! routes to the group-open lane (the hydrating `NmpApp::open_group_events` /
-//! `open_group_discovery` composers in `nmp-ffi`, #2088).
+//! routes to the hydrating NIP-29 typed read-session lane (#2088).
 //!
 //! # D0 compliance
 //!
@@ -128,9 +127,7 @@ impl InputScopeRecognizer for GroupInputScopeRecognizer {
                 let payload_json = serde_json::to_string(&payload).ok()?;
                 Some(InputIntentTarget::Registered { payload_json })
             }
-            ResolvedInputKind::Reference { uri, entity_class }
-                if entity_class == "address" =>
-            {
+            ResolvedInputKind::Reference { uri, entity_class } if entity_class == "address" => {
                 // An naddr ref: pass it through to the open-uri lane. The
                 // dispatch layer resolves the full naddr (kind, relay, pubkey,
                 // d-tag) and routes to the group. We do not attempt to decode

@@ -5,6 +5,7 @@
 use super::core::NmpRuntimeCore;
 use super::dispatch_support::not_started_error;
 use super::protocol::{GroupDiscoveryClose, GroupDiscoveryOpen, WorkerEvent};
+use crate::runtime::BrowserGroupDiscoverySessionDescriptor;
 
 impl NmpRuntimeCore {
     pub(super) fn handle_group_discovery_open(
@@ -14,7 +15,11 @@ impl NmpRuntimeCore {
         let Some(handle) = self.handle.as_mut() else {
             return not_started_error(Some(req.correlation_id));
         };
-        match handle.open_group_discovery(&req.relay_url, &req.session_id) {
+        let descriptor = BrowserGroupDiscoverySessionDescriptor {
+            relay_url: req.relay_url,
+            session_id: req.session_id,
+        };
+        match handle.open_nip29_group_discovery_session(descriptor) {
             Ok(_) => vec![WorkerEvent::ActionAccepted {
                 action_type: "nmp.nip29.group_discovery.open".to_string(),
                 correlation_id: req.correlation_id,
@@ -34,7 +39,7 @@ impl NmpRuntimeCore {
         let Some(handle) = self.handle.as_mut() else {
             return not_started_error(Some(req.correlation_id));
         };
-        handle.close_group_discovery(&req.session_id);
+        handle.close_nip29_group_discovery_session_by_id(&req.session_id);
         vec![WorkerEvent::ActionAccepted {
             action_type: "nmp.nip29.group_discovery.close".to_string(),
             correlation_id: req.correlation_id,

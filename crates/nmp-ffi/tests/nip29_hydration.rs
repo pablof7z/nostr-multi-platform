@@ -5,8 +5,7 @@
 //! fan-out of LIVE ingest. A view opened AFTER its events were accepted +
 //! cached hydrated live-only and silently dropped the cached tail.
 //!
-//! The fix: `NmpApp::open_group_events` / `open_group_discovery` /
-//! `open_joined_groups` register the projection MUTED and route ingest through
+//! The fix: NIP-29 typed read sessions and `open_joined_groups` register the projection MUTED and route ingest through
 //! `open_observed_interest_pinned`, whose ADR-0062 read-cache replay delivers
 //! the matching cached events to the muted observer (matched by the `#h` /
 //! kind shapes built from the same wire filter) BEFORE activating it.
@@ -25,6 +24,7 @@ mod common;
 
 use common::{boot, inject, raw_event, teardown, wait_for_typed, HOST, SERIAL};
 
+use nmp_native_runtime::{Nip29GroupDiscoverySession, Nip29GroupEventsSession};
 use nmp_nip29::group_id::GroupId;
 use nmp_nip29::{decode_discovered_groups_snapshot, decode_group_events_snapshot};
 use nmp_store::VerifiedEvent;
@@ -58,13 +58,20 @@ fn group_events_hydrates_events_cached_before_open() {
 
     // Open the view AFTER the events are already cached — the #2088 sequence.
     // SAFETY: `app` is a valid pointer from `nmp_app_new`, live for this block.
-    unsafe { (*app).open_group_events(GroupId::new(HOST, "preopen-room"), vec![9, 11]) };
+    unsafe {
+        (*app).open_nip29_group_events_session(Nip29GroupEventsSession::new(
+            GroupId::new(HOST, "preopen-room"),
+            vec![9, 11],
+        ))
+    };
 
     let entry = wait_for_typed("nmp.nip29.group_events", |t| {
         decode_group_events_snapshot(&t.payload)
             .map(|s| {
                 s.events.iter().any(|m| m.content == "cached before open")
-                    && s.events.iter().any(|m| m.content == "also cached before open")
+                    && s.events
+                        .iter()
+                        .any(|m| m.content == "also cached before open")
             })
             .unwrap_or(false)
     })
@@ -108,7 +115,12 @@ fn group_events_hydration_excludes_other_group() {
     ));
     inject(app, vec![mine, foreign]);
 
-    unsafe { (*app).open_group_events(GroupId::new(HOST, "target"), vec![9, 11]) };
+    unsafe {
+        (*app).open_nip29_group_events_session(Nip29GroupEventsSession::new(
+            GroupId::new(HOST, "target"),
+            vec![9, 11],
+        ))
+    };
 
     let entry = wait_for_typed("nmp.nip29.group_events", |t| {
         decode_group_events_snapshot(&t.payload)
@@ -119,10 +131,7 @@ fn group_events_hydration_excludes_other_group() {
 
     let snapshot = decode_group_events_snapshot(&entry.payload).expect("NGEV decode");
     assert!(
-        !snapshot
-            .events
-            .iter()
-            .any(|m| m.content == "foreign group"),
+        !snapshot.events.iter().any(|m| m.content == "foreign group"),
         "an event for a different group (#h mismatch) must NOT hydrate into this view"
     );
     assert_eq!(snapshot.events.len(), 1, "only the matching group event");
@@ -163,7 +172,9 @@ fn discovered_groups_hydrate_metadata_cached_before_open() {
     inject(app, vec![meta, members]);
 
     // Open discovery AFTER the catalog is already cached — the #2088 sequence.
-    let _handle = unsafe { (*app).open_group_discovery(HOST.to_string()) };
+    let _handle = unsafe {
+        (*app).open_nip29_group_discovery_session(Nip29GroupDiscoverySession::new(HOST.to_string()))
+    };
 
     let entry = wait_for_typed("nmp.nip29.discovered_groups", |t| {
         decode_discovered_groups_snapshot(&t.payload)

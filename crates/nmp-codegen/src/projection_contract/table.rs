@@ -301,7 +301,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
     ProjectionContract {
         key: "nmp.nip29.group_events",
         tier: ProjectionTier::HostRegistered,
-        producer: "nmp-ffi group_feed (NmpApp::open_group_events, #2187)",
+        producer: "NIP-29 group-events typed read session (#2187)",
         schema_id: "nmp.nip29.group_events",
         file_identifier: "NGEV",
         // nmp-nip29 wire/group_events_fb::GROUP_EVENTS_SCHEMA_VERSION
@@ -313,7 +313,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
     ProjectionContract {
         key: "nmp.nip29.discovered_groups",
         tier: ProjectionTier::HostRegistered,
-        producer: "nmp-ffi group_feed (NmpApp::open_group_discovery, #2088)",
+        producer: "NIP-29 group-discovery typed read session (#2088)",
         schema_id: "nmp.nip29.discovered_groups",
         file_identifier: "NDGS",
         // nmp-nip29 wire/discovered_groups_fb::DISCOVERED_GROUPS_SCHEMA_VERSION
@@ -335,13 +335,13 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         presence_policy: PresencePolicy::None,
     },
     ProjectionContract {
-        // Registered by `NmpApp::open_joined_groups` (nmp-ffi `group_feed`,
+        // Registered by `NmpApp::open_joined_groups` (NIP-29 native-runtime read session,
         // #2088 — moved off the prior bare-observer `nmp_nip29::wire_joined_groups`
         // so the view hydrates already-cached membership snapshots). A real
         // Tier-1 projection key with no iOS Swift consumer yet.
         key: "nmp.nip29.joined_groups",
         tier: ProjectionTier::HostRegistered,
-        producer: "nmp-ffi group_feed (NmpApp::open_joined_groups, #2088)",
+        producer: "NIP-29 joined-groups native-runtime read session (#2088)",
         schema_id: "nmp.nip29.joined_groups",
         file_identifier: "NJGS",
         // nmp-nip29 wire/joined_groups_fb::JOINED_GROUPS_SCHEMA_VERSION

@@ -24,7 +24,7 @@
 //! provenance via `ActorCommand::IngestPreVerifiedEventsForRelay`. This matches
 //! the path a relay worker follows when it delivers a verified event into the
 //! actor loop. The actor fans it out through `notify_event_observers`;
-//! `GroupEventsProjection` (opened by `NmpApp::open_group_events`, #2088)
+//! `GroupEventsProjection` (opened by a NIP-29 typed read session, #2088)
 //! accumulates it and surfaces it under
 //! `projections["nmp.nip29.group_events"]["events"]` on the next snapshot tick.
 //! The test reads that snapshot via `nmp_app_set_update_callback` — the same
@@ -37,17 +37,18 @@
 //! delivered from injected events. A two-instance relay-bridged test is left
 //! for when that harness is available.
 
-use std::ffi::{CStr, c_void};
+use std::ffi::{c_void, CStr};
 use std::sync::Mutex;
 use std::time::Duration;
 
 use nmp_core::actor::{ActorCommand, TestSupportCommand};
-use nmp_core::dispatch_envelope::{DISPATCH_ENVELOPE_SCHEMA_VERSION, encode_dispatch_envelope};
+use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
 use nmp_core::substrate::ActionPayload;
 use nmp_ffi::{
-    NmpApp, nmp_app_consume_all_builtin_projections, nmp_app_dispatch_action_bytes, nmp_app_free,
-    nmp_app_new, nmp_app_set_update_callback, nmp_app_start, nmp_free_string,
+    nmp_app_consume_all_builtin_projections, nmp_app_dispatch_action_bytes, nmp_app_free,
+    nmp_app_new, nmp_app_set_update_callback, nmp_app_start, nmp_free_string, NmpApp,
 };
+use nmp_native_runtime::Nip29GroupEventsSession;
 use nmp_nip29::action::PublishGroupEventInput;
 use nmp_nip29::group_id::GroupId;
 use nmp_nip29::register::register_actions;
@@ -224,7 +225,7 @@ fn publish_group_event_dispatch_returns_correlation_id() {
 
 /// Proves the receive-side seam is live end-to-end:
 ///
-/// 1. `NmpApp::open_group_events` opens a hydrating `GroupEventsProjection` for
+/// 1. A NIP-29 group-events typed read session opens a hydrating `GroupEventsProjection` for
 ///    `"test-room"` as an `ObservedProjectionSink` (ingest) + snapshot projection
 ///    under `"nmp.nip29.group_events"` (output).
 /// 2. A kind:9 event carrying `["h", "test-room"]` is injected via
@@ -256,7 +257,10 @@ fn group_events_event_surfaces_via_kernel_snapshot_callback() {
     // Wire the GroupEventsProjection for "test-room".
     // SAFETY: `app` is a valid pointer from `nmp_app_new`, live for this block.
     let app_ref = unsafe { &*app };
-    app_ref.open_group_events(GroupId::new(HOST_RELAY, "test-room"), vec![9, 11]);
+    app_ref.open_nip29_group_events_session(Nip29GroupEventsSession::new(
+        GroupId::new(HOST_RELAY, "test-room"),
+        vec![9, 11],
+    ));
 
     // Inject the target event: kind:9 with h-tag "test-room".
     let target = VerifiedEvent::from_raw_unchecked(raw_chat_event(
