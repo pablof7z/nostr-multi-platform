@@ -44,9 +44,9 @@ pub(super) trait ErasedActionModule: Send + Sync {
     /// On `Ok`, the caller mints the operation's `correlation_id` via
     /// [`super::new_action_id`]. The `correlation_id` is the operation's sole
     /// identity end-to-end — it is NEVER substituted with output data such as a
-    /// pre-signed event's `id` (the event id is the operation's *result*, not
-    /// its identity; conflating them broke host spinner matching on the
-    /// pre-signed publish path).
+    /// signed event's `id` (the event id is an operation result, not its
+    /// identity; conflating them broke host spinner matching on older
+    /// pre-signed publish paths).
     fn start(&self, ctx: &mut ActionContext, action_json: &str) -> Result<(), ActionRejection>;
 
     /// Execute the validated action. Called by [`super::ActionRegistry::execute`]

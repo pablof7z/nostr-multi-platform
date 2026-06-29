@@ -49,8 +49,9 @@ impl Kernel {
     ///    pre-signed path — previously skipped signature verification).
     ///
     /// **Pipeline (fail-closed at every step):**
-    /// 1. `validate_publish_target` — empty/malformed explicit targets are
-    ///    refused early (sets a toast + records `Failed` terminal).
+    /// 1. `validate_presigned_publish_target` — only explicit
+    ///    imported/protocol-owned relay pins are accepted; Auto, empty,
+    ///    manual-override, and diagnostic routes are refused early.
     /// 2. `RawEvent` → `SignedEvent` reconstruction (no re-signing; id + sig
     ///    carried through verbatim).
     /// 3. `verify_externally_signed_event` — SHA-256 id-hash + Schnorr sig;
@@ -67,11 +68,11 @@ impl Kernel {
         target: crate::publish::PublishTarget,
         correlation_id: Option<String>,
     ) -> Vec<crate::relay::OutboundMessage> {
-        use crate::publish::{validate_publish_routing, validate_publish_target};
+        use crate::publish::{validate_presigned_publish_target, validate_publish_routing};
 
-        // Step 1 — target validation (inline fail_invalid_target logic).
-        if let Err(reason) = validate_publish_target(&target) {
-            let toast = format!("explicit publish target rejected: {reason}");
+        // Step 1 — pre-signed target validation (inline fail_invalid_target logic).
+        if let Err(reason) = validate_presigned_publish_target(&target) {
+            let toast = format!("pre-signed publish target rejected: {reason}");
             self.set_last_error_token(
                 &crate::ui_token::UiToken::error(
                     crate::ui_token::codes::PUBLISH_INVALID_TARGET,

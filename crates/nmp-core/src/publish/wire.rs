@@ -8,17 +8,13 @@
 //! site — running the fail-closed `schema_version` gate BEFORE
 //! `PublishModule::start()`.
 //!
-//! # Opaque pre-signed event (signature byte-exactness)
+//! # Pre-signed events are not app-dispatchable
 //!
-//! The pre-signed [`PublishAction::Publish`] variant carries the canonical
-//! NIP-01 event as OPAQUE BYTES — the verbatim wire JSON object
-//! `{ id, pubkey, created_at, kind, tags, content, sig }` produced by
-//! [`SignedEvent::to_nip01_json`]. It is NEVER re-modelled as a typed table:
-//! the `id`/`sig` commit to that exact serialization, so a typed-table
-//! round-trip risks a byte-different re-encode that invalidates the signature.
-//! [`encode`](ActionPayload::encode) stores the canonical bytes verbatim and
-//! [`decode`](ActionPayload::decode) reconstructs the `SignedEvent` by parsing
-//! them — `canonical_event` survives the round trip byte-for-byte.
+//! This app-facing schema intentionally does not carry pre-signed events.
+//! Externally signed/verbatim events remain supported through internal or
+//! protocol-owned seams that call `PublishCommand::SignedEvent` and pass explicit
+//! route provenance. Normal apps dispatch unsigned publish drafts and let the
+//! actor finalize, sign, and publish.
 //!
 //! Honours D6 (no panics): decode returns a data-shaped
 //! [`ActionPayloadDecodeError`] on any malformed input; no
@@ -51,12 +47,11 @@ use selection::{build_signer, build_target, read_signer, read_target};
 
 use crate::publish::action::{PublishAction, PublishSigner, PublishTarget};
 use crate::substrate::{ActionPayload, ActionPayloadDecodeError};
-use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 /// Stable identity of the `nmp.publish` typed payload schema.
 pub const SCHEMA_ID: &str = "nmp.publish";
 /// Wire schema version. Bump on any breaking change to `publish.fbs`.
-pub const SCHEMA_VERSION: u32 = 3;
+pub const SCHEMA_VERSION: u32 = 4;
 /// FlatBuffers file identifier embedded in every buffer this codec emits.
 /// (Used by the round-trip tests + documents the wire magic; the generated
 /// `publish_payload_buffer_has_identifier` is what the decode actually checks.)
@@ -82,41 +77,15 @@ impl ActionPayload for PublishAction {
 
 /// Encode a dispatchable [`PublishAction`] to typed FlatBuffers bytes.
 ///
-/// The engine-internal `Cancel` variant is NOT dispatchable through the action
-/// seam (it rides the dedicated FFI symbol; `PublishModule::start` rejects it).
-/// To keep `encode` total without inventing a wire shape for it, `Cancel` is
-/// encoded as an empty `PublishRaw` placeholder — it never round-trips through
-/// dispatch (a `Cancel` payload would be rejected by `start` after decode), so
-/// this is unreachable on any real dispatch path.
+/// The pre-signed `Publish` variant is not dispatchable through this app-facing
+/// schema. `ActionPayload::encode` is infallible, so that variant returns an
+/// invalid byte payload that fails closed at the registry decode gate.
 #[must_use]
 fn encode_publish_payload(action: &PublishAction) -> Vec<u8> {
     let mut fbb = flatbuffers::FlatBufferBuilder::new();
 
     let (body_type, body) = match action {
-        PublishAction::Publish {
-            handle,
-            event,
-            target,
-        } => {
-            let handle = fbb.create_string(handle);
-            // OPAQUE: the canonical NIP-01 wire JSON, verbatim. Byte-exact so the
-            // signature stays valid (NEVER a typed table re-encode).
-            let canonical = event.to_nip01_json();
-            let canonical_event = fbb.create_vector(canonical.as_bytes());
-            let target = build_target(&mut fbb, target);
-            let signed = fb::PublishSigned::create(
-                &mut fbb,
-                &fb::PublishSignedArgs {
-                    handle: Some(handle),
-                    canonical_event: Some(canonical_event),
-                    target: Some(target),
-                },
-            );
-            (
-                fb::PublishPayloadBody::PublishSigned,
-                signed.as_union_value(),
-            )
-        }
+        PublishAction::Publish { .. } => return Vec::new(),
         PublishAction::PublishProfile { fields } => {
             let field_offsets: Vec<WIPOffset<fb::ProfileField<'_>>> = fields
                 .iter()
@@ -240,9 +209,7 @@ pub(super) fn malformed(reason: impl Into<String>) -> ActionPayloadDecodeError {
 ///
 /// Runs the fail-closed `schema_version` gate FIRST: an unrecognised version is
 /// [`ActionPayloadDecodeError::SchemaVersionMismatch`] and the body is NOT
-/// inspected (ADR-0064 §1). The pre-signed `canonical_event` bytes are parsed
-/// back into a `SignedEvent` (NOT re-modelled), preserving byte-exactness on a
-/// subsequent `encode`.
+/// inspected (ADR-0064 §1).
 fn decode_publish_payload(bytes: &[u8]) -> Result<PublishAction, ActionPayloadDecodeError> {
     if bytes.len() < 8 || !fb::publish_payload_buffer_has_identifier(bytes) {
         return Err(malformed("missing NPUB file identifier"));
@@ -260,20 +227,6 @@ fn decode_publish_payload(bytes: &[u8]) -> Result<PublishAction, ActionPayloadDe
     }
 
     match root.body_type() {
-        fb::PublishPayloadBody::PublishSigned => {
-            let signed = root
-                .body_as_publish_signed()
-                .ok_or_else(|| malformed("body_type=PublishSigned but body absent"))?;
-            let handle = signed.handle().to_string();
-            let canonical = signed.canonical_event().bytes();
-            let event = parse_nip01_event(canonical)?;
-            let target = read_target(signed.target())?;
-            Ok(PublishAction::Publish {
-                handle,
-                event,
-                target,
-            })
-        }
         fb::PublishPayloadBody::PublishProfile => {
             let profile = root
                 .body_as_publish_profile()
@@ -328,67 +281,6 @@ fn decode_publish_payload(bytes: &[u8]) -> Result<PublishAction, ActionPayloadDe
             "unknown PublishPayloadBody discriminant: {other:?}"
         ))),
     }
-}
-
-/// Parse the OPAQUE canonical NIP-01 wire JSON bytes back into a [`SignedEvent`].
-///
-/// The bytes are the verbatim `{ id, pubkey, created_at, kind, tags, content,
-/// sig }` object [`SignedEvent::to_nip01_json`] produces. Parsing (never
-/// re-modelling) keeps the signature byte-exact on a subsequent `encode`.
-fn parse_nip01_event(bytes: &[u8]) -> Result<SignedEvent, ActionPayloadDecodeError> {
-    let v: Value = serde_json::from_slice(bytes)
-        .map_err(|e| malformed(format!("canonical_event is not valid NIP-01 JSON: {e}")))?;
-    let obj = v
-        .as_object()
-        .ok_or_else(|| malformed("canonical_event is not a JSON object"))?;
-
-    let get_str = |k: &str| -> Result<String, ActionPayloadDecodeError> {
-        obj.get(k)
-            .and_then(Value::as_str)
-            .map(str::to_string)
-            .ok_or_else(|| malformed(format!("canonical_event missing string field '{k}'")))
-    };
-    let id = get_str("id")?;
-    let sig = get_str("sig")?;
-    let pubkey = get_str("pubkey")?;
-    let content = get_str("content")?;
-    let kind = obj
-        .get("kind")
-        .and_then(Value::as_u64)
-        .ok_or_else(|| malformed("canonical_event missing numeric 'kind'"))? as u32;
-    let created_at = obj
-        .get("created_at")
-        .and_then(Value::as_u64)
-        .ok_or_else(|| malformed("canonical_event missing numeric 'created_at'"))?;
-    let tags = obj
-        .get("tags")
-        .and_then(Value::as_array)
-        .map(|rows| {
-            rows.iter()
-                .map(|row| {
-                    row.as_array()
-                        .map(|cols| {
-                            cols.iter()
-                                .filter_map(|c| c.as_str().map(str::to_string))
-                                .collect()
-                        })
-                        .unwrap_or_default()
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-
-    Ok(SignedEvent {
-        id,
-        sig,
-        unsigned: UnsignedEvent {
-            pubkey,
-            kind,
-            tags,
-            content,
-            created_at,
-        },
-    })
 }
 
 /// Test-only: a finished `nmp.publish` payload buffer carrying an arbitrary

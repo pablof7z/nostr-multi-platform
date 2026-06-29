@@ -1,27 +1,15 @@
-//! D10 defensive guard tests — kind:1059 + empty relays NEVER Auto-routes.
+//! Pre-signed target + D10 guard tests.
 //!
-//! A `dispatch_action("nmp.publish", PublishAction::Publish { target: Auto })`
-//! for a kind:1059 envelope lands in `actor::dispatch::PublishSignedEvent` with
-//! `relays: vec![]`, which calls `publish_signed_event(kernel, raw, &[], cid)`
-//! and falls through the `relays.is_empty()` branch → `publish_signed_with_correlation`
-//! → `PublishTarget::Auto` → leak. The same hole exists at the
-//! `NmpApp::publish_signed_explicit` workspace-internal seam.
-//!
-//! The D10 defensive guard at the top of `publish_signed_event` refuses any
-//! kind:1059 publish whose `relays` slice is empty — the encrypted envelope is
-//! dropped, a D6 toast names the refusal, and no outbound frames / publish
-//! queue entries are produced. These tests pin the guard's shape from every
-//! entry point the kernel can be reached through.
+//! Externally signed publish is no longer a normal app write path. It is an
+//! internal/protocol/import escape that must carry an explicit non-empty
+//! provenance-tagged route. `Auto`, `ManualOverride`, and `Diagnostic` fail
+//! before any signed event is published. D10 remains stricter for private
+//! envelope kinds: kind:1059/14 still require `VerifiedPrivateInbox`.
 
 use super::*;
 
-/// Direct-call shape — the same call the actor's
-/// `ActorCommand::PublishSignedEvent` arm performs when the dispatch path
-/// routes a kind:1059 envelope with `target: PublishTarget::Auto`. The guard
-/// must fire BEFORE the `relays.is_empty()` → Auto branch can reach the
-/// outbox resolver.
 #[test]
-fn publish_signed_event_refuses_kind_1059_with_empty_relays() {
+fn publish_signed_event_refuses_kind_1059_with_auto_target() {
     let (mut id, mut kernel) = fresh();
     sign_in_with_nip65(&mut id, &mut kernel);
     // Belt-and-suspenders: even with the kernel's `configured_relays` truly
@@ -34,14 +22,13 @@ fn publish_signed_event_refuses_kind_1059_with_empty_relays() {
 
     assert!(
         outbound.is_empty(),
-        "kind:1059 with PublishTarget::Auto MUST produce no outbound frames \
-         (D10: envelope existence would leak through the NIP-65 outbox)"
+        "kind:1059 with PublishTarget::Auto MUST produce no outbound frames"
     );
     assert!(
         kernel
             .last_error_toast_snapshot()
-            .is_some_and(|t| t.contains("kind:1059") && t.contains("D10")),
-        "guard must surface a D6 toast naming kind:1059 and D10; got: {:?}",
+            .is_some_and(|t| t.contains("pre-signed publish target rejected")),
+        "guard must surface a pre-signed target rejection toast; got: {:?}",
         kernel.last_error_toast_snapshot()
     );
     assert!(
@@ -50,10 +37,6 @@ fn publish_signed_event_refuses_kind_1059_with_empty_relays() {
     );
 }
 
-/// The same dispatch shape `kernel::action_registry::default_registry()`
-/// produces for `PublishAction::Publish { target: Auto }` — `relays_for_target(&Auto)`
-/// returns `Vec::new()`. The defensive guard MUST fire for the empty-Vec
-/// shape too, not just `&[]` slice literals.
 #[test]
 fn publish_signed_event_refuses_kind_1059_with_empty_vec_relays() {
     let (mut id, mut kernel) = fresh();
@@ -61,10 +44,6 @@ fn publish_signed_event_refuses_kind_1059_with_empty_vec_relays() {
     kernel.clear_configured_relays_for_test();
     let raw = signed_kind_1059_raw(&id);
 
-    // Exact shape `actor::dispatch::PublishSignedEvent` calls with when the
-    // dispatch path routes `PublishAction::Publish { target: Auto }`. The
-    // guard must fire on the Auto variant regardless of how the target was
-    // constructed.
     let outbound = publish_signed_event(&mut kernel, raw, PublishTarget::Auto, None);
 
     assert!(
@@ -78,12 +57,8 @@ fn publish_signed_event_refuses_kind_1059_with_empty_vec_relays() {
     assert!(kernel.publish_queue_snapshot().is_empty());
 }
 
-/// Sanity bound — the guard is targeted at kind:1059 ONLY. A non-1059
-/// signed event with empty relays must STILL Auto-route (the pre-existing
-/// behaviour that the rest of the codebase relies on: kind:1 react,
-/// kind:30023 article, etc., all use this fallback intentionally).
 #[test]
-fn publish_signed_event_does_not_refuse_other_kinds_with_empty_relays() {
+fn publish_signed_event_refuses_other_kinds_with_auto_target() {
     let (mut id, mut kernel) = fresh();
     sign_in_with_nip65(&mut id, &mut kernel);
     let (json, _ev_id, _sig) = signed_nip01_json(&id, "kind 30023 still routes");
@@ -92,14 +67,14 @@ fn publish_signed_event_does_not_refuse_other_kinds_with_empty_relays() {
     let outbound = publish_signed_event(&mut kernel, raw, PublishTarget::Auto, None);
 
     assert!(
-        !outbound.is_empty(),
-        "non-1059 kinds must continue to route under PublishTarget::Auto — the \
-         D10 guard is targeted strictly at kind:1059"
+        outbound.is_empty(),
+        "all pre-signed publishes must reject PublishTarget::Auto"
     );
-    assert_eq!(
-        kernel.last_error_toast_snapshot(),
-        None,
-        "non-1059 Auto-route must not surface a guard toast"
+    assert!(
+        kernel
+            .last_error_toast_snapshot()
+            .is_some_and(|t| t.contains("pre-signed publish target rejected")),
+        "Auto pre-signed publish must surface a target rejection toast"
     );
 }
 
@@ -153,10 +128,85 @@ fn publish_signed_event_kind_1059_guard_records_action_failure_for_correlation()
     );
 }
 
-/// The corresponding HAPPY path — a kind:1059 publish with an EXPLICIT pin
-/// must succeed unchanged. The guard targets the empty-relays branch only;
-/// any non-empty `relays` slice carries the envelope on the
-/// `PublishTarget::Explicit` path (the correct shape for NIP-17 / Marmot).
+#[test]
+fn publish_signed_event_rejects_manual_override_for_presigned() {
+    let (mut id, mut kernel) = fresh();
+    sign_in_with_nip65(&mut id, &mut kernel);
+    let (json, _ev_id, _sig) = signed_nip01_json(&id, "manual override rejected");
+    let raw: crate::store::RawEvent = serde_json::from_str(&json).unwrap();
+
+    let outbound = publish_signed_event(
+        &mut kernel,
+        raw,
+        PublishTarget::manual_override(vec!["wss://manual.example".to_string()]),
+        None,
+    );
+
+    assert!(outbound.is_empty());
+    assert!(
+        kernel
+            .last_error_toast_snapshot()
+            .is_some_and(|t| t.contains("manual_override")),
+        "manual_override rejection should be visible; got: {:?}",
+        kernel.last_error_toast_snapshot()
+    );
+}
+
+#[test]
+fn publish_signed_event_rejects_diagnostic_for_presigned() {
+    let (mut id, mut kernel) = fresh();
+    sign_in_with_nip65(&mut id, &mut kernel);
+    let (json, _ev_id, _sig) = signed_nip01_json(&id, "diagnostic rejected");
+    let raw: crate::store::RawEvent = serde_json::from_str(&json).unwrap();
+
+    let outbound = publish_signed_event(
+        &mut kernel,
+        raw,
+        PublishTarget::explicit(
+            vec!["wss://diagnostic.example".to_string()],
+            PublishRouteClass::Diagnostic,
+        ),
+        None,
+    );
+
+    assert!(outbound.is_empty());
+    assert!(
+        kernel
+            .last_error_toast_snapshot()
+            .is_some_and(|t| t.contains("diagnostic routes")),
+        "diagnostic rejection should be visible; got: {:?}",
+        kernel.last_error_toast_snapshot()
+    );
+}
+
+#[test]
+fn publish_signed_event_rejects_private_kind_with_imported_presigned_route() {
+    let (mut id, mut kernel) = fresh();
+    sign_in_with_nip65(&mut id, &mut kernel);
+    let raw = signed_kind_1059_raw(&id);
+
+    let outbound = publish_signed_event(
+        &mut kernel,
+        raw,
+        PublishTarget::explicit(
+            vec!["wss://import.example".to_string()],
+            PublishRouteClass::ImportedOrPresigned,
+        ),
+        None,
+    );
+
+    assert!(outbound.is_empty());
+    assert!(
+        kernel
+            .last_error_toast_snapshot()
+            .is_some_and(|t| t.contains("verified_private_inbox") && t.contains("D10")),
+        "private pre-signed route must still require verified inbox; got: {:?}",
+        kernel.last_error_toast_snapshot()
+    );
+}
+
+/// The corresponding HAPPY path — a kind:1059 publish with a verified private
+/// inbox pin must succeed unchanged.
 #[test]
 fn publish_signed_event_publishes_kind_1059_with_explicit_pin() {
     let (mut id, mut kernel) = fresh();
@@ -173,7 +223,7 @@ fn publish_signed_event_publishes_kind_1059_with_explicit_pin() {
 
     assert!(
         !outbound.is_empty(),
-        "kind:1059 + explicit pin must publish (guard is PublishTarget::Auto only)"
+        "kind:1059 + verified private inbox pin must publish"
     );
     assert_eq!(
         kernel.last_error_toast_snapshot(),

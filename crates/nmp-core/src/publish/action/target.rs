@@ -101,6 +101,41 @@ pub(crate) fn validate_publish_target(target: &PublishTarget) -> Result<(), Stri
     }
 }
 
+/// Validate the route provenance for an externally signed/verbatim event.
+///
+/// Pre-signed publish is not a normal app write path. It may only leave the
+/// kernel through explicit protocol/import-owned relay pins where the caller
+/// has already proven why those exact relays are correct.
+#[must_use]
+pub(crate) fn validate_presigned_publish_target(target: &PublishTarget) -> Result<(), String> {
+    let PublishTarget::Explicit {
+        relays,
+        route_class,
+    } = target
+    else {
+        return Err(
+            "pre-signed publish requires an explicit non-empty imported/protocol relay target"
+                .to_string(),
+        );
+    };
+
+    validate_explicit_relays(relays)?;
+
+    match route_class {
+        PublishRouteClass::ImportedOrPresigned
+        | PublishRouteClass::GroupHostPin
+        | PublishRouteClass::VerifiedPrivateInbox => Ok(()),
+        PublishRouteClass::ManualOverride => Err(
+            "pre-signed publish rejects manual_override routes; use unsigned app publish or an imported/protocol route"
+                .to_string(),
+        ),
+        PublishRouteClass::Diagnostic => Err(
+            "pre-signed publish rejects diagnostic routes without a reviewed protocol entrypoint"
+                .to_string(),
+        ),
+    }
+}
+
 #[must_use]
 pub(crate) fn validate_explicit_relays(relays: &[RelayUrl]) -> Result<(), String> {
     if relays.is_empty() {

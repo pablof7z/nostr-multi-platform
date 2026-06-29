@@ -37,10 +37,12 @@ fn explicit_publish_target_requires_non_empty_relays() {
 
 #[test]
 fn explicit_publish_target_rejects_malformed_relay_url() {
-    let action = PublishAction::Publish {
-        handle: "h".to_string(),
-        event: signed_event(),
+    let action = PublishAction::PublishRaw {
+        kind: 1,
+        tags: Vec::new(),
+        content: "hello".to_string(),
         target: PublishTarget::manual_override(vec!["https://relay.example".to_string()]),
+        signer: Default::default(),
     };
     let err = PublishModule
         .start(&mut ctx(), action)
@@ -247,40 +249,36 @@ fn publish_raw_rejects_gift_wrap_with_manual_explicit_relays() {
 }
 
 #[test]
-fn publish_signed_rejects_gift_wrap_with_auto_target() {
-    // The same D10 gate applies to the pre-signed `Publish` variant (the
-    // `PublishAction::Publish` dispatch path), not only `PublishRaw`.
-    let mut event = signed_event();
-    event.unsigned.kind = 1059;
+fn app_dispatch_rejects_presigned_publish() {
     let action = PublishAction::Publish {
         handle: "h".to_string(),
-        event,
+        event: signed_event(),
         target: PublishTarget::Auto,
     };
     let err = PublishModule
         .start(&mut ctx(), action)
-        .expect_err("Publish of a signed kind:1059 + Auto must fail closed");
+        .expect_err("pre-signed Publish must not be app-dispatchable");
     assert!(
-        matches!(&err, ActionRejection::Invalid(msg) if msg.contains("D10")),
-        "rejection must cite D10; got: {err:?}"
+        matches!(&err, ActionRejection::Invalid(msg) if msg.contains("internal/protocol-only")),
+        "rejection must name the internal-only pre-signed path; got: {err:?}"
     );
 }
 
 #[test]
-fn publish_signed_allows_gift_wrap_with_verified_private_inbox_relays() {
-    let mut event = signed_event();
-    event.unsigned.kind = 1059;
+fn execute_rejects_presigned_publish() {
     let action = PublishAction::Publish {
         handle: "h".to_string(),
-        event,
+        event: signed_event(),
         target: PublishTarget::explicit(
             vec!["wss://inbox.example".to_string()],
-            PublishRouteClass::VerifiedPrivateInbox,
+            PublishRouteClass::ImportedOrPresigned,
         ),
     };
-    PublishModule
-        .start(&mut ctx(), action)
-        .expect("signed kind:1059 with a verified private inbox relay set must be allowed");
+    let err = run_execute(action).expect_err("pre-signed Publish execute must be rejected");
+    assert!(
+        err.contains("internal/protocol-only"),
+        "rejection must name the internal-only pre-signed path; got: {err}"
+    );
 }
 
 #[test]
@@ -462,28 +460,5 @@ fn publish_raw_serde_round_trips_registered_signer_provenance() {
             PublishSigner::registered(agent_pk, PublishSignerProvenance::AppManaged)
         ),
         other => panic!("expected PublishRaw, got {other:?}"),
-    }
-}
-
-#[test]
-fn execute_publish_signed_event_emits_publish_signed_event_command() {
-    let action = PublishAction::Publish {
-        handle: "h".to_string(),
-        event: signed_event(),
-        target: PublishTarget::Auto,
-    };
-    let cmds = run_execute(action).expect("execute must succeed");
-    assert_eq!(cmds.len(), 1, "must emit exactly one command");
-    match cmds.into_iter().next().unwrap() {
-        ActorCommand::Publish(PublishCommand::SignedEvent {
-            raw,
-            target,
-            correlation_id,
-        }) => {
-            assert_eq!(raw.kind, 1);
-            assert_eq!(target, PublishTarget::Auto);
-            assert_eq!(correlation_id.as_deref(), Some("test-cid"));
-        }
-        other => panic!("expected PublishSignedEvent, got {other:?}"),
     }
 }

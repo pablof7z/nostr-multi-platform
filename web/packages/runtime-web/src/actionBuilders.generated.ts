@@ -837,8 +837,8 @@ export const GeneratedActionBuilders = {
     if (signerOffset !== 0) fbb.addFieldOffset(4, signerOffset, 0); // slot 4: signer
     const bodyOffset = fbb.endObject();
     fbb.startObject(3);
-    fbb.addFieldInt32(0, 3, 0); // slot 0: schema_version
-    fbb.addFieldInt8(1, 3, 0); // slot 1: body_type
+    fbb.addFieldInt32(0, 4, 0); // slot 0: schema_version
+    fbb.addFieldInt8(1, 2, 0); // slot 1: body_type
     fbb.addFieldOffset(2, bodyOffset, 0); // slot 2: body
     const payloadRoot = fbb.endObject();
     fbb.finish(payloadRoot, "NPUB");
@@ -883,8 +883,8 @@ export const GeneratedActionBuilders = {
     if (signerOffset !== 0) fbb.addFieldOffset(3, signerOffset, 0); // slot 3: signer
     const bodyOffset = fbb.endObject();
     fbb.startObject(3);
-    fbb.addFieldInt32(0, 3, 0); // slot 0: schema_version
-    fbb.addFieldInt8(1, 4, 0); // slot 1: body_type
+    fbb.addFieldInt32(0, 4, 0); // slot 0: schema_version
+    fbb.addFieldInt8(1, 3, 0); // slot 1: body_type
     fbb.addFieldOffset(2, bodyOffset, 0); // slot 2: body
     const payloadRoot = fbb.endObject();
     fbb.finish(payloadRoot, "NPUB");
@@ -913,8 +913,8 @@ export const GeneratedActionBuilders = {
     fbb.addFieldOffset(0, fieldsVec, 0); // slot 0: fields
     const bodyOffset = fbb.endObject();
     fbb.startObject(3);
-    fbb.addFieldInt32(0, 3, 0); // slot 0: schema_version
-    fbb.addFieldInt8(1, 2, 0); // slot 1: body_type
+    fbb.addFieldInt32(0, 4, 0); // slot 0: schema_version
+    fbb.addFieldInt8(1, 1, 0); // slot 1: body_type
     fbb.addFieldOffset(2, bodyOffset, 0); // slot 2: body
     const payloadRoot = fbb.endObject();
     fbb.finish(payloadRoot, "NPUB");

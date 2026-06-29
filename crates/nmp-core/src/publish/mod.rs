@@ -53,18 +53,17 @@ mod traits;
 mod view;
 // ADR-0064 / S3 (#1751) — typed FlatBuffers payload codec for the `nmp.publish`
 // action (the engine-generic publish noun). The `ActionPayload` impl for
-// `PublishAction` lives here; the pre-signed event is carried as opaque
-// canonical NIP-01 bytes (signature byte-exactness). `pub(crate)` so the
-// registry's typed-dispatch trip tests can build a known-bad-version buffer.
+// `PublishAction` lives here. Pre-signed publish is intentionally absent from
+// the app-facing wire schema; `pub(crate)` lets registry typed-dispatch tests
+// build a known-bad-version buffer.
 pub(crate) mod wire;
 
-// `validate_publish_target` is used by `Kernel::publish_externally_signed` on
-// ALL targets (wasm + native): the headless command interpreter calls it for
-// every pre-signed publish. `validate_explicit_relays` is only needed by
-// native actor command handlers.
+// Pre-signed externally supplied events have their own stricter target gate:
+// they are internal/protocol/import escape machinery, not app-facing writes.
+// `validate_explicit_relays` is only needed by native actor command handlers.
 #[cfg(feature = "native")]
 pub(crate) use action::validate_explicit_relays;
-pub(crate) use action::validate_publish_target;
+pub(crate) use action::validate_presigned_publish_target;
 // Workstream C publish-policy one-door: the typed routing/builder gate every
 // publish path consults. `validate_publish_routing` enforces the D10
 // private-envelope invariant at the typed-target boundary (private kinds require

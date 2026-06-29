@@ -138,14 +138,11 @@ pub enum PublishCommand {
     /// dispatches to exactly those relays and fails closed when the set is
     /// empty or malformed.
     ///
-    /// `correlation_id` is the registry-minted action id when this publish
-    /// originates from `nmp_app_dispatch_action`'s `PublishAction::Publish`
-    /// path. `None` for non-dispatch callers (`NmpApp::publish_signed_explicit`
-    /// — Marmot's MLS / gift-wrap seam — and conformance harnesses); the
-    /// engine then falls back to the publish handle (== event id), preserving
-    /// prior behaviour. For the dispatched pre-signed `Publish` path this
-    /// `correlation_id` is the registry-minted operation identity — never the
-    /// event id (#1748).
+    /// `correlation_id` is an optional internal/protocol operation id. `None`
+    /// for callers that want the engine to fall back to the publish handle (==
+    /// event id), preserving prior behaviour. For imported/protocol callers that
+    /// supply a correlation id, it is the operation identity — never the event id
+    /// (#1748).
     SignedEvent {
         raw: crate::store::RawEvent,
         target: crate::publish::PublishTarget,

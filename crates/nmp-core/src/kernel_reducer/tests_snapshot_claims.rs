@@ -94,7 +94,23 @@ fn publish_signed_event_rejects_forged_event_fail_closed() {
     // routed to a relay.
     let mut r = KernelReducer::new();
     let signed = forged_signed_note();
-    let out = r.publish_signed_event(&signed, &[], None);
+    let raw = crate::store::RawEvent {
+        id: signed.id,
+        sig: signed.sig,
+        pubkey: signed.unsigned.pubkey,
+        kind: signed.unsigned.kind,
+        tags: signed.unsigned.tags,
+        content: signed.unsigned.content,
+        created_at: signed.unsigned.created_at,
+    };
+    let out = r.publish_pre_signed(
+        raw,
+        crate::publish::PublishTarget::explicit(
+            vec!["wss://import.example".to_string()],
+            crate::publish::PublishRouteClass::ImportedOrPresigned,
+        ),
+        None,
+    );
     assert!(
         out.is_empty(),
         "a forged signed event must be rejected fail-closed, never routed"

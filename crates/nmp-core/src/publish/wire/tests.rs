@@ -6,86 +6,34 @@ use crate::publish::action::{
     PublishAction, PublishRouteClass, PublishSigner, PublishSignerProvenance, PublishTarget,
 };
 use crate::substrate::{ActionPayload, ActionPayloadDecodeError};
-use nmp_signer_iface::{SignedEvent, UnsignedEvent};
-
-fn fixture_signed_event() -> SignedEvent {
-    SignedEvent {
-        id: "a".repeat(64),
-        sig: "b".repeat(128),
-        unsigned: UnsignedEvent {
-            pubkey: "c".repeat(64),
-            kind: 1,
-            tags: vec![
-                vec!["e".to_string(), "d".repeat(64)],
-                vec!["p".to_string(), "f".repeat(64)],
-            ],
-            content: "hello \"world\" — unicode ✓ and a \\ backslash".to_string(),
-            created_at: 1_700_000_000,
-        },
-    }
-}
-
-fn signed_publish() -> PublishAction {
-    PublishAction::Publish {
-        handle: "pub-1".to_string(),
-        event: fixture_signed_event(),
-        target: PublishTarget::Auto,
-    }
-}
-
-// ---- Pre-signed Publish: signature byte-exactness (the mandatory proof) ------
 
 #[test]
-fn presigned_publish_event_is_byte_identical_through_round_trip() {
-    let original = signed_publish();
-    // The canonical bytes the host signs over.
-    let event = match &original {
-        PublishAction::Publish { event, .. } => event.clone(),
-        _ => unreachable!(),
+fn presigned_publish_is_not_a_dispatchable_wire_payload() {
+    let action = PublishAction::Publish {
+        handle: "pub-1".to_string(),
+        event: nmp_signer_iface::SignedEvent {
+            id: "a".repeat(64),
+            sig: "b".repeat(128),
+            unsigned: nmp_signer_iface::UnsignedEvent {
+                pubkey: "c".repeat(64),
+                kind: 1,
+                tags: vec![],
+                content: "verbatim".to_string(),
+                created_at: 1_700_000_000,
+            },
+        },
+        target: PublishTarget::explicit(
+            vec!["wss://relay.example".to_string()],
+            PublishRouteClass::ImportedOrPresigned,
+        ),
     };
-    let canonical_bytes = event.to_nip01_json().into_bytes();
 
-    // encode → bytes → decode → re-encode.
-    let bytes = original.encode();
-    let decoded = PublishAction::decode(&bytes).expect("valid publish payload decodes");
-
-    // The decoded SignedEvent is field-identical (id/sig/unsigned).
-    match &decoded {
-        PublishAction::Publish {
-            event: decoded_event,
-            handle,
-            target,
-        } => {
-            assert_eq!(handle, "pub-1");
-            assert_eq!(*target, PublishTarget::Auto);
-            assert_eq!(
-                *decoded_event, event,
-                "decoded SignedEvent must equal original"
-            );
-            // The id and sig are byte-exact (the whole point).
-            assert_eq!(decoded_event.id, "a".repeat(64));
-            assert_eq!(decoded_event.sig, "b".repeat(128));
-            // And re-serializing the decoded event yields byte-identical
-            // canonical bytes — so the signature stays valid.
-            assert_eq!(
-                decoded_event.to_nip01_json().into_bytes(),
-                canonical_bytes,
-                "canonical NIP-01 bytes must round-trip byte-for-byte (sig exactness)"
-            );
-        }
-        _ => panic!("expected Publish variant"),
-    }
-
-    // The opaque canonical_event vector inside the FlatBuffers buffer is the
-    // verbatim canonical bytes — re-encoding the decoded action reproduces them.
-    let bytes2 = decoded.encode();
-    let re_decoded = PublishAction::decode(&bytes2).expect("re-decodes");
-    match re_decoded {
-        PublishAction::Publish { event: e2, .. } => {
-            assert_eq!(e2.to_nip01_json().into_bytes(), canonical_bytes);
-        }
-        _ => panic!("expected Publish variant"),
-    }
+    let err = PublishAction::decode(&action.encode())
+        .expect_err("pre-signed Publish must not serialize as app dispatch");
+    assert!(
+        matches!(err, ActionPayloadDecodeError::Malformed { .. }),
+        "pre-signed publish should fail closed at decode; got {err:?}"
+    );
 }
 
 // ---- Round-trips for the other dispatchable variants ------------------------
@@ -221,8 +169,7 @@ fn wrong_schema_version_is_rejected_before_decode() {
     // Hand-build a buffer whose schema_version is bogus; the decode must trip
     // the version gate and NOT inspect the body.
     let mut fbb = flatbuffers::FlatBufferBuilder::new();
-    let handle = fbb.create_string("h");
-    let canonical = fbb.create_vector(b"{}");
+    let content = fbb.create_string("x");
     let target = fb::PublishTarget::create(
         &mut fbb,
         &fb::PublishTargetArgs {
@@ -231,20 +178,22 @@ fn wrong_schema_version_is_rejected_before_decode() {
             route_class: None,
         },
     );
-    let signed = fb::PublishSigned::create(
+    let raw = fb::PublishRaw::create(
         &mut fbb,
-        &fb::PublishSignedArgs {
-            handle: Some(handle),
-            canonical_event: Some(canonical),
+        &fb::PublishRawArgs {
+            kind: 1,
+            tags: None,
+            content: Some(content),
             target: Some(target),
+            signer: None,
         },
     );
     let payload = fb::PublishPayload::create(
         &mut fbb,
         &fb::PublishPayloadArgs {
             schema_version: 999,
-            body_type: fb::PublishPayloadBody::PublishSigned,
-            body: Some(signed.as_union_value()),
+            body_type: fb::PublishPayloadBody::PublishRaw,
+            body: Some(raw.as_union_value()),
         },
     );
     fb::finish_publish_payload_buffer(&mut fbb, payload);
@@ -275,6 +224,6 @@ fn malformed_buffer_is_rejected() {
 #[test]
 fn schema_constants_are_stable() {
     assert_eq!(SCHEMA_ID, "nmp.publish");
-    assert_eq!(SCHEMA_VERSION, 3);
+    assert_eq!(SCHEMA_VERSION, 4);
     assert_eq!(FILE_IDENTIFIER, b"NPUB");
 }
