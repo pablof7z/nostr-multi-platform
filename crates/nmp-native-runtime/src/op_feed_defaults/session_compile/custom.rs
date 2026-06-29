@@ -130,7 +130,7 @@ pub(super) fn apply_custom_admission(
     let Some(def) = app.custom_perspective(id) else {
         // Unregistered → fail closed, revoking the acquisition's observers so the
         // partially-resolved open leaks nothing.
-        revoke_observers(app, &acquisition);
+        revoke_resolved(app, acquisition);
         return Err(not_supported("custom-admission"));
     };
 
@@ -139,7 +139,7 @@ pub(super) fn apply_custom_admission(
     let gate = match resolve_scope(app, &def.acquisition, kinds) {
         Ok(gate) => gate,
         Err(e) => {
-            revoke_observers(app, &acquisition);
+            revoke_resolved(app, acquisition);
             return Err(e);
         }
     };
@@ -168,6 +168,7 @@ pub(super) fn combine_admission_gate(
         mut reset_hooks,
         mut resolver_observer_ids,
         mut identity_observer_ids,
+        mut resolver_teardown,
     } = acquisition;
     let op_session_identity = acq_op_session_identity.combine(gate.op_session_identity);
 
@@ -202,6 +203,7 @@ pub(super) fn combine_admission_gate(
     reset_hooks.extend(gate.reset_hooks);
     resolver_observer_ids.extend(gate.resolver_observer_ids);
     identity_observer_ids.extend(gate.identity_observer_ids);
+    resolver_teardown.extend(gate.resolver_teardown);
 
     ReducedSource {
         op_session_identity,
@@ -212,6 +214,7 @@ pub(super) fn combine_admission_gate(
         reset_hooks,
         resolver_observer_ids,
         identity_observer_ids,
+        resolver_teardown,
     }
 }
 
@@ -225,6 +228,8 @@ fn merge_live_shapes(left: &LiveShape, right: &LiveShape) -> Option<InterestShap
         (Some(mut a), Some(b)) => {
             a.authors.extend(b.authors);
             a.kinds.extend(b.kinds);
+            a.event_ids.extend(b.event_ids);
+            a.addresses.extend(b.addresses);
             for (key, vals) in b.tags {
                 a.tags.entry(key).or_default().extend(vals);
             }
@@ -241,6 +246,13 @@ fn revoke_observers(app: &NmpApp, resolved: &ReducedSource) {
     }
     for id in &resolved.identity_observer_ids {
         app.unregister_identity_change_observer(*id);
+    }
+}
+
+fn revoke_resolved(app: &NmpApp, resolved: ReducedSource) {
+    revoke_observers(app, &resolved);
+    for teardown in resolved.resolver_teardown {
+        teardown();
     }
 }
 
@@ -291,6 +303,7 @@ mod tests {
             reset_hooks: Vec::new(),
             resolver_observer_ids: Vec::new(),
             identity_observer_ids: Vec::new(),
+            resolver_teardown: Vec::new(),
         }
     }
 

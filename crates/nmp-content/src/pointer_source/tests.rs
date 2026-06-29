@@ -21,7 +21,13 @@ fn pointer(id: &str, author: &str, created_at: u64, tags: Vec<Vec<&str>>) -> Ker
     }
 }
 
-fn target_event(id: &str, author: &str, kind: u32, created_at: u64, d: Option<&str>) -> KernelEvent {
+fn target_event(
+    id: &str,
+    author: &str,
+    kind: u32,
+    created_at: u64,
+    d: Option<&str>,
+) -> KernelEvent {
     let mut tags = Vec::new();
     if let Some(d) = d {
         tags.push(vec!["d".to_string(), d.to_string()]);
@@ -49,7 +55,10 @@ fn event_id_reference_materializes_one_target() {
 
     let demand: Vec<_> = model.target_demand().cloned().collect();
     assert_eq!(demand, vec![event_target("note1")]);
-    assert_eq!(model.pointed_by(&event_target("note1")), vec!["p1".to_string()]);
+    assert_eq!(
+        model.pointed_by(&event_target("note1")),
+        vec!["p1".to_string()]
+    );
 }
 
 #[test]
@@ -74,6 +83,30 @@ fn address_reference_materializes_address_target() {
 }
 
 #[test]
+fn uppercase_nip22_root_tags_materialize_targets() {
+    let mut model = PointerSourceModel::default();
+    model.apply_pointer(&pointer(
+        "p1",
+        "alice",
+        100,
+        vec![vec!["E", "root-note"], vec!["A", "30023:bob:root-article"]],
+    ));
+
+    let demand: Vec<_> = model.target_demand().cloned().collect();
+    assert_eq!(
+        demand,
+        vec![
+            event_target("root-note"),
+            EmbedTarget::Address {
+                kind: 30_023,
+                pubkey: "bob".to_string(),
+                identifier: "root-article".to_string(),
+            },
+        ]
+    );
+}
+
+#[test]
 fn bare_and_malformed_references_fail_closed() {
     let mut model = PointerSourceModel::default();
     // Empty `e` value, non-addressable `a` coordinate, and a `p` tag: none are
@@ -87,6 +120,18 @@ fn bare_and_malformed_references_fail_closed() {
     assert!(!changed);
     assert!(model.is_empty());
     assert_eq!(model.target_demand().len(), 0);
+}
+
+#[test]
+fn clear_withdraws_all_pointer_target_state() {
+    let mut model = PointerSourceModel::default();
+    model.apply_pointer(&pointer("p1", "alice", 100, vec![vec!["e", "note1"]]));
+    model.apply_target(&target_event("note1", "carol", 1, 90, None));
+
+    assert!(model.clear(), "existing demand/output was withdrawn");
+    assert!(model.is_empty());
+    assert!(model.items().is_empty());
+    assert!(!model.clear(), "second clear is a no-op");
 }
 
 #[test]
@@ -177,7 +222,11 @@ fn sort_modes_order_projection() {
     model.apply_target(&target_event("B", "y", 1, 90, None));
 
     let ids = |model: &PointerSourceModel| -> Vec<String> {
-        model.items().into_iter().map(|item| item.event.id).collect()
+        model
+            .items()
+            .into_iter()
+            .map(|item| item.event.id)
+            .collect()
     };
 
     model.set_sort(PointerSortMode::Time);

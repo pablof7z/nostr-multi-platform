@@ -9,7 +9,7 @@
 use std::sync::Arc;
 
 use nmp_core::{DependentInterestChild, ObservedProjectionId};
-use nmp_feed::RootAdmission;
+use nmp_feed::{RootAdmission, TeardownAction};
 use nmp_planner::{InterestScope, InterestShape};
 
 /// A closure that, given the feed-window reset trigger, installs it on the
@@ -86,6 +86,8 @@ pub(super) struct ReducedSource {
     pub resolver_observer_ids: Vec<ObservedProjectionId>,
     /// Identity-change observer ids the session must revoke on close.
     pub identity_observer_ids: Vec<crate::IdentityChangeObserverId>,
+    /// Resolver-owned dynamic observers that need custom teardown.
+    pub resolver_teardown: Vec<TeardownAction>,
 }
 
 /// No extra acquisition beyond fixed interests.

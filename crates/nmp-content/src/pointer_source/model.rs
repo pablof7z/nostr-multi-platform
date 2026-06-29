@@ -61,6 +61,16 @@ impl PointerSourceModel {
         changed
     }
 
+    /// Clear all pointer and target state. Returns whether any live demand or
+    /// hydrated output was withdrawn.
+    pub fn clear(&mut self) -> bool {
+        let changed = !self.pointed_by.is_empty() || !self.resolved.is_empty();
+        self.pointers.clear();
+        self.pointed_by.clear();
+        self.resolved.clear();
+        changed
+    }
+
     /// Ingest a pointer event. Returns `true` when the demanded target set
     /// changed (a previously-unseen target appeared), signalling the composition
     /// layer to re-materialize the dependent-interest set.
@@ -230,14 +240,14 @@ fn extract_targets(event: &KernelEvent) -> BTreeSet<EmbedTarget> {
     let mut targets = BTreeSet::new();
     for tag in &event.tags {
         match tag.first().map(String::as_str) {
-            Some("e") => {
+            Some("e" | "E") => {
                 if let Some(id) = tag.get(1) {
                     if !id.is_empty() {
                         targets.insert(EmbedTarget::Event(id.clone()));
                     }
                 }
             }
-            Some("a") => {
+            Some("a" | "A") => {
                 if let Some(raw) = tag.get(1) {
                     if let Some(coord) = AddressCoordinate::parse(raw) {
                         targets.insert(EmbedTarget::Address {

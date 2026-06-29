@@ -46,6 +46,9 @@ pub(super) fn resolve_set_op(
             for id in &l.identity_observer_ids {
                 app.unregister_identity_change_observer(*id);
             }
+            for teardown in l.resolver_teardown {
+                teardown();
+            }
             return Err(e);
         }
     };
@@ -115,6 +118,8 @@ pub(super) fn resolve_set_op(
     resolver_observer_ids.extend(r.resolver_observer_ids);
     let mut identity_observer_ids = l.identity_observer_ids;
     identity_observer_ids.extend(r.identity_observer_ids);
+    let mut resolver_teardown = l.resolver_teardown;
+    resolver_teardown.extend(r.resolver_teardown);
 
     Ok(ReducedSource {
         op_session_identity,
@@ -125,6 +130,7 @@ pub(super) fn resolve_set_op(
         reset_hooks,
         resolver_observer_ids,
         identity_observer_ids,
+        resolver_teardown,
     })
 }
 
@@ -145,10 +151,63 @@ fn merge_shapes(
         (Some(mut a), Some(b)) => {
             a.authors.extend(b.authors);
             a.kinds.extend(b.kinds);
+            a.event_ids.extend(b.event_ids);
+            a.addresses.extend(b.addresses);
             for (key, vals) in b.tags {
                 a.tags.entry(key).or_default().extend(vals);
             }
             Some(a)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use nmp_planner::NaddrCoord;
+
+    use super::*;
+
+    #[test]
+    fn union_live_shape_preserves_pointer_target_event_ids_and_addresses() {
+        let left: LiveShape = Arc::new(|| {
+            Some(InterestShape {
+                authors: BTreeSet::from(["followed-author".to_string()]),
+                kinds: BTreeSet::from([30_023]),
+                ..InterestShape::default()
+            })
+        });
+        let right: LiveShape = Arc::new(|| {
+            Some(InterestShape {
+                event_ids: BTreeSet::from(["article-event-id".to_string()]),
+                addresses: BTreeSet::from([NaddrCoord {
+                    pubkey: "article-author".to_string(),
+                    kind: 30_023,
+                    d_tag: "article".to_string(),
+                }]),
+                kinds: BTreeSet::from([30_023]),
+                ..InterestShape::default()
+            })
+        });
+
+        let merged =
+            merge_shapes(&left, &right, true, &BTreeSet::from([30_023])).expect("merged shape");
+        assert_eq!(
+            merged.authors,
+            BTreeSet::from(["followed-author".to_string()])
+        );
+        assert_eq!(
+            merged.event_ids,
+            BTreeSet::from(["article-event-id".to_string()])
+        );
+        assert_eq!(
+            merged.addresses,
+            BTreeSet::from([NaddrCoord {
+                pubkey: "article-author".to_string(),
+                kind: 30_023,
+                d_tag: "article".to_string(),
+            }])
+        );
     }
 }

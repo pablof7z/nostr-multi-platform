@@ -36,6 +36,10 @@ fn pubkey_set_expr_variants_construct() {
     let referrer = FeedScope::Referrer {
         event_id: "abc123".into(),
     };
+    let pointer_targets = FeedScope::PointerTargets {
+        pointers: Box::new(FeedScope::ActiveUserFollows),
+        pointer_kinds: vec![7, 1111],
+    };
     let custom = FeedScope::CustomPerspectiveId(CustomPerspectiveId("trending".into()));
 
     let union = FeedScope::Union(Box::new(follows.clone()), Box::new(list.clone()));
@@ -44,7 +48,19 @@ fn pubkey_set_expr_variants_construct() {
 
     // Exhaustive match — adding a variant forces this to be revisited.
     for expr in [
-        follows, authors, contacts, list, wot, relays, tag, referrer, custom, union, inter, diff,
+        follows,
+        authors,
+        contacts,
+        list,
+        wot,
+        relays,
+        tag,
+        referrer,
+        pointer_targets,
+        custom,
+        union,
+        inter,
+        diff,
     ] {
         assert!(describe(&expr).len() > 0);
     }
@@ -62,11 +78,25 @@ fn describe(expr: &PubkeySetExpr) -> &'static str {
         PubkeySetExpr::RelaySet { .. } => "relay-set",
         PubkeySetExpr::Tag { .. } => "tag",
         PubkeySetExpr::Referrer { .. } => "referrer",
+        PubkeySetExpr::PointerTargets { .. } => "pointer-targets",
         PubkeySetExpr::Union(..) => "union",
         PubkeySetExpr::Intersection(..) => "intersection",
         PubkeySetExpr::Difference(..) => "difference",
         PubkeySetExpr::CustomPerspectiveId(..) => "custom-perspective",
     }
+}
+
+#[test]
+fn pointer_targets_scope_names_pointer_authors_and_kinds() {
+    let scope = FeedScope::PointerTargets {
+        pointers: Box::new(FeedScope::ActiveUserFollows),
+        pointer_kinds: vec![7, 1111],
+    };
+    assert_eq!(describe(&scope), "pointer-targets");
+
+    let json = serde_json::to_string(&scope).expect("serialize");
+    let back: FeedScope = serde_json::from_str(&json).expect("deserialize");
+    assert_eq!(scope, back);
 }
 
 #[test]
