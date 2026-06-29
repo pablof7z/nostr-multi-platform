@@ -20,7 +20,7 @@ under ADR-0070.
 ## The moving parts
 
 Every action-triggered read feature wires the app-visible pieces at **init
-time** — before any action is dispatched, before `nmp_app_start`:
+time** — before any action is dispatched, before the runtime starts:
 
 ```text
 typed read-session helper         ←── owns demand + replay + output + teardown
@@ -167,12 +167,12 @@ storage, ordering, and pagination over events that have arrived through the
 normal acquisition path.
 
 If the acquisition source itself is dynamic, the action does not snapshot the
-current author/tag/id set. It declares the closed source expression and lets an
-internal Rust ReducedSource owner materialize child interests. Active-user follows,
-NIP-51 list membership, follow packs, and pointer-event target hydration all
-have this shape: source interest/state changes, reducer replaces the derived
-set, and those children enter the same registry/planner path as the static
-materialized interests owned by the session helper.
+current author/tag/id set. It declares the closed source expression and lets the
+typed session helper's internal source reducer materialize child interests.
+Active-user follows, NIP-51 list membership, follow packs, and pointer-event
+target hydration all have this shape: source interest/state changes, the reducer
+replaces the derived set, and those children enter the same registry/planner
+path as the static materialized interests owned by the session helper.
 
 `load_older` is rendered-progress pagination. It may scan past event-log rows
 that are deleted, muted, blocked, superseded, replaced, or rejected by the
@@ -367,8 +367,8 @@ pub fn register(app: &mut impl AppHost) {
 
 The session registration does not need to happen before the action registration
 for actor safety — both are consulted only when the actor processes a command or
-an event, which is after `nmp_app_start`. The constraint is simply that the
-shell calls this app-core `register()` once before `nmp_app_start`.
+an event, which is after runtime start. The constraint is simply that the
+binding adapter calls this app-core `register()` once before start.
 
 ## Multi-owner refcounting in practice
 

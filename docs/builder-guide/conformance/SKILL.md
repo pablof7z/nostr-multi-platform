@@ -19,7 +19,8 @@ shell*. Every rule in the catalog is one way that thesis breaks.
 
 ### 1. Locate the NMP integration surface
 Find where the app touches the framework — this scopes everything else:
-- The C-ABI / FFI seam (`nmp_app_*`, `libnmp`, UniFFI-generated bindings).
+- The public binding seam (UniFFI-generated native bindings or wasm-bindgen
+  browser bindings).
 - Where the app consumes snapshots / view payloads (the read side).
 - Where the app invokes actions / publishes (the write side).
 - Shell UI code (Swift/SwiftUI, Kotlin, TS/React).

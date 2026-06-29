@@ -1,4 +1,4 @@
-# 05a — Kernel substrate: the 2 traits + 3 seams
+# 05a — Kernel substrate: actions, capabilities, and typed reads
 
 *Status: SHIPS · Audience: both · Read after [02](02-mental-model.md).*
 
@@ -8,7 +8,7 @@ lifecycle, and a "which seam?" decision tree. **05b** = the annotated
 `microblog-core` walkthrough and `nmp-nip29` sidebar.
 
 These are the exact traits and seams in `crates/nmp-core/src/substrate/` and
-`crates/nmp-ffi/src/lib.rs`. The kernel runtime is generic over the action
+`crates/nmp-core/src/substrate/`. The kernel runtime is generic over the action
 trait: it never names your `Action` type, only that your module conforms.
 
 ## ActionModule — the write seam
@@ -71,7 +71,6 @@ pub trait ActionModule: Send + Sync + 'static {
 ```rust
 // In your module's register() fn:
 app.register_action(MyActionModule);
-// crates/nmp-ffi/src/lib.rs:1087
 ```
 
 One call. The registered module handles every `DispatchEnvelope` whose action
@@ -97,13 +96,33 @@ pub trait CapabilityModule: Send + Sync + 'static {
 
 - **Lifecycle:** kernel emits a `CapabilityRequest` → native side executes
   the OS handle → returns a `CapabilityEnvelope` keyed by `correlation_id`.
-  Start/stop must be idempotent and safe N times. The native side is wired
-  via C-ABI callbacks, not via a Rust registration call.
+  Start/stop must be idempotent and safe N times. Native public bindings use
+  UniFFI capability objects; browser bindings use wasm-bindgen adapters.
 - **Use it when** you need an OS handle (keychain, push, audio, network
   monitor). Native code *reports a fact*; it never decides retry, routing,
   or any policy (D7). Results are envelopes, not `Result`-typed errors.
 
-## register_typed_snapshot_projection — the read output seam
+## Typed read sessions/helpers — the read surface
+
+Production app code opens a typed read session or generated helper. The helper
+owns demand, replay-before-live, status, output, dynamic source wakeups, and
+teardown. It may register typed output and may use observed delivery internally,
+but product screens do not wire raw interests, observers, replay sidecars, or
+source reducers.
+
+```rust
+register_topic_articles_read_session(app);
+```
+
+- **Contract:** the helper declares the session shape and owns all acquisition
+  and close behavior. The shell claims/releases the typed session and renders
+  the pushed typed output.
+- **Use it when** a product screen needs Nostr data. The app names the typed
+  session it wants; Rust owns the route, replay, filtering, and state.
+- **Never:** hand-author raw interest, observed-delivery, or source-reduction
+  plumbing from product code or native shell code.
+
+## register_typed_snapshot_projection — internal read output transport
 
 Registers a typed sidecar pushed in every snapshot tick under
 `typed_projections[key]`.
@@ -121,15 +140,16 @@ app.register_typed_snapshot_projection("nmp.myapp.key", move || {
 - **Key naming:** use `nmp.<module>.*` namespaces. Kernel-reserved keys
   (`publish_queue`, `accounts`, `profile`, views cluster) always win on
   collision.
-- **Use it when** you want module state visible in the host's `apply()`
-  callback alongside the built-in named fields.
+- **Use it when** you are implementing a typed read session/helper or protocol
+  executor and need its state visible in the host's `apply()` callback alongside
+  the built-in named fields. Product screens should open the helper, not wire
+  this transport seam directly.
 
-## open_observed_projection — the event-driven read-model seam
+## Observed delivery — internal session-executor machinery
 
-Registers an in-process `ObservedProjectionSink` only after the read model has
-declared the events it needs. The host calls
-`ObservedProjectionRegistrar::open_observed_projection` with an
-`ObservedProjection` declaration; the kernel registers the sink muted, opens the
+Some session/protocol executors maintain an in-process read model from Nostr
+events. They do that with declared observed delivery after the read model has
+declared the events it needs. The kernel registers the sink muted, opens the
 declared interest, replays matching cached/store-backed rows, then activates
 future delivery scoped to the declaration.
 
@@ -151,12 +171,13 @@ let observer_id = app.open_observed_projection(ObservedProjection::from_kinds(
 - **Lifecycle:** the sink body runs synchronously on the **actor thread**. Must
   be cheap; no blocking I/O. Duplicates, supersessions, and rejections do NOT
   fire the observer.
-- **Use it when** you need to maintain an in-process read model from Nostr
-  events. The declaration must name the scope by kind, author, id, tag, relay
-  pin, search shape, source reducer, or bounded dependency before events are
-  delivered.
+- **Use it when** you are implementing a typed read session/helper or reusable
+  protocol executor. The declaration must name the scope by kind, author, id,
+  tag, relay pin, search shape, source reducer, or bounded dependency before
+  events are delivered.
 - **Never:** production app/product code must not register a blanket all-event
-  observer. A remaining event slot is kernel-internal plumbing only.
+  observer or expose observed delivery as its app API. A remaining event slot is
+  kernel-internal plumbing only.
 
 ## Decision tree: "I want X — which seam?"
 
@@ -166,22 +187,24 @@ I want to ...
 ├─ change state, publish, or mutate anything    → ActionModule + register_action
 │     └─ result must survive restart / relay ack   use is_async_completing = true
 │
-├─ expose a typed sidecar to the host shell  → register_typed_snapshot_projection
-│     └─ cheap + non-blocking closure
+├─ read Nostr data for a product screen       → typed read session/helper
+│     └─ owns demand + replay + output + teardown
 │
-├─ maintain an in-process typed projection      → ObservedProjectionSink
-│     (declared shape + replay + scoped delivery)   + open_observed_projection
+├─ expose helper-owned typed output           → register_typed_snapshot_projection
+│     └─ internal transport; cheap + non-blocking closure
+│
+├─ maintain helper-owned event projection     → declared observed delivery
+│     └─ internal session/protocol executor machinery
 │
 ├─ report OS-native facts to the kernel        → CapabilityModule
-│     (keychain, push, audio, network)             (native C-ABI callback)
+│     (keychain, push, audio, network)             (UniFFI capability object)
 │
 └─ none of these — pure app-local state        → Arc<Mutex<T>> in register()
       (in-memory store, no relay traffic)          no kernel seam needed
 ```
 
 A real app typically combines several: `microblog-core` uses
-`register_action` + `open_observed_projection` +
-`register_snapshot_projection`/`register_typed_snapshot_projection`.
+`register_action` + a typed read-session helper + typed output transport.
 Walkthroughs are in
 [05b](05b-substrate-traits.md) and [19a](19a-walkthrough-microblog.md).
 
@@ -197,8 +220,8 @@ output, treat them as stale. The correct replacements:
 
 | Removed concept | Replacement |
 |---|---|
-| `ViewModule` (typed reactive projection) | `open_observed_projection` + `register_snapshot_projection` |
-| `DomainModule` (kernel-owned domain store) | app-owned `Arc<Mutex<T>>` + `register_snapshot_projection` |
+| `ViewModule` (typed reactive projection) | typed read-session helper + typed output |
+| `DomainModule` (kernel-owned domain store) | app-owned `Arc<Mutex<T>>` + typed output |
 | `IdentityModule` (signer scope) | `nmp-signers` crate + keyring capability |
 | `ModuleRegistry` (composition root) | an app-core `register()` fn that installs explicit substrate/protocol/app features |
 | `ActionPlan` / `ActionTransition` / `reduce()` | `execute()` dispatching `ActorCommand` |

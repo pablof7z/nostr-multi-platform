@@ -1,7 +1,7 @@
 # 15 — Codegen: bindings + FFI surface
 
-**Status:** raw C/JNI lifecycle/action FFI + FlatBuffers update transport SHIPS as the current transitional native surface ·
-UniFFI M14 target PLANNED; Android app-loop proof moved with extracted Chirp (issue #2129/#2295) ·
+**Status:** UniFFI native binding + FlatBuffers update transport are the public native target ·
+wasm-bindgen is the browser binding ·
 `nmp init` thin-shell scaffold SHIPS · full multi-platform starter M16 PLANNED · Audience: both
 
 A NMP app is a *composition*: one kernel + N protocol modules + 1 app core. The
@@ -9,12 +9,12 @@ canonical composition is delivered as a **library call**, not as generated wirin
 in your source tree (ADR-0046 — see [19a](19a-walkthrough-microblog.md) and
 [19b](19b-walkthrough-microblog.md) for how a new app uses it).
 
-This section covers the generated *bindings* and the *FFI boundary*. The current
-in-tree native boundary is raw C/JNI over `nmp-native-runtime`. The clean-break
-target is one public native binding surface: UniFFI for lifecycle, callbacks, and
-capability/object bindings. Binary FlatBuffers remains the hot action/update
-payload through that binding; UniFFI and FlatBuffers are complementary, not
-alternatives. Browser/wasm remains a separate `wasm-bindgen` runtime surface.
+This section covers the generated *bindings* and the *FFI boundary*. The public
+native binding is UniFFI for lifecycle, callbacks, and capability/object
+bindings. Binary FlatBuffers remains the hot action/update payload through that
+binding; UniFFI and FlatBuffers are complementary, not alternatives.
+Browser/wasm uses the separate `wasm-bindgen` runtime surface. Any remaining
+raw C/JNI symbols are internal/transitional compatibility, not starter-app API.
 The full multi-platform starter remains M16.
 
 ## The `nmp.toml` manifest
@@ -72,7 +72,8 @@ must not collapse back to `register_defaults()` or a substrate-only starter.
 
 `nmp-codegen` retains the emitters that gate live CI:
 
-- **`gen swift`** — Swift bindings for the C-ABI surface (`nmp_app_*`).
+- **UniFFI native bindings** — Swift/Kotlin bindings for lifecycle, callbacks,
+  capability objects, and byte action/update doorways.
 - **`gen typed-decoders`** — native decoders for the typed FlatBuffers projection
   sidecars carried in `SnapshotFrame.typed_projections`.
 - **Typed action builders** — generated host builders for declared action
@@ -139,7 +140,7 @@ the app-private namespace to NMP's default `ACTION_CONTRACT` /
 Rust app code remains authoritative for meaning. The app crate owns validation,
 tag policy, event construction, publish intent, and `ActionModule::execute`.
 Generated builders only encode typed action bytes for the same byte doorway:
-UniFFI native dispatch for Swift/Kotlin and wasm `dispatch_bytes` for
+UniFFI native dispatch for Swift/Kotlin and wasm-bindgen `dispatch_bytes` for
 TypeScript. They do not install modules, choose relays, create a per-app FFI
 crate, or generate a composition root.
 
@@ -155,39 +156,33 @@ discover private app registries or remote schemas; each app that consumes an
 app-local registry owns its own registry-wide `--check` command and Rust
 decode/action-module tests.
 
-## Current vs future FFI — read this box carefully
+## Public bindings and transitional internals
 
 ```
-┌─ TODAY (SHIPS IN THIS REPO) ─────────────────────────────────────────┐
-│ Raw C/JNI lifecycle/action/capability ABI in crates/nmp-ffi. It      │
-│ exports `nmp_app_*` (`new`, `start`, byte action dispatch, capability │
-│ callbacks, projection/observer registration, etc.) as the C ABI shell │
-│ over nmp-native-runtime, which owns NmpApp, runtime slots, and        │
-│ NmpAppBuilder.                                                       │
+┌─ PUBLIC NATIVE BINDING ──────────────────────────────────────────────┐
+│ UniFFI exposes lifecycle, callbacks, capability objects, and byte     │
+│ action/update doorways to Swift/Kotlin/desktop native hosts.          │
+│ Native shells import generated UniFFI modules; they do not call raw   │
+│ C/JNI symbols as starter-app API.                                     │
 │ The update callback carries one binary `nmp.transport.UpdateFrame`   │
 │ with file identifier `NMPU`: Snapshot or Panic. There is no JSON     │
 │ runtime snapshot fallback and no pull/drain update symbol.           │
 │ There is NO generated per-app FFI crate; the app core owns explicit  │
-│ Rust composition and the raw C-ABI surface is shared.                │
-│ This is transitional native ABI, not the long-term public target.    │
+│ Rust composition.                                                    │
+├─ PUBLIC BROWSER BINDING ─────────────────────────────────────────────┤
+│ wasm-bindgen exposes the browser runtime surface. Browser hosts use  │
+│ the same FlatBuffers action/update bytes and browser capability      │
+│ adapters; they do not share the native UniFFI object model.          │
 ├─ FlatBuffers runtime transport (SHIPS) ──────────────────────────────┤
 │ One canonical transport frame carries typed SnapshotEnvelope fields  │
 │ and typed projection sidecars from Rust to frontend shells. JSON is  │
 │ allowed for Nostr relay frames, capability envelopes, diagnostics,   │
 │ goldens, or tests. It is not a second production update transport.   │
-├─ M14 proof — UniFFI Android app-loop lane (SHIPPED IN CHIRP) ────────┤
-│ Issue #2129 proved `AppHandle` + `UpdateSink` + `Vec<u8>` payloads.  │
-│ Chirp was then extracted to github.com/pablof7z/chirp (#2295/#2303), │
-│ so the generated Kotlin/UniFFI artifacts are not in this repository. │
-│ The proof is architectural evidence, not current in-tree code.       │
-├─ M14 target — native UniFFI surface (PLANNED, #2125) ────────────────┤
-│ nmp-codegen or owned tooling emits proc-macro UniFFI scaffolding and │
-│ generated Swift/Kotlin bindings. Native hosts import generated       │
-│ UniFFI modules for lifecycle, object lifetime, callbacks, and        │
-│ capability interfaces. FlatBuffers bytes still carry NMPD actions    │
-│ and NMPU updates. Any residual native C/JNI byte lane must be hidden │
-│ behind the UniFFI API and justified by measurement, not exposed as a │
-│ second API.                                                         │
+├─ TRANSITIONAL / INTERNAL COMPATIBILITY ──────────────────────────────┤
+│ Historical raw C/JNI `nmp_app_*` symbols may remain for migration,   │
+│ tests, or narrow runtime internals. Do not teach them as the new app │
+│ path; any residual byte lane must stay behind the public binding and │
+│ be justified by measurement, not exposed as a second API.            │
 ├─ `nmp` CLI (SHIPS, crates/nmp-cli/) ────────────────────────────────┤
 │ `nmp init <app>` scaffolds a thin Rust shell: a `<name>-core` crate  │
 │ with an explicit composition root, plus a headless `examples/shell.rs`│
@@ -200,10 +195,10 @@ decode/action-module tests.
 ```
 
 ADR-0010 §"Codegen output" shows `#[derive(Clone, uniffi::Enum)]` and a
-`bindings/{swift,kotlin,typescript}/` tree. **That is the M14 target shape, not
-current in-tree native code.** Live `nmp-codegen` emits maintained host and runtime artifacts
-(`gen swift`, `gen typed-decoders`, `gen projection-cache`, and
-`gen builtin-keys`). UniFFI remains planned, and JSON is not a runtime fallback
+`bindings/{swift,kotlin,typescript}/` tree. Read it as binding-generation shape,
+not as permission to generate composition wiring. Live `nmp-codegen` emits
+maintained host and runtime artifacts (`gen typed-decoders`,
+`gen projection-cache`, and `gen builtin-keys`). JSON is not a runtime fallback
 for the update stream.
 
 ## How typed output reaches the shell
@@ -225,9 +220,8 @@ visible-note relation data: the owning card or detail view claims a bounded
 ### Internal seam — typed output registration
 
 Session and protocol executors register host-rendered state as typed sidecars
-with the runtime registration API. Current C-ABI registration support lives in
-`crates/nmp-ffi/src/snapshot.rs` until the ADR-0068 split moves runtime
-ownership into `nmp-native-runtime`. The closure returns
+with the runtime registration API. Runtime ownership stays in Rust and is
+projected through the public bindings as typed output. The closure returns
 `Option<TypedProjectionData>`:
 
 - `Some(Changed row)` contains the projection key, e.g. `nmp.feed.home`;

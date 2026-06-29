@@ -11,7 +11,7 @@ same Rust seams, and how modules compose through an explicit app root.
 
 `crates/microblog-core/src/lib.rs` (worked out in
 [19a](19a-walkthrough-microblog.md)) is ADR-0009 in practice: an app module
-exercising all three extension seams **with app nouns that stay out of
+exercising the public app seams **with app nouns that stay out of
 `nmp-core`**. It is the canonical template — read it before writing any module.
 
 ### The record type
@@ -85,33 +85,26 @@ Key teaching points:
   The `execute` body is a static method (no `&self`), so it reads the store
   from the process-wide slot that `register()` initializes.
 
-### The observed projection sink
+### The typed read-session helper
 
 ```rust
-pub struct FeedObserver {
-    store: FeedStore,
-}
-
-impl ObservedProjectionSink for FeedObserver {
-    fn on_kernel_event(&self, event: &KernelEvent) {
-        if event.kind != 1 { return; }
-        let record = NoteRecord {
-            id:         event.id.clone(),
-            author:     event.author.clone(),
-            content:    event.content.clone(),
-            created_at: event.created_at,
-        };
-        if let Ok(mut guard) = self.store.lock() {
-            guard.push(record);
-        }
-    }
+pub fn register_microblog_read_session(app: &mut impl AppHost, store: FeedStore) {
+    // Shape only:
+    // - demand: kind:1 notes
+    // - replay: bounded before live activation
+    // - output: FEED_SNAPSHOT_KEY typed sidecar
+    // - close: release the session owner and clear/tombstone output
+    //
+    // The helper may use observed delivery internally. Product screens and
+    // native shells only claim/release the helper and render its typed output.
+    install_feed_session_executor(app, store);
 }
 ```
 
-This is the low-level observer contract that typed read sessions use internally:
-the kernel replays matching cached rows first, then delivers only accepted events
-that match the declared shape. Product screens should open a typed session or
-generated helper, not wire `ObservedProjectionSink` directly.
+The helper is the app-facing read contract. It owns acquisition,
+replay-before-live, scoped delivery, typed output, status, and teardown.
+Observed delivery, source reduction, and raw interest materialization are
+private executor details behind the helper.
 
 ### The snapshot projection
 
@@ -155,8 +148,8 @@ See [19b](19b-walkthrough-microblog.md) for the shell.
 
 ### What `microblog-core` proves
 
-1. A complete app module with writes (`ActionModule`), event-driven view
-   (`ObservedProjectionSink` as internal machinery), and typed read output
+1. A complete app module with writes (`ActionModule`), a typed read-session
+   helper, and typed read output
    — **without touching `nmp-core`**.
 2. App state is app-owned (`Arc<Mutex<Vec<NoteRecord>>>`). The kernel never
    stores, migrates, or indexes `NoteRecord`. The module owns its data.
@@ -217,11 +210,9 @@ app-core composition root installs explicit substrate, protocol, app, and
 capability features. The microblog staticlib shell does not compose NMP itself:
 
 ```rust
-// apps/microblog/nmp-app-microblog/src/lib.rs
-#[no_mangle]
-pub extern "C" fn nmp_app_microblog_register(app: *mut NmpApp) {
-    if app.is_null() { return; }
-    microblog_core::register(unsafe { &mut *app });
+// Native binding adapter shape.
+pub fn configure_microblog(app: &mut impl AppHost) {
+    microblog_core::register(app);
 }
 ```
 
@@ -239,7 +230,8 @@ let app = builder
     .with_typed_output_contract(["microblog.items"])
     .without_initial_relays()
     .start(RunConfig::default());
-// Native C callers drive the same runtime through `nmp_ffi` ABI symbols.
+// UniFFI native bindings and wasm-bindgen browser bindings drive the same
+// runtime through typed byte-action and update-frame doorways.
 ```
 
 Reusable installers may provide routing substrate, outbox resolver, protocol
@@ -249,8 +241,9 @@ policy in the app crate.
 
 Registration order matters for last-writer-wins slots, but ADR-0049 made
 reusable installers *yield* to app registrations. App-over-app namespace
-collisions remain a bug and are recorded in the composition ledger
-(`nmp_app_debug_info(app, domain=1)` — composition-report domain; domain=0 for routing trace, domain=2 for both merged).
+collisions remain a bug and are recorded in the composition ledger exposed by
+the diagnostics binding (composition-report domain; routing trace remains a
+separate diagnostic domain).
 
 ## Anti-patterns
 

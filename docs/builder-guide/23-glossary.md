@@ -21,8 +21,9 @@ entry links to the file that defines it on master.
   *defined in:* `crates/nmp-core/src/substrate/capability.rs:11`
   (`CapabilityModule` trait).
 - **CapabilityModule** — the native-bridge-shape trait: `NAMESPACE`,
-  `type Request`, `type Result`, `callback_interface_name()`. Wired via
-  C-ABI callbacks on the native side. *defined in:*
+  `type Request`, `type Result`, `callback_interface_name()`. Projected through
+  UniFFI capability objects on native and wasm-bindgen adapters in browser.
+  *defined in:*
   `crates/nmp-core/src/substrate/capability.rs:11`.
 - **claim** — a refcounted consumer interest in a referenced event/address or
   embed target. Claims dedupe repeated consumers and release when their handle
@@ -114,7 +115,7 @@ entry links to the file that defines it on master.
 - **snapshot projection** — a typed sidecar pushed under
   `typed_projections[key]` on every emit tick, registered via
   `NmpApp::register_typed_snapshot_projection(key, closure)`. Distinct from view
-  deltas. *defined in:* `crates/nmp-ffi/src/lib.rs:1109`.
+  deltas. *defined by:* the runtime typed-output registry.
 - **substrate** — the two extension traits (`ActionModule`, `CapabilityModule`)
   plus `ViewDependencies`, routing types, and the reactive machinery the kernel
   provides; everything app-specific is a module on top. *defined in:*

@@ -103,19 +103,19 @@ subset:
 | A4 | session | `ActiveAccountChanged` | account switch | M8 |
 | A5 | relay worker | `RelayReconnected` | socket re-established (replay only) | M2 |
 | A6 | operator | `InvalidateCompile` | external force-recompile (the one public action dispatch) | M2 |
-| — | source owner | `ReducedSourceChanged` | a source reducer replaced its materialized child-interest set | #2092 |
+| — | source owner | `SourceReducerChanged` | an internal source reducer replaced its materialized child-interest set | #2092 |
 
 Non-triggers (do **not** recompile): an EVENT arriving on an existing REQ; an
 EOSE on a one-shot (lifecycle closes it); a refcount delta not crossing 0↔1;
 RTT/byte counters. This keeps recompile cadence tied to routing change, not
 event throughput.
 
-## ReducedSources and dependent interests
+## Internal source reducers and dependent interests
 
 The planner consumes **materialized** `LogicalInterest`s. It does not know what
 "following", "mute list", "follow pack", or any other protocol/app source
-means. Dynamic feeds are expressed one layer above the planner as a
-**ReducedSource**:
+means. Dynamic feeds are expressed one layer above the planner as an internal
+source reducer:
 
 ```
 source interest -> deterministic reducer -> materialized child interests
@@ -142,7 +142,7 @@ Three invariants matter:
 - `ActiveAccountChanged` re-runs active-account sources; children derived from
   the old account do not survive the switch.
 
-## Deliverable: worked example — ReducedSource change → CLOSE/REQ deltas
+## Deliverable: worked example — source reducer change → CLOSE/REQ deltas
 
 An active-user follow feed is open. The app declared primary kinds `{1}` and
 the NIP-02/defaults reducer has reduced the active account's current source

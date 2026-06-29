@@ -15,7 +15,8 @@
 > doctrine/contract bullet fails CI. Links don't stop drift; the gate does.
 >
 > **Scope.** Rules here apply to *app shell* code — Swift / Kotlin / TS and the
-> C-ABI seam — **not** to `crates/` (that surface is owned by `doctrine-lint`).
+> public binding seam — **not** to `crates/` (that surface is owned by
+> `doctrine-lint`).
 > The two are complementary; neither duplicates the other.
 
 Columns: **ID** · **Rule** (the thing the app must / must not do) ·
@@ -73,7 +74,7 @@ scanner looks for; `semantic` = needs LLM judgment, no reliable grep).
 |----|------|--------|-------|-----|-----------|
 | F1 | No `try/catch` / `do { try } catch` around a framework call in shell | D6 | swift/kotlin/ts | block | `catch` whose `try` body calls `nmp_`/kernel — EXCLUDE stdlib `JSONEncoder`/`JSONDecoder`/FlatBuffer decode of app-side *input* (those legitimately throw) |
 | F2 | Every failure surfaces via observable state (toast / `busy` clears / diagnostic) | D6 | any | warn | semantic |
-| F3 | No new per-operation error enum plumbed through FFI | D6 | any | warn | error enum crossing the C-ABI |
+| F3 | No new per-operation error enum plumbed through FFI | D6 | any | warn | error enum crossing the binding |
 
 ## G — Capabilities report, never decide (D7)
 

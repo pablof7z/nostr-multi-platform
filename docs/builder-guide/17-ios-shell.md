@@ -1,26 +1,23 @@
 # 17 — iOS shell: SwiftUI consumes the kernel
 
-**Status: SHIPS** (raw C FFI + binary FlatBuffers update callback) · Audience:
+**Status: SHIPS** (UniFFI native binding + binary FlatBuffers update callback) · Audience:
 builders
 
 The kernel is the brain. SwiftUI is a **dumb render of a snapshot the kernel
 hands you**. The platform never owns state, never decides retry policy, never
-gates content on "is it loaded yet?". This section shows the raw C bridge pattern
-used by current native shells and the rules that keep it doctrine-clean.
+gates content on "is it loaded yet?". This section shows the native binding
+pattern and the rules that keep it doctrine-clean.
 
-## The bridge — raw C calls, FlatBuffers updates
+## The bridge — UniFFI handle, FlatBuffers updates
 
-There is no in-tree UniFFI native surface on master (that is M14; see
-[15 — Codegen: bindings + FFI surface](15-codegen-and-ffi.md)). iOS calls the `extern "C"`
-surface exported by `crates/nmp-ffi` (`nmp_app_new`, `nmp_app_start`,
-`nmp_app_dispatch_action_bytes`, viewport commands such as
-UniFFI `loadOlderFeed`, capability callbacks, etc.). Feed session open/close
-is not a C symbol pair: Rust app/protocol composition code owns typed
-`NmpApp::open_feed` / `NmpApp::close_feed` sessions, and iOS consumes the
-resulting snapshot/projection stream.
-One C callback delivers binary `nmp.transport.UpdateFrame` bytes with file
+Native shells import the generated UniFFI module. The binding exposes lifecycle,
+byte action dispatch, update callbacks, and capability interfaces. Feed session
+open/close is not a native symbol pair: Rust app/protocol composition code owns
+typed read sessions/helpers, and iOS consumes the resulting typed output stream.
+One callback delivers binary `nmp.transport.UpdateFrame` bytes with file
 identifier `NMPU`. The frame is FlatBuffers-only: `Snapshot` or `Panic`, with no
-JSON snapshot fallback.
+JSON snapshot fallback. Raw `nmp_app_*` calls are transitional/internal
+compatibility, not the app recipe.
 
 ### `KernelHandle` — the thin wrapper (annotated)
 
@@ -28,29 +25,23 @@ Representative wrapper shape:
 
 ```swift
 final class KernelHandle {
-    private let raw: UnsafeMutableRawPointer          // opaque *mut NmpApp
-    private var updateSink: KernelUpdateSink?          // retains the closure box
+    private let app: NmpAppHandle                     // UniFFI object
+    private var updateSink: KernelUpdateSink?          // retains callback target
 
-    init()  { raw = nmp_app_new() }                    // allocates a passive handle
-    deinit  {                                          // ordered teardown:
-        nmp_app_set_update_callback(raw, nil, nil)     //  1. detach callback
-        nmp_app_free(raw)                              //  2. free → actor shutdown
+    init()  { app = NmpAppHandle() }                   // passive until start()
+    deinit  {
+        app.close()                                    // idempotent actor shutdown
     }
 
     func listen(_ h: @escaping (KernelUpdateResult) -> Void) {
         let sink = KernelUpdateSink(handler: h)
-        updateSink = sink                              // Swift owns the box…
-        nmp_app_set_update_callback(                   // …Rust gets a raw ptr to it
-            raw, Unmanaged.passUnretained(sink).toOpaque(), nmpUpdateCallback)
+        updateSink = sink
+        app.setUpdateSink(sink)
     }
 
     func dispatchAction(_ bytes: [UInt8]) {
-        bytes.withUnsafeBufferPointer { buf in
-            guard let base = buf.baseAddress else { return }
-            guard let result = nmp_app_dispatch_action_bytes(raw, base, buf.count) else { return }
-            defer { nmp_free_string(result) }
-            // Decode only the enqueue result; terminal state arrives in snapshots.
-        }
+        let result = app.dispatchActionBytes(bytes)
+        // Decode only the enqueue result; terminal state arrives in snapshots.
     }
 
     func loadOlderFeed(key: String) {
@@ -67,7 +58,7 @@ open/close handles live on the Rust typed-session side, so Swift never
 re-derives filters or owns feed teardown policy. That is the actor model (see
 [04 — Actor model (TEA on one thread)](04-actor-and-tea.md)) crossing FFI intact.
 
-The C callback (`KernelBridge.swift:101-110`) is invoked **on a Rust thread**.
+The update callback is invoked **on a Rust thread**.
 It copies the borrowed bytes, decodes the generated FlatBuffers frame, and then
 `KernelModel` hops to `@MainActor` before touching any `@Published`
 (`KernelModel.swift:48-53`):
@@ -86,7 +77,7 @@ relay frame → kernel actor ingests → reverse-index delta → emit pacer
    ▼
 encode `nmp.transport.UpdateFrame` as FlatBuffers
    │
-   ▼  callback(context, bytes)                       ── Rust thread
+   ▼  update callback(bytes)                         ── Rust thread
 KernelHandle.decode(): generated FlatBuffers readers → KernelUpdateResult
    │
    ▼  Task { @MainActor }                            ── hop to main
@@ -193,7 +184,7 @@ looking at this now / not anymore".
 
 ```
 ┌─ apps/nmp-gallery/ios ────────────── IN-TREE / kernel-wired ─────────────┐
-│ In-repo native shell proof over nmp-ffi and FlatBuffers update frames.   │
+│ In-repo native shell proof over UniFFI-style bindings and FlatBuffers.   │
 └──────────────────────────────────────────────────────────────────────────┘
 ┌─ github.com/pablof7z/chirp ───────── EXTERNAL CONSUMER ──────────────────┐
 │ Extracted production Nostr client; consumes NMP as an external framework. │
@@ -224,8 +215,8 @@ monorepo to satisfy native-shell docs.
 
 ## Concrete deliverables recap
 
-- Annotated `KernelHandle` snippet — opaque ptr, fire-and-forget commands,
-  ordered teardown, unmanaged callback box.
+- Annotated `KernelHandle` snippet — UniFFI handle, fire-and-forget commands,
+  ordered teardown, retained update sink.
 - Rust emit → SwiftUI re-render sequence with the rev guard placed exactly.
 - FlatBuffers update shape + rev-guard code; per-iOS-app status box.
 

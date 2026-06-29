@@ -106,7 +106,7 @@ using `PublishWithOverride`, confirm:
       path — that is the anti-pattern the override audit is designed to
       surface.
 
-## Deliverable: ReducedSource follow-feed sequence diagram
+## Deliverable: internal source-reducer follow-feed sequence diagram
 
 ```
 relay ──kind:3 (active acct, follows {A,B,D})──▶ kernel.ingest
@@ -114,7 +114,7 @@ relay ──kind:3 (active acct, follows {A,B,D})──▶ kernel.ingest
    ├─ replaceable-supersession: fresher? ──no──▶ drop, no trigger
    │                                      └─yes─▶ replace stored kind:3
    │
-   ├──▶ ReducedSource owner replaces child author set {A,B,C} → {A,B,D}
+   ├──▶ internal source reducer replaces child author set {A,B,C} → {A,B,D}
    │
    ├──▶ SubscriptionCompiler compiles the new materialized LogicalInterests
    │      Stage 1: resolve A,B,D mailboxes

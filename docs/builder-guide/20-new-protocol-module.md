@@ -66,15 +66,16 @@ drift checks.
 ## Per-seam checklist
 
 Implement only the seams your protocol needs; `register_actions()` wires them
-into the app's `NmpApp`. `nmp-nip29` registers 15 `ActionModule`s and one
-snapshot projector for the group-chat read model. Minimum surface:
+into the app composition root through `AppHost`. `nmp-nip29` registers 15
+`ActionModule`s and typed read-session/output support for the group-chat read
+model. Minimum surface:
 
 | Seam | Must provide | Reference |
 |---|---|---|
 | `ActionModule` | `NAMESPACE`, `type Action`, `start()`, `execute()` dispatching `ActorCommand` | `crates/nmp-nip29/src/action/mod.rs` |
-| `register_snapshot_projection` | `snapshot_json() -> serde_json::Value` on the read model; registered under `nmp.<crate>.*` | `crates/nmp-nip29/src/register.rs:66` |
-| `open_observed_projection` | `ObservedProjectionSink` impl populated only after declaring shape/scope/owner/replay | NIP-29 group feed registration |
-| `register_typed_snapshot_projection` | typed snapshot encoder on the same read model | `crates/nmp-nip29/src/register.rs` |
+| typed read-session helper | demand, replay, status, output, dynamic source wakeups, and teardown | NIP-29 group feed registration |
+| typed output transport | typed encoder on the session/read model, registered under `nmp.<crate>.*` | `crates/nmp-nip29/src/register.rs` |
+| observed delivery | internal executor machinery only, declared after shape/scope/owner/replay | NIP-29 group feed internals |
 | `CapabilityModule` | request → native execution → typed result *envelope* (never `Result`) | [16 — Capabilities](16-capabilities.md) |
 
 The unifying ownership rule a protocol crate states explicitly
@@ -87,7 +88,7 @@ the ownership." Pick *one* such rule and document it in your `lib.rs`.
 
 ```rust
 // Called from an app-core composition root during init.
-pub fn register_actions(app: &mut NmpApp) {
+pub fn register_actions(app: &mut impl AppHost) {
     app.register_action(PostChatMessageAction);
     app.register_action(ReactInGroupAction);
     app.register_action(CreatePublicGroupAction);
@@ -97,7 +98,7 @@ pub fn register_actions(app: &mut NmpApp) {
 }
 
 // Called separately after the read model is constructed.
-pub fn register_projector(app: &mut NmpApp, projection: Arc<GroupEventsProjection>) {
+pub fn register_projector(app: &mut impl AppHost, projection: Arc<GroupEventsProjection>) {
     app.register_typed_snapshot_projection("nmp.nip29.group_events", move || {
         projection.typed_snapshot()    // cheap, non-blocking
     });
@@ -148,11 +149,12 @@ app's CI owns its drift gate.
 
 **Must add**
 
-- `crates/nmp-nip<N>/Cargo.toml` — dep on `nmp-core` + `nmp-ffi` **only**
+- `crates/nmp-nip<N>/Cargo.toml` — dep on `nmp-core` and reusable protocol
+  dependencies only
   (plus `serde`, protocol libs). Add the crate to the workspace `members`.
 - `crates/nmp-nip<N>/src/lib.rs` — module layout + the boundary statement
   ("does NOT import any other `nmp-nip*`"; "`nmp-core` gains zero <noun>
-  nouns") + public `register_actions(app: &mut NmpApp)` fn.
+  nouns") + public `register_actions(app: &mut impl AppHost)` fn.
 - `src/<protocol_id>.rs` — the typed routing/identity key (cf.
   `group_id.rs`, 117 LOC: `GroupId { host_relay_url, local_id }` + codec).
 - `src/kinds.rs` — kind constants + a dispatch helper.
@@ -223,9 +225,9 @@ consumer among many.*
 - **Protocol crate mutates session state.** Identity/account transitions are
   `nmp-signers` + the kernel's `AccountManager`; a protocol crate reads scope,
   never writes it.
-- **Bypassing the shipped seams.** Protocol crates use `ActionModule`,
-  declared `ObservedProjectionSink` delivery, snapshot/typed projection
-  registration, and capabilities.
+- **Bypassing the shipped seams.** Protocol crates use `ActionModule`, typed
+  read-session helpers, typed output registration, and capabilities. Observed
+  delivery remains internal executor machinery behind those helpers.
 
 See also: [05a — Kernel substrate — traits + seams](05a-substrate-traits.md) ·
 [07 — Subscription planner](07-subscription-planner.md) ·

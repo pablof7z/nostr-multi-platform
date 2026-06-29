@@ -124,20 +124,19 @@ well under the 100 MB ADR-0003 gate. (`run-002.md:7-50`.)
 
 Current v1 code uses explicit Rust seams. A module can register:
 
-- a typed feed session (`open_feed(FeedParams)`) whose source compiles to
-  materialized `LogicalInterest`s;
-- `ObservedProjectionSink` + `register_snapshot_projection` or
-  `register_typed_snapshot_projection` for read models that
-  maintain their own app-owned state slice;
+- a typed read-session helper whose source compiles to materialized
+  `LogicalInterest`s;
+- typed output transport for read models that maintain their own app-owned state
+  slice; observed delivery is internal executor machinery behind the helper;
 - ref/dependent-interest claims for profiles, events, addresses, and other
   secondary facts a mounted component/read model needs.
 
 For each path, the module declares the most specific event dependencies it can.
 The reverse index chooses composite keys, and callbacks return no update when
 their visible state did not change. Dynamic sources such as active-user follows
-or NIP-51 list membership do not run native watchers; a Rust ReducedSource owner
-replaces the materialized child-interest set and the existing planner/reactivity
-machinery carries the result.
+or NIP-51 list membership do not run native watchers; a Rust-owned session
+source reducer replaces the materialized child-interest set and the existing
+planner/reactivity machinery carries the result.
 
 ## Anti-patterns
 

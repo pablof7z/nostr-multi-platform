@@ -32,7 +32,7 @@ in place.
 | C2 | Parameterized replaceable supersession (30000–39999) by `(pubkey, kind, d-tag)` | Per-`d`-tag slots stay independent; no app-side keying logic | D1 | `c2_parameterized_replaceable_supersedes_by_dtag` | **[DONE]** (active) |
 | C3 | Kind:5 delete: referenced events removed, tombstone persisted | Deletes propagate; cross-author deletes ignored; no app delete-by-id | spec §7.1 | `c3_kind5_delete_removes_referenced_and_tombstones` | **[DONE]** (active) |
 | C4 | NIP-40 expiration auto-removes at expiry; survives actor restart | Expired events vanish on schedule, even across restart; no app timer | spec §7.1 | `c4_nip40_expiration_removes_and_persists_schedule` | **[DONE]** (active) |
-| C5 | ReducedSource auto-tracking: source changes recompile dependent feed interests | Follow/mute/list membership changes rewire rows; no Svelte rune / React dep wiring | D3/D4 | `active_user_follows_replacement_recompiles_rows`, `active_mute_list_source_reuses_reduced_source_for_non_follow_members`, `list_members_replacement_and_clear_recompile_acquisition_and_rows` | **[DONE]** generalized ReducedSource primitive |
+| C5 | internal source-reducer auto-tracking: source changes recompile dependent feed interests | Follow/mute/list membership changes rewire rows; no Svelte rune / React dep wiring | D3/D4 | `active_user_follows_replacement_recompiles_rows`, `active_mute_list_source_reuses_reduced_source_for_non_follow_members`, `list_members_replacement_and_clear_recompile_acquisition_and_rows` | **[DONE]** generalized internal source-reducer primitive |
 | C6 | Outbox read routing: `authors` filters fan out to write relays, deduped | Reads reach the right relays; no relay-set bookkeeping in the app | D3 | `c6_authors_subscription_routes_to_per_author_write_relays` | **[DONE]** (active) |
 | C7 | Outbox write routing + private events fail closed on unknown inbox | Publishes reach author write + `#p` inbox; gift-wrap fails safe | D3 | `c7_publish_routes_outbox_and_private_fails_closed` | **[DONE]** (active) |
 | C8 | Planner dedups overlapping interests, auto-closes on EOSE/last-drop, buffers ≤60Hz/view | One wire REQ per relay; views close themselves; no manual dedup | spec §7.2 | `c8_subscriptions_coalesce_autoclose_and_buffer` | **[DONE]** (active) |
@@ -148,10 +148,9 @@ The kernel automatically tracks when replaceable events (kind:0 profiles, kind:1
 **API surface:**
 
 - **Rust (kernel-internal):** `Kernel::claim_replaceable(kind, pubkey, d_tag?, force)` — re-fetch if the TTL has elapsed, or unconditionally when `force == true`
-- **FFI (app-facing):** profile and event hydration use the unified
-  `nmp_app_resolve_ref` / `nmp_app_release_ref` seam — not standalone
-  profile-claim symbols:
-  - `nmp_app_resolve_ref(app, namespace: int, key, consumer_id, shape: int, liveness: int)` — namespace=0 for profiles and namespace=1 for events; profile shapes are `0=profile.ref`, `1=profile.card`; event shapes are `2=embed`, `3=raw`; liveness is `0=CacheOk`, `1=Live`.
+- **Binding (app-facing):** profile and event hydration use typed ref
+  claim/release helpers — not standalone profile-claim symbols:
+  - The binding helper carries namespace, key, consumer id, shape, and liveness.
   - Registry user components call the shell adapter's `resolveProfileRef`, which maps to profile namespace + `profile.ref` + `CacheOk` and reads the current row from `refs.profile`.
   - TTL/freshness gates run automatically for replaceable entities; immutable event ids are a no-op for freshness.
 - **Customization:** `NmpAppBuilder::with_replaceable_ttl_config(ReplaceableTtlConfig { per_kind, default })`

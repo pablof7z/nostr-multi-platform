@@ -104,7 +104,7 @@ selector never appears on the retry engine record itself.
 | Concern | Mechanism | Surface |
 |---|---|---|
 | **Write** an event | dispatch unsigned typed publish intent (reply/profile builder or protocol action) | action only — no direct relay/store call |
-| **Cancel** a publish | UniFFI/native-runtime publish control by correlation id | no public C control symbol |
+| **Cancel** a publish | typed cancel action / binding helper keyed by `correlation_id` | dedicated control path |
 | **Observe** publish status | open `PublishStatusView` | store/view subscription — never a return value |
 | **Read** events back | typed read session / generated helper | internally backed by store/view subscription |
 | Pick relays | `OutboxResolver` (D3 automatic) | engine-internal; app only via `Explicit` opt-out |
@@ -163,7 +163,7 @@ typed unsigned publish intent / protocol action
      Cancel dispatched     → Cancelled
 ```
 
-Cancel by correlation id removes the in-flight row and marks every non-terminal
+The typed cancel path removes the in-flight row and marks every non-terminal
 relay `FailedAfterRetries{reason:"cancelled"}`, then deletes the store row.
 Late acks for a settled relay are held idempotently
 (`state.rs:266-275` — D7 capability idempotence).
