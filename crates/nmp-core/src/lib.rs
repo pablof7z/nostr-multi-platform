@@ -398,8 +398,8 @@ pub mod __ffi_internal {
         new_signer_state_slot, nostrconnect_relay_url, register_rust_observer_muted,
         run_actor_with_observers, rust_observer_count, unregister_observer, ActorChannels,
         ActorConfigSources, ActorRuntimeSlots, LifecycleObserverFn, LifecycleObserverRegistration,
-        LifecycleObserverSlot, ObservedProjectionSinkSlot, LIFECYCLE_PHASE_BACKGROUND,
-        LIFECYCLE_PHASE_FOREGROUND,
+        LifecycleObserverSlot, NativeLifecycleObserver, ObservedProjectionSinkSlot,
+        LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_PHASE_FOREGROUND,
     };
     // `ActorMail` is the raw inbox discriminant used by the bounded actor
     // inbox shared by native/FFI runtime construction. Not part of the

@@ -660,6 +660,9 @@ internal interface UniffiCallbackInterfaceActionResultObserverMethod0 : com.sun.
 internal interface UniffiCallbackInterfaceCapabilitySinkMethod0 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`requestJson`: RustBuffer.ByValue,`uniffiOutReturn`: RustBuffer,uniffiCallStatus: UniffiRustCallStatus,)
 }
+internal interface UniffiCallbackInterfaceLifecycleSinkMethod0 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`phase`: Int,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+}
 internal interface UniffiCallbackInterfaceUpdateSinkMethod0 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`frame`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
@@ -695,6 +698,22 @@ internal open class UniffiVTableCallbackInterfaceCapabilitySink(
     }
 
 }
+@Structure.FieldOrder("onLifecyclePhase", "uniffiFree")
+internal open class UniffiVTableCallbackInterfaceLifecycleSink(
+    @JvmField internal var `onLifecyclePhase`: UniffiCallbackInterfaceLifecycleSinkMethod0? = null,
+    @JvmField internal var `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+) : Structure() {
+    class UniffiByValue(
+        `onLifecyclePhase`: UniffiCallbackInterfaceLifecycleSinkMethod0? = null,
+        `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+    ): UniffiVTableCallbackInterfaceLifecycleSink(`onLifecyclePhase`,`uniffiFree`,), Structure.ByValue
+
+   internal fun uniffiSetValue(other: UniffiVTableCallbackInterfaceLifecycleSink) {
+        `onLifecyclePhase` = other.`onLifecyclePhase`
+        `uniffiFree` = other.`uniffiFree`
+    }
+
+}
 @Structure.FieldOrder("onUpdate", "uniffiFree")
 internal open class UniffiVTableCallbackInterfaceUpdateSink(
     @JvmField internal var `onUpdate`: UniffiCallbackInterfaceUpdateSinkMethod0? = null,
@@ -711,6 +730,18 @@ internal open class UniffiVTableCallbackInterfaceUpdateSink(
     }
 
 }
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -908,6 +939,8 @@ fun uniffi_nmp_uniffi_checksum_method_nmpapp_cancel_action(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_cancel_bunker_handshake(
 ): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_clear_action_result_observer(
+): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_close_feed_session(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_configure(
@@ -923,6 +956,12 @@ fun uniffi_nmp_uniffi_checksum_method_nmpapp_dispatch_capability_json(
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_init_external_signer(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_init_signer_broker(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_is_alive(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_lifecycle_background(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_lifecycle_foreground(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_load_older_feed(
 ): Short
@@ -974,6 +1013,8 @@ fun uniffi_nmp_uniffi_checksum_method_nmpapp_search_snapshot(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_set_capability_callback(
 ): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_set_lifecycle_callback(
+): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_set_update_sink(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_shutdown(
@@ -995,6 +1036,8 @@ fun uniffi_nmp_uniffi_checksum_constructor_nmpapp_new(
 fun uniffi_nmp_uniffi_checksum_method_actionresultobserver_on_action_result(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_capabilitysink_on_capability_request(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_lifecyclesink_on_lifecycle_phase(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_updatesink_on_update(
 ): Short
@@ -1038,6 +1081,7 @@ internal interface UniffiLib : Library {
             // we already did that with `IntegrityCheckingUniffiLib` above.
             uniffiCallbackInterfaceActionResultObserver.register(lib)
             uniffiCallbackInterfaceCapabilitySink.register(lib)
+            uniffiCallbackInterfaceLifecycleSink.register(lib)
             uniffiCallbackInterfaceUpdateSink.register(lib)
             // Loading of library with integrity check done.
             lib
@@ -1064,6 +1108,8 @@ fun uniffi_nmp_uniffi_fn_method_nmpapp_cancel_action(`ptr`: Pointer,`correlation
 ): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_cancel_bunker_handshake(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
+fun uniffi_nmp_uniffi_fn_method_nmpapp_clear_action_result_observer(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
+): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_close_feed_session(`ptr`: Pointer,`sessionId`: Long,uniffi_out_err: UniffiRustCallStatus,
 ): Byte
 fun uniffi_nmp_uniffi_fn_method_nmpapp_configure(`ptr`: Pointer,`visibleLimit`: Int,`emitHz`: Int,uniffi_out_err: UniffiRustCallStatus,
@@ -1079,6 +1125,12 @@ fun uniffi_nmp_uniffi_fn_method_nmpapp_dispatch_capability_json(`ptr`: Pointer,`
 fun uniffi_nmp_uniffi_fn_method_nmpapp_init_external_signer(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_init_signer_broker(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
+): Unit
+fun uniffi_nmp_uniffi_fn_method_nmpapp_is_alive(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
+): Byte
+fun uniffi_nmp_uniffi_fn_method_nmpapp_lifecycle_background(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
+): Unit
+fun uniffi_nmp_uniffi_fn_method_nmpapp_lifecycle_foreground(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_load_older_feed(`ptr`: Pointer,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
 ): Byte
@@ -1130,6 +1182,8 @@ fun uniffi_nmp_uniffi_fn_method_nmpapp_search_snapshot(`ptr`: Pointer,`sessionId
 ): RustBuffer.ByValue
 fun uniffi_nmp_uniffi_fn_method_nmpapp_set_capability_callback(`ptr`: Pointer,`sink`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
+fun uniffi_nmp_uniffi_fn_method_nmpapp_set_lifecycle_callback(`ptr`: Pointer,`sink`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_set_update_sink(`ptr`: Pointer,`sink`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_shutdown(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
@@ -1149,6 +1203,8 @@ fun uniffi_nmp_uniffi_fn_method_nmpapp_switch_active(`ptr`: Pointer,`identityId`
 fun uniffi_nmp_uniffi_fn_init_callback_vtable_actionresultobserver(`vtable`: UniffiVTableCallbackInterfaceActionResultObserver,
 ): Unit
 fun uniffi_nmp_uniffi_fn_init_callback_vtable_capabilitysink(`vtable`: UniffiVTableCallbackInterfaceCapabilitySink,
+): Unit
+fun uniffi_nmp_uniffi_fn_init_callback_vtable_lifecyclesink(`vtable`: UniffiVTableCallbackInterfaceLifecycleSink,
 ): Unit
 fun uniffi_nmp_uniffi_fn_init_callback_vtable_updatesink(`vtable`: UniffiVTableCallbackInterfaceUpdateSink,
 ): Unit
@@ -1310,6 +1366,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_cancel_bunker_handshake() != 1296.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_clear_action_result_observer() != 28028.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_close_feed_session() != 61839.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1334,6 +1393,15 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_init_signer_broker() != 39820.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_is_alive() != 47414.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_lifecycle_background() != 44776.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_lifecycle_foreground() != 48634.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_load_older_feed() != 59269.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1346,7 +1414,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_open_uri() != 54191.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_register_action_result_observer() != 16725.toShort()) {
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_register_action_result_observer() != 58182.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_register_agent_nsec() != 63704.toShort()) {
@@ -1409,6 +1477,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_set_capability_callback() != 58918.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_set_lifecycle_callback() != 15852.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_set_update_sink() != 12723.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1440,6 +1511,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_method_capabilitysink_on_capability_request() != 30958.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_lifecyclesink_on_lifecycle_phase() != 30710.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_method_updatesink_on_update() != 64936.toShort()) {
@@ -1922,6 +1996,12 @@ public interface NmpAppInterface {
     fun `cancelBunkerHandshake`()
 
     /**
+     * Clear the action-result observer and wait for any in-flight callback to
+     * finish before returning.
+     */
+    fun `clearActionResultObserver`()
+
+    /**
      * Close a feed session previously opened by `open_feed_json`.
      *
      * Tears down the observer, projection, pull-controller, and interests
@@ -2023,6 +2103,23 @@ public interface NmpAppInterface {
     fun `initSignerBroker`()
 
     /**
+     * Return whether the actor thread is alive.
+     */
+    fun `isAlive`(): kotlin.Boolean
+
+    /**
+     * Report that the host app entered the background. Fire-and-forget; the
+     * actor folds the phase into Rust-owned lifecycle state.
+     */
+    fun `lifecycleBackground`()
+
+    /**
+     * Report that the host app entered the foreground. Fire-and-forget; the
+     * actor folds the phase into Rust-owned lifecycle state.
+     */
+    fun `lifecycleForeground`()
+
+    /**
      * Advance the feed's viewport to the next older page.
      *
      * Mirrors `nmp_app_load_older_feed`. `key` is the projection key of the
@@ -2089,9 +2186,10 @@ public interface NmpAppInterface {
      * the action was *accepted and enqueued*, not that the actor has finished
      * publishing.
      *
-     * A second registration replaces the first. There is no clear API:
-     * passing `None` would be a no-op (mirrors the C-ABI null-observer
-     * behaviour). See the module-level quiescence note.
+     * A second registration replaces the first and drains the previous sink
+     * before returning. Re-entrancy is forbidden: calling this or
+     * `clear_action_result_observer` from inside `on_action_result` deadlocks
+     * the quiescence gate.
      */
     fun `registerActionResultObserver`(`observer`: ActionResultObserver)
 
@@ -2302,6 +2400,14 @@ public interface NmpAppInterface {
      * the same quiescence gate.
      */
     fun `setCapabilityCallback`(`sink`: CapabilitySink?)
+
+    /**
+     * Register or clear the lifecycle callback.
+     *
+     * After this returns, the previous sink is neither registered nor
+     * mid-invocation. Pass `None` to clear.
+     */
+    fun `setLifecycleCallback`(`sink`: LifecycleSink?)
 
     /**
      * Register (or clear) the NMPU frame observer.
@@ -2576,6 +2682,21 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
 
 
     /**
+     * Clear the action-result observer and wait for any in-flight callback to
+     * finish before returning.
+     */override fun `clearActionResultObserver`()
+        =
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_clear_action_result_observer(
+        it, _status)
+}
+    }
+
+
+
+
+    /**
      * Close a feed session previously opened by `open_feed_json`.
      *
      * Tears down the observer, projection, pull-controller, and interests
@@ -2753,6 +2874,51 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
 
 
     /**
+     * Return whether the actor thread is alive.
+     */override fun `isAlive`(): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_is_alive(
+        it, _status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * Report that the host app entered the background. Fire-and-forget; the
+     * actor folds the phase into Rust-owned lifecycle state.
+     */override fun `lifecycleBackground`()
+        =
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_lifecycle_background(
+        it, _status)
+}
+    }
+
+
+
+
+    /**
+     * Report that the host app entered the foreground. Fire-and-forget; the
+     * actor folds the phase into Rust-owned lifecycle state.
+     */override fun `lifecycleForeground`()
+        =
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_lifecycle_foreground(
+        it, _status)
+}
+    }
+
+
+
+
+    /**
      * Advance the feed's viewport to the next older page.
      *
      * Mirrors `nmp_app_load_older_feed`. `key` is the projection key of the
@@ -2859,9 +3025,10 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
      * the action was *accepted and enqueued*, not that the actor has finished
      * publishing.
      *
-     * A second registration replaces the first. There is no clear API:
-     * passing `None` would be a no-op (mirrors the C-ABI null-observer
-     * behaviour). See the module-level quiescence note.
+     * A second registration replaces the first and drains the previous sink
+     * before returning. Re-entrancy is forbidden: calling this or
+     * `clear_action_result_observer` from inside `on_action_result` deadlocks
+     * the quiescence gate.
      */override fun `registerActionResultObserver`(`observer`: ActionResultObserver)
         =
     callWithPointer {
@@ -3257,6 +3424,23 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_set_capability_callback(
         it, FfiConverterOptionalTypeCapabilitySink.lower(`sink`),_status)
+}
+    }
+
+
+
+
+    /**
+     * Register or clear the lifecycle callback.
+     *
+     * After this returns, the previous sink is neither registered nor
+     * mid-invocation. Pass `None` to clear.
+     */override fun `setLifecycleCallback`(`sink`: LifecycleSink?)
+        =
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_set_lifecycle_callback(
+        it, FfiConverterOptionalTypeLifecycleSink.lower(`sink`),_status)
 }
     }
 
@@ -4743,11 +4927,10 @@ public object FfiConverterTypeRefShape : FfiConverterRustBuffer<RefShape>{
  * # Contract
  *
  * * `result_json` is a JSON string `{"correlation_id":"…","result_json":…}`.
- * * Implementations MUST NOT call `register_action_result_observer` from
- * inside this method: the `ActionRegistry` mutex is held during delivery,
- * so re-entry would deadlock.
- * * The observer is registered for the lifetime of the `NmpApp`; there is
- * no clear API (mirrors the C-ABI, where null observer is a no-op).
+ * * Implementations MUST NOT call `register_action_result_observer` or
+ * `clear_action_result_observer` from inside this method; the setter drains
+ * in-flight callbacks before returning.
+ * * Call `clear_action_result_observer` to unregister.
  */
 public interface ActionResultObserver {
 
@@ -4865,6 +5048,69 @@ internal object uniffiCallbackInterfaceCapabilitySink {
  * @suppress
  */
 public object FfiConverterTypeCapabilitySink: FfiConverterCallbackInterface<CapabilitySink>()
+
+
+
+
+
+/**
+ * Rust→shell lifecycle observer.
+ *
+ * Receives the same phase codes as the C ABI:
+ * * `0` — foreground
+ * * `1` — background
+ *
+ * Implementations MUST NOT call `set_lifecycle_callback` from inside this
+ * method; the setter drains in-flight callbacks before returning.
+ */
+public interface LifecycleSink {
+
+    fun `onLifecyclePhase`(`phase`: kotlin.UInt)
+
+    companion object
+}
+
+
+
+// Put the implementation in an object so we don't pollute the top-level namespace
+internal object uniffiCallbackInterfaceLifecycleSink {
+    internal object `onLifecyclePhase`: UniffiCallbackInterfaceLifecycleSinkMethod0 {
+        override fun callback(`uniffiHandle`: Long,`phase`: Int,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeLifecycleSink.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`onLifecyclePhase`(
+                    FfiConverterUInt.lift(`phase`),
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+
+    internal object uniffiFree: UniffiCallbackInterfaceFree {
+        override fun callback(handle: Long) {
+            FfiConverterTypeLifecycleSink.handleMap.remove(handle)
+        }
+    }
+
+    internal var vtable = UniffiVTableCallbackInterfaceLifecycleSink.UniffiByValue(
+        `onLifecyclePhase`,
+        uniffiFree,
+    )
+
+    // Registers the foreign callback with the Rust side.
+    // This method is generated for each callback interface.
+    internal fun register(lib: UniffiLib) {
+        lib.uniffi_nmp_uniffi_fn_init_callback_vtable_lifecyclesink(vtable)
+    }
+}
+
+/**
+ * The ffiConverter which transforms the Callbacks in to handles to pass to Rust.
+ *
+ * @suppress
+ */
+public object FfiConverterTypeLifecycleSink: FfiConverterCallbackInterface<LifecycleSink>()
 
 
 
@@ -5055,6 +5301,38 @@ public object FfiConverterOptionalTypeCapabilitySink: FfiConverterRustBuffer<Cap
         } else {
             buf.put(1)
             FfiConverterTypeCapabilitySink.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeLifecycleSink: FfiConverterRustBuffer<LifecycleSink?> {
+    override fun read(buf: ByteBuffer): LifecycleSink? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeLifecycleSink.read(buf)
+    }
+
+    override fun allocationSize(value: LifecycleSink?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeLifecycleSink.allocationSize(value)
+        }
+    }
+
+    override fun write(value: LifecycleSink?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeLifecycleSink.write(value, buf)
         }
     }
 }

@@ -23,7 +23,7 @@
 //!   the observer fires only on meaningful state changes.
 
 use crate::kernel::{Kernel, LifecyclePhase, LifecycleTransition};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 
 /// Lifecycle observer C-ABI shape. Mirrors the `capability_callback`
 /// pattern: `extern "C"` so it can be plugged in from Swift, and stores a
@@ -50,14 +50,122 @@ pub struct LifecycleObserverRegistration {
     pub callback: LifecycleObserverFn,
 }
 
-/// Shared slot. The FFI surface (`ffi/lifecycle.rs`) holds one clone for
-/// registration; the actor thread holds another for invocation. `Mutex`
-/// ensures registration and invocation never tear.
-pub type LifecycleObserverSlot = Arc<Mutex<Option<LifecycleObserverRegistration>>>;
+/// Rust-native lifecycle observer used by the UniFFI surface. Receives the
+/// same phase code as the C-ABI callback path.
+pub type NativeLifecycleObserver = Arc<dyn Fn(u32) + Send + Sync + 'static>;
+
+enum LifecycleObserver {
+    CFfi(LifecycleObserverRegistration),
+    Native(NativeLifecycleObserver),
+}
+
+struct LifecycleObserverGateInner {
+    observer: Option<LifecycleObserver>,
+    in_flight: u32,
+}
+
+/// Quiescence-safe lifecycle observer slot.
+///
+/// Set/replace/clear waits for any callback already copied from the slot to
+/// finish before returning. This lets C and UniFFI hosts release the previous
+/// callback context immediately after unregistering it.
+pub struct LifecycleObserverGate {
+    inner: Mutex<LifecycleObserverGateInner>,
+    drained: Condvar,
+}
+
+impl LifecycleObserverGate {
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            inner: Mutex::new(LifecycleObserverGateInner {
+                observer: None,
+                in_flight: 0,
+            }),
+            drained: Condvar::new(),
+        }
+    }
+
+    pub fn set_registration(&self, registration: Option<LifecycleObserverRegistration>) {
+        let mut guard = self.lock_inner();
+        guard.observer = registration.map(LifecycleObserver::CFfi);
+        drop(self.wait_drained(guard));
+    }
+
+    pub fn set_native_observer(&self, observer: Option<NativeLifecycleObserver>) {
+        let mut guard = self.lock_inner();
+        guard.observer = observer.map(LifecycleObserver::Native);
+        drop(self.wait_drained(guard));
+    }
+
+    pub fn clear(&self) {
+        let mut guard = self.lock_inner();
+        guard.observer = None;
+        drop(self.wait_drained(guard));
+    }
+
+    fn begin_invocation(&self) -> Option<(LifecycleObserverSnapshot, LifecycleInvocation<'_>)> {
+        let mut guard = self.lock_inner();
+        let snapshot = match guard.observer.as_ref()? {
+            LifecycleObserver::CFfi(registration) => LifecycleObserverSnapshot::CFfi(*registration),
+            LifecycleObserver::Native(observer) => {
+                LifecycleObserverSnapshot::Native(Arc::clone(observer))
+            }
+        };
+        guard.in_flight = guard.in_flight.saturating_add(1);
+        Some((snapshot, LifecycleInvocation { gate: self }))
+    }
+
+    fn finish_invocation(&self) {
+        let mut guard = self.lock_inner();
+        guard.in_flight = guard.in_flight.saturating_sub(1);
+        if guard.in_flight == 0 {
+            self.drained.notify_all();
+        }
+    }
+
+    fn lock_inner(&self) -> MutexGuard<'_, LifecycleObserverGateInner> {
+        self.inner.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn wait_drained<'a>(
+        &'a self,
+        guard: MutexGuard<'a, LifecycleObserverGateInner>,
+    ) -> MutexGuard<'a, LifecycleObserverGateInner> {
+        self.drained
+            .wait_while(guard, |inner| inner.in_flight > 0)
+            .unwrap_or_else(|e| e.into_inner())
+    }
+}
+
+impl Default for LifecycleObserverGate {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+enum LifecycleObserverSnapshot {
+    CFfi(LifecycleObserverRegistration),
+    Native(NativeLifecycleObserver),
+}
+
+struct LifecycleInvocation<'a> {
+    gate: &'a LifecycleObserverGate,
+}
+
+impl Drop for LifecycleInvocation<'_> {
+    fn drop(&mut self) {
+        self.gate.finish_invocation();
+    }
+}
+
+/// Shared slot. The FFI/UniFFI surfaces hold one clone for registration; the
+/// actor thread holds another for invocation.
+pub type LifecycleObserverSlot = Arc<LifecycleObserverGate>;
 
 /// Construct an empty slot. Called once in `nmp_app_new`.
 pub fn new_observer_slot() -> LifecycleObserverSlot {
-    Arc::new(Mutex::new(None))
+    Arc::new(LifecycleObserverGate::new())
 }
 
 /// Drive a phase update through the kernel and fire the observer on a
@@ -70,22 +178,28 @@ pub(crate) fn handle_lifecycle_event(
     phase: LifecyclePhase,
 ) -> Option<LifecycleTransition> {
     let transition = kernel.set_lifecycle_phase(phase)?;
-    // Snapshot the registration under the lock, then release it before
-    // invoking the callback. The callback may legitimately re-enter
-    // `nmp_app_set_lifecycle_callback`; holding the lock across that
-    // re-entry would deadlock. `Copy` registration makes the snapshot
-    // pointer-cheap.
-    let snapshot = observer.lock().ok().and_then(|guard| *guard);
-    if let Some(registration) = snapshot {
+    if let Some((snapshot, _invocation)) = observer.begin_invocation() {
         let phase_code = match transition {
             LifecycleTransition::EnteredForeground => LIFECYCLE_PHASE_FOREGROUND,
             LifecycleTransition::EnteredBackground => LIFECYCLE_PHASE_BACKGROUND,
         };
-        // UB guard: the foreign callback may panic / raise; an unwind
-        // across the C ABI boundary is undefined behaviour.
-        let _ = crate::ffi_guard::guard_ffi_callback("lifecycle observer", || {
-            (registration.callback)(registration.context as *mut std::ffi::c_void, phase_code);
-        });
+        match snapshot {
+            LifecycleObserverSnapshot::CFfi(registration) => {
+                // UB guard: the foreign callback may panic / raise; an unwind
+                // across the C ABI boundary is undefined behaviour.
+                let _ = crate::ffi_guard::guard_ffi_callback("lifecycle observer", || {
+                    (registration.callback)(
+                        registration.context as *mut std::ffi::c_void,
+                        phase_code,
+                    );
+                });
+            }
+            LifecycleObserverSnapshot::Native(observer) => {
+                let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    observer(phase_code);
+                }));
+            }
+        }
     }
     Some(transition)
 }
@@ -114,10 +228,10 @@ mod tests {
         CALLS.store(0, Ordering::SeqCst);
         LAST_PHASE.store(u32::MAX, Ordering::SeqCst);
         let slot = new_observer_slot();
-        *slot.lock().unwrap() = Some(LifecycleObserverRegistration {
+        slot.set_registration(Some(LifecycleObserverRegistration {
             context: 0,
             callback: observer_shim,
-        });
+        }));
         (Kernel::new(DEFAULT_VISIBLE_LIMIT), slot)
     }
 
@@ -169,9 +283,45 @@ mod tests {
     fn observer_absent_is_silent_noop() {
         let _g = SERIAL.lock().unwrap();
         let (mut kernel, slot) = fixture();
-        *slot.lock().unwrap() = None;
+        slot.clear();
         let t = handle_lifecycle_event(&mut kernel, &slot, LifecyclePhase::Foreground);
         assert_eq!(t, Some(LifecycleTransition::EnteredForeground));
         assert_eq!(CALLS.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn clear_waits_for_in_flight_lifecycle_observer() {
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        let _g = SERIAL.lock().unwrap();
+        let slot = new_observer_slot();
+        let (clear_started_tx, clear_started_rx) = mpsc::sync_channel::<()>(1);
+        let (clear_done_tx, clear_done_rx) = mpsc::sync_channel::<()>(1);
+
+        slot.set_native_observer(Some(Arc::new(move |_phase| {})));
+        let (_snapshot, invocation) = slot.begin_invocation().expect("observer registered");
+
+        let slot_for_clear = Arc::clone(&slot);
+        let clear = std::thread::spawn(move || {
+            clear_started_tx.send(()).unwrap();
+            slot_for_clear.clear();
+            clear_done_tx.send(()).unwrap();
+        });
+        clear_started_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("clear started");
+        assert!(
+            clear_done_rx
+                .recv_timeout(Duration::from_millis(100))
+                .is_err(),
+            "clear returned while lifecycle callback was still in-flight",
+        );
+
+        drop(invocation);
+        clear.join().unwrap();
+        clear_done_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("clear returns after callback drains");
     }
 }

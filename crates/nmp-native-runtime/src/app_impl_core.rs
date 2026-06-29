@@ -5,8 +5,8 @@
 //! action-registry methods, composition-ledger helpers,
 //! `set_pending_mls_autopublish`, `take_pending_mls_autopublish`.
 
-use std::sync::Arc;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 use nmp_core::actor::LifecycleCommand;
 #[cfg(any(test, feature = "test-support"))]
@@ -77,9 +77,15 @@ impl NmpApp {
         &self,
         registration: Option<nmp_core::__ffi_internal::LifecycleObserverRegistration>,
     ) {
-        if let Ok(mut slot) = self.lifecycle_observer.lock() {
-            *slot = registration;
-        }
+        self.lifecycle_observer.set_registration(registration);
+    }
+
+    /// Install or clear the Rust-native lifecycle observer slot.
+    pub fn set_native_lifecycle_observer(
+        &self,
+        observer: Option<nmp_core::__ffi_internal::NativeLifecycleObserver>,
+    ) {
+        self.lifecycle_observer.set_native_observer(observer);
     }
 
     /// Test-support: configure the kernel GC budget before start.
