@@ -17,7 +17,7 @@ use super::*;
 use crate::actor::{
     ActorCommand, IdentityCommand, PublishCommand, RelayCommand, SignCommand, SignerSource,
 };
-use crate::publish::PublishTarget;
+use crate::publish::{PublishRouteClass, PublishTarget};
 use crate::store::RawEvent;
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
@@ -93,7 +93,10 @@ fn signed_event_valid_returns_applied_no_malformed_toast() {
 
     let outcome = r.apply_actor_command(ActorCommand::Publish(PublishCommand::SignedEvent {
         raw,
-        target: PublishTarget::Auto,
+        target: PublishTarget::explicit(
+            vec![RELAY.to_string()],
+            PublishRouteClass::ImportedOrPresigned,
+        ),
         correlation_id: None,
     }));
 
@@ -121,7 +124,10 @@ fn signed_event_forged_returns_applied_empty_with_malformed_toast() {
 
     let outcome = r.apply_actor_command(ActorCommand::Publish(PublishCommand::SignedEvent {
         raw,
-        target: PublishTarget::Auto,
+        target: PublishTarget::explicit(
+            vec![RELAY.to_string()],
+            PublishRouteClass::ImportedOrPresigned,
+        ),
         correlation_id: None,
     }));
 

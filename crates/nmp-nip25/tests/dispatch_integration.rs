@@ -289,7 +289,7 @@ fn build_publish_raw_envelope_and_action(
     };
     use nmp_core::substrate::ActionPayload;
 
-    const PUBLISH_IDENTIFIER: &str = "NPUB";
+    const PUBLISH_SCHEMA_VERSION: u32 = <PublishAction as ActionPayload>::SCHEMA_VERSION;
     const BODY_PUBLISH_RAW: u8 = 2; // union discriminant (decl order, NONE=0)
     let payload = {
         let mut fbb = FlatBufferBuilder::new();
@@ -340,15 +340,11 @@ fn build_publish_raw_envelope_and_action(
         }
         let body = fbb.end_table(start);
         let start = fbb.start_table();
-        fbb.push_slot::<u32>(
-            4 as VOffsetT,
-            <PublishAction as ActionPayload>::SCHEMA_VERSION,
-            0,
-        );
+        fbb.push_slot::<u32>(4 as VOffsetT, PUBLISH_SCHEMA_VERSION, 0);
         fbb.push_slot::<u8>(6 as VOffsetT, BODY_PUBLISH_RAW, 0);
         fbb.push_slot_always::<WIPOffset<flatbuffers::TableFinishedWIPOffset>>(8 as VOffsetT, body); // slot 2: body (union value = table offset)
         let root = fbb.end_table(start);
-        fbb.finish(root, Some(PUBLISH_IDENTIFIER));
+        fbb.finish(root, Some("NPUB"));
         fbb.finished_data().to_vec()
     };
     let envelope = encode_dispatch_envelope(correlation_id, "nmp.publish", 1, &payload);
@@ -434,7 +430,7 @@ fn publish_profile_builder_bytes_dispatch_through_start_bytes() {
     use nmp_core::dispatch_envelope::{decode_dispatch_envelope, encode_dispatch_envelope};
     use nmp_core::publish::PublishAction;
     use nmp_core::substrate::{ActionContext, ActionPayload, ActionRejection};
-    const PUBLISH_IDENTIFIER: &str = "NPUB";
+    const PUBLISH_SCHEMA_VERSION: u32 = <PublishAction as ActionPayload>::SCHEMA_VERSION;
     const BODY_PUBLISH_PROFILE: u8 = 1;
     let fields = vec![("name".to_string(), "Alice".to_string())];
     let payload = {
@@ -455,15 +451,11 @@ fn publish_profile_builder_bytes_dispatch_through_start_bytes() {
         fbb.push_slot_always::<WIPOffset<_>>(4 as VOffsetT, fields_vec);
         let body = fbb.end_table(start);
         let start = fbb.start_table();
-        fbb.push_slot::<u32>(
-            4 as VOffsetT,
-            <PublishAction as ActionPayload>::SCHEMA_VERSION,
-            0,
-        );
+        fbb.push_slot::<u32>(4 as VOffsetT, PUBLISH_SCHEMA_VERSION, 0);
         fbb.push_slot::<u8>(6 as VOffsetT, BODY_PUBLISH_PROFILE, 0);
         fbb.push_slot_always::<WIPOffset<flatbuffers::TableFinishedWIPOffset>>(8 as VOffsetT, body); // slot 2: body (union value = table offset)
         let root = fbb.end_table(start);
-        fbb.finish(root, Some(PUBLISH_IDENTIFIER));
+        fbb.finish(root, Some("NPUB"));
         fbb.finished_data().to_vec()
     };
     let bytes = encode_dispatch_envelope("corr-pub-prof", "nmp.publish", 1, &payload);

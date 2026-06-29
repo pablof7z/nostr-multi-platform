@@ -49,13 +49,13 @@ impl Kernel {
     ///    pre-signed path — previously skipped signature verification).
     ///
     /// **Pipeline (fail-closed at every step):**
-    /// 1. `RawEvent` → `SignedEvent` reconstruction (no re-signing; id + sig
-    ///    carried through verbatim).
-    /// 2. `verify_externally_signed_event` — SHA-256 id-hash + Schnorr sig;
-    ///    forged/garbled events are dropped before any outbound frame (D6).
-    /// 3. `validate_presigned_publish_target` — only explicit
+    /// 1. `validate_presigned_publish_target` — only explicit
     ///    imported/protocol-owned relay pins are accepted; Auto, empty,
-    ///    manual-override, and diagnostic routes are refused.
+    ///    manual-override, and diagnostic routes are refused early.
+    /// 2. `RawEvent` → `SignedEvent` reconstruction (no re-signing; id + sig
+    ///    carried through verbatim).
+    /// 3. `verify_externally_signed_event` — SHA-256 id-hash + Schnorr sig;
+    ///    forged/garbled events are dropped before any outbound frame (D6).
     /// 4. `validate_publish_routing` (D10) — private/encrypted envelopes
     ///    (kind:1059, kind:14) with `PublishTarget::Auto` are refused.
     /// 5. `publish_signed_to_with_correlation` — NIP-65 outbox or explicit
@@ -70,26 +70,7 @@ impl Kernel {
     ) -> Vec<crate::relay::OutboundMessage> {
         use crate::publish::{validate_presigned_publish_target, validate_publish_routing};
 
-        // Step 1 — reconstruct the SignedEvent wire shape.
-        let signed = SignedEvent {
-            id: raw.id,
-            sig: raw.sig,
-            unsigned: nmp_signer_iface::UnsignedEvent {
-                pubkey: raw.pubkey,
-                kind: raw.kind,
-                tags: raw.tags,
-                content: raw.content,
-                created_at: raw.created_at,
-            },
-        };
-        // Step 2 — well-formedness: SHA-256 id-hash + Schnorr sig (D6).
-        if self
-            .verify_externally_signed_event(&signed, correlation_id.as_deref())
-            .is_err()
-        {
-            return Vec::new();
-        }
-        // Step 3 — pre-signed target validation (inline fail_invalid_target logic).
+        // Step 1 — pre-signed target validation (inline fail_invalid_target logic).
         if let Err(reason) = validate_presigned_publish_target(&target) {
             let toast = format!("pre-signed publish target rejected: {reason}");
             self.set_last_error_token(
@@ -102,6 +83,25 @@ impl Kernel {
             if let Some(id) = correlation_id {
                 self.record_action_failure(id, toast);
             }
+            return Vec::new();
+        }
+        // Step 2 — reconstruct the SignedEvent wire shape.
+        let signed = SignedEvent {
+            id: raw.id,
+            sig: raw.sig,
+            unsigned: nmp_signer_iface::UnsignedEvent {
+                pubkey: raw.pubkey,
+                kind: raw.kind,
+                tags: raw.tags,
+                content: raw.content,
+                created_at: raw.created_at,
+            },
+        };
+        // Step 3 — well-formedness: SHA-256 id-hash + Schnorr sig (D6).
+        if self
+            .verify_externally_signed_event(&signed, correlation_id.as_deref())
+            .is_err()
+        {
             return Vec::new();
         }
         // Step 4 — D10 routing-policy gate (private/encrypted envelope must
