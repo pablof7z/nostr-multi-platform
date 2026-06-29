@@ -20,7 +20,7 @@ import org.nmp.gallery.registry.NostrLoginBlock
  * This is the Android peer of the SwiftUI `AuthComponentPages.swift` in
  * `apps/nmp-gallery/ios`. It demonstrates the `login-block` registry
  * component (ADR-0048 Stage 2 — NIP-55 Amber sign-in) wired to the REAL
- * kernel flow: a tap dispatches `nativeSignInNip55`, Rust builds the
+ * kernel flow: a tap dispatches `NmpApp.signinNip55`, Rust builds the
  * `get_public_key` capability request, the activity-registered
  * `ExternalSignerCapabilityBridge` fires the Intent, and the resulting
  * `signer_state` projection drives the inline status indicators.

@@ -1,12 +1,9 @@
 // App module for the standalone NMP Gallery. Links against the prebuilt
 // `libnmp_app_gallery.so` placed in `src/main/jniLibs/<abi>/` by
 // `cargo ndk build --target arm64-v8a -p nmp-app-gallery --features android-ffi`.
-// The `--features android-ffi` flag is MANDATORY: the JNI shim symbols
-// (`Java_org_nmp_gallery_*`, e.g. `nativeNew`) are gated behind that feature
-// in `nmp-app-gallery`. Without it the .so links cleanly but exports ZERO JNI
-// symbols, and the APK crashes at launch with
-// `UnsatisfiedLinkError: nativeNew`. There is NO custom WebSocket/HTTP code in
-// this app — all relay traffic is owned by the NMP kernel via JNI.
+// Runtime lifecycle and migrated framework APIs go through generated UniFFI
+// bindings; JNI is retained only for gallery-owned adapters that UniFFI does
+// not model (static showcase JSON, snapshot decode, URI-to-ref helpers).
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -44,14 +41,17 @@ android {
     // Pre-built .so files live in `src/main/jniLibs/<abi>/`. Produced by:
     //   cargo ndk -t arm64-v8a -o apps/nmp-gallery/android/app/src/main/jniLibs \
     //       build --release -p nmp-app-gallery --features android-ffi
-    // `--features android-ffi` is REQUIRED — it enables the `Java_org_nmp_gallery_*`
-    // JNI exports. Verify after building:
+    // `--features android-ffi` is REQUIRED — it enables the retained
+    // `Java_org_nmp_gallery_*` gallery adapter JNI exports. Verify after building:
     //   nm -D src/main/jniLibs/arm64-v8a/libnmp_app_gallery.so \
-    //       | grep Java_org_nmp_gallery_bridge_KernelBridge_nativeNew
+    //       | grep Java_org_nmp_gallery_bridge_KernelBridge_nativeGalleryRegisterUniffi
     sourceSets["main"].jniLibs.srcDirs("src/main/jniLibs")
 
     // Kotlin sources live in `src/main/kotlin` rather than `src/main/java`.
-    sourceSets["main"].java.srcDirs("src/main/kotlin")
+    sourceSets["main"].java.srcDirs(
+        "src/main/kotlin",
+        "../../../../crates/nmp-uniffi/generated/kotlin",
+    )
     sourceSets["test"].java.srcDirs("src/test/kotlin")
 
     testOptions {
@@ -73,6 +73,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("io.coil-kt:coil-compose:2.6.0")
+    implementation("net.java.dev.jna:jna:5.14.0@aar")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
