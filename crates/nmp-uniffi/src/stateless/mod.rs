@@ -48,6 +48,10 @@ pub enum NmpError {
     /// `InvalidInput` (which covers JSON parse / primary-kind validation errors
     /// that fire BEFORE the compiler runs).
     FeedOpenFailed,
+    /// An internal mutex was poisoned (another thread panicked while holding
+    /// it). Maps from `NmpConfigStatus::Unavailable` and
+    /// `IncrementalApplyError::RegistryUnavailable` (M14-C6).
+    RegistryUnavailable,
 }
 
 impl std::fmt::Display for NmpError {
@@ -60,6 +64,7 @@ impl std::fmt::Display for NmpError {
             NmpError::EncodeFailed => write!(f, "encode failed"),
             NmpError::AlreadyStarted => write!(f, "already started: configuration after runtime start"),
             NmpError::FeedOpenFailed => write!(f, "feed open failed: scope not wired or registry unavailable"),
+            NmpError::RegistryUnavailable => write!(f, "registry unavailable: internal mutex poisoned"),
         }
     }
 }

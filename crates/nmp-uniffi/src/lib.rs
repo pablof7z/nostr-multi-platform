@@ -55,6 +55,9 @@ pub use capability::{ActionResultObserver, CapabilitySink};
 pub mod sessions;
 pub use sessions::FeedSessionHandle;
 
+// ── Lifecycle signals, storage config, projection config, diagnostics (C6) ───
+pub mod runtime;
+
 // ── Typed dispatch outcome ────────────────────────────────────────────────────
 
 /// Typed outcome of a `dispatch_action` call.
