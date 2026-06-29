@@ -160,6 +160,82 @@ fn rejects_duplicate_action_namespace() {
 }
 
 #[test]
+fn rejects_builtin_action_namespace_collision() {
+    let raw = FIXTURE.replace("app.notes.publish_note", "nmp.publish");
+    let err = match parse_app_action_builder_registry(&raw) {
+        Ok(_) => panic!("registry should reject built-in namespace collision"),
+        Err(err) => err,
+    };
+    assert!(
+        err.contains("collides with a built-in NMP action namespace"),
+        "{err}"
+    );
+    assert!(err.contains("app-owned namespace"), "{err}");
+}
+
+#[test]
+fn rejects_invalid_generated_method_identifier() {
+    let raw = FIXTURE.replace(r#""method": "publishNote""#, r#""method": "publish-note""#);
+    let err = match parse_app_action_builder_registry(&raw) {
+        Ok(_) => panic!("registry should reject invalid generated method"),
+        Err(err) => err,
+    };
+    assert!(err.contains("builder.method"), "{err}");
+    assert!(err.contains("[a-z][A-Za-z0-9]*"), "{err}");
+}
+
+#[test]
+fn rejects_invalid_generated_field_identifier() {
+    let raw = FIXTURE.replace(r#""name": "title""#, r#""name": "1title""#);
+    let err = match parse_app_action_builder_registry(&raw) {
+        Ok(_) => panic!("registry should reject invalid generated field"),
+        Err(err) => err,
+    };
+    assert!(err.contains("builder field name"), "{err}");
+    assert!(err.contains("[a-z][A-Za-z0-9]*"), "{err}");
+}
+
+#[test]
+fn rejects_reserved_generated_identifiers() {
+    let raw = FIXTURE.replace(r#""name": "title""#, r#""name": "class""#);
+    let err = match parse_app_action_builder_registry(&raw) {
+        Ok(_) => panic!("registry should reject reserved generated field"),
+        Err(err) => err,
+    };
+    assert!(err.contains("reserved by Swift/Kotlin/TypeScript"), "{err}");
+    assert!(err.contains("class"), "{err}");
+}
+
+#[test]
+fn rejects_duplicate_generated_field_symbols() {
+    let raw = FIXTURE.replace(
+        r#"{ "name": "title", "kind": "string" },"#,
+        r#"{ "name": "title", "kind": "string" },
+          { "name": "title", "kind": "string" },"#,
+    );
+    let err = match parse_app_action_builder_registry(&raw) {
+        Ok(_) => panic!("registry should reject duplicate generated field symbols"),
+        Err(err) => err,
+    };
+    assert!(err.contains("duplicate generated symbol"), "{err}");
+    assert!(err.contains("title"), "{err}");
+}
+
+#[test]
+fn rejects_presence_flag_symbol_collision() {
+    let raw = FIXTURE.replace(
+        r#"{ "name": "retryCount", "kind": "uint" }"#,
+        r#"{ "name": "expiresAt", "kind": "ulong_with_presence_flag", "presence_flag": "title" }"#,
+    );
+    let err = match parse_app_action_builder_registry(&raw) {
+        Ok(_) => panic!("registry should reject duplicate presence flag symbols"),
+        Err(err) => err,
+    };
+    assert!(err.contains("duplicate generated symbol"), "{err}");
+    assert!(err.contains("presence_flag"), "{err}");
+}
+
+#[test]
 fn validates_fixture_schema_files() {
     let path = fixture_registry_path();
     let loaded = load_app_action_builder_registry(&path).unwrap();
