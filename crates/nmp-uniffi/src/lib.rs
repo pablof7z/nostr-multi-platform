@@ -136,8 +136,8 @@ impl NmpApp {
     /// The `frame` bytes passed to `on_update` are a freshly-copied `Vec<u8>`;
     /// no Rust state is held across the foreign call.
     ///
-    /// # UniFFI 0.28 type note
-    /// UniFFI 0.28 passes callback interface implementations as `Box<dyn Trait>`
+    /// # UniFFI 0.29 type note
+    /// UniFFI 0.29 passes callback interface implementations as `Box<dyn Trait>`
     /// (unique ownership). The sink is moved into the update-listener closure
     /// which is then owned by the runtime's `Arc<UpdateListenerGate>`.
     pub fn set_update_sink(&self, sink: Option<Box<dyn UpdateSink>>) {

@@ -11,13 +11,16 @@
 //! * `start` / `configure` clamp parity with the C-ABI
 //! * Generated Swift/Kotlin drift is deterministic (CI gate, not a unit test)
 //!
-//! # UniFFI 0.28 note on UpdateSink
+//! # UniFFI 0.29 note on UpdateSink
 //!
-//! UniFFI 0.28 generates `Lift` for `Box<dyn Trait>`, not `Arc<dyn Trait>`,
+//! UniFFI 0.29 generates `Lift` for `Box<dyn Trait>`, not `Arc<dyn Trait>`,
 //! for callback interfaces. Tests therefore use `Box<dyn UpdateSink>` directly
 //! rather than wrapping in Arc first.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
+use std::thread;
 use std::time::Duration;
 
 use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
@@ -63,19 +66,32 @@ impl UpdateSink for PanickingSink {
     }
 }
 
-/// `UpdateSink` that records its invocation via an external `Mutex<bool>` and
-/// blocks on a `Barrier` to simulate a long-running in-flight callback.
-struct FlagSink {
-    called: Arc<Mutex<bool>>,
+/// `UpdateSink` that signals callback entry via a channel and then blocks on a
+/// `Barrier` until released. Used by the quiescence and shutdown-ordering tests.
+///
+/// `entered_tx` fires at most once (via `Option::take`) so concurrent
+/// `on_update` calls do not overflow the channel. When `callback_done` is set,
+/// it is stored to `true` AFTER the gate releases — tests assert this to prove
+/// the callback ran to completion before `clear` / `shutdown` returned.
+struct BlockingSink {
+    entered_tx: Mutex<Option<mpsc::Sender<()>>>,
     gate: Arc<std::sync::Barrier>,
+    callback_done: Option<Arc<AtomicBool>>,
 }
 
-impl UpdateSink for FlagSink {
+impl UpdateSink for BlockingSink {
     fn on_update(&self, _frame: Vec<u8>) {
-        // Signal we've entered the callback.
-        *self.called.lock().unwrap() = true;
-        // Block until the test releases us — simulates a long-running callback.
+        // Signal entry deterministically — no sleep needed on the main thread.
+        if let Ok(mut guard) = self.entered_tx.lock() {
+            let _ = guard.take().map(|tx| tx.send(()));
+        }
+        // Block until the test releases us — simulates an in-flight callback.
         self.gate.wait();
+        // Mark completion AFTER the gate so ordering assertions can prove that
+        // clear / shutdown returned only after the callback finished.
+        if let Some(ref done) = self.callback_done {
+            done.store(true, Ordering::SeqCst);
+        }
     }
 }
 
@@ -145,6 +161,26 @@ fn sink_replace_is_atomic() {
 
 /// A callback that panics must not kill the update-listener thread or the app.
 /// The app must remain usable after a panicking callback.
+///
+/// # Panic-containment layering
+///
+/// Two independent `catch_unwind` guards exist:
+///
+/// 1. **Wrapper layer** (`lib.rs`): `catch_unwind` around `s.on_update(frame)`.
+///    This is the primary guard for the cross-FFI case. When Swift or Kotlin
+///    code throws / aborts, the exception is modelled as a Rust panic by the
+///    generated glue; unwinding across an FFI boundary is undefined behaviour
+///    in Rust, so catching it at the wrapper is the load-bearing defence against
+///    UB propagating into the listener thread.
+///
+/// 2. **Runtime layer** (`app_ctor.rs`): `catch_unwind` around `listener(&update)`,
+///    which wraps the entire wrapper closure. This is defence-in-depth — it
+///    ensures a panic originating inside the wrapper itself (not just in the
+///    foreign call) does not crash the listener thread.
+///
+/// In a pure-Rust test the runtime-layer guard would suffice; the wrapper guard
+/// is a belt-and-suspenders contract specifically for cross-FFI use. The test
+/// below exercises the combined effect of both layers.
 #[test]
 fn sink_panicking_callback_is_contained() {
     let app = NmpApp::new();
@@ -163,73 +199,137 @@ fn sink_panicking_callback_is_contained() {
 /// Clearing the sink while a callback is in flight must wait until the
 /// callback completes before returning (quiescence contract).
 ///
-/// This test is inherently concurrent. The `FlagSink` blocks in `on_update`
-/// until the barrier is signalled; `set_update_sink(None)` on the main thread
-/// must not return before `on_update` exits.
+/// # Proof structure
+///
+/// `BlockingSink` signals entry via a channel (deterministic — no sleep), then
+/// blocks at a `Barrier`. The passive pre-start snapshot fires `on_update` on
+/// registration, so the callback is genuinely in-flight by the time the main
+/// thread receives the "entered" signal.
+///
+/// `callback_done` is set inside `on_update` AFTER the gate. The runtime
+/// decrements `in_flight` only after the callback returns, then notifies the
+/// `drained` Condvar. After `set_update_sink(None)` returns, `callback_done`
+/// MUST be `true` — if clear returned early (quiescence broken), the callback
+/// would still be at the gate and `callback_done` would be `false`.
+///
+/// A `recv_timeout` bounds the whole operation so a regression FAILS with an
+/// explanatory message rather than hanging CI.
 #[test]
 fn clear_waits_for_in_flight_callback() {
-    use std::thread;
+    let app = NmpApp::new();
+    let (entered_tx, entered_rx) = mpsc::channel::<()>();
+    let gate = Arc::new(std::sync::Barrier::new(2));
+    let callback_done = Arc::new(AtomicBool::new(false));
 
-    let app = Arc::new(NmpApp::new());
-    let called = Arc::new(Mutex::new(false));
-    let barrier = Arc::new(std::sync::Barrier::new(2));
+    app.set_update_sink(Some(Box::new(BlockingSink {
+        entered_tx: Mutex::new(Some(entered_tx)),
+        gate: Arc::clone(&gate),
+        callback_done: Some(Arc::clone(&callback_done)),
+    })));
 
-    let sink = Box::new(FlagSink {
-        called: Arc::clone(&called),
-        gate: Arc::clone(&barrier),
-    }) as Box<dyn UpdateSink>;
-    app.set_update_sink(Some(sink));
+    // Wait until on_update has entered — fully deterministic, no sleep.
+    entered_rx
+        .recv_timeout(Duration::from_secs(2))
+        .expect("passive pre-start snapshot never triggered on_update within 2s");
 
-    // The passive pre-start snapshot fires into the listener on the listener
-    // thread. We need to trigger the callback manually via the startup frame.
-    // Install, wait for the barrier thread to confirm entry, then clear.
-    // To guarantee a callback fires we need the runtime started; for this
-    // lightweight quiescence test we use the passive-snapshot path by ensuring
-    // the listener is set while `started == false`.
-    //
-    // Spawn a thread that waits at the barrier (simulating in-flight callback)
-    // while the main thread calls set_update_sink(None).
-    let barrier_clone = Arc::clone(&barrier);
-    let app_clone = Arc::clone(&app);
+    // Spawn helper to release the gate concurrently with clear() below.
+    // Barrier::new(2) handles any arrival order: if the helper arrives before
+    // on_update it blocks; if on_update arrived first it is already waiting.
+    // Either way, both parties proceed together once the helper calls wait().
+    let gate_clone = Arc::clone(&gate);
+    let helper = thread::spawn(move || gate_clone.wait());
 
-    let worker = thread::spawn(move || {
-        // Simulate the listener thread calling our FlagSink by invoking
-        // the quiescence dance directly via the inner update_listener.
-        // We reach the inner RuntimeApp to manually trigger the in_flight
-        // increment and then the barrier gate.
-        //
-        // Because the FlagSink is installed before the listener thread
-        // processes the passive snapshot, the snapshot fires on registration
-        // and will hit the barrier. We just need to release it.
-        //
-        // Wait briefly to let the passive snapshot fire.
-        std::thread::sleep(Duration::from_millis(5));
-        // Release the FlagSink's barrier so on_update can return.
-        barrier_clone.wait();
-        drop(app_clone);
+    // Run clear() in its own thread so we can bound it with recv_timeout.
+    let app_for_clear = Arc::clone(&app);
+    let (done_tx, done_rx) = mpsc::channel::<()>();
+    let clear_handle = thread::spawn(move || {
+        app_for_clear.set_update_sink(None);
+        let _ = done_tx.send(());
     });
 
-    // Wait until the callback has been entered (or timeout), then clear.
-    // The real quiescence proof is: set_update_sink does NOT return until
-    // the listener thread's in_flight count drops to zero.
-    std::thread::sleep(Duration::from_millis(2));
-    app.set_update_sink(None); // Must block until in-flight completes.
+    done_rx
+        .recv_timeout(Duration::from_secs(3))
+        .expect("set_update_sink(None) deadlocked while on_update was in-flight");
 
-    worker.join().unwrap();
+    // Quiescence proof: `callback_done` is set inside on_update AFTER the gate,
+    // which happens-before `in_flight` is decremented and `drained` is notified,
+    // which happens-before set_update_sink(None) returns. If clear had returned
+    // early (quiescence contract broken), `callback_done` would be false here.
+    assert!(
+        callback_done.load(Ordering::SeqCst),
+        "set_update_sink(None) returned before on_update completed — quiescence violated"
+    );
+
+    clear_handle.join().unwrap();
+    helper.join().unwrap();
 }
 
-/// Calling `shutdown()` during an in-flight update must not UAF or deadlock.
+/// Calling `shutdown()` while an `on_update` is in-flight must not UAF or
+/// deadlock: `shutdown()` joins the listener thread, which means it must wait
+/// for the in-flight callback to return before completing.
+///
+/// # Proof structure
+///
+/// `BlockingSink` signals entry via a channel and blocks at a `Barrier`.
+/// The passive pre-start snapshot fires `on_update` on registration. After
+/// receiving the "entered" signal the callback is genuinely in-flight.
+/// A helper thread releases the barrier concurrently — allowing the listener
+/// thread (blocked inside `on_update`) to exit, which lets `shutdown()`'s
+/// internal thread-join complete cleanly.
+///
+/// A `recv_timeout` wall-clock deadline ensures a regression (deadlock)
+/// surfaces as a test failure rather than a CI hang.
 #[test]
 fn shutdown_during_in_flight_update_no_uaf_no_deadlock() {
     let app = NmpApp::new();
-    let (sink, _handle) = RecordSink::new_boxed();
-    app.set_update_sink(Some(sink));
-    // shutdown() clears the listener (quiescence gate) then joins threads.
-    // If there's a UAF the test would crash with a sanitizer or segfault.
-    app.shutdown();
-    // Idempotent: second shutdown is a no-op.
+    let (entered_tx, entered_rx) = mpsc::channel::<()>();
+    let gate = Arc::new(std::sync::Barrier::new(2));
+
+    app.set_update_sink(Some(Box::new(BlockingSink {
+        entered_tx: Mutex::new(Some(entered_tx)),
+        gate: Arc::clone(&gate),
+        callback_done: None,
+    })));
+
+    // Wait until on_update is genuinely in-flight — deterministic, no sleep.
+    entered_rx
+        .recv_timeout(Duration::from_secs(2))
+        .expect("passive pre-start snapshot never triggered on_update within 2s");
+
+    // Helper releases the gate so the listener thread can eventually exit
+    // and shutdown()'s join can complete. Concurrent with shutdown() below.
+    let gate_clone = Arc::clone(&gate);
+    let helper = thread::spawn(move || gate_clone.wait());
+
+    // Run shutdown() in its own thread so we can apply a wall-clock deadline.
+    let app_for_shutdown = Arc::clone(&app);
+    let (done_tx, done_rx) = mpsc::channel::<()>();
+    let shutdown_handle = thread::spawn(move || {
+        app_for_shutdown.shutdown();
+        let _ = done_tx.send(());
+    });
+
+    // If shutdown() deadlocks (e.g., waits on in_flight while holding a lock
+    // that the callback needs to decrement), this recv_timeout catches it.
+    done_rx
+        .recv_timeout(Duration::from_secs(3))
+        .expect("shutdown() deadlocked while on_update was in-flight — UAF/deadlock regression");
+
+    shutdown_handle.join().unwrap();
+    helper.join().unwrap();
+
+    // Idempotent: a second shutdown() is a no-op (Kotlin/Swift contract, #2149).
     app.shutdown();
 }
+
+// ── Reentrancy (intentionally untested) ──────────────────────────────────────
+//
+// Calling any `NmpApp` method from within `on_update` is documented-forbidden
+// (see `UpdateSink`). A test that attempted re-entry would deadlock by design:
+// the quiescence Condvar (`wait_while`) is not re-entrant, so the re-entrant
+// `set_update_sink` call would block forever waiting for `in_flight` to drop
+// to zero while the callback itself (holding `in_flight > 0`) is blocked.
+// Reentrancy is enforced by contract only — not by a test.
 
 // ── Dispatch wrapper surface ──────────────────────────────────────────────────
 
