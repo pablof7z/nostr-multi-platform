@@ -78,14 +78,17 @@ fn to_raw(s: &SignedEvent) -> RawEvent {
     }
 }
 
+fn imported_presigned_target() -> PublishTarget {
+    PublishTarget::explicit(
+        vec![RELAY.to_string()],
+        PublishRouteClass::ImportedOrPresigned,
+    )
+}
+
 // ─── Group A: Applied (synchronous) — pre-signed publish verbs ───────────────
 
 #[test]
 fn signed_event_valid_returns_applied_no_malformed_toast() {
-    // A well-formed, genuinely Schnorr-signed kind:1 event passes the
-    // well-formedness chokepoint and returns Applied. On a fresh kernel with no
-    // NIP-65 outbox the publish engine reports NoTargets via toast, but the
-    // _malformed-event_ toast must be absent (the event is not malformed).
     let keys = ::nostr::Keys::generate();
     let signed = real_signed_event(&keys, 1, "hello from apply_actor_command");
     let raw = to_raw(&signed);
@@ -93,10 +96,7 @@ fn signed_event_valid_returns_applied_no_malformed_toast() {
 
     let outcome = r.apply_actor_command(ActorCommand::Publish(PublishCommand::SignedEvent {
         raw,
-        target: PublishTarget::explicit(
-            vec![RELAY.to_string()],
-            PublishRouteClass::ImportedOrPresigned,
-        ),
+        target: imported_presigned_target(),
         correlation_id: None,
     }));
 
@@ -124,10 +124,7 @@ fn signed_event_forged_returns_applied_empty_with_malformed_toast() {
 
     let outcome = r.apply_actor_command(ActorCommand::Publish(PublishCommand::SignedEvent {
         raw,
-        target: PublishTarget::explicit(
-            vec![RELAY.to_string()],
-            PublishRouteClass::ImportedOrPresigned,
-        ),
+        target: imported_presigned_target(),
         correlation_id: None,
     }));
 
