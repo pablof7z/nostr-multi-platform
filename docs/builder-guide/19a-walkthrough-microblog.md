@@ -213,9 +213,19 @@ pub fn register(app: &mut impl AppHost) -> FeedStore {
         .get_or_init(|| Arc::new(Mutex::new(Vec::new())))
         .clone();
 
-    // 1. Install explicit substrate/protocol/app features.
-    // Shape only: exact installer names are owned by the live crates.
-    install_microblog_stack(app);
+    // 1. Install explicit substrate/protocol features.
+    let nmp_defaults::NmpDefaults {
+        coverage_gate,
+        search_defaults,
+        ..
+    } = nmp_defaults::NmpDefaults::default();
+
+    let _mailbox_cache = nmp_defaults::register_substrate(app, coverage_gate);
+    nmp_defaults::register_nip50_protocol_defaults(app);
+    let _social_handles =
+        nmp_defaults::register_social_protocol_defaults(app, search_defaults);
+    nmp_defaults::register_dm_protocol_defaults(app);
+    nmp_defaults::register_longform_projection(app);
 
     // 2. Write path.
     app.register_action(NoteActionModule);
@@ -259,8 +269,8 @@ staticlib crate (`apps/microblog/nmp-app-microblog`) whose entire job is to:
 1. Link `nmp-defaults`, `nmp-native-runtime`, `nmp-ffi`, and `microblog-core`;
    `nmp-ffi` remains C-ABI glue.
 2. Export one registration symbol the iOS shell calls after `nmp_app_new()`.
-3. Call `microblog_core::register(app)`. The substrate/protocol/app installers
-   are already inside that app-core composition root.
+3. Call `microblog_core::register(app)`. The named substrate/protocol/app
+   installers are already inside that app-core composition root.
 
 That shell is the analog of `nmp_app_chirp_register` in `apps/chirp/crates/nmp-app-chirp`.
 

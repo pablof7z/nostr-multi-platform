@@ -4,10 +4,11 @@
 //! # Explicit feature composition (ADR-0069)
 //!
 //! This crate is a **thin composition shell** and starter contract. [`register`]
-//! installs the reusable NMP substrate floor explicitly, then leaves product
-//! protocol features and app-owned modules visible in this app root. You depend
-//! on reusable installer crates; you do not generate or copy framework wiring,
-//! and you do not hide production policy behind a wholesale preset.
+//! installs the reusable NMP substrate floor plus selected protocol/runtime
+//! installers explicitly, then leaves product app-owned modules visible in this
+//! app root. You depend on reusable installer crates; you do not generate or
+//! copy framework wiring, and you do not hide production policy behind a
+//! wholesale preset.
 //!
 //! After the substrate call, register selected protocol features and your
 //! app-specific modules (the example domain below shows the kernel boundary).
@@ -37,19 +38,31 @@ use serde::{Deserialize, Serialize};
 /// event arrives (late wiring is dropped silently per D6).
 ///
 pub fn register(app: &mut impl AppHost) {
+    let nmp_defaults::NmpDefaults {
+        coverage_gate,
+        search_defaults,
+        ..
+    } = nmp_defaults::NmpDefaults::default();
+
     // 1. Install the reusable substrate floor: routing, mailbox/profile/contact
     //    caches, parsers, publish resolver, external event forwarding, coverage
     //    gate, and NIP-77 sync hooks. This is correctness plumbing, not product
     //    policy.
-    nmp_defaults::register_substrate(app, nmp_defaults::NmpDefaults::default().coverage_gate);
+    let _mailbox_cache = nmp_defaults::register_substrate(app, coverage_gate);
 
-    // 2. Register selected protocol features and this app's own modules here,
-    //    e.g.:
+    // 2. Install reusable Nostr protocol/runtime features by name. This mirrors
+    //    the browser/Gallery production roots while keeping each selected layer
+    //    grep-able for starter apps.
+    nmp_defaults::register_nip50_protocol_defaults(app);
+    let _social_handles = nmp_defaults::register_social_protocol_defaults(app, search_defaults);
+    nmp_defaults::register_dm_protocol_defaults(app);
+    nmp_defaults::register_longform_projection(app);
+
+    // 3. Register this app's own modules here, e.g.:
     //    app.register_action(EntryActionModule);
     //    (ADR-0052: `register_action` takes the module VALUE — a stateful
     //    module owns its dependencies, captured here at composition time.
-    //    Protocol installer crates and app modules follow the same `AppHost`
-    //    seam.)
+    //    App modules follow the same `AppHost` seam as the protocol installers.)
 }
 
 /// The app module identifier. Namespaces below derive from it.

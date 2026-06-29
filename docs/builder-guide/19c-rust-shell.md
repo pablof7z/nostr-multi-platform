@@ -162,8 +162,10 @@ filled; subsequent `PostNote` dispatches will use this key.
 
 For a full Nostr social app scaffolded by `nmp init`, call your app-core
 composition root before `start`. That root installs explicit substrate,
-protocol, app, publish/signing, and capability features, then wires
-app-specific seams:
+protocol, app, publish/signing, and capability features by name, then wires
+app-specific seams. The starter sequence is `register_substrate`,
+`register_nip50_protocol_defaults`, `register_social_protocol_defaults`,
+`register_dm_protocol_defaults`, then `register_longform_projection`:
 
 ```rust
 let mut builder = NmpAppBuilder::new();

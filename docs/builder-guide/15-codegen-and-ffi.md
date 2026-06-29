@@ -44,19 +44,27 @@ own app features, and any capability contracts its shell must execute.
 production architecture.
 
 ```rust
-// Shape only: exact installer names are owned by the live crates.
 pub fn register(app: &mut impl AppHost) {
-    install_substrate(app);
-    install_protocol_features(app, [follows, dms, routing]);
-    install_publish_and_signing(app);
+    let nmp_defaults::NmpDefaults {
+        coverage_gate,
+        search_defaults,
+        ..
+    } = nmp_defaults::NmpDefaults::default();
+
+    let _mailbox_cache = nmp_defaults::register_substrate(app, coverage_gate);
+    nmp_defaults::register_nip50_protocol_defaults(app);
+    let _social_handles =
+        nmp_defaults::register_social_protocol_defaults(app, search_defaults);
+    nmp_defaults::register_dm_protocol_defaults(app);
+    nmp_defaults::register_longform_projection(app);
     install_app_features(app);
     declare_capability_contracts(app);
 }
 ```
 
-The exact installer names may change as #2320 cleanup proceeds. The invariant is
-stable: the production root must show what substrate, protocol features,
-publish/signing helpers, app features, and capability contracts are installed.
+The invariant is stable: the production root must show what substrate, protocol
+features, app features, and capability contracts are installed. `register()`
+must not collapse back to `register_defaults()` or a substrate-only starter.
 
 ## What still gets generated
 

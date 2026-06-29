@@ -8,6 +8,14 @@ mod helpers;
 use helpers::{nmp, TempDir};
 use std::process::Command;
 
+const STARTER_INSTALLER_SEQUENCE: [&str; 5] = [
+    "nmp_defaults::register_substrate",
+    "nmp_defaults::register_nip50_protocol_defaults",
+    "nmp_defaults::register_social_protocol_defaults",
+    "nmp_defaults::register_dm_protocol_defaults",
+    "nmp_defaults::register_longform_projection",
+];
+
 #[test]
 fn init_scaffold_is_a_compiling_composition_shell() {
     let tmp = TempDir::new("init");
@@ -34,10 +42,7 @@ fn init_scaffold_is_a_compiling_composition_shell() {
     //    `nmp gen modules` step.
     let lib = std::fs::read_to_string(root.join("crates/demoapp-core/src/lib.rs"))
         .expect("read scaffolded lib.rs");
-    assert!(
-        lib.contains("nmp_defaults::register_substrate"),
-        "scaffolded `register` must install the NMP substrate explicitly:\n{lib}"
-    );
+    assert_named_installer_sequence(&lib);
     assert!(
         !lib.contains("nmp_defaults::register_defaults"),
         "scaffolded production `register` must not call hidden register_defaults:\n{lib}"
@@ -138,5 +143,20 @@ fn init_rejects_invalid_names() {
             ],
         );
         assert!(!out.status.success(), "expected `{bad}` to be rejected");
+    }
+}
+
+fn assert_named_installer_sequence(lib: &str) {
+    let mut previous = 0;
+    for installer in STARTER_INSTALLER_SEQUENCE {
+        let index = lib[previous..]
+            .find(installer)
+            .map(|offset| previous + offset)
+            .unwrap_or_else(|| {
+                panic!(
+                    "scaffolded `register` must install `{installer}` explicitly in the named starter sequence:\n{lib}"
+                )
+            });
+        previous = index + installer.len();
     }
 }
