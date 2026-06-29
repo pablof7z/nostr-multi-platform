@@ -120,29 +120,29 @@ not part of the production surface.
 | `nmp_app_remove_account` | `(app, identity_id: *const c_char)` | Remove account from the identity store. | Chirp | invalid → early return | n/a |
 | `nmp_app_add_relay` | `(app, url: *const c_char, role: *const c_char)` | Add a relay. `role` NULL defaults to `"both"`. | Chirp | null/empty url → early return | n/a |
 | `nmp_app_remove_relay` | `(app, url: *const c_char)` | Remove a relay by URL. | Chirp | invalid → early return | n/a |
-| `nmp_app_open_feed` | `(app, params_json: *const c_char) -> *mut c_char` | **#1740 step 7 — the ONE public app-facing feed doorway.** Opens ONE feed session from a JSON-encoded `FeedParams` (PRIMARY content kinds + typed `FeedScope` acquisition + admission/ranking/window + projection key). Wrapper/delete acquisition is derived below the boundary by the perspective compiler. Returns a heap-owned C string (`{"projection_key":…,"session_id":…}` or `{"error":"<token>"}`) the caller MUST free via `nmp_free_string`. | Chirp (every app feed) | null app → `{"error":"null_app"}`; malformed → `bad_params`; wrapper/delete primary → `invalid_primary_kinds`; fail-closed compile → `scope_unsupported` | n/a |
-| `nmp_app_close_feed` | `(app, handle_json: *const c_char)` | **#1740 step 7.** Tear down a session opened by `nmp_app_open_feed`, addressed by its HANDLE envelope (never a re-derived filter — D4). Idempotent. | Chirp | null app / malformed handle / already-closed → silent no-op | n/a |
 
 > **#1740 step 8 — RETIRED:** the raw `nmp_app_open_contact_feed` /
 > `nmp_app_close_contact_feed` C-ABI active-follows shims are DELETED. The only
-> public way to open the active-follows home feed is `nmp_app_open_feed` with a
-> `FeedParams` payload whose acquisition scope is `FeedScope::ActiveUserFollows`.
-> The
-> `NmpApp::declare_active_follows_feed` / `clear_active_follows_feed` Rust methods
-> are also DELETED; active-follows is one ReducedSource instance, not a helper
-> verb.
+> remaining typed feed-session doorway is Rust's `NmpApp::open_feed` /
+> `NmpApp::close_feed`, used by app/protocol composition code with `FeedParams`.
+> There is no public C-ABI open/close feed pair. Native hosts either dispatch
+> typed app actions through `nmp_app_dispatch_action_bytes`, consume the emitted
+> typed projection sidecars, or use the narrow viewport command below. The
+> `NmpApp::declare_active_follows_feed` / `clear_active_follows_feed` Rust
+> methods are also DELETED; active-follows is one ReducedSource instance, not a
+> helper verb.
 
 The active-follows feed declaration is not a raw kind-list escape hatch.
-Public app code opens it through typed `FeedParams` with
+App/protocol composition code opens it through Rust typed `FeedParams` with
 `FeedScope::ActiveUserFollows`. The source compiler reduces that source into
-lower-level child interests and recompiles them when the active account or
-source event changes. The caller supplies primary content kinds only and never
-passes concrete follow pubkeys. Protocol adapters derive repost-wrapper
-acquisition from those primary declarations and reject wrapper kinds if they are
-supplied as primary kinds. `nmp-core` never stores a default "social timeline is
-kind:1" policy; the primary-kind decision belongs above the kernel. Feed
-components that need profiles, missing repost targets, relation counts, or
-other secondary data claim those dependencies independently.
+lower-level child interests and recompiles them when the active account or source
+event changes. The caller supplies primary content kinds only and never passes
+concrete follow pubkeys. Protocol adapters derive repost-wrapper acquisition
+from those primary declarations and reject wrapper kinds if they are supplied as
+primary kinds. `nmp-core` never stores a default "social timeline is kind:1"
+policy; the primary-kind decision belongs above the kernel. Feed components that
+need profiles, missing repost targets, relation counts, or other secondary data
+claim those dependencies independently.
 
 Threading: dispatch/enqueue symbols run on the calling thread and hand work to
 the actor asynchronously; none wait for a state result.
@@ -157,7 +157,8 @@ are fire-and-forget dispatches that cause subsequent snapshot emissions.
 
 | Symbol | Signature | Behavior | Callers | D6 | D7 |
 |---|---|---|---|---|---|
-| `nmp_app_open_interest` | `(app, filter_json: *const c_char, consumer_id: *const c_char, scope: uint32_t)` | M2 (ADR-0042). Register (or attach an owner to) a generic tailing interest from a verbatim NIP-01 REQ filter. This is the low-level static-interest escape hatch; app feed surfaces use `nmp_app_open_feed` so wrapper provenance, source reduction, and reactive perspectives stay explicit. `scope`: 0 = ActiveAccount, 1 = Global. Replaces `open_firehose_tag`; Chirp hashtag feeds now use the app-owned tag-feed seam, which declares primary `[1]`, derives NIP-18 wrapper acquisition, and opens the compiled `#t` filter at scope 1. | chirp-tui (`open_tag`); Chirp via `openInterest` | malformed filter → toast + no-op | n/a |
+| `nmp_app_load_older_feed` | `(app, key: *const c_char)` | Viewport command for an already-registered feed controller. The host reports "load older" by projection/feed key; Rust owns paging policy and appends through the normal snapshot/projection path. | feed views | invalid key → no-op | D7-clean: shell reports viewport intent; Rust owns page policy |
+| `nmp_app_open_interest` | `(app, filter_json: *const c_char, consumer_id: *const c_char, scope: uint32_t)` | M2 (ADR-0042). Register (or attach an owner to) a generic tailing interest from a verbatim NIP-01 REQ filter. This is the low-level static-interest escape hatch, not the product feed doorway; feed sessions stay in Rust typed composition so wrapper provenance, source reduction, and reactive perspectives stay explicit. `scope`: 0 = ActiveAccount, 1 = Global. Replaces `open_firehose_tag`; Chirp hashtag feeds now use the app-owned tag-feed seam, which declares primary `[1]`, derives NIP-18 wrapper acquisition, and opens the compiled `#t` filter at scope 1. | chirp-tui (`open_tag`); Chirp via `openInterest` | malformed filter → toast + no-op | n/a |
 | `nmp_app_close_interest` | `(app, filter_json: *const c_char, consumer_id: *const c_char, scope: uint32_t)` | M2 (ADR-0042). Detach one owner from a low-level interest opened with `open_interest`; drops the live sub on the last owner's close. Same filter/consumer/scope as the open. | chirp-tui; Chirp via `closeInterest` | malformed filter → no-op | n/a |
 | `nmp_app_open_uri` | `(app, uri: *const c_char)` | Route a `nostr:` URI or bare NIP-19 entity. Kernel resolves the entity and pushes `ViewOpened` or `UriRejected` via snapshot. T80/T95. | declared in `NmpCore.h`; no Chirp UI caller today | null/invalid → silent no-op | D7-clean: kernel decides routing |
 | `nmp_app_claim_profile` | `(app, pubkey: *const c_char, consumer_id: *const c_char, force: int, liveness: int)` | Increment refcount for a profile (kind:0) interest. Kernel registers a kind:0 `LogicalInterest` and emits metadata while any consumer holds a claim. `force != 0` bypasses the TTL freshness gate. `liveness`: `0` = CacheOk (serve from cache; OneShot fetch on miss; no live sub), non-zero = Live (Tailing kind:0 sub for reactive profile edits). Mixed claims on one pubkey resolve to Tailing. Validates hex pubkey. | Chirp | any invalid arg → early return | n/a |
@@ -165,12 +166,12 @@ are fire-and-forget dispatches that cause subsequent snapshot emissions.
 
 V-68 / V-112 (ADR-0042): `nmp_app_open_author`, `nmp_app_close_author`,
 `nmp_app_open_thread`, and `nmp_app_close_thread` were **removed** (BREAKING,
-v0.3.1). Author/thread feeds go through `nmp_app_open_feed` with
-`FeedScope::Authors` / `FeedScope::Referrer`, and close by passing the returned
-handle to `nmp_app_close_feed`. The feed compiler registers the flat projection,
-observed-projection sink, typed sidecar, acquisition interests, and cached
-replay under the declared projection key; handle close tears down that whole
-session.
+v0.3.1). Author/thread feed sessions go through Rust `NmpApp::open_feed` with
+`FeedScope::Authors` / `FeedScope::Referrer`, then close with the returned
+`FeedHandle` through `NmpApp::close_feed`. The feed compiler registers the flat
+projection, observed-projection sink, typed sidecar, acquisition interests, and
+cached replay under the declared projection key; handle close tears down that
+whole session.
 Profile hydration uses `nmp_app_claim_profile`.
 
 ---
@@ -314,8 +315,7 @@ the Rust action modules derive signing identity and routing policy.
 | `nmp_app_cancel_publish` | PASS | PASS | Publish lifecycle control |
 | `nmp_app_add_relay` | PASS | PASS | |
 | `nmp_app_remove_relay` | PASS | PASS | |
-| `nmp_app_open_feed` | PASS | PASS | #1740 step 7 — the ONE public app-facing feed doorway (typed `FeedParams` in, opaque handle out) |
-| `nmp_app_close_feed` | PASS | PASS | #1740 step 7 — handle-based session teardown |
+| `nmp_app_load_older_feed` | PASS | PASS | Viewport command only; Rust owns feed page policy |
 | `nmp_app_open_interest` | PASS | PASS | M2 (ADR-0042) — generic low-level interest seam (non-feed avatar/uri resolution); its feed-lane retirement is tracked in #1740 |
 | `nmp_app_close_interest` | PASS | PASS | M2 (ADR-0042) |
 | `nmp_app_open_uri` | PASS | PASS | |
@@ -343,8 +343,8 @@ the Rust action modules derive signing identity and routing policy.
 
 3. **RESOLVED (V-68 / V-112, ADR-0042):** `nmp_app_open_author`,
    `nmp_app_close_author`, `nmp_app_open_thread`, and `nmp_app_close_thread`
-   were removed in v0.3.1. The prior open-without-close subscription-leak gap
-   is structurally closed by `nmp_app_open_feed` / `nmp_app_close_feed`: the
+   were removed in v0.3.1. The prior open-without-close subscription-leak gap is
+   structurally closed by Rust `NmpApp::open_feed` / `NmpApp::close_feed`: the
    opaque feed handle owns the registered projection, observed-projection sink,
    acquisition interests, and teardown recipe, so close never re-derives a raw
-   filter.
+   filter. That handle pair is not exported as a public C-ABI symbol pair.
