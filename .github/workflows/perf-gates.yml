@@ -37,14 +37,24 @@ name: perf-gates
 # build on a cold or evicted cache. The 45-minute timeout gives that cold path
 # comfortable headroom; cached runs typically finish in 7–10 min.
 
+# TEMPORARILY DISABLED during the clean-break architecture migration (epic #2340).
+# While kernel hot paths are mid-move, perf numbers are not meaningful and the gate
+# produces churn rather than signal, so it is demoted from a PR/push gate to
+# manual-only (workflow_dispatch). The full bench pipeline below is intentionally
+# left intact; re-enabling is a one-line restore of the push/pull_request triggers
+# once the migration settles. Do NOT delete the jobs.
+#
+#   To restore after the migration, replace the `on:` block with:
+#     on:
+#       push:
+#         branches: [master]
+#       pull_request:
+#         branches: [master]
+#         paths:
+#           - ".github/workflows/perf-gates.yml"
+#           - "crates/**"
 on:
-  push:
-    branches: [master]
-  pull_request:
-    branches: [master]
-    paths:
-      - ".github/workflows/perf-gates.yml"
-      - "crates/**"
+  workflow_dispatch:
 
 jobs:
   reactivity-bench:
