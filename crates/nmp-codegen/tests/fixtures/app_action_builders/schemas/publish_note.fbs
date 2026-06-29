@@ -1,0 +1,11 @@
+namespace app.notes;
+
+table PublishNotePayload {
+  schema_version:uint;
+  title:string (required);
+  retryCount:uint;
+  topics:[string];
+}
+
+file_identifier "APPA";
+root_type PublishNotePayload;

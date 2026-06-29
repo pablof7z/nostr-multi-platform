@@ -114,6 +114,21 @@ cargo run -p nmp-codegen -- gen action-builders \
   --check
 ```
 
+Apps should normally run the registry-wide gate instead of spelling each output
+path in CI:
+
+```bash
+cargo run -p nmp-codegen -- gen action-builders \
+  --registry apps/<app>/action-builders.json \
+  --check
+```
+
+That app-CI gate validates the static registry JSON, checks every declared
+FlatBuffers schema path, `root_type`, `file_identifier`, and
+`schema_version:uint` root field, then diffs the Swift, Kotlin, and TypeScript
+generated-builder outputs declared by the registry. When it fails, regenerate
+the stale output with the same `--registry` plus the specific `--platform`.
+
 The JSON `actions` rows carry the namespace, event kind, dispatch kind, schema
 identity, Rust owner types, and a flat-table `builder.fields` list in
 FlatBuffers declaration order. The parser feeds only those static rows into the
@@ -132,6 +147,13 @@ This is distinct from reusable NMP protocols. A generic Nostr mechanism that an
 unrelated second app can consume unchanged belongs in a Layer-4 NMP crate and
 may be wired by `nmp-defaults`. A product-private kind stays with the app while
 using NMP's builder, binding, and drift-check machinery.
+
+NMP repo CI continues to own only checked-in framework-generated surfaces:
+default action builders, projection caches, typed decoders, producer constants,
+and FlatBuffers binding drift for schemas in this repository. NMP CI does not
+discover private app registries or remote schemas; each app that consumes an
+app-local registry owns its own registry-wide `--check` command and Rust
+decode/action-module tests.
 
 ## Current vs future FFI — read this box carefully
 
