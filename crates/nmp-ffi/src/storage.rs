@@ -2,7 +2,7 @@
 
 use std::ffi::c_char;
 
-use crate::{app_ref, c_optional_string_argument, NmpApp, NmpConfigStatus};
+use crate::{NmpApp, NmpConfigStatus, app_ref, c_optional_string_argument};
 
 /// Set the persistent storage directory for the LMDB `EventStore` backend.
 ///
@@ -24,18 +24,17 @@ pub extern "C" fn nmp_app_set_storage_path(app: *mut NmpApp, path: *const c_char
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        nmp_app_free, nmp_app_is_alive, nmp_app_lifecycle_foreground, nmp_app_new, nmp_app_start,
-    };
+    use crate::{app_ref, nmp_app_free, nmp_app_new, nmp_app_start};
     use std::ffi::CString;
 
     #[test]
     fn storage_path_can_be_set_after_prestart_command_before_start() {
         let app = nmp_app_new();
-        nmp_app_lifecycle_foreground(app);
+        let app_ref = app_ref(app).expect("app");
+        app_ref.lifecycle_foreground();
         assert_eq!(
-            nmp_app_is_alive(app),
-            0,
+            app_ref.is_alive(),
+            false,
             "pre-start command must not spawn actor"
         );
 
@@ -48,11 +47,10 @@ mod tests {
             NmpConfigStatus::Ok.code()
         );
 
-        let app_ref = unsafe { &*app };
         assert_eq!(app_ref.storage_path_for_start(), Some(path_str));
 
         nmp_app_start(app, 256, 4);
-        assert_eq!(nmp_app_is_alive(app), 1, "start should spawn actor once");
+        assert!(app_ref.is_alive(), "start should spawn actor once");
         nmp_app_free(app);
         let _ = std::fs::remove_dir_all(path);
     }

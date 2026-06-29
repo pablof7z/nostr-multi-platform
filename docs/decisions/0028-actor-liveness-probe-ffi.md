@@ -1,14 +1,22 @@
-# ADR-0028 — Actor-liveness probe FFI: `nmp_app_is_alive`
+# ADR-0028 — Actor-liveness probe FFI
 
 Date: 2026-05-22  
-Status: Accepted  
+Status: Superseded by the UniFFI/native-runtime lifecycle API
 Deciders: NMP team
+
+## Supersession note
+
+This ADR originally approved a public C-ABI liveness probe as a temporary
+pull-side sibling for the update-channel panic frame. The native runtime now
+owns lifecycle and liveness APIs directly, with UniFFI bindings for host
+shells. The old public C export was retired by the M14 lifecycle clean-break
+slice, so this ADR remains only as historical context for the liveness
+semantics.
 
 ## Context
 
 The actor thread in `nmp-core` owns the kernel loop. When it panics, the
-FFI supervisor closure in `crates/nmp-ffi/src/lifecycle.rs::nmp_app_new` wraps
-the actor in `std::panic::catch_unwind` and emits exactly one
+runtime supervisor wraps the actor in `std::panic::catch_unwind` and emits exactly one
 `UpdateEnvelope::Panic` frame (`{"t":"panic","v":{"msg":...}}`) on the update
 channel before the channel closes (`docs/architecture/d7-actor-death-contract.md`
 context; see also `crates/nmp-core/src/update_envelope.rs`).
@@ -35,8 +43,7 @@ sibling for the case above.
 
 ## Decision
 
-Add one new `#[no_mangle] pub extern "C" fn nmp_app_is_alive(*mut NmpApp) -> u8`
-at `crates/nmp-ffi/src/lifecycle.rs:126`. Semantics:
+Add a pull-side liveness probe. Semantics:
 
 - `app == NULL` → `0`
 - `actor` mutex poisoned → `0` (kernel state irrecoverable)
@@ -44,10 +51,9 @@ at `crates/nmp-ffi/src/lifecycle.rs:126`. Semantics:
 - `JoinHandle::is_finished()` returns `true` → `0`
 - otherwise → `1`
 
-The host treats every non-`1` response as "kernel dead — surface a fatal
-error to the user". The probe is called on the existing `scenePhase == .active`
-transition in `apps/chirp/ios/Chirp/App/ChirpApp.swift`, alongside
-`model.lifecycleForeground()`.
+The host treats every negative response as "kernel dead — surface a fatal
+error to the user". The probe is called on the existing active scene-phase
+transition alongside the foreground lifecycle report.
 
 ## Rationale: why not a per-verb `dispatch_action` namespace
 
@@ -73,16 +79,13 @@ The freeze's failure message documents this exception explicitly (lines
 > lifecycle hook with no dispatch analogue), write an ADR and reference
 > it in your commit message as 'ADR-XXXX: <title>'.
 
-`nmp_app_is_alive` is exactly that case. The matching `# adr-override:
-ADR-0028` comment is added to `ci/check-ffi-surface-freeze.sh` so the
-gate parses the override at runtime rather than requiring a one-off human
-review of every new commit.
+The original C-ABI probe was exactly that case. The matching ADR override in
+the freeze gate was removed when the public C export was retired.
 
 ## Constraints (hard limits on this exception)
 
-- The override applies to `nmp_app_is_alive` only. The freeze gate's
-  default-reject behaviour for every other new `nmp_app_*` symbol is
-  unchanged.
+- The override applied only to the original liveness probe. The freeze gate's
+  default-reject behaviour for every other new native symbol is unchanged.
 - Future lifecycle / observability probes (e.g. `nmp_app_actor_queue_depth`
   as a C-ABI counterpart to the `actor_queue_depth` snapshot metric) MUST
   file a new ADR with its own override entry. The override is per-symbol,
@@ -99,9 +102,9 @@ review of every new commit.
 
 ## Consequences
 
-- Net adds one C-ABI symbol. The freeze gate honours the
-  `# adr-override: ADR-0028` comment for `nmp_app_is_alive` and continues to
-  reject every other new `nmp_app_*` symbol by default.
+- The historical implementation added one C-ABI symbol. The current
+  implementation keeps the semantics on the native runtime/UniFFI path and
+  rejects reintroduction of that public C export.
 - The Swift host gains a deterministic answer to "is the kernel still
   there?" without re-attempting a dispatch and inferring from silence.
 - The user gets a visible, actionable error (the red banner in

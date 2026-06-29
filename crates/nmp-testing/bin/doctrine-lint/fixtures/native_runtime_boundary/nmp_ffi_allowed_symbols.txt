@@ -18,9 +18,6 @@ nmp_app_inject_signed_event_json
 nmp_app_inject_signed_events
 nmp_app_inject_unpinned_events_for_gc
 nmp_app_intent_dispatch
-nmp_app_is_alive
-nmp_app_lifecycle_background
-nmp_app_lifecycle_foreground
 nmp_app_load_older_feed
 nmp_app_new
 nmp_app_nostrconnect_uri
@@ -50,7 +47,6 @@ nmp_app_search_close
 nmp_app_search_open
 nmp_app_search_snapshot
 nmp_app_set_capability_callback
-nmp_app_set_lifecycle_callback
 nmp_app_set_storage_path
 nmp_app_set_update_callback
 nmp_app_signin_bunker
