@@ -59,6 +59,7 @@ mod android_push;
 // gallery shell that dispatches a write.
 #[cfg(feature = "native")]
 pub mod dispatch_bytes;
+pub mod event_ref_uri;
 mod snapshot_json;
 
 pub mod registry;

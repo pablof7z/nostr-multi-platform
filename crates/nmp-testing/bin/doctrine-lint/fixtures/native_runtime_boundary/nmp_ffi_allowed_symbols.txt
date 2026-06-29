@@ -61,12 +61,10 @@ nmp_app_stop
 nmp_app_switch_active
 nmp_app_trigger_gc_step
 nmp_app_wait_barrier
-nmp_content_tokenize_text
 nmp_external_signer_init
 nmp_free_string
 nmp_marmot_register_active
 nmp_marmot_unregister
 nmp_mirror_free_bytes
 nmp_mirror_pull_page
-nmp_nip21_decode_uri
 nmp_signer_broker_init

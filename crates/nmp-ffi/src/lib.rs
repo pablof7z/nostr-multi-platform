@@ -14,7 +14,6 @@ mod capability;
 #[cfg(test)]
 #[path = "capability_quiescence_tests.rs"]
 mod capability_quiescence_tests;
-mod content_ffi;
 mod debug_info;
 #[cfg(test)]
 #[path = "event_by_id_tests.rs"]
@@ -33,7 +32,6 @@ mod interest_feed_tests;
 #[path = "keyring_forget_tests.rs"]
 mod keyring_forget_tests;
 mod lifecycle;
-mod nip21_ffi;
 #[cfg(test)]
 #[path = "passive_start_tests.rs"]
 mod passive_start_tests;
@@ -85,8 +83,6 @@ pub use action::{
 #[cfg(feature = "native")]
 pub use capability::{nmp_app_dispatch_capability, nmp_app_set_capability_callback};
 #[cfg(feature = "native")]
-pub use content_ffi::nmp_content_tokenize_text;
-#[cfg(feature = "native")]
 pub use feed::nmp_app_load_older_feed;
 #[cfg(feature = "native")]
 pub use free::nmp_free_string;
@@ -104,8 +100,6 @@ pub use lifecycle::{
     nmp_app_is_alive, nmp_app_lifecycle_background, nmp_app_lifecycle_foreground,
     nmp_app_set_lifecycle_callback,
 };
-#[cfg(feature = "native")]
-pub use nip21_ffi::nmp_nip21_decode_uri;
 #[cfg(feature = "native")]
 pub use publish::{nmp_app_cancel_action, nmp_app_retry_publish};
 // #1726 — unified diagnostic pull accessor (routing/composition/merged).

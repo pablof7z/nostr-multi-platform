@@ -7,8 +7,8 @@
 //! | Module        | UniFFI fn              | Retired/retained C-ABI       |
 //! |---------------|------------------------|------------------------------|
 //! | `nip19`       | `encode_profile`       | retired `nmp_app_encode_profile` |
-//! | `nip21`       | `decode_nostr_uri`     | `nmp_nip21_decode_uri`       |
-//! | `content`     | `tokenize_content`     | `nmp_content_tokenize_text`  |
+//! | `nip21`       | `decode_nostr_uri`     | Typed NIP-21/NIP-19 decode   |
+//! | `content`     | `tokenize_content`     | Typed content tokenization   |
 //! | `intent`      | `classify_intent`      | retired `nmp_app_intent_classify` |
 //!
 //! The layout ensures C2–C7 slices stay file-disjoint (no merge conflicts

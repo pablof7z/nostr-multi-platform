@@ -215,66 +215,16 @@ impl LiveKernelSink {
     // hydration uses component-owned `resolve_profile` above.
 }
 
-struct EventRefFromUri {
-    key: CString,
-    metadata_json: CString,
-}
-
-/// Decode a `nostr:` URI via `nmp_nip21_decode_uri` and return the canonical
-/// raw event key plus metadata the kernel resolver expects:
-///   - nevent / note  → hex event_id
-///   - naddr          → canonical coordinate "kind:pubkey:identifier"
-/// Returns `None` on decode failure or non-event/address target (D6: silent
-/// no-op). Used by `LiveKernelSink` before it calls the raw-key ref seam.
-fn event_ref_from_uri(uri: &str) -> Option<EventRefFromUri> {
-    let uri_c = CString::new(uri).ok()?;
-    let raw = nmp_ffi::nmp_nip21_decode_uri(uri_c.as_ptr());
-    if raw.is_null() {
-        return None;
-    }
-    let s = unsafe { std::ffi::CStr::from_ptr(raw) }
-        .to_str()
-        .ok()
-        .map(str::to_owned);
-    nmp_ffi::nmp_free_string(raw);
-    let s = s?;
-    let v: serde_json::Value = serde_json::from_str(&s).ok()?;
-    if !v.get("ok").and_then(|b| b.as_bool()).unwrap_or(false) {
-        return None;
-    }
-    let key = match v.get("target").and_then(|t| t.as_str()) {
-        Some("event") => v.get("event_id").and_then(|e| e.as_str())?.to_owned(),
-        Some("address") => {
-            let kind = v.get("kind").and_then(|k| k.as_u64())?;
-            let pubkey = v.get("pubkey").and_then(|p| p.as_str())?;
-            let identifier = v.get("identifier").and_then(|i| i.as_str())?;
-            format!("{kind}:{pubkey}:{identifier}")
-        }
-        _ => return None,
-    };
-    let relays: Vec<String> = v
-        .get("relays")
-        .and_then(|r| r.as_array())?
-        .iter()
-        .map(|relay| relay.as_str().map(str::to_owned))
-        .collect::<Option<_>>()?;
-    let mut metadata = serde_json::json!({ "hints": relays });
-    if let Some(author) = v.get("author").and_then(|a| a.as_str()) {
-        metadata["author"] = serde_json::Value::String(author.to_string());
-    }
-    if let Some(kind) = v.get("kind").and_then(|k| k.as_u64()) {
-        metadata["kind"] = serde_json::Value::Number(kind.into());
-    }
-    Some(EventRefFromUri {
-        key: CString::new(key).ok()?,
-        metadata_json: CString::new(metadata.to_string()).ok()?,
-    })
-}
-
 // App-owned URI adapter over the typed event-ref resolve/release seams.
 impl EventRefResolver for LiveKernelSink {
     fn resolve_event_ref(&self, uri: &str, consumer_id: &str) {
-        let Some(event_ref) = event_ref_from_uri(uri) else {
+        let Some(event_ref) = nmp_app_gallery::event_ref_uri::event_ref_from_uri(uri) else {
+            return;
+        };
+        let Ok(key) = CString::new(event_ref.key) else {
+            return;
+        };
+        let Ok(metadata_json) = CString::new(event_ref.metadata_json) else {
             return;
         };
         let Ok(cid) = CString::new(consumer_id) else {
@@ -282,20 +232,23 @@ impl EventRefResolver for LiveKernelSink {
         };
         nmp_ffi::nmp_app_resolve_event_embed_with_metadata(
             self.app,
-            event_ref.key.as_ptr(),
+            key.as_ptr(),
             cid.as_ptr(),
-            event_ref.metadata_json.as_ptr(),
+            metadata_json.as_ptr(),
         );
     }
 
     fn release_event_ref(&self, uri: &str, consumer_id: &str) {
-        let Some(event_ref) = event_ref_from_uri(uri) else {
+        let Some(event_ref) = nmp_app_gallery::event_ref_uri::event_ref_from_uri(uri) else {
+            return;
+        };
+        let Ok(key) = CString::new(event_ref.key) else {
             return;
         };
         let Ok(cid) = CString::new(consumer_id) else {
             return;
         };
-        nmp_ffi::nmp_app_release_event_ref(self.app, event_ref.key.as_ptr(), cid.as_ptr());
+        nmp_ffi::nmp_app_release_event_ref(self.app, key.as_ptr(), cid.as_ptr());
     }
 }
 

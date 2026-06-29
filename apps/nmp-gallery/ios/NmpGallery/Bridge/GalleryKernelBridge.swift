@@ -148,10 +148,6 @@ final class GalleryKernelHandle {
 
     // ── Event-ref resolve / release ──────────────────────────────────────
 
-    // App-owned URI adapter: decode nostr: via nmp_nip21_decode_uri, then route
-    // the raw event key plus decoded relay/author metadata to typed event-ref
-    // adapters.
-
     private struct EventRefFromUri {
         let key: String
         let metadataJson: String
@@ -195,37 +191,14 @@ final class GalleryKernelHandle {
     /// Returns nil on decode failure or a non-event URI (D6: silent no-op).
     private func decodeEventRef(from uri: String) -> EventRefFromUri? {
         guard let jsonStr = uri.withCString({ ptr -> String? in
-            guard let cResult = nmp_nip21_decode_uri(ptr) else { return nil }
+            guard let cResult = nmp_app_gallery_event_ref_from_uri(ptr) else { return nil }
             defer { nmp_free_string(cResult) }
             return String(cString: cResult)
         }) else { return nil }
         guard let jsonData = jsonStr.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
-              let ok = obj["ok"] as? Bool, ok
-        else { return nil }
-        let key: String
-        switch obj["target"] as? String {
-        case "event":
-            guard let eventId = obj["event_id"] as? String else { return nil }
-            key = eventId
-        case "address":
-            guard let kind = obj["kind"] as? NSNumber,
-                  let pubkey = obj["pubkey"] as? String,
-                  let identifier = obj["identifier"] as? String
-            else { return nil }
-            key = "\(kind.uint32Value):\(pubkey):\(identifier)"
-        default:
-            return nil
-        }
-        var metadata: [String: Any] = ["hints": obj["relays"] as? [String] ?? []]
-        if let author = obj["author"] as? String {
-            metadata["author"] = author
-        }
-        if let kind = obj["kind"] as? NSNumber {
-            metadata["kind"] = kind.uint32Value
-        }
-        guard let data = try? JSONSerialization.data(withJSONObject: metadata),
-              let metadataJson = String(data: data, encoding: .utf8)
+              let key = obj["key"] as? String,
+              let metadataJson = obj["metadata_json"] as? String
         else { return nil }
         return EventRefFromUri(key: key, metadataJson: metadataJson)
     }
