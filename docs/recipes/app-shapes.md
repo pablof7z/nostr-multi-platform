@@ -49,10 +49,10 @@ derives acquisition below the app boundary.
 
 ## Kind-Filtered Explorer
 
-Use for "show kind N by this tag/author/relay set". If it is a feed, prefer the
-same `open_feed(FeedParams)` doorway with the primary kind and typed
-acquisition scope. Use low-level `open_interest` only for static non-feed
-interests after app/feed policy is already compiled elsewhere.
+Use for "show kind N by this tag/author/relay set". If it is a feed, expose an
+app-owned typed read helper with the primary kind and typed acquisition scope.
+Low-level raw-interest APIs are internal acquisition machinery for
+already-compiled static non-feed reads; do not make them a product shell API.
 
 - Reusable NMP: validates primary kinds, compiles acquisition, routes relays.
 - App Rust core: owns explorer policy such as topic, relay-set id, custom
@@ -78,7 +78,7 @@ For action-triggered discovery, copy the pattern in
 [28 - Action-triggered subscriptions](../builder-guide/28-action-triggered-subscriptions.md):
 `ActionModule` dispatches a typed Claim/Release intent, and the read-session
 helper owns the internal acquisition, replay, output, status, and teardown.
-Do not expose `EnsureInterest`, `open_observed_projection`, or
+Do not expose `EnsureInterest`, observed-projection internals, or
 `ObservedProjection` as app-facing product APIs.
 
 ## Long-Form Reader

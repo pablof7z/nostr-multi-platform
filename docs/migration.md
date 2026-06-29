@@ -15,7 +15,8 @@ The v1 split is:
 |---|---|---|
 | `nmp-defaults` | Pure Layer-5 `AppHost` composition: default NMP modules, routing, planners, registrars, and runtime handles returned to app cores when needed. | Platform runtime handles, C ABI symbols, operator policy, app defaults. |
 | `nmp-native-runtime` | Native runtime handle, actor lifecycle, native typestate builder, runtime slots, pre-start configuration, and native Rust APIs. | C ABI conversion or app/product policy. |
-| `nmp-ffi` / `nmp-android-ffi` | Thin ABI shells over the native runtime: symbols, pointers, strings, panic guards, callbacks, JNI/UniFFI glue. | Runtime ownership, composition policy, protocol logic. |
+| `nmp-uniffi` | Public native binding surface over the native runtime: lifecycle object, callbacks/sinks, typed dispatch bytes, typed read-session helpers, diagnostics, and generated Swift/Kotlin bindings. | Runtime ownership, composition policy, protocol logic, hot snapshot payload format. |
+| `nmp-ffi` / `nmp-android-ffi` | Legacy/internal C and JNI compatibility shims where still required below the public native API. | New app setup guidance, runtime ownership, composition policy, protocol logic. |
 | `nmp-browser-runtime` | Browser Worker runtime, wasm-bindgen export, wasm-bindgen ABI glue (`nmp-browser-runtime::wasm`), browser typestate builder, storage/signing/capability provider registration. | UI rendering, TypeScript crypto fallbacks, protocol policy. |
 
 App shells remain thin. They render snapshots, execute platform capabilities,
@@ -58,11 +59,11 @@ let app = NmpAppBuilder::new()
     .start(RunConfig::default());
 ```
 
-Swift, Kotlin, and C callers still use ABI symbols such as
-`nmp_app_new`, `nmp_app_start`, `nmp_app_set_update_callback`, and
-`nmp_app_dispatch_action_bytes`. The migration is about ownership: new native
-runtime behavior belongs in `nmp-native-runtime`; ABI crates only expose and
-marshal it.
+Swift and Kotlin callers should use generated UniFFI bindings over the native
+runtime. The Rust headless example may still exercise raw compatibility symbols
+for start/stop/free while the remaining migration issues drain, but that is not
+the public app setup path. New native runtime behavior belongs in
+`nmp-native-runtime`; binding crates only expose and marshal it.
 
 ## Defaults Composition
 
@@ -137,8 +138,8 @@ const bytes = GeneratedActionBuilders.sendDm(
 worker.postMessage({ type: "dispatch_bytes", bytes }, [bytes.buffer]);
 ```
 
-The Worker routes those bytes through the same typed action doorway as native
-`nmp_app_dispatch_action_bytes`. There is no wasm-only write vocabulary.
+The Worker routes those bytes through the same typed action doorway as the
+native UniFFI dispatch-byte method. There is no wasm-only write vocabulary.
 
 Signer capability is not uniform across browser backends:
 
@@ -290,6 +291,8 @@ component package.
 - Runtime construction imports `NmpAppBuilder` / `RunConfig` from
   `nmp-native-runtime` for native Rust hosts, or `BrowserAppBuilder` /
   `NmpWasmRuntime` from `nmp-browser-runtime` for browser hosts.
+- Swift/Kotlin app shells consume generated UniFFI bindings over the native
+  runtime; raw C/JNI compatibility symbols are not the starter setup path.
 - `nmp-defaults` is called as pure composition through `AppHost`; no app copies
   default wiring blocks.
 - App/operator policy stays in the leaf app Rust crate or config, not in

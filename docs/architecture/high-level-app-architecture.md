@@ -82,7 +82,8 @@ That one app-facing demand owns the whole lifecycle:
 
 Internally, this may use `open_interest`, observed projection delivery,
 `ReducedSource`-style dynamic source reconciliation, replay cursors, and snapshot
-emission. Those are implementation machinery, not the developer API.
+emission. Those names are internal acquisition/compiler machinery, not concepts
+an app author should copy into a shell, starter, or product module.
 
 The rule is not "delete every complex mechanism". The rule is "one product read
 has one app-facing contract and one owner." Complexity is justified only when it
@@ -145,7 +146,10 @@ Runtime crates own platform lifecycle:
 
 - `nmp-native-runtime` owns native actor lifecycle and native builder state;
 - `nmp-browser-runtime` owns browser worker and wasm runtime constraints;
-- `nmp-ffi` owns C/JNI glue only.
+- `nmp-uniffi` is the public native binding surface for Swift/Kotlin lifecycle,
+  callbacks, typed dispatch bytes, and native session helpers;
+- `nmp-ffi` owns legacy/internal C compatibility shims only, where they still
+  exist below the public native API.
 
 Runtime crates do not own app product policy.
 
@@ -203,12 +207,17 @@ below identifies the migration targets.
 |---|---|---|
 | `register_defaults` | Preset installer for tutorial/test/migration compatibility only; not the production app root (ADR-0069) | `nmp-defaults` preset crate |
 | `open_interest` | Internal acquisition machinery behind typed read sessions (ADR-0070); not app-facing | `nmp-core` substrate |
-| `open_feed` | The surviving product read door | `nmp_app_open_feed` FFI / native `open_feed` |
+| typed read helpers | The surviving product read door | UniFFI native session helpers / wasm structured controls / Rust app helpers |
 | `ObservedProjection` | Internal event-delivery and replay machinery behind typed read sessions (ADR-0070); not app-facing | `nmp-core` substrate |
 | `ReducedSource` | Internal dynamic source reconciliation behind a session (ADR-0070); not app-facing | `nmp-core` substrate |
 | `nmp.feed.home` | A projection key for the typed `OpFeedSnapshot` sidecar; not a special singleton wiring | codegen registry |
 | raw publish body | Low-level arbitrary-kind publish shape under the one write doorway (ADR-0071); reserved for protocol/import/diagnostic paths, not starter app writes | publish action schema |
 | verbatim signed-event publish | Imported/pre-signed events stay imported/manual and do not acquire protocol guarantees (ADR-0071) | protocol/import dispatch doorway |
+
+Native apps should reach these doors through the UniFFI binding. Browser apps
+use the wasm-bindgen Worker binding. Raw C/JNI symbols are not a current app
+setup path; any remaining mention is compatibility or internal transport
+machinery with an owning migration issue.
 
 ## What Should Disappear
 
