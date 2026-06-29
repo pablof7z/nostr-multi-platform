@@ -68,7 +68,7 @@ pub fn register(app: &mut impl AppHost) {
 /// The app module identifier. Namespaces below derive from it.
 pub const APP_MODULE: &str = "{{name}}.entries";
 
-pub const HOME_TIMELINE_PROJECTION: &str = "nmp.feed.home";
+pub const HOME_TIMELINE_PROJECTION: &str = "{{name}}.timeline.home";
 pub const PROFILE_REF_PROJECTION: &str = "refs.profile";
 pub const EVENT_REF_PROJECTION: &str = "refs.event";
 pub const EVENT_ENVELOPES_PROJECTION: &str = "refs.event.envelopes";
@@ -158,9 +158,8 @@ pub fn close_home_timeline_session(
 }
 
 /// Host-side typed write builders this starter expects platform shells to use.
-pub fn starter_action_builder_paths() -> [&'static str; 3] {
+pub fn starter_action_builder_paths() -> [&'static str; 2] {
     [
-        "GeneratedActionBuilders.publishRaw",
         "GeneratedActionBuilders.publishReply",
         "GeneratedActionBuilders.publishProfile",
     ]
@@ -361,12 +360,12 @@ mod tests {
         let keys = starter_projection_keys();
         let builtins = starter_builtin_projection_keys();
 
-        assert!(keys.contains(&"nmp.feed.home"));
+        assert!(keys.contains(&"{{name}}.timeline.home"));
         assert!(keys.contains(&"refs.profile"));
         assert!(keys.contains(&"refs.event"));
         assert!(keys.contains(&"refs.event.envelopes"));
         assert!(builtins.iter().all(|key| keys.contains(key)));
-        assert!(!builtins.contains(&"nmp.feed.home"));
+        assert!(!builtins.contains(&"{{name}}.timeline.home"));
         assert!(keys.iter().all(|key| !key.starts_with("resolved_")));
         assert!(keys.iter().all(|key| !key.starts_with("claimed_")));
     }
@@ -378,7 +377,9 @@ mod tests {
         assert!(builders
             .iter()
             .all(|builder| builder.starts_with("GeneratedActionBuilders.")));
-        assert!(builders.iter().any(|builder| builder.ends_with("publishRaw")));
+        assert!(builders.iter().all(|builder| !builder.ends_with("publishRaw")));
+        assert!(builders.iter().any(|builder| builder.ends_with("publishReply")));
+        assert!(builders.iter().any(|builder| builder.ends_with("publishProfile")));
     }
 
     #[test]
@@ -388,7 +389,7 @@ mod tests {
         assert_eq!(feed.primary_kinds, vec![1]);
         assert_eq!(
             feed.projection,
-            nmp_native_runtime::ProjectionKey("nmp.feed.home".to_string())
+            nmp_native_runtime::ProjectionKey("{{name}}.timeline.home".to_string())
         );
         assert_eq!(feed.acquisition, nmp_native_runtime::FeedScope::ActiveUserFollows);
     }
