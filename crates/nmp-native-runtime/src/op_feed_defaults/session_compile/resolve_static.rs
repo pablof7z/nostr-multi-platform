@@ -55,6 +55,9 @@ pub(super) fn resolve_authors(
             authors.contains(&event.author) && kinds.contains(&event.kind)
         })
     };
+    let attribution_authors = authors.clone();
+    let attribution: nmp_feed::FollowPredicate =
+        Arc::new(move |pubkey: &str| attribution_authors.contains(pubkey));
     // Acquisition: the authors' primary-kind (+ compiler-derived wrapper) timeline.
     let shape = InterestShape::timeline_for(authors.clone(), kinds.clone());
     let interests = vec![AcquisitionInterest::global(shape.clone())];
@@ -63,6 +66,7 @@ pub(super) fn resolve_authors(
     Ok(ReducedSource {
         op_session_identity: OpSessionIdentity::RequireActive,
         admission,
+        attribution,
         interests,
         live_shape,
         extra_acquisition: empty_extra(),
@@ -70,6 +74,7 @@ pub(super) fn resolve_authors(
         resolver_observer_ids: Vec::new(),
         identity_observer_ids: Vec::new(),
         resolver_teardown: Vec::new(),
+        active_follow_set: None,
     })
 }
 
@@ -82,6 +87,7 @@ pub(super) fn resolve_tag(term: &str, kinds: &BTreeSet<u32>) -> ReducedSource {
     // checks BOTH the tag AND author membership instead of silently admitting
     // any member's untagged note).
     let admission: RootAdmission = AdmitExpr::Tag(term.to_string()).to_root_admission();
+    let attribution: nmp_feed::FollowPredicate = Arc::new(|_pubkey: &str| false);
     let shape = tag_interest_shape(term, kinds);
     let interests = vec![AcquisitionInterest::global(shape.clone())];
     let live_shape: LiveShape = {
@@ -91,6 +97,7 @@ pub(super) fn resolve_tag(term: &str, kinds: &BTreeSet<u32>) -> ReducedSource {
     ReducedSource {
         op_session_identity: OpSessionIdentity::RequireActive,
         admission,
+        attribution,
         interests,
         live_shape,
         // The #t acquisition is fully static (the fixed Global interest above);
@@ -100,6 +107,7 @@ pub(super) fn resolve_tag(term: &str, kinds: &BTreeSet<u32>) -> ReducedSource {
         resolver_observer_ids: Vec::new(),
         identity_observer_ids: Vec::new(),
         resolver_teardown: Vec::new(),
+        active_follow_set: None,
     }
 }
 
@@ -159,6 +167,7 @@ pub(super) fn resolve_referrer(
                 .any(|tag| tag.first().map(String::as_str) == Some("e") && tag.get(1) == Some(&id))
         })
     };
+    let attribution: nmp_feed::FollowPredicate = Arc::new(|_pubkey: &str| true);
 
     // Acquisition: two shapes — the #e reply-tail shape (for load_older), plus
     // the root-by-id shape (so the root note itself is replayed into the store).
@@ -176,6 +185,7 @@ pub(super) fn resolve_referrer(
     Ok(ReducedSource {
         op_session_identity: OpSessionIdentity::RequireActive,
         admission,
+        attribution,
         interests,
         live_shape,
         extra_acquisition: empty_extra(),
@@ -183,6 +193,7 @@ pub(super) fn resolve_referrer(
         resolver_observer_ids: Vec::new(),
         identity_observer_ids: Vec::new(),
         resolver_teardown: Vec::new(),
+        active_follow_set: None,
     })
 }
 

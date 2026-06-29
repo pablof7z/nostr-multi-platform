@@ -167,12 +167,13 @@ fn resolve_active_follow_set(
         );
     }
 
-    // Event-aware over the author-only follow predicate: a root is admitted iff
-    // its author is in the live follow set.
-    let admission: RootAdmission = {
-        let pred = follow_set.predicate();
-        Arc::new(move |event: &KernelEvent| pred(&event.author))
-    };
+    // Home/active-follow OP semantics: acquisition limits direct roots to the
+    // live follow set, while attribution lets followed replies surface
+    // non-followed roots. Root admission therefore stays permissive here; it is
+    // not a wildcard relay demand because `live_shape` still constrains pull and
+    // dependent acquisition to the active follow set.
+    let follow_predicate = follow_set.predicate();
+    let admission: RootAdmission = nmp_feed::admit_all_roots();
     let live_shape = follow_set_live_shape(&app.active_account_handle(), &follow_set, kinds);
     let interests = Vec::new();
     let extra_acquisition =
@@ -186,6 +187,7 @@ fn resolve_active_follow_set(
     Ok(ReducedSource {
         op_session_identity,
         admission,
+        attribution: follow_predicate,
         interests,
         extra_acquisition,
         live_shape,
@@ -193,6 +195,7 @@ fn resolve_active_follow_set(
         resolver_observer_ids: vec![observer_id],
         identity_observer_ids: vec![identity_observer_id],
         resolver_teardown: Vec::new(),
+        active_follow_set: Some(follow_set),
     })
 }
 
@@ -245,6 +248,11 @@ fn resolve_list_members(
         let list_id = list_id.to_string();
         Arc::new(move |event: &KernelEvent| projection.members(&list_id).contains(&event.author))
     };
+    let attribution: nmp_feed::FollowPredicate = {
+        let projection = Arc::clone(&projection);
+        let list_id = list_id.to_string();
+        Arc::new(move |pubkey: &str| projection.members(&list_id).contains(pubkey))
+    };
 
     let interests = Vec::new();
 
@@ -279,6 +287,7 @@ fn resolve_list_members(
     Ok(ReducedSource {
         op_session_identity: OpSessionIdentity::RequireActive,
         admission,
+        attribution,
         interests,
         extra_acquisition,
         live_shape,
@@ -286,6 +295,7 @@ fn resolve_list_members(
         resolver_observer_ids: vec![observer_id],
         identity_observer_ids: vec![identity_observer_id],
         resolver_teardown: Vec::new(),
+        active_follow_set: None,
     })
 }
 
@@ -310,6 +320,10 @@ fn resolve_wot(
     let admission: RootAdmission = {
         let graph = Arc::clone(&graph);
         Arc::new(move |event: &KernelEvent| graph.admits(&event.author))
+    };
+    let attribution: nmp_feed::FollowPredicate = {
+        let graph = Arc::clone(&graph);
+        Arc::new(move |pubkey: &str| graph.admits(pubkey))
     };
 
     // Acquire the seed's contact list (kind:3). The seed's DIRECT follows' kind:3
@@ -372,6 +386,7 @@ fn resolve_wot(
     Ok(ReducedSource {
         op_session_identity: OpSessionIdentity::RequireActive,
         admission,
+        attribution,
         interests,
         live_shape,
         extra_acquisition,
@@ -379,6 +394,7 @@ fn resolve_wot(
         resolver_observer_ids: vec![observer_id],
         identity_observer_ids: Vec::new(),
         resolver_teardown: Vec::new(),
+        active_follow_set: None,
     })
 }
 

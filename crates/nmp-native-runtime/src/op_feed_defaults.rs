@@ -103,79 +103,57 @@
 //!
 //! [`ActiveAccountSlot`]: nmp_core::slots::ActiveAccountSlot
 
-use std::collections::BTreeSet;
-use std::sync::atomic::Ordering;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
-use crate::NmpApp;
-use nmp_core::substrate::{
-    empty_suppression_lookup, KernelEvent, ObservedProjectionReconciler, ObservedProjectionRegistrar,
-    SuppressionLookup,
+use crate::{FeedOpenError, NmpApp};
+use nmp_core::substrate::{empty_suppression_lookup, SuppressionLookup};
+use nmp_feed::{
+    FeedAdmission, FeedController, FeedHandle, FeedParams, FeedRanking, FeedRender, FeedScope,
+    FeedWindow, ProjectionKey,
 };
-use nmp_core::ObservedProjectionSink;
-use nmp_feed::{ClosureInterestShape, FeedAdvance, FeedApply, FeedController, PullFeedController};
 use nmp_nip01::meta_timeline::Pubkey;
-use nmp_nip01::op_feed::{op_feed_observer, register_op_feed, FeedEmissionState, FrameIdentity};
 use nmp_nip01::OpFeedEngine;
 use nmp_nip02::ActiveFollowSet;
 use nmp_nip51::MuteListProjection;
-use nmp_planner::InterestShape;
 
 mod active_shape;
 mod dynamic_observer;
-use active_shape::{live_active_follows_shape, read_active};
+#[cfg(test)]
+use active_shape::live_active_follows_shape;
+use active_shape::read_active;
 
 #[cfg(test)]
 use nmp_core::slots::ActiveAccountSlot;
 
 /// What [`register_op_feed_defaults`] hands back to the composition caller.
-///
-/// Returns both registered pieces so tests and diagnostic callers can inspect
-/// the engine and the follow-set producer. Production identity changes are
-/// driven through the `NmpApp` observer registered inside
-/// [`register_op_feed_defaults`]; callers do not manually notify the follow set.
 pub struct OpFeedDefaults {
-    /// The registered OP-feed engine — already wired as a `ObservedProjectionSink`
-    /// (ingest) and a `FeedController` under `"nmp.feed.home"` (output).
-    pub engine: Arc<OpFeedEngine>,
-    /// The registered feed controller under `"nmp.feed.home"`.
+    /// The ordinary feed-session handle for the default home projection.
     ///
-    /// Perspective-change producers call this controller's `reset` path so the
-    /// visible OP-feed state and the seq pull cursor move together.
+    /// `None` means the typed declaration failed closed before registration
+    /// (for example because `primary_feed_kinds` named a derived wrapper kind).
+    pub handle: Option<FeedHandle>,
+    /// Diagnostic handle to the session-owned OP-feed engine.
+    pub engine: Arc<OpFeedEngine>,
+    /// Diagnostic handle to the session-owned feed controller.
     pub controller: Arc<dyn FeedController>,
-    /// The follow-set producer — already wired as a `ObservedProjectionSink` for
-    /// kind:3 updates and as an `NmpApp` identity observer for sign-in, switch,
-    /// logout, and reset.
+    /// Diagnostic handle to the session-owned active follow-set resolver.
     pub follow_set: Arc<ActiveFollowSet>,
-    /// Diagnostic observer ids for `[follow_set, engine]` after initial sync.
-    /// The follow-set observer is active-account dynamic, so it is `0` until a
-    /// signed-in account opens the concrete `authors=[active]` observer.
-    pub observer_ids: [nmp_core::ObservedProjectionId; 2],
+}
+
+struct NoopFeedController;
+
+impl FeedController for NoopFeedController {
+    fn load_older(&self) -> bool {
+        false
+    }
 }
 
 /// Wire the OP-centric home feed into `app`.
 ///
-/// Constructs the [`nmp_nip02::ActiveFollowSet`] over the app's active-account slot,
-/// builds the engine, and registers it as both an [`ObservedProjectionSink`] and
-/// a [`FeedController`] under `"nmp.feed.home"`. Also registers a typed
-/// `NOFS` sidecar projection under the same key (ADR-0038 T1) ALONGSIDE the
-/// generic `Value` `FeedController` — a host with a `NOFS` decoder prefers the
-/// typed payload, others fall back to the generic `Value` subtree. Finally
-/// registers the `ActiveFollowSet` as its own `ObservedProjectionSink` and an
-/// `on_change` callback that resets on any follow-set perspective change.
-///
-/// Returns an [`OpFeedDefaults`] carrying the `Arc<OpFeedEngine>` and
-/// `Arc<ActiveFollowSet>` for direct tests/diagnostics. Both are already
-/// registered with `app`, including identity-change notification.
-///
-/// Chirp calls this during app registration to own the home feed key. A host
-/// must not also register a legacy home-feed producer under `"nmp.feed.home"`.
-///
-/// # CRITICAL DECISION
-///
-/// This function wires render state only. `open_feed(FeedScope::ActiveUserFollows)`
-/// owns acquisition through the reduced-source/dependent-interest path. See the
-/// module docs.
+/// Builds the default home [`FeedParams`] and opens it through the ordinary
+/// typed feed-session compiler. The session engine owns the OP engine,
+/// follow-set resolver, observed projection, pull controller, typed sidecar,
+/// and teardown recipe under the default projection key.
 ///
 /// # Ordering
 ///
@@ -203,275 +181,93 @@ pub fn register_op_feed_defaults_with_mute(
 ) -> OpFeedDefaults {
     let suppression: Arc<dyn SuppressionLookup> = mute.clone();
     let defaults = register_op_feed_defaults_inner(app, viewer, primary_feed_kinds, suppression);
-    let controller_for_mute = defaults.controller.clone();
-    mute.on_change(Box::new(move || {
-        let _ = controller_for_mute.reset();
-    }));
+    if defaults.handle.is_some() {
+        let registry = app.feed_registry_handle();
+        let sender = app.command_sender();
+        mute.on_change(Box::new(move || {
+            if registry.reset(nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY) {
+                sender.mark_changed_since_emit();
+            }
+        }));
+    }
     defaults
 }
 
 fn register_op_feed_defaults_inner(
     app: &NmpApp,
-    viewer: Pubkey,
+    _viewer: Pubkey,
     primary_feed_kinds: Vec<u32>,
     suppression: Arc<dyn SuppressionLookup>,
 ) -> OpFeedDefaults {
-    // ── 1. Follow-set producer ───────────────────────────────────────────
-    //
-    // Constructed over the kernel's active-account slot exposed by `NmpApp`.
-    // Self-seeds the active account's own pubkey immediately.
-    let active_account_slot = app.active_account_handle();
-    let follow_set = nmp_nip02::ActiveFollowSet::new(active_account_slot.clone());
-
-    // Register the follow-set as its own active observed projection so the
-    // active account's kind:3 ingest keeps the set current. No observer opens
-    // before sign-in; once the active pubkey is known the observer is opened
-    // with `authors=[active] / kinds=[3]`, replaying matching cached events
-    // before live activation. Identity-change-driven: no tick polling.
-    let follow_set_observer: Arc<dyn ObservedProjectionSink> = follow_set.clone();
-    let follow_set_account_slot = active_account_slot.clone();
-    let follow_set_observer = ObservedProjectionReconciler::new(
-        app.observed_projection_registrar_handle(),
-        follow_set_observer,
-        "nmp.feed.home.follow_set",
-        1,
-        64,
-        Arc::new(move || {
-            let pubkey = follow_set_account_slot.lock().ok()?.clone()?;
-            Some(nmp_planner::InterestShape {
-                kinds: [nmp_kinds::KIND_CONTACT_LIST].into_iter().collect(),
-                authors: [pubkey].into_iter().collect(),
-                ..Default::default()
-            })
-        }),
-    );
-
-    // ── 2. Event lookup (V-83 — real synchronous kernel event read) ──────
-    //
-    // `Fn(&EventId) -> Option<KernelEvent>`. The engine's repost L-2/L-5
-    // backward-hydration paths consult this to read a parent/target/wrapper
-    // event the engine has not yet observed but the kernel has already cached.
-    // V-83 added `NmpApp::event_by_id` over the kernel's published `EventStore`
-    // handle (`event_store_handle()` returns the shared `Arc` slot the actor
-    // publishes into). The closure captures the slot handle (NOT
-    // `&app`, which it would outlive) and reads through it on every call, so a
-    // `Reset` (which re-publishes a fresh store into the same slot) is observed
-    // without re-capturing. Pre-`nmp_app_start` the slot is empty → `None`, so
-    // wiring is safe before the kernel exists; the L-2/L-5 paths re-check on the
-    // next event arrival.
-    let event_store = app.event_store_handle();
-    let event_lookup: nmp_feed::EventLookup = Arc::new(move |id: &nmp_core::substrate::EventId| {
-        nmp_core::slots::event_by_id_from_store(&event_store, id)
-    });
-    let event_lookup_for_observer = event_lookup.clone();
-
-    // ── 3. Construct the engine ──────────────────────────────────────────
-    let engine = register_op_feed(viewer.clone(), follow_set.predicate(), event_lookup);
-
-    // ── 4. Register the engine (ingest + output) ─────────────────────────
-    let observer = op_feed_observer(engine.clone(), event_lookup_for_observer, suppression);
-
-    // ── 4a. Wire the home feed to the seq-ordered pull pager (ADR-0058 §8 6B) ──
-    //
-    // Pull uses the same live active-follows shape as acquisition, the in-process
-    // event-store scan, and the suppression/delete-aware observer used by relay
-    // fan-out. `advance` only grows the render viewport after visible progress.
-    let live_shape: Arc<dyn Fn() -> Option<InterestShape> + Send + Sync> = {
-        let follow_set = follow_set.clone();
-        // Capture the live active-account slot so logout/switch fail closed and
-        // account changes work without re-registering the controller.
-        let account_slot = active_account_slot.clone();
-        // Invalid app-declared primary kinds (for example `6` or `16`) fail
-        // closed: no acquisition shape, no broad scan.
-        let kinds: BTreeSet<u32> =
-            nmp_nip18::try_acquisition_kinds_for_primary(primary_feed_kinds.iter().copied())
-                .unwrap_or_default();
-        Arc::new(move || live_active_follows_shape(&account_slot, &follow_set, &kinds))
+    let params = default_home_feed_params(primary_feed_kinds);
+    let compiler = move |app: &NmpApp,
+                         params: &FeedParams,
+                         kinds: &std::collections::BTreeSet<u32>|
+          -> Result<
+        (
+            nmp_feed::FeedSessionBuild,
+            session_compile::OpScopeSessionArtifacts,
+        ),
+        FeedOpenError,
+    > {
+        let detailed = session_compile::compile_feed_params_with_suppression_and_artifacts(
+            app,
+            params,
+            kinds,
+            Arc::clone(&suppression),
+        )?;
+        let Some(artifacts) = detailed.artifacts else {
+            return Err(FeedOpenError::ScopeNotSupportedYet {
+                scope: "default-home-feed-artifacts",
+            });
+        };
+        Ok((detailed.build, artifacts))
     };
-    let provider: Arc<dyn nmp_feed::FeedInterestShape + Send + Sync> = {
-        let live_shape = live_shape.clone();
-        Arc::new(ClosureInterestShape::new(move || live_shape()))
-    };
-    let observer_for_registry: Arc<dyn ObservedProjectionSink> = observer.clone();
-    let engine_observer = dynamic_observer::DynamicObservedProjection::new(
-        app.observed_projection_handle(),
-        observer_for_registry,
-        "nmp.feed.home.engine",
-        0,
-        live_shape,
-        512,
-    );
-    engine_observer.sync();
-    let engine_observer_id = engine_observer.current_id();
-    let pull = app.feed_pull_fn();
-    let apply: FeedApply = {
-        let observer = Arc::clone(&observer);
-        let engine = Arc::clone(&engine);
-        Arc::new(move |event: &KernelEvent| {
-            let before = visible_op_feed_payload(&engine);
-            observer.on_kernel_event(event);
-            visible_op_feed_payload(&engine) != before
-        })
-    };
-    let advance: FeedAdvance = {
-        let engine = Arc::clone(&engine);
-        Arc::new(move || {
-            engine.grow_visible_window();
-        })
-    };
-    let reset: nmp_feed::FeedReset = {
-        let engine = Arc::clone(&engine);
-        Arc::new(move || {
-            let had_rows = !engine.snapshot_current_window().cards.is_empty();
-            engine.reset_for_perspective_change();
-            had_rows
-        })
-    };
-    // Register unconditionally; the provider re-reads live shape on load_older.
-    let controller: Arc<dyn FeedController> =
-        PullFeedController::new_with_perspective(provider, pull, apply, None, Some(reset), advance);
-    app.register_feed(nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY, controller.clone());
-
-    // ── 4b. Register the typed NOFS sidecar (ADR-0038 Commitment 5) ───────
-    //
-    // ADR-0055 Rung 6 Option A (R6-S1): the typed sidecar now uses
-    // `FeedEmissionState` to omit an unchanged feed frame when the host has
-    // declared incremental-apply capability (exact byte equality, monotonic rev).
-    //
-    // Emit the typed FlatBuffers `OpFeedSnapshot` (`schema_id
-    // "nmp.nip01.opfeed"`, `file_identifier "NOFS"`) ALONGSIDE the generic
-    // `Value` `FeedController` registration above. A host with a `NOFS` decoder
-    // prefers this typed payload; an un-updated host sees an unrecognized
-    // descriptor and falls back to the generic `Value` subtree (the permanent
-    // fallback from PR #747). Additive — un-updated hosts are unaffected.
-    //
-    // Known waste, deferred (ADR-0038 Commitment 5): this closure snapshots the
-    // engine again on the same tick the `FeedController` path snapshots it (two
-    // window materializations per 4 Hz tick). Not load-bearing for correctness;
-    // a shared per-tick snapshot cache is a tracked follow-up.
-    //
-    // R6-S1 emission state + frame-identity rebaseline (the freeze fix): the
-    // producer rebaselines on the EXACT signal the host's `ProjectionCache` resets
-    // on — the frame `(session_id, snapshot_epoch)` tuple, published each tick into
-    // shared `Arc<AtomicU64>` handles the closure reads lock-free. Forcing a full
-    // baseline whenever either component changes covers account-switch, Reset, and
-    // any future epoch-class bump with ONE durable signal (no bespoke per-event
-    // epoch counter — the Reset-blind `emission_epoch` is deleted).
-    let engine_for_typed = Arc::clone(&engine);
-    let incremental_apply = app.incremental_apply_handle();
-    let (frame_session_id, frame_snapshot_epoch) = app.frame_identity_handles();
-    // The closure must be `Send + Sync` (`register_feed_render_source`), so the
-    // `FeedEmissionState` is wrapped in a `Mutex` to satisfy `Sync`; the lock is
-    // uncontested (only the actor thread calls the closure, under the registry's
-    // own mutex).
-    let emission_state = Arc::new(Mutex::new(FeedEmissionState::new(incremental_apply)));
-
-    // ── 4b. Structural typed-sidecar + feed-author provider (ADR-0063 D7,
-    //         #1671 Lane H) ────────────────────────────────────────────────────
-    //
-    // ONE `FeedRenderSource` materializes the home feed's window ONCE per tick and
-    // feeds BOTH the typed sidecar AND the feed-author auto-resolve provider via
-    // `register_feed_render_source` — structural pairing (the sidecar cannot exist
-    // without the provider that resolves the authors it renders). Both lanes read
-    // the SAME per-tick materialization, so authors-resolved == window-emitted even
-    // if a concurrent `load_older` widens the window mid-tick (no 1-frame blank gap;
-    // ADR-0038). The home feed is PERMANENT so the provider is never removed. R6-S1
-    // emission-state omit + frame-identity rebaseline live in the encoder closure.
-    let source =
-        nmp_feed::FeedRenderSource::new(move || engine_for_typed.snapshot_current_window());
-    app.register_feed_render_source(
-        nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY,
-        source,
-        move |snapshot| {
-            let payload = nmp_nip01::op_feed::encode_op_feed_snapshot(snapshot);
-            // Read this tick's frame identity lock-free (the kernel published it
-            // at the top of `make_update`, before this closure runs).
-            let identity = FrameIdentity {
-                session_id: frame_session_id.load(Ordering::Acquire),
-                snapshot_epoch: frame_snapshot_epoch.load(Ordering::Acquire),
-            };
-            // R6-S1: consult emission state to decide whether to emit or omit.
-            let Ok(mut state) = emission_state.lock() else {
-                // Poisoned mutex — degrade to always-emit (D6: safe fallback).
-                return Some(nmp_core::TypedProjectionData {
-                    key: nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY.to_string(),
-                    schema_id: nmp_nip01::op_feed::OP_FEED_SCHEMA_ID.to_string(),
-                    schema_version: nmp_nip01::op_feed::OP_FEED_SCHEMA_VERSION,
-                    file_identifier: String::from_utf8_lossy(
-                        nmp_nip01::op_feed::OP_FEED_FILE_IDENTIFIER,
-                    )
-                    .into_owned(),
-                    payload,
-                    ..Default::default()
-                });
-            };
-            let emit_decision = state.should_emit(payload, identity);
-            drop(state); // release the lock before constructing the return value
-            match emit_decision {
-                None => {
-                    // Byte-identical to last emission and capability is ON → omit.
-                    // The host cache retains the prior value (omit==retain).
-                    None
-                }
-                Some((payload, projection_rev)) => Some(nmp_core::TypedProjectionData {
-                    key: nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY.to_string(),
-                    schema_id: nmp_nip01::op_feed::OP_FEED_SCHEMA_ID.to_string(),
-                    schema_version: nmp_nip01::op_feed::OP_FEED_SCHEMA_VERSION,
-                    file_identifier: String::from_utf8_lossy(
-                        nmp_nip01::op_feed::OP_FEED_FILE_IDENTIFIER,
-                    )
-                    .into_owned(),
-                    payload,
-                    projection_rev,
-                    ..Default::default()
-                }),
-            }
+    match app.open_feed_with_output(&params, compiler) {
+        Ok((handle, artifacts)) => OpFeedDefaults {
+            handle: Some(handle),
+            engine: artifacts.engine,
+            controller: artifacts.controller,
+            follow_set: artifacts
+                .follow_set
+                .unwrap_or_else(|| fallback_follow_set(app)),
         },
-    );
-
-    // ── 5. Perspective reset ─────────────────────────────────────────────
-    //
-    // `on_change` fires on active-account kind:3 replacement, account switch,
-    // and logout. Each changes the app's perspective on which authors can make
-    // rows appear, so the current feed window is invalid and must clear
-    // immediately. The acquisition/cache-serve path then repopulates rows that
-    // still qualify under the new perspective.
-    //
-    // R6-S1: this callback no longer touches the typed-projection emission state.
-    // Account switches bump the kernel's `snapshot_epoch` (identity_state.rs →
-    // `bump_epoch`), which the kernel publishes into the frame-identity handles
-    // the typed closure reads. Follow-list changes emit new feed bytes because
-    // the engine state changes.
-    let controller_for_cb = controller.clone();
-    let engine_observer_for_cb = engine_observer.clone();
-    follow_set.on_change(Box::new(move || {
-        engine_observer_for_cb.sync();
-        let _ = controller_for_cb.reset();
-    }));
-
-    let follow_set_for_identity = follow_set.clone();
-    let follow_set_observer_for_identity = follow_set_observer.clone();
-    // Identity changes are pushed from `NmpApp` after the actor has written the
-    // active-account slot. This is the canonical app/FFI composition seam for
-    // OP-feed account reset; hosts do not call `notify_account_changed` manually.
-    app.register_identity_change_observer(move |_| {
-        follow_set_for_identity.notify_account_changed();
-        follow_set_observer_for_identity.sync();
-    });
-    // Eager sync for cold-start: account may already be set before registration.
-    follow_set_observer.sync();
-
-    OpFeedDefaults {
-        engine,
-        controller,
-        follow_set,
-        observer_ids: [follow_set_observer.current_id(), engine_observer_id],
+        Err(_) => fallback_defaults(app),
     }
 }
 
-fn visible_op_feed_payload(engine: &OpFeedEngine) -> Vec<u8> {
-    let snapshot = engine.snapshot_current_window();
-    nmp_nip01::op_feed::encode_op_feed_snapshot(&snapshot)
+#[must_use]
+pub fn default_home_feed_params(primary_feed_kinds: Vec<u32>) -> FeedParams {
+    FeedParams {
+        primary_kinds: primary_feed_kinds,
+        render: FeedRender::OpCentric,
+        acquisition: FeedScope::ActiveUserFollows,
+        admission: FeedAdmission::All,
+        ranking: FeedRanking::ChronologicalDesc,
+        window: FeedWindow {
+            initial_limit: nmp_feed::DEFAULT_FEED_WINDOW_LIMIT,
+        },
+        projection: ProjectionKey(nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY.to_string()),
+    }
+}
+
+fn fallback_defaults(app: &NmpApp) -> OpFeedDefaults {
+    let follow_set = fallback_follow_set(app);
+    let event_store = app.event_store_handle();
+    let event_lookup: nmp_feed::EventLookup =
+        Arc::new(move |id| nmp_core::slots::event_by_id_from_store(&event_store, id));
+    let engine =
+        nmp_nip01::op_feed::register_op_feed(String::new(), follow_set.predicate(), event_lookup);
+    OpFeedDefaults {
+        handle: None,
+        engine,
+        controller: Arc::new(NoopFeedController),
+        follow_set,
+    }
+}
+
+fn fallback_follow_set(app: &NmpApp) -> Arc<ActiveFollowSet> {
+    ActiveFollowSet::new(app.active_account_handle())
 }
 
 // #1740 step 2 — `FeedParams` → existing-registration compiler (sibling module).

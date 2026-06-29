@@ -334,6 +334,23 @@ impl NmpApp {
         params: &FeedParams,
         compiler: &impl FeedCompiler,
     ) -> Result<FeedHandle, FeedOpenError> {
+        self.open_feed_with_output(params, |app, params, acquisition_kinds| {
+            compiler
+                .compile(app, params, acquisition_kinds)
+                .map(|build| (build, ()))
+        })
+        .map(|(handle, ())| handle)
+    }
+
+    pub(crate) fn open_feed_with_output<T>(
+        &self,
+        params: &FeedParams,
+        compile: impl FnOnce(
+            &NmpApp,
+            &FeedParams,
+            &std::collections::BTreeSet<u32>,
+        ) -> Result<(FeedCompileOutput, T), FeedOpenError>,
+    ) -> Result<(FeedHandle, T), FeedOpenError> {
         // 1. Fail-closed primary-kind validation, ENFORCED at the seam (not left
         //    to each compiler). The single canonical validator rejects wrapper/
         //    delete/empty primary kinds and derives the acquisition kind set.
@@ -342,7 +359,7 @@ impl NmpApp {
 
         // 2. Compile + register over the existing mechanics. A scope not yet
         //    wired fails closed here WITHOUT having registered anything.
-        let build = compiler.compile(self, params, &acquisition_kinds)?;
+        let (build, output) = compile(self, params, &acquisition_kinds)?;
         let projection_key = build.projection_key.clone();
 
         // 3. Record the teardown recipe; mint the session id.
@@ -353,10 +370,13 @@ impl NmpApp {
         }
 
         // 4. Hand back the handle the app addresses the session by.
-        Ok(FeedHandle {
-            projection_key,
-            session_id,
-        })
+        Ok((
+            FeedHandle {
+                projection_key,
+                session_id,
+            },
+            output,
+        ))
     }
 
     /// #1740 step 2 — tear down a session opened by [`Self::open_feed`], using

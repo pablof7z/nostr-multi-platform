@@ -2,6 +2,12 @@
 //! shape provider (ADR-0058 §8 6B, B1 logout-race fail-close).
 
 use super::*;
+use std::collections::BTreeSet;
+use std::sync::Mutex;
+
+use nmp_core::substrate::KernelEvent;
+use nmp_core::ObservedProjectionSink;
+use nmp_nip02::ActiveFollowSet;
 
 fn kind3(author: &str, follows: &[&str]) -> KernelEvent {
     let mut tags: Vec<Vec<String>> = follows

@@ -54,6 +54,10 @@ pub(super) fn resolve_active_mute_list_members(
         let projection = Arc::clone(&projection);
         Arc::new(move |event: &KernelEvent| projection.muted_pubkeys().contains(&event.author))
     };
+    let attribution: nmp_feed::FollowPredicate = {
+        let projection = Arc::clone(&projection);
+        Arc::new(move |pubkey: &str| projection.muted_pubkeys().contains(pubkey))
+    };
 
     let live_shape: LiveShape = {
         let projection = Arc::clone(&projection);
@@ -84,6 +88,7 @@ pub(super) fn resolve_active_mute_list_members(
     Ok(ReducedSource {
         op_session_identity: OpSessionIdentity::RequireActive,
         admission,
+        attribution,
         interests: Vec::new(),
         extra_acquisition,
         live_shape,
@@ -91,6 +96,7 @@ pub(super) fn resolve_active_mute_list_members(
         resolver_observer_ids: vec![observer_id],
         identity_observer_ids: vec![identity_observer_id],
         resolver_teardown: Vec::new(),
+        active_follow_set: None,
     })
 }
 

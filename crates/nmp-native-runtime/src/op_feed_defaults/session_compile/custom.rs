@@ -162,6 +162,7 @@ pub(super) fn combine_admission_gate(
     let ReducedSource {
         op_session_identity: acq_op_session_identity,
         admission: acq_admission,
+        attribution: acq_attribution,
         mut interests,
         live_shape: acq_live_shape,
         extra_acquisition: acq_extra,
@@ -169,6 +170,7 @@ pub(super) fn combine_admission_gate(
         mut resolver_observer_ids,
         mut identity_observer_ids,
         mut resolver_teardown,
+        active_follow_set,
     } = acquisition;
     let op_session_identity = acq_op_session_identity.combine(gate.op_session_identity);
 
@@ -178,6 +180,11 @@ pub(super) fn combine_admission_gate(
         let lp = acq_admission;
         let rp = gate.admission;
         Arc::new(move |ev: &KernelEvent| lp(ev) && rp(ev))
+    };
+    let combined_attribution: nmp_feed::FollowPredicate = {
+        let lp = acq_attribution;
+        let rp = gate.attribution;
+        Arc::new(move |pubkey: &str| lp(pubkey) && rp(pubkey))
     };
 
     // Acquisition combine — KEEP the gate's dependency + row acquisition so its
@@ -208,6 +215,7 @@ pub(super) fn combine_admission_gate(
     ReducedSource {
         op_session_identity,
         admission: combined,
+        attribution: combined_attribution,
         interests,
         live_shape,
         extra_acquisition,
@@ -215,6 +223,7 @@ pub(super) fn combine_admission_gate(
         resolver_observer_ids,
         identity_observer_ids,
         resolver_teardown,
+        active_follow_set,
     }
 }
 
@@ -294,9 +303,12 @@ mod tests {
     fn scope(authors: &[&str], interest: Option<AcquisitionInterest>) -> ReducedSource {
         let admission = AdmitExpr::Authors(authors.iter().map(|s| (*s).to_string()).collect())
             .to_root_admission();
+        let author_set: std::collections::BTreeSet<String> =
+            authors.iter().map(|s| (*s).to_string()).collect();
         ReducedSource {
             op_session_identity: OpSessionIdentity::RequireActive,
             admission,
+            attribution: Arc::new(move |pubkey: &str| author_set.contains(pubkey)),
             interests: interest.into_iter().collect(),
             live_shape: Arc::new(|| None),
             extra_acquisition: Arc::new(Vec::new),
@@ -304,6 +316,7 @@ mod tests {
             resolver_observer_ids: Vec::new(),
             identity_observer_ids: Vec::new(),
             resolver_teardown: Vec::new(),
+            active_follow_set: None,
         }
     }
 

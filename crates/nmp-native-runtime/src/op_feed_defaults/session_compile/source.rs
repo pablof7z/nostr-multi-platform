@@ -9,7 +9,7 @@
 use std::sync::Arc;
 
 use nmp_core::{DependentInterestChild, ObservedProjectionId};
-use nmp_feed::{RootAdmission, TeardownAction};
+use nmp_feed::{FollowPredicate, RootAdmission, TeardownAction};
 use nmp_planner::{InterestScope, InterestShape};
 
 /// A closure that, given the feed-window reset trigger, installs it on the
@@ -74,6 +74,13 @@ pub(super) struct ReducedSource {
     pub op_session_identity: OpSessionIdentity,
     /// The engine's event-aware root-admission predicate.
     pub admission: RootAdmission,
+    /// The OP-feed attribution predicate.
+    ///
+    /// This is intentionally separate from root admission. A followed user's
+    /// reply can surface a non-followed root in the home feed: the root enters
+    /// because it is referenced by an admitted attribution, not because the root
+    /// author is part of the source set.
+    pub attribution: FollowPredicate,
     /// Fixed typed acquisition interests.
     pub interests: Vec<AcquisitionInterest>,
     /// Live pull acquisition shape.
@@ -88,6 +95,8 @@ pub(super) struct ReducedSource {
     pub identity_observer_ids: Vec<crate::IdentityChangeObserverId>,
     /// Resolver-owned dynamic observers that need custom teardown.
     pub resolver_teardown: Vec<TeardownAction>,
+    /// Diagnostic hook for the default active-follows session.
+    pub active_follow_set: Option<Arc<nmp_nip02::ActiveFollowSet>>,
 }
 
 /// No extra acquisition beyond fixed interests.

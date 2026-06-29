@@ -1,14 +1,11 @@
 //! The generalized session-engine builder for non-default feed scopes (#1740
 //! step 3).
 //!
-//! Every [`nmp_feed::FeedScope`] compiles through here, including the framework
-//! home `ActiveUserFollows` source. The builder is a SESSION WRAPPER over the
-//! existing OP-feed mechanics — the same generic engine
-//! [`nmp_nip01::op_feed::register_op_feed`] the home feed uses — parameterized
-//! on:
+//! Every [`nmp_feed::FeedScope`] compiles through here. The builder is a session
+//! wrapper over the existing OP-feed mechanics, parameterized on:
 //!
 //! * a COMPILED, EVENT-AWARE admission predicate (the engine's
-//!   [`nmp_feed::RootAdmission`], built INSIDE the framework from resolved
+//!   [`nmp_feed::RootAdmission`], built from resolved
 //!   pubkey-set DATA / `#t` tag terms — no app closure crosses the seam) that
 //!   gates which roots ENTER the feed (#1740 step 3); and
 //! * a set of INTERNAL acquisition interests, registered via the kernel's
@@ -34,17 +31,31 @@ use crate::{FeedOpenError, NmpApp};
 use nmp_core::actor::ActorCommand;
 use nmp_core::actor::InterestsCommand;
 use nmp_core::subs::SubOwnerKey;
-use nmp_core::substrate::{empty_suppression_lookup, KernelEvent};
+use nmp_core::substrate::{KernelEvent, SuppressionLookup};
 use nmp_core::ObservedProjectionSink;
 use nmp_feed::{
     ClosureInterestShape, FeedAdvance, FeedApply, FeedController, FeedRender, FeedReset,
     FeedSessionBuild, PullFeedController, RootAdmission,
 };
+use nmp_nip01::OpFeedEngine;
 use nmp_planner::InterestScope;
 
 use super::source::{
     acquisition_children, AcquisitionInterest, ExtraAcquisition, OpSessionIdentity, ReducedSource,
 };
+
+mod flat_session;
+
+pub(crate) struct ScopeSessionBuild {
+    pub build: FeedSessionBuild,
+    pub artifacts: Option<OpScopeSessionArtifacts>,
+}
+
+pub(crate) struct OpScopeSessionArtifacts {
+    pub engine: Arc<OpFeedEngine>,
+    pub controller: Arc<dyn FeedController>,
+    pub follow_set: Option<Arc<nmp_nip02::ActiveFollowSet>>,
+}
 
 /// Build a registered feed session for a reduced non-default source and return
 /// its teardown recipe.
@@ -53,15 +64,23 @@ use super::source::{
 /// `resolved` carries the compiled admission predicate, fixed + live
 /// acquisition interests, reset hooks, and any resolver observer ids that must
 /// be revoked on close.
-pub(super) fn build_scope_session(
+pub(super) fn build_scope_session_with_artifacts(
     app: &NmpApp,
     key: &str,
     render: &FeedRender,
     resolved: ReducedSource,
-) -> Result<FeedSessionBuild, FeedOpenError> {
+    suppression: Arc<dyn SuppressionLookup>,
+) -> Result<ScopeSessionBuild, FeedOpenError> {
     match render {
-        FeedRender::OpCentric => build_op_scope_session(app, key, resolved),
-        FeedRender::Flat => build_flat_scope_session(app, key, resolved),
+        FeedRender::OpCentric => build_op_scope_session(app, key, resolved, suppression),
+        FeedRender::Flat => {
+            flat_session::build_flat_scope_session(app, key, resolved).map(|build| {
+                ScopeSessionBuild {
+                    build,
+                    artifacts: None,
+                }
+            })
+        }
     }
 }
 
@@ -69,10 +88,12 @@ fn build_op_scope_session(
     app: &NmpApp,
     key: &str,
     resolved: ReducedSource,
-) -> Result<FeedSessionBuild, FeedOpenError> {
+    suppression: Arc<dyn SuppressionLookup>,
+) -> Result<ScopeSessionBuild, FeedOpenError> {
     let ReducedSource {
         op_session_identity,
         admission,
+        attribution,
         interests,
         live_shape,
         extra_acquisition,
@@ -80,6 +101,7 @@ fn build_op_scope_session(
         resolver_observer_ids,
         identity_observer_ids,
         resolver_teardown,
+        active_follow_set,
     } = resolved;
 
     let viewer = match (
@@ -95,38 +117,14 @@ fn build_op_scope_session(
         }
     };
 
-    // ── 1. Engine over the COMPILED, EVENT-AWARE admission predicate ──────
+    // ── 1. Engine over separate root-admission and attribution predicates ──
     //
-    // The compiled predicate IS the engine's ROOT-admission gate (#1740 step 3):
-    // a root whose author/tags the perspective does not admit never enters the
-    // feed — the perspective filters the rendered feed itself, not merely reply
-    // attribution. It is built inside the framework (from resolved DATA or a
-    // live framework projection) — nothing app-supplied crosses the seam. A
-    // permissive follow-attribution predicate is NOT needed here (a session's
-    // attribution still flows through the engine's `follow` gate, which the home
-    // path sets; sessions reuse the same observer wiring). We pass the compiled
-    // perspective as BOTH so a session admits roots AND attributes replies from
-    // in-scope authors only.
+    // Root admission gates events that may enter the feed as roots. Attribution
+    // gates authors whose replies/reposts may surface or annotate roots. These
+    // are related but not the same: a followed reply can surface a non-followed
+    // root in the default home feed.
     let root_admission: RootAdmission = admission;
-    let follow_predicate: nmp_feed::FollowPredicate = {
-        let root_admission = root_admission.clone();
-        Arc::new(move |pk: &str| {
-            // Reply attribution: gate on the author alone (build a minimal
-            // author-only event view). For author-scope perspectives this is the
-            // exact membership test; tag-scope perspectives never qualify a reply
-            // as attribution (a reply carrying no scope tag is correctly dropped).
-            let probe = nmp_core::substrate::KernelEvent {
-                id: String::new(),
-                author: pk.to_string(),
-                kind: 0,
-                created_at: 0,
-                tags: Vec::new(),
-                content: String::new(),
-                relay_provenance: Vec::new(),
-            };
-            root_admission(&probe)
-        })
-    };
+    let follow_predicate = attribution;
     let event_store = app.event_store_handle();
     let event_lookup: nmp_feed::EventLookup = Arc::new(move |id: &nmp_core::substrate::EventId| {
         nmp_core::slots::event_by_id_from_store(&event_store, id)
@@ -143,7 +141,7 @@ fn build_op_scope_session(
     let observer = nmp_nip01::op_feed::op_feed_observer(
         engine.clone(),
         event_lookup_for_observer,
-        empty_suppression_lookup(),
+        suppression,
     );
     let observer_for_registry: Arc<dyn ObservedProjectionSink> = observer.clone();
     let engine_observer = super::super::dynamic_observer::DynamicObservedProjection::new(
@@ -251,8 +249,10 @@ fn build_op_scope_session(
     };
     sync_acquisition(&extra_acquisition);
 
-    // Wire each underlying-set change to (a) re-sync acquisition for the new
-    // members, then (b) reset the window so it regrows under the new perspective.
+    // Wire each underlying-set change to re-sync acquisition for the new
+    // members, then reset the window/cursor. `load_older` remains the single
+    // on-demand replay path, so a source-set change must not secretly consume
+    // the pull cursor before the host reports viewport intent.
     for hook in reset_hooks {
         let controller_for_reset = controller.clone();
         let extra = extra_acquisition.clone();
@@ -262,9 +262,7 @@ fn build_op_scope_session(
         let reset_trigger: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
             sync_observer.sync();
             sync_acquisition(&extra);
-            let reset = controller_for_reset.reset();
-            let replayed = controller_for_reset.load_older();
-            if reset || replayed {
+            if controller_for_reset.reset() {
                 notify.mark_changed_since_emit();
             }
         });
@@ -295,142 +293,16 @@ fn build_op_scope_session(
     teardown.push(engine_observer.teardown_action()); // exec #2
     teardown.push(teardown_handle.unregister_feed(key.to_string())); // exec #1 (first)
 
-    Ok(FeedSessionBuild {
-        projection_key: nmp_feed::ProjectionKey(key.to_string()),
-        teardown,
-    })
-}
-
-fn build_flat_scope_session(
-    app: &NmpApp,
-    key: &str,
-    resolved: ReducedSource,
-) -> Result<FeedSessionBuild, FeedOpenError> {
-    let ReducedSource {
-        op_session_identity: _,
-        admission,
-        interests,
-        live_shape,
-        extra_acquisition,
-        reset_hooks,
-        resolver_observer_ids,
-        identity_observer_ids,
-        resolver_teardown,
-    } = resolved;
-
-    let feed = nmp_nip01::FlatFeed::new(admission);
-    let observer_for_registry: Arc<dyn ObservedProjectionSink> = feed.clone();
-    let engine_observer = super::super::dynamic_observer::DynamicObservedProjection::new(
-        app.observed_projection_handle(),
-        observer_for_registry,
-        format!("{key}.observer"),
-        observed_projection_scope(&interests),
-        live_shape.clone(),
-        512,
-    );
-    engine_observer.sync();
-
-    let provider: Arc<dyn nmp_feed::FeedInterestShape + Send + Sync> = {
-        let live_shape = live_shape.clone();
-        Arc::new(ClosureInterestShape::new(move || live_shape()))
-    };
-    let pull = app.feed_pull_fn();
-    let apply: FeedApply = {
-        let feed = Arc::clone(&feed);
-        Arc::new(move |event: &KernelEvent| {
-            let before = visible_flat_payload(&feed);
-            feed.on_kernel_event(event);
-            visible_flat_payload(&feed) != before
-        })
-    };
-    let advance: FeedAdvance = {
-        let feed = Arc::clone(&feed);
-        Arc::new(move || {
-            feed.grow_visible_window();
-        })
-    };
-    let reset: FeedReset = {
-        let feed = Arc::clone(&feed);
-        Arc::new(move || feed.reset_for_perspective_change())
-    };
-    let controller: Arc<dyn FeedController> =
-        PullFeedController::new_with_perspective(provider, pull, apply, None, Some(reset), advance);
-    app.register_feed(key.to_string(), controller.clone());
-
-    let feed_for_typed = Arc::clone(&feed);
-    let typed_key = key.to_string();
-    let source = nmp_feed::FeedRenderSource::new(move || feed_for_typed.snapshot_current_window());
-    app.register_feed_render_source(key.to_string(), source, move |snapshot| {
-        Some(nmp_core::TypedProjectionData {
-            key: typed_key.clone(),
-            schema_id: nmp_nip01::op_feed::OP_FEED_SCHEMA_ID.to_string(),
-            schema_version: nmp_nip01::op_feed::OP_FEED_SCHEMA_VERSION,
-            file_identifier: String::from_utf8_lossy(nmp_nip01::op_feed::OP_FEED_FILE_IDENTIFIER)
-                .into_owned(),
-            payload: nmp_nip01::op_feed::encode_op_feed_snapshot(snapshot),
-            ..Default::default()
-        })
-    });
-    let replayed_tail = app.load_older_feed(key);
-    let replayed_ids = super::flat_replay::replay_fixed_event_ids(app, &feed, &interests);
-    if replayed_ids && !replayed_tail {
-        (app.feed_teardown().mark_changed())();
-    }
-
-    let sender = app.command_sender();
-    let owner = session_acquisition_owner(key);
-    let fixed_acquisition = Arc::new(interests);
-    let sync_acquisition = {
-        let sender = sender.clone();
-        let fixed_acquisition = Arc::clone(&fixed_acquisition);
-        move |extra: &ExtraAcquisition| {
-            let children = acquisition_children(&fixed_acquisition, extra);
-            let _ = sender.send(ActorCommand::Interests(
-                InterestsCommand::ReplaceDependentInterestSet {
-                    owner,
-                    children,
-                    reason: "feed-session-acquisition".to_string(),
-                },
-            ));
-        }
-    };
-    sync_acquisition(&extra_acquisition);
-    for hook in reset_hooks {
-        let controller_for_reset = controller.clone();
-        let extra = extra_acquisition.clone();
-        let sync_acquisition = sync_acquisition.clone();
-        let sync_observer = engine_observer.clone();
-        let notify = sender.clone();
-        let reset_trigger: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
-            sync_observer.sync();
-            sync_acquisition(&extra);
-            let reset = controller_for_reset.reset();
-            let replayed = controller_for_reset.load_older();
-            if reset || replayed {
-                notify.mark_changed_since_emit();
-            }
-        });
-        hook(reset_trigger);
-    }
-
-    let teardown_handle = app.feed_teardown();
-    let mut teardown: Vec<nmp_feed::TeardownAction> = Vec::new();
-    teardown.push(teardown_handle.mark_changed());
-    teardown.push(clear_acquisition_set(sender.clone(), owner));
-    teardown.push(teardown_handle.remove_projection(key.to_string()));
-    for id in &resolver_observer_ids {
-        teardown.push(teardown_handle.revoke_observer(*id));
-    }
-    for id in &identity_observer_ids {
-        teardown.push(teardown_handle.revoke_identity_observer(*id));
-    }
-    teardown.extend(resolver_teardown);
-    teardown.push(engine_observer.teardown_action());
-    teardown.push(teardown_handle.unregister_feed(key.to_string()));
-
-    Ok(FeedSessionBuild {
-        projection_key: nmp_feed::ProjectionKey(key.to_string()),
-        teardown,
+    Ok(ScopeSessionBuild {
+        build: FeedSessionBuild {
+            projection_key: nmp_feed::ProjectionKey(key.to_string()),
+            teardown,
+        },
+        artifacts: Some(OpScopeSessionArtifacts {
+            engine,
+            controller,
+            follow_set: active_follow_set,
+        }),
     })
 }
 
@@ -439,16 +311,16 @@ fn visible_payload(engine: &nmp_nip01::OpFeedEngine) -> Vec<u8> {
     nmp_nip01::op_feed::encode_op_feed_snapshot(&snapshot)
 }
 
-fn visible_flat_payload(feed: &nmp_nip01::FlatFeed) -> Vec<u8> {
+pub(super) fn visible_flat_payload(feed: &nmp_nip01::FlatFeed) -> Vec<u8> {
     let snapshot = feed.snapshot_current_window();
     nmp_nip01::op_feed::encode_op_feed_snapshot(&snapshot)
 }
 
-fn session_acquisition_owner(key: &str) -> SubOwnerKey {
+pub(super) fn session_acquisition_owner(key: &str) -> SubOwnerKey {
     SubOwnerKey::new(("feed-session-acquisition", key))
 }
 
-fn observed_projection_scope(interests: &[AcquisitionInterest]) -> u32 {
+pub(super) fn observed_projection_scope(interests: &[AcquisitionInterest]) -> u32 {
     if interests
         .iter()
         .any(|interest| matches!(interest.scope, InterestScope::Global))
@@ -459,7 +331,7 @@ fn observed_projection_scope(interests: &[AcquisitionInterest]) -> u32 {
     }
 }
 
-fn clear_acquisition_set(
+pub(super) fn clear_acquisition_set(
     sender: nmp_core::CommandSender,
     owner: SubOwnerKey,
 ) -> nmp_feed::TeardownAction {
