@@ -99,6 +99,87 @@ fn browser_search_session_emits_n50s_results_from_cache_hits() {
     assert!(matches!(snapshot.hits[0].source, SearchHitSource::Cache));
 }
 
+#[test]
+fn browser_search_session_close_tears_down_projection_and_lifecycle() {
+    let mut handle = started_handle();
+    let request = SearchRequest::new(
+        "nostr",
+        SearchScope::Kinds(BTreeSet::from([nmp_kinds::KIND_SHORT_TEXT_NOTE])),
+        SearchTargets::Explicit(vec![RELAY.to_string()]),
+        Some(10),
+    )
+    .expect("valid search request");
+
+    let key = handle.open_search(request, "s1");
+    assert_eq!(handle.search_sessions.live_count(), 1);
+    assert_eq!(
+        handle.search_sessions.projection_key("s1").as_deref(),
+        Some(key.as_str())
+    );
+    assert_eq!(handle.search_sessions.relays("s1"), vec![RELAY.to_string()]);
+
+    handle.close_search("s1");
+
+    assert_eq!(handle.search_sessions.live_count(), 0);
+    assert!(
+        !has_nonempty_search_payload(&mut handle, &key),
+        "close_search must remove the typed N50S sidecar"
+    );
+    handle.close_search("s1");
+    assert_eq!(handle.search_sessions.live_count(), 0);
+}
+
+#[test]
+fn browser_search_session_replace_preserves_new_sidecar() {
+    let mut handle = started_handle();
+    let first = SearchRequest::new(
+        "nostr",
+        SearchScope::Kinds(BTreeSet::from([nmp_kinds::KIND_SHORT_TEXT_NOTE])),
+        SearchTargets::Explicit(vec![RELAY.to_string()]),
+        Some(10),
+    )
+    .expect("valid search request");
+    let second = SearchRequest::new(
+        "relay",
+        SearchScope::Kinds(BTreeSet::from([nmp_kinds::KIND_SHORT_TEXT_NOTE])),
+        SearchTargets::Explicit(vec![RELAY.to_string()]),
+        Some(10),
+    )
+    .expect("valid search request");
+
+    let key = handle.open_search(first, "s1");
+    assert!(has_nonempty_search_payload(&mut handle, &key));
+
+    let reopened = handle.open_search(second, "s1");
+    assert_eq!(reopened, key);
+    assert_eq!(handle.search_sessions.live_count(), 1);
+    assert!(
+        has_nonempty_search_payload(&mut handle, &key),
+        "reopening the same search id must not let old teardown remove the new N50S sidecar"
+    );
+}
+
+#[test]
+fn browser_search_session_empty_relays_stays_cache_only_fail_closed() {
+    let mut handle = started_handle();
+    let request = SearchRequest::new(
+        "nostr",
+        SearchScope::Kinds(BTreeSet::from([nmp_kinds::KIND_SHORT_TEXT_NOTE])),
+        SearchTargets::Explicit(Vec::new()),
+        Some(10),
+    )
+    .expect("valid search request");
+
+    handle.open_search(request, "empty");
+
+    assert_eq!(handle.search_sessions.relays("empty"), Vec::<String>::new());
+    let opened = handle.pump();
+    assert!(
+        opened.outbound.is_empty(),
+        "empty search relay resolution must not open wildcard relay demand"
+    );
+}
+
 fn search_payload(handle: &mut crate::BrowserRuntimeHandle, key: &str) -> Vec<u8> {
     let bytes = handle
         .produce_snapshot_bytes(true)
@@ -109,4 +190,14 @@ fn search_payload(handle: &mut crate::BrowserRuntimeHandle, key: &str) -> Vec<u8
         .find(|row| row.key == key)
         .expect("search projection row present")
         .payload
+}
+
+fn has_nonempty_search_payload(handle: &mut crate::BrowserRuntimeHandle, key: &str) -> bool {
+    let bytes = handle
+        .produce_snapshot_bytes(true)
+        .expect("snapshot frame bytes");
+    nmp_core::decode_snapshot_typed_projections(&bytes)
+        .expect("typed projections decode")
+        .into_iter()
+        .any(|row| row.key == key && !row.payload.is_empty())
 }

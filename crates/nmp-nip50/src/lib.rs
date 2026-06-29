@@ -24,14 +24,12 @@ mod scopes;
 pub mod search;
 pub mod wire;
 
-pub use projection::{
-    SearchHit, SearchHitSource, SearchResultsProjection, SearchResultsSnapshot,
-};
-pub use request::{
-    SearchRequest, SearchScope, SearchTargets, DEFAULT_MAX_SEARCH_HITS, HARD_MAX_SEARCH_HITS,
-};
 pub use input_recognizers::{
     register_input_scopes, LongFormInputRecognizer, NotesInputRecognizer, ProfilesInputRecognizer,
+};
+pub use projection::{SearchHit, SearchHitSource, SearchResultsProjection, SearchResultsSnapshot};
+pub use request::{
+    SearchRequest, SearchScope, SearchTargets, DEFAULT_MAX_SEARCH_HITS, HARD_MAX_SEARCH_HITS,
 };
 pub use scopes::{
     register_search_scopes, LongFormSearchScope, NoteSearchScope, ProfileSearchScope,
@@ -39,7 +37,7 @@ pub use scopes::{
 };
 pub use search::{
     install_search_relay_source, resolve_search_relays, search_relay_plan, RelayPinnedInterest,
-    SearchRelaySource,
+    SearchRelaySource, SearchSessionBuild, SearchSessionRegistry, SearchTeardownAction,
 };
 pub use wire::{
     decode_search_results_snapshot, encode_search_results_snapshot,
