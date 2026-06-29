@@ -130,6 +130,36 @@ fn browser_search_session_close_tears_down_projection_and_lifecycle() {
 }
 
 #[test]
+fn browser_search_session_replace_preserves_new_sidecar() {
+    let mut handle = started_handle();
+    let first = SearchRequest::new(
+        "nostr",
+        SearchScope::Kinds(BTreeSet::from([nmp_kinds::KIND_SHORT_TEXT_NOTE])),
+        SearchTargets::Explicit(vec![RELAY.to_string()]),
+        Some(10),
+    )
+    .expect("valid search request");
+    let second = SearchRequest::new(
+        "relay",
+        SearchScope::Kinds(BTreeSet::from([nmp_kinds::KIND_SHORT_TEXT_NOTE])),
+        SearchTargets::Explicit(vec![RELAY.to_string()]),
+        Some(10),
+    )
+    .expect("valid search request");
+
+    let key = handle.open_search(first, "s1");
+    assert!(has_nonempty_search_payload(&mut handle, &key));
+
+    let reopened = handle.open_search(second, "s1");
+    assert_eq!(reopened, key);
+    assert_eq!(handle.search_sessions.live_count(), 1);
+    assert!(
+        has_nonempty_search_payload(&mut handle, &key),
+        "reopening the same search id must not let old teardown remove the new N50S sidecar"
+    );
+}
+
+#[test]
 fn browser_search_session_empty_relays_stays_cache_only_fail_closed() {
     let mut handle = started_handle();
     let request = SearchRequest::new(

@@ -44,6 +44,8 @@ impl ObservedProjectionSink for SearchObserver {
 
 impl BrowserRuntimeHandle {
     pub(crate) fn open_search(&mut self, request: SearchRequest, session_id: &str) -> String {
+        self.close_search(session_id);
+
         let relays = self.resolve_search_relays(&request.targets);
         let projection = Arc::new(Mutex::new(SearchResultsProjection::new(request.clone())));
 
