@@ -15,6 +15,7 @@ members = [
     "crates/nmp-feed",
     "crates/nmp-marmot",
     "crates/nmp-native-runtime",
+    "crates/nmp-uniffi",
     "crates/nmp-nip01",
     "crates/nmp-nip02",
     "crates/nmp-nip25",

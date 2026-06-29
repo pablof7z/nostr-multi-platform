@@ -5,6 +5,7 @@
 //! orchestration, and the typestate builder. C ABI crates wrap this surface;
 //! they do not own runtime state.
 
+pub mod action_dispatch;
 mod app_config_hooks;
 mod app_config_intent;
 mod app_config_search;
@@ -46,8 +47,10 @@ pub mod builder;
 pub mod op_feed_defaults;
 pub mod op_pointer_source;
 
+pub use action_dispatch::{dispatch_action_bytes_typed, DispatchOutcome};
 pub use app_ctor::new_app;
 pub use app_struct::{IdentityChangeObserverId, NmpApp, UpdateListener};
+pub use nmp_core::__ffi_internal::{DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
 pub use builder::{
     NmpAppBuilder, ProjectionsDeclared, RelaysDeclared, RunConfig, StorageSet, Unstarted,
 };
