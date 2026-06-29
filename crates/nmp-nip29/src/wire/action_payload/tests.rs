@@ -3,9 +3,9 @@
 //! optional-string PRESENCE invariant asserts both `None` and `Some("")`.
 
 use crate::action::{
-    CreateInviteInput, CreatePublicGroupInput, DiscoverGroupsInput, GroupAccess, GroupEventTarget,
-    GroupVisibility, JoinGroupInput, LeaveGroupInput, PublishGroupEventInput, PutUserInput,
-    ReactInGroupInput, RepostInGroupInput, SetParentInput, ShareEventInGroupInput,
+    CreateInviteInput, CreatePublicGroupInput, DiscoverGroupsInput, EditMetadataInput, GroupAccess,
+    GroupEventTarget, GroupVisibility, JoinGroupInput, LeaveGroupInput, PublishGroupEventInput,
+    PutUserInput, ReactInGroupInput, RepostInGroupInput, SetParentInput, ShareEventInGroupInput,
 };
 use crate::group_id::GroupId;
 use nmp_core::substrate::{ActionPayload, ActionPayloadDecodeError};
@@ -384,4 +384,52 @@ fn set_parent_present_empty_string_is_preserved() {
     };
     let decoded = SetParentInput::decode(&action.encode()).expect("decodes");
     assert_eq!(decoded.parent.as_deref(), Some(""));
+}
+
+// --- edit_metadata ───────────────────────────────────────────────────────────
+
+#[test]
+fn edit_metadata_round_trips_all_fields() {
+    let action = EditMetadataInput {
+        group: group(),
+        name: Some("Renamed".to_string()),
+        about: Some("New about".to_string()),
+        picture: Some("https://x/p.png".to_string()),
+        visibility: Some(GroupVisibility::Private),
+        access: Some(GroupAccess::Closed),
+    };
+    let decoded = EditMetadataInput::decode(&action.encode()).expect("decodes");
+    assert_eq!(decoded, action);
+}
+
+#[test]
+fn edit_metadata_tri_state_unset_decodes_to_none() {
+    // None visibility/access must round-trip as None (Unset on the wire), so a
+    // partial edit never silently flips the group's visibility/access.
+    let action = EditMetadataInput {
+        group: group(),
+        name: Some("Just a rename".to_string()),
+        about: None,
+        picture: None,
+        visibility: None,
+        access: None,
+    };
+    let decoded = EditMetadataInput::decode(&action.encode()).expect("decodes");
+    assert_eq!(decoded, action);
+    assert!(decoded.visibility.is_none() && decoded.access.is_none());
+    assert!(decoded.about.is_none() && decoded.picture.is_none());
+}
+
+#[test]
+fn edit_metadata_present_empty_string_is_preserved() {
+    let action = EditMetadataInput {
+        group: group(),
+        name: Some(String::new()),
+        about: None,
+        picture: None,
+        visibility: None,
+        access: None,
+    };
+    let decoded = EditMetadataInput::decode(&action.encode()).expect("decodes");
+    assert_eq!(decoded.name.as_deref(), Some(""));
 }

@@ -113,6 +113,31 @@ pub fn group_metadata_filter_json() -> String {
     .to_string()
 }
 
+/// Relay filter for a single group's **roster**: the relay-signed 39001
+/// (admins) / 39002 (members) / 39003 (roles) snapshots scoped to one group's
+/// `d` identifier.
+///
+/// Unlike [`group_metadata_filter_json`] (which subscribes to the catalog-wide
+/// metadata kinds with no `d` constraint), this filter is `["#d", [group_id]]`
+/// scoped so the subscription only delivers the one group's roster events, and
+/// it INCLUDES 39003 (roles) — the roster projection folds the role catalog,
+/// whereas the count-only discovery/joined views deliberately do not.
+///
+/// NmpApp-free: the composition root passes the result to the relay-pinned
+/// observed-projection door, attaching the host relay pin separately.
+#[must_use]
+pub fn group_roster_filter_json(group_id: &str) -> String {
+    serde_json::json!({
+        "kinds": [
+            crate::kinds::KIND_GROUP_ADMINS,
+            crate::kinds::KIND_GROUP_MEMBERS,
+            crate::kinds::KIND_GROUP_ROLES,
+        ],
+        "#d": [group_id],
+    })
+    .to_string()
+}
+
 fn strip_ws_scheme(url: &str) -> &str {
     url.strip_prefix("wss://")
         .or_else(|| url.strip_prefix("ws://"))

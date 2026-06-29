@@ -1,0 +1,44 @@
+namespace nmp.nip29;
+
+// Typed FlatBuffers wire for `nmp_nip29::projection::GroupRosterSnapshot`,
+// schema_id "nmp.nip29.group_roster". The serde snapshot remains the
+// authoritative Rust shape; this sidecar mirrors it for typed host decoders
+// (ADR-0037 typed sidecar carried alongside no generic Value projection).
+//
+// Raw data only (ADR-0032): every field is the raw protocol value — hex
+// pubkeys and verbatim role tokens. No `display::` forwarder runs on the
+// encode path.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh. The schema
+// is self-contained (no `include`), so generate with plain `flatc --rust`:
+//
+//   flatc --rust -o crates/nmp-nip29/src/wire/generated \
+//         crates/nmp-nip29/schema/group_roster.fbs
+
+// One member of a group's roster. Mirrors `nmp_nip29::GroupRosterMember`.
+table GroupRosterMember {
+  pubkey:string;        // raw hex pubkey (the ["p", _] tag value)
+  roles:[string];       // verbatim role tokens (3rd+ elements of the p tag)
+  is_admin:bool;        // present on the latest 39001 (admins) snapshot
+  is_member:bool;       // present on the latest 39002 (members) snapshot
+}
+
+// One entry from the group's 39003 role catalog.
+table GroupRole {
+  name:string;          // role name token (["role", <name>, ...])
+  description:string;   // optional human description (3rd element)
+}
+
+// The serialised roster read model. `members` is ordered by pubkey ascending;
+// `roles` preserves the 39003 tag order — both shipped verbatim by the encoder.
+table GroupRosterSnapshot {
+  schema_version:uint32 = 1;   // mirrors GROUP_ROSTER_SCHEMA_VERSION
+  host_relay_url:string;
+  group_id:string;
+  members:[GroupRosterMember];
+  roles:[GroupRole];
+}
+
+root_type GroupRosterSnapshot;
+file_identifier "NGRS";

@@ -81,9 +81,14 @@ generated_action_module!(
     set_parent_action_generated,
     "../generated/set_parent_action_generated.rs"
 );
+generated_action_module!(
+    edit_metadata_action_generated,
+    "../generated/edit_metadata_action_generated.rs"
+);
 
 pub mod admin;
 pub mod discover;
+pub mod edit_metadata;
 pub mod group;
 pub mod group_event;
 pub mod subgroups;

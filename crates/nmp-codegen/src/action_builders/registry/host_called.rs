@@ -292,6 +292,46 @@ pub(super) const JOIN_GROUP: ActionBuilder = ActionBuilder {
     doc: "Request membership in a NIP-29 group.",
 };
 
+pub(super) const EDIT_METADATA: ActionBuilder = ActionBuilder {
+    namespace: "nmp.nip29.edit_metadata",
+    method: "editGroupMetadata",
+    fields: &[
+        PayloadField {
+            name: "group",
+            kind: FieldKind::GroupRef,
+            optional: false,
+        },
+        PayloadField {
+            name: "name",
+            kind: FieldKind::Str,
+            optional: true,
+        },
+        PayloadField {
+            name: "about",
+            kind: FieldKind::Str,
+            optional: true,
+        },
+        PayloadField {
+            name: "picture",
+            kind: FieldKind::Str,
+            optional: true,
+        },
+        // Tri-state byte enums (0 = Unset → leave prior value). The host passes
+        // the raw discriminant; omit (optional) → Unset.
+        PayloadField {
+            name: "visibility",
+            kind: FieldKind::Sbyte,
+            optional: true,
+        },
+        PayloadField {
+            name: "access",
+            kind: FieldKind::Sbyte,
+            optional: true,
+        },
+    ],
+    doc: "Edit an existing NIP-29 group's name/about/picture/visibility/access.",
+};
+
 pub(super) const CREATE_PUBLIC_GROUP: ActionBuilder = ActionBuilder {
     namespace: "nmp.nip29.create_public_group",
     method: "createPublicGroup",

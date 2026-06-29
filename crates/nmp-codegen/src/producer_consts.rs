@@ -224,6 +224,11 @@ pub const PRODUCER_CONST_TARGETS: &[ProducerConstTarget] = &[
         "crates/nmp-nip29/src/wire/joined_groups_producer_consts.generated.rs",
     ),
     pub_target(
+        "nmp.nip29.group_roster",
+        "GROUP_ROSTER",
+        "crates/nmp-nip29/src/wire/group_roster_producer_consts.generated.rs",
+    ),
+    pub_target(
         "nmp.nip51.mute_list",
         "MUTE_LIST",
         "crates/nmp-nip51/src/wire/mute_list_producer_consts.generated.rs",

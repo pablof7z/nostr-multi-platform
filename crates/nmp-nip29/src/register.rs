@@ -30,8 +30,8 @@
 use nmp_core::substrate::{ActionRegistrar, RegistrationError, SnapshotProjectionRegistrar};
 
 use crate::action::{
-    CreateInviteAction, CreatePublicGroupAction, DiscoverGroupsAction, JoinGroupAction,
-    LeaveGroupAction, PublishGroupEventAction, PutUserAction, ReactInGroupAction,
+    CreateInviteAction, CreatePublicGroupAction, DiscoverGroupsAction, EditMetadataAction,
+    JoinGroupAction, LeaveGroupAction, PublishGroupEventAction, PutUserAction, ReactInGroupAction,
     RepostInGroupAction, SetParentAction, ShareEventInGroupAction,
 };
 use crate::projection::{GroupDefaultsProjection, GroupDefaultsSnapshot};
@@ -106,6 +106,7 @@ pub fn wire_group_defaults_with_snapshot(
 /// - `nmp.nip29.put_user`
 /// - `nmp.nip29.create_invite`
 /// - `nmp.nip29.set_parent` (NIP-29 subgroups, nips PR #2319)
+/// - `nmp.nip29.edit_metadata` (edit an existing group's metadata, admin action)
 ///
 /// Must be called before `nmp_app_start` — the registry is write-locked
 /// after the actor loop starts.
@@ -136,5 +137,6 @@ pub fn register_actions(app: &mut impl ActionRegistrar) -> Result<(), Registrati
     app.register_action(PutUserAction)?;
     app.register_action(CreateInviteAction)?;
     app.register_action(SetParentAction)?;
+    app.register_action(EditMetadataAction)?;
     Ok(())
 }

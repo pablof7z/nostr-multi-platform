@@ -351,6 +351,22 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         presence_policy: PresencePolicy::None,
     },
     ProjectionContract {
+        // Registered by `NmpApp::open_nip29_group_roster_session` (NIP-29
+        // per-group member roster read session). RETAINS the 39001/39002 member
+        // pubkeys + 39003 role catalog the count-only joined/discovered views
+        // discard. A real Tier-1 projection key with no iOS Swift consumer yet.
+        key: "nmp.nip29.group_roster",
+        tier: ProjectionTier::HostRegistered,
+        producer: "NIP-29 group-roster native-runtime read session",
+        schema_id: "nmp.nip29.group_roster",
+        file_identifier: "NGRS",
+        // nmp-nip29 wire/group_roster_fb::GROUP_ROSTER_SCHEMA_VERSION
+        version: 1,
+        declaration_policy: DeclarationPolicy::RegistrationGated,
+        dependency_versions: &[],
+        presence_policy: PresencePolicy::None,
+    },
+    ProjectionContract {
         key: "nmp.nip17.dm_inbox",
         tier: ProjectionTier::HostRegistered,
         producer: "nmp-nip17 register",

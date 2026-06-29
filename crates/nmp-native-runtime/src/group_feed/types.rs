@@ -46,6 +46,29 @@ impl Nip29GroupDiscoverySession {
     }
 }
 
+/// Descriptor for a NIP-29 single-group member-roster typed read session.
+///
+/// Scoped to one group `(host_relay_url, local_id)`. The session subscribes to
+/// that group's relay-signed 39001 (admins) / 39002 (members) / 39003 (roles)
+/// snapshots and exposes the full roster — member pubkeys + per-member role
+/// tokens + the group's role catalog.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Nip29GroupRosterSession {
+    pub(super) group_id: GroupId,
+}
+
+impl Nip29GroupRosterSession {
+    #[must_use]
+    pub fn new(group_id: GroupId) -> Self {
+        Self { group_id }
+    }
+
+    #[must_use]
+    pub fn group_id(&self) -> &GroupId {
+        &self.group_id
+    }
+}
+
 /// Descriptor for the active account's NIP-29 joined-groups typed read session.
 ///
 /// If `host_relay_url` is empty, relay provenance decides each group's host and
@@ -115,6 +138,20 @@ pub struct Nip29JoinedGroupsHandle {
 }
 
 impl Nip29JoinedGroupsHandle {
+    #[must_use]
+    pub fn key(&self) -> &str {
+        &self.key
+    }
+}
+
+/// Runtime handle for one host-driven NIP-29 group-roster read session.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Nip29GroupRosterHandle {
+    pub(super) key: String,
+    pub(super) handle_id: u64,
+}
+
+impl Nip29GroupRosterHandle {
     #[must_use]
     pub fn key(&self) -> &str {
         &self.key

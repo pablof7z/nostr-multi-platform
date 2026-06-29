@@ -801,6 +801,40 @@ export const GeneratedActionBuilders = {
     return encodeDispatchEnvelope(correlationId, "nmp.nip29.create_public_group", payload);
   },
 
+  /** Edit an existing NIP-29 group's name/about/picture/visibility/access. */
+  editGroupMetadata(
+    correlationId: string,
+    group: { hostRelayUrl: string; localId: string },
+    name: string | null,
+    about: string | null,
+    picture: string | null,
+    visibility: number,
+    access: number,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const groupHostRelayUrlOffset = fbb.createString(group.hostRelayUrl);
+    const groupLocalIdOffset = fbb.createString(group.localId);
+    fbb.startObject(2);
+    fbb.addFieldOffset(0, groupHostRelayUrlOffset, 0); // GroupRef slot 0: host_relay_url
+    fbb.addFieldOffset(1, groupLocalIdOffset, 0); // GroupRef slot 1: local_id
+    const groupOffset = fbb.endObject();
+    const nameOffset = name === null ? 0 : fbb.createString(name);
+    const aboutOffset = about === null ? 0 : fbb.createString(about);
+    const pictureOffset = picture === null ? 0 : fbb.createString(picture);
+    fbb.startObject(7);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldOffset(1, groupOffset, 0); // slot 1: group
+    if (nameOffset !== 0) fbb.addFieldOffset(2, nameOffset, 0); // slot 2: name
+    if (aboutOffset !== 0) fbb.addFieldOffset(3, aboutOffset, 0); // slot 3: about
+    if (pictureOffset !== 0) fbb.addFieldOffset(4, pictureOffset, 0); // slot 4: picture
+    fbb.addFieldInt8(5, visibility, 0); // slot 5: visibility
+    fbb.addFieldInt8(6, access, 0); // slot 6: access
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "N29E");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.nip29.edit_metadata", payload);
+  },
+
   /** Low-level arbitrary-kind publish escape; starter apps should prefer protocol/product builders such as publishReply or publishProfile. */
   /** Requires typed signer selection and route provenance for explicit targets; not the starter happy path. */
   publishRaw(

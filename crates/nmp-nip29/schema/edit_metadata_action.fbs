@@ -1,0 +1,56 @@
+namespace nmp.nip29;
+
+// ADR-0064 / S9 (#1747) — typed FlatBuffers payload for the
+// `nmp.nip29.edit_metadata` `ActionModule` (publishes a kind:9002 edit-metadata
+// editing an EXISTING NIP-29 group's name / about / picture / visibility /
+// access). Admin-gated at the relay; structurally validated + host-pinned here.
+//
+// The OPAQUE `DispatchEnvelope.payload` for that namespace; the registry
+// adapter decodes against THIS schema, gating `schema_version` BEFORE `start()`
+// (fail-closed on mismatch). WRITE-direction action payload.
+//
+// Self-contained (no `include`); the `GroupRef` sub-table + the visibility /
+// access enums are declared inline so this action schema generates an
+// independent `_generated.rs` module. Regenerate the checked-in Rust bindings
+// only with the workspace FlatBuffers pin (25.12.19):
+//   flatc --rust -o crates/nmp-nip29/src/wire/generated \
+//         crates/nmp-nip29/schema/edit_metadata_action.fbs
+
+table GroupRef {
+  host_relay_url:string (required);
+  local_id:string (required);
+}
+
+// Tri-state visibility: `Unset` (slot default 0) leaves the relay's prior value
+// untouched (NIP-29: absent tags keep prior values); `Public` / `Private` emit
+// the corresponding marker tag. Distinct from `create_public_group`'s 2-value
+// enum because an edit must distinguish "don't change" from "set public".
+enum EditVisibility:byte {
+  Unset = 0,
+  Public = 1,
+  Private = 2,
+}
+
+// Tri-state access: `Unset` (default) leaves the prior value untouched.
+enum EditAccess:byte {
+  Unset = 0,
+  Open = 1,
+  Closed = 2,
+}
+
+table EditMetadataPayload {
+  schema_version:uint;
+  group:GroupRef (required);
+  // Optional metadata edits. Absent (or empty-after-trim) omits the tag, so the
+  // relay retains its prior value. `start()` rejects an edit that changes
+  // nothing.
+  name:string;
+  about:string;
+  picture:string;
+  // Default 0 (Unset) → field omitted from the 9002.
+  visibility:EditVisibility;
+  access:EditAccess;
+}
+
+file_identifier "N29E";
+root_type EditMetadataPayload;
