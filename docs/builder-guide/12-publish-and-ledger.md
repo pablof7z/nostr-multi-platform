@@ -17,43 +17,64 @@ envelope, then hand it to NMP for signing, routing, ledger tracking, retry, and
 finalization. The app does not treat arbitrary event-kind publishing as the
 normal write API.
 
-Protocol modules that need verbatim or pre-signed envelopes may own those
-specific seams. Keep them named by protocol and purpose so callers know why the
-generic path is not being used.
+The normal sequence is:
+
+1. The app dispatches a typed write intent (`PublishRaw`, `PublishProfile`,
+   `PublishReply`, or a protocol-owned action module).
+2. Rust validates the draft and any signer selector.
+3. The actor finalizes the event shape, stamps kernel time, signs through the
+   selected registered signer, and hands the signed event to the publish engine.
+4. The publish engine resolves relays, persists retry state, sends frames, and
+   reports ledger/snapshot outcomes.
+
+Pre-signed publish is not part of the app-facing `nmp.publish` FlatBuffers
+schema and must not be presented as a starter/happy-path write. It remains an
+internal/protocol/import escape for verbatim envelopes that must not be
+re-modeled, such as imported events or protocol-owned encrypted/group payloads.
+Those seams must be named by protocol and purpose, and they must pass an
+explicit non-empty route with provenance (`imported_or_presigned`,
+`group_host_pin`, or `verified_private_inbox`). `Auto`, manual override, and
+diagnostic routes are refused for externally signed events.
 
 ## The publish engine API
 
-Apps publish through exactly one action surface. There is no
-"build → sign → send" you call yourself. `PublishAction`
-(`crates/nmp-core/src/publish/action.rs:40-50`):
+Apps publish through the action surface. There is no "build → sign → send" you
+call yourself. The app-facing variants are unsigned intent builders:
 
 ```rust
 enum PublishAction {
-    Publish { handle: PublishHandle, event: SignedEvent, target: PublishTarget },
-    Cancel  { handle: PublishHandle },
+    PublishProfile { fields: Map<String, Value> },
+    PublishRaw {
+        kind: u32,
+        tags: Vec<Vec<String>>,
+        content: String,
+        target: PublishTarget,
+        signer: PublishSigner,
+    },
+    PublishReply {
+        content: String,
+        reply_to_event_id: String,
+        target: PublishTarget,
+        signer: PublishSigner,
+    },
 }
 ```
 
 `PublishTarget` (`action.rs:28-32`) is `Auto` (NIP-65 via
-`OutboxResolver`, per **D3**) or `Explicit { relays }` (the named D3
-opt-out). The event arrives **pre-signed**: the kernel ledger signs
-once via the active signer and never re-signs on retry — id +
-sig are preserved across the whole lifecycle (`action.rs:34-39`).
+`OutboxResolver`, per **D3**) or an explicit relay pin with a route provenance
+class. `Auto` is the normal path. `Explicit` is the named D3 opt-out for
+protocol-owned or audited relay pins.
 
-`PublishModule` (`action.rs:85-164`) is the `ActionModule` impl
-(`crates/nmp-core/src/substrate/action.rs:56`). `start()` rejects an
-event with empty `id`/`sig` (`action.rs:99-104`). The action ledger sees
-a coarse `PublishStep` (`Planning`/`Dispatching`/`Waiting`/`Done`); the
-fine per-relay timing is the engine's, not the ledger's
-(`action.rs:53-60`, `subsystems.md:155`).
+`PublishModule` is the `ActionModule` impl. `start()` validates draft shape
+before the actor sees it: profile fields must be strings, raw publishes cannot
+use reserved builder-only kinds, private/encrypted kinds require a
+`verified_private_inbox` explicit route, and replies need a concrete stored
+parent id. The action ledger sees the host's correlation id; per-relay timing
+and retry state are the publish engine's, not the ledger's.
 
 ## Choosing the signer — typed provenance
 
-The publish action arrives with an already-`SignedEvent`, so the choice
-of *which* signer produces the signature happens one step earlier, at the
-sign step the kernel runs before it builds the engine-facing
-`PublishAction::Publish`. The dispatch commands that ask the kernel to
-sign-then-publish carry a typed selector:
+Unsigned publish intents may carry a typed signer selector:
 
 ```rust
 enum PublishSigner {
@@ -81,15 +102,15 @@ The kernel resolves the selector against the roster and signs through
 async `PendingSign` path handles both. Unknown registered signers are not
 prevalidated at dispatch time; they remain structured sign-stage failures
 (`no signer for account ...`) under the dispatch correlation id. By the
-time the engine-facing publish reaches the engine the event is already
-signed, so the selector never appears on the retry engine record itself.
+time a publish reaches the retry engine the event is already signed, so the
+selector never appears on the retry engine record itself.
 
 ## Read-vs-write API split
 
 | Concern | Mechanism | Surface |
 |---|---|---|
-| **Write** an event | dispatch `PublishAction::Publish` | action only — no direct relay/store call |
-| **Cancel** a publish | dispatch `PublishAction::Cancel { handle }` | action only |
+| **Write** an event | dispatch unsigned publish intent (`PublishRaw`, `PublishProfile`, `PublishReply`, or protocol action) | action only — no direct relay/store call |
+| **Cancel** a publish | `nmp_app_cancel_action(correlation_id)` | dedicated control symbol |
 | **Observe** publish status | open `PublishStatusView` | store/view subscription — never a return value |
 | **Read** events back | typed read session / generated helper | internally backed by store/view subscription |
 | Pick relays | `OutboxResolver` (D3 automatic) | engine-internal; app only via `Explicit` opt-out |
@@ -108,7 +129,10 @@ Per-(event, relay) state machine
 (`state.rs:18-21` — no wall clock, no threads, no sockets).
 
 ```text
-PublishAction::Publish(handle, signed_event, target)
+PublishRaw / PublishProfile / PublishReply / protocol action
+        │
+        ▼
+   actor validates + finalizes draft, stamps kernel time, signs
         │
         ▼
    [Planning]  OutboxResolver.resolve(author, p_tags, target)
@@ -145,8 +169,8 @@ PublishAction::Publish(handle, signed_event, target)
      Cancel dispatched     → Cancelled
 ```
 
-`Cancel` (`engine.rs:185-204`) removes the in-flight row and marks every
-non-terminal relay `FailedAfterRetries{reason:"cancelled"}`, then deletes
+`nmp_app_cancel_action(correlation_id)` removes the in-flight row and marks
+every non-terminal relay `FailedAfterRetries{reason:"cancelled"}`, then deletes
 the store row. Late acks for a settled relay are held idempotently
 (`state.rs:266-275` — D7 capability idempotence).
 

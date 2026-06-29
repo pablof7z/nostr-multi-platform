@@ -90,7 +90,7 @@ fn drift_gate_json_dispatch_doorway_absent_from_production_sources() {
 
 // ─── G2: Cancel FFI plumbing — `nmp_app_cancel_action` enqueues command ──────
 
-/// Dispatch a publish action via the byte doorway then call
+/// Dispatch a raw publish action via the byte doorway then call
 /// `nmp_app_cancel_action` with the same `correlation_id`. Asserts that the
 /// cancel call enqueues exactly one additional `ActorCommand` on the channel
 /// (proven via the monotone `send_cmd_count` ratchet — the same technique
@@ -111,24 +111,14 @@ fn cancel_action_enqueues_cancel_publish_command_for_original_correlation_id() {
     use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
     use nmp_core::publish::{PublishAction, PublishTarget};
     use nmp_core::substrate::ActionPayload;
-    use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
-    // Pre-signed publish so the byte-doorway dispatch path is exercised.
-    let event = SignedEvent {
-        id: "c".repeat(64),
-        sig: "d".repeat(128),
-        unsigned: UnsignedEvent {
-            pubkey: "e".repeat(64),
-            kind: 1,
-            tags: vec![],
-            content: "s10-cancel-gate".to_string(),
-            created_at: 1_700_000_001,
-        },
-    };
-    let action = PublishAction::Publish {
-        handle: "s10-cancel-h1".to_string(),
-        event,
+    // App-facing publish uses unsigned intent; the actor signs after dispatch.
+    let action = PublishAction::PublishRaw {
+        kind: 1,
+        tags: vec![],
+        content: "s10-cancel-gate".to_string(),
         target: PublishTarget::Auto,
+        signer: Default::default(),
     };
     let payload = action.encode();
     // Use a host-minted correlation_id — NOT the event id.  This is the id

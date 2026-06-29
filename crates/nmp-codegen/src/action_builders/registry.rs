@@ -155,33 +155,27 @@ pub use table::ACTION_BUILDERS;
 //     schema_version:uint;        // slot 0 — fail-closed tripwire (vtable 4)
 //     body:PublishPayloadBody (required); // union → body_type at slot 1
 //   }                                     //         body offset at slot 2
-//   union PublishPayloadBody { PublishSigned, PublishProfile, PublishRaw,
-//                              PublishReply }
+//   union PublishPayloadBody { PublishProfile, PublishRaw, PublishReply }
 //
 // A FlatBuffers union expands to TWO root fields: a `*_type` ubyte discriminant
-// (declaration-order: NONE=0, PublishSigned=1, PublishProfile=2, PublishRaw=3,
-// PublishReply=4)
+// (declaration-order: NONE=0, PublishProfile=1, PublishRaw=2, PublishReply=3)
 // and the body table offset. The emitters build the nested body table first,
 // then stamp `(schema_version, body_type, body)` into the root — the byte-for-
 // byte twin of `encode_publish_payload` in `nmp-core/src/publish/wire.rs`.
 //
 // Modelling the body shapes as data (rather than special-casing each in the
 // emitter) keeps the Swift/Kotlin emitters' publish paths a single shared
-// template. `PublishSigned` is intentionally NOT a builder: its body carries
-// the OPAQUE canonical NIP-01 bytes a signer produced (signature byte-
-// exactness — never a typed re-encode), which is a pre-signed-event handoff,
-// not a typed-field write. The two typed-field variants consumers use —
-// `PublishRaw` (generic publish) and `PublishProfile` (kind:0 metadata) — are
-// the builders.
+// template. Pre-signed publish is intentionally absent from this app-facing
+// union; verbatim/imported/protocol-owned paths use internal seams.
 
 /// The union member discriminant (declaration order in `union
 /// PublishPayloadBody`, with NONE=0). Stamped as the `body_type` ubyte at the
 /// `PublishPayload` root.
-pub const PUBLISH_BODY_PUBLISH_PROFILE: u8 = 2;
+pub const PUBLISH_BODY_PUBLISH_PROFILE: u8 = 1;
 /// See [`PUBLISH_BODY_PUBLISH_PROFILE`].
-pub const PUBLISH_BODY_PUBLISH_RAW: u8 = 3;
+pub const PUBLISH_BODY_PUBLISH_RAW: u8 = 2;
 /// See [`PUBLISH_BODY_PUBLISH_PROFILE`].
-pub const PUBLISH_BODY_PUBLISH_REPLY: u8 = 4;
+pub const PUBLISH_BODY_PUBLISH_REPLY: u8 = 3;
 
 /// One `nmp.publish` union-bodied builder.
 ///

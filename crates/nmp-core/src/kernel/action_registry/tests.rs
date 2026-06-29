@@ -1,5 +1,5 @@
 use super::*;
-use crate::actor::{ActorCommand, PublishCommand};
+use crate::actor::PublishCommand;
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 fn ctx() -> ActionContext {
@@ -72,34 +72,25 @@ fn start_cancel_action_is_not_a_dispatch_variant() {
 }
 
 #[test]
-fn start_publish_action_returns_minted_correlation_id_not_event_id() {
-    // Regression for #1748 Fix 1: the `correlation_id` is the operation's
-    // identity, NEVER the event id. The registry mints a fresh 32-hex
-    // correlation_id and does NOT substitute the event's 64-hex `id`.
+fn start_presigned_publish_action_is_rejected() {
+    // Pre-signed publish is internal/protocol-only after #2372; app-facing JSON
+    // dispatch must not accept it as a normal write API.
     let registry = default_registry();
-    let event = fixture_signed_event();
-    let event_id = event.id.clone();
     let action = crate::publish::PublishAction::Publish {
         handle: "h1".to_string(),
-        event,
-        target: crate::publish::PublishTarget::Auto,
+        event: fixture_signed_event(),
+        target: crate::publish::PublishTarget::explicit(
+            vec!["wss://relay.example".to_string()],
+            crate::publish::PublishRouteClass::ImportedOrPresigned,
+        ),
     };
     let action_json = serde_json::to_string(&action).unwrap();
-    let id = registry
+    let err = registry
         .start(&mut ctx(), 1_700_000_000_000, "nmp.publish", &action_json)
-        .expect("publish action with id+sig should be accepted");
-    assert_ne!(
-        id, event_id,
-        "the correlation_id must NOT be the event id — identity is not output data"
-    );
-    assert_eq!(
-        id.len(),
-        32,
-        "minted correlation_id is 32-hex, not the 64-hex event id"
-    );
+        .expect_err("pre-signed Publish must not be app-dispatchable");
     assert!(
-        id.chars().all(|c| c.is_ascii_hexdigit()),
-        "minted correlation_id should be hex: {id}"
+        matches!(err, ActionRejection::Invalid(ref msg) if msg.contains("internal/protocol-only")),
+        "rejection must name the internal-only path; got: {err:?}"
     );
 }
 
@@ -227,64 +218,33 @@ fn publish_raw_executor_rejects_anonymous_explicit_target() {
     );
 }
 
-/// Regression for #1748 Fix 1: the pre-signed `Publish` executor threads the
-/// registry-minted `correlation_id` onto `ActorCommand::PublishSignedEvent` —
-/// NOT the event id (output data in `raw`). The deleted `preferred_action_id`
-/// substituted `event.id`, so the host could not match the terminal to its
-/// spinner.
 #[test]
-fn publish_signed_executor_sends_publish_signed_event_command() {
-    use crate::actor::ActorCommand;
-    use std::cell::RefCell;
-
+fn publish_signed_executor_rejects_presigned_publish_action() {
     let registry = default_registry();
-    let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
 
     let action = crate::publish::PublishAction::Publish {
         handle: "h-presigned".to_string(),
         event: fixture_signed_event(),
-        target: crate::publish::PublishTarget::Auto,
+        target: crate::publish::PublishTarget::explicit(
+            vec!["wss://relay.example".to_string()],
+            crate::publish::PublishRouteClass::ImportedOrPresigned,
+        ),
     };
     let action_json = serde_json::to_string(&action).unwrap();
     let minted_correlation_id = "ae".repeat(16);
-    registry
+    let err = registry
         .execute(
             &ctx(),
             "nmp.publish",
             &action_json,
             &minted_correlation_id,
-            &|cmd| {
-                captured.borrow_mut().push(cmd);
-            },
+            &|_| {},
         )
-        .expect("publish execution should succeed");
-
-    let cmds = captured.into_inner();
-    assert_eq!(
-        cmds.len(),
-        1,
-        "executor must emit exactly one ActorCommand; got {cmds:?}"
+        .expect_err("pre-signed Publish execute must be rejected");
+    assert!(
+        err.message.contains("internal/protocol-only"),
+        "rejection must name the internal-only path; got: {err:?}"
     );
-    match cmds.into_iter().next().unwrap() {
-        ActorCommand::Publish(PublishCommand::SignedEvent {
-            target,
-            correlation_id,
-            raw,
-        }) => {
-            assert_eq!(target, crate::publish::PublishTarget::Auto);
-            assert_ne!(
-                correlation_id.as_deref(),
-                Some(raw.id.as_str()),
-                "the correlation_id must NOT be the event id — identity is not output data (#1748)"
-            );
-            assert_eq!(
-                correlation_id,
-                Some(minted_correlation_id),
-                "the executor must thread the minted correlation_id onto the command"
-            );
-        }
-        other => panic!("a pre-signed Publish must route to PublishSignedEvent, got {other:?}"),
-    }
 }
 
 #[test]

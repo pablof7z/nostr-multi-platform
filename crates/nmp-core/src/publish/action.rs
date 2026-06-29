@@ -1,10 +1,9 @@
 //! `PublishAction` + `PublishModule` (the `ActionModule` impl).
 //!
 //! `start` is wired to the actor mailbox (M6): `ffi::action::execute_action`
-//! validates a `PublishAction` through `ActionRegistry`, then converts a
-//! `Publish` variant into `ActorCommand::PublishSignedEvent` for the actor
-//! to publish. The publish engine drives per-relay transitions in-process;
-//! its terminal verdict is surfaced as a [`PublishOutcome`] on the snapshot.
+//! validates a `PublishAction` through `ActionRegistry`, then converts
+//! unsigned app-facing variants into actor publish commands. Pre-signed publish
+//! is internal/protocol-only and is not dispatchable through this module.
 
 use serde::{Deserialize, Serialize};
 
@@ -20,11 +19,12 @@ mod signer;
 mod target;
 
 pub use signer::{PublishSigner, PublishSignerProvenance};
-pub(crate) use target::{validate_explicit_relays, validate_publish_target};
+pub(crate) use target::{
+    validate_explicit_relays, validate_presigned_publish_target, validate_publish_target,
+};
 pub use target::{PublishRouteClass, PublishTarget};
 
-/// Stable handle returned to the caller of `Publish`. Used to key snapshot
-/// entries and to address the action in the ledger when M6 wires the ledger.
+/// Stable handle used by the internal pre-signed publish engine path.
 pub type PublishHandle = String;
 
 /// Relay URL — grep-able alias so the `RelayDispatcher` shim can be swapped
@@ -33,14 +33,14 @@ pub type PublishHandle = String;
 /// `publish` import paths are unchanged.
 pub use crate::relay::RelayUrl;
 
-/// The single public publish action.
+/// The publish action shape.
 ///
-/// The signed event is included pre-signed because the kernel ledger (M6) will
-/// sign once via the active signer and then enqueue the publish — we never
-/// re-sign on retry (per the M6 exit gate "re-publish of an event preserves
-/// `id` and `sig`").
+/// App-facing dispatch accepts unsigned draft/build variants only. The
+/// `Publish` variant remains for the internal engine/verbatim path but is
+/// rejected by [`PublishModule`] and omitted from the `nmp.publish` wire schema.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum PublishAction {
+    /// Internal/protocol-only externally signed publish. Not app-dispatchable.
     Publish {
         handle: PublishHandle,
         event: SignedEvent,
@@ -161,31 +161,18 @@ impl ActionModule for PublishModule {
 
     /// ADR-0064 / S3: opt into the typed FlatBuffers payload doorway. The decode
     /// (including the fail-closed `schema_version` gate, run BEFORE `start()`)
-    /// delegates to `<PublishAction as ActionPayload>::decode` in `publish/wire.rs`
-    /// — the single typed-decode site. The pre-signed `Publish` event is carried
-    /// as opaque canonical NIP-01 bytes there (signature byte-exactness).
+    /// delegates to `<PublishAction as ActionPayload>::decode` in
+    /// `publish/wire.rs` — the single typed-decode site.
     fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
         Some(<PublishAction as ActionPayload>::decode(bytes))
     }
 
     fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         match action {
-            PublishAction::Publish { event, target, .. } => {
-                if event.id.is_empty() || event.sig.is_empty() {
-                    return Err(ActionRejection::Invalid(
-                        "publish action requires a signed event with id+sig".to_string(),
-                    ));
-                }
-                validate_publish_target(&target).map_err(ActionRejection::Invalid)?;
-                // Workstream C one-door (D10): a private/encrypted envelope
-                // (gift-wrap / sealed) may not be dispatched with `Auto` or an
-                // empty `Explicit` target — that would Auto-route it to public
-                // relays. Reject at dispatch time so the host gets a clean
-                // error; the engine chokepoint is the deeper structural twin.
-                validate_publish_routing(event.unsigned.kind, &target)
-                    .map_err(ActionRejection::Invalid)?;
-                Ok(())
-            }
+            PublishAction::Publish { .. } => Err(ActionRejection::Invalid(
+                "pre-signed PublishAction::Publish is internal/protocol-only; apps must dispatch unsigned PublishRaw/PublishProfile/PublishReply builders"
+                    .to_string(),
+            )),
             PublishAction::PublishProfile { fields } => {
                 // A kind:0 `content` is a flat JSON object of string values
                 // (NIP-01 metadata). Reject any non-string field up front so a
@@ -252,13 +239,8 @@ impl ActionModule for PublishModule {
         send: &dyn Fn(ActorCommand),
     ) -> Result<(), String> {
         match action {
-            PublishAction::Publish { event, target, .. } => {
-                send(ActorCommand::Publish(PublishCommand::SignedEvent {
-                    raw: publish_signed_event_to_raw(event),
-                    target,
-                    correlation_id: Some(correlation_id.to_string()),
-                }));
-                Ok(())
+            PublishAction::Publish { .. } => {
+                Err("pre-signed PublishAction::Publish is internal/protocol-only".to_string())
             }
             PublishAction::PublishProfile { fields } => {
                 send(ActorCommand::Publish(PublishCommand::Profile {
@@ -300,20 +282,6 @@ impl ActionModule for PublishModule {
                 Ok(())
             }
         }
-    }
-}
-
-/// Convert a [`SignedEvent`] into the flat [`crate::store::RawEvent`] shape
-/// the actor's publish command expects. Pure field move — no re-signing.
-fn publish_signed_event_to_raw(event: SignedEvent) -> crate::store::RawEvent {
-    crate::store::RawEvent {
-        id: event.id,
-        pubkey: event.unsigned.pubkey,
-        created_at: event.unsigned.created_at,
-        kind: event.unsigned.kind,
-        tags: event.unsigned.tags,
-        content: event.unsigned.content,
-        sig: event.sig,
     }
 }
 

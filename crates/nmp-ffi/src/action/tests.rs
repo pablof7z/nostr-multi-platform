@@ -100,67 +100,67 @@ fn ack_action_stage_well_formed_enqueues_command() {
 }
 
 use nmp_core::publish::{PublishAction, PublishRouteClass, PublishTarget};
-use nmp_signer_iface::{SignedEvent, UnsignedEvent};
-
-fn fixture_signed_event() -> SignedEvent {
-    SignedEvent {
-        id: "a".repeat(64),
-        sig: "b".repeat(128),
-        unsigned: UnsignedEvent {
-            pubkey: "c".repeat(64),
-            kind: 1,
-            tags: vec![vec!["t".to_string(), "nmp".to_string()]],
-            content: "hello from dispatch_action".to_string(),
-            created_at: 1_700_000_000,
-        },
-    }
-}
 
 #[test]
-fn dispatch_publish_action_returns_minted_correlation_id_not_event_id() {
+fn dispatch_presigned_publish_action_returns_error_json() {
     with_app(|app| {
-        let event = fixture_signed_event();
-        let event_id = event.id.clone();
         let action = PublishAction::Publish {
             handle: "h1".to_string(),
-            event,
-            target: PublishTarget::Auto,
+            event: nmp_signer_iface::SignedEvent {
+                id: "a".repeat(64),
+                sig: "b".repeat(128),
+                unsigned: nmp_signer_iface::UnsignedEvent {
+                    pubkey: "c".repeat(64),
+                    kind: 1,
+                    tags: vec![vec!["t".to_string(), "nmp".to_string()]],
+                    content: "hello from dispatch_action".to_string(),
+                    created_at: 1_700_000_000,
+                },
+            },
+            target: PublishTarget::explicit(
+                vec!["wss://relay.example".to_string()],
+                PublishRouteClass::ImportedOrPresigned,
+            ),
         };
         let action_json = serde_json::to_string(&action).unwrap();
         let out = dispatch_action_json(Some(app), "nmp.publish", &action_json);
         let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
-        let id = parsed
-            .get("correlation_id")
-            .and_then(|v| v.as_str())
-            .unwrap_or_else(|| panic!("expected correlation_id, got: {out}"));
-        assert_ne!(
-            id, event_id,
-            "the returned correlation_id must NOT be the event id"
-        );
-        assert_eq!(
-            id.len(),
-            32,
-            "minted correlation_id is 32-hex, not the 64-hex event id"
+        let err = parsed.get("error").and_then(|v| v.as_str()).unwrap();
+        assert!(
+            err.contains("internal/protocol-only"),
+            "pre-signed Publish must be rejected; got: {out}"
         );
     });
 }
 
 #[test]
-fn execute_action_publish_is_ok() {
+fn execute_action_presigned_publish_is_rejected() {
     with_app(|app| {
         let action = PublishAction::Publish {
             handle: "h2".to_string(),
-            event: fixture_signed_event(),
+            event: nmp_signer_iface::SignedEvent {
+                id: "a".repeat(64),
+                sig: "b".repeat(128),
+                unsigned: nmp_signer_iface::UnsignedEvent {
+                    pubkey: "c".repeat(64),
+                    kind: 1,
+                    tags: vec![vec!["t".to_string(), "nmp".to_string()]],
+                    content: "hello from dispatch_action".to_string(),
+                    created_at: 1_700_000_000,
+                },
+            },
             target: PublishTarget::Explicit {
                 relays: vec!["wss://relay.example".to_string()],
-                route_class: PublishRouteClass::ManualOverride,
+                route_class: PublishRouteClass::ImportedOrPresigned,
             },
         };
         let action_json = serde_json::to_string(&action).unwrap();
         let ctx = ActionContext::with_event_store_slot(app.event_store_handle());
+        let err = execute_action(app, &ctx, "nmp.publish", &action_json, "corr-id")
+            .expect_err("pre-signed Publish execute must reject");
         assert!(
-            execute_action(app, &ctx, "nmp.publish", &action_json, "corr-id").is_ok(),
-            "publish execution should not error"
+            err.message.contains("internal/protocol-only"),
+            "pre-signed Publish must be rejected; got: {err:?}"
         );
     });
 }

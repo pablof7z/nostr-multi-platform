@@ -100,10 +100,9 @@ impl core::fmt::Display for ActionPayloadDecodeError {
 ///
 /// # Opaque pre-signed bytes
 ///
-/// A payload carrying a pre-signed event (`nmp.publish`'s `Publish` variant)
-/// keeps the canonical NIP-01 event as OPAQUE BYTES — it must round-trip
-/// byte-for-byte so the signature stays valid. The typed table NEVER re-models
-/// the signed event (ADR-0064 / #1751).
+/// App-facing payloads must not carry pre-signed events. Internal/protocol
+/// seams that move externally signed NIP-01 events keep those bytes opaque and
+/// byte-exact so the signature stays valid.
 pub trait ActionPayload: Sized {
     /// Stable identity of this payload schema (e.g. `"nmp.publish"`), carried in
     /// diagnostics. Distinct from the host-routing `ActionModule::NAMESPACE`,

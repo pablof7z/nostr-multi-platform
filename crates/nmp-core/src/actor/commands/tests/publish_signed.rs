@@ -37,7 +37,15 @@ fn publish_signed_event_routes_and_dispatches_verbatim() {
     let (json, ev_id, ev_sig) = signed_nip01_json(&id, "# signed body");
 
     let raw: crate::store::RawEvent = serde_json::from_str(&json).unwrap();
-    let outbound = publish_signed_event(&mut kernel, raw, PublishTarget::Auto, None);
+    let outbound = publish_signed_event(
+        &mut kernel,
+        raw,
+        PublishTarget::explicit(
+            TEST_GROUP_RELAYS.iter().map(|s| s.to_string()).collect(),
+            PublishRouteClass::ImportedOrPresigned,
+        ),
+        None,
+    );
 
     assert!(!outbound.is_empty(), "valid signed event must route");
     assert_eq!(kernel.last_error_toast_snapshot(), None);
@@ -69,16 +77,24 @@ fn publish_signed_event_publishes_without_active_account() {
     // no active account.
     let (mut signer_id, mut signer_kernel) = fresh();
     sign_in_with_nip65(&mut signer_id, &mut signer_kernel);
-    let author = signer_id.active_pubkey().unwrap();
+    let _author = signer_id.active_pubkey().unwrap();
     let (json, ev_id, _sig) = signed_nip01_json(&signer_id, "no-account body");
 
-    // Fresh kernel: NO account signed in, but the author's kind:10002 seeded.
+    // Fresh kernel: NO account signed in. Externally signed publish is now
+    // explicit imported/protocol routing only, so no kind:10002 seed is needed.
     let (no_acct_id, mut kernel) = fresh();
     assert!(no_acct_id.active_pubkey().is_none());
-    kernel.seed_kind10002_for_test(&author, TEST_WRITE_RELAYS);
 
     let raw: crate::store::RawEvent = serde_json::from_str(&json).unwrap();
-    let outbound = publish_signed_event(&mut kernel, raw, PublishTarget::Auto, None);
+    let outbound = publish_signed_event(
+        &mut kernel,
+        raw,
+        PublishTarget::explicit(
+            TEST_GROUP_RELAYS.iter().map(|s| s.to_string()).collect(),
+            PublishRouteClass::ImportedOrPresigned,
+        ),
+        None,
+    );
 
     assert!(
         !outbound.is_empty(),
@@ -100,7 +116,15 @@ fn publish_signed_event_rejects_tampered_signature_with_toast() {
     assert_ne!(bad_json, json, "signature must actually have changed");
 
     let raw: crate::store::RawEvent = serde_json::from_str(&bad_json).unwrap();
-    let outbound = publish_signed_event(&mut kernel, raw, PublishTarget::Auto, None);
+    let outbound = publish_signed_event(
+        &mut kernel,
+        raw,
+        PublishTarget::explicit(
+            TEST_GROUP_RELAYS.iter().map(|s| s.to_string()).collect(),
+            PublishRouteClass::ImportedOrPresigned,
+        ),
+        None,
+    );
 
     assert!(
         outbound.is_empty(),
@@ -128,7 +152,15 @@ fn publish_signed_event_rejects_id_mismatch_with_toast() {
     // Mutate content without re-deriving the id → id-hash check must fail.
     let mut raw: crate::store::RawEvent = serde_json::from_str(&json).unwrap();
     raw.content = "tampered-after-signing".into();
-    let outbound = publish_signed_event(&mut kernel, raw, PublishTarget::Auto, None);
+    let outbound = publish_signed_event(
+        &mut kernel,
+        raw,
+        PublishTarget::explicit(
+            TEST_GROUP_RELAYS.iter().map(|s| s.to_string()).collect(),
+            PublishRouteClass::ImportedOrPresigned,
+        ),
+        None,
+    );
 
     assert!(outbound.is_empty(), "id-mismatch event must not publish");
     assert!(kernel
@@ -208,7 +240,7 @@ fn publish_signed_event_to_empty_explicit_relays_fails_closed() {
     assert!(
         kernel
             .last_error_toast_snapshot()
-            .is_some_and(|t| t.contains("explicit publish target rejected")),
+            .is_some_and(|t| t.contains("pre-signed publish target rejected")),
         "expected explicit-target rejection toast, got: {:?}",
         kernel.last_error_toast_snapshot()
     );

@@ -4,27 +4,10 @@
 //! (bad schema_version / not-typed-capable / unknown namespace → REJECTED).
 
 use super::*;
-use crate::actor::PublishCommand;
 use crate::publish::{PublishAction, PublishTarget};
 use crate::substrate::{ActionContext, ActionPayload};
-use nmp_signer_iface::{SignedEvent, UnsignedEvent};
-
 fn ctx() -> ActionContext {
     ActionContext::default()
-}
-
-fn fixture_signed_event() -> SignedEvent {
-    SignedEvent {
-        id: "a".repeat(64),
-        sig: "b".repeat(128),
-        unsigned: UnsignedEvent {
-            pubkey: "c".repeat(64),
-            kind: 1,
-            tags: vec![vec!["e".to_string(), "d".repeat(64)]],
-            content: "typed-bytes round trip".to_string(),
-            created_at: 1_700_000_000,
-        },
-    }
 }
 
 // ---- Happy path: typed bytes → start_bytes → minted correlation_id ----------
@@ -40,10 +23,12 @@ fn dispatch_envelope_bytes_decode_and_route_into_start_bytes_end_to_end() {
     let registry = default_registry();
     // The app-facing typed builder would stamp the namespace + the typed payload
     // into the envelope; here we drive the same primitives directly.
-    let action = PublishAction::Publish {
-        handle: "e2e".to_string(),
-        event: fixture_signed_event(),
+    let action = PublishAction::PublishRaw {
+        kind: 1,
+        tags: vec![],
+        content: "typed-bytes round trip".to_string(),
         target: PublishTarget::Auto,
+        signer: Default::default(),
     };
     let payload = action.encode();
     let envelope = encode_dispatch_envelope(
@@ -109,58 +94,74 @@ fn start_bytes_publish_raw_returns_minted_correlation_id() {
 }
 
 #[test]
-fn start_bytes_presigned_publish_mints_id_not_event_id() {
-    // The typed path preserves the #1748 invariant: identity is the minted
-    // correlation_id, never the event id.
+fn start_bytes_presigned_publish_payload_is_rejected() {
     let registry = default_registry();
-    let event = fixture_signed_event();
-    let event_id = event.id.clone();
     let action = PublishAction::Publish {
         handle: "h".to_string(),
-        event,
-        target: PublishTarget::Auto,
+        event: nmp_signer_iface::SignedEvent {
+            id: "a".repeat(64),
+            sig: "b".repeat(128),
+            unsigned: nmp_signer_iface::UnsignedEvent {
+                pubkey: "c".repeat(64),
+                kind: 1,
+                tags: vec![],
+                content: "typed-bytes presigned reject".to_string(),
+                created_at: 1_700_000_000,
+            },
+        },
+        target: PublishTarget::explicit(
+            vec!["wss://relay.example".to_string()],
+            crate::publish::PublishRouteClass::ImportedOrPresigned,
+        ),
     };
-    let id = registry
+    let err = registry
         .start_bytes(
             &mut ctx(),
             1_700_000_000_000,
             "nmp.publish",
             &action.encode(),
         )
-        .expect("typed pre-signed publish accepted");
-    assert_ne!(id, event_id, "correlation_id must not be the event id");
-    assert_eq!(id.len(), 32);
+        .expect_err("typed pre-signed publish payload must be rejected");
+    assert!(
+        matches!(err, ActionRejection::Invalid(ref msg) if msg.contains("missing NPUB")),
+        "empty pre-signed payload should fail at typed decode; got: {err:?}"
+    );
 }
 
 #[test]
-fn execute_bytes_publish_signed_sends_publish_signed_event_command() {
-    use crate::actor::ActorCommand;
-    use std::cell::RefCell;
-
+fn execute_bytes_presigned_publish_payload_is_rejected() {
     let registry = default_registry();
     let action = PublishAction::Publish {
         handle: "h".to_string(),
-        event: fixture_signed_event(),
-        target: PublishTarget::Auto,
+        event: nmp_signer_iface::SignedEvent {
+            id: "a".repeat(64),
+            sig: "b".repeat(128),
+            unsigned: nmp_signer_iface::UnsignedEvent {
+                pubkey: "c".repeat(64),
+                kind: 1,
+                tags: vec![],
+                content: "typed-bytes presigned reject".to_string(),
+                created_at: 1_700_000_000,
+            },
+        },
+        target: PublishTarget::explicit(
+            vec!["wss://relay.example".to_string()],
+            crate::publish::PublishRouteClass::ImportedOrPresigned,
+        ),
     };
-    let sent: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
-    registry
+    let err = registry
         .execute_bytes(
             &ctx(),
             "nmp.publish",
             &action.encode(),
             "corr-typed-1",
-            &|cmd| sent.borrow_mut().push(cmd),
+            &|_| {},
         )
-        .expect("typed execute should enqueue the publish command");
-    let cmds = sent.into_inner();
-    assert_eq!(cmds.len(), 1, "exactly one ActorCommand enqueued");
-    match &cmds[0] {
-        ActorCommand::Publish(PublishCommand::SignedEvent { correlation_id, .. }) => {
-            assert_eq!(correlation_id.as_deref(), Some("corr-typed-1"));
-        }
-        other => panic!("expected PublishSignedEvent, got {other:?}"),
-    }
+        .expect_err("typed pre-signed publish payload must be rejected");
+    assert!(
+        err.message.contains("missing NPUB"),
+        "empty pre-signed payload should fail at typed decode; got: {err:?}"
+    );
 }
 
 // ---- Fail CLOSED: schema_version trip rejected BEFORE start() ----------------

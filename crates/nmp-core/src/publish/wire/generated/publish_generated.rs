@@ -106,15 +106,14 @@ pub mod nmp {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PUBLISH_PAYLOAD_BODY: u8 = 4;
+        pub const ENUM_MAX_PUBLISH_PAYLOAD_BODY: u8 = 3;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PUBLISH_PAYLOAD_BODY: [PublishPayloadBody; 5] = [
+        pub const ENUM_VALUES_PUBLISH_PAYLOAD_BODY: [PublishPayloadBody; 4] = [
             PublishPayloadBody::NONE,
-            PublishPayloadBody::PublishSigned,
             PublishPayloadBody::PublishProfile,
             PublishPayloadBody::PublishRaw,
             PublishPayloadBody::PublishReply,
@@ -126,16 +125,14 @@ pub mod nmp {
         #[allow(non_upper_case_globals)]
         impl PublishPayloadBody {
             pub const NONE: Self = Self(0);
-            pub const PublishSigned: Self = Self(1);
-            pub const PublishProfile: Self = Self(2);
-            pub const PublishRaw: Self = Self(3);
-            pub const PublishReply: Self = Self(4);
+            pub const PublishProfile: Self = Self(1);
+            pub const PublishRaw: Self = Self(2);
+            pub const PublishReply: Self = Self(3);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 4;
+            pub const ENUM_MAX: u8 = 3;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::NONE,
-                Self::PublishSigned,
                 Self::PublishProfile,
                 Self::PublishRaw,
                 Self::PublishReply,
@@ -144,7 +141,6 @@ pub mod nmp {
             pub fn variant_name(self) -> Option<&'static str> {
                 match self {
                     Self::NONE => Some("NONE"),
-                    Self::PublishSigned => Some("PublishSigned"),
                     Self::PublishProfile => Some("PublishProfile"),
                     Self::PublishRaw => Some("PublishRaw"),
                     Self::PublishReply => Some("PublishReply"),
@@ -205,198 +201,6 @@ pub mod nmp {
         impl ::flatbuffers::SimpleToVerifyInSlice for PublishPayloadBody {}
         pub struct PublishPayloadBodyUnionTableOffset {}
 
-        pub enum PublishSignedOffset {}
-        #[derive(Copy, Clone, PartialEq)]
-
-        pub struct PublishSigned<'a> {
-            pub _tab: ::flatbuffers::Table<'a>,
-        }
-
-        impl<'a> ::flatbuffers::Follow<'a> for PublishSigned<'a> {
-            type Inner = PublishSigned<'a>;
-            #[inline]
-            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-                Self {
-                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
-                }
-            }
-        }
-
-        impl<'a> PublishSigned<'a> {
-            pub const VT_HANDLE: ::flatbuffers::VOffsetT = 4;
-            pub const VT_CANONICAL_EVENT: ::flatbuffers::VOffsetT = 6;
-            pub const VT_TARGET: ::flatbuffers::VOffsetT = 8;
-
-            #[inline]
-            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-                PublishSigned { _tab: table }
-            }
-            #[allow(unused_mut)]
-            pub fn create<
-                'bldr: 'args,
-                'args: 'mut_bldr,
-                'mut_bldr,
-                A: ::flatbuffers::Allocator + 'bldr,
-            >(
-                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-                args: &'args PublishSignedArgs<'args>,
-            ) -> ::flatbuffers::WIPOffset<PublishSigned<'bldr>> {
-                let mut builder = PublishSignedBuilder::new(_fbb);
-                if let Some(x) = args.target {
-                    builder.add_target(x);
-                }
-                if let Some(x) = args.canonical_event {
-                    builder.add_canonical_event(x);
-                }
-                if let Some(x) = args.handle {
-                    builder.add_handle(x);
-                }
-                builder.finish()
-            }
-
-            #[inline]
-            pub fn handle(&self) -> &'a str {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<::flatbuffers::ForwardsUOffset<&str>>(PublishSigned::VT_HANDLE, None)
-                        .unwrap()
-                }
-            }
-            #[inline]
-            pub fn canonical_event(&self) -> ::flatbuffers::Vector<'a, u8> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, u8>>>(
-                            PublishSigned::VT_CANONICAL_EVENT,
-                            None,
-                        )
-                        .unwrap()
-                }
-            }
-            #[inline]
-            pub fn target(&self) -> PublishTarget<'a> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<::flatbuffers::ForwardsUOffset<PublishTarget>>(
-                            PublishSigned::VT_TARGET,
-                            None,
-                        )
-                        .unwrap()
-                }
-            }
-        }
-
-        impl ::flatbuffers::Verifiable for PublishSigned<'_> {
-            #[inline]
-            fn run_verifier(
-                v: &mut ::flatbuffers::Verifier,
-                pos: usize,
-            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-                v.visit_table(pos)?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "handle",
-                        Self::VT_HANDLE,
-                        true,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u8>>>(
-                        "canonical_event",
-                        Self::VT_CANONICAL_EVENT,
-                        true,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<PublishTarget>>(
-                        "target",
-                        Self::VT_TARGET,
-                        true,
-                    )?
-                    .finish();
-                Ok(())
-            }
-        }
-        pub struct PublishSignedArgs<'a> {
-            pub handle: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub canonical_event: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, u8>>>,
-            pub target: Option<::flatbuffers::WIPOffset<PublishTarget<'a>>>,
-        }
-        impl<'a> Default for PublishSignedArgs<'a> {
-            #[inline]
-            fn default() -> Self {
-                PublishSignedArgs {
-                    handle: None,          // required field
-                    canonical_event: None, // required field
-                    target: None,          // required field
-                }
-            }
-        }
-
-        pub struct PublishSignedBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-        }
-        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> PublishSignedBuilder<'a, 'b, A> {
-            #[inline]
-            pub fn add_handle(&mut self, handle: ::flatbuffers::WIPOffset<&'b str>) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    PublishSigned::VT_HANDLE,
-                    handle,
-                );
-            }
-            #[inline]
-            pub fn add_canonical_event(
-                &mut self,
-                canonical_event: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, u8>>,
-            ) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    PublishSigned::VT_CANONICAL_EVENT,
-                    canonical_event,
-                );
-            }
-            #[inline]
-            pub fn add_target(&mut self, target: ::flatbuffers::WIPOffset<PublishTarget<'b>>) {
-                self.fbb_
-                    .push_slot_always::<::flatbuffers::WIPOffset<PublishTarget>>(
-                        PublishSigned::VT_TARGET,
-                        target,
-                    );
-            }
-            #[inline]
-            pub fn new(
-                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-            ) -> PublishSignedBuilder<'a, 'b, A> {
-                let start = _fbb.start_table();
-                PublishSignedBuilder {
-                    fbb_: _fbb,
-                    start_: start,
-                }
-            }
-            #[inline]
-            pub fn finish(self) -> ::flatbuffers::WIPOffset<PublishSigned<'a>> {
-                let o = self.fbb_.end_table(self.start_);
-                self.fbb_.required(o, PublishSigned::VT_HANDLE, "handle");
-                self.fbb_
-                    .required(o, PublishSigned::VT_CANONICAL_EVENT, "canonical_event");
-                self.fbb_.required(o, PublishSigned::VT_TARGET, "target");
-                ::flatbuffers::WIPOffset::new(o.value())
-            }
-        }
-
-        impl ::core::fmt::Debug for PublishSigned<'_> {
-            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-                let mut ds = f.debug_struct("PublishSigned");
-                ds.field("handle", &self.handle());
-                ds.field("canonical_event", &self.canonical_event());
-                ds.field("target", &self.target());
-                ds.finish()
-            }
-        }
         pub enum PublishProfileOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -1707,20 +1511,6 @@ pub mod nmp {
             }
             #[inline]
             #[allow(non_snake_case)]
-            pub fn body_as_publish_signed(&self) -> Option<PublishSigned<'a>> {
-                if self.body_type() == PublishPayloadBody::PublishSigned {
-                    let u = self.body();
-                    // Safety:
-                    // Created from a valid Table for this object
-                    // Which contains a valid union in this slot
-                    Some(unsafe { PublishSigned::init_from_table(u) })
-                } else {
-                    None
-                }
-            }
-
-            #[inline]
-            #[allow(non_snake_case)]
             pub fn body_as_publish_profile(&self) -> Option<PublishProfile<'a>> {
                 if self.body_type() == PublishPayloadBody::PublishProfile {
                     let u = self.body();
@@ -1772,7 +1562,6 @@ pub mod nmp {
      .visit_field::<u32>("schema_version", Self::VT_SCHEMA_VERSION, false)?
      .visit_union::<PublishPayloadBody, _>("body_type", Self::VT_BODY_TYPE, "body", Self::VT_BODY, true, |key, v, pos| {
         match key {
-          PublishPayloadBody::PublishSigned => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<PublishSigned>>("PublishPayloadBody::PublishSigned", pos),
           PublishPayloadBody::PublishProfile => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<PublishProfile>>("PublishPayloadBody::PublishProfile", pos),
           PublishPayloadBody::PublishRaw => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<PublishRaw>>("PublishPayloadBody::PublishRaw", pos),
           PublishPayloadBody::PublishReply => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<PublishReply>>("PublishPayloadBody::PublishReply", pos),
@@ -1849,16 +1638,6 @@ pub mod nmp {
                 ds.field("schema_version", &self.schema_version());
                 ds.field("body_type", &self.body_type());
                 match self.body_type() {
-                    PublishPayloadBody::PublishSigned => {
-                        if let Some(x) = self.body_as_publish_signed() {
-                            ds.field("body", &x)
-                        } else {
-                            ds.field(
-                                "body",
-                                &"InvalidFlatbuffer: Union discriminant does not match value.",
-                            )
-                        }
-                    }
                     PublishPayloadBody::PublishProfile => {
                         if let Some(x) = self.body_as_publish_profile() {
                             ds.field("body", &x)

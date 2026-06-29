@@ -235,12 +235,10 @@ pub(crate) fn publish_unsigned_event_to_relays(
 /// shared `Kernel::verify_externally_signed_event` chokepoint; a failure
 /// surfaces a categorized toast, drops the forged event, and emits no frames.
 ///
-/// `correlation_id` is the registry-minted action id (the operation's identity,
-/// never the event id — #1748) when this publish originates from
-/// `dispatch_action`'s pre-signed `PublishAction::Publish` path; threading it
-/// makes the engine report THAT id in `action_results`. `None` for non-dispatch
-/// callers (`NmpApp::publish_signed_explicit` + conformance harnesses); the
-/// engine then falls back to the publish handle (== event id).
+/// `correlation_id` is an optional internal/protocol operation id (never the
+/// event id — #1748); threading it makes the engine report THAT id in
+/// `action_results`. `None` for callers that want the engine to fall back to the
+/// publish handle (== event id).
 ///
 /// **D10 defensive guard.** A kind:1059 gift-wrap with `PublishTarget::Auto` is
 /// REFUSED — Auto would resolve through the author's public-relay outbox and

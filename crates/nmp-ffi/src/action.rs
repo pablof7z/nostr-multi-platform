@@ -16,15 +16,12 @@
 //! validates the action and records the host-supplied correlation id, the
 //! dispatch path drives the action through the actor:
 //!
-//! * For `nmp.publish` / [`PublishAction::Publish`], the validated signed
-//!   event is converted to a [`nmp_store::RawEvent`] and handed to the
-//!   actor via [`ActorCommand::PublishSignedEvent`] — the same actor command
-//!   the (now-deleted) bespoke `nmp_app_publish_signed_event*` FFI symbols
-//!   used to use, plus the workspace-internal
-//!   [`crate::NmpApp::publish_signed_explicit`] Marmot seam. The actor
-//!   re-verifies the Schnorr signature + id hash (D4 — only the actor loop
-//!   signs/publishes; a forged event is rejected, never published) and
-//!   routes it through the typed `PublishTarget` carried by the action.
+//! * For `nmp.publish`, app-facing actions are unsigned write intents such as
+//!   `PublishRaw`, `PublishProfile`, and `PublishReply`. The actor finalizes,
+//!   signs, routes, and publishes them. Pre-signed publish is intentionally not
+//!   accepted on this byte doorway; verbatim/imported/protocol-owned signed
+//!   events use internal seams such as [`crate::NmpApp::publish_signed_explicit`]
+//!   and must carry explicit provenance before they reach the actor.
 //! * Publish *cancel* is NOT a dispatch action and NOT a `PublishAction`
 //!   variant (the bespoke `PublishAction::Cancel` lane was deleted in S7,
 //!   #1754). The publish lifecycle's control plane stays on the dedicated FFI
@@ -33,10 +30,10 @@
 //!   handle so the `Cancelled` terminal lands under the original correlation_id,
 //!   PD-036).
 //!
-//! A returned `{"correlation_id":"…"}` for a `Publish` action means the
-//! event was *accepted and enqueued for publication* — the actor owns the
-//! actual relay dispatch + ack tracking from there (the publish engine
-//! reports per-relay outcomes through the normal snapshot path).
+//! A returned `{"correlation_id":"…"}` for a publish action means the write
+//! intent was *accepted and enqueued for publication* — the actor owns signing,
+//! relay dispatch, and ack tracking from there (the publish engine reports
+//! per-relay outcomes through the normal snapshot path).
 //!
 //! # Threading
 //!
@@ -53,8 +50,8 @@
 //!   missing/invalid arguments, an unknown namespace, or a malformed payload
 //!   all come back as a populated `{"error":"…"}` JSON object. A non-null
 //!   `app` never yields a NULL return.
-//! * **D4** — the FFI thread never signs or publishes. It hands a
-//!   pre-signed event to the actor; the actor verifies + publishes.
+//! * **D4** — the FFI thread never signs or publishes. It hands unsigned app
+//!   intent to the actor; the actor finalizes, signs, verifies, and publishes.
 //! * **D8** — the FFI thread never blocks. Dispatch is a non-blocking
 //!   channel send.
 
