@@ -37,22 +37,24 @@ name: perf-gates
 # build on a cold or evicted cache. The 45-minute timeout gives that cold path
 # comfortable headroom; cached runs typically finish in 7–10 min.
 
-# TEMPORARILY DISABLED during the clean-break architecture migration (epic #2340).
-# While kernel hot paths are mid-move, perf numbers are not meaningful and the gate
-# produces churn rather than signal, so it is demoted from a PR/push gate to
-# manual-only (workflow_dispatch). The full bench pipeline below is intentionally
-# left intact; re-enabling is a one-line restore of the push/pull_request triggers
-# once the migration settles. Do NOT delete the jobs.
+# MIGRATION-WINDOW DECISION (issue #2395, epic #2340):
 #
-#   To restore after the migration, replace the `on:` block with:
-#     on:
-#       push:
-#         branches: [master]
-#       pull_request:
-#         branches: [master]
-#         paths:
-#           - ".github/workflows/perf-gates.yml"
-#           - "crates/**"
+# Keep this workflow manual-only while the clean-break migration is actively
+# deleting old public read/native ABI surfaces and converging native hosts on
+# UniFFI. The benches below remain useful on demand, but they are not a useful
+# automatic PR signal during this window:
+#
+# - reactivity-bench is a synthetic model of the reverse-index/view-delta budget,
+#   not the typed-session + UniFFI surface currently being settled.
+# - firehose-bench replay mode still labels itself prototype/modelled for real
+#   relay sockets, storage, wrappers, and platform transport.
+# - the intended replacement shape is a narrower architecture-sanity signal, but
+#   the documented `sanity-gate` binary is not present on current master.
+#
+# Do not restore push/pull_request triggers merely because they existed before.
+# After the M14-D native ABI deletions and clean-break docs settle, either wire a
+# narrow automatic signal for the surviving hot path or explicitly retire this
+# old automatic gate in the owning issue/docs.
 on:
   workflow_dispatch:
 
