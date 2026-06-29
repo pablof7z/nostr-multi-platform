@@ -95,16 +95,17 @@ object GeneratedActionBuilders {
         }).toByte()
     }
 
-    /// Publish an app-private note event.
-    /// Builds the `app.notes.publish_note` `DispatchEnvelope` bytes for the byte doorway.
-    fun publishNote(
+    /// Publish the starter app's private status event.
+    /// Builds the `app.login_timeline.publish_status` `DispatchEnvelope` bytes for the byte doorway.
+    fun publishStatus(
         correlationId: String,
         title: String,
-        retryCount: Int,
+        body: String,
         topics: List<String>?,
     ): ByteArray {
         val fbb = FlatBufferBuilder()
         val titleOffset = fbb.createString(title)
+        val bodyOffset = fbb.createString(body)
         val topicsOffset = run {
             val values = topics
             if (values == null || values.isEmpty()) 0 else {
@@ -115,16 +116,16 @@ object GeneratedActionBuilders {
             }
         }
         fbb.startTable(4)
-        fbb.addInt(0, 42, 0) // slot 0: schema_version
+        fbb.addInt(0, 1, 0) // slot 0: schema_version
         fbb.addOffset(1, titleOffset, 0) // slot 1: title
-        fbb.addInt(2, retryCount, 0) // slot 2: retryCount
+        fbb.addOffset(2, bodyOffset, 0) // slot 2: body
         if (topicsOffset != 0) fbb.addOffset(3, topicsOffset, 0) // slot 3: topics
         val payloadRoot = fbb.endTable()
-        fbb.finish(payloadRoot, "APPA")
+        fbb.finish(payloadRoot, "APPS")
         val payload = fbb.sizedByteArray()
         return encodeDispatchEnvelope(
             correlationId = correlationId,
-            actionNamespace = "app.notes.publish_note",
+            actionNamespace = "app.login_timeline.publish_status",
             payload = payload,
         )
     }

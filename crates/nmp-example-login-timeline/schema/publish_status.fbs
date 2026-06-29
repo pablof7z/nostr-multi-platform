@@ -1,0 +1,20 @@
+namespace app.login_timeline;
+
+// App-private FlatBuffers payload for the starter DX proof action.
+// This schema is owned by nmp-example-login-timeline, not by an NMP crate.
+//
+// Regenerate the checked-in Rust binding with the workspace FlatBuffers pin:
+//   flatc --rust -o crates/nmp-example-login-timeline/src/private_status/generated \
+//         crates/nmp-example-login-timeline/schema/publish_status.fbs
+
+table PublishStatusPayload {
+  // Fail-closed schema_version tripwire. The app-owned Rust decoder reads this
+  // before accepting the payload.
+  schema_version:uint;
+  title:string (required);
+  body:string (required);
+  topics:[string];
+}
+
+file_identifier "APPS";
+root_type PublishStatusPayload;

@@ -34,7 +34,7 @@ use super::kotlin_nip51::{
     is_bookmark_builder, is_bookmark_set_builder, kotlin_param_type, render_bookmark_update,
 };
 
-const HEADER: &str = "\
+const BUILTIN_HEADER: &str = "\
 // ─────────────────────────────────────────────────────────────────────────────
 // THIS FILE IS GENERATED. DO NOT EDIT BY HAND.
 //
@@ -61,6 +61,19 @@ package org.nmp.android
 import com.google.flatbuffers.FlatBufferBuilder
 ";
 
+const APP_LOCAL_HEADER: &str = "\
+// GENERATED. DO NOT EDIT BY HAND.
+//
+// Regenerate with nmp-codegen --registry <app>/action-builders.json --platform kotlin.
+//
+// Source of truth: app-local action-builders registry JSON passed via
+// `--registry`. NOT NMP's built-in `ACTION_BUILDERS` table.
+
+package org.nmp.android
+
+import com.google.flatbuffers.FlatBufferBuilder
+";
+
 /// Render the generated Kotlin action-builders for the given registry.
 #[must_use]
 pub fn render(builders: &[ActionBuilder]) -> String {
@@ -70,7 +83,7 @@ pub fn render(builders: &[ActionBuilder]) -> String {
 /// Render the generated Kotlin action-builders for the given registry context.
 #[must_use]
 pub fn render_registry(registry: &ActionBuilderRegistry<'_>) -> String {
-    let mut out = String::from(HEADER);
+    let mut out = header(registry);
     out.push('\n');
     out.push_str("object GeneratedActionBuilders {\n");
     out.push_str(&publish_signer_types());
@@ -90,6 +103,14 @@ pub fn render_registry(registry: &ActionBuilderRegistry<'_>) -> String {
     }
     out.push_str("}\n");
     out
+}
+
+fn header(registry: &ActionBuilderRegistry<'_>) -> String {
+    if registry.is_app_local() {
+        String::from(APP_LOCAL_HEADER)
+    } else {
+        String::from(BUILTIN_HEADER)
+    }
 }
 
 fn publish_signer_types() -> String {

@@ -40,12 +40,13 @@
 //! identical `nmp.feed.home` typed projection — the projection→render contract
 //! is platform-agnostic.
 
-use nmp_core::substrate::AppHost;
+use nmp_core::substrate::{ActionRegistrar, AppHost};
 use nmp_ffi::NmpApp;
 use nmp_nip01::op_feed::{decode_op_feed_snapshot, OP_FEED_SNAPSHOT_KEY};
 
 #[cfg(feature = "harness")]
 pub mod harness;
+pub mod private_status;
 
 /// The primary note kinds the following timeline renders: kind:1 text notes.
 /// Repost wrappers are derived below this app-facing declaration.
@@ -56,7 +57,7 @@ pub const FOLLOWING_PRIMARY_FEED_KINDS: [u32; 1] = [1];
 /// This worked example mirrors the ADR-0069 starter path: install reusable
 /// substrate/protocol features by name, then let the timeline opener register
 /// the app-facing feed session. Call before `start`.
-pub fn register(app: &mut impl AppHost) {
+pub fn register(app: &mut (impl AppHost + ActionRegistrar)) {
     let nmp_defaults::NmpDefaults {
         coverage_gate,
         search_defaults,
@@ -68,6 +69,8 @@ pub fn register(app: &mut impl AppHost) {
     let _social_handles = nmp_defaults::register_social_protocol_defaults(app, search_defaults);
     nmp_defaults::register_dm_protocol_defaults(app);
     nmp_defaults::register_longform_projection(app);
+    ActionRegistrar::register_action(app, private_status::PublishStatusModule)
+        .expect("starter private status action namespace must be unique");
 }
 
 /// Step 2 — open the FOLLOWING timeline.

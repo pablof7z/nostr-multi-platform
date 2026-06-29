@@ -88,32 +88,33 @@ public enum GeneratedActionBuilders {
         return 255
     }
 
-    /// Publish an app-private note event.
-    /// Builds the `app.notes.publish_note` `DispatchEnvelope` bytes for the byte doorway.
-    public static func publishNote(
+    /// Publish the starter app's private status event.
+    /// Builds the `app.login_timeline.publish_status` `DispatchEnvelope` bytes for the byte doorway.
+    public static func publishStatus(
         correlationId: String,
         title: String,
-        retryCount: UInt32,
+        body: String,
         topics: [String]?
     ) -> [UInt8] {
         var fbb = FlatBufferBuilder()
         let titleOffset = fbb.create(string: title)
+        let bodyOffset = fbb.create(string: body)
         let topicsOffset: Offset = {
             guard let values = topics, !values.isEmpty else { return Offset() }
             let offsets = values.map { fbb.create(string: $0) }
             return fbb.createVector(ofOffsets: offsets)
         }()
         let payloadStart = fbb.startTable(with: 4)
-        fbb.add(element: UInt32(42), def: UInt32(0), at: 4) // slot 0: schema_version
+        fbb.add(element: UInt32(1), def: UInt32(0), at: 4) // slot 0: schema_version
         fbb.add(offset: titleOffset, at: 6) // slot 1: title
-        fbb.add(element: UInt32(retryCount), def: UInt32(0), at: 8) // slot 2: retryCount
+        fbb.add(offset: bodyOffset, at: 8) // slot 2: body
         if topicsOffset.o != 0 { fbb.add(offset: topicsOffset, at: 10) } // slot 3: topics
         let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))
-        fbb.finish(offset: payloadRoot, fileId: "APPA")
+        fbb.finish(offset: payloadRoot, fileId: "APPS")
         let payload = fbb.sizedByteArray
         return encodeDispatchEnvelope(
             correlationId: correlationId,
-            actionNamespace: "app.notes.publish_note",
+            actionNamespace: "app.login_timeline.publish_status",
             payload: payload
         )
     }

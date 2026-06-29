@@ -3888,12 +3888,15 @@ dependencies = [
 name = "nmp-example-login-timeline"
 version = "0.8.4"
 dependencies = [
+ "flatbuffers",
  "nmp-core",
  "nmp-defaults",
  "nmp-ffi",
  "nmp-native-runtime",
  "nmp-nip01",
+ "nmp-signer-iface",
  "nostr",
+ "serde",
 ]
 
 [[package]]

@@ -63,26 +63,27 @@ function relayMarkerByte(role: string): number {
 }
 
 export const GeneratedActionBuilders = {
-  /** Publish an app-private note event. */
-  publishNote(
+  /** Publish the starter app's private status event. */
+  publishStatus(
     correlationId: string,
     title: string,
-    retryCount: number,
+    body: string,
     topics: string[] | null,
   ): Uint8Array {
     const fbb = new flatbuffers.Builder(64);
     const titleOffset = fbb.createString(title);
+    const bodyOffset = fbb.createString(body);
     const topicsOffset =
       topics === null || topics.length === 0 ? 0 : stringVector(fbb, topics);
     fbb.startObject(4);
-    fbb.addFieldInt32(0, 42, 0); // slot 0: schema_version
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
     fbb.addFieldOffset(1, titleOffset, 0); // slot 1: title
-    fbb.addFieldInt32(2, retryCount, 0); // slot 2: retryCount
+    fbb.addFieldOffset(2, bodyOffset, 0); // slot 2: body
     if (topicsOffset !== 0) fbb.addFieldOffset(3, topicsOffset, 0); // slot 3: topics
     const payloadRoot = fbb.endObject();
-    fbb.finish(payloadRoot, "APPA");
+    fbb.finish(payloadRoot, "APPS");
     const payload = fbb.asUint8Array();
-    return encodeDispatchEnvelope(correlationId, "app.notes.publish_note", payload);
+    return encodeDispatchEnvelope(correlationId, "app.login_timeline.publish_status", payload);
   },
 
 };

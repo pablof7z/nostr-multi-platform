@@ -70,6 +70,7 @@ fn renders_app_local_swift_kotlin_and_ts_builders() {
     let registry = loaded.as_registry();
 
     let swift = render_from_registry(Platform::Swift, &registry);
+    assert_app_local_header(&swift);
     assert!(swift.contains("public static func publishNote("));
     assert!(swift.contains("actionNamespace: \"app.notes.publish_note\""));
     assert!(swift.contains("UInt32(42)"));
@@ -80,6 +81,7 @@ fn renders_app_local_swift_kotlin_and_ts_builders() {
     );
 
     let kotlin = render_from_registry(Platform::Kotlin, &registry);
+    assert_app_local_header(&kotlin);
     assert!(kotlin.contains("fun publishNote("));
     assert!(kotlin.contains("actionNamespace = \"app.notes.publish_note\""));
     assert!(kotlin.contains("fbb.addInt(0, 42, 0)"));
@@ -90,6 +92,7 @@ fn renders_app_local_swift_kotlin_and_ts_builders() {
     );
 
     let ts = render_from_registry(Platform::Ts, &registry);
+    assert_app_local_header(&ts);
     assert!(ts.contains("publishNote("));
     assert!(ts.contains("encodeDispatchEnvelope(correlationId, \"app.notes.publish_note\""));
     assert!(ts.contains("fbb.addFieldInt32(0, 42, 0)"));
@@ -98,6 +101,11 @@ fn renders_app_local_swift_kotlin_and_ts_builders() {
         &ts,
         &["slot 1: title", "slot 2: retryCount", "slot 3: topics"],
     );
+}
+
+fn assert_app_local_header(rendered: &str) {
+    assert!(rendered.contains("app-local action-builders registry JSON"));
+    assert!(rendered.contains("NOT NMP's built-in `ACTION_BUILDERS` table"));
 }
 
 #[test]

@@ -1,0 +1,39 @@
+{
+  "actions": [
+    {
+      "action_namespace": "app.login_timeline.publish_status",
+      "event_kind": 30444,
+      "dispatch": "publishes_event",
+      "schema": {
+        "schema_path": "schema/publish_status.fbs",
+        "root_type": "PublishStatusPayload",
+        "file_identifier": "APPS",
+        "schema_id": "app.login_timeline.publish_status",
+        "schema_version": 1
+      },
+      "builder": {
+        "method": "publishStatus",
+        "doc": "Publish the starter app's private status event.",
+        "fields": [
+          { "name": "title", "kind": "string" },
+          { "name": "body", "kind": "string" },
+          { "name": "topics", "kind": "string_vec", "optional": true }
+        ]
+      },
+      "rust": {
+        "rust_crate": "nmp-example-login-timeline",
+        "module": "private_status",
+        "payload_type": "PublishStatusAction",
+        "action_module": "PublishStatusModule"
+      }
+    }
+  ],
+  "outputs": {
+    "swift": "generated/ActionBuilders.generated.swift",
+    "kotlin": "generated/ActionBuilders.kt",
+    "ts": "generated/actionBuilders.generated.ts"
+  },
+  "drift_checks": [
+    "cargo run -p nmp-codegen -- gen action-builders --registry action-builders.json --check"
+  ]
+}
