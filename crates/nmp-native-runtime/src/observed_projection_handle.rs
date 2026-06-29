@@ -13,7 +13,7 @@ use crate::app_struct::NmpApp;
 
 impl NmpApp {
     #[must_use]
-    pub fn observed_projection_handle(&self) -> ObservedProjectionCommandHandle {
+    pub(crate) fn observed_projection_handle(&self) -> ObservedProjectionCommandHandle {
         ObservedProjectionCommandHandle::new(
             Arc::clone(&self.event_observers),
             Arc::clone(&self.observed_projection_sessions),

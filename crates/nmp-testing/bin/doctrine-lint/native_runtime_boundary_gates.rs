@@ -107,6 +107,59 @@ fn nmp_ffi_public_nmp_app_symbols_are_allowlisted() {
 }
 
 #[test]
+fn nmp_native_runtime_does_not_reexport_raw_observed_projection_doors() {
+    let root = crate::workspace_root();
+    let lib = root.join("crates/nmp-native-runtime/src/lib.rs");
+    let feeds = root.join("crates/nmp-native-runtime/src/app_impl_feeds.rs");
+    let handle = root.join("crates/nmp-native-runtime/src/observed_projection_handle.rs");
+    let files = [lib, feeds, handle];
+    let forbidden = [
+        (
+            "pub use nmp_core::substrate::ObservedProjectionCommandHandle",
+            "raw command handle re-export",
+        ),
+        (
+            "pub fn open_observed_interest(",
+            "raw observed-interest open",
+        ),
+        (
+            "pub fn open_observed_interest_pinned(",
+            "raw pinned observed-interest open",
+        ),
+        ("pub fn event_observers_handle(", "raw observer sink slot"),
+        (
+            "pub fn observed_projection_handle(",
+            "raw observed-projection command handle",
+        ),
+    ];
+    let mut violations = Vec::new();
+
+    for path in files {
+        let body = std::fs::read_to_string(&path)
+            .unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()));
+        for (idx, live) in rust_live_lines(&body).into_iter().enumerate() {
+            for (token, reason) in forbidden {
+                if live.contains(token) {
+                    violations.push(format!(
+                        "{}:{} {reason}: `{token}`",
+                        relative_to(&root, &path).display(),
+                        idx + 1
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "nmp-native-runtime must not expose raw observed-interest/projection \
+         executor doors as app-facing API; typed sessions and feature handles \
+         own app reads:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn platform_dependency_gate_negative_fixture_fires() {
     let packages = serde_json::json!({
         "packages": [{

@@ -50,7 +50,6 @@ pub mod op_pointer_source;
 pub use action_dispatch::{dispatch_action_bytes_typed, DispatchOutcome};
 pub use app_ctor::new_app;
 pub use app_struct::{IdentityChangeObserverId, NmpApp, UpdateListener};
-pub use nmp_core::__ffi_internal::{DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
 pub use builder::{
     NmpAppBuilder, ProjectionsDeclared, RelaysDeclared, RunConfig, StorageSet, Unstarted,
 };
@@ -67,7 +66,7 @@ pub use group_feed::{
     DISCOVERED_GROUPS_KEY, GROUP_EVENTS_KEY, JOINED_GROUPS_KEY,
 };
 pub use intent::InputIntentDispatch;
-pub use nmp_core::substrate::ObservedProjectionCommandHandle;
+pub use nmp_core::__ffi_internal::{DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
 pub use nmp_feed::FeedSessionBuild;
 pub use nmp_nip18::PrimaryKindError;
 pub use nmp_nip50::SearchRequest;
