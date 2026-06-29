@@ -52,27 +52,35 @@
 //! Every entry point is fire-and-forget: an empty active pubkey, a poisoned
 //! bookkeeping mutex, or a malformed filter degrades to a no-op open / partial
 //! teardown rather than crossing the FFI as a panic.
+//!
+//! ## File organisation
+//!
+//! This module is split across submodules to stay within the 500-line cap:
+//! - `mod.rs` — public session entry points for group-events, discovery, and
+//!   joined-groups views, plus shared constants and the session-bookkeeping type.
+//! - `roster` — entry points for the group-roster view.
+//! - `feed` — shared `open_group_feed` / `close_group_feed` plumbing called by
+//!   every view.
+//! - `types` — descriptor and handle types for all four views.
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
-use nmp_core::substrate::{ObservedProjection, ObservedProjectionRegistrar};
 use nmp_core::ObservedProjectionId;
-use nmp_feed::DEFAULT_FEED_WINDOW_LIMIT;
-use nmp_nip29::group_id::{group_metadata_filter_json, group_roster_filter_json};
+use nmp_nip29::group_id::group_metadata_filter_json;
 use nmp_nip29::{
-    encode_discovered_groups_snapshot, encode_group_events_snapshot, encode_group_roster_snapshot,
+    encode_discovered_groups_snapshot, encode_group_events_snapshot,
     encode_joined_groups_snapshot, DiscoveredGroupsProjection, GroupEventsProjection,
-    GroupEventsQuery, GroupRosterProjection, JoinedGroupsProjection,
-    DISCOVERED_GROUPS_FILE_IDENTIFIER, DISCOVERED_GROUPS_SCHEMA_ID,
-    DISCOVERED_GROUPS_SCHEMA_VERSION, GROUP_EVENTS_FILE_IDENTIFIER, GROUP_EVENTS_SCHEMA_ID,
-    GROUP_EVENTS_SCHEMA_VERSION, GROUP_ROSTER_FILE_IDENTIFIER, GROUP_ROSTER_SCHEMA_ID,
-    GROUP_ROSTER_SCHEMA_VERSION, JOINED_GROUPS_FILE_IDENTIFIER, JOINED_GROUPS_SCHEMA_ID,
-    JOINED_GROUPS_SCHEMA_VERSION,
+    GroupEventsQuery, JoinedGroupsProjection, DISCOVERED_GROUPS_FILE_IDENTIFIER,
+    DISCOVERED_GROUPS_SCHEMA_ID, DISCOVERED_GROUPS_SCHEMA_VERSION, GROUP_EVENTS_FILE_IDENTIFIER,
+    GROUP_EVENTS_SCHEMA_ID, GROUP_EVENTS_SCHEMA_VERSION, JOINED_GROUPS_FILE_IDENTIFIER,
+    JOINED_GROUPS_SCHEMA_ID, JOINED_GROUPS_SCHEMA_VERSION,
 };
 
 use crate::app_struct::NmpApp;
 
+mod feed;
+mod roster;
 mod types;
 pub use types::{
     Nip29GroupDiscoveryHandle, Nip29GroupDiscoverySession, Nip29GroupEventsHandle,
@@ -372,193 +380,8 @@ impl NmpApp {
     pub fn close_nip29_joined_groups_session(&self, handle: Nip29JoinedGroupsHandle) {
         self.close_group_feed_handle(&handle.key, handle.handle_id);
     }
-
-    /// Open the NIP-29 member-roster typed read session for one group.
-    /// Hydrating: a view opened after the group's 39001/39002/39003 snapshots
-    /// were cached catches them up, then tails live. Pinned `Global` (the group
-    /// host relay). Singleton: re-opening replaces the prior roster view.
-    #[must_use]
-    pub fn open_nip29_group_roster_session(
-        &self,
-        descriptor: Nip29GroupRosterSession,
-    ) -> Nip29GroupRosterHandle {
-        let (handle, _) = self.open_nip29_group_roster_session_with_reader(descriptor);
-        handle
-    }
-
-    /// Open a group-roster typed read session and return the canonical
-    /// projection reader.
-    ///
-    /// The returned [`GroupRosterProjection`] is the same `Arc` registered as
-    /// the observed projection and used by the `"nmp.nip29.group_roster"` typed
-    /// sidecar. Callers must not open a second roster observer; use this reader
-    /// and keep the sidecar, relay-pinned interest, and hydration single-owned
-    /// by this door.
-    #[must_use]
-    pub fn open_nip29_group_roster_session_with_reader(
-        &self,
-        descriptor: Nip29GroupRosterSession,
-    ) -> (Nip29GroupRosterHandle, Arc<GroupRosterProjection>) {
-        let Nip29GroupRosterSession { group_id } = descriptor;
-        let relay_pin = Some(group_id.host_relay_url.clone());
-        let filter_json = group_roster_filter_json(&group_id.local_id);
-        let projection = Arc::new(GroupRosterProjection::new(
-            group_id.host_relay_url.clone(),
-            group_id.local_id.clone(),
-        ));
-        let projection_reader = Arc::clone(&projection);
-
-        let projection_for_sidecar = Arc::clone(&projection);
-        let register_sidecar = move |app: &NmpApp| {
-            app.register_typed_snapshot_projection(GROUP_ROSTER_KEY, move || {
-                let snapshot = projection_for_sidecar.snapshot();
-                Some(nmp_core::TypedProjectionData {
-                    key: GROUP_ROSTER_KEY.to_string(),
-                    schema_id: GROUP_ROSTER_SCHEMA_ID.to_string(),
-                    schema_version: GROUP_ROSTER_SCHEMA_VERSION,
-                    file_identifier: String::from_utf8_lossy(GROUP_ROSTER_FILE_IDENTIFIER)
-                        .into_owned(),
-                    payload: encode_group_roster_snapshot(&snapshot),
-                    ..Default::default()
-                })
-            });
-        };
-
-        let handle_id = self.open_group_feed(
-            GROUP_ROSTER_KEY,
-            GROUP_ROSTER_CONSUMER,
-            SCOPE_GLOBAL,
-            relay_pin,
-            filter_json,
-            projection as Arc<dyn nmp_core::ObservedProjectionSink>,
-            register_sidecar,
-        );
-        (
-            Nip29GroupRosterHandle {
-                key: GROUP_ROSTER_KEY.to_string(),
-                handle_id,
-            },
-            projection_reader,
-        )
-    }
-
-    /// Close the group-roster typed read session represented by `handle`.
-    /// Idempotent (D6).
-    pub fn close_nip29_group_roster_session(&self, handle: Nip29GroupRosterHandle) {
-        self.close_group_feed_handle(&handle.key, handle.handle_id);
-    }
-
-    /// Shared open path for the three hydrating NIP-29 read views.
-    ///
-    /// Idempotently tears down any prior session under `key` first (singleton
-    /// semantics), registers the typed sidecar, registers the projection MUTED,
-    /// then opens the relay-pinned observed interest with read-cache replay
-    /// shapes derived from the same wire filter (so the in-memory cache is
-    /// hydrated to the muted observer before it is activated — the #2088 fix).
-    #[allow(clippy::too_many_arguments)]
-    fn open_group_feed(
-        &self,
-        key: &str,
-        consumer: &str,
-        scope: u32,
-        relay_pin: Option<String>,
-        filter_json: String,
-        observer: Arc<dyn nmp_core::ObservedProjectionSink>,
-        register_sidecar: impl FnOnce(&NmpApp),
-    ) -> u64 {
-        // Singleton: drop any prior session under this key first. Teardown must
-        // run BEFORE the replacement registers — both sessions share the same
-        // projection key, so a late key-based teardown would remove the new
-        // view's sidecar.
-        self.close_group_feed(key);
-        let handle_id = NEXT_GROUP_READ_HANDLE_ID.fetch_add(1, Ordering::Relaxed);
-
-        register_sidecar(self);
-
-        // The in-memory read-cache replay (ADR-0062) matches cached events by
-        // the SAME wire shape the live filter uses — `matches_event_with_id`
-        // honours the `#h` generic-tag + kind dimensions. A malformed filter
-        // yields no shapes; `open_observed_projection` validates the filter and
-        // no-ops the interest open while returning the observer id.
-        let replay_shapes: Vec<nmp_planner::InterestShape> =
-            nmp_planner::InterestShape::from_filter_json(&filter_json)
-                .map(|mut shape| {
-                    shape.relay_pin = relay_pin.clone();
-                    shape
-                })
-                .into_iter()
-                .collect();
-
-        let observer_id = self.open_observed_projection(ObservedProjection {
-            observer,
-            filter_json,
-            consumer_id: consumer.to_string(),
-            scope,
-            relay_pin,
-            replay_shapes,
-            replay_limit: DEFAULT_FEED_WINDOW_LIMIT,
-        });
-        if observer_id.0 == 0 {
-            self.remove_snapshot_projection(key);
-            return handle_id;
-        }
-
-        let Ok(mut sessions) = self.group_feed_sessions.lock() else {
-            self.close_observed_projection(observer_id);
-            self.remove_snapshot_projection(key);
-            return handle_id;
-        };
-        sessions.insert(
-            key.to_string(),
-            GroupFeedSession {
-                projection_key: key.to_string(),
-                handle_id,
-                observer_id,
-            },
-        );
-        handle_id
-    }
-
-    /// Tear down the NIP-29 read view registered under `key`: detach the pinned
-    /// interest, revoke the observer, and remove the typed sidecar. Idempotent —
-    /// closing an unknown view is a harmless no-op (D6).
-    pub(crate) fn close_group_feed(&self, key: &str) {
-        let session = self
-            .group_feed_sessions
-            .lock()
-            .ok()
-            .and_then(|mut sessions| sessions.remove(key));
-        let Some(session) = session else {
-            return;
-        };
-        self.close_observed_projection(session.observer_id);
-        self.remove_snapshot_projection(&session.projection_key);
-    }
-
-    fn close_group_feed_handle(&self, key: &str, handle_id: u64) {
-        let session = self
-            .group_feed_sessions
-            .lock()
-            .ok()
-            .and_then(|mut sessions| {
-                let should_remove = sessions
-                    .get(key)
-                    .map(|session| session.handle_id == handle_id)
-                    .unwrap_or(false);
-                if should_remove {
-                    sessions.remove(key)
-                } else {
-                    None
-                }
-            });
-        let Some(session) = session else {
-            return;
-        };
-        self.close_observed_projection(session.observer_id);
-        self.remove_snapshot_projection(&session.projection_key);
-    }
 }
 
 #[cfg(test)]
-#[path = "group_feed_tests.rs"]
+#[path = "../group_feed_tests.rs"]
 mod tests;
