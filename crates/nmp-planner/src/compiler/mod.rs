@@ -316,6 +316,20 @@ impl<'a> SubscriptionCompiler<'a> {
         // can surface a UI diagnostic. Derived state — NOT part of `plan_id`
         // hashing (see `plan::CompiledPlan::unroutable_authors`).
         let mut unroutable_authors: BTreeSet<crate::interest::Pubkey> = BTreeSet::new();
+
+        // Active-pin relay set: the union of `relay_pin` over the active
+        // interest set — i.e. every relay the client currently holds a pinned
+        // (Case-E) subscription to (e.g. a connected NIP-29 group host relay).
+        // Derived from the interests rather than configured, so it tracks group
+        // join/leave automatically on the next recompile. Case A reuses it as
+        // an additive kind:0 (profile) resolution landing pad so a member's
+        // metadata resolves from the relay we are already talking to even when
+        // they advertise no NIP-65. See `UserConfiguredCategory::ActivePin`.
+        let active_pinned_relays: BTreeSet<RelayUrl> = interests
+            .iter()
+            .filter_map(|interest| interest.shape.relay_pin.clone())
+            .collect();
+
         for interest in interests {
             partition_interest(
                 interest,
@@ -325,6 +339,7 @@ impl<'a> SubscriptionCompiler<'a> {
                 self.app_relays,
                 self.bootstrap_content_relays,
                 self.bootstrap_indexer_relays,
+                &active_pinned_relays,
                 &mut relay_entries,
                 &mut unroutable_authors,
             );

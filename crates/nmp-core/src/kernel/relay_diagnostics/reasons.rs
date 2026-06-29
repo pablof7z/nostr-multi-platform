@@ -117,6 +117,7 @@ pub(crate) fn build_reasons(
             UserConfiguredCategory::AppRelay => "app_relay",
             UserConfiguredCategory::Debug => "debug",
             UserConfiguredCategory::Bootstrap => "bootstrap",
+            UserConfiguredCategory::ActivePin => "active_pin",
         };
         out.push(RelayConnectionReason {
             kind: kind.to_string(),

@@ -93,9 +93,21 @@ pub(super) fn route(
     mailbox_cache: &dyn MailboxCache,
     app_relays: &[RelayUrl],
     bootstrap_indexer_relays: &[RelayUrl],
+    active_pinned_relays: &BTreeSet<RelayUrl>,
     relay_entries: &mut BTreeMap<RelayUrl, Vec<RelayEntry>>,
     unroutable: &mut BTreeSet<Pubkey>,
 ) {
+    // Active-pin kind:0 lane gate. A profile-resolution claim is registered as
+    // the EXACT shape `{ kinds: {0}, authors: [P] }` (see
+    // `kernel/requests/profile.rs::register_profile_claim_interest`). When that
+    // is what we are routing, additionally route each author onto every relay
+    // the client already pins (`active_pinned_relays`) so a NIP-29 group host
+    // relay — which serves the member's kind:0 but advertises no NIP-65 — is a
+    // valid landing pad. Restricting to the exact `{0}` shape keeps content
+    // interests (kind:1 timelines, multi-kind self-bootstraps) off pinned
+    // relays: a follow author's notes are never leaked to a group relay.
+    let is_profile_resolution =
+        interest.shape.kinds.len() == 1 && interest.shape.kinds.contains(&0);
     // PD-033-C: gates the kernel-driven discovery-direction fallback. The flag
     // is set by the call site (today: the kernel's active-account bootstrap
     // path for kind:0 / kind:3 / kind:10002 / kind:10050 self-fetches; the
@@ -158,6 +170,27 @@ pub(super) fn route(
             // Attribution: track AppRelay sub-category.
             entry.user_configured.insert(UserConfiguredCategory::AppRelay);
             landed = true;
+        }
+
+        // ActivePin lane (kind:0 profile resolution only): additive landing pad
+        // on relays the client already pins. The author's kind:0 may live ONLY
+        // on a connected NIP-29 group host relay with no NIP-65 advertised, so
+        // outbox / app-relay / indexer routing would never reach it. Sending a
+        // replaceable kind:0 REQ to a relay we already hold an open subscription
+        // to costs no new connection and leaks nothing new (we are already
+        // talking to it for the group). Setting `landed` here also suppresses
+        // the wasteful bootstrap-indexer fallback below when the pinned relay is
+        // the only place the metadata lives.
+        if is_profile_resolution {
+            for relay in active_pinned_relays {
+                let entry = per_relay.entry(relay.clone()).or_default();
+                entry.authors.insert(author.clone());
+                entry.sources.insert(RoutingSource::UserConfigured(
+                    UserConfiguredCategory::ActivePin,
+                ));
+                entry.user_configured.insert(UserConfiguredCategory::ActivePin);
+                landed = true;
+            }
         }
 
         if !landed {

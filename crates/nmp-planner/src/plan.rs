@@ -72,6 +72,29 @@ pub enum UserConfiguredCategory {
     /// [`Indexer`]: UserConfiguredCategory::Indexer
     /// [`AppRelay`]: UserConfiguredCategory::AppRelay
     Bootstrap,
+    /// A relay the client already holds an active *pinned* subscription to
+    /// (the `relay_pin` Case-E lane), reused as a kind:0 resolution landing pad.
+    ///
+    /// Motivation: in a single-relay NIP-29 group the host relay serves the
+    /// members' kind:0 metadata but advertises no NIP-65 (kind:10002), and the
+    /// authors may have published a relay list nowhere the app reaches. The
+    /// kind:0 is sitting on the relay we are already connected to, yet neither
+    /// the outbox lane ([`Nip65`]) nor [`AppRelay`] / [`Indexer`] would route a
+    /// profile claim there. This sub-category routes a profile (kind:0-only)
+    /// claim additively onto the union of relays the active interest set pins —
+    /// "also ask the relay I'm already talking to."
+    ///
+    /// Strictly scoped: consumed ONLY by Case A for the exact kind:0
+    /// profile-resolution shape (`kinds == {0}`). General content interests
+    /// (kind:1 timelines, etc.) never fan out to pinned relays, so a follow
+    /// author's notes are never leaked to a group relay. It is additive — NIP-65
+    /// outbox and [`AppRelay`] still apply; this is one more landing pad, not a
+    /// replacement. Never used for writes (D3).
+    ///
+    /// [`Nip65`]: RoutingSource::Nip65
+    /// [`Indexer`]: UserConfiguredCategory::Indexer
+    /// [`AppRelay`]: UserConfiguredCategory::AppRelay
+    ActivePin,
 }
 
 // ─── RoutingSource ───────────────────────────────────────────────────────────
