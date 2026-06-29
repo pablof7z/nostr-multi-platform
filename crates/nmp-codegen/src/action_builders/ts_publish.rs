@@ -34,7 +34,9 @@ fn render_one(builder: &PublishBuilder, out: &mut String) {
             out.push_str("    tags: string[][],\n");
             out.push_str("    content: string,\n");
             out.push_str("    relays: string[] | null = null,\n");
-            out.push_str("    signerPubkey: string | null = null,\n");
+            out.push_str(
+                "    signer: { kind: \"active\" } | { kind: \"registered\"; pubkey: string; provenance: \"app_managed\" | \"user_selected\" | \"protocol_pinned\" | \"diagnostic\" } = { kind: \"active\" },\n",
+            );
         }
         BodyShape::PublishProfile => {
             out.push_str("    fields: Array<[string, string]>,\n");
@@ -43,7 +45,9 @@ fn render_one(builder: &PublishBuilder, out: &mut String) {
             out.push_str("    content: string,\n");
             out.push_str("    replyToEventId: string,\n");
             out.push_str("    relays: string[] | null = null,\n");
-            out.push_str("    signerPubkey: string | null = null,\n");
+            out.push_str(
+                "    signer: { kind: \"active\" } | { kind: \"registered\"; pubkey: string; provenance: \"app_managed\" | \"user_selected\" | \"protocol_pinned\" | \"diagnostic\" } = { kind: \"active\" },\n",
+            );
         }
     }
     out.push_str("  ): Uint8Array {\n");
@@ -94,6 +98,21 @@ fn render_target(out: &mut String) {
     );
 }
 
+fn render_signer(out: &mut String) {
+    out.push_str(
+        "    let signerOffset = 0;\n\
+         \x20   if (signer.kind === \"registered\") {\n\
+         \x20     const signerPubkeyOffset = fbb.createString(signer.pubkey);\n\
+         \x20     const signerProvenanceOffset = fbb.createString(signer.provenance);\n\
+         \x20     fbb.startObject(3);\n\
+         \x20     fbb.addFieldInt8(0, 1, 0); // slot 0: mode (Registered)\n\
+         \x20     fbb.addFieldOffset(1, signerPubkeyOffset, 0); // slot 1: pubkey\n\
+         \x20     fbb.addFieldOffset(2, signerProvenanceOffset, 0); // slot 2: provenance\n\
+         \x20     signerOffset = fbb.endObject();\n\
+         \x20   }\n",
+    );
+}
+
 fn render_raw_body(out: &mut String) {
     // Build each TagRow table (its own `values:[string]` vector), collect the
     // offsets, then the `[TagRow]` vector — all before the PublishRaw table.
@@ -107,19 +126,19 @@ fn render_raw_body(out: &mut String) {
          \x20   fbb.startVector(4, tagRowOffsets.length, 4);\n\
          \x20   for (let i = tagRowOffsets.length - 1; i >= 0; i--) fbb.addOffset(tagRowOffsets[i]!);\n\
          \x20   const tagsVec = fbb.endVector();\n\
-         \x20   const contentOffset = fbb.createString(content);\n\
-         \x20   const signerPubkeyOffset = signerPubkey === null ? 0 : fbb.createString(signerPubkey);\n",
+         \x20   const contentOffset = fbb.createString(content);\n",
     );
+    render_signer(out);
     render_target(out);
     // PublishRaw: kind (slot 0), tags (slot 1), content (slot 2), target
-    // (slot 3), signer_pubkey (slot 4, optional).
+    // (slot 3), signer (slot 4, optional; omitted means active).
     out.push_str(
         "    fbb.startObject(5);\n\
          \x20   fbb.addFieldInt32(0, kind, 0); // slot 0: kind\n\
          \x20   fbb.addFieldOffset(1, tagsVec, 0); // slot 1: tags\n\
          \x20   fbb.addFieldOffset(2, contentOffset, 0); // slot 2: content\n\
          \x20   fbb.addFieldOffset(3, targetOffset, 0); // slot 3: target\n\
-         \x20   if (signerPubkeyOffset !== 0) fbb.addFieldOffset(4, signerPubkeyOffset, 0); // slot 4: signer_pubkey\n\
+         \x20   if (signerOffset !== 0) fbb.addFieldOffset(4, signerOffset, 0); // slot 4: signer\n\
          \x20   const bodyOffset = fbb.endObject();\n",
     );
 }
@@ -146,18 +165,18 @@ fn render_profile_body(out: &mut String) {
 fn render_reply_body(out: &mut String) {
     out.push_str(
         "    const contentOffset = fbb.createString(content);\n\
-         \x20   const replyToEventIdOffset = fbb.createString(replyToEventId);\n\
-         \x20   const signerPubkeyOffset = signerPubkey === null ? 0 : fbb.createString(signerPubkey);\n",
+         \x20   const replyToEventIdOffset = fbb.createString(replyToEventId);\n",
     );
+    render_signer(out);
     render_target(out);
     // PublishReply: content (slot 0), reply_to_event_id (slot 1), target
-    // (slot 2), signer_pubkey (slot 3, optional).
+    // (slot 2), signer (slot 3, optional; omitted means active).
     out.push_str(
         "    fbb.startObject(4);\n\
          \x20   fbb.addFieldOffset(0, contentOffset, 0); // slot 0: content\n\
          \x20   fbb.addFieldOffset(1, replyToEventIdOffset, 0); // slot 1: reply_to_event_id\n\
          \x20   fbb.addFieldOffset(2, targetOffset, 0); // slot 2: target\n\
-         \x20   if (signerPubkeyOffset !== 0) fbb.addFieldOffset(3, signerPubkeyOffset, 0); // slot 3: signer_pubkey\n\
+         \x20   if (signerOffset !== 0) fbb.addFieldOffset(3, signerOffset, 0); // slot 3: signer\n\
          \x20   const bodyOffset = fbb.endObject();\n",
     );
 }

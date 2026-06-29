@@ -45,14 +45,17 @@ use serde_json::Value;
 
 use generated::nmp::publish as fb;
 
-use crate::publish::action::{PublishAction, PublishRouteClass, PublishTarget, RelayUrl};
+use crate::publish::action::{
+    PublishAction, PublishRouteClass, PublishSigner, PublishSignerProvenance, PublishTarget,
+    RelayUrl,
+};
 use crate::substrate::{ActionPayload, ActionPayloadDecodeError};
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 /// Stable identity of the `nmp.publish` typed payload schema.
 pub const SCHEMA_ID: &str = "nmp.publish";
 /// Wire schema version. Bump on any breaking change to `publish.fbs`.
-pub const SCHEMA_VERSION: u32 = 2;
+pub const SCHEMA_VERSION: u32 = 3;
 /// FlatBuffers file identifier embedded in every buffer this codec emits.
 /// (Used by the round-trip tests + documents the wire magic; the generated
 /// `publish_payload_buffer_has_identifier` is what the decode actually checks.)
@@ -128,6 +131,57 @@ fn read_target(target: fb::PublishTarget<'_>) -> Result<PublishTarget, ActionPay
     })
 }
 
+fn build_signer<'a>(
+    fbb: &mut flatbuffers::FlatBufferBuilder<'a>,
+    signer: &PublishSigner,
+) -> Option<WIPOffset<fb::PublishSignerSelection<'a>>> {
+    match signer {
+        PublishSigner::Active => None,
+        PublishSigner::Registered { pubkey, provenance } => {
+            let pubkey = fbb.create_string(pubkey);
+            let provenance = fbb.create_string(provenance.wire_token());
+            Some(fb::PublishSignerSelection::create(
+                fbb,
+                &fb::PublishSignerSelectionArgs {
+                    mode: fb::PublishSignerMode::Registered,
+                    pubkey: Some(pubkey),
+                    provenance: Some(provenance),
+                },
+            ))
+        }
+    }
+}
+
+fn read_signer(
+    signer: Option<fb::PublishSignerSelection<'_>>,
+) -> Result<PublishSigner, ActionPayloadDecodeError> {
+    let Some(signer) = signer else {
+        return Ok(PublishSigner::Active);
+    };
+    match signer.mode() {
+        fb::PublishSignerMode::Active => Ok(PublishSigner::Active),
+        fb::PublishSignerMode::Registered => {
+            let pubkey = signer
+                .pubkey()
+                .ok_or_else(|| malformed("registered publish signer missing pubkey"))?
+                .to_string();
+            let provenance = signer
+                .provenance()
+                .ok_or_else(|| malformed("registered publish signer missing provenance"))?;
+            let provenance =
+                PublishSignerProvenance::from_wire_token(provenance).ok_or_else(|| {
+                    malformed(format!(
+                        "unknown registered publish signer provenance '{provenance}'"
+                    ))
+                })?;
+            Ok(PublishSigner::registered(pubkey, provenance))
+        }
+        other => Err(malformed(format!(
+            "unknown PublishSignerMode discriminant: {other:?}"
+        ))),
+    }
+}
+
 // --- encode ------------------------------------------------------------------
 
 /// Encode a dispatchable [`PublishAction`] to typed FlatBuffers bytes.
@@ -199,28 +253,28 @@ fn encode_publish_payload(action: &PublishAction) -> Vec<u8> {
             tags,
             content,
             target,
-            signer_pubkey,
+            signer,
         } => {
-            let (raw, _) = build_publish_raw(&mut fbb, *kind, tags, content, target, signer_pubkey);
+            let (raw, _) = build_publish_raw(&mut fbb, *kind, tags, content, target, signer);
             (fb::PublishPayloadBody::PublishRaw, raw.as_union_value())
         }
         PublishAction::PublishReply {
             content,
             reply_to_event_id,
             target,
-            signer_pubkey,
+            signer,
         } => {
             let content = fbb.create_string(content);
             let reply_to_event_id = fbb.create_string(reply_to_event_id);
             let target = build_target(&mut fbb, target);
-            let signer_pubkey = signer_pubkey.as_ref().map(|s| fbb.create_string(s));
+            let signer = build_signer(&mut fbb, signer);
             let reply = fb::PublishReply::create(
                 &mut fbb,
                 &fb::PublishReplyArgs {
                     content: Some(content),
                     reply_to_event_id: Some(reply_to_event_id),
                     target: Some(target),
-                    signer_pubkey,
+                    signer,
                 },
             );
             (fb::PublishPayloadBody::PublishReply, reply.as_union_value())
@@ -246,7 +300,7 @@ fn build_publish_raw<'a>(
     tags: &[Vec<String>],
     content: &str,
     target: &PublishTarget,
-    signer_pubkey: &Option<String>,
+    signer: &PublishSigner,
 ) -> (WIPOffset<fb::PublishRaw<'a>>, ()) {
     let tag_offsets: Vec<WIPOffset<fb::TagRow<'_>>> = tags
         .iter()
@@ -264,7 +318,7 @@ fn build_publish_raw<'a>(
     let tags = fbb.create_vector(&tag_offsets);
     let content = fbb.create_string(content);
     let target = build_target(fbb, target);
-    let signer_pubkey = signer_pubkey.as_ref().map(|s| fbb.create_string(s));
+    let signer = build_signer(fbb, signer);
     let raw = fb::PublishRaw::create(
         fbb,
         &fb::PublishRawArgs {
@@ -272,7 +326,7 @@ fn build_publish_raw<'a>(
             tags: Some(tags),
             content: Some(content),
             target: Some(target),
-            signer_pubkey,
+            signer,
         },
     );
     (raw, ())
@@ -355,13 +409,12 @@ fn decode_publish_payload(bytes: &[u8]) -> Result<PublishAction, ActionPayloadDe
                         .collect()
                 })
                 .unwrap_or_default();
-            let signer_pubkey = raw.signer_pubkey().map(|s| s.to_string());
             Ok(PublishAction::PublishRaw {
                 kind: raw.kind(),
                 tags,
                 content: raw.content().to_string(),
                 target: read_target(raw.target())?,
-                signer_pubkey,
+                signer: read_signer(raw.signer())?,
             })
         }
         fb::PublishPayloadBody::PublishReply => {
@@ -372,7 +425,7 @@ fn decode_publish_payload(bytes: &[u8]) -> Result<PublishAction, ActionPayloadDe
                 content: reply.content().to_string(),
                 reply_to_event_id: reply.reply_to_event_id().to_string(),
                 target: read_target(reply.target())?,
-                signer_pubkey: reply.signer_pubkey().map(|s| s.to_string()),
+                signer: read_signer(reply.signer())?,
             })
         }
         other => Err(malformed(format!(
@@ -465,7 +518,7 @@ pub(crate) fn encode_with_schema_version_for_test(schema_version: u32) -> Vec<u8
             tags: None,
             content: Some(content),
             target: Some(target),
-            signer_pubkey: None,
+            signer: None,
         },
     );
     let payload = fb::PublishPayload::create(

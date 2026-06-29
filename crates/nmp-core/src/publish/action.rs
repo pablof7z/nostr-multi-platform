@@ -42,6 +42,83 @@ pub enum PublishRouteClass {
     Diagnostic,
 }
 
+/// Why a publish action is allowed to select a registered signer directly.
+///
+/// The selector is still resolved by the actor-owned signer roster. Provenance
+/// is app-facing intent, not authority: an unknown pubkey still fails in the
+/// signing stage with the structured "no signer for account ..." failure.
+#[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PublishSignerProvenance {
+    AppManaged,
+    UserSelected,
+    ProtocolPinned,
+    Diagnostic,
+}
+
+impl Default for PublishSignerProvenance {
+    fn default() -> Self {
+        Self::AppManaged
+    }
+}
+
+impl PublishSignerProvenance {
+    #[must_use]
+    pub fn wire_token(self) -> &'static str {
+        match self {
+            Self::AppManaged => "app_managed",
+            Self::UserSelected => "user_selected",
+            Self::ProtocolPinned => "protocol_pinned",
+            Self::Diagnostic => "diagnostic",
+        }
+    }
+
+    #[must_use]
+    pub fn from_wire_token(token: &str) -> Option<Self> {
+        Some(match token {
+            "app_managed" => Self::AppManaged,
+            "user_selected" => Self::UserSelected,
+            "protocol_pinned" => Self::ProtocolPinned,
+            "diagnostic" => Self::Diagnostic,
+            _ => return None,
+        })
+    }
+}
+
+/// Signer selected for a sign-and-publish action.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum PublishSigner {
+    /// Resolve and sign with the active account at actor execution time.
+    Active,
+    /// Resolve and sign with a registered roster signer by pubkey.
+    Registered {
+        pubkey: String,
+        provenance: PublishSignerProvenance,
+    },
+}
+
+impl Default for PublishSigner {
+    fn default() -> Self {
+        Self::Active
+    }
+}
+
+impl PublishSigner {
+    #[must_use]
+    pub fn registered(pubkey: String, provenance: PublishSignerProvenance) -> Self {
+        Self::Registered { pubkey, provenance }
+    }
+
+    #[must_use]
+    pub(crate) fn signer_pubkey(&self) -> Option<String> {
+        match self {
+            Self::Active => None,
+            Self::Registered { pubkey, .. } => Some(pubkey.clone()),
+        }
+    }
+}
+
 impl Default for PublishRouteClass {
     fn default() -> Self {
         Self::ManualOverride
@@ -195,30 +272,23 @@ pub enum PublishAction {
     ///
     /// # Signer selection
     ///
-    /// `signer_pubkey` selects which registered signer signs the event:
-    /// `None` (the default) signs with the active account; `Some(hex_pubkey)`
-    /// signs with the registered signer whose pubkey matches — e.g. an agent /
-    /// per-podcast key added via `nmp_app_register_agent_nsec` and named here
-    /// by pubkey. The active account is never changed. Whether the
-    /// selected key is local (nsec, signs inline) or remote (NIP-46 bunker,
-    /// parks on the kernel's `ParkedOp` path) is transparent to the caller.
-    /// An unknown pubkey is **not** validated at dispatch time — it surfaces as
-    /// a sign-time error toast through `sign_with_account_nonblocking`'s
-    /// "no signer for account {pubkey}" path, the same contract as the rest of
-    /// the codebase (the roster isn't reachable from `start`, and a
-    /// registration enqueued just before the publish is FIFO-guaranteed to land
-    /// first).
+    /// `signer` is typed app-facing intent: `Active` signs with the active
+    /// account; `Registered { pubkey, provenance }` signs with the registered
+    /// signer whose pubkey matches while preserving why this path is allowed
+    /// (for example, an app-managed agent key). The active account is never
+    /// changed. Whether the selected key is local (nsec, signs inline) or
+    /// remote (NIP-46 bunker, parks on the kernel's `ParkedOp` path) is
+    /// transparent to the caller. An unknown pubkey is **not** validated at
+    /// dispatch time — it surfaces as a sign-time error toast through
+    /// `sign_with_account_nonblocking`'s "no signer for account {pubkey}" path.
     PublishRaw {
         kind: u32,
         tags: Vec<Vec<String>>,
         content: String,
         #[serde(default)]
         target: PublishTarget,
-        /// `None` = active account (default); `Some(hex_pubkey)` = the
-        /// registered signer whose pubkey matches. `#[serde(default)]` keeps
-        /// existing dispatch JSON that omits the field deserializing to `None`.
         #[serde(default)]
-        signer_pubkey: Option<String>,
+        signer: PublishSigner,
     },
     /// Sign-and-publish a kind:1 reply. Hosts provide only the direct parent
     /// event id and content; the reducer resolves the parent from the kernel
@@ -229,7 +299,7 @@ pub enum PublishAction {
         #[serde(default)]
         target: PublishTarget,
         #[serde(default)]
-        signer_pubkey: Option<String>,
+        signer: PublishSigner,
     },
 }
 
@@ -386,14 +456,14 @@ impl ActionModule for PublishModule {
                 tags,
                 content,
                 target,
-                signer_pubkey,
+                signer,
             } => {
                 send(ActorCommand::Publish(PublishCommand::RawEvent {
                     kind,
                     tags,
                     content,
                     target,
-                    signer_pubkey,
+                    signer_pubkey: signer.signer_pubkey(),
                     correlation_id: Some(correlation_id.to_string()),
                 }));
                 Ok(())
@@ -402,13 +472,13 @@ impl ActionModule for PublishModule {
                 content,
                 reply_to_event_id,
                 target,
-                signer_pubkey,
+                signer,
             } => {
                 send(ActorCommand::Publish(PublishCommand::Reply {
                     content,
                     reply_to_event_id,
                     target,
-                    signer_pubkey,
+                    signer_pubkey: signer.signer_pubkey(),
                     correlation_id: Some(correlation_id.to_string()),
                 }));
                 Ok(())

@@ -53,8 +53,8 @@ table PublishRaw {
   tags:[TagRow];
   content:string (required);
   target:PublishTarget (required);
-  // `None` (empty) = active account; otherwise the registered signer pubkey.
-  signer_pubkey:string;
+  // Typed signer selection. Omitted = active account.
+  signer:PublishSignerSelection;
 }
 
 // --- Sign-and-publish a reply to a stored kind:1 event -----------------------
@@ -65,8 +65,8 @@ table PublishReply {
   // derives root/reply/p tags; missing/non-note parents fail closed.
   reply_to_event_id:string (required);
   target:PublishTarget (required);
-  // `None` (empty) = active account; otherwise the registered signer pubkey.
-  signer_pubkey:string;
+  // Typed signer selection. Omitted = active account.
+  signer:PublishSignerSelection;
 }
 
 // A NIP-01 tag row (`["e", "<id>", ...]`).
@@ -83,6 +83,18 @@ table PublishTarget {
   relays:[string];
   // Explicit route provenance token. Ignored unless `explicit` is true.
   route_class:string;
+}
+
+enum PublishSignerMode:ubyte { Active = 0, Registered = 1 }
+
+table PublishSignerSelection {
+  // Active = sign with the active account; Registered = resolve `pubkey`.
+  mode:PublishSignerMode = Active;
+  // Required when mode is Registered.
+  pubkey:string;
+  // Required when mode is Registered. Explains why the app may address this
+  // registered signer without first making it active.
+  provenance:string;
 }
 
 // The four DISPATCHABLE publish variants (Cancel is engine-internal and not

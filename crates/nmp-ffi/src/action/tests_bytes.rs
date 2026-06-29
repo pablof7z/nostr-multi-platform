@@ -36,7 +36,7 @@ fn publish_raw_envelope(correlation_id: &str) -> Vec<u8> {
         tags: vec![],
         content: "byte-doorway smoke".to_string(),
         target: PublishTarget::Auto,
-        signer_pubkey: None,
+        signer: Default::default(),
     };
     let payload = action.encode();
     encode_dispatch_envelope(
@@ -81,7 +81,9 @@ fn dispatch_bytes_drives_through_the_c_symbol() {
         let raw = nmp_app_dispatch_action_bytes(ptr, envelope.as_ptr(), envelope.len());
         assert!(!raw.is_null(), "non-null app must never return NULL (D6)");
         // SAFETY: `raw` is a freshly minted NUL-terminated string from the call.
-        let out = unsafe { CStr::from_ptr(raw) }.to_string_lossy().into_owned();
+        let out = unsafe { CStr::from_ptr(raw) }
+            .to_string_lossy()
+            .into_owned();
         nmp_free_string(raw);
         let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
         assert_eq!(
@@ -103,13 +105,12 @@ fn dispatch_bytes_oversize_via_c_symbol_rejects_before_slice() {
         // A small real allocation; the oversize `len` is a lie the gate must
         // catch before any read. NonNull, but we assert `ptr` is never read.
         let backing = [0u8; 8];
-        let raw = nmp_app_dispatch_action_bytes(
-            appp,
-            backing.as_ptr(),
-            MAX_DISPATCH_ENVELOPE_BYTES + 1,
-        );
+        let raw =
+            nmp_app_dispatch_action_bytes(appp, backing.as_ptr(), MAX_DISPATCH_ENVELOPE_BYTES + 1);
         assert!(!raw.is_null());
-        let out = unsafe { CStr::from_ptr(raw) }.to_string_lossy().into_owned();
+        let out = unsafe { CStr::from_ptr(raw) }
+            .to_string_lossy()
+            .into_owned();
         nmp_free_string(raw);
         let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
         let err = parsed.get("error").and_then(|v| v.as_str()).unwrap();
@@ -124,7 +125,10 @@ fn dispatch_bytes_null_app_returns_error_json() {
     let envelope = publish_raw_envelope("corr-x");
     let out = dispatch_action_bytes(None, &envelope);
     let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
-    assert_eq!(parsed.get("error").and_then(|v| v.as_str()), Some("null app"));
+    assert_eq!(
+        parsed.get("error").and_then(|v| v.as_str()),
+        Some("null app")
+    );
 }
 
 #[test]
@@ -134,7 +138,9 @@ fn dispatch_bytes_null_ptr_via_c_symbol_returns_error_json() {
         let ptr = std::ptr::addr_of!(*app).cast_mut();
         let raw = nmp_app_dispatch_action_bytes(ptr, std::ptr::null(), 0);
         assert!(!raw.is_null());
-        let out = unsafe { CStr::from_ptr(raw) }.to_string_lossy().into_owned();
+        let out = unsafe { CStr::from_ptr(raw) }
+            .to_string_lossy()
+            .into_owned();
         nmp_free_string(raw);
         let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
         assert!(parsed.get("error").is_some(), "expected error: {out}");
@@ -181,7 +187,7 @@ fn dispatch_bytes_wrong_schema_version_returns_error_json() {
             tags: vec![],
             content: "v-trip".to_string(),
             target: PublishTarget::Auto,
-            signer_pubkey: None,
+            signer: Default::default(),
         };
         let payload = action.encode();
         // Stamp an unrecognised envelope schema_version — the S2 tripwire

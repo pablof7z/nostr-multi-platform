@@ -23,6 +23,18 @@ import FlatBuffers
 import Foundation
 
 public enum GeneratedActionBuilders {
+    public enum PublishSignerProvenance: String {
+        case appManaged = "app_managed"
+        case userSelected = "user_selected"
+        case protocolPinned = "protocol_pinned"
+        case diagnostic = "diagnostic"
+    }
+
+    public enum PublishSignerSelection {
+        case active
+        case registered(pubkey: String, provenance: PublishSignerProvenance)
+    }
+
     /// The single recognised envelope schema version — mirrors
     /// `nmp_core::dispatch_envelope::DISPATCH_ENVELOPE_SCHEMA_VERSION`.
     public static let dispatchEnvelopeSchemaVersion: UInt32 = 1
@@ -968,7 +980,7 @@ public enum GeneratedActionBuilders {
         tags: [[String]],
         content: String,
         relays: [String]? = nil,
-        signerPubkey: String? = nil
+        signer: PublishSignerSelection = .active
     ) -> [UInt8] {
         var fbb = FlatBufferBuilder()
         let tagRowOffsets: [Offset] = tags.map { row in
@@ -980,14 +992,29 @@ public enum GeneratedActionBuilders {
         }
         let tagsVec = fbb.createVector(ofOffsets: tagRowOffsets)
         let contentOffset = fbb.create(string: content)
-        let signerPubkeyOffset: Offset = signerPubkey.map { fbb.create(string: $0) } ?? Offset()
+        let signerOffset: Offset = {
+            switch signer {
+            case .active:
+                return Offset()
+            case .registered(let pubkey, let provenance):
+                let signerPubkeyOffset = fbb.create(string: pubkey)
+                let signerProvenanceOffset = fbb.create(string: provenance.rawValue)
+                let start = fbb.startTable(with: 3)
+                fbb.add(element: UInt8(1), def: UInt8(0), at: 4) // slot 0: mode (Registered)
+                fbb.add(offset: signerPubkeyOffset, at: 6) // slot 1: pubkey
+                fbb.add(offset: signerProvenanceOffset, at: 8) // slot 2: provenance
+                return Offset(offset: fbb.endTable(at: start))
+            }
+        }()
         let targetOffset: Offset = {
             let explicit = (relays?.isEmpty == false)
             let relayOffsets = (relays ?? []).map { fbb.create(string: $0) }
             let relaysVec = fbb.createVector(ofOffsets: relayOffsets)
-            let start = fbb.startTable(with: 2)
+            let routeClassOffset = fbb.create(string: "manual_override")
+            let start = fbb.startTable(with: 3)
             fbb.add(element: explicit, def: false, at: 4) // slot 0: explicit
             fbb.add(offset: relaysVec, at: 6) // slot 1: relays
+            if explicit { fbb.add(offset: routeClassOffset, at: 8) } // slot 2: route_class
             return Offset(offset: fbb.endTable(at: start))
         }()
         let rawStart = fbb.startTable(with: 5)
@@ -995,10 +1022,10 @@ public enum GeneratedActionBuilders {
         fbb.add(offset: tagsVec, at: 6) // slot 1: tags
         fbb.add(offset: contentOffset, at: 8) // slot 2: content
         fbb.add(offset: targetOffset, at: 10) // slot 3: target
-        if signerPubkeyOffset.o != 0 { fbb.add(offset: signerPubkeyOffset, at: 12) } // slot 4: signer_pubkey
+        if signerOffset.o != 0 { fbb.add(offset: signerOffset, at: 12) } // slot 4: signer
         let bodyOffset = Offset(offset: fbb.endTable(at: rawStart))
         let payloadStart = fbb.startTable(with: 3)
-        fbb.add(element: UInt32(1), def: UInt32(0), at: 4) // slot 0: schema_version
+        fbb.add(element: UInt32(3), def: UInt32(0), at: 4) // slot 0: schema_version
         fbb.add(element: UInt8(3), def: UInt8(0), at: 6) // slot 1: body_type
         fbb.add(offset: bodyOffset, at: 8) // slot 2: body
         let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))
@@ -1018,29 +1045,44 @@ public enum GeneratedActionBuilders {
         content: String,
         replyToEventId: String,
         relays: [String]? = nil,
-        signerPubkey: String? = nil
+        signer: PublishSignerSelection = .active
     ) -> [UInt8] {
         var fbb = FlatBufferBuilder()
         let contentOffset = fbb.create(string: content)
         let replyToEventIdOffset = fbb.create(string: replyToEventId)
-        let signerPubkeyOffset: Offset = signerPubkey.map { fbb.create(string: $0) } ?? Offset()
+        let signerOffset: Offset = {
+            switch signer {
+            case .active:
+                return Offset()
+            case .registered(let pubkey, let provenance):
+                let signerPubkeyOffset = fbb.create(string: pubkey)
+                let signerProvenanceOffset = fbb.create(string: provenance.rawValue)
+                let start = fbb.startTable(with: 3)
+                fbb.add(element: UInt8(1), def: UInt8(0), at: 4) // slot 0: mode (Registered)
+                fbb.add(offset: signerPubkeyOffset, at: 6) // slot 1: pubkey
+                fbb.add(offset: signerProvenanceOffset, at: 8) // slot 2: provenance
+                return Offset(offset: fbb.endTable(at: start))
+            }
+        }()
         let targetOffset: Offset = {
             let explicit = (relays?.isEmpty == false)
             let relayOffsets = (relays ?? []).map { fbb.create(string: $0) }
             let relaysVec = fbb.createVector(ofOffsets: relayOffsets)
-            let start = fbb.startTable(with: 2)
+            let routeClassOffset = fbb.create(string: "manual_override")
+            let start = fbb.startTable(with: 3)
             fbb.add(element: explicit, def: false, at: 4) // slot 0: explicit
             fbb.add(offset: relaysVec, at: 6) // slot 1: relays
+            if explicit { fbb.add(offset: routeClassOffset, at: 8) } // slot 2: route_class
             return Offset(offset: fbb.endTable(at: start))
         }()
         let replyStart = fbb.startTable(with: 4)
         fbb.add(offset: contentOffset, at: 4) // slot 0: content
         fbb.add(offset: replyToEventIdOffset, at: 6) // slot 1: reply_to_event_id
         fbb.add(offset: targetOffset, at: 8) // slot 2: target
-        if signerPubkeyOffset.o != 0 { fbb.add(offset: signerPubkeyOffset, at: 10) } // slot 3: signer_pubkey
+        if signerOffset.o != 0 { fbb.add(offset: signerOffset, at: 10) } // slot 3: signer
         let bodyOffset = Offset(offset: fbb.endTable(at: replyStart))
         let payloadStart = fbb.startTable(with: 3)
-        fbb.add(element: UInt32(1), def: UInt32(0), at: 4) // slot 0: schema_version
+        fbb.add(element: UInt32(3), def: UInt32(0), at: 4) // slot 0: schema_version
         fbb.add(element: UInt8(4), def: UInt8(0), at: 6) // slot 1: body_type
         fbb.add(offset: bodyOffset, at: 8) // slot 2: body
         let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))
@@ -1073,7 +1115,7 @@ public enum GeneratedActionBuilders {
         fbb.add(offset: fieldsVec, at: 4) // slot 0: fields
         let bodyOffset = Offset(offset: fbb.endTable(at: profileStart))
         let payloadStart = fbb.startTable(with: 3)
-        fbb.add(element: UInt32(1), def: UInt32(0), at: 4) // slot 0: schema_version
+        fbb.add(element: UInt32(3), def: UInt32(0), at: 4) // slot 0: schema_version
         fbb.add(element: UInt8(2), def: UInt8(0), at: 6) // slot 1: body_type
         fbb.add(offset: bodyOffset, at: 8) // slot 2: body
         let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))

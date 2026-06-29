@@ -29,7 +29,7 @@ pub const ACTION_CONTRACT: &[ActionContract] = &[
         schema_id: "nmp.publish",
         schema_path: "crates/nmp-core/schema/publish.fbs",
         root_type: "PublishPayload",
-        schema_version: 2,
+        schema_version: 3,
         file_identifier: "NPUB",
         default_tier: ActionDefaultTier::CoreBuiltin,
         builder_support: BuilderSupport::GeneratedPublishUnion,

@@ -31,8 +31,9 @@ use crate::action_contract::contract_for;
 // NIP-51 bookmark helpers: render_bookmark_update, is_bookmark_builder,
 // is_bookmark_set_builder, kotlin_param_type. Module declared in parent
 // `action_builders.rs` (sibling module) for 500-LOC cap compliance.
-use super::kotlin_nip51::{is_bookmark_builder, is_bookmark_set_builder, kotlin_param_type,
-    render_bookmark_update};
+use super::kotlin_nip51::{
+    is_bookmark_builder, is_bookmark_set_builder, kotlin_param_type, render_bookmark_update,
+};
 
 const HEADER: &str = "\
 // ─────────────────────────────────────────────────────────────────────────────
@@ -67,6 +68,7 @@ pub fn render(builders: &[ActionBuilder]) -> String {
     let mut out = String::from(HEADER);
     out.push('\n');
     out.push_str("object GeneratedActionBuilders {\n");
+    out.push_str(&publish_signer_types());
     out.push_str(&envelope_helper());
     out.push_str(&relay_marker_byte_helper());
     for builder in builders {
@@ -83,6 +85,23 @@ pub fn render(builders: &[ActionBuilder]) -> String {
     }
     out.push_str("}\n");
     out
+}
+
+fn publish_signer_types() -> String {
+    "    enum class PublishSignerProvenance(val token: String) {\n\
+     \x20       APP_MANAGED(\"app_managed\"),\n\
+     \x20       USER_SELECTED(\"user_selected\"),\n\
+     \x20       PROTOCOL_PINNED(\"protocol_pinned\"),\n\
+     \x20       DIAGNOSTIC(\"diagnostic\"),\n\
+     \x20   }\n\n\
+     \x20   sealed class PublishSignerSelection {\n\
+     \x20       object Active : PublishSignerSelection()\n\
+     \x20       data class Registered(\n\
+     \x20           val pubkey: String,\n\
+     \x20           val provenance: PublishSignerProvenance = PublishSignerProvenance.APP_MANAGED,\n\
+     \x20       ) : PublishSignerSelection()\n\
+     \x20   }\n\n"
+        .to_string()
 }
 
 /// The shared private `DispatchEnvelope` wrapper. Mirrors
@@ -432,7 +451,6 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
     ));
     out.push_str("    }\n");
 }
-
 
 /// Render the full file for the default registry.
 #[must_use]

@@ -31,8 +31,9 @@ use crate::action_contract::contract_for;
 // NIP-51 bookmark helpers: render_bookmark_update, is_bookmark_builder,
 // is_bookmark_set_builder, swift_param_type. Module declared in parent
 // `action_builders.rs` (sibling module) for 500-LOC cap compliance.
-use super::swift_nip51::{is_bookmark_builder, is_bookmark_set_builder, render_bookmark_update,
-    swift_param_type};
+use super::swift_nip51::{
+    is_bookmark_builder, is_bookmark_set_builder, render_bookmark_update, swift_param_type,
+};
 
 const HEADER: &str = "\
 // ─────────────────────────────────────────────────────────────────────────────
@@ -66,6 +67,7 @@ pub fn render(builders: &[ActionBuilder]) -> String {
     let mut out = String::from(HEADER);
     out.push('\n');
     out.push_str("public enum GeneratedActionBuilders {\n");
+    out.push_str(&publish_signer_types());
     out.push_str(&envelope_helper());
     out.push_str(&relay_marker_byte_helper());
     for builder in builders {
@@ -82,6 +84,20 @@ pub fn render(builders: &[ActionBuilder]) -> String {
     }
     out.push_str("}\n");
     out
+}
+
+fn publish_signer_types() -> String {
+    "    public enum PublishSignerProvenance: String {\n\
+     \x20       case appManaged = \"app_managed\"\n\
+     \x20       case userSelected = \"user_selected\"\n\
+     \x20       case protocolPinned = \"protocol_pinned\"\n\
+     \x20       case diagnostic = \"diagnostic\"\n\
+     \x20   }\n\n\
+     \x20   public enum PublishSignerSelection {\n\
+     \x20       case active\n\
+     \x20       case registered(pubkey: String, provenance: PublishSignerProvenance)\n\
+     \x20   }\n\n"
+        .to_string()
 }
 
 /// Render the shared private `DispatchEnvelope` wrapper. Mirrors
@@ -271,10 +287,10 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
                     n = field.name
                 ));
             }
-        FieldKind::GroupRef => {
-            // Build the GroupRef nested table (two required string slots) before
-            // the parent table — FlatBuffers requires nested objects finished first.
-            out.push_str(&format!(
+            FieldKind::GroupRef => {
+                // Build the GroupRef nested table (two required string slots) before
+                // the parent table — FlatBuffers requires nested objects finished first.
+                out.push_str(&format!(
                 "        let {n}HostRelayUrlOffset = fbb.create(string: {n}.hostRelayUrl)\n\
                  \x20       let {n}LocalIdOffset = fbb.create(string: {n}.localId)\n\
                  \x20       let {n}TableStart = fbb.startTable(with: 2)\n\
@@ -283,11 +299,11 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
                  \x20       let {n}Offset = Offset(offset: fbb.endTable(at: {n}TableStart))\n",
                 n = field.name
             ));
-        }
-        FieldKind::StringTagVec => {
-            // Build a vector of StringTag tables (each wrapping a [string] values
-            // vector). Always optional — nil/absent → Offset() → slot skipped.
-            out.push_str(&format!(
+            }
+            FieldKind::StringTagVec => {
+                // Build a vector of StringTag tables (each wrapping a [string] values
+                // vector). Always optional — nil/absent → Offset() → slot skipped.
+                out.push_str(&format!(
                 "        let {n}Offset: Offset = {{\n\
                  \x20           guard let tagRows = {n}, !tagRows.isEmpty else {{ return Offset() }}\n\
                  \x20           var tagOffsets: [Offset] = []\n\
@@ -302,8 +318,8 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
                  \x20       }}()\n",
                 n = field.name
             ));
-        }
-        FieldKind::Uint
+            }
+            FieldKind::Uint
             | FieldKind::Ulong
             | FieldKind::UlongWithPresenceFlag { .. }
             | FieldKind::Ubyte
@@ -427,7 +443,6 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
     ));
     out.push_str("    }\n");
 }
-
 
 /// Render the full file for the default registry.
 #[must_use]
