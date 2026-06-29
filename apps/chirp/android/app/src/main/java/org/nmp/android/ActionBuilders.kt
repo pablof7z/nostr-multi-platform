@@ -39,6 +39,22 @@ object GeneratedActionBuilders {
         ) : PublishSignerSelection()
     }
 
+    enum class PublishRouteClass(val token: String) {
+        MANUAL_OVERRIDE("manual_override"),
+        GROUP_HOST_PIN("group_host_pin"),
+        VERIFIED_PRIVATE_INBOX("verified_private_inbox"),
+        IMPORTED_OR_PRESIGNED("imported_or_presigned"),
+        DIAGNOSTIC("diagnostic"),
+    }
+
+    sealed class PublishTargetSelection {
+        object Auto : PublishTargetSelection()
+        data class Explicit(
+            val relays: List<String>,
+            val routeClass: PublishRouteClass,
+        ) : PublishTargetSelection()
+    }
+
     /// The single recognised envelope schema version — mirrors
     /// `nmp_core::dispatch_envelope::DISPATCH_ENVELOPE_SCHEMA_VERSION`.
     const val DISPATCH_ENVELOPE_SCHEMA_VERSION: Int = 1
@@ -1019,7 +1035,7 @@ object GeneratedActionBuilders {
         kind: Int,
         tags: List<List<String>>,
         content: String,
-        relays: List<String>? = null,
+        target: PublishTargetSelection = PublishTargetSelection.Auto,
         signer: PublishSignerSelection = PublishSignerSelection.Active,
     ): ByteArray {
         val fbb = FlatBufferBuilder()
@@ -1051,19 +1067,25 @@ object GeneratedActionBuilders {
                 fbb.endTable()
             }
         }
-        val targetRelays = relays ?: emptyList()
-        val explicit = targetRelays.isNotEmpty()
+        val targetRelays = when (target) {
+            PublishTargetSelection.Auto -> emptyList()
+            is PublishTargetSelection.Explicit -> target.relays
+        }
+        val explicit = target is PublishTargetSelection.Explicit
         val targetRelaysVec = run {
             val offsets = IntArray(targetRelays.size) { i -> fbb.createString(targetRelays[i]) }
             fbb.startVector(4, offsets.size, 4)
             for (i in offsets.size - 1 downTo 0) fbb.addOffset(offsets[i])
             fbb.endVector()
         }
-        val routeClassOffset = fbb.createString("manual_override")
+        val routeClassOffset = when (target) {
+            PublishTargetSelection.Auto -> 0
+            is PublishTargetSelection.Explicit -> fbb.createString(target.routeClass.token)
+        }
         fbb.startTable(3)
         fbb.addBoolean(0, explicit, false) // slot 0: explicit
         fbb.addOffset(1, targetRelaysVec, 0) // slot 1: relays
-        if (explicit) fbb.addOffset(2, routeClassOffset, 0) // slot 2: route_class
+        if (routeClassOffset != 0) fbb.addOffset(2, routeClassOffset, 0) // slot 2: route_class
         val targetOffset = fbb.endTable()
         fbb.startTable(5)
         fbb.addInt(0, kind, 0) // slot 0: kind
@@ -1092,7 +1114,7 @@ object GeneratedActionBuilders {
         correlationId: String,
         content: String,
         replyToEventId: String,
-        relays: List<String>? = null,
+        target: PublishTargetSelection = PublishTargetSelection.Auto,
         signer: PublishSignerSelection = PublishSignerSelection.Active,
     ): ByteArray {
         val fbb = FlatBufferBuilder()
@@ -1110,19 +1132,25 @@ object GeneratedActionBuilders {
                 fbb.endTable()
             }
         }
-        val targetRelays = relays ?: emptyList()
-        val explicit = targetRelays.isNotEmpty()
+        val targetRelays = when (target) {
+            PublishTargetSelection.Auto -> emptyList()
+            is PublishTargetSelection.Explicit -> target.relays
+        }
+        val explicit = target is PublishTargetSelection.Explicit
         val targetRelaysVec = run {
             val offsets = IntArray(targetRelays.size) { i -> fbb.createString(targetRelays[i]) }
             fbb.startVector(4, offsets.size, 4)
             for (i in offsets.size - 1 downTo 0) fbb.addOffset(offsets[i])
             fbb.endVector()
         }
-        val routeClassOffset = fbb.createString("manual_override")
+        val routeClassOffset = when (target) {
+            PublishTargetSelection.Auto -> 0
+            is PublishTargetSelection.Explicit -> fbb.createString(target.routeClass.token)
+        }
         fbb.startTable(3)
         fbb.addBoolean(0, explicit, false) // slot 0: explicit
         fbb.addOffset(1, targetRelaysVec, 0) // slot 1: relays
-        if (explicit) fbb.addOffset(2, routeClassOffset, 0) // slot 2: route_class
+        if (routeClassOffset != 0) fbb.addOffset(2, routeClassOffset, 0) // slot 2: route_class
         val targetOffset = fbb.endTable()
         fbb.startTable(4)
         fbb.addOffset(0, contentOffset, 0) // slot 0: content

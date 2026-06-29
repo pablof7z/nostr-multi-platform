@@ -23,6 +23,17 @@ import * as flatbuffers from "flatbuffers";
 
 import { encodeDispatchEnvelope } from "./dispatchEnvelope";
 
+export type PublishRouteClass =
+  | "manual_override"
+  | "group_host_pin"
+  | "verified_private_inbox"
+  | "imported_or_presigned"
+  | "diagnostic";
+
+export type PublishTargetSelection =
+  | { kind: "auto" }
+  | { kind: "explicit"; relays: string[]; routeClass: PublishRouteClass };
+
 /** Encode a `[string]` FlatBuffers vector (built last element first) and
  * return its offset. Shared by the generated builders below. */
 function stringVector(fbb: flatbuffers.Builder, values: string[]): flatbuffers.Offset {
@@ -796,7 +807,7 @@ export const GeneratedActionBuilders = {
     kind: number,
     tags: string[][],
     content: string,
-    relays: string[] | null = null,
+    target: PublishTargetSelection = { kind: "auto" },
     signer: { kind: "active" } | { kind: "registered"; pubkey: string; provenance: "app_managed" | "user_selected" | "protocol_pinned" | "diagnostic" } = { kind: "active" },
   ): Uint8Array {
     const fbb = new flatbuffers.Builder(64);
@@ -820,14 +831,14 @@ export const GeneratedActionBuilders = {
       fbb.addFieldOffset(2, signerProvenanceOffset, 0); // slot 2: provenance
       signerOffset = fbb.endObject();
     }
-    const targetRelays = relays ?? [];
-    const explicit = targetRelays.length > 0;
+    const explicit = target.kind === "explicit";
+    const targetRelays = explicit ? target.relays : [];
     const targetRelaysVec = stringVector(fbb, targetRelays);
-    const routeClassOffset = fbb.createString("manual_override");
+    const routeClassOffset = explicit ? fbb.createString(target.routeClass) : 0;
     fbb.startObject(3);
     fbb.addFieldInt8(0, explicit ? 1 : 0, 0); // slot 0: explicit
     fbb.addFieldOffset(1, targetRelaysVec, 0); // slot 1: relays
-    if (explicit) fbb.addFieldOffset(2, routeClassOffset, 0); // slot 2: route_class
+    if (routeClassOffset !== 0) fbb.addFieldOffset(2, routeClassOffset, 0); // slot 2: route_class
     const targetOffset = fbb.endObject();
     fbb.startObject(5);
     fbb.addFieldInt32(0, kind, 0); // slot 0: kind
@@ -851,7 +862,7 @@ export const GeneratedActionBuilders = {
     correlationId: string,
     content: string,
     replyToEventId: string,
-    relays: string[] | null = null,
+    target: PublishTargetSelection = { kind: "auto" },
     signer: { kind: "active" } | { kind: "registered"; pubkey: string; provenance: "app_managed" | "user_selected" | "protocol_pinned" | "diagnostic" } = { kind: "active" },
   ): Uint8Array {
     const fbb = new flatbuffers.Builder(64);
@@ -867,14 +878,14 @@ export const GeneratedActionBuilders = {
       fbb.addFieldOffset(2, signerProvenanceOffset, 0); // slot 2: provenance
       signerOffset = fbb.endObject();
     }
-    const targetRelays = relays ?? [];
-    const explicit = targetRelays.length > 0;
+    const explicit = target.kind === "explicit";
+    const targetRelays = explicit ? target.relays : [];
     const targetRelaysVec = stringVector(fbb, targetRelays);
-    const routeClassOffset = fbb.createString("manual_override");
+    const routeClassOffset = explicit ? fbb.createString(target.routeClass) : 0;
     fbb.startObject(3);
     fbb.addFieldInt8(0, explicit ? 1 : 0, 0); // slot 0: explicit
     fbb.addFieldOffset(1, targetRelaysVec, 0); // slot 1: relays
-    if (explicit) fbb.addFieldOffset(2, routeClassOffset, 0); // slot 2: route_class
+    if (routeClassOffset !== 0) fbb.addFieldOffset(2, routeClassOffset, 0); // slot 2: route_class
     const targetOffset = fbb.endObject();
     fbb.startObject(4);
     fbb.addFieldOffset(0, contentOffset, 0); // slot 0: content

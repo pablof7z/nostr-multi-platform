@@ -788,7 +788,7 @@ fn publish_raw_signer_pubkey_unregistered_fails_closed() {
 // Manual override exercises the explicit dispatch call site.
 #[test]
 fn publish_raw_signer_pubkey_signs_with_registered_agent_key_without_active_account() {
-    use nmp_core::publish::PublishTarget;
+    use nmp_core::publish::{PublishRouteClass, PublishTarget};
     use nmp_core::testing::{spawn_actor, ActorCommand};
     use nostr::nips::nip19::ToBech32;
     use nostr::Keys;
@@ -826,7 +826,7 @@ fn publish_raw_signer_pubkey_signs_with_registered_agent_key_without_active_acco
         kind: 30023,
         tags: Vec::new(),
         content: "agent-authored note".to_string(),
-        target: PublishTarget::manual_override(vec!["wss://relay.test".to_string()]),
+        target: PublishTarget::explicit(vec!["wss://relay.test".to_string()], PublishRouteClass::ManualOverride),
         signer_pubkey: Some(bob_pubkey_hex.clone()),
         correlation_id: None,
     }))

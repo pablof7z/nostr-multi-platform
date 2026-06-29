@@ -266,7 +266,7 @@ fn nip65_resolver_returns_explicit_unchanged() {
     let out = resolver.resolve(
         AUTHOR_HEX,
         &[],
-        &PublishTarget::manual_override(explicit.clone()),
+        &PublishTarget::explicit(explicit.clone(), nmp_core::publish::PublishRouteClass::ManualOverride),
         1,
         &no_block(),
     );
@@ -529,7 +529,7 @@ fn resolve_returns_explicit_relay_reason() {
     let out = resolver.resolve(
         AUTHOR_HEX,
         &[],
-        &PublishTarget::manual_override(explicit.clone()),
+        &PublishTarget::explicit(explicit.clone(), nmp_core::publish::PublishRouteClass::ManualOverride),
         1,
         &no_block(),
     );

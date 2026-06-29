@@ -33,7 +33,7 @@ fn render_one(builder: &PublishBuilder, out: &mut String) {
             out.push_str("        kind: Int,\n");
             out.push_str("        tags: List<List<String>>,\n");
             out.push_str("        content: String,\n");
-            out.push_str("        relays: List<String>? = null,\n");
+            out.push_str("        target: PublishTargetSelection = PublishTargetSelection.Auto,\n");
             out.push_str(
                 "        signer: PublishSignerSelection = PublishSignerSelection.Active,\n",
             );
@@ -44,7 +44,7 @@ fn render_one(builder: &PublishBuilder, out: &mut String) {
         BodyShape::PublishReply => {
             out.push_str("        content: String,\n");
             out.push_str("        replyToEventId: String,\n");
-            out.push_str("        relays: List<String>? = null,\n");
+            out.push_str("        target: PublishTargetSelection = PublishTargetSelection.Auto,\n");
             out.push_str(
                 "        signer: PublishSignerSelection = PublishSignerSelection.Active,\n",
             );
@@ -98,21 +98,26 @@ fn string_vector(out: &mut String, val_name: &str, source: &str) {
     ));
 }
 
-/// Encode a `PublishTarget`: `null`/empty `relays` → `Auto` (`explicit = false`);
-/// a non-empty set → `Explicit` manual override. Leaves the offset on
-/// `targetOffset`. Matches `build_target` in `nmp_core::publish::wire`.
+/// Encode a `PublishTarget`. Auto omits route provenance; explicit targets
+/// require callers to name both relays and route class in `PublishTargetSelection`.
 fn render_target(out: &mut String) {
     out.push_str(
-        "        val targetRelays = relays ?: emptyList()\n\
-         \x20       val explicit = targetRelays.isNotEmpty()\n",
+        "        val targetRelays = when (target) {\n\
+         \x20           PublishTargetSelection.Auto -> emptyList()\n\
+         \x20           is PublishTargetSelection.Explicit -> target.relays\n\
+         \x20       }\n\
+         \x20       val explicit = target is PublishTargetSelection.Explicit\n",
     );
     string_vector(out, "targetRelaysVec", "targetRelays");
     out.push_str(
-        "        val routeClassOffset = fbb.createString(\"manual_override\")\n\
+        "        val routeClassOffset = when (target) {\n\
+         \x20           PublishTargetSelection.Auto -> 0\n\
+         \x20           is PublishTargetSelection.Explicit -> fbb.createString(target.routeClass.token)\n\
+         \x20       }\n\
          \x20       fbb.startTable(3)\n\
          \x20       fbb.addBoolean(0, explicit, false) // slot 0: explicit\n\
          \x20       fbb.addOffset(1, targetRelaysVec, 0) // slot 1: relays\n\
-         \x20       if (explicit) fbb.addOffset(2, routeClassOffset, 0) // slot 2: route_class\n\
+         \x20       if (routeClassOffset != 0) fbb.addOffset(2, routeClassOffset, 0) // slot 2: route_class\n\
          \x20       val targetOffset = fbb.endTable()\n",
     );
 }

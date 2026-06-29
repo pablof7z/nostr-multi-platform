@@ -138,7 +138,10 @@ fn publish_signed_event_rejects_manual_override_for_presigned() {
     let outbound = publish_signed_event(
         &mut kernel,
         raw,
-        PublishTarget::manual_override(vec!["wss://manual.example".to_string()]),
+        PublishTarget::explicit(
+            vec!["wss://manual.example".to_string()],
+            PublishRouteClass::ManualOverride,
+        ),
         None,
     );
 

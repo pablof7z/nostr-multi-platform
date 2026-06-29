@@ -18,12 +18,6 @@ pub enum PublishRouteClass {
     Diagnostic,
 }
 
-impl Default for PublishRouteClass {
-    fn default() -> Self {
-        Self::ManualOverride
-    }
-}
-
 impl PublishRouteClass {
     #[must_use]
     pub fn wire_token(self) -> &'static str {
@@ -69,11 +63,6 @@ impl PublishTarget {
             relays,
             route_class,
         }
-    }
-
-    #[must_use]
-    pub fn manual_override(relays: Vec<RelayUrl>) -> Self {
-        Self::explicit(relays, PublishRouteClass::ManualOverride)
     }
 }
 

@@ -38,7 +38,7 @@ fn render_one(builder: &PublishBuilder, out: &mut String) {
             out.push_str("        kind: UInt32,\n");
             out.push_str("        tags: [[String]],\n");
             out.push_str("        content: String,\n");
-            out.push_str("        relays: [String]? = nil,\n");
+            out.push_str("        target: PublishTargetSelection = .auto,\n");
             out.push_str("        signer: PublishSignerSelection = .active\n");
         }
         BodyShape::PublishProfile => {
@@ -47,7 +47,7 @@ fn render_one(builder: &PublishBuilder, out: &mut String) {
         BodyShape::PublishReply => {
             out.push_str("        content: String,\n");
             out.push_str("        replyToEventId: String,\n");
-            out.push_str("        relays: [String]? = nil,\n");
+            out.push_str("        target: PublishTargetSelection = .auto,\n");
             out.push_str("        signer: PublishSignerSelection = .active\n");
         }
     }
@@ -86,21 +86,31 @@ fn render_one(builder: &PublishBuilder, out: &mut String) {
     out.push_str("    }\n");
 }
 
-/// Encode a `PublishTarget` from an optional `[String]` of relays. `nil`/empty →
-/// `Auto` (`explicit = false`); a non-empty set → `Explicit` manual override.
-/// Leaves the offset in `targetOffset`. Matches `build_target` in
-/// `nmp_core::publish::wire`.
+/// Encode a `PublishTarget`. Auto omits route provenance; explicit targets
+/// require callers to name both relays and route class in `PublishTargetSelection`.
 fn render_target(out: &mut String) {
     out.push_str(
         "        let targetOffset: Offset = {\n\
-         \x20           let explicit = (relays?.isEmpty == false)\n\
-         \x20           let relayOffsets = (relays ?? []).map { fbb.create(string: $0) }\n\
+         \x20           let explicit: Bool\n\
+         \x20           let targetRelays: [String]\n\
+         \x20           let routeClass: PublishRouteClass?\n\
+         \x20           switch target {\n\
+         \x20           case .auto:\n\
+         \x20               explicit = false\n\
+         \x20               targetRelays = []\n\
+         \x20               routeClass = nil\n\
+         \x20           case .explicit(let relays, let cls):\n\
+         \x20               explicit = true\n\
+         \x20               targetRelays = relays\n\
+         \x20               routeClass = cls\n\
+         \x20           }\n\
+         \x20           let relayOffsets = targetRelays.map { fbb.create(string: $0) }\n\
          \x20           let relaysVec = fbb.createVector(ofOffsets: relayOffsets)\n\
-         \x20           let routeClassOffset = fbb.create(string: \"manual_override\")\n\
+         \x20           let routeClassOffset = routeClass.map { fbb.create(string: $0.rawValue) } ?? Offset()\n\
          \x20           let start = fbb.startTable(with: 3)\n\
          \x20           fbb.add(element: explicit, def: false, at: 4) // slot 0: explicit\n\
          \x20           fbb.add(offset: relaysVec, at: 6) // slot 1: relays\n\
-         \x20           if explicit { fbb.add(offset: routeClassOffset, at: 8) } // slot 2: route_class\n\
+         \x20           if routeClassOffset.o != 0 { fbb.add(offset: routeClassOffset, at: 8) } // slot 2: route_class\n\
          \x20           return Offset(offset: fbb.endTable(at: start))\n\
          \x20       }()\n",
     );
