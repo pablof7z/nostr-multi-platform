@@ -315,6 +315,78 @@ fn profile_shape_narrows_when_widest_consumer_releases() {
     );
 }
 
+// ─── warm re-resolve is a pure no-op (BLOCKING 3 regression guard) ──────────
+//
+// A warm identical re-resolve (same pubkey/consumer/shape/liveness, force=false)
+// must NOT bump `changed_since_emit` or the per-key rev.  Without this gate
+// a `claim → snapshot → render → claim` loop would busy-emit on every UI frame.
+//
+// Symmetrically, releasing an already-absent consumer must not bump the dirty
+// flag — a spurious release of a never-claimed (or already-released) consumer
+// is a structural no-op (ADR-0063 BLOCKING 3 / BLOCKING 2(a)).
+//
+// Reconciles the intent from preserved stash `stash-preserve/20260615-7-profile-claim-loop`
+// (branch `pr1436-investigate`) against the current ADR-0063 `resolve_ref` /
+// `release_ref` API (the stash's `claim_profile` / `release_profile` names and
+// `profile_claim_projection_tests.rs` file no longer exist).
+
+#[test]
+fn warm_reresolve_and_noop_release_emit_no_change() {
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
+    let pk = hex64("w4rmk3y");
+
+    // ── Step 1: cold first resolve — must dirty the kernel and advance the rev.
+    profile_card(&mut kernel, &pk, "view-x", RefLiveness::CacheOk);
+    assert!(
+        kernel.changed_since_emit,
+        "the first (cold) resolve must set changed_since_emit"
+    );
+    let r1 = kernel.ref_row_rev(RefNamespace::Profile, &pk);
+    assert!(r1 > 0, "the first resolve must advance the per-key rev above zero");
+
+    // ── Step 2: simulate a snapshot emission — clears the dirty flag.
+    let _ = kernel.make_update(true);
+    assert!(
+        !kernel.changed_since_emit,
+        "make_update must clear changed_since_emit (post-emit baseline)"
+    );
+
+    // ── Step 3: warm re-resolve — identical (key, consumer, shape, liveness).
+    // `inserted=false`, `shape_widened=false`, `liveness_upgraded=false` →
+    // `mutated=false` → dirty flag and per-key rev must stay unchanged.
+    profile_card(&mut kernel, &pk, "view-x", RefLiveness::CacheOk);
+    assert!(
+        !kernel.changed_since_emit,
+        "a warm identical re-resolve must NOT set changed_since_emit (loop breaker)"
+    );
+    assert_eq!(
+        kernel.ref_row_rev(RefNamespace::Profile, &pk),
+        r1,
+        "a warm identical re-resolve must NOT advance the per-key rev"
+    );
+
+    // ── Step 4: real release of the lone consumer — must dirty the kernel.
+    kernel.release_ref(RefNamespace::Profile, &pk, "view-x");
+    assert!(
+        kernel.changed_since_emit,
+        "releasing the only consumer must set changed_since_emit"
+    );
+    let _ = kernel.make_update(true);
+    assert!(
+        !kernel.changed_since_emit,
+        "make_update must clear changed_since_emit after the release"
+    );
+
+    // ── Step 5: spurious release of an already-absent consumer — no-op.
+    // `actually_removed=false`, `shape_narrowed=false`, `liveness_downgraded=false`
+    // → `mutated=false` → dirty flag must remain false.
+    kernel.release_ref(RefNamespace::Profile, &pk, "view-x");
+    assert!(
+        !kernel.changed_since_emit,
+        "a spurious release of an absent consumer must NOT set changed_since_emit (BLOCKING 2(a))"
+    );
+}
+
 // ─── fail-closed on (namespace, shape) mismatch ──────────────────────────────
 
 #[test]
