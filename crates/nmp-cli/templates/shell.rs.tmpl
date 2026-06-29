@@ -3,7 +3,7 @@
 //! Constructs an app via `NmpAppBuilder`, installs this crate's explicit
 //! composition root through [`register`], starts the kernel, and tears it down.
 //! A real platform shell (SwiftUI / Compose / iced / wasm) drives the same
-//! `NmpApp` C-ABI surface.
+//! native runtime app handle through the platform binding.
 //!
 //! Run it with:
 //!
@@ -47,7 +47,7 @@ fn main() {
 
     let home_timeline_session = {
         // SAFETY: `NmpAppBuilder::start` returns a valid, non-null pointer owned
-        // by this shell until `nmp_app_free` below.
+        // by this example until the explicit teardown below.
         let app_ref = unsafe { &*app };
         {{crate_ident}}::open_home_timeline_session(app_ref).ok()
     };
