@@ -42,6 +42,12 @@ pub enum NmpError {
     /// A pre-start configuration call was made after the runtime had already
     /// started (M14-C2: maps from `NmpConfigStatus::AlreadyStarted`).
     AlreadyStarted,
+    /// A feed session could not be opened: the scope is not wired by the
+    /// default compiler, the session registry is unavailable (poisoned lock),
+    /// or the compiler returned another typed failure. Distinct from
+    /// `InvalidInput` (which covers JSON parse / primary-kind validation errors
+    /// that fire BEFORE the compiler runs).
+    FeedOpenFailed,
 }
 
 impl std::fmt::Display for NmpError {
@@ -54,6 +60,9 @@ impl std::fmt::Display for NmpError {
             NmpError::EncodeFailed => write!(f, "encode failed"),
             NmpError::AlreadyStarted => {
                 write!(f, "already started: configuration after runtime start")
+            }
+            NmpError::FeedOpenFailed => {
+                write!(f, "feed open failed: scope not wired or registry unavailable")
             }
         }
     }

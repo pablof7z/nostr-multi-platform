@@ -422,6 +422,22 @@ fileprivate struct FfiConverterUInt32: FfiConverterPrimitive {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterUInt64: FfiConverterPrimitive {
+    typealias FfiType = UInt64
+    typealias SwiftType = UInt64
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt64 {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterBool : FfiConverter {
     typealias FfiType = Int8
     typealias SwiftType = Bool
@@ -564,6 +580,19 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
     func cancelBunkerHandshake()
 
     /**
+     * Close a feed session previously opened by `open_feed_json`.
+     *
+     * Tears down the observer, projection, pull-controller, and interests
+     * registered when the session was opened, then removes the session from
+     * the registry. Returns `true` when a live session was torn down; `false`
+     * when the `session_id` is unknown or already closed (idempotent — D6).
+     *
+     * D8: the session's resources are released immediately; the registry entry
+     * is removed so a subsequent close of the same id is always a no-op.
+     */
+    func closeFeedSession(sessionId: UInt64)  -> Bool
+
+    /**
      * Reconfigure rendering limits without restarting. Same clamp rules as
      * `start`.
      */
@@ -652,6 +681,17 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
     func initSignerBroker() throws
 
     /**
+     * Advance the feed's viewport to the next older page.
+     *
+     * Mirrors `nmp_app_load_older_feed`. `key` is the projection key of the
+     * feed to page (the same string returned in `FeedSessionHandle.projection_key`
+     * or a well-known constant like `"nmp.feed.home"`). Returns `true` when the
+     * viewport cursor actually changed; `false` for an unknown key or when
+     * already at the oldest page (D6: always succeeds, never panics).
+     */
+    func loadOlderFeed(key: String)  -> Bool
+
+    /**
      * Generate a fresh `nostrconnect://` URI for app-initiated NIP-46 flows.
      *
      * Returns `None` when called before `init_signer_broker` or when relay
@@ -662,6 +702,39 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
      * Mirrors `nmp_app_nostrconnect_uri`.
      */
     func nostrconnectUri(callbackScheme: String?)  -> String?
+
+    /**
+     * Open a new feed session from a JSON-encoded `FeedParams` declaration.
+     *
+     * Parses and validates the declaration, then compiles and registers the
+     * session using `compile_feed_params` (the composition-root default compiler).
+     * Returns a [`FeedSessionHandle`] with the projection key and session id.
+     *
+     * D6: all failures are typed `NmpError` values — never panics.
+     *
+     * # Errors
+     *
+     * * `NmpError::InvalidInput` — `params_json` is not valid JSON or the
+     * `FeedParams` primary kinds fail validation (e.g. a wrapper kind used as
+     * a primary kind, or an empty primary-kinds list).
+     * * `NmpError::FeedOpenFailed` — the compiler failed to register the
+     * session (e.g. an unsupported scope or poisoned registry).
+     */
+    func openFeedJson(paramsJson: String) throws  -> FeedSessionHandle
+
+    /**
+     * Route a `nostr:` URI (or a bare NIP-19 entity) to the kernel reducer.
+     *
+     * Mirrors `nmp_app_open_uri`. Parses `uri` as a NIP-21/NIP-19 value and
+     * dispatches a `KernelAction::OpenUri` to the actor. On success the kernel
+     * registers the resolved interest and emits a `ViewOpened` update frame;
+     * on failure it emits `UriRejected`. Both outcomes are delivered
+     * asynchronously through the registered `UpdateSink`.
+     *
+     * D6: an empty or structurally invalid URI is a silent no-op (the kernel
+     * reducer fails closed before dispatching). D8: fire-and-forget.
+     */
+    func openUri(uri: String)
 
     /**
      * Register a host-supplied action-result observer — the *push*
@@ -827,6 +900,47 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
      * An empty handle is a silent no-op (D6). D8: non-blocking channel send.
      */
     func retryPublish(handle: String)
+
+    /**
+     * Close a NIP-50 search session previously opened via `search_open`.
+     *
+     * Mirrors `nmp_app_search_close`. Tears down the relay interests and
+     * removes the typed snapshot projection for `session_id`. An empty or
+     * unknown `session_id` is a silent no-op (D6).
+     */
+    func searchClose(sessionId: String)
+
+    /**
+     * Open a NIP-50 search session from a JSON query payload.
+     *
+     * Mirrors `nmp_app_search_open`. `request_json` must be a JSON object
+     * `{"query":"…","scope":…,"targets":…}` parseable by
+     * `nmp_native_runtime::parse_search_request`. `session_id` is a
+     * caller-chosen non-empty key that scopes the session for teardown and
+     * snapshot access.
+     *
+     * Re-opening the same `session_id` first closes the prior session (the
+     * relay interests and projection are rebuilt from the new request). The
+     * snapshot projection key is `"nmp.nip50.search.<session_id>"`.
+     *
+     * D6: an empty `session_id`, an unparseable `request_json`, or a poisoned
+     * mutex are all silent no-ops. D8: the relay-fan-out is async; the first
+     * synchronous cache scan runs before this returns.
+     */
+    func searchOpen(requestJson: String, sessionId: String)
+
+    /**
+     * Copy the current typed `N50S` search-results snapshot for a session.
+     *
+     * Mirrors `nmp_app_search_snapshot` but returns bytes directly instead of
+     * writing into a caller-provided buffer. Returns `None` when no live
+     * session is registered under `session_id` or when the session has no
+     * results yet. The returned bytes are a FlatBuffers `N50S` frame; the
+     * caller should validate the file identifier before parsing.
+     *
+     * D6: an empty `session_id` or a poisoned mutex returns `None`.
+     */
+    func searchSnapshot(sessionId: String)  -> Data?
 
     /**
      * Register (or clear) the capability-request handler.
@@ -1071,6 +1185,25 @@ open func cancelBunkerHandshake()  {try! rustCall() {
 }
 
     /**
+     * Close a feed session previously opened by `open_feed_json`.
+     *
+     * Tears down the observer, projection, pull-controller, and interests
+     * registered when the session was opened, then removes the session from
+     * the registry. Returns `true` when a live session was torn down; `false`
+     * when the `session_id` is unknown or already closed (idempotent — D6).
+     *
+     * D8: the session's resources are released immediately; the registry entry
+     * is removed so a subsequent close of the same id is always a no-op.
+     */
+open func closeFeedSession(sessionId: UInt64) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_close_feed_session(self.uniffiClonePointer(),
+        FfiConverterUInt64.lower(sessionId),$0
+    )
+})
+}
+
+    /**
      * Reconfigure rendering limits without restarting. Same clamp rules as
      * `start`.
      */
@@ -1198,6 +1331,23 @@ open func initSignerBroker()throws   {try rustCallWithError(FfiConverterTypeNmpE
 }
 
     /**
+     * Advance the feed's viewport to the next older page.
+     *
+     * Mirrors `nmp_app_load_older_feed`. `key` is the projection key of the
+     * feed to page (the same string returned in `FeedSessionHandle.projection_key`
+     * or a well-known constant like `"nmp.feed.home"`). Returns `true` when the
+     * viewport cursor actually changed; `false` for an unknown key or when
+     * already at the oldest page (D6: always succeeds, never panics).
+     */
+open func loadOlderFeed(key: String) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_load_older_feed(self.uniffiClonePointer(),
+        FfiConverterString.lower(key),$0
+    )
+})
+}
+
+    /**
      * Generate a fresh `nostrconnect://` URI for app-initiated NIP-46 flows.
      *
      * Returns `None` when called before `init_signer_broker` or when relay
@@ -1213,6 +1363,50 @@ open func nostrconnectUri(callbackScheme: String?) -> String?  {
         FfiConverterOptionString.lower(callbackScheme),$0
     )
 })
+}
+
+    /**
+     * Open a new feed session from a JSON-encoded `FeedParams` declaration.
+     *
+     * Parses and validates the declaration, then compiles and registers the
+     * session using `compile_feed_params` (the composition-root default compiler).
+     * Returns a [`FeedSessionHandle`] with the projection key and session id.
+     *
+     * D6: all failures are typed `NmpError` values — never panics.
+     *
+     * # Errors
+     *
+     * * `NmpError::InvalidInput` — `params_json` is not valid JSON or the
+     * `FeedParams` primary kinds fail validation (e.g. a wrapper kind used as
+     * a primary kind, or an empty primary-kinds list).
+     * * `NmpError::FeedOpenFailed` — the compiler failed to register the
+     * session (e.g. an unsupported scope or poisoned registry).
+     */
+open func openFeedJson(paramsJson: String)throws  -> FeedSessionHandle  {
+    return try  FfiConverterTypeFeedSessionHandle_lift(try rustCallWithError(FfiConverterTypeNmpError_lift) {
+    uniffi_nmp_uniffi_fn_method_nmpapp_open_feed_json(self.uniffiClonePointer(),
+        FfiConverterString.lower(paramsJson),$0
+    )
+})
+}
+
+    /**
+     * Route a `nostr:` URI (or a bare NIP-19 entity) to the kernel reducer.
+     *
+     * Mirrors `nmp_app_open_uri`. Parses `uri` as a NIP-21/NIP-19 value and
+     * dispatches a `KernelAction::OpenUri` to the actor. On success the kernel
+     * registers the resolved interest and emits a `ViewOpened` update frame;
+     * on failure it emits `UriRejected`. Both outcomes are delivered
+     * asynchronously through the registered `UpdateSink`.
+     *
+     * D6: an empty or structurally invalid URI is a silent no-op (the kernel
+     * reducer fails closed before dispatching). D8: fire-and-forget.
+     */
+open func openUri(uri: String)  {try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_open_uri(self.uniffiClonePointer(),
+        FfiConverterString.lower(uri),$0
+    )
+}
 }
 
     /**
@@ -1483,6 +1677,64 @@ open func retryPublish(handle: String)  {try! rustCall() {
         FfiConverterString.lower(handle),$0
     )
 }
+}
+
+    /**
+     * Close a NIP-50 search session previously opened via `search_open`.
+     *
+     * Mirrors `nmp_app_search_close`. Tears down the relay interests and
+     * removes the typed snapshot projection for `session_id`. An empty or
+     * unknown `session_id` is a silent no-op (D6).
+     */
+open func searchClose(sessionId: String)  {try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_search_close(self.uniffiClonePointer(),
+        FfiConverterString.lower(sessionId),$0
+    )
+}
+}
+
+    /**
+     * Open a NIP-50 search session from a JSON query payload.
+     *
+     * Mirrors `nmp_app_search_open`. `request_json` must be a JSON object
+     * `{"query":"…","scope":…,"targets":…}` parseable by
+     * `nmp_native_runtime::parse_search_request`. `session_id` is a
+     * caller-chosen non-empty key that scopes the session for teardown and
+     * snapshot access.
+     *
+     * Re-opening the same `session_id` first closes the prior session (the
+     * relay interests and projection are rebuilt from the new request). The
+     * snapshot projection key is `"nmp.nip50.search.<session_id>"`.
+     *
+     * D6: an empty `session_id`, an unparseable `request_json`, or a poisoned
+     * mutex are all silent no-ops. D8: the relay-fan-out is async; the first
+     * synchronous cache scan runs before this returns.
+     */
+open func searchOpen(requestJson: String, sessionId: String)  {try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_search_open(self.uniffiClonePointer(),
+        FfiConverterString.lower(requestJson),
+        FfiConverterString.lower(sessionId),$0
+    )
+}
+}
+
+    /**
+     * Copy the current typed `N50S` search-results snapshot for a session.
+     *
+     * Mirrors `nmp_app_search_snapshot` but returns bytes directly instead of
+     * writing into a caller-provided buffer. Returns `None` when no live
+     * session is registered under `session_id` or when the session has no
+     * results yet. The returned bytes are a FlatBuffers `N50S` frame; the
+     * caller should validate the file identifier before parsing.
+     *
+     * D6: an empty `session_id` or a poisoned mutex returns `None`.
+     */
+open func searchSnapshot(sessionId: String) -> Data?  {
+    return try!  FfiConverterOptionData.lift(try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_search_snapshot(self.uniffiClonePointer(),
+        FfiConverterString.lower(sessionId),$0
+    )
+})
 }
 
     /**
@@ -1780,6 +2032,85 @@ public func FfiConverterTypeDispatchOutcome_lift(_ buf: RustBuffer) throws -> Di
 #endif
 public func FfiConverterTypeDispatchOutcome_lower(_ value: DispatchOutcome) -> RustBuffer {
     return FfiConverterTypeDispatchOutcome.lower(value)
+}
+
+
+/**
+ * Opaque handle for a feed session opened via `open_feed_json`.
+ *
+ * `projection_key` — the NMPU snapshot key (e.g. `"nmp.feed.home"`) the host
+ * subscribes to for feed-frame updates. Pass it to `load_older_feed` for
+ * viewport paging commands.
+ * `session_id` — the numeric session id; pass it to `close_feed_session` for
+ * teardown.
+ */
+public struct FeedSessionHandle {
+    public var projectionKey: String
+    public var sessionId: UInt64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(projectionKey: String, sessionId: UInt64) {
+        self.projectionKey = projectionKey
+        self.sessionId = sessionId
+    }
+}
+
+#if compiler(>=6)
+extension FeedSessionHandle: Sendable {}
+#endif
+
+
+extension FeedSessionHandle: Equatable, Hashable {
+    public static func ==(lhs: FeedSessionHandle, rhs: FeedSessionHandle) -> Bool {
+        if lhs.projectionKey != rhs.projectionKey {
+            return false
+        }
+        if lhs.sessionId != rhs.sessionId {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(projectionKey)
+        hasher.combine(sessionId)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFeedSessionHandle: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FeedSessionHandle {
+        return
+            try FeedSessionHandle(
+                projectionKey: FfiConverterString.read(from: &buf),
+                sessionId: FfiConverterUInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FeedSessionHandle, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.projectionKey, into: &buf)
+        FfiConverterUInt64.write(value.sessionId, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFeedSessionHandle_lift(_ buf: RustBuffer) throws -> FeedSessionHandle {
+    return try FfiConverterTypeFeedSessionHandle.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFeedSessionHandle_lower(_ value: FeedSessionHandle) -> RustBuffer {
+    return FfiConverterTypeFeedSessionHandle.lower(value)
 }
 
 
@@ -2716,6 +3047,14 @@ public enum NmpError: Swift.Error {
      * started (M14-C2: maps from `NmpConfigStatus::AlreadyStarted`).
      */
     case AlreadyStarted
+    /**
+     * A feed session could not be opened: the scope is not wired by the
+     * default compiler, the session registry is unavailable (poisoned lock),
+     * or the compiler returned another typed failure. Distinct from
+     * `InvalidInput` (which covers JSON parse / primary-kind validation errors
+     * that fire BEFORE the compiler runs).
+     */
+    case FeedOpenFailed
 }
 
 
@@ -2738,6 +3077,7 @@ public struct FfiConverterTypeNmpError: FfiConverterRustBuffer {
         case 4: return .InvalidMode
         case 5: return .EncodeFailed
         case 6: return .AlreadyStarted
+        case 7: return .FeedOpenFailed
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -2772,6 +3112,10 @@ public struct FfiConverterTypeNmpError: FfiConverterRustBuffer {
 
         case .AlreadyStarted:
             writeInt(&buf, Int32(6))
+
+
+        case .FeedOpenFailed:
+            writeInt(&buf, Int32(7))
 
         }
     }
@@ -3671,6 +4015,30 @@ fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionData: FfiConverterRustBuffer {
+    typealias SwiftType = Data?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterData.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterData.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionCallbackInterfaceCapabilitySink: FfiConverterRustBuffer {
     typealias SwiftType = CapabilitySink?
 
@@ -4010,6 +4378,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_cancel_bunker_handshake() != 1296) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_close_feed_session() != 61839) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_configure() != 62391) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -4031,7 +4402,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_init_signer_broker() != 39820) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_load_older_feed() != 59269) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_nostrconnect_uri() != 966) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_open_feed_json() != 29546) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_open_uri() != 54191) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_register_action_result_observer() != 16725) {
@@ -4083,6 +4463,15 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_retry_publish() != 19023) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_search_close() != 7623) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_search_open() != 28028) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_search_snapshot() != 37593) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_set_capability_callback() != 58918) {
