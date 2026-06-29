@@ -21,6 +21,10 @@ nmp-ffi = { path = "../nmp-ffi" }
 nmp-core = { path = "../nmp-core" }
 # The OP-feed typed projection decoder (`decode_op_feed_snapshot`) + key.
 nmp-nip01 = { path = "../nmp-nip01" }
+# App-private typed write payload codec and action event construction.
+nmp-signer-iface = { path = "../nmp-signer-iface" }
+flatbuffers = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 
 # Harness-only dep (headless host driver). Pulled in ONLY under the `harness`
 # feature so the doctrine-clean shell (`lib.rs`) never links test-support.
