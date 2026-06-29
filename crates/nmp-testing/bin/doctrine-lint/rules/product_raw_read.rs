@@ -1,7 +1,7 @@
 //! Product raw-read ratchet — first typed-read-session guard.
 //!
 //! Product shells and starter templates must not grow new raw `open_interest`
-//! or observer/tick hooks. Those are substrate/runtime/protocol seams; user-
+//! or observed-projection hooks. Those are substrate/runtime/protocol seams; user-
 //! facing read models should be typed sessions, typed projections, or the
 //! external pull cursor.
 //!
@@ -19,9 +19,17 @@ pub const ID: &str = "product_raw_read";
 
 const BANNED_TOKENS: &[&str] = &[
     "nmp_app_open_interest",
+    "nmp_app_close_interest",
     "nmp.kernel.open_interest",
+    "nmp.kernel.close_interest",
     "open_interest(",
     ".open_interest(",
+    "close_interest(",
+    ".close_interest(",
+    "open_observed_projection(",
+    ".open_observed_projection(",
+    "ObservedProjectionSink",
+    "ObservedProjection",
     "KernelEventObserver",
     "register_event_observer",
     "register_live_event_tap",
@@ -42,7 +50,8 @@ pub fn check(line: &str, is_comment: bool, in_test_cfg: bool) -> Vec<(usize, Str
                     "`{token}` is a raw read/session hook in product-facing code. \
                      Product shells and starter templates must use typed read \
                      sessions/projections instead of raw `open_interest`, \
-                     raw event observers, or snapshot tick observers"
+                     raw `close_interest`, observed-projection handles, raw \
+                     event observers, or snapshot tick observers"
                 ),
                 "move the raw interest/observer work behind a typed session or \
                  typed projection owned by Rust; external mirrors should use the \
@@ -89,9 +98,28 @@ mod tests {
     }
 
     #[test]
+    fn flags_close_interest_in_product_shell() {
+        let hits = check("    app.close_interest(interest_id);", false, false);
+        assert_eq!(hits.len(), 1);
+        assert!(hits[0].1.contains("raw `close_interest`"));
+    }
+
+    #[test]
+    fn flags_observed_projection_in_product_shell() {
+        let hits = check(
+            "    let sink: ObservedProjectionSink = app.open_observed_projection(shape);",
+            false,
+            false,
+        );
+        assert_eq!(hits.len(), 1);
+        assert!(hits[0].1.contains("observed-projection"));
+    }
+
+    #[test]
     fn ignores_comments_and_test_cfg() {
         assert!(check("// app.open_interest(...)", true, false).is_empty());
         assert!(check("app.open_interest(filter, id, scope);", false, true).is_empty());
+        assert!(check("let _: ObservedProjection = projection;", false, true).is_empty());
     }
 
     #[test]
