@@ -35,7 +35,7 @@
 
 use std::collections::HashMap;
 use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use super::composition_ledger::{CompositionLedger, Disposition};
 use crate::substrate::{
@@ -46,11 +46,13 @@ mod action_id;
 mod erased;
 mod execute;
 mod failure;
+mod result_observer;
 mod typed_dispatch;
 
 use action_id::new_action_id;
 use erased::{ActionModuleAdapter, ErasedActionModule};
 pub use failure::{ActionExecuteFailure, ActionFailureKind, RegistrationError};
+use result_observer::{new_result_observer_slot, ResultObserverSlot};
 
 /// Per-namespace provenance: did the live entry come from a yielding default
 /// or from an explicit app registration? (ADR-0049 Part 1.)
@@ -69,17 +71,6 @@ enum Provenance {
     /// Installed via the explicit app path (`register`).
     App,
 }
-
-/// Shared, mutable slot holding the optional host-registered action-result
-/// observer.
-///
-/// `Arc<Mutex<…>>` so [`ActionRegistry::set_result_observer`] and
-/// [`ActionRegistry::deliver_result`] both take `&self` — registration and
-/// delivery never need `&mut ActionRegistry`. The observer fires from the FFI
-/// dispatch thread (where the registry already lives), so this slot does NOT
-/// cross the actor/kernel boundary; it stays a private detail of the registry.
-pub(crate) type ResultObserverSlot =
-    Arc<Mutex<Option<Box<dyn Fn(ActionResult) + Send + Sync + 'static>>>>;
 
 /// Namespace-keyed registry of [`ActionModule`]s.
 ///
@@ -125,7 +116,7 @@ impl ActionRegistry {
             modules: HashMap::new(),
             provenance: HashMap::new(),
             ledger: None,
-            result_observer: Arc::new(Mutex::new(None)),
+            result_observer: new_result_observer_slot(),
         }
     }
 
@@ -326,21 +317,27 @@ impl ActionRegistry {
     ///
     /// Takes `&self`: the observer lives behind an `Arc<Mutex<…>>` slot, so a
     /// host may register it before *or after* `nmp_app_start`. A second
-    /// registration replaces the first. A poisoned slot is a silent no-op
-    /// (D6 — a bad registration never crashes the host).
+    /// registration replaces the first. Replacement waits for any in-flight
+    /// delivery to finish before returning, so a host may release the previous
+    /// callback context immediately after the setter returns.
+    ///
+    /// Re-entrancy matches the update/capability callback gates: observer code
+    /// must not call this setter for the same registry from inside the callback.
     pub fn set_result_observer(&self, f: impl Fn(ActionResult) + Send + Sync + 'static) {
-        if let Ok(mut slot) = self.result_observer.lock() {
-            *slot = Some(Box::new(f));
-        }
+        self.result_observer.set_observer(Arc::new(f));
+    }
+
+    /// Clear the host-supplied action-result observer and wait for all
+    /// in-flight callbacks to drain before returning.
+    pub fn clear_result_observer(&self) {
+        self.result_observer.clear_observer();
     }
 
     /// Deliver `result` to the registered observer, if any.
     ///
-    /// A no-op when no observer is registered, or when the observer slot
-    /// mutex is poisoned (D6 — delivery failures are never a crash). Holding
-    /// the lock across the observer call is intentional: registration is a
-    /// host-init-time event, so contention with [`Self::set_result_observer`]
-    /// is not expected.
+    /// A no-op when no observer is registered. The observer is copied and
+    /// `in_flight` is incremented under the slot lock, then host code is called
+    /// without holding that lock. Clear/replace waits for `in_flight == 0`.
     ///
     /// D6: the observer is untrusted host plugin code registered via
     /// `nmp_app_register_action_result_observer`, and this runs on the call
@@ -358,14 +355,7 @@ impl ActionRegistry {
     /// observed again after it unwinds (this `&self` method holds no
     /// invariants past the call), so there is no broken-invariant hazard.
     pub fn deliver_result(&self, result: ActionResult) {
-        if let Ok(slot) = self.result_observer.lock() {
-            if let Some(observer) = slot.as_ref() {
-                // The panic is swallowed: this `ActionResult` is dropped and
-                // future deliveries still fire. The default panic hook still
-                // prints the payload, so the bug stays visible to ops.
-                let _ = catch_unwind(AssertUnwindSafe(|| observer(result)));
-            }
-        }
+        self.result_observer.deliver(result);
     }
 
     /// `true` when a module is registered under `namespace`.

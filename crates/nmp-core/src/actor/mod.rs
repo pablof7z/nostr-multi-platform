@@ -172,7 +172,7 @@ pub use commands::ObservedProjectionSinkSlot;
 #[cfg(feature = "native")]
 pub use commands::{
     new_event_observer_slot, new_observer_slot as new_lifecycle_observer_slot, unregister_observer,
-    LifecycleObserverSlot,
+    LifecycleObserverSlot, NativeLifecycleObserver,
 };
 pub(crate) use commands::{new_event_observer_slot_headless, unregister_observer_internal};
 // `LifecycleObserverRegistration` reaches `nmp-ffi` through

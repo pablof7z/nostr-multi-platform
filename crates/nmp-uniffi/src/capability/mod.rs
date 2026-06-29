@@ -11,6 +11,7 @@
 //! | `capability` | `set_capability_callback`, `dispatch_capability`        | `nmp-ffi/src/capability.rs`    |
 //! | `action`     | `ack_action_stage`, `register_action_result_observer`   | `nmp-ffi/src/action.rs`        |
 //! | `publish`    | `retry_publish`, `cancel_action`                        | `nmp-ffi/src/publish.rs`       |
+//! | `lifecycle`  | `lifecycle_*`, `set_lifecycle_callback`, `is_alive`     | `nmp-ffi/src/lifecycle.rs`     |
 //!
 //! ## Callback interfaces
 //!
@@ -26,13 +27,10 @@
 //!
 //! ### `ActionResultObserver` (push signal)
 //!
-//! **Stop-and-report**: the runtime's `ActionRegistry::deliver_result` holds
-//! the `Arc<Mutex>` lock ACROSS the observer call (mutual-exclusion quiescence
-//! rather than the `Condvar` + `in_flight` drain pattern). There is no
-//! `clear_result_observer` API on the registry. Per M14-C4 spec the teardown
-//! quiescence test is absent for this observer; the test suite covers
-//! register-and-fire parity only. A follow-up issue should track adding a
-//! proper drain gate to `ActionRegistry` before M14-D deletes the C-ABI.
+//! The runtime's `ActionRegistry` now uses the same `in_flight` + `Condvar`
+//! drain contract as update and capability callbacks. After replacing or
+//! clearing the observer, the previous sink is neither registered nor
+//! mid-invocation.
 //!
 //! ## Design notes
 //!
@@ -46,6 +44,8 @@ pub mod action;
 pub mod capability;
 pub mod publish;
 
+#[cfg(test)]
+pub(crate) mod action_tests;
 #[cfg(test)]
 pub(crate) mod tests;
 
@@ -75,11 +75,10 @@ pub trait CapabilitySink: Send + Sync {
 /// # Contract
 ///
 /// * `result_json` is a JSON string `{"correlation_id":"…","result_json":…}`.
-/// * Implementations MUST NOT call `register_action_result_observer` from
-///   inside this method: the `ActionRegistry` mutex is held during delivery,
-///   so re-entry would deadlock.
-/// * The observer is registered for the lifetime of the `NmpApp`; there is
-///   no clear API (mirrors the C-ABI, where null observer is a no-op).
+/// * Implementations MUST NOT call `register_action_result_observer` or
+///   `clear_action_result_observer` from inside this method; the setter drains
+///   in-flight callbacks before returning.
+/// * Call `clear_action_result_observer` to unregister.
 #[uniffi::export(callback_interface)]
 pub trait ActionResultObserver: Send + Sync {
     fn on_action_result(&self, result_json: String);
