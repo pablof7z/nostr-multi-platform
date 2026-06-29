@@ -68,6 +68,12 @@ impl Drop for NmpApp {
             inner.listener = None;
         }
         self.capability_callback.clear();
+        // Drain + clear the lifecycle observer so a registered UniFFI
+        // `LifecycleSink` ARC (or C-ABI context) is released before the actor
+        // thread is joined — no use-after-free if a lifecycle callback is
+        // mid-flight (M14-C-tail / #2429). Done before `shutdown_actor` so the
+        // gate drains any in-flight invocation on the actor thread first.
+        self.lifecycle_observer.clear();
         // Route through `shutdown_actor` (→ `send_cmd`) so the G-S4 queue-depth
         // counter stays consistent: the actor decrements it as it dequeues `Shutdown`.
         self.shutdown_actor();

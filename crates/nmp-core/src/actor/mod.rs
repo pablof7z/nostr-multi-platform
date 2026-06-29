@@ -178,7 +178,7 @@ pub(crate) use commands::{new_event_observer_slot_headless, unregister_observer_
 // `LifecycleObserverRegistration` reaches `nmp-ffi` through
 // `nmp_core::__ffi_internal::*` so the lifecycle C-ABI bridge can drive the slot.
 #[cfg(feature = "native")]
-pub use commands::LifecycleObserverRegistration;
+pub use commands::{LifecycleObserverGate, LifecycleObserverRegistration, NativeLifecycleObserver};
 // D0: NIP-46 remote signing is an app noun — the bunker-handshake slot is
 // re-exported so the `ffi` module can build it, hand one clone to the actor's
 // `IdentityRuntime`, and capture the other in the built-in

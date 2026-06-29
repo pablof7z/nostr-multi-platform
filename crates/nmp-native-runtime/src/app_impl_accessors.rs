@@ -345,6 +345,16 @@ impl NmpApp {
         self.action_registry.set_result_observer(f);
     }
 
+    /// Clear the host-registered action-result observer, draining any in-flight
+    /// delivery before returning (M14-C-tail / #2429).
+    ///
+    /// The drain-before-return guarantee means a UniFFI `ActionResultObserver`
+    /// callback ARC may be released the instant this returns — there is no
+    /// window where the dispatch thread is still mid-`on_action_result`.
+    pub fn clear_action_result_observer(&self) {
+        self.action_registry.clear_result_observer();
+    }
+
     /// Test-only: run every registered **typed** snapshot projection directly
     /// against the app's shared registry, bypassing the actor/kernel tick.
     #[cfg(any(test, feature = "test-support"))]

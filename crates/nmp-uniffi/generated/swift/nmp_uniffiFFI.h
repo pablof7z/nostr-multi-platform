@@ -265,6 +265,13 @@ typedef void (*UniffiCallbackInterfaceCapabilitySinkMethod0)(uint64_t, RustBuffe
     );
 
 #endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_LIFECYCLE_SINK_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_LIFECYCLE_SINK_METHOD0
+typedef void (*UniffiCallbackInterfaceLifecycleSinkMethod0)(uint64_t, uint32_t, void* _Nonnull,
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_UPDATE_SINK_METHOD0
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_UPDATE_SINK_METHOD0
 typedef void (*UniffiCallbackInterfaceUpdateSinkMethod0)(uint64_t, RustBuffer, void* _Nonnull,
@@ -286,6 +293,14 @@ typedef struct UniffiVTableCallbackInterfaceCapabilitySink {
     UniffiCallbackInterfaceCapabilitySinkMethod0 _Nonnull onCapabilityRequest;
     UniffiCallbackInterfaceFree _Nonnull uniffiFree;
 } UniffiVTableCallbackInterfaceCapabilitySink;
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LIFECYCLE_SINK
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LIFECYCLE_SINK
+typedef struct UniffiVTableCallbackInterfaceLifecycleSink {
+    UniffiCallbackInterfaceLifecycleSinkMethod0 _Nonnull onLifecycleTransition;
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+} UniffiVTableCallbackInterfaceLifecycleSink;
 
 #endif
 #ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_UPDATE_SINK
@@ -330,6 +345,11 @@ void uniffi_nmp_uniffi_fn_method_nmpapp_cancel_action(void*_Nonnull ptr, RustBuf
 #ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_CANCEL_BUNKER_HANDSHAKE
 #define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_CANCEL_BUNKER_HANDSHAKE
 void uniffi_nmp_uniffi_fn_method_nmpapp_cancel_bunker_handshake(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_CLEAR_ACTION_RESULT_OBSERVER
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_CLEAR_ACTION_RESULT_OBSERVER
+void uniffi_nmp_uniffi_fn_method_nmpapp_clear_action_result_observer(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_CLOSE_FEED_SESSION
@@ -542,6 +562,11 @@ RustBuffer uniffi_nmp_uniffi_fn_method_nmpapp_search_snapshot(void*_Nonnull ptr,
 void uniffi_nmp_uniffi_fn_method_nmpapp_set_capability_callback(void*_Nonnull ptr, RustBuffer sink, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_SET_LIFECYCLE_SINK
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_SET_LIFECYCLE_SINK
+void uniffi_nmp_uniffi_fn_method_nmpapp_set_lifecycle_sink(void*_Nonnull ptr, RustBuffer sink, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_SET_STORAGE_PATH
 #define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_SET_STORAGE_PATH
 void uniffi_nmp_uniffi_fn_method_nmpapp_set_storage_path(void*_Nonnull ptr, RustBuffer path, RustCallStatus *_Nonnull out_status
@@ -595,6 +620,11 @@ void uniffi_nmp_uniffi_fn_init_callback_vtable_actionresultobserver(const Uniffi
 #ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_INIT_CALLBACK_VTABLE_CAPABILITYSINK
 #define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_INIT_CALLBACK_VTABLE_CAPABILITYSINK
 void uniffi_nmp_uniffi_fn_init_callback_vtable_capabilitysink(const UniffiVTableCallbackInterfaceCapabilitySink* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_INIT_CALLBACK_VTABLE_LIFECYCLESINK
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_INIT_CALLBACK_VTABLE_LIFECYCLESINK
+void uniffi_nmp_uniffi_fn_init_callback_vtable_lifecyclesink(const UniffiVTableCallbackInterfaceLifecycleSink* _Nonnull vtable
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_INIT_CALLBACK_VTABLE_UPDATESINK
@@ -950,6 +980,12 @@ uint16_t uniffi_nmp_uniffi_checksum_method_nmpapp_cancel_bunker_handshake(void
 
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_CLEAR_ACTION_RESULT_OBSERVER
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_CLEAR_ACTION_RESULT_OBSERVER
+uint16_t uniffi_nmp_uniffi_checksum_method_nmpapp_clear_action_result_observer(void
+
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_CLOSE_FEED_SESSION
 #define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_CLOSE_FEED_SESSION
 uint16_t uniffi_nmp_uniffi_checksum_method_nmpapp_close_feed_session(void
@@ -1202,6 +1238,12 @@ uint16_t uniffi_nmp_uniffi_checksum_method_nmpapp_set_capability_callback(void
 
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_SET_LIFECYCLE_SINK
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_SET_LIFECYCLE_SINK
+uint16_t uniffi_nmp_uniffi_checksum_method_nmpapp_set_lifecycle_sink(void
+
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_SET_STORAGE_PATH
 #define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_SET_STORAGE_PATH
 uint16_t uniffi_nmp_uniffi_checksum_method_nmpapp_set_storage_path(void
@@ -1271,6 +1313,12 @@ uint16_t uniffi_nmp_uniffi_checksum_method_actionresultobserver_on_action_result
 #ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_CAPABILITYSINK_ON_CAPABILITY_REQUEST
 #define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_CAPABILITYSINK_ON_CAPABILITY_REQUEST
 uint16_t uniffi_nmp_uniffi_checksum_method_capabilitysink_on_capability_request(void
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_LIFECYCLESINK_ON_LIFECYCLE_TRANSITION
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_LIFECYCLESINK_ON_LIFECYCLE_TRANSITION
+uint16_t uniffi_nmp_uniffi_checksum_method_lifecyclesink_on_lifecycle_transition(void
 
 );
 #endif

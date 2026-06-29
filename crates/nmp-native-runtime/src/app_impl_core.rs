@@ -72,14 +72,32 @@ impl NmpApp {
         self.lifecycle_event(nmp_core::__ffi_internal::LifecyclePhase::Background);
     }
 
-    /// Install or clear the lifecycle observer slot.
+    /// Install or clear the lifecycle observer slot (C-ABI path).
+    ///
+    /// Routes through [`nmp_core::__ffi_internal::LifecycleObserverGate`]: after
+    /// this returns, the previous registration is neither installed nor
+    /// mid-invocation (the gate drains in-flight callbacks). A host may release
+    /// the previous `context` pointer the instant this returns (M14-C-tail /
+    /// #2429).
     pub fn set_lifecycle_observer(
         &self,
         registration: Option<nmp_core::__ffi_internal::LifecycleObserverRegistration>,
     ) {
-        if let Ok(mut slot) = self.lifecycle_observer.lock() {
-            *slot = registration;
-        }
+        self.lifecycle_observer.set_registration(registration);
+    }
+
+    /// Install or clear the Rust-native lifecycle observer (UniFFI path).
+    ///
+    /// The UniFFI `LifecycleSink` adapter registers a closure here instead of a
+    /// C function pointer. Shares the same drain gate as
+    /// [`Self::set_lifecycle_observer`] (last-writer-wins between the two
+    /// paths), so after this returns the previous observer ARC is neither
+    /// installed nor mid-invocation and may be dropped (M14-C-tail / #2429).
+    pub fn set_lifecycle_native_observer(
+        &self,
+        observer: Option<nmp_core::__ffi_internal::NativeLifecycleObserver>,
+    ) {
+        self.lifecycle_observer.set_native_observer(observer);
     }
 
     /// Test-support: configure the kernel GC budget before start.

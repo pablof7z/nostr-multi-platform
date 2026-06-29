@@ -35,7 +35,7 @@
 
 use std::collections::HashMap;
 use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use super::composition_ledger::{CompositionLedger, Disposition};
 use crate::substrate::{
@@ -46,11 +46,13 @@ mod action_id;
 mod erased;
 mod execute;
 mod failure;
+mod result_observer_gate;
 mod typed_dispatch;
 
 use action_id::new_action_id;
 use erased::{ActionModuleAdapter, ErasedActionModule};
 pub use failure::{ActionExecuteFailure, ActionFailureKind, RegistrationError};
+use result_observer_gate::ResultObserverGate;
 
 /// Per-namespace provenance: did the live entry come from a yielding default
 /// or from an explicit app registration? (ADR-0049 Part 1.)
@@ -69,17 +71,6 @@ enum Provenance {
     /// Installed via the explicit app path (`register`).
     App,
 }
-
-/// Shared, mutable slot holding the optional host-registered action-result
-/// observer.
-///
-/// `Arc<Mutex<…>>` so [`ActionRegistry::set_result_observer`] and
-/// [`ActionRegistry::deliver_result`] both take `&self` — registration and
-/// delivery never need `&mut ActionRegistry`. The observer fires from the FFI
-/// dispatch thread (where the registry already lives), so this slot does NOT
-/// cross the actor/kernel boundary; it stays a private detail of the registry.
-pub(crate) type ResultObserverSlot =
-    Arc<Mutex<Option<Box<dyn Fn(ActionResult) + Send + Sync + 'static>>>>;
 
 /// Namespace-keyed registry of [`ActionModule`]s.
 ///
@@ -108,7 +99,11 @@ pub struct ActionRegistry {
     /// and enqueued. See [`Self::set_result_observer`] /
     /// [`Self::deliver_result`]. `None` until a host registers one — an
     /// unregistered observer makes delivery a silent no-op.
-    result_observer: ResultObserverSlot,
+    ///
+    /// Drain-gated (M14-C-tail / #2429): `set`/`clear` wait for any in-flight
+    /// delivery to finish before returning, and `deliver` invokes the observer
+    /// WITHOUT holding the gate lock (re-entrancy-safe, no UAF on teardown).
+    result_observer: ResultObserverGate,
 }
 
 impl Default for ActionRegistry {
@@ -125,7 +120,7 @@ impl ActionRegistry {
             modules: HashMap::new(),
             provenance: HashMap::new(),
             ledger: None,
-            result_observer: Arc::new(Mutex::new(None)),
+            result_observer: ResultObserverGate::new(),
         }
     }
 
@@ -324,48 +319,56 @@ impl ActionRegistry {
     /// "action accepted and enqueued" signal — for `nmp.publish` the actor
     /// still has to verify+publish after this fires (see [`ActionResult`]).
     ///
-    /// Takes `&self`: the observer lives behind an `Arc<Mutex<…>>` slot, so a
-    /// host may register it before *or after* `nmp_app_start`. A second
-    /// registration replaces the first. A poisoned slot is a silent no-op
-    /// (D6 — a bad registration never crashes the host).
+    /// Takes `&self`: the observer lives behind a drain-gated slot, so a host
+    /// may register it before *or after* `nmp_app_start`. A second registration
+    /// replaces the first, and this call WAITS for any in-flight delivery of the
+    /// previous observer to finish before returning (M14-C-tail / #2429), so the
+    /// previous observer's captured state (a UniFFI callback ARC) may be dropped
+    /// the instant this returns.
+    ///
+    /// Re-entrancy: an observer MUST NOT call this from inside
+    /// `on_action_result` — the setter waits for that delivery to drain.
     pub fn set_result_observer(&self, f: impl Fn(ActionResult) + Send + Sync + 'static) {
-        if let Ok(mut slot) = self.result_observer.lock() {
-            *slot = Some(Box::new(f));
-        }
+        self.result_observer.set_observer(Some(Arc::new(f)));
+    }
+
+    /// Clear the host-registered action-result observer, waiting for any
+    /// in-flight delivery to drain before returning (M14-C-tail / #2429).
+    ///
+    /// Idempotent: clearing when no observer is registered is a no-op. After
+    /// this returns, the previous observer is neither registered nor
+    /// mid-invocation, so its ARC may be released. This is the teardown
+    /// counterpart `set_result_observer` lacked before the drain gate existed.
+    pub fn clear_result_observer(&self) {
+        self.result_observer.clear();
+    }
+
+    /// `true` when a host has registered an action-result observer.
+    #[must_use]
+    pub fn has_result_observer(&self) -> bool {
+        self.result_observer.is_registered()
     }
 
     /// Deliver `result` to the registered observer, if any.
     ///
-    /// A no-op when no observer is registered, or when the observer slot
-    /// mutex is poisoned (D6 — delivery failures are never a crash). Holding
-    /// the lock across the observer call is intentional: registration is a
-    /// host-init-time event, so contention with [`Self::set_result_observer`]
-    /// is not expected.
+    /// A no-op when no observer is registered. The observer is snapshotted and
+    /// `in_flight` incremented under the gate lock, then invoked WITHOUT the
+    /// lock held — so a concurrent [`Self::set_result_observer`] /
+    /// [`Self::clear_result_observer`] blocks (drains) rather than racing, and a
+    /// re-entrant observer cannot deadlock against a held lock (M14-C-tail /
+    /// #2429).
     ///
     /// D6: the observer is untrusted host plugin code registered via
     /// `nmp_app_register_action_result_observer`, and this runs on the call
     /// path of `nmp_app_dispatch_action` — an `extern "C"` function. An
-    /// unguarded panic would (a) poison the slot mutex, silently disabling
-    /// all future delivery, and (b) unwind across the FFI boundary
-    /// (undefined behaviour). The observer is therefore invoked inside
-    /// [`catch_unwind`]: a caught panic drops this result and leaves the
-    /// observer registered so the next `deliver_result` still fires, exactly
-    /// matching the per-callback panic-isolation pattern used by the actor
-    /// loop's relay-event observer (`actor/mod.rs`).
-    ///
-    /// `AssertUnwindSafe`: a boxed `Fn` closure is not `UnwindSafe`, but a
-    /// panic here is fully contained — nothing the closure touched is
-    /// observed again after it unwinds (this `&self` method holds no
-    /// invariants past the call), so there is no broken-invariant hazard.
+    /// unguarded panic would unwind across the FFI boundary (undefined
+    /// behaviour). The gate invokes the observer inside [`catch_unwind`]: a
+    /// caught panic drops this result and leaves the observer registered so the
+    /// next `deliver_result` still fires, exactly matching the per-callback
+    /// panic-isolation pattern used by the actor loop's relay-event observer
+    /// (`actor/mod.rs`).
     pub fn deliver_result(&self, result: ActionResult) {
-        if let Ok(slot) = self.result_observer.lock() {
-            if let Some(observer) = slot.as_ref() {
-                // The panic is swallowed: this `ActionResult` is dropped and
-                // future deliveries still fire. The default panic hook still
-                // prints the payload, so the bug stays visible to ops.
-                let _ = catch_unwind(AssertUnwindSafe(|| observer(result)));
-            }
-        }
+        self.result_observer.deliver(result);
     }
 
     /// `true` when a module is registered under `namespace`.
@@ -414,6 +417,9 @@ pub fn default_registry() -> ActionRegistry {
 #[cfg(test)]
 #[path = "action_registry/lifecycle_tests.rs"]
 mod lifecycle_tests;
+#[cfg(test)]
+#[path = "action_registry/result_observer_quiescence_tests.rs"]
+mod result_observer_quiescence_tests;
 #[cfg(test)]
 #[path = "action_registry/registration_error_tests.rs"]
 mod registration_error_tests;

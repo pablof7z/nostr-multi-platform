@@ -3,33 +3,27 @@
 //! Mirrors `nmp-ffi/src/action.rs` for the `ack_action_stage` and
 //! `register_action_result_observer` symbols.
 //!
-//! ## Quiescence note for `register_action_result_observer`
+//! ## Quiescence for `register_action_result_observer` (M14-C-tail / #2429)
 //!
-//! The `ActionRegistry::deliver_result` implementation holds the
-//! `Arc<Mutex>` lock ACROSS the observer call (mutual-exclusion quiescence)
-//! rather than using the `Condvar` + `in_flight` pattern from
-//! `UpdateListenerGate` / `CapabilityCallbackGate`. There is also no
-//! `clear_result_observer` API on the registry.
-//!
-//! Per M14-C4 spec this is a **stop-and-report**: a proper drain gate for
-//! the action-result observer is out of scope for this slice. The UniFFI
-//! binding therefore:
-//! * Supports registration and replacement (mutex exclusion makes replacement
-//!   safe: `set_result_observer` waits for the mutex, which `deliver_result`
-//!   holds across the callback, so the old observer has completed when the
-//!   new one is installed).
-//! * Does NOT expose a `clear` API (mirrors the C-ABI where null observer is a
-//!   silent no-op).
-//! * Does NOT include Barrier-style quiescence/teardown tests for this
-//!   observer (those require the drain-gate pattern).
+//! `ActionRegistry` now holds the result observer behind a
+//! `ResultObserverGate` — the same `in_flight` + `Condvar` drain used by
+//! `UpdateListenerGate` / `CapabilityCallbackGate`, instead of holding the
+//! `Arc<Mutex>` lock ACROSS the observer call. The UniFFI binding therefore:
+//! * Supports registration AND replacement with a drain-before-return
+//!   guarantee: `register_action_result_observer` waits for any in-flight
+//!   delivery of the previous observer to finish, so the previous callback ARC
+//!   may be released the instant it returns.
+//! * Exposes `clear_action_result_observer` — the teardown counterpart that was
+//!   missing under the old mutex-exclusion scheme. After it returns the
+//!   observer is neither registered nor mid-invocation.
 //!
 //! ## Threading
 //!
-//! Both methods are non-blocking (D8):
 //! * `ack_action_stage` sends `ActorCommand::ActionLedger(Ack(...))` down the
-//!   actor channel.
-//! * `register_action_result_observer` replaces the observer slot (mutex swap,
-//!   no actor involvement).
+//!   actor channel (non-blocking, D8).
+//! * `register_action_result_observer` / `clear_action_result_observer` swap the
+//!   gate's observer slot and drain in-flight delivery before returning (the
+//!   only blocking is the bounded wait for a concurrent delivery to complete).
 
 use std::sync::Arc;
 
@@ -70,9 +64,10 @@ impl NmpApp {
     /// the action was *accepted and enqueued*, not that the actor has finished
     /// publishing.
     ///
-    /// A second registration replaces the first. There is no clear API:
-    /// passing `None` would be a no-op (mirrors the C-ABI null-observer
-    /// behaviour). See the module-level quiescence note.
+    /// A second registration replaces the first and WAITS for any in-flight
+    /// delivery of the previous observer to drain before returning (M14-C-tail /
+    /// #2429), so the previous callback ARC may be released immediately. Use
+    /// [`Self::clear_action_result_observer`] to unregister.
     pub fn register_action_result_observer(&self, observer: Box<dyn ActionResultObserver>) {
         let observer: Arc<dyn ActionResultObserver> = Arc::from(observer);
         self.inner
@@ -89,5 +84,19 @@ impl NmpApp {
                     o.on_action_result(json);
                 }));
             });
+    }
+
+    /// Unregister the action-result observer, draining any in-flight delivery
+    /// before returning (M14-C-tail / #2429).
+    ///
+    /// Idempotent: clearing when none is registered is a no-op. After this
+    /// returns the observer is neither registered nor mid-invocation, so its
+    /// callback ARC may be released — the teardown counterpart that the C4
+    /// mutex-exclusion scheme lacked.
+    ///
+    /// Re-entrancy is forbidden: calling this from inside `on_action_result`
+    /// deadlocks the drain gate.
+    pub fn clear_action_result_observer(&self) {
+        self.inner.clear_action_result_observer();
     }
 }

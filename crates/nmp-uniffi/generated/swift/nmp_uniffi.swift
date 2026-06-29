@@ -596,6 +596,20 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
     func cancelBunkerHandshake()
 
     /**
+     * Unregister the action-result observer, draining any in-flight delivery
+     * before returning (M14-C-tail / #2429).
+     *
+     * Idempotent: clearing when none is registered is a no-op. After this
+     * returns the observer is neither registered nor mid-invocation, so its
+     * callback ARC may be released — the teardown counterpart that the C4
+     * mutex-exclusion scheme lacked.
+     *
+     * Re-entrancy is forbidden: calling this from inside `on_action_result`
+     * deadlocks the drain gate.
+     */
+    func clearActionResultObserver()
+
+    /**
      * Close a feed session previously opened by `open_feed_json`.
      *
      * Tears down the observer, projection, pull-controller, and interests
@@ -899,9 +913,10 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
      * the action was *accepted and enqueued*, not that the actor has finished
      * publishing.
      *
-     * A second registration replaces the first. There is no clear API:
-     * passing `None` would be a no-op (mirrors the C-ABI null-observer
-     * behaviour). See the module-level quiescence note.
+     * A second registration replaces the first and WAITS for any in-flight
+     * delivery of the previous observer to drain before returning (M14-C-tail /
+     * #2429), so the previous callback ARC may be released immediately. Use
+     * [`Self::clear_action_result_observer`] to unregister.
      */
     func registerActionResultObserver(observer: ActionResultObserver)
 
@@ -1112,6 +1127,24 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
      * the same quiescence gate.
      */
     func setCapabilityCallback(sink: CapabilitySink?)
+
+    /**
+     * Register (or clear) the lifecycle-transition observer.
+     *
+     * The actor calls `on_lifecycle_transition(phase)` on a meaningful
+     * scenePhase change (foreground/background), where `phase` is the wire
+     * discriminant (`0` = foreground, `1` = background).
+     *
+     * Pass `None` to clear. After this returns, the previous sink is
+     * guaranteed to be neither registered nor mid-invocation (the
+     * `LifecycleObserverGate` `in_flight` + Condvar drain), so the host may
+     * release it immediately. Shares one gate with the C-ABI
+     * `nmp_app_set_lifecycle_callback` (last-writer-wins).
+     *
+     * Re-entrancy is forbidden: calling this from inside
+     * `on_lifecycle_transition` deadlocks the quiescence gate.
+     */
+    func setLifecycleSink(sink: LifecycleSink?)
 
     /**
      * Set the persistent storage directory for the LMDB `EventStore` backend.
@@ -1345,6 +1378,24 @@ open func cancelAction(correlationId: String)  {try! rustCall() {
      */
 open func cancelBunkerHandshake()  {try! rustCall() {
     uniffi_nmp_uniffi_fn_method_nmpapp_cancel_bunker_handshake(self.uniffiClonePointer(),$0
+    )
+}
+}
+
+    /**
+     * Unregister the action-result observer, draining any in-flight delivery
+     * before returning (M14-C-tail / #2429).
+     *
+     * Idempotent: clearing when none is registered is a no-op. After this
+     * returns the observer is neither registered nor mid-invocation, so its
+     * callback ARC may be released — the teardown counterpart that the C4
+     * mutex-exclusion scheme lacked.
+     *
+     * Re-entrancy is forbidden: calling this from inside `on_action_result`
+     * deadlocks the drain gate.
+     */
+open func clearActionResultObserver()  {try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_clear_action_result_observer(self.uniffiClonePointer(),$0
     )
 }
 }
@@ -1768,9 +1819,10 @@ open func openUri(uri: String)  {try! rustCall() {
      * the action was *accepted and enqueued*, not that the actor has finished
      * publishing.
      *
-     * A second registration replaces the first. There is no clear API:
-     * passing `None` would be a no-op (mirrors the C-ABI null-observer
-     * behaviour). See the module-level quiescence note.
+     * A second registration replaces the first and WAITS for any in-flight
+     * delivery of the previous observer to drain before returning (M14-C-tail /
+     * #2429), so the previous callback ARC may be released immediately. Use
+     * [`Self::clear_action_result_observer`] to unregister.
      */
 open func registerActionResultObserver(observer: ActionResultObserver)  {try! rustCall() {
     uniffi_nmp_uniffi_fn_method_nmpapp_register_action_result_observer(self.uniffiClonePointer(),
@@ -2105,6 +2157,29 @@ open func searchSnapshot(sessionId: String) -> Data?  {
 open func setCapabilityCallback(sink: CapabilitySink?)  {try! rustCall() {
     uniffi_nmp_uniffi_fn_method_nmpapp_set_capability_callback(self.uniffiClonePointer(),
         FfiConverterOptionCallbackInterfaceCapabilitySink.lower(sink),$0
+    )
+}
+}
+
+    /**
+     * Register (or clear) the lifecycle-transition observer.
+     *
+     * The actor calls `on_lifecycle_transition(phase)` on a meaningful
+     * scenePhase change (foreground/background), where `phase` is the wire
+     * discriminant (`0` = foreground, `1` = background).
+     *
+     * Pass `None` to clear. After this returns, the previous sink is
+     * guaranteed to be neither registered nor mid-invocation (the
+     * `LifecycleObserverGate` `in_flight` + Condvar drain), so the host may
+     * release it immediately. Shares one gate with the C-ABI
+     * `nmp_app_set_lifecycle_callback` (last-writer-wins).
+     *
+     * Re-entrancy is forbidden: calling this from inside
+     * `on_lifecycle_transition` deadlocks the quiescence gate.
+     */
+open func setLifecycleSink(sink: LifecycleSink?)  {try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_set_lifecycle_sink(self.uniffiClonePointer(),
+        FfiConverterOptionCallbackInterfaceLifecycleSink.lower(sink),$0
     )
 }
 }
@@ -4084,11 +4159,11 @@ extension RefShape: Equatable, Hashable {}
  * # Contract
  *
  * * `result_json` is a JSON string `{"correlation_id":"…","result_json":…}`.
- * * Implementations MUST NOT call `register_action_result_observer` from
- * inside this method: the `ActionRegistry` mutex is held during delivery,
- * so re-entry would deadlock.
- * * The observer is registered for the lifetime of the `NmpApp`; there is
- * no clear API (mirrors the C-ABI, where null observer is a no-op).
+ * * Implementations MUST NOT call `register_action_result_observer` or
+ * `clear_action_result_observer` from inside this method: the drain gate
+ * waits for this delivery to finish, so re-entry would deadlock.
+ * * Unregister via `clear_action_result_observer`; both register and clear
+ * drain any in-flight delivery before returning (M14-C-tail / #2429).
  */
 public protocol ActionResultObserver: AnyObject, Sendable {
 
@@ -4338,6 +4413,136 @@ public func FfiConverterCallbackInterfaceCapabilitySink_lower(_ v: CapabilitySin
 
 
 /**
+ * Rust→shell push observer fired on a meaningful app-lifecycle transition.
+ *
+ * # Contract
+ *
+ * * `phase` is the wire discriminant ([`LIFECYCLE_PHASE_FOREGROUND`] /
+ * [`LIFECYCLE_PHASE_BACKGROUND`]) — a copied `u32`, no Rust lock held across
+ * the call.
+ * * The observer fires only on meaningful transitions (debounced by the
+ * kernel; rapid `Foreground→Foreground` is a no-op).
+ * * Implementations MUST NOT call `set_lifecycle_sink` from inside this method:
+ * the setter waits for the in-flight callback to drain, so re-entry would
+ * deadlock the quiescence gate.
+ */
+public protocol LifecycleSink: AnyObject, Sendable {
+
+    func onLifecycleTransition(phase: UInt32)
+
+}
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceLifecycleSink {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // This creates 1-element array, since this seems to be the only way to construct a const
+    // pointer that we can pass to the Rust code.
+    static let vtable: [UniffiVTableCallbackInterfaceLifecycleSink] = [UniffiVTableCallbackInterfaceLifecycleSink(
+        onLifecycleTransition: { (
+            uniffiHandle: UInt64,
+            phase: UInt32,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceLifecycleSink.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.onLifecycleTransition(
+                     phase: try FfiConverterUInt32.lift(phase)
+                )
+            }
+
+
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            let result = try? FfiConverterCallbackInterfaceLifecycleSink.handleMap.remove(handle: uniffiHandle)
+            if result == nil {
+                print("Uniffi callback interface LifecycleSink: handle missing in uniffiFree")
+            }
+        }
+    )]
+}
+
+private func uniffiCallbackInitLifecycleSink() {
+    uniffi_nmp_uniffi_fn_init_callback_vtable_lifecyclesink(UniffiCallbackInterfaceLifecycleSink.vtable)
+}
+
+// FfiConverter protocol for callback interfaces
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterCallbackInterfaceLifecycleSink {
+    fileprivate static let handleMap = UniffiHandleMap<LifecycleSink>()
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+extension FfiConverterCallbackInterfaceLifecycleSink : FfiConverter {
+    typealias SwiftType = LifecycleSink
+    typealias FfiType = UInt64
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public static func lift(_ handle: UInt64) throws -> SwiftType {
+        try handleMap.get(handle: handle)
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public static func lower(_ v: SwiftType) -> UInt64 {
+        return handleMap.insert(obj: v)
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public static func write(_ v: SwiftType, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(v))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterCallbackInterfaceLifecycleSink_lift(_ handle: UInt64) throws -> LifecycleSink {
+    return try FfiConverterCallbackInterfaceLifecycleSink.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterCallbackInterfaceLifecycleSink_lower(_ v: LifecycleSink) -> UInt64 {
+    return FfiConverterCallbackInterfaceLifecycleSink.lower(v)
+}
+
+
+
+
+/**
  * Rust→shell push interface: receives NMPU FlatBuffers update frames.
  *
  * Implementations MUST NOT call back into any `NmpApp` method from within
@@ -4553,6 +4758,30 @@ fileprivate struct FfiConverterOptionCallbackInterfaceCapabilitySink: FfiConvert
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterCallbackInterfaceCapabilitySink.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionCallbackInterfaceLifecycleSink: FfiConverterRustBuffer {
+    typealias SwiftType = LifecycleSink?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterCallbackInterfaceLifecycleSink.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterCallbackInterfaceLifecycleSink.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -4876,6 +5105,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_cancel_bunker_handshake() != 1296) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_clear_action_result_observer() != 18291) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_close_feed_session() != 61839) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -4939,7 +5171,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_open_uri() != 54191) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_nmp_uniffi_checksum_method_nmpapp_register_action_result_observer() != 16725) {
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_register_action_result_observer() != 43633) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_register_agent_nsec() != 63704) {
@@ -5002,6 +5234,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_set_capability_callback() != 58918) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_set_lifecycle_sink() != 65506) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_set_storage_path() != 25939) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -5038,12 +5273,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_nmp_uniffi_checksum_method_capabilitysink_on_capability_request() != 30958) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_nmp_uniffi_checksum_method_lifecyclesink_on_lifecycle_transition() != 61113) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_nmp_uniffi_checksum_method_updatesink_on_update() != 64936) {
         return InitializationResult.apiChecksumMismatch
     }
 
     uniffiCallbackInitActionResultObserver()
     uniffiCallbackInitCapabilitySink()
+    uniffiCallbackInitLifecycleSink()
     uniffiCallbackInitUpdateSink()
     return InitializationResult.ok
 }()

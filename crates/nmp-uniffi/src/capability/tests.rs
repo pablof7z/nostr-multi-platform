@@ -19,13 +19,9 @@
 //! * `capability_sink_shutdown_during_in_flight_no_uaf` — `shutdown()` while
 //!   a callback is in-flight completes cleanly (no UAF / deadlock).
 //!
-//! ## ActionResultObserver (mutex-exclusion quiescence — no drain gate)
-//! * `action_result_observer_fires_on_dispatch` — after registration, a
-//!   dispatched action that is accepted calls `on_action_result`.
-//! * `action_result_observer_replace_is_safe` — replacing the observer
-//!   before re-dispatching routes to the new observer only.
-//! * NOTE: Barrier-style teardown tests are absent — see module-level
-//!   quiescence note in `action.rs`.
+//! ## ActionResultObserver
+//! Covered in the sibling `action_observer_tests` module (register/fire/clear/
+//! replace + the M14-C-tail drain & teardown tests).
 //!
 //! ## ack_action_stage
 //! * `ack_action_stage_empty_id_is_noop` — empty string is a silent no-op.
@@ -43,12 +39,8 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
-use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
-use nmp_core::actor::ActorCommand;
-
 use crate::NmpApp;
-use super::{ActionResultObserver, CapabilitySink};
+use super::CapabilitySink;
 
 // ── CapabilitySink stubs ──────────────────────────────────────────────────────
 
@@ -305,162 +297,6 @@ fn capability_sink_shutdown_during_in_flight_no_uaf() {
 
     // Idempotent shutdown.
     app.shutdown();
-}
-
-// ── ActionResultObserver stubs ────────────────────────────────────────────────
-
-/// Records the first JSON it receives.
-struct RecordObserver {
-    received: Arc<Mutex<Vec<String>>>,
-}
-
-impl RecordObserver {
-    fn new_boxed() -> (Box<dyn ActionResultObserver>, Arc<Mutex<Vec<String>>>) {
-        let received = Arc::new(Mutex::new(Vec::new()));
-        let handle = Arc::clone(&received);
-        (Box::new(RecordObserver { received }), handle)
-    }
-}
-
-impl ActionResultObserver for RecordObserver {
-    fn on_action_result(&self, result_json: String) {
-        self.received.lock().unwrap().push(result_json);
-    }
-}
-
-// ── ActionModule for observer tests ──────────────────────────────────────────
-
-/// Minimal action module that always succeeds — used to trigger the observer.
-struct SucceedModule; // doctrine-allow: action_namespace — test-only namespace inside #[cfg(test)]
-
-impl ActionModule for SucceedModule {
-    const NAMESPACE: &'static str = "test.uniffi_c4.succeed"; // doctrine-allow: action_namespace — test fixture
-    type Action = serde_json::Value;
-
-    fn decode_payload(
-        _bytes: &[u8],
-    ) -> Option<Result<Self::Action, nmp_core::substrate::ActionPayloadDecodeError>> {
-        Some(Ok(serde_json::Value::Null))
-    }
-
-    fn start(
-        &self,
-        _ctx: &mut ActionContext,
-        _action: Self::Action,
-    ) -> Result<(), ActionRejection> {
-        Ok(())
-    }
-
-    fn execute(
-        &self,
-        _ctx: &nmp_core::substrate::ActionContext,
-        _action: Self::Action,
-        _correlation_id: &str,
-        _send: &dyn Fn(ActorCommand),
-    ) -> Result<(), String> {
-        Ok(())
-    }
-}
-
-// ── ActionResultObserver tests ────────────────────────────────────────────────
-
-/// After registration, a successful dispatch calls `on_action_result` with a
-/// JSON string containing the `correlation_id`.
-#[test]
-fn action_result_observer_fires_on_dispatch() {
-    let mut inner = nmp_native_runtime::new_app();
-    let _ = inner.register_action(SucceedModule);
-    let app = std::sync::Arc::new(NmpApp { inner });
-
-    let (observer, received) = RecordObserver::new_boxed();
-    app.register_action_result_observer(observer);
-
-    let envelope = encode_dispatch_envelope(
-        "corr-obs-1",
-        SucceedModule::NAMESPACE,
-        DISPATCH_ENVELOPE_SCHEMA_VERSION,
-        &[0u8; 4],
-    );
-    let outcome = app.dispatch_action(envelope);
-    assert!(outcome.correlation_id.is_some(), "dispatch must succeed");
-
-    // The observer fires synchronously on the dispatch thread.
-    let calls = received.lock().unwrap();
-    assert_eq!(calls.len(), 1, "observer must fire exactly once");
-    let v: serde_json::Value = serde_json::from_str(&calls[0]).unwrap();
-    assert_eq!(
-        v["correlation_id"].as_str(),
-        Some("corr-obs-1"),
-        "observer must carry the correlation_id"
-    );
-}
-
-/// Replacing the observer before a second dispatch routes to the new
-/// observer only (mutex exclusion — see quiescence note in action.rs).
-#[test]
-fn action_result_observer_replace_is_safe() {
-    let mut inner = nmp_native_runtime::new_app();
-    let _ = inner.register_action(SucceedModule);
-    let app = std::sync::Arc::new(NmpApp { inner });
-
-    let (observer_a, received_a) = RecordObserver::new_boxed();
-    app.register_action_result_observer(observer_a);
-
-    // First dispatch — observer A fires.
-    let env1 = encode_dispatch_envelope(
-        "corr-obs-2a",
-        SucceedModule::NAMESPACE,
-        DISPATCH_ENVELOPE_SCHEMA_VERSION,
-        &[0u8; 4],
-    );
-    let _ = app.dispatch_action(env1);
-    assert_eq!(received_a.lock().unwrap().len(), 1, "observer A: first dispatch");
-
-    // Replace with observer B.
-    let (observer_b, received_b) = RecordObserver::new_boxed();
-    app.register_action_result_observer(observer_b);
-
-    // Second dispatch — only observer B fires.
-    let env2 = encode_dispatch_envelope(
-        "corr-obs-2b",
-        SucceedModule::NAMESPACE,
-        DISPATCH_ENVELOPE_SCHEMA_VERSION,
-        &[0u8; 4],
-    );
-    let _ = app.dispatch_action(env2);
-    assert_eq!(
-        received_a.lock().unwrap().len(),
-        1,
-        "observer A must not fire after replacement"
-    );
-    assert_eq!(received_b.lock().unwrap().len(), 1, "observer B: second dispatch");
-}
-
-/// A panicking observer does not crash the dispatch thread.
-#[test]
-fn action_result_observer_panic_is_contained() {
-    struct PanickingObserver;
-    impl ActionResultObserver for PanickingObserver {
-        fn on_action_result(&self, _result_json: String) {
-            panic!("PanickingObserver: deliberate panic");
-        }
-    }
-
-    let mut inner = nmp_native_runtime::new_app();
-    let _ = inner.register_action(SucceedModule);
-    let app = std::sync::Arc::new(NmpApp { inner });
-
-    app.register_action_result_observer(Box::new(PanickingObserver));
-
-    let envelope = encode_dispatch_envelope(
-        "corr-obs-panic",
-        SucceedModule::NAMESPACE,
-        DISPATCH_ENVELOPE_SCHEMA_VERSION,
-        &[0u8; 4],
-    );
-    // Must not panic.
-    let outcome = app.dispatch_action(envelope);
-    assert!(outcome.correlation_id.is_some(), "dispatch must succeed even when observer panics");
 }
 
 // ── ack_action_stage ──────────────────────────────────────────────────────────
