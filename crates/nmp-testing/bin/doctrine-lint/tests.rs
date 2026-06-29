@@ -20,6 +20,7 @@
 //! | `tests_d16_workspace.rs`  | D16, --workspace-d8, end-to-end clean |
 //! | `tests_d17_misc.rs`       | D17, cache-serve seal                 |
 //! | `file_size_gate_tests.rs` | file-size baseline ratchet            |
+//! | `gallery_composition_gates.rs` | gallery explicit composition ratchet |
 //! | `manifest_gates.rs`       | app production dependency gates       |
 //! | `authority_rule_tests.rs` | D26                                   |
 //! | `d27_rule_tests.rs`       | D27                                   |
@@ -39,6 +40,7 @@ mod component_host_boundary_gates; // Component host package import/dependency g
 mod d27_rule_tests; // D27 projection display-helper ban smoke tests — sibling module.
 mod event_flow_rule_tests; // D23/D24/D25 event-flow gate smoke tests — sibling module.
 mod file_size_gate_tests; // File-size baseline ratchet smoke tests — sibling module.
+mod gallery_composition_gates; // Gallery explicit composition ratchet.
 mod kind_predicate_authority_tests; // D4 nmp-kinds predicate ownership gate.
 mod manifest_gates; // App Cargo.toml production dependency gates — sibling module.
 mod native_runtime_boundary_gates; // Native runtime / C-ABI split boundary gates.

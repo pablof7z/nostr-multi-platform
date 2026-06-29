@@ -2,11 +2,9 @@
 //!
 //! NMP's framework showcase composition root, distinguished by what it does
 //! NOT carry: no app timeline projection, no Marmot policy, no wallet runtime.
-//! The gallery currently uses the
-//! [`nmp_defaults::register_defaults`] compatibility preset and exposes only
-//! the app-shell adapters needed to render that framework state. ADR-0069 makes
-//! explicit composition the production starter model; this showcase keeps the
-//! preset until its protocol feature list is split into named installers.
+//! The gallery composes the shared substrate and selected protocol features
+//! explicitly through the named [`nmp_defaults`] installer surface, then exposes
+//! only the app-shell adapters needed to render that framework state.
 //!
 //! # Surface
 //!
@@ -19,9 +17,8 @@
 //!
 //! The crate adds two new `#[no_mangle]` symbols of its own:
 //!
-//! * [`nmp_app_gallery_register`] — compatibility installer. Forwards to
-//!   [`nmp_defaults::register_defaults`]. MUST be called once after
-//!   `nmp_app_new` and BEFORE `nmp_app_start`.
+//! * [`nmp_app_gallery_register`] — explicit gallery composition installer.
+//!   MUST be called once after `nmp_app_new` and BEFORE `nmp_app_start`.
 //! * [`showcase::nmp_app_gallery_showcase_references_json`] — borrowed JSON
 //!   pointer for the shared gallery references used by every host shell.
 //! * [`nmp_app_gallery_snapshot_json_from_update_frame`] — owned JSON snapshot
@@ -43,9 +40,10 @@
 //!
 //! # D0 — no protocol nouns
 //!
-//! `Cargo.toml` depends on `nmp-ffi` + `nmp-defaults` + `serde_json`
-//! only. No `nmp-nip*`, no app-specific social feed crate, no `nmp-marmot`,
-//! no `nmp-nwc`. The crate name does not appear in any per-NIP Cargo file.
+//! `Cargo.toml` depends on the C-ABI/substrate crates (`nmp-ffi`,
+//! `nmp-defaults`, `nmp-core`, `nmp-content`) and serialization only. No
+//! `nmp-nip*`, no app-specific social feed crate, no `nmp-marmot`, no
+//! `nmp-nwc`. The crate name does not appear in any per-NIP Cargo file.
 
 // JNI shim for the Android shell — `Java_org_nmp_gallery_bridge_KernelBridge_*`
 // symbols that `KernelBridge.kt` binds via `System.loadLibrary`. Only compiled
@@ -143,10 +141,10 @@ fn json_escape(s: &str) -> String {
     serde_json::to_string(s).unwrap_or_else(|_| "\"\"".to_string())
 }
 
-/// Install the gallery compatibility composition into `app`.
+/// Install the explicit gallery composition into `app`.
 ///
-/// Forwards to [`nmp_defaults::register_defaults`] until the gallery's protocol
-/// feature list is split into named ADR-0069 installers. MUST be called exactly once after
+/// Wires the gallery's explicit substrate/protocol composition through the
+/// named ADR-0069 installers. MUST be called exactly once after
 /// [`nmp_ffi::nmp_app_new`] and BEFORE [`nmp_ffi::nmp_app_start`].
 ///
 /// `app` is typed as `*mut c_void` to mirror the host-facing C signature
@@ -161,11 +159,9 @@ fn json_escape(s: &str) -> String {
 /// # Safety
 ///
 /// `app` must be a valid pointer returned by [`nmp_ffi::nmp_app_new`] (or
-/// null). Calling this twice on the same `app` is idempotent only to the
-/// extent `register_defaults` itself is idempotent — see that function's
-/// doc for the per-seam behaviour (action registry rejects duplicate
-/// namespaces; ingest parsers are additive; routing-substrate and
-/// publish-resolver factories are last-writer-wins).
+/// null). Calling this twice on the same `app` is a composition bug: action
+/// namespaces and single-slot factories are last-writer-wins, while ingest
+/// parsers and observers are additive.
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[no_mangle]
 pub extern "C" fn nmp_app_gallery_register(app: *mut c_void) {
@@ -177,13 +173,27 @@ pub extern "C" fn nmp_app_gallery_register(app: *mut c_void) {
     // C signature is `void(void *)` — Swift / Kotlin pass the same opaque
     // pointer they got back from `nmp_app_new`.
     let app = unsafe { &mut *(app as *mut nmp_ffi::NmpApp) };
-    nmp_defaults::register_defaults(app);
+    register_gallery_composition(app);
     // ADR-0053 / Workstream-E4 — the gallery is a full client (it showcases
     // every component, so it reads the full built-in set). Declare that intent
     // explicitly here: an undeclared start is the loud forgotten-wiring footgun,
     // not a silent firehose. Both gallery shells (tui, android) route through
     // this register helper, so one call covers them.
     app.consume_all_builtin_projections();
+}
+
+fn register_gallery_composition(app: &mut impl nmp_core::substrate::AppHost) {
+    let nmp_defaults::NmpDefaults {
+        coverage_gate,
+        search_defaults,
+        ..
+    } = nmp_defaults::NmpDefaults::default();
+
+    let _mailbox_cache = nmp_defaults::register_substrate(app, coverage_gate);
+    nmp_defaults::register_nip50_protocol_defaults(app);
+    let _social_handles = nmp_defaults::register_social_protocol_defaults(app, search_defaults);
+    nmp_defaults::register_dm_protocol_defaults(app);
+    nmp_defaults::register_longform_projection(app);
 }
 
 /// Opaque host-owned mirrors of the kernel's `refs.profile` / `refs.event`
@@ -287,10 +297,11 @@ mod tests {
     #[test]
     fn register_with_real_app_smoke() {
         // Smoke-test the composition path: build a real `NmpApp` and run
-        // `register_defaults` via the gallery's one-shot. The only test that
-        // exercises a real-app registration (the null-path test above covers
-        // the D6 degrade). `nmp_app_new` is passive; `nmp_app_start` spawns
-        // the actor before the D7 liveness probe can report alive.
+        // the explicit gallery composition via the gallery's one-shot. The
+        // only test that exercises a real-app registration (the null-path test
+        // above covers the D6 degrade). `nmp_app_new` is passive;
+        // `nmp_app_start` spawns the actor before the D7 liveness probe can
+        // report alive.
         let app = nmp_ffi::nmp_app_new();
         assert!(!app.is_null(), "nmp_app_new must produce a non-null app");
 

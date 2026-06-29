@@ -25,7 +25,7 @@
 //! `nmp-defaults`, `nmp-core`, `nmp-content`, and `serde_json` — never a
 //! per-NIP crate. The typed payload types are therefore reached through the
 //! [`nmp_defaults::action_payloads`] re-export surface, which mirrors the
-//! gallery's current compatibility preset. The namespaces this seam covers are
+//! gallery's explicit composition. The namespaces this seam covers are
 //! exactly the ones the gallery registers; a namespace the gallery cannot
 //! dispatch (e.g. NIP-29 groups) is rejected fail-closed (D6) rather than
 //! falling back to a JSON dispatch — there is no JSON dispatch left.
@@ -70,7 +70,7 @@ pub fn mint_correlation_id() -> String {
 /// (D6) for an unknown namespace or a body that does not deserialize into the
 /// namespace's typed action.
 ///
-/// Coverage is exactly the action set the gallery compatibility composition
+/// Coverage is exactly the action set the explicit gallery composition
 /// installs.
 fn encode_payload_for_namespace(namespace: &str, json: &str) -> Result<Vec<u8>, String> {
     match namespace {

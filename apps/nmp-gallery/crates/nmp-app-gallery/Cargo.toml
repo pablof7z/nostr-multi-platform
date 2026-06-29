@@ -3,7 +3,7 @@ name = "nmp-app-gallery"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "NmpGallery compatibility composition root over nmp-ffi and nmp-defaults. Produces libnmp_app_gallery for iOS and Android while the showcase migrates to ADR-0069 named installers."
+description = "NmpGallery explicit composition root over nmp-ffi and nmp-defaults. Produces libnmp_app_gallery for iOS and Android using ADR-0069 named installers."
 
 [lib]
 # `staticlib` so the iOS shell can link `-lnmp_app_gallery` alongside the
@@ -31,9 +31,8 @@ android-ffi = ["nmp-ffi/android-ffi", "nmp-ffi/native", "dep:jni"]
 # with `pub use nmp_ffi::*` so the iOS / Android shell links exactly one
 # archive (`libnmp_app_gallery.a` / `.so`) for the whole NMP surface.
 nmp-ffi = { path = "../../../../crates/nmp-ffi", default-features = false }
-# Reusable composition installers. The gallery still uses the compatibility
-# `register_defaults` preset until its showcase feature list is split into
-# named ADR-0069 installers.
+# Reusable composition installers. The gallery calls the named ADR-0069
+# substrate/protocol installers directly from its app composition root.
 nmp-defaults = { path = "../../../../crates/nmp-defaults" }
 nmp-core = { path = "../../../../crates/nmp-core" }
 nmp-content = { path = "../../../../crates/nmp-content" }
