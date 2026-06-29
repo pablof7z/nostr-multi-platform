@@ -106,7 +106,18 @@ pub fn render(builders: &[ActionBuilder]) -> String {
 /// fail closed (DispatchAck.error) rather than silently publishing a Both relay.
 fn shared_helpers() -> String {
     String::from(
-        "/** Encode a `[string]` FlatBuffers vector (built last element first) and\n\
+        "export type PublishRouteClass =\n\
+         \x20 | \"manual_override\"\n\
+         \x20 | \"group_host_pin\"\n\
+         \x20 | \"verified_private_inbox\"\n\
+         \x20 | \"imported_or_presigned\"\n\
+         \x20 | \"diagnostic\";\n\
+         \n\
+         export type PublishTargetSelection =\n\
+         \x20 | { kind: \"auto\" }\n\
+         \x20 | { kind: \"explicit\"; relays: string[]; routeClass: PublishRouteClass };\n\
+         \n\
+         /** Encode a `[string]` FlatBuffers vector (built last element first) and\n\
          \x20* return its offset. Shared by the generated builders below. */\n\
          function stringVector(fbb: flatbuffers.Builder, values: string[]): flatbuffers.Offset {\n\
          \x20 const offsets = values.map((s) => fbb.createString(s));\n\
@@ -369,7 +380,6 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
     ));
     out.push_str("  },\n\n");
 }
-
 
 /// Render the full file for the default registry.
 #[must_use]

@@ -46,6 +46,7 @@ mod manifest_gates; // App Cargo.toml production dependency gates — sibling mo
 mod native_runtime_boundary_gates; // Native runtime / C-ABI split boundary gates.
 mod no_raw_tap_rule_tests; // no_raw_tap step-5 native-sink fixture tests — sibling module.
 mod product_raw_read_tests; // Product raw-read/session ratchet smoke tests.
+mod publish_route_gates; // Publish-route provenance/default deletion gates.
 mod recent_rule_tests; // D19/D20/D21 fixture smoke tests — sibling module (file-size cap).
 mod tests_a6; // A6 schema-less snapshot-projection lane smoke tests — sibling module.
 mod tests_d0_to_d9; // D0, D6, D7, D8, D9, action_namespace — sibling module.

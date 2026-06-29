@@ -350,7 +350,7 @@ fn build_publish_raw_envelope_and_action(
     let envelope = encode_dispatch_envelope(correlation_id, "nmp.publish", 1, &payload);
 
     let target = match relays {
-        Some(r) if !r.is_empty() => PublishTarget::manual_override(r),
+        Some(r) if !r.is_empty() => PublishTarget::explicit(r, PublishRouteClass::ManualOverride),
         _ => PublishTarget::Auto,
     };
     let expected = PublishAction::PublishRaw {

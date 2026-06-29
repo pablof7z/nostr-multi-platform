@@ -100,6 +100,20 @@ fn publish_signer_types() -> String {
      \x20           val pubkey: String,\n\
      \x20           val provenance: PublishSignerProvenance = PublishSignerProvenance.APP_MANAGED,\n\
      \x20       ) : PublishSignerSelection()\n\
+     \x20   }\n\n\
+     \x20   enum class PublishRouteClass(val token: String) {\n\
+     \x20       MANUAL_OVERRIDE(\"manual_override\"),\n\
+     \x20       GROUP_HOST_PIN(\"group_host_pin\"),\n\
+     \x20       VERIFIED_PRIVATE_INBOX(\"verified_private_inbox\"),\n\
+     \x20       IMPORTED_OR_PRESIGNED(\"imported_or_presigned\"),\n\
+     \x20       DIAGNOSTIC(\"diagnostic\"),\n\
+     \x20   }\n\n\
+     \x20   sealed class PublishTargetSelection {\n\
+     \x20       object Auto : PublishTargetSelection()\n\
+     \x20       data class Explicit(\n\
+     \x20           val relays: List<String>,\n\
+     \x20           val routeClass: PublishRouteClass,\n\
+     \x20       ) : PublishTargetSelection()\n\
      \x20   }\n\n"
         .to_string()
 }

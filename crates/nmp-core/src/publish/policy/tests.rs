@@ -182,7 +182,10 @@ fn private_kinds_require_verified_private_inbox_for_routing() {
     for kind in [KIND_GIFT_WRAP, KIND_CHAT_MESSAGE] {
         for target in [
             PublishTarget::Auto,
-            PublishTarget::manual_override(vec!["wss://relay.example".to_string()]),
+            PublishTarget::explicit(
+                vec!["wss://relay.example".to_string()],
+                PublishRouteClass::ManualOverride,
+            ),
             PublishTarget::explicit(
                 vec!["wss://relay.example".to_string()],
                 PublishRouteClass::GroupHostPin,
@@ -218,6 +221,8 @@ fn private_kinds_require_verified_private_inbox_for_routing() {
 /// validation with EITHER target — the D10 gate only constrains private kinds.
 #[test]
 fn non_private_kinds_route_with_any_target() {
+    use crate::publish::{PublishRouteClass, PublishTarget};
+
     for kind in [
         KIND_SHORT_TEXT_NOTE,
         KIND_REACTION,
@@ -226,12 +231,14 @@ fn non_private_kinds_route_with_any_target() {
         KIND_RELAY_LIST,
         30_023,
     ] {
-        use crate::publish::PublishTarget;
         validate_publish_routing(kind, &PublishTarget::Auto)
             .unwrap_or_else(|e| panic!("kind:{kind} must route with Auto; got: {e}"));
         validate_publish_routing(
             kind,
-            &PublishTarget::manual_override(vec!["wss://relay.example".to_string()]),
+            &PublishTarget::explicit(
+                vec!["wss://relay.example".to_string()],
+                PublishRouteClass::ManualOverride,
+            ),
         )
         .unwrap_or_else(|e| panic!("kind:{kind} must route with Explicit; got: {e}"));
     }

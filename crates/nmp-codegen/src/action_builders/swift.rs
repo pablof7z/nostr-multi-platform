@@ -96,6 +96,17 @@ fn publish_signer_types() -> String {
      \x20   public enum PublishSignerSelection {\n\
      \x20       case active\n\
      \x20       case registered(pubkey: String, provenance: PublishSignerProvenance)\n\
+     \x20   }\n\n\
+     \x20   public enum PublishRouteClass: String {\n\
+     \x20       case manualOverride = \"manual_override\"\n\
+     \x20       case groupHostPin = \"group_host_pin\"\n\
+     \x20       case verifiedPrivateInbox = \"verified_private_inbox\"\n\
+     \x20       case importedOrPresigned = \"imported_or_presigned\"\n\
+     \x20       case diagnostic = \"diagnostic\"\n\
+     \x20   }\n\n\
+     \x20   public enum PublishTargetSelection {\n\
+     \x20       case auto\n\
+     \x20       case explicit(relays: [String], routeClass: PublishRouteClass)\n\
      \x20   }\n\n"
         .to_string()
 }

@@ -15,7 +15,9 @@ use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
 use super::{Nip65OutboxResolver, RECIPIENT_INBOX_FANOUT_PTAG_THRESHOLD};
-use nmp_core::publish::{OutboxResolver, PublishTarget, RelaySelectionReason, ResolvedRelay};
+use nmp_core::publish::{
+    OutboxResolver, PublishRouteClass, PublishTarget, RelaySelectionReason, ResolvedRelay,
+};
 use nmp_core::slots::{
     new_indexer_relays_slot, new_local_write_relays_slot, IndexerRelaysSlot, LocalWriteRelaysSlot,
 };
@@ -266,7 +268,7 @@ fn nip65_resolver_returns_explicit_unchanged() {
     let out = resolver.resolve(
         AUTHOR_HEX,
         &[],
-        &PublishTarget::manual_override(explicit.clone()),
+        &PublishTarget::explicit(explicit.clone(), PublishRouteClass::ManualOverride),
         1,
         &no_block(),
     );
@@ -529,7 +531,7 @@ fn resolve_returns_explicit_relay_reason() {
     let out = resolver.resolve(
         AUTHOR_HEX,
         &[],
-        &PublishTarget::manual_override(explicit.clone()),
+        &PublishTarget::explicit(explicit.clone(), PublishRouteClass::ManualOverride),
         1,
         &no_block(),
     );

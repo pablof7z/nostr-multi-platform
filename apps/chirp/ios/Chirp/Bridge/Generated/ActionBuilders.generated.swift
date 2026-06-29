@@ -35,6 +35,19 @@ public enum GeneratedActionBuilders {
         case registered(pubkey: String, provenance: PublishSignerProvenance)
     }
 
+    public enum PublishRouteClass: String {
+        case manualOverride = "manual_override"
+        case groupHostPin = "group_host_pin"
+        case verifiedPrivateInbox = "verified_private_inbox"
+        case importedOrPresigned = "imported_or_presigned"
+        case diagnostic = "diagnostic"
+    }
+
+    public enum PublishTargetSelection {
+        case auto
+        case explicit(relays: [String], routeClass: PublishRouteClass)
+    }
+
     /// The single recognised envelope schema version — mirrors
     /// `nmp_core::dispatch_envelope::DISPATCH_ENVELOPE_SCHEMA_VERSION`.
     public static let dispatchEnvelopeSchemaVersion: UInt32 = 1
@@ -979,7 +992,7 @@ public enum GeneratedActionBuilders {
         kind: UInt32,
         tags: [[String]],
         content: String,
-        relays: [String]? = nil,
+        target: PublishTargetSelection = .auto,
         signer: PublishSignerSelection = .active
     ) -> [UInt8] {
         var fbb = FlatBufferBuilder()
@@ -1007,14 +1020,26 @@ public enum GeneratedActionBuilders {
             }
         }()
         let targetOffset: Offset = {
-            let explicit = (relays?.isEmpty == false)
-            let relayOffsets = (relays ?? []).map { fbb.create(string: $0) }
+            let explicit: Bool
+            let targetRelays: [String]
+            let routeClass: PublishRouteClass?
+            switch target {
+            case .auto:
+                explicit = false
+                targetRelays = []
+                routeClass = nil
+            case .explicit(let relays, let cls):
+                explicit = true
+                targetRelays = relays
+                routeClass = cls
+            }
+            let relayOffsets = targetRelays.map { fbb.create(string: $0) }
             let relaysVec = fbb.createVector(ofOffsets: relayOffsets)
-            let routeClassOffset = fbb.create(string: "manual_override")
+            let routeClassOffset = routeClass.map { fbb.create(string: $0.rawValue) } ?? Offset()
             let start = fbb.startTable(with: 3)
             fbb.add(element: explicit, def: false, at: 4) // slot 0: explicit
             fbb.add(offset: relaysVec, at: 6) // slot 1: relays
-            if explicit { fbb.add(offset: routeClassOffset, at: 8) } // slot 2: route_class
+            if routeClassOffset.o != 0 { fbb.add(offset: routeClassOffset, at: 8) } // slot 2: route_class
             return Offset(offset: fbb.endTable(at: start))
         }()
         let rawStart = fbb.startTable(with: 5)
@@ -1044,7 +1069,7 @@ public enum GeneratedActionBuilders {
         correlationId: String,
         content: String,
         replyToEventId: String,
-        relays: [String]? = nil,
+        target: PublishTargetSelection = .auto,
         signer: PublishSignerSelection = .active
     ) -> [UInt8] {
         var fbb = FlatBufferBuilder()
@@ -1065,14 +1090,26 @@ public enum GeneratedActionBuilders {
             }
         }()
         let targetOffset: Offset = {
-            let explicit = (relays?.isEmpty == false)
-            let relayOffsets = (relays ?? []).map { fbb.create(string: $0) }
+            let explicit: Bool
+            let targetRelays: [String]
+            let routeClass: PublishRouteClass?
+            switch target {
+            case .auto:
+                explicit = false
+                targetRelays = []
+                routeClass = nil
+            case .explicit(let relays, let cls):
+                explicit = true
+                targetRelays = relays
+                routeClass = cls
+            }
+            let relayOffsets = targetRelays.map { fbb.create(string: $0) }
             let relaysVec = fbb.createVector(ofOffsets: relayOffsets)
-            let routeClassOffset = fbb.create(string: "manual_override")
+            let routeClassOffset = routeClass.map { fbb.create(string: $0.rawValue) } ?? Offset()
             let start = fbb.startTable(with: 3)
             fbb.add(element: explicit, def: false, at: 4) // slot 0: explicit
             fbb.add(offset: relaysVec, at: 6) // slot 1: relays
-            if explicit { fbb.add(offset: routeClassOffset, at: 8) } // slot 2: route_class
+            if routeClassOffset.o != 0 { fbb.add(offset: routeClassOffset, at: 8) } // slot 2: route_class
             return Offset(offset: fbb.endTable(at: start))
         }()
         let replyStart = fbb.startTable(with: 4)

@@ -26,7 +26,7 @@ fn explicit_publish_target_requires_non_empty_relays() {
         kind: 1,
         tags: Vec::new(),
         content: "hello".to_string(),
-        target: PublishTarget::manual_override(Vec::new()),
+        target: PublishTarget::explicit(Vec::new(), PublishRouteClass::ManualOverride),
         signer: Default::default(),
     };
     let err = PublishModule
@@ -41,7 +41,10 @@ fn explicit_publish_target_rejects_malformed_relay_url() {
         kind: 1,
         tags: Vec::new(),
         content: "hello".to_string(),
-        target: PublishTarget::manual_override(vec!["https://relay.example".to_string()]),
+        target: PublishTarget::explicit(
+            vec!["https://relay.example".to_string()],
+            PublishRouteClass::ManualOverride,
+        ),
         signer: Default::default(),
     };
     let err = PublishModule
@@ -56,7 +59,10 @@ fn explicit_publish_target_accepts_valid_relay_url() {
         kind: 1,
         tags: Vec::new(),
         content: "hello".to_string(),
-        target: PublishTarget::manual_override(vec!["wss://relay.example".to_string()]),
+        target: PublishTarget::explicit(
+            vec!["wss://relay.example".to_string()],
+            PublishRouteClass::ManualOverride,
+        ),
         signer: Default::default(),
     };
     PublishModule
@@ -236,7 +242,10 @@ fn publish_raw_rejects_gift_wrap_with_manual_explicit_relays() {
         kind: 1059,
         tags: Vec::new(),
         content: "encrypted".to_string(),
-        target: PublishTarget::manual_override(vec!["wss://manual.example".to_string()]),
+        target: PublishTarget::explicit(
+            vec!["wss://manual.example".to_string()],
+            PublishRouteClass::ManualOverride,
+        ),
         signer: Default::default(),
     };
     let err = PublishModule
@@ -290,7 +299,7 @@ fn publish_raw_propagates_explicit_target_validation_failure() {
         kind: 30023,
         tags: Vec::new(),
         content: "body".to_string(),
-        target: PublishTarget::manual_override(Vec::new()),
+        target: PublishTarget::explicit(Vec::new(), PublishRouteClass::ManualOverride),
         signer: Default::default(),
     };
     let err = PublishModule

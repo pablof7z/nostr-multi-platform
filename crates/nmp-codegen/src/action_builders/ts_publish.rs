@@ -33,7 +33,7 @@ fn render_one(builder: &PublishBuilder, out: &mut String) {
             out.push_str("    kind: number,\n");
             out.push_str("    tags: string[][],\n");
             out.push_str("    content: string,\n");
-            out.push_str("    relays: string[] | null = null,\n");
+            out.push_str("    target: PublishTargetSelection = { kind: \"auto\" },\n");
             out.push_str(
                 "    signer: { kind: \"active\" } | { kind: \"registered\"; pubkey: string; provenance: \"app_managed\" | \"user_selected\" | \"protocol_pinned\" | \"diagnostic\" } = { kind: \"active\" },\n",
             );
@@ -44,7 +44,7 @@ fn render_one(builder: &PublishBuilder, out: &mut String) {
         BodyShape::PublishReply => {
             out.push_str("    content: string,\n");
             out.push_str("    replyToEventId: string,\n");
-            out.push_str("    relays: string[] | null = null,\n");
+            out.push_str("    target: PublishTargetSelection = { kind: \"auto\" },\n");
             out.push_str(
                 "    signer: { kind: \"active\" } | { kind: \"registered\"; pubkey: string; provenance: \"app_managed\" | \"user_selected\" | \"protocol_pinned\" | \"diagnostic\" } = { kind: \"active\" },\n",
             );
@@ -81,19 +81,18 @@ fn render_one(builder: &PublishBuilder, out: &mut String) {
     out.push_str("  },\n\n");
 }
 
-/// Encode a `PublishTarget`: `null`/empty `relays` → `Auto` (`explicit = false`);
-/// a non-empty set → `Explicit` manual override. Leaves the offset on
-/// `targetOffset`. Matches `build_target` in `nmp_core::publish::wire`.
+/// Encode a `PublishTarget`. Auto omits route provenance; explicit targets
+/// require callers to name both relays and route class in `PublishTargetSelection`.
 fn render_target(out: &mut String) {
     out.push_str(
-        "    const targetRelays = relays ?? [];\n\
-         \x20   const explicit = targetRelays.length > 0;\n\
+        "    const explicit = target.kind === \"explicit\";\n\
+         \x20   const targetRelays = explicit ? target.relays : [];\n\
          \x20   const targetRelaysVec = stringVector(fbb, targetRelays);\n\
-         \x20   const routeClassOffset = fbb.createString(\"manual_override\");\n\
+         \x20   const routeClassOffset = explicit ? fbb.createString(target.routeClass) : 0;\n\
          \x20   fbb.startObject(3);\n\
          \x20   fbb.addFieldInt8(0, explicit ? 1 : 0, 0); // slot 0: explicit\n\
          \x20   fbb.addFieldOffset(1, targetRelaysVec, 0); // slot 1: relays\n\
-         \x20   if (explicit) fbb.addFieldOffset(2, routeClassOffset, 0); // slot 2: route_class\n\
+         \x20   if (routeClassOffset !== 0) fbb.addFieldOffset(2, routeClassOffset, 0); // slot 2: route_class\n\
          \x20   const targetOffset = fbb.endObject();\n",
     );
 }

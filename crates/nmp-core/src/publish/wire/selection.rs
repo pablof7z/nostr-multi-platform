@@ -11,13 +11,13 @@ pub(super) fn build_target<'a>(
     target: &PublishTarget,
 ) -> WIPOffset<fb::PublishTarget<'a>> {
     let (explicit, route_class, relay_offsets) = match target {
-        PublishTarget::Auto => (false, PublishRouteClass::ManualOverride, Vec::new()),
+        PublishTarget::Auto => (false, None, Vec::new()),
         PublishTarget::Explicit {
             relays,
             route_class,
         } => (
             true,
-            *route_class,
+            Some(*route_class),
             relays
                 .iter()
                 .map(|r| fbb.create_string(r))
@@ -25,13 +25,13 @@ pub(super) fn build_target<'a>(
         ),
     };
     let relays = fbb.create_vector(&relay_offsets);
-    let route_class = fbb.create_string(route_class.wire_token());
+    let route_class = route_class.map(|route_class| fbb.create_string(route_class.wire_token()));
     fb::PublishTarget::create(
         fbb,
         &fb::PublishTargetArgs {
             explicit,
             relays: Some(relays),
-            route_class: Some(route_class),
+            route_class,
         },
     )
 }

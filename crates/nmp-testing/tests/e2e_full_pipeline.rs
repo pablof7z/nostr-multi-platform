@@ -732,7 +732,7 @@ fn wait_for_error_toast(
 // a clean fix-vs-bug discriminator.
 #[test]
 fn publish_raw_signer_pubkey_unregistered_fails_closed() {
-    use nmp_core::publish::PublishTarget;
+    use nmp_core::publish::{PublishRouteClass, PublishTarget};
     use nmp_core::testing::{spawn_actor, ActorCommand};
 
     const ALICE_NSEC: &str = "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
@@ -826,7 +826,10 @@ fn publish_raw_signer_pubkey_signs_with_registered_agent_key_without_active_acco
         kind: 30023,
         tags: Vec::new(),
         content: "agent-authored note".to_string(),
-        target: PublishTarget::manual_override(vec!["wss://relay.test".to_string()]),
+        target: PublishTarget::explicit(
+            vec!["wss://relay.test".to_string()],
+            PublishRouteClass::ManualOverride,
+        ),
         signer_pubkey: Some(bob_pubkey_hex.clone()),
         correlation_id: None,
     }))

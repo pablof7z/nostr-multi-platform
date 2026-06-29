@@ -130,7 +130,10 @@ pub(crate) fn create_account(
                     publish_outbound.extend(kernel.publish_signed_to(
                         &signed,
                         &[],
-                        crate::publish::PublishTarget::manual_override(target_relays),
+                        crate::publish::PublishTarget::explicit(
+                            target_relays,
+                            crate::publish::PublishRouteClass::ManualOverride,
+                        ),
                     ));
                 }
             }
@@ -199,7 +202,10 @@ pub(crate) fn create_account(
                     publish_outbound.extend(kernel.publish_signed_to(
                         &signed,
                         &[],
-                        crate::publish::PublishTarget::manual_override(target_relays),
+                        crate::publish::PublishTarget::explicit(
+                            target_relays,
+                            crate::publish::PublishRouteClass::ManualOverride,
+                        ),
                     ));
                 }
             }
@@ -372,7 +378,10 @@ fn publish_initial_follows(
                 kernel.publish_signed_to(
                     &signed,
                     &[],
-                    crate::publish::PublishTarget::manual_override(target_relays),
+                    crate::publish::PublishTarget::explicit(
+                        target_relays,
+                        crate::publish::PublishRouteClass::ManualOverride,
+                    ),
                 )
             }
         }

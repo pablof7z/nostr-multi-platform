@@ -7,8 +7,9 @@
 use std::sync::Arc;
 
 use nmp_core::publish::{
-    InMemoryPublishStore, PerRelayState, PublishAction, PublishEngine, PublishStore, PublishTarget,
-    QueueDispatcher, RelayAck, RelayDispatcher, RetryPolicy, StaticOutbox,
+    InMemoryPublishStore, PerRelayState, PublishAction, PublishEngine, PublishRouteClass,
+    PublishStore, PublishTarget, QueueDispatcher, RelayAck, RelayDispatcher, RetryPolicy,
+    StaticOutbox,
 };
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
@@ -51,7 +52,10 @@ fn offline_relay_keeps_publish_intent_pending_until_available() {
             PublishAction::Publish {
                 handle: "offline-h".to_string(),
                 event: signed("ev-offline", "alice", 1),
-                target: PublishTarget::manual_override(vec![relay.to_string()]),
+                target: PublishTarget::explicit(
+                    vec![relay.to_string()],
+                    PublishRouteClass::ManualOverride,
+                ),
             },
             100,
             None,
@@ -94,7 +98,10 @@ fn retry_tick_dispatches_due_intent_after_relay_becomes_available() {
             PublishAction::Publish {
                 handle: handle.clone(),
                 event: signed("ev-retry", "alice", 1),
-                target: PublishTarget::manual_override(vec![relay.to_string()]),
+                target: PublishTarget::explicit(
+                    vec![relay.to_string()],
+                    PublishRouteClass::ManualOverride,
+                ),
             },
             0,
             None,

@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use super::action::{PublishAction, PublishTarget};
+use super::action::{PublishAction, PublishRouteClass, PublishTarget};
 use super::engine::PublishEngine;
 use super::state::{
     apply_ack, classify_ack, AckClass, PerRelayState, RelayAck, RetryPolicy, RetryVerdict,
@@ -192,10 +192,10 @@ fn engine_explicit_target_dispatches_to_named_relays() {
     let action = PublishAction::Publish {
         handle: "h1".to_string(),
         event: signed_event("ev1", "alice", 1, &[]),
-        target: PublishTarget::manual_override(vec![
-            "wss://r1".to_string(),
-            "wss://r2".to_string(),
-        ]),
+        target: PublishTarget::explicit(
+            vec!["wss://r1".to_string(), "wss://r2".to_string()],
+            PublishRouteClass::ManualOverride,
+        ),
     };
     engine.start_publish(action, 100, None).unwrap();
 
