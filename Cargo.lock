@@ -4562,6 +4562,7 @@ version = "0.8.4"
 dependencies = [
  "nmp-content",
  "nmp-core",
+ "nmp-defaults",
  "nmp-native-runtime",
  "serde_json",
  "uniffi",

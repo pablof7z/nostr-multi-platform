@@ -194,7 +194,7 @@ pub trait KernelReaderRegistrar {
     fn set_contacts_lookup(&self, lookup: Arc<dyn ContactsLookup>);
 
     /// H4 — install the read-only [`MailboxCache`] handle the host's NIP-19
-    /// identity encoder (`nmp_app_encode_profile`) reads kind:10002 relay
+    /// identity encoder (UniFFI `encode_profile`) reads kind:10002 relay
     /// hints from. The composition root passes the SAME `MailboxCache`
     /// instance it hands [`RoutingFactoryRegistrar::set_routing_substrate`] and
     /// the kind:10002 [`IngestParser`], so the encoder can prefer `nprofile`

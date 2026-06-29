@@ -2136,8 +2136,8 @@ extension IntentClassification: Equatable, Hashable {}
 /**
  * Why an input could not be classified into any allowed candidate.
  *
- * `SecretLike` carries **no** copy of the input — same guarantee as the
- * C-ABI `nmp_app_intent_classify`.
+ * `SecretLike` carries **no** copy of the input — same no-echo guarantee as
+ * the retired C-ABI helper.
  *
  * Mirrors `nmp_core::substrate::InputIntentRejection`.
  */
@@ -3385,7 +3385,7 @@ fileprivate struct FfiConverterDictionaryStringString: FfiConverterRustBuffer {
  * `SecretLike` rejections carry **no** copy of `input` — the secret is never
  * echoed back.
  *
- * Mirrors `nmp_app_intent_classify` — same recognizer snapshot read, same
+ * Preserves the retired C-ABI behavior: same recognizer snapshot read, same
  * pure classification, typed output instead of JSON.
  */
 public func classifyIntent(app: NmpApp, input: String, scopes: [IntentScope], textTargets: IntentTextTargets) -> IntentClassification  {
@@ -3425,10 +3425,10 @@ public func decodeNostrUri(input: String)throws  -> NostrUriTarget  {
  * when no hints are cached (or when `app` has no mailbox cache configured).
  *
  * D6: never throws. An invalid or unrecognisable `pubkey_hex` degrades to
- * returning the raw input string — same fallback as `nmp_app_encode_profile`.
+ * returning the raw input string — same fallback as the retired C-ABI helper.
  *
- * Mirrors the C-ABI `nmp_app_encode_profile` (same mailbox-cache read, same
- * `MAX_NPROFILE_RELAYS` truncation, same D6 fallback chain).
+ * Preserves the retired C-ABI helper behavior: same mailbox-cache read, same
+ * `MAX_NPROFILE_RELAYS` truncation, same D6 fallback chain.
  */
 public func encodeProfile(app: NmpApp, pubkeyHex: String) -> String  {
     return try!  FfiConverterString.lift(try! rustCall() {
@@ -3487,13 +3487,13 @@ private let initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
-    if (uniffi_nmp_uniffi_checksum_func_classify_intent() != 15464) {
+    if (uniffi_nmp_uniffi_checksum_func_classify_intent() != 43755) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_func_decode_nostr_uri() != 56218) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_nmp_uniffi_checksum_func_encode_profile() != 22164) {
+    if (uniffi_nmp_uniffi_checksum_func_encode_profile() != 4850) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_func_tokenize_content() != 58037) {

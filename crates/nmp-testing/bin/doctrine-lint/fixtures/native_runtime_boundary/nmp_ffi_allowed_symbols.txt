@@ -12,13 +12,11 @@ nmp_app_declare_incremental_apply
 nmp_app_deliver_external_signer_response
 nmp_app_dispatch_action_bytes
 nmp_app_dispatch_capability
-nmp_app_encode_profile
 nmp_app_free
 nmp_app_inject_pre_verified_events
 nmp_app_inject_signed_event_json
 nmp_app_inject_signed_events
 nmp_app_inject_unpinned_events_for_gc
-nmp_app_intent_classify
 nmp_app_intent_dispatch
 nmp_app_is_alive
 nmp_app_lifecycle_background
@@ -63,3 +61,12 @@ nmp_app_stop
 nmp_app_switch_active
 nmp_app_trigger_gc_step
 nmp_app_wait_barrier
+nmp_content_tokenize_text
+nmp_external_signer_init
+nmp_free_string
+nmp_marmot_register_active
+nmp_marmot_unregister
+nmp_mirror_free_bytes
+nmp_mirror_pull_page
+nmp_nip21_decode_uri
+nmp_signer_broker_init

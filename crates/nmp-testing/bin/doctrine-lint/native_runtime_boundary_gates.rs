@@ -10,9 +10,9 @@
 mod support;
 
 use support::{
-    allowed_nmp_ffi_symbols, cargo_metadata, composition_findings, exported_nmp_app_symbol,
-    forbidden_platform_dep_findings, is_nmp_ffi_export_source, is_production_source,
-    lower_layer_crates, nmp_ffi_rs_files, relative_to, rust_live_lines,
+    allowed_native_nmp_symbols, cargo_metadata, composition_findings, crate_native_rs_files,
+    exported_native_nmp_symbol, forbidden_platform_dep_findings, is_nmp_ffi_export_source,
+    is_production_source, lower_layer_crates, nmp_ffi_rs_files, relative_to, rust_live_lines,
 };
 
 #[test]
@@ -71,9 +71,9 @@ fn nmp_ffi_does_not_register_runtime_composition() {
 }
 
 #[test]
-fn nmp_ffi_public_nmp_app_symbols_are_allowlisted() {
-    let (_, files) = nmp_ffi_rs_files();
-    let allowed = allowed_nmp_ffi_symbols();
+fn public_native_nmp_symbols_are_allowlisted() {
+    let (_, files) = crate_native_rs_files();
+    let allowed = allowed_native_nmp_symbols();
     let mut exported = std::collections::BTreeSet::new();
 
     for path in files {
@@ -82,8 +82,8 @@ fn nmp_ffi_public_nmp_app_symbols_are_allowlisted() {
         }
         let body = std::fs::read_to_string(&path)
             .unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()));
-        for line in body.lines() {
-            if let Some(symbol) = exported_nmp_app_symbol(line) {
+        for line in rust_live_lines(&body) {
+            if let Some(symbol) = exported_native_nmp_symbol(&line) {
                 exported.insert(symbol.to_string());
             }
         }
@@ -98,7 +98,7 @@ fn nmp_ffi_public_nmp_app_symbols_are_allowlisted() {
 
     assert!(
         extra.is_empty() && missing.is_empty(),
-        "generic nmp-ffi nmp_app_* C symbols must be explicit. Additions need \
+        "public native nmp_* C symbols under crates/*/src must be explicit. Additions need \
          an accepted issue or ADR explaining why action/projection/capability/\
          runtime APIs are insufficient.\nextra:\n{}\nmissing:\n{}",
         extra.join("\n"),
@@ -207,11 +207,12 @@ fn ffi_composition_token_negative_fixture_fires() {
 
 #[test]
 fn symbol_allowlist_negative_fixture_fires() {
-    let symbol =
-        exported_nmp_app_symbol("pub extern \"C\" fn nmp_app_custom_shortcut(app: *mut NmpApp) {}");
+    let symbol = exported_native_nmp_symbol(
+        "pub extern \"C\" fn nmp_app_custom_shortcut(app: *mut NmpApp) {}",
+    );
     assert_eq!(symbol, Some("nmp_app_custom_shortcut"));
     assert!(
-        !allowed_nmp_ffi_symbols().contains(symbol.unwrap()),
+        !allowed_native_nmp_symbols().contains(symbol.unwrap()),
         "negative fixture symbol must not be allowlisted"
     );
 }

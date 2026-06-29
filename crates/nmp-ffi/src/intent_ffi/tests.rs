@@ -1,8 +1,8 @@
-//! C-ABI tests for the #1804 input-intent resolver surface: classify JSON
-//! round-trip per target class; the SECRET-NO-ECHO invariant at the FFI
-//! boundary; and dispatch routing per top-candidate target class.
+//! C-ABI tests for the #1804 input-intent dispatch surface: the SECRET-NO-ECHO
+//! invariant at the FFI boundary and dispatch routing per top-candidate target
+//! class.
 
-use super::{nmp_app_intent_classify, nmp_app_intent_dispatch};
+use super::nmp_app_intent_dispatch;
 use crate::free::nmp_free_string;
 use crate::{nmp_app_free, nmp_app_new, NmpApp};
 use nmp_core::nip19::{encode_naddr, encode_npub, encode_nsec, NaddrData};
@@ -32,11 +32,6 @@ fn read_and_free(ptr: *mut std::ffi::c_char) -> (String, Value) {
     (raw, value)
 }
 
-fn classify(app: *mut NmpApp, request_json: &str) -> (String, Value) {
-    let req = cstr(request_json);
-    read_and_free(nmp_app_intent_classify(app, req.as_ptr()))
-}
-
 fn dispatch(app: *mut NmpApp, request_json: &str, session_id: &str) -> (String, Value) {
     let req = cstr(request_json);
     let sid = cstr(session_id);
@@ -57,82 +52,17 @@ fn request_json(input: &str, scopes: &[(&str, &str)]) -> String {
     .to_string()
 }
 
-// ── classify: each target class ──────────────────────────────────────────────
-
-#[test]
-fn classify_direct_ref_round_trips() {
-    let app = nmp_app_new();
-    let npub = encode_npub(PUBKEY).unwrap();
-    let (_, value) = classify(app, &request_json(&npub, &[("nip50", "profiles")]));
-    let candidate = &value["classification"]["Candidates"][0];
-    assert_eq!(value["ok"], true);
-    assert!(candidate["target"]["DirectRef"]["uri"]
-        .as_str()
-        .unwrap()
-        .contains("npub1"));
-    nmp_app_free(app);
-}
-
-#[test]
-fn classify_relay_url_round_trips() {
-    let app = nmp_app_new();
-    let (_, value) = classify(app, &request_json("wss://relay.example/", &[("nip50", "notes")]));
-    let candidate = &value["classification"]["Candidates"][0];
-    // `canonicalize_relay_url` strips the trailing slash (single normalization
-    // authority).
-    assert_eq!(candidate["target"]["RelayUrl"]["url"], "wss://relay.example");
-    nmp_app_free(app);
-}
-
-#[test]
-fn classify_nip05_shape_round_trips() {
-    let app = nmp_app_new();
-    let (_, value) = classify(app, &request_json("jb55@jb55.com", &[("nip50", "profiles")]));
-    let candidate = &value["classification"]["Candidates"][0];
-    assert_eq!(candidate["target"]["Nip05"]["identifier"], "jb55@jb55.com");
-    nmp_app_free(app);
-}
-
-#[test]
-fn classify_free_text_emits_text_query() {
-    let app = nmp_app_new();
-    let (_, value) = classify(app, &request_json("hello nostr", &[("nip50", "profiles")]));
-    let candidate = &value["classification"]["Candidates"][0];
-    // The opaque request_json is a serialized nmp_nip50::SearchRequest.
-    let inner = candidate["target"]["TextQuery"]["request_json"]
-        .as_str()
-        .expect("request_json string");
-    let search: Value = serde_json::from_str(inner).expect("inner is a SearchRequest JSON");
-    assert_eq!(search["query"], "hello nostr");
-    nmp_app_free(app);
-}
-
 // ── SECRET-NO-ECHO invariant at the FFI boundary ─────────────────────────────
-
-#[test]
-fn classify_secret_is_rejected_and_never_echoed() {
-    let app = nmp_app_new();
-    let nsec = encode_nsec(SECRET_HEX).unwrap();
-    let (raw, value) = classify(app, &request_json(&nsec, &[("nip50", "profiles")]));
-    assert_eq!(value["classification"]["Rejection"], "SecretLike");
-    // The nsec bech32 AND the underlying secret hex must NOT appear anywhere in
-    // the returned JSON string.
-    assert!(
-        !raw.contains(&nsec),
-        "the nsec must never be echoed in the FFI output"
-    );
-    assert!(
-        !raw.contains(SECRET_HEX),
-        "the secret hex must never be echoed in the FFI output"
-    );
-    nmp_app_free(app);
-}
 
 #[test]
 fn dispatch_secret_is_rejected_and_never_echoed() {
     let app = nmp_app_new();
     let nsec = encode_nsec(SECRET_HEX).unwrap();
-    let (raw, value) = dispatch(app, &request_json(&nsec, &[("nip50", "profiles")]), "sess-secret");
+    let (raw, value) = dispatch(
+        app,
+        &request_json(&nsec, &[("nip50", "profiles")]),
+        "sess-secret",
+    );
     assert_eq!(value["rejection"], "SecretLike");
     assert!(!raw.contains(&nsec));
     assert!(!raw.contains(SECRET_HEX));
@@ -182,7 +112,10 @@ fn dispatch_nip05_returns_dispatched_candidate() {
     );
     // The Nip05 candidate is reported dispatched; enqueuing the reverse-lookup
     // ProtocolCommand must not panic.
-    assert_eq!(value["dispatched"]["target"]["Nip05"]["identifier"], "jb55@jb55.com");
+    assert_eq!(
+        value["dispatched"]["target"]["Nip05"]["identifier"],
+        "jb55@jb55.com"
+    );
     nmp_app_free(app);
 }
 
@@ -276,21 +209,3 @@ fn dispatch_registered_returns_unrouted_candidate() {
 }
 
 // ── D6: malformed input never NULL ───────────────────────────────────────────
-
-#[test]
-fn classify_null_app_returns_error_object() {
-    let req = cstr(&request_json("x", &[]));
-    let (_, value) = read_and_free(nmp_app_intent_classify(std::ptr::null_mut(), req.as_ptr()));
-    assert_eq!(value["ok"], false);
-    assert_eq!(value["error"], "invalid-app");
-}
-
-#[test]
-fn classify_malformed_request_returns_error_object() {
-    let app = nmp_app_new();
-    let bad = cstr("not json");
-    let (_, value) = read_and_free(nmp_app_intent_classify(app, bad.as_ptr()));
-    assert_eq!(value["ok"], false);
-    assert_eq!(value["error"], "unparseable-request");
-    nmp_app_free(app);
-}

@@ -1,18 +1,16 @@
 //! NIP-19 profile encoder — UniFFI surface (M14-C1).
 //!
-//! Mirrors `nmp-ffi/src/nip19_ffi.rs::nmp_app_encode_profile`.
+//! Replaces the retired C-ABI `nmp_app_encode_profile` door.
 //!
 //! ## Core-fn provenance
 //!
-//! Both the C-ABI and this UniFFI wrapper call the same two `nmp_core::nip19`
-//! primitives:
+//! This UniFFI wrapper keeps the retired C-ABI helper logic on the public
+//! native path and calls the same two `nmp_core::nip19` primitives:
 //! - `encode_npub` — fallback path (no relay hints).
 //! - `encode_nprofile` — preferred path (relay hints from `mailbox_cache_reader`).
 //!
-//! The `encode_profile` fn below is effectively a copy of the `encode_profile`
-//! private fn in `nip19_ffi.rs`, lifted to the UniFFI surface. Both call the
-//! same core functions with the same logic; the difference is input/output
-//! types (raw C pointers vs typed Rust values).
+//! The `encode_profile` fn below preserves the same core semantics on the typed
+//! UniFFI surface.
 //!
 //! ## D6
 //!
@@ -21,12 +19,12 @@
 
 use std::sync::Arc;
 
-use nmp_core::nip19::{encode_npub, encode_nprofile, NprofileData};
+use nmp_core::nip19::{encode_nprofile, encode_npub, NprofileData};
 
 use crate::NmpApp;
 
 /// Max relay hints embedded in an `nprofile` TLV string.
-/// Mirrors `nmp-ffi/src/nip19_ffi.rs::MAX_NPROFILE_RELAYS`.
+/// Matches the retired C-ABI helper cap.
 const MAX_NPROFILE_RELAYS: usize = 3;
 
 /// Encode a 64-char hex pubkey as a NIP-19 display identifier.
@@ -36,10 +34,10 @@ const MAX_NPROFILE_RELAYS: usize = 3;
 /// when no hints are cached (or when `app` has no mailbox cache configured).
 ///
 /// D6: never throws. An invalid or unrecognisable `pubkey_hex` degrades to
-/// returning the raw input string — same fallback as `nmp_app_encode_profile`.
+/// returning the raw input string — same fallback as the retired C-ABI helper.
 ///
-/// Mirrors the C-ABI `nmp_app_encode_profile` (same mailbox-cache read, same
-/// `MAX_NPROFILE_RELAYS` truncation, same D6 fallback chain).
+/// Preserves the retired C-ABI helper behavior: same mailbox-cache read, same
+/// `MAX_NPROFILE_RELAYS` truncation, same D6 fallback chain.
 #[uniffi::export]
 pub fn encode_profile(app: Arc<NmpApp>, pubkey_hex: String) -> String {
     let relays = app
@@ -66,23 +64,29 @@ pub fn encode_profile(app: Arc<NmpApp>, pubkey_hex: String) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nmp_core::nip19::{decode_npub, decode_nprofile};
+    use nmp_core::nip19::{decode_nprofile, decode_npub};
 
     const PUBKEY: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
 
-    // Parity: the C-ABI `nmp_app_encode_profile` with a null app pointer calls
-    // `encode_npub(pubkey)`. These tests verify the UniFFI `encode_profile`
-    // with a freshly-constructed (cache-less) NmpApp produces identical output.
+    // The retired C-ABI helper with no cache called `encode_npub(pubkey)`.
+    // These tests verify the UniFFI `encode_profile` with a freshly-constructed
+    // (cache-less) NmpApp preserves that output.
 
     #[test]
     fn parity_no_cache_produces_npub() {
         let app = crate::NmpApp::new();
         let result = encode_profile(app, PUBKEY.to_string());
 
-        // Parity: C-ABI encode_profile(None, PUBKEY) also calls encode_npub.
+        // Retired C-ABI parity: no-cache encode_profile also called encode_npub.
         let expected = encode_npub(PUBKEY).unwrap();
-        assert_eq!(result, expected, "UniFFI must match the C-ABI npub path");
-        assert!(result.starts_with("npub1"), "expected npub1 prefix, got {result}");
+        assert_eq!(
+            result, expected,
+            "UniFFI must preserve the retired C-ABI npub path"
+        );
+        assert!(
+            result.starts_with("npub1"),
+            "expected npub1 prefix, got {result}"
+        );
     }
 
     #[test]
@@ -96,7 +100,8 @@ mod tests {
     #[test]
     fn parity_invalid_pubkey_echoes_raw_input() {
         // D6: invalid hex → every encoder returns Err → fallback echoes input.
-        // C-ABI: encode_profile(None, "not-a-pubkey") returns "not-a-pubkey".
+        // Retired C-ABI parity: encode_profile(None, "not-a-pubkey") returned
+        // "not-a-pubkey".
         let app = crate::NmpApp::new();
         let result = encode_profile(app, "not-a-pubkey".to_string());
         assert_eq!(result, "not-a-pubkey");
@@ -140,7 +145,10 @@ mod tests {
             .set_mailbox_cache_reader(StdArc::new(cache) as StdArc<dyn MailboxCache>);
 
         let result = encode_profile(Arc::clone(&app), PUBKEY.to_string());
-        assert!(result.starts_with("nprofile1"), "expected nprofile1, got {result}");
+        assert!(
+            result.starts_with("nprofile1"),
+            "expected nprofile1, got {result}"
+        );
         let decoded = decode_nprofile(&result).unwrap();
         assert_eq!(decoded.pubkey, PUBKEY);
         assert_eq!(
@@ -188,6 +196,43 @@ mod tests {
             decoded.relays.len(),
             MAX_NPROFILE_RELAYS,
             "relay count must be capped at MAX_NPROFILE_RELAYS"
+        );
+    }
+
+    #[test]
+    fn register_defaults_handle_is_the_encoder_read_cache() {
+        use nmp_core::substrate::ParsedRelayList;
+
+        let mut app = crate::NmpApp::new();
+        let app_mut = Arc::get_mut(&mut app).expect("fresh test app has one Arc owner");
+        let handles = nmp_defaults::register_defaults_with_handles(
+            &mut app_mut.inner,
+            nmp_defaults::NmpDefaults::default(),
+        );
+        let cache = handles
+            .mailbox_cache
+            .expect("register_defaults_with_handles must surface the mailbox cache handle");
+
+        cache.upsert(
+            PUBKEY.to_string(),
+            ParsedRelayList {
+                read: Vec::new(),
+                write: Vec::new(),
+                both: vec!["wss://relay.one".to_string(), "wss://relay.two".to_string()],
+            },
+        );
+
+        let result = encode_profile(Arc::clone(&app), PUBKEY.to_string());
+        assert!(
+            result.starts_with("nprofile1"),
+            "returned defaults handle must be the cache encode_profile reads; got {result}"
+        );
+        let decoded = decode_nprofile(&result).expect("valid nprofile round-trips");
+        assert_eq!(decoded.pubkey, PUBKEY);
+        assert_eq!(
+            decoded.relays,
+            vec!["wss://relay.one".to_string(), "wss://relay.two".to_string()],
+            "nprofile carries exactly the relays written through the returned handle"
         );
     }
 }

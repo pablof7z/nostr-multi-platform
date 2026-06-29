@@ -45,7 +45,7 @@ pub(super) struct StoredEvent {
 pub(super) struct ProfileCard {
     pub(super) pubkey: String,
     // D6 / ADR-0032: `npub` (bech32) field removed — projection sends raw hex
-    // pubkey only; shells encode bech32 host-side via `nmp_app_encode_profile`
+    // pubkey only; shells encode bech32 host-side via UniFFI `encode_profile`
     // or their own implementation. Closes V-115.
     /// Display name from kind:0 (`display_name` / `displayName` / `name`,
     /// first non-empty wins). `None` when no kind:0 has arrived yet —
