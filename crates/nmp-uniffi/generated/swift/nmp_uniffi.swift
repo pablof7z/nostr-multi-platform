@@ -833,11 +833,7 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
     /**
      * ADR-0058 §3 — synchronously drain one page of the kernel ingest log.
      *
-     * Returns a typed [`MirrorPullResult`] instead of the C-ABI binary blob,
-     * eliminating the need for `nmp_mirror_free_bytes` — UniFFI owns the
-     * returned `Vec<u8>`.
-     *
-     * Parameters mirror `nmp_mirror_pull_page` exactly:
+     * Returns a typed [`MirrorPullResult`]; UniFFI owns the returned `Vec<u8>`.
      *
      * - `cursor_id`           — raw u64 id from `PullCursorRegistry`.
      * - `max_entries`         — clamped to `[1, 512]`; further bounded by
@@ -1696,11 +1692,7 @@ open func loadOlderFeed(key: String) -> Bool  {
     /**
      * ADR-0058 §3 — synchronously drain one page of the kernel ingest log.
      *
-     * Returns a typed [`MirrorPullResult`] instead of the C-ABI binary blob,
-     * eliminating the need for `nmp_mirror_free_bytes` — UniFFI owns the
-     * returned `Vec<u8>`.
-     *
-     * Parameters mirror `nmp_mirror_pull_page` exactly:
+     * Returns a typed [`MirrorPullResult`]; UniFFI owns the returned `Vec<u8>`.
      *
      * - `cursor_id`           — raw u64 id from `PullCursorRegistry`.
      * - `max_entries`         — clamped to `[1, 512]`; further bounded by
@@ -3418,8 +3410,8 @@ extension IntentTextTargets: Equatable, Hashable {}
 /**
  * Typed result of a `mirror_pull_page` call.
  *
- * Replaces the C-ABI binary blob (`NmpMirrorBytes`) with typed variants.
- * UniFFI owns all `Vec<u8>` payloads — no explicit free call is needed.
+ * Typed variants for the mirror pull result. UniFFI owns all `Vec<u8>`
+ * payloads, so no explicit free call is needed.
  */
 
 public enum MirrorPullResult {
@@ -3434,8 +3426,7 @@ public enum MirrorPullResult {
      * `next_after_seq`; call again to drain.
      * - `bytes`          — serialized entry section: `u32_LE entry_count`
      * followed by `entry_count × entry` in the ADR-0058 §3 wire format.
-     * Identical to bytes `[18..]` of the C-ABI page payload, so existing
-     * binary parsers can consume it unchanged.
+     * Identical to bytes `[18..]` of the runtime page payload.
      */
     case page(nextAfterSeq: UInt64, latestSeq: UInt64, hasMore: Bool, bytes: Data
     )
@@ -3448,7 +3439,7 @@ public enum MirrorPullResult {
     /**
      * An error occurred before the pull could proceed.
      *
-     * `code` values match the `nmp_mirror_*` C-ABI error constants:
+     * `code` values match the runtime mirror error constants:
      * 2 = REGISTRY_UNAVAILABLE (pre-start), 3 = UNKNOWN_CURSOR,
      * 4 = STORE_UNAVAILABLE, 5 = UNSUPPORTED_SCOPE, 6 = STORE_ERROR,
      * 7 = INVALID_LIMITS, 8 = PANIC, 9 = RAW_TOO_LARGE.
@@ -5115,7 +5106,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_load_older_feed() != 30803) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_nmp_uniffi_checksum_method_nmpapp_mirror_pull_page() != 45548) {
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_mirror_pull_page() != 9715) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_nostrconnect_uri() != 966) {

@@ -182,9 +182,8 @@ mod tests {
     // separate compile-fail harness.
     //
     // The event URI C-ABI front doors, `nmp_app_pull_page`, and `nmp_free_bytes`
-    // are similarly removed; callers migrated to
-    // `nmp_app_resolve_ref`/`nmp_app_release_ref` (event namespace) and
-    // `nmp_mirror_pull_page`/`nmp_mirror_free_bytes` respectively.
+    // are similarly removed; callers migrated to the typed event namespace and
+    // typed UniFFI mirror pull surface respectively.
     #[test]
     fn debug_info_unified_api_covers_all_three_former_domains() {
         // All three former standalone symbols now reachable through one entry
