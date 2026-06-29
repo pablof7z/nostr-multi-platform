@@ -12,7 +12,7 @@ name: sqlite-wasm-conformance
 
 on:
   push:
-    branches: ["**"]
+    branches: [master]
     paths:
       - ".github/workflows/sqlite-wasm-conformance.yml"
       - "crates/nmp-sqlite-wasm/**"

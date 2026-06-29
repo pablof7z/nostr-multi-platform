@@ -9,7 +9,7 @@ name: web-app-typecheck
 
 on:
   push:
-    branches: ["**"]
+    branches: [master]
     paths:
       - ".github/workflows/web-app-typecheck.yml"
       - "web/**"
