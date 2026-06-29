@@ -30,9 +30,9 @@
 //!
 //! After every mutable request (Start, SetIdentity, DispatchBytes, …) and after
 //! every relay-inbound-driven pump, the caller should invoke
-//! `push_snapshot_bytes_if_sink` to push the merged snapshot frame to the JS
-//! host via the installed callback. The snapshot sink is `Box<dyn Fn(&[u8])>`
-//! here (host-callback-agnostic); the wasm layer installs a closure that calls
+//! `push_snapshot_bytes_if_sink`; it pushes a merged snapshot only when the
+//! kernel is dirty. The snapshot sink is `Box<dyn Fn(&[u8])>` here
+//! (host-callback-agnostic); the wasm layer installs a closure that calls
 //! `js_sys::Function::call1`.
 //!
 //! # Async pump event buffering (#2139 BLOCKER 2)
@@ -162,7 +162,8 @@ impl NmpRuntimeCore {
         }
     }
 
-    /// Push the current merged snapshot to the installed sink, if any.
+    /// Push the current merged snapshot to the installed sink, if any, but only
+    /// when the kernel reports a real change since the last emitted frame.
     ///
     /// Called after each mutable operation and after relay-driven async pumps.
     pub fn push_snapshot_bytes_if_sink(&mut self) {
@@ -170,7 +171,7 @@ impl NmpRuntimeCore {
             return;
         }
         if let Some(h) = self.handle.as_mut() {
-            if let Some(bytes) = h.produce_snapshot_bytes(true) {
+            if let Some(bytes) = h.next_frame_if_dirty(true) {
                 if let Some(sink) = &self.snapshot_sink {
                     sink(&bytes);
                 }
