@@ -90,7 +90,7 @@ private struct RefProfileWire: Decodable, Sendable {
     let about: String?
 }
 
-/// Snapshot wire-shape pushed through `nmp_app_set_update_callback`. The
+/// Snapshot wire-shape pushed through the Gallery kernel update callback. The
 /// kernel's `KernelSnapshot` ships a host-extensible `projections` map; the
 /// gallery reads the resolved-profile key from it:
 ///

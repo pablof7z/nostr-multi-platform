@@ -3686,8 +3686,10 @@ dependencies = [
  "nmp-core",
  "nmp-defaults",
  "nmp-ffi",
+ "nmp-native-runtime",
  "serde",
  "serde_json",
+ "zeroize",
 ]
 
 [[package]]
@@ -3959,7 +3961,7 @@ dependencies = [
  "nmp-app-gallery",
  "nmp-content",
  "nmp-core",
- "nmp-ffi",
+ "nmp-native-runtime",
  "ratatui",
  "ratatui-image",
  "serde",

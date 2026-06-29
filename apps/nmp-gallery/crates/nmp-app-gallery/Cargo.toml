@@ -34,17 +34,16 @@ nmp-ffi = { path = "../../../../crates/nmp-ffi", default-features = false }
 # Reusable composition installers. The gallery calls the named ADR-0069
 # substrate/protocol installers directly from its app composition root.
 nmp-defaults = { path = "../../../../crates/nmp-defaults" }
+nmp-native-runtime = { path = "../../../../crates/nmp-native-runtime", features = ["external-signer"] }
 nmp-core = { path = "../../../../crates/nmp-core" }
 nmp-content = { path = "../../../../crates/nmp-content" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+zeroize = { workspace = true }
 # JNI surface for the Android shell — only active under `android-ffi`.
 jni = { version = "0.21", optional = true }
 
 [dev-dependencies]
-# Test-support gates expose `nmp_app_new` / `nmp_app_free` so the
-# in-crate smoke tests can spin up a real `NmpApp`, call
-# `nmp_app_gallery_register`, and confirm the registration didn't panic
-# / didn't fail closed. Mirrors the pattern in `nmp-defaults` and
-# the per-NIP crates.
+# Test-support gates keep legacy non-app-loop FFI helpers available for
+# focused in-crate smoke coverage while app-loop tests use nmp-native-runtime.
 nmp-ffi = { path = "../../../../crates/nmp-ffi", features = ["test-support"] }

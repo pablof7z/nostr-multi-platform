@@ -9,16 +9,15 @@
 //!   with the kernel.
 //! * Small helpers: [`session_ref`], [`jstring_to_cstring`].
 
-use std::ffi::{CString, c_void};
+use std::ffi::CString;
 use std::sync::{Arc, Mutex};
 
-use jni::JNIEnv;
 use jni::objects::{JObject, JString};
 use jni::sys::jlong;
-
-use nmp_ffi::{NmpApp, nmp_app_set_update_callback};
+use jni::JNIEnv;
 
 use nmp_core::__ffi_internal::capability_error_envelope;
+use nmp_native_runtime::NmpApp;
 
 use crate::android_push::{
     GalleryUpdateCtx, GalleryUpdateListener, SignerRequestListenerSlot, SignerRequestPushListener,
@@ -27,10 +26,9 @@ use crate::android_push::{
 /// Owns the kernel handle and the boxed update-callback context (which holds
 /// the JNI push listener). Freed exactly once in `nativeFree`.
 pub(crate) struct GallerySession {
-    pub(crate) app: *mut NmpApp,
-    /// Boxed [`GalleryUpdateCtx`] passed as the `nmp_app_set_update_callback`
-    /// context. Owns the JNI push listener slot (issue #614 — D8 no-polling).
-    pub(crate) update_ctx: *mut GalleryUpdateCtx,
+    pub(crate) app: NmpApp,
+    /// Owns the JNI push listener slot (issue #614 — D8 no-polling).
+    pub(crate) update_ctx: Arc<GalleryUpdateCtx>,
     /// Issue #1612 / ADR-0048 Stage 2 — push listener slot for outbound NIP-55
     /// `ExternalSignerRequest` JSON payloads (D8 no-polling; replaces the
     /// deleted `nativeNextSignerRequest` blocking/timeout drain).
@@ -50,12 +48,7 @@ unsafe impl Send for GallerySession {}
 /// Update callback — runs on the kernel's listener thread. Forwards the
 /// borrowed FlatBuffers frame straight to the registered JNI push listener
 /// (issue #614 — D8 no-polling).
-pub(crate) extern "C" fn on_update(context: *mut c_void, bytes: *const u8, len: usize) {
-    if context.is_null() || bytes.is_null() {
-        return;
-    }
-    let ctx = unsafe { &*(context as *const GalleryUpdateCtx) };
-    let frame = unsafe { std::slice::from_raw_parts(bytes, len) };
+pub(crate) fn on_update(ctx: &GalleryUpdateCtx, frame: &[u8]) {
     ctx.push(frame);
 }
 
@@ -127,17 +120,12 @@ pub(crate) fn jstring_to_cstring(env: &mut JNIEnv, value: &JString) -> Option<CS
 /// `update_ctx` were set up by `nativeNew`. The caller must not use
 /// `session` after this call.
 pub(crate) unsafe fn teardown_session(session: Box<GallerySession>) {
-    unsafe {
-        // Quiescence gate: both `set_*_callback(None)` calls block until any
-        // in-flight trampoline returns, so the context pointers and the
-        // `GlobalRef` inside the signer listener can be dropped safely without
-        // a UAF.
-        nmp_app_set_update_callback(session.app, std::ptr::null_mut(), None);
-        (&*session.app).capability_callback_slot().clear();
-        nmp_ffi::nmp_app_free(session.app);
-        drop(Box::from_raw(session.update_ctx));
-        // signer_listener Arc drops here, taking the listener GlobalRef with it.
-    }
+    // Quiescence gate: both runtime slots clear before listener state drops, so
+    // context pointers and `GlobalRef`s cannot be dropped during a live push.
+    session.app.set_update_listener(None);
+    session.app.capability_callback_slot().clear();
+    session.app.shutdown();
+    // signer_listener Arc drops here, taking the listener GlobalRef with it.
 }
 
 /// Register (or clear) the JNI push listener for kernel update frames on the
@@ -146,14 +134,15 @@ pub(crate) unsafe fn teardown_session(session: Box<GallerySession>) {
 /// `listener` must implement `fun onUpdate(frame: ByteArray)`. Pass `null` to
 /// deregister. D6: any JNI failure is a silent no-op.
 pub(crate) fn set_update_listener(env: JNIEnv, session: &GallerySession, listener: JObject) {
-    let ctx = unsafe { &*session.update_ctx };
     if listener.is_null() {
-        ctx.clear_listener();
+        session.update_ctx.clear_listener();
         return;
     }
     let Ok(vm) = env.get_java_vm() else { return };
     let Ok(global) = env.new_global_ref(&listener) else {
         return;
     };
-    ctx.set_listener(GalleryUpdateListener::new(vm, global));
+    session
+        .update_ctx
+        .set_listener(GalleryUpdateListener::new(vm, global));
 }

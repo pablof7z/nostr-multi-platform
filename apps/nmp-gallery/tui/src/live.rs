@@ -21,19 +21,22 @@
 //!    redraw shows the resolved article (or short-note / highlight / ...).
 //!
 //! `LiveKernel` is `pub` so `main.rs` can keep it alive for the program
-//! lifetime; `LiveKernelSink` wraps the `*mut NmpApp` pointer as the
+//! lifetime; `LiveKernelSink` wraps the native-runtime app as the
 //! `EventRefResolver` plugged into the renderer via the W4/W5 wiring.
 
 use std::{
     collections::BTreeMap,
-    ffi::{c_void, CString},
-    sync::mpsc::{Receiver, Sender},
+    sync::{
+        mpsc::{Receiver, Sender},
+        Arc,
+    },
     time::Duration,
 };
 
 use nmp_content::EventRefResolver;
 use nmp_core::refs::{RefEventStore, RefProfileStore, REFS_EVENT_KEY, REFS_PROFILE_KEY};
 use nmp_core::typed_projections::{ClaimedEventRow, ProfileCardModel};
+use nmp_native_runtime::{NmpApp, UpdateListener};
 
 use crate::data::showcase_pubkey;
 
@@ -85,7 +88,7 @@ pub struct GalleryTypedSnapshot {
 }
 
 impl GalleryTypedSnapshot {
-    /// Decode a raw FlatBuffers frame (as produced by `nmp_app_set_update_callback`),
+    /// Decode a raw FlatBuffers frame produced by the native-runtime update listener,
     /// merging its `refs.profile` / `refs.event` row-delta batches into the
     /// persistent stores, and materialise the gallery's view of one tick.
     ///
@@ -153,13 +156,9 @@ impl GalleryTypedSnapshot {
 /// entire process lifetime. The actor thread keeps running; snapshot pushes
 /// arrive on `rx` until `Drop` tears the app down (program exit).
 pub struct LiveKernel {
-    /// Raw `*mut NmpApp` pointer. The actor (running on its own threads)
-    /// is the single owner of the pointer's mutable state — every FFI
-    /// symbol routes through its command channel. The pointer is opaque to
-    /// callers and is only used to identify the app instance.
-    pub app: *mut nmp_ffi::NmpApp,
-    /// Keepalive for the update-callback context. Lives as long as
-    /// `LiveKernel` does so the callback never sees a dangling pointer.
+    /// Native runtime app. The actor is the single writer; shell calls enqueue
+    /// typed commands through the runtime methods.
+    pub app: Arc<NmpApp>,
     bridge: Option<Box<UpdateBridge>>,
     /// Snapshot stream — taken once by `take_receiver` so the main loop
     /// can hand it to its snapshot-thread aggregator.
@@ -177,11 +176,8 @@ struct UpdateBridge {
 /// symbol forwards to the actor's command channel — the pointer is just
 /// an opaque key.
 pub struct LiveKernelSink {
-    pub app: *mut nmp_ffi::NmpApp,
+    pub app: Arc<NmpApp>,
 }
-
-unsafe impl Send for LiveKernelSink {}
-unsafe impl Sync for LiveKernelSink {}
 
 impl LiveKernelSink {
     /// Resolve a visible profile reference for `pubkey` (ADR-0063 #1671). The
@@ -192,21 +188,23 @@ impl LiveKernelSink {
     /// `CacheOk` liveness (no per-row tailing sub) — the gallery renders only
     /// inline avatars/names, never an open-profile pane.
     pub fn resolve_profile(&self, pubkey: &str, consumer_id: &str) {
-        let Ok(pk) = CString::new(pubkey) else { return };
-        let Ok(cid) = CString::new(consumer_id) else {
-            return;
-        };
-        nmp_ffi::nmp_app_resolve_profile_ref(self.app, pk.as_ptr(), cid.as_ptr());
+        self.app.resolve_ref(
+            nmp_core::RefNamespace::Profile,
+            pubkey.to_string(),
+            consumer_id.to_string(),
+            nmp_core::RefShape::Profile(nmp_core::ProfileShape::Ref),
+            nmp_core::RefLiveness::CacheOk,
+        );
     }
 
     /// Release a profile reference previously resolved via [`Self::resolve_profile`].
     /// Pass the SAME `(pubkey, consumer_id)` so the kernel reclaims the slot.
     pub fn release_ref(&self, pubkey: &str, consumer_id: &str) {
-        let Ok(pk) = CString::new(pubkey) else { return };
-        let Ok(cid) = CString::new(consumer_id) else {
-            return;
-        };
-        nmp_ffi::nmp_app_release_profile_ref(self.app, pk.as_ptr(), cid.as_ptr());
+        self.app.release_ref(
+            nmp_core::RefNamespace::Profile,
+            pubkey.to_string(),
+            consumer_id.to_string(),
+        );
     }
 
     // V-112 (ADR-0042): `open_author` deleted — it wrapped the retired
@@ -221,20 +219,14 @@ impl EventRefResolver for LiveKernelSink {
         let Some(event_ref) = nmp_app_gallery::event_ref_uri::event_ref_from_uri(uri) else {
             return;
         };
-        let Ok(key) = CString::new(event_ref.key) else {
-            return;
-        };
-        let Ok(metadata_json) = CString::new(event_ref.metadata_json) else {
-            return;
-        };
-        let Ok(cid) = CString::new(consumer_id) else {
-            return;
-        };
-        nmp_ffi::nmp_app_resolve_event_embed_with_metadata(
-            self.app,
-            key.as_ptr(),
-            cid.as_ptr(),
-            metadata_json.as_ptr(),
+        let metadata = gallery_event_metadata(&event_ref.metadata_json);
+        self.app.resolve_ref_with_metadata(
+            nmp_core::RefNamespace::Event,
+            event_ref.key,
+            consumer_id.to_string(),
+            nmp_core::RefShape::Event(nmp_core::EventShape::Embed),
+            nmp_core::RefLiveness::CacheOk,
+            metadata,
         );
     }
 
@@ -242,13 +234,11 @@ impl EventRefResolver for LiveKernelSink {
         let Some(event_ref) = nmp_app_gallery::event_ref_uri::event_ref_from_uri(uri) else {
             return;
         };
-        let Ok(key) = CString::new(event_ref.key) else {
-            return;
-        };
-        let Ok(cid) = CString::new(consumer_id) else {
-            return;
-        };
-        nmp_ffi::nmp_app_release_event_ref(self.app, key.as_ptr(), cid.as_ptr());
+        self.app.release_ref(
+            nmp_core::RefNamespace::Event,
+            event_ref.key,
+            consumer_id.to_string(),
+        );
     }
 }
 
@@ -269,17 +259,15 @@ impl LiveGallerySource {
 
 impl LiveKernel {
     pub fn new() -> Result<Self, String> {
-        let app = nmp_ffi::nmp_app_new();
-        if app.is_null() {
-            return Err("nmp_app_new returned null".to_string());
-        }
-        nmp_app_gallery::nmp_app_gallery_register(app as *mut c_void);
+        let mut runtime = nmp_native_runtime::new_app();
+        nmp_app_gallery::register_gallery_runtime(&mut runtime);
 
         let (tx, rx) = std::sync::mpsc::channel();
         let mut bridge = Box::new(UpdateBridge { tx });
-        let context = bridge.as_mut() as *mut UpdateBridge as *mut c_void;
-        nmp_ffi::nmp_app_set_update_callback(app, context, Some(on_update));
-        nmp_ffi::nmp_app_start(app, 200, 8);
+        let bridge_ptr = bridge.as_mut() as *mut UpdateBridge as usize;
+        runtime.set_update_listener(Some(update_listener(bridge_ptr)));
+        runtime.start_runtime(200, 8);
+        let app = Arc::new(runtime);
 
         let kernel = Self {
             app,
@@ -300,20 +288,15 @@ impl LiveKernel {
     }
 
     fn add_relay(&self, url: &str, role: &str) -> Result<(), String> {
-        let url = CString::new(url).map_err(|_| "relay URL contains NUL byte".to_string())?;
-        let role = CString::new(role).map_err(|_| "relay role contains NUL byte".to_string())?;
-        nmp_ffi::nmp_app_add_relay(self.app, url.as_ptr(), role.as_ptr());
+        self.app.add_relay(url.to_string(), role.to_string());
         Ok(())
     }
 }
 
 impl Drop for LiveKernel {
     fn drop(&mut self) {
-        if !self.app.is_null() {
-            nmp_ffi::nmp_app_set_update_callback(self.app, std::ptr::null_mut(), None);
-            nmp_ffi::nmp_app_free(self.app);
-            self.app = std::ptr::null_mut();
-        }
+        self.app.set_update_listener(None);
+        self.app.shutdown();
         self.bridge.take();
     }
 }
@@ -322,11 +305,41 @@ impl Drop for LiveKernel {
 /// zero decoding here (the decode happens where the data is consumed, in the
 /// snapshot thread / smoke loop). PR-B: the gallery reads only the typed
 /// Tier-3 envelope + typed sidecars; `payload:Value` no longer exists.
-extern "C" fn on_update(context: *mut c_void, payload: *const u8, len: usize) {
-    if context.is_null() || payload.is_null() {
+fn on_update(context: usize, bytes: &[u8]) {
+    if context == 0 {
         return;
     }
-    let bytes = unsafe { std::slice::from_raw_parts(payload, len) };
     let bridge = unsafe { &*(context as *const UpdateBridge) };
     let _ = bridge.tx.send(bytes.to_vec());
+}
+
+fn update_listener(bridge_ptr: usize) -> UpdateListener {
+    Arc::new(move |bytes: &[u8]| {
+        on_update(bridge_ptr, bytes);
+    })
+}
+
+fn gallery_event_metadata(json: &str) -> nmp_core::RefResolveMetadata {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
+        return nmp_core::RefResolveMetadata::default();
+    };
+    let hints = value
+        .get("hints")
+        .and_then(serde_json::Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(serde_json::Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    let event_author = value
+        .get("author")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string);
+    nmp_core::RefResolveMetadata {
+        hints,
+        event_author,
+    }
 }

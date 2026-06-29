@@ -8,17 +8,16 @@
 //!
 //! # Surface
 //!
-//! Every `nmp_app_*` C-ABI symbol the iOS / Android shell needs is
-//! re-exported from [`nmp_ffi`]. The Rust-path `pub use nmp_ffi::*` is what
-//! drags each symbol's body into the CGU that ends up inside
-//! `libnmp_app_gallery.{a,so}` — without it the `#[no_mangle]` symbols stay
-//! `U` (undefined) in the archive and the platform link step fails.
-//! Mirrors the `apps/notes/nmp-app-notes` pattern exactly.
+//! Legacy C-ABI symbols are still linked for non-app-loop helpers during the
+//! migration, but Gallery-owned shells create and drive app-loop sessions
+//! through native-runtime objects.
 //!
 //! The crate adds two new `#[no_mangle]` symbols of its own:
 //!
-//! * [`nmp_app_gallery_register`] — explicit gallery composition installer.
-//!   MUST be called once after `nmp_app_new` and BEFORE `nmp_app_start`.
+//! * [`nmp_app_gallery_register`] — explicit gallery composition installer for
+//!   legacy callers.
+//! * `nmp_gallery_kernel_*` — tiny app-owned Swift bridge over
+//!   `nmp_native_runtime::NmpApp`.
 //! * [`showcase::nmp_app_gallery_showcase_references_json`] — borrowed JSON
 //!   pointer for the shared gallery references used by every host shell.
 //! * [`nmp_app_gallery_snapshot_json_from_update_frame`] — owned JSON snapshot
@@ -28,19 +27,16 @@
 //! # Snapshot delivery — push only
 //!
 //! `nmp-core` delivers the full typed update frame via the **push** callback
-//! installed through [`nmp_ffi::nmp_app_set_update_callback`]: the actor
-//! serializes an `nmp.transport.UpdateFrame` on every emit tick and hands the
-//! bytes to the host. There is no kernel-side **pull** accessor — the snapshot
-//! state lives on the actor thread and is not safely reachable through a
-//! synchronous FFI call without breaking D8. Hosts that want bespoke
-//! pull-side state register a host-side projection through
-//! [`nmp_ffi::nmp_app_register_snapshot_projection`] (read via the push
-//! callback as well). Kernel liveness is exposed by the native runtime
+//! installed through the native-runtime update listener: the actor serializes
+//! an `nmp.transport.UpdateFrame` on every emit tick and hands the bytes to the
+//! host. There is no kernel-side **pull** accessor — the snapshot state lives on
+//! the actor thread and is not safely reachable through a synchronous FFI call
+//! without breaking D8. Kernel liveness is exposed by the native runtime
 //! lifecycle API.
 //!
 //! # D0 — no protocol nouns
 //!
-//! `Cargo.toml` depends on the C-ABI/substrate crates (`nmp-ffi`,
+//! `Cargo.toml` depends on the substrate/runtime crates (`nmp-native-runtime`,
 //! `nmp-defaults`, `nmp-core`, `nmp-content`) and serialization only. No
 //! `nmp-nip*`, no app-specific social feed crate, no `nmp-marmot`, no
 //! `nmp-nwc`. The crate name does not appear in any per-NIP Cargo file.
@@ -52,14 +48,13 @@
 mod android;
 #[cfg(feature = "android-ffi")]
 mod android_push;
-// ADR-0064 / Cut-B (#1756) — typed byte-doorway dispatch seam. Native-only:
-// it names the `nmp_ffi` C-ABI `nmp_app_*` symbols, which exist only under the
-// `native` feature (wasm uses wasm-bindgen, not the C ABI). The `android-ffi`
-// JNI shell is the in-repo caller; the seam itself is reused by any native
-// gallery shell that dispatches a write.
+// ADR-0064 / Cut-B (#1756) — typed byte-doorway dispatch seam. Native-only; the
+// JNI and Swift shells reuse this when dispatching a write.
 #[cfg(feature = "native")]
 pub mod dispatch_bytes;
 pub mod event_ref_uri;
+#[cfg(feature = "native")]
+mod native_kernel;
 mod snapshot_json;
 
 pub mod registry;
@@ -78,7 +73,9 @@ pub mod showcase;
 #[allow(unused_imports)]
 pub use nmp_ffi::*;
 
-use std::ffi::{CStr, CString, c_char, c_void};
+use std::ffi::{c_char, c_void, CStr, CString};
+
+use nmp_native_runtime::NmpApp as NativeRuntimeApp;
 
 /// Dispatch a gallery action through the typed byte doorway (ADR-0064 / Cut-B,
 /// #1756).
@@ -87,7 +84,7 @@ use std::ffi::{CStr, CString, c_char, c_void};
 /// `nmp.publish`) and `body_json` (the canonical serde action body). This
 /// function encodes the typed `ActionPayload` bytes via
 /// [`dispatch_bytes::dispatch_action_bytes_for`] and dispatches them through
-/// `nmp_app_dispatch_action_bytes`. No JSON crosses the FFI to the kernel.
+/// the native-runtime byte dispatcher. No JSON crosses the FFI to the kernel.
 ///
 /// Returns a heap-allocated JSON envelope string the caller MUST free via
 /// `nmp_free_string`:
@@ -99,8 +96,8 @@ use std::ffi::{CStr, CString, c_char, c_void};
 /// `{"error":"…"}` envelope, never NULL or a crash.
 ///
 /// # Safety
-/// `app` must be a valid pointer from `nmp_app_new` (or null). `namespace`
-/// and `body_json` must be valid UTF-8 NUL-terminated C strings, or null.
+/// `app` must be a valid runtime pointer (or null). `namespace` and
+/// `body_json` must be valid UTF-8 NUL-terminated C strings, or null.
 #[cfg(feature = "native")]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[no_mangle]
@@ -123,7 +120,11 @@ pub extern "C" fn nmp_app_gallery_dispatch_action_bytes(
             .to_string_lossy()
             .into_owned()
     };
-    let result = dispatch_bytes::dispatch_action_bytes_for(app, &namespace, &body_json);
+    let result = if app.is_null() {
+        Err("runtime app is not available".to_string())
+    } else {
+        dispatch_bytes::dispatch_action_bytes_for(unsafe { &*app }, &namespace, &body_json)
+    };
     let envelope = match result {
         Ok(correlation_id) => format!(r#"{{"correlation_id":{}}}"#, json_escape(&correlation_id)),
         Err(error) => format!(r#"{{"error":{}}}"#, json_escape(&error)),
@@ -146,7 +147,7 @@ fn json_escape(s: &str) -> String {
 ///
 /// Wires the gallery's explicit substrate/protocol composition through the
 /// named ADR-0069 installers. MUST be called exactly once after
-/// [`nmp_ffi::nmp_app_new`] and BEFORE [`nmp_ffi::nmp_app_start`].
+/// creating the native runtime app and BEFORE start.
 ///
 /// `app` is typed as `*mut c_void` to mirror the host-facing C signature
 /// (`void nmp_app_gallery_register(void *app)`); the body casts to
@@ -159,8 +160,8 @@ fn json_escape(s: &str) -> String {
 ///
 /// # Safety
 ///
-/// `app` must be a valid pointer returned by [`nmp_ffi::nmp_app_new`] (or
-/// null). Calling this twice on the same `app` is a composition bug: action
+/// `app` must be a valid native runtime pointer (or null). Calling this twice
+/// on the same `app` is a composition bug: action
 /// namespaces and single-slot factories are last-writer-wins, while ingest
 /// parsers and observers are additive.
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -169,10 +170,9 @@ pub extern "C" fn nmp_app_gallery_register(app: *mut c_void) {
     if app.is_null() {
         return;
     }
-    // SAFETY: caller guarantees `app` is a valid pointer from
-    // `nmp_app_new`. The cast is sound because `nmp_app_gallery_register`'s
-    // C signature is `void(void *)` — Swift / Kotlin pass the same opaque
-    // pointer they got back from `nmp_app_new`.
+    // SAFETY: caller guarantees `app` is a valid native runtime pointer. The
+    // cast is sound for legacy callers that pass the same opaque runtime
+    // pointer they created.
     let app = unsafe { &mut *(app as *mut nmp_ffi::NmpApp) };
     register_gallery_composition(app);
     // ADR-0053 / Workstream-E4 — the gallery is a full client (it showcases
@@ -180,6 +180,11 @@ pub extern "C" fn nmp_app_gallery_register(app: *mut c_void) {
     // explicitly here: an undeclared start is the loud forgotten-wiring footgun,
     // not a silent firehose. Both gallery shells (tui, android) route through
     // this register helper, so one call covers them.
+    app.consume_all_builtin_projections();
+}
+
+pub fn register_gallery_runtime(app: &mut NativeRuntimeApp) {
+    register_gallery_composition(app);
     app.consume_all_builtin_projections();
 }
 
@@ -291,29 +296,18 @@ mod tests {
 
     #[test]
     fn register_tolerates_null_app() {
-        // D6 contract: every `nmp_app_*` symbol degrades silently on NULL.
+        // D6 contract: the legacy registration symbol degrades silently on NULL.
         nmp_app_gallery_register(std::ptr::null_mut());
     }
 
     #[test]
-    fn register_with_real_app_smoke() {
+    fn register_native_runtime_app_smoke() {
         // Smoke-test the composition path: build a real `NmpApp` and run
-        // the explicit gallery composition via the gallery's one-shot. The
-        // only test that exercises a real-app registration (the null-path test
-        // above covers the D6 degrade). `nmp_app_new` is passive;
-        // `nmp_app_start` spawns the actor before the native runtime liveness
-        // method can report alive.
-        let app = nmp_ffi::nmp_app_new();
-        assert!(!app.is_null(), "nmp_app_new must produce a non-null app");
-
-        nmp_app_gallery_register(app as *mut c_void);
-        nmp_ffi::nmp_app_start(app as *mut nmp_ffi::NmpApp, 256, 4);
-        let app_ref = unsafe { &*app };
-        assert!(
-            app_ref.is_alive(),
-            "registered app must report alive via the native runtime"
-        );
-
-        nmp_ffi::nmp_app_free(app);
+        // the explicit gallery composition via the native-runtime helper.
+        let mut app = nmp_native_runtime::new_app();
+        register_gallery_runtime(&mut app);
+        app.start_runtime(256, 4);
+        assert!(app.is_alive(), "registered app must report alive");
+        app.shutdown();
     }
 }

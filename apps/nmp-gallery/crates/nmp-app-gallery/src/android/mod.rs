@@ -10,19 +10,14 @@
 //! Session state, callback trampolines, and small JNI helpers live in the
 //! [`session`] submodule (split for file-size compliance).
 
-use std::ffi::c_void;
 use std::sync::Arc;
 
-use jni::JNIEnv;
 use jni::objects::{JByteArray, JClass, JObject, JString};
 use jni::sys::{jint, jlong, jstring};
+use jni::JNIEnv;
 
 use nmp_core::__ffi_internal::NativeCapabilityHandler;
-use nmp_ffi::{
-    nmp_app_add_relay, nmp_app_deliver_external_signer_response, nmp_app_new,
-    nmp_app_release_profile_ref, nmp_app_resolve_profile_ref, nmp_app_set_update_callback,
-    nmp_app_signin_nip55, nmp_app_start, nmp_app_stop, nmp_external_signer_init,
-};
+use nmp_native_runtime::UpdateListener;
 
 use crate::dispatch_bytes::dispatch_action_bytes_for;
 
@@ -33,8 +28,8 @@ use std::sync::Mutex;
 mod event_refs;
 pub(crate) mod session;
 use session::{
-    GallerySession, handle_capability_request, jstring_to_cstring, on_update, session_ref,
-    set_update_listener, teardown_session,
+    handle_capability_request, jstring_to_cstring, on_update, session_ref, set_update_listener,
+    teardown_session, GallerySession,
 };
 
 // ── JNI entry points ──────────────────────────────────────────────────────
@@ -44,13 +39,11 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeNew(
     _env: JNIEnv,
     _class: JClass,
 ) -> jlong {
-    let app = nmp_app_new();
-    if app.is_null() {
-        return 0;
-    }
+    let mut app = nmp_native_runtime::new_app();
+    crate::register_gallery_runtime(&mut app);
     // Issue #614 — the update-callback context owns the JNI push listener slot.
-    let update_ctx = Box::into_raw(Box::new(crate::android_push::GalleryUpdateCtx::new()));
-    nmp_app_set_update_callback(app, update_ctx as *mut c_void, Some(on_update));
+    let update_ctx = Arc::new(crate::android_push::GalleryUpdateCtx::new());
+    app.set_update_listener(Some(update_listener(Arc::clone(&update_ctx))));
     // Issue #1612 / ADR-0048 Stage 2 — push-based signer-request delivery
     // (D8 no-polling; replaces the deleted mpsc-channel + nativeNextSignerRequest drain).
     let signer_listener: SignerRequestListenerSlot = Arc::new(Mutex::new(None));
@@ -58,10 +51,9 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeNew(
     let capability_handler: NativeCapabilityHandler = Arc::new(move |request_json| {
         handle_capability_request(&signer_listener_for_handler, &request_json)
     });
-    unsafe { &*app }
-        .capability_callback_slot()
+    app.capability_callback_slot()
         .set_native_handler(Some(capability_handler));
-    nmp_external_signer_init(app);
+    app.init_external_signer();
     let session = Box::new(GallerySession {
         app,
         update_ctx,
@@ -91,7 +83,9 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeGalleryReg
     handle: jlong,
 ) {
     if let Some(s) = session_ref(handle) {
-        crate::nmp_app_gallery_register(s.app as *mut c_void);
+        // Registration happens during `nativeNew` while the native runtime app
+        // is still uniquely owned and before `start_runtime`.
+        let _ = &s.app;
     }
 }
 
@@ -171,9 +165,13 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeStart(
         let Ok(role_c) = std::ffi::CString::new(relay.role.as_str()) else {
             continue;
         };
-        nmp_app_add_relay(s.app, url_c.as_ptr(), role_c.as_ptr());
+        s.app.add_relay(
+            url_c.to_string_lossy().into_owned(),
+            role_c.to_string_lossy().into_owned(),
+        );
     }
-    nmp_app_start(s.app, visible_limit as u32, emit_hz as u32);
+    s.app
+        .start_runtime(clamp_visible(visible_limit), clamp_emit_hz(emit_hz));
 }
 
 #[no_mangle]
@@ -183,7 +181,7 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeStop(
     handle: jlong,
 ) {
     if let Some(s) = session_ref(handle) {
-        nmp_app_stop(s.app);
+        s.app.stop_runtime();
     }
 }
 
@@ -205,7 +203,13 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeResolvePro
     let Some(consumer_id) = jstring_to_cstring(&mut env, &consumer_id) else {
         return;
     };
-    nmp_app_resolve_profile_ref(s.app, key.as_ptr(), consumer_id.as_ptr());
+    s.app.resolve_ref(
+        nmp_core::RefNamespace::Profile,
+        key.to_string_lossy().into_owned(),
+        consumer_id.to_string_lossy().into_owned(),
+        nmp_core::RefShape::Profile(nmp_core::ProfileShape::Ref),
+        nmp_core::RefLiveness::CacheOk,
+    );
 }
 
 /// ADR-0063 (#1671) — release a profile ref previously registered via
@@ -226,7 +230,11 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeReleasePro
     let Some(consumer_id) = jstring_to_cstring(&mut env, &consumer_id) else {
         return;
     };
-    nmp_app_release_profile_ref(s.app, key.as_ptr(), consumer_id.as_ptr());
+    s.app.release_ref(
+        nmp_core::RefNamespace::Profile,
+        key.to_string_lossy().into_owned(),
+        consumer_id.to_string_lossy().into_owned(),
+    );
 }
 
 /// Register (or clear) the JNI push listener for kernel update frames
@@ -256,7 +264,7 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeClearUpdat
     handle: jlong,
 ) {
     if let Some(s) = session_ref(handle) {
-        unsafe { &*s.update_ctx }.clear_listener();
+        s.update_ctx.clear_listener();
     }
 }
 
@@ -267,7 +275,7 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeClearUpdat
 /// [`dispatch_action_bytes_for`] seam deserializes the body into the
 /// namespace's typed [`ActionPayload`](nmp_core::substrate::ActionPayload),
 /// wraps it in an open dispatch envelope, and hands TYPED BYTES to
-/// [`nmp_ffi::nmp_app_dispatch_action_bytes`]. No JSON crosses the FFI; the
+/// [`nmp_native_runtime::dispatch_action_bytes_typed`]. No JSON crosses the FFI; the
 /// JSON is an in-process intermediate only.
 ///
 /// Returns the kernel's result envelope JSON (`{"correlation_id":…}` on accept,
@@ -297,7 +305,7 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeDispatchAc
     let (Ok(namespace), Ok(body)) = (action_c.to_str(), payload_c.to_str()) else {
         return null;
     };
-    let result = match dispatch_action_bytes_for(s.app, namespace, body) {
+    let result = match dispatch_action_bytes_for(&s.app, namespace, body) {
         Ok(envelope_json) => envelope_json,
         Err(message) => serde_json::json!({ "error": message }).to_string(),
     };
@@ -378,10 +386,8 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeSignInNip5
             jstring_to_cstring(&mut env, &signer_package)
         }
     };
-    nmp_app_signin_nip55(
-        s.app,
-        package.as_ref().map_or(std::ptr::null(), |v| v.as_ptr()),
-    );
+    s.app
+        .signin_nip55(package.map(|v| v.to_string_lossy().into_owned()));
 }
 
 /// Report a raw `ExternalSignerResponse` JSON back to the Rust driver
@@ -397,5 +403,28 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeDeliverSig
     let Some(response) = jstring_to_cstring(&mut env, &response_json) else {
         return;
     };
-    nmp_app_deliver_external_signer_response(s.app, response.as_ptr());
+    s.app
+        .deliver_external_signer_response(&response.to_string_lossy());
+}
+
+fn clamp_visible(visible_limit: jint) -> usize {
+    if visible_limit <= 0 {
+        nmp_core::__ffi_internal::DEFAULT_VISIBLE_LIMIT
+    } else {
+        (visible_limit as u32).clamp(1, 500) as usize
+    }
+}
+
+fn clamp_emit_hz(emit_hz: jint) -> u32 {
+    if emit_hz <= 0 {
+        nmp_core::__ffi_internal::DEFAULT_EMIT_HZ
+    } else {
+        (emit_hz as u32).clamp(1, 12)
+    }
+}
+
+fn update_listener(update_ctx: Arc<crate::android_push::GalleryUpdateCtx>) -> UpdateListener {
+    Arc::new(move |bytes: &[u8]| {
+        on_update(&update_ctx, bytes);
+    })
 }

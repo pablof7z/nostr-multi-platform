@@ -4,7 +4,7 @@
 //! The JSON doorway `nmp_app_dispatch_action(app, namespace, json)` is retired
 //! from this crate. Every write the gallery's `nativeDispatchAction` JNI entry
 //! point emits now travels the typed
-//! [`nmp_ffi::nmp_app_dispatch_action_bytes`] doorway: a host-minted
+//! [`nmp_native_runtime::dispatch_action_bytes_typed`] doorway: a host-minted
 //! `correlation_id` + the action's host NAMESPACE + a typed
 //! [`ActionPayload`](nmp_core::substrate::ActionPayload) payload, wrapped in an
 //! open [`DispatchEnvelope`](nmp_core::dispatch_envelope) via
@@ -30,7 +30,6 @@
 //! dispatch (e.g. NIP-29 groups) is rejected fail-closed (D6) rather than
 //! falling back to a JSON dispatch — there is no JSON dispatch left.
 
-use std::ffi::CStr;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::de::DeserializeOwned;
@@ -39,7 +38,7 @@ use serde_json::Value;
 use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
 use nmp_core::substrate::ActionPayload;
 use nmp_defaults::action_payloads;
-use nmp_ffi::{nmp_app_dispatch_action_bytes, nmp_free_string, NmpApp};
+use nmp_native_runtime::{dispatch_action_bytes_typed, NmpApp};
 
 /// Process-local correlation-id source.
 ///
@@ -116,22 +115,19 @@ where
 /// Builds the typed payload for `namespace` from `json` (the canonical action
 /// body the gallery shell produced), mints a host correlation id, wraps payload
 /// + namespace + id in an open [`DispatchEnvelope`](nmp_core::dispatch_envelope),
-/// and hands the finished bytes to [`nmp_app_dispatch_action_bytes`]. Returns
+/// and hands the finished bytes to [`dispatch_action_bytes_typed`]. Returns
 /// the result envelope JSON on accept/reject (`{"correlation_id":…}` /
 /// `{"error":…}`), or a fail-closed error string (D6) on a null app, an unknown
 /// / mis-shaped namespace, or a kernel rejection.
 ///
 /// # Safety
-/// `app` must be a valid non-null `*mut NmpApp` from `nmp_app_new` (a null `app`
-/// returns an error string, never a crash).
+/// `app` must be a live native-runtime app whose gallery composition was
+/// installed before start.
 pub fn dispatch_action_bytes_for(
-    app: *mut NmpApp,
+    app: &NmpApp,
     namespace: &str,
     json: &str,
 ) -> Result<String, String> {
-    if app.is_null() {
-        return Err("runtime app is not available".to_string());
-    }
     let payload = encode_payload_for_namespace(namespace, json)?;
     let correlation_id = mint_correlation_id();
     let envelope = encode_dispatch_envelope(
@@ -141,21 +137,14 @@ pub fn dispatch_action_bytes_for(
         &payload,
     );
 
-    // SAFETY: `app` is a valid, non-null pointer (checked above); `envelope` is a
-    // live, fully-initialised byte buffer for the duration of the call. The
-    // doorway reads the bytes but never retains or frees them.
-    let ptr = nmp_app_dispatch_action_bytes(app, envelope.as_ptr(), envelope.len());
-    if ptr.is_null() {
-        return Err("action dispatch returned null".to_string());
+    let outcome = dispatch_action_bytes_typed(app, &envelope);
+    if let Some(error) = outcome.error {
+        return Err(error);
     }
-    let text = unsafe { CStr::from_ptr(ptr) }
-        .to_string_lossy()
-        .into_owned();
-    nmp_free_string(ptr);
-
-    let value: Value = serde_json::from_str(&text)
-        .map_err(|e| format!("action dispatch returned invalid JSON: {e}"))?;
-    parse_dispatch_envelope(&value).map(|_| text)
+    let Some(correlation_id) = outcome.correlation_id.filter(|id| !id.is_empty()) else {
+        return Err("action dispatch envelope missing correlation_id".to_string());
+    };
+    Ok(serde_json::json!({ "correlation_id": correlation_id }).to_string())
 }
 
 /// Parse a dispatch result envelope returned by the byte doorway.
