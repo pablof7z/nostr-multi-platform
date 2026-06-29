@@ -35,6 +35,27 @@ An app Rust composition root installs:
 - capability contracts that describe raw OS/browser work the shell may execute;
 - one app/client identity used by outbound finalization and transport metadata.
 
+The composition root is the only place where an app chooses product policy. It
+is the answer to "what does this app do?" A maintainer should be able to read
+that root and see the installed protocol features, app features, read sessions,
+write builders, shell capabilities, and product defaults without reverse
+engineering a preset crate.
+
+Typical construction is:
+
+```text
+create NMP app builder
+  -> install substrate/runtime pieces
+  -> install selected reusable Nostr protocol features
+  -> install app-owned product features
+  -> install shell capability contracts
+  -> start actor/runtime
+```
+
+The exact Rust API can change. The invariant is that production apps compose
+named pieces explicitly, and app-specific nouns stay in app crates unless they
+are a reusable Nostr mechanism.
+
 `nmp-defaults` may survive as a reusable installer library. It must not be a
 hidden production preset or a leaf-app policy owner. It may provide substrate,
 generic routing, mailbox, parser, signer, and publish installers. It must not
@@ -68,6 +89,9 @@ Negative/tradeoffs:
   is pleasant.
 - A production app may initially write more visible setup code, but that setup
   replaces hidden behavior.
+- Existing downstream apps may need a transition pass where each `register_*`
+  call is classified as substrate, reusable protocol feature, app feature,
+  capability, or compatibility.
 
 ## Alternatives considered
 

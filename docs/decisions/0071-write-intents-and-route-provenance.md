@@ -24,7 +24,8 @@ identity and route provenance through the existing one publish stack.
 Every production write starts as a Rust-owned publish intent before signing,
 route resolution, relay sockets, or retry.
 
-The write stages are separate but remain one actor-owned workflow:
+Event construction, signing, and publishing are separate stages, but they remain
+one actor-owned workflow:
 
 ```text
 record local publish intent
@@ -45,6 +46,29 @@ relay-list policy, client identity tags, or app-specific publish context.
 After signing, event id and signature are immutable. Any required envelope
 mutation must happen before signing.
 
+From the app developer perspective, the write surface should feel like:
+
+```text
+draft = reply_to(event)
+draft.content = "nice!"
+publish(draft)
+
+reaction = react_to(event, "+")
+publish(reaction)
+
+article = new_article(title: "Hello World", content: "this is my article")
+publish_to_group(article, group_id)
+```
+
+Those examples are not API commitments. They describe the ownership boundary:
+construction helpers build unsigned drafts; publishing selects or receives a
+signer, applies any final envelope mutations, plans route policy, signs, sends,
+and reports status. A caller may choose a non-primary signer or audited manual
+relay override, but those choices become typed provenance, not anonymous relay
+lists. Protocol publish helpers may opt out of default outbox planning only by
+declaring a route class such as verified private inbox, group host pin, manual
+override, imported event, or diagnostic route.
+
 Publish routing status carries route provenance, not just relay URLs. The route
 class must remain distinguishable through dispatch, finalization, signing,
 remote-signer parking, retry/resume, local ingest, and status output:
@@ -60,6 +84,11 @@ Product code cannot construct an unclassified explicit relay list. Private
 events require verified private-inbox provenance. Group writes require host-pin
 provenance or remain imported/manual with reduced guarantees. Pre-signed events
 do not silently upgrade into protocol-owned provenance after the fact.
+
+Signing is a capability stage, not a construction stage. A draft can be built,
+modified, finalized for a protocol envelope, and only then signed. Once signed,
+the only valid publish mutations are transport/status metadata outside the
+signed event.
 
 The preferred implementation path is to widen or pair existing carriers such as
 `PublishTarget`, relay selection reasons, publish commands, parked signer

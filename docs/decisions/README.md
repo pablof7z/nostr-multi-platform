@@ -22,6 +22,40 @@ Older ADRs remain authoritative only where they do not conflict with that spine.
 If an older ADR teaches a superseded public API, read its status line and current
 disposition first.
 
+## How The Spine Fits Together
+
+The intended developer model is:
+
+```text
+app Rust crate declares installed features and product policy
+  -> shell opens typed read sessions and dispatches typed actions
+  -> NMP acquires, stores, projects, signs, routes, publishes, and reports status
+  -> shell renders typed output and executes raw capabilities only
+```
+
+An app developer should see product-shaped APIs: "open this article feed",
+"open this group", "reply to this event", "publish this article to this group".
+They should not have to assemble relay interests, observed sinks, projection
+sidecars, replay order, dynamic source replacement, snapshot ticks, signer
+parking, route planning, or teardown by hand.
+
+Internally, those lower-level pieces are still allowed when justified:
+
+- `open_interest` is acquisition machinery, not a production screen API.
+- `ObservedProjection` / `ObservedProjectionSink` are scoped event-delivery and
+  replay machinery behind typed read sessions.
+- `ReducedSource` names dynamic source reconciliation behind a session, not a
+  concept every app author must learn.
+- projection emission and incremental frames are output mechanics, not separate
+  app subscriptions.
+- publish planning, signer capabilities, and relay provenance are one
+  actor-owned write workflow, not shell policy.
+
+This means the right simplification metric is not "delete every internal
+mechanism". Some complexity is paying for real Nostr correctness. The target is
+fewer public doors, fewer duplicate lifecycle recipes, fewer shell policy sites,
+and fewer permanent concepts an app author must understand.
+
 ## Status Terms
 
 - **Current**: still owns a live invariant.
