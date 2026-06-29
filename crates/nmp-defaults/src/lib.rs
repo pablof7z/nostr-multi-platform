@@ -110,6 +110,10 @@ pub mod tiers;
 pub mod topic_articles;
 mod topic_articles_wire;
 
+pub use composition::{
+    register_dm_protocol_defaults, register_nip50_protocol_defaults,
+    register_social_protocol_defaults,
+};
 pub use runtimes::{
     register_bookmark_runtime, register_comment_runtime, register_mute_runtime,
     register_search_relay_runtime, register_search_relay_runtime_with,
@@ -269,16 +273,19 @@ fn register_defaults_inner(
     // struct so app-core crates get an instance-identical read handle.
     handles.mailbox_cache = Some(register_substrate(app, coverage_gate));
 
-    composition::register_nip50_defaults(app);
+    register_nip50_protocol_defaults(app);
 
     // ── Social-feature defaults (toggleable) ─────────────────────────────
 
     if social {
-        composition::register_social_defaults(app, &mut handles, search_defaults);
+        let social_handles = register_social_protocol_defaults(app, search_defaults);
+        handles.wot = social_handles.wot;
+        handles.mute = social_handles.mute;
+        handles.search_relays = social_handles.search_relays;
     }
 
     if dms {
-        composition::register_dm_defaults(app);
+        register_dm_protocol_defaults(app);
     }
 
     if longform {
