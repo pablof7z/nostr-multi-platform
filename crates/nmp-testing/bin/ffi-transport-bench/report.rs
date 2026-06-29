@@ -1,6 +1,33 @@
 // ffi-transport-bench/report.rs
 //
 // JSON + Markdown report structures and writer.
+//
+// METRIC LABELING NOTE
+// ====================
+// The per-bucket timing statistics use a BATCH-MEAN approach for all three
+// buckets: `timing_batch_size` frames are timed as a single batch, then the
+// batch time is divided by the batch size to produce one per-frame mean
+// sample.  The fields `p50_batch_mean_ns`, `p95_batch_mean_ns`, and
+// `p99_batch_mean_ns` are percentiles over those batch-means, NOT over
+// individual frame wall times.
+//
+// Averaging K frames per sample suppresses per-frame tail variation by
+// roughly √K (standard error of the mean).  For K=1000 used in the SMALL
+// bucket this is roughly 32×.  A "p99" of batch means therefore understates
+// the actual per-frame tail fidelity by that factor.
+//
+// For SMALL bucket (sub-µs C-lane cost, near Instant timer resolution):
+//   Batch-mean is the only reliable statistic; individual frame timing
+//   would be dominated by Instant overhead (~50 ns per pair).
+//   `p99_per_frame_ns` = None.
+//
+// For MEDIUM and LARGE buckets (hundreds of ns to µs — above timer resolution):
+//   True per-frame p99 is ALSO computed by timing each frame individually
+//   (100 k individual samples after warmup, separately baselined).
+//   `p99_per_frame_ns` = Some(value).
+//
+// The verdict gate uses the SMALL-bucket batch-mean p99 (labeled explicitly
+// as such in config.rs COLLAPSE_SMALL_ABS_NS and here in compute_verdict).
 
 use crate::config::{
     COLLAPSE_SMALL_ABS_NS, COLLAPSE_THRESHOLD_NS, KEEP_THRESHOLD_NS,
@@ -15,7 +42,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// Pre-registered decision verdict.
 #[derive(Debug, Clone, Serialize)]
 pub enum Verdict {
-    /// Surcharged weighted-p99 delta < 5% of 16.67 ms AND UniFFI SMALL p99 < 250 us.
+    /// Surcharged weighted-p99 delta < 5% of 16.67 ms AND UniFFI SMALL batch-mean p99 < 250 us.
     /// Safe to collapse to a single UniFFI surface.
     Collapse,
     /// Surcharged weighted-p99 delta in [5%, 15%): insufficient synthetic evidence —
@@ -36,15 +63,34 @@ impl Verdict {
 }
 
 /// Per-bucket timing statistics (nanoseconds per frame).
+///
+/// IMPORTANT: `p50_batch_mean_ns`, `p95_batch_mean_ns`, `p99_batch_mean_ns`
+/// are percentiles over PER-BATCH MEANS (batch size = `timing_batch_size`
+/// frames per sample), NOT over individual frame wall times.  See the module
+/// comment at the top of this file for the rationale and implications.
+///
+/// `p99_per_frame_ns` is set only for MEDIUM and LARGE buckets where
+/// individual frame timing is above Instant resolution.
 #[derive(Debug, Clone, Serialize)]
 pub struct BucketStats {
     pub bucket: &'static str,
     pub frame_bytes_min: usize,
     pub frame_bytes_max: usize,
     pub deliveries: usize,
-    pub p50_ns: u64,
-    pub p95_ns: u64,
-    pub p99_ns: u64,
+    /// Number of frames per timing sample.  All three batch-mean p-value fields
+    /// are percentiles over (total_deliveries / timing_batch_size) samples.
+    pub timing_batch_size: usize,
+    /// p50 of per-batch-mean per-frame cost (ns).
+    pub p50_batch_mean_ns: u64,
+    /// p95 of per-batch-mean per-frame cost (ns).
+    pub p95_batch_mean_ns: u64,
+    /// p99 of per-batch-mean per-frame cost (ns).
+    /// For SMALL bucket this is the only p99 available; tail fidelity is
+    /// limited because 1000-frame averaging suppresses outliers by ~32x.
+    pub p99_batch_mean_ns: u64,
+    /// True per-frame p99: None for SMALL bucket (sub-us, below timer
+    /// resolution); Some for MEDIUM/LARGE (above timer resolution).
+    pub p99_per_frame_ns: Option<u64>,
 }
 
 /// Per-lane allocation statistics.
@@ -60,14 +106,16 @@ pub struct AllocStats {
 pub struct TransportBenchReport {
     pub tool: &'static str,
     pub started_at_unix: u64,
-    /// rustc/opt-level/lto/codegen-units build metadata.
+    /// rustc/opt-level/target build metadata captured at compile time via build.rs.
     pub build_info: BuildInfo,
     /// Timing results per lane per bucket.
     pub c_lane: LaneReport,
     pub uniffi_lane: LaneReport,
     /// Weighted-p99 delta (UniFFI minus C), raw nanoseconds.
+    /// NOTE: weighted_p99_ns in each LaneReport is computed from
+    /// p99_batch_mean_ns values — see METRIC LABELING NOTE above.
     pub weighted_p99_delta_raw_ns: i64,
-    /// Synthetic foreign-copy component (lower bound; see SYNTHETIC note).
+    /// Synthetic foreign-copy component (lower bound; see synthetic_caveat).
     pub synthetic_foreign_copy_ns: i64,
     /// Surcharged delta: raw Rust-side delta + synthetic_foreign_copy * JNI_SURCHARGE.
     pub weighted_p99_delta_surcharged_ns: i64,
@@ -75,6 +123,8 @@ pub struct TransportBenchReport {
     pub surcharged_delta_pct_of_frame_budget: f64,
     /// Pre-registered verdict.
     pub verdict: String,
+    /// Explicit caveat for the COLLAPSE verdict — states the unverified assumption.
+    pub verdict_caveat: String,
     /// Governing threshold used by the verdict.
     pub governing_threshold_ns: u64,
     /// Allocation pass results (empty if timing-only pass).
@@ -89,6 +139,7 @@ pub struct TransportBenchReport {
 pub struct LaneReport {
     pub lane: &'static str,
     pub buckets: Vec<BucketStats>,
+    /// Weighted p99 computed from per-bucket p99_batch_mean_ns values.
     pub weighted_p99_ns: f64,
     pub baseline_ns: u64,
 }
@@ -104,31 +155,34 @@ pub struct BuildInfo {
 impl BuildInfo {
     pub fn capture() -> Self {
         BuildInfo {
-            rustc_version: rustc_version_string(),
-            opt_level: std::env::var("OPT_LEVEL").unwrap_or_else(|_| "unknown".to_string()),
+            // These are emitted by build.rs via `cargo:rustc-env=FFI_BENCH_*`.
+            rustc_version: option_env!("FFI_BENCH_RUSTC_VERSION")
+                .unwrap_or("unknown")
+                .to_string(),
+            opt_level: option_env!("FFI_BENCH_OPT_LEVEL")
+                .unwrap_or("unknown")
+                .to_string(),
             debug_assertions: cfg!(debug_assertions),
-            target: std::env::var("TARGET").unwrap_or_else(|_| "unknown".to_string()),
+            target: option_env!("FFI_BENCH_TARGET")
+                .unwrap_or("unknown")
+                .to_string(),
         }
     }
-}
-
-fn rustc_version_string() -> String {
-    // Use the CARGO_PKG_RUST_VERSION env var if set, else "unknown".
-    // (The bench is built with --release; we record this for reproducibility.)
-    std::env::var("RUSTC_VERSION")
-        .unwrap_or_else(|_| "unknown (set RUSTC_VERSION env var to record)".to_string())
 }
 
 // ── Verdict computation ───────────────────────────────────────────────────────
 
 /// Compute the pre-registered verdict from the surcharged delta and the
-/// absolute UniFFI SMALL p99.
+/// absolute UniFFI SMALL **batch-mean** p99.
+///
+/// The SMALL-bucket gate uses `uniffi_small_batch_mean_p99_ns`, which is the
+/// p99 of per-1000-frame means.  See the module comment for implications.
 pub fn compute_verdict(
     surcharged_delta_ns: i64,
-    uniffi_small_p99_ns: u64,
+    uniffi_small_batch_mean_p99_ns: u64,
 ) -> Verdict {
     let delta = surcharged_delta_ns.max(0) as u64;
-    if delta < COLLAPSE_THRESHOLD_NS && uniffi_small_p99_ns < COLLAPSE_SMALL_ABS_NS {
+    if delta < COLLAPSE_THRESHOLD_NS && uniffi_small_batch_mean_p99_ns < COLLAPSE_SMALL_ABS_NS {
         Verdict::Collapse
     } else if delta >= KEEP_THRESHOLD_NS {
         Verdict::KeepInternal
@@ -157,7 +211,10 @@ pub fn compute_surcharged_delta(
     (raw_delta, surcharged_delta)
 }
 
-/// Compute weighted p99 from per-bucket p99 values.
+/// Compute weighted p99 from per-bucket **batch-mean** p99 values.
+///
+/// NOTE: these are batch-mean p99s, not per-frame p99s.  The weighted
+/// combination inherits the same batch-mean semantics.
 pub fn weighted_p99(small_p99: u64, medium_p99: u64, large_p99: u64) -> f64 {
     WEIGHT_SMALL * small_p99 as f64
         + WEIGHT_MEDIUM * medium_p99 as f64
@@ -174,7 +231,7 @@ pub fn weighted_p99(small_p99: u64, medium_p99: u64, large_p99: u64) -> f64 {
 /// JNI table entries).
 ///
 /// On modern Apple M-series / ARM processors, memcpy throughput is
-/// approximately 20–40 GB/s, giving ~25–50 ns/KB. We use a conservative
+/// approximately 20-40 GB/s, giving ~25-50 ns/KB. We use a conservative
 /// 40 ns/KB baseline to stay below actual cost.
 pub fn estimate_synthetic_foreign_copy_ns(weighted_mean_bytes: f64) -> i64 {
     // 40 ns per 1 KB = 40_000 ns per MB.
@@ -212,39 +269,56 @@ fn markdown_report(report: &TransportBenchReport) -> String {
     ));
 
     out.push_str("## Timing Results\n\n");
-    out.push_str("| Lane | Bucket | Bytes (min–max) | p50 (ns) | p95 (ns) | p99 (ns) |\n");
-    out.push_str("|------|--------|-----------------|----------|----------|----------|\n");
+    out.push_str(
+        "> **Metric note:** `p50/p95/p99 batch-mean (ns)` columns are percentiles over \
+        per-1000-frame MEANS, not over individual frame wall times.  \
+        Averaging 1000 frames suppresses tail variation by roughly 32x (CLT).  \
+        `p99/frame` is a true per-frame p99 (100k individual samples); \
+        reported for MEDIUM and LARGE only (SMALL is sub-us and below timer resolution).\n\n"
+    );
+    out.push_str("| Lane | Bucket | Bytes (min-max) | p50 batch-mean (ns) | p95 batch-mean (ns) | p99 batch-mean (ns) | p99/frame (ns) |\n");
+    out.push_str("|------|--------|-----------------|---------------------|---------------------|---------------------|----------------|\n");
     for bucket in &report.c_lane.buckets {
         out.push_str(&format!(
-            "| C-lane | {} | {}–{} | {} | {} | {} |\n",
+            "| C-lane | {} | {}-{} | {} | {} | {} | {} |\n",
             bucket.bucket,
             bucket.frame_bytes_min,
             bucket.frame_bytes_max,
-            bucket.p50_ns,
-            bucket.p95_ns,
-            bucket.p99_ns,
+            bucket.p50_batch_mean_ns,
+            bucket.p95_batch_mean_ns,
+            bucket.p99_batch_mean_ns,
+            bucket.p99_per_frame_ns
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "n/a (sub-us)".to_string()),
         ));
     }
     for bucket in &report.uniffi_lane.buckets {
         out.push_str(&format!(
-            "| UniFFI | {} | {}–{} | {} | {} | {} |\n",
+            "| UniFFI | {} | {}-{} | {} | {} | {} | {} |\n",
             bucket.bucket,
             bucket.frame_bytes_min,
             bucket.frame_bytes_max,
-            bucket.p50_ns,
-            bucket.p95_ns,
-            bucket.p99_ns,
+            bucket.p50_batch_mean_ns,
+            bucket.p95_batch_mean_ns,
+            bucket.p99_batch_mean_ns,
+            bucket.p99_per_frame_ns
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "n/a (sub-us)".to_string()),
         ));
     }
     out.push('\n');
 
     out.push_str("## Delta Analysis\n\n");
+    out.push_str(
+        "> Weighted-p99 values below are computed from per-bucket `p99_batch_mean_ns` \
+        (see metric note above).\n\n"
+    );
     out.push_str(&format!(
-        "- Weighted-p99 C-lane: {:.0} ns\n",
+        "- Weighted-p99 C-lane (batch-mean): {:.0} ns\n",
         report.c_lane.weighted_p99_ns
     ));
     out.push_str(&format!(
-        "- Weighted-p99 UniFFI: {:.0} ns\n",
+        "- Weighted-p99 UniFFI (batch-mean): {:.0} ns\n",
         report.uniffi_lane.weighted_p99_ns
     ));
     out.push_str(&format!(
@@ -256,7 +330,7 @@ fn markdown_report(report: &TransportBenchReport) -> String {
         report.synthetic_foreign_copy_ns
     ));
     out.push_str(&format!(
-        "- Surcharged delta (raw + foreign-copy × {}): {} ns\n",
+        "- Surcharged delta (raw + foreign-copy x{}): {} ns\n",
         JNI_MANAGED_SURCHARGE_FACTOR,
         report.weighted_p99_delta_surcharged_ns
     ));
@@ -275,6 +349,10 @@ fn markdown_report(report: &TransportBenchReport) -> String {
         5.0,
         KEEP_THRESHOLD_NS,
         15.0,
+    ));
+    out.push_str(&format!(
+        "> **Verdict caveat:** {}\n\n",
+        report.verdict_caveat
     ));
 
     if !report.alloc_stats.is_empty() {

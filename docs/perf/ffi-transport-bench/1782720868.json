@@ -1,11 +1,11 @@
 {
   "tool": "ffi-transport-bench",
-  "started_at_unix": 1782719684,
+  "started_at_unix": 1782720868,
   "build_info": {
-    "rustc_version": "unknown (set RUSTC_VERSION env var to record)",
-    "opt_level": "unknown",
+    "rustc_version": "rustc 1.98.0-nightly (654079540 2026-06-12)",
+    "opt_level": "3",
     "debug_assertions": false,
-    "target": "unknown"
+    "target": "aarch64-apple-darwin"
   },
   "c_lane": {
     "lane": "C-lane",
@@ -15,30 +15,36 @@
         "frame_bytes_min": 256,
         "frame_bytes_max": 2048,
         "deliveries": 100000,
-        "p50_ns": 62,
-        "p95_ns": 81,
-        "p99_ns": 91
+        "timing_batch_size": 1000,
+        "p50_batch_mean_ns": 64,
+        "p95_batch_mean_ns": 120,
+        "p99_batch_mean_ns": 144,
+        "p99_per_frame_ns": null
       },
       {
         "bucket": "medium",
         "frame_bytes_min": 2048,
         "frame_bytes_max": 8192,
         "deliveries": 100000,
-        "p50_ns": 173,
-        "p95_ns": 192,
-        "p99_ns": 198
+        "timing_batch_size": 1000,
+        "p50_batch_mean_ns": 267,
+        "p95_batch_mean_ns": 560,
+        "p99_batch_mean_ns": 634,
+        "p99_per_frame_ns": 526
       },
       {
         "bucket": "large",
         "frame_bytes_min": 16384,
         "frame_bytes_max": 65536,
         "deliveries": 100000,
-        "p50_ns": 2023,
-        "p95_ns": 4538,
-        "p99_ns": 4893
+        "timing_batch_size": 1000,
+        "p50_batch_mean_ns": 9702,
+        "p95_batch_mean_ns": 17629,
+        "p99_batch_mean_ns": 29516,
+        "p99_per_frame_ns": 1651
       }
     ],
-    "weighted_p99_ns": 347.15,
+    "weighted_p99_ns": 1686.1000000000001,
     "baseline_ns": 0
   },
   "uniffi_lane": {
@@ -49,37 +55,44 @@
         "frame_bytes_min": 256,
         "frame_bytes_max": 2048,
         "deliveries": 100000,
-        "p50_ns": 823,
-        "p95_ns": 915,
-        "p99_ns": 945
+        "timing_batch_size": 1000,
+        "p50_batch_mean_ns": 817,
+        "p95_batch_mean_ns": 916,
+        "p99_batch_mean_ns": 953,
+        "p99_per_frame_ns": null
       },
       {
         "bucket": "medium",
         "frame_bytes_min": 2048,
         "frame_bytes_max": 8192,
         "deliveries": 100000,
-        "p50_ns": 2420,
-        "p95_ns": 2518,
-        "p99_ns": 2536
+        "timing_batch_size": 1000,
+        "p50_batch_mean_ns": 2432,
+        "p95_batch_mean_ns": 2567,
+        "p99_batch_mean_ns": 2828,
+        "p99_per_frame_ns": 4109
       },
       {
         "bucket": "large",
         "frame_bytes_min": 16384,
         "frame_bytes_max": 65536,
         "deliveries": 100000,
-        "p50_ns": 15583,
-        "p95_ns": 17888,
-        "p99_ns": 18361
+        "timing_batch_size": 1000,
+        "p50_batch_mean_ns": 15472,
+        "p95_batch_mean_ns": 16036,
+        "p99_batch_mean_ns": 16234,
+        "p99_per_frame_ns": 27485
       }
     ],
-    "weighted_p99_ns": 2054.4500000000003,
+    "weighted_p99_ns": 1998.3000000000002,
     "baseline_ns": 0
   },
-  "weighted_p99_delta_raw_ns": 1707,
+  "weighted_p99_delta_raw_ns": 312,
   "synthetic_foreign_copy_ns": 145,
-  "weighted_p99_delta_surcharged_ns": 2142,
-  "surcharged_delta_pct_of_frame_budget": 0.00012851999742960005,
+  "weighted_p99_delta_surcharged_ns": 747,
+  "surcharged_delta_pct_of_frame_budget": 0.000044819999103600015,
   "verdict": "COLLAPSE",
+  "verdict_caveat": "COLLAPSE assumes real managed/JNI per-frame overhead delta cannot reach ~833 us; that boundary is modeled (3x surcharge on synthetic foreign-copy lower bound), not measured. On-device A/B is the escalation if ever doubted.",
   "governing_threshold_ns": 833333,
   "alloc_stats": [],
   "synthetic_caveat": [

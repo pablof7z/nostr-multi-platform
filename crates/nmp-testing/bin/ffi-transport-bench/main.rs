@@ -227,9 +227,18 @@ fn percentile(sorted: &[u64], pct: f64) -> u64 {
 
 // ── Baseline measurement (empty harness) ─────────────────────────────────────
 //
-// Measures timer + index overhead with NO transport work.
-// Subtracted from every per-frame measurement so that the reported numbers
-// reflect pure transport cost.
+// Two variants:
+//
+//   measure_baseline        — batch-of-K baseline used with the batch timing
+//                             passes.  Returns (batch_time / K) as ns/frame.
+//
+//   measure_baseline_single — single-frame Instant overhead (for per-frame
+//                             timing passes where each frame is timed alone).
+//                             Returns the mean of `iters` single-frame timing
+//                             calls with no transport work.
+//
+// Both are subtracted from their respective per-frame measurements so that the
+// reported numbers reflect pure transport cost minus the timing harness.
 
 fn measure_baseline(frames: &[Vec<u8>], iters: usize) -> u64 {
     // Warm up
@@ -252,9 +261,32 @@ fn measure_baseline(frames: &[Vec<u8>], iters: usize) -> u64 {
     total_ns / count as u64
 }
 
+/// Measure the per-Instant-pair overhead for single-frame timing.
+///
+/// This is the cost of `Instant::now() + black_box(index) + elapsed()` with
+/// NO transport work.  Subtracted from per-frame timing samples.
+fn measure_baseline_single(frames: &[Vec<u8>], iters: usize) -> u64 {
+    // Warm up
+    for i in 0..200 {
+        let t0 = Instant::now();
+        black_box(frames[i % frames.len()].as_slice());
+        black_box(t0.elapsed());
+    }
+    let mut total_ns = 0u64;
+    for i in 0..iters {
+        let t0 = Instant::now();
+        black_box(frames[i % frames.len()].as_slice());
+        total_ns += t0.elapsed().as_nanos() as u64;
+    }
+    total_ns / iters as u64
+}
+
 // ── Bucket timing pass ────────────────────────────────────────────────────────
 
 /// Time Lane A (C-lane) for a set of frames using batch-of-K timing.
+///
+/// Each returned sample is the MEAN of SMALL_BATCH_K frame deliveries.
+/// p50/p95/p99 over these samples are batch-mean percentiles, NOT per-frame.
 fn time_c_lane(listener: &UpdateListener, frames: &[Vec<u8>], baseline_ns: u64) -> Vec<u64> {
     let total = frames.len();
     let k = SMALL_BATCH_K;
@@ -276,6 +308,9 @@ fn time_c_lane(listener: &UpdateListener, frames: &[Vec<u8>], baseline_ns: u64) 
 }
 
 /// Time Lane B (UniFFI-lane) for a set of frames using batch-of-K timing.
+///
+/// Each returned sample is the MEAN of SMALL_BATCH_K frame deliveries.
+/// p50/p95/p99 over these samples are batch-mean percentiles, NOT per-frame.
 fn time_uniffi_lane(
     sink: &dyn UpdateFrameSink,
     frames: &[Vec<u8>],
@@ -299,11 +334,54 @@ fn time_uniffi_lane(
     results
 }
 
+/// Time Lane A (C-lane) one frame at a time — produces true per-frame samples.
+///
+/// Used only for MEDIUM and LARGE buckets where individual frame cost is well
+/// above Instant timer resolution (~50 ns per pair on macOS M-series).
+fn time_c_lane_per_frame(
+    listener: &UpdateListener,
+    frames: &[Vec<u8>],
+    baseline_single_ns: u64,
+) -> Vec<u64> {
+    let mut results = Vec::with_capacity(frames.len());
+    for frame in frames {
+        let t0 = Instant::now();
+        listener(frame.as_slice());
+        let elapsed = t0.elapsed().as_nanos() as u64;
+        results.push(elapsed.saturating_sub(baseline_single_ns));
+    }
+    results
+}
+
+/// Time Lane B (UniFFI-lane) one frame at a time — produces true per-frame samples.
+///
+/// Used only for MEDIUM and LARGE buckets (see time_c_lane_per_frame).
+fn time_uniffi_lane_per_frame(
+    sink: &dyn UpdateFrameSink,
+    frames: &[Vec<u8>],
+    baseline_single_ns: u64,
+) -> Vec<u64> {
+    let mut results = Vec::with_capacity(frames.len());
+    for frame in frames {
+        let t0 = Instant::now();
+        uniffi_lane_deliver(sink, frame.as_slice());
+        let elapsed = t0.elapsed().as_nanos() as u64;
+        results.push(elapsed.saturating_sub(baseline_single_ns));
+    }
+    results
+}
+
+/// Run one bucket timing pass.
+///
+/// `per_frame_p99` controls whether true per-frame p99 is also computed:
+///   false — SMALL bucket (sub-us cost, near timer resolution; batch-mean only)
+///   true  — MEDIUM/LARGE (above timer resolution; also time each frame alone)
 fn run_bucket_timing(
     bucket: &'static str,
     min: usize,
     max: usize,
     seed_offset: u64,
+    per_frame_p99: bool,
     c_listener: &UpdateListener,
     uniffi_sink: &dyn UpdateFrameSink,
 ) -> (BucketStats, BucketStats, u64) {
@@ -327,13 +405,28 @@ fn run_bucket_timing(
 
     let measure_frames = &frames[warmup..];
 
-    // Timing pass — C lane
-    let mut c_samples = time_c_lane(c_listener, measure_frames, baseline_ns);
-    c_samples.sort_unstable();
+    // Batch-mean timing pass — C lane
+    let mut c_batch_samples = time_c_lane(c_listener, measure_frames, baseline_ns);
+    c_batch_samples.sort_unstable();
 
-    // Timing pass — UniFFI lane (same frames, same order)
-    let mut uniffi_samples = time_uniffi_lane(uniffi_sink, measure_frames, baseline_ns);
-    uniffi_samples.sort_unstable();
+    // Batch-mean timing pass — UniFFI lane (same frames, same order)
+    let mut uniffi_batch_samples = time_uniffi_lane(uniffi_sink, measure_frames, baseline_ns);
+    uniffi_batch_samples.sort_unstable();
+
+    // Per-frame timing (MEDIUM/LARGE only; separate baseline for single-Instant overhead).
+    let (c_p99_per_frame, uniffi_p99_per_frame) = if per_frame_p99 {
+        let baseline_single_ns = measure_baseline_single(measure_frames, 5_000);
+        let mut c_pf = time_c_lane_per_frame(c_listener, measure_frames, baseline_single_ns);
+        c_pf.sort_unstable();
+        let mut u_pf = time_uniffi_lane_per_frame(uniffi_sink, measure_frames, baseline_single_ns);
+        u_pf.sort_unstable();
+        (
+            Some(percentile(&c_pf, 99.0)),
+            Some(percentile(&u_pf, 99.0)),
+        )
+    } else {
+        (None, None)
+    };
 
     let mean_bytes = frames[warmup..]
         .iter()
@@ -345,21 +438,25 @@ fn run_bucket_timing(
         bucket,
         frame_bytes_min: min,
         frame_bytes_max: max,
-        // Note: deliveries = DELIVERIES_PER_BUCKET (individual frames);
-        // timing samples = deliveries / SMALL_BATCH_K (percentile population).
+        // deliveries = DELIVERIES_PER_BUCKET (individual frames);
+        // timing samples for batch-mean = deliveries / SMALL_BATCH_K.
         deliveries: iters,
-        p50_ns: percentile(&c_samples, 50.0),
-        p95_ns: percentile(&c_samples, 95.0),
-        p99_ns: percentile(&c_samples, 99.0),
+        timing_batch_size: SMALL_BATCH_K,
+        p50_batch_mean_ns: percentile(&c_batch_samples, 50.0),
+        p95_batch_mean_ns: percentile(&c_batch_samples, 95.0),
+        p99_batch_mean_ns: percentile(&c_batch_samples, 99.0),
+        p99_per_frame_ns: c_p99_per_frame,
     };
     let uniffi_stats = BucketStats {
         bucket,
         frame_bytes_min: min,
         frame_bytes_max: max,
         deliveries: iters,
-        p50_ns: percentile(&uniffi_samples, 50.0),
-        p95_ns: percentile(&uniffi_samples, 95.0),
-        p99_ns: percentile(&uniffi_samples, 99.0),
+        timing_batch_size: SMALL_BATCH_K,
+        p50_batch_mean_ns: percentile(&uniffi_batch_samples, 50.0),
+        p95_batch_mean_ns: percentile(&uniffi_batch_samples, 95.0),
+        p99_batch_mean_ns: percentile(&uniffi_batch_samples, 99.0),
+        p99_per_frame_ns: uniffi_p99_per_frame,
     };
     (c_stats, uniffi_stats, mean_bytes as u64)
 }
@@ -417,39 +514,45 @@ fn main() {
     let c_listener = build_c_lane_listener();
     let uniffi_sink: Box<dyn UpdateFrameSink> = Box::new(LowerBoundForeignSink);
 
-    eprintln!("ffi-transport-bench: running SMALL bucket ({SMALL_MIN_BYTES}–{SMALL_MAX_BYTES} bytes)...");
+    eprintln!("ffi-transport-bench: running SMALL bucket ({SMALL_MIN_BYTES}-{SMALL_MAX_BYTES} bytes)...");
+    // SMALL: batch-mean only (sub-us C-lane cost, near Instant timer resolution).
     let (c_small, u_small, mean_small) = run_bucket_timing(
         "small",
         SMALL_MIN_BYTES,
         SMALL_MAX_BYTES,
         0x01,
+        false, // per_frame_p99 = false (sub-us, below timer resolution)
         &c_listener,
         uniffi_sink.as_ref(),
     );
 
-    eprintln!("ffi-transport-bench: running MEDIUM bucket ({MEDIUM_MIN_BYTES}–{MEDIUM_MAX_BYTES} bytes)...");
+    eprintln!("ffi-transport-bench: running MEDIUM bucket ({MEDIUM_MIN_BYTES}-{MEDIUM_MAX_BYTES} bytes)...");
+    // MEDIUM: batch-mean + per-frame (hundreds of ns, above timer resolution).
     let (c_medium, u_medium, mean_medium) = run_bucket_timing(
         "medium",
         MEDIUM_MIN_BYTES,
         MEDIUM_MAX_BYTES,
         0x02,
+        true, // per_frame_p99 = true (feasible above timer resolution)
         &c_listener,
         uniffi_sink.as_ref(),
     );
 
-    eprintln!("ffi-transport-bench: running LARGE bucket ({LARGE_MIN_BYTES}–{LARGE_MAX_BYTES} bytes)...");
+    eprintln!("ffi-transport-bench: running LARGE bucket ({LARGE_MIN_BYTES}-{LARGE_MAX_BYTES} bytes)...");
+    // LARGE: batch-mean + per-frame (us range, clearly above timer resolution).
     let (c_large, u_large, mean_large) = run_bucket_timing(
         "large",
         LARGE_MIN_BYTES,
         LARGE_MAX_BYTES,
         0x03,
+        true, // per_frame_p99 = true (feasible)
         &c_listener,
         uniffi_sink.as_ref(),
     );
 
-    // Weighted p99
-    let c_wp99 = weighted_p99(c_small.p99_ns, c_medium.p99_ns, c_large.p99_ns);
-    let u_wp99 = weighted_p99(u_small.p99_ns, u_medium.p99_ns, u_large.p99_ns);
+    // Weighted p99 (batch-mean — see METRIC LABELING NOTE in report.rs).
+    let c_wp99 = weighted_p99(c_small.p99_batch_mean_ns, c_medium.p99_batch_mean_ns, c_large.p99_batch_mean_ns);
+    let u_wp99 = weighted_p99(u_small.p99_batch_mean_ns, u_medium.p99_batch_mean_ns, u_large.p99_batch_mean_ns);
 
     // Weighted mean bytes
     let weighted_mean_bytes =
@@ -462,7 +565,9 @@ fn main() {
 
     let pct_of_budget = surcharged_delta.max(0) as f64 / FRAME_BUDGET_NS as f64;
 
-    let verdict = compute_verdict(surcharged_delta, u_small.p99_ns);
+    // The verdict uses the SMALL-bucket batch-mean p99 for the absolute gate.
+    // This is labeled explicitly: COLLAPSE_SMALL_ABS_NS checks batch-mean p99.
+    let verdict_enum = compute_verdict(surcharged_delta, u_small.p99_batch_mean_ns);
     let governing_threshold = if surcharged_delta.max(0) as u64 >= KEEP_THRESHOLD_NS {
         KEEP_THRESHOLD_NS
     } else {
@@ -515,7 +620,14 @@ fn main() {
         synthetic_foreign_copy_ns: synthetic_ns,
         weighted_p99_delta_surcharged_ns: surcharged_delta,
         surcharged_delta_pct_of_frame_budget: pct_of_budget,
-        verdict: verdict.as_str().to_string(),
+        verdict: verdict_enum.as_str().to_string(),
+        verdict_caveat: format!(
+            "COLLAPSE assumes real managed/JNI per-frame overhead delta cannot reach \
+             ~{} us; that boundary is modeled ({}x surcharge on synthetic foreign-copy \
+             lower bound), not measured. On-device A/B is the escalation if ever doubted.",
+            COLLAPSE_THRESHOLD_NS / 1_000,
+            JNI_MANAGED_SURCHARGE_FACTOR,
+        ),
         governing_threshold_ns: governing_threshold,
         alloc_stats,
         synthetic_caveat: vec![
@@ -592,17 +704,40 @@ fn main() {
     // Print human-readable summary to stderr
     eprintln!();
     eprintln!("=== ffi-transport-bench SUMMARY ===");
-    eprintln!("Weighted-p99 C-lane  : {:.0} ns", report.c_lane.weighted_p99_ns);
-    eprintln!("Weighted-p99 UniFFI  : {:.0} ns", report.uniffi_lane.weighted_p99_ns);
-    eprintln!("Raw delta            : {} ns", report.weighted_p99_delta_raw_ns);
-    eprintln!("Synthetic copy est.  : {} ns (lower bound, {}×-surcharged)", report.synthetic_foreign_copy_ns, JNI_MANAGED_SURCHARGE_FACTOR);
-    eprintln!("Surcharged delta     : {} ns ({:.2}% of 16.67ms budget)", report.weighted_p99_delta_surcharged_ns, pct_of_budget * 100.0);
-    eprintln!("VERDICT              : {}", report.verdict);
+    eprintln!("Weighted-p99 C-lane (batch-mean) : {:.0} ns", report.c_lane.weighted_p99_ns);
+    eprintln!("Weighted-p99 UniFFI (batch-mean) : {:.0} ns", report.uniffi_lane.weighted_p99_ns);
+    eprintln!("Raw delta                        : {} ns", report.weighted_p99_delta_raw_ns);
+    eprintln!("Synthetic copy est.              : {} ns (lower bound, {}x-surcharged)", report.synthetic_foreign_copy_ns, JNI_MANAGED_SURCHARGE_FACTOR);
+    eprintln!("Surcharged delta                 : {} ns ({:.2}% of 16.67ms budget)", report.weighted_p99_delta_surcharged_ns, pct_of_budget * 100.0);
+    eprintln!("VERDICT                          : {}", report.verdict);
+    if let Some(c_pf) = c_medium.p99_per_frame_ns {
+        eprintln!("C-lane MEDIUM p99/frame          : {} ns", c_pf);
+    }
+    if let Some(u_pf) = u_medium.p99_per_frame_ns {
+        eprintln!("UniFFI MEDIUM p99/frame          : {} ns", u_pf);
+    }
+    if let Some(c_pf) = c_large.p99_per_frame_ns {
+        eprintln!("C-lane LARGE p99/frame           : {} ns", c_pf);
+    }
+    if let Some(u_pf) = u_large.p99_per_frame_ns {
+        eprintln!("UniFFI LARGE p99/frame           : {} ns", u_pf);
+    }
     eprintln!("===================================");
 
     if args.fail_on_gate {
-        // The bench does not gate on a pass/fail — verdict is an enum; caller
-        // decides. Exit 0 always to not block CI on a measurement tool.
-        std::process::exit(0);
+        // CI gate: exit non-zero if the verdict is not COLLAPSE.
+        // Allows `cargo run ... -- --fail-on-gate` as a real CI step.
+        use report::Verdict;
+        match verdict_enum {
+            Verdict::Collapse => std::process::exit(0),
+            _ => {
+                eprintln!(
+                    "ffi-transport-bench: CI GATE FAIL — verdict {} is not COLLAPSE. \
+                     Re-run on device or review thresholds.",
+                    report.verdict
+                );
+                std::process::exit(1);
+            }
+        }
     }
 }

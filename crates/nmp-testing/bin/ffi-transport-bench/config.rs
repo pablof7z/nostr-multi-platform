@@ -12,9 +12,14 @@
 //            JNI_MANAGED_SURCHARGE_FACTOR before comparison.
 //   Budget reference: 60fps render-frame = 16_666_667 ns.
 //
+//   NOTE: "weighted p99" is computed from per-bucket BATCH-MEAN p99 values
+//   (percentiles of 1000-frame batch means).  See METRIC LABELING NOTE in
+//   report.rs for implications.  The SMALL-bucket absolute gate also checks
+//   the batch-mean p99 (labeled as COLLAPSE_SMALL_ABS_NS).
+//
 //   COLLAPSE  iff surcharged weighted-p99 delta < 5% of frame budget (< 833 us)
-//             AND absolute UniFFI p99 for SMALL bucket < 250 us.
-//   ESCALATE  iff surcharged weighted-p99 delta in [5%, 15%) of budget (833–2500 us).
+//             AND UniFFI SMALL batch-mean p99 < 250 us.
+//   ESCALATE  iff surcharged weighted-p99 delta in [5%, 15%) of budget (833-2500 us).
 //   KEEP      iff surcharged weighted-p99 delta >= 15% of budget (>= 2500 us).
 //
 //   No COLLAPSE verdict is permitted from synthetic evidence inside or above
@@ -31,7 +36,9 @@ pub const COLLAPSE_THRESHOLD_NS: u64 = (FRAME_BUDGET_NS as f64 * 0.05) as u64; /
 /// 15% of frame budget — surcharged weighted-p99 delta at or above this → KEEP.
 pub const KEEP_THRESHOLD_NS: u64 = (FRAME_BUDGET_NS as f64 * 0.15) as u64; // 2 500 000 ns
 
-/// Absolute UniFFI p99 for the SMALL bucket must be below this for COLLAPSE.
+/// Absolute UniFFI **batch-mean** p99 for the SMALL bucket must be below this
+/// for COLLAPSE.  This checks `p99_batch_mean_ns` (percentile of per-1000-frame
+/// means), not a true per-frame p99.  See the METRIC LABELING NOTE in report.rs.
 pub const COLLAPSE_SMALL_ABS_NS: u64 = 250_000; // 250 us
 
 /// Pre-registered conservative JNI/managed-runtime surcharge multiplier applied
