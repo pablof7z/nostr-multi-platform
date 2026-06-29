@@ -519,12 +519,41 @@ fileprivate struct FfiConverterData: FfiConverterRustBuffer {
 public protocol NmpAppProtocol: AnyObject, Sendable {
 
     /**
+     * Acknowledge a terminal action stage, removing it from the
+     * `action_stages` snapshot projection.
+     *
+     * The kernel projects `action_stages` (a `correlation_id →
+     * [StageEntry…]` map) on every tick. Unlike `action_results` (which
+     * drain on emit), the same entry reappears every tick until the host
+     * calls this method. Call it after the UI has consumed the terminal
+     * stage (`Accepted` / `Failed`) to drop the entry.
+     *
+     * An empty `correlation_id` or an unknown id is a silent no-op (D6 —
+     * never a crash). D8: non-blocking channel send.
+     */
+    func ackActionStage(correlationId: String)
+
+    /**
      * Add a relay to the active account's relay list.
      *
      * `role` — `"read"`, `"write"`, or `"both"`. Defaults to `"both"` when
      * `None`, matching the C-ABI `nmp_app_add_relay` null-role default.
      */
     func addRelay(url: String, role: String?)
+
+    /**
+     * Cancel an in-flight operation, addressed by its dispatch
+     * `correlation_id` (S7, #1754).
+     *
+     * The kernel reverse-resolves the publish handle from the durable
+     * handle↔correlation index and records a user-initiated `Cancelled`
+     * terminal under the ORIGINAL `correlation_id` (PD-036). A raw publish
+     * handle is also accepted (the index self-maps it).
+     *
+     * An empty `correlation_id` is a silent no-op (D6). D8: non-blocking
+     * channel send.
+     */
+    func cancelAction(correlationId: String)
 
     /**
      * Cancel an in-flight NIP-46 bunker handshake, if any.
@@ -583,6 +612,21 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
     func dispatchAction(envelope: Data)  -> DispatchOutcome
 
     /**
+     * Route a `CapabilityRequest` JSON to the registered handler and return
+     * the `CapabilityEnvelope` JSON.
+     *
+     * D6: never throws. A missing handler, malformed request, or panicking
+     * sink all come back as a populated error `CapabilityEnvelope`. Errors are
+     * data, not exceptions.
+     *
+     * This is the shell→Rust response half of the request–response round-trip:
+     * the shell calls `set_capability_callback` to register the request
+     * handler, and after processing a request it calls this method to deliver
+     * the response back to the kernel.
+     */
+    func dispatchCapabilityJson(requestJson: String)  -> String
+
+    /**
      * Initialise the NIP-55 external-signer capability transport.
      *
      * Must be called before `signin_nip55` to wire up the
@@ -618,6 +662,23 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
      * Mirrors `nmp_app_nostrconnect_uri`.
      */
     func nostrconnectUri(callbackScheme: String?)  -> String?
+
+    /**
+     * Register a host-supplied action-result observer — the *push*
+     * counterpart to the snapshot-projection (pull) output seam.
+     *
+     * After `dispatch_action` validates an action and its executor returns
+     * `Ok`, the registry calls `on_action_result` with a JSON string
+     * `{"correlation_id":"…","result_json":…}`. For built-in
+     * (fire-and-forget) executors `result_json` is `null`; the signal means
+     * the action was *accepted and enqueued*, not that the actor has finished
+     * publishing.
+     *
+     * A second registration replaces the first. There is no clear API:
+     * passing `None` would be a no-op (mirrors the C-ABI null-observer
+     * behaviour). See the module-level quiescence note.
+     */
+    func registerActionResultObserver(observer: ActionResultObserver)
 
     /**
      * Register a persisted app-managed local signer (hidden from account
@@ -754,6 +815,37 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
      * a silent no-op (caller is expected to pass valid decoded values).
      */
     func resolveRefWithMetadata(namespace: RefNamespace, key: String, consumerId: String, shape: RefShape, liveness: RefLiveness, metadata: ResolveMetadata)
+
+    /**
+     * Retry a failed publish, addressed by its handle.
+     *
+     * This is the intentional control-plane door for the publish lifecycle —
+     * `dispatch_action` deliberately does NOT carry retry; the generic action
+     * seam is for *content* actions while publish retry stays on this
+     * dedicated symbol.
+     *
+     * An empty handle is a silent no-op (D6). D8: non-blocking channel send.
+     */
+    func retryPublish(handle: String)
+
+    /**
+     * Register (or clear) the capability-request handler.
+     *
+     * After this returns, the previous sink is guaranteed to be neither
+     * registered nor mid-invocation (same quiescence contract as
+     * `set_update_sink` — `CapabilityCallbackGate` uses `in_flight` + Condvar).
+     *
+     * Pass `None` to clear. Re-entrancy is forbidden: calling this from inside
+     * `on_capability_request` deadlocks the quiescence gate.
+     *
+     * # Mapping
+     *
+     * Registers a `NativeCapabilityHandler` (Rust closure) via
+     * `CapabilityCallbackGate::set_native_handler`. This is the Rust-native
+     * counterpart to the C-ABI `CapabilityCallback` fn-ptr path; both share
+     * the same quiescence gate.
+     */
+    func setCapabilityCallback(sink: CapabilitySink?)
 
     /**
      * Register (or clear) the NMPU frame observer.
@@ -914,6 +1006,26 @@ public convenience init() {
 
 
     /**
+     * Acknowledge a terminal action stage, removing it from the
+     * `action_stages` snapshot projection.
+     *
+     * The kernel projects `action_stages` (a `correlation_id →
+     * [StageEntry…]` map) on every tick. Unlike `action_results` (which
+     * drain on emit), the same entry reappears every tick until the host
+     * calls this method. Call it after the UI has consumed the terminal
+     * stage (`Accepted` / `Failed`) to drop the entry.
+     *
+     * An empty `correlation_id` or an unknown id is a silent no-op (D6 —
+     * never a crash). D8: non-blocking channel send.
+     */
+open func ackActionStage(correlationId: String)  {try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_ack_action_stage(self.uniffiClonePointer(),
+        FfiConverterString.lower(correlationId),$0
+    )
+}
+}
+
+    /**
      * Add a relay to the active account's relay list.
      *
      * `role` — `"read"`, `"write"`, or `"both"`. Defaults to `"both"` when
@@ -923,6 +1035,25 @@ open func addRelay(url: String, role: String?)  {try! rustCall() {
     uniffi_nmp_uniffi_fn_method_nmpapp_add_relay(self.uniffiClonePointer(),
         FfiConverterString.lower(url),
         FfiConverterOptionString.lower(role),$0
+    )
+}
+}
+
+    /**
+     * Cancel an in-flight operation, addressed by its dispatch
+     * `correlation_id` (S7, #1754).
+     *
+     * The kernel reverse-resolves the publish handle from the durable
+     * handle↔correlation index and records a user-initiated `Cancelled`
+     * terminal under the ORIGINAL `correlation_id` (PD-036). A raw publish
+     * handle is also accepted (the index self-maps it).
+     *
+     * An empty `correlation_id` is a silent no-op (D6). D8: non-blocking
+     * channel send.
+     */
+open func cancelAction(correlationId: String)  {try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_cancel_action(self.uniffiClonePointer(),
+        FfiConverterString.lower(correlationId),$0
     )
 }
 }
@@ -1013,6 +1144,27 @@ open func dispatchAction(envelope: Data) -> DispatchOutcome  {
 }
 
     /**
+     * Route a `CapabilityRequest` JSON to the registered handler and return
+     * the `CapabilityEnvelope` JSON.
+     *
+     * D6: never throws. A missing handler, malformed request, or panicking
+     * sink all come back as a populated error `CapabilityEnvelope`. Errors are
+     * data, not exceptions.
+     *
+     * This is the shell→Rust response half of the request–response round-trip:
+     * the shell calls `set_capability_callback` to register the request
+     * handler, and after processing a request it calls this method to deliver
+     * the response back to the kernel.
+     */
+open func dispatchCapabilityJson(requestJson: String) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_dispatch_capability_json(self.uniffiClonePointer(),
+        FfiConverterString.lower(requestJson),$0
+    )
+})
+}
+
+    /**
      * Initialise the NIP-55 external-signer capability transport.
      *
      * Must be called before `signin_nip55` to wire up the
@@ -1061,6 +1213,28 @@ open func nostrconnectUri(callbackScheme: String?) -> String?  {
         FfiConverterOptionString.lower(callbackScheme),$0
     )
 })
+}
+
+    /**
+     * Register a host-supplied action-result observer — the *push*
+     * counterpart to the snapshot-projection (pull) output seam.
+     *
+     * After `dispatch_action` validates an action and its executor returns
+     * `Ok`, the registry calls `on_action_result` with a JSON string
+     * `{"correlation_id":"…","result_json":…}`. For built-in
+     * (fire-and-forget) executors `result_json` is `null`; the signal means
+     * the action was *accepted and enqueued*, not that the actor has finished
+     * publishing.
+     *
+     * A second registration replaces the first. There is no clear API:
+     * passing `None` would be a no-op (mirrors the C-ABI null-observer
+     * behaviour). See the module-level quiescence note.
+     */
+open func registerActionResultObserver(observer: ActionResultObserver)  {try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_register_action_result_observer(self.uniffiClonePointer(),
+        FfiConverterCallbackInterfaceActionResultObserver_lower(observer),$0
+    )
+}
 }
 
     /**
@@ -1290,6 +1464,47 @@ open func resolveRefWithMetadata(namespace: RefNamespace, key: String, consumerI
         FfiConverterTypeRefShape_lower(shape),
         FfiConverterTypeRefLiveness_lower(liveness),
         FfiConverterTypeResolveMetadata_lower(metadata),$0
+    )
+}
+}
+
+    /**
+     * Retry a failed publish, addressed by its handle.
+     *
+     * This is the intentional control-plane door for the publish lifecycle —
+     * `dispatch_action` deliberately does NOT carry retry; the generic action
+     * seam is for *content* actions while publish retry stays on this
+     * dedicated symbol.
+     *
+     * An empty handle is a silent no-op (D6). D8: non-blocking channel send.
+     */
+open func retryPublish(handle: String)  {try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_retry_publish(self.uniffiClonePointer(),
+        FfiConverterString.lower(handle),$0
+    )
+}
+}
+
+    /**
+     * Register (or clear) the capability-request handler.
+     *
+     * After this returns, the previous sink is guaranteed to be neither
+     * registered nor mid-invocation (same quiescence contract as
+     * `set_update_sink` — `CapabilityCallbackGate` uses `in_flight` + Condvar).
+     *
+     * Pass `None` to clear. Re-entrancy is forbidden: calling this from inside
+     * `on_capability_request` deadlocks the quiescence gate.
+     *
+     * # Mapping
+     *
+     * Registers a `NativeCapabilityHandler` (Rust closure) via
+     * `CapabilityCallbackGate::set_native_handler`. This is the Rust-native
+     * counterpart to the C-ABI `CapabilityCallback` fn-ptr path; both share
+     * the same quiescence gate.
+     */
+open func setCapabilityCallback(sink: CapabilitySink?)  {try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_set_capability_callback(self.uniffiClonePointer(),
+        FfiConverterOptionCallbackInterfaceCapabilitySink.lower(sink),$0
     )
 }
 }
@@ -3021,6 +3236,266 @@ extension RefShape: Equatable, Hashable {}
 
 
 /**
+ * Rust→shell push observer: fired after a dispatched action is accepted and
+ * enqueued for execution.
+ *
+ * # Contract
+ *
+ * * `result_json` is a JSON string `{"correlation_id":"…","result_json":…}`.
+ * * Implementations MUST NOT call `register_action_result_observer` from
+ * inside this method: the `ActionRegistry` mutex is held during delivery,
+ * so re-entry would deadlock.
+ * * The observer is registered for the lifetime of the `NmpApp`; there is
+ * no clear API (mirrors the C-ABI, where null observer is a no-op).
+ */
+public protocol ActionResultObserver: AnyObject, Sendable {
+
+    func onActionResult(resultJson: String)
+
+}
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceActionResultObserver {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // This creates 1-element array, since this seems to be the only way to construct a const
+    // pointer that we can pass to the Rust code.
+    static let vtable: [UniffiVTableCallbackInterfaceActionResultObserver] = [UniffiVTableCallbackInterfaceActionResultObserver(
+        onActionResult: { (
+            uniffiHandle: UInt64,
+            resultJson: RustBuffer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceActionResultObserver.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.onActionResult(
+                     resultJson: try FfiConverterString.lift(resultJson)
+                )
+            }
+
+
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            let result = try? FfiConverterCallbackInterfaceActionResultObserver.handleMap.remove(handle: uniffiHandle)
+            if result == nil {
+                print("Uniffi callback interface ActionResultObserver: handle missing in uniffiFree")
+            }
+        }
+    )]
+}
+
+private func uniffiCallbackInitActionResultObserver() {
+    uniffi_nmp_uniffi_fn_init_callback_vtable_actionresultobserver(UniffiCallbackInterfaceActionResultObserver.vtable)
+}
+
+// FfiConverter protocol for callback interfaces
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterCallbackInterfaceActionResultObserver {
+    fileprivate static let handleMap = UniffiHandleMap<ActionResultObserver>()
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+extension FfiConverterCallbackInterfaceActionResultObserver : FfiConverter {
+    typealias SwiftType = ActionResultObserver
+    typealias FfiType = UInt64
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public static func lift(_ handle: UInt64) throws -> SwiftType {
+        try handleMap.get(handle: handle)
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public static func lower(_ v: SwiftType) -> UInt64 {
+        return handleMap.insert(obj: v)
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public static func write(_ v: SwiftType, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(v))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterCallbackInterfaceActionResultObserver_lift(_ handle: UInt64) throws -> ActionResultObserver {
+    return try FfiConverterCallbackInterfaceActionResultObserver.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterCallbackInterfaceActionResultObserver_lower(_ v: ActionResultObserver) -> UInt64 {
+    return FfiConverterCallbackInterfaceActionResultObserver.lower(v)
+}
+
+
+
+
+/**
+ * Rust→shell capability round-trip: the kernel calls this to route a
+ * `CapabilityRequest` JSON to the platform (e.g. iOS Keychain) and expects a
+ * `CapabilityEnvelope` JSON back.
+ *
+ * # Contract
+ *
+ * * `request_json` is a pre-copied JSON string — no Rust lock is held during
+ * the call. The implementation may block; it MUST NOT call
+ * `set_capability_callback` for the same app from inside this method
+ * (reentrancy deadlocks the quiescence gate).
+ * * The returned string must be a valid `CapabilityEnvelope` JSON
+ * (`{"namespace":…,"correlation_id":…,"result_json":…}`). D6: a panic or
+ * invalid return is caught and converted to an error envelope.
+ */
+public protocol CapabilitySink: AnyObject, Sendable {
+
+    func onCapabilityRequest(requestJson: String)  -> String
+
+}
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceCapabilitySink {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // This creates 1-element array, since this seems to be the only way to construct a const
+    // pointer that we can pass to the Rust code.
+    static let vtable: [UniffiVTableCallbackInterfaceCapabilitySink] = [UniffiVTableCallbackInterfaceCapabilitySink(
+        onCapabilityRequest: { (
+            uniffiHandle: UInt64,
+            requestJson: RustBuffer,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> String in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceCapabilitySink.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.onCapabilityRequest(
+                     requestJson: try FfiConverterString.lift(requestJson)
+                )
+            }
+
+
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterString.lower($0) }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            let result = try? FfiConverterCallbackInterfaceCapabilitySink.handleMap.remove(handle: uniffiHandle)
+            if result == nil {
+                print("Uniffi callback interface CapabilitySink: handle missing in uniffiFree")
+            }
+        }
+    )]
+}
+
+private func uniffiCallbackInitCapabilitySink() {
+    uniffi_nmp_uniffi_fn_init_callback_vtable_capabilitysink(UniffiCallbackInterfaceCapabilitySink.vtable)
+}
+
+// FfiConverter protocol for callback interfaces
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterCallbackInterfaceCapabilitySink {
+    fileprivate static let handleMap = UniffiHandleMap<CapabilitySink>()
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+extension FfiConverterCallbackInterfaceCapabilitySink : FfiConverter {
+    typealias SwiftType = CapabilitySink
+    typealias FfiType = UInt64
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public static func lift(_ handle: UInt64) throws -> SwiftType {
+        try handleMap.get(handle: handle)
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public static func lower(_ v: SwiftType) -> UInt64 {
+        return handleMap.insert(obj: v)
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public static func write(_ v: SwiftType, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(v))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterCallbackInterfaceCapabilitySink_lift(_ handle: UInt64) throws -> CapabilitySink {
+    return try FfiConverterCallbackInterfaceCapabilitySink.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterCallbackInterfaceCapabilitySink_lower(_ v: CapabilitySink) -> UInt64 {
+    return FfiConverterCallbackInterfaceCapabilitySink.lower(v)
+}
+
+
+
+
+/**
  * Rust→shell push interface: receives NMPU FlatBuffers update frames.
  *
  * Implementations MUST NOT call back into any `NmpApp` method from within
@@ -3188,6 +3663,30 @@ fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterString.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionCallbackInterfaceCapabilitySink: FfiConverterRustBuffer {
+    typealias SwiftType = CapabilitySink?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterCallbackInterfaceCapabilitySink.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterCallbackInterfaceCapabilitySink.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -3499,7 +3998,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_nmp_uniffi_checksum_func_tokenize_content() != 58037) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_ack_action_stage() != 30523) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_add_relay() != 32447) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_cancel_action() != 21051) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_cancel_bunker_handshake() != 1296) {
@@ -3517,6 +4022,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_dispatch_action() != 17275) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_dispatch_capability_json() != 40688) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_init_external_signer() != 33809) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -3524,6 +4032,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_nostrconnect_uri() != 966) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_register_action_result_observer() != 16725) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_register_agent_nsec() != 63704) {
@@ -3571,6 +4082,12 @@ private let initializationResult: InitializationResult = {
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_resolve_ref_with_metadata() != 2281) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_retry_publish() != 19023) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_set_capability_callback() != 58918) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_set_update_sink() != 12723) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -3598,10 +4115,18 @@ private let initializationResult: InitializationResult = {
     if (uniffi_nmp_uniffi_checksum_constructor_nmpapp_new() != 62883) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_nmp_uniffi_checksum_method_actionresultobserver_on_action_result() != 14459) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_method_capabilitysink_on_capability_request() != 30958) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_nmp_uniffi_checksum_method_updatesink_on_update() != 64936) {
         return InitializationResult.apiChecksumMismatch
     }
 
+    uniffiCallbackInitActionResultObserver()
+    uniffiCallbackInitCapabilitySink()
     uniffiCallbackInitUpdateSink()
     return InitializationResult.ok
 }()

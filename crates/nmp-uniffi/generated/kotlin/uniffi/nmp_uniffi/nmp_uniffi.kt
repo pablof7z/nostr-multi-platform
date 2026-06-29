@@ -654,8 +654,46 @@ internal open class UniffiForeignFutureStructVoid(
 internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
     fun callback(`callbackData`: Long,`result`: UniffiForeignFutureStructVoid.UniffiByValue,)
 }
+internal interface UniffiCallbackInterfaceActionResultObserverMethod0 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`resultJson`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+}
+internal interface UniffiCallbackInterfaceCapabilitySinkMethod0 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`requestJson`: RustBuffer.ByValue,`uniffiOutReturn`: RustBuffer,uniffiCallStatus: UniffiRustCallStatus,)
+}
 internal interface UniffiCallbackInterfaceUpdateSinkMethod0 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`frame`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+}
+@Structure.FieldOrder("onActionResult", "uniffiFree")
+internal open class UniffiVTableCallbackInterfaceActionResultObserver(
+    @JvmField internal var `onActionResult`: UniffiCallbackInterfaceActionResultObserverMethod0? = null,
+    @JvmField internal var `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+) : Structure() {
+    class UniffiByValue(
+        `onActionResult`: UniffiCallbackInterfaceActionResultObserverMethod0? = null,
+        `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+    ): UniffiVTableCallbackInterfaceActionResultObserver(`onActionResult`,`uniffiFree`,), Structure.ByValue
+
+   internal fun uniffiSetValue(other: UniffiVTableCallbackInterfaceActionResultObserver) {
+        `onActionResult` = other.`onActionResult`
+        `uniffiFree` = other.`uniffiFree`
+    }
+
+}
+@Structure.FieldOrder("onCapabilityRequest", "uniffiFree")
+internal open class UniffiVTableCallbackInterfaceCapabilitySink(
+    @JvmField internal var `onCapabilityRequest`: UniffiCallbackInterfaceCapabilitySinkMethod0? = null,
+    @JvmField internal var `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+) : Structure() {
+    class UniffiByValue(
+        `onCapabilityRequest`: UniffiCallbackInterfaceCapabilitySinkMethod0? = null,
+        `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+    ): UniffiVTableCallbackInterfaceCapabilitySink(`onCapabilityRequest`,`uniffiFree`,), Structure.ByValue
+
+   internal fun uniffiSetValue(other: UniffiVTableCallbackInterfaceCapabilitySink) {
+        `onCapabilityRequest` = other.`onCapabilityRequest`
+        `uniffiFree` = other.`uniffiFree`
+    }
+
 }
 @Structure.FieldOrder("onUpdate", "uniffiFree")
 internal open class UniffiVTableCallbackInterfaceUpdateSink(
@@ -673,6 +711,22 @@ internal open class UniffiVTableCallbackInterfaceUpdateSink(
     }
 
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -832,7 +886,11 @@ fun uniffi_nmp_uniffi_checksum_func_encode_profile(
 ): Short
 fun uniffi_nmp_uniffi_checksum_func_tokenize_content(
 ): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_ack_action_stage(
+): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_add_relay(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_cancel_action(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_cancel_bunker_handshake(
 ): Short
@@ -844,11 +902,15 @@ fun uniffi_nmp_uniffi_checksum_method_nmpapp_deliver_external_signer_response(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_dispatch_action(
 ): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_dispatch_capability_json(
+): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_init_external_signer(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_init_signer_broker(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_nostrconnect_uri(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_register_action_result_observer(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_register_agent_nsec(
 ): Short
@@ -880,6 +942,10 @@ fun uniffi_nmp_uniffi_checksum_method_nmpapp_resolve_ref(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_resolve_ref_with_metadata(
 ): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_retry_publish(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_set_capability_callback(
+): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_set_update_sink(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_shutdown(
@@ -897,6 +963,10 @@ fun uniffi_nmp_uniffi_checksum_method_nmpapp_stop(
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_switch_active(
 ): Short
 fun uniffi_nmp_uniffi_checksum_constructor_nmpapp_new(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_actionresultobserver_on_action_result(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_capabilitysink_on_capability_request(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_updatesink_on_update(
 ): Short
@@ -938,6 +1008,8 @@ internal interface UniffiLib : Library {
             val lib = loadIndirect<UniffiLib>(componentName)
             // No need to check the contract version and checksums, since
             // we already did that with `IntegrityCheckingUniffiLib` above.
+            uniffiCallbackInterfaceActionResultObserver.register(lib)
+            uniffiCallbackInterfaceCapabilitySink.register(lib)
             uniffiCallbackInterfaceUpdateSink.register(lib)
             // Loading of library with integrity check done.
             lib
@@ -956,7 +1028,11 @@ fun uniffi_nmp_uniffi_fn_free_nmpapp(`ptr`: Pointer,uniffi_out_err: UniffiRustCa
 ): Unit
 fun uniffi_nmp_uniffi_fn_constructor_nmpapp_new(uniffi_out_err: UniffiRustCallStatus,
 ): Pointer
+fun uniffi_nmp_uniffi_fn_method_nmpapp_ack_action_stage(`ptr`: Pointer,`correlationId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_add_relay(`ptr`: Pointer,`url`: RustBuffer.ByValue,`role`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+): Unit
+fun uniffi_nmp_uniffi_fn_method_nmpapp_cancel_action(`ptr`: Pointer,`correlationId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_cancel_bunker_handshake(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
@@ -968,12 +1044,16 @@ fun uniffi_nmp_uniffi_fn_method_nmpapp_deliver_external_signer_response(`ptr`: P
 ): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_dispatch_action(`ptr`: Pointer,`envelope`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
 ): RustBuffer.ByValue
+fun uniffi_nmp_uniffi_fn_method_nmpapp_dispatch_capability_json(`ptr`: Pointer,`requestJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+): RustBuffer.ByValue
 fun uniffi_nmp_uniffi_fn_method_nmpapp_init_external_signer(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_init_signer_broker(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_nostrconnect_uri(`ptr`: Pointer,`callbackScheme`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
 ): RustBuffer.ByValue
+fun uniffi_nmp_uniffi_fn_method_nmpapp_register_action_result_observer(`ptr`: Pointer,`observer`: Long,uniffi_out_err: UniffiRustCallStatus,
+): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_register_agent_nsec(`ptr`: Pointer,`secret`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_release_event_ref(`ptr`: Pointer,`key`: RustBuffer.ByValue,`consumerId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
@@ -1004,6 +1084,10 @@ fun uniffi_nmp_uniffi_fn_method_nmpapp_resolve_ref(`ptr`: Pointer,`namespace`: R
 ): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_resolve_ref_with_metadata(`ptr`: Pointer,`namespace`: RustBuffer.ByValue,`key`: RustBuffer.ByValue,`consumerId`: RustBuffer.ByValue,`shape`: RustBuffer.ByValue,`liveness`: RustBuffer.ByValue,`metadata`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
+fun uniffi_nmp_uniffi_fn_method_nmpapp_retry_publish(`ptr`: Pointer,`handle`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+): Unit
+fun uniffi_nmp_uniffi_fn_method_nmpapp_set_capability_callback(`ptr`: Pointer,`sink`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_set_update_sink(`ptr`: Pointer,`sink`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_shutdown(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
@@ -1019,6 +1103,10 @@ fun uniffi_nmp_uniffi_fn_method_nmpapp_start(`ptr`: Pointer,`visibleLimit`: Int,
 fun uniffi_nmp_uniffi_fn_method_nmpapp_stop(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_switch_active(`ptr`: Pointer,`identityId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+): Unit
+fun uniffi_nmp_uniffi_fn_init_callback_vtable_actionresultobserver(`vtable`: UniffiVTableCallbackInterfaceActionResultObserver,
+): Unit
+fun uniffi_nmp_uniffi_fn_init_callback_vtable_capabilitysink(`vtable`: UniffiVTableCallbackInterfaceCapabilitySink,
 ): Unit
 fun uniffi_nmp_uniffi_fn_init_callback_vtable_updatesink(`vtable`: UniffiVTableCallbackInterfaceUpdateSink,
 ): Unit
@@ -1168,7 +1256,13 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_nmp_uniffi_checksum_func_tokenize_content() != 58037.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_ack_action_stage() != 30523.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_add_relay() != 32447.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_cancel_action() != 21051.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_cancel_bunker_handshake() != 1296.toShort()) {
@@ -1186,6 +1280,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_dispatch_action() != 17275.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_dispatch_capability_json() != 40688.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_init_external_signer() != 33809.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1193,6 +1290,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_nostrconnect_uri() != 966.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_register_action_result_observer() != 16725.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_register_agent_nsec() != 63704.toShort()) {
@@ -1240,6 +1340,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_resolve_ref_with_metadata() != 2281.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_retry_publish() != 19023.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_set_capability_callback() != 58918.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_set_update_sink() != 12723.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1265,6 +1371,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_constructor_nmpapp_new() != 62883.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_actionresultobserver_on_action_result() != 14459.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_capabilitysink_on_capability_request() != 30958.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_method_updatesink_on_update() != 64936.toShort()) {
@@ -1679,12 +1791,41 @@ public object FfiConverterByteArray: FfiConverterRustBuffer<ByteArray> {
 public interface NmpAppInterface {
 
     /**
+     * Acknowledge a terminal action stage, removing it from the
+     * `action_stages` snapshot projection.
+     *
+     * The kernel projects `action_stages` (a `correlation_id →
+     * [StageEntry…]` map) on every tick. Unlike `action_results` (which
+     * drain on emit), the same entry reappears every tick until the host
+     * calls this method. Call it after the UI has consumed the terminal
+     * stage (`Accepted` / `Failed`) to drop the entry.
+     *
+     * An empty `correlation_id` or an unknown id is a silent no-op (D6 —
+     * never a crash). D8: non-blocking channel send.
+     */
+    fun `ackActionStage`(`correlationId`: kotlin.String)
+
+    /**
      * Add a relay to the active account's relay list.
      *
      * `role` — `"read"`, `"write"`, or `"both"`. Defaults to `"both"` when
      * `None`, matching the C-ABI `nmp_app_add_relay` null-role default.
      */
     fun `addRelay`(`url`: kotlin.String, `role`: kotlin.String?)
+
+    /**
+     * Cancel an in-flight operation, addressed by its dispatch
+     * `correlation_id` (S7, #1754).
+     *
+     * The kernel reverse-resolves the publish handle from the durable
+     * handle↔correlation index and records a user-initiated `Cancelled`
+     * terminal under the ORIGINAL `correlation_id` (PD-036). A raw publish
+     * handle is also accepted (the index self-maps it).
+     *
+     * An empty `correlation_id` is a silent no-op (D6). D8: non-blocking
+     * channel send.
+     */
+    fun `cancelAction`(`correlationId`: kotlin.String)
 
     /**
      * Cancel an in-flight NIP-46 bunker handshake, if any.
@@ -1743,6 +1884,21 @@ public interface NmpAppInterface {
     fun `dispatchAction`(`envelope`: kotlin.ByteArray): DispatchOutcome
 
     /**
+     * Route a `CapabilityRequest` JSON to the registered handler and return
+     * the `CapabilityEnvelope` JSON.
+     *
+     * D6: never throws. A missing handler, malformed request, or panicking
+     * sink all come back as a populated error `CapabilityEnvelope`. Errors are
+     * data, not exceptions.
+     *
+     * This is the shell→Rust response half of the request–response round-trip:
+     * the shell calls `set_capability_callback` to register the request
+     * handler, and after processing a request it calls this method to deliver
+     * the response back to the kernel.
+     */
+    fun `dispatchCapabilityJson`(`requestJson`: kotlin.String): kotlin.String
+
+    /**
      * Initialise the NIP-55 external-signer capability transport.
      *
      * Must be called before `signin_nip55` to wire up the
@@ -1778,6 +1934,23 @@ public interface NmpAppInterface {
      * Mirrors `nmp_app_nostrconnect_uri`.
      */
     fun `nostrconnectUri`(`callbackScheme`: kotlin.String?): kotlin.String?
+
+    /**
+     * Register a host-supplied action-result observer — the *push*
+     * counterpart to the snapshot-projection (pull) output seam.
+     *
+     * After `dispatch_action` validates an action and its executor returns
+     * `Ok`, the registry calls `on_action_result` with a JSON string
+     * `{"correlation_id":"…","result_json":…}`. For built-in
+     * (fire-and-forget) executors `result_json` is `null`; the signal means
+     * the action was *accepted and enqueued*, not that the actor has finished
+     * publishing.
+     *
+     * A second registration replaces the first. There is no clear API:
+     * passing `None` would be a no-op (mirrors the C-ABI null-observer
+     * behaviour). See the module-level quiescence note.
+     */
+    fun `registerActionResultObserver`(`observer`: ActionResultObserver)
 
     /**
      * Register a persisted app-managed local signer (hidden from account
@@ -1914,6 +2087,37 @@ public interface NmpAppInterface {
      * a silent no-op (caller is expected to pass valid decoded values).
      */
     fun `resolveRefWithMetadata`(`namespace`: RefNamespace, `key`: kotlin.String, `consumerId`: kotlin.String, `shape`: RefShape, `liveness`: RefLiveness, `metadata`: ResolveMetadata)
+
+    /**
+     * Retry a failed publish, addressed by its handle.
+     *
+     * This is the intentional control-plane door for the publish lifecycle —
+     * `dispatch_action` deliberately does NOT carry retry; the generic action
+     * seam is for *content* actions while publish retry stays on this
+     * dedicated symbol.
+     *
+     * An empty handle is a silent no-op (D6). D8: non-blocking channel send.
+     */
+    fun `retryPublish`(`handle`: kotlin.String)
+
+    /**
+     * Register (or clear) the capability-request handler.
+     *
+     * After this returns, the previous sink is guaranteed to be neither
+     * registered nor mid-invocation (same quiescence contract as
+     * `set_update_sink` — `CapabilityCallbackGate` uses `in_flight` + Condvar).
+     *
+     * Pass `None` to clear. Re-entrancy is forbidden: calling this from inside
+     * `on_capability_request` deadlocks the quiescence gate.
+     *
+     * # Mapping
+     *
+     * Registers a `NativeCapabilityHandler` (Rust closure) via
+     * `CapabilityCallbackGate::set_native_handler`. This is the Rust-native
+     * counterpart to the C-ABI `CapabilityCallback` fn-ptr path; both share
+     * the same quiescence gate.
+     */
+    fun `setCapabilityCallback`(`sink`: CapabilitySink?)
 
     /**
      * Register (or clear) the NMPU frame observer.
@@ -2107,6 +2311,30 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
 
 
     /**
+     * Acknowledge a terminal action stage, removing it from the
+     * `action_stages` snapshot projection.
+     *
+     * The kernel projects `action_stages` (a `correlation_id →
+     * [StageEntry…]` map) on every tick. Unlike `action_results` (which
+     * drain on emit), the same entry reappears every tick until the host
+     * calls this method. Call it after the UI has consumed the terminal
+     * stage (`Accepted` / `Failed`) to drop the entry.
+     *
+     * An empty `correlation_id` or an unknown id is a silent no-op (D6 —
+     * never a crash). D8: non-blocking channel send.
+     */override fun `ackActionStage`(`correlationId`: kotlin.String)
+        =
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_ack_action_stage(
+        it, FfiConverterString.lower(`correlationId`),_status)
+}
+    }
+
+
+
+
+    /**
      * Add a relay to the active account's relay list.
      *
      * `role` — `"read"`, `"write"`, or `"both"`. Defaults to `"both"` when
@@ -2117,6 +2345,29 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_add_relay(
         it, FfiConverterString.lower(`url`),FfiConverterOptionalString.lower(`role`),_status)
+}
+    }
+
+
+
+
+    /**
+     * Cancel an in-flight operation, addressed by its dispatch
+     * `correlation_id` (S7, #1754).
+     *
+     * The kernel reverse-resolves the publish handle from the durable
+     * handle↔correlation index and records a user-initiated `Cancelled`
+     * terminal under the ORIGINAL `correlation_id` (PD-036). A raw publish
+     * handle is also accepted (the index self-maps it).
+     *
+     * An empty `correlation_id` is a silent no-op (D6). D8: non-blocking
+     * channel send.
+     */override fun `cancelAction`(`correlationId`: kotlin.String)
+        =
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_cancel_action(
+        it, FfiConverterString.lower(`correlationId`),_status)
 }
     }
 
@@ -2226,6 +2477,31 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
 
 
     /**
+     * Route a `CapabilityRequest` JSON to the registered handler and return
+     * the `CapabilityEnvelope` JSON.
+     *
+     * D6: never throws. A missing handler, malformed request, or panicking
+     * sink all come back as a populated error `CapabilityEnvelope`. Errors are
+     * data, not exceptions.
+     *
+     * This is the shell→Rust response half of the request–response round-trip:
+     * the shell calls `set_capability_callback` to register the request
+     * handler, and after processing a request it calls this method to deliver
+     * the response back to the kernel.
+     */override fun `dispatchCapabilityJson`(`requestJson`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_dispatch_capability_json(
+        it, FfiConverterString.lower(`requestJson`),_status)
+}
+    }
+    )
+    }
+
+
+
+    /**
      * Initialise the NIP-55 external-signer capability transport.
      *
      * Must be called before `signin_nip55` to wire up the
@@ -2288,6 +2564,32 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
     }
     )
     }
+
+
+
+    /**
+     * Register a host-supplied action-result observer — the *push*
+     * counterpart to the snapshot-projection (pull) output seam.
+     *
+     * After `dispatch_action` validates an action and its executor returns
+     * `Ok`, the registry calls `on_action_result` with a JSON string
+     * `{"correlation_id":"…","result_json":…}`. For built-in
+     * (fire-and-forget) executors `result_json` is `null`; the signal means
+     * the action was *accepted and enqueued*, not that the actor has finished
+     * publishing.
+     *
+     * A second registration replaces the first. There is no clear API:
+     * passing `None` would be a no-op (mirrors the C-ABI null-observer
+     * behaviour). See the module-level quiescence note.
+     */override fun `registerActionResultObserver`(`observer`: ActionResultObserver)
+        =
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_register_action_result_observer(
+        it, FfiConverterTypeActionResultObserver.lower(`observer`),_status)
+}
+    }
+
 
 
 
@@ -2556,6 +2858,55 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_resolve_ref_with_metadata(
         it, FfiConverterTypeRefNamespace.lower(`namespace`),FfiConverterString.lower(`key`),FfiConverterString.lower(`consumerId`),FfiConverterTypeRefShape.lower(`shape`),FfiConverterTypeRefLiveness.lower(`liveness`),FfiConverterTypeResolveMetadata.lower(`metadata`),_status)
+}
+    }
+
+
+
+
+    /**
+     * Retry a failed publish, addressed by its handle.
+     *
+     * This is the intentional control-plane door for the publish lifecycle —
+     * `dispatch_action` deliberately does NOT carry retry; the generic action
+     * seam is for *content* actions while publish retry stays on this
+     * dedicated symbol.
+     *
+     * An empty handle is a silent no-op (D6). D8: non-blocking channel send.
+     */override fun `retryPublish`(`handle`: kotlin.String)
+        =
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_retry_publish(
+        it, FfiConverterString.lower(`handle`),_status)
+}
+    }
+
+
+
+
+    /**
+     * Register (or clear) the capability-request handler.
+     *
+     * After this returns, the previous sink is guaranteed to be neither
+     * registered nor mid-invocation (same quiescence contract as
+     * `set_update_sink` — `CapabilityCallbackGate` uses `in_flight` + Condvar).
+     *
+     * Pass `None` to clear. Re-entrancy is forbidden: calling this from inside
+     * `on_capability_request` deadlocks the quiescence gate.
+     *
+     * # Mapping
+     *
+     * Registers a `NativeCapabilityHandler` (Rust closure) via
+     * `CapabilityCallbackGate::set_native_handler`. This is the Rust-native
+     * counterpart to the C-ABI `CapabilityCallback` fn-ptr path; both share
+     * the same quiescence gate.
+     */override fun `setCapabilityCallback`(`sink`: CapabilitySink?)
+        =
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_set_capability_callback(
+        it, FfiConverterOptionalTypeCapabilitySink.lower(`sink`),_status)
 }
     }
 
@@ -3973,6 +4324,140 @@ public object FfiConverterTypeRefShape : FfiConverterRustBuffer<RefShape>{
 
 
 /**
+ * Rust→shell push observer: fired after a dispatched action is accepted and
+ * enqueued for execution.
+ *
+ * # Contract
+ *
+ * * `result_json` is a JSON string `{"correlation_id":"…","result_json":…}`.
+ * * Implementations MUST NOT call `register_action_result_observer` from
+ * inside this method: the `ActionRegistry` mutex is held during delivery,
+ * so re-entry would deadlock.
+ * * The observer is registered for the lifetime of the `NmpApp`; there is
+ * no clear API (mirrors the C-ABI, where null observer is a no-op).
+ */
+public interface ActionResultObserver {
+
+    fun `onActionResult`(`resultJson`: kotlin.String)
+
+    companion object
+}
+
+
+
+// Put the implementation in an object so we don't pollute the top-level namespace
+internal object uniffiCallbackInterfaceActionResultObserver {
+    internal object `onActionResult`: UniffiCallbackInterfaceActionResultObserverMethod0 {
+        override fun callback(`uniffiHandle`: Long,`resultJson`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeActionResultObserver.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`onActionResult`(
+                    FfiConverterString.lift(`resultJson`),
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+
+    internal object uniffiFree: UniffiCallbackInterfaceFree {
+        override fun callback(handle: Long) {
+            FfiConverterTypeActionResultObserver.handleMap.remove(handle)
+        }
+    }
+
+    internal var vtable = UniffiVTableCallbackInterfaceActionResultObserver.UniffiByValue(
+        `onActionResult`,
+        uniffiFree,
+    )
+
+    // Registers the foreign callback with the Rust side.
+    // This method is generated for each callback interface.
+    internal fun register(lib: UniffiLib) {
+        lib.uniffi_nmp_uniffi_fn_init_callback_vtable_actionresultobserver(vtable)
+    }
+}
+
+/**
+ * The ffiConverter which transforms the Callbacks in to handles to pass to Rust.
+ *
+ * @suppress
+ */
+public object FfiConverterTypeActionResultObserver: FfiConverterCallbackInterface<ActionResultObserver>()
+
+
+
+
+
+/**
+ * Rust→shell capability round-trip: the kernel calls this to route a
+ * `CapabilityRequest` JSON to the platform (e.g. iOS Keychain) and expects a
+ * `CapabilityEnvelope` JSON back.
+ *
+ * # Contract
+ *
+ * * `request_json` is a pre-copied JSON string — no Rust lock is held during
+ * the call. The implementation may block; it MUST NOT call
+ * `set_capability_callback` for the same app from inside this method
+ * (reentrancy deadlocks the quiescence gate).
+ * * The returned string must be a valid `CapabilityEnvelope` JSON
+ * (`{"namespace":…,"correlation_id":…,"result_json":…}`). D6: a panic or
+ * invalid return is caught and converted to an error envelope.
+ */
+public interface CapabilitySink {
+
+    fun `onCapabilityRequest`(`requestJson`: kotlin.String): kotlin.String
+
+    companion object
+}
+
+
+
+// Put the implementation in an object so we don't pollute the top-level namespace
+internal object uniffiCallbackInterfaceCapabilitySink {
+    internal object `onCapabilityRequest`: UniffiCallbackInterfaceCapabilitySinkMethod0 {
+        override fun callback(`uniffiHandle`: Long,`requestJson`: RustBuffer.ByValue,`uniffiOutReturn`: RustBuffer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeCapabilitySink.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`onCapabilityRequest`(
+                    FfiConverterString.lift(`requestJson`),
+                )
+            }
+            val writeReturn = { value: kotlin.String -> uniffiOutReturn.setValue(FfiConverterString.lower(value)) }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+
+    internal object uniffiFree: UniffiCallbackInterfaceFree {
+        override fun callback(handle: Long) {
+            FfiConverterTypeCapabilitySink.handleMap.remove(handle)
+        }
+    }
+
+    internal var vtable = UniffiVTableCallbackInterfaceCapabilitySink.UniffiByValue(
+        `onCapabilityRequest`,
+        uniffiFree,
+    )
+
+    // Registers the foreign callback with the Rust side.
+    // This method is generated for each callback interface.
+    internal fun register(lib: UniffiLib) {
+        lib.uniffi_nmp_uniffi_fn_init_callback_vtable_capabilitysink(vtable)
+    }
+}
+
+/**
+ * The ffiConverter which transforms the Callbacks in to handles to pass to Rust.
+ *
+ * @suppress
+ */
+public object FfiConverterTypeCapabilitySink: FfiConverterCallbackInterface<CapabilitySink>()
+
+
+
+
+
+/**
  * Rust→shell push interface: receives NMPU FlatBuffers update frames.
  *
  * Implementations MUST NOT call back into any `NmpApp` method from within
@@ -4093,6 +4578,38 @@ public object FfiConverterOptionalString: FfiConverterRustBuffer<kotlin.String?>
         } else {
             buf.put(1)
             FfiConverterString.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeCapabilitySink: FfiConverterRustBuffer<CapabilitySink?> {
+    override fun read(buf: ByteBuffer): CapabilitySink? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeCapabilitySink.read(buf)
+    }
+
+    override fun allocationSize(value: CapabilitySink?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeCapabilitySink.allocationSize(value)
+        }
+    }
+
+    override fun write(value: CapabilitySink?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeCapabilitySink.write(value, buf)
         }
     }
 }

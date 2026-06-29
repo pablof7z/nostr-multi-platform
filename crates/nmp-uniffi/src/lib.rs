@@ -47,6 +47,10 @@ pub use refs::{
     EventShape, ProfileShape, RefLiveness, RefNamespace, RefShape, ResolveMetadata,
 };
 
+// ── Capability, action-lane, publish-control (C4) ────────────────────────────
+pub mod capability;
+pub use capability::{ActionResultObserver, CapabilitySink};
+
 // ── Typed dispatch outcome ────────────────────────────────────────────────────
 
 /// Typed outcome of a `dispatch_action` call.
