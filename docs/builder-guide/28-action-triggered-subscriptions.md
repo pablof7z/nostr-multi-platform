@@ -1,33 +1,36 @@
-# 28 — Action-triggered subscriptions
+# 28 — Action-triggered read sessions
 > **Status: SHIPS** · Audience: both · Read after [05a — Substrate traits](05a-substrate-traits.md) and [07 — Subscription planner](07-subscription-planner.md).
 
-This chapter closes the gap that sent podcast-player to `dispatch_capability("nostr_relay", …)`: the API existed, but the recipe did not.
+This chapter closes the gap that sent podcast-player to
+`dispatch_capability("nostr_relay", …)`: the kernel had the machinery, but the
+app-facing recipe was wrong.
 
 ## The gap and why it matters
 
-`ActionModule::execute` dispatches `ActorCommand`s. The kernel opens Nostr
-subscriptions in response to `LogicalInterest`s pushed into the
-`InterestRegistry`. Those two facts look disconnected, but **`execute` can
-dispatch `ActorCommand::EnsureInterest` directly**. That is the idiomatic path
-for "user taps something → kernel fetches matching events → a shell projection updates."
+Production app code should model "user taps something → kernel fetches matching
+events → typed output updates" as a typed read session claim/release. The action
+records the user's intent to claim or release a session. The session helper owns
+the internal acquisition, replay-before-live, output, status, and teardown.
 
-Live references: `crates/nmp-relations/src/visible_relations.rs` (reaction/reply relations) and `crates/nmp-defaults/src/topic_articles.rs` (NIP-23 long-form articles by topic).
+`ActorCommand::EnsureInterest`, `DropInterestOwner`,
+`open_observed_projection`, and `ObservedProjectionSink` are implementation
+machinery behind that helper. They are not the app-facing production recipe
+under ADR-0070.
 
-## The three moving parts
+## The moving parts
 
-Every action-triggered subscription wires three things together at **init
+Every action-triggered read feature wires the app-visible pieces at **init
 time** — before any action is dispatched, before `nmp_app_start`:
 
-```
-open_observed_projection          ←── declared shape + replay + scoped delivery
-register_snapshot_projection      ←── reads observer state on every tick
-register_typed_snapshot_projection←── optional typed sidecar for the same state
-register_action                   ←── dispatches EnsureInterest / DropInterestOwner
+```text
+typed read-session helper         ←── owns demand + replay + output + teardown
+register_action                   ←── dispatches Claim / Release intent
 ```
 
-The action opens (or closes) the subscription slots. The observer catches arriving events
-and populates an `Arc<Mutex<AppState>>`. The projection reads that state and emits a typed
-sidecar the shell sees on the next pushed frame. Nothing is polling. Nothing is in the shell.
+The action opens or closes a typed session owner. The session helper may use
+logical interests, observed delivery, and typed sidecars internally. The shell
+sees typed output and status on pushed frames. Nothing is polling. Nothing is in
+the shell.
 
 ## The action module: Claim/Release
 
@@ -35,6 +38,10 @@ The action has two variants — claim (open) and release (close) — tagged in o
 enum under one namespace. They live in the same module because both must derive
 the same `SubIdentity` from the same inputs: a derivation mismatch (drop the
 wrong owner) causes a subscription to leak forever.
+
+The helper names below are shape-level placeholders. The invariant is that
+product code dispatches Claim/Release intent and the typed session helper owns
+the internal acquisition commands.
 
 ```rust
 // crates/nmp-defaults/src/topic_articles.rs
@@ -58,20 +65,10 @@ impl ActionModule for TopicArticlesModule {
     ) -> Result<(), String> {
         match action {
             TopicArticlesAction::Claim { ref topic, ref consumer_id } => {
-                send(ActorCommand::EnsureInterest {
-                    identity: topic_articles_identity(topic, consumer_id),
-                    interest: topic_articles_interest(topic),
-                });
-                send(ActorCommand::EnsureInterest {
-                    identity: topic_article_reposts_identity(topic, consumer_id),
-                    interest: topic_article_reposts_interest(topic),
-                });
+                send(claim_topic_articles_session(topic, consumer_id));
             }
             TopicArticlesAction::Release { ref topic, ref consumer_id } => {
-                send(ActorCommand::DropInterestOwner(topic_articles_identity(topic, consumer_id)));
-                send(ActorCommand::DropInterestOwner(
-                    topic_article_reposts_identity(topic, consumer_id),
-                ));
+                send(release_topic_articles_session(topic, consumer_id));
             }
         }
         Ok(())
@@ -86,10 +83,12 @@ Shell dispatch JSON:
 {"namespace":"nmp.app.topic_articles","action":{"op":"release","topic":"bitcoin","consumer_id":"discover-view"}}
 ```
 
-## The SubIdentity triple
+## Internal acquisition identity
 
-`ActorCommand::EnsureInterest` and `DropInterestOwner` both take a
-`SubIdentity` (`crates/nmp-core/src/subs/sub_key.rs:127`). The triple is:
+A typed session helper eventually materializes internal acquisition owners. The
+current substrate represents those owners with a `SubIdentity`
+(`crates/nmp-core/src/subs/sub_key.rs:127`). This is not app vocabulary, but the
+internal triple explains why claim and release must share one derivation:
 
 - **`SubOwnerKey`** — who holds the refcount. One per view instance / call
   site. Multiple owners may attach to the same slot; the registry keeps one REQ
@@ -120,8 +119,8 @@ pub fn topic_articles_identity(topic: &str, consumer_id: &str) -> SubIdentity {
 
 The pattern: `SubOwnerKey` folds in `consumer_id` (owner-unique);
 `SubKey` folds in only the content discriminant (owner-shared).
-`visible_note_relations_identity` in `nmp-relations/src/visible_relations.rs`
-is the production reference.
+The typed helper owns this derivation so product code does not construct
+subscription keys directly.
 
 ## Feed declarations use primary kinds
 
@@ -168,12 +167,12 @@ storage, ordering, and pagination over events that have arrived through the
 normal acquisition path.
 
 If the acquisition source itself is dynamic, the action does not snapshot the
-current author/tag/id set. It declares the closed source expression and lets a
-Rust ReducedSource owner materialize child interests. Active-user follows,
+current author/tag/id set. It declares the closed source expression and lets an
+internal Rust ReducedSource owner materialize child interests. Active-user follows,
 NIP-51 list membership, follow packs, and pointer-event target hydration all
 have this shape: source interest/state changes, reducer replaces the derived
 set, and those children enter the same registry/planner path as the static
-`EnsureInterest` examples in this chapter.
+materialized interests owned by the session helper.
 
 `load_older` is rendered-progress pagination. It may scan past event-log rows
 that are deleted, muted, blocked, superseded, replaced, or rejected by the
@@ -227,9 +226,9 @@ than panicking. Absent keys through the registry are likewise a silent `false`.
 The hooks name no app primary-kind policy (D0) and hydrate no secondary data
 (D11) — the closures the composition root injects own that.
 
-## Building the LogicalInterest
+## Internal LogicalInterest materialization
 
-Use `ViewDependencies::into_logical_interest`
+Session helpers materialize planner demand with `ViewDependencies::into_logical_interest`
 (`crates/nmp-core/src/substrate/view.rs:67`) — it maps your declared kinds,
 authors, tag-refs, and limit onto the planner's `InterestShape`:
 
@@ -263,7 +262,7 @@ kinds (long-form articles, classifieds, wiki pages) where general-purpose
 relays hold little. Leave it `false` for inbox-style subscriptions tied to
 known pubkeys.
 
-## Stable interest IDs
+## Stable internal interest IDs
 
 `InterestId` is the registry's slot key at the planner level. Hash the module
 namespace plus the content discriminant — never use a random UUID:
@@ -276,24 +275,24 @@ pub fn topic_articles_interest_id(topic: &str) -> InterestId {
 
 Same inputs → same hash → same slot across restarts. Idempotent re-claims
 attach a new owner to the existing slot without opening a second REQ.
-If the action opens multiple lanes, each lane gets its own stable `InterestId`
-and corresponding `SubIdentity`, and Release drops every lane.
+If the session opens multiple lanes, each lane gets its own stable `InterestId`
+and corresponding internal owner identity, and Release drops every lane.
 
-## Ensure vs set: the silent footgun
+## Ensure vs set: the internal silent footgun
 
 `ActorCommand::EnsureInterest` calls `InterestRegistry::ensure_sub`
 (`registry.rs:68`) — **register-if-absent**. If a slot with the same
 `(scope, key)` already exists, the call attaches the new owner but **leaves
 the existing filter unchanged**. It returns `false` and triggers no recompile.
 
-This means: if you use a static content key like `"active"` and the user
-changes the query, the second `EnsureInterest` silently discards the new
+This means: if a session helper uses a static content key like `"active"` and
+the user changes the query, the second internal ensure silently discards the new
 filter. The old query stays on the wire.
 
 **Correct pattern for a query that changes:** use the query itself as the
 content discriminant. Different queries → different `SubKey`s → different slots.
-On query change, dispatch `EnsureInterest` for the new query and `Release`
-for the old one:
+On query change, dispatch Release for the old typed session owner and Claim for
+the new one:
 
 ```swift
 // Shell (Swift) — user changes discover query from "bitcoin" to "lightning"
@@ -302,19 +301,20 @@ topicArticles.claim(topic: "lightning", consumerID: "discover-view")
 ```
 
 A `SetInterest` command that calls `set_sub` (`registry.rs:86` — replaces the
-filter in place) does not currently exist as an `ActorCommand` variant. If you
-need in-place filter mutation, that is a gap to raise — do not work around it
-by reusing a static key with `EnsureInterest`.
+filter in place) does not currently exist as an `ActorCommand` variant. If a
+session needs in-place filter mutation, raise that as a typed-session gap — do
+not work around it by exposing a static subscription key to product code.
 
-## The observed projection — populating the read model
+## The session executor — populating the read model
 
-Open a declared observed projection for the read model. The declaration names
-the shape before any event is delivered; the kernel registers the sink muted,
-opens the declared interest, replays cached/store-backed rows, then activates
-future delivery scoped to the same shape:
+The read session helper owns the executor machinery. Today that machinery may
+include a declared observed projection and a typed sidecar. The declaration
+names the shape before any event is delivered; the kernel registers the sink
+muted, opens the declared interest, replays cached/store-backed rows, then
+activates future delivery scoped to the same shape.
 
 ```rust
-// In your app's registration function, called before nmp_app_start:
+// Inside the typed read-session helper, not in shell or product-screen code:
 let state = Arc::new(Mutex::new(DiscoveryState::default()));
 
 let state_obs = state.clone();
@@ -338,15 +338,16 @@ impl ObservedProjectionSink for ArticleObserver {
 }
 ```
 
-The observer fires synchronously on the actor thread. Keep it fast:
-no I/O, no blocking, no panics. Production read models do not attach to a
-filterless all-event fanout; they declare kind, author, id, tag, relay pin,
-search shape, source reducer, or bounded dependencies up front.
+The observer fires synchronously on the actor thread. Keep it fast: no I/O, no
+blocking, no panics. Production session helpers do not attach to a filterless
+all-event fanout; they declare kind, author, id, tag, relay pin, search shape,
+source reducer, or bounded dependencies up front.
 
 ## The snapshot projection — delivering to the shell
 
-Register a closure that reads from the same `Arc<Mutex<AppState>>` and emits a
-typed sidecar. The closure runs on every snapshot tick after any ingest:
+The helper registers a closure that reads from the same `Arc<Mutex<AppState>>`
+and emits a typed sidecar. The closure runs when the actor emits a frame after
+ingest or another relevant wake:
 
 ```rust
 let state_snap = state.clone();
@@ -368,33 +369,20 @@ actor's `changed_since_emit` flag whenever an event lands. See
 
 ```rust
 pub fn register(app: &mut impl AppHost) {
-    let state = Arc::new(Mutex::new(DiscoveryState::default()));
-
     // 1. Install the explicit NIP/protocol stack this app wants.
     install_protocol_stack(app);
 
-    // 2. Declared observed projection before any app action can trigger ingest.
-    app.open_observed_projection(ObservedProjection::from_kinds(
-        Arc::new(ArticleObserver { state: state.clone() }),
-        "myapp.discover_results",
-        1,
-        [KIND_LONG_FORM_ARTICLE],
-        128,
-    ));
+    // 2. Read session helper — owns internal interests, replay, output, status,
+    // and close. It may use observed delivery internally.
+    register_topic_articles_read_session(app);
 
-    // 3. Projection — reads the observer's state.
-    app.register_typed_snapshot_projection("myapp.discover_results", {
-        let s = state.clone();
-        move || s.lock().ok().map(|g| encode_discovery_projection(&*g))
-    });
-
-    // 4. Action module — the shell can now dispatch Claim/Release.
+    // 3. Action module — the shell can now dispatch Claim/Release.
     app.register_action(TopicArticlesModule);
 }
 ```
 
-The observer registration does not need to happen before the action
-registration — both are consulted only when the actor processes a command or
+The session registration does not need to happen before the action registration
+for actor safety — both are consulted only when the actor processes a command or
 an event, which is after `nmp_app_start`. The constraint is simply that the
 shell calls this app-core `register()` once before `nmp_app_start`.
 
@@ -430,9 +418,9 @@ This is the `ensure_sub` / `drop_owner` contract in
 
 Subscription-opening actions are **synchronously completing** —
 `is_async_completing()` defaults to `false` and that default is correct here.
-`execute()` enqueues `EnsureInterest` and returns `Ok`. The host spinner clears
-immediately. The ongoing event flow is entirely separate from the action's
-completion signal.
+`execute()` records Claim/Release and returns `Ok`. The host spinner clears
+immediately. The ongoing session output flow is entirely separate from the
+action's completion signal.
 
 `is_async_completing() = true` applies only when the kernel must wait for a
 specific terminal event before it can declare success (e.g. a NWC payment
@@ -458,20 +446,21 @@ Nostr relay operations. The kernel owns all relay connections, always. The
 pattern in this chapter is the correct path.
 
 If you find yourself reaching for `dispatch_capability` with a relay-flavoured
-namespace, stop and ask: "Can I open the subscription from an `ActionModule`
-and read the results from a projection?" The answer is almost certainly yes.
+namespace, stop and ask: "Can I claim a typed read session from an
+`ActionModule` and read the pushed typed output?" The answer is almost
+certainly yes.
 
 ## Anti-patterns
 
 | Pattern | Problem | Correct form |
 |---|---|---|
-| `EnsureInterest` with a static key (`"active"`) for a mutable query | New filter silently discarded; old query stays on wire (`ensure_sub` is register-if-absent) | Use the query as the content discriminant; dispatch Release for old query before Claim for new |
+| Internal ensure with a static key (`"active"`) for a mutable query | New filter silently discarded; old query stays on wire (`ensure_sub` is register-if-absent) | Use the query as the content discriminant; release the old session owner before claiming the new one |
 | Claim and Release in separate action modules | Identity derivation can diverge; wrong owner dropped → sub leaks | Keep Claim/Release as tagged variants of one enum under one namespace |
-| `dispatch_capability("nostr_relay", …)` | Relay logic enters the shell; kernel becomes a passthrough (D0, D4) | Action module → `EnsureInterest` → observer → projection |
-| Calling `push_interest` / `EnsureInterest` outside of `ActionModule::execute` or a runtime controller | Bypasses the action stage machinery; no correlation ID; no host visibility | Route through an `ActionModule` or an account-switch runtime controller (see `runtimes.rs`) |
+| `dispatch_capability("nostr_relay", …)` | Relay logic enters the shell; kernel becomes a passthrough (D0, D4) | Action module → typed session Claim/Release → pushed typed output |
+| Calling `push_interest` / `EnsureInterest` from product code | Bypasses the typed-session owner; no session status, close contract, or route provenance | Route through a typed read-session helper or a runtime controller (see `runtimes.rs`) |
 | Observer that blocks or panics | Stalls the actor thread; may corrupt snapshot cadence | Keep observer body O(1), lock briefly, never panic (D6) |
-| Polling the projection from the shell instead of reading off the pushed frame | D8 violation (polling); data is already pushed — read it from `apply()` | Register a push projection; read `typed_projections[key]` in the push callback |
-| Setting `is_async_completing = true` for a subscription-only action | Host spinner waits for a terminal that never arrives | Leave `is_async_completing` at default `false`; the action is done when `EnsureInterest` is enqueued |
+| Polling the projection from the shell instead of reading off the pushed frame | D8 violation (polling); data is already pushed — read it from `apply()` | Claim the typed session and render its pushed typed output |
+| Setting `is_async_completing = true` for a subscription-only action | Host spinner waits for a terminal that never arrives | Leave `is_async_completing` at default `false`; the action is done when Claim/Release is recorded |
 
 ## Decision tree — which lifecycle?
 
@@ -488,12 +477,12 @@ The subscription should close when…
 ```
 ## Checklist
 
-- [ ] Claim and Release derive the same `SubIdentity` from the same inputs.
-- [ ] `SubOwnerKey` includes `consumer_id`; `SubKey` does not.
-- [ ] `SubKey` matches the filter; `InterestId` is a stable hash, not a UUID.
+- [ ] Claim and Release derive the same internal owner identity from the same inputs.
+- [ ] Internal `SubOwnerKey` includes `consumer_id`; `SubKey` does not.
+- [ ] Internal `SubKey` matches the filter; `InterestId` is a stable hash, not a UUID.
 - [ ] `is_async_completing()` is `false` (default) for subscription-only actions.
-- [ ] The observed projection declares its shape, stays cheap, and never panics.
+- [ ] Any internal observed executor declares its shape, stays cheap, and never panics.
 - [ ] Per-open/late-joining projections use kernel replay, not app-side hydration.
-- [ ] The snapshot projection reads from the observer state; tailing subs have Release.
+- [ ] The typed output reads from session-owned state; tailing sessions have Release.
 - [ ] No relay logic, WebSocket code, or `dispatch_capability("nostr_relay", …)` is in the shell.
 See also: [05a](05a-substrate-traits.md) · [06](06-reactivity-contract.md) · [07](07-subscription-planner.md) · [16](16-capabilities.md) · [20](20-new-protocol-module.md).

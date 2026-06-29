@@ -49,7 +49,7 @@ apps/microblog/
 crates/microblog-core/               # hand-written app-core crate (you write this)
 ├── Cargo.toml
 └── src/
-    └── lib.rs                       # records + ActionModule + observer + register()
+    └── lib.rs                       # records + ActionModule + read-session helper + register()
 ```
 
 Only `crates/microblog-core/src/lib.rs` and `apps/microblog/nmp.toml` are
@@ -160,45 +160,48 @@ impl ActionModule for NoteActionModule {
 
 > **`is_async_completing() = true`** because the terminal outcome (relay ACK)
 > arrives asynchronously through `projections["action_stages"]`. The dispatch
-> return carries a `correlation_id`; the host polls `action_stages[id]` for
+> return carries a `correlation_id`; the host observes `action_stages[id]` for
 > `Publishing → Accepted/Failed`.
 
-## ObservedProjectionSink — building the feed
+## Typed read-session helper — building the feed
 
-The app builds its feed by implementing `ObservedProjectionSink` and opening a
-declared observed projection. Matching kind:1 events fire `on_kernel_event`
-after the kernel has replayed cached/store-backed rows and activated scoped
-future delivery.
+Production app code opens a typed read session, or a generated helper over one.
+The session owns acquisition, replay-before-live, scoped delivery, output, and
+teardown. `ObservedProjectionSink` and `open_observed_projection` are the
+current executor machinery behind that helper; do not expose them as the app
+API or copy them into shell code.
 
-```rust
-use nmp_core::{ObservedProjectionSink, KernelEvent};
+This walkthrough keeps the live implementation shape honest by hiding the
+substrate wiring behind one private helper. When the generated typed-session API
+lands, only this helper changes.
 
 static FEED_STORE: OnceLock<FeedStore> = OnceLock::new();
 
-pub struct FeedObserver {
-    store: FeedStore,
-}
+pub fn register_microblog_read_session(app: &mut impl AppHost, store: FeedStore) {
+    // Shape only, not a copy/paste API:
+    //
+    // 1. Declare the app's home-feed read session:
+    //      key: FEED_SNAPSHOT_KEY
+    //      demand: kind:1 notes
+    //      replay: bounded before live activation
+    //      output: encoded FeedProjection
+    //      close: release the owner and clear/tombstone output
+    //
+    // 2. Install the session executor. Today's implementation may use
+    //    observed delivery internally, but that wiring stays behind this helper
+    //    and is not the app-facing API per ADR-0070.
 
-impl ObservedProjectionSink for FeedObserver {
-    // Fires for every Inserted | Replaced ingest on the actor thread.
-    // Duplicates and rejections never reach here.
-    fn on_kernel_event(&self, event: &KernelEvent) {
-        if event.kind != 1 { return; }
-        let record = NoteRecord {
-            id:         event.id.clone(),
-            author:     event.author.clone(),
-            content:    event.content.clone(),
-            created_at: event.created_at,
-        };
-        if let Ok(mut guard) = self.store.lock() {
-            // Simple append; production would deduplicate + sort by created_at.
-            guard.push(record);
+    let projector = Arc::clone(&store);
+    app.register_typed_snapshot_projection(FEED_SNAPSHOT_KEY, move || {
+        match projector.lock() {
+            Ok(g) => project_feed(&g),
+            Err(_) => None,
         }
-    }
+    });
 }
 ```
 
-## `register()` — wiring all three seams
+## `register()` — wiring the app root
 
 ```rust
 pub fn accepted() -> Update { Update::ActionAccepted }
@@ -217,23 +220,10 @@ pub fn register(app: &mut impl AppHost) -> FeedStore {
     // 2. Write path.
     app.register_action(NoteActionModule);
 
-    // 3. Event-driven view — declared shape, replay, then scoped delivery.
-    app.open_observed_projection(ObservedProjection::from_kinds(
-        Arc::new(FeedObserver { store: Arc::clone(&store) }),
-        FEED_SNAPSHOT_KEY,
-        0,
-        [KIND_NOTE],
-        128,
-    ));
-
-    // 4. Read output — projects the feed into the snapshot.
-    let projector = Arc::clone(&store);
-    app.register_typed_snapshot_projection(FEED_SNAPSHOT_KEY, move || {
-        match projector.lock() {
-            Ok(g)  => project_feed(&g),
-            Err(_) => None,
-        }
-    });
+    // 3. Read path — one typed session/helper owns demand, replay, output,
+    // status, and teardown. It may use observed delivery internally, but that
+    // is not the app-facing API.
+    register_microblog_read_session(app, Arc::clone(&store));
 
     store
 }
@@ -286,9 +276,12 @@ That shell is the analog of `nmp_app_chirp_register` in `apps/chirp/crates/nmp-a
   collaborators with the same instance; copying the block by hand desyncs them.
 - **Rendering raw events in Swift/Kotlin/TypeScript.** Rust-owned typed read
   output is the source of truth. Raw event arrays across FFI violate D5.
-- **Inventing a new extension family.** Use the shipped action, observer,
-  projection, capability, and composition seams unless an ADR changes the
-  substrate.
+- **Exposing observed delivery as the app API.** ADR-0070 makes typed read
+  sessions/helpers the app-facing read model. `ObservedProjectionSink` and
+  `open_observed_projection` are internal/protocol-substrate machinery unless a
+  later ADR says otherwise.
+- **Inventing a new extension family.** Use the shipped action, typed read
+  output, capability, and composition seams unless an ADR changes the substrate.
 - **Expecting generated framework wiring.** The staticlib shell is thin glue
   that calls the app-core composition root.
 

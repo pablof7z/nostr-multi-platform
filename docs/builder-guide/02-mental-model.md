@@ -7,7 +7,8 @@ extension modules — not a framework with closed built-ins.** The kernel knows
 *how* to run a reactive Nostr client. It does not know *what* a Profile, an
 Episode, a Highlight, or a TODO is. Those nouns live in modules you write.
 
-This section gives you the four-layer stack, the three extension seams, the
+This section gives you the four-layer stack, the production app surfaces, the
+internal extension machinery, the
 no-app-nouns-in-kernel rule, what crosses FFI, and a concrete "where does X
 live?" map. It is the map for the whole guide.
 
@@ -73,12 +74,13 @@ active product shell.
   store. The runtime payload format is FlatBuffers; the shell holds no
   source-of-truth state.
 
-## The 3 extension seams
+## Production app surfaces and internal seams
 
-Extension crates plug into a vanilla `NmpApp` through a small set of Rust seams.
-A crate uses only the seams it owns and never reaches into kernel internals.
-Production app screens should see typed read sessions and typed action builders;
-raw observer/projection plumbing is executor machinery behind those sessions.
+Extension crates plug into a vanilla `NmpApp` through a small set of Rust seams,
+but not every seam is app-facing vocabulary. A crate uses only the seams it owns
+and never reaches into kernel internals. Production app screens should see typed
+read sessions and typed action builders; raw observer/projection plumbing is
+executor machinery behind those sessions.
 
 ### Seam 1 — `register_action(module)`
 
@@ -91,7 +93,22 @@ its `execute()` enqueues `ActorCommand`s into the actor. The registered module
 receives every typed dispatch envelope whose namespace matches
 `MyActionModule::NAMESPACE`.
 
-### Seam 2 — typed output registration
+### Production read surface — typed sessions/helpers
+
+```rust
+register_microblog_read_session(app, Arc::clone(&store));
+```
+
+A typed read session, or a generated helper over one, is the production read
+model. It owns demand, replay-before-live, admission, typed output, status,
+dynamic source wakeups, and teardown. The shell renders the session's typed
+output; it does not hand-author filters or observed projections.
+
+Exact helper names are owned by the live crates. The important shape is that the
+composition root installs one named read owner instead of exposing the executor
+pieces to app screens.
+
+### Internal seam 2 — typed output registration
 
 Registers a typed sidecar pushed under `typed_projections["nmp.myapp.items"]`.
 This is output transport machinery. A production read session may use it
@@ -99,12 +116,14 @@ internally, but an app screen should open the session/helper rather than wire
 projection keys directly. The producer runs on the actor update path and must be
 cheap and non-blocking (D8).
 
-### Seam 3 — observed delivery, internal to read sessions
+### Internal seam 3 — observed delivery
 
 Registers scoped observed delivery behind a declared shape. The kernel opens
 the matching demand, replays cached/store-backed rows to the muted sink, then
 activates future delivery scoped to that shape. Under ADR-0070 this is private
-read-session executor machinery, not the normal production app API.
+read-session executor machinery, not the normal production app API. Protocol
+modules and runtime internals may use it to implement sessions; product screens
+should not assemble it.
 
 ### The two kernel-defined extension traits
 
@@ -196,10 +215,10 @@ This is D0 restated operationally. Before adding a type to `nmp-core`, ask:
 app cares about?* `VerifiedEvent`, `CompiledPlan`, `InsertOutcome` are
 infrastructure. `Episode`, `Highlight`, `Project`, `Group` are nouns —
 protocol nouns go in `nmp-nip*` crates, app nouns in app-core crates. The live
-proof that the boundary holds: `microblog-core` exercises all three seams
-while remaining a Nostr-shaped app crate, and `nmp-nip29` adds actions +
-projections for group machinery while `nmp-core` gains exactly *one* generic
-seam (the relay-pin routing lane) and zero group nouns.
+proof that the boundary holds: `microblog-core` uses typed actions and a named
+read owner while remaining a Nostr-shaped app crate, and `nmp-nip29` adds
+actions + projections for group machinery while `nmp-core` gains exactly *one*
+generic seam (the relay-pin routing lane) and zero group nouns.
 
 ## What crosses FFI (and what does not)
 
@@ -246,7 +265,8 @@ changes to `nmp-core`**.
    JSON in the shell re-implements the kernel's reactive contract, duplicates
    state ownership (D4 violation), and breaks D5 bounding. Product reads render
    Rust-owned typed output.
-4. **Adding a 4th registration seam without an ADR.** The three seams are the
+4. **Adding a new registration seam without an ADR.** The existing action,
+   capability, typed-output, and internal observed-delivery seams are the
    extension contract. A new seam is a kernel change that requires its own ADR.
 
 Paste the **"Where does X live?" map** next to any PR that adds a new type and
