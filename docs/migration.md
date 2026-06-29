@@ -85,7 +85,18 @@ floor and selected protocol/app seams by name:
 use nmp_core::substrate::AppHost;
 
 pub fn register(app: &mut impl AppHost) {
-    nmp_defaults::register_substrate(app, nmp_defaults::NmpDefaults::default().coverage_gate);
+    let nmp_defaults::NmpDefaults {
+        coverage_gate,
+        search_defaults,
+        ..
+    } = nmp_defaults::NmpDefaults::default();
+
+    let _mailbox_cache = nmp_defaults::register_substrate(app, coverage_gate);
+    nmp_defaults::register_nip50_protocol_defaults(app);
+    let _social_handles =
+        nmp_defaults::register_social_protocol_defaults(app, search_defaults);
+    nmp_defaults::register_dm_protocol_defaults(app);
+    nmp_defaults::register_longform_projection(app);
     my_app_core::register_actions(app);
     my_app_core::register_projections(app);
 }
@@ -93,7 +104,9 @@ pub fn register(app: &mut impl AppHost) {
 
 App-owned relays, seed follows, signer permissions, and product defaults stay
 in the leaf app Rust crate or operator config. They do not move into
-`nmp-defaults`.
+`nmp-defaults`. Starter apps must keep the named installer sequence visible;
+wholesale defaults presets are compatibility/tutorial/migration support, not
+the production app-facing model.
 
 ## Browser Runtime
 

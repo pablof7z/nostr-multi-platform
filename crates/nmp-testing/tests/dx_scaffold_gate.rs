@@ -305,11 +305,14 @@ fn g3_shell_uses_nmp_app_builder() {
     )
     .expect("read lib.rs");
 
+    let substrate = lib_rs.find("nmp_defaults::register_substrate");
+    let nip50 = lib_rs.find("nmp_defaults::register_nip50_protocol_defaults");
+    let social = lib_rs.find("nmp_defaults::register_social_protocol_defaults");
+    let dm = lib_rs.find("nmp_defaults::register_dm_protocol_defaults");
+    let longform = lib_rs.find("nmp_defaults::register_longform_projection");
     assert!(
-        lib_rs.contains("nmp_defaults::register_substrate"),
-        "G3 DX GAP: lib.rs register() does not install the NMP substrate explicitly.\n\
-         The scaffold must show the app composition root (ADR-0069).\n\
-         lib.rs:\n{lib_rs}",
+        substrate.is_some() && substrate < nip50 && nip50 < social && social < dm && dm < longform,
+        "G3 DX GAP: starter installers must be named and ordered like production roots.\n{lib_rs}",
     );
     assert!(
         !lib_rs.contains("nmp_defaults::register_defaults"),
