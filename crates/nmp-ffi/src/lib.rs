@@ -137,9 +137,8 @@ pub use timeline::{
     // deleted from identity.rs.
     // ADR-0063 Lane H: nmp_app_claim_profile, nmp_app_release_profile deleted.
     // #1740/#2092: `nmp_app_open_contact_feed` / `nmp_app_close_contact_feed`
-    // and the follow-feed declare/clear helpers are deleted. Apps open the
-    // home feed by passing `FeedParams` whose acquisition scope is
-    // `FeedScope::ActiveUserFollows` to `nmp_app_open_feed`.
+    // and the follow-feed declare/clear helpers are deleted. Apps open typed
+    // feed sessions through app-owned Rust helpers over `NmpApp::open_feed`.
     // #1946: event URI C-ABI front doors DELETED. Callers migrate to the typed
     // event-ref adapters below.
     nmp_app_close_interest,
