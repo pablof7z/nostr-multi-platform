@@ -29,8 +29,8 @@ fn publish_route_class_has_no_default_and_no_public_manual_helper() {
 #[test]
 fn generated_publish_builders_require_named_explicit_route_provenance() {
     for path in [
-        "apps/chirp/ios/Chirp/Bridge/Generated/ActionBuilders.generated.swift",
-        "apps/chirp/android/app/src/main/java/org/nmp/android/ActionBuilders.kt",
+        "crates/nmp-codegen/tests/fixtures/app_action_builders/generated/ActionBuilders.generated.swift",
+        "crates/nmp-codegen/tests/fixtures/app_action_builders/generated/ActionBuilders.kt",
         "web/packages/runtime-web/src/actionBuilders.generated.ts",
     ] {
         let text = read(path);
