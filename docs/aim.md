@@ -174,7 +174,7 @@ The framework ships **test utilities**: a mock relay (already provided by the re
 
 ### 4.14 Scaffolding CLI
 
-A **scaffolding CLI** (`<framework> init`) generates a complete starter project: the Rust core crate, the binding layer (today: hand-rolled C-ABI; symbol counts and governance are temporal facts tracked in GitHub Issues; UniFFI migration deferred to M14 when the write surface stabilizes — see **ADR-0030** (`docs/decisions/0030-uniffi-vs-c-abi.md`)), an iOS SwiftUI app, an Android Compose app, a desktop (egui) app, the `justfile` build orchestrator, and an optional Nix flake. Browser shells are built on `nmp-browser-runtime`; one-shot web scaffold generation is gated by browser-shell DX and component-host conformance, not by a missing runtime. The v1 starter prioritizes login, timeline, compose, and profile flows; DM and wallet starter claims must follow the support matrix rather than the north-star target text. It builds and runs on the v1 native platforms (iOS, Android, desktop) immediately. This is modeled directly on RMP's `rmp init`.
+A **scaffolding CLI** (`<framework> init`) generates a complete starter project: the Rust core crate, the native binding layer (UniFFI over `nmp-native-runtime`), an iOS SwiftUI app, an Android Compose app, a desktop app, the `justfile` build orchestrator, and an optional Nix flake. Browser shells are built on `nmp-browser-runtime` through wasm-bindgen; one-shot web scaffold generation is gated by browser-shell DX and component-host conformance, not by a missing runtime. The v1 starter prioritizes login, timeline, compose, and profile flows; DM and wallet starter claims must follow the support matrix rather than the north-star target text. It builds and runs on the v1 native platforms (iOS, Android, desktop) immediately. This is modeled directly on RMP's `rmp init`.
 
 ---
 
@@ -188,13 +188,10 @@ The repository is a Cargo workspace plus per-platform shells. The layout below i
 │   ├── <framework>-core         # Actor, AppState, typed commands, UpdateFrame,
 │   │                              # event store, subscription planner, sessions,
 │   │                              # outbox routing. Pure Rust, no FFI.
-│   ├── <framework>-ffi          # Binding scaffolding. App handle,
-│   │                              # update callback interface,
-│   │                              # state-type carriers across the FFI seam.
-│   │                              # TODAY: hand-rolled C-ABI; symbol count and
-│   │                              # governance tracked in GitHub Issues.
-│   │                              # UniFFI migration deferred to M14 — see
-│   │                              # ADR-0030.
+│   ├── <framework>-uniffi       # Public native binding scaffolding over the
+│   │                              # native runtime: app handle, update sink,
+│   │                              # typed byte dispatch, capabilities, and
+│   │                              # state-type carriers across the binding seam.
 │   ├── <framework>-browser-runtime
 │   │                              # wasm-bindgen Worker export + browser runtime.
 │   ├── <framework>-actions      # Built-in actions: send, follow, profile,
