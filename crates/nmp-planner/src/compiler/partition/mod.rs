@@ -25,6 +25,8 @@ mod hint_helper;
 mod inbox_helper;
 
 #[cfg(test)]
+mod active_pin_tests;
+#[cfg(test)]
 mod hint_case_d_tests;
 #[cfg(test)]
 mod hint_consumption_tests;
@@ -140,9 +142,10 @@ impl RelayEntry {
 /// not perturb account-scoped profile fetches or tailing timeline interests.
 //
 // `too_many_arguments` allowed: this is the planner-private dispatcher; its
-// parameter list is the compile-context surface (5 relay sets + mailbox cache
-// + interest input) plus the two output accumulators. A struct wrapper would
-// only force every call site through an extra builder for zero clarity gain.
+// parameter list is the compile-context surface (5 relay sets + the derived
+// active-pin set + mailbox cache + interest input) plus the two output
+// accumulators. A struct wrapper would only force every call site through an
+// extra builder for zero clarity gain.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn partition_interest(
     interest: &LogicalInterest,
@@ -152,6 +155,7 @@ pub(super) fn partition_interest(
     app_relays: &[RelayUrl],
     bootstrap_content_relays: &[RelayUrl],
     bootstrap_indexer_relays: &[RelayUrl],
+    active_pinned_relays: &BTreeSet<RelayUrl>,
     relay_entries: &mut BTreeMap<RelayUrl, Vec<RelayEntry>>,
     unroutable: &mut BTreeSet<Pubkey>,
 ) {
@@ -196,6 +200,7 @@ pub(super) fn partition_interest(
             mailbox_cache,
             app_relays,
             bootstrap_indexer_relays,
+            active_pinned_relays,
             relay_entries,
             unroutable,
         );
