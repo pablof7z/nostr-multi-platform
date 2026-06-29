@@ -17,6 +17,8 @@
 //!   * `nmp_app_open_interest` / `nmp_app_close_interest` — the old public raw
 //!     C-ABI interest doorway. Internal Rust open-interest machinery remains.
 //!   * comments/docs that NAME a retired symbol to document its removal.
+//!   * `nmp_app_open_feed` / `nmp_app_close_feed` — the retired public C feed
+//!     session doorway. App-owned Rust typed-session helpers remain.
 //!
 //! # Running
 //!
@@ -277,20 +279,46 @@ fn claimed_event_embeds_key_is_not_used_in_public_surfaces() {
     );
 }
 #[test]
-fn typed_open_feed_doorway_symbols_exist() {
-    // The POSITIVE companion: the public C doorway must be DEFINED. This guards
-    // against an over-zealous future cleanup deleting the replacement along with
-    // the retired raw-interest lane.
-    let feed_rs = repo_root().join("crates/nmp-ffi/src/feed.rs");
-    let text = fs::read_to_string(&feed_rs)
-        .unwrap_or_else(|e| panic!("the public feed FFI doorway file must exist: {e}"));
-    for sym in ["nmp_app_open_feed", "nmp_app_close_feed"] {
-        assert!(
-            text.contains(&format!("pub extern \"C\" fn {sym}")),
-            "the public typed feed C doorway `{sym}` must be defined in {}",
-            feed_rs.display()
-        );
+fn feed_open_close_c_abi_symbols_are_not_defined_or_reexported() {
+    const RETIRED_FEED_SYMBOLS: &[&str] = &["nmp_app_open_feed", "nmp_app_close_feed"];
+
+    let root = repo_root();
+    let mut files = Vec::new();
+    for sub in ["crates", "apps"] {
+        rust_files(&root.join(sub), &mut files);
     }
+    assert!(!files.is_empty(), "must scan some Rust sources");
+
+    let mut violations = Vec::new();
+    for file in &files {
+        if file.ends_with("tests/feed_public_surface_retired.rs") {
+            continue;
+        }
+        let file_text = file.to_string_lossy().replace('\\', "/");
+        if file_text.contains("/crates/nmp-testing/bin/doctrine-lint/")
+            || file_text.ends_with("/crates/nmp-testing/tests/clean_break_docs_ratchet.rs")
+        {
+            continue;
+        }
+        let Ok(text) = fs::read_to_string(file) else {
+            continue;
+        };
+        for (n, line) in text.lines().enumerate() {
+            let code = code_only(line);
+            for sym in RETIRED_FEED_SYMBOLS {
+                if code.contains(sym) {
+                    violations.push(format!("{}:{}: {}", file.display(), n + 1, line.trim()));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "retired public feed C-ABI symbols reappeared in code; app-owned Rust \
+         helpers keep typed session behavior instead:\n{}",
+        violations.join("\n")
+    );
 }
 
 #[test]
@@ -331,7 +359,7 @@ fn raw_interest_c_abi_symbols_are_not_defined_or_reexported() {
     assert!(
         violations.is_empty(),
         "retired raw-interest C-ABI symbols reappeared in code; typed sessions must \
-         use nmp_app_open_feed / nmp_app_close_feed instead:\n{}",
+         stay on app-owned Rust helpers instead:\n{}",
         violations.join("\n")
     );
 }
@@ -339,10 +367,15 @@ fn raw_interest_c_abi_symbols_are_not_defined_or_reexported() {
 #[test]
 fn c_abi_feed_docs_do_not_advertise_retired_open_close_symbols() {
     // These docs are the C-ABI/iOS-shell references most likely to be copied by
-    // host builders. They may describe internal Rust `open_interest`, but must
-    // not advertise the retired C raw-interest symbol pair as live public FFI.
+    // host builders. They may describe internal Rust helpers, but must not
+    // advertise retired C open/close symbol pairs as live public FFI.
     const DOCS: &[&str] = &["docs/ffi-surface.md", "docs/builder-guide/17-ios-shell.md"];
-    const RETIRED_FEED_SYMBOLS: &[&str] = &["nmp_app_open_interest", "nmp_app_close_interest"];
+    const RETIRED_FEED_SYMBOLS: &[&str] = &[
+        "nmp_app_open_interest",
+        "nmp_app_close_interest",
+        "nmp_app_open_feed",
+        "nmp_app_close_feed",
+    ];
 
     let root = repo_root();
     let mut violations = Vec::new();

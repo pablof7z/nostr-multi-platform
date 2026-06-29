@@ -84,7 +84,7 @@ pub use capability::{nmp_app_dispatch_capability, nmp_app_set_capability_callbac
 #[cfg(feature = "native")]
 pub use content_ffi::nmp_content_tokenize_text;
 #[cfg(feature = "native")]
-pub use feed::{nmp_app_close_feed, nmp_app_load_older_feed, nmp_app_open_feed};
+pub use feed::nmp_app_load_older_feed;
 #[cfg(feature = "native")]
 pub use free::nmp_free_string;
 #[cfg(feature = "native")]
