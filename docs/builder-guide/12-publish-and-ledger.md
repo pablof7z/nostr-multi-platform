@@ -19,9 +19,10 @@ normal write API.
 
 The normal sequence is:
 
-1. The app dispatches a typed write intent (`PublishRaw`, `PublishProfile`,
-   `PublishReply`, or a protocol-owned action module).
-2. Rust validates the draft and any signer selector.
+1. The app dispatches a typed product or protocol write intent, such as
+   generated reply/profile builders or a protocol-owned action module.
+2. Rust validates the unsigned draft, the typed signer selector, and any
+   explicit route provenance.
 3. The actor finalizes the event shape, stamps kernel time, signs through the
    selected registered signer, and hands the signed event to the publish engine.
 4. The publish engine resolves relays, persists retry state, sends frames, and
@@ -39,25 +40,18 @@ diagnostic routes are refused for externally signed events.
 ## The publish engine API
 
 Apps publish through the action surface. There is no "build → sign → send" you
-call yourself. The app-facing variants are unsigned intent builders:
+call yourself. The app-facing examples are unsigned intent builders:
 
 ```rust
-enum PublishAction {
-    PublishProfile { fields: Map<String, Value> },
-    PublishRaw {
-        kind: u32,
-        tags: Vec<Vec<String>>,
-        content: String,
-        target: PublishTarget,
-        signer: PublishSigner,
-    },
-    PublishReply {
-        content: String,
-        reply_to_event_id: String,
-        target: PublishTarget,
-        signer: PublishSigner,
-    },
-}
+GeneratedActionBuilders.publishReply(
+    correlationId,
+    content,
+    replyToEventId,
+    target,
+    signer,
+)
+
+GeneratedActionBuilders.publishProfile(correlationId, fields)
 ```
 
 `PublishTarget` (`action.rs:28-32`) is `Auto` (NIP-65 via
@@ -66,11 +60,11 @@ class. `Auto` is the normal path. `Explicit` is the named D3 opt-out for
 protocol-owned or audited relay pins.
 
 `PublishModule` is the `ActionModule` impl. `start()` validates draft shape
-before the actor sees it: profile fields must be strings, raw publishes cannot
-use reserved builder-only kinds, private/encrypted kinds require a
-`verified_private_inbox` explicit route, and replies need a concrete stored
-parent id. The action ledger sees the host's correlation id; per-relay timing
-and retry state are the publish engine's, not the ledger's.
+before the actor sees it: profile fields must be strings, private/encrypted
+kinds require a `verified_private_inbox` explicit route, arbitrary raw event
+kinds are reserved for protocol/import/diagnostic paths, and replies need a
+concrete stored parent id. The action ledger sees the host's correlation id;
+per-relay timing and retry state are the publish engine's, not the ledger's.
 
 ## Choosing the signer — typed provenance
 
@@ -109,7 +103,7 @@ selector never appears on the retry engine record itself.
 
 | Concern | Mechanism | Surface |
 |---|---|---|
-| **Write** an event | dispatch unsigned publish intent (`PublishRaw`, `PublishProfile`, `PublishReply`, or protocol action) | action only — no direct relay/store call |
+| **Write** an event | dispatch unsigned typed publish intent (reply/profile builder or protocol action) | action only — no direct relay/store call |
 | **Cancel** a publish | `nmp_app_cancel_action(correlation_id)` | dedicated control symbol |
 | **Observe** publish status | open `PublishStatusView` | store/view subscription — never a return value |
 | **Read** events back | typed read session / generated helper | internally backed by store/view subscription |
@@ -129,7 +123,7 @@ Per-(event, relay) state machine
 (`state.rs:18-21` — no wall clock, no threads, no sockets).
 
 ```text
-PublishRaw / PublishProfile / PublishReply / protocol action
+typed unsigned publish intent / protocol action
         │
         ▼
    actor validates + finalizes draft, stamps kernel time, signs

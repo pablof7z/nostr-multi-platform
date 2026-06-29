@@ -211,10 +211,10 @@ human behind it. App-local agents are `AppLocal`; one-shot signers are
 `Ephemeral`.
 
 App-managed local signer slots use `nmp_app_register_agent_nsec`. The kernel
-persists these slots, resolves them for explicit `signer_pubkey` publishes and
-uploads, hides them from account projections, and rejects `SwitchActive` for
-their pubkeys. `nmp_app_signin_nsec(make_active=0)` remains a visible secondary
-account import, not the hidden app-managed path.
+persists these slots, resolves them for typed registered-signer publish and
+upload selectors, hides them from account projections, and rejects
+`SwitchActive` for their pubkeys. `nmp_app_signin_nsec(make_active=0)` remains
+a visible secondary account import, not the hidden app-managed path.
 
 ## Builder checklist
 

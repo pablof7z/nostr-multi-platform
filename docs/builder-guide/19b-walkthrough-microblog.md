@@ -138,7 +138,7 @@ map keyed by that id.
 | Capability | Ships today | Planned |
 |---|---|---|
 | `ActorCommand::PublishNote` (kind:1 sign + outbox publish) | ✅ DONE | — |
-| `ActorCommand::PublishRawEvent` (arbitrary kind) | ✅ DONE | — |
+| arbitrary-kind publish command | ✅ DONE (low-level escape; not starter app guidance) | — |
 | `LocalKeySigner` (nsec / hex / ncryptsec) | ✅ M6 (DONE) | — |
 | NIP-46 bunker signer | ✅ M6 (DONE) | — |
 | Multi-account switch | ✅ M8 (DONE) | — |
