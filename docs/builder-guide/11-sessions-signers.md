@@ -221,9 +221,8 @@ a visible secondary account import, not the hidden app-managed path.
 For each app shell:
 
 1. Register the native keyring capability before `nmp_app_start` or any
-   app-specific identity restore wrapper. iOS/TUI/desktop use
-   `nmp_app_set_capability_callback`; Android uses
-   `nativeSetCapabilityHandler` before `nativeIdentityRestore`.
+   app-specific identity restore wrapper through the UniFFI/native-runtime
+   capability handler path.
 2. Keep the native handler mechanical: store, retrieve, delete, and report raw
    `KeyringResult` facts. Do not store signer kind, active account, relays,
    retries, onboarding state, or "logged in" policy in native secure storage.

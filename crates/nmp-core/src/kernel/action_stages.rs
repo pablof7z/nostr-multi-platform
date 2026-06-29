@@ -41,8 +41,8 @@
 //! [`TERMINAL_STAGE_RETENTION_MS`] elapses. Pending rows remain visible for
 //! [`PENDING_STAGE_RETENTION_MS`], which exceeds the longest signer approval
 //! budget. Both drop on the next snapshot emit after expiry. If a host has
-//! already reacted, `nmp_app_ack_action_stage(correlation_id)` may dismiss the
-//! row earlier; correctness does not depend on that host callback.
+//! already reacted, the native-runtime/UniFFI ack method may dismiss the row
+//! earlier; correctness does not depend on that host callback.
 //!
 //! # Caps (D8 — bounded retention)
 //!

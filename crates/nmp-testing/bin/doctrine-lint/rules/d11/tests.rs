@@ -74,34 +74,36 @@ fn flags_publishunsignedevent_in_new_nmp_app_extern_fn() {
 }
 
 #[test]
-fn whitelists_retry_publish_body() {
-    // A construction of `ActorCommand::PublishSignedEvent` inside
-    // `nmp_app_retry_publish` is the whitelisted escape hatch. In
-    // practice the body uses `RetryPublish`, but the whitelist is the
-    // contract: D11 must not fire.
+fn retry_publish_body_is_not_whitelisted() {
     let lines = [
         "#[no_mangle]",
-        "pub extern \"C\" fn nmp_app_retry_publish(app: *mut NmpApp, handle: *const c_char) {",
-        "    app.send_cmd(ActorCommand::Publish(PublishCommand::SignedEvent { /* impossible today, exempted */ }));",
+        concat!(
+            "pub extern \"C\" fn ",
+            "nmp_app_retry_",
+            "publish(app: *mut NmpApp, handle: *const c_char) {"
+        ),
+        "    app.send_cmd(ActorCommand::Publish(PublishCommand::SignedEvent { /* forbidden */ }));",
         "}",
     ];
     let hits = run_tracker(&lines);
-    assert!(
-        hits.is_empty(),
-        "whitelist must suppress D11 inside nmp_app_retry_publish; got {:?}",
-        hits
-    );
+    assert_eq!(hits.len(), 1);
+    assert!(hits[0].1.contains("PublishSignedEvent"));
 }
 
 #[test]
-fn whitelists_cancel_action_body() {
+fn cancel_action_body_is_not_whitelisted() {
     let lines = [
-        "pub extern \"C\" fn nmp_app_cancel_action(app: *mut NmpApp, correlation_id: *const c_char) {",
+        concat!(
+            "pub extern \"C\" fn ",
+            "nmp_app_cancel_",
+            "action(app: *mut NmpApp, correlation_id: *const c_char) {"
+        ),
         "    app.send_cmd(ActorCommand::PublishUnsignedEvent(_));",
         "}",
     ];
     let hits = run_tracker(&lines);
-    assert!(hits.is_empty());
+    assert_eq!(hits.len(), 1);
+    assert!(hits[0].1.contains("PublishUnsignedEvent"));
 }
 
 #[test]
@@ -197,7 +199,8 @@ fn flags_bare_publishsignedevent_split_construction() {
         "bare PublishCommand::SignedEvent in FFI body must trip D11; got no hits"
     );
     assert!(
-        hits.iter().any(|(_, msg, _)| msg.contains("PublishSignedEvent")),
+        hits.iter()
+            .any(|(_, msg, _)| msg.contains("PublishSignedEvent")),
         "at least one hit must name ActorCommand::PublishSignedEvent; got {:?}",
         hits
     );
@@ -219,28 +222,29 @@ fn flags_bare_publishunsignedevent_split_construction() {
         "bare PublishCommand::UnsignedEvent in FFI body must trip D11; got no hits"
     );
     assert!(
-        hits.iter().any(|(_, msg, _)| msg.contains("PublishUnsignedEvent")),
+        hits.iter()
+            .any(|(_, msg, _)| msg.contains("PublishUnsignedEvent")),
         "at least one hit must name ActorCommand::PublishUnsignedEvent; got {:?}",
         hits
     );
 }
 
 #[test]
-fn split_construction_exempt_in_whitelisted_symbol() {
-    // The whitelist must suppress the new bare-variant entries too.
+fn split_construction_in_retry_publish_is_not_whitelisted() {
     let lines = [
         "#[no_mangle]",
-        "pub extern \"C\" fn nmp_app_retry_publish(app: *mut NmpApp, handle: *const c_char) {",
-        "    let cmd = PublishCommand::SignedEvent { /* hypothetical */ };",
+        concat!(
+            "pub extern \"C\" fn ",
+            "nmp_app_retry_",
+            "publish(app: *mut NmpApp, handle: *const c_char) {"
+        ),
+        "    let cmd = PublishCommand::SignedEvent { /* forbidden */ };",
         "    app.send_cmd(ActorCommand::Publish(cmd));",
         "}",
     ];
     let hits = run_tracker(&lines);
-    assert!(
-        hits.is_empty(),
-        "whitelist must suppress bare-variant entries inside nmp_app_retry_publish; got {:?}",
-        hits
-    );
+    assert_eq!(hits.len(), 1);
+    assert!(hits[0].1.contains("PublishSignedEvent"));
 }
 
 #[test]
@@ -315,10 +319,9 @@ fn wrapped_signature_promotes_on_brace_line() {
 }
 
 #[test]
-fn wrapped_whitelisted_signature_still_exempt() {
-    // Whitelist must apply through the wrapped-signature path too.
+fn wrapped_cancel_action_signature_is_not_whitelisted() {
     let lines = [
-        "pub extern \"C\" fn nmp_app_cancel_action(",
+        concat!("pub extern \"C\" fn ", "nmp_app_cancel_", "action("),
         "    app: *mut NmpApp,",
         "    correlation_id: *const c_char,",
         ") {",
@@ -326,9 +329,6 @@ fn wrapped_whitelisted_signature_still_exempt() {
         "}",
     ];
     let hits = run_tracker(&lines);
-    assert!(
-        hits.is_empty(),
-        "wrapped whitelisted signature must still suppress D11; got {:?}",
-        hits
-    );
+    assert_eq!(hits.len(), 1);
+    assert!(hits[0].1.contains("PublishUnsignedEvent"));
 }

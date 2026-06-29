@@ -13,15 +13,15 @@
 use std::ffi::c_void;
 use std::sync::Arc;
 
+use jni::JNIEnv;
 use jni::objects::{JByteArray, JClass, JObject, JString};
 use jni::sys::{jint, jlong, jstring};
-use jni::JNIEnv;
 
+use nmp_core::__ffi_internal::NativeCapabilityHandler;
 use nmp_ffi::{
     nmp_app_add_relay, nmp_app_deliver_external_signer_response, nmp_app_new,
-    nmp_app_release_profile_ref, nmp_app_resolve_profile_ref, nmp_app_set_capability_callback,
-    nmp_app_set_update_callback, nmp_app_signin_nip55, nmp_app_start, nmp_app_stop,
-    nmp_external_signer_init,
+    nmp_app_release_profile_ref, nmp_app_resolve_profile_ref, nmp_app_set_update_callback,
+    nmp_app_signin_nip55, nmp_app_start, nmp_app_stop, nmp_external_signer_init,
 };
 
 use crate::dispatch_bytes::dispatch_action_bytes_for;
@@ -33,8 +33,8 @@ use std::sync::Mutex;
 mod event_refs;
 pub(crate) mod session;
 use session::{
-    jstring_to_cstring, on_capability_request, on_update, session_ref, set_update_listener,
-    teardown_session, GallerySession,
+    GallerySession, handle_capability_request, jstring_to_cstring, on_update, session_ref,
+    set_update_listener, teardown_session,
 };
 
 // ── JNI entry points ──────────────────────────────────────────────────────
@@ -53,20 +53,14 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeNew(
     nmp_app_set_update_callback(app, update_ctx as *mut c_void, Some(on_update));
     // Issue #1612 / ADR-0048 Stage 2 — push-based signer-request delivery
     // (D8 no-polling; replaces the deleted mpsc-channel + nativeNextSignerRequest drain).
-    // The trampoline context is a raw pointer to the Mutex inside the Arc.
     let signer_listener: SignerRequestListenerSlot = Arc::new(Mutex::new(None));
-    // SAFETY: the raw pointer into the Arc-owned Mutex outlives any trampoline
-    // call because nativeFree calls `nmp_app_set_capability_callback(…, None)`
-    // (which blocks until any in-flight call returns) before the session Arc
-    // (and thus the Mutex) is dropped. Dereferencing this pointer in
-    // `on_capability_request` is safe for the full session lifetime.
-    let trampoline_ctx =
-        Arc::as_ptr(&signer_listener) as *mut Mutex<Option<Arc<SignerRequestPushListener>>>;
-    nmp_app_set_capability_callback(
-        app,
-        trampoline_ctx as *mut c_void,
-        Some(on_capability_request),
-    );
+    let signer_listener_for_handler = Arc::clone(&signer_listener);
+    let capability_handler: NativeCapabilityHandler = Arc::new(move |request_json| {
+        handle_capability_request(&signer_listener_for_handler, &request_json)
+    });
+    unsafe { &*app }
+        .capability_callback_slot()
+        .set_native_handler(Some(capability_handler));
     nmp_external_signer_init(app);
     let session = Box::new(GallerySession {
         app,

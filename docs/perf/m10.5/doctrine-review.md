@@ -113,10 +113,9 @@ boundary; `failed_sends = 0` (S2), `dispatch_loss = 0` (S5). Mirrors
 `extern "C" fn` pointer; the bridge decides nothing — it relays. `nmp_app_free`
 is idempotent on null (`:85`) but not on double-free (documented in
 `ffi-surface.md` §1, a caller contract, not a policy decision by the bridge).
-**Noted / re-verify hook:** the keyring capability FFI socket
-(`nmp_app_set_capability_callback` / `dispatch_capability` / `free_string`,
-`ffi/capability.rs`) is **in-flight in a concurrent session and not yet on
-`origin/master`** at this review's pin (`ffi-surface.md` §2b; PD-019 update).
+**Noted / re-verify hook:** the keyring capability socket was in flight in a
+concurrent session and not yet on `origin/master` at this review's pin
+(`ffi-surface.md` §2b; PD-019 update).
 Its design intent (route `CapabilityRequest` JSON to the native handler and
 return envelope-data only, D6-clean) is doctrine-conformant on paper, but the
 D7 "reports, never decides" + idempotent-lifecycle review of those three

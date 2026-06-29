@@ -11,18 +11,17 @@
 //! until any in-flight `on_update` returns) BEFORE the `GalleryUpdateCtx` box
 //! is dropped. So the `GlobalRef` is never dropped while a push is live.
 //!
-//! Signer-request listener: the `on_capability_request` trampoline snapshots
+//! Signer-request listener: the capability handler snapshots
 //! an `Arc` clone of the listener under the slot lock, drops the lock, THEN
 //! invokes `push`. So `set_signer_request_listener` / teardown can only race a
-//! cheap `Arc::clone`, never the JNI call itself. The capability trampoline is
-//! unregistered (via `nmp_app_set_capability_callback(…, None)`, which also
-//! blocks until any in-flight call returns) before `nativeFree` drops the
-//! session arc, so the `GlobalRef` is never dropped during a live push.
+//! cheap `Arc::clone`, never the JNI call itself. The capability handler is
+//! cleared before `nativeFree` drops the session arc, so the `GlobalRef` is
+//! never dropped during a live push.
 
 use std::sync::{Arc, Mutex};
 
-use jni::objects::GlobalRef;
 use jni::JavaVM;
+use jni::objects::GlobalRef;
 
 /// A Kotlin object implementing `fun onUpdate(frame: ByteArray)`.
 /// Registered by `nativeSetUpdateListener`; cleared on teardown.
@@ -104,7 +103,7 @@ impl GalleryUpdateCtx {
 /// D8 no-polling; replaces the deleted `nativeNextSignerRequest` blocking drain).
 ///
 /// Registered by `nativeSetSignerRequestListener`; invoked from the
-/// `on_capability_request` trampoline on whichever Rust thread dispatches the
+/// capability handler on whichever Rust thread dispatches the
 /// `external_signer` capability.
 ///
 /// UAF safety: the trampoline snapshots an `Arc` clone of the listener under
@@ -152,7 +151,7 @@ impl SignerRequestPushListener {
 
 /// Session-owned slot for the JNI push signer-request listener.
 ///
-/// Wrapped in `Arc` so `on_capability_request` can snapshot the listener
+/// Wrapped in `Arc` so the capability handler can snapshot the listener
 /// reference, drop the lock, and then invoke `push` without holding the mutex
 /// across the JNI boundary (deadlock prevention — mirrors the update path).
 pub(crate) type SignerRequestListenerSlot = Arc<Mutex<Option<Arc<SignerRequestPushListener>>>>;

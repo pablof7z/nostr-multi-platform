@@ -53,9 +53,8 @@ fn start_publish_raw_action_returns_correlation_id() {
 
 #[test]
 fn start_cancel_action_is_not_a_dispatch_variant() {
-    // S7 (#1754): cancel is the kernel's cancel-by-`correlation_id` doorway
-    // (`nmp_app_cancel_action`), NEVER `dispatch_action`. The bespoke
-    // `PublishAction::Cancel` variant is DELETED, so a `Cancel` JSON cannot even
+    // S7 (#1754): cancel is the kernel's cancel-by-`correlation_id` doorway,
+    // NEVER `dispatch_action`. The bespoke `PublishAction::Cancel` variant is DELETED, so a `Cancel` JSON cannot even
     // deserialize — the action seam carries nothing for cancel, by construction.
     let registry = default_registry();
     let action_json = r#"{"Cancel":{"handle":"smoke-test"}}"#;

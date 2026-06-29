@@ -29,7 +29,7 @@ use nmp_core::substrate::{
     KeyringResult,
 };
 use std::collections::HashMap;
-use std::ffi::{c_char, CStr, CString};
+use std::ffi::{CStr, CString, c_char};
 use std::sync::{Mutex, OnceLock};
 
 /// A valid nsec1 key shared with the sibling FFI tests.
@@ -85,16 +85,31 @@ extern "C" fn mock_keyring_callback(
         .into_raw()
 }
 
+fn mock_keyring_json(request_json: String) -> String {
+    let request = CString::new(request_json).expect("capability request has no interior NUL");
+    let raw = mock_keyring_callback(std::ptr::null_mut(), request.as_ptr());
+    if raw.is_null() {
+        return "{}".to_string();
+    }
+    unsafe { CString::from_raw(raw) }
+        .to_string_lossy()
+        .into_owned()
+}
+
 /// Build an `NmpApp` with the mock keyring capability installed.
 fn app_with_mock_keyring() -> *mut nmp_ffi::NmpApp {
     let app = nmp_ffi::nmp_app_new();
-    nmp_ffi::nmp_app_set_capability_callback(app, std::ptr::null_mut(), Some(mock_keyring_callback));
+    unsafe { &*app }
+        .capability_callback_slot()
+        .set_native_handler(Some(std::sync::Arc::new(mock_keyring_json)));
     app
 }
 
 fn temp_db_dir(tag: &str) -> std::path::PathBuf {
-    let dir =
-        std::env::temp_dir().join(format!("nmp_marmot_{tag}_{:?}", std::thread::current().id()));
+    let dir = std::env::temp_dir().join(format!(
+        "nmp_marmot_{tag}_{:?}",
+        std::thread::current().id()
+    ));
     let _ = std::fs::create_dir_all(&dir);
     dir
 }
@@ -126,8 +141,12 @@ fn register_after_signin_nsec_consumes_autopublish_flag() {
     // `register_with_secret_hex` must consume the flag inside `register_with_keys`.
     // We do NOT read the flag before register (a `take_*` would itself consume
     // it) — the post-register assertion proves it was set AND consumed.
-    let handle =
-        register_with_secret_hex(app, nsec.as_ptr(), db_dir.as_ptr(), TEST_MARMOT_SVC.as_ptr());
+    let handle = register_with_secret_hex(
+        app,
+        nsec.as_ptr(),
+        db_dir.as_ptr(),
+        TEST_MARMOT_SVC.as_ptr(),
+    );
     assert!(
         !handle.is_null(),
         "register_with_secret_hex must succeed with mock keyring + temp dir"
@@ -164,8 +183,12 @@ fn second_register_without_new_signin_does_not_set_autopublish() {
     nmp_ffi::nmp_app_signin_nsec(app, nsec.as_ptr(), 1);
     let tmp = temp_db_dir("pr4_idempotence");
     let db_dir = CString::new(tmp.to_string_lossy().as_bytes()).unwrap();
-    let h1 =
-        register_with_secret_hex(app, nsec.as_ptr(), db_dir.as_ptr(), TEST_MARMOT_SVC.as_ptr());
+    let h1 = register_with_secret_hex(
+        app,
+        nsec.as_ptr(),
+        db_dir.as_ptr(),
+        TEST_MARMOT_SVC.as_ptr(),
+    );
     assert!(!h1.is_null(), "first register must succeed");
     nmp_marmot_unregister(h1);
 

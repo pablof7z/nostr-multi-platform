@@ -35,29 +35,11 @@
 //! inside an FFI body is flagged even when `ActorCommand::Publish(` appears
 //! on a different line. This closes the two-line split-assignment loophole.
 //!
-//! ## Whitelist (explicit per PR-F task)
-//!
-//! Two `nmp_app_*` symbols are publish-lifecycle control-plane (they address
-//! an already-queued operation, never produce events): `retry` by publish
-//! handle, `cancel` by operation `correlation_id` (S7/#1754):
-//!
-//! - `nmp_app_retry_publish` (by publish handle)
-//! - `nmp_app_cancel_action` (by operation `correlation_id`; S7/#1754 replaced
-//!   the bespoke `nmp_app_cancel_publish` handle symbol)
-//!
-//! Their bodies send `ActorCommand::RetryPublish` / `CancelPublish`, not
-//! the banned variants — so today they would not fire D11 anyway. The
-//! whitelist still exists as a forward guarantee: if a future change
-//! incidentally needed to construct a banned variant inside one of these
-//! two symbols (which is the wrong design but worth surfacing as the
-//! single allowed escape hatch), the lint stays out of the way.
-//!
 //! ## Allowed exemptions
 //!
 //! - Comment lines (any of `//`, `///`, `//!`, inside `/* */`).
 //! - Per-line `// doctrine-allow: D11 — reason` opt-out (the standard
 //!   doctrine escape hatch — same shape as D0/D6/D8/D9).
-//! - Whitelisted symbols (above) — their bodies are ignored.
 //!
 //! ## Scope
 //!
@@ -70,7 +52,7 @@
 pub const ID: &str = "D11";
 
 /// Banned `ActorCommand::*` patterns that must not appear inside an
-/// `extern "C" fn nmp_app_*` body (outside the whitelist).
+/// `extern "C" fn nmp_app_*` body.
 ///
 /// Each entry is `(match_substr, display_name)`. `match_substr` is the
 /// literal substring searched in the source line; `display_name` is the
@@ -108,11 +90,7 @@ const BANNED_VARIANTS: &[(&str, &str)] = &[
     ),
 ];
 
-/// Whitelisted `nmp_app_*` symbol names whose bodies are not scanned. Per
-/// the PR-F task (+ S7/#1754): retry addresses a publish handle, cancel
-/// addresses an operation `correlation_id`; neither produces events nor has a
-/// `dispatch_action` equivalent.
-const WHITELISTED_SYMBOLS: &[&str] = &["nmp_app_retry_publish", "nmp_app_cancel_action"];
+const WHITELISTED_SYMBOLS: &[&str] = &[];
 
 /// Per-line check.
 ///

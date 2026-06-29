@@ -57,48 +57,6 @@ fn dispatch_null_app_returns_error_json() {
     );
 }
 
-#[test]
-fn ack_action_stage_null_app_is_noop() {
-    let cstr = std::ffi::CString::new("corr-1").unwrap();
-    super::nmp_app_ack_action_stage(std::ptr::null_mut(), cstr.as_ptr());
-}
-
-#[test]
-fn ack_action_stage_null_correlation_id_is_noop() {
-    with_app(|app| {
-        let app_ptr = app as *const _ as *mut super::NmpApp;
-        let depth_before = app.queue_depth_for_test();
-        super::nmp_app_ack_action_stage(app_ptr, std::ptr::null());
-        let depth_after = app.queue_depth_for_test();
-        assert_eq!(
-            depth_before, depth_after,
-            "null correlation_id must not enqueue any command"
-        );
-    });
-}
-
-#[test]
-fn ack_action_stage_empty_string_is_noop() {
-    with_app(|app| {
-        let app_ptr = app as *const _ as *mut super::NmpApp;
-        let depth_before = app.queue_depth_for_test();
-        let empty = std::ffi::CString::new("").unwrap();
-        super::nmp_app_ack_action_stage(app_ptr, empty.as_ptr());
-        let depth_after = app.queue_depth_for_test();
-        assert_eq!(depth_before, depth_after);
-    });
-}
-
-#[test]
-fn ack_action_stage_well_formed_enqueues_command() {
-    with_app(|app| {
-        let app_ptr = app as *const _ as *mut super::NmpApp;
-        let cid = std::ffi::CString::new("corr-test").unwrap();
-        super::nmp_app_ack_action_stage(app_ptr, cid.as_ptr());
-        let _ = app.queue_depth_for_test();
-    });
-}
-
 use nmp_core::publish::{PublishAction, PublishRouteClass, PublishTarget};
 
 #[test]

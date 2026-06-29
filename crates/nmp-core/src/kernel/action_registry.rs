@@ -34,7 +34,7 @@
 //! `Action` type via serde.
 
 use std::collections::HashMap;
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Arc;
 
 use super::composition_ledger::{CompositionLedger, Disposition};
@@ -52,7 +52,7 @@ mod typed_dispatch;
 use action_id::new_action_id;
 use erased::{ActionModuleAdapter, ErasedActionModule};
 pub use failure::{ActionExecuteFailure, ActionFailureKind, RegistrationError};
-use result_observer::{new_result_observer_slot, ResultObserverSlot};
+use result_observer::{ResultObserverSlot, new_result_observer_slot};
 
 /// Per-namespace provenance: did the live entry come from a yielding default
 /// or from an explicit app registration? (ADR-0049 Part 1.)
@@ -339,9 +339,9 @@ impl ActionRegistry {
     /// `in_flight` is incremented under the slot lock, then host code is called
     /// without holding that lock. Clear/replace waits for `in_flight == 0`.
     ///
-    /// D6: the observer is untrusted host plugin code registered via
-    /// `nmp_app_register_action_result_observer`, and this runs on the call
-    /// path of `nmp_app_dispatch_action` — an `extern "C"` function. An
+    /// D6: the observer is untrusted host plugin code registered via the
+    /// native action-result observer surface, and this runs on the dispatch
+    /// call path. An
     /// unguarded panic would (a) poison the slot mutex, silently disabling
     /// all future delivery, and (b) unwind across the FFI boundary
     /// (undefined behaviour). The observer is therefore invoked inside
