@@ -10,10 +10,6 @@ mod action;
 mod active_account_handle_tests;
 mod app_ctor;
 mod app_lifecycle_ffi;
-mod capability;
-#[cfg(test)]
-#[path = "capability_quiescence_tests.rs"]
-mod capability_quiescence_tests;
 mod debug_info;
 #[cfg(test)]
 #[path = "event_by_id_tests.rs"]
@@ -33,7 +29,6 @@ mod keyring_forget_tests;
 #[cfg(test)]
 #[path = "passive_start_tests.rs"]
 mod passive_start_tests;
-mod publish;
 pub mod pull;
 mod resolve_ref;
 #[cfg(test)]
@@ -72,12 +67,7 @@ pub use app_lifecycle_ffi::{
 
 #[cfg(feature = "native")]
 #[allow(unused_imports)]
-pub use action::{
-    nmp_app_ack_action_stage, nmp_app_dispatch_action_bytes,
-    nmp_app_register_action_result_observer,
-};
-#[cfg(feature = "native")]
-pub use capability::{nmp_app_dispatch_capability, nmp_app_set_capability_callback};
+pub use action::nmp_app_dispatch_action_bytes;
 pub use free::nmp_free_string;
 #[cfg(feature = "native")]
 pub use group_feed::{GroupFeedHandle, open_group_discovery_handle};
@@ -87,8 +77,6 @@ pub use identity::{
     nmp_app_register_agent_nsec, nmp_app_remove_account, nmp_app_remove_relay,
     nmp_app_signin_bunker, nmp_app_signin_nsec, nmp_app_switch_active,
 };
-#[cfg(feature = "native")]
-pub use publish::{nmp_app_cancel_action, nmp_app_retry_publish};
 // #1726 — unified diagnostic pull accessor (routing/composition/merged).
 // Replaces the deleted `nmp_app_recent_routing_decisions` and
 // `nmp_app_composition_report` symbols. No compat shims kept.

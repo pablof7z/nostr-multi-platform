@@ -85,18 +85,12 @@ silently drops it.
 
 ## 4. Capability socket (`ffi/capability.rs`)
 
-Routes kernel `CapabilityRequest` JSON to a registered native handler (e.g.
-Swift `KeychainCapability.handleJSON(_:)`) and returns a `CapabilityEnvelope`
-JSON. This is the seam for PD-019 / T96 keychain capability.
-
-These symbols exist in the Rust ABI and are declared by native bridge headers or
-JNI adapters where used. The shell registers its raw capability handler before
-`start()`.
+Capability handling moved out of the public C ABI. Native shells use the
+UniFFI/native-runtime capability methods; the C surface keeps only the shared
+string-free helper for C functions that still return Rust-owned strings.
 
 | Symbol | Signature | Behavior | Callers | Threading | D6 | D7 |
 |---|---|---|---|---|---|---|
-| `nmp_app_set_capability_callback` | `(app: *mut NmpApp, context: *mut c_void, callback: Option<fn(*mut c_void, *const c_char) -> *mut c_char>)` | Register the native capability handler. `None` unregisters. A request received while unregistered yields an error envelope, never a crash. | Native capability bridge | Synchronous registration; callback invoked on the thread that calls `dispatch_capability` | null app / poisoned lock → early return | D7-clean: socket transports envelopes, decides no policy |
-| `nmp_app_dispatch_capability` | `(app: *mut NmpApp, request_json: *const c_char) -> *mut c_char` | Route a `CapabilityRequest` JSON to the registered handler, return a heap-allocated `CapabilityEnvelope` JSON string. MUST be released via `nmp_free_string`. Returns a populated error envelope on missing handler, malformed request, or NULL handler return — never NULL for valid app+request. | Native capability bridge | Synchronous on calling thread | Never returns NULL for non-null app+request; error is data | D7-clean: pure transport |
 | `nmp_free_string` | `(ptr: *mut c_char)` | Release any Rust-allocated `*mut c_char` returned by any NMP FFI function. null is a no-op (D6). This is the canonical and ONLY heap-string release symbol. | All callers of FFI functions that return `*mut c_char` | Synchronous | null → no-op | n/a |
 
 ---
@@ -113,9 +107,6 @@ not part of the production surface.
 | Symbol | Signature | Behavior | Callers | D6 | D7 |
 |---|---|---|---|---|---|
 | `nmp_app_dispatch_action_bytes` | `(app, ptr: *const u8, len: usize) -> *mut c_char` | Validate a `DispatchEnvelope`, route by action namespace, and enqueue a typed app/protocol action. Returns `{"correlation_id":...}` or `{"error":...}`; caller frees with `nmp_free_string`. | Native/TUI/protocol app modules | non-null app never returns NULL; invalid input returns error JSON | D7-clean: shell transports action data, Rust owns execution policy |
-| `nmp_app_ack_action_stage` | `(app, correlation_id: *const c_char)` | Acknowledge a terminal `action_stages` entry after the host has reacted to it. | Native/TUI action UIs | invalid → early return | n/a |
-| `nmp_app_retry_publish` | `(app, handle: *const c_char)` | Retry a failed publish by publish handle. Control-plane symbol; content publish actions still go through the byte action doorway. | Native/TUI publish UI | invalid → early return | n/a |
-| `nmp_app_cancel_action` | `(app, correlation_id: *const c_char)` | Cancel an in-flight action by host-supplied `correlation_id`. The kernel reverse-resolves the publish handle so the `Cancelled` terminal lands under the original correlation_id (PD-036). (`nmp_app_cancel_publish` is deleted.) | Native/TUI publish UI | invalid → early return | n/a |
 | `nmp_app_signin_nsec` | `(app, secret: *const c_char, make_active: u8)` | Register a raw nsec signer. `make_active != 0` makes it the active account; `0` registers a secondary signer. | Native/TUI/tests | invalid → early return | n/a |
 | `nmp_app_register_agent_nsec` | `(app, secret: *const c_char)` | Register a persisted app-managed local signer. It is signable by explicit pubkey but hidden from account projections and rejected by active-account switching. | App/protocol modules with app-owned keys | invalid → early return | D7-clean: shell imports key bytes once; Rust owns role, persistence, and signing policy |
 | `nmp_app_signin_bunker` | `(app, uri: *const c_char, make_active: u8)` | Initiate NIP-46 bunker connect via `uri`; the `make_active` flag is carried through the async handshake. Driven by the NIP-46 actor-lane runtime over the shared relay lane when `nmp_signer_broker_init` was called. | Native/TUI | invalid → early return | n/a |
@@ -328,8 +319,6 @@ the Rust action modules derive signing identity and routing policy.
 | `nmp_app_reset` | PASS | PASS | |
 | `nmp_signer_broker_init` | PASS | PASS | |
 | `nmp_app_cancel_bunker_handshake` | PASS | PASS | |
-| `nmp_app_set_capability_callback` | PASS | PASS | |
-| `nmp_app_dispatch_capability` | PASS — error envelope, never NULL, never panic | PASS | Only transports envelopes |
 | `nmp_free_string` | PASS | PASS | |
 | `nmp_app_signin_nsec` | PASS | PASS | |
 | `nmp_app_signin_bunker` | PASS | PASS | |
@@ -337,9 +326,6 @@ the Rust action modules derive signing identity and routing policy.
 | `nmp_app_switch_active` | PASS | PASS | |
 | `nmp_app_remove_account` | PASS | PASS | |
 | `nmp_app_dispatch_action_bytes` | PASS — acceptance/error JSON, never NULL for non-null app | PASS | Single user/app action door |
-| `nmp_app_ack_action_stage` | PASS | PASS | |
-| `nmp_app_retry_publish` | PASS | PASS | Publish lifecycle control |
-| `nmp_app_cancel_action` | PASS | PASS | Publish/action lifecycle control (`nmp_app_cancel_publish` deleted) |
 | `nmp_app_add_relay` | PASS | PASS | |
 | `nmp_app_remove_relay` | PASS | PASS | |
 | UniFFI `loadOlderFeed` | PASS | PASS | Viewport command only; Rust owns feed page policy |

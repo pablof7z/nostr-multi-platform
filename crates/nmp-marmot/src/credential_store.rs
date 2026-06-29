@@ -62,11 +62,12 @@
 use zeroize::Zeroizing;
 
 use keyring_core::{
+    Entry, Error as KeyringError, Result as KeyringResult,
     api::{CredentialApi, CredentialPersistence, CredentialStoreApi},
-    set_default_store, Entry, Error as KeyringError, Result as KeyringResult,
+    set_default_store,
 };
 use nmp_core::{
-    capability_socket::{dispatch_capability, CapabilityCallbackSlot},
+    capability_socket::{CapabilityCallbackSlot, dispatch_capability},
     substrate::{
         CapabilityModule, KeyringCapability, KeyringIdentityWiring, KeyringRequest,
         KeyringResult as NmpKeyringResult, KeyringStatus,
@@ -80,9 +81,8 @@ use std::{
 // ── Capability-backed CredentialStore ────────────────────────────────────────
 
 /// `keyring-core` store that routes every operation through the host keyring
-/// capability port (the same seam `nmp_app_set_capability_callback` plugs
-/// into). One `CapabilityCredentialStore` is installed as the process-global
-/// default store once per `initialize()` call.
+/// capability port. One `CapabilityCredentialStore` is installed as the
+/// process-global default store once per `initialize()` call.
 struct CapabilityCredentialStore {
     slot: CapabilityCallbackSlot,
 }

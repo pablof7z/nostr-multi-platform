@@ -15,12 +15,12 @@
 //!   * on `Error` the account is KEPT (the active slot still holds the pubkey),
 //!     while on `Ok` the account is removed (the slot clears).
 
-use crate::{nmp_app_free, nmp_app_new, nmp_app_start, NmpApp};
+use crate::{NmpApp, nmp_app_free, nmp_app_new, nmp_app_start};
 use nmp_core::substrate::KeyringStatus;
 use nostr::prelude::*;
-use std::ffi::{c_char, c_void, CStr, CString};
+use std::ffi::{CStr, CString, c_char, c_void};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{channel, Sender};
+use std::sync::mpsc::{Sender, channel};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
@@ -62,7 +62,9 @@ fn uninstall_update_signal() {
 /// and reports a `delete` outcome driven by `FORCE_KEYRING_ERROR`. A real
 /// keychain would return the same envelope shape; here we control the verdict.
 extern "C" fn keyring_handler(_ctx: *mut c_void, req: *const c_char) -> *mut c_char {
-    let request_json = unsafe { CStr::from_ptr(req) }.to_string_lossy().into_owned();
+    let request_json = unsafe { CStr::from_ptr(req) }
+        .to_string_lossy()
+        .into_owned();
     let v: serde_json::Value = serde_json::from_str(&request_json).unwrap_or_default();
     let namespace = v["namespace"].as_str().unwrap_or("").to_string();
     let correlation_id = v["correlation_id"].as_str().unwrap_or("").to_string();
@@ -79,6 +81,17 @@ extern "C" fn keyring_handler(_ctx: *mut c_void, req: *const c_char) -> *mut c_c
     CString::new(serde_json::to_string(&envelope).unwrap())
         .unwrap()
         .into_raw()
+}
+
+fn keyring_handler_json(request_json: String) -> String {
+    let request = CString::new(request_json).expect("capability request has no interior NUL");
+    let raw = keyring_handler(std::ptr::null_mut(), request.as_ptr());
+    if raw.is_null() {
+        return "{}".to_string();
+    }
+    unsafe { CString::from_raw(raw) }
+        .to_string_lossy()
+        .into_owned()
 }
 
 fn hex_pubkey(nsec: &str) -> String {
@@ -125,7 +138,10 @@ fn signed_in_app() -> (
     let app = nmp_app_new();
     crate::nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
     // Install the keyring capability handler on this app's slot.
-    crate::nmp_app_set_capability_callback(app, std::ptr::null_mut(), Some(keyring_handler));
+    crate::app_ref(app)
+        .expect("app")
+        .capability_callback_slot()
+        .set_native_handler(Some(std::sync::Arc::new(keyring_handler_json)));
     let handle = crate::app_ref(app).expect("app").active_account_handle();
 
     nmp_app_start(app, 256, 4);

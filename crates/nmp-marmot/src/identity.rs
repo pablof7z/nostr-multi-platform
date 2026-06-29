@@ -26,7 +26,7 @@ use nmp_ffi::NmpApp;
 use nostr::Keys;
 use zeroize::Zeroizing;
 
-use crate::ffi::{register_with_keys, MarmotHandle};
+use crate::ffi::{MarmotHandle, register_with_keys};
 
 fn sign_in_and_register_marmot(
     app: *mut NmpApp,
@@ -106,11 +106,8 @@ pub fn sign_in_nsec_with_keyring_account(
         return std::ptr::null_mut();
     }
     let app_ref = unsafe { &*app };
-    let req = KeyringIdentityWiring::persist_secret(
-        "nmp.identity.persist",
-        keyring_account_id,
-        &secret,
-    );
+    let req =
+        KeyringIdentityWiring::persist_secret("nmp.identity.persist", keyring_account_id, &secret);
     let _ = app_ref.dispatch_capability(&req);
     // `add_signer` arms MLS autopublish for this active local-key sign-in.
     app_ref.add_signer(
@@ -143,7 +140,7 @@ mod tests {
         KeyringResult,
     };
     use std::collections::HashMap;
-    use std::ffi::{c_char, CStr, CString};
+    use std::ffi::{CStr, CString, c_char};
     use std::sync::{Mutex, OnceLock};
 
     const TEST_NSEC: &str = "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
@@ -200,13 +197,22 @@ mod tests {
             .into_raw()
     }
 
+    fn mock_keyring_json(request_json: String) -> String {
+        let request = CString::new(request_json).expect("capability request has no interior NUL");
+        let raw = mock_keyring_callback(std::ptr::null_mut(), request.as_ptr());
+        if raw.is_null() {
+            return "{}".to_string();
+        }
+        unsafe { CString::from_raw(raw) }
+            .to_string_lossy()
+            .into_owned()
+    }
+
     fn new_app_with_keyring() -> *mut NmpApp {
         let app = nmp_ffi::nmp_app_new();
-        nmp_ffi::nmp_app_set_capability_callback(
-            app,
-            std::ptr::null_mut(),
-            Some(mock_keyring_callback),
-        );
+        unsafe { &*app }
+            .capability_callback_slot()
+            .set_native_handler(Some(std::sync::Arc::new(mock_keyring_json)));
         app
     }
 

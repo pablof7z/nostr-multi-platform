@@ -44,9 +44,8 @@ signer-broker = [
 # `nmp-nip47` and installing the wallet runtime. The C-ABI surface stays
 # stable for the iOS / Android shells; without an installed runtime, the
 # shims fail closed via the dispatch-action `Failed` terminal.
-# Live-bench / integration-test injectors (`nmp_app_inject_*`,
-# `nmp_app_ack_action_stage`, `nmp_app_read_projection_json`). Forwards
-# to nmp-core's `test-support` feature so the harness types compile.
+# Live-bench / integration-test injectors. Forwards to nmp-core's
+# `test-support` feature so the harness types compile.
 test-support = ["nmp-core/test-support", "nmp-native-runtime/test-support", "native"]
 # Re-export deltas the Android JNI shim consumes (currently inert — the
 # native feature already exposes every Rust-path symbol the JNI shim

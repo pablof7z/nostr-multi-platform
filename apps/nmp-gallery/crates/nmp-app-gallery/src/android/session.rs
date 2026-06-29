@@ -5,18 +5,18 @@
 //!
 //! * [`GallerySession`] — per-session state (kernel handle, JNI push-listener
 //!   slots, host-side ref mirrors).
-//! * [`on_update`] / [`on_capability_request`] — the two `extern "C"`
-//!   trampolines registered with the kernel.
-//! * Small helpers: [`to_c_string`], [`session_ref`], [`jstring_to_cstring`].
+//! * [`on_update`] and [`handle_capability_request`] — callbacks registered
+//!   with the kernel.
+//! * Small helpers: [`session_ref`], [`jstring_to_cstring`].
 
-use std::ffi::{c_void, CStr, CString};
+use std::ffi::{CString, c_void};
 use std::sync::{Arc, Mutex};
 
+use jni::JNIEnv;
 use jni::objects::{JObject, JString};
 use jni::sys::jlong;
-use jni::JNIEnv;
 
-use nmp_ffi::{nmp_app_set_capability_callback, nmp_app_set_update_callback, NmpApp};
+use nmp_ffi::{NmpApp, nmp_app_set_update_callback};
 
 use nmp_core::__ffi_internal::capability_error_envelope;
 
@@ -59,7 +59,7 @@ pub(crate) extern "C" fn on_update(context: *mut c_void, bytes: *const u8, len: 
     ctx.push(frame);
 }
 
-/// Capability trampoline (ADR-0048 Stage 2 / issue #1612 — D8 no-polling).
+/// Capability handler (ADR-0048 Stage 2 / issue #1612 — D8 no-polling).
 ///
 /// For `external_signer` requests: snapshots the registered push listener
 /// under the slot lock, drops the lock, then pushes the payload JSON directly
@@ -68,36 +68,17 @@ pub(crate) extern "C" fn on_update(context: *mut c_void, bytes: *const u8, len: 
 ///
 /// For all other namespaces: returns the same error envelope a missing handler
 /// would (no Android keyring capability exists in the gallery).
-///
-/// Context is a raw pointer to the `Mutex` inside the `Arc<Mutex<...>>` slot
-/// stored in `GallerySession`. The `Arc` keeps the allocation alive for the
-/// full session lifetime. `nativeFree` calls
-/// `nmp_app_set_capability_callback(…, None)` (which blocks until any
-/// in-flight call returns) BEFORE the session is dropped, so dereferencing
-/// this pointer here is safe.
-pub(crate) extern "C" fn on_capability_request(
-    context: *mut c_void,
-    request_json: *const std::os::raw::c_char,
-) -> *mut std::os::raw::c_char {
-    if context.is_null() || request_json.is_null() {
-        return std::ptr::null_mut();
-    }
-    let request = unsafe { CStr::from_ptr(request_json) }
-        .to_string_lossy()
-        .into_owned();
+pub(crate) fn handle_capability_request(slot: &SignerRequestListenerSlot, request: &str) -> String {
     let parsed: serde_json::Value = serde_json::from_str(&request).unwrap_or_default();
     let namespace = parsed
         .get("namespace")
         .and_then(|v| v.as_str())
         .unwrap_or("");
     if namespace != "external_signer" {
-        return to_c_string(capability_error_envelope(
-            &request,
-            "unsupported-on-android",
-        ));
+        return capability_error_envelope(request, "unsupported-on-android");
     }
     let Some(payload) = parsed.get("payload_json").and_then(|v| v.as_str()) else {
-        return to_c_string(capability_error_envelope(&request, "missing-payload"));
+        return capability_error_envelope(request, "missing-payload");
     };
     let correlation_id = parsed
         .get("correlation_id")
@@ -105,18 +86,13 @@ pub(crate) extern "C" fn on_capability_request(
         .unwrap_or("")
         .to_string();
 
-    // SAFETY: context points into the Arc<Mutex<...>> stored in GallerySession;
-    // lifetime guaranteed by the `nativeFree` quiescence ordering (see module
-    // doc and on_capability_request's own doc comment above).
-    let slot =
-        unsafe { &*(context as *const std::sync::Mutex<Option<Arc<SignerRequestPushListener>>>) };
     let listener_snapshot: Option<Arc<SignerRequestPushListener>> =
         slot.lock().ok().and_then(|g| g.clone());
 
     if let Some(listener) = listener_snapshot {
         listener.push(payload);
     } else {
-        return to_c_string(capability_error_envelope(&request, "session-closed"));
+        return capability_error_envelope(request, "session-closed");
     }
 
     let envelope = serde_json::json!({
@@ -124,13 +100,7 @@ pub(crate) extern "C" fn on_capability_request(
         "correlation_id": correlation_id,
         "result_json": r#"{"status":"dispatched"}"#,
     });
-    to_c_string(envelope.to_string())
-}
-
-pub(crate) fn to_c_string(value: String) -> *mut std::os::raw::c_char {
-    CString::new(value)
-        .unwrap_or_else(|_| c"{}".to_owned())
-        .into_raw()
+    envelope.to_string()
 }
 
 pub(crate) fn session_ref<'a>(handle: jlong) -> Option<&'a GallerySession> {
@@ -163,7 +133,7 @@ pub(crate) unsafe fn teardown_session(session: Box<GallerySession>) {
         // `GlobalRef` inside the signer listener can be dropped safely without
         // a UAF.
         nmp_app_set_update_callback(session.app, std::ptr::null_mut(), None);
-        nmp_app_set_capability_callback(session.app, std::ptr::null_mut(), None);
+        (&*session.app).capability_callback_slot().clear();
         nmp_ffi::nmp_app_free(session.app);
         drop(Box::from_raw(session.update_ctx));
         // signer_listener Arc drops here, taking the listener GlobalRef with it.

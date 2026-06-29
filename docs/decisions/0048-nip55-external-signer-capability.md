@@ -29,7 +29,7 @@ The pieces NMP already has, and what each implies:
 
 3. **The backend-transparent sign port exists.** `ActorCommand::SignEventForAccount { unsigned, signer_pubkey, continuation }` (`crates/nmp-core/src/actor/dispatch.rs:757`) resolves through the *same* nonblocking-sign + park path for both a local nsec and a NIP-46 bunker — "Local-vs-bunker is invisible" (dispatch.rs:769). This is the V-78 port. A NIP-55 signer must slot in here with zero changes to the port.
 
-4. **The capability socket + serialized worker exist.** `CapabilityRequest { namespace, correlation_id, payload_json }` / `CapabilityEnvelope { namespace, correlation_id, result_json }` (`crates/nmp-core/src/substrate/capability.rs:21`) is the JSON-over-FFI carrier; `dispatch_capability` invokes the registered native callback; the ADR-0040 capability-worker (`crates/nmp-core/src/actor/capability_worker.rs`) runs it off-actor and re-enters via `ActorCommand::CapabilityResultReady`. The host registers a callback via `nmp_app_set_capability_callback` (`crates/nmp-ffi/src/capability.rs:30`).
+4. **The capability socket + serialized worker exist.** `CapabilityRequest { namespace, correlation_id, payload_json }` / `CapabilityEnvelope { namespace, correlation_id, result_json }` (`crates/nmp-core/src/substrate/capability.rs:21`) is the JSON capability carrier; the runtime dispatch helper invokes the registered native callback; the ADR-0040 capability-worker (`crates/nmp-core/src/actor/capability_worker.rs`) runs it off-actor and re-enters via `ActorCommand::CapabilityResultReady`. The host registers through the UniFFI/native-runtime capability handler path.
 
 5. **The broker re-entry indirection exists.** `nmp-signer-broker` registers a hook into `nmp-core` (ADR-0031); the hook captures a driver living *outside* `nmp-core`, and after the handshake the driver sends `ActorCommand::AddSigner { source: SignerSource::RemoteHandle(Box<dyn RemoteSignerHandle>) }` (`crates/nmp-core/src/actor/mod.rs:303`) back into the actor. The actor never imports the driver.
 
@@ -190,7 +190,7 @@ The work landed as four increments. Stages 1–3 are **shipped**; Stage 4 (emula
 **Positive.**
 - The V-78 port stays honored: `SignEventForAccount` (dispatch.rs:757) is untouched; NIP-55 is invisible at the sign boundary, identical to a bunker.
 - One canonical sign path, one canonical parked-op machinery, one canonical signer-health projection — the per-op `deadline` and the `signer_state` generalization *remove* a hard-coded fork rather than adding one.
-- The capability rides the existing `CapabilityRequest` socket; no new FFI primitive (the ADR-0040 worker + `nmp_app_set_capability_callback` already exist). The only genuinely new Rust primitive is the `ExternalSignerTransport` leaf trait — the NIP-55 analogue of the already-precedented `Nip46Transport`.
+- The capability rides the existing `CapabilityRequest` socket; no new public C primitive is required. The only genuinely new Rust primitive is the `ExternalSignerTransport` leaf trait — the NIP-55 analogue of the already-precedented `Nip46Transport`.
 - Reusable: `Nip55Signer` lives in `nmp-signers`, usable by any Android Nostr app on NMP (the NMP-crate test).
 
 **Negative / accepted trade-offs.**

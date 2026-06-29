@@ -13,6 +13,7 @@
 use super::super::{nmp_app_free, nmp_app_new};
 use super::*;
 
+use nmp_core::actor::ActionLedgerCommand;
 use nmp_core::substrate::ActionModule;
 
 /// A module that enqueues a terminal-bearing command and then panics — the

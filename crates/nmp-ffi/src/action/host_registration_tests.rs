@@ -1,7 +1,6 @@
-use std::ffi::{c_char, CStr};
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
     Arc, Mutex,
+    atomic::{AtomicBool, Ordering},
 };
 
 use super::super::{nmp_app_free, nmp_app_new};
@@ -278,59 +277,6 @@ fn dispatch_action_does_not_deliver_result_on_rejection() {
             "the observer must not fire for a rejected action"
         );
     });
-}
-
-#[test]
-fn c_abi_register_action_result_observer_receives_json() {
-    static OBSERVED: Mutex<Option<String>> = Mutex::new(None);
-
-    extern "C" fn observer(json: *const c_char) {
-        let s = unsafe { CStr::from_ptr(json) }
-            .to_string_lossy()
-            .into_owned();
-        *OBSERVED.lock().unwrap() = Some(s);
-    }
-
-    *OBSERVED.lock().unwrap() = None;
-    let app = nmp_app_new();
-    nmp_app_register_action_result_observer(app, Some(observer));
-    let out = dispatch_action_json(
-        Some(unsafe { &*app }),
-        "nmp.publish",
-        r#"{"PublishRaw":{"kind":1,"tags":[],"content":"c-abi-test","target":"Auto"}}"#,
-    );
-    let returned_id: serde_json::Value = serde_json::from_str(&out).unwrap();
-    let returned_id = returned_id
-        .get("correlation_id")
-        .and_then(|v| v.as_str())
-        .expect("dispatch should return a correlation_id");
-
-    let observed = OBSERVED.lock().unwrap().clone();
-    let observed = observed.expect("the C observer callback should have fired");
-    let parsed: serde_json::Value =
-        serde_json::from_str(&observed).expect("the observer payload should be valid JSON");
-    assert_eq!(
-        parsed.get("correlation_id").and_then(|v| v.as_str()),
-        Some(returned_id),
-        "C observer payload must carry the dispatch correlation_id"
-    );
-    assert!(
-        parsed
-            .get("result_json")
-            .map(|v| v.is_null())
-            .unwrap_or(false),
-        "C observer payload must carry a result_json field (null here)"
-    );
-    nmp_app_free(app);
-}
-
-#[test]
-fn c_abi_register_action_result_observer_null_args_are_noop() {
-    extern "C" fn observer(_json: *const c_char) {}
-    nmp_app_register_action_result_observer(std::ptr::null_mut(), Some(observer));
-    let app = nmp_app_new();
-    nmp_app_register_action_result_observer(app, None);
-    nmp_app_free(app);
 }
 
 #[test]
