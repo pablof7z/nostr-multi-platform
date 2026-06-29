@@ -169,6 +169,7 @@ pub(super) fn combine_admission_gate(
         mut resolver_observer_ids,
         mut identity_observer_ids,
         mut resolver_teardown,
+        active_follow_set,
     } = acquisition;
     let op_session_identity = acq_op_session_identity.combine(gate.op_session_identity);
 
@@ -215,6 +216,7 @@ pub(super) fn combine_admission_gate(
         resolver_observer_ids,
         identity_observer_ids,
         resolver_teardown,
+        active_follow_set,
     }
 }
 
@@ -304,6 +306,7 @@ mod tests {
             resolver_observer_ids: Vec::new(),
             identity_observer_ids: Vec::new(),
             resolver_teardown: Vec::new(),
+            active_follow_set: None,
         }
     }
 

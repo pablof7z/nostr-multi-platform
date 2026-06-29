@@ -120,6 +120,7 @@ pub(super) fn resolve_set_op(
     identity_observer_ids.extend(r.identity_observer_ids);
     let mut resolver_teardown = l.resolver_teardown;
     resolver_teardown.extend(r.resolver_teardown);
+    let active_follow_set = l.active_follow_set.or(r.active_follow_set);
 
     Ok(ReducedSource {
         op_session_identity,
@@ -131,6 +132,7 @@ pub(super) fn resolve_set_op(
         resolver_observer_ids,
         identity_observer_ids,
         resolver_teardown,
+        active_follow_set,
     })
 }
 

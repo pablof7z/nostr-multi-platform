@@ -193,6 +193,7 @@ fn resolve_active_follow_set(
         resolver_observer_ids: vec![observer_id],
         identity_observer_ids: vec![identity_observer_id],
         resolver_teardown: Vec::new(),
+        active_follow_set: Some(follow_set),
     })
 }
 
@@ -286,6 +287,7 @@ fn resolve_list_members(
         resolver_observer_ids: vec![observer_id],
         identity_observer_ids: vec![identity_observer_id],
         resolver_teardown: Vec::new(),
+        active_follow_set: None,
     })
 }
 
@@ -379,6 +381,7 @@ fn resolve_wot(
         resolver_observer_ids: vec![observer_id],
         identity_observer_ids: Vec::new(),
         resolver_teardown: Vec::new(),
+        active_follow_set: None,
     })
 }
 

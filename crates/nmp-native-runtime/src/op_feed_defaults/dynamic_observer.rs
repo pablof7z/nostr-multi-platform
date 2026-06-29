@@ -6,8 +6,8 @@
 
 use std::sync::{Arc, Mutex};
 
-use nmp_core::substrate::ObservedProjectionCommandHandle;
 use nmp_core::substrate::ObservedProjection;
+use nmp_core::substrate::ObservedProjectionCommandHandle;
 use nmp_core::{ObservedProjectionId, ObservedProjectionSink};
 use nmp_feed::TeardownAction;
 use nmp_planner::InterestShape;
@@ -73,14 +73,6 @@ impl DynamicObservedProjection {
         if id.0 != 0 {
             *current = Some((shape, id));
         }
-    }
-
-    pub(super) fn current_id(&self) -> ObservedProjectionId {
-        self.current
-            .lock()
-            .ok()
-            .and_then(|current| current.as_ref().map(|(_, id)| *id))
-            .unwrap_or(ObservedProjectionId(0))
     }
 
     pub(super) fn teardown_action(&self) -> TeardownAction {

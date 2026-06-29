@@ -25,7 +25,9 @@
 use std::collections::BTreeSet;
 
 use crate::{FeedOpenError, NmpApp};
+use nmp_core::substrate::{empty_suppression_lookup, SuppressionLookup};
 use nmp_feed::{FeedAdmission, FeedParams, FeedSessionBuild};
+use std::sync::Arc;
 
 mod custom;
 mod flat_replay;
@@ -38,6 +40,7 @@ mod set_algebra;
 mod source;
 mod source_replay;
 mod wot_graph;
+pub(super) use session_engine::OpScopeSessionArtifacts;
 
 #[cfg(test)]
 mod source_tests;
@@ -81,6 +84,25 @@ pub fn compile_feed_params(
     params: &FeedParams,
     acquisition_kinds: &BTreeSet<u32>,
 ) -> Result<FeedSessionBuild, FeedOpenError> {
+    compile_feed_params_with_suppression(app, params, acquisition_kinds, empty_suppression_lookup())
+}
+
+pub(super) fn compile_feed_params_with_suppression(
+    app: &NmpApp,
+    params: &FeedParams,
+    acquisition_kinds: &BTreeSet<u32>,
+    suppression: Arc<dyn SuppressionLookup>,
+) -> Result<FeedSessionBuild, FeedOpenError> {
+    compile_feed_params_with_suppression_and_artifacts(app, params, acquisition_kinds, suppression)
+        .map(|detailed| detailed.build)
+}
+
+pub(super) fn compile_feed_params_with_suppression_and_artifacts(
+    app: &NmpApp,
+    params: &FeedParams,
+    acquisition_kinds: &BTreeSet<u32>,
+    suppression: Arc<dyn SuppressionLookup>,
+) -> Result<session_engine::ScopeSessionBuild, FeedOpenError> {
     // RANKING (#1740 step 4). The session engine sorts roots newest-first
     // (`ChronologicalDesc`) only. `ChronologicalAsc` is not wired. A
     // `FeedRanking::Custom(id)` resolves to a REGISTERED perspective's ranking —
@@ -104,5 +126,11 @@ pub fn compile_feed_params(
         resolved = custom::apply_custom_admission(app, resolved, id, acquisition_kinds)?;
     }
 
-    session_engine::build_scope_session(app, &params.projection.0, &params.render, resolved)
+    session_engine::build_scope_session_with_artifacts(
+        app,
+        &params.projection.0,
+        &params.render,
+        resolved,
+        suppression,
+    )
 }

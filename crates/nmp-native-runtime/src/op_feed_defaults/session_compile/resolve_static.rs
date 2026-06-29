@@ -70,6 +70,7 @@ pub(super) fn resolve_authors(
         resolver_observer_ids: Vec::new(),
         identity_observer_ids: Vec::new(),
         resolver_teardown: Vec::new(),
+        active_follow_set: None,
     })
 }
 
@@ -100,6 +101,7 @@ pub(super) fn resolve_tag(term: &str, kinds: &BTreeSet<u32>) -> ReducedSource {
         resolver_observer_ids: Vec::new(),
         identity_observer_ids: Vec::new(),
         resolver_teardown: Vec::new(),
+        active_follow_set: None,
     }
 }
 
@@ -183,6 +185,7 @@ pub(super) fn resolve_referrer(
         resolver_observer_ids: Vec::new(),
         identity_observer_ids: Vec::new(),
         resolver_teardown: Vec::new(),
+        active_follow_set: None,
     })
 }
 

@@ -1,14 +1,11 @@
 //! The generalized session-engine builder for non-default feed scopes (#1740
 //! step 3).
 //!
-//! Every [`nmp_feed::FeedScope`] compiles through here, including the framework
-//! home `ActiveUserFollows` source. The builder is a SESSION WRAPPER over the
-//! existing OP-feed mechanics — the same generic engine
-//! [`nmp_nip01::op_feed::register_op_feed`] the home feed uses — parameterized
-//! on:
+//! Every [`nmp_feed::FeedScope`] compiles through here. The builder is a session
+//! wrapper over the existing OP-feed mechanics, parameterized on:
 //!
 //! * a COMPILED, EVENT-AWARE admission predicate (the engine's
-//!   [`nmp_feed::RootAdmission`], built INSIDE the framework from resolved
+//!   [`nmp_feed::RootAdmission`], built from resolved
 //!   pubkey-set DATA / `#t` tag terms — no app closure crosses the seam) that
 //!   gates which roots ENTER the feed (#1740 step 3); and
 //! * a set of INTERNAL acquisition interests, registered via the kernel's
@@ -34,17 +31,29 @@ use crate::{FeedOpenError, NmpApp};
 use nmp_core::actor::ActorCommand;
 use nmp_core::actor::InterestsCommand;
 use nmp_core::subs::SubOwnerKey;
-use nmp_core::substrate::{empty_suppression_lookup, KernelEvent};
+use nmp_core::substrate::{KernelEvent, SuppressionLookup};
 use nmp_core::ObservedProjectionSink;
 use nmp_feed::{
     ClosureInterestShape, FeedAdvance, FeedApply, FeedController, FeedRender, FeedReset,
     FeedSessionBuild, PullFeedController, RootAdmission,
 };
+use nmp_nip01::OpFeedEngine;
 use nmp_planner::InterestScope;
 
 use super::source::{
     acquisition_children, AcquisitionInterest, ExtraAcquisition, OpSessionIdentity, ReducedSource,
 };
+
+pub(crate) struct ScopeSessionBuild {
+    pub build: FeedSessionBuild,
+    pub artifacts: Option<OpScopeSessionArtifacts>,
+}
+
+pub(crate) struct OpScopeSessionArtifacts {
+    pub engine: Arc<OpFeedEngine>,
+    pub controller: Arc<dyn FeedController>,
+    pub follow_set: Option<Arc<nmp_nip02::ActiveFollowSet>>,
+}
 
 /// Build a registered feed session for a reduced non-default source and return
 /// its teardown recipe.
@@ -53,15 +62,21 @@ use super::source::{
 /// `resolved` carries the compiled admission predicate, fixed + live
 /// acquisition interests, reset hooks, and any resolver observer ids that must
 /// be revoked on close.
-pub(super) fn build_scope_session(
+pub(super) fn build_scope_session_with_artifacts(
     app: &NmpApp,
     key: &str,
     render: &FeedRender,
     resolved: ReducedSource,
-) -> Result<FeedSessionBuild, FeedOpenError> {
+    suppression: Arc<dyn SuppressionLookup>,
+) -> Result<ScopeSessionBuild, FeedOpenError> {
     match render {
-        FeedRender::OpCentric => build_op_scope_session(app, key, resolved),
-        FeedRender::Flat => build_flat_scope_session(app, key, resolved),
+        FeedRender::OpCentric => build_op_scope_session(app, key, resolved, suppression),
+        FeedRender::Flat => {
+            build_flat_scope_session(app, key, resolved).map(|build| ScopeSessionBuild {
+                build,
+                artifacts: None,
+            })
+        }
     }
 }
 
@@ -69,7 +84,8 @@ fn build_op_scope_session(
     app: &NmpApp,
     key: &str,
     resolved: ReducedSource,
-) -> Result<FeedSessionBuild, FeedOpenError> {
+    suppression: Arc<dyn SuppressionLookup>,
+) -> Result<ScopeSessionBuild, FeedOpenError> {
     let ReducedSource {
         op_session_identity,
         admission,
@@ -80,6 +96,7 @@ fn build_op_scope_session(
         resolver_observer_ids,
         identity_observer_ids,
         resolver_teardown,
+        active_follow_set,
     } = resolved;
 
     let viewer = match (
@@ -143,7 +160,7 @@ fn build_op_scope_session(
     let observer = nmp_nip01::op_feed::op_feed_observer(
         engine.clone(),
         event_lookup_for_observer,
-        empty_suppression_lookup(),
+        suppression,
     );
     let observer_for_registry: Arc<dyn ObservedProjectionSink> = observer.clone();
     let engine_observer = super::super::dynamic_observer::DynamicObservedProjection::new(
@@ -295,9 +312,16 @@ fn build_op_scope_session(
     teardown.push(engine_observer.teardown_action()); // exec #2
     teardown.push(teardown_handle.unregister_feed(key.to_string())); // exec #1 (first)
 
-    Ok(FeedSessionBuild {
-        projection_key: nmp_feed::ProjectionKey(key.to_string()),
-        teardown,
+    Ok(ScopeSessionBuild {
+        build: FeedSessionBuild {
+            projection_key: nmp_feed::ProjectionKey(key.to_string()),
+            teardown,
+        },
+        artifacts: Some(OpScopeSessionArtifacts {
+            engine,
+            controller,
+            follow_set: active_follow_set,
+        }),
     })
 }
 
@@ -316,6 +340,7 @@ fn build_flat_scope_session(
         resolver_observer_ids,
         identity_observer_ids,
         resolver_teardown,
+        active_follow_set: _,
     } = resolved;
 
     let feed = nmp_nip01::FlatFeed::new(admission);

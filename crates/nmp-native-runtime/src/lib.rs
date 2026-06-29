@@ -46,7 +46,6 @@ pub mod builder;
 pub mod op_feed_defaults;
 pub mod op_pointer_source;
 
-
 pub use app_ctor::new_app;
 pub use app_struct::{IdentityChangeObserverId, NmpApp, UpdateListener};
 pub use builder::{
@@ -58,16 +57,16 @@ pub use feed::{
     FeedParamsDecodeError, FeedRanking, FeedRender, FeedScope, FeedSessionId, FeedWindow,
     ProjectionKey, PubkeySetExpr,
 };
-pub use nmp_nip18::PrimaryKindError;
 pub use feed_session::{handle_projection_key, FeedCompiler, FeedOpenError, FeedTeardown};
 pub use group_feed::{GroupFeedToken, DISCOVERED_GROUPS_KEY, GROUP_EVENTS_KEY, JOINED_GROUPS_KEY};
 pub use intent::InputIntentDispatch;
 pub use nmp_core::substrate::ObservedProjectionCommandHandle;
 pub use nmp_feed::FeedSessionBuild;
+pub use nmp_nip18::PrimaryKindError;
 pub use nmp_nip50::SearchRequest;
 pub use op_feed_defaults::{
-    compile_feed_params, register_op_feed_defaults, register_op_feed_defaults_with_mute,
-    OpFeedDefaults,
+    compile_feed_params, default_home_feed_params, register_op_feed_defaults,
+    register_op_feed_defaults_with_mute, OpFeedDefaults,
 };
 pub use prestart_config::NmpConfigStatus;
 pub use search::parse_search_request;

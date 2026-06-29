@@ -84,6 +84,7 @@ pub(super) fn resolve_pointer_targets(
             teardown.push(pointer_dynamic.teardown_action());
             teardown
         },
+        active_follow_set: None,
     })
 }
 

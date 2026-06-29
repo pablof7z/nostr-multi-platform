@@ -1,7 +1,10 @@
+#[cfg(test)]
 use std::collections::BTreeSet;
 
 use nmp_core::slots::ActiveAccountSlot;
+#[cfg(test)]
 use nmp_nip02::ActiveFollowSet;
+#[cfg(test)]
 use nmp_planner::InterestShape;
 
 /// Build the LIVE active-follows pull [`InterestShape`], or `None` to fail closed.
@@ -12,6 +15,7 @@ use nmp_planner::InterestShape;
 /// `load_older` can observe `slot == None` while `follow_set.follows()` is still
 /// stale. Reading the slot first means no live active account ⇒ `None` ⇒ no
 /// shape ⇒ no pull (never a stale-viewer pull, never a broad-scan; D5).
+#[cfg(test)]
 pub(super) fn live_active_follows_shape(
     account_slot: &ActiveAccountSlot,
     follow_set: &ActiveFollowSet,

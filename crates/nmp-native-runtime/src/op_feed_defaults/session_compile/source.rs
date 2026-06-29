@@ -88,6 +88,8 @@ pub(super) struct ReducedSource {
     pub identity_observer_ids: Vec<crate::IdentityChangeObserverId>,
     /// Resolver-owned dynamic observers that need custom teardown.
     pub resolver_teardown: Vec<TeardownAction>,
+    /// Diagnostic hook for the default active-follows session.
+    pub active_follow_set: Option<Arc<nmp_nip02::ActiveFollowSet>>,
 }
 
 /// No extra acquisition beyond fixed interests.

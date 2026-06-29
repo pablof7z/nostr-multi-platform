@@ -91,6 +91,7 @@ pub(super) fn resolve_active_mute_list_members(
         resolver_observer_ids: vec![observer_id],
         identity_observer_ids: vec![identity_observer_id],
         resolver_teardown: Vec::new(),
+        active_follow_set: None,
     })
 }
 
