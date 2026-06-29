@@ -863,6 +863,20 @@ internal open class UniffiVTableCallbackInterfaceUpdateSink(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is
 // rather `InterfaceTooLargeException`, caused by too many methods
@@ -894,6 +908,8 @@ fun uniffi_nmp_uniffi_checksum_method_nmpapp_cancel_action(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_cancel_bunker_handshake(
 ): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_close_feed_session(
+): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_configure(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_create_new_account(
@@ -908,7 +924,13 @@ fun uniffi_nmp_uniffi_checksum_method_nmpapp_init_external_signer(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_init_signer_broker(
 ): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_load_older_feed(
+): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_nostrconnect_uri(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_open_feed_json(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_open_uri(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_register_action_result_observer(
 ): Short
@@ -943,6 +965,12 @@ fun uniffi_nmp_uniffi_checksum_method_nmpapp_resolve_ref(
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_resolve_ref_with_metadata(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_retry_publish(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_search_close(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_search_open(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_search_snapshot(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_set_capability_callback(
 ): Short
@@ -1036,6 +1064,8 @@ fun uniffi_nmp_uniffi_fn_method_nmpapp_cancel_action(`ptr`: Pointer,`correlation
 ): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_cancel_bunker_handshake(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
+fun uniffi_nmp_uniffi_fn_method_nmpapp_close_feed_session(`ptr`: Pointer,`sessionId`: Long,uniffi_out_err: UniffiRustCallStatus,
+): Byte
 fun uniffi_nmp_uniffi_fn_method_nmpapp_configure(`ptr`: Pointer,`visibleLimit`: Int,`emitHz`: Int,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_create_new_account(`ptr`: Pointer,`profile`: RustBuffer.ByValue,`relays`: RustBuffer.ByValue,`mls`: Byte,`makeActive`: Byte,uniffi_out_err: UniffiRustCallStatus,
@@ -1050,8 +1080,14 @@ fun uniffi_nmp_uniffi_fn_method_nmpapp_init_external_signer(`ptr`: Pointer,uniff
 ): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_init_signer_broker(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
+fun uniffi_nmp_uniffi_fn_method_nmpapp_load_older_feed(`ptr`: Pointer,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+): Byte
 fun uniffi_nmp_uniffi_fn_method_nmpapp_nostrconnect_uri(`ptr`: Pointer,`callbackScheme`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
 ): RustBuffer.ByValue
+fun uniffi_nmp_uniffi_fn_method_nmpapp_open_feed_json(`ptr`: Pointer,`paramsJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+): RustBuffer.ByValue
+fun uniffi_nmp_uniffi_fn_method_nmpapp_open_uri(`ptr`: Pointer,`uri`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_register_action_result_observer(`ptr`: Pointer,`observer`: Long,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_register_agent_nsec(`ptr`: Pointer,`secret`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
@@ -1086,6 +1122,12 @@ fun uniffi_nmp_uniffi_fn_method_nmpapp_resolve_ref_with_metadata(`ptr`: Pointer,
 ): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_retry_publish(`ptr`: Pointer,`handle`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
+fun uniffi_nmp_uniffi_fn_method_nmpapp_search_close(`ptr`: Pointer,`sessionId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+): Unit
+fun uniffi_nmp_uniffi_fn_method_nmpapp_search_open(`ptr`: Pointer,`requestJson`: RustBuffer.ByValue,`sessionId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+): Unit
+fun uniffi_nmp_uniffi_fn_method_nmpapp_search_snapshot(`ptr`: Pointer,`sessionId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+): RustBuffer.ByValue
 fun uniffi_nmp_uniffi_fn_method_nmpapp_set_capability_callback(`ptr`: Pointer,`sink`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_set_update_sink(`ptr`: Pointer,`sink`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
@@ -1268,6 +1310,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_cancel_bunker_handshake() != 1296.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_close_feed_session() != 61839.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_configure() != 62391.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1289,7 +1334,16 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_init_signer_broker() != 39820.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_load_older_feed() != 59269.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_nostrconnect_uri() != 966.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_open_feed_json() != 29546.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_open_uri() != 54191.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_register_action_result_observer() != 16725.toShort()) {
@@ -1341,6 +1395,15 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_retry_publish() != 19023.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_search_close() != 7623.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_search_open() != 28028.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_search_snapshot() != 37593.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_set_capability_callback() != 58918.toShort()) {
@@ -1576,6 +1639,29 @@ public object FfiConverterUInt: FfiConverter<UInt, Int> {
 
     override fun write(value: UInt, buf: ByteBuffer) {
         buf.putInt(value.toInt())
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterULong: FfiConverter<ULong, Long> {
+    override fun lift(value: Long): ULong {
+        return value.toULong()
+    }
+
+    override fun read(buf: ByteBuffer): ULong {
+        return lift(buf.getLong())
+    }
+
+    override fun lower(value: ULong): Long {
+        return value.toLong()
+    }
+
+    override fun allocationSize(value: ULong) = 8UL
+
+    override fun write(value: ULong, buf: ByteBuffer) {
+        buf.putLong(value.toLong())
     }
 }
 
@@ -1836,6 +1922,19 @@ public interface NmpAppInterface {
     fun `cancelBunkerHandshake`()
 
     /**
+     * Close a feed session previously opened by `open_feed_json`.
+     *
+     * Tears down the observer, projection, pull-controller, and interests
+     * registered when the session was opened, then removes the session from
+     * the registry. Returns `true` when a live session was torn down; `false`
+     * when the `session_id` is unknown or already closed (idempotent — D6).
+     *
+     * D8: the session's resources are released immediately; the registry entry
+     * is removed so a subsequent close of the same id is always a no-op.
+     */
+    fun `closeFeedSession`(`sessionId`: kotlin.ULong): kotlin.Boolean
+
+    /**
      * Reconfigure rendering limits without restarting. Same clamp rules as
      * `start`.
      */
@@ -1924,6 +2023,17 @@ public interface NmpAppInterface {
     fun `initSignerBroker`()
 
     /**
+     * Advance the feed's viewport to the next older page.
+     *
+     * Mirrors `nmp_app_load_older_feed`. `key` is the projection key of the
+     * feed to page (the same string returned in `FeedSessionHandle.projection_key`
+     * or a well-known constant like `"nmp.feed.home"`). Returns `true` when the
+     * viewport cursor actually changed; `false` for an unknown key or when
+     * already at the oldest page (D6: always succeeds, never panics).
+     */
+    fun `loadOlderFeed`(`key`: kotlin.String): kotlin.Boolean
+
+    /**
      * Generate a fresh `nostrconnect://` URI for app-initiated NIP-46 flows.
      *
      * Returns `None` when called before `init_signer_broker` or when relay
@@ -1934,6 +2044,39 @@ public interface NmpAppInterface {
      * Mirrors `nmp_app_nostrconnect_uri`.
      */
     fun `nostrconnectUri`(`callbackScheme`: kotlin.String?): kotlin.String?
+
+    /**
+     * Open a new feed session from a JSON-encoded `FeedParams` declaration.
+     *
+     * Parses and validates the declaration, then compiles and registers the
+     * session using `compile_feed_params` (the composition-root default compiler).
+     * Returns a [`FeedSessionHandle`] with the projection key and session id.
+     *
+     * D6: all failures are typed `NmpError` values — never panics.
+     *
+     * # Errors
+     *
+     * * `NmpError::InvalidInput` — `params_json` is not valid JSON or the
+     * `FeedParams` primary kinds fail validation (e.g. a wrapper kind used as
+     * a primary kind, or an empty primary-kinds list).
+     * * `NmpError::FeedOpenFailed` — the compiler failed to register the
+     * session (e.g. an unsupported scope or poisoned registry).
+     */
+    fun `openFeedJson`(`paramsJson`: kotlin.String): FeedSessionHandle
+
+    /**
+     * Route a `nostr:` URI (or a bare NIP-19 entity) to the kernel reducer.
+     *
+     * Mirrors `nmp_app_open_uri`. Parses `uri` as a NIP-21/NIP-19 value and
+     * dispatches a `KernelAction::OpenUri` to the actor. On success the kernel
+     * registers the resolved interest and emits a `ViewOpened` update frame;
+     * on failure it emits `UriRejected`. Both outcomes are delivered
+     * asynchronously through the registered `UpdateSink`.
+     *
+     * D6: an empty or structurally invalid URI is a silent no-op (the kernel
+     * reducer fails closed before dispatching). D8: fire-and-forget.
+     */
+    fun `openUri`(`uri`: kotlin.String)
 
     /**
      * Register a host-supplied action-result observer — the *push*
@@ -2099,6 +2242,47 @@ public interface NmpAppInterface {
      * An empty handle is a silent no-op (D6). D8: non-blocking channel send.
      */
     fun `retryPublish`(`handle`: kotlin.String)
+
+    /**
+     * Close a NIP-50 search session previously opened via `search_open`.
+     *
+     * Mirrors `nmp_app_search_close`. Tears down the relay interests and
+     * removes the typed snapshot projection for `session_id`. An empty or
+     * unknown `session_id` is a silent no-op (D6).
+     */
+    fun `searchClose`(`sessionId`: kotlin.String)
+
+    /**
+     * Open a NIP-50 search session from a JSON query payload.
+     *
+     * Mirrors `nmp_app_search_open`. `request_json` must be a JSON object
+     * `{"query":"…","scope":…,"targets":…}` parseable by
+     * `nmp_native_runtime::parse_search_request`. `session_id` is a
+     * caller-chosen non-empty key that scopes the session for teardown and
+     * snapshot access.
+     *
+     * Re-opening the same `session_id` first closes the prior session (the
+     * relay interests and projection are rebuilt from the new request). The
+     * snapshot projection key is `"nmp.nip50.search.<session_id>"`.
+     *
+     * D6: an empty `session_id`, an unparseable `request_json`, or a poisoned
+     * mutex are all silent no-ops. D8: the relay-fan-out is async; the first
+     * synchronous cache scan runs before this returns.
+     */
+    fun `searchOpen`(`requestJson`: kotlin.String, `sessionId`: kotlin.String)
+
+    /**
+     * Copy the current typed `N50S` search-results snapshot for a session.
+     *
+     * Mirrors `nmp_app_search_snapshot` but returns bytes directly instead of
+     * writing into a caller-provided buffer. Returns `None` when no live
+     * session is registered under `session_id` or when the session has no
+     * results yet. The returned bytes are a FlatBuffers `N50S` frame; the
+     * caller should validate the file identifier before parsing.
+     *
+     * D6: an empty `session_id` or a poisoned mutex returns `None`.
+     */
+    fun `searchSnapshot`(`sessionId`: kotlin.String): kotlin.ByteArray?
 
     /**
      * Register (or clear) the capability-request handler.
@@ -2392,6 +2576,29 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
 
 
     /**
+     * Close a feed session previously opened by `open_feed_json`.
+     *
+     * Tears down the observer, projection, pull-controller, and interests
+     * registered when the session was opened, then removes the session from
+     * the registry. Returns `true` when a live session was torn down; `false`
+     * when the `session_id` is unknown or already closed (idempotent — D6).
+     *
+     * D8: the session's resources are released immediately; the registry entry
+     * is removed so a subsequent close of the same id is always a no-op.
+     */override fun `closeFeedSession`(`sessionId`: kotlin.ULong): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_close_feed_session(
+        it, FfiConverterULong.lower(`sessionId`),_status)
+}
+    }
+    )
+    }
+
+
+
+    /**
      * Reconfigure rendering limits without restarting. Same clamp rules as
      * `start`.
      */override fun `configure`(`visibleLimit`: kotlin.UInt, `emitHz`: kotlin.UInt)
@@ -2546,6 +2753,27 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
 
 
     /**
+     * Advance the feed's viewport to the next older page.
+     *
+     * Mirrors `nmp_app_load_older_feed`. `key` is the projection key of the
+     * feed to page (the same string returned in `FeedSessionHandle.projection_key`
+     * or a well-known constant like `"nmp.feed.home"`). Returns `true` when the
+     * viewport cursor actually changed; `false` for an unknown key or when
+     * already at the oldest page (D6: always succeeds, never panics).
+     */override fun `loadOlderFeed`(`key`: kotlin.String): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_load_older_feed(
+        it, FfiConverterString.lower(`key`),_status)
+}
+    }
+    )
+    }
+
+
+
+    /**
      * Generate a fresh `nostrconnect://` URI for app-initiated NIP-46 flows.
      *
      * Returns `None` when called before `init_signer_broker` or when relay
@@ -2564,6 +2792,59 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
     }
     )
     }
+
+
+
+    /**
+     * Open a new feed session from a JSON-encoded `FeedParams` declaration.
+     *
+     * Parses and validates the declaration, then compiles and registers the
+     * session using `compile_feed_params` (the composition-root default compiler).
+     * Returns a [`FeedSessionHandle`] with the projection key and session id.
+     *
+     * D6: all failures are typed `NmpError` values — never panics.
+     *
+     * # Errors
+     *
+     * * `NmpError::InvalidInput` — `params_json` is not valid JSON or the
+     * `FeedParams` primary kinds fail validation (e.g. a wrapper kind used as
+     * a primary kind, or an empty primary-kinds list).
+     * * `NmpError::FeedOpenFailed` — the compiler failed to register the
+     * session (e.g. an unsupported scope or poisoned registry).
+     */
+    @Throws(NmpException::class)override fun `openFeedJson`(`paramsJson`: kotlin.String): FeedSessionHandle {
+            return FfiConverterTypeFeedSessionHandle.lift(
+    callWithPointer {
+    uniffiRustCallWithError(NmpException) { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_open_feed_json(
+        it, FfiConverterString.lower(`paramsJson`),_status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * Route a `nostr:` URI (or a bare NIP-19 entity) to the kernel reducer.
+     *
+     * Mirrors `nmp_app_open_uri`. Parses `uri` as a NIP-21/NIP-19 value and
+     * dispatches a `KernelAction::OpenUri` to the actor. On success the kernel
+     * registers the resolved interest and emits a `ViewOpened` update frame;
+     * on failure it emits `UriRejected`. Both outcomes are delivered
+     * asynchronously through the registered `UpdateSink`.
+     *
+     * D6: an empty or structurally invalid URI is a silent no-op (the kernel
+     * reducer fails closed before dispatching). D8: fire-and-forget.
+     */override fun `openUri`(`uri`: kotlin.String)
+        =
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_open_uri(
+        it, FfiConverterString.lower(`uri`),_status)
+}
+    }
+
 
 
 
@@ -2886,6 +3167,75 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
 
 
     /**
+     * Close a NIP-50 search session previously opened via `search_open`.
+     *
+     * Mirrors `nmp_app_search_close`. Tears down the relay interests and
+     * removes the typed snapshot projection for `session_id`. An empty or
+     * unknown `session_id` is a silent no-op (D6).
+     */override fun `searchClose`(`sessionId`: kotlin.String)
+        =
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_search_close(
+        it, FfiConverterString.lower(`sessionId`),_status)
+}
+    }
+
+
+
+
+    /**
+     * Open a NIP-50 search session from a JSON query payload.
+     *
+     * Mirrors `nmp_app_search_open`. `request_json` must be a JSON object
+     * `{"query":"…","scope":…,"targets":…}` parseable by
+     * `nmp_native_runtime::parse_search_request`. `session_id` is a
+     * caller-chosen non-empty key that scopes the session for teardown and
+     * snapshot access.
+     *
+     * Re-opening the same `session_id` first closes the prior session (the
+     * relay interests and projection are rebuilt from the new request). The
+     * snapshot projection key is `"nmp.nip50.search.<session_id>"`.
+     *
+     * D6: an empty `session_id`, an unparseable `request_json`, or a poisoned
+     * mutex are all silent no-ops. D8: the relay-fan-out is async; the first
+     * synchronous cache scan runs before this returns.
+     */override fun `searchOpen`(`requestJson`: kotlin.String, `sessionId`: kotlin.String)
+        =
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_search_open(
+        it, FfiConverterString.lower(`requestJson`),FfiConverterString.lower(`sessionId`),_status)
+}
+    }
+
+
+
+
+    /**
+     * Copy the current typed `N50S` search-results snapshot for a session.
+     *
+     * Mirrors `nmp_app_search_snapshot` but returns bytes directly instead of
+     * writing into a caller-provided buffer. Returns `None` when no live
+     * session is registered under `session_id` or when the session has no
+     * results yet. The returned bytes are a FlatBuffers `N50S` frame; the
+     * caller should validate the file identifier before parsing.
+     *
+     * D6: an empty `session_id` or a poisoned mutex returns `None`.
+     */override fun `searchSnapshot`(`sessionId`: kotlin.String): kotlin.ByteArray? {
+            return FfiConverterOptionalByteArray.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_search_snapshot(
+        it, FfiConverterString.lower(`sessionId`),_status)
+}
+    }
+    )
+    }
+
+
+
+    /**
      * Register (or clear) the capability-request handler.
      *
      * After this returns, the previous sink is guaranteed to be neither
@@ -3149,6 +3499,47 @@ public object FfiConverterTypeDispatchOutcome: FfiConverterRustBuffer<DispatchOu
             FfiConverterOptionalString.write(value.`correlationId`, buf)
             FfiConverterOptionalString.write(value.`error`, buf)
             FfiConverterOptionalString.write(value.`code`, buf)
+    }
+}
+
+
+
+/**
+ * Opaque handle for a feed session opened via `open_feed_json`.
+ *
+ * `projection_key` — the NMPU snapshot key (e.g. `"nmp.feed.home"`) the host
+ * subscribes to for feed-frame updates. Pass it to `load_older_feed` for
+ * viewport paging commands.
+ * `session_id` — the numeric session id; pass it to `close_feed_session` for
+ * teardown.
+ */
+data class FeedSessionHandle (
+    var `projectionKey`: kotlin.String,
+    var `sessionId`: kotlin.ULong
+) {
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFeedSessionHandle: FfiConverterRustBuffer<FeedSessionHandle> {
+    override fun read(buf: ByteBuffer): FeedSessionHandle {
+        return FeedSessionHandle(
+            FfiConverterString.read(buf),
+            FfiConverterULong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: FeedSessionHandle) = (
+            FfiConverterString.allocationSize(value.`projectionKey`) +
+            FfiConverterULong.allocationSize(value.`sessionId`)
+    )
+
+    override fun write(value: FeedSessionHandle, buf: ByteBuffer) {
+            FfiConverterString.write(value.`projectionKey`, buf)
+            FfiConverterULong.write(value.`sessionId`, buf)
     }
 }
 
@@ -3909,6 +4300,19 @@ sealed class NmpException: kotlin.Exception() {
             get() = ""
     }
 
+    /**
+     * A feed session could not be opened: the scope is not wired by the
+     * default compiler, the session registry is unavailable (poisoned lock),
+     * or the compiler returned another typed failure. Distinct from
+     * `InvalidInput` (which covers JSON parse / primary-kind validation errors
+     * that fire BEFORE the compiler runs).
+     */
+    class FeedOpenFailed(
+        ) : NmpException() {
+        override val message
+            get() = ""
+    }
+
 
     companion object ErrorHandler : UniffiRustCallStatusErrorHandler<NmpException> {
         override fun lift(error_buf: RustBuffer.ByValue): NmpException = FfiConverterTypeNmpError.lift(error_buf)
@@ -3931,6 +4335,7 @@ public object FfiConverterTypeNmpError : FfiConverterRustBuffer<NmpException> {
             4 -> NmpException.InvalidMode()
             5 -> NmpException.EncodeFailed()
             6 -> NmpException.AlreadyStarted()
+            7 -> NmpException.FeedOpenFailed()
             else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
         }
     }
@@ -3961,6 +4366,10 @@ public object FfiConverterTypeNmpError : FfiConverterRustBuffer<NmpException> {
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4UL
             )
+            is NmpException.FeedOpenFailed -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
         }
     }
 
@@ -3988,6 +4397,10 @@ public object FfiConverterTypeNmpError : FfiConverterRustBuffer<NmpException> {
             }
             is NmpException.AlreadyStarted -> {
                 buf.putInt(6)
+                Unit
+            }
+            is NmpException.FeedOpenFailed -> {
+                buf.putInt(7)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
@@ -4578,6 +4991,38 @@ public object FfiConverterOptionalString: FfiConverterRustBuffer<kotlin.String?>
         } else {
             buf.put(1)
             FfiConverterString.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalByteArray: FfiConverterRustBuffer<kotlin.ByteArray?> {
+    override fun read(buf: ByteBuffer): kotlin.ByteArray? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterByteArray.read(buf)
+    }
+
+    override fun allocationSize(value: kotlin.ByteArray?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterByteArray.allocationSize(value)
+        }
+    }
+
+    override fun write(value: kotlin.ByteArray?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterByteArray.write(value, buf)
         }
     }
 }
