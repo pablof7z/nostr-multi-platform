@@ -23,10 +23,13 @@ shell layer you wire yourself. See
 as the Android reference.
 
 **Q3. Where is UniFFI?**
-**M14, PLANNED.** UniFFI is the binding/lifecycle/capability surface, not the
-hot payload format. The runtime update transport target is FlatBuffers-only;
-master pushes binary `nmp.transport.UpdateFrame` bytes through the raw C/JNI
-callback surface. See [15](15-codegen-and-ffi.md).
+**M14 target, not the in-tree native surface yet.** The Android app-loop proof
+shipped in Chirp before Chirp was extracted, showing UniFFI can carry lifecycle,
+callbacks, and `Vec<u8>`/`ByteArray` FlatBuffers payloads. In this repository,
+native still ships through the transitional raw C/JNI surface while #2125 owns
+the convergence to one public UniFFI native binding. UniFFI is not the hot
+payload format: runtime updates remain binary `nmp.transport.UpdateFrame` bytes.
+See [15](15-codegen-and-ffi.md).
 
 **Q4. iOS sim build can't find the Rust symbols (`nmp_app_new`, …).**
 The static lib was not built for the simulator triple. Run

@@ -1,31 +1,38 @@
 # FFI Surface Reference
 
-> **Reviewed:** 2026-06-26. The production C/JNI ABI lives in
+> **Reviewed:** 2026-06-29. The current transitional C/JNI ABI lives in
 > `crates/nmp-ffi`; `nmp-ffi` delegates runtime ownership to
 > `nmp-native-runtime` (ADR-0068). `nmp-core` owns the actor/kernel
 > and FlatBuffers transport types. Update callbacks carry binary
 > `nmp.transport.UpdateFrame` (`NMPU`) frames only; the old JSON runtime snapshot
 > path is gone.
 >
-> **M14-0 (issue #2129, 2026-06-26):** The Android app-loop lane has migrated
-> from JNI to UniFFI. The `AppHandle` object (`uniffi_app_loop.rs`) replaces the
-> deleted JNI symbols `nativeNew`, `nativeStart`, `nativeStop`, `nativeClose`,
-> `nativeFree`, `nativeSetUpdateListener`, `nativeClearUpdateListener`,
-> `nativeDispatchIntentBytes`, `nativeDispatchActionBytes`. FlatBuffers (NMPD +
-> NMPU) remains the byte payload format. Residual JNI lanes (signer, capability,
-> marmot, identity, feeds) are unchanged.
+> **M14 / ADR-0030 target:** native hosts should converge on one public UniFFI
+> binding surface. UniFFI carries the object/verb/callback shape; FlatBuffers
+> (`NMPD` action envelopes and `NMPU` update frames) remain the byte payloads.
+> Browser/wasm is not part of this native ABI consolidation because its public
+> runtime surface is `wasm-bindgen` in `nmp-browser-runtime`.
+>
+> **M14-0 proof (issue #2129, 2026-06-26):** The Android app-loop lane in Chirp
+> migrated from JNI to UniFFI before Chirp was extracted to
+> `github.com/pablof7z/chirp` (#2295/#2303). That proof showed UniFFI can carry
+> lifecycle, update callbacks, and `Vec<u8>`/`ByteArray` FlatBuffers payloads.
+> The proof artifacts are no longer in this repository.
 
-The native delivery surface ships a flat `extern "C"` raw C ABI regardless of
-Rust module layout. Those symbols are implemented in `nmp-ffi`, which is now the
-ABI shell over `nmp-native-runtime`: the native runtime owns the handle, actor
-lifecycle, runtime slots, and typed Rust builder.
+The current in-tree native delivery surface ships a flat `extern "C"` raw C ABI
+regardless of Rust module layout. Those symbols are implemented in `nmp-ffi`,
+which is now the ABI shell over `nmp-native-runtime`: the native runtime owns the
+handle, actor lifecycle, runtime slots, and typed Rust builder. Treat this as the
+current compatibility surface while #2125 is open, not as the long-term native
+public API.
 Most production functions accept a `*mut NmpApp` opaque handle and return void
 (or `*mut c_char` for `dispatch_capability`). Init-only configuration symbols
 return `NmpConfigStatus` codes so post-start wiring mistakes are loud while
 remaining FFI-safe: `0` ok, `1` null app, `2` already started, `3` unavailable.
-The callers are **Chirp** (iOS, via `NmpCore.h`) and **Android** (via
-`nmp-chirp-android-ffi`, which combines UniFFI `AppHandle` for the app-loop lane
-and legacy JNI for residual lanes). Pulse was deleted in HB50.
+In-tree callers include native app/staticlib crates such as Gallery. External
+apps may also consume this surface until their binding layer moves to UniFFI.
+Pulse was deleted in HB50, and Chirp's platform bridge code now lives in the
+external Chirp repository.
 
 This document describes the hand-maintained public surface. Treat exact symbol
 counts as generated-check territory; the live tree exports additional app,
@@ -38,13 +45,13 @@ helper symbols.
 
 | Symbol | Signature | Behavior | Callers | Threading | D6 | D7 |
 |---|---|---|---|---|---|---|
-| `nmp_app_new` | `() -> *mut NmpApp` | Allocate a passive kernel handle, command channel, and update-listener thread. The actor is spawned by the first `nmp_app_start`. | Chirp, Android JNI (`nativeNew`) | Called on caller thread; returns non-null or crashes (OOM). Listener runs on its own OS thread; actor runs only after start. | n/a — returns pointer, cannot error across FFI | n/a |
-| `nmp_app_free` | `(app: *mut NmpApp)` | Reclaim handle via `Box::from_raw`; `Drop` sends `Shutdown` and joins both threads (synchronous). | Chirp deinit, Android JNI (`nativeFree`) | Synchronous on calling thread. NOT idempotent on double-free (UB). | null is no-op | n/a |
-| `nmp_app_set_update_callback` | `(app, context: *mut c_void, callback: Option<fn(*mut c_void, *const u8, usize)>)` | Register push callback for FlatBuffers update frames. `None` unregisters. | Chirp, Android JNI | Callback fires on update-listener thread. Payload bytes are valid only for the call duration — callee must copy before returning. | null app / poisoned lock → early return | D7-clean: transport only |
-| `nmp_app_start` | `(app, visible_limit: c_uint, emit_hz: c_uint)` | Spawn the actor on first call, then send `ActorCommand::Start`; clamps `visible_limit` to 1–500 (0 → default), `emit_hz` to 1–12 (0 → default). | Chirp, Android JNI (`nativeStart`) | Fire-and-forget | null → early return | n/a |
-| `nmp_app_configure` | `(app, visible_limit: c_uint, emit_hz: c_uint)` | Same as `start` but sends `ActorCommand::Configure` (hot-reconfigure without re-init). | Chirp | Fire-and-forget | null → early return | n/a |
-| `nmp_app_stop` | `(app)` | Send `ActorCommand::Stop`. | Chirp, Android JNI (`nativeStop`) | Fire-and-forget | null → early return | n/a |
-| `nmp_app_reset` | `(app)` | Send `ActorCommand::Reset`; clears kernel state. | Chirp | Fire-and-forget | null → early return | n/a |
+| `nmp_app_new` | `() -> *mut NmpApp` | Allocate a passive kernel handle, command channel, and update-listener thread. The actor is spawned by the first `nmp_app_start`. | Native C/JNI consumers | Called on caller thread; returns non-null or crashes (OOM). Listener runs on its own OS thread; actor runs only after start. | n/a — returns pointer, cannot error across FFI | n/a |
+| `nmp_app_free` | `(app: *mut NmpApp)` | Reclaim handle via `Box::from_raw`; `Drop` sends `Shutdown` and joins both threads (synchronous). | Native C/JNI consumers | Synchronous on calling thread. NOT idempotent on double-free (UB). | null is no-op | n/a |
+| `nmp_app_set_update_callback` | `(app, context: *mut c_void, callback: Option<fn(*mut c_void, *const u8, usize)>)` | Register push callback for FlatBuffers update frames. `None` unregisters. | Native C/JNI consumers | Callback fires on update-listener thread. Payload bytes are valid only for the call duration — callee must copy before returning. | null app / poisoned lock → early return | D7-clean: transport only |
+| `nmp_app_start` | `(app, visible_limit: c_uint, emit_hz: c_uint)` | Spawn the actor on first call, then send `ActorCommand::Start`; clamps `visible_limit` to 1–500 (0 → default), `emit_hz` to 1–12 (0 → default). | Native C/JNI consumers | Fire-and-forget | null → early return | n/a |
+| `nmp_app_configure` | `(app, visible_limit: c_uint, emit_hz: c_uint)` | Same as `start` but sends `ActorCommand::Configure` (hot-reconfigure without re-init). | Native C/JNI consumers | Fire-and-forget | null → early return | n/a |
+| `nmp_app_stop` | `(app)` | Send `ActorCommand::Stop`. | Native C/JNI consumers | Fire-and-forget | null → early return | n/a |
+| `nmp_app_reset` | `(app)` | Send `ActorCommand::Reset`; clears kernel state. | Native C/JNI consumers | Fire-and-forget | null → early return | n/a |
 
 ---
 
@@ -60,8 +67,8 @@ C-ABI entrypoints and marshals native-runtime state.
 
 | Symbol | Signature | Behavior | Callers | Threading | D6 | D7 |
 |---|---|---|---|---|---|---|
-| `nmp_signer_broker_init` | `(app: *mut NmpApp) -> uint32_t` | Register the NIP-46 actor-lane runtime on `app`: installs a `Nip46Interceptor` + `Nip46ConnectedHook` and a per-app bunker hook. Idempotent pre-start. Must be called once after `nmp_app_new`, before `nmp_app_start`. Post-start calls return `NmpConfigStatus_AlreadyStarted`. | Chirp boot, Android JNI (`nativeNew`) | Called on caller thread; all I/O routes through the actor's relay-worker thread. | null → `NmpConfigStatus_NullApp` | D7-clean: hooks a URI handler; decides no policy |
-| `nmp_app_cancel_bunker_handshake` | `(app: *mut NmpApp)` | Cancel any in-flight NIP-46 handshake. Clears the runtime and unregisters the persistent subscription on each relay. Idempotent. | Chirp | Synchronous, posts actor commands | null → no-op | n/a |
+| `nmp_signer_broker_init` | `(app: *mut NmpApp) -> uint32_t` | Register the NIP-46 actor-lane runtime on `app`: installs a `Nip46Interceptor` + `Nip46ConnectedHook` and a per-app bunker hook. Idempotent pre-start. Must be called once after `nmp_app_new`, before `nmp_app_start`. Post-start calls return `NmpConfigStatus_AlreadyStarted`. | Native C/JNI consumers with signer-broker feature | Called on caller thread; all I/O routes through the actor's relay-worker thread. | null → `NmpConfigStatus_NullApp` | D7-clean: hooks a URI handler; decides no policy |
+| `nmp_app_cancel_bunker_handshake` | `(app: *mut NmpApp)` | Cancel any in-flight NIP-46 handshake. Clears the runtime and unregisters the persistent subscription on each relay. Idempotent. | Native C/JNI consumers | Synchronous, posts actor commands | null → no-op | n/a |
 
 ---
 
@@ -73,9 +80,9 @@ calls `foreground`/`background`; the kernel decides what each phase means (D7).
 
 | Symbol | Signature | Behavior | Callers | Threading | D6 | D7 |
 |---|---|---|---|---|---|---|
-| `nmp_app_lifecycle_foreground` | `(app: *mut NmpApp)` | Report `scenePhase == .active`. Actor folds into `LifecyclePhase::Foreground` and fires the registered observer on a Background→Foreground (or first-after-boot) transition. Repeated calls debounce to no-op. | Chirp (`ChirpApp.onChange(scenePhase)`) | Fire-and-forget; observer fires on actor thread | null → early return | D7-clean: shell reports fact; kernel decides meaning |
-| `nmp_app_lifecycle_background` | `(app: *mut NmpApp)` | Report `scenePhase == .background`. Sends `LifecyclePhase::Background`. No built-in consumer reacts today but hook is present for future policy. | Chirp | Fire-and-forget | null → early return | D7-clean |
-| `nmp_app_set_lifecycle_callback` | `(app: *mut NmpApp, context: *mut c_void, callback: Option<fn(*mut c_void, u32)>)` | Register observer for meaningful phase transitions. Phase codes: `0`=Foreground, `1`=Background. `None` unregisters. Callback executes on actor thread; re-registering inside the callback is legal (mutex released before invoke). Chirp does not currently register — exposed for test harnesses and future shell consumers. | none today (declared in NmpCore.h) | Callback fires on actor thread | null app / poisoned lock → early return | D7-clean: transport only |
+| `nmp_app_lifecycle_foreground` | `(app: *mut NmpApp)` | Report `scenePhase == .active`. Actor folds into `LifecyclePhase::Foreground` and fires the registered observer on a Background→Foreground (or first-after-boot) transition. Repeated calls debounce to no-op. | Native C/JNI lifecycle adapters | Fire-and-forget; observer fires on actor thread | null → early return | D7-clean: shell reports fact; kernel decides meaning |
+| `nmp_app_lifecycle_background` | `(app: *mut NmpApp)` | Report `scenePhase == .background`. Sends `LifecyclePhase::Background`. No built-in consumer reacts today but hook is present for future policy. | Native C/JNI lifecycle adapters | Fire-and-forget | null → early return | D7-clean |
+| `nmp_app_set_lifecycle_callback` | `(app: *mut NmpApp, context: *mut c_void, callback: Option<fn(*mut c_void, u32)>)` | Register observer for meaningful phase transitions. Phase codes: `0`=Foreground, `1`=Background. `None` unregisters. Callback executes on actor thread; re-registering inside the callback is legal (mutex released before invoke). Exposed for test harnesses and shell consumers that need a native lifecycle observer. | Native C/JNI lifecycle adapters | Callback fires on actor thread | null app / poisoned lock → early return | D7-clean: transport only |
 
 ---
 
@@ -85,14 +92,14 @@ Routes kernel `CapabilityRequest` JSON to a registered native handler (e.g.
 Swift `KeychainCapability.handleJSON(_:)`) and returns a `CapabilityEnvelope`
 JSON. This is the seam for PD-019 / T96 keychain capability.
 
-These symbols exist in the Rust ABI and are declared in
-`apps/chirp/ios/Chirp/Bridge/NmpCore.h`. Chirp registers the keychain capability
-handler before `start()`.
+These symbols exist in the Rust ABI and are declared by native bridge headers or
+JNI adapters where used. The shell registers its raw capability handler before
+`start()`.
 
 | Symbol | Signature | Behavior | Callers | Threading | D6 | D7 |
 |---|---|---|---|---|---|---|
-| `nmp_app_set_capability_callback` | `(app: *mut NmpApp, context: *mut c_void, callback: Option<fn(*mut c_void, *const c_char) -> *mut c_char>)` | Register the native capability handler. `None` unregisters. A request received while unregistered yields an error envelope, never a crash. | Chirp | Synchronous registration; callback invoked on the thread that calls `dispatch_capability` | null app / poisoned lock → early return | D7-clean: socket transports envelopes, decides no policy |
-| `nmp_app_dispatch_capability` | `(app: *mut NmpApp, request_json: *const c_char) -> *mut c_char` | Route a `CapabilityRequest` JSON to the registered handler, return a heap-allocated `CapabilityEnvelope` JSON string. MUST be released via `nmp_free_string`. Returns a populated error envelope on missing handler, malformed request, or NULL handler return — never NULL for valid app+request. | Chirp via `KernelBridge.registerCapabilityHandler` | Synchronous on calling thread | Never returns NULL for non-null app+request; error is data | D7-clean: pure transport |
+| `nmp_app_set_capability_callback` | `(app: *mut NmpApp, context: *mut c_void, callback: Option<fn(*mut c_void, *const c_char) -> *mut c_char>)` | Register the native capability handler. `None` unregisters. A request received while unregistered yields an error envelope, never a crash. | Native capability bridge | Synchronous registration; callback invoked on the thread that calls `dispatch_capability` | null app / poisoned lock → early return | D7-clean: socket transports envelopes, decides no policy |
+| `nmp_app_dispatch_capability` | `(app: *mut NmpApp, request_json: *const c_char) -> *mut c_char` | Route a `CapabilityRequest` JSON to the registered handler, return a heap-allocated `CapabilityEnvelope` JSON string. MUST be released via `nmp_free_string`. Returns a populated error envelope on missing handler, malformed request, or NULL handler return — never NULL for valid app+request. | Native capability bridge | Synchronous on calling thread | Never returns NULL for non-null app+request; error is data | D7-clean: pure transport |
 | `nmp_free_string` | `(ptr: *mut c_char)` | Release any Rust-allocated `*mut c_char` returned by any NMP FFI function. null is a no-op (D6). This is the canonical and ONLY heap-string release symbol. | All callers of FFI functions that return `*mut c_char` | Synchronous | null → no-op | n/a |
 
 ---
@@ -108,18 +115,18 @@ not part of the production surface.
 
 | Symbol | Signature | Behavior | Callers | D6 | D7 |
 |---|---|---|---|---|---|
-| `nmp_app_dispatch_action_bytes` | `(app, ptr: *const u8, len: usize) -> *mut c_char` | Validate a `DispatchEnvelope`, route by action namespace, and enqueue a typed app/protocol action. Returns `{"correlation_id":...}` or `{"error":...}`; caller frees with `nmp_free_string`. | Chirp, TUI, Android, protocol/app modules | non-null app never returns NULL; invalid input returns error JSON | D7-clean: shell transports action data, Rust owns execution policy |
-| `nmp_app_ack_action_stage` | `(app, correlation_id: *const c_char)` | Acknowledge a terminal `action_stages` entry after the host has reacted to it. | Chirp/TUI action UIs | invalid → early return | n/a |
-| `nmp_app_retry_publish` | `(app, handle: *const c_char)` | Retry a failed publish by publish handle. Control-plane symbol; content publish actions still go through the byte action doorway. | Chirp/TUI publish UI | invalid → early return | n/a |
-| `nmp_app_cancel_publish` | `(app, handle: *const c_char)` | Cancel an in-flight publish by publish handle. Control-plane symbol; content publish actions still go through the byte action doorway. | Chirp/TUI publish UI | invalid → early return | n/a |
-| `nmp_app_signin_nsec` | `(app, secret: *const c_char, make_active: u8)` | Register a raw nsec signer. `make_active != 0` makes it the active account; `0` registers a secondary signer. | Chirp, TUI, Android, tests | invalid → early return | n/a |
+| `nmp_app_dispatch_action_bytes` | `(app, ptr: *const u8, len: usize) -> *mut c_char` | Validate a `DispatchEnvelope`, route by action namespace, and enqueue a typed app/protocol action. Returns `{"correlation_id":...}` or `{"error":...}`; caller frees with `nmp_free_string`. | Native/TUI/protocol app modules | non-null app never returns NULL; invalid input returns error JSON | D7-clean: shell transports action data, Rust owns execution policy |
+| `nmp_app_ack_action_stage` | `(app, correlation_id: *const c_char)` | Acknowledge a terminal `action_stages` entry after the host has reacted to it. | Native/TUI action UIs | invalid → early return | n/a |
+| `nmp_app_retry_publish` | `(app, handle: *const c_char)` | Retry a failed publish by publish handle. Control-plane symbol; content publish actions still go through the byte action doorway. | Native/TUI publish UI | invalid → early return | n/a |
+| `nmp_app_cancel_publish` | `(app, handle: *const c_char)` | Cancel an in-flight publish by publish handle. Control-plane symbol; content publish actions still go through the byte action doorway. | Native/TUI publish UI | invalid → early return | n/a |
+| `nmp_app_signin_nsec` | `(app, secret: *const c_char, make_active: u8)` | Register a raw nsec signer. `make_active != 0` makes it the active account; `0` registers a secondary signer. | Native/TUI/tests | invalid → early return | n/a |
 | `nmp_app_register_agent_nsec` | `(app, secret: *const c_char)` | Register a persisted app-managed local signer. It is signable by explicit pubkey but hidden from account projections and rejected by active-account switching. | App/protocol modules with app-owned keys | invalid → early return | D7-clean: shell imports key bytes once; Rust owns role, persistence, and signing policy |
-| `nmp_app_signin_bunker` | `(app, uri: *const c_char, make_active: u8)` | Initiate NIP-46 bunker connect via `uri`; the `make_active` flag is carried through the async handshake. Driven by the NIP-46 actor-lane runtime over the shared relay lane when `nmp_signer_broker_init` was called. | Chirp, TUI, Android | invalid → early return | n/a |
-| `nmp_app_create_new_account` | `(app, profile_json: *const c_char, relays_json: *const c_char, mls: bool, make_active: u8)` | Generate a fresh keypair, publish kind:0/contact/relay metadata from supplied JSON, optionally initialize MLS, and optionally make it active. | Chirp, TUI, Android | invalid JSON/input → toast or early return | n/a |
-| `nmp_app_switch_active` | `(app, identity_id: *const c_char)` | Switch the active signing identity. | Chirp | invalid → early return | n/a |
-| `nmp_app_remove_account` | `(app, identity_id: *const c_char)` | Remove account from the identity store. | Chirp | invalid → early return | n/a |
-| `nmp_app_add_relay` | `(app, url: *const c_char, role: *const c_char)` | Add a relay. `role` NULL defaults to `"both"`. | Chirp | null/empty url → early return | n/a |
-| `nmp_app_remove_relay` | `(app, url: *const c_char)` | Remove a relay by URL. | Chirp | invalid → early return | n/a |
+| `nmp_app_signin_bunker` | `(app, uri: *const c_char, make_active: u8)` | Initiate NIP-46 bunker connect via `uri`; the `make_active` flag is carried through the async handshake. Driven by the NIP-46 actor-lane runtime over the shared relay lane when `nmp_signer_broker_init` was called. | Native/TUI | invalid → early return | n/a |
+| `nmp_app_create_new_account` | `(app, profile_json: *const c_char, relays_json: *const c_char, mls: bool, make_active: u8)` | Generate a fresh keypair, publish kind:0/contact/relay metadata from supplied JSON, optionally initialize MLS, and optionally make it active. | Native/TUI | invalid JSON/input → toast or early return | n/a |
+| `nmp_app_switch_active` | `(app, identity_id: *const c_char)` | Switch the active signing identity. | Native account UI | invalid → early return | n/a |
+| `nmp_app_remove_account` | `(app, identity_id: *const c_char)` | Remove account from the identity store. | Native account UI | invalid → early return | n/a |
+| `nmp_app_add_relay` | `(app, url: *const c_char, role: *const c_char)` | Add a relay. `role` NULL defaults to `"both"`. | Native relay UI | null/empty url → early return | n/a |
+| `nmp_app_remove_relay` | `(app, url: *const c_char)` | Remove a relay by URL. | Native relay UI | invalid → early return | n/a |
 
 > **#1740 step 8 — RETIRED:** the raw `nmp_app_open_contact_feed` /
 > `nmp_app_close_contact_feed` C-ABI active-follows shims are DELETED. The only
@@ -156,9 +163,9 @@ are fire-and-forget dispatches that cause subsequent snapshot emissions.
 | Symbol | Signature | Behavior | Callers | D6 | D7 |
 |---|---|---|---|---|---|
 | `nmp_app_load_older_feed` | `(app, key: *const c_char)` | Viewport command for an already-registered feed controller. The host reports "load older" by projection/feed key; Rust owns paging policy and appends through the normal snapshot/projection path. | feed views | invalid key → no-op | D7-clean: shell reports viewport intent; Rust owns page policy |
-| `nmp_app_open_uri` | `(app, uri: *const c_char)` | Route a `nostr:` URI or bare NIP-19 entity. Kernel resolves the entity and pushes `ViewOpened` or `UriRejected` via snapshot. T80/T95. | declared in `NmpCore.h`; no Chirp UI caller today | null/invalid → silent no-op | D7-clean: kernel decides routing |
-| `nmp_app_claim_profile` | `(app, pubkey: *const c_char, consumer_id: *const c_char, force: int, liveness: int)` | Increment refcount for a profile (kind:0) interest. Kernel registers a kind:0 `LogicalInterest` and emits metadata while any consumer holds a claim. `force != 0` bypasses the TTL freshness gate. `liveness`: `0` = CacheOk (serve from cache; OneShot fetch on miss; no live sub), non-zero = Live (Tailing kind:0 sub for reactive profile edits). Mixed claims on one pubkey resolve to Tailing. Validates hex pubkey. | Chirp | any invalid arg → early return | n/a |
-| `nmp_app_release_profile` | `(app, pubkey: *const c_char, consumer_id: *const c_char)` | Decrement refcount. When refcount reaches zero, kernel stops fetching. Validates hex pubkey. | Chirp | any invalid arg → early return | n/a |
+| `nmp_app_open_uri` | `(app, uri: *const c_char)` | Route a `nostr:` URI or bare NIP-19 entity. Kernel resolves the entity and pushes `ViewOpened` or `UriRejected` via snapshot. T80/T95. | Native URI adapters | null/invalid → silent no-op | D7-clean: kernel decides routing |
+| `nmp_app_claim_profile` | `(app, pubkey: *const c_char, consumer_id: *const c_char, force: int, liveness: int)` | Increment refcount for a profile (kind:0) interest. Kernel registers a kind:0 `LogicalInterest` and emits metadata while any consumer holds a claim. `force != 0` bypasses the TTL freshness gate. `liveness`: `0` = CacheOk (serve from cache; OneShot fetch on miss; no live sub), non-zero = Live (Tailing kind:0 sub for reactive profile edits). Mixed claims on one pubkey resolve to Tailing. Validates hex pubkey. | Native profile consumers | any invalid arg → early return | n/a |
+| `nmp_app_release_profile` | `(app, pubkey: *const c_char, consumer_id: *const c_char)` | Decrement refcount. When refcount reaches zero, kernel stops fetching. Validates hex pubkey. | Native profile consumers | any invalid arg → early return | n/a |
 
 V-68 / V-112 (ADR-0042): `nmp_app_open_author`, `nmp_app_close_author`,
 `nmp_app_open_thread`, and `nmp_app_close_thread` were **removed** (BREAKING,
@@ -183,9 +190,9 @@ There is no dedicated F-TTL symbol. `nmp_app_claim_profile` carries a trailing `
 
 | Symbol | Signature | Behavior | Callers | D6 | D7 |
 |---|---|---|---|---|---|
-| `nmp_app_claim_profile` | `(app, pubkey: *const c_char, consumer_id: *const c_char, force: int, liveness: int)` | Refcount a kind:0 profile claim via the registry chokepoint. When the profile is cached, run the TTL freshness gate: re-verify only if `check_again_after` has elapsed (`force == 0`) or unconditionally (`force != 0`, profile screen / pull-to-refresh). `liveness`: `0` = CacheOk (feed avatars — OneShot fetch on miss, no live sub), non-zero = Live (profile screen — Tailing kind:0 sub, reactive edits). | Chirp (avatars: force=0/liveness=0; profile screen: liveness=1) | non-hex pubkey → early return | n/a |
-| `nmp_app_resolve_ref` / `nmp_app_resolve_ref_with_metadata` (namespace=1/event) | Bare: `(app, namespace: int, key: *const c_char, consumer_id: *const c_char, shape: int, liveness: int)`. Metadata variant adds `metadata_json: *const c_char`. | Refcount a raw event-key claim (namespace=1). `key` is a lowercase 64-hex event-id (`nevent`/`note`), `"kind:pubkey:d"` coordinate (`naddr`), or `"i:<external-id>"` NIP-73 external ref — **not** a `nostr:` URI. `shape`: `2`=event.embed, `3`=event.raw. App-owned URI adapters call the metadata variant after decoding NIP-19/NIP-21 so relay TLVs (`{"hints":[...]}`) and nevent author TLV (`{"author":"<hex>"}`) seed the same raw-key resolver. For cached `naddr` (addressable) identities, run the TTL gate as above; for immutable event-id keys `shape` selects the projection but there is no TTL record. | Chirp embed sink (shape=2) | unparseable key, malformed metadata, or unknown shape/namespace → early return | n/a |
-| `nmp_app_release_ref` (namespace=1/event) | `(app, namespace: int, key: *const c_char, consumer_id: *const c_char)` | Release a previously claimed event-key reference (namespace=1). `key` must match exactly what was passed to `nmp_app_resolve_ref`. Kernel decrements the per-consumer refcount and drops the row when no consumers remain. | Chirp embed sink | invalid args → early return | n/a |
+| `nmp_app_claim_profile` | `(app, pubkey: *const c_char, consumer_id: *const c_char, force: int, liveness: int)` | Refcount a kind:0 profile claim via the registry chokepoint. When the profile is cached, run the TTL freshness gate: re-verify only if `check_again_after` has elapsed (`force == 0`) or unconditionally (`force != 0`, profile screen / pull-to-refresh). `liveness`: `0` = CacheOk (feed avatars — OneShot fetch on miss, no live sub), non-zero = Live (profile screen — Tailing kind:0 sub, reactive edits). | Native profile consumers | non-hex pubkey → early return | n/a |
+| `nmp_app_resolve_ref` / `nmp_app_resolve_ref_with_metadata` (namespace=1/event) | Bare: `(app, namespace: int, key: *const c_char, consumer_id: *const c_char, shape: int, liveness: int)`. Metadata variant adds `metadata_json: *const c_char`. | Refcount a raw event-key claim (namespace=1). `key` is a lowercase 64-hex event-id (`nevent`/`note`), `"kind:pubkey:d"` coordinate (`naddr`), or `"i:<external-id>"` NIP-73 external ref — **not** a `nostr:` URI. `shape`: `2`=event.embed, `3`=event.raw. App-owned URI adapters call the metadata variant after decoding NIP-19/NIP-21 so relay TLVs (`{"hints":[...]}`) and nevent author TLV (`{"author":"<hex>"}`) seed the same raw-key resolver. For cached `naddr` (addressable) identities, run the TTL gate as above; for immutable event-id keys `shape` selects the projection but there is no TTL record. | Native event/embed consumers | unparseable key, malformed metadata, or unknown shape/namespace → early return | n/a |
+| `nmp_app_release_ref` (namespace=1/event) | `(app, namespace: int, key: *const c_char, consumer_id: *const c_char)` | Release a previously claimed event-key reference (namespace=1). `key` must match exactly what was passed to `nmp_app_resolve_ref`. Kernel decrements the per-consumer refcount and drops the row when no consumers remain. | Native event/embed consumers | invalid args → early return | n/a |
 
 **Note:** force-refresh replaces the removed `nmp_app_refresh_replaceable` symbol (ADR-0041). `force != 0` is semantically "treat `check_again_after` as 0 for this claim", driving an immediate re-verification REQ. TTL management is otherwise transparent: the framework auto-re-verifies after kind-specific timeouts (default: kind:0 = 1h, kind:10002 = 6h).
 
@@ -200,9 +207,9 @@ All fire-and-forget. Outcomes surface via snapshot `wallet_status` and
 
 | Symbol | Signature | Behavior | Callers | D6 | D7 |
 |---|---|---|---|---|---|
-| `nmp_app_wallet_connect` | `(app, uri: *const c_char)` | Parse a `nostr+walletconnect://` URI, subscribe for kind:23195 responses, send initial `get_info` + `get_balance`. Replaces any existing connection. | Chirp | invalid → early return | D7-clean: caller passes URI, kernel decides protocol |
-| `nmp_app_wallet_disconnect` | `(app)` | Send CLOSE to NWC relay, clear wallet state. | Chirp | null → early return | n/a |
-| `nmp_app_wallet_pay_invoice` | `(app, bolt11: *const c_char, amount_msats_json: *const c_char)` | Pay a BOLT-11 invoice. `amount_msats_json` NULL uses the invoice's embedded amount. | Chirp | null/invalid bolt11 → early return | D7-clean: payment amount policy stays with caller's intent |
+| `nmp_app_wallet_connect` | `(app, uri: *const c_char)` | Parse a `nostr+walletconnect://` URI, subscribe for kind:23195 responses, send initial `get_info` + `get_balance`. Replaces any existing connection. | Native wallet consumers | invalid → early return | D7-clean: caller passes URI, kernel decides protocol |
+| `nmp_app_wallet_disconnect` | `(app)` | Send CLOSE to NWC relay, clear wallet state. | Native wallet consumers | null → early return | n/a |
+| `nmp_app_wallet_pay_invoice` | `(app, bolt11: *const c_char, amount_msats_json: *const c_char)` | Pay a BOLT-11 invoice. `amount_msats_json` NULL uses the invoice's embedded amount. | Native wallet consumers | null/invalid bolt11 → early return | D7-clean: payment amount policy stays with caller's intent |
 
 ---
 
@@ -237,22 +244,25 @@ constructs a `VerifiedEvent` only via `try_from_raw` (full Schnorr + id-hash);
 
 ---
 
-## 12. Android JNI shim (`nmp-android-ffi/src/lib.rs`)
+## 12. App-owned Android JNI shims
 
-The JNI layer is not part of the C ABI surface — it calls the Rust-path
-functions (not `extern "C"` forward-declares) so the compiler includes the
-symbol bodies in the cdylib CGU. Update delivery is push-only: Android registers
-a listener object and Rust invokes `onUpdate(ByteArray)` from the kernel
+JNI shims are app-owned delivery glue, not the C ABI surface. The old Chirp
+JNI/app-loop bridge was replaced by UniFFI in #2149 and then moved with Chirp to
+the external repository. The current in-tree example is Gallery under
+`apps/nmp-gallery/crates/nmp-app-gallery/src/android/`. Where an app still uses
+JNI before #2125, update delivery remains push-only: Android registers a
+listener object and Rust invokes `onUpdate(ByteArray)` from the kernel
 update-listener thread after copying the borrowed FlatBuffers frame.
 
 | JNI symbol | Maps to | Notes |
 |---|---|---|
-| `Java_org_nmp_android_KernelBridge_nativeNew` | `nmp_app_new` + channel setup | Returns `jlong` handle owning a boxed `Session`. |
-| `Java_org_nmp_android_KernelBridge_nativeStart` | `nmp_app_start` | `visible_limit` + `emit_hz` passed as `jint`. |
-| `Java_org_nmp_android_KernelBridge_nativeStop` | `nmp_app_stop` | — |
-| `Java_org_nmp_android_KernelBridge_nativeSetUpdateListener` | `nmp_app_set_update_callback` via `Session::set_push_listener` | Registers a Kotlin listener. Frames are pushed as `ByteArray`; pass `null` to deregister. |
-| `Java_org_nmp_android_KernelBridge_nativeClearUpdateListener` | clear push listener | Clears the listener without freeing the session. |
-| `Java_org_nmp_android_KernelBridge_nativeFree` | `nmp_app_free` + channel teardown | Clears callback before freeing `Session`; `Box::from_raw` on handle. |
+| `Java_org_nmp_gallery_bridge_KernelBridge_nativeNew` | app-owned session setup | Returns `jlong` handle owning the Gallery session. |
+| `Java_org_nmp_gallery_bridge_KernelBridge_nativeStart` | Gallery app start | Starts the Gallery runtime and push update loop. |
+| `Java_org_nmp_gallery_bridge_KernelBridge_nativeStop` | Gallery app stop | Stops the Gallery runtime. |
+| `Java_org_nmp_gallery_bridge_KernelBridge_nativeSetUpdateListener` | update-listener registration | Registers a Kotlin listener. Frames are pushed as `ByteArray`; pass `null` to deregister. |
+| `Java_org_nmp_gallery_bridge_KernelBridge_nativeClearUpdateListener` | clear push listener | Clears the listener without freeing the session. |
+| `Java_org_nmp_gallery_bridge_KernelBridge_nativeDispatchAction` | action dispatch | Carries serialized action bytes through the app-owned JNI bridge. |
+| `Java_org_nmp_gallery_bridge_KernelBridge_nativeFree` | app-owned session teardown | Clears callback before freeing the Gallery session. |
 
 ---
 
@@ -335,7 +345,7 @@ the Rust action modules derive signing identity and routing policy.
    No action needed — the architecture is intentionally push.
 
 2. **This reference still needs a generated symbol audit.** The live tree now
-   exports more symbols than the old T143 count, including app-specific Chirp,
+   exports more symbols than the old T143 count, including app-specific Gallery,
    Marmot, action dispatch, and snapshot projection helpers.
 
 3. **RESOLVED (V-68 / V-112, ADR-0042):** `nmp_app_open_author`,

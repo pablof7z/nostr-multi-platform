@@ -5,13 +5,12 @@ builders
 
 The kernel is the brain. SwiftUI is a **dumb render of a snapshot the kernel
 hands you**. The platform never owns state, never decides retry policy, never
-gates content on "is it loaded yet?". This section shows the exact bridge that
-ships today in `apps/chirp/ios` (the active kernel-wired iOS app) and the rules
-that keep it doctrine-clean.
+gates content on "is it loaded yet?". This section shows the raw C bridge pattern
+used by current native shells and the rules that keep it doctrine-clean.
 
 ## The bridge — raw C calls, FlatBuffers updates
 
-There is no UniFFI on master (that is M14; see
+There is no in-tree UniFFI native surface on master (that is M14; see
 [15 — Codegen: bindings + FFI surface](15-codegen-and-ffi.md)). iOS calls the `extern "C"`
 surface exported by `crates/nmp-ffi` (`nmp_app_new`, `nmp_app_start`,
 `nmp_app_dispatch_action_bytes`, viewport commands such as
@@ -25,7 +24,7 @@ JSON snapshot fallback.
 
 ### `KernelHandle` — the thin wrapper (annotated)
 
-`apps/chirp/ios/Chirp/Bridge/KernelBridge.swift`:
+Representative wrapper shape:
 
 ```swift
 final class KernelHandle {
@@ -195,15 +194,17 @@ looking at this now / not anymore".
 ## Per-iOS-app status box
 
 ```
-┌─ apps/chirp/ios ──────────────────── ACTIVE / kernel-wired ──────────────┐
-│ Production Nostr client and current NMP showcase.                   │
-│ Real actor, real relays, real snapshot loop.                        │
-└─────────────────────────────────────────────────────────────────────┘
+┌─ apps/nmp-gallery/ios ────────────── IN-TREE / kernel-wired ─────────────┐
+│ In-repo native shell proof over nmp-ffi and FlatBuffers update frames.   │
+└──────────────────────────────────────────────────────────────────────────┘
+┌─ github.com/pablof7z/chirp ───────── EXTERNAL CONSUMER ──────────────────┐
+│ Extracted production Nostr client; consumes NMP as an external framework. │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
-Only **Chirp** is an active iOS product proof today. Additional app shells are
-deferred until Chirp is complete; treating deleted historical scaffolds as proof
-of the iOS path is drift; see GitHub Issues or the owning doc.
+Gallery is the in-tree iOS shell proof. Chirp is the extracted production
+consumer and should be fixed in its own repository, not restored to this
+monorepo to satisfy native-shell docs.
 
 ## Anti-patterns
 
