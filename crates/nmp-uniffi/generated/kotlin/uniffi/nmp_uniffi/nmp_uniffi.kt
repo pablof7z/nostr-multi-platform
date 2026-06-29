@@ -908,6 +908,20 @@ internal open class UniffiVTableCallbackInterfaceUpdateSink(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is
 // rather `InterfaceTooLargeException`, caused by too many methods
@@ -945,7 +959,15 @@ fun uniffi_nmp_uniffi_checksum_method_nmpapp_close_feed_session(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_configure(
 ): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_consume_all_builtin_projections(
+): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_create_new_account(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_debug_info(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_declare_consumed_projections(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_declare_incremental_apply(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_deliver_external_signer_response(
 ): Short
@@ -957,6 +979,8 @@ fun uniffi_nmp_uniffi_checksum_method_nmpapp_init_external_signer(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_init_signer_broker(
 ): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_intent_dispatch(
+): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_is_alive(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_lifecycle_background(
@@ -964,6 +988,8 @@ fun uniffi_nmp_uniffi_checksum_method_nmpapp_lifecycle_background(
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_lifecycle_foreground(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_load_older_feed(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_mirror_pull_page(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_nostrconnect_uri(
 ): Short
@@ -1014,6 +1040,8 @@ fun uniffi_nmp_uniffi_checksum_method_nmpapp_search_snapshot(
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_set_capability_callback(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_set_lifecycle_callback(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_set_storage_path(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_set_update_sink(
 ): Short
@@ -1114,7 +1142,15 @@ fun uniffi_nmp_uniffi_fn_method_nmpapp_close_feed_session(`ptr`: Pointer,`sessio
 ): Byte
 fun uniffi_nmp_uniffi_fn_method_nmpapp_configure(`ptr`: Pointer,`visibleLimit`: Int,`emitHz`: Int,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
+fun uniffi_nmp_uniffi_fn_method_nmpapp_consume_all_builtin_projections(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
+): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_create_new_account(`ptr`: Pointer,`profile`: RustBuffer.ByValue,`relays`: RustBuffer.ByValue,`mls`: Byte,`makeActive`: Byte,uniffi_out_err: UniffiRustCallStatus,
+): Unit
+fun uniffi_nmp_uniffi_fn_method_nmpapp_debug_info(`ptr`: Pointer,`domain`: Int,uniffi_out_err: UniffiRustCallStatus,
+): RustBuffer.ByValue
+fun uniffi_nmp_uniffi_fn_method_nmpapp_declare_consumed_projections(`ptr`: Pointer,`keys`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+): Unit
+fun uniffi_nmp_uniffi_fn_method_nmpapp_declare_incremental_apply(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_deliver_external_signer_response(`ptr`: Pointer,`responseJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
@@ -1126,6 +1162,8 @@ fun uniffi_nmp_uniffi_fn_method_nmpapp_init_external_signer(`ptr`: Pointer,uniff
 ): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_init_signer_broker(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
+fun uniffi_nmp_uniffi_fn_method_nmpapp_intent_dispatch(`ptr`: Pointer,`requestJson`: RustBuffer.ByValue,`sessionId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+): RustBuffer.ByValue
 fun uniffi_nmp_uniffi_fn_method_nmpapp_is_alive(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
 ): Byte
 fun uniffi_nmp_uniffi_fn_method_nmpapp_lifecycle_background(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
@@ -1134,6 +1172,8 @@ fun uniffi_nmp_uniffi_fn_method_nmpapp_lifecycle_foreground(`ptr`: Pointer,uniff
 ): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_load_older_feed(`ptr`: Pointer,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
 ): Byte
+fun uniffi_nmp_uniffi_fn_method_nmpapp_mirror_pull_page(`ptr`: Pointer,`cursorId`: Long,`maxEntries`: Int,`maxTotalRawBytes`: Int,uniffi_out_err: UniffiRustCallStatus,
+): RustBuffer.ByValue
 fun uniffi_nmp_uniffi_fn_method_nmpapp_nostrconnect_uri(`ptr`: Pointer,`callbackScheme`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
 ): RustBuffer.ByValue
 fun uniffi_nmp_uniffi_fn_method_nmpapp_open_feed_json(`ptr`: Pointer,`paramsJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
@@ -1183,6 +1223,8 @@ fun uniffi_nmp_uniffi_fn_method_nmpapp_search_snapshot(`ptr`: Pointer,`sessionId
 fun uniffi_nmp_uniffi_fn_method_nmpapp_set_capability_callback(`ptr`: Pointer,`sink`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_set_lifecycle_callback(`ptr`: Pointer,`sink`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+): Unit
+fun uniffi_nmp_uniffi_fn_method_nmpapp_set_storage_path(`ptr`: Pointer,`path`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_set_update_sink(`ptr`: Pointer,`sink`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
@@ -1375,7 +1417,19 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_configure() != 62391.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_consume_all_builtin_projections() != 13095.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_create_new_account() != 39416.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_debug_info() != 30092.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_declare_consumed_projections() != 53336.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_declare_incremental_apply() != 43986.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_deliver_external_signer_response() != 57348.toShort()) {
@@ -1393,16 +1447,22 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_init_signer_broker() != 39820.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_is_alive() != 47414.toShort()) {
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_intent_dispatch() != 8608.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_lifecycle_background() != 44776.toShort()) {
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_is_alive() != 6126.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_lifecycle_foreground() != 48634.toShort()) {
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_lifecycle_background() != 37848.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_lifecycle_foreground() != 16665.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_load_older_feed() != 59269.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_mirror_pull_page() != 45548.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_nostrconnect_uri() != 966.toShort()) {
@@ -1478,6 +1538,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_set_lifecycle_callback() != 15852.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_set_storage_path() != 25939.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_set_update_sink() != 12723.toShort()) {
@@ -1713,6 +1776,29 @@ public object FfiConverterUInt: FfiConverter<UInt, Int> {
 
     override fun write(value: UInt, buf: ByteBuffer) {
         buf.putInt(value.toInt())
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterInt: FfiConverter<Int, Int> {
+    override fun lift(value: Int): Int {
+        return value
+    }
+
+    override fun read(buf: ByteBuffer): Int {
+        return buf.getInt()
+    }
+
+    override fun lower(value: Int): Int {
+        return value
+    }
+
+    override fun allocationSize(value: Int) = 4UL
+
+    override fun write(value: Int, buf: ByteBuffer) {
+        buf.putInt(value)
     }
 }
 
@@ -2021,6 +2107,16 @@ public interface NmpAppInterface {
     fun `configure`(`visibleLimit`: kotlin.UInt, `emitHz`: kotlin.UInt)
 
     /**
+     * ADR-0053 / Workstream-E4 — declare intent to consume EVERY Tier-2
+     * built-in projection (`DeclaredProjections::All`).
+     *
+     * Use this instead of leaving consumption intent undeclared when the
+     * app genuinely reads the full built-in set. Idempotent; call before
+     * `start()`. D6: safe as a no-op when the kernel slot is unavailable.
+     */
+    fun `consumeAllBuiltinProjections`()
+
+    /**
      * Create a new account (generate keypair, publish kind:0 + kind:10002).
      *
      * `profile` — display-name, picture, about, etc. as key-value pairs.
@@ -2033,6 +2129,53 @@ public interface NmpAppInterface {
      * policy lives in the leaf app, not in framework FFI — #1493).
      */
     fun `createNewAccount`(`profile`: Map<kotlin.String, kotlin.String>, `relays`: List<RelayConfigEntry>, `mls`: kotlin.Boolean, `makeActive`: kotlin.Boolean)
+
+    /**
+     * Return a diagnostic JSON payload for `domain`.
+     *
+     * | `domain` | Payload |
+     * |----------|---------|
+     * | 0 | Routing-trace JSON (schema_version, capacity, publishes, subscriptions) |
+     * | 1 | Composition-report JSON (schema_version, count, records) |
+     * | 2 | Merged: `{"routing":{…},"composition":{…}}` |
+     * | other | `{}` (D6 silent no-op) |
+     *
+     * D6: never throws. A pre-start kernel, unavailable projection, or
+     * serialization failure all collapse to a well-formed empty payload.
+     */
+    fun `debugInfo`(`domain`: kotlin.Int): kotlin.String
+
+    /**
+     * ADR-0053 — declare the static set of Tier-2 built-in projection keys
+     * this host consumes (the output-side sibling of relay interest installs).
+     *
+     * `keys` is the union of every projection key any of the app's screens
+     * reads, known at build time. The kernel then serializes a built-in into
+     * each snapshot only if its key is in the declared set. An empty
+     * declaration leaves the kernel emitting every built-in (no narrowing);
+     * a non-empty declaration narrows to the declared members.
+     *
+     * Additive — multiple calls union. Intended as a host-init call before
+     * `start()`. D6: empty/blank keys are silently skipped.
+     */
+    fun `declareConsumedProjections`(`keys`: List<kotlin.String>)
+
+    /**
+     * ADR-0055 Rung 3 — declare that this host runtime owns the NMP
+     * cache-merge layer and is ready to receive frames with `Unchanged`
+     * projections omitted.
+     *
+     * Must be called **before** `start()`. After this call the kernel
+     * guarantees the next frame is a full baseline (all live Tier-2
+     * projections emitted as `Changed`). Until this is called the kernel
+     * emits full rows on every tick. Idempotent — subsequent pre-start
+     * calls return `Ok(())` without re-setting the latch.
+     *
+     * Returns `Err(NmpError::AlreadyStarted)` if called after `start()`, or
+     * `Err(NmpError::RegistryUnavailable)` if the snapshot-registry mutex is
+     * poisoned.
+     */
+    fun `declareIncrementalApply`()
 
     /**
      * Deliver a raw NIP-55 response JSON from the host capability bridge
@@ -2103,19 +2246,62 @@ public interface NmpAppInterface {
     fun `initSignerBroker`()
 
     /**
-     * Return whether the actor thread is alive.
+     * Classify and dispatch the top candidate for `request_json` through the
+     * native runtime.
+     *
+     * `request_json` must be a serialized `InputIntentRequest`:
+     * ```json
+     * {"input":"jb55@jb55.com",
+     * "scopes":[{"namespace":"nip50","name":"profiles"}],
+     * "text_targets":"UserPreferred"}
+     * ```
+     *
+     * `session_id` keys the search session when the top candidate is a
+     * `TextQuery` (ignored otherwise).
+     *
+     * Returns a JSON string:
+     * * `{"ok":true,"dispatched":<candidate>}` — input classified and
+     * dispatched.
+     * * `{"ok":true,"rejection":<rejection>}` — input rejected (no match,
+     * disallowed scope, secret detected, etc.).
+     * * `{"ok":false,"error":"…"}` — malformed `request_json`.
+     *
+     * D6: never throws. Routing side effects (OpenUri, search-session open,
+     * NIP-05 lookup) happen as fire-and-forget on the actor channel.
+     */
+    fun `intentDispatch`(`requestJson`: kotlin.String, `sessionId`: kotlin.String?): kotlin.String
+
+    /**
+     * Actor-liveness probe: returns `true` when the actor `JoinHandle` is
+     * still running, `false` otherwise.
+     *
+     * This is the pull-side companion to the `UpdateEnvelope::Panic` push
+     * frame (D7): a host that missed the panic frame while backgrounded can
+     * call this on resume to learn the same fact.
+     *
+     * Returns `false` before `start()` or after the actor has exited (clean
+     * shutdown or panic).
      */
     fun `isAlive`(): kotlin.Boolean
 
     /**
-     * Report that the host app entered the background. Fire-and-forget; the
-     * actor folds the phase into Rust-owned lifecycle state.
+     * Report the platform entering the background (`scenePhase == .background`
+     * on iOS, or equivalent). Fire-and-forget. Symmetric to
+     * [`lifecycle_foreground`].
+     *
+     * D6: a dead actor silently drops the command.
      */
     fun `lifecycleBackground`()
 
     /**
-     * Report that the host app entered the foreground. Fire-and-forget; the
-     * actor folds the phase into Rust-owned lifecycle state.
+     * Report the platform entering the foreground (`scenePhase == .active` on
+     * iOS, or equivalent). Fire-and-forget.
+     *
+     * The actor folds the phase into the kernel and fires the registered
+     * lifecycle observer on a `Background → Foreground` (or first-after-boot)
+     * transition. Repeated `Foreground` calls debounce to a no-op.
+     *
+     * D6: a dead actor (channel closed) silently drops the command.
      */
     fun `lifecycleForeground`()
 
@@ -2129,6 +2315,25 @@ public interface NmpAppInterface {
      * already at the oldest page (D6: always succeeds, never panics).
      */
     fun `loadOlderFeed`(`key`: kotlin.String): kotlin.Boolean
+
+    /**
+     * ADR-0058 §3 — synchronously drain one page of the kernel ingest log.
+     *
+     * Returns a typed [`MirrorPullResult`] instead of the C-ABI binary blob,
+     * eliminating the need for `nmp_mirror_free_bytes` — UniFFI owns the
+     * returned `Vec<u8>`.
+     *
+     * Parameters mirror `nmp_mirror_pull_page` exactly:
+     *
+     * - `cursor_id`           — raw u64 id from `PullCursorRegistry`.
+     * - `max_entries`         — clamped to `[1, 512]`; further bounded by
+     * the cursor's registered `limits.max_entries`.
+     * - `max_total_raw_bytes` — cumulative raw-event byte budget; capped at
+     * 4 MiB. At least one entry is always delivered so the cursor advances.
+     *
+     * D6: never throws; every error surface as `MirrorPullResult::Error`.
+     */
+    fun `mirrorPullPage`(`cursorId`: kotlin.ULong, `maxEntries`: kotlin.UInt, `maxTotalRawBytes`: kotlin.UInt): MirrorPullResult
 
     /**
      * Generate a fresh `nostrconnect://` URI for app-initiated NIP-46 flows.
@@ -2408,6 +2613,19 @@ public interface NmpAppInterface {
      * mid-invocation. Pass `None` to clear.
      */
     fun `setLifecycleCallback`(`sink`: LifecycleSink?)
+
+    /**
+     * Set the persistent storage directory for the LMDB `EventStore` backend.
+     *
+     * Call **before** `start()`. Passing `None`, an empty string, or
+     * whitespace-only string clears any previously set path and lets the
+     * kernel fall back to its default.
+     *
+     * Returns `Err(NmpError::AlreadyStarted)` when called after `start()`
+     * (the existing path is left untouched; the composition ledger records
+     * `DroppedLateWiring`).
+     */
+    fun `setStoragePath`(`path`: kotlin.String?)
 
     /**
      * Register (or clear) the NMPU frame observer.
@@ -2735,6 +2953,25 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
 
 
     /**
+     * ADR-0053 / Workstream-E4 — declare intent to consume EVERY Tier-2
+     * built-in projection (`DeclaredProjections::All`).
+     *
+     * Use this instead of leaving consumption intent undeclared when the
+     * app genuinely reads the full built-in set. Idempotent; call before
+     * `start()`. D6: safe as a no-op when the kernel slot is unavailable.
+     */override fun `consumeAllBuiltinProjections`()
+        =
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_consume_all_builtin_projections(
+        it, _status)
+}
+    }
+
+
+
+
+    /**
      * Create a new account (generate keypair, publish kind:0 + kind:10002).
      *
      * `profile` — display-name, picture, about, etc. as key-value pairs.
@@ -2751,6 +2988,82 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_create_new_account(
         it, FfiConverterMapStringString.lower(`profile`),FfiConverterSequenceTypeRelayConfigEntry.lower(`relays`),FfiConverterBoolean.lower(`mls`),FfiConverterBoolean.lower(`makeActive`),_status)
+}
+    }
+
+
+
+
+    /**
+     * Return a diagnostic JSON payload for `domain`.
+     *
+     * | `domain` | Payload |
+     * |----------|---------|
+     * | 0 | Routing-trace JSON (schema_version, capacity, publishes, subscriptions) |
+     * | 1 | Composition-report JSON (schema_version, count, records) |
+     * | 2 | Merged: `{"routing":{…},"composition":{…}}` |
+     * | other | `{}` (D6 silent no-op) |
+     *
+     * D6: never throws. A pre-start kernel, unavailable projection, or
+     * serialization failure all collapse to a well-formed empty payload.
+     */override fun `debugInfo`(`domain`: kotlin.Int): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_debug_info(
+        it, FfiConverterInt.lower(`domain`),_status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * ADR-0053 — declare the static set of Tier-2 built-in projection keys
+     * this host consumes (the output-side sibling of relay interest installs).
+     *
+     * `keys` is the union of every projection key any of the app's screens
+     * reads, known at build time. The kernel then serializes a built-in into
+     * each snapshot only if its key is in the declared set. An empty
+     * declaration leaves the kernel emitting every built-in (no narrowing);
+     * a non-empty declaration narrows to the declared members.
+     *
+     * Additive — multiple calls union. Intended as a host-init call before
+     * `start()`. D6: empty/blank keys are silently skipped.
+     */override fun `declareConsumedProjections`(`keys`: List<kotlin.String>)
+        =
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_declare_consumed_projections(
+        it, FfiConverterSequenceString.lower(`keys`),_status)
+}
+    }
+
+
+
+
+    /**
+     * ADR-0055 Rung 3 — declare that this host runtime owns the NMP
+     * cache-merge layer and is ready to receive frames with `Unchanged`
+     * projections omitted.
+     *
+     * Must be called **before** `start()`. After this call the kernel
+     * guarantees the next frame is a full baseline (all live Tier-2
+     * projections emitted as `Changed`). Until this is called the kernel
+     * emits full rows on every tick. Idempotent — subsequent pre-start
+     * calls return `Ok(())` without re-setting the latch.
+     *
+     * Returns `Err(NmpError::AlreadyStarted)` if called after `start()`, or
+     * `Err(NmpError::RegistryUnavailable)` if the snapshot-registry mutex is
+     * poisoned.
+     */
+    @Throws(NmpException::class)override fun `declareIncrementalApply`()
+        =
+    callWithPointer {
+    uniffiRustCallWithError(NmpException) { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_declare_incremental_apply(
+        it, _status)
 }
     }
 
@@ -2874,7 +3187,51 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
 
 
     /**
-     * Return whether the actor thread is alive.
+     * Classify and dispatch the top candidate for `request_json` through the
+     * native runtime.
+     *
+     * `request_json` must be a serialized `InputIntentRequest`:
+     * ```json
+     * {"input":"jb55@jb55.com",
+     * "scopes":[{"namespace":"nip50","name":"profiles"}],
+     * "text_targets":"UserPreferred"}
+     * ```
+     *
+     * `session_id` keys the search session when the top candidate is a
+     * `TextQuery` (ignored otherwise).
+     *
+     * Returns a JSON string:
+     * * `{"ok":true,"dispatched":<candidate>}` — input classified and
+     * dispatched.
+     * * `{"ok":true,"rejection":<rejection>}` — input rejected (no match,
+     * disallowed scope, secret detected, etc.).
+     * * `{"ok":false,"error":"…"}` — malformed `request_json`.
+     *
+     * D6: never throws. Routing side effects (OpenUri, search-session open,
+     * NIP-05 lookup) happen as fire-and-forget on the actor channel.
+     */override fun `intentDispatch`(`requestJson`: kotlin.String, `sessionId`: kotlin.String?): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_intent_dispatch(
+        it, FfiConverterString.lower(`requestJson`),FfiConverterOptionalString.lower(`sessionId`),_status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * Actor-liveness probe: returns `true` when the actor `JoinHandle` is
+     * still running, `false` otherwise.
+     *
+     * This is the pull-side companion to the `UpdateEnvelope::Panic` push
+     * frame (D7): a host that missed the panic frame while backgrounded can
+     * call this on resume to learn the same fact.
+     *
+     * Returns `false` before `start()` or after the actor has exited (clean
+     * shutdown or panic).
      */override fun `isAlive`(): kotlin.Boolean {
             return FfiConverterBoolean.lift(
     callWithPointer {
@@ -2889,8 +3246,11 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
 
 
     /**
-     * Report that the host app entered the background. Fire-and-forget; the
-     * actor folds the phase into Rust-owned lifecycle state.
+     * Report the platform entering the background (`scenePhase == .background`
+     * on iOS, or equivalent). Fire-and-forget. Symmetric to
+     * [`lifecycle_foreground`].
+     *
+     * D6: a dead actor silently drops the command.
      */override fun `lifecycleBackground`()
         =
     callWithPointer {
@@ -2904,8 +3264,14 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
 
 
     /**
-     * Report that the host app entered the foreground. Fire-and-forget; the
-     * actor folds the phase into Rust-owned lifecycle state.
+     * Report the platform entering the foreground (`scenePhase == .active` on
+     * iOS, or equivalent). Fire-and-forget.
+     *
+     * The actor folds the phase into the kernel and fires the registered
+     * lifecycle observer on a `Background → Foreground` (or first-after-boot)
+     * transition. Repeated `Foreground` calls debounce to a no-op.
+     *
+     * D6: a dead actor (channel closed) silently drops the command.
      */override fun `lifecycleForeground`()
         =
     callWithPointer {
@@ -2932,6 +3298,35 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_load_older_feed(
         it, FfiConverterString.lower(`key`),_status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * ADR-0058 §3 — synchronously drain one page of the kernel ingest log.
+     *
+     * Returns a typed [`MirrorPullResult`] instead of the C-ABI binary blob,
+     * eliminating the need for `nmp_mirror_free_bytes` — UniFFI owns the
+     * returned `Vec<u8>`.
+     *
+     * Parameters mirror `nmp_mirror_pull_page` exactly:
+     *
+     * - `cursor_id`           — raw u64 id from `PullCursorRegistry`.
+     * - `max_entries`         — clamped to `[1, 512]`; further bounded by
+     * the cursor's registered `limits.max_entries`.
+     * - `max_total_raw_bytes` — cumulative raw-event byte budget; capped at
+     * 4 MiB. At least one entry is always delivered so the cursor advances.
+     *
+     * D6: never throws; every error surface as `MirrorPullResult::Error`.
+     */override fun `mirrorPullPage`(`cursorId`: kotlin.ULong, `maxEntries`: kotlin.UInt, `maxTotalRawBytes`: kotlin.UInt): MirrorPullResult {
+            return FfiConverterTypeMirrorPullResult.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_mirror_pull_page(
+        it, FfiConverterULong.lower(`cursorId`),FfiConverterUInt.lower(`maxEntries`),FfiConverterUInt.lower(`maxTotalRawBytes`),_status)
 }
     }
     )
@@ -3441,6 +3836,29 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_set_lifecycle_callback(
         it, FfiConverterOptionalTypeLifecycleSink.lower(`sink`),_status)
+}
+    }
+
+
+
+
+    /**
+     * Set the persistent storage directory for the LMDB `EventStore` backend.
+     *
+     * Call **before** `start()`. Passing `None`, an empty string, or
+     * whitespace-only string clears any previously set path and lets the
+     * kernel fall back to its default.
+     *
+     * Returns `Err(NmpError::AlreadyStarted)` when called after `start()`
+     * (the existing path is left untouched; the composition ledger records
+     * `DroppedLateWiring`).
+     */
+    @Throws(NmpException::class)override fun `setStoragePath`(`path`: kotlin.String?)
+        =
+    callWithPointer {
+    uniffiRustCallWithError(NmpException) { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_set_storage_path(
+        it, FfiConverterOptionalString.lower(`path`),_status)
 }
     }
 
@@ -4416,6 +4834,143 @@ public object FfiConverterTypeIntentTextTargets : FfiConverterRustBuffer<IntentT
 
 
 
+/**
+ * Typed result of a `mirror_pull_page` call.
+ *
+ * Replaces the C-ABI binary blob (`NmpMirrorBytes`) with typed variants.
+ * UniFFI owns all `Vec<u8>` payloads — no explicit free call is needed.
+ */
+sealed class MirrorPullResult {
+
+    /**
+     * A page of log entries was returned.
+     *
+     * - `next_after_seq` — advance the cursor to this value for the next call.
+     * - `latest_seq`     — the store's current head sequence at the time of
+     * the read; use with `next_after_seq` to detect lag.
+     * - `has_more`       — `true` when the store head is ahead of
+     * `next_after_seq`; call again to drain.
+     * - `bytes`          — serialized entry section: `u32_LE entry_count`
+     * followed by `entry_count × entry` in the ADR-0058 §3 wire format.
+     * Identical to bytes `[18..]` of the C-ABI page payload, so existing
+     * binary parsers can consume it unchanged.
+     */
+    data class Page(
+        val `nextAfterSeq`: kotlin.ULong,
+        val `latestSeq`: kotlin.ULong,
+        val `hasMore`: kotlin.Boolean,
+        val `bytes`: kotlin.ByteArray) : MirrorPullResult() {
+        companion object
+    }
+
+    /**
+     * The requested `after_seq` fell before the store's earliest available
+     * entry; the host must decide how to handle the gap.
+     */
+    data class Gap(
+        val `requestedAfterSeq`: kotlin.ULong,
+        val `firstAvailableSeq`: kotlin.ULong) : MirrorPullResult() {
+        companion object
+    }
+
+    /**
+     * An error occurred before the pull could proceed.
+     *
+     * `code` values match the `nmp_mirror_*` C-ABI error constants:
+     * 2 = REGISTRY_UNAVAILABLE (pre-start), 3 = UNKNOWN_CURSOR,
+     * 4 = STORE_UNAVAILABLE, 5 = UNSUPPORTED_SCOPE, 6 = STORE_ERROR,
+     * 7 = INVALID_LIMITS, 8 = PANIC, 9 = RAW_TOO_LARGE.
+     */
+    data class Error(
+        val `code`: kotlin.UInt) : MirrorPullResult() {
+        companion object
+    }
+
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMirrorPullResult : FfiConverterRustBuffer<MirrorPullResult>{
+    override fun read(buf: ByteBuffer): MirrorPullResult {
+        return when(buf.getInt()) {
+            1 -> MirrorPullResult.Page(
+                FfiConverterULong.read(buf),
+                FfiConverterULong.read(buf),
+                FfiConverterBoolean.read(buf),
+                FfiConverterByteArray.read(buf),
+                )
+            2 -> MirrorPullResult.Gap(
+                FfiConverterULong.read(buf),
+                FfiConverterULong.read(buf),
+                )
+            3 -> MirrorPullResult.Error(
+                FfiConverterUInt.read(buf),
+                )
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: MirrorPullResult) = when(value) {
+        is MirrorPullResult.Page -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterULong.allocationSize(value.`nextAfterSeq`)
+                + FfiConverterULong.allocationSize(value.`latestSeq`)
+                + FfiConverterBoolean.allocationSize(value.`hasMore`)
+                + FfiConverterByteArray.allocationSize(value.`bytes`)
+            )
+        }
+        is MirrorPullResult.Gap -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterULong.allocationSize(value.`requestedAfterSeq`)
+                + FfiConverterULong.allocationSize(value.`firstAvailableSeq`)
+            )
+        }
+        is MirrorPullResult.Error -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterUInt.allocationSize(value.`code`)
+            )
+        }
+    }
+
+    override fun write(value: MirrorPullResult, buf: ByteBuffer) {
+        when(value) {
+            is MirrorPullResult.Page -> {
+                buf.putInt(1)
+                FfiConverterULong.write(value.`nextAfterSeq`, buf)
+                FfiConverterULong.write(value.`latestSeq`, buf)
+                FfiConverterBoolean.write(value.`hasMore`, buf)
+                FfiConverterByteArray.write(value.`bytes`, buf)
+                Unit
+            }
+            is MirrorPullResult.Gap -> {
+                buf.putInt(2)
+                FfiConverterULong.write(value.`requestedAfterSeq`, buf)
+                FfiConverterULong.write(value.`firstAvailableSeq`, buf)
+                Unit
+            }
+            is MirrorPullResult.Error -> {
+                buf.putInt(3)
+                FfiConverterUInt.write(value.`code`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+
+
+
+
 
 
 /**
@@ -4496,6 +5051,17 @@ sealed class NmpException: kotlin.Exception() {
             get() = ""
     }
 
+    /**
+     * An internal mutex was poisoned (another thread panicked while holding
+     * it). Maps from `NmpConfigStatus::Unavailable` and
+     * `IncrementalApplyError::RegistryUnavailable` (M14-C6).
+     */
+    class RegistryUnavailable(
+        ) : NmpException() {
+        override val message
+            get() = ""
+    }
+
 
     companion object ErrorHandler : UniffiRustCallStatusErrorHandler<NmpException> {
         override fun lift(error_buf: RustBuffer.ByValue): NmpException = FfiConverterTypeNmpError.lift(error_buf)
@@ -4519,6 +5085,7 @@ public object FfiConverterTypeNmpError : FfiConverterRustBuffer<NmpException> {
             5 -> NmpException.EncodeFailed()
             6 -> NmpException.AlreadyStarted()
             7 -> NmpException.FeedOpenFailed()
+            8 -> NmpException.RegistryUnavailable()
             else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
         }
     }
@@ -4553,6 +5120,10 @@ public object FfiConverterTypeNmpError : FfiConverterRustBuffer<NmpException> {
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4UL
             )
+            is NmpException.RegistryUnavailable -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
         }
     }
 
@@ -4584,6 +5155,10 @@ public object FfiConverterTypeNmpError : FfiConverterRustBuffer<NmpException> {
             }
             is NmpException.FeedOpenFailed -> {
                 buf.putInt(7)
+                Unit
+            }
+            is NmpException.RegistryUnavailable -> {
+                buf.putInt(8)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }

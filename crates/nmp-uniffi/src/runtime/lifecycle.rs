@@ -1,4 +1,4 @@
-//! Lifecycle UniFFI methods — C6 tail.
+//! Lifecycle UniFFI methods — C6.
 //!
 //! Mirrors `nmp-ffi/src/lifecycle.rs` without the C function-pointer trampoline.
 //! The callback setter uses `LifecycleObserverGate`'s Rust-native observer path,
@@ -13,14 +13,23 @@ use crate::{LifecycleSink, NmpApp};
 
 #[uniffi::export]
 impl NmpApp {
-    /// Report that the host app entered the foreground. Fire-and-forget; the
-    /// actor folds the phase into Rust-owned lifecycle state.
+    /// Report the platform entering the foreground (`scenePhase == .active` on
+    /// iOS, or equivalent). Fire-and-forget.
+    ///
+    /// The actor folds the phase into the kernel and fires the registered
+    /// lifecycle observer on a `Background → Foreground` (or first-after-boot)
+    /// transition. Repeated `Foreground` calls debounce to a no-op.
+    ///
+    /// D6: a dead actor (channel closed) silently drops the command.
     pub fn lifecycle_foreground(&self) {
         self.inner.lifecycle_foreground();
     }
 
-    /// Report that the host app entered the background. Fire-and-forget; the
-    /// actor folds the phase into Rust-owned lifecycle state.
+    /// Report the platform entering the background (`scenePhase == .background`
+    /// on iOS, or equivalent). Fire-and-forget. Symmetric to
+    /// [`lifecycle_foreground`].
+    ///
+    /// D6: a dead actor silently drops the command.
     pub fn lifecycle_background(&self) {
         self.inner.lifecycle_background();
     }
@@ -42,7 +51,15 @@ impl NmpApp {
         self.inner.set_native_lifecycle_observer(observer);
     }
 
-    /// Return whether the actor thread is alive.
+    /// Actor-liveness probe: returns `true` when the actor `JoinHandle` is
+    /// still running, `false` otherwise.
+    ///
+    /// This is the pull-side companion to the `UpdateEnvelope::Panic` push
+    /// frame (D7): a host that missed the panic frame while backgrounded can
+    /// call this on resume to learn the same fact.
+    ///
+    /// Returns `false` before `start()` or after the actor has exited (clean
+    /// shutdown or panic).
     pub fn is_alive(&self) -> bool {
         self.inner.is_alive()
     }
@@ -146,5 +163,52 @@ mod tests {
             .recv_timeout(Duration::from_secs(5))
             .expect("clear returns after lifecycle callback drains");
         app.shutdown();
+    }
+    /// Parity with `nmp_app_is_alive` C-ABI test
+    /// `is_alive_after_new_returns_zero_before_start`: `is_alive()` must
+    /// return `false` before `start()`.
+    #[test]
+    fn parity_is_alive_false_before_start() {
+        let app = NmpApp::new();
+        assert!(!app.is_alive(), "actor must not be alive before start()");
+    }
+
+    /// Parity with `nmp_app_is_alive` C-ABI test
+    /// `is_alive_after_new_returns_zero_before_start` (post-start part):
+    /// `is_alive()` returns `true` after `start()`.
+    #[test]
+    fn parity_is_alive_true_after_start() {
+        let app = NmpApp::new();
+        app.start(256, 4);
+        assert!(app.is_alive(), "actor must be alive after start()");
+        app.shutdown();
+    }
+
+    /// Parity with the C-ABI foreground/background tests:
+    /// `lifecycle_foreground` and `lifecycle_background` must not panic and
+    /// must be callable before and after `start()`.
+    #[test]
+    fn parity_lifecycle_signals_no_panic() {
+        let app = NmpApp::new();
+        // Before start: commands queue (passive handle).
+        app.lifecycle_foreground();
+        app.lifecycle_background();
+        app.start(256, 4);
+        // After start: commands reach the actor.
+        app.lifecycle_foreground();
+        app.lifecycle_background();
+        app.shutdown();
+    }
+
+    /// `lifecycle_foreground` after shutdown is a silent no-op (D6:
+    /// closed channel drops the send).
+    #[test]
+    fn parity_lifecycle_after_shutdown_no_panic() {
+        let app = NmpApp::new();
+        app.start(256, 4);
+        app.shutdown();
+        // Must not panic; the actor channel is closed.
+        app.lifecycle_foreground();
+        app.lifecycle_background();
     }
 }

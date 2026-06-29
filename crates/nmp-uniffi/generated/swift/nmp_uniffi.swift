@@ -422,6 +422,22 @@ fileprivate struct FfiConverterUInt32: FfiConverterPrimitive {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterInt32: FfiConverterPrimitive {
+    typealias FfiType = Int32
+    typealias SwiftType = Int32
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Int32 {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: Int32, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterUInt64: FfiConverterPrimitive {
     typealias FfiType = UInt64
     typealias SwiftType = UInt64
@@ -605,6 +621,16 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
     func configure(visibleLimit: UInt32, emitHz: UInt32)
 
     /**
+     * ADR-0053 / Workstream-E4 — declare intent to consume EVERY Tier-2
+     * built-in projection (`DeclaredProjections::All`).
+     *
+     * Use this instead of leaving consumption intent undeclared when the
+     * app genuinely reads the full built-in set. Idempotent; call before
+     * `start()`. D6: safe as a no-op when the kernel slot is unavailable.
+     */
+    func consumeAllBuiltinProjections()
+
+    /**
      * Create a new account (generate keypair, publish kind:0 + kind:10002).
      *
      * `profile` — display-name, picture, about, etc. as key-value pairs.
@@ -617,6 +643,53 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
      * policy lives in the leaf app, not in framework FFI — #1493).
      */
     func createNewAccount(profile: [String: String], relays: [RelayConfigEntry], mls: Bool, makeActive: Bool)
+
+    /**
+     * Return a diagnostic JSON payload for `domain`.
+     *
+     * | `domain` | Payload |
+     * |----------|---------|
+     * | 0 | Routing-trace JSON (schema_version, capacity, publishes, subscriptions) |
+     * | 1 | Composition-report JSON (schema_version, count, records) |
+     * | 2 | Merged: `{"routing":{…},"composition":{…}}` |
+     * | other | `{}` (D6 silent no-op) |
+     *
+     * D6: never throws. A pre-start kernel, unavailable projection, or
+     * serialization failure all collapse to a well-formed empty payload.
+     */
+    func debugInfo(domain: Int32)  -> String
+
+    /**
+     * ADR-0053 — declare the static set of Tier-2 built-in projection keys
+     * this host consumes (the output-side sibling of relay interest installs).
+     *
+     * `keys` is the union of every projection key any of the app's screens
+     * reads, known at build time. The kernel then serializes a built-in into
+     * each snapshot only if its key is in the declared set. An empty
+     * declaration leaves the kernel emitting every built-in (no narrowing);
+     * a non-empty declaration narrows to the declared members.
+     *
+     * Additive — multiple calls union. Intended as a host-init call before
+     * `start()`. D6: empty/blank keys are silently skipped.
+     */
+    func declareConsumedProjections(keys: [String])
+
+    /**
+     * ADR-0055 Rung 3 — declare that this host runtime owns the NMP
+     * cache-merge layer and is ready to receive frames with `Unchanged`
+     * projections omitted.
+     *
+     * Must be called **before** `start()`. After this call the kernel
+     * guarantees the next frame is a full baseline (all live Tier-2
+     * projections emitted as `Changed`). Until this is called the kernel
+     * emits full rows on every tick. Idempotent — subsequent pre-start
+     * calls return `Ok(())` without re-setting the latch.
+     *
+     * Returns `Err(NmpError::AlreadyStarted)` if called after `start()`, or
+     * `Err(NmpError::RegistryUnavailable)` if the snapshot-registry mutex is
+     * poisoned.
+     */
+    func declareIncrementalApply() throws
 
     /**
      * Deliver a raw NIP-55 response JSON from the host capability bridge
@@ -687,19 +760,62 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
     func initSignerBroker() throws
 
     /**
-     * Return whether the actor thread is alive.
+     * Classify and dispatch the top candidate for `request_json` through the
+     * native runtime.
+     *
+     * `request_json` must be a serialized `InputIntentRequest`:
+     * ```json
+     * {"input":"jb55@jb55.com",
+     * "scopes":[{"namespace":"nip50","name":"profiles"}],
+     * "text_targets":"UserPreferred"}
+     * ```
+     *
+     * `session_id` keys the search session when the top candidate is a
+     * `TextQuery` (ignored otherwise).
+     *
+     * Returns a JSON string:
+     * * `{"ok":true,"dispatched":<candidate>}` — input classified and
+     * dispatched.
+     * * `{"ok":true,"rejection":<rejection>}` — input rejected (no match,
+     * disallowed scope, secret detected, etc.).
+     * * `{"ok":false,"error":"…"}` — malformed `request_json`.
+     *
+     * D6: never throws. Routing side effects (OpenUri, search-session open,
+     * NIP-05 lookup) happen as fire-and-forget on the actor channel.
+     */
+    func intentDispatch(requestJson: String, sessionId: String?)  -> String
+
+    /**
+     * Actor-liveness probe: returns `true` when the actor `JoinHandle` is
+     * still running, `false` otherwise.
+     *
+     * This is the pull-side companion to the `UpdateEnvelope::Panic` push
+     * frame (D7): a host that missed the panic frame while backgrounded can
+     * call this on resume to learn the same fact.
+     *
+     * Returns `false` before `start()` or after the actor has exited (clean
+     * shutdown or panic).
      */
     func isAlive()  -> Bool
 
     /**
-     * Report that the host app entered the background. Fire-and-forget; the
-     * actor folds the phase into Rust-owned lifecycle state.
+     * Report the platform entering the background (`scenePhase == .background`
+     * on iOS, or equivalent). Fire-and-forget. Symmetric to
+     * [`lifecycle_foreground`].
+     *
+     * D6: a dead actor silently drops the command.
      */
     func lifecycleBackground()
 
     /**
-     * Report that the host app entered the foreground. Fire-and-forget; the
-     * actor folds the phase into Rust-owned lifecycle state.
+     * Report the platform entering the foreground (`scenePhase == .active` on
+     * iOS, or equivalent). Fire-and-forget.
+     *
+     * The actor folds the phase into the kernel and fires the registered
+     * lifecycle observer on a `Background → Foreground` (or first-after-boot)
+     * transition. Repeated `Foreground` calls debounce to a no-op.
+     *
+     * D6: a dead actor (channel closed) silently drops the command.
      */
     func lifecycleForeground()
 
@@ -713,6 +829,25 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
      * already at the oldest page (D6: always succeeds, never panics).
      */
     func loadOlderFeed(key: String)  -> Bool
+
+    /**
+     * ADR-0058 §3 — synchronously drain one page of the kernel ingest log.
+     *
+     * Returns a typed [`MirrorPullResult`] instead of the C-ABI binary blob,
+     * eliminating the need for `nmp_mirror_free_bytes` — UniFFI owns the
+     * returned `Vec<u8>`.
+     *
+     * Parameters mirror `nmp_mirror_pull_page` exactly:
+     *
+     * - `cursor_id`           — raw u64 id from `PullCursorRegistry`.
+     * - `max_entries`         — clamped to `[1, 512]`; further bounded by
+     * the cursor's registered `limits.max_entries`.
+     * - `max_total_raw_bytes` — cumulative raw-event byte budget; capped at
+     * 4 MiB. At least one entry is always delivered so the cursor advances.
+     *
+     * D6: never throws; every error surface as `MirrorPullResult::Error`.
+     */
+    func mirrorPullPage(cursorId: UInt64, maxEntries: UInt32, maxTotalRawBytes: UInt32)  -> MirrorPullResult
 
     /**
      * Generate a fresh `nostrconnect://` URI for app-initiated NIP-46 flows.
@@ -994,6 +1129,19 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
     func setLifecycleCallback(sink: LifecycleSink?)
 
     /**
+     * Set the persistent storage directory for the LMDB `EventStore` backend.
+     *
+     * Call **before** `start()`. Passing `None`, an empty string, or
+     * whitespace-only string clears any previously set path and lets the
+     * kernel fall back to its default.
+     *
+     * Returns `Err(NmpError::AlreadyStarted)` when called after `start()`
+     * (the existing path is left untouched; the composition ledger records
+     * `DroppedLateWiring`).
+     */
+    func setStoragePath(path: String?) throws
+
+    /**
      * Register (or clear) the NMPU frame observer.
      *
      * After this returns the previous sink is guaranteed to be neither
@@ -1258,6 +1406,20 @@ open func configure(visibleLimit: UInt32, emitHz: UInt32)  {try! rustCall() {
 }
 
     /**
+     * ADR-0053 / Workstream-E4 — declare intent to consume EVERY Tier-2
+     * built-in projection (`DeclaredProjections::All`).
+     *
+     * Use this instead of leaving consumption intent undeclared when the
+     * app genuinely reads the full built-in set. Idempotent; call before
+     * `start()`. D6: safe as a no-op when the kernel slot is unavailable.
+     */
+open func consumeAllBuiltinProjections()  {try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_consume_all_builtin_projections(self.uniffiClonePointer(),$0
+    )
+}
+}
+
+    /**
      * Create a new account (generate keypair, publish kind:0 + kind:10002).
      *
      * `profile` — display-name, picture, about, etc. as key-value pairs.
@@ -1275,6 +1437,68 @@ open func createNewAccount(profile: [String: String], relays: [RelayConfigEntry]
         FfiConverterSequenceTypeRelayConfigEntry.lower(relays),
         FfiConverterBool.lower(mls),
         FfiConverterBool.lower(makeActive),$0
+    )
+}
+}
+
+    /**
+     * Return a diagnostic JSON payload for `domain`.
+     *
+     * | `domain` | Payload |
+     * |----------|---------|
+     * | 0 | Routing-trace JSON (schema_version, capacity, publishes, subscriptions) |
+     * | 1 | Composition-report JSON (schema_version, count, records) |
+     * | 2 | Merged: `{"routing":{…},"composition":{…}}` |
+     * | other | `{}` (D6 silent no-op) |
+     *
+     * D6: never throws. A pre-start kernel, unavailable projection, or
+     * serialization failure all collapse to a well-formed empty payload.
+     */
+open func debugInfo(domain: Int32) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_debug_info(self.uniffiClonePointer(),
+        FfiConverterInt32.lower(domain),$0
+    )
+})
+}
+
+    /**
+     * ADR-0053 — declare the static set of Tier-2 built-in projection keys
+     * this host consumes (the output-side sibling of relay interest installs).
+     *
+     * `keys` is the union of every projection key any of the app's screens
+     * reads, known at build time. The kernel then serializes a built-in into
+     * each snapshot only if its key is in the declared set. An empty
+     * declaration leaves the kernel emitting every built-in (no narrowing);
+     * a non-empty declaration narrows to the declared members.
+     *
+     * Additive — multiple calls union. Intended as a host-init call before
+     * `start()`. D6: empty/blank keys are silently skipped.
+     */
+open func declareConsumedProjections(keys: [String])  {try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_declare_consumed_projections(self.uniffiClonePointer(),
+        FfiConverterSequenceString.lower(keys),$0
+    )
+}
+}
+
+    /**
+     * ADR-0055 Rung 3 — declare that this host runtime owns the NMP
+     * cache-merge layer and is ready to receive frames with `Unchanged`
+     * projections omitted.
+     *
+     * Must be called **before** `start()`. After this call the kernel
+     * guarantees the next frame is a full baseline (all live Tier-2
+     * projections emitted as `Changed`). Until this is called the kernel
+     * emits full rows on every tick. Idempotent — subsequent pre-start
+     * calls return `Ok(())` without re-setting the latch.
+     *
+     * Returns `Err(NmpError::AlreadyStarted)` if called after `start()`, or
+     * `Err(NmpError::RegistryUnavailable)` if the snapshot-registry mutex is
+     * poisoned.
+     */
+open func declareIncrementalApply()throws   {try rustCallWithError(FfiConverterTypeNmpError_lift) {
+    uniffi_nmp_uniffi_fn_method_nmpapp_declare_incremental_apply(self.uniffiClonePointer(),$0
     )
 }
 }
@@ -1373,7 +1597,48 @@ open func initSignerBroker()throws   {try rustCallWithError(FfiConverterTypeNmpE
 }
 
     /**
-     * Return whether the actor thread is alive.
+     * Classify and dispatch the top candidate for `request_json` through the
+     * native runtime.
+     *
+     * `request_json` must be a serialized `InputIntentRequest`:
+     * ```json
+     * {"input":"jb55@jb55.com",
+     * "scopes":[{"namespace":"nip50","name":"profiles"}],
+     * "text_targets":"UserPreferred"}
+     * ```
+     *
+     * `session_id` keys the search session when the top candidate is a
+     * `TextQuery` (ignored otherwise).
+     *
+     * Returns a JSON string:
+     * * `{"ok":true,"dispatched":<candidate>}` — input classified and
+     * dispatched.
+     * * `{"ok":true,"rejection":<rejection>}` — input rejected (no match,
+     * disallowed scope, secret detected, etc.).
+     * * `{"ok":false,"error":"…"}` — malformed `request_json`.
+     *
+     * D6: never throws. Routing side effects (OpenUri, search-session open,
+     * NIP-05 lookup) happen as fire-and-forget on the actor channel.
+     */
+open func intentDispatch(requestJson: String, sessionId: String?) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_intent_dispatch(self.uniffiClonePointer(),
+        FfiConverterString.lower(requestJson),
+        FfiConverterOptionString.lower(sessionId),$0
+    )
+})
+}
+
+    /**
+     * Actor-liveness probe: returns `true` when the actor `JoinHandle` is
+     * still running, `false` otherwise.
+     *
+     * This is the pull-side companion to the `UpdateEnvelope::Panic` push
+     * frame (D7): a host that missed the panic frame while backgrounded can
+     * call this on resume to learn the same fact.
+     *
+     * Returns `false` before `start()` or after the actor has exited (clean
+     * shutdown or panic).
      */
 open func isAlive() -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
@@ -1383,8 +1648,11 @@ open func isAlive() -> Bool  {
 }
 
     /**
-     * Report that the host app entered the background. Fire-and-forget; the
-     * actor folds the phase into Rust-owned lifecycle state.
+     * Report the platform entering the background (`scenePhase == .background`
+     * on iOS, or equivalent). Fire-and-forget. Symmetric to
+     * [`lifecycle_foreground`].
+     *
+     * D6: a dead actor silently drops the command.
      */
 open func lifecycleBackground()  {try! rustCall() {
     uniffi_nmp_uniffi_fn_method_nmpapp_lifecycle_background(self.uniffiClonePointer(),$0
@@ -1393,8 +1661,14 @@ open func lifecycleBackground()  {try! rustCall() {
 }
 
     /**
-     * Report that the host app entered the foreground. Fire-and-forget; the
-     * actor folds the phase into Rust-owned lifecycle state.
+     * Report the platform entering the foreground (`scenePhase == .active` on
+     * iOS, or equivalent). Fire-and-forget.
+     *
+     * The actor folds the phase into the kernel and fires the registered
+     * lifecycle observer on a `Background → Foreground` (or first-after-boot)
+     * transition. Repeated `Foreground` calls debounce to a no-op.
+     *
+     * D6: a dead actor (channel closed) silently drops the command.
      */
 open func lifecycleForeground()  {try! rustCall() {
     uniffi_nmp_uniffi_fn_method_nmpapp_lifecycle_foreground(self.uniffiClonePointer(),$0
@@ -1415,6 +1689,33 @@ open func loadOlderFeed(key: String) -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
     uniffi_nmp_uniffi_fn_method_nmpapp_load_older_feed(self.uniffiClonePointer(),
         FfiConverterString.lower(key),$0
+    )
+})
+}
+
+    /**
+     * ADR-0058 §3 — synchronously drain one page of the kernel ingest log.
+     *
+     * Returns a typed [`MirrorPullResult`] instead of the C-ABI binary blob,
+     * eliminating the need for `nmp_mirror_free_bytes` — UniFFI owns the
+     * returned `Vec<u8>`.
+     *
+     * Parameters mirror `nmp_mirror_pull_page` exactly:
+     *
+     * - `cursor_id`           — raw u64 id from `PullCursorRegistry`.
+     * - `max_entries`         — clamped to `[1, 512]`; further bounded by
+     * the cursor's registered `limits.max_entries`.
+     * - `max_total_raw_bytes` — cumulative raw-event byte budget; capped at
+     * 4 MiB. At least one entry is always delivered so the cursor advances.
+     *
+     * D6: never throws; every error surface as `MirrorPullResult::Error`.
+     */
+open func mirrorPullPage(cursorId: UInt64, maxEntries: UInt32, maxTotalRawBytes: UInt32) -> MirrorPullResult  {
+    return try!  FfiConverterTypeMirrorPullResult_lift(try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_mirror_pull_page(self.uniffiClonePointer(),
+        FfiConverterUInt64.lower(cursorId),
+        FfiConverterUInt32.lower(maxEntries),
+        FfiConverterUInt32.lower(maxTotalRawBytes),$0
     )
 })
 }
@@ -1843,6 +2144,24 @@ open func setCapabilityCallback(sink: CapabilitySink?)  {try! rustCall() {
 open func setLifecycleCallback(sink: LifecycleSink?)  {try! rustCall() {
     uniffi_nmp_uniffi_fn_method_nmpapp_set_lifecycle_callback(self.uniffiClonePointer(),
         FfiConverterOptionCallbackInterfaceLifecycleSink.lower(sink),$0
+    )
+}
+}
+
+    /**
+     * Set the persistent storage directory for the LMDB `EventStore` backend.
+     *
+     * Call **before** `start()`. Passing `None`, an empty string, or
+     * whitespace-only string clears any previously set path and lets the
+     * kernel fall back to its default.
+     *
+     * Returns `Err(NmpError::AlreadyStarted)` when called after `start()`
+     * (the existing path is left untouched; the composition ledger records
+     * `DroppedLateWiring`).
+     */
+open func setStoragePath(path: String?)throws   {try rustCallWithError(FfiConverterTypeNmpError_lift) {
+    uniffi_nmp_uniffi_fn_method_nmpapp_set_storage_path(self.uniffiClonePointer(),
+        FfiConverterOptionString.lower(path),$0
     )
 }
 }
@@ -3094,6 +3413,127 @@ extension IntentTextTargets: Equatable, Hashable {}
 
 
 
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * Typed result of a `mirror_pull_page` call.
+ *
+ * Replaces the C-ABI binary blob (`NmpMirrorBytes`) with typed variants.
+ * UniFFI owns all `Vec<u8>` payloads — no explicit free call is needed.
+ */
+
+public enum MirrorPullResult {
+
+    /**
+     * A page of log entries was returned.
+     *
+     * - `next_after_seq` — advance the cursor to this value for the next call.
+     * - `latest_seq`     — the store's current head sequence at the time of
+     * the read; use with `next_after_seq` to detect lag.
+     * - `has_more`       — `true` when the store head is ahead of
+     * `next_after_seq`; call again to drain.
+     * - `bytes`          — serialized entry section: `u32_LE entry_count`
+     * followed by `entry_count × entry` in the ADR-0058 §3 wire format.
+     * Identical to bytes `[18..]` of the C-ABI page payload, so existing
+     * binary parsers can consume it unchanged.
+     */
+    case page(nextAfterSeq: UInt64, latestSeq: UInt64, hasMore: Bool, bytes: Data
+    )
+    /**
+     * The requested `after_seq` fell before the store's earliest available
+     * entry; the host must decide how to handle the gap.
+     */
+    case gap(requestedAfterSeq: UInt64, firstAvailableSeq: UInt64
+    )
+    /**
+     * An error occurred before the pull could proceed.
+     *
+     * `code` values match the `nmp_mirror_*` C-ABI error constants:
+     * 2 = REGISTRY_UNAVAILABLE (pre-start), 3 = UNKNOWN_CURSOR,
+     * 4 = STORE_UNAVAILABLE, 5 = UNSUPPORTED_SCOPE, 6 = STORE_ERROR,
+     * 7 = INVALID_LIMITS, 8 = PANIC, 9 = RAW_TOO_LARGE.
+     */
+    case error(code: UInt32
+    )
+}
+
+
+#if compiler(>=6)
+extension MirrorPullResult: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMirrorPullResult: FfiConverterRustBuffer {
+    typealias SwiftType = MirrorPullResult
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MirrorPullResult {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        case 1: return .page(nextAfterSeq: try FfiConverterUInt64.read(from: &buf), latestSeq: try FfiConverterUInt64.read(from: &buf), hasMore: try FfiConverterBool.read(from: &buf), bytes: try FfiConverterData.read(from: &buf)
+        )
+
+        case 2: return .gap(requestedAfterSeq: try FfiConverterUInt64.read(from: &buf), firstAvailableSeq: try FfiConverterUInt64.read(from: &buf)
+        )
+
+        case 3: return .error(code: try FfiConverterUInt32.read(from: &buf)
+        )
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: MirrorPullResult, into buf: inout [UInt8]) {
+        switch value {
+
+
+        case let .page(nextAfterSeq,latestSeq,hasMore,bytes):
+            writeInt(&buf, Int32(1))
+            FfiConverterUInt64.write(nextAfterSeq, into: &buf)
+            FfiConverterUInt64.write(latestSeq, into: &buf)
+            FfiConverterBool.write(hasMore, into: &buf)
+            FfiConverterData.write(bytes, into: &buf)
+
+
+        case let .gap(requestedAfterSeq,firstAvailableSeq):
+            writeInt(&buf, Int32(2))
+            FfiConverterUInt64.write(requestedAfterSeq, into: &buf)
+            FfiConverterUInt64.write(firstAvailableSeq, into: &buf)
+
+
+        case let .error(code):
+            writeInt(&buf, Int32(3))
+            FfiConverterUInt32.write(code, into: &buf)
+
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMirrorPullResult_lift(_ buf: RustBuffer) throws -> MirrorPullResult {
+    return try FfiConverterTypeMirrorPullResult.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMirrorPullResult_lower(_ value: MirrorPullResult) -> RustBuffer {
+    return FfiConverterTypeMirrorPullResult.lower(value)
+}
+
+
+extension MirrorPullResult: Equatable, Hashable {}
+
+
+
+
+
+
 
 /**
  * UniFFI-exported error for fns that can fail.
@@ -3140,6 +3580,12 @@ public enum NmpError: Swift.Error {
      * that fire BEFORE the compiler runs).
      */
     case FeedOpenFailed
+    /**
+     * An internal mutex was poisoned (another thread panicked while holding
+     * it). Maps from `NmpConfigStatus::Unavailable` and
+     * `IncrementalApplyError::RegistryUnavailable` (M14-C6).
+     */
+    case RegistryUnavailable
 }
 
 
@@ -3163,6 +3609,7 @@ public struct FfiConverterTypeNmpError: FfiConverterRustBuffer {
         case 5: return .EncodeFailed
         case 6: return .AlreadyStarted
         case 7: return .FeedOpenFailed
+        case 8: return .RegistryUnavailable
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -3201,6 +3648,10 @@ public struct FfiConverterTypeNmpError: FfiConverterRustBuffer {
 
         case .FeedOpenFailed:
             writeInt(&buf, Int32(7))
+
+
+        case .RegistryUnavailable:
+            writeInt(&buf, Int32(8))
 
         }
     }
@@ -4619,7 +5070,19 @@ private let initializationResult: InitializationResult = {
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_configure() != 62391) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_consume_all_builtin_projections() != 13095) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_create_new_account() != 39416) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_debug_info() != 30092) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_declare_consumed_projections() != 53336) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_declare_incremental_apply() != 43986) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_deliver_external_signer_response() != 57348) {
@@ -4637,16 +5100,22 @@ private let initializationResult: InitializationResult = {
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_init_signer_broker() != 39820) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_nmp_uniffi_checksum_method_nmpapp_is_alive() != 47414) {
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_intent_dispatch() != 8608) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_nmp_uniffi_checksum_method_nmpapp_lifecycle_background() != 44776) {
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_is_alive() != 6126) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_nmp_uniffi_checksum_method_nmpapp_lifecycle_foreground() != 48634) {
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_lifecycle_background() != 37848) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_lifecycle_foreground() != 16665) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_load_older_feed() != 59269) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_mirror_pull_page() != 45548) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_nostrconnect_uri() != 966) {
@@ -4722,6 +5191,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_set_lifecycle_callback() != 15852) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_set_storage_path() != 25939) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_set_update_sink() != 12723) {
