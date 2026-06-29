@@ -12,7 +12,7 @@
 //! re-register (account switch back) of an already-published account does NOT
 //! republish.
 
-use nmp_ffi::NmpApp;
+use nmp_native_runtime::NmpApp;
 
 use super::MarmotHandle;
 use crate::projection::action::{MarmotAction, MarmotProtocolCommand};

@@ -21,19 +21,15 @@
 //!
 //! ## D0 — no per-NIP dependency
 //!
-//! The gallery is a generic showcase: its `Cargo.toml` names only `nmp-ffi`,
-//! `nmp-defaults`, `nmp-core`, `nmp-content`, and `serde_json` — never a
-//! per-NIP crate. The typed payload types are therefore reached through the
-//! [`nmp_defaults::action_payloads`] re-export surface, which mirrors the
-//! gallery's explicit composition. The namespaces this seam covers are
-//! exactly the ones the gallery registers; a namespace the gallery cannot
-//! dispatch (e.g. NIP-29 groups) is rejected fail-closed (D6) rather than
-//! falling back to a JSON dispatch — there is no JSON dispatch left.
+//! The gallery is a generic showcase: its `Cargo.toml` names only
+//! `nmp-native-runtime`, `nmp-uniffi`, `nmp-defaults`, `nmp-core`, `nmp-content`,
+//! and `serde_json` — never a per-NIP crate. The typed payload types are therefore
+//! reached through the [`nmp_defaults::action_payloads`] re-export surface, which
+//! mirrors the gallery's explicit composition.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::de::DeserializeOwned;
-use serde_json::Value;
 
 use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
 use nmp_core::substrate::ActionPayload;
@@ -42,12 +38,8 @@ use nmp_native_runtime::{dispatch_action_bytes_typed, NmpApp};
 
 /// Process-local correlation-id source.
 ///
-/// The byte lane echoes a HOST-supplied `correlation_id` verbatim (ADR-0064 §4)
-/// — unlike the retired JSON lane, where the kernel minted it. The gallery crate
-/// carries no `uuid`/`rand` dependency, and a write correlation id only has to
-/// be unique within one running process for the lifetime of an in-flight
-/// operation (the host spinner keys on it until the terminal `action_stages`
-/// verdict, then ACKs). A monotone atomic counter satisfies that exactly and
+/// The byte lane echoes a HOST-supplied `correlation_id` verbatim (ADR-0064 §4).
+/// A monotone atomic counter satisfies uniqueness-within-process-lifetime and
 /// keeps the dependency surface unchanged. The `gallery-` prefix namespaces it
 /// so it never collides with the kernel's hex correlation ids.
 static NEXT_CORRELATION_ID: AtomicU64 = AtomicU64::new(1);
@@ -61,16 +53,6 @@ pub fn mint_correlation_id() -> String {
 
 /// Encode `json` (the canonical serde body the gallery shell produced) into the
 /// typed [`ActionPayload`] FlatBuffers bytes for `namespace`.
-///
-/// `namespace` is the action's HOST namespace (e.g. `nmp.follow`), which the
-/// open envelope routes on; it MAY differ from the payload's
-/// [`ActionPayload::SCHEMA_ID`] (e.g. both `nmp.follow` and `nmp.unfollow` carry
-/// the `nmp.nip02.follow_action` payload). Returns a fail-closed error string
-/// (D6) for an unknown namespace or a body that does not deserialize into the
-/// namespace's typed action.
-///
-/// Coverage is exactly the action set the explicit gallery composition
-/// installs.
 fn encode_payload_for_namespace(namespace: &str, json: &str) -> Result<Vec<u8>, String> {
     match namespace {
         "nmp.publish" => encode::<action_payloads::PublishAction>(namespace, json),
@@ -112,22 +94,23 @@ where
 
 /// Dispatch a gallery action through the typed byte doorway.
 ///
-/// Builds the typed payload for `namespace` from `json` (the canonical action
-/// body the gallery shell produced), mints a host correlation id, wraps payload
-/// + namespace + id in an open [`DispatchEnvelope`](nmp_core::dispatch_envelope),
-/// and hands the finished bytes to [`dispatch_action_bytes_typed`]. Returns
-/// the result envelope JSON on accept/reject (`{"correlation_id":…}` /
-/// `{"error":…}`), or a fail-closed error string (D6) on a null app, an unknown
-/// / mis-shaped namespace, or a kernel rejection.
+/// Builds the typed payload for `namespace` from `json`, mints a host correlation id,
+/// wraps payload + namespace + id in an open [`DispatchEnvelope`](nmp_core::dispatch_envelope),
+/// and hands the finished bytes to [`dispatch_action_bytes_typed`]. Returns the
+/// correlation id string on accept, or a fail-closed error string (D6) on a null app,
+/// an unknown / mis-shaped namespace, or a kernel rejection.
 ///
 /// # Safety
-/// `app` must be a live native-runtime app whose gallery composition was
-/// installed before start.
+/// `app` must be a valid non-null `*mut NmpApp` (a null `app` returns an error
+/// string, never a crash).
 pub fn dispatch_action_bytes_for(
-    app: &NmpApp,
+    app: *mut NmpApp,
     namespace: &str,
     json: &str,
 ) -> Result<String, String> {
+    if app.is_null() {
+        return Err("runtime app is not available".to_string());
+    }
     let payload = encode_payload_for_namespace(namespace, json)?;
     let correlation_id = mint_correlation_id();
     let envelope = encode_dispatch_envelope(
@@ -137,27 +120,29 @@ pub fn dispatch_action_bytes_for(
         &payload,
     );
 
-    let outcome = dispatch_action_bytes_typed(app, &envelope);
-    if let Some(error) = outcome.error {
-        return Err(error);
+    // SAFETY: `app` is a valid, non-null pointer (checked above).
+    let app_ref = unsafe { &*app };
+    let outcome = dispatch_action_bytes_typed(app_ref, &envelope);
+    if let Some(err) = outcome.error {
+        return Err(err);
     }
-    let Some(correlation_id) = outcome.correlation_id.filter(|id| !id.is_empty()) else {
-        return Err("action dispatch envelope missing correlation_id".to_string());
-    };
-    Ok(serde_json::json!({ "correlation_id": correlation_id }).to_string())
+    // Return the echoed correlation_id (host-supplied, per ADR-0064 §4).
+    outcome
+        .correlation_id
+        .ok_or_else(|| "action dispatch returned no correlation_id".to_string())
 }
 
 /// Parse a dispatch result envelope returned by the byte doorway.
 ///
-/// The doorway returns `{"correlation_id":"<id>"}` on accept (the host-supplied
-/// id echoed verbatim) or `{"error":"<message>"}` on rejection.
-pub fn parse_dispatch_envelope(value: &Value) -> Result<String, String> {
-    if let Some(error) = value.get("error").and_then(Value::as_str) {
+/// The doorway returns `{"correlation_id":"<id>"}` on accept or `{"error":"<message>"}` on rejection.
+/// Kept as a test-visible helper; the main dispatch path uses [`DispatchOutcome`] directly.
+pub fn parse_dispatch_envelope(value: &serde_json::Value) -> Result<String, String> {
+    if let Some(error) = value.get("error").and_then(serde_json::Value::as_str) {
         return Err(error.to_string());
     }
     value
         .get("correlation_id")
-        .and_then(Value::as_str)
+        .and_then(serde_json::Value::as_str)
         .filter(|id| !id.is_empty())
         .map(str::to_string)
         .ok_or_else(|| "action dispatch envelope missing correlation_id".to_string())

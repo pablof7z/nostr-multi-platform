@@ -9,7 +9,7 @@ use std::ffi::c_void;
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::sync::mpsc::{channel, Receiver, Sender};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
 
@@ -18,7 +18,7 @@ use nmp_core::decode_snapshot_typed_projections;
 use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
 use nmp_core::substrate::ActionPayload as _;
 use nmp_core::typed_projections::{decode_action_results, ACTION_RESULTS_SCHEMA_ID};
-use nmp_native_runtime::{dispatch_action_bytes_typed, NmpApp};
+use nmp_native_runtime::NmpApp;
 
 const TEST_NSEC: &str = "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
 
@@ -107,21 +107,7 @@ fn spawn_mock_blossom(descriptor_json: &'static str) -> String {
     url
 }
 
-fn outcome_json(outcome: nmp_native_runtime::DispatchOutcome) -> serde_json::Value {
-    let mut parsed = serde_json::Map::new();
-    if let Some(correlation_id) = outcome.correlation_id {
-        parsed.insert("correlation_id".to_string(), correlation_id.into());
-    }
-    if let Some(error) = outcome.error {
-        parsed.insert("error".to_string(), error.into());
-    }
-    if let Some(code) = outcome.code {
-        parsed.insert("code".to_string(), code.into());
-    }
-    serde_json::Value::Object(parsed)
-}
-
-fn dispatch(app: &NmpApp, body: &str) -> serde_json::Value {
+fn dispatch(app: *mut NmpApp, body: &str) -> serde_json::Value {
     use std::time::{SystemTime, UNIX_EPOCH};
     let input: nmp_blossom::UploadInput =
         serde_json::from_str(body).expect("valid UploadInput JSON");
@@ -137,7 +123,9 @@ fn dispatch(app: &NmpApp, body: &str) -> serde_json::Value {
         DISPATCH_ENVELOPE_SCHEMA_VERSION,
         &payload,
     );
-    outcome_json(dispatch_action_bytes_typed(app, &envelope))
+    // SAFETY: app is a valid, non-null pointer.
+    let outcome = nmp_native_runtime::dispatch_action_bytes_typed(unsafe { &*app }, &envelope);
+    serde_json::json!({ "correlation_id": outcome.correlation_id, "error": outcome.error })
 }
 
 #[test]
@@ -157,14 +145,15 @@ fn upload_terminal_surfaces_url_and_sha256_in_action_results() {
         std::env::temp_dir().join(format!("nmp-blossom-completion-{}.bin", std::process::id()));
     std::fs::write(&path, b"hello").unwrap();
 
-    let mut app = nmp_native_runtime::new_app();
-    app.set_update_listener(Some(Arc::new(|payload: &[u8]| {
-        capture_frame(std::ptr::null_mut(), payload.as_ptr(), payload.len());
+    let app = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
+    unsafe { &*app }.set_update_listener(Some(std::sync::Arc::new(|bytes: &[u8]| {
+        capture_frame(std::ptr::null_mut(), bytes.as_ptr(), bytes.len());
     })));
-    nmp_blossom::register_actions(&mut app);
-    app.start_runtime(256, 8);
+    // SAFETY: valid until nmp_app_free.
+    nmp_blossom::register_actions(unsafe { &mut *app });
+    unsafe { &*app }.start_runtime(256, 8);
 
-    app.signin_nsec_for_test(TEST_NSEC, true);
+    unsafe { &*app }.signin_nsec_for_test(TEST_NSEC, true);
 
     let body = serde_json::json!({
         "file_path": path.to_str().unwrap(),
@@ -173,7 +162,7 @@ fn upload_terminal_surfaces_url_and_sha256_in_action_results() {
     })
     .to_string();
 
-    let parsed = dispatch(&app, &body);
+    let parsed = dispatch(app, &body);
     let cid = parsed
         .get("correlation_id")
         .and_then(|v| v.as_str())
@@ -189,4 +178,5 @@ fn upload_terminal_surfaces_url_and_sha256_in_action_results() {
 
     uninstall_frame_capture();
     let _ = std::fs::remove_file(&path); // doctrine-allow: D6 — teardown only; file may already be gone
+    unsafe { drop(Box::from_raw(app)) };
 }

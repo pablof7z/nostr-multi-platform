@@ -2,15 +2,15 @@
 //!
 //! Constructs an app via `NmpAppBuilder`, installs this crate's explicit
 //! composition root through [`register`], starts the kernel, and tears it down.
-//! A real platform shell uses the public binding for its host: UniFFI for
-//! Swift/Kotlin native apps, wasm-bindgen for browser Workers, or direct Rust
-//! for Rust-native shells.
+//! A real platform shell (SwiftUI / Compose / iced / wasm) drives the same
+//! native runtime app handle through the platform binding.
 //!
 //! Run it with:
 //!
 //! ```sh
 //! cargo run --example shell -p {{pkg}}
 //! ```
+
 
 use nmp_native_runtime::{NmpAppBuilder, RunConfig};
 
@@ -47,7 +47,7 @@ fn main() {
 
     let home_timeline_session = {
         // SAFETY: `NmpAppBuilder::start` returns a valid, non-null pointer owned
-        // by this shell until it is reclaimed below.
+        // by this example until the explicit teardown below.
         let app_ref = unsafe { &*app };
         {{crate_ident}}::open_home_timeline_session(app_ref).ok()
     };
@@ -60,10 +60,6 @@ fn main() {
         let app_ref = unsafe { &*app };
         let _ = {{crate_ident}}::close_home_timeline_session(app_ref, session);
     }
-    // SAFETY: the builder handed ownership of this non-null pointer to the
-    // shell. Reclaiming it drops the native runtime after an explicit stop.
-    unsafe {
-        (*app).stop_runtime();
-        drop(Box::from_raw(app));
-    }
+    unsafe { &*app }.stop_runtime();
+    unsafe { drop(Box::from_raw(app)) };
 }

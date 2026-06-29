@@ -216,3 +216,39 @@ fn symbol_allowlist_negative_fixture_fires() {
         "negative fixture symbol must not be allowlisted"
     );
 }
+
+#[test]
+fn no_nmp_app_c_abi_symbols_in_crates() {
+    // M14-D ratchet: the nmp-ffi C-ABI crate is deleted. No code in crates/*/src/
+    // may re-introduce #[no_mangle] extern "C" fn nmp_app_* symbols. New platform
+    // API must go through nmp-native-runtime Rust methods or nmp-uniffi.
+    let (root, files) = crate_native_rs_files();
+    let mut violations = Vec::new();
+
+    for path in &files {
+        if !is_nmp_ffi_export_source(path) {
+            continue;
+        }
+        let body = match std::fs::read_to_string(path) {
+            Ok(b) => b,
+            Err(_) => continue,
+        };
+        for (idx, live) in rust_live_lines(&body).into_iter().enumerate() {
+            if let Some(symbol) = exported_native_nmp_symbol(&live) {
+                if symbol.starts_with("nmp_app_") {
+                    violations.push(format!(
+                        "{}:{} banned C-ABI symbol `{symbol}` — nmp-ffi is deleted (M14-D);                          use nmp-native-runtime Rust API or nmp-uniffi instead",
+                        relative_to(&root, path).display(),
+                        idx + 1,
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "crates/*/src must not contain #[no_mangle] extern \"C\" fn nmp_app_* symbols.          The nmp-ffi C-ABI layer was deleted in M14-D. Platform callers must use          nmp-native-runtime directly:\n{}",
+        violations.join("\n")
+    );
+}

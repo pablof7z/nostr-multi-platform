@@ -39,9 +39,6 @@ path = "crates/nmp-planner"
 name = "nmp-router"
 path = "crates/nmp-router"
 
-[[public_crates]]
-name = "nmp-ffi"
-path = "crates/nmp-ffi"
 
 [[public_crates]]
 name = "nmp-native-runtime"

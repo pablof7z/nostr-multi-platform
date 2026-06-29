@@ -284,7 +284,7 @@ fn k2_crates_are_in_scope() {
         assert!(file_in_scope(Path::new(&p)), "{} src must be in scope", c);
     }
     assert!(file_in_scope(Path::new(
-        "/abs/crates/nmp-ffi/src/signer_broker.rs"
+        "/abs/crates/nmp-signers/src/signer_broker.rs"
     )));
 }
 

@@ -1,7 +1,7 @@
 //! Integration test: prove the compatibility `register_actions` helper wires
 //! follow/unfollow plus delegated NIP-25 reaction namespaces against a real
 //! `NmpApp` and that each one round-trips through the typed byte doorway
-//! exposed by `nmp-native-runtime` (ADR-0064 / S4, #1996).
+//! `nmp_app_dispatch_action_bytes` (ADR-0064 / S4, #1996).
 //!
 //! This is the migration-success contract — the same shape the chirp
 //! `social_verbs_dispatch_through_action_registry` test enforces, lifted
@@ -9,9 +9,9 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
+use nmp_core::dispatch_envelope::{DISPATCH_ENVELOPE_SCHEMA_VERSION, encode_dispatch_envelope};
 use nmp_core::substrate::ActionPayload;
-use nmp_native_runtime::{dispatch_action_bytes_typed, NmpApp};
+use nmp_native_runtime::NmpApp;
 
 /// Mint a process-local unique host correlation id. On the byte lane the host
 /// supplies the id and the doorway echoes it back verbatim (ADR-0064 §4) — it
@@ -22,24 +22,14 @@ fn next_correlation_id() -> String {
 }
 
 /// Wrap pre-encoded typed `payload` bytes in a `DispatchEnvelope` routed at
-fn outcome_json(outcome: nmp_native_runtime::DispatchOutcome) -> serde_json::Value {
-    let mut parsed = serde_json::Map::new();
-    if let Some(correlation_id) = outcome.correlation_id {
-        parsed.insert("correlation_id".to_string(), correlation_id.into());
-    }
-    if let Some(error) = outcome.error {
-        parsed.insert("error".to_string(), error.into());
-    }
-    if let Some(code) = outcome.code {
-        parsed.insert("code".to_string(), code.into());
-    }
-    serde_json::Value::Object(parsed)
-}
-
-/// `namespace`, drive it through the typed byte doorway, and return the parsed
-/// JSON-shaped result. The host-supplied correlation id is returned alongside
-/// so callers can assert the echo.
-fn dispatch_bytes(app: &NmpApp, namespace: &str, payload: &[u8]) -> (String, serde_json::Value) {
+/// `namespace`, drive it through `nmp_app_dispatch_action_bytes`, and return the
+/// parsed JSON result. The returned C string is freed. The host-supplied
+/// correlation id is returned alongside so callers can assert the echo.
+fn dispatch_bytes(
+    app: *mut NmpApp,
+    namespace: &str,
+    payload: &[u8],
+) -> (String, serde_json::Value) {
     let correlation_id = next_correlation_id();
     let envelope = encode_dispatch_envelope(
         &correlation_id,
@@ -47,10 +37,13 @@ fn dispatch_bytes(app: &NmpApp, namespace: &str, payload: &[u8]) -> (String, ser
         DISPATCH_ENVELOPE_SCHEMA_VERSION,
         payload,
     );
-    (
-        correlation_id,
-        outcome_json(dispatch_action_bytes_typed(app, &envelope)),
-    )
+    // SAFETY: app is a valid, non-null pointer.
+    let outcome = nmp_native_runtime::dispatch_action_bytes_typed(unsafe { &*app }, &envelope);
+    let parsed = serde_json::json!({
+        "correlation_id": outcome.correlation_id,
+        "error": outcome.error,
+    });
+    (correlation_id, parsed)
 }
 
 /// After `nmp_nip02::register_actions`, the old public social bundle is
@@ -61,8 +54,14 @@ fn dispatch_bytes(app: &NmpApp, namespace: &str, payload: &[u8]) -> (String, ser
 /// are wired under each namespace.
 #[test]
 fn register_actions_wires_compat_social_bundle() {
-    let mut app = nmp_native_runtime::new_app();
-    nmp_nip02::register_actions(&mut app);
+    let app = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
+    assert!(!app.is_null(), "nmp_app_new must return a valid app");
+    // SAFETY: `app` is a valid pointer from `nmp_app_new`; we hold the
+    // sole `&mut` for the duration of the registration call and drop it
+    // before any other access.
+    unsafe {
+        nmp_nip02::register_actions(&mut *app);
+    }
 
     let event_id = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
@@ -92,9 +91,9 @@ fn register_actions_wires_compat_social_bundle() {
         ("nmp.nip25.react", &react),
         ("nmp.nip25.unreact", &unreact),
     ] {
-        let (sent_id, parsed) = dispatch_bytes(&app, namespace, payload);
+        let (sent_id, parsed) = dispatch_bytes(app, namespace, payload);
         assert!(
-            parsed.get("error").is_none(),
+            parsed.get("error").is_none_or(serde_json::Value::is_null),
             "{namespace}: must be accepted, got {parsed}"
         );
         let id = parsed
@@ -115,9 +114,10 @@ fn register_actions_wires_compat_social_bundle() {
         target_author_pubkey: None,
     }
     .encode();
-    let (_id, parsed) = dispatch_bytes(&app, "nmp.nip25.react", &default_react);
+    let (_id, parsed) = dispatch_bytes(app, "nmp.nip25.react", &default_react);
     assert!(
-        parsed.get("correlation_id").is_some() && parsed.get("error").is_none(),
+        parsed.get("correlation_id").is_some()
+            && parsed.get("error").is_none_or(serde_json::Value::is_null),
         "nmp.nip25.react with default '+' reaction should succeed: {parsed}"
     );
 
@@ -125,11 +125,13 @@ fn register_actions_wires_compat_social_bundle() {
     // (the byte-lane equivalent of a JSON decode failure), surfaced as
     // `{"error":...}` (D6 — never a crash). nip02 `FollowModule::start` is a
     // no-op accept, so the rejection comes from the typed decode, not `start`.
-    let (_id, parsed) = dispatch_bytes(&app, "nmp.follow", b"not a flatbuffer payload");
+    let (_id, parsed) = dispatch_bytes(app, "nmp.follow", b"not a flatbuffer payload");
     assert!(
         parsed.get("error").is_some(),
         "malformed nmp.follow payload bytes must be rejected: {parsed}"
     );
+
+    unsafe { drop(Box::from_raw(app)) };
 }
 
 /// ADR-0064 / S3 (#1751) — the TYPED FlatBuffers payload doorway end-to-end:
@@ -341,15 +343,19 @@ fn build_bad_version_follow_many_payload() -> Vec<u8> {
 /// only gets the three social verbs, not a wildcard).
 #[test]
 fn unregistered_namespace_is_rejected_even_after_register_actions() {
-    let mut app = nmp_native_runtime::new_app();
-    nmp_nip02::register_actions(&mut app);
+    let app = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
+    // SAFETY: same as `register_actions_wires_all_three_social_verbs`.
+    unsafe {
+        nmp_nip02::register_actions(&mut *app);
+    }
     let payload = nmp_nip02::PubkeyAction {
         pubkey: "deadbeef".to_string(),
     }
     .encode();
-    let (_id, parsed) = dispatch_bytes(&app, "nmp.nip02.not_a_real_verb", &payload);
+    let (_id, parsed) = dispatch_bytes(app, "nmp.nip02.not_a_real_verb", &payload);
     assert!(
         parsed.get("error").is_some(),
         "unknown namespace must surface an error: {parsed}"
     );
+    unsafe { drop(Box::from_raw(app)) };
 }

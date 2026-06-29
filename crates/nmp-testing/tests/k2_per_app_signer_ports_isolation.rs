@@ -3,8 +3,8 @@
 //! ADR-0052 §D3. Proves the four process-globals that K2 rung 5.3 deletes
 //! (`GLOBAL_BROKER`, `GLOBAL_DRIVER`, and the two `nmp-core` hook statics
 //! `bunker_hook::HOOK` / `external_signer_hook::HOOK`) are replaced by per-app
-//! `Arc` slots created in `nmp_native_runtime::new_app` and dropped with the
-//! app — the same "no global aliasing after app drop" invariant the rest of
+//! `Arc` slots created in `nmp_app_new` and dropped in `nmp_app_free` — the
+//! same "no global aliasing across `nmp_app_free`" invariant the rest of
 //! `NmpApp`'s slots obey (ADR-0050 / ADR-0051 relay-connected hook slot).
 //!
 //! ## Why this DEAD-ENDS against the current global design
@@ -14,7 +14,7 @@
 //! exactly once per process:
 //!
 //! * **Free-then-recreate** (the Android process-reuse failure mode): after
-//!   app drop, a freshly created app cannot reinstall the hook —
+//!   `nmp_app_free`, a freshly `nmp_app_new`'d app cannot reinstall the hook —
 //!   the `OnceLock` is already fired, so `get_or_init` keeps the *dead* app's
 //!   broker/hook and the new app dead-ends. This test asserts the recreated
 //!   app's freshly-installed hook is the one that fires.
@@ -32,14 +32,12 @@
 //! `AddSigner`/`DeliverSignerResponse` to its OWN actor inbox). The per-app
 //! hook slot proven here is the other half of that same per-app wiring.
 
-mod common;
-
 use std::sync::{Arc, Mutex};
 
 use nmp_core::{BunkerHookRequest, ExternalSignerHookRequest};
-use nmp_ffi::{
-    install_bunker_hook_for_test, install_external_signer_hook_for_test,
-    invoke_bunker_connect_hook_for_test, invoke_external_signer_restore_hook_for_test,
+use nmp_native_runtime::{
+    install_bunker_hook_for_test, install_external_signer_hook_for_test, invoke_bunker_connect_hook_for_test,
+    invoke_external_signer_restore_hook_for_test,
 };
 
 /// Two concurrent apps each route their bunker-hook invocation to their OWN
@@ -47,8 +45,8 @@ use nmp_ffi::{
 /// `OnceLock` hook means app B's invocation would land in app A's log.
 #[test]
 fn two_apps_route_bunker_hook_to_their_own_slot() {
-    let app_a = common::new_app_ptr();
-    let app_b = common::new_app_ptr();
+    let app_a = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
+    let app_b = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
 
     let log_a: Arc<Mutex<Vec<BunkerHookRequest>>> = Arc::new(Mutex::new(Vec::new()));
     let log_b: Arc<Mutex<Vec<BunkerHookRequest>>> = Arc::new(Mutex::new(Vec::new()));
@@ -70,8 +68,8 @@ fn two_apps_route_bunker_hook_to_their_own_slot() {
     let seen_a = log_a.lock().unwrap().clone();
     let seen_b = log_b.lock().unwrap().clone();
 
-    common::free_app_ptr(app_a);
-    common::free_app_ptr(app_b);
+    unsafe { drop(Box::from_raw(app_a)) };
+    unsafe { drop(Box::from_raw(app_b)) };
 
     assert_eq!(
         seen_a.as_slice(),
@@ -91,13 +89,13 @@ fn two_apps_route_bunker_hook_to_their_own_slot() {
 
 /// Free an app, then create a NEW app and install a fresh bunker hook: the new
 /// hook fires. This is the Android process-reuse dead-end — a `OnceLock`-backed
-/// global stays fired across app drop, so the recreated app's new hook
+/// global stays fired across `nmp_app_free`, so the recreated app's new hook
 /// would never be installed and the invocation would run the dead app's hook
 /// (or return `false`). Per-app slots re-initialise cleanly.
 #[test]
 fn freed_then_recreated_app_reinstalls_bunker_hook() {
     // (1) First app installs a hook and proves it fires.
-    let first = common::new_app_ptr();
+    let first = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
     let first_log: Arc<Mutex<Vec<BunkerHookRequest>>> = Arc::new(Mutex::new(Vec::new()));
     {
         let log = Arc::clone(&first_log);
@@ -107,11 +105,11 @@ fn freed_then_recreated_app_reinstalls_bunker_hook() {
     assert_eq!(first_log.lock().unwrap().len(), 1);
 
     // (2) Free it (drops the per-app slot).
-    common::free_app_ptr(first);
+    unsafe { drop(Box::from_raw(first)) };
 
     // (3) A brand-new app installs its OWN hook and it must fire — this is the
     //     assertion the `OnceLock` global cannot satisfy.
-    let second = common::new_app_ptr();
+    let second = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
     let second_log: Arc<Mutex<Vec<BunkerHookRequest>>> = Arc::new(Mutex::new(Vec::new()));
     {
         let log = Arc::clone(&second_log);
@@ -119,7 +117,7 @@ fn freed_then_recreated_app_reinstalls_bunker_hook() {
     }
     let fired = invoke_bunker_connect_hook_for_test(second, "bunker://second");
     let seen = second_log.lock().unwrap().clone();
-    common::free_app_ptr(second);
+    unsafe { drop(Box::from_raw(second)) };
 
     assert!(
         fired,
@@ -140,18 +138,15 @@ fn freed_then_recreated_app_reinstalls_bunker_hook() {
 /// recreate works.
 #[test]
 fn external_signer_hook_is_per_app_and_survives_recreate() {
-    let app_a = common::new_app_ptr();
+    let app_a = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
     let log_a: Arc<Mutex<Vec<ExternalSignerHookRequest>>> = Arc::new(Mutex::new(Vec::new()));
     {
         let log = Arc::clone(&log_a);
-        install_external_signer_hook_for_test(
-            app_a,
-            Arc::new(move |req| log.lock().unwrap().push(req)),
-        );
+        install_external_signer_hook_for_test(app_a, Arc::new(move |req| log.lock().unwrap().push(req)));
     }
     let fired_a = invoke_external_signer_restore_hook_for_test(app_a, "payload-a");
     let seen_a = log_a.lock().unwrap().clone();
-    common::free_app_ptr(app_a);
+    unsafe { drop(Box::from_raw(app_a)) };
 
     assert!(fired_a);
     assert_eq!(
@@ -162,18 +157,15 @@ fn external_signer_hook_is_per_app_and_survives_recreate() {
     );
 
     // Recreated app installs a fresh hook — fires cleanly (no fired-once global).
-    let app_c = common::new_app_ptr();
+    let app_c = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
     let log_c: Arc<Mutex<Vec<ExternalSignerHookRequest>>> = Arc::new(Mutex::new(Vec::new()));
     {
         let log = Arc::clone(&log_c);
-        install_external_signer_hook_for_test(
-            app_c,
-            Arc::new(move |req| log.lock().unwrap().push(req)),
-        );
+        install_external_signer_hook_for_test(app_c, Arc::new(move |req| log.lock().unwrap().push(req)));
     }
     let fired_c = invoke_external_signer_restore_hook_for_test(app_c, "payload-c");
     let seen_c = log_c.lock().unwrap().clone();
-    common::free_app_ptr(app_c);
+    unsafe { drop(Box::from_raw(app_c)) };
 
     assert!(fired_c);
     assert_eq!(

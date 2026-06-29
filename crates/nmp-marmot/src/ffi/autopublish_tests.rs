@@ -29,7 +29,7 @@ use nmp_core::substrate::{
     KeyringResult,
 };
 use std::collections::HashMap;
-use std::ffi::{CStr, CString, c_char};
+use std::ffi::{c_char, CStr, CString};
 use std::sync::{Mutex, OnceLock};
 
 /// A valid nsec1 key shared with the sibling FFI tests.
@@ -85,31 +85,21 @@ extern "C" fn mock_keyring_callback(
         .into_raw()
 }
 
-fn mock_keyring_json(request_json: String) -> String {
-    let request = CString::new(request_json).expect("capability request has no interior NUL");
-    let raw = mock_keyring_callback(std::ptr::null_mut(), request.as_ptr());
-    if raw.is_null() {
-        return "{}".to_string();
-    }
-    unsafe { CString::from_raw(raw) }
-        .to_string_lossy()
-        .into_owned()
-}
-
 /// Build an `NmpApp` with the mock keyring capability installed.
-fn app_with_mock_keyring() -> *mut nmp_ffi::NmpApp {
-    let app = nmp_ffi::nmp_app_new();
-    unsafe { &*app }
-        .capability_callback_slot()
-        .set_native_handler(Some(std::sync::Arc::new(mock_keyring_json)));
+fn app_with_mock_keyring() -> *mut nmp_native_runtime::NmpApp {
+    let app = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
+    unsafe { &*app }.capability_callback_slot().set_registration(Some(
+        nmp_core::__ffi_internal::CapabilityCallbackRegistration {
+            context: std::ptr::null_mut::<std::ffi::c_void>() as usize,
+            callback: mock_keyring_callback,
+        }
+    ));
     app
 }
 
 fn temp_db_dir(tag: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "nmp_marmot_{tag}_{:?}",
-        std::thread::current().id()
-    ));
+    let dir =
+        std::env::temp_dir().join(format!("nmp_marmot_{tag}_{:?}", std::thread::current().id()));
     let _ = std::fs::create_dir_all(&dir);
     dir
 }
@@ -133,7 +123,7 @@ fn register_after_signin_nsec_consumes_autopublish_flag() {
     // Active local-key sign-in — the path that was broken before PR-4. This is
     // the entry point that arms the flag (via `add_signer`).
     let nsec = CString::new(TEST_NSEC).unwrap();
-    nmp_ffi::nmp_app_signin_nsec(app, nsec.as_ptr(), 1);
+    unsafe { &*app }.signin_nsec_for_test(TEST_NSEC, true);
 
     let tmp = temp_db_dir("pr4");
     let db_dir = CString::new(tmp.to_string_lossy().as_bytes()).unwrap();
@@ -141,12 +131,8 @@ fn register_after_signin_nsec_consumes_autopublish_flag() {
     // `register_with_secret_hex` must consume the flag inside `register_with_keys`.
     // We do NOT read the flag before register (a `take_*` would itself consume
     // it) — the post-register assertion proves it was set AND consumed.
-    let handle = register_with_secret_hex(
-        app,
-        nsec.as_ptr(),
-        db_dir.as_ptr(),
-        TEST_MARMOT_SVC.as_ptr(),
-    );
+    let handle =
+        register_with_secret_hex(app, nsec.as_ptr(), db_dir.as_ptr(), TEST_MARMOT_SVC.as_ptr());
     assert!(
         !handle.is_null(),
         "register_with_secret_hex must succeed with mock keyring + temp dir"
@@ -165,7 +151,7 @@ fn register_after_signin_nsec_consumes_autopublish_flag() {
     );
 
     nmp_marmot_unregister(handle);
-    nmp_ffi::nmp_app_free(app);
+    unsafe { drop(Box::from_raw(app)) };
     let _ = std::fs::remove_dir_all(&tmp);
 }
 
@@ -180,15 +166,11 @@ fn second_register_without_new_signin_does_not_set_autopublish() {
     let nsec = CString::new(TEST_NSEC).unwrap();
 
     // Sign in + register (flag set at sign-in, consumed at register).
-    nmp_ffi::nmp_app_signin_nsec(app, nsec.as_ptr(), 1);
+    unsafe { &*app }.signin_nsec_for_test(TEST_NSEC, true);
     let tmp = temp_db_dir("pr4_idempotence");
     let db_dir = CString::new(tmp.to_string_lossy().as_bytes()).unwrap();
-    let h1 = register_with_secret_hex(
-        app,
-        nsec.as_ptr(),
-        db_dir.as_ptr(),
-        TEST_MARMOT_SVC.as_ptr(),
-    );
+    let h1 =
+        register_with_secret_hex(app, nsec.as_ptr(), db_dir.as_ptr(), TEST_MARMOT_SVC.as_ptr());
     assert!(!h1.is_null(), "first register must succeed");
     nmp_marmot_unregister(h1);
 
@@ -202,6 +184,6 @@ fn second_register_without_new_signin_does_not_set_autopublish() {
         "flag must remain false without a new sign-in"
     );
 
-    nmp_ffi::nmp_app_free(app);
+    unsafe { drop(Box::from_raw(app)) };
     let _ = std::fs::remove_dir_all(&tmp);
 }

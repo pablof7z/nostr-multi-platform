@@ -27,7 +27,7 @@ fn in_memory(keys: Keys) -> MarmotService {
 /// `nmp.marmot.snapshot` entry, and decode it back to a `MarmotSnapshot`.
 /// `None` when the snapshot closure emitted nothing this tick (e.g. `Cleared`).
 fn decoded_snapshot(
-    app: *mut nmp_ffi::NmpApp,
+    app: *mut nmp_native_runtime::NmpApp,
 ) -> Option<crate::projection::payload::MarmotSnapshot> {
     // SAFETY: `app` is a live pointer from `nmp_app_new`, freed by the caller.
     let app_ref = unsafe { &*app };
@@ -47,7 +47,7 @@ fn decoded_snapshot(
 /// registrations. With the real same-key path it goes green.
 #[test]
 fn degraded_init_error_is_replaced_by_a_successful_registration() {
-    let app = nmp_ffi::nmp_app_new();
+    let app = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
 
     // ── Step 1: service init FAILED (e.g. encrypted MLS DB exists but its
     // keyring key was lost). Production `register_with_keys` installs an
@@ -95,21 +95,21 @@ fn degraded_init_error_is_replaced_by_a_successful_registration() {
         "the recovered snapshot reports a registered identity: {snap:?}"
     );
 
-    nmp_ffi::nmp_app_free(app);
+    unsafe { drop(Box::from_raw(app)) };
 }
 
 /// A `Cleared` slot (sign-out) emits nothing for the snapshot key — neither a
 /// degraded nor a healthy snapshot lingers after `nmp_marmot_unregister`.
 #[test]
 fn cleared_slot_emits_no_snapshot() {
-    let app = nmp_ffi::nmp_app_new();
+    let app = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
     let slot: MarmotProjectionSlot = Arc::new(Mutex::new(MarmotSlotState::Cleared));
     register_marmot_snapshot_projections(unsafe { &*app }, &slot);
     assert!(
         decoded_snapshot(app).is_none(),
         "a Cleared slot must not emit a marmot snapshot"
     );
-    nmp_ffi::nmp_app_free(app);
+    unsafe { drop(Box::from_raw(app)) };
 }
 
 /// `MarmotService::new` failures are classified by message: ONLY the lost-key

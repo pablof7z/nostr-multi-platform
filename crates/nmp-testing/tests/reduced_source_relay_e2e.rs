@@ -128,7 +128,7 @@ fn active_follows_relay_replaces_source_and_closes_stale_author_sub() {
     });
     wait_feed_ids(&rx, app_ref, key, std::slice::from_ref(&carol_note_id));
 
-    free_app(app);
+    unsafe { drop(Box::from_raw(app)) };
     uninstall_update_signal();
 }
 
@@ -178,7 +178,7 @@ fn active_follows_cache_first_open_still_replays_live_relay_reqs() {
         "relay refinement must not disturb the cache-first row"
     );
 
-    free_app(app);
+    unsafe { drop(Box::from_raw(app)) };
     uninstall_update_signal();
 }
 
@@ -202,7 +202,7 @@ fn list_members_nip65_arrival_emits_target_author_req() {
     let app_ref = unsafe { &*app };
     assert_eq!(
         app_ref.set_req_frame_interceptor(capture.clone()),
-        nmp_ffi::NmpConfigStatus::Ok
+        nmp_native_runtime::NmpConfigStatus::Ok
     );
     start_app(app);
     add_relay(app, relay.url());
@@ -231,7 +231,7 @@ fn list_members_nip65_arrival_emits_target_author_req() {
         captured_req_matches(ctx, nip65_target, &bob_pk, 1)
     });
 
-    free_app(app);
+    unsafe { drop(Box::from_raw(app)) };
     uninstall_update_signal();
 }
 
@@ -288,7 +288,7 @@ fn active_follows_account_switch_withdraws_old_relay_source() {
     });
     wait_feed_ids(&rx, app_ref, key, std::slice::from_ref(&dave_note_id));
 
-    free_app(app);
+    unsafe { drop(Box::from_raw(app)) };
     uninstall_update_signal();
 }
 
@@ -338,6 +338,6 @@ fn active_mute_list_relay_uses_same_reduced_source_lifecycle() {
     });
     wait_feed_ids(&rx, app_ref, key, std::slice::from_ref(&carol_note_id));
 
-    free_app(app);
+    unsafe { drop(Box::from_raw(app)) };
     uninstall_update_signal();
 }
