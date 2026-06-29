@@ -243,6 +243,65 @@ fn auto_arm_appends_client_tag_on_public_note() {
     );
 }
 
+#[test]
+fn auto_arm_finalizes_before_parking_remote_sign() {
+    let (mut id, mut kernel) = fresh();
+    let signer = PendingCaptureRemoteSigner::new(&"a".repeat(64));
+    let captured = signer.captured_handle();
+    add_signer(
+        &mut id,
+        &mut kernel,
+        crate::actor::SignerSource::RemoteHandle(Box::new(signer)),
+        true,
+        false,
+    );
+    kernel.set_outbound_public_tags(vec![vec!["client".into(), "Chirp".into()]]);
+    let unsigned = nmp_signer_iface::UnsignedEvent {
+        pubkey: String::new(),
+        kind: 1,
+        tags: vec![],
+        content: "a parked public note".into(),
+        created_at: 0,
+    };
+    let mut parked_ops = crate::actor::pending_sign::ParkedSignerOps::new();
+
+    let outbound = publish_unsigned_event(
+        &id,
+        &mut kernel,
+        unsigned,
+        Some("auto-parked-cid".to_string()),
+        None,
+        &mut parked_ops,
+    );
+
+    assert!(
+        outbound.is_empty(),
+        "pending remote sign must not publish yet"
+    );
+    assert_eq!(parked_ops.len(), 1, "remote sign must be parked");
+    let captured = captured.lock().expect("capture mutex");
+    assert_eq!(captured.len(), 1);
+    assert_eq!(captured[0].created_at, kernel.now_secs());
+    assert!(
+        captured[0]
+            .tags
+            .contains(&vec!["client".to_string(), "Chirp".to_string()]),
+        "remote signer must receive the finalized unsigned event before parking"
+    );
+
+    let parked = parked_ops.into_vec();
+    let crate::actor::pending_sign::ParkedOpSink::Publish {
+        target,
+        correlation_id_override,
+        ..
+    } = &parked[0].sink
+    else {
+        panic!("expected parked publish sink");
+    };
+    assert!(matches!(target, PublishTarget::Auto));
+    assert_eq!(correlation_id_override.as_deref(), Some("auto-parked-cid"));
+}
+
 /// Flow B negative (auto arm): with NO app-declared tags, a kind:1 note carries
 /// no client tag — proves the tag is kernel-driven, never spuriously injected.
 #[test]
