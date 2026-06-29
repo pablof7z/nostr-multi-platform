@@ -414,6 +414,7 @@ pub mod __ffi_internal {
     pub use crate::capability_socket::{
         capability_error_envelope, dispatch_capability, new_capability_callback_slot,
         CapabilityCallback, CapabilityCallbackRegistration, CapabilityCallbackSlot,
+        NativeCapabilityHandler,
     };
     pub use crate::kernel::{
         default_registry, is_hex_id, is_hex_pubkey, new_app_relay_slot,
