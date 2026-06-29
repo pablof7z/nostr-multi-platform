@@ -17,10 +17,10 @@ The generated app demonstrates the boring v1 path:
 | Surface | Starter shape |
 |------|------|
 | Runtime | `examples/shell.rs` uses `nmp_native_runtime::NmpAppBuilder`, calls `{{crate_ident}}::register(&mut builder)` once, declares projection consumption, declares relay policy, then starts. |
-| Timeline/read | `starter_home_feed_params()` declares the typed `nmp.feed.home` read surface; platform shells open/render that Rust/NMP projection instead of owning subscription or cache policy. |
+| Timeline/read | `starter_home_feed_params()` declares this app's typed home-timeline read surface; platform shells open/render that Rust/NMP projection instead of owning subscription or cache policy. |
 | Profile/content | Component hosts read `refs.profile`, authoritative `refs.event`, and derived `refs.event.envelopes`. Do not use pre-v1 whole-map projections. |
 | Component host | Install one app-root provider such as SwiftUI `NmpComponentHost` or Compose `NmpComponentHostProvider`; leaf components render and manage visible claim/release only. |
-| Compose/publish | Platform shells build bytes with generated builders such as `GeneratedActionBuilders.publishRaw` / `publishReply` / `publishProfile`, then dispatch those bytes. They do not spell action namespaces or JSON payloads by hand. |
+| Compose/publish | Platform shells build bytes with typed generated builders such as `GeneratedActionBuilders.publishReply` / `publishProfile`, then dispatch those bytes. They do not spell action namespaces, arbitrary event kinds, or JSON payloads by hand. |
 | Ownership | Product facts, routing, publish semantics, cache invalidation, and projection derivation stay in Rust/NMP. SwiftUI, Compose, web, or TUI shells render snapshots and execute capabilities only. |
 
 ## Layout

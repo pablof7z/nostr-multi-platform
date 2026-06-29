@@ -301,6 +301,24 @@ impl BrowserRuntimeHandle {
         outcome
     }
 
+    /// Produce a merged snapshot only when the kernel reports a real mutation
+    /// since the last emitted frame.
+    ///
+    /// The explicit [`Self::next_frame`] pull surface stays unconditional. This
+    /// helper is for push-driven browser/wasm callbacks, where emitting a fresh
+    /// frame for an idempotent request would cause render -> resolve_ref ->
+    /// snapshot callback churn even though the kernel state did not change.
+    pub(crate) fn next_frame_if_dirty(&mut self, running: bool) -> Option<Vec<u8>> {
+        if !self.runtime.reducer.changed_since_emit() {
+            return None;
+        }
+        match self.next_frame(running) {
+            SnapshotOutcome::Frame(bytes) => Some(bytes),
+            SnapshotOutcome::Degraded { last_good, .. } => last_good,
+            SnapshotOutcome::Panic(_) => None,
+        }
+    }
+
     /// Return a `CommandSender` for this runtime's inbox.
     pub fn command_sender(&self) -> CommandSender {
         CommandSender::new_bounded(self.inbox_tx.clone())

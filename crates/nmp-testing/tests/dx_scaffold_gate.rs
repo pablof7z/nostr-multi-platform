@@ -323,7 +323,7 @@ fn g3_shell_uses_nmp_app_builder() {
 
     // G3f: lib.rs teaches current projections and typed write builders.
     for key in [
-        "nmp.feed.home",
+        "dxdemo3.timeline.home",
         "refs.profile",
         "refs.event",
         "refs.event.envelopes",
@@ -334,9 +334,10 @@ fn g3_shell_uses_nmp_app_builder() {
         );
     }
     assert!(
-        lib_rs.contains("GeneratedActionBuilders.publishRaw")
-            && lib_rs.contains("GeneratedActionBuilders.publishReply"),
-        "G3 DX GAP: starter must point shells at generated publish builders.\n\
+        !lib_rs.contains("GeneratedActionBuilders.publishRaw")
+            && lib_rs.contains("GeneratedActionBuilders.publishReply")
+            && lib_rs.contains("GeneratedActionBuilders.publishProfile"),
+        "G3 DX GAP: starter must point shells at typed generated publish builders, not generic publishRaw.\n\
          lib.rs:\n{lib_rs}",
     );
     assert!(

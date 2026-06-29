@@ -8,7 +8,20 @@
 > [14 — relay manager](14-relay-manager.md). Keep them distinct: §11/§12
 > are the *write* path; §14 is the *connection* path.
 
-## The one publish API
+## Normal app write path
+
+Starter apps should expose typed product/protocol writes: for example, a
+`PostNote` app action, a generated `publishReply` builder, or a
+`publishProfile` builder. Those doors construct the protocol-specific draft or
+envelope, then hand it to NMP for signing, routing, ledger tracking, retry, and
+finalization. The app does not treat arbitrary event-kind publishing as the
+normal write API.
+
+Protocol modules that need verbatim or pre-signed envelopes may own those
+specific seams. Keep them named by protocol and purpose so callers know why the
+generic path is not being used.
+
+## The publish engine API
 
 Apps publish through exactly one action surface. There is no
 "build → sign → send" you call yourself. `PublishAction`

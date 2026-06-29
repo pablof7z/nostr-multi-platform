@@ -25,6 +25,7 @@ use nmp_signers::SignerBackend;
 
 use super::event::BrowserRuntimeEvent;
 use super::handle::BrowserRuntimeHandle;
+#[cfg(test)]
 use super::snapshot::SnapshotOutcome;
 use crate::runtime::PendingSignedPublish;
 use crate::signer::broker_sign_request;
@@ -67,10 +68,12 @@ pub(crate) enum DispatchBytesResult {
 // ── Kernel-op methods on BrowserRuntimeHandle ────────────────────────────────
 
 impl BrowserRuntimeHandle {
-    /// Produce the next merged snapshot frame.
+    /// Produce the next merged snapshot frame for tests that need an explicit
+    /// pull surface.
     ///
-    /// Returns `Some(bytes)` on success (or falls back to the last known-good
-    /// frame on `Degraded`). Returns `None` on a terminal `Panic` frame.
+    /// Production push callbacks use `next_frame_if_dirty` so no-op actions do
+    /// not emit redundant snapshot frames.
+    #[cfg(test)]
     pub(crate) fn produce_snapshot_bytes(&mut self, running: bool) -> Option<Vec<u8>> {
         match self.next_frame(running) {
             SnapshotOutcome::Frame(bytes) => Some(bytes),

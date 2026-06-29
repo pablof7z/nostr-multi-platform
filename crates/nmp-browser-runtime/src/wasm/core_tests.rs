@@ -36,6 +36,33 @@ fn set_identity_req() -> String {
     .to_string()
 }
 
+fn resolve_profile_ref_req(correlation_id: &str) -> String {
+    serde_json::json!({
+        "type": "resolve_ref",
+        "namespace": 0,
+        "key": PK,
+        "consumer_id": "profile-card:stable",
+        "shape": 1,
+        "liveness": 0,
+        "correlation_id": correlation_id
+    })
+    .to_string()
+}
+
+fn release_profile_ref_req(correlation_id: &str) -> String {
+    serde_json::json!({
+        "type": "release_ref",
+        "namespace": 0,
+        "key": PK,
+        "consumer_id": "profile-card:stable",
+        "correlation_id": correlation_id
+    })
+    .to_string()
+}
+
+#[path = "core_profile_claim_tests.rs"]
+mod profile_claim_tests;
+
 #[test]
 fn new_core_has_no_handle() {
     let core = NmpRuntimeCore::new();

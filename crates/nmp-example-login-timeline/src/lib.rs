@@ -23,10 +23,8 @@
 //!
 //! # The three-function shell
 //!
-//! 1. [`register`] — install the worked-example compatibility preset. The
-//!    `nmp init` scaffold now shows ADR-0069 explicit production composition;
-//!    this tutorial keeps the preset only to prove the historical login →
-//!    timeline path.
+//! 1. [`register`] — install explicit named substrate/protocol features. This
+//!    mirrors the `nmp init` scaffold's ADR-0069 production composition path.
 //! 2. [`register_following_timeline`] — open the FOLLOWING timeline. One call
 //!    to [`nmp_native_runtime::register_op_feed_defaults`] wires the OP-centric home
 //!    feed (the following timeline): ingest fan-out, the live follow-set
@@ -53,14 +51,23 @@ pub mod harness;
 /// Repost wrappers are derived below this app-facing declaration.
 pub const FOLLOWING_PRIMARY_FEED_KINDS: [u32; 1] = [1];
 
-/// Step 1 — install the tutorial compatibility composition.
+/// Step 1 — install the tutorial composition explicitly.
 ///
-/// This worked example intentionally keeps one call to
-/// [`nmp_defaults::register_defaults`] so the historical login/timeline proof
-/// remains small. Production starters should use ADR-0069 explicit substrate,
-/// protocol, and app installers instead. Call before `start`.
+/// This worked example mirrors the ADR-0069 starter path: install reusable
+/// substrate/protocol features by name, then let the timeline opener register
+/// the app-facing feed session. Call before `start`.
 pub fn register(app: &mut impl AppHost) {
-    nmp_defaults::register_defaults(app);
+    let nmp_defaults::NmpDefaults {
+        coverage_gate,
+        search_defaults,
+        ..
+    } = nmp_defaults::NmpDefaults::default();
+
+    let _mailbox_cache = nmp_defaults::register_substrate(app, coverage_gate);
+    nmp_defaults::register_nip50_protocol_defaults(app);
+    let _social_handles = nmp_defaults::register_social_protocol_defaults(app, search_defaults);
+    nmp_defaults::register_dm_protocol_defaults(app);
+    nmp_defaults::register_longform_projection(app);
 }
 
 /// Step 2 — open the FOLLOWING timeline.

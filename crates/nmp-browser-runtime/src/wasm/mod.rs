@@ -106,13 +106,14 @@ mod wasm_impl {
             }
         }
 
-        /// Push snapshot bytes via the installed JS callback, if any.
+        /// Push snapshot bytes via the installed JS callback, if any, when the
+        /// kernel reports a real change since the last emitted frame.
         fn push_snapshot_via_js(&mut self) {
             if self.snapshot_cb.is_none() {
                 return;
             }
             if let Some(h) = self.core.handle.as_mut() {
-                if let Some(bytes) = h.produce_snapshot_bytes(true) {
+                if let Some(bytes) = h.next_frame_if_dirty(true) {
                     if let Some(cb) = &self.snapshot_cb {
                         let arr = js_sys::Uint8Array::from(bytes.as_slice());
                         // D6 — drop the error; a broken callback is not fatal.
@@ -380,7 +381,7 @@ mod wasm_impl {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub use wasm_impl::{NmpWasmRuntime, nmp_encode_npub};
+pub use wasm_impl::{nmp_encode_npub, NmpWasmRuntime};
 
 // ── Non-wasm stubs (native CI / doc builds) ───────────────────────────────────
 
