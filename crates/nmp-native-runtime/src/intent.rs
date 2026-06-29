@@ -22,10 +22,7 @@ pub enum InputIntentDispatch {
 impl NmpApp {
     /// Classify one input-intent request against the app-registered recognizers.
     #[must_use]
-    pub fn classify_input_intent(
-        &self,
-        request: &InputIntentRequest,
-    ) -> InputIntentClassification {
+    pub fn classify_input_intent(&self, request: &InputIntentRequest) -> InputIntentClassification {
         let recognizers = self.input_scope_recognizers();
         nmp_intent::classify(request, &recognizers)
     }
@@ -45,17 +42,18 @@ impl NmpApp {
             InputIntentClassification::Rejection(rejection) => {
                 InputIntentDispatch::Rejection(rejection)
             }
-            InputIntentClassification::Candidates(candidates) => match candidates.into_iter().next()
-            {
-                // The classifier normally emits a `Rejection` instead of an
-                // empty candidate list. Stay total if a future recognizer path
-                // changes that invariant.
-                None => InputIntentDispatch::Rejection(InputIntentRejection::Unparseable),
-                Some(candidate) => {
-                    self.act_on_input_intent_candidate(&candidate, session_id);
-                    InputIntentDispatch::Dispatched(candidate)
+            InputIntentClassification::Candidates(candidates) => {
+                match candidates.into_iter().next() {
+                    // The classifier normally emits a `Rejection` instead of an
+                    // empty candidate list. Stay total if a future recognizer path
+                    // changes that invariant.
+                    None => InputIntentDispatch::Rejection(InputIntentRejection::Unparseable),
+                    Some(candidate) => {
+                        self.act_on_input_intent_candidate(&candidate, session_id);
+                        InputIntentDispatch::Dispatched(candidate)
+                    }
                 }
-            },
+            }
         }
     }
 
@@ -73,7 +71,9 @@ impl NmpApp {
             InputIntentTarget::TextQuery { request_json } => {
                 if let Some(session_id) = session_id.filter(|s| !s.is_empty()) {
                     if let Some(request) = crate::search::parse_search_request(request_json) {
-                        let _ = self.open_search(request, session_id);
+                        let _ = self.open_search_session(crate::search::Nip50SearchSession::new(
+                            request, session_id,
+                        ));
                     }
                 }
             }

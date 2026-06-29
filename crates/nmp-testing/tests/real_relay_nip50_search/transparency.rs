@@ -41,6 +41,7 @@ use nmp_ffi::{
     nmp_app_add_relay, nmp_app_free, nmp_app_new, nmp_app_set_update_callback, nmp_app_signin_nsec,
     nmp_app_start,
 };
+use nmp_native_runtime::{Nip50SearchHandle, Nip50SearchSession};
 use nmp_nip50::{SearchRequest, SearchScope, SearchTargets};
 use nostr::util::JsonUtil as _;
 use nostr::{EventBuilder, Keys, Kind, Tag, TagKind, Timestamp, ToBech32 as _};
@@ -85,11 +86,7 @@ fn uninstall_update_signal() {
 }
 
 /// Publish one signed event JSON to `socket` and wait for the relay `OK`.
-fn publish_and_ok(
-    url: &str,
-    json: &str,
-    event_id: &str,
-) -> Result<bool, String> {
+fn publish_and_ok(url: &str, json: &str, event_id: &str) -> Result<bool, String> {
     let mut socket = open_with_timeout(url, PUBLISH_BUDGET)?;
     send_text(&mut socket, format!(r#"["EVENT",{json}]"#))?;
     let deadline = Instant::now() + PUBLISH_BUDGET;
@@ -135,12 +132,18 @@ pub(crate) fn run() {
     };
 
     match publish_and_ok(READ_RELAY, &relay_list.as_json(), &relay_list.id.to_hex()) {
-        Ok(true) => println!("[SC-TRANSPARENCY] published kind:10002 id={}", relay_list.id.to_hex()),
+        Ok(true) => println!(
+            "[SC-TRANSPARENCY] published kind:10002 id={}",
+            relay_list.id.to_hex()
+        ),
         Ok(false) => return skip("transparency", "kind:10002 not acked by R (relay down?)"),
         Err(e) => return skip("transparency", &format!("publish kind:10002: {e}")),
     }
     match publish_and_ok(READ_RELAY, &search_list.as_json(), &search_list.id.to_hex()) {
-        Ok(true) => println!("[SC-TRANSPARENCY] published kind:10007 id={}", search_list.id.to_hex()),
+        Ok(true) => println!(
+            "[SC-TRANSPARENCY] published kind:10007 id={}",
+            search_list.id.to_hex()
+        ),
         Ok(false) => return skip("transparency", "kind:10007 not acked by R (relay down?)"),
         Err(e) => return skip("transparency", &format!("publish kind:10007: {e}")),
     }
@@ -156,9 +159,9 @@ pub(crate) fn run() {
     nmp_defaults::register_defaults(unsafe { &mut *app });
 
     nmp_app_start(app, 256, 8); // emit_hz=8 → ~125ms snapshot cadence
-    // Add R as read+indexer so (a) the kind:10007 interest routes here and
-    // (b) the active-account bootstrap OneShot lands here. NO search relay is
-    // added — discovery must come from the published kind:10007 alone.
+                                // Add R as read+indexer so (a) the kind:10007 interest routes here and
+                                // (b) the active-account bootstrap OneShot lands here. NO search relay is
+                                // added — discovery must come from the published kind:10007 alone.
     let relay_c = CString::new(READ_RELAY).expect("relay url has no nul");
     let role_c = CString::new("both,indexer").expect("role has no nul");
     nmp_app_add_relay(app, relay_c.as_ptr(), role_c.as_ptr());
@@ -174,7 +177,10 @@ pub(crate) fn run() {
     uninstall_update_signal();
 
     match outcome {
-        Outcome::Pass { distinct, from_wine } => {
+        Outcome::Pass {
+            distinct,
+            from_wine,
+        } => {
             record(
                 "transparency",
                 Verdict::Pass,
@@ -187,7 +193,10 @@ pub(crate) fn run() {
             );
             println!("[SC-TRANSPARENCY] PASS — UserPreferred discovered kind:10007 → {WINE}, {distinct} results, zero app wiring");
             assert!(distinct > 0, "SC-TRANSPARENCY PASS requires search results");
-            assert!(from_wine, "SC-TRANSPARENCY: a result must be provably from the discovered {WINE}");
+            assert!(
+                from_wine,
+                "SC-TRANSPARENCY: a result must be provably from the discovered {WINE}"
+            );
         }
         Outcome::Skip(why) => skip("transparency", &why),
     }
@@ -212,8 +221,13 @@ fn drive_and_assert(app: *mut nmp_ffi::NmpApp, rx: &Receiver<()>) -> Outcome {
     // (re)open the search each tick — open_search is idempotent (re-open tears
     // the prior session down first) — and watch the routing trace for the REQ
     // landing on nostr.wine.
-    let request = SearchRequest::new("bitcoin", SearchScope::Users, SearchTargets::UserPreferred, Some(20))
-        .expect("request");
+    let request = SearchRequest::new(
+        "bitcoin",
+        SearchScope::Users,
+        SearchTargets::UserPreferred,
+        Some(20),
+    )
+    .expect("request");
     let session = "sc-transparency";
 
     // ISOLATION PROBE: an Explicit search to nostr.wine — separates "kind:10007
@@ -230,7 +244,7 @@ fn drive_and_assert(app: *mut nmp_ffi::NmpApp, rx: &Receiver<()>) -> Outcome {
             Some(20),
         )
         .expect("explicit request");
-        let _ = app_ref.open_search(explicit, "sc-explicit-probe");
+        let _ = app_ref.open_search_session(Nip50SearchSession::new(explicit, "sc-explicit-probe"));
         let probe_deadline = Instant::now() + Duration::from_secs(20);
         let mut proved = false;
         loop {
@@ -244,7 +258,7 @@ fn drive_and_assert(app: *mut nmp_ffi::NmpApp, rx: &Receiver<()>) -> Outcome {
             let _ = rx.recv_timeout(Duration::from_secs(2));
         }
         eprintln!("[SC-TRANSPARENCY] EXPLICIT probe → nostr.wine returned hits: {proved}");
-        app_ref.close_search("sc-explicit-probe");
+        app_ref.close_search_session(&Nip50SearchHandle::for_key("sc-explicit-probe"));
         proved
     };
 
@@ -257,7 +271,7 @@ fn drive_and_assert(app: *mut nmp_ffi::NmpApp, rx: &Receiver<()>) -> Outcome {
         // fallback; once nos.lol serves the kind:10007 into the auto-wired
         // SearchRelayListProjection, UserPreferred resolves to nostr.wine and
         // the pinned search REQ fans out there.
-        let _ = app_ref.open_search(request.clone(), session);
+        let _ = app_ref.open_search_session(Nip50SearchSession::new(request.clone(), session));
 
         let wine_hit = search_req_hit_wine(app_ref);
         let hits = decode_hits(app_ref, session);
@@ -279,7 +293,10 @@ fn drive_and_assert(app: *mut nmp_ffi::NmpApp, rx: &Receiver<()>) -> Outcome {
         // PASS when results arrived from the DISCOVERED relay — i.e. UserPreferred
         // resolved the published kind:10007 → nostr.wine with zero app wiring.
         if distinct > 0 && from_wine {
-            return Outcome::Pass { distinct, from_wine };
+            return Outcome::Pass {
+                distinct,
+                from_wine,
+            };
         }
         if Instant::now() >= deadline {
             return Outcome::Skip(format!(
@@ -316,7 +333,7 @@ fn search_req_hit_wine(app: &nmp_ffi::NmpApp) -> bool {
 
 /// Decode the current N50S search snapshot into its hits.
 fn decode_hits(app: &nmp_ffi::NmpApp, session: &str) -> Vec<nmp_nip50::SearchHit> {
-    app.search_snapshot_bytes(session)
+    app.search_session_snapshot_bytes(&Nip50SearchHandle::for_key(session))
         .and_then(|bytes| nmp_nip50::decode_search_results_snapshot(&bytes).ok())
         .map(|snap| snap.hits)
         .unwrap_or_default()

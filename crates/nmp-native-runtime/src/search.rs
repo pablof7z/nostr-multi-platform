@@ -52,16 +52,17 @@
 //! malformed JSON, and poisoned mutexes degrade silently (a no-op open, an
 //! empty snapshot) rather than crossing the FFI as a panic.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use nmp_core::__ffi_internal::register_rust_observer_muted;
-use nmp_core::substrate::PreferredRelaySource;
 use nmp_core::ObservedProjectionId;
+use nmp_core::substrate::PreferredRelaySource;
 use nmp_feed::DEFAULT_FEED_WINDOW_LIMIT;
 use nmp_nip50::{
-    encode_search_results_snapshot, search_relay_plan, SearchRequest, SearchResultsProjection,
-    SearchTargets, SEARCH_RESULTS_FILE_IDENTIFIER, SEARCH_RESULTS_SCHEMA_ID,
-    SEARCH_RESULTS_SCHEMA_VERSION,
+    SEARCH_RESULTS_FILE_IDENTIFIER, SEARCH_RESULTS_SCHEMA_ID, SEARCH_RESULTS_SCHEMA_VERSION,
+    SearchRequest, SearchResultsProjection, SearchTargets, encode_search_results_snapshot,
+    search_relay_plan,
 };
 
 use super::NmpApp;
@@ -69,6 +70,59 @@ use super::NmpApp;
 /// `1` = Global. A search interest pins a concrete relay + query; it is NOT
 /// re-routed on account switch (the host closes + re-opens on identity change).
 const SCOPE_GLOBAL: u32 = 1;
+static NEXT_SEARCH_HANDLE_ID: AtomicU64 = AtomicU64::new(1);
+
+/// Descriptor for one host-driven NIP-50 search read session.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Nip50SearchSession {
+    request: SearchRequest,
+    key: String,
+}
+
+impl Nip50SearchSession {
+    /// Build a search descriptor with a caller-stable key.
+    ///
+    /// FFI adapters use the key to preserve their wire contract; Rust callers
+    /// pass the returned [`Nip50SearchHandle`] back for close/read operations.
+    #[must_use]
+    pub fn new(request: SearchRequest, key: impl Into<String>) -> Self {
+        Self {
+            request,
+            key: key.into(),
+        }
+    }
+
+    #[must_use]
+    pub fn request(&self) -> &SearchRequest {
+        &self.request
+    }
+}
+
+/// Runtime handle for one NIP-50 search read session.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Nip50SearchHandle {
+    key: String,
+    projection_key: String,
+    handle_id: u64,
+}
+
+impl Nip50SearchHandle {
+    /// Reconstruct the typed handle used by legacy FFI close/read operations.
+    #[must_use]
+    pub fn for_key(key: impl Into<String>) -> Self {
+        let key = key.into();
+        Self {
+            projection_key: search_key(&key),
+            key,
+            handle_id: 0,
+        }
+    }
+
+    #[must_use]
+    pub fn projection_key(&self) -> &str {
+        &self.projection_key
+    }
+}
 
 /// `&self` [`ObservedProjectionSink`](nmp_core::ObservedProjectionSink) adapter over
 /// the `&mut self` [`SearchResultsProjection`]. Locks the shared projection on
@@ -100,6 +154,7 @@ pub(crate) struct SearchSession {
     /// Per-relay `(filter_json, consumer_id, relay_pin)` close args, matching
     /// each pinned open so the kernel reconstructs the same registry slot.
     relay_closes: Vec<(String, String, String)>,
+    handle_id: u64,
 }
 
 /// The snapshot-projection key for a search session.
@@ -155,7 +210,41 @@ impl NmpApp {
             .collect()
     }
 
-    /// Open a NIP-50 search session — the reusable Rust API `hl` calls directly.
+    /// Open a NIP-50 search session.
+    #[must_use]
+    pub fn open_search_session(&self, descriptor: Nip50SearchSession) -> Nip50SearchHandle {
+        let handle_id = NEXT_SEARCH_HANDLE_ID.fetch_add(1, Ordering::Relaxed);
+        let projection_key =
+            self.open_search_for_key(descriptor.request, &descriptor.key, handle_id);
+        Nip50SearchHandle {
+            key: descriptor.key,
+            projection_key,
+            handle_id,
+        }
+    }
+
+    /// Close a NIP-50 search session by its typed handle.
+    pub fn close_search_session(&self, handle: &Nip50SearchHandle) {
+        if self
+            .search_sessions
+            .lock()
+            .ok()
+            .and_then(|sessions| sessions.get(&handle.key).map(|s| s.handle_id))
+            .is_some_and(|open_handle_id| {
+                handle.handle_id == 0 || open_handle_id == handle.handle_id
+            })
+        {
+            self.close_search_key(&handle.key);
+        }
+    }
+
+    /// Read the current typed `N50S` search-results buffer for a live session.
+    #[must_use]
+    pub fn search_session_snapshot_bytes(&self, handle: &Nip50SearchHandle) -> Option<Vec<u8>> {
+        self.search_snapshot_bytes_for_key(&handle.key)
+    }
+
+    /// Open a NIP-50 search session.
     ///
     /// `request` is the validated [`SearchRequest`]; `session_id` keys the
     /// session for teardown and the snapshot projection. Registers the result
@@ -173,9 +262,14 @@ impl NmpApp {
     /// Re-opening the same `session_id` first tears the prior session down
     /// (idempotent at the registry level). Returns the snapshot projection key
     /// the host reads results under.
-    pub fn open_search(&self, request: SearchRequest, session_id: &str) -> String {
+    fn open_search_for_key(
+        &self,
+        request: SearchRequest,
+        session_id: &str,
+        handle_id: u64,
+    ) -> String {
         // Idempotent re-open: drop any prior session under this id first.
-        self.close_search(session_id);
+        self.close_search_key(session_id);
 
         let relays = self.resolve_search_relays(&request.targets);
 
@@ -281,6 +375,7 @@ impl NmpApp {
                     projection_key: key.clone(),
                     observer_id,
                     relay_closes,
+                    handle_id,
                 },
             );
         }
@@ -290,7 +385,7 @@ impl NmpApp {
     /// Close a NIP-50 search session: detach every per-relay pinned interest,
     /// revoke the single result observer, and remove the typed sidecar.
     /// Idempotent — closing an unknown session is a harmless no-op (D6).
-    pub fn close_search(&self, session_id: &str) {
+    fn close_search_key(&self, session_id: &str) {
         let session = self
             .search_sessions
             .lock()
@@ -311,7 +406,7 @@ impl NmpApp {
     /// The same bytes the host receives in the snapshot frame's typed sidecar —
     /// exposed as a synchronous pull for hosts that poll rather than diff frames.
     #[must_use]
-    pub fn search_snapshot_bytes(&self, session_id: &str) -> Option<Vec<u8>> {
+    fn search_snapshot_bytes_for_key(&self, session_id: &str) -> Option<Vec<u8>> {
         let key = search_key(session_id);
         self.run_typed_snapshot_projections()
             .into_iter()
@@ -327,9 +422,9 @@ impl NmpApp {
     /// (the per-relay pinned interests it opened). Proves UserPreferred
     /// resolution end-to-end — that the installed `PreferredRelaySource` drove
     /// the actual search fan-out, not just `effective_search_relays`.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     #[must_use]
-    pub(crate) fn search_session_relays(&self, session_id: &str) -> Vec<String> {
+    pub fn search_session_relays(&self, session_id: &str) -> Vec<String> {
         self.search_sessions
             .lock()
             .ok()

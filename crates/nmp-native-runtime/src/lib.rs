@@ -45,7 +45,8 @@ mod testing;
 
 pub mod builder;
 pub mod op_feed_defaults;
-pub mod op_pointer_source;
+#[cfg(test)]
+pub(crate) mod op_pointer_source;
 
 pub use action_dispatch::{dispatch_action_bytes_typed, DispatchOutcome};
 pub use app_ctor::new_app;
@@ -75,7 +76,7 @@ pub use op_feed_defaults::{
     register_op_feed_defaults_with_mute, OpFeedDefaults,
 };
 pub use prestart_config::NmpConfigStatus;
-pub use search::parse_search_request;
+pub use search::{parse_search_request, Nip50SearchHandle, Nip50SearchSession};
 #[cfg(any(test, feature = "test-support"))]
 pub use signer_ports_test_support::{
     install_bunker_hook_for_test, install_external_signer_hook_for_test,

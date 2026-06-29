@@ -2,7 +2,7 @@
 
 use std::ffi::{c_char, c_int};
 
-use super::{app_ref, c_string_argument, NmpApp};
+use super::{NmpApp, app_ref, c_string_argument};
 
 /// Open a NIP-50 search session from a JSON query payload.
 #[no_mangle]
@@ -24,7 +24,8 @@ pub extern "C" fn nmp_app_search_open(
     let Some(request) = parse_search_request(&request_json) else {
         return;
     };
-    let _ = app.open_search(request, &session_id);
+    let descriptor = nmp_native_runtime::Nip50SearchSession::new(request, session_id);
+    let _ = app.open_search_session(descriptor);
 }
 
 /// Close a NIP-50 search session opened via [`nmp_app_search_open`].
@@ -37,7 +38,8 @@ pub extern "C" fn nmp_app_search_close(app: *mut NmpApp, session_id: *const c_ch
     let Some(session_id) = c_string_argument(session_id).filter(|s| !s.is_empty()) else {
         return;
     };
-    app.close_search(&session_id);
+    let handle = nmp_native_runtime::Nip50SearchHandle::for_key(session_id);
+    app.close_search_session(&handle);
 }
 
 /// Copy the current typed `N50S` search-results buffer for a session.
@@ -55,7 +57,8 @@ pub extern "C" fn nmp_app_search_snapshot(
     let Some(session_id) = c_string_argument(session_id).filter(|s| !s.is_empty()) else {
         return 0;
     };
-    let Some(bytes) = app.search_snapshot_bytes(&session_id) else {
+    let handle = nmp_native_runtime::Nip50SearchHandle::for_key(session_id);
+    let Some(bytes) = app.search_session_snapshot_bytes(&handle) else {
         return 0;
     };
     let needed = bytes.len();

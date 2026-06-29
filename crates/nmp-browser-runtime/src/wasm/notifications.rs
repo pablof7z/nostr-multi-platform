@@ -5,13 +5,17 @@
 use super::core::NmpRuntimeCore;
 use super::dispatch_support::not_started_error;
 use super::protocol::{NotificationsClose, NotificationsMarkRead, NotificationsOpen, WorkerEvent};
+use crate::runtime::{BrowserNotificationsSessionDescriptor, BrowserNotificationsSessionHandle};
 
 impl NmpRuntimeCore {
     pub(super) fn handle_notifications_open(&mut self, req: NotificationsOpen) -> Vec<WorkerEvent> {
         let Some(handle) = self.handle.as_mut() else {
             return not_started_error(Some(req.correlation_id));
         };
-        match handle.open_notifications(&req.account_pubkey, &req.session_id) {
+        match handle.open_notifications_session(BrowserNotificationsSessionDescriptor {
+            account_pubkey: req.account_pubkey,
+            key: req.session_id,
+        }) {
             Ok(_) => vec![WorkerEvent::ActionAccepted {
                 action_type: "nmp.relations.notifications.open".to_string(),
                 correlation_id: req.correlation_id,
@@ -31,7 +35,9 @@ impl NmpRuntimeCore {
         let Some(handle) = self.handle.as_mut() else {
             return not_started_error(Some(req.correlation_id));
         };
-        handle.close_notifications(&req.session_id);
+        handle.close_notifications_session(BrowserNotificationsSessionHandle::for_key(
+            req.session_id,
+        ));
         vec![WorkerEvent::ActionAccepted {
             action_type: "nmp.relations.notifications.close".to_string(),
             correlation_id: req.correlation_id,
@@ -45,7 +51,11 @@ impl NmpRuntimeCore {
         let Some(handle) = self.handle.as_mut() else {
             return not_started_error(Some(req.correlation_id));
         };
-        match handle.mark_notifications_read(&req.session_id, req.event_ids, req.all_visible) {
+        match handle.mark_notifications_session_read(
+            &BrowserNotificationsSessionHandle::for_key(req.session_id),
+            req.event_ids,
+            req.all_visible,
+        ) {
             Ok(_) => vec![WorkerEvent::ActionAccepted {
                 action_type: "nmp.relations.notifications.mark_read".to_string(),
                 correlation_id: req.correlation_id,

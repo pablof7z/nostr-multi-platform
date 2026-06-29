@@ -14,7 +14,7 @@ use nmp_core::ObservedProjectionSink;
 use nmp_core::{ActorMail, CommandSender, DependentInterestChild, ObservedProjectionId};
 use nmp_planner::{InterestShape, NaddrCoord};
 
-use super::{open_pointer_source, PointerSourceParams, PointerSourceSession};
+use super::{open_pointer_source_internal, PointerSourceParams, PointerSourceSession};
 
 #[derive(Clone)]
 struct OpenRecord {
@@ -84,7 +84,7 @@ fn open(sort: PointerSortMode) -> Harness {
     let registrar = Arc::new(RecordingRegistrar::default());
     let (tx, rx) = std::sync::mpsc::channel::<ActorMail>();
     let sender = CommandSender::new(tx);
-    let session = open_pointer_source(
+    let session = open_pointer_source_internal(
         sender,
         registrar.clone(),
         PointerSourceParams {
