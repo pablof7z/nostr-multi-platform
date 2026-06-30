@@ -109,7 +109,7 @@ impl ProtocolCommand for RepostCommand {
         self: Box<Self>,
         ctx: &mut ProtocolCommandContext<'_>,
     ) -> Result<(), ProtocolCommandError> {
-        let event = repost_event(&self.action)
+        let event = build_repost_event(&self.action)
             .map_err(|err| ProtocolCommandError::new(format!("repost: {err}")))?;
         ctx.send(ActorCommand::Publish(PublishCommand::UnsignedEvent {
             event,
@@ -206,7 +206,26 @@ fn validate_target(
     Ok(())
 }
 
-fn repost_event(action: &RepostAction) -> Result<UnsignedEvent, String> {
+/// Build the bare NIP-18 repost event from its inputs — no routing, no
+/// transport envelope. A `kind:1` target emits a `kind:6` repost wrapper;
+/// every other non-zero target kind emits a `kind:16` generic repost. The
+/// returned [`UnsignedEvent`] carries the `e` / `p` / `k` tags; `pubkey` /
+/// `created_at` / `sig` are filled at sign time.
+///
+/// This is the **composition seam** for routing a repost *into* another
+/// transport. To repost an event inside a NIP-29 group, build the repost here,
+/// then hand its `(kind, content, tags)` to NIP-29's generic
+/// `nmp.nip29.publish_group_event` surface, which injects only the
+/// `h` / `previous` envelope. NIP-18 owns the `kind:6` / `kind:16`
+/// construction; the transport owns only its envelope — NIP-29 never names,
+/// classifies, or owns a repost kind (the kind-blind correction, #2513).
+///
+/// # Errors
+///
+/// Returns the validation message when `target_event_id` is not 64-hex,
+/// `target_kind` is zero, or an optional `target_author_pubkey` / `relay_hint`
+/// is malformed.
+pub fn build_repost_event(action: &RepostAction) -> Result<UnsignedEvent, String> {
     validate(action)?;
     let target_id = action.target_event_id.trim().to_string();
     let mut e_tag = vec!["e".to_string(), target_id];

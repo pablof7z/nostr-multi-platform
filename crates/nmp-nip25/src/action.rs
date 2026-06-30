@@ -111,19 +111,10 @@ impl ProtocolCommand for PublishReactionCommand {
         self: Box<Self>,
         ctx: &mut ProtocolCommandContext<'_>,
     ) -> Result<(), ProtocolCommandError> {
-        let Some((tags, content)) = reaction_tags(&self.action) else {
-            return Err(ProtocolCommandError::new(
-                "react: malformed target event id",
-            ));
-        };
+        let event = build_reaction_event(&self.action)
+            .map_err(|err| ProtocolCommandError::new(format!("react: {err}")))?;
         ctx.send(ActorCommand::Publish(PublishCommand::UnsignedEvent {
-            event: UnsignedEvent {
-                pubkey: String::new(),
-                kind: KIND_REACTION,
-                tags,
-                content,
-                created_at: 0,
-            },
+            event,
             correlation_id: Some(self.correlation_id),
             signer_pubkey: None,
         }));
@@ -186,6 +177,40 @@ fn validate_react(action: &ReactAction) -> Result<(), ActionRejection> {
         ));
     }
     Ok(())
+}
+
+/// Build the bare NIP-25 reaction (`kind:7`) event from its inputs — no
+/// routing, no transport envelope. The returned [`UnsignedEvent`] carries the
+/// `e`/`p` reaction tags and content; `pubkey` / `created_at` / `sig` are
+/// filled at sign time.
+///
+/// This is the **composition seam** for routing a reaction *into* another
+/// transport. To react to an event inside a NIP-29 group, build the reaction
+/// here, then hand its `(kind, content, tags)` to NIP-29's generic
+/// `nmp.nip29.publish_group_event` surface (`PublishGroupEventInput`), which
+/// injects only the `h` / `previous` envelope. NIP-25 owns the `kind:7`
+/// construction; the transport owns only its envelope — NIP-29 never names,
+/// classifies, or owns `kind:7` (the #2504/#2505 kind-blind correction, #2513).
+///
+/// # Errors
+///
+/// Returns the validation message when `target_event_id` is not 64-hex or
+/// `target_author_pubkey` is supplied but malformed.
+pub fn build_reaction_event(action: &ReactAction) -> Result<UnsignedEvent, String> {
+    match validate_react(action) {
+        Ok(()) => {}
+        Err(ActionRejection::Invalid(msg)) => return Err(msg),
+        Err(other) => return Err(format!("{other:?}")),
+    }
+    let (tags, content) = reaction_tags(action)
+        .ok_or_else(|| "react requires a 64-hex target_event_id".to_string())?;
+    Ok(UnsignedEvent {
+        pubkey: String::new(),
+        kind: KIND_REACTION,
+        tags,
+        content,
+        created_at: 0,
+    })
 }
 
 fn reaction_tags(action: &ReactAction) -> Option<(Vec<Vec<String>>, String)> {
