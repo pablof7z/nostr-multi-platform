@@ -71,7 +71,7 @@ pub enum InterestScope {
 /// identifies an addressable event (kinds 10000–19999, 30000–39999) across
 /// all relays. Equivalent to the `naddr` bech32 encoding without the relay hint.
 ///
-/// Helper constructors (proposed in `nmp-nip19`):
+/// Helper constructors (proposed in `nmp-nostr-id`):
 ///   `NaddrCoord::from_naddr_bech32(s: &str) -> Result<Self, Nip19Error>`
 ///   `fn to_naddr_bech32(&self, relay_hint: Option<&RelayUrl>) -> String`
 ///

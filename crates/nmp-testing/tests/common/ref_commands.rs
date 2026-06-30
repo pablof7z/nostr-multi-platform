@@ -1,5 +1,5 @@
 use nmp_core::actor::RefsCommand;
-use nmp_core::nip21::{parse_nostr_uri, NostrUri};
+use nmp_nostr_id::{parse_nostr_uri, NostrUri};
 use nmp_core::{EventShape, RefLiveness, RefNamespace, RefResolveMetadata, RefShape};
 
 fn event_ref_from_uri(uri: &str) -> Option<(String, RefResolveMetadata)> {

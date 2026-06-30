@@ -13,7 +13,7 @@
 //! - `e` / `q` tag position 1 → referenced event id.
 //!
 //! `nevent`/`naddr` bech32 pointers embedded in content are intentionally out
-//! of scope: that codec lives in `nmp-nip19` and decoding content is not a
+//! of scope: that codec lives in `nmp-nostr-id` and decoding content is not a
 //! `nmp-core` concern. `a`-tag address coordinates are *not* collected here —
 //! address-pointer hydration is the planner's `InterestShape::addresses`
 //! field, a separate seam left untouched by this module.

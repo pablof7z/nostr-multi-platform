@@ -3686,7 +3686,7 @@ dependencies = [
  "nmp-core",
  "nmp-defaults",
  "nmp-native-runtime",
- "nmp-nip19",
+ "nmp-nostr-id",
  "nmp-uniffi",
  "serde",
  "serde_json",
@@ -3729,12 +3729,12 @@ dependencies = [
  "nmp-nip01",
  "nmp-nip02",
  "nmp-nip18",
- "nmp-nip19",
  "nmp-nip29",
  "nmp-nip46",
  "nmp-nip46-runtime",
  "nmp-nip50",
  "nmp-nip57",
+ "nmp-nostr-id",
  "nmp-planner",
  "nmp-signer-iface",
  "nmp-signers",
@@ -3794,7 +3794,7 @@ dependencies = [
  "nmp-feed",
  "nmp-kinds",
  "nmp-nip18",
- "nmp-nip19",
+ "nmp-nostr-id",
  "proptest",
  "pulldown-cmark",
  "regex",
@@ -3810,6 +3810,7 @@ version = "0.8.4"
 dependencies = [
  "nmp-content",
  "nmp-core",
+ "nmp-nostr-id",
  "nmp-signer-iface",
  "nmp-store",
  "nostr",
@@ -3822,15 +3823,14 @@ dependencies = [
 name = "nmp-core"
 version = "0.8.4"
 dependencies = [
- "bech32",
  "chrono",
  "flatbuffers",
  "indexmap",
  "nmp-kinds",
  "nmp-network",
- "nmp-nip19",
  "nmp-nip42-types",
  "nmp-nip59",
+ "nmp-nostr-id",
  "nmp-planner",
  "nmp-relay-url",
  "nmp-signer-iface",
@@ -3942,7 +3942,7 @@ dependencies = [
  "nmp-content",
  "nmp-core",
  "nmp-native-runtime",
- "nmp-nip19",
+ "nmp-nostr-id",
  "ratatui",
  "ratatui-image",
  "serde",
@@ -3956,8 +3956,8 @@ version = "0.8.4"
 dependencies = [
  "nmp-core",
  "nmp-nip05",
- "nmp-nip19",
  "nmp-nip50",
+ "nmp-nostr-id",
  "serde",
  "serde_json",
 ]
@@ -4043,7 +4043,7 @@ dependencies = [
  "nmp-core",
  "nmp-feed",
  "nmp-nip18",
- "nmp-nip19",
+ "nmp-nostr-id",
  "nmp-planner",
  "nmp-signer-iface",
  "nmp-store",
@@ -4116,14 +4116,6 @@ dependencies = [
  "nmp-signer-iface",
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "nmp-nip19"
-version = "0.8.4"
-dependencies = [
- "nostr",
- "proptest",
 ]
 
 [[package]]
@@ -4344,6 +4336,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-nostr-id"
+version = "0.8.4"
+dependencies = [
+ "bech32",
+ "nostr",
+ "proptest",
+]
+
+[[package]]
 name = "nmp-nostr-lmdb"
 version = "0.8.4"
 dependencies = [
@@ -4509,7 +4510,6 @@ dependencies = [
  "nmp-nip02",
  "nmp-nip17",
  "nmp-nip18",
- "nmp-nip19",
  "nmp-nip29",
  "nmp-nip42",
  "nmp-nip46",
@@ -4521,6 +4521,7 @@ dependencies = [
  "nmp-nip59",
  "nmp-nip68",
  "nmp-nip77",
+ "nmp-nostr-id",
  "nmp-nwc",
  "nmp-planner",
  "nmp-router",
@@ -4557,7 +4558,7 @@ dependencies = [
  "nmp-core",
  "nmp-defaults",
  "nmp-native-runtime",
- "nmp-nip19",
+ "nmp-nostr-id",
  "nmp-uniffi-support",
  "nostr",
  "serde_json",

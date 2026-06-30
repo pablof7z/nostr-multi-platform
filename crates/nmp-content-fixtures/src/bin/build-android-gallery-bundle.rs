@@ -20,7 +20,7 @@ use nmp_content_fixtures::{
     build_bundle,
     dto::{EmbedEntry, ScenarioDto, SignedEventJson},
 };
-use nmp_core::nip21::{parse_nostr_uri, NostrUri};
+use nmp_nostr_id::{parse_nostr_uri, NostrUri};
 use nmp_core::substrate::KernelEvent;
 use serde::Serialize;
 

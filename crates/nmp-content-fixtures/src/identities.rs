@@ -8,7 +8,7 @@
 //! and keeps screenshots diffable. Keys NEVER touch a relay; this is offline
 //! fixture material only.
 
-use nmp_core::nip21::{format_nostr_uri, NostrUri};
+use nmp_nostr_id::{format_nostr_uri, NostrUri};
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 use nostr::event::builder::EventBuilder;
 use nostr::key::Keys;

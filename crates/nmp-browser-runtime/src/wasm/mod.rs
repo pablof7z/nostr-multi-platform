@@ -368,7 +368,7 @@ mod wasm_impl {
     /// Exported to JS as `nmp_encode_npub(hex: string): string`.
     #[wasm_bindgen]
     pub fn nmp_encode_npub(hex: &str) -> String {
-        match nmp_nip19::encode_npub(hex) {
+        match nmp_nostr_id::encode_npub(hex) {
             Ok(npub) => {
                 let npub_short = nmp_core::display::short_npub(hex);
                 // serde_json::to_string cannot fail on a simple object literal;
@@ -395,7 +395,7 @@ pub use wasm_impl::{nmp_encode_npub, NmpWasmRuntime};
 /// (#2139 BLOCKER 3 — was returning a bare `npub1…` string).
 #[cfg(not(target_arch = "wasm32"))]
 pub fn nmp_encode_npub(hex: &str) -> String {
-    match nmp_nip19::encode_npub(hex) {
+    match nmp_nostr_id::encode_npub(hex) {
         Ok(npub) => {
             let npub_short = nmp_core::display::short_npub(hex);
             serde_json::json!({ "npub": npub, "npubShort": npub_short }).to_string()

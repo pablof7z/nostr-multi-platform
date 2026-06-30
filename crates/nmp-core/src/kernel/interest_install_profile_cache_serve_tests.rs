@@ -12,7 +12,7 @@ use crate::relay::DEFAULT_VISIBLE_LIMIT;
 fn open_uri_serves_store_for_resolved_target() {
     use crate::app::{KernelAction, KernelUpdate};
     use crate::kernel_action::dispatch_kernel_action;
-    use nmp_nip19::encode_npub;
+    use nmp_nostr_id::encode_npub;
 
     let base_ts: u64 = 1_760_000_000;
     let keys = ::nostr::Keys::generate();

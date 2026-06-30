@@ -15,6 +15,10 @@ nmp-core = { path = "../nmp-core", default-features = false }
 nmp-feed = { path = "../nmp-feed" }
 nmp-kinds = { path = "../nmp-kinds" }
 nmp-nip18 = { path = "../nmp-nip18" }
+# NIP-19 codec + NIP-21 `nostr:` URI vocabulary (Layer 0). The tokenizer,
+# segment model, embed registry, and wire projection consume
+# `nmp_nostr_id::{NostrUri, parse_nostr_uri, format_nostr_uri}`. Issue #2515.
+nmp-nostr-id = { path = "../nmp-nostr-id" }
 pulldown-cmark = { version = "0.13", default-features = false }
 regex = "1.11"
 serde = { version = "1.0", features = ["derive"] }
@@ -24,6 +28,4 @@ url = { version = "2.5", features = ["serde"] }
 
 [dev-dependencies]
 proptest = "1"
-# NIP-19 entity codec (Layer 4), used by tokenizer tests. Issue #2515.
-nmp-nip19 = { path = "../nmp-nip19" }
 serde_json = "1.0"

@@ -2,8 +2,8 @@
 //!
 //! ## Core-fn provenance
 //!
-//! Calls `nmp_core::nip21::parse_nostr_uri` (for `nostr:` prefixed URIs) and
-//! `nmp_nip19::parse` (for bare bech32), returning a typed
+//! Calls `nmp_nostr_id::parse_nostr_uri` (for `nostr:` prefixed URIs) and
+//! `nmp_nostr_id::parse` (for bare bech32), returning a typed
 //! `NostrUriTarget`.
 //!
 //! ## D6
@@ -11,8 +11,8 @@
 //! `nsec` inputs are rejected with `NmpError::NsecForbidden`; the original
 //! secret key is NEVER present in the error (same as the C-ABI guarantee).
 
-use nmp_nip19::{NaddrData, NeventData, Nip19Entity, NprofileData};
-use nmp_core::nip21::{self, Nip21Error, NostrUri};
+use nmp_nostr_id::{NaddrData, NeventData, Nip19Entity, NprofileData};
+use nmp_nostr_id::{nip21, Nip21Error, NostrUri};
 
 use crate::stateless::NmpError;
 
@@ -62,7 +62,7 @@ fn decode_uri_impl(input: &str) -> Result<NostrUriTarget, NmpError> {
             .map(target_from_nostr_uri)
             .map_err(error_from_nip21);
     }
-    nmp_nip19::parse(input)
+    nmp_nostr_id::parse(input)
         .map_err(|_| NmpError::Unparseable)?
         .try_into()
 }
@@ -152,7 +152,7 @@ fn error_from_nip21(error: Nip21Error) -> NmpError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nmp_nip19::{
+    use nmp_nostr_id::{
         encode_naddr, encode_nevent, encode_npub, encode_nprofile, encode_nsec,
         NaddrData, NeventData, NprofileData,
     };
@@ -160,8 +160,8 @@ mod tests {
     const PUBKEY: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
     const EVENT_ID: &str = "0000000000000000000000000000000000000000000000000000000000000001";
 
-    // Parity: this surface calls `nmp_nip19::parse` and
-    // `nmp_core::nip21::parse_nostr_uri`; the tests cover each supported
+    // Parity: this surface calls `nmp_nostr_id::parse` and
+    // `nmp_nostr_id::parse_nostr_uri`; the tests cover each supported
     // target shape directly.
 
     #[test]

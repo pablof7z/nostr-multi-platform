@@ -39,7 +39,7 @@ nmp-uniffi = { path = "../../../../crates/nmp-uniffi", default-features = false 
 # substrate/protocol installers directly from its app composition root.
 nmp-defaults = { path = "../../../../crates/nmp-defaults" }
 nmp-core = { path = "../../../../crates/nmp-core" }
-nmp-nip19 = { path = "../../../../crates/nmp-nip19" }
+nmp-nostr-id = { path = "../../../../crates/nmp-nostr-id" }
 nmp-content = { path = "../../../../crates/nmp-content" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

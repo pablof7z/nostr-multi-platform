@@ -5,7 +5,7 @@
 //! ## Core-fn provenance
 //!
 //! This UniFFI wrapper keeps the retired C-ABI helper logic on the public
-//! native path and calls the same two `nmp_nip19` primitives:
+//! native path and calls the same two `nmp_nostr_id` primitives:
 //! - `encode_npub` — fallback path (no relay hints).
 //! - `encode_nprofile` — preferred path (relay hints from `mailbox_cache_reader`).
 //!
@@ -19,7 +19,7 @@
 
 use std::sync::Arc;
 
-use nmp_nip19::{encode_nprofile, encode_npub, NprofileData};
+use nmp_nostr_id::{encode_nprofile, encode_npub, NprofileData};
 
 use crate::NmpApp;
 
@@ -64,7 +64,7 @@ pub fn encode_profile(app: Arc<NmpApp>, pubkey_hex: String) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nmp_nip19::{decode_nprofile, decode_npub};
+    use nmp_nostr_id::{decode_nprofile, decode_npub};
 
     const PUBKEY: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
 

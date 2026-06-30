@@ -476,7 +476,7 @@ fn discovery_seam_emits_no_m1_oneshot_disc_outbound_req() {
 /// Uses `diag-firehose-stress` sub_id to bypass the `timeline_authors` gate.
 #[test]
 fn v56_content_only_npub_mention_feeds_profile_discovery() {
-    use nmp_nip19::encode_npub;
+    use nmp_nostr_id::encode_npub;
 
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     install_bootstrap_relays(&mut kernel);
@@ -556,7 +556,7 @@ fn v56_no_nostr_uri_in_content_skips_fast_path() {
 #[test]
 fn v56_content_mention_dedups_with_p_tag() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    use nmp_nip19::encode_npub;
+    use nmp_nostr_id::encode_npub;
 
     let pk = MENTIONED_PK;
     let npub = encode_npub(pk).expect("encode_npub must succeed");
@@ -582,7 +582,7 @@ fn v56_content_mention_dedups_with_p_tag() {
 #[test]
 fn v56_known_profile_not_re_added() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    use nmp_nip19::encode_npub;
+    use nmp_nostr_id::encode_npub;
 
     let pk = MENTIONED_PK;
     let npub = encode_npub(pk).expect("encode_npub must succeed");

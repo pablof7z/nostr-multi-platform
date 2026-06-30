@@ -1,7 +1,7 @@
 //! Embed-target identity types — the keys the registry refcounts and the
 //! opaque [`ClaimHandle`] tokens it hands back.
 
-use nmp_core::nip21::NostrUri;
+use nmp_nostr_id::NostrUri;
 use nmp_core::substrate::{EventId, KernelEvent};
 use serde::{Deserialize, Serialize};
 

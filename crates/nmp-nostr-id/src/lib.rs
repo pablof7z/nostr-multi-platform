@@ -1,17 +1,33 @@
-//! NIP-19: bech32-encoded entities for Nostr.
+//! `nmp-nostr-id`: dependency-light Nostr identifier vocabulary (Layer 0).
 //!
-//! Thin adapter over [`nostr::nips::nip19`] (the rust-nostr canonical codec).
-//! NMP keeps its own typed surface — [`Nip19Entity`], [`NprofileData`],
-//! [`NeventData`], [`NaddrData`], the `encode_*` / `decode_*` /
-//! [`parse`] / [`format`] free functions, and the [`Nip19Error`] enum — so
-//! every existing caller is source-compatible, but the actual bech32 + TLV
-//! encoding/decoding is delegated to `nostr` rather than re-implemented here.
+//! This crate owns the two identifier surfaces that many layers hand each
+//! other:
 //!
-//! This is a Layer-4 protocol crate, carved out of the `nmp-core` kernel
-//! substrate (issue #2515) per `docs/architecture/crate-boundaries.md` §3 —
-//! the substrate must stay generic and must not own protocol-specific
-//! parsers/nouns; a typed NIP-19 codec is a protocol module that belongs in
-//! L4.
+//! * **NIP-19** — the bech32-encoded entity codec: the typed [`Nip19Entity`]
+//!   surface ([`NprofileData`], [`NeventData`], [`NaddrData`], the
+//!   `encode_*` / `decode_*` / [`parse`] / [`format`] free functions, and the
+//!   [`Nip19Error`] enum).
+//! * **NIP-21** — the `nostr:` URI surface in [`nip21`] ([`NostrUri`],
+//!   [`Nip21Error`], [`parse_nostr_uri`], [`format_nostr_uri`]), re-exported at
+//!   the crate root for convenience.
+//!
+//! Both are thin adapters over [`nostr::nips::nip19`] (the rust-nostr canonical
+//! codec); the actual bech32 + TLV encoding/decoding is delegated to `nostr`
+//! rather than re-implemented here.
+//!
+//! ## Why Layer 0
+//!
+//! NIP-19 / NIP-21 are *identifier vocabulary* — the same shape as
+//! `nmp-relay-url` (L0): a small, dependency-light type the kernel and every
+//! protocol layer hand each other. It belongs at Layer 0, which the kernel
+//! (`nmp-core`, L3) may depend on **downward** — exactly as it already depends
+//! on `nmp-relay-url`. Placing it at L4 (issue #2515's first cut) created an
+//! L3→L4 back-edge (`nmp-core -> nmp-nip19`) because `nmp-core`'s open-URI
+//! routing, entity-reference scanning, and account-identity code all consume
+//! the codec. Cargo-acyclicity is not doctrine compliance: an L3→L4 edge is
+//! still a layer inversion. Hosting the vocabulary at L0 removes the inversion.
+//! (L0 crates may depend on the `nostr` crate — precedent: `nmp-nip59` is L0
+//! and uses rust-nostr.)
 //!
 //! Per AGENTS.md / aim.md ("reuse the `nostr` crate; never re-implement a
 //! protocol codec from scratch") this crate is an NMP-shaped wrapper, not a
@@ -21,7 +37,7 @@
 //!
 //! # Example — bare key round-trip
 //! ```
-//! use nmp_nip19::{Nip19Entity, encode_npub, decode_npub};
+//! use nmp_nostr_id::{Nip19Entity, encode_npub, decode_npub};
 //!
 //! let hex = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
 //! let bech = encode_npub(hex).unwrap();
@@ -32,7 +48,7 @@
 //!
 //! # Example — nprofile round-trip
 //! ```
-//! use nmp_nip19::{NprofileData, encode_nprofile, decode_nprofile};
+//! use nmp_nostr_id::{NprofileData, encode_nprofile, decode_nprofile};
 //!
 //! let data = NprofileData {
 //!     pubkey: "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d".into(),
@@ -420,7 +436,7 @@ pub fn decode_naddr(bech: &str) -> Result<NaddrData, Nip19Error> {
 ///
 /// # Example
 /// ```
-/// use nmp_nip19::{parse, Nip19Entity};
+/// use nmp_nostr_id::{parse, Nip19Entity};
 ///
 /// let bech = "npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6";
 /// let entity = parse(bech).unwrap();
@@ -470,6 +486,9 @@ pub fn format(entity: &Nip19Entity) -> Result<String, Nip19Error> {
         Nip19Entity::Naddr(data) => encode_naddr(data),
     }
 }
+
+pub mod nip21;
+pub use nip21::{format_nostr_uri, parse_nostr_uri, Nip21Error, NostrUri};
 
 #[cfg(test)]
 mod tests;

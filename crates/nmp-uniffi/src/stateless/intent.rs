@@ -253,7 +253,7 @@ mod tests {
 
     #[test]
     fn parity_secret_key_produces_secretlike_rejection() {
-        use nmp_nip19::encode_nsec;
+        use nmp_nostr_id::encode_nsec;
         let nsec = encode_nsec("3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d")
             .unwrap();
 
@@ -284,7 +284,7 @@ mod tests {
 
     #[test]
     fn parity_valid_npub_classifies_as_direct_ref() {
-        use nmp_nip19::encode_npub;
+        use nmp_nostr_id::encode_npub;
         let pubkey = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
         let npub = encode_npub(pubkey).unwrap();
 

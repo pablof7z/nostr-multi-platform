@@ -57,22 +57,22 @@ struct EventRefFromUri {
 fn event_ref_from_uri(uri: &CStr) -> Option<EventRefFromUri> {
     let uri_str = uri.to_str().ok()?;
     let (key, relays, author, kind_u64) = if uri_str.starts_with("nostr:") {
-        match nmp_core::nip21::parse_nostr_uri(uri_str).ok()? {
-            nmp_core::nip21::NostrUri::Event { event_id, relays, author, kind } => {
+        match nmp_nostr_id::parse_nostr_uri(uri_str).ok()? {
+            nmp_nostr_id::NostrUri::Event { event_id, relays, author, kind } => {
                 (event_id, relays, author, kind.map(|k| k as u64))
             }
-            nmp_core::nip21::NostrUri::Address { identifier, pubkey, kind, relays } => {
+            nmp_nostr_id::NostrUri::Address { identifier, pubkey, kind, relays } => {
                 (format!("{kind}:{pubkey}:{identifier}"), relays, None, Some(kind as u64))
             }
             _ => return None,
         }
     } else {
-        match nmp_nip19::parse(uri_str).ok()? {
-            nmp_nip19::Nip19Entity::Note(event_id) => (event_id, vec![], None, None),
-            nmp_nip19::Nip19Entity::Nevent(d) => {
+        match nmp_nostr_id::parse(uri_str).ok()? {
+            nmp_nostr_id::Nip19Entity::Note(event_id) => (event_id, vec![], None, None),
+            nmp_nostr_id::Nip19Entity::Nevent(d) => {
                 (d.event_id, d.relays, d.author, d.kind.map(|k| k as u64))
             }
-            nmp_nip19::Nip19Entity::Naddr(d) => {
+            nmp_nostr_id::Nip19Entity::Naddr(d) => {
                 (
                     format!("{}:{}:{}", d.kind, d.pubkey, d.identifier),
                     d.relays,

@@ -31,7 +31,7 @@ mod transport;
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
 
-use nmp_nip19::decode_npub;
+use nmp_nostr_id::decode_npub;
 use nmp_planner::{
     apply_selection, InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope,
     InterestShape, LogicalInterest, SubscriptionCompiler,

@@ -11,7 +11,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::nip21::{self, NostrUri};
+use nmp_nostr_id::{nip21, NostrUri};
 use crate::planner::{
     HintSource, InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
     NaddrCoord, RelayHint,
@@ -134,7 +134,7 @@ pub struct OpenUriRouting {
 fn parse_target(input: &str) -> Result<NostrUri, OpenUriError> {
     match nip21::parse_nostr_uri(input) {
         Ok(target) => Ok(target),
-        Err(nip21::Nip21Error::MissingScheme) => match nmp_nip19::parse(input) {
+        Err(nip21::Nip21Error::MissingScheme) => match nmp_nostr_id::parse(input) {
             Ok(entity) => bare_entity_to_target(entity),
             Err(e) => Err(OpenUriError::Unparseable(e.to_string())),
         },
@@ -147,8 +147,8 @@ fn parse_target(input: &str) -> Result<NostrUri, OpenUriError> {
 
 /// Map a bare (schemeless) NIP-19 entity onto the same `NostrUri` routing
 /// targets `parse_nostr_uri` would produce, so both entry forms converge.
-fn bare_entity_to_target(entity: nmp_nip19::Nip19Entity) -> Result<NostrUri, OpenUriError> {
-    use nmp_nip19::Nip19Entity::{Naddr, Nevent, Note, Nprofile, Npub, Nsec};
+fn bare_entity_to_target(entity: nmp_nostr_id::Nip19Entity) -> Result<NostrUri, OpenUriError> {
+    use nmp_nostr_id::Nip19Entity::{Naddr, Nevent, Note, Nprofile, Npub, Nsec};
     Ok(match entity {
         Nsec(_) => return Err(OpenUriError::NotRoutable("nsec is not routable".into())),
         Npub(pubkey) => NostrUri::Profile {
@@ -282,7 +282,7 @@ pub fn resolve_open_uri(uri: &str) -> Result<OpenUriRouting, OpenUriError> {
 #[cfg(test)]
 mod open_uri_tests {
     use super::*;
-    use nmp_nip19::{
+    use nmp_nostr_id::{
         encode_naddr, encode_nevent, encode_note, encode_nprofile, encode_npub, encode_nsec,
         NaddrData, NeventData, NprofileData,
     };

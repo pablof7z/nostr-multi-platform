@@ -1,6 +1,6 @@
 use super::*;
 use nmp_content::{WireNode, WireNostrUriKind};
-use nmp_nip19::{encode_note, encode_npub};
+use nmp_nostr_id::{encode_note, encode_npub};
 use nmp_threading::{ModulePolicy, TimelineBlock};
 use std::sync::Arc;
 

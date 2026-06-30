@@ -88,7 +88,6 @@ android-ffi = ["native"]
 codegen-schema = ["dep:schemars"]
 
 [dependencies]
-bech32 = "0.11"
 # `clock` feature reads the OS wall-clock; gated behind `native` so wasm32
 # builds compile (wasm has no OS clock without a js-sys shim).
 chrono = { version = "0.4", default-features = false }
@@ -106,15 +105,15 @@ indexmap = "2.14"
 # creating the nmp-nip59 → nmp-core compile cycle.
 nmp-kinds = { path = "../nmp-kinds" }
 nmp-nip42-types = { path = "../nmp-nip42-types" }
-# NIP-19 bech32 entity codec (Layer 4) — carved out of this crate's substrate
-# into `nmp-nip19` (issue #2515; crate-boundaries.md §3). The only remaining
-# in-substrate consumer is `nip21.rs` (the NIP-21 `nostr:` URI parser, judged
-# foundational identifier vocabulary and intentionally left here). This is an
-# L3→L4 edge for that one foundational module; flagged as a follow-up question
-# in the migration PR (whether `nip21` should also move to break the
-# inversion). nmp-nip19 itself has no back-edge into nmp-core, so the graph
-# stays acyclic.
-nmp-nip19 = { path = "../nmp-nip19" }
+# NIP-19 bech32 entity codec + NIP-21 `nostr:` URI surface — the Nostr
+# identifier vocabulary, hosted at Layer 0 in `nmp-nostr-id` (issue #2515;
+# crate-boundaries.md §2/§3). This is a normal DOWNWARD edge (L3→L0), legal
+# exactly like the `nmp-relay-url` dependency directly below: the kernel's
+# open-URI routing, entity-reference scanning, and account-identity code all
+# consume the codec, and depending downward on identifier vocabulary is not a
+# layer inversion. (The earlier L4 placement created an illegal L3→L4 back-edge;
+# moving the vocabulary to L0 removes it.)
+nmp-nostr-id = { path = "../nmp-nostr-id" }
 nmp-relay-url = { path = "../nmp-relay-url" }
 # NIP-59 gift-wrap primitives are NOT a production dependency of the kernel:
 # the former `ActorCommand::SendGiftWrappedDm` arm was deleted (V-39) and the

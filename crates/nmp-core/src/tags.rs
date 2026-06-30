@@ -2,10 +2,12 @@
 //!
 //! This module is the `getNip10References` / e-p-a-q tag-builder equivalent
 //! from applesauce, refactored into NMP idiom. It is a sibling protocol codec
-//! to the dedicated [`nmp_nip19`] crate and [`crate::nip21`]: like them it is a
-//! **protocol codec**, not a per-kind decoder or a domain noun. (The NIP-19
-//! bech32 entity codec was carved out of `nmp-core` into the `nmp-nip19` crate
-//! per issue #2515; NIP-10 tags stay here as foundational substrate vocabulary.)
+//! to the dedicated [`nmp_nostr_id`] crate (NIP-19 codec + NIP-21
+//! `nmp_nostr_id::nip21` URI surface): like them it is a **protocol codec**,
+//! not a per-kind decoder or a domain noun. (The NIP-19 bech32 entity codec and
+//! the NIP-21 `nostr:` URI surface were carved out of `nmp-core` into the
+//! Layer-0 `nmp-nostr-id` identifier-vocabulary crate per issue #2515; NIP-10
+//! tags stay here as foundational substrate vocabulary.)
 //! D0 (`docs/design/kind-wrappers.md`) forbids the kernel knowing
 //! "kind 30023 == article"; nothing here encodes any kind semantics — every
 //! function is a pure transform over `&[Vec<String>]`. Per-kind decoders
