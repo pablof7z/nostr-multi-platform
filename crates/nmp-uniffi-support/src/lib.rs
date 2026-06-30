@@ -6,6 +6,21 @@
 //! traits must therefore live in the owning facade crate's namespace; this
 //! crate only shares the panic containment, quiescence, dispatch, and clamp
 //! mechanics behind those facade-local types.
+//!
+//! # Safe runtime ownership (no raw `*mut NmpApp`)
+//!
+//! Every helper here takes the runtime by shared reference (`&NmpApp`) and
+//! delivers callbacks through `Arc`-held sinks. None of them capture, store, or
+//! return a raw `*mut NmpApp`. A UniFFI facade owns its
+//! `nmp_native_runtime::NmpApp` **by value** inside its own `Arc<Facade>`
+//! UniFFI object and passes `&self.inner` at every call, so there is no
+//! sanctioned `*mut`/`unsafe` runtime handle for an app facade to capture. The
+//! legacy `*mut NmpApp` address-capture pattern belonged to the deleted C-ABI
+//! builder lane; the UniFFI-facade ownership model eliminates it structurally,
+//! mirroring how the native runtime's own account-change wiring captures
+//! granular `Arc` handles rather than the whole-app pointer. This is why the
+//! crate adds no "owned runtime handle" helper: the right answer is the borrow
+//! + `Arc`-sink shape used throughout.
 
 use std::sync::Arc;
 
@@ -234,7 +249,89 @@ mod tests {
         assert!(out.correlation_id.is_none());
         assert!(out.error.is_some());
     }
+
+    /// End-to-end proof for #2516: an app-owned facade flow that
+    /// (1) registers a projection/feed session, (2) observes an active-account
+    /// change, and (3) reopens the session — with NO raw runtime pointer and no
+    /// `unsafe`. The runtime is owned by value (`new_app()`), every helper
+    /// borrows `&app`, and the account-change observer forwards through an
+    /// `Arc`-held sink rather than capturing the runtime.
+    #[test]
+    fn account_change_session_reopen_via_safe_handles() {
+        use std::sync::Mutex;
+
+        // Owned by value — the safe handle. No `*mut NmpApp`, no `Arc<runtime>`
+        // capture, no `unsafe`.
+        let app = nmp_native_runtime::new_app();
+
+        let params = r#"{
+            "primary_kinds": [1],
+            "acquisition": "ActiveUserFollows",
+            "admission": "All",
+            "ranking": "ChronologicalDesc",
+            "window": {"initial_limit": 50},
+            "projection": "nmp.feed.support.reopen"
+        }"#;
+
+        // 1. Projection/feed-session registration through the shared mechanic.
+        let Ok(opened) = open_feed_session(&app, params) else {
+            assert!(false, "open feed session must succeed");
+            return;
+        };
+        assert!(!opened.projection_key.is_empty());
+        assert_ne!(opened.session_id, 0);
+
+        // 2. Observe active-account changes without capturing the runtime: the
+        //    sink only records the new identity.
+        let changes: Arc<Mutex<Vec<Option<String>>>> = Arc::new(Mutex::new(Vec::new()));
+        let observer_id =
+            register_account_change_sink(&app, Box::new(Arc::clone(&changes)), |seen, id| {
+                seen.lock().unwrap().push(id);
+            });
+
+        // 3. Reopen the session (the flow a facade runs for a pinned session
+        //    after an active-account change). The old session id is torn down
+        //    and a fresh one is minted.
+        let Ok(reopened) = reopen_feed_session(&app, opened.session_id, params) else {
+            assert!(false, "reopen feed session must succeed");
+            return;
+        };
+        assert_eq!(
+            reopened.projection_key, opened.projection_key,
+            "same projection key for the same declaration"
+        );
+        assert_ne!(
+            reopened.session_id, opened.session_id,
+            "reopen mints a fresh session id"
+        );
+        assert!(
+            !close_feed_session(&app, opened.session_id),
+            "the old session was already torn down by reopen (D6)"
+        );
+
+        // Teardown — all through safe handles.
+        assert!(close_feed_session(&app, reopened.session_id));
+        unregister_account_change_sink(&app, observer_id);
+    }
 }
+
+// ── Stateful-flow helpers (#2516) ─────────────────────────────────────────────
+// Feed-session open/close/reopen mechanics and active-account-change
+// observation, for app-owned facades with app-specific account-scoped sessions.
+
+/// Active-account-change observation (shared Arc-sink + panic containment over
+/// `NmpApp::register_identity_change_observer`).
+pub mod account;
+/// Feed-session open/close/reopen mechanics over `NmpApp::open_feed`/`close_feed`.
+pub mod sessions;
+
+pub use account::{
+    account_change_observer_from_sink, register_account_change_sink,
+    unregister_account_change_sink,
+};
+pub use sessions::{
+    close_feed_session, open_feed_session, reopen_feed_session, FeedSessionError, OpenedFeed,
+};
 
 /// Compiled ownership descriptor for crate-ownership reports.
 pub mod ownership;
