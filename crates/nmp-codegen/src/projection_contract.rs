@@ -135,6 +135,8 @@ pub struct ProjectionContract {
 // the 500-LOC hard ceiling). Re-exported so `projection_contract::PROJECTION_CONTRACT`
 // resolves unchanged.
 mod table;
+// Marmot host-registered projection entries split out for 500-LOC cap.
+mod marmot;
 pub use table::PROJECTION_CONTRACT;
 
 /// Look up a projection's contract by its kernel-emitted key. Returns `None`

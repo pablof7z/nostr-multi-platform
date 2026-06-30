@@ -5,6 +5,7 @@
 //! this child owns only the manifest data. Re-exported through the parent so
 //! `projection_contract::PROJECTION_CONTRACT` resolves unchanged.
 
+use super::marmot::{MARMOT_MESSAGES, MARMOT_SNAPSHOT};
 use super::{DeclarationPolicy, PresencePolicy, ProjectionContract, ProjectionTier};
 
 // ── Source-version counter names ───────────────────────────────────────────────
@@ -480,30 +481,6 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         dependency_versions: &[],
         presence_policy: PresencePolicy::None,
     },
-    ProjectionContract {
-        key: "nmp.marmot.snapshot",
-        tier: ProjectionTier::HostRegistered,
-        producer: "nmp-marmot ffi (ADR-0039)",
-        owner_claim: "projection.nmp.marmot.snapshot",
-        schema_id: "nmp.marmot.snapshot",
-        file_identifier: "NMMS",
-        // nmp-marmot wire/snapshot_fb::SCHEMA_VERSION
-        version: 5,
-        declaration_policy: DeclarationPolicy::RegistrationGated,
-        dependency_versions: &[],
-        presence_policy: PresencePolicy::None,
-    },
-    ProjectionContract {
-        key: "nmp.marmot.messages",
-        tier: ProjectionTier::HostRegistered,
-        producer: "nmp-marmot ffi (ADR-0039)",
-        owner_claim: "projection.nmp.marmot.messages",
-        schema_id: "nmp.marmot.messages",
-        file_identifier: "NMMG",
-        // nmp-marmot wire/messages_fb::SCHEMA_VERSION
-        version: 1,
-        declaration_policy: DeclarationPolicy::RegistrationGated,
-        dependency_versions: &[],
-        presence_policy: PresencePolicy::None,
-    },
+    MARMOT_SNAPSHOT,
+    MARMOT_MESSAGES,
 ];
