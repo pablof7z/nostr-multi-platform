@@ -1,5 +1,5 @@
 use super::*;
-use nmp_core::nip21::NostrUri;
+use nmp_nostr_id::NostrUri;
 use nmp_core::substrate::{KernelEvent, ViewContext};
 
 fn ev(id: &str, kind: u32) -> KernelEvent {

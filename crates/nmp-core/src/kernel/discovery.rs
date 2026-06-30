@@ -15,7 +15,7 @@
 //!   common path (content with no mentions). Implementor note: `nmp-content`
 //!   depends on `nmp-core` so importing the full tokenizer here would create a
 //!   dep cycle; the minimal `nostr:` URI extractor below reuses the existing
-//!   `parse_nostr_uri` free function that already lives in `nmp_core::nip21`.
+//!   `parse_nostr_uri` free function that already lives in `nmp_nostr_id::nip21`.
 //! - [`Kernel::drain_unknown_oneshots`] — turns the deduped unknown set into
 //!   [`crate::subs::OneshotApi`] requests on the lifecycle's registry, AND
 //!   enqueues a [`crate::subs::CompileTrigger::ViewOpened`] so the planner's
@@ -42,7 +42,7 @@
 //! no `Result` is produced (D6).
 
 use super::{Kernel, OutboundMessage};
-use crate::nip21::{parse_nostr_uri, NostrUri};
+use nmp_nostr_id::{parse_nostr_uri, NostrUri};
 use crate::planner::{InterestScope, InterestShape};
 
 /// Typed discriminant for entries in [`Kernel::oneshot_subs`].
@@ -116,7 +116,7 @@ impl Kernel {
     ///
     /// Implementation note: `nmp-content` depends on `nmp-core`, so reusing
     /// the full regex tokenizer would create a dep cycle. The hand-rolled
-    /// scanner below reuses `parse_nostr_uri` (already in `nmp_core::nip21`)
+    /// scanner below reuses `parse_nostr_uri` (already in `nmp_nostr_id::nip21`)
     /// and splits on ASCII whitespace / common delimiters to isolate tokens —
     /// the same set of surface tokens the tokenizer's regex matches.
     pub(in crate::kernel) fn collect_content_mention_pubkeys(&mut self, content: &str) {

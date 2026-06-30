@@ -5,7 +5,7 @@ use nmp_content::{
     ContentTree, ContentTreeWire, InvoiceKind, MarkdownInline, MarkdownNode, MediaKind,
     PlaceholderReason, RenderMode, Segment, WireNode, WireNostrUriKind, WIRE_MAX_DEPTH,
 };
-use nmp_core::nip21::NostrUri;
+use nmp_nostr_id::NostrUri;
 use url::Url;
 
 /// `wire -> json -> wire`. Tree itself is intentionally NOT round-tripped:

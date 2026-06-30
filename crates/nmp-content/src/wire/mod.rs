@@ -3,7 +3,7 @@
 //!
 //! The internal [`crate::Segment`] / [`crate::MarkdownNode`] tree is recursive
 //! and deliberately serde-free (it transitively contains
-//! `nmp_core::nip21::NostrUri`, which has no serde derives). This module is the
+//! `nmp_nostr_id::NostrUri`, which has no serde derives). This module is the
 //! **only** place serde derives live, and the only FFI-stable shape: a flat
 //! index *arena* — `nodes: Vec<WireNode>` plus `roots: Vec<u32>` — with every
 //! recursive parent→child edge expressed as explicit `u32` indices instead of
@@ -204,7 +204,7 @@ pub enum PlaceholderReason {
     UnresolvedUri,
 }
 
-/// Flattened, serde-serializable projection of `nmp_core::nip21::NostrUri`.
+/// Flattened, serde-serializable projection of `nmp_nostr_id::NostrUri`.
 ///
 /// `uri` is the round-trippable canonical `nostr:` string; `kind` + `primary_id`
 /// give the renderer the discriminator + pubkey/event-id hex without forcing it

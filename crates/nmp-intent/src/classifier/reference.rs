@@ -19,14 +19,14 @@ const REF_CLASS_ADDRESS: &str = "address";
 /// If `input` is a valid NIP-19/21 reference, return its generic entity class
 /// (`"profile"` / `"event"` / `"address"`); else `None`.
 pub(super) fn reference_entity_class(input: &str) -> Option<&'static str> {
-    use nmp_core::nip19::Nip19Entity;
+    use nmp_nostr_id::Nip19Entity;
     // `resolve_open_uri` proves routability; the class comes from the same
     // decoder it uses.
     if nmp_core::resolve_open_uri(input).is_err() {
         return None;
     }
     let body = input.strip_prefix("nostr:").unwrap_or(input);
-    match nmp_core::nip19::parse(body).ok()? {
+    match nmp_nostr_id::parse(body).ok()? {
         Nip19Entity::Npub(_) | Nip19Entity::Nprofile(_) => Some(REF_CLASS_PROFILE),
         Nip19Entity::Note(_) | Nip19Entity::Nevent(_) => Some(REF_CLASS_EVENT),
         Nip19Entity::Naddr(_) => Some(REF_CLASS_ADDRESS),

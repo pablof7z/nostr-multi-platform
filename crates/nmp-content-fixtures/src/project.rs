@@ -7,7 +7,7 @@
 use nmp_content::{
     ContentTree, InvoiceKind, MarkdownInline, MarkdownNode, MediaKind, Segment,
 };
-use nmp_core::nip21::{format_nostr_uri, NostrUri};
+use nmp_nostr_id::{format_nostr_uri, NostrUri};
 
 use crate::dto::{
     ContentTreeDto, MarkdownInlineDto, MarkdownNodeDto, SegmentDto,

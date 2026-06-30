@@ -22,7 +22,7 @@ pub(crate) struct TokenPattern {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum PatternKind {
     /// `nostr:<bech32>` URI or social shorthand `@<bech32>` / bare `<bech32>`.
-    /// Classified later via `nmp_core::nip21`.
+    /// Classified later via `nmp_nostr_id::nip21`.
     NostrUri,
     /// `:shortcode:` NIP-30 emoji.
     EmojiShortcode,

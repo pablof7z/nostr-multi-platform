@@ -159,7 +159,7 @@ fn read_signer_state(slot: &BrowserSignerStateSlot) -> (Option<String>, Option<S
 /// in logs without revealing the full key. Returns `None` on any error
 /// (bad hex, invalid pubkey length, bech32 failure).
 fn npub_prefix_8(hex_pubkey: &str) -> Option<String> {
-    use nmp_core::nip19::encode_npub;
+    use nmp_nostr_id::encode_npub;
     // Use nip19 to encode to npub, then take prefix.
     let npub = encode_npub(hex_pubkey).ok()?;
     // Take first 8 chars (e.g. "npub1abc") — never the full key.

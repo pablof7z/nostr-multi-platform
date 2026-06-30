@@ -136,7 +136,7 @@ fn scope_of(scope: &InterestScope) -> SubScope {
 mod tests {
     use super::*;
     use crate::app::{VIEW_ADDRESSABLE, VIEW_PROFILE};
-    use crate::nip19::{encode_naddr, encode_npub, encode_nsec, NaddrData};
+    use nmp_nostr_id::{encode_naddr, encode_npub, encode_nsec, NaddrData};
     use crate::relay::DEFAULT_VISIBLE_LIMIT;
 
     const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";

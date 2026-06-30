@@ -1,6 +1,6 @@
 //! Property-based integration tests for NIP-19 entities used by NIP-21.
 
-use nmp_core::nip19::{
+use nmp_nostr_id::{
     decode_naddr, decode_nevent, decode_nprofile, decode_npub, encode_naddr, encode_nevent,
     encode_nprofile, encode_npub, NaddrData, NeventData, NprofileData,
 };
