@@ -11,6 +11,8 @@ crate-type = ["rlib"]
 
 [dependencies]
 nmp-core = { path = "../nmp-core" }
+# NIP-19 entity codec (Layer 4) carved out of nmp-core per issue #2515.
+nmp-nip19 = { path = "../nmp-nip19" }
 # NIP-50 search request shape — the orchestrator serializes a `SearchRequest`
 # into the opaque `InputIntentTarget::TextQuery { request_json }` so nmp-core
 # stays noun-free.

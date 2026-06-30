@@ -4,7 +4,7 @@
 //! ceiling). NIP-19 entity codec tests stay in `nip19_nip21.rs`; the
 //! `nostr:` URI scheme tests live here.
 
-use nmp_core::nip19::{
+use nmp_nip19::{
     encode_naddr, encode_nevent, encode_note, encode_nprofile, encode_nsec, NaddrData, NeventData,
     NprofileData,
 };

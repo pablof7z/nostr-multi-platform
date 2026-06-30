@@ -1,0 +1,15 @@
+[package]
+name = "nmp-nip19"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository.workspace = true
+description = "NIP-19 bech32 entity codec (Layer 4): the typed `Nip19Entity` surface (npub/nsec/note/nprofile/nevent/naddr) plus `encode_*` / `decode_*` / `parse` / `format` free functions, kept a thin adapter over `nostr::nips::nip19` (the rust-nostr canonical codec). Carved out of the `nmp-core` kernel substrate per docs/architecture/crate-boundaries.md §3 (the substrate must not own protocol-specific parsers/nouns). Depends only on the `nostr` crate."
+
+[dependencies]
+# Thin adapter only: the actual bech32 + TLV encode/decode is delegated to
+# rust-nostr's canonical NIP-19 codec; this crate never re-implements crypto.
+nostr = { workspace = true }
+
+[dev-dependencies]
+proptest = "1"

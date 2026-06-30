@@ -24,4 +24,6 @@ url = { version = "2.5", features = ["serde"] }
 
 [dev-dependencies]
 proptest = "1"
+# NIP-19 entity codec (Layer 4), used by tokenizer tests. Issue #2515.
+nmp-nip19 = { path = "../nmp-nip19" }
 serde_json = "1.0"

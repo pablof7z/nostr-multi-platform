@@ -1,9 +1,11 @@
 //! Shared, kind-agnostic Nostr tag helpers + the NIP-10 reference parser.
 //!
 //! This module is the `getNip10References` / e-p-a-q tag-builder equivalent
-//! from applesauce, refactored into NMP idiom. It lives in `nmp-core`
-//! alongside [`crate::nip19`] and [`crate::nip21`] for the same reason those
-//! do: it is a **protocol codec**, not a per-kind decoder or a domain noun.
+//! from applesauce, refactored into NMP idiom. It is a sibling protocol codec
+//! to the dedicated [`nmp_nip19`] crate and [`crate::nip21`]: like them it is a
+//! **protocol codec**, not a per-kind decoder or a domain noun. (The NIP-19
+//! bech32 entity codec was carved out of `nmp-core` into the `nmp-nip19` crate
+//! per issue #2515; NIP-10 tags stay here as foundational substrate vocabulary.)
 //! D0 (`docs/design/kind-wrappers.md`) forbids the kernel knowing
 //! "kind 30023 == article"; nothing here encodes any kind semantics — every
 //! function is a pure transform over `&[Vec<String>]`. Per-kind decoders

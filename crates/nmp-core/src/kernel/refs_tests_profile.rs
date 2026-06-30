@@ -9,7 +9,7 @@ use super::refs::{
 };
 use super::refs::{EventNs, ProfileNs};
 use super::*;
-use crate::nip19::{encode_nevent, NeventData};
+use nmp_nip19::{encode_nevent, NeventData};
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 
 fn hex64(prefix: &str) -> String {

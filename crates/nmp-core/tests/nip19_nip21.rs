@@ -1,8 +1,8 @@
 //! Integration tests for NIP-19 (bech32 entity codec). The NIP-21 (`nostr:`
 //! URI scheme) tests live in the sibling `nip21.rs` (file-size hard-cap split).
 
-use nmp_core::nip19::{
-    self, decode_naddr, decode_nevent, decode_note, decode_nprofile, decode_npub, decode_nsec,
+use nmp_nip19::{
+    decode_naddr, decode_nevent, decode_note, decode_nprofile, decode_npub, decode_nsec,
     encode_naddr, encode_nevent, encode_note, encode_nprofile, encode_npub, encode_nsec, NaddrData,
     NeventData, Nip19Entity, Nip19Error, NprofileData,
 };
@@ -285,7 +285,7 @@ fn naddr_missing_author_is_error() {
 #[test]
 fn parse_dispatches_npub() {
     assert!(matches!(
-        nip19::parse(FIATJAF_NPUB).unwrap(),
+        nmp_nip19::parse(FIATJAF_NPUB).unwrap(),
         Nip19Entity::Npub(_)
     ));
 }
@@ -293,13 +293,13 @@ fn parse_dispatches_npub() {
 #[test]
 fn parse_dispatches_nsec() {
     let bech = encode_nsec(NSEC_HEX).unwrap();
-    assert!(matches!(nip19::parse(&bech).unwrap(), Nip19Entity::Nsec(_)));
+    assert!(matches!(nmp_nip19::parse(&bech).unwrap(), Nip19Entity::Nsec(_)));
 }
 
 #[test]
 fn parse_dispatches_note() {
     let bech = encode_note(ZERO_HEX).unwrap();
-    assert!(matches!(nip19::parse(&bech).unwrap(), Nip19Entity::Note(_)));
+    assert!(matches!(nmp_nip19::parse(&bech).unwrap(), Nip19Entity::Note(_)));
 }
 
 #[test]
@@ -310,7 +310,7 @@ fn parse_dispatches_nprofile() {
     };
     let bech = encode_nprofile(&data).unwrap();
     assert!(matches!(
-        nip19::parse(&bech).unwrap(),
+        nmp_nip19::parse(&bech).unwrap(),
         Nip19Entity::Nprofile(_)
     ));
 }
@@ -325,7 +325,7 @@ fn parse_dispatches_nevent() {
     };
     let bech = encode_nevent(&data).unwrap();
     assert!(matches!(
-        nip19::parse(&bech).unwrap(),
+        nmp_nip19::parse(&bech).unwrap(),
         Nip19Entity::Nevent(_)
     ));
 }
@@ -340,7 +340,7 @@ fn parse_dispatches_naddr() {
     };
     let bech = encode_naddr(&data).unwrap();
     assert!(matches!(
-        nip19::parse(&bech).unwrap(),
+        nmp_nip19::parse(&bech).unwrap(),
         Nip19Entity::Naddr(_)
     ));
 }
@@ -348,7 +348,7 @@ fn parse_dispatches_naddr() {
 #[test]
 fn parse_unknown_hrp_is_error() {
     assert!(matches!(
-        nip19::parse("nrelay1qq28qqqqg"),
+        nmp_nip19::parse("nrelay1qq28qqqqg"),
         Err(Nip19Error::UnknownHrp(_))
     ));
 }
@@ -360,6 +360,6 @@ fn format_inverts_parse() {
         relays: vec!["wss://relay.io".into()],
     };
     let bech = encode_nprofile(&data).unwrap();
-    let entity = nip19::parse(&bech).unwrap();
-    assert_eq!(nip19::format(&entity).unwrap(), bech);
+    let entity = nmp_nip19::parse(&bech).unwrap();
+    assert_eq!(nmp_nip19::format(&entity).unwrap(), bech);
 }

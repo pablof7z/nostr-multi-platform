@@ -3686,6 +3686,7 @@ dependencies = [
  "nmp-core",
  "nmp-defaults",
  "nmp-native-runtime",
+ "nmp-nip19",
  "nmp-uniffi",
  "serde",
  "serde_json",
@@ -3728,6 +3729,7 @@ dependencies = [
  "nmp-nip01",
  "nmp-nip02",
  "nmp-nip18",
+ "nmp-nip19",
  "nmp-nip29",
  "nmp-nip46",
  "nmp-nip46-runtime",
@@ -3792,6 +3794,7 @@ dependencies = [
  "nmp-feed",
  "nmp-kinds",
  "nmp-nip18",
+ "nmp-nip19",
  "proptest",
  "pulldown-cmark",
  "regex",
@@ -3825,6 +3828,7 @@ dependencies = [
  "indexmap",
  "nmp-kinds",
  "nmp-network",
+ "nmp-nip19",
  "nmp-nip42-types",
  "nmp-nip59",
  "nmp-planner",
@@ -3938,6 +3942,7 @@ dependencies = [
  "nmp-content",
  "nmp-core",
  "nmp-native-runtime",
+ "nmp-nip19",
  "ratatui",
  "ratatui-image",
  "serde",
@@ -3951,6 +3956,7 @@ version = "0.8.4"
 dependencies = [
  "nmp-core",
  "nmp-nip05",
+ "nmp-nip19",
  "nmp-nip50",
  "serde",
  "serde_json",
@@ -4037,6 +4043,7 @@ dependencies = [
  "nmp-core",
  "nmp-feed",
  "nmp-nip18",
+ "nmp-nip19",
  "nmp-planner",
  "nmp-signer-iface",
  "nmp-store",
@@ -4109,6 +4116,14 @@ dependencies = [
  "nmp-signer-iface",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "nmp-nip19"
+version = "0.8.4"
+dependencies = [
+ "nostr",
+ "proptest",
 ]
 
 [[package]]
@@ -4494,6 +4509,7 @@ dependencies = [
  "nmp-nip02",
  "nmp-nip17",
  "nmp-nip18",
+ "nmp-nip19",
  "nmp-nip29",
  "nmp-nip42",
  "nmp-nip46",
@@ -4541,6 +4557,7 @@ dependencies = [
  "nmp-core",
  "nmp-defaults",
  "nmp-native-runtime",
+ "nmp-nip19",
  "nmp-uniffi-support",
  "nostr",
  "serde_json",

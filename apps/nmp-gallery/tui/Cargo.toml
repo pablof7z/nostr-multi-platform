@@ -19,6 +19,7 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png",
 nmp-app-gallery = { path = "../crates/nmp-app-gallery" }
 nmp-content = { path = "../../../crates/nmp-content" }
 nmp-core = { path = "../../../crates/nmp-core" }
+nmp-nip19 = { path = "../../../crates/nmp-nip19" }
 nmp-native-runtime = { path = "../../../crates/nmp-native-runtime" }
 ratatui = { version = "0.30", features = ["crossterm"] }
 ratatui-image = { version = "11.0.2", default-features = false, features = ["crossterm"] }

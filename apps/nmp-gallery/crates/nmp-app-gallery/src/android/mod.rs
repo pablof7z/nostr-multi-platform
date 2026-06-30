@@ -67,12 +67,12 @@ fn event_ref_from_uri(uri: &CStr) -> Option<EventRefFromUri> {
             _ => return None,
         }
     } else {
-        match nmp_core::nip19::parse(uri_str).ok()? {
-            nmp_core::nip19::Nip19Entity::Note(event_id) => (event_id, vec![], None, None),
-            nmp_core::nip19::Nip19Entity::Nevent(d) => {
+        match nmp_nip19::parse(uri_str).ok()? {
+            nmp_nip19::Nip19Entity::Note(event_id) => (event_id, vec![], None, None),
+            nmp_nip19::Nip19Entity::Nevent(d) => {
                 (d.event_id, d.relays, d.author, d.kind.map(|k| k as u64))
             }
-            nmp_core::nip19::Nip19Entity::Naddr(d) => {
+            nmp_nip19::Nip19Entity::Naddr(d) => {
                 (
                     format!("{}:{}:{}", d.kind, d.pubkey, d.identifier),
                     d.relays,

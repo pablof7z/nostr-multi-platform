@@ -7,15 +7,21 @@
 //! every existing caller is source-compatible, but the actual bech32 + TLV
 //! encoding/decoding is delegated to `nostr` rather than re-implemented here.
 //!
+//! This is a Layer-4 protocol crate, carved out of the `nmp-core` kernel
+//! substrate (issue #2515) per `docs/architecture/crate-boundaries.md` §3 —
+//! the substrate must stay generic and must not own protocol-specific
+//! parsers/nouns; a typed NIP-19 codec is a protocol module that belongs in
+//! L4.
+//!
 //! Per AGENTS.md / aim.md ("reuse the `nostr` crate; never re-implement a
-//! protocol codec from scratch") this module is an NMP-shaped wrapper, not a
+//! protocol codec from scratch") this crate is an NMP-shaped wrapper, not a
 //! second codec. The previous hand-rolled bech32/TLV implementation was the
 //! parallel codec #1493 set out to retire — having two NIP-19 codecs in one
 //! workspace is a divergence/correctness hazard.
 //!
 //! # Example — bare key round-trip
 //! ```
-//! use nmp_core::nip19::{Nip19Entity, encode_npub, decode_npub};
+//! use nmp_nip19::{Nip19Entity, encode_npub, decode_npub};
 //!
 //! let hex = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
 //! let bech = encode_npub(hex).unwrap();
@@ -26,7 +32,7 @@
 //!
 //! # Example — nprofile round-trip
 //! ```
-//! use nmp_core::nip19::{NprofileData, encode_nprofile, decode_nprofile};
+//! use nmp_nip19::{NprofileData, encode_nprofile, decode_nprofile};
 //!
 //! let data = NprofileData {
 //!     pubkey: "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d".into(),
@@ -414,7 +420,7 @@ pub fn decode_naddr(bech: &str) -> Result<NaddrData, Nip19Error> {
 ///
 /// # Example
 /// ```
-/// use nmp_core::nip19::{parse, Nip19Entity};
+/// use nmp_nip19::{parse, Nip19Entity};
 ///
 /// let bech = "npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6";
 /// let entity = parse(bech).unwrap();
@@ -466,5 +472,4 @@ pub fn format(entity: &Nip19Entity) -> Result<String, Nip19Error> {
 }
 
 #[cfg(test)]
-#[path = "nip19/tests.rs"]
 mod tests;

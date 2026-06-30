@@ -13,7 +13,7 @@
 //! assert!(matches!(target, NostrUri::Profile { .. }));
 //! ```
 
-use crate::nip19::{self, NaddrData, NeventData, Nip19Entity, Nip19Error, NprofileData};
+use nmp_nip19::{NaddrData, NeventData, Nip19Entity, Nip19Error, NprofileData};
 
 const SCHEME: &str = "nostr:";
 
@@ -112,7 +112,7 @@ impl From<Nip19Error> for Nip21Error {
 #[must_use]
 pub fn parse_nostr_uri(uri: &str) -> Result<NostrUri, Nip21Error> {
     let bech = uri.strip_prefix(SCHEME).ok_or(Nip21Error::MissingScheme)?;
-    match nip19::parse(bech)? {
+    match nmp_nip19::parse(bech)? {
         Nip19Entity::Nsec(_) => Err(Nip21Error::NsecForbidden),
         Nip19Entity::Npub(pubkey) => Ok(NostrUri::Profile {
             pubkey,
@@ -197,13 +197,13 @@ pub fn format_nostr_uri(target: &NostrUri) -> Result<String, Nip19Error> {
             relays: relays.clone(),
         }),
     };
-    Ok(format!("{SCHEME}{}", nip19::format(&entity)?))
+    Ok(format!("{SCHEME}{}", nmp_nip19::format(&entity)?))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::nip19::{encode_note, encode_nprofile, encode_npub, encode_nsec};
+    use nmp_nip19::{encode_note, encode_nprofile, encode_npub, encode_nsec};
 
     /// Deterministic 32-byte hex fixture (matches the module doctests).
     const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";

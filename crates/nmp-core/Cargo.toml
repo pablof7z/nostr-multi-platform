@@ -106,6 +106,15 @@ indexmap = "2.14"
 # creating the nmp-nip59 → nmp-core compile cycle.
 nmp-kinds = { path = "../nmp-kinds" }
 nmp-nip42-types = { path = "../nmp-nip42-types" }
+# NIP-19 bech32 entity codec (Layer 4) — carved out of this crate's substrate
+# into `nmp-nip19` (issue #2515; crate-boundaries.md §3). The only remaining
+# in-substrate consumer is `nip21.rs` (the NIP-21 `nostr:` URI parser, judged
+# foundational identifier vocabulary and intentionally left here). This is an
+# L3→L4 edge for that one foundational module; flagged as a follow-up question
+# in the migration PR (whether `nip21` should also move to break the
+# inversion). nmp-nip19 itself has no back-edge into nmp-core, so the graph
+# stays acyclic.
+nmp-nip19 = { path = "../nmp-nip19" }
 nmp-relay-url = { path = "../nmp-relay-url" }
 # NIP-59 gift-wrap primitives are NOT a production dependency of the kernel:
 # the former `ActorCommand::SendGiftWrappedDm` arm was deleted (V-39) and the

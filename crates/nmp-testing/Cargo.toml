@@ -65,6 +65,8 @@ nmp-example-login-timeline = { path = "../nmp-example-login-timeline", features 
 # `LongformProjection` against the real event store to prove kernel-resolved
 # kind:30023 supersession (param-replaceable C2) reaches the typed projection.
 nmp-content = { path = "../nmp-content" }
+# NIP-19 entity codec (Layer 4), used by relay_search integration test. Issue #2515.
+nmp-nip19 = { path = "../nmp-nip19" }
 zeroize = { workspace = true }
 nmp-feed = { path = "../nmp-feed" }
 nmp-nip01 = { path = "../nmp-nip01" }

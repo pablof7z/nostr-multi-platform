@@ -52,7 +52,7 @@ use common::ref_commands::resolve_event_embed;
 use common::stub_relay::StubRelay;
 use common::wire_log::{req_emit_relays_for_phase, score_updates, StderrCapture};
 use nmp_core::actor::LifecycleCommand;
-use nmp_core::nip19::{encode_nevent, NeventData};
+use nmp_nip19::{encode_nevent, NeventData};
 use nmp_core::testing::{spawn_actor, ActorCommand};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
@@ -112,7 +112,7 @@ fn relay_is_connected(frame: &[u8]) -> bool {
 
 /// Build a `nostr:nevent1...` URI whose relay hint is `relay_url`.
 ///
-/// Uses `nmp_core::nip19::encode_nevent` so the same TLV codec the kernel
+/// Uses `nmp_nip19::encode_nevent` so the same TLV codec the kernel
 /// parses is used to encode — no dependency on an external tool.
 fn build_nevent_uri(relay_url: &str) -> String {
     let data = NeventData {

@@ -92,7 +92,10 @@ mod kernel_reducer;
 /// Single source of truth for the integer kind numbers used on the wire.
 /// See [`kinds`] for the migration rationale.
 pub mod kinds;
-pub mod nip19;
+// NIP-19 bech32 entity codec moved out of the kernel substrate into the
+// dedicated Layer-4 `nmp-nip19` crate (issue #2515) — the substrate must not
+// own protocol-specific parsers/nouns (crate-boundaries.md §3). Callers now
+// depend on `nmp_nip19::*` directly; there is no re-export shim here.
 pub mod nip21;
 // Subscription compiler — internal path for nmp-core consumers. External
 // callers must depend on `nmp-planner` directly (`nmp_planner::*`); the

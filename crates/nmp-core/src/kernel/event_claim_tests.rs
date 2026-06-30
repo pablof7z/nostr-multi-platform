@@ -16,7 +16,7 @@
 
 use super::*;
 use crate::kernel::{EventShape, RefLiveness};
-use crate::nip19::{NaddrData, NeventData, encode_naddr, encode_nevent};
+use nmp_nip19::{NaddrData, NeventData, encode_naddr, encode_nevent};
 use crate::nip21::{NostrUri, parse_nostr_uri};
 use crate::refs::{REFS_EVENT_KEY, RefEventStore};
 use crate::relay::DEFAULT_VISIBLE_LIMIT;

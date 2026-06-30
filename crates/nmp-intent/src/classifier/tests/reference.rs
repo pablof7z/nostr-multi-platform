@@ -1,7 +1,7 @@
 //! Rung 2 — NIP-19/21 references (every entity) + the entity-class allow-list
 //! (the `DisallowedScope` refusal for a valid ref outside the requested scopes).
 
-use nmp_core::nip19::{
+use nmp_nip19::{
     encode_naddr, encode_nevent, encode_note, encode_nprofile, encode_npub, NaddrData, NeventData,
     NprofileData,
 };

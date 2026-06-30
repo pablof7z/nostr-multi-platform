@@ -350,7 +350,7 @@ mod tests {
 
     #[test]
     fn social_shorthand_npub_emits_mention() {
-        use nmp_core::nip19::encode_npub;
+        use nmp_nip19::encode_npub;
 
         const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
         let npub = encode_npub(PK).expect("fixture npub encodes");
@@ -366,7 +366,7 @@ mod tests {
 
     #[test]
     fn nostr_npub_uri_emits_mention() {
-        use nmp_core::nip19::encode_npub;
+        use nmp_nip19::encode_npub;
 
         const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
         let npub = encode_npub(PK).expect("fixture npub encodes");
@@ -382,7 +382,7 @@ mod tests {
 
     #[test]
     fn social_shorthand_nevent_emits_event_ref() {
-        use nmp_core::nip19::{encode_nevent, NeventData};
+        use nmp_nip19::{encode_nevent, NeventData};
 
         const ID: &str = "0000000000000000000000000000000000000000000000000000000000000001";
         let nevent = encode_nevent(&NeventData {
@@ -404,7 +404,7 @@ mod tests {
 
     #[test]
     fn nostr_nevent_uri_emits_event_ref() {
-        use nmp_core::nip19::{encode_nevent, NeventData};
+        use nmp_nip19::{encode_nevent, NeventData};
 
         const ID: &str = "0000000000000000000000000000000000000000000000000000000000000001";
         let nevent = encode_nevent(&NeventData {

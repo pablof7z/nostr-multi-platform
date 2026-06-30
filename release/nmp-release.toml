@@ -139,6 +139,11 @@ path = "crates/nmp-nip42"
 name = "nmp-kinds"
 path = "crates/nmp-kinds"
 
+# NIP-19 bech32 entity codec (Layer 4), carved out of nmp-core per issue #2515.
+[[public_crates]]
+name = "nmp-nip19"
+path = "crates/nmp-nip19"
+
 [[public_crates]]
 name = "nmp-nip42-types"
 path = "crates/nmp-nip42-types"

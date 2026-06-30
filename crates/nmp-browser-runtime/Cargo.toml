@@ -36,6 +36,8 @@ test-support = []
 [dependencies]
 # Kernel + composition surface. default-features=false keeps wasm32 free of mio/lmdb.
 nmp-core = { path = "../nmp-core", default-features = false }
+# NIP-19 entity codec (Layer 4) carved out of nmp-core per issue #2515.
+nmp-nip19 = { path = "../nmp-nip19" }
 nmp-content = { path = "../nmp-content" }
 nmp-substrate-defaults = { path = "../nmp-substrate-defaults" }
 nmp-store = { path = "../nmp-store" }
