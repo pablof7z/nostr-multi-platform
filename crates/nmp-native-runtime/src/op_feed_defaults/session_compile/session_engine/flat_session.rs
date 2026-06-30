@@ -36,7 +36,7 @@ pub(super) fn build_flat_scope_session(
         active_follow_set: _,
     } = resolved;
 
-    let feed = nmp_nip01::FlatFeed::new(admission);
+    let feed = nmp_note_feed::FlatFeed::new(admission);
     let observer_for_registry: Arc<dyn ObservedProjectionSink> = feed.clone();
     let engine_observer = crate::op_feed_defaults::dynamic_observer::DynamicObservedProjection::new(
         app.observed_projection_handle(),
@@ -81,11 +81,13 @@ pub(super) fn build_flat_scope_session(
     app.register_feed_render_source(key.to_string(), source, move |snapshot| {
         Some(nmp_core::TypedProjectionData {
             key: typed_key.clone(),
-            schema_id: nmp_nip01::op_feed::OP_FEED_SCHEMA_ID.to_string(),
-            schema_version: nmp_nip01::op_feed::OP_FEED_SCHEMA_VERSION,
-            file_identifier: String::from_utf8_lossy(nmp_nip01::op_feed::OP_FEED_FILE_IDENTIFIER)
-                .into_owned(),
-            payload: nmp_nip01::op_feed::encode_op_feed_snapshot(snapshot),
+            schema_id: nmp_note_feed::op_feed::OP_FEED_SCHEMA_ID.to_string(),
+            schema_version: nmp_note_feed::op_feed::OP_FEED_SCHEMA_VERSION,
+            file_identifier: String::from_utf8_lossy(
+                nmp_note_feed::op_feed::OP_FEED_FILE_IDENTIFIER,
+            )
+            .into_owned(),
+            payload: nmp_note_feed::op_feed::encode_op_feed_snapshot(snapshot),
             ..Default::default()
         })
     });

@@ -93,6 +93,10 @@ name = "nmp-nip01"
 path = "crates/nmp-nip01"
 
 [[public_crates]]
+name = "nmp-note-feed"
+path = "crates/nmp-note-feed"
+
+[[public_crates]]
 name = "nmp-replies"
 path = "crates/nmp-replies"
 

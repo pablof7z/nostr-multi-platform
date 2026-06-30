@@ -37,7 +37,7 @@ use nmp_feed::{
     ClosureInterestShape, FeedAdvance, FeedApply, FeedController, FeedRender, FeedReset,
     FeedSessionBuild, PullFeedController, RootAdmission,
 };
-use nmp_nip01::OpFeedEngine;
+use nmp_note_feed::OpFeedEngine;
 use nmp_planner::InterestScope;
 
 use super::source::{
@@ -130,7 +130,7 @@ fn build_op_scope_session(
         nmp_core::slots::event_by_id_from_store(&event_store, id)
     });
     let event_lookup_for_observer = event_lookup.clone();
-    let engine = nmp_nip01::op_feed::register_op_feed_with_admission(
+    let engine = nmp_note_feed::op_feed::register_op_feed_with_admission(
         viewer,
         follow_predicate,
         root_admission,
@@ -138,7 +138,7 @@ fn build_op_scope_session(
     );
 
     // ── 2. Ingest observer ───────────────────────────────────────────────
-    let observer = nmp_nip01::op_feed::op_feed_observer(
+    let observer = nmp_note_feed::op_feed::op_feed_observer(
         engine.clone(),
         event_lookup_for_observer,
         suppression,
@@ -187,10 +187,10 @@ fn build_op_scope_session(
         PullFeedController::new_with_perspective(provider, pull, apply, None, Some(reset), advance);
     app.register_feed(key.to_string(), controller.clone());
 
-    // ── 3b. Typed NOFS sidecar + feed-author auto-resolve provider, STRUCTURALLY
+    // ── 3b. Typed NNFS sidecar + feed-author auto-resolve provider, STRUCTURALLY
     //         PAIRED under the session key (ADR-0063 D7, #1671 Lane H, #1740) ────
     //
-    // Mirrors the home feed's typed projection so a `NOFS`-aware host renders the
+    // Mirrors the home feed's typed projection so an `NNFS`-aware host renders the
     // session's window from the typed payload (generic `Value` fallback for
     // others). Sessions emit always (no incremental-apply omit bookkeeping — a
     // session feed is short-lived; the home path owns the omit optimization).
@@ -214,11 +214,13 @@ fn build_op_scope_session(
     app.register_feed_render_source(key.to_string(), source, move |snapshot| {
         Some(nmp_core::TypedProjectionData {
             key: typed_key.clone(),
-            schema_id: nmp_nip01::op_feed::OP_FEED_SCHEMA_ID.to_string(),
-            schema_version: nmp_nip01::op_feed::OP_FEED_SCHEMA_VERSION,
-            file_identifier: String::from_utf8_lossy(nmp_nip01::op_feed::OP_FEED_FILE_IDENTIFIER)
-                .into_owned(),
-            payload: nmp_nip01::op_feed::encode_op_feed_snapshot(snapshot),
+            schema_id: nmp_note_feed::op_feed::OP_FEED_SCHEMA_ID.to_string(),
+            schema_version: nmp_note_feed::op_feed::OP_FEED_SCHEMA_VERSION,
+            file_identifier: String::from_utf8_lossy(
+                nmp_note_feed::op_feed::OP_FEED_FILE_IDENTIFIER,
+            )
+            .into_owned(),
+            payload: nmp_note_feed::op_feed::encode_op_feed_snapshot(snapshot),
             ..Default::default()
         })
     });
@@ -306,14 +308,14 @@ fn build_op_scope_session(
     })
 }
 
-fn visible_payload(engine: &nmp_nip01::OpFeedEngine) -> Vec<u8> {
+fn visible_payload(engine: &nmp_note_feed::OpFeedEngine) -> Vec<u8> {
     let snapshot = engine.snapshot_current_window();
-    nmp_nip01::op_feed::encode_op_feed_snapshot(&snapshot)
+    nmp_note_feed::op_feed::encode_op_feed_snapshot(&snapshot)
 }
 
-pub(super) fn visible_flat_payload(feed: &nmp_nip01::FlatFeed) -> Vec<u8> {
+pub(super) fn visible_flat_payload(feed: &nmp_note_feed::FlatFeed) -> Vec<u8> {
     let snapshot = feed.snapshot_current_window();
-    nmp_nip01::op_feed::encode_op_feed_snapshot(&snapshot)
+    nmp_note_feed::op_feed::encode_op_feed_snapshot(&snapshot)
 }
 
 pub(super) fn session_acquisition_owner(key: &str) -> SubOwnerKey {

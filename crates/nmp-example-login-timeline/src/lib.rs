@@ -42,7 +42,7 @@
 
 use nmp_core::substrate::{ActionRegistrar, AppHost};
 use nmp_native_runtime::NmpApp;
-use nmp_nip01::op_feed::{decode_op_feed_snapshot, OP_FEED_SNAPSHOT_KEY};
+use nmp_note_feed::op_feed::{decode_op_feed_snapshot, OP_FEED_SNAPSHOT_KEY};
 
 #[cfg(feature = "harness")]
 pub mod harness;
@@ -153,7 +153,7 @@ impl TimelineRow {
 
 /// Step 3 — render the FOLLOWING timeline from the Rust-owned typed projection.
 ///
-/// Reads the `nmp.feed.home` typed FlatBuffers sidecar (`NOFS`) the kernel emits
+/// Reads the `nmp.feed.home` typed FlatBuffers sidecar (`NNFS`) the kernel emits
 /// every tick, decodes it with the NMP-provided [`decode_op_feed_snapshot`], and
 /// maps each root card to a [`TimelineRow`]. This is exactly the projection→
 /// render contract a platform shell follows (iOS's `TypedHomeFeedDecoder` does

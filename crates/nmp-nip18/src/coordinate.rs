@@ -9,7 +9,7 @@
 //!
 //! This module is the **single canonical place** that computes that identity
 //! for the *feed/render* layer (issue #1740 step 5). Every feed-side consumer —
-//! `nmp-content`'s long-form adapter, `nmp-nip68`, `nmp-nip01`'s op-feed delete
+//! `nmp-content`'s long-form adapter, `nmp-nip68`, and `nmp-note-feed` delete
 //! handling — formats and parses the coordinate here rather than each
 //! re-deriving `format!("{kind}:{pubkey}:{d}")`. Keeping it in one function
 //! means the wire string for the `a` tag and the feed row id can never silently

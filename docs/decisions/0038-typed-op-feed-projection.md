@@ -17,27 +17,29 @@ schema versions evolve one identity.
 ## Decision
 
 The OP-centric home feed is emitted under projection key `nmp.feed.home` with a
-typed FlatBuffers sidecar owned by `nmp-nip01`:
+typed FlatBuffers sidecar owned by `nmp-note-feed`:
 
-- `schema_id = "nmp.nip01.opfeed"`
-- `file_identifier = "NOFS"`
-- `schema_version = 2`
+- `schema_id = "nmp.note_feed.opfeed"`
+- `file_identifier = "NNFS"`
+- `schema_version = 1`
 - root table: `OpFeedSnapshot`
 
-`OpFeedSnapshot` carries root cards, reply attribution, and the feed-window
-sub-buffer. It reuses existing typed tables where ownership already exists:
+`OpFeedSnapshot` carries concrete note-feed items, reply attribution, and the
+feed-window sub-buffer. It embeds owned lower-level payloads where ownership
+already exists:
 
-- `TimelineEventCard` from `nmp-nip01`;
+- `NoteFeedItem` / repost attribution from `nmp-note-feed`;
 - content-tree sub-buffers from `nmp-content`;
 - feed-window bytes from `nmp-feed`.
 
-Schema version 2 removes social/action-row metric fields from timeline cards.
-Those facts are opened through their concept owners when a host needs them; the
-OP-feed projection stays a raw feed/card surface.
+This is a new schema identity because the owner and root row shape changed from
+NIP-01 timeline cards to note-feed items. Social/action-row facts are opened
+through their concept owners when a host needs them; the OP-feed projection
+stays a raw feed/item surface.
 
-`nmp-nip01` owns the encoder/decoder and descriptor constants. The composition
-root registers the typed projection by snapshotting the OP-feed engine and
-encoding the result.
+`nmp-note-feed` owns the encoder/decoder and descriptor constants. The
+composition root registers the typed projection by snapshotting the OP-feed
+engine and encoding the result.
 
 ## Data Contract
 
@@ -48,7 +50,7 @@ no separate display count is encoded.
 
 ## Host Behavior
 
-For `nmp.feed.home`, a host validates the `NOFS` descriptor and decodes
+For `nmp.feed.home`, a host validates the `NNFS` descriptor and decodes
 `OpFeedSnapshot`. Descriptor mismatch or decode failure means the projection is
 absent for that tick.
 
@@ -56,6 +58,7 @@ absent for that tick.
 
 - The home feed stays on the typed sidecar path from ADR-0037.
 - The feed-window and content-tree ownership boundaries stay intact.
+- `nmp-nip01` remains a lower-level note/thread fact owner.
 - `nmp-core` remains unaware of OP-feed nouns.
 - Future feed-shape changes bump `schema_version` when they preserve schema
   identity, or use a new `schema_id` when they introduce a different root shape.

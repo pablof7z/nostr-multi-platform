@@ -1,22 +1,16 @@
-//! Reusable NIP-10 modular timeline projection with render-card payloads.
+//! NIP-10 modular timeline projection.
 //!
-//! `Nip10ModularTimelineView` groups event ids into blocks. Most native
-//! shells also need the per-event render metadata in the same pushed snapshot,
-//! so this projection owns the generic card cache beside the view state.
+//! This projection owns protocol grouping state only: event ids arranged into
+//! NIP-10 timeline blocks. Concrete feed rows, render payloads, repost
+//! composition, and typed feed wire live in higher composition crates.
 
-use std::{
-    sync::{Arc, Mutex},
-    time::Instant,
-};
+use std::sync::{Arc, Mutex};
 
-use nmp_content::{tokenize_with_kind, ContentTreeWire, RenderMode, WireNode, WireNostrUriKind};
 use nmp_core::substrate::{
     empty_suppression_lookup, BoundedMessageMap, KernelEvent, SuppressionLookup, ViewContext,
     MAX_PROJECTION_MESSAGES,
 };
 use nmp_core::ObservedProjectionSink;
-use nmp_feed::{FeedBlock, FeedCard};
-use nmp_nip18::try_from_kernel_event as try_from_repost_event;
 use nmp_threading::TimelineBlock;
 use serde::{Deserialize, Serialize};
 
@@ -25,235 +19,33 @@ use crate::meta_timeline::{
 };
 use crate::profile_display::profile_from_event;
 
-mod card_payload;
-mod render_data;
-use card_payload::RenderPayload;
-pub use render_data::{ContentEventRenderData, ContentProfileRenderData, ContentRenderData};
-
-pub use nmp_feed::{
-    FeedCursor as TimelineWindowCursor, FeedPage as TimelineWindowPage,
-    FeedRequest as TimelineWindowRequest, FeedWindowMetrics as TimelineWindowMetrics,
-    DEFAULT_FEED_WINDOW_LIMIT as DEFAULT_TIMELINE_WINDOW_LIMIT,
-    MAX_FEED_WINDOW_LIMIT as MAX_TIMELINE_WINDOW_LIMIT,
-};
-
-/// One render-ready event card surfaced through the modular timeline
-/// projection. Carries raw protocol data only — pubkeys as hex, timestamps as
-/// Unix seconds. Presentation layers own all formatting decisions (aim.md §2).
-///
-/// For NIP-18 repost cards (a kind:6 whose target the grouper superseded) the
-/// `author_*` fields name the *original* note's author and `content` carries the
-/// note's body — the kind:6 wrapper is exposed via `reposted_by`. `created_at` is
-/// the *outer* event's timestamp (repost time) so the cursor bumps the card to
-/// the top; the note's publish time travels on `reposted_by.note_created_at`.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct TimelineEventCard {
-    pub id: String,
-    /// Author Nostr pubkey, hex (64 chars). The shell resolves the display name
-    /// / picture via `refs.profile` (ADR-0063) — the row carries no denormalized
-    /// display copy (aim.md §2 — raw protocol data only).
-    pub author_pubkey: String,
-    pub kind: u32,
-    pub created_at: u64,
-    pub content: String,
-    /// Structural parse of `content` (NIP-19 URIs, hashtags, links). A protocol
-    /// projection of the note body, not a render decision — the shell walks the
-    /// tree to lay out mentions / embeds and resolves any referenced
-    /// profile/event via `refs.profile` / `refs.event` (ADR-0063).
-    pub content_tree: ContentTreeWire,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub relay_provenance: Vec<String>,
-    /// `None` for ordinary notes; `Some` when this card was surfaced because
-    /// a NIP-18 kind:6 repost superseded the original. `author_pubkey` /
-    /// `content` above name the *original* note; this struct names who
-    /// reposted it (raw pubkey) and when the original was authored.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub reposted_by: Option<RepostAttribution>,
-}
-
-/// Attribution payload for a card whose surfacing was driven by a repost.
-/// Sibling to the card's primary author field — that names the *original*
-/// note's author; this names the *reposter*.
-///
-/// Raw protocol data only: the reposter's hex pubkey and the original note's
-/// publish time. The shell resolves the reposter's display name / picture via
-/// `refs.profile` (ADR-0063, aim.md §2).
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct RepostAttribution {
-    /// Reposter (kind:6 wrapper author) Nostr pubkey, hex (64 chars).
-    pub author_pubkey: String,
-    /// Original note's publish time (Unix seconds). The card's own
-    /// `created_at` is the repost timestamp (the feed-cursor sort key, so the
-    /// repost bumps the note to the top); this is the timestamp the UI shows
-    /// next to the original author.
-    pub note_created_at: u64,
-}
-
-impl nmp_feed::CardAuthors for TimelineEventCard {
-    /// ADR-0063 D7 — author keys this card RENDERS: the primary `author_pubkey`
-    /// (for a repost, the original note's author shown in the body) plus the
-    /// reposter (`reposted_by.author_pubkey`). Both render an avatar → both must
-    /// auto-resolve; the kernel dedupes.
-    fn rendered_author_keys(&self) -> Vec<String> {
-        let mut keys = vec![self.author_pubkey.clone()];
-        if let Some(repost) = &self.reposted_by {
-            keys.push(repost.author_pubkey.clone());
-        }
-        keys
-    }
-}
-
-impl TimelineEventCard {
-    /// Build a render card for the OP-centric feed engine (V-80 rung 5).
-    ///
-    /// The generic `RootIndexedFeed` engine's `card_builder` closure receives a
-    /// root event (and, for a repost wrapper, the superseded target event) and
-    /// must produce a `TimelineEventCard` without access to the
-    /// `ModularTimelineProjection`'s internal profile / card caches.
-    /// This is the stateless reuse seam: it invokes the private
-    /// [`Self::from_event`]. Profile display and other secondary data are not
-    /// feed-owned; mounted UI components or sibling projections claim and
-    /// render those dependencies independently when they need them.
-    ///
-    /// For a repost wrapper the `target` arg carries the superseded note so the
-    /// NIP-18 `reposted_by` attribution is preserved (L-1 / L-5). For a plain
-    /// root, pass `None`; the card is built from `event` directly.
-    ///
-    /// The `target` argument is accepted for symmetry with the engine's
-    /// `CardBuilder<C>` signature `(root, Option<target>)`.
-    ///
-    /// # Card identity for reposts
-    ///
-    /// The engine keys a reposted root's slot by the **target id** (the
-    /// superseded note), not the kind:6 wrapper id. So when `event` is a kind:6
-    /// repost the returned card's `id` is forced to the target id, and the body
-    /// is sourced (in priority order) from: the explicit `target` event (L-5,
-    /// after backward hydration), the wrapper's *embedded* inner note (L-1),
-    /// or an empty placeholder (L-3, e-tag-only with no target yet). In every
-    /// repost case `reposted_by` names the wrapper author and `created_at` is
-    /// the wrapper's (repost) timestamp so the feed cursor bumps the card.
-    #[must_use]
-    pub fn from_event_for_op_feed(event: &KernelEvent, target: Option<&KernelEvent>) -> Self {
-        let Some(repost) = try_from_repost_event(event) else {
-            // Plain root: build directly from the event.
-            return Self::from_event(event);
-        };
-
-        // Reposted root: the card identity is the superseded target id.
-        let target_id = repost
-            .target_event_id
-            .clone()
-            .unwrap_or_else(|| event.id.clone());
-
-        // Body source priority: explicit target → embedded inner note → empty.
-        let (mut card, note_created_at) = if let Some(target_event) = target {
-            // L-5 backward hydration: the target arrived after the wrapper.
-            (Self::from_event(target_event), target_event.created_at)
-        } else if let Some(inner) = repost.embedded_event.as_ref() {
-            // L-1: the wrapper embeds the inner note. `from_event` decodes it.
-            (Self::from_event(event), inner.created_at)
-        } else {
-            // L-3: e-tag-only repost, target not yet local → placeholder body.
-            (Self::from_event(event), event.created_at)
-        };
-
-        // Force the card identity to the target id; the engine keys by it.
-        card.id = target_id;
-        // Stamp repost provenance (the wrapper author) and the repost timestamp.
-        card.reposted_by = Some(RepostAttribution {
-            author_pubkey: event.author.clone(),
-            note_created_at,
-        });
-        card.created_at = event.created_at;
-        card
-    }
-
-    fn from_event(event: &KernelEvent) -> Self {
-        let render_payload = RenderPayload::from_event(event);
-        let content_tree = tokenize_with_kind(
-            &render_payload.content,
-            &render_payload.tags,
-            RenderMode::Auto,
-            render_payload.kind,
-        )
-        .to_wire();
-        // For an embedded repost the original note's author is decoupled from
-        // the outer kind:6 wrapper's author; surface the original author here.
-        let display_author = render_payload.author.as_deref().unwrap_or(&event.author);
-        let reposted_by = render_payload.repost_attribution(&event.author);
-        Self {
-            id: event.id.clone(),
-            author_pubkey: display_author.to_string(),
-            kind: render_payload.kind,
-            // Sort key: the outer event's `created_at`. For reposts this is
-            // the repost time (so the card bumps to the top); for ordinary
-            // notes it's the note's own time.
-            created_at: event.created_at,
-            content: render_payload.content,
-            content_tree,
-            relay_provenance: event.relay_provenance.clone(),
-            reposted_by,
-        }
-    }
-}
-
-fn has_render_card(event: &KernelEvent) -> bool {
-    crate::try_from_kernel_event(event).is_some() || try_from_repost_event(event).is_some()
-}
-
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ModularTimelineSnapshot {
     pub blocks: Vec<TimelineBlock>,
-    pub cards: Vec<TimelineEventCard>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub page: Option<TimelineWindowPage>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub metrics: Option<TimelineWindowMetrics>,
 }
 
 impl ModularTimelineSnapshot {
     #[must_use]
     pub fn empty() -> Self {
-        Self {
-            blocks: Vec::new(),
-            cards: Vec::new(),
-            page: None,
-            metrics: None,
-        }
-    }
-}
-
-impl FeedCard for TimelineEventCard {
-    fn feed_created_at(&self) -> u64 {
-        self.created_at
-    }
-
-    fn feed_event_refs(&self) -> Vec<String> {
-        self.content_tree
-            .nodes
-            .iter()
-            .filter_map(|node| match node {
-                WireNode::EventRef { uri } if uri.kind == WireNostrUriKind::Event => {
-                    Some(uri.primary_id.clone())
-                }
-                _ => None,
-            })
-            .collect()
+        Self { blocks: Vec::new() }
     }
 }
 
 pub struct ModularTimelineProjection {
     inner: Mutex<Inner>,
-    /// Substrate-generic suppression lookup — `Arc<dyn SuppressionLookup>`.
-    /// At composition time the host wires in `nmp-nip51`'s `MuteListProjection`.
-    /// Defaults to `EmptySuppressionLookup` (suppress nothing) when not wired.
+    /// Substrate-generic suppression lookup injected by the composition owner.
     suppression: Arc<dyn SuppressionLookup>,
 }
 
 struct Inner {
     state: ModularTimelineState,
-    window: nmp_feed::FeedWindowState,
-    cards: BoundedMessageMap<String, TimelineEventCard>,
+    events: BoundedMessageMap<String, TimelineEventIndex>,
+}
+
+#[derive(Clone, Debug)]
+struct TimelineEventIndex {
+    author_pubkey: String,
+    created_at: u64,
 }
 
 impl ModularTimelineProjection {
@@ -264,26 +56,13 @@ impl ModularTimelineProjection {
         Self {
             inner: Mutex::new(Inner {
                 state,
-                window: nmp_feed::FeedWindowState::default(),
-                cards: BoundedMessageMap::new(MAX_PROJECTION_MESSAGES),
+                events: BoundedMessageMap::new(MAX_PROJECTION_MESSAGES),
             }),
             suppression: empty_suppression_lookup(),
         }
     }
 
-    /// Wire a suppression lookup (e.g. `nmp-nip51`'s `MuteListProjection`).
-    ///
-    /// Called once at composition time before the projection is registered
-    /// as a `ObservedProjectionSink`. Replaces the default `EmptySuppressionLookup`
-    /// (suppress nothing) with the provided backend.
-    ///
-    /// # Design
-    ///
-    /// The `SuppressionLookup` trait lives in `nmp-core` substrate so this
-    /// crate (`nmp-nip01`, Layer 4) can hold an `Arc<dyn SuppressionLookup>`
-    /// without creating a `nmp-nip01 → nmp-nip51` sibling dep. The concrete
-    /// implementation (`MuteListProjection`) is injected at composition time
-    /// by the app crate (Layer 5+) that depends on both.
+    /// Wire a suppression lookup, for example `nmp-nip51`'s mute projection.
     pub fn set_suppression(&mut self, lookup: Arc<dyn SuppressionLookup>) {
         self.suppression = lookup;
     }
@@ -294,95 +73,13 @@ impl ModularTimelineProjection {
             return ModularTimelineSnapshot::empty();
         };
         let blocks = sorted_projection_blocks(&inner);
-        let suppressed_blocks = suppress_blocks(&blocks, &inner.cards, &*self.suppression);
-        let cards: Vec<TimelineEventCard> = inner
-            .cards
-            .values()
-            .filter(|c| {
-                !self.suppression.is_suppressed_author(&c.author_pubkey)
-                    && !self.suppression.is_suppressed_event(&c.id)
-            })
-            .cloned()
-            .collect();
-        ModularTimelineSnapshot {
-            blocks: suppressed_blocks,
-            cards,
-            page: None,
-            metrics: None,
-        }
-    }
-
-    #[must_use]
-    pub fn snapshot_current_window(&self) -> ModularTimelineSnapshot {
-        let make_window_start = Instant::now();
-        let Ok(inner) = self.inner.lock() else {
-            return ModularTimelineSnapshot::empty();
-        };
-        let blocks = sorted_projection_blocks(&inner);
-        let visible_blocks = suppress_blocks(&blocks, &inner.cards, &*self.suppression);
-        let (page_blocks, page) = inner.window.snapshot_blocks(&visible_blocks, &inner.cards);
-        let cards = nmp_feed::cards_for_blocks(&page_blocks, &inner.cards);
-        // Post-filter the page cards so suppressed entries don't surface even
-        // when they were already in the window's state.
-        let cards: Vec<TimelineEventCard> = cards
-            .into_iter()
-            .filter(|c| {
-                !self.suppression.is_suppressed_author(&c.author_pubkey)
-                    && !self.suppression.is_suppressed_event(&c.id)
-            })
-            .collect();
-        ModularTimelineSnapshot {
-            blocks: page_blocks,
-            cards,
-            page: Some(page),
-            metrics: Some(TimelineWindowMetrics {
-                make_window_us: make_window_start
-                    .elapsed()
-                    .as_micros()
-                    .min(u64::MAX as u128) as u64,
-            }),
-        }
-    }
-
-    #[must_use]
-    pub fn snapshot_window(&self, request: TimelineWindowRequest) -> ModularTimelineSnapshot {
-        let make_window_start = Instant::now();
-        let Ok(inner) = self.inner.lock() else {
-            return ModularTimelineSnapshot::empty();
-        };
-        let blocks = sorted_projection_blocks(&inner);
-        let visible_blocks = suppress_blocks(&blocks, &inner.cards, &*self.suppression);
-        let (page_blocks, page) =
-            nmp_feed::page_for_request(&visible_blocks, &inner.cards, &request);
-        let cards = nmp_feed::cards_for_blocks(&page_blocks, &inner.cards);
-        let cards: Vec<TimelineEventCard> = cards
-            .into_iter()
-            .filter(|c| {
-                !self.suppression.is_suppressed_author(&c.author_pubkey)
-                    && !self.suppression.is_suppressed_event(&c.id)
-            })
-            .collect();
-        ModularTimelineSnapshot {
-            blocks: page_blocks,
-            cards,
-            page: Some(page),
-            metrics: Some(TimelineWindowMetrics {
-                make_window_us: make_window_start
-                    .elapsed()
-                    .as_micros()
-                    .min(u64::MAX as u128) as u64,
-            }),
-        }
+        let blocks = suppress_blocks(&blocks, &inner.events, &*self.suppression);
+        ModularTimelineSnapshot { blocks }
     }
 }
 
 impl ObservedProjectionSink for ModularTimelineProjection {
     fn on_kernel_event(&self, event: &KernelEvent) {
-        // Ingest-time suppression gate: skip inserting render cards for events
-        // authored by a muted pubkey or with a muted event id. This prevents
-        // accumulating dead cards in the bounded card cache. The snapshot-time
-        // filter below handles mutes applied AFTER the event was already
-        // ingested (e.g. user mutes someone mid-session).
         if self.suppression.is_suppressed_author(&event.author)
             || self.suppression.is_suppressed_event(&event.id)
         {
@@ -392,64 +89,74 @@ impl ObservedProjectionSink for ModularTimelineProjection {
         let Ok(mut inner) = self.inner.lock() else {
             return;
         };
-        let ctx = ViewContext::default();
-        // kind:0 carries no card and the row denormalizes no profile display
-        // (the shell resolves via `refs.profile`, ADR-0063), so profile events
-        // are inert for this projection — skip them.
         if profile_from_event(event).is_some() {
             return;
         }
-        if has_render_card(event) {
-            let card = TimelineEventCard::from_event(event);
-            inner.cards.insert(event.id.clone(), card);
+        if crate::try_from_kernel_event(event).is_some() {
+            inner.events.insert(
+                event.id.clone(),
+                TimelineEventIndex {
+                    author_pubkey: event.author.clone(),
+                    created_at: event.created_at,
+                },
+            );
         }
+        let ctx = ViewContext::default();
         let _ = Nip10ModularTimelineView::on_event_inserted(&ctx, &mut inner.state, event);
-        // delta unused — projection takes snapshots directly
     }
 }
 
 fn sorted_projection_blocks(inner: &Inner) -> Vec<TimelineBlock> {
     let ctx = ViewContext::default();
     let payload: ModularTimelinePayload = Nip10ModularTimelineView::snapshot(&ctx, &inner.state);
-    nmp_feed::sorted_blocks(payload.blocks, &inner.cards)
+    let mut blocks = payload.blocks;
+    blocks.sort_by(|left, right| {
+        let left_cursor = block_sort_cursor(left, &inner.events);
+        let right_cursor = block_sort_cursor(right, &inner.events);
+        right_cursor.cmp(&left_cursor)
+    });
+    blocks
 }
 
-/// Filter `blocks` by removing any block whose root (first) event id belongs
-/// to a suppressed author or is itself a suppressed event id.
-///
-/// Consulting the cards map is the only way to resolve event id → author
-/// without a second lookup structure; the cards map is always up to date.
-/// Blocks whose root event id is not in the cards map are passed through
-/// (fail-open, consistent with the suppression trait contract).
-///
-/// This is the **snapshot-time** suppression gate. It handles events that
-/// arrived before a mute was applied — the ingest-time gate in
-/// `on_kernel_event` handles new arrivals after a mute.
+fn block_sort_cursor(
+    block: &TimelineBlock,
+    events: &BoundedMessageMap<String, TimelineEventIndex>,
+) -> (u64, String) {
+    block_event_ids(block)
+        .into_iter()
+        .filter_map(|id| events.get(&id).map(|event| (event.created_at, id)))
+        .max()
+        .unwrap_or_default()
+}
+
 fn suppress_blocks(
     blocks: &[TimelineBlock],
-    cards: &BoundedMessageMap<String, TimelineEventCard>,
+    events: &BoundedMessageMap<String, TimelineEventIndex>,
     suppression: &dyn SuppressionLookup,
 ) -> Vec<TimelineBlock> {
     blocks
         .iter()
         .filter(|block| {
-            // Each block's first event id is the root/OP note.
-            let Some(root_id) = block.feed_event_ids().into_iter().next() else {
-                // Block has no event ids — pass through (defensive).
+            let Some(root_id) = block_event_ids(block).into_iter().next() else {
                 return true;
             };
             if suppression.is_suppressed_event(&root_id) {
                 return false;
             }
-            if let Some(card) = cards.get(&root_id) {
-                if suppression.is_suppressed_author(&card.author_pubkey) {
-                    return false;
-                }
-            }
-            true
+            events
+                .get(&root_id)
+                .map(|event| !suppression.is_suppressed_author(&event.author_pubkey))
+                .unwrap_or(true)
         })
         .cloned()
         .collect()
+}
+
+fn block_event_ids(block: &TimelineBlock) -> Vec<String> {
+    match block {
+        TimelineBlock::Standalone { id, .. } => vec![id.clone()],
+        TimelineBlock::Module { events, .. } => events.clone(),
+    }
 }
 
 #[cfg(test)]

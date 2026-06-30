@@ -3791,6 +3791,7 @@ dependencies = [
  "nmp-nip57",
  "nmp-nip84",
  "nmp-nostr-id",
+ "nmp-note-feed",
  "nmp-ownership",
  "nmp-planner",
  "nmp-replies",
@@ -3940,6 +3941,7 @@ dependencies = [
  "nmp-nip50",
  "nmp-nip51",
  "nmp-nip84",
+ "nmp-note-feed",
  "nmp-ownership",
  "nmp-replies",
  "nmp-signer-iface",
@@ -4059,6 +4061,7 @@ dependencies = [
  "nmp-nip50",
  "nmp-nip51",
  "nmp-nip57",
+ "nmp-note-feed",
  "nmp-ownership",
  "nmp-planner",
  "nmp-signer-iface",
@@ -4094,10 +4097,7 @@ name = "nmp-nip01"
 version = "0.8.4"
 dependencies = [
  "flatbuffers",
- "nmp-content",
  "nmp-core",
- "nmp-feed",
- "nmp-nip18",
  "nmp-nostr-id",
  "nmp-ownership",
  "nmp-planner",
@@ -4451,6 +4451,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-note-feed"
+version = "0.8.4"
+dependencies = [
+ "flatbuffers",
+ "nmp-content",
+ "nmp-core",
+ "nmp-feed",
+ "nmp-nip01",
+ "nmp-nip18",
+ "nmp-ownership",
+ "nmp-planner",
+ "nmp-threading",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "nmp-nwc"
 version = "0.8.4"
 dependencies = [
@@ -4642,6 +4659,7 @@ dependencies = [
  "nmp-nip77",
  "nmp-nip84",
  "nmp-nostr-id",
+ "nmp-note-feed",
  "nmp-nwc",
  "nmp-ownership",
  "nmp-planner",

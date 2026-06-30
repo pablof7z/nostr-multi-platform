@@ -7,50 +7,7 @@ use crate::support::{
 /// PR removes each line when it deletes the field. Do NOT add new entries — a
 /// new banned field with a different name fires even inside a file that already
 /// carries a *different* baselined field (no file-level masking).
-const RULE_A_BASELINE: &[(&str, &str)] = &[
-    // #2510 / #2508 — op-centric timeline render cards in nmp-nip01.
-    (
-        "crates/nmp-nip01/schema/timeline_snapshot.fbs",
-        "author_display",
-    ),
-    (
-        "crates/nmp-nip01/schema/timeline_snapshot.fbs",
-        "author_display_name",
-    ),
-    (
-        "crates/nmp-nip01/schema/timeline_snapshot.fbs",
-        "author_picture_url",
-    ),
-    (
-        "crates/nmp-nip01/schema/timeline_snapshot.fbs",
-        "content_preview",
-    ),
-    (
-        "crates/nmp-nip01/schema/timeline_snapshot.fbs",
-        "content_render",
-    ),
-    (
-        "crates/nmp-nip01/schema/timeline_snapshot.fbs",
-        "has_author_display_name",
-    ),
-    (
-        "crates/nmp-nip01/schema/timeline_snapshot.fbs",
-        "has_author_picture_url",
-    ),
-    (
-        "crates/nmp-nip01/src/timeline_projection/render_data.rs",
-        "author_display",
-    ),
-    (
-        "crates/nmp-nip01/src/timeline_projection/render_data.rs",
-        "content_preview",
-    ),
-    ("crates/nmp-nip01/schema/op_feed.fbs", "author_display"),
-    (
-        "crates/nmp-nip01/src/op_feed/attribution.rs",
-        "author_display",
-    ),
-];
+const RULE_A_BASELINE: &[(&str, &str)] = &[];
 
 /// Banned tokens for a display/render FIELD declaration (substring match).
 const RULE_A_BANNED: &[&str] = &[
@@ -145,5 +102,52 @@ fn rule_a_no_display_enrichment_in_primitives() {
          (crate-boundaries.md §display-separation).",
         RULE_A_BASELINE,
         &occs,
+    );
+}
+
+#[test]
+fn rule_a_nip01_must_not_reintroduce_feed_render_contracts() {
+    let banned = [
+        "TimelineEventCard",
+        "RootCard",
+        "OpFeedSnapshot",
+        "ContentRenderData",
+        "content_render",
+        "cards:[",
+        "card:TimelineEventCard",
+        "nmp.nip01.opfeed",
+        "NOFS",
+        "register_op_feed",
+        "FlatFeed",
+        "Nip10ReplyAttribution",
+    ];
+    let mut files = Vec::new();
+    let crate_dir = crates_dir().join("nmp-nip01");
+    collect_files(&crate_dir.join("src"), &["rs"], &mut files);
+    collect_files(&crate_dir.join("schema"), &["fbs"], &mut files);
+
+    let mut violations = Vec::new();
+    for file in files {
+        if rel(&file).contains("wire/generated/") {
+            continue;
+        }
+        let content = read(&file);
+        for (line_idx, line) in content.lines().enumerate() {
+            for token in banned {
+                if line.contains(token) {
+                    violations.push(format!(
+                        "{}:{} contains `{token}`",
+                        rel(&file),
+                        line_idx + 1
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "nmp-nip01 must not own feed/render contract vocabulary after #2510:\n{}",
+        violations.join("\n")
     );
 }

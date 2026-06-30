@@ -326,8 +326,8 @@ fn mixed_primary_kinds_derive_kind6_and_kind16_without_secondary_hydration() {
         move |author| author == source_pubkey
     });
     let op_feed =
-        nmp_nip01::register_op_feed("viewer".to_string(), follow_predicate, Arc::new(|_| None));
-    let op_observer = nmp_nip01::op_feed::op_feed_observer(
+        nmp_note_feed::register_op_feed("viewer".to_string(), follow_predicate, Arc::new(|_| None));
+    let op_observer = nmp_note_feed::op_feed::op_feed_observer(
         Arc::clone(&op_feed),
         Arc::new(|_| None),
         empty_suppression_lookup(),

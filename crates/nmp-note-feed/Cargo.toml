@@ -1,0 +1,23 @@
+[package]
+name = "nmp-note-feed"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository.workspace = true
+description = "Reusable note-feed composition: OP/flat feed projections that compose NIP-01, NIP-10, and NIP-18 facts into typed feed rows."
+
+[dependencies]
+flatbuffers = { workspace = true }
+nmp-content = { path = "../nmp-content" }
+nmp-core = { path = "../nmp-core", default-features = false }
+nmp-feed = { path = "../nmp-feed" }
+nmp-nip01 = { path = "../nmp-nip01" }
+nmp-nip18 = { path = "../nmp-nip18" }
+nmp-ownership = { workspace = true }
+nmp-planner = { path = "../nmp-planner", default-features = false }
+nmp-threading = { path = "../nmp-threading" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+nmp-core = { path = "../nmp-core", features = ["test-support"] }

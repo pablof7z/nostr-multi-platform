@@ -10,11 +10,10 @@ namespace nmp.content;
 // rather than a union — unions are harder to keep stable across the Swift /
 // Kotlin / TypeScript runtimes this buffer crosses.
 //
-// Scope: this schema encodes ONLY `ContentTreeWire` and its node arena. The
-// `ContentRenderData` sidecar (profile/event embed lookup tables) is owned by
-// `nmp-nip01` (`crates/nmp-nip01/src/timeline_projection.rs`) and is encoded
-// there, not here — nmp-content is Layer A and must not gain a backward edge
-// to nmp-nip01.
+// Scope: this schema encodes ONLY `ContentTreeWire` and its node arena.
+// Resolved embedded-event envelopes use `embed_sidecar.fbs`; feed/item owners
+// embed `ContentTreeWire` as opaque NFCT bytes instead of adding render policy
+// here.
 //
 // FlatBuffers runtime pins follow the project policy documented in
 // `crates/nmp-core/schema/nmp_update.fbs`. Regenerate the checked-in Rust

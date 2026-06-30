@@ -40,6 +40,7 @@ nmp-store = { path = "../nmp-store" }
 nmp-content = { path = "../nmp-content" }
 nmp-feed = { path = "../nmp-feed" }
 nmp-kinds = { path = "../nmp-kinds" }
+nmp-note-feed = { path = "../nmp-note-feed" }
 nmp-nip01 = { path = "../nmp-nip01" }
 nmp-nip02 = { path = "../nmp-nip02" }
 nmp-nip05 = { path = "../nmp-nip05" }

@@ -166,14 +166,16 @@ fn req_sub_for_kind(outbound: &[nmp_core::OutboundMessage], kind: u32) -> Option
     })
 }
 
-fn decode_home_feed(frame: &crate::runtime::SnapshotOutcome) -> nmp_nip01::op_feed::OpFeedSnapshot {
+fn decode_home_feed(
+    frame: &crate::runtime::SnapshotOutcome,
+) -> nmp_note_feed::op_feed::OpFeedSnapshot {
     let crate::runtime::SnapshotOutcome::Frame(bytes) = frame else {
         panic!("expected snapshot frame, got {frame:?}");
     };
     let typed = nmp_core::decode_snapshot_typed_projections(bytes).expect("frame decodes");
     let row = typed
         .into_iter()
-        .find(|row| row.key == nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY)
+        .find(|row| row.key == nmp_note_feed::op_feed::OP_FEED_SNAPSHOT_KEY)
         .expect("home feed projection must be present");
-    nmp_nip01::op_feed::decode_op_feed_snapshot(&row.payload).expect("NOFS payload decodes")
+    nmp_note_feed::op_feed::decode_op_feed_snapshot(&row.payload).expect("NNFS payload decodes")
 }

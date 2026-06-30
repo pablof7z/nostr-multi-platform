@@ -295,14 +295,14 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
     ProjectionContract {
         key: "nmp.feed.home",
         tier: ProjectionTier::HostRegistered,
-        producer: "nmp-nip01 op-feed pilot",
+        producer: "nmp-note-feed op-feed",
         owner_claim: "projection.nmp.feed.home",
-        // The op-feed pilot — the only case where the producer key differs from
-        // schema_id.
-        schema_id: "nmp.nip01.opfeed",
-        file_identifier: "NOFS",
-        // nmp-nip01 op_feed/typed_wire::OP_FEED_SCHEMA_VERSION
-        version: 2,
+        // The projection key stays stable while the feed-owned schema identity
+        // lives with the composition crate.
+        schema_id: "nmp.note_feed.opfeed",
+        file_identifier: "NNFS",
+        // nmp-note-feed op_feed/typed_wire::OP_FEED_SCHEMA_VERSION
+        version: 1,
         declaration_policy: DeclarationPolicy::RegistrationGated,
         dependency_versions: &[],
         presence_policy: PresencePolicy::None,

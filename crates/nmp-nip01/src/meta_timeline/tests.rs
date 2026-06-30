@@ -16,18 +16,6 @@ fn note(id: &str, ts: u64, tags: Vec<Vec<String>>) -> KernelEvent {
     }
 }
 
-fn repost(id: &str, ts: u64, target: &str) -> KernelEvent {
-    KernelEvent {
-        id: id.into(),
-        author: "reposter".into(),
-        kind: KIND_REPOST,
-        created_at: ts,
-        tags: vec![vec!["e".into(), target.into()]],
-        content: String::new(),
-        relay_provenance: Vec::new(),
-    }
-}
-
 fn marked(id: &str, ts: u64, root: &str, parent: &str) -> KernelEvent {
     note(
         id,
@@ -124,75 +112,6 @@ fn author_filter_excludes_others() {
 }
 
 #[test]
-fn repost_supersedes_original_and_keeps_layout_to_one_block() {
-    // A kind:6 repost of a note already in the feed bumps the original to the
-    // repost's position rather than stacking a second block — NIP-18
-    // supersession via `ParentResolver::supersedes`.
-    let spec = ModularTimelineSpec {
-        viewer: "me".into(),
-        kinds: vec![KIND_SHORT_TEXT_NOTE, KIND_REPOST],
-        authors: None,
-        policy: ModulePolicy::default(),
-    };
-    let (mut s, _) = Nip10ModularTimelineView::open(&ctx(), &spec);
-    let root = note("R", 1, vec![]);
-    let boost = repost("B", 2, "R");
-
-    let _ = Nip10ModularTimelineView::on_event_inserted(&ctx(), &mut s, &root);
-    let _ = Nip10ModularTimelineView::on_event_inserted(&ctx(), &mut s, &boost);
-    let snap = Nip10ModularTimelineView::snapshot(&ctx(), &s);
-
-    assert_eq!(
-        snap.blocks.len(),
-        1,
-        "repost must evict the original's block"
-    );
-    assert!(matches!(
-        &snap.blocks[0],
-        TimelineBlock::Standalone { id, .. } if id == "B"
-    ));
-}
-
-#[test]
-fn repost_arriving_before_original_suppresses_the_late_original() {
-    // Relay-order opposite: the repost reaches us first, then the kind:1 it
-    // targets. The original must still be suppressed so the note renders once
-    // at the repost's slot.
-    let spec = ModularTimelineSpec {
-        viewer: "me".into(),
-        kinds: vec![KIND_SHORT_TEXT_NOTE, KIND_REPOST],
-        authors: None,
-        policy: ModulePolicy::default(),
-    };
-    let (mut s, _) = Nip10ModularTimelineView::open(&ctx(), &spec);
-    let boost = repost("B", 2, "R");
-    let root = note("R", 1, vec![]);
-
-    let _ = Nip10ModularTimelineView::on_event_inserted(&ctx(), &mut s, &boost);
-    let _ = Nip10ModularTimelineView::on_event_inserted(&ctx(), &mut s, &root);
-    let snap = Nip10ModularTimelineView::snapshot(&ctx(), &s);
-
-    assert_eq!(
-        snap.blocks.len(),
-        1,
-        "late-arriving original must stay suppressed"
-    );
-    assert!(matches!(
-        &snap.blocks[0],
-        TimelineBlock::Standalone { id, .. } if id == "B"
-    ));
-}
-
-#[test]
-fn nip10_resolver_supersedes_returns_target_only_for_kind_6() {
-    let plain = note("X", 1, vec![]);
-    assert!(Nip10Resolver.supersedes(&plain).is_none());
-
-    let boost = repost("B", 2, "R");
-    assert_eq!(Nip10Resolver.supersedes(&boost).as_deref(), Some("R"));
-}
-
-#[test]
 fn effective_kinds_defaults_to_kind_1_when_empty() {
     let spec = ModularTimelineSpec {
         viewer: "me".into(),
@@ -204,15 +123,14 @@ fn effective_kinds_defaults_to_kind_1_when_empty() {
 }
 
 #[test]
-fn effective_kinds_passes_explicit_kinds_through_verbatim() {
+fn effective_kinds_filters_to_kind_1() {
     let spec = ModularTimelineSpec {
         viewer: "me".into(),
         kinds: vec![1, 6, 16],
         authors: None,
         policy: ModulePolicy::default(),
     };
-    // No defaulting, no sorting at this layer — `key()` owns ordering.
-    assert_eq!(spec.effective_kinds(), vec![1, 6, 16]);
+    assert_eq!(spec.effective_kinds(), vec![1]);
 }
 
 fn spec_with(kinds: Vec<u32>, authors: Option<Vec<&str>>) -> ModularTimelineSpec {
@@ -229,7 +147,7 @@ fn key_is_order_independent_for_kinds() {
     // Two specs with the same kind *set* in different input order must key
     // identically — otherwise the same logical view opens twice.
     let a = Nip10ModularTimelineView::key(&spec_with(vec![16, 1, 6], None));
-    let b = Nip10ModularTimelineView::key(&spec_with(vec![1, 6, 16], None));
+    let b = Nip10ModularTimelineView::key(&spec_with(vec![1], None));
     assert_eq!(a, b);
 }
 
@@ -301,15 +219,6 @@ fn resolver_returns_none_for_a_thread_root() {
     assert!(Nip10Resolver.parent(&root).is_none());
     assert!(Nip10Resolver.root(&root).is_none());
     assert!(Nip10Resolver.parent_author(&root).is_none());
-}
-
-#[test]
-fn resolver_ignores_repost_e_tags_as_thread_edges() {
-    let boost = repost("B", 2, "R");
-
-    assert!(Nip10Resolver.parent(&boost).is_none());
-    assert!(Nip10Resolver.root(&boost).is_none());
-    assert!(Nip10Resolver.parent_author(&boost).is_none());
 }
 
 #[test]

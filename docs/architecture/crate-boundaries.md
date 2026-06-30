@@ -41,7 +41,7 @@ implementation is injected at composition time.
 | 1 | Storage, network transport, concrete signer transport | `nmp-store`, `nmp-nostr-lmdb`, `nmp-network`, `nmp-signers` |
 | 2 | Routing and subscription planning algorithms | `nmp-router`, `nmp-planner` |
 | 3 | Kernel substrate contracts and actor state | `nmp-core`, `nmp-coverage-gate` |
-| 4 | Reusable Nostr protocol/product modules | `nmp-nip01`, `nmp-replies`, `nmp-nip02`, `nmp-nip17`, `nmp-nip18`, `nmp-nip29`, `nmp-nip42`, `nmp-nip47`, `nmp-nip51`, `nmp-nip57`, `nmp-nip60`, `nmp-nip77`, `nmp-nwc`, `nmp-marmot`, `nmp-threading`, `nmp-feed`, `nmp-wot`, `nmp-content`, `nmp-content-fixtures` |
+| 4 | Reusable Nostr protocol/product modules | `nmp-nip01`, `nmp-note-feed`, `nmp-replies`, `nmp-nip02`, `nmp-nip17`, `nmp-nip18`, `nmp-nip29`, `nmp-nip42`, `nmp-nip47`, `nmp-nip51`, `nmp-nip57`, `nmp-nip60`, `nmp-nip77`, `nmp-nwc`, `nmp-marmot`, `nmp-threading`, `nmp-feed`, `nmp-wot`, `nmp-content`, `nmp-content-fixtures` |
 | 5 | App composition | `apps/<app>/...` Rust crates and runtime builders that explicitly compose substrate/protocol/app features |
 | 6 | Platform runtimes, bindings, and deliverables | `nmp-native-runtime`, `nmp-uniffi`, `nmp-browser-runtime`, app-owned delivery crates |
 | Sidecars | Tooling, tests, diagnostics | `nmp-cli`, `nmp-codegen`, `nmp-testing`, app shells |
@@ -231,10 +231,15 @@ Examples:
 
 - `nmp-nip01` owns base note/profile/reply primitives: the kind:1 note
   builder/decoder, reply/thread views, kind:0 profile + kind:3 contacts caches,
-  and the note timeline/OP-feed surface. It does not own social/action-row
-  aggregation. Counts, loading state, and teardown for replies, reactions,
-  reposts, zaps, bookmarks, mutes, and other markers belong to the concept crate
-  that defines that behavior.
+  and NIP-10 timeline grouping. It does not own concrete feed rows, render
+  payloads, social/action-row aggregation, or OP-feed wire. Counts, loading
+  state, and teardown for replies, reactions, reposts, zaps, bookmarks, mutes,
+  and other markers belong to the concept crate that defines that behavior.
+- `nmp-note-feed` owns concrete note-feed composition: OP/flat feed rows,
+  home-feed typed wire, repost row composition, and feed projection keys.
+  It composes `nmp-nip01` kind:1/NIP-10 facts, `nmp-nip18` repost facts,
+  `nmp-content` content trees, and `nmp-feed` mechanics; it does not own
+  relation-count concepts or app render policy.
 - `nmp-replies` owns app-facing reply policy and read planning: a `ReplyTarget`
   plus content becomes either a NIP-10 kind:1 note or a NIP-22 kind:1111
   comment. Apps do not choose tag names, NIP-10 markers, NIP-22 root scopes, or
