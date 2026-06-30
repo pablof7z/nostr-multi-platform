@@ -4,12 +4,11 @@
 
 use crate::action::{
     CreateInviteInput, CreatePublicGroupInput, DiscoverGroupsInput, EditMetadataInput, GroupAccess,
-    GroupEventTarget, GroupVisibility, JoinGroupInput, LeaveGroupInput, PublishGroupEventInput,
-    PutUserInput, ReactInGroupInput, RepostInGroupInput, SetParentInput, ShareEventInGroupInput,
-    UnreactInGroupInput,
+    GroupVisibility, JoinGroupInput, LeaveGroupInput, PublishGroupEventInput, PutUserInput,
+    SetParentInput,
 };
 use crate::group_id::GroupId;
-use nmp_core::substrate::{ActionPayload, ActionPayloadDecodeError};
+use nmp_core::substrate::ActionPayload;
 
 fn group() -> GroupId {
     GroupId::new("wss://groups.example.com", "room")
@@ -93,7 +92,12 @@ fn publish_round_trips_with_kind_content_and_tags() {
         kind: 9,
         content: "hello".to_string(),
         tags: vec![
-            vec!["e".to_string(), "cc".to_string(), String::new(), "reply".to_string()],
+            vec![
+                "e".to_string(),
+                "cc".to_string(),
+                String::new(),
+                "reply".to_string(),
+            ],
             vec!["t".to_string(), "nostr".to_string()],
         ],
     };
@@ -153,130 +157,6 @@ fn create_defaults_and_presence() {
     assert_eq!(d.visibility, GroupVisibility::Public);
     assert_eq!(d.access, GroupAccess::Open);
     assert!(d.parent.is_none());
-}
-
-// --- react_in_group ----------------------------------------------------------
-
-#[test]
-fn react_round_trips_and_preserves_author_presence() {
-    let with_author = ReactInGroupInput {
-        group: group(),
-        target_event_id: "deadbeef".to_string(),
-        target_author_pubkey: Some("author".to_string()),
-        content: "+".to_string(),
-    };
-    assert_eq!(
-        ReactInGroupInput::decode(&with_author.encode()).expect("decodes"),
-        with_author
-    );
-    let none = ReactInGroupInput {
-        target_author_pubkey: None,
-        ..with_author.clone()
-    };
-    assert!(ReactInGroupInput::decode(&none.encode())
-        .expect("decodes")
-        .target_author_pubkey
-        .is_none());
-    let empty = ReactInGroupInput {
-        target_author_pubkey: Some(String::new()),
-        ..with_author
-    };
-    assert_eq!(
-        ReactInGroupInput::decode(&empty.encode())
-            .expect("decodes")
-            .target_author_pubkey
-            .as_deref(),
-        Some("")
-    );
-}
-
-// --- unreact_in_group --------------------------------------------------------
-
-#[test]
-fn unreact_round_trips() {
-    let action = UnreactInGroupInput {
-        group: group(),
-        reaction_event_id: "ab".repeat(32),
-    };
-    assert_eq!(
-        UnreactInGroupInput::decode(&action.encode()).expect("decodes"),
-        action
-    );
-}
-
-// --- share_event_in_group / repost_in_group ----------------------------------
-
-#[test]
-fn share_round_trips_with_tags_and_author() {
-    let action = ShareEventInGroupInput {
-        group: group(),
-        target: GroupEventTarget {
-            event_id: "tid".to_string(),
-            author_pubkey: Some("auth".to_string()),
-        },
-        content: "shared".to_string(),
-        additional_tags: vec![
-            vec!["t".to_string(), "nostr".to_string()],
-            vec!["alt".to_string()],
-        ],
-    };
-    assert_eq!(
-        ShareEventInGroupInput::decode(&action.encode()).expect("decodes"),
-        action
-    );
-}
-
-#[test]
-fn share_preserves_author_presence_and_empty_tags() {
-    let action = ShareEventInGroupInput {
-        group: group(),
-        target: GroupEventTarget {
-            event_id: "tid".to_string(),
-            author_pubkey: None,
-        },
-        content: String::new(),
-        additional_tags: Vec::new(),
-    };
-    let d = ShareEventInGroupInput::decode(&action.encode()).expect("decodes");
-    assert!(d.target.author_pubkey.is_none());
-    assert!(d.additional_tags.is_empty());
-    assert_eq!(d.content, "");
-}
-
-#[test]
-fn repost_round_trips() {
-    let action = RepostInGroupInput {
-        group: group(),
-        target: GroupEventTarget {
-            event_id: "tid".to_string(),
-            author_pubkey: Some("auth".to_string()),
-        },
-        content: "rp".to_string(),
-        additional_tags: vec![vec!["e".to_string(), "x".to_string()]],
-    };
-    assert_eq!(
-        RepostInGroupInput::decode(&action.encode()).expect("decodes"),
-        action
-    );
-}
-
-#[test]
-fn share_and_repost_identifiers_are_distinct() {
-    // A share buffer must NOT decode as a repost (distinct file identifiers).
-    let share = ShareEventInGroupInput {
-        group: group(),
-        target: GroupEventTarget {
-            event_id: "t".to_string(),
-            author_pubkey: None,
-        },
-        content: String::new(),
-        additional_tags: Vec::new(),
-    };
-    let bytes = share.encode();
-    assert!(matches!(
-        RepostInGroupInput::decode(&bytes),
-        Err(ActionPayloadDecodeError::Malformed { .. })
-    ));
 }
 
 // --- put_user ----------------------------------------------------------------

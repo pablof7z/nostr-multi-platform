@@ -34,7 +34,7 @@ table StringTag {
 table PublishGroupEventPayload {
   schema_version:uint;
   group:GroupRef (required);
-  // The event kind to author into the group (e.g. 9 chat, 11 thread, 7 react).
+  // The caller-supplied event kind to author into the group.
   kind:uint;
   // Optional content; defaults to empty when absent.
   content:string;

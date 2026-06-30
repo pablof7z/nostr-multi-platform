@@ -1,12 +1,12 @@
 //! `ActionPayload` codecs for the core group-lifecycle / content actions:
-//! `join`, `leave`, `publish_group_event`, `create_public_group`, and
-//! `react_in_group` (ADR-0064 / S9 #1747).
+//! `join`, `leave`, `publish_group_event`, and `create_public_group`
+//! (ADR-0064 / S9 #1747).
 
 use nmp_core::substrate::{ActionPayload, ActionPayloadDecodeError};
 
 use crate::action::{
     CreatePublicGroupInput, GroupAccess, GroupVisibility, JoinGroupInput, LeaveGroupInput,
-    PublishGroupEventInput, ReactInGroupInput, UnreactInGroupInput,
+    PublishGroupEventInput,
 };
 use crate::group_id::GroupId;
 
@@ -16,8 +16,6 @@ use super::create_public_group_action_generated::nmp::nip_29 as create_fb;
 use super::join_group_action_generated::nmp::nip_29 as join_fb;
 use super::leave_group_action_generated::nmp::nip_29 as leave_fb;
 use super::publish_group_event_action_generated::nmp::nip_29 as publish_fb;
-use super::react_in_group_action_generated::nmp::nip_29 as react_fb;
-use super::unreact_in_group_action_generated::nmp::nip_29 as unreact_fb;
 
 // --- JoinGroupInput ----------------------------------------------------------
 
@@ -170,7 +168,8 @@ impl ActionPayload for PublishGroupEventInput {
     }
 
     fn decode(bytes: &[u8]) -> Result<Self, ActionPayloadDecodeError> {
-        if bytes.len() < 8 || !publish_fb::publish_group_event_payload_buffer_has_identifier(bytes) {
+        if bytes.len() < 8 || !publish_fb::publish_group_event_payload_buffer_has_identifier(bytes)
+        {
             return Err(malformed("missing N29G file identifier"));
         }
         let root = publish_fb::root_as_publish_group_event_payload(bytes)
@@ -284,104 +283,5 @@ fn decode_access(a: create_fb::GroupAccess) -> GroupAccess {
         create_fb::GroupAccess::Closed => GroupAccess::Closed,
         // Default / unknown enum value decodes to Open (the schema default).
         _ => GroupAccess::Open,
-    }
-}
-
-// --- ReactInGroupInput -------------------------------------------------------
-
-impl ActionPayload for ReactInGroupInput {
-    const SCHEMA_ID: &'static str = "nmp.nip29.react_in_group";
-    const SCHEMA_VERSION: u32 = SCHEMA_VERSION;
-
-    fn encode(&self) -> Vec<u8> {
-        let mut fbb = flatbuffers::FlatBufferBuilder::new();
-        let host_relay_url = fbb.create_string(&self.group.host_relay_url);
-        let local_id = fbb.create_string(&self.group.local_id);
-        let group = react_fb::GroupRef::create(
-            &mut fbb,
-            &react_fb::GroupRefArgs {
-                host_relay_url: Some(host_relay_url),
-                local_id: Some(local_id),
-            },
-        );
-        let target_event_id = fbb.create_string(&self.target_event_id);
-        let target_author_pubkey = self
-            .target_author_pubkey
-            .as_ref()
-            .map(|s| fbb.create_string(s));
-        let content = fbb.create_string(&self.content);
-        let payload = react_fb::ReactInGroupPayload::create(
-            &mut fbb,
-            &react_fb::ReactInGroupPayloadArgs {
-                schema_version: SCHEMA_VERSION,
-                group: Some(group),
-                target_event_id: Some(target_event_id),
-                target_author_pubkey,
-                content: Some(content),
-            },
-        );
-        react_fb::finish_react_in_group_payload_buffer(&mut fbb, payload);
-        fbb.finished_data().to_vec()
-    }
-
-    fn decode(bytes: &[u8]) -> Result<Self, ActionPayloadDecodeError> {
-        if bytes.len() < 8 || !react_fb::react_in_group_payload_buffer_has_identifier(bytes) {
-            return Err(malformed("missing N29X file identifier"));
-        }
-        let root = react_fb::root_as_react_in_group_payload(bytes)
-            .map_err(|e| malformed(format!("not a valid ReactInGroupPayload buffer: {e}")))?;
-        gate_schema_version(root.schema_version())?;
-        let group = root.group();
-        Ok(ReactInGroupInput {
-            group: GroupId::new(group.host_relay_url(), group.local_id()),
-            target_event_id: root.target_event_id().to_string(),
-            target_author_pubkey: root.target_author_pubkey().map(str::to_string),
-            content: root.content().to_string(),
-        })
-    }
-}
-
-// --- UnreactInGroupInput -----------------------------------------------------
-
-impl ActionPayload for UnreactInGroupInput {
-    const SCHEMA_ID: &'static str = "nmp.nip29.unreact_in_group";
-    const SCHEMA_VERSION: u32 = SCHEMA_VERSION;
-
-    fn encode(&self) -> Vec<u8> {
-        let mut fbb = flatbuffers::FlatBufferBuilder::new();
-        let host_relay_url = fbb.create_string(&self.group.host_relay_url);
-        let local_id = fbb.create_string(&self.group.local_id);
-        let group = unreact_fb::GroupRef::create(
-            &mut fbb,
-            &unreact_fb::GroupRefArgs {
-                host_relay_url: Some(host_relay_url),
-                local_id: Some(local_id),
-            },
-        );
-        let reaction_event_id = fbb.create_string(&self.reaction_event_id);
-        let payload = unreact_fb::UnreactInGroupPayload::create(
-            &mut fbb,
-            &unreact_fb::UnreactInGroupPayloadArgs {
-                schema_version: SCHEMA_VERSION,
-                group: Some(group),
-                reaction_event_id: Some(reaction_event_id),
-            },
-        );
-        unreact_fb::finish_unreact_in_group_payload_buffer(&mut fbb, payload);
-        fbb.finished_data().to_vec()
-    }
-
-    fn decode(bytes: &[u8]) -> Result<Self, ActionPayloadDecodeError> {
-        if bytes.len() < 8 || !unreact_fb::unreact_in_group_payload_buffer_has_identifier(bytes) {
-            return Err(malformed("missing N29R file identifier"));
-        }
-        let root = unreact_fb::root_as_unreact_in_group_payload(bytes)
-            .map_err(|e| malformed(format!("not a valid UnreactInGroupPayload buffer: {e}")))?;
-        gate_schema_version(root.schema_version())?;
-        let group = root.group();
-        Ok(UnreactInGroupInput {
-            group: GroupId::new(group.host_relay_url(), group.local_id()),
-            reaction_event_id: root.reaction_event_id().to_string(),
-        })
     }
 }

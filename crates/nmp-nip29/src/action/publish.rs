@@ -29,7 +29,7 @@ use nmp_core::substrate::{
 use nmp_store::StoreQuery;
 use serde::{Deserialize, Serialize};
 
-use crate::cache::{EventIdPrefix, previous_tag_prefix};
+use crate::cache::{previous_tag_prefix, EventIdPrefix};
 use crate::group_id::GroupId;
 
 use super::publish_plan::PublishPlan;
@@ -89,10 +89,8 @@ fn previous_prefixes_from_context(
 /// group: the caller's tags, plus the injected `["h", local_id]` envelope tag
 /// and the `["previous", …]` timeline references read from the store cache.
 ///
-/// This is the single NIP-29 publish route; every group-publishing action
-/// (`publish_group_event`, `react_in_group`, `share_event_in_group`,
-/// `repost_in_group`) flows through it so the envelope is built in exactly one
-/// place.
+/// This is the single app-facing NIP-29 publish route, so the envelope is built
+/// in exactly one place.
 pub(crate) fn group_publish_plan(
     ctx: &ActionContext,
     group: &GroupId,

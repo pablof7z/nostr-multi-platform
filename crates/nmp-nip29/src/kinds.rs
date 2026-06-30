@@ -1,9 +1,8 @@
 //! NIP-29 event kinds + `h`-tag-based dispatch.
 //!
-//! Per `docs/design/nip29/kinds.md` §4: **any event carrying an `["h",
-//! group_id]` tag is a NIP-29 group event and lives in `nmp-nip29`, regardless
-//! of its kind.** This module classifies the kind, and `group_id_from_tags`
-//! pulls the `h` tag value if present.
+//! NIP-29 owns the group envelope and the kinds defined by NIP-29 itself. Foreign
+//! NIP or app kinds may carry an `["h", group_id]` envelope for group routing, but
+//! their semantics stay outside this crate.
 
 use crate::group_id::{GroupId, RelayUrl};
 
@@ -12,11 +11,9 @@ pub const KIND_CHAT_MESSAGE: u32 = 9;
 /// Group discussion / artifact share (kind 11) — only when `h` tag present.
 pub const KIND_DISCUSSION_OR_ARTIFACT: u32 = 11;
 
-// Note: NIP-29 deliberately does NOT define constants for kind:7 (NIP-25
-// reactions), kind:16 (NIP-18 reposts), or kind:9802 (NIP-84 highlights).
-// Those kinds are owned by their respective NIPs; NIP-29 only adds the
-// `h`-tag routing concern. Any kind that carries an `h` tag is a group event
-// (kinds.md §4) and falls through to `KindClass::UnknownGroupEvent` here.
+// Note: NIP-29 deliberately does NOT define constants for foreign NIP/app kinds.
+// Those semantics are owned outside this crate; h-tagged foreign kinds fall
+// through to `KindClass::UnknownGroupEvent`.
 
 // Moderation actions (9000-9009 + 9021 + 9022) — all admin-signed (9007/9021/9022 user).
 pub const KIND_PUT_USER: u32 = 9000;
@@ -44,23 +41,21 @@ pub enum KindClass {
     Moderation,
     /// User-signed user-management request (9021 / 9022).
     UserManagement,
-    /// Known h-tagged user-sent group event — currently only the
-    /// NIP-29-native kinds 9 (chat) and 11 (discussion/artifact). Cross-NIP
-    /// kinds (kind:7 reactions, kind:16 reposts, kind:9802 highlights, etc.)
-    /// are routed via `UnknownGroupEvent` because NIP-29 does not own them.
+    /// Known h-tagged user-sent group event — currently only the NIP-29-native
+    /// chat and discussion/artifact kinds. Foreign NIP/app kinds route via
+    /// `UnknownGroupEvent` because NIP-29 does not own them.
     KnownGroupEvent,
     /// Unknown-to-NIP-29 h-tagged kind — routed to `GroupContextEvent`
     /// fallback per `kinds.md` §2.1 "Future / extensibility". Includes any
-    /// cross-NIP kind that carries an `h` tag (e.g. kind:7, kind:16,
-    /// kind:9802) — those are owned by their respective NIP crates.
+    /// foreign NIP/app kind that carries an `h` tag.
     UnknownGroupEvent,
     /// Not a NIP-29 event at all.
     NotGroup,
 }
 
-/// Classify a (kind, `has_h_tag`) pair. The `h` tag is the routing key and the
-/// ownership discriminator (kinds.md §4); the kind is the dispatch.
-#[must_use] 
+/// Classify a (kind, `has_h_tag`) pair. The `h` tag is the routing key; NIP-29
+/// only owns semantics for the kinds it defines.
+#[must_use]
 pub fn classify(kind: u32, has_h_tag: bool) -> KindClass {
     match kind {
         KIND_GROUP_METADATA | KIND_GROUP_ADMINS | KIND_GROUP_MEMBERS | KIND_GROUP_ROLES => {
@@ -98,7 +93,7 @@ pub enum GroupEventClass {
 
 /// Refine a `KIND_DISCUSSION_OR_ARTIFACT` (kind 11) event by inspecting whether
 /// it carries `["t","discussion"]`.
-#[must_use] 
+#[must_use]
 pub fn classify_kind11(tags: &[Vec<String>]) -> GroupEventClass {
     let has_discussion_marker = tags
         .iter()
@@ -111,9 +106,7 @@ pub fn classify_kind11(tags: &[Vec<String>]) -> GroupEventClass {
 }
 
 /// Pick the owning `GroupEventClass` for a `KnownGroupEvent`. Returns `None`
-/// for any kind not natively owned by NIP-29 — cross-NIP h-tagged kinds
-/// (kind:7, kind:16, kind:9802, …) are classified as `UnknownGroupEvent` by
-/// [`classify`] and routed via the generic group-context fallback.
+/// for any kind not natively owned by NIP-29.
 #[must_use]
 pub fn group_event_class(kind: u32, tags: &[Vec<String>]) -> Option<GroupEventClass> {
     match kind {
@@ -124,7 +117,7 @@ pub fn group_event_class(kind: u32, tags: &[Vec<String>]) -> Option<GroupEventCl
 }
 
 /// Convenience: is this an h-tagged group event of any class?
-#[must_use] 
+#[must_use]
 pub fn event_is_group_event(kind: u32, tags: &[Vec<String>]) -> bool {
     let has_h = tags.iter().any(|t| t.len() >= 2 && t[0] == "h");
     !matches!(classify(kind, has_h), KindClass::NotGroup)
@@ -132,7 +125,7 @@ pub fn event_is_group_event(kind: u32, tags: &[Vec<String>]) -> bool {
 
 /// Pull the `h` tag value (the `local_id`) from an event's tags. Returns
 /// `None` if no `h` tag exists.
-#[must_use] 
+#[must_use]
 pub fn h_tag_value(tags: &[Vec<String>]) -> Option<&str> {
     tags.iter()
         .find(|t| t.len() >= 2 && t[0] == "h")
@@ -177,7 +170,7 @@ pub mod tags {
 }
 
 /// Pull the `d` tag value (parameterized-replaceable key for 39000–39003).
-#[must_use] 
+#[must_use]
 pub fn d_tag_value(tags: &[Vec<String>]) -> Option<&str> {
     tags.iter()
         .find(|t| t.len() >= 2 && t[0] == "d")
@@ -191,7 +184,7 @@ pub fn d_tag_value(tags: &[Vec<String>]) -> Option<&str> {
 /// `host_relay_url` MUST be the provenance relay — the relay that produced the
 /// event in our subscription stream. NIP-29 group identity is the pair
 /// `(host, local_id)` (`group_id.rs`); the relay is the trust anchor.
-#[must_use] 
+#[must_use]
 pub fn group_id_from_tags(host_relay_url: &RelayUrl, tags: &[Vec<String>]) -> Option<GroupId> {
     let local = h_tag_value(tags).or_else(|| d_tag_value(tags))?;
     Some(GroupId::new(host_relay_url.clone(), local.to_string()))
@@ -216,7 +209,10 @@ mod tests {
 
     #[test]
     fn classify_chat_with_h_is_known_group_event() {
-        assert_eq!(classify(KIND_CHAT_MESSAGE, true), KindClass::KnownGroupEvent);
+        assert_eq!(
+            classify(KIND_CHAT_MESSAGE, true),
+            KindClass::KnownGroupEvent
+        );
         assert_eq!(classify(KIND_CHAT_MESSAGE, false), KindClass::NotGroup);
     }
 

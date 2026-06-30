@@ -32,17 +32,17 @@ Treating NIP-29 as "just another kind range" would force NMP's kernel actor or M
 crates/
 ├── nmp-core/                  # kernel substrate — D0: knows nothing of groups
 ├── nmp-codegen/
-├── nmp-nip01/                 # profiles (kind:0) — exists post-M1
-├── nmp-nip02/                 # follows (kind:3) — exists post-M2
+├── nmp-nip01/                 # profiles — exists post-M1
+├── nmp-nip02/                 # follows — exists post-M2
 ├── nmp-nip17-nse/             # DMs — deferred to post-v1
-├── nmp-nip22/                 # comments (kind:1111)
-├── nmp-nip23/                 # long-form (kind:30023)
-├── nmp-nip25/                 # reactions (kind:7)
+├── nmp-nip22/                 # comments
+├── nmp-nip23/                 # long-form
+├── nmp-nip25/                 # reactions
 ├── nmp-nip29/                 # ← THIS CRATE — relay-based groups
 ├── nmp-nip51/                 # lists
-├── nmp-nip65/                 # mailboxes (kind:10002) — exists post-M2
-├── nmp-nip78/                 # app data (kind:30078)
-├── nmp-nip84/                 # highlights (kind:9802)
+├── nmp-nip65/                 # mailboxes — exists post-M2
+├── nmp-nip78/                 # app data
+├── nmp-nip84/                 # highlights
 ├── nmp-blossom/               # media uploads
 └── nmp-testing/
 ```
@@ -118,13 +118,15 @@ The user surfaces a product consumes may need joins against other crates. Per th
 |---|---|---|
 | `HydratedGroupChat` | `nmp-nip29::GroupChat` + `nmp-nip01::Profile` for each author | composite-key dependency tracking at the substrate level (ADR-0001) — `highlighter-core::HydratedGroupChat::dependencies()` enumerates both; the kernel reverse-index handles the join with no protocol-crate awareness |
 | `DiscussionsWithReplyCounts` | `nmp-nip29::GroupDiscussions` + `nmp-nip22::Comment { e: <discussion_id> }` per discussion root | Discussion replies in Highlighter today are *non-h-tagged* NIP-22 comments (verified per `kinds.md` §2.1 notes), so they live in `nmp-nip22` and route per the replier's NIP-65 write relays. The count + latest-reply join happens in `highlighter-core`'s `project()`. (If/when Highlighter changes its composer to attach `h`, the dependency shifts to `nmp-nip29::GroupComment` with no other code change — that's the point of the substrate's generic composite-key joins.) |
-| `GroupArtifactLanes` | `nmp-nip29::GroupArtifacts` (which already surfaces both kind:11 artifact shares + kind:16 reposts per §3.2) + `nmp-nip84::Highlight` deref'd from each share/repost's referenced event (`e` tag → `nmp-nip84::Highlight` for highlight reposts; `r`/`i`/`a` catalog tag → external artifact lookup for native artifact shares) | the deref chain happens in `highlighter-core`'s projection; `GroupArtifacts` is what subscribes (and therefore what makes the lanes update on new shares) |
+| `GroupArtifactLanes` | `nmp-nip29::GroupArtifacts` for NIP-29 artifact-share events + app-level dereferencing into highlight or external artifact projections | the deref chain happens in `highlighter-core`'s projection; `GroupArtifacts` is what subscribes (and therefore what makes the lanes update on new shares) |
 
 Why this works: the kernel's projection and interest machinery is generic. It does not care which protocol crate owns the projection data; the app Rust layer composes typed snapshots and opens whatever explicit interests that composed view needs.
 
 `nmp-nip29` ships its own non-hydrated views (`GroupChat`, `GroupDiscussions`, `GroupHome`, etc.) that are useful on their own (debugging UIs, tests, headless clients) without any cross-crate joins. The hydrated variants are app-level conveniences.
 
-For kind:16 (generic repost): the *h-tagged* repost is owned by `nmp-nip29::GroupRepost` in M11.5, because the routing is host-pin and no separate `nmp-nip18` crate exists yet (per §3.1). A future `nmp-nip18` extraction would lift only the *non-h* repost case out; the h-tagged variant stays in `nmp-nip29` either way because routing is the discriminator. `highlighter-core` never grows kind:16 ingest in any state — the consistency contract is firm.
+Foreign group-scoped event kinds are not owned by `nmp-nip29`. The app or
+kind-owning crate builds those events and uses `publish_group_event` for the
+NIP-29 envelope and host-relay routing only.
 
 ## 7. What's deferred vs in-scope
 

@@ -88,9 +88,9 @@ model. Minimum surface:
 | observed delivery | internal executor machinery only, declared after shape/scope/owner/replay | NIP-29 group feed internals |
 | `CapabilityModule` | request → native execution → typed result *envelope* (never `Result`) | [16 — Capabilities](16-capabilities.md) |
 
-The unifying ownership rule a protocol crate states explicitly
-(`nmp-nip29/src/kinds.rs`): "the kind is the dispatch; the `h` tag is
-the ownership." Pick *one* such rule and document it in your `lib.rs`.
+Each protocol crate states its ownership rule explicitly. For NIP-29, the `h`
+tag is the group envelope/routing key; it does not transfer ownership of
+foreign event-kind semantics into `nmp-nip29`.
 
 ### How `nmp-nip29` wires its seams
 
@@ -99,12 +99,11 @@ the ownership." Pick *one* such rule and document it in your `lib.rs`.
 ```rust
 // Called from an app-core composition root during init.
 pub fn register_actions(app: &mut impl AppHost) {
-    app.register_action(PostChatMessageAction);
-    app.register_action(ReactInGroupAction);
+    app.register_action(PublishGroupEventAction);
     app.register_action(CreatePublicGroupAction);
     app.register_action(DiscoverGroupsAction);
     app.register_action(JoinGroupAction);
-    // … 10 more ActionModules
+    // ... admin and lifecycle ActionModules
 }
 
 // Called separately after the read model is constructed.

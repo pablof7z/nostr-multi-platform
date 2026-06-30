@@ -6,7 +6,6 @@
 //! they do not own runtime state.
 
 pub mod action_dispatch;
-pub mod app_mirror;
 mod app_config_hooks;
 mod app_config_intent;
 mod app_config_search;
@@ -16,6 +15,7 @@ mod app_host_impl;
 mod app_impl_accessors;
 mod app_impl_core;
 mod app_impl_feeds;
+pub mod app_mirror;
 mod app_struct;
 mod app_sub_structs;
 mod capability;
@@ -63,10 +63,9 @@ pub use feed::{
 };
 pub use feed_session::{handle_projection_key, FeedCompiler, FeedOpenError, FeedTeardown};
 pub use group_feed::{
-    Nip25GroupReactionsHandle, Nip25GroupReactionsSession, Nip29GroupDiscoveryHandle,
-    Nip29GroupDiscoverySession, Nip29GroupEventsHandle, Nip29GroupEventsSession,
-    Nip29GroupRosterHandle, Nip29GroupRosterSession, Nip29JoinedGroupsHandle,
-    Nip29JoinedGroupsSession, DISCOVERED_GROUPS_KEY, GROUP_EVENTS_KEY, GROUP_REACTIONS_KEY,
+    Nip29GroupDiscoveryHandle, Nip29GroupDiscoverySession, Nip29GroupEventsHandle,
+    Nip29GroupEventsSession, Nip29GroupRosterHandle, Nip29GroupRosterSession,
+    Nip29JoinedGroupsHandle, Nip29JoinedGroupsSession, DISCOVERED_GROUPS_KEY, GROUP_EVENTS_KEY,
     GROUP_ROSTER_KEY, JOINED_GROUPS_KEY,
 };
 pub use intent::InputIntentDispatch;

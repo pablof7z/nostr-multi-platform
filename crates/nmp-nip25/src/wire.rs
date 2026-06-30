@@ -36,11 +36,6 @@ pub mod react_generated;
 #[path = "wire/generated/unreact_generated.rs"]
 pub mod unreact_generated;
 
-// Typed FlatBuffers codec for the NIP-25 reaction-aggregate READ projection
-// (the `nmp.nip25.reactions` typed sidecar). Distinct from the write-direction
-// react/unreact action payloads above.
-pub mod reaction_aggregate_fb;
-
 use nmp_core::substrate::{ActionPayload, ActionPayloadDecodeError};
 use react_generated::nmp::nip_25 as react_fb;
 use unreact_generated::nmp::nip_25 as unreact_fb;
@@ -52,7 +47,9 @@ use crate::action::{ReactAction, UnreactAction};
 pub const SCHEMA_VERSION: u32 = 1;
 
 fn malformed(reason: impl Into<String>) -> ActionPayloadDecodeError {
-    ActionPayloadDecodeError::Malformed { reason: reason.into() }
+    ActionPayloadDecodeError::Malformed {
+        reason: reason.into(),
+    }
 }
 
 // --- ReactAction -------------------------------------------------------------
@@ -65,8 +62,10 @@ impl ActionPayload for ReactAction {
         let mut fbb = flatbuffers::FlatBufferBuilder::new();
         let target_event_id = fbb.create_string(&self.target_event_id);
         let reaction = fbb.create_string(&self.reaction);
-        let target_author_pubkey =
-            self.target_author_pubkey.as_ref().map(|s| fbb.create_string(s));
+        let target_author_pubkey = self
+            .target_author_pubkey
+            .as_ref()
+            .map(|s| fbb.create_string(s));
         let payload = react_fb::ReactPayload::create(
             &mut fbb,
             &react_fb::ReactPayloadArgs {

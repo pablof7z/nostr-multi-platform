@@ -7,12 +7,9 @@
 //!
 //! ## Action layout
 //!
-//! - `publish` — `PublishGroupEvent`: the generic "publish this event to group X"
-//!   surface (any kind; injects the `h` / `previous` / pin envelope). NIP-29
-//!   owns the envelope, not the event kind — "chat" is just `kind:9`.
-//! - `composed` — `ReactInGroup` (kind:7+h): thin convenience over `publish`.
-//! - `group_event` — share/repost-in-group producers (kind:11/16+h): thin
-//!   convenience over `publish`.
+//! - `publish` — `PublishGroupEvent`: the single generic "publish this event to
+//!   group X" surface. NIP-29 injects the `h` / `previous` / pin envelope and
+//!   never owns caller-supplied event-kind semantics.
 //! - `create` — `CreatePublicGroup` (kind:9007 + kind:9002).
 //! - `discover` — `DiscoverGroups` (no publish; pushes a metadata interest).
 //! - `join` — `JoinGroup` (kind:9021, user-management request).
@@ -27,11 +24,9 @@
 //! other moderation actions remain out of this increment.
 
 mod admin;
-mod composed;
 mod create;
 mod discover;
 mod edit_metadata;
-mod group_event;
 mod join;
 mod leave;
 mod metadata_tags;
@@ -42,18 +37,11 @@ mod set_parent;
 pub use admin::{
     CreateInviteAction, CreateInviteInput, PutUserAction, PutUserInput, MAX_CODES_PER_INVITE_EVENT,
 };
-pub use composed::{
-    ReactInGroupAction, ReactInGroupInput, UnreactInGroupAction, UnreactInGroupInput,
-};
-pub use publish::{PublishGroupEventAction, PublishGroupEventInput, DEFAULT_PREVIOUS_LIMIT};
 pub use create::{CreatePublicGroupAction, CreatePublicGroupInput, GroupAccess, GroupVisibility};
 pub use discover::{DiscoverGroupsAction, DiscoverGroupsInput};
 pub use edit_metadata::{EditMetadataAction, EditMetadataInput};
-pub use group_event::{
-    GroupEventTarget, RepostInGroupAction, RepostInGroupInput, ShareEventInGroupAction,
-    ShareEventInGroupInput,
-};
 pub use join::{JoinGroupAction, JoinGroupInput};
 pub use leave::{LeaveGroupAction, LeaveGroupInput};
+pub use publish::{PublishGroupEventAction, PublishGroupEventInput, DEFAULT_PREVIOUS_LIMIT};
 pub use publish_plan::{PublishPlan, PublishPlanError, RelayPin};
 pub use set_parent::{SetParentAction, SetParentInput};

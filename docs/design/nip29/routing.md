@@ -112,22 +112,33 @@ How the planner resolves the host relay from the `h` tag value:
 - The `PublishPlan` type (M2 §7) gains an `Option<RelayPin>` field carried alongside the signed event. The pin is set by the action that constructs the plan, *not* derived from the event's tags at plan time.
 - For NIP-29-native publishes invoked via an `nmp-nip29::ActionModule`, the action's input includes the full `GroupId { host_relay_url, local_id }`. The action sets `relay_pin: Some(group_id.host_relay_url)` on the resulting `PublishPlan` before handing it to the planner. The publisher trusts the action; the planner sees only the typed pin.
 - For first-time publishes (CreateGroup, JoinRequest from an invite URI, explicit group import) the `GroupId` exists on the action input *before* any cache entry — the action carries `host_relay_url` directly into the pin without consulting `JoinedHostsCache`. The cache materialises *after* the publish succeeds (via the source-1 path in §4.3), so there's no chicken-and-egg.
-- For cross-protocol "publish in protocol X, then host-pin share into a group" flows (e.g. publish-and-share-highlight per `feature-inventory.md` §2.1), the *composing action lives in `highlighter-core`*, not in the X protocol crate. `nmp-nip84::PublishHighlight` stays group-unaware (it constructs a `PublishPlan` with `relay_pin: None`, routing per author write relays). The composing action `highlighter-core::PublishHighlightAndShareToGroup` invokes `nmp-nip84::PublishHighlight` for the kind:9802 leg, awaits its `ActionId`, then invokes `nmp-nip29::ShareEventIntoGroup` (which takes a typed `GroupId` and sets `relay_pin: Some(host)`) for the kind:16 host-pinned leg. **No protocol crate ever imports another protocol crate's `GroupId` or any other NIP-specific type; sequencing happens at the app layer.**
+- For cross-protocol "publish in protocol X, then publish a group-scoped
+  reference/event" flows, the composing action lives in the app layer, not in
+  either protocol crate. The kind-owning crate stays group-unaware for its own
+  publish. The app then dispatches `nmp.nip29.publish_group_event` with the
+  foreign event kind/content/tags; NIP-29 adds only the group envelope and host
+  pin. **No protocol crate ever imports another protocol crate's `GroupId` or
+  any other NIP-specific type; sequencing happens at the app layer.**
 
 This means **no string-typed `h` tags pass through the planner without a `RelayPin` carrier** — the carrier is on the `PublishPlan` itself, set by the action that knows the pin. The planner consults the typed pin field for routing; **it does NOT inspect event tags to *derive* routing**. However — to prevent the privacy leak that would otherwise occur if a (possibly future, possibly third-party) action constructs an h-tagged event without setting `relay_pin` — the planner DOES perform a single **defensive structural check** before dispatch: *if the event being published carries any `["h", _]` tag AND `relay_pin` is `None`, the publish is rejected at construction time with a typed `MissingHostPinForGroupEvent` error*. The action must either set `relay_pin` (correct) or strip the `h` tag (also correct; the event then routes normally). The test `nip29_publish_refuses_unpinned_h_tag_event` asserts this. This is the *only* tag-inspection the planner performs for NIP-29 — and it's a refusal, not a routing decision, so the "planner is crate-agnostic" property holds.
 
 ## 6. The "publish-and-share" dual-route problem (the load-bearing test case)
 
-The Highlighter `publish_and_share` (`highlights.rs:22-83`) is the cleanest example of the dual-routing the framework must handle:
+The generic "publish one event normally, then publish a group-scoped
+reference/event" flow is the load-bearing dual-routing case:
 
-1. Publish a kind:9802 highlight to the user's NIP-65 write relays.
-2. Publish a kind:16 generic repost with `["h", target_group_id]` to the target group's host relay.
+1. Publish the first event through its kind-owning crate to the normal relays.
+2. Publish the group-scoped event through `nmp.nip29.publish_group_event` to the
+   target group's host relay.
 
-Today Highlighter does this with two raw `client.send_event(&e)` calls in sequence. In NMP, the `ActionModule` definition has a *single* `dispatch()` entry point. M11.5's design is:
+Today some apps do this with two raw `client.send_event(&e)` calls in sequence.
+In NMP, the app-owned composing action sequences the two protocol-owned writes:
 
-- `nmp-nip84::PublishHighlight` is the simple kind:9802 publish, routes per author's write relays. **Group-unaware** — it imports nothing from `nmp-nip29` and knows no `GroupId` type.
-- `nmp-nip29::ShareEventIntoGroup { event_ref, group_id: GroupId }` is the kind:16 host-pinned share. **Highlight-unaware** — it imports nothing from `nmp-nip84` and knows no `Highlight` type.
-- `highlighter-core::PublishHighlightAndShareToGroup { draft, target_group: GroupId }` is the composing action that lives at the *app* layer. It invokes `nmp-nip84::PublishHighlight` first, awaits the resulting `ActionId`, then invokes `nmp-nip29::ShareEventIntoGroup { event_ref: <first_action_event_id>, group_id: <target_group> }`. The kernel's ActionLedger (planned M7) supports sequential dependencies between actions; this is a textbook use case.
+- The first protocol crate owns the first event and routes per its normal rule.
+- `nmp-nip29::PublishGroupEvent { group, kind, content, tags }` is the only
+  host-pinned group write seam. It is foreign-kind-unaware.
+- The app composing action invokes the first write, awaits the result if needed,
+  then invokes `publish_group_event` for the group-scoped event.
 
 This composition is **how cross-protocol surfaces stay clean in NMP**: each protocol crate owns its own write path with its own routing rule, neither importing the other; the cross-protocol sequencing lives in the app's own extension crate. **Protocol crates never import each other.**
 
@@ -148,7 +159,9 @@ These tests live in `nmp-testing/tests/` and run as part of the M11.5 exit gate 
 3. `nip29_publish_refuses_unpinned_h_tag_event` — given a publish whose event carries any `["h", _]` tag and whose `PublishPlan.relay_pin` is `None`, the planner refuses with typed `MissingHostPinForGroupEvent` at construction time. This is the privacy-leak prevention: the only structural inspection the planner does on event tags, and it's a refusal rather than a routing derivation.
 4. `nip29_relay_pin_blocks_filter_merge` — two `LogicalInterest`s with identical filter shapes but different `relay_pin` values do not merge into one wire-frame.
 5. `nip29_joined_groups_fans_out_across_hosts` — given a cache containing two host relays, the `JoinedGroups` view's dependency expansion produces exactly two `RelayPinned`s, one per host.
-6. `nip29_share_into_group_dual_routes_correctly` — the composed action `PublishHighlight` + `ShareEventIntoGroup` produces two wire-frame writes, one to author write-relays (highlight), one to host relay (share), in that order.
+6. `nip29_publish_group_event_dual_routes_correctly` — the composed action
+   produces two wire-frame writes, one to the first event's normal relays, one to
+   the group host relay via `publish_group_event`, in that order.
 7. `nip29_unauth_host_relay_pauses_module_activity` — a host relay in `ChallengeReceived` causes all module activity for that host to pause, surfacing in the diagnostics lane as `LogicalInterestStatus::AuthPaused`.
 
 Passing these seven tests is the NIP-29 routing-contract proof.

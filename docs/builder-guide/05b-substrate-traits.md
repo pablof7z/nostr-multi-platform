@@ -164,7 +164,7 @@ same seams scale to a real protocol with **zero new nouns in `nmp-core`**.
 
 ```
 nmp-nip29/src/
-├── action/          15 ActionModule impls (CreateGroup, JoinGroup, PostChat, …)
+├── action/          ActionModule impls (PublishGroupEvent, CreateGroup, JoinGroup, ...)
 ├── cache/           protocol-local caches (TOFU signer, recent events)
 ├── projection/      read model: NIP-29 group-chat aggregate
 ├── group_id.rs      GroupId { host_relay_url, local_id } — protocol noun
@@ -178,12 +178,11 @@ Registration (`crates/nmp-nip29/src/register.rs`):
 
 ```rust
 pub fn register_actions(app: &mut NmpApp) {
-    app.register_action(PostChatMessageAction);
-    app.register_action(ReactInGroupAction);
+    app.register_action(PublishGroupEventAction);
     app.register_action(CreatePublicGroupAction);
     app.register_action(DiscoverGroupsAction);
     app.register_action(JoinGroupAction);
-    // … 10 more
+    // ... admin and lifecycle ActionModules
 }
 ```
 

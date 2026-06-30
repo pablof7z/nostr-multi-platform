@@ -204,11 +204,6 @@ pub const PRODUCER_CONST_TARGETS: &[ProducerConstTarget] = &[
         "crates/nmp-nip17/src/wire/dm_relay_list_producer_consts.generated.rs",
     ),
     pub_target(
-        "nmp.nip25.reactions",
-        "REACTION_AGGREGATE",
-        "crates/nmp-nip25/src/wire/reaction_aggregate_producer_consts.generated.rs",
-    ),
-    pub_target(
         "nmp.nip29.group_events",
         "GROUP_EVENTS",
         "crates/nmp-nip29/src/wire/group_events_producer_consts.generated.rs",

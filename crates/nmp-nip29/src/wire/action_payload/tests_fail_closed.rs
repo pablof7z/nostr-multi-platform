@@ -3,10 +3,8 @@
 //! Every assertion is the NEGATIVE — a reject, never a silent decode.
 
 use crate::action::{
-    CreateInviteInput, CreatePublicGroupInput, DiscoverGroupsInput, GroupAccess, GroupEventTarget,
-    GroupVisibility, JoinGroupInput, LeaveGroupInput, PublishGroupEventInput, PutUserInput,
-    ReactInGroupInput, RepostInGroupInput, SetParentInput, ShareEventInGroupInput,
-    UnreactInGroupInput,
+    CreateInviteInput, CreatePublicGroupInput, DiscoverGroupsInput, GroupAccess, GroupVisibility,
+    JoinGroupInput, LeaveGroupInput, PublishGroupEventInput, PutUserInput, SetParentInput,
 };
 use crate::group_id::GroupId;
 use nmp_core::substrate::{ActionPayload, ActionPayloadDecodeError};
@@ -32,23 +30,7 @@ fn malformed_buffers_are_rejected_for_every_payload() {
         Err(ActionPayloadDecodeError::Malformed { .. })
     ));
     assert!(matches!(
-        ReactInGroupInput::decode(b"junk"),
-        Err(ActionPayloadDecodeError::Malformed { .. })
-    ));
-    assert!(matches!(
-        UnreactInGroupInput::decode(b"junk"),
-        Err(ActionPayloadDecodeError::Malformed { .. })
-    ));
-    assert!(matches!(
         CreatePublicGroupInput::decode(b"junk"),
-        Err(ActionPayloadDecodeError::Malformed { .. })
-    ));
-    assert!(matches!(
-        ShareEventInGroupInput::decode(b"junk"),
-        Err(ActionPayloadDecodeError::Malformed { .. })
-    ));
-    assert!(matches!(
-        RepostInGroupInput::decode(b"junk"),
         Err(ActionPayloadDecodeError::Malformed { .. })
     ));
     assert!(matches!(
@@ -129,22 +111,6 @@ fn wrong_file_identifier_is_rejected_for_every_payload() {
         }
     );
     assert_wrong_fid_rejected!(
-        ReactInGroupInput,
-        ReactInGroupInput {
-            group: group(),
-            target_event_id: "t".to_string(),
-            target_author_pubkey: None,
-            content: "+".to_string(),
-        }
-    );
-    assert_wrong_fid_rejected!(
-        UnreactInGroupInput,
-        UnreactInGroupInput {
-            group: group(),
-            reaction_event_id: "t".to_string(),
-        }
-    );
-    assert_wrong_fid_rejected!(
         CreatePublicGroupInput,
         CreatePublicGroupInput {
             group: group(),
@@ -154,30 +120,6 @@ fn wrong_file_identifier_is_rejected_for_every_payload() {
             visibility: GroupVisibility::Public,
             access: GroupAccess::Open,
             parent: None,
-        }
-    );
-    assert_wrong_fid_rejected!(
-        ShareEventInGroupInput,
-        ShareEventInGroupInput {
-            group: group(),
-            target: GroupEventTarget {
-                event_id: "t".to_string(),
-                author_pubkey: None
-            },
-            content: String::new(),
-            additional_tags: Vec::new(),
-        }
-    );
-    assert_wrong_fid_rejected!(
-        RepostInGroupInput,
-        RepostInGroupInput {
-            group: group(),
-            target: GroupEventTarget {
-                event_id: "t".to_string(),
-                author_pubkey: None
-            },
-            content: String::new(),
-            additional_tags: Vec::new(),
         }
     );
     assert_wrong_fid_rejected!(
@@ -288,22 +230,6 @@ fn wrong_schema_version_is_rejected_for_every_payload() {
         }
     );
     assert_bad_version!(
-        ReactInGroupInput,
-        ReactInGroupInput {
-            group: group(),
-            target_event_id: "t".to_string(),
-            target_author_pubkey: None,
-            content: "+".to_string(),
-        }
-    );
-    assert_bad_version!(
-        UnreactInGroupInput,
-        UnreactInGroupInput {
-            group: group(),
-            reaction_event_id: "t".to_string(),
-        }
-    );
-    assert_bad_version!(
         CreatePublicGroupInput,
         CreatePublicGroupInput {
             group: group(),
@@ -313,30 +239,6 @@ fn wrong_schema_version_is_rejected_for_every_payload() {
             visibility: GroupVisibility::Public,
             access: GroupAccess::Open,
             parent: None,
-        }
-    );
-    assert_bad_version!(
-        ShareEventInGroupInput,
-        ShareEventInGroupInput {
-            group: group(),
-            target: GroupEventTarget {
-                event_id: "t".to_string(),
-                author_pubkey: None
-            },
-            content: String::new(),
-            additional_tags: Vec::new(),
-        }
-    );
-    assert_bad_version!(
-        RepostInGroupInput,
-        RepostInGroupInput {
-            group: group(),
-            target: GroupEventTarget {
-                event_id: "t".to_string(),
-                author_pubkey: None
-            },
-            content: String::new(),
-            additional_tags: Vec::new(),
         }
     );
     assert_bad_version!(

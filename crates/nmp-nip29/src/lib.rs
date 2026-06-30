@@ -19,9 +19,9 @@
 //!
 //! - [`group_id`] — `GroupId { host_relay_url, local_id }` + URI codec.
 //! - [`kinds`] — NIP-29 kind constants and the `["h", ...]` dispatch helper.
-//! - [`action`] — the group `ActionModule` impls, fronted by the generic
-//!   `PublishGroupEvent` (publish any event to a group), plus react / share /
-//!   repost conveniences and the lifecycle/admin actions.
+//! - [`action`] — the group `ActionModule` impls, fronted by the single generic
+//!   `PublishGroupEvent` (publish caller-supplied event data to a group), plus
+//!   the lifecycle/admin actions.
 //! - [`cache`] — `previous_tag_prefix` helper, `JoinedHostsCache`,
 //!   `TofuSignerCache` (metadata-signer trust).
 //! - [`interest`] — helpers for constructing pinned `LogicalInterest`s.
@@ -55,9 +55,9 @@ pub use input_scope::{
 };
 pub use kinds::{event_is_group_event, group_id_from_tags, GroupEventClass, KindClass};
 pub use projection::{
-    DiscoveredGroup, DiscoveredGroupsProjection, DiscoveredGroupsSnapshot, GroupEvent,
-    GroupEventsProjection, GroupEventsSnapshot, GroupDefaultsProjection, GroupDefaultsSnapshot,
-    GroupRole, GroupRosterMember, GroupRosterProjection, GroupRosterSnapshot, JoinedGroup,
+    DiscoveredGroup, DiscoveredGroupsProjection, DiscoveredGroupsSnapshot, GroupDefaultsProjection,
+    GroupDefaultsSnapshot, GroupEvent, GroupEventsProjection, GroupEventsSnapshot, GroupRole,
+    GroupRosterMember, GroupRosterProjection, GroupRosterSnapshot, JoinedGroup,
     JoinedGroupsProjection, JoinedGroupsSnapshot, DEFAULT_PUBLIC_GROUP_RELAY_URL,
 };
 pub use register::register_actions;
@@ -67,13 +67,13 @@ pub use wire::discovered_groups_fb::{
     DISCOVERED_GROUPS_FILE_IDENTIFIER, DISCOVERED_GROUPS_SCHEMA_ID,
     DISCOVERED_GROUPS_SCHEMA_VERSION,
 };
-pub use wire::group_events_fb::{
-    decode_group_events_snapshot, encode_group_events_snapshot, GROUP_EVENTS_FILE_IDENTIFIER,
-    GROUP_EVENTS_SCHEMA_ID, GROUP_EVENTS_SCHEMA_VERSION,
-};
 pub use wire::group_defaults_fb::{
     decode_group_defaults_snapshot, encode_group_defaults_snapshot, GROUP_DEFAULTS_FILE_IDENTIFIER,
     GROUP_DEFAULTS_SCHEMA_ID, GROUP_DEFAULTS_SCHEMA_VERSION,
+};
+pub use wire::group_events_fb::{
+    decode_group_events_snapshot, encode_group_events_snapshot, GROUP_EVENTS_FILE_IDENTIFIER,
+    GROUP_EVENTS_SCHEMA_ID, GROUP_EVENTS_SCHEMA_VERSION,
 };
 pub use wire::group_roster_fb::{
     decode_group_roster_snapshot, encode_group_roster_snapshot, GROUP_ROSTER_FILE_IDENTIFIER,

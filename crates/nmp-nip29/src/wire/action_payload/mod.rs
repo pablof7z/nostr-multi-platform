@@ -10,9 +10,7 @@
 //! panics on the decode path (D6).
 //!
 //! The impls are split by action family to stay under the file-size cap:
-//! - [`group`] — `join` / `leave` / `publish_group_event` / `create_public_group`
-//!   / `react_in_group` / `unreact_in_group`.
-//! - [`group_event`] — `share_event_in_group` / `repost_in_group`.
+//! - [`group`] — `join` / `leave` / `publish_group_event` / `create_public_group`.
 //! - [`admin`] — `put_user` / `create_invite`.
 //! - [`discover`] — `discover_groups` (`nmp.nip29.discover`).
 //!
@@ -50,24 +48,8 @@ generated_action_module!(
     "../generated/publish_group_event_action_generated.rs"
 );
 generated_action_module!(
-    react_in_group_action_generated,
-    "../generated/react_in_group_action_generated.rs"
-);
-generated_action_module!(
-    unreact_in_group_action_generated,
-    "../generated/unreact_in_group_action_generated.rs"
-);
-generated_action_module!(
     create_public_group_action_generated,
     "../generated/create_public_group_action_generated.rs"
-);
-generated_action_module!(
-    share_event_in_group_action_generated,
-    "../generated/share_event_in_group_action_generated.rs"
-);
-generated_action_module!(
-    repost_in_group_action_generated,
-    "../generated/repost_in_group_action_generated.rs"
 );
 generated_action_module!(
     put_user_action_generated,
@@ -94,7 +76,6 @@ pub mod admin;
 pub mod discover;
 pub mod edit_metadata;
 pub mod group;
-pub mod group_event;
 pub mod subgroups;
 
 use nmp_core::substrate::ActionPayloadDecodeError;

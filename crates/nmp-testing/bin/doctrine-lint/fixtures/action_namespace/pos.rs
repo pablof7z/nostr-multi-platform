@@ -11,9 +11,9 @@ impl LegacyNip29PostAction {
     pub const NAMESPACE: &'static str = "nip29.post_chat_message";
 }
 
-pub struct LegacyNip29ReactAction;
+pub struct LegacyNip29PublishGroupEventAction;
 
-impl LegacyNip29ReactAction {
+impl LegacyNip29PublishGroupEventAction {
     // Another stale namespace — second action_namespace hit in the same file.
-    pub const NAMESPACE: &'static str = "nip29.react_in_group";
+    pub const NAMESPACE: &'static str = "nip29.publish_group_event";
 }
