@@ -72,8 +72,8 @@ fn contract_matches_modules_and_default_payload_reexports() {
             nmp_nip51::PublishWebBookmarkAction,
             action_payloads::PublishWebBookmarkInput,
         >("nmp.nip51.publish_web_bookmark"),
-        assert_contract::<nmp_nip22::PostCommentModule, action_payloads::PostCommentAction>(
-            "nmp.nip22.post_comment",
+        assert_contract::<nmp_replies::ReplyModule, action_payloads::ReplyAction>(
+            "nmp.replies.reply",
         ),
         assert_contract::<nmp_nip17::SendDmAction, action_payloads::SendDmInput>("nmp.nip17.send"),
         assert_contract::<

@@ -231,7 +231,7 @@ This applies to:
 - **kind:11 with `h`** (both `t=discussion` and artifact-share variants) → `nmp-nip29` per §2.1.
 - **kind:9 with `h`** → `nmp-nip29` per §2.1.
 
-The "owned by another crate" pattern still applies to the non-`h` variants of these kinds (`nmp-nip25` for public reactions, `nmp-nip22` for public comments, future `nmp-nip18` for public reposts), keeping protocol-crate isolation intact: `nmp-nip25` knows nothing about groups; `nmp-nip29` knows nothing about public reactions.
+The "owned by another crate" pattern still applies to the non-`h` variants of these kinds (`nmp-nip25` for public reactions, `nmp-replies`/`nmp-nip22` for public reply/comment policy and kind:1111 mechanics, future `nmp-nip18` for public reposts), keeping protocol-crate isolation intact: `nmp-nip25` knows nothing about groups; `nmp-nip29` knows nothing about public reactions.
 
 The only kind we explicitly **don't** model in `nmp-nip29` despite being able to carry an `h` tag:
 
