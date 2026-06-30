@@ -1,9 +1,9 @@
 use super::*;
 
 #[derive(Debug)]
-struct ReactionProtocolCommand;
+struct GenericProtocolCommand;
 
-impl nmp_core::substrate::ProtocolCommand for ReactionProtocolCommand {
+impl nmp_core::substrate::ProtocolCommand for GenericProtocolCommand {
     fn run(
         self: Box<Self>,
         ctx: &mut nmp_core::substrate::ProtocolCommandContext<'_>,
@@ -11,12 +11,12 @@ impl nmp_core::substrate::ProtocolCommand for ReactionProtocolCommand {
         ctx.publish_unsigned(
             UnsignedEvent {
                 pubkey: String::new(),
-                kind: 7,
-                tags: vec![vec!["e".to_string(), "aa".repeat(32)]],
-                content: "+".to_string(),
+                kind: 30078,
+                tags: Vec::new(),
+                content: "{}".to_string(),
                 created_at: 0,
             },
-            Some("react-protocol-cid".to_string()),
+            Some("generic-protocol-cid".to_string()),
             None,
         );
         Ok(())
@@ -58,7 +58,7 @@ fn protocol_command_expands_before_headless_interpretation() {
     let mut reducer = KernelReducer::new();
     reducer.set_active_account_for_test("ab".repeat(32));
     let rx = enqueue(vec![ActorCommand::Protocol(Box::new(
-        ReactionProtocolCommand,
+        GenericProtocolCommand,
     ))]);
     let mut pending = HashMap::new();
     let mut pending_signs = PendingSignerCompletions::new();
@@ -88,8 +88,8 @@ fn protocol_command_expands_before_headless_interpretation() {
         panic!("expected SignRequest, got {:?}", out.events[0]);
     };
     assert!(
-        unsigned_json.contains("\"kind\":7"),
-        "reaction protocol command must become unsigned kind:7 json: {unsigned_json}"
+        unsigned_json.contains("\"kind\":30078"),
+        "protocol command must become unsigned event json: {unsigned_json}"
     );
     assert_eq!(pending.len(), 1, "sign continuation must be parked");
 }

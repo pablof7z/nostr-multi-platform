@@ -73,6 +73,10 @@ name = "nmp-codegen"
 path = "crates/nmp-codegen"
 
 [[public_crates]]
+name = "nmp-ownership"
+path = "crates/nmp-ownership"
+
+[[public_crates]]
 name = "nmp-content"
 path = "crates/nmp-content"
 
@@ -100,9 +104,8 @@ path = "crates/nmp-nip01"
 name = "nmp-replies"
 path = "crates/nmp-replies"
 
-# nmp-relations (#1728) owns cross-protocol social-relation aggregation split
-# out of nmp-nip01: the engagement classifier + the visible-note-relations
-# action. Reusable Layer-4 crate, so it is a public crate.
+# nmp-relations is a legacy compatibility crate with no protected ownership
+# claims. It remains listed because it is an active workspace package.
 [[public_crates]]
 name = "nmp-relations"
 path = "crates/nmp-relations"

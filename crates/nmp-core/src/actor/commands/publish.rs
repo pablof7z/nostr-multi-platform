@@ -23,7 +23,7 @@ use nmp_signer_iface::UnsignedEvent;
 /// Generic, kind-agnostic publish path.
 ///
 /// Takes an `UnsignedEvent` already built by any protocol-crate builder
-/// (`nmp_nip23::Article`, `nmp_nip01::Note`, `nmp_relations::Reaction`, …),
+/// (`nmp_nip23::Article`, `nmp_nip01::Note`, `nmp_nip25::ReactAction`, …),
 /// signs it with the active account's keys, and routes the signed event
 /// through the existing NIP-65 outbox resolver (D3 automatic routing).
 ///

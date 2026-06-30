@@ -79,3 +79,18 @@ fn planner_owns_mechanisms_not_event_kinds() {
         "nmp-planner must own the relay_pin mechanism"
     );
 }
+
+#[test]
+fn legacy_relations_crate_claims_no_engagement_semantics() {
+    let workspace = ownership_workspace();
+    let relations = workspace
+        .descriptors
+        .iter()
+        .find(|descriptor| descriptor.crate_name == "nmp-relations")
+        .expect("nmp-relations descriptor must exist while the legacy crate remains");
+    assert!(
+        relations.claims.is_empty(),
+        "nmp-relations is a legacy compatibility adapter, not an engagement owner; claims: {:?}",
+        relations.claims
+    );
+}
