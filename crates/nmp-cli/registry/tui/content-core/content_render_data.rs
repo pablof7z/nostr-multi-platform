@@ -99,8 +99,9 @@ impl ContentEventRenderData {
         Some(Self {
             id: string(value, "id").unwrap_or_else(|| key.to_string()),
             author_pubkey: string(value, "author_pubkey").unwrap_or_default(),
-            author_display_name: string(author_display, "name")
-                .or_else(|| string(value, "author_display_name")),
+            // #2514: author display is resolved reactively (the `author_display`
+            // profile join), never read from a static projection field.
+            author_display_name: string(author_display, "name"),
             author_npub: string(author_display, "npub").or_else(|| string(value, "author_npub")),
             kind: value.get("kind").and_then(Value::as_u64).unwrap_or(1),
             created_at: value.get("created_at").and_then(Value::as_u64).unwrap_or(0),

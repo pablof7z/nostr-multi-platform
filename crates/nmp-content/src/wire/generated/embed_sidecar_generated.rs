@@ -134,13 +134,9 @@ pub mod nmp {
         impl<'a> ShortNoteProjection<'a> {
             pub const VT_ID: ::flatbuffers::VOffsetT = 4;
             pub const VT_AUTHOR_PUBKEY: ::flatbuffers::VOffsetT = 6;
-            pub const VT_HAS_AUTHOR_DISPLAY_NAME: ::flatbuffers::VOffsetT = 8;
-            pub const VT_AUTHOR_DISPLAY_NAME: ::flatbuffers::VOffsetT = 10;
-            pub const VT_HAS_AUTHOR_PICTURE_URL: ::flatbuffers::VOffsetT = 12;
-            pub const VT_AUTHOR_PICTURE_URL: ::flatbuffers::VOffsetT = 14;
-            pub const VT_CREATED_AT: ::flatbuffers::VOffsetT = 16;
-            pub const VT_CONTENT_TREE: ::flatbuffers::VOffsetT = 18;
-            pub const VT_MEDIA_URLS: ::flatbuffers::VOffsetT = 20;
+            pub const VT_CREATED_AT: ::flatbuffers::VOffsetT = 8;
+            pub const VT_CONTENT_TREE: ::flatbuffers::VOffsetT = 10;
+            pub const VT_MEDIA_URLS: ::flatbuffers::VOffsetT = 12;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -164,20 +160,12 @@ pub mod nmp {
                 if let Some(x) = args.content_tree {
                     builder.add_content_tree(x);
                 }
-                if let Some(x) = args.author_picture_url {
-                    builder.add_author_picture_url(x);
-                }
-                if let Some(x) = args.author_display_name {
-                    builder.add_author_display_name(x);
-                }
                 if let Some(x) = args.author_pubkey {
                     builder.add_author_pubkey(x);
                 }
                 if let Some(x) = args.id {
                     builder.add_id(x);
                 }
-                builder.add_has_author_picture_url(args.has_author_picture_url);
-                builder.add_has_author_display_name(args.has_author_display_name);
                 builder.finish()
             }
 
@@ -201,52 +189,6 @@ pub mod nmp {
                 unsafe {
                     self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
                         ShortNoteProjection::VT_AUTHOR_PUBKEY,
-                        None,
-                    )
-                }
-            }
-            #[inline]
-            pub fn has_author_display_name(&self) -> bool {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<bool>(ShortNoteProjection::VT_HAS_AUTHOR_DISPLAY_NAME, Some(false))
-                        .unwrap()
-                }
-            }
-            #[inline]
-            pub fn author_display_name(&self) -> Option<&'a str> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        ShortNoteProjection::VT_AUTHOR_DISPLAY_NAME,
-                        None,
-                    )
-                }
-            }
-            #[inline]
-            pub fn has_author_picture_url(&self) -> bool {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<bool>(ShortNoteProjection::VT_HAS_AUTHOR_PICTURE_URL, Some(false))
-                        .unwrap()
-                }
-            }
-            #[inline]
-            pub fn author_picture_url(&self) -> Option<&'a str> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        ShortNoteProjection::VT_AUTHOR_PICTURE_URL,
                         None,
                     )
                 }
@@ -304,26 +246,6 @@ pub mod nmp {
                         Self::VT_AUTHOR_PUBKEY,
                         false,
                     )?
-                    .visit_field::<bool>(
-                        "has_author_display_name",
-                        Self::VT_HAS_AUTHOR_DISPLAY_NAME,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "author_display_name",
-                        Self::VT_AUTHOR_DISPLAY_NAME,
-                        false,
-                    )?
-                    .visit_field::<bool>(
-                        "has_author_picture_url",
-                        Self::VT_HAS_AUTHOR_PICTURE_URL,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "author_picture_url",
-                        Self::VT_AUTHOR_PICTURE_URL,
-                        false,
-                    )?
                     .visit_field::<u64>("created_at", Self::VT_CREATED_AT, false)?
                     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u8>>>(
                         "content_tree",
@@ -340,10 +262,6 @@ pub mod nmp {
         pub struct ShortNoteProjectionArgs<'a> {
             pub id: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub author_pubkey: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub has_author_display_name: bool,
-            pub author_display_name: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub has_author_picture_url: bool,
-            pub author_picture_url: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub created_at: u64,
             pub content_tree: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, u8>>>,
             pub media_urls: Option<
@@ -358,10 +276,6 @@ pub mod nmp {
                 ShortNoteProjectionArgs {
                     id: None,
                     author_pubkey: None,
-                    has_author_display_name: false,
-                    author_display_name: None,
-                    has_author_picture_url: false,
-                    author_picture_url: None,
                     created_at: 0,
                     content_tree: None,
                     media_urls: None,
@@ -386,42 +300,6 @@ pub mod nmp {
                 self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
                     ShortNoteProjection::VT_AUTHOR_PUBKEY,
                     author_pubkey,
-                );
-            }
-            #[inline]
-            pub fn add_has_author_display_name(&mut self, has_author_display_name: bool) {
-                self.fbb_.push_slot::<bool>(
-                    ShortNoteProjection::VT_HAS_AUTHOR_DISPLAY_NAME,
-                    has_author_display_name,
-                    false,
-                );
-            }
-            #[inline]
-            pub fn add_author_display_name(
-                &mut self,
-                author_display_name: ::flatbuffers::WIPOffset<&'b str>,
-            ) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    ShortNoteProjection::VT_AUTHOR_DISPLAY_NAME,
-                    author_display_name,
-                );
-            }
-            #[inline]
-            pub fn add_has_author_picture_url(&mut self, has_author_picture_url: bool) {
-                self.fbb_.push_slot::<bool>(
-                    ShortNoteProjection::VT_HAS_AUTHOR_PICTURE_URL,
-                    has_author_picture_url,
-                    false,
-                );
-            }
-            #[inline]
-            pub fn add_author_picture_url(
-                &mut self,
-                author_picture_url: ::flatbuffers::WIPOffset<&'b str>,
-            ) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    ShortNoteProjection::VT_AUTHOR_PICTURE_URL,
-                    author_picture_url,
                 );
             }
             #[inline]
@@ -473,10 +351,6 @@ pub mod nmp {
                 let mut ds = f.debug_struct("ShortNoteProjection");
                 ds.field("id", &self.id());
                 ds.field("author_pubkey", &self.author_pubkey());
-                ds.field("has_author_display_name", &self.has_author_display_name());
-                ds.field("author_display_name", &self.author_display_name());
-                ds.field("has_author_picture_url", &self.has_author_picture_url());
-                ds.field("author_picture_url", &self.author_picture_url());
                 ds.field("created_at", &self.created_at());
                 ds.field("content_tree", &self.content_tree());
                 ds.field("media_urls", &self.media_urls());
@@ -503,19 +377,15 @@ pub mod nmp {
         impl<'a> ArticleProjection<'a> {
             pub const VT_ID: ::flatbuffers::VOffsetT = 4;
             pub const VT_AUTHOR_PUBKEY: ::flatbuffers::VOffsetT = 6;
-            pub const VT_HAS_AUTHOR_DISPLAY_NAME: ::flatbuffers::VOffsetT = 8;
-            pub const VT_AUTHOR_DISPLAY_NAME: ::flatbuffers::VOffsetT = 10;
-            pub const VT_HAS_AUTHOR_PICTURE_URL: ::flatbuffers::VOffsetT = 12;
-            pub const VT_AUTHOR_PICTURE_URL: ::flatbuffers::VOffsetT = 14;
-            pub const VT_CREATED_AT: ::flatbuffers::VOffsetT = 16;
-            pub const VT_HAS_TITLE: ::flatbuffers::VOffsetT = 18;
-            pub const VT_TITLE: ::flatbuffers::VOffsetT = 20;
-            pub const VT_HAS_SUMMARY: ::flatbuffers::VOffsetT = 22;
-            pub const VT_SUMMARY: ::flatbuffers::VOffsetT = 24;
-            pub const VT_HAS_HERO_IMAGE_URL: ::flatbuffers::VOffsetT = 26;
-            pub const VT_HERO_IMAGE_URL: ::flatbuffers::VOffsetT = 28;
-            pub const VT_D_TAG: ::flatbuffers::VOffsetT = 30;
-            pub const VT_CONTENT_TREE: ::flatbuffers::VOffsetT = 32;
+            pub const VT_CREATED_AT: ::flatbuffers::VOffsetT = 8;
+            pub const VT_HAS_TITLE: ::flatbuffers::VOffsetT = 10;
+            pub const VT_TITLE: ::flatbuffers::VOffsetT = 12;
+            pub const VT_HAS_SUMMARY: ::flatbuffers::VOffsetT = 14;
+            pub const VT_SUMMARY: ::flatbuffers::VOffsetT = 16;
+            pub const VT_HAS_HERO_IMAGE_URL: ::flatbuffers::VOffsetT = 18;
+            pub const VT_HERO_IMAGE_URL: ::flatbuffers::VOffsetT = 20;
+            pub const VT_D_TAG: ::flatbuffers::VOffsetT = 22;
+            pub const VT_CONTENT_TREE: ::flatbuffers::VOffsetT = 24;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -548,12 +418,6 @@ pub mod nmp {
                 if let Some(x) = args.title {
                     builder.add_title(x);
                 }
-                if let Some(x) = args.author_picture_url {
-                    builder.add_author_picture_url(x);
-                }
-                if let Some(x) = args.author_display_name {
-                    builder.add_author_display_name(x);
-                }
                 if let Some(x) = args.author_pubkey {
                     builder.add_author_pubkey(x);
                 }
@@ -563,8 +427,6 @@ pub mod nmp {
                 builder.add_has_hero_image_url(args.has_hero_image_url);
                 builder.add_has_summary(args.has_summary);
                 builder.add_has_title(args.has_title);
-                builder.add_has_author_picture_url(args.has_author_picture_url);
-                builder.add_has_author_display_name(args.has_author_display_name);
                 builder.finish()
             }
 
@@ -586,52 +448,6 @@ pub mod nmp {
                 unsafe {
                     self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
                         ArticleProjection::VT_AUTHOR_PUBKEY,
-                        None,
-                    )
-                }
-            }
-            #[inline]
-            pub fn has_author_display_name(&self) -> bool {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<bool>(ArticleProjection::VT_HAS_AUTHOR_DISPLAY_NAME, Some(false))
-                        .unwrap()
-                }
-            }
-            #[inline]
-            pub fn author_display_name(&self) -> Option<&'a str> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        ArticleProjection::VT_AUTHOR_DISPLAY_NAME,
-                        None,
-                    )
-                }
-            }
-            #[inline]
-            pub fn has_author_picture_url(&self) -> bool {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<bool>(ArticleProjection::VT_HAS_AUTHOR_PICTURE_URL, Some(false))
-                        .unwrap()
-                }
-            }
-            #[inline]
-            pub fn author_picture_url(&self) -> Option<&'a str> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        ArticleProjection::VT_AUTHOR_PICTURE_URL,
                         None,
                     )
                 }
@@ -756,26 +572,6 @@ pub mod nmp {
                         Self::VT_AUTHOR_PUBKEY,
                         false,
                     )?
-                    .visit_field::<bool>(
-                        "has_author_display_name",
-                        Self::VT_HAS_AUTHOR_DISPLAY_NAME,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "author_display_name",
-                        Self::VT_AUTHOR_DISPLAY_NAME,
-                        false,
-                    )?
-                    .visit_field::<bool>(
-                        "has_author_picture_url",
-                        Self::VT_HAS_AUTHOR_PICTURE_URL,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "author_picture_url",
-                        Self::VT_AUTHOR_PICTURE_URL,
-                        false,
-                    )?
                     .visit_field::<u64>("created_at", Self::VT_CREATED_AT, false)?
                     .visit_field::<bool>("has_title", Self::VT_HAS_TITLE, false)?
                     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
@@ -812,10 +608,6 @@ pub mod nmp {
         pub struct ArticleProjectionArgs<'a> {
             pub id: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub author_pubkey: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub has_author_display_name: bool,
-            pub author_display_name: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub has_author_picture_url: bool,
-            pub author_picture_url: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub created_at: u64,
             pub has_title: bool,
             pub title: Option<::flatbuffers::WIPOffset<&'a str>>,
@@ -832,10 +624,6 @@ pub mod nmp {
                 ArticleProjectionArgs {
                     id: None,
                     author_pubkey: None,
-                    has_author_display_name: false,
-                    author_display_name: None,
-                    has_author_picture_url: false,
-                    author_picture_url: None,
                     created_at: 0,
                     has_title: false,
                     title: None,
@@ -864,42 +652,6 @@ pub mod nmp {
                 self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
                     ArticleProjection::VT_AUTHOR_PUBKEY,
                     author_pubkey,
-                );
-            }
-            #[inline]
-            pub fn add_has_author_display_name(&mut self, has_author_display_name: bool) {
-                self.fbb_.push_slot::<bool>(
-                    ArticleProjection::VT_HAS_AUTHOR_DISPLAY_NAME,
-                    has_author_display_name,
-                    false,
-                );
-            }
-            #[inline]
-            pub fn add_author_display_name(
-                &mut self,
-                author_display_name: ::flatbuffers::WIPOffset<&'b str>,
-            ) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    ArticleProjection::VT_AUTHOR_DISPLAY_NAME,
-                    author_display_name,
-                );
-            }
-            #[inline]
-            pub fn add_has_author_picture_url(&mut self, has_author_picture_url: bool) {
-                self.fbb_.push_slot::<bool>(
-                    ArticleProjection::VT_HAS_AUTHOR_PICTURE_URL,
-                    has_author_picture_url,
-                    false,
-                );
-            }
-            #[inline]
-            pub fn add_author_picture_url(
-                &mut self,
-                author_picture_url: ::flatbuffers::WIPOffset<&'b str>,
-            ) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    ArticleProjection::VT_AUTHOR_PICTURE_URL,
-                    author_picture_url,
                 );
             }
             #[inline]
@@ -988,10 +740,6 @@ pub mod nmp {
                 let mut ds = f.debug_struct("ArticleProjection");
                 ds.field("id", &self.id());
                 ds.field("author_pubkey", &self.author_pubkey());
-                ds.field("has_author_display_name", &self.has_author_display_name());
-                ds.field("author_display_name", &self.author_display_name());
-                ds.field("has_author_picture_url", &self.has_author_picture_url());
-                ds.field("author_picture_url", &self.author_picture_url());
                 ds.field("created_at", &self.created_at());
                 ds.field("has_title", &self.has_title());
                 ds.field("title", &self.title());
@@ -1024,18 +772,16 @@ pub mod nmp {
         impl<'a> HighlightProjection<'a> {
             pub const VT_ID: ::flatbuffers::VOffsetT = 4;
             pub const VT_AUTHOR_PUBKEY: ::flatbuffers::VOffsetT = 6;
-            pub const VT_HAS_AUTHOR_DISPLAY_NAME: ::flatbuffers::VOffsetT = 8;
-            pub const VT_AUTHOR_DISPLAY_NAME: ::flatbuffers::VOffsetT = 10;
-            pub const VT_CREATED_AT: ::flatbuffers::VOffsetT = 12;
-            pub const VT_HIGHLIGHTED_TEXT: ::flatbuffers::VOffsetT = 14;
-            pub const VT_HAS_SOURCE_EVENT_ID: ::flatbuffers::VOffsetT = 16;
-            pub const VT_SOURCE_EVENT_ID: ::flatbuffers::VOffsetT = 18;
-            pub const VT_HAS_SOURCE_EVENT_ADDR: ::flatbuffers::VOffsetT = 20;
-            pub const VT_SOURCE_EVENT_ADDR: ::flatbuffers::VOffsetT = 22;
-            pub const VT_HAS_SOURCE_URL: ::flatbuffers::VOffsetT = 24;
-            pub const VT_SOURCE_URL: ::flatbuffers::VOffsetT = 26;
-            pub const VT_HAS_CONTEXT: ::flatbuffers::VOffsetT = 28;
-            pub const VT_CONTEXT: ::flatbuffers::VOffsetT = 30;
+            pub const VT_CREATED_AT: ::flatbuffers::VOffsetT = 8;
+            pub const VT_HIGHLIGHTED_TEXT: ::flatbuffers::VOffsetT = 10;
+            pub const VT_HAS_SOURCE_EVENT_ID: ::flatbuffers::VOffsetT = 12;
+            pub const VT_SOURCE_EVENT_ID: ::flatbuffers::VOffsetT = 14;
+            pub const VT_HAS_SOURCE_EVENT_ADDR: ::flatbuffers::VOffsetT = 16;
+            pub const VT_SOURCE_EVENT_ADDR: ::flatbuffers::VOffsetT = 18;
+            pub const VT_HAS_SOURCE_URL: ::flatbuffers::VOffsetT = 20;
+            pub const VT_SOURCE_URL: ::flatbuffers::VOffsetT = 22;
+            pub const VT_HAS_CONTEXT: ::flatbuffers::VOffsetT = 24;
+            pub const VT_CONTEXT: ::flatbuffers::VOffsetT = 26;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -1068,9 +814,6 @@ pub mod nmp {
                 if let Some(x) = args.highlighted_text {
                     builder.add_highlighted_text(x);
                 }
-                if let Some(x) = args.author_display_name {
-                    builder.add_author_display_name(x);
-                }
                 if let Some(x) = args.author_pubkey {
                     builder.add_author_pubkey(x);
                 }
@@ -1081,7 +824,6 @@ pub mod nmp {
                 builder.add_has_source_url(args.has_source_url);
                 builder.add_has_source_event_addr(args.has_source_event_addr);
                 builder.add_has_source_event_id(args.has_source_event_id);
-                builder.add_has_author_display_name(args.has_author_display_name);
                 builder.finish()
             }
 
@@ -1105,29 +847,6 @@ pub mod nmp {
                 unsafe {
                     self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
                         HighlightProjection::VT_AUTHOR_PUBKEY,
-                        None,
-                    )
-                }
-            }
-            #[inline]
-            pub fn has_author_display_name(&self) -> bool {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<bool>(HighlightProjection::VT_HAS_AUTHOR_DISPLAY_NAME, Some(false))
-                        .unwrap()
-                }
-            }
-            #[inline]
-            pub fn author_display_name(&self) -> Option<&'a str> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        HighlightProjection::VT_AUTHOR_DISPLAY_NAME,
                         None,
                     )
                 }
@@ -1262,16 +981,6 @@ pub mod nmp {
                         Self::VT_AUTHOR_PUBKEY,
                         false,
                     )?
-                    .visit_field::<bool>(
-                        "has_author_display_name",
-                        Self::VT_HAS_AUTHOR_DISPLAY_NAME,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "author_display_name",
-                        Self::VT_AUTHOR_DISPLAY_NAME,
-                        false,
-                    )?
                     .visit_field::<u64>("created_at", Self::VT_CREATED_AT, false)?
                     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
                         "highlighted_text",
@@ -1317,8 +1026,6 @@ pub mod nmp {
         pub struct HighlightProjectionArgs<'a> {
             pub id: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub author_pubkey: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub has_author_display_name: bool,
-            pub author_display_name: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub created_at: u64,
             pub highlighted_text: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub has_source_event_id: bool,
@@ -1336,8 +1043,6 @@ pub mod nmp {
                 HighlightProjectionArgs {
                     id: None,
                     author_pubkey: None,
-                    has_author_display_name: false,
-                    author_display_name: None,
                     created_at: 0,
                     highlighted_text: None,
                     has_source_event_id: false,
@@ -1369,24 +1074,6 @@ pub mod nmp {
                 self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
                     HighlightProjection::VT_AUTHOR_PUBKEY,
                     author_pubkey,
-                );
-            }
-            #[inline]
-            pub fn add_has_author_display_name(&mut self, has_author_display_name: bool) {
-                self.fbb_.push_slot::<bool>(
-                    HighlightProjection::VT_HAS_AUTHOR_DISPLAY_NAME,
-                    has_author_display_name,
-                    false,
-                );
-            }
-            #[inline]
-            pub fn add_author_display_name(
-                &mut self,
-                author_display_name: ::flatbuffers::WIPOffset<&'b str>,
-            ) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    HighlightProjection::VT_AUTHOR_DISPLAY_NAME,
-                    author_display_name,
                 );
             }
             #[inline]
@@ -1492,8 +1179,6 @@ pub mod nmp {
                 let mut ds = f.debug_struct("HighlightProjection");
                 ds.field("id", &self.id());
                 ds.field("author_pubkey", &self.author_pubkey());
-                ds.field("has_author_display_name", &self.has_author_display_name());
-                ds.field("author_display_name", &self.author_display_name());
                 ds.field("created_at", &self.created_at());
                 ds.field("highlighted_text", &self.highlighted_text());
                 ds.field("has_source_event_id", &self.has_source_event_id());
@@ -1973,16 +1658,12 @@ pub mod nmp {
         impl<'a> UnknownProjection<'a> {
             pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
             pub const VT_AUTHOR_PUBKEY: ::flatbuffers::VOffsetT = 6;
-            pub const VT_HAS_AUTHOR_DISPLAY_NAME: ::flatbuffers::VOffsetT = 8;
-            pub const VT_AUTHOR_DISPLAY_NAME: ::flatbuffers::VOffsetT = 10;
-            pub const VT_HAS_AUTHOR_PICTURE_URL: ::flatbuffers::VOffsetT = 12;
-            pub const VT_AUTHOR_PICTURE_URL: ::flatbuffers::VOffsetT = 14;
-            pub const VT_CREATED_AT: ::flatbuffers::VOffsetT = 16;
-            pub const VT_CONTENT: ::flatbuffers::VOffsetT = 18;
-            pub const VT_CONTENT_TREE: ::flatbuffers::VOffsetT = 20;
-            pub const VT_TAGS: ::flatbuffers::VOffsetT = 22;
-            pub const VT_HAS_ALT_TEXT: ::flatbuffers::VOffsetT = 24;
-            pub const VT_ALT_TEXT: ::flatbuffers::VOffsetT = 26;
+            pub const VT_CREATED_AT: ::flatbuffers::VOffsetT = 8;
+            pub const VT_CONTENT: ::flatbuffers::VOffsetT = 10;
+            pub const VT_CONTENT_TREE: ::flatbuffers::VOffsetT = 12;
+            pub const VT_TAGS: ::flatbuffers::VOffsetT = 14;
+            pub const VT_HAS_ALT_TEXT: ::flatbuffers::VOffsetT = 16;
+            pub const VT_ALT_TEXT: ::flatbuffers::VOffsetT = 18;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -2012,19 +1693,11 @@ pub mod nmp {
                 if let Some(x) = args.content {
                     builder.add_content(x);
                 }
-                if let Some(x) = args.author_picture_url {
-                    builder.add_author_picture_url(x);
-                }
-                if let Some(x) = args.author_display_name {
-                    builder.add_author_display_name(x);
-                }
                 if let Some(x) = args.author_pubkey {
                     builder.add_author_pubkey(x);
                 }
                 builder.add_kind(args.kind);
                 builder.add_has_alt_text(args.has_alt_text);
-                builder.add_has_author_picture_url(args.has_author_picture_url);
-                builder.add_has_author_display_name(args.has_author_display_name);
                 builder.finish()
             }
 
@@ -2047,52 +1720,6 @@ pub mod nmp {
                 unsafe {
                     self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
                         UnknownProjection::VT_AUTHOR_PUBKEY,
-                        None,
-                    )
-                }
-            }
-            #[inline]
-            pub fn has_author_display_name(&self) -> bool {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<bool>(UnknownProjection::VT_HAS_AUTHOR_DISPLAY_NAME, Some(false))
-                        .unwrap()
-                }
-            }
-            #[inline]
-            pub fn author_display_name(&self) -> Option<&'a str> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        UnknownProjection::VT_AUTHOR_DISPLAY_NAME,
-                        None,
-                    )
-                }
-            }
-            #[inline]
-            pub fn has_author_picture_url(&self) -> bool {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<bool>(UnknownProjection::VT_HAS_AUTHOR_PICTURE_URL, Some(false))
-                        .unwrap()
-                }
-            }
-            #[inline]
-            pub fn author_picture_url(&self) -> Option<&'a str> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        UnknownProjection::VT_AUTHOR_PICTURE_URL,
                         None,
                     )
                 }
@@ -2185,26 +1812,6 @@ pub mod nmp {
                         Self::VT_AUTHOR_PUBKEY,
                         false,
                     )?
-                    .visit_field::<bool>(
-                        "has_author_display_name",
-                        Self::VT_HAS_AUTHOR_DISPLAY_NAME,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "author_display_name",
-                        Self::VT_AUTHOR_DISPLAY_NAME,
-                        false,
-                    )?
-                    .visit_field::<bool>(
-                        "has_author_picture_url",
-                        Self::VT_HAS_AUTHOR_PICTURE_URL,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "author_picture_url",
-                        Self::VT_AUTHOR_PICTURE_URL,
-                        false,
-                    )?
                     .visit_field::<u64>("created_at", Self::VT_CREATED_AT, false)?
                     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
                         "content",
@@ -2232,10 +1839,6 @@ pub mod nmp {
         pub struct UnknownProjectionArgs<'a> {
             pub kind: u32,
             pub author_pubkey: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub has_author_display_name: bool,
-            pub author_display_name: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub has_author_picture_url: bool,
-            pub author_picture_url: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub created_at: u64,
             pub content: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub content_tree: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, u8>>>,
@@ -2253,10 +1856,6 @@ pub mod nmp {
                 UnknownProjectionArgs {
                     kind: 0,
                     author_pubkey: None,
-                    has_author_display_name: false,
-                    author_display_name: None,
-                    has_author_picture_url: false,
-                    author_picture_url: None,
                     created_at: 0,
                     content: None,
                     content_tree: None,
@@ -2282,42 +1881,6 @@ pub mod nmp {
                 self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
                     UnknownProjection::VT_AUTHOR_PUBKEY,
                     author_pubkey,
-                );
-            }
-            #[inline]
-            pub fn add_has_author_display_name(&mut self, has_author_display_name: bool) {
-                self.fbb_.push_slot::<bool>(
-                    UnknownProjection::VT_HAS_AUTHOR_DISPLAY_NAME,
-                    has_author_display_name,
-                    false,
-                );
-            }
-            #[inline]
-            pub fn add_author_display_name(
-                &mut self,
-                author_display_name: ::flatbuffers::WIPOffset<&'b str>,
-            ) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    UnknownProjection::VT_AUTHOR_DISPLAY_NAME,
-                    author_display_name,
-                );
-            }
-            #[inline]
-            pub fn add_has_author_picture_url(&mut self, has_author_picture_url: bool) {
-                self.fbb_.push_slot::<bool>(
-                    UnknownProjection::VT_HAS_AUTHOR_PICTURE_URL,
-                    has_author_picture_url,
-                    false,
-                );
-            }
-            #[inline]
-            pub fn add_author_picture_url(
-                &mut self,
-                author_picture_url: ::flatbuffers::WIPOffset<&'b str>,
-            ) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    UnknownProjection::VT_AUTHOR_PICTURE_URL,
-                    author_picture_url,
                 );
             }
             #[inline]
@@ -2391,10 +1954,6 @@ pub mod nmp {
                 let mut ds = f.debug_struct("UnknownProjection");
                 ds.field("kind", &self.kind());
                 ds.field("author_pubkey", &self.author_pubkey());
-                ds.field("has_author_display_name", &self.has_author_display_name());
-                ds.field("author_display_name", &self.author_display_name());
-                ds.field("has_author_picture_url", &self.has_author_picture_url());
-                ds.field("author_picture_url", &self.author_picture_url());
                 ds.field("created_at", &self.created_at());
                 ds.field("content", &self.content());
                 ds.field("content_tree", &self.content_tree());

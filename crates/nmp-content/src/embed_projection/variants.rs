@@ -5,8 +5,12 @@
 //! complete typed data the widget renders — it never re-parses the raw event.
 //!
 //! All fields follow ADR-0032 (raw protocol data only): pubkeys as 64-char
-//! lowercase hex, timestamps as Unix u64 seconds, display names verbatim from
-//! kind:0, no pre-computed strings.
+//! lowercase hex, timestamps as Unix u64 seconds, no pre-computed strings.
+//!
+//! Display separation (#2514): every non-`Profile` projection carries ONLY the
+//! raw `author_pubkey` hex. Author display (`display_name`/`picture`) is the
+//! exclusive province of [`ProfileProjection`] (the kind:0 primitive) and joins
+//! reactively at the L5 composition layer keyed by `author_pubkey`.
 
 use serde::{Deserialize, Serialize};
 
@@ -36,12 +40,8 @@ pub enum EmbedKindProjection {
 pub struct ShortNoteProjection {
     /// 64-character hex event id.
     pub id: String,
-    /// 64-character hex author pubkey.
+    /// 64-character hex author pubkey (display joins reactively at L5).
     pub author_pubkey: String,
-    /// Optional display name copied verbatim from a kind:0 profile.
-    pub author_display_name: Option<String>,
-    /// Optional author picture URL copied verbatim from a kind:0 profile.
-    pub author_picture_url: Option<String>,
     /// Event creation time as Unix seconds.
     pub created_at: u64,
     /// Full rendered content tree for the note body.
@@ -56,12 +56,8 @@ pub struct ShortNoteProjection {
 pub struct ArticleProjection {
     /// 64-character hex event id.
     pub id: String,
-    /// 64-character hex author pubkey.
+    /// 64-character hex author pubkey (display joins reactively at L5).
     pub author_pubkey: String,
-    /// Optional display name copied verbatim from a kind:0 profile.
-    pub author_display_name: Option<String>,
-    /// Optional author picture URL copied verbatim from a kind:0 profile.
-    pub author_picture_url: Option<String>,
     /// Event creation time as Unix seconds.
     pub created_at: u64,
     /// Optional `title` tag value.
@@ -82,10 +78,8 @@ pub struct ArticleProjection {
 pub struct HighlightProjection {
     /// 64-character hex event id.
     pub id: String,
-    /// 64-character hex author pubkey.
+    /// 64-character hex author pubkey (display joins reactively at L5).
     pub author_pubkey: String,
-    /// Optional display name copied verbatim from a kind:0 profile.
-    pub author_display_name: Option<String>,
     /// Event creation time as Unix seconds.
     pub created_at: u64,
     /// Highlighted text from the event content.
@@ -126,12 +120,8 @@ pub struct ProfileProjection {
 pub struct UnknownProjection {
     /// Raw Nostr event kind.
     pub kind: u32,
-    /// 64-character hex author pubkey.
+    /// 64-character hex author pubkey (display joins reactively at L5).
     pub author_pubkey: String,
-    /// Optional display name copied verbatim from a kind:0 profile.
-    pub author_display_name: Option<String>,
-    /// Optional author picture URL copied verbatim from a kind:0 profile.
-    pub author_picture_url: Option<String>,
     /// Event creation time as Unix seconds.
     pub created_at: u64,
     /// Raw event content.

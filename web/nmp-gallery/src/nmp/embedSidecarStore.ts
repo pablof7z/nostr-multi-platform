@@ -63,8 +63,6 @@ function decodeProjection(p: FbEmbedKindProjection): EmbedKindProjection | undef
         data: {
           id: asString(n.id()) ?? "",
           authorPubkey: asString(n.authorPubkey()) ?? "",
-          authorDisplayName: opt(n.hasAuthorDisplayName(), n.authorDisplayName()),
-          authorPictureUrl: opt(n.hasAuthorPictureUrl(), n.authorPictureUrl()),
           createdAt: Number(n.createdAt()),
           contentTree: decodeContentTree(n.contentTreeArray()),
           mediaUrls: stringVector(n.mediaUrlsLength(), (i) => n.mediaUrls(i)),
@@ -79,8 +77,6 @@ function decodeProjection(p: FbEmbedKindProjection): EmbedKindProjection | undef
         data: {
           id: asString(a.id()) ?? "",
           authorPubkey: asString(a.authorPubkey()) ?? "",
-          authorDisplayName: opt(a.hasAuthorDisplayName(), a.authorDisplayName()),
-          authorPictureUrl: opt(a.hasAuthorPictureUrl(), a.authorPictureUrl()),
           createdAt: Number(a.createdAt()),
           title: opt(a.hasTitle(), a.title()),
           summary: opt(a.hasSummary(), a.summary()),
@@ -97,7 +93,6 @@ function decodeProjection(p: FbEmbedKindProjection): EmbedKindProjection | undef
         data: {
           id: asString(h.id()) ?? "",
           authorPubkey: asString(h.authorPubkey()) ?? "",
-          authorDisplayName: opt(h.hasAuthorDisplayName(), h.authorDisplayName()),
           createdAt: Number(h.createdAt()),
           highlightedText: asString(h.highlightedText()) ?? "",
           sourceEventId: opt(h.hasSourceEventId(), h.sourceEventId()),
@@ -131,8 +126,6 @@ function decodeProjection(p: FbEmbedKindProjection): EmbedKindProjection | undef
         data: {
           kind: u.kind(),
           authorPubkey: asString(u.authorPubkey()) ?? "",
-          authorDisplayName: opt(u.hasAuthorDisplayName(), u.authorDisplayName()),
-          authorPictureUrl: opt(u.hasAuthorPictureUrl(), u.authorPictureUrl()),
           createdAt: Number(u.createdAt()),
           content: asString(u.content()) ?? "",
           tags: tagRows(u),
