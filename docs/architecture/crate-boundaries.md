@@ -231,9 +231,10 @@ Examples:
 
 - `nmp-nip01` owns base note/profile/reply primitives: the kind:1 note
   builder/decoder, reply/thread views, kind:0 profile + kind:3 contacts caches,
-  and the note timeline/OP-feed surface. Remaining relation-count vocabulary
-  (`NoteRelationCounts`, `NoteRelationClassifier`) is tracked #2508 debt, not
-  doctrine. It must be deleted or moved behind concept-owned active reads.
+  and the note timeline/OP-feed surface. It does not own social/action-row
+  aggregation. Counts, loading state, and teardown for replies, reactions,
+  reposts, zaps, bookmarks, mutes, and other markers belong to the concept crate
+  that defines that behavior.
 - `nmp-replies` owns app-facing reply policy and read planning: a `ReplyTarget`
   plus content becomes either a NIP-10 kind:1 note or a NIP-22 kind:1111
   comment. Apps do not choose tag names, NIP-10 markers, NIP-22 root scopes, or

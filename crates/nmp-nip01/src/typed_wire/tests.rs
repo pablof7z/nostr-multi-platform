@@ -2,7 +2,6 @@ use nmp_content::ContentTreeWire;
 use nmp_threading::{ThreadPointer, TimelineBlock};
 
 use super::*;
-use crate::note_relations::{NoteRelationCounts, RelationCount, RelationCountInterest};
 use crate::timeline_projection::{
     ModularTimelineSnapshot, RepostAttribution, TimelineEventCard, TimelineWindowCursor,
     TimelineWindowMetrics, TimelineWindowPage,
@@ -10,34 +9,6 @@ use crate::timeline_projection::{
 
 fn event_id(byte: u8) -> String {
     format!("{byte:02x}").repeat(32)
-}
-
-fn known_counts() -> NoteRelationCounts {
-    NoteRelationCounts {
-        replies: RelationCount::Known { count: 3 },
-        reactions: RelationCount::Known { count: 5 },
-        reposts: RelationCount::Known { count: 1 },
-        zaps: RelationCount::Known { count: 7 },
-        comments: RelationCount::Known { count: 4 },
-    }
-}
-
-fn loading_counts() -> NoteRelationCounts {
-    NoteRelationCounts {
-        replies: RelationCount::Known { count: 2 },
-        reactions: RelationCount::Loading {
-            interest: RelationCountInterest::reactions(&event_id(0xaa)),
-        },
-        reposts: RelationCount::Loading {
-            interest: RelationCountInterest::reposts(&event_id(0xaa)),
-        },
-        zaps: RelationCount::Loading {
-            interest: RelationCountInterest::zaps(&event_id(0xaa)),
-        },
-        comments: RelationCount::Loading {
-            interest: RelationCountInterest::comments(&event_id(0xaa)),
-        },
-    }
 }
 
 fn rich_content_tree() -> ContentTreeWire {
@@ -53,7 +24,6 @@ fn sample_card() -> TimelineEventCard {
         created_at: 1_700_000_000,
         content: "hello world".to_string(),
         content_tree: rich_content_tree(),
-        relation_counts: known_counts(),
         relay_provenance: Vec::new(),
         reposted_by: None,
     }
@@ -63,7 +33,6 @@ fn repost_card() -> TimelineEventCard {
     let mut card = sample_card();
     card.id = event_id(0x09);
     card.kind = 6;
-    card.relation_counts = loading_counts();
     card.reposted_by = Some(RepostAttribution {
         author_pubkey: event_id(0x42),
         note_created_at: 1_699_000_000,
@@ -186,23 +155,10 @@ fn thread_pointer_without_kind_round_trips() {
 }
 
 #[test]
-fn card_with_relation_counts_round_trips() {
+fn card_round_trips() {
     let snapshot = ModularTimelineSnapshot {
         blocks: Vec::new(),
         cards: vec![sample_card()],
-        page: None,
-        metrics: None,
-    };
-    assert_round_trip(&snapshot);
-}
-
-#[test]
-fn card_with_loading_relation_counts_round_trips() {
-    let mut card = sample_card();
-    card.relation_counts = loading_counts();
-    let snapshot = ModularTimelineSnapshot {
-        blocks: Vec::new(),
-        cards: vec![card],
         page: None,
         metrics: None,
     };
@@ -304,5 +260,5 @@ fn decode_rejects_buffer_without_identifier() {
 fn schema_constants_are_stable() {
     assert_eq!(SCHEMA_ID, "nmp.nip01.timeline");
     assert_eq!(FILE_IDENTIFIER, b"NFTS");
-    assert_eq!(SCHEMA_VERSION, 1);
+    assert_eq!(SCHEMA_VERSION, 2);
 }

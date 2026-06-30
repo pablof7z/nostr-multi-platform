@@ -59,8 +59,8 @@ fn by_ids(
 ) -> Result<usize, StoreError> {
     let mut n = 0usize;
     for id in ids {
-        // Load the event to capture its expiry timestamp + kind+tags before deletion.
-        let (expiry, kind, event_tags) = match inner
+        // Load the event to capture its expiry timestamp + kind before deletion.
+        let (expiry, kind) = match inner
             .lmdb
             .get_event_by_id(txn, &id)
             .map_err(|e| StoreError::Io(format!("get: {e}")))?
@@ -70,9 +70,7 @@ fn by_ids(
                 let owned = ev.into_owned();
                 let expiry = owned.tags.expiration().map(|ts| ts.as_secs());
                 let kind = owned.kind.as_u16() as u32;
-                let tags: Vec<Vec<String>> =
-                    owned.tags.iter().map(|t| t.clone().to_vec()).collect();
-                (expiry, kind, Some(tags))
+                (expiry, kind)
             }
         };
         let f = Filter::new().id(nostr::EventId::from_slice(&id)
@@ -93,15 +91,6 @@ fn by_ids(
         // #1811: drop the deleted event's FTS rows (doc-key-driven).
         fts::fts_remove_by_id(inner, txn, &id)?;
         gc::expiry_index_delete_exact(inner, txn, expiry, &id)?;
-        // Issue #1519: decrement interaction-counter for deleted event.
-        if let Some(ref tags) = event_tags {
-            super::interaction_counters::apply_on_remove(
-                inner.interaction_counters,
-                txn,
-                kind,
-                tags,
-            )?;
-        }
         // ADR-0058 §3: emit AdminPurge log entry for semantic deletion.
         ingest_log::append_deleted(
             inner.ingest_log,
@@ -128,8 +117,8 @@ fn by_author(
 ) -> Result<usize, StoreError> {
     let pk = PublicKey::from_slice(&pk).map_err(|e| StoreError::Encoding(format!("pk: {e}")))?;
     let f = Filter::new().author(pk);
-    // Collect (id, expiry, kind, tags) before the bulk delete so index cleanup is O(1) per event.
-    let victims: Vec<(EventId, Option<u64>, u32, Option<Vec<Vec<String>>>)> = inner
+    // Collect (id, expiry, kind) before the bulk delete so index cleanup is O(1) per event.
+    let victims: Vec<(EventId, Option<u64>, u32)> = inner
         .lmdb
         .query(txn, f.clone())
         .map_err(|e| StoreError::Io(format!("q: {e}")))?
@@ -139,8 +128,7 @@ fn by_author(
             id.copy_from_slice(owned.id.as_bytes());
             let expiry = owned.tags.expiration().map(|ts| ts.as_secs());
             let kind = owned.kind.as_u16() as u32;
-            let tags: Vec<Vec<String>> = owned.tags.iter().map(|t| t.clone().to_vec()).collect();
-            (id, expiry, kind, Some(tags))
+            (id, expiry, kind)
         })
         .collect();
     let n = victims.len();
@@ -148,7 +136,7 @@ fn by_author(
         .lmdb
         .delete(txn, f)
         .map_err(|e| StoreError::Io(format!("del: {e}")))?;
-    for (id, expiry, kind, event_tags) in victims {
+    for (id, expiry, kind) in victims {
         provenance::delete(
             inner.provenance,
             inner.relay_index,
@@ -161,15 +149,6 @@ fn by_author(
         // #1811: drop the deleted event's FTS rows (doc-key-driven).
         fts::fts_remove_by_id(inner, txn, &id)?;
         gc::expiry_index_delete_exact(inner, txn, expiry, &id)?;
-        // Issue #1519: decrement interaction-counter for deleted event.
-        if let Some(ref tags) = event_tags {
-            super::interaction_counters::apply_on_remove(
-                inner.interaction_counters,
-                txn,
-                kind,
-                tags,
-            )?;
-        }
         // ADR-0058 §3: emit AdminPurge log entry.
         ingest_log::append_deleted(
             inner.ingest_log,
@@ -196,8 +175,8 @@ fn by_kind_range(
 ) -> Result<usize, StoreError> {
     let kinds: Vec<Kind> = (lo..=hi).map(|k| Kind::from(k as u16)).collect();
     let f = Filter::new().kinds(kinds);
-    // Collect (id, expiry, kind, tags) before the bulk delete so index cleanup is O(1) per event.
-    let victims: Vec<(EventId, Option<u64>, u32, Option<Vec<Vec<String>>>)> = inner
+    // Collect (id, expiry, kind) before the bulk delete so index cleanup is O(1) per event.
+    let victims: Vec<(EventId, Option<u64>, u32)> = inner
         .lmdb
         .query(txn, f.clone())
         .map_err(|e| StoreError::Io(format!("q: {e}")))?
@@ -207,8 +186,7 @@ fn by_kind_range(
             id.copy_from_slice(owned.id.as_bytes());
             let expiry = owned.tags.expiration().map(|ts| ts.as_secs());
             let kind = owned.kind.as_u16() as u32;
-            let tags: Vec<Vec<String>> = owned.tags.iter().map(|t| t.clone().to_vec()).collect();
-            (id, expiry, kind, Some(tags))
+            (id, expiry, kind)
         })
         .collect();
     let n = victims.len();
@@ -216,7 +194,7 @@ fn by_kind_range(
         .lmdb
         .delete(txn, f)
         .map_err(|e| StoreError::Io(format!("del: {e}")))?;
-    for (id, expiry, kind, event_tags) in victims {
+    for (id, expiry, kind) in victims {
         provenance::delete(
             inner.provenance,
             inner.relay_index,
@@ -229,15 +207,6 @@ fn by_kind_range(
         // #1811: drop the deleted event's FTS rows (doc-key-driven).
         fts::fts_remove_by_id(inner, txn, &id)?;
         gc::expiry_index_delete_exact(inner, txn, expiry, &id)?;
-        // Issue #1519: decrement interaction-counter for deleted event.
-        if let Some(ref tags) = event_tags {
-            super::interaction_counters::apply_on_remove(
-                inner.interaction_counters,
-                txn,
-                kind,
-                tags,
-            )?;
-        }
         // ADR-0058 §3: emit AdminPurge log entry.
         ingest_log::append_deleted(
             inner.ingest_log,
@@ -304,20 +273,18 @@ fn by_relay_only(
     }
     let n = victims.len();
     for id in victims {
-        // Load expiry + kind+tags before deletion so index cleanup can be O(1).
-        let (expiry, kind, event_tags) = match inner
+        // Load expiry + kind before deletion so index cleanup can be O(1).
+        let (expiry, kind) = match inner
             .lmdb
             .get_event_by_id(txn, &id)
             .map_err(|e| StoreError::Io(format!("get: {e}")))?
         {
-            None => (None, 0, None),
+            None => (None, 0),
             Some(ev) => {
                 let owned = ev.into_owned();
                 let expiry = owned.tags.expiration().map(|ts| ts.as_secs());
                 let kind = owned.kind.as_u16() as u32;
-                let tags: Vec<Vec<String>> =
-                    owned.tags.iter().map(|t| t.clone().to_vec()).collect();
-                (expiry, kind, Some(tags))
+                (expiry, kind)
             }
         };
         let f = Filter::new().id(nostr::EventId::from_slice(&id)
@@ -338,15 +305,6 @@ fn by_relay_only(
         // #1811: drop the deleted event's FTS rows (doc-key-driven).
         fts::fts_remove_by_id(inner, txn, &id)?;
         gc::expiry_index_delete_exact(inner, txn, expiry, &id)?;
-        // Issue #1519: decrement interaction-counter for deleted event.
-        if let Some(ref tags) = event_tags {
-            super::interaction_counters::apply_on_remove(
-                inner.interaction_counters,
-                txn,
-                kind,
-                tags,
-            )?;
-        }
     }
     Ok(n)
 }

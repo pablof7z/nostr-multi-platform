@@ -3,7 +3,6 @@ use nmp_feed::FeedWindowWire;
 use nmp_threading::{ThreadPointer, TimelineBlock};
 
 use super::fb;
-use crate::note_relations::{NoteRelationCounts, RelationCount, RelationCountInterest};
 use crate::timeline_projection::{ModularTimelineSnapshot, RepostAttribution, TimelineEventCard};
 
 // ===========================================================================
@@ -113,44 +112,6 @@ fn decode_block(block: fb::TimelineBlockEntry<'_>) -> Result<TimelineBlock, Stri
     }
 }
 
-fn decode_relation_count(count: fb::RelationCount<'_>) -> Result<RelationCount, String> {
-    match count.state() {
-        fb::RelationCountState::Known => Ok(RelationCount::Known {
-            count: count.count(),
-        }),
-        fb::RelationCountState::Loading => {
-            let interest = count
-                .interest()
-                .ok_or("Loading RelationCount missing interest")?;
-            Ok(RelationCount::Loading {
-                interest: RelationCountInterest {
-                    namespace: interest.namespace().unwrap_or_default().to_string(),
-                    target_event_id: interest.target_event_id().unwrap_or_default().to_string(),
-                    tag: interest.tag().unwrap_or_default().to_string(),
-                },
-            })
-        }
-        other => Err(format!("unknown RelationCountState: {other:?}")),
-    }
-}
-
-fn decode_relation_counts(
-    counts: fb::NoteRelationCounts<'_>,
-) -> Result<NoteRelationCounts, String> {
-    Ok(NoteRelationCounts {
-        replies: decode_relation_count(counts.replies().ok_or("counts missing replies")?)?,
-        reactions: decode_relation_count(counts.reactions().ok_or("counts missing reactions")?)?,
-        reposts: decode_relation_count(counts.reposts().ok_or("counts missing reposts")?)?,
-        zaps: decode_relation_count(counts.zaps().ok_or("counts missing zaps")?)?,
-        // Appended field: pre-existing wire blobs omit it. Absence is a
-        // known-zero comment count, not an error.
-        comments: match counts.comments() {
-            Some(comments) => decode_relation_count(comments)?,
-            None => RelationCount::known(0),
-        },
-    })
-}
-
 fn decode_repost_attribution(
     attribution: fb::RepostAttribution<'_>,
 ) -> Result<RepostAttribution, String> {
@@ -172,10 +133,6 @@ fn decode_repost_attribution(
 /// identical per-card decoding — including the embedded typed NFCT content tree
 /// and `content_render` — rather than re-deriving it (ADR-0038 Commitment 2).
 pub(crate) fn decode_card(card: fb::TimelineEventCard<'_>) -> Result<TimelineEventCard, String> {
-    let relation_counts = decode_relation_counts(
-        card.relation_counts()
-            .ok_or("card missing relation_counts")?,
-    )?;
     let reposted_by = card
         .reposted_by()
         .map(decode_repost_attribution)
@@ -201,7 +158,6 @@ pub(crate) fn decode_card(card: fb::TimelineEventCard<'_>) -> Result<TimelineEve
         created_at: card.created_at(),
         content: card.content().unwrap_or_default().to_string(),
         content_tree,
-        relation_counts,
         relay_provenance,
         reposted_by,
     })

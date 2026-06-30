@@ -191,8 +191,8 @@ fn rule_b_no_global_relation_summary_or_bucket_api() {
         violations.is_empty(),
         "Rule B: concept-owned active reads are the architecture; reusable crates must \
          not expose global relation summaries, bucket APIs, rejected relation vocabulary, \
-         or a central nmp-relations owner. Existing debt is capped to open issues #2508/#2512. \
-         New violation(s) — fix, do NOT baseline:\n{}",
+         or a central nmp-relations owner. New violation(s) — delete the rejected surface; \
+         do NOT baseline:\n{}",
         violations.join("\n")
     );
     assert!(

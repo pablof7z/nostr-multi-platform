@@ -9,7 +9,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::fts::fts_index_remove;
-use super::ic::{ic_decrement, ic_increment};
 use super::ingest_log;
 use super::{
     access_remove, access_stamp, relay_index_add, relay_index_remove, relay_kind_add,
@@ -59,17 +58,12 @@ pub(super) fn handle_kind5_insert(
                 .raw
                 .id_bytes()
                 .expect("stored event has valid hex id");
-            // Capture kind+tags BEFORE removal for counter decrement.
-            let ic_kind = existing.raw.kind;
-            let ic_tags = existing.raw.tags.clone();
             st.events.remove(&target_hex);
             st.provenance.remove(&target_hex);
             relay_index_remove(st, &target_hex);
             relay_kind_remove_id(st, &target_hex);
             fts_index_remove(st, &target_hex);
             access_remove(st, &target_hex);
-            // Issue #1519: decrement counter for removed event.
-            ic_decrement(st, ic_kind, &ic_tags);
             // ADR-0058 §3: emit Deleted(Nip09) for each self-deleted target.
             ingest_log::emit_deleted(
                 st,
@@ -149,21 +143,12 @@ pub(super) fn handle_kind5_insert(
             .collect();
 
         for target_hex in to_delete {
-            // Capture kind+tags BEFORE removal for counter decrement.
-            let ic_data = st
-                .events
-                .get(&target_hex)
-                .map(|ev| (ev.raw.kind, ev.raw.tags.clone()));
             if let Some(existing) = st.events.remove(&target_hex) {
                 st.provenance.remove(&target_hex);
                 relay_index_remove(st, &target_hex);
                 relay_kind_remove_id(st, &target_hex);
                 fts_index_remove(st, &target_hex);
                 access_remove(st, &target_hex);
-                // Issue #1519: decrement counter for removed event.
-                if let Some((ik, ref it)) = ic_data {
-                    ic_decrement(st, ik, it);
-                }
                 // existing.raw is stored (verified) — id_bytes() is guaranteed Some.
                 let target_id = existing
                     .raw
@@ -194,9 +179,6 @@ pub(super) fn handle_kind5_insert(
     }
 
     // Store the kind:5 event itself.
-    // Capture kind+tags before move (kind:5 is not a counter kind — no-op, but uniform).
-    let k5_ic_kind = event.kind;
-    let k5_ic_tags = event.tags.clone();
     // ADR-0058 §3: clone raw event for ingest log before the Arc::new move.
     let raw_for_log = event.clone();
     st.events.insert(
@@ -207,8 +189,6 @@ pub(super) fn handle_kind5_insert(
         },
     );
     access_stamp(st, &kind5_id_hex);
-    // Issue #1519: increment counter (no-op for kind:5).
-    ic_increment(st, k5_ic_kind, &k5_ic_tags);
     let sources_after = {
         let p = st.provenance.entry(kind5_id_hex.clone()).or_default();
         upsert_provenance(p, source.clone(), received_at_ms);

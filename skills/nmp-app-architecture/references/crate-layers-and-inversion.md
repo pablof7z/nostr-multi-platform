@@ -84,16 +84,16 @@ Fifteen confirmed violations across five crates; issues are the canonical tracke
 
 | Family | Crate (layer) | Live evidence | Issue |
 |---|---|---|---|
-| Store engagement aggregation | `nmp-store` (L1) | `EventStore::interaction_counts` → `TargetInteractionCounts {replies,reactions,reposts,zaps}`; kinds 1/7/6/9735 inlined in `src/interaction.rs` | #2512 |
+| Store engagement aggregation | `nmp-store` (L1) | Former store-level social counter API with hard-coded reply/reaction/repost/zap classification | #2512 |
 | NIP-29 kind-named actions | `nmp-nip29` (L4) | `REACTION_KIND`/`REPOST_KIND` literals + `ReactInGroupAction`/`RepostInGroupAction`/`ShareEventInGroupAction` | #2513 |
 | Content display in wire | `nmp-content` (L4) | `author_display_name`/`author_picture_url` in `embed_projection/variants.rs` + `schema/*.fbs` | #2514 |
 | Kernel NIP-19 codec | `nmp-core` (L3) | `pub mod nip19` in `lib.rs`; `Nip19Entity` encode/decode | #2515 |
 | NIP-01 render-card | `nmp-nip01` (L4) | `TimelineEventCard` "render-ready event card" + `schema/timeline_snapshot.fbs` | #2510 |
 
 The `#2510` family had a root cause in `crate-boundaries.md` §8, which previously sanctioned a
-"note timeline/OP-feed surface" in `nmp-nip01` — a loophole pending a §8 amendment. Treat the
-`NoteRelationCounts` seam as contested until #2508 (global-relation-summary rejection) is
-decided.
+"note timeline/OP-feed surface" in `nmp-nip01` — a loophole pending a §8 amendment. #2508
+settled the relation/read side: global social summaries are rejected; reads belong to the
+concept crate that defines them.
 
 ## Known-Legitimate Patterns (do NOT flag)
 

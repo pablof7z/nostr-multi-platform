@@ -86,7 +86,7 @@ pub const OP_FEED_FILE_IDENTIFIER: &[u8; 4] = b"NOFS";
 
 /// Schema version of the typed OP-feed payload. Bump on any breaking field
 /// change. Mirrors `OpFeedSnapshot.schema_version` in the `.fbs`.
-pub const OP_FEED_SCHEMA_VERSION: u32 = 1;
+pub const OP_FEED_SCHEMA_VERSION: u32 = 2;
 
 // ===========================================================================
 // Encode

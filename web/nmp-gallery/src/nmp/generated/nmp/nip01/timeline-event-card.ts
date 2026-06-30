@@ -6,7 +6,6 @@ import * as flatbuffers from 'flatbuffers';
 
 import { AuthorDisplay } from '../../nmp/nip01/author-display.js';
 import { ContentRenderData } from '../../nmp/nip01/content-render-data.js';
-import { NoteRelationCounts } from '../../nmp/nip01/note-relation-counts.js';
 import { RepostAttribution } from '../../nmp/nip01/repost-attribution.js';
 
 
@@ -84,61 +83,56 @@ contentRender(obj?:ContentRenderData):ContentRenderData|null {
   return offset ? (obj || new ContentRenderData()).__init(this.bb!.__indirect(this.bb_pos + offset), this.bb!) : null;
 }
 
-relationCounts(obj?:NoteRelationCounts):NoteRelationCounts|null {
-  const offset = this.bb!.__offset(this.bb_pos, 20);
-  return offset ? (obj || new NoteRelationCounts()).__init(this.bb!.__indirect(this.bb_pos + offset), this.bb!) : null;
-}
-
 hasAuthorDisplayName():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 22);
+  const offset = this.bb!.__offset(this.bb_pos, 20);
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
 authorDisplayName():string|null
 authorDisplayName(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 authorDisplayName(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 24);
+  const offset = this.bb!.__offset(this.bb_pos, 22);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 hasAuthorPictureUrl():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 26);
+  const offset = this.bb!.__offset(this.bb_pos, 24);
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
 authorPictureUrl():string|null
 authorPictureUrl(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 authorPictureUrl(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 28);
+  const offset = this.bb!.__offset(this.bb_pos, 26);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 contentPreview():string|null
 contentPreview(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 contentPreview(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 30);
+  const offset = this.bb!.__offset(this.bb_pos, 28);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 repostedBy(obj?:RepostAttribution):RepostAttribution|null {
-  const offset = this.bb!.__offset(this.bb_pos, 32);
+  const offset = this.bb!.__offset(this.bb_pos, 30);
   return offset ? (obj || new RepostAttribution()).__init(this.bb!.__indirect(this.bb_pos + offset), this.bb!) : null;
 }
 
 relayProvenance(index: number):string
 relayProvenance(index: number,optionalEncoding:flatbuffers.Encoding):string|Uint8Array
 relayProvenance(index: number,optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 34);
+  const offset = this.bb!.__offset(this.bb_pos, 32);
   return offset ? this.bb!.__string(this.bb!.__vector(this.bb_pos + offset) + index * 4, optionalEncoding) : null;
 }
 
 relayProvenanceLength():number {
-  const offset = this.bb!.__offset(this.bb_pos, 34);
+  const offset = this.bb!.__offset(this.bb_pos, 32);
   return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
 }
 
 static startTimelineEventCard(builder:flatbuffers.Builder) {
-  builder.startObject(16);
+  builder.startObject(15);
 }
 
 static addId(builder:flatbuffers.Builder, idOffset:flatbuffers.Offset) {
@@ -185,36 +179,32 @@ static addContentRender(builder:flatbuffers.Builder, contentRenderOffset:flatbuf
   builder.addFieldOffset(7, contentRenderOffset, 0);
 }
 
-static addRelationCounts(builder:flatbuffers.Builder, relationCountsOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(8, relationCountsOffset, 0);
-}
-
 static addHasAuthorDisplayName(builder:flatbuffers.Builder, hasAuthorDisplayName:boolean) {
-  builder.addFieldInt8(9, +hasAuthorDisplayName, +false);
+  builder.addFieldInt8(8, +hasAuthorDisplayName, +false);
 }
 
 static addAuthorDisplayName(builder:flatbuffers.Builder, authorDisplayNameOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(10, authorDisplayNameOffset, 0);
+  builder.addFieldOffset(9, authorDisplayNameOffset, 0);
 }
 
 static addHasAuthorPictureUrl(builder:flatbuffers.Builder, hasAuthorPictureUrl:boolean) {
-  builder.addFieldInt8(11, +hasAuthorPictureUrl, +false);
+  builder.addFieldInt8(10, +hasAuthorPictureUrl, +false);
 }
 
 static addAuthorPictureUrl(builder:flatbuffers.Builder, authorPictureUrlOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(12, authorPictureUrlOffset, 0);
+  builder.addFieldOffset(11, authorPictureUrlOffset, 0);
 }
 
 static addContentPreview(builder:flatbuffers.Builder, contentPreviewOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(13, contentPreviewOffset, 0);
+  builder.addFieldOffset(12, contentPreviewOffset, 0);
 }
 
 static addRepostedBy(builder:flatbuffers.Builder, repostedByOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(14, repostedByOffset, 0);
+  builder.addFieldOffset(13, repostedByOffset, 0);
 }
 
 static addRelayProvenance(builder:flatbuffers.Builder, relayProvenanceOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(15, relayProvenanceOffset, 0);
+  builder.addFieldOffset(14, relayProvenanceOffset, 0);
 }
 
 static createRelayProvenanceVector(builder:flatbuffers.Builder, data:flatbuffers.Offset[]):flatbuffers.Offset {

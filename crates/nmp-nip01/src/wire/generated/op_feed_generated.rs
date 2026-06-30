@@ -447,7 +447,7 @@ pub mod nmp {
                 // which contains a valid value in this slot
                 unsafe {
                     self._tab
-                        .get::<u32>(OpFeedSnapshot::VT_SCHEMA_VERSION, Some(1))
+                        .get::<u32>(OpFeedSnapshot::VT_SCHEMA_VERSION, Some(2))
                         .unwrap()
                 }
             }
@@ -539,7 +539,7 @@ pub mod nmp {
             #[inline]
             fn default() -> Self {
                 OpFeedSnapshotArgs {
-                    schema_version: 1,
+                    schema_version: 2,
                     cards: None,
                     feed_window_bytes: None,
                     has_page: false,
@@ -556,7 +556,7 @@ pub mod nmp {
             #[inline]
             pub fn add_schema_version(&mut self, schema_version: u32) {
                 self.fbb_
-                    .push_slot::<u32>(OpFeedSnapshot::VT_SCHEMA_VERSION, schema_version, 1);
+                    .push_slot::<u32>(OpFeedSnapshot::VT_SCHEMA_VERSION, schema_version, 2);
             }
             #[inline]
             pub fn add_cards(

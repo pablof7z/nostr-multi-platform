@@ -12,18 +12,15 @@
 //! projection.
 //!
 //! To regenerate after an intentional schema change: run this test with
-//! `--nocapture`, copy the `actual timeline_snapshot_empty_v1 hex:` line into
-//! `tests/fixtures/timeline_snapshot_empty_v1.fb.hex`, and re-run.
+//! `--nocapture`, copy the `actual timeline_snapshot_empty_v2 hex:` line into
+//! `tests/fixtures/timeline_snapshot_empty_v2.fb.hex`, and re-run.
 
 use nmp_nip01::timeline_projection::RepostAttribution;
 use nmp_nip01::typed_wire::{
     decode_modular_timeline_snapshot, encode_modular_timeline_snapshot, FILE_IDENTIFIER, SCHEMA_ID,
     SCHEMA_VERSION,
 };
-use nmp_nip01::{
-    ModularTimelineSnapshot, NoteRelationCounts, RelationCount, RelationCountInterest,
-    TimelineEventCard,
-};
+use nmp_nip01::{ModularTimelineSnapshot, TimelineEventCard};
 use nmp_threading::{ThreadPointer, TimelineBlock};
 
 /// Minimal representative snapshot: the empty projection. This is the shape the
@@ -46,9 +43,9 @@ fn card_content_tree() -> nmp_content::ContentTreeWire {
 }
 
 /// A card surfaced via a kind:6 repost. Exercises every load-bearing card path:
-/// nested content tree, both `RelationCount` variants (`Known` + `Loading`),
-/// and a `RepostAttribution`. GH #920: the card carries raw protocol data only
-/// (no denormalized author display, preview, or embedded-ref render facts).
+/// nested content tree and a `RepostAttribution`. GH #920: the card carries raw
+/// protocol data only (no denormalized author display, preview, or embedded-ref
+/// render facts).
 fn repost_card() -> TimelineEventCard {
     TimelineEventCard {
         id: event_id(0x09),
@@ -57,17 +54,6 @@ fn repost_card() -> TimelineEventCard {
         created_at: 1_700_000_000,
         content: "hello world".to_string(),
         content_tree: card_content_tree(),
-        relation_counts: NoteRelationCounts {
-            replies: RelationCount::Known { count: 2 },
-            reactions: RelationCount::Loading {
-                interest: RelationCountInterest::reactions(&event_id(0xaa)),
-            },
-            reposts: RelationCount::Known { count: 1 },
-            zaps: RelationCount::Loading {
-                interest: RelationCountInterest::zaps(&event_id(0xaa)),
-            },
-            comments: RelationCount::Known { count: 3 },
-        },
         reposted_by: Some(RepostAttribution {
             author_pubkey: event_id(0x42),
             note_created_at: 1_699_000_000,
@@ -116,16 +102,16 @@ fn encode_hex(bytes: &[u8]) -> String {
 fn timeline_snapshot_empty_golden_fixture_is_stable() {
     let snapshot = golden_snapshot();
     let wire = encode_modular_timeline_snapshot(&snapshot);
-    let expected = decode_hex(include_str!("fixtures/timeline_snapshot_empty_v1.fb.hex"));
+    let expected = decode_hex(include_str!("fixtures/timeline_snapshot_empty_v2.fb.hex"));
     if wire != expected {
         eprintln!(
-            "actual timeline_snapshot_empty_v1 hex:\n{}",
+            "actual timeline_snapshot_empty_v2 hex:\n{}",
             encode_hex(&wire)
         );
     }
     assert_eq!(
         wire, expected,
-        "ModularTimelineSnapshot empty v1 golden fixture drifted"
+        "ModularTimelineSnapshot empty v2 golden fixture drifted"
     );
 }
 
@@ -134,17 +120,17 @@ fn timeline_snapshot_with_card_golden_fixture_is_stable() {
     let snapshot = golden_card_snapshot();
     let wire = encode_modular_timeline_snapshot(&snapshot);
     let expected = decode_hex(include_str!(
-        "fixtures/timeline_snapshot_with_card_v1.fb.hex"
+        "fixtures/timeline_snapshot_with_card_v2.fb.hex"
     ));
     if wire != expected {
         eprintln!(
-            "actual timeline_snapshot_with_card_v1 hex:\n{}",
+            "actual timeline_snapshot_with_card_v2 hex:\n{}",
             encode_hex(&wire)
         );
     }
     assert_eq!(
         wire, expected,
-        "ModularTimelineSnapshot with-card v1 golden fixture drifted"
+        "ModularTimelineSnapshot with-card v2 golden fixture drifted"
     );
 }
 
@@ -162,14 +148,14 @@ fn timeline_snapshot_golden_fixture_has_nfts_identifier() {
 #[test]
 fn schema_id_is_stable() {
     assert_eq!(SCHEMA_ID, "nmp.nip01.timeline");
-    assert_eq!(SCHEMA_VERSION, 1);
+    assert_eq!(SCHEMA_VERSION, 2);
 }
 
 /// ADR-0037 acceptance criterion: parity between typed and generic. The typed
 /// encoder must produce bytes that decode back to a shape semantically
 /// equivalent to the authoritative serde projection. Asserted on a card-bearing
 /// snapshot — where the comparison actually probes every card / render-data /
-/// relation-count / repost field — not just the empty shell.
+/// repost field — not just the empty shell.
 fn assert_typed_serde_parity(snapshot: &ModularTimelineSnapshot) {
     let typed_bytes = encode_modular_timeline_snapshot(snapshot);
     let decoded = decode_modular_timeline_snapshot(&typed_bytes).expect("must decode");

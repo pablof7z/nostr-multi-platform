@@ -8,7 +8,6 @@
 use nmp_feed::{FeedCursor, FeedPage, FeedWindowMetrics, RootCard, RootFeedSnapshot};
 
 use super::*;
-use crate::note_relations::{NoteRelationCounts, RelationCount, RelationCountInterest};
 use crate::profile_display::AuthorDisplay;
 use crate::timeline_projection::{RepostAttribution, TimelineEventCard};
 
@@ -29,8 +28,8 @@ fn full_display() -> AuthorDisplay {
     }
 }
 
-/// A root card exercising every load-bearing path: nested content tree, both
-/// `RelationCount` variants, and a `RepostAttribution`.
+/// A root card exercising every load-bearing path: nested content tree and a
+/// `RepostAttribution`.
 fn repost_card() -> TimelineEventCard {
     TimelineEventCard {
         id: hex32(0x09),
@@ -39,17 +38,6 @@ fn repost_card() -> TimelineEventCard {
         created_at: 1_700_000_000,
         content: "hello world".to_string(),
         content_tree: content_tree(),
-        relation_counts: NoteRelationCounts {
-            replies: RelationCount::Known { count: 2 },
-            reactions: RelationCount::Loading {
-                interest: RelationCountInterest::reactions(&hex32(0xaa)),
-            },
-            reposts: RelationCount::Known { count: 1 },
-            zaps: RelationCount::Loading {
-                interest: RelationCountInterest::zaps(&hex32(0xaa)),
-            },
-            comments: RelationCount::Known { count: 3 },
-        },
         reposted_by: Some(RepostAttribution {
             author_pubkey: hex32(0x42),
             note_created_at: 1_699_000_000,
@@ -68,13 +56,6 @@ fn bare_card() -> TimelineEventCard {
         created_at: 1_700_000_500,
         content: "a thread root".to_string(),
         content_tree: content_tree(),
-        relation_counts: NoteRelationCounts {
-            replies: RelationCount::Known { count: 0 },
-            reactions: RelationCount::Known { count: 0 },
-            reposts: RelationCount::Known { count: 0 },
-            zaps: RelationCount::Known { count: 0 },
-            comments: RelationCount::Known { count: 0 },
-        },
         reposted_by: None,
         relay_provenance: Vec::new(),
     }
@@ -134,7 +115,7 @@ fn populated_snapshot() -> RootFeedSnapshot<TimelineEventCard, Nip10ReplyAttribu
 fn schema_constants_match_adr_0038() {
     assert_eq!(OP_FEED_SCHEMA_ID, "nmp.nip01.opfeed");
     assert_eq!(OP_FEED_FILE_IDENTIFIER, b"NOFS");
-    assert_eq!(OP_FEED_SCHEMA_VERSION, 1);
+    assert_eq!(OP_FEED_SCHEMA_VERSION, 2);
 }
 
 #[test]

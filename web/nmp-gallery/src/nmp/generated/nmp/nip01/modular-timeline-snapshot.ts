@@ -32,7 +32,7 @@ static bufferHasIdentifier(bb:flatbuffers.ByteBuffer):boolean {
 
 schemaVersion():number {
   const offset = this.bb!.__offset(this.bb_pos, 4);
-  return offset ? this.bb!.readUint32(this.bb_pos + offset) : 1;
+  return offset ? this.bb!.readUint32(this.bb_pos + offset) : 2;
 }
 
 blocks(index: number, obj?:TimelineBlockEntry):TimelineBlockEntry|null {
@@ -75,7 +75,7 @@ static startModularTimelineSnapshot(builder:flatbuffers.Builder) {
 }
 
 static addSchemaVersion(builder:flatbuffers.Builder, schemaVersion:number) {
-  builder.addFieldInt32(0, schemaVersion, 1);
+  builder.addFieldInt32(0, schemaVersion, 2);
 }
 
 static addBlocks(builder:flatbuffers.Builder, blocksOffset:flatbuffers.Offset) {

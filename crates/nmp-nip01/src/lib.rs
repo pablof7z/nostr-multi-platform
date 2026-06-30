@@ -65,7 +65,6 @@ pub mod kind0_parser;
 pub mod kind3_parser;
 pub mod kinds;
 pub mod meta_timeline;
-pub mod note_relations;
 pub mod op_feed;
 pub mod profile_cache;
 mod profile_display;
@@ -86,10 +85,6 @@ pub use kinds::KIND_SHORT_TEXT_NOTE;
 pub use meta_timeline::{
     ModularTimelineDelta, ModularTimelinePayload, ModularTimelineSpec, ModularTimelineState,
     Nip10ModularTimelineView, Nip10Resolver,
-};
-pub use note_relations::{
-    ClassifiedRelation, NoteRelationClassifier, NoteRelationCounts, NoteRelationIndex,
-    RelationCount, RelationCountInterest, RelationKind,
 };
 pub use op_feed::{
     decode_op_feed_snapshot, encode_op_feed_snapshot, register_op_feed, Nip10ReplyAttribution,
@@ -112,10 +107,6 @@ pub use view::{
     RepliesDelta, RepliesPayload, RepliesSpec, RepliesState, RepliesView, ThreadDelta, ThreadNode,
     ThreadPayload, ThreadSpec, ThreadState, ThreadView,
 };
-// NOTE: relation-count vocabulary + the `NoteRelationClassifier` seam are
-// tracked #2508 debt. New counts/state must be concept-owned active reads, not
-// a central relation aggregator.
-
 // NOTE: `nmp-nip01` exposes its view types (`RepliesView`, `ThreadView`,
 // `Nip10ModularTimelineView`) as plain public types whose `open` /
 // `on_event_*` / `snapshot` inherent methods are reached via static

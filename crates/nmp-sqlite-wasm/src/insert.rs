@@ -8,7 +8,7 @@
 //! own, so the `BEGIN`/`COMMIT` is what makes the `EventStore::insert` "all
 //! secondaries land together or none do" contract honest.
 //!
-//! Out of PR-3 scope (later PRs): LRU stamping, FTS, interaction counters,
+//! Out of PR-3 scope (later PRs): LRU stamping, FTS,
 //! freshness, coverage ledger, and ingest-log retention trimming.
 
 // The `insert` method is added to `OpfsSqliteStore` by the inherent `impl` inside

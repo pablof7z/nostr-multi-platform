@@ -4,7 +4,6 @@ use nmp_feed::FeedWindowWire;
 use nmp_threading::{ThreadPointer, TimelineBlock};
 
 use super::{fb, SCHEMA_VERSION};
-use crate::note_relations::{NoteRelationCounts, RelationCount};
 use crate::profile_display::AuthorDisplay;
 use crate::timeline_projection::{
     ContentEventRenderData, ContentProfileRenderData, ContentRenderData, ModularTimelineSnapshot,
@@ -176,64 +175,6 @@ fn encode_author_display<'bldr>(
     )
 }
 
-fn encode_relation_count<'bldr>(
-    builder: &mut FlatBufferBuilder<'bldr>,
-    count: &RelationCount,
-) -> WIPOffset<fb::RelationCount<'bldr>> {
-    match count {
-        RelationCount::Known { count } => fb::RelationCount::create(
-            builder,
-            &fb::RelationCountArgs {
-                state: fb::RelationCountState::Known,
-                count: *count,
-                interest: None,
-            },
-        ),
-        RelationCount::Loading { interest } => {
-            let namespace = builder.create_string(&interest.namespace);
-            let target_event_id = builder.create_string(&interest.target_event_id);
-            let tag = builder.create_string(&interest.tag);
-            let interest = fb::RelationCountInterest::create(
-                builder,
-                &fb::RelationCountInterestArgs {
-                    namespace: Some(namespace),
-                    target_event_id: Some(target_event_id),
-                    tag: Some(tag),
-                },
-            );
-            fb::RelationCount::create(
-                builder,
-                &fb::RelationCountArgs {
-                    state: fb::RelationCountState::Loading,
-                    count: 0,
-                    interest: Some(interest),
-                },
-            )
-        }
-    }
-}
-
-fn encode_relation_counts<'bldr>(
-    builder: &mut FlatBufferBuilder<'bldr>,
-    counts: &NoteRelationCounts,
-) -> WIPOffset<fb::NoteRelationCounts<'bldr>> {
-    let replies = encode_relation_count(builder, &counts.replies);
-    let reactions = encode_relation_count(builder, &counts.reactions);
-    let reposts = encode_relation_count(builder, &counts.reposts);
-    let zaps = encode_relation_count(builder, &counts.zaps);
-    let comments = encode_relation_count(builder, &counts.comments);
-    fb::NoteRelationCounts::create(
-        builder,
-        &fb::NoteRelationCountsArgs {
-            replies: Some(replies),
-            reactions: Some(reactions),
-            reposts: Some(reposts),
-            zaps: Some(zaps),
-            comments: Some(comments),
-        },
-    )
-}
-
 fn encode_repost_attribution<'bldr>(
     builder: &mut FlatBufferBuilder<'bldr>,
     attribution: &RepostAttribution,
@@ -284,7 +225,6 @@ pub(crate) fn encode_card<'bldr>(
     // `has_* = false`, and an empty `ContentRenderData`.
     let author_display =
         encode_author_display(builder, &AuthorDisplay::fallback(&card.author_pubkey));
-    let relation_counts = encode_relation_counts(builder, &card.relation_counts);
     let reposted_by = card
         .reposted_by
         .as_ref()
@@ -316,7 +256,6 @@ pub(crate) fn encode_card<'bldr>(
             content: Some(content),
             content_tree_bytes: Some(content_tree_bytes),
             content_render: Some(content_render),
-            relation_counts: Some(relation_counts),
             has_author_display_name: false,
             author_display_name: None,
             has_author_picture_url: false,

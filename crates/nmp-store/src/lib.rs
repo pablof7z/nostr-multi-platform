@@ -28,7 +28,6 @@ mod domain_migration;
 mod events;
 mod events_query_dispatch;
 pub mod ingest_log;
-pub(crate) mod interaction;
 mod lmdb;
 mod mem;
 // OPFS-SQLite backend (#1007). wasm32-only (the engine's inherent methods are
@@ -76,9 +75,9 @@ pub use text_search::{
 pub use types::{
     coverage_key, coverage_key_parts, CoverageGuard, CoverageMatchFn, CoverageRow, DeleteFilter,
     DumpFormat, DumpStats, EventId, GcBudget, GcReport, InsertOutcome, ProvenanceEntry, PubKey,
-    RawEvent, RejectReason, RelayUrl, StoreQuery, StoredEvent, TargetInteractionCounts,
-    TombstoneOrigin, TombstoneRow, VerifiedEvent, COVERAGE_KEY_SEP, DEFAULT_DURABLE_EVENT_CEILING,
-    GC_MAX_DURATION_MS, GC_MAX_EVENTS_PER_STEP,
+    RawEvent, RejectReason, RelayUrl, StoreQuery, StoredEvent, TombstoneOrigin, TombstoneRow,
+    VerifiedEvent, COVERAGE_KEY_SEP, DEFAULT_DURABLE_EVENT_CEILING, GC_MAX_DURATION_MS,
+    GC_MAX_EVENTS_PER_STEP,
 };
 
 // Re-export error types from types (defined there to avoid circular imports).

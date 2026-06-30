@@ -95,40 +95,6 @@ table TimelineBlockEntry {
 }
 
 // ---------------------------------------------------------------------------
-// Relation counts (nmp_nip01::NoteRelationCounts — each field is Known|Loading)
-// ---------------------------------------------------------------------------
-
-enum RelationCountState:ubyte {
-  Known = 0,   // count is valid
-  Loading = 1, // interest is valid
-}
-
-table RelationCountInterest {
-  namespace:string;
-  target_event_id:string;
-  tag:string;
-}
-
-table RelationCount {
-  state:RelationCountState;
-  // Valid when state == Known.
-  count:uint64;
-  // Valid when state == Loading.
-  interest:RelationCountInterest;
-}
-
-table NoteRelationCounts {
-  replies:RelationCount;
-  reactions:RelationCount;
-  reposts:RelationCount;
-  zaps:RelationCount;
-  // NIP-22 kind:1111 comments rooted at this event/address/external id.
-  // Appended after `zaps` to preserve wire compatibility: pre-existing
-  // encoders omit it and readers see the default (absent → known-zero).
-  comments:RelationCount;
-}
-
-// ---------------------------------------------------------------------------
 // Author display (nmp_nip01::AuthorDisplay)
 // ---------------------------------------------------------------------------
 
@@ -200,7 +166,6 @@ table TimelineEventCard {
   // FlatBuffers buffer (NFCT); content_render is typed nmp-nip01 data.
   content_tree_bytes:[ubyte];
   content_render:ContentRenderData;
-  relation_counts:NoteRelationCounts;
   // Flat mirrors of author_display.{name,picture_url}. `has_*` distinguishes
   // absent (no kind:0 yet) from present.
   has_author_display_name:bool;
@@ -218,7 +183,7 @@ table TimelineEventCard {
 // ---------------------------------------------------------------------------
 
 table ModularTimelineSnapshot {
-  schema_version:uint32 = 1;
+  schema_version:uint32 = 2;
   blocks:[TimelineBlockEntry];
   cards:[TimelineEventCard];
   // Typed nmp-feed `FeedWindow` buffer (NFWM). Empty/absent when both page and

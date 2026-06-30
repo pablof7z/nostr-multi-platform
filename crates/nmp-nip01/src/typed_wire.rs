@@ -13,7 +13,7 @@
 //! ## Parity, not simplification
 //!
 //! Every field of the serde [`ModularTimelineSnapshot`] survives the round
-//! trip: blocks, cards, author display, relation counts, content render facts,
+//! trip: blocks, cards, author display, content render facts,
 //! repost attribution, and the optional feed window.
 //!
 //! ## Typed sub-payloads
@@ -59,7 +59,7 @@ pub const FILE_IDENTIFIER: &[u8; 4] = b"NFTS";
 
 /// Schema version of the typed timeline-snapshot payload. Bump on any breaking
 /// field change. Mirrors `ModularTimelineSnapshot.schema_version` in the `.fbs`.
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 
 /// Encode a [`ModularTimelineSnapshot`] as one typed FlatBuffers
 /// `ModularTimelineSnapshot` buffer with the `NFTS` file identifier.

@@ -44,7 +44,7 @@ pub(super) fn open_impl_with_limits(
     // NMP sub-dbs: provenance, tombstones, addr-tombstones,
     // domain-versions, domain-data, relay-author-scores, lru-access (V-60),
     // expiry-index (V-118), relay-index (V-52), coverage (K3 Stage D1),
-    // relay-kind (#1518), interaction-counters (#1519).  The nmp-claims /
+    // relay-kind (#1518). The nmp-claims /
     // nmp-claims-budget sub-dbs were removed in #1090 Stage 1 (persisted claims
     // deleted in favour of a kernel-derived ephemeral pin set passed to
     // `gc_step_with_pins`).  The nmp-watermarks sub-db was removed in #1090
@@ -52,11 +52,11 @@ pub(super) fn open_impl_with_limits(
     // the K3 coverage ledger below is its purpose-built, actually-read successor
     // (ADR-0056 §2.1 / §3 — re-created, not re-activated).
     //
-    // #1811 bump 14 → 17: three durable full-text-search sub-dbs — nmp-fts-postings,
+    // #1811 bump 13 → 16: three durable full-text-search sub-dbs — nmp-fts-postings,
     // nmp-fts-doc-terms, nmp-fts-term-stats (the persistent inverted index, the
     // durable backend of the FTS seam). Each is opened on the SAME write txn as
     // the others below so every FTS write commits atomically with its event write.
-    const NMP_ADDITIONAL_DBS: u32 = 17;
+    const NMP_ADDITIONAL_DBS: u32 = 16;
 
     std::fs::create_dir_all(path).map_err(|e| StoreError::Io(e.to_string()))?;
 
@@ -96,8 +96,6 @@ pub(super) fn open_impl_with_limits(
     // K3 Stage D1 (ADR-0056 §3) — coverage ledger:
     // filter_hash || 0x1F || relay_url → covered_through(8 BE).
     let coverage = open("nmp-coverage", &mut txn)?;
-    // Issue #1519 — interaction-counter sidecar.
-    let interaction_counters = open("nmp-interaction-counters", &mut txn)?;
     // ADR-0058 §4 — ingest-log sub-dbs.
     let ingest_log_db = open("nmp-ingest-log", &mut txn)?;
     let ingest_meta_db = open("nmp-ingest-meta", &mut txn)?;
@@ -157,10 +155,6 @@ pub(super) fn open_impl_with_limits(
         max_readers,
     )?;
 
-    // Issue #1519 — interaction-counter schema init.
-    let interaction_counters_usable =
-        super::interaction_counters::init_schema(&env, domain_versions)?;
-
     Ok(LmdbEventStore {
         path: path.to_path_buf(),
         inner: Arc::new(Inner {
@@ -180,8 +174,6 @@ pub(super) fn open_impl_with_limits(
             relay_index,
             relay_kind,
             coverage,
-            interaction_counters,
-            interaction_counters_usable,
             ingest_log: ingest_log_db,
             ingest_meta: ingest_meta_db,
             fts_postings,

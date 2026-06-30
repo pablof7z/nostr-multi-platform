@@ -415,23 +415,6 @@ pub trait EventStore: Send + Sync {
         format: DumpFormat,
     ) -> Result<DumpStats, StoreError>;
 
-    /// Interaction counts for the given target event id.
-    ///
-    /// Returns the number of stored reply/reaction/repost/zap events that
-    /// reference `target` via an e-tag (classified by
-    /// [`crate::interaction::classify`]).
-    ///
-    /// Default impl returns `TargetInteractionCounts::default()` (all zeros).
-    /// Both the `LmdbEventStore` and `MemEventStore` override this with real
-    /// counts derived from their respective counter stores.
-    fn interaction_counts(
-        &self,
-        target: &EventId,
-    ) -> Result<crate::TargetInteractionCounts, StoreError> {
-        let _ = target;
-        Ok(crate::TargetInteractionCounts::default())
-    }
-
     // ─── Full-text search (issue #1811) ──────────────────────────────────────
 
     /// Install the compiled, protocol-noun-free search index specs.

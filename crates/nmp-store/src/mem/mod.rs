@@ -51,7 +51,6 @@ pub(super) mod domain;
 // LMDB FTS sub-databases).
 pub(super) mod fts;
 pub(super) mod gc;
-pub(super) mod ic;
 pub(super) mod insert;
 // NIP-09 (kind:5) deletion handler — extracted from insert.rs for the 500 LOC cap.
 pub(super) mod ingest_log;
@@ -176,15 +175,6 @@ pub(super) struct MemState {
     /// deleted from the primary map.
     pub(super) access_index: HashMap<String, u64>,
 
-    /// Interaction-counter sidecar (issue #1519).
-    ///
-    /// Key: `(target_event_id_hex, CounterKind as u8)`.
-    /// Value: count.
-    ///
-    /// Maintained symmetrically with the event map — any insert increments,
-    /// any removal decrements. Parity with the LMDB backend.
-    pub(super) interaction_counters: HashMap<(String, u8), u64>,
-
     /// #1811 — full-text inverted index (installed specs + per-scope index).
     ///
     /// Empty until `install_search_index_specs` runs at composition. Maintained
@@ -210,7 +200,6 @@ impl MemState {
             domain_versions: HashMap::new(),
             access_seq: 0,
             access_index: HashMap::new(),
-            interaction_counters: HashMap::new(),
             ingest_seq: 0,
             ingest_log: std::collections::BTreeMap::new(),
             log_gc_floor: 0,
