@@ -124,7 +124,7 @@ Why this works: the kernel's projection and interest machinery is generic. It do
 
 `nmp-nip29` ships its own non-hydrated views (`GroupChat`, `GroupDiscussions`, `GroupHome`, etc.) that are useful on their own (debugging UIs, tests, headless clients) without any cross-crate joins. The hydrated variants are app-level conveniences.
 
-For kind:16 (generic repost): the *h-tagged* repost is owned by `nmp-nip29::GroupRepost` in M11.5, because the routing is host-pin and no separate `nmp-nip18` crate exists yet (per §3.1). A future `nmp-nip18` extraction would lift only the *non-h* repost case out; the h-tagged variant stays in `nmp-nip29` either way because routing is the discriminator. `highlighter-core` never grows kind:16 ingest in any state — the consistency contract is firm.
+For kind:16 (generic repost): `nmp-nip29` is a kind-blind transport and does **not** own a repost record/action (#2509 / #2513). `nmp-nip18` owns the kind:16 event; an `h`-tagged repost is *routed* into a group (and read back through the kind-agnostic `GroupEventsProjection`) but is never NIP-29's to own. Authoring goes through the single generic `PublishGroupEventAction` (`nmp.nip29.publish_group_event`), which injects only the `h` / `previous` / host-pin envelope — there is no `GroupRepost` / `ShareEventInGroup` action. `highlighter-core` never grows kind:16 ingest in any state — the consistency contract is firm.
 
 ## 7. What's deferred vs in-scope
 
