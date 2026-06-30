@@ -45,9 +45,14 @@ fn over_bound_decrements_on_successful_re_admit() {
         assert!(!store.admit(), "slot > MAX must be rejected");
     }
     let (state, count) = store.decrypt_status(true);
-    assert_eq!(state, DecryptState::Limited, "Phase 1: bound full + deferred → limited");
     assert_eq!(
-        u64::from(count), total,
+        state,
+        DecryptState::Limited,
+        "Phase 1: bound full + deferred → limited"
+    );
+    assert_eq!(
+        u64::from(count),
+        total,
         "Phase 1: in_flight + over_bound = MAX + n_over"
     );
 
@@ -56,17 +61,36 @@ fn over_bound_decrements_on_successful_re_admit() {
         store.chain_done(gen);
     }
     let (state, count) = store.decrypt_status(true);
-    assert_eq!(state, DecryptState::Limited, "Phase 2: deferred still outstanding → limited");
-    assert_eq!(u64::from(count), n_over, "Phase 2: only the 3 deferred remain");
+    assert_eq!(
+        state,
+        DecryptState::Limited,
+        "Phase 2: deferred still outstanding → limited"
+    );
+    assert_eq!(
+        u64::from(count),
+        n_over,
+        "Phase 2: only the 3 deferred remain"
+    );
 
     // Phase 3: Tailing sub re-delivers the 3 over-bound envelopes.
     // Each admit must (a) succeed (slots freed) and (b) consume one over_bound.
     for i in 0..n_over {
-        assert!(store.admit(), "re-delivered envelope {i} must be admitted (slot free)");
+        assert!(
+            store.admit(),
+            "re-delivered envelope {i} must be admitted (slot free)"
+        );
     }
     let (state, count) = store.decrypt_status(true);
-    assert_eq!(state, DecryptState::Limited, "Phase 3 mid: re-admitted but not yet drained");
-    assert_eq!(u64::from(count), n_over, "Phase 3 mid: in_flight=n_over, over_bound=0");
+    assert_eq!(
+        state,
+        DecryptState::Limited,
+        "Phase 3 mid: re-admitted but not yet drained"
+    );
+    assert_eq!(
+        u64::from(count),
+        n_over,
+        "Phase 3 mid: in_flight=n_over, over_bound=0"
+    );
 
     // Drain the re-admitted chains.
     for _ in 0..n_over {

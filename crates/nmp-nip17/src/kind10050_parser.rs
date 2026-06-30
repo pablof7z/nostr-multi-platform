@@ -219,7 +219,9 @@ mod tests {
             ],
         ));
 
-        let resolved = cache.read_relays("alice").expect("the one well-formed tag must land");
+        let resolved = cache
+            .read_relays("alice")
+            .expect("the one well-formed tag must land");
         assert_eq!(
             resolved,
             vec!["wss://valid.example"],
@@ -278,8 +280,7 @@ mod tests {
         // Compile-check the IngestParser shape — confirms the trait is
         // satisfied so `EventIngestDispatcher::register_kind` accepts it.
         let cache = Arc::new(DmRelayCache::new());
-        let parser: Arc<dyn IngestParser> =
-            Arc::new(Kind10050Parser::new(Arc::clone(&cache)));
+        let parser: Arc<dyn IngestParser> = Arc::new(Kind10050Parser::new(Arc::clone(&cache)));
 
         let mut dispatcher = EventIngestDispatcher::new();
         dispatcher.register_kind(10_050, parser);

@@ -11,8 +11,8 @@
 //! is invoked — never a silent `let _ = send(..)`.
 
 use super::*;
-use nmp_core::{ActorMail};
-use nmp_core::actor::{ActionLedgerCommand};
+use nmp_core::actor::ActionLedgerCommand;
+use nmp_core::ActorMail;
 use std::sync::mpsc::{channel, Receiver, Sender};
 
 /// A signed kind:13 seal for the wrap step, signed with a real test key so
@@ -102,9 +102,10 @@ fn wrap_and_publish_enqueues_publish_on_live_inbox() {
     );
     // No failure terminal on the happy path.
     assert!(
-        !cmds
-            .iter()
-            .any(|c| matches!(c, ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure { .. }))),
+        !cmds.iter().any(|c| matches!(
+            c,
+            ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure { .. })
+        )),
         "happy path must not record a failure: {cmds:?}"
     );
 }

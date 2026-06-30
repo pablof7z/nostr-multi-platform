@@ -19,6 +19,7 @@
 mod builder;
 mod decode;
 mod projection;
+pub mod runtime;
 
 pub use builder::{
     build_comment_event, CommentBuildError, CommentBuildInput, CommentParent, CommentRoot,
@@ -28,6 +29,7 @@ pub use nmp_kinds::KIND_NIP22_COMMENT;
 pub use projection::{
     build_thread, CommentThreadNode, CommentThreadProjection, CommentThreadSnapshot,
 };
+pub use runtime::register_comment_runtime;
 
 /// Compiled ownership descriptor for crate-ownership reports.
 pub mod ownership;
