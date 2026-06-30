@@ -3736,6 +3736,7 @@ dependencies = [
  "nmp-ownership",
  "nmp-replies",
  "nmp-router",
+ "nmp-signer-iface",
  "nmp-substrate",
  "nmp-uniffi",
  "nmp-wot",

@@ -41,7 +41,15 @@ class ExternalSignerLoopContractTest {
 
     /**
      * Verbatim shape of the first-connect request `Nip55Connect::new` builds
-     * (serde: snake_case method tags, permission batch, optional package).
+     * for the NmpGallery composition root (serde: snake_case method tags,
+     * permission batch, optional package).
+     *
+     * Issue #2523 / crate-boundaries.md §9 — the permission batch is no
+     * longer a framework default baked into `nmp-signers`; it is the
+     * gallery's own product decision (`gallery_nip55_permissions()` in
+     * `apps/nmp-gallery/crates/nmp-app-gallery/src/lib.rs`). This fixture
+     * mirrors that list exactly so the test stays honest about what
+     * production actually requests.
      */
     private val rustConnectRequestJson = """
         {
@@ -53,6 +61,21 @@ class ExternalSignerLoopContractTest {
             "permissions": [
                 {"kind": "sign_event:0"},
                 {"kind": "sign_event:1"},
+                {"kind": "sign_event:3"},
+                {"kind": "sign_event:5"},
+                {"kind": "sign_event:6"},
+                {"kind": "sign_event:7"},
+                {"kind": "sign_event:13"},
+                {"kind": "sign_event:16"},
+                {"kind": "sign_event:1111"},
+                {"kind": "sign_event:9802"},
+                {"kind": "sign_event:10002"},
+                {"kind": "sign_event:10003"},
+                {"kind": "sign_event:10006"},
+                {"kind": "sign_event:10050"},
+                {"kind": "sign_event:30003"},
+                {"kind": "sign_event:30004"},
+                {"kind": "sign_event:39701"},
                 {"kind": "nip44_encrypt"},
                 {"kind": "nip44_decrypt"}
             ],
@@ -65,7 +88,7 @@ class ExternalSignerLoopContractTest {
     fun connectRequestDecodesAndSelectsIntentPath() {
         val request = json.decodeFromString<ExternalSignerRequest>(rustConnectRequestJson)
         assertEquals("get_public_key", request.method)
-        assertEquals(4, request.permissions.size)
+        assertEquals(19, request.permissions.size)
         // get_public_key is NOT a grantable batch permission — the first
         // connect always rides the Intent round-trip (user approval).
         assertFalse(shouldUseContentResolver(request))
