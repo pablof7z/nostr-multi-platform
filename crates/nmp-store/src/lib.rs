@@ -28,7 +28,6 @@ mod domain_migration;
 mod events;
 mod events_query_dispatch;
 pub mod ingest_log;
-pub(crate) mod interaction;
 mod lmdb;
 mod mem;
 // OPFS-SQLite backend (#1007). wasm32-only (the engine's inherent methods are
@@ -39,6 +38,11 @@ mod opfs;
 // D20 — wasm-safe time shim. All wasm-reachable code in this crate that
 // needs `Instant` imports from here instead of directly from `std::time`.
 pub(crate) mod time;
+// #2512 — cache-side e-tag reference-counter seam (noun-free vocabulary).
+// `nmp-relations` compiles its protocol-aware engagement classifier into the
+// opaque `ReferenceClassifyFn` here and injects it at composition time; this
+// crate never names a protocol concept (D0).
+pub mod reference_counts;
 // #1811 — cache-side full-text search seam (noun-free vocabulary + shared
 // tokenizer + CompiledIndexSpec). `nmp-core` compiles its protocol-aware
 // SearchScopeProviders into the noun-free types here.
@@ -61,6 +65,9 @@ pub mod relay_scores {
     pub use super::lmdb::relay_scores::{load_all_raw, put_batch_raw};
 }
 pub use mem::MemEventStore;
+// #2512 — generic reference-counter public surface. `nmp-relations` imports
+// these to compile + install its engagement classifier and read counts back.
+pub use reference_counts::{ReferenceBucketId, ReferenceClassifyFn, TargetReferenceCounts};
 // #1007 — OPFS-SQLite `EventStore` backend (browser-durable). PR-7's
 // `nmp-browser-runtime` constructs it via `OpfsSqliteEventStore::open(...).await`
 // and injects it as `Arc<dyn EventStore>`.
@@ -76,7 +83,7 @@ pub use text_search::{
 pub use types::{
     coverage_key, coverage_key_parts, CoverageGuard, CoverageMatchFn, CoverageRow, DeleteFilter,
     DumpFormat, DumpStats, EventId, GcBudget, GcReport, InsertOutcome, ProvenanceEntry, PubKey,
-    RawEvent, RejectReason, RelayUrl, StoreQuery, StoredEvent, TargetInteractionCounts,
+    RawEvent, RejectReason, RelayUrl, StoreQuery, StoredEvent,
     TombstoneOrigin, TombstoneRow, VerifiedEvent, COVERAGE_KEY_SEP, DEFAULT_DURABLE_EVENT_CEILING,
     GC_MAX_DURATION_MS, GC_MAX_EVENTS_PER_STEP,
 };

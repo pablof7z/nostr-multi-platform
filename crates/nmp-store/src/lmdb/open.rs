@@ -182,6 +182,8 @@ pub(super) fn open_impl_with_limits(
             coverage,
             interaction_counters,
             interaction_counters_usable,
+            // #2512 — inert until `install_reference_counter_classifier` runs at composition.
+            reference_classifier: std::sync::RwLock::new(None),
             ingest_log: ingest_log_db,
             ingest_meta: ingest_meta_db,
             fts_postings,

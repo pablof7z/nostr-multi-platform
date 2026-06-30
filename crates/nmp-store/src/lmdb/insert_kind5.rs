@@ -124,6 +124,7 @@ pub(super) fn handle_kind5(
                 if let Some(ref tags) = target_tags {
                     super::interaction_counters::apply_on_remove(
                         inner.interaction_counters,
+                        &inner.reference_classifier,
                         txn,
                         target_kind,
                         tags,
@@ -214,6 +215,7 @@ pub(super) fn handle_kind5(
                         if inner.interaction_counters_usable {
                             super::interaction_counters::apply_on_remove(
                                 inner.interaction_counters,
+                                &inner.reference_classifier,
                                 txn,
                                 existing_kind,
                                 &existing_tags,
@@ -281,6 +283,7 @@ pub(super) fn handle_kind5(
                         if inner.interaction_counters_usable {
                             super::interaction_counters::apply_on_remove(
                                 inner.interaction_counters,
+                                &inner.reference_classifier,
                                 txn,
                                 existing_kind,
                                 &existing_tags,
@@ -379,12 +382,13 @@ pub(super) fn handle_kind5(
     if let Some(exp) = event.expiration() {
         gc::expiry_index_put(inner, txn, exp, &kind5_id)?;
     }
-    // Issue #1519: kind:5 is itself kind 5 — not a counter kind (1/6/7/9735),
-    // so apply_on_insert is a no-op. We still call it for consistency so the
-    // code path is uniform.
+    // #2512: run the installed reference classifier on the kind:5 itself for a
+    // uniform code path. A kind:5 is not a counted reference under the engagement
+    // classifier, so this is a no-op there; the store names no kinds regardless.
     if inner.interaction_counters_usable {
         super::interaction_counters::apply_on_insert(
             inner.interaction_counters,
+            &inner.reference_classifier,
             txn,
             event.kind,
             &event.tags,

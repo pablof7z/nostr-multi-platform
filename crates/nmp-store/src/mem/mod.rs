@@ -176,14 +176,24 @@ pub(super) struct MemState {
     /// deleted from the primary map.
     pub(super) access_index: HashMap<String, u64>,
 
-    /// Interaction-counter sidecar (issue #1519).
+    /// Generic e-tag reference-counter sidecar (#2512, was #1519).
     ///
-    /// Key: `(target_event_id_hex, CounterKind as u8)`.
+    /// Key: `(target_event_id_hex, bucket_discriminant)`.
     /// Value: count.
     ///
     /// Maintained symmetrically with the event map — any insert increments,
-    /// any removal decrements. Parity with the LMDB backend.
+    /// any removal decrements. Parity with the LMDB backend. The bucket
+    /// discriminant is whatever the installed `reference_classifier` returns;
+    /// the store assigns it no meaning.
     pub(super) interaction_counters: HashMap<(String, u8), u64>,
+
+    /// Installed reference classifier (#2512). `None` until
+    /// `install_reference_counter_classifier` runs at composition → the counter
+    /// sidecar is inert. `nmp-relations` injects its protocol-aware engagement
+    /// closure here; mem runs it at every insert/remove. Mirrors the LMDB
+    /// `Inner::reference_classifier` seam.
+    pub(super) reference_classifier:
+        Option<std::sync::Arc<crate::reference_counts::ReferenceClassifyFn>>,
 
     /// #1811 — full-text inverted index (installed specs + per-scope index).
     ///
@@ -211,6 +221,7 @@ impl MemState {
             access_seq: 0,
             access_index: HashMap::new(),
             interaction_counters: HashMap::new(),
+            reference_classifier: None,
             ingest_seq: 0,
             ingest_log: std::collections::BTreeMap::new(),
             log_gc_floor: 0,

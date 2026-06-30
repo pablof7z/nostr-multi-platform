@@ -198,6 +198,7 @@ pub(super) fn gc_step(
                 if let Some(ref tags) = event_tags {
                     super::interaction_counters::apply_on_remove(
                         inner.interaction_counters,
+                        &inner.reference_classifier,
                         &mut txn,
                         kind,
                         tags,
@@ -366,6 +367,7 @@ pub(super) fn gc_step(
                     if let Some(ref tags) = event_tags {
                         super::interaction_counters::apply_on_remove(
                             inner.interaction_counters,
+                            &inner.reference_classifier,
                             &mut txn,
                             kind,
                             tags,

@@ -5,9 +5,11 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::ops::ControlFlow;
+use std::sync::Arc;
 
 use nostr::SingleLetterTag;
 
+use super::reference_counts::{ReferenceClassifyFn, TargetReferenceCounts};
 use super::text_search::{
     CompiledIndexSpec, SearchScopeId, TextSearchHit, TextSearchQuery, TextSearchStatus,
 };
@@ -415,21 +417,35 @@ pub trait EventStore: Send + Sync {
         format: DumpFormat,
     ) -> Result<DumpStats, StoreError>;
 
-    /// Interaction counts for the given target event id.
+    // ─── Generic e-tag reference counters (issue #2512) ──────────────────────
+
+    /// Install the protocol-aware reference classifier at composition time.
     ///
-    /// Returns the number of stored reply/reaction/repost/zap events that
-    /// reference `target` via an e-tag (classified by
-    /// [`crate::interaction::classify`]).
+    /// Mirrors [`Self::install_search_index_specs`]: `nmp-relations` compiles
+    /// its engagement spec (which kinds count, which NIP-10 marker picks the
+    /// target) into the opaque [`ReferenceClassifyFn`] and hands it here. The
+    /// store runs the closure at every insert / remove to maintain generic
+    /// per-target buckets keyed by the opaque [`crate::ReferenceBucketId`] the
+    /// closure returns; it never names a protocol concept (D0).
     ///
-    /// Default impl returns `TargetInteractionCounts::default()` (all zeros).
-    /// Both the `LmdbEventStore` and `MemEventStore` override this with real
-    /// counts derived from their respective counter stores.
-    fn interaction_counts(
+    /// Default no-op so a backend without the counter sidecar compiles
+    /// unchanged. `LmdbEventStore` and `MemEventStore` override it; the OPFS
+    /// backend ships no counter index yet, so the default (empty counts)
+    /// applies — exactly the FTS contract.
+    fn install_reference_counter_classifier(&self, _classifier: Arc<ReferenceClassifyFn>) {}
+
+    /// Reference counts for `target`, bucketed by the opaque ids the installed
+    /// classifier produced.
+    ///
+    /// Default impl returns an empty [`TargetReferenceCounts`] (no classifier
+    /// installed / no sidecar). Both `LmdbEventStore` and `MemEventStore`
+    /// override this with real counts from their counter stores.
+    fn reference_counts(
         &self,
         target: &EventId,
-    ) -> Result<crate::TargetInteractionCounts, StoreError> {
+    ) -> Result<TargetReferenceCounts, StoreError> {
         let _ = target;
-        Ok(crate::TargetInteractionCounts::default())
+        Ok(TargetReferenceCounts::default())
     }
 
     // ─── Full-text search (issue #1811) ──────────────────────────────────────

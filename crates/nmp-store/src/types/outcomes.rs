@@ -73,23 +73,6 @@ pub struct ProvenanceEntry {
     /// True for the first relay that delivered this event (deterministic after sort).
     pub primary: bool,
 }
-
-// ─── Interaction counts ───────────────────────────────────────────────────────
-
-/// Aggregated counts of social interactions targeting a single event.
-///
-/// Returned by [`crate::EventStore::interaction_counts`]. Zero-cost default
-/// (all fields 0) is returned when the store has no record for the target.
-///
-/// Field names match the Nostr interaction kinds:
-/// - `replies`   — kind:1 events that e-tag `target` (with reply/root/bare marker)
-/// - `reactions` — kind:7 events that e-tag `target`
-/// - `reposts`   — kind:6 events that e-tag `target`
-/// - `zaps`      — kind:9735 events that e-tag `target`
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct TargetInteractionCounts {
-    pub replies: u64,
-    pub reactions: u64,
-    pub reposts: u64,
-    pub zaps: u64,
-}
+// Cross-protocol engagement aggregation (the typed reply/reaction/repost/zap
+// summary) is NOT a storage concern — it moved to `nmp-relations` (#2512). The
+// store exposes only the generic, noun-free `crate::reference_counts` primitive.

@@ -177,20 +177,9 @@ impl ReplaceableKey {
     }
 }
 
-// ─── Interaction counts (mirror nmp_store::TargetInteractionCounts) ─────────────
-
-/// Aggregate interaction counts for one target event id.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct TargetInteractionCounts {
-    /// kind:1 events that reply-/root-/bare-`e`-tag the target.
-    pub replies: u64,
-    /// kind:7 reactions e-tagging the target.
-    pub reactions: u64,
-    /// kind:6 reposts e-tagging the target.
-    pub reposts: u64,
-    /// kind:9735 zap receipts e-tagging the target.
-    pub zaps: u64,
-}
+// Cross-protocol engagement aggregation is NOT a storage concern — it moved to
+// `nmp-relations` (#2512). This engine exposes no reference-counter sidecar; the
+// `nmp-store` OPFS wrapper falls back to the trait default (empty counts).
 
 // ─── Domain migration staging (mirror nmp_store::{DomainMigration, MigrationTx}) ─
 

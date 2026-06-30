@@ -97,6 +97,7 @@ fn by_ids(
         if let Some(ref tags) = event_tags {
             super::interaction_counters::apply_on_remove(
                 inner.interaction_counters,
+                &inner.reference_classifier,
                 txn,
                 kind,
                 tags,
@@ -165,6 +166,7 @@ fn by_author(
         if let Some(ref tags) = event_tags {
             super::interaction_counters::apply_on_remove(
                 inner.interaction_counters,
+                &inner.reference_classifier,
                 txn,
                 kind,
                 tags,
@@ -233,6 +235,7 @@ fn by_kind_range(
         if let Some(ref tags) = event_tags {
             super::interaction_counters::apply_on_remove(
                 inner.interaction_counters,
+                &inner.reference_classifier,
                 txn,
                 kind,
                 tags,
@@ -342,6 +345,7 @@ fn by_relay_only(
         if let Some(ref tags) = event_tags {
             super::interaction_counters::apply_on_remove(
                 inner.interaction_counters,
+                &inner.reference_classifier,
                 txn,
                 kind,
                 tags,
