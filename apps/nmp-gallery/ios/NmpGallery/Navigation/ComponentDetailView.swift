@@ -54,7 +54,7 @@ struct ComponentDetailView: View {
         case "user-npub":
             UserNpubPage(profile: model.bestEffortProfile)
         case "user-card":
-            UserCardPage(profile: model.bestEffortProfile)
+            UserCardPage(pubkey: SHOWCASE_PUBKEY_HEX, profile: model.bestEffortProfile)
         // Content pages — work without relay data; the wire trees are
         // constructed in-line inside each page builder.
         case "content-core":

@@ -13,9 +13,6 @@
 # Genuinely generated/output files belong in .file-size-ignore, not here.
 
 apps/nmp-gallery/android/app/src/main/kotlin/org/nmp/gallery/registry/NostrContentView.kt	634
-apps/nmp-gallery/desktop/src/gallery.rs	645
-apps/nmp-gallery/tui/src/main.rs	680
-apps/nmp-gallery/tui/src/render.rs	509
 crates/nmp-cli/registry/compose/content-view/NostrContentView.kt	599
 crates/nmp-cli/registry/tui/content-kind-registry/nostr_kind_registry.rs	818
 crates/nmp-codegen/src/swift.rs	605

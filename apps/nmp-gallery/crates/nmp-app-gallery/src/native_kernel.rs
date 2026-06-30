@@ -123,6 +123,25 @@ pub extern "C" fn nmp_gallery_kernel_resolve_profile_ref(
     key: *const c_char,
     consumer_id: *const c_char,
 ) {
+    resolve_profile(app, key, consumer_id, nmp_core::ProfileShape::Ref);
+}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[no_mangle]
+pub extern "C" fn nmp_gallery_kernel_resolve_profile_card(
+    app: *mut GalleryNativeApp,
+    key: *const c_char,
+    consumer_id: *const c_char,
+) {
+    resolve_profile(app, key, consumer_id, nmp_core::ProfileShape::Card);
+}
+
+fn resolve_profile(
+    app: *mut GalleryNativeApp,
+    key: *const c_char,
+    consumer_id: *const c_char,
+    shape: nmp_core::ProfileShape,
+) {
     let Some(session) = gallery_session_ref(app) else {
         return;
     };
@@ -133,7 +152,7 @@ pub extern "C" fn nmp_gallery_kernel_resolve_profile_ref(
         nmp_core::RefNamespace::Profile,
         key,
         consumer_id,
-        nmp_core::RefShape::Profile(nmp_core::ProfileShape::Ref),
+        nmp_core::RefShape::Profile(shape),
         nmp_core::RefLiveness::CacheOk,
     );
 }

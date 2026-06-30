@@ -81,6 +81,12 @@ impl GalleryBridge {
         self.sink.resolve_profile(pubkey, consumer_id);
     }
 
+    /// Resolve the full profile-card shape for widgets that render fields
+    /// outside the avatar/name subset.
+    pub fn resolve_profile_card(&self, pubkey: &str, consumer_id: &str) {
+        self.sink.resolve_profile_card(pubkey, consumer_id);
+    }
+
     /// Take the snapshot receiver for use in the iced subscription. Called
     /// once at startup; subsequent calls return None.
     pub fn take_snapshot_receiver(

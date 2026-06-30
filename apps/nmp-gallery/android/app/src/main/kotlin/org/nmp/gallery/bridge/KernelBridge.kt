@@ -9,6 +9,10 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import uniffi.nmp_uniffi.CapabilitySink
 import uniffi.nmp_uniffi.NmpApp
+import uniffi.nmp_uniffi.ProfileShape
+import uniffi.nmp_uniffi.RefLiveness
+import uniffi.nmp_uniffi.RefNamespace
+import uniffi.nmp_uniffi.RefShape
 import uniffi.nmp_uniffi.UpdateSink
 
 /**
@@ -87,6 +91,16 @@ class KernelBridge {
      */
     fun resolveProfileRef(pubkey: String, consumerId: String) {
         app?.resolveProfileRef(pubkey, consumerId)
+    }
+
+    fun resolveProfileCard(pubkey: String, consumerId: String) {
+        app?.resolveRef(
+            RefNamespace.PROFILE,
+            pubkey,
+            consumerId,
+            RefShape.Profile(ProfileShape.CARD),
+            RefLiveness.CACHE_OK,
+        )
     }
 
     fun releaseProfileRef(pubkey: String, consumerId: String) {
