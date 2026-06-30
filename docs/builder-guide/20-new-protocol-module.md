@@ -88,9 +88,12 @@ model. Minimum surface:
 | observed delivery | internal executor machinery only, declared after shape/scope/owner/replay | NIP-29 group feed internals |
 | `CapabilityModule` | request → native execution → typed result *envelope* (never `Result`) | [16 — Capabilities](16-capabilities.md) |
 
-The unifying ownership rule a protocol crate states explicitly
-(`nmp-nip29/src/kinds.rs`): "the kind is the dispatch; the `h` tag is
-the ownership." Pick *one* such rule and document it in your `lib.rs`.
+The unifying rule a protocol crate states explicitly
+(`nmp-nip29/src/kinds.rs`): NIP-29 is a *kind-blind transport* — it owns only
+the `h` / `previous` / host-pin routing envelope and its own 9xxx/3900x kind
+namespace, never a foreign kind. An `h` tag makes an event *routable into a
+group*, not NIP-29's to own. Pick *one* such boundary rule and document it in
+your `lib.rs`.
 
 ### How `nmp-nip29` wires its seams
 
@@ -99,12 +102,14 @@ the ownership." Pick *one* such rule and document it in your `lib.rs`.
 ```rust
 // Called from an app-core composition root during init.
 pub fn register_actions(app: &mut impl AppHost) {
-    app.register_action(PostChatMessageAction);
-    app.register_action(ReactInGroupAction);
+    // Generic, kind-blind group-event write surface — the only one.
+    app.register_action(PublishGroupEventAction);
     app.register_action(CreatePublicGroupAction);
     app.register_action(DiscoverGroupsAction);
     app.register_action(JoinGroupAction);
-    // … 10 more ActionModules
+    // … lifecycle/admin ActionModules. NO per-kind named action: a foreign
+    // kind (kind:7 reaction, kind:16 repost) is built by its owning NIP and
+    // routed through PublishGroupEventAction, never named here.
 }
 
 // Called separately after the read model is constructed.

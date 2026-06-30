@@ -185,12 +185,15 @@ Registration (`crates/nmp-nip29/src/register.rs`):
 
 ```rust
 pub fn register_actions(app: &mut NmpApp) {
-    app.register_action(PostChatMessageAction);
-    app.register_action(ReactInGroupAction);
+    // The SOLE group-event write surface: kind-blind, injects only the
+    // h / previous / host-pin envelope around a caller-built event of any kind.
+    app.register_action(PublishGroupEventAction);
     app.register_action(CreatePublicGroupAction);
     app.register_action(DiscoverGroupsAction);
     app.register_action(JoinGroupAction);
-    // … 10 more
+    // … lifecycle/admin actions (leave, put_user, create_invite, set_parent,
+    // edit_metadata). NOTE: no per-kind named action (react/repost/share) —
+    // nmp-nip29 never names a foreign kind; the owning NIP builds the event.
 }
 ```
 
