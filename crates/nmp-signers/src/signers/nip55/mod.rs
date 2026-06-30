@@ -462,5 +462,4 @@ impl Nip44 for Nip55Signer {
 }
 
 #[cfg(test)]
-#[path = "tests.rs"]
 pub(crate) mod tests;
