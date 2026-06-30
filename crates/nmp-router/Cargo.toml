@@ -7,6 +7,7 @@ repository.workspace = true
 description = "Layer-2 routing: one generic OutboxRouter algorithm (NIP-65 mailbox + relay hints + p-tag inbox + indexer eligibility), the NIP-65-only InMemoryMailboxCache, kind:10002 IngestParser, and indexer-republish policy. Step 2 of docs/architecture/crate-boundaries.md."
 
 [dependencies]
+nmp-ownership = { workspace = true }
 # Substrate traits and value types — `OutboxRouter`, `MailboxCache`,
 # `IngestParser`, `RoutingContext`, `RoutedRelaySet`, plus the
 # `UnsignedEvent` / `ActionModule` types the absorbed

@@ -131,3 +131,6 @@ pub use wire::mute_list_fb::{
     decode_mute_list, encode_mute_list, MUTE_LIST_FILE_IDENTIFIER, MUTE_LIST_SCHEMA_ID,
     MUTE_LIST_SCHEMA_VERSION,
 };
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

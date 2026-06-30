@@ -16,6 +16,7 @@ default = []
 native = ["dep:ureq"]
 
 [dependencies]
+nmp-ownership = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

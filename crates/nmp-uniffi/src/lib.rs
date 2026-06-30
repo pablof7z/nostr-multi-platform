@@ -200,3 +200,6 @@ impl NmpApp {
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

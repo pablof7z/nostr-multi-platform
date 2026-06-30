@@ -203,3 +203,6 @@ impl ProtocolCommand for ResolveNip05Command {
 
 #[cfg(test)]
 mod tests;
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

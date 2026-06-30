@@ -7,7 +7,7 @@
 //! - **Content:** optional human-readable reason
 //! - **Signer:** the prospective member (the active local identity)
 //! - **Routing:** host relay (pin) — same Case-E lane as the user-content
-//!   actions in `content.rs` / `composed.rs`.
+//!   publish envelope in `publish.rs`.
 //!
 //! The relay's response is asynchronous: open + uncoded → it republishes
 //! kind:39002 with the new member; closed + valid code → 39002 + code is
@@ -126,7 +126,7 @@ mod tests {
             "join executor must send exactly one command, got {cmds:?}"
         );
         match cmds.into_iter().next().unwrap() {
-            ActorCommand::Publish(PublishCommand::UnsignedEventToRelays {
+            ActorCommand::Publish(PublishCommand::OwnedUnsignedEventToRelays {
                 event,
                 relays,
                 correlation_id,
@@ -163,7 +163,7 @@ mod tests {
         })
         .expect("well-formed");
         let event: UnsignedEvent = match cmds.into_iter().next().expect("one command") {
-            ActorCommand::Publish(PublishCommand::UnsignedEventToRelays { event, .. }) => event,
+            ActorCommand::Publish(PublishCommand::OwnedUnsignedEventToRelays { event, .. }) => event,
             other => panic!("expected publish, got {other:?}"),
         };
         assert!(
@@ -185,7 +185,7 @@ mod tests {
         })
         .expect("well-formed");
         let event = match cmds.into_iter().next().expect("one command") {
-            ActorCommand::Publish(PublishCommand::UnsignedEventToRelays { event, .. }) => event,
+            ActorCommand::Publish(PublishCommand::OwnedUnsignedEventToRelays { event, .. }) => event,
             other => panic!("expected publish, got {other:?}"),
         };
         assert_eq!(event.content, "please let me in");

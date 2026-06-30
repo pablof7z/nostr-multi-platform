@@ -34,6 +34,7 @@ opfs-sqlite-backend = ["nmp-store/opfs-sqlite-backend"]
 test-support = []
 
 [dependencies]
+nmp-ownership = { workspace = true }
 # Kernel + composition surface. default-features=false keeps wasm32 free of mio/lmdb.
 nmp-core = { path = "../nmp-core", default-features = false }
 # NIP-19 entity codec (Layer 4) carved out of nmp-core per issue #2515.

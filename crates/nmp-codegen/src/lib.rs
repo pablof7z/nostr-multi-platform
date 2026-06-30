@@ -40,6 +40,12 @@ pub mod projection_contract;
 // schema-version / FlatBuffers file identifier / default tier / generated
 // builder posture / public re-export policy / typed-dispatch posture.
 pub mod action_contract;
+mod crate_ownership_parse;
+// #2506 — compiled positive ownership descriptors + CLI report/audit surface.
+// Descriptors live in each crate's source via `nmp_ownership`, while this
+// module discovers active workspace packages and audits duplicate exclusive
+// scopes.
+pub mod crate_ownership;
 // V6 Stage 4 (consumer-side) — generated typed-FlatBuffer-sidecar decoders.
 // Reads `SnapshotProjectionEntry::typed_sidecar` and emits, per projection key
 // with a checked-in `flatc --swift` reader binding, the mechanical
@@ -90,17 +96,33 @@ pub mod signer_catalog;
 // `KEYED_PROJECTIONS`; decode `nmp.refs.RefRowDeltaBatch` and merge row deltas
 // under the five invariants, semantically identical to
 // `nmp_core::refs::RefRowCache` and to each other across platforms.
-pub mod swift_keyed_cache;
 pub mod kotlin_keyed_cache;
+pub mod swift_keyed_cache;
 
-pub use manifest::{AppManifest, ModuleSet, NmpDependency};
 pub use action_contract::{
-    canonical_default_action_namespaces, contract_for as action_contract_for,
-    dm_action_namespaces, lookup as action_contract_lookup, marmot_action_namespaces,
-    render_action_contract_report, social_action_namespaces, substrate_action_namespaces,
-    typed_dispatch_exemption_namespaces, wallet_action_namespaces, zap_action_namespaces,
-    ActionContract, ActionDefaultTier, BuilderSupport, PublicReExportPolicy, TypedDispatchPolicy,
-    ACTION_CONTRACT,
+    canonical_default_action_namespaces, contract_for as action_contract_for, dm_action_namespaces,
+    lookup as action_contract_lookup, marmot_action_namespaces, render_action_contract_report,
+    social_action_namespaces, substrate_action_namespaces, typed_dispatch_exemption_namespaces,
+    wallet_action_namespaces, zap_action_namespaces, ActionContract, ActionDefaultTier,
+    BuilderSupport, PublicReExportPolicy, TypedDispatchPolicy, ACTION_CONTRACT,
+};
+pub use crate_ownership::{
+    load_workspace_ownership, render_ownership_human, render_ownership_json, render_ownership_tsv,
+    OwnershipAuditIssue, OwnershipClaim, OwnershipDescriptor, OwnershipNote, OwnershipQuery,
+    OwnershipWorkspace,
+};
+pub use kotlin_keyed_cache::{
+    check_kotlin_keyed_ref_cache, generate_kotlin_keyed_ref_cache, render_kotlin_keyed_ref_cache,
+    KotlinKeyedRefCacheCheckOutcome,
+};
+pub use kotlin_projection_cache::{
+    check_kotlin_projection_cache, generate_kotlin_projection_cache,
+    render_kotlin_projection_cache, KotlinProjectionCacheCheckOutcome,
+};
+pub use manifest::{AppManifest, ModuleSet, NmpDependency};
+pub use producer_consts::{
+    check_all_producer_consts, generate_all_producer_consts, render_producer_consts,
+    ProducerConstTarget, ProducerConstsCheckOutcome, PRODUCER_CONST_TARGETS,
 };
 pub use projection_contract::{
     contract_for, drain_projection_keys, kernel_builtin_dependencies,
@@ -108,39 +130,27 @@ pub use projection_contract::{
     PresencePolicy, ProjectionContract, ProjectionTier, PROJECTION_CONTRACT,
 };
 pub use projection_tier::projection_tier;
+pub use projection_version_gate::{
+    check_all_producer_versions, parse_const_u32, repo_root as projection_repo_root,
+    ProducerVersionCheckOutcome, ProducerVersionSource, PRODUCER_VERSION_SOURCES,
+};
 pub use rust_builtin_keys::{
     check_builtin_deps, check_builtin_keys, check_presence_keys, generate_builtin_deps,
     generate_builtin_keys, generate_presence_keys, render_builtin_deps, render_builtin_keys,
     render_presence_keys, BuiltinKeysCheckOutcome,
-};
-pub use producer_consts::{
-    check_all_producer_consts, generate_all_producer_consts, render_producer_consts,
-    ProducerConstTarget, ProducerConstsCheckOutcome, PRODUCER_CONST_TARGETS,
-};
-pub use projection_version_gate::{
-    check_all_producer_versions, parse_const_u32, repo_root as projection_repo_root,
-    ProducerVersionCheckOutcome, ProducerVersionSource, PRODUCER_VERSION_SOURCES,
 };
 pub use signer_catalog::{
     check_signer_catalog, generate_signer_catalog, parse_catalog, render_kotlin_known_signers,
     render_swift_known_signers, SignerApp, SignerCatalogCheckOutcome,
 };
 pub use swift::{check_swift, generate_swift, SwiftCheckOutcome, SwiftEmitError};
-pub use swift_projection_cache::{
-    check_projection_cache, generate_projection_cache, render_projection_cache,
-    ProjectionCacheCheckOutcome,
-};
-pub use kotlin_projection_cache::{
-    check_kotlin_projection_cache, generate_kotlin_projection_cache,
-    render_kotlin_projection_cache, KotlinProjectionCacheCheckOutcome,
-};
 pub use swift_keyed_cache::{
     check_keyed_ref_cache, generate_keyed_ref_cache, render_keyed_ref_cache,
     KeyedRefCacheCheckOutcome,
 };
-pub use kotlin_keyed_cache::{
-    check_kotlin_keyed_ref_cache, generate_kotlin_keyed_ref_cache, render_kotlin_keyed_ref_cache,
-    KotlinKeyedRefCacheCheckOutcome,
+pub use swift_projection_cache::{
+    check_projection_cache, generate_projection_cache, render_projection_cache,
+    ProjectionCacheCheckOutcome,
 };
 pub use swift_typed_decoders::{
     check_typed_decoders, generate_typed_decoders, render_typed_decoders, TypedDecodersCheckOutcome,
@@ -155,7 +165,10 @@ pub use action_builders::{
     generate_action_builders, generate_action_builders_from_registry,
     load_app_action_builder_registry, parse_app_action_builder_registry,
     render as render_action_builders, render_from_registry as render_action_builders_from_registry,
-    validate_app_action_builder_schema_files, ActionBuildersCheckOutcome,
-    AppActionBuilderOutputs, AppActionBuilderRegistryCheckOutcome, AppActionBuilderSchema,
-    LoadedAppActionBuilderRegistry, Platform as ActionBuilderPlatform,
+    validate_app_action_builder_schema_files, ActionBuildersCheckOutcome, AppActionBuilderOutputs,
+    AppActionBuilderRegistryCheckOutcome, AppActionBuilderSchema, LoadedAppActionBuilderRegistry,
+    Platform as ActionBuilderPlatform,
 };
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

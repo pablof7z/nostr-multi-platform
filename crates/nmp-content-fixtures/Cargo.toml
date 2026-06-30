@@ -22,6 +22,7 @@ name = "build-android-gallery-bundle"
 path = "src/bin/build-android-gallery-bundle.rs"
 
 [dependencies]
+nmp-ownership = { workspace = true }
 nmp-content = { path = "../nmp-content" }
 nmp-core = { path = "../nmp-core" }
 # NIP-19/NIP-21 identifier vocabulary (Layer 0) — the fixtures build `nostr:`

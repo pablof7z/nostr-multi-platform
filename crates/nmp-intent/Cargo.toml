@@ -10,6 +10,7 @@ description = "Input-intent resolver for NMP (#1804). Higher-order orchestrator:
 crate-type = ["rlib"]
 
 [dependencies]
+nmp-ownership = { workspace = true }
 nmp-core = { path = "../nmp-core" }
 # NIP-19 entity codec (Layer 4) carved out of nmp-core per issue #2515.
 nmp-nostr-id = { path = "../nmp-nostr-id" }

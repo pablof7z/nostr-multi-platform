@@ -1,13 +1,14 @@
-//! The generic NIP-29 publish surface: author **any** event kind into a group.
+//! Legacy/raw NIP-29 group publish action.
 //!
 //! NIP-29 is a kind-agnostic group transport. Its only concerns are the
 //! `["h", local_id]` group tag, the `["previous", …]` timeline references, and
-//! host-relay routing. The event *kind*, *content*, and any kind-specific
-//! *tags* are the app's concern — "chat" is just `kind:9`, one more event kind.
+//! host-relay routing. Protocol-owned artifacts should be built by their owning
+//! crate and carried through `publish_plan::wrap_owned_draft`; this raw action
+//! remains for unprotected/app-private group events and is still publish-gated
+//! before signing.
 //!
-//! So the single app-facing surface is [`PublishGroupEventAction`]
-//! (`nmp.nip29.publish_group_event`): the app says "publish this
-//! `(kind, content, tags)` to group X" and this crate injects the envelope.
+//! This keeps the important boundary clear: `kind:7 + h` is a NIP-25 reaction
+//! carried through a NIP-29 envelope, not a NIP-29 reaction.
 //!
 //! ## `previous` tags come from the kernel store, not a crate-local cache
 //!
@@ -29,7 +30,7 @@ use nmp_core::substrate::{
 use nmp_store::StoreQuery;
 use serde::{Deserialize, Serialize};
 
-use crate::cache::{EventIdPrefix, previous_tag_prefix};
+use crate::cache::{previous_tag_prefix, EventIdPrefix};
 use crate::group_id::GroupId;
 
 use super::publish_plan::PublishPlan;
@@ -85,13 +86,13 @@ fn previous_prefixes_from_context(
     }
 }
 
-/// Compose the host-pinned `PublishPlan` for an event authored into a NIP-29
+/// Compose the host-pinned `PublishPlan` for a raw event authored into a NIP-29
 /// group: the caller's tags, plus the injected `["h", local_id]` envelope tag
 /// and the `["previous", …]` timeline references read from the store cache.
 ///
-/// This is the single NIP-29 publish route; the generic `publish_group_event`
-/// action flows through it so the `h` / `previous` / pin envelope is built in
-/// exactly one place, regardless of the event's kind.
+/// The generic `publish_group_event` action flows through it so the `h` /
+/// `previous` / pin envelope is built in exactly one place for the legacy raw
+/// doorway.
 pub(crate) fn group_publish_plan(
     ctx: &ActionContext,
     group: &GroupId,
@@ -144,6 +145,7 @@ impl ActionModule for PublishGroupEventAction {
             .require_routable()
             .map_err(ActionRejection::Invalid)?;
         reject_caller_envelope_tags(&action.tags)?;
+        reject_raw_protected_artifact(action.kind, &action.tags)?;
         Ok(())
     }
 
@@ -158,6 +160,30 @@ impl ActionModule for PublishGroupEventAction {
         send(plan.into_actor_command(Some(correlation_id.to_string()))?);
         Ok(())
     }
+}
+
+fn reject_raw_protected_artifact(kind: u32, tags: &[Vec<String>]) -> Result<(), ActionRejection> {
+    let reason = match kind {
+        7 => Some("kind:7 reactions must be built by nmp-nip25 and wrapped by nmp-nip29"),
+        5 if deletes_kind_7_reaction(tags) => {
+            Some("kind:5 reaction deletions must be built by the reaction/deletion owner")
+        }
+        39000..=39003 => Some("NIP-29 group metadata kinds use the typed NIP-29 owner actions"),
+        9000 | 9001 | 9002 | 9005 | 9007 | 9008 | 9009 | 9021 | 9022 => {
+            Some("NIP-29 group management kinds use the typed NIP-29 owner actions")
+        }
+        _ => None,
+    };
+    if let Some(reason) = reason {
+        return Err(ActionRejection::Invalid(reason.to_string()));
+    }
+    Ok(())
+}
+
+fn deletes_kind_7_reaction(tags: &[Vec<String>]) -> bool {
+    tags.iter().any(|tag| {
+        tag.first().is_some_and(|name| name == "k") && tag.get(1).is_some_and(|kind| kind == "7")
+    })
 }
 
 #[cfg(test)]
@@ -222,6 +248,33 @@ mod tests {
                 tags: vec![envelope],
                 ..input()
             };
+            assert!(matches!(
+                action.start(&mut ctx, bad),
+                Err(ActionRejection::Invalid(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn raw_group_publish_rejects_protected_artifacts() {
+        let action = PublishGroupEventAction;
+        let mut ctx = ActionContext::default();
+        for bad in [
+            PublishGroupEventInput { kind: 7, ..input() },
+            PublishGroupEventInput {
+                kind: 5,
+                tags: vec![vec!["k".to_string(), "7".to_string()]],
+                ..input()
+            },
+            PublishGroupEventInput {
+                kind: 9000,
+                ..input()
+            },
+            PublishGroupEventInput {
+                kind: 39000,
+                ..input()
+            },
+        ] {
             assert!(matches!(
                 action.start(&mut ctx, bad),
                 Err(ActionRejection::Invalid(_))

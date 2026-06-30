@@ -52,3 +52,6 @@ pub mod kinds;
 #[cfg(feature = "wrap")]
 mod signer_seal;
 mod wrap;
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

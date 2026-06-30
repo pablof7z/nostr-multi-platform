@@ -7,6 +7,7 @@ repository.workspace = true
 description = "NIP-68 picture-first feed primitives for NMP: kind:20 PictureEventRecord decoder, NIP-92 imeta parser, and PicturePostBuilder blueprint."
 
 [dependencies]
+nmp-ownership = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false }
 nmp-signer-iface = { path = "../nmp-signer-iface" }
 nmp-feed = { path = "../nmp-feed" }

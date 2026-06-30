@@ -79,3 +79,6 @@ pub fn register_zap_with_payment_port(
 // `on_event_*` / `snapshot` inherent methods are reached via static dispatch.
 // Timeline/card counts should claim visible-note relations through
 // `nmp-relations`, not a process-wide zap aggregate.
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

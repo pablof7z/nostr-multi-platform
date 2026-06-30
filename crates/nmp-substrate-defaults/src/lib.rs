@@ -178,3 +178,6 @@ pub fn install_on_app_host(
 pub fn install_on_reducer(reducer: &mut KernelReducer) {
     DefaultSubstrateWiring::new().install_on_reducer(reducer);
 }
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

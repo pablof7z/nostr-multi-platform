@@ -10,6 +10,7 @@ description = "NIP-77 negentropy reconciliation primitives and runtime adapter f
 name = "nmp_nip77"
 
 [dependencies]
+nmp-ownership = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false }
 nmp-network = { path = "../nmp-network", default-features = false }
 # Direct dep on nmp-planner for InterestId / InterestLifecycle —

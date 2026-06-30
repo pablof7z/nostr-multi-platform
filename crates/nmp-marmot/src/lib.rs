@@ -113,3 +113,6 @@ mod resubscribe_inactive_tests;
 
 #[cfg(test)]
 mod security_tests;
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

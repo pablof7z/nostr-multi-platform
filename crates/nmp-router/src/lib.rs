@@ -71,3 +71,6 @@ pub use publish_relay_list::{
 };
 pub use relay_admission::{PrivateNetworkPolicy, RelayAdmissionPolicy};
 pub use router::GenericOutboxRouter;
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

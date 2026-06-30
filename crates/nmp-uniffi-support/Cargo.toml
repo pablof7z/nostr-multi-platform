@@ -11,6 +11,7 @@ name = "nmp_uniffi_support"
 crate-type = ["rlib"]
 
 [dependencies]
+nmp-ownership = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false }
 nmp-native-runtime = { path = "../nmp-native-runtime" }
 serde_json = { workspace = true }

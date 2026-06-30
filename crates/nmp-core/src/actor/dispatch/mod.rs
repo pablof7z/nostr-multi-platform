@@ -24,8 +24,8 @@ use super::tick::maybe_emit_after_dispatch;
 #[cfg(any(test, feature = "test-support"))]
 use super::TestSupportCommand;
 use super::{
-    ActionLedgerCommand, ActorCommand, ActorConfig, ContactsCommand, LifecycleCommand,
-    PublishCommand, RefsCommand, SignCommand,
+    ActorCommand, ActorConfig, ContactsCommand, LifecycleCommand, PublishCommand, RefsCommand,
+    SignCommand,
 };
 use crate::capability_socket::CapabilityCallbackSlot;
 use crate::kernel_action::dispatch_kernel_action;
@@ -33,6 +33,7 @@ use crate::kernel_action::dispatch_kernel_action;
 // Sub-modules — each covers one logical slice of the dispatch surface.
 mod cmd_identity;
 mod cmd_interests;
+mod cmd_action_ledger;
 mod cmd_lifecycle;
 mod cmd_protocol;
 mod cmd_publish;
@@ -166,7 +167,7 @@ pub(super) fn dispatch_command(
         ActorCommand::Relay(cmd) => relay_cmds::dispatch_relay(cmd, ctx),
         ActorCommand::Refs(cmd) => dispatch_refs(cmd, ctx),
         ActorCommand::Interests(cmd) => cmd_interests::dispatch(cmd, &mut ctx.interests_ports()),
-        ActorCommand::ActionLedger(cmd) => dispatch_action_ledger(cmd, ctx),
+        ActorCommand::ActionLedger(cmd) => cmd_action_ledger::dispatch(cmd, ctx),
         ActorCommand::Protocol(cmd) => cmd_protocol::protocol(cmd, &mut ctx.protocol_ports()),
         ActorCommand::Kernel(action) => {
             let _ = dispatch_kernel_action(ctx.kernel, action);
@@ -413,7 +414,19 @@ fn dispatch_publish(
             event: unsigned,
             correlation_id,
             signer_pubkey,
-        } => cmd_publish::publish_unsigned_event(unsigned, correlation_id, signer_pubkey, ctx),
+        } => cmd_publish::publish_unsigned_event(unsigned, None, correlation_id, signer_pubkey, ctx),
+        PublishCommand::OwnedUnsignedEvent {
+            event: unsigned,
+            ownership,
+            correlation_id,
+            signer_pubkey,
+        } => cmd_publish::publish_unsigned_event(
+            unsigned,
+            Some(ownership),
+            correlation_id,
+            signer_pubkey,
+            ctx,
+        ),
         PublishCommand::UnsignedEventToRelays {
             event,
             relays,
@@ -422,6 +435,23 @@ fn dispatch_publish(
             signer_pubkey,
         } => cmd_publish::publish_unsigned_event_to_relays(
             event,
+            None,
+            relays,
+            route_class,
+            correlation_id,
+            signer_pubkey,
+            ctx,
+        ),
+        PublishCommand::OwnedUnsignedEventToRelays {
+            event,
+            ownership,
+            relays,
+            route_class,
+            correlation_id,
+            signer_pubkey,
+        } => cmd_publish::publish_unsigned_event_to_relays(
+            event,
+            Some(ownership),
             relays,
             route_class,
             correlation_id,
@@ -458,25 +488,5 @@ fn dispatch_contacts(
             pubkeys,
             correlation_id,
         } => cmd_publish::follow_many(pubkeys, correlation_id, ctx),
-    }
-}
-
-/// `ActionLedgerCommand` family dispatch.
-fn dispatch_action_ledger(
-    cmd: ActionLedgerCommand,
-    ctx: &mut ActorContext<'_>,
-) -> Option<Vec<OutboundMessage>> {
-    match cmd {
-        ActionLedgerCommand::Ack(correlation_id) => {
-            cmd_publish::ack_action_stage(correlation_id, ctx)
-        }
-        ActionLedgerCommand::RecordFailure {
-            correlation_id,
-            reason,
-        } => cmd_publish::record_action_failure(correlation_id, reason, ctx),
-        ActionLedgerCommand::RecordSuccess {
-            correlation_id,
-            result_json,
-        } => cmd_publish::record_action_success(correlation_id, result_json, ctx),
     }
 }

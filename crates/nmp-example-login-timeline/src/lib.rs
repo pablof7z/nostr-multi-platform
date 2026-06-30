@@ -180,3 +180,6 @@ pub fn short_pubkey(hex: &str) -> String {
     }
     format!("{}...{}", &hex[..8], &hex[hex.len() - 4..])
 }
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

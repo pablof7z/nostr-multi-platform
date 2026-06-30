@@ -1,9 +1,9 @@
-//! NIP-29 event kinds + `h`-tag-based dispatch.
+//! NIP-29-owned event kinds + `h`-tag envelope helpers.
 //!
-//! Per `docs/design/nip29/kinds.md` §4: **any event carrying an `["h",
-//! group_id]` tag is a NIP-29 group event and lives in `nmp-nip29`, regardless
-//! of its kind.** This module classifies the kind, and `group_id_from_tags`
-//! pulls the `h` tag value if present.
+//! Any event carrying an `["h", group_id]` tag is carried through a NIP-29
+//! group envelope, but artifact ownership stays with the event kind's owning
+//! crate. NIP-29 owns only its 39000-39003 / 9000-series artifacts plus the
+//! `h` / `previous` envelope semantics.
 
 use crate::group_id::{GroupId, RelayUrl};
 
@@ -24,7 +24,7 @@ pub const KIND_GROUP_ADMINS: u32 = 39001;
 pub const KIND_GROUP_MEMBERS: u32 = 39002;
 pub const KIND_GROUP_ROLES: u32 = 39003;
 
-/// Coarse-grained classification of a kind for ingest dispatch.
+/// Coarse-grained classification of a kind for group-envelope ingest dispatch.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum KindClass {
     /// Relay-signed metadata (39000–39003) — parameterized-replaceable on `d`.
@@ -45,7 +45,7 @@ pub enum KindClass {
 
 /// Classify a (kind, `has_h_tag`) pair. The `h` tag is the routing key and the
 /// ownership discriminator (kinds.md §4); the kind is the dispatch.
-#[must_use] 
+#[must_use]
 pub fn classify(kind: u32, has_h_tag: bool) -> KindClass {
     match kind {
         KIND_GROUP_METADATA | KIND_GROUP_ADMINS | KIND_GROUP_MEMBERS | KIND_GROUP_ROLES => {
@@ -68,7 +68,7 @@ pub fn classify(kind: u32, has_h_tag: bool) -> KindClass {
 }
 
 /// Convenience: is this an h-tagged group event of any class?
-#[must_use] 
+#[must_use]
 pub fn event_is_group_event(kind: u32, tags: &[Vec<String>]) -> bool {
     let has_h = tags.iter().any(|t| t.len() >= 2 && t[0] == "h");
     !matches!(classify(kind, has_h), KindClass::NotGroup)
@@ -76,7 +76,7 @@ pub fn event_is_group_event(kind: u32, tags: &[Vec<String>]) -> bool {
 
 /// Pull the `h` tag value (the `local_id`) from an event's tags. Returns
 /// `None` if no `h` tag exists.
-#[must_use] 
+#[must_use]
 pub fn h_tag_value(tags: &[Vec<String>]) -> Option<&str> {
     tags.iter()
         .find(|t| t.len() >= 2 && t[0] == "h")
@@ -121,7 +121,7 @@ pub mod tags {
 }
 
 /// Pull the `d` tag value (parameterized-replaceable key for 39000–39003).
-#[must_use] 
+#[must_use]
 pub fn d_tag_value(tags: &[Vec<String>]) -> Option<&str> {
     tags.iter()
         .find(|t| t.len() >= 2 && t[0] == "d")
@@ -135,7 +135,7 @@ pub fn d_tag_value(tags: &[Vec<String>]) -> Option<&str> {
 /// `host_relay_url` MUST be the provenance relay — the relay that produced the
 /// event in our subscription stream. NIP-29 group identity is the pair
 /// `(host, local_id)` (`group_id.rs`); the relay is the trust anchor.
-#[must_use] 
+#[must_use]
 pub fn group_id_from_tags(host_relay_url: &RelayUrl, tags: &[Vec<String>]) -> Option<GroupId> {
     let local = h_tag_value(tags).or_else(|| d_tag_value(tags))?;
     Some(GroupId::new(host_relay_url.clone(), local.to_string()))

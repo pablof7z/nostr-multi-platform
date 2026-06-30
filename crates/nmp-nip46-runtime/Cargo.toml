@@ -7,6 +7,7 @@ repository.workspace = true
 description = "NIP-46 actor-lane runtime — drives the nmp-nip46 reducer over the actor relay lane (Layer-4). PR-B1: sign-ready with real Nip46Signer + multi-relay + tested end-to-end."
 
 [dependencies]
+nmp-ownership = { workspace = true }
 nmp-core    = { path = "../nmp-core", default-features = false }
 nmp-network = { path = "../nmp-network", default-features = false }
 nmp-nip46   = { path = "../nmp-nip46" }

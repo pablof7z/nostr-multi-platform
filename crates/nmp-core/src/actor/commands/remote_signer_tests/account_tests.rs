@@ -208,6 +208,7 @@ fn publish_unsigned_event_with_active_remote_uses_stub_signer() {
         unsigned,
         None,
         None,
+        None,
         &mut crate::actor::pending_sign::ParkedSignerOps::new(),
     );
     assert_eq!(

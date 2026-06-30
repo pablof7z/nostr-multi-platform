@@ -19,6 +19,7 @@ fn snapshot_json_carries_new_projections() {
         unsigned,
         None,
         None,
+        None,
         &mut crate::actor::pending_sign::ParkedSignerOps::new(),
     );
     add_relay(&mut kernel, "wss://relay.damus.io", "both");

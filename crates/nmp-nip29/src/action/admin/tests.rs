@@ -46,7 +46,7 @@ fn put_user_emits_host_pinned_kind_9000_with_role_on_p_tag() {
     let cmds = capture_put(put_input());
     assert_eq!(cmds.len(), 1);
     match &cmds[0] {
-        ActorCommand::Publish(PublishCommand::UnsignedEventToRelays {
+        ActorCommand::Publish(PublishCommand::OwnedUnsignedEventToRelays {
             event,
             relays,
             correlation_id,
@@ -88,7 +88,7 @@ fn create_invite_fans_out_at_ten_codes_per_event() {
     let code_counts: Vec<usize> = cmds
         .iter()
         .map(|cmd| match cmd {
-            ActorCommand::Publish(PublishCommand::UnsignedEventToRelays {
+            ActorCommand::Publish(PublishCommand::OwnedUnsignedEventToRelays {
                 event, relays, ..
             }) => {
                 assert_eq!(event.kind, KIND_CREATE_INVITE);

@@ -21,6 +21,7 @@ native = [
 ]
 
 [dependencies]
+nmp-ownership = { workspace = true }
 flatbuffers = { workspace = true }
 # Kernel substrate — `ActorCommand`, observer traits, the routing
 # substrate factory seam, and the app-neutral `AppHost` registration trait.

@@ -7,6 +7,7 @@ repository.workspace = true
 description = "NIP-18 repost decoding and read-surfacing projections for NMP."
 
 [dependencies]
+nmp-ownership = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false }
 nmp-kinds = { path = "../nmp-kinds" }
 nmp-planner = { path = "../nmp-planner", default-features = false }

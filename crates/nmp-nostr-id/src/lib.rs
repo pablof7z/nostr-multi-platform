@@ -490,5 +490,8 @@ pub fn format(entity: &Nip19Entity) -> Result<String, Nip19Error> {
 pub mod nip21;
 pub use nip21::{format_nostr_uri, parse_nostr_uri, Nip21Error, NostrUri};
 
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;
+
 #[cfg(test)]
 mod tests;

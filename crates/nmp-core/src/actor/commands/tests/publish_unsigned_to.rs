@@ -3,9 +3,9 @@
 //! The host-pinned twin of `publish_unsigned_event`: it SIGNS with the active
 //! account (unlike `publish_signed_event` which carries an already-signed
 //! event) and ROUTES to an explicit relay set (unlike `publish_unsigned_event`
-//! which routes via the NIP-65 outbox). This is the path a NIP-29 group action
-//! needs — a join request must reach the group's host relay, not the author's
-//! kind:10002 outbox.
+//! which routes via the NIP-65 outbox). This is the path a protocol-owned
+//! pinned publish action needs: the event must reach the requested relay, not
+//! the author's kind:10002 outbox.
 
 use super::*;
 
@@ -15,12 +15,11 @@ fn publish_unsigned_event_to_relays_signs_and_routes_to_exactly_those() {
     sign_in_with_nip65(&mut id, &mut kernel);
     let active_pubkey = id.active_pubkey().unwrap();
 
-    // A kind:9021 NIP-29 join-request-shaped unsigned event. `pubkey` is a
-    // placeholder — the signer derives it from the active identity.
+    // `pubkey` is a placeholder; the signer derives it from the active identity.
     let unsigned = nmp_signer_iface::UnsignedEvent {
         pubkey: String::new(),
-        kind: 9021,
-        tags: vec![vec!["h".into(), "rust-nostr".into()]],
+        kind: 1,
+        tags: vec![],
         content: "hello".into(),
         created_at: 1_700_000_000,
     };
@@ -29,6 +28,7 @@ fn publish_unsigned_event_to_relays_signs_and_routes_to_exactly_those() {
         &id,
         &mut kernel,
         unsigned,
+        None,
         relays.clone(),
         PublishRouteClass::GroupHostPin,
         None,
@@ -59,8 +59,8 @@ fn publish_unsigned_event_to_relays_signs_and_routes_to_exactly_those() {
     assert!(outbound[0]
         .text
         .contains(&format!("\"pubkey\":\"{active_pubkey}\"")));
-    assert!(outbound[0].text.contains("\"kind\":9021"));
-    assert_eq!(kernel.publish_queue_snapshot().last().unwrap().kind, 9021);
+    assert!(outbound[0].text.contains("\"kind\":1"));
+    assert_eq!(kernel.publish_queue_snapshot().last().unwrap().kind, 1);
 }
 
 #[test]
@@ -73,8 +73,8 @@ fn publish_unsigned_event_to_relays_without_account_toasts() {
 
     let unsigned = nmp_signer_iface::UnsignedEvent {
         pubkey: String::new(),
-        kind: 9021,
-        tags: vec![vec!["h".into(), "rust-nostr".into()]],
+        kind: 1,
+        tags: vec![],
         content: String::new(),
         created_at: 1_700_000_000,
     };
@@ -83,6 +83,7 @@ fn publish_unsigned_event_to_relays_without_account_toasts() {
         &id,
         &mut kernel,
         unsigned,
+        None,
         relays,
         PublishRouteClass::GroupHostPin,
         None,
@@ -110,8 +111,8 @@ fn publish_unsigned_event_to_relays_empty_relays_fails_closed() {
 
     let unsigned = nmp_signer_iface::UnsignedEvent {
         pubkey: String::new(),
-        kind: 9021,
-        tags: vec![vec!["h".into(), "rust-nostr".into()]],
+        kind: 1,
+        tags: vec![],
         content: String::new(),
         created_at: 1_700_000_000,
     };
@@ -119,6 +120,7 @@ fn publish_unsigned_event_to_relays_empty_relays_fails_closed() {
         &id,
         &mut kernel,
         unsigned,
+        None,
         Vec::new(),
         PublishRouteClass::GroupHostPin,
         None,
@@ -147,8 +149,8 @@ fn publish_unsigned_event_to_relays_invalid_relay_fails_closed() {
 
     let unsigned = nmp_signer_iface::UnsignedEvent {
         pubkey: String::new(),
-        kind: 9021,
-        tags: vec![vec!["h".into(), "rust-nostr".into()]],
+        kind: 1,
+        tags: vec![],
         content: String::new(),
         created_at: 1_700_000_000,
     };
@@ -156,6 +158,7 @@ fn publish_unsigned_event_to_relays_invalid_relay_fails_closed() {
         &id,
         &mut kernel,
         unsigned,
+        None,
         vec!["https://not-a-nostr-relay.example".to_string()],
         PublishRouteClass::GroupHostPin,
         None,
@@ -197,6 +200,7 @@ fn explicit_arm_appends_client_tag_on_public_note() {
         &id,
         &mut kernel,
         unsigned,
+        None,
         relays,
         PublishRouteClass::ManualOverride,
         None,
@@ -238,6 +242,7 @@ fn explicit_arm_finalizes_before_parking_remote_sign() {
         &id,
         &mut kernel,
         unsigned,
+        None,
         relays.clone(),
         PublishRouteClass::ManualOverride,
         Some("explicit-parked-cid".to_string()),
