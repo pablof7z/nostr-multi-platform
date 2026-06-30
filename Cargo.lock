@@ -3866,7 +3866,6 @@ dependencies = [
  "nmp-native-runtime",
  "nmp-nip01",
  "nmp-nip02",
- "nmp-nip11",
  "nmp-nip17",
  "nmp-nip18",
  "nmp-nip22",
@@ -3876,7 +3875,6 @@ dependencies = [
  "nmp-nip50",
  "nmp-nip51",
  "nmp-nip59",
- "nmp-nip77",
  "nmp-nip84",
  "nmp-nip89",
  "nmp-planner",
@@ -4499,8 +4497,12 @@ name = "nmp-substrate-defaults"
 version = "0.8.4"
 dependencies = [
  "nmp-core",
+ "nmp-coverage-gate",
  "nmp-nip01",
+ "nmp-nip11",
+ "nmp-nip77",
  "nmp-router",
+ "nmp-store",
 ]
 
 [[package]]

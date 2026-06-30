@@ -14,9 +14,9 @@
 use std::sync::mpsc::{channel, Receiver};
 use std::sync::{Arc, Mutex};
 
+use nmp_core::actor::ActorCommand;
+use nmp_core::actor::SignCommand;
 use nmp_core::{ActorMail, CommandSender};
-use nmp_core::actor::{ActorCommand};
-use nmp_core::actor::{SignCommand};
 use nmp_nip17::DmInboxProjection;
 use nostr::{EventBuilder, JsonUtil, Keys, Kind, PublicKey, Tag, Timestamp};
 
@@ -41,7 +41,12 @@ fn gift_wrapped_dm(sender: &Keys, receiver: &PublicKey, content: &str, ts: u64) 
 /// Feed one gift-wrap envelope into the projection via `ingest_gift_wrap`,
 /// then drain the emitted port decrypts with `receiver_keys` (the
 /// active local account) so the chain completes and the message lands.
-fn feed_dm(proj: &DmInboxProjection, rx: &Receiver<ActorMail>, receiver_keys: &Keys, envelope: &str) {
+fn feed_dm(
+    proj: &DmInboxProjection,
+    rx: &Receiver<ActorMail>,
+    receiver_keys: &Keys,
+    envelope: &str,
+) {
     proj.ingest_gift_wrap(envelope, None);
     drive_decrypts(rx, receiver_keys);
 }
@@ -111,7 +116,10 @@ fn account_switch_clears_previous_accounts_messages() {
     // Switch active account to Bob.
     *active.lock().unwrap() = Some(bob.public_key().to_hex());
     let changed = controller.on_account_change();
-    assert!(changed, "on_account_change must return true when the pubkey changed");
+    assert!(
+        changed,
+        "on_account_change must return true when the pubkey changed"
+    );
 
     assert!(
         proj.snapshot().conversations.is_empty(),
@@ -170,7 +178,11 @@ fn sign_out_clears_inbox() {
         &alice,
         &gift_wrapped_dm(&carol, &alice.public_key(), "private", 100),
     );
-    assert_eq!(proj.snapshot().conversations.len(), 1, "sanity: DM ingested");
+    assert_eq!(
+        proj.snapshot().conversations.len(),
+        1,
+        "sanity: DM ingested"
+    );
 
     // Sign out.
     *active.lock().unwrap() = None;
@@ -198,7 +210,11 @@ fn no_change_does_not_clear_projection() {
         &alice,
         &gift_wrapped_dm(&carol, &alice.public_key(), "for alice", 100),
     );
-    assert_eq!(proj.snapshot().conversations.len(), 1, "sanity: DM ingested");
+    assert_eq!(
+        proj.snapshot().conversations.len(),
+        1,
+        "sanity: DM ingested"
+    );
 
     let changed = controller.on_account_change();
     assert!(

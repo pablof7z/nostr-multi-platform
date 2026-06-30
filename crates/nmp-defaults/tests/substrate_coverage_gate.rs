@@ -34,21 +34,21 @@ use std::collections::HashMap;
 use std::ops::Range;
 use std::sync::{Arc, Mutex};
 
-use nmp_planner::{CompiledPlan, RelayPlan};
-use nmp_planner::plan::RelayAttribution;
 use nmp_core::publish::OutboxResolver;
 use nmp_core::slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot};
-use nmp_store::{EventStore, RawEvent, VerifiedEvent};
 use nmp_core::subs::PlanCoverageHook;
 use nmp_core::substrate::{
     ActionModule, ActionRegistrar, BlockedRelayLookup, BlockedRelayLookupRegistrar,
     CoverageHookRegistrar, IngestParser, IngestParserRegistrar, KernelReaderRegistrar,
-    MailboxCache, OutboxRouter, PublishTrace,
-    RelayConnectedHook, RelayConnectedHookRegistrar, RelayTextInterceptor,
-    RelayTextInterceptorRegistrar, ReqFrameInterceptor, ReqFrameInterceptorRegistrar,
-    RoutedRelaySet, RoutingFactoryRegistrar, RoutingTraceObserver, SubscriptionTrace,
+    MailboxCache, OutboxRouter, PublishTrace, RelayConnectedHook, RelayConnectedHookRegistrar,
+    RelayTextInterceptor, RelayTextInterceptorRegistrar, ReqFrameInterceptor,
+    ReqFrameInterceptorRegistrar, RoutedRelaySet, RoutingFactoryRegistrar, RoutingTraceObserver,
+    SubscriptionTrace,
 };
 use nmp_coverage_gate::CoverageGate;
+use nmp_planner::plan::RelayAttribution;
+use nmp_planner::{CompiledPlan, RelayPlan};
+use nmp_store::{EventStore, RawEvent, VerifiedEvent};
 
 /// Minimal spy capturing only the two gate-fed seams. D6: it implements ONLY
 /// the narrow registration traits `register_substrate` actually requires
@@ -200,7 +200,9 @@ impl RoutingFactoryRegistrar for GateSpy {
     }
 
     fn set_nostrconnect_perms(&self, _perms: String) {
-        unreachable!("the nostrconnect perms are wired by register_defaults_with, not register_substrate");
+        unreachable!(
+            "the nostrconnect perms are wired by register_defaults_with, not register_substrate"
+        );
     }
 
     fn set_relay_user_agent(&self, _user_agent: String) {

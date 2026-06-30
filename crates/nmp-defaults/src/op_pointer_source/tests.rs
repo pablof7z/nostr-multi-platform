@@ -8,10 +8,10 @@ use std::sync::{Arc, Mutex};
 
 use nmp_content::PointerSortMode;
 use nmp_core::actor::{ActorCommand, InterestsCommand};
-use nmp_core::substrate::{KernelEvent, ObservedProjection, ObservedProjectionRegistrar};
 use nmp_core::subs::SubOwnerKey;
-use nmp_core::{ActorMail, CommandSender, DependentInterestChild, ObservedProjectionId};
+use nmp_core::substrate::{KernelEvent, ObservedProjection, ObservedProjectionRegistrar};
 use nmp_core::ObservedProjectionSink;
+use nmp_core::{ActorMail, CommandSender, DependentInterestChild, ObservedProjectionId};
 use nmp_planner::{InterestShape, NaddrCoord};
 
 use super::{open_pointer_source, PointerSourceParams, PointerSourceSession};
@@ -207,7 +207,12 @@ fn pointer_address_materializes_address_acquisition() {
     let h = open(PointerSortMode::Time);
     h.registrar
         .observer_for(".pointer")
-        .on_kernel_event(&pointer("p1", "alice", 100, vec![vec!["a", "30023:bob:slug"]]));
+        .on_kernel_event(&pointer(
+            "p1",
+            "alice",
+            100,
+            vec![vec!["a", "30023:bob:slug"]],
+        ));
 
     let replacements = drain_replacements(&h.rx);
     assert_eq!(replacements.len(), 1);
@@ -229,9 +234,7 @@ fn pointer_address_materializes_address_acquisition() {
     );
     assert!(children[0].interest.shape.event_ids.is_empty());
 
-    let delivery = h
-        .registrar
-        .observer_for(".target");
+    let delivery = h.registrar.observer_for(".target");
     delivery.on_kernel_event(&target("v1", "bob", 30_023, 80, Some("slug")));
     let items = h.session.model().lock().unwrap().items();
     assert_eq!(items.len(), 1);
