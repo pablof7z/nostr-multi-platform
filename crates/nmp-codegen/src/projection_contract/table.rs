@@ -329,8 +329,10 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         schema_id: "nmp.nip29.group_events",
         file_identifier: "NGEV",
         // nmp-nip29 wire/group_events_fb::GROUP_EVENTS_SCHEMA_VERSION
-        // v2 — added NIP-10 reply/thread edges (reply_to / root) per group event.
-        version: 2,
+        // v3 (#2517) — removed NIP-10 reply/thread edges (reply_to / root): NIP-29
+        // is kind-blind transport and does not interpret `e`-tag markers; that
+        // concern is owned by nmp-threading.
+        version: 3,
         declaration_policy: DeclarationPolicy::RegistrationGated,
         dependency_versions: &[],
         presence_policy: PresencePolicy::None,

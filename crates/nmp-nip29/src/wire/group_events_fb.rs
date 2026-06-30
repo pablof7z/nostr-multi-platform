@@ -90,10 +90,6 @@ fn encode_event<'a>(
     let id = fbb.create_string(&event.id);
     let pubkey = fbb.create_string(&event.pubkey);
     let content = fbb.create_string(&event.content);
-    // Reply / thread edges are optional: a thread root carries neither, so the
-    // absent string is left null (decoded back to `None`).
-    let reply_to = event.reply_to.as_ref().map(|id| fbb.create_string(id));
-    let root = event.root.as_ref().map(|id| fbb.create_string(id));
     fb::GroupEvent::create(
         fbb,
         &fb::GroupEventArgs {
@@ -102,8 +98,6 @@ fn encode_event<'a>(
             content: Some(content),
             created_at: event.created_at,
             kind: event.kind,
-            reply_to,
-            root,
         },
     )
 }
@@ -138,8 +132,6 @@ fn decode_event(event: fb::GroupEvent<'_>) -> Result<GroupEvent, String> {
         content: str_field(event.content(), "GroupEvent.content")?,
         created_at: event.created_at(),
         kind: event.kind(),
-        reply_to: opt_str_field(event.reply_to()),
-        root: opt_str_field(event.root()),
     })
 }
 
@@ -151,49 +143,34 @@ fn str_field(value: Option<&str>, ctx: &str) -> Result<String, String> {
         .ok_or_else(|| format!("{ctx}: missing required string field"))
 }
 
-/// Map an optional FlatBuffers string into a serde `Option<String>`, treating
-/// both an absent field and an empty string as `None` so a thread root
-/// round-trips to `None` regardless of which side encoded it.
-fn opt_str_field(value: Option<&str>) -> Option<String> {
-    value.filter(|s| !s.is_empty()).map(str::to_string)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn event(id: &str, reply_to: Option<&str>, root: Option<&str>) -> GroupEvent {
+    fn event(id: &str, kind: u32) -> GroupEvent {
         GroupEvent {
             id: id.to_string(),
             pubkey: "a".repeat(64),
             content: "hello".to_string(),
             created_at: 1,
-            kind: 9,
-            reply_to: reply_to.map(str::to_string),
-            root: root.map(str::to_string),
+            kind,
         }
     }
 
     #[test]
-    fn round_trips_reply_and_thread_edges() {
+    fn round_trips_flat_group_events() {
         let snapshot = GroupEventsSnapshot {
-            events: vec![
-                event("threadroot", None, None),
-                event("nestedreply", Some("parentid"), Some("rootid")),
-            ],
+            events: vec![event("chat", 9), event("thread", 11)],
         };
         let bytes = encode_group_events_snapshot(&snapshot);
         let decoded = decode_group_events_snapshot(&bytes).expect("decode");
         assert_eq!(decoded, snapshot);
-        // Thread root carries no edges after a full round-trip.
-        assert_eq!(decoded.events[0].reply_to, None);
-        assert_eq!(decoded.events[0].root, None);
     }
 
     #[test]
     fn buffer_carries_ngev_identifier() {
         let bytes = encode_group_events_snapshot(&GroupEventsSnapshot::empty());
         assert!(fb::group_events_snapshot_buffer_has_identifier(&bytes));
-        assert_eq!(GROUP_EVENTS_SCHEMA_VERSION, 2);
+        assert_eq!(GROUP_EVENTS_SCHEMA_VERSION, 3);
     }
 }
