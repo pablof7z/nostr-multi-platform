@@ -74,7 +74,7 @@ This rules out, by construction:
 - Refusing to render a thread because the root event isn't in the local cache.
 - Profile-picture flicker caused by the framework swapping between invented placeholders and real profile data.
 
-*Implementation detail: Projections emit raw protocol data. A display name or picture URL that is absent from kind:0 remains `None`; presentation layers may choose deterministic local placeholders, but the framework does not substitute `short_npub` or identicon values into projection fields. Freshness is exposed as an optional "badge hint" (not a render gate) when relevant.*
+*Implementation detail: Projections emit raw protocol data. A display name or picture URL that is absent from kind:0 remains `None`; presentation layers may choose deterministic local placeholders, but the framework does not substitute `short_npub` or identicon values into projection fields. Freshness is exposed as an optional "badge hint" (not a render gate) when relevant. The crate-graph mechanics — which crates may carry author display fields, and where author display is joined — are owned by [`crate-boundaries.md`](../architecture/crate-boundaries.md) §8 (display separation is a crate-graph rule, author display joined at L5).*
 
 ---
 

@@ -108,6 +108,14 @@ rules. This centralizes the five previously drifting copies (#967). The type/aut
 action bodies, or app-specific nouns. If an existing protocol-shaped exception
 remains, it belongs in a GitHub issue with a code citation and removal path.
 
+Tracked protocol-shaped exceptions:
+
+- `nmp-core::nip19` — the `Nip19Entity` typed surface is a §3 protocol-shaped
+  exception. Removal path: move it to an L4 `nmp-nip19` / `nmp-content` adapter,
+  tracked in #2515. The NIP-21 disposition is undecided: the layer-inversion
+  audit judged `nip21` / `NostrUri` foundational substrate, not a violation, so
+  it is not (yet) on a removal path.
+
 NIP-50 search follows the same split. `nmp-core` owns the generic search/index
 **seams**: the bounded `InterestShape.search` wire-filter field, filter
 serialization, merge equality, diagnostics, cache-coverage refusal, the
@@ -229,12 +237,14 @@ the substrate must not depend on the protocol crate's concrete module logic.
 
 Examples:
 
-- `nmp-nip01` owns base note/profile/reply primitives: the kind:1 note
-  builder/decoder, reply/thread views, kind:0 profile + kind:3 contacts caches,
-  the note timeline/OP-feed surface (NIP-18 reposts appear in that feed as
-  boosted notes — base note-feed rendering, not cross-protocol aggregation), the
-  relation-count vocabulary (`NoteRelationCounts`), and the
-  `NoteRelationClassifier` seam. It does NOT own cross-protocol engagement
+- `nmp-nip01` owns note/profile/reply protocol primitives only: the kind:1 note
+  builder/decoder, reply/thread views, the kind:0 profile + kind:3 contacts
+  caches, and the relation-count **vocabulary** (`NoteRelationCounts`,
+  `NoteRelationClassifier`). It does NOT own a render-ready timeline/OP-feed
+  card or its `.fbs` wire schema (no `TimelineEventCard` / `RootCard` surface):
+  those are composed at the L5 feed/app layer over the generic `nmp-feed`
+  algorithm container. NIP-18 boosted-note **rendering** is a composition-layer
+  concern, not a `nmp-nip01` surface. It does NOT own cross-protocol engagement
   aggregation.
 - `nmp-relations` owns cross-protocol social-relation aggregation: the
   `DefaultNoteRelationClassifier` that tallies reactions (NIP-25), reposts
@@ -244,6 +254,12 @@ Examples:
   `nmp.nip65.publish_relay_list`). It depends one-way on `nmp-nip01` plus the
   cross-protocol NIP sources; `nmp-nip01` never depends back.
 - `nmp-nip17` owns NIP-17 DM send/receive behavior and its DM relay-list cache.
+- `nmp-nip29` is kind-blind transport. Its only write surface is the generic
+  `nmp.nip29.publish_group_event`, which injects only the h / previous /
+  host-pin envelope onto an already-built event. No per-kind named action
+  (`react` / `repost` / `share` / reaction-aggregate) may live in `nmp-nip29`:
+  the owning NIP builds the event — `nmp-nip25` builds the kind:7 reaction,
+  `nmp-nip18` builds the kind:16 repost — and hands it to the transport.
 - `nmp-nip57` owns zap request/receipt and LNURL zap action behavior. It pays
   through the substrate `PaymentPort` (it emits a typed `PaymentIntent`); it does
   not depend on `nmp-nip47`.
@@ -259,6 +275,12 @@ Examples:
   modules; they carry no app-specific shell behavior.
 - `nmp-content` owns content parsing/render substrate, not link-preview network
   fetching or app navigation.
+
+Display separation is a crate-graph rule, not just a render convention. No
+projection or `.fbs` wire table in any L0–L4 crate may carry author display
+fields (`display_name`, `picture_url`, `AuthorDisplay`, `content_preview` /
+`content_render`) except the kind:0 `ProfileProjection`. Author display is
+joined reactively at L5; lower layers emit raw pubkeys/ids only.
 
 If a feature would be useful to a different Nostr app, it belongs in an NMP
 crate. If it is specific to one app's product domain, it belongs under
