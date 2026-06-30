@@ -84,8 +84,6 @@ pub fn resolve_embed_projection(event: &KernelEvent, _ctx: &RenderContext) -> Em
             EmbedKindProjection::ShortNote(ShortNoteProjection {
                 id,
                 author_pubkey,
-                author_display_name: None,
-                author_picture_url: None,
                 created_at,
                 content_tree,
                 media_urls,
@@ -101,7 +99,6 @@ pub fn resolve_embed_projection(event: &KernelEvent, _ctx: &RenderContext) -> Em
             EmbedKindProjection::Highlight(HighlightProjection {
                 id,
                 author_pubkey,
-                author_display_name: None,
                 created_at,
                 highlighted_text: event.content.clone(),
                 source_event_id,
@@ -120,8 +117,6 @@ pub fn resolve_embed_projection(event: &KernelEvent, _ctx: &RenderContext) -> Em
             EmbedKindProjection::Article(ArticleProjection {
                 id,
                 author_pubkey,
-                author_display_name: None,
-                author_picture_url: None,
                 created_at,
                 title,
                 summary,
@@ -139,8 +134,6 @@ pub fn resolve_embed_projection(event: &KernelEvent, _ctx: &RenderContext) -> Em
             EmbedKindProjection::Unknown(UnknownProjection {
                 kind: event.kind,
                 author_pubkey,
-                author_display_name: None,
-                author_picture_url: None,
                 created_at,
                 content: event.content.clone(),
                 content_tree,

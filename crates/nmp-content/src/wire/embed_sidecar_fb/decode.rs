@@ -102,8 +102,6 @@ fn decode_short_note(n: fb::ShortNoteProjection<'_>) -> Result<ShortNoteProjecti
     Ok(ShortNoteProjection {
         id: str_field(n.id(), "ShortNoteProjection.id")?,
         author_pubkey: str_field(n.author_pubkey(), "ShortNoteProjection.author_pubkey")?,
-        author_display_name: opt_field(n.has_author_display_name(), n.author_display_name()),
-        author_picture_url: opt_field(n.has_author_picture_url(), n.author_picture_url()),
         created_at: n.created_at(),
         content_tree,
         media_urls: str_vec(n.media_urls()),
@@ -115,8 +113,6 @@ fn decode_article(a: fb::ArticleProjection<'_>) -> Result<ArticleProjection, Str
     Ok(ArticleProjection {
         id: str_field(a.id(), "ArticleProjection.id")?,
         author_pubkey: str_field(a.author_pubkey(), "ArticleProjection.author_pubkey")?,
-        author_display_name: opt_field(a.has_author_display_name(), a.author_display_name()),
-        author_picture_url: opt_field(a.has_author_picture_url(), a.author_picture_url()),
         created_at: a.created_at(),
         title: opt_field(a.has_title(), a.title()),
         summary: opt_field(a.has_summary(), a.summary()),
@@ -130,7 +126,6 @@ fn decode_highlight(h: fb::HighlightProjection<'_>) -> Result<HighlightProjectio
     Ok(HighlightProjection {
         id: str_field(h.id(), "HighlightProjection.id")?,
         author_pubkey: str_field(h.author_pubkey(), "HighlightProjection.author_pubkey")?,
-        author_display_name: opt_field(h.has_author_display_name(), h.author_display_name()),
         created_at: h.created_at(),
         highlighted_text: str_field(h.highlighted_text(), "HighlightProjection.highlighted_text")?,
         source_event_id: opt_field(h.has_source_event_id(), h.source_event_id()),
@@ -163,8 +158,6 @@ fn decode_unknown(u: fb::UnknownProjection<'_>) -> Result<UnknownProjection, Str
     Ok(UnknownProjection {
         kind: u.kind(),
         author_pubkey: str_field(u.author_pubkey(), "UnknownProjection.author_pubkey")?,
-        author_display_name: opt_field(u.has_author_display_name(), u.author_display_name()),
-        author_picture_url: opt_field(u.has_author_picture_url(), u.author_picture_url()),
         created_at: u.created_at(),
         content: str_field(u.content(), "UnknownProjection.content")?,
         content_tree,

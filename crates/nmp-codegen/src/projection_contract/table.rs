@@ -442,7 +442,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         schema_id: "refs.event.envelopes",
         file_identifier: "NEMB",
         // nmp-content wire/embed_sidecar_fb::SCHEMA_VERSION
-        version: 2,
+        version: 3,
         declaration_policy: DeclarationPolicy::RegistrationGated,
         dependency_versions: &[],
         presence_policy: PresencePolicy::None,

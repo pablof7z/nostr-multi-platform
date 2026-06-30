@@ -670,8 +670,6 @@
             "data": {
               "id": "d0daf0fc42c02ffd12d19706f92e81040e61a2ed2d57c4ee692bf5b82b186829",
               "authorPubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
-              "authorDisplayName": null,
-              "authorPictureUrl": null,
               "createdAt": 1700020000,
               "contentTree": {
                 "nodes": [
@@ -750,8 +748,6 @@
             "data": {
               "id": "d0daf0fc42c02ffd12d19706f92e81040e61a2ed2d57c4ee692bf5b82b186829",
               "authorPubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
-              "authorDisplayName": null,
-              "authorPictureUrl": null,
               "createdAt": 1700020000,
               "contentTree": {
                 "nodes": [
@@ -828,8 +824,6 @@
             "data": {
               "id": "cb4e62cb70148887e5e115cee61dc20784f12e397481ff3f19e4ccebe62234ff",
               "authorPubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
-              "authorDisplayName": null,
-              "authorPictureUrl": null,
               "createdAt": 1700020003,
               "contentTree": {
                 "nodes": [
@@ -956,8 +950,6 @@
             "data": {
               "id": "f42200cf01514ad707abee0b7f8509bfe71ad69b7280ecbbef44ce3d6923f90e",
               "authorPubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
-              "authorDisplayName": null,
-              "authorPictureUrl": null,
               "createdAt": 1700020006,
               "contentTree": {
                 "nodes": [
@@ -994,8 +986,6 @@
             "data": {
               "id": "46885584daa819b0074f672ac9bb0926066feaed16fd26b9f98989a78d395d92",
               "authorPubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
-              "authorDisplayName": null,
-              "authorPictureUrl": null,
               "createdAt": 1700020005,
               "contentTree": {
                 "nodes": [
@@ -1020,8 +1010,6 @@
             "data": {
               "id": "b984b3968d0a70276e8b8844928e15e8d873cc8e130d94d733f779ce501b34d3",
               "authorPubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
-              "authorDisplayName": null,
-              "authorPictureUrl": null,
               "createdAt": 1700020007,
               "contentTree": {
                 "nodes": [
@@ -1146,8 +1134,6 @@
             "data": {
               "id": "a0410cd6beb87186ecbe46773be594299f248ed96e2fccc4ae307df6681c3d50",
               "authorPubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
-              "authorDisplayName": null,
-              "authorPictureUrl": null,
               "createdAt": 1700020011,
               "contentTree": {
                 "nodes": [
@@ -1184,8 +1170,6 @@
             "data": {
               "id": "3b2611af420cb55d2f0b1385ce1dad7a3699740b85a5dd93ac5fd230cc8695c7",
               "authorPubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
-              "authorDisplayName": null,
-              "authorPictureUrl": null,
               "createdAt": 1700020013,
               "contentTree": {
                 "nodes": [
@@ -1222,8 +1206,6 @@
             "data": {
               "id": "b521c848094e19b30537f4a1bc74d9e50b88f03ec8d901fb1584eccce4d280bf",
               "authorPubkey": "2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4",
-              "authorDisplayName": null,
-              "authorPictureUrl": null,
               "createdAt": 1700020012,
               "contentTree": {
                 "nodes": [
@@ -1260,8 +1242,6 @@
             "data": {
               "id": "b0b5ffd6d0336bba1ebd9e01263efa2b59472aa34da94f2dc85d76f4f2daa13e",
               "authorPubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
-              "authorDisplayName": null,
-              "authorPictureUrl": null,
               "createdAt": 1700020010,
               "contentTree": {
                 "nodes": [
@@ -1298,8 +1278,6 @@
             "data": {
               "id": "22437c740f9695d299256882fd6b6c96ee140f2037dcf4c5773149e0577a7342",
               "authorPubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
-              "authorDisplayName": null,
-              "authorPictureUrl": null,
               "createdAt": 1700020009,
               "contentTree": {
                 "nodes": [
@@ -1403,8 +1381,6 @@
             "data": {
               "id": "f81ade7e833a0e2db55b1b602d2e53d6af392686a9ecbd0e0406ef80f948fe06",
               "authorPubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
-              "authorDisplayName": null,
-              "authorPictureUrl": null,
               "createdAt": 1700020015,
               "title": "Cycle A",
               "summary": null,
@@ -1462,8 +1438,6 @@
             "data": {
               "id": "b40907f04be0e7fa69289d7776b2098c8f0b64ece2f0fc4a3f8c62b34b291845",
               "authorPubkey": "2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4",
-              "authorDisplayName": null,
-              "authorPictureUrl": null,
               "createdAt": 1700020016,
               "title": "Cycle B",
               "summary": null,
@@ -1586,8 +1560,6 @@
             "data": {
               "id": "1ab9268f96b7553bf4ae12d5640bfeb3bfa43f10e512d2f3f0f9a74e2b1f62da",
               "authorPubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
-              "authorDisplayName": null,
-              "authorPictureUrl": null,
               "createdAt": 1700030000,
               "title": "Backpressure Is A Feature",
               "summary": "Why your relay should push back.",
@@ -1712,7 +1684,6 @@
             "data": {
               "id": "f2ea2ef1483e07c85b85eeaf5e61ba7ec5bd36c127df6fa6c5675cc9f2b13ee9",
               "authorPubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
-              "authorDisplayName": null,
               "createdAt": 1700030002,
               "highlightedText": "The first leg of the cycle.",
               "sourceEventId": null,
@@ -1817,8 +1788,6 @@
             "data": {
               "id": "79d2ae93e6f10c17b5aef31a69733bb9efc5bf0ef02140ad978e9cd46ffc499e",
               "authorPubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
-              "authorDisplayName": null,
-              "authorPictureUrl": null,
               "createdAt": 1700030009,
               "contentTree": {
                 "nodes": [
@@ -1855,8 +1824,6 @@
             "data": {
               "id": "5485ee898e0f9f7c2aba1ed9b01e61c710442b106b4b2c4e67c4458f2475154e",
               "authorPubkey": "2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4",
-              "authorDisplayName": null,
-              "authorPictureUrl": null,
               "createdAt": 1700030008,
               "contentTree": {
                 "nodes": [
@@ -1893,8 +1860,6 @@
             "data": {
               "id": "50b654118f1d02043f4f5d4c340c26a181da982f319552e59bdc5ba5307c14da",
               "authorPubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
-              "authorDisplayName": null,
-              "authorPictureUrl": null,
               "createdAt": 1700030007,
               "contentTree": {
                 "nodes": [
@@ -1931,8 +1896,6 @@
             "data": {
               "id": "f95f8bf6e6a83403b8f6d005b898a12d0e31425458ddac06400fe00d0e0f48af",
               "authorPubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
-              "authorDisplayName": null,
-              "authorPictureUrl": null,
               "createdAt": 1700030005,
               "contentTree": {
                 "nodes": [
@@ -1957,8 +1920,6 @@
             "data": {
               "id": "1f128cc608e1dff7b62ae15362ac6f9440dbd3ca5a04f2646a60b726c87e36d8",
               "authorPubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
-              "authorDisplayName": null,
-              "authorPictureUrl": null,
               "createdAt": 1700030006,
               "contentTree": {
                 "nodes": [
@@ -2134,7 +2095,6 @@
             "data": {
               "id": "936f7ad81ebdd7f8fc151bd998e4dbd0a2c386382eb28589ea74369be6bf9fe7",
               "authorPubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
-              "authorDisplayName": null,
               "createdAt": 1700030013,
               "highlightedText": "the honest answer is: slow down",
               "sourceEventId": null,
@@ -2220,8 +2180,6 @@
             "data": {
               "kind": 30000,
               "authorPubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
-              "authorDisplayName": null,
-              "authorPictureUrl": null,
               "createdAt": 1700040000,
               "content": "",
               "contentTree": {
@@ -2331,8 +2289,6 @@
             "data": {
               "kind": 30003,
               "authorPubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
-              "authorDisplayName": null,
-              "authorPictureUrl": null,
               "createdAt": 1700040002,
               "content": "",
               "contentTree": {
@@ -2441,8 +2397,6 @@
             "data": {
               "kind": 10002,
               "authorPubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
-              "authorDisplayName": null,
-              "authorPictureUrl": null,
               "createdAt": 1700040004,
               "content": "",
               "contentTree": {
@@ -3264,8 +3218,6 @@
             "data": {
               "kind": 30000,
               "authorPubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
-              "authorDisplayName": null,
-              "authorPictureUrl": null,
               "createdAt": 1700050007,
               "content": "",
               "contentTree": {

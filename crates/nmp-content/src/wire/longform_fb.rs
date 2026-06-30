@@ -62,7 +62,9 @@ pub const SCHEMA_ID: &str = "nmp.nip23.articles";
 /// FlatBuffers file identifier embedded in every buffer this module emits.
 pub const FILE_IDENTIFIER: &[u8; 4] = b"NL23";
 /// Wire schema version. Bump on any breaking change to `longform.fbs`.
-pub const SCHEMA_VERSION: u32 = 1;
+/// v2 (#2514): dropped author `display_name`/`picture` from `ArticleDocument` —
+/// non-`Profile` tables carry raw `author_pubkey` only; display joins at L5.
+pub const SCHEMA_VERSION: u32 = 2;
 
 /// Owned, decoded form of the `nmp.nip23.articles` projection — the round-trip
 /// counterpart of the encoder, used by Rust consumers and proof tests.
@@ -158,10 +160,6 @@ fn encode_document<'a>(
     // `Option<String>` → `has_* : bool` + value string (present-but-empty round
     // -trips distinctly from absent). Absent fields write an empty string with
     // `has_* = false`.
-    let (has_author_display_name, author_display_name) =
-        opt_string(fbb, article.author_display_name.as_deref());
-    let (has_author_picture_url, author_picture_url) =
-        opt_string(fbb, article.author_picture_url.as_deref());
     let (has_title, title) = opt_string(fbb, article.title.as_deref());
     let (has_summary, summary) = opt_string(fbb, article.summary.as_deref());
     let (has_hero_image_url, hero_image_url) = opt_string(fbb, article.hero_image_url.as_deref());
@@ -172,10 +170,6 @@ fn encode_document<'a>(
             address: Some(address),
             id: Some(id),
             author_pubkey: Some(author_pubkey),
-            has_author_display_name,
-            author_display_name: Some(author_display_name),
-            has_author_picture_url,
-            author_picture_url: Some(author_picture_url),
             created_at: article.created_at,
             has_title,
             title: Some(title),
@@ -259,8 +253,6 @@ fn decode_document(doc: fb::ArticleDocument<'_>) -> Result<(String, ArticleProje
     let article = ArticleProjection {
         id: str_field(doc.id(), "ArticleDocument.id")?,
         author_pubkey: str_field(doc.author_pubkey(), "ArticleDocument.author_pubkey")?,
-        author_display_name: opt_field(doc.has_author_display_name(), doc.author_display_name()),
-        author_picture_url: opt_field(doc.has_author_picture_url(), doc.author_picture_url()),
         created_at: doc.created_at(),
         title: opt_field(doc.has_title(), doc.title()),
         summary: opt_field(doc.has_summary(), doc.summary()),

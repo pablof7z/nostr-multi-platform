@@ -72,7 +72,10 @@ pub const PROJECTION_KEY: &str = "refs.event.envelopes";
 /// FlatBuffers file identifier embedded in every buffer this module emits.
 pub const FILE_IDENTIFIER: &[u8; 4] = b"NEMB";
 /// Wire schema version. Bump on any breaking change to `embed_sidecar.fbs`.
-pub const SCHEMA_VERSION: u32 = 2;
+/// v3 (#2514): dropped author `display_name`/`picture` from the ShortNote /
+/// Article / Highlight / Unknown tables — non-`Profile` projections carry raw
+/// `author_pubkey` only; author display joins reactively at L5.
+pub const SCHEMA_VERSION: u32 = 3;
 
 /// Encode the `refs.event.envelopes` projection (envelopes keyed by
 /// `primary_id`) to typed FlatBuffers bytes (with the `NEMB` file identifier).

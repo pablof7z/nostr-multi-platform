@@ -52,8 +52,6 @@ fn short_note_golden_json() {
     let proj = EmbedKindProjection::ShortNote(ShortNoteProjection {
         id: id.clone(),
         author_pubkey: pk.clone(),
-        author_display_name: None,
-        author_picture_url: None,
         created_at: 1_710_000_000,
         content_tree: empty_tree(),
         media_urls: vec![],
@@ -61,7 +59,7 @@ fn short_note_golden_json() {
     let expected = format!(
         concat!(
             r#"{{"variant":"shortNote","data":{{"id":"{id}","authorPubkey":"{pk}","#,
-            r#""authorDisplayName":null,"authorPictureUrl":null,"createdAt":1710000000,"#,
+            r#""createdAt":1710000000,"#,
             r#""contentTree":{{"nodes":[],"roots":[],"mode":"Auto"}},"mediaUrls":[]}}}}"#,
         ),
         id = id,
@@ -78,8 +76,6 @@ fn short_note_with_media_golden_json() {
     let proj = EmbedKindProjection::ShortNote(ShortNoteProjection {
         id: id.clone(),
         author_pubkey: pk.clone(),
-        author_display_name: Some("Alice".to_string()),
-        author_picture_url: Some("https://nmp.test/alice.jpg".to_string()),
         created_at: 1_720_000_000,
         content_tree: empty_tree(),
         media_urls: vec!["https://nmp.test/photo.jpg".to_string()],
@@ -87,7 +83,6 @@ fn short_note_with_media_golden_json() {
     let expected = format!(
         concat!(
             r#"{{"variant":"shortNote","data":{{"id":"{id}","authorPubkey":"{pk}","#,
-            r#""authorDisplayName":"Alice","authorPictureUrl":"https://nmp.test/alice.jpg","#,
             r#""createdAt":1720000000,"contentTree":{{"nodes":[],"roots":[],"mode":"Auto"}},"#,
             r#""mediaUrls":["https://nmp.test/photo.jpg"]}}}}"#,
         ),
@@ -105,8 +100,6 @@ fn article_golden_json() {
     let proj = EmbedKindProjection::Article(ArticleProjection {
         id: "a1b2c3d4".repeat(8), // 64 chars
         author_pubkey: "e5f6a7b8".repeat(8), // 64 chars
-        author_display_name: None,
-        author_picture_url: None,
         created_at: 1_700_000_000,
         title: Some("Backpressure Is A Feature".to_string()),
         summary: Some("Why your relay should push back.".to_string()),
@@ -117,7 +110,7 @@ fn article_golden_json() {
     let expected = concat!(
         r#"{"variant":"article","data":{"id":"a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4","#,
         r#""authorPubkey":"e5f6a7b8e5f6a7b8e5f6a7b8e5f6a7b8e5f6a7b8e5f6a7b8e5f6a7b8e5f6a7b8","#,
-        r#""authorDisplayName":null,"authorPictureUrl":null,"createdAt":1700000000,"#,
+        r#""createdAt":1700000000,"#,
         r#""title":"Backpressure Is A Feature","summary":"Why your relay should push back.","#,
         r#""heroImageUrl":null,"dTag":"backpressure-is-a-feature","#,
         r#""contentTree":{"nodes":[],"roots":[],"mode":"Auto"}}}"#,
@@ -131,8 +124,6 @@ fn article_with_hero_image_golden_json() {
     let proj = EmbedKindProjection::Article(ArticleProjection {
         id: "11223344".repeat(8), // 64 chars
         author_pubkey: "55667788".repeat(8), // 64 chars
-        author_display_name: Some("Carol".to_string()),
-        author_picture_url: Some("https://nmp.test/carol.jpg".to_string()),
         created_at: 1_710_500_000,
         title: Some("Relays Are CDNs".to_string()),
         summary: None,
@@ -143,7 +134,6 @@ fn article_with_hero_image_golden_json() {
     let expected = concat!(
         r#"{"variant":"article","data":{"id":"1122334411223344112233441122334411223344112233441122334411223344","#,
         r#""authorPubkey":"5566778855667788556677885566778855667788556677885566778855667788","#,
-        r#""authorDisplayName":"Carol","authorPictureUrl":"https://nmp.test/carol.jpg","#,
         r#""createdAt":1710500000,"title":"Relays Are CDNs","summary":null,"#,
         r#""heroImageUrl":"https://nmp.test/hero.png","dTag":"relays-are-cdns","#,
         r#""contentTree":{"nodes":[],"roots":[],"mode":"Auto"}}}"#,
@@ -159,7 +149,6 @@ fn highlight_minimal_golden_json() {
     let proj = EmbedKindProjection::Highlight(HighlightProjection {
         id: "fedcba98".repeat(8), // 64 chars
         author_pubkey: "01234567".repeat(8), // 64 chars
-        author_display_name: None,
         created_at: 1_715_000_000,
         highlighted_text: "the honest answer is: slow down".to_string(),
         source_event_id: None,
@@ -170,7 +159,7 @@ fn highlight_minimal_golden_json() {
     let expected = concat!(
         r#"{"variant":"highlight","data":{"id":"fedcba98fedcba98fedcba98fedcba98fedcba98fedcba98fedcba98fedcba98","#,
         r#""authorPubkey":"0123456701234567012345670123456701234567012345670123456701234567","#,
-        r#""authorDisplayName":null,"createdAt":1715000000,"#,
+        r#""createdAt":1715000000,"#,
         r#""highlightedText":"the honest answer is: slow down","#,
         r#""sourceEventId":null,"sourceEventAddr":null,"sourceUrl":null,"context":null}}"#,
     );
@@ -185,7 +174,6 @@ fn highlight_with_source_golden_json() {
     let proj = EmbedKindProjection::Highlight(HighlightProjection {
         id: "aaaabbbb".repeat(8), // 64 chars
         author_pubkey: pk.clone(),
-        author_display_name: Some("Bob".to_string()),
         created_at: 1_716_000_000,
         highlighted_text: "backpressure is a feature".to_string(),
         source_event_id: None,
@@ -196,7 +184,7 @@ fn highlight_with_source_golden_json() {
     let expected = format!(
         concat!(
             r#"{{"variant":"highlight","data":{{"id":"aaaabbbbaaaabbbbaaaabbbbaaaabbbbaaaabbbbaaaabbbbaaaabbbbaaaabbbb","#,
-            r#""authorPubkey":"{pk}","authorDisplayName":"Bob","createdAt":1716000000,"#,
+            r#""authorPubkey":"{pk}","createdAt":1716000000,"#,
             r#""highlightedText":"backpressure is a feature","sourceEventId":null,"#,
             r#""sourceEventAddr":"{sa}","sourceUrl":"https://blog.nmp.test/bp-feature","#,
             r#""context":"surrounding prose context"}}}}"#,

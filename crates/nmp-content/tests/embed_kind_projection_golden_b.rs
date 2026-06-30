@@ -95,8 +95,6 @@ fn unknown_minimal_golden_json() {
     let proj = EmbedKindProjection::Unknown(UnknownProjection {
         kind: 40,
         author_pubkey: "11112222".repeat(8), // 64 chars
-        author_display_name: None,
-        author_picture_url: None,
         created_at: 1_700_100_000,
         content: r#"{"name":"nmp-dev"}"#.to_string(),
         content_tree: empty_tree(),
@@ -108,8 +106,9 @@ fn unknown_minimal_golden_json() {
     let json = serde_json::to_string(&proj).expect("serialize");
     assert!(json.starts_with(r#"{"variant":"unknown","data":{"#), "unknown variant tag");
     assert!(json.contains(r#""kind":40"#), "kind field");
-    assert!(json.contains(r#""authorDisplayName":null"#), "authorDisplayName null");
-    assert!(json.contains(r#""authorPictureUrl":null"#), "authorPictureUrl null");
+    // Display separation (#2514): no author display fields on the wire.
+    assert!(!json.contains("authorDisplayName"), "no authorDisplayName field");
+    assert!(!json.contains("authorPictureUrl"), "no authorPictureUrl field");
     assert!(json.contains(r#""createdAt":1700100000"#), "createdAt");
     assert!(json.contains(r#""tags":[]"#), "tags empty");
     assert!(json.contains(r#""altText":null"#), "altText null");
@@ -122,8 +121,6 @@ fn unknown_with_tags_and_alt_golden_json() {
     let proj = EmbedKindProjection::Unknown(UnknownProjection {
         kind: 30402,
         author_pubkey: pk.clone(),
-        author_display_name: Some("Dave".to_string()),
-        author_picture_url: None,
         created_at: 1_700_200_000,
         content: "Classified ad".to_string(),
         content_tree: empty_tree(),
@@ -136,7 +133,8 @@ fn unknown_with_tags_and_alt_golden_json() {
     let json = serde_json::to_string(&proj).expect("serialize");
     assert!(json.starts_with(r#"{"variant":"unknown","data":{"#), "variant tag");
     assert!(json.contains(r#""kind":30402"#), "kind 30402");
-    assert!(json.contains(r#""authorDisplayName":"Dave""#), "authorDisplayName Dave");
+    // Display separation (#2514): no author display fields on the wire.
+    assert!(!json.contains("authorDisplayName"), "no authorDisplayName field");
     assert!(json.contains(r#""altText":"a classified listing""#), "altText");
     assert!(json.contains(r#"["price","42"]"#), "price tag");
     assert!(json.contains(r#"["location","online"]"#), "location tag");
@@ -157,8 +155,6 @@ fn variant_tags_are_camel_case() {
             &EmbedKindProjection::ShortNote(ShortNoteProjection {
                 id: "a".repeat(64),
                 author_pubkey: "b".repeat(64),
-                author_display_name: None,
-                author_picture_url: None,
                 created_at: 0,
                 content_tree: empty_tree(),
                 media_urls: vec![],
@@ -169,8 +165,6 @@ fn variant_tags_are_camel_case() {
             &EmbedKindProjection::Article(ArticleProjection {
                 id: "a".repeat(64),
                 author_pubkey: "b".repeat(64),
-                author_display_name: None,
-                author_picture_url: None,
                 created_at: 0,
                 title: None,
                 summary: None,
@@ -184,7 +178,6 @@ fn variant_tags_are_camel_case() {
             &EmbedKindProjection::Highlight(HighlightProjection {
                 id: "a".repeat(64),
                 author_pubkey: "b".repeat(64),
-                author_display_name: None,
                 created_at: 0,
                 highlighted_text: String::new(),
                 source_event_id: None,
@@ -210,8 +203,6 @@ fn variant_tags_are_camel_case() {
             &EmbedKindProjection::Unknown(UnknownProjection {
                 kind: 99,
                 author_pubkey: "b".repeat(64),
-                author_display_name: None,
-                author_picture_url: None,
                 created_at: 0,
                 content: String::new(),
                 content_tree: empty_tree(),

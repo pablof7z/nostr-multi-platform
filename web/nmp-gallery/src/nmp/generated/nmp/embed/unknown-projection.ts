@@ -37,81 +37,57 @@ authorPubkey(optionalEncoding?:any):string|Uint8Array|null {
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
-hasAuthorDisplayName():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 8);
-  return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
-}
-
-authorDisplayName():string|null
-authorDisplayName(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
-authorDisplayName(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 10);
-  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
-}
-
-hasAuthorPictureUrl():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 12);
-  return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
-}
-
-authorPictureUrl():string|null
-authorPictureUrl(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
-authorPictureUrl(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 14);
-  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
-}
-
 createdAt():bigint {
-  const offset = this.bb!.__offset(this.bb_pos, 16);
+  const offset = this.bb!.__offset(this.bb_pos, 8);
   return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
 }
 
 content():string|null
 content(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 content(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 18);
+  const offset = this.bb!.__offset(this.bb_pos, 10);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 contentTree(index: number):number|null {
-  const offset = this.bb!.__offset(this.bb_pos, 20);
+  const offset = this.bb!.__offset(this.bb_pos, 12);
   return offset ? this.bb!.readUint8(this.bb!.__vector(this.bb_pos + offset) + index) : 0;
 }
 
 contentTreeLength():number {
-  const offset = this.bb!.__offset(this.bb_pos, 20);
+  const offset = this.bb!.__offset(this.bb_pos, 12);
   return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
 }
 
 contentTreeArray():Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 20);
+  const offset = this.bb!.__offset(this.bb_pos, 12);
   return offset ? new Uint8Array(this.bb!.bytes().buffer, this.bb!.bytes().byteOffset + this.bb!.__vector(this.bb_pos + offset), this.bb!.__vector_len(this.bb_pos + offset)) : null;
 }
 
 tags(index: number, obj?:TagRow):TagRow|null {
-  const offset = this.bb!.__offset(this.bb_pos, 22);
+  const offset = this.bb!.__offset(this.bb_pos, 14);
   return offset ? (obj || new TagRow()).__init(this.bb!.__indirect(this.bb!.__vector(this.bb_pos + offset) + index * 4), this.bb!) : null;
 }
 
 tagsLength():number {
-  const offset = this.bb!.__offset(this.bb_pos, 22);
+  const offset = this.bb!.__offset(this.bb_pos, 14);
   return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
 }
 
 hasAltText():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 24);
+  const offset = this.bb!.__offset(this.bb_pos, 16);
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
 altText():string|null
 altText(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 altText(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 26);
+  const offset = this.bb!.__offset(this.bb_pos, 18);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 static startUnknownProjection(builder:flatbuffers.Builder) {
-  builder.startObject(12);
+  builder.startObject(8);
 }
 
 static addKind(builder:flatbuffers.Builder, kind:number) {
@@ -122,32 +98,16 @@ static addAuthorPubkey(builder:flatbuffers.Builder, authorPubkeyOffset:flatbuffe
   builder.addFieldOffset(1, authorPubkeyOffset, 0);
 }
 
-static addHasAuthorDisplayName(builder:flatbuffers.Builder, hasAuthorDisplayName:boolean) {
-  builder.addFieldInt8(2, +hasAuthorDisplayName, +false);
-}
-
-static addAuthorDisplayName(builder:flatbuffers.Builder, authorDisplayNameOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(3, authorDisplayNameOffset, 0);
-}
-
-static addHasAuthorPictureUrl(builder:flatbuffers.Builder, hasAuthorPictureUrl:boolean) {
-  builder.addFieldInt8(4, +hasAuthorPictureUrl, +false);
-}
-
-static addAuthorPictureUrl(builder:flatbuffers.Builder, authorPictureUrlOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(5, authorPictureUrlOffset, 0);
-}
-
 static addCreatedAt(builder:flatbuffers.Builder, createdAt:bigint) {
-  builder.addFieldInt64(6, createdAt, BigInt('0'));
+  builder.addFieldInt64(2, createdAt, BigInt('0'));
 }
 
 static addContent(builder:flatbuffers.Builder, contentOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(7, contentOffset, 0);
+  builder.addFieldOffset(3, contentOffset, 0);
 }
 
 static addContentTree(builder:flatbuffers.Builder, contentTreeOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(8, contentTreeOffset, 0);
+  builder.addFieldOffset(4, contentTreeOffset, 0);
 }
 
 static createContentTreeVector(builder:flatbuffers.Builder, data:number[]|Uint8Array):flatbuffers.Offset {
@@ -163,7 +123,7 @@ static startContentTreeVector(builder:flatbuffers.Builder, numElems:number) {
 }
 
 static addTags(builder:flatbuffers.Builder, tagsOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(9, tagsOffset, 0);
+  builder.addFieldOffset(5, tagsOffset, 0);
 }
 
 static createTagsVector(builder:flatbuffers.Builder, data:flatbuffers.Offset[]):flatbuffers.Offset {
@@ -179,11 +139,11 @@ static startTagsVector(builder:flatbuffers.Builder, numElems:number) {
 }
 
 static addHasAltText(builder:flatbuffers.Builder, hasAltText:boolean) {
-  builder.addFieldInt8(10, +hasAltText, +false);
+  builder.addFieldInt8(6, +hasAltText, +false);
 }
 
 static addAltText(builder:flatbuffers.Builder, altTextOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(11, altTextOffset, 0);
+  builder.addFieldOffset(7, altTextOffset, 0);
 }
 
 static endUnknownProjection(builder:flatbuffers.Builder):flatbuffers.Offset {
@@ -191,14 +151,10 @@ static endUnknownProjection(builder:flatbuffers.Builder):flatbuffers.Offset {
   return offset;
 }
 
-static createUnknownProjection(builder:flatbuffers.Builder, kind:number, authorPubkeyOffset:flatbuffers.Offset, hasAuthorDisplayName:boolean, authorDisplayNameOffset:flatbuffers.Offset, hasAuthorPictureUrl:boolean, authorPictureUrlOffset:flatbuffers.Offset, createdAt:bigint, contentOffset:flatbuffers.Offset, contentTreeOffset:flatbuffers.Offset, tagsOffset:flatbuffers.Offset, hasAltText:boolean, altTextOffset:flatbuffers.Offset):flatbuffers.Offset {
+static createUnknownProjection(builder:flatbuffers.Builder, kind:number, authorPubkeyOffset:flatbuffers.Offset, createdAt:bigint, contentOffset:flatbuffers.Offset, contentTreeOffset:flatbuffers.Offset, tagsOffset:flatbuffers.Offset, hasAltText:boolean, altTextOffset:flatbuffers.Offset):flatbuffers.Offset {
   UnknownProjection.startUnknownProjection(builder);
   UnknownProjection.addKind(builder, kind);
   UnknownProjection.addAuthorPubkey(builder, authorPubkeyOffset);
-  UnknownProjection.addHasAuthorDisplayName(builder, hasAuthorDisplayName);
-  UnknownProjection.addAuthorDisplayName(builder, authorDisplayNameOffset);
-  UnknownProjection.addHasAuthorPictureUrl(builder, hasAuthorPictureUrl);
-  UnknownProjection.addAuthorPictureUrl(builder, authorPictureUrlOffset);
   UnknownProjection.addCreatedAt(builder, createdAt);
   UnknownProjection.addContent(builder, contentOffset);
   UnknownProjection.addContentTree(builder, contentTreeOffset);
