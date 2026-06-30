@@ -2,65 +2,14 @@ use crate::support::{collect_files, crates_dir, evaluate, is_comment, read, rel,
 
 /// Fine-grained baseline (tracked debt): `(file, symbol)`. The owning fix PR
 /// removes each line when it deletes the symbol. Do NOT add new entries.
-const RULE_C_BASELINE: &[(&str, &str)] = &[
-    // #2513 — kind-specific react/repost/share verbs in the kind-blind transport.
-    (
-        "crates/nmp-nip29/src/action/composed.rs",
-        "ns:react_in_group",
-    ),
-    (
-        "crates/nmp-nip29/src/action/composed.rs",
-        "ns:unreact_in_group",
-    ),
-    (
-        "crates/nmp-nip29/src/action/composed.rs",
-        "const:REACTION_KIND",
-    ),
-    (
-        "crates/nmp-nip29/src/action/group_event.rs",
-        "ns:share_event_in_group",
-    ),
-    (
-        "crates/nmp-nip29/src/action/group_event.rs",
-        "ns:repost_in_group",
-    ),
-    (
-        "crates/nmp-nip29/src/action/group_event.rs",
-        "const:REPOST_KIND",
-    ),
-    (
-        "crates/nmp-nip29/src/wire/action_payload/group.rs",
-        "ns:react_in_group",
-    ),
-    (
-        "crates/nmp-nip29/src/wire/action_payload/group.rs",
-        "ns:unreact_in_group",
-    ),
-    (
-        "crates/nmp-nip29/src/wire/action_payload/group_event.rs",
-        "ns:share_event_in_group",
-    ),
-    (
-        "crates/nmp-nip29/src/wire/action_payload/group_event.rs",
-        "ns:repost_in_group",
-    ),
-    (
-        "crates/nmp-nip29/schema/react_in_group_action.fbs",
-        "schema-file",
-    ),
-    (
-        "crates/nmp-nip29/schema/unreact_in_group_action.fbs",
-        "schema-file",
-    ),
-    (
-        "crates/nmp-nip29/schema/repost_in_group_action.fbs",
-        "schema-file",
-    ),
-    (
-        "crates/nmp-nip29/schema/share_event_in_group_action.fbs",
-        "schema-file",
-    ),
-];
+///
+/// EMPTY: the #2513 kind-blind-transport fix landed on master (the
+/// react/unreact/repost/share verbs, their `nmp.nip29.*` namespaces, the
+/// REACTION_KIND/REPOST_KIND constants, and the kind-specific `*_action.fbs`
+/// schemas are all gone). Self-pruning stale detection flagged every former
+/// entry, so the baseline is now empty and Rule C is a pure forward gate: any
+/// reintroduced kind-specific verb fails immediately.
+const RULE_C_BASELINE: &[(&str, &str)] = &[];
 
 /// Legitimate `nmp.nip29.<suffix>` namespaces: the ONE generic publish verb,
 /// the pure envelope/admin action ops (per `register.rs`), and the
