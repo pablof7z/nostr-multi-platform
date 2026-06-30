@@ -30,6 +30,15 @@ use crate::app_struct::{
 };
 use crate::app_sub_structs::{CapabilityPorts, CompositionConfig, ReadHandles};
 
+/// #2512 — the cross-protocol engagement reference classifier this native
+/// composition root installs into every kernel store. Centralised here (rather
+/// than inlined into the `ActorConfigSources` literal) so the composition test
+/// can assert the root composes engagement counting; `nmp-core` (L3) cannot
+/// name `nmp-relations` (L4), so the root injects the opaque closure.
+pub(crate) fn composed_reference_classifier() -> Arc<nmp_store::ReferenceClassifyFn> {
+    nmp_relations::engagement_reference_classifier()
+}
+
 pub fn new_app() -> NmpApp {
     // ADR-0029 / ADR-0050 §D3a — one bounded waking inbox of `ActorMail`.
     // `command_tx` is the host `CommandSender` (stored on `NmpApp`); the actor
@@ -230,6 +239,13 @@ pub fn new_app() -> NmpApp {
             relay_connected_hook: actor_relay_connected_hook,
             ingest_dispatcher: actor_ingest_dispatcher,
             search_scope_registry: actor_search_scope_registry,
+            // #2512 — compose the cross-protocol engagement reference classifier
+            // (`nmp-relations`, L4) into the store. Installed at every
+            // `apply_to_kernel` (start + Reset) so native stores maintain
+            // reply/reaction/repost/zap counts. The runtime is the app-assembly
+            // composition root that may depend on `nmp-relations`; `nmp-core`
+            // (L3) cannot, so it receives the opaque closure here.
+            reference_counter_classifier: Some(composed_reference_classifier()),
             dm_inbox_relays: actor_dm_inbox_relays,
             profile_lookup: actor_profile_lookup,
             contacts_lookup: actor_contacts_lookup,

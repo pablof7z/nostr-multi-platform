@@ -51,6 +51,9 @@ nmp-nip46 = { path = "../nmp-nip46" }
 nmp-nip46-runtime = { path = "../nmp-nip46-runtime", default-features = false }
 nmp-nip50 = { path = "../nmp-nip50" }
 nmp-nip57 = { path = "../nmp-nip57", default-features = false }
+# #2512 — engagement reference classifier installed at the browser composition
+# root (mirrors the FTS scope install in `runtime/handle.rs`).
+nmp-relations = { path = "../nmp-relations" }
 nmp-planner = { path = "../nmp-planner", default-features = false }
 # Signer trait + LocalKeySigner / Nip07Signer implementations used by the
 # capability-provider registry (#2049/#2066/#2067). `default-features = false`

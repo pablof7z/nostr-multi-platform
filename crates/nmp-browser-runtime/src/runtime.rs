@@ -77,6 +77,7 @@ pub(crate) use search::{BrowserSearchSessionDescriptor, BrowserSearchSessionHand
 // ── #2051/#2073 — snapshot/projection/clock/diagnostics track ────────────────
 pub mod diagnostics;
 mod handle;
+mod store_classifiers;
 pub(crate) mod signer_state;
 use signer_state::{
     nip46_failed_model, nip46_progress_model, ready_model, update_signer_state,

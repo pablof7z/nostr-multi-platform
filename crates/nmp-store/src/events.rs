@@ -422,24 +422,16 @@ pub trait EventStore: Send + Sync {
     /// Install the protocol-aware reference classifier at composition time.
     ///
     /// Mirrors [`Self::install_search_index_specs`]: `nmp-relations` compiles
-    /// its engagement spec (which kinds count, which NIP-10 marker picks the
-    /// target) into the opaque [`ReferenceClassifyFn`] and hands it here. The
-    /// store runs the closure at every insert / remove to maintain generic
-    /// per-target buckets keyed by the opaque [`crate::ReferenceBucketId`] the
-    /// closure returns; it never names a protocol concept (D0).
-    ///
-    /// Default no-op so a backend without the counter sidecar compiles
-    /// unchanged. `LmdbEventStore` and `MemEventStore` override it; the OPFS
-    /// backend ships no counter index yet, so the default (empty counts)
-    /// applies — exactly the FTS contract.
+    /// its engagement spec into the opaque [`ReferenceClassifyFn`]; the store
+    /// runs it at every insert/remove to maintain generic per-target buckets
+    /// keyed by the opaque [`crate::ReferenceBucketId`] it returns, never naming
+    /// a protocol concept (D0). Default no-op; `LmdbEventStore`/`MemEventStore`
+    /// override it. OPFS ships no sidecar, so the default (empty) applies.
     fn install_reference_counter_classifier(&self, _classifier: Arc<ReferenceClassifyFn>) {}
 
     /// Reference counts for `target`, bucketed by the opaque ids the installed
-    /// classifier produced.
-    ///
-    /// Default impl returns an empty [`TargetReferenceCounts`] (no classifier
-    /// installed / no sidecar). Both `LmdbEventStore` and `MemEventStore`
-    /// override this with real counts from their counter stores.
+    /// classifier produced. Default empty (no classifier / no sidecar);
+    /// `LmdbEventStore`/`MemEventStore` override with real counts.
     fn reference_counts(
         &self,
         target: &EventId,
@@ -488,23 +480,15 @@ pub trait EventStore: Send + Sync {
 
     /// Streaming text search over one registered scope (issue #1811).
     ///
-    /// Invokes `visitor` once per matching document, ordered per
-    /// `query.order`, up to `query.limit`. The visitor returns
-    /// [`ControlFlow::Break`] to stop early without materializing the remaining
-    /// results (mirrors [`Self::query_visit`]).
-    ///
-    /// Matching is **token + prefix** (the shared tokenizer): a multi-token
-    /// query is AND-combined; all but the trailing token match an indexed token
-    /// exactly, and the trailing token matches by prefix. The scan is bounded by
-    /// `query.budget` and never degrades to a hidden full-corpus scan.
-    ///
-    /// Returns an explicit [`TextSearchStatus`]: `Complete`, `Partial` (limit or
-    /// budget exhausted), `Unsupported` (default / unknown scope),
-    /// `IndexBuilding`, or `StoreError`.
-    ///
-    /// Default returns [`TextSearchStatus::Unsupported`] (and never calls the
-    /// visitor) so a non-FTS backend compiles unchanged — exactly the
-    /// "default returns Unsupported" trick the relay-coverage methods use.
+    /// Invokes `visitor` once per matching document, ordered per `query.order`,
+    /// up to `query.limit`; the visitor returns [`ControlFlow::Break`] to stop
+    /// early (mirrors [`Self::query_visit`]). Matching is **token + prefix** via
+    /// the shared tokenizer (multi-token AND-combined, trailing token by
+    /// prefix), bounded by `query.budget` — never a hidden full-corpus scan.
+    /// Returns an explicit [`TextSearchStatus`] (`Complete` / `Partial` /
+    /// `Unsupported` / `IndexBuilding` / `StoreError`). Default returns
+    /// `Unsupported` (visitor never called) so a non-FTS backend compiles
+    /// unchanged.
     fn text_search_visit(
         &self,
         _query: &TextSearchQuery,

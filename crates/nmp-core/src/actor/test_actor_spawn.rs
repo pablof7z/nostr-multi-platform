@@ -73,6 +73,7 @@ pub fn spawn_test_actor(
         relay_connected_hook: crate::substrate::new_relay_connected_hook_slot(),
         ingest_dispatcher: Arc::new(RwLock::new(dispatcher)),
         search_scope_registry: Arc::new(crate::substrate::SearchScopeRegistry::new()),
+        reference_counter_classifier: None,
         dm_inbox_relays: Arc::new(Mutex::new(crate::substrate::empty_dm_inbox_relay_lookup())),
         profile_lookup: Arc::new(Mutex::new(profile_lookup)),
         contacts_lookup: Arc::new(Mutex::new(contacts_lookup)),

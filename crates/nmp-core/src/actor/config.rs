@@ -64,6 +64,15 @@ pub struct ActorConfigSources {
     /// `ingest_dispatcher`: a shared `Arc` written by host registration,
     /// consumed once at composition.
     pub search_scope_registry: Arc<SearchScopeRegistry>,
+    /// #2512 — the composition-root-injected, protocol-noun-free e-tag reference
+    /// classifier (`nmp-relations` compiles its engagement spec into this opaque
+    /// closure). Installed into the kernel's store at `apply_to_kernel` right
+    /// beside `search_scope_registry`, so a `Reset` re-installs it onto the
+    /// fresh store. `None` (the default in tests / reducer roots that do not
+    /// compose engagement) leaves the store's reference counters inert. The type
+    /// is the generic `nmp_store::ReferenceClassifyFn`; `nmp-core` never names a
+    /// protocol noun (D0).
+    pub reference_counter_classifier: Option<Arc<nmp_store::ReferenceClassifyFn>>,
     pub dm_inbox_relays: Arc<Mutex<Arc<dyn DmInboxRelayLookup>>>,
     pub profile_lookup: Arc<Mutex<Arc<dyn ProfileLookup>>>,
     pub contacts_lookup: Arc<Mutex<Arc<dyn ContactsLookup>>>,
@@ -120,6 +129,7 @@ impl ActorConfigSources {
                 .unwrap_or_default(),
             ingest_dispatcher: self.ingest_dispatcher,
             search_scope_registry: self.search_scope_registry,
+            reference_counter_classifier: self.reference_counter_classifier,
             dm_inbox_relays: self
                 .dm_inbox_relays
                 .lock()
@@ -188,6 +198,10 @@ pub struct ActorConfig {
     /// #1811 — crate-registered FTS scope registry (compiled + installed into
     /// the kernel store at `apply_to_kernel`).
     pub search_scope_registry: Arc<SearchScopeRegistry>,
+    /// #2512 — composition-root-injected e-tag reference classifier, installed
+    /// into the kernel store at `apply_to_kernel` (see the field of the same
+    /// name on `ActorConfigSources`).
+    pub reference_counter_classifier: Option<Arc<nmp_store::ReferenceClassifyFn>>,
     pub dm_inbox_relays: Arc<dyn DmInboxRelayLookup>,
     pub profile_lookup: Arc<dyn ProfileLookup>,
     pub contacts_lookup: Arc<dyn ContactsLookup>,
@@ -262,6 +276,17 @@ impl ActorConfig {
         // re-runs `apply_to_kernel`, so the fresh store is re-installed.
         self.search_scope_registry
             .install_into(&*kernel.event_store_handle());
+        // #2512 — install the composition-root-injected engagement reference
+        // classifier into the same fresh store, the exact FTS treatment: a
+        // `Reset` re-runs `apply_to_kernel`, re-installing it onto the new store.
+        // The closure is opaque (`nmp_store::ReferenceClassifyFn`); the store
+        // runs it at ingest to maintain generic per-target buckets. Backends
+        // without a counter sidecar (OPFS) take the trait default no-op.
+        if let Some(classifier) = &self.reference_counter_classifier {
+            kernel
+                .event_store_handle()
+                .install_reference_counter_classifier(Arc::clone(classifier));
+        }
         kernel.set_dm_inbox_relay_lookup(Arc::clone(&self.dm_inbox_relays));
         kernel.set_profile_lookup(Arc::clone(&self.profile_lookup));
         kernel.set_contacts_lookup(Arc::clone(&self.contacts_lookup));
@@ -285,3 +310,7 @@ impl ActorConfig {
         }
     }
 }
+
+// #2512 — `apply_to_kernel` installs the composition-root reference classifier.
+#[cfg(all(test, feature = "native"))]
+mod reference_classifier_tests;

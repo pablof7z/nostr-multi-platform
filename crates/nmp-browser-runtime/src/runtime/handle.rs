@@ -136,10 +136,11 @@ impl BrowserRuntimeHandle {
                 .reducer
                 .set_outbound_public_tags(std::mem::take(&mut inner.outbound_public_tags));
         }
-
-        inner
-            .search_scope_registry
-            .install_into(&*inner.reducer.event_store_handle());
+        // #1811 + #2512 — FTS scopes + engagement classifier into reducer store.
+        super::store_classifiers::install_store_classifiers(
+            &inner.search_scope_registry,
+            &*inner.reducer.event_store_handle(),
+        );
 
         // Capture bootstrap list BEFORE consuming it into the kernel, so we can
         // open relay WebSockets from the same (url, role) pairs.

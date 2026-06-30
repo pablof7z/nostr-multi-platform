@@ -49,6 +49,9 @@ pub mod op_feed_defaults;
 #[cfg(test)]
 pub(crate) mod op_pointer_source;
 
+#[cfg(test)]
+mod engagement_composition_tests;
+
 pub use action_dispatch::{dispatch_action_bytes_typed, DispatchOutcome};
 pub use app_ctor::new_app;
 pub use app_struct::{IdentityChangeObserverId, NmpApp, UpdateListener};

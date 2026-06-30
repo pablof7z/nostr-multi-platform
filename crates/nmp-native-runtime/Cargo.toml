@@ -52,6 +52,10 @@ nmp-nip47 = { path = "../nmp-nip47" }
 nmp-nip50 = { path = "../nmp-nip50" }
 nmp-nip51 = { path = "../nmp-nip51" }
 nmp-nip57 = { path = "../nmp-nip57", default-features = false }
+# #2512 — cross-protocol engagement reference classifier composed into the
+# store at app-assembly time (the runtime is the L6 composition root; nmp-core
+# L3 cannot depend on nmp-relations L4).
+nmp-relations = { path = "../nmp-relations" }
 nmp-intent = { path = "../nmp-intent" }
 nmp-wot = { path = "../nmp-wot" }
 nmp-signer-iface = { path = "../nmp-signer-iface", optional = true }
