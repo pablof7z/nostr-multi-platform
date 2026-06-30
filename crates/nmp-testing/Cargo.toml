@@ -376,6 +376,15 @@ required-features = ["real-relay"]
 name = "op_feed_doctrine_lint"
 path = "tests/op_feed_doctrine_lint.rs"
 
+# Layer-inversion doctrine gate (audit #2510/#2508/#2512/#2513/#2514/#2515).
+# Four baseline-ratcheted rules: display-enrichment-in-primitive (A),
+# cross-protocol-aggregation in substrate (B), kind-blind transport nmp-nip29
+# (C), substrate protocol-noun nmp-core (D). No features. Green at introduction
+# via per-rule baseline allowlists of the known-violation files.
+[[test]]
+name = "layer_inversion_doctrine_lint"
+path = "tests/layer_inversion_doctrine_lint.rs"
+
 # DX Scaffold Gate — empirical developer-experience assertions (docs/aim.md §1).
 # Turns the headline one-shot claim (init → compile → run with zero policy code)
 # into cargo-test-runnable hard gates.  Complements scripts/dx-probe/dx-probe.sh.
