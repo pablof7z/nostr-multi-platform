@@ -4136,6 +4136,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-nip09"
+version = "0.8.4"
+dependencies = [
+ "nmp-core",
+ "nmp-ownership",
+ "nmp-signer-iface",
+ "serde",
+]
+
+[[package]]
 name = "nmp-nip11"
 version = "0.8.4"
 dependencies = [
@@ -4196,6 +4206,7 @@ version = "0.8.4"
 dependencies = [
  "flatbuffers",
  "nmp-core",
+ "nmp-nip09",
  "nmp-ownership",
  "nmp-signer-iface",
  "nmp-store",

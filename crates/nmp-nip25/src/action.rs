@@ -5,10 +5,14 @@ use nmp_core::substrate::{
     ActionRejection, ProtocolCommand, ProtocolCommandContext, ProtocolCommandError,
     ProtocolDescriptor,
 };
+use nmp_nip09::DeletionRequest;
 use nmp_signer_iface::UnsignedEvent;
 use serde::{Deserialize, Serialize};
 
 pub const KIND_REACTION: u32 = 7;
+/// Kind integer for NIP-09 deletion events (kind:5). Kept here because the
+/// NIP-25 aggregate and projection projections filter on this kind. The
+/// canonical builder and ownership for kind:5 artifacts live in `nmp-nip09`.
 pub const KIND_REACTION_DELETE: u32 = 5;
 
 type ReactionDraft = nmp_ownership::OwnedEventDraft<UnsignedEvent>;
@@ -227,17 +231,18 @@ fn reaction_tags(action: &ReactAction) -> Option<(Vec<Vec<String>>, String)> {
     Some((tags, content))
 }
 
+/// Build a kind:5 deletion draft for a reaction event, delegating construction
+/// to `nmp-nip09` so the artifact provenance is owned by the deletion crate
+/// (ADR-0074 composable-ownership doctrine). The reaction event id has already
+/// been validated as 64-hex by `UnreactModule::start`, so the call always
+/// succeeds; we treat errors as internal bugs and propagate via unwrap.
 fn reaction_delete_draft(reaction_event_id: String, reason: String) -> ReactionDraft {
-    ReactionDraft::new(
-        UnsignedEvent {
-            pubkey: String::new(),
-            kind: KIND_REACTION_DELETE,
-            tags: vec![vec!["e".to_string(), reaction_event_id]],
-            content: reason,
-            created_at: 0,
-        },
-        crate::ownership::REACTION_DELETE_EVENT_PROVENANCE,
-    )
+    nmp_nip09::build_deletion_draft(&DeletionRequest {
+        event_ids: vec![reaction_event_id],
+        kinds: vec![],
+        reason,
+    })
+    .expect("reaction_event_id is pre-validated 64-hex by UnreactModule::start")
 }
 
 fn resolve_target_author_pubkey(ctx: &ActionContext, action: &ReactAction) -> Option<String> {

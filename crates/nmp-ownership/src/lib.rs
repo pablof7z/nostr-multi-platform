@@ -236,12 +236,17 @@ pub fn validate_publish_ownership(
             "kind:7 reaction events must be built by nmp-nip25",
         )?;
     }
-    if kind == 5 && deletes_kind_7_reaction(tags) {
+    // All kind:5 deletion events must carry nmp-nip09 artifact provenance
+    // (ADR-0074). The generic deletion owner is nmp-nip09 regardless of what
+    // the caller is deleting (reactions, posts, or anything else). Non-exclusive
+    // intent claims (e.g. nmp-nip25's retraction intent) are declaration-only;
+    // the publish gate gates on the exclusive artifact claim.
+    if kind == 5 {
         require_artifact(
             proof,
-            "nmp.nip25",
-            "nostr.kind.5.delete_kind_7_reaction",
-            "kind:5 reaction deletions must be built by the reaction/deletion owner",
+            "nmp.nip09",
+            "nostr.kind.5.deletion",
+            "kind:5 deletion events must be built by nmp-nip09",
         )?;
     }
     if matches!(kind, 39000..=39003) {
@@ -318,12 +323,6 @@ fn has_tag(tags: &[Vec<String>], name: &str) -> bool {
         .any(|tag| tag.first().is_some_and(|t| t == name))
 }
 
-fn deletes_kind_7_reaction(tags: &[Vec<String>]) -> bool {
-    tags.iter().any(|tag| {
-        tag.first().is_some_and(|t| t == "k") && tag.get(1).is_some_and(|kind| kind == "7")
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use crate::{
@@ -372,6 +371,46 @@ mod tests {
         );
         assert!(validate_publish_ownership(7, &[], Some(proof), false).is_ok());
         assert!(validate_publish_ownership(7, &[], None, false).is_err());
+    }
+
+    #[test]
+    fn kind5_deletion_requires_nip09_artifact_provenance() {
+        // A kind:5 draft minted by nmp-nip09 must carry nmp.nip09 provenance.
+        let nip09_proof = EventOwnershipProvenance::new(
+            Some(ArtifactProvenance::new(
+                "nmp.nip09",
+                "nostr.kind.5.deletion",
+            )),
+            &[],
+        );
+        // Passes with nip09 provenance regardless of tags (generic gate).
+        assert!(validate_publish_ownership(5, &[], Some(nip09_proof), false).is_ok());
+        // Fails without any provenance.
+        assert!(validate_publish_ownership(5, &[], None, false).is_err());
+        // Fails with wrong provenance (e.g. old nip25 claim — no longer accepted).
+        let old_nip25_proof = EventOwnershipProvenance::new(
+            Some(ArtifactProvenance::new(
+                "nmp.nip25",
+                "nostr.kind.5.delete_kind_7_reaction",
+            )),
+            &[],
+        );
+        assert!(validate_publish_ownership(5, &[], Some(old_nip25_proof), false).is_err());
+    }
+
+    #[test]
+    fn nip09_minted_reaction_deletion_passes_gate() {
+        // Reaction retraction: nip25 delegates to nip09 → provenance is nip09.
+        // This test documents the composed publish path (ADR-0074).
+        let nip09_proof = EventOwnershipProvenance::new(
+            Some(ArtifactProvenance::new(
+                "nmp.nip09",
+                "nostr.kind.5.deletion",
+            )),
+            &[],
+        );
+        let tags = vec![vec!["e".to_string(), "a".repeat(64)]];
+        assert!(validate_publish_ownership(5, &tags, Some(nip09_proof), false).is_ok());
     }
 
     #[test]

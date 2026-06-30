@@ -20,6 +20,7 @@ members = [
     "crates/nmp-nip01",
     "crates/nmp-replies",
     "crates/nmp-nip02",
+    "crates/nmp-nip09",
     "crates/nmp-nip25",
     "crates/nmp-nip22",
     "crates/nmp-nip11",

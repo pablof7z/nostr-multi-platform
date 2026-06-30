@@ -81,11 +81,8 @@ nmp_ownership::declare_crate_ownership! {
 pub const REACTION_ARTIFACT: nmp_ownership::ArtifactProvenance =
     nmp_ownership::ArtifactProvenance::new("nmp.nip25", "nostr.kind.7.reaction");
 
-pub const REACTION_DELETE_ARTIFACT: nmp_ownership::ArtifactProvenance =
-    nmp_ownership::ArtifactProvenance::new("nmp.nip25", "nostr.kind.5.delete_kind_7_reaction");
-
 pub const REACTION_EVENT_PROVENANCE: nmp_ownership::EventOwnershipProvenance =
     nmp_ownership::EventOwnershipProvenance::new(Some(REACTION_ARTIFACT), &[]);
-
-pub const REACTION_DELETE_EVENT_PROVENANCE: nmp_ownership::EventOwnershipProvenance =
-    nmp_ownership::EventOwnershipProvenance::new(Some(REACTION_DELETE_ARTIFACT), &[]);
+// Note: REACTION_DELETE_ARTIFACT and REACTION_DELETE_EVENT_PROVENANCE were
+// removed in ADR-0074. Kind:5 deletion artifact ownership now lives in
+// `nmp-nip09`; the provenance token is `nmp_nip09::ownership::DELETION_EVENT_PROVENANCE`.
