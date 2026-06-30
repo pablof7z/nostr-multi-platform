@@ -27,7 +27,10 @@ fn mint_correlation_id_is_non_empty_and_unique() {
     let b = mint_correlation_id();
     assert!(!a.is_empty());
     assert!(!b.is_empty());
-    assert_ne!(a, b, "the monotone counter must not repeat within a process");
+    assert_ne!(
+        a, b,
+        "the monotone counter must not repeat within a process"
+    );
     assert!(a.starts_with("gallery-"));
 }
 
@@ -47,21 +50,12 @@ where
         "namespace '{namespace}' produced empty payload bytes"
     );
     P::decode(&bytes).unwrap_or_else(|e| {
-        panic!("namespace '{namespace}': decoded bytes do not match payload type {}: {e:?}", std::any::type_name::<P>())
+        panic!(
+            "namespace '{namespace}': decoded bytes do not match payload type {}: {e:?}",
+            std::any::type_name::<P>()
+        )
     })
 }
-
-// ── per-namespace decode-verified tests ────────────────────────────────────
-//
-// Each test proves:
-//   1. The seam accepts the canonical body without error.
-//   2. The produced bytes round-trip through the CORRECT typed decoder.
-//   3. The decoded value matches the expected key field(s).
-//
-// Property (3) is the load-bearing part: if a namespace were mapped to the
-// wrong payload type the bytes would either fail to decode entirely (different
-// FlatBuffers table shape → schema-id mismatch error) or decode to a value
-// that fails the field assertion.
 
 #[test]
 fn namespace_publish_raw_encodes_and_decodes() {
@@ -104,36 +98,30 @@ fn namespace_react_encodes_and_decodes() {
 #[test]
 fn namespace_unreact_encodes_and_decodes() {
     use action_payloads::UnreactAction;
-    let decoded: UnreactAction = encode_then_decode(
-        "nmp.nip25.unreact",
-        r#"{"reaction_event_id":"deadbeef"}"#,
-    );
+    let decoded: UnreactAction =
+        encode_then_decode("nmp.nip25.unreact", r#"{"reaction_event_id":"deadbeef"}"#);
     assert_eq!(decoded.reaction_event_id, "deadbeef");
 }
 
 #[test]
 fn namespace_follow_encodes_and_decodes() {
     use action_payloads::PubkeyAction;
-    let decoded: PubkeyAction =
-        encode_then_decode("nmp.follow", r#"{"pubkey":"deadbeef"}"#);
+    let decoded: PubkeyAction = encode_then_decode("nmp.follow", r#"{"pubkey":"deadbeef"}"#);
     assert_eq!(decoded.pubkey, "deadbeef");
 }
 
 #[test]
 fn namespace_unfollow_encodes_and_decodes() {
     use action_payloads::PubkeyAction;
-    let decoded: PubkeyAction =
-        encode_then_decode("nmp.unfollow", r#"{"pubkey":"deadbeef"}"#);
+    let decoded: PubkeyAction = encode_then_decode("nmp.unfollow", r#"{"pubkey":"deadbeef"}"#);
     assert_eq!(decoded.pubkey, "deadbeef");
 }
 
 #[test]
 fn namespace_follow_many_encodes_and_decodes() {
     use action_payloads::FollowManyAction;
-    let decoded: FollowManyAction = encode_then_decode(
-        "nmp.follow_many",
-        r#"{"pubkeys":["deadbeef","cafebabe"]}"#,
-    );
+    let decoded: FollowManyAction =
+        encode_then_decode("nmp.follow_many", r#"{"pubkeys":["deadbeef","cafebabe"]}"#);
     assert_eq!(decoded.pubkeys, vec!["deadbeef", "cafebabe"]);
 }
 
@@ -179,16 +167,18 @@ fn namespace_nip51_remove_bookmark_encodes_and_decodes() {
 }
 
 #[test]
-fn namespace_nip22_post_comment_encodes_and_decodes() {
-    use action_payloads::PostCommentAction;
-    let decoded: PostCommentAction = encode_then_decode(
-        "nmp.nip22.post_comment",
-        r#"{"root_tag_name":"E","root_tag_value":"deadbeef","root_kind":1,"content":"great post"}"#,
+fn namespace_replies_reply_encodes_and_decodes() {
+    use action_payloads::ReplyAction;
+    let decoded: ReplyAction = encode_then_decode(
+        "nmp.replies.reply",
+        r#"{"target_address":"30023:deadbeef:note","target_kind":30023,"content":"great post"}"#,
     );
-    assert_eq!(decoded.root_tag_name, "E");
-    assert_eq!(decoded.root_tag_value, "deadbeef");
+    assert_eq!(
+        decoded.target_address.as_deref(),
+        Some("30023:deadbeef:note")
+    );
+    assert_eq!(decoded.target_kind, 30023);
     assert_eq!(decoded.content, "great post");
-    assert_eq!(decoded.parent_event_id, None);
 }
 
 #[test]

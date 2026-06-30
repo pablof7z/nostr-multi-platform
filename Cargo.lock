@@ -3876,6 +3876,7 @@ dependencies = [
  "nmp-nip84",
  "nmp-nip89",
  "nmp-planner",
+ "nmp-replies",
  "nmp-router",
  "nmp-store",
  "nmp-substrate-defaults",
@@ -4115,12 +4116,10 @@ dependencies = [
 name = "nmp-nip22"
 version = "0.8.4"
 dependencies = [
- "flatbuffers",
  "nmp-core",
  "nmp-kinds",
  "nmp-signer-iface",
  "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -4379,6 +4378,21 @@ dependencies = [
 [[package]]
 name = "nmp-relay-url"
 version = "0.8.4"
+
+[[package]]
+name = "nmp-replies"
+version = "0.8.4"
+dependencies = [
+ "flatbuffers",
+ "nmp-core",
+ "nmp-kinds",
+ "nmp-nip01",
+ "nmp-nip22",
+ "nmp-signer-iface",
+ "nmp-store",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "nmp-router"

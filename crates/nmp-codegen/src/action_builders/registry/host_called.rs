@@ -47,37 +47,37 @@ pub(super) const PUBLISH_HIGHLIGHT: ActionBuilder = ActionBuilder {
     doc: "Publish a NIP-84 kind:9802 highlight annotation.",
 };
 
-pub(super) const POST_COMMENT: ActionBuilder = ActionBuilder {
-    namespace: "nmp.nip22.post_comment",
-    method: "postComment",
+pub(super) const REPLY: ActionBuilder = ActionBuilder {
+    namespace: "nmp.replies.reply",
+    method: "reply",
     fields: &[
         PayloadField {
-            name: "rootTagName",
+            name: "targetEventId",
             kind: FieldKind::Str,
-            optional: false,
+            optional: true,
         },
         PayloadField {
-            name: "rootTagValue",
-            kind: FieldKind::Str,
-            optional: false,
-        },
-        PayloadField {
-            name: "rootKind",
+            name: "targetKind",
             kind: FieldKind::Uint,
             optional: false,
         },
         PayloadField {
-            name: "parentEventId",
+            name: "targetAuthorPubkey",
             kind: FieldKind::Str,
             optional: true,
         },
         PayloadField {
-            name: "rootAuthorPubkey",
+            name: "targetAddress",
             kind: FieldKind::Str,
             optional: true,
         },
         PayloadField {
-            name: "parentAuthorPubkey",
+            name: "targetExternalUri",
+            kind: FieldKind::Str,
+            optional: true,
+        },
+        PayloadField {
+            name: "relayHint",
             kind: FieldKind::Str,
             optional: true,
         },
@@ -87,7 +87,7 @@ pub(super) const POST_COMMENT: ActionBuilder = ActionBuilder {
             optional: false,
         },
     ],
-    doc: "Publish a NIP-22 kind:1111 comment.",
+    doc: "Publish a reply; Rust chooses NIP-10 kind:1 or NIP-22 kind:1111 from the target.",
 };
 
 pub(super) const ADD_BOOKMARK_SET_ITEM: ActionBuilder = ActionBuilder {

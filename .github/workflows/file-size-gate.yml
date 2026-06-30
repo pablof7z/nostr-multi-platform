@@ -1,6 +1,9 @@
 name: file-size-gate
 
-# Enforces AGENTS.md 300 LOC warn / 500 LOC hard cap on hand-authored source.
+# Enforces the AGENTS.md file-size limits on hand-authored files: source code
+# gets 300 LOC warn / 500 LOC hard cap; non-code docs/config (.md/.toml/.yml/
+# .yaml) get an 800 LOC hard cap. (The job name below keeps its historical
+# "300 warn / 500 hard" label so the required-check identity is stable.)
 # In CI we check files changed by the current push/PR so legacy debt does not
 # fail unrelated work; the full-tree scan remains available locally.
 #

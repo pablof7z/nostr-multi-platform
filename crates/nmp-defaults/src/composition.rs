@@ -21,6 +21,7 @@ pub fn register_social_protocol_defaults(
 ) -> NmpDefaultRuntimeHandles {
     let mut handles = NmpDefaultRuntimeHandles::default();
     nmp_nip02::register_follow_actions(app);
+    nmp_replies::register_actions(app);
     ProtocolDescriptor::register_actions(&nmp_nip25::Nip25Descriptor, app);
     ProtocolDescriptor::register_actions(&nmp_nip18::Nip18Descriptor, app);
     ProtocolDescriptor::register_actions(&nmp_nip84::Nip84Descriptor, app);

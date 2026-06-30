@@ -18,7 +18,7 @@ This skill turns RMP's Rust-core/thin-shell architecture and NMP's stricter doct
 python3 <skill-dir>/scripts/nmp_architecture_scan.py <repo-or-app-root>
 ```
 
-The scanner is a triage tool. Investigate every hit; do not treat a clean scan as architectural proof.
+The scanner is a triage tool. Investigate every hit; do not treat a clean scan as architectural proof. It distinguishes real violations from legitimate boundaries: app/operator relay-policy config and one-shot native presentation timers surface as warnings, generated files are skipped (review their canonical source), and D6 fires only at the FFI boundary. The canonical allowances behind these severities are documented in `references/rules.md` under "Scanner Precision And Canonical Allowances".
 
 ## Workflow
 

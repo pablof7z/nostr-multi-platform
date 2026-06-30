@@ -1,16 +1,29 @@
-# 28 — Action-triggered read sessions
-> **Status: SHIPS** · Audience: both · Read after [05a — Substrate traits](05a-substrate-traits.md) and [07 — Subscription planner](07-subscription-planner.md).
+# 28 — Concept-owned active reads
+
+> **Status: SHIPS** · Audience: both · Read after [05a — Substrate traits](05a-substrate-traits.md) and [07 — Subscription planner](07-subscription-planner.md). Design context: [#2508](https://github.com/pablof7z/nostr-multi-platform/issues/2508).
 
 This chapter closes the gap that sent podcast-player to
 `dispatch_capability("nostr_relay", …)`: the kernel had the machinery, but the
 app-facing recipe was wrong.
 
-## The gap and why it matters
+## The model: ask the concept's owner
 
-Production app code should model "user taps something → kernel fetches matching
-events → typed output updates" as a typed read session claim/release. The action
-records the user's intent to claim or release a session. The session helper owns
-the internal acquisition, replay-before-live, output, status, and teardown.
+Production app code models "user mounts something → kernel fetches matching
+events → typed output updates" as a **concept-owned active read**. The thing
+that wants to show a fact asks the owner of that fact for it. A reply-count
+affordance calls `open_replies(target)`; a topic feed calls
+`open_topic_articles(topic)`; an app-specific control calls its own app crate's
+`open_collection_bookmark_state(target, collection_id)`. Each helper returns a
+**close handle** (or equivalent lifecycle token) and owns the internal
+acquisition, replay-before-live, output, status, and teardown.
+
+There is **no** generic app-facing `Claim` / `Release` verb and no
+`open_session(namespace, bytes)` doorway. "Session" is runtime bookkeeping, not a
+public domain noun. The refcount/claim/release machinery described later in this
+chapter is real, but it lives *inside* the concept helper — product code never
+spells it (see [#2508](https://github.com/pablof7z/nostr-multi-platform/issues/2508):
+*the thing that wants a concept asks that concept's owner for it; core does not
+aggregate open-ended relationships*).
 
 `ActorCommand::EnsureInterest`, `DropInterestOwner`,
 `open_observed_projection`, and `ObservedProjectionSink` are implementation
@@ -19,76 +32,80 @@ under ADR-0070.
 
 ## The moving parts
 
-Every action-triggered read feature wires the app-visible pieces at **init
-time** — before any action is dispatched, before the runtime starts:
+Every concept-owned active read wires its app-visible pieces at **init
+time** — before any view mounts, before the runtime starts:
 
 ```text
-typed read-session helper         ←── owns demand + replay + output + teardown
-register_action                   ←── dispatches Claim / Release intent
+concept-owned active-read helper  ←── owns demand + replay + output + teardown
+open_<concept>(target) -> handle  ←── public surface; drop/close the handle to release
 ```
 
-The action opens or closes a typed session owner. The session helper may use
-logical interests, observed delivery, and typed sidecars internally. The shell
-sees typed output and status on pushed frames. Nothing is polling. Nothing is in
-the shell.
+The concept owner exposes `open_<concept>(target)` and a matching close on the
+returned handle. The helper may use logical interests, observed delivery,
+internal refcounting, and typed sidecars privately. The shell sees typed output
+and status on pushed frames. Nothing is polling. Nothing is in the shell.
 
-## The action module: Claim/Release
+## The concept helper: open and close
 
-The action has two variants — claim (open) and release (close) — tagged in one
-enum under one namespace. They live in the same module because both must derive
-the same `SubIdentity` from the same inputs: a derivation mismatch (drop the
-wrong owner) causes a subscription to leak forever.
+A concept owner exposes one open helper that returns a close handle. Open and
+close must derive the same internal `SubIdentity` from the same inputs: a
+derivation mismatch (drop the wrong owner) causes a subscription to leak forever,
+so a single helper owns both ends — the close lives on the handle the open
+returned.
 
-The helper names below are shape-level placeholders. The invariant is that
-product code dispatches Claim/Release intent and the typed session helper owns
-the internal acquisition commands.
+The names below are shape-level placeholders for a "topic articles" concept owned
+by its own crate. The invariant is that product code calls a concrete, named
+concept helper and the helper owns the internal acquisition commands — there is
+no generic claim/release action exposed to apps.
 
 ```rust
 // crates/nmp-defaults/src/topic_articles.rs
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case", tag = "op")]
-pub enum TopicArticlesAction {
-    Claim   { topic: String, consumer_id: String },
-    Release { topic: String, consumer_id: String },
+//
+// `open_topic_articles` is the public, concept-named surface. The shell calls
+// it to mount the read and drops the returned handle to release it. The
+// internal acquisition refcount (claim/drop owner) is private to this helper.
+pub struct TopicArticlesHandle {
+    topic: String,
+    consumer_id: String,
+    send: ActorSender,
 }
 
-impl ActionModule for TopicArticlesModule {
-    const NAMESPACE: &'static str = "nmp.app.topic_articles";
-    type Action = TopicArticlesAction;
+pub fn open_topic_articles(
+    app: &impl AppHost,
+    topic: &str,
+    consumer_id: &str,
+) -> TopicArticlesHandle {
+    let send = app.actor_sender();
+    send(claim_topic_articles_session(topic, consumer_id)); // internal refcount++
+    TopicArticlesHandle { topic: topic.into(), consumer_id: consumer_id.into(), send }
+}
 
-    fn execute(
-        &self,
-        _ctx: &ActionContext,
-        action: Self::Action,
-        _correlation_id: &str,
-        send: &dyn Fn(ActorCommand),
-    ) -> Result<(), String> {
-        match action {
-            TopicArticlesAction::Claim { ref topic, ref consumer_id } => {
-                send(claim_topic_articles_session(topic, consumer_id));
-            }
-            TopicArticlesAction::Release { ref topic, ref consumer_id } => {
-                send(release_topic_articles_session(topic, consumer_id));
-            }
-        }
-        Ok(())
+impl Drop for TopicArticlesHandle {
+    fn drop(&mut self) {
+        (self.send)(release_topic_articles_session(&self.topic, &self.consumer_id));
+        // internal refcount--; slot GC'd when the last owner drops
     }
 }
 ```
 
-Shell dispatch JSON:
+Native shells mount and close the concept by handle through the runtime's
+`resolve_ref` / `release_ref`-style lifecycle — they do not dispatch a generic
+claim/release action or hand-author subscription keys:
 
-```json
-{"namespace":"nmp.app.topic_articles","action":{"op":"claim","topic":"bitcoin","consumer_id":"discover-view"}}
-{"namespace":"nmp.app.topic_articles","action":{"op":"release","topic":"bitcoin","consumer_id":"discover-view"}}
+```swift
+// Shell (Swift) — discover view mounts the topic-articles concept.
+let handle = topicArticles.open(topic: "bitcoin", consumerID: "discover-view")
+// … later, when the view unmounts:
+handle.close()
 ```
 
 ## Internal acquisition identity
 
-A typed session helper eventually materializes internal acquisition owners. The
+A concept helper eventually materializes internal acquisition owners. The
 current substrate represents those owners with a `SubIdentity`
 (`crates/nmp-core/src/subs/sub_key.rs:127`). This is not app vocabulary, but the
-internal triple explains why claim and release must share one derivation:
+internal triple explains why a concept's open and close must share one
+derivation:
 
 - **`SubOwnerKey`** — who holds the refcount. One per view instance / call
   site. Multiple owners may attach to the same slot; the registry keeps one REQ
@@ -166,13 +183,13 @@ it. The feed primitive's job is admission, canonical row identity, bounded
 storage, ordering, and pagination over events that have arrived through the
 normal acquisition path.
 
-If the acquisition source itself is dynamic, the action does not snapshot the
-current author/tag/id set. It declares the closed source expression and lets the
-typed session helper's internal source reducer materialize child interests.
+If the acquisition source itself is dynamic, the concept helper does not snapshot
+the current author/tag/id set. It declares the closed source expression and lets
+its internal source reducer materialize child interests.
 Active-user follows, NIP-51 list membership, follow packs, and pointer-event
 target hydration all have this shape: source interest/state changes, the reducer
 replaces the derived set, and those children enter the same registry/planner
-path as the static materialized interests owned by the session helper.
+path as the static materialized interests owned by the concept helper.
 
 `load_older` is rendered-progress pagination. It may scan past event-log rows
 that are deleted, muted, blocked, superseded, replaced, or rejected by the
@@ -228,7 +245,7 @@ The hooks name no app primary-kind policy (D0) and hydrate no secondary data
 
 ## Internal LogicalInterest materialization
 
-Session helpers materialize planner demand with `ViewDependencies::into_logical_interest`
+Concept helpers materialize planner demand with `ViewDependencies::into_logical_interest`
 (`crates/nmp-core/src/substrate/view.rs:67`) — it maps your declared kinds,
 authors, tag-refs, and limit onto the planner's `InterestShape`:
 
@@ -254,7 +271,7 @@ pub fn topic_articles_interest(topic: &str) -> LogicalInterest {
 **`InterestLifecycle::Tailing`** keeps the subscription open; events stream
 in live. **`InterestLifecycle::OneShot`** closes the subscription after the
 first EOSE — use for one-time lookups. The registry GCs a OneShot slot
-automatically; you do not need to dispatch Release.
+automatically; the concept handle's close is a no-op once the slot is gone.
 
 **`is_indexer_discovery: true`** tells the planner to route the initial
 bootstrap through the configured search indexer. Use it for sparse content
@@ -273,10 +290,11 @@ pub fn topic_articles_interest_id(topic: &str) -> InterestId {
 }
 ```
 
-Same inputs → same hash → same slot across restarts. Idempotent re-claims
-attach a new owner to the existing slot without opening a second REQ.
-If the session opens multiple lanes, each lane gets its own stable `InterestId`
-and corresponding internal owner identity, and Release drops every lane.
+Same inputs → same hash → same slot across restarts. An idempotent re-open
+attaches a new owner to the existing slot without opening a second REQ.
+If the concept opens multiple lanes, each lane gets its own stable `InterestId`
+and corresponding internal owner identity, and closing the handle drops every
+lane.
 
 ## Ensure vs set: the internal silent footgun
 
@@ -285,45 +303,44 @@ and corresponding internal owner identity, and Release drops every lane.
 `(scope, key)` already exists, the call attaches the new owner but **leaves
 the existing filter unchanged**. It returns `false` and triggers no recompile.
 
-This means: if a session helper uses a static content key like `"active"` and
+This means: if a concept helper uses a static content key like `"active"` and
 the user changes the query, the second internal ensure silently discards the new
 filter. The old query stays on the wire.
 
 **Correct pattern for a query that changes:** use the query itself as the
 content discriminant. Different queries → different `SubKey`s → different slots.
-On query change, dispatch Release for the old typed session owner and Claim for
-the new one:
+On query change, close the old concept handle and open a new one:
 
 ```swift
 // Shell (Swift) — user changes discover query from "bitcoin" to "lightning"
-topicArticles.release(topic: "bitcoin", consumerID: "discover-view")
-topicArticles.claim(topic: "lightning", consumerID: "discover-view")
+oldHandle.close()
+let newHandle = topicArticles.open(topic: "lightning", consumerID: "discover-view")
 ```
 
 A `SetInterest` command that calls `set_sub` (`registry.rs:86` — replaces the
 filter in place) does not currently exist as an `ActorCommand` variant. If a
-session needs in-place filter mutation, raise that as a typed-session gap — do
+concept needs in-place filter mutation, raise that as a concept-helper gap — do
 not work around it by exposing a static subscription key to product code.
 
-## The session executor — populating the read model
+## The concept executor — populating the read model
 
-The read session helper owns the executor machinery. Today that machinery may
+The concept helper owns the executor machinery. Today that machinery may
 include a declared observed projection and a typed sidecar. The declaration
 names the shape before any event is delivered; the kernel registers the sink
 muted, opens the declared interest, replays cached/store-backed rows, then
 activates future delivery scoped to the same shape.
 
 ```text
-// Shape declaration (inside the typed read-session helper — not an app recipe):
+// Shape declaration (inside the concept helper — not an app recipe):
 // 1. shape:  kind:LONG_FORM_ARTICLE  |  bounded replay (depth 128)  |  scoped delivery
-// 2. output: Arc<Mutex<DiscoveryState>> — typed state populated by the session executor
+// 2. output: Arc<Mutex<DiscoveryState>> — typed state populated by the concept executor
 // 3. sidecar: register_typed_snapshot_projection("myapp.discover_results", encoder_fn)
 // The observed-projection sink and ensure-interest commands are internal
-// session-executor machinery — not app-facing API (ADR-0070).
+// concept-executor machinery — not app-facing API (ADR-0070).
 ```
 
 The observer fires synchronously on the actor thread. Keep it fast: no I/O, no
-blocking, no panics. Production session helpers do not attach to a filterless
+blocking, no panics. Production concept helpers do not attach to a filterless
 all-event fanout; they declare kind, author, id, tag, relay pin, search shape,
 source reducer, or bounded dependencies up front.
 
@@ -356,60 +373,61 @@ pub fn register(app: &mut impl AppHost) {
     // 1. Install the explicit NIP/protocol stack this app wants.
     install_protocol_stack(app);
 
-    // 2. Read session helper — owns internal interests, replay, output, status,
-    // and close. It may use observed delivery internally.
-    register_topic_articles_read_session(app);
-
-    // 3. Action module — the shell can now dispatch Claim/Release.
-    app.register_action(TopicArticlesModule);
+    // 2. Concept helper — owns internal interests, replay, output, status,
+    // and close. It may use observed delivery internally. Registering it makes
+    // `open_topic_articles` callable; it does not open any REQ yet.
+    register_topic_articles_concept(app);
 }
 ```
 
-The session registration does not need to happen before the action registration
-for actor safety — both are consulted only when the actor processes a command or
+The concept registration is consulted only when the actor processes a command or
 an event, which is after runtime start. The constraint is simply that the
-binding adapter calls this app-core `register()` once before start.
+binding adapter calls this app-core `register()` once before start, and that the
+shell calls `open_topic_articles` (not a raw interest) to mount the read.
 
 ## Multi-owner refcounting in practice
 
-Two views may independently claim the same topic. Per lane, the registry keeps
-one slot and one REQ:
+Two views may independently open the same topic concept. Open and close are the
+public surface; the claim/drop-owner refcount below is the internal effect each
+one has on the registry. Per lane, the registry keeps one slot and one REQ:
 
 ```
-View A: Claim { topic: "bitcoin", consumer_id: "feed-column" }
+View A: open_topic_articles(topic: "bitcoin", consumer_id: "feed-column")
   → SubOwnerKey = hash(NAMESPACE, "owner", "bitcoin", "feed-column")
   → SubKey      = hash(NAMESPACE, "bitcoin")
   → registry: slot (Global, key) created, owners = { "feed-column" }
 
-View B: Claim { topic: "bitcoin", consumer_id: "sidebar" }
+View B: open_topic_articles(topic: "bitcoin", consumer_id: "sidebar")
   → SubOwnerKey = hash(NAMESPACE, "owner", "bitcoin", "sidebar")
   → SubKey      = hash(NAMESPACE, "bitcoin")          ← same slot
   → registry: owners = { "feed-column", "sidebar" }, one REQ
 
-View A closes: Release { topic: "bitcoin", consumer_id: "feed-column" }
+View A closes its handle:
   → drop_owner("feed-column")
   → owners = { "sidebar" }  → slot survives, REQ stays open
 
-View B closes: Release { topic: "bitcoin", consumer_id: "sidebar" }
+View B closes its handle:
   → drop_owner("sidebar")
   → owners = {}  → slot GC'd, CLOSE sent to relay
 ```
 
 This is the `ensure_sub` / `drop_owner` contract in
-`crates/nmp-core/src/subs/registry.rs:68-120`.
+`crates/nmp-core/src/subs/registry.rs:68-120` — internal machinery the concept
+helper drives, never product code.
 
-## `is_async_completing` for this pattern
+## Completion semantics
 
-Subscription-opening actions are **synchronously completing** —
-`is_async_completing()` defaults to `false` and that default is correct here.
-`execute()` records Claim/Release and returns `Ok`. The host spinner clears
-immediately. The ongoing session output flow is entirely separate from the
-action's completion signal.
+Opening a concept is **synchronously completing**: `open_topic_articles` returns
+its handle immediately and the ongoing output flow is separate from any
+completion signal. If a concept owner instead routes its open through an
+`ActionModule` (for a write-shaped concept), `is_async_completing()` defaults to
+`false` and that default is correct for a read — the host spinner clears as soon
+as the read is mounted.
 
 `is_async_completing() = true` applies only when the kernel must wait for a
 specific terminal event before it can declare success (e.g. a NWC payment
-confirmation). For a tailing subscription that streams events indefinitely,
-there is no terminal — do not set the flag. See
+confirmation). For a tailing read that streams events indefinitely, there is no
+terminal — do not set the flag. See
 [05a](05a-substrate-traits.md) §ActionModule for the full stage machinery.
 
 ## What NOT to do — the `dispatch_capability` trap
@@ -430,43 +448,45 @@ Nostr relay operations. The kernel owns all relay connections, always. The
 pattern in this chapter is the correct path.
 
 If you find yourself reaching for `dispatch_capability` with a relay-flavoured
-namespace, stop and ask: "Can I claim a typed read session from an
-`ActionModule` and read the pushed typed output?" The answer is almost
-certainly yes.
+namespace, stop and ask: "Is there a concept owner I can ask via `open_<concept>`
+and read the pushed typed output?" The answer is almost certainly yes.
 
 ## Anti-patterns
 
 | Pattern | Problem | Correct form |
 |---|---|---|
-| Internal ensure with a static key (`"active"`) for a mutable query | New filter silently discarded; old query stays on wire (`ensure_sub` is register-if-absent) | Use the query as the content discriminant; release the old session owner before claiming the new one |
-| Claim and Release in separate action modules | Identity derivation can diverge; wrong owner dropped → sub leaks | Keep Claim/Release as tagged variants of one enum under one namespace |
-| `dispatch_capability("nostr_relay", …)` | Relay logic enters the shell; kernel becomes a passthrough (D0, D4) | Action module → typed session Claim/Release → pushed typed output |
-| Calling `push_interest` / `EnsureInterest` from product code | Bypasses the typed-session owner; no session status, close contract, or route provenance | Route through a typed read-session helper or a runtime controller (see `runtimes.rs`) |
+| Internal ensure with a static key (`"active"`) for a mutable query | New filter silently discarded; old query stays on wire (`ensure_sub` is register-if-absent) | Use the query as the content discriminant; close the old concept handle before opening the new one |
+| A generic `Claim` / `Release` action (or `open_session(namespace, bytes)`) as the app-facing read verb | Recreates central read scaffolding; apps route every read through one opaque doorway instead of asking concept owners | Each concept owner exposes its own `open_<concept>(target)` helper returning a close handle ([#2508](https://github.com/pablof7z/nostr-multi-platform/issues/2508)) |
+| Open and close that derive owner identity from different inputs | Identity derivation can diverge; wrong owner dropped → sub leaks | Put the close on the handle the open returned so both derive one `SubIdentity` |
+| `dispatch_capability("nostr_relay", …)` | Relay logic enters the shell; kernel becomes a passthrough (D0, D4) | Call a concept owner's `open_<concept>` → render its pushed typed output |
+| Calling `push_interest` / `EnsureInterest` from product code | Bypasses the concept owner; no status, close contract, or route provenance | Route through a concept-owned helper or a runtime controller (see `runtimes.rs`) |
 | Observer that blocks or panics | Stalls the actor thread; may corrupt snapshot cadence | Keep observer body O(1), lock briefly, never panic (D6) |
-| Polling the projection from the shell instead of reading off the pushed frame | D8 violation (polling); data is already pushed — read it from `apply()` | Claim the typed session and render its pushed typed output |
-| Setting `is_async_completing = true` for a subscription-only action | Host spinner waits for a terminal that never arrives | Leave `is_async_completing` at default `false`; the action is done when Claim/Release is recorded |
+| Polling the projection from the shell instead of reading off the pushed frame | D8 violation (polling); data is already pushed — read it from `apply()` | Open the concept and render its pushed typed output |
+| Setting `is_async_completing = true` for a read-only concept open | Host spinner waits for a terminal that never arrives | Leave `is_async_completing` at default `false`; the open completes as soon as the read is mounted |
 
 ## Decision tree — which lifecycle?
 
 ```
-The subscription should close when…
+The concept's read should close when…
 │
 ├─ …the first EOSE arrives (one-time lookup, e.g. "fetch Alice's relay list")
 │   → InterestLifecycle::OneShot
-│   → No Release needed; the registry GCs the slot automatically.
+│   → No explicit close needed; the registry GCs the slot automatically.
 │
 └─ …the user navigates away / explicitly cancels
     → InterestLifecycle::Tailing
-    → Dispatch Release when the view closes; the shell owns the trigger, Rust owns the subscription.
+    → Close the concept handle when the view unmounts; the shell owns the
+      trigger, the concept owner owns the subscription.
 ```
 ## Checklist
 
-- [ ] Claim and Release derive the same internal owner identity from the same inputs.
+- [ ] The public surface is a concept-named `open_<concept>(target)` helper returning a close handle — not a generic `Claim` / `Release` action or `open_session(namespace, bytes)`.
+- [ ] Open and close derive the same internal owner identity from the same inputs (close lives on the returned handle).
 - [ ] Internal `SubOwnerKey` includes `consumer_id`; `SubKey` does not.
 - [ ] Internal `SubKey` matches the filter; `InterestId` is a stable hash, not a UUID.
-- [ ] `is_async_completing()` is `false` (default) for subscription-only actions.
+- [ ] `is_async_completing()` is `false` (default) for read-only concept opens.
 - [ ] Any internal observed executor declares its shape, stays cheap, and never panics.
 - [ ] Per-open/late-joining projections use kernel replay, not app-side hydration.
-- [ ] The typed output reads from session-owned state; tailing sessions have Release.
+- [ ] The typed output reads from concept-owned state; tailing concepts close on the returned handle.
 - [ ] No relay logic, WebSocket code, or `dispatch_capability("nostr_relay", …)` is in the shell.
 See also: [05a](05a-substrate-traits.md) · [06](06-reactivity-contract.md) · [07](07-subscription-planner.md) · [16](16-capabilities.md) · [20](20-new-protocol-module.md).

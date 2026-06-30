@@ -25,4 +25,4 @@ wrong.
 
 - [Browser signer/private-flow capability model](../wasm-surface.md#browser-signerprivate-flow-capability-model)
 - [NIP support matrix](../nips.md)
-- [Action-triggered subscriptions](../builder-guide/28-action-triggered-subscriptions.md)
+- [Concept-owned active reads](../builder-guide/28-action-triggered-subscriptions.md)

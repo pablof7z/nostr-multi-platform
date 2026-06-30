@@ -34,6 +34,8 @@ pub struct CommentRecord {
     pub root_tag_value: String,
     /// Root kind from the uppercase `K` tag (empty if absent).
     pub root_kind: String,
+    /// Root author from the uppercase `P` tag (empty if absent).
+    pub root_author_pubkey: String,
     /// Parent scope tag name — lowercase `a` / `e` / `i`. Mirrors the root tag
     /// (lowercased) for top-level comments.
     pub parent_tag_name: String,
@@ -73,6 +75,7 @@ pub fn try_from_kernel_event(event: &KernelEvent) -> Option<CommentRecord> {
         .unwrap_or_else(|| (root_tag_name.to_ascii_lowercase(), root_tag_value.clone()));
 
     let root_kind = first_tag_value(&event.tags, "K").unwrap_or_default();
+    let root_author_pubkey = first_tag_value(&event.tags, "P").unwrap_or_default();
     let parent_kind = first_tag_value(&event.tags, "k").unwrap_or_else(|| root_kind.clone());
 
     Some(CommentRecord {
@@ -82,6 +85,7 @@ pub fn try_from_kernel_event(event: &KernelEvent) -> Option<CommentRecord> {
         root_tag_name,
         root_tag_value,
         root_kind,
+        root_author_pubkey,
         parent_tag_name,
         parent_tag_value,
         parent_kind,

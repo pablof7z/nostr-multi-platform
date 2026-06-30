@@ -27,7 +27,7 @@ Authoritative contributor guide — agents and humans equally. Everything here i
 
 ## File size
 
-Source files: 300 LOC soft limit, 500 hard. Split by cohesive ownership. Generated/vendored/lockfiles exempt. Docs (`.md`, ADRs, wiki) have no limit.
+Source files: 300 LOC soft limit, 500 hard. Non-code files — documentation and declarative config/data (`.md` incl. ADRs/wiki, `.toml`, `.yml`, `.yaml`): 800 LOC hard limit (no soft tier). Split by cohesive ownership. Generated/vendored/lockfiles exempt.
 
 ## TEA organization: co-locate by owner, not role
 

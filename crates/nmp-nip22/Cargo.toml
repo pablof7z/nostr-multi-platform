@@ -4,7 +4,7 @@ version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 repository.workspace = true
-description = "NIP-22 comment (kind:1111) decode, threaded comment projection, and post-comment action for NMP apps."
+description = "NIP-22 comment (kind:1111) decode, builder, and threaded comment projection for NMP apps."
 
 [lib]
 crate-type = ["rlib"]
@@ -13,11 +13,7 @@ crate-type = ["rlib"]
 nmp-core = { path = "../nmp-core", default-features = false }
 nmp-signer-iface = { path = "../nmp-signer-iface" }
 nmp-kinds = { path = "../nmp-kinds" }
-flatbuffers = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
 
 [dev-dependencies]
-# `native` enables `ActionRegistry` (via `__ffi_internal`) for registry-level
-# trip tests (ADR-0064 / S9 #1747). `test-support` enables store harness helpers.
-nmp-core = { path = "../nmp-core", features = ["test-support", "native"] }
+nmp-core = { path = "../nmp-core", features = ["test-support"] }

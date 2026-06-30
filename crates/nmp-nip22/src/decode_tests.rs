@@ -40,7 +40,10 @@ fn rejects_comment_without_root_scope() {
 fn top_level_comment_mirrors_root_as_parent() {
     // A top-level comment carries only the uppercase root scope; its parent is
     // the root itself.
-    let event = comment_event(vec![tag("E", ROOT_EVENT), tag("K", "11")], "first!");
+    let event = comment_event(
+        vec![tag("E", ROOT_EVENT), tag("K", "11"), tag("P", AUTHOR)],
+        "first!",
+    );
     let record = try_from_kernel_event(&event).expect("decoded");
 
     assert_eq!(record.event_id, COMMENT_ID);
@@ -49,6 +52,7 @@ fn top_level_comment_mirrors_root_as_parent() {
     assert_eq!(record.root_tag_name, "E");
     assert_eq!(record.root_tag_value, ROOT_EVENT);
     assert_eq!(record.root_kind, "11");
+    assert_eq!(record.root_author_pubkey, AUTHOR);
     // Parent scope mirrors the (lowercased) root.
     assert_eq!(record.parent_tag_name, "e");
     assert_eq!(record.parent_tag_value, ROOT_EVENT);

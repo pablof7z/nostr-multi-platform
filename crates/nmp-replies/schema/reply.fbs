@@ -1,0 +1,34 @@
+namespace nmp.replies;
+
+// Typed FlatBuffers payload for `nmp.replies.reply`.
+//
+// The payload describes what the app wants to reply to, not how the protocol
+// tags are constructed. Rust resolves event targets from the local store when
+// available, then chooses NIP-10 kind:1 or NIP-22 kind:1111.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19):
+//   flatc --rust -o crates/nmp-replies/src/wire/generated \
+//         crates/nmp-replies/schema/reply.fbs
+
+table ReplyPayload {
+  // Fail-closed schema_version tripwire (read RAW before decode).
+  schema_version:uint;
+  // Event target. When this names a local kind:1 or kind:1111 event, Rust
+  // decodes the local event to recover NIP-10/NIP-22 parent/root facts.
+  target_event_id:string;
+  // Required for event and address targets. External roots use 0.
+  target_kind:uint;
+  // Optional event/address author; used only for protocol notification tags.
+  target_author_pubkey:string;
+  // Addressable target coordinate (for NIP-22 `A` roots).
+  target_address:string;
+  // External target URI/identifier (for NIP-22 `I` roots).
+  target_external_uri:string;
+  // Optional relay hint for NIP-10 `e` tags.
+  relay_hint:string;
+  content:string (required);
+}
+
+file_identifier "NRPY";
+root_type ReplyPayload;

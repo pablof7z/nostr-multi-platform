@@ -56,9 +56,7 @@ pub fn mint_correlation_id() -> String {
 fn encode_payload_for_namespace(namespace: &str, json: &str) -> Result<Vec<u8>, String> {
     match namespace {
         "nmp.publish" => encode::<action_payloads::PublishAction>(namespace, json),
-        "nmp.nip22.post_comment" => {
-            encode::<action_payloads::PostCommentAction>(namespace, json)
-        }
+        "nmp.replies.reply" => encode::<action_payloads::ReplyAction>(namespace, json),
         "nmp.nip25.react" => encode::<action_payloads::ReactAction>(namespace, json),
         "nmp.nip25.unreact" => encode::<action_payloads::UnreactAction>(namespace, json),
         "nmp.follow" | "nmp.unfollow" => encode::<action_payloads::PubkeyAction>(namespace, json),

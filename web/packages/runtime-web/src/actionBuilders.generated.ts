@@ -474,37 +474,37 @@ export const GeneratedActionBuilders = {
     return encodeDispatchEnvelope(correlationId, "nmp.nip84.publish_highlight", payload);
   },
 
-  /** Publish a NIP-22 kind:1111 comment. */
-  postComment(
+  /** Publish a reply; Rust chooses NIP-10 kind:1 or NIP-22 kind:1111 from the target. */
+  reply(
     correlationId: string,
-    rootTagName: string,
-    rootTagValue: string,
-    rootKind: number,
-    parentEventId: string | null,
-    rootAuthorPubkey: string | null,
-    parentAuthorPubkey: string | null,
+    targetEventId: string | null,
+    targetKind: number,
+    targetAuthorPubkey: string | null,
+    targetAddress: string | null,
+    targetExternalUri: string | null,
+    relayHint: string | null,
     content: string,
   ): Uint8Array {
     const fbb = new flatbuffers.Builder(64);
-    const rootTagNameOffset = fbb.createString(rootTagName);
-    const rootTagValueOffset = fbb.createString(rootTagValue);
-    const parentEventIdOffset = parentEventId === null ? 0 : fbb.createString(parentEventId);
-    const rootAuthorPubkeyOffset = rootAuthorPubkey === null ? 0 : fbb.createString(rootAuthorPubkey);
-    const parentAuthorPubkeyOffset = parentAuthorPubkey === null ? 0 : fbb.createString(parentAuthorPubkey);
+    const targetEventIdOffset = targetEventId === null ? 0 : fbb.createString(targetEventId);
+    const targetAuthorPubkeyOffset = targetAuthorPubkey === null ? 0 : fbb.createString(targetAuthorPubkey);
+    const targetAddressOffset = targetAddress === null ? 0 : fbb.createString(targetAddress);
+    const targetExternalUriOffset = targetExternalUri === null ? 0 : fbb.createString(targetExternalUri);
+    const relayHintOffset = relayHint === null ? 0 : fbb.createString(relayHint);
     const contentOffset = fbb.createString(content);
     fbb.startObject(8);
     fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
-    fbb.addFieldOffset(1, rootTagNameOffset, 0); // slot 1: rootTagName
-    fbb.addFieldOffset(2, rootTagValueOffset, 0); // slot 2: rootTagValue
-    fbb.addFieldInt32(3, rootKind, 0); // slot 3: rootKind
-    if (parentEventIdOffset !== 0) fbb.addFieldOffset(4, parentEventIdOffset, 0); // slot 4: parentEventId
-    if (rootAuthorPubkeyOffset !== 0) fbb.addFieldOffset(5, rootAuthorPubkeyOffset, 0); // slot 5: rootAuthorPubkey
-    if (parentAuthorPubkeyOffset !== 0) fbb.addFieldOffset(6, parentAuthorPubkeyOffset, 0); // slot 6: parentAuthorPubkey
+    if (targetEventIdOffset !== 0) fbb.addFieldOffset(1, targetEventIdOffset, 0); // slot 1: targetEventId
+    fbb.addFieldInt32(2, targetKind, 0); // slot 2: targetKind
+    if (targetAuthorPubkeyOffset !== 0) fbb.addFieldOffset(3, targetAuthorPubkeyOffset, 0); // slot 3: targetAuthorPubkey
+    if (targetAddressOffset !== 0) fbb.addFieldOffset(4, targetAddressOffset, 0); // slot 4: targetAddress
+    if (targetExternalUriOffset !== 0) fbb.addFieldOffset(5, targetExternalUriOffset, 0); // slot 5: targetExternalUri
+    if (relayHintOffset !== 0) fbb.addFieldOffset(6, relayHintOffset, 0); // slot 6: relayHint
     fbb.addFieldOffset(7, contentOffset, 0); // slot 7: content
     const payloadRoot = fbb.endObject();
-    fbb.finish(payloadRoot, "N22C");
+    fbb.finish(payloadRoot, "NRPY");
     const payload = fbb.asUint8Array();
-    return encodeDispatchEnvelope(correlationId, "nmp.nip22.post_comment", payload);
+    return encodeDispatchEnvelope(correlationId, "nmp.replies.reply", payload);
   },
 
   /** Add an item to a NIP-51 kind:30003 bookmark or kind:30004 curation set. */
