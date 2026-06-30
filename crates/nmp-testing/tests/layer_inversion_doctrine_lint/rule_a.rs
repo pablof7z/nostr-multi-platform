@@ -50,47 +50,6 @@ const RULE_A_BASELINE: &[(&str, &str)] = &[
         "crates/nmp-nip01/src/op_feed/attribution.rs",
         "author_display",
     ),
-    // #2514 — embed/longform render previews in nmp-content.
-    (
-        "crates/nmp-content/src/embed_projection/variants.rs",
-        "author_display_name",
-    ),
-    (
-        "crates/nmp-content/src/embed_projection/variants.rs",
-        "author_picture_url",
-    ),
-    (
-        "crates/nmp-content/schema/embed_sidecar.fbs",
-        "author_display_name",
-    ),
-    (
-        "crates/nmp-content/schema/embed_sidecar.fbs",
-        "author_picture_url",
-    ),
-    (
-        "crates/nmp-content/schema/embed_sidecar.fbs",
-        "has_author_display_name",
-    ),
-    (
-        "crates/nmp-content/schema/embed_sidecar.fbs",
-        "has_author_picture_url",
-    ),
-    (
-        "crates/nmp-content/schema/longform.fbs",
-        "author_display_name",
-    ),
-    (
-        "crates/nmp-content/schema/longform.fbs",
-        "author_picture_url",
-    ),
-    (
-        "crates/nmp-content/schema/longform.fbs",
-        "has_author_display_name",
-    ),
-    (
-        "crates/nmp-content/schema/longform.fbs",
-        "has_author_picture_url",
-    ),
 ];
 
 /// Banned tokens for a display/render FIELD declaration (substring match).

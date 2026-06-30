@@ -3,13 +3,6 @@ use crate::support::{collect_files, crates_dir, evaluate, is_comment, read, rel,
 /// Fine-grained baseline (tracked debt): `(file, symbol)`. The owning fix PR
 /// removes each line when it deletes the symbol. Do NOT add new entries.
 const RULE_D_BASELINE: &[(&str, &str)] = &[
-    // #2515 — NIP-19 entity codecs in the substrate kernel.
-    ("crates/nmp-core/src/lib.rs", "mod:nip19"),
-    ("crates/nmp-core/src/nip19.rs", "type:Nip19Entity"),
-    ("crates/nmp-core/src/nip19.rs", "type:Nip19Error"),
-    ("crates/nmp-core/src/nip19.rs", "type:NprofileData"),
-    ("crates/nmp-core/src/nip19.rs", "type:NeventData"),
-    ("crates/nmp-core/src/nip19.rs", "type:NaddrData"),
 ];
 
 /// `true` if `ident` (a declared type/module name) names a NIP-19 entity
