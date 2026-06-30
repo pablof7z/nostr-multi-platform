@@ -20,5 +20,12 @@ mod classifier;
 
 pub use classifier::{default_note_relation_classifier, DefaultNoteRelationClassifier};
 
-/// Compiled ownership descriptor for crate-ownership reports.
-pub mod ownership;
+nmp_ownership::declare_crate_ownership! {
+    owner_id: "nmp.relations",
+    crate_name: "nmp-relations",
+    summary: "Legacy compatibility adapter for the old injected note-relation classifier. It declares no protected semantics.",
+    claims: [
+    ],
+    notes: [
+    ],
+}
