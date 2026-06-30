@@ -33,8 +33,7 @@ fn assert_newest_first(events: &[StoredEvent], context: &str) {
     for w in events.windows(2) {
         let (a, b) = (&w[0].raw, &w[1].raw);
         assert!(
-            a.created_at > b.created_at
-                || (a.created_at == b.created_at && a.id <= b.id),
+            a.created_at > b.created_at || (a.created_at == b.created_at && a.id <= b.id),
             "{context}: ordering violated at created_at {} then {}",
             a.created_at,
             b.created_at
@@ -112,7 +111,11 @@ fn replay_author_kind_body(h: &mut StoreHarness) {
         until: None,
     };
     let results = collect_visit(&*h.store, &q, 500);
-    assert_eq!(results.len(), 180, "replay_author_kind: expected 180 results");
+    assert_eq!(
+        results.len(),
+        180,
+        "replay_author_kind: expected 180 results"
+    );
     assert_newest_first(&results, "replay_author_kind");
     h.assert_invariants();
 }
@@ -160,7 +163,10 @@ fn mk_tags_query(
     for (letter, values) in dims {
         tags.insert(
             nostr::SingleLetterTag::from_char(*letter).unwrap(),
-            values.iter().map(|v| v.to_string()).collect::<BTreeSet<String>>(),
+            values
+                .iter()
+                .map(|v| v.to_string())
+                .collect::<BTreeSet<String>>(),
         );
     }
     StoreQuery::Tags {
@@ -176,8 +182,12 @@ fn mk_tags_query(
 /// off-room and off-kind noise does not.
 fn replay_tag_h_room_body(h: &mut StoreHarness) {
     for (i, kind) in [(0u64, 9u32), (1, 11), (2, 9), (3, 11)] {
-        let ev = h.make_event_with_tags(BOB_HEX, kind, 1000 + i,
-            vec![vec!["h".into(), "room".into()]]);
+        let ev = h.make_event_with_tags(
+            BOB_HEX,
+            kind,
+            1000 + i,
+            vec![vec!["h".into(), "room".into()]],
+        );
         h.insert_raw(ev, "relay-fixture", (1000 + i) * 1000);
     }
     // noise: same kinds, different room; right room, wrong kind.
@@ -188,7 +198,11 @@ fn replay_tag_h_room_body(h: &mut StoreHarness) {
 
     let q = mk_tags_query(&[], &[9, 11], &[('h', &["room"])], None, None);
     let results = collect_visit(&*h.store, &q, 100);
-    assert_eq!(results.len(), 4, "#h=room + kinds[9,11] → exactly the 4 room events");
+    assert_eq!(
+        results.len(),
+        4,
+        "#h=room + kinds[9,11] → exactly the 4 room events"
+    );
     assert_newest_first(&results, "replay_tag_h_room");
 }
 
@@ -197,13 +211,21 @@ nmp_testing::for_each_backend!(replay_tag_h_room, replay_tag_h_room_body);
 /// Multi-value OR (`#t=["nostr","nmp"]`) returns events carrying either value.
 fn replay_tag_multivalue_or_body(h: &mut StoreHarness) {
     for (i, t) in ["nostr", "nmp", "bitcoin", "nostr"].iter().enumerate() {
-        let ev = h.make_event_with_tags(BOB_HEX, 1, 1000 + i as u64,
-            vec![vec!["t".into(), (*t).into()]]);
+        let ev = h.make_event_with_tags(
+            BOB_HEX,
+            1,
+            1000 + i as u64,
+            vec![vec!["t".into(), (*t).into()]],
+        );
         h.insert_raw(ev, "relay-fixture", (1000 + i as u64) * 1000);
     }
     let q = mk_tags_query(&[], &[1], &[('t', &["nostr", "nmp"])], None, None);
     let results = collect_visit(&*h.store, &q, 100);
-    assert_eq!(results.len(), 3, "#t OR [nostr,nmp] → 3 (two nostr + one nmp), not bitcoin");
+    assert_eq!(
+        results.len(),
+        3,
+        "#t OR [nostr,nmp] → 3 (two nostr + one nmp), not bitcoin"
+    );
     assert_newest_first(&results, "replay_tag_multivalue_or");
 }
 
@@ -213,8 +235,15 @@ nmp_testing::for_each_backend!(replay_tag_multivalue_or, replay_tag_multivalue_o
 /// the two tags must NOT match.
 fn replay_tag_multi_and_body(h: &mut StoreHarness) {
     // both tags → matches.
-    let both = h.make_event_with_tags(BOB_HEX, 9, 2000,
-        vec![vec!["h".into(), "room".into()], vec!["p".into(), ALICE_HEX.into()]]);
+    let both = h.make_event_with_tags(
+        BOB_HEX,
+        9,
+        2000,
+        vec![
+            vec!["h".into(), "room".into()],
+            vec!["p".into(), ALICE_HEX.into()],
+        ],
+    );
     h.insert_raw(both, "relay-fixture", 2_000_000);
     // only #h → no match.
     let only_h = h.make_event_with_tags(BOB_HEX, 9, 2100, vec![vec!["h".into(), "room".into()]]);
@@ -223,9 +252,19 @@ fn replay_tag_multi_and_body(h: &mut StoreHarness) {
     let only_p = h.make_event_with_tags(BOB_HEX, 9, 2200, vec![vec!["p".into(), ALICE_HEX.into()]]);
     h.insert_raw(only_p, "relay-fixture", 2_200_000);
 
-    let q = mk_tags_query(&[], &[9], &[('h', &["room"]), ('p', &[ALICE_HEX])], None, None);
+    let q = mk_tags_query(
+        &[],
+        &[9],
+        &[('h', &["room"]), ('p', &[ALICE_HEX])],
+        None,
+        None,
+    );
     let results = collect_visit(&*h.store, &q, 100);
-    assert_eq!(results.len(), 1, "multi-tag AND must exclude one-tag events");
+    assert_eq!(
+        results.len(),
+        1,
+        "multi-tag AND must exclude one-tag events"
+    );
     h.assert_invariants();
 }
 
@@ -234,13 +273,21 @@ nmp_testing::for_each_backend!(replay_tag_multi_and, replay_tag_multi_and_body);
 /// Tag-only query with empty kinds is an any-kind wildcard.
 fn replay_tag_only_no_kinds_body(h: &mut StoreHarness) {
     for (i, kind) in [(0u64, 1u32), (1, 9), (2, 30023)] {
-        let ev = h.make_event_with_tags(BOB_HEX, kind, 1000 + i,
-            vec![vec!["t".into(), "nostr".into()]]);
+        let ev = h.make_event_with_tags(
+            BOB_HEX,
+            kind,
+            1000 + i,
+            vec![vec!["t".into(), "nostr".into()]],
+        );
         h.insert_raw(ev, "relay-fixture", (1000 + i) * 1000);
     }
     let q = mk_tags_query(&[], &[], &[('t', &["nostr"])], None, None);
     let results = collect_visit(&*h.store, &q, 100);
-    assert_eq!(results.len(), 3, "empty kinds = any kind: all 3 #t=nostr events match");
+    assert_eq!(
+        results.len(),
+        3,
+        "empty kinds = any kind: all 3 #t=nostr events match"
+    );
 }
 
 nmp_testing::for_each_backend!(replay_tag_only_no_kinds, replay_tag_only_no_kinds_body);
@@ -254,7 +301,11 @@ fn replay_tag_author_kind_body(h: &mut StoreHarness) {
 
     let q = mk_tags_query(&[ALICE_HEX], &[9], &[('h', &["room"])], None, None);
     let results = collect_visit(&*h.store, &q, 100);
-    assert_eq!(results.len(), 1, "author-scoped tag query → only ALICE's event");
+    assert_eq!(
+        results.len(),
+        1,
+        "author-scoped tag query → only ALICE's event"
+    );
     assert_eq!(results[0].raw.pubkey, ALICE_HEX);
 }
 
@@ -263,8 +314,8 @@ nmp_testing::for_each_backend!(replay_tag_author_kind, replay_tag_author_kind_bo
 /// `since`/`until` bound a tag scan inclusively.
 fn replay_tag_since_until_body(h: &mut StoreHarness) {
     for i in 0..10u64 {
-        let ev = h.make_event_with_tags(BOB_HEX, 1, 1000 + i,
-            vec![vec!["t".into(), "nostr".into()]]);
+        let ev =
+            h.make_event_with_tags(BOB_HEX, 1, 1000 + i, vec![vec!["t".into(), "nostr".into()]]);
         h.insert_raw(ev, "relay-fixture", (1000 + i) * 1000);
     }
     // window [1003, 1006] inclusive → 4 events.
@@ -281,8 +332,8 @@ nmp_testing::for_each_backend!(replay_tag_since_until, replay_tag_since_until_bo
 /// Query-visit early break for `Tags`: stop after N visited.
 fn replay_tag_visit_break_body(h: &mut StoreHarness) {
     for i in 0..20u64 {
-        let ev = h.make_event_with_tags(BOB_HEX, 1, 1000 + i,
-            vec![vec!["t".into(), "nostr".into()]]);
+        let ev =
+            h.make_event_with_tags(BOB_HEX, 1, 1000 + i, vec![vec!["t".into(), "nostr".into()]]);
         h.insert_raw(ev, "relay-fixture", (1000 + i) * 1000);
     }
     let q = mk_tags_query(&[], &[1], &[('t', &["nostr"])], None, None);
@@ -324,7 +375,11 @@ fn replay_dm_ciphertext_body(h: &mut StoreHarness) {
         until: None,
     };
     let results = collect_visit(&*h.store, &q, 200);
-    assert_eq!(results.len(), 80, "replay_dm_ciphertext: expected 80 DM events");
+    assert_eq!(
+        results.len(),
+        80,
+        "replay_dm_ciphertext: expected 80 DM events"
+    );
     for ev in &results {
         assert!(
             ev.raw.kind == 4 || ev.raw.kind == 14,

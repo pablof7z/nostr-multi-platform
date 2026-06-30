@@ -21,8 +21,8 @@
 
 use std::time::Duration;
 
-use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 use nmp_signer_iface::RemoteSignerHandle;
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 use nmp_signer_iface::{SignerError, SignerOp};
 use nostr::PublicKey;
 
@@ -40,7 +40,9 @@ impl RemoteSignerHandle for Nip55Signer {
     }
 
     fn persistence_payload_json(&self) -> Option<String> {
-        self.to_payload().ok().and_then(|p| serde_json::to_string(&p).ok())
+        self.to_payload()
+            .ok()
+            .and_then(|p| serde_json::to_string(&p).ok())
     }
 
     /// Per-op deadline for NIP-55 signer operations (sign + nip44 verbs).

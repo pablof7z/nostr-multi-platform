@@ -4,7 +4,7 @@
 //! `NmpApp` — so they prove the *registry* contract: it records a teardown
 //! recipe, runs it exactly once on close (in reverse order), is idempotent on
 //! double close, and frees the map entry (proving teardown releases rather than
-//! flipping a flag). The wired-over-real-mechanics proofs live in `nmp-defaults`
+//! flipping a flag). The wired-over-real-mechanics proofs live in `explicit composition`
 //! / `nmp-ffi`.
 
 use std::sync::{
@@ -28,7 +28,11 @@ fn open_mints_distinct_ids_and_records_projection_key() {
     let a = reg.open(build_with("nmp.feed.home", || {}));
     let b = reg.open(build_with("nmp.feed.author.alice", || {}));
     assert_ne!(a, b, "each open mints a distinct id");
-    assert_ne!(a, FeedSessionId(0), "minted id is never the reserved sentinel");
+    assert_ne!(
+        a,
+        FeedSessionId(0),
+        "minted id is never the reserved sentinel"
+    );
     assert_eq!(
         reg.projection_key(&a),
         Some(ProjectionKey("nmp.feed.home".into()))

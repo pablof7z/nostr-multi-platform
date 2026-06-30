@@ -170,7 +170,9 @@ pub fn decode_reaction_aggregate_snapshot(
     Ok(ReactionAggregateSnapshot { targets })
 }
 
-fn decode_target(target: fb::ReactionTargetAggregate<'_>) -> Result<ReactionTargetAggregate, String> {
+fn decode_target(
+    target: fb::ReactionTargetAggregate<'_>,
+) -> Result<ReactionTargetAggregate, String> {
     let mut by_emoji = Vec::new();
     if let Some(fb_emoji) = target.by_emoji() {
         by_emoji.reserve(fb_emoji.len());
@@ -205,7 +207,10 @@ fn decode_target(target: fb::ReactionTargetAggregate<'_>) -> Result<ReactionTarg
     }
 
     Ok(ReactionTargetAggregate {
-        target_event_id: str_field(target.target_event_id(), "ReactionTargetAggregate.target_event_id")?,
+        target_event_id: str_field(
+            target.target_event_id(),
+            "ReactionTargetAggregate.target_event_id",
+        )?,
         total: target.total(),
         by_emoji,
         reactors,

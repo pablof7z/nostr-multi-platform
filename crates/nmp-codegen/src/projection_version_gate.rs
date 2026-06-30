@@ -224,7 +224,9 @@ impl ProducerVersionCheckOutcome {
 /// `repo_root`. Returns one outcome per entry, in registry order. A missing file
 /// or unparseable const yields `producer_version: None` (a non-match).
 #[must_use]
-pub fn check_all_producer_versions(repo_root: &std::path::Path) -> Vec<ProducerVersionCheckOutcome> {
+pub fn check_all_producer_versions(
+    repo_root: &std::path::Path,
+) -> Vec<ProducerVersionCheckOutcome> {
     PRODUCER_VERSION_SOURCES
         .iter()
         .map(|src| {
@@ -256,12 +258,21 @@ mod tests {
 
     #[test]
     fn parse_const_u32_handles_visibilities_and_boundaries() {
-        assert_eq!(parse_const_u32("pub const SCHEMA_VERSION: u32 = 2;", "SCHEMA_VERSION"), Some(2));
         assert_eq!(
-            parse_const_u32("pub(crate) const X_SCHEMA_VERSION : u32 = 5 ;", "X_SCHEMA_VERSION"),
+            parse_const_u32("pub const SCHEMA_VERSION: u32 = 2;", "SCHEMA_VERSION"),
+            Some(2)
+        );
+        assert_eq!(
+            parse_const_u32(
+                "pub(crate) const X_SCHEMA_VERSION : u32 = 5 ;",
+                "X_SCHEMA_VERSION"
+            ),
             Some(5)
         );
-        assert_eq!(parse_const_u32("const SCHEMA_VERSION: u32 = 7;", "SCHEMA_VERSION"), Some(7));
+        assert_eq!(
+            parse_const_u32("const SCHEMA_VERSION: u32 = 7;", "SCHEMA_VERSION"),
+            Some(7)
+        );
         // Prefix collision must not match.
         assert_eq!(
             parse_const_u32("pub const SCHEMA_VERSION_FOO: u32 = 9;", "SCHEMA_VERSION"),
@@ -284,16 +295,31 @@ mod tests {
         let src = "// pub const SCHEMA_VERSION: u32 = 1;\npub const SCHEMA_VERSION: u32 = 2;";
         assert_eq!(parse_const_u32(src, "SCHEMA_VERSION"), Some(2));
         // Non-literal expression fails closed (no `1` truncation).
-        assert_eq!(parse_const_u32("pub const SCHEMA_VERSION: u32 = 1 + 1;", "SCHEMA_VERSION"), None);
+        assert_eq!(
+            parse_const_u32("pub const SCHEMA_VERSION: u32 = 1 + 1;", "SCHEMA_VERSION"),
+            None
+        );
         // Suffixed literal fails closed.
-        assert_eq!(parse_const_u32("pub const SCHEMA_VERSION: u32 = 1_u32;", "SCHEMA_VERSION"), None);
+        assert_eq!(
+            parse_const_u32("pub const SCHEMA_VERSION: u32 = 1_u32;", "SCHEMA_VERSION"),
+            None
+        );
         // Wrong type fails closed.
-        assert_eq!(parse_const_u32("pub const SCHEMA_VERSION: u8 = 1;", "SCHEMA_VERSION"), None);
+        assert_eq!(
+            parse_const_u32("pub const SCHEMA_VERSION: u8 = 1;", "SCHEMA_VERSION"),
+            None
+        );
         // Missing terminator fails closed.
-        assert_eq!(parse_const_u32("pub const SCHEMA_VERSION: u32 = 1", "SCHEMA_VERSION"), None);
+        assert_eq!(
+            parse_const_u32("pub const SCHEMA_VERSION: u32 = 1", "SCHEMA_VERSION"),
+            None
+        );
         // Unrecognised visibility fails closed.
         assert_eq!(
-            parse_const_u32("pub(super) const SCHEMA_VERSION: u32 = 1;", "SCHEMA_VERSION"),
+            parse_const_u32(
+                "pub(super) const SCHEMA_VERSION: u32 = 1;",
+                "SCHEMA_VERSION"
+            ),
             None
         );
     }

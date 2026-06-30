@@ -71,8 +71,7 @@ fn encode_hit<'b>(
         .tags
         .iter()
         .map(|row| {
-            let cells: Vec<WIPOffset<&str>> =
-                row.iter().map(|c| fbb.create_string(c)).collect();
+            let cells: Vec<WIPOffset<&str>> = row.iter().map(|c| fbb.create_string(c)).collect();
             let cells = fbb.create_vector(&cells);
             fb::TagRow::create(fbb, &fb::TagRowArgs { cells: Some(cells) })
         })

@@ -144,8 +144,8 @@ impl ProtocolCommand for UnreactReactionCommand {
 ///
 /// Zero-cost unit struct exposing this crate's two action-module contributions
 /// (`nmp.nip25.react`, `nmp.nip25.unreact`) through the [`ProtocolDescriptor`]
-/// trait so `nmp-defaults` can compose descriptors rather than call ad-hoc
-/// `register_actions` free functions (criterion 6).
+/// trait so explicit app/runtime roots can compose descriptors without
+/// ad-hoc action-registration call sites (criterion 6).
 ///
 /// Both modules are registered as **yielding defaults** (ADR-0049 Part 1): an
 /// app that pre-registers its own reaction handler pre-empts these regardless of

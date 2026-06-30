@@ -60,7 +60,10 @@ fn connection_state_from_fb(state: fb::NwcConnectionState) -> Result<NwcConnecti
         fb::NwcConnectionState::Connected => Ok(NwcConnectionState::Connected),
         fb::NwcConnectionState::Reconnecting => Ok(NwcConnectionState::Reconnecting),
         fb::NwcConnectionState::TransportLost => Ok(NwcConnectionState::TransportLost),
-        other => Err(format!("unknown NwcConnectionState discriminant {}", other.0)),
+        other => Err(format!(
+            "unknown NwcConnectionState discriminant {}",
+            other.0
+        )),
     }
 }
 
@@ -125,10 +128,7 @@ pub fn decode_wallet_status(bytes: &[u8]) -> Result<WalletStatus, String> {
         balance_sats: optional_u64(root.has_balance_sats(), root.balance_sats()),
         // `wallet_npub_short` removed (#1678, D7); deprecated vtable slot is
         // not decoded — shells abbreviate `wallet_npub` themselves.
-        wallet_pubkey_hex: str_field(
-            root.wallet_pubkey_hex(),
-            "WalletStatus.wallet_pubkey_hex",
-        )?,
+        wallet_pubkey_hex: str_field(root.wallet_pubkey_hex(), "WalletStatus.wallet_pubkey_hex")?,
         is_ready: root.is_ready(),
         is_connected: root.is_connected(),
         connection_state: if root.has_connection_state() {

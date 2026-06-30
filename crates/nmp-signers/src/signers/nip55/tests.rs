@@ -26,8 +26,8 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use nmp_signer_iface::UnsignedEvent;
 use nmp_signer_iface::RemoteSignerHandle;
+use nmp_signer_iface::UnsignedEvent;
 use nmp_signer_iface::{
     ExternalSignerOutcome, ExternalSignerRequest, ExternalSignerResponse, ExternalSignerTransport,
     Nip55Permission, SignerError, SignerOp, EXTERNAL_SIGN_TIMEOUT,

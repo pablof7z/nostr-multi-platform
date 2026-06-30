@@ -25,21 +25,19 @@
 //! ```
 
 use std::net::TcpStream;
-use std::sync::{Arc, Mutex, Once};
 use std::sync::mpsc::{channel, Receiver};
+use std::sync::{Arc, Mutex, Once};
 use std::time::{Duration, Instant};
 
-use nmp_core::{ActorMail, CommandSender};
 use nmp_core::actor::{ActorCommand, SignCommand};
+use nmp_core::{ActorMail, CommandSender};
 use nmp_nip17::DmInboxProjection;
-use nmp_nip59::{gift_wrap_local, KIND_GIFT_WRAP};
+use nmp_nip59::gift_wrap_local;
 use nostr::nips::nip59::RANGE_RANDOM_TIMESTAMP_TWEAK;
 use nostr::util::JsonUtil as _;
 use nostr::{EventBuilder, Keys, Kind, Tag, Timestamp};
 use tungstenite::stream::MaybeTlsStream;
 use tungstenite::{connect, Message, WebSocket};
-
-// ─── Constants ─────────────────────────────────────────────────────────────
 
 const DAMUS_RELAY: &str = "wss://relay.damus.io";
 /// `nak serve` default — localhost ephemeral relay (no persistence between runs).
@@ -47,8 +45,6 @@ const NAK_SERVE_ADDR: &str = "ws://localhost:10547";
 const READ_TIMEOUT: Duration = Duration::from_millis(250);
 const BACKFILL_BUDGET: Duration = Duration::from_secs(15);
 const PUBLISH_ACK_BUDGET: Duration = Duration::from_secs(8);
-
-// ─── TLS ───────────────────────────────────────────────────────────────────
 
 fn install_rustls_provider() {
     static INSTALL: Once = Once::new();
@@ -75,12 +71,21 @@ fn open(url: &str) -> Result<RelaySocket, String> {
     Ok(socket)
 }
 
-// ─── Core scenario logic ────────────────────────────────────────────────────
+fn is_read_timeout(e: &std::io::Error) -> bool {
+    matches!(
+        e.kind(),
+        std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+    )
+}
 
-/// Run the cold-start scenario against `relay_url`.
-///
-/// Returns `Ok(true)` on success, `Ok(false)` if the relay was unreachable
-/// (so the test can emit a SKIP message), and `Err(msg)` on a scenario failure.
+fn report_result(prefix: &str, result: Result<bool, String>, skip: &str) {
+    match result {
+        Ok(true) => println!("[{prefix}] PASS"),
+        Ok(false) => eprintln!("[{prefix}] SKIP ({skip})"),
+        Err(msg) => panic!("{msg}"),
+    }
+}
+
 fn run_cold_start_scenario(relay_url: &str) -> Result<bool, String> {
     // ── Identities ─────────────────────────────────────────────────────────
     let alice = Keys::generate();
@@ -117,12 +122,18 @@ fn run_cold_start_scenario(relay_url: &str) -> Result<bool, String> {
     let envelope_id = envelope.id.to_hex();
     let envelope_json = envelope.as_json();
 
-    println!("[nip17-cs] PHASE 1: publishing kind:1059 id={} (Bob offline)", envelope_id);
+    println!(
+        "[nip17-cs] PHASE 1: publishing kind:1059 id={} (Bob offline)",
+        envelope_id
+    );
 
     let mut alice_sock = match open(relay_url) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("[nip17-cs] SKIP: cannot reach {} (alice socket): {}", relay_url, e);
+            eprintln!(
+                "[nip17-cs] SKIP: cannot reach {} (alice socket): {}",
+                relay_url, e
+            );
             return Ok(false);
         }
     };
@@ -148,11 +159,7 @@ fn run_cold_start_scenario(relay_url: &str) -> Result<bool, String> {
                 }
             }
             Ok(_) => {}
-            Err(tungstenite::Error::Io(e))
-                if matches!(
-                    e.kind(),
-                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
-                ) => {}
+            Err(tungstenite::Error::Io(e)) if is_read_timeout(&e) => {}
             Err(e) => {
                 let _ = alice_sock.close(None);
                 eprintln!("[nip17-cs] SKIP: alice socket error: {}", e);
@@ -163,7 +170,10 @@ fn run_cold_start_scenario(relay_url: &str) -> Result<bool, String> {
     let _ = alice_sock.close(None);
 
     if !alice_ok {
-        eprintln!("[nip17-cs] SKIP: no OK from relay for publish within {:?}", PUBLISH_ACK_BUDGET);
+        eprintln!(
+            "[nip17-cs] SKIP: no OK from relay for publish within {:?}",
+            PUBLISH_ACK_BUDGET
+        );
         return Ok(false);
     }
     println!("[nip17-cs] relay ACK'd the publish — Alice disconnects (Bob still offline)");
@@ -199,7 +209,10 @@ fn run_cold_start_scenario(relay_url: &str) -> Result<bool, String> {
     let mut bob_sock = match open(relay_url) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("[nip17-cs] SKIP: cannot reach {} (bob socket): {}", relay_url, e);
+            eprintln!(
+                "[nip17-cs] SKIP: cannot reach {} (bob socket): {}",
+                relay_url, e
+            );
             return Ok(false);
         }
     };
@@ -213,11 +226,7 @@ fn run_cold_start_scenario(relay_url: &str) -> Result<bool, String> {
     // this is STILL a cold start from Bob's perspective (he has no local
     // watermark; we just apply a courtesy window for etiquette). The
     // critical property is that the since is EARLIER than Alice's publish.
-    let since_secs = {
-        let now = Timestamp::now().as_secs();
-        // 2 days back — wide enough to catch the event we just published.
-        now.saturating_sub(172_800)
-    };
+    let since_secs = Timestamp::now().as_secs().saturating_sub(172_800);
 
     let req_id = format!("nip17-cs-{}", &bob_hex[..8]);
     let req = format!(
@@ -257,11 +266,16 @@ fn run_cold_start_scenario(relay_url: &str) -> Result<bool, String> {
 
                 if text.contains("\"EVENT\"") && text.contains(&req_id) {
                     // Parse ["EVENT", <sub_id>, <event-json>]
-                    if let Ok(serde_json::Value::Array(arr)) = serde_json::from_str::<serde_json::Value>(&text) {
+                    if let Ok(serde_json::Value::Array(arr)) =
+                        serde_json::from_str::<serde_json::Value>(&text)
+                    {
                         if arr.len() >= 3 {
                             if let Ok(ev) = serde_json::from_value::<nostr::Event>(arr[2].clone()) {
                                 if ev.id.to_hex() == envelope_id {
-                                    println!("[nip17-cs] Bob's socket received the gift-wrap id={}", envelope_id);
+                                    println!(
+                                        "[nip17-cs] Bob's socket received the gift-wrap id={}",
+                                        envelope_id
+                                    );
                                     delivered_json = Some(arr[2].to_string());
                                     if got_eose {
                                         break;
@@ -273,11 +287,7 @@ fn run_cold_start_scenario(relay_url: &str) -> Result<bool, String> {
                 }
             }
             Ok(_) => {}
-            Err(tungstenite::Error::Io(e))
-                if matches!(
-                    e.kind(),
-                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
-                ) => {}
+            Err(tungstenite::Error::Io(e)) if is_read_timeout(&e) => {}
             Err(e) => {
                 let _ = bob_sock.close(None);
                 eprintln!("[nip17-cs] SKIP: bob socket error during backfill: {}", e);
@@ -288,7 +298,10 @@ fn run_cold_start_scenario(relay_url: &str) -> Result<bool, String> {
     let _ = bob_sock.close(None);
 
     if !got_eose {
-        eprintln!("[nip17-cs] SKIP: EOSE not received within {:?}", BACKFILL_BUDGET);
+        eprintln!(
+            "[nip17-cs] SKIP: EOSE not received within {:?}",
+            BACKFILL_BUDGET
+        );
         return Ok(false);
     }
 
@@ -303,7 +316,9 @@ fn run_cold_start_scenario(relay_url: &str) -> Result<bool, String> {
         }
     };
 
-    println!("[nip17-cs] PHASE 2 relay transport: PASS — stored event backfilled to cold subscriber");
+    println!(
+        "[nip17-cs] PHASE 2 relay transport: PASS — stored event backfilled to cold subscriber"
+    );
 
     // ── PHASE 4: Projection decryption ─────────────────────────────────────
     //
@@ -415,8 +430,6 @@ fn drive_local_decrypts(rx: &Receiver<ActorMail>, keys: &Keys) {
     }
 }
 
-// ─── Test variants ──────────────────────────────────────────────────────────
-
 /// F-02 cold-start verification against `nak serve` (deterministic).
 ///
 /// Requires `nak serve` running on localhost:10547.  The test starts the
@@ -461,17 +474,7 @@ fn nip17_cold_start_receive_nak_serve() {
     let _ = child.kill();
     let _ = child.wait();
 
-    match result {
-        Ok(true) => {
-            println!("[nip17-cs-nak] PASS");
-        }
-        Ok(false) => {
-            eprintln!("[nip17-cs-nak] SKIP (relay unreachable during test)");
-        }
-        Err(msg) => {
-            panic!("{}", msg);
-        }
-    }
+    report_result("nip17-cs-nak", result, "relay unreachable during test");
 }
 
 /// F-02 cold-start verification against `relay.damus.io` (live relay).
@@ -485,15 +488,9 @@ fn nip17_cold_start_receive_nak_serve() {
 #[test]
 #[ignore = "real-relay (damus): run with --ignored --nocapture"]
 fn nip17_cold_start_receive_damus() {
-    match run_cold_start_scenario(DAMUS_RELAY) {
-        Ok(true) => {
-            println!("[nip17-cs-damus] PASS");
-        }
-        Ok(false) => {
-            eprintln!("[nip17-cs-damus] SKIP (relay unreachable or throttling)");
-        }
-        Err(msg) => {
-            panic!("{}", msg);
-        }
-    }
+    report_result(
+        "nip17-cs-damus",
+        run_cold_start_scenario(DAMUS_RELAY),
+        "relay unreachable or throttling",
+    );
 }

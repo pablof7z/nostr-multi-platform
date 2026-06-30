@@ -52,7 +52,9 @@ use crate::action::{ReactAction, UnreactAction};
 pub const SCHEMA_VERSION: u32 = 1;
 
 fn malformed(reason: impl Into<String>) -> ActionPayloadDecodeError {
-    ActionPayloadDecodeError::Malformed { reason: reason.into() }
+    ActionPayloadDecodeError::Malformed {
+        reason: reason.into(),
+    }
 }
 
 // --- ReactAction -------------------------------------------------------------
@@ -65,8 +67,10 @@ impl ActionPayload for ReactAction {
         let mut fbb = flatbuffers::FlatBufferBuilder::new();
         let target_event_id = fbb.create_string(&self.target_event_id);
         let reaction = fbb.create_string(&self.reaction);
-        let target_author_pubkey =
-            self.target_author_pubkey.as_ref().map(|s| fbb.create_string(s));
+        let target_author_pubkey = self
+            .target_author_pubkey
+            .as_ref()
+            .map(|s| fbb.create_string(s));
         let payload = react_fb::ReactPayload::create(
             &mut fbb,
             &react_fb::ReactPayloadArgs {

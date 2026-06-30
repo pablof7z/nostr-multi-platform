@@ -91,7 +91,9 @@ fn signed_note(created_at: u64) -> RawEvent {
 fn tc1_reply_increments_counter() {
     let (store, _dir) = open_tmp();
     let reply = signed_reply(PHANTOM_TARGET, 1000);
-    store.insert(verified(reply), &"wss://r/".into(), 1000_000).unwrap();
+    store
+        .insert(verified(reply), &"wss://r/".into(), 1000_000)
+        .unwrap();
     let counts = store.interaction_counts(&phantom_target_id()).unwrap();
     assert_eq!(counts.replies, 1, "one reply must increment replies to 1");
     assert_eq!(counts.reactions, 0);
@@ -104,7 +106,9 @@ fn tc1_reply_increments_counter() {
 fn tc2_reaction_increments_counter() {
     let (store, _dir) = open_tmp();
     let reaction = signed_reaction(PHANTOM_TARGET, 1000);
-    store.insert(verified(reaction), &"wss://r/".into(), 1000_000).unwrap();
+    store
+        .insert(verified(reaction), &"wss://r/".into(), 1000_000)
+        .unwrap();
     let counts = store.interaction_counts(&phantom_target_id()).unwrap();
     assert_eq!(counts.reactions, 1);
     assert_eq!(counts.replies, 0);
@@ -115,7 +119,9 @@ fn tc2_reaction_increments_counter() {
 fn tc3_repost_increments_counter() {
     let (store, _dir) = open_tmp();
     let repost = signed_repost(PHANTOM_TARGET, 1000);
-    store.insert(verified(repost), &"wss://r/".into(), 1000_000).unwrap();
+    store
+        .insert(verified(repost), &"wss://r/".into(), 1000_000)
+        .unwrap();
     let counts = store.interaction_counts(&phantom_target_id()).unwrap();
     assert_eq!(counts.reposts, 1);
 }
@@ -127,12 +133,30 @@ fn tc4_multiple_interactions_accumulate() {
     let relay = "wss://r/".to_string();
 
     for i in 0..3u64 {
-        store.insert(verified(signed_reply(PHANTOM_TARGET, 1000 + i)), &relay, 1000_000).unwrap();
+        store
+            .insert(
+                verified(signed_reply(PHANTOM_TARGET, 1000 + i)),
+                &relay,
+                1000_000,
+            )
+            .unwrap();
     }
     for i in 0..2u64 {
-        store.insert(verified(signed_reaction(PHANTOM_TARGET, 2000 + i)), &relay, 2000_000).unwrap();
+        store
+            .insert(
+                verified(signed_reaction(PHANTOM_TARGET, 2000 + i)),
+                &relay,
+                2000_000,
+            )
+            .unwrap();
     }
-    store.insert(verified(signed_repost(PHANTOM_TARGET, 3000)), &relay, 3000_000).unwrap();
+    store
+        .insert(
+            verified(signed_repost(PHANTOM_TARGET, 3000)),
+            &relay,
+            3000_000,
+        )
+        .unwrap();
 
     let counts = store.interaction_counts(&phantom_target_id()).unwrap();
     assert_eq!(counts.replies, 3);
@@ -146,7 +170,9 @@ fn tc4_multiple_interactions_accumulate() {
 fn tc5_non_interaction_kinds_ignored() {
     let (store, _dir) = open_tmp();
     // Insert a plain note (kind:1 with no e-tag).
-    store.insert(verified(signed_note(1000)), &"wss://r/".into(), 1000_000).unwrap();
+    store
+        .insert(verified(signed_note(1000)), &"wss://r/".into(), 1000_000)
+        .unwrap();
     let counts = store.interaction_counts(&phantom_target_id()).unwrap();
     assert_eq!(counts, TargetInteractionCounts::default());
 }
@@ -172,7 +198,13 @@ fn tc6_kind5_delete_decrements() {
     store.insert(verified(reply_raw), &relay, 1000_000).unwrap();
 
     // Verify counter is 1.
-    assert_eq!(store.interaction_counts(&phantom_target_id()).unwrap().replies, 1);
+    assert_eq!(
+        store
+            .interaction_counts(&phantom_target_id())
+            .unwrap()
+            .replies,
+        1
+    );
 
     // Alice sends a kind:5 deleting her reply.
     let reply_nostr_id = nostr::EventId::from_hex(&reply_id_hex).expect("valid hex");
@@ -186,7 +218,13 @@ fn tc6_kind5_delete_decrements() {
     store.insert(verified(del_raw), &relay, 2000_000).unwrap();
 
     // Counter must be back to 0.
-    assert_eq!(store.interaction_counts(&phantom_target_id()).unwrap().replies, 0);
+    assert_eq!(
+        store
+            .interaction_counts(&phantom_target_id())
+            .unwrap()
+            .replies,
+        0
+    );
 }
 
 /// TC-7: GC Phase 1 (NIP-40 expiry) decrements counter when evicting an
@@ -210,7 +248,13 @@ fn tc7_gc_expiry_decrements() {
     let raw: RawEvent = serde_json::from_str(&json).expect("parse");
     store.insert(verified(raw), &relay, 1000_000).unwrap();
 
-    assert_eq!(store.interaction_counts(&phantom_target_id()).unwrap().reactions, 1);
+    assert_eq!(
+        store
+            .interaction_counts(&phantom_target_id())
+            .unwrap()
+            .reactions,
+        1
+    );
 
     let budget = GcBudget {
         max_events_per_step: 100,
@@ -220,7 +264,10 @@ fn tc7_gc_expiry_decrements() {
     store.gc_step(budget, 6000).unwrap(); // now(6000) > expiry(5000)
 
     assert_eq!(
-        store.interaction_counts(&phantom_target_id()).unwrap().reactions,
+        store
+            .interaction_counts(&phantom_target_id())
+            .unwrap()
+            .reactions,
         0,
         "GC expiry must decrement counter"
     );
@@ -237,12 +284,23 @@ fn tc8_delete_by_filter_decrements() {
     let reply_id = reply.id_bytes().unwrap();
     store.insert(verified(reply), &relay, 1000_000).unwrap();
 
-    assert_eq!(store.interaction_counts(&phantom_target_id()).unwrap().replies, 1);
+    assert_eq!(
+        store
+            .interaction_counts(&phantom_target_id())
+            .unwrap()
+            .replies,
+        1
+    );
 
-    store.delete_by_filter(DeleteFilter::ByIds(vec![reply_id])).unwrap();
+    store
+        .delete_by_filter(DeleteFilter::ByIds(vec![reply_id]))
+        .unwrap();
 
     assert_eq!(
-        store.interaction_counts(&phantom_target_id()).unwrap().replies,
+        store
+            .interaction_counts(&phantom_target_id())
+            .unwrap()
+            .replies,
         0,
         "delete_by_filter must decrement counter"
     );

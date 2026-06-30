@@ -18,11 +18,11 @@ use std::io::ErrorKind;
 use std::net::TcpStream;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use nostr::{EventBuilder, Keys, Kind, PublicKey, SecretKey, Tag, TagKind, Timestamp};
 use nmp_nwc::build;
 use nmp_nwc::decode::try_decode_relay_message_with_id;
 use nmp_nwc::parse::NwcUri;
 use nmp_nwc::NwcMethod;
+use nostr::{EventBuilder, Keys, Kind, PublicKey, SecretKey, Tag, TagKind, Timestamp};
 use serde_json::json;
 use tungstenite::{stream::MaybeTlsStream, Message, WebSocket};
 
@@ -52,7 +52,10 @@ fn main() {
 
     println!("== parsed ==");
     println!("  wallet_pubkey = {}", parsed.wallet_pubkey_hex);
-    println!("  client_secret = {}…", &parsed.client_secret_hex.as_str()[..8]);
+    println!(
+        "  client_secret = {}…",
+        &parsed.client_secret_hex.as_str()[..8]
+    );
     println!("  relays        = {:?}", parsed.relay_urls);
 
     let client_pubkey_hex = nmp_nwc::crypto::client_pubkey_hex(parsed.client_secret_hex.as_str())
@@ -77,19 +80,17 @@ fn main() {
     }
 }
 
-fn probe_one(
-    relay_url: &str,
-    parsed: &NwcUri,
-    client_pubkey_hex: &str,
-) -> Result<bool, String> {
-    let (mut socket, response) = tungstenite::connect(relay_url)
-        .map_err(|e| format!("connect: {e}"))?;
+fn probe_one(relay_url: &str, parsed: &NwcUri, client_pubkey_hex: &str) -> Result<bool, String> {
+    let (mut socket, response) =
+        tungstenite::connect(relay_url).map_err(|e| format!("connect: {e}"))?;
     println!("  HTTP {} — connected", response.status());
 
     // Polling read timeout.
     let _ = match socket.get_ref() {
         MaybeTlsStream::Plain(s) => s.set_read_timeout(Some(Duration::from_millis(500))),
-        MaybeTlsStream::Rustls(s) => s.get_ref().set_read_timeout(Some(Duration::from_millis(500))),
+        MaybeTlsStream::Rustls(s) => s
+            .get_ref()
+            .set_read_timeout(Some(Duration::from_millis(500))),
         _ => Ok(()),
     };
 
@@ -108,7 +109,9 @@ fn probe_one(
     });
     let req_msg = json!(["REQ", &sub_id, &req_filter]).to_string();
     println!("→ REQ {sub_id}");
-    socket.send(Message::Text(req_msg)).map_err(|e| e.to_string())?;
+    socket
+        .send(Message::Text(req_msg))
+        .map_err(|e| e.to_string())?;
 
     // 2. get_info + get_balance EVENTs.
     for method in [NwcMethod::GetInfo, NwcMethod::GetBalance] {
@@ -135,7 +138,9 @@ fn probe_one(
         });
         let text = json!(["EVENT", event_json]).to_string();
         println!("→ {method:?} EVENT id={}", &event.id.to_hex()[..16]);
-        socket.send(Message::Text(text)).map_err(|e| e.to_string())?;
+        socket
+            .send(Message::Text(text))
+            .map_err(|e| e.to_string())?;
     }
 
     // 3. Pump frames until we get a kind:23195 response or timeout.
@@ -214,17 +219,17 @@ fn handle_text(
         ])
         .to_string();
         println!("→ AUTH response id={}", &event.id.to_hex()[..16]);
-        socket.send(Message::Text(wire)).map_err(|e| e.to_string())?;
+        socket
+            .send(Message::Text(wire))
+            .map_err(|e| e.to_string())?;
         return Ok(false);
     }
 
-    if let Some((event_id, response)) =
-        try_decode_relay_message_with_id(
-            text,
-            &parsed.wallet_pubkey_hex,
-            parsed.client_secret_hex.as_str(),
-        )
-    {
+    if let Some((event_id, response)) = try_decode_relay_message_with_id(
+        text,
+        &parsed.wallet_pubkey_hex,
+        parsed.client_secret_hex.as_str(),
+    ) {
         println!(
             "  decoded NWC event_id={} result_type={} error={:?}",
             &event_id[..16.min(event_id.len())],

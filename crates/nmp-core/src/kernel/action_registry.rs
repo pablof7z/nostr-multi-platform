@@ -34,7 +34,7 @@
 //! `Action` type via serde.
 
 use std::collections::HashMap;
-use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::Arc;
 
 use super::composition_ledger::{CompositionLedger, Disposition};
@@ -52,7 +52,7 @@ mod typed_dispatch;
 use action_id::new_action_id;
 use erased::{ActionModuleAdapter, ErasedActionModule};
 pub use failure::{ActionExecuteFailure, ActionFailureKind, RegistrationError};
-use result_observer::{ResultObserverSlot, new_result_observer_slot};
+use result_observer::{new_result_observer_slot, ResultObserverSlot};
 
 /// Per-namespace provenance: did the live entry come from a yielding default
 /// or from an explicit app registration? (ADR-0049 Part 1.)
@@ -216,7 +216,7 @@ impl ActionRegistry {
     /// This is the Spring-Boot `@ConditionalOnMissingBean` shape: a framework
     /// default that an app can pre-empt REGARDLESS of call order. Because the
     /// default yields rather than clobbers, an app registering its own module
-    /// under a default namespace BEFORE `register_defaults` runs is no longer
+    /// under a default namespace BEFORE `explicit owner composition` runs is no longer
     /// silently overwritten — the inverted, order-dependent behaviour ADR-0049
     /// fixes.
     ///

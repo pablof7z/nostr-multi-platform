@@ -6,7 +6,7 @@
 //! the kernel starts and reads its wiring slots. Keeping the wiring inside an
 //! app crate made it a per-app re-derivation AND left the install-before-start
 //! ordering unenforced. Moving it here makes the wiring reusable by any app and
-//! lets `nmp-defaults` expose it as a typed `NmpAppBuilder` step
+//! lets `explicit composition` expose it as a typed `NmpAppBuilder` step
 //! (`.with_wallet()`), so a Rust caller cannot reach `start()` without the
 //! runtime installed.
 //!
@@ -25,9 +25,9 @@ use nmp_core::substrate::{
 };
 use nmp_core::{Kernel, OutboundMessage, TypedProjectionData};
 
+use crate::dispatch_nwc_relay_text;
 use crate::runtime::{new_wallet_runtime_handle, WalletRuntimeHandle};
 use crate::status::WalletStatusSlot;
-use crate::dispatch_nwc_relay_text;
 use crate::{
     encode_wallet_status, new_wallet_status_slot, FsPaymentStore, WalletConnectModule,
     WalletDisconnectModule, WalletPayInvoiceModule, WalletRuntime, PENDING_PAYMENT_TTL_SECS,
@@ -151,7 +151,7 @@ impl RelayTextInterceptor for WalletInterceptor {
 ///
 /// MUST run during the config phase, before the kernel starts (the actor reads
 /// the interceptor + action registry once, at kernel construction). The
-/// `NmpAppBuilder::with_wallet` step in `nmp-defaults` enforces this ordering
+/// `NmpAppBuilder::with_wallet` step in `explicit composition` enforces this ordering
 /// at compile time for Rust callers.
 pub fn register_wallet(
     app: &mut (impl ActionRegistrar + RelayTextInterceptorRegistrar + SnapshotProjectionRegistrar),

@@ -104,16 +104,16 @@ fn matchers_are_correct() {
     assert_eq!(crate_layer("nmp-router"), Some(2));
     assert_eq!(crate_layer("nmp-nip01"), Some(4)); // default-L4 NIP crate
     assert_eq!(crate_layer("nmp-nip42-types"), Some(0)); // -types is L0 vocabulary
-    assert_eq!(crate_layer("nmp-defaults"), Some(5));
+    assert_eq!(crate_layer("nmp-substrate"), Some(5));
     assert_eq!(crate_layer("serde"), None); // external crate is unmapped
-    // Upward edges fire; downward / same-layer / unmapped do not.
+                                            // Upward edges fire; downward / same-layer / unmapped do not.
     assert_eq!(upward_edge("nmp-router", "nmp-core"), Some((2, 3))); // L2 -> L3 upward
     assert_eq!(upward_edge("nmp-kinds", "nmp-core"), Some((0, 3))); // synthetic upward
     assert!(upward_edge("nmp-core", "nmp-store").is_none()); // L3 -> L1 downward
     assert!(upward_edge("nmp-nip01", "nmp-core").is_none()); // L4 -> L3 downward
     assert!(upward_edge("nmp-router", "nmp-planner").is_none()); // L2 -> L2 same layer
     assert!(upward_edge("nmp-core", "serde").is_none()); // unmapped target
-    // dep_name: plain, dotted-workspace, and renamed forms.
+                                                         // dep_name: plain, dotted-workspace, and renamed forms.
     assert_eq!(
         dep_name(r#"nmp-core = { path = "../nmp-core" }"#).as_deref(),
         Some("nmp-core")
@@ -127,8 +127,8 @@ fn matchers_are_correct() {
         Some("nmp-core")
     );
     assert!(dep_name("# nmp-core is great").is_none()); // comment
-    // manifest_runtime_deps: includes [dependencies]/[build-dependencies],
-    // excludes [dev-dependencies].
+                                                        // manifest_runtime_deps: includes [dependencies]/[build-dependencies],
+                                                        // excludes [dev-dependencies].
     let toml = "[package]\nname = \"x\"\n\n[dependencies]\nnmp-core = { path = \"../nmp-core\" }\n\n[dev-dependencies]\nnmp-testing = { path = \"../nmp-testing\" }\n\n[build-dependencies]\nnmp-codegen = { path = \"../nmp-codegen\" }\n";
     let deps = manifest_runtime_deps(toml);
     assert!(deps.contains(&"nmp-core".to_string()));

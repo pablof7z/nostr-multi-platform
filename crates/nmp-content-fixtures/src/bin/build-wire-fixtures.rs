@@ -25,8 +25,7 @@ fn main() -> ExitCode {
     // file in the same parent, so creating it once via the first scenario's
     // parent is sufficient — but we do it explicitly here so an empty bundle
     // would still produce the directory layout.
-    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join(WIRE_FIXTURE_DIR);
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(WIRE_FIXTURE_DIR);
     if let Err(e) = fs::create_dir_all(&dir) {
         eprintln!("create {} failed: {e}", dir.display());
         return ExitCode::FAILURE;
@@ -49,9 +48,6 @@ fn main() -> ExitCode {
         written += 1;
     }
 
-    println!(
-        "wrote {written} wire fixtures -> {}",
-        dir.display()
-    );
+    println!("wrote {written} wire fixtures -> {}", dir.display());
     ExitCode::SUCCESS
 }

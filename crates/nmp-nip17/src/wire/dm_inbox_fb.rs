@@ -1,14 +1,9 @@
 //! Typed FlatBuffers wire codec for [`crate::inbox::DmInboxSnapshot`].
 //!
-//! The authoritative FFI shape of the `"nmp.nip17.dm_inbox"` projection is the
-//! serde JSON of [`DmInboxSnapshot`] (registered via
-//! `register_snapshot_projection` in `crates/nmp-defaults/src/runtimes.rs`).
-//! This module adds a **typed FlatBuffers** encoding of the same struct — a
-//! self-describing, schema-versioned, language-neutral binary the host
-//! platforms (Swift / Kotlin / TypeScript) can decode with generated accessors
-//! instead of JSON reflection. It is a sidecar codec: the serde shape stays
-//! authoritative; this is the typed payload carried in the `typed_projections`
-//! sidecar (ADR-0037, `crates/nmp-core/schema/nmp_update.fbs`).
+//! The `"nmp.nip17.dm_inbox"` projection is emitted by
+//! [`crate::register_runtime`]. This module encodes the typed FlatBuffers
+//! sidecar payload carried in `typed_projections` (ADR-0037,
+//! `crates/nmp-core/schema/nmp_update.fbs`).
 //!
 //! The schema (`crates/nmp-nip17/schema/dm_inbox.fbs`) mirrors the Rust structs
 //! field-for-field. `Option<String> reply_to` carries a `has_reply_to` presence

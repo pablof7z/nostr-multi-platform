@@ -69,9 +69,7 @@ fn classify_heed_direct(e: heed::Error, map_size: usize, max_readers: u32) -> St
 /// without a compile break.
 fn classify_mdb(mdb: MdbError, map_size: usize, max_readers: u32) -> StoreError {
     match mdb {
-        MdbError::ReadersFull => StoreError::ReaderExhaustion {
-            max_readers,
-        },
+        MdbError::ReadersFull => StoreError::ReaderExhaustion { max_readers },
         MdbError::MapFull => StoreError::MapFull {
             map_size_bytes: map_size as u64,
         },
@@ -107,14 +105,24 @@ mod tests {
         let e = heed::Error::Mdb(MdbError::MapFull);
         let result = classify_heed_err(e, 8192, 10);
         assert!(
-            matches!(result, StoreError::MapFull { map_size_bytes: 8192 }),
+            matches!(
+                result,
+                StoreError::MapFull {
+                    map_size_bytes: 8192
+                }
+            ),
             "unexpected: {result:?}"
         );
     }
 
     #[test]
     fn corrupted_maps_to_corrupt_env() {
-        for mdb in [MdbError::Corrupted, MdbError::Panic, MdbError::Invalid, MdbError::PageNotFound] {
+        for mdb in [
+            MdbError::Corrupted,
+            MdbError::Panic,
+            MdbError::Invalid,
+            MdbError::PageNotFound,
+        ] {
             let e = heed::Error::Mdb(mdb);
             let result = classify_heed_err(e, 1024, 4);
             assert!(
@@ -140,9 +148,13 @@ mod tests {
         // bounded classification text and numeric values — no paths/content.
         let cases: &[StoreError] = &[
             StoreError::ReaderExhaustion { max_readers: 126 },
-            StoreError::MapFull { map_size_bytes: 1024 },
+            StoreError::MapFull {
+                map_size_bytes: 1024,
+            },
             StoreError::CorruptEnv("lmdb environment corrupted or invalid".into()),
-            StoreError::VersionMismatch { detail: "lmdb binary version mismatch".into() },
+            StoreError::VersionMismatch {
+                detail: "lmdb binary version mismatch".into(),
+            },
         ];
         for err in cases {
             let msg = err.to_string();

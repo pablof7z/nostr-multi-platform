@@ -657,25 +657,30 @@ export const GeneratedActionBuilders = {
     return encodeDispatchEnvelope(correlationId, "nmp.browse_relay", payload);
   },
 
-  /** Claim or release a NIP-23 topic-articles subscription. */
-  topicArticles(
+  /** Claim or release visible note relation-count subscriptions. */
+  visibleNoteRelations(
     correlationId: string,
-    op: number,
-    topic: string,
+    lifecycle: number,
+    targetEventId: string,
+    targetKind: number,
     consumerId: string,
+    targetAddress: string | null,
   ): Uint8Array {
     const fbb = new flatbuffers.Builder(64);
-    const topicOffset = fbb.createString(topic);
+    const targetEventIdOffset = fbb.createString(targetEventId);
     const consumerIdOffset = fbb.createString(consumerId);
-    fbb.startObject(4);
+    const targetAddressOffset = targetAddress === null ? 0 : fbb.createString(targetAddress);
+    fbb.startObject(6);
     fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
-    fbb.addFieldInt8(1, op, 0); // slot 1: op
-    fbb.addFieldOffset(2, topicOffset, 0); // slot 2: topic
-    fbb.addFieldOffset(3, consumerIdOffset, 0); // slot 3: consumerId
+    fbb.addFieldInt8(1, lifecycle, 0); // slot 1: lifecycle
+    fbb.addFieldOffset(2, targetEventIdOffset, 0); // slot 2: targetEventId
+    fbb.addFieldInt32(3, targetKind, 0); // slot 3: targetKind
+    fbb.addFieldOffset(4, consumerIdOffset, 0); // slot 4: consumerId
+    if (targetAddressOffset !== 0) fbb.addFieldOffset(5, targetAddressOffset, 0); // slot 5: targetAddress
     const payloadRoot = fbb.endObject();
-    fbb.finish(payloadRoot, "NTPC");
+    fbb.finish(payloadRoot, "VNRL");
     const payload = fbb.asUint8Array();
-    return encodeDispatchEnvelope(correlationId, "nmp.app.topic_articles", payload);
+    return encodeDispatchEnvelope(correlationId, "nmp.nip01.visible_note_relations", payload);
   },
 
   /** Discover NIP-29 groups hosted on a relay. */

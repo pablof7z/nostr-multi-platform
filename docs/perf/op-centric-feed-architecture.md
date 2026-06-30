@@ -3,8 +3,8 @@
 > **Status:** Shipped. Design record for ADR-0035/ADR-0036/ADR-0037/ADR-0038.
 > The shipped invariants are: `nmp-feed` provides bounded feed mechanics only;
 > protocol/app layers declare primary kinds and perspectives; protocol adapters
-> derive repost wrapper acquisition; `nmp-defaults` owns ReducedSource
-> expansion for active-user follows; `nmp-core` only sees the materialized
+> derive repost wrapper acquisition; app/runtime composition roots wire
+> ReducedSource expansion for active-user follows; `nmp-core` only sees the materialized
 > generic interests; secondary data is claimed by the component or sibling
 > module that needs it, not by the feed.
 >
@@ -33,9 +33,9 @@ so every render surface chooses its own enumeration policy.
   follows. Exposes `follows() -> Vec<String>` and
   `predicate() -> Arc<dyn Fn(&str) -> bool + Send + Sync>`. No `FollowSetLookup`
   trait.
-- **`nmp-defaults`** — `register_op_feed_defaults(app, viewer, primary_kinds)`
-  composes consumers and reduces `FeedScope::ActiveUserFollows` into dependent
-  child interests.
+- **app/runtime composition roots** — compose consumers and reduce
+  `FeedScope::ActiveUserFollows` into dependent child interests by calling the
+  owning protocol/feed installers explicitly.
 - **`nmp-core`** — owns the generic interest registry, cache-serve, routing, and
   planner execution. It does not own active-user follow-feed acquisition, a
   follow-set trait, NIP tokens, `SocialTimeline`, or bespoke C-ABI symbols.
@@ -50,7 +50,7 @@ so every render surface chooses its own enumeration policy.
    by target id, and exposes `RootFeedSnapshot<C, A>` (visible-window-only).
 3. Components that render secondary data use their own mounted dependencies
    (`claim_event`, profile, count, media, preview). The feed never does that.
-4. **`nmp-defaults`** is the composition root.
+4. App/runtime roots compose the feed owner explicitly.
 
 ---
 
@@ -59,7 +59,7 @@ so every render surface chooses its own enumeration policy.
 ### A. Crate ownership
 
 Generic engine in `nmp-feed`; NIP-10 instance in `nmp-nip01`; follow-set producer
-in `nmp-nip02`; ReducedSource composition in `nmp-defaults`; generic
+in `nmp-nip02`; ReducedSource composition in app/runtime roots; generic
 interest/cache/routing execution in `nmp-core`.
 
 ### B. How Bob's unfollowed OP enters the kernel
@@ -96,7 +96,7 @@ core follow-feed door.
 The defaults runtime opens an observed projection for `kinds:[3]` scoped to the
 active account author and switches that projection on account changes.
 
-**`nmp-defaults`** composition root:
+**App/runtime composition root:**
 
 ```rust
 pub fn register_op_feed_defaults(app: &NmpApp, viewer: Pubkey, primary_kinds: Vec<u32>) {

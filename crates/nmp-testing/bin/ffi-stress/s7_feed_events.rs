@@ -10,10 +10,10 @@
 //! `ActorCommand::IngestPreVerifiedEvents` (the test-support path, cfg-gated in
 //! `nmp-core`); `VerifiedEvent::from_raw_unchecked` is the test-support bypass.
 
-use nmp_store::{RawEvent, VerifiedEvent};
 use nmp_core::actor::ActorCommand;
-use nmp_core::actor::{TestSupportCommand};
+use nmp_core::actor::TestSupportCommand;
 use nmp_native_runtime::NmpApp;
+use nmp_store::{RawEvent, VerifiedEvent};
 
 /// 64-hex viewer pubkey (the active account; self-inclusion makes it a "follow"
 /// so its root events qualify for the feed).
@@ -86,7 +86,9 @@ fn send_events(app: *mut NmpApp, events: Vec<VerifiedEvent>) {
     let app_ref = unsafe { &*app };
     app_ref
         .actor_sender()
-        .send(ActorCommand::TestSupport(TestSupportCommand::IngestPreVerifiedEvents(events)))
+        .send(ActorCommand::TestSupport(
+            TestSupportCommand::IngestPreVerifiedEvents(events),
+        ))
         .ok();
 }
 
@@ -134,7 +136,12 @@ pub(crate) fn inject_followed_reply_to_unknown_root(
     created_at: u64,
     id_seed: u64,
 ) {
-    let ev = make_reply(VIEWER_PUBKEY, &unknown_root_id(id_seed), created_at, id_seed);
+    let ev = make_reply(
+        VIEWER_PUBKEY,
+        &unknown_root_id(id_seed),
+        created_at,
+        id_seed,
+    );
     send_events(app, vec![ev]);
 }
 
@@ -150,14 +157,16 @@ pub(crate) fn inject_followed_reply_to_unknown_root(
 /// (correctly) change the feed.
 ///
 /// SAFETY: `app` must be a valid non-null pointer from `nmp_app_new`.
-pub(crate) fn inject_stranger_replies(
-    app: *mut NmpApp,
-    created_at: u64,
-    id_base: u64,
-    count: u32,
-) {
+pub(crate) fn inject_stranger_replies(app: *mut NmpApp, created_at: u64, id_base: u64, count: u32) {
     let events: Vec<VerifiedEvent> = (0..count as u64)
-        .map(|i| make_reply(STRANGER_PUBKEY, &unknown_root_id(50_000 + i), created_at + i, id_base + i))
+        .map(|i| {
+            make_reply(
+                STRANGER_PUBKEY,
+                &unknown_root_id(50_000 + i),
+                created_at + i,
+                id_base + i,
+            )
+        })
         .collect();
     send_events(app, events);
 }

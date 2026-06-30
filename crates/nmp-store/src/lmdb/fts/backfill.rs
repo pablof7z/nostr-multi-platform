@@ -85,7 +85,10 @@ pub(in crate::lmdb) fn backfill_fts_index(inner: &Inner) -> Result<(), StoreErro
         // iterator borrow while writing FTS rows into the same txn).
         let to_index: Vec<RawEvent> = {
             use nostr::prelude::*;
-            let kinds: Vec<Kind> = indexable_kinds.iter().map(|k| Kind::from(*k as u16)).collect();
+            let kinds: Vec<Kind> = indexable_kinds
+                .iter()
+                .map(|k| Kind::from(*k as u16))
+                .collect();
             let filter = Filter::new().kinds(kinds);
             let iter = inner
                 .lmdb
@@ -108,7 +111,13 @@ pub(in crate::lmdb) fn backfill_fts_index(inner: &Inner) -> Result<(), StoreErro
             // received_at_ms is unknown for historical events; use created_at*1000.
             // Extractors that read it (rare) degrade gracefully; the index keys on
             // created_at, which is exact.
-            fts_add_event(inner, &mut txn, &specs, raw, raw.created_at.saturating_mul(1000))?;
+            fts_add_event(
+                inner,
+                &mut txn,
+                &specs,
+                raw,
+                raw.created_at.saturating_mul(1000),
+            )?;
         }
     }
 

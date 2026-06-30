@@ -6,7 +6,7 @@
 //! (registered in `nmp-core/actor`) can reuse the same byte-equality omit logic
 //! without duplication. This module re-exports those types from
 //! `nmp_core::projection_emission` and provides [`FeedEmissionState`] as a type
-//! alias so the `nmp-defaults` composition root and all existing tests continue to
+//! alias so the `explicit composition` composition root and all existing tests continue to
 //! compile with zero changes.
 //!
 //! ## Design note (single implementation)

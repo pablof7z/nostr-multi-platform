@@ -17,7 +17,7 @@ use nostr::{Alphabet, Filter, Kind, PublicKey, SingleLetterTag, Timestamp};
 
 use super::super::error::Error;
 use super::index;
-use super::{EVENT_ID_ALL_ZEROS, EVENT_ID_ALL_255, Lmdb};
+use super::{Lmdb, EVENT_ID_ALL_255, EVENT_ID_ALL_ZEROS};
 
 impl Lmdb {
     #[must_use]

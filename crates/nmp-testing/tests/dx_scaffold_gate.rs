@@ -24,8 +24,6 @@
 //! cargo test -p nmp-testing --test dx_scaffold_gate
 //! ```
 //!
-//! # Doctrine references
-//!
 //! - `docs/aim.md` §1  — one-shot claim
 //! - `docs/aim.md` §2 inv-4 — No native business logic
 //! - `docs/aim.md` §4.14  — scaffolding CLI contract
@@ -39,9 +37,6 @@ use std::sync::{mpsc, OnceLock};
 use std::time::Duration;
 
 // ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 fn nmp_checkout() -> PathBuf {
     // CARGO_MANIFEST_DIR is crates/nmp-testing; repo root is two levels up.
     let here = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -331,7 +326,6 @@ fn g3_shell_uses_nmp_app_builder() {
          shell.rs:\n{shell_rs}",
     );
 
-    // G3d: Shell declares the kernel built-in starter projections.
     assert!(
         shell_rs.contains(
             ".declare_consumed_projections(dxdemo_core::starter_builtin_projection_keys())"
@@ -340,27 +334,35 @@ fn g3_shell_uses_nmp_app_builder() {
          shell.rs:\n{shell_rs}",
     );
 
-    // G3e: lib.rs installs the substrate explicitly and does not teach a hidden
-    // production preset.
     let lib_rs = scaffold.lib_rs();
-
-    let substrate = lib_rs.find("nmp_defaults::register_substrate");
-    let nip50 = lib_rs.find("nmp_defaults::register_nip50_protocol_defaults");
-    let social = lib_rs.find("nmp_defaults::register_social_protocol_defaults");
-    let dm = lib_rs.find("nmp_defaults::register_dm_protocol_defaults");
-    let longform = lib_rs.find("nmp_defaults::register_longform_projection");
+    let mut cursor = 0;
+    for installer in [
+        "nmp_substrate::install",
+        "nmp_nip50::register_search_scopes",
+        "nmp_nip02::register_follow_actions",
+        "nmp_nip51::register_mute_runtime",
+        "nmp_nip17::register_runtime",
+        "nmp_content::register_longform_projection",
+    ] {
+        let index = lib_rs[cursor..]
+            .find(installer)
+            .map(|i| cursor + i)
+            .unwrap_or_else(|| {
+                panic!("G3 DX GAP: starter must call owner installer `{installer}`.\n{lib_rs}")
+            });
+        cursor = index + installer.len();
+    }
+    let cargo_toml =
+        fs::read_to_string(scaffold.crate_dir().join("Cargo.toml")).expect("read Cargo.toml");
     assert!(
-        substrate.is_some() && substrate < nip50 && nip50 < social && social < dm && dm < longform,
-        "G3 DX GAP: starter installers must be named and ordered like production roots.\n{lib_rs}",
-    );
-    assert!(
-        !lib_rs.contains("nmp_defaults::register_defaults"),
-        "G3 DX GAP: production scaffold must not call nmp_defaults::register_defaults.\n\
-         Use named substrate/protocol/app installers instead.\n\
-         lib.rs:\n{lib_rs}",
+        !lib_rs.contains("nmp_defaults::register_defaults")
+            && !lib_rs.contains("nmp_defaults")
+            && !cargo_toml.contains("\nnmp-defaults =")
+            && !cargo_toml.contains("package = \"nmp-defaults\""),
+        "G3 DX GAP: scaffold must depend on explicit owner crates, not nmp-defaults.\n\
+         Cargo.toml:\n{cargo_toml}\nlib.rs:\n{lib_rs}",
     );
 
-    // G3f: lib.rs teaches current projections and typed write builders.
     for key in [
         "dxdemo.timeline.home",
         "refs.profile",
@@ -393,6 +395,8 @@ fn g3_shell_uses_nmp_app_builder() {
          lib.rs:\n{lib_rs}",
     );
     for forbidden in [
+        "nmp-defaults",
+        "nmp_defaults",
         "register_defaults",
         "open_interest",
         "ObservedProjection",

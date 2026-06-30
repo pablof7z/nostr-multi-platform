@@ -64,7 +64,7 @@ impl GroupId {
     /// stripped, trailing slash stripped). Per the NIP-29 spec, the encoded
     /// form is intended to be human-shareable; callers wanting the full
     /// `wss://` form should use `host_relay_url` directly.
-    #[must_use] 
+    #[must_use]
     pub fn to_uri(&self) -> String {
         let host = strip_ws_scheme(&self.host_relay_url);
         format!("{host}'{}", self.local_id)
@@ -201,7 +201,9 @@ mod tests {
         assert_eq!(v["kinds"], serde_json::json!([39000, 39001, 39002]));
         // Discovery is per-relay, not per-group — no `d` (or `#d`) constraint.
         assert!(v.get("#d").is_none() && v.get("d").is_none());
-        assert!(nmp_planner::InterestShape::from_filter_json(&group_metadata_filter_json()).is_some());
+        assert!(
+            nmp_planner::InterestShape::from_filter_json(&group_metadata_filter_json()).is_some()
+        );
     }
 
     #[test]

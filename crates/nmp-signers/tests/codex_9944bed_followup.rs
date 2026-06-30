@@ -14,11 +14,11 @@
 use std::sync::{Arc, Mutex};
 
 use nmp_signer_iface::{Nip46Rpc, Nip46Transport, SignerError, SignerOp, UnsignedEvent};
+use nmp_signers::signers::Nip07Payload;
 use nmp_signers::{
     AccountManager, ActiveChangeEvent, ActiveChangeObserver, LocalKeySigner, Nip07Signer,
     Nip46SignerHandle, Signer,
 };
-use nmp_signers::signers::Nip07Payload;
 
 const SAMPLE_PK: &str = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
 
@@ -73,7 +73,10 @@ fn nip07_from_cached_pubkey_then_pubkey_is_infallible() {
     let nmp_signers::SignerPayload::Nip07(np) = payload else {
         panic!("expected nip07 payload");
     };
-    assert_eq!(np.cached_pubkey_hex.as_deref(), Some(real_pubkey.to_hex()).as_deref());
+    assert_eq!(
+        np.cached_pubkey_hex.as_deref(),
+        Some(real_pubkey.to_hex()).as_deref()
+    );
 
     let restored = Nip07Signer::from_payload(&np).expect("restore");
     assert_eq!(restored.pubkey(), real_pubkey);
@@ -418,7 +421,11 @@ fn remove_non_active_account_does_not_fire_observer() {
         0,
         "removing non-active account fires no observer event"
     );
-    assert_eq!(mgr.active().as_deref(), Some(id_a.as_str()), "A still active");
+    assert_eq!(
+        mgr.active().as_deref(),
+        Some(id_a.as_str()),
+        "A still active"
+    );
 }
 
 // ============================================================================

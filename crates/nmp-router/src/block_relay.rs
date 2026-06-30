@@ -345,7 +345,7 @@ impl ActionModule for UnblockRelayAction {
 /// what lets the module's idempotency guard see live state from the ingest
 /// path.
 ///
-/// Designed to be called from `nmp_defaults::tiers::register_substrate`
+/// Designed to be called from `explicit_composition::tiers::register_substrate`
 /// immediately after the `InMemoryBlockedRelayCache` is constructed and handed
 /// to `set_blocked_relay_lookup` and `Kind10006Parser`. The Arc clones here
 /// add no overhead — the cache lives for the process lifetime.

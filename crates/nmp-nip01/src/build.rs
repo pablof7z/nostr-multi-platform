@@ -6,8 +6,8 @@
 //! [`nmp_core::tags`] helpers so tag construction is defined once across all
 //! protocol crates.
 
-use nmp_signer_iface::UnsignedEvent;
 use nmp_core::tags::reply_tags;
+use nmp_signer_iface::UnsignedEvent;
 use serde::{Deserialize, Serialize};
 
 use crate::decode::NoteRecord;

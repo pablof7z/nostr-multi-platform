@@ -68,20 +68,12 @@ mod smoke_tests {
         // This test merely verifies the symbol exists and compiles.
     }
 
-    /// Smoke test: the neutral `nmp-defaults` symbols (`register_defaults`,
-    /// `register_substrate`, `NmpDefaults`) are reachable from
-    /// `nmp-browser-runtime` with `default-features = false`, proving the
-    /// wasm-safe composition path links without pulling in nmp-ffi or other
-    /// native-only crates (#2047).
+    /// Smoke test: browser-runtime names owner crates directly without a
+    /// defaults aggregation crate.
     #[test]
-    fn nmp_defaults_neutral_symbols_accessible() {
-        // Construct the neutral defaults config to prove the symbol is in scope
-        // and the crate compiles without native-only deps.
-        let _ = nmp_defaults::NmpDefaults::default();
-        // Use-path references prove register_defaults and register_substrate are
-        // visible without calling them (calling requires a concrete AppHost).
-        #[allow(unused_imports)]
-        use nmp_defaults::{register_defaults, register_substrate};
+    fn owner_composition_symbols_accessible() {
+        let _ = nmp_substrate::SubstrateConfig::default();
+        let _ = nmp_nip50::SearchFallbackRelays::default();
     }
 }
 

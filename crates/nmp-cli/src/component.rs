@@ -36,22 +36,13 @@ pub fn run_add(args: &[String]) -> Result<(), String> {
     // installed. Already-installed transitive dependencies are skipped
     // silently so a user can install sibling components that share a
     // common dep without manually de-duping.
-    if lock
-        .components
-        .iter()
-        .any(|entry| entry.id == request.id)
-    {
+    if lock.components.iter().any(|entry| entry.id == request.id) {
         return Err(format!("component `{}` is already installed", request.id));
     }
 
     let to_install: Vec<&RegistryComponent> = order
         .iter()
-        .filter(|component| {
-            !lock
-                .components
-                .iter()
-                .any(|entry| entry.id == component.id)
-        })
+        .filter(|component| !lock.components.iter().any(|entry| entry.id == component.id))
         .copied()
         .collect();
 
@@ -251,8 +242,7 @@ pub fn run_update(args: &[String]) -> Result<(), String> {
     let mut new_locked_files = Vec::with_capacity(locked_files.len());
 
     for locked in locked_files {
-        let outcome =
-            update_one_file(&request.root, &registry, target_component, &locked)?;
+        let outcome = update_one_file(&request.root, &registry, target_component, &locked)?;
         let next_entry = match outcome {
             FileUpdate::Refresh { new_content } => {
                 updated += 1;
@@ -284,10 +274,7 @@ pub fn run_update(args: &[String]) -> Result<(), String> {
 
     lock.write(&request.root, LOCK_FILE)?;
 
-    println!(
-        "{}: updated {updated}, {conflicts} conflicts",
-        request.id
-    );
+    println!("{}: updated {updated}, {conflicts} conflicts", request.id);
     Ok(())
 }
 
@@ -408,4 +395,3 @@ fn sha256_hex(content: &str) -> String {
         .map(|byte| format!("{byte:02x}"))
         .collect()
 }
-

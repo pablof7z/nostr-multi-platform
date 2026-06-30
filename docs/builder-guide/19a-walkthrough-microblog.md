@@ -16,9 +16,10 @@ app-defined record. That separation *is* the D0 demo — see the callout below.
 > exact D0 violation this walkthrough exists to prevent.
 
 > **Composition model.** This walkthrough uses ADR-0069: a downstream app owns
-> an explicit Rust composition root. `nmp-defaults` may provide reusable
-> installers, but hidden broad presets are compatibility or
-> tutorial surfaces, not production architecture. See
+> an explicit Rust composition root. `nmp-substrate` provides the shared
+> substrate floor; protocol and app features are installed by their owner
+> crates. Hidden presets and replacement defaults bundles are not production,
+> tutorial, migration, or test architecture. See
 > [15 — Codegen: bindings + FFI surface](15-codegen-and-ffi.md).
 
 ## The structural model
@@ -213,18 +214,16 @@ pub fn register(app: &mut impl AppHost) -> FeedStore {
         .clone();
 
     // 1. Install explicit substrate/protocol features.
-    let nmp_defaults::NmpDefaults {
-        coverage_gate,
-        search_defaults,
-        ..
-    } = nmp_defaults::NmpDefaults::default();
-
-    let _mailbox_cache = nmp_defaults::register_substrate(app, coverage_gate);
-    nmp_defaults::register_nip50_protocol_defaults(app);
-    let _social_handles =
-        nmp_defaults::register_social_protocol_defaults(app, search_defaults);
-    nmp_defaults::register_dm_protocol_defaults(app);
-    nmp_defaults::register_longform_projection(app);
+    let _substrate_handles =
+        nmp_substrate::install(app, nmp_substrate::SubstrateConfig::default());
+    nmp_nip50::register_search_scopes(app);
+    nmp_nip50::register_input_scopes(app);
+    nmp_nip02::register_follow_actions(app);
+    nmp_replies::register_actions(app);
+    nmp_nip17::register_actions(app);
+    nmp_nip17::register_runtime(app);
+    let _comment_runtime = nmp_nip22::register_runtime(app);
+    nmp_content::register_longform_projection(app);
 
     // 2. Write path.
     app.register_action(NoteActionModule);
@@ -249,7 +248,13 @@ license.workspace = true
 
 [dependencies]
 nmp-core = { path = "../../crates/nmp-core" }
-nmp-defaults = { path = "../../crates/nmp-defaults" }
+nmp-substrate = { path = "../../crates/nmp-substrate" }
+nmp-content = { path = "../../crates/nmp-content" }
+nmp-nip02 = { path = "../../crates/nmp-nip02" }
+nmp-nip17 = { path = "../../crates/nmp-nip17" }
+nmp-nip22 = { path = "../../crates/nmp-nip22" }
+nmp-nip50 = { path = "../../crates/nmp-nip50" }
+nmp-replies = { path = "../../crates/nmp-replies" }
 serde      = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 ```
@@ -264,8 +269,8 @@ This crate contains the app logic. It has no `#[no_mangle]` symbols and no
 iOS-specific code. [19b](19b-walkthrough-microblog.md) wraps it in a binding
 adapter (`apps/microblog/nmp-app-microblog`) whose entire job is to:
 
-1. Link `nmp-defaults`, `nmp-native-runtime`, the binding adapter, and
-   `microblog-core`.
+1. Link `nmp-substrate`, selected protocol crates, `nmp-native-runtime`, the
+   binding adapter, and `microblog-core`.
 2. Expose one configuration function the generated binding calls before start.
 3. Call `microblog_core::register(app)`. The named substrate/protocol/app
    installers are already inside that app-core composition root.

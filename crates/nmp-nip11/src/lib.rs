@@ -42,7 +42,7 @@ pub use url::http_url_for_relay;
 /// involvement (ADR-0051 path 1).
 ///
 /// `app` is any [`nmp_core::substrate::RelayConnectedHookRegistrar`] —
-/// `nmp_ffi::NmpApp` in production, wired by the `nmp-defaults` composition
+/// `nmp_ffi::NmpApp` in production, wired by the `explicit composition` composition
 /// crate. This crate stays decoupled from the FFI surface by depending on the
 /// narrow relay-connected-hook registration trait, not the concrete app and not
 /// the broad `AppHost` (D6 capability honesty: this crate only reacts to relay
@@ -64,7 +64,7 @@ pub fn probe_relay_info(relay_url: &str) -> Result<RelayInfoDoc, String> {
 mod tests {
     use super::*;
     use nmp_core::substrate::{
-        fan_relay_connected, new_relay_connected_hook_slot, install_relay_connected_hook,
+        fan_relay_connected, install_relay_connected_hook, new_relay_connected_hook_slot,
     };
     use nmp_core::{ActorMail, CommandSender};
 

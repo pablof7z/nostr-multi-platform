@@ -16,6 +16,27 @@ use nmp_core::substrate::{HostCapabilities, PreferredRelaySource};
 
 use crate::SearchTargets;
 
+/// App-supplied fallback search relay configuration.
+///
+/// NMP never supplies relay URLs here. An app root passes explicit operator
+/// policy when it wants `SearchTargets::UserPreferred` to fall back to a known
+/// relay list before the active account has published kind:10007 search relays.
+#[derive(Clone, Debug, Default)]
+pub struct SearchFallbackRelays {
+    /// Relay URLs to use when the active account has no kind:10007 search-relay
+    /// list. Empty means search stays cache-only until the user publishes a list
+    /// or the caller provides explicit targets.
+    pub relays: Vec<String>,
+}
+
+impl SearchFallbackRelays {
+    /// Construct app-supplied fallback relays.
+    #[must_use]
+    pub fn new(relays: Vec<String>) -> Self {
+        Self { relays }
+    }
+}
+
 /// Install `source` as the host's preferred-relay provider (the transparent
 /// kind:10007 read seam + app-default fallback), so a plain app that calls only
 /// `open_search(.., UserPreferred)` fans out to the user's published search
@@ -26,8 +47,8 @@ use crate::SearchTargets;
 /// scaffolded host compiles and runs for free, while a real composition host
 /// (`NmpApp`) overrides it to store the provider. `nmp-nip50` never names the
 /// host type (D0); the generic [`PreferredRelaySource`] seam in `nmp-core` is
-/// the bridge. The composition root (`nmp-defaults`) calls this once during
-/// `register_defaults`.
+/// the bridge. The composition root (`explicit composition`) calls this once during
+/// `explicit owner composition`.
 pub fn install_search_relay_source(
     host: &impl HostCapabilities,
     source: Arc<dyn SearchRelaySource + Send + Sync>,
@@ -57,12 +78,12 @@ impl PreferredRelaySource for SearchRelaySourceBridge {
 /// `user_preferred()` MUST return the active account's NIP-51 kind:10007 search
 /// relays. The composition root backs this with
 /// `nmp_nip51::SearchRelayListProjection::snapshot().relays`. When the sibling
-/// lane lands a dedicated read helper (e.g. an `nmp-defaults` accessor that
+/// lane lands a dedicated read helper (e.g. an `explicit composition` accessor that
 /// falls back to the app default when kind:10007 is empty), swap the closure
 /// body in the composition root — this trait does NOT change.
 ///
 /// `app_default()` MUST return the app-declared default search relay set
-/// (`nmp-defaults` / app policy). Operator policy is never owned by NMP crates,
+/// (`explicit composition` / app policy). Operator policy is never owned by NMP crates,
 /// so this is supplied by the host, not hard-coded here.
 pub trait SearchRelaySource {
     /// Active-account preferred (kind:10007) search relays, canonicalized.

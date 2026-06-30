@@ -39,7 +39,10 @@ fn ts_emits_every_namespace_and_method() {
             b.method
         );
         assert!(
-            s.contains(&format!("encodeDispatchEnvelope(correlationId, {:?}", b.namespace)),
+            s.contains(&format!(
+                "encodeDispatchEnvelope(correlationId, {:?}",
+                b.namespace
+            )),
             "missing ts namespace stamp `{}`",
             b.namespace
         );

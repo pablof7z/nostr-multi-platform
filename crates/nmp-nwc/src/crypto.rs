@@ -147,10 +147,8 @@ mod tests {
     // Two deterministic, curve-valid secp256k1 scalars. `SecretKey::from_hex`
     // validates curve membership, so the `"a".repeat(64)`-style strings used in
     // the parser tests would not work here.
-    const CLIENT_SECRET: &str =
-        "0101010101010101010101010101010101010101010101010101010101010101";
-    const WALLET_SECRET: &str =
-        "0202020202020202020202020202020202020202020202020202020202020202";
+    const CLIENT_SECRET: &str = "0101010101010101010101010101010101010101010101010101010101010101";
+    const WALLET_SECRET: &str = "0202020202020202020202020202020202020202020202020202020202020202";
 
     /// Encrypting then decrypting with the matching keypair yields the original
     /// plaintext. NIP-04 ciphertext is non-deterministic (random IV), so a
@@ -186,8 +184,7 @@ mod tests {
         let wallet_pk = client_pubkey_hex(WALLET_SECRET).unwrap();
         let ciphertext = encrypt(CLIENT_SECRET, &wallet_pk, "secret data").unwrap();
 
-        let wrong_secret =
-            "0303030303030303030303030303030303030303030303030303030303030303";
+        let wrong_secret = "0303030303030303030303030303030303030303030303030303030303030303";
         let result = decrypt(wrong_secret, &wallet_pk, &ciphertext);
         assert!(result.is_err(), "wrong key must not decrypt");
     }
@@ -218,7 +215,10 @@ mod tests {
         ];
         for bad in cases {
             let result = decrypt(CLIENT_SECRET, &wallet_pk, bad);
-            assert!(result.is_err(), "malformed payload {bad:?} must Err, not panic");
+            assert!(
+                result.is_err(),
+                "malformed payload {bad:?} must Err, not panic"
+            );
         }
     }
 
@@ -247,15 +247,24 @@ mod tests {
         assert_eq!(base64_decode("Zm9vYmFy"), Some(b"foobar".to_vec()));
         assert_eq!(base64_decode("Zg=="), Some(b"f".to_vec()));
         assert_eq!(base64_decode("Zm8="), Some(b"fo".to_vec()));
-        assert_eq!(base64_decode("AAAAAAAAAAAAAAAAAAAAAA=="), Some(vec![0u8; 16])); // 16-byte all-zero (valid IV size)
+        assert_eq!(
+            base64_decode("AAAAAAAAAAAAAAAAAAAAAA=="),
+            Some(vec![0u8; 16])
+        ); // 16-byte all-zero (valid IV size)
 
         // --- Invalid character inputs ---
         assert!(base64_decode("!!!!").is_none(), "invalid chars must reject");
         assert!(base64_decode("====").is_none(), "only-padding must reject");
-        assert!(base64_decode("YWJj!").is_none(), "trailing invalid char must reject");
+        assert!(
+            base64_decode("YWJj!").is_none(),
+            "trailing invalid char must reject"
+        );
 
         // --- Bad-length inputs (len % 4 == 1 after stripping padding) ---
-        assert!(base64_decode("YWJjY").is_none(), "length % 4 == 1 must reject");
+        assert!(
+            base64_decode("YWJjY").is_none(),
+            "length % 4 == 1 must reject"
+        );
         assert!(base64_decode("A").is_none(), "single char must reject");
 
         // --- Missing or wrong padding (tightened vs. old hand-rolled decoder) ---

@@ -269,13 +269,14 @@ pub fn stale_allow(line: &str) -> Option<(usize, String, String)> {
 mod tests {
     use super::*;
 
-    // ── Part A: banned call tokens ────────────────────────────────────────
-
     #[test]
     fn flags_short_npub_call() {
         let hits = check("    let s = short_npub(&pk);", false, false);
         assert_eq!(hits.len(), 1);
-        assert!(hits[0].1.contains("short_npub"), "message must name the token");
+        assert!(
+            hits[0].1.contains("short_npub"),
+            "message must name the token"
+        );
         assert!(hits[0].1.contains("ADR-0032"), "must ref ADR-0032");
     }
 
@@ -320,8 +321,6 @@ mod tests {
         // "short_npub(" starts at byte offset 8.
         assert_eq!(hits[0].0, 9, "column must be 1-indexed");
     }
-
-    // ── Part B: *_label / *_display String fields ─────────────────────────
 
     #[test]
     fn flags_kinds_label_field() {
@@ -390,8 +389,6 @@ mod tests {
         assert!(hits.is_empty(), "#[cfg(test)] must not be flagged");
     }
 
-    // ── stale-allow hardening (#1712) ─────────────────────────────────────
-
     #[test]
     fn stale_allow_points_at_the_marker() {
         // A raw field carrying a leftover D27 allow fires NO real finding...
@@ -404,7 +401,10 @@ mod tests {
         let (col, msg, _suggested) = stale_allow(line).expect("marker present");
         // Column is 1-indexed and points at the `//` of the marker.
         assert_eq!(&line[col - 1..col + 1], "//");
-        assert!(msg.contains("stale"), "message must call out the stale marker");
+        assert!(
+            msg.contains("stale"),
+            "message must call out the stale marker"
+        );
         assert!(msg.contains("D27"), "message must name the rule");
     }
 
@@ -424,8 +424,6 @@ mod tests {
             "the banned call must still fire so the allow has something to silence"
         );
     }
-
-    // ── file_in_scope ─────────────────────────────────────────────────────
 
     #[test]
     fn nip47_runtime_is_in_scope() {
@@ -477,9 +475,7 @@ mod tests {
         assert!(!file_in_scope(Path::new(
             "apps/chirp/chirp-desktop/src/main.rs"
         )));
-        assert!(!file_in_scope(Path::new(
-            "apps/chirp/chirp-tui/src/lib.rs"
-        )));
+        assert!(!file_in_scope(Path::new("apps/chirp/chirp-tui/src/lib.rs")));
         assert!(!file_in_scope(Path::new("crates/nmp-cli/src/main.rs")));
     }
 

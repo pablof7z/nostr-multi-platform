@@ -194,9 +194,8 @@ fn production_starter_rejects_hidden_register_defaults_preset() {
         );
     }
 
-    let scaffold_test =
-        std::fs::read_to_string(workspace.join("crates/nmp-cli/tests/init.rs"))
-            .expect("read init scaffold test");
+    let scaffold_test = std::fs::read_to_string(workspace.join("crates/nmp-cli/tests/init.rs"))
+        .expect("read init scaffold test");
     assert!(
         scaffold_test.contains("!lib.contains(\"nmp_defaults::register_defaults\")"),
         "init scaffold test must keep a negative guard against register_defaults"

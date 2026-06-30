@@ -203,18 +203,17 @@ fn group_reactions_reader_aggregates_ingested_kind7() {
     // The viewer is reactor "1.." — the aggregate must surface their own kind:7
     // id in `mine` so the app can retract it.
     let viewer = "1".repeat(64);
-    let (_handle, reader) = app.open_nip25_group_reactions_session_with_reader(
-        Nip25GroupReactionsSession::new(GroupId::new("wss://groups.example", "room"), viewer.clone()),
-    );
+    let (_handle, reader) =
+        app.open_nip25_group_reactions_session_with_reader(Nip25GroupReactionsSession::new(
+            GroupId::new("wss://groups.example", "room"),
+            viewer.clone(),
+        ));
     // Inject two in-group reactions on the same target, from distinct reactors,
     // directly into the reader — the same Arc registered as the observed
     // projection — and confirm the aggregate counts them (the seam 29er needs
     // to render reaction chips + counts).
     let target = "a".repeat(64);
-    for (id, author, emoji) in [
-        ("r1", viewer.clone(), "+"),
-        ("r2", "2".repeat(64), "🔥"),
-    ] {
+    for (id, author, emoji) in [("r1", viewer.clone(), "+"), ("r2", "2".repeat(64), "🔥")] {
         reader.on_kernel_event(&KernelEvent {
             id: id.into(),
             author,

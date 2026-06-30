@@ -28,8 +28,8 @@ pub struct Identity {
 
 impl Identity {
     fn new(alias: &'static str, secret_hex: &str) -> Self {
-        let keys = Keys::parse(secret_hex)
-            .expect("deterministic 32-byte secret hex must construct keys");
+        let keys =
+            Keys::parse(secret_hex).expect("deterministic 32-byte secret hex must construct keys");
         let pubkey_hex = keys.public_key().to_hex();
         Self {
             alias,

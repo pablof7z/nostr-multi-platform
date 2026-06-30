@@ -18,7 +18,10 @@ fn emits_namespace_routing_for_every_keyed_projection() {
     let out = rendered();
     for e in KEYED_PROJECTIONS {
         assert!(
-            out.contains(&format!("case {:?}: return {:?}", e.projection_key, e.namespace)),
+            out.contains(&format!(
+                "case {:?}: return {:?}",
+                e.projection_key, e.namespace
+            )),
             "missing routing for {}",
             e.projection_key
         );
@@ -79,7 +82,10 @@ fn emits_real_typed_decode_before_commit() {
         );
         // The decode routes through the hand-written glue (reader -> domain).
         assert!(
-            out.contains(&format!("return TypedProjectionGlue.{}(reader)", rp.swift_glue)),
+            out.contains(&format!(
+                "return TypedProjectionGlue.{}(reader)",
+                rp.swift_glue
+            )),
             "missing glue call {} for {}",
             rp.swift_glue,
             e.projection_key
@@ -97,7 +103,9 @@ fn emits_real_typed_decode_before_commit() {
 fn enforces_the_five_invariants() {
     let out = rendered();
     // Invariant #3: D4 session/epoch detection (deferred reset) + baseline rebuild.
-    assert!(out.contains("let identityChanged = sessionId != appliedSession || snapshotEpoch != appliedEpoch"));
+    assert!(out.contains(
+        "let identityChanged = sessionId != appliedSession || snapshotEpoch != appliedEpoch"
+    ));
     assert!(out.contains("if batch.baseline {"));
     // Invariant #1: absent row is never cleared — only an explicit Cleared row
     // removes (and it removes; absence is a no-op because omitted rows are not
@@ -122,7 +130,8 @@ fn emits_failclosed_and_revsafe_hardening() {
     let out = rendered();
     // BLOCKING-2: CHECKED root decode verifying the NRRD file id, in a do/catch
     // that fails closed (retains prior cache, latches resync).
-    assert!(out.contains("try getCheckedRoot(byteBuffer: &buffer, fileId: nmp_refs_RefRowDeltaBatch.id)"));
+    assert!(out
+        .contains("try getCheckedRoot(byteBuffer: &buffer, fileId: nmp_refs_RefRowDeltaBatch.id)"));
     assert!(out.contains("} catch {"));
     // BLOCKING-1: scratch-then-commit baseline (atomic replace after all decode).
     assert!(out.contains("func applyBaseline("));
@@ -169,7 +178,9 @@ fn emits_failclosed_missing_key_and_bad_state_and_deferred_reset() {
     // 2. A raw-byte reader that bypasses the typed accessor must exist: it walks
     //    the buffer with the public `Table` API and reads `state` as a raw UInt8.
     assert!(
-        out.contains("private static func rawRowStateDiscriminants(_ buffer: inout ByteBuffer) -> [UInt8]?"),
+        out.contains(
+            "private static func rawRowStateDiscriminants(_ buffer: inout ByteBuffer) -> [UInt8]?"
+        ),
         "must emit a raw-state-discriminant reader that bypasses the coercing typed accessor"
     );
     assert!(
@@ -201,17 +212,23 @@ fn emits_failclosed_missing_key_and_bad_state_and_deferred_reset() {
         "identity reset must be deferred until after a valid baseline decode"
     );
     assert!(
-        out.contains("let identityChanged = sessionId != appliedSession || snapshotEpoch != appliedEpoch"),
+        out.contains(
+            "let identityChanged = sessionId != appliedSession || snapshotEpoch != appliedEpoch"
+        ),
         "merge must compute identityChanged without clearing the cache"
     );
     // The deferred reset drops other projections only on a successful baseline.
-    assert!(out.contains("for k in rows.keys where k != projectionKey { rows.removeValue(forKey: k) }"));
+    assert!(
+        out.contains("for k in rows.keys where k != projectionKey { rows.removeValue(forKey: k) }")
+    );
 }
 
 #[test]
 fn decodes_the_row_delta_batch_payload() {
     let out = rendered();
-    assert!(out.contains("batch = try getCheckedRoot(byteBuffer: &buffer, fileId: nmp_refs_RefRowDeltaBatch.id)"));
+    assert!(out.contains(
+        "batch = try getCheckedRoot(byteBuffer: &buffer, fileId: nmp_refs_RefRowDeltaBatch.id)"
+    ));
     assert!(out.contains("for row in batch.rows"));
 }
 

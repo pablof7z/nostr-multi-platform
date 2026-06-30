@@ -56,7 +56,8 @@ fn d23_positive_fixture_fires() {
         n >= 5,
         "d23 must flag all 5 planted store-insert sites incl. the split chain \
          and the trailing-comment shape; got {}; stdout:\n{}",
-        n, stdout
+        n,
+        stdout
     );
 }
 
@@ -103,7 +104,8 @@ fn d24_positive_fixture_fires() {
         n >= 4,
         "d24 must flag all 4 planted notify sites incl. the chained and \
          method/paren-split shapes; got {}; stdout:\n{}",
-        n, stdout
+        n,
+        stdout
     );
 }
 
@@ -150,7 +152,8 @@ fn d25_positive_fixture_fires() {
         n >= 4,
         "d25 must flag all 4 planted req_for_relay sites incl. the chained and \
          method/paren-split shapes; got {}; stdout:\n{}",
-        n, stdout
+        n,
+        stdout
     );
 }
 

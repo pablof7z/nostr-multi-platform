@@ -104,7 +104,11 @@ fn catalog_rules() -> Vec<(String, String)> {
             let is_rule_id = {
                 let mut ch = id.chars();
                 matches!(ch.next(), Some(c) if c.is_ascii_uppercase())
-                    && ch.clone().next().map(|c| c.is_ascii_digit()).unwrap_or(false)
+                    && ch
+                        .clone()
+                        .next()
+                        .map(|c| c.is_ascii_digit())
+                        .unwrap_or(false)
                     && id.len() >= 2
             };
             if !is_rule_id {
@@ -132,7 +136,10 @@ fn conformance_catalog_origins_bind_to_live_canon() {
         "derived only {} contract ids from framework-magic.md — parser drift?",
         contract.len()
     );
-    assert!(ftl_valid, "F-TTL no longer found in replaceable-freshness.md canon");
+    assert!(
+        ftl_valid,
+        "F-TTL no longer found in replaceable-freshness.md canon"
+    );
 
     let mut valid: BTreeSet<String> = BTreeSet::new();
     valid.extend(doctrine.iter().cloned());

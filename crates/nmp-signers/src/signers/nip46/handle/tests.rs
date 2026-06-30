@@ -1,9 +1,7 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use nmp_signer_iface::UnsignedEvent;
-use nmp_signer_iface::RemoteSignerHandle;
-use nmp_signer_iface::{Nip46Rpc, Nip46Transport, SignerError};
+use nmp_signer_iface::{Nip46Rpc, Nip46Transport, RemoteSignerHandle, SignerError, UnsignedEvent};
 
 use crate::signers::payload::SignerPayload;
 use crate::signers::traits::{Nip04, Nip44, Signer};
@@ -283,7 +281,10 @@ fn deliver_response_with_unknown_id_is_dropped() {
 
     // The real op must still be pending — the stray response did not
     // resolve it.
-    assert!(op.poll().is_none(), "unknown-id response must not resolve a pending op");
+    assert!(
+        op.poll().is_none(),
+        "unknown-id response must not resolve a pending op"
+    );
 }
 
 // ---- enqueue / transport failure --------------------------------------
@@ -475,8 +476,7 @@ fn remote_handle_nip44_encrypt_queues_rpc_and_round_trips() {
     let (signer, transport) = build_signer_with_remote(&remote_user);
     let recipient = LocalKeySigner::generate().pubkey();
 
-    let op =
-        RemoteSignerHandle::nip44_encrypt(&signer, &recipient.to_hex(), "seal plaintext");
+    let op = RemoteSignerHandle::nip44_encrypt(&signer, &recipient.to_hex(), "seal plaintext");
     let rpc = single_rpc(&transport);
     assert!(rpc.body_json.contains(r#""method":"nip44_encrypt""#));
     assert!(rpc.body_json.contains(&recipient.to_hex()));
@@ -492,8 +492,7 @@ fn remote_handle_nip44_decrypt_queues_rpc_with_sender() {
     let (signer, transport) = build_signer_with_remote(&remote_user);
     let sender = LocalKeySigner::generate().pubkey();
 
-    let _op =
-        RemoteSignerHandle::nip44_decrypt(&signer, &sender.to_hex(), "sealed-payload");
+    let _op = RemoteSignerHandle::nip44_decrypt(&signer, &sender.to_hex(), "sealed-payload");
     let rpc = single_rpc(&transport);
     assert!(rpc.body_json.contains(r#""method":"nip44_decrypt""#));
     assert!(rpc.body_json.contains(&sender.to_hex()));
@@ -573,8 +572,7 @@ fn from_payload_with_invalid_local_secret_returns_backend_err() {
     let SignerPayload::Nip46(mut payload) = signer.to_payload().expect("to_payload") else {
         panic!("expected nip46 payload");
     };
-    payload.local_secret_hex =
-        zeroize::Zeroizing::new("zzzz-not-a-secret".to_string());
+    payload.local_secret_hex = zeroize::Zeroizing::new("zzzz-not-a-secret".to_string());
 
     let err = Nip46Signer::from_payload(&payload, Arc::new(StubTransport::default()))
         .expect_err("garbage local secret must be refused");
@@ -595,7 +593,10 @@ fn from_payload_round_trips_a_valid_payload() {
     };
     let restored = Nip46Signer::from_payload(&payload, transport).expect("valid restore");
     assert_eq!(restored.pubkey(), remote_user.pubkey());
-    assert_eq!(restored.uri().relays, vec!["wss://relay.example.com".to_string()]);
+    assert_eq!(
+        restored.uri().relays,
+        vec!["wss://relay.example.com".to_string()]
+    );
 }
 
 // ---- handle accessors -------------------------------------------------
@@ -612,11 +613,10 @@ fn handle_with_explicit_local_key_uses_that_key() {
     // `local_pubkey()` must reflect it (used by tests that need a stable
     // ephemeral identity).
     let local = LocalKeySigner::generate();
-    let local_sk = nostr::SecretKey::from_hex(local.secret_hex().as_str())
-        .expect("valid secret hex");
+    let local_sk =
+        nostr::SecretKey::from_hex(local.secret_hex().as_str()).expect("valid secret hex");
     let uri = format!("bunker://{SAMPLE_PK}?relay=wss://relay.example.com");
-    let handle =
-        Nip46SignerHandle::from_bunker_uri_with_local_key(&uri, local_sk).expect("parse");
+    let handle = Nip46SignerHandle::from_bunker_uri_with_local_key(&uri, local_sk).expect("parse");
     assert_eq!(handle.local_pubkey(), local.pubkey());
     assert_eq!(handle.uri().remote_pubkey_hex, SAMPLE_PK);
 }

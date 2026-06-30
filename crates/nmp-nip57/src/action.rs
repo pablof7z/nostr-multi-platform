@@ -132,7 +132,7 @@ pub struct ZapInput {
 /// `register_actions(app)` keeps a STABLE arity across the `native` feature —
 /// cargo feature unification flips `native` on globally when any consumer
 /// enables it, and a feature-dependent arity would break the non-wallet call
-/// sites (`nmp-defaults`, tests).
+/// sites (`explicit composition`, tests).
 #[derive(Default)]
 pub struct ZapAction {
     #[cfg(feature = "native")]

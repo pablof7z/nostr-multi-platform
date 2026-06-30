@@ -6,14 +6,14 @@
 //! Database environment setup and constructor logic for the LMDB event store.
 
 use std::path::Path;
-use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
+use std::sync::Arc;
 
+use super::super::error::Error;
+use super::Lmdb;
 use heed::byteorder::NativeEndian;
 use heed::types::{Bytes, Unit, U64};
 use heed::{Database, Env, EnvFlags, EnvOpenOptions};
-use super::super::error::Error;
-use super::Lmdb;
 
 impl Lmdb {
     /// Path-based constructor (upstream-compatible). Opens a fresh `heed::Env`

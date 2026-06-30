@@ -59,7 +59,7 @@ concept helper and the helper owns the internal acquisition commands — there i
 no generic claim/release action exposed to apps.
 
 ```rust
-// crates/nmp-defaults/src/topic_articles.rs
+// app/protocol crate topic_articles.rs
 //
 // `open_topic_articles` is the public, concept-named surface. The shell calls
 // it to mount the read and drops the returned handle to release it. The
@@ -124,7 +124,7 @@ Derive both with namespaced hashes so keys from different modules never
 collide:
 
 ```rust
-// crates/nmp-defaults/src/topic_articles.rs
+// app/protocol crate topic_articles.rs
 pub fn topic_articles_identity(topic: &str, consumer_id: &str) -> SubIdentity {
     SubIdentity::new(
         SubOwnerKey::new((TOPIC_ARTICLES_NAMESPACE, "owner", topic, consumer_id)),
@@ -250,7 +250,7 @@ Concept helpers materialize planner demand with `ViewDependencies::into_logical_
 authors, tag-refs, and limit onto the planner's `InterestShape`:
 
 ```rust
-// crates/nmp-defaults/src/topic_articles.rs
+// app/protocol crate topic_articles.rs
 pub fn topic_articles_interest(topic: &str) -> LogicalInterest {
     let mut interest = ViewDependencies {
         kinds: vec![KIND_LONG_FORM_ARTICLE],           // kind:30023

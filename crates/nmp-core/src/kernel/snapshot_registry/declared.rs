@@ -47,7 +47,7 @@ use std::collections::BTreeSet;
 /// membership; the set is tiny (≤ the count of
 /// [`KERNEL_BUILTIN_PROJECTION_KEYS`](crate::kernel::KERNEL_BUILTIN_PROJECTION_KEYS),
 /// today 18). Declarations are **additive** (union) — a host may call the declare
-/// seam more than once (e.g. a base set from `nmp-defaults` plus an app-specific
+/// seam more than once (e.g. a base set from `explicit composition` plus an app-specific
 /// extension) and the sets union.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum DeclaredProjections {
@@ -104,7 +104,7 @@ impl DeclaredProjections {
 
     /// `true` when the host narrowed to an explicit subset of built-ins. `All`
     /// and `Undeclared` are NOT narrowing (both permit everything). Two
-    /// consumers read it: the `nmp-defaults` builder tests, and any host
+    /// consumers read it: the `explicit composition` builder tests, and any host
     /// introspection that wants "am I in narrowing mode".
     #[must_use]
     pub fn is_narrowing(&self) -> bool {
@@ -210,7 +210,7 @@ impl super::SnapshotRegistry {
     /// keys this host consumes (the narrowing path).
     ///
     /// Additive: call more than once and the sets union (e.g. a base set from
-    /// `nmp-defaults` plus an app-specific extension). Intended as a host-init
+    /// `explicit composition` plus an app-specific extension). Intended as a host-init
     /// call, before `nmp_app_start`. A non-empty set narrows the kernel-owned
     /// built-ins to the declared members; Tier-1 host/protocol projections are
     /// unaffected — they self-gate by registration.

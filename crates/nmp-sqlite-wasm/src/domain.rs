@@ -49,7 +49,11 @@ mod wasm_impl {
                 &conn,
                 "INSERT INTO domain_data (namespace, user_key, value) VALUES (?1, ?2, ?3)
                  ON CONFLICT(namespace, user_key) DO UPDATE SET value = excluded.value",
-                &[SqlVal::Text(namespace), SqlVal::Blob(key), SqlVal::Blob(value)],
+                &[
+                    SqlVal::Text(namespace),
+                    SqlVal::Blob(key),
+                    SqlVal::Blob(value),
+                ],
             )
         }
 
@@ -72,11 +76,7 @@ mod wasm_impl {
         }
 
         /// Delete one namespace-scoped row; returns whether a row was present.
-        pub fn domain_delete(
-            &self,
-            namespace: &str,
-            key: &[u8],
-        ) -> Result<bool, SqliteWasmError> {
+        pub fn domain_delete(&self, namespace: &str, key: &[u8]) -> Result<bool, SqliteWasmError> {
             let conn = self.db.borrow();
             let existed = self.domain_get(namespace, key)?.is_some();
             if existed {
@@ -150,7 +150,10 @@ mod wasm_impl {
                     c,
                     "INSERT INTO domain_versions (namespace, version) VALUES (?1, ?2)
                      ON CONFLICT(namespace) DO UPDATE SET version = excluded.version",
-                    &[SqlVal::Text(namespace), SqlVal::Int(i64::from(target_version))],
+                    &[
+                        SqlVal::Text(namespace),
+                        SqlVal::Int(i64::from(target_version)),
+                    ],
                 )
             })
         }
@@ -203,7 +206,10 @@ mod wasm_impl {
                     c,
                     "INSERT INTO domain_versions (namespace, version) VALUES (?1, ?2)
                      ON CONFLICT(namespace) DO UPDATE SET version = excluded.version",
-                    &[SqlVal::Text(namespace), SqlVal::Int(i64::from(target_version))],
+                    &[
+                        SqlVal::Text(namespace),
+                        SqlVal::Int(i64::from(target_version)),
+                    ],
                 )
             })
         }

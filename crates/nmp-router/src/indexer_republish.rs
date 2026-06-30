@@ -8,13 +8,13 @@ use std::collections::{HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
 
 use nmp_core::slots::IndexerRelaysSlot;
-use nmp_store::{EventStore, RawEvent};
 use nmp_core::substrate::{
-    ExternalEventSinkPolicy, RawEventForwardPolicyContext, RawEventForwardTarget,
-    SignedEventFrame, SinkDestination,
+    ExternalEventSinkPolicy, RawEventForwardPolicyContext, RawEventForwardTarget, SignedEventFrame,
+    SinkDestination,
 };
 use nmp_core::KindFilter;
 use nmp_network::role::RelayRole;
+use nmp_store::{EventStore, RawEvent};
 
 const DEDUP_CAPACITY: usize = 4096;
 

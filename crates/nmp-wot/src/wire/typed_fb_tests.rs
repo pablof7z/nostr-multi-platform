@@ -10,9 +10,7 @@
 //! the wot-specific schema identity + encode/decode round-trip, matching the
 //! wallet template `apps/chirp/.../wallet_runtime_tests.rs`).
 
-use super::{
-    decode_wot_bootstrap, typed_projection, FILE_IDENTIFIER, SCHEMA_ID, SCHEMA_VERSION,
-};
+use super::{decode_wot_bootstrap, typed_projection, FILE_IDENTIFIER, SCHEMA_ID, SCHEMA_VERSION};
 use crate::runtime::WotBootstrapSnapshot;
 
 fn sample(active: Option<&str>) -> WotBootstrapSnapshot {
@@ -47,7 +45,8 @@ fn typed_projection_carries_the_schema_identity_and_round_trips() {
 
     // The bytes in the sidecar decode back to the original struct via the
     // generated NWBS bindings — not only the generic `Value` tree.
-    let decoded = decode_wot_bootstrap(&entry.payload).expect("sidecar payload must decode as NWBS");
+    let decoded =
+        decode_wot_bootstrap(&entry.payload).expect("sidecar payload must decode as NWBS");
     assert_eq!(decoded, snapshot);
 }
 

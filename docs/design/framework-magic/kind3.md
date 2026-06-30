@@ -47,9 +47,9 @@ of **C8** for the source-change case.
 5. Asserts the same `FollowingTimelineView` handle is still open (refcount unchanged); the platform shadow has emitted one additional payload, not torn down and re-created.
 6. Asserts a stale kind:3 (older `created_at`) is rejected without firing the trigger — symmetric to C1 supersession; no payload re-emit.
 
-The current feed-session behavior proof lives in
-`crates/nmp-defaults/tests/feed_session_reduced_source_behavior_test.rs`; the
-framework-magic contract test keeps the public guarantee pinned.
+The current feed-session behavior proof lives with the owner crate that wires
+active-user follow dependent interests; the framework-magic contract test keeps
+the public guarantee pinned.
 
 **Milestone owner:** M2 created the generic dependent-interest owner and M5
 (#2092/#2108) migrated active-user follows onto it. This chapter no longer

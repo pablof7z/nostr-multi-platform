@@ -40,7 +40,7 @@ pub enum TimelineBlock {
 
 impl TimelineBlock {
     /// Length of the block in events (1 for standalone).
-    #[must_use] 
+    #[must_use]
     pub fn len(&self) -> usize {
         match self {
             Self::Standalone { .. } => 1,
@@ -50,7 +50,7 @@ impl TimelineBlock {
 
     /// True when the block carries no events. Always `false` in practice —
     /// the grouper never emits empty modules.
-    #[must_use] 
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }

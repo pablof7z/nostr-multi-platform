@@ -164,7 +164,9 @@ fn wait_for_active_account(
             Some(r) => r,
             None => return active_account_matches(last_frame, expected_pubkey_hex),
         };
-        if rx.recv_timeout(remaining.min(Duration::from_millis(250))).is_err()
+        if rx
+            .recv_timeout(remaining.min(Duration::from_millis(250)))
+            .is_err()
             && Instant::now() >= deadline
         {
             return active_account_matches(last_frame, expected_pubkey_hex);

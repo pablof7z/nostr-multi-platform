@@ -26,8 +26,8 @@ use std::sync::Arc;
 use nmp_core::{CommandSender, SignerSource};
 use nmp_network::role::RelayRole;
 use nmp_nip46::Effect;
-use nmp_signers::Nip46Signer;
 use nmp_signers::signers::SignerPayload;
+use nmp_signers::Nip46Signer;
 use nostr::{Keys, PublicKey, SecretKey};
 
 use crate::runtime::{clear_runtime, init_restore, record_signer_ready, Nip46RuntimeHandle};
@@ -81,7 +81,11 @@ pub fn deliver_init_effects(effects: Vec<Effect>, sender: &CommandSender) {
             Effect::SendFrame { relay_url, text } => {
                 sender.enqueue_outbound(RelayRole::Signer, relay_url, text);
             }
-            Effect::Progress { stage, code, detail } => {
+            Effect::Progress {
+                stage,
+                code,
+                detail,
+            } => {
                 sender.bunker_handshake_progress(stage, code, detail);
             }
             // SignerReady, DeliverResponse, Error are not expected from init
@@ -175,12 +179,8 @@ pub fn restore_nip46_from_payload(
     deliver_init_effects(subscribe_effects, &sender);
 
     // ── Step 6: build signer ──────────────────────────────────────────────
-    let transport = ActorLaneTransport::new_multi(
-        sender.clone(),
-        local_keys,
-        remote_pubkey,
-        relay_urls,
-    );
+    let transport =
+        ActorLaneTransport::new_multi(sender.clone(), local_keys, remote_pubkey, relay_urls);
     let signer = Nip46Signer::from_payload(p, Arc::new(transport))
         .map_err(|e| format!("restore_nip46: signer build failed: {e}"))?;
 

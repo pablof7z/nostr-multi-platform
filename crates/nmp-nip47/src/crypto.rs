@@ -43,15 +43,11 @@ pub(crate) fn sign_nwc_request(
 /// Sign an arbitrary [`UnsignedEvent`] with a fixed `Keys` — mirrors
 /// `nmp-core::actor::commands::identity::sign_with`. Used to build the
 /// wallet-lane NIP-42 [`AuthSignerFn`](nmp_core::AuthSignerFn) closure.
-pub(crate) fn sign_with(
-    keys: &Keys,
-    unsigned: &UnsignedEvent,
-) -> Result<SignedEvent, String> {
+pub(crate) fn sign_with(keys: &Keys, unsigned: &UnsignedEvent) -> Result<SignedEvent, String> {
     // NWC + NIP-42 frames are all <= u16; truncate explicitly so a future
     // u32-only kind never silently signs with a clipped value.
-    let kind_u16 = u16::try_from(unsigned.kind).map_err(|_| {
-        format!("sign_with: kind {} exceeds u16 range", unsigned.kind)
-    })?;
+    let kind_u16 = u16::try_from(unsigned.kind)
+        .map_err(|_| format!("sign_with: kind {} exceeds u16 range", unsigned.kind))?;
     let kind = Kind::from_u16(kind_u16);
     let mut builder = EventBuilder::new(kind, &unsigned.content)
         .custom_created_at(Timestamp::from(unsigned.created_at));

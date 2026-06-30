@@ -32,7 +32,6 @@ license.workspace = true
 [dependencies]
 nmp-core = { path = "../../../crates/nmp-core" }
 nmp-native-runtime = { path = "../../../crates/nmp-native-runtime" }
-nmp-defaults = { path = "../../../crates/nmp-defaults" }
 microblog-core = { path = "../../../crates/microblog-core" }
 ```
 

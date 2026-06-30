@@ -46,7 +46,7 @@ pub struct NwcUri {
 
 impl NwcUri {
     /// First relay in the URI's list. Parser guarantees `relay_urls` is non-empty.
-    #[must_use] 
+    #[must_use]
     pub fn primary_relay_url(&self) -> &str {
         &self.relay_urls[0]
     }
@@ -199,10 +199,7 @@ fn url_decode(s: &str) -> String {
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let (Some(hi), Some(lo)) = (
-                hex_nibble(bytes[i + 1]),
-                hex_nibble(bytes[i + 2]),
-            ) {
+            if let (Some(hi), Some(lo)) = (hex_nibble(bytes[i + 1]), hex_nibble(bytes[i + 2])) {
                 out.push(hi << 4 | lo);
                 i += 3;
                 continue;
@@ -383,10 +380,7 @@ mod tests {
     #[test]
     fn missing_secret_returns_error() {
         let wallet_pk = "a".repeat(64);
-        let uri = format!(
-            "nostr+walletconnect://{}?relay=wss://r.io",
-            wallet_pk
-        );
+        let uri = format!("nostr+walletconnect://{}?relay=wss://r.io", wallet_pk);
         assert_eq!(NwcUri::parse(&uri).unwrap_err(), ParseError::MissingSecret);
     }
 
@@ -440,7 +434,9 @@ mod tests {
         );
         assert_eq!(
             NwcUri::parse(&uri).unwrap_err(),
-            ParseError::UnknownParam { key: "relays".to_string() }
+            ParseError::UnknownParam {
+                key: "relays".to_string()
+            }
         );
     }
 
@@ -456,7 +452,9 @@ mod tests {
         );
         assert_eq!(
             NwcUri::parse(&uri).unwrap_err(),
-            ParseError::UnknownParam { key: "Relay".to_string() }
+            ParseError::UnknownParam {
+                key: "Relay".to_string()
+            }
         );
     }
 
@@ -464,7 +462,9 @@ mod tests {
     /// names the offending key — the host surfaces this string in a toast.
     #[test]
     fn unknown_param_display_names_the_key() {
-        let err = ParseError::UnknownParam { key: "relays".to_string() };
+        let err = ParseError::UnknownParam {
+            key: "relays".to_string(),
+        };
         let rendered = format!("{err}");
         assert!(
             rendered.contains("relays"),

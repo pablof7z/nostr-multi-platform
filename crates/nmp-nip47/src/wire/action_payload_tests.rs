@@ -22,9 +22,7 @@ fn connect_round_trips() {
 fn connect_empty_uri_round_trips() {
     // The codec is a pure shape decode; non-empty validation lives in start().
     // An empty uri must round-trip faithfully rather than be rejected here.
-    let action = WalletConnectAction::Connect {
-        uri: String::new(),
-    };
+    let action = WalletConnectAction::Connect { uri: String::new() };
     let decoded = WalletConnectAction::decode(&action.encode()).expect("decodes");
     assert_eq!(decoded, action);
 }

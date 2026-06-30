@@ -6,7 +6,7 @@ use super::{
     ActionContract, ActionDefaultTier, BuilderSupport, PublicReExportPolicy, TypedDispatchPolicy,
 };
 
-const PUBLIC_REEXPORT: PublicReExportPolicy = PublicReExportPolicy::DefaultsActionPayloads;
+const PUBLIC_REEXPORT: PublicReExportPolicy = PublicReExportPolicy::OwnerCratePayload;
 const TYPED_ONLY: TypedDispatchPolicy = TypedDispatchPolicy::TypedOnly;
 
 pub const MARMOT_ACTION: ActionContract = ActionContract {

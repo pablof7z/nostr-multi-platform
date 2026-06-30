@@ -6,8 +6,8 @@
 //! `nmp_app_resolve_event_embed_live_with_metadata`,
 //! `nmp_app_release_event_ref`.
 
+use super::{to_core_metadata, ResolveMetadata};
 use crate::NmpApp;
-use super::{ResolveMetadata, to_core_metadata};
 
 #[uniffi::export]
 impl NmpApp {
@@ -94,10 +94,8 @@ impl NmpApp {
 mod tests {
     use super::*;
 
-    const VALID_EVENT_ID: &str =
-        "b3e392b11f5d4f28321cedd09303a748d8dcf77cc7b8840dce05daf95c68b600";
-    const VALID_PUBKEY: &str =
-        "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
+    const VALID_EVENT_ID: &str = "b3e392b11f5d4f28321cedd09303a748d8dcf77cc7b8840dce05daf95c68b600";
+    const VALID_PUBKEY: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
 
     /// Parity with `nmp_app_resolve_event_embed`: must not panic.
     #[test]

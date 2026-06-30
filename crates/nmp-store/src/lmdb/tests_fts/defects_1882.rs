@@ -24,21 +24,38 @@ fn budget_exhaustion_never_yields_and_false_positive() {
     // stops the prefix scan inside the non-alpha run must NOT emit those docs.
     let (store, _d) = store_with_index();
     for at in [200u64, 201, 202, 203] {
-        ins(&store, signed_event(TEST_KIND, at, "common", None), at * 1_000);
+        ins(
+            &store,
+            signed_event(TEST_KIND, at, "common", None),
+            at * 1_000,
+        );
     }
     for at in [100u64, 101, 102, 103] {
-        ins(&store, signed_event(TEST_KIND, at, "common alpha", None), at * 1_000);
+        ins(
+            &store,
+            signed_event(TEST_KIND, at, "common alpha", None),
+            at * 1_000,
+        );
     }
     let mut q = query("alpha common"); // exact=["alpha"], prefix="common"
-    q.budget = TextSearchBudget { max_docs_scanned: 6, max_matches: 1_000 };
+    q.budget = TextSearchBudget {
+        max_docs_scanned: 6,
+        max_matches: 1_000,
+    };
     let (hits, status) = run(&store, &q);
     assert_eq!(
         status,
-        TextSearchStatus::Partial { budget_exhausted: true },
+        TextSearchStatus::Partial {
+            budget_exhausted: true
+        },
         "prefix scan exhausted the budget"
     );
     let times: Vec<u64> = hits.iter().map(|h| h.created_at).collect();
-    assert_eq!(times, vec![103, 102], "only docs that actually contain 'alpha' survive");
+    assert_eq!(
+        times,
+        vec![103, 102],
+        "only docs that actually contain 'alpha' survive"
+    );
     assert!(
         hits.iter().all(|h| h.created_at < 200),
         "no doc missing the required exact token is ever returned"
@@ -52,17 +69,36 @@ fn common_exact_term_bounded_by_candidate_set() {
     // tight budget completes correctly without the common term touching the budget.
     let (store, _d) = store_with_index();
     for at in 100u64..120 {
-        ins(&store, signed_event(TEST_KIND, at, "common", None), at * 1_000);
+        ins(
+            &store,
+            signed_event(TEST_KIND, at, "common", None),
+            at * 1_000,
+        );
     }
     for at in [200u64, 201, 202] {
-        ins(&store, signed_event(TEST_KIND, at, "common rareword", None), at * 1_000);
+        ins(
+            &store,
+            signed_event(TEST_KIND, at, "common rareword", None),
+            at * 1_000,
+        );
     }
     let mut q = query("common rare"); // exact=["common"], prefix="rare"
-    q.budget = TextSearchBudget { max_docs_scanned: 5, max_matches: 1_000 };
+    q.budget = TextSearchBudget {
+        max_docs_scanned: 5,
+        max_matches: 1_000,
+    };
     let (hits, status) = run(&store, &q);
-    assert_eq!(status, TextSearchStatus::Complete, "only the 3 rare-prefix postings are scanned");
+    assert_eq!(
+        status,
+        TextSearchStatus::Complete,
+        "only the 3 rare-prefix postings are scanned"
+    );
     let times: Vec<u64> = hits.iter().map(|h| h.created_at).collect();
-    assert_eq!(times, vec![202, 201, 200], "AND with the common term keeps exactly the 3 candidates");
+    assert_eq!(
+        times,
+        vec![202, 201, 200],
+        "AND with the common term keeps exactly the 3 candidates"
+    );
 }
 
 #[test]
@@ -75,11 +111,20 @@ fn overlong_token_delete_no_stale_postings() {
     let ev = signed_event(TEST_KIND, 100, &long, None);
     let id = ev.id_bytes().unwrap();
     ins(&store, ev, 100_000);
-    assert_eq!(run(&store, &query("zzzz")).0.len(), 1, "capped long token is searchable by prefix");
+    assert_eq!(
+        run(&store, &query("zzzz")).0.len(),
+        1,
+        "capped long token is searchable by prefix"
+    );
 
-    store.delete_by_filter(DeleteFilter::ByIds(vec![id])).unwrap();
+    store
+        .delete_by_filter(DeleteFilter::ByIds(vec![id]))
+        .unwrap();
     let (hits, _) = run(&store, &query("zzzz"));
-    assert!(hits.is_empty(), "no stale posting survives delete of an over-cap token");
+    assert!(
+        hits.is_empty(),
+        "no stale posting survives delete of an over-cap token"
+    );
 }
 
 #[test]
@@ -103,13 +148,24 @@ fn overlong_token_replace_drops_old() {
     let new_content = format!("{} alpha", "y".repeat(70_000));
     let old = signed_event_with_keys(&keys, 10000, 100, &old_content, None);
     let new = signed_event_with_keys(&keys, 10000, 200, &new_content, None);
-    store.insert(verified(old), &RELAY.to_string(), 100_000).unwrap();
-    store.insert(verified(new), &RELAY.to_string(), 200_000).unwrap();
+    store
+        .insert(verified(old), &RELAY.to_string(), 100_000)
+        .unwrap();
+    store
+        .insert(verified(new), &RELAY.to_string(), 200_000)
+        .unwrap();
 
     let mut q_old = query("zzzz");
     q_old.scope = scope;
-    assert!(run(&store, &q_old).0.is_empty(), "superseded over-long token must be gone");
+    assert!(
+        run(&store, &q_old).0.is_empty(),
+        "superseded over-long token must be gone"
+    );
     let mut q_new = query("yyyy");
     q_new.scope = scope;
-    assert_eq!(run(&store, &q_new).0.len(), 1, "new over-long token is indexed");
+    assert_eq!(
+        run(&store, &q_new).0.len(),
+        1,
+        "new over-long token is indexed"
+    );
 }

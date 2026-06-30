@@ -8,9 +8,9 @@ use nmp_network::role::RelayRole;
 use nmp_nwc::NwcMethod;
 use serde_json::json;
 
+use super::runtime_utils::encode_frame;
 use crate::crypto::{build_event_json, sign_nwc_request};
 use crate::payment_store::{PaymentRecord, PaymentState};
-use super::runtime_utils::encode_frame;
 
 /// Metadata threaded into the `pay_invoice` tracking record.
 pub(super) struct PayMeta {
@@ -38,7 +38,15 @@ pub(super) fn build_request(
     params: serde_json::Value,
     correlation_id: Option<String>,
 ) -> Option<(OutboundMessage, String)> {
-    build_request_with_meta(wallet, kernel, relay_url, method, params, correlation_id, None)
+    build_request_with_meta(
+        wallet,
+        kernel,
+        relay_url,
+        method,
+        params,
+        correlation_id,
+        None,
+    )
 }
 
 pub(super) fn build_request_with_meta(

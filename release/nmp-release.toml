@@ -57,14 +57,6 @@ name = "nmp-browser-runtime"
 path = "crates/nmp-browser-runtime"
 
 [[public_crates]]
-name = "nmp-substrate-defaults"
-path = "crates/nmp-substrate-defaults"
-
-[[public_crates]]
-name = "nmp-defaults"
-path = "crates/nmp-defaults"
-
-[[public_crates]]
 name = "nmp-cli"
 path = "crates/nmp-cli"
 
@@ -103,6 +95,10 @@ path = "crates/nmp-nip01"
 [[public_crates]]
 name = "nmp-replies"
 path = "crates/nmp-replies"
+
+[[public_crates]]
+name = "nmp-substrate"
+path = "crates/nmp-substrate"
 
 # nmp-relations is a legacy compatibility crate with no protected ownership
 # claims. It remains listed because it is an active workspace package.

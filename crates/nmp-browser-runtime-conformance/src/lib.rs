@@ -52,7 +52,9 @@
 
 use std::sync::Arc;
 
-use nmp_browser_runtime::{BrowserAppBuilder, BrowserRunConfig, BrowserRuntimeHandle, SnapshotOutcome};
+use nmp_browser_runtime::{
+    BrowserAppBuilder, BrowserRunConfig, BrowserRuntimeHandle, SnapshotOutcome,
+};
 use nmp_core::publish::{DomainPublishStore, PerRelayState, PublishRecord, PublishStore};
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 use nmp_store::{EventStore, OpfsSqliteEventStore, RawEvent, StoreQuery};
@@ -157,7 +159,8 @@ fn raw_note(id_n: u64, created_at: u64) -> RawEvent {
 /// Compose the full browser runtime over `store` exactly as `handle_start` does
 /// (#1007 PR-7 storage gate): inject the durable store, consume the builtin
 /// projections, configure NO relays (offline by construction), decide providers,
-/// install the system clock, and start. `start()` runs `register_defaults`.
+/// install the system clock, and start. `start()` runs the browser runtime's
+/// explicit owner composition.
 #[allow(clippy::field_reassign_with_default)] // non_exhaustive: no struct literal / functional update
 fn compose_runtime(store: Arc<dyn EventStore>, app_id: &str) -> BrowserRuntimeHandle {
     // BrowserRunConfig is #[non_exhaustive] (constructable only inside its crate
@@ -177,7 +180,9 @@ fn compose_runtime(store: Arc<dyn EventStore>, app_id: &str) -> BrowserRuntimeHa
 fn expected_ids_newest_first() -> Vec<String> {
     let mut v: Vec<(u64, u64)> = CORPUS.to_vec();
     v.sort_by(|a, b| b.1.cmp(&a.1)); // created_at desc
-    v.into_iter().map(|(id_n, _)| format!("{id_n:064x}")).collect()
+    v.into_iter()
+        .map(|(id_n, _)| format!("{id_n:064x}"))
+        .collect()
 }
 
 // ── The conformance run ─────────────────────────────────────────────────────────
@@ -252,9 +257,10 @@ async fn run() -> Report {
         report.record(
             "first_launch_runtime_frame",
             match handle1.next_frame(true) {
-                SnapshotOutcome::Frame(bytes) if !bytes.is_empty() => {
-                    Ok(format!("composed runtime over OPFS store; frame={} bytes", bytes.len()))
-                }
+                SnapshotOutcome::Frame(bytes) if !bytes.is_empty() => Ok(format!(
+                    "composed runtime over OPFS store; frame={} bytes",
+                    bytes.len()
+                )),
                 SnapshotOutcome::Frame(_) => Err("runtime produced an empty frame".to_owned()),
                 SnapshotOutcome::Degraded { reason, .. } => {
                     Err(format!("snapshot degraded: {reason}"))
@@ -289,7 +295,12 @@ async fn run() -> Report {
     // ── Proof 2: offline-first reads (global scan, no relay, served from OPFS) ─
     report.record(
         "offline_first_reads",
-        read_back(&*store2_dyn, global_kind_query(), &want, "global kind:1 scan"),
+        read_back(
+            &*store2_dyn,
+            global_kind_query(),
+            &want,
+            "global kind:1 scan",
+        ),
     );
 
     // ── Proof 1 (runtime layer): the SECOND-launch runtime's reducer store
@@ -315,11 +326,16 @@ async fn run() -> Report {
         report.record(
             "second_launch_runtime_frame",
             match handle2.next_frame(true) {
-                SnapshotOutcome::Frame(bytes) if !bytes.is_empty() => {
-                    Ok(format!("second-launch runtime frame over hydrated store; {} bytes", bytes.len()))
+                SnapshotOutcome::Frame(bytes) if !bytes.is_empty() => Ok(format!(
+                    "second-launch runtime frame over hydrated store; {} bytes",
+                    bytes.len()
+                )),
+                SnapshotOutcome::Frame(_) => {
+                    Err("second-launch runtime produced an empty frame".to_owned())
                 }
-                SnapshotOutcome::Frame(_) => Err("second-launch runtime produced an empty frame".to_owned()),
-                SnapshotOutcome::Degraded { reason, .. } => Err(format!("snapshot degraded: {reason}")),
+                SnapshotOutcome::Degraded { reason, .. } => {
+                    Err(format!("snapshot degraded: {reason}"))
+                }
                 SnapshotOutcome::Panic(msg) => Err(format!("snapshot panic: {msg}")),
             },
         );
@@ -398,7 +414,10 @@ fn read_back(
         Ok(rows) => {
             let got: Vec<String> = rows.into_iter().map(|s| s.raw.id.clone()).collect();
             if got == want {
-                Ok(format!("{label}: {} events, newest-first, exact match", got.len()))
+                Ok(format!(
+                    "{label}: {} events, newest-first, exact match",
+                    got.len()
+                ))
             } else {
                 Err(format!("{label}: got {got:?}, want {want:?}"))
             }

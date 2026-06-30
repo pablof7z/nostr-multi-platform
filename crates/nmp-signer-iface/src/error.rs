@@ -64,7 +64,11 @@ impl std::fmt::Display for SignerError {
                 write!(f, "signature verification failed: {m}")
             }
             Self::KindOutOfRange { kind } => {
-                write!(f, "event kind {} is outside valid u16 range (0–65535)", kind)
+                write!(
+                    f,
+                    "event kind {} is outside valid u16 range (0–65535)",
+                    kind
+                )
             }
             Self::Backend(m) => write!(f, "backend error: {m}"),
         }

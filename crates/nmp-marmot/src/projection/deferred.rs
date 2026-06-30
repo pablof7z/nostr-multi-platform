@@ -12,12 +12,12 @@
 //! declared in `state.rs`.
 
 use nostr::PublicKey;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 use super::action::MarmotAction;
 use super::payload::{LastOpError, PendingOpRow};
 use super::pending::{PendingOp, PendingOpsStore, RetryOutcome, StoreResult};
-use super::state::{InnerHandle, op_tag_of};
+use super::state::{op_tag_of, InnerHandle};
 use nmp_core::actor::ActionLedgerCommand;
 
 /// Build the snapshot-visible [`PendingOpRow`]s from the pending-op store.

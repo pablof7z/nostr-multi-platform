@@ -46,19 +46,22 @@ fn d26_positive_fixture_fires() {
     assert!(
         app_host >= 3,
         "d26 must flag all 3 AppHost references; got {}; stdout:\n{}",
-        app_host, stdout
+        app_host,
+        stdout
     );
     let alk = stdout.matches("signer-session port").count();
     assert!(
         alk >= 2,
         "d26 must flag both active_local_keys reaches; got {}; stdout:\n{}",
-        alk, stdout
+        alk,
+        stdout
     );
     let total = stdout.matches("error[D26]").count();
     assert!(
         total >= 5,
         "d26 must flag all 5 planted ambient-authority references; got {}; stdout:\n{}",
-        total, stdout
+        total,
+        stdout
     );
 }
 

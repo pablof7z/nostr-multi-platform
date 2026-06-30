@@ -46,7 +46,9 @@ impl RelayConnectedHook for Nip46ConnectedHook {
 
         // ── Phase 1: drive on_relay_connected under lock ──────────────────
         let effects = {
-            let Ok(mut guard) = self.runtime.lock() else { return };
+            let Ok(mut guard) = self.runtime.lock() else {
+                return;
+            };
             let Some(rt) = guard.as_mut() else { return };
             rt.on_relay_connected(relay_url, is_reconnect, now)
         }; // lock released
@@ -58,7 +60,10 @@ impl RelayConnectedHook for Nip46ConnectedHook {
         // ── Phase 2: register preamble / enqueue outbound (no lock held) ─
         for effect in effects {
             match effect {
-                Effect::Subscribe { relay_url: eff_url, frame } => {
+                Effect::Subscribe {
+                    relay_url: eff_url,
+                    frame,
+                } => {
                     // REQ-before-EVENT fix: register the REQ as the worker's
                     // reconnect preamble instead of posting it via
                     // enqueue_outbound.  The worker will inject this frame at
@@ -67,23 +72,22 @@ impl RelayConnectedHook for Nip46ConnectedHook {
                     // The first connect's REQ was sent by the session-init
                     // Subscribe effect (interceptor.rs translate_effects);
                     // this call arms subsequent reconnects structurally.
-                    command_sender.set_reconnect_preamble(
-                        RelayRole::Signer,
-                        eff_url,
-                        vec![frame],
-                    );
+                    command_sender.set_reconnect_preamble(RelayRole::Signer, eff_url, vec![frame]);
                 }
-                Effect::SendFrame { relay_url: eff_url, text } => {
+                Effect::SendFrame {
+                    relay_url: eff_url,
+                    text,
+                } => {
                     // Reconnect can also emit SendFrame effects (e.g. a
                     // `connect` resend).  Deliver them in order via the
                     // existing enqueue path.
-                    command_sender.enqueue_outbound(
-                        RelayRole::Signer,
-                        eff_url,
-                        text,
-                    );
+                    command_sender.enqueue_outbound(RelayRole::Signer, eff_url, text);
                 }
-                Effect::Progress { stage, code, detail } => {
+                Effect::Progress {
+                    stage,
+                    code,
+                    detail,
+                } => {
                     command_sender.bunker_handshake_progress(stage, code, detail);
                 }
                 Effect::Error { error } => {

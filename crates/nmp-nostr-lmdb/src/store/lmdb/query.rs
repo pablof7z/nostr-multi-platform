@@ -8,8 +8,8 @@
 
 use std::collections::BTreeSet;
 use std::iter;
-use std::sync::Arc;
 use std::sync::atomic::Ordering as AtomicOrdering;
+use std::sync::Arc;
 
 use heed::RoTxn;
 use nostr::event::borrow::EventBorrow;
@@ -56,7 +56,14 @@ impl Lmdb {
                 self.query_by_authors_and_tags(txn, filter, since, until, limit, &mut output)?;
             }
             QueryFilterPattern::AuthorKindsAndTags => {
-                self.query_by_authors_kinds_and_tags(txn, filter, since, until, limit, &mut output)?;
+                self.query_by_authors_kinds_and_tags(
+                    txn,
+                    filter,
+                    since,
+                    until,
+                    limit,
+                    &mut output,
+                )?;
             }
             QueryFilterPattern::KindsAndTags => {
                 self.query_by_kinds_and_tags(txn, filter, since, until, limit, &mut output)?;

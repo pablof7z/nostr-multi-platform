@@ -35,7 +35,9 @@ fn authors_kind_newest_first_across_authors() {
             content: format!("a-{ts}"),
             sig: "a".repeat(128),
         };
-        store.insert(unchecked(ev), &"wss://r/".into(), *ts).unwrap();
+        store
+            .insert(unchecked(ev), &"wss://r/".into(), *ts)
+            .unwrap();
     }
     // Author B: kind=1, created_at 1500, 2500
     for (i, ts) in [1500u64, 2500].iter().enumerate() {
@@ -48,7 +50,9 @@ fn authors_kind_newest_first_across_authors() {
             content: format!("b-{ts}"),
             sig: "b".repeat(128),
         };
-        store.insert(unchecked(ev), &"wss://r/".into(), *ts).unwrap();
+        store
+            .insert(unchecked(ev), &"wss://r/".into(), *ts)
+            .unwrap();
     }
 
     let mut authors = BTreeSet::new();
@@ -66,7 +70,11 @@ fn authors_kind_newest_first_across_authors() {
     // Expect 5 events, newest-first: 3000, 2500, 2000, 1500, 1000
     assert_eq!(results.len(), 5, "must return all 5 events");
     let timestamps: Vec<u64> = results.iter().map(|e| e.raw.created_at).collect();
-    assert_eq!(timestamps, vec![3000, 2500, 2000, 1500, 1000], "must be newest-first across authors");
+    assert_eq!(
+        timestamps,
+        vec![3000, 2500, 2000, 1500, 1000],
+        "must be newest-first across authors"
+    );
 }
 
 /// Limit is honoured.
@@ -86,7 +94,9 @@ fn authors_kind_limit_respected() {
             content: String::new(),
             sig: "a".repeat(128),
         };
-        store.insert(unchecked(ev), &"wss://r/".into(), 1000 + i).unwrap();
+        store
+            .insert(unchecked(ev), &"wss://r/".into(), 1000 + i)
+            .unwrap();
         let ev2 = RawEvent {
             id: format!("02{i:062x}"),
             pubkey: pk_hex(0x02),
@@ -96,7 +106,9 @@ fn authors_kind_limit_respected() {
             content: String::new(),
             sig: "b".repeat(128),
         };
-        store.insert(unchecked(ev2), &"wss://r/".into(), 2000 + i).unwrap();
+        store
+            .insert(unchecked(ev2), &"wss://r/".into(), 2000 + i)
+            .unwrap();
     }
 
     let mut authors = BTreeSet::new();
@@ -135,7 +147,9 @@ fn authors_kind_since_until_bounds() {
             content: String::new(),
             sig: "a".repeat(128),
         };
-        store.insert(unchecked(ev_a), &"wss://r/".into(), ts).unwrap();
+        store
+            .insert(unchecked(ev_a), &"wss://r/".into(), ts)
+            .unwrap();
         let ev_b = RawEvent {
             id: format!("20{ts:062x}"),
             pubkey: pk_hex(0x20),
@@ -145,7 +159,9 @@ fn authors_kind_since_until_bounds() {
             content: String::new(),
             sig: "b".repeat(128),
         };
-        store.insert(unchecked(ev_b), &"wss://r/".into(), ts + 50).unwrap();
+        store
+            .insert(unchecked(ev_b), &"wss://r/".into(), ts + 50)
+            .unwrap();
     }
 
     let mut authors = BTreeSet::new();
@@ -161,12 +177,18 @@ fn authors_kind_since_until_bounds() {
 
     let results = store.query(&q, 100).unwrap();
     for ev in &results {
-        assert!(ev.raw.created_at >= 200 && ev.raw.created_at <= 350,
-            "event at {} must be within since/until bounds", ev.raw.created_at);
+        assert!(
+            ev.raw.created_at >= 200 && ev.raw.created_at <= 350,
+            "event at {} must be within since/until bounds",
+            ev.raw.created_at
+        );
     }
     // Results must still be newest-first
     for w in results.windows(2) {
-        assert!(w[0].raw.created_at >= w[1].raw.created_at, "must be newest-first");
+        assert!(
+            w[0].raw.created_at >= w[1].raw.created_at,
+            "must be newest-first"
+        );
     }
 }
 
@@ -186,7 +208,9 @@ fn authors_kind_filters_by_kind() {
             content: String::new(),
             sig: "a".repeat(128),
         };
-        store.insert(unchecked(ev), &"wss://r/".into(), 1000 + i as u64).unwrap();
+        store
+            .insert(unchecked(ev), &"wss://r/".into(), 1000 + i as u64)
+            .unwrap();
     }
 
     let mut authors = BTreeSet::new();
@@ -200,9 +224,17 @@ fn authors_kind_filters_by_kind() {
     };
 
     let results = store.query(&q, 100).unwrap();
-    assert_eq!(results.len(), 2, "must only return kind 1 and kind 3 events");
+    assert_eq!(
+        results.len(),
+        2,
+        "must only return kind 1 and kind 3 events"
+    );
     for ev in &results {
-        assert!(ev.raw.kind == 1 || ev.raw.kind == 3, "unexpected kind {}", ev.raw.kind);
+        assert!(
+            ev.raw.kind == 1 || ev.raw.kind == 3,
+            "unexpected kind {}",
+            ev.raw.kind
+        );
     }
 }
 
@@ -219,7 +251,9 @@ fn authors_kind_empty_authors_returns_nothing() {
         content: String::new(),
         sig: "a".repeat(128),
     };
-    store.insert(unchecked(ev), &"wss://r/".into(), 1000).unwrap();
+    store
+        .insert(unchecked(ev), &"wss://r/".into(), 1000)
+        .unwrap();
 
     let q = StoreQuery::AuthorsKind {
         authors: BTreeSet::new(),
@@ -246,7 +280,9 @@ fn author_kind_empty_kinds_returns_nothing() {
         content: String::new(),
         sig: "a".repeat(128),
     };
-    store.insert(unchecked(ev), &"wss://r/".into(), 1000).unwrap();
+    store
+        .insert(unchecked(ev), &"wss://r/".into(), 1000)
+        .unwrap();
 
     let q = StoreQuery::AuthorKind {
         author: pk,
@@ -255,7 +291,10 @@ fn author_kind_empty_kinds_returns_nothing() {
         until: None,
     };
     let results = store.query(&q, 100).unwrap();
-    assert!(results.is_empty(), "AuthorKind empty kinds must return nothing (not wildcard)");
+    assert!(
+        results.is_empty(),
+        "AuthorKind empty kinds must return nothing (not wildcard)"
+    );
 }
 
 /// Empty kinds set returns nothing — `AuthorsKind` is a positive selection,
@@ -274,7 +313,9 @@ fn authors_kind_empty_kinds_returns_nothing() {
         content: String::new(),
         sig: "a".repeat(128),
     };
-    store.insert(unchecked(ev), &"wss://r/".into(), 1000).unwrap();
+    store
+        .insert(unchecked(ev), &"wss://r/".into(), 1000)
+        .unwrap();
 
     let mut authors = BTreeSet::new();
     authors.insert(pk);
@@ -286,7 +327,10 @@ fn authors_kind_empty_kinds_returns_nothing() {
         until: None,
     };
     let results = store.query(&q, 100).unwrap();
-    assert!(results.is_empty(), "empty kinds must return nothing (not wildcard)");
+    assert!(
+        results.is_empty(),
+        "empty kinds must return nothing (not wildcard)"
+    );
 }
 
 /// Cross-author dedup: same event ID inserted under two relay URLs must appear once.
@@ -305,8 +349,12 @@ fn authors_kind_no_duplicate_event_ids() {
         content: String::new(),
         sig: "a".repeat(128),
     };
-    store.insert(unchecked(ev.clone()), &"wss://r1/".into(), 1000).unwrap();
-    store.insert(unchecked(ev), &"wss://r2/".into(), 1000).unwrap();
+    store
+        .insert(unchecked(ev.clone()), &"wss://r1/".into(), 1000)
+        .unwrap();
+    store
+        .insert(unchecked(ev), &"wss://r2/".into(), 1000)
+        .unwrap();
 
     let mut authors = BTreeSet::new();
     authors.insert(pk);

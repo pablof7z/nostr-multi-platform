@@ -26,7 +26,10 @@ fn parses_full_bunker_uri() {
     let parsed = parse_bunker_uri(&uri).unwrap();
     assert_eq!(parsed.relays.len(), 2);
     assert_eq!(parsed.secret.as_deref().map(String::as_str), Some("abc123"));
-    assert_eq!(parsed.permissions.as_deref(), Some("sign_event:1,nip04_encrypt"));
+    assert_eq!(
+        parsed.permissions.as_deref(),
+        Some("sign_event:1,nip04_encrypt")
+    );
 }
 
 #[test]
@@ -113,9 +116,8 @@ fn rejects_invalid_relay_scheme() {
 
 #[test]
 fn deduplicates_repeated_relays() {
-    let uri = format!(
-        "bunker://{PK}?relay=wss://a.example&relay=wss://a.example&relay=wss://b.example"
-    );
+    let uri =
+        format!("bunker://{PK}?relay=wss://a.example&relay=wss://a.example&relay=wss://b.example");
     let parsed = parse_bunker_uri(&uri).unwrap();
     assert_eq!(parsed.relays, vec!["wss://a.example", "wss://b.example"]);
 }
@@ -132,9 +134,7 @@ fn handles_percent_encoded_secret() {
 
 #[test]
 fn handles_percent_encoded_relay() {
-    let uri = format!(
-        "bunker://{PK}?relay=wss%3A%2F%2Fr.example%2Fpath"
-    );
+    let uri = format!("bunker://{PK}?relay=wss%3A%2F%2Fr.example%2Fpath");
     let parsed = parse_bunker_uri(&uri).unwrap();
     assert_eq!(parsed.relays, vec!["wss://r.example/path"]);
 }
@@ -156,9 +156,7 @@ fn ignores_empty_query_pairs() {
 
 #[test]
 fn round_trips_via_display() {
-    let uri = format!(
-        "bunker://{PK}?relay=wss://r.example&secret=abc&perms=sign_event:1"
-    );
+    let uri = format!("bunker://{PK}?relay=wss://r.example&secret=abc&perms=sign_event:1");
     let parsed = parse_bunker_uri(&uri).unwrap();
     let printed = parsed.to_string();
     let reparsed = parse_bunker_uri(&printed).unwrap();

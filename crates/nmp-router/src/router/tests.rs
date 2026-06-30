@@ -1,8 +1,8 @@
 use super::*;
 use std::sync::Arc;
 
-use nmp_planner::{InterestId, InterestLifecycle, InterestScope, InterestShape};
 use nmp_core::substrate::{BlockedRelaySet, MailboxCache, ParsedRelayList, SessionKeySet};
+use nmp_planner::{InterestId, InterestLifecycle, InterestScope, InterestShape};
 
 use crate::InMemoryMailboxCache;
 

@@ -69,8 +69,8 @@ struct WireNip29 {
 /// Empty / absent string fields are normalised to `None`; `supported_nips`
 /// entries that are not non-negative integers in `u32` range are dropped.
 pub fn parse_relay_info(relay_url: &str, body: &[u8]) -> Result<RelayInfoDoc, String> {
-    let wire: WireDoc = serde_json::from_slice(body)
-        .map_err(|e| format!("parse NIP-11 document: {e}"))?;
+    let wire: WireDoc =
+        serde_json::from_slice(body).map_err(|e| format!("parse NIP-11 document: {e}"))?;
 
     let supported_nips = wire
         .supported_nips

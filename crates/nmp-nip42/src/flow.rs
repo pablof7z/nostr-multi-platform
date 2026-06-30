@@ -79,17 +79,17 @@ pub struct Nip42Driver {
 }
 
 impl Nip42Driver {
-    #[must_use] 
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn state(&self) -> &RelayAuthState {
         &self.state
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn pending_challenge(&self) -> Option<&AuthChallenge> {
         self.challenge.as_ref()
     }

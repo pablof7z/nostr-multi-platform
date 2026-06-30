@@ -40,7 +40,7 @@ nmp-core = { path = "../nmp-core", default-features = false }
 # NIP-19 entity codec (Layer 4) carved out of nmp-core per issue #2515.
 nmp-nostr-id = { path = "../nmp-nostr-id" }
 nmp-content = { path = "../nmp-content" }
-nmp-substrate-defaults = { path = "../nmp-substrate-defaults" }
+nmp-substrate = { path = "../nmp-substrate", default-features = false }
 nmp-store = { path = "../nmp-store" }
 nmp-network = { path = "../nmp-network", default-features = false }
 nmp-signer-iface = { path = "../nmp-signer-iface" }
@@ -48,22 +48,26 @@ nmp-feed = { path = "../nmp-feed" }
 nmp-kinds = { path = "../nmp-kinds" }
 nmp-nip01 = { path = "../nmp-nip01" }
 nmp-nip02 = { path = "../nmp-nip02" }
+nmp-nip17 = { path = "../nmp-nip17" }
 nmp-nip18 = { path = "../nmp-nip18" }
+nmp-nip22 = { path = "../nmp-nip22" }
+nmp-nip25 = { path = "../nmp-nip25" }
 nmp-nip29 = { path = "../nmp-nip29" }
 nmp-nip46 = { path = "../nmp-nip46" }
 nmp-nip46-runtime = { path = "../nmp-nip46-runtime", default-features = false }
 nmp-nip50 = { path = "../nmp-nip50" }
+nmp-nip51 = { path = "../nmp-nip51" }
 nmp-nip57 = { path = "../nmp-nip57", default-features = false }
+nmp-nip84 = { path = "../nmp-nip84" }
 nmp-planner = { path = "../nmp-planner", default-features = false }
+nmp-replies = { path = "../nmp-replies" }
+nmp-router = { path = "../nmp-router", default-features = false }
 # Signer trait + LocalKeySigner / Nip07Signer implementations used by the
 # capability-provider registry (#2049/#2066/#2067). `default-features = false`
 # keeps the native build free of wasm-only signing bridges; the `wasm` feature
 # above propagates `nmp-signers/wasm` for production wasm32 builds.
 nmp-signers = { path = "../nmp-signers", default-features = false }
-# Neutral composition entry points: `register_defaults` / `register_substrate`.
-# `default-features = false` keeps the wasm32 build free of native-only crates
-# (nmp-ffi, nmp-feed, nmp-nip01, nmp-nip47, nmp-nip11).
-nmp-defaults = { path = "../nmp-defaults", default-features = false }
+nmp-wot = { path = "../nmp-wot" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 flatbuffers = { workspace = true }

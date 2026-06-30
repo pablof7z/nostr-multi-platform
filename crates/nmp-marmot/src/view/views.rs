@@ -43,11 +43,11 @@ pub struct GroupListView;
 impl GroupListView {
     pub const NAMESPACE: &'static str = "nmp.marmot.group_list";
 
-    #[must_use] 
+    #[must_use]
     pub fn key(spec: &GroupListSpec) -> String {
         spec.self_pubkey.clone()
     }
-    #[must_use] 
+    #[must_use]
     pub fn dependencies(_spec: &GroupListSpec) -> ViewDependencies {
         // KeyPackage stream (own kind:30443 publications, standard outbox — no
         // pin) is the structural trigger surface; group membership itself is
@@ -57,7 +57,7 @@ impl GroupListView {
             ..Default::default()
         }
     }
-    #[must_use] 
+    #[must_use]
     pub fn open(_c: &ViewContext, _spec: GroupListSpec) -> (EventAccumulator, GroupListPayload) {
         (
             EventAccumulator::default(),
@@ -128,11 +128,11 @@ pub struct GroupMessagesView;
 impl GroupMessagesView {
     pub const NAMESPACE: &'static str = "nmp.marmot.group_messages";
 
-    #[must_use] 
+    #[must_use]
     pub fn key(spec: &GroupMessagesSpec) -> String {
         spec.group_id_hex.clone()
     }
-    #[must_use] 
+    #[must_use]
     pub fn dependencies(spec: &GroupMessagesSpec) -> ViewDependencies {
         // kind:445 group-event stream, pinned to the group relay (ADR-0012
         // third lane). The structural surface declares the kind; `relay_pin`
@@ -143,7 +143,7 @@ impl GroupMessagesView {
             ..Default::default()
         }
     }
-    #[must_use] 
+    #[must_use]
     pub fn open(
         _c: &ViewContext,
         _spec: GroupMessagesSpec,
@@ -227,7 +227,7 @@ pub struct KeyPackageLookupView;
 impl KeyPackageLookupView {
     pub const NAMESPACE: &'static str = "nmp.marmot.key_package_lookup";
 
-    #[must_use] 
+    #[must_use]
     pub fn key(spec: &KeyPackageLookupSpec) -> String {
         spec.owner_pubkey.clone()
     }
@@ -240,29 +240,45 @@ impl KeyPackageLookupView {
             ..Default::default()
         }
     }
-    #[must_use] 
+    #[must_use]
     pub fn open(
         _c: &ViewContext,
         spec: KeyPackageLookupSpec,
     ) -> (EventAccumulator, KeyPackageLookupPayload) {
         (
             EventAccumulator::default(),
-            KeyPackageLookupPayload { owner_pubkey: spec.owner_pubkey, found: false },
+            KeyPackageLookupPayload {
+                owner_pubkey: spec.owner_pubkey,
+                found: false,
+            },
         )
     }
     #[must_use]
-    pub fn on_event_inserted(_c: &ViewContext, s: &mut EventAccumulator, e: &KernelEvent) -> Option<EventAccumulatorDelta> {
+    pub fn on_event_inserted(
+        _c: &ViewContext,
+        s: &mut EventAccumulator,
+        e: &KernelEvent,
+    ) -> Option<EventAccumulatorDelta> {
         s.insert(e)
     }
     #[must_use]
-    pub fn on_event_removed(_c: &ViewContext, s: &mut EventAccumulator, id: &EventId) -> Option<EventAccumulatorDelta> {
+    pub fn on_event_removed(
+        _c: &ViewContext,
+        s: &mut EventAccumulator,
+        id: &EventId,
+    ) -> Option<EventAccumulatorDelta> {
         s.remove(id)
     }
     #[must_use]
-    pub fn on_event_replaced(_c: &ViewContext, s: &mut EventAccumulator, old: &EventId, e: &KernelEvent) -> Option<EventAccumulatorDelta> {
+    pub fn on_event_replaced(
+        _c: &ViewContext,
+        s: &mut EventAccumulator,
+        old: &EventId,
+        e: &KernelEvent,
+    ) -> Option<EventAccumulatorDelta> {
         s.replace(old, e)
     }
-    #[must_use] 
+    #[must_use]
     pub fn snapshot(_c: &ViewContext, state: &EventAccumulator) -> KeyPackageLookupPayload {
         KeyPackageLookupPayload {
             owner_pubkey: String::new(),

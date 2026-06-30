@@ -21,7 +21,9 @@ fn ok_constructor_yields_ready_ok() {
     // Cheapest probe: `wait` with an arbitrary timeout returns immediately on
     // a Ready variant. Timeout is irrelevant for Ready — proves synchronous
     // resolution.
-    let value = op.wait(Duration::from_millis(1)).expect("Ready(Ok) must resolve");
+    let value = op
+        .wait(Duration::from_millis(1))
+        .expect("Ready(Ok) must resolve");
     assert_eq!(value, 7, "Ready value must be the input");
 }
 
@@ -36,7 +38,10 @@ fn err_constructor_yields_ready_err() {
 fn ready_poll_returns_some_immediately() {
     let mut op: SignerOp<u32> = SignerOp::ok(42);
     let polled = op.poll();
-    assert!(matches!(polled, Some(Ok(42))), "Ready poll must surface the value");
+    assert!(
+        matches!(polled, Some(Ok(42))),
+        "Ready poll must surface the value"
+    );
 }
 
 #[test]
@@ -68,8 +73,7 @@ fn pending_resolves_to_ok_when_sender_sends_value() {
     let op: SignerOp<String> = SignerOp::Pending(rx);
 
     thread::spawn(move || {
-        tx.send(Ok("signed".into()))
-            .expect("worker must succeed");
+        tx.send(Ok("signed".into())).expect("worker must succeed");
     });
 
     // Block at most 1s — generous slack for a single mpsc send on any CI.
@@ -149,7 +153,10 @@ fn pending_poll_returns_none_until_send() {
     // mpsc::send is fenced — the value is observable on the receiver as soon
     // as the send returns, so the next poll must yield Some(Ok(11)).
     let polled = op.poll();
-    assert!(matches!(polled, Some(Ok(11))), "poll after send must surface value, got {polled:?}");
+    assert!(
+        matches!(polled, Some(Ok(11))),
+        "poll after send must surface value, got {polled:?}"
+    );
 }
 
 #[test]

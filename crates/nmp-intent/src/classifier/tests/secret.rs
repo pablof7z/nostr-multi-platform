@@ -1,8 +1,8 @@
 //! Rung 1 — secret rejection. Asserts the input is never echoed into the
 //! rejection, and that secret-reject precedes reference decoding.
 
-use nmp_nostr_id::encode_nsec;
 use nmp_core::substrate::{InputIntentRejection, InputScopeId};
+use nmp_nostr_id::encode_nsec;
 
 use super::{classify_bare, expect_rejection, profiles_scope, req, SK};
 
@@ -57,7 +57,10 @@ fn malformed_partial_nsec_is_rejected_without_echo() {
     let dbg = format!("{c:?}");
     let json = serde_json::to_string(&c).unwrap();
     for rendered in [&dbg, &json] {
-        assert!(!rendered.contains(garbage), "leaked the full input: {rendered}");
+        assert!(
+            !rendered.contains(garbage),
+            "leaked the full input: {rendered}"
+        );
         assert!(
             !rendered.contains("0notvalid"),
             "leaked a substring of the secret body: {rendered}"
@@ -74,7 +77,10 @@ fn malformed_nostr_prefixed_nsec_is_rejected_without_echo() {
     let dbg = format!("{c:?}");
     let json = serde_json::to_string(&c).unwrap();
     for rendered in [&dbg, &json] {
-        assert!(!rendered.contains(garbage), "leaked the full input: {rendered}");
+        assert!(
+            !rendered.contains(garbage),
+            "leaked the full input: {rendered}"
+        );
         assert!(
             !rendered.contains("garbagebody"),
             "leaked a substring of the secret body: {rendered}"

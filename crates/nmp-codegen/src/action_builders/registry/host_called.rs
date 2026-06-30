@@ -205,18 +205,23 @@ pub(super) const BROWSE_RELAY: ActionBuilder = ActionBuilder {
     doc: "Open or close a relay-pinned browse subscription.",
 };
 
-pub(super) const TOPIC_ARTICLES: ActionBuilder = ActionBuilder {
-    namespace: "nmp.app.topic_articles",
-    method: "topicArticles",
+pub(super) const VISIBLE_NOTE_RELATIONS: ActionBuilder = ActionBuilder {
+    namespace: "nmp.nip01.visible_note_relations",
+    method: "visibleNoteRelations",
     fields: &[
         PayloadField {
-            name: "op",
+            name: "lifecycle",
             kind: FieldKind::Ubyte,
             optional: false,
         },
         PayloadField {
-            name: "topic",
+            name: "targetEventId",
             kind: FieldKind::Str,
+            optional: false,
+        },
+        PayloadField {
+            name: "targetKind",
+            kind: FieldKind::Uint,
             optional: false,
         },
         PayloadField {
@@ -224,8 +229,13 @@ pub(super) const TOPIC_ARTICLES: ActionBuilder = ActionBuilder {
             kind: FieldKind::Str,
             optional: false,
         },
+        PayloadField {
+            name: "targetAddress",
+            kind: FieldKind::Str,
+            optional: true,
+        },
     ],
-    doc: "Claim or release a NIP-23 topic-articles subscription.",
+    doc: "Claim or release visible note relation-count subscriptions.",
 };
 
 // ── NIP-29 group actions ──────────────────────────────────────────────────────

@@ -44,12 +44,7 @@ pub fn build(ids: &Identities) -> Vec<ScenarioDto> {
     ));
 
     // S-MD02: single video URL -> Segment::Media { kind: Video }.
-    let e = a.sign(
-        1,
-        BASE + 1,
-        vec![],
-        "demo reel https://nmp.test/v/demo.mp4",
-    );
+    let e = a.sign(1, BASE + 1, vec![], "demo reel https://nmp.test/v/demo.mp4");
     out.push(scenario(
         "S-MD02",
         "media",

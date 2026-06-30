@@ -10,7 +10,7 @@ impl NmpApp {
     /// Register a [`nmp_core::substrate::SearchScopeProvider`] against the shared
     /// crate-registered FTS scope registry. Per-protocol crates call this from
     /// their composition helper — e.g. `nmp_nip50::register_search_scopes`
-    /// (wired by `nmp_defaults::register_defaults`) and
+    /// (wired by `explicit owner composition`) and
     /// `nmp_nip29::register_search_scopes` (leaf-app opt-in for group search).
     ///
     /// MUST be called before `nmp_app_start` so the registry is compiled +

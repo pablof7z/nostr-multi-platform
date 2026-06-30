@@ -8,8 +8,7 @@ fn inject_recipient_relays_preserves_existing_relays_tag() {
     let clock = FixedClock(1_700_000_000);
     let signers = LocalSigner;
     let stages = RecordingStages(std::sync::Mutex::new(Vec::new()));
-    let recipients =
-        FixedRecipientLookup::with_urls(vec!["wss://from-router.example"]);
+    let recipients = FixedRecipientLookup::with_urls(vec!["wss://from-router.example"]);
     let ctx = ctx_with(&send, &clock, &signers, &stages, &recipients);
 
     let mut unsigned = unsigned_for(vec![
@@ -46,14 +45,11 @@ fn inject_recipient_relays_injects_when_tag_absent() {
     let clock = FixedClock(1_700_000_000);
     let signers = LocalSigner;
     let stages = RecordingStages(std::sync::Mutex::new(Vec::new()));
-    let recipients = FixedRecipientLookup::with_urls(vec![
-        "wss://write-a.example",
-        "wss://write-b.example",
-    ]);
+    let recipients =
+        FixedRecipientLookup::with_urls(vec!["wss://write-a.example", "wss://write-b.example"]);
     let ctx = ctx_with(&send, &clock, &signers, &stages, &recipients);
 
-    let mut unsigned =
-        unsigned_for(vec![vec!["p".to_string(), RECIPIENT_HEX.to_string()]]);
+    let mut unsigned = unsigned_for(vec![vec!["p".to_string(), RECIPIENT_HEX.to_string()]]);
     inject_recipient_relays(&ctx, &mut unsigned);
     let relays_tag = unsigned
         .tags
@@ -87,8 +83,7 @@ fn inject_recipient_relays_treats_bare_relays_key_as_absent() {
     let clock = FixedClock(1_700_000_000);
     let signers = LocalSigner;
     let stages = RecordingStages(std::sync::Mutex::new(Vec::new()));
-    let recipients =
-        FixedRecipientLookup::with_urls(vec!["wss://write.example"]);
+    let recipients = FixedRecipientLookup::with_urls(vec!["wss://write.example"]);
     let ctx = ctx_with(&send, &clock, &signers, &stages, &recipients);
 
     let mut unsigned = unsigned_for(vec![
@@ -124,9 +119,7 @@ fn inject_recipient_relays_falls_back_to_bootstrap_when_p_tag_missing() {
     let clock = FixedClock(1_700_000_000);
     let signers = LocalSigner;
     let stages = RecordingStages(std::sync::Mutex::new(Vec::new()));
-    let recipients = FixedRecipientLookup::with_urls(vec![
-        "wss://bootstrap.example",
-    ]);
+    let recipients = FixedRecipientLookup::with_urls(vec!["wss://bootstrap.example"]);
     let ctx = ctx_with(&send, &clock, &signers, &stages, &recipients);
 
     let mut unsigned = unsigned_for(Vec::new());
@@ -138,10 +131,7 @@ fn inject_recipient_relays_falls_back_to_bootstrap_when_p_tag_missing() {
         .expect("must inject a relays tag even when p tag is absent");
     assert_eq!(
         relays_tag,
-        &vec![
-            "relays".to_string(),
-            "wss://bootstrap.example".to_string(),
-        ],
+        &vec!["relays".to_string(), "wss://bootstrap.example".to_string(),],
         "router-resolved URLs (router's own cold-start lane) populate the tag"
     );
     // The router was consulted with an empty recipient pubkey — the LNURL
@@ -168,8 +158,7 @@ fn inject_recipient_relays_emits_empty_tag_when_router_returns_no_urls() {
     let recipients = NoopRecipientRelayLookup;
     let ctx = ctx_with(&send, &clock, &signers, &stages, &recipients);
 
-    let mut unsigned =
-        unsigned_for(vec![vec!["p".to_string(), RECIPIENT_HEX.to_string()]]);
+    let mut unsigned = unsigned_for(vec![vec!["p".to_string(), RECIPIENT_HEX.to_string()]]);
     inject_recipient_relays(&ctx, &mut unsigned);
     let relays_tag = unsigned
         .tags

@@ -109,9 +109,18 @@ fn renders_one_type_with_required_and_optional_fields() {
     // double-transform to KEY_NOT_FOUND). Stage 2 SnapshotProjections
     // DOES legitimately emit `CodingKeys`, so we scope to everything
     // before that section's marker.
-    let stage1 = out.split("// MARK: - SnapshotProjections").next().unwrap_or(&out);
-    assert!(!stage1.contains("CodingKeys"), "Stage 1 must not emit CodingKeys");
-    assert!(!stage1.contains("= \"open_views\""), "no snake_case rawValues in Stage 1");
+    let stage1 = out
+        .split("// MARK: - SnapshotProjections")
+        .next()
+        .unwrap_or(&out);
+    assert!(
+        !stage1.contains("CodingKeys"),
+        "Stage 1 must not emit CodingKeys"
+    );
+    assert!(
+        !stage1.contains("= \"open_views\""),
+        "no snake_case rawValues in Stage 1"
+    );
 }
 
 #[test]
@@ -143,7 +152,10 @@ fn rejects_unknown_document_version() {
     let err = render_swift(doc).expect_err("must reject unknown version");
     assert!(matches!(
         err,
-        SwiftEmitError::UnsupportedDocumentVersion { found: 999, expected: 1 }
+        SwiftEmitError::UnsupportedDocumentVersion {
+            found: 999,
+            expected: 1
+        }
     ));
 }
 
@@ -241,8 +253,12 @@ fn check_swift_length_diff_reports_first_diff_line_not_none() {
     generate_swift(one_type_document(), &out).expect("write");
     let full = std::fs::read_to_string(&out).expect("read");
     let line_count = full.lines().count();
-    let truncated: String =
-        full.lines().take(line_count - 1).collect::<Vec<_>>().join("\n") + "\n";
+    let truncated: String = full
+        .lines()
+        .take(line_count - 1)
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n";
     std::fs::write(&out, &truncated).expect("truncate");
     let result = check_swift(one_type_document(), &out).expect("check");
     assert!(!result.up_to_date, "truncated file must be stale");
@@ -273,10 +289,22 @@ fn post_convert_handles_single_word_pass_through() {
 fn post_convert_camelises_snake_case() {
     // Standard snake_case → camelCase. Covers the bulk of the
     // built-in projection keys.
-    assert_eq!(post_convert_from_snake_case("bunker_handshake"), "bunkerHandshake");
-    assert_eq!(post_convert_from_snake_case("publish_queue"), "publishQueue");
-    assert_eq!(post_convert_from_snake_case("active_account"), "activeAccount");
-    assert_eq!(post_convert_from_snake_case("relay_diagnostics"), "relayDiagnostics");
+    assert_eq!(
+        post_convert_from_snake_case("bunker_handshake"),
+        "bunkerHandshake"
+    );
+    assert_eq!(
+        post_convert_from_snake_case("publish_queue"),
+        "publishQueue"
+    );
+    assert_eq!(
+        post_convert_from_snake_case("active_account"),
+        "activeAccount"
+    );
+    assert_eq!(
+        post_convert_from_snake_case("relay_diagnostics"),
+        "relayDiagnostics"
+    );
 }
 
 #[test]

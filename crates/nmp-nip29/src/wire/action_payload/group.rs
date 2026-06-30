@@ -168,7 +168,8 @@ impl ActionPayload for PublishGroupEventInput {
     }
 
     fn decode(bytes: &[u8]) -> Result<Self, ActionPayloadDecodeError> {
-        if bytes.len() < 8 || !publish_fb::publish_group_event_payload_buffer_has_identifier(bytes) {
+        if bytes.len() < 8 || !publish_fb::publish_group_event_payload_buffer_has_identifier(bytes)
+        {
             return Err(malformed("missing N29G file identifier"));
         }
         let root = publish_fb::root_as_publish_group_event_payload(bytes)

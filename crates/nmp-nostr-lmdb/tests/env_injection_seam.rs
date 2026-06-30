@@ -28,8 +28,13 @@ fn open_env_then_with_env_round_trips_a_signed_event() {
     let tmp = tempfile::tempdir().expect("tempdir");
 
     // (1) Open the env directly — caller owns it.
-    let env = Lmdb::open_env(tmp.path(), TEST_MAP_SIZE, TEST_MAX_READERS, TEST_ADDITIONAL_DBS)
-        .expect("open_env");
+    let env = Lmdb::open_env(
+        tmp.path(),
+        TEST_MAP_SIZE,
+        TEST_MAX_READERS,
+        TEST_ADDITIONAL_DBS,
+    )
+    .expect("open_env");
 
     // (2) Wrap it through the env-injection seam.
     let lmdb = Lmdb::with_env(env.clone()).expect("with_env");
@@ -65,8 +70,13 @@ fn open_env_then_with_env_round_trips_a_signed_event() {
 #[test]
 fn nmp_side_subdb_commits_atomically_with_event_write() {
     let tmp = tempfile::tempdir().expect("tempdir");
-    let env = Lmdb::open_env(tmp.path(), TEST_MAP_SIZE, TEST_MAX_READERS, TEST_ADDITIONAL_DBS)
-        .expect("open_env");
+    let env = Lmdb::open_env(
+        tmp.path(),
+        TEST_MAP_SIZE,
+        TEST_MAX_READERS,
+        TEST_ADDITIONAL_DBS,
+    )
+    .expect("open_env");
     let lmdb = Lmdb::with_env(env.clone()).expect("with_env");
 
     // NMP opens its own sub-db on the same env. This is the load-bearing
@@ -116,7 +126,9 @@ fn nmp_side_subdb_commits_atomically_with_event_write() {
             .get_event_by_id(&rotxn, event.id.as_bytes())
             .expect("get")
             .is_some());
-        let wm = nmp_sidecar.get(&rotxn, b"relay:wss://r.test").expect("get wm");
+        let wm = nmp_sidecar
+            .get(&rotxn, b"relay:wss://r.test")
+            .expect("get wm");
         assert_eq!(wm, Some(&b"\x00\x00\x00\x05"[..]));
     }
 }
@@ -127,8 +139,7 @@ fn additional_dbs_slot_reservation_prevents_max_dbs_exhaustion() {
     // 4 NMP sub-dbs on top of upstream's 11. Confirm we can actually
     // create that many without `heed::Error::DatabasesFull`.
     let tmp = tempfile::tempdir().expect("tempdir");
-    let env =
-        Lmdb::open_env(tmp.path(), TEST_MAP_SIZE, TEST_MAX_READERS, 4).expect("open_env");
+    let env = Lmdb::open_env(tmp.path(), TEST_MAP_SIZE, TEST_MAX_READERS, 4).expect("open_env");
     let _lmdb = Lmdb::with_env(env.clone()).expect("with_env"); // consumes 11 slots
 
     let mut txn = env.write_txn().expect("write_txn");

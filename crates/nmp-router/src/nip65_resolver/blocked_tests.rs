@@ -16,8 +16,8 @@ use std::sync::{Arc, Mutex};
 use super::{Nip65OutboxResolver, RECIPIENT_INBOX_FANOUT_PTAG_THRESHOLD};
 use nmp_core::publish::{OutboxResolver, PublishTarget, ResolvedRelay};
 use nmp_core::slots::{new_indexer_relays_slot, IndexerRelaysSlot};
-use nmp_store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
 use nmp_core::substrate::BlockedRelaySet;
+use nmp_store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
 
 const AUTHOR_HEX: &str = "1111111111111111111111111111111111111111111111111111111111111111";
 const RECIPIENT_HEX: &str = "2222222222222222222222222222222222222222222222222222222222222222";
@@ -100,12 +100,20 @@ fn blocked_relay_excluded_from_recipient_inbox() {
     store_kind10002(
         store.as_ref(),
         AUTHOR_HEX,
-        vec![vec!["r".into(), "wss://author-write.example".into(), "write".into()]],
+        vec![vec![
+            "r".into(),
+            "wss://author-write.example".into(),
+            "write".into(),
+        ]],
     );
     store_kind10002(
         store.as_ref(),
         RECIPIENT_HEX,
-        vec![vec!["r".into(), "wss://blocked-inbox.example".into(), "read".into()]],
+        vec![vec![
+            "r".into(),
+            "wss://blocked-inbox.example".into(),
+            "read".into(),
+        ]],
     );
     let resolver = Nip65OutboxResolver::new(store, new_indexer_relays_slot());
 
@@ -176,7 +184,11 @@ fn blocked_relay_excluded_with_differing_case() {
     store_kind10002(
         store.as_ref(),
         AUTHOR_HEX,
-        vec![vec!["r".into(), "wss://block.example".into(), "write".into()]],
+        vec![vec![
+            "r".into(),
+            "wss://block.example".into(),
+            "write".into(),
+        ]],
     );
     let resolver = Nip65OutboxResolver::new(store, new_indexer_relays_slot());
 
@@ -190,7 +202,10 @@ fn blocked_relay_excluded_with_differing_case() {
         !urls.contains(&"wss://block.example".to_string()),
         "canonicalised blocked relay must match the canonical write entry, got {urls:?}"
     );
-    assert!(urls.is_empty(), "only relay was blocked → empty resolution, got {urls:?}");
+    assert!(
+        urls.is_empty(),
+        "only relay was blocked → empty resolution, got {urls:?}"
+    );
 }
 
 #[test]
@@ -215,7 +230,11 @@ fn non_canonical_stored_tag_is_blocked_when_canonical_form_is_in_blocked_set() {
         AUTHOR_HEX,
         // Intentionally NON-canonical: uppercase host + trailing slash.
         // Canonical form is `wss://block.example` (no trailing slash, lowercase).
-        vec![vec!["r".into(), "wss://Block.Example/".into(), "write".into()]],
+        vec![vec![
+            "r".into(),
+            "wss://Block.Example/".into(),
+            "write".into(),
+        ]],
     );
     let resolver = Nip65OutboxResolver::new(store, new_indexer_relays_slot());
 
@@ -249,12 +268,22 @@ fn non_canonical_tag_without_matching_block_canonicalizes_and_is_included() {
         store.as_ref(),
         AUTHOR_HEX,
         // Non-canonical: uppercase host + trailing slash.
-        vec![vec!["r".into(), "wss://Good.Example/".into(), "write".into()]],
+        vec![vec![
+            "r".into(),
+            "wss://Good.Example/".into(),
+            "write".into(),
+        ]],
     );
     let resolver = Nip65OutboxResolver::new(store, new_indexer_relays_slot());
 
     // Nothing blocked.
-    let out = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto, 1, &BlockedRelaySet::new());
+    let out = resolver.resolve(
+        AUTHOR_HEX,
+        &[],
+        &PublishTarget::Auto,
+        1,
+        &BlockedRelaySet::new(),
+    );
     let urls = urls_of(&out);
 
     // The resolver must return the CANONICAL form, not the raw stored form.

@@ -78,9 +78,7 @@ pub(super) fn resolve_set_op(
             SetOp::Intersection => {
                 std::sync::Arc::new(move |pubkey: &str| lp(pubkey) && rp(pubkey))
             }
-            SetOp::Difference => {
-                std::sync::Arc::new(move |pubkey: &str| lp(pubkey) && !rp(pubkey))
-            }
+            SetOp::Difference => std::sync::Arc::new(move |pubkey: &str| lp(pubkey) && !rp(pubkey)),
         }
     };
 

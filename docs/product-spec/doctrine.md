@@ -32,12 +32,12 @@ ref/dependent interest claims, and capability bridges. The removed v2
 extension points. Two apps can be built on the same core without either one
 leaking its domain concepts into the shared substrate.
 
-D0 applies to every shared NMP crate, not only `nmp-core`. `nmp-defaults`,
-protocol crates, reusable engines, binding crates, and FFI/wasm delivery
-surfaces must stay app-domain agnostic. They may expose generic Nostr
+D0 applies to every shared NMP crate, not only `nmp-core`. Protocol crates,
+reusable engines, binding crates, substrate composition crates, and FFI/wasm
+delivery surfaces must stay app-domain agnostic. They may expose generic Nostr
 mechanisms and extension seams; they must not own one product's records,
 ranking rules, catalog lookups, playback state, operator defaults, app-named
-commands, or compatibility shortcuts.
+commands, compatibility shortcuts, or replacement defaults bundles.
 
 A single consuming app is not enough evidence to add a shared feature. The
 review question is: would a second, unrelated Nostr app use this unchanged? If

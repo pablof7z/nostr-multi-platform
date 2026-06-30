@@ -3,7 +3,7 @@
 //! Factored out of `composition_seams.rs` to stay under the 500-LOC ceiling
 //! (AGENTS.md). The methods here satisfy the full `AppHost` trait surface for
 //! `BrowserAppBuilder` — allowing it to act as a composition root with
-//! `nmp-defaults::register_defaults` without depending on `nmp-ffi`.
+//! `explicit owner composition` without depending on `nmp-ffi`.
 //!
 //! # Doctrine
 //!

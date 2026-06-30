@@ -20,8 +20,8 @@ use std::sync::Arc;
 use nmp_core::publish::{
     engine_error_to_failure, outcome_of, InMemoryPublishStore, PerRelayState, PublishAction,
     PublishEngine, PublishEngineError, PublishOutcome, PublishStore, PublishStoreError,
-    PublishTarget, RelayAck, RelayDispatcher, RelayUrl, ReplayDispatcher, RetryPolicy, StaticOutbox,
-    ENGINE_FAILURE_RELAY_URL,
+    PublishTarget, RelayAck, RelayDispatcher, RelayUrl, ReplayDispatcher, RetryPolicy,
+    StaticOutbox, ENGINE_FAILURE_RELAY_URL,
 };
 use nmp_core::substrate::*;
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};

@@ -176,8 +176,11 @@ pub fn run_bucket_timing(
         let base_single = measure_baseline_single(measure_frames, 5_000);
         let mut c_pf = time_per_frame(|f| c_listener(f), measure_frames, base_single);
         c_pf.sort_unstable();
-        let mut u_pf =
-            time_per_frame(|f| uniffi_lane_deliver(uniffi_sink, f), measure_frames, base_single);
+        let mut u_pf = time_per_frame(
+            |f| uniffi_lane_deliver(uniffi_sink, f),
+            measure_frames,
+            base_single,
+        );
         u_pf.sort_unstable();
         (Some(percentile(&c_pf, 99.0)), Some(percentile(&u_pf, 99.0)))
     } else {

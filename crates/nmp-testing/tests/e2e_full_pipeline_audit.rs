@@ -42,8 +42,7 @@ use std::collections::HashSet;
 /// causes this test to flag tests that genuinely cannot yet be implemented.
 const DONE_MILESTONES: &[&str] = &[
     // M0 and M1 are done but not referenced in ignore tags — safe to list.
-    "M0", "M1",
-    // M2–M8 are all done (tracked in GitHub Issues).
+    "M0", "M1", // M2–M8 are all done (tracked in GitHub Issues).
     "M2", "M3", "M4", "M5", "M6", "M7", "M8",
 ];
 

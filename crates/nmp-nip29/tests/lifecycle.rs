@@ -77,9 +77,9 @@ fn generic_relay_pinned_interest_routes_to_host_only() {
 
     let host_plan = plan.per_relay.get(HOST_A).expect("host plan present");
     assert!(
-        host_plan
-            .role_tags
-            .contains(&RoutingSource::UserConfigured(UserConfiguredCategory::Debug)),
+        host_plan.role_tags.contains(&RoutingSource::UserConfigured(
+            UserConfiguredCategory::Debug
+        )),
         "Case E (relay-pinned routing) must mark the routing source as UserConfigured(Debug)"
     );
 
@@ -123,9 +123,9 @@ fn nip29_protocol_crate_consumes_generic_relay_pin_api() {
         .get(HOST_A)
         .expect("nip29-built interest routes to the host relay");
     assert!(
-        host_plan
-            .role_tags
-            .contains(&RoutingSource::UserConfigured(UserConfiguredCategory::Debug)),
+        host_plan.role_tags.contains(&RoutingSource::UserConfigured(
+            UserConfiguredCategory::Debug
+        )),
         "nip29 path hits the same Case E as a hand-built generic interest"
     );
 }
@@ -143,8 +143,14 @@ fn different_relay_pins_emit_distinct_per_relay_plans() {
 
     let plan = compiler.compile(&[i_a, i_b]).expect("compile");
 
-    assert!(plan.per_relay.contains_key(HOST_A), "host A must be in plan");
-    assert!(plan.per_relay.contains_key(HOST_B), "host B must be in plan");
+    assert!(
+        plan.per_relay.contains_key(HOST_A),
+        "host A must be in plan"
+    );
+    assert!(
+        plan.per_relay.contains_key(HOST_B),
+        "host B must be in plan"
+    );
     assert!(
         !plan.per_relay.contains_key(INDEXER),
         "indexer must NOT be reached"
@@ -217,10 +223,7 @@ fn pinned_interest_with_authors_skips_outbox_lookup() {
     // the four-lane dispatch: no NIP-65 mailbox lookup, no indexer fallback.
     // This is the structural guarantee Case E provides.
     let mut interest = generic_pinned_interest(1, HOST_A, &[9]);
-    interest
-        .shape
-        .authors
-        .insert("a".repeat(64));
+    interest.shape.authors.insert("a".repeat(64));
 
     let cache = EmptyMailboxCache;
     let indexer = indexer_set();

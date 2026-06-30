@@ -101,7 +101,10 @@ fn wrong_schema_version_is_rejected() {
     let err = ZapInput::decode(&bytes).expect_err("bad version rejected");
     assert_eq!(
         err,
-        ActionPayloadDecodeError::SchemaVersionMismatch { found: 999, expected: SCHEMA_VERSION }
+        ActionPayloadDecodeError::SchemaVersionMismatch {
+            found: 999,
+            expected: SCHEMA_VERSION
+        }
     );
 }
 

@@ -81,7 +81,8 @@ fn dispatch_ok(app: *mut NmpApp, namespace: &str, pubkey: &str) {
     let outcome = nmp_native_runtime::dispatch_action_bytes_typed(unsafe { &*app }, &envelope);
     assert!(
         outcome.correlation_id.is_some(),
-        "{namespace} must be accepted (got error: {:?})", outcome.error
+        "{namespace} must be accepted (got error: {:?})",
+        outcome.error
     );
 }
 

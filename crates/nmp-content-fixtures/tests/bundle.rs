@@ -325,10 +325,10 @@ fn article_list_quote_embeds_dispatch_through_typed_projection() {
         .find(|s| s.id == "S-M12")
         .expect("S-M12 present");
     assert!(
-        quote.embeds.values().any(|e| matches!(
-            &e.kind_projection,
-            Some(EmbedKindProjection::ShortNote(_))
-        )),
+        quote
+            .embeds
+            .values()
+            .any(|e| matches!(&e.kind_projection, Some(EmbedKindProjection::ShortNote(_)))),
         "S-M12 quote embeds must dispatch to typed ShortNote projections"
     );
 }

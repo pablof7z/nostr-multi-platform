@@ -337,15 +337,13 @@ fn normalize_reaction(content: &str) -> String {
 
 /// The LAST value of a single-letter tag `name`, ignoring empty values.
 fn last_tag_value(tags: &[Vec<String>], name: &str) -> Option<String> {
-    tags.iter()
-        .rev()
-        .find_map(|tag| {
-            if tag.first().is_some_and(|candidate| candidate == name) {
-                tag.get(1).filter(|value| !value.is_empty()).cloned()
-            } else {
-                None
-            }
-        })
+    tags.iter().rev().find_map(|tag| {
+        if tag.first().is_some_and(|candidate| candidate == name) {
+            tag.get(1).filter(|value| !value.is_empty()).cloned()
+        } else {
+            None
+        }
+    })
 }
 
 #[cfg(test)]

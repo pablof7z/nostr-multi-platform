@@ -10,9 +10,8 @@
 use std::sync::Arc;
 
 use nmp_core::publish::{
-    InMemoryPublishStore, NoopOutboxResolver, PublishAction, PublishEngine,
-    PublishEngineError, PublishTarget, RelayAck, RelayUrl, ReplayDispatcher, RetryPolicy,
-    StaticOutbox,
+    InMemoryPublishStore, NoopOutboxResolver, PublishAction, PublishEngine, PublishEngineError,
+    PublishTarget, RelayAck, RelayUrl, ReplayDispatcher, RetryPolicy, StaticOutbox,
 };
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 

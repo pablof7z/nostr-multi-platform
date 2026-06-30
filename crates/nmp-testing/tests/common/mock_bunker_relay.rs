@@ -111,8 +111,13 @@ impl MockBunkerRelay {
                         let force_dc_w = Arc::clone(&force_dc_t);
                         let worker = std::thread::spawn(move || {
                             run_connection(
-                                stream, bunker_keys, user_keys,
-                                shutdown_w, seen_w, conn_log_w, force_dc_w,
+                                stream,
+                                bunker_keys,
+                                user_keys,
+                                shutdown_w,
+                                seen_w,
+                                conn_log_w,
+                                force_dc_w,
                             );
                         });
                         workers_t.lock().unwrap().push(worker);

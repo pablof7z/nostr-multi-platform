@@ -1,16 +1,20 @@
 //! Round-trip tests for the [`FollowListSnapshot`] typed FlatBuffers codec.
 
-use super::{
-    decode_follow_list, encode_follow_list, FILE_IDENTIFIER, SCHEMA_ID, SCHEMA_VERSION,
-};
+use super::{decode_follow_list, encode_follow_list, FILE_IDENTIFIER, SCHEMA_ID, SCHEMA_VERSION};
 use crate::projection::{FollowEntry, FollowListSnapshot};
 
 fn populated_snapshot() -> FollowListSnapshot {
     FollowListSnapshot {
         follows: vec![
-            FollowEntry { pubkey: "a".repeat(64) },
-            FollowEntry { pubkey: "b".repeat(64) },
-            FollowEntry { pubkey: "c".repeat(64) },
+            FollowEntry {
+                pubkey: "a".repeat(64),
+            },
+            FollowEntry {
+                pubkey: "b".repeat(64),
+            },
+            FollowEntry {
+                pubkey: "c".repeat(64),
+            },
         ],
     }
 }
@@ -48,9 +52,7 @@ fn preserves_follow_order() {
 #[test]
 fn encoded_buffer_carries_the_nf02_file_identifier() {
     let bytes = encode_follow_list(&populated_snapshot());
-    assert!(
-        super::generated::nmp::nip_02::follow_list_snapshot_buffer_has_identifier(&bytes)
-    );
+    assert!(super::generated::nmp::nip_02::follow_list_snapshot_buffer_has_identifier(&bytes));
     assert_eq!(FILE_IDENTIFIER, b"NF02");
 }
 

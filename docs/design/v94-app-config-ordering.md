@@ -6,9 +6,11 @@ ADR-0068 / #2205 later moved the durable native runtime owner to
 resolved as: consume-and-return typestate, phantom-typed states,
 builder-is-the-AppHost.
 
-ADR-0069 later replaced defaults-era production composition. References below to
-`register_defaults` describe the historical caller shape this typestate work had
-to support, not the current production app architecture.
+ADR-0069 later replaced defaults-era production composition, and the 2026-06-30
+defaults deletion removed the defaults bundle entirely. References below to
+`the deleted defaults bundle` or `the hidden defaults preset` describe the historical caller shape this
+typestate work had to support, not the current production app architecture.
+Current roots compose `nmp-substrate` plus explicit protocol/app installers.
 
 Issue: V-94 (#618). Co-designed with F-08 (NmpAppBuilder) and V-95 (issue
 #619, WalletRuntime init order). Follow-up #618 Stage 1 (2026-06-16) moved the
@@ -44,7 +46,7 @@ Critical scope correction vs. the backlog: of the ~18 "setters", only FOUR are
 C-ABI symbols (`nmp_app_set_update_callback` :2148, `nmp_app_set_storage_path`
 :2188, `nmp_app_start` :2204, `nmp_app_configure` :2221). The rest are `AppHost`
 **Rust trait methods** (substrate/app_host.rs) invoked from the Rust composition
-root — `nmp_defaults::register_defaults` (crates/nmp-defaults/src/lib.rs)
+root — `explicit owner composition` (crates/explicit composition/src/lib.rs)
 and per-app `register.rs` (apps/chirp/crates/nmp-app-chirp/src/ffi/register.rs:53). So
 the enforcement surface splits cleanly in two.
 
@@ -60,8 +62,9 @@ A Swift/Kotlin host calling `nmp_app_set_storage_path` then `nmp_app_start` gets
 zero compile-time guarantee — no typestate token crosses FFI. Therefore:
 
 - A **typestate/builder (a)** is the correct enforcement for the **Rust**
-  composition root (where `register_defaults` and per-app wiring live). It makes
-  "wire then start" the only expressible sequence in Rust.
+  composition root (where the deleted hidden defaults preset used to live
+  beside per-app wiring). It makes "wire then start" the only expressible
+  sequence in Rust.
 - A **runtime guard + diagnostic (b)** is **irreducible** for the **C-ABI** —
   it is the only mechanism that can catch a misordered Swift/Kotlin host.
 
@@ -76,16 +79,13 @@ already blesses (docs/architecture/crate-boundaries.md:269, :835). V-94's
 
 A single config/builder type that owns the wiring phase and makes start the only
 terminal transition. PR #858 first proved the V-94/F-08 builder shape; ADR-0068
-settled the durable crate owner as `nmp-native-runtime`, while `nmp-defaults`
-remains pure `AppHost` composition.
+settled the durable crate owner as `nmp-native-runtime`. The deleted defaults
+bundle is no longer a composition target.
 
 - `NmpAppBuilder::new()` — begins a config session. Owns the in-construction
   `NmpApp` (or its slots) in an un-started state.
-- It IMPLEMENTS `AppHost` during the config phase, so every existing
-  `register_actions` / `register_defaults` / per-NIP wiring call works unchanged
-  against `&mut builder`. No NIP crate changes.
-- `register_defaults(&mut self)` becomes an inherent method (or stays a free fn
-  taking `&mut impl AppHost`; either way the builder is the host passed in).
+- It IMPLEMENTS `AppHost` during the config phase, so explicit
+  substrate/protocol/app installer calls bind to `&mut builder`.
 - A terminal `start(self, RunConfig) -> NmpAppHandle` consumes the builder and
   drives the lifecycle. After `start`, no `AppHost` setter is reachable because
   the builder value is moved — late wiring is a compile error in Rust callers.
@@ -151,7 +151,8 @@ alongside the `active_wallet_runtime()` `Err` guard in each wallet
 ## 4. New crates / types
 
 - No new crate for V-94. `nmp-native-runtime` now owns `NmpAppBuilder`;
-  `nmp-defaults` remains the pure composition library called through `AppHost`.
+  current roots compose `nmp-substrate` and protocol/app installers through
+  `AppHost`.
 - New types:
   - `nmp_native_runtime::NmpAppBuilder` (config-phase host; implements `AppHost`).
   - `nmp_native_runtime::RunConfig` (the visible_limit / emit_hz that
@@ -168,8 +169,8 @@ alongside the `active_wallet_runtime()` `Err` guard in each wallet
    each init-only config setter: if `started`, return `AlreadyStarted` and
    record `DroppedLateWiring` instead of mutating an already-read slot.
 3. Introduce `NmpAppBuilder` implementing `AppHost` in the native runtime;
-   move `register_defaults` to operate on it (free-fn-taking-`&mut impl AppHost`
-   keeps working). Add `RunConfig` + terminal `start(self, RunConfig)`.
+   route explicit substrate/protocol/app installers through it. Add
+   `RunConfig` + terminal `start(self, RunConfig)`.
 4. Make `storage_path` the one required field on `start` (or explicit
    `.in_memory()`).
 5. Migrate the canonical Rust composition roots (chirp register.rs, fixture

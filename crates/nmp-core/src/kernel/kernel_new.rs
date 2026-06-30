@@ -126,7 +126,7 @@ impl Kernel {
         // Spec §271 (2026-05-25): `Nip65OutboxResolver` lives in
         // `nmp-router`, not `nmp-core`. The engine is built with the
         // in-crate `NoopOutboxResolver` default; production composition
-        // (`nmp-defaults::register_defaults` → the
+        // (`explicit owner composition` → the
         // `set_publish_resolver_factory` slot the actor reads at
         // construction) swaps in the router-side resolver via
         // [`Kernel::set_publish_resolver`]. The `indexer_relays_handle`,
@@ -189,7 +189,7 @@ impl Kernel {
         // consumers) keep working without each test calling
         // `Kernel::set_publish_resolver` manually. Production builds use the
         // `NoopOutboxResolver` default the engine was built with above; the
-        // production composition site (`nmp-defaults::register_defaults`)
+        // production composition site (`explicit owner composition`)
         // installs the full router-side `nmp_router::Nip65OutboxResolver`
         // via `NmpApp::set_publish_resolver_factory` →
         // `Kernel::set_publish_resolver` (D0 — `nmp-core` does not name
@@ -381,7 +381,7 @@ impl Kernel {
         // dispatcher. This makes the real chokepoint path
         // (`verify_and_persist` → `EventIngestDispatcher` → parser) write the
         // profile cache exactly as production does (where
-        // `nmp_defaults::register_substrate` registers `nmp_nip01::Kind0Parser`),
+        // `nmp_substrate::install` registers `nmp_nip01::Kind0Parser`),
         // so read-your-writes for a locally published kind:0 works in-crate
         // without depending on `nmp-nip01`.
         #[cfg(any(test, feature = "test-support"))]
@@ -396,7 +396,7 @@ impl Kernel {
         // dispatcher. This makes the real chokepoint path (`verify_and_persist`
         // → `EventIngestDispatcher` → parser → the kernel's contacts-transition
         // effect signal) write the contacts cache exactly as production does
-        // (where `nmp_defaults::register_substrate` registers
+        // (where `nmp_substrate::install` registers
         // `nmp_nip01::Kind3Parser`), so read-your-writes for a locally published
         // kind:3 works in-crate without depending on `nmp-nip01`.
         #[cfg(any(test, feature = "test-support"))]

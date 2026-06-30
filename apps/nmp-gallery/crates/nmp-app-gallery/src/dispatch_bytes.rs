@@ -19,22 +19,24 @@
 //! [`ActionPayload::encode`] to produce the typed payload bytes. The JSON is an
 //! in-process intermediate that NEVER crosses the FFI; only typed bytes do.
 //!
-//! ## D0 — no per-NIP dependency
-//!
-//! The gallery is a generic showcase: its `Cargo.toml` names only
-//! `nmp-native-runtime`, `nmp-uniffi`, `nmp-defaults`, `nmp-core`, `nmp-content`,
-//! and `serde_json` — never a per-NIP crate. The typed payload types are therefore
-//! reached through the [`nmp_defaults::action_payloads`] re-export surface, which
-//! mirrors the gallery's explicit composition.
+//! The gallery's composition root names each protocol crate it wires. The byte
+//! doorway imports payload types from the same owner crates, so there is no
+//! aggregate action-payload re-export surface.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::de::DeserializeOwned;
 
 use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
+use nmp_core::publish::PublishAction;
 use nmp_core::substrate::ActionPayload;
-use nmp_defaults::action_payloads;
 use nmp_native_runtime::{dispatch_action_bytes_typed, NmpApp};
+use nmp_nip02::{FollowManyAction, PubkeyAction};
+use nmp_nip17::{PublishDmRelayListInput, SendDmInput};
+use nmp_nip25::{ReactAction, UnreactAction};
+use nmp_nip51::BookmarkUpdateInput;
+use nmp_replies::ReplyAction;
+use nmp_router::{BlockRelayInput, PublishRelayListInput, UnblockRelayInput};
 
 /// Process-local correlation-id source.
 ///
@@ -55,24 +57,20 @@ pub fn mint_correlation_id() -> String {
 /// typed [`ActionPayload`] FlatBuffers bytes for `namespace`.
 fn encode_payload_for_namespace(namespace: &str, json: &str) -> Result<Vec<u8>, String> {
     match namespace {
-        "nmp.publish" => encode::<action_payloads::PublishAction>(namespace, json),
-        "nmp.replies.reply" => encode::<action_payloads::ReplyAction>(namespace, json),
-        "nmp.nip25.react" => encode::<action_payloads::ReactAction>(namespace, json),
-        "nmp.nip25.unreact" => encode::<action_payloads::UnreactAction>(namespace, json),
-        "nmp.follow" | "nmp.unfollow" => encode::<action_payloads::PubkeyAction>(namespace, json),
-        "nmp.follow_many" => encode::<action_payloads::FollowManyAction>(namespace, json),
-        "nmp.nip17.send" => encode::<action_payloads::SendDmInput>(namespace, json),
-        "nmp.nip17.publish_relay_list" => {
-            encode::<action_payloads::PublishDmRelayListInput>(namespace, json)
-        }
+        "nmp.publish" => encode::<PublishAction>(namespace, json),
+        "nmp.replies.reply" => encode::<ReplyAction>(namespace, json),
+        "nmp.nip25.react" => encode::<ReactAction>(namespace, json),
+        "nmp.nip25.unreact" => encode::<UnreactAction>(namespace, json),
+        "nmp.follow" | "nmp.unfollow" => encode::<PubkeyAction>(namespace, json),
+        "nmp.follow_many" => encode::<FollowManyAction>(namespace, json),
+        "nmp.nip17.send" => encode::<SendDmInput>(namespace, json),
+        "nmp.nip17.publish_relay_list" => encode::<PublishDmRelayListInput>(namespace, json),
         "nmp.nip51.add_bookmark" | "nmp.nip51.remove_bookmark" => {
-            encode::<action_payloads::BookmarkUpdateInput>(namespace, json)
+            encode::<BookmarkUpdateInput>(namespace, json)
         }
-        "nmp.nip65.publish_relay_list" => {
-            encode::<action_payloads::PublishRelayListInput>(namespace, json)
-        }
-        "nmp.nip51.block_relay" => encode::<action_payloads::BlockRelayInput>(namespace, json),
-        "nmp.nip51.unblock_relay" => encode::<action_payloads::UnblockRelayInput>(namespace, json),
+        "nmp.nip65.publish_relay_list" => encode::<PublishRelayListInput>(namespace, json),
+        "nmp.nip51.block_relay" => encode::<BlockRelayInput>(namespace, json),
+        "nmp.nip51.unblock_relay" => encode::<UnblockRelayInput>(namespace, json),
         other => Err(format!(
             "no typed payload encoder for action namespace '{other}' (byte doorway has no JSON fallback)"
         )),

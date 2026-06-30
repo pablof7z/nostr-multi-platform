@@ -117,7 +117,11 @@ pub(super) fn signer_connect_event(
 
 /// Decrypt the plaintext content of an outgoing SendFrame effect.
 /// `responder_keys` is the party the frame was encrypted TO.
-pub(super) fn decrypt_outgoing_frame(frame_text: &str, responder_keys: &Keys, client_pubkey: PublicKey) -> Value {
+pub(super) fn decrypt_outgoing_frame(
+    frame_text: &str,
+    responder_keys: &Keys,
+    client_pubkey: PublicKey,
+) -> Value {
     let parsed: Value = serde_json::from_str(frame_text).unwrap();
     let event = &parsed.as_array().unwrap()[1];
     let ciphertext = event.get("content").and_then(|v| v.as_str()).unwrap();

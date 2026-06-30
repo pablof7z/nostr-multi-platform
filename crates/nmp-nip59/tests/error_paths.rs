@@ -130,7 +130,10 @@ fn unwrap_tampered_content_returns_err() {
     // NIP-44 payload is garbage.
     let mut corrupted_content = wrapped.content.clone();
     // Mutate a character in the middle of the base64 payload.
-    if let Some(mid) = corrupted_content.char_indices().nth(corrupted_content.len() / 2) {
+    if let Some(mid) = corrupted_content
+        .char_indices()
+        .nth(corrupted_content.len() / 2)
+    {
         let (idx, ch) = mid;
         let replacement = if ch == 'A' { 'B' } else { 'A' };
         corrupted_content.replace_range(idx..idx + ch.len_utf8(), &replacement.to_string());

@@ -20,7 +20,7 @@
 //! (`nmp-nip01 → nmp-ffi`). The substrate-clean realization — mirroring
 //! `nmp_nip02::ActiveFollowSet` — is to construct the engine here and hand the
 //! caller back the `Arc<OpFeedEngine>`. The composition root (rung 6,
-//! `nmp-defaults`, which *does* depend on `nmp-ffi`) performs the
+//! `explicit composition`, which *does* depend on `nmp-ffi`) performs the
 //! `NmpApp`-level registration:
 //!
 //! ```ignore

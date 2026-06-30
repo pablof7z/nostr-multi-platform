@@ -97,7 +97,7 @@ pub trait FeedCompiler {
 }
 
 /// Blanket impl so a plain closure can be used as a [`FeedCompiler`] — the
-/// common case for `nmp-defaults` / tests that don't need a stateful compiler.
+/// common case for `explicit composition` / tests that don't need a stateful compiler.
 impl<F> FeedCompiler for F
 where
     F: Fn(

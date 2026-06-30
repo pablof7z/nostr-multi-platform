@@ -39,9 +39,8 @@ fn wire_goldens_match() {
                 continue;
             }
         };
-        let actual = serialize_fixture(&fx.wire).expect(
-            "ContentTreeWire is plain serde derive; serialization is infallible",
-        );
+        let actual = serialize_fixture(&fx.wire)
+            .expect("ContentTreeWire is plain serde derive; serialization is infallible");
         if expected != actual {
             drift.push(format!(
                 "wire contract changed for {id}: update the golden file by \
@@ -65,15 +64,15 @@ fn wire_goldens_match() {
 /// from a deleted scenario.
 #[test]
 fn every_golden_file_belongs_to_a_scenario() {
-    let known: std::collections::BTreeSet<String> = build_wire_fixtures()
-        .into_iter()
-        .map(|f| f.id)
-        .collect();
+    let known: std::collections::BTreeSet<String> =
+        build_wire_fixtures().into_iter().map(|f| f.id).collect();
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join(nmp_content_fixtures::wire_fixtures::WIRE_FIXTURE_DIR);
     let mut orphans = Vec::new();
-    let entries = fs::read_dir(&dir).expect("wire fixture dir exists; \
-        run `cargo run -p nmp-content-fixtures --bin build-wire-fixtures`");
+    let entries = fs::read_dir(&dir).expect(
+        "wire fixture dir exists; \
+        run `cargo run -p nmp-content-fixtures --bin build-wire-fixtures`",
+    );
     for entry in entries.flatten() {
         let path = entry.path();
         let Some(name) = path.file_name().and_then(|s| s.to_str()) else {

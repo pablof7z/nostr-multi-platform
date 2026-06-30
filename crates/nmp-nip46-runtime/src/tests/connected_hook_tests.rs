@@ -15,8 +15,8 @@ mod tests {
     use std::time::Duration;
 
     use nmp_core::actor::ActorCommand;
-    use nmp_core::{ActorMail, CommandSender};
     use nmp_core::substrate::RelayConnectedHook;
+    use nmp_core::{ActorMail, CommandSender};
     use nmp_network::role::RelayRole;
 
     use crate::connected_hook::Nip46ConnectedHook;
@@ -33,8 +33,11 @@ mod tests {
     fn drain_outbound(rx: &mpsc::Receiver<ActorMail>) -> Vec<(RelayRole, String, String)> {
         let mut frames = Vec::new();
         while let Ok(mail) = rx.recv_timeout(Duration::from_millis(50)) {
-            if let ActorMail::Command(ActorCommand::EnqueueOutbound { role, relay_url, text }) =
-                mail
+            if let ActorMail::Command(ActorCommand::EnqueueOutbound {
+                role,
+                relay_url,
+                text,
+            }) = mail
             {
                 frames.push((role, relay_url, text));
             }
@@ -59,7 +62,9 @@ mod tests {
     /// no commands posted, no panics.
     #[test]
     fn hook_is_noop_when_no_session() {
-        let hook = Nip46ConnectedHook { runtime: empty_handle() };
+        let hook = Nip46ConnectedHook {
+            runtime: empty_handle(),
+        };
         let (sender, rx) = make_sender();
 
         hook.on_relay_connected("wss://bunker.relay", false, sender);
@@ -98,7 +103,10 @@ mod tests {
         hook.on_relay_connected("wss://other.relay", true, sender);
 
         let frames = drain_outbound(&rx);
-        assert!(frames.is_empty(), "wrong relay URL must produce no outbound frames");
+        assert!(
+            frames.is_empty(),
+            "wrong relay URL must produce no outbound frames"
+        );
 
         let _ = local_keys; // suppress unused-variable warning
         let _ = remote_pubkey;
@@ -127,7 +135,7 @@ mod tests {
     /// relay mock) is in `tests/integration_` (post-PR-A).
     #[test]
     fn hook_state_changed_format() {
-        use nmp_core::actor::{IdentityCommand};
+        use nmp_core::actor::IdentityCommand;
 
         let (sender, rx) = make_sender();
 

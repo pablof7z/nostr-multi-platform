@@ -11,7 +11,7 @@ use nostr::event::borrow::EventBorrow;
 use nostr::{Event, EventBuilder, Filter, Keys, Kind, Timestamp};
 use nostr_database::FlatBufferBuilder;
 
-use super::{DB_VERSION, DB_VERSION_KEY, Lmdb, StoreAnomalySnapshot};
+use super::{Lmdb, StoreAnomalySnapshot, DB_VERSION, DB_VERSION_KEY};
 
 fn create_test_event(kind: u16, created_at: u64) -> Event {
     let keys = Keys::generate();

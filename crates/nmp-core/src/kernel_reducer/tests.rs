@@ -1,9 +1,9 @@
 use super::*;
 use crate::app::VIEW_PROFILE;
 use crate::kernel::{EventShape, RefLiveness, RefNamespace, RefShape, RelayFrame};
-use nmp_nostr_id::encode_npub;
 use crate::relay::OutboundMessage;
 use nmp_network::role::RelayRole;
+use nmp_nostr_id::encode_npub;
 use std::sync::Arc;
 
 const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";

@@ -293,13 +293,19 @@ fn parse_dispatches_npub() {
 #[test]
 fn parse_dispatches_nsec() {
     let bech = encode_nsec(NSEC_HEX).unwrap();
-    assert!(matches!(nmp_nostr_id::parse(&bech).unwrap(), Nip19Entity::Nsec(_)));
+    assert!(matches!(
+        nmp_nostr_id::parse(&bech).unwrap(),
+        Nip19Entity::Nsec(_)
+    ));
 }
 
 #[test]
 fn parse_dispatches_note() {
     let bech = encode_note(ZERO_HEX).unwrap();
-    assert!(matches!(nmp_nostr_id::parse(&bech).unwrap(), Nip19Entity::Note(_)));
+    assert!(matches!(
+        nmp_nostr_id::parse(&bech).unwrap(),
+        Nip19Entity::Note(_)
+    ));
 }
 
 #[test]

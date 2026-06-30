@@ -56,8 +56,13 @@ mod tests {
     use crate::{SearchScope, SearchTargets};
 
     fn request() -> SearchRequest {
-        SearchRequest::new("nostr", SearchScope::Users, SearchTargets::UserPreferred, Some(50))
-            .expect("query")
+        SearchRequest::new(
+            "nostr",
+            SearchScope::Users,
+            SearchTargets::UserPreferred,
+            Some(50),
+        )
+        .expect("query")
     }
 
     #[test]
@@ -70,7 +75,10 @@ mod tests {
         assert_eq!(plan[1].shape.relay_pin.as_deref(), Some("wss://b/"));
         // Each carries the bounded search field + the scope kinds.
         assert_eq!(plan[0].shape.search.as_deref(), Some("nostr"));
-        assert!(plan[0].shape.kinds.contains(&nmp_kinds::KIND_PROFILE_METADATA));
+        assert!(plan[0]
+            .shape
+            .kinds
+            .contains(&nmp_kinds::KIND_PROFILE_METADATA));
     }
 
     #[test]
@@ -82,6 +90,9 @@ mod tests {
     fn distinct_relays_produce_distinct_shapes() {
         let relays = vec!["wss://a/".to_string(), "wss://b/".to_string()];
         let plan = search_relay_plan(&request(), &relays);
-        assert_ne!(plan[0].shape, plan[1].shape, "relay_pin makes the shapes distinct");
+        assert_ne!(
+            plan[0].shape, plan[1].shape,
+            "relay_pin makes the shapes distinct"
+        );
     }
 }

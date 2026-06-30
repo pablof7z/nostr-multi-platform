@@ -157,7 +157,7 @@ impl NmpAppBuilder<StorageSet> {
 // ── Initial-relay decision (ProjectionsDeclared → RelaysDeclared) ────────────
 //
 // #1493: operator relay URLs are leaf-app policy, never an NMP default — not in
-// `nmp-core`, not in `nmp-defaults`. The app MUST decide its initial relay set
+// `nmp-core`, not in `explicit composition`. The app MUST decide its initial relay set
 // before `start()`. Forgetting is a compile error (`start()` only exists on
 // `RelaysDeclared`). Two ways to decide — both advance the typestate:
 //   * `.with_relays(iter)`        — declare the relay set the app starts with.

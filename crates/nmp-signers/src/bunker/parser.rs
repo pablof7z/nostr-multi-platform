@@ -223,10 +223,7 @@ fn url_decode(s: &str) -> String {
     while i < bytes.len() {
         let b = bytes[i];
         if b == b'%' && i + 2 < bytes.len() {
-            if let (Some(hi), Some(lo)) = (
-                hex_digit(bytes[i + 1]),
-                hex_digit(bytes[i + 2]),
-            ) {
+            if let (Some(hi), Some(lo)) = (hex_digit(bytes[i + 1]), hex_digit(bytes[i + 2])) {
                 out.push((hi << 4) | lo);
                 i += 3;
                 continue;

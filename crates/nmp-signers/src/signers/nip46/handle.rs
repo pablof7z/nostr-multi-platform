@@ -38,7 +38,9 @@ impl RemoteSignerHandle for Nip46Signer {
     }
 
     fn persistence_payload_json(&self) -> Option<String> {
-        self.to_payload().ok().and_then(|p| serde_json::to_string(&p).ok())
+        self.to_payload()
+            .ok()
+            .and_then(|p| serde_json::to_string(&p).ok())
     }
 
     fn sign(&self, unsigned: &UnsignedEvent) -> SignerOp<SignedEvent> {

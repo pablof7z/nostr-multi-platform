@@ -39,7 +39,7 @@ const TAG_DESCRIPTION_HASH: u8 = 23;
 const TIMESTAMP_FE32_GROUPS: usize = 7;
 
 /// Decode the millisats amount from a BOLT-11 invoice's HRP.
-#[must_use] 
+#[must_use]
 pub fn amount_msats(invoice: &str) -> Option<u64> {
     let lower = invoice.trim().to_ascii_lowercase();
     let body = strip_network(&lower)?;

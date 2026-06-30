@@ -280,7 +280,9 @@ mod wasm_impl {
             let created_at = stmt.column_int64(1)? as u64;
             match <[u8; 32]>::try_from(id_bytes.as_slice()) {
                 Ok(id) => Ok(Some((id, created_at))),
-                Err(_) => Err(SqliteWasmError::Column("replaceable id not 32 bytes".into())),
+                Err(_) => Err(SqliteWasmError::Column(
+                    "replaceable id not 32 bytes".into(),
+                )),
             }
         } else {
             Ok(None)

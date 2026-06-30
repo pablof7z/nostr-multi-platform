@@ -42,8 +42,8 @@
 //! no `Result` is produced (D6).
 
 use super::{Kernel, OutboundMessage};
-use nmp_nostr_id::{parse_nostr_uri, NostrUri};
 use crate::planner::{InterestScope, InterestShape};
+use nmp_nostr_id::{parse_nostr_uri, NostrUri};
 
 /// Typed discriminant for entries in [`Kernel::oneshot_subs`].
 ///

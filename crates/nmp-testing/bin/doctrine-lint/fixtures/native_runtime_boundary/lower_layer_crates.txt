@@ -3,7 +3,6 @@ nmp-content
 nmp-content-fixtures
 nmp-core
 nmp-coverage-gate
-nmp-defaults
 nmp-feed
 nmp-intent
 nmp-kinds
@@ -44,6 +43,6 @@ nmp-signer-iface
 nmp-signers
 nmp-sqlite-wasm
 nmp-store
-nmp-substrate-defaults
+nmp-substrate
 nmp-threading
 nmp-wot

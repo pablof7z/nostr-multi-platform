@@ -108,7 +108,11 @@ fn encode_group<'a>(
     let children = if group.children.is_empty() {
         None
     } else {
-        let offsets: Vec<_> = group.children.iter().map(|s| fbb.create_string(s)).collect();
+        let offsets: Vec<_> = group
+            .children
+            .iter()
+            .map(|s| fbb.create_string(s))
+            .collect();
         Some(fbb.create_vector(&offsets))
     };
 

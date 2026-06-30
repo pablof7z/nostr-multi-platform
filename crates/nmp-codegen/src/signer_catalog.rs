@@ -161,7 +161,9 @@ pub fn parse_catalog(catalog_json: &str) -> Result<Vec<SignerApp>, String> {
 /// catalog strings are plain ASCII (no-op), but a future entry with a quote must
 /// not produce invalid generated source that `--check` would then bless.
 fn esc(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n")
+    s.replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
 }
 
 // ── Kotlin rendering ──────────────────────────────────────────────────────────
@@ -178,16 +180,29 @@ pub fn render_kotlin_known_signers(apps: &[SignerApp], package: &str) -> String 
     out.push_str(KOTLIN_HEADER_BODY);
     out.push_str("val KNOWN_NOSTR_SIGNERS: List<NostrSignerInfo> = listOf(\n");
     for app in apps {
-        let Some(android) = &app.android else { continue };
+        let Some(android) = &app.android else {
+            continue;
+        };
         let content_authority = match &android.content_authority {
             Some(c) => format!("\"{}\"", esc(c)),
             None => "null".to_string(),
         };
         out.push_str("    NostrSignerInfo(\n");
-        out.push_str(&format!("        displayName = \"{}\",\n", esc(&app.display_label)));
-        out.push_str(&format!("        intentScheme = \"{}\",\n", esc(&android.intent_scheme)));
-        out.push_str(&format!("        contentAuthority = {content_authority},\n"));
-        out.push_str(&format!("        packageName = \"{}\",\n", esc(&android.package_name)));
+        out.push_str(&format!(
+            "        displayName = \"{}\",\n",
+            esc(&app.display_label)
+        ));
+        out.push_str(&format!(
+            "        intentScheme = \"{}\",\n",
+            esc(&android.intent_scheme)
+        ));
+        out.push_str(&format!(
+            "        contentAuthority = {content_authority},\n"
+        ));
+        out.push_str(&format!(
+            "        packageName = \"{}\",\n",
+            esc(&android.package_name)
+        ));
         out.push_str("    ),\n");
     }
     out.push_str(")\n");
@@ -208,8 +223,12 @@ pub fn render_swift_known_signers(apps: &[SignerApp]) -> String {
     let mut out = String::new();
     out.push_str(SWIFT_HEADER);
     out.push_str("extension NostrSignerDetector {\n\n");
-    out.push_str("    /// Ordered list of signers this detector knows about (detection precedence\n");
-    out.push_str("    /// = array order). Every `urlScheme` here MUST also appear in Info.plist's\n");
+    out.push_str(
+        "    /// Ordered list of signers this detector knows about (detection precedence\n",
+    );
+    out.push_str(
+        "    /// = array order). Every `urlScheme` here MUST also appear in Info.plist's\n",
+    );
     out.push_str("    /// `LSApplicationQueriesSchemes`.\n");
     // `@MainActor` placement matches the original hand-written declaration; the
     // member stays `public` to preserve the existing API surface (it was
@@ -234,7 +253,10 @@ pub fn render_swift_known_signers(apps: &[SignerApp]) -> String {
                     esc(&app.display_label),
                     esc(&ios.url_scheme)
                 ));
-                out.push_str(&format!("            displayName: \"{}\"\n", esc(&app.display_label)));
+                out.push_str(&format!(
+                    "            displayName: \"{}\"\n",
+                    esc(&app.display_label)
+                ));
                 out.push_str("        ),\n");
             }
         }
@@ -289,7 +311,6 @@ fn manifest_query_schemes(manifest: &str) -> Vec<String> {
     collect_attr_values(block, "android:scheme=\"")
 }
 
-
 /// Collect every double-quoted value following each occurrence of `attr` (e.g.
 /// `android:scheme="`), in order.
 fn collect_attr_values(haystack: &str, attr: &str) -> Vec<String> {
@@ -306,7 +327,6 @@ fn collect_attr_values(haystack: &str, attr: &str) -> Vec<String> {
     }
     out
 }
-
 
 // ── Generate / check orchestration ────────────────────────────────────────────
 

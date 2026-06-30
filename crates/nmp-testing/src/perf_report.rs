@@ -108,7 +108,11 @@ impl PerfGate {
     }
 
     /// A gate that could not be measured (blocked / relay miss / hook gap).
-    pub fn blocked(name: impl Into<String>, threshold: impl Into<String>, note: impl Into<String>) -> Self {
+    pub fn blocked(
+        name: impl Into<String>,
+        threshold: impl Into<String>,
+        note: impl Into<String>,
+    ) -> Self {
         PerfGate {
             name: name.into(),
             threshold: threshold.into(),
@@ -119,7 +123,11 @@ impl PerfGate {
     }
 
     /// A gate that was skipped (e.g. relay not available).
-    pub fn skip(name: impl Into<String>, threshold: impl Into<String>, note: impl Into<String>) -> Self {
+    pub fn skip(
+        name: impl Into<String>,
+        threshold: impl Into<String>,
+        note: impl Into<String>,
+    ) -> Self {
         PerfGate {
             name: name.into(),
             threshold: threshold.into(),
@@ -283,7 +291,10 @@ fn markdown(r: &PerfReport) -> String {
         if let Some(desc) = &scenario.description {
             out.push_str(&format!("_{desc}_\n\n"));
         }
-        out.push_str(&format!("- **wall_seconds:** {:.1}\n\n", scenario.wall_seconds));
+        out.push_str(&format!(
+            "- **wall_seconds:** {:.1}\n\n",
+            scenario.wall_seconds
+        ));
         out.push_str("| Gate | Threshold | Measured | Result |\n");
         out.push_str("|---|---|---|---|\n");
         for gate in &scenario.gates {

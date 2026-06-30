@@ -42,7 +42,7 @@ use heed::types::Bytes;
 use heed::{Database, RwTxn};
 
 use self::codec::{
-    decode_doc_terms, encode_doc_terms, postings_key, postings_token_bounds, postings_decode_tail,
+    decode_doc_terms, encode_doc_terms, postings_decode_tail, postings_key, postings_token_bounds,
     rev_created_at, term_stats_key,
 };
 use super::Inner;
@@ -249,4 +249,3 @@ pub(super) fn term_doc_frequency(
         },
     )
 }
-

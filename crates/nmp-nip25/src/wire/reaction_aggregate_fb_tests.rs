@@ -7,13 +7,25 @@ fn sample() -> ReactionAggregateSnapshot {
                 target_event_id: "a".repeat(64),
                 total: 3,
                 by_emoji: vec![
-                    ReactionEmojiCount { token: "+".into(), count: 2 },
-                    ReactionEmojiCount { token: "🔥".into(), count: 1 },
+                    ReactionEmojiCount {
+                        token: "+".into(),
+                        count: 2,
+                    },
+                    ReactionEmojiCount {
+                        token: "🔥".into(),
+                        count: 1,
+                    },
                 ],
                 reactors: vec!["1".repeat(64), "2".repeat(64), "3".repeat(64)],
                 mine: vec![
-                    ViewerReaction { token: "+".into(), reaction_event_id: "d".repeat(64) },
-                    ViewerReaction { token: "🔥".into(), reaction_event_id: "e".repeat(64) },
+                    ViewerReaction {
+                        token: "+".into(),
+                        reaction_event_id: "d".repeat(64),
+                    },
+                    ViewerReaction {
+                        token: "🔥".into(),
+                        reaction_event_id: "e".repeat(64),
+                    },
                 ],
             },
             ReactionTargetAggregate {
@@ -46,7 +58,10 @@ fn buffer_carries_n25a_identifier() {
 fn empty_snapshot_round_trips() {
     let snapshot = ReactionAggregateSnapshot::empty();
     let bytes = encode_reaction_aggregate_snapshot(&snapshot);
-    assert_eq!(decode_reaction_aggregate_snapshot(&bytes).unwrap(), snapshot);
+    assert_eq!(
+        decode_reaction_aggregate_snapshot(&bytes).unwrap(),
+        snapshot
+    );
 }
 
 #[test]

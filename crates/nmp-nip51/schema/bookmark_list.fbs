@@ -3,7 +3,7 @@ namespace nmp.nip51;
 // Typed FlatBuffers wire for the `nmp.nip51.bookmarks` snapshot projection.
 //
 // The producer is the `BookmarkListProjection` closure registered in
-// `crates/nmp-defaults/src/runtimes/bookmarks_runtime.rs`, which serialises the
+// `crates/explicit composition/src/runtimes/bookmarks_runtime.rs`, which serialises the
 // active account's NIP-51 kind:10003 `BookmarkListSnapshot`.
 //
 // Field-for-field mirror (raw protocol values only, ADR-0032):

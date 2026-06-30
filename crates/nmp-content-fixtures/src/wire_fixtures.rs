@@ -61,12 +61,7 @@ pub fn build_wire_fixtures() -> Vec<WireFixture> {
 /// `ContentTreeWire` form. Pure; no relay / network / store touched.
 #[must_use]
 pub fn wire_for_event(ev: &SignedEventJson) -> ContentTreeWire {
-    let tree = tokenize_with_kind(
-        &ev.content,
-        &ev.tags,
-        RenderMode::Auto,
-        ev.kind,
-    );
+    let tree = tokenize_with_kind(&ev.content, &ev.tags, RenderMode::Auto, ev.kind);
     tree.to_wire()
 }
 

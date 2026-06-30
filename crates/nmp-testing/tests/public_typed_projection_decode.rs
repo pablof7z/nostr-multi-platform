@@ -17,8 +17,8 @@
 
 use std::time::{Duration, Instant};
 
-use nmp_core::testing::{spawn_actor, ActorCommand};
 use nmp_core::actor::{ActionLedgerCommand, IdentityCommand, LifecycleCommand, PublishCommand};
+use nmp_core::testing::{spawn_actor, ActorCommand};
 use nmp_core::typed_projections::{
     decode_action_results, decode_publish_queue, ACTION_RESULTS_FILE_IDENTIFIER,
     ACTION_RESULTS_SCHEMA_ID, ACTION_RESULTS_SCHEMA_VERSION, PUBLISH_QUEUE_FILE_IDENTIFIER,
@@ -86,14 +86,18 @@ fn external_consumer_decodes_publish_queue_and_action_results_via_public_api() {
     // deterministic, relay-independent way to populate the drain-on-emit
     // `action_results` sidecar: the actor folds it into a terminal verdict the
     // SAME tick (no live relay echo required).
-    tx.send(ActorCommand::ActionLedger(ActionLedgerCommand::RecordSuccess {
-        correlation_id: "proof-corr-1".to_string(),
-        result_json: None,
-    }))
+    tx.send(ActorCommand::ActionLedger(
+        ActionLedgerCommand::RecordSuccess {
+            correlation_id: "proof-corr-1".to_string(),
+            result_json: None,
+        },
+    ))
     .expect("send RecordActionSuccess");
 
-    tx.send(ActorCommand::Lifecycle(LifecycleCommand::MarkChangedSinceEmit))
-        .expect("send MarkChangedSinceEmit");
+    tx.send(ActorCommand::Lifecycle(
+        LifecycleCommand::MarkChangedSinceEmit,
+    ))
+    .expect("send MarkChangedSinceEmit");
 
     // Drain frames via the PUBLIC `decode_snapshot_typed_projections`,
     // accumulating the first typed `publish_queue` and `action_results`
@@ -132,7 +136,11 @@ fn external_consumer_decodes_publish_queue_and_action_results_via_public_api() {
         if action_results_payload.is_none() {
             if let Some(entry) = find_entry(&typed, ACTION_RESULTS_SCHEMA_ID) {
                 if let Ok(model) = decode_action_results(&entry.payload) {
-                    if model.results.iter().any(|r| r.correlation_id == "proof-corr-1") {
+                    if model
+                        .results
+                        .iter()
+                        .any(|r| r.correlation_id == "proof-corr-1")
+                    {
                         action_results_payload = Some(entry.clone());
                     }
                 }

@@ -37,7 +37,8 @@ pub use scopes::{
 };
 pub use search::{
     install_search_relay_source, resolve_search_relays, search_relay_plan, RelayPinnedInterest,
-    SearchRelaySource, SearchSessionBuild, SearchSessionRegistry, SearchTeardownAction,
+    SearchFallbackRelays, SearchRelaySource, SearchSessionBuild, SearchSessionRegistry,
+    SearchTeardownAction,
 };
 pub use wire::{
     decode_search_results_snapshot, encode_search_results_snapshot,

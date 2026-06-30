@@ -270,7 +270,10 @@ for_each_backend!(gc_step_uses_passed_now_secs, |h: &mut StoreHarness| {
             5, // before exp=10
         )
         .unwrap();
-    assert_eq!(report.expired_reaped, 0, "event must not expire at now_secs=5");
+    assert_eq!(
+        report.expired_reaped, 0,
+        "event must not expire at now_secs=5"
+    );
     h.assert_present(&id);
 
     // GC with now_secs = 11 (after expiry): event must be reaped.
@@ -285,7 +288,10 @@ for_each_backend!(gc_step_uses_passed_now_secs, |h: &mut StoreHarness| {
             11, // after exp=10
         )
         .unwrap();
-    assert_eq!(report2.expired_reaped, 1, "event must expire at now_secs=11");
+    assert_eq!(
+        report2.expired_reaped, 1,
+        "event must expire at now_secs=11"
+    );
     h.assert_absent(&id);
 });
 

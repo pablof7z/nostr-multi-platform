@@ -10,12 +10,26 @@ use std::process::{Command, Output, Stdio};
 use std::sync::mpsc;
 use std::time::Duration;
 
-const STARTER_INSTALLER_SEQUENCE: [&str; 5] = [
-    "nmp_defaults::register_substrate",
-    "nmp_defaults::register_nip50_protocol_defaults",
-    "nmp_defaults::register_social_protocol_defaults",
-    "nmp_defaults::register_dm_protocol_defaults",
-    "nmp_defaults::register_longform_projection",
+const STARTER_INSTALLER_SEQUENCE: [&str; 19] = [
+    "nmp_substrate::install",
+    "nmp_nip50::register_search_scopes",
+    "nmp_nip50::register_input_scopes",
+    "nmp_nip02::register_follow_actions",
+    "nmp_replies::register_actions",
+    "nmp_nip25::Nip25Descriptor",
+    "nmp_nip18::Nip18Descriptor",
+    "nmp_nip84::Nip84Descriptor",
+    "nmp_nip29::register_input_scopes",
+    "nmp_wot::register_runtime",
+    "nmp_nip51::register_mute_runtime",
+    "nmp_nip51::register_bookmark_runtime",
+    "nmp_nip51::register_bookmark_set_runtime",
+    "nmp_nip51::register_web_bookmark_runtime",
+    "nmp_nip51::register_search_relay_runtime_with_fallbacks",
+    "nmp_nip17::register_actions",
+    "nmp_nip17::register_runtime",
+    "nmp_nip22::register_runtime",
+    "nmp_content::register_longform_projection",
 ];
 
 #[test]
@@ -44,10 +58,24 @@ fn init_scaffold_is_a_compiling_composition_shell() {
     //    `nmp gen modules` step.
     let lib = std::fs::read_to_string(root.join("crates/demoapp-core/src/lib.rs"))
         .expect("read scaffolded lib.rs");
+    let cargo_toml = std::fs::read_to_string(root.join("crates/demoapp-core/Cargo.toml"))
+        .expect("read scaffolded Cargo.toml");
     assert_named_installer_sequence(&lib);
     assert!(
-        !lib.contains("nmp_defaults::register_defaults"),
-        "scaffolded production `register` must not call hidden register_defaults:\n{lib}"
+        !lib.contains("nmp_defaults::register_defaults")
+            && !lib.contains("nmp_defaults")
+            && !lib.contains("nmp-defaults"),
+        "scaffolded production `register` must not use nmp-defaults:\n{lib}"
+    );
+    assert!(
+        !cargo_toml.contains("\nnmp-defaults =")
+            && !cargo_toml.contains("package = \"nmp-defaults\"")
+            && cargo_toml.contains("nmp-substrate")
+            && cargo_toml.contains("nmp-nip50")
+            && cargo_toml.contains("nmp-nip51")
+            && cargo_toml.contains("nmp-nip17")
+            && cargo_toml.contains("nmp-content"),
+        "scaffolded Cargo.toml must depend on explicit owner crates, not nmp-defaults:\n{cargo_toml}"
     );
     assert!(
         lib.contains("starter_projection_keys")
@@ -106,8 +134,8 @@ fn init_scaffold_is_a_compiling_composition_shell() {
     );
 
     // 3. The scaffold compiles as-is (lib + example + tests). This links
-    //    against the local-path `nmp-defaults` / `nmp-ffi` / `nmp-core`
-    //    crates, so the whole composition root is type-checked end-to-end.
+    //    against local-path owner crates, so the whole composition root is
+    //    type-checked end-to-end.
     let check = Command::new(env!("CARGO"))
         .args(["check", "--all-targets"])
         .current_dir(&root)
@@ -181,6 +209,8 @@ fn assert_named_installer_sequence(lib: &str) {
 fn assert_no_retired_app_surface(lib: &str, shell: &str) {
     let legacy_embed_projection_key = ["claimed_event", "embeds"].join("_");
     for forbidden in [
+        "nmp-defaults",
+        "nmp_defaults",
         "register_defaults",
         "open_interest",
         "ObservedProjection",

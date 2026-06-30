@@ -11,11 +11,11 @@
 
 use serde::{Deserialize, Serialize};
 
-use nmp_nostr_id::{nip21, NostrUri};
 use crate::planner::{
     HintSource, InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
     NaddrCoord, RelayHint,
 };
+use nmp_nostr_id::{nip21, NostrUri};
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum KernelAction {

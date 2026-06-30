@@ -13,7 +13,7 @@
 //! runtime into the zap chain. This trait inverts that edge: NIP-57 emits a
 //! typed [`PaymentIntent`] through an injected `Arc<dyn PaymentPort>` and never
 //! names a wallet runtime. NIP-47 supplies the implementation, and the
-//! composition root (`nmp-defaults`) wires the two together.
+//! composition root (`explicit composition`) wires the two together.
 //!
 //! The port returns an [`ActorCommand`] rather than performing I/O directly:
 //! payment is an actor-thread effect (it enqueues a `ProtocolCommand`), so the

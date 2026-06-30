@@ -70,7 +70,11 @@ fn decode_tombstone_row(stmt: &SqliteStmt<'_>) -> Result<TombstoneRow, SqliteWas
     let deleted_at = stmt.column_int64(3)? as u64;
     let origin = origin_from_code(stmt.column_int64(4)?);
     let source = stmt.column_text(5)?;
-    let sources = if source.is_empty() { Vec::new() } else { vec![source] };
+    let sources = if source.is_empty() {
+        Vec::new()
+    } else {
+        vec![source]
+    };
     Ok(TombstoneRow {
         target_id,
         kind5_event_id,

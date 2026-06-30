@@ -51,7 +51,7 @@ Produced layout:
   nmp.toml                   # NMP dependency policy (read by doctor/upgrade)
   README.md                  # per-app next steps
   crates/<name>-core/
-    Cargo.toml               # nmp-defaults + nmp-native-runtime + nmp-core + serde
+    Cargo.toml               # nmp-substrate + selected protocol crates + nmp-native-runtime + nmp-core + serde
     src/lib.rs               # explicit register() root + example domain
     examples/shell.rs        # NmpAppBuilder → register → start
 ```
@@ -181,7 +181,8 @@ Component contract:
    substrate explicitly, the example drives `NmpAppBuilder`, and there is no
    generated `apps/` FFI tree.
 3. `cargo check --all-targets` on the scaffold → green (links the live
-   `nmp-defaults` / `nmp-native-runtime` / `nmp-core` crates).
+   `nmp-substrate` / selected protocol / `nmp-native-runtime` / `nmp-core`
+   crates).
 4. `cargo test -p <name>-core` → skeleton tests pass.
 
 A second test asserts invalid app names are rejected.

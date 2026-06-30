@@ -1,6 +1,6 @@
 ---
 title: "App Composition and Chirp Wiring"
-summary: "How generic NMP defaults, Chirp per-app Rust glue, projections, and typed feed sidecars are composed before the kernel starts."
+summary: "How explicit NMP protocol owners, Chirp per-app Rust glue, projections, and typed feed sidecars are composed before the kernel starts."
 tags: [app-composition, chirp, ffi, projections]
 created: 2026-05-28
 updated: 2026-05-28
@@ -19,11 +19,12 @@ The composition root registers generic protocol modules, substrate factories,
 runtime controllers, and app-specific projections. The native shell should not
 discover these pieces dynamically or recreate their policy.
 
-## Generic Defaults
+## Explicit Composition
 
-`nmp-defaults::register_defaults` is the generic Nostr-app wiring point.
-It installs common action modules, kind parsers, routing substrate, publish
-resolver, indexer-republish policy, coverage hooks, and runtime controllers.
+NMP apps compose common action modules, kind parsers, routing substrate, publish
+resolver, indexer-republish policy, coverage hooks, and runtime controllers from
+explicit owner crates. The deleted hidden bundle should not be treated as the
+current app root or scaffold model.
 
 The most important ownership detail is the routing cache: the template creates
 one `InMemoryMailboxCache`, registers the kind:10002 parser as its writer, and
@@ -31,14 +32,13 @@ passes the same cache through the routing-substrate factory. That preserves D4:
 the parser writes mailbox facts once, and router/planner consumers read the
 same fact stream.
 
-The template intentionally does not start the app, expose C ABI symbols, or
-register app-specific projections. It is reusable composition, not product
-identity.
+Reusable composition intentionally does not start the app, expose C ABI symbols,
+or register app-specific projections. It is not product identity.
 
 ## Chirp's Extra Layer
 
-`nmp_app_chirp_register` wraps the generic defaults with Chirp-specific Rust
-glue:
+`nmp_app_chirp_register` layers Chirp-specific Rust glue over explicit reusable
+owners:
 
 - NIP-29 actions and group projections;
 - visible note relation actions from `nmp-nip01`;
@@ -68,10 +68,10 @@ encoding of the bounded current window.
 engine. It wires an `ActiveFollowSet`, `OpFeedEngine`, event lookup closure,
 claim sink, and account-switch reset callback.
 
-It is not called by `register_defaults`. It also deliberately does not register
-per-follow interests, because the kernel still owns the existing follow-feed
-subscription expansion. Adding the engine and duplicating the subscription
-expansion would produce duplicate REQs.
+It is not part of the app's base composition. It also deliberately does not
+register per-follow interests, because the kernel still owns the existing
+follow-feed subscription expansion. Adding the engine and duplicating the
+subscription expansion would produce duplicate REQs.
 
 ## Pull Snapshot Is Diagnostics
 

@@ -54,14 +54,14 @@ impl OpfsSqliteEventStore {
         let inner = OpfsSqliteStore::open(database_name)
             .await
             .map_err(conv::store_err)?;
-        Ok(Self { inner: Arc::new(inner) })
+        Ok(Self {
+            inner: Arc::new(inner),
+        })
     }
 
     /// Materialize an engine scan `Vec` into a boxed `EventIter` of
     /// `Result<StoredEvent, _>` (`Send` — `StoredEngineEvent` is `Send`).
-    fn boxed_scan<'a>(
-        rows: Vec<nmp_sqlite_wasm::StoredEngineEvent>,
-    ) -> Box<dyn EventIter + 'a> {
+    fn boxed_scan<'a>(rows: Vec<nmp_sqlite_wasm::StoredEngineEvent>) -> Box<dyn EventIter + 'a> {
         Box::new(rows.into_iter().map(|se| Ok(conv::stored_into(se))))
     }
 }
@@ -70,11 +70,19 @@ impl EventStore for OpfsSqliteEventStore {
     // ─── Reads ────────────────────────────────────────────────────────────────
 
     fn get_by_id(&self, id: &EventId) -> Result<Option<StoredEvent>, StoreError> {
-        Ok(self.inner.get_by_id(id).map_err(conv::store_err)?.map(conv::stored_into))
+        Ok(self
+            .inner
+            .get_by_id(id)
+            .map_err(conv::store_err)?
+            .map(conv::stored_into))
     }
 
     fn peek_by_id(&self, id: &EventId) -> Result<Option<StoredEvent>, StoreError> {
-        Ok(self.inner.peek_by_id(id).map_err(conv::store_err)?.map(conv::stored_into))
+        Ok(self
+            .inner
+            .peek_by_id(id)
+            .map_err(conv::store_err)?
+            .map(conv::stored_into))
     }
 
     fn scan_by_author_kind<'a>(
@@ -176,8 +184,9 @@ impl EventStore for OpfsSqliteEventStore {
         // Adapt the engine's `&StoredEngineEvent` visit to the trait's
         // `&StoredEvent` visit (one conversion per visited row, mirroring the
         // engine's per-row decode — no extra result buffer).
-        let mut adapt =
-            |se: &nmp_sqlite_wasm::StoredEngineEvent| -> ControlFlow<()> { visitor(&conv::stored_ref(se)) };
+        let mut adapt = |se: &nmp_sqlite_wasm::StoredEngineEvent| -> ControlFlow<()> {
+            visitor(&conv::stored_ref(se))
+        };
         self.inner
             .query_visit(&engine_query, limit, &mut adapt)
             .map_err(conv::store_err)
@@ -210,7 +219,9 @@ impl EventStore for OpfsSqliteEventStore {
     ) -> Result<Box<dyn Iterator<Item = Result<TombstoneRow, StoreError>> + Send + 'a>, StoreError>
     {
         let rows = self.inner.list_tombstones().map_err(conv::store_err)?;
-        Ok(Box::new(rows.into_iter().map(|r| Ok(conv::tombstone_row(r)))))
+        Ok(Box::new(
+            rows.into_iter().map(|r| Ok(conv::tombstone_row(r))),
+        ))
     }
 
     fn provenance_for(&self, id: &EventId) -> Result<Vec<ProvenanceEntry>, StoreError> {
@@ -224,15 +235,21 @@ impl EventStore for OpfsSqliteEventStore {
     }
 
     fn list_events_seen_on(&self, relay_url: &str) -> Result<Vec<EventId>, StoreError> {
-        self.inner.list_events_seen_on(relay_url).map_err(conv::store_err)
+        self.inner
+            .list_events_seen_on(relay_url)
+            .map_err(conv::store_err)
     }
 
     fn relay_kind_coverage(&self, relay_url: &str) -> Result<Vec<u32>, StoreError> {
-        self.inner.relay_kind_coverage(relay_url).map_err(conv::store_err)
+        self.inner
+            .relay_kind_coverage(relay_url)
+            .map_err(conv::store_err)
     }
 
     fn relay_kind_count(&self, relay_url: &str, kind: u32) -> Result<u64, StoreError> {
-        self.inner.relay_kind_count(relay_url, kind).map_err(conv::store_err)
+        self.inner
+            .relay_kind_count(relay_url, kind)
+            .map_err(conv::store_err)
     }
 
     // ─── Writes ───────────────────────────────────────────────────────────────
@@ -293,11 +310,16 @@ impl EventStore for OpfsSqliteEventStore {
 
     fn coverage_max_for_filter_hash(&self, filter_hash: &str) -> Option<u64> {
         // D6 graceful degrade: a read fault reads as "no coverage", never a panic.
-        self.inner.coverage_max_for_filter_hash(filter_hash).ok().flatten()
+        self.inner
+            .coverage_max_for_filter_hash(filter_hash)
+            .ok()
+            .flatten()
     }
 
     fn coverage_rows_for_filter_hash(&self, filter_hash: &str) -> Vec<(String, u64)> {
-        self.inner.coverage_rows_for_filter_hash(filter_hash).unwrap_or_default()
+        self.inner
+            .coverage_rows_for_filter_hash(filter_hash)
+            .unwrap_or_default()
     }
 
     // ─── Domain rows ──────────────────────────────────────────────────────────
@@ -323,7 +345,10 @@ impl EventStore for OpfsSqliteEventStore {
         // engine's `MigrationTx`, so the closure cannot be handed across. We run
         // the closures here against our own `MigrationTx`, stage the writes, then
         // commit them + the version bump atomically via `apply_domain_migration`.
-        let current = self.inner.domain_version(namespace).map_err(conv::store_err)?;
+        let current = self
+            .inner
+            .domain_version(namespace)
+            .map_err(conv::store_err)?;
         if current > target_version {
             return Err(StoreError::SchemaTooNew {
                 namespace: namespace.to_string(),
@@ -366,7 +391,9 @@ impl EventStore for OpfsSqliteEventStore {
 
     fn set_check_again_after(&self, key: ReplaceableKey, ts_ms: u64) {
         // D6 graceful degrade: a stamp fault must never block ingest/claim.
-        let _ = self.inner.set_check_again_after(&conv::replaceable_key(&key), ts_ms);
+        let _ = self
+            .inner
+            .set_check_again_after(&conv::replaceable_key(&key), ts_ms);
     }
 
     // ─── K3 coverage ledger ─────────────────────────────────────────────────────
@@ -374,7 +401,9 @@ impl EventStore for OpfsSqliteEventStore {
     fn record_coverage(&self, filter_hash: &str, relay: &str, covered_through: u64) {
         // D6 graceful degrade: a missed coverage write only loses a since-floor
         // hint for this shape, never a wrong answer.
-        let _ = self.inner.record_coverage(filter_hash, relay, covered_through);
+        let _ = self
+            .inner
+            .record_coverage(filter_hash, relay, covered_through);
     }
 
     fn get_coverage(&self, filter_hash: &str, relay: &str) -> Option<u64> {
@@ -397,7 +426,9 @@ impl EventStore for OpfsSqliteEventStore {
         limit: usize,
     ) -> Result<ScanLogResult, StoreError> {
         Ok(conv::scan_log_result(
-            self.inner.scan_log_since_seq(after_seq, limit).map_err(conv::store_err)?,
+            self.inner
+                .scan_log_since_seq(after_seq, limit)
+                .map_err(conv::store_err)?,
         ))
     }
 
@@ -405,7 +436,9 @@ impl EventStore for OpfsSqliteEventStore {
         // VOLATILE wholesale replace (ADR-0058 §6). A fault is non-fatal: the
         // next append-time trim uses the prior set; the consumer degrades to an
         // explicit PullGap, never a silent skip.
-        let _ = self.inner.replace_log_retention_claims(&conv::retention_claims(claims));
+        let _ = self
+            .inner
+            .replace_log_retention_claims(&conv::retention_claims(claims));
     }
 
     // ─── Export ─────────────────────────────────────────────────────────────────
@@ -432,7 +465,10 @@ impl EventStore for OpfsSqliteEventStore {
         &self,
         target: &EventId,
     ) -> Result<crate::TargetInteractionCounts, StoreError> {
-        let c = self.inner.interaction_counts(target).map_err(conv::store_err)?;
+        let c = self
+            .inner
+            .interaction_counts(target)
+            .map_err(conv::store_err)?;
         Ok(crate::TargetInteractionCounts {
             replies: c.replies,
             reactions: c.reactions,

@@ -9,32 +9,33 @@
 //! `nmp-core` stays protocol-neutral: this manifest lives in `nmp-codegen`
 //! because it must name NIP namespaces and host-builder facts.
 
-/// Where a default action enters the standard NMP composition.
+/// Where an action enters an explicit owner-composed NMP app root.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActionDefaultTier {
     /// Registered by `nmp-core::kernel::default_registry`.
     CoreBuiltin,
-    /// Registered by `nmp_defaults::register_substrate`.
+    /// Registered by `nmp_substrate::install`.
     Substrate,
-    /// Registered when `NmpDefaults.social` is enabled.
+    /// Registered when `ExplicitCompositionPolicy.social` is enabled.
     Social,
-    /// Registered when `NmpDefaults.dms` is enabled.
+    /// Registered when `ExplicitCompositionPolicy.dms` is enabled.
     DirectMessages,
-    /// Post-v1 zap action row. Not registered by `nmp-defaults` v1 composition
+    /// Post-v1 zap action row. Not part of the standard v1 owner composition
     /// (#2318).
     Zaps,
     /// Registered opt-in via `NmpAppBuilder::with_wallet` — NOT part of the
-    /// default composition. Excluded from [`canonical_default_action_namespaces`]
-    /// so `register_defaults` matching tests stay green.
+    /// standard owner composition. Excluded from
+    /// [`canonical_default_action_namespaces`].
     Wallet,
     /// Registered when the `marmot` feature is on (MLS-over-Nostr seam). NOT
-    /// part of the default composition — `nmp-marmot` is a feature-gated dep.
-    /// Excluded from [`canonical_default_action_namespaces`] so the no-marmot
-    /// contract set-equality test stays green without a dep on `nmp-marmot`.
+    /// part of the standard owner composition — `nmp-marmot` is a
+    /// feature-gated dep. Excluded from [`canonical_default_action_namespaces`]
+    /// so the no-marmot contract set-equality test stays green without a dep on
+    /// `nmp-marmot`.
     Marmot,
     /// Registered by an app-component crate (e.g. `nmp-relations`, `nmp-blossom`)
-    /// that is wired in at app-assembly time, not by `nmp-defaults`. Excluded
-    /// from [`canonical_default_action_namespaces`] and from the
+    /// that is wired in at app-assembly time. Excluded from
+    /// [`canonical_default_action_namespaces`] and from the
     /// `contract_matches_modules_and_default_payload_reexports` test so the
     /// no-blossom / no-relations default build stays green.
     ComponentRegistered,
@@ -64,13 +65,13 @@ pub enum BuilderSupport {
     },
 }
 
-/// How `nmp-defaults::action_payloads` exposes the payload type.
+/// How the typed payload is exposed to app roots and host builders.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PublicReExportPolicy {
-    /// Re-export the typed payload through `nmp_defaults::action_payloads`.
-    DefaultsActionPayloads,
+    /// Use the payload type from its owning crate.
+    OwnerCratePayload,
     /// Keep the typed payload in its owning crate; not re-exported by
-    /// `nmp-defaults`.
+    /// the owning crate.
     NotReExported {
         /// Tracked rationale for the absence.
         reason: &'static str,
@@ -87,7 +88,7 @@ pub enum TypedDispatchPolicy {
     Exempt { issue: &'static str },
 }
 
-/// One default typed action's neutral public contract.
+/// One typed action's neutral public contract.
 #[derive(Debug)]
 pub struct ActionContract {
     /// Open-registry routing key stamped into `DispatchEnvelope.action_namespace`.
@@ -110,7 +111,7 @@ pub struct ActionContract {
     pub schema_version: u32,
     /// Four-byte FlatBuffers `file_identifier`.
     pub file_identifier: &'static str,
-    /// Default composition tier.
+    /// Owner composition tier.
     pub default_tier: ActionDefaultTier,
     /// Generated host-builder posture.
     pub builder_support: BuilderSupport,
@@ -150,8 +151,7 @@ pub fn contract_for(namespace: &str) -> &'static ActionContract {
 
 /// Sorted namespaces for the canonical default composition, including the
 /// `nmp-core` built-in publish action. Wallet, zaps, and Marmot namespaces are
-/// opt-in/post-v1 and are excluded from this set so the `register_defaults`
-/// matching test stays green on default builds.
+/// opt-in/post-v1 and are excluded from this set on standard builds.
 #[must_use]
 pub fn canonical_default_action_namespaces() -> Vec<&'static str> {
     sorted_namespaces(|c| {
@@ -174,7 +174,7 @@ pub fn marmot_action_namespaces() -> Vec<&'static str> {
     sorted_namespaces(|c| c.default_tier == ActionDefaultTier::Marmot)
 }
 
-/// Sorted namespaces registered by `nmp_defaults::register_substrate`.
+/// Sorted namespaces registered by `nmp_substrate::install`.
 #[must_use]
 pub fn substrate_action_namespaces() -> Vec<&'static str> {
     sorted_namespaces(|c| c.default_tier == ActionDefaultTier::Substrate)
@@ -193,7 +193,7 @@ pub fn dm_action_namespaces() -> Vec<&'static str> {
 }
 
 /// Sorted zap-tier action namespaces, retained for post-v1/private crate tests
-/// but not registered by `nmp-defaults`.
+/// but not part of the standard v1 owner composition.
 #[must_use]
 pub fn zap_action_namespaces() -> Vec<&'static str> {
     sorted_namespaces(|c| c.default_tier == ActionDefaultTier::Zaps)

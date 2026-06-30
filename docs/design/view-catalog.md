@@ -5,7 +5,7 @@ protocol/defaults/app crates.
 
 ## Current Sources
 
-- `nmp-defaults` wires the standard projection set used by default NMP apps.
+- Runtime/app composition roots wire the projection set they need explicitly.
 - Protocol crates own protocol-specific projection payloads and reducers.
 - App crates own product-specific projection payloads and reducers.
 - Hosts consume snapshots and typed sidecars by projection key.

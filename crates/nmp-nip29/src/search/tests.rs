@@ -10,9 +10,7 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use nmp_core::substrate::{
-    SearchScopeProvider, SearchScopeRegistrar, SearchScopeRegistry,
-};
+use nmp_core::substrate::{SearchScopeProvider, SearchScopeRegistrar, SearchScopeRegistry};
 use nmp_store::{
     EventStore, MemEventStore, RawEvent, SearchScopeId, TextSearchBudget, TextSearchOrder,
     TextSearchQuery, TextSearchStatus, VerifiedEvent,
@@ -159,11 +157,17 @@ fn token_and_prefix_search_over_names_and_abouts() {
 
     // Token over an ABOUT field (lower weight, but still indexed).
     let (_s, hits) = run_search(&store, &query(scope, "framework"));
-    assert_eq!(hits, 1, "about token 'framework' matches nostr-multi-platform");
+    assert_eq!(
+        hits, 1,
+        "about token 'framework' matches nostr-multi-platform"
+    );
 
     // Prefix match over an ABOUT field: "minimal" → "minimalist".
     let (_s, hits) = run_search(&store, &query(scope, "minimal"));
-    assert_eq!(hits, 1, "prefix 'minimal' matches 'minimalist' in chirp's about");
+    assert_eq!(
+        hits, 1,
+        "prefix 'minimal' matches 'minimalist' in chirp's about"
+    );
 
     // A token present in BOTH docs ("nmp" — chirp's about says "built on NMP",
     // the nmp group's d-slug/name is "nostr-multi-platform" → token "nmp"? no;

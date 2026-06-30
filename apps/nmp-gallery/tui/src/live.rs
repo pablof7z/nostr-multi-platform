@@ -27,7 +27,7 @@
 use std::{
     collections::BTreeMap,
     ffi::c_void,
-    sync::{Arc, mpsc::Receiver},
+    sync::{mpsc::Receiver, Arc},
     time::Duration,
 };
 
@@ -77,7 +77,10 @@ impl GalleryTypedSnapshot {
         let typed = nmp_core::decode_snapshot_typed_projections(bytes).unwrap_or_default();
 
         let find = |key: &str| -> Option<&[u8]> {
-            typed.iter().find(|p| p.key == key).map(|p| p.payload.as_slice())
+            typed
+                .iter()
+                .find(|p| p.key == key)
+                .map(|p| p.payload.as_slice())
         };
 
         if let Some(payload) = find(REFS_EVENT_KEY) {
@@ -90,12 +93,18 @@ impl GalleryTypedSnapshot {
         }
         let profiles = profiles_store.profiles();
 
-        Self { events, profiles, relay_statuses }
+        Self {
+            events,
+            profiles,
+            relay_statuses,
+        }
     }
 
     /// True when at least one relay reports a "connected" connection state.
     pub fn any_relay_connected(&self) -> bool {
-        self.relay_statuses.iter().any(|r| r.connection == "connected")
+        self.relay_statuses
+            .iter()
+            .any(|r| r.connection == "connected")
     }
 }
 
@@ -157,21 +166,29 @@ struct EventRefFromUri {
 fn event_ref_from_uri(uri: &str) -> Option<EventRefFromUri> {
     let (key, relays, author) = if uri.starts_with("nostr:") {
         match nmp_nostr_id::parse_nostr_uri(uri).ok()? {
-            nmp_nostr_id::NostrUri::Event { event_id, relays, author, .. } => {
-                (event_id, relays, author)
-            }
-            nmp_nostr_id::NostrUri::Address { identifier, pubkey, kind, relays } => {
-                (format!("{kind}:{pubkey}:{identifier}"), relays, None)
-            }
+            nmp_nostr_id::NostrUri::Event {
+                event_id,
+                relays,
+                author,
+                ..
+            } => (event_id, relays, author),
+            nmp_nostr_id::NostrUri::Address {
+                identifier,
+                pubkey,
+                kind,
+                relays,
+            } => (format!("{kind}:{pubkey}:{identifier}"), relays, None),
             _ => return None,
         }
     } else {
         match nmp_nostr_id::parse(uri).ok()? {
             nmp_nostr_id::Nip19Entity::Note(event_id) => (event_id, vec![], None),
             nmp_nostr_id::Nip19Entity::Nevent(d) => (d.event_id, d.relays, d.author),
-            nmp_nostr_id::Nip19Entity::Naddr(d) => {
-                (format!("{}:{}:{}", d.kind, d.pubkey, d.identifier), d.relays, None)
-            }
+            nmp_nostr_id::Nip19Entity::Naddr(d) => (
+                format!("{}:{}:{}", d.kind, d.pubkey, d.identifier),
+                d.relays,
+                None,
+            ),
             _ => return None,
         }
     };

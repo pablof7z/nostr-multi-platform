@@ -23,10 +23,17 @@ pub(crate) fn crate_layer(name: &str) -> Option<u8> {
         // L3 — kernel substrate.
         "nmp-core" | "nmp-coverage-gate" => Some(3),
         // L4 — reusable Nostr protocol/product modules (non-NIP members).
-        "nmp-content" | "nmp-content-fixtures" | "nmp-feed" | "nmp-threading" | "nmp-wot"
-        | "nmp-relations" | "nmp-marmot" | "nmp-intent" | "nmp-nwc" => Some(4),
-        // L5 — app composition.
-        "nmp-defaults" | "nmp-substrate-defaults" => Some(5),
+        "nmp-content"
+        | "nmp-content-fixtures"
+        | "nmp-feed"
+        | "nmp-threading"
+        | "nmp-wot"
+        | "nmp-relations"
+        | "nmp-marmot"
+        | "nmp-intent"
+        | "nmp-nwc" => Some(4),
+        // L5 — app/runtime composition floor.
+        "nmp-substrate" => Some(5),
         // L6 — platform runtimes / bindings.
         "nmp-native-runtime" | "nmp-uniffi" | "nmp-browser-runtime" => Some(6),
         // Every other `nmp-nipNN` is an L4 reusable protocol crate.
@@ -170,7 +177,11 @@ fn rule_e_no_upward_cargo_edges() {
         "Rule E scanned only {manifests} manifests — gate would be vacuous"
     );
     // Non-vacuous guard: the layer map must actually resolve the core crates.
-    assert_eq!(crate_layer("nmp-core"), Some(3), "layer map must map nmp-core");
+    assert_eq!(
+        crate_layer("nmp-core"),
+        Some(3),
+        "layer map must map nmp-core"
+    );
     assert_eq!(
         crate_layer("nmp-router"),
         Some(2),

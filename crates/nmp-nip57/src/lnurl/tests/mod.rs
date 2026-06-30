@@ -25,8 +25,8 @@
 use super::*;
 use nmp_core::substrate::{
     ActionStageTracker, EmptyDmInboxRelayLookup, KernelClock, LocalSignerAccess, NoopErrorSurface,
-    NoopHostOpHandlerAccess, NoopRecipientRelayLookup, NoopWalletKernelAccess, NoopZapProfileLookup,
-    ProtocolCommandContextParts, RecipientRelayLookup,
+    NoopHostOpHandlerAccess, NoopRecipientRelayLookup, NoopWalletKernelAccess,
+    NoopZapProfileLookup, ProtocolCommandContextParts, RecipientRelayLookup,
 };
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 use nostr::Keys;
@@ -36,8 +36,7 @@ mod port_run;
 mod relay_injection;
 mod sign_zap_request;
 
-const RECIPIENT_HEX: &str =
-    "bb11223344556677889900aabbccddeeff00112233445566778899aabbccddff";
+const RECIPIENT_HEX: &str = "bb11223344556677889900aabbccddeeff00112233445566778899aabbccddff";
 
 /// ADR-0050 §D3a — the LNURL worker now sends through a `CommandSender`, so the
 /// observation receiver carries `ActorMail`. Unwrap the command for the
@@ -193,5 +192,12 @@ fn ctx_with<'a>(
     recipients: &'a dyn RecipientRelayLookup,
 ) -> ProtocolCommandContext<'a> {
     let (tx, _rx) = std::sync::mpsc::channel::<nmp_core::ActorMail>();
-    ctx_with_sender(send, nmp_core::CommandSender::new(tx), clock, signers, stages, recipients)
+    ctx_with_sender(
+        send,
+        nmp_core::CommandSender::new(tx),
+        clock,
+        signers,
+        stages,
+        recipients,
+    )
 }

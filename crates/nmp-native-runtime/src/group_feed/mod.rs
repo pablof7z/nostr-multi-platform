@@ -69,12 +69,12 @@ use std::sync::Arc;
 use nmp_core::ObservedProjectionId;
 use nmp_nip29::group_id::group_metadata_filter_json;
 use nmp_nip29::{
-    encode_discovered_groups_snapshot, encode_group_events_snapshot,
-    encode_joined_groups_snapshot, DiscoveredGroupsProjection, GroupEventsProjection,
-    GroupEventsQuery, JoinedGroupsProjection, DISCOVERED_GROUPS_FILE_IDENTIFIER,
-    DISCOVERED_GROUPS_SCHEMA_ID, DISCOVERED_GROUPS_SCHEMA_VERSION, GROUP_EVENTS_FILE_IDENTIFIER,
-    GROUP_EVENTS_SCHEMA_ID, GROUP_EVENTS_SCHEMA_VERSION, JOINED_GROUPS_FILE_IDENTIFIER,
-    JOINED_GROUPS_SCHEMA_ID, JOINED_GROUPS_SCHEMA_VERSION,
+    encode_discovered_groups_snapshot, encode_group_events_snapshot, encode_joined_groups_snapshot,
+    DiscoveredGroupsProjection, GroupEventsProjection, GroupEventsQuery, JoinedGroupsProjection,
+    DISCOVERED_GROUPS_FILE_IDENTIFIER, DISCOVERED_GROUPS_SCHEMA_ID,
+    DISCOVERED_GROUPS_SCHEMA_VERSION, GROUP_EVENTS_FILE_IDENTIFIER, GROUP_EVENTS_SCHEMA_ID,
+    GROUP_EVENTS_SCHEMA_VERSION, JOINED_GROUPS_FILE_IDENTIFIER, JOINED_GROUPS_SCHEMA_ID,
+    JOINED_GROUPS_SCHEMA_VERSION,
 };
 
 use crate::app_struct::NmpApp;

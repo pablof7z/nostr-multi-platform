@@ -12,8 +12,10 @@ Composition is app-owned Rust code using reusable installers:
 4. Register app/protocol-specific actions, sessions, and typed outputs.
 5. Start the app.
 
-`nmp-core` provides the substrate. `nmp-defaults` provides reusable installers,
-not hidden production app policy. App crates own their Rust product logic.
+`nmp-core` provides the substrate contracts. `nmp-substrate` provides the shared
+router/mailbox/profile/contacts construction floor for roots that need it.
+Protocol and app features are installed explicitly; there is no replacement
+defaults bundle. App crates own their Rust product logic.
 
 ## 2. ActionModule
 

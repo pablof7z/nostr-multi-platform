@@ -124,4 +124,3 @@ fn key_package_lifecycle_publish_validate_create_group_join() {
         .expect("bob group exists");
     assert_eq!(bob_group.mls_group_id, group_id);
 }
-

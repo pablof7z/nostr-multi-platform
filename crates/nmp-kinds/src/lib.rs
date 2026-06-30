@@ -52,6 +52,10 @@ pub const KIND_CONTACT_LIST: u32 = 3;
 /// NIP-25 reaction (kind:7).
 pub const KIND_REACTION: u32 = 7;
 
+/// NIP-29 group chat message (kind:9). NIP-29 owns the `h`-tag envelope and
+/// host-relay routing; this constant is only Layer-0 integer vocabulary.
+pub const KIND_GROUP_CHAT_MESSAGE: u32 = 9;
+
 /// NIP-17 chat message rumor (kind:14). The unencrypted inner payload of a
 /// gift-wrap envelope.
 pub const KIND_CHAT_MESSAGE: u32 = 14;

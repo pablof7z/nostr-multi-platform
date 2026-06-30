@@ -39,8 +39,7 @@ use dto::Bundle;
 use identities::Identities;
 
 /// Path (relative to the workspace root) of the emitted bundle resource.
-pub const BUNDLE_PATH: &str =
-    "ios/NmpGallery/Resources/content-gallery-bundle.json";
+pub const BUNDLE_PATH: &str = "ios/NmpGallery/Resources/content-gallery-bundle.json";
 
 /// Bundle schema version.
 pub const BUNDLE_VERSION: u32 = 1;

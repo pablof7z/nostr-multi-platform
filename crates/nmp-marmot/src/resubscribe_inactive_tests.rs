@@ -17,8 +17,7 @@ use crate::projection::state::MarmotProjection;
 use crate::service::MarmotService;
 
 fn file_backed_service(path: &str, keys: Keys) -> MarmotService {
-    let storage =
-        MdkSqliteStorage::new_unencrypted(path).expect("file-backed mls storage");
+    let storage = MdkSqliteStorage::new_unencrypted(path).expect("file-backed mls storage");
     MarmotService::from_storage(storage, keys, Default::default())
 }
 
@@ -98,8 +97,7 @@ fn resubscribe_all_groups_skips_inactive_groups() {
         let (welcome, _) = bob
             .unwrap_and_process_welcome(&gift)
             .expect("bob processes welcome");
-        bob.decline_welcome(&welcome)
-            .expect("bob declines welcome");
+        bob.decline_welcome(&welcome).expect("bob declines welcome");
 
         // Verify: bob's record for this group is Inactive before we restart.
         let bob_group = bob
@@ -230,7 +228,9 @@ fn resubscribe_all_groups_active_subscribed_inactive_skipped() {
         let (welcome2, _) = carol
             .unwrap_and_process_welcome(&gift2)
             .expect("carol processes welcome 2");
-        carol.decline_welcome(&welcome2).expect("carol declines welcome 2");
+        carol
+            .decline_welcome(&welcome2)
+            .expect("carol declines welcome 2");
     }
 
     // ── Session 2: open carol's store in a fresh projection, resubscribe,

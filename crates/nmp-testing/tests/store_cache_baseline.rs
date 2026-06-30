@@ -28,8 +28,7 @@ fn assert_newest_first(events: &[StoredEvent]) {
     for w in events.windows(2) {
         let (a, b) = (&w[0].raw, &w[1].raw);
         assert!(
-            a.created_at > b.created_at
-                || (a.created_at == b.created_at && a.id <= b.id),
+            a.created_at > b.created_at || (a.created_at == b.created_at && a.id <= b.id),
             "ordering violated: {} then {}",
             a.created_at,
             b.created_at
@@ -271,7 +270,11 @@ fn profile_metadata_kind0() {
     };
     let results = h.store.query(&q, 50).unwrap();
     // kind:0 is replaceable -- only 1 event survives (the newest)
-    assert_eq!(results.len(), 1, "kind:0 replaceable: only 1 should survive");
+    assert_eq!(
+        results.len(),
+        1,
+        "kind:0 replaceable: only 1 should survive"
+    );
     assert_eq!(results[0].raw.created_at, 1004);
     h.assert_invariants();
 }

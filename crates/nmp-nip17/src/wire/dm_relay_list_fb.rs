@@ -1,19 +1,11 @@
 //! Typed FlatBuffers wire codec for the `"nmp.nip17.dm_relay_list"` projection.
 //!
-//! The authoritative FFI shape of this projection is the serde JSON produced by
-//! the `DmRuntimeController::snapshot_json` closure in
-//! `crates/nmp-defaults/src/runtimes.rs` — the private struct
-//! `DmRelayListSnapshot { active_pubkey: Option<String>, read_relay_urls:
-//! Vec<String> }` (registered via `register_snapshot_projection`). This module
-//! adds a **typed FlatBuffers** encoding of the same shape, carried in the
-//! `typed_projections` sidecar (ADR-0037) ALONGSIDE — never replacing — the
-//! generic `Value` projection.
+//! The producer is the typed projection closure installed by
+//! [`crate::register_runtime`]. This module encodes the `typed_projections`
+//! sidecar payload for that runtime (ADR-0037).
 //!
-//! [`DmRelayList`] is the SINGLE read model both wire forms share: its
-//! `Serialize` impl drives the generic `Value` projection (the app-template
-//! `snapshot_json` closure serialises it) AND this module's codec drives the
-//! typed sidecar, so the two can never structurally diverge. `active_pubkey:
-//! Option<String>` carries a `has_active_pubkey` presence flag + value so absent
+//! [`DmRelayList`] is the single read model the runtime and this codec share.
+//! `active_pubkey: Option<String>` carries a `has_active_pubkey` flag + value so absent
 //! (`None`/JSON `null`) round-trips distinctly from a present default.
 //!
 //! Honours D6 (no panics): decode returns `Err(String)` on any malformed input.
@@ -44,11 +36,8 @@ use generated::nmp::nip_17 as fb;
 // `.github/workflows/codegen-drift.yml`). Edit the contract, not this include.
 include!("dm_relay_list_producer_consts.generated.rs");
 
-/// The `"nmp.nip17.dm_relay_list"` snapshot read model — the SINGLE source of
-/// truth for both the generic `serde_json::Value` projection (its `Serialize`
-/// impl is what the app-template `snapshot_json` closure emits) and the typed
-/// FlatBuffers sidecar (this module's codec). One struct so the two wire forms
-/// cannot structurally diverge.
+/// The `"nmp.nip17.dm_relay_list"` snapshot read model used by the runtime and
+/// the typed FlatBuffers sidecar.
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
 pub struct DmRelayList {
     /// The active account's pubkey (hex), or `None` when not signed in — mirrors

@@ -289,8 +289,7 @@ impl WotGraph {
         let Some(follows) = self.follows_by_author.get(viewer) else {
             return Vec::new();
         };
-        let mut counts: std::collections::HashMap<String, usize> =
-            std::collections::HashMap::new();
+        let mut counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
         for followed in follows {
             if let Some(their_follows) = self.follows_by_author.get(followed) {
                 for candidate in their_follows {

@@ -166,7 +166,10 @@ mod tests {
     fn wire_roundtrip() {
         let coord = AddressCoordinate::new(30_023, "alice", "my-article");
         assert_eq!(coord.to_wire(), "30023:alice:my-article");
-        assert_eq!(AddressCoordinate::parse("30023:alice:my-article"), Some(coord));
+        assert_eq!(
+            AddressCoordinate::parse("30023:alice:my-article"),
+            Some(coord)
+        );
     }
 
     #[test]

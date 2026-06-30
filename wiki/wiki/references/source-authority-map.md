@@ -29,7 +29,7 @@ Use this page to decide where a future wiki article should look first.
 | How do subscriptions compile into relay plans? | `docs/builder-guide/07-subscription-planner.md` and `docs/design/subscription-compilation/` |
 | How does iOS consume the kernel? | `docs/builder-guide/17-ios-shell.md` and `apps/chirp/ios/Chirp/Bridge/` |
 | What is the runtime update transport? | `docs/decisions/0037-typed-flatbuffers-runtime-projections.md`, `crates/nmp-core/schema/nmp_update.fbs`, and `crates/nmp-core/src/update_envelope.rs` |
-| How are generic app defaults wired? | `crates/nmp-defaults/src/lib.rs` |
+| How are app composition owners wired? | `docs/architecture/crate-boundaries.md` and `docs/decisions/0069-explicit-feature-composition.md` |
 | How does Chirp wire its app-specific projections? | `apps/chirp/crates/nmp-app-chirp/src/ffi/register.rs` |
 | What owns the `nmp.feed.home` typed payload? | `crates/nmp-nip01/src/typed_wire.rs`, `crates/nmp-nip01/schema/timeline_snapshot.fbs`, and `crates/nmp-feed/schema/feed_home.fbs` |
 | What doctrine means what? | `docs/product-spec/doctrine.md` |

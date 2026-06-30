@@ -25,14 +25,17 @@ fn check_golden(label: &str, value: &EmbedKindProjection, expected: &str) {
     if actual != expected {
         eprintln!("{label} actual:\n{actual}");
     }
-    assert_eq!(actual, expected, "{label}: EmbedKindProjection JSON golden drifted");
+    assert_eq!(
+        actual, expected,
+        "{label}: EmbedKindProjection JSON golden drifted"
+    );
 }
 
 fn check_roundtrip(label: &str, value: &EmbedKindProjection) {
-    let json = serde_json::to_string(value)
-        .unwrap_or_else(|e| panic!("{label}: serialize failed: {e}"));
-    let back: EmbedKindProjection = serde_json::from_str(&json)
-        .unwrap_or_else(|e| panic!("{label}: deserialize failed: {e}"));
+    let json =
+        serde_json::to_string(value).unwrap_or_else(|e| panic!("{label}: serialize failed: {e}"));
+    let back: EmbedKindProjection =
+        serde_json::from_str(&json).unwrap_or_else(|e| panic!("{label}: deserialize failed: {e}"));
     let json2 = serde_json::to_string(&back)
         .unwrap_or_else(|e| panic!("{label}: re-serialize failed: {e}"));
     assert_eq!(json, json2, "{label}: serde roundtrip mismatch");
@@ -53,7 +56,10 @@ fn profile_minimal_golden_json() {
     });
     // Structural assertions: all nullable fields must serialise as null.
     let json = serde_json::to_string(&proj).expect("serialize");
-    assert!(json.starts_with(r#"{"variant":"profile","data":{"#), "profile variant tag");
+    assert!(
+        json.starts_with(r#"{"variant":"profile","data":{"#),
+        "profile variant tag"
+    );
     assert!(json.contains(r#""displayName":null"#), "displayName null");
     assert!(json.contains(r#""pictureUrl":null"#), "pictureUrl null");
     assert!(json.contains(r#""about":null"#), "about null");
@@ -104,11 +110,20 @@ fn unknown_minimal_golden_json() {
     // Structural assertions: content has JSON-in-JSON escaping which is
     // fiddly to write as a static golden string.
     let json = serde_json::to_string(&proj).expect("serialize");
-    assert!(json.starts_with(r#"{"variant":"unknown","data":{"#), "unknown variant tag");
+    assert!(
+        json.starts_with(r#"{"variant":"unknown","data":{"#),
+        "unknown variant tag"
+    );
     assert!(json.contains(r#""kind":40"#), "kind field");
     // Display separation (#2514): no author display fields on the wire.
-    assert!(!json.contains("authorDisplayName"), "no authorDisplayName field");
-    assert!(!json.contains("authorPictureUrl"), "no authorPictureUrl field");
+    assert!(
+        !json.contains("authorDisplayName"),
+        "no authorDisplayName field"
+    );
+    assert!(
+        !json.contains("authorPictureUrl"),
+        "no authorPictureUrl field"
+    );
     assert!(json.contains(r#""createdAt":1700100000"#), "createdAt");
     assert!(json.contains(r#""tags":[]"#), "tags empty");
     assert!(json.contains(r#""altText":null"#), "altText null");
@@ -131,11 +146,20 @@ fn unknown_with_tags_and_alt_golden_json() {
         alt_text: Some("a classified listing".to_string()),
     });
     let json = serde_json::to_string(&proj).expect("serialize");
-    assert!(json.starts_with(r#"{"variant":"unknown","data":{"#), "variant tag");
+    assert!(
+        json.starts_with(r#"{"variant":"unknown","data":{"#),
+        "variant tag"
+    );
     assert!(json.contains(r#""kind":30402"#), "kind 30402");
     // Display separation (#2514): no author display fields on the wire.
-    assert!(!json.contains("authorDisplayName"), "no authorDisplayName field");
-    assert!(json.contains(r#""altText":"a classified listing""#), "altText");
+    assert!(
+        !json.contains("authorDisplayName"),
+        "no authorDisplayName field"
+    );
+    assert!(
+        json.contains(r#""altText":"a classified listing""#),
+        "altText"
+    );
     assert!(json.contains(r#"["price","42"]"#), "price tag");
     assert!(json.contains(r#"["location","online"]"#), "location tag");
     check_roundtrip("Unknown/tags+alt", &proj);

@@ -31,9 +31,9 @@ use crate::capability_socket::CapabilityCallbackSlot;
 use crate::kernel_action::dispatch_kernel_action;
 
 // Sub-modules — each covers one logical slice of the dispatch surface.
+mod cmd_action_ledger;
 mod cmd_identity;
 mod cmd_interests;
-mod cmd_action_ledger;
 mod cmd_lifecycle;
 mod cmd_protocol;
 mod cmd_publish;
@@ -414,7 +414,9 @@ fn dispatch_publish(
             event: unsigned,
             correlation_id,
             signer_pubkey,
-        } => cmd_publish::publish_unsigned_event(unsigned, None, correlation_id, signer_pubkey, ctx),
+        } => {
+            cmd_publish::publish_unsigned_event(unsigned, None, correlation_id, signer_pubkey, ctx)
+        }
         PublishCommand::OwnedUnsignedEvent {
             event: unsigned,
             ownership,

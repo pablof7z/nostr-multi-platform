@@ -94,7 +94,10 @@ impl SearchScopeProvider for GroupMetadataSearchScope {
         let mut out = Vec::with_capacity(3);
         if let Some(name) = first_tag_value(tags, "name") {
             if !name.is_empty() {
-                out.push((SearchField::with_weight(FIELD_NAME, WEIGHT_NAME), name.to_string()));
+                out.push((
+                    SearchField::with_weight(FIELD_NAME, WEIGHT_NAME),
+                    name.to_string(),
+                ));
             }
         }
         if let Some(about) = first_tag_value(tags, "about") {

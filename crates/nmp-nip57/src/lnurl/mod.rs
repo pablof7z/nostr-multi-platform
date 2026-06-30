@@ -72,14 +72,14 @@ pub(crate) use validation::{validate_bolt11_amount, validate_description_hash};
 
 use std::sync::Arc;
 
+use nmp_core::actor::ActorCommand;
 use nmp_core::substrate::{
     build_record_action_failure, PaymentIntent, PaymentPort, ProtocolCommand,
     ProtocolCommandContext, ProtocolCommandError,
 };
-use nmp_signer_iface::UnsignedEvent;
-use nmp_core::actor::ActorCommand;
 use nmp_core::ui_token::UiToken;
 use nmp_kinds::KIND_ZAP_RECEIPT;
+use nmp_signer_iface::UnsignedEvent;
 
 pub use metadata::LnurlInvoice;
 pub use pay::{lnurl_to_well_known_url, looks_like_bolt11, url_encode_query, url_to_bech32_lnurl};
@@ -196,11 +196,8 @@ impl ProtocolCommand for FetchLnurlInvoiceCommand {
         // D6 fail-closed: abort the zap if lnurl tag encoding fails (most
         // providers including Primal won't mint a receipt without it).
         if let Err(reason) = inject_lnurl_tag(&lnurl_or_address, &mut unsigned) {
-            let token = UiToken::error(
-                crate::ui_codes::ZAP_LNURL_RESOLVE_FAILED,
-                "Zap failed.",
-            )
-            .with_detail(reason.clone());
+            let token = UiToken::error(crate::ui_codes::ZAP_LNURL_RESOLVE_FAILED, "Zap failed.")
+                .with_detail(reason.clone());
             ctx.send(ActorCommand::ShowErrorToken { token });
             if let Some(cid) = correlation_id {
                 ctx.record_action_failure(cid, reason);
@@ -313,11 +310,8 @@ fn spawn_lnurl_worker(
                     if let Err(reason) = crate::pending::active_pending_zap_registry()
                         .remember_expected_provider(&zap_request_id, &invoice.provider_pubkey)
                     {
-                        let token = UiToken::error(
-                            crate::ui_codes::ZAP_FAILED,
-                            "Zap failed.",
-                        )
-                        .with_detail(reason.clone());
+                        let token = UiToken::error(crate::ui_codes::ZAP_FAILED, "Zap failed.")
+                            .with_detail(reason.clone());
                         let _ = worker_tx.send(ActorCommand::ShowErrorToken { token });
                         if let Some(cid) = correlation_id {
                             let _ = worker_tx.send(build_record_action_failure(cid, reason));
@@ -346,11 +340,8 @@ fn spawn_lnurl_worker(
                 }
             },
             Err(reason) => {
-                let token = UiToken::error(
-                    crate::ui_codes::ZAP_FETCH_FAILED,
-                    "Zap failed.",
-                )
-                .with_detail(reason.clone());
+                let token = UiToken::error(crate::ui_codes::ZAP_FETCH_FAILED, "Zap failed.")
+                    .with_detail(reason.clone());
                 let _ = worker_tx.send(ActorCommand::ShowErrorToken { token });
                 if let Some(cid) = correlation_id {
                     let _ = worker_tx.send(build_record_action_failure(cid, reason));

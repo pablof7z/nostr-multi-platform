@@ -128,20 +128,28 @@ fn main() {
 
         // Print unified PerfReport JSON to stdout for pipeline consumption.
         use crate::gate::GateOp;
-        let perf_gates: Vec<PerfGate> = metrics.gates.iter().map(|g| {
-            let threshold = match g.op {
-                GateOp::Lte => format!("<= {:.4}", g.threshold),
-                GateOp::Gte => format!(">= {:.4}", g.threshold),
-                GateOp::Eq => format!("== {:.4}", g.threshold),
-            };
-            PerfGate {
-                name: g.name.clone(),
-                threshold,
-                measured: Some(format!("{:.4}", g.measured)),
-                verdict: if g.passed { GateVerdict::Pass } else { GateVerdict::Fail },
-                note: g.note.clone(),
-            }
-        }).collect();
+        let perf_gates: Vec<PerfGate> = metrics
+            .gates
+            .iter()
+            .map(|g| {
+                let threshold = match g.op {
+                    GateOp::Lte => format!("<= {:.4}", g.threshold),
+                    GateOp::Gte => format!(">= {:.4}", g.threshold),
+                    GateOp::Eq => format!("== {:.4}", g.threshold),
+                };
+                PerfGate {
+                    name: g.name.clone(),
+                    threshold,
+                    measured: Some(format!("{:.4}", g.measured)),
+                    verdict: if g.passed {
+                        GateVerdict::Pass
+                    } else {
+                        GateVerdict::Fail
+                    },
+                    note: g.note.clone(),
+                }
+            })
+            .collect();
         let ps = PerfScenario::new(&metrics.scenario, metrics.wall_seconds, perf_gates)
             .with_notes(metrics.notes.clone())
             .with_measurements(metrics.measurements.clone());

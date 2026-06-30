@@ -46,9 +46,7 @@ pub fn map_response_to_event(
     expected_pubkey: PublicKey,
 ) -> SignerOp<SignedEvent> {
     match raw_op {
-        SignerOp::Ready(Ok(s)) => {
-            SignerOp::Ready(parse_signed_event_response(&s, expected_pubkey))
-        }
+        SignerOp::Ready(Ok(s)) => SignerOp::Ready(parse_signed_event_response(&s, expected_pubkey)),
         SignerOp::Ready(Err(e)) => SignerOp::Ready(Err(e)),
         SignerOp::Pending(rx) => {
             let (tx, out_rx) = mpsc::channel();
@@ -142,15 +140,13 @@ fn parse_tag_rows(v: &serde_json::Value) -> Result<Vec<Vec<String>>, SignerError
         .ok_or_else(|| SignerError::Backend("missing tags".to_string()))?;
     let mut out = Vec::with_capacity(arr.len());
     for (row_idx, row) in arr.iter().enumerate() {
-        let row_arr = row.as_array().ok_or_else(|| {
-            SignerError::Backend(format!("tag row {row_idx} is not an array"))
-        })?;
+        let row_arr = row
+            .as_array()
+            .ok_or_else(|| SignerError::Backend(format!("tag row {row_idx} is not an array")))?;
         let mut row_out = Vec::with_capacity(row_arr.len());
         for (col_idx, cell) in row_arr.iter().enumerate() {
             let s = cell.as_str().ok_or_else(|| {
-                SignerError::Backend(format!(
-                    "tag row {row_idx} col {col_idx} is not a string"
-                ))
+                SignerError::Backend(format!("tag row {row_idx} col {col_idx} is not a string"))
             })?;
             row_out.push(s.to_string());
         }
@@ -171,9 +167,8 @@ fn build_event_for_verify(
     let id = EventId::from_hex(id_hex).map_err(|e| {
         SignerError::SignatureVerificationFailed(format!("invalid event id hex: {e}"))
     })?;
-    let sig = Signature::from_str(sig_hex).map_err(|e| {
-        SignerError::SignatureVerificationFailed(format!("invalid sig hex: {e}"))
-    })?;
+    let sig = Signature::from_str(sig_hex)
+        .map_err(|e| SignerError::SignatureVerificationFailed(format!("invalid sig hex: {e}")))?;
     let kind_u16 = u16::try_from(kind).map_err(|_| {
         SignerError::Backend(format!("kind {kind} does not fit in nostr u16 kind space"))
     })?;
@@ -218,8 +213,8 @@ pub fn escape_json(s: &str) -> String {
 /// Deterministic-ish request id (timestamp + atomic counter).  Not a security
 /// boundary — uniqueness within the signer's lifetime is what matters.
 pub fn generate_request_id() -> String {
-    use std::sync::atomic::{AtomicU64, Ordering};
     use crate::time::{SystemTime, UNIX_EPOCH};
+    use std::sync::atomic::{AtomicU64, Ordering};
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -231,24 +226,15 @@ pub fn generate_request_id() -> String {
 
 #[cfg(test)]
 mod tests {
-    //! Coverage for the NIP-46 response mapper.
-    //!
-    //! `parse_signed_event_response` is the inbound trust boundary: every byte
-    //! comes from a remote bunker that may be buggy or malicious.  Per **D6**
-    //! every malformed shape must return `Err`, never panic.  The happy path
-    //! and the three forgery cases (tampered sig / swapped content / wrong
-    //! pubkey) are covered by `tests/codex_9944bed_followup.rs`; this module
-    //! pins the *structural* failure matrix (missing / wrong-typed fields) that
-    //! the verify()-based tests never exercise because they never reach
-    //! `verify()`.
+    //! Structural failure coverage for the NIP-46 response mapper. The happy
+    //! path and forgery cases live in `tests/codex_9944bed_followup.rs`; this
+    //! module pins malformed bodies so D6 returns `Err` instead of panicking.
 
     use super::*;
     use crate::signers::traits::Signer;
     use crate::LocalKeySigner;
 
-    /// A real keypair + a self-consistent JSON response body for it.  Reused so
-    /// each failure test starts from a *valid* body and mutates exactly one
-    /// field — proving the rejection is caused by that field alone.
+    /// A real keypair + self-consistent JSON body for single-field mutations.
     fn valid_response() -> (PublicKey, String) {
         let signer = LocalKeySigner::generate();
         let pubkey = signer.pubkey();
@@ -283,7 +269,10 @@ mod tests {
         let signed = parse_signed_event_response(&body, pk).expect("valid body must parse");
         assert_eq!(signed.unsigned.pubkey, pk.to_hex());
         assert_eq!(signed.unsigned.content, "mapper test");
-        assert_eq!(signed.unsigned.tags, vec![vec!["t".to_string(), "x".to_string()]]);
+        assert_eq!(
+            signed.unsigned.tags,
+            vec![vec!["t".to_string(), "x".to_string()]]
+        );
     }
 
     #[test]
@@ -305,7 +294,10 @@ mod tests {
             let mutated = serde_json::Value::Object(obj).to_string();
             match parse_signed_event_response(&mutated, pk) {
                 Err(SignerError::Backend(m)) => {
-                    assert!(m.contains(field), "error for missing {field} should name it: {m}");
+                    assert!(
+                        m.contains(field),
+                        "error for missing {field} should name it: {m}"
+                    );
                 }
                 Err(SignerError::Mismatch(_)) if field == "pubkey" => {
                     // `pubkey` absent is also acceptably surfaced as the
@@ -326,7 +318,10 @@ mod tests {
             let mutated = serde_json::Value::Object(obj).to_string();
             match parse_signed_event_response(&mutated, pk) {
                 Err(SignerError::Backend(m)) => {
-                    assert!(m.contains(field), "error for missing {field} should name it: {m}");
+                    assert!(
+                        m.contains(field),
+                        "error for missing {field} should name it: {m}"
+                    );
                 }
                 other => panic!("missing {field}: expected Backend Err, got {other:?}"),
             }
@@ -338,7 +333,10 @@ mod tests {
         let (pk, body) = valid_response();
         let mutated = body.replace(r#""tags":[["t","x"]]"#, r#""tags":"oops""#);
         assert!(
-            matches!(parse_signed_event_response(&mutated, pk), Err(SignerError::Backend(_))),
+            matches!(
+                parse_signed_event_response(&mutated, pk),
+                Err(SignerError::Backend(_))
+            ),
             "non-array tags must be Backend Err"
         );
     }
@@ -484,7 +482,14 @@ mod tests {
     fn escape_json_output_is_valid_json_string_content() {
         // Round-trip: wrapping the escaped output in quotes must parse back to
         // the original — the whole point of escaping.
-        for input in ["", "simple", "with \"quotes\"", "tab\there", "new\nline", "\u{0007}bell"] {
+        for input in [
+            "",
+            "simple",
+            "with \"quotes\"",
+            "tab\there",
+            "new\nline",
+            "\u{0007}bell",
+        ] {
             let wrapped = format!("\"{}\"", escape_json(input));
             let decoded: String =
                 serde_json::from_str(&wrapped).expect("escaped output must be valid JSON");

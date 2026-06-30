@@ -219,14 +219,14 @@ fn generated_zap_builder_bytes_empty_optionals_round_trip() {
         "corr-zap-empty-opts",
         &recipient,
         500,
-        Some(""),  // lnurl: Some("")
+        Some(""), // lnurl: Some("")
         &[],
-        Some(""),  // target_event_id: Some("")
-        Some(""),  // comment: Some("")
+        Some(""), // target_event_id: Some("")
+        Some(""), // comment: Some("")
     );
 
-    let decoded =
-        decode_dispatch_envelope(&bytes).expect("zap envelope with empty optionals must decode (S2)");
+    let decoded = decode_dispatch_envelope(&bytes)
+        .expect("zap envelope with empty optionals must decode (S2)");
     assert_eq!(decoded.action_namespace, "nmp.nip57.zap");
 
     let action = ZapInput::decode(&decoded.payload)
@@ -262,7 +262,8 @@ fn generated_zap_builder_bytes_minimal_dispatch_through_start_bytes() {
     use nmp_nip57::ZapInput;
 
     let recipient = "b".repeat(64);
-    let bytes = build_zap_dispatch_envelope("corr-zap-min", &recipient, 1_000, None, &[], None, None);
+    let bytes =
+        build_zap_dispatch_envelope("corr-zap-min", &recipient, 1_000, None, &[], None, None);
 
     let decoded = decode_dispatch_envelope(&bytes).expect("zap envelope must decode (S2)");
     assert_eq!(decoded.action_namespace, "nmp.nip57.zap");

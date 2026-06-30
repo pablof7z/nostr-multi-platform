@@ -11,8 +11,8 @@
 //! `nsec` inputs are rejected with `NmpError::NsecForbidden`; the original
 //! secret key is NEVER present in the error (same as the C-ABI guarantee).
 
-use nmp_nostr_id::{NaddrData, NeventData, Nip19Entity, NprofileData};
 use nmp_nostr_id::{nip21, Nip21Error, NostrUri};
+use nmp_nostr_id::{NaddrData, NeventData, Nip19Entity, NprofileData};
 
 use crate::stateless::NmpError;
 
@@ -22,10 +22,7 @@ use crate::stateless::NmpError;
 #[derive(Debug, Clone, PartialEq, uniffi::Enum)]
 pub enum NostrUriTarget {
     /// An `npub` / `nprofile` — identifies a Nostr public key.
-    Profile {
-        pubkey: String,
-        relays: Vec<String>,
-    },
+    Profile { pubkey: String, relays: Vec<String> },
     /// A `note` / `nevent` — identifies a Nostr event.
     Event {
         event_id: String,
@@ -153,8 +150,8 @@ fn error_from_nip21(error: Nip21Error) -> NmpError {
 mod tests {
     use super::*;
     use nmp_nostr_id::{
-        encode_naddr, encode_nevent, encode_npub, encode_nprofile, encode_nsec,
-        NaddrData, NeventData, NprofileData,
+        encode_naddr, encode_nevent, encode_nprofile, encode_npub, encode_nsec, NaddrData,
+        NeventData, NprofileData,
     };
 
     const PUBKEY: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";

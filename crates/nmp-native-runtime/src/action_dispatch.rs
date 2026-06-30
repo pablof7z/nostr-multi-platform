@@ -18,12 +18,10 @@
 //! * ADR-0064 §4 identity contract: `correlation_id` in `DispatchOutcome` is
 //!   always the HOST-SUPPLIED envelope id, never a kernel-minted replacement.
 
-use nmp_core::actor::{ActionLedgerCommand, ActorCommand};
-use nmp_core::dispatch_envelope::{
-    decode_dispatch_envelope, MAX_DISPATCH_ENVELOPE_BYTES,
-};
-use nmp_core::substrate::{ActionContext, ActionRejection, ActionResult};
 use nmp_core::__ffi_internal::ActionExecuteFailure;
+use nmp_core::actor::{ActionLedgerCommand, ActorCommand};
+use nmp_core::dispatch_envelope::{decode_dispatch_envelope, MAX_DISPATCH_ENVELOPE_BYTES};
+use nmp_core::substrate::{ActionContext, ActionRejection, ActionResult};
 
 use crate::NmpApp;
 
@@ -201,10 +199,12 @@ fn finish_dispatch_typed(
         Err(failure) => {
             // Nothing was enqueued; this fan-in is the sole terminal. Record a
             // Failed stage so the host spinner keyed on the id resolves.
-            app.send_cmd(ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure {
-                correlation_id: correlation_id.to_string(),
-                reason: failure.message.clone(),
-            }));
+            app.send_cmd(ActorCommand::ActionLedger(
+                ActionLedgerCommand::RecordFailure {
+                    correlation_id: correlation_id.to_string(),
+                    reason: failure.message.clone(),
+                },
+            ));
             DispatchOutcome::post_mint_failure(correlation_id.to_string(), failure.message)
         }
     }

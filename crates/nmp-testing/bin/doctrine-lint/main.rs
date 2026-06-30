@@ -139,7 +139,7 @@ fn main() -> ExitCode {
     let rules = if cfg.workspace_d8 {
         "D8 no-polling"
     } else {
-        "A6/D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D19/D20/D21/D23/D24/D25/D26/D27/action_namespace/nip29_kind_blind/no_raw_tap/product_raw_read"
+        "A6/D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D19/D20/D21/D23/D24/D25/D26/D27/action_namespace/nip29_kind_blind/no_raw_tap/product_raw_read/deleted_defaults"
     };
     report::finish(roots.len(), rules, cfg.allow_findings, all_findings)
 }

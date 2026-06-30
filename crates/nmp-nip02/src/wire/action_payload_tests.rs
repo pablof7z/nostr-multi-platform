@@ -7,7 +7,9 @@ use nmp_core::substrate::{ActionPayload, ActionPayloadDecodeError};
 
 #[test]
 fn pubkey_action_round_trips() {
-    let action = PubkeyAction { pubkey: "a".repeat(64) };
+    let action = PubkeyAction {
+        pubkey: "a".repeat(64),
+    };
     let decoded = PubkeyAction::decode(&action.encode()).expect("decodes");
     assert_eq!(decoded, action);
 }
@@ -44,7 +46,10 @@ fn pubkey_action_wrong_schema_version_is_rejected() {
     let err = PubkeyAction::decode(&bytes).expect_err("bad version rejected");
     assert_eq!(
         err,
-        ActionPayloadDecodeError::SchemaVersionMismatch { found: 999, expected: SCHEMA_VERSION }
+        ActionPayloadDecodeError::SchemaVersionMismatch {
+            found: 999,
+            expected: SCHEMA_VERSION
+        }
     );
 }
 
@@ -64,7 +69,10 @@ fn follow_many_wrong_schema_version_is_rejected() {
     let err = FollowManyAction::decode(&bytes).expect_err("bad version rejected");
     assert_eq!(
         err,
-        ActionPayloadDecodeError::SchemaVersionMismatch { found: 2, expected: SCHEMA_VERSION }
+        ActionPayloadDecodeError::SchemaVersionMismatch {
+            found: 2,
+            expected: SCHEMA_VERSION
+        }
     );
 }
 

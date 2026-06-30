@@ -56,7 +56,10 @@ pub fn classify_impl(
 
     // (3) relay URL (`ws://` / `wss://`), normalized through the single authority.
     if let Some(url) = recognize_relay_url(trimmed) {
-        return one(InputScopeId::nostr_ref(), InputIntentTarget::RelayUrl { url });
+        return one(
+            InputScopeId::nostr_ref(),
+            InputIntentTarget::RelayUrl { url },
+        );
     }
 
     // (4) NIP-05 shape (`name@domain` / `_@domain`) — SHAPE only, no HTTP.

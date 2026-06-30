@@ -440,12 +440,12 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         presence_policy: PresencePolicy::None,
     },
     ProjectionContract {
-        // Registered by `nmp_defaults::runtimes::mute_runtime` under this key.
+        // Registered by `nmp_nip51::register_mute_runtime` under this key.
         // Was missing from the contract — a real Tier-1 projection key, not an
         // internal wire type (the earlier #1723 investigation misclassified it).
         key: "nmp.nip51.mute_list",
         tier: ProjectionTier::HostRegistered,
-        producer: "nmp-defaults runtimes/mute_runtime (NIP-51)",
+        producer: "nmp-nip51 mute runtime",
         owner_claim: "projection.nmp.nip51.mute_list",
         schema_id: "nmp.nip51.mute_list",
         file_identifier: "NMUT",
@@ -458,7 +458,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
     ProjectionContract {
         key: "nmp.nip51.bookmarks",
         tier: ProjectionTier::HostRegistered,
-        producer: "nmp-defaults runtimes/bookmarks_runtime (NIP-51)",
+        producer: "nmp-nip51 bookmarks runtime",
         owner_claim: "projection.nmp.nip51.bookmarks",
         schema_id: "nmp.nip51.bookmarks",
         file_identifier: "N51L",

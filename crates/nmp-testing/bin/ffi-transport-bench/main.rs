@@ -68,7 +68,12 @@ fn run_alloc_pass(
 ) -> Vec<AllocStats> {
     let iters = DELIVERIES_PER_BUCKET;
     // Use medium bucket frames for allocation measurement.
-    let frames = make_frames(PRNG_SEED ^ 0xff00, iters, MEDIUM_MIN_BYTES, MEDIUM_MAX_BYTES);
+    let frames = make_frames(
+        PRNG_SEED ^ 0xff00,
+        iters,
+        MEDIUM_MIN_BYTES,
+        MEDIUM_MAX_BYTES,
+    );
 
     // C-lane alloc pass
     let snap0 = alloc_snapshot();
@@ -113,7 +118,9 @@ fn main() {
     let c_listener = build_c_lane_listener();
     let uniffi_sink: Box<dyn UpdateFrameSink> = Box::new(LowerBoundForeignSink);
 
-    eprintln!("ffi-transport-bench: running SMALL bucket ({SMALL_MIN_BYTES}-{SMALL_MAX_BYTES} bytes)...");
+    eprintln!(
+        "ffi-transport-bench: running SMALL bucket ({SMALL_MIN_BYTES}-{SMALL_MAX_BYTES} bytes)..."
+    );
     // SMALL: batch-mean only (sub-us C-lane cost, near Instant timer resolution).
     let (c_small, u_small, mean_small) = run_bucket_timing(
         "small",
@@ -137,7 +144,9 @@ fn main() {
         uniffi_sink.as_ref(),
     );
 
-    eprintln!("ffi-transport-bench: running LARGE bucket ({LARGE_MIN_BYTES}-{LARGE_MAX_BYTES} bytes)...");
+    eprintln!(
+        "ffi-transport-bench: running LARGE bucket ({LARGE_MIN_BYTES}-{LARGE_MAX_BYTES} bytes)..."
+    );
     // LARGE: batch-mean + per-frame (us range, clearly above timer resolution).
     let (c_large, u_large, mean_large) = run_bucket_timing(
         "large",
@@ -264,9 +273,7 @@ fn main() {
                  and indirect vtable dispatch through Box<dyn UpdateFrameSink>. \
                  Synthetic foreign-copy component ({:.0} ns at weighted mean {:.0} B, \
                  40 ns/KB conservative estimate) multiplied by {}x surcharge in verdict.",
-                synthetic_ns as f64,
-                weighted_mean_bytes,
-                JNI_MANAGED_SURCHARGE_FACTOR,
+                synthetic_ns as f64, weighted_mean_bytes, JNI_MANAGED_SURCHARGE_FACTOR,
             ),
         ],
         notes: vec![
@@ -322,7 +329,10 @@ fn main() {
         "Weighted-p99 UniFFI (batch-mean) : {:.0} ns",
         report.uniffi_lane.weighted_p99_ns
     );
-    eprintln!("Raw delta                        : {} ns", report.weighted_p99_delta_raw_ns);
+    eprintln!(
+        "Raw delta                        : {} ns",
+        report.weighted_p99_delta_raw_ns
+    );
     eprintln!(
         "Synthetic copy est.              : {} ns (lower bound, {}x-surcharged)",
         report.synthetic_foreign_copy_ns, JNI_MANAGED_SURCHARGE_FACTOR

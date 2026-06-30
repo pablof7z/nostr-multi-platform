@@ -157,7 +157,7 @@ fn some_req_carries_kind_for(msgs: &[OutboundMessage], pk: &str, kind: u32) -> b
 /// `open_search(UserPreferred)` never fanned out. This test pins that
 /// kind:10007 is carried by the bootstrap self-kinds REQ, author-pinned to
 /// the active account — the wire half of the fix (the projection half is
-/// covered by `nmp-defaults`'s `search_relay_transparency.rs`).
+/// covered by `explicit composition`'s `search_relay_transparency.rs`).
 #[test]
 fn bootstrap_routes_kind10007_search_relay_self_fetch() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);

@@ -2,8 +2,7 @@ use crate::support::{collect_files, crates_dir, evaluate, is_comment, read, rel,
 
 /// Fine-grained baseline (tracked debt): `(file, symbol)`. The owning fix PR
 /// removes each line when it deletes the symbol. Do NOT add new entries.
-const RULE_D_BASELINE: &[(&str, &str)] = &[
-];
+const RULE_D_BASELINE: &[(&str, &str)] = &[];
 
 /// `true` if `ident` (a declared type/module name) names a NIP-19 entity
 /// codec. NIP-21 `NostrUri` and `parse_nip10` are legitimate generic codecs

@@ -103,7 +103,6 @@ fn render_routing(entries: &[KeyedProjectionEntry]) -> String {
     s
 }
 
-
 const STATIC_TYPES: &str = r#"// MARK: - RefRowState (mirror of nmp.refs.RefRowState)
 private let kRefRowStateCleared: UInt8 = 1
 

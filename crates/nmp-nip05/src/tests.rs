@@ -10,10 +10,10 @@
 use std::sync::mpsc::Receiver;
 use std::time::Duration;
 
-use nmp_core::substrate::{ProtocolCommand, ProtocolCommandContext};
-use nmp_core::{ActorMail};
-use nmp_core::actor::ActorCommand;
 use nmp_core::actor::ActionLedgerCommand;
+use nmp_core::actor::ActorCommand;
+use nmp_core::substrate::{ProtocolCommand, ProtocolCommandContext};
+use nmp_core::ActorMail;
 
 use crate::ResolveNip05Command;
 
@@ -38,23 +38,23 @@ fn failed_lookup_emits_diagnostic_toast_and_failure_record() {
 
     let send = |_c: ActorCommand| {};
     let (tx, rx) = std::sync::mpsc::channel::<ActorMail>();
-    let mut ctx = ProtocolCommandContext::new(
-        nmp_core::substrate::ProtocolCommandContextParts {
-            send: &send,
-            command_sender: nmp_core::CommandSender::new(tx),
-            clock: &nmp_core::substrate::NoopKernelClock,
-            signers: &nmp_core::substrate::NoopLocalSignerAccess,
-            dms: &nmp_core::substrate::EmptyDmInboxRelayLookup,
-            errors: &nmp_core::substrate::NoopErrorSurface,
-            stages: &nmp_core::substrate::NoopActionStageTracker,
-            recipients: &nmp_core::substrate::NoopRecipientRelayLookup,
-            host_op_handler: &nmp_core::substrate::NoopHostOpHandlerAccess,
-            wallet_kernel: &nmp_core::substrate::NoopWalletKernelAccess,
-            zap_profiles: &nmp_core::substrate::NoopZapProfileLookup,
-        },
-    );
+    let mut ctx = ProtocolCommandContext::new(nmp_core::substrate::ProtocolCommandContextParts {
+        send: &send,
+        command_sender: nmp_core::CommandSender::new(tx),
+        clock: &nmp_core::substrate::NoopKernelClock,
+        signers: &nmp_core::substrate::NoopLocalSignerAccess,
+        dms: &nmp_core::substrate::EmptyDmInboxRelayLookup,
+        errors: &nmp_core::substrate::NoopErrorSurface,
+        stages: &nmp_core::substrate::NoopActionStageTracker,
+        recipients: &nmp_core::substrate::NoopRecipientRelayLookup,
+        host_op_handler: &nmp_core::substrate::NoopHostOpHandlerAccess,
+        wallet_kernel: &nmp_core::substrate::NoopWalletKernelAccess,
+        zap_profiles: &nmp_core::substrate::NoopZapProfileLookup,
+    });
 
-    Box::new(cmd).run(&mut ctx).expect("run returns Ok (work is deferred to the worker)");
+    Box::new(cmd)
+        .run(&mut ctx)
+        .expect("run returns Ok (work is deferred to the worker)");
 
     // The worker posts ShowErrorToken first, then RecordActionFailure. The
     // `.invalid` TLD fails DNS without a real round-trip, so a few seconds
@@ -71,7 +71,10 @@ fn failed_lookup_emits_diagnostic_toast_and_failure_record() {
         "failed lookup must carry LOOKUP_FAILED code"
     );
     assert!(
-        token.subject().unwrap_or("").contains("alice@nonexistent.invalid"),
+        token
+            .subject()
+            .unwrap_or("")
+            .contains("alice@nonexistent.invalid"),
         "token subject must name the identifier: {:?}",
         token.subject()
     );
@@ -99,21 +102,19 @@ fn failed_lookup_without_correlation_id_still_toasts_but_records_nothing() {
 
     let send = |_c: ActorCommand| {};
     let (tx, rx) = std::sync::mpsc::channel::<ActorMail>();
-    let mut ctx = ProtocolCommandContext::new(
-        nmp_core::substrate::ProtocolCommandContextParts {
-            send: &send,
-            command_sender: nmp_core::CommandSender::new(tx),
-            clock: &nmp_core::substrate::NoopKernelClock,
-            signers: &nmp_core::substrate::NoopLocalSignerAccess,
-            dms: &nmp_core::substrate::EmptyDmInboxRelayLookup,
-            errors: &nmp_core::substrate::NoopErrorSurface,
-            stages: &nmp_core::substrate::NoopActionStageTracker,
-            recipients: &nmp_core::substrate::NoopRecipientRelayLookup,
-            host_op_handler: &nmp_core::substrate::NoopHostOpHandlerAccess,
-            wallet_kernel: &nmp_core::substrate::NoopWalletKernelAccess,
-            zap_profiles: &nmp_core::substrate::NoopZapProfileLookup,
-        },
-    );
+    let mut ctx = ProtocolCommandContext::new(nmp_core::substrate::ProtocolCommandContextParts {
+        send: &send,
+        command_sender: nmp_core::CommandSender::new(tx),
+        clock: &nmp_core::substrate::NoopKernelClock,
+        signers: &nmp_core::substrate::NoopLocalSignerAccess,
+        dms: &nmp_core::substrate::EmptyDmInboxRelayLookup,
+        errors: &nmp_core::substrate::NoopErrorSurface,
+        stages: &nmp_core::substrate::NoopActionStageTracker,
+        recipients: &nmp_core::substrate::NoopRecipientRelayLookup,
+        host_op_handler: &nmp_core::substrate::NoopHostOpHandlerAccess,
+        wallet_kernel: &nmp_core::substrate::NoopWalletKernelAccess,
+        zap_profiles: &nmp_core::substrate::NoopZapProfileLookup,
+    });
 
     Box::new(cmd).run(&mut ctx).expect("run returns Ok");
 

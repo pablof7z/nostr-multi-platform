@@ -15,7 +15,9 @@ fn recognizer() -> GroupInputScopeRecognizer {
 fn free_text(s: &str) -> ResolvedInput {
     ResolvedInput {
         raw: s.to_string(),
-        kind: ResolvedInputKind::FreeText { text: s.to_string() },
+        kind: ResolvedInputKind::FreeText {
+            text: s.to_string(),
+        },
     }
 }
 
@@ -50,8 +52,8 @@ fn recognize_nip29_uri_returns_registered_with_payload() {
     let Some(InputIntentTarget::Registered { payload_json }) = result else {
         panic!("expected Registered, got {result:?}");
     };
-    let payload: GroupIdentPayload = serde_json::from_str(&payload_json)
-        .expect("payload must be valid JSON");
+    let payload: GroupIdentPayload =
+        serde_json::from_str(&payload_json).expect("payload must be valid JSON");
     assert_eq!(payload.host_relay_url, "wss://groups.nostr.com");
     assert_eq!(payload.local_id, "abc-123");
 }
@@ -114,7 +116,9 @@ fn recognize_naddr_reference_returns_direct_ref() {
     let result = r.recognize(&input);
     assert_eq!(
         result,
-        Some(InputIntentTarget::DirectRef { uri: uri.to_string() })
+        Some(InputIntentTarget::DirectRef {
+            uri: uri.to_string()
+        })
     );
 }
 
@@ -140,7 +144,9 @@ fn recognize_relay_url_is_ignored() {
     let r = recognizer();
     let input = ResolvedInput {
         raw: "wss://relay.example.com".to_string(),
-        kind: ResolvedInputKind::RelayUrl { url: "wss://relay.example.com".to_string() },
+        kind: ResolvedInputKind::RelayUrl {
+            url: "wss://relay.example.com".to_string(),
+        },
     };
     assert_eq!(r.recognize(&input), None);
 }

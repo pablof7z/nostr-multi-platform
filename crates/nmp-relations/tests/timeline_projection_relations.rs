@@ -31,7 +31,7 @@ fn note(id: &str, ts: u64) -> KernelEvent {
 }
 
 #[test]
-fn relation_counts_include_reactions_reposts_and_comments() {
+fn relation_counts_include_reactions_reposts_zaps_and_comments() {
     let target = "R";
     let proj = ModularTimelineProjection::new(&spec())
         .with_relation_classifier(default_note_relation_classifier());
@@ -90,5 +90,5 @@ fn relation_counts_include_reactions_reposts_and_comments() {
     assert_eq!(root.relation_counts.reactions, RelationCount::known(1));
     assert_eq!(root.relation_counts.reposts, RelationCount::known(1));
     assert_eq!(root.relation_counts.comments, RelationCount::known(1));
-    assert_eq!(root.relation_counts.zaps, RelationCount::known(0));
+    assert_eq!(root.relation_counts.zaps, RelationCount::known(1));
 }

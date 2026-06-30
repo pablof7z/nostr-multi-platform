@@ -51,7 +51,7 @@ Four layers, strict ownership. Built from the bottom up:
 Representative crates are labelled in their layer above:
 `nmp-core` (kernel), `nmp-nip29` / `nmp-nip42` / `nmp-nip77` / `nmp-signers`
 (protocol modules), `apps/chirp/crates/nmp-app-chirp` + `microblog-core` (app cores),
-`nmp-defaults` (reusable installer library), `nmp-native-runtime` (native
+`nmp-substrate` (shared substrate floor), `nmp-native-runtime` (native
 runtime owner), and binding crates/adapters (UniFFI for native,
 wasm-bindgen for browser).
 `nmp-codegen` still emits host bindings (`gen swift`, `gen typed-decoders`);
@@ -174,7 +174,8 @@ pub trait CapabilityModule: Send + Sync + 'static {
 
 Every app-core crate follows a small naming convention so the thin staticlib
 shell can call it uniformly. The convention is simply what your `register()`
-function expects from `nmp-defaults` and what the shell expects back:
+function installs through substrate/protocol owner crates and what the shell
+expects back:
 
 | Export | Type | Purpose |
 |---|---|---|
@@ -204,8 +205,8 @@ pub fn register(app: &mut impl AppHost) -> FeedStore {
 ```
 
 A thin staticlib shell (`nmp-app-<name>`) or an `examples/shell.rs` calls only
-`<app>_core::register(app)`. Broad compatibility presets must stay
-tutorial/test/migration-scoped unless formalized by a later ADR.
+`<app>_core::register(app)`. Broad compatibility presets, test helpers, and
+replacement defaults bundles are not current composition architecture.
 `nmp-codegen` still exists for host bindings (`gen swift`, `gen typed-decoders`),
 but it does not generate composition wiring.
 

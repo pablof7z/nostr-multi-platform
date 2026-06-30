@@ -79,10 +79,9 @@ impl ObservedProjectionReconciler {
     pub fn sync(&self) {
         // D15: host-supplied closure — wrap in catch_unwind so a panicking
         // live_shape cannot unwind the caller's dispatch loop.
-        let desired = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            (self.live_shape)()
-        }))
-        .unwrap_or(None);
+        let desired =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| (self.live_shape)()))
+                .unwrap_or(None);
         let Ok(mut current) = self.current.lock() else {
             return;
         };

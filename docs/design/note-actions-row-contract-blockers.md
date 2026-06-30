@@ -147,10 +147,10 @@ onZap: (() -> Unit)? = null,
 ```
 
 `zapEnabled` is supplied by the host from Rust-owned or Rust-derived state. The
-component does not receive `authorLnurl`; `onZap` carries no LNURL. In v1
-defaults, `zapEnabled` must remain false because zap publishing is post-v1
-(#2318): `nmp.nip57.zap` is not registered by `nmp-defaults` and is not exposed
-through generated host builders. In a post-v1 zap-enabled app, the host
+component does not receive `authorLnurl`; `onZap` carries no LNURL. In v1,
+`zapEnabled` must remain false because zap publishing is post-v1 (#2318):
+`nmp.nip57.zap` is not registered by any current app/runtime composition root
+and is not exposed through generated host builders. In a post-v1 zap-enabled app, the host
 presents amount UI and dispatches the app-wired zap action; Rust still fails
 closed if no LNURL exists at dispatch time.
 

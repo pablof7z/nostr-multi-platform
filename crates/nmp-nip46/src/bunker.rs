@@ -76,7 +76,10 @@ pub fn start_bunker(
         build_event_frame_at(&local_keys, remote_pubkey, &connect_envelope, now);
 
     let state = SessionState::new(
-        Phase::BunkerWaitConnectAck { connect_id, remote_pubkey },
+        Phase::BunkerWaitConnectAck {
+            connect_id,
+            remote_pubkey,
+        },
         local_keys,
         relay_url.clone(),
         sub_id.to_string(),
@@ -87,16 +90,25 @@ pub fn start_bunker(
 
     let effects = match connect_frame_result {
         Ok(frame) => vec![
-            Effect::Subscribe { relay_url: relay_url.clone(), frame: req_frame },
+            Effect::Subscribe {
+                relay_url: relay_url.clone(),
+                frame: req_frame,
+            },
             Effect::Progress {
                 stage: "connecting".to_string(),
                 code: Some(progress_codes::SENDING_CONNECT_TO_BUNKER.to_string()),
                 detail: Some("Sending connect to bunker".to_string()),
             },
-            Effect::SendFrame { relay_url, text: frame },
+            Effect::SendFrame {
+                relay_url,
+                text: frame,
+            },
         ],
         Err(e) => vec![
-            Effect::Subscribe { relay_url: relay_url.clone(), frame: req_frame },
+            Effect::Subscribe {
+                relay_url: relay_url.clone(),
+                frame: req_frame,
+            },
             Effect::Error {
                 error: HandshakeError::Protocol(e.to_string()),
             },

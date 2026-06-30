@@ -23,7 +23,7 @@
 //! thing that can wake it before the cap. A regression to either property
 //! shows up as elapsed ≥ ~250 ms.
 
-use crate::actor::{ActorCommand, CommandSender, spawn_test_actor};
+use crate::actor::{spawn_test_actor, ActorCommand, CommandSender};
 use crate::actor::{LifecycleCommand, RefsCommand};
 use crate::transport::wire as fb;
 use crate::update_envelope::UpdateFrameBytes;

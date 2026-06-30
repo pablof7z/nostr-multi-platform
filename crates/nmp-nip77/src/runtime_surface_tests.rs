@@ -1,8 +1,8 @@
 use negentropy::{Id, Negentropy, NegentropyStorageVector};
 use nmp_core::substrate::{RelayTextInterceptor, ReqFrameContext, ReqFrameInterceptor};
 use nmp_core::{Kernel, OutboundMessage};
-use nmp_network::role::RelayRole;
 use nmp_coverage_gate::CoverageGate;
+use nmp_network::role::RelayRole;
 use nmp_planner::{InterestId, InterestLifecycle};
 use nmp_store::{RawEvent, VerifiedEvent};
 use nostr::{ClientMessage, JsonUtil as _};

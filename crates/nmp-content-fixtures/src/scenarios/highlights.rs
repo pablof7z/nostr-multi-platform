@@ -40,12 +40,9 @@ pub fn build(ids: &Identities) -> Vec<ScenarioDto> {
     let art_uri = naddr_uri(30023, &ids.carol.pubkey_hex, "backpressure-is-a-feature");
     let mut store = EmbedStore::default();
     store.add(art_uri.clone(), Target::Event(art.clone()));
-    let e = ids.alice.sign(
-        1,
-        BASE + 1,
-        vec![],
-        format!("required reading: {art_uri}"),
-    );
+    let e = ids
+        .alice
+        .sign(1, BASE + 1, vec![], format!("required reading: {art_uri}"));
     out.push(scenario(
         "S-M10",
         "highlights",
@@ -104,30 +101,18 @@ pub fn build(ids: &Identities) -> Vec<ScenarioDto> {
     // A note chain five levels deep.  Level 5 exceeds PD-015 max_depth=4 so
     // the renderer collapses it.  Sign deepest-first.
     let l5 = ids.alice.sign(1, BASE + 5, vec![], "L5 leaf note");
-    let l4 = ids.bob.sign(
-        1,
-        BASE + 6,
-        vec![],
-        format!("L4 {}", note_uri(&l5.id)),
-    );
-    let l3 = ids.carol.sign(
-        1,
-        BASE + 7,
-        vec![],
-        format!("L3 {}", note_uri(&l4.id)),
-    );
-    let l2 = ids.eve.sign(
-        1,
-        BASE + 8,
-        vec![],
-        format!("L2 {}", note_uri(&l3.id)),
-    );
-    let l1 = ids.bob.sign(
-        1,
-        BASE + 9,
-        vec![],
-        format!("L1 {}", note_uri(&l2.id)),
-    );
+    let l4 = ids
+        .bob
+        .sign(1, BASE + 6, vec![], format!("L4 {}", note_uri(&l5.id)));
+    let l3 = ids
+        .carol
+        .sign(1, BASE + 7, vec![], format!("L3 {}", note_uri(&l4.id)));
+    let l2 = ids
+        .eve
+        .sign(1, BASE + 8, vec![], format!("L2 {}", note_uri(&l3.id)));
+    let l1 = ids
+        .bob
+        .sign(1, BASE + 9, vec![], format!("L1 {}", note_uri(&l2.id)));
     let mut store = EmbedStore::default();
     for ev in [&l1, &l2, &l3, &l4, &l5] {
         store.add(note_uri(&ev.id), Target::Event(ev.clone()));
@@ -144,13 +129,7 @@ pub fn build(ids: &Identities) -> Vec<ScenarioDto> {
         "Depth-limit chain (5 levels, PD-015 collapses L5)",
         "RenderContext::should_collapse when depth >= max_depth=4",
         &e,
-        vec![
-            l1.clone(),
-            l2.clone(),
-            l3.clone(),
-            l4.clone(),
-            l5.clone(),
-        ],
+        vec![l1.clone(), l2.clone(), l3.clone(), l4.clone(), l5.clone()],
         &store,
     ));
 
@@ -187,14 +166,19 @@ pub fn build(ids: &Identities) -> Vec<ScenarioDto> {
     // A note quoting a kind:9802 highlight.  The highlight points at an
     // article via the `a` tag and carries a `context` snippet.  Exercises
     // the Highlight arm in event_entry (9802 is now in the `known` set).
-    let article_coord =
-        naddr_uri(30023, &ids.carol.pubkey_hex, "backpressure-is-a-feature");
+    let article_coord = naddr_uri(30023, &ids.carol.pubkey_hex, "backpressure-is-a-feature");
     let highlight = ids.bob.sign(
         9802,
         BASE + 13,
         vec![
-            vec!["a".into(), format!("30023:{}:backpressure-is-a-feature", ids.carol.pubkey_hex)],
-            vec!["context".into(), "When demand exceeds supply, the honest answer is: slow down.".into()],
+            vec![
+                "a".into(),
+                format!("30023:{}:backpressure-is-a-feature", ids.carol.pubkey_hex),
+            ],
+            vec![
+                "context".into(),
+                "When demand exceeds supply, the honest answer is: slow down.".into(),
+            ],
         ],
         "the honest answer is: slow down",
     );

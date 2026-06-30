@@ -13,7 +13,9 @@
 //! `inviteeNpubs: string[] | null` — `null` → absent (Rust `None`); non-null
 //! → present vector (even if empty, Rust `Some(vec![])`).
 
-use crate::action_builders::registry::{MarmotBodyShape, MarmotBuilder, MARMOT_BUILDERS, MARMOT_NAMESPACE};
+use crate::action_builders::registry::{
+    MarmotBodyShape, MarmotBuilder, MARMOT_BUILDERS, MARMOT_NAMESPACE,
+};
 use crate::action_contract::contract_for;
 
 /// Render every `nmp.marmot` builder into `out` (as methods on the

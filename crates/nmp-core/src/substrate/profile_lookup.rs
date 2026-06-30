@@ -284,7 +284,7 @@ impl ProfileLookup for TestProfileCache {
 /// kind:0 publish gets read-your-writes through the SAME dispatcher fan-out
 /// production uses, without depending on `nmp-nip01`. Registered on the test
 /// kernel's dispatcher at construction (mirroring how the production parser is
-/// registered by `nmp_defaults::register_substrate`).
+/// registered by `nmp_substrate::install`).
 #[cfg(any(test, feature = "test-support"))]
 pub struct TestKind0Parser {
     cache: std::sync::Arc<TestProfileCache>,

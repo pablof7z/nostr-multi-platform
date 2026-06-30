@@ -58,12 +58,23 @@ fn event_ref_from_uri(uri: &CStr) -> Option<EventRefFromUri> {
     let uri_str = uri.to_str().ok()?;
     let (key, relays, author, kind_u64) = if uri_str.starts_with("nostr:") {
         match nmp_nostr_id::parse_nostr_uri(uri_str).ok()? {
-            nmp_nostr_id::NostrUri::Event { event_id, relays, author, kind } => {
-                (event_id, relays, author, kind.map(|k| k as u64))
-            }
-            nmp_nostr_id::NostrUri::Address { identifier, pubkey, kind, relays } => {
-                (format!("{kind}:{pubkey}:{identifier}"), relays, None, Some(kind as u64))
-            }
+            nmp_nostr_id::NostrUri::Event {
+                event_id,
+                relays,
+                author,
+                kind,
+            } => (event_id, relays, author, kind.map(|k| k as u64)),
+            nmp_nostr_id::NostrUri::Address {
+                identifier,
+                pubkey,
+                kind,
+                relays,
+            } => (
+                format!("{kind}:{pubkey}:{identifier}"),
+                relays,
+                None,
+                Some(kind as u64),
+            ),
             _ => return None,
         }
     } else {
@@ -72,14 +83,12 @@ fn event_ref_from_uri(uri: &CStr) -> Option<EventRefFromUri> {
             nmp_nostr_id::Nip19Entity::Nevent(d) => {
                 (d.event_id, d.relays, d.author, d.kind.map(|k| k as u64))
             }
-            nmp_nostr_id::Nip19Entity::Naddr(d) => {
-                (
-                    format!("{}:{}:{}", d.kind, d.pubkey, d.identifier),
-                    d.relays,
-                    None,
-                    Some(d.kind as u64),
-                )
-            }
+            nmp_nostr_id::Nip19Entity::Naddr(d) => (
+                format!("{}:{}:{}", d.kind, d.pubkey, d.identifier),
+                d.relays,
+                None,
+                Some(d.kind as u64),
+            ),
             _ => return None,
         }
     };
@@ -101,11 +110,17 @@ fn parse_ref_metadata(json: &str) -> nmp_core::RefResolveMetadata {
     serde_json::from_str::<serde_json::Value>(json)
         .ok()
         .and_then(|v| {
-            let hints = v.get("hints")?.as_array()?.iter()
+            let hints = v
+                .get("hints")?
+                .as_array()?
+                .iter()
                 .filter_map(|r| r.as_str().map(str::to_owned))
                 .collect();
             let event_author = v.get("author").and_then(|a| a.as_str()).map(str::to_owned);
-            Some(nmp_core::RefResolveMetadata { hints, event_author })
+            Some(nmp_core::RefResolveMetadata {
+                hints,
+                event_author,
+            })
         })
         .unwrap_or_default()
 }

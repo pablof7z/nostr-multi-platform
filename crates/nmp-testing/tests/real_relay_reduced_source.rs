@@ -230,7 +230,7 @@ fn active_follows_reduced_source_over_real_relay() {
     };
 
     let rx = support::install_update_signal();
-    let app = support::new_started_default_app();
+    let app = support::new_started_reduced_source_app();
     support::add_relay(app, &relay);
     support::sign_in(app, &alice);
     let app_ref = unsafe { &*app };
@@ -351,7 +351,7 @@ fn try_nip65_reroute_pair(source_relay: &str, target_relay: &str) -> Result<(), 
     publish_all_to_relay(target_relay, &[&note])?;
 
     let rx = support::install_update_signal();
-    let app = support::new_started_default_app();
+    let app = support::new_started_reduced_source_app();
     support::add_relay(app, source_relay);
     support::sign_in(app, &alice);
     let app_ref = unsafe { &*app };

@@ -15,11 +15,10 @@ mod diff_report;
 // NOTE (ADR-0046 — "composition is a library, not a generator"): the former
 // Rust-shell module-scaffolding generator (`generate` / `ffi_gen` /
 // `workspace`) and its `apps/fixture` test consumer were deleted. A generated
-// FfiApp never called `register_defaults` and was a non-functional Nostr app
-// (the create-react-app-eject anti-pattern). Composition is now a library —
-// `nmp-defaults::register_defaults` — so `nmp-codegen` emits ONLY the
-// consumer-side Swift artifacts (KernelTypes + typed projection decoders) that
-// gate live CI.
+// FfiApp never composed a real Nostr app; it was the create-react-app-eject
+// anti-pattern. Composition lives in explicit app/runtime roots, so
+// `nmp-codegen` emits ONLY the consumer-side Swift artifacts (KernelTypes +
+// typed projection decoders) that gate live CI.
 pub mod swift;
 // V6 Stage 2 — dotted-projection-key registry for `SnapshotProjections` +
 // `CodingKeys`. Hand-transcribed from the existing Swift declaration in

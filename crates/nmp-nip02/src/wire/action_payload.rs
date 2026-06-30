@@ -49,7 +49,9 @@ use crate::{FollowManyAction, PubkeyAction};
 pub const SCHEMA_VERSION: u32 = 1;
 
 fn malformed(reason: impl Into<String>) -> ActionPayloadDecodeError {
-    ActionPayloadDecodeError::Malformed { reason: reason.into() }
+    ActionPayloadDecodeError::Malformed {
+        reason: reason.into(),
+    }
 }
 
 // --- PubkeyAction (nmp.follow / nmp.unfollow) --------------------------------
@@ -85,7 +87,9 @@ impl ActionPayload for PubkeyAction {
                 expected: SCHEMA_VERSION,
             });
         }
-        Ok(PubkeyAction { pubkey: root.pubkey().to_string() })
+        Ok(PubkeyAction {
+            pubkey: root.pubkey().to_string(),
+        })
     }
 }
 
@@ -97,8 +101,7 @@ impl ActionPayload for FollowManyAction {
 
     fn encode(&self) -> Vec<u8> {
         let mut fbb = flatbuffers::FlatBufferBuilder::new();
-        let pubkey_offsets: Vec<_> =
-            self.pubkeys.iter().map(|p| fbb.create_string(p)).collect();
+        let pubkey_offsets: Vec<_> = self.pubkeys.iter().map(|p| fbb.create_string(p)).collect();
         let pubkeys = fbb.create_vector(&pubkey_offsets);
         let payload = follow_many_fb::FollowManyActionPayload::create(
             &mut fbb,

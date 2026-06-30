@@ -2,7 +2,7 @@
 //!
 //! This is the *compiled* product of a [`crate::FeedScope`] acquisition
 //! expression: a closed, data-driven algebra over already-RESOLVED author sets.
-//! The composition layer ([`nmp-defaults`]) resolves a scope's underlying set
+//! The composition layer ([`explicit composition`]) resolves a scope's underlying set
 //! (the active follows, an owner's kind:3, a NIP-51 list's members, ranked WoT
 //! candidates, …) into one of these values; the kernel/engine then derives a
 //! [`crate::RootAdmission`] from it via [`AdmitExpr::to_root_admission`].

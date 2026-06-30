@@ -12,16 +12,7 @@ macro_rules! __nmp_exclusive_claim_symbol {
     ) => {
         const _: () = {
             #[used]
-            #[unsafe(export_name = concat!(
-                                                "__nmp_own__",
-                                                $claim_type,
-                                                "__",
-                                                $scope_kind,
-                                                "__",
-                                                $scope_value,
-                                                "__",
-                                                $context
-                                            ))]
+            #[unsafe(export_name = concat!("__nmp_own__", $claim_type, "__", $scope_kind, "__", $scope_value, "__", $context))]
             static CLAIM: $crate::ExclusiveClaimSymbol =
                 $crate::ExclusiveClaimSymbol::new($owner_id, $id);
         };

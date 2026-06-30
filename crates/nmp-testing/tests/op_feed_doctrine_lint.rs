@@ -79,7 +79,12 @@ fn nmp_feed_engine_names_no_protocol_token() {
         for (idx, line) in contents.lines().enumerate() {
             let lower = line.to_ascii_lowercase();
             if has_nip_token(&lower) {
-                violations.push(format!("{}:{}: nipNN token — {}", file.display(), idx + 1, line.trim()));
+                violations.push(format!(
+                    "{}:{}: nipNN token — {}",
+                    file.display(),
+                    idx + 1,
+                    line.trim()
+                ));
             }
             for banned in BANNED_SUBSTRINGS {
                 if lower.contains(banned) {

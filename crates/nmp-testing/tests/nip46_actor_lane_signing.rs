@@ -40,8 +40,8 @@ use nmp_nip46_runtime::{
     init_bunker, init_nostrconnect, new_nip46_runtime_handle, record_signer_ready,
     Nip46RuntimeHandle,
 };
-use nmp_signers::{Nip46Signer, Nip46SignerHandle};
 use nmp_signer_iface::{RemoteSignerHandle, UnsignedEvent};
+use nmp_signers::{Nip46Signer, Nip46SignerHandle};
 use nostr::{Keys, PublicKey};
 
 use crate::common::mock_bunker_relay::MockBunkerRelay;
@@ -83,7 +83,10 @@ fn actor_lane_sign_round_trip_real_delivery_path() {
     // ── Pool + CommandSender spy ─────────────────────────────────────────────
     let (pool_tx, pool_rx) = mpsc::channel::<PoolEvent>();
     let pool = Arc::new(Pool::new(
-        PoolConfig { default_role: RelayRole::Signer, ..Default::default() },
+        PoolConfig {
+            default_role: RelayRole::Signer,
+            ..Default::default()
+        },
         pool_tx,
     ));
     let (actor_tx, actor_rx) = mpsc::channel::<ActorMail>();
@@ -126,8 +129,11 @@ fn actor_lane_sign_round_trip_real_delivery_path() {
         vec![relay_url.clone()],
     );
     let relay_param = nmp_nip46::percent_encode_query_value(&relay_url);
-    let synthetic_uri =
-        format!("bunker://{}?relay={}", remote_signer_pubkey.to_hex(), relay_param);
+    let synthetic_uri = format!(
+        "bunker://{}?relay={}",
+        remote_signer_pubkey.to_hex(),
+        relay_param
+    );
     let signer_handle = Nip46SignerHandle::from_bunker_uri_with_local_key(
         &synthetic_uri,
         local_keys.secret_key().clone(),
@@ -165,7 +171,11 @@ fn actor_lane_sign_round_trip_real_delivery_path() {
         }
         // 2. Drain inbound relay frames → runtime decode → deliver_signer_response.
         while let Ok(event) = pool_rx.recv_timeout(Duration::from_millis(10)) {
-            if let PoolEvent::Frame { frame: RelayFrame::Text(text), .. } = event {
+            if let PoolEvent::Frame {
+                frame: RelayFrame::Text(text),
+                ..
+            } = event
+            {
                 let decoded = {
                     let mut guard = handle_for_pump.lock().expect("runtime lock");
                     guard
@@ -197,8 +207,14 @@ fn actor_lane_sign_round_trip_real_delivery_path() {
     // ── Assertions ────────────────────────────────────────────────────────────
     assert_eq!(signed.unsigned.pubkey, user_pubkey.to_hex());
     assert_eq!(signed.unsigned.content, unsigned.content);
-    assert!(!signed.id.is_empty(), "signed event must have a non-empty id");
-    assert!(!signed.sig.is_empty(), "signed event must have a schnorr signature");
+    assert!(
+        !signed.id.is_empty(),
+        "signed event must have a non-empty id"
+    );
+    assert!(
+        !signed.sig.is_empty(),
+        "signed event must have a schnorr signature"
+    );
 
     let observed = mock.observed_methods();
     for method in ["connect", "get_public_key", "sign_event"] {
@@ -275,7 +291,10 @@ fn non_canonical_relay_uri_matches_inbound() {
 
     let raw = "WSS://Relay.Example/".to_string();
     let canonical = canonical_relay_url(&raw).expect("relay URL must canonicalize");
-    assert_ne!(raw, canonical, "test premise: raw spelling is non-canonical");
+    assert_ne!(
+        raw, canonical,
+        "test premise: raw spelling is non-canonical"
+    );
 
     let handle = new_nip46_runtime_handle();
     init_bunker(
@@ -306,11 +325,19 @@ fn non_canonical_relay_uri_matches_inbound() {
     let now = now_unix_secs();
     let connect = |url: &str| -> usize {
         let mut guard = handle.lock().unwrap();
-        guard.as_mut().unwrap().on_relay_connected(url, true, now).len()
+        guard
+            .as_mut()
+            .unwrap()
+            .on_relay_connected(url, true, now)
+            .len()
     };
     assert_eq!(connect(&raw), 1, "raw non-canonical spelling must match");
     assert_eq!(connect(&canonical), 1, "canonical spelling must match");
-    assert_eq!(connect("wss://unrelated.relay"), 0, "unrelated relay must not match");
+    assert_eq!(
+        connect("wss://unrelated.relay"),
+        0,
+        "unrelated relay must not match"
+    );
 }
 
 // ─── BLOCKER 1 — nostrconnect SignerReady updates the decode pubkey ───────────
@@ -408,7 +435,10 @@ fn drive_runtime_handshake(
             .checked_duration_since(std::time::Instant::now())
             .unwrap_or(Duration::ZERO);
         match pool_rx.recv_timeout(remaining.min(Duration::from_millis(200))) {
-            Ok(PoolEvent::Frame { frame: RelayFrame::Text(text), .. }) => {
+            Ok(PoolEvent::Frame {
+                frame: RelayFrame::Text(text),
+                ..
+            }) => {
                 let (effects, _decoded) = {
                     let mut guard = handle.lock().expect("runtime lock");
                     let rt = guard.as_mut()?;

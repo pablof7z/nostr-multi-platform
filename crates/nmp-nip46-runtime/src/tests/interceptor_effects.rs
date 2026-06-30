@@ -61,11 +61,13 @@ mod tests {
         let mails = drain(&rx);
         assert_eq!(mails.len(), 1, "exactly one command must be posted");
         match &mails[0] {
-            ActorMail::Command(ActorCommand::Identity(IdentityCommand::BunkerHandshakeProgress {
-                stage,
-                code,
-                message,
-            })) => {
+            ActorMail::Command(ActorCommand::Identity(
+                IdentityCommand::BunkerHandshakeProgress {
+                    stage,
+                    code,
+                    message,
+                },
+            )) => {
                 assert_eq!(stage, "connecting");
                 assert_eq!(code.as_deref(), Some("C001"));
                 assert!(message.as_deref().unwrap_or("").contains("bunker"));
@@ -93,10 +95,9 @@ mod tests {
 
         // First: BunkerHandshakeProgress("failed")
         match &mails[0] {
-            ActorMail::Command(ActorCommand::Identity(IdentityCommand::BunkerHandshakeProgress {
-                stage,
-                ..
-            })) => {
+            ActorMail::Command(ActorCommand::Identity(
+                IdentityCommand::BunkerHandshakeProgress { stage, .. },
+            )) => {
                 assert_eq!(stage, "failed");
             }
             other => panic!("expected BunkerHandshakeProgress, got: {other:?}"),
@@ -104,10 +105,9 @@ mod tests {
 
         // Second: BunkerConnectionStateChanged("failed")
         match &mails[1] {
-            ActorMail::Command(ActorCommand::Identity(IdentityCommand::BunkerConnectionStateChanged {
-                state,
-                ..
-            })) => {
+            ActorMail::Command(ActorCommand::Identity(
+                IdentityCommand::BunkerConnectionStateChanged { state, .. },
+            )) => {
                 assert_eq!(state, "failed");
             }
             other => panic!("expected BunkerConnectionStateChanged, got: {other:?}"),
@@ -162,10 +162,9 @@ mod tests {
         assert_eq!(mails.len(), 2);
 
         match &mails[1] {
-            ActorMail::Command(ActorCommand::Identity(IdentityCommand::BunkerConnectionStateChanged {
-                state,
-                reason,
-            })) => {
+            ActorMail::Command(ActorCommand::Identity(
+                IdentityCommand::BunkerConnectionStateChanged { state, reason },
+            )) => {
                 assert_eq!(state, "connected");
                 assert!(reason.is_none(), "connected state must have no reason");
             }

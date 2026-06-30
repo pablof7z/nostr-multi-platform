@@ -278,7 +278,7 @@ fn execute_bytes_unknown_namespace_reports_no_executor() {
 // that left `decode_payload` defaulted (rejected `NotTypedCapable` by the byte
 // doorway). The kernel-slice gate asserts the kernel's `default_registry` has
 // ZERO untyped modules; the full production composition is gated in
-// `nmp-defaults`. This prevents re-introducing the reverted opaque-passthrough /
+// `explicit composition`. This prevents re-introducing the reverted opaque-passthrough /
 // JSON-compat shim (#1828).
 
 /// THE production gate (kernel slice): the registry the kernel ships with must

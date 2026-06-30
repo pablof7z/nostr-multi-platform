@@ -19,7 +19,7 @@
 //! contract `register_bookmark_runtime` enforces at lines 50/67 of bookmarks_runtime.rs
 //! is load-bearing).
 //!
-//! The test lives in nmp-core (not nmp-nip51 or nmp-defaults) because the
+//! The test lives in nmp-core (not nmp-nip51 or explicit composition) because the
 //! critical kernel APIs — `inject_replaceable_event`, `register_interest`,
 //! `clear_served_interest_shapes`, and `set_event_observers_handle` — are all
 //! `pub(crate)` within this crate.  Using a `CapturingObserver` (instead of the

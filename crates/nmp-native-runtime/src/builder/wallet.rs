@@ -51,10 +51,10 @@ impl NmpAppBuilder<Unstarted> {
         // It returns the per-app `WalletRuntimeHandle` (ADR-0052 rung 5.2).
         let wallet_runtime = nmp_nip47::register_wallet(&mut self, storage_path);
         // Inject a NIP-47-backed `PaymentPort` into the NIP-57 zap auto-chain:
-        // the app-path override of the port-less zap default `register_defaults`
+        // the app-path override of the port-less zap default `explicit owner composition`
         // installs (ADR-0049), so a zap pays through this builder's wallet. The
         // `nmp-nip57 → nmp-nip47` edge is gone — NIP-57 sees only the substrate
-        // `PaymentPort` (#1728), and `nmp-defaults` (composition) wires the two.
+        // `PaymentPort` (#1728), and `explicit composition` (composition) wires the two.
         nmp_nip57::register_zap_with_payment_port(
             &mut self,
             nmp_nip47::wallet_payment_port(wallet_runtime),

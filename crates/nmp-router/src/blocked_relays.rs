@@ -50,9 +50,9 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::RwLock;
 
-use nmp_store::VerifiedEvent;
 use nmp_core::substrate::{BlockedRelayLookup, BlockedRelaySet, IngestParser};
 use nmp_kinds::KIND_BLOCKED_RELAYS;
+use nmp_store::VerifiedEvent;
 
 use crate::canonical::canonicalize_relay_url;
 
@@ -84,7 +84,9 @@ impl InMemoryBlockedRelayCache {
     pub fn upsert(&self, account_pubkey: String, relays: Vec<String>) {
         // D15: silently drop the mutation on poison; next successful
         // writer will overwrite.
-        let Ok(mut guard) = self.inner.write() else { return };
+        let Ok(mut guard) = self.inner.write() else {
+            return;
+        };
         if relays.is_empty() {
             guard.remove(&account_pubkey);
         } else {
@@ -193,8 +195,8 @@ fn parse_blocked_relay_list(tags: &[Vec<String>]) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nmp_store::RawEvent;
     use nmp_core::substrate::EventIngestDispatcher;
+    use nmp_store::RawEvent;
     use std::sync::Arc;
 
     fn evt(pubkey: &str, kind: u32, tags: Vec<Vec<String>>) -> VerifiedEvent {
@@ -338,8 +340,7 @@ mod tests {
     #[test]
     fn registers_as_ingest_parser_trait_object() {
         let cache = Arc::new(InMemoryBlockedRelayCache::new());
-        let parser: Arc<dyn IngestParser> =
-            Arc::new(Kind10006Parser::new(Arc::clone(&cache)));
+        let parser: Arc<dyn IngestParser> = Arc::new(Kind10006Parser::new(Arc::clone(&cache)));
 
         let mut dispatcher = EventIngestDispatcher::new();
         dispatcher.register_kind(10_006, parser);
@@ -384,6 +385,9 @@ mod tests {
     fn unknown_account_returns_empty_set() {
         let cache = InMemoryBlockedRelayCache::new();
         let set = cache.blocked_relays("never-published");
-        assert!(set.is_empty(), "fail-open default: unknown account = no blocks");
+        assert!(
+            set.is_empty(),
+            "fail-open default: unknown account = no blocks"
+        );
     }
 }

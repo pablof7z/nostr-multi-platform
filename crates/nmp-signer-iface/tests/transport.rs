@@ -128,7 +128,11 @@ fn transport_error_propagates_via_trait_object() {
     dyn_arc
         .send_rpc(sample_rpc())
         .expect("subsequent send must succeed");
-    assert_eq!(stub.sent().len(), 1, "only the post-failure RPC is recorded");
+    assert_eq!(
+        stub.sent().len(),
+        1,
+        "only the post-failure RPC is recorded"
+    );
 }
 
 #[test]

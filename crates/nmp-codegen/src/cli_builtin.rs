@@ -134,9 +134,8 @@ pub fn run_gen_builtin_deps(args: Vec<String>, help: &str) -> Result<(), String>
 ///
 /// `--check` diffs against the file on disk and exits non-zero on drift.
 pub fn run_gen_presence_keys(args: Vec<String>, help: &str) -> Result<(), String> {
-    let mut out = PathBuf::from(
-        "crates/nmp-core/src/kernel/projection_rev/presence_keys.generated.rs",
-    );
+    let mut out =
+        PathBuf::from("crates/nmp-core/src/kernel/projection_rev/presence_keys.generated.rs");
     let mut check = false;
     let mut index = 0;
     while index < args.len() {

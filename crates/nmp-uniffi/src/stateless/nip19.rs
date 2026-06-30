@@ -200,18 +200,16 @@ mod tests {
     }
 
     #[test]
-    fn register_defaults_handle_is_the_encoder_read_cache() {
+    fn substrate_handle_is_the_encoder_read_cache() {
         use nmp_core::substrate::ParsedRelayList;
 
         let mut app = crate::NmpApp::new();
         let app_mut = Arc::get_mut(&mut app).expect("fresh test app has one Arc owner");
-        let handles = nmp_defaults::register_defaults_with_handles(
+        let handles = nmp_substrate::install(
             &mut app_mut.inner,
-            nmp_defaults::NmpDefaults::default(),
+            nmp_substrate::SubstrateConfig::default(),
         );
-        let cache = handles
-            .mailbox_cache
-            .expect("register_defaults_with_handles must surface the mailbox cache handle");
+        let cache = handles.mailbox_cache;
 
         cache.upsert(
             PUBKEY.to_string(),
@@ -225,7 +223,7 @@ mod tests {
         let result = encode_profile(Arc::clone(&app), PUBKEY.to_string());
         assert!(
             result.starts_with("nprofile1"),
-            "returned defaults handle must be the cache encode_profile reads; got {result}"
+            "returned substrate handle must be the cache encode_profile reads; got {result}"
         );
         let decoded = decode_nprofile(&result).expect("valid nprofile round-trips");
         assert_eq!(decoded.pubkey, PUBKEY);

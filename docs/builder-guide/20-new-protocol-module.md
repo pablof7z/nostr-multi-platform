@@ -88,12 +88,9 @@ model. Minimum surface:
 | observed delivery | internal executor machinery only, declared after shape/scope/owner/replay | NIP-29 group feed internals |
 | `CapabilityModule` | request → native execution → typed result *envelope* (never `Result`) | [16 — Capabilities](16-capabilities.md) |
 
-The unifying rule a protocol crate states explicitly
-(`nmp-nip29/src/kinds.rs`): NIP-29 is a *kind-blind transport* — it owns only
-the `h` / `previous` / host-pin routing envelope and its own 9xxx/3900x kind
-namespace, never a foreign kind. An `h` tag makes an event *routable into a
-group*, not NIP-29's to own. Pick *one* such boundary rule and document it in
-your `lib.rs`.
+The unifying ownership rule a protocol crate states explicitly
+(`nmp-nip29/src/kinds.rs`): "the kind is the dispatch; the `h` tag is
+the ownership." Pick *one* such rule and document it in your `lib.rs`.
 
 ### How `nmp-nip29` wires its seams
 
@@ -102,16 +99,11 @@ your `lib.rs`.
 ```rust
 // Called from an app-core composition root during init.
 pub fn register_actions(app: &mut impl AppHost) {
-    // The SOLE kind-agnostic write surface; per-kind events (kind:7 reactions,
-    // kind:16 reposts, …) are built by their owning NIP/app and routed through
-    // this envelope — NIP-29 never names a kind.
     app.register_action(PublishGroupEventAction);
     app.register_action(CreatePublicGroupAction);
     app.register_action(DiscoverGroupsAction);
     app.register_action(JoinGroupAction);
-    // … lifecycle/admin ActionModules. NO per-kind named action: a foreign
-    // kind (kind:7 reaction, kind:16 repost) is built by its owning NIP and
-    // routed through PublishGroupEventAction, never named here.
+    // additional NIP-29 owner actions
 }
 
 // Called separately after the read model is constructed.
@@ -129,7 +121,7 @@ never the author's NIP-65 outbox (D3's third routing lane, ADR-0012).
 
 ## Default typed action contract
 
-If a reusable protocol action is wired by `nmp-defaults`, add one
+If a reusable protocol action is wired by an app/runtime composition root, add one
 `ActionContract` row in `crates/nmp-codegen/src/action_contract/table.rs`.
 That row is the source for the default action surface; do not duplicate these
 facts in tests, generated builders, or docs.
@@ -142,9 +134,9 @@ re-export policy, and typed-dispatch policy. The namespace must equal
 `ActionPayload`; and the `.fbs` file must declare the same `root_type` and
 `file_identifier`.
 
-For a default action, also re-export the payload from
-`nmp-defaults::action_payloads`. If host builders should be generated, mark the
-contract `GeneratedFlatTable` and add the builder field shape in
+For a reusable protocol action, expose the payload from the owning protocol
+crate. If host builders should be generated, mark the contract
+`GeneratedFlatTable` and add the builder field shape in
 `crates/nmp-codegen/src/action_builders/registry.rs`; the codegen tests fail if
 either side is missing. JSON-only defaults require a tracked
 `TypedDispatchPolicy::Exempt { issue }` row, not a local allowlist.
@@ -153,8 +145,6 @@ Before opening the PR, run the contract gates:
 
 ```bash
 cargo test -p nmp-codegen action_contract
-cargo test -p nmp-defaults --test action_contract
-cargo test -p nmp-defaults --test typed_only_action_doorway_gate
 cargo run -p nmp-codegen -- gen action-contract-report
 ```
 

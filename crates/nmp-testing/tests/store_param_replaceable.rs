@@ -40,7 +40,14 @@ for_each_backend!(
             retrieved.is_some(),
             "get_param_replaceable should return the newer event"
         );
-        assert_eq!(retrieved.unwrap().raw.id_bytes().expect("fixture: valid hex"), id2);
+        assert_eq!(
+            retrieved
+                .unwrap()
+                .raw
+                .id_bytes()
+                .expect("fixture: valid hex"),
+            id2
+        );
     }
 );
 
@@ -76,8 +83,14 @@ for_each_backend!(different_dtag_separate_slots, |h: &mut StoreHarness| {
         .store
         .get_param_replaceable(&ALICE_PUBKEY, 30_023, b"bar")
         .unwrap();
-    assert_eq!(r_foo.unwrap().raw.id_bytes().expect("fixture: valid hex"), id_foo);
-    assert_eq!(r_bar.unwrap().raw.id_bytes().expect("fixture: valid hex"), id_bar);
+    assert_eq!(
+        r_foo.unwrap().raw.id_bytes().expect("fixture: valid hex"),
+        id_foo
+    );
+    assert_eq!(
+        r_bar.unwrap().raw.id_bytes().expect("fixture: valid hex"),
+        id_bar
+    );
 });
 
 for_each_backend!(
@@ -114,8 +127,14 @@ for_each_backend!(
             .store
             .get_param_replaceable(&ALICE_PUBKEY, 30_024, b"foo")
             .unwrap();
-        assert_eq!(r23.unwrap().raw.id_bytes().expect("fixture: valid hex"), id_23);
-        assert_eq!(r24.unwrap().raw.id_bytes().expect("fixture: valid hex"), id_24);
+        assert_eq!(
+            r23.unwrap().raw.id_bytes().expect("fixture: valid hex"),
+            id_23
+        );
+        assert_eq!(
+            r24.unwrap().raw.id_bytes().expect("fixture: valid hex"),
+            id_24
+        );
     }
 );
 

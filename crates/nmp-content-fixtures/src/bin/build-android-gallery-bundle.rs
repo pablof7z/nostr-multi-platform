@@ -20,8 +20,8 @@ use nmp_content_fixtures::{
     build_bundle,
     dto::{EmbedEntry, ScenarioDto, SignedEventJson},
 };
-use nmp_nostr_id::{parse_nostr_uri, NostrUri};
 use nmp_core::substrate::KernelEvent;
+use nmp_nostr_id::{parse_nostr_uri, NostrUri};
 use serde::Serialize;
 
 const ANDROID_BUNDLE_PATH: &str =
@@ -208,7 +208,10 @@ fn to_kernel_event(ev: &SignedEventJson) -> KernelEvent {
 /// Returns `None` when the URI is not a decodable profile reference.
 fn profile_kernel_event(uri: &str, entry: &EmbedEntry) -> Option<KernelEvent> {
     let pubkey_hex = profile_pubkey_hex(uri)?;
-    let metadata = profile_metadata_json(entry.profile_name.as_deref(), entry.profile_picture.as_deref());
+    let metadata = profile_metadata_json(
+        entry.profile_name.as_deref(),
+        entry.profile_picture.as_deref(),
+    );
     Some(KernelEvent {
         id: String::new(),
         author: pubkey_hex,
@@ -235,7 +238,10 @@ fn profile_pubkey_hex(uri: &str) -> Option<String> {
 fn profile_metadata_json(name: Option<&str>, picture: Option<&str>) -> String {
     let mut map = serde_json::Map::new();
     if let Some(name) = name {
-        map.insert("name".to_string(), serde_json::Value::String(name.to_string()));
+        map.insert(
+            "name".to_string(),
+            serde_json::Value::String(name.to_string()),
+        );
     }
     if let Some(picture) = picture {
         map.insert(

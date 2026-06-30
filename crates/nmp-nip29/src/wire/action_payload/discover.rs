@@ -5,8 +5,8 @@ use nmp_core::substrate::{ActionPayload, ActionPayloadDecodeError};
 
 use crate::action::DiscoverGroupsInput;
 
-use super::{gate_schema_version, malformed, SCHEMA_VERSION};
 use super::discover_groups_action_generated::nmp::nip_29 as discover_fb;
+use super::{gate_schema_version, malformed, SCHEMA_VERSION};
 
 // --- DiscoverGroupsInput -----------------------------------------------------
 

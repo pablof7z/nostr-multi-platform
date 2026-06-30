@@ -45,7 +45,8 @@ pub use nostrconnect::start_nostrconnect;
 pub use reducer::SessionState;
 pub use restore::start_restore;
 pub use rpc::{
-    build_event_frame, build_event_frame_at, build_req_frame, decode_inbound_response, RpcBuildError,
+    build_event_frame, build_event_frame_at, build_req_frame, decode_inbound_response,
+    RpcBuildError,
 };
 pub use uri_encode::percent_encode_query_value;
 

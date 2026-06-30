@@ -47,12 +47,9 @@ pub fn build(ids: &Identities) -> Vec<ScenarioDto> {
     let mut store = EmbedStore::default();
     let uri = nevent_uri(&bob_note.id, &ids.bob.pubkey_hex, 1);
     store.add(uri.clone(), Target::Event(bob_note.clone()));
-    let e = ids.alice.sign(
-        1,
-        BASE + 2,
-        vec![],
-        format!("context: {uri}"),
-    );
+    let e = ids
+        .alice
+        .sign(1, BASE + 2, vec![], format!("context: {uri}"));
     out.push(scenario(
         "S-M05",
         "quotes",
@@ -71,10 +68,7 @@ pub fn build(ids: &Identities) -> Vec<ScenarioDto> {
         format!("agree with {} here", ids.bob.npub_uri()),
     );
     let mut store = EmbedStore::default();
-    store.add(
-        note_uri(&carol_note.id),
-        Target::Event(carol_note.clone()),
-    );
+    store.add(note_uri(&carol_note.id), Target::Event(carol_note.clone()));
     store.add(
         ids.bob.npub_uri(),
         Target::Profile {
@@ -105,12 +99,9 @@ pub fn build(ids: &Identities) -> Vec<ScenarioDto> {
         vec![],
         "Root insight: backpressure is a feature.",
     );
-    let n_c = ids.carol.sign(
-        1,
-        BASE + 6,
-        vec![],
-        format!("+1 {}", note_uri(&n_leaf.id)),
-    );
+    let n_c = ids
+        .carol
+        .sign(1, BASE + 6, vec![], format!("+1 {}", note_uri(&n_leaf.id)));
     let n_b = ids.bob.sign(
         1,
         BASE + 7,
@@ -140,30 +131,18 @@ pub fn build(ids: &Identities) -> Vec<ScenarioDto> {
     // S-M08: depth-5 chain -> 5th level collapses (PD-015). Sign
     // deepest-first: N5, N4, N3, N2, N1, then ALICE root.
     let n5 = ids.alice.sign(1, BASE + 9, vec![], "L5 deepest leaf");
-    let n4 = ids.bob.sign(
-        1,
-        BASE + 10,
-        vec![],
-        format!("L4 {}", note_uri(&n5.id)),
-    );
-    let n3 = ids.carol.sign(
-        1,
-        BASE + 11,
-        vec![],
-        format!("L3 {}", note_uri(&n4.id)),
-    );
-    let n2 = ids.eve.sign(
-        1,
-        BASE + 12,
-        vec![],
-        format!("L2 {}", note_uri(&n3.id)),
-    );
-    let n1 = ids.bob.sign(
-        1,
-        BASE + 13,
-        vec![],
-        format!("L1 {}", note_uri(&n2.id)),
-    );
+    let n4 = ids
+        .bob
+        .sign(1, BASE + 10, vec![], format!("L4 {}", note_uri(&n5.id)));
+    let n3 = ids
+        .carol
+        .sign(1, BASE + 11, vec![], format!("L3 {}", note_uri(&n4.id)));
+    let n2 = ids
+        .eve
+        .sign(1, BASE + 12, vec![], format!("L2 {}", note_uri(&n3.id)));
+    let n1 = ids
+        .bob
+        .sign(1, BASE + 13, vec![], format!("L1 {}", note_uri(&n2.id)));
     let mut store = EmbedStore::default();
     for ev in [&n1, &n2, &n3, &n4, &n5] {
         store.add(note_uri(&ev.id), Target::Event(ev.clone()));
@@ -180,13 +159,7 @@ pub fn build(ids: &Identities) -> Vec<ScenarioDto> {
         "Recursion depth >= 4 -> collapse (PD-015)",
         "RenderContext::should_collapse when depth >= max_depth",
         &e,
-        vec![
-            n1.clone(),
-            n2.clone(),
-            n3.clone(),
-            n4.clone(),
-            n5.clone(),
-        ],
+        vec![n1.clone(), n2.clone(), n3.clone(), n4.clone(), n5.clone()],
         &store,
     ));
 
@@ -215,12 +188,9 @@ pub fn build(ids: &Identities) -> Vec<ScenarioDto> {
     let mut store = EmbedStore::default();
     store.add(a_coord.clone(), Target::Event(art_a.clone()));
     store.add(b_coord.clone(), Target::Event(art_b.clone()));
-    let e = ids.alice.sign(
-        1,
-        BASE + 17,
-        vec![],
-        format!("recursive pair: {a_coord}"),
-    );
+    let e = ids
+        .alice
+        .sign(1, BASE + 17, vec![], format!("recursive pair: {a_coord}"));
     out.push(scenario(
         "S-M09",
         "quotes",

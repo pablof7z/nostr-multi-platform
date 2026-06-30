@@ -13,9 +13,7 @@
 use std::collections::BTreeSet;
 use std::ops::ControlFlow;
 
-use nmp_store::{
-    conversion_count, reset_conversion_count, EventStore, StoreQuery, StoredEvent,
-};
+use nmp_store::{conversion_count, reset_conversion_count, EventStore, StoreQuery, StoredEvent};
 use nmp_testing::store_harness::{hex_to_id, StoreHarness, ALICE_HEX, ALICE_PUBKEY, BOB_HEX};
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -92,7 +90,10 @@ fn early_break_converts_exactly_n_not_full_corpus() {
     };
     let (visited, converted) = visit_break_after(&*h.store, &q, 1000, 10);
     assert_eq!(visited, 10, "visitor must break after 10");
-    assert_eq!(converted, 10, "must convert exactly 10 events (no over-scan)");
+    assert_eq!(
+        converted, 10,
+        "must convert exactly 10 events (no over-scan)"
+    );
     h.assert_invariants();
 }
 
@@ -161,7 +162,10 @@ fn authorkind_streaming() {
     };
     let (visited, converted) = visit_break_after(&*h.store, &q, 1000, 5);
     assert_eq!(visited, 5);
-    assert_eq!(converted, 5, "AuthorKind: break at 5 must convert exactly 5");
+    assert_eq!(
+        converted, 5,
+        "AuthorKind: break at 5 must convert exactly 5"
+    );
     h.assert_invariants();
 }
 
@@ -225,10 +229,7 @@ fn kinddtag_streaming() {
     };
     let (visited, converted) = visit_break_after(&*h.store, &q, 1000, 5);
     assert_eq!(visited, 5);
-    assert_eq!(
-        converted, 5,
-        "KindDtag: break at 5 must convert exactly 5"
-    );
+    assert_eq!(converted, 5, "KindDtag: break at 5 must convert exactly 5");
     h.assert_invariants();
 }
 

@@ -138,8 +138,7 @@ impl ActionPayload for WalletDisconnectAction {
     }
 
     fn decode(bytes: &[u8]) -> Result<Self, ActionPayloadDecodeError> {
-        if bytes.len() < 8
-            || !disconnect_fb::wallet_disconnect_payload_buffer_has_identifier(bytes)
+        if bytes.len() < 8 || !disconnect_fb::wallet_disconnect_payload_buffer_has_identifier(bytes)
         {
             return Err(malformed("missing N47D file identifier"));
         }

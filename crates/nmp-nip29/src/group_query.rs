@@ -122,10 +122,7 @@ impl GroupEventsQuery {
             let kinds: Vec<u32> = kinds.iter().copied().collect();
             map.insert("kinds".to_string(), serde_json::json!(kinds));
         }
-        map.insert(
-            "#h".to_string(),
-            serde_json::json!([self.group.local_id]),
-        );
+        map.insert("#h".to_string(), serde_json::json!([self.group.local_id]));
         serde_json::Value::Object(map).to_string()
     }
 }

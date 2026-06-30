@@ -83,8 +83,7 @@ pub fn file_in_scope(path: &Path) -> bool {
 
     let in_nmp_core_src =
         s.contains("/crates/nmp-core/src/") || s.starts_with("crates/nmp-core/src/");
-    let in_nmp_ffi_src =
-        s.contains("/crates/nmp-ffi/src/") || s.starts_with("crates/nmp-ffi/src/");
+    let in_nmp_ffi_src = s.contains("/crates/nmp-ffi/src/") || s.starts_with("crates/nmp-ffi/src/");
 
     in_nmp_core_src || in_nmp_ffi_src
 }
@@ -384,10 +383,7 @@ mod tests {
         // BTreeSet::from([1u32, 6u32]) — the exact form the deleted
         // nmp_app_open_timeline used.
         let hits = check("    let kinds = BTreeSet::from([1u32, 6u32]);", false);
-        assert!(
-            !hits.is_empty(),
-            "must flag BTreeSet::from([1u32, 6u32])"
-        );
+        assert!(!hits.is_empty(), "must flag BTreeSet::from([1u32, 6u32])");
     }
 
     #[test]
@@ -435,9 +431,7 @@ mod tests {
     #[test]
     fn scope_nmp_ffi_src_is_in_scope() {
         assert!(
-            file_in_scope(&std::path::PathBuf::from(
-                "crates/nmp-ffi/src/timeline.rs"
-            )),
+            file_in_scope(&std::path::PathBuf::from("crates/nmp-ffi/src/timeline.rs")),
             "nmp-ffi/src must be in scope after N2 extension"
         );
         assert!(file_in_scope(&std::path::PathBuf::from(

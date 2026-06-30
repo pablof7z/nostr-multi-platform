@@ -45,7 +45,7 @@
 //! > `PublishUnsignedEvent` inside an `extern "C" fn nmp_app_*` body
 //! > (D11 lint catches that regression).
 
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use super::ActionContext;
 
@@ -284,7 +284,7 @@ pub trait ActionRegistrar {
 /// }
 /// ```
 ///
-/// `nmp-defaults::register_defaults_inner` then composes descriptors rather
+/// `explicit owner composition` then composes descriptors rather
 /// than calling ad-hoc `register_actions` free functions, giving the composition
 /// root a single, typed, inspectable list of protocol contributions (criterion 6).
 pub trait ProtocolDescriptor {

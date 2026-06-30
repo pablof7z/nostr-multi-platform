@@ -32,8 +32,8 @@ mod dedupe;
 pub use connect::{
     WalletConnectAction, WalletConnectModule, WalletDisconnectAction, WalletDisconnectModule,
 };
-pub use dedupe::INFLIGHT_BOLT11_TTL;
 use dedupe::InflightBolt11Guard;
+pub use dedupe::INFLIGHT_BOLT11_TTL;
 
 use serde::{Deserialize, Serialize};
 

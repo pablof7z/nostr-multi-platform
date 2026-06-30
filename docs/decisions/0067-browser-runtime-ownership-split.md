@@ -12,6 +12,10 @@ narrows composition: browser runtimes start explicit app composition, not hidden
 production defaults. ADR-0072 adds the durable Worker/storage/capability rule:
 silent in-memory or no-worker degradation cannot count as product runtime proof.
 
+**Supersession note (2026-06-30):** `the deleted defaults bundle` is deleted. References below
+to runtime adapters composing it are historical context only; current browser
+composition uses `nmp-substrate` plus explicit protocol/app installers.
+
 ## Context
 
 The prior `crates/nmp-wasm` shape made the wrong work look local: agents saw
@@ -69,7 +73,7 @@ other business policy.
 The browser runtime crate is named **`nmp-browser-runtime`** and lives at
 `crates/nmp-browser-runtime`. In `docs/architecture/crate-boundaries.md` §2 it
 is listed in the Layer-6 row alongside `nmp-native-runtime`, `nmp-ffi`, and
-`nmp-android-ffi`. Runtime adapters compose `nmp-defaults`; `nmp-browser-runtime`
+`nmp-android-ffi`. Runtime adapters compose `explicit composition`; `nmp-browser-runtime`
 is both the runtime adapter and the wasm-bindgen ABI shell for the browser target.
 
 ### Shared composition surface

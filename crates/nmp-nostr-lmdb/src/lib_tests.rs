@@ -242,10 +242,9 @@ async fn test_event_deletion() {
     db.save_event(&event2).await.expect("Failed to save event");
 
     // Create deletion event
-    let deletion =
-        EventBuilder::delete(EventDeletionRequest::new().id(event1.id).id(event2.id))
-            .sign_with_keys(&keys)
-            .expect("Failed to sign");
+    let deletion = EventBuilder::delete(EventDeletionRequest::new().id(event1.id).id(event2.id))
+        .sign_with_keys(&keys)
+        .expect("Failed to sign");
 
     db.save_event(&deletion)
         .await
@@ -362,16 +361,12 @@ impl TempDatabase {
             EventBuilder::text_note("Text Note B")
                 .sign_with_keys(&keys_b)
                 .unwrap(),
-            EventBuilder::metadata(
-                &Metadata::new().name("account-a").display_name("Account A"),
-            )
-            .sign_with_keys(&keys_a)
-            .unwrap(),
-            EventBuilder::metadata(
-                &Metadata::new().name("account-b").display_name("Account B"),
-            )
-            .sign_with_keys(&keys_b)
-            .unwrap(),
+            EventBuilder::metadata(&Metadata::new().name("account-a").display_name("Account A"))
+                .sign_with_keys(&keys_a)
+                .unwrap(),
+            EventBuilder::metadata(&Metadata::new().name("account-b").display_name("Account B"))
+                .sign_with_keys(&keys_b)
+                .unwrap(),
             EventBuilder::new(Kind::Custom(33_333), "")
                 .tag(Tag::identifier("my-id-a"))
                 .sign_with_keys(&keys_a)
@@ -618,8 +613,7 @@ async fn test_expected_query_result() {
 
 #[tokio::test]
 async fn test_kind5_deletion_query_bug_fix() {
-    let temp_dir = tempfile::tempdir().unwrap();
-    let db = NostrLMDB::open(temp_dir.path()).unwrap();
+    let db = TempDatabase::new();
     let keys = Keys::generate();
 
     // Create and save an event
@@ -698,8 +692,7 @@ async fn test_kind5_deletion_query_bug_fix() {
 
 #[tokio::test]
 async fn test_nip01_replaceable_events_with_identical_timestamps() {
-    let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
-    let db = NostrLMDB::open(temp_dir.path()).expect("Failed to open database");
+    let db = TempDatabase::new();
 
     // Parse the two events with identical timestamps but different IDs
     let event1_json = r#"{"kind":0,"id":"b39eda8475d345d4da75418f0ee4a9ec183eb0483634cfdc8415cefdf5c02b96","pubkey":"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","created_at":1754066538,"tags":[],"content":"smallest id","sig":"22e9f94de060c8e0a958b8fbc42914fab12c90be5ea9153aa11f92ed8c38c18a3374221fe37cb40b461d391e8ee92d6dd5083b0be8e146bf90af694560f18e17"}"#;
@@ -782,8 +775,7 @@ async fn test_nip01_replaceable_events_with_identical_timestamps() {
 
 #[tokio::test]
 async fn test_nip01_addressable_events_with_identical_timestamps() {
-    let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
-    let db = NostrLMDB::open(temp_dir.path()).expect("Failed to open database");
+    let db = TempDatabase::new();
 
     // Create two addressable events (kind 30023) with identical timestamps but different IDs
     let event1_json = r#"{"kind":30023,"id":"a11eda8475d345d4da75418f0ee4a9ec183eb0483634cfdc8415cefdf5c02b96","pubkey":"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","created_at":1754066538,"tags":[["d","article-123"],["title","Test Article"]],"content":"Article with smallest id","sig":"22e9f94de060c8e0a958b8fbc42914fab12c90be5ea9153aa11f92ed8c38c18a3374221fe37cb40b461d391e8ee92d6dd5083b0be8e146bf90af694560f18e17"}"#;
@@ -823,7 +815,11 @@ async fn test_nip01_addressable_events_with_identical_timestamps() {
             .kind(Kind::Custom(30023));
 
         let results = db.query(filter).await.expect("Failed to query");
-        assert_eq!(results.len(), 1, "Should have exactly one addressable event");
+        assert_eq!(
+            results.len(),
+            1,
+            "Should have exactly one addressable event"
+        );
 
         // According to NIP-01, event1 should be retained (smaller ID)
         assert_eq!(
@@ -855,7 +851,11 @@ async fn test_nip01_addressable_events_with_identical_timestamps() {
             .kind(Kind::Custom(30023));
 
         let results = db.query(filter).await.expect("Failed to query");
-        assert_eq!(results.len(), 1, "Should have exactly one addressable event");
+        assert_eq!(
+            results.len(),
+            1,
+            "Should have exactly one addressable event"
+        );
 
         // According to NIP-01, event1 should be retained (smaller ID)
         assert_eq!(

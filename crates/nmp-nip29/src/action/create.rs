@@ -217,12 +217,10 @@ mod tests {
                 assert_eq!(event.kind, KIND_CREATE_GROUP);
                 assert_eq!(relays, &vec!["wss://groups.example.com".to_string()]);
                 assert_eq!(event.content, "");
-                assert!(
-                    event
-                        .tags
-                        .iter()
-                        .any(|t| t == &vec!["h".to_string(), "rust-nostr".to_string()])
-                );
+                assert!(event
+                    .tags
+                    .iter()
+                    .any(|t| t == &vec!["h".to_string(), "rust-nostr".to_string()]));
                 assert_eq!(correlation_id.as_deref(), Some("cid-create"));
             }
             other => panic!("expected kind:9007 publish, got {other:?}"),
@@ -237,20 +235,16 @@ mod tests {
             }) => {
                 assert_eq!(event.kind, KIND_EDIT_METADATA);
                 assert_eq!(relays, &vec!["wss://groups.example.com".to_string()]);
-                assert!(
-                    event
-                        .tags
-                        .iter()
-                        .any(|t| t == &vec!["name".to_string(), "Rust Nostr".to_string()])
-                );
+                assert!(event
+                    .tags
+                    .iter()
+                    .any(|t| t == &vec!["name".to_string(), "Rust Nostr".to_string()]));
                 assert!(event.tags.iter().any(|t| t == &vec!["public".to_string()]));
                 assert!(event.tags.iter().any(|t| t == &vec!["open".to_string()]));
-                assert!(
-                    event
-                        .tags
-                        .iter()
-                        .any(|t| t == &vec!["about".to_string(), "Protocol work".to_string()])
-                );
+                assert!(event
+                    .tags
+                    .iter()
+                    .any(|t| t == &vec!["about".to_string(), "Protocol work".to_string()]));
                 assert_eq!(correlation_id.as_deref(), Some("cid-create"));
             }
             other => panic!("expected kind:9002 publish, got {other:?}"),

@@ -189,20 +189,21 @@ pub(crate) fn read_counts(
         .read_txn()
         .map_err(|e| StoreError::Io(format!("ic read_txn: {e}")))?;
     let db = inner.interaction_counters;
-    let replies   = read_u64(db, &txn, &counter_key(target_id, CounterKind::Reply))?;
+    let replies = read_u64(db, &txn, &counter_key(target_id, CounterKind::Reply))?;
     let reactions = read_u64(db, &txn, &counter_key(target_id, CounterKind::Reaction))?;
-    let reposts   = read_u64(db, &txn, &counter_key(target_id, CounterKind::Repost))?;
-    let zaps      = read_u64(db, &txn, &counter_key(target_id, CounterKind::Zap))?;
-    Ok(TargetInteractionCounts { replies, reactions, reposts, zaps })
+    let reposts = read_u64(db, &txn, &counter_key(target_id, CounterKind::Repost))?;
+    let zaps = read_u64(db, &txn, &counter_key(target_id, CounterKind::Zap))?;
+    Ok(TargetInteractionCounts {
+        replies,
+        reactions,
+        reposts,
+        zaps,
+    })
 }
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
-fn read_u64(
-    db: Database<Bytes, Bytes>,
-    txn: &heed::RoTxn,
-    key: &[u8],
-) -> Result<u64, StoreError> {
+fn read_u64(db: Database<Bytes, Bytes>, txn: &heed::RoTxn, key: &[u8]) -> Result<u64, StoreError> {
     match db
         .get(txn, key)
         .map_err(|e| StoreError::Io(format!("ic get: {e}")))?

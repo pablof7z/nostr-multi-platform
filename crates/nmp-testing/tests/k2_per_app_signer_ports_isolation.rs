@@ -36,8 +36,8 @@ use std::sync::{Arc, Mutex};
 
 use nmp_core::{BunkerHookRequest, ExternalSignerHookRequest};
 use nmp_native_runtime::{
-    install_bunker_hook_for_test, install_external_signer_hook_for_test, invoke_bunker_connect_hook_for_test,
-    invoke_external_signer_restore_hook_for_test,
+    install_bunker_hook_for_test, install_external_signer_hook_for_test,
+    invoke_bunker_connect_hook_for_test, invoke_external_signer_restore_hook_for_test,
 };
 
 /// Two concurrent apps each route their bunker-hook invocation to their OWN
@@ -142,7 +142,10 @@ fn external_signer_hook_is_per_app_and_survives_recreate() {
     let log_a: Arc<Mutex<Vec<ExternalSignerHookRequest>>> = Arc::new(Mutex::new(Vec::new()));
     {
         let log = Arc::clone(&log_a);
-        install_external_signer_hook_for_test(app_a, Arc::new(move |req| log.lock().unwrap().push(req)));
+        install_external_signer_hook_for_test(
+            app_a,
+            Arc::new(move |req| log.lock().unwrap().push(req)),
+        );
     }
     let fired_a = invoke_external_signer_restore_hook_for_test(app_a, "payload-a");
     let seen_a = log_a.lock().unwrap().clone();
@@ -161,7 +164,10 @@ fn external_signer_hook_is_per_app_and_survives_recreate() {
     let log_c: Arc<Mutex<Vec<ExternalSignerHookRequest>>> = Arc::new(Mutex::new(Vec::new()));
     {
         let log = Arc::clone(&log_c);
-        install_external_signer_hook_for_test(app_c, Arc::new(move |req| log.lock().unwrap().push(req)));
+        install_external_signer_hook_for_test(
+            app_c,
+            Arc::new(move |req| log.lock().unwrap().push(req)),
+        );
     }
     let fired_c = invoke_external_signer_restore_hook_for_test(app_c, "payload-c");
     let seen_c = log_c.lock().unwrap().clone();

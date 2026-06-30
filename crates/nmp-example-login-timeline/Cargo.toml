@@ -10,15 +10,25 @@ description = "Canonical DX worked example: login → following-timeline render 
 
 [dependencies]
 nmp-ownership = { workspace = true }
-# Reusable composition installers. The example uses the same explicit named
-# installer sequence the starter teaches.
-nmp-defaults = { path = "../nmp-defaults" }
 # Native runtime owner: typestate builder plus OP-feed registration.
 nmp-native-runtime = { path = "../nmp-native-runtime" }
 # Kernel substrate — the `AppHost` trait `register` takes.
 nmp-core = { path = "../nmp-core" }
+nmp-content = { path = "../nmp-content" }
 # The OP-feed typed projection decoder (`decode_op_feed_snapshot`) + key.
 nmp-nip01 = { path = "../nmp-nip01" }
+nmp-nip02 = { path = "../nmp-nip02" }
+nmp-nip17 = { path = "../nmp-nip17" }
+nmp-nip18 = { path = "../nmp-nip18" }
+nmp-nip22 = { path = "../nmp-nip22" }
+nmp-nip25 = { path = "../nmp-nip25" }
+nmp-nip29 = { path = "../nmp-nip29" }
+nmp-nip50 = { path = "../nmp-nip50" }
+nmp-nip51 = { path = "../nmp-nip51" }
+nmp-nip84 = { path = "../nmp-nip84" }
+nmp-replies = { path = "../nmp-replies" }
+nmp-substrate = { path = "../nmp-substrate" }
+nmp-wot = { path = "../nmp-wot" }
 # App-private typed write payload codec and action event construction.
 nmp-signer-iface = { path = "../nmp-signer-iface" }
 flatbuffers = { workspace = true }
@@ -31,11 +41,10 @@ nostr = { version = "0.44", features = ["std"], optional = true }
 
 [features]
 # `harness` enables the headless host driver (`harness` module) and the
-# `examples/login_timeline.rs` binary. It turns on `nmp-ffi`'s `test-support`
-# feature so the headless host can use the synthetic-injection seam
-# (`nmp_app_inject_signed_event_json`) — the sanctioned test-only path
-# (docs/escape-hatches.md). A real platform shell ships WITHOUT this feature and
-# receives events from the kernel's relay transport instead.
+# `examples/login_timeline.rs` binary. It turns on nmp-native-runtime's
+# `test-support` feature so the headless host can use the synthetic-injection
+# seam. A real platform shell ships WITHOUT this feature and receives events
+# from the kernel's relay transport instead.
 harness = ["nmp-native-runtime/test-support", "dep:nostr"]
 
 [[example]]

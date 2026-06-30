@@ -157,9 +157,8 @@ impl FeedController for NoopFeedController {
 ///
 /// # Ordering
 ///
-/// Like [`crate::register_defaults`], call before `nmp_app_start`: the engine
-/// and the follow-set observer must be visible to the kernel when the first
-/// event arrives.
+/// Call before `nmp_app_start`: the engine and the follow-set observer must be
+/// visible to the kernel when the first event arrives.
 pub fn register_op_feed_defaults(
     app: &NmpApp,
     viewer: Pubkey,
@@ -170,9 +169,8 @@ pub fn register_op_feed_defaults(
 
 /// Wire the OP-centric home feed with the default NIP-51 mute read model.
 ///
-/// Uses the same `MuteListProjection` installed by [`crate::register_defaults`]
-/// and resets the current feed window whenever the active account's mute list
-/// replacement changes.
+/// Uses the caller-supplied `MuteListProjection` and resets the current feed
+/// window whenever the active account's mute list replacement changes.
 pub fn register_op_feed_defaults_with_mute(
     app: &NmpApp,
     viewer: Pubkey,

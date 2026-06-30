@@ -1,6 +1,6 @@
 use super::*;
-use nmp_nostr_id::NostrUri;
 use nmp_core::substrate::{KernelEvent, ViewContext};
+use nmp_nostr_id::NostrUri;
 
 fn ev(id: &str, kind: u32) -> KernelEvent {
     KernelEvent {

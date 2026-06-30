@@ -12,7 +12,7 @@ use crate::types::NwcResponse;
 /// from `wallet_pubkey_hex`, otherwise returns None.
 ///
 /// `client_secret_hex` / `wallet_pubkey_hex`: from the stored NWC connection.
-#[must_use] 
+#[must_use]
 pub fn try_decode_relay_message(
     relay_text: &str,
     wallet_pubkey_hex: &str,
@@ -43,7 +43,7 @@ pub fn try_decode_relay_message(
 }
 
 /// Extract the event id from a relay EVENT message, alongside the decoded response.
-#[must_use] 
+#[must_use]
 pub fn try_decode_relay_message_with_id(
     relay_text: &str,
     wallet_pubkey_hex: &str,
@@ -87,7 +87,7 @@ pub fn try_decode_relay_message_with_id(
 /// missing an `e` tag — the last case is itself a violation of NIP-47 and
 /// would leave the client unable to match the reply to any request, so we
 /// fail closed (D6 — silent on unknown, never panic).
-#[must_use] 
+#[must_use]
 pub fn try_decode_response_for_request(
     relay_text: &str,
     wallet_pubkey_hex: &str,
@@ -110,18 +110,14 @@ pub fn try_decode_response_for_request(
     // Find the first `e` tag — NIP-47 §3.2 mandates exactly one referencing
     // the request id. `["e", "<request_id>"]` (additional positional fields
     // like a relay hint are tolerated but ignored).
-    let request_event_id = event
-        .get("tags")?
-        .as_array()?
-        .iter()
-        .find_map(|t| {
-            let tag = t.as_array()?;
-            let name = tag.first()?.as_str()?;
-            if name != "e" {
-                return None;
-            }
-            tag.get(1)?.as_str().map(str::to_string)
-        })?;
+    let request_event_id = event.get("tags")?.as_array()?.iter().find_map(|t| {
+        let tag = t.as_array()?;
+        let name = tag.first()?.as_str()?;
+        if name != "e" {
+            return None;
+        }
+        tag.get(1)?.as_str().map(str::to_string)
+    })?;
     let content = event.get("content")?.as_str()?;
     let plaintext = crypto::decrypt(client_secret_hex, wallet_pubkey_hex, content).ok()?;
     let response = serde_json::from_str::<NwcResponse>(&plaintext).ok()?;
@@ -135,11 +131,9 @@ mod tests {
     use serde_json::json;
 
     // Client side of the NWC connection.
-    const CLIENT_SECRET: &str =
-        "0101010101010101010101010101010101010101010101010101010101010101";
+    const CLIENT_SECRET: &str = "0101010101010101010101010101010101010101010101010101010101010101";
     // Wallet service side — it encrypts kind:23195 responses to the client.
-    const WALLET_SECRET: &str =
-        "0202020202020202020202020202020202020202020202020202020202020202";
+    const WALLET_SECRET: &str = "0202020202020202020202020202020202020202020202020202020202020202";
 
     fn wallet_pk() -> String {
         crypto::client_pubkey_hex(WALLET_SECRET).unwrap()
@@ -203,7 +197,11 @@ mod tests {
         let err = decoded.error.as_ref().expect("error must be present");
         assert_eq!(err.code, "UNAUTHORIZED");
         assert_eq!(err.message, "permission denied");
-        assert_eq!(decoded.pay_preimage(), None, "error response yields no preimage");
+        assert_eq!(
+            decoded.pay_preimage(),
+            None,
+            "error response yields no preimage"
+        );
     }
 
     #[test]
@@ -281,8 +279,7 @@ mod tests {
         let response = json!({ "result_type": "get_balance", "error": null,
             "result": { "balance": 1_u64 } });
         let frame = relay_event(23195, &wallet_pk, "evt", &response);
-        let wrong_secret =
-            "0404040404040404040404040404040404040404040404040404040404040404";
+        let wrong_secret = "0404040404040404040404040404040404040404040404040404040404040404";
         assert!(try_decode_relay_message(&frame, &wallet_pk, wrong_secret).is_none());
     }
 
@@ -337,13 +334,8 @@ mod tests {
             "error": null,
             "result": { "preimage": "feed" }
         });
-        let frame = relay_event_with_e_tag(
-            23195,
-            &wallet_pk,
-            "wrapper-id",
-            "the-request-id",
-            &response,
-        );
+        let frame =
+            relay_event_with_e_tag(23195, &wallet_pk, "wrapper-id", "the-request-id", &response);
         let (req_id, decoded) =
             try_decode_response_for_request(&frame, &wallet_pk, CLIENT_SECRET).unwrap();
         assert_eq!(
@@ -422,13 +414,7 @@ mod tests {
             "error": { "code": "PAYMENT_FAILED", "message": "no route" },
             "result": null
         });
-        let frame = relay_event_with_e_tag(
-            23195,
-            &wallet_pk,
-            "wrapper",
-            "req-fail",
-            &response,
-        );
+        let frame = relay_event_with_e_tag(23195, &wallet_pk, "wrapper", "req-fail", &response);
         let (req_id, decoded) =
             try_decode_response_for_request(&frame, &wallet_pk, CLIENT_SECRET).unwrap();
         assert_eq!(req_id, "req-fail");

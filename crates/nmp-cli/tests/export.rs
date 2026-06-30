@@ -50,11 +50,11 @@ fn export_jsrepo_produces_registry_json_and_per_item_files() {
 
     let json = fs::read_to_string(&json_path).unwrap();
     // Schema and top-level fields.
+    assert!(json.contains("\"$schema\""), "must contain $schema field");
     assert!(
-        json.contains("\"$schema\""),
-        "must contain $schema field"
+        json.contains("nmpui.f7z.io"),
+        "must reference the production URL"
     );
-    assert!(json.contains("nmpui.f7z.io"), "must reference the production URL");
     assert!(
         json.contains("swiftui-content-core"),
         "must contain swiftui-content-core item"
@@ -151,10 +151,7 @@ fn committed_registry_json_matches_generated_output() {
 fn export_unknown_target_fails_with_usage() {
     let tmp = TempDir::new("export-unknown");
     let out = nmp(tmp.path(), &["export", "unknown-format"]);
-    assert!(
-        !out.status.success(),
-        "unknown export target must fail"
-    );
+    assert!(!out.status.success(), "unknown export target must fail");
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
         stderr.contains("unknown export target"),

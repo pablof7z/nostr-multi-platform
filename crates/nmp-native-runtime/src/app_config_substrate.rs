@@ -143,7 +143,7 @@ impl NmpApp {
 
     /// ADR-0057 PR 2 — install the kernel's
     /// [`nmp_core::substrate::ProfileLookup`] handle. The per-app crate
-    /// (today `nmp_defaults` register_substrate) hands in a concrete
+    /// (today `explicit_composition` register_substrate) hands in a concrete
     /// `nmp_nip01::ProfileCache`; the same `Arc` is the writer side fed by the
     /// kind:0 `Kind0Parser` registered above + the reader side the kernel
     /// exposes through `profile_lookup()`.
@@ -194,7 +194,7 @@ impl NmpApp {
 
     /// ADR-0057 PR 3 — install the kernel's
     /// [`nmp_core::substrate::ContactsLookup`] handle. The per-app crate
-    /// (today `nmp_defaults` register_substrate) hands in a concrete
+    /// (today `explicit_composition` register_substrate) hands in a concrete
     /// `nmp_nip01::ContactsCache`; the same `Arc` is the writer side fed by the
     /// kind:3 `Kind3Parser` registered above + the reader side the kernel
     /// exposes through `contacts_lookup()`.
@@ -395,9 +395,8 @@ impl NmpApp {
     /// Spec §271 (2026-05-25): `Nip65OutboxResolver` was moved out of
     /// `nmp-core::publish::nip65` into `nmp-router` (Layer 2). The kernel
     /// constructs `PublishEngine` with the in-crate `NoopOutboxResolver`
-    /// default (fail-closed); production composition
-    /// (`nmp-defaults::register_defaults`) installs the
-    /// router-side resolver through this factory slot. Actor startup snapshots
+    /// default (fail-closed); production composition installs the router-side
+    /// resolver through this factory slot. Actor startup snapshots
     /// the slot and invokes [`crate::kernel::Kernel::set_publish_resolver`]
     /// with the produced `Arc<dyn OutboxResolver>`; `Reset` re-invokes the
     /// same snapped factory against fresh kernel handles.

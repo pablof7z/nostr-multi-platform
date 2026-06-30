@@ -8,9 +8,9 @@
 //! 2. `sync_wallet_status` poison-lock recovery: D6 — always write the status
 //!    slot, never call `mark_changed_since_emit` on a skipped write.
 
+use super::heartbeat::sync_wallet_status;
 use super::*;
 use crate::status::new_wallet_status_slot;
-use super::heartbeat::sync_wallet_status;
 
 fn make_connection_ready() -> WalletConnection {
     WalletConnection {
@@ -112,6 +112,10 @@ fn sync_wallet_status_writes_slot_and_marks_dirty_on_success() {
     let mut kernel = nmp_core::Kernel::testing_new(64);
     sync_wallet_status(&rt, &kernel.as_wallet_access());
     // If we get here without panic the lock-recovery path did not regress.
-    let val = rt.status_slot.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let val = rt
+        .status_slot
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
     assert!(val.is_none(), "no connection → slot must hold None");
 }

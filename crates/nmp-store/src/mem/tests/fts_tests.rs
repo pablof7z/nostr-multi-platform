@@ -26,9 +26,8 @@ fn scope_id() -> SearchScopeId {
 
 /// A fixture spec indexing the event `.content` for `TEST_KIND`.
 fn fixture_spec() -> CompiledIndexSpec {
-    let extract: Arc<ExtractFn> = Arc::new(|ev: &StoredEvent| {
-        vec![(SearchField::new(0), ev.raw.content.clone())]
-    });
+    let extract: Arc<ExtractFn> =
+        Arc::new(|ev: &StoredEvent| vec![(SearchField::new(0), ev.raw.content.clone())]);
     CompiledIndexSpec {
         scope_id: scope_id(),
         kinds: BTreeSet::from([TEST_KIND]),
@@ -57,7 +56,11 @@ fn store_with_index() -> MemEventStore {
 
 fn insert(store: &MemEventStore, ev: RawEvent, at: u64) {
     store
-        .insert(VerifiedEvent::from_raw_unchecked(ev), &"wss://r/".to_string(), at)
+        .insert(
+            VerifiedEvent::from_raw_unchecked(ev),
+            &"wss://r/".to_string(),
+            at,
+        )
         .unwrap();
 }
 
@@ -88,7 +91,11 @@ fn run(store: &MemEventStore, q: &TextSearchQuery) -> (Vec<TextSearchHit>, TextS
 #[test]
 fn token_match() {
     let store = store_with_index();
-    insert(&store, make_event(0x01, "hello satoshi nakamoto", 100), 100_000);
+    insert(
+        &store,
+        make_event(0x01, "hello satoshi nakamoto", 100),
+        100_000,
+    );
     let (hits, status) = run(&store, &query("nakamoto"));
     assert_eq!(status, TextSearchStatus::Complete);
     assert_eq!(hits.len(), 1);
@@ -134,7 +141,11 @@ fn newest_first() {
 fn limit_and_early_stop() {
     let store = store_with_index();
     for i in 0..10u8 {
-        insert(&store, make_event(i + 1, "common token", 100 + i as u64), 100_000 + i as u64);
+        insert(
+            &store,
+            make_event(i + 1, "common token", 100 + i as u64),
+            100_000 + i as u64,
+        );
     }
     let mut q = query("common");
     q.limit = 3;
@@ -142,7 +153,9 @@ fn limit_and_early_stop() {
     assert_eq!(hits.len(), 3, "limit caps the result count");
     assert_eq!(
         status,
-        TextSearchStatus::Partial { budget_exhausted: false },
+        TextSearchStatus::Partial {
+            budget_exhausted: false
+        },
         "hitting the limit reports Partial(non-budget)"
     );
 
@@ -179,9 +192,14 @@ fn delete_removes_hit() {
     insert(&store, ev, 100_000);
     assert_eq!(run(&store, &query("deletable")).0.len(), 1);
 
-    store.delete_by_filter(DeleteFilter::ByIds(vec![id])).unwrap();
+    store
+        .delete_by_filter(DeleteFilter::ByIds(vec![id]))
+        .unwrap();
     let (hits, status) = run(&store, &query("deletable"));
-    assert!(hits.is_empty(), "deleted event must not survive in the FTS index");
+    assert!(
+        hits.is_empty(),
+        "deleted event must not survive in the FTS index"
+    );
     assert_eq!(status, TextSearchStatus::Complete);
 }
 
@@ -218,20 +236,33 @@ fn budget_exhaustion_never_yields_and_false_positive() {
     }
     // 4 older docs: "common alpha" (both tokens).
     for (i, at) in [100u64, 101, 102, 103].into_iter().enumerate() {
-        insert(&store, make_event(0x20 + i as u8, "common alpha", at), at * 1_000);
+        insert(
+            &store,
+            make_event(0x20 + i as u8, "common alpha", at),
+            at * 1_000,
+        );
     }
     let mut q = query("alpha common"); // exact=["alpha"], prefix="common"
-    q.budget = TextSearchBudget { max_docs_scanned: 6, max_matches: 1_000 };
+    q.budget = TextSearchBudget {
+        max_docs_scanned: 6,
+        max_matches: 1_000,
+    };
     let (hits, status) = run(&store, &q);
     assert_eq!(
         status,
-        TextSearchStatus::Partial { budget_exhausted: true },
+        TextSearchStatus::Partial {
+            budget_exhausted: true
+        },
         "prefix scan exhausted the budget"
     );
     // Newest-first the scan collects 203,202,201,200 (no alpha) then 103,102; the
     // AND filter drops the four non-alpha docs, leaving only the two alpha docs.
     let times: Vec<u64> = hits.iter().map(|h| h.created_at).collect();
-    assert_eq!(times, vec![103, 102], "only docs that actually contain 'alpha' survive");
+    assert_eq!(
+        times,
+        vec![103, 102],
+        "only docs that actually contain 'alpha' survive"
+    );
     assert!(
         hits.iter().all(|h| h.created_at < 200),
         "no doc missing the required exact token is ever returned"
@@ -246,19 +277,38 @@ fn common_exact_term_bounded_by_candidate_set() {
     // neither blows the scan budget nor changes the (correct, small) result.
     let store = store_with_index();
     for (i, at) in (0..20u64).enumerate() {
-        insert(&store, make_event(0x30 + i as u8, "common", 100 + at), (100 + at) * 1_000);
+        insert(
+            &store,
+            make_event(0x30 + i as u8, "common", 100 + at),
+            (100 + at) * 1_000,
+        );
     }
     for (i, at) in [200u64, 201, 202].into_iter().enumerate() {
-        insert(&store, make_event(0x50 + i as u8, "common rareword", at), at * 1_000);
+        insert(
+            &store,
+            make_event(0x50 + i as u8, "common rareword", at),
+            at * 1_000,
+        );
     }
     let mut q = query("common rare"); // exact=["common"], prefix="rare"
-    // Budget (5) is far smaller than the 23 "common" postings: a correct,
-    // candidate-bounded AND completes; an unbounded exact scan would not.
-    q.budget = TextSearchBudget { max_docs_scanned: 5, max_matches: 1_000 };
+                                      // Budget (5) is far smaller than the 23 "common" postings: a correct,
+                                      // candidate-bounded AND completes; an unbounded exact scan would not.
+    q.budget = TextSearchBudget {
+        max_docs_scanned: 5,
+        max_matches: 1_000,
+    };
     let (hits, status) = run(&store, &q);
-    assert_eq!(status, TextSearchStatus::Complete, "only the 3 rare-prefix postings are scanned");
+    assert_eq!(
+        status,
+        TextSearchStatus::Complete,
+        "only the 3 rare-prefix postings are scanned"
+    );
     let times: Vec<u64> = hits.iter().map(|h| h.created_at).collect();
-    assert_eq!(times, vec![202, 201, 200], "AND with the common term keeps exactly the 3 candidates");
+    assert_eq!(
+        times,
+        vec![202, 201, 200],
+        "AND with the common term keeps exactly the 3 candidates"
+    );
 }
 
 #[test]
@@ -271,25 +321,43 @@ fn overlong_token_cleanup_no_stale_postings() {
     let ev = make_event(0x70, &long, 100);
     let id = ev.id_bytes().unwrap();
     insert(&store, ev, 100_000);
-    assert_eq!(run(&store, &query("zzzz")).0.len(), 1, "capped long token is searchable by prefix");
+    assert_eq!(
+        run(&store, &query("zzzz")).0.len(),
+        1,
+        "capped long token is searchable by prefix"
+    );
 
-    store.delete_by_filter(DeleteFilter::ByIds(vec![id])).unwrap();
+    store
+        .delete_by_filter(DeleteFilter::ByIds(vec![id]))
+        .unwrap();
     let (hits, _) = run(&store, &query("zzzz"));
-    assert!(hits.is_empty(), "no stale posting survives delete of an over-cap token");
+    assert!(
+        hits.is_empty(),
+        "no stale posting survives delete of an over-cap token"
+    );
 }
 
 #[test]
 fn budget_exhausted_reports_partial() {
     let store = store_with_index();
     for i in 0..20u8 {
-        insert(&store, make_event(i + 1, "budgeted token", 100 + i as u64), 100_000 + i as u64);
+        insert(
+            &store,
+            make_event(i + 1, "budgeted token", 100 + i as u64),
+            100_000 + i as u64,
+        );
     }
     let mut q = query("budgeted");
-    q.budget = TextSearchBudget { max_docs_scanned: 5, max_matches: 1_000 };
+    q.budget = TextSearchBudget {
+        max_docs_scanned: 5,
+        max_matches: 1_000,
+    };
     let (_hits, status) = run(&store, &q);
     assert_eq!(
         status,
-        TextSearchStatus::Partial { budget_exhausted: true },
+        TextSearchStatus::Partial {
+            budget_exhausted: true
+        },
         "scanning past max_docs_scanned reports budget exhaustion"
     );
 }

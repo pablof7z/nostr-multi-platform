@@ -69,7 +69,12 @@ impl ActorLaneTransport {
         remote_pubkey: PublicKey,
         relay_url: String,
     ) -> Self {
-        Self { sender, local_keys, remote_pubkey, relay_urls: vec![relay_url] }
+        Self {
+            sender,
+            local_keys,
+            remote_pubkey,
+            relay_urls: vec![relay_url],
+        }
     }
 
     /// Construct a multi-relay transport.
@@ -84,7 +89,12 @@ impl ActorLaneTransport {
         remote_pubkey: PublicKey,
         relay_urls: Vec<String>,
     ) -> Self {
-        Self { sender, local_keys, remote_pubkey, relay_urls }
+        Self {
+            sender,
+            local_keys,
+            remote_pubkey,
+            relay_urls,
+        }
     }
 
     /// The relay URLs this transport fans outbound frames to.
@@ -108,11 +118,8 @@ impl Nip46Transport for ActorLaneTransport {
         .map_err(|e| SignerError::Backend(e.to_string()))?;
 
         for relay_url in &self.relay_urls {
-            self.sender.enqueue_outbound(
-                RelayRole::Signer,
-                relay_url.clone(),
-                frame.clone(),
-            );
+            self.sender
+                .enqueue_outbound(RelayRole::Signer, relay_url.clone(), frame.clone());
         }
         Ok(())
     }

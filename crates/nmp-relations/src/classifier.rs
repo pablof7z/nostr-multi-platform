@@ -4,17 +4,17 @@
 //! `nmp-nip01` counts its own kind:1 NIP-10 replies natively and exposes the
 //! [`NoteRelationClassifier`] seam for everything else. This module supplies the
 //! concrete classifier that recognises the v1 default cross-protocol relation
-//! sources: reactions (NIP-25 kind:7), reposts (NIP-18 kind:6), and comments
-//! (NIP-22 kind:1111). The base note crate carries no dependency on those NIP
-//! crates.
+//! sources: reactions (NIP-25 kind:7), reposts (NIP-18 kind:6/16), zaps
+//! (NIP-57 kind:9735), and comments (NIP-22 kind:1111). The base note crate
+//! carries no dependency on those NIP crates.
 
 use std::sync::Arc;
 
 use nmp_core::substrate::KernelEvent;
 use nmp_nip01::{ClassifiedRelation, NoteRelationClassifier, RelationKind};
 
-/// Production [`NoteRelationClassifier`]: classifies reactions, reposts, and
-/// comments onto the note they reference. kind:1 replies are NOT classified
+/// Production [`NoteRelationClassifier`]: classifies reactions, reposts, zaps,
+/// and comments onto the note they reference. kind:1 replies are NOT classified
 /// here — `nmp-nip01` owns its own reply detection.
 pub struct DefaultNoteRelationClassifier;
 
@@ -32,17 +32,33 @@ impl NoteRelationClassifier for DefaultNoteRelationClassifier {
                 kind: RelationKind::Comment,
             });
         }
-        // NIP-18 kind:6 repost — counted against the reposted event.
-        if event.kind == nmp_nip18::KIND_REPOST {
+        // NIP-18 kind:6/16 reposts — addressable targets count against their
+        // canonical `kind:pubkey:d` coordinate; event-only targets count by id.
+        if nmp_nip18::is_repost_kind(event.kind) {
             return nmp_nip18::try_from_kernel_event(event)
-                .and_then(|repost| repost.target_event_id)
+                .and_then(|repost| {
+                    repost
+                        .target_address
+                        .map(|coord| coord.to_wire())
+                        .or(repost.target_event_id)
+                })
                 .map(|target| ClassifiedRelation {
                     target,
                     kind: RelationKind::Repost,
                 });
         }
+        // NIP-57 kind:9735 zap receipt — counted against the zapped address
+        // coordinate when present, otherwise the zapped event id.
+        if event.kind == nmp_nip57::KIND_ZAP_RECEIPT {
+            return nmp_nip57::try_from_kernel_event(event)
+                .and_then(|zap| zap.zapped_address.or(zap.zapped_event_id))
+                .map(|target| ClassifiedRelation {
+                    target,
+                    kind: RelationKind::Zap,
+                });
+        }
         // NIP-25 kind:7 reaction — counted against its first `e` tag.
-        if event.kind == 7 {
+        if event.kind == nmp_kinds::KIND_REACTION {
             return first_event_tag(&event.tags).map(|target| ClassifiedRelation {
                 target,
                 kind: RelationKind::Reaction,
@@ -152,6 +168,44 @@ mod tests {
         assert_eq!(index.ingest(&react), vec!["root".to_string()]);
         assert_eq!(
             index.counts_for("root").reactions,
+            nmp_nip01::RelationCount::Known { count: 1 }
+        );
+    }
+
+    #[test]
+    fn index_with_default_classifier_counts_generic_reposts_against_address() {
+        let mut index = NoteRelationIndex::new(Some(default_note_relation_classifier()));
+        let address = format!("30023:{}:article", "b".repeat(64));
+        let repost = kernel_event(
+            &"c".repeat(64),
+            nmp_nip18::KIND_GENERIC_REPOST,
+            vec![
+                vec!["a".to_string(), address.clone()],
+                vec!["k".to_string(), "30023".to_string()],
+            ],
+        );
+        assert_eq!(index.ingest(&repost), vec![address.clone()]);
+        assert_eq!(
+            index.counts_for(&address).reposts,
+            nmp_nip01::RelationCount::Known { count: 1 }
+        );
+    }
+
+    #[test]
+    fn index_with_default_classifier_counts_zaps_against_address() {
+        let mut index = NoteRelationIndex::new(Some(default_note_relation_classifier()));
+        let address = format!("30023:{}:article", "b".repeat(64));
+        let zap = kernel_event(
+            &"c".repeat(64),
+            nmp_nip57::KIND_ZAP_RECEIPT,
+            vec![
+                vec!["p".to_string(), "recipient".to_string()],
+                vec!["a".to_string(), address.clone()],
+            ],
+        );
+        assert_eq!(index.ingest(&zap), vec![address.clone()]);
+        assert_eq!(
+            index.counts_for(&address).zaps,
             nmp_nip01::RelationCount::Known { count: 1 }
         );
     }

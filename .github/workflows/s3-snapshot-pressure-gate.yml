@@ -28,7 +28,7 @@ name: s3-snapshot-pressure-gate
 # Manual dispatch is wired so reviewers can opt-in for risky changes touching:
 #   nmp-core/src/kernel/, crates/nmp-core/src/actor/,
 #   crates/nmp-core/src/snapshot.rs, ffi/mod.rs, ffi/bridge.rs,
-#   crates/nmp-nip01/src/op_feed/, crates/nmp-defaults/src/op_feed_defaults.rs.
+#   crates/nmp-nip01/src/op_feed/, crates/nmp-native-runtime/src/op_feed_defaults.rs.
 # The harness exits 2 on gate failure (--fail-on-gate); the job fails on any
 # non-zero exit.
 #

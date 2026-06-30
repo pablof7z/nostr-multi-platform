@@ -51,11 +51,7 @@ fn expiry_index_is_absent(store: &crate::LmdbEventStore, id: &[u8; 32]) {
             break;
         }
     }
-    assert!(
-        !found,
-        "dangling nmp-expiry-index entry for id {:?}",
-        id
-    );
+    assert!(!found, "dangling nmp-expiry-index entry for id {:?}", id);
 }
 
 // ─── Bug-1 tests (kind:5 a-tag leaks) ────────────────────────────────────────
@@ -168,8 +164,7 @@ fn kind5_a_tag_delete_cleans_all_nmp_secondaries_replaceable() {
         .custom_created_at(Timestamp::from_secs(2000))
         .sign_with_keys(&keys)
         .unwrap();
-    let k5_raw: crate::types::RawEvent =
-        serde_json::from_str(&k5.try_as_json().unwrap()).unwrap();
+    let k5_raw: crate::types::RawEvent = serde_json::from_str(&k5.try_as_json().unwrap()).unwrap();
     store
         .insert(verified(k5_raw), &"wss://r/".into(), 2_000_000)
         .unwrap();
@@ -230,8 +225,7 @@ fn kind5_a_tag_delete_cleans_expiry_index() {
         .custom_created_at(Timestamp::from_secs(2000))
         .sign_with_keys(&keys)
         .unwrap();
-    let k5_raw: crate::types::RawEvent =
-        serde_json::from_str(&k5.try_as_json().unwrap()).unwrap();
+    let k5_raw: crate::types::RawEvent = serde_json::from_str(&k5.try_as_json().unwrap()).unwrap();
     store
         .insert(verified(k5_raw), &"wss://r/".into(), 2_000_000)
         .unwrap();
@@ -285,8 +279,7 @@ fn kind5_a_tag_delete_no_phantom_lru_eviction() {
         .custom_created_at(Timestamp::from_secs(2000))
         .sign_with_keys(&keys)
         .unwrap();
-    let k5_raw: crate::types::RawEvent =
-        serde_json::from_str(&k5.try_as_json().unwrap()).unwrap();
+    let k5_raw: crate::types::RawEvent = serde_json::from_str(&k5.try_as_json().unwrap()).unwrap();
     store
         .insert(verified(k5_raw), &"wss://r/".into(), 2_000_000)
         .unwrap();
@@ -298,9 +291,7 @@ fn kind5_a_tag_delete_no_phantom_lru_eviction() {
         max_events_per_step: 100,
         max_duration_ms: 60_000,
     };
-    let report = store
-        .gc_step(budget, 9_000_000_000)
-        .expect("gc_step");
+    let report = store.gc_step(budget, 9_000_000_000).expect("gc_step");
 
     assert_eq!(
         report.lru_evicted, 0,
@@ -359,12 +350,13 @@ fn lru_eviction_clears_replaceable_freshness() {
         max_events_per_step: 100,
         max_duration_ms: 60_000,
     };
-    let report = store
-        .gc_step(budget, 9_000_000_000)
-        .expect("gc_step");
+    let report = store.gc_step(budget, 9_000_000_000).expect("gc_step");
 
     // At least the replaceable event (kind 0) must have been evicted.
-    assert!(report.lru_evicted >= 1, "expected LRU eviction, got {report:?}");
+    assert!(
+        report.lru_evicted >= 1,
+        "expected LRU eviction, got {report:?}"
+    );
 
     // The kind:0 event must be gone.
     assert!(
@@ -415,9 +407,7 @@ fn lru_eviction_clears_addressable_freshness() {
         max_events_per_step: 100,
         max_duration_ms: 60_000,
     };
-    let report = store
-        .gc_step(budget, 9_000_000_000)
-        .expect("gc_step");
+    let report = store.gc_step(budget, 9_000_000_000).expect("gc_step");
 
     assert!(report.lru_evicted >= 1, "expected LRU eviction");
     assert!(

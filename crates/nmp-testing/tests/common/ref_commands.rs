@@ -1,6 +1,6 @@
 use nmp_core::actor::RefsCommand;
-use nmp_nostr_id::{parse_nostr_uri, NostrUri};
 use nmp_core::{EventShape, RefLiveness, RefNamespace, RefResolveMetadata, RefShape};
+use nmp_nostr_id::{parse_nostr_uri, NostrUri};
 
 fn event_ref_from_uri(uri: &str) -> Option<(String, RefResolveMetadata)> {
     match parse_nostr_uri(uri).ok()? {

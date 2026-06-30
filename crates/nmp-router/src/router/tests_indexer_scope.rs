@@ -15,9 +15,9 @@ use super::*;
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
+use nmp_core::substrate::{BlockedRelaySet, MailboxCache, SessionKeySet};
 use nmp_planner::{InterestId, InterestLifecycle, InterestScope, InterestShape};
 use nmp_store::{RawEvent, VerifiedEvent};
-use nmp_core::substrate::{BlockedRelaySet, MailboxCache, SessionKeySet};
 
 use crate::{InMemoryMailboxCache, Kind10002Parser};
 

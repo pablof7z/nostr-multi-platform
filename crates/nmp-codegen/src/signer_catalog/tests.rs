@@ -46,9 +46,15 @@ fn kotlin_render_is_deterministic_and_faithful() {
     // Android entries only, in order: Amber then Primal (Nostr Connect excluded).
     assert!(a.contains("displayName = \"Amber\""));
     assert!(a.contains("contentAuthority = \"com.greenart7c3.nostrsigner\""));
-    assert!(a.contains("contentAuthority = null"), "Primal has null authority");
+    assert!(
+        a.contains("contentAuthority = null"),
+        "Primal has null authority"
+    );
     assert!(a.contains("packageName = \"net.primal.android\""));
-    assert!(!a.contains("Nostr Connect"), "iOS-only app must not appear in Android list");
+    assert!(
+        !a.contains("Nostr Connect"),
+        "iOS-only app must not appear in Android list"
+    );
     let amber_at = a.find("\"Amber\"").unwrap();
     let primal_at = a.find("\"Primal\"").unwrap();
     assert!(amber_at < primal_at, "catalog order preserved");
@@ -63,7 +69,11 @@ fn kotlin_copies_differ_only_in_package_line() {
     assert_eq!(g.len(), a.len());
     assert!(g[0].starts_with("package ") && a[0].starts_with("package "));
     assert_ne!(g[0], a[0], "package line differs");
-    assert_eq!(&g[1..], &a[1..], "everything after line 1 is byte-identical");
+    assert_eq!(
+        &g[1..],
+        &a[1..],
+        "everything after line 1 is byte-identical"
+    );
 }
 
 #[test]

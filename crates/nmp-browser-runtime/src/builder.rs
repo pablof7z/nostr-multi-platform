@@ -59,6 +59,8 @@ mod state;
 pub(crate) use state::BrowserBuilderInner;
 
 mod app_host_impl;
+mod composition;
+pub(crate) use composition::install_browser_production_composition;
 
 // ── Typestate markers ─────────────────────────────────────────────────────────
 
@@ -356,7 +358,7 @@ impl BrowserAppBuilder<ProvidersDecided> {
             Err(poisoned) => poisoned.into_inner(),
         };
 
-        // #2072 — loud ADR-0053 gate: after register_defaults, declared
+        // #2072 — loud ADR-0053 gate: after composition, declared
         // projections MUST be in `All` or `Narrow` state, not `Undeclared`.
         // Fires as a panic in debug/test builds; degrades to a warn in release.
         debug_assert!(
@@ -376,20 +378,6 @@ impl BrowserAppBuilder<ProvidersDecided> {
 
         BrowserRuntimeHandle::from_builder_inner(inner)
     }
-}
-
-fn install_browser_production_composition(app: &mut BrowserAppBuilder<ProvidersDecided>) {
-    let nmp_defaults::NmpDefaults {
-        coverage_gate,
-        search_defaults,
-        ..
-    } = nmp_defaults::NmpDefaults::default();
-
-    let _mailbox_cache = nmp_defaults::register_substrate(app, coverage_gate);
-    nmp_defaults::register_nip50_protocol_defaults(app);
-    let _social_handles = nmp_defaults::register_social_protocol_defaults(app, search_defaults);
-    nmp_defaults::register_dm_protocol_defaults(app);
-    nmp_defaults::register_longform_projection(app);
 }
 
 // ── Typestate advance helper ──────────────────────────────────────────────────

@@ -36,9 +36,11 @@ fn alice_kind1_guard(covered_through: u64) -> CoverageGuard {
         filter_hash: FH.to_string(),
         relay: RELAY.to_string(),
         covered_through,
-        matches: std::sync::Arc::new(|_id: &str, author: &str, kind: u32, _ts: u64, _tags: &[Vec<String>]| {
-            author == ALICE_HEX && kind == 1
-        }),
+        matches: std::sync::Arc::new(
+            |_id: &str, author: &str, kind: u32, _ts: u64, _tags: &[Vec<String>]| {
+                author == ALICE_HEX && kind == 1
+            },
+        ),
     }
 }
 
@@ -85,7 +87,11 @@ for_each_backend!(
                 &guards,
             )
             .expect("gc_step_with_pins_and_coverage");
-        assert!(report.lru_evicted >= 2, "expected ≥2 LRU evictions, got {}", report.lru_evicted);
+        assert!(
+            report.lru_evicted >= 2,
+            "expected ≥2 LRU evictions, got {}",
+            report.lru_evicted
+        );
 
         // e100 was evicted; it is below covered_through=300. The oldest SURVIVING
         // covered event is e300 (t=300), so the ledger must be lowered to JUST
@@ -163,7 +169,12 @@ for_each_backend!(
 
         let guards = vec![alice_kind1_guard(300)];
         h.store
-            .gc_step_with_pins_and_coverage(evicting_budget(1), 1_000, &std::collections::HashSet::new(), &guards)
+            .gc_step_with_pins_and_coverage(
+                evicting_budget(1),
+                1_000,
+                &std::collections::HashSet::new(),
+                &guards,
+            )
             .expect("gc");
 
         h.assert_absent(&bob_id);
@@ -213,7 +224,8 @@ for_each_backend!(
         h.store.record_coverage(FH, "wss://r2/", 500);
         h.store.record_coverage(FH, "wss://r3/", 300);
         // A different filter_hash must not bleed in.
-        h.store.record_coverage("ffffffffffffffff", "wss://r1/", 9_000);
+        h.store
+            .record_coverage("ffffffffffffffff", "wss://r1/", 9_000);
 
         assert_eq!(
             h.store.coverage_max_for_filter_hash(FH),

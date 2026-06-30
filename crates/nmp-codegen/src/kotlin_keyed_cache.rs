@@ -90,7 +90,6 @@ fn render_routing(entries: &[KeyedProjectionEntry]) -> String {
     s
 }
 
-
 const STATIC_TYPES: &str = r#"/** One cached row: last committed per-key rev + raw typed payload bytes. */
 private data class RefRowCacheEntry(val rev: ULong, val payload: ByteArray) {
     override fun equals(other: Any?): Boolean {

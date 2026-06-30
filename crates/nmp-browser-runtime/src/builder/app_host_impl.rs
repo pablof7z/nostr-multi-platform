@@ -1,6 +1,6 @@
 //! `AppHost` narrow-trait implementations for `BrowserAppBuilder<S>`.
 //!
-//! Mirrors `nmp-defaults/src/builder/app_host_impl.rs` but delegates through
+//! Mirrors `explicit composition/src/builder/app_host_impl.rs` but delegates through
 //! `self.lock()` (a `Mutex<BrowserBuilderInner>`) rather than an `unsafe`
 //! raw-pointer dereference. The interior-mutability model is the same:
 //! `&self` trait impls accumulate state that is applied to the kernel in

@@ -45,14 +45,15 @@ terms like "podcast episode" or "Chirp home feed policy". A protocol module may
 own a reusable projection or action; an app crate composes those modules into
 its product.
 
-`nmp-defaults` sits at the composition layer, not in the kernel. It wires
-generic Nostr defaults that many apps should inherit. `apps/chirp/crates/nmp-app-chirp`
-then adds product-specific Rust glue: Chirp projection registration, group
-chat/discovery surfaces, wallet feature wiring, and the home feed key.
+Shared protocol crates sit at the reusable composition layer, not in the kernel.
+Apps should compose explicit owner crates directly instead of inheriting a hidden
+starter bundle. `apps/chirp/crates/nmp-app-chirp` then adds product-specific
+Rust glue: Chirp projection registration, group chat/discovery surfaces, wallet
+feature wiring, and the home feed key.
 
-This is the practical version of the boundary: shared defaults are reusable
-composition; app crates decide which reusable pieces are actually part of that
-product.
+This is the practical version of the boundary: shared protocol owners are
+reusable composition; app crates decide which reusable pieces are actually part
+of that product.
 
 ## Status Boundary
 

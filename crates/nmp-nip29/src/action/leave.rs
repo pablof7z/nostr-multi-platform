@@ -150,7 +150,9 @@ mod tests {
         })
         .expect("well-formed");
         let event = match cmds.into_iter().next().expect("one command") {
-            ActorCommand::Publish(PublishCommand::OwnedUnsignedEventToRelays { event, .. }) => event,
+            ActorCommand::Publish(PublishCommand::OwnedUnsignedEventToRelays { event, .. }) => {
+                event
+            }
             other => panic!("expected publish, got {other:?}"),
         };
         assert_eq!(event.content, "moving on");

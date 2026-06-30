@@ -36,7 +36,7 @@ use crate::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 ///   it only tails a kind number, exactly as it does for 10006.)
 ///
 /// kind:10000 (mute list) is intentionally excluded: the host-side
-/// `MuteRuntimeController` (in `nmp-defaults`) owns a dedicated
+/// `MuteRuntimeController` (in `explicit composition`) owns a dedicated
 /// `authors=[active_pubkey] / kinds=[10000]` interest and pushes it via
 /// `EnsureInterest` on sign-in. Free-riding on this bundle would route mute
 /// lists through the wrong interest scope — D0 forbids the kernel knowing

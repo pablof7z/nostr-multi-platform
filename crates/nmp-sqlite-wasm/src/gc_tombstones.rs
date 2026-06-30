@@ -44,7 +44,9 @@ pub(crate) fn purge_tombstones(
 /// `table` is a fixed module-internal literal — never user input.
 fn purge(conn: &SqliteConn, table: &str, threshold: u64) -> Result<usize, SqliteWasmError> {
     let count = {
-        let stmt = conn.prepare(&format!("SELECT COUNT(*) FROM {table} WHERE deleted_at < ?1"))?;
+        let stmt = conn.prepare(&format!(
+            "SELECT COUNT(*) FROM {table} WHERE deleted_at < ?1"
+        ))?;
         stmt.bind_int64(1, threshold as i64)?;
         if stmt.step()? {
             stmt.column_int64(0)? as usize

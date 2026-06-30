@@ -83,16 +83,18 @@ fn planner_owns_mechanisms_not_event_kinds() {
 }
 
 #[test]
-fn legacy_relations_crate_claims_no_engagement_semantics() {
+fn relations_crate_claims_only_visible_relation_action_namespace() {
     let workspace = ownership_workspace();
     let relations = workspace
         .descriptors
         .iter()
         .find(|descriptor| descriptor.crate_name == "nmp-relations")
-        .expect("nmp-relations descriptor must exist while the legacy crate remains");
+        .expect("nmp-relations descriptor must exist");
     assert!(
-        relations.claims.is_empty(),
-        "nmp-relations is a legacy compatibility adapter, not an engagement owner; claims: {:?}",
+        relations.claims.iter().all(|claim| claim.claim_type == "namespace"
+            && claim.scope_kind == "action"
+            && claim.scope_value == "nmp.nip01.visible_note_relations"),
+        "nmp-relations owns the visible-row action namespace only; it must not claim engagement semantics or event kinds: {:?}",
         relations.claims
     );
 }

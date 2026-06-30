@@ -20,10 +20,8 @@ fn tl_kinds() -> std::collections::BTreeSet<u32> {
 fn canonical_filter_hash_is_deterministic_for_identical_shapes() {
     // Two shapes built independently from the same field values must hash
     // identically — the §3.4 plan-id stability contract depends on this.
-    let a =
-        InterestShape::timeline_for([hex("aa"), hex("bb")].into_iter().collect(), tl_kinds());
-    let b =
-        InterestShape::timeline_for([hex("bb"), hex("aa")].into_iter().collect(), tl_kinds());
+    let a = InterestShape::timeline_for([hex("aa"), hex("bb")].into_iter().collect(), tl_kinds());
+    let b = InterestShape::timeline_for([hex("bb"), hex("aa")].into_iter().collect(), tl_kinds());
     // Same logical shape (BTreeSet sorts insertion order away).
     assert_eq!(a, b);
     // ...therefore the same canonical hash.

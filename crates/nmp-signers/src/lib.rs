@@ -30,9 +30,8 @@ pub use identity::{
     AccountError, AccountManager, ActiveChangeEvent, ActiveChangeObserver, IdentityId,
 };
 pub use signers::{
-    LocalKeySigner, Nip04, Nip44, Nip46Signer, Nip46SignerHandle,
-    Nip07Signer, Nip55Connect, Nip55Signer, Nip55Payload, Signer, SignerBackend,
-    SignerPayload,
+    LocalKeySigner, Nip04, Nip07Signer, Nip44, Nip46Signer, Nip46SignerHandle, Nip55Connect,
+    Nip55Payload, Nip55Signer, Signer, SignerBackend, SignerPayload,
 };
 
 // V-01 Stage 3c — async sign-via-extension entrypoint, gated on wasm32 + the

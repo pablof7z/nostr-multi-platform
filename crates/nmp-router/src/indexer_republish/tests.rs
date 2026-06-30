@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
 use nmp_core::slots::new_indexer_relays_slot;
-use nmp_store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
-use nmp_core::substrate::{ExternalEventSinkPolicy, RawEventForwardPolicyContext};
 use nmp_core::substrate::external_event_sink::{
     IngestOutcomeKind, SignedEventFrame, SinkDestination,
 };
+use nmp_core::substrate::{ExternalEventSinkPolicy, RawEventForwardPolicyContext};
 use nmp_network::role::RelayRole;
+use nmp_store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
 
 use super::IndexerRepublishPolicy;
 
@@ -172,7 +172,11 @@ fn forwards_addressable_kind_to_indexer() {
 
     let dests = policy.destinations(&frame);
 
-    assert_eq!(dests.len(), 2, "addressable kind 30023 must forward to all indexers");
+    assert_eq!(
+        dests.len(),
+        2,
+        "addressable kind 30023 must forward to all indexers"
+    );
     let urls = relay_urls(&dests);
     assert!(urls.contains(&"wss://indexer-a/".to_string()));
     assert!(urls.contains(&"wss://indexer-b/".to_string()));
@@ -194,7 +198,11 @@ fn addressable_kind_dedup_on_event_id_and_target() {
 
     assert_eq!(first.len(), 1, "first event must forward");
     assert!(second_same.is_empty(), "same event_id must be deduped");
-    assert_eq!(third_different.len(), 1, "different event_id must forward even if same d-tag");
+    assert_eq!(
+        third_different.len(),
+        1,
+        "different event_id must forward even if same d-tag"
+    );
 }
 
 #[test]

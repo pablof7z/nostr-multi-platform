@@ -18,8 +18,8 @@
 //!   the `RefNamespace::Profile` resolve-ref seam). HTTP lives behind the
 //!   `native` feature.
 
-use nmp_core::actor::ActorCommand;
 use nmp_core::actor::ActionLedgerCommand;
+use nmp_core::actor::ActorCommand;
 #[cfg(feature = "native")]
 use nmp_core::actor::RefsCommand;
 use nmp_core::substrate::{ProtocolCommand, ProtocolCommandContext, ProtocolCommandError};
@@ -150,12 +150,10 @@ impl ProtocolCommand for ResolveNip05Command {
                         // echoes the response body verbatim. issue #1682: emit
                         // a structured token (machine code + English fallback)
                         // so the shell renders localized prose.
-                        let token = UiToken::error(
-                            ui_codes::LOOKUP_FAILED,
-                            "NIP-05 lookup failed.",
-                        )
-                        .with_subject(format!("{name}@{domain}"))
-                        .with_detail(reason);
+                        let token =
+                            UiToken::error(ui_codes::LOOKUP_FAILED, "NIP-05 lookup failed.")
+                                .with_subject(format!("{name}@{domain}"))
+                                .with_detail(reason);
                         let prose = token.fallback_prose().to_string();
                         let _ = worker_tx.send(ActorCommand::ShowErrorToken { token });
                         if let Some(cid) = correlation_id {

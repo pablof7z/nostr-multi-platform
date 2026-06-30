@@ -172,7 +172,10 @@ mod tests {
 
     #[test]
     fn flags_trailing_comment_then_split_paren() {
-        let n = run(&["        kernel.req_for_relay // build req", "            (role, url);"]);
+        let n = run(&[
+            "        kernel.req_for_relay // build req",
+            "            (role, url);",
+        ]);
         assert_eq!(n, 1, "trailing comment + split paren must fire");
     }
 
@@ -194,7 +197,12 @@ mod tests {
 
     #[test]
     fn does_not_flag_in_test_cfg() {
-        let hits = check(&mut State::default(), "kernel.req_for_relay(role, url, id);", false, true);
+        let hits = check(
+            &mut State::default(),
+            "kernel.req_for_relay(role, url, id);",
+            false,
+            true,
+        );
         assert!(hits.is_empty(), "#[cfg(test)] bodies must not fire");
     }
 

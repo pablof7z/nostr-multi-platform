@@ -16,8 +16,8 @@ use nostr_database::{FlatBufferBuilder, FlatBufferEncode, RejectedReason, SaveEv
 
 use nostr::Filter;
 
-use super::index::{self, EventIndexKeys};
 use super::super::error::Error;
+use super::index::{self, EventIndexKeys};
 use super::Lmdb;
 
 impl Lmdb {
@@ -335,7 +335,11 @@ impl Lmdb {
         Ok(())
     }
 
-    pub(super) fn handle_deletion_event(&self, txn: &mut RwTxn, event: &Event) -> Result<bool, Error> {
+    pub(super) fn handle_deletion_event(
+        &self,
+        txn: &mut RwTxn,
+        event: &Event,
+    ) -> Result<bool, Error> {
         // Collect DeletionInfo and EventIds for all valid targets first
         let mut deletions_to_process = Vec::new();
 

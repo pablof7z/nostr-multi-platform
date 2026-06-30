@@ -58,7 +58,10 @@ pub fn start_restore(
         .iter()
         .map(|relay_url| {
             let frame = build_req_frame(sub_id, &pubkey_hex, now_secs);
-            Effect::Subscribe { relay_url: relay_url.clone(), frame }
+            Effect::Subscribe {
+                relay_url: relay_url.clone(),
+                frame,
+            }
         })
         .collect();
     (state, effects)

@@ -43,7 +43,8 @@ impl Lmdb {
     ) -> Result<(), Error> {
         let lmdb_key = key.to_lmdb_key();
         let lmdb_value = crate::encode_timestamp(ts_ms);
-        self.replaceable_freshness.put(txn, &lmdb_key, &lmdb_value)?;
+        self.replaceable_freshness
+            .put(txn, &lmdb_key, &lmdb_value)?;
         Ok(())
     }
 

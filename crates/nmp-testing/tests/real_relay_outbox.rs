@@ -25,8 +25,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use common::{
-    report_page, send_text, try_open, write_report, Verdict, DAMUS_RELAY, PURPLEPAG_ES, NOS_LOL,
-    PRIMAL_RELAY,
+    report_page, send_text, try_open, write_report, Verdict, DAMUS_RELAY, NOS_LOL, PRIMAL_RELAY,
+    PURPLEPAG_ES,
 };
 use nmp_core::publish::{OutboxResolver, PublishTarget};
 use nmp_store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};

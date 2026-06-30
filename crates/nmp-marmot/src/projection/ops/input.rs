@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 use mdk_core::prelude::GroupId;
 use nostr::{PublicKey, RelayUrl};
 
-use crate::projection::state::{InnerHandle, parse_signed_event};
+use crate::projection::state::{parse_signed_event, InnerHandle};
 
 /// Decode a hex MLS group id into a `GroupId`.
 pub(super) fn group_id_from_hex(hex: &str) -> Result<GroupId, String> {

@@ -33,7 +33,7 @@ pub(crate) mod plan;
 pub(crate) mod spawn;
 pub(crate) mod timer;
 
-use inbound::{InboundDrainOutcome, InboundQueue, drain_inbound};
+use inbound::{drain_inbound, InboundDrainOutcome, InboundQueue};
 use timer::CancelableTimer;
 
 /// Stable wake indirection shared between the relay pool, the JS driver

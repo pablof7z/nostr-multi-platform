@@ -4,9 +4,9 @@
 //! every NIP-10 reference (root, reply, mentions, mentioned pubkeys) is
 //! parsed once and carried in the record alongside the raw fields.
 
-use nmp_store::StoredEvent;
 use nmp_core::substrate::KernelEvent;
 use nmp_core::tags::{parse_nip10, Nip10Refs};
+use nmp_store::StoredEvent;
 use serde::{Deserialize, Serialize};
 
 use crate::kinds::KIND_SHORT_TEXT_NOTE;

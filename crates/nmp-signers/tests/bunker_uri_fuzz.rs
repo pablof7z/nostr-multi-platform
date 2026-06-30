@@ -44,9 +44,7 @@ fn fuzz_1000_uris_never_panics_and_round_trips() {
                 accepted += 1;
                 let printed = uri.to_string();
                 let reparsed = parse_bunker_uri(&printed).unwrap_or_else(|e| {
-                    panic!(
-                        "round-trip failed: original={input:?} printed={printed:?} err={e:?}"
-                    );
+                    panic!("round-trip failed: original={input:?} printed={printed:?} err={e:?}");
                 });
                 assert_eq!(
                     uri, &reparsed,
@@ -69,9 +67,7 @@ fn fuzz_1000_uris_never_panics_and_round_trips() {
                 rejected += 1;
             }
             (Ok(_), Class::KnownInvalid(reason)) => {
-                panic!(
-                    "known-invalid input accepted ({reason}): {input:?} -> {result:?}"
-                );
+                panic!("known-invalid input accepted ({reason}): {input:?} -> {result:?}");
             }
         }
     }
@@ -85,14 +81,27 @@ fn fuzz_1000_uris_never_panics_and_round_trips() {
         "parser too slow: {elapsed:?} for 1000 URIs"
     );
     // Should accept the well-formed slice (~250) without exception.
-    assert!(round_trip_ok >= 200, "round_trip_ok too low: {round_trip_ok}");
+    assert!(
+        round_trip_ok >= 200,
+        "round_trip_ok too low: {round_trip_ok}"
+    );
     assert!(rejected >= 400, "rejected too low: {rejected}");
 }
 
 #[test]
 fn fuzz_adversarial_lengths() {
     // URIs of length 0, 1, 8, 9, 64, 256, MAX, MAX+1, 10*MAX.  None should panic.
-    for n in [0usize, 1, 8, 9, 64, 256, MAX_BUNKER_URI_LEN, MAX_BUNKER_URI_LEN + 1, 10 * MAX_BUNKER_URI_LEN] {
+    for n in [
+        0usize,
+        1,
+        8,
+        9,
+        64,
+        256,
+        MAX_BUNKER_URI_LEN,
+        MAX_BUNKER_URI_LEN + 1,
+        10 * MAX_BUNKER_URI_LEN,
+    ] {
         let s: String = std::iter::repeat('A').take(n).collect();
         let _ = parse_bunker_uri(&s);
     }
@@ -192,7 +201,9 @@ fn extra_params(rng: &mut Lcg) -> (String, Class) {
 fn invalid_scheme(rng: &mut Lcg) -> (String, Class) {
     let pk = random_pubkey(rng);
     let relay = random_relay(rng);
-    let schemes = ["nostr", "https", "http", "ws", "wss", "bunkers", "bunker:", "bun"];
+    let schemes = [
+        "nostr", "https", "http", "ws", "wss", "bunkers", "bunker:", "bun",
+    ];
     let s = schemes[(rng.next() as usize) % schemes.len()];
     (
         format!("{s}://{pk}?relay={relay}"),
@@ -204,7 +215,9 @@ fn invalid_pubkey(rng: &mut Lcg) -> (String, Class) {
     let relay = random_relay(rng);
     let bad_lens = [0usize, 1, 32, 63, 65, 128];
     let len = bad_lens[(rng.next() as usize) % bad_lens.len()];
-    let pk: String = (0..len).map(|_| HEX[(rng.next() as usize) % HEX.len()] as char).collect();
+    let pk: String = (0..len)
+        .map(|_| HEX[(rng.next() as usize) % HEX.len()] as char)
+        .collect();
     (
         format!("bunker://{pk}?relay={relay}"),
         Class::KnownInvalid("bad pubkey length"),
@@ -257,17 +270,21 @@ fn random_pubkey(rng: &mut Lcg) -> String {
     if rng.next() % 4 == 0 {
         PK_HEX.to_string()
     } else {
-        (0..64).map(|_| HEX[(rng.next() as usize) % HEX.len()] as char).collect()
+        (0..64)
+            .map(|_| HEX[(rng.next() as usize) % HEX.len()] as char)
+            .collect()
     }
 }
 
 fn random_relay(rng: &mut Lcg) -> String {
     let scheme = if rng.next() % 2 == 0 { "wss" } else { "ws" };
     let host_len = (rng.next() % 12 + 6) as usize;
-    let host: String = (0..host_len).map(|_| {
-        let c = (rng.next() % 26 + b'a' as u64) as u8;
-        c as char
-    }).collect();
+    let host: String = (0..host_len)
+        .map(|_| {
+            let c = (rng.next() % 26 + b'a' as u64) as u8;
+            c as char
+        })
+        .collect();
     let port = if rng.next() % 4 == 0 {
         format!(":{}", rng.next() % 60000 + 1024)
     } else {
@@ -283,7 +300,9 @@ fn random_relay(rng: &mut Lcg) -> String {
 
 fn random_alnum(rng: &mut Lcg, len: usize) -> String {
     const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-    (0..len).map(|_| CHARS[(rng.next() as usize) % CHARS.len()] as char).collect()
+    (0..len)
+        .map(|_| CHARS[(rng.next() as usize) % CHARS.len()] as char)
+        .collect()
 }
 
 fn percent_encode(s: &str) -> String {
@@ -317,12 +336,6 @@ impl Lcg {
 #[test]
 fn smoke_known_inputs() {
     // Sanity to ensure the test infra itself works.
-    assert!(parse_bunker_uri(&format!(
-        "bunker://{PK_HEX}?relay=wss://r.example"
-    ))
-    .is_ok());
-    assert!(matches!(
-        parse_bunker_uri(""),
-        Err(BunkerParseError::Empty)
-    ));
+    assert!(parse_bunker_uri(&format!("bunker://{PK_HEX}?relay=wss://r.example")).is_ok());
+    assert!(matches!(parse_bunker_uri(""), Err(BunkerParseError::Empty)));
 }

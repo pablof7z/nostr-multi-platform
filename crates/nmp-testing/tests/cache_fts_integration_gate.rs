@@ -39,14 +39,17 @@ use nmp_testing::store_harness::StoreHarness;
 
 // nip50 scope labels (crate-owned constants — the test binds to the public
 // surface, never a literal it could drift from).
-use nmp_nip50::{SCOPE_LABEL_LONGFORM, SCOPE_LABEL_NOTES, SCOPE_LABEL_PROFILES};
 use nmp_nip29::GROUP_SEARCH_SCOPE_LABEL;
+use nmp_nip50::{SCOPE_LABEL_LONGFORM, SCOPE_LABEL_NOTES, SCOPE_LABEL_PROFILES};
 
 const KIND_PROFILE: u32 = 0;
 const KIND_NOTE: u32 = 1;
 const KIND_LONGFORM: u32 = 30023;
 const KIND_GROUP_META: u32 = 39000;
 const RELAY: &str = "wss://r.example.com";
+
+#[path = "cache_fts_integration_gate/cache_serve_tests.rs"]
+mod cache_serve_tests;
 
 // ─── seam construction ────────────────────────────────────────────────────────
 
@@ -84,7 +87,13 @@ fn run_both(body: impl Fn(&mut StoreHarness)) {
     }
 }
 
-fn raw(h: &StoreHarness, kind: u32, created_at: u64, content: &str, tags: Vec<Vec<String>>) -> RawEvent {
+fn raw(
+    h: &StoreHarness,
+    kind: u32,
+    created_at: u64,
+    content: &str,
+    tags: Vec<Vec<String>>,
+) -> RawEvent {
     let mut ev = h.make_event_with_tags(crate_alice(), kind, created_at, tags);
     ev.content = content.to_string();
     ev
@@ -135,8 +144,7 @@ fn profile_scope_searches_real_metadata_fields() {
     run_both(|h| {
         install_all_scopes(h);
         // kind:0 content is JSON — the extractor pulls name/display_name/nip05/about.
-        let content =
-            r#"{"name":"satoshi","display_name":"Satoshi Nakamoto","nip05":"s@example.com","about":"building bitcoin"}"#;
+        let content = r#"{"name":"satoshi","display_name":"Satoshi Nakamoto","nip05":"s@example.com","about":"building bitcoin"}"#;
         insert(h, raw(h, KIND_PROFILE, 100, content, vec![]), 100_000);
 
         let (by_name, st) = run_query(&*h.store, &query(SCOPE_LABEL_PROFILES, "satoshi", 10));
@@ -212,7 +220,10 @@ fn group_scope_searches_metadata_tags() {
 
         let (by_name, _) = run_query(&*h.store, &query(GROUP_SEARCH_SCOPE_LABEL, "nostr", 10));
         assert_eq!(by_name.len(), 1, "group name token matches");
-        let (by_about, _) = run_query(&*h.store, &query(GROUP_SEARCH_SCOPE_LABEL, "engineering", 10));
+        let (by_about, _) = run_query(
+            &*h.store,
+            &query(GROUP_SEARCH_SCOPE_LABEL, "engineering", 10),
+        );
         assert_eq!(by_about.len(), 1, "group about token matches");
         let (by_slug, _) = run_query(&*h.store, &query(GROUP_SEARCH_SCOPE_LABEL, "devtalk", 10));
         assert_eq!(by_slug.len(), 1, "group id slug is searchable");
@@ -258,7 +269,10 @@ fn corpus_far_exceeds_limit_loads_only_bounded_rows() {
             "a corpus ≫ limit query reports Partial (more matches exist), got {status:?}"
         );
         // newest-first ordering: the 5 returned are the newest 5 created_at.
-        assert_eq!(visited, LIMIT, "exactly `limit` newest matches are delivered");
+        assert_eq!(
+            visited, LIMIT,
+            "exactly `limit` newest matches are delivered"
+        );
     });
 }
 
@@ -269,10 +283,17 @@ fn budget_exhaustion_is_reported_partial() {
         // 200 matching notes; a tiny scan budget forces early budget stop even
         // though `limit` is generous — proves the scan is bounded by the PLAN.
         for i in 0..200u64 {
-            insert(h, raw(h, KIND_NOTE, 1_000 + i, "budgeted term", vec![]), (1_000 + i) * 1000);
+            insert(
+                h,
+                raw(h, KIND_NOTE, 1_000 + i, "budgeted term", vec![]),
+                (1_000 + i) * 1000,
+            );
         }
         let mut q = query(SCOPE_LABEL_NOTES, "budgeted", 10_000);
-        q.budget = TextSearchBudget { max_docs_scanned: 32, max_matches: 1_000 };
+        q.budget = TextSearchBudget {
+            max_docs_scanned: 32,
+            max_matches: 1_000,
+        };
 
         let (hits, status) = run_query(&*h.store, &q);
         assert!(
@@ -293,7 +314,10 @@ fn private_kinds_are_never_indexed() {
     // No public compiled spec may name a private/encrypted kind.
     let registry = registry_with_all_scopes();
     let specs = registry.compile();
-    assert!(!specs.is_empty(), "the public scopes compile to a non-empty install set");
+    assert!(
+        !specs.is_empty(),
+        "the public scopes compile to a non-empty install set"
+    );
     const PRIVATE_KINDS: [u32; 6] = [4, 13, 14, 15, 1059, 1060];
     for spec in &specs {
         for k in &spec.kinds {
@@ -316,9 +340,18 @@ fn private_kind_event_never_surfaces_in_any_scope() {
         install_all_scopes(h);
         // A kind:4 (NIP-04 DM) "looks like" searchable text, but no public scope
         // claims kind 4, so it is never extracted and never returned.
-        insert(h, raw(h, 4, 100, "secret plaintext leaking token", vec![]), 100_000);
+        insert(
+            h,
+            raw(h, 4, 100, "secret plaintext leaking token", vec![]),
+            100_000,
+        );
 
-        for scope in [SCOPE_LABEL_PROFILES, SCOPE_LABEL_NOTES, SCOPE_LABEL_LONGFORM, GROUP_SEARCH_SCOPE_LABEL] {
+        for scope in [
+            SCOPE_LABEL_PROFILES,
+            SCOPE_LABEL_NOTES,
+            SCOPE_LABEL_LONGFORM,
+            GROUP_SEARCH_SCOPE_LABEL,
+        ] {
             let (hits, _) = run_query(&*h.store, &query(scope, "secret", 10));
             assert!(
                 hits.is_empty(),
@@ -340,7 +373,9 @@ fn delete_removes_the_hit() {
         let (before, _) = run_query(&*h.store, &query(SCOPE_LABEL_NOTES, "deletable", 10));
         assert_eq!(before.len(), 1);
 
-        h.store.delete_by_filter(DeleteFilter::ByIds(vec![id])).unwrap();
+        h.store
+            .delete_by_filter(DeleteFilter::ByIds(vec![id]))
+            .unwrap();
         let (after, _) = run_query(&*h.store, &query(SCOPE_LABEL_NOTES, "deletable", 10));
         assert!(after.is_empty(), "delete must purge the FTS posting");
     });
@@ -393,7 +428,10 @@ fn kind5_delete_purges_the_hit() {
         insert(h, kind5, 200_000);
 
         let (after, _) = run_query(&*h.store, &query(SCOPE_LABEL_NOTES, "target", 10));
-        assert!(after.is_empty(), "kind:5 self-delete purges the FTS posting");
+        assert!(
+            after.is_empty(),
+            "kind:5 self-delete purges the FTS posting"
+        );
     });
 }
 
@@ -430,43 +468,5 @@ fn gc_expiry_reap_purges_the_hit() {
 
         let (after, _) = run_query(&*h.store, &query(SCOPE_LABEL_NOTES, "expiring", 10));
         assert!(after.is_empty(), "GC-expiry reap purges the FTS posting");
-    });
-}
-
-// ─── cache-serve scope resolution surface ─────────────────────────────────────
-
-#[test]
-fn installed_scopes_are_surfaced_for_cache_serve() {
-    run_both(|h| {
-        install_all_scopes(h);
-        let cache_scopes = h.store.cache_search_scopes();
-        // All four crate scopes are cache-eligible (Both / CacheOnly), so the
-        // cache-serve hook can resolve a search shape to the local index.
-        let installed: BTreeSet<SearchScopeId> =
-            cache_scopes.iter().map(|(s, _)| *s).collect();
-        for label in [
-            SCOPE_LABEL_PROFILES,
-            SCOPE_LABEL_NOTES,
-            SCOPE_LABEL_LONGFORM,
-            GROUP_SEARCH_SCOPE_LABEL,
-        ] {
-            assert!(
-                installed.contains(&SearchScopeId::from_label(label)),
-                "scope {label} must be surfaced for cache-serve resolution"
-            );
-        }
-        // The kinds reported per scope are the indexable (public) kinds only.
-        for (scope, kinds) in &cache_scopes {
-            assert!(
-                !kinds.is_empty(),
-                "scope {scope:?} reports its indexable kinds for shape intersection"
-            );
-            for k in kinds {
-                assert!(
-                    ![4u32, 13, 14, 15, 1059, 1060].contains(k),
-                    "cache-serve scope kinds never include a private kind"
-                );
-            }
-        }
     });
 }

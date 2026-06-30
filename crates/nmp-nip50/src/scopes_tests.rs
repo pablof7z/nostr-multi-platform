@@ -86,7 +86,10 @@ fn longform_extracts_title_summary_body() {
 
     assert_eq!(tokens_for(&pairs, 0), vec!["my", "article"]);
     assert_eq!(tokens_for(&pairs, 1), vec!["short", "summary"]);
-    assert_eq!(tokens_for(&pairs, 2), vec!["the", "body", "content", "here"]);
+    assert_eq!(
+        tokens_for(&pairs, 2),
+        vec!["the", "body", "content", "here"]
+    );
 }
 
 #[test]
@@ -119,7 +122,10 @@ fn all_scopes_are_public_and_cache_both() {
         NoteSearchScope::new().spec(),
         LongFormSearchScope::new().spec(),
     ] {
-        assert_eq!(spec.privacy, nmp_core::substrate::SearchPrivacyPolicy::PublicIndexable);
+        assert_eq!(
+            spec.privacy,
+            nmp_core::substrate::SearchPrivacyPolicy::PublicIndexable
+        );
         assert_eq!(spec.cache_mode, nmp_core::substrate::CacheSearchMode::Both);
     }
 }

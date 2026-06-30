@@ -219,7 +219,7 @@ existing symbol changed or removed). Rust API is additive.
 RETIRED, replaced by a single `nmp_free_string` (V-114 #1044, PR #1135) —
 every consumer that frees NMP-returned strings must rename the call (one-line
 mechanical change; same semantics). One NEW symbol: `nmp_app_composition_report`.
-Rust API is additive; `register_defaults()` behavior is unchanged.
+Rust API is additive; explicit composition behavior is unchanged.
 
 ### Added
 
@@ -234,14 +234,14 @@ Rust API is additive; `register_defaults()` behavior is unchanged.
   last-writer-wins slots, dropped late wiring) is recorded in a composition
   ledger queryable via the new `nmp_app_composition_report` FFI symbol —
   the previously documented-but-absent `LateWiring` diagnostic now exists.
-- **`nmp-defaults` tier split + typed config** (#1180).
+- **Explicit substrate and social composition split + typed config** (#1180).
   `register_substrate(app, gate)` is the always-on correctness floor (routing
   substrate, kind:10002 parser, publish resolver, forward policy, coverage
-  hook + NIP-77 negentropy runtime); `register_defaults_with(app, NmpDefaults)`
-  layers toggleable social defaults (`social`/`dms`/`zaps`/`longform`) on top
-  and makes the previously hardcoded `CoverageGate` and nostrconnect bootstrap
-  relay overridable config fields — fixing the gate-desync where overriding
-  the coverage hook post-hoc desynced it from the negentropy runtime.
+  hook + NIP-77 negentropy runtime); explicit social feature installers layer
+  toggleable social capabilities (`social`/`dms`/`zaps`/`longform`) on top and
+  make the previously hardcoded `CoverageGate` and nostrconnect bootstrap relay
+  overridable config fields — fixing the gate-desync where overriding the
+  coverage hook post-hoc desynced it from the negentropy runtime.
   Non-social consumers can now compose a routable app without the social bundle.
 - **NIP-51 mute list in the composition root** (#1181): `MuteListProjection`
   observer + `nmp.nip51.mute_list` diagnostic projection wired into the
@@ -330,15 +330,16 @@ delivers a single event.
   generator (`generate.rs` / `ffi_gen.rs` / `workspace.rs`, the `gen modules`
   subcommand, `gen-modules` / `gen-modules-check` justfile targets) and its sole
   consumer `apps/fixture` (`nmp-app-fixture` + `fixture-todo-core`) are removed.
-  A generated `FfiApp` never called `register_defaults` and was a non-functional
-  Nostr app; the fixture existed only to give the orphan generator a test target.
+  A generated `FfiApp` never installed the required composition owners and was a
+  non-functional Nostr app; the fixture existed only to give the orphan
+  generator a test target.
   The `nmp.toml` manifest parser and the `gen swift` / `gen typed-decoders`
   emitters (live CI gates) are unaffected.
 
-  **Migration for `nmp-app-template` consumers**: the crate is renamed to
-  `nmp-defaults` (rename landed in v0.4.0). If you pinned across the v0.4.0 break
-  already you have no further action here; the `gen modules` scaffolder was the
-  only thing deleted in v0.5.0.
+  **Migration for old `nmp-app-template` consumers**: that historical migration
+  path is superseded. Current apps should depend on explicit owner crates and
+  compose protocol modules directly; the `gen modules` scaffolder was the only
+  thing deleted in v0.5.0.
 
   **What breaks for whom**: any CI or script that invokes `nmp gen modules` will
   fail with "unknown subcommand". No real app consumed the generated output;
@@ -478,24 +479,20 @@ rebuild from Tier-3 typed fields + sidecars (#1092).
   generator (`nmp-codegen`'s `generate` / `ffi_gen` / `workspace` modules, the
   `gen modules` subcommand, the `gen-modules` justfile targets) and its sole
   consumer `apps/fixture` (`nmp-app-fixture` + `fixture-todo-core`) are removed.
-  A generated `FfiApp` never called `register_defaults` and was a
+  A generated `FfiApp` never installed the required composition owners and was a
   non-functional Nostr app; the fixture existed only to give the orphan
   generator a test target (Opus review #49). The `nmp.toml` manifest parser and
   the Swift `gen swift` / `gen typed-decoders` emitters (live CI gates) are
-  unaffected. `nmp init` now scaffolds a thin composition shell that calls
-  `nmp_defaults::register_defaults`.
+  unaffected. `nmp init` now scaffolds a thin composition shell.
 
 ### Changed (BREAKING)
 
-- **`nmp-app-template` renamed to `nmp-defaults`** (ADR-0046). The public API
-  (`register_defaults`, `NmpAppBuilder`, all symbols) is unchanged; only the
-  crate name changed, to stop the "template" name lying — it is a runtime
-  composition-root library you depend on and call (the Bevy-`DefaultPlugins` /
-  Spring-Boot-starter pattern), not a template you fork. **Rev-pinned external
-  consumers must rename the dependency** when they bump their pin across this
-  change: `nmp-app-template = { git = … }` → `nmp-defaults = { git = …, package
-  = "nmp-defaults" }`, and `use nmp_app_template::…` → `use nmp_defaults::…`.
-  See `docs/architecture/external-consumers.md`.
+- **Legacy composition-template package rename** (ADR-0046, now superseded).
+  At this release, the old app-template dependency was renamed as a runtime
+  composition library instead of a forkable template. That guidance is no longer
+  current: modern consumers should depend on explicit owner crates and compose
+  protocol modules directly, without reintroducing a hidden starter bundle. See
+  `docs/architecture/external-consumers.md`.
 
 ### Fixed
 

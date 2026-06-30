@@ -43,8 +43,7 @@ mod tests {
     fn parity_open_uri_valid_npub_no_panic() {
         let app = crate::NmpApp::new();
         app.open_uri(
-            "nostr:npub1gakvygj65zq8pcrmd2ugk4mnph7qjzm6lhvkdmjrst0aqkjaf0pq0qnr2u"
-                .to_string(),
+            "nostr:npub1gakvygj65zq8pcrmd2ugk4mnph7qjzm6lhvkdmjrst0aqkjaf0pq0qnr2u".to_string(),
         );
     }
 
@@ -70,6 +69,8 @@ mod tests {
     fn parity_open_uri_nsec_is_rejected_no_panic() {
         let app = crate::NmpApp::new();
         // nsec1 is a secret key — must fail closed, never panic.
-        app.open_uri("nostr:nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k31bl5ewnncg9yqq6x2hp".to_string());
+        app.open_uri(
+            "nostr:nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k31bl5ewnncg9yqq6x2hp".to_string(),
+        );
     }
 }

@@ -272,21 +272,28 @@ fn example_lib_rs() -> PathBuf {
 fn g5_example_uses_explicit_composition() {
     let content = std::fs::read_to_string(example_lib_rs()).expect("read example lib.rs");
 
-    let substrate = content.find("nmp_defaults::register_substrate");
-    let nip50 = content.find("nmp_defaults::register_nip50_protocol_defaults");
-    let social = content.find("nmp_defaults::register_social_protocol_defaults");
-    let dm = content.find("nmp_defaults::register_dm_protocol_defaults");
-    let longform = content.find("nmp_defaults::register_longform_projection");
-
+    let mut cursor = 0;
+    for installer in [
+        "nmp_substrate::install",
+        "nmp_nip50::register_search_scopes",
+        "nmp_nip02::register_follow_actions",
+        "nmp_nip51::register_mute_runtime",
+        "nmp_nip17::register_runtime",
+        "nmp_content::register_longform_projection",
+    ] {
+        let index = content[cursor..]
+            .find(installer)
+            .map(|offset| cursor + offset)
+            .unwrap_or_else(|| {
+                panic!(
+                    "G5 DX GAP: login-timeline example must call owner installer `{installer}`.\n{content}"
+                )
+            });
+        cursor = index + installer.len();
+    }
     assert!(
-        substrate.is_some() && substrate < nip50 && nip50 < social && social < dm && dm < longform,
-        "G5 DX GAP: login-timeline example must install named substrate/protocol \
-         installers in the starter order.\n{content}",
-    );
-    assert!(
-        !content.contains("nmp_defaults::register_defaults"),
-        "G5 DX GAP: login-timeline example must not teach hidden register_defaults.\n\
-         Use named substrate/protocol installers instead.\n{content}",
+        !content.contains("nmp_defaults") && !content.contains("nmp-defaults"),
+        "G5 DX GAP: login-timeline example must not teach nmp-defaults.\n{content}",
     );
 }
 

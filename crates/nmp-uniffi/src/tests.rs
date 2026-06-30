@@ -23,9 +23,9 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
+use nmp_core::actor::ActorCommand;
 use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
 use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
-use nmp_core::actor::ActorCommand;
 
 use super::{clamp_emit_hz, clamp_visible, NmpApp, UpdateSink};
 use nmp_native_runtime::DEFAULT_EMIT_HZ;
@@ -140,7 +140,7 @@ fn sink_register_and_clear() {
     app.set_update_sink(Some(sink));
     app.set_update_sink(None); // clear
     app.set_update_sink(None); // idempotent second clear
-    // No assertion needed beyond "did not deadlock or panic".
+                               // No assertion needed beyond "did not deadlock or panic".
 }
 
 /// Replacing a sink atomically: after `set_update_sink(new_sink)` returns, the
@@ -436,7 +436,10 @@ fn dispatch_wrapper_passes_through_code_field() {
     );
     let outcome = app.dispatch_action(envelope);
     assert!(
-        outcome.error.as_deref().map_or(false, |e| e.contains("uniffi wrapper coded rejection")),
+        outcome
+            .error
+            .as_deref()
+            .map_or(false, |e| e.contains("uniffi wrapper coded rejection")),
         "error must carry the human message"
     );
     assert_eq!(

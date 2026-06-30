@@ -33,11 +33,9 @@
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
-use nmp_core::actor::ActorCommand;
 use nmp_core::{ActorMail, CommandSender, SignerSource};
-use nmp_network::pool::{Pool, PoolConfig, PoolEvent, RelayFrame, RelayHandle, WireFrame};
+use nmp_network::pool::{Pool, PoolConfig, PoolEvent, RelayHandle, WireFrame};
 use nmp_network::role::RelayRole;
 use nmp_nip46::{Effect, SignerReady};
 use nmp_nip46_runtime::transport::ActorLaneTransport;
@@ -46,8 +44,10 @@ use nmp_nip46_runtime::{
     record_signer_ready, Nip46RuntimeHandle,
 };
 use nmp_signer_iface::RemoteSignerHandle;
-use nmp_signers::{Nip46SignerHandle, parse_bunker_uri};
+use nmp_signers::{parse_bunker_uri, Nip46SignerHandle};
 use nostr::{Keys, PublicKey};
+
+mod pump;
 
 /// Test-only NIP-46 actor-lane adapter.
 ///
@@ -77,7 +77,10 @@ pub fn broker_for_actor(tx: CommandSender) -> Arc<ActorLaneAdapter> {
     let (internal_tx_raw, internal_rx) = std::sync::mpsc::channel::<ActorMail>();
     let (pool_tx, pool_rx) = std::sync::mpsc::channel::<PoolEvent>();
     let pool = Arc::new(Pool::new(
-        PoolConfig { default_role: RelayRole::Signer, ..Default::default() },
+        PoolConfig {
+            default_role: RelayRole::Signer,
+            ..Default::default()
+        },
         pool_tx,
     ));
     let runtime = new_nip46_runtime_handle();
@@ -95,7 +98,7 @@ pub fn broker_for_actor(tx: CommandSender) -> Arc<ActorLaneAdapter> {
     let external_tx_for_pump = tx.clone();
     let internal_tx_for_pump = internal_tx.clone();
     std::thread::spawn(move || {
-        pump_loop(
+        pump::pump_loop(
             pool_for_pump,
             pool_rx,
             internal_rx,
@@ -151,8 +154,13 @@ impl ActorLaneAdapter {
 
         // Open pool connections.
         for relay_url in &relay_urls {
-            let h = self.pool.ensure_open_with_role(relay_url, RelayRole::Signer);
-            self.url_to_handle.lock().unwrap().insert(relay_url.clone(), h);
+            let h = self
+                .pool
+                .ensure_open_with_role(relay_url, RelayRole::Signer);
+            self.url_to_handle
+                .lock()
+                .unwrap()
+                .insert(relay_url.clone(), h);
         }
 
         // Seed the runtime.
@@ -184,19 +192,20 @@ impl ActorLaneAdapter {
     /// Start a `nostrconnect://` handshake. Returns the URI the client should
     /// display for the bunker to scan. Connects to `relay_url` and seeds the
     /// runtime with a freshly generated ephemeral key pair + random secret.
-    pub fn start_nostrconnect_handshake(
-        &self,
-        relay_url: String,
-        perms: Option<String>,
-    ) -> String {
+    pub fn start_nostrconnect_handshake(&self, relay_url: String, perms: Option<String>) -> String {
         let local_keys = Keys::generate();
         let sub_id = format!("nip46-nc-{}", &local_keys.public_key().to_hex()[..8]);
         let expected_secret: String = Keys::generate().public_key().to_hex()[..16].to_string();
         let now = now_unix_secs();
 
         // Open pool connection.
-        let h = self.pool.ensure_open_with_role(&relay_url, RelayRole::Signer);
-        self.url_to_handle.lock().unwrap().insert(relay_url.clone(), h);
+        let h = self
+            .pool
+            .ensure_open_with_role(&relay_url, RelayRole::Signer);
+        self.url_to_handle
+            .lock()
+            .unwrap()
+            .insert(relay_url.clone(), h);
 
         match init_nostrconnect(
             &self.runtime,
@@ -234,108 +243,16 @@ impl ActorLaneAdapter {
         let url_to_handle = self.url_to_handle.lock().unwrap();
         for effect in effects {
             match effect {
-                Effect::Subscribe { relay_url, frame } | Effect::SendFrame { relay_url, text: frame } => {
+                Effect::Subscribe { relay_url, frame }
+                | Effect::SendFrame {
+                    relay_url,
+                    text: frame,
+                } => {
                     if let Some(&h) = url_to_handle.get(relay_url) {
                         self.pool.send(h, WireFrame::Text(frame.clone()));
                     }
                 }
                 _ => {}
-            }
-        }
-    }
-}
-
-// ─── pump loop ───────────────────────────────────────────────────────────────
-
-#[allow(clippy::too_many_arguments)]
-fn pump_loop(
-    pool: Arc<Pool>,
-    pool_rx: std::sync::mpsc::Receiver<PoolEvent>,
-    internal_rx: std::sync::mpsc::Receiver<ActorMail>,
-    runtime: Nip46RuntimeHandle,
-    url_to_handle: Arc<Mutex<HashMap<String, RelayHandle>>>,
-    handle_to_url: Arc<Mutex<HashMap<RelayHandle, String>>>,
-    external_tx: CommandSender,
-    internal_tx: CommandSender,
-) {
-    loop {
-        let tick = Duration::from_millis(10);
-
-        // 1. Pool events (Opened, Frame).
-        while let Ok(event) = pool_rx.recv_timeout(tick) {
-            match event {
-                PoolEvent::Opened { h, url, .. } => {
-                    // Track handle ↔ url mapping so inbound frames can be
-                    // dispatched to the runtime with the correct relay URL.
-                    handle_to_url.lock().unwrap().insert(h, url.clone());
-                    url_to_handle.lock().unwrap().insert(url, h);
-                }
-                PoolEvent::Frame { h, frame: RelayFrame::Text(text), .. } => {
-                    let relay_url = {
-                        handle_to_url.lock().unwrap().get(&h).cloned()
-                    };
-                    let Some(relay_url) = relay_url else { continue };
-
-                    let now = now_unix_secs();
-                    let (effects, body) = {
-                        let mut guard = runtime.lock().expect("runtime lock");
-                        let Some(rt) = guard.as_mut() else { continue };
-                        rt.on_relay_text(&relay_url, &text, now)
-                    };
-
-                    // Route handshake effects.
-                    for effect in effects {
-                        match effect {
-                            Effect::SignerReady(ready) => {
-                                handle_signer_ready(
-                                    ready,
-                                    &runtime,
-                                    &internal_tx,
-                                    &external_tx,
-                                );
-                            }
-                            Effect::SendFrame { relay_url: rurl, text: frame_text } => {
-                                let handles = url_to_handle.lock().unwrap();
-                                if let Some(&fh) = handles.get(&rurl) {
-                                    pool.send(fh, WireFrame::Text(frame_text));
-                                }
-                            }
-                            Effect::Progress { stage, code, detail } => {
-                                external_tx.bunker_handshake_progress(stage, code, detail);
-                            }
-                            Effect::Error { error } => {
-                                // Terminal handshake error → surface as "failed" progress
-                                // (matches interceptor::translate_effects §Error arm).
-                                external_tx.bunker_handshake_progress(
-                                    "failed".to_string(),
-                                    None,
-                                    Some(error.to_string()),
-                                );
-                                external_tx.bunker_connection_state_changed(
-                                    "failed".to_string(),
-                                    Some(error.to_string()),
-                                );
-                            }
-                            _ => {}
-                        }
-                    }
-
-                    // Route steady-state delivery body.
-                    if let Some(body) = body {
-                        external_tx.deliver_signer_response(body);
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        // 2. Internal actor commands (EnqueueOutbound from ActorLaneTransport).
-        while let Ok(mail) = internal_rx.recv_timeout(tick) {
-            if let ActorMail::Command(ActorCommand::EnqueueOutbound { relay_url, text, .. }) = mail {
-                let h = url_to_handle.lock().unwrap().get(&relay_url).copied();
-                if let Some(h) = h {
-                    pool.send(h, WireFrame::Text(text));
-                }
             }
         }
     }
@@ -461,15 +378,26 @@ impl RemoteSignerHandle for ArcRemoteSigner {
         RemoteSignerHandle::persistence_payload_json(&*self.0)
     }
 
-    fn sign(&self, unsigned: &nmp_signer_iface::UnsignedEvent) -> nmp_signer_iface::SignerOp<nmp_signer_iface::SignedEvent> {
+    fn sign(
+        &self,
+        unsigned: &nmp_signer_iface::UnsignedEvent,
+    ) -> nmp_signer_iface::SignerOp<nmp_signer_iface::SignedEvent> {
         RemoteSignerHandle::sign(&*self.0, unsigned)
     }
 
-    fn nip44_encrypt(&self, recipient_pubkey: &str, plaintext: &str) -> nmp_signer_iface::SignerOp<String> {
+    fn nip44_encrypt(
+        &self,
+        recipient_pubkey: &str,
+        plaintext: &str,
+    ) -> nmp_signer_iface::SignerOp<String> {
         RemoteSignerHandle::nip44_encrypt(&*self.0, recipient_pubkey, plaintext)
     }
 
-    fn nip44_decrypt(&self, sender_pubkey: &str, ciphertext: &str) -> nmp_signer_iface::SignerOp<String> {
+    fn nip44_decrypt(
+        &self,
+        sender_pubkey: &str,
+        ciphertext: &str,
+    ) -> nmp_signer_iface::SignerOp<String> {
         RemoteSignerHandle::nip44_decrypt(&*self.0, sender_pubkey, ciphertext)
     }
 

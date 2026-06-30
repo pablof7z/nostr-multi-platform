@@ -95,8 +95,8 @@ pub fn tokenize_content(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nmp_content::{tokenize as core_tokenize, tokenize_with_kind as core_tokenize_with_kind};
     use nmp_content::wire::encode_content_tree as core_encode;
+    use nmp_content::{tokenize as core_tokenize, tokenize_with_kind as core_tokenize_with_kind};
 
     // Parity: these tests verify the UniFFI fn calls the same tokenizer core
     // and produces a FlatBuffers buffer that decodes to the same
@@ -109,8 +109,7 @@ mod tests {
             tokenize_content(content.to_string(), vec![], ContentRenderMode::Plain, 1).unwrap();
 
         // Parity: same call the C-ABI makes internally.
-        let core_wire =
-            core_tokenize(content, &[], nmp_content::RenderMode::Plain).to_wire();
+        let core_wire = core_tokenize(content, &[], nmp_content::RenderMode::Plain).to_wire();
         let expected_bytes = core_encode(&core_wire);
 
         assert_eq!(
@@ -127,13 +126,8 @@ mod tests {
         let uniffi_bytes =
             tokenize_content(content.to_string(), vec![], ContentRenderMode::Auto, kind).unwrap();
 
-        let core_wire = core_tokenize_with_kind(
-            content,
-            &[],
-            nmp_content::RenderMode::Auto,
-            kind,
-        )
-        .to_wire();
+        let core_wire =
+            core_tokenize_with_kind(content, &[], nmp_content::RenderMode::Auto, kind).to_wire();
         let expected_bytes = core_encode(&core_wire);
 
         assert_eq!(uniffi_bytes, expected_bytes);
@@ -143,11 +137,9 @@ mod tests {
     fn parity_markdown_mode_matches_core() {
         let content = "**bold** and _italic_";
         let uniffi_bytes =
-            tokenize_content(content.to_string(), vec![], ContentRenderMode::Markdown, 1)
-                .unwrap();
+            tokenize_content(content.to_string(), vec![], ContentRenderMode::Markdown, 1).unwrap();
 
-        let core_wire =
-            core_tokenize(content, &[], nmp_content::RenderMode::Markdown).to_wire();
+        let core_wire = core_tokenize(content, &[], nmp_content::RenderMode::Markdown).to_wire();
         let expected_bytes = core_encode(&core_wire);
 
         assert_eq!(uniffi_bytes, expected_bytes);
@@ -169,8 +161,8 @@ mod tests {
 
     #[test]
     fn empty_content_returns_invalid_input_error() {
-        let err = tokenize_content("".to_string(), vec![], ContentRenderMode::Plain, 1)
-            .unwrap_err();
+        let err =
+            tokenize_content("".to_string(), vec![], ContentRenderMode::Plain, 1).unwrap_err();
         assert!(
             matches!(err, NmpError::InvalidInput),
             "expected InvalidInput error for empty content"

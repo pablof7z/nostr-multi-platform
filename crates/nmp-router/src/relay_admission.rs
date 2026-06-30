@@ -86,7 +86,10 @@ fn is_private_host(host: &str) -> bool {
         return true;
     }
     if let Ok(addr) = host.parse::<Ipv4Addr>() {
-        return addr.is_loopback() || addr.is_private() || addr.is_link_local() || addr.is_unspecified();
+        return addr.is_loopback()
+            || addr.is_private()
+            || addr.is_link_local()
+            || addr.is_unspecified();
     }
     if let Ok(addr) = host.parse::<Ipv6Addr>() {
         return addr.is_loopback() || addr.is_unspecified() || is_ipv6_link_local(addr);
@@ -219,12 +222,18 @@ mod tests {
 
     #[test]
     fn extract_host_with_port() {
-        assert_eq!(extract_host("wss://relay.example:443"), Some("relay.example"));
+        assert_eq!(
+            extract_host("wss://relay.example:443"),
+            Some("relay.example")
+        );
     }
 
     #[test]
     fn extract_host_with_path() {
-        assert_eq!(extract_host("wss://relay.example:443/ws"), Some("relay.example"));
+        assert_eq!(
+            extract_host("wss://relay.example:443/ws"),
+            Some("relay.example")
+        );
     }
 
     #[test]

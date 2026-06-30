@@ -98,9 +98,15 @@ fn validate_bolt11_amount_rejects_malformed_amount_hrp() {
 fn inject_lnurl_tag_inserts_tag_for_valid_lightning_address() {
     let mut u = unsigned_for(vec![vec!["p".to_string(), RECIPIENT_HEX.to_string()]]);
     assert!(inject_lnurl_tag("alice@pay.example.com", &mut u).is_ok());
-    let row = u.tags.iter().find(|t| t.first().map(String::as_str) == Some("lnurl"))
+    let row = u
+        .tags
+        .iter()
+        .find(|t| t.first().map(String::as_str) == Some("lnurl"))
         .expect("lnurl tag must be injected");
-    assert!(row.len() > 1 && row[1].starts_with("lnurl1"), "tag must be bech32: {row:?}");
+    assert!(
+        row.len() > 1 && row[1].starts_with("lnurl1"),
+        "tag must be bech32: {row:?}"
+    );
 }
 
 /// Unparseable input → Err (caller aborts the zap), no tag added.
@@ -111,16 +117,29 @@ fn inject_lnurl_tag_returns_err_for_unparseable_input() {
         inject_lnurl_tag("not-a-valid-lnurl-at-all", &mut u).is_err(),
         "unparseable input must return Err"
     );
-    assert!(!u.tags.iter().any(|t| t.first().map(String::as_str) == Some("lnurl")));
+    assert!(!u
+        .tags
+        .iter()
+        .any(|t| t.first().map(String::as_str) == Some("lnurl")));
 }
 
 /// Existing non-empty lnurl tag → no-op (Ok, tag unchanged, no duplicate).
 #[test]
 fn inject_lnurl_tag_skips_when_tag_already_present() {
-    let existing = vec!["lnurl".to_string(), "lnurl1dp68gurn8ghj7arg9ekxzar9wd6xzarfwfjhgwf3h".to_string()];
-    let mut u = unsigned_for(vec![existing.clone(), vec!["p".to_string(), RECIPIENT_HEX.to_string()]]);
+    let existing = vec![
+        "lnurl".to_string(),
+        "lnurl1dp68gurn8ghj7arg9ekxzar9wd6xzarfwfjhgwf3h".to_string(),
+    ];
+    let mut u = unsigned_for(vec![
+        existing.clone(),
+        vec!["p".to_string(), RECIPIENT_HEX.to_string()],
+    ]);
     assert!(inject_lnurl_tag("alice@pay.example.com", &mut u).is_ok());
-    let rows: Vec<_> = u.tags.iter().filter(|t| t.first().map(String::as_str) == Some("lnurl")).collect();
+    let rows: Vec<_> = u
+        .tags
+        .iter()
+        .filter(|t| t.first().map(String::as_str) == Some("lnurl"))
+        .collect();
     assert_eq!(rows.len(), 1);
     assert_eq!(*rows[0], existing);
 }

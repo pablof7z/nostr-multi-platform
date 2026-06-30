@@ -21,15 +21,15 @@ The framework treats common Nostr-correctness failures — stale replaceable eve
 
 NMP is a Cargo workspace shipping a Nostr-native **app kernel** (`nmp-core`),
 reusable **Nostr protocol modules** (`nmp-nip01`, `nmp-nip17`, `nmp-nip65`,
-etc.), app-owned extension modules, reusable composition installers
-(`nmp-defaults`), host-binding codegen (`gen swift` / `gen typed-decoders`), a
+etc.), app-owned extension modules, reusable substrate composition
+(`nmp-substrate`), host-binding codegen (`gen swift` / `gen typed-decoders`), a
 scaffolding CLI (`nmp init`), a registry of app-owned reactive native UI
 components, reference native platform shells, and a browser Worker runtime
 (`nmp-browser-runtime`) with web component-host support. Production app roots
 compose explicit substrate, protocol, app, publish/signing, and capability
-features; hidden one-call defaults are not the production architecture. Full web
-product readiness remains gated by component-host conformance and clean-room
-onboarding proof.
+features; hidden one-call defaults are deleted and are not production
+architecture. Full web product readiness remains gated by component-host
+conformance and clean-room onboarding proof.
 
 The kernel composes the `rust-nostr` crate family plus OS capability crates into a substrate. It owns actor runtime, verified event store, subscription planner, relay routing pipeline, signer/session plumbing, durable action ledger, domain-store substrate, typed view registry, capability bridge, platform shadow/codegen machinery, diagnostics, and test harnesses.
 
@@ -219,7 +219,7 @@ The on-disk layout from `aim.md` §5 is canonical. The long-term workspace conta
 |---|---|---|
 | `nmp-core` | Kernel substrate: actor, store, planner, ledger, registries, extension traits, diagnostics | Pure Rust |
 | `nmp-codegen` | Host binding emitters and drift gates for typed projections/decoders (`gen swift`, `gen typed-decoders`) | Binary + library |
-| `nmp-defaults` | Reusable composition installers: substrate, protocol features, routing, signer ports, and publish helpers. Production apps compose explicit named installers; hidden presets are not production architecture (ADR-0069). | Pure Rust |
+| `nmp-substrate` | Reusable substrate floor: shared router/mailbox/profile/contacts cache-parser construction for delivery roots that cannot hand-copy substrate wiring. Protocol features are composed explicitly by app/runtime roots. | Pure Rust |
 | `nmp-uniffi` | Public native binding surface over `nmp-native-runtime` for generated Swift/Kotlin app crates | UniFFI |
 | `nmp-browser-runtime` | Browser Worker/runtime adapter and sole wasm-bindgen ABI glue; owns Worker protocol types (ADR-0067; `nmp-wasm` deleted #2202) | wasm-bindgen |
 | `nmp-nip01` | Event, Filter, Profile/Timeline views, SendNote/Delete actions | Pure Rust |

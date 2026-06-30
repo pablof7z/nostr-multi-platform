@@ -10,7 +10,6 @@ description = "NIP-51 list projections for NMP: mute suppression, global bookmar
 crate-type = ["rlib"]
 
 [dependencies]
-nmp-ownership = { workspace = true }
 # `nmp-core` supplies `ObservedProjectionSink` (the ingest seam) and
 # `SuppressionLookup` (the substrate-generic trait the timeline projection
 # reads). No NIP nouns enter nmp-core through this crate.
@@ -23,10 +22,9 @@ nmp-planner = { path = "../nmp-planner", default-features = false }
 # Layer-0 kind-constant registry — re-exports NIP-51 kind integers
 # so this crate no longer duplicates those values.
 nmp-kinds = { path = "../nmp-kinds" }
-# NIP-50 search relay source trait and installer used by
-# `search_relay_runtime::register_search_relay_runtime_with` to auto-wire the
-# default search-relay source when the composition root calls this crate.
-nmp-nip50 = { path = "../nmp-nip50", default-features = false }
+# NIP-50 owns search relay-selection semantics. The NIP-51 runtime installs a
+# source backed by the active account's kind:10007 projection.
+nmp-nip50 = { path = "../nmp-nip50" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 # Typed FlatBuffers sidecar (ADR-0037) for the `nmp.nip51.mute_list` projection.
@@ -44,3 +42,4 @@ nmp-threading = { path = "../nmp-threading" }
 # dispatch_integration seeds a kind:10003 KernelEvent (KIND_BOOKMARK_LIST) so the
 # remove_bookmark presence check has an existing bookmark to find.
 nmp-kinds = { path = "../nmp-kinds" }
+nostr = { version = "0.44", default-features = false, features = ["std"] }

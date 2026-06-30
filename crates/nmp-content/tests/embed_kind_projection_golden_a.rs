@@ -29,14 +29,17 @@ fn check_golden(label: &str, value: &EmbedKindProjection, expected: &str) {
     if actual != expected {
         eprintln!("{label} actual:\n{actual}");
     }
-    assert_eq!(actual, expected, "{label}: EmbedKindProjection JSON golden drifted");
+    assert_eq!(
+        actual, expected,
+        "{label}: EmbedKindProjection JSON golden drifted"
+    );
 }
 
 fn check_roundtrip(label: &str, value: &EmbedKindProjection) {
-    let json = serde_json::to_string(value)
-        .unwrap_or_else(|e| panic!("{label}: serialize failed: {e}"));
-    let back: EmbedKindProjection = serde_json::from_str(&json)
-        .unwrap_or_else(|e| panic!("{label}: deserialize failed: {e}"));
+    let json =
+        serde_json::to_string(value).unwrap_or_else(|e| panic!("{label}: serialize failed: {e}"));
+    let back: EmbedKindProjection =
+        serde_json::from_str(&json).unwrap_or_else(|e| panic!("{label}: deserialize failed: {e}"));
     let json2 = serde_json::to_string(&back)
         .unwrap_or_else(|e| panic!("{label}: re-serialize failed: {e}"));
     assert_eq!(json, json2, "{label}: serde roundtrip mismatch");
@@ -98,7 +101,7 @@ fn short_note_with_media_golden_json() {
 #[test]
 fn article_golden_json() {
     let proj = EmbedKindProjection::Article(ArticleProjection {
-        id: "a1b2c3d4".repeat(8), // 64 chars
+        id: "a1b2c3d4".repeat(8),            // 64 chars
         author_pubkey: "e5f6a7b8".repeat(8), // 64 chars
         created_at: 1_700_000_000,
         title: Some("Backpressure Is A Feature".to_string()),
@@ -122,7 +125,7 @@ fn article_golden_json() {
 #[test]
 fn article_with_hero_image_golden_json() {
     let proj = EmbedKindProjection::Article(ArticleProjection {
-        id: "11223344".repeat(8), // 64 chars
+        id: "11223344".repeat(8),            // 64 chars
         author_pubkey: "55667788".repeat(8), // 64 chars
         created_at: 1_710_500_000,
         title: Some("Relays Are CDNs".to_string()),
@@ -147,7 +150,7 @@ fn article_with_hero_image_golden_json() {
 #[test]
 fn highlight_minimal_golden_json() {
     let proj = EmbedKindProjection::Highlight(HighlightProjection {
-        id: "fedcba98".repeat(8), // 64 chars
+        id: "fedcba98".repeat(8),            // 64 chars
         author_pubkey: "01234567".repeat(8), // 64 chars
         created_at: 1_715_000_000,
         highlighted_text: "the honest answer is: slow down".to_string(),
