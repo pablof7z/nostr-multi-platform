@@ -1,17 +1,65 @@
-use crate::support::{collect_files, crates_dir, is_comment, read, rel};
+use crate::support::{collect_files, crates_dir, evaluate, is_comment, read, rel, Occurrence};
 
-/// Baseline (tracked debt). The owning fix PR removes its line when it lands.
-/// Do NOT add new entries.
-const RULE_C_BASELINE: &[&str] = &[
+/// Fine-grained baseline (tracked debt): `(file, symbol)`. The owning fix PR
+/// removes each line when it deletes the symbol. Do NOT add new entries.
+const RULE_C_BASELINE: &[(&str, &str)] = &[
     // #2513 — kind-specific react/repost/share verbs in the kind-blind transport.
-    "crates/nmp-nip29/src/action/composed.rs", // react_in_group / unreact_in_group + REACTION_KIND
-    "crates/nmp-nip29/src/action/group_event.rs", // share_event_in_group / repost_in_group + REPOST_KIND
-    "crates/nmp-nip29/src/wire/action_payload/group.rs", // react/unreact payload namespaces
-    "crates/nmp-nip29/src/wire/action_payload/group_event.rs", // share/repost payload namespaces
-    "crates/nmp-nip29/schema/react_in_group_action.fbs",
-    "crates/nmp-nip29/schema/unreact_in_group_action.fbs",
-    "crates/nmp-nip29/schema/repost_in_group_action.fbs",
-    "crates/nmp-nip29/schema/share_event_in_group_action.fbs",
+    (
+        "crates/nmp-nip29/src/action/composed.rs",
+        "ns:react_in_group",
+    ),
+    (
+        "crates/nmp-nip29/src/action/composed.rs",
+        "ns:unreact_in_group",
+    ),
+    (
+        "crates/nmp-nip29/src/action/composed.rs",
+        "const:REACTION_KIND",
+    ),
+    (
+        "crates/nmp-nip29/src/action/group_event.rs",
+        "ns:share_event_in_group",
+    ),
+    (
+        "crates/nmp-nip29/src/action/group_event.rs",
+        "ns:repost_in_group",
+    ),
+    (
+        "crates/nmp-nip29/src/action/group_event.rs",
+        "const:REPOST_KIND",
+    ),
+    (
+        "crates/nmp-nip29/src/wire/action_payload/group.rs",
+        "ns:react_in_group",
+    ),
+    (
+        "crates/nmp-nip29/src/wire/action_payload/group.rs",
+        "ns:unreact_in_group",
+    ),
+    (
+        "crates/nmp-nip29/src/wire/action_payload/group_event.rs",
+        "ns:share_event_in_group",
+    ),
+    (
+        "crates/nmp-nip29/src/wire/action_payload/group_event.rs",
+        "ns:repost_in_group",
+    ),
+    (
+        "crates/nmp-nip29/schema/react_in_group_action.fbs",
+        "schema-file",
+    ),
+    (
+        "crates/nmp-nip29/schema/unreact_in_group_action.fbs",
+        "schema-file",
+    ),
+    (
+        "crates/nmp-nip29/schema/repost_in_group_action.fbs",
+        "schema-file",
+    ),
+    (
+        "crates/nmp-nip29/schema/share_event_in_group_action.fbs",
+        "schema-file",
+    ),
 ];
 
 /// Legitimate `nmp.nip29.<suffix>` namespaces: the ONE generic publish verb,
@@ -70,39 +118,40 @@ fn rule_c_nip29_is_kind_blind_transport() {
         "Rule C scanned zero src/schema files — gate would be vacuous"
     );
 
-    let mut violations = Vec::new();
+    let mut occs = Vec::new();
+
+    // src/**: banned namespace verbs + REACTION_KIND/REPOST_KIND constants.
     for file in &files {
         let content = read(file);
-        let baselined = RULE_C_BASELINE.contains(&rel(file).as_str());
         for (i, raw) in content.lines().enumerate() {
             let trimmed = raw.trim_start();
             if is_comment(trimmed) {
                 continue;
             }
             for ns in nip29_namespaces(raw) {
-                if !RULE_C_NS_ALLOWLIST.contains(&ns.as_str()) && !baselined {
-                    violations.push(format!(
-                        "{}:{}: Rule C (kind-blind-transport) — kind-specific action namespace `nmp.nip29.{}`",
-                        rel(file),
-                        i + 1,
-                        ns
-                    ));
+                if !RULE_C_NS_ALLOWLIST.contains(&ns.as_str()) {
+                    occs.push(Occurrence {
+                        file: rel(file),
+                        key: format!("ns:{ns}"),
+                        line: i + 1,
+                        detail: format!("kind-specific action namespace `nmp.nip29.{ns}`"),
+                    });
                 }
             }
-            if (trimmed.contains("REACTION_KIND") || trimmed.contains("REPOST_KIND"))
-                && trimmed.contains("const ")
-                && !baselined
-            {
-                violations.push(format!(
-                    "{}:{}: Rule C (kind-blind-transport) — kind constant in transport: {}",
-                    rel(file),
-                    i + 1,
-                    trimmed
-                ));
+            for konst in ["REACTION_KIND", "REPOST_KIND"] {
+                if trimmed.contains(konst) && trimmed.contains("const ") {
+                    occs.push(Occurrence {
+                        file: rel(file),
+                        key: format!("const:{konst}"),
+                        line: i + 1,
+                        detail: format!("kind constant in transport: {trimmed}"),
+                    });
+                }
             }
         }
     }
 
+    // schema/**: react/repost/share .fbs filenames are kind-specific verbs.
     for file in &schema_files {
         let name = file
             .file_name()
@@ -111,20 +160,21 @@ fn rule_c_nip29_is_kind_blind_transport() {
             .to_ascii_lowercase();
         let kind_specific =
             name.contains("react") || name.contains("repost") || name.contains("share_event");
-        if kind_specific && !RULE_C_BASELINE.contains(&rel(file).as_str()) {
-            violations.push(format!(
-                "{}:1: Rule C (kind-blind-transport) — kind-specific schema file `{}`",
-                rel(file),
-                name
-            ));
+        if kind_specific {
+            occs.push(Occurrence {
+                file: rel(file),
+                key: "schema-file".to_string(),
+                line: 1,
+                detail: format!("kind-specific schema file `{name}`"),
+            });
         }
     }
 
-    assert!(
-        violations.is_empty(),
-        "Rule C: nmp-nip29 is kind-blind h-tag transport — it owns ONE generic publish \
-         verb plus pure envelope ops, never kind-specific react/repost/share verbs or \
-         kind constants. New violation(s) — fix, do NOT baseline:\n{}",
-        violations.join("\n")
+    evaluate(
+        "Rule C (kind-blind-transport)",
+        "nmp-nip29 is kind-blind h-tag transport — it owns ONE generic publish verb plus \
+         pure envelope ops, never kind-specific react/repost/share verbs or kind constants.",
+        RULE_C_BASELINE,
+        &occs,
     );
 }

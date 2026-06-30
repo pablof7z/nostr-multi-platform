@@ -3,12 +3,13 @@
 //!
 //! A "layer inversion" is a sub-L5 crate owning a concern that belongs to a
 //! higher layer: render / feed-item shape, display enrichment, an app-named
-//! noun, global relation summaries, or a substrate naming a protocol noun.
-//! `docs/architecture/crate-boundaries.md` (§2-§10a) is the durable spec; this
-//! grep gate is the CI ratchet that prevents *new* inversions from being
-//! introduced while the audited debt is paid down.
+//! noun, global relation summaries, a substrate naming a protocol noun, or — at
+//! the Cargo-graph level — a lower-layer crate depending *upward* on a
+//! higher-layer crate. `docs/architecture/crate-boundaries.md` (§2-§10a) is the
+//! durable spec; this gate is the CI ratchet that prevents *new* inversions
+//! from being introduced while the audited debt is paid down.
 //!
-//! Four independent rules, each scoped to the layer it protects:
+//! Five independent rules, each scoped to the layer it protects:
 //!
 //! * **Rule A — display-enrichment-in-primitive.** L1/L4 protocol primitives
 //!   (`nmp-nip01`, `nmp-content`, every L4 `nmp-nipNN`, `nmp-feed`,
@@ -30,14 +31,28 @@
 //!   `Nprofile`/`Nevent`/`Naddr` types). NIP-21 `NostrUri` and `parse_nip10`
 //!   were judged legitimate generic substrate codecs by the audit and are NOT
 //!   banned.
+//! * **Rule E — upward Cargo edge (dependency-graph inversion).** No crate in a
+//!   lower layer may declare a Cargo dependency on a crate in a higher layer.
+//!   This is the graph-level companion to Rules A-D: a source-token grep cannot
+//!   see a `Cargo.toml` back-edge (the class of the `nmp-core -> nmp-nip19`
+//!   L3→L4 edge #2526 introduces). The layer map is encoded from
+//!   crate-boundaries.md §2; the blessed `nmp-router -> nmp-core` inversion (§4)
+//!   is baselined like any other tracked entry.
 //!
-//! # Baseline ratchet
+//! # Fine-grained baseline ratchet + self-pruning
 //!
-//! The audited violations still exist on `master`, so each rule carries an
-//! explicit BASELINE ALLOWLIST of known-violation files, annotated with their
-//! owning open issue. A rule fails only on occurrences NOT in its baseline.
-//! Baseline entries are tracked debt; the owning fix PR removes its line when it
-//! lands. Do NOT add new entries — a new violation must be fixed, not baselined.
+//! The audited violations still exist on `master`, so each rule carries a
+//! BASELINE ALLOWLIST. Rules A/C/D/E key each entry **fine-grained** by
+//! `(file, symbol)` — never a whole file — so a new banned
+//! field/type/namespace/edge fires even when added to a file (or crate) that
+//! already carries a *different* baselined violation; file-level masking is
+//! impossible. Rule B caps each baselined file at its EXACT current hit count.
+//!
+//! Every rule is also **self-pruning**: a baseline entry whose occurrence is
+//! gone (or whose hit count dropped, for Rule B) fails as STALE, forcing the
+//! fix PR to delete or tighten its now-satisfied baseline line. Baseline
+//! entries are tracked debt; do NOT add new ones — a new violation must be
+//! fixed, not baselined.
 //!
 //! # Running
 //!
@@ -57,6 +72,8 @@ mod rule_b_matchers;
 mod rule_c;
 #[path = "layer_inversion_doctrine_lint/rule_d.rs"]
 mod rule_d;
+#[path = "layer_inversion_doctrine_lint/rule_e.rs"]
+mod rule_e;
 #[path = "layer_inversion_doctrine_lint/support.rs"]
 mod support;
 

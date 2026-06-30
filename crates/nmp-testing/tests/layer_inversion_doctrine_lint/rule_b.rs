@@ -163,12 +163,23 @@ fn rule_b_no_global_relation_summary_or_bucket_api() {
         }
     }
 
+    // The count cap is EXACT, not an upper bound: a baselined file must carry
+    // exactly its `max_hits` known occurrences. A higher count is a new
+    // violation; a lower count means the fix PR paid down some debt and the cap
+    // is now stale — it must be tightened (or the entry deleted at 0) so the
+    // gate self-prunes and cannot drift back to green-by-default.
+    let mut stale = Vec::new();
     for baseline in RULE_B_BASELINE {
         let count = counts.get(baseline.path).copied().unwrap_or(0);
         if count > baseline.max_hits {
             violations.push(format!(
                 "{}:1: Rule B baseline for {} grew from {} to {} hits ({})",
                 baseline.path, baseline.issue, baseline.max_hits, count, baseline.reason
+            ));
+        } else if count < baseline.max_hits {
+            stale.push(format!(
+                "  {} ({}): capped at {} but only {} live hits — lower max_hits to {} (or delete the entry if 0)",
+                baseline.path, baseline.issue, baseline.max_hits, count, count
             ));
         }
     }
@@ -180,5 +191,12 @@ fn rule_b_no_global_relation_summary_or_bucket_api() {
          or a central nmp-relations owner. Existing debt is capped to open issues #2508/#2512. \
          New violation(s) — fix, do NOT baseline:\n{}",
         violations.join("\n")
+    );
+    assert!(
+        stale.is_empty(),
+        "Rule B: stale baseline entry — tighten it. A baselined file dropped below its \
+         capped hit count, so the cap is now loose and silently green-by-default. Each fix \
+         PR must lower (or delete) the baseline line it satisfied:\n{}",
+        stale.join("\n")
     );
 }

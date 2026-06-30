@@ -5,7 +5,8 @@ use crate::rule_b_matchers::{
 };
 use crate::rule_c::{nip29_namespaces, RULE_C_NS_ALLOWLIST};
 use crate::rule_d::is_nip19_entity_ident;
-use crate::support::{decl_name, field_ident, scan_blocks, Lang};
+use crate::rule_e::{crate_layer, dep_name, manifest_runtime_deps, upward_edge};
+use crate::support::{classify, decl_name, field_ident, scan_blocks, Lang, Occurrence};
 
 #[test]
 fn matchers_are_correct() {
@@ -97,4 +98,90 @@ fn matchers_are_correct() {
         .find(|lc| lc.text.contains("Agg { replies"))
         .expect("literal line");
     assert_eq!(lit_line.block, None);
+
+    // --- Rule E helpers: layer map + edge direction + manifest parsing ------
+    assert_eq!(crate_layer("nmp-core"), Some(3));
+    assert_eq!(crate_layer("nmp-router"), Some(2));
+    assert_eq!(crate_layer("nmp-nip01"), Some(4)); // default-L4 NIP crate
+    assert_eq!(crate_layer("nmp-nip42-types"), Some(0)); // -types is L0 vocabulary
+    assert_eq!(crate_layer("nmp-defaults"), Some(5));
+    assert_eq!(crate_layer("serde"), None); // external crate is unmapped
+    // Upward edges fire; downward / same-layer / unmapped do not.
+    assert_eq!(upward_edge("nmp-router", "nmp-core"), Some((2, 3))); // L2 -> L3 upward
+    assert_eq!(upward_edge("nmp-kinds", "nmp-core"), Some((0, 3))); // synthetic upward
+    assert!(upward_edge("nmp-core", "nmp-store").is_none()); // L3 -> L1 downward
+    assert!(upward_edge("nmp-nip01", "nmp-core").is_none()); // L4 -> L3 downward
+    assert!(upward_edge("nmp-router", "nmp-planner").is_none()); // L2 -> L2 same layer
+    assert!(upward_edge("nmp-core", "serde").is_none()); // unmapped target
+    // dep_name: plain, dotted-workspace, and renamed forms.
+    assert_eq!(
+        dep_name(r#"nmp-core = { path = "../nmp-core" }"#).as_deref(),
+        Some("nmp-core")
+    );
+    assert_eq!(
+        dep_name("nmp-store.workspace = true").as_deref(),
+        Some("nmp-store")
+    );
+    assert_eq!(
+        dep_name(r#"alias = { package = "nmp-core", path = "../nmp-core" }"#).as_deref(),
+        Some("nmp-core")
+    );
+    assert!(dep_name("# nmp-core is great").is_none()); // comment
+    // manifest_runtime_deps: includes [dependencies]/[build-dependencies],
+    // excludes [dev-dependencies].
+    let toml = "[package]\nname = \"x\"\n\n[dependencies]\nnmp-core = { path = \"../nmp-core\" }\n\n[dev-dependencies]\nnmp-testing = { path = \"../nmp-testing\" }\n\n[build-dependencies]\nnmp-codegen = { path = \"../nmp-codegen\" }\n";
+    let deps = manifest_runtime_deps(toml);
+    assert!(deps.contains(&"nmp-core".to_string()));
+    assert!(deps.contains(&"nmp-codegen".to_string()));
+    assert!(
+        !deps.contains(&"nmp-testing".to_string()),
+        "dev-dependencies must be excluded from the layer graph"
+    );
+
+    // --- Baseline harness: fine-grained masking-resistance + stale detection -
+    // (a) A NEW symbol in an already-baselined file is NOT masked: the file has
+    //     a baselined `author_display`, but a fresh `author_display_name` field
+    //     in the same file is a distinct key and still fires.
+    let baseline: &[(&str, &str)] = &[("f.fbs", "author_display")];
+    let occs = vec![
+        Occurrence {
+            file: "f.fbs".into(),
+            key: "author_display".into(),
+            line: 10,
+            detail: "known".into(),
+        },
+        Occurrence {
+            file: "f.fbs".into(),
+            key: "author_display_name".into(),
+            line: 11,
+            detail: "new field in baselined file".into(),
+        },
+    ];
+    let (new_v, stale) = classify("Rule X", baseline, &occs);
+    assert_eq!(
+        new_v.len(),
+        1,
+        "fine-grained baseline must NOT mask a new symbol in a baselined file"
+    );
+    assert!(new_v[0].contains("author_display_name"));
+    assert!(stale.is_empty(), "every baseline entry is still present");
+
+    // (b) Stale detection: a baseline entry with no live occurrence fails.
+    let (new_v2, stale2) = classify("Rule X", &[("gone.rs", "OldType")], &[]);
+    assert!(new_v2.is_empty(), "no occurrences => no new violations");
+    assert_eq!(stale2.len(), 1, "missing occurrence => one stale entry");
+    assert!(stale2[0].contains("OldType"));
+
+    // (c) Exactly-baselined occurrence is green (no new, no stale).
+    let (new_v3, stale3) = classify(
+        "Rule X",
+        &[("a.rs", "K")],
+        &[Occurrence {
+            file: "a.rs".into(),
+            key: "K".into(),
+            line: 1,
+            detail: "d".into(),
+        }],
+    );
+    assert!(new_v3.is_empty() && stale3.is_empty());
 }

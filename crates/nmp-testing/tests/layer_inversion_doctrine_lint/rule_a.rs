@@ -1,20 +1,96 @@
 use crate::support::{
-    collect_files, crates_dir, field_ident, lang_of, nmp_nip_crates, read, rel, scan_blocks,
+    collect_files, crates_dir, evaluate, field_ident, lang_of, nmp_nip_crates, read, rel,
+    scan_blocks, Occurrence,
 };
 
-/// Baseline (tracked debt). The owning fix PR removes its line when it lands.
-/// Do NOT add new entries.
-const RULE_A_BASELINE: &[&str] = &[
+/// Fine-grained baseline (tracked debt): `(file, field-name)`. The owning fix
+/// PR removes each line when it deletes the field. Do NOT add new entries — a
+/// new banned field with a different name fires even inside a file that already
+/// carries a *different* baselined field (no file-level masking).
+const RULE_A_BASELINE: &[(&str, &str)] = &[
     // #2510 / #2508 — op-centric timeline render cards in nmp-nip01.
-    "crates/nmp-nip01/schema/timeline_snapshot.fbs", // TimelineEventCard display mirrors
-    "crates/nmp-nip01/src/timeline_projection.rs",   // re-export of render_data surfaces
-    "crates/nmp-nip01/src/timeline_projection/render_data.rs", // ContentEventRenderData fields
-    "crates/nmp-nip01/schema/op_feed.fbs",           // RootCard author_display/content_preview
-    "crates/nmp-nip01/src/op_feed/attribution.rs",   // RepostAttribution.author_display
+    (
+        "crates/nmp-nip01/schema/timeline_snapshot.fbs",
+        "author_display",
+    ),
+    (
+        "crates/nmp-nip01/schema/timeline_snapshot.fbs",
+        "author_display_name",
+    ),
+    (
+        "crates/nmp-nip01/schema/timeline_snapshot.fbs",
+        "author_picture_url",
+    ),
+    (
+        "crates/nmp-nip01/schema/timeline_snapshot.fbs",
+        "content_preview",
+    ),
+    (
+        "crates/nmp-nip01/schema/timeline_snapshot.fbs",
+        "content_render",
+    ),
+    (
+        "crates/nmp-nip01/schema/timeline_snapshot.fbs",
+        "has_author_display_name",
+    ),
+    (
+        "crates/nmp-nip01/schema/timeline_snapshot.fbs",
+        "has_author_picture_url",
+    ),
+    (
+        "crates/nmp-nip01/src/timeline_projection/render_data.rs",
+        "author_display",
+    ),
+    (
+        "crates/nmp-nip01/src/timeline_projection/render_data.rs",
+        "content_preview",
+    ),
+    ("crates/nmp-nip01/schema/op_feed.fbs", "author_display"),
+    (
+        "crates/nmp-nip01/src/op_feed/attribution.rs",
+        "author_display",
+    ),
     // #2514 — embed/longform render previews in nmp-content.
-    "crates/nmp-content/src/embed_projection/variants.rs", // author_display_name/picture_url fields
-    "crates/nmp-content/schema/embed_sidecar.fbs",
-    "crates/nmp-content/schema/longform.fbs",
+    (
+        "crates/nmp-content/src/embed_projection/variants.rs",
+        "author_display_name",
+    ),
+    (
+        "crates/nmp-content/src/embed_projection/variants.rs",
+        "author_picture_url",
+    ),
+    (
+        "crates/nmp-content/schema/embed_sidecar.fbs",
+        "author_display_name",
+    ),
+    (
+        "crates/nmp-content/schema/embed_sidecar.fbs",
+        "author_picture_url",
+    ),
+    (
+        "crates/nmp-content/schema/embed_sidecar.fbs",
+        "has_author_display_name",
+    ),
+    (
+        "crates/nmp-content/schema/embed_sidecar.fbs",
+        "has_author_picture_url",
+    ),
+    (
+        "crates/nmp-content/schema/longform.fbs",
+        "author_display_name",
+    ),
+    (
+        "crates/nmp-content/schema/longform.fbs",
+        "author_picture_url",
+    ),
+    (
+        "crates/nmp-content/schema/longform.fbs",
+        "has_author_display_name",
+    ),
+    (
+        "crates/nmp-content/schema/longform.fbs",
+        "has_author_picture_url",
+    ),
 ];
 
 /// Banned tokens for a display/render FIELD declaration (substring match).
@@ -66,14 +142,15 @@ fn rule_a_no_display_enrichment_in_primitives() {
         "Rule A scanned zero files — gate would be vacuous"
     );
 
-    let mut violations = Vec::new();
+    let mut occs = Vec::new();
     for file in &files {
         let lang = lang_of(file);
         let content = read(file);
         let scan = scan_blocks(&content);
-        let baselined = RULE_A_BASELINE.contains(&rel(file).as_str());
         for lc in &scan.lines {
             let trimmed = lc.text.trim_start();
+            // Profile carve-out: the kind:0 ProfileProjection vocabulary owns
+            // display data legitimately.
             if lc
                 .def_stack
                 .iter()
@@ -81,33 +158,33 @@ fn rule_a_no_display_enrichment_in_primitives() {
             {
                 continue;
             }
-            if field_ident(trimmed, lang).is_none() {
+            let Some(field) = field_ident(trimmed, lang) else {
                 continue;
-            }
+            };
             let hit = RULE_A_BANNED
                 .iter()
                 .find(|b| lc.text.contains(**b))
                 .map(|b| b.to_string())
                 .or_else(|| has_formatted_field(&lc.text).then(|| "formatted_*".to_string()));
             if let Some(token) = hit {
-                if !baselined {
-                    violations.push(format!(
-                        "{}:{}: Rule A (display-enrichment-in-primitive) — banned field token `{}`: {}",
-                        rel(file),
-                        lc.no,
-                        token,
-                        trimmed
-                    ));
-                }
+                occs.push(Occurrence {
+                    file: rel(file),
+                    // Fine-grained key: the field name. A new banned field with
+                    // a different name in an already-baselined file is a fresh
+                    // key, so it is NOT masked.
+                    key: field,
+                    line: lc.no,
+                    detail: format!("banned display/render field token `{token}`: {trimmed}"),
+                });
             }
         }
     }
 
-    assert!(
-        violations.is_empty(),
-        "Rule A: sub-L5 protocol primitives must not carry display/render fields \
-         (crate-boundaries.md §display-separation). New violation(s) — fix, do NOT \
-         baseline:\n{}",
-        violations.join("\n")
+    evaluate(
+        "Rule A (display-enrichment-in-primitive)",
+        "sub-L5 protocol primitives must not carry display/render fields \
+         (crate-boundaries.md §display-separation).",
+        RULE_A_BASELINE,
+        &occs,
     );
 }

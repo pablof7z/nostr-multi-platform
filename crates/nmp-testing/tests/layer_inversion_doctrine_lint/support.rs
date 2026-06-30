@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -268,4 +269,86 @@ pub(crate) fn lang_of(path: &Path) -> Lang {
     } else {
         Lang::Rust
     }
+}
+
+// ---------------------------------------------------------------------------
+// Fine-grained baseline harness (shared by Rules A, C, D, E)
+// ---------------------------------------------------------------------------
+
+/// One concrete violation occurrence found in the tree. `(file, key)` is the
+/// fine-grained baseline coordinate: two distinct symbols in one file are two
+/// distinct entries, so a *new* violation added to an already-baselined file is
+/// never masked by a file-level allowlist.
+pub(crate) struct Occurrence {
+    /// Workspace-relative file (or manifest) path.
+    pub(crate) file: String,
+    /// The specific symbol / field / namespace / edge target that *is* the
+    /// violation — the second half of the fine-grained baseline key.
+    pub(crate) key: String,
+    /// 1-based line number for the report (0 when not line-scoped).
+    pub(crate) line: usize,
+    /// Human-readable detail for the failure message.
+    pub(crate) detail: String,
+}
+
+/// Pure baseline classifier — split out so the sanity test can assert both
+/// fine-grained masking-resistance and stale detection directly.
+///
+/// Returns `(new_violations, stale_entries)`:
+/// * `new_violations` — occurrences whose `(file, key)` is NOT baselined.
+/// * `stale_entries`  — baseline entries with no matching live occurrence.
+pub(crate) fn classify(
+    rule: &str,
+    baseline: &[(&str, &str)],
+    occs: &[Occurrence],
+) -> (Vec<String>, Vec<String>) {
+    let base: BTreeSet<(&str, &str)> = baseline.iter().copied().collect();
+    let mut present: BTreeSet<(String, String)> = BTreeSet::new();
+    let mut new_violations = Vec::new();
+    for o in occs {
+        present.insert((o.file.clone(), o.key.clone()));
+        if !base.contains(&(o.file.as_str(), o.key.as_str())) {
+            new_violations.push(format!(
+                "{}:{}: {rule} — {} [{}]",
+                o.file, o.line, o.detail, o.key
+            ));
+        }
+    }
+    let mut stale = Vec::new();
+    for (f, k) in baseline {
+        if !present.contains(&(f.to_string(), k.to_string())) {
+            stale.push(format!("  {f}  [{k}]"));
+        }
+    }
+    new_violations.sort();
+    new_violations.dedup();
+    stale.sort();
+    (new_violations, stale)
+}
+
+/// Run a rule's fine-grained baseline check: fail on any NEW (non-baselined)
+/// occurrence, and fail on any STALE baseline entry whose occurrence is gone
+/// (self-pruning — each fix PR must delete the baseline line it satisfied).
+pub(crate) fn evaluate(rule: &str, fix_hint: &str, baseline: &[(&str, &str)], occs: &[Occurrence]) {
+    let unique: BTreeSet<(&str, &str)> = baseline.iter().copied().collect();
+    assert_eq!(
+        unique.len(),
+        baseline.len(),
+        "{rule}: duplicate baseline entries — each (file, symbol) must appear once"
+    );
+
+    let (new_violations, stale) = classify(rule, baseline, occs);
+
+    assert!(
+        new_violations.is_empty(),
+        "{rule}: NEW violation(s) — fix, do NOT baseline. {fix_hint}\n{}",
+        new_violations.join("\n")
+    );
+    assert!(
+        stale.is_empty(),
+        "{rule}: stale baseline entry — delete it. The occurrence it pinned no longer exists \
+         in the tree, so the entry is now silently green-by-default. Each fix PR must remove \
+         its now-satisfied baseline line:\n{}",
+        stale.join("\n")
+    );
 }
