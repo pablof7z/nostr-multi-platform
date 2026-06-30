@@ -22,6 +22,7 @@
 //! | `file_size_gate_tests.rs` | file-size baseline ratchet            |
 //! | `gallery_composition_gates.rs` | gallery explicit composition ratchet |
 //! | `manifest_gates.rs`       | app production dependency gates       |
+//! | `ownership_contract_gates.rs` | crate ownership declaration gates  |
 //! | `authority_rule_tests.rs` | D26                                   |
 //! | `d27_rule_tests.rs`       | D27                                   |
 //! | `event_flow_rule_tests.rs`| D23/D24/D25                           |
@@ -45,6 +46,7 @@ mod kind_predicate_authority_tests; // D4 nmp-kinds predicate ownership gate.
 mod manifest_gates; // App Cargo.toml production dependency gates — sibling module.
 mod native_runtime_boundary_gates; // Native runtime / C-ABI split boundary gates.
 mod no_raw_tap_rule_tests; // no_raw_tap step-5 native-sink fixture tests — sibling module.
+mod ownership_contract_gates; // Compiled positive ownership descriptor gates.
 mod product_raw_read_tests; // Product raw-read/session ratchet smoke tests.
 mod publish_route_gates; // Publish-route provenance/default deletion gates.
 mod recent_rule_tests; // D19/D20/D21 fixture smoke tests — sibling module (file-size cap).

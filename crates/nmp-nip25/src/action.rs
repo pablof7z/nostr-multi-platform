@@ -116,7 +116,7 @@ impl ProtocolCommand for PublishReactionCommand {
                 "react: malformed target event id",
             ));
         };
-        ctx.send(ActorCommand::Publish(PublishCommand::UnsignedEvent {
+        ctx.send(ActorCommand::Publish(PublishCommand::OwnedUnsignedEvent {
             event: UnsignedEvent {
                 pubkey: String::new(),
                 kind: KIND_REACTION,
@@ -124,6 +124,7 @@ impl ProtocolCommand for PublishReactionCommand {
                 content,
                 created_at: 0,
             },
+            ownership: crate::ownership::REACTION_EVENT_PROVENANCE,
             correlation_id: Some(self.correlation_id),
             signer_pubkey: None,
         }));
@@ -136,7 +137,7 @@ impl ProtocolCommand for UnreactReactionCommand {
         self: Box<Self>,
         ctx: &mut ProtocolCommandContext<'_>,
     ) -> Result<(), ProtocolCommandError> {
-        ctx.send(ActorCommand::Publish(PublishCommand::UnsignedEvent {
+        ctx.send(ActorCommand::Publish(PublishCommand::OwnedUnsignedEvent {
             event: UnsignedEvent {
                 pubkey: String::new(),
                 kind: KIND_REACTION_DELETE,
@@ -144,6 +145,7 @@ impl ProtocolCommand for UnreactReactionCommand {
                 content: self.action.reason,
                 created_at: 0,
             },
+            ownership: crate::ownership::REACTION_DELETE_EVENT_PROVENANCE,
             correlation_id: Some(self.correlation_id),
             signer_pubkey: None,
         }));

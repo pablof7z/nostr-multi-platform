@@ -272,3 +272,6 @@ impl NostrDatabase for NostrLMDB {
 #[cfg(test)]
 #[path = "lib_tests.rs"]
 mod tests;
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

@@ -249,3 +249,6 @@ fn trim_to_bound(records: &mut BTreeMap<String, AppDataRecord>, max_records: usi
 
 #[cfg(test)]
 mod tests;
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

@@ -28,3 +28,6 @@ pub use wire::typed_fb::{
     decode_wot_bootstrap, encode_wot_bootstrap, FILE_IDENTIFIER as WOT_BOOTSTRAP_FILE_IDENTIFIER,
     SCHEMA_ID as WOT_BOOTSTRAP_SCHEMA_ID, SCHEMA_VERSION as WOT_BOOTSTRAP_SCHEMA_VERSION,
 };
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

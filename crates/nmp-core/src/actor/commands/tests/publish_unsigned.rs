@@ -27,6 +27,7 @@ fn publish_unsigned_event_without_account_toasts_and_no_outbound() {
         unsigned,
         None,
         None,
+        None,
         &mut crate::actor::pending_sign::ParkedSignerOps::new(),
     );
     assert!(outbound.is_empty());
@@ -58,6 +59,7 @@ fn publish_unsigned_event_signs_and_publishes_arbitrary_kind() {
         unsigned,
         None,
         None,
+        None,
         &mut crate::actor::pending_sign::ParkedSignerOps::new(),
     );
     assert!(!outbound.is_empty());
@@ -71,6 +73,66 @@ fn publish_unsigned_event_signs_and_publishes_arbitrary_kind() {
     let q = kernel.publish_queue_snapshot();
     assert_eq!(q.last().unwrap().kind, 30023);
     assert_eq!(q.last().unwrap().status, "accepted_locally");
+}
+
+#[test]
+fn publish_unsigned_event_rejects_unowned_protected_reaction() {
+    let (mut id, mut kernel) = fresh();
+    sign_in_with_nip65(&mut id, &mut kernel);
+    let unsigned = nmp_signer_iface::UnsignedEvent {
+        pubkey: String::new(),
+        kind: 7,
+        tags: vec![vec!["e".into(), "11".repeat(32)]],
+        content: "+".into(),
+        created_at: 0,
+    };
+    let outbound = publish_unsigned_event(
+        &id,
+        &mut kernel,
+        unsigned,
+        None,
+        Some("reaction-cid".to_string()),
+        None,
+        &mut crate::actor::pending_sign::ParkedSignerOps::new(),
+    );
+    assert!(outbound.is_empty());
+    assert!(kernel.publish_queue_snapshot().is_empty());
+    assert_eq!(
+        kernel.last_error_category_snapshot().map(String::as_str),
+        Some(crate::ui_token::codes::PUBLISH_OWNERSHIP_REJECTED)
+    );
+}
+
+#[test]
+fn publish_unsigned_event_allows_owned_reaction() {
+    let (mut id, mut kernel) = fresh();
+    sign_in_with_nip65(&mut id, &mut kernel);
+    let unsigned = nmp_signer_iface::UnsignedEvent {
+        pubkey: String::new(),
+        kind: 7,
+        tags: vec![vec!["e".into(), "11".repeat(32)]],
+        content: "+".into(),
+        created_at: 0,
+    };
+    let ownership = nmp_ownership::EventOwnershipProvenance::new(
+        Some(nmp_ownership::ArtifactProvenance::new(
+            "nmp.nip25",
+            "nostr.kind.7.reaction",
+        )),
+        &[],
+    );
+    let outbound = publish_unsigned_event(
+        &id,
+        &mut kernel,
+        unsigned,
+        Some(ownership),
+        None,
+        None,
+        &mut crate::actor::pending_sign::ParkedSignerOps::new(),
+    );
+    assert!(!outbound.is_empty());
+    assert!(outbound[0].text.contains("\"kind\":7"));
+    assert_eq!(kernel.publish_queue_snapshot().last().unwrap().kind, 7);
 }
 
 #[test]
@@ -90,6 +152,7 @@ fn publish_unsigned_event_rejects_oversized_kind_with_toast() {
         &id,
         &mut kernel,
         unsigned,
+        None,
         None,
         None,
         &mut crate::actor::pending_sign::ParkedSignerOps::new(),
@@ -130,6 +193,7 @@ fn publish_unsigned_event_valid_kind_publishes_normally() {
         unsigned,
         None,
         None,
+        None,
         &mut crate::actor::pending_sign::ParkedSignerOps::new(),
     );
     assert!(
@@ -158,6 +222,7 @@ fn publish_unsigned_event_rejects_malformed_tag_with_toast() {
         &id,
         &mut kernel,
         unsigned,
+        None,
         None,
         None,
         &mut crate::actor::pending_sign::ParkedSignerOps::new(),
@@ -201,6 +266,7 @@ fn publish_unsigned_event_valid_tags_pass_through() {
         unsigned,
         None,
         None,
+        None,
         &mut crate::actor::pending_sign::ParkedSignerOps::new(),
     );
     assert!(!outbound.is_empty());
@@ -230,6 +296,7 @@ fn auto_arm_appends_client_tag_on_public_note() {
         &id,
         &mut kernel,
         unsigned,
+        None,
         None,
         None,
         &mut crate::actor::pending_sign::ParkedSignerOps::new(),
@@ -269,6 +336,7 @@ fn auto_arm_finalizes_before_parking_remote_sign() {
         &id,
         &mut kernel,
         unsigned,
+        None,
         Some("auto-parked-cid".to_string()),
         None,
         &mut parked_ops,
@@ -319,6 +387,7 @@ fn auto_arm_no_client_tag_when_kernel_has_none() {
         &id,
         &mut kernel,
         unsigned,
+        None,
         None,
         None,
         &mut crate::actor::pending_sign::ParkedSignerOps::new(),

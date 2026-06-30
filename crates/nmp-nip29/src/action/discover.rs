@@ -1,7 +1,7 @@
 //! Group-discovery action: open a NIP-29 metadata subscription against a
 //! relay so its kind:39000/39001/39002 catalog streams in.
 //!
-//! Unlike the user-content actions in `content.rs` / `composed.rs`, this
+//! Unlike the user-content publish envelope in `publish.rs`, this
 //! action does **not** publish an event — there is no user-authored payload
 //! to sign. Instead it pushes a host-pinned [`LogicalInterest`] for the
 //! three metadata kinds, scoped to one host relay. The companion

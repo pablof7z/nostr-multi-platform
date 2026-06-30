@@ -24,3 +24,6 @@ pub use grouper::{GroupDelta, Grouper};
 pub use policy::ModulePolicy;
 pub use pointer::ThreadPointer;
 pub use resolver::ParentResolver;
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

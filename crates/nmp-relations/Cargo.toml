@@ -7,6 +7,7 @@ repository.workspace = true
 description = "Legacy cross-protocol social-relation classifier for NMP — tallies reactions (NIP-25), reposts (NIP-18), and comments (NIP-22) onto a note. Split out of nmp-nip01 (#1728) so the base note/profile/reply crate owns no cross-protocol aggregation."
 
 [dependencies]
+nmp-ownership = { workspace = true }
 # Kernel substrate: KernelEvent and the NoteRelationClassifier seam input.
 nmp-core = { path = "../nmp-core", default-features = false }
 # Base note crate — owns the relation-count vocabulary, the `NoteRelationIndex`,

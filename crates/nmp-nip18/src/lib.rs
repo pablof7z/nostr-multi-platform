@@ -414,3 +414,6 @@ mod tests {
         assert!(record.embedded_event.is_none());
     }
 }
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

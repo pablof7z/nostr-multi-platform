@@ -44,6 +44,7 @@ members = [
     "crates/nmp-nip59",
     "crates/nmp-nip77",
     "crates/nmp-nip78",
+    "crates/nmp-ownership",
     "crates/nmp-relay-url",
     "crates/nmp-relations",
     "crates/nmp-wot",
@@ -131,6 +132,7 @@ flatbuffers = "25.12.19"
 nostr = "0.44"
 serde = "1.0"
 serde_json = "1.0"
+nmp-ownership = { path = "crates/nmp-ownership" }
 rustls = { version = "0.23", default-features = false }
 tungstenite = { version = "0.24", default-features = false }
 # Secret-material zeroization. `derive` enables `#[derive(ZeroizeOnDrop)]`.

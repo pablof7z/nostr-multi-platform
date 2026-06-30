@@ -1,6 +1,6 @@
-# `nmp-nip29` — Event Kinds Catalog
+# `nmp-nip29` — Event Kinds and Envelope Catalog
 
-> Sub-file of [`../nip29-crate.md`](../nip29-crate.md). Exhaustive map of every NIP-29 event kind, its required + optional tags, its origin (user vs admin vs relay), and which `nmp-nip29` module owns ingest + projection.
+> Sub-file of [`../nip29-crate.md`](../nip29-crate.md). Exhaustive map of every NIP-29-owned event kind, its required + optional tags, its origin (user vs admin vs relay), and the group envelope semantics NIP-29 may add to artifacts owned elsewhere.
 > **Source of truth:** NIP-29 spec at `https://github.com/nostr-protocol/nips/blob/master/29.md` (fetched 2026-05-18).
 
 ## 1. Conceptual split: three event-kind classes
@@ -9,18 +9,17 @@ NIP-29 segregates kinds into three populations by *signer authority* and *routin
 
 | Class | Kind range | Signer | Routing | Replaceable? |
 |---|---|---|---|---|
-| **User-sent group events** | any kind with an `h` tag (incl. 9, 11, plus arbitrary kinds the group permits) | the human user | host relay (pin) | per-kind (kind:9 chat is regular; kind:11 discussion is regular; future kinds may differ) |
+| **User-sent group-context events** | any kind with an `h` tag (incl. 9, 11, plus arbitrary kinds the group permits) | the human user | host relay (pin) | per artifact owner; NIP-29 owns only the `h` envelope and host pin |
 | **User management** | 9021, 9022 | the human user | host relay (pin) | regular (audit trail) |
 | **Moderation** | 9000–9009 | a current admin | host relay (pin) | regular (audit trail) |
 | **Group metadata** | 39000–39003 | the **relay** | host relay (pin) — only ever exists there | parameterized-replaceable on `d = group_id` |
 
 This is the structure the `nmp-nip29` protocol records, actions, and projections
-follow. The kernel's generic ingest pipeline dispatches accepted events to
-`nmp-nip29`'s ingest/read-model hooks; those hooks do the NIP-29-specific work:
-structural validation, audit-trail materialisation, and routing of unknown
-`h`-tagged kinds to the `GroupContextEvent` fallback. Authority validation for
-admin actions is a publish-time action concern, not an ingest-time concern; see
-`moderation.md` §3.
+follow for NIP-29-owned artifacts and envelopes. The kernel's generic ingest
+pipeline may dispatch accepted `h`-tagged events to NIP-29 read infrastructure
+for group-context projection, but that does not make NIP-29 the owner of the
+wrapped artifact kind. Authority validation for admin actions is a publish-time
+action concern, not an ingest-time concern; see `moderation.md` §3.
 
 ## 2. Full catalog
 
@@ -32,7 +31,7 @@ admin actions is a publish-time action concern, not an ingest-time concern; see
 - **Optional tags:** `["e", <reply-target-id>, "", "reply"]` (NIP-10-style reply marker); `["e", <root-id>, "", "root"]` for deeply-nested replies; `["p", <mentioned-pubkey>]` per mention
 - **Content:** the message body, free-form text
 - **Routing:** host relay (pin)
-- **Owner:** `nmp-nip29::GroupChatMessage` record/projection; surfaced by `GroupChat`
+- **Owner:** the artifact owner for kind:9; `nmp-nip29` owns only the `h` envelope, host pin, and generic group-context projection.
 - **Replaceable:** no
 - **Notes:** Highlighter's `chat.rs` is the reference impl. Empty content rejected by the framework at write time; NIP-29 itself doesn't ban it but it's a UX rule.
 
@@ -46,7 +45,7 @@ Highlighter overloads kind:11 as **two distinct event shapes** with the same wir
 - **Optional tags:** `["title", <discussion title>]`; `["image", <url>]` per attached image; `["alt", <accessibility text>]`
 - **Content:** the discussion body (markdown supported)
 - **Routing:** host relay (pin)
-- **Owner:** `nmp-nip29::GroupDiscussion` record/projection; surfaced by `GroupDiscussions`
+- **Owner:** the artifact owner for kind:11; `nmp-nip29` owns only the `h` envelope, host pin, and generic group-context projection.
 - **Replaceable:** no
 - **Emitted by:** `PostDiscussion` ActionModule
 - **Notes:** Discussion replies in Highlighter today are NIP-22 kind:1111 comments scoped via `E`/`e` tags to the discussion event — **they do NOT carry an `h` tag** (verified against `app/core/src/comments.rs::publish_comment` and `Communities/DiscussionDetailView.swift::artifactRef = .event(id: discussion.eventId, kind: 11)`). Per the unifying rule in §4, that makes them ordinary `nmp-nip22::Comment` records (not `nmp-nip29::GroupComment`), routed per the author's NIP-65 write relays — *not* host-pinned. The discussion view's reply-thread join is a cross-crate composition done in `highlighter-core` (per `nip29-crate.md` §6's `DiscussionsWithReplyCounts`), reading from `nmp-nip22`'s public comment stream filtered to the discussion's event id. **M11.5 must preserve this behavior** to keep historical replies visible and to match the copied UI's publish path. (A future iteration could add an `h` tag to in-room comments to make them group-private, but that's a Highlighter UX decision, not an M11.5 deliverable.) The `t=discussion` marker is recognised by both Highlighter and 0xchat-style clients but is NOT in the NIP-29 spec; document the convention in the M11.5 exit-gate report and consider proposing it upstream.
@@ -60,19 +59,19 @@ Highlighter overloads kind:11 as **two distinct event shapes** with the same wir
 - **Optional tags:** `["title", …]`, `["image", …]`, `["alt", …]`, podcast-specific `["chapter", …]` arrays (per Highlighter's lift-podcast-tags convention), `["preview-audio", …]`
 - **Content:** an optional user note about why this artifact is shared
 - **Routing:** host relay (pin)
-- **Owner:** `nmp-nip29::GroupArtifact` record/projection; surfaced by `GroupArtifacts` (the Room Library lanes)
+- **Owner:** the artifact owner for kind:11; `nmp-nip29` owns only the `h` envelope, host pin, and generic group-context projection.
 - **Replaceable:** **No** — kind:11 is a regular Nostr event kind (not 30000-39999), so NIP-33 parameterized replacement does NOT apply. The Highlighter relay performs a *custom* upsert by `d` tag (per `artifacts.rs::publish` comment "if a duplicate kind:11 with the same `d` tag exists the relay will upsert"), but this is **relay-specific behavior**, not a Nostr protocol guarantee. `nmp-nip29`'s storage keys `GroupArtifact` by `event_id` (regular event semantics); any `d`-based dedup in projections is documented as relay-specific and applied at the projection layer, not at storage.
 - **Emitted by:** `PostArtifact` ActionModule (the "Suggest an artifact to the room" flow)
-- **Notes:** This is *Highlighter convention*, layered on the same NIP-29 routing as the discussion variant. The `t=discussion` absence + the presence of a catalog tag is the structural discriminator. `nmp-nip29` ships ingest for both shapes because the dispatch is wire-level structural; apps that don't want the artifact-share path simply don't consume the `GroupArtifacts` view.
+- **Notes:** This is *Highlighter convention*, layered on the same NIP-29 routing as the discussion variant. The `t=discussion` absence + the presence of a catalog tag is the structural discriminator. NIP-29 group context can carry this shape, but artifact construction/projection semantics must live in the owning artifact crate or app crate.
 
 #### Future / extensibility
 
-NIP-29 explicitly allows **any kind** with an `h` tag to be a group event. The
-`nmp-nip29` ingest path therefore checks for `h` first and routes ingest to the
-group context, then dispatches by kind to the owning protocol/app handler if
-one exists. Unknown kinds with `h` are stored as generic `GroupContextEvent`
-records so apps that ship custom group event kinds can layer their own
-projection/action logic without modifying `nmp-nip29`.
+NIP-29 explicitly allows **any kind** with an `h` tag to be carried in a group
+context. The `nmp-nip29` ingest path therefore may check for `h` and route the
+event through group-context infrastructure, but artifact semantics remain with
+the owning protocol/app handler. Unknown kinds with `h` are generic
+group-context rows so apps that ship custom group event kinds can layer their
+own projection/action logic without modifying `nmp-nip29`.
 
 ### 2.2 User management
 
@@ -200,7 +199,7 @@ The `p` tag is used in three distinct ways across this kind set:
 
 - on 9000/9001: targets of user-targeting moderation actions
 - on 39001/39002: enumerates the admin/member set
-- on user-sent group events (kind 9, 11): mentions, NIP-10-style
+- on user-sent group-context events (kind 9, 11): mentions, NIP-10-style
 
 The `e` tag carries the target for event-targeting moderation: kind 9005 (delete-event) uses `["e", <event_id>]`, not `["p", ...]`. The `ModerationEvent` parser must look for `target_event_id` (from `e`) for 9005 and `target_pubkey` (from `p`) for 9000/9001.
 
@@ -214,31 +213,32 @@ in their context.
 - **Optional tags:** `["p", <original_author_pubkey>]`, `["k", <reposted_kind_string>]` (typically `"9802"` for highlight reposts; per `highlights.rs::build_repost_event`)
 - **Content:** typically empty; some clients embed the reposted event JSON, but Highlighter does not
 - **Routing:** host relay (pin)
-- **Owner:** `nmp-nip29::GroupRepost` record/projection; surfaced inside `GroupArtifacts`
+- **Owner:** NIP-18/generic repost artifact owner; `nmp-nip29` owns only the `h` envelope and host pin.
 - **Replaceable:** no
-- **Emitted by:** `ShareEventIntoGroup` ActionModule; also the second leg of the `publish-and-share` composed flow described in `routing.md` §6
-- **Notes:** This is NIP-18 generic repost, scoped into a group by the `h` tag. `nmp-nip29` owns this record/projection in M11.5 because (a) no separate `nmp-nip18` crate exists yet, (b) the routing concern is the `h` tag, not the kind, (c) the surface is one record + one action. A future `nmp-nip18` extraction would lift the *non-`h`* repost case out, leaving `nmp-nip29` owning only the `h`-tagged variant.
+- **Emitted by:** the artifact owner or app composition layer, then wrapped in the NIP-29 envelope.
+- **Notes:** This is NIP-18 generic repost, scoped into a group by the `h` tag. The `h` tag changes routing/envelope context only; it does not make NIP-29 the repost artifact owner.
 
 ## 4. The unifying ownership rule
 
-**Any event carrying an `["h", group_id]` tag is a NIP-29 group event and lives in `nmp-nip29`, regardless of its kind.** The `h` tag is the ownership discriminator; the kind is just the dispatch.
+**Any event carrying an `["h", group_id]` tag is wrapped in a NIP-29 group envelope, but the wrapped artifact still belongs to its artifact owner.** The `h` tag is an envelope/routing discriminator; it is not an artifact-ownership discriminator.
 
 This applies to:
 
-- **kind:7 (reaction) with an `h` tag** → `GroupReaction` read model + `ReactInGroup` ActionModule in `nmp-nip29`. The non-`h` public reaction stays in `nmp-nip25`.
-- **kind:1111 (NIP-22 comment) with an `h` tag** → `GroupComment` read model + `CommentInGroup` ActionModule in `nmp-nip29`. The non-`h` public comment stays in `nmp-nip22`.
-- **kind:16 (generic repost) with an `h` tag** → `GroupRepost` read model + `ShareEventIntoGroup` ActionModule in `nmp-nip29` (per §2.2). The non-`h` repost would live in a future `nmp-nip18`.
-- **kind:11 with `h`** (both `t=discussion` and artifact-share variants) → `nmp-nip29` per §2.1.
-- **kind:9 with `h`** → `nmp-nip29` per §2.1.
+- **kind:7 (reaction) with an `h` tag** -> NIP-25 reaction artifact carried through a NIP-29 envelope.
+- **kind:1111 (NIP-22 comment) with an `h` tag** -> NIP-22 comment artifact carried through a NIP-29 envelope.
+- **kind:16 (generic repost) with an `h` tag** -> NIP-18/generic repost artifact carried through a NIP-29 envelope.
+- **kind:11 with `h`** -> kind:11 artifact carried through a NIP-29 envelope.
+- **kind:9 with `h`** -> kind:9 artifact carried through a NIP-29 envelope.
 
 The "owned by another crate" pattern still applies to the non-`h` variants of these kinds (`nmp-nip25` for public reactions, `nmp-replies`/`nmp-nip22` for public reply/comment policy and kind:1111 mechanics, future `nmp-nip18` for public reposts), keeping protocol-crate isolation intact: `nmp-nip25` knows nothing about groups; `nmp-nip29` knows nothing about public reactions.
 
+Composition does not transfer ownership. NIP-29 may inject `h`, `previous`, and the host relay pin; it must not counterfeit the wrapped artifact by hand-assembling another owner's wire grammar.
+
 The only kind we explicitly **don't** model in `nmp-nip29` despite being able to carry an `h` tag:
 
-- **kind:1 (text note) with an `h` tag.** Some relays accept kind:1 inside groups; we treat that as kind:9-equivalent for projection but do not actively emit kind:1 from `nmp-nip29` actions. UI rendering: same as chat. Kept out of `nmp-nip29`'s action surface to avoid ambiguity with public kind:1 owned by the app's social crate; ingest is best-effort.
+- **kind:1 (text note) with an `h` tag.** Some relays accept kind:1 inside groups; NIP-29 may carry it as group context, but kind:1 artifact semantics stay with the note owner.
 
 **Custom kinds with `h` tags** (livestreams, polls, files, future NIPs) follow
 the generic `GroupContextEvent` fallback per §2.1's "Future / extensibility"
 note; apps can add their own handlers/projections without modifying
-`nmp-nip29`, because the `h`-tag-is-the-ownership rule is structural and works
-for any kind.
+`nmp-nip29`, because the `h` envelope is structural and works for any kind.

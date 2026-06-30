@@ -150,3 +150,6 @@ pub struct OpfsSqliteStore {
     #[cfg(target_arch = "wasm32")]
     db: core::cell::RefCell<shim::SqliteConn>,
 }
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

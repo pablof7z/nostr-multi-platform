@@ -122,3 +122,6 @@ pub use selection::apply_selection_with_lookup;
 pub use selection::relay_score_lookup::{
     NoopRelayAuthorScoreLookup, RelayAuthorScoreLookup, WARM_THRESHOLD,
 };
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

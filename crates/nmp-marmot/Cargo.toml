@@ -7,6 +7,7 @@ repository.workspace = true
 description = "Marmot Protocol (MLS-over-Nostr) as a Layer-4 NIP crate. Sole importer of mdk-core/openmls; adapts MDK types to NMP Domain/View module contracts. Mutating ops install a typed action module under the nmp.marmot namespace. API surface: docs/research/mdk-api.md."
 
 [dependencies]
+nmp-ownership = { workspace = true }
 nmp-core = { path = "../nmp-core" }
 # Direct dep on nmp-planner for InterestId / InterestLifecycle / InterestScope /
 # LogicalInterest / stable_hash64 — the nmp_core::planner compat facade is

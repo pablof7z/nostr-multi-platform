@@ -65,3 +65,6 @@ pub fn build_bundle() -> Bundle {
         scenarios,
     }
 }
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

@@ -381,3 +381,6 @@ mod tests {
         unsafe { drop(Box::from_raw(app)) };
     }
 }
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

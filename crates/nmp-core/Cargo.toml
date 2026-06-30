@@ -88,6 +88,7 @@ android-ffi = ["native"]
 codegen-schema = ["dep:schemars"]
 
 [dependencies]
+nmp-ownership = { workspace = true }
 bech32 = "0.11"
 # `clock` feature reads the OS wall-clock; gated behind `native` so wasm32
 # builds compile (wasm has no OS clock without a js-sys shim).

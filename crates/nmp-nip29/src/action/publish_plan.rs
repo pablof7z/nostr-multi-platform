@@ -123,23 +123,63 @@ impl PublishPlan {
             .pin_to
             .ok_or_else(|| "publish plan has no relay pin".to_string())?
             .relay_url;
-        Ok(ActorCommand::Publish(
-            PublishCommand::UnsignedEventToRelays {
-                event: UnsignedEvent {
-                    pubkey: String::new(),
-                    kind: self.kind,
-                    tags: self.tags,
-                    content: self.content,
-                    created_at: 0, // kernel re-stamps via now_secs() (D7)
-                },
-                relays: vec![relay],
-                route_class: nmp_core::publish::PublishRouteClass::GroupHostPin,
+        let ownership = provenance_for_plan(self.kind, &self.tags);
+        let event = UnsignedEvent {
+            pubkey: String::new(),
+            kind: self.kind,
+            tags: self.tags,
+            content: self.content,
+            created_at: 0, // kernel re-stamps via now_secs() (D7)
+        };
+        let relays = vec![relay];
+        let route_class = nmp_core::publish::PublishRouteClass::GroupHostPin;
+        let command = match ownership {
+            Some(ownership) => PublishCommand::OwnedUnsignedEventToRelays {
+                event,
+                ownership,
+                relays,
+                route_class,
                 correlation_id,
-                // NIP-29 group actions always sign with the active account.
                 signer_pubkey: None,
             },
-        ))
+            None => PublishCommand::UnsignedEventToRelays {
+                event,
+                relays,
+                route_class,
+                correlation_id,
+                signer_pubkey: None,
+            },
+        };
+        Ok(ActorCommand::Publish(command))
     }
+}
+
+fn provenance_for_plan(
+    kind: u32,
+    tags: &[Vec<String>],
+) -> Option<nmp_ownership::EventOwnershipProvenance> {
+    let artifact = match kind {
+        39000..=39003 => Some(crate::ownership::GROUP_METADATA_ARTIFACT),
+        9000 | 9001 | 9002 | 9005 | 9007 | 9008 | 9009 | 9021 | 9022 => {
+            Some(crate::ownership::GROUP_MANAGEMENT_ARTIFACT)
+        }
+        _ => None,
+    };
+    let has_h = tags.iter().any(|tag| tag.first().is_some_and(|name| name == "h"));
+    let has_previous = tags
+        .iter()
+        .any(|tag| tag.first().is_some_and(|name| name == "previous"));
+    let envelopes = match (has_h, has_previous) {
+        (true, true) => crate::ownership::GROUP_ENVELOPE_WITH_PREVIOUS,
+        (true, false) => crate::ownership::GROUP_ENVELOPE_ONLY,
+        (false, _) => &[],
+    };
+    if artifact.is_none() && envelopes.is_empty() {
+        return None;
+    }
+    Some(nmp_ownership::EventOwnershipProvenance::new(
+        artifact, envelopes,
+    ))
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -205,7 +245,7 @@ mod tests {
         use nmp_core::actor::ActorCommand;
         let p = PublishPlan::pinned(&g(), 9, "hi", vec![vec!["h".into(), "room".into()]]);
         match p.into_actor_command(None).expect("pinned plan converts") {
-            ActorCommand::Publish(PublishCommand::UnsignedEventToRelays {
+            ActorCommand::Publish(PublishCommand::OwnedUnsignedEventToRelays {
                 event,
                 relays,
                 correlation_id,
@@ -233,7 +273,7 @@ mod tests {
             .into_actor_command(Some("test-correlation-id".to_string()))
             .expect("pinned plan converts")
         {
-            ActorCommand::Publish(PublishCommand::UnsignedEventToRelays {
+            ActorCommand::Publish(PublishCommand::OwnedUnsignedEventToRelays {
                 correlation_id, ..
             }) => {
                 assert_eq!(correlation_id.as_deref(), Some("test-correlation-id"));

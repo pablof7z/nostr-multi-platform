@@ -28,3 +28,6 @@ pub use nmp_kinds::KIND_NIP22_COMMENT;
 pub use projection::{
     build_thread, CommentThreadNode, CommentThreadProjection, CommentThreadSnapshot,
 };
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

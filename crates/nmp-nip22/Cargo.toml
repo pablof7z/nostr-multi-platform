@@ -10,6 +10,7 @@ description = "NIP-22 comment (kind:1111) decode, builder, and threaded comment 
 crate-type = ["rlib"]
 
 [dependencies]
+nmp-ownership = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false }
 nmp-signer-iface = { path = "../nmp-signer-iface" }
 nmp-kinds = { path = "../nmp-kinds" }

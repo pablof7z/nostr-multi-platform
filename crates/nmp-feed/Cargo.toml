@@ -7,6 +7,7 @@ repository.workspace = true
 description = "Reusable bounded Nostr feed windowing, cursor paging, and feed controller registry for NMP apps."
 
 [dependencies]
+nmp-ownership = { workspace = true }
 flatbuffers = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false }
 # Direct dep on nmp-planner for InterestShape / RelayHint — the

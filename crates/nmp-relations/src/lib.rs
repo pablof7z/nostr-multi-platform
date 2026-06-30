@@ -17,3 +17,6 @@
 mod classifier;
 
 pub use classifier::{default_note_relation_classifier, DefaultNoteRelationClassifier};
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

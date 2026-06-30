@@ -39,3 +39,6 @@ pub mod render;
 // `LiveGallerySource` and the `data` module can build `EventRefResolver`-backed
 // embed envelopes. Internally it's still gated behind `GalleryData::live`
 // (W7) — fixture callers never touch the live module.
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

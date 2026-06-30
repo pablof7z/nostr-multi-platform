@@ -7,6 +7,7 @@ repository.workspace = true
 description = "Wasm-safe default substrate cache/parser wiring shared by nmp-defaults and reducer-owned web composition roots."
 
 [dependencies]
+nmp-ownership = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false }
 nmp-nip01 = { path = "../nmp-nip01", default-features = false }
 nmp-router = { path = "../nmp-router", default-features = false }

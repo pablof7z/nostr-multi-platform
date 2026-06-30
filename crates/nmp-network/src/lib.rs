@@ -125,3 +125,6 @@ pub mod pool;
 // and feeds them into `BrowserRelayDriver::new`).
 #[cfg(target_arch = "wasm32")]
 pub mod browser_driver;
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

@@ -75,3 +75,6 @@ pub use wire::typed_fb::{
     decode_wallet_status, encode_wallet_status, FILE_IDENTIFIER as WALLET_STATUS_FILE_IDENTIFIER,
     SCHEMA_ID as WALLET_STATUS_SCHEMA_ID, SCHEMA_VERSION as WALLET_STATUS_SCHEMA_VERSION,
 };
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

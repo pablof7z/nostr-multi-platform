@@ -97,3 +97,6 @@ mod wasm_tests {
         // If we reach here, the hook installed without panicking.
     }
 }
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

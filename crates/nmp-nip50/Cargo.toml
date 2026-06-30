@@ -10,6 +10,7 @@ description = "NIP-50 search request and result-projection primitives for NMP. C
 crate-type = ["rlib"]
 
 [dependencies]
+nmp-ownership = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false }
 # Direct dep on nmp-store for the FTS seam (text_search_visit / TextSearchQuery /
 # SearchScopeId / StoredEvent / SearchField) the cache-search path and scope

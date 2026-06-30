@@ -17,6 +17,7 @@ default = ["native"]
 native = ["dep:ureq"]
 
 [dependencies]
+nmp-ownership = { workspace = true }
 # Pure-kernel traits only (no I/O layer needed for decode/view/FlatBuffers).
 # `native` feature on nmp-core is opted-in by callers that need it via
 # feature unification — no explicit re-export required here.

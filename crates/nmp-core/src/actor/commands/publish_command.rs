@@ -91,6 +91,16 @@ pub enum PublishCommand {
         /// account and fail closed when no account is active).
         signer_pubkey: Option<String>,
     },
+    /// Owner-certified unsigned event. Protected artifacts and envelopes use
+    /// this path so the publish engine can verify positive ownership before
+    /// signing.
+    OwnedUnsignedEvent {
+        event: nmp_signer_iface::UnsignedEvent,
+        ownership: nmp_ownership::EventOwnershipProvenance,
+        correlation_id: Option<String>,
+        /// Optional non-active signer selector; see [`Self::UnsignedEvent`].
+        signer_pubkey: Option<String>,
+    },
     /// Publish an unsigned event to an explicit relay set, bypassing the
     /// NIP-65 outbox resolver. Used by action executors that target a specific
     /// relay pin (e.g. NIP-29 group relays). D4: only the actor signs and
@@ -122,6 +132,17 @@ pub enum PublishCommand {
         /// matches — looked up across BOTH local keys and remote signers —
         /// via `sign_with_account_nonblocking`, instead of the active account.
         /// `None` preserves the legacy behaviour (sign with the active account).
+        signer_pubkey: Option<String>,
+    },
+    /// Owner-certified unsigned event published to explicit relays.
+    OwnedUnsignedEventToRelays {
+        event: nmp_signer_iface::UnsignedEvent,
+        ownership: nmp_ownership::EventOwnershipProvenance,
+        relays: Vec<crate::publish::RelayUrl>,
+        route_class: crate::publish::PublishRouteClass,
+        /// Registry-minted action id; see [`Self::UnsignedEventToRelays`].
+        correlation_id: Option<String>,
+        /// Optional non-active signer selector; see [`Self::UnsignedEvent`].
         signer_pubkey: Option<String>,
     },
     /// Generic publish of an **already-signed** event. The kernel verifies

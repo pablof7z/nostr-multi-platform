@@ -7,5 +7,6 @@ repository.workspace = true
 description = "D2 coverage-gate policy — thresholds and back-off rules for negentropy-before-REQ enforcement."
 
 [dependencies]
+nmp-ownership = { workspace = true }
 # zero nmp-core dep — this crate must stay below nmp-core in the dep graph
 # so the assembly crate (nmp-app-chirp) can depend on both without a cycle.

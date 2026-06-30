@@ -135,3 +135,6 @@ mod tests {
         assert_eq!(canonicalize(&once).as_deref(), Some(once.as_str()));
     }
 }
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

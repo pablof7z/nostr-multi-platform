@@ -89,3 +89,6 @@ mod tests {
         assert!(probe_relay_info("not-a-relay").is_err());
     }
 }
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

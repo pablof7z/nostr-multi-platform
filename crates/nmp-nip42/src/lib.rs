@@ -57,3 +57,6 @@ pub use error::Nip42Error;
 pub use flow::{run_handshake, HandshakeOutcome, Nip42Driver};
 pub use frame::{parse_auth_frame, parse_ok_frame, AuthChallenge, AuthOk};
 pub use state::RelayAuthState;
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;
