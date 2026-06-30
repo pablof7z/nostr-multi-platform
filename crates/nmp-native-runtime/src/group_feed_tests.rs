@@ -167,11 +167,13 @@ fn group_reactions_replacement_makes_old_handle_idempotent() {
     let app = crate::new_app();
     let first = app.open_nip25_group_reactions_session(Nip25GroupReactionsSession::new(
         GroupId::new("wss://groups.example", "first"),
+        String::new(),
     ));
     assert_eq!(session_count(&app), 1);
 
     let second = app.open_nip25_group_reactions_session(Nip25GroupReactionsSession::new(
         GroupId::new("wss://groups.example", "second"),
+        String::new(),
     ));
     assert_eq!(
         session_count(&app),
@@ -198,8 +200,11 @@ fn group_reactions_reader_aggregates_ingested_kind7() {
     use nmp_core::ObservedProjectionSink;
 
     let app = crate::new_app();
+    // The viewer is reactor "1.." — the aggregate must surface their own kind:7
+    // id in `mine` so the app can retract it.
+    let viewer = "1".repeat(64);
     let (_handle, reader) = app.open_nip25_group_reactions_session_with_reader(
-        Nip25GroupReactionsSession::new(GroupId::new("wss://groups.example", "room")),
+        Nip25GroupReactionsSession::new(GroupId::new("wss://groups.example", "room"), viewer.clone()),
     );
     // Inject two in-group reactions on the same target, from distinct reactors,
     // directly into the reader — the same Arc registered as the observed
@@ -207,7 +212,7 @@ fn group_reactions_reader_aggregates_ingested_kind7() {
     // to render reaction chips + counts).
     let target = "a".repeat(64);
     for (id, author, emoji) in [
-        ("r1", "1".repeat(64), "+"),
+        ("r1", viewer.clone(), "+"),
         ("r2", "2".repeat(64), "🔥"),
     ] {
         reader.on_kernel_event(&KernelEvent {
@@ -227,6 +232,10 @@ fn group_reactions_reader_aggregates_ingested_kind7() {
     assert_eq!(agg.total, 2);
     assert_eq!(agg.reactors.len(), 2);
     assert_eq!(agg.by_emoji.len(), 2);
+    // The viewer's own kind:7 ("r1") is surfaced as the retraction handle.
+    assert_eq!(agg.mine.len(), 1, "only the viewer's own reaction");
+    assert_eq!(agg.mine[0].reaction_event_id, "r1");
+    assert_eq!(agg.mine[0].token, "+");
 }
 
 #[test]

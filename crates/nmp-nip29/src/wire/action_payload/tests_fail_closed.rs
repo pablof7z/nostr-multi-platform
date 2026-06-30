@@ -6,6 +6,7 @@ use crate::action::{
     CreateInviteInput, CreatePublicGroupInput, DiscoverGroupsInput, GroupAccess, GroupEventTarget,
     GroupVisibility, JoinGroupInput, LeaveGroupInput, PublishGroupEventInput, PutUserInput,
     ReactInGroupInput, RepostInGroupInput, SetParentInput, ShareEventInGroupInput,
+    UnreactInGroupInput,
 };
 use crate::group_id::GroupId;
 use nmp_core::substrate::{ActionPayload, ActionPayloadDecodeError};
@@ -32,6 +33,10 @@ fn malformed_buffers_are_rejected_for_every_payload() {
     ));
     assert!(matches!(
         ReactInGroupInput::decode(b"junk"),
+        Err(ActionPayloadDecodeError::Malformed { .. })
+    ));
+    assert!(matches!(
+        UnreactInGroupInput::decode(b"junk"),
         Err(ActionPayloadDecodeError::Malformed { .. })
     ));
     assert!(matches!(
@@ -130,6 +135,13 @@ fn wrong_file_identifier_is_rejected_for_every_payload() {
             target_event_id: "t".to_string(),
             target_author_pubkey: None,
             content: "+".to_string(),
+        }
+    );
+    assert_wrong_fid_rejected!(
+        UnreactInGroupInput,
+        UnreactInGroupInput {
+            group: group(),
+            reaction_event_id: "t".to_string(),
         }
     );
     assert_wrong_fid_rejected!(
@@ -282,6 +294,13 @@ fn wrong_schema_version_is_rejected_for_every_payload() {
             target_event_id: "t".to_string(),
             target_author_pubkey: None,
             content: "+".to_string(),
+        }
+    );
+    assert_bad_version!(
+        UnreactInGroupInput,
+        UnreactInGroupInput {
+            group: group(),
+            reaction_event_id: "t".to_string(),
         }
     );
     assert_bad_version!(

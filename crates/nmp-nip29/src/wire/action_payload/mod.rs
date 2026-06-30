@@ -11,7 +11,7 @@
 //!
 //! The impls are split by action family to stay under the file-size cap:
 //! - [`group`] — `join` / `leave` / `publish_group_event` / `create_public_group`
-//!   / `react_in_group`.
+//!   / `react_in_group` / `unreact_in_group`.
 //! - [`group_event`] — `share_event_in_group` / `repost_in_group`.
 //! - [`admin`] — `put_user` / `create_invite`.
 //! - [`discover`] — `discover_groups` (`nmp.nip29.discover`).
@@ -52,6 +52,10 @@ generated_action_module!(
 generated_action_module!(
     react_in_group_action_generated,
     "../generated/react_in_group_action_generated.rs"
+);
+generated_action_module!(
+    unreact_in_group_action_generated,
+    "../generated/unreact_in_group_action_generated.rs"
 );
 generated_action_module!(
     create_public_group_action_generated,

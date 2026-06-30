@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use nmp_nip25::{
     encode_reaction_aggregate_snapshot, ReactionAggregateProjection, KIND_REACTION,
-    REACTION_AGGREGATE_FILE_IDENTIFIER, REACTION_AGGREGATE_SCHEMA_ID,
+    KIND_REACTION_DELETE, REACTION_AGGREGATE_FILE_IDENTIFIER, REACTION_AGGREGATE_SCHEMA_ID,
     REACTION_AGGREGATE_SCHEMA_VERSION,
 };
 use nmp_nip29::group_id::GroupId;
@@ -56,10 +56,13 @@ impl NmpApp {
         &self,
         descriptor: Nip25GroupReactionsSession,
     ) -> (Nip25GroupReactionsHandle, Arc<ReactionAggregateProjection>) {
-        let Nip25GroupReactionsSession { group_id } = descriptor;
+        let Nip25GroupReactionsSession {
+            group_id,
+            active_pubkey,
+        } = descriptor;
         let relay_pin = Some(group_id.host_relay_url.clone());
         let filter_json = group_reactions_filter_json(&group_id);
-        let projection = Arc::new(ReactionAggregateProjection::new());
+        let projection = Arc::new(ReactionAggregateProjection::new(Some(active_pubkey)));
         let projection_reader = Arc::clone(&projection);
 
         let projection_for_sidecar = Arc::clone(&projection);
@@ -103,15 +106,22 @@ impl NmpApp {
     }
 }
 
-/// NIP-01 `REQ` filter for one group's reactions: `{"kinds":[7],"#h":["<id>"]}`.
+/// NIP-01 `REQ` filter for one group's reactions:
+/// `{"kinds":[5,7],"#h":["<id>"]}`.
 ///
 /// This is the app-layer composition seam — it combines the NIP-25 reaction
-/// kind with the NIP-29 `h`-tag group routing. The host-relay pin is attached
-/// separately by `open_group_feed` (mirroring `GroupEventsQuery::filter_json`),
-/// so this wire filter carries only `kinds` + `#h`.
+/// kind (7) AND its NIP-09 deletion kind (5) with the NIP-29 `h`-tag group
+/// routing. Observing kind:5 is what lets a relay-delivered retraction reach the
+/// aggregate so the count decrements and the reactor's `mine` handle clears.
+/// The host-relay pin is attached separately by `open_group_feed` (mirroring
+/// `GroupEventsQuery::filter_json`), so this wire filter carries only `kinds` +
+/// `#h`. Kinds are sorted ascending so the wire shape is stable.
 fn group_reactions_filter_json(group_id: &GroupId) -> String {
     let mut map = serde_json::Map::new();
-    map.insert("kinds".to_string(), serde_json::json!([KIND_REACTION]));
+    map.insert(
+        "kinds".to_string(),
+        serde_json::json!([KIND_REACTION_DELETE, KIND_REACTION]),
+    );
     map.insert("#h".to_string(), serde_json::json!([group_id.local_id]));
     serde_json::Value::Object(map).to_string()
 }
@@ -121,11 +131,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn filter_carries_kind7_and_h_only() {
+    fn filter_carries_kinds_5_7_and_h_only() {
         let group = GroupId::new("wss://groups.example.com", "room-a");
         let filter = group_reactions_filter_json(&group);
         let v: serde_json::Value = serde_json::from_str(&filter).unwrap();
-        assert_eq!(v["kinds"], serde_json::json!([7]));
+        // Reactions (7) AND their NIP-09 deletions (5) so relay-delivered
+        // retractions decrement the aggregate.
+        assert_eq!(v["kinds"], serde_json::json!([5, 7]));
         assert_eq!(v["#h"], serde_json::json!(["room-a"]));
         assert!(v.get("relay_pin").is_none());
         // The interest planner must accept the composed filter.

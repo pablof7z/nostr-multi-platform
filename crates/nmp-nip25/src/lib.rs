@@ -26,7 +26,7 @@ pub use action::{
 };
 pub use aggregate::{
     ReactionAggregateProjection, ReactionAggregateSnapshot, ReactionEmojiCount,
-    ReactionTargetAggregate,
+    ReactionTargetAggregate, ViewerReaction,
 };
 pub use projection::{ReactionEntry, ReactionProjection, ReactionSnapshot, ViewerReactionState};
 pub use wire::reaction_aggregate_fb::{

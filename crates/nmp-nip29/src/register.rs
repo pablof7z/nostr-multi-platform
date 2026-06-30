@@ -32,7 +32,7 @@ use nmp_core::substrate::{ActionRegistrar, RegistrationError, SnapshotProjection
 use crate::action::{
     CreateInviteAction, CreatePublicGroupAction, DiscoverGroupsAction, EditMetadataAction,
     JoinGroupAction, LeaveGroupAction, PublishGroupEventAction, PutUserAction, ReactInGroupAction,
-    RepostInGroupAction, SetParentAction, ShareEventInGroupAction,
+    RepostInGroupAction, SetParentAction, ShareEventInGroupAction, UnreactInGroupAction,
 };
 use crate::projection::{GroupDefaultsProjection, GroupDefaultsSnapshot};
 
@@ -97,6 +97,7 @@ pub fn wire_group_defaults_with_snapshot(
 /// Binds the typed [`ActionModule`](nmp_core::substrate::ActionModule) impls for:
 /// - `nmp.nip29.publish_group_event`
 /// - `nmp.nip29.react_in_group`
+/// - `nmp.nip29.unreact_in_group`
 /// - `nmp.nip29.share_event_in_group`
 /// - `nmp.nip29.repost_in_group`
 /// - `nmp.nip29.create_public_group`
@@ -128,6 +129,7 @@ pub fn wire_group_defaults_with_snapshot(
 pub fn register_actions(app: &mut impl ActionRegistrar) -> Result<(), RegistrationError> {
     app.register_action(PublishGroupEventAction)?;
     app.register_action(ReactInGroupAction)?;
+    app.register_action(UnreactInGroupAction)?;
     app.register_action(ShareEventInGroupAction)?;
     app.register_action(RepostInGroupAction)?;
     app.register_action(CreatePublicGroupAction)?;
