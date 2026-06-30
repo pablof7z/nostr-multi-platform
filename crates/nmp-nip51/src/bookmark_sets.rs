@@ -20,8 +20,8 @@ use nmp_signer_iface::UnsignedEvent;
 use serde::{Deserialize, Serialize};
 
 use crate::bookmarks::{
-    BookmarkItem, BookmarkListMetadata, action_rejection_message, item_key, nonempty_option,
-    nonempty_trimmed, normalize_item, tag_to_item,
+    action_rejection_message, item_key, nonempty_option, nonempty_trimmed, normalize_item,
+    tag_to_item, BookmarkItem, BookmarkListMetadata,
 };
 
 /// NIP-51 set kinds this module projects and writes.

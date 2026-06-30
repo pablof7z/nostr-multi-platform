@@ -11,16 +11,16 @@
 
 use super::*;
 use crate::dm_relay_cache::DmRelayCache;
+use nmp_core::actor::ActorCommand;
+use nmp_core::actor::{ActionLedgerCommand, PublishCommand, SignCommand};
+use nmp_core::publish::{PublishRouteClass, PublishTarget};
 use nmp_core::substrate::{
     DmInboxRelayLookup, EmptyDmInboxRelayLookup, ErrorSurface, KernelClock, LocalSignerAccess,
     NoopActionStageTracker, NoopRecipientRelayLookup, ProtocolCommand, ProtocolCommandContext,
     ProtocolCommandContextParts,
 };
-use nmp_signer_iface::{SignedEvent, UnsignedEvent as SubstrateUnsignedEvent};
-use nmp_core::publish::{PublishRouteClass, PublishTarget};
 use nmp_core::{ActorMail, CommandSender};
-use nmp_core::actor::{ActorCommand};
-use nmp_core::actor::{ActionLedgerCommand, PublishCommand, SignCommand};
+use nmp_signer_iface::{SignedEvent, UnsignedEvent as SubstrateUnsignedEvent};
 use nostr::nips::nip44::{self, Version as Nip44Version};
 use nostr::JsonUtil;
 use std::cell::RefCell;
@@ -133,7 +133,9 @@ fn run_cmd(
             wallet_kernel: &wallet_kernel,
             zap_profiles: &zap_profiles,
         });
-        Box::new(cmd).run(&mut ctx).expect("command body returns Ok");
+        Box::new(cmd)
+            .run(&mut ctx)
+            .expect("command body returns Ok");
         rx
     };
     (recorder, rx)
@@ -243,7 +245,9 @@ impl ChainDriver {
                 panic!("dm_send chain only sends commands");
             };
             match cmd {
-                ActorCommand::Sign(SignCommand::Nip44EncryptForAccount { continuation, .. }) => {
+                ActorCommand::Sign(SignCommand::Nip44EncryptForAccount {
+                    continuation, ..
+                }) => {
                     continuation.call(Err(reason.to_string()));
                 }
                 terminal => self.terminals.push(terminal),
@@ -321,7 +325,11 @@ fn no_active_account_toasts_and_records_failure() {
         toasts[0]
     );
     let failures = rec.failures.borrow();
-    assert_eq!(failures.len(), 1, "D6 — exactly one Failed terminal recorded");
+    assert_eq!(
+        failures.len(),
+        1,
+        "D6 — exactly one Failed terminal recorded"
+    );
     assert_eq!(failures[0].0, "cid-no-account");
 }
 
@@ -358,7 +366,10 @@ fn missing_kind10050_for_recipient_fails_closed() {
 
     let cache = Arc::new(DmRelayCache::new());
     // Seed the sender's relays; deliberately leave the recipient's missing.
-    cache.upsert(sender_hex.clone(), vec!["wss://sender-dm.example".to_string()]);
+    cache.upsert(
+        sender_hex.clone(),
+        vec!["wss://sender-dm.example".to_string()],
+    );
 
     let cmd = SendGiftWrappedDmCommand {
         rumor: sample_rumor(&sender_hex, &recipient_hex),
@@ -391,8 +402,14 @@ fn happy_path_publishes_two_envelopes_pinned_to_kind10050_relays() {
     let recipient_hex = recipient_keys.public_key().to_hex();
 
     let cache = Arc::new(DmRelayCache::new());
-    cache.upsert(sender_hex.clone(), vec!["wss://sender-dm.example".to_string()]);
-    cache.upsert(recipient_hex.clone(), vec!["wss://recipient-dm.example".to_string()]);
+    cache.upsert(
+        sender_hex.clone(),
+        vec!["wss://sender-dm.example".to_string()],
+    );
+    cache.upsert(
+        recipient_hex.clone(),
+        vec!["wss://recipient-dm.example".to_string()],
+    );
 
     let cmd = SendGiftWrappedDmCommand {
         rumor: sample_rumor(&sender_hex, &recipient_hex),
@@ -403,19 +420,35 @@ fn happy_path_publishes_two_envelopes_pinned_to_kind10050_relays() {
     let driver = ChainDriver::new(keys).run(&rx);
 
     let publishes = driver.publishes();
-    assert_eq!(publishes.len(), 2, "exactly two envelopes (recipient + self-copy)");
+    assert_eq!(
+        publishes.len(),
+        2,
+        "exactly two envelopes (recipient + self-copy)"
+    );
     assert!(driver.toasts().is_empty(), "happy path — no toasts");
-    assert!(driver.action_failures().is_empty(), "happy path — no Failed terminals");
+    assert!(
+        driver.action_failures().is_empty(),
+        "happy path — no Failed terminals"
+    );
     assert!(rec.toasts.borrow().is_empty(), "no pre-chain toast either");
 
     let mut explicit_targets: Vec<(Vec<String>, Option<String>)> = Vec::new();
     for (raw, target, cid) in &publishes {
-        assert_eq!(raw.kind, 1059, "the gift-wrap envelope is kind:1059, got {}", raw.kind);
+        assert_eq!(
+            raw.kind, 1059,
+            "the gift-wrap envelope is kind:1059, got {}",
+            raw.kind
+        );
         match target {
-            PublishTarget::Explicit { relays, route_class: PublishRouteClass::VerifiedPrivateInbox } => {
+            PublishTarget::Explicit {
+                relays,
+                route_class: PublishRouteClass::VerifiedPrivateInbox,
+            } => {
                 explicit_targets.push(((*relays).clone(), (*cid).clone()));
             }
-            other => panic!("D10 — gift-wrap MUST route via PublishTarget::Explicit, got {other:?}"),
+            other => {
+                panic!("D10 — gift-wrap MUST route via PublishTarget::Explicit, got {other:?}")
+            }
         }
     }
 
@@ -485,7 +518,11 @@ fn recipient_envelope_round_trips_to_the_original_rumor() {
     let envelope = raw_to_nostr_event(recipient_raw);
     let unwrapped =
         nmp_nip59::unwrap_gift_wrap(&recipient_keys, &envelope).expect("recipient can unwrap");
-    assert_eq!(unwrapped.sender, keys.public_key(), "seal author is the sender");
+    assert_eq!(
+        unwrapped.sender,
+        keys.public_key(),
+        "seal author is the sender"
+    );
     assert_eq!(unwrapped.rumor.content, "hello over NIP-17");
     assert_eq!(u16::from(unwrapped.rumor.kind), 14);
 }
@@ -551,7 +588,11 @@ fn every_port_step_pins_the_originating_account() {
     let driver = ChainDriver::new(keys).run(&rx);
 
     // Two envelopes × two port verbs (encrypt + sign) = 4 pinned steps.
-    assert_eq!(driver.pinned_signers.len(), 4, "four port verbs (2 envelopes × encrypt+sign)");
+    assert_eq!(
+        driver.pinned_signers.len(),
+        4,
+        "four port verbs (2 envelopes × encrypt+sign)"
+    );
     for pin in &driver.pinned_signers {
         assert_eq!(
             pin.as_deref(),
@@ -584,7 +625,12 @@ fn mid_chain_account_switch_signs_seal_with_originating_account() {
         correlation_id: None,
     };
     // The command pins the originating account at launch.
-    let (_rec, rx) = run_cmd(cmd, Some(originating_hex.clone()), cache.as_ref(), 1_700_000_000);
+    let (_rec, rx) = run_cmd(
+        cmd,
+        Some(originating_hex.clone()),
+        cache.as_ref(),
+        1_700_000_000,
+    );
 
     // Drive the chain. The driver signs with the originating key BECAUSE that is
     // the pinned signer the port carries — exactly what the real dispatch arm
@@ -637,14 +683,24 @@ fn recipient_encrypt_failure_surfaces_toast_and_action_failure() {
     let (_rec, rx) = run_cmd(cmd, Some(sender_hex), cache.as_ref(), 1_700_000_000);
     let driver = ChainDriver::new(keys).run_failing_encrypt(&rx, "broker rejected");
 
-    assert!(driver.publishes().is_empty(), "no envelope published on failure");
     assert!(
-        driver.toasts().iter().any(|t| t.contains("recipient") && t.contains("broker rejected")),
+        driver.publishes().is_empty(),
+        "no envelope published on failure"
+    );
+    assert!(
+        driver
+            .toasts()
+            .iter()
+            .any(|t| t.contains("recipient") && t.contains("broker rejected")),
         "D6 — toast names the recipient envelope + the reason: {:?}",
         driver.toasts()
     );
     let failures = driver.action_failures();
-    assert_eq!(failures.len(), 1, "recipient envelope records the action failure");
+    assert_eq!(
+        failures.len(),
+        1,
+        "recipient envelope records the action failure"
+    );
     assert_eq!(failures[0].0, "cid-fail");
 }
 
@@ -679,7 +735,9 @@ fn self_copy_failure_surfaces_toast_only_not_action_failure() {
     let mut driver = driver;
     let mut recipient_done = false;
     while let Ok(mail) = rx.recv_timeout(Duration::from_millis(200)) {
-        let ActorMail::Command(cmd) = mail else { unreachable!() };
+        let ActorMail::Command(cmd) = mail else {
+            unreachable!()
+        };
         match cmd {
             ActorCommand::Sign(SignCommand::Nip44EncryptForAccount {
                 peer_pubkey,
@@ -723,7 +781,11 @@ fn self_copy_failure_surfaces_toast_only_not_action_failure() {
     }
 
     // Exactly ONE publish (recipient) — the self-copy failed before publishing.
-    assert_eq!(driver.publishes().len(), 1, "recipient published; self-copy did not");
+    assert_eq!(
+        driver.publishes().len(),
+        1,
+        "recipient published; self-copy did not"
+    );
     // A toast names the self-copy failure (D6 visibility) ...
     assert!(
         driver.toasts().iter().any(|t| t.contains("self-copy")),

@@ -11,10 +11,7 @@ fn sample_message(id: &str, reply_to: Option<&str>, outgoing: bool) -> DmMessage
         created_at: 1_700_000_000,
         reply_to: reply_to.map(str::to_string),
         is_outgoing: outgoing,
-        source_relays: vec![
-            "wss://relay.one".to_string(),
-            "wss://relay.two".to_string(),
-        ],
+        source_relays: vec!["wss://relay.one".to_string(), "wss://relay.two".to_string()],
     }
 }
 
@@ -98,10 +95,7 @@ fn order_is_preserved() {
     assert_eq!(decoded.conversations[0].messages[1].id, "12");
     assert_eq!(
         decoded.conversations[0].messages[0].source_relays,
-        vec![
-            "wss://relay.one".to_string(),
-            "wss://relay.two".to_string()
-        ]
+        vec!["wss://relay.one".to_string(), "wss://relay.two".to_string()]
     );
 }
 

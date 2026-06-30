@@ -156,10 +156,15 @@ mod tests {
         let cache = DmRelayCache::new();
         cache.upsert(
             "alice".to_string(),
-            vec!["wss://dm-a.example".to_string(), "wss://dm-b.example".to_string()],
+            vec![
+                "wss://dm-a.example".to_string(),
+                "wss://dm-b.example".to_string(),
+            ],
         );
 
-        let resolved = cache.read_relays("alice").expect("alice's list is populated");
+        let resolved = cache
+            .read_relays("alice")
+            .expect("alice's list is populated");
         assert_eq!(
             resolved,
             vec!["wss://dm-a.example", "wss://dm-b.example"],
@@ -172,7 +177,10 @@ mod tests {
     fn upsert_with_empty_relays_removes_entry() {
         let cache = DmRelayCache::new();
         cache.upsert("alice".to_string(), vec!["wss://dm.example".to_string()]);
-        assert!(cache.read_relays("alice").is_some(), "precondition: populated");
+        assert!(
+            cache.read_relays("alice").is_some(),
+            "precondition: populated"
+        );
 
         cache.upsert("alice".to_string(), Vec::new());
         assert!(
@@ -188,7 +196,9 @@ mod tests {
         cache.upsert("alice".to_string(), vec!["wss://old.example".to_string()]);
         cache.upsert("alice".to_string(), vec!["wss://new.example".to_string()]);
 
-        let resolved = cache.read_relays("alice").expect("alice's list still resolves");
+        let resolved = cache
+            .read_relays("alice")
+            .expect("alice's list still resolves");
         assert_eq!(
             resolved,
             vec!["wss://new.example".to_string()],

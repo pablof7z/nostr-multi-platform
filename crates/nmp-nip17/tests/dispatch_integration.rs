@@ -94,7 +94,12 @@ fn start_bytes_accepts_good_send_payload() {
     };
     let payload = action.encode();
     let id = registry
-        .start_bytes(&mut ActionContext::default(), 1_700_000_000_000, "nmp.nip17.send", &payload)
+        .start_bytes(
+            &mut ActionContext::default(),
+            1_700_000_000_000,
+            "nmp.nip17.send",
+            &payload,
+        )
         .expect("well-formed send payload must be accepted");
     assert_eq!(id.len(), 32, "minted correlation_id must be 32 hex chars");
 }
@@ -307,8 +312,7 @@ fn generated_send_dm_builder_bytes_round_trip_with_reply() {
 
     let recipient = "a".repeat(64);
     let reply = "e".repeat(64);
-    let bytes =
-        build_send_dm_dispatch_envelope("corr-dm", &recipient, "gm fren", Some(&reply));
+    let bytes = build_send_dm_dispatch_envelope("corr-dm", &recipient, "gm fren", Some(&reply));
 
     let decoded = decode_dispatch_envelope(&bytes).expect("send envelope must decode (S2)");
     assert_eq!(decoded.correlation_id, "corr-dm");
@@ -331,11 +335,10 @@ fn generated_send_dm_builder_bytes_empty_reply_to_round_trip() {
     use nmp_nip17::action::SendDmInput;
 
     let recipient = "c".repeat(64);
-    let bytes =
-        build_send_dm_dispatch_envelope("corr-dm-empty-reply", &recipient, "hi", Some(""));
+    let bytes = build_send_dm_dispatch_envelope("corr-dm-empty-reply", &recipient, "hi", Some(""));
 
-    let decoded =
-        decode_dispatch_envelope(&bytes).expect("send envelope with empty reply_to must decode (S2)");
+    let decoded = decode_dispatch_envelope(&bytes)
+        .expect("send envelope with empty reply_to must decode (S2)");
     assert_eq!(decoded.action_namespace, "nmp.nip17.send");
 
     let action = SendDmInput::decode(&decoded.payload)

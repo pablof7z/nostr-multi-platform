@@ -34,10 +34,10 @@ use std::sync::{Arc, Mutex};
 
 use nmp_content::{PointerSortMode, PointerSourceModel};
 use nmp_core::actor::{ActorCommand, InterestsCommand};
+use nmp_core::subs::SubOwnerKey;
 use nmp_core::substrate::{
     HostCapabilities, KernelEvent, ObservedProjection, ObservedProjectionRegistrar,
 };
-use nmp_core::subs::SubOwnerKey;
 use nmp_core::{CommandSender, ObservedProjectionId, ObservedProjectionSink};
 use nmp_planner::InterestShape;
 
@@ -273,13 +273,15 @@ impl DynamicTargetProjection {
         let Some(shape) = desired else {
             return;
         };
-        let id = self.registrar.open_observed_projection(ObservedProjection::from_shape(
-            Arc::clone(&self.observer),
-            self.consumer_id.clone(),
-            self.scope,
-            shape.clone(),
-            self.replay_limit,
-        ));
+        let id = self
+            .registrar
+            .open_observed_projection(ObservedProjection::from_shape(
+                Arc::clone(&self.observer),
+                self.consumer_id.clone(),
+                self.scope,
+                shape.clone(),
+                self.replay_limit,
+            ));
         if id.0 != 0 {
             *current = Some((shape, id));
         }
@@ -295,5 +297,7 @@ impl DynamicTargetProjection {
 /// Lock a mutex, recovering the guard on poison (sinks must never panic on the
 /// actor thread).
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+    mutex
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }

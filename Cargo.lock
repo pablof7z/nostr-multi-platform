@@ -4235,6 +4235,7 @@ dependencies = [
  "nmp-core",
  "nmp-kinds",
  "nmp-nip01",
+ "nmp-nip50",
  "nmp-planner",
  "nmp-signer-iface",
  "nmp-threading",

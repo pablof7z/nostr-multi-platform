@@ -70,6 +70,7 @@ pub mod dm_relay_list;
 pub mod dm_runtime;
 pub mod dm_send;
 pub mod inbox;
+pub mod installer;
 pub mod kind10050_parser;
 pub mod ui_codes;
 pub mod wire;
@@ -88,6 +89,7 @@ pub use inbox::{
     active_giftwrap_inbox_interest_id, peer_dm_relay_list_identity, peer_dm_relay_list_interest,
     DmConversation, DmInboxProjection, DmInboxSnapshot, DmMessage,
 };
+pub use installer::{register_dm_runtime, DmInboxController};
 pub use kind10050_parser::Kind10050Parser;
 pub use wire::dm_inbox_fb::{
     decode_dm_inbox_snapshot, encode_dm_inbox_snapshot, DM_INBOX_FILE_IDENTIFIER,
