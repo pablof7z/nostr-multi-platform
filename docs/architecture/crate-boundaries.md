@@ -41,7 +41,7 @@ implementation is injected at composition time.
 | 1 | Storage, network transport, concrete signer transport | `nmp-store`, `nmp-nostr-lmdb`, `nmp-network`, `nmp-signers` |
 | 2 | Routing and subscription planning algorithms | `nmp-router`, `nmp-planner` |
 | 3 | Kernel substrate contracts and actor state | `nmp-core`, `nmp-coverage-gate` |
-| 4 | Reusable Nostr protocol/product modules | `nmp-nip01`, `nmp-nip02`, `nmp-nip17`, `nmp-nip18`, `nmp-nip29`, `nmp-nip42`, `nmp-nip47`, `nmp-nip51`, `nmp-nip57`, `nmp-nip60`, `nmp-nip77`, `nmp-nwc`, `nmp-marmot`, `nmp-relations`, `nmp-threading`, `nmp-feed`, `nmp-wot`, `nmp-content`, `nmp-content-fixtures` |
+| 4 | Reusable Nostr protocol/product modules | `nmp-nip01`, `nmp-nip02`, `nmp-nip17`, `nmp-nip18`, `nmp-nip29`, `nmp-nip42`, `nmp-nip47`, `nmp-nip51`, `nmp-nip57`, `nmp-nip60`, `nmp-nip77`, `nmp-nwc`, `nmp-marmot`, `nmp-threading`, `nmp-feed`, `nmp-wot`, `nmp-content`, `nmp-content-fixtures` |
 | 5 | App composition | `nmp-defaults`, `apps/<app>/...` Rust crates |
 | 6 | Platform runtimes, bindings, and deliverables | `nmp-native-runtime`, `nmp-uniffi`, `nmp-browser-runtime`, app-owned delivery crates |
 | Sidecars | Tooling, tests, diagnostics | `nmp-cli`, `nmp-codegen`, `nmp-testing`, app shells |
@@ -230,19 +230,23 @@ the substrate must not depend on the protocol crate's concrete module logic.
 Examples:
 
 - `nmp-nip01` owns base note/profile/reply primitives: the kind:1 note
-  builder/decoder, reply/thread views, kind:0 profile + kind:3 contacts caches,
-  the note timeline/OP-feed surface (NIP-18 reposts appear in that feed as
-  boosted notes — base note-feed rendering, not cross-protocol aggregation), the
-  relation-count vocabulary (`NoteRelationCounts`), and the
-  `NoteRelationClassifier` seam. It does NOT own cross-protocol engagement
-  aggregation.
-- `nmp-relations` owns cross-protocol social-relation aggregation: the
-  `DefaultNoteRelationClassifier` that tallies reactions (NIP-25), reposts
-  (NIP-18), zaps (NIP-57), and comments (NIP-22) onto a note, and the
-  `nmp.nip01.visible_note_relations` action (byte-stable namespace; the
-  implementation moved out of `nmp-nip01`, same precedent as §4's
-  `nmp.nip65.publish_relay_list`). It depends one-way on `nmp-nip01` plus the
-  cross-protocol NIP sources; `nmp-nip01` never depends back.
+  builder/decoder, NIP-10 reply/thread views, kind:0 profile + kind:3 contacts
+  caches, and base note-feed mechanics. It must not define shared fixed buckets
+  such as `NoteRelationCounts`, `NoteRelationClassifier`, or visible-note
+  relation summaries. Existing surfaces with that vocabulary are tracked by
+  #2508 and must be removed rather than treated as the canonical architecture.
+- Cross-protocol engagement bars are app/composition recipes over
+  concept-owned active reads, not framework substrate. A reply affordance asks
+  the reply owner; a reaction affordance asks the NIP-25 owner; a repost
+  affordance asks the NIP-18 owner; a zap affordance asks the NIP-57 owner; app
+  concepts ask the app Rust crate. Shared runtime may provide protocol-noun-free
+  mechanics for routed demand, replay-before-live, teardown, coalescing, and
+  bounded output, but it must not define relation buckets or a global summary
+  API.
+- `nmp-relations` is legacy debt, not the designated cross-protocol owner.
+  Valid behavior must move into the concrete concept crates or app-owned
+  recipes under #2508; no replacement global relation/count vocabulary belongs
+  there.
 - `nmp-nip17` owns NIP-17 DM send/receive behavior and its DM relay-list cache.
 - `nmp-nip57` owns zap request/receipt and LNURL zap action behavior. It pays
   through the substrate `PaymentPort` (it emits a typed `PaymentIntent`); it does
