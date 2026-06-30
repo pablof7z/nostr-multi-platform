@@ -279,12 +279,34 @@ state and execute raw capabilities.
 
 ### Worked example: 29er
 
-The NIP-29 groups app 29er owns a `TwentyNinerApp` facade that exposes app verbs
-such as `dispatchNip29Action` and `openGroupDiscovery` to its iOS/Android shells
-as first-class native citizens, with facade-local `CapabilitySink`, `UpdateSink`,
-and `DispatchOutcome` types in the `TwentyNinerApp` namespace. The facade adapts
-those local types into the `nmp-uniffi-support` helpers; it copies none of NMP's
-lifecycle, dispatch, or clamp policy.
+The NIP-29 groups app 29er owns a `TwentyNinerApp` facade — an app-owned
+composition root and generated native namespace, not a place where NIP-29
+protocol semantics live. The facade exposes app-specific verbs such as
+`createGroupPost` and `openGroupDiscovery` to its iOS/Android shells as
+first-class native citizens, with facade-local `CapabilitySink`,
+`UpdateSink`, and `DispatchOutcome` types in the `TwentyNinerApp` namespace.
+
+Each facade verb composes reusable mechanics rather than reimplementing
+them, and the composition stays on the right side of the kind-blind
+boundary ([#2506](https://github.com/pablof7z/nostr-multi-platform/issues/2506),
+[#2509](https://github.com/pablof7z/nostr-multi-platform/issues/2509)):
+
+- group routing and session machinery — h-tag publish-into-group, relay
+  discovery interests, joined-groups subscriptions — stays in `nmp-nip29`,
+  which is kind-blind transport and carries no `react_in_group` /
+  `repost_in_group` / per-kind helpers;
+- a foreign action a user takes *inside* a group (reacting, reposting,
+  replying, deleting) is built by the concept crate that owns that kind
+  (`nmp-nip25` for reactions, `nmp-replies` for replies, and so on) and
+  handed to `nmp-nip29`'s one generic publish-into-group entry point for
+  routing. The facade never asks `nmp-nip29` for a kind-named verb, and it
+  never constructs those foreign events itself.
+
+The facade adapts those composed calls into local types and the
+`nmp-uniffi-support` helpers; it copies none of NMP's lifecycle, dispatch,
+or clamp policy, and it does not promote reusable, kind-blind group
+mechanics into app-specific protocol verbs — only the composition is
+app-owned.
 
 ### Validation
 
