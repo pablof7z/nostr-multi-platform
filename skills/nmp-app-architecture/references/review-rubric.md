@@ -42,8 +42,8 @@ Block the change for any of these:
 
 Redesign-spine blocking findings (2026 clean-break — see the deep-dive references):
 
-- Production app root calls `register_defaults()`, or product policy (relay defaults, seed
-  follows, onboarding) lives in `nmp-defaults` or a shared NMP crate.
+- Production app root calls `register_defaults()` or recreates a defaults bundle, or product
+  policy (relay defaults, seed follows, onboarding) lives in a shared NMP crate.
 - Product screen or app-core crate opens a raw `open_interest` / assembles
   `ObservedProjection`/`ReducedSource` directly instead of a typed read session.
 - Shell treats dispatch acceptance (`correlation_id` non-null) as terminal publish success.

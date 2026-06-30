@@ -71,7 +71,7 @@ Core:
 
 Deep dives (read the one for the area you touch):
 - `references/ffi-and-native-surface.md`: UniFFI as the sole native ABI, wasm-bindgen browser, FlatBuffers-through-UniFFI, app-owned facades.
-- `references/composition-and-product-policy.md`: explicit composition, `register_defaults()` killed, `nmp-defaults` as installer library.
+- `references/composition-and-product-policy.md`: explicit owner-local composition; `register_defaults()` and `nmp-defaults` are deleted.
 - `references/read-sessions.md`: typed read sessions; `open_interest`/`ObservedProjection`/`ReducedSource` as private substrate.
 - `references/projections-and-emission.md`: typed projections, incremental diff-frame emission, the registration seam.
 - `references/write-intents-and-publishing.md`: the one write door, dispatch≠success, composable drafts, typed route provenance.

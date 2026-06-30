@@ -302,10 +302,10 @@ else
     log "  scaffold avoids hidden defaults and retired raw app vocabulary: YES"
 fi
 
-if grep -q "register_substrate" "$LIB_RS"; then
+if grep -q "nmp_substrate::install" "$LIB_RS"; then
     log "  lib.rs explicitly installs substrate: YES"
 else
-    DX_GAPS="${DX_GAPS}GAP-1b: lib.rs does not call register_substrate — starter composition is not readable as ADR-0069 explicit composition.\n"
+    DX_GAPS="${DX_GAPS}GAP-1b: lib.rs does not call nmp_substrate::install — starter composition is not readable as ADR-0069 explicit composition.\n"
 fi
 
 # GAP: does the scaffold include any example of opening a social timeline?

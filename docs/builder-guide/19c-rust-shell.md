@@ -140,9 +140,10 @@ filled; subsequent `PostNote` dispatches will use this key.
 For a full Nostr social app scaffolded by `nmp init`, call your app-core
 composition root before `start`. That root installs explicit substrate,
 protocol, app, publish/signing, and capability features by name, then wires
-app-specific seams. The starter sequence is `register_substrate`,
-`register_nip50_protocol_defaults`, `register_social_protocol_defaults`,
-`register_dm_protocol_defaults`, then `register_longform_projection`:
+app-specific seams. The starter sequence begins with `nmp_substrate::install`,
+then calls the owner-crate installers the app actually needs, such as
+`nmp_nip50::register_search_scopes`, `nmp_nip02::register_follow_actions`,
+`nmp_nip17::register_runtime`, and `nmp_content::register_longform_projection`:
 
 ```rust
 let mut builder = NmpAppBuilder::new();
@@ -150,9 +151,8 @@ my_app_core::register(&mut builder);
 let app = builder.in_memory().start(RunConfig::default());
 ```
 
-Compatibility presets, if used, must live inside the app-core root and be
-labeled as tutorial/test/migration support. Shells should not compose NMP
-separately; doing so creates a second composition path and risks duplicate
+Compatibility/default presets are deleted. Shells should not compose NMP separately; doing so
+creates a second composition path and risks duplicate
 registration.
 
 ## Lifecycle summary

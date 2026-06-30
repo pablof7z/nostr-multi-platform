@@ -36,9 +36,9 @@ designing or reviewing in that area:
 - **One native surface** — UniFFI is the sole public native ABI (C-ABI and `nmp-ffi` deleted);
   browser is wasm-bindgen; FlatBuffers ride *through* UniFFI. Apps own a single UniFFI facade
   for app-specific verbs → `ffi-and-native-surface.md`.
-- **Explicit composition** — `register_defaults()` is killed as a production path; the app root
-  installs substrate + named protocol features explicitly; `nmp-defaults` is an installer
-  library, not a policy owner → `composition-and-product-policy.md`.
+- **Explicit composition** — `register_defaults()` and `nmp-defaults` are deleted; the app root
+  installs `nmp_substrate::install(...)` plus named owner-crate protocol/runtime installers
+  explicitly → `composition-and-product-policy.md`.
 - **The read door** — typed read sessions own the read lifecycle; `open_interest` /
   `ObservedProjection` / `ReducedSource` are private substrate → `read-sessions.md` and
   `projections-and-emission.md`.
