@@ -261,7 +261,7 @@ fn active_follows_reduced_source_over_real_relay() {
             Verdict::Pass,
             &[relay.as_str()],
             &format!(
-                "Published a fresh kind:3 for `{alice}` following `{bob}`, published `{note}`, then opened `ActiveUserFollows` through the real app/kernel feed path and observed the note in the decoded NOFS snapshot.\n\n- relay: `{relay}`\n- source event: `{source}`\n- note event: `{note}`",
+                "Published a fresh kind:3 for `{alice}` following `{bob}`, published `{note}`, then opened `ActiveUserFollows` through the real app/kernel feed path and observed the note in the decoded NNFS snapshot.\n\n- relay: `{relay}`\n- source event: `{source}`\n- note event: `{note}`",
                 alice = alice_pk,
                 bob = bob_pk,
                 note = note_id,
@@ -309,7 +309,7 @@ fn list_members_nip65_reroute_over_real_relays() {
                             Verdict::Pass,
                             &[source_relay.as_str(), target_relay.as_str()],
                             &format!(
-                                "Published the active user's kind:10000 source list and Bob's kind:10002 relay list to the source relay, published Bob's kind:1 note only to the target relay, configured the app with the source relay only, then observed the note in the decoded NOFS snapshot.\n\n- source relay: `{source_relay}`\n- target relay learned from kind:10002: `{target_relay}`"
+                                "Published the active user's kind:10000 source list and Bob's kind:10002 relay list to the source relay, published Bob's kind:1 note only to the target relay, configured the app with the source relay only, then observed the note in the decoded NNFS snapshot.\n\n- source relay: `{source_relay}`\n- target relay learned from kind:10002: `{target_relay}`"
                             ),
                         ),
                     );

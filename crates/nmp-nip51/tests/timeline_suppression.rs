@@ -11,8 +11,8 @@
 //! 1. The ingest path: a kind:10000 event from the active account arrives
 //!    via `on_kernel_event` — the muted pubkeys are recorded.
 //! 2. The timeline suppression path: a kind:1 note from a muted author
-//!    arrives — it is NOT inserted into the timeline cards.
-//! 3. The snapshot path: the timeline snapshot contains no cards for the
+//!    arrives — it is NOT inserted into the timeline blocks.
+//! 3. The snapshot path: the timeline snapshot contains no blocks for the
 //!    muted author.
 //! 4. The read-time path: even events that arrived BEFORE the mute was
 //!    applied are absent from the next snapshot.
@@ -23,7 +23,7 @@ use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::{EventId, KernelEvent, SuppressionLookup};
 use nmp_core::ObservedProjectionSink;
-use nmp_nip01::{ModularTimelineProjection, ModularTimelineSpec, TimelineEventCard};
+use nmp_nip01::{ModularTimelineProjection, ModularTimelineSpec};
 use nmp_nip51::MuteListProjection;
 use nmp_threading::ModulePolicy;
 
@@ -83,11 +83,14 @@ fn timeline_with_mute(active: &str) -> (ModularTimelineProjection, Arc<MuteListP
     (timeline, mute)
 }
 
-fn card_ids(proj: &ModularTimelineProjection) -> Vec<String> {
+fn block_ids(proj: &ModularTimelineProjection) -> Vec<String> {
     proj.snapshot()
-        .cards
+        .blocks
         .into_iter()
-        .map(|c: TimelineEventCard| c.id)
+        .flat_map(|block| match block {
+            nmp_threading::TimelineBlock::Standalone { id, .. } => vec![id],
+            nmp_threading::TimelineBlock::Module { events, .. } => events,
+        })
         .collect()
 }
 
@@ -109,7 +112,7 @@ fn muted_author_note_absent_from_timeline() {
     // Carol's note arrives (not muted — must appear).
     timeline.on_kernel_event(&kind1_event(CAROL, NOTE_CAROL, 999));
 
-    let ids = card_ids(&timeline);
+    let ids = block_ids(&timeline);
     assert!(
         !ids.contains(&NOTE_BOB.to_string()),
         "Bob (muted) note must not appear in timeline; got: {ids:?}"
@@ -133,7 +136,7 @@ fn retroactive_mute_suppresses_existing_timeline_card() {
     timeline.on_kernel_event(&kind1_event(BOB, NOTE_BOB, 1000));
     // Bob appears in the snapshot.
     assert!(
-        card_ids(&timeline).contains(&NOTE_BOB.to_string()),
+        block_ids(&timeline).contains(&NOTE_BOB.to_string()),
         "Bob's note must appear before the mute"
     );
 
@@ -141,7 +144,7 @@ fn retroactive_mute_suppresses_existing_timeline_card() {
     mute.on_kernel_event(&mute_event(ALICE, &[BOB], &[]));
 
     // On next snapshot Bob's card must be absent.
-    let ids = card_ids(&timeline);
+    let ids = block_ids(&timeline);
     assert!(
         !ids.contains(&NOTE_BOB.to_string()),
         "Bob (retroactively muted) note must disappear from timeline; got: {ids:?}"
@@ -164,7 +167,7 @@ fn muted_event_id_absent_from_timeline() {
     // Carol publishes a second non-muted note.
     timeline.on_kernel_event(&kind1_event(CAROL, NOTE_CAROL, 999));
 
-    let ids = card_ids(&timeline);
+    let ids = block_ids(&timeline);
     assert!(
         !ids.contains(&NOTE_MUTED_ID.to_string()),
         "muted event id must not appear in timeline; got: {ids:?}"
@@ -189,7 +192,7 @@ fn empty_mute_list_suppresses_nothing() {
     timeline.on_kernel_event(&kind1_event(BOB, NOTE_BOB, 1000));
     timeline.on_kernel_event(&kind1_event(CAROL, NOTE_CAROL, 999));
 
-    let ids = card_ids(&timeline);
+    let ids = block_ids(&timeline);
     assert!(
         ids.contains(&NOTE_BOB.to_string()),
         "Bob must appear with empty mute list"
@@ -213,11 +216,11 @@ fn unmuting_restores_author_to_timeline_on_new_notes() {
 
     // Bob's note (while muted — not in timeline).
     timeline.on_kernel_event(&kind1_event(BOB, NOTE_BOB, 1000));
-    assert!(!card_ids(&timeline).contains(&NOTE_BOB.to_string()));
+    assert!(!block_ids(&timeline).contains(&NOTE_BOB.to_string()));
 
     // Alice unmutes Bob (publishes a replacement kind:10000 without Bob).
     mute.on_kernel_event(&mute_event(ALICE, &[], &[]));
-    let ids_after_unmute = card_ids(&timeline);
+    let ids_after_unmute = block_ids(&timeline);
     assert!(
         !ids_after_unmute.contains(&NOTE_BOB.to_string()),
         "unmuting must not resurrect a row that was suppressed at ingest time"
@@ -227,7 +230,7 @@ fn unmuting_restores_author_to_timeline_on_new_notes() {
     let note_bob_2 = "4444444444444444444444444444444444444444444444444444444444444444";
     timeline.on_kernel_event(&kind1_event(BOB, note_bob_2, 1001));
 
-    let ids = card_ids(&timeline);
+    let ids = block_ids(&timeline);
     assert!(
         ids.contains(&note_bob_2.to_string()),
         "Bob must appear after unmute; got: {ids:?}"

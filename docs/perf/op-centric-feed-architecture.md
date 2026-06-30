@@ -27,8 +27,11 @@ so every render surface chooses its own enumeration policy.
   Engine takes a generic `FollowPredicate: Arc<dyn Fn(&str) -> bool + Send + Sync>`
   and an `EventLookup: Arc<dyn Fn(&EventId) -> Option<KernelEvent> + Send + Sync>`.
   No NIP-named tokens; no follow-set trait; no planner coupling; no acquisition.
-- **`nmp-nip01`** — `Nip10ReplyAttribution: AttributionPayload`,
-  `register_op_feed(viewer, follow_predicate, event_lookup)` wiring helper.
+- **`nmp-nip01`** — kind:1/NIP-10 fact owner: note builder/decoder and
+  reply/thread grouping semantics.
+- **`nmp-note-feed`** — `Nip10ReplyAttribution: AttributionPayload`,
+  concrete `NoteFeedItem` row payload, and `register_op_feed(viewer,
+  follow_predicate, event_lookup)` wiring helper.
 - **`nmp-nip02`** — `ActiveFollowSet`, observable snapshot of active account's
   follows. Exposes `follows() -> Vec<String>` and
   `predicate() -> Arc<dyn Fn(&str) -> bool + Send + Sync>`. No `FollowSetLookup`
@@ -58,8 +61,9 @@ so every render surface chooses its own enumeration policy.
 
 ### A. Crate ownership
 
-Generic engine in `nmp-feed`; NIP-10 instance in `nmp-nip01`; follow-set producer
-in `nmp-nip02`; ReducedSource composition in app/runtime roots; generic
+Generic engine in `nmp-feed`; concrete NIP-10 note-feed instance in
+`nmp-note-feed`; lower-level NIP-10 facts in `nmp-nip01`; follow-set producer in
+`nmp-nip02`; ReducedSource composition in app/runtime roots; generic
 interest/cache/routing execution in `nmp-core`.
 
 ### B. How Bob's unfollowed OP enters the kernel

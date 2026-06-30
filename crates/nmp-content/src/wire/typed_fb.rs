@@ -16,9 +16,9 @@
 //! on `kind`; several variants share a field name (`text`, `children`), so the
 //! discriminator is the only authority on which fields are meaningful.
 //!
-//! Scope: this codec encodes only the content tree. The `ContentRenderData`
-//! embed-lookup sidecar lives in `nmp-nip01` and is encoded there — keeping
-//! this Layer-A crate free of any back-edge into `nmp-nip01`.
+//! Scope: this codec encodes only the content tree. Resolved embedded-event
+//! envelopes use the separate embed sidecar; feed/item owners embed this NFCT
+//! payload as opaque bytes instead of adding render policy here.
 //!
 //! Honours D6 (no panics): decode returns `Err(String)` on any malformed input;
 //! there are no `unwrap`/`expect`/panicking-index operations on the decode path.

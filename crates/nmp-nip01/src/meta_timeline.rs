@@ -11,7 +11,6 @@ use std::collections::BTreeSet;
 
 use nmp_core::substrate::{EventId, KernelEvent, ViewContext, ViewDependencies};
 use nmp_core::tags::parse_nip10;
-use nmp_nip18::{try_from_kernel_event as try_from_repost_event, KIND_REPOST};
 use nmp_threading::{
     GroupDelta, Grouper, ModulePolicy, ParentResolver, ThreadPointer, TimelineBlock,
 };
@@ -28,9 +27,6 @@ pub struct Nip10Resolver;
 
 impl ParentResolver for Nip10Resolver {
     fn parent(&self, event: &KernelEvent) -> Option<ThreadPointer> {
-        if event.kind == KIND_REPOST {
-            return None;
-        }
         let refs = parse_nip10(&event.tags);
         refs.reply.map(|r| ThreadPointer::Event {
             id: r.id,
@@ -40,9 +36,6 @@ impl ParentResolver for Nip10Resolver {
     }
 
     fn root(&self, event: &KernelEvent) -> Option<ThreadPointer> {
-        if event.kind == KIND_REPOST {
-            return None;
-        }
         let refs = parse_nip10(&event.tags);
         refs.root.map(|r| ThreadPointer::Event {
             id: r.id,
@@ -52,9 +45,6 @@ impl ParentResolver for Nip10Resolver {
     }
 
     fn parent_author(&self, event: &KernelEvent) -> Option<String> {
-        if event.kind == KIND_REPOST {
-            return None;
-        }
         let refs = parse_nip10(&event.tags);
         // Best-effort: NIP-10 says the participants' p-tags accompany the
         // reply, but there's no positional guarantee that the first p-tag
@@ -64,14 +54,8 @@ impl ParentResolver for Nip10Resolver {
     }
 
     fn supersedes(&self, event: &KernelEvent) -> Option<String> {
-        // NIP-18: a kind:6 repost bumps the original note in the feed. The
-        // grouper evicts the target's standalone block on the way in and
-        // suppresses it if it arrives later — the note renders once, at the
-        // repost's position, attributed to the repost author.
-        if event.kind != KIND_REPOST {
-            return None;
-        }
-        try_from_repost_event(event).and_then(|record| record.target_event_id)
+        let _ = event;
+        None
     }
 }
 
@@ -96,7 +80,11 @@ impl ModularTimelineSpec {
         if self.kinds.is_empty() {
             vec![KIND_SHORT_TEXT_NOTE]
         } else {
-            self.kinds.clone()
+            self.kinds
+                .iter()
+                .copied()
+                .filter(|kind| *kind == KIND_SHORT_TEXT_NOTE)
+                .collect()
         }
     }
 }
@@ -144,9 +132,8 @@ impl ModularTimelineState {
 }
 
 /// Modular timeline over NIP-10 short-note reply graphs, exported as a public
-/// type for per-app composition. Reposts can be admitted by the view spec, but
-/// their `e` tags are target references rather than reply edges, so they stay
-/// standalone in the grouped timeline.
+/// type for per-app composition. This view owns NIP-10 grouping only; repost
+/// composition belongs to feed owners such as `nmp-note-feed`.
 ///
 /// Once an `impl ViewModule`; now a plain type whose inherent methods are
 /// reached via static dispatch — `ModularTimelineProjection` (the live

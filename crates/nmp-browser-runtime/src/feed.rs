@@ -20,7 +20,7 @@ use nmp_feed::{
     FeedRenderSource, FeedSessionBuild, FeedSessionRegistry, FeedWindow, ProjectionKey,
     PubkeySetExpr, TeardownAction,
 };
-use nmp_nip01::op_feed::{op_feed_observer, register_op_feed, OP_FEED_SNAPSHOT_KEY};
+use nmp_note_feed::op_feed::{op_feed_observer, register_op_feed, OP_FEED_SNAPSHOT_KEY};
 use nmp_planner::InterestShape;
 
 type LiveShape = Arc<dyn Fn() -> Option<InterestShape> + Send + Sync>;
@@ -49,7 +49,7 @@ struct BrowserFeedSessionRuntime {
     follow_observer: ObservedProjectionReconciler,
     feed_observer: ObservedProjectionReconciler,
     follow_set: Arc<nmp_nip02::ActiveFollowSet>,
-    _engine: Arc<nmp_nip01::op_feed::OpFeedEngine>,
+    _engine: Arc<nmp_note_feed::op_feed::OpFeedEngine>,
 }
 
 impl BrowserFeedSessionRuntime {
@@ -204,7 +204,7 @@ fn compile_home_feed(
 
 fn register_home_feed_render_source(
     reducer: &nmp_core::KernelReducer,
-    engine: Arc<nmp_nip01::op_feed::OpFeedEngine>,
+    engine: Arc<nmp_note_feed::op_feed::OpFeedEngine>,
 ) {
     let source = FeedRenderSource::new(move || engine.snapshot_current_window());
     let Some((tick_rev, emitted_sink)) = reducer.feed_render_source_handles() else {
@@ -225,11 +225,13 @@ fn register_home_feed_render_source(
         );
         Some(TypedProjectionData {
             key: OP_FEED_SNAPSHOT_KEY.to_string(),
-            schema_id: nmp_nip01::op_feed::OP_FEED_SCHEMA_ID.to_string(),
-            schema_version: nmp_nip01::op_feed::OP_FEED_SCHEMA_VERSION,
-            file_identifier: String::from_utf8_lossy(nmp_nip01::op_feed::OP_FEED_FILE_IDENTIFIER)
-                .into_owned(),
-            payload: nmp_nip01::op_feed::encode_op_feed_snapshot(&snapshot),
+            schema_id: nmp_note_feed::op_feed::OP_FEED_SCHEMA_ID.to_string(),
+            schema_version: nmp_note_feed::op_feed::OP_FEED_SCHEMA_VERSION,
+            file_identifier: String::from_utf8_lossy(
+                nmp_note_feed::op_feed::OP_FEED_FILE_IDENTIFIER,
+            )
+            .into_owned(),
+            payload: nmp_note_feed::op_feed::encode_op_feed_snapshot(&snapshot),
             ..Default::default()
         })
     });

@@ -61,6 +61,7 @@ nmp-content = { path = "../nmp-content" }
 nmp-nostr-id = { path = "../nmp-nostr-id" }
 zeroize = { workspace = true }
 nmp-feed = { path = "../nmp-feed" }
+nmp-note-feed = { path = "../nmp-note-feed" }
 nmp-nip01 = { path = "../nmp-nip01" }
 # #1740 step 3 perspective-compiler fixture: prove per-scope admission with the
 # real resolution projections (no duplicated graph/list parsing — D4).

@@ -9,7 +9,7 @@ relays: ["wss://relay.primal.net", "wss://nos.lol"]
 
 ## Verdict: PASS
 
-Published the active user's kind:10000 source list and Bob's kind:10002 relay list to the source relay, published Bob's kind:1 note only to the target relay, configured the app with the source relay only, then observed the note in the decoded NOFS snapshot.
+Published the active user's kind:10000 source list and Bob's kind:10002 relay list to the source relay, published Bob's kind:1 note only to the target relay, configured the app with the source relay only, then observed the note in the decoded NNFS snapshot.
 
 - source relay: `wss://relay.primal.net`
 - target relay learned from kind:10002: `wss://nos.lol`

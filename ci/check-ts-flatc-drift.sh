@@ -6,8 +6,8 @@
 #   web/nmp-gallery/src/nmp/generated/nmp/
 # cover schemas in five groups:
 #   transport  — crates/nmp-core/schema/nmp_update.fbs
-#   feed        — crates/nmp-nip01/schema/op_feed.fbs
-#              + crates/nmp-nip01/schema/timeline_snapshot.fbs
+#   feed        — crates/nmp-nip01/schema/timeline_snapshot.fbs
+#              + crates/nmp-note-feed/schema/op_feed.fbs
 #              + crates/nmp-content/schema/content_tree.fbs
 #              + crates/nmp-feed/schema/feed_home.fbs
 #   KPRF        — crates/nmp-core/schema/profile_card.fbs
@@ -52,10 +52,11 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 source "${SCRIPT_DIR}/flatc-pins.sh"
 EXPECTED_FLATC_VERSION="${FLATC_PIN_TS}"
 TRANSPORT_SCHEMA="${REPO_ROOT}/crates/nmp-core/schema/nmp_update.fbs"
-FEED_INCLUDE_DIR="${REPO_ROOT}/crates/nmp-nip01/schema"
+NIP01_SCHEMA_DIR="${REPO_ROOT}/crates/nmp-nip01/schema"
+NOTE_FEED_SCHEMA_DIR="${REPO_ROOT}/crates/nmp-note-feed/schema"
 FEED_SCHEMAS=(
   "${REPO_ROOT}/crates/nmp-nip01/schema/timeline_snapshot.fbs"
-  "${REPO_ROOT}/crates/nmp-nip01/schema/op_feed.fbs"
+  "${REPO_ROOT}/crates/nmp-note-feed/schema/op_feed.fbs"
   "${REPO_ROOT}/crates/nmp-content/schema/content_tree.fbs"
   "${REPO_ROOT}/crates/nmp-feed/schema/feed_home.fbs"
 )
@@ -121,12 +122,13 @@ trap 'rm -rf "${TMP_DIR}"' EXIT
 # ── Transport schema (nmp_update.fbs → nmp/transport/) ──────────────────────
 flatc --ts -o "${TMP_DIR}" "${TRANSPORT_SCHEMA}"
 
-# ── Feed schemas (op_feed + deps → nmp/nip01/, nmp/content/, nmp/feed/) ──────
-# Must be one invocation: generating op_feed.fbs alone emits a barrel that
-# re-exports timeline-event-card.js etc. without generating those files —
-# broken imports. timeline_snapshot.fbs must be passed explicitly alongside it.
+# ── Feed schemas (note-feed + deps → nmp/note-feed/, nmp/nip01/, nmp/content/,
+#    nmp/feed/) ──────────────────────────────────────────────────────────────
+# Must be one invocation so each generated namespace barrel sees the companion
+# feed/content schemas the runtime decoders import together.
 flatc --ts -o "${TMP_DIR}" \
-    -I "${FEED_INCLUDE_DIR}" \
+    -I "${NIP01_SCHEMA_DIR}" \
+    -I "${NOTE_FEED_SCHEMA_DIR}" \
     "${FEED_SCHEMAS[@]}"
 
 # ── KPRF/KCEV kernel schemas (profile_card + profile + claimed_events →

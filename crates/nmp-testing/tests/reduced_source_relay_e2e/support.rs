@@ -203,8 +203,8 @@ pub(crate) fn flat_feed_ids(app: &NmpApp, key: &str) -> Vec<String> {
     else {
         return Vec::new();
     };
-    nmp_nip01::op_feed::decode_op_feed_snapshot(&row.payload)
-        .expect("NOFS payload decodes")
+    nmp_note_feed::op_feed::decode_op_feed_snapshot(&row.payload)
+        .expect("NNFS payload decodes")
         .cards
         .into_iter()
         .map(|card| card.card.id)

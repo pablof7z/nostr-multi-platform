@@ -78,7 +78,7 @@ pub const PRODUCER_VERSION_SOURCES: &[ProducerVersionSource] = &[
     // are checked here.
     ProducerVersionSource {
         key: "nmp.feed.home",
-        source_path: "crates/nmp-nip01/src/op_feed/typed_wire.rs",
+        source_path: "crates/nmp-note-feed/src/op_feed/typed_wire.rs",
         const_name: "OP_FEED_SCHEMA_VERSION",
     },
     ProducerVersionSource {

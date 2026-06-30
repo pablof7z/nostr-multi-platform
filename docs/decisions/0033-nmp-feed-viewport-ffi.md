@@ -54,10 +54,10 @@ superseded, replaced, or app-filtered rows while advancing its internal cursor.
 Those invisible rows do not satisfy the user action; the controller keeps
 pulling until the visible window grows or the current perspective is exhausted.
 
-`nmp-nip01` remains the protocol projection that knows how to build
-`TimelineEventCard` values and extract quoted-event references from their
-content trees. The reusable traversal, dedupe, cursor, and viewport policy live
-in `nmp-feed`.
+`nmp-note-feed` owns the concrete note-feed rows that compose kind:1/NIP-10
+facts, repost facts, content trees, and feed-window mechanics. `nmp-nip01`
+remains the lower-level kind:1/NIP-10 fact owner. The reusable traversal,
+dedupe, cursor, and viewport policy live in `nmp-feed`.
 
 ## Consequences
 

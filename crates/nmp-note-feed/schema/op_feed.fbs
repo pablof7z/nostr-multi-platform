@@ -1,0 +1,48 @@
+// Typed FlatBuffers wire for `nmp_note_feed::OpFeedSnapshot`.
+//
+// This schema belongs to the note-feed composition owner, not nmp-nip01. It
+// carries raw feed row payloads only; relation counts, profile display,
+// previews, and app-specific render decisions are deliberately absent.
+
+namespace nmp.note_feed;
+
+table RepostAttribution {
+  author_pubkey:string;
+  note_created_at:uint64;
+}
+
+table NoteFeedItem {
+  id:string;
+  author_pubkey:string;
+  kind:uint32;
+  created_at:uint64;
+  content:string;
+  // Typed nmp-content ContentTreeWire buffer (NFCT).
+  content_tree_bytes:[ubyte];
+  relay_provenance:[string];
+  reposted_by:RepostAttribution;
+}
+
+table ReplyAttribution {
+  author_pubkey:string;
+  reply_event_id:string;
+  reply_created_at:uint64;
+}
+
+table RootItem {
+  item:NoteFeedItem;
+  attribution:[ReplyAttribution];
+}
+
+table OpFeedSnapshot {
+  schema_version:uint32 = 1;
+  items:[RootItem];
+  // Typed nmp-feed FeedWindow buffer (NFWM). Empty/absent when both page and
+  // metrics are absent.
+  feed_window_bytes:[ubyte];
+  has_page:bool;
+  has_metrics:bool;
+}
+
+root_type OpFeedSnapshot;
+file_identifier "NNFS";

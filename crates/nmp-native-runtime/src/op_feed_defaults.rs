@@ -1,11 +1,10 @@
 //! `register_op_feed_defaults` — the V-80 rung 6 (Stage 5) composition root
 //! that wires the OP-centric feed renderer together.
 //!
-//! This is the one place in the system that names `NmpApp` (native runtime) and the
-//! NIP-10 OP-feed instance (`nmp-nip01`) in the same breath. Every lower layer
-//! deliberately avoids that edge: `nmp-feed` is generic, `nmp-nip01`'s
-//! `register_op_feed` returns an `Arc<OpFeedEngine>` for *someone else* to
-//! register, and `nmp-nip02`'s `ActiveFollowSet` takes an
+//! This is the one place in the system that names `NmpApp` (native runtime) and
+//! the note-feed OP instance (`nmp-note-feed`) in the same breath. Every lower
+//! layer deliberately avoids that edge: `nmp-feed` is generic, `nmp-nip01` owns
+//! only kind:1/NIP-10 facts, and `nmp-nip02`'s `ActiveFollowSet` takes an
 //! [`ActiveAccountSlot`], not `&NmpApp`. The composition root closes the loop.
 //!
 //! # What this function wires
@@ -18,8 +17,8 @@
 //!    * **event lookup** — a synchronous read through the kernel event-store
 //!      handle exposed by `NmpApp`; this is a local cache read only, never
 //!      acquisition;
-//!    * **card builder** — supplied inside `register_op_feed` itself
-//!      (`TimelineEventCard::from_event_for_op_feed`).
+//!    * **item builder** — supplied inside `nmp-note-feed` itself
+//!      (`NoteFeedItem::from_event_for_op_feed`).
 //! 3. Registers the returned `Arc<OpFeedEngine>` as an
 //!    [`ObservedProjectionSink`](nmp_core::ObservedProjectionSink) (ingest) and a
 //!    [`FeedController`](nmp_feed::FeedController) under
@@ -111,10 +110,9 @@ use nmp_feed::{
     FeedAdmission, FeedController, FeedHandle, FeedParams, FeedRanking, FeedRender, FeedScope,
     FeedWindow, ProjectionKey,
 };
-use nmp_nip01::meta_timeline::Pubkey;
-use nmp_nip01::OpFeedEngine;
 use nmp_nip02::ActiveFollowSet;
 use nmp_nip51::MuteListProjection;
+use nmp_note_feed::OpFeedEngine;
 
 mod active_shape;
 mod dynamic_observer;
@@ -124,6 +122,8 @@ use active_shape::read_active;
 
 #[cfg(test)]
 use nmp_core::slots::ActiveAccountSlot;
+
+type Pubkey = String;
 
 /// What [`register_op_feed_defaults`] hands back to the composition caller.
 pub struct OpFeedDefaults {
@@ -183,7 +183,7 @@ pub fn register_op_feed_defaults_with_mute(
         let registry = app.feed_registry_handle();
         let sender = app.command_sender();
         mute.on_change(Box::new(move || {
-            if registry.reset(nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY) {
+            if registry.reset(nmp_note_feed::op_feed::OP_FEED_SNAPSHOT_KEY) {
                 sender.mark_changed_since_emit();
             }
         }));
@@ -245,7 +245,7 @@ pub fn default_home_feed_params(primary_feed_kinds: Vec<u32>) -> FeedParams {
         window: FeedWindow {
             initial_limit: nmp_feed::DEFAULT_FEED_WINDOW_LIMIT,
         },
-        projection: ProjectionKey(nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY.to_string()),
+        projection: ProjectionKey(nmp_note_feed::op_feed::OP_FEED_SNAPSHOT_KEY.to_string()),
     }
 }
 
@@ -254,8 +254,11 @@ fn fallback_defaults(app: &NmpApp) -> OpFeedDefaults {
     let event_store = app.event_store_handle();
     let event_lookup: nmp_feed::EventLookup =
         Arc::new(move |id| nmp_core::slots::event_by_id_from_store(&event_store, id));
-    let engine =
-        nmp_nip01::op_feed::register_op_feed(String::new(), follow_set.predicate(), event_lookup);
+    let engine = nmp_note_feed::op_feed::register_op_feed(
+        String::new(),
+        follow_set.predicate(),
+        event_lookup,
+    );
     OpFeedDefaults {
         handle: None,
         engine,

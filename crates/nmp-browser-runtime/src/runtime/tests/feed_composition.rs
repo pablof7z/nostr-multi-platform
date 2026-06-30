@@ -52,7 +52,7 @@ fn browser_home_feed_close_tears_down_projection_and_provider() {
             .reducer
             .registered_feed_author_provider_keys()
             .iter()
-            .any(|key| key == nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY),
+            .any(|key| key == nmp_note_feed::op_feed::OP_FEED_SNAPSHOT_KEY),
         "opening the home feed session must pair the typed projection with a \
          feed-author provider"
     );
@@ -66,7 +66,7 @@ fn browser_home_feed_close_tears_down_projection_and_provider() {
             .reducer
             .registered_feed_author_provider_keys()
             .iter()
-            .any(|key| key == nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY),
+            .any(|key| key == nmp_note_feed::op_feed::OP_FEED_SNAPSHOT_KEY),
         "closing the session must remove the paired feed-author provider"
     );
 
@@ -74,7 +74,7 @@ fn browser_home_feed_close_tears_down_projection_and_provider() {
     let rows = nmp_core::decode_snapshot_typed_projections(&bytes).expect("frame decodes");
     let row = rows
         .iter()
-        .find(|row| row.key == nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY)
+        .find(|row| row.key == nmp_note_feed::op_feed::OP_FEED_SNAPSHOT_KEY)
         .expect("closed home feed projection emits a Cleared row");
     assert_eq!(row.state, nmp_core::WireProjectionState::Cleared);
 }
@@ -443,16 +443,18 @@ fn req_frame_for_kind(
     })
 }
 
-fn decode_home_feed(frame: &crate::runtime::SnapshotOutcome) -> nmp_nip01::op_feed::OpFeedSnapshot {
+fn decode_home_feed(
+    frame: &crate::runtime::SnapshotOutcome,
+) -> nmp_note_feed::op_feed::OpFeedSnapshot {
     let crate::runtime::SnapshotOutcome::Frame(bytes) = frame else {
         panic!("expected snapshot frame, got {frame:?}");
     };
     let typed = nmp_core::decode_snapshot_typed_projections(bytes).expect("frame decodes");
     let row = typed
         .into_iter()
-        .find(|row| row.key == nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY)
+        .find(|row| row.key == nmp_note_feed::op_feed::OP_FEED_SNAPSHOT_KEY)
         .expect("home feed projection must be present");
-    nmp_nip01::op_feed::decode_op_feed_snapshot(&row.payload).expect("NOFS payload decodes")
+    nmp_note_feed::op_feed::decode_op_feed_snapshot(&row.payload).expect("NNFS payload decodes")
 }
 
 fn decode_follow_list(frame: &crate::runtime::SnapshotOutcome) -> nmp_nip02::FollowListSnapshot {

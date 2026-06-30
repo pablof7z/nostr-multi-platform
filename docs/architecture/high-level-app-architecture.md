@@ -209,7 +209,7 @@ below identifies the migration targets.
 | typed read helpers | The surviving product read door | UniFFI native session helpers / wasm structured controls / Rust app helpers |
 | Observed delivery | Internal event-delivery and replay machinery behind typed read sessions (ADR-0070); not app-facing | `nmp-core` substrate |
 | Dynamic source reconciliation | Internal source compiler behind a session (ADR-0070); not app-facing | `nmp-core` substrate |
-| `nmp.feed.home` | A projection key for the typed `OpFeedSnapshot` row; not a special singleton wiring | codegen registry |
+| `nmp.feed.home` | A projection key for the typed `OpFeedSnapshot` row; not a special singleton wiring | `nmp-note-feed`, declared in the codegen registry |
 | raw publish body | Low-level arbitrary-kind publish shape under the one write doorway (ADR-0071); reserved for protocol/import/diagnostic paths, not starter app writes | publish action schema |
 | verbatim signed-event publish | Imported signed events stay imported/manual and do not acquire protocol guarantees (ADR-0071) | protocol/import dispatch doorway |
 

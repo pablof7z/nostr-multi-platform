@@ -137,11 +137,12 @@ not banned `display::*` forwarders.
 - `npub`, `short_npub`, `avatar_initials`, `avatar_color`
 - Only the raw hex `pubkey` field remains.
 
-**`nmp-nip01::TimelineEventCard`** (`crates/nmp-nip01/src/timeline_projection.rs`):
-- `author_avatar_initials`, `author_avatar_color`,
-  `author_pubkey_short`, `short_id`, `created_at_display`
-- `author_display_name: String` → `author_display_name: Option<String>`
-- `author_picture_url: String` → `author_picture_url: Option<String>`
+**Legacy NIP-01 card surface**:
+- The card surface was later removed from `nmp-nip01`; NIP-01 now owns
+  kind:1/NIP-10 facts and timeline grouping only.
+- Concrete note-feed rows live in `nmp-note-feed::NoteFeedItem` and carry raw
+  pubkey/id/content/time fields plus opaque content-tree bytes. They do not
+  carry author display names, avatar colors, short ids, or formatted timestamps.
 
 **`nmp-nip01::AuthorDisplay`** (`crates/nmp-nip01/src/profile_display.rs`):
 - `name: String` → `name: Option<String>`
@@ -210,8 +211,8 @@ not banned `display::*` forwarders.
 - `avatar_color: String` deleted.
 - `display: String` kept as the verbatim kind:0 value (empty string
   when absent) — the conversion to `Option<String>` happens at the
-  projection boundary (`ProfileCard.display_name`,
-  `TimelineEventCard.author_display_name`, etc.).
+  projection boundary (`ProfileCard.display_name`, note-feed item consumers,
+  etc.).
 - `parse_profile` no longer falls back to `short_npub(pubkey)` when
   the parsed metadata carries none of `display_name` / `displayName` /
   `name`.

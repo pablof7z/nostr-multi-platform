@@ -51,7 +51,8 @@ For the feed family:
 
 - `nmp-feed` owns feed window/cursor/page tables.
 - `nmp-content` owns content-tree tables.
-- `nmp-nip01` owns short-note timeline and OP-feed tables.
+- `nmp-nip01` owns NIP-10 timeline-grouping tables.
+- `nmp-note-feed` owns concrete note-feed OP/flat feed tables.
 - `explicit composition` wires the default registrations that compose those pieces for a
   concrete app build.
 
