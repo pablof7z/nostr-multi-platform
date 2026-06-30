@@ -3,7 +3,8 @@ use nmp_kinds::{KIND_NIP22_COMMENT, KIND_SHORT_TEXT_NOTE};
 use nmp_nip01::try_from_kernel_event as note_from_kernel_event;
 use nmp_nip22::try_from_kernel_event as comment_from_kernel_event;
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
+use serde_json::Value;
+use std::collections::BTreeMap;
 
 use crate::target::ReplyTarget;
 
@@ -70,7 +71,10 @@ impl ReplyReadPlan {
 
     #[must_use]
     pub fn filter_json(&self) -> String {
-        let mut map = Map::new();
+        // BTreeMap serializes keys in sorted order regardless of serde_json's
+        // `preserve_order` feature, so the filter string is deterministic across
+        // workspace feature-unification.
+        let mut map: BTreeMap<String, Value> = BTreeMap::new();
         if !self.dependencies.kinds.is_empty() {
             map.insert(
                 "kinds".to_string(),
@@ -92,7 +96,7 @@ impl ReplyReadPlan {
         if let Some(limit) = self.dependencies.limit {
             map.insert("limit".to_string(), Value::from(limit));
         }
-        Value::Object(map).to_string()
+        serde_json::to_string(&map).expect("filter map serializes")
     }
 
     #[must_use]
