@@ -85,26 +85,33 @@ Key teaching points:
   The `execute` body is a static method (no `&self`), so it reads the store
   from the process-wide slot that `register()` initializes.
 
-### The typed read-session helper
+### The concept-owned active read
+
+`microblog-core` owns the "home feed" concept. It exposes a concrete
+`open_microblog_feed` helper (returning a close handle) and registers the
+executor behind it. Product screens and native shells call that named helper —
+they never spell a generic claim/release verb or a `open_session(namespace,
+bytes)` doorway ([#2508](https://github.com/pablof7z/nostr-multi-platform/issues/2508)).
 
 ```rust
-pub fn register_microblog_read_session(app: &mut impl AppHost, store: FeedStore) {
+pub fn register_microblog_feed_concept(app: &mut impl AppHost, store: FeedStore) {
     // Shape only:
     // - demand: kind:1 notes
     // - replay: bounded before live activation
     // - output: FEED_SNAPSHOT_KEY typed sidecar
-    // - close: release the session owner and clear/tombstone output
+    // - close: drop the returned handle → internal owner released, output cleared/tombstoned
     //
-    // The helper may use observed delivery internally. Product screens and
-    // native shells only claim/release the helper and render its typed output.
-    install_feed_session_executor(app, store);
+    // The concept helper may use observed delivery and internal refcounting
+    // privately. Native shells call open_microblog_feed() and drop the handle
+    // to close; they render its typed output.
+    install_feed_executor(app, store);
 }
 ```
 
-The helper is the app-facing read contract. It owns acquisition,
+The concept owner is the app-facing read contract. It owns acquisition,
 replay-before-live, scoped delivery, typed output, status, and teardown.
-Observed delivery, source reduction, and raw interest materialization are
-private executor details behind the helper.
+Observed delivery, source reduction, internal refcounting, and raw interest
+materialization are private executor details behind the concept helper.
 
 ### The snapshot projection
 
@@ -143,13 +150,13 @@ pub enum Update { ActionAccepted }
 The thin staticlib shell (`apps/microblog/nmp-app-microblog/src/lib.rs`) calls
 `microblog_core::register(app)`. That app-core function is the composition
 root: it installs the substrate/protocol features it needs, then wires
-microblog-specific actions and sessions.
+microblog-specific actions and concept-owned reads.
 See [19b](19b-walkthrough-microblog.md) for the shell.
 
 ### What `microblog-core` proves
 
-1. A complete app module with writes (`ActionModule`), a typed read-session
-   helper, and typed read output
+1. A complete app module with writes (`ActionModule`), a concept-owned active
+   read, and typed read output
    — **without touching `nmp-core`**.
 2. App state is app-owned (`Arc<Mutex<Vec<NoteRecord>>>`). The kernel never
    stores, migrates, or indexes `NoteRecord`. The module owns its data.
@@ -265,8 +272,8 @@ separate diagnostic domain).
    Shared collaborators such as mailbox caches and coverage gates must be
    installed once and passed by the composition root. Copying wiring blocks by
    hand desyncs them.
-6. **Bypassing the shipped seams.** Use typed actions, typed read sessions,
-   typed output, and capabilities as shown in [05a](05a-substrate-traits.md).
+6. **Bypassing the shipped seams.** Use typed actions, concept-owned active
+   reads, typed output, and capabilities as shown in [05a](05a-substrate-traits.md).
 
 ## Deliverables (this half)
 

@@ -74,12 +74,14 @@ already-compiled static non-feed reads; do not make them a product shell API.
 }
 ```
 
-For action-triggered discovery, copy the pattern in
-[28 - Action-triggered subscriptions](../builder-guide/28-action-triggered-subscriptions.md):
-`ActionModule` dispatches a typed Claim/Release intent, and the read-session
-helper owns the internal acquisition, replay, output, status, and teardown.
-Do not expose low-level interest claims or observed-delivery internals as
-app-facing product APIs.
+For an action-triggered discovery read, copy the pattern in
+[28 - Concept-owned active reads](../builder-guide/28-action-triggered-subscriptions.md):
+the concept owner exposes a concrete `open_<concept>(target)` helper that returns
+a close handle and owns the internal acquisition, replay, output, status, and
+teardown. Do not expose a generic `Claim` / `Release` verb, an
+`open_session(namespace, bytes)` doorway, or low-level interest/observed-delivery
+internals as app-facing product APIs — the thing that wants a concept asks that
+concept's owner for it ([#2508](https://github.com/pablof7z/nostr-multi-platform/issues/2508)).
 
 ## Long-Form Reader
 

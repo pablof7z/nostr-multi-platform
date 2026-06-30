@@ -102,25 +102,33 @@ pub trait CapabilityModule: Send + Sync + 'static {
   monitor). Native code *reports a fact*; it never decides retry, routing,
   or any policy (D7). Results are envelopes, not `Result`-typed errors.
 
-## Typed read sessions/helpers — the read surface
+## Concept-owned active reads — the read surface
 
-Production app code opens a typed read session or generated helper. The helper
-owns demand, replay-before-live, status, output, dynamic source wakeups, and
-teardown. It may register typed output and may use observed delivery internally,
-but product screens do not wire raw interests, observers, replay sidecars, or
-source reducers.
+Production app code opens a **concept-owned active read**: the thing that wants
+to show a fact asks the owner of that fact for it. The concept owner exposes a
+concrete `open_<concept>(target)` helper that returns a close handle and owns
+demand, replay-before-live, status, output, dynamic source wakeups, and
+teardown. It may register typed output and may use observed delivery and internal
+refcounting privately, but product screens do not wire raw interests, observers,
+replay sidecars, or source reducers — and there is **no** generic `Claim` /
+`Release` verb or `open_session(namespace, bytes)` doorway
+([#2508](https://github.com/pablof7z/nostr-multi-platform/issues/2508)).
 
 ```rust
-register_topic_articles_read_session(app);
+// A concept owner registers its helper; the shell calls open_<concept> to mount.
+register_topic_articles_concept(app);
+let handle = open_topic_articles(&app, "bitcoin", "discover-view"); // close via handle
 ```
 
-- **Contract:** the helper declares the session shape and owns all acquisition
-  and close behavior. The shell claims/releases the typed session and renders
-  the pushed typed output.
-- **Use it when** a product screen needs Nostr data. The app names the typed
-  session it wants; Rust owns the route, replay, filtering, and state.
-- **Never:** hand-author raw interest, observed-delivery, or source-reduction
-  plumbing from product code or native shell code.
+- **Contract:** the concept owner declares the read shape and owns all
+  acquisition and close behavior. The shell opens the concept by name and drops
+  the returned handle to close it, rendering the pushed typed output.
+- **Use it when** a product screen needs Nostr data. The app asks the concept's
+  owner (`nmp-nip25` for reactions, the replies owner for replies, an app crate
+  for app-specific facts); Rust owns the route, replay, filtering, and state.
+- **Never:** expose a generic claim/release/session doorway, or hand-author raw
+  interest, observed-delivery, or source-reduction plumbing from product or
+  native shell code. "Session" is internal runtime bookkeeping, not a public noun.
 
 ## register_typed_snapshot_projection — internal read output transport
 
@@ -140,14 +148,14 @@ app.register_typed_snapshot_projection("nmp.myapp.key", move || {
 - **Key naming:** use `nmp.<module>.*` namespaces. Kernel-reserved keys
   (`publish_queue`, `accounts`, `profile`, views cluster) always win on
   collision.
-- **Use it when** you are implementing a typed read session/helper or protocol
+- **Use it when** you are implementing a concept-owned active read or protocol
   executor and need its state visible in the host's `apply()` callback alongside
   the built-in named fields. Product screens should open the helper, not wire
   this transport seam directly.
 
-## Observed delivery — internal session-executor machinery
+## Observed delivery — internal concept-executor machinery
 
-Some session/protocol executors maintain an in-process read model from Nostr
+Some concept/protocol executors maintain an in-process read model from Nostr
 events. They do that with declared observed delivery after the read model has
 declared the events it needs. The kernel registers the sink muted, opens the
 declared interest, replays matching cached/store-backed rows, then activates
@@ -171,7 +179,7 @@ let observer_id = app.open_observed_projection(ObservedProjection::from_kinds(
 - **Lifecycle:** the sink body runs synchronously on the **actor thread**. Must
   be cheap; no blocking I/O. Duplicates, supersessions, and rejections do NOT
   fire the observer.
-- **Use it when** you are implementing a typed read session/helper or reusable
+- **Use it when** you are implementing a concept-owned active read or reusable
   protocol executor. The declaration must name the scope by kind, author, id,
   tag, relay pin, search shape, source reducer, or bounded dependency before
   events are delivered.
@@ -187,14 +195,14 @@ I want to ...
 ├─ change state, publish, or mutate anything    → ActionModule + register_action
 │     └─ result must survive restart / relay ack   use is_async_completing = true
 │
-├─ read Nostr data for a product screen       → typed read session/helper
-│     └─ owns demand + replay + output + teardown
+├─ read Nostr data for a product screen       → concept-owned active read
+│     └─ open_<concept>(target) → handle; concept owner owns demand+replay+output+teardown
 │
-├─ expose helper-owned typed output           → register_typed_snapshot_projection
+├─ expose concept-owned typed output          → register_typed_snapshot_projection
 │     └─ internal transport; cheap + non-blocking closure
 │
-├─ maintain helper-owned event projection     → declared observed delivery
-│     └─ internal session/protocol executor machinery
+├─ maintain concept-owned event projection    → declared observed delivery
+│     └─ internal concept/protocol executor machinery
 │
 ├─ report OS-native facts to the kernel        → CapabilityModule
 │     (keychain, push, audio, network)             (UniFFI capability object)
@@ -204,7 +212,7 @@ I want to ...
 ```
 
 A real app typically combines several: `microblog-core` uses
-`register_action` + a typed read-session helper + typed output transport.
+`register_action` + a concept-owned active read + typed output transport.
 Walkthroughs are in
 [05b](05b-substrate-traits.md) and [19a](19a-walkthrough-microblog.md).
 
@@ -220,7 +228,7 @@ output, treat them as stale. The correct replacements:
 
 | Removed concept | Replacement |
 |---|---|
-| `ViewModule` (typed reactive projection) | typed read-session helper + typed output |
+| `ViewModule` (typed reactive projection) | concept-owned active read + typed output |
 | `DomainModule` (kernel-owned domain store) | app-owned `Arc<Mutex<T>>` + typed output |
 | `IdentityModule` (signer scope) | `nmp-signers` crate + keyring capability |
 | `ModuleRegistry` (composition root) | an app-core `register()` fn that installs explicit substrate/protocol/app features |

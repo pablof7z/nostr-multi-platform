@@ -72,9 +72,9 @@ Start at **01 → 02 → 05**, then jump to **19a/19b** (build a microblog
 end-to-end). **19c** covers Rust-native shell bootstrapping (TUI, CLI,
 headless tools). **25** is the fast on-ramp if you already think in NDK or
 Applesauce terms. **21** tells you exactly what you get for free (so you do
-not re-implement it). **28** when you need a user action to trigger a Nostr
-subscription (discovery, content feeds, parameterised lookups). **26** when
-something breaks.
+not re-implement it). **28** when a view needs to open a concept-owned active
+read (replies, reactions, discovery, content feeds, parameterised lookups).
+**26** when something breaks.
 
 ### Path B — "I want to extend the kernel" (agents)
 
@@ -88,13 +88,13 @@ something breaks.
 20 add a protocol module      18 testing      22 doctrine checklist
         │                                              │
         ▼                                              ▼
-28 action-triggered subs
+28 concept-owned active reads
 ```
 
 Start at **03** (the doctrine is the law) → **02** (where things live) →
 **04/05/06/07/08** (the substrate). Use **20** (`nmp-nip29` as the canonical
-reference) when adding a protocol module, **28** when an action needs to open
-a subscription, **22** as the PR-review gate; correct wrong docs in place and use GitHub Issues for active work.
+reference) when adding a protocol module, **28** when a view needs to open a
+concept-owned active read, **22** as the PR-review gate; correct wrong docs in place and use GitHub Issues for active work.
 
 ## Section dependency graph (read upstream before downstream)
 
