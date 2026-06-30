@@ -60,3 +60,6 @@ pub use types::{
     FeedWindowState, DEFAULT_FEED_WINDOW_LIMIT, MAX_FEED_WINDOW_LIMIT,
 };
 pub use window::{block_cursor, cards_for_blocks, page_for_request, sorted_blocks};
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

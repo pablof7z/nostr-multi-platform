@@ -76,6 +76,27 @@ pub(super) fn fail_publish(
     Vec::new()
 }
 
+pub(super) fn fail_ownership(
+    kernel: &mut Kernel,
+    reason: String,
+    correlation_id: Option<String>,
+) -> Vec<OutboundMessage> {
+    set_publish_error(
+        kernel,
+        crate::ui_token::codes::PUBLISH_OWNERSHIP_REJECTED,
+        reason.clone(),
+    );
+    if let Some(id) = correlation_id {
+        kernel.record_action_failure_coded(
+            id,
+            reason,
+            Some(crate::ui_token::codes::PUBLISH_OWNERSHIP_REJECTED),
+            None,
+        );
+    }
+    Vec::new()
+}
+
 pub(super) fn fail_invalid_target(
     kernel: &mut Kernel,
     reason: String,

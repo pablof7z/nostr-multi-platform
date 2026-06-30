@@ -50,6 +50,7 @@ path = "src/bin/uniffi_bindgen.rs"
 required-features = ["bindgen"]
 
 [dependencies]
+nmp-ownership = { workspace = true }
 nmp-native-runtime = { path = "../nmp-native-runtime", default-features = false }
 nmp-core = { path = "../nmp-core", default-features = false }
 # NIP-19 entity codec (Layer 4) carved out of nmp-core per issue #2515.

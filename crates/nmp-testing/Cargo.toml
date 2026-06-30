@@ -16,6 +16,7 @@ lmdb-backend = ["nmp-core/lmdb-backend"]
 real-relay = []
 
 [dependencies]
+nmp-ownership = { workspace = true }
 nmp-core = { path = "../nmp-core", features = ["test-support"] }
 # Direct dep on nmp-planner for InterestId / InterestLifecycle / InterestScope /
 # LogicalInterest / CompiledPlan / RelayPlan / RelayAttribution — the
@@ -96,6 +97,7 @@ nmp-nip59 = { path = "../nmp-nip59" }
 nmp-nip51 = { path = "../nmp-nip51" }
 nmp-coverage-gate = { path = "../nmp-coverage-gate" }
 nmp-nwc = { path = "../nmp-nwc" }
+nmp-codegen = { path = "../nmp-codegen" }
 # V-51 phase 4 validation harness — `routing_trace_real_nostr` test
 # constructs `GenericOutboxRouter` + `InMemoryMailboxCache` + the
 # `Kind10002Parser` directly to seed the cache from a live kind:10002

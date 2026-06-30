@@ -216,6 +216,7 @@ fn profile_update_publishes_kind0_metadata_event() {
         unsigned,
         None,
         None,
+        None,
         &mut crate::actor::pending_sign::ParkedSignerOps::new(),
     );
     assert!(
@@ -293,6 +294,7 @@ fn profile_update_without_account_toasts_and_no_outbound() {
         &id,
         &mut kernel,
         unsigned,
+        None,
         None,
         None,
         &mut crate::actor::pending_sign::ParkedSignerOps::new(),

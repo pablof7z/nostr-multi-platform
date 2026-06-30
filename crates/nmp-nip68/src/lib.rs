@@ -34,3 +34,6 @@ pub use imeta::{
     ACCEPTED_IMAGE_MIME_TYPES,
 };
 pub use kinds::KIND_PICTURE_EVENT;
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

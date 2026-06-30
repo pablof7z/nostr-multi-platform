@@ -7,4 +7,5 @@ repository.workspace = true
 description = "Dependency-light NIP-89 client-identity vocabulary: ClientIdentity → relay User-Agent string + optional NIP-89 `client` tag (31990:<pubkey>:<d> handler). Pure renderers, no kernel seam."
 
 [dependencies]
+nmp-ownership = { workspace = true }
 nostr = { workspace = true }

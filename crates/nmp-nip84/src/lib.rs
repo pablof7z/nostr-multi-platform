@@ -16,3 +16,6 @@ pub use action::{
     Nip84Descriptor, PublishHighlightAction, PublishHighlightCommand, PublishHighlightModule,
     KIND_HIGHLIGHT,
 };
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

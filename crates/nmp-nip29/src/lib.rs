@@ -3,7 +3,7 @@
 //! Implements the design in `docs/design/nip29-crate.md` + the three sub-docs:
 //! - `docs/design/nip29/routing.md` (host-relay-pin contract; lattice Rule 9)
 //! - `docs/design/nip29/kinds.md` (event-kind catalog; 39000–39003 metadata,
-//!   9000–9022 moderation, h-tagged user-sent group events)
+//!   9000–9022 moderation, and group envelopes for h-tagged user events)
 //! - `docs/design/nip29/moderation.md` (TOFU + NIP-11-strict trust model,
 //!   `previous`-tag chain, audit-only mutation policy)
 //!
@@ -18,7 +18,7 @@
 //! ## Module layout
 //!
 //! - [`group_id`] — `GroupId { host_relay_url, local_id }` + URI codec.
-//! - [`kinds`] — NIP-29 kind constants and the `["h", ...]` dispatch helper.
+//! - [`kinds`] — NIP-29-owned kind constants and the `["h", ...]` envelope helper.
 //! - [`action`] — the group `ActionModule` impls. The sole group-event publish
 //!   surface is the generic `PublishGroupEvent` (publish any event to a group);
 //!   NIP-29 owns the `h`-tag envelope, never the event kind. Plus the
@@ -56,9 +56,9 @@ pub use input_scope::{
 };
 pub use kinds::{event_is_group_event, group_id_from_tags, KindClass};
 pub use projection::{
-    DiscoveredGroup, DiscoveredGroupsProjection, DiscoveredGroupsSnapshot, GroupEvent,
-    GroupEventsProjection, GroupEventsSnapshot, GroupDefaultsProjection, GroupDefaultsSnapshot,
-    GroupRole, GroupRosterMember, GroupRosterProjection, GroupRosterSnapshot, JoinedGroup,
+    DiscoveredGroup, DiscoveredGroupsProjection, DiscoveredGroupsSnapshot, GroupDefaultsProjection,
+    GroupDefaultsSnapshot, GroupEvent, GroupEventsProjection, GroupEventsSnapshot, GroupRole,
+    GroupRosterMember, GroupRosterProjection, GroupRosterSnapshot, JoinedGroup,
     JoinedGroupsProjection, JoinedGroupsSnapshot, DEFAULT_PUBLIC_GROUP_RELAY_URL,
 };
 pub use register::register_actions;
@@ -68,13 +68,13 @@ pub use wire::discovered_groups_fb::{
     DISCOVERED_GROUPS_FILE_IDENTIFIER, DISCOVERED_GROUPS_SCHEMA_ID,
     DISCOVERED_GROUPS_SCHEMA_VERSION,
 };
-pub use wire::group_events_fb::{
-    decode_group_events_snapshot, encode_group_events_snapshot, GROUP_EVENTS_FILE_IDENTIFIER,
-    GROUP_EVENTS_SCHEMA_ID, GROUP_EVENTS_SCHEMA_VERSION,
-};
 pub use wire::group_defaults_fb::{
     decode_group_defaults_snapshot, encode_group_defaults_snapshot, GROUP_DEFAULTS_FILE_IDENTIFIER,
     GROUP_DEFAULTS_SCHEMA_ID, GROUP_DEFAULTS_SCHEMA_VERSION,
+};
+pub use wire::group_events_fb::{
+    decode_group_events_snapshot, encode_group_events_snapshot, GROUP_EVENTS_FILE_IDENTIFIER,
+    GROUP_EVENTS_SCHEMA_ID, GROUP_EVENTS_SCHEMA_VERSION,
 };
 pub use wire::group_roster_fb::{
     decode_group_roster_snapshot, encode_group_roster_snapshot, GROUP_ROSTER_FILE_IDENTIFIER,
@@ -87,3 +87,6 @@ pub use wire::joined_groups_fb::{
 
 #[cfg(test)]
 mod tests;
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

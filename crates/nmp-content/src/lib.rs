@@ -72,3 +72,6 @@ pub use tokenizer::{tokenize, tokenize_with_kind};
 pub use wire::{
     ContentTreeWire, PlaceholderReason, WireNode, WireNostrUri, WireNostrUriKind, WIRE_MAX_DEPTH,
 };
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

@@ -185,7 +185,7 @@ mod tests {
 
     fn metadata_tags(cmds: &[ActorCommand]) -> &[Vec<String>] {
         match &cmds[1] {
-            ActorCommand::Publish(PublishCommand::UnsignedEventToRelays { event, .. }) => {
+            ActorCommand::Publish(PublishCommand::OwnedUnsignedEventToRelays { event, .. }) => {
                 &event.tags
             }
             other => panic!("expected kind:9002 publish, got {other:?}"),
@@ -208,7 +208,7 @@ mod tests {
         );
 
         match &cmds[0] {
-            ActorCommand::Publish(PublishCommand::UnsignedEventToRelays {
+            ActorCommand::Publish(PublishCommand::OwnedUnsignedEventToRelays {
                 event,
                 relays,
                 correlation_id,
@@ -229,7 +229,7 @@ mod tests {
         }
 
         match &cmds[1] {
-            ActorCommand::Publish(PublishCommand::UnsignedEventToRelays {
+            ActorCommand::Publish(PublishCommand::OwnedUnsignedEventToRelays {
                 event,
                 relays,
                 correlation_id,

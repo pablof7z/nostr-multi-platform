@@ -5,6 +5,7 @@
 //! this child owns only the manifest data. Re-exported through the parent so
 //! `projection_contract::PROJECTION_CONTRACT` resolves unchanged.
 
+use super::marmot::{MARMOT_MESSAGES, MARMOT_SNAPSHOT};
 use super::{DeclarationPolicy, PresencePolicy, ProjectionContract, ProjectionTier};
 
 // ── Source-version counter names ───────────────────────────────────────────────
@@ -42,6 +43,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         key: "profile",
         tier: ProjectionTier::KernelBuiltin,
         producer: "nmp-core kernel/typed_projections/profile_fb",
+        owner_claim: "projection.profile",
         schema_id: "profile",
         file_identifier: "KPRF",
         version: 2,
@@ -53,6 +55,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         key: "accounts",
         tier: ProjectionTier::KernelBuiltin,
         producer: "nmp-core kernel/typed_projections/accounts_fb",
+        owner_claim: "projection.accounts",
         schema_id: "accounts",
         file_identifier: "KACC",
         version: 1,
@@ -64,6 +67,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         key: "active_account",
         tier: ProjectionTier::KernelBuiltin,
         producer: "nmp-core kernel/typed_projections/active_account_fb",
+        owner_claim: "projection.active_account",
         schema_id: "active_account",
         file_identifier: "KACT",
         version: 1,
@@ -75,6 +79,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         key: "configured_relays",
         tier: ProjectionTier::KernelBuiltin,
         producer: "nmp-core kernel/typed_projections/configured_relays_fb",
+        owner_claim: "projection.configured_relays",
         schema_id: "configured_relays",
         file_identifier: "KCRL",
         version: 1,
@@ -86,6 +91,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         key: "relay_role_options",
         tier: ProjectionTier::KernelBuiltin,
         producer: "nmp-core kernel/typed_projections/relay_role_options_fb",
+        owner_claim: "projection.relay_role_options",
         schema_id: "relay_role_options",
         file_identifier: "KRRO",
         version: 2,
@@ -97,6 +103,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         key: "settings_hub",
         tier: ProjectionTier::KernelBuiltin,
         producer: "nmp-core kernel/typed_projections/settings_hub_fb",
+        owner_claim: "projection.settings_hub",
         schema_id: "settings_hub",
         file_identifier: "KSHB",
         version: 1,
@@ -108,6 +115,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         key: "publish_queue",
         tier: ProjectionTier::KernelBuiltin,
         producer: "nmp-core kernel/typed_projections/publish_queue_fb",
+        owner_claim: "projection.publish_queue",
         schema_id: "publish_queue",
         file_identifier: "KPBQ",
         version: 1,
@@ -119,6 +127,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         key: "publish_outbox",
         tier: ProjectionTier::KernelBuiltin,
         producer: "nmp-core kernel/typed_projections/publish_outbox_fb",
+        owner_claim: "projection.publish_outbox",
         schema_id: "publish_outbox",
         file_identifier: "KPBO",
         version: 1,
@@ -130,6 +139,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         key: "outbox_summary",
         tier: ProjectionTier::KernelBuiltin,
         producer: "nmp-core kernel/typed_projections/outbox_summary_fb",
+        owner_claim: "projection.outbox_summary",
         schema_id: "outbox_summary",
         file_identifier: "KOXS",
         version: 1,
@@ -141,6 +151,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         key: "action_results",
         tier: ProjectionTier::KernelBuiltin,
         producer: "nmp-core kernel/typed_projections/action_results_fb",
+        owner_claim: "projection.action_results",
         schema_id: "action_results",
         file_identifier: "KARS",
         version: 1,
@@ -154,6 +165,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         // The D13 sign-and-return drain. Kernel-emitted but consumed out-of-band
         // (no SnapshotProjections field / shell decoder).
         producer: "nmp-core kernel/typed_projections/signed_events_fb",
+        owner_claim: "projection.signed_events",
         schema_id: "signed_events",
         file_identifier: "KSEV",
         version: 1,
@@ -165,6 +177,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         key: "action_stages",
         tier: ProjectionTier::KernelBuiltin,
         producer: "nmp-core kernel/typed_projections/action_stages_fb",
+        owner_claim: "projection.action_stages",
         schema_id: "action_stages",
         file_identifier: "KAST",
         version: 1,
@@ -176,6 +189,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         key: "action_lifecycle",
         tier: ProjectionTier::KernelBuiltin,
         producer: "nmp-core kernel/typed_projections/action_lifecycle_fb",
+        owner_claim: "projection.action_lifecycle",
         schema_id: "action_lifecycle",
         file_identifier: "KALC",
         version: 1,
@@ -187,6 +201,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         key: "relay_diagnostics",
         tier: ProjectionTier::KernelBuiltin,
         producer: "nmp-core kernel/typed_projections/relay_diagnostics_fb",
+        owner_claim: "projection.relay_diagnostics",
         schema_id: "relay_diagnostics",
         file_identifier: "KRDG",
         version: 1,
@@ -205,6 +220,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         key: "refs.profile",
         tier: ProjectionTier::KernelBuiltin,
         producer: "nmp-core kernel/typed_projections/builtins_refs (NRRD carrier)",
+        owner_claim: "projection.refs.profile",
         schema_id: "refs.profile",
         file_identifier: "NRRD",
         version: 1,
@@ -216,6 +232,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         key: "refs.event",
         tier: ProjectionTier::KernelBuiltin,
         producer: "nmp-core kernel/typed_projections/builtins_refs (NRRD carrier)",
+        owner_claim: "projection.refs.event",
         schema_id: "refs.event",
         file_identifier: "NRRD",
         version: 1,
@@ -230,6 +247,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         key: "wallet",
         tier: ProjectionTier::HostRegistered,
         producer: "apps/chirp wallet_runtime (NIP-47)",
+        owner_claim: "projection.wallet",
         schema_id: "nmp.nip47.wallet",
         file_identifier: "NWST",
         // nmp-nip47 wire/typed_fb::SCHEMA_VERSION
@@ -242,6 +260,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         key: "bunker_handshake",
         tier: ProjectionTier::HostRegistered,
         producer: "nmp-core actor/typed_projections/bunker_handshake_fb (NIP-46)",
+        owner_claim: "projection.bunker_handshake",
         schema_id: "bunker_handshake",
         file_identifier: "KBHS",
         version: 1,
@@ -253,6 +272,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         key: "nip46_onboarding",
         tier: ProjectionTier::HostRegistered,
         producer: "nmp-core actor/typed_projections/nip46_onboarding_fb (NIP-46)",
+        owner_claim: "projection.nip46_onboarding",
         schema_id: "nip46_onboarding",
         file_identifier: "KN46",
         version: 1,
@@ -264,6 +284,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         key: "signer_state",
         tier: ProjectionTier::HostRegistered,
         producer: "nmp-core actor/typed_projections/signer_state_fb (ADR-0048)",
+        owner_claim: "projection.signer_state",
         schema_id: "signer_state",
         file_identifier: "KSST",
         version: 1,
@@ -275,6 +296,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         key: "nmp.feed.home",
         tier: ProjectionTier::HostRegistered,
         producer: "nmp-nip01 op-feed pilot",
+        owner_claim: "projection.nmp.feed.home",
         // The op-feed pilot — the only case where the producer key differs from
         // schema_id.
         schema_id: "nmp.nip01.opfeed",
@@ -289,6 +311,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         key: "nmp.follow_list",
         tier: ProjectionTier::HostRegistered,
         producer: "apps/chirp ffi/register follow_list (NIP-02)",
+        owner_claim: "projection.nmp.follow_list",
         // Deliberate key/schema_id split: envelope key vs payload schema id.
         schema_id: "nmp.nip02.follow_list",
         file_identifier: "NF02",
@@ -302,6 +325,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         key: "nmp.nip29.group_events",
         tier: ProjectionTier::HostRegistered,
         producer: "NIP-29 group-events typed read session (#2187)",
+        owner_claim: "projection.nmp.nip29.group_events",
         schema_id: "nmp.nip29.group_events",
         file_identifier: "NGEV",
         // nmp-nip29 wire/group_events_fb::GROUP_EVENTS_SCHEMA_VERSION
@@ -318,6 +342,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         key: "nmp.nip25.reactions",
         tier: ProjectionTier::HostRegistered,
         producer: "NIP-25 reaction-aggregate typed read session",
+        owner_claim: "projection.nmp.nip25.reactions",
         schema_id: "nmp.nip25.reactions",
         file_identifier: "N25A",
         // nmp-nip25 wire/reaction_aggregate_fb::REACTION_AGGREGATE_SCHEMA_VERSION
@@ -332,6 +357,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         key: "nmp.nip29.discovered_groups",
         tier: ProjectionTier::HostRegistered,
         producer: "NIP-29 group-discovery typed read session (#2088)",
+        owner_claim: "projection.nmp.nip29.discovered_groups",
         schema_id: "nmp.nip29.discovered_groups",
         file_identifier: "NDGS",
         // nmp-nip29 wire/discovered_groups_fb::DISCOVERED_GROUPS_SCHEMA_VERSION
@@ -344,6 +370,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         key: "nmp.nip29.group_defaults",
         tier: ProjectionTier::HostRegistered,
         producer: "nmp-nip29 register::wire_group_defaults",
+        owner_claim: "projection.nmp.nip29.group_defaults",
         schema_id: "nmp.nip29.group_defaults",
         file_identifier: "NGDF",
         // nmp-nip29 wire/group_defaults_fb::GROUP_DEFAULTS_SCHEMA_VERSION
@@ -360,6 +387,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         key: "nmp.nip29.joined_groups",
         tier: ProjectionTier::HostRegistered,
         producer: "NIP-29 joined-groups native-runtime read session (#2088)",
+        owner_claim: "projection.nmp.nip29.joined_groups",
         schema_id: "nmp.nip29.joined_groups",
         file_identifier: "NJGS",
         // nmp-nip29 wire/joined_groups_fb::JOINED_GROUPS_SCHEMA_VERSION
@@ -376,6 +404,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         key: "nmp.nip29.group_roster",
         tier: ProjectionTier::HostRegistered,
         producer: "NIP-29 group-roster native-runtime read session",
+        owner_claim: "projection.nmp.nip29.group_roster",
         schema_id: "nmp.nip29.group_roster",
         file_identifier: "NGRS",
         // nmp-nip29 wire/group_roster_fb::GROUP_ROSTER_SCHEMA_VERSION
@@ -388,6 +417,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         key: "nmp.nip17.dm_inbox",
         tier: ProjectionTier::HostRegistered,
         producer: "nmp-nip17 register",
+        owner_claim: "projection.nmp.nip17.dm_inbox",
         schema_id: "nmp.nip17.dm_inbox",
         file_identifier: "NDMI",
         // nmp-nip17 wire/dm_inbox_fb::DM_INBOX_SCHEMA_VERSION
@@ -400,6 +430,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         key: "nmp.nip17.dm_relay_list",
         tier: ProjectionTier::HostRegistered,
         producer: "nmp-nip17 register",
+        owner_claim: "projection.nmp.nip17.dm_relay_list",
         schema_id: "nmp.nip17.dm_relay_list",
         file_identifier: "NDRL",
         // nmp-nip17 wire/dm_relay_list_fb::DM_RELAY_LIST_SCHEMA_VERSION
@@ -415,6 +446,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         key: "nmp.nip51.mute_list",
         tier: ProjectionTier::HostRegistered,
         producer: "nmp-defaults runtimes/mute_runtime (NIP-51)",
+        owner_claim: "projection.nmp.nip51.mute_list",
         schema_id: "nmp.nip51.mute_list",
         file_identifier: "NMUT",
         // nmp-nip51 wire/mute_list_fb::MUTE_LIST_SCHEMA_VERSION
@@ -427,6 +459,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         key: "nmp.nip51.bookmarks",
         tier: ProjectionTier::HostRegistered,
         producer: "nmp-defaults runtimes/bookmarks_runtime (NIP-51)",
+        owner_claim: "projection.nmp.nip51.bookmarks",
         schema_id: "nmp.nip51.bookmarks",
         file_identifier: "N51L",
         // nmp-nip51 wire/bookmark_list_fb::BOOKMARK_LIST_SCHEMA_VERSION
@@ -439,6 +472,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         key: "refs.event.envelopes",
         tier: ProjectionTier::HostRegistered,
         producer: "nmp-ffi embed_sidecar",
+        owner_claim: "projection.refs.event.envelopes",
         schema_id: "refs.event.envelopes",
         file_identifier: "NEMB",
         // nmp-content wire/embed_sidecar_fb::SCHEMA_VERSION
@@ -447,28 +481,6 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         dependency_versions: &[],
         presence_policy: PresencePolicy::None,
     },
-    ProjectionContract {
-        key: "nmp.marmot.snapshot",
-        tier: ProjectionTier::HostRegistered,
-        producer: "nmp-marmot ffi (ADR-0039)",
-        schema_id: "nmp.marmot.snapshot",
-        file_identifier: "NMMS",
-        // nmp-marmot wire/snapshot_fb::SCHEMA_VERSION
-        version: 5,
-        declaration_policy: DeclarationPolicy::RegistrationGated,
-        dependency_versions: &[],
-        presence_policy: PresencePolicy::None,
-    },
-    ProjectionContract {
-        key: "nmp.marmot.messages",
-        tier: ProjectionTier::HostRegistered,
-        producer: "nmp-marmot ffi (ADR-0039)",
-        schema_id: "nmp.marmot.messages",
-        file_identifier: "NMMG",
-        // nmp-marmot wire/messages_fb::SCHEMA_VERSION
-        version: 1,
-        declaration_policy: DeclarationPolicy::RegistrationGated,
-        dependency_versions: &[],
-        presence_policy: PresencePolicy::None,
-    },
+    MARMOT_SNAPSHOT,
+    MARMOT_MESSAGES,
 ];

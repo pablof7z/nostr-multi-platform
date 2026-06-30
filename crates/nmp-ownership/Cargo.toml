@@ -1,0 +1,12 @@
+[package]
+name = "nmp-ownership"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Positive ownership descriptors for NMP crates: artifact, envelope, mechanism, and namespace claims."
+
+[lib]
+name = "nmp_ownership"
+
+[dependencies]

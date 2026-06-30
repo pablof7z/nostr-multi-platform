@@ -1,8 +1,10 @@
-//! `nmp-relations` — legacy cross-protocol note-relation classifier for NMP.
+//! `nmp-relations` — legacy compatibility note-relation classifier for NMP.
 //!
-//! The base note crate (`nmp-nip01`) owns note/profile/reply primitives and the
-//! relation-count vocabulary, but it must not own *cross-protocol* product
-//! aggregation (#1728). This crate is the temporary home for that classifier:
+//! This crate keeps the old injected classifier compiling, but it is not the
+//! canonical owner of engagement semantics. Reply, reaction, repost, zap,
+//! bookmark, and mute concepts belong to the crates/modules that know those
+//! protocol shapes; apps should ask those concept owners for the active reads
+//! they need instead of routing through a global relation summary.
 //!
 //! - [`DefaultNoteRelationClassifier`] — the concrete
 //!   [`nmp_nip01::NoteRelationClassifier`] that tallies reactions (NIP-25),
@@ -17,3 +19,13 @@
 mod classifier;
 
 pub use classifier::{default_note_relation_classifier, DefaultNoteRelationClassifier};
+
+nmp_ownership::declare_crate_ownership! {
+    owner_id: "nmp.relations",
+    crate_name: "nmp-relations",
+    summary: "Legacy compatibility adapter for the old injected note-relation classifier. It declares no protected semantics.",
+    claims: [
+    ],
+    notes: [
+    ],
+}

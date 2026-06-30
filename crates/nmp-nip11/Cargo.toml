@@ -7,6 +7,7 @@ repository.workspace = true
 description = "NIP-11 relay information documents as an NMP protocol crate — automatic fetch on relay connect + on-demand probe, surfaced through the relay diagnostics projection. nmp-core learns no NIP-11 noun and imports no HTTP crate (D0)."
 
 [dependencies]
+nmp-ownership = { workspace = true }
 # Substrate seams: RelayConnectedHook slot, ActorCommand::SetRelayInfo,
 # the RelayInfoDoc carried-through type.
 nmp-core = { path = "../nmp-core" }

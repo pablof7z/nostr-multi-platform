@@ -14,8 +14,8 @@ mod repost_projection;
 mod wire;
 
 pub use action::{
-    register_actions, Nip18Descriptor, QuoteRepostAction, QuoteRepostModule, RepostAction,
-    RepostModule,
+    build_repost_event, register_actions, Nip18Descriptor, QuoteRepostAction, QuoteRepostModule,
+    RepostAction, RepostModule,
 };
 pub use coordinate::{is_addressable_kind, AddressCoordinate};
 pub use delete::{DeleteRecord, KIND_DELETE};
@@ -414,3 +414,6 @@ mod tests {
         assert!(record.embedded_event.is_none());
     }
 }
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

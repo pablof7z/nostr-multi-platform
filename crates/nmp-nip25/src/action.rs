@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 pub const KIND_REACTION: u32 = 7;
 pub const KIND_REACTION_DELETE: u32 = 5;
 
+type ReactionDraft = nmp_ownership::OwnedEventDraft<UnsignedEvent>;
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ReactAction {
     pub target_event_id: String,
@@ -111,22 +113,14 @@ impl ProtocolCommand for PublishReactionCommand {
         self: Box<Self>,
         ctx: &mut ProtocolCommandContext<'_>,
     ) -> Result<(), ProtocolCommandError> {
-        let Some((tags, content)) = reaction_tags(&self.action) else {
-            return Err(ProtocolCommandError::new(
-                "react: malformed target event id",
-            ));
-        };
-        ctx.send(ActorCommand::Publish(PublishCommand::UnsignedEvent {
-            event: UnsignedEvent {
-                pubkey: String::new(),
-                kind: KIND_REACTION,
-                tags,
-                content,
-                created_at: 0,
-            },
-            correlation_id: Some(self.correlation_id),
-            signer_pubkey: None,
-        }));
+        let event = build_reaction_event(&self.action)
+            .map_err(|err| ProtocolCommandError::new(format!("react: {err}")))?;
+        let draft = ReactionDraft::new(event, crate::ownership::REACTION_EVENT_PROVENANCE);
+        ctx.send(ActorCommand::Publish(PublishCommand::owned_draft(
+            draft,
+            Some(self.correlation_id),
+            None,
+        )));
         Ok(())
     }
 }
@@ -136,17 +130,12 @@ impl ProtocolCommand for UnreactReactionCommand {
         self: Box<Self>,
         ctx: &mut ProtocolCommandContext<'_>,
     ) -> Result<(), ProtocolCommandError> {
-        ctx.send(ActorCommand::Publish(PublishCommand::UnsignedEvent {
-            event: UnsignedEvent {
-                pubkey: String::new(),
-                kind: KIND_REACTION_DELETE,
-                tags: vec![vec!["e".to_string(), self.action.reaction_event_id]],
-                content: self.action.reason,
-                created_at: 0,
-            },
-            correlation_id: Some(self.correlation_id),
-            signer_pubkey: None,
-        }));
+        let draft = reaction_delete_draft(self.action.reaction_event_id, self.action.reason);
+        ctx.send(ActorCommand::Publish(PublishCommand::owned_draft(
+            draft,
+            Some(self.correlation_id),
+            None,
+        )));
         Ok(())
     }
 }
@@ -188,6 +177,40 @@ fn validate_react(action: &ReactAction) -> Result<(), ActionRejection> {
     Ok(())
 }
 
+/// Build the bare NIP-25 reaction (`kind:7`) event from its inputs — no
+/// routing, no transport envelope. The returned [`UnsignedEvent`] carries the
+/// `e`/`p` reaction tags and content; `pubkey` / `created_at` / `sig` are
+/// filled at sign time.
+///
+/// This is the **composition seam** for routing a reaction *into* another
+/// transport. To react to an event inside a NIP-29 group, build the reaction
+/// here, then hand its `(kind, content, tags)` to NIP-29's generic
+/// `nmp.nip29.publish_group_event` surface (`PublishGroupEventInput`), which
+/// injects only the `h` / `previous` envelope. NIP-25 owns the `kind:7`
+/// construction; the transport owns only its envelope — NIP-29 never names,
+/// classifies, or owns `kind:7` (the #2504/#2505 kind-blind correction, #2513).
+///
+/// # Errors
+///
+/// Returns the validation message when `target_event_id` is not 64-hex or
+/// `target_author_pubkey` is supplied but malformed.
+pub fn build_reaction_event(action: &ReactAction) -> Result<UnsignedEvent, String> {
+    match validate_react(action) {
+        Ok(()) => {}
+        Err(ActionRejection::Invalid(msg)) => return Err(msg),
+        Err(other) => return Err(format!("{other:?}")),
+    }
+    let (tags, content) = reaction_tags(action)
+        .ok_or_else(|| "react requires a 64-hex target_event_id".to_string())?;
+    Ok(UnsignedEvent {
+        pubkey: String::new(),
+        kind: KIND_REACTION,
+        tags,
+        content,
+        created_at: 0,
+    })
+}
+
 fn reaction_tags(action: &ReactAction) -> Option<(Vec<Vec<String>>, String)> {
     if !is_hex64(&action.target_event_id) {
         return None;
@@ -202,6 +225,19 @@ fn reaction_tags(action: &ReactAction) -> Option<(Vec<Vec<String>>, String)> {
         tags.push(vec!["p".to_string(), author.clone()]);
     }
     Some((tags, content))
+}
+
+fn reaction_delete_draft(reaction_event_id: String, reason: String) -> ReactionDraft {
+    ReactionDraft::new(
+        UnsignedEvent {
+            pubkey: String::new(),
+            kind: KIND_REACTION_DELETE,
+            tags: vec![vec!["e".to_string(), reaction_event_id]],
+            content: reason,
+            created_at: 0,
+        },
+        crate::ownership::REACTION_DELETE_EVENT_PROVENANCE,
+    )
 }
 
 fn resolve_target_author_pubkey(ctx: &ActionContext, action: &ReactAction) -> Option<String> {

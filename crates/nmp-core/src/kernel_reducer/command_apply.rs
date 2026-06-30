@@ -235,38 +235,28 @@ impl super::KernelReducer {
                 event,
                 correlation_id: cid,
                 signer_pubkey: _,
-            }) => {
-                let Some(account_pubkey) = self.active_account_pubkey() else {
-                    return Unsupported {
-                        reason: "no active account for UnsignedEvent sign round-trip".to_string(),
-                    };
-                };
-                let created_at = if event.created_at == 0 {
-                    self.now_secs()
-                } else {
-                    event.created_at
-                };
-                let unsigned_json = serde_json::json!({
-                    "pubkey": account_pubkey,
-                    "kind": event.kind,
-                    "tags": event.tags,
-                    "content": event.content,
-                    "created_at": created_at,
-                })
-                .to_string();
-                match self.begin_sign_roundtrip_at(
-                    account_pubkey,
-                    &unsigned_json,
-                    crate::time::Instant::now(),
-                ) {
-                    Ok(request) => NeedsSign {
-                        request,
-                        target: PublishTarget::Auto,
-                        action_correlation_id: cid,
-                    },
-                    Err(reason) => Unsupported { reason },
-                }
-            }
+            }) => self.begin_unsigned_publish_roundtrip(
+                event,
+                None,
+                PublishTarget::Auto,
+                cid,
+                false,
+                "UnsignedEvent",
+            ),
+
+            ActorCommand::Publish(PublishCommand::OwnedUnsignedEvent {
+                event,
+                ownership,
+                correlation_id: cid,
+                signer_pubkey: _,
+            }) => self.begin_unsigned_publish_roundtrip(
+                event,
+                Some(ownership),
+                PublishTarget::Auto,
+                cid,
+                false,
+                "UnsignedEvent",
+            ),
 
             // RawEvent: build unsigned JSON from the raw fields, begin sign.
             ActorCommand::Publish(PublishCommand::RawEvent {
@@ -277,32 +267,27 @@ impl super::KernelReducer {
                 signer_pubkey: _,
                 correlation_id: cid,
             }) => {
-                let Some(account_pubkey) = self.active_account_pubkey() else {
-                    return Unsupported {
-                        reason: "no active account for RawEvent sign round-trip".to_string(),
-                    };
-                };
-                let created_at = self.now_secs();
-                let unsigned_json = serde_json::json!({
-                    "pubkey": account_pubkey,
-                    "kind": kind,
-                    "tags": tags,
-                    "content": content,
-                    "created_at": created_at,
-                })
-                .to_string();
-                match self.begin_sign_roundtrip_at(
-                    account_pubkey,
-                    &unsigned_json,
-                    crate::time::Instant::now(),
-                ) {
-                    Ok(request) => NeedsSign {
-                        request,
-                        target,
-                        action_correlation_id: cid,
+                let is_group_host_pin = matches!(
+                    &target,
+                    PublishTarget::Explicit {
+                        route_class: crate::publish::PublishRouteClass::GroupHostPin,
+                        ..
+                    }
+                );
+                self.begin_unsigned_publish_roundtrip(
+                    UnsignedEvent {
+                        pubkey: String::new(),
+                        kind,
+                        tags,
+                        content,
+                        created_at: 0,
                     },
-                    Err(reason) => Unsupported { reason },
-                }
+                    None,
+                    target,
+                    cid,
+                    is_group_host_pin,
+                    "RawEvent",
+                )
             }
 
             // Reply: derive NIP-10 tags from the stored parent, then build the
@@ -486,4 +471,5 @@ impl super::KernelReducer {
             Err(reason) => Unsupported { reason },
         }
     }
+
 }

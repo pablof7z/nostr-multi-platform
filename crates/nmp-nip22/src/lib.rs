@@ -30,3 +30,6 @@ pub use projection::{
     build_thread, CommentThreadNode, CommentThreadProjection, CommentThreadSnapshot,
 };
 pub use runtime::register_comment_runtime;
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

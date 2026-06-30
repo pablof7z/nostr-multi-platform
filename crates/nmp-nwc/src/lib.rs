@@ -28,3 +28,6 @@ pub use types::{
     GetBalanceResult, GetInfoResult, NwcError, NwcMethod, NwcResponse, PayInvoiceParams,
     PayInvoiceResult,
 };
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

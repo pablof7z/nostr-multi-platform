@@ -184,3 +184,6 @@ pub mod __nmp_core_internal {
         VerifiedEvent::from_store_verified_unchecked(raw)
     }
 }
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

@@ -10,19 +10,20 @@ use crate::actor::commands::identity::{
     sign_active_nonblocking, sign_with_account_nonblocking, IdentityRuntime,
 };
 use crate::actor::commands::publish_failures::{
-    fail_invalid_target, fail_publish, toast_no_account,
+    fail_invalid_target, fail_ownership, fail_publish, toast_no_account,
 };
 use crate::actor::commands::publish_finalize::finalize_before_sign;
 use crate::actor::pending_sign::{ParkedOp, ParkedSignerOps};
 use crate::kernel::Kernel;
-use crate::publish::{validate_explicit_relays, PublishTarget};
+use crate::publish::{validate_explicit_relays, PublishRouteClass, PublishTarget};
 use crate::relay::OutboundMessage;
+use nmp_ownership::EventOwnershipProvenance;
 use nmp_signer_iface::UnsignedEvent;
 
 /// Generic, kind-agnostic publish path.
 ///
 /// Takes an `UnsignedEvent` already built by any protocol-crate builder
-/// (`nmp_nip23::Article`, `nmp_nip01::Note`, `nmp_relations::Reaction`, …),
+/// (`nmp_nip23::Article`, `nmp_nip01::Note`, `nmp_nip25::ReactAction`, …),
 /// signs it with the active account's keys, and routes the signed event
 /// through the existing NIP-65 outbox resolver (D3 automatic routing).
 ///
@@ -40,10 +41,16 @@ pub(crate) fn publish_unsigned_event(
     identity: &IdentityRuntime,
     kernel: &mut Kernel,
     mut unsigned: UnsignedEvent,
+    ownership: Option<EventOwnershipProvenance>,
     correlation_id: Option<String>,
     signer_pubkey: Option<String>,
     parked_ops: &mut ParkedSignerOps,
 ) -> Vec<OutboundMessage> {
+    if let Err(err) =
+        nmp_ownership::validate_publish_ownership(unsigned.kind, &unsigned.tags, ownership, false)
+    {
+        return fail_ownership(kernel, err.to_string(), correlation_id);
+    }
     // `signer_pubkey: Some(_)` publishes under a SPECIFIC (possibly non-active)
     // account — the active-account guard is skipped (a non-active signer
     // publish must succeed even with no active account). `None` keeps the
@@ -140,12 +147,22 @@ pub(crate) fn publish_unsigned_event_to_relays(
     identity: &IdentityRuntime,
     kernel: &mut Kernel,
     mut unsigned: UnsignedEvent,
+    ownership: Option<EventOwnershipProvenance>,
     relays: Vec<crate::publish::RelayUrl>,
     route_class: crate::publish::PublishRouteClass,
     correlation_id: Option<String>,
     signer_pubkey: Option<String>,
     parked_ops: &mut ParkedSignerOps,
 ) -> Vec<OutboundMessage> {
+    let is_group_host_pin = route_class == PublishRouteClass::GroupHostPin;
+    if let Err(err) = nmp_ownership::validate_publish_ownership(
+        unsigned.kind,
+        &unsigned.tags,
+        ownership,
+        is_group_host_pin,
+    ) {
+        return fail_ownership(kernel, err.to_string(), correlation_id);
+    }
     // `signer_pubkey: Some(_)` publishes under a SPECIFIC (possibly non-active)
     // account — skip the active-account guard. `None` keeps the legacy
     // active-account requirement.

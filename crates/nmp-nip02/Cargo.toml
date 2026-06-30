@@ -10,6 +10,7 @@ description = "NIP-02 follow-list actions and projections for NMP apps."
 crate-type = ["rlib"]
 
 [dependencies]
+nmp-ownership = { workspace = true }
 # `nmp-core` supplies the `ActionModule` / `ActionRegistrar` traits, the
 # `ActorCommand` variants (`Follow`, `Unfollow`, `OpenInterest`,
 # `CloseInterest` — kept generic in core per D0/D7), the substrate seams

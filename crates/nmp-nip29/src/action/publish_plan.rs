@@ -16,6 +16,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::group_id::{GroupId, RelayUrl};
 use nmp_core::actor::PublishCommand;
+use nmp_ownership::OwnedEventDraft;
+use nmp_signer_iface::UnsignedEvent;
 
 /// Routing pin: a single relay URL the publish must target exclusively.
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
@@ -47,6 +49,8 @@ pub struct PublishPlan {
     /// Host-relay-pin per routing.md §5. Always `Some(_)` for NIP-29 actions.
     pub pin_to: Option<RelayPin>,
 }
+
+type GroupEventDraft = OwnedEventDraft<UnsignedEvent>;
 
 impl PublishPlan {
     #[must_use]
@@ -118,28 +122,138 @@ impl PublishPlan {
         correlation_id: Option<String>,
     ) -> Result<nmp_core::actor::ActorCommand, String> {
         use nmp_core::actor::ActorCommand;
-        use nmp_signer_iface::UnsignedEvent;
         let relay = self
             .pin_to
+            .as_ref()
             .ok_or_else(|| "publish plan has no relay pin".to_string())?
-            .relay_url;
-        Ok(ActorCommand::Publish(
-            PublishCommand::UnsignedEventToRelays {
-                event: UnsignedEvent {
-                    pubkey: String::new(),
-                    kind: self.kind,
-                    tags: self.tags,
-                    content: self.content,
-                    created_at: 0, // kernel re-stamps via now_secs() (D7)
-                },
-                relays: vec![relay],
-                route_class: nmp_core::publish::PublishRouteClass::GroupHostPin,
+            .relay_url
+            .clone();
+        let relays = vec![relay];
+        let route_class = nmp_core::publish::PublishRouteClass::GroupHostPin;
+        let command = match self.into_owned_draft_or_unsigned_event() {
+            DraftOrUnsigned::Owned(draft) => PublishCommand::owned_draft_to_relays(
+                draft,
+                relays,
+                route_class,
                 correlation_id,
-                // NIP-29 group actions always sign with the active account.
+                None,
+            ),
+            DraftOrUnsigned::Unsigned(event) => PublishCommand::UnsignedEventToRelays {
+                event,
+                relays,
+                route_class,
+                correlation_id,
                 signer_pubkey: None,
             },
-        ))
+        };
+        Ok(ActorCommand::Publish(command))
     }
+
+    fn into_owned_draft_or_unsigned_event(self) -> DraftOrUnsigned {
+        let ownership = provenance_for_plan(self.kind, &self.tags);
+        let event = UnsignedEvent {
+            pubkey: String::new(),
+            kind: self.kind,
+            tags: self.tags,
+            content: self.content,
+            created_at: 0, // kernel re-stamps via now_secs() (D7)
+        };
+        match ownership {
+            Some(ownership) => DraftOrUnsigned::Owned(GroupEventDraft::new(event, ownership)),
+            None => DraftOrUnsigned::Unsigned(event),
+        }
+    }
+}
+
+enum DraftOrUnsigned {
+    Owned(GroupEventDraft),
+    Unsigned(UnsignedEvent),
+}
+
+/// Wrap an owner-certified artifact draft in the NIP-29 group envelope.
+///
+/// This helper is the typed seam for composition: the artifact owner keeps its
+/// artifact provenance, and NIP-29 adds only `h`/`previous` envelope provenance.
+///
+/// # Errors
+///
+/// Returns an error if the draft already carries envelope provenance, since
+/// this helper deliberately owns the group envelope step.
+pub fn wrap_owned_draft(
+    group: &GroupId,
+    draft: GroupEventDraft,
+    previous: impl IntoIterator<Item = String>,
+) -> Result<GroupEventDraft, String> {
+    let (mut event, ownership) = draft.into_parts();
+    if !ownership.envelopes.is_empty() {
+        return Err("draft is already enveloped".to_string());
+    }
+    reject_existing_group_envelope_tags(&event.tags)?;
+    let previous = previous.into_iter().collect::<Vec<_>>();
+    let mut tags = Vec::with_capacity(event.tags.len() + 1 + previous.len());
+    tags.push(vec!["h".to_string(), group.local_id.clone()]);
+    for prefix in previous {
+        tags.push(vec!["previous".to_string(), prefix]);
+    }
+    tags.extend(event.tags);
+    event.tags = tags;
+    let envelopes = if event
+        .tags
+        .iter()
+        .any(|tag| tag.first().is_some_and(|name| name == "previous"))
+    {
+        crate::ownership::GROUP_ENVELOPE_WITH_PREVIOUS
+    } else {
+        crate::ownership::GROUP_ENVELOPE_ONLY
+    };
+    Ok(GroupEventDraft::new(
+        event,
+        nmp_ownership::EventOwnershipProvenance::new(ownership.artifact, envelopes),
+    ))
+}
+
+fn reject_existing_group_envelope_tags(tags: &[Vec<String>]) -> Result<(), String> {
+    for tag in tags {
+        let Some(name) = tag.first() else {
+            return Err("empty tag row".to_string());
+        };
+        if name == "h" || name == "previous" {
+            return Err(format!(
+                "draft already contains NIP-29 envelope tag `{name}`"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn provenance_for_plan(
+    kind: u32,
+    tags: &[Vec<String>],
+) -> Option<nmp_ownership::EventOwnershipProvenance> {
+    let artifact = match kind {
+        39000..=39003 => Some(crate::ownership::GROUP_METADATA_ARTIFACT),
+        9000 | 9001 | 9002 | 9005 | 9007 | 9008 | 9009 | 9021 | 9022 => {
+            Some(crate::ownership::GROUP_MANAGEMENT_ARTIFACT)
+        }
+        _ => None,
+    };
+    let has_h = tags
+        .iter()
+        .any(|tag| tag.first().is_some_and(|name| name == "h"));
+    let has_previous = tags
+        .iter()
+        .any(|tag| tag.first().is_some_and(|name| name == "previous"));
+    let envelopes = match (has_h, has_previous) {
+        (true, true) => crate::ownership::GROUP_ENVELOPE_WITH_PREVIOUS,
+        (true, false) => crate::ownership::GROUP_ENVELOPE_ONLY,
+        (false, _) => &[],
+    };
+    if artifact.is_none() && envelopes.is_empty() {
+        return None;
+    }
+    Some(nmp_ownership::EventOwnershipProvenance::new(
+        artifact, envelopes,
+    ))
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -205,7 +319,7 @@ mod tests {
         use nmp_core::actor::ActorCommand;
         let p = PublishPlan::pinned(&g(), 9, "hi", vec![vec!["h".into(), "room".into()]]);
         match p.into_actor_command(None).expect("pinned plan converts") {
-            ActorCommand::Publish(PublishCommand::UnsignedEventToRelays {
+            ActorCommand::Publish(PublishCommand::OwnedUnsignedEventToRelays {
                 event,
                 relays,
                 correlation_id,
@@ -233,13 +347,54 @@ mod tests {
             .into_actor_command(Some("test-correlation-id".to_string()))
             .expect("pinned plan converts")
         {
-            ActorCommand::Publish(PublishCommand::UnsignedEventToRelays {
-                correlation_id, ..
+            ActorCommand::Publish(PublishCommand::OwnedUnsignedEventToRelays {
+                correlation_id,
+                ..
             }) => {
                 assert_eq!(correlation_id.as_deref(), Some("test-correlation-id"));
             }
             other => panic!("expected PublishUnsignedEventToRelays, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn wrap_owned_draft_preserves_artifact_and_adds_group_envelope() {
+        let draft = GroupEventDraft::new(
+            UnsignedEvent {
+                pubkey: String::new(),
+                kind: 7,
+                tags: vec![vec!["e".into(), "aa".repeat(32)]],
+                content: "+".into(),
+                created_at: 0,
+            },
+            nmp_ownership::EventOwnershipProvenance::new(
+                Some(nmp_ownership::ArtifactProvenance::new(
+                    "nmp.nip25",
+                    "nostr.kind.7.reaction",
+                )),
+                &[],
+            ),
+        );
+
+        let wrapped = wrap_owned_draft(&g(), draft, ["11111111".to_string()])
+            .expect("group envelope wraps owned artifact draft");
+        let (event, ownership) = wrapped.into_parts();
+
+        assert_eq!(event.kind, 7);
+        assert_eq!(event.tags[0], vec!["h".to_string(), "room".to_string()]);
+        assert_eq!(
+            event.tags[1],
+            vec!["previous".to_string(), "11111111".to_string()]
+        );
+        assert!(ownership.artifact.is_some_and(|artifact| {
+            artifact.owner_id == "nmp.nip25" && artifact.claim_id == "nostr.kind.7.reaction"
+        }));
+        assert!(ownership.envelopes.iter().any(|envelope| {
+            envelope.owner_id == "nmp.nip29" && envelope.claim_id == "nostr.nip29.group_envelope"
+        }));
+        assert!(ownership.envelopes.iter().any(|envelope| {
+            envelope.owner_id == "nmp.nip29" && envelope.claim_id == "nostr.nip29.previous_chain"
+        }));
     }
 
     #[test]

@@ -12,3 +12,5 @@ fn main() -> iced::Result {
         .title("NMP Desktop Component Gallery")
         .run()
 }
+
+mod ownership;

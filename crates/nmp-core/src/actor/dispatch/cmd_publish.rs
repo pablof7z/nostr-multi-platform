@@ -27,11 +27,7 @@ pub(super) fn publish_raw_event(
     // round-trip required. The FixedClock test hook plugs into
     // `kernel.now_secs()`, so end-to-end behaviour is preserved.
     //
-    // `pubkey` is intentionally left empty: both
-    // `publish_unsigned_event` and `publish_unsigned_event_to_relays`
-    // ignore the caller's `unsigned.pubkey` and write the active
-    // identity's pubkey onto the SignedEvent at sign time. Setting
-    // it here would be dead work.
+    // `pubkey` is intentionally left empty; the signer writes it at sign time.
     let unsigned = nmp_signer_iface::UnsignedEvent {
         pubkey: String::new(),
         kind,
@@ -56,10 +52,8 @@ pub(super) fn publish_raw_event(
             ctx.identity,
             ctx.kernel,
             unsigned,
+            None,
             correlation_id,
-            // Honour the `PublishRaw` signer selector: `None` signs with
-            // the active account; `Some(pubkey)` signs with that
-            // registered app-managed signer slot.
             signer_pubkey,
             ctx.parked_ops,
         ),
@@ -68,12 +62,10 @@ pub(super) fn publish_raw_event(
                 ctx.identity,
                 ctx.kernel,
                 unsigned,
+                None,
                 relays,
                 route_class,
                 correlation_id,
-                // Honour the `PublishRaw` signer selector: `None` signs
-                // with the active account; `Some(pubkey)` signs with that
-                // registered app-managed signer slot.
                 signer_pubkey,
                 ctx.parked_ops,
             )
@@ -130,6 +122,7 @@ pub(super) fn publish_reply(
             ctx.identity,
             ctx.kernel,
             unsigned,
+            None,
             correlation_id,
             signer_pubkey,
             ctx.parked_ops,
@@ -139,6 +132,7 @@ pub(super) fn publish_reply(
                 ctx.identity,
                 ctx.kernel,
                 unsigned,
+                None,
                 relays,
                 route_class,
                 correlation_id,
@@ -179,6 +173,7 @@ pub(super) fn publish_profile(
 /// Dispatch `ActorCommand::PublishUnsignedEvent`.
 pub(super) fn publish_unsigned_event(
     mut unsigned: nmp_signer_iface::UnsignedEvent,
+    ownership: Option<nmp_ownership::EventOwnershipProvenance>,
     correlation_id: Option<String>,
     signer_pubkey: Option<String>,
     ctx: &mut ActorContext<'_>,
@@ -201,6 +196,7 @@ pub(super) fn publish_unsigned_event(
         ctx.identity,
         ctx.kernel,
         unsigned,
+        ownership,
         correlation_id,
         signer_pubkey,
         ctx.parked_ops,
@@ -212,6 +208,7 @@ pub(super) fn publish_unsigned_event(
 /// Dispatch `ActorCommand::PublishUnsignedEventToRelays`.
 pub(super) fn publish_unsigned_event_to_relays(
     mut event: nmp_signer_iface::UnsignedEvent,
+    ownership: Option<nmp_ownership::EventOwnershipProvenance>,
     relays: Vec<String>,
     route_class: crate::publish::PublishRouteClass,
     correlation_id: Option<String>,
@@ -237,6 +234,7 @@ pub(super) fn publish_unsigned_event_to_relays(
         ctx.identity,
         ctx.kernel,
         event,
+        ownership,
         relays,
         route_class,
         correlation_id,

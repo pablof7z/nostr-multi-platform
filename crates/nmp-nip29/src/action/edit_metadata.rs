@@ -163,7 +163,7 @@ mod tests {
 
     fn tags(cmds: &[ActorCommand]) -> &[Vec<String>] {
         match &cmds[0] {
-            ActorCommand::Publish(PublishCommand::UnsignedEventToRelays { event, .. }) => {
+            ActorCommand::Publish(PublishCommand::OwnedUnsignedEventToRelays { event, .. }) => {
                 &event.tags
             }
             other => panic!("expected kind:9002 publish, got {other:?}"),
@@ -180,7 +180,7 @@ mod tests {
         let cmds = run_execute(action).expect("executes");
         assert_eq!(cmds.len(), 1);
         match &cmds[0] {
-            ActorCommand::Publish(PublishCommand::UnsignedEventToRelays {
+            ActorCommand::Publish(PublishCommand::OwnedUnsignedEventToRelays {
                 event,
                 relays,
                 correlation_id,

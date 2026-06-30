@@ -10,6 +10,7 @@ description = "Layer A content-rendering substrate — tokenizer, embed claim re
 name = "nmp_content"
 
 [dependencies]
+nmp-ownership = { workspace = true }
 flatbuffers = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false }
 nmp-feed = { path = "../nmp-feed" }

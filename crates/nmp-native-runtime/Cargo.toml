@@ -33,6 +33,7 @@ android-ffi = ["native", "external-signer"]
 test-support = ["native", "nmp-core/test-support"]
 
 [dependencies]
+nmp-ownership = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false }
 nmp-planner = { path = "../nmp-planner", default-features = false }
 nmp-store = { path = "../nmp-store" }

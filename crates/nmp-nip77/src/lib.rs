@@ -28,3 +28,6 @@ pub use runtime::{NegentropySyncRuntime, RelayNegentropyState};
 
 /// Frame-size cap used by the underlying negentropy engine.
 pub const FRAME_SIZE_LIMIT: u64 = 64 * 1024;
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

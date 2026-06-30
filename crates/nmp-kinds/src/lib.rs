@@ -352,3 +352,6 @@ pub fn is_private_relay_provenance_kind(kind: u32) -> bool {
 
 #[cfg(test)]
 mod tests;
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

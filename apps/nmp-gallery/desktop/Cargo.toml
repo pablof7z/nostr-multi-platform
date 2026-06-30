@@ -10,6 +10,7 @@ name = "nmp-gallery-desktop"
 path = "src/main.rs"
 
 [dependencies]
+nmp-ownership = { workspace = true }
 iced = { version = "0.14", features = ["tokio", "image-without-codecs", "advanced"] }
 nmp-app-gallery = { path = "../crates/nmp-app-gallery" }
 nmp-content = { path = "../../../crates/nmp-content" }

@@ -1,18 +1,26 @@
-//! Wasm-safe default substrate cache/parser wiring.
+//! Default substrate cache/parser wiring and AppHost-level substrate
+//! construction.
 //!
-//! This crate owns the shared construction that ADR-0046 calls "un-copyable":
-//! one mailbox cache shared by the NIP-65 reader, router factory, and
-//! kind:10002 parser; one profile cache shared by the kernel profile reader and
-//! kind:0 parser; and one contacts cache shared by the kernel contacts reader
-//! and kind:3 parser.
+//! This crate owns:
 //!
-//! `nmp-defaults::register_substrate` remains the canonical host-backed
-//! composition tier. It calls this crate for the cache/parser pairs, then
-//! installs the AppHost-level collaborators (publish resolver, raw forwarding,
-//! coverage, NIP-11). Those collaborators are registered through substrate
-//! traits, not native handles. Reducer-owned web roots call the reducer
-//! installer so they get the same cache/parser construction without depending
-//! on `nmp-defaults`, `nmp-ffi`, LMDB, or native transport code.
+//! 1. **[`DefaultSubstrateWiring`]** — the wasm-safe cache/parser layer: one
+//!    mailbox cache shared by the NIP-65 reader, router factory, and
+//!    kind:10002 parser; one profile cache shared by the kernel profile reader
+//!    and kind:0 parser; and one contacts cache shared by the kernel contacts
+//!    reader and kind:3 parser. Reducer-owned web roots call the reducer
+//!    installer so they get the same cache/parser construction without
+//!    depending on `nmp-defaults`, `nmp-ffi`, LMDB, or native transport code.
+//!
+//! 2. **[`register_substrate`]** — the AppHost-level correctness floor that
+//!    wraps the cache/parser layer with the routing substrate factory, publish
+//!    resolver factory, raw forwarding/indexer republish, D2 coverage gate
+//!    hook, NIP-77 negentropy hook, and (native-only via the `native` cargo
+//!    feature) NIP-11 fetcher. `nmp-defaults` re-exports this function as
+//!    `nmp_defaults::register_substrate` for backward compatibility while
+//!    callers migrate to naming this crate directly.
+
+mod substrate;
+pub use substrate::register_substrate;
 
 use std::sync::Arc;
 
@@ -70,8 +78,9 @@ impl DefaultSubstrateWiring {
     /// target.
     ///
     /// This intentionally covers only the wasm-safe cache/parser/router
-    /// construction. The full native substrate tier still belongs to
-    /// `nmp-defaults::register_substrate`.
+    /// construction. The full AppHost substrate tier (publish resolver, raw
+    /// forwarding, coverage, NIP-77, NIP-11) is wired by [`register_substrate`],
+    /// which calls this function internally.
     ///
     /// Returns the shared NIP-65 mailbox cache read handle (#2085) — the same
     /// `Arc` installed as the encoder reader, the routing factory cache, and the
@@ -169,3 +178,6 @@ pub fn install_on_app_host(
 pub fn install_on_reducer(reducer: &mut KernelReducer) {
     DefaultSubstrateWiring::new().install_on_reducer(reducer);
 }
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

@@ -395,3 +395,6 @@ pub fn register_longform_projection(
         Some(projection_for_closure.typed_projection())
     });
 }
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

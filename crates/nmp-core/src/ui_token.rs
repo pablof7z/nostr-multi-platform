@@ -210,6 +210,8 @@ pub mod codes {
     pub const PUBLISH_INVALID_TARGET: &str = "publish_invalid_target";
     /// A publish command could not construct or sign the event.
     pub const PUBLISH_SIGN_FAILED: &str = "publish_sign_failed";
+    /// A publish command lacked required artifact or envelope owner provenance.
+    pub const PUBLISH_OWNERSHIP_REJECTED: &str = "publish_ownership_rejected";
     /// A reply publish named an event that is not in the local reply context.
     pub const PUBLISH_REPLY_TARGET_UNKNOWN: &str = "publish_reply_target_unknown";
     /// Retrying a publish failed before frames could be re-dispatched.

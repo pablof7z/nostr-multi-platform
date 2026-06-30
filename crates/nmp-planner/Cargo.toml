@@ -11,6 +11,7 @@ name = "nmp_planner"
 path = "src/lib.rs"
 
 [dependencies]
+nmp-ownership = { workspace = true }
 # nmp-planner is a Layer-2 foundation crate (per the crate-boundary spec): it
 # must NOT depend on nmp-core. The `stable_hash` helper that previously lived
 # in `nmp-core::stable_hash` moved into this crate at extraction time —
