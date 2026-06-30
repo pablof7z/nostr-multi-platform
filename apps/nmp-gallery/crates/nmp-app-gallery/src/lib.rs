@@ -201,6 +201,12 @@ pub extern "C" fn nmp_app_gallery_register_uniffi(arc_ptr: *mut c_void) {
     let inner = unsafe { &mut *inner_ptr };
     register_gallery_composition(inner);
     inner.consume_all_builtin_projections();
+    // Issue #2523 / crate-boundaries.md §9 — the NIP-55 (Amber) first-connect
+    // permission batch is an app-owned policy fact and must be declared by
+    // the leaf composition root, never baked into the shared `nmp-signers`
+    // crate. NIP-55 is Android-only; this call is a no-op on iOS (no Android
+    // `ExternalSignerCapabilityBridge` ever calls `signin_nip55` there).
+    inner.set_external_signer_permissions(gallery_nip55_permissions());
     // `arc` drops here — decrements the UniFFI Arc ref-count back to 1.
 }
 
@@ -279,6 +285,72 @@ fn register_gallery_composition(app: &mut impl nmp_core::substrate::AppHost) {
     nmp_nip17::register_runtime(app);
 
     nmp_content::register_longform_projection(app);
+}
+
+/// The NIP-55 (Amber) first-connect permission batch this gallery composition
+/// requests (issue #2523 / crate-boundaries.md §9).
+///
+/// This is a **gallery product decision**, not a framework default — it must
+/// be derived from what [`register_gallery_composition`] actually wires, and
+/// re-reviewed whenever that composition changes. Every kind below maps to a
+/// write path the gallery genuinely owns:
+///
+/// * `0` — profile metadata (`nmp.publish` `PublishProfile`; baseline
+///   `PublishModule`, registered for every `NmpApp`).
+/// * `1` — short text notes / NIP-10 replies (`nmp.publish` `PublishRaw` /
+///   `PublishReply`, baseline; `nmp.replies.reply` when the target is a
+///   kind:1 note).
+/// * `3` — contact list (`nmp-nip02` follow / unfollow / follow_many).
+/// * `5` — generic deletion, used here for reaction retraction
+///   (`nmp-nip25` unreact, via `nmp-nip09`'s deletion grammar).
+/// * `6`, `16` — repost / generic repost (`nmp-nip18`).
+/// * `7` — reaction (`nmp-nip25` react).
+/// * `13` — NIP-17 seal, the event the active signer actually signs for a DM
+///   send (`nmp-nip17`; the kind:1059 gift wrap itself is signed locally with
+///   an ephemeral key, never by the external signer).
+/// * `1111` — NIP-22 comment (`nmp.replies.reply` when the target is a
+///   kind:1111 comment; `nmp-nip22` itself only registers the read
+///   projection).
+/// * `9802` — highlight (`nmp-nip84`).
+/// * `10002` — NIP-65 relay list (`nmp_router::register_actions`, wired by
+///   `nmp_substrate::install`).
+/// * `10003` — bookmark list (`nmp-nip51` add/remove bookmark).
+/// * `10006` — blocked-relay list (`nmp_router::register_block_relay_actions`,
+///   wired by `nmp_substrate::install`).
+/// * `10050` — DM relay list (`nmp-nip17` publish_relay_list).
+/// * `30003`, `30004` — bookmark sets / curation sets (`nmp-nip51`).
+/// * `39701` — NIP-B0 web bookmark (`nmp-nip51`).
+///
+/// Deliberately excluded: kind:10000 mute-list writes (the gallery only
+/// reads the mute list — no write action is registered), kind:9734/9735 zaps
+/// (no `nmp-nip57` dependency), kind:10007 search-relay writes (read-only
+/// observed projection), and NIP-29 group kinds (the gallery only recognizes
+/// `naddr`/`nostr:` group links for navigation; it never publishes into a
+/// group).
+#[must_use]
+fn gallery_nip55_permissions() -> Vec<nmp_signer_iface::Nip55Permission> {
+    use nmp_signer_iface::Nip55Permission;
+    vec![
+        Nip55Permission::sign_event(0),
+        Nip55Permission::sign_event(1),
+        Nip55Permission::sign_event(3),
+        Nip55Permission::sign_event(5),
+        Nip55Permission::sign_event(6),
+        Nip55Permission::sign_event(7),
+        Nip55Permission::sign_event(13),
+        Nip55Permission::sign_event(16),
+        Nip55Permission::sign_event(1111),
+        Nip55Permission::sign_event(9802),
+        Nip55Permission::sign_event(10002),
+        Nip55Permission::sign_event(10003),
+        Nip55Permission::sign_event(10006),
+        Nip55Permission::sign_event(10050),
+        Nip55Permission::sign_event(30003),
+        Nip55Permission::sign_event(30004),
+        Nip55Permission::sign_event(39701),
+        Nip55Permission::nip44_encrypt(),
+        Nip55Permission::nip44_decrypt(),
+    ]
 }
 
 /// Opaque host-owned mirrors of the kernel's `refs.profile` / `refs.event`

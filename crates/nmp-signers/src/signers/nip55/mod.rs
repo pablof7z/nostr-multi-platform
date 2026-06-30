@@ -96,24 +96,6 @@ struct Nip55State {
     interactive_in_flight: Option<String>,
 }
 
-/// Default permission batch requested on first connect.
-///
-/// Covers all standard NIP-55 methods so subsequent calls can use the
-/// `ContentResolver` fast-path without launching a second Intent.
-fn default_permissions() -> Vec<Nip55Permission> {
-    vec![
-        Nip55Permission::sign_event(0),
-        Nip55Permission::sign_event(1),
-        Nip55Permission::sign_event(3),
-        Nip55Permission::sign_event(4),
-        Nip55Permission::sign_event(7),
-        Nip55Permission::sign_event(9734),
-        Nip55Permission::sign_event(10002),
-        Nip55Permission::nip44_encrypt(),
-        Nip55Permission::nip44_decrypt(),
-    ]
-}
-
 /// Generate a unique correlation id (16-hex chars).
 ///
 /// Uses an atomic counter + timestamp nanoseconds so successive calls within
@@ -159,23 +141,25 @@ impl Nip55Signer {
     /// Restore from a persisted payload. No user interaction required; the
     /// signer is immediately usable for new sign requests.
     ///
-    /// `granted_permissions` defaults to [`default_permissions()`] so the host
-    /// can immediately route via the `ContentResolver` fast-path without a
-    /// fresh permission batch on first use after restore.
+    /// `granted_permissions` is taken verbatim from the persisted payload —
+    /// an empty persisted batch restores with an empty grant set rather than
+    /// synthesizing a framework default (§9: the permission batch is an
+    /// app-owned policy fact, not something `nmp-signers` may invent). A
+    /// signer restored with no grants self-heals on first use: the live
+    /// request carries no `granted_permissions`, so the host falls back to an
+    /// interactive Intent and the app's first-connect re-grant repopulates
+    /// the batch.
     pub fn from_payload(
         p: &Nip55Payload,
         transport: Arc<dyn ExternalSignerTransport>,
     ) -> Result<Self, SignerError> {
         let user_pubkey = PublicKey::from_hex(&p.user_pubkey_hex)
             .map_err(|e| SignerError::Backend(format!("invalid nip55 cached pubkey: {e}")))?;
-        let granted_permissions = if p.granted_permissions.is_empty() {
-            default_permissions()
-        } else {
-            p.granted_permissions
-                .iter()
-                .map(|s| Nip55Permission { kind: s.clone() })
-                .collect()
-        };
+        let granted_permissions = p
+            .granted_permissions
+            .iter()
+            .map(|s| Nip55Permission { kind: s.clone() })
+            .collect();
         Ok(Self::new(
             user_pubkey,
             p.signer_package.clone(),

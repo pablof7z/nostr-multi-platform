@@ -50,6 +50,7 @@ nmp-nip51 = { path = "../../../../crates/nmp-nip51" }
 nmp-nip84 = { path = "../../../../crates/nmp-nip84" }
 nmp-replies = { path = "../../../../crates/nmp-replies" }
 nmp-router = { path = "../../../../crates/nmp-router" }
+nmp-signer-iface = { path = "../../../../crates/nmp-signer-iface" }
 nmp-substrate = { path = "../../../../crates/nmp-substrate" }
 nmp-wot = { path = "../../../../crates/nmp-wot" }
 serde = { workspace = true, features = ["derive"] }

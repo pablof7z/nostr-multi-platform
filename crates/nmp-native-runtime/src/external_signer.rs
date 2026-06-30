@@ -33,8 +33,8 @@ use nmp_core::__ffi_internal::{dispatch_capability, CapabilityCallbackSlot};
 use nmp_core::substrate::{CapabilityEnvelope, CapabilityRequest};
 use nmp_core::ExternalSignerHookRequest;
 use nmp_signer_iface::{
-    ExternalSignerRequest, ExternalSignerResponse, ExternalSignerTransport, SignerError, SignerOp,
-    EXTERNAL_SIGNER_NAMESPACE,
+    ExternalSignerRequest, ExternalSignerResponse, ExternalSignerTransport, Nip55Permission,
+    SignerError, SignerOp, EXTERNAL_SIGNER_NAMESPACE,
 };
 use nmp_signer_iface::{RemoteSignerHandle, SignedEvent, UnsignedEvent};
 use nmp_signers::{Nip55Connect, Nip55Signer, SignerPayload};
@@ -109,6 +109,10 @@ pub(crate) struct Nip55Driver {
     /// that do not answer the pending connect fan out here; correlation-id
     /// routing inside `Nip55Signer::deliver_external_response` dedupes.
     signers: Mutex<Vec<Arc<Nip55Signer>>>,
+    /// App-declared first-connect permission batch (crate-boundaries.md §9 —
+    /// this is operator/app policy, never a framework default). Empty until
+    /// the host calls [`NmpApp::set_external_signer_permissions`].
+    connect_permissions: Mutex<Vec<Nip55Permission>>,
 }
 
 impl Nip55Driver {
@@ -121,6 +125,7 @@ impl Nip55Driver {
             transport,
             pending_connect: Mutex::new(None),
             signers: Mutex::new(Vec::new()),
+            connect_permissions: Mutex::new(Vec::new()),
         }
     }
 
@@ -129,9 +134,36 @@ impl Nip55Driver {
             .nip55_signer_state_changed(state.to_string(), reason);
     }
 
+    /// Record the app-declared NIP-55 first-connect permission batch.
+    /// Overwrites any previously declared batch.
+    pub(crate) fn set_connect_permissions(&self, permissions: Vec<Nip55Permission>) {
+        if let Ok(mut guard) = self.connect_permissions.lock() {
+            *guard = permissions;
+        }
+    }
+
     /// Begin the first-connect `get_public_key` round-trip (ADR-0048 D2).
     pub(crate) fn signin(&self, signer_package: Option<String>) {
-        let connect = Nip55Connect::new(signer_package);
+        let permissions = self
+            .connect_permissions
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or_default();
+        if permissions.is_empty() {
+            // Fail loudly rather than silently default (§9): a missing
+            // app-declared batch is a composition bug, not a framework gap
+            // to paper over.
+            self.set_signer_state(
+                "failed",
+                Some(
+                    "no external-signer permission batch declared; app must call \
+                     set_external_signer_permissions before signin_nip55"
+                        .to_string(),
+                ),
+            );
+            return;
+        }
+        let connect = Nip55Connect::new(signer_package, permissions);
         let request = connect.request().clone();
         if let Ok(mut guard) = self.pending_connect.lock() {
             if guard.is_some() {
@@ -343,9 +375,25 @@ impl NmpApp {
         init_external_signer_driver(self);
     }
 
+    /// Declare the NIP-55 first-connect permission batch this app will
+    /// request. MUST be called before [`Self::signin_nip55`] (issue #2523 /
+    /// crate-boundaries.md §9 — the batch is an app-owned policy fact; leaf
+    /// app composition roots such as `nmp-app-gallery` own it, never
+    /// `nmp-signers` or this crate). Calling this again replaces the
+    /// previously declared batch.
+    pub fn set_external_signer_permissions(&self, permissions: Vec<Nip55Permission>) {
+        self.init_external_signer();
+        if let Some(driver) = self.external_signer_driver() {
+            driver.set_connect_permissions(permissions);
+        }
+    }
+
     /// Begin a NIP-55 sign-in (`get_public_key` + permission batch) routed to
     /// the signer app named by `signer_package` (or the OS resolver when
-    /// `None`).
+    /// `None`). The permission batch requested is whatever the host last
+    /// declared via [`Self::set_external_signer_permissions`]; an undeclared
+    /// (empty) batch fails the sign-in loudly rather than falling back to a
+    /// synthesized default.
     pub fn signin_nip55(&self, signer_package: Option<String>) {
         self.init_external_signer();
         if let Some(driver) = self.external_signer_driver() {

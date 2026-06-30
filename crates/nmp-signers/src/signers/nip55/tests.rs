@@ -725,6 +725,49 @@ fn persistence_round_trip() {
     );
 }
 
+/// An empty persisted permission batch restores with an empty granted set —
+/// `from_payload` must NOT synthesize a framework default (issue #2523 /
+/// crate-boundaries.md §9). The signer self-heals via interactive re-grant on
+/// first use.
+#[test]
+fn from_payload_with_empty_persisted_batch_restores_with_empty_grants() {
+    let local = LocalKeySigner::generate();
+    let payload = Nip55Payload {
+        user_pubkey_hex: local.pubkey().to_hex(),
+        signer_package: Some("com.greenart7c3.nostrsigner".to_string()),
+        granted_permissions: Vec::new(),
+    };
+    let transport = FakeExternalSignerTransport::new();
+    let signer = Nip55Signer::from_payload(
+        &payload,
+        Arc::clone(&transport) as Arc<dyn ExternalSignerTransport>,
+    )
+    .expect("restore from payload");
+
+    let restored_payload = signer.to_payload().expect("to_payload");
+    let SignerPayload::Nip55(p) = restored_payload else {
+        panic!("expected Nip55 payload");
+    };
+    assert!(
+        p.granted_permissions.is_empty(),
+        "restoring an empty persisted batch must not synthesize a default"
+    );
+
+    let unsigned = UnsignedEvent {
+        pubkey: local.pubkey().to_hex(),
+        kind: 1,
+        tags: vec![],
+        content: "no grants yet".to_string(),
+        created_at: 1,
+    };
+    let _op = <Nip55Signer as Signer>::sign(&signer, unsigned);
+    let req = transport.last_request().expect("request captured");
+    assert!(
+        req.granted_permissions.is_empty(),
+        "live request must carry no grants when restored with an empty batch"
+    );
+}
+
 /// `from_payload` fails gracefully on an invalid pubkey hex (D6).
 #[test]
 fn from_payload_invalid_pubkey_returns_err() {
