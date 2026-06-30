@@ -26,9 +26,18 @@
 //! the native-runtime feed compiler, not an app-specific override. A future
 //! slice can expose a pluggable compiler seam if needed; for M14-C5 this is the
 //! only wired path.
+//!
+//! ## Shared mechanic (#2516)
+//!
+//! The decode/validate/compile/open and idempotent-close mechanics are NOT
+//! owned here — they are the reusable `nmp_uniffi_support::open_feed_session` /
+//! `close_feed_session` helpers, so an app-owned UniFFI facade reuses the exact
+//! same open/teardown policy. This crate's methods only adapt the facade-local
+//! `FeedSessionHandle` record and `NmpError` namespace onto those helpers.
 
-use nmp_native_runtime::{
-    compile_feed_params, decode_and_validate_feed_params, FeedHandle, FeedSessionId, ProjectionKey,
+use nmp_uniffi_support::{
+    close_feed_session as support_close_feed_session, open_feed_session as support_open_feed_session,
+    FeedSessionError,
 };
 
 use crate::stateless::NmpError;
@@ -80,16 +89,15 @@ impl NmpApp {
     /// * `NmpError::FeedOpenFailed` — the compiler failed to register the
     ///   session (e.g. an unsupported scope or poisoned registry).
     pub fn open_feed_json(&self, params_json: String) -> Result<FeedSessionHandle, NmpError> {
-        let (params, _acquisition_kinds) =
-            decode_and_validate_feed_params(&params_json).map_err(|_| NmpError::InvalidInput)?;
-
-        self.inner
-            .open_feed(&params, &compile_feed_params)
-            .map(|handle| FeedSessionHandle {
-                projection_key: handle.projection_key.0,
-                session_id: handle.session_id.0,
+        support_open_feed_session(&self.inner, &params_json)
+            .map(|opened| FeedSessionHandle {
+                projection_key: opened.projection_key,
+                session_id: opened.session_id,
             })
-            .map_err(|_| NmpError::FeedOpenFailed)
+            .map_err(|err| match err {
+                FeedSessionError::InvalidParams => NmpError::InvalidInput,
+                FeedSessionError::OpenFailed => NmpError::FeedOpenFailed,
+            })
     }
 
     /// Close a feed session previously opened by `open_feed_json`.
@@ -102,11 +110,7 @@ impl NmpApp {
     /// D8: the session's resources are released immediately; the registry entry
     /// is removed so a subsequent close of the same id is always a no-op.
     pub fn close_feed_session(&self, session_id: u64) -> bool {
-        let handle = FeedHandle {
-            projection_key: ProjectionKey(String::new()), // only session_id is used by close_feed
-            session_id: FeedSessionId(session_id),
-        };
-        self.inner.close_feed(&handle)
+        support_close_feed_session(&self.inner, session_id)
     }
 }
 

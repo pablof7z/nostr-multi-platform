@@ -68,6 +68,42 @@ NMP ownership. Reusable Nostr protocol mechanisms still belong in NMP protocol
 crates and the native runtime; native shells still render state and execute raw
 capabilities only.
 
+### Shared facade helper mechanics
+
+`nmp-uniffi-support` shares the Rust mechanics a facade reuses below its
+generated namespace. The stateless bridge mechanics (dispatch, update sink,
+capability callback, action-result/lifecycle observers, clamp + start/configure
+policy) shipped with #2494/#2498. The session/account-change mechanics (#2516)
+close the remaining app-owned-facade gaps:
+
+| Facade need | Reuse, never copy | Notes |
+|---|---|---|
+| Open/close a feed (projection) session | `open_feed_session`, `close_feed_session` | Decode + validate + compile with the composition-root `compile_feed_params`; idempotent close (D6). `nmp-uniffi`'s own `open_feed_json`/`close_feed_session` delegate to these. |
+| Rebuild a session after a perspective change | `reopen_feed_session` | Idempotent close of the prior id + open from the retained declaration. For account-pinned sessions only — `ActiveUserFollows` feeds re-seed in place (see below). |
+| React to an active-account change | `register_account_change_sink`, `unregister_account_change_sink`, `account_change_observer_from_sink` | Arc-sink + panic-contained wrapper over `nmp-native-runtime::NmpApp::register_identity_change_observer`. The sink receives only the new identity; it never captures the runtime. |
+
+Account-change handling has two layers and a facade picks the lighter one:
+
+- Account-**reactive** feeds (`FeedScope::ActiveUserFollows` and friends) re-seed
+  **in place** — the native runtime's identity-change wiring clears and
+  repopulates the live session. No reopen, no facade glue.
+- Account-**pinned** app-specific sessions (e.g. a NIP-29 joined-groups view
+  bound to the active account) observe the change through
+  `register_account_change_sink` and rebuild via `reopen_feed_session` from a
+  facade method, where the facade already holds `&self.inner`.
+
+### Safe runtime ownership (no raw `*mut NmpApp`)
+
+There is deliberately **no** "owned runtime handle" helper. A facade owns its
+`nmp-native-runtime::NmpApp` by value inside its own `Arc<Facade>` UniFFI object
+and passes `&self.inner` to every support helper; the helpers borrow `&NmpApp`
+and deliver callbacks through `Arc`-held sinks. No facade path needs to capture
+a `*mut NmpApp`. The legacy raw address-capture pattern belonged to the deleted
+raw native builder lane; the UniFFI-facade ownership model removes it structurally,
+mirroring how the runtime's own account-change observers capture granular `Arc`
+handles rather than the whole-app pointer. New facade code that reaches for a
+raw runtime pointer is a smell — use the borrow + `Arc`-sink shape instead.
+
 ## FlatBuffers Through UniFFI
 
 FlatBuffers are still the wire payload for the hot paths:

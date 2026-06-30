@@ -226,11 +226,33 @@ What you MUST reuse, never copy:
 - action dispatch and its typed outcome (`dispatch_action` /
   `dispatch_action_vec` returning `nmp_uniffi_support::DispatchOutcome`);
 - action-result observers and lifecycle observers
-  (`register_action_result_observer`, `set_lifecycle_callback`).
+  (`register_action_result_observer`, `set_lifecycle_callback`);
+- feed/projection session open/close/reopen
+  (`open_feed_session`, `close_feed_session`, `reopen_feed_session`);
+- active-account-change observation (`register_account_change_sink`,
+  `unregister_account_change_sink`).
 
-These mechanics — panic containment, quiescence, dispatch, clamp policy — live
-below the generated surface in `nmp-uniffi-support` / `nmp-native-runtime`. Copy
-zero runtime bridge policy into your facade.
+These mechanics — panic containment, quiescence, dispatch, clamp policy, session
+teardown, account-change observation — live below the generated surface in
+`nmp-uniffi-support` / `nmp-native-runtime`. Copy zero runtime bridge policy into
+your facade.
+
+### Account-change and account-scoped sessions (#2516)
+
+Two layers, pick the lighter one. Account-**reactive** feeds
+(`FeedScope::ActiveUserFollows`) re-seed in place on an active-account change —
+the native runtime's identity-change wiring rebuilds the live session, so your
+facade does nothing. Account-**pinned** app-specific sessions (e.g. a NIP-29
+joined-groups view bound to the active account) observe the change with
+`register_account_change_sink` and rebuild with `reopen_feed_session` from one
+of your facade methods.
+
+Do this through the helpers, not a raw runtime pointer. Your facade owns its
+`NmpApp` by value inside its `Arc<Facade>` UniFFI object and passes `&self.inner`
+to each helper; the helpers borrow `&NmpApp` and forward callbacks through
+`Arc`-held sinks. There is no sanctioned `*mut NmpApp` to capture — that pattern
+belonged to the deleted raw native builder lane. Reaching for a raw runtime pointer
+in a facade is a smell.
 
 ### Why facade-local records (the hard constraint)
 
