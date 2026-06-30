@@ -3992,6 +3992,7 @@ dependencies = [
  "nmp-nip05",
  "nmp-nip11",
  "nmp-nip18",
+ "nmp-nip25",
  "nmp-nip29",
  "nmp-nip46",
  "nmp-nip46-runtime",

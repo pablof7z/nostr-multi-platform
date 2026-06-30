@@ -39,13 +39,19 @@ table GroupEvent {
   content:string;       // event content, verbatim
   created_at:uint64;    // event created_at, Unix seconds
   kind:uint32;          // event kind (e.g. 9 chat, 11 thread, 1111 comment)
+  // NIP-10 reply / thread edges, parsed kind-agnostically from the event's `e`
+  // tags. Absent (empty string) for a thread root / standalone post; the
+  // decoder maps "" → None so the serde `Option<String>` round-trips. Raw hex
+  // event ids only (no display formatting).
+  reply_to:string;      // immediate parent event id (NIP-10 `reply` marker)
+  root:string;          // thread root event id (NIP-10 `root` marker)
 }
 
 // The serialised group-events read model. `events` is ordered newest-first
 // (`created_at` descending, ties broken by id descending) — the encoder ships
 // the snapshot order verbatim.
 table GroupEventsSnapshot {
-  schema_version:uint32 = 1;   // mirrors GROUP_EVENTS_SCHEMA_VERSION
+  schema_version:uint32 = 2;   // mirrors GROUP_EVENTS_SCHEMA_VERSION
   events:[GroupEvent];
 }
 

@@ -28,6 +28,43 @@ impl Nip29GroupEventsSession {
     }
 }
 
+/// Descriptor for a group-scoped NIP-25 reaction-aggregate typed read session.
+///
+/// The reaction fold (kind:7) is scoped to one NIP-29 group: the session opens
+/// a relay-pinned `#h` + `kinds:[7]` interest for `group_id` so only that
+/// group's reactions feed the aggregate. NIP-25 owns kind:7; the group scope is
+/// composed here at the app layer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Nip25GroupReactionsSession {
+    pub(super) group_id: GroupId,
+}
+
+impl Nip25GroupReactionsSession {
+    #[must_use]
+    pub fn new(group_id: GroupId) -> Self {
+        Self { group_id }
+    }
+
+    #[must_use]
+    pub fn group_id(&self) -> &GroupId {
+        &self.group_id
+    }
+}
+
+/// Runtime handle for one group-scoped NIP-25 reaction-aggregate read session.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Nip25GroupReactionsHandle {
+    pub(super) key: String,
+    pub(super) handle_id: u64,
+}
+
+impl Nip25GroupReactionsHandle {
+    #[must_use]
+    pub fn key(&self) -> &str {
+        &self.key
+    }
+}
+
 /// Descriptor for a NIP-29 group-discovery typed read session.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Nip29GroupDiscoverySession {

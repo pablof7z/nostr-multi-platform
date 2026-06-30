@@ -63,9 +63,10 @@ pub use feed::{
 };
 pub use feed_session::{handle_projection_key, FeedCompiler, FeedOpenError, FeedTeardown};
 pub use group_feed::{
-    Nip29GroupDiscoveryHandle, Nip29GroupDiscoverySession, Nip29GroupEventsHandle,
-    Nip29GroupEventsSession, Nip29GroupRosterHandle, Nip29GroupRosterSession,
-    Nip29JoinedGroupsHandle, Nip29JoinedGroupsSession, DISCOVERED_GROUPS_KEY, GROUP_EVENTS_KEY,
+    Nip25GroupReactionsHandle, Nip25GroupReactionsSession, Nip29GroupDiscoveryHandle,
+    Nip29GroupDiscoverySession, Nip29GroupEventsHandle, Nip29GroupEventsSession,
+    Nip29GroupRosterHandle, Nip29GroupRosterSession, Nip29JoinedGroupsHandle,
+    Nip29JoinedGroupsSession, DISCOVERED_GROUPS_KEY, GROUP_EVENTS_KEY, GROUP_REACTIONS_KEY,
     GROUP_ROSTER_KEY, JOINED_GROUPS_KEY,
 };
 pub use intent::InputIntentDispatch;
