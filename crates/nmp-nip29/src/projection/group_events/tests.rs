@@ -258,3 +258,48 @@ fn empty_snapshot_constructor_yields_no_events() {
     let empty = GroupEventsSnapshot::empty();
     assert!(empty.events.is_empty());
 }
+
+#[test]
+fn standalone_chat_event_has_no_reply_edges() {
+    let proj = GroupEventsProjection::new(chat_query());
+    proj.on_kernel_event(&event("e1", KIND_CHAT_MESSAGE, 100, h_tag("rust-nostr")));
+    let snap = proj.snapshot();
+    let row = &snap.events[0];
+    assert_eq!(row.reply_to, None);
+    assert_eq!(row.root, None);
+    // Absent edges are omitted from the JSON fallback shape.
+    let json = proj.snapshot_json();
+    let event_json = &json["events"][0];
+    assert!(event_json.get("reply_to").is_none());
+    assert!(event_json.get("root").is_none());
+}
+
+#[test]
+fn marked_reply_surfaces_parent_and_root() {
+    let proj = GroupEventsProjection::new(chat_query());
+    let tags = vec![
+        vec!["h".into(), "rust-nostr".into()],
+        vec!["e".into(), "rootid".into(), String::new(), "root".into()],
+        vec!["e".into(), "parentid".into(), String::new(), "reply".into()],
+    ];
+    proj.on_kernel_event(&event("e1", KIND_CHAT_MESSAGE, 100, tags));
+    let snap = proj.snapshot();
+    let row = &snap.events[0];
+    assert_eq!(row.reply_to.as_deref(), Some("parentid"));
+    assert_eq!(row.root.as_deref(), Some("rootid"));
+}
+
+#[test]
+fn positional_thread_event_uses_first_root_last_parent() {
+    let proj = GroupEventsProjection::new(all_query());
+    let tags = vec![
+        vec!["h".into(), "rust-nostr".into()],
+        vec!["e".into(), "rootid".into()],
+        vec!["e".into(), "parentid".into()],
+    ];
+    proj.on_kernel_event(&event("e1", KIND_DISCUSSION_OR_ARTIFACT, 100, tags));
+    let snap = proj.snapshot();
+    let row = &snap.events[0];
+    assert_eq!(row.root.as_deref(), Some("rootid"));
+    assert_eq!(row.reply_to.as_deref(), Some("parentid"));
+}

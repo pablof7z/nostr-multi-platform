@@ -80,12 +80,14 @@ use nmp_nip29::{
 use crate::app_struct::NmpApp;
 
 mod feed;
+mod reactions;
 mod roster;
 mod types;
 pub use types::{
-    Nip29GroupDiscoveryHandle, Nip29GroupDiscoverySession, Nip29GroupEventsHandle,
-    Nip29GroupEventsSession, Nip29GroupRosterHandle, Nip29GroupRosterSession,
-    Nip29JoinedGroupsHandle, Nip29JoinedGroupsSession,
+    Nip25GroupReactionsHandle, Nip25GroupReactionsSession, Nip29GroupDiscoveryHandle,
+    Nip29GroupDiscoverySession, Nip29GroupEventsHandle, Nip29GroupEventsSession,
+    Nip29GroupRosterHandle, Nip29GroupRosterSession, Nip29JoinedGroupsHandle,
+    Nip29JoinedGroupsSession,
 };
 
 /// `0` = `ActiveAccount` scope (re-route on account switch) — the joined-groups
@@ -103,12 +105,16 @@ pub const DISCOVERED_GROUPS_KEY: &str = "nmp.nip29.discovered_groups";
 pub const JOINED_GROUPS_KEY: &str = "nmp.nip29.joined_groups";
 /// Snapshot key + singleton session key for the group-roster view.
 pub const GROUP_ROSTER_KEY: &str = "nmp.nip29.group_roster";
+/// Snapshot key + singleton session key for the group-scoped reaction-aggregate
+/// view (NIP-25 kind:7 folded by target id, scoped to one group's `h` tag).
+pub const GROUP_REACTIONS_KEY: &str = "nmp.nip25.reactions";
 
 /// Refcount-owner id for each (singleton) NIP-29 view's pinned interest.
 const GROUP_EVENTS_CONSUMER: &str = "nip29-group-events";
 const DISCOVERED_GROUPS_CONSUMER: &str = "nip29-discovered-groups";
 const JOINED_GROUPS_CONSUMER: &str = "nip29-joined-groups";
 const GROUP_ROSTER_CONSUMER: &str = "nip29-group-roster";
+const GROUP_REACTIONS_CONSUMER: &str = "nip25-group-reactions";
 static NEXT_GROUP_READ_HANDLE_ID: AtomicU64 = AtomicU64::new(1);
 
 /// Teardown recipe for one live NIP-29 read view (held in

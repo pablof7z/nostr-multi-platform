@@ -36,6 +36,11 @@ pub mod react_generated;
 #[path = "wire/generated/unreact_generated.rs"]
 pub mod unreact_generated;
 
+// Typed FlatBuffers codec for the NIP-25 reaction-aggregate READ projection
+// (the `nmp.nip25.reactions` typed sidecar). Distinct from the write-direction
+// react/unreact action payloads above.
+pub mod reaction_aggregate_fb;
+
 use nmp_core::substrate::{ActionPayload, ActionPayloadDecodeError};
 use react_generated::nmp::nip_25 as react_fb;
 use unreact_generated::nmp::nip_25 as unreact_fb;
