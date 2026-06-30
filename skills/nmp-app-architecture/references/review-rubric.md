@@ -40,6 +40,30 @@ Block the change for any of these:
 - Temporary hack, TODO debt, stub, duplicate path, or "fix later" workaround remains.
 - Performance is unmeasured for a change that affects snapshots, projections, queues, FFI cadence, scrolling, media, or event firehose behavior.
 
+Redesign-spine blocking findings (2026 clean-break — see the deep-dive references):
+
+- Production app root calls `register_defaults()`, or product policy (relay defaults, seed
+  follows, onboarding) lives in `nmp-defaults` or a shared NMP crate.
+- Product screen or app-core crate opens a raw `open_interest` / assembles
+  `ObservedProjection`/`ReducedSource` directly instead of a typed read session.
+- Shell treats dispatch acceptance (`correlation_id` non-null) as terminal publish success.
+- `PublishTarget::Explicit` is used without a typed `PublishRouteClass`, or app/native code
+  composes, signs, or routes outside the actor pipeline.
+- A new `pub extern "C"` appears in a framework crate (`crates/nmp-*`) without an ADR-0030
+  exception; or a native UniFFI facade copies runtime-bridge policy instead of delegating to
+  `nmp-uniffi-support` / `nmp-native-runtime`.
+- A render/display/app-noun/aggregation concern leaks into an L0–L4 crate: display fields
+  outside `ProfileProjection`, engagement aggregation in storage, a render-card/feed-item type
+  in a NIP crate, or a typed NIP-NN codec in `nmp-core`.
+- A `nmp-nip*` transport crate owns a kind-named action, a foreign-NIP kind literal, or imports
+  another `nmp-nip*` crate.
+- A headless/OS surface (AppIntent, widget, CarPlay, Live Activity, share extension) owns
+  product-queue state, signer state, relay policy, or publish-result models.
+- Browser durable mode is claimed without a real Worker/OPFS proof.
+- A wrong/stale doc is "fixed" by adding a superseding ADR instead of editing the owner in
+  place; or an architecture slice lands new surface without a deletion ledger / flat-or-down
+  ratchet.
+
 ## Design Questions To Answer
 
 For every new feature:
@@ -47,9 +71,11 @@ For every new feature:
 - What fact is being added, and who is its single writer?
 - What app action or internal event introduces each state transition?
 - Which nondeterministic inputs exist, and how do they enter replayable Rust state?
-- What projection crosses FFI, and why is it bounded by open views or app chrome?
+- What typed read session owns this read demand, what is its bounded typed output, and what is the teardown path when the view closes?
+- For a write: what is the typed intent, who finalizes/signs it (the actor, not the shell), and what route provenance does it carry?
 - What native code is present, and is it only rendering or capability execution?
-- Which D0-D10 doctrines are touched?
+- At which layer (L0–L6) does each new type live, and does any display/render/app-noun/aggregation concern sit below L5?
+- Which doctrines (D0–D27) are touched, and is each enforced by doctrine-lint, the scanner, or a new gate?
 - What tests or benches prove the rule is enforced?
 
 For each platform shell:
@@ -74,10 +100,13 @@ Minimum verification depends on the touched surface:
 - Rust app/core logic: scoped `cargo test -p <crate>` plus relevant downstream consumers.
 - NMP doctrine-sensitive change: `cargo test -p nmp-testing --test doctrine_lint_smoke`.
 - Public symbol, module move, or dependency path change: `cargo build --workspace`.
+- UniFFI interface change: `bash ci/check-uniffi-bindings-drift.sh`; app-facade change: `uniffi-bindgen generate --library` for Swift and Kotlin against the app cdylib (Rust compile alone does not prove the generated native namespace).
+- UniFFI byte-transport change: `ffi-transport-bench --standard --fail-on-gate`.
 - Reactivity/hot-path/snapshot/view update change: run the project reactivity/performance bench with fail-on-gate.
 - Native shell rendering: build and visually verify the platform path; use screenshots or browser/simulator checks where available.
 - Capability bridge: test idempotent start/stop/restart, raw result reporting, failure reporting, teardown, and no native policy.
 - Privacy/routing/signing: test fail-closed behavior and absence of hardcoded relay or recipient fallback paths.
+- Triage scan (any NMP/RMP app, including external consumers): `python3 scripts/nmp_architecture_scan.py <root>` — investigate every hit; it complements doctrine-lint, it does not replace it.
 
 ## Common False Comforts
 

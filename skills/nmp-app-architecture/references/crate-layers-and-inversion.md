@@ -1,0 +1,111 @@
+# Crate Layers and the Layer-Inversion Rule
+
+> **Authority:** `docs/architecture/crate-boundaries.md` §2–§10a and
+> `docs/product-spec/doctrine.md`. If this reference disagrees with `crate-boundaries.md`, fix
+> `crate-boundaries.md` (the single source of truth for the crate graph) and re-derive this.
+> Do not create a parallel specification. GitHub Issues track unresolved violations.
+
+## Layer Table
+
+| Layer | Owns | Canonical crates |
+|---|---|---|
+| 0 | Dependency-light vocabulary and interface types | `nmp-kinds`, `nmp-signer-iface`, `nmp-nip42-types`, `nmp-nip92-types`, `nmp-nip59`, `nmp-relay-url` |
+| 1 | Storage, network transport, concrete signer transport | `nmp-store`, `nmp-nostr-lmdb`, `nmp-network`, `nmp-signers` |
+| 2 | Routing and subscription-planning algorithms | `nmp-router`, `nmp-planner` |
+| 3 | Kernel substrate contracts and actor state | `nmp-core`, `nmp-coverage-gate` |
+| 4 | Reusable Nostr protocol / product modules | `nmp-nip01`, `nmp-nip17`, `nmp-nip18`, `nmp-nip22`, `nmp-nip25`, `nmp-nip29`, `nmp-nip42`, `nmp-nip47`, `nmp-nip51`, `nmp-nip57`, `nmp-nip60`, `nmp-nip77`, `nmp-nwc`, `nmp-marmot`, `nmp-relations`, `nmp-threading`, `nmp-feed`, `nmp-wot`, `nmp-content` |
+| 5 | App composition | `nmp-defaults`, `apps/<app>/…` Rust crates |
+| 6 | Platform runtimes, bindings, deliverables | `nmp-native-runtime`, `nmp-uniffi`, `nmp-browser-runtime`, app-owned delivery crates |
+| Sidecars | Tooling, tests, diagnostics | `nmp-cli`, `nmp-codegen`, `nmp-testing`, app shells |
+
+## Dependency Direction
+
+Dependencies flow higher → lower. A lower-layer crate may implement a higher-layer trait only
+through **explicit dependency inversion at composition time** (the trait lives in the
+lower-layer crate; the concrete implementation is injected at L5/L6). Sibling crates at the
+same layer do not depend on each other unless that dependency is part of their declared
+responsibility.
+
+## The Layer-Inversion Rule
+
+**render / display / app-noun / aggregation concerns must NOT leak into L0–L4.**
+
+This extends D0 ("the framework core knows nothing about any app domain") to *every* sub-L5
+crate, not only `nmp-core` (`docs/product-spec/doctrine.md`: "D0 applies to every shared NMP
+crate … protocol crates, reusable engines, binding crates, and FFI/wasm delivery surfaces
+must stay app-domain agnostic").
+
+Discriminating questions — a "yes" to any is a layer-inversion violation:
+
+1. Does the type or function name a Nostr protocol noun by kind number, NIP name, or
+   engagement category (replies/reactions/reposts/zaps)?
+2. Does the type carry display-only fields (`display_name`, `picture_url`,
+   `author_display_name`) that should be joined reactively at L5?
+3. Does the crate's output contract bake a render-card, feed-item, or UI-affordance aggregate
+   shape that belongs to the app's composition layer?
+4. Does the module duplicate an L4 protocol codec that should live as a thin adapter crate?
+
+## Layer-Specific Purity Rules
+
+### L1 — Storage stays protocol-noun-free
+`nmp-store` may expose generic event-reference mechanics (counts of events carrying an `e` tag
+to a target, optionally bucketed by caller-supplied opaque keys). It must NOT hard-code kind
+numbers, NIP-10 marker semantics, or named engagement aggregates (`reply`/`reaction`/
+`repost`/`zap`).
+
+### L3 — Kernel substrate stays generic
+`nmp-core` owns substrate contracts and actor-owned state: actor loop, session state,
+capability sockets, trait seams, snapshot/update envelopes, and the `nmp-core::display`
+helper module (pure render-side utilities for TUI/CLI — NOT for projection builders or FFI
+serialization). It must not grow protocol-specific parsers, routing algorithms, action bodies,
+app-specific nouns, or typed NIP-NN codecs. A typed NIP-NN entity surface belongs in an L4
+protocol crate as a thin `rust-nostr` adapter.
+
+### L4 — Protocol crates carry no render enrichment or kind-named transport actions
+Three distinct shapes:
+
+- **A. Display enrichment in projections and `.fbs` wire tables.** L0–L4 projections and wire
+  payloads carry raw protocol identifiers only: `author_pubkey` (hex), kind numbers, tag
+  arrays, content. `ProfileProjection` is the *sole* legitimate carrier of `display_name` /
+  `picture_url`. The L5 composition layer joins `author_pubkey → ProfileProjection`
+  reactively.
+- **B. Render-card / feed-item aggregates.** A NIP crate must not own a render-card,
+  feed-item, or UI-affordance aggregate type. Protocol output may include typed note/event
+  projections with raw protocol fields; the render-card owner is L5 or the leaf app.
+- **C. Kind-named actions in kind-blind transport.** `nmp-nip29` is h-tag/previous/host-pin
+  envelope routing only; its sole write surface is `nmp.nip29.publish_group_event`. Per-kind
+  named actions (`react_in_group`, `repost_in_group`) belong to the owning NIP crate (NIP-25
+  builds the reaction, NIP-18 the repost), which hands the event to the NIP-29 envelope. See
+  `protocol-crates-and-kind-blind-transport.md`.
+
+## Cautionary Violation Families (2026-06-30 audit)
+
+Fifteen confirmed violations across five crates; issues are the canonical tracker.
+
+| Family | Crate (layer) | Live evidence | Issue |
+|---|---|---|---|
+| Store engagement aggregation | `nmp-store` (L1) | `EventStore::interaction_counts` → `TargetInteractionCounts {replies,reactions,reposts,zaps}`; kinds 1/7/6/9735 inlined in `src/interaction.rs` | #2512 |
+| NIP-29 kind-named actions | `nmp-nip29` (L4) | `REACTION_KIND`/`REPOST_KIND` literals + `ReactInGroupAction`/`RepostInGroupAction`/`ShareEventInGroupAction` | #2513 |
+| Content display in wire | `nmp-content` (L4) | `author_display_name`/`author_picture_url` in `embed_projection/variants.rs` + `schema/*.fbs` | #2514 |
+| Kernel NIP-19 codec | `nmp-core` (L3) | `pub mod nip19` in `lib.rs`; `Nip19Entity` encode/decode | #2515 |
+| NIP-01 render-card | `nmp-nip01` (L4) | `TimelineEventCard` "render-ready event card" + `schema/timeline_snapshot.fbs` | #2510 |
+
+The `#2510` family had a root cause in `crate-boundaries.md` §8, which previously sanctioned a
+"note timeline/OP-feed surface" in `nmp-nip01` — a loophole pending a §8 amendment. Treat the
+`NoteRelationCounts` seam as contested until #2508 (global-relation-summary rejection) is
+decided.
+
+## Known-Legitimate Patterns (do NOT flag)
+
+- **`nmp-core::display`** (V-33): pure display-string helpers (bech32, npub abbreviation,
+  avatar tint, relative-time buckets) for Rust presentation surfaces (TUI, CLI, tests).
+  Legitimate, but must not be called from projection builders, snapshot structs, or FFI
+  serialization paths.
+- **`ProfileShape::Card`**: a substrate resolution-width enum, not a UI card.
+- **Kind numbers in `nmp-kinds` (L0)**: the vocabulary layer owns kind constants. The
+  prohibition is on kind-number-keyed *policy* in L1–L4.
+
+## Change Policy
+
+When a crate-boundary rule changes, update `docs/architecture/crate-boundaries.md` first. Do
+not create a parallel plan or architecture ladder.

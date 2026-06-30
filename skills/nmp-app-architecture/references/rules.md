@@ -9,9 +9,9 @@ RMP starts from one idea: one Rust core owns behavior and each platform renders 
 - Rust owns state machines, policy decisions, business logic, validation, protocol behavior, transport, cryptography, persistence, networking, long-lived state, cross-platform invariants, routing decisions, and error semantics.
 - Native owns rendering, native UX affordances, accessibility semantics, and bounded execution of OS capabilities such as Keychain, file pickers, camera, push, location, audio sessions, and secure storage.
 - Data flow is TEA/Elm: `AppAction` enters Rust, one actor processes it, state changes, a snapshot/update is emitted, native applies it on the UI thread and renders.
-- `dispatch()` is fire-and-forget. It must not block and must not return operation success.
+- `dispatch()` is fire-and-forget. It must not block and must not return operation success. The acceptance outcome (a `correlation_id`) is not publish/operation success — terminal status arrives later as projected state. See `write-intents-and-publishing.md`.
 - The actor is the single writer. Async work reports back through explicit internal events. Reducers do not await.
-- Full snapshots are the correctness baseline. Granular updates are allowed only when they are lossless and profiling proves they are needed.
+- Incremental, typed-projection emission is the steady-state default (ADR-0055): the transport omits unchanged projections and emits a `Changed` row carrying that projection's full current value only when its encoded bytes differ. Full snapshots are the cold-start / resync baseline, not every tick. The generic `payload:Value` JSON lane is deleted — all projections are typed FlatBuffers sidecars. See `projections-and-emission.md`.
 - Native navigation may use native widgets, gestures, and transitions, but Rust owns navigation state.
 - Apps must feel fully native: 60fps scrolling, instant touch response, platform-native navigation, platform-native accessibility, and no visible "Rust is involved" tax.
 
@@ -19,18 +19,49 @@ RMP starts from one idea: one Rust core owns behavior and each platform renders 
 
 NMP keeps the RMP skeleton and adds stricter doctrine and Nostr-specific correctness gates.
 
-- RMP says "Rust owns business logic"; NMP makes this enforceable through D0-D10, doctrine lint, bounded snapshots, and extension seams.
+- RMP says "Rust owns business logic"; NMP makes this enforceable through D0–D27 (the doctrine-lint binary enforces A6, D0, D6–D27, action_namespace, no_raw_tap, product_raw_read — the older "D0–D10" framing is incomplete), the architecture scanner, bounded snapshots, and extension seams. See `doctrine-governance-and-enforcement.md`.
 - RMP's early examples sometimes lower display strings into Rust. NMP refines this: Rust owns semantic state and invariant-bearing derived facts; platform rendering may own pure visual formatting such as truncation, typography, local date presentation, and layout labels when those choices do not affect behavior or protocol meaning. If a string affects policy, routing, sorting, identity, replay, tests, or cross-platform semantic parity, compute it in Rust.
 - RMP permits full snapshots as a simple baseline. NMP requires snapshots to be bounded by open views and app chrome. The event store never crosses FFI.
 - RMP allows native capability bridges. NMP requires them to report raw results only, never policy, retry, routing, cipher choice, or recoverability.
 - RMP values performance. NMP treats performance as correctness: no polling, bounded working set, <=60 Hz per view, no hot-path allocation after warmup where D8 applies, no unbounded queues, no native jank.
 - NMP adds Nostr-specific rules: outbox routing is automatic, negentropy-first history sync, injected kernel time, provenance, and private-event fail-closed behavior.
 
+## The 2026 Redesign Spine (ADR-0069–0073) and Deep-Dive References
+
+The clean-break app-architecture migration (EPIC-NS-001 / #2340) reshaped the app-facing
+contract around three "doors" plus one native surface. These are now durable architecture, not
+in-flight work. Each has a deep-dive reference in this directory — read the relevant one before
+designing or reviewing in that area:
+
+- **One native surface** — UniFFI is the sole public native ABI (C-ABI and `nmp-ffi` deleted);
+  browser is wasm-bindgen; FlatBuffers ride *through* UniFFI. Apps own a single UniFFI facade
+  for app-specific verbs → `ffi-and-native-surface.md`.
+- **Explicit composition** — `register_defaults()` is killed as a production path; the app root
+  installs substrate + named protocol features explicitly; `nmp-defaults` is an installer
+  library, not a policy owner → `composition-and-product-policy.md`.
+- **The read door** — typed read sessions own the read lifecycle; `open_interest` /
+  `ObservedProjection` / `ReducedSource` are private substrate → `read-sessions.md` and
+  `projections-and-emission.md`.
+- **The write door** — typed publish intents, composable unsigned drafts, mandatory typed route
+  provenance, dispatch ≠ success → `write-intents-and-publishing.md`.
+- **Runtime / capability / shell boundary** — the three-tier runtime stack, the capability port
+  contract, and what a native shell may and may not own → `runtime-capability-shell-boundary.md`.
+- **Crate layers** — the L0–L6 layer model and the layer-inversion rule (no display/render/
+  app-noun/aggregation in L0–L4) → `crate-layers-and-inversion.md`.
+- **Protocol-crate purity** — D0 is `nmp-core`-scoped; protocol crates own one mechanism;
+  NIP-29 is a kind-blind transport with one generic publish door →
+  `protocol-crates-and-kind-blind-transport.md`.
+- **Governance** — the ADR ledger (Current/Amended/Folded/Retired), rolling ratchets, the
+  two-tier waiver model, and how doctrine-lint and the scanner divide labor →
+  `doctrine-governance-and-enforcement.md`.
+
 ## D0-D10 In One Page
 
-Resolve conflicts in order: D0 outranks D1, D1 outranks D2, and so on.
+Resolve conflicts in order: D0 outranks D1, D1 outranks D2, and so on. D0–D10 are the
+publicly enumerated baseline; doctrine-lint enforces through D27 (see
+`doctrine-governance-and-enforcement.md` for the full table).
 
-- D0: The framework core knows nothing about any app domain. No app nouns in `nmp-core`; app and protocol modules contribute typed variants through seams. Business logic does not move to Swift/Kotlin/TS to avoid Rust boundaries.
+- D0: The framework core knows nothing about any app domain. No app nouns in `nmp-core`. The doctrine-lint banned-token gate is scoped to `nmp-core`, but the **layer-inversion rule extends the spirit of D0 to every sub-L5 crate**: no render/display/app-noun/aggregation concern may leak into L0–L4 (storage, transport, planner, kernel, protocol crates). Protocol crates may name their own protocol nouns; they may not carry render-cards, display strings, or foreign-NIP semantics. App and protocol modules contribute typed variants through seams. Business logic does not move to Swift/Kotlin/TS to avoid Rust boundaries. See `crate-layers-and-inversion.md`.
 - D1: Render now, refine in place. Do not hide renderable content behind loading gates. View payloads carry values or typed placeholders, not "wait for profile" status.
 - D2: History syncs by diff, not re-download. Historical backfill uses negentropy/NIP-77 coverage gates where supported; raw REQ scans are not the default.
 - D3: Relay routing is automatic. App-facing send, publish, and view-open surfaces do not accept relay URLs. Manual relay selection is an audited opt-out.

@@ -15,7 +15,16 @@ Allowances"):
 - One-shot presentation timers (toast dismissal, copy feedback, focus, initial
   scroll) are not polling. Repeating timers and sleep-in-loop patterns are.
 - D6 only flags error handling at the FFI boundary, not ordinary native
-  OS/capability try/catch.
+  OS/capability try/catch. `#[uniffi::export]` is the canonical native binding
+  decorator after the clean-break and is NOT itself a smell; a `Result`/`throws`
+  near the boundary is.
+
+This scanner is a complement to the doctrine-lint binary, not a replacement.
+Doctrine-lint owns the Rust D-rules (D0, D6-D27, product_raw_read, ...). The
+scanner's comparative advantage is cross-language heuristics (Swift/Kotlin/TS),
+checks doctrine-lint has no rule for yet, and runs on external app repos that do
+not build doctrine-lint. Rules below scoped with a path predicate target the
+2026 redesign spine (see references/*.md); they avoid duplicating doctrine-lint.
 """
 
 from __future__ import annotations
@@ -139,6 +148,61 @@ def is_display_string_line(line: str) -> bool:
     return bool(re.search(r"\b(placeholder|prompt|accessibilityLabel|footnote|helpText)\b", line))
 
 
+# --- Path predicates for spine-scoped rules -------------------------------
+# A rule may carry an optional predicate over the repo-relative path. It fires
+# only where the predicate holds. This keeps NMP-internal layer rules quiet on
+# external app repos and vice versa, and keeps the scanner from duplicating the
+# doctrine-lint Rust gates.
+
+def _norm(rel: str) -> str:
+    return rel.replace("\\", "/")
+
+
+def is_framework_crate(rel: str) -> bool:
+    """A shared NMP framework crate (crates/nmp-*)."""
+    return "crates/nmp-" in _norm(rel)
+
+
+def is_app_code(rel: str) -> bool:
+    """App-layer code: anything that is not a shared NMP framework crate.
+
+    True for app roots under apps/ and for external consumer repos (whose code
+    never lives under crates/nmp-). This is where register_defaults and raw read
+    surfaces are violations.
+    """
+    return not is_framework_crate(rel)
+
+
+def is_sub_l5_framework_crate(rel: str) -> bool:
+    """L0-L4 framework crate: a shared crate that is not a binding/runtime/composition
+    crate (L6) or a tooling/render sidecar (nmp-cli/-codegen/-testing)."""
+    r = _norm(rel)
+    if "crates/nmp-" not in r:
+        return False
+    return not any(
+        x in r
+        for x in (
+            "nmp-uniffi",
+            "nmp-native-runtime",
+            "nmp-browser-runtime",
+            "nmp-defaults",
+            "nmp-cli",
+            "nmp-codegen",
+            "nmp-testing",
+        )
+    )
+
+
+def is_nip_crate(rel: str) -> bool:
+    return bool(re.search(r"nmp-nip\d", _norm(rel)))
+
+
+def is_nip_protocol_crate(rel: str) -> bool:
+    """A NIP protocol crate, excluding its `-runtime` sibling (a runtime legitimately
+    sits atop its own base protocol crate, which is not a cross-NIP dependency)."""
+    return is_nip_crate(rel) and "-runtime" not in _norm(rel)
+
+
 def should_skip_line(path: Path, line: str) -> bool:
     parts = set(path.parts)
     if {"docs", "wiki", "README.md", "CHANGELOG.md", "AGENTS.md", "CLAUDE.md"} & parts:
@@ -218,14 +282,18 @@ def classify_polling(line: str, back_window: str, fwd_window: str) -> tuple[str,
     return None
 
 
-# Static rules with a fixed severity. Dynamic rules (D8 polling, D3 relay, D6
-# ffi) are handled explicitly in scan().
+# Static rules with a fixed severity. Each tuple is
+#   (severity, rule, pattern, reason, ext_filter, path_pred)
+# where ext_filter restricts file suffixes (or None) and path_pred is an
+# optional predicate over the repo-relative path (or None = any path).
+# Dynamic rules (D8 polling, D3 relay, D6 ffi) are handled explicitly in scan().
 RULES = [
     (
         "warning",
         "D9/kernel-owns-time",
         re.compile(r"\b(SystemTime::now|Instant::now|Date\(\)|Date\.now|currentTimeMillis|NSDate\(\))\b"),
         "Reducer, replay, routing, or policy code must use an injected clock.",
+        None,
         None,
     ),
     (
@@ -234,16 +302,18 @@ RULES = [
         re.compile(r"\b(AppState|Snapshot|FullState)\b.*\b(Vec<.*Event|Vec<.*Note|event_store|history|all_events)\b", re.I),
         "Snapshots should be screen-shaped and bounded by open views, never event history.",
         None,
+        None,
     ),
     (
         "warning",
         "D7/native-policy-smell",
         re.compile(
-            r"\b(shouldRetry|isRecoverable|retryCount|relayUrl|relay_url|publishRelay|"
+            r"\b(shouldRetry|isRecoverable|retryCount|relayUrl|relay_url|publishRelay|reconnectRelay|"
             r"decrypt|encrypt|signEvent|nostrEvent|NostrEvent|Filter|Kind|kind\s*[=:])\b"
         ),
         "Native code may be rendering or capability execution only; verify this is not policy.",
         NATIVE_EXTENSIONS,
+        None,
     ),
     (
         "warning",
@@ -251,6 +321,7 @@ RULES = [
         re.compile(r"\b(cache|cached|RoomDatabase|SwiftData|UserDefaults|SharedPreferences)\b"),
         "Native caches must not mirror Rust-owned app facts.",
         NATIVE_EXTENSIONS,
+        None,
     ),
     (
         "warning",
@@ -258,11 +329,82 @@ RULES = [
         re.compile(r"(\bTODO\b|\bFIXME\b|\bHACK\b|\btemporary\b|\bfor now\b|\bstub\b|\bworkaround\b)"),
         "Temporary hacks, TODO debt, stubs, and workaround paths require canonical tracking or removal.",
         None,
+        None,
+    ),
+    # --- 2026 redesign-spine rules (complement doctrine-lint) ---------------
+    (
+        "warning",
+        "ADR-0069/no-register-defaults",
+        re.compile(r"(?<!fn )\bregister_defaults\s*\("),
+        "register_defaults() is killed as a production app path (ADR-0069). Compose explicitly: "
+        "register_substrate() + named protocol installers. A preset needs a named owner + deletion gate.",
+        {".rs"},
+        is_app_code,
+    ),
+    (
+        "warning",
+        "ADR-0070/raw-read-surface",
+        re.compile(r"\b(open_interest|ObservedProjectionRegistrar|ObservedProjectionReconciler)\b"),
+        "Raw read substrate (ADR-0070). Product screens open typed read sessions (open_feed/"
+        "open_search_session); open_interest/ObservedProjection are private machinery.",
+        {".rs"},
+        is_app_code,
+    ),
+    (
+        "warning",
+        "D-ABI/new-framework-c-abi",
+        re.compile(r"\bpub\s+extern\s+\"C\"\s+fn\b"),
+        "New pub extern \"C\" fn in a framework crate is an ABI regression (UniFFI is the sole "
+        "native surface). Use #[uniffi::export]; app-owned glue belongs in apps/ with an owning issue.",
+        {".rs"},
+        is_framework_crate,
+    ),
+    (
+        "warning",
+        "layer-inversion/display-in-wire",
+        re.compile(r"\b(author_display_name|author_picture_url|has_author_display|has_author_picture)\b"),
+        "Display fields in an L0-L4 crate projection/wire table violate display separation; only "
+        "ProfileProjection carries display strings. Join author_pubkey -> profile at L5 (#2514).",
+        {".rs"},
+        is_sub_l5_framework_crate,
+    ),
+    # NIP-29 kind-blindness (foreign-kind literals, kind-named actions) is enforced in Rust by
+    # the doctrine-lint `nip29_kind_blind` rule (#2513/#2540) — not duplicated here, since the
+    # only crate it would match (crates/nmp-nip29) is exactly what doctrine-lint already covers.
+    (
+        "warning",
+        "protocol-purity/cross-nip-import",
+        re.compile(r"\buse\s+nmp_nip\d+\s*::"),
+        "Cross-nip import: protocol crates should not depend on each other (an L0 vocab/types crate "
+        "or a crate's own -runtime base is fine). Compose cross-protocol features at the app layer.",
+        {".rs"},
+        is_nip_protocol_crate,
+    ),
+    (
+        "warning",
+        "ADR-0053/retired-projection-tier-vocab",
+        re.compile(r"\b(declare_consumed_projections|Tier-1|Tier-2|Tier-3)\b"),
+        "Retired projection-tier vocabulary (ADR-0053 folded into ADR-0070). Product reads open typed "
+        "read sessions; declare_consumed_projections is output-transport plumbing, not a read API.",
+        {".rs"},
+        is_app_code,
+    ),
+    (
+        "warning",
+        "ADR-0071/dispatch-as-success",
+        re.compile(
+            r"\b(correlationId|correlation_id)\b.{0,80}\b(success|onSuccess|isPublished|markDone|markPublished|completed|onComplete)\b",
+            re.I,
+        ),
+        "dispatch acceptance (correlation_id) is not publish success. Terminal status arrives via the "
+        "PublishStatusView projection / action_results state on a later tick (ADR-0071, D6).",
+        NATIVE_EXTENSIONS,
+        None,
     ),
 ]
 
 D6_PATTERN = re.compile(
-    r"(#\[uniffi::export\]|extern\s+\"C\"|@Throws|throws\b|try\s*\{|catch\s*\(|->\s*Result\s*<)"
+    r"(extern\s+\"C\"|@Throws|throws\b|try\s*\{|catch\s*\(|->\s*Result\s*<)"
 )
 D6_REASON = "Errors must surface as state, not native exceptions or FFI Result types."
 
@@ -352,8 +494,10 @@ def scan(root: Path) -> list[Finding]:
                 )
 
             # Remaining fixed-severity rules.
-            for severity, rule, pattern, reason, ext_filter in RULES:
+            for severity, rule, pattern, reason, ext_filter, path_pred in RULES:
                 if ext_filter is not None and path.suffix not in ext_filter:
+                    continue
+                if path_pred is not None and not path_pred(rel):
                     continue
                 if not pattern.search(line):
                     continue
