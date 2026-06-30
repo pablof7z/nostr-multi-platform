@@ -21,7 +21,7 @@ mod projection;
 mod wire;
 
 pub use action::{
-    Nip25Descriptor, PublishReactionCommand, ReactAction, ReactModule,
+    build_reaction_event, Nip25Descriptor, PublishReactionCommand, ReactAction, ReactModule,
     UnreactAction, UnreactModule, UnreactReactionCommand, KIND_REACTION, KIND_REACTION_DELETE,
 };
 pub use aggregate::{

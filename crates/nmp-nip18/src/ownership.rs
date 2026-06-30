@@ -72,3 +72,15 @@ nmp_ownership::declare_crate_ownership! {
     notes: [
     ],
 }
+
+pub const REPOST_ARTIFACT: nmp_ownership::ArtifactProvenance =
+    nmp_ownership::ArtifactProvenance::new("nmp.nip18", "nostr.kind.6.repost");
+
+pub const GENERIC_REPOST_ARTIFACT: nmp_ownership::ArtifactProvenance =
+    nmp_ownership::ArtifactProvenance::new("nmp.nip18", "nostr.kind.16.generic_repost");
+
+pub const REPOST_EVENT_PROVENANCE: nmp_ownership::EventOwnershipProvenance =
+    nmp_ownership::EventOwnershipProvenance::new(Some(REPOST_ARTIFACT), &[]);
+
+pub const GENERIC_REPOST_EVENT_PROVENANCE: nmp_ownership::EventOwnershipProvenance =
+    nmp_ownership::EventOwnershipProvenance::new(Some(GENERIC_REPOST_ARTIFACT), &[]);
