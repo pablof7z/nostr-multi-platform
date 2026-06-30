@@ -193,6 +193,97 @@ That path is intentionally app-local. Do not add
 `ACTION_BUILDERS`; the built-in tables are only for reusable default NMP
 actions.
 
+The binding-surface counterpart to this kind lane is
+[App-owned UniFFI facades (#2494)](#app-owned-uniffi-facades-2494): the same
+first-class-extender principle one layer down, for app-specific *native verbs*
+instead of app-specific *kinds*.
+
+## App-owned UniFFI facades (#2494)
+
+Reusable framework verbs reach Swift/Kotlin through the stock `nmp-uniffi`
+generated namespace. When your app needs app-specific protocol verbs — verbs
+that are not reusable framework verbs — you do not stand up a parallel binding
+crate or hand-write a C bridge. You own **one** app-facade UniFFI crate layered
+over `nmp-native-runtime` and `crates/nmp-uniffi-support`.
+
+What you write in the facade crate:
+
+- `uniffi::setup_scaffolding!()` once (your facade is the single cdylib the
+  native shell links);
+- a facade-local UniFFI object (e.g. `TwentyNinerApp`), plus facade-local
+  records and callback interfaces, all in your own generated Swift/Kotlin
+  namespace;
+- thin adapters that translate your local UniFFI traits/records into the shared
+  helpers below.
+
+What you MUST reuse, never copy:
+
+- lifecycle/start/configure clamp policy (`nmp_uniffi_support::start_runtime`,
+  `configure_runtime`, `clamp_visible`, `clamp_emit_hz`);
+- update-sink registration and panic-contained delivery
+  (`set_update_sink` / `update_listener_from_sink`);
+- capability callbacks (`set_capability_callback` /
+  `capability_handler_from_sink`, `dispatch_capability_json`);
+- action dispatch and its typed outcome (`dispatch_action` /
+  `dispatch_action_vec` returning `nmp_uniffi_support::DispatchOutcome`);
+- action-result observers and lifecycle observers
+  (`register_action_result_observer`, `set_lifecycle_callback`).
+
+These mechanics — panic containment, quiescence, dispatch, clamp policy — live
+below the generated surface in `nmp-uniffi-support` / `nmp-native-runtime`. Copy
+zero runtime bridge policy into your facade.
+
+### Why facade-local records (the hard constraint)
+
+You cannot export shared UniFFI records or callback interfaces cross-crate from
+`nmp-uniffi-support`. UniFFI's namespace model resolves every exported record and
+callback interface to its owning facade namespace; an earlier attempt that
+exported them directly from `nmp-uniffi-support` compiled in Rust but failed at
+`uniffi-bindgen --library` with `Unknown namespace for CallbackInterface(...)
+(nmp_uniffi_support)` when generating bindings from both `nmp-uniffi` and the
+app. That is why `nmp-uniffi-support` deliberately does **not** call
+`setup_scaffolding!()`: it shares only the Rust-side mechanics. So you still
+define tiny local shims (your own `DispatchOutcome`, `UpdateSink`,
+`CapabilitySink` types) — but they delegate straight to the shared helpers and
+carry no policy of their own.
+
+### Boundary rule vs. upstreaming to NMP
+
+App facades are for app-owned verbs and composition roots, not for bypassing NMP
+ownership. A generic Nostr mechanism that an unrelated second app could reuse
+unchanged belongs in a Layer-4 NMP protocol crate (and the reusable `nmp-uniffi`
+surface), not in your app facade — exactly as a generic kind belongs upstream
+rather than in an app-private action registry. Native shells still only render
+state and execute raw capabilities.
+
+### Worked example: 29er
+
+The NIP-29 groups app 29er owns a `TwentyNinerApp` facade that exposes app verbs
+such as `dispatchNip29Action` and `openGroupDiscovery` to its iOS/Android shells
+as first-class native citizens, with facade-local `CapabilitySink`, `UpdateSink`,
+and `DispatchOutcome` types in the `TwentyNinerApp` namespace. The facade adapts
+those local types into the `nmp-uniffi-support` helpers; it copies none of NMP's
+lifecycle, dispatch, or clamp policy.
+
+### Validation
+
+A Rust compile alone does **not** prove the generated native namespace — the
+namespace failure above only surfaces at bindings generation. An app-facade proof
+must generate bindings for both languages against the app cdylib and confirm the
+facade's verbs appear:
+
+```bash
+uniffi-bindgen generate --library <app-cdylib> --language swift --out-dir <swift-out>
+uniffi-bindgen generate --library <app-cdylib> --language kotlin --out-dir <kotlin-out>
+```
+
+For the reusable framework surface, drift is gated by
+`bash ci/check-uniffi-bindings-drift.sh`. The durable rationale and binding-surface
+rules live in [`docs/ffi-surface.md`](../ffi-surface.md) ("App-Owned UniFFI
+Facades" / "Verification Pointers") and
+[ADR-0030](../decisions/0030-uniffi-vs-c-abi.md); this guide is only the
+app-author how-to.
+
 ## Public bindings and transitional internals
 
 ```
@@ -201,6 +292,7 @@ actions.
 │ action/update doorways to Swift/Kotlin/desktop native hosts.          │
 │ Native shells import generated UniFFI modules; they do not call       │
 │ deleted framework symbols as starter-app API.                         │
+│ An app may also own a UniFFI facade for app-specific verbs (#2494).   │
 │ The update callback carries one binary `nmp.transport.UpdateFrame`   │
 │ with file identifier `NMPU`: Snapshot or Panic. There is no JSON     │
 │ runtime snapshot fallback and no pull/drain update symbol.           │
