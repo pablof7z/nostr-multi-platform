@@ -159,7 +159,7 @@ fn run_smoke(
     snapshot_rx: std::sync::mpsc::Receiver<Vec<u8>>,
     timeout: Duration,
 ) -> i32 {
-    use nmp_core::nip19::{decode_naddr, decode_nevent, decode_note};
+    use nmp_nostr_id::{decode_naddr, decode_nevent, decode_note};
     use std::time::Instant;
 
     struct SmokeTarget {

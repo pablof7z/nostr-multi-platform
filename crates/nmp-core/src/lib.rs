@@ -92,8 +92,12 @@ mod kernel_reducer;
 /// Single source of truth for the integer kind numbers used on the wire.
 /// See [`kinds`] for the migration rationale.
 pub mod kinds;
-pub mod nip19;
-pub mod nip21;
+// NIP-19 bech32 entity codec AND the NIP-21 `nostr:` URI surface moved out of
+// the kernel substrate into the dependency-light Layer-0 `nmp-nostr-id` crate
+// (issue #2515) — the substrate must not own protocol-specific parsers/nouns
+// (crate-boundaries.md §3), and the identifier vocabulary belongs at L0 (like
+// `nmp-relay-url`) which the kernel may depend on downward. Callers now depend
+// on `nmp_nostr_id::*` directly; there is no re-export shim here.
 // Subscription compiler — internal path for nmp-core consumers. External
 // callers must depend on `nmp-planner` directly (`nmp_planner::*`); the
 // `nmp_core::planner` re-export path is deleted (#1608, D0/D3: facades leak

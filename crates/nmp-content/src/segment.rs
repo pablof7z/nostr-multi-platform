@@ -10,7 +10,7 @@
 //! shape still ripples through the wire projection, so add fields
 //! conservatively.
 
-use nmp_core::nip21::NostrUri;
+use nmp_nostr_id::NostrUri;
 use serde::{Deserialize, Serialize};
 use url::Url;
 

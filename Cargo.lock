@@ -3686,6 +3686,7 @@ dependencies = [
  "nmp-core",
  "nmp-defaults",
  "nmp-native-runtime",
+ "nmp-nostr-id",
  "nmp-ownership",
  "nmp-uniffi",
  "serde",
@@ -3735,6 +3736,7 @@ dependencies = [
  "nmp-nip46-runtime",
  "nmp-nip50",
  "nmp-nip57",
+ "nmp-nostr-id",
  "nmp-ownership",
  "nmp-planner",
  "nmp-signer-iface",
@@ -3798,6 +3800,7 @@ dependencies = [
  "nmp-feed",
  "nmp-kinds",
  "nmp-nip18",
+ "nmp-nostr-id",
  "nmp-ownership",
  "proptest",
  "pulldown-cmark",
@@ -3814,6 +3817,7 @@ version = "0.8.4"
 dependencies = [
  "nmp-content",
  "nmp-core",
+ "nmp-nostr-id",
  "nmp-ownership",
  "nmp-signer-iface",
  "nmp-store",
@@ -3827,7 +3831,6 @@ dependencies = [
 name = "nmp-core"
 version = "0.8.4"
 dependencies = [
- "bech32",
  "chrono",
  "flatbuffers",
  "indexmap",
@@ -3835,6 +3838,7 @@ dependencies = [
  "nmp-network",
  "nmp-nip42-types",
  "nmp-nip59",
+ "nmp-nostr-id",
  "nmp-ownership",
  "nmp-planner",
  "nmp-relay-url",
@@ -3955,6 +3959,7 @@ dependencies = [
  "nmp-content",
  "nmp-core",
  "nmp-native-runtime",
+ "nmp-nostr-id",
  "nmp-ownership",
  "ratatui",
  "ratatui-image",
@@ -3970,6 +3975,7 @@ dependencies = [
  "nmp-core",
  "nmp-nip05",
  "nmp-nip50",
+ "nmp-nostr-id",
  "nmp-ownership",
  "serde",
  "serde_json",
@@ -4062,6 +4068,7 @@ dependencies = [
  "nmp-core",
  "nmp-feed",
  "nmp-nip18",
+ "nmp-nostr-id",
  "nmp-ownership",
  "nmp-planner",
  "nmp-signer-iface",
@@ -4376,6 +4383,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-nostr-id"
+version = "0.8.4"
+dependencies = [
+ "bech32",
+ "nmp-ownership",
+ "nostr",
+ "proptest",
+]
+
+[[package]]
 name = "nmp-nostr-lmdb"
 version = "0.8.4"
 dependencies = [
@@ -4587,6 +4604,7 @@ dependencies = [
  "nmp-nip59",
  "nmp-nip68",
  "nmp-nip77",
+ "nmp-nostr-id",
  "nmp-nwc",
  "nmp-ownership",
  "nmp-planner",
@@ -4625,6 +4643,7 @@ dependencies = [
  "nmp-core",
  "nmp-defaults",
  "nmp-native-runtime",
+ "nmp-nostr-id",
  "nmp-ownership",
  "nmp-uniffi-support",
  "nostr",

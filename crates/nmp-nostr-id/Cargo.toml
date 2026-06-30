@@ -1,0 +1,19 @@
+[package]
+name = "nmp-nostr-id"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository.workspace = true
+description = "Dependency-light Nostr identifier vocabulary (Layer 0): the typed NIP-19 bech32 entity codec (`Nip19Entity` for npub/nsec/note/nprofile/nevent/naddr plus `encode_*` / `decode_*` / `parse` / `format`) and the NIP-21 `nostr:` URI surface (`NostrUri`, `parse_nostr_uri`, `format_nostr_uri`). Both are thin adapters over `nostr::nips::nip19` (the rust-nostr canonical codec); this crate never re-implements crypto. Lives at Layer 0 — the identifier vocabulary many layers hand each other, like `nmp-relay-url` — which the kernel may depend on downward without a layer inversion. Depends only on the `nostr` crate."
+
+[dependencies]
+nmp-ownership = { workspace = true }
+# Thin adapter only: the actual bech32 + TLV encode/decode is delegated to
+# rust-nostr's canonical NIP-19 codec; this crate never re-implements crypto.
+nostr = { workspace = true }
+
+[dev-dependencies]
+proptest = "1"
+# Used by the integration tests to hand-build adversarial bech32m bodies
+# (truncated TLVs etc.) that the codec must reject without panicking.
+bech32 = "0.11"

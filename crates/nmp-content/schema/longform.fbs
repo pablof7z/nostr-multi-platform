@@ -70,14 +70,9 @@ table ArticleDocument {
   address:string (key);
   // 64-character hex event id of the winning event.
   id:string;
-  // 64-character hex author pubkey.
+  // 64-character hex author pubkey (display joins reactively at L5 against
+  // `ProfileProjection`; #2514 — no author display enrichment on this L4 table).
   author_pubkey:string;
-  // author_display_name: Option<String> (kind:0 enrichment; resolver leaves None).
-  has_author_display_name:bool;
-  author_display_name:string;
-  // author_picture_url: Option<String>.
-  has_author_picture_url:bool;
-  author_picture_url:string;
   // Event creation time as Unix seconds.
   created_at:uint64;
   // title: Option<String>.

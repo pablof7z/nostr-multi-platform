@@ -58,9 +58,10 @@ public struct ArticleEmbed: KindRenderer {
 
                 // Author byline.
                 HStack(spacing: 8) {
+                    // Self-claiming avatar: resolves the author's kind:0 picture
+                    // reactively from the pubkey — the kernel never fetches it.
                     NostrAvatar(
                         pubkey: article.authorPubkey,
-                        pictureUrl: article.authorPictureUrl.flatMap(URL.init(string:)),
                         size: 24
                     )
                     .equatable()

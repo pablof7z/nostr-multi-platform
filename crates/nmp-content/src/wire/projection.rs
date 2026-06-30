@@ -3,7 +3,7 @@
 //! content → typed [`WireNode::Placeholder`], never dropped) and D6 (no
 //! `unwrap`/`expect`/panicking-index on non-test paths).
 
-use nmp_core::nip21::{format_nostr_uri, NostrUri};
+use nmp_nostr_id::{format_nostr_uri, NostrUri};
 use url::Url;
 
 use crate::markdown::{MarkdownInline, MarkdownNode};

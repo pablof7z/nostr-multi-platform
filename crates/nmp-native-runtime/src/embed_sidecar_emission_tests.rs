@@ -85,8 +85,6 @@ fn populate_slot_with_marker(slot: &EmbedSidecarSlot, marker: u8) {
             projection: EmbedKindProjection::Unknown(UnknownProjection {
                 kind: marker as u32,
                 author_pubkey: "aa".repeat(32),
-                author_display_name: None,
-                author_picture_url: None,
                 created_at: 1_000_000,
                 content: format!("content_{marker}"),
                 content_tree: nmp_content::wire::ContentTreeWire::default(),

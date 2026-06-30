@@ -36,80 +36,68 @@ authorPubkey(optionalEncoding?:any):string|Uint8Array|null {
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
-hasAuthorDisplayName():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 8);
-  return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
-}
-
-authorDisplayName():string|null
-authorDisplayName(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
-authorDisplayName(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 10);
-  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
-}
-
 createdAt():bigint {
-  const offset = this.bb!.__offset(this.bb_pos, 12);
+  const offset = this.bb!.__offset(this.bb_pos, 8);
   return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
 }
 
 highlightedText():string|null
 highlightedText(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 highlightedText(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 14);
+  const offset = this.bb!.__offset(this.bb_pos, 10);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 hasSourceEventId():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 16);
+  const offset = this.bb!.__offset(this.bb_pos, 12);
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
 sourceEventId():string|null
 sourceEventId(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 sourceEventId(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 18);
+  const offset = this.bb!.__offset(this.bb_pos, 14);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 hasSourceEventAddr():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 20);
+  const offset = this.bb!.__offset(this.bb_pos, 16);
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
 sourceEventAddr():string|null
 sourceEventAddr(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 sourceEventAddr(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 22);
+  const offset = this.bb!.__offset(this.bb_pos, 18);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 hasSourceUrl():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 24);
+  const offset = this.bb!.__offset(this.bb_pos, 20);
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
 sourceUrl():string|null
 sourceUrl(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 sourceUrl(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 26);
+  const offset = this.bb!.__offset(this.bb_pos, 22);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 hasContext():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 28);
+  const offset = this.bb!.__offset(this.bb_pos, 24);
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
 context():string|null
 context(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 context(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 30);
+  const offset = this.bb!.__offset(this.bb_pos, 26);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 static startHighlightProjection(builder:flatbuffers.Builder) {
-  builder.startObject(14);
+  builder.startObject(12);
 }
 
 static addId(builder:flatbuffers.Builder, idOffset:flatbuffers.Offset) {
@@ -120,52 +108,44 @@ static addAuthorPubkey(builder:flatbuffers.Builder, authorPubkeyOffset:flatbuffe
   builder.addFieldOffset(1, authorPubkeyOffset, 0);
 }
 
-static addHasAuthorDisplayName(builder:flatbuffers.Builder, hasAuthorDisplayName:boolean) {
-  builder.addFieldInt8(2, +hasAuthorDisplayName, +false);
-}
-
-static addAuthorDisplayName(builder:flatbuffers.Builder, authorDisplayNameOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(3, authorDisplayNameOffset, 0);
-}
-
 static addCreatedAt(builder:flatbuffers.Builder, createdAt:bigint) {
-  builder.addFieldInt64(4, createdAt, BigInt('0'));
+  builder.addFieldInt64(2, createdAt, BigInt('0'));
 }
 
 static addHighlightedText(builder:flatbuffers.Builder, highlightedTextOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(5, highlightedTextOffset, 0);
+  builder.addFieldOffset(3, highlightedTextOffset, 0);
 }
 
 static addHasSourceEventId(builder:flatbuffers.Builder, hasSourceEventId:boolean) {
-  builder.addFieldInt8(6, +hasSourceEventId, +false);
+  builder.addFieldInt8(4, +hasSourceEventId, +false);
 }
 
 static addSourceEventId(builder:flatbuffers.Builder, sourceEventIdOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(7, sourceEventIdOffset, 0);
+  builder.addFieldOffset(5, sourceEventIdOffset, 0);
 }
 
 static addHasSourceEventAddr(builder:flatbuffers.Builder, hasSourceEventAddr:boolean) {
-  builder.addFieldInt8(8, +hasSourceEventAddr, +false);
+  builder.addFieldInt8(6, +hasSourceEventAddr, +false);
 }
 
 static addSourceEventAddr(builder:flatbuffers.Builder, sourceEventAddrOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(9, sourceEventAddrOffset, 0);
+  builder.addFieldOffset(7, sourceEventAddrOffset, 0);
 }
 
 static addHasSourceUrl(builder:flatbuffers.Builder, hasSourceUrl:boolean) {
-  builder.addFieldInt8(10, +hasSourceUrl, +false);
+  builder.addFieldInt8(8, +hasSourceUrl, +false);
 }
 
 static addSourceUrl(builder:flatbuffers.Builder, sourceUrlOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(11, sourceUrlOffset, 0);
+  builder.addFieldOffset(9, sourceUrlOffset, 0);
 }
 
 static addHasContext(builder:flatbuffers.Builder, hasContext:boolean) {
-  builder.addFieldInt8(12, +hasContext, +false);
+  builder.addFieldInt8(10, +hasContext, +false);
 }
 
 static addContext(builder:flatbuffers.Builder, contextOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(13, contextOffset, 0);
+  builder.addFieldOffset(11, contextOffset, 0);
 }
 
 static endHighlightProjection(builder:flatbuffers.Builder):flatbuffers.Offset {
@@ -173,12 +153,10 @@ static endHighlightProjection(builder:flatbuffers.Builder):flatbuffers.Offset {
   return offset;
 }
 
-static createHighlightProjection(builder:flatbuffers.Builder, idOffset:flatbuffers.Offset, authorPubkeyOffset:flatbuffers.Offset, hasAuthorDisplayName:boolean, authorDisplayNameOffset:flatbuffers.Offset, createdAt:bigint, highlightedTextOffset:flatbuffers.Offset, hasSourceEventId:boolean, sourceEventIdOffset:flatbuffers.Offset, hasSourceEventAddr:boolean, sourceEventAddrOffset:flatbuffers.Offset, hasSourceUrl:boolean, sourceUrlOffset:flatbuffers.Offset, hasContext:boolean, contextOffset:flatbuffers.Offset):flatbuffers.Offset {
+static createHighlightProjection(builder:flatbuffers.Builder, idOffset:flatbuffers.Offset, authorPubkeyOffset:flatbuffers.Offset, createdAt:bigint, highlightedTextOffset:flatbuffers.Offset, hasSourceEventId:boolean, sourceEventIdOffset:flatbuffers.Offset, hasSourceEventAddr:boolean, sourceEventAddrOffset:flatbuffers.Offset, hasSourceUrl:boolean, sourceUrlOffset:flatbuffers.Offset, hasContext:boolean, contextOffset:flatbuffers.Offset):flatbuffers.Offset {
   HighlightProjection.startHighlightProjection(builder);
   HighlightProjection.addId(builder, idOffset);
   HighlightProjection.addAuthorPubkey(builder, authorPubkeyOffset);
-  HighlightProjection.addHasAuthorDisplayName(builder, hasAuthorDisplayName);
-  HighlightProjection.addAuthorDisplayName(builder, authorDisplayNameOffset);
   HighlightProjection.addCreatedAt(builder, createdAt);
   HighlightProjection.addHighlightedText(builder, highlightedTextOffset);
   HighlightProjection.addHasSourceEventId(builder, hasSourceEventId);

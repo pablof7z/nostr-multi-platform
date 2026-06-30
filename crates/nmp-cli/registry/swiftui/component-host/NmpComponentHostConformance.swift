@@ -37,8 +37,6 @@ public enum NmpComponentHostConformanceFixture {
         projection: .shortNote(ShortNoteProjection(
             id: primaryEventId,
             authorPubkey: pubkey,
-            authorDisplayName: nil,
-            authorPictureUrl: nil,
             createdAt: 1_700_000_000,
             content: "Event render data supplied by refs.event.envelopes.",
             mediaUrls: []

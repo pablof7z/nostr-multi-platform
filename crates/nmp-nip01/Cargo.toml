@@ -32,3 +32,5 @@ tracing = "0.1"
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"] }
+# NIP-19 entity codec (Layer 4), used by timeline_projection tests. Issue #2515.
+nmp-nostr-id = { path = "../nmp-nostr-id" }

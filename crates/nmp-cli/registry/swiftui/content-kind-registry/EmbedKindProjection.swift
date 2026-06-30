@@ -20,8 +20,6 @@ public enum EmbedKindProjection: Equatable {
 public struct ShortNoteProjection: Equatable {
     public let id: String
     public let authorPubkey: String
-    public let authorDisplayName: String?
-    public let authorPictureUrl: String?
     public let createdAt: UInt64
     /// Plain-text fallback for the content body. The Swift mirror does NOT
     /// re-implement the Rust content tokenizer; renderers read `content` as a
@@ -32,16 +30,12 @@ public struct ShortNoteProjection: Equatable {
     public init(
         id: String,
         authorPubkey: String,
-        authorDisplayName: String? = nil,
-        authorPictureUrl: String? = nil,
         createdAt: UInt64 = 0,
         content: String = "",
         mediaUrls: [String] = []
     ) {
         self.id = id
         self.authorPubkey = authorPubkey
-        self.authorDisplayName = authorDisplayName
-        self.authorPictureUrl = authorPictureUrl
         self.createdAt = createdAt
         self.content = content
         self.mediaUrls = mediaUrls
@@ -52,8 +46,6 @@ public struct ShortNoteProjection: Equatable {
 public struct ArticleProjection: Equatable {
     public let id: String
     public let authorPubkey: String
-    public let authorDisplayName: String?
-    public let authorPictureUrl: String?
     public let createdAt: UInt64
     public let title: String?
     public let summary: String?
@@ -66,8 +58,6 @@ public struct ArticleProjection: Equatable {
     public init(
         id: String,
         authorPubkey: String,
-        authorDisplayName: String? = nil,
-        authorPictureUrl: String? = nil,
         createdAt: UInt64 = 0,
         title: String? = nil,
         summary: String? = nil,
@@ -77,8 +67,6 @@ public struct ArticleProjection: Equatable {
     ) {
         self.id = id
         self.authorPubkey = authorPubkey
-        self.authorDisplayName = authorDisplayName
-        self.authorPictureUrl = authorPictureUrl
         self.createdAt = createdAt
         self.title = title
         self.summary = summary
@@ -92,7 +80,6 @@ public struct ArticleProjection: Equatable {
 public struct HighlightProjection: Equatable {
     public let id: String
     public let authorPubkey: String
-    public let authorDisplayName: String?
     public let createdAt: UInt64
     public let highlightedText: String
     public let sourceEventId: String?
@@ -103,7 +90,6 @@ public struct HighlightProjection: Equatable {
     public init(
         id: String,
         authorPubkey: String,
-        authorDisplayName: String? = nil,
         createdAt: UInt64 = 0,
         highlightedText: String = "",
         sourceEventId: String? = nil,
@@ -113,7 +99,6 @@ public struct HighlightProjection: Equatable {
     ) {
         self.id = id
         self.authorPubkey = authorPubkey
-        self.authorDisplayName = authorDisplayName
         self.createdAt = createdAt
         self.highlightedText = highlightedText
         self.sourceEventId = sourceEventId
@@ -156,8 +141,6 @@ public struct ProfileProjection: Equatable {
 public struct UnknownProjection: Equatable {
     public let kind: UInt32
     public let authorPubkey: String
-    public let authorDisplayName: String?
-    public let authorPictureUrl: String?
     public let createdAt: UInt64
     public let content: String
     public let tags: [[String]]
@@ -166,8 +149,6 @@ public struct UnknownProjection: Equatable {
     public init(
         kind: UInt32,
         authorPubkey: String,
-        authorDisplayName: String? = nil,
-        authorPictureUrl: String? = nil,
         createdAt: UInt64 = 0,
         content: String = "",
         tags: [[String]] = [],
@@ -175,8 +156,6 @@ public struct UnknownProjection: Equatable {
     ) {
         self.kind = kind
         self.authorPubkey = authorPubkey
-        self.authorDisplayName = authorDisplayName
-        self.authorPictureUrl = authorPictureUrl
         self.createdAt = createdAt
         self.content = content
         self.tags = tags

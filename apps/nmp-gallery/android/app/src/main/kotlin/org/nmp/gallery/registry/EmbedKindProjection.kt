@@ -36,8 +36,6 @@ public data class EmbedKindProjection(
 public data class ShortNoteProjection(
     val id: String = "",
     @SerialName("author_pubkey") val authorPubkey: String = "",
-    @SerialName("author_display_name") val authorDisplayName: String? = null,
-    @SerialName("author_picture_url") val authorPictureUrl: String? = null,
     @SerialName("created_at") val createdAt: Long = 0,
     /** Plain-text fallback for the content body. */
     val content: String = "",
@@ -49,8 +47,6 @@ public data class ShortNoteProjection(
 public data class ArticleProjection(
     val id: String = "",
     @SerialName("author_pubkey") val authorPubkey: String = "",
-    @SerialName("author_display_name") val authorDisplayName: String? = null,
-    @SerialName("author_picture_url") val authorPictureUrl: String? = null,
     @SerialName("created_at") val createdAt: Long = 0,
     val title: String? = null,
     val summary: String? = null,
@@ -64,7 +60,6 @@ public data class ArticleProjection(
 public data class HighlightProjection(
     val id: String = "",
     @SerialName("author_pubkey") val authorPubkey: String = "",
-    @SerialName("author_display_name") val authorDisplayName: String? = null,
     @SerialName("created_at") val createdAt: Long = 0,
     @SerialName("highlighted_text") val highlightedText: String = "",
     @SerialName("source_event_id") val sourceEventId: String? = null,
@@ -90,8 +85,6 @@ public data class ProfileProjection(
 public data class UnknownProjection(
     val kind: Int = 0,
     @SerialName("author_pubkey") val authorPubkey: String = "",
-    @SerialName("author_display_name") val authorDisplayName: String? = null,
-    @SerialName("author_picture_url") val authorPictureUrl: String? = null,
     @SerialName("created_at") val createdAt: Long = 0,
     val content: String = "",
     val tags: List<List<String>> = emptyList(),

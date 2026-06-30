@@ -107,8 +107,6 @@ fn encode_short_note<'a>(
     let content_tree_bytes = encode_content_tree(&p.content_tree);
     let id = fbb.create_string(&p.id);
     let author_pubkey = fbb.create_string(&p.author_pubkey);
-    let (has_adn, adn) = opt_string(fbb, p.author_display_name.as_deref());
-    let (has_apu, apu) = opt_string(fbb, p.author_picture_url.as_deref());
     let content_tree = fbb.create_vector(&content_tree_bytes);
     let media_strs: Vec<WIPOffset<&str>> =
         p.media_urls.iter().map(|u| fbb.create_string(u)).collect();
@@ -117,10 +115,6 @@ fn encode_short_note<'a>(
     let mut b = fb::ShortNoteProjectionBuilder::new(fbb);
     b.add_id(id);
     b.add_author_pubkey(author_pubkey);
-    b.add_has_author_display_name(has_adn);
-    b.add_author_display_name(adn);
-    b.add_has_author_picture_url(has_apu);
-    b.add_author_picture_url(apu);
     b.add_created_at(p.created_at);
     b.add_content_tree(content_tree);
     b.add_media_urls(media_urls);
@@ -134,8 +128,6 @@ fn encode_article<'a>(
     let content_tree_bytes = encode_content_tree(&p.content_tree);
     let id = fbb.create_string(&p.id);
     let author_pubkey = fbb.create_string(&p.author_pubkey);
-    let (has_adn, adn) = opt_string(fbb, p.author_display_name.as_deref());
-    let (has_apu, apu) = opt_string(fbb, p.author_picture_url.as_deref());
     let (has_title, title) = opt_string(fbb, p.title.as_deref());
     let (has_summary, summary) = opt_string(fbb, p.summary.as_deref());
     let (has_hero, hero) = opt_string(fbb, p.hero_image_url.as_deref());
@@ -145,10 +137,6 @@ fn encode_article<'a>(
     let mut b = fb::ArticleProjectionBuilder::new(fbb);
     b.add_id(id);
     b.add_author_pubkey(author_pubkey);
-    b.add_has_author_display_name(has_adn);
-    b.add_author_display_name(adn);
-    b.add_has_author_picture_url(has_apu);
-    b.add_author_picture_url(apu);
     b.add_created_at(p.created_at);
     b.add_has_title(has_title);
     b.add_title(title);
@@ -167,7 +155,6 @@ fn encode_highlight<'a>(
 ) -> WIPOffset<fb::HighlightProjection<'a>> {
     let id = fbb.create_string(&p.id);
     let author_pubkey = fbb.create_string(&p.author_pubkey);
-    let (has_adn, adn) = opt_string(fbb, p.author_display_name.as_deref());
     let highlighted_text = fbb.create_string(&p.highlighted_text);
     let (has_sei, sei) = opt_string(fbb, p.source_event_id.as_deref());
     let (has_sea, sea) = opt_string(fbb, p.source_event_addr.as_deref());
@@ -177,8 +164,6 @@ fn encode_highlight<'a>(
     let mut b = fb::HighlightProjectionBuilder::new(fbb);
     b.add_id(id);
     b.add_author_pubkey(author_pubkey);
-    b.add_has_author_display_name(has_adn);
-    b.add_author_display_name(adn);
     b.add_created_at(p.created_at);
     b.add_highlighted_text(highlighted_text);
     b.add_has_source_event_id(has_sei);
@@ -227,8 +212,6 @@ fn encode_unknown<'a>(
 ) -> WIPOffset<fb::UnknownProjection<'a>> {
     let content_tree_bytes = encode_content_tree(&p.content_tree);
     let author_pubkey = fbb.create_string(&p.author_pubkey);
-    let (has_adn, adn) = opt_string(fbb, p.author_display_name.as_deref());
-    let (has_apu, apu) = opt_string(fbb, p.author_picture_url.as_deref());
     let content = fbb.create_string(&p.content);
     let content_tree = fbb.create_vector(&content_tree_bytes);
     let tag_offsets: Vec<WIPOffset<fb::TagRow<'_>>> =
@@ -239,10 +222,6 @@ fn encode_unknown<'a>(
     let mut b = fb::UnknownProjectionBuilder::new(fbb);
     b.add_kind(p.kind);
     b.add_author_pubkey(author_pubkey);
-    b.add_has_author_display_name(has_adn);
-    b.add_author_display_name(adn);
-    b.add_has_author_picture_url(has_apu);
-    b.add_author_picture_url(apu);
     b.add_created_at(p.created_at);
     b.add_content(content);
     b.add_content_tree(content_tree);

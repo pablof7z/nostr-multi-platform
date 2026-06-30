@@ -4,8 +4,8 @@
 //! module converts a user/content URI into the raw resolver key plus metadata
 //! those adapters expect, without exposing a generic stateless C helper.
 
-use nmp_core::nip19::{self, NaddrData, NeventData, Nip19Entity};
-use nmp_core::nip21::{self, NostrUri};
+use nmp_nostr_id::{NaddrData, NeventData, Nip19Entity};
+use nmp_nostr_id::{nip21, NostrUri};
 use serde::Serialize;
 use std::ffi::{c_char, CStr, CString};
 
@@ -93,7 +93,7 @@ fn decode_target(input: &str) -> Option<DecodeTarget> {
             .ok()
             .map(target_from_nostr_uri);
     }
-    nip19::parse(input).ok()?.try_into().ok()
+    nmp_nostr_id::parse(input).ok()?.try_into().ok()
 }
 
 impl TryFrom<Nip19Entity> for DecodeTarget {
@@ -215,7 +215,7 @@ fn c_string(ptr: *const c_char) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nmp_core::nip19::{encode_naddr, encode_nevent, NaddrData, NeventData};
+    use nmp_nostr_id::{encode_naddr, encode_nevent, NaddrData, NeventData};
 
     const PUBKEY: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
     const EVENT_ID: &str = "0000000000000000000000000000000000000000000000000000000000000001";

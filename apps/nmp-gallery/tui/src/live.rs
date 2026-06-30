@@ -156,20 +156,20 @@ struct EventRefFromUri {
 /// resolver metadata. D6: non-event URIs or decode failures return `None`.
 fn event_ref_from_uri(uri: &str) -> Option<EventRefFromUri> {
     let (key, relays, author) = if uri.starts_with("nostr:") {
-        match nmp_core::nip21::parse_nostr_uri(uri).ok()? {
-            nmp_core::nip21::NostrUri::Event { event_id, relays, author, .. } => {
+        match nmp_nostr_id::parse_nostr_uri(uri).ok()? {
+            nmp_nostr_id::NostrUri::Event { event_id, relays, author, .. } => {
                 (event_id, relays, author)
             }
-            nmp_core::nip21::NostrUri::Address { identifier, pubkey, kind, relays } => {
+            nmp_nostr_id::NostrUri::Address { identifier, pubkey, kind, relays } => {
                 (format!("{kind}:{pubkey}:{identifier}"), relays, None)
             }
             _ => return None,
         }
     } else {
-        match nmp_core::nip19::parse(uri).ok()? {
-            nmp_core::nip19::Nip19Entity::Note(event_id) => (event_id, vec![], None),
-            nmp_core::nip19::Nip19Entity::Nevent(d) => (d.event_id, d.relays, d.author),
-            nmp_core::nip19::Nip19Entity::Naddr(d) => {
+        match nmp_nostr_id::parse(uri).ok()? {
+            nmp_nostr_id::Nip19Entity::Note(event_id) => (event_id, vec![], None),
+            nmp_nostr_id::Nip19Entity::Nevent(d) => (d.event_id, d.relays, d.author),
+            nmp_nostr_id::Nip19Entity::Naddr(d) => {
                 (format!("{}:{}:{}", d.kind, d.pubkey, d.identifier), d.relays, None)
             }
             _ => return None,

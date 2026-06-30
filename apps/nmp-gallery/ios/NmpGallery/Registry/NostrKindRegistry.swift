@@ -166,12 +166,16 @@ public struct DefaultHighlightRenderer: KindRenderer {
         registry: NostrKindRegistry
     ) -> AnyView {
         guard case .highlight(let h) = projection else { return AnyView(EmptyView()) }
-        let author = h.authorDisplayName ?? shortHex(h.authorPubkey)
         return AnyView(
             VStack(alignment: .leading, spacing: 4) {
-                Text("highlight · \(author)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 4) {
+                    Text("highlight ·")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    // Self-claiming byline: the name component owns claiming the
+                    // author's kind:0 — the kernel never fetches it.
+                    NostrProfileName(pubkey: h.authorPubkey, font: .caption, color: .secondary)
+                }
                 Text(h.highlightedText)
                     .font(.callout.italic())
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -189,12 +193,15 @@ public struct DefaultUnknownRenderer: KindRenderer {
         registry: NostrKindRegistry
     ) -> AnyView {
         guard case .unknown(let u) = projection else { return AnyView(EmptyView()) }
-        let author = u.authorDisplayName ?? shortHex(u.authorPubkey)
         return AnyView(
             VStack(alignment: .leading, spacing: 4) {
-                Text("kind:\(u.kind) · \(author)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 4) {
+                    Text("kind:\(u.kind) ·")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    // Self-claiming byline for the author.
+                    NostrProfileName(pubkey: u.authorPubkey, font: .caption, color: .secondary)
+                }
                 Text(u.content)
                     .font(.callout)
                     .frame(maxWidth: .infinity, alignment: .leading)

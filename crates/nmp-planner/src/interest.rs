@@ -108,8 +108,8 @@ pub struct NaddrCoord {
     pub d_tag: String,
 }
 
-// Phase 2 (nmp-nip19): NaddrCoord::from_naddr_bech32 / to_naddr_bech32 helpers
-// land when the nmp-nip19 bech32 codec crate joins the workspace. Both helpers
+// Phase 2 (nmp-nostr-id): NaddrCoord::from_naddr_bech32 / to_naddr_bech32 helpers
+// land when the nmp-nostr-id bech32 codec crate joins the workspace. Both helpers
 // are needed for `nmp_nip01::ThreadView` and `nmp_nip01::Nip10ModularTimelineView`
 // (the latter wrapping `nmp_threading::Grouper`) to accept user-facing naddr
 // strings from the host-language FFI surface.

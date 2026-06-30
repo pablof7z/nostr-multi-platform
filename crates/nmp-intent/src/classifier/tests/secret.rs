@@ -1,7 +1,7 @@
 //! Rung 1 — secret rejection. Asserts the input is never echoed into the
 //! rejection, and that secret-reject precedes reference decoding.
 
-use nmp_core::nip19::encode_nsec;
+use nmp_nostr_id::encode_nsec;
 use nmp_core::substrate::{InputIntentRejection, InputScopeId};
 
 use super::{classify_bare, expect_rejection, profiles_scope, req, SK};

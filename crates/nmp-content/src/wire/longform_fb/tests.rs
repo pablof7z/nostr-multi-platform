@@ -32,8 +32,6 @@ fn document(d_tag: &str, title: Option<&str>) -> ArticleProjection {
     ArticleProjection {
         id: "c".repeat(64),
         author_pubkey: "d".repeat(64),
-        author_display_name: Some("Alice".to_string()),
-        author_picture_url: None,
         created_at: 4_242,
         title: title.map(str::to_string),
         summary: Some("a summary".to_string()),
@@ -47,7 +45,7 @@ fn document(d_tag: &str, title: Option<&str>) -> ArticleProjection {
 fn schema_identity_is_stable() {
     assert_eq!(SCHEMA_ID, "nmp.nip23.articles");
     assert_eq!(FILE_IDENTIFIER, b"NL23");
-    assert_eq!(SCHEMA_VERSION, 1);
+    assert_eq!(SCHEMA_VERSION, 2);
 }
 
 #[test]
@@ -88,9 +86,8 @@ fn full_round_trip_preserves_articles_documents_and_body() {
     assert_eq!(decoded.documents.len(), 2);
     let with_title = &decoded.documents["30023:b:slug"];
     assert_eq!(with_title.title.as_deref(), Some("Present Title"));
-    assert_eq!(with_title.author_display_name.as_deref(), Some("Alice"));
-    // `None` author_picture_url + None title survive as absent (not "").
-    assert_eq!(with_title.author_picture_url, None);
+    assert_eq!(with_title.author_pubkey, "d".repeat(64));
+    // `None` title survives as absent (not "").
     assert_eq!(with_title.hero_image_url, None);
 
     let no_title = &decoded.documents["30023:c:other"];

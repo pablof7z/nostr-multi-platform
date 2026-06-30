@@ -4,7 +4,7 @@ version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 repository.workspace = true
-description = "NIP-29 relay-based groups as an NMP protocol crate. Owns group metadata/management artifacts plus h/previous envelope semantics; wrapped event kinds stay owned by their artifact crates."
+description = "NIP-29 relay-based groups as an NMP protocol crate. Kind-blind transport: owns only the group-routing envelope (h / previous / host-pin) and the 9000-9022 / 39000-39003 kind namespace; foreign kinds are authored by their owning NIP and routed via the generic publish_group_event surface. Declares host-relay-pinned routing via the third lane (Rule 9)."
 
 [dependencies]
 nmp-ownership = { workspace = true }

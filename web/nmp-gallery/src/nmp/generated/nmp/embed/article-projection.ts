@@ -36,95 +36,71 @@ authorPubkey(optionalEncoding?:any):string|Uint8Array|null {
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
-hasAuthorDisplayName():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 8);
-  return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
-}
-
-authorDisplayName():string|null
-authorDisplayName(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
-authorDisplayName(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 10);
-  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
-}
-
-hasAuthorPictureUrl():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 12);
-  return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
-}
-
-authorPictureUrl():string|null
-authorPictureUrl(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
-authorPictureUrl(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 14);
-  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
-}
-
 createdAt():bigint {
-  const offset = this.bb!.__offset(this.bb_pos, 16);
+  const offset = this.bb!.__offset(this.bb_pos, 8);
   return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
 }
 
 hasTitle():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 18);
+  const offset = this.bb!.__offset(this.bb_pos, 10);
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
 title():string|null
 title(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 title(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 20);
+  const offset = this.bb!.__offset(this.bb_pos, 12);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 hasSummary():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 22);
+  const offset = this.bb!.__offset(this.bb_pos, 14);
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
 summary():string|null
 summary(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 summary(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 24);
+  const offset = this.bb!.__offset(this.bb_pos, 16);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 hasHeroImageUrl():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 26);
+  const offset = this.bb!.__offset(this.bb_pos, 18);
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
 heroImageUrl():string|null
 heroImageUrl(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 heroImageUrl(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 28);
+  const offset = this.bb!.__offset(this.bb_pos, 20);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 dTag():string|null
 dTag(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 dTag(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 30);
+  const offset = this.bb!.__offset(this.bb_pos, 22);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 contentTree(index: number):number|null {
-  const offset = this.bb!.__offset(this.bb_pos, 32);
+  const offset = this.bb!.__offset(this.bb_pos, 24);
   return offset ? this.bb!.readUint8(this.bb!.__vector(this.bb_pos + offset) + index) : 0;
 }
 
 contentTreeLength():number {
-  const offset = this.bb!.__offset(this.bb_pos, 32);
+  const offset = this.bb!.__offset(this.bb_pos, 24);
   return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
 }
 
 contentTreeArray():Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 32);
+  const offset = this.bb!.__offset(this.bb_pos, 24);
   return offset ? new Uint8Array(this.bb!.bytes().buffer, this.bb!.bytes().byteOffset + this.bb!.__vector(this.bb_pos + offset), this.bb!.__vector_len(this.bb_pos + offset)) : null;
 }
 
 static startArticleProjection(builder:flatbuffers.Builder) {
-  builder.startObject(15);
+  builder.startObject(11);
 }
 
 static addId(builder:flatbuffers.Builder, idOffset:flatbuffers.Offset) {
@@ -135,56 +111,40 @@ static addAuthorPubkey(builder:flatbuffers.Builder, authorPubkeyOffset:flatbuffe
   builder.addFieldOffset(1, authorPubkeyOffset, 0);
 }
 
-static addHasAuthorDisplayName(builder:flatbuffers.Builder, hasAuthorDisplayName:boolean) {
-  builder.addFieldInt8(2, +hasAuthorDisplayName, +false);
-}
-
-static addAuthorDisplayName(builder:flatbuffers.Builder, authorDisplayNameOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(3, authorDisplayNameOffset, 0);
-}
-
-static addHasAuthorPictureUrl(builder:flatbuffers.Builder, hasAuthorPictureUrl:boolean) {
-  builder.addFieldInt8(4, +hasAuthorPictureUrl, +false);
-}
-
-static addAuthorPictureUrl(builder:flatbuffers.Builder, authorPictureUrlOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(5, authorPictureUrlOffset, 0);
-}
-
 static addCreatedAt(builder:flatbuffers.Builder, createdAt:bigint) {
-  builder.addFieldInt64(6, createdAt, BigInt('0'));
+  builder.addFieldInt64(2, createdAt, BigInt('0'));
 }
 
 static addHasTitle(builder:flatbuffers.Builder, hasTitle:boolean) {
-  builder.addFieldInt8(7, +hasTitle, +false);
+  builder.addFieldInt8(3, +hasTitle, +false);
 }
 
 static addTitle(builder:flatbuffers.Builder, titleOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(8, titleOffset, 0);
+  builder.addFieldOffset(4, titleOffset, 0);
 }
 
 static addHasSummary(builder:flatbuffers.Builder, hasSummary:boolean) {
-  builder.addFieldInt8(9, +hasSummary, +false);
+  builder.addFieldInt8(5, +hasSummary, +false);
 }
 
 static addSummary(builder:flatbuffers.Builder, summaryOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(10, summaryOffset, 0);
+  builder.addFieldOffset(6, summaryOffset, 0);
 }
 
 static addHasHeroImageUrl(builder:flatbuffers.Builder, hasHeroImageUrl:boolean) {
-  builder.addFieldInt8(11, +hasHeroImageUrl, +false);
+  builder.addFieldInt8(7, +hasHeroImageUrl, +false);
 }
 
 static addHeroImageUrl(builder:flatbuffers.Builder, heroImageUrlOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(12, heroImageUrlOffset, 0);
+  builder.addFieldOffset(8, heroImageUrlOffset, 0);
 }
 
 static addDTag(builder:flatbuffers.Builder, dTagOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(13, dTagOffset, 0);
+  builder.addFieldOffset(9, dTagOffset, 0);
 }
 
 static addContentTree(builder:flatbuffers.Builder, contentTreeOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(14, contentTreeOffset, 0);
+  builder.addFieldOffset(10, contentTreeOffset, 0);
 }
 
 static createContentTreeVector(builder:flatbuffers.Builder, data:number[]|Uint8Array):flatbuffers.Offset {
@@ -204,14 +164,10 @@ static endArticleProjection(builder:flatbuffers.Builder):flatbuffers.Offset {
   return offset;
 }
 
-static createArticleProjection(builder:flatbuffers.Builder, idOffset:flatbuffers.Offset, authorPubkeyOffset:flatbuffers.Offset, hasAuthorDisplayName:boolean, authorDisplayNameOffset:flatbuffers.Offset, hasAuthorPictureUrl:boolean, authorPictureUrlOffset:flatbuffers.Offset, createdAt:bigint, hasTitle:boolean, titleOffset:flatbuffers.Offset, hasSummary:boolean, summaryOffset:flatbuffers.Offset, hasHeroImageUrl:boolean, heroImageUrlOffset:flatbuffers.Offset, dTagOffset:flatbuffers.Offset, contentTreeOffset:flatbuffers.Offset):flatbuffers.Offset {
+static createArticleProjection(builder:flatbuffers.Builder, idOffset:flatbuffers.Offset, authorPubkeyOffset:flatbuffers.Offset, createdAt:bigint, hasTitle:boolean, titleOffset:flatbuffers.Offset, hasSummary:boolean, summaryOffset:flatbuffers.Offset, hasHeroImageUrl:boolean, heroImageUrlOffset:flatbuffers.Offset, dTagOffset:flatbuffers.Offset, contentTreeOffset:flatbuffers.Offset):flatbuffers.Offset {
   ArticleProjection.startArticleProjection(builder);
   ArticleProjection.addId(builder, idOffset);
   ArticleProjection.addAuthorPubkey(builder, authorPubkeyOffset);
-  ArticleProjection.addHasAuthorDisplayName(builder, hasAuthorDisplayName);
-  ArticleProjection.addAuthorDisplayName(builder, authorDisplayNameOffset);
-  ArticleProjection.addHasAuthorPictureUrl(builder, hasAuthorPictureUrl);
-  ArticleProjection.addAuthorPictureUrl(builder, authorPictureUrlOffset);
   ArticleProjection.addCreatedAt(builder, createdAt);
   ArticleProjection.addHasTitle(builder, hasTitle);
   ArticleProjection.addTitle(builder, titleOffset);

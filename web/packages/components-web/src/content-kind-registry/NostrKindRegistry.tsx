@@ -55,11 +55,12 @@ export type ContentTreeWire = {
   roots?: number[];
 };
 
+// Display separation (#2514): non-`Profile` projections carry ONLY the raw
+// `authorPubkey`. Author display (name/picture) joins reactively at the L5
+// composition layer against `ProfileProjection`, keyed by `authorPubkey`.
 export type ShortNoteProjection = {
   id: string;
   authorPubkey: string;
-  authorDisplayName?: string | null;
-  authorPictureUrl?: string | null;
   createdAt: number;
   contentTree: ContentTreeWire;
   mediaUrls: string[];
@@ -68,8 +69,6 @@ export type ShortNoteProjection = {
 export type ArticleProjection = {
   id: string;
   authorPubkey: string;
-  authorDisplayName?: string | null;
-  authorPictureUrl?: string | null;
   createdAt: number;
   title?: string | null;
   summary?: string | null;
@@ -80,7 +79,6 @@ export type ArticleProjection = {
 export type HighlightProjection = {
   id: string;
   authorPubkey: string;
-  authorDisplayName?: string | null;
   createdAt: number;
   highlightedText: string;
   sourceEventId?: string | null;
@@ -102,8 +100,6 @@ export type ProfileProjection = {
 export type UnknownProjection = {
   kind: number;
   authorPubkey: string;
-  authorDisplayName?: string | null;
-  authorPictureUrl?: string | null;
   createdAt: number;
   content: string;
   tags: string[][];
@@ -196,13 +192,10 @@ function contentTreePreview(tree: ContentTreeWire | undefined): string {
 }
 
 /**
- * Host-resolved author byline. The kernel-resolved projection intentionally
- * carries `None` for author name/picture on ShortNote/Article/Highlight (only
- * the kind:0 Profile variant carries a name), because the byline is resolved by
- * the *displaying* host against its live `refs.profile` store — NOT baked into
- * the projection's static field. The host threads it in here; the registry
- * prefers it and only falls back to the projection's field (so the Profile
- * variant, which does carry a name, stays correct).
+ * Host-resolved author byline. Per display separation (#2514) the
+ * ShortNote/Article/Highlight/Unknown projections carry NO author name/picture
+ * (only the kind:0 Profile variant does): the byline is resolved by the
+ * *displaying* host against its live `refs.profile` store and threaded in here.
  */
 export type EmbedAuthor = { name?: string; picture?: string };
 
@@ -211,8 +204,8 @@ function toArticle(p: ArticleProjection, author: EmbedAuthor | undefined): Nostr
     title: opt(p.title) ?? "(untitled)",
     image: opt(p.heroImageUrl),
     summary: opt(p.summary),
-    authorName: author?.name ?? opt(p.authorDisplayName),
-    authorPicture: author?.picture ?? opt(p.authorPictureUrl),
+    authorName: author?.name,
+    authorPicture: author?.picture,
   };
 }
 
@@ -239,15 +232,15 @@ function toQuote(
   switch (projection.variant) {
     case "shortNote":
       return {
-        authorName: author?.name ?? opt(projection.data.authorDisplayName),
-        authorPicture: author?.picture ?? opt(projection.data.authorPictureUrl),
+        authorName: author?.name,
+        authorPicture: author?.picture,
         content: contentTreePreview(projection.data.contentTree),
         createdAt: projection.data.createdAt,
       };
     case "unknown":
       return {
-        authorName: author?.name ?? opt(projection.data.authorDisplayName),
-        authorPicture: author?.picture ?? opt(projection.data.authorPictureUrl),
+        authorName: author?.name,
+        authorPicture: author?.picture,
         content: projection.data.content,
         createdAt: projection.data.createdAt,
       };

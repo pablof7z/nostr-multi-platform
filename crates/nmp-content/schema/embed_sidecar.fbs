@@ -23,6 +23,12 @@ namespace nmp.embed;
 // `longform.fbs` / `wallet_status.fbs` (a `has_* : bool` flag + a value string
 // that is empty when absent) so `Some("")` round-trips distinctly from `None`.
 //
+// Display separation (#2514): every non-`Profile` per-kind table carries ONLY
+// the raw `author_pubkey` hex — never author `display_name`/`picture`. Author
+// display joins reactively at the L5 composition layer against
+// `ProfileProjection` (the sole legitimate kind:0 display carrier), so display
+// updates flow without re-deriving these protocol primitives.
+//
 // The per-kind `content_tree` body is the existing `ContentTreeWire` typed
 // buffer (`NFCT` root, `crates/nmp-content/schema/content_tree.fbs`) carried
 // verbatim as opaque bytes via the standalone `encode_content_tree` /
@@ -56,14 +62,8 @@ enum EmbedProjectionKind:ubyte {
 table ShortNoteProjection {
   // 64-character hex event id.
   id:string;
-  // 64-character hex author pubkey.
+  // 64-character hex author pubkey (display joins reactively at L5).
   author_pubkey:string;
-  // author_display_name: Option<String> (kind:0 enrichment).
-  has_author_display_name:bool;
-  author_display_name:string;
-  // author_picture_url: Option<String>.
-  has_author_picture_url:bool;
-  author_picture_url:string;
   // Event creation time as Unix seconds.
   created_at:uint64;
   // Rendered note body as a verbatim `ContentTreeWire` (`NFCT`) buffer.
@@ -75,11 +75,8 @@ table ShortNoteProjection {
 // kind:30023 long-form article projection — mirrors `ArticleProjection`.
 table ArticleProjection {
   id:string;
+  // 64-character hex author pubkey (display joins reactively at L5).
   author_pubkey:string;
-  has_author_display_name:bool;
-  author_display_name:string;
-  has_author_picture_url:bool;
-  author_picture_url:string;
   created_at:uint64;
   // title: Option<String>.
   has_title:bool;
@@ -99,9 +96,8 @@ table ArticleProjection {
 // kind:9802 highlight projection — mirrors `HighlightProjection`.
 table HighlightProjection {
   id:string;
+  // 64-character hex author pubkey (display joins reactively at L5).
   author_pubkey:string;
-  has_author_display_name:bool;
-  author_display_name:string;
   created_at:uint64;
   // Highlighted text from the event content.
   highlighted_text:string;
@@ -141,11 +137,8 @@ table ProfileProjection {
 table UnknownProjection {
   // Raw Nostr event kind.
   kind:uint32;
+  // 64-character hex author pubkey (display joins reactively at L5).
   author_pubkey:string;
-  has_author_display_name:bool;
-  author_display_name:string;
-  has_author_picture_url:bool;
-  author_picture_url:string;
   created_at:uint64;
   // Raw event content.
   content:string;

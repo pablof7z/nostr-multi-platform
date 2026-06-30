@@ -53,6 +53,8 @@ required-features = ["bindgen"]
 nmp-ownership = { workspace = true }
 nmp-native-runtime = { path = "../nmp-native-runtime", default-features = false }
 nmp-core = { path = "../nmp-core", default-features = false }
+# NIP-19 entity codec (Layer 4) carved out of nmp-core per issue #2515.
+nmp-nostr-id = { path = "../nmp-nostr-id" }
 nmp-content = { path = "../nmp-content" }
 nmp-uniffi-support = { path = "../nmp-uniffi-support" }
 uniffi = { version = "0.29" }

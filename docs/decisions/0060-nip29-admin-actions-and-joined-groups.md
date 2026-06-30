@@ -10,6 +10,21 @@
 > `docs/design/nip29/kinds.md`, `docs/design/nip29/routing.md`,
 > `docs/design/nip29/moderation.md`, ADR-0013.
 
+> **Amended (2026-06-30, #2509 / #2513).** This ADR's "current surface"
+> enumeration below is preserved as a faithful record of the 2026-06-19 shipped
+> code, but it is **superseded** on one point: `nmp-nip29` is now a *kind-blind
+> transport*. The per-kind named group actions listed below —
+> `PostChatMessageAction`, `ReactInGroupAction`, `ShareEventInGroupAction`,
+> `RepostInGroupAction` — were **deleted** in #2509. The sole group-event write
+> surface is the generic `PublishGroupEventAction`
+> (`nmp.nip29.publish_group_event`), which injects only the `h` / `previous` /
+> host-pin envelope around a caller-built event of any kind. Foreign kinds are
+> authored by their owning NIP (kind:7 = `nmp-nip25`, kind:16 = `nmp-nip18`,
+> kind:11/other = app layer) and routed through that one action. The
+> `nip29_kind_blind` doctrine-lint rule (#2513) is the durable backstop. This
+> ADR's admin/lifecycle decisions (`PutUserAction`, `CreateInviteAction`,
+> `JoinedGroupsProjection`) are unaffected.
+
 ## Context
 
 NIP-29 admin actions and joined-group status are reusable Nostr group
@@ -34,9 +49,11 @@ must not grow NIP-29 command variants, group nouns, or router branches.
 - `register`: wiring for group chat, group discovery, group events, defaults,
   joined groups, and the actions above.
 
-> **Note.** `register.rs` also registers `RepostInGroupAction` (group reposts).
-> It ships in `nmp-nip29` but is outside this ADR's scope; it is listed here
-> only to keep the "current surface" enumeration faithful to the shipped code.
+> **Note (historical; superseded by the 2026-06-30 amendment above).** At the
+> time of this ADR, `register.rs` also registered `RepostInGroupAction` (group
+> reposts). That per-kind action — along with `PostChatMessageAction`,
+> `ReactInGroupAction`, and `ShareEventInGroupAction` — was deleted in #2509;
+> `nmp-nip29` no longer names any foreign kind. See the amendment note above.
 
 That surface is not enough for #1559. `DiscoveredGroupsProjection` is scoped to
 one host relay and surfaces group metadata plus `member_count` and

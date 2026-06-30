@@ -6,8 +6,8 @@
 
 use super::*;
 use crate::kernel::{EventShape, RefLiveness};
-use crate::nip19::{NeventData, encode_nevent};
-use crate::nip21::{NostrUri, parse_nostr_uri};
+use nmp_nostr_id::{NeventData, encode_nevent};
+use nmp_nostr_id::{parse_nostr_uri, NostrUri};
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::subs::WireFrame;
 

@@ -56,17 +56,19 @@ public struct ArticleEmbed: KindRenderer {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                // Author byline.
+                // Author byline. Avatar + name each self-claim the author's
+                // kind:0 from the pubkey — the kernel never fetches it, and no
+                // author display fields ride the projection wire.
                 HStack(spacing: 8) {
                     NostrAvatar(
                         pubkey: article.authorPubkey,
-                        pictureUrl: article.authorPictureUrl.flatMap(URL.init(string:)),
                         size: 24
                     )
-                    Text(article.authorDisplayName ?? shortHex(article.authorPubkey))
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    NostrProfileName(
+                        pubkey: article.authorPubkey,
+                        font: .caption.weight(.medium),
+                        color: .secondary
+                    )
                     Spacer(minLength: 0)
                     Text("article · kind:30023")
                         .font(.caption2.monospaced())
@@ -74,10 +76,5 @@ public struct ArticleEmbed: KindRenderer {
                 }
             }
         )
-    }
-
-    private func shortHex(_ value: String) -> String {
-        guard value.count > 10 else { return value }
-        return "\(value.prefix(8))…"
     }
 }
