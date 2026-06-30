@@ -196,11 +196,25 @@ impl EventStore for LmdbEventStore {
         dump_mod::dump(&self.inner, out, format)
     }
 
-    fn interaction_counts(
+    fn install_reference_counter_classifier(
+        &self,
+        classifier: std::sync::Arc<crate::reference_counts::ReferenceClassifyFn>,
+    ) {
+        // Composition-time install (single writer). A poisoned lock degrades to
+        // "no counters" (reads return empty) — never a panic (D6).
+        match self.inner.reference_classifier.write() {
+            Ok(mut g) => *g = Some(classifier),
+            Err(e) => {
+                tracing::warn!(error = %e, "install_reference_counter_classifier: lock poisoned");
+            }
+        }
+    }
+
+    fn reference_counts(
         &self,
         target: &crate::types::EventId,
-    ) -> Result<crate::TargetInteractionCounts, crate::StoreError> {
-        super::interaction_counters::read_counts(&self.inner, target)
+    ) -> Result<crate::reference_counts::TargetReferenceCounts, crate::StoreError> {
+        super::interaction_counters::reference_counts(&self.inner, target)
     }
 
     // ─── Full-text search (issue #1811) — durable LMDB inverted index ───────────

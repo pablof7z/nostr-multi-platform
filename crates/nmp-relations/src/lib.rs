@@ -11,9 +11,20 @@
 //!   `nmp_nip01::NoteRelationIndex::new` or
 //!   `nmp_nip01::ModularTimelineProjection::with_relation_classifier`.
 //!
-//! Dependency direction is one-way: `nmp-relations → nmp-nip01` (+ the NIP-18 /
-//! NIP-22 sources). `nmp-nip01` never depends back on this crate.
+//! - Engagement reference counters ([`engagement`]) — the protocol-aware
+//!   classifier + typed [`TargetInteractionCounts`] aggregate that compose over
+//!   `nmp-store`'s generic, noun-free reference-counter primitive (#2512).
+//!   Storage owns only opaque buckets; the reply/reaction/repost/zap meaning and
+//!   the NIP-10 marker semantics live here.
+//!
+//! Dependency direction is one-way: `nmp-relations → {nmp-nip01, nmp-store}`
+//! (+ the NIP-18 / NIP-22 sources). Neither depends back on this crate.
 
 mod classifier;
+mod engagement;
 
 pub use classifier::{default_note_relation_classifier, DefaultNoteRelationClassifier};
+pub use engagement::{
+    engagement_counts, engagement_reference_classifier, install_engagement_reference_counters,
+    TargetInteractionCounts,
+};

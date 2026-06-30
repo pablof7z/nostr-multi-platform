@@ -1,14 +1,46 @@
-//! Integration tests for the interaction-counter sidecar (issue #1519).
+//! Integration tests for the generic reference-counter sidecar (#2512, was #1519).
 //!
-//! Tests cover: basic increment, multi-event increment, decrement on kind:5
-//! deletion, decrement on GC, decrement on delete_by_filter, zero-row cleanup.
+//! These tests exercise the STORE's write-path maintenance of the generic,
+//! noun-free counter (increment on insert, decrement on kind:5 deletion, GC, and
+//! `delete_by_filter`). They install a SYNTHETIC classifier — buckets are picked
+//! from a `c` tag, the target from the first `e` tag — so this crate stays free
+//! of any protocol kind literal or NIP-10 semantics (those live in
+//! `nmp-relations`, which has its own end-to-end engagement tests).
 
 #![cfg(all(test, feature = "lmdb-backend"))]
 
+use std::sync::Arc;
+
 use tempfile::tempdir;
 
+use crate::reference_counts::{ReferenceBucketId, ReferenceClassifyFn};
 use crate::types::{GcBudget, RawEvent, VerifiedEvent};
-use crate::{EventStore, LmdbEventStore, TargetInteractionCounts};
+use crate::{EventStore, LmdbEventStore};
+
+// ─── Synthetic buckets ─────────────────────────────────────────────────────────
+
+const ALPHA: ReferenceBucketId = ReferenceBucketId::new(1, "alpha");
+const BETA: ReferenceBucketId = ReferenceBucketId::new(2, "beta");
+
+/// A protocol-noun-free test classifier: an event counts iff it carries a `c`
+/// tag (the bucket discriminant) AND an `e` tag (the target). Decoupled from any
+/// kind — the point is to test the store's generic maintenance, not protocol
+/// classification.
+fn test_classifier() -> Arc<ReferenceClassifyFn> {
+    Arc::new(|_kind, tags| {
+        let bucket = tags
+            .iter()
+            .find(|t| t.first().map(|s| s == "c").unwrap_or(false))
+            .and_then(|t| t.get(1))
+            .and_then(|s| s.parse::<u8>().ok())?;
+        let target = tags
+            .iter()
+            .find(|t| t.first().map(|s| s == "e").unwrap_or(false))
+            .and_then(|t| t.get(1))
+            .cloned()?;
+        Some((ReferenceBucketId::new(bucket, "test"), target))
+    })
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -18,199 +50,131 @@ fn open_tmp() -> (LmdbEventStore, tempfile::TempDir) {
     (store, dir)
 }
 
-/// A canonical 64-hex-char target event id (all zeros except last byte=1)
-/// for use when we don't actually insert the target.
 const PHANTOM_TARGET: &str = "0000000000000000000000000000000000000000000000000000000000000001";
 
 fn phantom_target_id() -> crate::types::EventId {
     crate::types::hex_to_event_id(PHANTOM_TARGET).expect("valid hex")
 }
 
+const ALICE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
 fn verified(raw: RawEvent) -> VerifiedEvent {
     VerifiedEvent::from_raw_unchecked(raw)
 }
 
-/// Build a signed reply (kind:1) with an e-tag pointing at `target_hex`.
-fn signed_reply(target_hex: &str, created_at: u64) -> RawEvent {
-    use nostr::prelude::*;
-    let keys = Keys::generate();
-    let target_id = nostr::EventId::from_hex(target_hex).expect("valid hex");
-    let ev = EventBuilder::new(Kind::from(1u16), "reply")
-        .custom_created_at(Timestamp::from_secs(created_at))
-        .tag(Tag::event(target_id))
-        .sign_with_keys(&keys)
-        .expect("sign");
-    let json = ev.try_as_json().expect("json");
-    serde_json::from_str(&json).expect("parse")
+/// Build a raw event directly (integration-harness path — no signing). `tags`
+/// carry whatever the synthetic classifier reads.
+fn raw(id_hex: &str, pubkey_hex: &str, kind: u32, tags: Vec<Vec<String>>, created_at: u64) -> RawEvent {
+    RawEvent {
+        id: id_hex.to_string(),
+        pubkey: pubkey_hex.to_string(),
+        created_at,
+        kind,
+        tags,
+        content: String::new(),
+        sig: "0".repeat(128),
+    }
 }
 
-/// Build a signed reaction (kind:7) with an e-tag pointing at `target_hex`.
-fn signed_reaction(target_hex: &str, created_at: u64) -> RawEvent {
-    use nostr::prelude::*;
-    let keys = Keys::generate();
-    let target_id = nostr::EventId::from_hex(target_hex).expect("valid hex");
-    let ev = EventBuilder::new(Kind::from(7u16), "+")
-        .custom_created_at(Timestamp::from_secs(created_at))
-        .tag(Tag::event(target_id))
-        .sign_with_keys(&keys)
-        .expect("sign");
-    let json = ev.try_as_json().expect("json");
-    serde_json::from_str(&json).expect("parse")
+fn etag(target_hex: &str) -> Vec<String> {
+    vec!["e".to_string(), target_hex.to_string()]
+}
+fn ctag(bucket: u8) -> Vec<String> {
+    vec!["c".to_string(), bucket.to_string()]
 }
 
-/// Build a signed repost (kind:6) with an e-tag pointing at `target_hex`.
-fn signed_repost(target_hex: &str, created_at: u64) -> RawEvent {
-    use nostr::prelude::*;
-    let keys = Keys::generate();
-    let target_id = nostr::EventId::from_hex(target_hex).expect("valid hex");
-    let ev = EventBuilder::new(Kind::from(6u16), "")
-        .custom_created_at(Timestamp::from_secs(created_at))
-        .tag(Tag::event(target_id))
-        .sign_with_keys(&keys)
-        .expect("sign");
-    let json = ev.try_as_json().expect("json");
-    serde_json::from_str(&json).expect("parse")
-}
-
-/// Build a signed plain note (kind:1, no e-tag).
-fn signed_note(created_at: u64) -> RawEvent {
-    use nostr::prelude::*;
-    let keys = Keys::generate();
-    let ev = EventBuilder::new(Kind::from(1u16), "hello")
-        .custom_created_at(Timestamp::from_secs(created_at))
-        .sign_with_keys(&keys)
-        .expect("sign");
-    let json = ev.try_as_json().expect("json");
-    serde_json::from_str(&json).expect("parse")
+/// A counted reference: e-tags `target`, bucketed by `bucket`. The kind is an
+/// arbitrary regular kind — the synthetic classifier keys on the `c` tag, never
+/// the kind, so the store stays free of any engagement-kind vocabulary.
+fn counted(id_hex: &str, target_hex: &str, bucket: u8, created_at: u64) -> RawEvent {
+    raw(id_hex, ALICE, 2, vec![etag(target_hex), ctag(bucket)], created_at)
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
-/// TC-1: Inserting a reply increments the reply counter.
+/// Without an installed classifier the sidecar stays inert — every insert is a
+/// no-op and reads return empty.
 #[test]
-fn tc1_reply_increments_counter() {
+fn no_classifier_installed_yields_empty() {
     let (store, _dir) = open_tmp();
-    let reply = signed_reply(PHANTOM_TARGET, 1000);
-    store.insert(verified(reply), &"wss://r/".into(), 1000_000).unwrap();
-    let counts = store.interaction_counts(&phantom_target_id()).unwrap();
-    assert_eq!(counts.replies, 1, "one reply must increment replies to 1");
-    assert_eq!(counts.reactions, 0);
-    assert_eq!(counts.reposts, 0);
-    assert_eq!(counts.zaps, 0);
+    store
+        .insert(verified(counted(&"11".repeat(32), PHANTOM_TARGET, 1, 1000)), &"wss://r/".into(), 1_000_000)
+        .unwrap();
+    assert!(store.reference_counts(&phantom_target_id()).unwrap().is_empty());
 }
 
-/// TC-2: Inserting a reaction increments the reaction counter.
+/// Inserting one counted reference increments its bucket.
 #[test]
-fn tc2_reaction_increments_counter() {
+fn insert_increments_bucket() {
     let (store, _dir) = open_tmp();
-    let reaction = signed_reaction(PHANTOM_TARGET, 1000);
-    store.insert(verified(reaction), &"wss://r/".into(), 1000_000).unwrap();
-    let counts = store.interaction_counts(&phantom_target_id()).unwrap();
-    assert_eq!(counts.reactions, 1);
-    assert_eq!(counts.replies, 0);
+    store.install_reference_counter_classifier(test_classifier());
+    store
+        .insert(verified(counted(&"11".repeat(32), PHANTOM_TARGET, 1, 1000)), &"wss://r/".into(), 1_000_000)
+        .unwrap();
+    let counts = store.reference_counts(&phantom_target_id()).unwrap();
+    assert_eq!(counts.get(ALPHA), 1);
+    assert_eq!(counts.get(BETA), 0);
 }
 
-/// TC-3: Inserting a repost increments the repost counter.
+/// Distinct buckets accumulate independently.
 #[test]
-fn tc3_repost_increments_counter() {
+fn buckets_accumulate_independently() {
     let (store, _dir) = open_tmp();
-    let repost = signed_repost(PHANTOM_TARGET, 1000);
-    store.insert(verified(repost), &"wss://r/".into(), 1000_000).unwrap();
-    let counts = store.interaction_counts(&phantom_target_id()).unwrap();
-    assert_eq!(counts.reposts, 1);
-}
-
-/// TC-4: Multiple interactions accumulate independently.
-#[test]
-fn tc4_multiple_interactions_accumulate() {
-    let (store, _dir) = open_tmp();
+    store.install_reference_counter_classifier(test_classifier());
     let relay = "wss://r/".to_string();
-
     for i in 0..3u64 {
-        store.insert(verified(signed_reply(PHANTOM_TARGET, 1000 + i)), &relay, 1000_000).unwrap();
+        let id = format!("a{:063x}", i);
+        store.insert(verified(counted(&id, PHANTOM_TARGET, 1, 1000 + i)), &relay, 1_000_000).unwrap();
     }
     for i in 0..2u64 {
-        store.insert(verified(signed_reaction(PHANTOM_TARGET, 2000 + i)), &relay, 2000_000).unwrap();
+        let id = format!("b{:063x}", i);
+        store.insert(verified(counted(&id, PHANTOM_TARGET, 2, 2000 + i)), &relay, 2_000_000).unwrap();
     }
-    store.insert(verified(signed_repost(PHANTOM_TARGET, 3000)), &relay, 3000_000).unwrap();
-
-    let counts = store.interaction_counts(&phantom_target_id()).unwrap();
-    assert_eq!(counts.replies, 3);
-    assert_eq!(counts.reactions, 2);
-    assert_eq!(counts.reposts, 1);
-    assert_eq!(counts.zaps, 0);
+    let counts = store.reference_counts(&phantom_target_id()).unwrap();
+    assert_eq!(counts.get(ALPHA), 3);
+    assert_eq!(counts.get(BETA), 2);
 }
 
-/// TC-5: Non-interaction kinds do NOT affect counters.
+/// An event the classifier does not count leaves the sidecar untouched.
 #[test]
-fn tc5_non_interaction_kinds_ignored() {
+fn uncounted_event_ignored() {
     let (store, _dir) = open_tmp();
-    // Insert a plain note (kind:1 with no e-tag).
-    store.insert(verified(signed_note(1000)), &"wss://r/".into(), 1000_000).unwrap();
-    let counts = store.interaction_counts(&phantom_target_id()).unwrap();
-    assert_eq!(counts, TargetInteractionCounts::default());
+    store.install_reference_counter_classifier(test_classifier());
+    // No `c` tag → classifier returns None.
+    let ev = raw(&"22".repeat(32), ALICE, 2, vec![etag(PHANTOM_TARGET)], 1000);
+    store.insert(verified(ev), &"wss://r/".into(), 1_000_000).unwrap();
+    assert!(store.reference_counts(&phantom_target_id()).unwrap().is_empty());
 }
 
-/// TC-6: kind:5 deletion of a reply decrements the reply counter.
+/// kind:5 deletion of a counted event decrements its bucket.
 #[test]
-fn tc6_kind5_delete_decrements() {
-    use nostr::prelude::*;
+fn kind5_delete_decrements() {
     let (store, _dir) = open_tmp();
     let relay = "wss://r/".to_string();
+    store.install_reference_counter_classifier(test_classifier());
 
-    // Insert a reply from Alice.
-    let alice = Keys::generate();
-    let target_event_id = nostr::EventId::from_hex(PHANTOM_TARGET).expect("valid hex");
-    let reply_ev = EventBuilder::new(Kind::from(1u16), "hello")
-        .custom_created_at(Timestamp::from_secs(1000))
-        .tag(Tag::event(target_event_id))
-        .sign_with_keys(&alice)
-        .expect("sign");
-    let reply_json = reply_ev.try_as_json().expect("json");
-    let reply_raw: RawEvent = serde_json::from_str(&reply_json).expect("parse");
-    let reply_id_hex = reply_raw.id.clone();
-    store.insert(verified(reply_raw), &relay, 1000_000).unwrap();
+    let ev_id = "11".repeat(32);
+    store.insert(verified(counted(&ev_id, PHANTOM_TARGET, 1, 1000)), &relay, 1_000_000).unwrap();
+    assert_eq!(store.reference_counts(&phantom_target_id()).unwrap().get(ALPHA), 1);
 
-    // Verify counter is 1.
-    assert_eq!(store.interaction_counts(&phantom_target_id()).unwrap().replies, 1);
+    // Same-author kind:5 e-tagging the counted event removes it.
+    let del = raw(&"55".repeat(32), ALICE, 5, vec![etag(&ev_id)], 2000);
+    store.insert(verified(del), &relay, 2_000_000).unwrap();
 
-    // Alice sends a kind:5 deleting her reply.
-    let reply_nostr_id = nostr::EventId::from_hex(&reply_id_hex).expect("valid hex");
-    let del_ev = EventBuilder::new(Kind::from(5u16), "")
-        .custom_created_at(Timestamp::from_secs(2000))
-        .tag(Tag::event(reply_nostr_id))
-        .sign_with_keys(&alice)
-        .expect("sign");
-    let del_json = del_ev.try_as_json().expect("json");
-    let del_raw: RawEvent = serde_json::from_str(&del_json).expect("parse");
-    store.insert(verified(del_raw), &relay, 2000_000).unwrap();
-
-    // Counter must be back to 0.
-    assert_eq!(store.interaction_counts(&phantom_target_id()).unwrap().replies, 0);
+    assert_eq!(store.reference_counts(&phantom_target_id()).unwrap().get(ALPHA), 0);
 }
 
-/// TC-7: GC Phase 1 (NIP-40 expiry) decrements counter when evicting an
-/// interaction event.
+/// GC (NIP-40 expiry eviction) decrements the bucket for an evicted counted event.
 #[test]
-fn tc7_gc_expiry_decrements() {
-    use nostr::prelude::*;
+fn gc_expiry_decrements() {
     let (store, _dir) = open_tmp();
     let relay = "wss://r/".to_string();
+    store.install_reference_counter_classifier(test_classifier());
 
-    // Insert a reaction with an expiration tag in the past (from GC's perspective).
-    let keys = Keys::generate();
-    let target_event_id = nostr::EventId::from_hex(PHANTOM_TARGET).expect("valid hex");
-    let ev = EventBuilder::new(Kind::from(7u16), "+")
-        .custom_created_at(Timestamp::from_secs(1000))
-        .tag(Tag::event(target_event_id))
-        .tag(Tag::expiration(Timestamp::from_secs(5000)))
-        .sign_with_keys(&keys)
-        .expect("sign");
-    let json = ev.try_as_json().expect("json");
-    let raw: RawEvent = serde_json::from_str(&json).expect("parse");
-    store.insert(verified(raw), &relay, 1000_000).unwrap();
-
-    assert_eq!(store.interaction_counts(&phantom_target_id()).unwrap().reactions, 1);
+    let mut ev = counted(&"11".repeat(32), PHANTOM_TARGET, 1, 1000);
+    ev.tags.push(vec!["expiration".to_string(), "5000".to_string()]);
+    store.insert(verified(ev), &relay, 1_000_000).unwrap();
+    assert_eq!(store.reference_counts(&phantom_target_id()).unwrap().get(ALPHA), 1);
 
     let budget = GcBudget {
         max_events_per_step: 100,
@@ -220,30 +184,30 @@ fn tc7_gc_expiry_decrements() {
     store.gc_step(budget, 6000).unwrap(); // now(6000) > expiry(5000)
 
     assert_eq!(
-        store.interaction_counts(&phantom_target_id()).unwrap().reactions,
+        store.reference_counts(&phantom_target_id()).unwrap().get(ALPHA),
         0,
-        "GC expiry must decrement counter"
+        "GC expiry must decrement the counter"
     );
 }
 
-/// TC-8: delete_by_filter decrements counter for deleted interaction events.
+/// `delete_by_filter` decrements the bucket for each deleted counted event.
 #[test]
-fn tc8_delete_by_filter_decrements() {
+fn delete_by_filter_decrements() {
     use crate::types::DeleteFilter;
     let (store, _dir) = open_tmp();
     let relay = "wss://r/".to_string();
+    store.install_reference_counter_classifier(test_classifier());
 
-    let reply = signed_reply(PHANTOM_TARGET, 1000);
-    let reply_id = reply.id_bytes().unwrap();
-    store.insert(verified(reply), &relay, 1000_000).unwrap();
+    let counted_ev = counted(&"11".repeat(32), PHANTOM_TARGET, 1, 1000);
+    let ev_id = counted_ev.id_bytes().unwrap();
+    store.insert(verified(counted_ev), &relay, 1_000_000).unwrap();
+    assert_eq!(store.reference_counts(&phantom_target_id()).unwrap().get(ALPHA), 1);
 
-    assert_eq!(store.interaction_counts(&phantom_target_id()).unwrap().replies, 1);
-
-    store.delete_by_filter(DeleteFilter::ByIds(vec![reply_id])).unwrap();
+    store.delete_by_filter(DeleteFilter::ByIds(vec![ev_id])).unwrap();
 
     assert_eq!(
-        store.interaction_counts(&phantom_target_id()).unwrap().replies,
+        store.reference_counts(&phantom_target_id()).unwrap().get(ALPHA),
         0,
-        "delete_by_filter must decrement counter"
+        "delete_by_filter must decrement the counter"
     );
 }

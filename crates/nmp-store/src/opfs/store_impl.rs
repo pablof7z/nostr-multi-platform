@@ -426,20 +426,13 @@ impl EventStore for OpfsSqliteEventStore {
         }
     }
 
-    // ─── Interaction counts ─────────────────────────────────────────────────────
-
-    fn interaction_counts(
-        &self,
-        target: &EventId,
-    ) -> Result<crate::TargetInteractionCounts, StoreError> {
-        let c = self.inner.interaction_counts(target).map_err(conv::store_err)?;
-        Ok(crate::TargetInteractionCounts {
-            replies: c.replies,
-            reactions: c.reactions,
-            reposts: c.reposts,
-            zaps: c.zaps,
-        })
-    }
+    // ─── Reference counts (#2512) ───────────────────────────────────────────────
+    //
+    // The OPFS-SQLite engine ships no reference-counter sidecar, so the trait
+    // defaults apply: `install_reference_counter_classifier` no-ops and
+    // `reference_counts` returns an empty `TargetReferenceCounts` (identical to a
+    // backend without the sidecar). Engagement aggregation stays a relations-layer
+    // concern — exactly the FTS contract above.
 
     // ─── Full-text search ────────────────────────────────────────────────────────
     //

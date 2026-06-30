@@ -42,7 +42,6 @@
 //! * `ingest_log` — append-only ingest journal (monotonic seq).
 //! * `delete` — NIP-09 kind:5 deletion *application* policy.
 //! * `tombstones` — per-id / coordinate tombstone row read+write.
-//! * `interaction_counters` — aggregate counters (later PR).
 //! * `store_impl` — [`OpfsSqliteStore`]'s inherent impl (open, txn + statement
 //!   helpers, point reads) and the single scoped `unsafe impl Send + Sync`.
 //!
@@ -92,7 +91,6 @@ mod gc;
 mod gc_tombstones;
 mod ingest_log_store;
 mod insert;
-mod interaction_counters;
 mod meta;
 mod provenance;
 mod query;
@@ -125,11 +123,10 @@ pub use ingest_log::{
     DeleteReason, LogOp, LogRetentionClaim, PullGap, PullPage, ScanLogResult, StoreLogEntry,
     DEFAULT_LOG_MAX_ENTRIES,
 };
-/// GC / delete / dump / freshness / interaction / migration value types
+/// GC / delete / dump / freshness / migration value types
 /// (mirror the corresponding `nmp_store` types at the cycle-free seam).
 pub use types::{
     DeleteFilter, DomainMigration, DumpStats, GcBudget, GcReport, MigrationTx, ReplaceableKey,
-    TargetInteractionCounts,
 };
 
 /// Handle to the OPFS-backed SQLite event store.

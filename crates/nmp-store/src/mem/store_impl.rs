@@ -195,47 +195,30 @@ impl EventStore for MemEventStore {
         query::dump(self, out, format)
     }
 
-    fn interaction_counts(
+    fn install_reference_counter_classifier(
+        &self,
+        classifier: std::sync::Arc<crate::reference_counts::ReferenceClassifyFn>,
+    ) {
+        // Composition-time install. A poisoned lock degrades to "no counters"
+        // (reads return empty) rather than crashing the host (D6).
+        if let Ok(mut st) = self.lock() {
+            st.reference_classifier = Some(classifier);
+        }
+    }
+
+    fn reference_counts(
         &self,
         target: &crate::types::EventId,
-    ) -> Result<crate::TargetInteractionCounts, crate::StoreError> {
+    ) -> Result<crate::reference_counts::TargetReferenceCounts, crate::StoreError> {
         let st = self.lock()?;
         let target_hex = super::bytes_to_hex(target);
-        let replies = st
-            .interaction_counters
-            .get(&(
-                target_hex.clone(),
-                crate::interaction::CounterKind::Reply as u8,
-            ))
-            .copied()
-            .unwrap_or(0);
-        let reactions = st
-            .interaction_counters
-            .get(&(
-                target_hex.clone(),
-                crate::interaction::CounterKind::Reaction as u8,
-            ))
-            .copied()
-            .unwrap_or(0);
-        let reposts = st
-            .interaction_counters
-            .get(&(
-                target_hex.clone(),
-                crate::interaction::CounterKind::Repost as u8,
-            ))
-            .copied()
-            .unwrap_or(0);
-        let zaps = st
-            .interaction_counters
-            .get(&(target_hex, crate::interaction::CounterKind::Zap as u8))
-            .copied()
-            .unwrap_or(0);
-        Ok(crate::TargetInteractionCounts {
-            replies,
-            reactions,
-            reposts,
-            zaps,
-        })
+        let mut counts = crate::reference_counts::TargetReferenceCounts::default();
+        for ((t, bucket), &n) in st.interaction_counters.iter() {
+            if *t == target_hex {
+                counts.set(*bucket, n);
+            }
+        }
+        Ok(counts)
     }
 
     // ─── F-TTL replaceable freshness ───────────────────────────────────────────

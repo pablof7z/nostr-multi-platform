@@ -18,6 +18,11 @@ nmp-nip01 = { path = "../nmp-nip01", default-features = false }
 # nmp-nip01 no longer depends on these — the aggregation lives here.
 nmp-nip18 = { path = "../nmp-nip18" }
 nmp-nip22 = { path = "../nmp-nip22" }
+# Storage substrate: the generic, noun-free reference-counter primitive (#2512).
+# This crate compiles its protocol-aware engagement classifier into the store's
+# opaque `ReferenceClassifyFn` and reads the typed summary back over it. The
+# store never depends back on nmp-relations (one-way: relations → store).
+nmp-store = { path = "../nmp-store", default-features = false }
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"] }

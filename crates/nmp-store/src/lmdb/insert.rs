@@ -188,6 +188,7 @@ pub(super) fn insert(
             if inner.interaction_counters_usable {
                 super::interaction_counters::apply_on_insert(
                     inner.interaction_counters,
+                    &inner.reference_classifier,
                     &mut txn,
                     event.kind,
                     &event.tags,

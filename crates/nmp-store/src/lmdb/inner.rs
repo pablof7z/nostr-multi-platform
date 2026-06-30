@@ -130,9 +130,19 @@ pub struct Inner {
 
     /// True when the `nmp-interaction-counters` sub-db schema version is
     /// known (version == 1). Set false if an unknown future version is
-    /// detected on open, causing reads to fall back to
-    /// `TargetInteractionCounts::default()` (forward-compat safeguard).
+    /// detected on open, causing reads to fall back to an empty
+    /// `TargetReferenceCounts` (forward-compat safeguard).
     pub(crate) interaction_counters_usable: bool,
+
+    /// Installed reference classifier (#2512), set once at composition by
+    /// `install_reference_counter_classifier`. `nmp-relations` compiles its
+    /// protocol-aware engagement spec into the opaque closure; the store runs it
+    /// at every insert/remove inside the same `RwTxn` as the event write. `None`
+    /// until installed → the counter sidecar is inert. `RwLock` mirrors the FTS
+    /// `fts_specs` seam: single-writer (composition), many-reader (every write).
+    /// A poisoned lock degrades to "no counters", never a panic (D6).
+    pub(crate) reference_classifier:
+        RwLock<Option<std::sync::Arc<crate::reference_counts::ReferenceClassifyFn>>>,
 
     // ── ADR-0058 §4 ingest-log sub-dbs ───────────────────────────────────────
     /// Ingest-log store: seq(8 BE) → JSON(LogEntryPersist).
