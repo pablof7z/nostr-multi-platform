@@ -7,7 +7,7 @@ use super::{DeclarationPolicy, PresencePolicy, ProjectionContract, ProjectionTie
 pub const MARMOT_SNAPSHOT: ProjectionContract = ProjectionContract {
     key: "nmp.marmot.snapshot",
     tier: ProjectionTier::HostRegistered,
-    producer: "nmp-marmot ffi (ADR-0039)",
+    producer: "nmp-marmot explicit installer",
     owner_claim: "projection.nmp.marmot.snapshot",
     schema_id: "nmp.marmot.snapshot",
     file_identifier: "NMMS",
@@ -21,7 +21,7 @@ pub const MARMOT_SNAPSHOT: ProjectionContract = ProjectionContract {
 pub const MARMOT_MESSAGES: ProjectionContract = ProjectionContract {
     key: "nmp.marmot.messages",
     tier: ProjectionTier::HostRegistered,
-    producer: "nmp-marmot ffi (ADR-0039)",
+    producer: "nmp-marmot explicit installer",
     owner_claim: "projection.nmp.marmot.messages",
     schema_id: "nmp.marmot.messages",
     file_identifier: "NMMG",

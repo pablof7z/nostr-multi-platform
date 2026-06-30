@@ -494,7 +494,7 @@ fn read_projections_reflect_group_state() {
 
 // ─── KeyPackage cache: cache_key_package / cached_key_packages ────────────────
 
-/// The KeyPackage cache (populated by the app's raw-event tap) must round
+/// The KeyPackage cache (populated by Marmot's ingest parser) must round
 /// trip: cache a peer's signed event, then retrieve it by pubkey and list it.
 #[test]
 fn key_package_cache_round_trips() {

@@ -38,17 +38,17 @@
 //! entry points (`snapshot` / dispatch) — so the inner `Mutex` is
 //! load-bearing for that concurrent access, not a belt-and-braces extra.
 //!
-//! ## Seams (documented, NOT blocking — see crate task)
+//! ## Seams
 //!
-//! 1. **Signer seam.** `MarmotService::new` needs `nostr::Keys`; no
-//!    kernel-level `Keys` provider exists yet, so the host register path
-//!    takes the secret key directly. Replace with a `KeyringCapability`
-//!    seam when one lands on `NmpApp`.
+//! 1. **Credential seam.** `MarmotService::new` needs `nostr::Keys`.
+//!    `nmp_marmot::install` receives a [`crate::MarmotLocalCredentialSlot`]
+//!    wrapper and `nmp-marmot` is the only crate that reads/parses the MLS
+//!    nsec slot. The raw key does not cross `AppHost` or native binding APIs.
 //! 2. **Lossy-observer seam resolved.** The
 //!    `ObservedProjectionSink` fan-out carries no signature, so
 //!    `on_kernel_event` uses it for *metadata* only. Actual MLS ingest of
 //!    kind:445 / kind:1059 is driven by
-//!    [`crate::projection::tap::MarmotIngestParser`] (slot `"marmot"`,
+//!    [`crate::projection::tap::MarmotIngestParser`] (slot `"nmp.marmot"`,
 //!    TAP_KINDS `[444, 445, 1059, 30443]`), which reconstructs the
 //!    signed `nostr::Event` from [`nmp_store::VerifiedEvent::raw`]
 //!    and drives `ops::ingest_signed_event_core`.
@@ -236,6 +236,27 @@ impl MarmotProjection {
             port: Some(port),
         };
         Some(f(&mut h))
+    }
+
+    /// Registry identities for all currently cached group-message interests.
+    ///
+    /// Used by the active-identity runtime when a Marmot account is deactivated
+    /// or replaced. The projection owns the group-relay cache, so it also owns
+    /// reconstructing the exact interest identities to withdraw.
+    #[must_use]
+    pub(crate) fn group_message_identities(&self) -> Vec<nmp_core::subs::SubIdentity> {
+        let Ok(guard) = self.inner.lock() else {
+            return Vec::new();
+        };
+        guard
+            .group_relays
+            .iter()
+            .flat_map(|(group_id_hex, relays)| {
+                relays.iter().map(move |relay| {
+                    crate::interest::group_message_identity(group_id_hex, &relay.to_string())
+                })
+            })
+            .collect()
     }
 
     /// Build the JSON snapshot. D6 — poisoned mutex → empty snapshot.

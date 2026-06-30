@@ -610,7 +610,8 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
      * `profile` — display-name, picture, about, etc. as key-value pairs.
      * `relays`  — initial relay list; each entry carries a URL and a role
      * string (`"read"`, `"write"`, or `"both"`).
-     * `mls`     — arm MLS key-package auto-publish for this account.
+     * `mls`     — mark the account creation request as MLS-capable. Marmot
+     * setup remains explicit Rust composition.
      * `make_active` — make the new account active immediately.
      *
      * Auto-follows nobody: generic framework create-account policy (operator
@@ -1020,9 +1021,7 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
      * Sign in with a local nsec and optionally make it the active account.
      *
      * `make_active = true` (the common path): registers the signer AND makes
-     * it the active account. Sets `pending_mls_autopublish` so the next
-     * `nmp_marmot_register[_active]` call automatically publishes a key
-     * package.
+     * it the active account.
      *
      * `make_active = false`: registers a visible secondary signer without
      * activating it.
@@ -1238,7 +1237,8 @@ open func configure(visibleLimit: UInt32, emitHz: UInt32)  {try! rustCall() {
      * `profile` — display-name, picture, about, etc. as key-value pairs.
      * `relays`  — initial relay list; each entry carries a URL and a role
      * string (`"read"`, `"write"`, or `"both"`).
-     * `mls`     — arm MLS key-package auto-publish for this account.
+     * `mls`     — mark the account creation request as MLS-capable. Marmot
+     * setup remains explicit Rust composition.
      * `make_active` — make the new account active immediately.
      *
      * Auto-follows nobody: generic framework create-account policy (operator
@@ -1851,9 +1851,7 @@ open func signinNip55(signerPackage: String?)  {try! rustCall() {
      * Sign in with a local nsec and optionally make it the active account.
      *
      * `make_active = true` (the common path): registers the signer AND makes
-     * it the active account. Sets `pending_mls_autopublish` so the next
-     * `nmp_marmot_register[_active]` call automatically publishes a key
-     * package.
+     * it the active account.
      *
      * `make_active = false`: registers a visible secondary signer without
      * activating it.
@@ -4412,7 +4410,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_configure() != 62391) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_nmp_uniffi_checksum_method_nmpapp_create_new_account() != 39416) {
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_create_new_account() != 35307) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_deliver_external_signer_response() != 57348) {
@@ -4517,7 +4515,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_signin_nip55() != 50006) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_nmp_uniffi_checksum_method_nmpapp_signin_nsec() != 46919) {
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_signin_nsec() != 31369) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_start() != 30773) {

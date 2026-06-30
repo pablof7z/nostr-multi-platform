@@ -10,12 +10,6 @@
 //! `zeroize::Zeroizing` the instant it arrives, mirroring the C-ABI
 //! wrappers. No raw key bytes are retained past the command dispatch.
 //!
-//! ## MLS-autopublish intent
-//!
-//! `signin_nsec(make_active = true)` sets `pending_mls_autopublish` via
-//! `NmpApp::add_signer` so the next `nmp_marmot_register[_active]` call
-//! automatically publishes a key package — exact parity with the C-ABI path.
-
 use zeroize::Zeroizing;
 
 use crate::identity::RelayConfigEntry;
@@ -26,9 +20,7 @@ impl NmpApp {
     /// Sign in with a local nsec and optionally make it the active account.
     ///
     /// `make_active = true` (the common path): registers the signer AND makes
-    /// it the active account. Sets `pending_mls_autopublish` so the next
-    /// `nmp_marmot_register[_active]` call automatically publishes a key
-    /// package.
+    /// it the active account.
     ///
     /// `make_active = false`: registers a visible secondary signer without
     /// activating it.
@@ -68,7 +60,8 @@ impl NmpApp {
     /// `profile` — display-name, picture, about, etc. as key-value pairs.
     /// `relays`  — initial relay list; each entry carries a URL and a role
     ///             string (`"read"`, `"write"`, or `"both"`).
-    /// `mls`     — arm MLS key-package auto-publish for this account.
+    /// `mls`     — mark the account creation request as MLS-capable. Marmot
+    ///             setup remains explicit Rust composition.
     /// `make_active` — make the new account active immediately.
     ///
     /// Auto-follows nobody: generic framework create-account policy (operator
@@ -81,7 +74,6 @@ impl NmpApp {
         make_active: bool,
     ) {
         let relays: Vec<(String, String)> = relays.into_iter().map(|r| (r.url, r.role)).collect();
-        self.inner.set_pending_mls_autopublish(mls);
         self.inner
             .create_account(profile, relays, Vec::new(), mls, make_active);
     }
@@ -102,76 +94,6 @@ impl NmpApp {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// A stable, valid nsec used across sign-in flag tests (same value as the
-    /// C-ABI counterpart in `nmp-ffi/src/identity.rs::autopublish_flag_tests`).
-    const TEST_NSEC: &str = "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
-
-    // ── Parity: signin_nsec ───────────────────────────────────────────────
-
-    /// Parity with C-ABI `nmp_app_signin_nsec(make_active=1)`:
-    /// `signin_nsec(make_active=true)` MUST set the MLS-autopublish flag,
-    /// which the C-ABI test `signin_nsec_make_active_sets_autopublish_flag`
-    /// also asserts.
-    #[test]
-    fn parity_signin_nsec_make_active_sets_autopublish() {
-        let app = crate::NmpApp::new();
-        assert!(
-            !app.inner.take_pending_mls_autopublish(),
-            "flag must start false"
-        );
-
-        app.signin_nsec(TEST_NSEC.to_string(), true);
-
-        assert!(
-            app.inner.take_pending_mls_autopublish(),
-            "make_active=true must set pending_mls_autopublish"
-        );
-        // Consume-once semantics.
-        assert!(
-            !app.inner.take_pending_mls_autopublish(),
-            "take_pending_mls_autopublish must be one-shot"
-        );
-    }
-
-    /// Parity with C-ABI `nmp_app_signin_nsec(make_active=0)`:
-    /// secondary sign-in must NOT set the autopublish flag.
-    #[test]
-    fn parity_signin_nsec_secondary_does_not_set_autopublish() {
-        let app = crate::NmpApp::new();
-        app.signin_nsec(TEST_NSEC.to_string(), false);
-        assert!(
-            !app.inner.take_pending_mls_autopublish(),
-            "make_active=false sign-in must NOT set pending_mls_autopublish"
-        );
-    }
-
-    /// Parity with C-ABI `nmp_app_register_agent_nsec`:
-    /// app-managed agent signers must NOT set the autopublish flag.
-    #[test]
-    fn parity_register_agent_nsec_does_not_set_autopublish() {
-        let app = crate::NmpApp::new();
-        app.register_agent_nsec(TEST_NSEC.to_string());
-        assert!(
-            !app.inner.take_pending_mls_autopublish(),
-            "agent nsec must NOT set pending_mls_autopublish"
-        );
-    }
-
-    /// Parity with C-ABI `nmp_app_signin_bunker`: bunker sign-in must NOT
-    /// set the autopublish flag (it is not a local key).
-    #[test]
-    fn parity_signin_bunker_does_not_set_autopublish() {
-        let app = crate::NmpApp::new();
-        app.signin_bunker(
-            "bunker://fakekey@wss://relay.example.com?secret=abc".to_string(),
-            true,
-        );
-        assert!(
-            !app.inner.take_pending_mls_autopublish(),
-            "bunker sign-in must NOT set pending_mls_autopublish"
-        );
-    }
 
     /// Parity: `create_new_account` maps typed relays to the underlying
     /// `Vec<(String, String)>` shape correctly (smoke — no panic, correct

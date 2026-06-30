@@ -230,9 +230,8 @@ pub struct MarmotService {
     /// secret material in freed memory. Tracked as V-55 in GitHub issue #971.
     _secret_bytes: Zeroizing<[u8; 32]>,
     /// `author_pubkey_hex` → most-recent full signed kind:30443 event for that
-    /// peer. Populated by the app's raw-event tap when the kernel delivers a
-    /// peer's KeyPackage. Any app using Marmot can populate this cache (the tap
-    /// is a thin per-app kernel bridge); the protocol logic (cache lookup in
+    /// peer. Populated by Marmot's ingest parser when the kernel delivers a
+    /// peer's KeyPackage. The protocol logic (cache lookup in
     /// `create_group`/`add_members`) lives here so all NMP apps get it for
     /// free.
     kp_cache: Mutex<HashMap<String, Event>>,
@@ -305,10 +304,10 @@ impl MarmotService {
         self.orphaned_commit_count.load(Ordering::Relaxed)
     }
 
-    // ── KeyPackage cache (populated by the app's raw-event tap) ─────────────
+    // ── KeyPackage cache (populated by Marmot's ingest parser) ─────────────
 
     /// Cache a peer's full signed kind:30443 event by author pubkey. Called by
-    /// the app's raw-event tap when the kernel delivers a peer's KeyPackage.
+    /// Marmot's ingest parser when the kernel delivers a peer's KeyPackage.
     /// Overwrites silently — always keep the newest one received.
     pub fn cache_key_package(&self, event: Event) {
         if let Ok(mut cache) = self.kp_cache.lock() {

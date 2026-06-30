@@ -36,6 +36,15 @@ impl<S> SnapshotProjectionRegistrar for NmpAppBuilder<S> {
         NmpApp::register_typed_snapshot_projection(app, key, f);
     }
 
+    fn register_typed_snapshot_projection_with_time<K, F>(&self, key: K, f: F)
+    where
+        K: Into<String>,
+        F: Fn(u64) -> Option<nmp_core::TypedProjectionData> + Send + Sync + 'static,
+    {
+        let app: &NmpApp = unsafe { &*self.app };
+        NmpApp::register_typed_snapshot_projection_with_time(app, key, f);
+    }
+
     fn declare_consumed_projections<I, K>(&self, keys: I)
     where
         I: IntoIterator<Item = K>,

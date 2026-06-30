@@ -11,9 +11,9 @@ const TYPED_ONLY: TypedDispatchPolicy = TypedDispatchPolicy::TypedOnly;
 
 pub const MARMOT_ACTION: ActionContract = ActionContract {
     namespace: "nmp.marmot",
-    producer: "nmp-marmot action",
-    module_type: "nmp_marmot::MarmotActionModule",
-    payload_type: "nmp_marmot::MarmotAction",
+    producer: "nmp-marmot explicit installer",
+    module_type: "nmp_marmot::install internal action module",
+    payload_type: "nmp.marmot flatbuffer payload",
     owner_claim: "action.nmp.marmot",
     schema_id: "nmp.marmot",
     schema_path: "crates/nmp-marmot/schema/marmot_action.fbs",

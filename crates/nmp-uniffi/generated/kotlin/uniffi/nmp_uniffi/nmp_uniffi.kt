@@ -1325,7 +1325,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_configure() != 62391.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_create_new_account() != 39416.toShort()) {
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_create_new_account() != 35307.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_deliver_external_signer_response() != 57348.toShort()) {
@@ -1430,7 +1430,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_signin_nip55() != 50006.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_signin_nsec() != 46919.toShort()) {
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_signin_nsec() != 31369.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_start() != 30773.toShort()) {
@@ -1961,7 +1961,8 @@ public interface NmpAppInterface {
      * `profile` — display-name, picture, about, etc. as key-value pairs.
      * `relays`  — initial relay list; each entry carries a URL and a role
      * string (`"read"`, `"write"`, or `"both"`).
-     * `mls`     — arm MLS key-package auto-publish for this account.
+     * `mls`     — mark the account creation request as MLS-capable. Marmot
+     * setup remains explicit Rust composition.
      * `make_active` — make the new account active immediately.
      *
      * Auto-follows nobody: generic framework create-account policy (operator
@@ -2371,9 +2372,7 @@ public interface NmpAppInterface {
      * Sign in with a local nsec and optionally make it the active account.
      *
      * `make_active = true` (the common path): registers the signer AND makes
-     * it the active account. Sets `pending_mls_autopublish` so the next
-     * `nmp_marmot_register[_active]` call automatically publishes a key
-     * package.
+     * it the active account.
      *
      * `make_active = false`: registers a visible secondary signer without
      * activating it.
@@ -2650,7 +2649,8 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
      * `profile` — display-name, picture, about, etc. as key-value pairs.
      * `relays`  — initial relay list; each entry carries a URL and a role
      * string (`"read"`, `"write"`, or `"both"`).
-     * `mls`     — arm MLS key-package auto-publish for this account.
+     * `mls`     — mark the account creation request as MLS-capable. Marmot
+     * setup remains explicit Rust composition.
      * `make_active` — make the new account active immediately.
      *
      * Auto-follows nobody: generic framework create-account policy (operator
@@ -3383,9 +3383,7 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
      * Sign in with a local nsec and optionally make it the active account.
      *
      * `make_active = true` (the common path): registers the signer AND makes
-     * it the active account. Sets `pending_mls_autopublish` so the next
-     * `nmp_marmot_register[_active]` call automatically publishes a key
-     * package.
+     * it the active account.
      *
      * `make_active = false`: registers a visible secondary signer without
      * activating it.

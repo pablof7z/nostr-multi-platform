@@ -9,7 +9,8 @@
 //! - relay-pinned kind:445 group messages, registered when the group relays are
 //!   known from group creation or a Welcome.
 //!
-//! The raw-event tap then drives accepted signed events into `MarmotService`.
+//! Marmot's ingest parser then drives accepted signed events into
+//! `MarmotService`.
 
 use nmp_core::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 use nmp_planner::stable_hash::stable_hash64;
@@ -64,7 +65,7 @@ fn group_message_interest_id(group_id_hex: &str, relay_url: &str) -> InterestId 
 /// Scope is [`InterestScope::Account`] (bound to the specific `pubkey`)
 /// rather than `ActiveAccount`: the bridge resolves the concrete identity at
 /// registration and the subscription must stay pinned to it. The kernel's
-/// raw-event tap then drives every accepted event into
+/// Marmot's ingest parser then drives every accepted event into
 /// `MarmotService::ingest_signed_event_core` automatically.
 #[must_use]
 pub fn giftwrap_inbox_interest(pubkey: &str) -> LogicalInterest {
@@ -136,7 +137,8 @@ pub fn group_message_identity(group_id_hex: &str, relay_url: &str) -> SubIdentit
 ///
 /// Marmot group traffic is bound to the group relays, not author outboxes. Each
 /// relay gets its own hard-pinned interest so the kernel keeps the corresponding
-/// REQ open and the raw-event tap receives messages without an inbox sweep.
+/// REQ open and Marmot's ingest parser receives messages without an inbox
+/// sweep.
 ///
 pub fn group_message_interests(
     group_id_hex: &str,

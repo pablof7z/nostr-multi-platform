@@ -22,8 +22,9 @@
 //!
 //! [`ingest_signed_event_core`] is the single path driving signed inbound
 //! events into `MarmotService` (1059 welcomes, 445 messages, 30443 KPs).
-//! Legacy kind:443 is no longer ingested. The automatic
-//! [`crate::projection::tap`] raw-event observer is production ingress.
+//! Legacy kind:443 is no longer ingested. The
+//! [`crate::projection::tap::MarmotIngestParser`] installed by
+//! [`crate::install`] is production ingress.
 //!
 //! ## Pending-commit discipline (mdk-api.md §7.7)
 //!
@@ -269,7 +270,7 @@ fn create_group(
     let relays = parse_relays(&urls)?;
     let invitee_npubs = resolve_invitees(invitee_text, invitee_npubs);
     let mut kp_events = signed_key_package_events(signed_key_package_events_json)?;
-    // Fill from kp_cache (populated by the app's raw-event tap when the
+    // Fill from kp_cache (populated by Marmot's ingest parser when the
     // kernel delivers peers' kind:30443 events), then require EVERY requested
     // invitee to have a signed KeyPackage. A partial cache must not silently
     // create a group missing some requested members.
@@ -333,7 +334,7 @@ fn invite(
     let gid = group_id_from_hex(group_id_hex)?;
     let invitee_npubs = resolve_invitees(invitee_text, invitee_npubs);
     let mut kp_events = signed_key_package_events(signed_key_package_events_json)?;
-    // Fill from kp_cache (populated by the tap), then require EVERY requested
+    // Fill from kp_cache (populated by the ingest parser), then require EVERY requested
     // invitee to have a signed KeyPackage. A partial cache must not silently
     // invite fewer members than the user requested.
     if !invitee_npubs.is_empty() {
@@ -497,15 +498,15 @@ fn decline_welcome(h: &mut InnerHandle<'_>, welcome_id_hex: &str) -> Result<Valu
 /// gift-wrap → `unwrap_and_process_welcome` (+ seed the `group_id→relays`
 /// cache from `Welcome::group_relays` and cache the pending-welcome row);
 /// kind:445 → `process_message`. Any other kind is a deliberate **silent
-/// skip** (`Ok(None)`): the raw-event tap registers `[444, 445, 1059]`
-/// defensively, and a bare kind:444 rumor (should never reach the wire —
+/// skip** (`Ok(None)`): the Marmot ingest parser registers the Marmot
+/// envelope kinds defensively, and a bare kind:444 rumor (should never reach the wire —
 /// the wire welcome is the kind:1059 gift-wrap) must not be treated as an
 /// error there.
 ///
-/// The automatic [`crate::projection::tap`] raw-event observer is the caller:
-/// the kernel delivers every accepted inbound signed kind:1059/445/30443 here.
-/// The tap discards the `Result` (D6: a poisoned/duplicate/malformed event is a
-/// silent no-op on the actor thread, never a panic across a host boundary).
+/// The crate-owned [`crate::projection::tap::MarmotIngestParser`] is the
+/// caller: the kernel delivers every accepted inbound signed Marmot kind here.
+/// The parser discards the `Result` (D6: a poisoned/duplicate/malformed event
+/// is a silent no-op on the actor thread, never a panic across a host boundary).
 ///
 /// `Ok(Some(Value))` carries per-kind informational payload for tests and
 /// deferred-op retry assertions. The projection mutation (pending-welcome row,

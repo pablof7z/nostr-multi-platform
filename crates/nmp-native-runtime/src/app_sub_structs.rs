@@ -140,7 +140,7 @@ pub(crate) struct ReadHandles {
     pub(crate) active_account_handle: ActiveAccountSlot,
     /// Active local `nostr::Keys` slot — substrate-generic.
     pub(crate) active_local_keys: ActiveLocalKeysSlot,
-    /// Raw bech32 nsec for app crates that need local key material for MLS.
-    /// ADR-0025 exception: only MLS-based app crates need the raw nsec.
+    /// Raw bech32 nsec slot handed to Marmot's credential wrapper.
+    /// Only `nmp-marmot` parses this value; native runtime only owns the slot.
     pub(crate) mls_local_nsec: MlsLocalNsecSlot,
 }

@@ -210,6 +210,17 @@ impl super::KernelReducer {
         // registration.
     }
 
+    /// Register a typed projection closure that receives reducer/kernel time.
+    pub fn register_typed_snapshot_projection_with_time(
+        &self,
+        key: impl Into<String>,
+        f: impl Fn(u64) -> Option<TypedProjectionData> + Send + Sync + 'static,
+    ) {
+        if let Ok(mut guard) = self.snapshot_slot.lock() {
+            guard.register_typed_with_time(key, f);
+        }
+    }
+
     /// Register the rendered-author provider for a feed projection.
     ///
     /// This is the reducer-owned twin of `NmpApp::register_feed_author_provider`.

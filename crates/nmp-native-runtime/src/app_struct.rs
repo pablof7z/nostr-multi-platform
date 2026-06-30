@@ -211,8 +211,6 @@ pub struct NmpApp {
     pub(crate) event_observers: ObservedProjectionSinkSlot,
     /// Shared relay-edit rows handle.
     pub(crate) configured_relays: nmp_core::AppRelaySlot,
-    /// One-shot account-creation intent.
-    pub(crate) pending_mls_autopublish: AtomicBool,
     /// One-shot native actor starter.
     pub(crate) actor_starter: Mutex<Option<ActorStarter>>,
     /// Passive-handle bootstrap frame sender.

@@ -73,20 +73,19 @@ impl NmpApp {
     ///
     /// The handler is the bridge between an [`nmp_core::substrate::ActionModule`]
     /// whose `execute()` body emits an `ActorCommand::Protocol` carrying a
-    /// `nmp_core::substrate::HostOpCommand` (ADR-0052 §D4, K2 rung 5.4 — the
+    /// `nmp_core::substrate::HostOpCommand` (ADR-0052 §D4, K2 rung 5.4 - the
     /// bespoke `DispatchHostOp` arm was merged into the single `Protocol` write
-    /// seam) and the app-owned state the op mutates (today: `nmp-app-marmot`'s
-    /// `MarmotService`). The actor snapshots the handler at `nmp_app_start`;
+    /// seam) and app-owned state the op mutates. Marmot no longer uses this
+    /// path; it installs a crate-owned runtime. The actor snapshots the
+    /// handler at `nmp_app_start`;
     /// `HostOpCommand` clones that handler at `run` time and calls
     /// `handle(action_json, correlation_id)`.
     ///
     /// `nmp-core` deliberately does NOT name the app's typed action enum
-    /// (D0 — no Marmot / MLS / app-specific nouns in the kernel); the handler
+    /// (D0 - no app-specific nouns in the kernel); the handler
     /// speaks only `&str` + [`serde_json::Value`]. The matching `ActionModule`
     /// lives in the app crate and serializes its typed action into the same
-    /// JSON envelope the handler parses back out — exactly the same JSON
-    /// translation layer the legacy `nmp_marmot_dispatch` symbol used
-    /// (deleted in ADR-0025 PR 3, 2026-05-23).
+    /// JSON envelope the handler parses back out.
     ///
     /// The slot is `Arc<Mutex<Option<Arc<dyn HostOpHandler>>>>` so app
     /// composition can install the handler without `&mut self` before start.

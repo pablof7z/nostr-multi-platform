@@ -2,10 +2,10 @@
 //! `nmp.marmot` `ActionModule` (the MLS-over-Nostr write seam).
 //!
 //! Implements [`ActionPayload`] for [`MarmotAction`] so the byte doorway can
-//! route `nmp.marmot` dispatches through
-//! [`MarmotActionModule::decode_payload`] (added in this PR). The encode path
-//! is the Rust primitive round-trip codec that the host builders must be
-//! byte-exact with; the decode path is the fail-closed registry adapter.
+//! route `nmp.marmot` dispatches through Marmot's crate-owned decoder. The
+//! encode path is the Rust primitive round-trip codec that the host builders
+//! must be byte-exact with; the decode path is the fail-closed registry
+//! adapter.
 //!
 //! # Schema
 //!

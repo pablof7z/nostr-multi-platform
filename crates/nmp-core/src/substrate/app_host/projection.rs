@@ -55,6 +55,23 @@ pub trait SnapshotProjectionRegistrar {
         K: Into<String>,
         F: Fn() -> Option<TypedProjectionData> + Send + Sync + 'static;
 
+    /// Register a typed projection closure that receives kernel-authored
+    /// Unix seconds for the snapshot tick.
+    ///
+    /// This narrow variant exists for protocol projections whose wire payload
+    /// includes age/staleness fields. The closure must remain a read-only,
+    /// non-blocking projection producer; state transitions belong in explicit
+    /// actor commands or event observers.
+    ///
+    /// This is a required host-implementation method: custom hosts that
+    /// implement [`SnapshotProjectionRegistrar`] must forward it to their
+    /// snapshot registry so producer time comes from the kernel tick, not from
+    /// wall-clock reads inside projection code.
+    fn register_typed_snapshot_projection_with_time<K, F>(&self, key: K, f: F)
+    where
+        K: Into<String>,
+        F: Fn(u64) -> Option<TypedProjectionData> + Send + Sync + 'static;
+
     /// ADR-0055 Rung 3 — declare that this host runtime owns the NMP
     /// cache-merge layer (D3-3) and is ready to receive frames with
     /// `Unchanged` projections omitted.

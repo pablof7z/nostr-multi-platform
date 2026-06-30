@@ -1,23 +1,21 @@
-//! `MarmotAction` + `MarmotActionModule` — the typed [`ActionModule`] surface
-//! that routes Marmot writes through the runtime action dispatcher. This is the
-//! architecturally-correct replacement for the legacy bespoke
-//! `nmp_marmot_dispatch` C-ABI symbol (deleted in ADR-0025 PR 3,
-//! 2026-05-23 — the ADR-0025 exception is fully retired).
+//! `MarmotAction` plus Marmot's internal typed [`ActionModule`] implementation.
+//! `nmp_marmot::install` registers this namespace with the runtime action
+//! dispatcher; that is the current and only Marmot write doorway. The ADR-0025
+//! bespoke native write doorway is retired.
 //!
 //! # Where this fits
 //!
 //! Marmot writes reach `MarmotService` through the substrate-generic seam:
-//! hosts register a typed [`ActionModule`] under the `"nmp.marmot"` namespace,
-//! dispatch a runtime action envelope for that namespace, and `execute` sends a
-//! typed [`MarmotProtocolCommand`] through `ActorCommand::Protocol`. Returns a
-//! `correlation_id` synchronously; the terminal verdict surfaces on
-//! `action_stages`.
+//! [`crate::install`] registers a typed [`ActionModule`] under the
+//! `"nmp.marmot"` namespace, hosts dispatch a runtime action envelope for that
+//! namespace, and `execute` sends a typed [`MarmotProtocolCommand`] through
+//! `ActorCommand::Protocol`. Returns a `correlation_id` synchronously; the
+//! terminal verdict surfaces on `action_stages`.
 //!
-//! # JSON shape — isomorphic with the bespoke envelope
+//! # JSON shape
 //!
-//! The enum is `#[serde(tag = "op", rename_all = "snake_case")]` so the on-
-//! the-wire JSON shape is exactly the bespoke envelope the iOS bridge
-//! already produces:
+//! The enum is `#[serde(tag = "op", rename_all = "snake_case")]` so the
+//! wire shape is the stable Marmot action envelope existing shells produce:
 //!
 //! ```json
 //! {"op": "create_group", "name": "engineering", "description": "...", "invitee_text": "...", "signed_key_package_events_json": []}
@@ -25,17 +23,13 @@
 //! {"op": "publish_key_package"}
 //! ```
 //!
-//! The ADR-0025 PR 2 migration replaced the legacy `nmp_marmot_dispatch(json)`
-//! symbol with the shared action-dispatch namespace, and PR 3 then deleted the
-//! legacy symbol entirely.
-//!
 //! # `start()` validates shape; `MarmotProtocolCommand` does the work
 //!
 //! `MarmotActionModule::start` is the validator — it deserializes the
 //! action JSON into the typed `MarmotAction` enum and rejects malformed
 //! payloads at the boundary. `MarmotActionModule::execute` then emits
 //! `ActorCommand::Protocol(Box<MarmotProtocolCommand>)` with the already
-//! parsed enum and the live `MarmotProjection`. The command runs on the
+//! parsed enum and the crate-owned live runtime. The command runs on the
 //! actor thread, uses [`ProtocolCommandContext`] for actor-authored time and
 //! publish/interest commands, and records the terminal action verdict.
 
@@ -48,25 +42,23 @@ use nmp_core::substrate::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::projection::state::{MarmotProjection, MarmotRuntimePort};
+use crate::projection::state::MarmotRuntimePort;
+use crate::runtime::MarmotRuntime;
 
-/// Namespace under which the [`MarmotActionModule`] registers in the
-/// kernel's [`nmp_core::kernel::ActionRegistry`]. Hosts dispatch through the
-/// runtime action dispatcher for this namespace.
+/// Namespace registered by [`crate::install`] in the kernel's
+/// [`nmp_core::kernel::ActionRegistry`]. Hosts dispatch through the runtime
+/// action dispatcher for this namespace.
 ///
-/// Named after the Marmot protocol (the MLS-over-Nostr binding that
-/// `nmp-app-marmot` implements), not the `nmp-app-marmot` crate. A second
-/// app that drives the same protocol could choose to reuse the namespace
-/// (with its own action-module install); the namespace is a wire
-/// contract, not an implementation tag.
+/// Named after the Marmot protocol (the MLS-over-Nostr binding), not an app
+/// crate. Any host that installs `nmp_marmot::install` uses the same namespace;
+/// the namespace is a wire contract, not an implementation tag.
 pub const MARMOT_ACTION_NAMESPACE: &str = "nmp.marmot";
 
 /// Typed Marmot action enum.
 ///
 /// `#[serde(tag = "op", rename_all = "snake_case")]` keeps the on-the-wire
-/// JSON byte-identical with the legacy `nmp_marmot_dispatch` envelope
-/// (the `{"op": "create_group", ...}` shape iOS already produces). See the
-/// module rustdoc for the migration plan.
+/// JSON byte-identical with the historical Marmot action envelope (the
+/// `{"op": "create_group", ...}` shape existing shells already produce).
 ///
 /// `#[serde(deny_unknown_fields)]` is NOT applied here — the legacy
 /// envelope tolerates ignored extra fields (e.g. iOS sometimes appends
@@ -103,7 +95,7 @@ pub enum MarmotAction {
         invitee_npubs: Option<Vec<String>>,
         /// Optional pre-fetched signed kind:30443 key-package
         /// events as JSON strings. Empty → fall back to the in-process
-        /// cache populated by the raw-event tap.
+        /// cache populated by the Marmot ingest parser.
         #[serde(default)]
         signed_key_package_events_json: Vec<serde_json::Value>,
         /// Fallback write-relay set when the host's NIP-65 list is empty.
@@ -150,20 +142,20 @@ pub enum MarmotAction {
 /// (`PublishModule`, `nmp_nip02::ReactModule`, etc.): `start()` validates the typed
 /// action; `execute()` emits one `ActorCommand` carrying everything the
 /// actor needs to run the op. The only Marmot-specific piece is the shared
-/// projection captured by the typed protocol command — see the module rustdoc.
-pub struct MarmotActionModule {
-    projection: Arc<MarmotProjection>,
+/// runtime captured by the typed protocol command — see the module rustdoc.
+pub(crate) struct MarmotActionModule {
+    runtime: Arc<MarmotRuntime>,
 }
 
 impl MarmotActionModule {
     #[must_use]
-    pub fn new(projection: Arc<MarmotProjection>) -> Self {
-        Self { projection }
+    pub(crate) fn new(runtime: Arc<MarmotRuntime>) -> Self {
+        Self { runtime }
     }
 }
 
-pub struct MarmotProtocolCommand {
-    projection: Arc<MarmotProjection>,
+pub(crate) struct MarmotProtocolCommand {
+    runtime: Arc<MarmotRuntime>,
     body: MarmotProtocolCommandBody,
 }
 
@@ -172,7 +164,6 @@ enum MarmotProtocolCommandBody {
         action: MarmotAction,
         correlation_id: Option<String>,
     },
-    ExpirePending,
 }
 
 impl std::fmt::Debug for MarmotProtocolCommand {
@@ -186,9 +177,6 @@ impl std::fmt::Debug for MarmotProtocolCommand {
                 dbg.field("action", action)
                     .field("correlation_id", correlation_id);
             }
-            MarmotProtocolCommandBody::ExpirePending => {
-                dbg.field("internal", &"expire_pending");
-            }
         }
         dbg.finish_non_exhaustive()
     }
@@ -196,36 +184,17 @@ impl std::fmt::Debug for MarmotProtocolCommand {
 
 impl MarmotProtocolCommand {
     #[must_use]
-    pub fn new(
-        projection: Arc<MarmotProjection>,
+    pub(crate) fn new(
+        runtime: Arc<MarmotRuntime>,
         action: MarmotAction,
         correlation_id: String,
     ) -> Self {
         Self {
-            projection,
+            runtime,
             body: MarmotProtocolCommandBody::Action {
                 action,
                 correlation_id: Some(correlation_id),
             },
-        }
-    }
-
-    #[must_use]
-    pub fn new_internal(projection: Arc<MarmotProjection>, action: MarmotAction) -> Self {
-        Self {
-            projection,
-            body: MarmotProtocolCommandBody::Action {
-                action,
-                correlation_id: None,
-            },
-        }
-    }
-
-    #[must_use]
-    pub fn new_expire_pending(projection: Arc<MarmotProjection>) -> Self {
-        Self {
-            projection,
-            body: MarmotProtocolCommandBody::ExpirePending,
         }
     }
 }
@@ -269,15 +238,9 @@ impl ProtocolCommand for MarmotProtocolCommand {
         self: Box<Self>,
         ctx: &mut ProtocolCommandContext<'_>,
     ) -> Result<(), ProtocolCommandError> {
-        let MarmotProtocolCommand { projection, body } = *self;
+        let MarmotProtocolCommand { runtime, body } = *self;
 
         let (action, correlation_id) = match body {
-            MarmotProtocolCommandBody::ExpirePending => {
-                let now_secs = ctx.now_secs();
-                let port = MarmotCommandPort { ctx };
-                let _ = projection.with_inner_port(&port, |h| h.evict_expired_pending(now_secs));
-                return Ok(());
-            }
             MarmotProtocolCommandBody::Action {
                 action,
                 correlation_id,
@@ -287,6 +250,15 @@ impl ProtocolCommand for MarmotProtocolCommand {
         if let Some(correlation_id) = correlation_id.as_deref() {
             ctx.record_action_stage_requested(correlation_id);
         }
+        let Some(projection) = runtime.projection() else {
+            if let Some(correlation_id) = correlation_id {
+                ctx.record_action_failure(
+                    correlation_id,
+                    "marmot requires an active local-key account".to_string(),
+                );
+            }
+            return Ok(());
+        };
         let now_secs = ctx.now_secs();
         let result = {
             let port = MarmotCommandPort { ctx };
@@ -394,7 +366,7 @@ impl ActionModule for MarmotActionModule {
     ) -> Result<(), String> {
         send(ActorCommand::Protocol(Box::new(
             MarmotProtocolCommand::new(
-                Arc::clone(&self.projection),
+                Arc::clone(&self.runtime),
                 action,
                 correlation_id.to_string(),
             ),

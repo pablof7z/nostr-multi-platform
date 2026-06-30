@@ -132,8 +132,6 @@ pub fn new_app() -> NmpApp {
         Arc::clone(&external_event_sink_dispatcher_slot);
     let feed_registry = nmp_feed::new_feed_registry_slot();
     let feed_sessions = Arc::new(nmp_feed::FeedSessionRegistry::default());
-    // One-shot MLS-autopublish intent flag.
-    let pending_mls_autopublish = AtomicBool::new(false);
     // G-S4 — actor command-channel depth straddle counter.
     let queue_depth: Arc<AtomicU64> = Arc::new(AtomicU64::new(0));
     let actor_queue_depth = Arc::clone(&queue_depth);
@@ -316,7 +314,6 @@ pub fn new_app() -> NmpApp {
         lifecycle_observer,
         event_observers,
         configured_relays,
-        pending_mls_autopublish,
         actor_starter: Mutex::new(Some(actor_starter)),
         startup_update_tx: Mutex::new(Some(startup_update_tx)),
         actor: Mutex::new(None),
