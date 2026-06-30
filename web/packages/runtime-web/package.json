@@ -1,14 +1,43 @@
 {
   "name": "@nmp/runtime-web",
-  "private": true,
-  "version": "0.1.0",
+  "version": "0.8.4",
+  "description": "Browser worker transport glue and packaged wasm bridge for NMP web runtimes.",
+  "license": "MIT",
   "type": "module",
-  "main": "src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build": "npm run clean && npm run build:ts && npm run build:wasm",
+    "build:ts": "tsc -p tsconfig.build.json",
+    "build:wasm": "bash scripts/build-wasm-package.sh",
+    "prepack": "npm run build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
   "exports": {
-    ".": "./src/index.ts",
-    "./worker": "./src/worker.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./worker": {
+      "types": "./dist/worker.d.ts",
+      "import": "./dist/worker.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "dependencies": {
     "flatbuffers": "^25.9.23"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.7"
   }
 }

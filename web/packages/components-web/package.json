@@ -1,20 +1,118 @@
 {
   "name": "@nmp/components-web",
-  "private": true,
-  "version": "0.1.0",
+  "version": "0.8.4",
+  "description": "Solid component host and reusable Nostr UI components for NMP web apps.",
+  "license": "MIT",
   "type": "module",
-  "main": "src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
+    "build": "vite build && tsc -p tsconfig.build.json",
+    "prepack": "npm run build",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "exports": {
-    ".": "./src/index.ts",
-    "./src/*": "./src/*"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./component-host": {
+      "types": "./dist/component-host/index.d.ts",
+      "import": "./dist/component-host/index.js"
+    },
+    "./content-core": {
+      "types": "./dist/content-core/index.d.ts",
+      "import": "./dist/content-core/index.js"
+    },
+    "./content-kind-30023": {
+      "types": "./dist/content-kind-30023/index.d.ts",
+      "import": "./dist/content-kind-30023/index.js"
+    },
+    "./content-kind-9802": {
+      "types": "./dist/content-kind-9802/index.d.ts",
+      "import": "./dist/content-kind-9802/index.js"
+    },
+    "./content-kind-registry": {
+      "types": "./dist/content-kind-registry/index.d.ts",
+      "import": "./dist/content-kind-registry/index.js"
+    },
+    "./content-media-grid": {
+      "types": "./dist/content-media-grid/index.d.ts",
+      "import": "./dist/content-media-grid/index.js"
+    },
+    "./content-mention-chip": {
+      "types": "./dist/content-mention-chip/index.d.ts",
+      "import": "./dist/content-mention-chip/index.js"
+    },
+    "./content-minimal": {
+      "types": "./dist/content-minimal/index.d.ts",
+      "import": "./dist/content-minimal/index.js"
+    },
+    "./content-quote-card": {
+      "types": "./dist/content-quote-card/index.d.ts",
+      "import": "./dist/content-quote-card/index.js"
+    },
+    "./content-view": {
+      "types": "./dist/content-view/index.d.ts",
+      "import": "./dist/content-view/index.js"
+    },
+    "./login-block": {
+      "types": "./dist/login-block/index.d.ts",
+      "import": "./dist/login-block/index.js"
+    },
+    "./relay-list": {
+      "types": "./dist/relay-list/index.d.ts",
+      "import": "./dist/relay-list/index.js"
+    },
+    "./user-avatar": {
+      "types": "./dist/user-avatar/index.d.ts",
+      "import": "./dist/user-avatar/index.js"
+    },
+    "./user-card": {
+      "types": "./dist/user-card/index.d.ts",
+      "import": "./dist/user-card/index.js"
+    },
+    "./user-name": {
+      "types": "./dist/user-name/index.d.ts",
+      "import": "./dist/user-name/index.js"
+    },
+    "./user-nip05": {
+      "types": "./dist/user-nip05/index.d.ts",
+      "import": "./dist/user-nip05/index.js"
+    },
+    "./user-npub": {
+      "types": "./dist/user-npub/index.d.ts",
+      "import": "./dist/user-npub/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "typesVersions": {
     "*": {
-      "src/*": ["./src/*"]
+      "component-host": ["./dist/component-host/index.d.ts"],
+      "content-core": ["./dist/content-core/index.d.ts"],
+      "content-kind-30023": ["./dist/content-kind-30023/index.d.ts"],
+      "content-kind-9802": ["./dist/content-kind-9802/index.d.ts"],
+      "content-kind-registry": ["./dist/content-kind-registry/index.d.ts"],
+      "content-media-grid": ["./dist/content-media-grid/index.d.ts"],
+      "content-mention-chip": ["./dist/content-mention-chip/index.d.ts"],
+      "content-minimal": ["./dist/content-minimal/index.d.ts"],
+      "content-quote-card": ["./dist/content-quote-card/index.d.ts"],
+      "content-view": ["./dist/content-view/index.d.ts"],
+      "login-block": ["./dist/login-block/index.d.ts"],
+      "relay-list": ["./dist/relay-list/index.d.ts"],
+      "user-avatar": ["./dist/user-avatar/index.d.ts"],
+      "user-card": ["./dist/user-card/index.d.ts"],
+      "user-name": ["./dist/user-name/index.d.ts"],
+      "user-nip05": ["./dist/user-nip05/index.d.ts"],
+      "user-npub": ["./dist/user-npub/index.d.ts"]
     }
   },
   "peerDependencies": {

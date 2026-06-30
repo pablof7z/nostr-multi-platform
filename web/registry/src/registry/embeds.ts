@@ -22,10 +22,10 @@ const desktopArticleCardRust = nativeSource("registry/desktop/content-kind-30023
 // Embeds & Kinds — Web (SolidJS). Like SwiftUI, the embeds reuse the per-kind
 // content-* components: article → NostrArticleCard, highlight → NostrHighlightCard,
 // note → NostrQuoteCard, profile → NostrMentionChip.
-import webArticleCardTsx from "@nmp/components-web/src/content-kind-30023/NostrArticleCard.tsx?raw";
-import webHighlightCardTsx from "@nmp/components-web/src/content-kind-9802/NostrHighlightCard.tsx?raw";
-import webQuoteCardTsx from "@nmp/components-web/src/content-quote-card/NostrQuoteCard.tsx?raw";
-import webMentionChipTsx from "@nmp/components-web/src/content-mention-chip/NostrMentionChip.tsx?raw";
+import webArticleCardTsx from "../../../packages/components-web/src/content-kind-30023/NostrArticleCard.tsx?raw";
+import webHighlightCardTsx from "../../../packages/components-web/src/content-kind-9802/NostrHighlightCard.tsx?raw";
+import webQuoteCardTsx from "../../../packages/components-web/src/content-quote-card/NostrQuoteCard.tsx?raw";
+import webMentionChipTsx from "../../../packages/components-web/src/content-mention-chip/NostrMentionChip.tsx?raw";
 
 export const embedComponents: Component[] = [
   {

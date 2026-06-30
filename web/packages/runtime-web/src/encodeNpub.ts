@@ -10,10 +10,10 @@
 // (~1 ms). Never use JS bech32 here — this is the ONLY correct encoding path
 // (aim.md §6.9).
 //
-// The wasm module path must match the path the worker loads — both point at
-// the wasm composition root (see #2038) output.
+// The wasm module path must match the path the worker loads. The default is
+// package-relative so split apps do not copy NMP wasm into public/ by hand.
 
-const defaultModulePath = "/nmp-browser-runtime/nmp_browser_runtime.js";
+const defaultModuleUrl = new URL("./wasm/nmp_browser_runtime.js", import.meta.url).toString();
 
 type EncodeNpubFn = (hex: string) => string | undefined | null;
 
@@ -25,7 +25,7 @@ type NmpWasmModule = {
 let encodeNpubFn: EncodeNpubFn | null | undefined;
 let loadPromise: Promise<void> | undefined;
 
-async function ensureLoaded(modulePath = defaultModulePath): Promise<void> {
+async function ensureLoaded(modulePath: string | URL = defaultModuleUrl): Promise<void> {
   if (encodeNpubFn !== undefined) return;
   if (loadPromise) {
     await loadPromise;
@@ -33,7 +33,7 @@ async function ensureLoaded(modulePath = defaultModulePath): Promise<void> {
   }
   loadPromise = (async () => {
     try {
-      const moduleUrl = new URL(modulePath, globalThis.location?.origin ?? "http://localhost").toString();
+      const moduleUrl = new URL(modulePath.toString(), import.meta.url).toString();
       const wasmModule = (await import(/* @vite-ignore */ moduleUrl)) as NmpWasmModule;
       if (typeof wasmModule.default === "function") {
         await wasmModule.default();
@@ -53,8 +53,11 @@ async function ensureLoaded(modulePath = defaultModulePath): Promise<void> {
  *  Call site: `const result = await encodeNpub(pubkey)`.
  *  The result is stable across calls for the same pubkey — cache it at the
  *  call site if you need a reactive/synchronous read. */
-export async function encodeNpub(pubkey: string): Promise<{ npub: string; npubShort: string } | undefined> {
-  await ensureLoaded();
+export async function encodeNpub(
+  pubkey: string,
+  modulePath?: string | URL,
+): Promise<{ npub: string; npubShort: string } | undefined> {
+  await ensureLoaded(modulePath);
   if (!encodeNpubFn) return undefined;
   try {
     const json = encodeNpubFn(pubkey);

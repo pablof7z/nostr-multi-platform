@@ -1,6 +1,7 @@
 /target/
 node_modules/
 dist/
+pkg/
 WIP.md
 /ios/NmpStress/DerivedData/
 /ios/NmpStress/NmpStress.xcodeproj/

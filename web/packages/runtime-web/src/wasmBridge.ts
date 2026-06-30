@@ -1,8 +1,8 @@
 import type { WorkerEvent, WorkerRequest } from "./protocol";
 
-// Module path for the wasm composition root emitted by wasm-pack
-// (`nmp_browser_runtime.js`, underscore form from the crate name).
-const defaultModulePath = "/nmp-browser-runtime/nmp_browser_runtime.js";
+// Package-relative module URL for the wasm composition root emitted by
+// wasm-pack (`nmp_browser_runtime.js`, underscore form from the crate name).
+const defaultModuleUrl = new URL("./wasm/nmp_browser_runtime.js", import.meta.url).toString();
 
 type SnapshotCallback = (bytes: Uint8Array) => void;
 
@@ -158,12 +158,12 @@ export class WasmBridge {
 
 export async function loadWasmBridge(
   onUpdateBytes: UpdateBytesSink,
-  modulePath = defaultModulePath,
+  modulePath: string | URL = defaultModuleUrl,
 ): Promise<WasmBridgeLoadResult> {
+  const moduleUrl = resolveWasmModuleUrl(modulePath);
   try {
-    const moduleUrl = new URL(modulePath, workerOrigin()).toString();
     if (!(await moduleAssetAvailable(moduleUrl))) {
-      return unavailable(`nmp-browser-runtime module is not available at ${modulePath}`);
+      return unavailable(`nmp-browser-runtime module is not available at ${moduleUrl}`);
     }
     const wasmModule = (await import(/* @vite-ignore */ moduleUrl)) as NmpWasmModule;
     if (typeof wasmModule.default === "function") {
@@ -177,8 +177,12 @@ export async function loadWasmBridge(
       bridge: new WasmBridge(new wasmModule.NmpWasmRuntime(), onUpdateBytes, wasmModule.nmp_encode_npub),
     };
   } catch (error) {
-    return unavailable(`nmp-browser-runtime module could not be loaded from ${modulePath}`);
+    return unavailable(`nmp-browser-runtime module could not be loaded from ${moduleUrl}`);
   }
+}
+
+function resolveWasmModuleUrl(modulePath: string | URL): string {
+  return new URL(modulePath.toString(), import.meta.url).toString();
 }
 
 async function moduleAssetAvailable(moduleUrl: string): Promise<boolean> {
@@ -230,11 +234,6 @@ function isWorkerEvent(event: unknown): event is WorkerEvent {
 
 function requestCorrelationId(request: WorkerRequest): string | undefined {
   return "correlation_id" in request ? request.correlation_id : undefined;
-}
-
-function workerOrigin(): string {
-  const location = (self as unknown as { location?: { origin?: string } }).location;
-  return location?.origin ?? "http://localhost";
 }
 
 function unavailable(message: string): WasmBridgeLoadResult {

@@ -16,6 +16,9 @@ on:
       - ".github/workflows/release-readiness.yml"
       - "apps/**/Cargo.toml"
       - "crates/**/Cargo.toml"
+      - "web/package*.json"
+      - "web/packages/**"
+      - "ci/check-web-package-consumer-smoke.sh"
   workflow_dispatch:
 
 jobs:
@@ -27,6 +30,15 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
 
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -37,11 +49,28 @@ jobs:
           key: ${{ runner.os }}-release-readiness-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-release-readiness-
 
+      - name: Install wasm-pack
+        run: if ! command -v wasm-pack >/dev/null 2>&1; then cargo install wasm-pack --locked; fi
+
+      - name: Install wasm C toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld llvm
+
       - name: Check release manifest
         run: bash ci/check-release-manifest.sh
 
       - name: Check workspace-excluded crates build standalone
         run: bash ci/check-excluded-crate-standalone-builds.sh
 
-      - name: Cargo package dry-run for public crates
+      - name: Package dry-run for public artifacts
+        env:
+          CC_wasm32_unknown_unknown: clang
+          AR_wasm32_unknown_unknown: llvm-ar
         run: bash ci/release-package-dry-run.sh
+
+      - name: Public web package consumer smoke
+        env:
+          CC_wasm32_unknown_unknown: clang
+          AR_wasm32_unknown_unknown: llvm-ar
+        run: bash ci/check-web-package-consumer-smoke.sh

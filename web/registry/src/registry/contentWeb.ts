@@ -1,17 +1,17 @@
 import type { PlatformImpl } from "./types";
 
-import webArticleCardTsx from "@nmp/components-web/src/content-kind-30023/NostrArticleCard.tsx?raw";
-import webHighlightCardTsx from "@nmp/components-web/src/content-kind-9802/NostrHighlightCard.tsx?raw";
-import webKindRegistryTsx from "@nmp/components-web/src/content-kind-registry/NostrKindRegistry.tsx?raw";
-import webEventRefResolverTsx from "@nmp/components-web/src/component-host/EventRefResolver.tsx?raw";
-import webComponentHostProviderTsx from "@nmp/components-web/src/component-host/NmpComponentHostProvider.tsx?raw";
-import webResolvedEventEmbedsTsx from "@nmp/components-web/src/component-host/ResolvedEventEmbeds.tsx?raw";
-import webContentCoreTs from "@nmp/components-web/src/content-core/decodeContentTree.ts?raw";
-import webMediaGridTsx from "@nmp/components-web/src/content-media-grid/NostrMediaGrid.tsx?raw";
-import webMentionChipTsx from "@nmp/components-web/src/content-mention-chip/NostrMentionChip.tsx?raw";
-import webContentMinimalTsx from "@nmp/components-web/src/content-minimal/NostrMinimalContentView.tsx?raw";
-import webQuoteCardTsx from "@nmp/components-web/src/content-quote-card/NostrQuoteCard.tsx?raw";
-import webContentViewTsx from "@nmp/components-web/src/content-view/NostrContentView.tsx?raw";
+import webArticleCardTsx from "../../../packages/components-web/src/content-kind-30023/NostrArticleCard.tsx?raw";
+import webHighlightCardTsx from "../../../packages/components-web/src/content-kind-9802/NostrHighlightCard.tsx?raw";
+import webKindRegistryTsx from "../../../packages/components-web/src/content-kind-registry/NostrKindRegistry.tsx?raw";
+import webEventRefResolverTsx from "../../../packages/components-web/src/component-host/EventRefResolver.tsx?raw";
+import webComponentHostProviderTsx from "../../../packages/components-web/src/component-host/NmpComponentHostProvider.tsx?raw";
+import webResolvedEventEmbedsTsx from "../../../packages/components-web/src/component-host/ResolvedEventEmbeds.tsx?raw";
+import webContentCoreTs from "../../../packages/components-web/src/content-core/decodeContentTree.ts?raw";
+import webMediaGridTsx from "../../../packages/components-web/src/content-media-grid/NostrMediaGrid.tsx?raw";
+import webMentionChipTsx from "../../../packages/components-web/src/content-mention-chip/NostrMentionChip.tsx?raw";
+import webContentMinimalTsx from "../../../packages/components-web/src/content-minimal/NostrMinimalContentView.tsx?raw";
+import webQuoteCardTsx from "../../../packages/components-web/src/content-quote-card/NostrQuoteCard.tsx?raw";
+import webContentViewTsx from "../../../packages/components-web/src/content-view/NostrContentView.tsx?raw";
 
 export const webContentCore: PlatformImpl = {
   status: "stable",

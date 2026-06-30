@@ -16,8 +16,17 @@ required_gates = [
   "cargo test -p nmp-testing --test doctrine_lint_smoke",
   "bash ci/check-release-manifest.sh",
   "bash ci/release-package-dry-run.sh",
+  "bash ci/check-web-package-consumer-smoke.sh",
   "bash ci/check-flatbuffers-version-pins.sh",
 ]
+
+[[public_npm_packages]]
+name = "@nmp/runtime-web"
+path = "web/packages/runtime-web"
+
+[[public_npm_packages]]
+name = "@nmp/components-web"
+path = "web/packages/components-web"
 
 [[public_crates]]
 name = "nmp-core"

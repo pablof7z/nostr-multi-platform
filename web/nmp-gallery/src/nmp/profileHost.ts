@@ -19,10 +19,9 @@ import {
 } from "./embedSidecarStore";
 import { RefEventStore, REFS_EVENT_KEY, type ClaimedEventWire } from "./refEventStore";
 import { RefProfileStore } from "./refProfileStore";
-import type { ProfileWire } from "@nmp/components-web/src/user-avatar/ProfileWire";
-import type { NostrProfileHost } from "@nmp/components-web/src/user-avatar/NostrProfileHost";
-import type { EventRefResolver } from "@nmp/components-web/src/component-host/EventRefResolver";
-import type { EmbeddedEventModel } from "@nmp/components-web/src/content-kind-registry/NostrKindRegistry";
+import type { EventRefResolver } from "@nmp/components-web/component-host";
+import type { EmbeddedEventModel } from "@nmp/components-web/content-kind-registry";
+import type { NostrProfileHost, ProfileWire } from "@nmp/components-web/user-avatar";
 
 export { tagValue, type ClaimedEventWire } from "./refEventStore";
 

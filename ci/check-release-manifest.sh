@@ -45,6 +45,31 @@ extract_private_packages() {
   ' "$MANIFEST"
 }
 
+extract_public_npm_packages() {
+  awk -F '"' '
+    /^\[\[public_npm_packages\]\]/ { in_public = 1; name = ""; path = ""; next }
+    /^\[\[/ && $0 !~ /^\[\[public_npm_packages\]\]/ { in_public = 0 }
+    in_public && /^name = / { name = $2 }
+    in_public && /^path = / { path = $2 }
+    in_public && name != "" && path != "" {
+      print name "|" path
+      in_public = 0
+    }
+  ' "$MANIFEST"
+}
+
+workspace_version() {
+  awk '
+    /^\[workspace.package\]/ { in_workspace_package = 1; next }
+    /^\[/ && in_workspace_package { in_workspace_package = 0 }
+    in_workspace_package && /^version = / {
+      gsub(/"/, "", $3)
+      print $3
+      exit
+    }
+  ' "$ROOT/Cargo.toml"
+}
+
 workspace_packages() {
   cargo metadata --format-version 1 --no-deps |
     jq -r --arg root "$ROOT/" '
@@ -57,9 +82,17 @@ workspace_packages() {
 }
 
 count=0
+npm_count=0
 classified="$(mktemp)"
+npm_classified="$(mktemp)"
 workspace="$(mktemp)"
-trap 'rm -f "$classified" "$workspace"' EXIT
+trap 'rm -f "$classified" "$npm_classified" "$workspace"' EXIT
+release_version="$(workspace_version)"
+
+if [[ -z "$release_version" ]]; then
+  echo "could not read workspace package version from Cargo.toml" >&2
+  exit 1
+fi
 
 while IFS='|' read -r name relpath; do
   [[ -n "$name" ]] || continue
@@ -114,8 +147,54 @@ while IFS='|' read -r name relpath; do
   fi
 done < <(extract_private_packages)
 
+while IFS='|' read -r name relpath; do
+  [[ -n "$name" ]] || continue
+  npm_count=$((npm_count + 1))
+  printf '%s\t%s\n' "$name" "$relpath" >> "$npm_classified"
+  package_json="$ROOT/$relpath/package.json"
+  if [[ ! -f "$package_json" ]]; then
+    echo "public npm package $name points at missing manifest: $relpath/package.json" >&2
+    exit 1
+  fi
+  actual_name="$(jq -r '.name // ""' "$package_json")"
+  if [[ "$actual_name" != "$name" ]]; then
+    echo "public npm package $name path $relpath has a different package name: $actual_name" >&2
+    exit 1
+  fi
+  actual_version="$(jq -r '.version // ""' "$package_json")"
+  if [[ "$actual_version" != "$release_version" ]]; then
+    echo "public npm package $name must use workspace release version $release_version (found $actual_version)" >&2
+    exit 1
+  fi
+  if [[ "$(jq -r '.private // false' "$package_json")" == "true" ]]; then
+    echo "public npm package $name is marked private" >&2
+    exit 1
+  fi
+  if ! jq -e '.publishConfig.access == "public"' "$package_json" >/dev/null; then
+    echo "public npm package $name must declare publishConfig.access = public" >&2
+    exit 1
+  fi
+  if ! jq -e '.files | index("dist")' "$package_json" >/dev/null; then
+    echo "public npm package $name must publish dist/" >&2
+    exit 1
+  fi
+  if ! jq -e '.main and .types and .exports["."] and .scripts.build and .scripts.prepack' "$package_json" >/dev/null; then
+    echo "public npm package $name must declare main/types/root export/build/prepack" >&2
+    exit 1
+  fi
+  if [[ "$name" == "@nmp/runtime-web" ]] && ! jq -e '.exports["./worker"]' "$package_json" >/dev/null; then
+    echo "public npm package $name must export ./worker" >&2
+    exit 1
+  fi
+done < <(extract_public_npm_packages)
+
 if [[ "$count" -eq 0 ]]; then
   echo "release manifest declares no public crates" >&2
+  exit 1
+fi
+
+if [[ "$npm_count" -eq 0 ]]; then
+  echo "release manifest declares no public npm packages" >&2
   exit 1
 fi
 
@@ -123,6 +202,13 @@ duplicates="$(sort "$classified" | uniq -d)"
 if [[ -n "$duplicates" ]]; then
   echo "packages classified more than once:" >&2
   echo "$duplicates" >&2
+  exit 1
+fi
+
+npm_duplicates="$(sort "$npm_classified" | uniq -d)"
+if [[ -n "$npm_duplicates" ]]; then
+  echo "npm packages classified more than once:" >&2
+  echo "$npm_duplicates" >&2
   exit 1
 fi
 
@@ -136,4 +222,4 @@ if ! missing="$(comm -23 "$workspace" "$classified")" || [[ -n "$missing" ]]; th
   exit 1
 fi
 
-echo "release manifest ok: $count public crates; every workspace package classified"
+echo "release manifest ok: $count public crates; $npm_count public npm packages; every workspace package classified"
