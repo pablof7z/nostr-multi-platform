@@ -66,15 +66,18 @@ use serde::{Deserialize, Serialize};
 
 use crate::group_query::GroupEventsQuery;
 use crate::kinds::h_tag_value;
-use crate::reply::parse_reply_edges;
 
 /// One rendered group event in a [`GroupEventsSnapshot`].
 ///
-/// A flat carrier. Fields are the minimum a shell needs to draw a row — plus
-/// the NIP-10 reply / thread edges (`reply_to` / `root`) so a consumer can
-/// render reply chips (scroll-to-parent) and a thread view. All values are raw
-/// (aim.md §2 — presentation layer formats pubkeys and timestamps; backend
-/// ships hex + Unix seconds).
+/// A flat carrier. Fields are the minimum a shell needs to draw a row. All
+/// values are raw (aim.md §2 — presentation layer formats pubkeys and
+/// timestamps; backend ships hex + Unix seconds).
+///
+/// NIP-29 is kind-blind transport (issue #2517): it carries the `h` / `previous`
+/// / host-pin envelope only and does **not** interpret NIP-10 reply/thread
+/// (`e`-tag root/reply/mention) markers — that foreign-protocol concept is owned
+/// by `nmp-threading`. So a row exposes no `reply_to` / `root` thread edges; a
+/// threading read model resolves those from the same `e` tags downstream.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct GroupEvent {
     /// Event id (hex). Also the dedupe key inside the projection.
@@ -87,35 +90,21 @@ pub struct GroupEvent {
     pub created_at: u64,
     /// Event kind — whatever the consumer's query admitted.
     pub kind: u32,
-    /// Raw hex id of the immediate parent this event replies to (the NIP-10
-    /// `reply` marker, or the deprecated positional parent). `None` for a
-    /// thread root / standalone post. Equals [`Self::root`] for a direct reply
-    /// to the thread root.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub reply_to: Option<String>,
-    /// Raw hex id of the thread root this event belongs to (the NIP-10 `root`
-    /// marker, or the deprecated positional root). `None` for a thread root /
-    /// standalone post.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub root: Option<String>,
 }
 
 impl GroupEvent {
     /// Build an event row from a kernel event. The caller is responsible for
     /// having already checked kind + `h`-tag membership.
     ///
-    /// The NIP-10 reply / thread edges are parsed kind-agnostically from the
-    /// event's `e` tags (see [`crate::reply`]).
+    /// This is a flat, kind-blind copy of the routing-relevant fields: NIP-29
+    /// does not inspect `e` tags or any NIP-10 reply/thread markers (#2517).
     fn from_event(event: &KernelEvent) -> Self {
-        let edges = parse_reply_edges(&event.tags);
         Self {
             id: event.id.clone(),
             pubkey: event.author.clone(),
             content: event.content.clone(),
             created_at: event.created_at,
             kind: event.kind,
-            reply_to: edges.reply_to,
-            root: edges.root,
         }
     }
 }

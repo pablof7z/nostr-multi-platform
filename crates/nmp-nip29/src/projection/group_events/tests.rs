@@ -248,46 +248,45 @@ fn empty_snapshot_constructor_yields_no_events() {
 }
 
 #[test]
-fn standalone_chat_event_has_no_reply_edges() {
-    let proj = GroupEventsProjection::new(chat_query());
-    proj.on_kernel_event(&event("e1", 9, 100, h_tag("rust-nostr")));
-    let snap = proj.snapshot();
-    let row = &snap.events[0];
-    assert_eq!(row.reply_to, None);
-    assert_eq!(row.root, None);
-    // Absent edges are omitted from the JSON fallback shape.
-    let json = proj.snapshot_json();
-    let event_json = &json["events"][0];
-    assert!(event_json.get("reply_to").is_none());
-    assert!(event_json.get("root").is_none());
-}
-
-#[test]
-fn marked_reply_surfaces_parent_and_root() {
-    let proj = GroupEventsProjection::new(chat_query());
+fn transport_is_nip10_marker_blind() {
+    // #2517: NIP-29 is kind-blind transport — it carries the `h` envelope only
+    // and must NOT interpret NIP-10 reply/thread (`e`-tag root/reply/mention)
+    // markers. That foreign-protocol concept is owned by `nmp-threading`.
+    //
+    // An event carrying a full NIP-10 marker set (root + reply + mention) plus a
+    // positional `e` tag must still produce a flat row with NO reply/thread
+    // edge: the projection never inspects `e` tags. The struct exposes no
+    // `reply_to` / `root` field, and the JSON read model carries no such key.
+    let proj = GroupEventsProjection::new(all_query());
     let tags = vec![
         vec!["h".into(), "rust-nostr".into()],
         vec!["e".into(), "rootid".into(), String::new(), "root".into()],
         vec!["e".into(), "parentid".into(), String::new(), "reply".into()],
+        vec![
+            "e".into(),
+            "quotedid".into(),
+            String::new(),
+            "mention".into(),
+        ],
+        vec!["e".into(), "positionalid".into()],
     ];
-    proj.on_kernel_event(&event("e1", 9, 100, tags));
-    let snap = proj.snapshot();
-    let row = &snap.events[0];
-    assert_eq!(row.reply_to.as_deref(), Some("parentid"));
-    assert_eq!(row.root.as_deref(), Some("rootid"));
-}
+    proj.on_kernel_event(&event("threaded", 11, 100, tags));
 
-#[test]
-fn positional_thread_event_uses_first_root_last_parent() {
-    let proj = GroupEventsProjection::new(all_query());
-    let tags = vec![
-        vec!["h".into(), "rust-nostr".into()],
-        vec!["e".into(), "rootid".into()],
-        vec!["e".into(), "parentid".into()],
-    ];
-    proj.on_kernel_event(&event("e1", 11, 100, tags));
-    let snap = proj.snapshot();
-    let row = &snap.events[0];
-    assert_eq!(row.root.as_deref(), Some("rootid"));
-    assert_eq!(row.reply_to.as_deref(), Some("parentid"));
+    let json = proj.snapshot_json();
+    let event_json = &json["events"][0];
+    // No thread edge is parsed from the `e` tags — the markers are invisible to
+    // this transport.
+    assert!(event_json.get("reply_to").is_none());
+    assert!(event_json.get("root").is_none());
+    // The flat carrier is exactly {id, pubkey, content, created_at, kind} — the
+    // routing envelope, never a NIP-10-derived edge. (Order-independent: the
+    // JSON map ordering is not part of the contract.)
+    let mut keys: Vec<&str> = event_json
+        .as_object()
+        .expect("event is a json object")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    keys.sort_unstable();
+    assert_eq!(keys, vec!["content", "created_at", "id", "kind", "pubkey"]);
 }

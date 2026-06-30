@@ -45,7 +45,6 @@ pub mod interest;
 pub mod kinds;
 pub mod projection;
 pub mod register;
-pub mod reply;
 pub mod search;
 pub mod wire;
 

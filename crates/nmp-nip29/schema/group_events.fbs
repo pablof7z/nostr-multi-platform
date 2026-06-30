@@ -33,25 +33,25 @@ namespace nmp.nip29;
 //         crates/nmp-nip29/schema/group_events.fbs
 
 // One group event. A flat carrier mirroring `nmp_nip29::GroupEvent` exactly.
+//
+// NIP-29 is kind-blind transport (issue #2517): it carries the `h` / `previous`
+// / host-pin envelope only and does NOT interpret NIP-10 reply/thread (`e`-tag
+// root/reply/mention) markers — that foreign-protocol concept is owned by
+// `nmp-threading`. So this carrier ships no `reply_to` / `root` thread edge; a
+// threading read model resolves those from the same `e` tags downstream.
 table GroupEvent {
   id:string;            // raw hex event id (also the projection dedupe key)
   pubkey:string;        // raw hex author pubkey (64 chars)
   content:string;       // event content, verbatim
   created_at:uint64;    // event created_at, Unix seconds
   kind:uint32;          // event kind (e.g. 9 chat, 11 thread, 1111 comment)
-  // NIP-10 reply / thread edges, parsed kind-agnostically from the event's `e`
-  // tags. Absent (empty string) for a thread root / standalone post; the
-  // decoder maps "" → None so the serde `Option<String>` round-trips. Raw hex
-  // event ids only (no display formatting).
-  reply_to:string;      // immediate parent event id (NIP-10 `reply` marker)
-  root:string;          // thread root event id (NIP-10 `root` marker)
 }
 
 // The serialised group-events read model. `events` is ordered newest-first
 // (`created_at` descending, ties broken by id descending) — the encoder ships
 // the snapshot order verbatim.
 table GroupEventsSnapshot {
-  schema_version:uint32 = 2;   // mirrors GROUP_EVENTS_SCHEMA_VERSION
+  schema_version:uint32 = 3;   // mirrors GROUP_EVENTS_SCHEMA_VERSION
   events:[GroupEvent];
 }
 

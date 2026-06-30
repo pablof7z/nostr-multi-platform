@@ -31,8 +31,6 @@ pub mod nmp {
             pub const VT_CONTENT: ::flatbuffers::VOffsetT = 8;
             pub const VT_CREATED_AT: ::flatbuffers::VOffsetT = 10;
             pub const VT_KIND: ::flatbuffers::VOffsetT = 12;
-            pub const VT_REPLY_TO: ::flatbuffers::VOffsetT = 14;
-            pub const VT_ROOT: ::flatbuffers::VOffsetT = 16;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -50,12 +48,6 @@ pub mod nmp {
             ) -> ::flatbuffers::WIPOffset<GroupEvent<'bldr>> {
                 let mut builder = GroupEventBuilder::new(_fbb);
                 builder.add_created_at(args.created_at);
-                if let Some(x) = args.root {
-                    builder.add_root(x);
-                }
-                if let Some(x) = args.reply_to {
-                    builder.add_reply_to(x);
-                }
                 builder.add_kind(args.kind);
                 if let Some(x) = args.content {
                     builder.add_content(x);
@@ -117,26 +109,6 @@ pub mod nmp {
                 // which contains a valid value in this slot
                 unsafe { self._tab.get::<u32>(GroupEvent::VT_KIND, Some(0)).unwrap() }
             }
-            #[inline]
-            pub fn reply_to(&self) -> Option<&'a str> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<::flatbuffers::ForwardsUOffset<&str>>(GroupEvent::VT_REPLY_TO, None)
-                }
-            }
-            #[inline]
-            pub fn root(&self) -> Option<&'a str> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<::flatbuffers::ForwardsUOffset<&str>>(GroupEvent::VT_ROOT, None)
-                }
-            }
         }
 
         impl ::flatbuffers::Verifiable for GroupEvent<'_> {
@@ -159,16 +131,6 @@ pub mod nmp {
                     )?
                     .visit_field::<u64>("created_at", Self::VT_CREATED_AT, false)?
                     .visit_field::<u32>("kind", Self::VT_KIND, false)?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "reply_to",
-                        Self::VT_REPLY_TO,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "root",
-                        Self::VT_ROOT,
-                        false,
-                    )?
                     .finish();
                 Ok(())
             }
@@ -179,8 +141,6 @@ pub mod nmp {
             pub content: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub created_at: u64,
             pub kind: u32,
-            pub reply_to: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub root: Option<::flatbuffers::WIPOffset<&'a str>>,
         }
         impl<'a> Default for GroupEventArgs<'a> {
             #[inline]
@@ -191,8 +151,6 @@ pub mod nmp {
                     content: None,
                     created_at: 0,
                     kind: 0,
-                    reply_to: None,
-                    root: None,
                 }
             }
         }
@@ -229,18 +187,6 @@ pub mod nmp {
                 self.fbb_.push_slot::<u32>(GroupEvent::VT_KIND, kind, 0);
             }
             #[inline]
-            pub fn add_reply_to(&mut self, reply_to: ::flatbuffers::WIPOffset<&'b str>) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    GroupEvent::VT_REPLY_TO,
-                    reply_to,
-                );
-            }
-            #[inline]
-            pub fn add_root(&mut self, root: ::flatbuffers::WIPOffset<&'b str>) {
-                self.fbb_
-                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GroupEvent::VT_ROOT, root);
-            }
-            #[inline]
             pub fn new(
                 _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
             ) -> GroupEventBuilder<'a, 'b, A> {
@@ -265,8 +211,6 @@ pub mod nmp {
                 ds.field("content", &self.content());
                 ds.field("created_at", &self.created_at());
                 ds.field("kind", &self.kind());
-                ds.field("reply_to", &self.reply_to());
-                ds.field("root", &self.root());
                 ds.finish()
             }
         }
@@ -320,7 +264,7 @@ pub mod nmp {
                 // which contains a valid value in this slot
                 unsafe {
                     self._tab
-                        .get::<u32>(GroupEventsSnapshot::VT_SCHEMA_VERSION, Some(2))
+                        .get::<u32>(GroupEventsSnapshot::VT_SCHEMA_VERSION, Some(3))
                         .unwrap()
                 }
             }
@@ -367,7 +311,7 @@ pub mod nmp {
             #[inline]
             fn default() -> Self {
                 GroupEventsSnapshotArgs {
-                    schema_version: 2,
+                    schema_version: 3,
                     events: None,
                 }
             }
@@ -383,7 +327,7 @@ pub mod nmp {
                 self.fbb_.push_slot::<u32>(
                     GroupEventsSnapshot::VT_SCHEMA_VERSION,
                     schema_version,
-                    2,
+                    3,
                 );
             }
             #[inline]

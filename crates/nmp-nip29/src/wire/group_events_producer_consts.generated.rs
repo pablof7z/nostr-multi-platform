@@ -10,4 +10,4 @@ pub const GROUP_EVENTS_SCHEMA_ID: &str = "nmp.nip29.group_events";
 /// FlatBuffers file identifier embedded in every buffer this module emits.
 pub const GROUP_EVENTS_FILE_IDENTIFIER: &[u8; 4] = b"NGEV";
 /// Wire schema version. Bump on any breaking change to this projection's `.fbs`.
-pub const GROUP_EVENTS_SCHEMA_VERSION: u32 = 2;
+pub const GROUP_EVENTS_SCHEMA_VERSION: u32 = 3;
