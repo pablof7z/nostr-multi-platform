@@ -431,6 +431,42 @@ fn add_component_installs_compose_content_view_with_deps() {
     assert!(lock.contains("source_sha256 = \""));
 }
 
+#[test]
+fn add_component_installs_desktop_content_view_with_deps() {
+    let tmp = TempDir::new("desktop-content-view");
+
+    let out = nmp(tmp.path(), &["add", "component", "desktop/content-view"]);
+    assert!(
+        out.status.success(),
+        "nmp add component desktop/content-view failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    for path in [
+        "src/components/nostr_content/content_core.rs",
+        "src/components/nostr_content/mention_chip.rs",
+        "src/components/nostr_content/media_grid.rs",
+        "src/components/nostr_content/quote_card.rs",
+        "src/components/nostr_content/content_view.rs",
+    ] {
+        assert!(tmp.path().join(path).exists(), "{path} must be installed");
+    }
+
+    let lock = fs::read_to_string(tmp.path().join("nmp.components.lock")).unwrap();
+    for id in [
+        "desktop/content-core",
+        "desktop/content-mention-chip",
+        "desktop/content-media-grid",
+        "desktop/content-quote-card",
+        "desktop/content-view",
+    ] {
+        assert!(
+            lock.contains(&format!("id = \"{id}\"")),
+            "{id} must be locked"
+        );
+    }
+}
+
 /// The previous toy `swiftui/content-minimal` must remain installable so apps
 /// that adopted it keep working.
 #[test]

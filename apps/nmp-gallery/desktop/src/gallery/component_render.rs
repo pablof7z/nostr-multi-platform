@@ -1,14 +1,27 @@
-use iced::widget::{column, container, rule, text};
-use iced::{Alignment, Element, Font, Length};
+use std::collections::BTreeMap;
+
+use iced::widget::{column, container, text};
+use iced::{Alignment, Element, Length};
 
 use nmp_content::embed_projection::EmbedKindProjection;
 use nmp_gallery_tui::content_tree_wire::WireNode;
+use nmp_gallery_tui::data::ContentExample;
 use nmp_gallery_tui::gallery::ComponentSpec;
 use nmp_gallery_tui::live::primary_pubkey;
 
 use crate::components::{
-    embed_article::ArticleCard, gallery_misc, user_avatar::UserAvatar, user_card::UserCard,
-    user_name::UserName, user_nip05::Nip05Badge, user_npub::NpubChip,
+    content_core::{first_mention, ContentTreePanel},
+    content_view::{referenced_media_urls, NostrContentView},
+    embed_article::ArticleCard,
+    gallery_misc,
+    media_grid::NostrMediaGrid,
+    mention_chip::NostrMentionChip,
+    minimal_content::NostrMinimalContent,
+    user_avatar::UserAvatar,
+    user_card::UserCard,
+    user_name::UserName,
+    user_nip05::Nip05Badge,
+    user_npub::NpubChip,
 };
 
 use super::{GalleryApp, Message, CONSUMER_ID, INACTIVE_TEXT, MUTED_TEXT};
@@ -73,28 +86,41 @@ pub(super) fn render_component<'a>(
         }
         "content-core" => {
             let ex = &app.data.content_core;
-            content_tree_info(&ex.scenario_id, &ex.title, &ex.tree.nodes)
+            ContentTreePanel::new(&ex.tree)
+                .title(&ex.title)
+                .into_element::<Message>()
         }
-        "content-view" => {
-            let ex = &app.data.content_view;
-            content_tree_info(&ex.scenario_id, &ex.title, &ex.tree.nodes)
-        }
+        "content-view" => render_content_view(app, &app.data.content_view),
         "content-mention-chip" => {
             let ex = &app.data.content_mention_chip;
-            content_tree_info(&ex.scenario_id, &ex.title, &ex.tree.nodes)
+            let labels = profile_labels(app, ex);
+            if let Some(uri) = first_mention(&ex.tree) {
+                let mut chip = NostrMentionChip::new(uri)
+                    .profile(ex.render_data.profile_for(uri));
+                if let Some(label) = labels.get(&uri.primary_id) {
+                    chip = chip.label(label.clone());
+                }
+                chip.into_element::<Message>()
+            } else {
+                text("No mention in content tree").size(13).into()
+            }
         }
         "content-minimal" => {
             let ex = &app.data.content_minimal;
-            content_tree_info(&ex.scenario_id, &ex.title, &ex.tree.nodes)
+            let labels = profile_labels(app, ex);
+            NostrMinimalContent::new(&ex.tree)
+                .render_data(Some(&ex.render_data))
+                .profile_labels(labels)
+                .into_element::<Message>()
         }
         "content-media-grid" => {
             let ex = &app.data.content_media_grid;
-            content_tree_info(&ex.scenario_id, &ex.title, &ex.tree.nodes)
+            let urls = referenced_media_urls(&ex.tree, app.embed_host.current_envelopes());
+            NostrMediaGrid::new(&urls)
+                .image_handles(&app.media_handles)
+                .into_element::<Message>()
         }
-        "content-quote-card" => {
-            let ex = &app.data.content_quote_card;
-            content_tree_info(&ex.scenario_id, &ex.title, &ex.tree.nodes)
-        }
+        "content-quote-card" => render_content_view(app, &app.data.content_quote_card),
         "embed-article" => render_embed(
             &app.data.embed_article.tree.nodes,
             &app.embed_host,
@@ -173,6 +199,25 @@ pub(super) fn render_component<'a>(
     }
 }
 
+fn render_content_view<'a>(app: &'a GalleryApp, ex: &'a ContentExample) -> Element<'a, Message> {
+    let labels = profile_labels(app, ex);
+    NostrContentView::new(&ex.tree)
+        .render_data(Some(&ex.render_data))
+        .embedded_events(Some(app.embed_host.current_envelopes()))
+        .profile_labels(labels)
+        .media_handles(&app.media_handles)
+        .into_element::<Message>()
+}
+
+fn profile_labels(app: &GalleryApp, ex: &ContentExample) -> BTreeMap<String, String> {
+    let mut labels = BTreeMap::new();
+    for pubkey in ex.tree.mentioned_pubkeys() {
+        app.bridge.resolve_profile(&pubkey, CONSUMER_ID);
+        labels.insert(pubkey.clone(), app.profiles.resolve(&pubkey).display().to_string());
+    }
+    labels
+}
+
 fn claim_and_resolve_author(app: &GalleryApp, author_pubkey: &str) -> String {
     if author_pubkey.is_empty() {
         return String::new();
@@ -211,48 +256,4 @@ where
             })
             .into()
     }
-}
-
-fn content_tree_info<'a>(
-    scenario_id: &str,
-    title: &str,
-    nodes: &[WireNode],
-) -> Element<'a, Message> {
-    let snippet: String = nodes
-        .iter()
-        .filter_map(|n| {
-            if let WireNode::Text(t) = n {
-                Some(t.as_str())
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
-        .chars()
-        .take(120)
-        .collect();
-
-    column![
-        text(format!("scenario: {scenario_id}"))
-            .size(12)
-            .font(Font::MONOSPACE)
-            .style(|_| text::Style {
-                color: Some(MUTED_TEXT)
-            }),
-        text(format!("title: {title}")).size(13),
-        text(format!("nodes: {}", nodes.len())).size(13),
-        rule::horizontal(1),
-        text(if snippet.is_empty() {
-            "(no plain-text nodes)".to_string()
-        } else {
-            snippet
-        })
-        .size(13)
-        .style(|_| text::Style {
-            color: Some(INACTIVE_TEXT)
-        }),
-    ]
-    .spacing(6)
-    .into()
 }

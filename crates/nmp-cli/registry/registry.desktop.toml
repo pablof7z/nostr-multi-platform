@@ -71,6 +71,79 @@ target = "src/components/nostr_user/user_card.rs"
 role = "source"
 
 [[components]]
+id = "desktop/content-core"
+version = "0.1.0"
+target = "desktop"
+description = "Shared iced ContentTreeWire renderer and content presentation helpers."
+[[components.files]]
+source = "desktop/content-core/content_core.rs"
+target = "src/components/nostr_content/content_core.rs"
+role = "source"
+
+[[components]]
+id = "desktop/content-mention-chip"
+version = "0.1.0"
+target = "desktop"
+description = "iced @mention chip for Rust-owned Nostr content references."
+dependencies = ["desktop/content-core"]
+[[components.files]]
+source = "desktop/content-mention-chip/mention_chip.rs"
+target = "src/components/nostr_content/mention_chip.rs"
+role = "source"
+
+[[components]]
+id = "desktop/content-media-grid"
+version = "0.1.0"
+target = "desktop"
+description = "Photo-style iced media grid for content image URLs supplied by Rust projections."
+dependencies = ["desktop/content-core"]
+[[components.files]]
+source = "desktop/content-media-grid/media_grid.rs"
+target = "src/components/nostr_content/media_grid.rs"
+role = "source"
+
+[[components]]
+id = "desktop/content-quote-card"
+version = "0.1.0"
+target = "desktop"
+description = "iced quote / embedded-event card for resolved note projections."
+dependencies = ["desktop/content-core"]
+[[components.files]]
+source = "desktop/content-quote-card/quote_card.rs"
+target = "src/components/nostr_content/quote_card.rs"
+role = "source"
+
+[[components]]
+id = "desktop/content-minimal"
+version = "0.1.0"
+target = "desktop"
+description = "Minimal inline iced Nostr content renderer with mention chips."
+dependencies = [
+    "desktop/content-core",
+    "desktop/content-mention-chip",
+]
+[[components.files]]
+source = "desktop/content-minimal/minimal_content.rs"
+target = "src/components/nostr_content/minimal_content.rs"
+role = "source"
+
+[[components]]
+id = "desktop/content-view"
+version = "0.1.0"
+target = "desktop"
+description = "Full iced NostrContentView renderer for tree nodes, mentions, media, and embedded event cards."
+dependencies = [
+    "desktop/content-core",
+    "desktop/content-mention-chip",
+    "desktop/content-media-grid",
+    "desktop/content-quote-card",
+]
+[[components.files]]
+source = "desktop/content-view/content_view.rs"
+target = "src/components/nostr_content/content_view.rs"
+role = "source"
+
+[[components]]
 id = "desktop/content-kind-30023"
 version = "0.1.0"
 target = "desktop"
