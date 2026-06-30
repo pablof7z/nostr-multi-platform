@@ -71,11 +71,12 @@
 //!
 //! # Active-account source of truth
 //!
-//! `ActiveFollowSet::new` needs the kernel's [`ActiveAccountSlot`].
-//! `register_op_feed_defaults` reads it directly from
+//! `ActiveFollowSet::new` needs the kernel's [`ActiveAccountSlot`] and
+//! canonical contacts lookup. `register_op_feed_defaults` reads both directly from
 //! [`NmpApp::active_account_handle`](crate::NmpApp::active_account_handle)
-//! so the follow predicate and the identity-change observer share the same
-//! app-owned `Arc` the actor writes in `Kernel::set_accounts`.
+//! and [`NmpApp::contacts_lookup`](crate::NmpApp::contacts_lookup) so the
+//! follow predicate, identity-change observer, and kind:3 cache reader share
+//! the same app-owned handles the actor/composition root writes.
 //!
 //! # Perspective changes reset the feed
 //!
@@ -91,14 +92,14 @@
 //! On a switch A → B the actor updates the active-account slot, emits a state
 //! frame, and `NmpApp`'s update listener fires its identity observers before
 //! forwarding that frame to native. The callback registered here calls
-//! `notify_account_changed()`: `ActiveFollowSet` clears the set and re-seeds
-//! self-inclusion of B (its follows are still empty — B's kind:3 has not landed
-//! yet) and fires `on_change`; this callback sees `B != A`, resets the engine,
-//! and records B. When B's kind:3 later ingests, `ActiveFollowSet`'s own
-//! observer repopulates the set and fires `on_change` again; the callback
-//! resets the empty interim window so the new perspective is populated only by
-//! B's qualifying rows. The clear-then-repopulate ordering means the
-//! switch-before-kind:3 window never rebuilds against a stale follow set.
+//! `notify_account_changed()`: `ActiveFollowSet` clears A's set, hydrates B's
+//! cached contact list from the shared contacts lookup if one is already
+//! present, re-seeds self-inclusion of B, and fires `on_change`; this callback
+//! sees `B != A`, resets the engine, and records B. When B's kind:3 later
+//! ingests, `ActiveFollowSet`'s own observer rebuilds from the event and fires
+//! `on_change` again. The clear-then-hydrate ordering means the
+//! switch-before-kind:3 window never rebuilds against A's stale follow set, and
+//! sign-in-prepopulated follows can qualify rows immediately.
 //!
 //! [`ActiveAccountSlot`]: nmp_core::slots::ActiveAccountSlot
 
@@ -268,7 +269,7 @@ fn fallback_defaults(app: &NmpApp) -> OpFeedDefaults {
 }
 
 fn fallback_follow_set(app: &NmpApp) -> Arc<ActiveFollowSet> {
-    ActiveFollowSet::new(app.active_account_handle())
+    ActiveFollowSet::new(app.active_account_handle(), app.contacts_lookup())
 }
 
 // #1740 step 2 — `FeedParams` → existing-registration compiler (sibling module).

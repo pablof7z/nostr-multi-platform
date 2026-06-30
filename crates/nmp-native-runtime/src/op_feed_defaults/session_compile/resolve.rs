@@ -130,9 +130,11 @@ fn resolve_active_follow_set(
     initial_viewer: Option<String>,
     op_session_identity: OpSessionIdentity,
 ) -> Result<ReducedSource, FeedOpenError> {
-    // A fresh ActiveFollowSet over the same active-account slot, registered as a
-    // session observer so kind:3 ingest keeps the predicate live (reactive).
-    let follow_set = nmp_nip02::ActiveFollowSet::new(app.active_account_handle());
+    // A fresh ActiveFollowSet over the same active-account slot and contacts
+    // cache, registered as a session observer so kind:3 ingest keeps the
+    // predicate live (reactive).
+    let follow_set =
+        nmp_nip02::ActiveFollowSet::new(app.active_account_handle(), app.contacts_lookup());
     let resolver_shape_slot = app.active_account_handle();
     let resolver_live_shape: LiveShape = Arc::new(move || {
         let viewer = super::super::read_active(&resolver_shape_slot)?;

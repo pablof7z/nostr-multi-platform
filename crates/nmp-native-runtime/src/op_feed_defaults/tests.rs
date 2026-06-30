@@ -5,7 +5,7 @@ use super::*;
 use std::collections::BTreeSet;
 use std::sync::Mutex;
 
-use nmp_core::substrate::KernelEvent;
+use nmp_core::substrate::{ContactsLookup, ContactsView, KernelEvent, TestContactsCache};
 use nmp_core::ObservedProjectionSink;
 use nmp_nip02::ActiveFollowSet;
 
@@ -27,6 +27,17 @@ fn kind3(author: &str, follows: &[&str]) -> KernelEvent {
     }
 }
 
+fn upsert_contacts(cache: &TestContactsCache, owner: &str, follows: &[&str]) {
+    cache.upsert_view(
+        owner,
+        ContactsView {
+            event_id: owner.to_string(),
+            created_at: 100,
+            follows: follows.iter().map(|pk| (*pk).to_string()).collect(),
+        },
+    );
+}
+
 /// B1 logout race: the active-account slot can be cleared BEFORE the async
 /// identity observer clears `ActiveFollowSet`, so `load_older` can observe
 /// `slot == None` while `follows()` is still stale. The provider must read
@@ -37,7 +48,8 @@ fn provider_fails_closed_when_slot_is_none_even_with_stale_follow_set() {
     let alice = "a".repeat(64);
     let bob = "b".repeat(64);
     let slot: ActiveAccountSlot = Arc::new(Mutex::new(Some(alice.clone())));
-    let follow_set = ActiveFollowSet::new(slot.clone());
+    let follow_set =
+        ActiveFollowSet::new(slot.clone(), nmp_core::substrate::empty_contacts_lookup());
     // Populate a real, non-empty follow set for the active account.
     ObservedProjectionSink::on_kernel_event(&*follow_set, &kind3(&alice, &[&bob]));
     assert!(
@@ -69,12 +81,37 @@ fn provider_fails_closed_when_slot_is_none_even_with_stale_follow_set() {
     );
 }
 
+/// Regression for #2500: account creation can prepopulate the shared contacts
+/// cache before the active account's kind:3 relays back through ingest. The
+/// OP-feed pull shape must use that cached follow set immediately, or seeded
+/// home-feed rows are ingested but remain invisible.
+#[test]
+fn provider_hydrates_shape_from_cached_contacts_before_kind3_echo() {
+    let alice = "a".repeat(64);
+    let bob = "b".repeat(64);
+    let slot: ActiveAccountSlot = Arc::new(Mutex::new(Some(alice.clone())));
+    let cache = Arc::new(TestContactsCache::new());
+    upsert_contacts(&cache, &alice, &[&bob]);
+    let lookup: Arc<dyn ContactsLookup> = cache.clone();
+    let follow_set = ActiveFollowSet::new(slot.clone(), lookup);
+    let kinds: BTreeSet<u32> = [1u32, 6u32].into_iter().collect();
+
+    let shape = live_active_follows_shape(&slot, &follow_set, &kinds)
+        .expect("cached contacts should compile an active-follows shape");
+
+    assert!(shape.authors.contains(&alice), "viewer is self-included");
+    assert!(shape.authors.contains(&bob), "cached follow is included");
+    assert_eq!(shape.authors.len(), 2);
+    assert_eq!(shape.kinds, kinds);
+}
+
 /// Empty host kinds also fail closed, regardless of slot/follows.
 #[test]
 fn provider_fails_closed_on_empty_kinds() {
     let alice = "a".repeat(64);
     let slot: ActiveAccountSlot = Arc::new(Mutex::new(Some(alice)));
-    let follow_set = ActiveFollowSet::new(slot.clone());
+    let follow_set =
+        ActiveFollowSet::new(slot.clone(), nmp_core::substrate::empty_contacts_lookup());
     let empty: BTreeSet<u32> = BTreeSet::new();
     assert!(live_active_follows_shape(&slot, &follow_set, &empty).is_none());
 }
