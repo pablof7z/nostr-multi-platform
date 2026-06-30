@@ -1,0 +1,33 @@
+namespace nmp.nip29;
+
+// Typed FlatBuffers payload for the `nmp.nip29.unreact_in_group` `ActionModule`
+// — the reaction TOGGLE-OFF (retract) surface. It publishes a host-pinned,
+// `h`-tagged kind:5 (NIP-09) deletion of the viewer's own kind:7 reaction, so a
+// NIP-29 group relay accepts the retraction. NIP-29 owns ONLY the `h`-tag
+// routing + host pin; the reaction-delete semantics stay NIP-25/NIP-09.
+//
+// The OPAQUE `DispatchEnvelope.payload` for that namespace; the registry adapter
+// decodes against THIS schema, gating `schema_version` BEFORE `start()`
+// (fail-closed on mismatch). WRITE-direction action payload.
+//
+// Self-contained (no `include`). Regenerate the checked-in Rust bindings only
+// with the workspace FlatBuffers pin (25.12.19):
+//   flatc --rust -o crates/nmp-nip29/src/wire/generated \
+//         crates/nmp-nip29/schema/unreact_in_group_action.fbs
+
+table GroupRef {
+  host_relay_url:string (required);
+  local_id:string (required);
+}
+
+table UnreactInGroupPayload {
+  schema_version:uint;
+  group:GroupRef (required);
+  // The viewer's own kind:7 reaction event id to delete (raw hex). The app
+  // reads it from the reaction aggregate's per-target `mine` handles.
+  // `start()` rejects an empty value — preserved verbatim.
+  reaction_event_id:string (required);
+}
+
+file_identifier "N29R";
+root_type UnreactInGroupPayload;

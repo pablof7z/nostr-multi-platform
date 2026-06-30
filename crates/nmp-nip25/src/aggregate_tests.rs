@@ -26,14 +26,14 @@ fn reaction(id: &str, author: &str, target: &str, content: &str, room: Option<&s
 
 #[test]
 fn fresh_projection_is_empty() {
-    let proj = ReactionAggregateProjection::new();
+    let proj = ReactionAggregateProjection::new(None);
     assert_eq!(proj.snapshot(), ReactionAggregateSnapshot::empty());
     assert_eq!(proj.snapshot_json(), serde_json::json!({ "targets": [] }));
 }
 
 #[test]
 fn counts_total_per_emoji_and_distinct_reactors() {
-    let proj = ReactionAggregateProjection::new();
+    let proj = ReactionAggregateProjection::new(None);
     proj.on_kernel_event(&reaction(&"1".repeat(64), ALICE, TARGET_A, "+", Some("room")));
     proj.on_kernel_event(&reaction(&"2".repeat(64), BOB, TARGET_A, "+", Some("room")));
     proj.on_kernel_event(&reaction(&"3".repeat(64), CAROL, TARGET_A, "🔥", Some("room")));
@@ -54,7 +54,7 @@ fn counts_total_per_emoji_and_distinct_reactors() {
 
 #[test]
 fn empty_content_normalizes_to_plus_like() {
-    let proj = ReactionAggregateProjection::new();
+    let proj = ReactionAggregateProjection::new(None);
     proj.on_kernel_event(&reaction(&"1".repeat(64), ALICE, TARGET_A, "", None));
     proj.on_kernel_event(&reaction(&"2".repeat(64), BOB, TARGET_A, "   ", None));
     let agg = proj.aggregate_for(TARGET_A).unwrap();
@@ -63,7 +63,7 @@ fn empty_content_normalizes_to_plus_like() {
 
 #[test]
 fn redelivery_is_idempotent() {
-    let proj = ReactionAggregateProjection::new();
+    let proj = ReactionAggregateProjection::new(None);
     let ev = reaction(&"1".repeat(64), ALICE, TARGET_A, "+", None);
     proj.on_kernel_event(&ev);
     proj.on_kernel_event(&ev);
@@ -74,7 +74,7 @@ fn redelivery_is_idempotent() {
 
 #[test]
 fn targets_are_keyed_separately_and_sorted() {
-    let proj = ReactionAggregateProjection::new();
+    let proj = ReactionAggregateProjection::new(None);
     proj.on_kernel_event(&reaction(&"2".repeat(64), ALICE, TARGET_B, "+", None));
     proj.on_kernel_event(&reaction(&"1".repeat(64), BOB, TARGET_A, "+", None));
     let snap = proj.snapshot();
@@ -84,7 +84,7 @@ fn targets_are_keyed_separately_and_sorted() {
 
 #[test]
 fn delete_by_original_reactor_removes_reaction() {
-    let proj = ReactionAggregateProjection::new();
+    let proj = ReactionAggregateProjection::new(None);
     let reaction_id = "1".repeat(64);
     proj.on_kernel_event(&reaction(&reaction_id, ALICE, TARGET_A, "+", None));
 
@@ -104,7 +104,7 @@ fn delete_by_original_reactor_removes_reaction() {
 
 #[test]
 fn delete_by_other_pubkey_is_ignored() {
-    let proj = ReactionAggregateProjection::new();
+    let proj = ReactionAggregateProjection::new(None);
     let reaction_id = "1".repeat(64);
     proj.on_kernel_event(&reaction(&reaction_id, ALICE, TARGET_A, "+", None));
 
@@ -125,7 +125,7 @@ fn delete_by_other_pubkey_is_ignored() {
 fn last_e_tag_is_the_target() {
     // NIP-25: the reacted-to event is the LAST `e` tag (a thread-context `e`
     // tag may precede it).
-    let proj = ReactionAggregateProjection::new();
+    let proj = ReactionAggregateProjection::new(None);
     let ev = KernelEvent {
         id: "1".repeat(64),
         author: ALICE.to_string(),
@@ -145,9 +145,82 @@ fn last_e_tag_is_the_target() {
 
 #[test]
 fn non_reaction_kinds_are_ignored() {
-    let proj = ReactionAggregateProjection::new();
+    let proj = ReactionAggregateProjection::new(None);
     let mut ev = reaction(&"1".repeat(64), ALICE, TARGET_A, "+", None);
     ev.kind = 9; // a chat message, not a reaction
     proj.on_kernel_event(&ev);
     assert_eq!(proj.snapshot(), ReactionAggregateSnapshot::empty());
+}
+
+#[test]
+fn no_viewer_means_no_mine_handles() {
+    let proj = ReactionAggregateProjection::new(None);
+    proj.on_kernel_event(&reaction(&"1".repeat(64), ALICE, TARGET_A, "+", None));
+    let agg = proj.aggregate_for(TARGET_A).unwrap();
+    assert!(agg.mine.is_empty(), "no viewer → no retraction handles");
+}
+
+#[test]
+fn mine_surfaces_only_the_viewers_own_reaction_ids() {
+    // ALICE is the viewer. She reacted "+" (id a..) and "🔥" (id b..); BOB also
+    // reacted "+". `mine` carries ONLY ALICE's two reactions, with the ids to
+    // delete, ordered by token then id.
+    let proj = ReactionAggregateProjection::new(Some(ALICE.to_string()));
+    let alice_plus = "a".repeat(64);
+    let alice_fire = "b".repeat(64);
+    proj.on_kernel_event(&reaction(&alice_plus, ALICE, TARGET_A, "+", Some("room")));
+    proj.on_kernel_event(&reaction(&alice_fire, ALICE, TARGET_A, "🔥", Some("room")));
+    proj.on_kernel_event(&reaction(&"c".repeat(64), BOB, TARGET_A, "+", Some("room")));
+
+    let agg = proj.aggregate_for(TARGET_A).unwrap();
+    assert_eq!(agg.total, 3);
+    assert_eq!(
+        agg.mine,
+        vec![
+            ViewerReaction { token: "+".into(), reaction_event_id: alice_plus },
+            ViewerReaction { token: "🔥".into(), reaction_event_id: alice_fire },
+        ],
+        "mine must carry the viewer's own kind:7 ids, no one else's"
+    );
+}
+
+#[test]
+fn relay_delivered_delete_decrements_and_clears_mine() {
+    // The widened `kinds:[5,7]` interest delivers ALICE's own kind:5 deletion of
+    // her kind:7. The aggregate decrements the count, drops her from reactors,
+    // and clears her `mine` handle (toggle-off observed end-to-end).
+    let proj = ReactionAggregateProjection::new(Some(ALICE.to_string()));
+    let alice_reaction = "a".repeat(64);
+    proj.on_kernel_event(&reaction(&alice_reaction, ALICE, TARGET_A, "+", Some("room")));
+    proj.on_kernel_event(&reaction(&"c".repeat(64), BOB, TARGET_A, "+", Some("room")));
+    assert_eq!(proj.aggregate_for(TARGET_A).unwrap().mine.len(), 1);
+
+    let delete = KernelEvent {
+        id: "9".repeat(64),
+        author: ALICE.to_string(),
+        kind: KIND_REACTION_DELETE,
+        created_at: 3,
+        tags: vec![vec!["e".to_string(), alice_reaction]],
+        content: String::new(),
+        relay_provenance: Vec::new(),
+    };
+    proj.on_kernel_event(&delete);
+
+    let agg = proj.aggregate_for(TARGET_A).unwrap();
+    assert_eq!(agg.total, 1, "ALICE's reaction decremented");
+    assert_eq!(agg.reactors, vec![BOB.to_string()]);
+    assert!(agg.mine.is_empty(), "viewer's mine handle cleared after retract");
+}
+
+#[test]
+fn set_viewer_pubkey_recomputes_mine() {
+    let proj = ReactionAggregateProjection::new(None);
+    proj.on_kernel_event(&reaction(&"a".repeat(64), ALICE, TARGET_A, "+", None));
+    assert!(proj.aggregate_for(TARGET_A).unwrap().mine.is_empty());
+
+    proj.set_viewer_pubkey(Some(ALICE.to_string()));
+    assert_eq!(proj.aggregate_for(TARGET_A).unwrap().mine.len(), 1);
+
+    proj.set_viewer_pubkey(None);
+    assert!(proj.aggregate_for(TARGET_A).unwrap().mine.is_empty());
 }

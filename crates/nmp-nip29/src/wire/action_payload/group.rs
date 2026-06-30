@@ -6,7 +6,7 @@ use nmp_core::substrate::{ActionPayload, ActionPayloadDecodeError};
 
 use crate::action::{
     CreatePublicGroupInput, GroupAccess, GroupVisibility, JoinGroupInput, LeaveGroupInput,
-    PublishGroupEventInput, ReactInGroupInput,
+    PublishGroupEventInput, ReactInGroupInput, UnreactInGroupInput,
 };
 use crate::group_id::GroupId;
 
@@ -17,6 +17,7 @@ use super::join_group_action_generated::nmp::nip_29 as join_fb;
 use super::leave_group_action_generated::nmp::nip_29 as leave_fb;
 use super::publish_group_event_action_generated::nmp::nip_29 as publish_fb;
 use super::react_in_group_action_generated::nmp::nip_29 as react_fb;
+use super::unreact_in_group_action_generated::nmp::nip_29 as unreact_fb;
 
 // --- JoinGroupInput ----------------------------------------------------------
 
@@ -336,6 +337,51 @@ impl ActionPayload for ReactInGroupInput {
             target_event_id: root.target_event_id().to_string(),
             target_author_pubkey: root.target_author_pubkey().map(str::to_string),
             content: root.content().to_string(),
+        })
+    }
+}
+
+// --- UnreactInGroupInput -----------------------------------------------------
+
+impl ActionPayload for UnreactInGroupInput {
+    const SCHEMA_ID: &'static str = "nmp.nip29.unreact_in_group";
+    const SCHEMA_VERSION: u32 = SCHEMA_VERSION;
+
+    fn encode(&self) -> Vec<u8> {
+        let mut fbb = flatbuffers::FlatBufferBuilder::new();
+        let host_relay_url = fbb.create_string(&self.group.host_relay_url);
+        let local_id = fbb.create_string(&self.group.local_id);
+        let group = unreact_fb::GroupRef::create(
+            &mut fbb,
+            &unreact_fb::GroupRefArgs {
+                host_relay_url: Some(host_relay_url),
+                local_id: Some(local_id),
+            },
+        );
+        let reaction_event_id = fbb.create_string(&self.reaction_event_id);
+        let payload = unreact_fb::UnreactInGroupPayload::create(
+            &mut fbb,
+            &unreact_fb::UnreactInGroupPayloadArgs {
+                schema_version: SCHEMA_VERSION,
+                group: Some(group),
+                reaction_event_id: Some(reaction_event_id),
+            },
+        );
+        unreact_fb::finish_unreact_in_group_payload_buffer(&mut fbb, payload);
+        fbb.finished_data().to_vec()
+    }
+
+    fn decode(bytes: &[u8]) -> Result<Self, ActionPayloadDecodeError> {
+        if bytes.len() < 8 || !unreact_fb::unreact_in_group_payload_buffer_has_identifier(bytes) {
+            return Err(malformed("missing N29R file identifier"));
+        }
+        let root = unreact_fb::root_as_unreact_in_group_payload(bytes)
+            .map_err(|e| malformed(format!("not a valid UnreactInGroupPayload buffer: {e}")))?;
+        gate_schema_version(root.schema_version())?;
+        let group = root.group();
+        Ok(UnreactInGroupInput {
+            group: GroupId::new(group.host_relay_url(), group.local_id()),
+            reaction_event_id: root.reaction_event_id().to_string(),
         })
     }
 }

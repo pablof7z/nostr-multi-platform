@@ -10,4 +10,4 @@ pub const REACTION_AGGREGATE_SCHEMA_ID: &str = "nmp.nip25.reactions";
 /// FlatBuffers file identifier embedded in every buffer this module emits.
 pub const REACTION_AGGREGATE_FILE_IDENTIFIER: &[u8; 4] = b"N25A";
 /// Wire schema version. Bump on any breaking change to this projection's `.fbs`.
-pub const REACTION_AGGREGATE_SCHEMA_VERSION: u32 = 1;
+pub const REACTION_AGGREGATE_SCHEMA_VERSION: u32 = 2;

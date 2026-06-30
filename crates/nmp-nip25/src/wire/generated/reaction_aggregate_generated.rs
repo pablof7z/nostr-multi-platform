@@ -149,6 +149,157 @@ pub mod nmp {
                 ds.finish()
             }
         }
+        pub enum ViewerReactionOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        pub struct ViewerReaction<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ViewerReaction<'a> {
+            type Inner = ViewerReaction<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ViewerReaction<'a> {
+            pub const VT_TOKEN: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REACTION_EVENT_ID: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ViewerReaction { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ViewerReactionArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ViewerReaction<'bldr>> {
+                let mut builder = ViewerReactionBuilder::new(_fbb);
+                if let Some(x) = args.reaction_event_id {
+                    builder.add_reaction_event_id(x);
+                }
+                if let Some(x) = args.token {
+                    builder.add_token(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn token(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ViewerReaction::VT_TOKEN, None)
+                }
+            }
+            #[inline]
+            pub fn reaction_event_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        ViewerReaction::VT_REACTION_EVENT_ID,
+                        None,
+                    )
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ViewerReaction<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "token",
+                        Self::VT_TOKEN,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "reaction_event_id",
+                        Self::VT_REACTION_EVENT_ID,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct ViewerReactionArgs<'a> {
+            pub token: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub reaction_event_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for ViewerReactionArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ViewerReactionArgs {
+                    token: None,
+                    reaction_event_id: None,
+                }
+            }
+        }
+
+        pub struct ViewerReactionBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ViewerReactionBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_token(&mut self, token: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    ViewerReaction::VT_TOKEN,
+                    token,
+                );
+            }
+            #[inline]
+            pub fn add_reaction_event_id(
+                &mut self,
+                reaction_event_id: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    ViewerReaction::VT_REACTION_EVENT_ID,
+                    reaction_event_id,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> ViewerReactionBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ViewerReactionBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ViewerReaction<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ViewerReaction<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ViewerReaction");
+                ds.field("token", &self.token());
+                ds.field("reaction_event_id", &self.reaction_event_id());
+                ds.finish()
+            }
+        }
         pub enum ReactionTargetAggregateOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -171,6 +322,7 @@ pub mod nmp {
             pub const VT_TOTAL: ::flatbuffers::VOffsetT = 6;
             pub const VT_BY_EMOJI: ::flatbuffers::VOffsetT = 8;
             pub const VT_REACTORS: ::flatbuffers::VOffsetT = 10;
+            pub const VT_MINE: ::flatbuffers::VOffsetT = 12;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -188,6 +340,9 @@ pub mod nmp {
             ) -> ::flatbuffers::WIPOffset<ReactionTargetAggregate<'bldr>> {
                 let mut builder = ReactionTargetAggregateBuilder::new(_fbb);
                 builder.add_total(args.total);
+                if let Some(x) = args.mine {
+                    builder.add_mine(x);
+                }
                 if let Some(x) = args.reactors {
                     builder.add_reactors(x);
                 }
@@ -255,6 +410,20 @@ pub mod nmp {
                     >>(ReactionTargetAggregate::VT_REACTORS, None)
                 }
             }
+            #[inline]
+            pub fn mine(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<ViewerReaction<'a>>>>
+            {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<ViewerReaction>>,
+                    >>(ReactionTargetAggregate::VT_MINE, None)
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for ReactionTargetAggregate<'_> {
@@ -279,6 +448,9 @@ pub mod nmp {
                     .visit_field::<::flatbuffers::ForwardsUOffset<
                         ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>,
                     >>("reactors", Self::VT_REACTORS, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<ViewerReaction>>,
+                    >>("mine", Self::VT_MINE, false)?
                     .finish();
                 Ok(())
             }
@@ -299,6 +471,11 @@ pub mod nmp {
                     ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
                 >,
             >,
+            pub mine: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<ViewerReaction<'a>>>,
+                >,
+            >,
         }
         impl<'a> Default for ReactionTargetAggregateArgs<'a> {
             #[inline]
@@ -308,6 +485,7 @@ pub mod nmp {
                     total: 0,
                     by_emoji: None,
                     reactors: None,
+                    mine: None,
                 }
             }
         }
@@ -360,6 +538,18 @@ pub mod nmp {
                 );
             }
             #[inline]
+            pub fn add_mine(
+                &mut self,
+                mine: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<ViewerReaction<'b>>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    ReactionTargetAggregate::VT_MINE,
+                    mine,
+                );
+            }
+            #[inline]
             pub fn new(
                 _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
             ) -> ReactionTargetAggregateBuilder<'a, 'b, A> {
@@ -383,6 +573,7 @@ pub mod nmp {
                 ds.field("total", &self.total());
                 ds.field("by_emoji", &self.by_emoji());
                 ds.field("reactors", &self.reactors());
+                ds.field("mine", &self.mine());
                 ds.finish()
             }
         }
@@ -436,7 +627,7 @@ pub mod nmp {
                 // which contains a valid value in this slot
                 unsafe {
                     self._tab
-                        .get::<u32>(ReactionAggregateSnapshot::VT_SCHEMA_VERSION, Some(1))
+                        .get::<u32>(ReactionAggregateSnapshot::VT_SCHEMA_VERSION, Some(2))
                         .unwrap()
                 }
             }
@@ -496,7 +687,7 @@ pub mod nmp {
             #[inline]
             fn default() -> Self {
                 ReactionAggregateSnapshotArgs {
-                    schema_version: 1,
+                    schema_version: 2,
                     targets: None,
                 }
             }
@@ -512,7 +703,7 @@ pub mod nmp {
                 self.fbb_.push_slot::<u32>(
                     ReactionAggregateSnapshot::VT_SCHEMA_VERSION,
                     schema_version,
-                    1,
+                    2,
                 );
             }
             #[inline]

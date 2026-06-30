@@ -25,6 +25,7 @@ use nmp_nip29::action::{
     JoinGroupAction, JoinGroupInput, LeaveGroupAction, LeaveGroupInput, PublishGroupEventAction,
     PublishGroupEventInput, PutUserAction, PutUserInput, ReactInGroupAction, ReactInGroupInput,
     RepostInGroupAction, RepostInGroupInput, ShareEventInGroupAction, ShareEventInGroupInput,
+    UnreactInGroupAction, UnreactInGroupInput,
 };
 
 /// Register every migrated nip29 event-authoring module onto a fresh registry.
@@ -36,6 +37,8 @@ fn registry() -> ActionRegistry {
         .expect("publish group event registers");
     r.register(ReactInGroupAction)
         .expect("react in group registers");
+    r.register(UnreactInGroupAction)
+        .expect("unreact in group registers");
     r.register(CreatePublicGroupAction)
         .expect("create public group registers");
     r.register(ShareEventInGroupAction)
@@ -138,6 +141,12 @@ fn react() -> ReactInGroupInput {
         content: "+".into(),
     }
 }
+fn unreact() -> UnreactInGroupInput {
+    UnreactInGroupInput {
+        group: group(),
+        reaction_event_id: "deadbeef".into(),
+    }
+}
 fn create() -> CreatePublicGroupInput {
     CreatePublicGroupInput {
         group: GroupId::new("wss://groups.example.com", "rust-nostr"),
@@ -204,6 +213,7 @@ fn start_bytes_rejects_wrong_schema_version_for_every_namespace() {
     assert_bad_version_rejected("nmp.nip29.leave", leave().encode());
     assert_bad_version_rejected("nmp.nip29.publish_group_event", publish().encode());
     assert_bad_version_rejected("nmp.nip29.react_in_group", react().encode());
+    assert_bad_version_rejected("nmp.nip29.unreact_in_group", unreact().encode());
     assert_bad_version_rejected("nmp.nip29.create_public_group", create().encode());
     assert_bad_version_rejected("nmp.nip29.share_event_in_group", share().encode());
     assert_bad_version_rejected("nmp.nip29.repost_in_group", repost().encode());
@@ -220,6 +230,7 @@ fn start_bytes_accepts_well_formed_typed_payload_for_every_namespace() {
     assert_good_accepted("nmp.nip29.leave", leave().encode());
     assert_good_accepted("nmp.nip29.publish_group_event", publish().encode());
     assert_good_accepted("nmp.nip29.react_in_group", react().encode());
+    assert_good_accepted("nmp.nip29.unreact_in_group", unreact().encode());
     assert_good_accepted("nmp.nip29.create_public_group", create().encode());
     assert_good_accepted("nmp.nip29.share_event_in_group", share().encode());
     assert_good_accepted("nmp.nip29.repost_in_group", repost().encode());

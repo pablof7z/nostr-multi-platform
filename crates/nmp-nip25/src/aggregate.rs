@@ -50,6 +50,24 @@ pub struct ReactionEmojiCount {
     pub count: u64,
 }
 
+/// One of the **viewer's own** surviving reactions on a target: the raw emoji
+/// token plus the raw hex id of the viewer's kind:7 reaction event.
+///
+/// This is the retraction handle: to toggle a reaction off, the app deletes the
+/// kind:7 event named by [`ViewerReaction::reaction_event_id`] (via the
+/// host-pinned `nmp.nip29.unreact_in_group` action in a group). Surfacing the id
+/// here is what makes toggle-off supportable — the aggregate is the only place
+/// that knows which of the viewer's events backs a given (target, emoji).
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ViewerReaction {
+    /// The raw reaction token (verbatim content; empty content normalizes to
+    /// the NIP-25 `"+"` like token).
+    pub token: String,
+    /// The raw hex id of the viewer's kind:7 reaction event for this (target,
+    /// token). The id the app deletes to retract.
+    pub reaction_event_id: String,
+}
+
 /// The aggregated reactions for one target event.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ReactionTargetAggregate {
@@ -62,6 +80,14 @@ pub struct ReactionTargetAggregate {
     pub by_emoji: Vec<ReactionEmojiCount>,
     /// Distinct reactor pubkeys (raw hex), ascending. For a "who reacted" view.
     pub reactors: Vec<String>,
+    /// The **viewer's own** surviving reactions on this target — one entry per
+    /// (token, reaction event id), ordered by `token` then `reaction_event_id`
+    /// ascending. Empty when the projection has no viewer pubkey or the viewer
+    /// has not reacted. Each entry's `reaction_event_id` is the kind:7 the app
+    /// deletes to retract that reaction (toggle-off). Omitted from the serde
+    /// shape when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mine: Vec<ViewerReaction>,
 }
 
 /// The serialised reaction-aggregate read model: one
@@ -99,17 +125,32 @@ struct ReactionRecord {
 /// it in a snapshot-projection closure (output), exactly like the NIP-29 group
 /// views. Group scoping is the feeding interest's job (see module docs).
 pub struct ReactionAggregateProjection {
+    /// The viewer (active account) pubkey, raw hex, used to compute the per-target
+    /// `mine` retraction handles. `None` (or empty) means "no viewer" and every
+    /// `mine` is empty. Wired the same way as
+    /// [`crate::projection::ReactionProjection`]'s viewer pubkey.
+    viewer_pubkey: Mutex<Option<String>>,
     /// Reactions keyed by reaction event id. Bounded by
     /// [`MAX_PROJECTION_MESSAGES`]; the aggregate is computed on read, not here.
     entries: Mutex<BoundedMessageMap<String, ReactionRecord>>,
 }
 
 impl ReactionAggregateProjection {
-    /// Construct an empty projection.
+    /// Construct an empty projection for `viewer_pubkey` (the active account, raw
+    /// hex; `None` or empty disables the per-target `mine` handles).
     #[must_use]
-    pub fn new() -> Self {
+    pub fn new(viewer_pubkey: Option<String>) -> Self {
         Self {
+            viewer_pubkey: Mutex::new(viewer_pubkey.filter(|p| !p.is_empty())),
             entries: Mutex::new(BoundedMessageMap::new(MAX_PROJECTION_MESSAGES)),
+        }
+    }
+
+    /// Update the viewer (active account) pubkey, e.g. after an account switch.
+    /// `None`/empty clears it. The next snapshot recomputes `mine` accordingly.
+    pub fn set_viewer_pubkey(&self, viewer_pubkey: Option<String>) {
+        if let Ok(mut current) = self.viewer_pubkey.lock() {
+            *current = viewer_pubkey.filter(|p| !p.is_empty());
         }
     }
 
@@ -123,14 +164,21 @@ impl ReactionAggregateProjection {
         let Ok(entries) = self.entries.lock() else {
             return ReactionAggregateSnapshot::empty();
         };
+        let viewer = self.viewer_pubkey.lock().ok().and_then(|v| v.clone());
+        let viewer = viewer.as_deref();
 
-        // target -> (token -> count, distinct reactors)
+        // target -> (token -> count, distinct reactors, viewer's own reactions).
+        // `iter()` yields the map key (the reaction event id) so the viewer's
+        // retraction handle (`mine`) carries the id to delete.
         let mut by_target: BTreeMap<&str, TargetAccumulator<'_>> = BTreeMap::new();
-        for record in entries.values() {
+        for (reaction_event_id, record) in entries.iter() {
             let acc = by_target.entry(&record.target_event_id).or_default();
             acc.total += 1;
             *acc.by_emoji.entry(&record.token).or_insert(0) += 1;
             acc.reactors.insert(&record.author_pubkey);
+            if viewer == Some(record.author_pubkey.as_str()) {
+                acc.mine.push((&record.token, reaction_event_id));
+            }
         }
 
         let targets = by_target
@@ -213,7 +261,7 @@ impl ReactionAggregateProjection {
 
 impl Default for ReactionAggregateProjection {
     fn default() -> Self {
-        Self::new()
+        Self::new(None)
     }
 }
 
@@ -230,6 +278,8 @@ struct TargetAccumulator<'a> {
     total: u64,
     by_emoji: BTreeMap<&'a str, u64>,
     reactors: std::collections::BTreeSet<&'a str>,
+    /// The viewer's own (token, reaction event id) pairs for this target.
+    mine: Vec<(&'a str, &'a str)>,
 }
 
 impl TargetAccumulator<'_> {
@@ -247,11 +297,29 @@ impl TargetAccumulator<'_> {
         by_emoji.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.token.cmp(&b.token)));
 
         let reactors = self.reactors.into_iter().map(str::to_string).collect();
+
+        // Viewer's own reactions ordered by token then reaction event id — a
+        // total, stable order independent of map iteration.
+        let mut mine: Vec<ViewerReaction> = self
+            .mine
+            .into_iter()
+            .map(|(token, reaction_event_id)| ViewerReaction {
+                token: token.to_string(),
+                reaction_event_id: reaction_event_id.to_string(),
+            })
+            .collect();
+        mine.sort_by(|a, b| {
+            a.token
+                .cmp(&b.token)
+                .then_with(|| a.reaction_event_id.cmp(&b.reaction_event_id))
+        });
+
         ReactionTargetAggregate {
             target_event_id: target_event_id.to_string(),
             total: self.total,
             by_emoji,
             reactors,
+            mine,
         }
     }
 }

@@ -6,6 +6,7 @@ use crate::action::{
     CreateInviteInput, CreatePublicGroupInput, DiscoverGroupsInput, EditMetadataInput, GroupAccess,
     GroupEventTarget, GroupVisibility, JoinGroupInput, LeaveGroupInput, PublishGroupEventInput,
     PutUserInput, ReactInGroupInput, RepostInGroupInput, SetParentInput, ShareEventInGroupInput,
+    UnreactInGroupInput,
 };
 use crate::group_id::GroupId;
 use nmp_core::substrate::{ActionPayload, ActionPayloadDecodeError};
@@ -186,6 +187,20 @@ fn react_round_trips_and_preserves_author_presence() {
             .target_author_pubkey
             .as_deref(),
         Some("")
+    );
+}
+
+// --- unreact_in_group --------------------------------------------------------
+
+#[test]
+fn unreact_round_trips() {
+    let action = UnreactInGroupInput {
+        group: group(),
+        reaction_event_id: "ab".repeat(32),
+    };
+    assert_eq!(
+        UnreactInGroupInput::decode(&action.encode()).expect("decodes"),
+        action
     );
 }
 

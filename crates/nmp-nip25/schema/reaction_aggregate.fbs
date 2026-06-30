@@ -6,9 +6,11 @@ namespace nmp.nip25;
 //
 // NIP-25 owns kind:7 reaction semantics: this projection folds the kind:7
 // events it is handed by target event id and exposes, per target, the total
-// count, the per-emoji breakdown, and the distinct reactor pubkeys. Scoping the
-// fold to one NIP-29 group is the feeding interest's job (a relay-pinned
-// `#h` + `kinds:[7]` filter); this schema bakes in no group/h-tag concept.
+// count, the per-emoji breakdown, the distinct reactor pubkeys, and the
+// viewer's own reactions (`mine`) — the kind:7 ids the app deletes to retract
+// (toggle-off). Scoping the fold to one NIP-29 group is the feeding interest's
+// job (a relay-pinned `#h` + `kinds:[5,7]` filter, so relay-delivered kind:5
+// deletions decrement the fold); this schema bakes in no group/h-tag concept.
 //
 // This is the typed sidecar (ADR-0037) carried alongside the generic
 // `serde_json::Value` projection registered under the same key by the reaction
@@ -34,18 +36,28 @@ table ReactionEmojiCount {
   count:uint64;    // reactions carrying this token for the target
 }
 
+// One of the VIEWER'S OWN surviving reactions on a target: the raw emoji token
+// plus the raw hex id of the viewer's kind:7 reaction event. This is the
+// retraction handle — the app deletes `reaction_event_id` to toggle the
+// reaction off (via a host-pinned kind:5 in a NIP-29 group). Raw data only.
+table ViewerReaction {
+  token:string;              // raw reaction token ("+" for empty/like)
+  reaction_event_id:string;  // raw hex id of the viewer's kind:7 to delete
+}
+
 // The aggregated reactions for one target event.
 table ReactionTargetAggregate {
   target_event_id:string;            // raw hex reacted-to event id
   total:uint64;                      // total reactions across all emoji
   by_emoji:[ReactionEmojiCount];     // count desc, then token asc
   reactors:[string];                 // distinct reactor pubkeys (hex), asc
+  mine:[ViewerReaction];             // viewer's own reactions; token asc, id asc
 }
 
 // The serialised reaction-aggregate read model. `targets` is ordered by
 // `target_event_id` ascending — the encoder ships the snapshot order verbatim.
 table ReactionAggregateSnapshot {
-  schema_version:uint32 = 1;   // mirrors REACTION_AGGREGATE_SCHEMA_VERSION
+  schema_version:uint32 = 2;   // mirrors REACTION_AGGREGATE_SCHEMA_VERSION
   targets:[ReactionTargetAggregate];
 }
 

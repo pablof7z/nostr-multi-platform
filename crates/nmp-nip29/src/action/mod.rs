@@ -42,7 +42,9 @@ mod set_parent;
 pub use admin::{
     CreateInviteAction, CreateInviteInput, PutUserAction, PutUserInput, MAX_CODES_PER_INVITE_EVENT,
 };
-pub use composed::{ReactInGroupAction, ReactInGroupInput};
+pub use composed::{
+    ReactInGroupAction, ReactInGroupInput, UnreactInGroupAction, UnreactInGroupInput,
+};
 pub use publish::{PublishGroupEventAction, PublishGroupEventInput, DEFAULT_PREVIOUS_LIMIT};
 pub use create::{CreatePublicGroupAction, CreatePublicGroupInput, GroupAccess, GroupVisibility};
 pub use discover::{DiscoverGroupsAction, DiscoverGroupsInput};

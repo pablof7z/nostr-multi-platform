@@ -11,12 +11,17 @@ fn sample() -> ReactionAggregateSnapshot {
                     ReactionEmojiCount { token: "🔥".into(), count: 1 },
                 ],
                 reactors: vec!["1".repeat(64), "2".repeat(64), "3".repeat(64)],
+                mine: vec![
+                    ViewerReaction { token: "+".into(), reaction_event_id: "d".repeat(64) },
+                    ViewerReaction { token: "🔥".into(), reaction_event_id: "e".repeat(64) },
+                ],
             },
             ReactionTargetAggregate {
                 target_event_id: "b".repeat(64),
                 total: 0,
                 by_emoji: Vec::new(),
                 reactors: Vec::new(),
+                mine: Vec::new(),
             },
         ],
     }

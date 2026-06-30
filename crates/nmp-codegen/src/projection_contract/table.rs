@@ -321,7 +321,9 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         schema_id: "nmp.nip25.reactions",
         file_identifier: "N25A",
         // nmp-nip25 wire/reaction_aggregate_fb::REACTION_AGGREGATE_SCHEMA_VERSION
-        version: 1,
+        // v2 (#2504 follow-up): ReactionTargetAggregate gains `mine` (viewer's
+        // own kind:7 ids) for reaction toggle-off (retract).
+        version: 2,
         declaration_policy: DeclarationPolicy::RegistrationGated,
         dependency_versions: &[],
         presence_policy: PresencePolicy::None,
