@@ -131,6 +131,21 @@ unsafe impl Sync for LiveKernelSink {}
 impl LiveKernelSink {
     /// Resolve a visible profile reference for `pubkey` (ADR-0063 #1671).
     pub fn resolve_profile(&self, pubkey: &str, consumer_id: &str) {
+        self.resolve_profile_with_shape(pubkey, consumer_id, nmp_core::ProfileShape::Ref);
+    }
+
+    /// Resolve a full profile card for components that render wide fields such
+    /// as NIP-05 or about text.
+    pub fn resolve_profile_card(&self, pubkey: &str, consumer_id: &str) {
+        self.resolve_profile_with_shape(pubkey, consumer_id, nmp_core::ProfileShape::Card);
+    }
+
+    fn resolve_profile_with_shape(
+        &self,
+        pubkey: &str,
+        consumer_id: &str,
+        shape: nmp_core::ProfileShape,
+    ) {
         if self.app.is_null() {
             return;
         }
@@ -138,7 +153,7 @@ impl LiveKernelSink {
             nmp_core::RefNamespace::Profile,
             pubkey.to_owned(),
             consumer_id.to_owned(),
-            nmp_core::RefShape::Profile(nmp_core::ProfileShape::Ref),
+            nmp_core::RefShape::Profile(shape),
             nmp_core::RefLiveness::CacheOk,
         );
     }

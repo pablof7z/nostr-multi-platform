@@ -20,17 +20,20 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use nmp_content::EventRefResolver;
 use nmp_gallery_tui::{
     data::{GalleryData, LiveProfileMap},
     embed_host::EmbedHostState,
     gallery,
     live::{primary_pubkey, GalleryTypedSnapshot, LiveGallerySource, LiveKernel, LiveKernelSink},
+    profile_claim::VisibleProfileClaims,
     render::{self, EmbedFrameContext},
 };
 use ratatui::{backend::CrosstermBackend, Terminal};
 
 const EMBED_CONSUMER_ID: &str = "nmp-gallery-tui.embed";
+
+mod smoke;
+mod smoke_display;
 
 struct Args {
     component: String,
@@ -73,7 +76,7 @@ fn main() -> io::Result<()> {
         let snapshot_rx = kernel
             .take_receiver()
             .expect("snapshot receiver must still be present after boot");
-        let exit_code = run_smoke(
+        let exit_code = smoke::run(
             &sink,
             &mut host,
             snapshot_rx,
@@ -148,204 +151,6 @@ fn main() -> io::Result<()> {
     drop(kernel);
     Ok(())
 }
-
-/// Headless verification of the renderer-triggered resolve path. Mirrors what
-/// the TUI does at render time but without ratatui — claims each embed URI
-/// directly via the sink, drains snapshots into the host until either the
-/// targets resolve or the timeout fires, then prints a structured report.
-fn run_smoke(
-    sink: &Arc<LiveKernelSink>,
-    host: &mut EmbedHostState,
-    snapshot_rx: std::sync::mpsc::Receiver<Vec<u8>>,
-    timeout: Duration,
-) -> i32 {
-    use nmp_nostr_id::{decode_naddr, decode_nevent, decode_note};
-    use std::time::Instant;
-
-    struct SmokeTarget {
-        label: &'static str,
-        uri: String,
-        /// Row key the kernel uses for `refs.event[primary_id]`.
-        /// hex64 event id for nevent/note; "kind:author:d_tag" for naddr.
-        primary_id: String,
-    }
-
-    fn primary_id_for(uri: &str) -> Option<String> {
-        let stripped = uri.strip_prefix("nostr:").unwrap_or(uri);
-        if let Ok(naddr) = decode_naddr(stripped) {
-            return Some(format!(
-                "{}:{}:{}",
-                naddr.kind, naddr.pubkey, naddr.identifier
-            ));
-        }
-        if let Ok(nevent) = decode_nevent(stripped) {
-            return Some(nevent.event_id);
-        }
-        if let Ok(note) = decode_note(stripped) {
-            return Some(note);
-        }
-        None
-    }
-
-    // The smoke uses the same real references rendered by the gallery:
-    // addressable article naddr + showcase kind:1 nevent.
-    let mut targets: Vec<SmokeTarget> = Vec::new();
-    for (label, uri) in [
-        (
-            "embed_article (kind:30023 naddr)",
-            nmp_gallery_tui::data::article_naddr().to_string(),
-        ),
-        (
-            "embed_note (kind:1 nevent)",
-            nmp_gallery_tui::data::note_nevent().to_string(),
-        ),
-    ] {
-        match primary_id_for(&uri) {
-            Some(primary_id) => targets.push(SmokeTarget {
-                label,
-                uri,
-                primary_id,
-            }),
-            None => {
-                eprintln!("smoke: could not decode URI for {label}: {uri}");
-                return 1;
-            }
-        }
-    }
-
-    let consumer_id = "nmp-gallery-tui.smoke";
-
-    println!("== nmp-gallery-tui --smoke ==");
-    println!("kernel up, relays seeded; validating renderer-triggered event-ref resolves.");
-    println!();
-
-    println!(
-        "Target {} embed URI(s); waiting for relay connection then resolving:",
-        targets.len()
-    );
-    for t in &targets {
-        println!("  target: {} → {}", t.label, t.uri);
-        println!("    primary_id expected in refs.event: {}", t.primary_id);
-    }
-    println!();
-
-    let started = Instant::now();
-    let mut resolves_issued = false;
-    let mut snapshot_tick = 0u32;
-    let mut resolved_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
-    // ADR-0063 (#1671): the stateful `refs.profile` row-delta mirror — merged
-    // across frames so per-key deltas accumulate (D4: the sole profile store).
-    let mut ref_profiles = nmp_core::refs::RefProfileStore::new();
-    let mut ref_events = nmp_core::refs::RefEventStore::new();
-
-    while started.elapsed() < timeout && resolved_ids.len() < targets.len() {
-        let remaining = timeout - started.elapsed();
-        match snapshot_rx.recv_timeout(remaining) {
-            Ok(frame_bytes) => {
-                let snap = GalleryTypedSnapshot::from_frame_bytes(
-                    &frame_bytes,
-                    &mut ref_profiles,
-                    &mut ref_events,
-                );
-                snapshot_tick += 1;
-                host.update_from_typed(&snap);
-
-                // Re-resolve on EVERY snapshot tick until resolves_issued.
-                // The kernel queues cold event refs until a relay is connected,
-                // so we keep trying until the OneshotApi interest can register
-                // and the planner compiles a wire REQ.
-                if !resolves_issued && snap.any_relay_connected() {
-                    println!(
-                        "  + relay connected - event-ref resolves firing on tick #{snapshot_tick}"
-                    );
-                    for t in &targets {
-                        println!("    resolve: {}", t.uri);
-                        sink.resolve_event_ref(&t.uri, consumer_id);
-                    }
-                    resolves_issued = true;
-                }
-
-                // Print any target that just resolved.
-                for t in &targets {
-                    if resolved_ids.contains(&t.primary_id) {
-                        continue;
-                    }
-                    if let Some(envelope) = host.current_envelopes().get(&t.primary_id) {
-                        println!(
-                            "+ resolved at {:.2}s: {}",
-                            started.elapsed().as_secs_f32(),
-                            t.label
-                        );
-                        print_resolved(t.label, envelope);
-                        resolved_ids.insert(t.primary_id.clone());
-                    }
-                }
-            }
-            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => break,
-            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                eprintln!("snapshot channel disconnected before targets resolved");
-                return 1;
-            }
-        }
-    }
-
-    println!();
-    println!("Summary:");
-    println!("  snapshot ticks observed: {snapshot_tick}");
-    println!(
-        "  resolves issued:         {}",
-        if resolves_issued { "yes" } else { "no" }
-    );
-    println!(
-        "  resolved targets:        {}/{}",
-        resolved_ids.len(),
-        targets.len()
-    );
-    let unresolved: Vec<&SmokeTarget> = targets
-        .iter()
-        .filter(|t| !resolved_ids.contains(&t.primary_id))
-        .collect();
-    println!();
-    if unresolved.is_empty() {
-        println!(
-            "ALL {} embed targets resolved in {:.2}s",
-            targets.len(),
-            started.elapsed().as_secs_f32()
-        );
-        0
-    } else {
-        println!(
-            "{}/{} targets unresolved after {:.2}s:",
-            unresolved.len(),
-            targets.len(),
-            started.elapsed().as_secs_f32()
-        );
-        for t in &unresolved {
-            println!(
-                "  unresolved: {} → {} (expected primary_id: {})",
-                t.label, t.uri, t.primary_id
-            );
-        }
-        println!();
-        println!("  Most likely cause: the target event isn't on the seeded relays.");
-        print!("  The seeded relays are:");
-        for r in &nmp_app_gallery::showcase::references().relays {
-            print!(" {} ({})", r.url, r.role);
-        }
-        println!(". Architecture is validated by the resolved targets above.");
-        println!(
-            "Host envelope map ({} entries):",
-            host.current_envelopes().len()
-        );
-        for (k, env) in host.current_envelopes() {
-            println!("  - {k} → {}", projection_label(&env.projection));
-        }
-        1
-    }
-}
-
-mod smoke_display;
-use smoke_display::{print_resolved, projection_label};
 
 fn parse_args() -> Args {
     let mut component = "content-view".to_string();
@@ -663,18 +468,4 @@ fn draw(
     // Avoid unused-Result lint when channel is dropped during coalesce.
     let _ = TryRecvError::Empty;
     Ok(())
-}
-
-#[derive(Default)]
-struct VisibleProfileClaims {
-    active: BTreeSet<(String, String)>,
-}
-
-impl VisibleProfileClaims {
-    fn reconcile(&mut self, sink: &LiveKernelSink, current: BTreeSet<(String, String)>) {
-        for (pubkey, consumer_id) in self.active.difference(&current) {
-            sink.release_ref(pubkey, consumer_id);
-        }
-        self.active = current;
-    }
 }

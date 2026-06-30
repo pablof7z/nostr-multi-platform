@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -53,7 +54,27 @@ fun UserComponentPage(
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        ProfileDemand(model = model, componentId = componentId, pubkey = pubkey)
         UserComponentBody(componentId = componentId, pubkey = pubkey, profile = profile)
+    }
+}
+
+@Composable
+private fun ProfileDemand(model: GalleryModel, componentId: String, pubkey: String) {
+    val consumerId = when (componentId) {
+        "user-name" -> "compose/user-name"
+        "user-nip05" -> "compose/user-nip05"
+        "user-card" -> "compose/user-card"
+        else -> return
+    }
+    DisposableEffect(pubkey, consumerId) {
+        when (componentId) {
+            "user-nip05", "user-card" -> model.resolveProfileCard(pubkey, consumerId)
+            else -> model.resolveProfileRef(pubkey, consumerId)
+        }
+        onDispose {
+            model.releaseProfileRef(pubkey, consumerId)
+        }
     }
 }
 

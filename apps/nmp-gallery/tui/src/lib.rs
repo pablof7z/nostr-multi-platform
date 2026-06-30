@@ -33,6 +33,7 @@ pub mod embed_host;
 pub mod gallery;
 pub mod live;
 mod login_block;
+pub mod profile_claim;
 pub mod render;
 
 // `live` is `pub` so the future `--live` flag in main.rs can construct

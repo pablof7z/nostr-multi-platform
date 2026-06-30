@@ -27,6 +27,7 @@ use crate::{
     nostr_npub_chip::NostrNpubChip,
     nostr_profile_name::NostrProfileName,
     nostr_user_card::NostrUserCard,
+    profile_claim::{ProfileClaim, ProfileClaimShape},
 };
 
 /// Per-frame embed-rendering context for renderer-triggered resolve paths.
@@ -34,11 +35,9 @@ use crate::{
 pub struct EmbedFrameContext<'a> {
     pub envelopes: &'a BTreeMap<String, EmbeddedEventEnvelope>,
     pub sink: Option<&'a LiveKernelSink>,
-    pub profile_claims: Option<&'a RefCell<BTreeSet<(String, String)>>>,
+    pub profile_claims: Option<&'a RefCell<BTreeSet<ProfileClaim>>>,
     pub consumer_id: &'a str,
-    /// Reactive profile store. The user-* components resolve their
-    /// `ProfileWire` from here via `profiles.resolve(&data.primary_pubkey)`
-    /// at render time — profile data is never stored on `GalleryData`.
+    /// Reactive profile store; user-* components resolve `ProfileWire` here.
     pub profiles: &'a LiveProfileMap,
 }
 
@@ -145,10 +144,12 @@ pub fn render_body(
         "login-block" => crate::login_block::render(area, buf),
         "user-avatar" => render_avatar(area, buf, data, embed_ctx),
         "user-name" => {
+            claim_profile_ref(embed_ctx, &data.primary_pubkey, "tui/user-name");
             let primary = embed_ctx.profiles.resolve(&data.primary_pubkey);
             NostrProfileName::new(&primary).render(area, buf)
         }
         "user-nip05" => {
+            claim_profile_card(embed_ctx, &data.primary_pubkey, "tui/user-nip05");
             let primary = embed_ctx.profiles.resolve(&data.primary_pubkey);
             if let Some(badge) = NostrNip05Badge::from_profile(&primary) {
                 badge.render(area, buf);
@@ -159,6 +160,7 @@ pub fn render_body(
             NostrNpubChip::new(&primary).render(chip(area), buf)
         }
         "user-card" => {
+            claim_profile_card(embed_ctx, &data.primary_pubkey, "tui/user-card");
             let primary = embed_ctx.profiles.resolve(&data.primary_pubkey);
             NostrUserCard::new(&primary)
                 .avatar_image(data.avatar_image_compact.as_ref())
@@ -294,7 +296,7 @@ fn profile_host_from_context<'a>(embed_ctx: EmbedFrameContext<'a>) -> GalleryPro
 struct GalleryProfileHost<'a> {
     sink: Option<&'a LiveKernelSink>,
     profiles: &'a LiveProfileMap,
-    claims: Option<&'a RefCell<BTreeSet<(String, String)>>>,
+    claims: Option<&'a RefCell<BTreeSet<ProfileClaim>>>,
 }
 
 impl NostrProfileHost for GalleryProfileHost<'_> {
@@ -335,14 +337,47 @@ impl GalleryProfileHost<'_> {
     }
 
     fn resolve_profile_ref(&self, pubkey: &str, consumer_id: &str) {
-        if let Some(claims) = self.claims {
-            claims
-                .borrow_mut()
-                .insert((pubkey.to_string(), consumer_id.to_string()));
-        }
-        if let Some(sink) = self.sink {
-            sink.resolve_profile(pubkey, consumer_id);
-        }
+        claim_profile_ref_parts(self.sink, self.claims, pubkey, consumer_id);
+    }
+}
+
+fn claim_profile_ref(embed_ctx: EmbedFrameContext<'_>, pubkey: &str, consumer_id: &str) {
+    claim_profile_ref_parts(
+        embed_ctx.sink,
+        embed_ctx.profile_claims,
+        pubkey,
+        consumer_id,
+    );
+}
+
+fn claim_profile_card(embed_ctx: EmbedFrameContext<'_>, pubkey: &str, consumer_id: &str) {
+    if let Some(claims) = embed_ctx.profile_claims {
+        claims.borrow_mut().insert(ProfileClaim {
+            pubkey: pubkey.to_string(),
+            consumer_id: consumer_id.to_string(),
+            shape: ProfileClaimShape::Card,
+        });
+    }
+    if let Some(sink) = embed_ctx.sink {
+        sink.resolve_profile_card(pubkey, consumer_id);
+    }
+}
+
+fn claim_profile_ref_parts(
+    sink: Option<&LiveKernelSink>,
+    claims: Option<&RefCell<BTreeSet<ProfileClaim>>>,
+    pubkey: &str,
+    consumer_id: &str,
+) {
+    if let Some(claims) = claims {
+        claims.borrow_mut().insert(ProfileClaim {
+            pubkey: pubkey.to_string(),
+            consumer_id: consumer_id.to_string(),
+            shape: ProfileClaimShape::Ref,
+        });
+    }
+    if let Some(sink) = sink {
+        sink.resolve_profile(pubkey, consumer_id);
     }
 }
 
@@ -445,8 +480,6 @@ fn render_embed_showcase(
     let registry = NostrKindRegistry::make_default();
     let profile_host = profile_host_from_context(embed_ctx);
 
-    // Renderer-triggered event refs resolve through the kernel sink; pushed
-    // snapshots refresh `embed_ctx.envelopes` for kind-registry dispatch.
     NostrContentView::new(&example.tree)
         .render_data(Some(&example.render_data))
         .media_images(media_images)
@@ -463,47 +496,4 @@ fn render_embed_showcase(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn mention_chip_uses_reference_fallback() {
-        let data = GalleryData::render_test_data();
-        let profiles = LiveProfileMap::new();
-        let lines = plain_lines("content-mention-chip", &data, &profiles, 80).join(" ");
-        assert!(lines.contains("@fa984b…018f52"), "{lines}");
-        assert!(!lines.contains("npub1"), "{lines}");
-    }
-
-    #[test]
-    fn kind_registry_embed_uses_real_reference_fallback() {
-        let data = GalleryData::render_test_data();
-        let profiles = LiveProfileMap::new();
-        let lines = plain_lines("content-kind-registry", &data, &profiles, 80).join(" ");
-        assert!(lines.contains("quote 276d69"), "{lines}");
-        assert!(lines.contains("276d69"), "{lines}");
-        assert!(!lines.contains("Quoted event body"), "{lines}");
-    }
-
-    #[test]
-    fn content_view_projects_nested_mention_preview() {
-        let data = GalleryData::render_test_data();
-        let lines = NostrContentView::new(&data.content_quote_card.tree)
-            .render_data(Some(&data.content_quote_card.render_data))
-            .lines(100)
-            .iter()
-            .map(line_text)
-            .collect::<Vec<_>>()
-            .join(" ");
-        assert!(lines.contains("quote 276d69"), "{lines}");
-        assert!(lines.contains("276d69"), "{lines}");
-        assert!(!lines.contains("Quoted event body"), "{lines}");
-    }
-
-    // Embed-envelope projection tests live in `embed_host::tests` now —
-    // they exercise the snapshot → ClaimedEventDto → EmbedKindProjection
-    // dispatch (the same path the renderer takes), not a static field on
-    // `ContentExample` (which no longer exists). The renderer's
-    // `embedded_events(...)` is sourced from `EmbedFrameContext`, not from
-    // `ContentExample`.
-}
+mod tests;

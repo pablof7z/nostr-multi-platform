@@ -44,6 +44,8 @@ uint32_t nmp_gallery_kernel_set_storage_path(void *app, const char *path);
 // D8: fire-and-forget; the actor processes commands asynchronously.
 void nmp_gallery_kernel_resolve_profile_ref(void *app, const char *key,
                                             const char *consumer_id);
+void nmp_gallery_kernel_resolve_profile_card(void *app, const char *key,
+                                             const char *consumer_id);
 void nmp_gallery_kernel_release_profile_ref(void *app, const char *key,
                                             const char *consumer_id);
 void nmp_gallery_kernel_resolve_event_embed_with_metadata(void *app, const char *key,

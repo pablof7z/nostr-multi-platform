@@ -51,7 +51,7 @@ struct DirectComponentView: View {
         case "user-npub":
             UserNpubPage(profile: model.bestEffortProfile)
         case "user-card":
-            UserCardPage(profile: model.bestEffortProfile)
+            UserCardPage(pubkey: SHOWCASE_PUBKEY_HEX, profile: model.bestEffortProfile)
         case "content-core":
             ContentCorePage()
         case "content-view":

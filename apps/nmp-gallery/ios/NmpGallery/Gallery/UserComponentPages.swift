@@ -22,6 +22,25 @@ private struct PageFrame<Content: View>: View {
     }
 }
 
+private struct ProfileCardClaim: View {
+    let pubkey: String
+    let consumerID: String
+    @Environment(GalleryModel.self) private var model
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .task(id: pubkey) {
+                await MainActor.run {
+                    model.resolveProfileCard(pubkey: pubkey, consumerID: consumerID)
+                }
+            }
+            .onDisappear {
+                model.releaseProfileRef(pubkey: pubkey, consumerID: consumerID)
+            }
+    }
+}
+
 // MARK: - user-avatar
 
 /// Renders the avatar component from only a pubkey.
@@ -89,25 +108,19 @@ struct UserProfileNamePage: View {
 
 // MARK: - user-nip05
 
-/// Renders the NIP-05 badge component using the best-effort profile.
-///
 /// Renders the NIP-05 badge component using the relay-backed profile.
 ///
-/// Includes a `NostrAvatar` to own the profile claim — same lifecycle
-/// pattern as `UserProfileNamePage`. The failable initializer returns nil
-/// when no NIP-05 is present on the profile, which is the correct
-/// degraded state, not a loading state.
+/// Claims a full profile-card projection because the badge reads fields
+/// beyond the ref/avatar shape. The failable initializer returns nil when
+/// no NIP-05 is present on the profile, which is the correct degraded state,
+/// not a loading state.
 struct UserNip05Page: View {
     let pubkey: String
     @Environment(GalleryModel.self) private var model
 
     var body: some View {
         VStack(spacing: 16) {
-            // NostrAvatar owns the profile claim for this page.
-            NostrAvatar(pubkey: pubkey, size: 0)
-                .equatable()
-                .frame(width: 0, height: 0)
-                .clipped()
+            ProfileCardClaim(pubkey: pubkey, consumerID: "swiftui/user-nip05")
             PageFrame(caption: "NostrNip05Badge(profile:)") {
                 if let badge = NostrNip05Badge(profile: model.bestEffortProfile) {
                     badge
@@ -165,10 +178,12 @@ struct UserNpubPage: View {
 /// the first frame (identicon + truncated npub, no badge) and upgrades
 /// in place when kind:0 arrives.
 struct UserCardPage: View {
+    let pubkey: String
     let profile: ProfileWire
 
     var body: some View {
         VStack(spacing: 16) {
+            ProfileCardClaim(pubkey: pubkey, consumerID: "swiftui/user-card")
             PageFrame(caption: "NostrUserCard(profile:)") {
                 NostrUserCard(profile: profile)
             }

@@ -134,6 +134,10 @@ class GalleryModel : ViewModel() {
         bridge.resolveProfileRef(pubkey, consumerId)
     }
 
+    fun resolveProfileCard(pubkey: String, consumerId: String = CONSUMER_ID) {
+        bridge.resolveProfileCard(pubkey, consumerId)
+    }
+
     fun releaseProfileRef(pubkey: String, consumerId: String = CONSUMER_ID) {
         bridge.releaseProfileRef(pubkey, consumerId)
     }

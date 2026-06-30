@@ -402,6 +402,12 @@ final class GalleryModel: NostrProfileHost {
         kernel.resolveProfileRef(pubkey: pubkey, consumerID: consumerID)
     }
 
+    /// Demand the full profile-card projection for mounted components that
+    /// render fields outside the avatar/name subset.
+    func resolveProfileCard(pubkey: String, consumerID: String) {
+        kernel.resolveProfileCard(pubkey: pubkey, consumerID: consumerID)
+    }
+
     /// NostrProfileHost: release a component's profile interest on unmount.
     func releaseProfileRef(pubkey: String, consumerID: String) {
         kernel.releaseProfileRef(pubkey: pubkey, consumerID: consumerID)

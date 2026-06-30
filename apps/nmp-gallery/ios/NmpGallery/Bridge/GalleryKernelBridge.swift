@@ -114,15 +114,23 @@ final class GalleryKernelHandle {
     // ── Profile resolution (ADR-0063 #1671) ──────────────────────────────
 
     /// Resolve a visible profile reference for `pubkey` through
-    /// `nmp_gallery_kernel_resolve_profile_ref` (ADR-0063 #1671). The registry widgets call
-    /// this on mount; the resolved kind:0 flows back through `refs.profile`.
-    /// Origin-blind: every
-    /// visible author resolves at `profile.ref` / `CacheOk` (the gallery renders
-    /// only inline avatars/names, never an open-profile pane).
+    /// `nmp_gallery_kernel_resolve_profile_ref` (ADR-0063 #1671). Use for
+    /// avatar/name-only components; the resolved kind:0 flows back through
+    /// `refs.profile`.
     func resolveProfileRef(pubkey: String, consumerID: String) {
         pubkey.withCString { pkPtr in
             consumerID.withCString { cidPtr in
                 nmp_gallery_kernel_resolve_profile_ref(raw, pkPtr, cidPtr)
+            }
+        }
+    }
+
+    /// Resolve the full profile-card shape for components that render wide
+    /// fields such as NIP-05/about. Still CacheOk and fire-and-forget.
+    func resolveProfileCard(pubkey: String, consumerID: String) {
+        pubkey.withCString { pkPtr in
+            consumerID.withCString { cidPtr in
+                nmp_gallery_kernel_resolve_profile_card(raw, pkPtr, cidPtr)
             }
         }
     }
