@@ -1,20 +1,22 @@
 import { Show, createEffect, createMemo, createSignal, onCleanup, type JSX } from "solid-js";
-import { NmpComponentHostProvider } from "@nmp/components-web/src/component-host/NmpComponentHostProvider";
-import { NostrAvatar } from "@nmp/components-web/src/user-avatar/NostrAvatar";
-import { NostrProfileName } from "@nmp/components-web/src/user-name/NostrProfileName";
-import { NostrNip05Badge } from "@nmp/components-web/src/user-nip05/NostrNip05Badge";
-import { NostrUserCard } from "@nmp/components-web/src/user-card/NostrUserCard";
-import { NostrRelayList } from "@nmp/components-web/src/relay-list/NostrRelayList";
-import { NostrLoginBlock } from "@nmp/components-web/src/login-block/NostrLoginBlock";
-import { NostrContentView } from "@nmp/components-web/src/content-view/NostrContentView";
-import { NostrMinimalContentView } from "@nmp/components-web/src/content-minimal/NostrMinimalContentView";
-import { NostrMentionChip } from "@nmp/components-web/src/content-mention-chip/NostrMentionChip";
-import { NostrMediaGrid } from "@nmp/components-web/src/content-media-grid/NostrMediaGrid";
-import { NostrArticleCard } from "@nmp/components-web/src/content-kind-30023/NostrArticleCard";
-import { NostrHighlightCard } from "@nmp/components-web/src/content-kind-9802/NostrHighlightCard";
-import { NostrQuoteCard } from "@nmp/components-web/src/content-quote-card/NostrQuoteCard";
-import { NostrEmbeddedEvent } from "@nmp/components-web/src/content-kind-registry/NostrKindRegistry";
-import { NostrNpubChip } from "@nmp/components-web/src/user-npub/NostrNpubChip";
+import {
+  NmpComponentHostProvider,
+  NostrArticleCard,
+  NostrAvatar,
+  NostrContentView,
+  NostrEmbeddedEvent,
+  NostrHighlightCard,
+  NostrLoginBlock,
+  NostrMediaGrid,
+  NostrMentionChip,
+  NostrMinimalContentView,
+  NostrNip05Badge,
+  NostrNpubChip,
+  NostrProfileName,
+  NostrQuoteCard,
+  NostrRelayList,
+  NostrUserCard,
+} from "@nmp/components-web";
 import {
   Resolving,
   Section,

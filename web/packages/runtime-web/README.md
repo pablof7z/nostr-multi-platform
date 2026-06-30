@@ -11,6 +11,8 @@ This package provides generic TypeScript glue for the worker-based ABI surface:
 - **WasmBridge** — FlatBuffers decoder + worker message router.
 - **DegradedRuntime** — fallback message handler when the wasm bridge is unavailable.
 - **Worker shim** — postMessage client that routes requests/responses between main thread and worker.
+- **Packaged wasm asset** — the `nmp-browser-runtime` wasm-bindgen output staged
+  into `dist/wasm` during package build.
 
 No Nostr protocol, signing, or routing policy is implemented here. All such
 logic lives in Rust (`nmp-browser-runtime` and lower NMP crates).
@@ -19,7 +21,16 @@ logic lives in Rust (`nmp-browser-runtime` and lower NMP crates).
 
 The web worker loads this package and instantiates a `WasmBridge` or `DegradedRuntime` to handle incoming `WorkerRequest` messages and emit `WorkerEvent` responses.
 
-Main thread code should not import from this package directly; instead, use the browser runtime's public host API.
+Split web apps import the worker as a package subpath:
+
+```ts
+const worker = new Worker(new URL("@nmp/runtime-web/worker", import.meta.url), {
+  type: "module",
+});
+```
+
+They should not copy `web/packages/runtime-web` or manually stage
+`/public/nmp-browser-runtime`; the package build owns that artifact.
 
 ## Product Rule
 
@@ -32,4 +43,4 @@ Example violations:
 
 This rule ensures that every UI control has a corresponding Rust/NMP action owner and cannot drift from the kernel's actual capabilities or event-format evolution. UI-only controls are forbidden.
 
-See #2038 (nmp-browser-runtime Rust crate rebuild) for the path to restore web product enforcement of this rule.
+See `docs/wasm-surface.md` for the browser runtime ABI contract.

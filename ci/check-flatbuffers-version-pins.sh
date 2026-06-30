@@ -62,6 +62,7 @@ no_stale_kotlin_gradle_pin "apps/nmp-gallery/android/app/build.gradle.kts"
 # Web/TypeScript — every package.json that pins flatbuffers + the lockfile.
 require_line "web/nmp-gallery/package.json" "\"flatbuffers\": \"^${FLATC_PIN_TS}\""
 require_line "web/packages/runtime-web/package.json" "\"flatbuffers\": \"^${FLATC_PIN_TS}\""
+require_line "web/packages/components-web/package.json" "\"flatbuffers\": \"^${FLATC_PIN_TS}\""
 # The lockfile is npm-derived from those manifests. It MUST exist and be
 # readable (a missing lockfile is a drifted surface, not a pass), and it MUST
 # resolve the `node_modules/flatbuffers` package to the TS pin. Read it via

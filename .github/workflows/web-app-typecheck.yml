@@ -1,11 +1,7 @@
 name: web-app-typecheck
 
-# Runs tsc --noEmit on all web app packages that carry TypeScript source.
-# This is the CI gate that catches app-TS type errors before they reach
-# the main branch (closes the false-green class surfaced by #1830).
-#
-# Jobs intentionally do NOT build the wasm artifact — they only need the
-# TypeScript compiler, which works on the stub types shipped in node_modules.
+# Runs tsc --noEmit on all web packages that carry TypeScript source and proves
+# public NMP web packages through an outside-workspace tarball consumer smoke.
 
 on:
   push:
@@ -20,8 +16,8 @@ on:
       - "web/**"
 
 jobs:
-  typecheck-nmp-gallery:
-    name: typecheck nmp-gallery
+  typecheck-web-workspaces:
+    name: typecheck web workspaces
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -35,8 +31,69 @@ jobs:
 
       - name: Install web dependencies
         run: npm ci
-        working-directory: web/nmp-gallery
+        working-directory: web
+
+      - name: Typecheck runtime-web
+        run: npm run typecheck --workspace @nmp/runtime-web
+        working-directory: web
+
+      - name: Typecheck components-web
+        run: npm run typecheck --workspace @nmp/components-web
+        working-directory: web
+
+      - name: Build runtime-web TypeScript package surface
+        run: npm run build:ts --workspace @nmp/runtime-web
+        working-directory: web
+
+      - name: Build components-web package surface
+        run: npm run build --workspace @nmp/components-web
+        working-directory: web
 
       - name: Typecheck nmp-gallery
-        run: npm run typecheck
-        working-directory: web/nmp-gallery
+        run: npm run typecheck --workspace @nmp/gallery-web
+        working-directory: web
+
+      - name: Typecheck registry
+        run: npm run typecheck --workspace @nmp/registry-web
+        working-directory: web
+
+  web-package-consumer-smoke:
+    name: web package consumer smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-web-package-smoke-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-web-package-smoke-
+
+      - name: Install wasm-pack
+        run: if ! command -v wasm-pack >/dev/null 2>&1; then cargo install wasm-pack --locked; fi
+
+      - name: Install wasm C toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld llvm
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Pack and consume public web packages
+        env:
+          CC_wasm32_unknown_unknown: clang
+          AR_wasm32_unknown_unknown: llvm-ar
+        run: bash ci/check-web-package-consumer-smoke.sh

@@ -1,12 +1,12 @@
 import type { PlatformImpl } from "./types";
 
-import nostrAvatarWeb from "@nmp/components-web/src/user-avatar/NostrAvatar.tsx?raw";
-import nostrProfileHostWeb from "@nmp/components-web/src/user-avatar/NostrProfileHost.tsx?raw";
-import profileWireWeb from "@nmp/components-web/src/user-avatar/ProfileWire.ts?raw";
-import nostrUserCardWeb from "@nmp/components-web/src/user-card/NostrUserCard.tsx?raw";
-import nostrProfileNameWeb from "@nmp/components-web/src/user-name/NostrProfileName.tsx?raw";
-import nostrNip05BadgeWeb from "@nmp/components-web/src/user-nip05/NostrNip05Badge.tsx?raw";
-import nostrNpubChipWeb from "@nmp/components-web/src/user-npub/NostrNpubChip.tsx?raw";
+import nostrAvatarWeb from "../../../packages/components-web/src/user-avatar/NostrAvatar.tsx?raw";
+import nostrProfileHostWeb from "../../../packages/components-web/src/user-avatar/NostrProfileHost.tsx?raw";
+import profileWireWeb from "../../../packages/components-web/src/user-avatar/ProfileWire.ts?raw";
+import nostrUserCardWeb from "../../../packages/components-web/src/user-card/NostrUserCard.tsx?raw";
+import nostrProfileNameWeb from "../../../packages/components-web/src/user-name/NostrProfileName.tsx?raw";
+import nostrNip05BadgeWeb from "../../../packages/components-web/src/user-nip05/NostrNip05Badge.tsx?raw";
+import nostrNpubChipWeb from "../../../packages/components-web/src/user-npub/NostrNpubChip.tsx?raw";
 
 export const webUserCore: PlatformImpl = {
   status: "stable",

@@ -16,12 +16,7 @@
     "noEmit": true,
     "jsx": "preserve",
     "jsxImportSource": "solid-js",
-    "types": ["node", "vite/client"],
-    "paths": {
-      "@nmp/components-web/src/*": ["../packages/components-web/src/*"],
-      "@nmp/runtime-web": ["../packages/runtime-web/src/index.ts"],
-      "@nmp/runtime-web/worker": ["../packages/runtime-web/src/worker.ts"]
-    }
+    "types": ["node", "vite/client"]
   },
   "include": ["src"]
 }

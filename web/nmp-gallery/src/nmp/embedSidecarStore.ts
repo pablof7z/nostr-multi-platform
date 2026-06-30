@@ -13,7 +13,7 @@ import type {
   EmbeddedEventModel,
   EmbedKindProjection,
   WireNode,
-} from "@nmp/components-web/src/content-kind-registry/NostrKindRegistry";
+} from "@nmp/components-web/content-kind-registry";
 
 export const EMBED_SIDECAR_KEY = "refs.event.envelopes";
 export const NEMB_FILE_IDENTIFIER = "NEMB";
