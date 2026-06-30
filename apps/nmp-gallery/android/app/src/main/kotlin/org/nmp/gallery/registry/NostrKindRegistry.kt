@@ -109,7 +109,6 @@ public val DefaultShortNoteRenderer: KindRenderer = KindRenderer { projection, _
     ) {
         EmbedByline(
             authorPubkey = note.authorPubkey,
-            authorDisplayName = note.authorDisplayName,
             caption = "note",
             avatarConsumerId = "embed-note-${note.id}",
         )
@@ -135,7 +134,6 @@ public val DefaultArticleRenderer: KindRenderer = KindRenderer { projection, _ -
     ) {
         EmbedByline(
             authorPubkey = article.authorPubkey,
-            authorDisplayName = article.authorDisplayName,
             caption = "article",
             avatarConsumerId = "embed-article-${article.id}",
         )
@@ -159,7 +157,6 @@ public val DefaultHighlightRenderer: KindRenderer = KindRenderer { projection, _
     ) {
         EmbedByline(
             authorPubkey = highlight.authorPubkey,
-            authorDisplayName = highlight.authorDisplayName,
             caption = "highlight",
             avatarConsumerId = "embed-highlight-${highlight.id}",
         )
@@ -183,7 +180,6 @@ public val DefaultProfileRenderer: KindRenderer = KindRenderer { projection, _ -
     ) {
         EmbedByline(
             authorPubkey = profile.pubkey,
-            authorDisplayName = profile.displayName,
             caption = profile.nip05?.takeIf { it.isNotEmpty() } ?: "profile",
             avatarConsumerId = "embed-profile-${profile.pubkey}",
         )
@@ -202,7 +198,6 @@ public val DefaultUnknownRenderer: KindRenderer = KindRenderer { projection, _ -
     ) {
         EmbedByline(
             authorPubkey = unknown.authorPubkey,
-            authorDisplayName = unknown.authorDisplayName,
             caption = "kind ${unknown.kind}",
             avatarConsumerId = "embed-unknown-${unknown.authorPubkey}-${unknown.kind}",
         )
@@ -215,16 +210,18 @@ public val DefaultUnknownRenderer: KindRenderer = KindRenderer { projection, _ -
 }
 
 // ---------------------------------------------------------------------------
-// Shared byline header for the default renderers (Android peer of the iOS
-// `shortHex` byline). Paints the author avatar (which self-claims the kind:0
-// via the profile host wired into `compose/user-avatar`) plus a display label
-// and a kind/time caption.
+// Shared byline header for the default renderers. Paints the author avatar
+// (which self-claims the kind:0 via the profile host wired into
+// `compose/user-avatar`) plus a reactively-resolved display label (via
+// `NostrProfileName`, which self-claims the kind:0 through the profile host)
+// and a kind/time caption. The byline carries only the raw author pubkey —
+// the display name joins reactively at presentation time, never from the
+// projection.
 // ---------------------------------------------------------------------------
 
 @Composable
 internal fun EmbedByline(
     authorPubkey: String,
-    authorDisplayName: String?,
     caption: String,
     avatarConsumerId: String,
 ) {
@@ -238,10 +235,10 @@ internal fun EmbedByline(
         )
         androidx.compose.foundation.layout.Spacer(Modifier.padding(start = 8.dp))
         Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-            Text(
-                authorDisplayName?.takeIf { it.isNotEmpty() } ?: shortHex(authorPubkey),
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Bold,
+            NostrProfileName(
+                pubkey = authorPubkey,
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                consumerId = "$avatarConsumerId-name",
             )
             Text(
                 caption,
@@ -250,10 +247,4 @@ internal fun EmbedByline(
             )
         }
     }
-}
-
-/** Truncate a hex pubkey/event-id for display. Mirrors iOS `shortHex`. */
-internal fun shortHex(value: String): String {
-    if (value.length <= 16) return value.ifEmpty { "unknown" }
-    return "${value.take(8)}…${value.takeLast(8)}"
 }

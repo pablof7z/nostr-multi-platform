@@ -42,8 +42,6 @@ extension EmbedKindProjection: Decodable {
 public struct ShortNoteProjection: Equatable, Decodable, Sendable {
     public let id: String
     public let authorPubkey: String
-    public let authorDisplayName: String?
-    public let authorPictureUrl: String?
     public let createdAt: UInt64
     /// Plain-text fallback for the content body. The Swift mirror does NOT
     /// re-implement the Rust content tokenizer; renderers read `content` as a
@@ -55,22 +53,18 @@ public struct ShortNoteProjection: Equatable, Decodable, Sendable {
     /// camelCase JSON (`authorPubkey`, `createdAt`, …) maps directly to the
     /// Swift camelCase properties without the strategy lowercasing them.
     public enum CodingKeys: String, CodingKey {
-        case id, authorPubkey, authorDisplayName, authorPictureUrl, createdAt, content, mediaUrls
+        case id, authorPubkey, createdAt, content, mediaUrls
     }
 
     public init(
         id: String,
         authorPubkey: String,
-        authorDisplayName: String? = nil,
-        authorPictureUrl: String? = nil,
         createdAt: UInt64 = 0,
         content: String = "",
         mediaUrls: [String] = []
     ) {
         self.id = id
         self.authorPubkey = authorPubkey
-        self.authorDisplayName = authorDisplayName
-        self.authorPictureUrl = authorPictureUrl
         self.createdAt = createdAt
         self.content = content
         self.mediaUrls = mediaUrls
@@ -81,8 +75,6 @@ public struct ShortNoteProjection: Equatable, Decodable, Sendable {
 public struct ArticleProjection: Equatable, Decodable, Sendable {
     public let id: String
     public let authorPubkey: String
-    public let authorDisplayName: String?
-    public let authorPictureUrl: String?
     public let createdAt: UInt64
     public let title: String?
     public let summary: String?
@@ -93,15 +85,13 @@ public struct ArticleProjection: Equatable, Decodable, Sendable {
     public let content: String
 
     public enum CodingKeys: String, CodingKey {
-        case id, authorPubkey, authorDisplayName, authorPictureUrl, createdAt
+        case id, authorPubkey, createdAt
         case title, summary, heroImageUrl, dTag, content
     }
 
     public init(
         id: String,
         authorPubkey: String,
-        authorDisplayName: String? = nil,
-        authorPictureUrl: String? = nil,
         createdAt: UInt64 = 0,
         title: String? = nil,
         summary: String? = nil,
@@ -111,8 +101,6 @@ public struct ArticleProjection: Equatable, Decodable, Sendable {
     ) {
         self.id = id
         self.authorPubkey = authorPubkey
-        self.authorDisplayName = authorDisplayName
-        self.authorPictureUrl = authorPictureUrl
         self.createdAt = createdAt
         self.title = title
         self.summary = summary
@@ -126,7 +114,6 @@ public struct ArticleProjection: Equatable, Decodable, Sendable {
 public struct HighlightProjection: Equatable, Decodable, Sendable {
     public let id: String
     public let authorPubkey: String
-    public let authorDisplayName: String?
     public let createdAt: UInt64
     public let highlightedText: String
     public let sourceEventId: String?
@@ -135,14 +122,13 @@ public struct HighlightProjection: Equatable, Decodable, Sendable {
     public let context: String?
 
     public enum CodingKeys: String, CodingKey {
-        case id, authorPubkey, authorDisplayName, createdAt
+        case id, authorPubkey, createdAt
         case highlightedText, sourceEventId, sourceEventAddr, sourceUrl, context
     }
 
     public init(
         id: String,
         authorPubkey: String,
-        authorDisplayName: String? = nil,
         createdAt: UInt64 = 0,
         highlightedText: String = "",
         sourceEventId: String? = nil,
@@ -152,7 +138,6 @@ public struct HighlightProjection: Equatable, Decodable, Sendable {
     ) {
         self.id = id
         self.authorPubkey = authorPubkey
-        self.authorDisplayName = authorDisplayName
         self.createdAt = createdAt
         self.highlightedText = highlightedText
         self.sourceEventId = sourceEventId
@@ -199,22 +184,18 @@ public struct ProfileProjection: Equatable, Decodable, Sendable {
 public struct UnknownProjection: Equatable, Decodable, Sendable {
     public let kind: UInt32
     public let authorPubkey: String
-    public let authorDisplayName: String?
-    public let authorPictureUrl: String?
     public let createdAt: UInt64
     public let content: String
     public let tags: [[String]]
     public let altText: String?
 
     public enum CodingKeys: String, CodingKey {
-        case kind, authorPubkey, authorDisplayName, authorPictureUrl, createdAt, content, tags, altText
+        case kind, authorPubkey, createdAt, content, tags, altText
     }
 
     public init(
         kind: UInt32,
         authorPubkey: String,
-        authorDisplayName: String? = nil,
-        authorPictureUrl: String? = nil,
         createdAt: UInt64 = 0,
         content: String = "",
         tags: [[String]] = [],
@@ -222,8 +203,6 @@ public struct UnknownProjection: Equatable, Decodable, Sendable {
     ) {
         self.kind = kind
         self.authorPubkey = authorPubkey
-        self.authorDisplayName = authorDisplayName
-        self.authorPictureUrl = authorPictureUrl
         self.createdAt = createdAt
         self.content = content
         self.tags = tags

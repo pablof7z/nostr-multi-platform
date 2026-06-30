@@ -79,7 +79,7 @@ export const embedComponents: Component[] = [
         screenshots: ["tui-embed-article.png", "tui-embed-article-preview.png"],
         customization: [
           "Replace `DefaultArticleRenderer` by registering your own `KindRenderer` for `ArticleProjection` — the default lives inline in `nostr_kind_registry.rs` for easy copy-paste editing.",
-          "Author byline pulls `author_display_name` straight from `ArticleProjection`; the Rust kernel resolves kind:0 enrichment before the snapshot reaches the TUI.",
+          "Author byline resolves the display name reactively from the projection's raw `author_pubkey` via component-owned kind:0 claiming (display separation #2514) — `ArticleProjection` no longer carries a static `author_display_name`.",
         ],
       },
       desktop: {

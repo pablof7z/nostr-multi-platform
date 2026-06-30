@@ -32,8 +32,6 @@ private fun ResolvedEventEnvelopeWire.componentProjection(): EmbedKindProjection
             shortNote = ShortNoteProjection(
                 id = projectionString("id") ?: primaryId,
                 authorPubkey = projectionString("authorPubkey").orEmpty(),
-                authorDisplayName = projectionString("authorDisplayName"),
-                authorPictureUrl = projectionString("authorPictureUrl"),
                 createdAt = projectionLong("createdAt") ?: 0,
                 content = (projectionString("content") ?: projectionContentText()).orEmpty(),
                 mediaUrls = projectionStrings("mediaUrls"),
@@ -43,8 +41,6 @@ private fun ResolvedEventEnvelopeWire.componentProjection(): EmbedKindProjection
             article = ArticleProjection(
                 id = projectionString("id") ?: primaryId,
                 authorPubkey = projectionString("authorPubkey").orEmpty(),
-                authorDisplayName = projectionString("authorDisplayName"),
-                authorPictureUrl = projectionString("authorPictureUrl"),
                 createdAt = projectionLong("createdAt") ?: 0,
                 title = projectionString("title"),
                 summary = projectionString("summary"),
@@ -57,7 +53,6 @@ private fun ResolvedEventEnvelopeWire.componentProjection(): EmbedKindProjection
             highlight = HighlightProjection(
                 id = projectionString("id") ?: primaryId,
                 authorPubkey = projectionString("authorPubkey").orEmpty(),
-                authorDisplayName = projectionString("authorDisplayName"),
                 createdAt = projectionLong("createdAt") ?: 0,
                 highlightedText = projectionString("highlightedText").orEmpty(),
                 sourceEventId = projectionString("sourceEventId"),
@@ -81,8 +76,6 @@ private fun ResolvedEventEnvelopeWire.componentProjection(): EmbedKindProjection
             unknown = UnknownProjection(
                 kind = projectionLong("kind")?.toInt() ?: 0,
                 authorPubkey = projectionString("authorPubkey").orEmpty(),
-                authorDisplayName = projectionString("authorDisplayName"),
-                authorPictureUrl = projectionString("authorPictureUrl"),
                 createdAt = projectionLong("createdAt") ?: 0,
                 content = (projectionString("content") ?: projectionContentText()).orEmpty(),
                 tags = emptyList(),
