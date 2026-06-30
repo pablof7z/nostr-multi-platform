@@ -99,12 +99,14 @@ the ownership." Pick *one* such rule and document it in your `lib.rs`.
 ```rust
 // Called from an app-core composition root during init.
 pub fn register_actions(app: &mut impl AppHost) {
-    app.register_action(PostChatMessageAction);
-    app.register_action(ReactInGroupAction);
+    // The SOLE kind-agnostic write surface; per-kind events (kind:7 reactions,
+    // kind:16 reposts, …) are built by their owning NIP/app and routed through
+    // this envelope — NIP-29 never names a kind.
+    app.register_action(PublishGroupEventAction);
     app.register_action(CreatePublicGroupAction);
     app.register_action(DiscoverGroupsAction);
     app.register_action(JoinGroupAction);
-    // … 10 more ActionModules
+    // … more ActionModules
 }
 
 // Called separately after the read model is constructed.

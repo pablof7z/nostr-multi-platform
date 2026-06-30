@@ -31,8 +31,7 @@ use nmp_core::substrate::{ActionRegistrar, RegistrationError, SnapshotProjection
 
 use crate::action::{
     CreateInviteAction, CreatePublicGroupAction, DiscoverGroupsAction, EditMetadataAction,
-    JoinGroupAction, LeaveGroupAction, PublishGroupEventAction, PutUserAction, ReactInGroupAction,
-    RepostInGroupAction, SetParentAction, ShareEventInGroupAction, UnreactInGroupAction,
+    JoinGroupAction, LeaveGroupAction, PublishGroupEventAction, PutUserAction, SetParentAction,
 };
 use crate::projection::{GroupDefaultsProjection, GroupDefaultsSnapshot};
 
@@ -95,11 +94,10 @@ pub fn wire_group_defaults_with_snapshot(
 /// Register the NIP-29 action namespaces against `app`'s action registry.
 ///
 /// Binds the typed [`ActionModule`](nmp_core::substrate::ActionModule) impls for:
-/// - `nmp.nip29.publish_group_event`
-/// - `nmp.nip29.react_in_group`
-/// - `nmp.nip29.unreact_in_group`
-/// - `nmp.nip29.share_event_in_group`
-/// - `nmp.nip29.repost_in_group`
+/// - `nmp.nip29.publish_group_event` — the SOLE kind-agnostic write surface;
+///   per-kind events (kind:7 reactions via `nmp-nip25`, kind:16 reposts via
+///   `nmp-nip18`, kind:11/other via the app) are built upstream and routed
+///   through this generic envelope (#2513, codifying #2504/#2505).
 /// - `nmp.nip29.create_public_group`
 /// - `nmp.nip29.discover`
 /// - `nmp.nip29.join`
@@ -128,10 +126,6 @@ pub fn wire_group_defaults_with_snapshot(
 /// A collision means two init calls for the same app — the caller's bug.
 pub fn register_actions(app: &mut impl ActionRegistrar) -> Result<(), RegistrationError> {
     app.register_action(PublishGroupEventAction)?;
-    app.register_action(ReactInGroupAction)?;
-    app.register_action(UnreactInGroupAction)?;
-    app.register_action(ShareEventInGroupAction)?;
-    app.register_action(RepostInGroupAction)?;
     app.register_action(CreatePublicGroupAction)?;
     app.register_action(DiscoverGroupsAction)?;
     app.register_action(JoinGroupAction)?;

@@ -89,10 +89,11 @@ fn previous_prefixes_from_context(
 /// group: the caller's tags, plus the injected `["h", local_id]` envelope tag
 /// and the `["previous", …]` timeline references read from the store cache.
 ///
-/// This is the single NIP-29 publish route; every group-publishing action
-/// (`publish_group_event`, `react_in_group`, `share_event_in_group`,
-/// `repost_in_group`) flows through it so the envelope is built in exactly one
-/// place.
+/// This is the single NIP-29 publish route: the sole `publish_group_event`
+/// write surface flows through it so the envelope is built in exactly one
+/// place. Per-kind events (kind:7 reactions, kind:16 reposts, kind:11/other
+/// content) are constructed by their owning NIP/app layer and handed to this
+/// generic surface — NIP-29 never names a kind (#2513).
 pub(crate) fn group_publish_plan(
     ctx: &ActionContext,
     group: &GroupId,
