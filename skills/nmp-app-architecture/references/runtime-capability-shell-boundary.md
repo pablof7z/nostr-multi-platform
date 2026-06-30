@@ -11,10 +11,10 @@
 | `nmp-native-runtime` | Native platform runtime adapter | `NmpApp`, `NmpAppBuilder` typestate, actor thread, native session registries |
 | `nmp-uniffi` | Public native binding surface | UniFFI export of `nmp-native-runtime`; no policy, routing, or signing |
 | `nmp-browser-runtime` | Browser runtime adapter | Worker, OPFS init, `wasm-bindgen` ABI (`::wasm`) |
-| `nmp-defaults` | Layer-5 composition library | `AppHost` registration; NOT a runtime; no lifecycle handle |
+| Owner-crate installers | Explicit composition surface | `AppHost` registration; NOT a runtime; no lifecycle handle |
 
-`nmp-wasm` is deleted; `nmp-browser-runtime::wasm` is the sole browser ABI. `nmp-defaults`
-acquiring an actor-thread lifecycle or runtime handle is a violation.
+`nmp-wasm` is deleted; `nmp-browser-runtime::wasm` is the sole browser ABI. Any composition
+installer acquiring an actor-thread lifecycle or runtime handle is a violation.
 
 ## A Shell Does Exactly Three Things
 
@@ -118,7 +118,7 @@ product success. Gate: `crates/nmp-browser-runtime-conformance/src/lib.rs`.
 - Browser durable mode claimed without real Worker/OPFS proof.
 - Signer implementation bypasses `RemoteSignerHandle` for a sign verb (V-78).
 - Per-op deadline uses the active account instead of the named signing account.
-- `nmp-defaults` acquires actor-thread lifecycle or a runtime handle.
+- A composition installer acquires actor-thread lifecycle or a runtime handle.
 
 ## Who Owns What
 
@@ -127,7 +127,7 @@ product success. Gate: `crates/nmp-browser-runtime-conformance/src/lib.rs`.
 | Actor thread lifecycle | `nmp-native-runtime` |
 | Native host binding | `nmp-uniffi` |
 | Browser Worker + OPFS | `nmp-browser-runtime` |
-| Generic NMP composition | `nmp-defaults` |
+| Generic NMP composition | App root calling `nmp_substrate::install(...)` plus owner-crate installers |
 | OS capability execution | Native shell (capability bridge) |
 | Capability result policy | Rust (actor dispatch arm) |
 | Signer backend selection | Rust (`RemoteSignerHandle`) |

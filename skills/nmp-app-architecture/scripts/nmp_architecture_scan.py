@@ -167,7 +167,7 @@ def is_app_code(rel: str) -> bool:
     """App-layer code: anything that is not a shared NMP framework crate.
 
     True for app roots under apps/ and for external consumer repos (whose code
-    never lives under crates/nmp-). This is where register_defaults and raw read
+    never lives under crates/nmp-). This is where deleted defaults aggregates and raw read
     surfaces are violations.
     """
     return not is_framework_crate(rel)
@@ -185,7 +185,6 @@ def is_sub_l5_framework_crate(rel: str) -> bool:
             "nmp-uniffi",
             "nmp-native-runtime",
             "nmp-browser-runtime",
-            "nmp-defaults",
             "nmp-cli",
             "nmp-codegen",
             "nmp-testing",
@@ -337,7 +336,7 @@ RULES = [
         "ADR-0069/no-register-defaults",
         re.compile(r"(?<!fn )\bregister_defaults\s*\("),
         "register_defaults() is killed as a production app path (ADR-0069). Compose explicitly: "
-        "register_substrate() + named protocol installers. A preset needs a named owner + deletion gate.",
+        "nmp_substrate::install(...) + named owner-crate protocol installers. Do not recreate a preset.",
         {".rs"},
         is_app_code,
     ),

@@ -31,9 +31,10 @@ use browser/wasm as a reason to retain legacy native C symbols.
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-`nmp-defaults` is pure Layer-5 composition (`AppHost` registration). It has no platform
-runtime handle, no C ABI, no lifecycle, and must remain usable by both native and browser
-runtimes. See `composition-and-product-policy.md`.
+Composition is owner-local: app roots call `nmp_substrate::install(...)` plus named
+protocol/runtime installers from the crates that own those mechanisms. This composition has no
+platform runtime handle, no C ABI, and no lifecycle. See
+`composition-and-product-policy.md`.
 
 ## UniFFI Is the Sole Public Native ABI
 
@@ -153,6 +154,7 @@ Worker/OPFS init before product start — silent in-memory fallback is not produ
 - `uniffi::setup_scaffolding!()` appears exactly once per linked cdylib — in `nmp-uniffi` for
   framework-only apps, or in the app facade crate for apps with app-specific verbs.
 - `nmp-uniffi-support` shares Rust mechanics; it never exports UniFFI types directly.
-- `nmp-defaults` is usable by both runtimes with no dependency on either runtime crate.
+- Composition installers are Rust `AppHost` registrations; they are not native ABI or browser
+  ABI.
 - Capability bridges report raw results; Rust decides meaning (unchanged by the migration).
 - The event store, signer internals, relay watermarks, and history never cross the boundary.

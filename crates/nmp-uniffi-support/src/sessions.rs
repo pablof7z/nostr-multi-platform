@@ -48,11 +48,9 @@ pub enum FeedSessionError {
 
 /// Decode + validate + compile + register a feed session from JSON params.
 ///
-/// Uses `compile_feed_params` — the composition-root default compiler that
-/// `nmp-defaults::register_op_feed_defaults` and all native-runtime tests use —
-/// so the open path is identical for the reusable facade and any app-owned
-/// facade. Fail-closed (D6): all failures are typed [`FeedSessionError`]; never
-/// panics.
+/// Uses `compile_feed_params` — the owner-local feed compiler used by native-runtime
+/// tests — so the open path is identical for the reusable facade and any app-owned facade.
+/// Fail-closed (D6): all failures are typed [`FeedSessionError`]; never panics.
 ///
 /// # Errors
 ///
