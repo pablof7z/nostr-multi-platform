@@ -131,17 +131,9 @@ impl ReactionProjection {
     }
 
     fn ingest_delete(&self, event: &KernelEvent) {
-        let deleted_ids = event
-            .tags
-            .iter()
-            .filter_map(|tag| {
-                if tag.first().is_some_and(|name| name == "e") {
-                    tag.get(1).cloned()
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>();
+        // Delegate `e`-tag parsing to the nmp-nip09 read seam so tag grammar
+        // interpretation is centralised in the deletion owner (ADR-0074).
+        let deleted_ids = nmp_nip09::deletion_targets(&event.tags).event_ids;
         if deleted_ids.is_empty() {
             return;
         }
