@@ -657,27 +657,6 @@ export const GeneratedActionBuilders = {
     return encodeDispatchEnvelope(correlationId, "nmp.browse_relay", payload);
   },
 
-  /** Claim or release a NIP-23 topic-articles subscription. */
-  topicArticles(
-    correlationId: string,
-    op: number,
-    topic: string,
-    consumerId: string,
-  ): Uint8Array {
-    const fbb = new flatbuffers.Builder(64);
-    const topicOffset = fbb.createString(topic);
-    const consumerIdOffset = fbb.createString(consumerId);
-    fbb.startObject(4);
-    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
-    fbb.addFieldInt8(1, op, 0); // slot 1: op
-    fbb.addFieldOffset(2, topicOffset, 0); // slot 2: topic
-    fbb.addFieldOffset(3, consumerIdOffset, 0); // slot 3: consumerId
-    const payloadRoot = fbb.endObject();
-    fbb.finish(payloadRoot, "NTPC");
-    const payload = fbb.asUint8Array();
-    return encodeDispatchEnvelope(correlationId, "nmp.app.topic_articles", payload);
-  },
-
   /** Discover NIP-29 groups hosted on a relay. */
   discoverGroups(
     correlationId: string,

@@ -7,9 +7,9 @@ use nmp_core::OutboundMessage;
 use nmp_network::role::RelayRole;
 use serde_json::json;
 
+use super::runtime_utils::encode_frame;
 use crate::payment_store::{PaymentRecord, PaymentState};
 use crate::status::WalletStatus;
-use super::runtime_utils::encode_frame;
 
 pub(super) fn wallet_disconnect_inner(
     wallet: &mut WalletRuntime,
@@ -61,9 +61,7 @@ pub(super) fn wallet_disconnect_inner(
         let mut slot = match wallet.status_slot.lock() {
             Ok(guard) => guard,
             Err(poisoned) => {
-                tracing::error!(
-                    "nwc: status_slot lock was poisoned on disconnect — recovering"
-                );
+                tracing::error!("nwc: status_slot lock was poisoned on disconnect — recovering");
                 poisoned.into_inner()
             }
         };

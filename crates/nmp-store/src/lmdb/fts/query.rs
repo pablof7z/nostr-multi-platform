@@ -88,7 +88,10 @@ fn collect_candidates(
     let mut prefix_docs: HashMap<SearchDocumentKey, u64> = HashMap::new();
     let mut budget_exhausted = false;
     let (lo, hi) = postings_prefix_bounds(query.scope, prefix);
-    let range = (Bound::Included(lo.as_slice()), Bound::Excluded(hi.as_slice()));
+    let range = (
+        Bound::Included(lo.as_slice()),
+        Bound::Excluded(hi.as_slice()),
+    );
     let prefix_disc_len = 4 + prefix.len();
     'scan: for entry in inner
         .fts_postings

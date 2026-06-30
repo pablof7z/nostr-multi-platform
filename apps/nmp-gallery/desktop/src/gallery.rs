@@ -16,11 +16,12 @@ use nmp_gallery_tui::gallery::{component_at, component_index, registry_sections,
 use nmp_gallery_tui::live::{primary_pubkey, GalleryTypedSnapshot};
 
 use crate::bridge::GalleryBridge;
-use crate::components::{embed_article::ArticleCard, gallery_misc, user_avatar::UserAvatar, user_card::UserCard, user_name::UserName, user_nip05::Nip05Badge, user_npub::NpubChip};
+use crate::components::{
+    embed_article::ArticleCard, gallery_misc, user_avatar::UserAvatar, user_card::UserCard,
+    user_name::UserName, user_nip05::Nip05Badge, user_npub::NpubChip,
+};
 
 const CONSUMER_ID: &str = "nmp-gallery-desktop.preview";
-
-// ── Palette ──────────────────────────────────────────────────────────────────
 
 const SECTION_BLUE: Color = Color {
     r: 0.490,
@@ -52,8 +53,6 @@ const DARK_BG: Color = Color {
     b: 0.118,
     a: 1.0,
 };
-
-// ── State ─────────────────────────────────────────────────────────────────────
 
 pub struct GalleryApp {
     bridge: GalleryBridge,

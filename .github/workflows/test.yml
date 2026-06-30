@@ -16,13 +16,12 @@ name: test
 #     a thin GUI shell with no tests.
 #
 # Serial-test crates (run in the `serial-crates` job with --test-threads=1):
-#   - nmp-defaults, nmp-nip29, nmp-testing : integration tests that spin up
-#     real `NmpApp` instances via `nmp_app_new`. Each test binary has a
-#     `static SERIAL: Mutex<()>` guard, but nextest runs each test binary in
-#     its own process so the mutex does not cross binary boundaries. Running
-#     these crates with --test-threads=1 serializes test execution within the
-#     nextest invocation, preventing the global-actor-thread races that
-#     caused op_feed_* failures under parallel nextest on Linux CI.
+#   - nmp-nip29, nmp-testing : integration tests that spin up real `NmpApp`
+#     instances via `nmp_app_new`. Each test binary has a `static SERIAL:
+#     Mutex<()>` guard, but nextest runs each test binary in its own process so
+#     the mutex does not cross binary boundaries. Running these crates with
+#     --test-threads=1 serializes test execution within the nextest invocation,
+#     preventing global-actor-thread races under parallel nextest on Linux CI.
 
 on:
   push:
@@ -78,7 +77,6 @@ jobs:
         run: |
           cargo nextest run --workspace --no-fail-fast \
             --exclude nmp-gallery-desktop \
-            --exclude nmp-defaults \
             --exclude nmp-nip29 \
             --exclude nmp-testing
 
@@ -120,7 +118,6 @@ jobs:
       - name: cargo nextest (serial NmpApp crates)
         run: |
           cargo nextest run --no-fail-fast --test-threads=1 \
-            -p nmp-defaults \
             -p nmp-nip29 \
             -p nmp-testing
 

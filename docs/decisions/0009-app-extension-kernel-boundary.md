@@ -9,8 +9,12 @@
 contains reusable Nostr substrate, app/product logic belongs in app Rust crates,
 and shells render plus execute capabilities. ADR-0069 replaces the
 defaults-era composition wording below: production apps use explicit feature
-composition, and `nmp-defaults::register_defaults` is not the production app
+composition, and the deleted defaults bundle is not production app
 architecture.
+
+**Supersession note (2026-06-30):** the defaults bundle is deleted. Current
+composition guidance lives in `docs/architecture/crate-boundaries.md` §9 and
+uses `nmp-substrate` plus explicit protocol/app installers.
 
 ## Context
 
@@ -67,7 +71,7 @@ the product concept to the app's Rust core.
 - The kernel stays reusable and app-agnostic.
 - Social-client behavior is implemented through protocol/defaults/app modules,
   not as hard-coded kernel view kinds.
-- External consumers compose NMP through `nmp-defaults` and a platform runtime
+- External consumers compose NMP through `explicit composition` and a platform runtime
   builder, then add their own Rust-owned modules.
 - Future apps prove the boundary by adding app crates or protocol crates, not by
   growing `nmp-core`.

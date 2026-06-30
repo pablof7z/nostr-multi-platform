@@ -103,7 +103,11 @@ fn member_and_admin_merge_into_one_row_without_duplicate_roles() {
         vec![d_tag(GROUP), p_tag(&p, &["king"])],
     ));
     let snap = proj.snapshot();
-    assert_eq!(snap.members.len(), 1, "same pubkey must collapse to one row");
+    assert_eq!(
+        snap.members.len(),
+        1,
+        "same pubkey must collapse to one row"
+    );
     let row = &snap.members[0];
     assert!(row.is_admin && row.is_member);
     assert_eq!(row.roles, vec!["king".to_string()], "roles de-duplicated");
@@ -173,10 +177,7 @@ fn snapshot_json_shape_is_stable() {
         vec![d_tag(GROUP), p_tag(&pk(0), &[])],
     ));
     let json = proj.snapshot_json();
-    assert_eq!(
-        json.get("group_id").and_then(|v| v.as_str()),
-        Some(GROUP)
-    );
+    assert_eq!(json.get("group_id").and_then(|v| v.as_str()), Some(GROUP));
     assert_eq!(
         json.get("members")
             .and_then(|v| v.as_array())

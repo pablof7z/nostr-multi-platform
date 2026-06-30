@@ -29,11 +29,7 @@ use crate::{
     nostr_user_card::NostrUserCard,
 };
 
-/// Per-frame embed-rendering context — the renderer's pulled-in deps so
-/// it can drive the renderer-triggered resolve path (ADR-0034). `envelopes`
-/// is the host's current `refs.event` map (built from the latest
-/// snapshot push); `sink` forwards new claims to the kernel; `consumer_id`
-/// is the per-consumer key the kernel refcounts under.
+/// Per-frame embed-rendering context for renderer-triggered resolve paths.
 #[derive(Clone, Copy)]
 pub struct EmbedFrameContext<'a> {
     pub envelopes: &'a BTreeMap<String, EmbeddedEventEnvelope>,
@@ -67,7 +63,9 @@ pub fn plain_lines(
         "content-view" => content_view_lines(&data.content_view, width),
         "content-mention-chip" => content_view_lines(&data.content_mention_chip, width),
         "content-media-grid" => content_view_lines(&data.content_media_grid, width),
-        "content-kind-registry" | "content-quote-card" => content_view_lines(&data.content_quote_card, width),
+        "content-kind-registry" | "content-quote-card" => {
+            content_view_lines(&data.content_quote_card, width)
+        }
         "login-block" => crate::login_block::plain_lines(),
         "user-avatar" => vec![format!("avatar {}", primary.initials())],
         "user-name" => vec![primary.display().to_string()],
@@ -138,7 +136,9 @@ pub fn render_body(
             &media_images,
             embed_ctx,
         ),
-        "content-kind-registry" | "content-quote-card" => render_embed_showcase("embed-note", area, buf, data, &media_images, embed_ctx),
+        "content-kind-registry" | "content-quote-card" => {
+            render_embed_showcase("embed-note", area, buf, data, &media_images, embed_ctx)
+        }
         "embed-article" | "embed-profile" | "embed-note" | "embed-highlight" => {
             render_embed_showcase(id, area, buf, data, &media_images, embed_ctx)
         }

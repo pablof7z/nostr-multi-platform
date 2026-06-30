@@ -5,8 +5,8 @@
 //! Split out of `tests.rs` (file-size cap). Shared helpers imported from
 //! parent module via `super`.
 
-use std::path::PathBuf;
 use super::{fixture_path, run_lint, workspace_root};
+use std::path::PathBuf;
 
 // ─── D16 (snapshot-projection key prefix — apps/chirp/) ─────────────────────
 

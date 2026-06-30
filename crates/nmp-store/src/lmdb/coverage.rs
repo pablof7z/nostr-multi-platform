@@ -34,7 +34,10 @@ pub(super) fn record_coverage(
         .coverage
         .get(&txn, key.as_slice())
         .map_err(|e| StoreError::Io(format!("coverage get: {e}")))?
-        .and_then(|v| v.get(..8).map(|b| u64::from_be_bytes(b.try_into().unwrap())))
+        .and_then(|v| {
+            v.get(..8)
+                .map(|b| u64::from_be_bytes(b.try_into().unwrap()))
+        })
         .unwrap_or(0);
     let next = existing.max(covered_through);
     // Only write when the bound actually advances — avoids a redundant page
@@ -67,7 +70,10 @@ pub(super) fn get_coverage(
         .coverage
         .get(&txn, key.as_slice())
         .map_err(|e| StoreError::Io(format!("coverage get: {e}")))?
-        .and_then(|v| v.get(..8).map(|b| u64::from_be_bytes(b.try_into().unwrap())));
+        .and_then(|v| {
+            v.get(..8)
+                .map(|b| u64::from_be_bytes(b.try_into().unwrap()))
+        });
     Ok(value)
 }
 
@@ -95,7 +101,10 @@ pub(super) fn max_for_filter_hash(
         .map_err(|e| StoreError::Io(format!("coverage prefix_iter: {e}")))?
     {
         let (_k, v) = entry.map_err(|e| StoreError::Io(format!("coverage entry: {e}")))?;
-        if let Some(ts) = v.get(..8).map(|b| u64::from_be_bytes(b.try_into().unwrap())) {
+        if let Some(ts) = v
+            .get(..8)
+            .map(|b| u64::from_be_bytes(b.try_into().unwrap()))
+        {
             best = Some(best.map_or(ts, |m: u64| m.max(ts)));
         }
     }
@@ -125,7 +134,8 @@ pub(super) fn rows_for_filter_hash(
         let (k, v) = entry.map_err(|e| StoreError::Io(format!("coverage entry: {e}")))?;
         if let (Some((_fh, relay)), Some(ts)) = (
             crate::types::coverage_key_parts(k),
-            v.get(..8).map(|b| u64::from_be_bytes(b.try_into().unwrap())),
+            v.get(..8)
+                .map(|b| u64::from_be_bytes(b.try_into().unwrap())),
         ) {
             out.push((relay, ts));
         }
@@ -155,7 +165,10 @@ pub(super) fn lower_in_txn(
         .coverage
         .get(txn, key.as_slice())
         .map_err(|e| StoreError::Io(format!("coverage get (lower): {e}")))?
-        .and_then(|v| v.get(..8).map(|b| u64::from_be_bytes(b.try_into().unwrap())));
+        .and_then(|v| {
+            v.get(..8)
+                .map(|b| u64::from_be_bytes(b.try_into().unwrap()))
+        });
     let Some(existing) = existing else {
         return Ok(()); // no row to lower
     };

@@ -67,9 +67,11 @@
 //!   to run on the actor thread inside the snapshot tick.
 
 use std::collections::BTreeMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
-use nmp_core::substrate::KernelEvent;
+use nmp_core::substrate::{
+    KernelEvent, ObservedProjection, ObservedProjectionRegistrar, SnapshotProjectionRegistrar,
+};
 use nmp_core::{ObservedProjectionSink, TypedProjectionData};
 use serde::{Deserialize, Serialize};
 
@@ -273,6 +275,33 @@ impl LongformProjection {
             });
         }
     }
+}
+
+/// Wire the default NIP-23 long-form (kind:30023) **typed** snapshot projection
+/// into `app`.
+///
+/// Constructs one [`LongformProjection`] and registers it twice: as an
+/// [`ObservedProjectionSink`] and as the typed snapshot projection under
+/// [`LONGFORM_PROJECTION_KEY`]. The payload is typed-only (`NL23`) and never
+/// writes to the retiring generic JSON `projections` map.
+pub fn register_longform_projection(
+    app: &(impl ObservedProjectionRegistrar + SnapshotProjectionRegistrar),
+) {
+    let projection = Arc::new(LongformProjection::new());
+    let observer_id = app.open_observed_projection(ObservedProjection::from_kinds(
+        Arc::clone(&projection) as Arc<dyn ObservedProjectionSink>,
+        LONGFORM_PROJECTION_KEY,
+        1,
+        [KIND_LONG_FORM_ARTICLE],
+        512,
+    ));
+    if observer_id == nmp_core::ObservedProjectionId(0) {
+        return;
+    }
+    let projection_for_closure = Arc::clone(&projection);
+    app.register_typed_snapshot_projection(LONGFORM_PROJECTION_KEY, move || {
+        Some(projection_for_closure.typed_projection())
+    });
 }
 
 #[cfg(test)]

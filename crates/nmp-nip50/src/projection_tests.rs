@@ -116,7 +116,11 @@ fn cache_then_relay_first_arrival_wins() {
 
     let snap = projection.snapshot();
     assert_eq!(snap.hits.len(), 1, "duplicate id deduped");
-    assert_eq!(snap.hits[0].source, SearchHitSource::Cache, "first arrival wins");
+    assert_eq!(
+        snap.hits[0].source,
+        SearchHitSource::Cache,
+        "first arrival wins"
+    );
 }
 
 #[test]

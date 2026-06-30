@@ -24,7 +24,7 @@ pub(crate) const RULE_B_BASELINE: &[RuleBBaseline] = &[
     },
     RuleBBaseline {
         path: "crates/nmp-nip01/src/note_relations.rs",
-        max_hits: 58,
+        max_hits: 57,
         issue: "#2508",
         reason: "NoteRelationCounts / classifier / buckets",
     },
@@ -45,18 +45,6 @@ pub(crate) const RULE_B_BASELINE: &[RuleBBaseline] = &[
         max_hits: 12,
         issue: "#2508",
         reason: "encode relation summary wire",
-    },
-    RuleBBaseline {
-        path: "crates/nmp-relations/src/classifier.rs",
-        max_hits: 18,
-        issue: "#2508",
-        reason: "legacy central nmp-relations classifier",
-    },
-    RuleBBaseline {
-        path: "crates/nmp-relations/src/lib.rs",
-        max_hits: 2,
-        issue: "#2508",
-        reason: "legacy central nmp-relations facade",
     },
     // #2512 — storage-specific TargetInteractionCounts / kind classifier debt.
     RuleBBaseline {

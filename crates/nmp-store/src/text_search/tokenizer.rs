@@ -189,7 +189,10 @@ mod tests {
 
     #[test]
     fn caps_token_count() {
-        let big = (0..1000).map(|i| format!("tok{i}")).collect::<Vec<_>>().join(" ");
+        let big = (0..1000)
+            .map(|i| format!("tok{i}"))
+            .collect::<Vec<_>>()
+            .join(" ");
         assert_eq!(tokenize(&big).len(), MAX_TOKENS_PER_DOC);
     }
 

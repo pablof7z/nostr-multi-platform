@@ -86,20 +86,15 @@ pub fn url_to_bech32_lnurl(url: &str) -> Result<String, String> {
         ));
     }
     let hrp = Hrp::parse("lnurl").map_err(|e| format!("parse lnurl HRP: {e}"))?;
-    bech32::encode::<Bech32>(hrp, url.as_bytes())
-        .map_err(|e| format!("bech32 encode LNURL: {e}"))
+    bech32::encode::<Bech32>(hrp, url.as_bytes()).map_err(|e| format!("bech32 encode LNURL: {e}"))
 }
 
 /// LUD-01 bech32 LNURL decode — strip the HRP, ungroup the 5-bit data, and
 /// validate the result is a UTF-8 https URL.
 fn decode_bech32_lnurl(input: &str) -> Result<String, String> {
-    let (hrp, data) =
-        bech32::decode(input).map_err(|e| format!("invalid bech32 LNURL: {e}"))?;
+    let (hrp, data) = bech32::decode(input).map_err(|e| format!("invalid bech32 LNURL: {e}"))?;
     if hrp.as_str().to_lowercase() != "lnurl" {
-        return Err(format!(
-            "bech32 HRP is {} (expected `lnurl`)",
-            hrp.as_str()
-        ));
+        return Err(format!("bech32 HRP is {} (expected `lnurl`)", hrp.as_str()));
     }
     let url = String::from_utf8(data)
         .map_err(|e| format!("decoded LNURL bytes are not valid UTF-8: {e}"))?;
@@ -265,10 +260,7 @@ mod tests {
     // URL encode.
     #[test]
     fn url_encode_passes_unreserved_chars() {
-        assert_eq!(
-            url_encode_query("abcXYZ012-._~"),
-            "abcXYZ012-._~"
-        );
+        assert_eq!(url_encode_query("abcXYZ012-._~"), "abcXYZ012-._~");
     }
 
     #[test]

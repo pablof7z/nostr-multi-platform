@@ -67,12 +67,7 @@ fn matching_chat_event_is_retained() {
 #[test]
 fn thread_kind_is_retained() {
     let proj = GroupEventsProjection::new(chat_query());
-    proj.on_kernel_event(&event(
-        "thread",
-        11,
-        10,
-        h_tag("rust-nostr"),
-    ));
+    proj.on_kernel_event(&event("thread", 11, 10, h_tag("rust-nostr")));
 
     let snap = proj.snapshot();
     assert_eq!(snap.events.len(), 1);
@@ -116,12 +111,7 @@ fn specific_query_kind_gates_other_same_h_kinds() {
 fn event_for_a_different_group_is_excluded() {
     let proj = GroupEventsProjection::new(chat_query());
     // Correct kind, but the `h` tag names a different group.
-    proj.on_kernel_event(&event(
-        "other",
-        9,
-        100,
-        h_tag("some-other-room"),
-    ));
+    proj.on_kernel_event(&event("other", 9, 100, h_tag("some-other-room")));
     assert!(proj.snapshot().events.is_empty());
 }
 
@@ -185,12 +175,7 @@ fn duplicate_event_id_is_not_duplicated() {
 fn snapshot_json_contains_the_events() {
     let proj = GroupEventsProjection::new(chat_query());
     proj.on_kernel_event(&event("e1", 9, 100, h_tag("rust-nostr")));
-    proj.on_kernel_event(&event(
-        "e2",
-        11,
-        200,
-        h_tag("rust-nostr"),
-    ));
+    proj.on_kernel_event(&event("e2", 11, 200, h_tag("rust-nostr")));
 
     let json = proj.snapshot_json();
     let events = json

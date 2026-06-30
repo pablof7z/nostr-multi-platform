@@ -9,7 +9,7 @@
 //! design (see `docs/perf/op-centric-feed-architecture.md` §3-D) deleted the
 //! `FollowSetLookup` trait and the `LogicalInterest::SocialTimeline` planner
 //! variant in favour of a closure produced here and wired at the composition
-//! root (`nmp-defaults`, rung 6). The rationale is recorded in
+//! root (`explicit composition`, rung 6). The rationale is recorded in
 //! [ADR-0036](../../docs/decisions/0036-composition-root-followset-expansion.md).
 //!
 //! `ActiveFollowSet` is the **producer** of that closure. It owns an
@@ -26,7 +26,7 @@
 //!   set change (kind:3 update, account switch, logout).
 //!
 //! This rung lands the producer **unwired**: no consumer yet. Rung 5
-//! (`nmp-nip01` instance) and rung 6 (`nmp-defaults` composition) consume
+//! (`nmp-nip01` instance) and rung 6 (`explicit composition` composition) consume
 //! it.
 //!
 //! # Why no `&NmpApp` constructor

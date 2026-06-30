@@ -11,7 +11,7 @@
 //!
 //! Why a closure list and not a typed teardown record: the concrete things to
 //! release (an `unregister_feed(key)`, an observed-projection close, a
-//! dependent-interest clear) live above this crate in `nmp-ffi` / `nmp-defaults`.
+//! dependent-interest clear) live above this crate in `nmp-ffi` / `explicit composition`.
 //! Recording them as opaque `FnOnce` actions keeps the session
 //! registry from importing those layers (it sits at the bottom of the DAG) and
 //! keeps a single source of truth for feed state: the registry owns no feed
@@ -55,7 +55,7 @@ struct FeedSession {
 /// that release everything the compile registered.
 ///
 /// This is the single value that crosses from the composition layer
-/// (`nmp-defaults`, which names the OP-feed engine) into the engine-agnostic
+/// (`explicit composition`, which names the OP-feed engine) into the engine-agnostic
 /// session registry. The compiler is responsible for performing the actual
 /// registration; it returns here only the key + how to undo it.
 pub struct FeedSessionBuild {

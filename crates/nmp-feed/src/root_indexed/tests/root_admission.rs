@@ -13,7 +13,7 @@ use nmp_core::substrate::KernelEvent;
 
 use crate::{AdmitExpr, EventGate, RootAdmission};
 
-use super::support::{Harness, reply_event, root_event};
+use super::support::{reply_event, root_event, Harness};
 
 /// A root-admission predicate that admits only the given author set.
 fn members(ids: &[&str]) -> RootAdmission {

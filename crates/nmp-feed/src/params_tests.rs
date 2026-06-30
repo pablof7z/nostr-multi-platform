@@ -2,7 +2,7 @@
 //!
 //! Primary-kind validation (which kinds are derived acquisition vs. primary
 //! input) is protocol knowledge and now lives in the composition/compiler layer
-//! — see `nmp-defaults` (`compile_feed_params`) and the FFI/WASM boundary
+//! — see `explicit composition` (`compile_feed_params`) and the FFI/WASM boundary
 //! decode tests. These tests cover only the protocol-agnostic param model.
 
 use super::*;

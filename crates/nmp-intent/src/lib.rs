@@ -38,9 +38,7 @@
 
 use std::sync::Arc;
 
-use nmp_core::substrate::{
-    InputIntentClassification, InputIntentRequest, InputScopeRecognizer,
-};
+use nmp_core::substrate::{InputIntentClassification, InputIntentRequest, InputScopeRecognizer};
 
 pub mod classifier;
 pub mod relay_url;

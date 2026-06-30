@@ -14,7 +14,13 @@ fn nip_crate_in_both_scopes() {
 
 #[test]
 fn protocol_crate_in_both_scopes() {
-    for c in ["nmp-marmot", "nmp-blossom", "nmp-router", "nmp-wot", "nmp-content"] {
+    for c in [
+        "nmp-marmot",
+        "nmp-blossom",
+        "nmp-router",
+        "nmp-wot",
+        "nmp-content",
+    ] {
         let p = crate_src_path(c);
         assert!(app_host_in_scope(&p), "{c} must be in app_host scope");
         assert!(active_local_keys_in_scope(&p), "{c} must be in alk scope");
@@ -54,13 +60,19 @@ fn app_host_definition_out_of_app_host_scope() {
 #[test]
 fn composition_root_out_of_scope() {
     for p in [
-        "crates/nmp-defaults/src/builder/app_host_impl.rs",
-        "crates/nmp-ffi/src/app_host_impl.rs",
-        "crates/nmp-ffi/src/lib.rs",
+        "apps/chirp/crates/nmp-app-chirp/src/ffi/register.rs",
+        "crates/nmp-native-runtime/src/builder.rs",
+        "crates/nmp-browser-runtime/src/builder.rs",
     ] {
         let path = Path::new(p);
-        assert!(!app_host_in_scope(path), "{p} (composition root) must be out of scope");
-        assert!(!active_local_keys_in_scope(path), "{p} (composition root) must be out of scope");
+        assert!(
+            !app_host_in_scope(path),
+            "{p} (composition root) must be out of scope"
+        );
+        assert!(
+            !active_local_keys_in_scope(path),
+            "{p} (composition root) must be out of scope"
+        );
     }
 }
 
@@ -73,8 +85,14 @@ fn unrelated_core_files_out_of_scope() {
         "crates/nmp-core/src/actor/dispatch.rs",
     ] {
         let path = Path::new(p);
-        assert!(!app_host_in_scope(path), "{p} must be out of app_host scope");
-        assert!(!active_local_keys_in_scope(path), "{p} must be out of alk scope");
+        assert!(
+            !app_host_in_scope(path),
+            "{p} must be out of app_host scope"
+        );
+        assert!(
+            !active_local_keys_in_scope(path),
+            "{p} must be out of alk scope"
+        );
     }
 }
 
@@ -162,8 +180,22 @@ fn active_local_keys_not_flagged_when_out_of_scope() {
 
 #[test]
 fn comment_line_never_fires() {
-    assert!(check("//! takes a narrow trait, never AppHost", true, true, true, false).is_empty());
-    assert!(check("/// active_local_keys is reached via the port", true, true, true, false).is_empty());
+    assert!(check(
+        "//! takes a narrow trait, never AppHost",
+        true,
+        true,
+        true,
+        false
+    )
+    .is_empty());
+    assert!(check(
+        "/// active_local_keys is reached via the port",
+        true,
+        true,
+        true,
+        false
+    )
+    .is_empty());
 }
 
 #[test]

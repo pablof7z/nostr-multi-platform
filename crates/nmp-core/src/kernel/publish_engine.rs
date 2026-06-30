@@ -9,7 +9,7 @@
 //! Doctrine map (canonical per `docs/product-spec/doctrine.md`):
 //! - **D3** (outbox automatic): the engine is built against an
 //!   `Arc<dyn OutboxResolver>` slot (default: `NoopOutboxResolver`);
-//!   production composition (`nmp-defaults::register_defaults`) installs
+//!   production composition (`explicit owner composition`) installs
 //!   the router-side `nmp_router::Nip65OutboxResolver` via
 //!   [`Kernel::set_publish_resolver`]. Every `Publish` uses
 //!   `PublishTarget::Auto` so the installed resolver decides relays — no
@@ -54,7 +54,7 @@ use super::publish_engine_wire::{describe_engine_error, split_ok_message};
 use super::{CanonicalRelayUrl, Kernel};
 
 /// Build the kernel's publish engine with the in-crate `NoopOutboxResolver`
-/// default. Production composition (`nmp-defaults::register_defaults`)
+/// default. Production composition (`explicit owner composition`)
 /// swaps in the router-side `nmp_router::Nip65OutboxResolver` via
 /// [`Kernel::set_publish_resolver`] before any publish lands — until then
 /// every `PublishTarget::Auto` resolves to an empty set and the engine emits

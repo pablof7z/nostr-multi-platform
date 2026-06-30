@@ -44,7 +44,14 @@ fn run_and_capture_port(correlation_id: Option<String>) -> PortCapture {
     let (worker_tx, worker_rx) = std::sync::mpsc::channel::<nmp_core::ActorMail>();
     let signers = LocalSigner;
     {
-        let mut ctx = ctx_with_sender(&send, nmp_core::CommandSender::new(worker_tx), &clock, &signers, &stages, &recipients);
+        let mut ctx = ctx_with_sender(
+            &send,
+            nmp_core::CommandSender::new(worker_tx),
+            &clock,
+            &signers,
+            &stages,
+            &recipients,
+        );
         let cmd = Box::new(FetchLnurlInvoiceCommand {
             unsigned: unsigned_for(vec![vec!["p".to_string(), RECIPIENT_HEX.to_string()]]),
             recipient_pubkey: RECIPIENT_HEX.to_string(),
@@ -58,12 +65,26 @@ fn run_and_capture_port(correlation_id: Option<String>) -> PortCapture {
         cmd.run(&mut ctx).expect("run returns Ok");
     }
     let mut sends = sink.sends.into_inner().unwrap();
-    assert_eq!(sends.len(), 1, "run must emit exactly one SignEventForAccount: {sends:?}");
+    assert_eq!(
+        sends.len(),
+        1,
+        "run must emit exactly one SignEventForAccount: {sends:?}"
+    );
     let (signer_pubkey, unsigned, continuation) = match sends.remove(0) {
-        ActorCommand::Sign(SignCommand::EventForAccount { signer_pubkey, unsigned, continuation }) => (signer_pubkey, unsigned, continuation),
+        ActorCommand::Sign(SignCommand::EventForAccount {
+            signer_pubkey,
+            unsigned,
+            continuation,
+        }) => (signer_pubkey, unsigned, continuation),
         other => panic!("expected SignEventForAccount, got {other:?}"),
     };
-    PortCapture { signer_pubkey, unsigned, continuation, stages: stages.0.into_inner().unwrap(), worker_rx }
+    PortCapture {
+        signer_pubkey,
+        unsigned,
+        continuation,
+        stages: stages.0.into_inner().unwrap(),
+        worker_rx,
+    }
 }
 
 /// `run` must sign the kind:9734 through the unified `SignEventForAccount`
@@ -77,7 +98,10 @@ fn run_emits_sign_event_for_account_port_with_active_account() {
         cap.signer_pubkey, None,
         "the zap request signs with the ACTIVE account (signer_pubkey = None)"
     );
-    assert_eq!(cap.unsigned.kind, 9734, "the port carries the kind:9734 zap request");
+    assert_eq!(
+        cap.unsigned.kind, 9734,
+        "the port carries the kind:9734 zap request"
+    );
     assert_eq!(
         cap.unsigned.created_at, 1_700_000_000,
         "created_at must be re-stamped from the context clock (D7)"
@@ -117,7 +141,9 @@ fn continuation_err_fails_closed_with_toast_and_failure() {
         other => panic!("expected ShowErrorToken, got {other:?}"),
     }
     match &sends[1] {
-        ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure { correlation_id, .. }) => {
+        ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure {
+            correlation_id, ..
+        }) => {
             assert_eq!(correlation_id, "cid-none");
         }
         other => panic!("expected RecordActionFailure, got {other:?}"),
@@ -130,7 +156,10 @@ fn continuation_err_fails_closed_with_toast_and_failure() {
 #[test]
 fn continuation_err_without_correlation_emits_only_toast() {
     let cap = run_and_capture_port(None);
-    assert!(cap.stages.is_empty(), "no correlation_id → no Requested stage");
+    assert!(
+        cap.stages.is_empty(),
+        "no correlation_id → no Requested stage"
+    );
     cap.continuation.call(Err("no active account".to_string()));
 
     let sends: Vec<ActorCommand> = cap.worker_rx.try_iter().map(nmp_core_unwrap_mail).collect();
@@ -183,7 +212,9 @@ fn continuation_ok_spawns_worker_carrying_signed_event() {
             .expect("RecordActionFailure must follow when correlation_id is present"),
     );
     match second {
-        ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure { correlation_id, .. }) => {
+        ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure {
+            correlation_id, ..
+        }) => {
             assert_eq!(correlation_id, "cid-ok");
         }
         other => panic!("expected RecordActionFailure, got {other:?}"),
@@ -214,9 +245,7 @@ fn run_restamps_created_at_from_context_clock() {
     let mut ctx = ctx_with(&send, &clock, &signers, &stages, &recipients);
 
     let cmd = Box::new(FetchLnurlInvoiceCommand {
-        unsigned: unsigned_for(vec![
-            vec!["p".to_string(), RECIPIENT_HEX.to_string()],
-        ]),
+        unsigned: unsigned_for(vec![vec!["p".to_string(), RECIPIENT_HEX.to_string()]]),
         recipient_pubkey: RECIPIENT_HEX.to_string(),
         lnurl_or_address: Some("alice@example.com".to_string()),
         amount_msats: 21_000,
@@ -224,7 +253,8 @@ fn run_restamps_created_at_from_context_clock() {
         // ADR-0052 rung 5.2: sign/LNURL-leg test, no payment port wired.
         payment_port: None,
     });
-    cmd.run(&mut ctx).expect("run returns Ok on fail-closed branch");
+    cmd.run(&mut ctx)
+        .expect("run returns Ok on fail-closed branch");
     assert!(
         clock.0.load(Ordering::SeqCst) >= 1,
         "now_secs must be invoked when created_at sentinel is 0"

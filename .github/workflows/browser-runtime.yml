@@ -11,11 +11,11 @@ name: browser-runtime
 #     This is the shape the actual wasm32 binary will have, validated quickly
 #     on the host target before the true wasm32 compile gate below.
 #
-#   Mode B — feature-unified (nmp-defaults default features):
-#     `cargo build -p nmp-browser-runtime -p nmp-defaults`
-#     nmp-defaults pulls in the native-feature variants of nmp-core and shared
-#     crates (lmdb, nmp-nip01 subscribers, NWC, …).  This is the build shape
-#     used by the desktop/server runtime that shares the same nmp-core.
+#   Mode B — native-runtime-unified:
+#     `cargo build -p nmp-browser-runtime -p nmp-native-runtime`
+#     The native runtime pulls in the native-feature variants of nmp-core and
+#     shared crates (lmdb, nmp-nip01 subscribers, NWC, …). This is the build
+#     shape used by the desktop/server runtime that shares the same nmp-core.
 #     Catching non-exhaustive `cfg`-enum match arms requires both modes because
 #     native cfg arms are only reachable in Mode B.
 #
@@ -37,8 +37,10 @@ on:
       - "crates/nmp-network/**"
       - "crates/nmp-signers/**"
       - "crates/nmp-signer-iface/**"
-      - "crates/nmp-defaults/**"
-      - "crates/nmp-substrate-defaults/**"
+      - "crates/nmp-native-runtime/**"
+      - "crates/nmp-substrate/**"
+      - "crates/nmp-nip50/**"
+      - "crates/nmp-nip51/**"
       - "crates/nmp-store/**"
       - "crates/nmp-sqlite-wasm/**"
       - "crates/nmp-core/**"
@@ -50,8 +52,10 @@ on:
       - "crates/nmp-network/**"
       - "crates/nmp-signers/**"
       - "crates/nmp-signer-iface/**"
-      - "crates/nmp-defaults/**"
-      - "crates/nmp-substrate-defaults/**"
+      - "crates/nmp-native-runtime/**"
+      - "crates/nmp-substrate/**"
+      - "crates/nmp-nip50/**"
+      - "crates/nmp-nip51/**"
       - "crates/nmp-store/**"
       - "crates/nmp-sqlite-wasm/**"
       - "crates/nmp-core/**"
@@ -91,12 +95,12 @@ jobs:
       - name: Compile tests (wasm-shaped, --no-run)
         run: cargo test -p nmp-browser-runtime --no-run
 
-  # Mode B — feature-unified build.
-  # nmp-defaults is built WITH its default features, which pulls in the
-  # native-feature variants of nmp-core and shared crates (lmdb, nmp-nip01,
-  # NWC, …).  This build catches non-exhaustive cfg-enum match arms that are
-  # only reachable when the native feature flag is active via feature
-  # unification.  Tests are executed (not just compiled) in this mode.
+  # Mode B — native-runtime-unified build.
+  # nmp-native-runtime is built with its native feature graph, which pulls in
+  # the native-feature variants of nmp-core and shared crates. This build
+  # catches non-exhaustive cfg-enum match arms that are only reachable when the
+  # native feature flag is active via feature unification. Tests are executed
+  # (not just compiled) in this mode.
   feature-unified:
     name: nmp-browser-runtime (feature-unified, nmp-core/native active)
     runs-on: ubuntu-latest
@@ -111,15 +115,14 @@ jobs:
         with:
           key: browser-runtime-feature-unified
 
-      # Building nmp-defaults with its default features causes feature
-      # unification of nmp-core: both wasm-shaped and native cfg arms are
-      # compiled in the same invocation, catching non-exhaustive match arms.
+      # Building the native runtime causes feature unification of nmp-core:
+      # both wasm-shaped and native cfg arms are compiled in the same
+      # invocation, catching non-exhaustive match arms.
       - name: Build (feature-unified)
-        run: cargo build -p nmp-browser-runtime -p nmp-defaults
+        run: cargo build -p nmp-browser-runtime -p nmp-native-runtime
 
-      # Clippy targets only nmp-browser-runtime (not nmp-defaults) because
-      # nmp-defaults carries pre-existing lints (derivable_impls, dead_code,
-      # etc.) that are tracked separately.  --no-deps excludes transitive deps.
+      # Clippy targets only nmp-browser-runtime. --no-deps excludes transitive
+      # deps, including the native runtime graph used for feature unification.
       - name: Clippy (feature-unified, -D warnings, nmp-browser-runtime only)
         run: cargo clippy -p nmp-browser-runtime --no-deps -- -D warnings
 

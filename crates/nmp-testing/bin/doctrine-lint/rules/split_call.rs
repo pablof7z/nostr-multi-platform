@@ -133,13 +133,19 @@ mod tests {
     #[test]
     fn contiguous() {
         let mut s = State::default();
-        assert_eq!(columns(&mut s, N, "    req_for_relay(a);", false, false), vec![5]);
+        assert_eq!(
+            columns(&mut s, N, "    req_for_relay(a);", false, false),
+            vec![5]
+        );
     }
 
     #[test]
     fn whitespace_before_paren() {
         let mut s = State::default();
-        assert_eq!(columns(&mut s, N, "    req_for_relay (a);", false, false).len(), 1);
+        assert_eq!(
+            columns(&mut s, N, "    req_for_relay (a);", false, false).len(),
+            1
+        );
     }
 
     #[test]

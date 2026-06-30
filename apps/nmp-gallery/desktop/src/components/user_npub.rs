@@ -26,9 +26,7 @@ impl NpubChip {
             text(npub_short)
                 .font(Font::MONOSPACE)
                 .size(12)
-                .style(|_theme| iced::widget::text::Style {
-                    color: Some(FG),
-                }),
+                .style(|_theme| iced::widget::text::Style { color: Some(FG) }),
         )
         .padding(Padding::from(6))
         .style(|_theme| container::Style {

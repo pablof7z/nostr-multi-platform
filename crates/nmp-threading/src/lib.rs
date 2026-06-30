@@ -15,14 +15,14 @@
 
 pub mod block;
 pub mod grouper;
-pub mod policy;
 pub mod pointer;
+pub mod policy;
 pub mod resolver;
 
 pub use block::TimelineBlock;
 pub use grouper::{GroupDelta, Grouper};
-pub use policy::ModulePolicy;
 pub use pointer::ThreadPointer;
+pub use policy::ModulePolicy;
 pub use resolver::ParentResolver;
 
 /// Compiled ownership descriptor for crate-ownership reports.

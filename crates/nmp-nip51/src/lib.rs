@@ -87,29 +87,23 @@
 //! suppression** (this crate) and **soft trust scoring** (`nmp-wot`) is
 //! preserved — only the tag-parse step is shared.
 
-pub mod bookmark_runtime;
 pub mod bookmark_sets;
 pub mod bookmarks;
 pub mod interests;
-pub mod mute_runtime;
 pub mod people_list;
 pub mod projection;
-pub mod search_defaults;
-pub mod search_relay_runtime;
+pub mod runtime;
+pub mod search_fallback;
 pub mod search_relays;
 pub mod web_bookmarks;
 pub mod wire;
 
-pub use bookmark_runtime::{
-    register_bookmark_runtime, register_bookmark_set_runtime, register_web_bookmark_runtime,
-};
 pub use interests::{
     active_bookmark_list_identity, active_bookmark_list_interest, active_bookmark_list_interest_id,
     active_mute_list_identity, active_mute_list_interest, active_mute_list_interest_id,
     bookmark_sets_identity, bookmark_sets_interest, bookmark_sets_interest_id,
     web_bookmarks_identity, web_bookmarks_interest, web_bookmarks_interest_id,
 };
-pub use mute_runtime::register_mute_runtime;
 
 pub use bookmark_sets::{
     build_bookmark_set_event, register_bookmark_set_actions, AddBookmarkSetItemAction,
@@ -125,8 +119,11 @@ pub use people_list::{PeopleListProjection, PeopleListSnapshot};
 pub use projection::{
     mute_pubkeys_from_tags, MuteListProjection, MuteListSnapshot, ACTIVE_MUTE_LIST_PUBKEY_SOURCE_ID,
 };
-pub use search_defaults::{effective_search_relays, SearchDefaults};
-pub use search_relay_runtime::{register_search_relay_runtime, register_search_relay_runtime_with};
+pub use runtime::{
+    register_bookmark_runtime, register_bookmark_set_runtime, register_mute_runtime,
+    register_search_relay_runtime_with_fallbacks, register_web_bookmark_runtime,
+};
+pub use search_fallback::effective_search_relays;
 pub use search_relays::{SearchRelayListProjection, SearchRelayListSnapshot};
 pub use web_bookmarks::{
     build_web_bookmark_event, register_web_bookmark_actions, PublishWebBookmarkAction,
@@ -141,6 +138,3 @@ pub use wire::mute_list_fb::{
     decode_mute_list, encode_mute_list, MUTE_LIST_FILE_IDENTIFIER, MUTE_LIST_SCHEMA_ID,
     MUTE_LIST_SCHEMA_VERSION,
 };
-
-/// Compiled ownership descriptor for crate-ownership reports.
-pub mod ownership;

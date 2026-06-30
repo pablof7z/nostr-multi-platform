@@ -37,13 +37,13 @@
 //! * `leave_group` is SelfRemove: `commit()` is a documented no-op there.
 
 use nostr::{EventBuilder, JsonUtil, Kind, RelayUrl};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 use mdk_core::prelude::NostrGroupConfigData;
 
 use crate::projection::action::MarmotAction;
 use crate::projection::payload::MarmotMessageRow;
-use crate::projection::state::{InnerHandle, hex_encode};
+use crate::projection::state::{hex_encode, InnerHandle};
 
 #[path = "ops/input.rs"]
 mod input;

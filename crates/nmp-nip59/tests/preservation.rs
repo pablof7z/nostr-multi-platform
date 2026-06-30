@@ -24,8 +24,7 @@ const RUMOR_SENTINEL_TS: u64 = 1_600_000_000;
 /// Deterministic 32-byte sentinel for the Welcome-shaped rumor's `e` tag.
 /// Not a real Welcome event id — just a fixed hex string so the fixture
 /// is reproducible and the `e` tag round-trip is byte-exact.
-const WELCOME_E_TAG_HEX: &str =
-    "0000000000000000000000000000000000000000000000000000000077656c63";
+const WELCOME_E_TAG_HEX: &str = "0000000000000000000000000000000000000000000000000000000077656c63";
 
 /// Test-only shorthand. `gift_wrap_local` composes the pure seal/wrap steps
 /// synchronously with the sender's local keys (ADR-0050 §D5).
@@ -72,8 +71,8 @@ fn round_trip_preserves_rumor_tags() {
     let bob = Keys::generate();
     let charlie = Keys::generate();
 
-    let welcome_event_id = EventId::from_hex(WELCOME_E_TAG_HEX)
-        .expect("WELCOME_E_TAG_HEX must be valid 32-byte hex");
+    let welcome_event_id =
+        EventId::from_hex(WELCOME_E_TAG_HEX).expect("WELCOME_E_TAG_HEX must be valid 32-byte hex");
 
     let tags = vec![
         Tag::event(welcome_event_id),

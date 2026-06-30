@@ -65,9 +65,20 @@ impl EditMetadataInput {
     /// Whether this edit would change at least one field. A 9002 carrying only
     /// the `h` tag is a relay no-op, so the validator rejects it.
     fn edits_something(&self) -> bool {
-        self.name.as_deref().map(str::trim).is_some_and(|s| !s.is_empty())
-            || self.about.as_deref().map(str::trim).is_some_and(|s| !s.is_empty())
-            || self.picture.as_deref().map(str::trim).is_some_and(|s| !s.is_empty())
+        self.name
+            .as_deref()
+            .map(str::trim)
+            .is_some_and(|s| !s.is_empty())
+            || self
+                .about
+                .as_deref()
+                .map(str::trim)
+                .is_some_and(|s| !s.is_empty())
+            || self
+                .picture
+                .as_deref()
+                .map(str::trim)
+                .is_some_and(|s| !s.is_empty())
             || self.visibility.is_some()
             || self.access.is_some()
     }
@@ -150,14 +161,9 @@ mod tests {
 
     fn run_execute(input: EditMetadataInput) -> Result<Vec<ActorCommand>, String> {
         let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
-        EditMetadataAction.execute(
-            &ActionContext::default(),
-            input,
-            "cid-edit",
-            &|cmd| {
-                captured.borrow_mut().push(cmd);
-            },
-        )?;
+        EditMetadataAction.execute(&ActionContext::default(), input, "cid-edit", &|cmd| {
+            captured.borrow_mut().push(cmd);
+        })?;
         Ok(captured.into_inner())
     }
 
@@ -193,8 +199,12 @@ mod tests {
             other => panic!("expected 9002 publish, got {other:?}"),
         }
         let t = tags(&cmds);
-        assert!(t.iter().any(|x| x == &vec!["h".to_string(), "rust-nostr".to_string()]));
-        assert!(t.iter().any(|x| x == &vec!["name".to_string(), "Renamed Room".to_string()]));
+        assert!(t
+            .iter()
+            .any(|x| x == &vec!["h".to_string(), "rust-nostr".to_string()]));
+        assert!(t
+            .iter()
+            .any(|x| x == &vec!["name".to_string(), "Renamed Room".to_string()]));
     }
 
     #[test]
@@ -223,8 +233,12 @@ mod tests {
         };
         let cmds = run_execute(action).expect("executes");
         let t = tags(&cmds);
-        assert!(t.iter().any(|x| x == &vec!["about".to_string(), "New description".to_string()]));
-        assert!(t.iter().any(|x| x == &vec!["picture".to_string(), "https://x/p.png".to_string()]));
+        assert!(t
+            .iter()
+            .any(|x| x == &vec!["about".to_string(), "New description".to_string()]));
+        assert!(t
+            .iter()
+            .any(|x| x == &vec!["picture".to_string(), "https://x/p.png".to_string()]));
     }
 
     #[test]

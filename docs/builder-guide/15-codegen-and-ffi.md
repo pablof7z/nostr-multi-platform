@@ -41,24 +41,22 @@ app      = ["microblog-core"]
 The canonical way to compose an app is explicit Rust composition. An app-core
 crate installs the substrate, the reusable Nostr protocol features it wants, its
 own app features, and any capability contracts its shell must execute.
-`nmp-defaults` remains a reusable installer library; a hidden broad preset is
-tutorial/test/migration compatibility, not
-production architecture.
+`nmp-substrate` provides only the shared substrate floor. Protocol and app
+features are installed by their owner crates; hidden presets and replacement
+defaults bundles are not production, tutorial, migration, or test architecture.
 
 ```rust
 pub fn register(app: &mut impl AppHost) {
-    let nmp_defaults::NmpDefaults {
-        coverage_gate,
-        search_defaults,
-        ..
-    } = nmp_defaults::NmpDefaults::default();
-
-    let _mailbox_cache = nmp_defaults::register_substrate(app, coverage_gate);
-    nmp_defaults::register_nip50_protocol_defaults(app);
-    let _social_handles =
-        nmp_defaults::register_social_protocol_defaults(app, search_defaults);
-    nmp_defaults::register_dm_protocol_defaults(app);
-    nmp_defaults::register_longform_projection(app);
+    let _substrate_handles =
+        nmp_substrate::install(app, nmp_substrate::SubstrateConfig::default());
+    nmp_nip50::register_search_scopes(app);
+    nmp_nip50::register_input_scopes(app);
+    nmp_nip02::register_follow_actions(app);
+    nmp_replies::register_actions(app);
+    nmp_nip17::register_actions(app);
+    nmp_nip17::register_runtime(app);
+    let _comment_runtime = nmp_nip22::register_runtime(app);
+    nmp_content::register_longform_projection(app);
     install_app_features(app);
     declare_capability_contracts(app);
 }
@@ -146,8 +144,9 @@ crate, or generate a composition root.
 
 This is distinct from reusable NMP protocols. A generic Nostr mechanism that an
 unrelated second app can consume unchanged belongs in a Layer-4 NMP crate and
-may be wired by `nmp-defaults`. A product-private kind stays with the app while
-using NMP's builder, binding, and drift-check machinery.
+is wired explicitly by app/runtime composition roots. A product-private kind
+stays with the app while using NMP's builder, binding, and drift-check
+machinery.
 
 NMP repo CI continues to own only checked-in framework-generated surfaces:
 default action builders, projection caches, typed decoders, producer constants,
@@ -342,9 +341,10 @@ The shell receives a pushed binary `UpdateFrame`, applies the
 pull snapshot getter is allowed. Projection keys, output manifests, and change
 gates are runtime/output machinery governed by ADR-0070 and ADR-0055.
 
-Do not model zap counts as a global snapshot projection. Zap counts are
-visible-note relation data: the owning card or detail view claims a bounded
-`nmp.nip01.visible_note_relations` interest for its `#e=<event_id>` target.
+Do not model zap counts as a global snapshot projection or a shared relation
+bucket. The owning card or detail view asks the zap concept owner for a bounded
+target read; app-owned social bars compose concept-owned reads rather than
+claiming a central relation namespace.
 
 ### Internal seam — typed output registration
 

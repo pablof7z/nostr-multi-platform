@@ -145,7 +145,10 @@ mod tests {
             vec![vec!["e", ""], vec!["a", "1:alice:d"], vec!["a", "garbage"]],
         ))
         .unwrap();
-        assert!(record.is_empty(), "unresolvable targets must not be honoured");
+        assert!(
+            record.is_empty(),
+            "unresolvable targets must not be honoured"
+        );
     }
 
     #[test]

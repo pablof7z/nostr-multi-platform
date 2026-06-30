@@ -81,7 +81,11 @@ impl ReplaceableKey {
             // Only a key SHORTER than 36 bytes is malformed (caught above).
             let d_tag = String::from_utf8(key_bytes[36..].to_vec())
                 .map_err(|e| format!("d_tag not valid utf8: {e}"))?;
-            Ok(Self::Parameterized { kind, pubkey, d_tag })
+            Ok(Self::Parameterized {
+                kind,
+                pubkey,
+                d_tag,
+            })
         } else {
             Ok(Self::Regular { kind, pubkey })
         }

@@ -13,7 +13,10 @@ pub(super) fn ic_increment(st: &mut MemState, kind: u32, tags: &[Vec<String>]) {
     let Some((ck, target_hex)) = crate::interaction::classify(kind, tags) else {
         return;
     };
-    let count = st.interaction_counters.entry((target_hex, ck as u8)).or_insert(0);
+    let count = st
+        .interaction_counters
+        .entry((target_hex, ck as u8))
+        .or_insert(0);
     *count = count.saturating_add(1);
 }
 

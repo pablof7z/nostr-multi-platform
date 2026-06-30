@@ -42,8 +42,8 @@ use std::sync::{Arc, Mutex};
 
 use mdk_core::key_packages::KeyPackageEventData;
 use mdk_core::prelude::{
-    group_types, welcome_types, GroupId, MessageProcessingResult,
-    NostrGroupConfigData, UpdateGroupResult, MDK,
+    group_types, welcome_types, GroupId, MessageProcessingResult, NostrGroupConfigData,
+    UpdateGroupResult, MDK,
 };
 use mdk_core::MdkConfig;
 use mdk_sqlite_storage::MdkSqliteStorage;
@@ -367,11 +367,10 @@ impl MarmotService {
             .mdk
             .create_key_package_for_event(&self.keys.public_key(), relays)?;
 
-        let event_30443 =
-            EventBuilder::new(Kind::Custom(KIND_MARMOT_KEY_PACKAGE as u16), content)
-                .tags(tags_30443)
-                .sign_with_keys(&self.keys)
-                .map_err(|e| MarmotError::Nostr(e.to_string()))?;
+        let event_30443 = EventBuilder::new(Kind::Custom(KIND_MARMOT_KEY_PACKAGE as u16), content)
+            .tags(tags_30443)
+            .sign_with_keys(&self.keys)
+            .map_err(|e| MarmotError::Nostr(e.to_string()))?;
 
         Ok(KeyPackagePublication {
             event_30443,
@@ -608,13 +607,13 @@ impl<'a> CreateGroupPending<'a> {
     }
 
     /// The created group's MLS id.
-    #[must_use] 
+    #[must_use]
     pub fn group_id(&self) -> &GroupId {
         &self.group_id
     }
 
     /// The created group's MLS id, hex-encoded.
-    #[must_use] 
+    #[must_use]
     pub fn group_id_hex(&self) -> String {
         hex_encode(self.group_id.as_slice())
     }

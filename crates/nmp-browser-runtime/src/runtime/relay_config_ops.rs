@@ -7,7 +7,7 @@
 
 use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
 use nmp_core::substrate::ActionPayload;
-use nmp_defaults::action_payloads::PublishRelayListInput;
+use nmp_router::PublishRelayListInput;
 use serde_json::json;
 
 use super::handle::BrowserRuntimeHandle;

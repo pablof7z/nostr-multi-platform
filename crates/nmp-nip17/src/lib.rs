@@ -72,6 +72,7 @@ pub mod dm_send;
 pub mod inbox;
 pub mod installer;
 pub mod kind10050_parser;
+mod runtime;
 pub mod ui_codes;
 pub mod wire;
 
@@ -91,6 +92,7 @@ pub use inbox::{
 };
 pub use installer::{register_dm_runtime, DmInboxController};
 pub use kind10050_parser::Kind10050Parser;
+pub use runtime::register_runtime;
 pub use wire::dm_inbox_fb::{
     decode_dm_inbox_snapshot, encode_dm_inbox_snapshot, DM_INBOX_FILE_IDENTIFIER,
     DM_INBOX_SCHEMA_ID, DM_INBOX_SCHEMA_VERSION,

@@ -292,7 +292,9 @@ mod tests {
             "/abs/crates/nmp-nip29/src/kinds.rs"
         )));
         // Other protocol crates are out of scope (this is a nip29-specific rule).
-        assert!(!file_in_scope(&PathBuf::from("crates/nmp-nip25/src/lib.rs")));
+        assert!(!file_in_scope(&PathBuf::from(
+            "crates/nmp-nip25/src/lib.rs"
+        )));
         // Apps and the testing crate are exempt.
         assert!(!file_in_scope(&PathBuf::from(
             "apps/chirp/crates/nmp-app-chirp/src/lib.rs"

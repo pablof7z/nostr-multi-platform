@@ -2,7 +2,7 @@
 //! dependent-interest set.
 //!
 //! The pointer-source read model (`nmp_content::PointerSourceModel`, driven by
-//! `nmp_defaults::op_pointer_source`) materializes each demanded target as a
+//! `explicit_composition::op_pointer_source`) materializes each demanded target as a
 //! `DependentInterestChild`. This test proves the kernel half of that path: an
 //! address target child registered via `replace_dependent_interest_set` is
 //! served from the warm store with ZERO relay connectivity — the same cache-first

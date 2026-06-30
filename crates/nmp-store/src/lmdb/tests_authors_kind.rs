@@ -58,7 +58,11 @@ fn authors_kind_newest_first_across_authors() {
     let results = store.query(&q, 100).unwrap();
     assert_eq!(results.len(), 5, "must return all 5 events");
     let timestamps: Vec<u64> = results.iter().map(|e| e.raw.created_at).collect();
-    assert_eq!(timestamps, vec![3000, 2500, 2000, 1500, 1000], "must be newest-first across authors");
+    assert_eq!(
+        timestamps,
+        vec![3000, 2500, 2000, 1500, 1000],
+        "must be newest-first across authors"
+    );
 }
 
 #[test]
@@ -78,14 +82,19 @@ fn authors_kind_limit_respected() {
             .sign_with_keys(&keys_a)
             .unwrap();
         let raw: crate::types::RawEvent = serde_json::from_str(&ev.try_as_json().unwrap()).unwrap();
-        store.insert(verified(raw), &"wss://r/".into(), 1000 + i).unwrap();
+        store
+            .insert(verified(raw), &"wss://r/".into(), 1000 + i)
+            .unwrap();
 
         let ev2 = EventBuilder::text_note(format!("b-{i}"))
             .custom_created_at(Timestamp::from_secs(2000 + i))
             .sign_with_keys(&keys_b)
             .unwrap();
-        let raw2: crate::types::RawEvent = serde_json::from_str(&ev2.try_as_json().unwrap()).unwrap();
-        store.insert(verified(raw2), &"wss://r/".into(), 2000 + i).unwrap();
+        let raw2: crate::types::RawEvent =
+            serde_json::from_str(&ev2.try_as_json().unwrap()).unwrap();
+        store
+            .insert(verified(raw2), &"wss://r/".into(), 2000 + i)
+            .unwrap();
     }
 
     let mut authors = BTreeSet::new();
@@ -103,7 +112,10 @@ fn authors_kind_limit_respected() {
     assert_eq!(results.len(), 5, "limit must cap at 5");
     // Newest-first
     for w in results.windows(2) {
-        assert!(w[0].raw.created_at >= w[1].raw.created_at, "must be newest-first");
+        assert!(
+            w[0].raw.created_at >= w[1].raw.created_at,
+            "must be newest-first"
+        );
     }
 }
 
@@ -130,8 +142,11 @@ fn authors_kind_since_until_bounds() {
             .custom_created_at(Timestamp::from_secs(ts + 50))
             .sign_with_keys(&keys_b)
             .unwrap();
-        let raw2: crate::types::RawEvent = serde_json::from_str(&ev2.try_as_json().unwrap()).unwrap();
-        store.insert(verified(raw2), &"wss://r/".into(), ts + 50).unwrap();
+        let raw2: crate::types::RawEvent =
+            serde_json::from_str(&ev2.try_as_json().unwrap()).unwrap();
+        store
+            .insert(verified(raw2), &"wss://r/".into(), ts + 50)
+            .unwrap();
     }
 
     let mut authors = BTreeSet::new();
@@ -154,14 +169,23 @@ fn authors_kind_since_until_bounds() {
         );
     }
     for w in results.windows(2) {
-        assert!(w[0].raw.created_at >= w[1].raw.created_at, "must be newest-first");
+        assert!(
+            w[0].raw.created_at >= w[1].raw.created_at,
+            "must be newest-first"
+        );
     }
 }
 
 /// Insert a signed event of `kind` at `ts` for `keys` with distinct `nonce`
 /// content (so events that share `(kind, ts)` still get distinct ids); returns
 /// its hex id.
-fn insert_kind(store: &super::LmdbEventStore, keys: &Keys, kind: u16, ts: u64, nonce: u32) -> String {
+fn insert_kind(
+    store: &super::LmdbEventStore,
+    keys: &Keys,
+    kind: u16,
+    ts: u64,
+    nonce: u32,
+) -> String {
     let ev = EventBuilder::new(Kind::from(kind), format!("k{kind}-{ts}-{nonce}"))
         .custom_created_at(Timestamp::from_secs(ts))
         .sign_with_keys(keys)
@@ -196,9 +220,17 @@ fn authors_kind_filters_by_kind() {
         until: None,
     };
     let results = store.query(&q, 100).unwrap();
-    assert_eq!(results.len(), 2, "must only return kind 1 and kind 3 events");
+    assert_eq!(
+        results.len(),
+        2,
+        "must only return kind 1 and kind 3 events"
+    );
     for ev in &results {
-        assert!(ev.raw.kind == 1 || ev.raw.kind == 3, "unexpected kind {}", ev.raw.kind);
+        assert!(
+            ev.raw.kind == 1 || ev.raw.kind == 3,
+            "unexpected kind {}",
+            ev.raw.kind
+        );
     }
 }
 
@@ -217,7 +249,10 @@ fn authors_kind_empty_authors_returns_nothing() {
         until: None,
     };
     let results = store.query(&q, 100).unwrap();
-    assert!(results.is_empty(), "empty authors must return nothing (not wildcard)");
+    assert!(
+        results.is_empty(),
+        "empty authors must return nothing (not wildcard)"
+    );
 }
 
 /// Single-author `AuthorKind` with an empty kind set returns nothing — same
@@ -236,7 +271,10 @@ fn author_kind_empty_kinds_returns_nothing() {
         until: None,
     };
     let results = store.query(&q, 100).unwrap();
-    assert!(results.is_empty(), "AuthorKind empty kinds must return nothing (not wildcard)");
+    assert!(
+        results.is_empty(),
+        "AuthorKind empty kinds must return nothing (not wildcard)"
+    );
 }
 
 /// Empty kinds set returns nothing — never a wildcard. This is the LMDB-side
@@ -258,7 +296,10 @@ fn authors_kind_empty_kinds_returns_nothing() {
         until: None,
     };
     let results = store.query(&q, 100).unwrap();
-    assert!(results.is_empty(), "empty kinds must return nothing (not wildcard)");
+    assert!(
+        results.is_empty(),
+        "empty kinds must return nothing (not wildcard)"
+    );
 }
 
 /// Same event id inserted from two relays appears once (parity with mem).
@@ -271,8 +312,12 @@ fn authors_kind_no_duplicate_event_ids() {
         .sign_with_keys(&keys)
         .unwrap();
     let raw: crate::types::RawEvent = serde_json::from_str(&ev.try_as_json().unwrap()).unwrap();
-    store.insert(verified(raw.clone()), &"wss://r1/".into(), 1000).unwrap();
-    store.insert(verified(raw), &"wss://r2/".into(), 1000).unwrap();
+    store
+        .insert(verified(raw.clone()), &"wss://r1/".into(), 1000)
+        .unwrap();
+    store
+        .insert(verified(raw), &"wss://r2/".into(), 1000)
+        .unwrap();
 
     let mut authors = BTreeSet::new();
     authors.insert(pk_bytes(&keys));
@@ -322,13 +367,20 @@ fn authors_kind_equal_created_at_tie_break_id_ascending() {
 
     let full = store.query(&q, 100).unwrap();
     let got: Vec<String> = full.iter().map(|e| e.raw.id.clone()).collect();
-    assert_eq!(got, ids, "equal-created_at events must come out id-ascending across authors+kinds");
+    assert_eq!(
+        got, ids,
+        "equal-created_at events must come out id-ascending across authors+kinds"
+    );
 
     // EVERY limit prefix must equal the prefix of the full order — the limit
     // cut never picks a fork-dependent tie member mem would not.
     for n in 1..=ids.len() {
         let limited = store.query(&q, n).unwrap();
         let ids_n: Vec<String> = limited.iter().map(|e| e.raw.id.clone()).collect();
-        assert_eq!(ids_n, ids[..n], "limit={n} must be the id-ascending prefix of the full order");
+        assert_eq!(
+            ids_n,
+            ids[..n],
+            "limit={n} must be the id-ascending prefix of the full order"
+        );
     }
 }

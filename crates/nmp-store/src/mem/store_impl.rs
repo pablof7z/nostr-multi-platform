@@ -362,12 +362,12 @@ impl EventStore for MemEventStore {
         }
     }
 
-    fn cache_search_scopes(
-        &self,
-    ) -> Vec<(crate::text_search::SearchScopeId, BTreeSet<u32>)> {
+    fn cache_search_scopes(&self) -> Vec<(crate::text_search::SearchScopeId, BTreeSet<u32>)> {
         // A poisoned lock degrades to "no cache scopes" (D6 — search then stays
         // relay-served rather than crashing the host).
-        self.lock().map(|st| st.fts.cache_scopes()).unwrap_or_default()
+        self.lock()
+            .map(|st| st.fts.cache_scopes())
+            .unwrap_or_default()
     }
 
     fn text_search_visit(

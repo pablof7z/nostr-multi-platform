@@ -23,13 +23,13 @@
 //!   posts `EnqueueOutbound` without blocking.
 //! - `transport_send_rpc_ordering` — frames are enqueued in call order.
 
-#[path = "relay_persistence.rs"]
-mod relay_persistence;
+#[path = "connected_hook_tests.rs"]
+mod connected_hook_tests;
 #[path = "enqueue_outbound.rs"]
 mod enqueue_outbound;
 #[path = "interceptor_effects.rs"]
 mod interceptor_effects;
-#[path = "connected_hook_tests.rs"]
-mod connected_hook_tests;
+#[path = "relay_persistence.rs"]
+mod relay_persistence;
 #[path = "transport_tests.rs"]
 mod transport_tests;

@@ -5,7 +5,7 @@
 //! the opaque id; step 3 left every `Custom` reference fail-closed. This module
 //! adds the registration mechanism: an app registers a CLOSED-DATA definition —
 //! a [`CustomPerspectiveDef`] — under an id, and the perspective compiler
-//! (`nmp-defaults`) resolves the id back to that definition and compiles it
+//! (`explicit composition`) resolves the id back to that definition and compiles it
 //! through the SAME step-3 resolver. Nothing app-supplied is invoked; the
 //! registry stores only data.
 //!
@@ -134,10 +134,7 @@ impl PerspectiveRegistry {
     /// (fail closed, never open).
     #[must_use]
     pub fn get(&self, id: &CustomPerspectiveId) -> Option<CustomPerspectiveDef> {
-        self.defs
-            .lock()
-            .ok()
-            .and_then(|defs| defs.get(id).cloned())
+        self.defs.lock().ok().and_then(|defs| defs.get(id).cloned())
     }
 
     /// Whether `id` has a registered definition (test/diagnostic).

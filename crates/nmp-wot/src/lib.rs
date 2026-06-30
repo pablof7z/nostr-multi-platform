@@ -7,8 +7,8 @@
 //! - bootstrap that graph by pushing one exact, replaceable-kind interest for
 //!   the active account's follow set.
 //!
-//! `register_runtime` is wired by `nmp-defaults`, so apps such as Chirp get
-//! the bootstrap through the normal `register_defaults` path.
+//! `register_runtime` is wired by `explicit composition`, so apps such as Chirp get
+//! the bootstrap through the normal `explicit owner composition` path.
 
 pub mod interest;
 pub mod runtime;

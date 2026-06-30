@@ -59,7 +59,7 @@ where
 
 #[test]
 fn namespace_publish_raw_encodes_and_decodes() {
-    use action_payloads::PublishAction;
+    use nmp_core::publish::PublishAction;
     let decoded: PublishAction = encode_then_decode(
         "nmp.publish",
         r#"{"PublishRaw":{"kind":1,"tags":[],"content":"hi","target":"Auto"}}"#,
@@ -73,7 +73,7 @@ fn namespace_publish_raw_encodes_and_decodes() {
 
 #[test]
 fn namespace_publish_profile_encodes_and_decodes() {
-    use action_payloads::PublishAction;
+    use nmp_core::publish::PublishAction;
     let decoded: PublishAction = encode_then_decode(
         "nmp.publish",
         r#"{"PublishProfile":{"fields":{"name":"alice"}}}"#,
@@ -86,7 +86,7 @@ fn namespace_publish_profile_encodes_and_decodes() {
 
 #[test]
 fn namespace_react_encodes_and_decodes() {
-    use action_payloads::ReactAction;
+    use nmp_nip25::ReactAction;
     let decoded: ReactAction = encode_then_decode(
         "nmp.nip25.react",
         r#"{"target_event_id":"abc","reaction":"+"}"#,
@@ -97,7 +97,7 @@ fn namespace_react_encodes_and_decodes() {
 
 #[test]
 fn namespace_unreact_encodes_and_decodes() {
-    use action_payloads::UnreactAction;
+    use nmp_nip25::UnreactAction;
     let decoded: UnreactAction =
         encode_then_decode("nmp.nip25.unreact", r#"{"reaction_event_id":"deadbeef"}"#);
     assert_eq!(decoded.reaction_event_id, "deadbeef");
@@ -105,21 +105,21 @@ fn namespace_unreact_encodes_and_decodes() {
 
 #[test]
 fn namespace_follow_encodes_and_decodes() {
-    use action_payloads::PubkeyAction;
+    use nmp_nip02::PubkeyAction;
     let decoded: PubkeyAction = encode_then_decode("nmp.follow", r#"{"pubkey":"deadbeef"}"#);
     assert_eq!(decoded.pubkey, "deadbeef");
 }
 
 #[test]
 fn namespace_unfollow_encodes_and_decodes() {
-    use action_payloads::PubkeyAction;
+    use nmp_nip02::PubkeyAction;
     let decoded: PubkeyAction = encode_then_decode("nmp.unfollow", r#"{"pubkey":"deadbeef"}"#);
     assert_eq!(decoded.pubkey, "deadbeef");
 }
 
 #[test]
 fn namespace_follow_many_encodes_and_decodes() {
-    use action_payloads::FollowManyAction;
+    use nmp_nip02::FollowManyAction;
     let decoded: FollowManyAction =
         encode_then_decode("nmp.follow_many", r#"{"pubkeys":["deadbeef","cafebabe"]}"#);
     assert_eq!(decoded.pubkeys, vec!["deadbeef", "cafebabe"]);
@@ -127,7 +127,7 @@ fn namespace_follow_many_encodes_and_decodes() {
 
 #[test]
 fn namespace_nip17_send_encodes_and_decodes() {
-    use action_payloads::SendDmInput;
+    use nmp_nip17::SendDmInput;
     let decoded: SendDmInput = encode_then_decode(
         "nmp.nip17.send",
         r#"{"recipient_pubkey":"deadbeef","content":"hello"}"#,
@@ -138,7 +138,7 @@ fn namespace_nip17_send_encodes_and_decodes() {
 
 #[test]
 fn namespace_nip17_publish_relay_list_encodes_and_decodes() {
-    use action_payloads::PublishDmRelayListInput;
+    use nmp_nip17::PublishDmRelayListInput;
     let decoded: PublishDmRelayListInput = encode_then_decode(
         "nmp.nip17.publish_relay_list",
         r#"{"relays":["wss://relay.example"]}"#,
@@ -148,7 +148,7 @@ fn namespace_nip17_publish_relay_list_encodes_and_decodes() {
 
 #[test]
 fn namespace_nip51_add_bookmark_encodes_and_decodes() {
-    use action_payloads::BookmarkUpdateInput;
+    use nmp_nip51::BookmarkUpdateInput;
     let decoded: BookmarkUpdateInput = encode_then_decode(
         "nmp.nip51.add_bookmark",
         r#"{"account_pubkey":"deadbeef","item":{"type":"url","url":"https://example.com"}}"#,
@@ -158,7 +158,7 @@ fn namespace_nip51_add_bookmark_encodes_and_decodes() {
 
 #[test]
 fn namespace_nip51_remove_bookmark_encodes_and_decodes() {
-    use action_payloads::BookmarkUpdateInput;
+    use nmp_nip51::BookmarkUpdateInput;
     let decoded: BookmarkUpdateInput = encode_then_decode(
         "nmp.nip51.remove_bookmark",
         r#"{"account_pubkey":"deadbeef","item":{"type":"hashtag","hashtag":"nostr"}}"#,
@@ -168,7 +168,7 @@ fn namespace_nip51_remove_bookmark_encodes_and_decodes() {
 
 #[test]
 fn namespace_replies_reply_encodes_and_decodes() {
-    use action_payloads::ReplyAction;
+    use nmp_replies::ReplyAction;
     let decoded: ReplyAction = encode_then_decode(
         "nmp.replies.reply",
         r#"{"target_address":"30023:deadbeef:note","target_kind":30023,"content":"great post"}"#,
@@ -183,7 +183,7 @@ fn namespace_replies_reply_encodes_and_decodes() {
 
 #[test]
 fn namespace_nip65_publish_relay_list_encodes_and_decodes() {
-    use action_payloads::PublishRelayListInput;
+    use nmp_router::PublishRelayListInput;
     let decoded: PublishRelayListInput = encode_then_decode(
         "nmp.nip65.publish_relay_list",
         r#"{"relays":[{"url":"wss://relay.example","role":"read,write"}]}"#,
@@ -194,7 +194,7 @@ fn namespace_nip65_publish_relay_list_encodes_and_decodes() {
 
 #[test]
 fn namespace_nip51_block_relay_encodes_and_decodes() {
-    use action_payloads::BlockRelayInput;
+    use nmp_router::BlockRelayInput;
     let decoded: BlockRelayInput = encode_then_decode(
         "nmp.nip51.block_relay",
         r#"{"url":"wss://relay.example","account_pubkey":"deadbeef"}"#,
@@ -205,7 +205,7 @@ fn namespace_nip51_block_relay_encodes_and_decodes() {
 
 #[test]
 fn namespace_nip51_unblock_relay_encodes_and_decodes() {
-    use action_payloads::UnblockRelayInput;
+    use nmp_router::UnblockRelayInput;
     let decoded: UnblockRelayInput = encode_then_decode(
         "nmp.nip51.unblock_relay",
         r#"{"url":"wss://relay.example","account_pubkey":"deadbeef"}"#,

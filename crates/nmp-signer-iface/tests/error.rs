@@ -32,17 +32,27 @@ fn display_includes_inner_message_for_every_variant() {
     // Each variant's Display impl must include its inner message so the FFI
     // toast surfaces the actual reason — a leak of the variant name only
     // would be useless to the user.
-    assert!(SignerError::NotReady("MARKER-A".into()).to_string().contains("MARKER-A"));
-    assert!(SignerError::Unsupported("MARKER-B".into()).to_string().contains("MARKER-B"));
-    assert!(SignerError::Rejected("MARKER-C".into()).to_string().contains("MARKER-C"));
-    assert!(SignerError::Mismatch("MARKER-D".into()).to_string().contains("MARKER-D"));
-    assert!(SignerError::Timeout("MARKER-E".into()).to_string().contains("MARKER-E"));
-    assert!(
-        SignerError::SignatureVerificationFailed("MARKER-F".into())
-            .to_string()
-            .contains("MARKER-F")
-    );
-    assert!(SignerError::Backend("MARKER-G".into()).to_string().contains("MARKER-G"));
+    assert!(SignerError::NotReady("MARKER-A".into())
+        .to_string()
+        .contains("MARKER-A"));
+    assert!(SignerError::Unsupported("MARKER-B".into())
+        .to_string()
+        .contains("MARKER-B"));
+    assert!(SignerError::Rejected("MARKER-C".into())
+        .to_string()
+        .contains("MARKER-C"));
+    assert!(SignerError::Mismatch("MARKER-D".into())
+        .to_string()
+        .contains("MARKER-D"));
+    assert!(SignerError::Timeout("MARKER-E".into())
+        .to_string()
+        .contains("MARKER-E"));
+    assert!(SignerError::SignatureVerificationFailed("MARKER-F".into())
+        .to_string()
+        .contains("MARKER-F"));
+    assert!(SignerError::Backend("MARKER-G".into())
+        .to_string()
+        .contains("MARKER-G"));
 }
 
 #[test]

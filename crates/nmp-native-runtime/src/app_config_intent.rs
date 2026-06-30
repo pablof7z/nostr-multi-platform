@@ -18,7 +18,7 @@ impl NmpApp {
     /// Register an [`nmp_core::substrate::InputScopeRecognizer`] against the
     /// shared crate-registered input-scope registry. Per-protocol / app crates
     /// call this from their composition helper (e.g. a NIP-50 text-search
-    /// recognizer wired by `nmp_defaults::register_defaults`, or an app's own
+    /// recognizer wired by `explicit owner composition`, or an app's own
     /// recognizer).
     ///
     /// SHOULD be called before `nmp_app_start` (composition-root house style;

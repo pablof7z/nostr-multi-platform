@@ -6,7 +6,7 @@
 //! `RelayConnectedHookRegistrar`, `HostCapabilities`, …) so a reusable
 //! protocol/command module receives ONLY the surface it actually uses (D0
 //! capability honesty). `AppHost` survives only as a **composition super-trait**
-//! that the composition root (`nmp-defaults` / `nmp-ffi` wiring) may name — never
+//! that app/runtime composition roots may name — never
 //! a narrow protocol consumer. In parallel, secret signing material is reached
 //! through the signer-session port / a narrow capability (`ctx.sign_event_for_account`,
 //! the `LocalSignerAccess` port), never by a protocol command pulling the raw
@@ -47,10 +47,10 @@
 //! - **`AppHost`** — the protocol/command surface: the reusable protocol &
 //!   routing crates ([`PROTOCOL_CRATES`] + every `nmp-nipNN` crate) PLUS the
 //!   `nmp-core` protocol-command modules (`substrate/protocol*`,
-//!   `actor/commands/`). The `AppHost` DEFINITION (`substrate/app_host/`) and the
-//!   composition root (`nmp-defaults`, `nmp-ffi`) are NOT in scope — they
-//!   legitimately name `AppHost`. Master is green: every in-scope `AppHost`
-//!   reference today lives in a doc comment.
+//!   `actor/commands/`). The `AppHost` DEFINITION (`substrate/app_host/`) and
+//!   app/runtime composition roots are NOT in scope — they legitimately name
+//!   `AppHost`. Master is green: every in-scope `AppHost` reference today lives
+//!   in a doc comment.
 //!
 //! - **`active_local_keys`** — the protocol-command IMPLEMENTATION crates only
 //!   ([`PROTOCOL_CRATES`] + `nmp-nipNN`), i.e. where `ProtocolCommand::run`
@@ -131,8 +131,8 @@ fn is_core_command_module(s: &str) -> bool {
 
 /// True iff the `AppHost` ban should scan `path`: the protocol-command surface
 /// (reusable protocol crates + `nmp-core` protocol-command modules). Never the
-/// `AppHost` DEFINITION (`substrate/app_host/`), the composition root, or the
-/// lint binary itself.
+/// `AppHost` DEFINITION (`substrate/app_host/`), app/runtime composition roots,
+/// or the lint binary itself.
 pub fn app_host_in_scope(path: &Path) -> bool {
     let s = path.to_string_lossy().replace('\\', "/");
     if is_lint_source(&s) {
@@ -195,8 +195,8 @@ fn boundary_anchored_cols(code: &str, token: &str) -> Vec<usize> {
 fn app_host_message() -> String {
     "`AppHost` named in protocol/command code violates D26 (Workstream D item 7 / \
      D6 lock-in). `AppHost` is the composition super-trait — the union of every \
-     narrow registration/capability trait — and only the composition root \
-     (`nmp-defaults` / `nmp-ffi` wiring) may name it. A reusable protocol module \
+     narrow registration/capability trait — and only app/runtime composition \
+     roots may name it. A reusable protocol module \
      taking `AppHost` receives the whole god-surface instead of the narrow \
      registrar(s) it actually uses (the D0 capability-honesty regression D6 \
      deleted)"
@@ -251,7 +251,11 @@ pub fn check(
     }
     if alk_scope {
         for col in boundary_anchored_cols(code, "active_local_keys") {
-            hits.push((col, active_local_keys_message(), active_local_keys_suggested()));
+            hits.push((
+                col,
+                active_local_keys_message(),
+                active_local_keys_suggested(),
+            ));
         }
     }
     hits.sort_by_key(|(c, _, _)| *c);

@@ -24,5 +24,8 @@ pub use gc::{
 };
 pub(crate) use ids::{hex_to_event_id, is_relay_provenance_private};
 pub use ids::{EventId, PubKey, RelayUrl};
-pub use outcomes::{InsertOutcome, ProvenanceEntry, RejectReason, TargetInteractionCounts, TombstoneOrigin, TombstoneRow};
+pub use outcomes::{
+    InsertOutcome, ProvenanceEntry, RejectReason, TargetInteractionCounts, TombstoneOrigin,
+    TombstoneRow,
+};
 pub use query::StoreQuery;

@@ -67,7 +67,9 @@ fn adding_same_nsec_twice_yields_exactly_one_account() {
     let b = LocalKeySigner::from_secret_hex(&key_hex).unwrap();
     let id1 = mgr.add(Arc::new(a)).expect("first add");
     let original = mgr.signer_for(&id1).expect("installed");
-    let id2 = mgr.add(Arc::new(b)).expect("second add is an idempotent no-op");
+    let id2 = mgr
+        .add(Arc::new(b))
+        .expect("second add is an idempotent no-op");
 
     assert_eq!(id1, id2, "same nsec must map to the same IdentityId");
     assert_eq!(mgr.accounts(), vec![id1.clone()], "exactly one slot");
@@ -93,7 +95,11 @@ fn switch_to_same_is_noop() {
     let obs = Arc::new(ProbeObserver::new());
     mgr.observe(obs.clone());
     mgr.switch_active(&id).unwrap();
-    assert_eq!(obs.pending_count(), 0, "no-op switch must not fire observers");
+    assert_eq!(
+        obs.pending_count(),
+        0,
+        "no-op switch must not fire observers"
+    );
 }
 
 #[test]

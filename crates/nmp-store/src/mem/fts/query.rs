@@ -41,20 +41,16 @@ pub(in crate::mem) fn text_search_visit(
     // (union of docs under any token with `prefix`). Build the candidate set,
     // then filter by kind/time and emit newest-first within the limit/budget.
     let mut docs_scanned = 0usize;
-    let candidates = match collect_candidates(index, &exact_terms, &prefix, query, &mut docs_scanned)
-    {
-        Candidates::Set(set) => set,
-        Candidates::BudgetExhausted(set) => {
-            // We hit the scan budget while gathering candidates.
-            return emit(
-                index,
-                set,
-                query,
-                visitor,
-                /* budget_exhausted = */ true,
-            );
-        }
-    };
+    let candidates =
+        match collect_candidates(index, &exact_terms, &prefix, query, &mut docs_scanned) {
+            Candidates::Set(set) => set,
+            Candidates::BudgetExhausted(set) => {
+                // We hit the scan budget while gathering candidates.
+                return emit(
+                    index, set, query, visitor, /* budget_exhausted = */ true,
+                );
+            }
+        };
 
     emit(index, candidates, query, visitor, false)
 }

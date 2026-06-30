@@ -28,10 +28,6 @@ use std::sync::mpsc::Receiver;
 use std::sync::Arc;
 use std::time::Duration;
 
-mod port_failure_tests;
-mod preflight_tests;
-mod publish_path_tests;
-
 const RECIPIENT_HEX_PLACEHOLDER: &str =
     "bb11223344556677889900aabbccddeeff00112233445566778899aabbccddff";
 
@@ -300,6 +296,13 @@ impl ChainDriver {
             .collect()
     }
 }
+
+#[path = "port_failure_tests.rs"]
+mod port_failure_tests;
+#[path = "preflight_tests.rs"]
+mod preflight_tests;
+#[path = "publish_path_tests.rs"]
+mod publish_path_tests;
 
 // ── §D5 oracles ──────────────────────────────────────────────────────────────
 

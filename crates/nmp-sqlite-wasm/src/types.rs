@@ -166,7 +166,11 @@ impl ReplaceableKey {
                 k.extend_from_slice(pubkey);
                 k
             }
-            Self::Parameterized { kind, pubkey, d_tag } => {
+            Self::Parameterized {
+                kind,
+                pubkey,
+                d_tag,
+            } => {
                 let mut k = Vec::with_capacity(4 + 32 + d_tag.len());
                 k.extend_from_slice(&kind.to_be_bytes());
                 k.extend_from_slice(pubkey);
@@ -236,7 +240,10 @@ mod tests {
         assert_eq!(b.max_duration_ms, 50);
         assert_eq!(b.max_total_events, usize::MAX);
         assert_eq!(GcBudget::production(), b);
-        assert_eq!(GcBudget::with_durable_event_ceiling(10).max_total_events, 10);
+        assert_eq!(
+            GcBudget::with_durable_event_ceiling(10).max_total_events,
+            10
+        );
     }
 
     #[test]

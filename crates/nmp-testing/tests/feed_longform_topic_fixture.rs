@@ -1,7 +1,7 @@
 //! Hermetic topic-article feed proof for issue #1626.
 //!
-//! The app-level topic-article action opens two relay-expressible lanes:
-//! direct `kind:30023 #t=<topic>` and generic repost `kind:16 #k=30023`.
+//! A topic-article feed opens two relay-expressible lanes: direct
+//! `kind:30023 #t=<topic>` and generic repost `kind:16 #k=30023`.
 //! This fixture sends both through real local REQ/EVENT/EOSE WebSocket
 //! boundaries, then renders with the app-neutral long-form feed adapter. The
 //! feed admits direct articles plus topic-proven kind:16 wrappers and does not
@@ -16,7 +16,6 @@ use std::time::{Duration, Instant};
 use nmp_core::substrate::KernelEvent;
 use nmp_core::ObservedProjectionSink;
 use nmp_feed::FeedRequest;
-use nmp_planner::LogicalInterest;
 use nostr::{Event, EventBuilder, JsonUtil as _, Keys, Kind, Tag, Timestamp};
 use serde_json::{json, Map, Value};
 use tungstenite::Message;
@@ -141,29 +140,30 @@ fn integer_set(value: Option<&Value>) -> BTreeSet<u64> {
         .collect()
 }
 
-fn filter_from_interest(interest: &LogicalInterest) -> Value {
+fn direct_topic_article_filter(topic: &str) -> Value {
     let mut filter = Map::new();
     filter.insert(
         "kinds".to_string(),
-        Value::Array(
-            interest
-                .shape
-                .kinds
-                .iter()
-                .copied()
-                .map(|kind| Value::from(u64::from(kind)))
-                .collect(),
-        ),
+        Value::Array(vec![Value::from(
+            nmp_content::KIND_LONG_FORM_ARTICLE as u64,
+        )]),
     );
-    for (tag, values) in &interest.shape.tags {
-        filter.insert(
-            format!("#{tag}"),
-            Value::Array(values.iter().cloned().map(Value::from).collect()),
-        );
-    }
-    if let Some(limit) = interest.shape.limit {
-        filter.insert("limit".to_string(), Value::from(u64::from(limit)));
-    }
+    filter.insert("#t".to_string(), Value::Array(vec![Value::from(topic)]));
+    Value::Object(filter)
+}
+
+fn longform_repost_filter() -> Value {
+    let mut filter = Map::new();
+    filter.insert(
+        "kinds".to_string(),
+        Value::Array(vec![Value::from(nmp_nip18::KIND_GENERIC_REPOST as u64)]),
+    );
+    filter.insert(
+        "#k".to_string(),
+        Value::Array(vec![Value::from(
+            nmp_content::KIND_LONG_FORM_ARTICLE.to_string(),
+        )]),
+    );
     Value::Object(filter)
 }
 
@@ -280,10 +280,8 @@ fn topic_article_feed_renders_kind30023_and_kind16_without_secondary_hydration()
         profile.clone(),
     ];
 
-    let direct_interest = nmp_defaults::topic_articles::topic_articles_interest(TOPIC);
-    let repost_interest = nmp_defaults::topic_articles::topic_article_reposts_interest(TOPIC);
-    let direct_filter = filter_from_interest(&direct_interest);
-    let repost_filter = filter_from_interest(&repost_interest);
+    let direct_filter = direct_topic_article_filter(TOPIC);
+    let repost_filter = longform_repost_filter();
 
     let (direct_relay, direct_thread) = spawn_one_req_relay(events.clone());
     let direct_events = fetch_kernel_events(&direct_relay, direct_filter, "topic-direct");

@@ -264,8 +264,9 @@ fn decode_row(stmt: &SqliteStmt<'_>) -> Result<StoreLogEntry, SqliteWasmError> {
     let op = match op_str.as_str() {
         "inserted" => LogOp::Inserted,
         "replaced" => LogOp::Replaced {
-            replaced_id: target_id
-                .ok_or_else(|| SqliteWasmError::Column("replaced entry missing target_id".into()))?,
+            replaced_id: target_id.ok_or_else(|| {
+                SqliteWasmError::Column("replaced entry missing target_id".into())
+            })?,
         },
         "deleted" => LogOp::Deleted {
             target_id: target_id
@@ -286,7 +287,11 @@ fn decode_row(stmt: &SqliteStmt<'_>) -> Result<StoreLogEntry, SqliteWasmError> {
     } else {
         Some(conv::decode_blob(&raw_blob)?)
     };
-    let source_relay = if source.is_empty() { None } else { Some(source) };
+    let source_relay = if source.is_empty() {
+        None
+    } else {
+        Some(source)
+    };
 
     Ok(StoreLogEntry {
         seq,

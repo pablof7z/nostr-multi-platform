@@ -22,7 +22,11 @@ impl Lmdb {
     /// correct-but-eager, never wrong: the cache can only turn a re-verify
     /// into a skip; missing an entry cannot.  This is the safe direction for
     /// eviction.
-    pub fn delete_freshness(&self, txn: &mut RwTxn, key: &crate::ReplaceableKey) -> Result<(), Error> {
+    pub fn delete_freshness(
+        &self,
+        txn: &mut RwTxn,
+        key: &crate::ReplaceableKey,
+    ) -> Result<(), Error> {
         let lmdb_key = key.to_lmdb_key();
         self.replaceable_freshness.delete(txn, &lmdb_key)?;
         // Eagerly evict from cache — safe to do before commit (see doc).
@@ -38,10 +42,7 @@ impl Lmdb {
     /// only then evicts the key from the in-memory cache.  A poisoned lock
     /// degrades to "cache miss next read" (a re-verify), which is correct-but-
     /// eager, never wrong.
-    pub fn delete_freshness_committed(
-        &self,
-        key: &crate::ReplaceableKey,
-    ) -> Result<(), Error> {
+    pub fn delete_freshness_committed(&self, key: &crate::ReplaceableKey) -> Result<(), Error> {
         let mut txn = self.write_txn()?;
         self.delete_freshness(&mut txn, key)?;
         txn.commit()?;

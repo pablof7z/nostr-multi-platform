@@ -33,9 +33,9 @@
 //! **Crate-boundary spec §271 (2026-05-25)**: this resolver lives in
 //! `nmp-router`, not `nmp-core`. The publish-side `OutboxResolver` trait
 //! stays in `nmp_core::publish::traits` so the kernel can carry an `Arc<dyn
-//! OutboxResolver>` without naming a NIP. Production composition
-//! (`nmp-defaults::register_defaults`) wires a `Nip65OutboxResolver`
-//! into the kernel via `AppHost::set_publish_resolver_factory` →
+//! OutboxResolver>` without naming a NIP. Production composition wires a
+//! `Nip65OutboxResolver` into the kernel via
+//! `AppHost::set_publish_resolver_factory` →
 //! `Kernel::set_publish_resolver`. This keeps `nmp-core` protocol-neutral
 //! (D0) and reflects the fact that NIP-65 outbox resolution is the same
 //! algorithmic concern as the substrate `OutboxRouter`

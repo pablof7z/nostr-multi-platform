@@ -57,10 +57,7 @@ fn nip46_req_arrives_before_event_on_reconnect() {
 
     // ── NIP-46 session ──────────────────────────────────────────────────────
     let local_keys = Keys::generate();
-    let sub_id = format!(
-        "nip46-t120-{}",
-        &local_keys.public_key().to_hex()[..8]
-    );
+    let sub_id = format!("nip46-t120-{}", &local_keys.public_key().to_hex()[..8]);
     let relay_url = mock.ws_url();
 
     let now = now_unix_secs();
@@ -77,15 +74,17 @@ fn nip46_req_arrives_before_event_on_reconnect() {
     // ── Pool ────────────────────────────────────────────────────────────────
     let (pool_tx, pool_rx) = mpsc::channel::<PoolEvent>();
     let pool = Pool::new(
-        PoolConfig { default_role: RelayRole::Signer, ..Default::default() },
+        PoolConfig {
+            default_role: RelayRole::Signer,
+            ..Default::default()
+        },
         pool_tx,
     );
 
     let h = pool.ensure_open_with_role(&relay_url, RelayRole::Signer);
 
     // ── Phase 1: initial connect ─────────────────────────────────────────
-    wait_opened(&pool_rx, HANDSHAKE_TIMEOUT)
-        .expect("pool must connect to mock relay");
+    wait_opened(&pool_rx, HANDSHAKE_TIMEOUT).expect("pool must connect to mock relay");
 
     // Send Subscribe (REQ) + connect RPC.
     for effect in initial_effects {
@@ -108,11 +107,7 @@ fn nip46_req_arrives_before_event_on_reconnect() {
     // Mirror what Nip46ConnectedHook does via CommandSender::set_reconnect_preamble:
     // register the replay REQ as the worker's preamble so it is injected at the
     // FRONT of pending on every subsequent reconnect (the fix under test).
-    let req_frame = build_req_frame(
-        &sub_id,
-        &local_keys.public_key().to_hex(),
-        now_unix_secs(),
-    );
+    let req_frame = build_req_frame(&sub_id, &local_keys.public_key().to_hex(), now_unix_secs());
     let preamble_ok = pool.set_reconnect_preamble(h, vec![req_frame]);
     assert!(preamble_ok, "set_reconnect_preamble must accept the handle");
 
@@ -161,13 +156,12 @@ fn nip46_req_arrives_before_event_on_reconnect() {
     let log = mock.per_conn_log();
 
     // Locate the second connection's start (after the second "OPEN" marker).
-    let second_conn_frames = second_conn_slice(&log)
-        .unwrap_or_else(|| {
-            panic!(
-                "per_conn_log must contain at least two 'OPEN' markers \
+    let second_conn_frames = second_conn_slice(&log).unwrap_or_else(|| {
+        panic!(
+            "per_conn_log must contain at least two 'OPEN' markers \
                  (initial + reconnect); got: {log:?}"
-            )
-        });
+        )
+    });
 
     let req_pos = second_conn_frames.iter().position(|e| e == "REQ");
     let event_pos = second_conn_frames.iter().position(|e| e == "EVENT");
@@ -217,7 +211,10 @@ fn drive_handshake(
             .checked_duration_since(std::time::Instant::now())
             .unwrap_or(Duration::ZERO);
         match pool_rx.recv_timeout(remaining.min(Duration::from_millis(200))) {
-            Ok(PoolEvent::Frame { frame: RelayFrame::Text(text), .. }) => {
+            Ok(PoolEvent::Frame {
+                frame: RelayFrame::Text(text),
+                ..
+            }) => {
                 let effects = session.on_relay_text(&text, now_unix_secs());
                 for effect in effects {
                     match effect {

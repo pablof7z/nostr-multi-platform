@@ -150,7 +150,10 @@ impl ActionPayload for MarmotAction {
 
         // Union discriminant + body offset. Build the body table FIRST (FlatBuffers
         // requires nested objects before the table that references them).
-        let (body_type, body_offset): (fb::MarmotActionBody, flatbuffers::WIPOffset<flatbuffers::UnionWIPOffset>) = match self {
+        let (body_type, body_offset): (
+            fb::MarmotActionBody,
+            flatbuffers::WIPOffset<flatbuffers::UnionWIPOffset>,
+        ) = match self {
             // ── PublishKeyPackage ────────────────────────────────────────────
             MarmotAction::PublishKeyPackage { relays } => {
                 let relays_off = encode_str_vec(&mut fbb, relays);
@@ -236,13 +239,18 @@ impl ActionPayload for MarmotAction {
                 let gid_off = fbb.create_string(group_id_hex);
                 let t = fb::Leave::create(
                     &mut fbb,
-                    &fb::LeaveArgs { group_id_hex: Some(gid_off) },
+                    &fb::LeaveArgs {
+                        group_id_hex: Some(gid_off),
+                    },
                 );
                 (fb::MarmotActionBody::Leave, t.as_union_value())
             }
 
             // ── Remove ───────────────────────────────────────────────────────
-            MarmotAction::Remove { group_id_hex, member_npubs } => {
+            MarmotAction::Remove {
+                group_id_hex,
+                member_npubs,
+            } => {
                 let npubs_off = encode_str_vec(&mut fbb, member_npubs);
                 let gid_off = fbb.create_string(group_id_hex);
                 let t = fb::Remove::create(
@@ -260,7 +268,9 @@ impl ActionPayload for MarmotAction {
                 let wid_off = fbb.create_string(welcome_id_hex);
                 let t = fb::AcceptWelcome::create(
                     &mut fbb,
-                    &fb::AcceptWelcomeArgs { welcome_id_hex: Some(wid_off) },
+                    &fb::AcceptWelcomeArgs {
+                        welcome_id_hex: Some(wid_off),
+                    },
                 );
                 (fb::MarmotActionBody::AcceptWelcome, t.as_union_value())
             }
@@ -270,7 +280,9 @@ impl ActionPayload for MarmotAction {
                 let wid_off = fbb.create_string(welcome_id_hex);
                 let t = fb::DeclineWelcome::create(
                     &mut fbb,
-                    &fb::DeclineWelcomeArgs { welcome_id_hex: Some(wid_off) },
+                    &fb::DeclineWelcomeArgs {
+                        welcome_id_hex: Some(wid_off),
+                    },
                 );
                 (fb::MarmotActionBody::DeclineWelcome, t.as_union_value())
             }
@@ -280,7 +292,9 @@ impl ActionPayload for MarmotAction {
                 let gid_off = fbb.create_string(group_id_hex);
                 let t = fb::ClearPending::create(
                     &mut fbb,
-                    &fb::ClearPendingArgs { group_id_hex: Some(gid_off) },
+                    &fb::ClearPendingArgs {
+                        group_id_hex: Some(gid_off),
+                    },
                 );
                 (fb::MarmotActionBody::ClearPending, t.as_union_value())
             }

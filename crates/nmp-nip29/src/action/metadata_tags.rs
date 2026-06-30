@@ -105,12 +105,16 @@ mod tests {
         );
         assert_eq!(tags[0], vec!["h".to_string(), "room".to_string()]);
         assert_eq!(
-            tags.iter().filter(|t| t.first() == Some(&"name".to_string())).count(),
+            tags.iter()
+                .filter(|t| t.first() == Some(&"name".to_string()))
+                .count(),
             1
         );
         assert!(tags.iter().any(|t| t == &vec!["private".to_string()]));
         assert!(tags.iter().any(|t| t == &vec!["closed".to_string()]));
-        assert!(tags.iter().any(|t| t == &vec!["parent".to_string(), "parent-room".to_string()]));
+        assert!(tags
+            .iter()
+            .any(|t| t == &vec!["parent".to_string(), "parent-room".to_string()]));
     }
 
     #[test]
@@ -132,15 +136,7 @@ mod tests {
 
     #[test]
     fn empty_strings_collapse_to_omitted() {
-        let tags = metadata_edit_tags(
-            "room",
-            Some("   "),
-            Some(""),
-            None,
-            None,
-            None,
-            Some(""),
-        );
+        let tags = metadata_edit_tags("room", Some("   "), Some(""), None, None, None, Some(""));
         assert_eq!(tags, vec![vec!["h".to_string(), "room".to_string()]]);
     }
 

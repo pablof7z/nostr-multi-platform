@@ -20,12 +20,9 @@ mod text;
 
 // ─── shared fixtures ─────────────────────────────────────────────────────────
 
-pub(crate) const PK: &str =
-    "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
-pub(crate) const EVID: &str =
-    "5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36";
-pub(crate) const SK: &str =
-    "67dea2ed018072d675f5415ecfaed7d2597555e202d85b3d65ea4e58d2d92ffa";
+pub(crate) const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
+pub(crate) const EVID: &str = "5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36";
+pub(crate) const SK: &str = "67dea2ed018072d675f5415ecfaed7d2597555e202d85b3d65ea4e58d2d92ffa";
 
 pub(crate) fn profiles_scope() -> InputScopeId {
     InputScopeId::new("nip50", "profiles")

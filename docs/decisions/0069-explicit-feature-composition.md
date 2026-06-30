@@ -2,16 +2,21 @@
 
 ## Status
 
-Accepted for the architecture redesign direction.
+Accepted for the architecture redesign direction; amended by the 2026-06-30
+defaults deletion.
+
+**Current disposition:** production apps install `nmp-substrate` plus explicit
+protocol/app feature installers. The old defaults bundle and any replacement
+preset or test-helper bundle are deleted from current guidance.
 
 ## Context
 
 Issue #2313 exposed that NMP's app-facing model had become too hard to read:
-production apps could call `register_defaults()` and receive an opaque bundle of
-protocol features, runtimes, projections, and policy. Issue #2316 showed that
-this is not just a naming problem. One feature's state is split across many
-independent mechanisms, so hiding more work behind a larger preset would only
-make the architecture less inspectable.
+production apps could receive an opaque bundle of protocol features, runtimes,
+projections, and policy. Issue #2316 showed that this is not just a naming
+problem. One feature's state is split across many independent mechanisms, so
+hiding more work behind a larger preset would only make the architecture less
+inspectable.
 
 The old defaults-era ADRs still preserve useful invariants: reusable substrate
 installation, composition observability, extension seams, and runtime builders.
@@ -56,15 +61,14 @@ The exact Rust API can change. The invariant is that production apps compose
 named pieces explicitly, and app-specific nouns stay in app crates unless they
 are a reusable Nostr mechanism.
 
-`nmp-defaults` may survive as a reusable installer library. It must not be a
-hidden production preset or a leaf-app policy owner. It may provide substrate,
-generic routing, mailbox, parser, signer, and publish installers. It must not
-own seed follows, bootstrap relay brands, signer permission defaults, onboarding
-policy, app relay policy, or product defaults.
+The old defaults bundle does not survive as a reusable installer library, a
+test helper, or a compatibility shim. Shared substrate construction lives in
+`nmp-substrate`. Protocol crates expose named per-feature installers. App and
+runtime roots call those owners directly and must not hide seed follows,
+bootstrap relay brands, signer permission defaults, onboarding policy, app
+relay policy, or product defaults behind a preset.
 
-`register_defaults()` is rejected as production app architecture. If a preset
-survives, it is tutorial, test, or migration compatibility with named live
-consumers, owner, support window, and deletion or formalization trigger.
+Hidden default presets are rejected as production app architecture.
 
 App-specific behavior belongs in app Rust crates unless it is a reusable Nostr
 mechanism. A request from one downstream app is evidence, not permission to add
@@ -83,8 +87,8 @@ Positive:
 Negative/tradeoffs:
 
 - Existing templates, examples, builder-guide pages, and downstream roots that
-  teach `register_defaults()` as the production path must migrate or be labeled
-  as compatibility/tutorial surfaces.
+  teach hidden default presets as the production path must migrate to explicit
+  owner composition.
 - Some installer APIs may need to become more granular before the explicit root
   is pleasant.
 - A production app may initially write more visible setup code, but that setup
@@ -97,19 +101,19 @@ Negative/tradeoffs:
 
 | Option | Why rejected |
 |---|---|
-| Keep `register_defaults()` as the normal app root | It hides active protocol features and policy, preserving the #2313 confusion. |
+| Keep a hidden defaults bundle as the normal app root | It hides active protocol features and policy, preserving the #2313 confusion. |
 | Add a broad `dyn AppFeature` or global `AppHost` method pile first | It risks another abstraction layer without deleting old public surface. Existing builders, registrars, and installer functions must be tried first. |
 | Move common downstream product behavior into NMP crates | It violates the generic Nostr mechanism vs. app domain boundary. |
 | Make shells configure raw feature dictionaries | It moves protocol and product policy out of Rust. |
 
 ## Fitness functions / enforcement
 
-- Production scaffold docs and tests reject hidden `register_defaults()` and
+- Production scaffold docs and tests reject hidden default presets and
   `declare_consumed_projections` teaching paths.
-- `nmp-defaults` has no platform-runtime dependency and no leaf-app product
+- `nmp-substrate` has no platform-runtime dependency and no leaf-app product
   policy.
-- Every compatibility preset has live consumers, owner, support window, and
-  deletion/formalization gate.
+- There are no compatibility presets; apps and runtimes compose the concrete
+  owners directly.
 - Downstream app roots keep app-specific policy in app Rust crates; native/web
   shells render, execute capabilities, and hold only ephemeral presentation
   state.

@@ -284,9 +284,9 @@ impl Signer for LocalKeySigner {
                         EncryptedSecretKey::new(sk, pwd, self.ncryptsec_log_n, KeySecurity::Medium)
                     })
                     .map_err(|e| SignerError::Backend(format!("NIP-49 encrypt: {e}")))?;
-                let bech = enc
-                    .to_bech32()
-                    .map_err(|e| SignerError::Backend(format!("EncryptedSecretKey -> bech32: {e}")))?;
+                let bech = enc.to_bech32().map_err(|e| {
+                    SignerError::Backend(format!("EncryptedSecretKey -> bech32: {e}"))
+                })?;
                 LocalKeyMaterial::Ncryptsec(bech)
             }
             None => {

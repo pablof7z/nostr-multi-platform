@@ -124,7 +124,7 @@ impl PublishEngine {
     ///
     /// Spec §271 (2026-05-25): the kernel constructs `PublishEngine` with
     /// the in-crate `NoopOutboxResolver` default, then production
-    /// composition (`nmp-defaults::register_defaults` →
+    /// composition (`explicit owner composition` →
     /// `Kernel::set_publish_resolver`) swaps in
     /// `nmp_router::Nip65OutboxResolver`. MUST be called BEFORE any publish
     /// reaches `start_publish` — swapping mid-publish would leave the
@@ -136,7 +136,7 @@ impl PublishEngine {
     }
 
     /// Swap the engine's [`BlockedRelayLookup`] in-place. Production
-    /// composition (`nmp-defaults::register_defaults` → kernel wiring)
+    /// composition (`explicit owner composition` → kernel wiring)
     /// installs the router-side `InMemoryBlockedRelayCache` so the outbox
     /// resolver excludes the active account's kind:10006 blocked relays. The
     /// default is [`empty_blocked_relay_lookup`] (no blocks — a kernel built

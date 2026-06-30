@@ -5,13 +5,13 @@
 //! that turns that intent into a [`WalletPayInvoiceCommand`] paid through the
 //! per-app [`WalletRuntimeHandle`]. The dependency direction is
 //! `nmp-nip47 → nmp-core` (the trait owner) — NIP-57 no longer depends on
-//! `nmp-nip47`. Composition (`nmp-defaults` / app roots) wires the adapter
+//! `nmp-nip47`. Composition (`explicit composition` / app roots) wires the adapter
 //! into the zap chain via `nmp_nip57::register_zap_with_payment_port`.
 
 use std::sync::Arc;
 
-use nmp_core::substrate::{PaymentIntent, PaymentPort};
 use nmp_core::actor::ActorCommand;
+use nmp_core::substrate::{PaymentIntent, PaymentPort};
 
 use crate::protocol::WalletPayInvoiceCommand;
 use crate::runtime::WalletRuntimeHandle;

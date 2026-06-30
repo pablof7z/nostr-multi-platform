@@ -128,9 +128,14 @@ pub(super) fn reconcile_unresolved_payments(
             invoice: Some(record.bolt11.clone()),
         });
         // A reconciliation lookup is not itself a payment — no correlation id.
-        if let Some((msg, lookup_request_id)) =
-            super::request_builder::build_request(wallet, kernel, relay, NwcMethod::LookupInvoice, params, None)
-        {
+        if let Some((msg, lookup_request_id)) = super::request_builder::build_request(
+            wallet,
+            kernel,
+            relay,
+            NwcMethod::LookupInvoice,
+            params,
+            None,
+        ) {
             if let Some(conn) = wallet.connection.as_mut() {
                 conn.pending_lookups
                     .insert(lookup_request_id, record.request_event_id.clone());

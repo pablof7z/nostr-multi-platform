@@ -35,9 +35,9 @@
 //! The uppercase `P`-tag sender is set by the LN provider independently of the
 //! `description`, so it is trusted regardless of any description contradiction.
 
-use nmp_store::StoredEvent;
 use nmp_core::substrate::KernelEvent;
 use nmp_core::tags::first_tag_value;
+use nmp_store::StoredEvent;
 use serde::{Deserialize, Serialize};
 
 use crate::bolt11;

@@ -72,7 +72,7 @@ fn ip_is_public(ip: &IpAddr) -> bool {
                 || v6.is_multicast()                          // ff00::/8
                 || (seg[0] & 0xfe00) == 0xfc00                // fc00::/7 unique-local
                 || (seg[0] & 0xffc0) == 0xfe80                // fe80::/10 link-local unicast
-                || (seg[0] == 0x2001 && seg[1] == 0x0db8))    // 2001:db8::/32 documentation
+                || (seg[0] == 0x2001 && seg[1] == 0x0db8)) // 2001:db8::/32 documentation
         }
     }
 }
@@ -94,7 +94,7 @@ fn ipv4_is_public(v4: &Ipv4Addr) -> bool {
         || o[0] == 0                                  // 0.0.0.0/8 "this network"
         || (o[0] == 100 && (o[1] & 0xc0) == 64)       // 100.64.0.0/10 CGNAT
         || (o[0] == 198 && (o[1] & 0xfe) == 18)       // 198.18.0.0/15 benchmarking
-        || o[0] >= 240)                               // 240.0.0.0/4 reserved
+        || o[0] >= 240) // 240.0.0.0/4 reserved
 }
 
 #[cfg(test)]
@@ -107,7 +107,12 @@ mod tests {
 
     #[test]
     fn public_addresses_are_public() {
-        for s in ["1.1.1.1", "8.8.8.8", "93.184.216.34", "2606:4700:4700::1111"] {
+        for s in [
+            "1.1.1.1",
+            "8.8.8.8",
+            "93.184.216.34",
+            "2606:4700:4700::1111",
+        ] {
             assert!(ip_is_public(&ip(s)), "{s} should be public");
         }
     }

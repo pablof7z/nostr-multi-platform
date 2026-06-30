@@ -116,12 +116,7 @@ pub(crate) fn apply(report: &mut ScenarioMetrics, outcome: &S7Outcome) {
     // Gate: frames_without_feed >= 1 (conservative; proves the gate fires at all).
     let frames_without_feed_b = b.frames_without_feed;
     report.gates.push(
-        Gate::gte(
-            "idle_feed_bytes_omitted",
-            frames_without_feed_b as f64,
-            1.0,
-        )
-        .with_note(
+        Gate::gte("idle_feed_bytes_omitted", frames_without_feed_b as f64, 1.0).with_note(
             "with incremental ON, at least 1 idle tick after the first full-baseline must \
              omit the feed (Unchanged → byte-equality gate fires, host retains prior value); \
              in practice all ticks after tick-1 are omitted",
@@ -168,7 +163,12 @@ pub(crate) fn apply(report: &mut ScenarioMetrics, outcome: &S7Outcome) {
     // engine and would pass even with a BROKEN gate — retained as a secondary
     // predicate sanity check below.)
     report.gates.push(
-        Gate::lte("out_of_window_false_resend_rate", out_of_window_resend_rate, 0.0).with_note(
+        Gate::lte(
+            "out_of_window_false_resend_rate",
+            out_of_window_resend_rate,
+            0.0,
+        )
+        .with_note(
             "a FOLLOWED author's reply to an unknown root (passes the predicate, reaches the \
              engine, mutates pending_attributions, but surfaces no card → snapshot byte-identical) \
              must NOT trigger a feed re-emit — proving the byte-equality gate suppresses, not just \
@@ -232,27 +232,22 @@ pub(crate) fn apply(report: &mut ScenarioMetrics, outcome: &S7Outcome) {
         b.feed_bytes_p50,
         b.serialize_us_p50,
     ));
-    report.notes.push(format!(
-        "Byte-identity oracle: {}",
-        outcome.oracle.note
-    ));
+    report
+        .notes
+        .push(format!("Byte-identity oracle: {}", outcome.oracle.note));
     report.notes.push(format!(
         "GATE 4 (over-invalidation proof): {}/{} FOLLOWED reply-to-unknown-root events \
          (pass predicate, reach engine, mutate pending_attributions, surface no card → \
          snapshot byte-identical) → out_of_window_false_resend_rate={:.4} (must be 0 — proves \
          the byte-equality gate suppresses, not just the follow predicate)",
-        outcome.out_of_window_resend_count,
-        outcome.out_of_window_events,
-        out_of_window_resend_rate,
+        outcome.out_of_window_resend_count, outcome.out_of_window_events, out_of_window_resend_rate,
     ));
     report.notes.push(format!(
         "Secondary predicate sanity check: {}/{} STRANGER (non-followed) replies → \
          stranger_resend_count={} (dropped by predicate before any engine state change; trivially \
          byte-identical — informational, NOT the over-invalidation proof). NB: stranger ROOTS \
          would correctly change the feed — the OP-centric engine surfaces all roots.",
-        outcome.stranger_resend_count,
-        outcome.stranger_events,
-        outcome.stranger_resend_count,
+        outcome.stranger_resend_count, outcome.stranger_events, outcome.stranger_resend_count,
     ));
     report.notes.push(serialize_us_note);
     report.notes.push(format!(

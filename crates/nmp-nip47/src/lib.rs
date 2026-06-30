@@ -54,23 +54,19 @@ pub use register::{register_wallet, wallet_typed_projection};
 
 pub use action::{
     WalletAction, WalletConnectAction, WalletConnectModule, WalletDisconnectAction,
-    WalletDisconnectModule, WalletPayInvoiceModule,
-    INFLIGHT_BOLT11_TTL,
+    WalletDisconnectModule, WalletPayInvoiceModule, INFLIGHT_BOLT11_TTL,
 };
 pub use payment_port::{wallet_payment_port, WalletPaymentPort};
 pub use payment_store::{FsPaymentStore, PaymentRecord, PaymentState, PaymentStoreError};
 pub use protocol::{
-    dispatch_nwc_relay_text, WalletConnectCommand, WalletDisconnectCommand,
-    WalletPayInvoiceCommand,
+    dispatch_nwc_relay_text, WalletConnectCommand, WalletDisconnectCommand, WalletPayInvoiceCommand,
 };
 pub use runtime::{
     new_wallet_runtime_handle, HeartbeatOutbound, WalletRuntime, WalletRuntimeHandle,
     HEARTBEAT_CADENCE_SECS, HEARTBEAT_MAX_FAILURES, HEARTBEAT_PROBE_TIMEOUT_SECS,
     PENDING_PAYMENT_TTL_SECS,
 };
-pub use status::{
-    new_wallet_status_slot, NwcConnectionState, WalletStatus, WalletStatusSlot,
-};
+pub use status::{new_wallet_status_slot, NwcConnectionState, WalletStatus, WalletStatusSlot};
 pub use wire::typed_fb::{
     decode_wallet_status, encode_wallet_status, FILE_IDENTIFIER as WALLET_STATUS_FILE_IDENTIFIER,
     SCHEMA_ID as WALLET_STATUS_SCHEMA_ID, SCHEMA_VERSION as WALLET_STATUS_SCHEMA_VERSION,

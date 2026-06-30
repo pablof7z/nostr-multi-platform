@@ -27,7 +27,10 @@ fn unregistered_id_resolves_to_none_fail_closed() {
 fn registered_id_resolves_to_its_definition() {
     let reg = PerspectiveRegistry::default();
     let def = CustomPerspectiveDef::new(tag_scope("rust"));
-    assert!(reg.register(id("eng"), def.clone()), "first register succeeds");
+    assert!(
+        reg.register(id("eng"), def.clone()),
+        "first register succeeds"
+    );
 
     assert!(reg.is_registered(&id("eng")));
     assert_eq!(reg.get(&id("eng")), Some(def));
@@ -58,8 +61,8 @@ fn register_is_register_once_immutable_no_overwrite() {
 
 #[test]
 fn definition_carries_ranking() {
-    let def = CustomPerspectiveDef::new(tag_scope("rust"))
-        .with_ranking(FeedRanking::ChronologicalAsc);
+    let def =
+        CustomPerspectiveDef::new(tag_scope("rust")).with_ranking(FeedRanking::ChronologicalAsc);
     assert_eq!(def.ranking, FeedRanking::ChronologicalAsc);
     // Default ranking is chronological-descending (the engine-honored order).
     assert_eq!(

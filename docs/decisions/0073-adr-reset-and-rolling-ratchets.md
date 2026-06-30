@@ -87,7 +87,7 @@ Negative/tradeoffs:
 - `docs/decisions/README.md` owns the ADR classification ledger.
 - Every remaining ADR is either current standalone guidance or has a clear folded
   owner.
-- Stale references to production `register_defaults()`, app-facing
+- Stale references to production `the hidden defaults preset`, app-facing
   `open_interest`, public `ReducedSource`, public `ObservedProjection`, hidden
   projection tiers, and anonymous explicit relay routes are corrected in place
   or classified as compatibility with owner/removal trigger.

@@ -40,7 +40,9 @@ pub(crate) fn apply_kind5(
         return Err(SqliteWasmError::Encoding("kind:5 id not decodable".into()));
     };
     let Some(kind5_pubkey) = ev.pubkey_bytes() else {
-        return Err(SqliteWasmError::Encoding("kind:5 pubkey not decodable".into()));
+        return Err(SqliteWasmError::Encoding(
+            "kind:5 pubkey not decodable".into(),
+        ));
     };
     let kind5_at = ev.created_at;
 
@@ -115,7 +117,11 @@ pub(crate) fn remove_event(conn: &SqliteConn, id: &EventId) -> Result<(), Sqlite
         "DELETE FROM lru_access WHERE event_id = ?1",
         &[SqlVal::Blob(id)],
     )?;
-    exec_write(conn, "DELETE FROM events WHERE id = ?1", &[SqlVal::Blob(id)])
+    exec_write(
+        conn,
+        "DELETE FROM events WHERE id = ?1",
+        &[SqlVal::Blob(id)],
+    )
 }
 
 // ─── delete_by_filter (admin / GC bulk delete) ──────────────────────────────────
@@ -255,8 +261,9 @@ fn coordinate_targets(
         s.bind_int64(4, kind5_at as i64)?;
         s
     } else {
-        let s = conn
-            .prepare("SELECT id FROM events WHERE pubkey = ?1 AND kind = ?2 AND created_at <= ?3")?;
+        let s = conn.prepare(
+            "SELECT id FROM events WHERE pubkey = ?1 AND kind = ?2 AND created_at <= ?3",
+        )?;
         s.bind_blob(1, pubkey)?;
         s.bind_int64(2, i64::from(kind))?;
         s.bind_int64(3, kind5_at as i64)?;

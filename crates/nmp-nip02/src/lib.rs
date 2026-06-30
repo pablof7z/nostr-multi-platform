@@ -14,7 +14,7 @@
 //! follow-set *producer*. It exposes the active account's follows as a live
 //! closure predicate (`Arc<dyn Fn(&str) -> bool>`) the generic `RootIndexedFeed`
 //! engine in `nmp-feed` consumes, with follow → planner-interest expansion done
-//! at the composition root (`nmp-defaults`) — no `FollowSetLookup` trait, no
+//! at the composition root (`explicit composition`) — no `FollowSetLookup` trait, no
 //! planner `SocialTimeline` seam. See
 //! [`active_follow_set`] and ADR-0036.
 //!
@@ -68,8 +68,8 @@ pub use active_follow_set::ActiveFollowSet;
 pub use nmp_nip25::{ReactAction, ReactModule};
 pub use projection::{FollowEntry, FollowListProjection, FollowListSnapshot};
 pub use wire::typed_fb::{
-    FILE_IDENTIFIER as FOLLOW_LIST_FILE_IDENTIFIER, SCHEMA_ID as FOLLOW_LIST_SCHEMA_ID,
-    SCHEMA_VERSION as FOLLOW_LIST_SCHEMA_VERSION, decode_follow_list, encode_follow_list,
+    decode_follow_list, encode_follow_list, FILE_IDENTIFIER as FOLLOW_LIST_FILE_IDENTIFIER,
+    SCHEMA_ID as FOLLOW_LIST_SCHEMA_ID, SCHEMA_VERSION as FOLLOW_LIST_SCHEMA_VERSION,
 };
 
 // ---------------------------------------------------------------------------
@@ -152,7 +152,7 @@ pub struct FollowManyModule;
 pub fn register_follow_actions(app: &mut impl ActionRegistrar) {
     // Yielding defaults (ADR-0049 Part 1): each module installs only if its
     // namespace is unclaimed, so an app may pre-empt any of them regardless of
-    // whether it registers before or after `register_defaults`.
+    // whether it registers before or after `explicit owner composition`.
     app.register_default_action(FollowModule);
     app.register_default_action(UnfollowModule);
     app.register_default_action(FollowManyModule);
@@ -208,7 +208,7 @@ pub fn register_actions(app: &mut impl ActionRegistrar) {
 ///
 /// `contacts_lookup` MUST be the SAME `Arc` the `Kind3Parser` writes into
 /// (i.e. sourced from `app.contacts_lookup()` or the composition root's
-/// `DefaultSubstrateWiring`). Passing a different instance creates a
+/// `SubstrateWiring`). Passing a different instance creates a
 /// split-brain scenario — the projection would always read the empty default.
 ///
 /// # Called from Chirp FFI

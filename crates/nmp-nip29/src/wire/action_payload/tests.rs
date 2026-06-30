@@ -92,7 +92,12 @@ fn publish_round_trips_with_kind_content_and_tags() {
         kind: 9,
         content: "hello".to_string(),
         tags: vec![
-            vec!["e".to_string(), "cc".to_string(), String::new(), "reply".to_string()],
+            vec![
+                "e".to_string(),
+                "cc".to_string(),
+                String::new(),
+                "reply".to_string(),
+            ],
             vec!["t".to_string(), "nostr".to_string()],
         ],
     };

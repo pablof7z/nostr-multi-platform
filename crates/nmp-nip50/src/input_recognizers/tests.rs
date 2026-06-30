@@ -8,9 +8,7 @@ use nmp_core::substrate::{InputIntentTarget, ResolvedInput, TextSearchTargets};
 use super::{
     register_input_scopes, LongFormInputRecognizer, NotesInputRecognizer, ProfilesInputRecognizer,
 };
-use crate::request::{
-    SearchRequest, SearchScope, SearchTargets, DEFAULT_MAX_SEARCH_HITS,
-};
+use crate::request::{SearchRequest, SearchScope, SearchTargets, DEFAULT_MAX_SEARCH_HITS};
 use crate::scopes::{SCOPE_LABEL_LONGFORM, SCOPE_LABEL_NOTES, SCOPE_LABEL_PROFILES};
 use nmp_core::substrate::InputScopeRecognizer;
 

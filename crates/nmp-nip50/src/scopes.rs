@@ -12,7 +12,8 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use nmp_core::substrate::{
-    CacheSearchMode, SearchIndexSpec, SearchPrivacyPolicy, SearchScopeProvider, SearchScopeRegistrar,
+    CacheSearchMode, SearchIndexSpec, SearchPrivacyPolicy, SearchScopeProvider,
+    SearchScopeRegistrar,
 };
 use nmp_kinds::{KIND_LONG_FORM_ARTICLE, KIND_PROFILE_METADATA, KIND_SHORT_TEXT_NOTE};
 use nmp_store::{SearchField, SearchScopeId, StoredEvent};
@@ -179,7 +180,10 @@ impl SearchScopeProvider for LongFormSearchScope {
         }
         let body = &event.raw.content;
         if !body.is_empty() {
-            out.push((Self::F_BODY, bounded_prefix(body, LONGFORM_BODY_PREFIX_BYTES)));
+            out.push((
+                Self::F_BODY,
+                bounded_prefix(body, LONGFORM_BODY_PREFIX_BYTES),
+            ));
         }
         out
     }

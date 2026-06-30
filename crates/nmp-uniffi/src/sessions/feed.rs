@@ -23,17 +23,16 @@
 //! ## Compiler choice
 //!
 //! `open_feed_json` hard-wires `compile_feed_params` as the compiler. This is
-//! the same function `nmp-defaults::register_op_feed_defaults` and all
-//! native-runtime tests use: it is the composition-root default, not an
-//! app-specific override. A future slice can expose a pluggable compiler seam if
-//! needed; for M14-C5 the default is the only wired path.
+//! the native-runtime feed compiler, not an app-specific override. A future
+//! slice can expose a pluggable compiler seam if needed; for M14-C5 this is the
+//! only wired path.
 
 use nmp_native_runtime::{
     compile_feed_params, decode_and_validate_feed_params, FeedHandle, FeedSessionId, ProjectionKey,
 };
 
-use crate::NmpApp;
 use crate::stateless::NmpError;
+use crate::NmpApp;
 
 // ── Shared UniFFI record ───────────────────────────────────────────────────────
 
@@ -81,8 +80,8 @@ impl NmpApp {
     /// * `NmpError::FeedOpenFailed` — the compiler failed to register the
     ///   session (e.g. an unsupported scope or poisoned registry).
     pub fn open_feed_json(&self, params_json: String) -> Result<FeedSessionHandle, NmpError> {
-        let (params, _acquisition_kinds) = decode_and_validate_feed_params(&params_json)
-            .map_err(|_| NmpError::InvalidInput)?;
+        let (params, _acquisition_kinds) =
+            decode_and_validate_feed_params(&params_json).map_err(|_| NmpError::InvalidInput)?;
 
         self.inner
             .open_feed(&params, &compile_feed_params)
@@ -200,7 +199,10 @@ mod tests {
         }"#;
         let result = app.open_feed_json(params_json.to_string());
         let handle = result.expect("valid ActiveUserFollows/kind:1 params must succeed");
-        assert!(!handle.projection_key.is_empty(), "projection_key must be non-empty");
+        assert!(
+            !handle.projection_key.is_empty(),
+            "projection_key must be non-empty"
+        );
         assert_ne!(handle.session_id, 0, "session_id must be non-zero");
     }
 
@@ -229,7 +231,10 @@ mod tests {
 
         // Second close — session is already closed.
         let torn_down_again = app.close_feed_session(handle.session_id);
-        assert!(!torn_down_again, "second close must return false (idempotent D6)");
+        assert!(
+            !torn_down_again,
+            "second close must return false (idempotent D6)"
+        );
     }
 
     /// Closing an unknown session id (never opened) must be a silent no-op

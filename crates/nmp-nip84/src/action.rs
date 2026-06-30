@@ -111,7 +111,7 @@ impl ProtocolCommand for PublishHighlightCommand {
 ///
 /// Zero-cost unit struct exposing this crate's single action-module
 /// contribution (`nmp.nip84.publish_highlight`) through the
-/// [`ProtocolDescriptor`] trait so `nmp-defaults` can compose descriptors
+/// [`ProtocolDescriptor`] trait so `explicit composition` can compose descriptors
 /// rather than call ad-hoc `register_actions` free functions.
 ///
 /// Registered as a **yielding default**: an app that pre-registers its own

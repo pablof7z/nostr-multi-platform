@@ -93,5 +93,8 @@ fn gc_step_trait_passthrough_works_with_new_signature() {
     };
     // Public trait method (no explicit pins) must not error.
     let report = store.gc_step(budget, base_ts + 1_000).expect("gc_step");
-    assert_eq!(report.lru_evicted, 0, "no evictions when ceiling=usize::MAX");
+    assert_eq!(
+        report.lru_evicted, 0,
+        "no evictions when ceiling=usize::MAX"
+    );
 }

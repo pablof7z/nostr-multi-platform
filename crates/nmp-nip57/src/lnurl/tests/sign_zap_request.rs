@@ -11,10 +11,7 @@ fn sign_zap_request_round_trips_through_event_builder() {
         pubkey: keys.public_key().to_hex(),
         kind: 9734,
         tags: vec![
-            vec![
-                "relays".to_string(),
-                "wss://relay.example".to_string(),
-            ],
+            vec!["relays".to_string(), "wss://relay.example".to_string()],
             vec![
                 "p".to_string(),
                 "bb11223344556677889900aabbccddeeff00112233445566778899aabbccddff".to_string(),

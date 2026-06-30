@@ -66,8 +66,8 @@ mod replaceable_freshness;
 mod store;
 
 pub use self::replaceable_freshness::{
-    decode_timestamp, encode_timestamp, is_addressable, is_replaceable,
-    ReplaceableCache, ReplaceableKey,
+    decode_timestamp, encode_timestamp, is_addressable, is_replaceable, ReplaceableCache,
+    ReplaceableKey,
 };
 use self::store::Store;
 
@@ -125,7 +125,7 @@ impl NostrLmdbBuilder {
     /// By default, the following map size is used:
     /// - 32GB for 64-bit arch
     /// - 4GB for 32-bit arch
-    #[must_use] 
+    #[must_use]
     pub fn map_size(mut self, map_size: usize) -> Self {
         self.map_size = Some(map_size);
         self
@@ -134,7 +134,7 @@ impl NostrLmdbBuilder {
     /// Maximum number of reader threads
     ///
     /// Defaults to 126 if not set
-    #[must_use] 
+    #[must_use]
     pub fn max_readers(mut self, max_readers: u32) -> Self {
         self.max_readers = Some(max_readers);
         self
@@ -143,7 +143,7 @@ impl NostrLmdbBuilder {
     /// Number of additional databases to allocate beyond the 9 internal ones
     ///
     /// Defaults to 0 if not set
-    #[must_use] 
+    #[must_use]
     pub fn additional_dbs(mut self, additional_dbs: u32) -> Self {
         self.additional_dbs = Some(additional_dbs);
         self

@@ -19,6 +19,6 @@ mod views;
 pub use shared::{EventAccumulator, EventAccumulatorDelta};
 pub use views::{
     GroupListEntry, GroupListPayload, GroupListSpec, GroupListView, GroupMessageEntry,
-    GroupMessagesPayload, GroupMessagesSpec, GroupMessagesView,
-    KeyPackageLookupPayload, KeyPackageLookupSpec, KeyPackageLookupView,
+    GroupMessagesPayload, GroupMessagesSpec, GroupMessagesView, KeyPackageLookupPayload,
+    KeyPackageLookupSpec, KeyPackageLookupView,
 };

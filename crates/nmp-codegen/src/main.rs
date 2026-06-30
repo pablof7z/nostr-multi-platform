@@ -76,8 +76,8 @@ fn run() -> Result<(), String> {
         // catalog from stdin, `--check` diffs the generated files + asserts the
         // AndroidManifest/Info.plist schemes.
         "signer-catalog" => cli::run_gen_signer_catalog(args, &h),
-        // NOTE (ADR-0046): `gen modules` was deleted. Composition is a library
-        // (`nmp-defaults::register_defaults`), not a generated FFI crate.
+        // NOTE (ADR-0046): `gen modules` was deleted. Composition is explicit
+        // app Rust over owner crates, not a generated FFI crate.
         other => Err(format!("unknown subcommand `gen {other}`\n{h}")),
     }
 }

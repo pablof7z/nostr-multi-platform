@@ -13,7 +13,7 @@
 # Genuinely generated/output files belong in .file-size-ignore, not here.
 
 apps/nmp-gallery/android/app/src/main/kotlin/org/nmp/gallery/registry/NostrContentView.kt	634
-apps/nmp-gallery/desktop/src/gallery.rs	646
+apps/nmp-gallery/desktop/src/gallery.rs	645
 apps/nmp-gallery/tui/src/main.rs	680
 apps/nmp-gallery/tui/src/render.rs	509
 crates/nmp-cli/registry/compose/content-view/NostrContentView.kt	599
@@ -36,11 +36,11 @@ crates/nmp-core/src/subs/lifecycle_tests.rs	963
 crates/nmp-core/tests/nip_tag_conformance.rs	554
 crates/nmp-marmot/src/projection/ops.rs	593
 crates/nmp-marmot/src/projection/state.rs	605
-crates/nmp-marmot/src/service.rs	642
-crates/nmp-marmot/src/tests.rs	749
+crates/nmp-marmot/src/service.rs	641
+crates/nmp-marmot/src/tests.rs	748
 crates/nmp-network/src/pool/tests.rs	554
 crates/nmp-network/src/relay_worker/tests.rs	741
-crates/nmp-nip01/src/timeline_projection.rs	576
+crates/nmp-nip01/src/timeline_projection.rs	574
 crates/nmp-nip60/src/nip60_wallet.rs	714
 crates/nmp-nostr-lmdb/src/lib_tests.rs	867
 crates/nmp-planner/src/compiler/tests.rs	567

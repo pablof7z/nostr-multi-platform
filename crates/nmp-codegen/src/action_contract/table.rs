@@ -15,7 +15,7 @@ use super::nip29::{
     NIP29_PUBLISH_GROUP_EVENT,
 };
 
-const PUBLIC_REEXPORT: PublicReExportPolicy = PublicReExportPolicy::DefaultsActionPayloads;
+const PUBLIC_REEXPORT: PublicReExportPolicy = PublicReExportPolicy::OwnerCratePayload;
 const TYPED_ONLY: TypedDispatchPolicy = TypedDispatchPolicy::TypedOnly;
 
 /// Contract namespace for the core publish action. Kept here so emitters do not
@@ -313,7 +313,7 @@ pub const ACTION_CONTRACT: &[ActionContract] = &[
         public_re_export: PUBLIC_REEXPORT,
         typed_dispatch: TYPED_ONLY,
     },
-    // nmp-blossom — BUD-02 file upload (ComponentRegistered — not in nmp-defaults).
+    // nmp-blossom — BUD-02 file upload (ComponentRegistered — app opt-in).
     ActionContract {
         namespace: "nmp.blossom.upload",
         producer: "nmp-blossom action",
@@ -342,23 +342,6 @@ pub const ACTION_CONTRACT: &[ActionContract] = &[
         root_type: "BrowseRelayPayload",
         schema_version: 1,
         file_identifier: "NBRW",
-        default_tier: ActionDefaultTier::ComponentRegistered,
-        builder_support: BuilderSupport::GeneratedFlatTable,
-        public_re_export: PUBLIC_REEXPORT,
-        typed_dispatch: TYPED_ONLY,
-    },
-    // nmp-defaults — topic articles example/action (ComponentRegistered — opt-in action module).
-    ActionContract {
-        namespace: "nmp.app.topic_articles",
-        producer: "nmp-defaults topic_articles",
-        module_type: "nmp_defaults::topic_articles::TopicArticlesModule",
-        payload_type: "nmp_defaults::topic_articles::TopicArticlesAction",
-        owner_claim: "action.nmp.app.topic_articles",
-        schema_id: "nmp.app.topic_articles",
-        schema_path: "crates/nmp-defaults/schema/topic_articles.fbs",
-        root_type: "TopicArticlesPayload",
-        schema_version: 1,
-        file_identifier: "NTPC",
         default_tier: ActionDefaultTier::ComponentRegistered,
         builder_support: BuilderSupport::GeneratedFlatTable,
         public_re_export: PUBLIC_REEXPORT,
@@ -428,7 +411,7 @@ pub const ACTION_CONTRACT: &[ActionContract] = &[
             reason: "post-v1 zap send surface removed from v1 generated host builders (#2318)",
         },
         public_re_export: PublicReExportPolicy::NotReExported {
-            reason: "nmp-defaults does not register or re-export zap payloads in v1 (#2318)",
+            reason: "standard v1 owner composition does not expose zap payloads (#2318)",
         },
         typed_dispatch: TYPED_ONLY,
     },

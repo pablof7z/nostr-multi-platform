@@ -220,7 +220,10 @@ fn update_with_mixed_files_handles_each_independently() {
     assert!(stdout.contains("1 conflicts"), "stdout: {stdout}");
 
     // A untouched.
-    assert_eq!(fs::read_to_string(app.join("A.swift")).unwrap(), "// edited A\n");
+    assert_eq!(
+        fs::read_to_string(app.join("A.swift")).unwrap(),
+        "// edited A\n"
+    );
     // B refreshed.
     assert_eq!(
         fs::read_to_string(app.join("B.swift")).unwrap(),
@@ -240,7 +243,10 @@ fn update_with_mixed_files_handles_each_independently() {
 fn update_rejects_unknown_component() {
     let tmp = TempDir::new("unknown");
 
-    let out = nmp(tmp.path(), &["update", "component", "swiftui/never-installed"]);
+    let out = nmp(
+        tmp.path(),
+        &["update", "component", "swiftui/never-installed"],
+    );
     assert!(!out.status.success());
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(

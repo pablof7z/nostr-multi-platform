@@ -9,7 +9,7 @@
 //!                              # `nmp doctor` / `nmp upgrade`)
 //!   README.md                  # next steps
 //!   crates/<name>-core/
-//!     Cargo.toml               # depends on nmp-defaults + nmp-native-runtime + nmp-core
+//!     Cargo.toml               # depends on owner NMP crates + native runtime + nmp-core
 //!     src/lib.rs               # explicit app composition root
 //!     examples/shell.rs        # NmpAppBuilder → app register → start
 //! ```
@@ -17,9 +17,9 @@
 //! # ADR-0069 — explicit feature composition
 //!
 //! The scaffolded `<name>-core` crate is a **thin composition shell**: it
-//! depends on the reusable installer library [`nmp-defaults`] and installs the
-//! substrate floor explicitly before app-owned modules. It does NOT generate an
-//! FFI crate or hide production policy behind a preset. The app Rust
+//! depends on explicit owner crates and installs each selected substrate,
+//! protocol, and runtime layer directly before app-owned modules. It does NOT
+//! generate an FFI crate or hide production policy behind a preset. The app Rust
 //! composition root is the readable source of truth for installed substrate,
 //! protocol features, app features, capability contracts, and defaults.
 //!
@@ -117,8 +117,20 @@ pub fn run(args: &[String]) -> Result<(), String> {
     let display = title_case(&name);
     let nmp_dependency = nmp_dependency.unwrap_or(NmpDependency::Path(nmp_checkout_path()?));
     let nmp_core_dep = nmp_crate_dependency(&nmp_dependency, "nmp-core");
-    let nmp_defaults_dep = nmp_crate_dependency(&nmp_dependency, "nmp-defaults");
     let nmp_native_runtime_dep = nmp_crate_dependency(&nmp_dependency, "nmp-native-runtime");
+    let nmp_substrate_dep = nmp_crate_dependency(&nmp_dependency, "nmp-substrate");
+    let nmp_nip50_dep = nmp_crate_dependency(&nmp_dependency, "nmp-nip50");
+    let nmp_nip02_dep = nmp_crate_dependency(&nmp_dependency, "nmp-nip02");
+    let nmp_replies_dep = nmp_crate_dependency(&nmp_dependency, "nmp-replies");
+    let nmp_nip25_dep = nmp_crate_dependency(&nmp_dependency, "nmp-nip25");
+    let nmp_nip18_dep = nmp_crate_dependency(&nmp_dependency, "nmp-nip18");
+    let nmp_nip84_dep = nmp_crate_dependency(&nmp_dependency, "nmp-nip84");
+    let nmp_nip29_dep = nmp_crate_dependency(&nmp_dependency, "nmp-nip29");
+    let nmp_wot_dep = nmp_crate_dependency(&nmp_dependency, "nmp-wot");
+    let nmp_nip51_dep = nmp_crate_dependency(&nmp_dependency, "nmp-nip51");
+    let nmp_nip17_dep = nmp_crate_dependency(&nmp_dependency, "nmp-nip17");
+    let nmp_nip22_dep = nmp_crate_dependency(&nmp_dependency, "nmp-nip22");
+    let nmp_content_dep = nmp_crate_dependency(&nmp_dependency, "nmp-content");
     let nmp_manifest = nmp_manifest_block(&nmp_dependency);
 
     let render = |tmpl: &str| -> String {
@@ -127,8 +139,20 @@ pub fn run(args: &[String]) -> Result<(), String> {
             .replace("{{crate_ident}}", &crate_ident)
             .replace("{{display}}", &display)
             .replace("{{nmp_core_dep}}", &nmp_core_dep)
-            .replace("{{nmp_defaults_dep}}", &nmp_defaults_dep)
             .replace("{{nmp_native_runtime_dep}}", &nmp_native_runtime_dep)
+            .replace("{{nmp_substrate_dep}}", &nmp_substrate_dep)
+            .replace("{{nmp_nip50_dep}}", &nmp_nip50_dep)
+            .replace("{{nmp_nip02_dep}}", &nmp_nip02_dep)
+            .replace("{{nmp_replies_dep}}", &nmp_replies_dep)
+            .replace("{{nmp_nip25_dep}}", &nmp_nip25_dep)
+            .replace("{{nmp_nip18_dep}}", &nmp_nip18_dep)
+            .replace("{{nmp_nip84_dep}}", &nmp_nip84_dep)
+            .replace("{{nmp_nip29_dep}}", &nmp_nip29_dep)
+            .replace("{{nmp_wot_dep}}", &nmp_wot_dep)
+            .replace("{{nmp_nip51_dep}}", &nmp_nip51_dep)
+            .replace("{{nmp_nip17_dep}}", &nmp_nip17_dep)
+            .replace("{{nmp_nip22_dep}}", &nmp_nip22_dep)
+            .replace("{{nmp_content_dep}}", &nmp_content_dep)
             .replace("{{nmp_manifest}}", &nmp_manifest)
     };
 

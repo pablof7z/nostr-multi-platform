@@ -82,7 +82,10 @@ pub fn start_nostrconnect(
     );
 
     let effects = vec![
-        Effect::Subscribe { relay_url, frame: req_frame },
+        Effect::Subscribe {
+            relay_url,
+            frame: req_frame,
+        },
         Effect::Progress {
             stage: "connecting".to_string(),
             code: Some(progress_codes::NOSTRCONNECT_SCAN_QR.to_string()),

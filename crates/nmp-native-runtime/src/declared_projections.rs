@@ -83,7 +83,7 @@ impl NmpApp {
     /// ADR-0053 — whether the host narrowed to an explicit subset of built-ins.
     ///
     /// `false` for both `Undeclared` and the explicit `All` (neither narrows).
-    /// Read by the `nmp-defaults` builder tests that assert the typestate methods
+    /// Read by the `explicit composition` builder tests that assert the typestate methods
     /// produce the expected narrowing state. A poisoned registry mutex returns
     /// `false` (D6).
     #[must_use]

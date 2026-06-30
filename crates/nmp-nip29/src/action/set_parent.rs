@@ -156,14 +156,12 @@ mod tests {
             other => panic!("expected 9002 publish, got {other:?}"),
         }
         let t = tags(&cmds);
-        assert!(
-            t.iter()
-                .any(|x| x == &vec!["h".to_string(), "nostr".to_string()])
-        );
-        assert!(
-            t.iter()
-                .any(|x| x == &vec!["parent".to_string(), "tech".to_string()])
-        );
+        assert!(t
+            .iter()
+            .any(|x| x == &vec!["h".to_string(), "nostr".to_string()]));
+        assert!(t
+            .iter()
+            .any(|x| x == &vec!["parent".to_string(), "tech".to_string()]));
         // No name/about/visibility/access tags — those stay relay-side.
         assert!(!t.iter().any(|x| x.first() == Some(&"name".to_string())));
         assert!(!t.iter().any(|x| x == &vec!["public".to_string()]));
@@ -177,10 +175,9 @@ mod tests {
         };
         let cmds = run_execute(action).expect("executes");
         let t = tags(&cmds);
-        assert!(
-            t.iter()
-                .any(|x| x == &vec!["h".to_string(), "nostr".to_string()])
-        );
+        assert!(t
+            .iter()
+            .any(|x| x == &vec!["h".to_string(), "nostr".to_string()]));
         assert!(
             !t.iter().any(|x| x.first() == Some(&"parent".to_string())),
             "detach must omit the parent tag, got {t:?}"

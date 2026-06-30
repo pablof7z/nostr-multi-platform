@@ -17,8 +17,7 @@ use std::sync::{Arc, Mutex};
 use nmp_signer_iface::{Nip46Rpc, Nip46Transport, SignerError, SignerOp, UnsignedEvent};
 use nmp_signers::{
     parse_bunker_uri, AccountManager, ActiveChangeEvent, ActiveChangeObserver, LocalKeySigner,
-    Nip46SignerHandle, Signer, SignerBackend, SignerPayload,
-    Nip46Signer,
+    Nip46Signer, Nip46SignerHandle, Signer, SignerBackend, SignerPayload,
 };
 use nostr::nips::nip19::FromBech32;
 use nostr::SecretKey;
@@ -296,8 +295,7 @@ fn local_payload_raw_json_wire_form_unchanged_after_zeroize_wrap() {
     assert_eq!(restored.as_str(), hex);
 
     // Full round-trip: restored signer derives the same pubkey.
-    let restored_signer =
-        LocalKeySigner::from_payload(&from_legacy).expect("from_payload");
+    let restored_signer = LocalKeySigner::from_payload(&from_legacy).expect("from_payload");
     assert_eq!(restored_signer.pubkey(), signer.pubkey());
 }
 

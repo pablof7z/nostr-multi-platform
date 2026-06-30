@@ -18,13 +18,13 @@
 use nmp_core::__ffi_internal::ActionRegistry;
 use nmp_core::substrate::{ActionContext, ActionPayload, ActionRejection};
 
-use nmp_nip29::GroupId;
 use nmp_nip29::action::{
     CreateInviteAction, CreateInviteInput, CreatePublicGroupAction, CreatePublicGroupInput,
     EditMetadataAction, EditMetadataInput, GroupAccess, GroupVisibility, JoinGroupAction,
     JoinGroupInput, LeaveGroupAction, LeaveGroupInput, PublishGroupEventAction,
     PublishGroupEventInput, PutUserAction, PutUserInput,
 };
+use nmp_nip29::GroupId;
 
 /// Register every migrated nip29 event-authoring module onto a fresh registry.
 fn registry() -> ActionRegistry {

@@ -148,7 +148,12 @@ fn run() {
         let (ret, mean, min) = measure(&*h.store, &q, 500);
         println!(
             "{:<25} {:>10} {:>10} {:>7} {:>9} {:>9}",
-            "thread_etag", n + 1, ret, 500, mean, min
+            "thread_etag",
+            n + 1,
+            ret,
+            500,
+            mean,
+            min
         );
     }
 
@@ -246,5 +251,8 @@ fn run() {
         );
     }
 
-    println!("\nDone. {} iteration(s) per scenario (+ {} warmup).", ITERS, WARMUP);
+    println!(
+        "\nDone. {} iteration(s) per scenario (+ {} warmup).",
+        ITERS, WARMUP
+    );
 }

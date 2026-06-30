@@ -2,7 +2,7 @@
 //! sidecars — the Wave C pattern (ADR-0037).
 //!
 //! The bar (mirroring the Tier-1 proof
-//! `crates/nmp-defaults/tests/typed_dm_runtime_sidecar.rs`): a built-in
+//! `crates/explicit composition/tests/typed_dm_runtime_sidecar.rs`): a built-in
 //! typed projection must appear in the `typed_projections` sidecar of the frame
 //! `make_update` actually emits — decoded back to its typed struct — IN ADDITION
 //! to its existing generic `Value` entry under the SAME key. This drives the

@@ -116,7 +116,11 @@ impl Store {
 
         let txn: RoTxn = self.db.read_txn()?;
         let output = self.db.query(&txn, filter)?;
-        events.extend(output.into_iter().map(nostr::event::borrow::EventBorrow::into_owned));
+        events.extend(
+            output
+                .into_iter()
+                .map(nostr::event::borrow::EventBorrow::into_owned),
+        );
         txn.commit()?;
 
         Ok(events)

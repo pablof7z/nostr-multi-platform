@@ -77,8 +77,8 @@ pub fn register_zap_with_payment_port(
 
 // `nmp-nip57` exposes `ZapsView` as a plain public type whose `open` /
 // `on_event_*` / `snapshot` inherent methods are reached via static dispatch.
-// Timeline/card counts should claim visible-note relations through
-// `nmp-relations`, not a process-wide zap aggregate.
+// Timeline/card zap counts should mount a zap-owned read or app-owned social
+// bar recipe. There is no central relation aggregator.
 
 /// Compiled ownership descriptor for crate-ownership reports.
 pub mod ownership;

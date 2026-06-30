@@ -46,13 +46,13 @@ mod common;
 use std::sync::mpsc;
 use std::time::Duration;
 
+use nmp_core::actor::ActorCommand;
+use nmp_core::actor::{IdentityCommand, LifecycleCommand, PublishCommand};
 use nmp_core::typed_projections::{
     decode_accounts, decode_active_account, decode_publish_queue, ACCOUNTS_SCHEMA_ID,
     ACTIVE_ACCOUNT_SCHEMA_ID, PUBLISH_QUEUE_SCHEMA_ID,
 };
 use nmp_core::{decode_snapshot_typed_projections, ActorMail, CommandSender};
-use nmp_core::actor::{ActorCommand};
-use nmp_core::actor::{IdentityCommand, LifecycleCommand, PublishCommand};
 use nmp_signer_iface::RemoteSignerHandle;
 use nmp_signer_iface::SignerError;
 use nostr::{Event, Keys};
@@ -110,8 +110,9 @@ fn bunker_sign_event_round_trip_on_the_wire() {
     let pump_handle = std::sync::Arc::clone(&handle);
     std::thread::spawn(move || {
         while let Ok(mail) = actor_rx.recv() {
-            if let ActorMail::Command(ActorCommand::Identity(IdentityCommand::DeliverSignerResponse { response_json })) =
-                mail
+            if let ActorMail::Command(ActorCommand::Identity(
+                IdentityCommand::DeliverSignerResponse { response_json },
+            )) = mail
             {
                 pump_handle.deliver_response(&response_json);
             }
@@ -183,8 +184,8 @@ fn bunker_sign_event_round_trip_on_the_wire() {
 fn bunker_publish_unsigned_event_routes_signed_kind1_through_publish_queue() {
     use std::sync::mpsc;
 
-    use nmp_core::testing::spawn_test_actor;
     use nmp_core::actor::ActorCommand;
+    use nmp_core::testing::spawn_test_actor;
     use nmp_core::{ActorMail, CommandSender};
 
     let bunker_keys = Keys::generate();
@@ -275,7 +276,10 @@ fn bunker_publish_unsigned_event_routes_signed_kind1_through_publish_queue() {
         .and_then(|t| decode_accounts(&t.payload).ok())
         .expect("snapshot must carry the typed accounts sidecar");
     assert!(
-        accounts_model.accounts.iter().any(|a| a.signer_kind == "nip46"),
+        accounts_model
+            .accounts
+            .iter()
+            .any(|a| a.signer_kind == "nip46"),
         "accounts sidecar must still contain a nip46 entry after publish: {accounts_model:?}"
     );
 
@@ -320,9 +324,9 @@ fn wait_for_add_remote_signer(
                 source: nmp_core::SignerSource::RemoteHandle(handle),
                 ..
             }))) => return Some(handle),
-            Ok(ActorMail::Command(ActorCommand::Identity(IdentityCommand::BunkerHandshakeProgress {
-                stage, message, ..
-            }))) => {
+            Ok(ActorMail::Command(ActorCommand::Identity(
+                IdentityCommand::BunkerHandshakeProgress { stage, message, .. },
+            ))) => {
                 if stage == "failed" {
                     panic!("bunker handshake failed: {stage}: {message:?}");
                 }

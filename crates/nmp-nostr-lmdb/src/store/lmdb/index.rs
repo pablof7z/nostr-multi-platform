@@ -63,13 +63,8 @@ impl EventIndexKeys {
                 );
 
                 // Index by kind and tag (with created_at and id)
-                let ktc_index: Vec<u8> = make_ktc_index_key(
-                    event.kind,
-                    tag_name,
-                    tag_value,
-                    event.created_at,
-                    event.id,
-                );
+                let ktc_index: Vec<u8> =
+                    make_ktc_index_key(event.kind, tag_name, tag_value, event.created_at, event.id);
 
                 // Index by tag (with created_at and id)
                 let tc_index: Vec<u8> =

@@ -1,6 +1,6 @@
 use super::*;
-use nmp_store::{RawEvent, StoredEvent};
 use nmp_core::substrate::KernelEvent;
+use nmp_store::{RawEvent, StoredEvent};
 use std::sync::Arc;
 
 fn stored(kind: u32, tags: Vec<Vec<&str>>, content: &str) -> StoredEvent {

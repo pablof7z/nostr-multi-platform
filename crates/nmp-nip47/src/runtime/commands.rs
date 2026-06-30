@@ -8,23 +8,23 @@ use super::*;
 use nmp_core::substrate::WalletKernelAccess;
 use nmp_core::{AuthSignerFn, OutboundMessage};
 use nmp_network::role::RelayRole;
-use nmp_signer_iface::UnsignedEvent;
-use nostr::{Keys, SecretKey};
 use nmp_nwc::decode::{try_decode_relay_message_with_id, try_decode_response_for_request};
 use nmp_nwc::parse::NwcUri;
 use nmp_nwc::types::PayInvoiceParams;
 use nmp_nwc::NwcMethod;
+use nmp_signer_iface::UnsignedEvent;
+use nostr::{Keys, SecretKey};
 use serde_json::json;
 
 use crate::crypto::sign_with;
 use crate::reconcile::{correct_unresolved_record, settle_payment_failure, settle_payment_success};
 use crate::status::NwcConnectionState;
 
-use super::runtime_utils::{encode_frame, pubkey_to_npub};
 use super::disconnect::wallet_disconnect_inner;
 use super::heartbeat::sync_wallet_status;
 use super::payments::reconcile_unresolved_payments;
 use super::request_builder::{build_request, build_request_with_meta, PayMeta};
+use super::runtime_utils::{encode_frame, pubkey_to_npub};
 
 // ── Command handlers (the public surface the ProtocolCommands call into) ─────
 
@@ -117,7 +117,8 @@ pub(crate) fn wallet_connect(
 
     // Bind the wallet-lane NIP-42 signer using the NWC client secret.
     let client_keys = Keys::new(client_secret_key);
-    let signer: AuthSignerFn = std::sync::Arc::new(move |unsigned: &UnsignedEvent| sign_with(&client_keys, unsigned));
+    let signer: AuthSignerFn =
+        std::sync::Arc::new(move |unsigned: &UnsignedEvent| sign_with(&client_keys, unsigned));
     kernel.set_relay_auth_signer(RelayRole::Wallet, client_pubkey_hex.clone(), signer);
     kernel.register_persistent_sub(relay.clone(), sub_id.clone());
 
@@ -155,9 +156,14 @@ pub(crate) fn wallet_connect(
     {
         out.push(msg);
     }
-    if let Some((msg, _id)) =
-        build_request(wallet, kernel, &relay, NwcMethod::GetBalance, json!({}), None)
-    {
+    if let Some((msg, _id)) = build_request(
+        wallet,
+        kernel,
+        &relay,
+        NwcMethod::GetBalance,
+        json!({}),
+        None,
+    ) {
         out.push(msg);
     }
 

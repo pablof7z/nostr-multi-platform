@@ -37,12 +37,12 @@ implementation is injected at composition time.
 
 | Layer | Owns | Durable crate owners |
 |---|---|---|
-| 0 | Dependency-light vocabulary and interface types | `nmp-kinds`, `nmp-signer-iface`, `nmp-nip42-types`, `nmp-nip92-types`, `nmp-nip59`, `nmp-relay-url` |
+| 0 | Dependency-light vocabulary and interface types | `nmp-kinds`, `nmp-signer-iface`, `nmp-nip42-types`, `nmp-nip92-types`, `nmp-nip59`, `nmp-relay-url`, `nmp-nostr-id` |
 | 1 | Storage, network transport, concrete signer transport | `nmp-store`, `nmp-nostr-lmdb`, `nmp-network`, `nmp-signers` |
 | 2 | Routing and subscription planning algorithms | `nmp-router`, `nmp-planner` |
 | 3 | Kernel substrate contracts and actor state | `nmp-core`, `nmp-coverage-gate` |
 | 4 | Reusable Nostr protocol/product modules | `nmp-nip01`, `nmp-replies`, `nmp-nip02`, `nmp-nip17`, `nmp-nip18`, `nmp-nip29`, `nmp-nip42`, `nmp-nip47`, `nmp-nip51`, `nmp-nip57`, `nmp-nip60`, `nmp-nip77`, `nmp-nwc`, `nmp-marmot`, `nmp-threading`, `nmp-feed`, `nmp-wot`, `nmp-content`, `nmp-content-fixtures` |
-| 5 | App composition | `nmp-defaults`, `apps/<app>/...` Rust crates |
+| 5 | App composition | `apps/<app>/...` Rust crates and runtime builders that explicitly compose substrate/protocol/app features |
 | 6 | Platform runtimes, bindings, and deliverables | `nmp-native-runtime`, `nmp-uniffi`, `nmp-browser-runtime`, app-owned delivery crates |
 | Sidecars | Tooling, tests, diagnostics | `nmp-cli`, `nmp-codegen`, `nmp-testing`, app shells |
 
@@ -230,28 +230,20 @@ the substrate must not depend on the protocol crate's concrete module logic.
 Examples:
 
 - `nmp-nip01` owns base note/profile/reply primitives: the kind:1 note
-  builder/decoder, NIP-10 reply/thread views, kind:0 profile + kind:3 contacts
-  caches, and base note-feed mechanics. It must not define shared fixed buckets
-  such as `NoteRelationCounts`, `NoteRelationClassifier`, or visible-note
-  relation summaries. Existing surfaces with that vocabulary are tracked by
-  #2508 and must be removed rather than treated as the canonical architecture.
+  builder/decoder, reply/thread views, kind:0 profile + kind:3 contacts caches,
+  and the note timeline/OP-feed surface. Remaining relation-count vocabulary
+  (`NoteRelationCounts`, `NoteRelationClassifier`) is tracked #2508 debt, not
+  doctrine. It must be deleted or moved behind concept-owned active reads.
 - `nmp-replies` owns app-facing reply policy and read planning: a `ReplyTarget`
   plus content becomes either a NIP-10 kind:1 note or a NIP-22 kind:1111
   comment. Apps do not choose tag names, NIP-10 markers, NIP-22 root scopes, or
   kind:1-vs-kind:1111; protocol crates supply the lower-level builders and
   decoders.
-- Cross-protocol engagement bars are app/composition recipes over
-  concept-owned active reads, not framework substrate. A reply affordance asks
-  the reply owner; a reaction affordance asks the NIP-25 owner; a repost
-  affordance asks the NIP-18 owner; a zap affordance asks the NIP-57 owner; app
-  concepts ask the app Rust crate. Shared runtime may provide protocol-noun-free
-  mechanics for routed demand, replay-before-live, teardown, coalescing, and
-  bounded output, but it must not define relation buckets or a global summary
-  API.
-- `nmp-relations` is legacy debt, not the designated cross-protocol owner.
-  Valid behavior must move into the concrete concept crates or app-owned
-  recipes under #2508; no replacement global relation/count vocabulary belongs
-  there.
+- There is no central `nmp-relations` owner. Reactions, reposts, zaps,
+  replies/comments, bookmarks, mutes, and app-specific markers belong to the
+  concept crate that defines their semantics. Cross-protocol social bars are
+  app/composition recipes over those concept-owned active reads, not reusable
+  framework buckets.
 - `nmp-nip17` owns NIP-17 DM send/receive behavior and its DM relay-list cache.
 - `nmp-nip57` owns zap request/receipt and LNURL zap action behavior. It pays
   through the substrate `PaymentPort` (it emits a typed `PaymentIntent`); it does
@@ -321,33 +313,35 @@ app-private kinds stay app-owned while using NMP tooling.
 
 ## 9. App Composition
 
-`nmp-defaults` is a reusable NMP composition library, **not a leaf
-application**. It wires generic NMP mechanisms — the default router, planner,
-store, ingest parsers, action modules, coverage hook, raw-event forwarding
-policies, default projections, and typed seams. Reducer-owned delivery roots
-that cannot implement the full AppHost tier (currently Chirp web) must call
-`nmp-substrate-defaults` for the shared router/mailbox/profile/contacts
-cache-parser floor; they must not hand-copy that construction.
+App/runtime composition roots install the substrate and protocol features they
+need explicitly. The deleted defaults bundle is not a current composition
+target, not a test helper, and not a compatibility shim to recreate under a new
+name.
 
-`nmp-defaults` composes only through `nmp_core::substrate::AppHost` and the
-narrow registrar traits below it. It must not depend on `nmp-ffi`, name
-`NmpApp`, own a platform runtime handle, or export a native builder. Its target
-dependency direction is `platform/app runtime -> nmp-defaults`, never
-`nmp-defaults -> platform runtime`.
+`nmp-substrate` is the reusable shared floor for router/mailbox/profile/contacts
+cache-parser construction. Reducer-owned delivery roots that cannot implement
+the full AppHost tier (currently Chirp web) must call `nmp-substrate`; they must
+not hand-copy that construction. Above that floor, app/runtime roots compose
+protocol crates and app-owned features by name.
 
-`nmp-defaults` (like `nmp-core` and every other NMP crate) **must not own
-operator policy facts** — relay URLs, nostrconnect bootstrap relay URLs, seed
-pubkeys, account auto-follow lists, or signer permission batches. Those facts
-belong only in leaf app Rust crates (`apps/<app>/...`, e.g.
-`apps/chirp/crates/nmp-chirp-config`) or operator-provided app config (#1493).
-The native and browser runtime builders enforce this at compile time: an app
-must declare its initial relay set with `.with_relays(...)` or explicitly opt
-out with `.without_initial_relays()` before `start()` — there is no framework
-relay default to inherit silently. The native `NmpAppBuilder` belongs to
-`nmp-native-runtime`; `nmp-defaults` remains pure reusable AppHost composition.
+Composition roots may name `nmp_core::substrate::AppHost` and the narrow
+registrar traits below it. Reusable protocol crates take only the narrow traits
+they use. No reusable substrate/protocol crate may depend on platform runtime
+crates, name `NmpApp`, own a platform runtime handle, export a native builder,
+or hide app policy behind a preset.
 
-App crates under `apps/<app>/` compose `nmp-defaults` plus app-specific
-state **and own all operator policy** (relays, seed follows, signer perms).
+Shared crates **must not own operator policy facts** — relay URLs,
+nostrconnect bootstrap relay URLs, seed pubkeys, account auto-follow lists, or
+signer permission batches. Those facts belong only in leaf app Rust crates
+(`apps/<app>/...`, e.g. `apps/chirp/crates/nmp-chirp-config`) or
+operator-provided app config (#1493). The native and browser runtime builders
+enforce this at compile time: an app must declare its initial relay set with
+`.with_relays(...)` or explicitly opt out with `.without_initial_relays()`
+before `start()` — there is no framework relay default to inherit silently.
+
+App crates under `apps/<app>/` compose substrate/protocol features plus
+app-specific state **and own all operator policy** (relays, seed follows,
+signer perms).
 They may expose app-specific delivery helpers only for kernel-shaped observer,
 projection, opaque-handle, or lifecycle seams. Those helpers are app-owned glue,
 not reusable framework ABI. Mutating product behavior should flow through
@@ -380,8 +374,8 @@ Native target split (#2205/#2209, amended by M14):
 - `nmp-native-runtime` is the native platform runtime adapter. It owns the
   native `NmpApp`/handle type, actor-thread lifecycle, native runtime slots,
   session registries, native Rust APIs, and the native typestate builder
-  (`NmpAppBuilder` / `RunConfig`). It composes `nmp-defaults` like a leaf app
-  runtime.
+  (`NmpAppBuilder` / `RunConfig`). It composes `nmp-substrate` and protocol
+  installers explicitly like a leaf app runtime.
 - `nmp-uniffi` is the reusable framework native binding surface for iOS,
   Android, and desktop native hosts. It exposes the framework runtime object
   model, typed records, callbacks, and FlatBuffers byte payload doorways through
@@ -413,10 +407,11 @@ gate when it affects reusable framework behavior.
 
 `nmp-browser-runtime` is the browser platform adapter per ADR-0067: a Layer-6
 runtime adapter, sibling to `nmp-native-runtime`. Unlike pure ABI-glue binding
-crates, it is a **composition root**: it composes `nmp-defaults` and protocol
+crates, it is a **composition root**: it composes `nmp-substrate` and protocol
 crates into a typed builder (`BrowserAppBuilder`), exactly as a native runtime
-does. It thus may depend on Layer-5 composition crates, breaking the usual
-binding-crate rule that all siblings avoid each other.
+does. It thus may depend on the substrate/protocol composition surface needed
+to start the browser runtime, breaking the usual binding-crate rule that all
+siblings avoid each other.
 
 `nmp-browser-runtime` owns:
 
@@ -436,9 +431,10 @@ binding-crate rule that all siblings avoid each other.
 - Signing policy or signer-provider semantics (that is `nmp-signers`).
 - NIP modules, protocol defaults, app defaults, projection policy, persistence policy.
 
-Dependency direction: `nmp-browser-runtime` depends on `nmp-defaults` and protocol
-crates in Layers 0–5. Leaf web apps depend on `nmp-browser-runtime` for the
-typed builder and Worker export. No Layer 0-5 crate depends on `nmp-browser-runtime`.
+Dependency direction: `nmp-browser-runtime` depends on `nmp-substrate` and
+protocol crates in Layers 0–5. Leaf web apps depend on `nmp-browser-runtime`
+for the typed builder and Worker export. No Layer 0-5 crate depends on
+`nmp-browser-runtime`.
 
 ### Shared composition target: reuse `AppHost` (#2059, ADR-0067)
 
@@ -471,7 +467,7 @@ justify a narrower trait):
    the resolution is a wasm-safe headless inbox constructor in `nmp-core` plus the
    builder's Worker loop — not a trait change.
 2. **wasm-safe installers (#2047 / #2060).** Browser delivery roots that cannot
-   yet implement the full AppHost tier use the `nmp-substrate-defaults` floor
+   yet implement the full AppHost tier use the `nmp-substrate` floor
    (§9). Full explicit feature composition requires a browser runtime handle
    that can supply the same AppHost-rooted registrar surface as the native
    runtime.

@@ -146,7 +146,11 @@ pub fn c2_parameterized_replaceable_supersedes_by_dtag() {
         .store
         .get_param_replaceable(&ALICE_PUBKEY, 30_023, b"bar")
         .unwrap();
-    assert_eq!(foo.unwrap().raw.id_bytes().expect("fixture: valid hex"), id2, "foo slot must hold v2");
+    assert_eq!(
+        foo.unwrap().raw.id_bytes().expect("fixture: valid hex"),
+        id2,
+        "foo slot must hold v2"
+    );
     assert_eq!(
         bar.unwrap().raw.id_bytes().expect("fixture: valid hex"),
         id_bar,
@@ -282,7 +286,9 @@ pub fn c4_nip40_expiration_removes_and_persists_schedule() {
         .unwrap()
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
-    assert!(expiring.iter().any(|e| e.raw.id_bytes().expect("fixture: valid hex") == ev_id));
+    assert!(expiring
+        .iter()
+        .any(|e| e.raw.id_bytes().expect("fixture: valid hex") == ev_id));
 
     let report = h
         .store

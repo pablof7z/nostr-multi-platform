@@ -38,14 +38,20 @@ fn block_relay_wrong_schema_version_is_rejected() {
     let err = BlockRelayInput::decode(&bytes).expect_err("bad version rejected");
     assert_eq!(
         err,
-        ActionPayloadDecodeError::SchemaVersionMismatch { found: 999, expected: SCHEMA_VERSION }
+        ActionPayloadDecodeError::SchemaVersionMismatch {
+            found: 999,
+            expected: SCHEMA_VERSION
+        }
     );
 }
 
 #[test]
 fn block_relay_missing_identifier_is_malformed() {
     let err = BlockRelayInput::decode(b"not flatbuffers").expect_err("garbage rejected");
-    assert!(matches!(err, ActionPayloadDecodeError::Malformed { .. }), "got {err:?}");
+    assert!(
+        matches!(err, ActionPayloadDecodeError::Malformed { .. }),
+        "got {err:?}"
+    );
 }
 
 // --- UnblockRelayInput round-trips -------------------------------------------
@@ -78,7 +84,10 @@ fn unblock_relay_wrong_schema_version_is_rejected() {
     let err = UnblockRelayInput::decode(&bytes).expect_err("bad version rejected");
     assert_eq!(
         err,
-        ActionPayloadDecodeError::SchemaVersionMismatch { found: 999, expected: SCHEMA_VERSION }
+        ActionPayloadDecodeError::SchemaVersionMismatch {
+            found: 999,
+            expected: SCHEMA_VERSION
+        }
     );
 }
 
@@ -131,7 +140,10 @@ fn block_payload_does_not_decode_as_unblock() {
     };
     let bytes = block.encode();
     let err = UnblockRelayInput::decode(&bytes).expect_err("cross-namespace decode rejected");
-    assert!(matches!(err, ActionPayloadDecodeError::Malformed { .. }), "got {err:?}");
+    assert!(
+        matches!(err, ActionPayloadDecodeError::Malformed { .. }),
+        "got {err:?}"
+    );
 }
 
 // --- PublishRelayListInput round-trips ---------------------------------------
@@ -140,9 +152,18 @@ fn block_payload_does_not_decode_as_unblock() {
 fn publish_relay_list_round_trips_all_markers() {
     let action = PublishRelayListInput {
         relays: vec![
-            RelayListEntry { url: "wss://both.example".to_string(), marker: RelayMarker::Both },
-            RelayListEntry { url: "wss://read.example".to_string(), marker: RelayMarker::Read },
-            RelayListEntry { url: "wss://write.example".to_string(), marker: RelayMarker::Write },
+            RelayListEntry {
+                url: "wss://both.example".to_string(),
+                marker: RelayMarker::Both,
+            },
+            RelayListEntry {
+                url: "wss://read.example".to_string(),
+                marker: RelayMarker::Read,
+            },
+            RelayListEntry {
+                url: "wss://write.example".to_string(),
+                marker: RelayMarker::Write,
+            },
             RelayListEntry {
                 url: "wss://idx.example".to_string(),
                 marker: RelayMarker::Indexer,
@@ -184,6 +205,9 @@ fn publish_relay_list_wrong_schema_version_is_rejected() {
     let err = PublishRelayListInput::decode(&bytes).expect_err("bad version rejected");
     assert_eq!(
         err,
-        ActionPayloadDecodeError::SchemaVersionMismatch { found: 999, expected: SCHEMA_VERSION }
+        ActionPayloadDecodeError::SchemaVersionMismatch {
+            found: 999,
+            expected: SCHEMA_VERSION
+        }
     );
 }

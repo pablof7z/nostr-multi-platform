@@ -166,11 +166,18 @@ mod tests {
         let emitted = source.snapshot_for_tick(7);
 
         // Exactly ONE materialization happened despite two reads.
-        assert_eq!(calls.load(Ordering::SeqCst), 1, "one materialization per tick");
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            1,
+            "one materialization per tick"
+        );
         // The provider's author set == the emitted window's author set (no gap).
         assert_eq!(provider_authors, vec!["alice".to_string()]);
         assert_eq!(
-            emitted.visible_author_keys().into_iter().collect::<Vec<_>>(),
+            emitted
+                .visible_author_keys()
+                .into_iter()
+                .collect::<Vec<_>>(),
             vec!["alice".to_string()],
             "typed producer emits the SAME window the provider resolved"
         );

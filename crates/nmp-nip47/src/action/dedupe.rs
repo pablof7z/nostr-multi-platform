@@ -68,8 +68,14 @@ mod tests {
     #[test]
     fn same_bolt11_twice_second_is_duplicate() {
         let guard = InflightBolt11Guard::new();
-        assert!(!guard.is_duplicate_tap("lnbc100n1p0dup"), "first tap must not be a duplicate");
-        assert!(guard.is_duplicate_tap("lnbc100n1p0dup"), "second tap within TTL must be a duplicate");
+        assert!(
+            !guard.is_duplicate_tap("lnbc100n1p0dup"),
+            "first tap must not be a duplicate"
+        );
+        assert!(
+            guard.is_duplicate_tap("lnbc100n1p0dup"),
+            "second tap within TTL must be a duplicate"
+        );
     }
 
     #[test]
@@ -84,7 +90,10 @@ mod tests {
         let guard = InflightBolt11Guard::new();
         let bolt11 = "lnbc500n1p0expired";
 
-        assert!(!guard.is_duplicate_tap(bolt11), "first tap must not be a duplicate");
+        assert!(
+            !guard.is_duplicate_tap(bolt11),
+            "first tap must not be a duplicate"
+        );
 
         // Backdate the entry so it appears expired.
         {
@@ -97,6 +106,9 @@ mod tests {
             }
         }
 
-        assert!(!guard.is_duplicate_tap(bolt11), "retry after TTL must not be a duplicate");
+        assert!(
+            !guard.is_duplicate_tap(bolt11),
+            "retry after TTL must not be a duplicate"
+        );
     }
 }

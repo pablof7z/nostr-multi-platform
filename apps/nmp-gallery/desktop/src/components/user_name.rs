@@ -39,9 +39,7 @@ impl UserName {
             const MUTED: Color = Color::from_rgb(0.6, 0.6, 0.6);
             text(self.npub_short)
                 .size(16)
-                .style(move |_theme| iced::widget::text::Style {
-                    color: Some(MUTED),
-                })
+                .style(move |_theme| iced::widget::text::Style { color: Some(MUTED) })
                 .into()
         }
     }

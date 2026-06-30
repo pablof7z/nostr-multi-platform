@@ -7,11 +7,11 @@
 
 use nmp_core::__ffi_internal::is_hex_pubkey;
 
-use crate::NmpApp;
 use super::{
-    RefLiveness, RefNamespace, RefShape, ResolveMetadata,
-    to_core_liveness, to_core_metadata, to_core_namespace, to_core_shape,
+    to_core_liveness, to_core_metadata, to_core_namespace, to_core_shape, RefLiveness,
+    RefNamespace, RefShape, ResolveMetadata,
 };
+use crate::NmpApp;
 
 #[uniffi::export]
 impl NmpApp {
@@ -95,12 +95,7 @@ impl NmpApp {
     ///
     /// D6: null/invalid arguments and unknown triples are silent no-ops
     /// (idempotent). D8: fire-and-forget.
-    pub fn release_ref(
-        &self,
-        namespace: RefNamespace,
-        key: String,
-        consumer_id: String,
-    ) {
+    pub fn release_ref(&self, namespace: RefNamespace, key: String, consumer_id: String) {
         if namespace == RefNamespace::Profile && !is_hex_pubkey(&key) {
             return;
         }
@@ -113,13 +108,11 @@ impl NmpApp {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::{EventShape, ProfileShape};
+    use super::*;
 
-    const VALID_PUBKEY: &str =
-        "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
-    const VALID_EVENT_ID: &str =
-        "b3e392b11f5d4f28321cedd09303a748d8dcf77cc7b8840dce05daf95c68b600";
+    const VALID_PUBKEY: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
+    const VALID_EVENT_ID: &str = "b3e392b11f5d4f28321cedd09303a748d8dcf77cc7b8840dce05daf95c68b600";
 
     // ── Parity: resolve_ref (profile) ─────────────────────────────────────
 
@@ -132,7 +125,9 @@ mod tests {
             RefNamespace::Profile,
             VALID_PUBKEY.to_string(),
             "view-1".to_string(),
-            RefShape::Profile { shape: ProfileShape::Ref },
+            RefShape::Profile {
+                shape: ProfileShape::Ref,
+            },
             RefLiveness::CacheOk,
         );
     }
@@ -146,7 +141,9 @@ mod tests {
             RefNamespace::Profile,
             "not-a-valid-pubkey".to_string(),
             "view-1".to_string(),
-            RefShape::Profile { shape: ProfileShape::Card },
+            RefShape::Profile {
+                shape: ProfileShape::Card,
+            },
             RefLiveness::Live,
         );
     }
@@ -160,7 +157,9 @@ mod tests {
             RefNamespace::Event,
             VALID_EVENT_ID.to_string(),
             "view-2".to_string(),
-            RefShape::Event { shape: EventShape::Embed },
+            RefShape::Event {
+                shape: EventShape::Embed,
+            },
             RefLiveness::CacheOk,
         );
     }
@@ -176,7 +175,9 @@ mod tests {
             RefNamespace::Event,
             VALID_EVENT_ID.to_string(),
             "view-3".to_string(),
-            RefShape::Event { shape: EventShape::Embed },
+            RefShape::Event {
+                shape: EventShape::Embed,
+            },
             RefLiveness::Live,
             ResolveMetadata {
                 hints: vec!["wss://relay.example.com".to_string()],
@@ -193,7 +194,9 @@ mod tests {
             RefNamespace::Profile,
             VALID_PUBKEY.to_string(),
             "view-4".to_string(),
-            RefShape::Profile { shape: ProfileShape::Card },
+            RefShape::Profile {
+                shape: ProfileShape::Card,
+            },
             RefLiveness::CacheOk,
             ResolveMetadata {
                 hints: vec![],
@@ -241,7 +244,9 @@ mod tests {
             RefNamespace::Profile,
             VALID_PUBKEY.to_string(),
             consumer.clone(),
-            RefShape::Profile { shape: ProfileShape::Card },
+            RefShape::Profile {
+                shape: ProfileShape::Card,
+            },
             RefLiveness::Live,
         );
 
@@ -253,11 +258,7 @@ mod tests {
         );
 
         // Second release must be idempotent (D6 silent no-op, no panic, no UAF).
-        app.release_ref(
-            RefNamespace::Profile,
-            VALID_PUBKEY.to_string(),
-            consumer,
-        );
+        app.release_ref(RefNamespace::Profile, VALID_PUBKEY.to_string(), consumer);
     }
 
     /// D6: invalid key for release must be a silent no-op.

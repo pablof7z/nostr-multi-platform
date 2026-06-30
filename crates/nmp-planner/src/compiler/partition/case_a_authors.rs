@@ -50,7 +50,9 @@ use super::inbox_helper::route_p_tags_to_inbox;
 use super::{MailboxCache, RelayEntry};
 use crate::{
     interest::{InterestShape, LogicalInterest, NaddrCoord, Pubkey, RelayUrl},
-    plan::{HintOrigin, InterestAttribution, RelayAttribution, RoutingSource, UserConfiguredCategory},
+    plan::{
+        HintOrigin, InterestAttribution, RelayAttribution, RoutingSource, UserConfiguredCategory,
+    },
 };
 
 /// Per-relay accumulator for Case A routing.
@@ -168,7 +170,9 @@ pub(super) fn route(
                 UserConfiguredCategory::AppRelay,
             ));
             // Attribution: track AppRelay sub-category.
-            entry.user_configured.insert(UserConfiguredCategory::AppRelay);
+            entry
+                .user_configured
+                .insert(UserConfiguredCategory::AppRelay);
             landed = true;
         }
 
@@ -188,7 +192,9 @@ pub(super) fn route(
                 entry.sources.insert(RoutingSource::UserConfigured(
                     UserConfiguredCategory::ActivePin,
                 ));
-                entry.user_configured.insert(UserConfiguredCategory::ActivePin);
+                entry
+                    .user_configured
+                    .insert(UserConfiguredCategory::ActivePin);
                 landed = true;
             }
         }
@@ -212,7 +218,9 @@ pub(super) fn route(
                     entry.sources.insert(RoutingSource::UserConfigured(
                         UserConfiguredCategory::Indexer,
                     ));
-                    entry.user_configured.insert(UserConfiguredCategory::Indexer);
+                    entry
+                        .user_configured
+                        .insert(UserConfiguredCategory::Indexer);
                     landed = true;
                 }
             }
@@ -245,7 +253,9 @@ pub(super) fn route(
             entry.sources.insert(RoutingSource::UserConfigured(
                 UserConfiguredCategory::AppRelay,
             ));
-            entry.user_configured.insert(UserConfiguredCategory::AppRelay);
+            entry
+                .user_configured
+                .insert(UserConfiguredCategory::AppRelay);
             landed = true;
         }
 

@@ -9,12 +9,12 @@
 
 | Layer | Owns | Canonical crates |
 |---|---|---|
-| 0 | Dependency-light vocabulary and interface types | `nmp-kinds`, `nmp-signer-iface`, `nmp-nip42-types`, `nmp-nip92-types`, `nmp-nip59`, `nmp-relay-url` |
+| 0 | Dependency-light vocabulary and interface types | `nmp-kinds`, `nmp-signer-iface`, `nmp-nip42-types`, `nmp-nip92-types`, `nmp-nip59`, `nmp-relay-url`, `nmp-nostr-id` |
 | 1 | Storage, network transport, concrete signer transport | `nmp-store`, `nmp-nostr-lmdb`, `nmp-network`, `nmp-signers` |
 | 2 | Routing and subscription-planning algorithms | `nmp-router`, `nmp-planner` |
 | 3 | Kernel substrate contracts and actor state | `nmp-core`, `nmp-coverage-gate` |
-| 4 | Reusable Nostr protocol / product modules | `nmp-nip01`, `nmp-nip17`, `nmp-nip18`, `nmp-nip22`, `nmp-nip25`, `nmp-nip29`, `nmp-nip42`, `nmp-nip47`, `nmp-nip51`, `nmp-nip57`, `nmp-nip60`, `nmp-nip77`, `nmp-nwc`, `nmp-marmot`, `nmp-relations`, `nmp-threading`, `nmp-feed`, `nmp-wot`, `nmp-content` |
-| 5 | App composition | `nmp-defaults`, `apps/<app>/…` Rust crates |
+| 4 | Reusable Nostr protocol / product modules | `nmp-nip01`, `nmp-replies`, `nmp-nip17`, `nmp-nip18`, `nmp-nip22`, `nmp-nip25`, `nmp-nip29`, `nmp-nip42`, `nmp-nip47`, `nmp-nip51`, `nmp-nip57`, `nmp-nip60`, `nmp-nip77`, `nmp-nwc`, `nmp-marmot`, `nmp-threading`, `nmp-feed`, `nmp-wot`, `nmp-content` |
+| 5 | App composition | `apps/<app>/…` Rust crates and runtime builders that explicitly compose substrate/protocol/app features |
 | 6 | Platform runtimes, bindings, deliverables | `nmp-native-runtime`, `nmp-uniffi`, `nmp-browser-runtime`, app-owned delivery crates |
 | Sidecars | Tooling, tests, diagnostics | `nmp-cli`, `nmp-codegen`, `nmp-testing`, app shells |
 

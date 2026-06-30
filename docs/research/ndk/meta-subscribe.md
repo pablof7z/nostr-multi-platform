@@ -54,8 +54,8 @@ event observers, projections, ref claims, and the interest registry.
 > **Shipped (#2113).** The pointer-source read model now exists on exactly these
 > seams — no new trait family, no out-of-band fetch. The pure read-model state
 > machine is [`nmp_content::PointerSourceModel`](../../../crates/nmp-content/src/pointer_source/model.rs)
-> and the composition that wires it to the kernel is
-> [`nmp_defaults::op_pointer_source`](../../../crates/nmp-defaults/src/op_pointer_source/mod.rs).
+> and the composition that wires it to the kernel lives with the content
+> pointer-source module.
 > The rest of this section is the design it implements.
 
 A meta-subscription is still the right shape, but the NMP implementation target

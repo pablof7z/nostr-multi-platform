@@ -57,9 +57,7 @@ fn create_group_full_round_trips() {
         description: "Team chat".to_string(),
         invitee_text: Some("npub1abc npub1def".to_string()),
         invitee_npubs: Some(vec!["npub1abc".to_string(), "npub1def".to_string()]),
-        signed_key_package_events_json: vec![
-            serde_json::json!({"id":"abc","sig":"xyz"}),
-        ],
+        signed_key_package_events_json: vec![serde_json::json!({"id":"abc","sig":"xyz"})],
         relays: vec!["wss://relay.example".to_string()],
     };
     assert_eq!(rt(&a), a);
@@ -87,7 +85,10 @@ fn create_group_invitee_npubs_none_vs_some_empty_distinguished() {
     let decoded_none = rt(&with_none);
     let decoded_some = rt(&with_some_empty);
     assert_eq!(decoded_none, with_none, "None must round-trip as None");
-    assert_eq!(decoded_some, with_some_empty, "Some([]) must round-trip as Some([])");
+    assert_eq!(
+        decoded_some, with_some_empty,
+        "Some([]) must round-trip as Some([])"
+    );
     assert_ne!(decoded_none, decoded_some, "None != Some([])");
 }
 
@@ -156,7 +157,9 @@ fn send_round_trips() {
 
 #[test]
 fn leave_round_trips() {
-    let a = MarmotAction::Leave { group_id_hex: "deadbeef1234".to_string() };
+    let a = MarmotAction::Leave {
+        group_id_hex: "deadbeef1234".to_string(),
+    };
     assert_eq!(rt(&a), a);
 }
 
@@ -184,7 +187,9 @@ fn remove_with_members_round_trips() {
 
 #[test]
 fn accept_welcome_round_trips() {
-    let a = MarmotAction::AcceptWelcome { welcome_id_hex: "cafebabe5678".to_string() };
+    let a = MarmotAction::AcceptWelcome {
+        welcome_id_hex: "cafebabe5678".to_string(),
+    };
     assert_eq!(rt(&a), a);
 }
 
@@ -192,7 +197,9 @@ fn accept_welcome_round_trips() {
 
 #[test]
 fn decline_welcome_round_trips() {
-    let a = MarmotAction::DeclineWelcome { welcome_id_hex: "cafebabe5678".to_string() };
+    let a = MarmotAction::DeclineWelcome {
+        welcome_id_hex: "cafebabe5678".to_string(),
+    };
     assert_eq!(rt(&a), a);
 }
 
@@ -200,7 +207,9 @@ fn decline_welcome_round_trips() {
 
 #[test]
 fn clear_pending_round_trips() {
-    let a = MarmotAction::ClearPending { group_id_hex: "deadbeef1234".to_string() };
+    let a = MarmotAction::ClearPending {
+        group_id_hex: "deadbeef1234".to_string(),
+    };
     assert_eq!(rt(&a), a);
 }
 
@@ -402,10 +411,13 @@ fn wrong_schema_version_rejected() {
     let mut fbb = flatbuffers::FlatBufferBuilder::new();
     let gid = fbb.create_string("deadbeef1234");
     let text = fbb.create_string("hello");
-    let body = fb::Send::create(&mut fbb, &fb::SendArgs {
-        group_id_hex: Some(gid),
-        text: Some(text),
-    });
+    let body = fb::Send::create(
+        &mut fbb,
+        &fb::SendArgs {
+            group_id_hex: Some(gid),
+            text: Some(text),
+        },
+    );
     let root = fb::MarmotActionPayload::create(
         &mut fbb,
         &fb::MarmotActionPayloadArgs {
@@ -418,7 +430,10 @@ fn wrong_schema_version_rejected() {
     let err = MarmotAction::decode(fbb.finished_data()).expect_err("bad version rejected");
     assert_eq!(
         err,
-        ActionPayloadDecodeError::SchemaVersionMismatch { found: 999, expected: SCHEMA_VERSION }
+        ActionPayloadDecodeError::SchemaVersionMismatch {
+            found: 999,
+            expected: SCHEMA_VERSION
+        }
     );
 }
 
@@ -428,7 +443,12 @@ fn unknown_discriminant_rejected() {
     let mut fbb = flatbuffers::FlatBufferBuilder::new();
     let gid = fbb.create_string("deadbeef1234");
     // Use Leave as a placeholder body (we'll patch the discriminant byte).
-    let body = fb::Leave::create(&mut fbb, &fb::LeaveArgs { group_id_hex: Some(gid) });
+    let body = fb::Leave::create(
+        &mut fbb,
+        &fb::LeaveArgs {
+            group_id_hex: Some(gid),
+        },
+    );
     let root = fb::MarmotActionPayload::create(
         &mut fbb,
         &fb::MarmotActionPayloadArgs {

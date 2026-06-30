@@ -25,8 +25,8 @@
 
 use nmp_native_runtime::NmpConfigStatus;
 
-use crate::NmpError;
 use crate::NmpApp;
+use crate::NmpError;
 
 #[uniffi::export]
 impl NmpApp {
@@ -97,7 +97,10 @@ mod tests {
     fn parity_init_signer_broker_idempotent_before_start() {
         let app = crate::NmpApp::new();
         assert!(app.init_signer_broker().is_ok(), "first call must be Ok");
-        assert!(app.init_signer_broker().is_ok(), "second call must be Ok (idempotent)");
+        assert!(
+            app.init_signer_broker().is_ok(),
+            "second call must be Ok (idempotent)"
+        );
     }
 
     /// Parity with C-ABI `nmp_app_cancel_bunker_handshake`:

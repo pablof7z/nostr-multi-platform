@@ -99,12 +99,12 @@ mod query;
 mod store_impl;
 mod tombstones;
 
-/// The engine error type — converted into `nmp_store::StoreError` by the
-/// `nmp-store` wrapper at the (cycle-free) seam.
-pub use error::SqliteWasmError;
 /// The engine's event + stored-event representation (mirrors
 /// `nmp_store::{RawEvent, StoredEvent}` at the wrapper seam).
 pub use conv::{EngineEvent, StoredEngineEvent};
+/// The engine error type — converted into `nmp_store::StoreError` by the
+/// `nmp-store` wrapper at the (cycle-free) seam.
+pub use error::SqliteWasmError;
 /// Insert outcomes and id types (mirror `nmp_store::{EventId, PubKey,
 /// InsertOutcome, RejectReason, TombstoneOrigin}`).
 pub use outcome::{EventId, InsertOutcome, PubKey, RejectReason, TombstoneOrigin};

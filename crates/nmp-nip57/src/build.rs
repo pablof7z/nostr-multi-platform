@@ -12,8 +12,8 @@
 //! - `a` tag (optional): zapped addressable coord.
 //! - `content`: free-form comment (optional).
 
-use nmp_signer_iface::UnsignedEvent;
 use nmp_core::tags::{e_tag, p_tag};
+use nmp_signer_iface::UnsignedEvent;
 use serde::{Deserialize, Serialize};
 
 use crate::kinds::KIND_ZAP_REQUEST;
@@ -76,7 +76,10 @@ impl ZapRequestBuilder {
     /// will inject the recipient's NIP-65 write list before signing (V-07).
     #[must_use]
     pub fn relays(mut self, relays: Vec<String>) -> Self {
-        self.relays = relays.into_iter().filter(|r| !r.trim().is_empty()).collect();
+        self.relays = relays
+            .into_iter()
+            .filter(|r| !r.trim().is_empty())
+            .collect();
         self
     }
 
@@ -173,7 +176,12 @@ mod tests {
     use super::*;
 
     fn tag_keys(unsigned: &UnsignedEvent) -> Vec<&str> {
-        unsigned.tags.iter().filter_map(|t| t.first()).map(String::as_str).collect()
+        unsigned
+            .tags
+            .iter()
+            .filter_map(|t| t.first())
+            .map(String::as_str)
+            .collect()
     }
 
     #[test]

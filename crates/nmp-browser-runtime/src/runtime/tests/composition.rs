@@ -101,7 +101,7 @@ fn browser_defaults_defer_required_substrate_slots_before_start() {
         .without_initial_relays()
         .decide_providers(BrowserRunConfig::default());
 
-    nmp_defaults::register_defaults(&mut builder);
+    crate::builder::install_browser_production_composition(&mut builder);
 
     let inner = builder
         .inner

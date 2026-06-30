@@ -47,7 +47,7 @@
 //! # Standing subscription
 //!
 //! The `MuteRuntimeController` (see
-//! `crates/nmp-defaults/src/runtimes/mute_runtime.rs`) pushes a
+//! `crates/explicit composition/src/runtimes/mute_runtime.rs`) pushes a
 //! `active_mute_list_interest(pubkey)` on sign-in so the kernel has a live
 //! `authors=[active_pubkey] / kinds=[10000]` subscription. No separate
 //! interest push is needed in this crate — wiring is the host's

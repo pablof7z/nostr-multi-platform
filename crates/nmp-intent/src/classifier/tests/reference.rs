@@ -1,11 +1,11 @@
 //! Rung 2 — NIP-19/21 references (every entity) + the entity-class allow-list
 //! (the `DisallowedScope` refusal for a valid ref outside the requested scopes).
 
+use nmp_core::substrate::{InputIntentRejection, InputIntentTarget, InputScopeId};
 use nmp_nostr_id::{
     encode_naddr, encode_nevent, encode_note, encode_nprofile, encode_npub, NaddrData, NeventData,
     NprofileData,
 };
-use nmp_core::substrate::{InputIntentRejection, InputIntentTarget, InputScopeId};
 
 use super::{
     classify_bare, expect_rejection, expect_single, longform_scope, notes_scope, profiles_scope,

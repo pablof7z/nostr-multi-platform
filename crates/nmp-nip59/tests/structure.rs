@@ -48,7 +48,11 @@ fn gift_wrap_outer_event_is_kind_1059() {
         Kind::GiftWrap,
         "outer envelope must be kind:1059"
     );
-    assert_eq!(u16::from(wrapped.kind), 1059, "GiftWrap numeric kind is 1059");
+    assert_eq!(
+        u16::from(wrapped.kind),
+        1059,
+        "GiftWrap numeric kind is 1059"
+    );
 }
 
 #[test]

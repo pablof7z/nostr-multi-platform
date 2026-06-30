@@ -43,8 +43,8 @@ fn deliver_result_without_observer_is_silent_noop() {
 
 #[test]
 fn set_result_observer_second_registration_replaces_first() {
-    use std::sync::Arc;
     use std::sync::atomic::{AtomicU32, Ordering};
+    use std::sync::Arc;
     let first = Arc::new(AtomicU32::new(0));
     let second = Arc::new(AtomicU32::new(0));
     let first_c = Arc::clone(&first);
@@ -243,8 +243,8 @@ fn panicking_executor_returns_err_not_unwound() {
 /// it into a per-result drop.
 #[test]
 fn panicking_result_observer_does_not_kill_delivery() {
-    use std::sync::Arc;
     use std::sync::atomic::{AtomicU32, Ordering};
+    use std::sync::Arc;
 
     let calls = Arc::new(AtomicU32::new(0));
     let calls_in_observer = Arc::clone(&calls);
@@ -419,11 +419,9 @@ mod adr_0049_yield {
         let _ = registry.register(OtherAppModule);
         let records = ledger.records();
         assert_eq!(records.len(), 2);
-        assert!(
-            records
-                .iter()
-                .all(|r| r.disposition == Disposition::Installed)
-        );
+        assert!(records
+            .iter()
+            .all(|r| r.disposition == Disposition::Installed));
         assert!(registry.contains("nmp.test.adr0049.ns"));
         assert!(registry.contains("nmp.test.adr0049.other"));
     }

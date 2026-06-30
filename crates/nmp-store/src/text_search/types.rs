@@ -31,7 +31,10 @@ impl SearchScopeId {
     /// tests may construct directly.
     #[must_use]
     pub const fn new(discriminant: u32, label: &'static str) -> Self {
-        Self { discriminant, label }
+        Self {
+            discriminant,
+            label,
+        }
     }
 
     /// FNV-1a 32-bit hash of `label` → discriminant. Documented, stable, and
@@ -47,7 +50,10 @@ impl SearchScopeId {
             hash = hash.wrapping_mul(0x0100_0193); // FNV prime
             i += 1;
         }
-        Self { discriminant: hash, label }
+        Self {
+            discriminant: hash,
+            label,
+        }
     }
 
     #[must_use]

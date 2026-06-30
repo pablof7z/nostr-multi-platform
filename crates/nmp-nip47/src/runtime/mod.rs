@@ -241,11 +241,11 @@ impl WalletRuntime {
     }
 }
 
+mod commands;
+mod disconnect;
 mod heartbeat;
 mod payments;
 mod request_builder;
-mod disconnect;
-mod commands;
 
 pub use heartbeat::HeartbeatOutbound;
 pub use payments::ExpiredPaymentOutcome;

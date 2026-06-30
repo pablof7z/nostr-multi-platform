@@ -48,15 +48,33 @@ struct BannedToken {
 }
 
 const BANNED_TOKENS: &[BannedToken] = &[
-    BannedToken { token: "register_snapshot_projection(", anchor: true },
-    BannedToken { token: "register_snapshot_projection_gated(", anchor: true },
-    BannedToken { token: "nmp_app_register_snapshot_projection", anchor: false },
-    BannedToken { token: "SnapshotRegistry::register(", anchor: false },
+    BannedToken {
+        token: "register_snapshot_projection(",
+        anchor: true,
+    },
+    BannedToken {
+        token: "register_snapshot_projection_gated(",
+        anchor: true,
+    },
+    BannedToken {
+        token: "nmp_app_register_snapshot_projection",
+        anchor: false,
+    },
+    BannedToken {
+        token: "SnapshotRegistry::register(",
+        anchor: false,
+    },
     // `anchor: false` — the leading `.` already disambiguates (no `register_typed_*`
     // method contains `.register_gated(`); an anchor would wrongly reject every real
     // `receiver.register_gated(` call since the char before `.` is always an identifier.
-    BannedToken { token: ".register_gated(", anchor: false },
-    BannedToken { token: "ProjectionFn", anchor: true },
+    BannedToken {
+        token: ".register_gated(",
+        anchor: false,
+    },
+    BannedToken {
+        token: "ProjectionFn",
+        anchor: true,
+    },
 ];
 
 /// True iff `path` is the doctrine-lint binary's own source tree.
@@ -80,7 +98,10 @@ pub fn file_in_scope(path: &Path) -> bool {
     if is_h {
         return s.contains("/ios/") || s.starts_with("ios/");
     }
-    s.contains("/crates/") || s.contains("/apps/") || s.starts_with("crates/") || s.starts_with("apps/")
+    s.contains("/crates/")
+        || s.contains("/apps/")
+        || s.starts_with("crates/")
+        || s.starts_with("apps/")
 }
 
 /// Returns `(col, message, suggested)` for each banned A6 token found on a
@@ -129,31 +150,48 @@ mod tests {
     fn flags_register_snapshot_projection() {
         let hits = check(
             "    app.register_snapshot_projection(\"wallet\", || Value::Null);",
-            false, false,
+            false,
+            false,
         );
         assert_eq!(hits.len(), 1, "must flag register_snapshot_projection");
-        assert!(hits[0].1.contains("rule A6"), "message must reference rule A6; got: {}", hits[0].1);
-        assert!(hits[0].2.contains("register_typed_snapshot_projection"),
-            "suggestion must name register_typed_snapshot_projection; got: {}", hits[0].2);
+        assert!(
+            hits[0].1.contains("rule A6"),
+            "message must reference rule A6; got: {}",
+            hits[0].1
+        );
+        assert!(
+            hits[0].2.contains("register_typed_snapshot_projection"),
+            "suggestion must name register_typed_snapshot_projection; got: {}",
+            hits[0].2
+        );
     }
 
     #[test]
     fn does_not_flag_register_typed_snapshot_projection() {
         let hits = check(
             "    app.register_typed_snapshot_projection(\"wallet\", || None);",
-            false, false,
+            false,
+            false,
         );
-        assert!(hits.is_empty(),
-            "register_typed_snapshot_projection must NOT be flagged; got: {:?}", hits);
+        assert!(
+            hits.is_empty(),
+            "register_typed_snapshot_projection must NOT be flagged; got: {:?}",
+            hits
+        );
     }
 
     #[test]
     fn flags_register_snapshot_projection_gated() {
         let hits = check(
             "    app.register_snapshot_projection_gated(\"key\", gate, || Value::Null);",
-            false, false,
+            false,
+            false,
         );
-        assert_eq!(hits.len(), 1, "must flag register_snapshot_projection_gated");
+        assert_eq!(
+            hits.len(),
+            1,
+            "must flag register_snapshot_projection_gated"
+        );
         assert!(hits[0].1.contains("rule A6"));
     }
 
@@ -161,9 +199,14 @@ mod tests {
     fn flags_nmp_app_register_snapshot_projection() {
         let hits = check(
             "unsafe { nmp_app_register_snapshot_projection(app, key, projector); }",
-            false, false,
+            false,
+            false,
         );
-        assert_eq!(hits.len(), 1, "must flag nmp_app_register_snapshot_projection");
+        assert_eq!(
+            hits.len(),
+            1,
+            "must flag nmp_app_register_snapshot_projection"
+        );
         assert!(hits[0].1.contains("rule A6"));
     }
 
@@ -171,7 +214,8 @@ mod tests {
     fn flags_snapshot_registry_qualified_register() {
         let hits = check(
             "    SnapshotRegistry::register(&mut self, \"key\", f);",
-            false, false,
+            false,
+            false,
         );
         assert_eq!(hits.len(), 1, "SnapshotRegistry::register( must be flagged");
         assert!(hits[0].1.contains("rule A6"));
@@ -181,7 +225,8 @@ mod tests {
     fn flags_register_gated() {
         let hits = check(
             "    registry.register_gated(\"key\", gate, || Value::Null);",
-            false, false,
+            false,
+            false,
         );
         assert_eq!(hits.len(), 1, "`.register_gated(` must be flagged");
         assert!(hits[0].1.contains("rule A6"));
@@ -189,7 +234,11 @@ mod tests {
 
     #[test]
     fn flags_projection_fn_type() {
-        let hits = check("    let f: ProjectionFn = Box::new(|| Value::Null);", false, false);
+        let hits = check(
+            "    let f: ProjectionFn = Box::new(|| Value::Null);",
+            false,
+            false,
+        );
         assert_eq!(hits.len(), 1, "ProjectionFn must be flagged");
         assert!(hits[0].1.contains("rule A6"));
     }
@@ -198,24 +247,32 @@ mod tests {
     fn does_not_flag_typed_projection_fn() {
         let hits = check(
             "    let f: TypedProjectionFn = Box::new(|| None);",
-            false, false,
+            false,
+            false,
         );
-        assert!(hits.is_empty(),
-            "TypedProjectionFn must NOT be flagged; got: {:?}", hits);
+        assert!(
+            hits.is_empty(),
+            "TypedProjectionFn must NOT be flagged; got: {:?}",
+            hits
+        );
     }
 
     #[test]
     fn does_not_flag_tick_observer_fn() {
         let hits = check("    let f: TickObserverFn = Box::new(|| {});", false, false);
-        assert!(hits.is_empty(),
-            "TickObserverFn must NOT be flagged; got: {:?}", hits);
+        assert!(
+            hits.is_empty(),
+            "TickObserverFn must NOT be flagged; got: {:?}",
+            hits
+        );
     }
 
     #[test]
     fn does_not_flag_in_comment() {
         let hits = check(
             "// call register_snapshot_projection(\"key\", closure)",
-            true, false,
+            true,
+            false,
         );
         assert!(hits.is_empty(), "comment lines must not be flagged");
     }
@@ -224,9 +281,13 @@ mod tests {
     fn does_not_flag_in_test_cfg() {
         let hits = check(
             "    app.register_snapshot_projection(\"key\", || Value::Null);",
-            false, true,
+            false,
+            true,
         );
-        assert!(hits.is_empty(), "#[cfg(test)] bodies must not be flagged by A6");
+        assert!(
+            hits.is_empty(),
+            "#[cfg(test)] bodies must not be flagged by A6"
+        );
     }
 
     #[test]
@@ -250,7 +311,9 @@ mod tests {
 
     #[test]
     fn in_repo_production_crate_is_in_scope() {
-        assert!(file_in_scope(&PathBuf::from("crates/nmp-nip29/src/register.rs")));
+        assert!(file_in_scope(&PathBuf::from(
+            "crates/nmp-nip29/src/register.rs"
+        )));
         assert!(file_in_scope(&PathBuf::from(
             "apps/chirp/crates/nmp-app-chirp/src/ffi/register.rs"
         )));
@@ -277,9 +340,7 @@ mod tests {
     #[test]
     fn ios_header_is_in_scope_for_a6() {
         assert!(
-            file_in_scope(&PathBuf::from(
-                "apps/chirp/ios/Chirp/Bridge/NmpCore.h"
-            )),
+            file_in_scope(&PathBuf::from("apps/chirp/ios/Chirp/Bridge/NmpCore.h")),
             "ios/.h files must be in A6 scope (C-ABI symbol reappearance guard)"
         );
         // The specific file the blocker names.

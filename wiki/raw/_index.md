@@ -9,7 +9,7 @@ Last updated: 2026-05-28
 | File | Summary | Tags | Updated |
 |---|---|---|---|
 | [repos/2026-05-28-source-map.md](repos/2026-05-28-source-map.md) | Source map of durable NMP docs and code surfaces used for the first wiki compile. | repo, sources, architecture | 2026-05-28 |
-| [repos/2026-05-28-app-composition-and-chirp-sources.md](repos/2026-05-28-app-composition-and-chirp-sources.md) | Source notes for nmp-defaults defaults, Chirp registration, and OP-feed composition boundaries. | repo, app-composition, chirp | 2026-05-28 |
+| [repos/2026-05-28-app-composition-and-chirp-sources.md](repos/2026-05-28-app-composition-and-chirp-sources.md) | Source notes for historical generic app composition, Chirp registration, and OP-feed composition boundaries. | repo, app-composition, chirp | 2026-05-28 |
 | [repos/2026-05-28-typed-feed-transport-sources.md](repos/2026-05-28-typed-feed-transport-sources.md) | Source notes for UpdateFrame, typed projection sidecars, nmp.feed.home payloads, and host fallback behavior. | repo, flatbuffers, feed | 2026-05-28 |
 | [repos/2026-05-28-planner-current-code-sources.md](repos/2026-05-28-planner-current-code-sources.md) | Source notes for nmp-planner, LogicalInterest, CompiledPlan, and routing source lanes. | repo, planner, routing | 2026-05-28 |
 | [repos/2026-05-28-doctrine-enforcement-sources.md](repos/2026-05-28-doctrine-enforcement-sources.md) | Source notes for canonical doctrine, review checklist, doctrine-lint, and validation gates. | repo, doctrine, lint | 2026-05-28 |

@@ -65,7 +65,9 @@ use crate::publish_relay_list::{PublishRelayListInput, RelayListEntry, RelayMark
 pub const SCHEMA_VERSION: u32 = 1;
 
 fn malformed(reason: impl Into<String>) -> ActionPayloadDecodeError {
-    ActionPayloadDecodeError::Malformed { reason: reason.into() }
+    ActionPayloadDecodeError::Malformed {
+        reason: reason.into(),
+    }
 }
 
 // --- BlockRelayInput (nmp.nip51.block_relay) ---------------------------------
@@ -178,7 +180,10 @@ fn marker_from_wire(
         relay_list_fb::RelayMarker::Read => Ok(RelayMarker::Read),
         relay_list_fb::RelayMarker::Write => Ok(RelayMarker::Write),
         relay_list_fb::RelayMarker::Indexer => Ok(RelayMarker::Indexer),
-        other => Err(malformed(format!("unknown RelayMarker ordinal {}", other.0))),
+        other => Err(malformed(format!(
+            "unknown RelayMarker ordinal {}",
+            other.0
+        ))),
     }
 }
 

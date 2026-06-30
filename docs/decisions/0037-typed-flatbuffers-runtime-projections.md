@@ -4,6 +4,10 @@
 - **Date:** 2026-05-30
 - **Relates to:** ADR-0032, ADR-0033, ADR-0044
 
+**Supersession note (2026-06-30):** `the deleted defaults bundle` is deleted. Any defaults-era
+composition reference below is historical context only; current projection
+composition is explicit in app/runtime roots and protocol owner crates.
+
 ## Context
 
 NMP pushes snapshots through a stable FlatBuffers update envelope. High-volume
@@ -48,7 +52,7 @@ For the feed family:
 - `nmp-feed` owns feed window/cursor/page tables.
 - `nmp-content` owns content-tree tables.
 - `nmp-nip01` owns short-note timeline and OP-feed tables.
-- `nmp-defaults` wires the default registrations that compose those pieces for a
+- `explicit composition` wires the default registrations that compose those pieces for a
   concrete app build.
 
 New typed projections do not require edits to the transport schema unless the

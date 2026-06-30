@@ -205,29 +205,6 @@ pub(super) const BROWSE_RELAY: ActionBuilder = ActionBuilder {
     doc: "Open or close a relay-pinned browse subscription.",
 };
 
-pub(super) const TOPIC_ARTICLES: ActionBuilder = ActionBuilder {
-    namespace: "nmp.app.topic_articles",
-    method: "topicArticles",
-    fields: &[
-        PayloadField {
-            name: "op",
-            kind: FieldKind::Ubyte,
-            optional: false,
-        },
-        PayloadField {
-            name: "topic",
-            kind: FieldKind::Str,
-            optional: false,
-        },
-        PayloadField {
-            name: "consumerId",
-            kind: FieldKind::Str,
-            optional: false,
-        },
-    ],
-    doc: "Claim or release a NIP-23 topic-articles subscription.",
-};
-
 // ── NIP-29 group actions ──────────────────────────────────────────────────────
 
 pub(super) const DISCOVER_GROUPS: ActionBuilder = ActionBuilder {

@@ -65,8 +65,14 @@ fn apps_build_presets_from_public_policy_constants() {
         [direct.as_str(), second_degree.as_str()],
         DIRECT_FOLLOW_SCORE,
     );
-    assert!(!strict[0].hide, "direct follow passes the close-friends floor");
-    assert!(strict[1].hide, "second-degree is hidden by the stricter preset");
+    assert!(
+        !strict[0].hide,
+        "direct follow passes the close-friends floor"
+    );
+    assert!(
+        strict[1].hide,
+        "second-degree is hidden by the stricter preset"
+    );
 }
 
 #[test]

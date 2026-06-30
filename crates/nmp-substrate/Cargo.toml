@@ -1,0 +1,28 @@
+[package]
+name = "nmp-substrate"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Owned NMP substrate construction: router/mailbox/parser/publish resolver/coverage wiring."
+
+[features]
+default = ["native"]
+native = [
+    "dep:nmp-nip11",
+    "nmp-core/native",
+    "nmp-router/native",
+]
+
+[dependencies]
+nmp-coverage-gate = { path = "../nmp-coverage-gate" }
+nmp-core = { path = "../nmp-core", default-features = false }
+nmp-ownership = { workspace = true }
+nmp-nip11 = { path = "../nmp-nip11", optional = true }
+nmp-nip01 = { path = "../nmp-nip01", default-features = false }
+nmp-nip77 = { path = "../nmp-nip77" }
+nmp-router = { path = "../nmp-router", default-features = false }
+nmp-store = { path = "../nmp-store" }
+
+[dev-dependencies]
+nmp-core = { path = "../nmp-core", features = ["test-support"] }

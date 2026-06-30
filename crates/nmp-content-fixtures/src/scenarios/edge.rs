@@ -43,12 +43,9 @@ pub fn build(ids: &Identities) -> Vec<ScenarioDto> {
     let uri = nevent_uri(&track.id, &ids.bob.pubkey_hex, 31337);
     let mut store = EmbedStore::default();
     store.add(uri.clone(), Target::Event(track.clone()));
-    let e = ids.alice.sign(
-        1,
-        BASE + 2,
-        vec![],
-        format!("listen: {uri}"),
-    );
+    let e = ids
+        .alice
+        .sign(1, BASE + 2, vec![], format!("listen: {uri}"));
     out.push(scenario(
         "S-E02",
         "fallback",
@@ -62,12 +59,9 @@ pub fn build(ids: &Identities) -> Vec<ScenarioDto> {
     // S-E03: dangling nevent -> unresolved stub, no spinner.
     let store = EmbedStore::default();
     let dangling = nevent_uri(&"a".repeat(64), &ids.bob.pubkey_hex, 1);
-    let e = ids.alice.sign(
-        1,
-        BASE + 3,
-        vec![],
-        format!("ghost quote {dangling}"),
-    );
+    let e = ids
+        .alice
+        .sign(1, BASE + 3, vec![], format!("ghost quote {dangling}"));
     out.push(scenario(
         "S-E03",
         "fallback",
@@ -144,12 +138,9 @@ pub fn build(ids: &Identities) -> Vec<ScenarioDto> {
     let coord = naddr_uri(30000, &ids.carol.pubkey_hex, "empty");
     let mut store = EmbedStore::default();
     store.add(coord.clone(), Target::Event(empty_set.clone()));
-    let e = ids.alice.sign(
-        1,
-        BASE + 8,
-        vec![],
-        format!("empty list {coord}"),
-    );
+    let e = ids
+        .alice
+        .sign(1, BASE + 8, vec![], format!("empty list {coord}"));
     out.push(scenario(
         "S-E07",
         "fallback",

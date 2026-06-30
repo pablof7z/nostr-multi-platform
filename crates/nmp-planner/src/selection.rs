@@ -366,12 +366,11 @@ pub fn apply_selection_with_lookup(
         // interest had authors (no-author/wildcard interests legitimately have
         // empty author sets and are always retained — they correspond to
         // wildcard sub-shapes that selection never drops).
-        let surviving_interest_ids: std::collections::BTreeSet<&crate::InterestId> =
-            relay_plan
-                .sub_shapes
-                .iter()
-                .flat_map(|s| s.originating_interests.iter())
-                .collect();
+        let surviving_interest_ids: std::collections::BTreeSet<&crate::InterestId> = relay_plan
+            .sub_shapes
+            .iter()
+            .flat_map(|s| s.originating_interests.iter())
+            .collect();
         relay_plan.attribution.interests.retain(|ia| {
             // Wildcard (no-author) interests are always retained.
             ia.authors.is_empty() || surviving_interest_ids.contains(&ia.interest_id)

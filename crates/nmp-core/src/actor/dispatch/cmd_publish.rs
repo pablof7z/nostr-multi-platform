@@ -57,19 +57,20 @@ pub(super) fn publish_raw_event(
             signer_pubkey,
             ctx.parked_ops,
         ),
-        crate::publish::PublishTarget::Explicit { relays, route_class } => {
-            commands::publish_unsigned_event_to_relays(
-                ctx.identity,
-                ctx.kernel,
-                unsigned,
-                None,
-                relays,
-                route_class,
-                correlation_id,
-                signer_pubkey,
-                ctx.parked_ops,
-            )
-        }
+        crate::publish::PublishTarget::Explicit {
+            relays,
+            route_class,
+        } => commands::publish_unsigned_event_to_relays(
+            ctx.identity,
+            ctx.kernel,
+            unsigned,
+            None,
+            relays,
+            route_class,
+            correlation_id,
+            signer_pubkey,
+            ctx.parked_ops,
+        ),
     };
     maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
     Some(outbound)
@@ -127,19 +128,20 @@ pub(super) fn publish_reply(
             signer_pubkey,
             ctx.parked_ops,
         ),
-        crate::publish::PublishTarget::Explicit { relays, route_class } => {
-            commands::publish_unsigned_event_to_relays(
-                ctx.identity,
-                ctx.kernel,
-                unsigned,
-                None,
-                relays,
-                route_class,
-                correlation_id,
-                signer_pubkey,
-                ctx.parked_ops,
-            )
-        }
+        crate::publish::PublishTarget::Explicit {
+            relays,
+            route_class,
+        } => commands::publish_unsigned_event_to_relays(
+            ctx.identity,
+            ctx.kernel,
+            unsigned,
+            None,
+            relays,
+            route_class,
+            correlation_id,
+            signer_pubkey,
+            ctx.parked_ops,
+        ),
     };
     maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
     Some(outbound)

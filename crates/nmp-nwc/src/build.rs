@@ -88,8 +88,7 @@ pub fn request_content(
         "method": method.as_str(),
         "params": params,
     });
-    let plaintext =
-        serde_json::to_string(&json).map_err(|e| NwcBuildError::Json(e.to_string()))?;
+    let plaintext = serde_json::to_string(&json).map_err(|e| NwcBuildError::Json(e.to_string()))?;
     crypto::encrypt(client_secret_hex, wallet_pubkey_hex, &plaintext)
 }
 
@@ -152,10 +151,8 @@ mod tests {
     use super::*;
     use crate::crypto;
 
-    const CLIENT_SECRET: &str =
-        "0101010101010101010101010101010101010101010101010101010101010101";
-    const WALLET_SECRET: &str =
-        "0202020202020202020202020202020202020202020202020202020202020202";
+    const CLIENT_SECRET: &str = "0101010101010101010101010101010101010101010101010101010101010101";
+    const WALLET_SECRET: &str = "0202020202020202020202020202020202020202020202020202020202020202";
 
     /// Build a request, then decrypt it back to the inner JSON. The wallet
     /// would decrypt with its own secret; for assertion we round-trip via the

@@ -56,13 +56,13 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use nmp_core::__ffi_internal::register_rust_observer_muted;
-use nmp_core::ObservedProjectionId;
 use nmp_core::substrate::PreferredRelaySource;
+use nmp_core::ObservedProjectionId;
 use nmp_feed::DEFAULT_FEED_WINDOW_LIMIT;
 use nmp_nip50::{
-    SEARCH_RESULTS_FILE_IDENTIFIER, SEARCH_RESULTS_SCHEMA_ID, SEARCH_RESULTS_SCHEMA_VERSION,
-    SearchRequest, SearchResultsProjection, SearchTargets, encode_search_results_snapshot,
-    search_relay_plan,
+    encode_search_results_snapshot, search_relay_plan, SearchRequest, SearchResultsProjection,
+    SearchTargets, SEARCH_RESULTS_FILE_IDENTIFIER, SEARCH_RESULTS_SCHEMA_ID,
+    SEARCH_RESULTS_SCHEMA_VERSION,
 };
 
 use super::NmpApp;
@@ -256,7 +256,7 @@ impl NmpApp {
     /// relay-pinned LIVE observed interest per resolved relay (tagged
     /// `Relay(url)`). Cache hits depend on the NIP-50 search scopes being
     /// registered (`nmp_nip50::register_search_scopes`, wired by
-    /// `nmp_defaults::register_defaults`); a bare app that registers none gets an
+    /// `explicit owner composition`); a bare app that registers none gets an
     /// empty cache scan (`Unsupported`) and is relay-only.
     ///
     /// Re-opening the same `session_id` first tears the prior session down

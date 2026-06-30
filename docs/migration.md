@@ -13,7 +13,7 @@ The v1 split is:
 
 | Surface | Owns | Must not own |
 |---|---|---|
-| `nmp-defaults` | Pure Layer-5 `AppHost` composition: default NMP modules, routing, planners, registrars, and runtime handles returned to app cores when needed. | Platform runtime handles, C ABI symbols, operator policy, app defaults. |
+| `nmp-substrate` | Shared substrate floor: router/mailbox/profile/contacts cache-parser construction, publish resolver, coverage hook, NIP-77 interceptors, blocked-relay wiring, and native NIP-11 hook. | Protocol/product feature bundles, platform runtime handles, C ABI symbols, operator policy, app defaults. |
 | `nmp-native-runtime` | Native runtime handle, actor lifecycle, native typestate builder, runtime slots, pre-start configuration, and native Rust APIs. | C ABI conversion or app/product policy. |
 | `nmp-uniffi` | Public native binding surface over the native runtime: lifecycle object, callbacks/sinks, typed dispatch bytes, typed read-session helpers, diagnostics, and generated Swift/Kotlin bindings. | Runtime ownership, composition policy, protocol logic, hot snapshot payload format. |
 | `nmp-browser-runtime` | Browser Worker runtime, wasm-bindgen export, wasm-bindgen ABI glue (`nmp-browser-runtime::wasm`), browser typestate builder, storage/signing/capability provider registration. | UI rendering, TypeScript crypto fallbacks, protocol policy. |
@@ -25,11 +25,11 @@ state, routing, signing policy, and projection derivation.
 
 ## Native Runtime Split
 
-Before, examples often treated `nmp-defaults` or the deleted raw C ABI shell as the native
-runtime owner:
+Before, examples often treated the deleted defaults bundle or the deleted raw C
+ABI shell as the native runtime owner:
 
 ```rust
-use nmp_defaults::{NmpAppBuilder, RunConfig};
+use old_defaults::{NmpAppBuilder, RunConfig};
 
 let app = NmpAppBuilder::new()
     .in_memory()
@@ -84,28 +84,26 @@ floor and selected protocol/app seams by name:
 use nmp_core::substrate::AppHost;
 
 pub fn register(app: &mut impl AppHost) {
-    let nmp_defaults::NmpDefaults {
-        coverage_gate,
-        search_defaults,
-        ..
-    } = nmp_defaults::NmpDefaults::default();
-
-    let _mailbox_cache = nmp_defaults::register_substrate(app, coverage_gate);
-    nmp_defaults::register_nip50_protocol_defaults(app);
-    let _social_handles =
-        nmp_defaults::register_social_protocol_defaults(app, search_defaults);
-    nmp_defaults::register_dm_protocol_defaults(app);
-    nmp_defaults::register_longform_projection(app);
+    let _substrate_handles =
+        nmp_substrate::install(app, nmp_substrate::SubstrateConfig::default());
+    nmp_nip50::register_search_scopes(app);
+    nmp_nip50::register_input_scopes(app);
+    nmp_nip02::register_follow_actions(app);
+    nmp_replies::register_actions(app);
+    nmp_nip17::register_actions(app);
+    nmp_nip17::register_runtime(app);
+    let _comment_runtime = nmp_nip22::register_runtime(app);
+    nmp_content::register_longform_projection(app);
     my_app_core::register_actions(app);
     my_app_core::register_projections(app);
 }
 ```
 
 App-owned relays, seed follows, signer permissions, and product defaults stay
-in the leaf app Rust crate or operator config. They do not move into
-`nmp-defaults`. Starter apps must keep the named installer sequence visible;
-wholesale defaults presets are compatibility/tutorial/migration support, not
-the production app-facing model.
+in the leaf app Rust crate or operator config. They do not move into a shared
+defaults bundle. Starter apps must keep the named installer sequence visible;
+wholesale defaults presets, compatibility shims, and test-helper bundles are
+not current app-facing model.
 
 ## Browser Runtime
 
@@ -291,10 +289,10 @@ component package.
   `NmpWasmRuntime` from `nmp-browser-runtime` for browser hosts.
 - Swift/Kotlin app shells consume generated UniFFI bindings over the native
   runtime; raw C/JNI symbols are not the starter setup path.
-- `nmp-defaults` is called as pure composition through `AppHost`; no app copies
-  default wiring blocks.
+- `nmp-substrate::install(...)` is called for the shared substrate floor; no app
+  copies router/mailbox/profile/contacts construction.
 - App/operator policy stays in the leaf app Rust crate or config, not in
-  `nmp-defaults`.
+  shared substrate/protocol crates.
 - Native and web writes go through generated action builders and dispatch bytes.
 - Shells no longer spell action namespaces as ad hoc strings.
 - Profile UI reads `refs.profile`, not `resolved_profiles`.

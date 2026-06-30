@@ -226,7 +226,11 @@ fn delete_removes_picture_repost_row_by_wrapper_id() {
         content: String::new(),
         relay_provenance: Vec::new(),
     });
-    assert_eq!(feed.len(), 1, "foreign wrapper delete must not remove the row");
+    assert_eq!(
+        feed.len(),
+        1,
+        "foreign wrapper delete must not remove the row"
+    );
 
     // The reposter's own delete of the wrapper id removes the repost row.
     observer.on_kernel_event(&KernelEvent {

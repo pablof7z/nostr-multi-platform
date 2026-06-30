@@ -11,7 +11,7 @@
 /// typed (`typed_projections`) projection registries.
 ///
 /// The busiest in-repo app (the Chirp defaults layer, counting across
-/// `nmp-defaults`, `nmp-nip47`, `nmp-nip17`, `nmp-marmot`, `nmp-nip02`,
+/// `explicit composition`, `nmp-nip47`, `nmp-nip17`, `nmp-marmot`, `nmp-nip02`,
 /// `nmp-nip29`, `nmp-content`, `nmp-wot`) registers approximately **12**
 /// distinct projection keys. A 4× headroom factor (48, rounded up to 64 for
 /// alignment) yields a defensible ceiling that absorbs future growth while

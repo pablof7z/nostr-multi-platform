@@ -11,9 +11,9 @@ use heed::RwTxn;
 use nostr::event::borrow::EventBorrow;
 use nostr_database::flatbuffers::FlatBufferDecodeBorrowed;
 
-use super::index;
 use super::super::error::{Error, MigrationError};
-use super::{DB_VERSION, DB_VERSION_KEY, Lmdb};
+use super::index;
+use super::{Lmdb, DB_VERSION, DB_VERSION_KEY};
 
 impl Lmdb {
     /// Check database version and run migrations if needed
@@ -67,7 +67,8 @@ impl Lmdb {
 
         // Collect all kc_index keys first to avoid borrow conflicts
         let kc_indexes: Vec<(Vec<u8>, [u8; 32])> = {
-            let mut indexes = Vec::with_capacity(usize::try_from(event_count).unwrap_or(usize::MAX));
+            let mut indexes =
+                Vec::with_capacity(usize::try_from(event_count).unwrap_or(usize::MAX));
             for result in self.events.iter(txn)? {
                 let (_id, event_bytes) = result?;
 

@@ -22,7 +22,7 @@
 
 pub mod action_payload;
 pub mod discovered_groups_fb;
-pub mod group_events_fb;
 pub mod group_defaults_fb;
+pub mod group_events_fb;
 pub mod group_roster_fb;
 pub mod joined_groups_fb;

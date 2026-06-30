@@ -4,9 +4,9 @@
 //! the same type plus its free helpers.
 
 use nmp_core::substrate::{BoundedMessageMap, EventId, KernelEvent};
-use nmp_threading::{ParentResolver, pointer::ThreadPointer};
+use nmp_threading::{pointer::ThreadPointer, ParentResolver};
 
-use super::{EngineState, MAX_ATTRIBUTION_PER_ROOT, RootIndexedFeed, RootSlot};
+use super::{EngineState, RootIndexedFeed, RootSlot, MAX_ATTRIBUTION_PER_ROOT};
 use crate::root_indexed::attribution::AttributionPayload;
 
 impl<R, A, C> RootIndexedFeed<R, A, C>

@@ -102,7 +102,9 @@ pub(super) fn peek_by_id(
     let owned: Event = borrow.into_owned();
     let raw = conv::nostr_to_raw(&owned)?;
     // No lru_stamp — this read is invisible to GC victim selection.
-    Ok(Some(conv::stored_from_raw(raw, /* received_at_ms */ 0)))
+    Ok(Some(conv::stored_from_raw(
+        raw, /* received_at_ms */ 0,
+    )))
 }
 
 // ─── Scans ───────────────────────────────────────────────────────────────────
@@ -153,7 +155,9 @@ pub(super) fn scan_by_author_kind<'a>(
     // byte-identical with MemEventStore (whose `kinds.contains` yields nothing
     // for an empty set).
     if kinds.is_empty() {
-        return Ok(Box::new(std::iter::empty::<Result<StoredEvent, StoreError>>()));
+        return Ok(Box::new(
+            std::iter::empty::<Result<StoredEvent, StoreError>>(),
+        ));
     }
     let pk = PublicKey::from_slice(author).map_err(|e| StoreError::Encoding(format!("pk: {e}")))?;
     let mut f = Filter::new()
@@ -184,7 +188,9 @@ pub(super) fn scan_by_authors_kind<'a>(
     // byte-identical with MemEventStore (whose `contains` checks already yield
     // nothing for an empty set).
     if authors.is_empty() || kinds.is_empty() {
-        return Ok(Box::new(std::iter::empty::<Result<StoredEvent, StoreError>>()));
+        return Ok(Box::new(
+            std::iter::empty::<Result<StoredEvent, StoreError>>(),
+        ));
     }
     let pks: Vec<PublicKey> = authors
         .iter()
@@ -257,7 +263,9 @@ pub(super) fn scan_by_tags<'a>(
 ) -> Result<Box<dyn EventIter + 'a>, StoreError> {
     // Empty tags / empty value set / undecodable author → visit nothing.
     let Some(f) = build_tags_filter(authors, kinds, tags, since, until) else {
-        return Ok(Box::new(std::iter::empty::<Result<StoredEvent, StoreError>>()));
+        return Ok(Box::new(
+            std::iter::empty::<Result<StoredEvent, StoreError>>(),
+        ));
     };
     let v = run_filter(inner, f, limit)?;
     Ok(Box::new(v.into_iter().map(Ok)))

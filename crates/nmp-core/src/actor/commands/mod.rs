@@ -84,9 +84,9 @@ mod publish;
 #[cfg(feature = "native")]
 mod publish_contacts;
 #[cfg(feature = "native")]
-mod publish_finalize;
-#[cfg(feature = "native")]
 mod publish_failures;
+#[cfg(feature = "native")]
+mod publish_finalize;
 #[cfg(feature = "native")]
 mod relays;
 
@@ -240,11 +240,11 @@ pub(crate) use event_observer::unregister_observer as unregister_observer_intern
 pub use event_observer::{ObservedProjectionId, ObservedProjectionSink};
 // V-39: `send_gift_wrapped_dm` re-export removed — moved to `nmp-nip17`.
 #[cfg(feature = "native")]
-pub(super) use publish_contacts::{follow, follow_many};
-#[cfg(feature = "native")]
 pub(super) use publish::{
     publish_profile, publish_signed_event, publish_unsigned_event, publish_unsigned_event_to_relays,
 };
+#[cfg(feature = "native")]
+pub(super) use publish_contacts::{follow, follow_many};
 // V-41 — `zap::handle_fetch_lnurl_invoice` was the legacy actor-thread
 // LNURL handler. Deleted alongside the `FetchLnurlInvoice` `ActorCommand`
 // variant. The replacement (`nmp_nip57::lnurl::FetchLnurlInvoiceCommand`)

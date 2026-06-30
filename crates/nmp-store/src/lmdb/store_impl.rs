@@ -222,9 +222,7 @@ impl EventStore for LmdbEventStore {
         }
     }
 
-    fn cache_search_scopes(
-        &self,
-    ) -> Vec<(crate::text_search::SearchScopeId, BTreeSet<u32>)> {
+    fn cache_search_scopes(&self) -> Vec<(crate::text_search::SearchScopeId, BTreeSet<u32>)> {
         // Mirrors the mem backend: the cache-serve hook reads the installed
         // cache-eligible scopes so a search shape whose kinds intersect a scope
         // is served from this durable inverted index instead of relay-only.

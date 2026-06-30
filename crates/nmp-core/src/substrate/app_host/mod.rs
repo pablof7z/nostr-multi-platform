@@ -19,9 +19,9 @@
 //!
 //! [`AppHost`] survives only as a **composition super-trait**: the union of
 //! every narrow trait, implemented for free (blanket impl) by any type that
-//! implements all of them. The composition root (`nmp_defaults::register_defaults`
-//! and the `nmp-ffi` / builder wiring) is the one place that genuinely needs the
-//! whole surface and may name `AppHost`. Narrow consumers must NOT.
+//! implements all of them. App/runtime composition roots are the one place that
+//! genuinely need the whole surface and may name `AppHost`. Narrow consumers
+//! must NOT.
 
 use std::ops::Range;
 use std::sync::Arc;
@@ -264,9 +264,9 @@ pub trait RoutingFactoryRegistrar {
     /// Register the host-supplied fallback relay URL for client-initiated
     /// NIP-46 `nostrconnect://` handshakes.
     ///
-    /// Must be called before `nmp_app_start`. The composition root
-    /// (`nmp_defaults::register_defaults`) supplies a sane default; a
-    /// per-app crate may override it. When no URL has been registered the
+    /// Must be called before `nmp_app_start`. The app/runtime composition root
+    /// supplies the app's value; a per-app crate may override it. When no URL
+    /// has been registered the
     /// substrate surfaces a typed error rather than silently using a hardcoded
     /// URL (V-65 / D0).
     fn set_nostrconnect_bootstrap_relay(&self, url: String);
@@ -340,8 +340,9 @@ pub trait HostCapabilities {
     /// **Default is a no-op**, so a minimal / scaffolded host that implements
     /// `AppHost` compiles and runs for free without a relay provider — only a
     /// real composition host (`NmpApp`) overrides this to store the provider.
-    /// The first consumer is NIP-50 search (`nmp-defaults` wires the kind:10007
-    /// list → `SearchDefaults`; `nmp-nip50` reads it through this seam).
+    /// The first consumer is NIP-50 search: `nmp-nip51` wires the kind:10007
+    /// list and app-supplied `SearchFallbackRelays`; `nmp-nip50` reads the
+    /// provider through this seam.
     fn install_preferred_relay_source(&self, _source: std::sync::Arc<dyn PreferredRelaySource>) {}
 }
 
@@ -364,10 +365,9 @@ pub trait PreferredRelaySource: Send + Sync {
 ///
 /// D6: this is the union super-trait of every narrow registration / capability
 /// trait above. It is implemented for free (blanket impl below) by any type
-/// that implements all of them — the composition root (`register_defaults`, the
-/// `nmp-ffi` / builder wiring) names it because it genuinely wires the whole
-/// surface. Narrow protocol modules MUST take the specific narrow trait(s) they
-/// use, never `AppHost`.
+/// that implements all of them — app/runtime composition roots name it because
+/// they genuinely wire the whole surface. Narrow protocol modules MUST take the
+/// specific narrow trait(s) they use, never `AppHost`.
 ///
 /// This is the shared composition target for host-backed NMP runtimes, not a
 /// native shell trait. Native storage, OS keychains, browser WebSocket handles,
@@ -376,7 +376,7 @@ pub trait PreferredRelaySource: Send + Sync {
 /// projections, observed projections, routing factories, capability seams, and
 /// read-only kernel slots. A browser builder that implements the same narrow
 /// registrars receives this trait through the blanket impl and can call the
-/// same `nmp-defaults` composition path without exposing reducer internals.
+/// same explicit installer path without exposing reducer internals.
 pub trait AppHost:
     ActionRegistrar
     + ConfiguredRelaysChangeRegistrar

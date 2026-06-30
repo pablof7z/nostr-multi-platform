@@ -10,8 +10,8 @@
 //! (no production caller used it); restoring that feature is a deliberate
 //! API change tracked outside this migration.
 
-use nostr::{EventBuilder, Keys, Kind, Timestamp, UnsignedEvent};
 use nmp_nip59::{gift_wrap_local, unwrap_gift_wrap};
+use nostr::{EventBuilder, Keys, Kind, Timestamp, UnsignedEvent};
 
 fn alice_keys() -> Keys {
     Keys::parse("6b911fd37cdf5c81d4c0adb1ab7fa822ed253ab0ad9aa18d77257c88b29b718e").unwrap()
@@ -29,7 +29,8 @@ fn make_rumor(alice: &Keys) -> UnsignedEvent {
 /// Test-only shorthand: wrap `rumor` for `receiver` with the sender's local
 /// keys via the pure `gift_wrap_local` composition (ADR-0050 §D5).
 fn wrap(sender: &Keys, receiver: &nostr::PublicKey, rumor: &UnsignedEvent) -> nostr::Event {
-    gift_wrap_local(sender, receiver, rumor, Timestamp::now()).expect("gift_wrap_local should succeed")
+    gift_wrap_local(sender, receiver, rumor, Timestamp::now())
+        .expect("gift_wrap_local should succeed")
 }
 
 #[test]
@@ -42,26 +43,43 @@ fn gift_wrap_round_trip() {
     let wrapped = wrap(&alice, &bob.public_key(), &rumor);
 
     // Verify the outer envelope is kind:1059 (GiftWrap).
-    assert_eq!(wrapped.kind, Kind::GiftWrap, "outer event must be kind 1059");
+    assert_eq!(
+        wrapped.kind,
+        Kind::GiftWrap,
+        "outer event must be kind 1059"
+    );
 
     // Bob unwraps.
-    let unwrapped = unwrap_gift_wrap(&bob, &wrapped)
-        .expect("unwrap_gift_wrap should succeed");
+    let unwrapped = unwrap_gift_wrap(&bob, &wrapped).expect("unwrap_gift_wrap should succeed");
 
     // Sender must be Alice.
-    assert_eq!(unwrapped.sender, alice.public_key(), "sender must be Alice's pubkey");
+    assert_eq!(
+        unwrapped.sender,
+        alice.public_key(),
+        "sender must be Alice's pubkey"
+    );
 
     // Rumor content and kind must match.
-    assert_eq!(unwrapped.rumor.kind, rumor.kind, "rumor kind must round-trip");
-    assert_eq!(unwrapped.rumor.content, rumor.content, "rumor content must round-trip");
-    assert_eq!(unwrapped.rumor.pubkey, rumor.pubkey, "rumor pubkey must round-trip");
+    assert_eq!(
+        unwrapped.rumor.kind, rumor.kind,
+        "rumor kind must round-trip"
+    );
+    assert_eq!(
+        unwrapped.rumor.content, rumor.content,
+        "rumor content must round-trip"
+    );
+    assert_eq!(
+        unwrapped.rumor.pubkey, rumor.pubkey,
+        "rumor pubkey must round-trip"
+    );
 }
 
 #[test]
 fn wrong_key_cannot_unwrap() {
     let alice = alice_keys();
     let bob = bob_keys();
-    let charlie = Keys::parse("5b911fd37cdf5c81d4c0adb1ab7fa822ed253ab0ad9aa18d77257c88b29b718e").unwrap();
+    let charlie =
+        Keys::parse("5b911fd37cdf5c81d4c0adb1ab7fa822ed253ab0ad9aa18d77257c88b29b718e").unwrap();
 
     let rumor = make_rumor(&alice);
     let wrapped = wrap(&alice, &bob.public_key(), &rumor);

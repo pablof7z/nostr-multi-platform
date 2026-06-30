@@ -10,12 +10,16 @@ Status: ACCEPTED (owner-approved 2026-06-12); amended by ADR-0069
 Current disposition: composition observability survives. The ledger must explain
 an explicit production composition root, including what installers registered,
 skipped, yielded, or require from the runtime. It must not justify hidden
-production `register_defaults()` behavior.
+production `the hidden defaults preset` behavior.
+
+Supersession note (2026-06-30): `the deleted defaults bundle` is deleted. Defaults-era examples
+below are historical only; current ledgers describe explicit `nmp-substrate` and
+protocol/app installer calls.
 
 ## Context
 
 NMP composes a running app by registering modules, parsers, projections, and
-wiring slots against a host (`nmp_defaults::register_defaults` for the canonical
+wiring slots against a host (`explicit owner composition` for the canonical
 defaults; per-app crates for app-specific verbs — ADR-0046). Two latent defects
 made that composition fragile and opaque. Both have well-studied prior art.
 
@@ -24,8 +28,8 @@ made that composition fragile and opaque. Both have well-studied prior art.
 The action registry installed modules with a bare `HashMap::insert`
 (`crates/nmp-core/src/kernel/action_registry.rs`): silent last-writer-wins. An
 app registering its own module under a default namespace **before** the defaults
-run was silently clobbered when `register_defaults` ran afterward. Chirp worked
-only by accident of call order — it calls `register_defaults` first
+run was silently clobbered when `the hidden defaults preset` ran afterward. Chirp worked
+only by accident of call order — it calls `the hidden defaults preset` first
 (`apps/chirp/crates/nmp-app-chirp/src/ffi/register.rs:108`), so the defaults install and
 nothing later overrides them.
 
@@ -49,7 +53,7 @@ D6 makes NMP's composition **silent by design**: a yield, an override, or a
 setter dropped because it ran after `nmp_app_start` never surfaces an error.
 Spring proved silent composition is only viable *with* an explain surface — its
 `ConditionEvaluationReport` answers "which beans matched, which were excluded,
-and why". NMP had no analog. Worse, `crates/nmp-defaults/src/builder.rs`
+and why". NMP had no analog. Worse, `crates/explicit composition/src/builder.rs`
 documented a `KernelDiagnostic::LateWiring` diagnostic for the
 setter-after-start case that did not exist — the gap was named and left open.
 
@@ -69,7 +73,7 @@ registration intents and track per-entry **provenance** (`Default` vs `App`):
 1. **`register_default::<M>()`** — entry-or-insert. Installs `M` **only** if its
    namespace is unclaimed; returns `bool` (`false` = yielded). This is the
    `@ConditionalOnMissingBean` shape: an app can pre-empt a default whether it
-   registers before *or* after `register_defaults`.
+   registers before *or* after `the hidden defaults preset`.
 
 2. **`register::<M>()`** (the app path) — keeps insert semantics, so an app
    intentionally overriding a default stays legal and silent-ish
@@ -122,9 +126,9 @@ Recorded at the AppHost registration paths in `nmp-core`/`nmp-ffi`:
   `nmp_app_start` sends `ActorCommand::Start`. From that point the actor has
   read every wiring slot once at kernel construction, so a later setter call is
   recorded as `DroppedLateWiring`. **This finally implements the
-  `KernelDiagnostic::LateWiring` promise** `nmp-defaults/src/builder.rs`
+  `KernelDiagnostic::LateWiring` promise** `explicit composition/src/builder.rs`
   documented. The recording lives in `nmp-core`/`nmp-ffi` where the wiring is
-  dropped — `nmp-defaults` is *not* restructured.
+  dropped — `explicit composition` is *not* restructured.
 
 One FFI symbol, **`nmp_app_composition_report(app) -> *mut c_char`**, returns
 the ledger as JSON, mirroring `nmp_app_recent_routing_decisions` exactly
@@ -139,7 +143,7 @@ polling, no background work (D8).**
 ## Consequences
 
 - An app may register its own module under any default namespace, before or
-  after `register_defaults`, and win — the order-dependence trap is gone.
+  after `the hidden defaults preset`, and win — the order-dependence trap is gone.
 - An accidental app-over-app namespace collision now fails loudly in dev/test
   instead of silently clobbering, while staying D6-safe (soft) in release.
 - Hosts and diagnostics screens can finally answer "what did the composition
@@ -162,7 +166,7 @@ polling, no background work (D8).**
 
 ### Scope notes
 
-- `nmp-defaults` is intentionally **not** restructured (a parallel session owns
+- `explicit composition` is intentionally **not** restructured (a parallel session owns
   its tier-split). The late-wiring recording is wired in `nmp-core`/`nmp-ffi`,
   where the drop actually happens.
 - The kernel's seeded `PublishModule` (installed by `default_registry()` before

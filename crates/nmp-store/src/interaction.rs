@@ -11,10 +11,10 @@
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
 pub(crate) enum CounterKind {
-    Reply    = 1,
+    Reply = 1,
     Reaction = 2,
-    Repost   = 3,
-    Zap      = 4,
+    Repost = 3,
+    Zap = 4,
 }
 
 /// Classify an event by its `kind` and `tags` into an interaction type and

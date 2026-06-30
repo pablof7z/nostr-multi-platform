@@ -7,4 +7,5 @@ were removed with it.
 
 Current seams are `ActionModule`, `register_event_observer`,
 `register_typed_snapshot_projection`, capabilities, `NmpAppBuilder`, and
-`nmp-defaults` composition.
+app-owned Rust composition over `nmp-substrate` plus explicit protocol/app
+features.

@@ -43,8 +43,11 @@ fn record_hit(
 #[test]
 fn rule_b_no_global_relation_summary_or_bucket_api() {
     let storage = ["nmp-store", "nmp-nostr-lmdb", "nmp-sqlite-wasm"];
-    let mut relation_scope = vec!["nmp-relations".to_string()];
-    relation_scope.extend(nmp_nip_crates());
+    assert!(
+        !crates_dir().join("nmp-relations").exists(),
+        "Rule B: `crates/nmp-relations` is a rejected central owner per #2508"
+    );
+    let relation_scope = nmp_nip_crates();
 
     let mut storage_files = Vec::new();
     for d in &storage {

@@ -84,9 +84,9 @@ fn kind0_claim_resolves_from_active_pinned_relay() {
         .get(GROUP_RELAY)
         .expect("kind:0 claim must land on the pinned group relay");
     assert!(
-        group
-            .role_tags
-            .contains(&RoutingSource::UserConfigured(UserConfiguredCategory::ActivePin)),
+        group.role_tags.contains(&RoutingSource::UserConfigured(
+            UserConfiguredCategory::ActivePin
+        )),
         "the landing must be tagged ActivePin, not invented out of thin air"
     );
     // The author rides exactly one kind:0 sub-shape there.
@@ -94,7 +94,10 @@ fn kind0_claim_resolves_from_active_pinned_relay() {
         .sub_shapes
         .iter()
         .any(|s| s.shape.authors.contains(&pk("mallory")) && s.shape.kinds.contains(&0));
-    assert!(serves_author, "mallory's kind:0 must be requested on the relay");
+    assert!(
+        serves_author,
+        "mallory's kind:0 must be requested on the relay"
+    );
     assert!(
         plan.unroutable_authors.is_empty(),
         "the pinned relay is a valid landing pad — nobody is unroutable"
@@ -119,7 +122,10 @@ fn kind1_timeline_does_not_fan_out_to_pinned_relay() {
             .sub_shapes
             .iter()
             .any(|s| s.shape.authors.contains(&pk("mallory")) && s.shape.kinds.contains(&1));
-        assert!(!leaks_kind1, "kind:1 timeline must never ride a pinned relay");
+        assert!(
+            !leaks_kind1,
+            "kind:1 timeline must never ride a pinned relay"
+        );
     }
     assert!(
         plan.unroutable_authors.contains(&pk("mallory")),
@@ -160,7 +166,10 @@ fn multi_kind_self_bootstrap_does_not_ride_active_pin() {
                 .any(|s| s.shape.authors.contains(&pk("mallory")))
         })
         .unwrap_or(false);
-    assert!(!on_pin, "only the exact kind:0 shape rides the active-pin lane");
+    assert!(
+        !on_pin,
+        "only the exact kind:0 shape rides the active-pin lane"
+    );
 }
 
 /// Additivity: a NIP-65-known author still gets their outbox relay AND the
@@ -206,6 +215,9 @@ fn no_pins_is_a_noop() {
         .compile(&[profile_claim(2, "mallory")])
         .expect("compile");
 
-    assert!(plan.per_relay.is_empty(), "no relays without a pin or config");
+    assert!(
+        plan.per_relay.is_empty(),
+        "no relays without a pin or config"
+    );
     assert!(plan.unroutable_authors.contains(&pk("mallory")));
 }

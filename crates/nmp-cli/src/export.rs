@@ -96,8 +96,7 @@ struct JsrepoFile {
 // Public entry point
 // ---------------------------------------------------------------------------
 
-const EXPORT_USAGE: &str =
-    "nmp export jsrepo [--output DIR] [--registry DIR]";
+const EXPORT_USAGE: &str = "nmp export jsrepo [--output DIR] [--registry DIR]";
 
 /// Convert a component id to a jsrepo slug: `swiftui/content-core` →
 /// `swiftui-content-core`.
@@ -109,8 +108,8 @@ pub fn run(args: &[String]) -> Result<(), String> {
     let (output_dir, registry_path) = parse_args(args)?;
 
     let (manifest_str, registry_root) = load_manifest(registry_path)?;
-    let manifest: Manifest = toml::from_str(&manifest_str)
-        .map_err(|e| format!("invalid registry manifest: {e}"))?;
+    let manifest: Manifest =
+        toml::from_str(&manifest_str).map_err(|e| format!("invalid registry manifest: {e}"))?;
 
     let items = build_items(&manifest, &registry_root)?;
 
@@ -124,8 +123,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
     let json =
         serde_json::to_string_pretty(&registry).map_err(|e| format!("JSON serialisation: {e}"))?;
 
-    fs::create_dir_all(&output_dir)
-        .map_err(|e| format!("{}: {e}", output_dir.display()))?;
+    fs::create_dir_all(&output_dir).map_err(|e| format!("{}: {e}", output_dir.display()))?;
     let index_path = output_dir.join("registry.json");
     write_file(&index_path, &json)?;
     println!("wrote {}", index_path.display());
@@ -173,7 +171,11 @@ fn parse_args(args: &[String]) -> Result<(PathBuf, Option<PathBuf>), String> {
                 return Err(format!("unknown argument {flag}\nusage: {EXPORT_USAGE}"))
             }
             // positional args not expected
-            other => return Err(format!("unexpected argument `{other}`\nusage: {EXPORT_USAGE}")),
+            other => {
+                return Err(format!(
+                    "unexpected argument `{other}`\nusage: {EXPORT_USAGE}"
+                ))
+            }
         }
         index += 1;
     }

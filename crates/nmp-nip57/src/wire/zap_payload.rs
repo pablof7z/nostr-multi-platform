@@ -32,7 +32,9 @@ use crate::action::ZapInput;
 pub const SCHEMA_VERSION: u32 = 1;
 
 fn malformed(reason: impl Into<String>) -> ActionPayloadDecodeError {
-    ActionPayloadDecodeError::Malformed { reason: reason.into() }
+    ActionPayloadDecodeError::Malformed {
+        reason: reason.into(),
+    }
 }
 
 impl ActionPayload for ZapInput {
@@ -46,15 +48,8 @@ impl ActionPayload for ZapInput {
         // Optional fields: write the string when present, omit the field when None.
         // Presence is preserved on decode; `start()` is responsible for domain
         // validation (e.g. rejecting an empty lnurl).
-        let lnurl = self
-            .lnurl
-            .as_deref()
-            .map(|s| fbb.create_string(s));
-        let relay_offsets: Vec<_> = self
-            .relays
-            .iter()
-            .map(|r| fbb.create_string(r))
-            .collect();
+        let lnurl = self.lnurl.as_deref().map(|s| fbb.create_string(s));
+        let relay_offsets: Vec<_> = self.relays.iter().map(|r| fbb.create_string(r)).collect();
         let relays = if relay_offsets.is_empty() {
             None
         } else {

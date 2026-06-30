@@ -16,18 +16,6 @@ use support::{
 };
 
 #[test]
-fn nmp_defaults_stays_platform_runtime_free_for_production_deps() {
-    let metadata = cargo_metadata();
-    let findings = forbidden_platform_dep_findings(&metadata, &["nmp-defaults"]);
-    assert!(
-        findings.is_empty(),
-        "nmp-defaults must compose through AppHost and must not take default \
-         production dependencies on native/browser runtime or ABI crates:\n{}",
-        findings.join("\n")
-    );
-}
-
-#[test]
 fn lower_layer_crates_do_not_depend_on_platform_runtime_crates() {
     let metadata = cargo_metadata();
     let lower_layer_crates = lower_layer_crates();
@@ -182,14 +170,14 @@ fn platform_dependency_gate_negative_fixture_fires() {
 fn platform_dependency_gate_allows_dev_and_optional_edges() {
     let packages = serde_json::json!({
         "packages": [{
-            "name": "nmp-defaults",
+            "name": "nmp-substrate",
             "dependencies": [
                 {"name": "nmp-native-runtime", "kind": "dev", "optional": false},
                 {"name": "nmp-ffi", "kind": null, "optional": true}
             ]
         }]
     });
-    let findings = forbidden_platform_dep_findings(&packages, &["nmp-defaults"]);
+    let findings = forbidden_platform_dep_findings(&packages, &["nmp-substrate"]);
     assert!(
         findings.is_empty(),
         "dev/test-support and optional feature edges are not default production deps; got {findings:?}"

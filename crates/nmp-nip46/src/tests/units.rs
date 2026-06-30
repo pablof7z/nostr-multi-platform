@@ -5,8 +5,10 @@ use nostr::nips::nip44;
 use serde_json::Value;
 
 use super::*;
-use crate::rpc::{build_connect_params, build_event_frame, decode_inbound_response, new_request_id};
 use crate::build_req_frame;
+use crate::rpc::{
+    build_connect_params, build_event_frame, decode_inbound_response, new_request_id,
+};
 
 // ─── build_connect_params ────────────────────────────────────────────────────
 
@@ -38,7 +40,8 @@ fn new_request_id_is_eleven_char_lowercase_hex() {
     let id = new_request_id();
     assert_eq!(id.len(), 11, "request id is 11 chars wide");
     assert!(
-        id.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()),
+        id.chars()
+            .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()),
         "request id must be lowercase hex: {id:?}"
     );
 }
@@ -189,5 +192,8 @@ fn build_event_frame_emits_kind_24133_with_p_tag_and_nip44_content() {
     let ciphertext = inner.get("content").and_then(|v| v.as_str()).unwrap();
     let decrypted = nip44::decrypt(local.secret_key(), &remote, ciphertext.as_bytes())
         .expect("content must be NIP-44 decryptable by remote");
-    assert_eq!(decrypted, plaintext, "decrypted content must equal plaintext");
+    assert_eq!(
+        decrypted, plaintext,
+        "decrypted content must equal plaintext"
+    );
 }

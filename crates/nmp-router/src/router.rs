@@ -33,12 +33,12 @@
 
 use std::sync::Arc;
 
-use nmp_planner::{HintSource, LogicalInterest};
 use nmp_core::substrate::{
     truncate_event_id, AppRelayMode, Direction, LaneOutcome, OutboxRouter, PublishTrace,
     RouteAttempt, RoutedRelaySet, RoutingContext, RoutingError, RoutingLane, RoutingSource,
     RoutingTraceObserver, SubscriptionTrace, UserConfiguredCategory,
 };
+use nmp_planner::{HintSource, LogicalInterest};
 use nmp_signer_iface::UnsignedEvent;
 
 use crate::discovery::{indexer_kind_scope, is_discovery_kind};

@@ -25,6 +25,9 @@
 //! returns an empty `Vec<Effect>` with no state change. Only events that
 //! semantically match the expected response advance the state.
 
+mod ack_error;
+mod phase;
+
 use nostr::nips::nip44;
 use nostr::{Keys, PublicKey};
 use serde_json::{json, Value};
@@ -32,32 +35,13 @@ use serde_json::{json, Value};
 use crate::effect::{Effect, SignerReady};
 use crate::error::HandshakeError;
 use crate::progress_codes;
-use crate::rpc::{build_event_frame_at, RpcBuildError};
+use crate::rpc::build_event_frame_at;
+use ack_error::map_ack_build_error;
+pub(crate) use phase::Phase;
 
 /// Per-step deadline in seconds — the same 60s budget as STEP_TIMEOUT in
 /// the former blocking implementation.
 const STEP_TIMEOUT_SECS: u64 = 60;
-
-// ─── Phase ───────────────────────────────────────────────────────────────────
-
-pub(crate) enum Phase {
-    /// bunker://: waiting for the bunker's `connect` response.
-    BunkerWaitConnectAck {
-        connect_id: String,
-        remote_pubkey: PublicKey,
-    },
-    /// Both flows: waiting for the `get_public_key` response.
-    WaitGpk {
-        gpk_id: String,
-        remote_pubkey: PublicKey,
-    },
-    /// nostrconnect://: waiting for the signer's initial `connect` frame.
-    NostrConnectWaitConnect {
-        expected_secret: String,
-    },
-    /// Terminal — all further inputs are no-ops.
-    Done,
-}
 
 // ─── SessionState ─────────────────────────────────────────────────────────────
 
@@ -156,9 +140,7 @@ impl SessionState {
                     // Byte-identical to the old wait.rs Timeout message:
                     //   format!("no response to {method_label} within {timeout:?}")
                     // where timeout = Duration::from_secs(60) → Debug "60s".
-                    error: HandshakeError::Timeout(format!(
-                        "no response to {label} within 60s"
-                    )),
+                    error: HandshakeError::Timeout(format!("no response to {label} within 60s")),
                 }]
             }
         }
@@ -221,7 +203,10 @@ impl SessionState {
         // through `start_bunker`/`start_nostrconnect` uses the real wall-clock.
         let req_frame = crate::rpc::build_req_frame(&self.sub_id, &pubkey_hex, 0);
         let relay_url = self.relay_url.clone();
-        vec![Effect::Subscribe { relay_url, frame: req_frame }]
+        vec![Effect::Subscribe {
+            relay_url,
+            frame: req_frame,
+        }]
     }
 
     /// Drive the state machine from a pre-parsed kind:24133 event JSON value.
@@ -240,9 +225,10 @@ impl SessionState {
 
     fn handle_bunker_connect_ack(&mut self, event: &Value, now: u64) -> Vec<Effect> {
         let (connect_id, remote_pubkey) = match &self.phase {
-            Phase::BunkerWaitConnectAck { connect_id, remote_pubkey } => {
-                (connect_id.clone(), *remote_pubkey)
-            }
+            Phase::BunkerWaitConnectAck {
+                connect_id,
+                remote_pubkey,
+            } => (connect_id.clone(), *remote_pubkey),
             _ => return Vec::new(),
         };
 
@@ -254,9 +240,11 @@ impl SessionState {
         let Some(ciphertext) = event.get("content").and_then(|v| v.as_str()) else {
             return Vec::new();
         };
-        let Ok(plaintext) =
-            nip44::decrypt(self.local_keys.secret_key(), &remote_pubkey, ciphertext.as_bytes())
-        else {
+        let Ok(plaintext) = nip44::decrypt(
+            self.local_keys.secret_key(),
+            &remote_pubkey,
+            ciphertext.as_bytes(),
+        ) else {
             return Vec::new();
         };
         let Ok(rpc) = serde_json::from_str::<Value>(&plaintext) else {
@@ -270,7 +258,9 @@ impl SessionState {
         if let Some(err) = rpc.get("error") {
             if !err.is_null() {
                 let msg = err.as_str().map_or_else(|| err.to_string(), str::to_string);
-                return vec![Effect::Error { error: HandshakeError::BunkerError(msg) }];
+                return vec![Effect::Error {
+                    error: HandshakeError::BunkerError(msg),
+                }];
             }
         }
 
@@ -296,14 +286,20 @@ impl SessionState {
             Ok(frame) => {
                 let relay_url = self.relay_url.clone();
                 self.deadline_at = now + STEP_TIMEOUT_SECS;
-                self.phase = Phase::WaitGpk { gpk_id, remote_pubkey };
+                self.phase = Phase::WaitGpk {
+                    gpk_id,
+                    remote_pubkey,
+                };
                 vec![
                     Effect::Progress {
                         stage: "awaiting_pubkey".to_string(),
                         code: Some(progress_codes::AWAITING_BUNKER_APPROVAL.to_string()),
                         detail: Some("Awaiting bunker approval".to_string()),
                     },
-                    Effect::SendFrame { relay_url, text: frame },
+                    Effect::SendFrame {
+                        relay_url,
+                        text: frame,
+                    },
                 ]
             }
             Err(e) => vec![Effect::Error {
@@ -314,7 +310,10 @@ impl SessionState {
 
     fn handle_gpk_response(&mut self, event: &Value) -> Vec<Effect> {
         let (gpk_id, remote_pubkey) = match &self.phase {
-            Phase::WaitGpk { gpk_id, remote_pubkey } => (gpk_id.clone(), *remote_pubkey),
+            Phase::WaitGpk {
+                gpk_id,
+                remote_pubkey,
+            } => (gpk_id.clone(), *remote_pubkey),
             _ => return Vec::new(),
         };
 
@@ -325,9 +324,11 @@ impl SessionState {
         let Some(ciphertext) = event.get("content").and_then(|v| v.as_str()) else {
             return Vec::new();
         };
-        let Ok(plaintext) =
-            nip44::decrypt(self.local_keys.secret_key(), &remote_pubkey, ciphertext.as_bytes())
-        else {
+        let Ok(plaintext) = nip44::decrypt(
+            self.local_keys.secret_key(),
+            &remote_pubkey,
+            ciphertext.as_bytes(),
+        ) else {
             return Vec::new();
         };
         let Ok(rpc) = serde_json::from_str::<Value>(&plaintext) else {
@@ -340,7 +341,9 @@ impl SessionState {
         if let Some(err) = rpc.get("error") {
             if !err.is_null() {
                 let msg = err.as_str().map_or_else(|| err.to_string(), str::to_string);
-                return vec![Effect::Error { error: HandshakeError::BunkerError(msg) }];
+                return vec![Effect::Error {
+                    error: HandshakeError::BunkerError(msg),
+                }];
             }
         }
 
@@ -399,9 +402,11 @@ impl SessionState {
         let Some(ciphertext) = event.get("content").and_then(|v| v.as_str()) else {
             return Vec::new();
         };
-        let Ok(plaintext) =
-            nip44::decrypt(self.local_keys.secret_key(), &signer_pk, ciphertext.as_bytes())
-        else {
+        let Ok(plaintext) = nip44::decrypt(
+            self.local_keys.secret_key(),
+            &signer_pk,
+            ciphertext.as_bytes(),
+        ) else {
             return Vec::new(); // not for us or malformed — skip
         };
         let rpc: Value = match serde_json::from_str(&plaintext) {
@@ -465,32 +470,25 @@ impl SessionState {
 
         let relay_url = self.relay_url.clone();
         self.deadline_at = now + STEP_TIMEOUT_SECS;
-        self.phase = Phase::WaitGpk { gpk_id, remote_pubkey: signer_pk };
+        self.phase = Phase::WaitGpk {
+            gpk_id,
+            remote_pubkey: signer_pk,
+        };
 
         vec![
-            Effect::SendFrame { relay_url: relay_url.clone(), text: ack_frame },
+            Effect::SendFrame {
+                relay_url: relay_url.clone(),
+                text: ack_frame,
+            },
             Effect::Progress {
                 stage: "awaiting_pubkey".to_string(),
                 code: Some(progress_codes::NOSTRCONNECT_AWAITING_CONFIRMATION.to_string()),
                 detail: Some("Awaiting user confirmation in signer app".to_string()),
             },
-            Effect::SendFrame { relay_url, text: gpk_frame },
+            Effect::SendFrame {
+                relay_url,
+                text: gpk_frame,
+            },
         ]
     }
 }
-
-// ─── helpers ─────────────────────────────────────────────────────────────────
-
-/// Map a [`RpcBuildError`] from the shared frame builder onto the ACK-specific
-/// error strings the pre-extraction inline code produced. The `TagParse`
-/// variant already matches the shared "tag parse: …" wording verbatim.
-/// Byte-identical to the former `map_ack_build_error` in nostrconnect.rs.
-fn map_ack_build_error(e: &RpcBuildError) -> String {
-    match e {
-        RpcBuildError::Encrypt(s) => format!("nip44 encrypt ack: {s}"),
-        RpcBuildError::TagParse(s) => format!("tag parse: {s}"),
-        RpcBuildError::Sign(s) => format!("sign ack event: {s}"),
-        RpcBuildError::Serialize(s) => format!("serialize ack: {s}"),
-    }
-}
-

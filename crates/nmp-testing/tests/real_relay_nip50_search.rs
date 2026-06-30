@@ -11,7 +11,7 @@
 //!   * **Transparency tier (SC-TRANSPARENCY)** — the headline. A FRESH random
 //!     account publishes a kind:10002 (read relay R) AND a kind:10007 (search
 //!     relay `wss://nostr.wine`) to R. A real `NmpApp` cold-starts with ONLY
-//!     `register_defaults` (no `set_search_relay_source`, no explicit relay
+//!     owner-local NIP-50/NIP-51 wiring (no `set_search_relay_source`, no explicit relay
 //!     arg). Calling `open_search(.., UserPreferred)` must transparently fan the
 //!     search REQ out to the published kind:10007 relay and return results —
 //!     proving NMP discovers + uses the user's kind:10007 with zero app code.
@@ -102,13 +102,20 @@ pub(crate) struct ScopeRun {
 
 /// Subscribe with `request`'s interest shape over `socket`, drain EVENTs into a
 /// fresh projection until EOSE / CLOSED / budget, and return the snapshot.
-pub(crate) fn run_scope(socket: &mut RelaySocket, request: SearchRequest, sub_id: &str) -> ScopeRun {
+pub(crate) fn run_scope(
+    socket: &mut RelaySocket,
+    request: SearchRequest,
+    sub_id: &str,
+) -> ScopeRun {
     let filter = nmp_core::subs::filter_json_for(&request.interest_shape());
     let mut projection = SearchResultsProjection::new(request);
 
     if let Err(e) = send_text(socket, format!(r#"["REQ","{sub_id}",{filter}]"#)) {
         eprintln!("SKIP: REQ send failed: {e}");
-        return ScopeRun { hits: Vec::new(), closed_unsupported: false };
+        return ScopeRun {
+            hits: Vec::new(),
+            closed_unsupported: false,
+        };
     }
 
     let mut closed_unsupported = false;
@@ -133,12 +140,20 @@ pub(crate) fn run_scope(socket: &mut RelaySocket, request: SearchRequest, sub_id
         }
         false
     });
-    ScopeRun { hits: projection.snapshot().hits, closed_unsupported }
+    ScopeRun {
+        hits: projection.snapshot().hits,
+        closed_unsupported,
+    }
 }
 
 fn users_request(query: &str) -> SearchRequest {
-    SearchRequest::new(query, SearchScope::Users, SearchTargets::AppDefault, Some(20))
-        .expect("users request")
+    SearchRequest::new(
+        query,
+        SearchScope::Users,
+        SearchTargets::AppDefault,
+        Some(20),
+    )
+    .expect("users request")
 }
 
 #[test]
@@ -154,11 +169,19 @@ fn sc01_profile_search_jack_via_nostr_wine() {
     if distinct == 0 {
         return skip("sc01", "nostr.wine returned no kind:0 hits for 'jack'");
     }
-    record("sc01", Verdict::Pass, &format!(
-        "{distinct} distinct kind:0 hits; jack@primal.net ({JACK_PUBKEY}) present={jack}"
-    ));
-    assert!(distinct >= 3, "SC-01 expects >=3 profile hits, got {distinct}");
-    assert!(jack, "SC-01 expects jack's pubkey {JACK_PUBKEY} in the results");
+    record(
+        "sc01",
+        Verdict::Pass,
+        &format!("{distinct} distinct kind:0 hits; jack@primal.net ({JACK_PUBKEY}) present={jack}"),
+    );
+    assert!(
+        distinct >= 3,
+        "SC-01 expects >=3 profile hits, got {distinct}"
+    );
+    assert!(
+        jack,
+        "SC-01 expects jack's pubkey {JACK_PUBKEY} in the results"
+    );
 }
 
 #[test]
@@ -169,14 +192,24 @@ fn sc03_profile_search_bitcoin_via_nostr_wine() {
     };
     let run = run_scope(&mut s, users_request("bitcoin"), "sc03");
     let n = run.hits.len();
-    let has_bitcoin = run.hits.iter().any(|h| h.content.to_lowercase().contains("bitcoin"));
+    let has_bitcoin = run
+        .hits
+        .iter()
+        .any(|h| h.content.to_lowercase().contains("bitcoin"));
     println!("[SC-03] kind:0 'bitcoin' via nostr.wine: {n} hits, name/about match={has_bitcoin}");
     if n == 0 {
         return skip("sc03", "nostr.wine returned no kind:0 hits for 'bitcoin'");
     }
-    record("sc03", Verdict::Pass, &format!("{n} kind:0 hits; a profile's content contains 'bitcoin'={has_bitcoin}"));
+    record(
+        "sc03",
+        Verdict::Pass,
+        &format!("{n} kind:0 hits; a profile's content contains 'bitcoin'={has_bitcoin}"),
+    );
     assert!(n >= 3, "SC-03 expects >=3 profile hits, got {n}");
-    assert!(has_bitcoin, "SC-03 expects a profile name/about containing 'bitcoin'");
+    assert!(
+        has_bitcoin,
+        "SC-03 expects a profile name/about containing 'bitcoin'"
+    );
 }
 
 #[test]
@@ -185,20 +218,31 @@ fn sc04_longform_search_bitcoin_via_nostr_wine() {
     let Some(mut s) = try_open(WINE) else {
         return skip("sc04", "nostr.wine unreachable");
     };
-    let req = SearchRequest::new("bitcoin", SearchScope::LongForm, SearchTargets::AppDefault, Some(30))
-        .expect("longform request");
+    let req = SearchRequest::new(
+        "bitcoin",
+        SearchScope::LongForm,
+        SearchTargets::AppDefault,
+        Some(30),
+    )
+    .expect("longform request");
     let run = run_scope(&mut s, req, "sc04");
     let n = run.hits.len();
     let all_30023 = run.hits.iter().all(|h| h.kind == 30023);
     let target = run.hits.iter().any(|h| h.id == BITCOIN_QUOTES_ID);
     println!("[SC-04] kind:30023 'bitcoin' via nostr.wine: {n} hits, all kind==30023={all_30023}, Bitcoin Quotes present={target}");
     if n == 0 {
-        return skip("sc04", "nostr.wine returned no kind:30023 hits for 'bitcoin'");
+        return skip(
+            "sc04",
+            "nostr.wine returned no kind:30023 hits for 'bitcoin'",
+        );
     }
     record("sc04", Verdict::Pass, &format!("{n} kind:30023 hits; all kind==30023={all_30023}; 'Bitcoin Quotes' ({BITCOIN_QUOTES_ID}) present={target}"));
     assert!(n >= 2, "SC-04 expects >=2 long-form hits, got {n}");
     assert!(all_30023, "SC-04 expects every hit to be kind:30023");
-    assert!(target, "SC-04 expects 'Bitcoin Quotes' event {BITCOIN_QUOTES_ID}");
+    assert!(
+        target,
+        "SC-04 expects 'Bitcoin Quotes' event {BITCOIN_QUOTES_ID}"
+    );
 }
 
 #[test]
@@ -207,12 +251,29 @@ fn sc08_zero_result_nonsense_query_via_nostr_wine() {
     let Some(mut s) = try_open(WINE) else {
         return skip("sc08", "nostr.wine unreachable");
     };
-    let run = run_scope(&mut s, users_request("zxqwvfjkqpwoeiruzzzznonsense12345"), "sc08");
+    let run = run_scope(
+        &mut s,
+        users_request("zxqwvfjkqpwoeiruzzzznonsense12345"),
+        "sc08",
+    );
     let n = run.hits.len();
-    println!("[SC-08] nonsense query via nostr.wine: {n} hits, closed_unsupported={}", run.closed_unsupported);
-    record("sc08", Verdict::Pass, &format!("nonsense query returned {n} hits with no error (closed_unsupported={})", run.closed_unsupported));
+    println!(
+        "[SC-08] nonsense query via nostr.wine: {n} hits, closed_unsupported={}",
+        run.closed_unsupported
+    );
+    record(
+        "sc08",
+        Verdict::Pass,
+        &format!(
+            "nonsense query returned {n} hits with no error (closed_unsupported={})",
+            run.closed_unsupported
+        ),
+    );
     assert_eq!(n, 0, "SC-08 expects 0 results for a nonsense query");
-    assert!(!run.closed_unsupported, "SC-08: nostr.wine must NOT reject the search filter");
+    assert!(
+        !run.closed_unsupported,
+        "SC-08: nostr.wine must NOT reject the search filter"
+    );
 }
 
 #[test]
@@ -223,7 +284,10 @@ fn sc09_non_nip50_lane_via_nos_lol() {
     };
     let run = run_scope(&mut s, users_request("bitcoin"), "sc09");
     let n = run.hits.len();
-    println!("[SC-09] search via nos.lol (non-NIP-50): {n} hits, closed_unsupported={}", run.closed_unsupported);
+    println!(
+        "[SC-09] search via nos.lol (non-NIP-50): {n} hits, closed_unsupported={}",
+        run.closed_unsupported
+    );
     // The point: a non-NIP-50 relay surfaces as a zero-result / CLOSED lane,
     // NOT a fatal search failure (the projection simply has no hits and the
     // process did not panic).
@@ -231,7 +295,10 @@ fn sc09_non_nip50_lane_via_nos_lol() {
         "nos.lol returned {n} hits and signalled CLOSED-unsupported={} — a non-fatal zero-result lane",
         run.closed_unsupported
     ));
-    assert_eq!(n, 0, "SC-09: a non-NIP-50 relay yields 0 hits, never bogus results");
+    assert_eq!(
+        n, 0,
+        "SC-09: a non-NIP-50 relay yields 0 hits, never bogus results"
+    );
 }
 
 /// SC-TRANSPARENCY — the headline. Delegates to the kernel-driven harness in

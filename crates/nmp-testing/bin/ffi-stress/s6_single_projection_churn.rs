@@ -263,9 +263,14 @@ pub(crate) fn run(cfg: S6Config, report: &mut ScenarioMetrics) {
             callback_record_count(ctx_a)
         });
 
-        let (ws, wc) = run_churn_window(app_a, churn_pubkey, &consumer_id_a, cfg.churn_cycles, &probe_a, || {
-            callback_record_count(ctx_a)
-        });
+        let (ws, wc) = run_churn_window(
+            app_a,
+            churn_pubkey,
+            &consumer_id_a,
+            cfg.churn_cycles,
+            &probe_a,
+            || callback_record_count(ctx_a),
+        );
 
         nmp_app_set_update_callback(app_a, std::ptr::null_mut(), None);
         nmp_app_free(app_a);
@@ -300,9 +305,14 @@ pub(crate) fn run(cfg: S6Config, report: &mut ScenarioMetrics) {
             byte_capture_record_count(ctx_b)
         });
 
-        let (ws, wc) = run_churn_window(app_b, churn_pubkey, &consumer_id_b, cfg.churn_cycles, &probe_b, || {
-            byte_capture_record_count(ctx_b)
-        });
+        let (ws, wc) = run_churn_window(
+            app_b,
+            churn_pubkey,
+            &consumer_id_b,
+            cfg.churn_cycles,
+            &probe_b,
+            || byte_capture_record_count(ctx_b),
+        );
 
         nmp_app_set_update_callback(app_b, std::ptr::null_mut(), None);
         nmp_app_free(app_b);

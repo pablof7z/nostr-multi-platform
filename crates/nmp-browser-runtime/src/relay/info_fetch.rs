@@ -11,9 +11,9 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Mutex;
 
-use nmp_core::CommandSender;
 use nmp_core::substrate::{RelayConnectedHook, RelayInfoDoc};
 use nmp_core::time::{Duration, Instant};
+use nmp_core::CommandSender;
 use serde::Deserialize;
 
 const NIP11_TTL: Duration = Duration::from_secs(300);

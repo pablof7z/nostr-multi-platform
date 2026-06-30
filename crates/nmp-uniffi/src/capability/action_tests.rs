@@ -6,7 +6,7 @@ use std::thread;
 use std::time::Duration;
 
 use nmp_core::actor::ActorCommand;
-use nmp_core::dispatch_envelope::{DISPATCH_ENVELOPE_SCHEMA_VERSION, encode_dispatch_envelope};
+use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
 use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
 
 use super::ActionResultObserver;

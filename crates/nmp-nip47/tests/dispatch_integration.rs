@@ -55,7 +55,12 @@ fn start_bytes_rejects_wrong_schema_version_for_connect() {
     let registry = registry_with_wallet_actions();
     let bad = build_bad_version_connect_payload();
     let err = registry
-        .start_bytes(&mut ActionContext::default(), NOW_MS, CONNECT_NAMESPACE, &bad)
+        .start_bytes(
+            &mut ActionContext::default(),
+            NOW_MS,
+            CONNECT_NAMESPACE,
+            &bad,
+        )
         .expect_err("a wrong schema_version must be rejected before start() (fail closed)");
     assert_version_mismatch(err);
 }
@@ -388,7 +393,9 @@ fn connect_builder_bytes_round_trip() {
     assert_eq!(
         WalletConnectAction::decode(&decoded.payload)
             .expect("payload must decode via WalletConnectAction"),
-        WalletConnectAction::Connect { uri: uri.to_string() },
+        WalletConnectAction::Connect {
+            uri: uri.to_string()
+        },
         "walletConnect builder bytes must decode field-for-field"
     );
     registry

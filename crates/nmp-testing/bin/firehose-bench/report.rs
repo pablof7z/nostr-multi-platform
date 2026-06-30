@@ -96,26 +96,34 @@ pub(crate) fn write_report(report: &FirehoseReport) -> io::Result<()> {
         perf.finding(format!("[limitation] {limitation}"));
     }
     for scenario in &report.scenarios {
-        let gates: Vec<PerfGate> = scenario.gates.iter().map(|g| {
-            let threshold = if let (Some(m), Some(b)) = (g.measured, g.budget) {
-                if m <= b {
-                    format!("<= {b:.4}")
+        let gates: Vec<PerfGate> = scenario
+            .gates
+            .iter()
+            .map(|g| {
+                let threshold = if let (Some(m), Some(b)) = (g.measured, g.budget) {
+                    if m <= b {
+                        format!("<= {b:.4}")
+                    } else {
+                        format!(">= {b:.4}")
+                    }
                 } else {
-                    format!(">= {b:.4}")
+                    "—".to_string()
+                };
+                PerfGate {
+                    name: g.name.to_string(),
+                    threshold,
+                    measured: g.measured.map(|v| format!("{v:.4}")),
+                    verdict: if g.passed {
+                        GateVerdict::Pass
+                    } else {
+                        GateVerdict::Fail
+                    },
+                    note: g.note.clone(),
                 }
-            } else {
-                "—".to_string()
-            };
-            PerfGate {
-                name: g.name.to_string(),
-                threshold,
-                measured: g.measured.map(|v| format!("{v:.4}")),
-                verdict: if g.passed { GateVerdict::Pass } else { GateVerdict::Fail },
-                note: g.note.clone(),
-            }
-        }).collect();
-        let ps = PerfScenario::new(scenario.name, 0.0, gates)
-            .with_notes(scenario.observations.clone());
+            })
+            .collect();
+        let ps =
+            PerfScenario::new(scenario.name, 0.0, gates).with_notes(scenario.observations.clone());
         perf.push(ps);
     }
     perf_report::write(&perf, &output_dir)?;

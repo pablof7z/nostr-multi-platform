@@ -115,7 +115,7 @@ pub struct ProjectionsDeclared;
 /// the relay set the app starts with) or `.without_initial_relays()` (explicit
 /// "this app ships no built-in relays"). `start()` is available ONLY in this
 /// state — so an app CANNOT silently inherit a framework relay default by
-/// forgetting to decide. NMP (including `nmp-defaults`) owns no operator relay
+/// forgetting to decide. NMP (including `explicit composition`) owns no operator relay
 /// URLs; the relay set is leaf-app policy supplied here.
 pub struct RelaysDeclared;
 

@@ -8,8 +8,8 @@ use nmp_signer_iface::{SignedEvent, SignerError, UnsignedEvent};
 use nostr::PublicKey;
 use serde::{Deserialize, Serialize};
 
-use nmp_signer_iface::SignerOp;
 use super::SignerPayload;
+use nmp_signer_iface::SignerOp;
 
 /// Backend kind for a [`Signer`].
 #[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]

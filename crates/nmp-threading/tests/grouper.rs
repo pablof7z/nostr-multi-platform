@@ -17,54 +17,44 @@ fn tag(key: &str, val: &str) -> Vec<String> {
     vec![key.into(), val.into()]
 }
 
-fn ev(id: &str, created_at: u64, parent: Option<&str>, root: Option<&str>) -> KernelEvent {
+fn event_with_tags(id: &str, created_at: u64, tags: Vec<Vec<String>>) -> KernelEvent {
+    KernelEvent {
+        id: id.into(),
+        author: "auth".into(),
+        kind: 1,
+        created_at,
+        tags,
+        content: id.into(),
+        relay_provenance: Vec::new(),
+    }
+}
+
+fn parent_tags(parent: Option<&str>) -> Vec<Vec<String>> {
     let mut tags = Vec::new();
     if let Some(p) = parent {
         tags.push(tag("e_parent", p));
     }
+    tags
+}
+
+fn ev(id: &str, created_at: u64, parent: Option<&str>, root: Option<&str>) -> KernelEvent {
+    let mut tags = parent_tags(parent);
     if let Some(r) = root {
         tags.push(tag("e_root", r));
     }
-    KernelEvent {
-        id: id.into(),
-        author: "auth".into(),
-        kind: 1,
-        created_at,
-        tags,
-        content: id.into(), relay_provenance: Vec::new(),
-    }
+    event_with_tags(id, created_at, tags)
 }
 
 fn ev_addr_root(id: &str, created_at: u64, parent: Option<&str>, coord: &str) -> KernelEvent {
-    let mut tags = Vec::new();
-    if let Some(p) = parent {
-        tags.push(tag("e_parent", p));
-    }
+    let mut tags = parent_tags(parent);
     tags.push(tag("a_root", coord));
-    KernelEvent {
-        id: id.into(),
-        author: "auth".into(),
-        kind: 1,
-        created_at,
-        tags,
-        content: id.into(), relay_provenance: Vec::new(),
-    }
+    event_with_tags(id, created_at, tags)
 }
 
 fn ev_uri_root(id: &str, created_at: u64, parent: Option<&str>, uri: &str) -> KernelEvent {
-    let mut tags = Vec::new();
-    if let Some(p) = parent {
-        tags.push(tag("e_parent", p));
-    }
+    let mut tags = parent_tags(parent);
     tags.push(tag("i_root", uri));
-    KernelEvent {
-        id: id.into(),
-        author: "auth".into(),
-        kind: 1,
-        created_at,
-        tags,
-        content: id.into(), relay_provenance: Vec::new(),
-    }
+    event_with_tags(id, created_at, tags)
 }
 
 impl ParentResolver for FakeResolver {
@@ -106,14 +96,7 @@ impl ParentResolver for FakeResolver {
 }
 
 fn ev_supersedes(id: &str, created_at: u64, target: &str) -> KernelEvent {
-    KernelEvent {
-        id: id.into(),
-        author: "auth".into(),
-        kind: 1,
-        created_at,
-        tags: vec![tag("e_supersedes", target)],
-        content: id.into(), relay_provenance: Vec::new(),
-    }
+    event_with_tags(id, created_at, vec![tag("e_supersedes", target)])
 }
 
 fn fresh() -> Grouper<FakeResolver> {
@@ -211,7 +194,6 @@ fn module_size_capped_at_policy_max() {
     let _ = g.on_insert(&ev("A", 1, None, None));
     let _ = g.on_insert(&ev("B", 2, Some("A"), Some("A")));
     let _ = g.on_insert(&ev("C", 3, Some("B"), Some("A")));
-    // Fourth event must NOT join the same module — it spawns a new block.
     let _ = g.on_insert(&ev("D", 4, Some("C"), Some("A")));
     let module_count = g
         .blocks()
@@ -220,7 +202,6 @@ fn module_size_capped_at_policy_max() {
         .count();
     assert!(module_count >= 1);
     assert_eq!(g.blocks().len(), 2);
-    // First (newest) block holds D, second block holds [A,B,C].
     let first_ids: Vec<&str> = block_ids(&g.blocks()[0]);
     let second_ids: Vec<&str> = block_ids(&g.blocks()[1]);
     assert!(first_ids.contains(&"D"));
@@ -489,7 +470,10 @@ fn standalone_wire_shape_is_object_with_optional_root() {
         }),
     };
     let json = serde_json::to_string(&rooted).expect("serialize rooted standalone");
-    assert_eq!(json, r#"{"Standalone":{"id":"x","root":{"Event":{"id":"r"}}}}"#);
+    assert_eq!(
+        json,
+        r#"{"Standalone":{"id":"x","root":{"Event":{"id":"r"}}}}"#
+    );
 
     // Round-trips back to the same value.
     let back: TimelineBlock = serde_json::from_str(&json).expect("deserialize");
@@ -559,7 +543,11 @@ fn supersede_removes_standalone_target_already_in_layout() {
     assert_eq!(g.blocks().len(), 1);
 
     let _ = g.on_insert(&ev_supersedes("S", 2, "R"));
-    assert_eq!(g.blocks().len(), 1, "target's standalone block must be evicted");
+    assert_eq!(
+        g.blocks().len(),
+        1,
+        "target's standalone block must be evicted"
+    );
     assert!(matches!(&g.blocks()[0], TimelineBlock::Standalone { id, .. } if id == "S"));
 }
 
@@ -571,7 +559,11 @@ fn supersede_suppresses_late_arriving_target() {
 
     // Target arrives after its superseder — must not produce a duplicate block.
     let _ = g.on_insert(&ev("R", 1, None, None));
-    assert_eq!(g.blocks().len(), 1, "late-arriving target must stay suppressed");
+    assert_eq!(
+        g.blocks().len(),
+        1,
+        "late-arriving target must stay suppressed"
+    );
     assert!(matches!(&g.blocks()[0], TimelineBlock::Standalone { id, .. } if id == "S"));
     // Target's payload is still recorded so chains can resolve it as a parent.
     assert!(g.event(&"R".to_string()).is_some());
@@ -587,7 +579,11 @@ fn supersede_leaves_target_inside_a_module_chain_intact() {
     let _ = g.on_insert(&ev("C", 2, Some("R"), Some("R")));
     let _ = g.on_insert(&ev_supersedes("S", 3, "R"));
 
-    assert_eq!(g.blocks().len(), 2, "expected the [R,C] module + the S block");
+    assert_eq!(
+        g.blocks().len(),
+        2,
+        "expected the [R,C] module + the S block"
+    );
     let has_chain = g.blocks().iter().any(|b| {
         matches!(b, TimelineBlock::Module { events, .. } if events == &vec!["R".to_string(), "C".to_string()])
     });
@@ -607,7 +603,11 @@ fn removing_sole_superseder_restores_target_block() {
     assert_eq!(g.blocks().len(), 1);
 
     let _ = g.on_remove(&"S".to_string());
-    assert_eq!(g.blocks().len(), 1, "R must come back once its superseder is gone");
+    assert_eq!(
+        g.blocks().len(),
+        1,
+        "R must come back once its superseder is gone"
+    );
     assert!(matches!(&g.blocks()[0], TimelineBlock::Standalone { id, .. } if id == "R"));
 }
 

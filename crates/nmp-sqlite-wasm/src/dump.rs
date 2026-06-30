@@ -46,11 +46,13 @@ impl OpfsSqliteStore {
         }
 
         // ── Tombstones (ordered by target id) ─────────────────────────────────
-        let tb_stmt = conn
-            .prepare("SELECT target_id, deleted_at, origin FROM tombstones ORDER BY target_id ASC")?;
+        let tb_stmt = conn.prepare(
+            "SELECT target_id, deleted_at, origin FROM tombstones ORDER BY target_id ASC",
+        )?;
         while tb_stmt.step()? {
-            let target_id = blob32(&tb_stmt.column_blob(0)?)
-                .ok_or_else(|| SqliteWasmError::Column("tombstone target_id not 32 bytes".into()))?;
+            let target_id = blob32(&tb_stmt.column_blob(0)?).ok_or_else(|| {
+                SqliteWasmError::Column("tombstone target_id not 32 bytes".into())
+            })?;
             let deleted_at = tb_stmt.column_int64(1)? as u64;
             let origin = origin_name(tb_stmt.column_int64(2)?);
             let line = serde_json::json!({

@@ -9,8 +9,8 @@ mod support;
 
 use crate::root_indexed::card::RootFeedSnapshot;
 use crate::root_indexed::engine::MAX_ATTRIBUTION_PER_ROOT;
-use crate::{DEFAULT_FEED_WINDOW_LIMIT, FeedRequest};
-use support::{Harness, TestCard, TestPayload, reply_event, repost_event, root_event};
+use crate::{FeedRequest, DEFAULT_FEED_WINDOW_LIMIT};
+use support::{reply_event, repost_event, root_event, Harness, TestCard, TestPayload};
 
 #[test]
 fn root_first_arrival_surfaces_root() {

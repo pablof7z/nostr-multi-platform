@@ -17,9 +17,8 @@
 //! (`crates/nmp-core/src/kernel/bookmark_cold_start_tests.rs`, using a
 //! `CapturingObserver` and `pub(crate)` kernel APIs). This test lifts it to the
 //! **full sign-in → cache-serve → projection-snapshot pipeline** an app actually
-//! drives: a real `NmpApp` built through the production composition
-//! (`register_substrate` + `register_bookmark_runtime` — the exact pair
-//! `register_defaults` invokes for the bookmark tier), a real
+//! drives: a real `NmpApp` built through the substrate owner plus the NIP-51
+//! bookmark runtime, a real
 //! `nmp_app_signin_nsec` flow, and the real typed `BookmarkListProjection`
 //! snapshot the shell reads.
 //!
@@ -46,8 +45,7 @@
 //! * The kernel runs behind the production actor thread spawned by
 //!   `nmp_app_start` — every step crosses the real `ActorCommand` mpsc seam.
 //! * The bookmark observer + the per-tick `BookmarksRuntimeController` are
-//!   installed by `register_bookmark_runtime`, the SAME composition helper
-//!   `nmp_defaults::register_defaults` calls. Nothing in this test pushes the
+//!   installed by `register_bookmark_runtime`. Nothing in this test pushes the
 //!   interest by hand — the runtime's snapshot-tick reconciler does it on
 //!   sign-in, exactly as in production.
 //! * The assertion reads `BookmarkListProjection::snapshot()` — the typed
@@ -73,20 +71,17 @@
 //!    is NOT visible until the demand interest is pushed.
 //!
 //! The MANUAL red-proof for "the demand-interest push itself regressed" is to
-//! neuter the `(Some(now), None)` sign-in arm of `BookmarksRuntimeController::tick`
-//! (crates/nmp-defaults/src/runtimes/bookmarks_runtime.rs) so it stops sending
-//! `EnsureInterest`; `signin_surfaces_stored_bookmark_via_cold_start_cache_serve`
-//! then fails with an empty snapshot. Verified RED during authoring; restored.
+//! break the NIP-51 bookmark runtime's sign-in reconciliation;
+//! `signin_surfaces_stored_bookmark_via_cold_start_cache_serve` then fails
+//! with an empty snapshot.
 
 use std::ffi::c_void;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use nmp_coverage_gate::CoverageGate;
-use nmp_defaults::{register_bookmark_runtime, register_substrate};
 use nmp_native_runtime::{NmpApp, NmpAppBuilder, RunConfig};
-use nmp_nip51::{BookmarkItem, BookmarkListProjection};
+use nmp_nip51::{register_bookmark_runtime, BookmarkItem, BookmarkListProjection};
 use nmp_store::{RawEvent, VerifiedEvent};
 use nostr::{EventBuilder, Keys, Kind, Tag, Timestamp};
 
@@ -127,18 +122,16 @@ impl BookmarkApp {
     /// Boot through the production composition, install the update callback, and
     /// return the app with its bookmark projection handle.
     ///
-    /// Composition = `register_substrate` (the always-on cache-serve / routing
+    /// Composition = `nmp_substrate::install` (the always-on cache-serve / routing
     /// correctness floor) + `register_bookmark_runtime` (the kind:10003 observer
-    /// + the per-tick demand-interest reconciler). This is exactly the pair of
-    /// calls `nmp_defaults::register_defaults` makes for the bookmark tier; we
-    /// call them directly only to capture the returned `Arc<BookmarkListProjection>`
-    /// (which `register_defaults` drops). No hand-built kernel state.
+    /// + the identity-driven demand-interest reconciler). No hand-built kernel
+    /// state.
     fn boot() -> Self {
         let mut builder = NmpAppBuilder::new();
         // Substrate tier — routing factory, mailbox/profile/contacts caches,
         // coverage hook, NIP-77 runtime: the cache-serve substrate the
         // cold-start drain rides on.
-        register_substrate(&mut builder, CoverageGate::default());
+        nmp_substrate::install(&mut builder, nmp_substrate::SubstrateConfig::default());
         // Bookmark tier — registers the projection observer BEFORE the first
         // tick (the ordering contract) and the runtime that pushes the demand
         // interest on sign-in. Capture the projection handle.

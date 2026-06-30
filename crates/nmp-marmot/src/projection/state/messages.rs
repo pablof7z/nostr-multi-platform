@@ -1,4 +1,4 @@
-use super::{MarmotProjection, hex_encode};
+use super::{hex_encode, MarmotProjection};
 use mdk_core::prelude::group_types::GroupState;
 
 impl MarmotProjection {

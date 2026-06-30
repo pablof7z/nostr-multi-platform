@@ -35,10 +35,7 @@ fn emits_typed_per_namespace_accessor_and_no_raw_surface() {
             .expect("Lane G: every keyed projection carries a Kotlin typed descriptor");
         // The old dishonest raw accessor must be GONE for every namespace.
         assert!(
-            !out.contains(&format!(
-                "fun {}(key: String): ByteArray?",
-                e.accessor
-            )),
+            !out.contains(&format!("fun {}(key: String): ByteArray?", e.accessor)),
             "raw ByteArray? accessor for {} must NOT exist (invariant #4)",
             e.accessor
         );
@@ -75,7 +72,9 @@ fn emits_typed_per_namespace_accessor_and_no_raw_surface() {
 #[test]
 fn enforces_the_five_invariants() {
     let out = rendered();
-    assert!(out.contains("val identityChanged = sessionId != appliedSession || snapshotEpoch != appliedEpoch"));
+    assert!(out.contains(
+        "val identityChanged = sessionId != appliedSession || snapshotEpoch != appliedEpoch"
+    ));
     assert!(out.contains("isBaseline = batch.baseline"));
     assert!(out.contains("RefRowState.Cleared"));
     assert!(out.contains("ns.remove(row.key)"));
@@ -127,7 +126,9 @@ fn emits_failclosed_missing_key_and_bad_state_and_deferred_reset() {
         "identity reset must be deferred until after a valid baseline decode"
     );
     assert!(
-        out.contains("val identityChanged = sessionId != appliedSession || snapshotEpoch != appliedEpoch"),
+        out.contains(
+            "val identityChanged = sessionId != appliedSession || snapshotEpoch != appliedEpoch"
+        ),
         "merge must compute identityChanged without clearing the cache"
     );
     // The deferred reset drops other projections only on a successful baseline.

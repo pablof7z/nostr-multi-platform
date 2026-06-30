@@ -5,9 +5,9 @@
 //! host-requested 10 kHz rate is clamped (the actor cannot spin faster than the
 //! ceiling). Split out of `tick.rs` to keep that file within its LOC ceiling.
 
-use super::{EMIT_HZ_MAX, clamp_emit_hz};
+use super::{clamp_emit_hz, EMIT_HZ_MAX};
 use crate::actor::LifecycleCommand;
-use crate::actor::{ActorCommand, CommandSender, spawn_test_actor};
+use crate::actor::{spawn_test_actor, ActorCommand, CommandSender};
 use crate::update_envelope::UpdateFrameBytes;
 use std::sync::mpsc;
 use std::thread;

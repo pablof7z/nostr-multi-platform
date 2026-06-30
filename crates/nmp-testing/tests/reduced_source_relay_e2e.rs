@@ -1,6 +1,6 @@
 //! #2092 M6 -- ReducedSource acquisition over real relay frames.
 //!
-//! These tests drive a real `NmpApp` plus the default feed compiler through a
+//! These tests drive a real `NmpApp` plus the owner-local feed compiler through a
 //! local WebSocket relay. The relay records actual `REQ`/`CLOSE` frames and
 //! sends signed Nostr `EVENT`/`EOSE` frames back through the kernel ingest path.
 
@@ -102,7 +102,7 @@ fn active_follows_relay_replaces_source_and_closes_stale_author_sub() {
         bob_note.clone(),
         carol_note.clone(),
     ]);
-    let app = new_started_default_app();
+    let app = new_started_reduced_source_app();
     add_relay(app, relay.url());
     sign_in(app, &alice);
     let app_ref = unsafe { &*app };
@@ -145,7 +145,7 @@ fn active_follows_cache_first_open_still_replays_live_relay_reqs() {
     let bob_note = signed_note(&bob, "cached before relay", 110);
     let bob_note_id = bob_note.id.to_hex();
 
-    let app = new_started_default_app();
+    let app = new_started_reduced_source_app();
     let app_ref = unsafe { &*app };
     inject_event(app, &rx, app_ref, &contacts);
     inject_event(app, &rx, app_ref, &bob_note);
@@ -198,7 +198,7 @@ fn list_members_nip65_arrival_emits_target_author_req() {
 
     let mut relay = RecordingRelay::spawn(vec![mute_list, bob_relay_list]);
     let capture = Arc::new(CapturingReqInterceptor::default());
-    let app = new_default_app_before_start();
+    let app = new_reduced_source_app_before_start();
     let app_ref = unsafe { &*app };
     assert_eq!(
         app_ref.set_req_frame_interceptor(capture.clone()),
@@ -258,7 +258,7 @@ fn active_follows_account_switch_withdraws_old_relay_source() {
 
     let mut relay =
         RecordingRelay::spawn(vec![alice_contacts, carol_contacts, bob_note, dave_note]);
-    let app = new_started_default_app();
+    let app = new_started_reduced_source_app();
     add_relay(app, relay.url());
     sign_in(app, &alice);
     let app_ref = unsafe { &*app };
@@ -312,7 +312,7 @@ fn active_mute_list_relay_uses_same_reduced_source_lifecycle() {
     let carol_note_id = carol_note.id.to_hex();
 
     let mut relay = RecordingRelay::spawn(vec![initial_mute.clone(), bob_note, carol_note]);
-    let app = new_started_default_app();
+    let app = new_started_reduced_source_app();
     add_relay(app, relay.url());
     sign_in(app, &alice);
     let app_ref = unsafe { &*app };

@@ -2,11 +2,7 @@ use iced::widget::{row, text};
 use iced::{Color, Element};
 use nmp_gallery_tui::profile_wire::ProfileWire;
 
-const GREEN: Color = Color::from_rgb(
-    110.0 / 255.0,
-    231.0 / 255.0,
-    183.0 / 255.0,
-);
+const GREEN: Color = Color::from_rgb(110.0 / 255.0, 231.0 / 255.0, 183.0 / 255.0);
 
 /// NIP-05 verified domain badge.
 ///
@@ -40,12 +36,12 @@ impl Nip05Badge {
             .strip_prefix("_@")
             .map_or(self.nip05.clone(), str::to_string);
         row![
-            text("✓").size(13).style(|_theme| iced::widget::text::Style {
-                color: Some(GREEN),
-            }),
-            text(nip05).size(13).style(|_theme| iced::widget::text::Style {
-                color: Some(GREEN),
-            }),
+            text("✓")
+                .size(13)
+                .style(|_theme| iced::widget::text::Style { color: Some(GREEN) }),
+            text(nip05)
+                .size(13)
+                .style(|_theme| iced::widget::text::Style { color: Some(GREEN) }),
         ]
         .spacing(2)
         .into()

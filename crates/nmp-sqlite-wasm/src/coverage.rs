@@ -17,8 +17,7 @@ use std::sync::Arc;
 /// belong to the covered shape? Kernel-owned (the shape-match logic lives in
 /// `nmp-planner`/`nmp-core`, D0), passed opaquely so the store never links shape
 /// logic. Args: `(event_id_hex, author_hex, kind, created_at, tags)`.
-pub type CoverageMatchFn =
-    Arc<dyn Fn(&str, &str, u32, u64, &[Vec<String>]) -> bool + Send + Sync>;
+pub type CoverageMatchFn = Arc<dyn Fn(&str, &str, u32, u64, &[Vec<String>]) -> bool + Send + Sync>;
 
 /// K3 Stage D3 (ADR-0056 §3.D3) — the eviction⇄ledger coherence backstop input.
 ///
@@ -117,8 +116,8 @@ mod wasm_impl {
         ) -> Result<Option<u64>, SqliteWasmError> {
             let conn = self.db.borrow();
             // MAX() over the filter_hash group — `idx_coverage_fh` serves it.
-            let stmt = conn
-                .prepare("SELECT MAX(covered_through) FROM coverage WHERE filter_hash = ?1")?;
+            let stmt =
+                conn.prepare("SELECT MAX(covered_through) FROM coverage WHERE filter_hash = ?1")?;
             stmt.bind_text(1, filter_hash)?;
             if stmt.step()? {
                 // MAX over an empty group is SQL NULL → a 0-length blob through
@@ -140,8 +139,8 @@ mod wasm_impl {
             filter_hash: &str,
         ) -> Result<Vec<(String, u64)>, SqliteWasmError> {
             let conn = self.db.borrow();
-            let stmt = conn
-                .prepare("SELECT relay, covered_through FROM coverage WHERE filter_hash = ?1")?;
+            let stmt =
+                conn.prepare("SELECT relay, covered_through FROM coverage WHERE filter_hash = ?1")?;
             stmt.bind_text(1, filter_hash)?;
             let mut out = Vec::new();
             while stmt.step()? {

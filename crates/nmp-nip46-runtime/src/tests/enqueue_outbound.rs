@@ -35,8 +35,12 @@ mod tests {
             r#"["EVENT",{}]"#.to_string(),
         );
 
-        let mail1 = rx.recv_timeout(Duration::from_secs(1)).expect("first frame");
-        let mail2 = rx.recv_timeout(Duration::from_secs(1)).expect("second frame");
+        let mail1 = rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("first frame");
+        let mail2 = rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("second frame");
 
         let (role1, url1, text1) = extract_enqueue_outbound(mail1);
         let (role2, url2, text2) = extract_enqueue_outbound(mail2);
@@ -86,9 +90,11 @@ mod tests {
 
     fn extract_enqueue_outbound(mail: ActorMail) -> (RelayRole, String, String) {
         match mail {
-            ActorMail::Command(ActorCommand::EnqueueOutbound { role, relay_url, text }) => {
-                (role, relay_url, text)
-            }
+            ActorMail::Command(ActorCommand::EnqueueOutbound {
+                role,
+                relay_url,
+                text,
+            }) => (role, relay_url, text),
             other => panic!("expected EnqueueOutbound, got: {other:?}"),
         }
     }

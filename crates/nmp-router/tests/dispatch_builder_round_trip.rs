@@ -166,11 +166,26 @@ fn publish_relay_list_builder_bytes_composite_role_round_trip() {
     let input = PublishRelayListInput::decode(&decoded.payload)
         .expect("the opaque payload must decode via PublishRelayListInput");
     let expected = vec![
-        RelayListEntry { url: "wss://relay.a".to_string(), marker: RelayMarker::Both },
-        RelayListEntry { url: "wss://relay.b".to_string(), marker: RelayMarker::Read },
-        RelayListEntry { url: "wss://relay.c".to_string(), marker: RelayMarker::Write },
-        RelayListEntry { url: "wss://relay.d".to_string(), marker: RelayMarker::Both },
-        RelayListEntry { url: "wss://relay.e".to_string(), marker: RelayMarker::Indexer },
+        RelayListEntry {
+            url: "wss://relay.a".to_string(),
+            marker: RelayMarker::Both,
+        },
+        RelayListEntry {
+            url: "wss://relay.b".to_string(),
+            marker: RelayMarker::Read,
+        },
+        RelayListEntry {
+            url: "wss://relay.c".to_string(),
+            marker: RelayMarker::Write,
+        },
+        RelayListEntry {
+            url: "wss://relay.d".to_string(),
+            marker: RelayMarker::Both,
+        },
+        RelayListEntry {
+            url: "wss://relay.e".to_string(),
+            marker: RelayMarker::Indexer,
+        },
     ];
     assert_eq!(
         input.relays, expected,
@@ -303,10 +318,10 @@ fn relay_marker_byte_anti_drift_table() {
         ("read", 1, RelayMarker::Read),
         ("write", 2, RelayMarker::Write),
         ("indexer", 3, RelayMarker::Indexer),
-        ("both,indexer", 0, RelayMarker::Both),   // composite → Both wins
-        ("read,write", 0, RelayMarker::Both),      // read+write → Both
-        ("Read", 1, RelayMarker::Read),            // case-insensitive
-        ("read,", 1, RelayMarker::Read),           // trailing comma → empty part is no-op
+        ("both,indexer", 0, RelayMarker::Both), // composite → Both wins
+        ("read,write", 0, RelayMarker::Both),   // read+write → Both
+        ("Read", 1, RelayMarker::Read),         // case-insensitive
+        ("read,", 1, RelayMarker::Read),        // trailing comma → empty part is no-op
     ];
     let invalid_cases: &[&str] = &["", "content", "foo,bar", "read,bogus"];
 

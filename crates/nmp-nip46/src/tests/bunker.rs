@@ -74,7 +74,12 @@ fn happy_path_connect_then_get_public_key_returns_signer_ready() {
     };
 
     // ── get_public_key response ──
-    let gpk_event = respond_to_frame(&gpk_frame, &bunker_keys, client_keys.public_key(), &user_pk_hex);
+    let gpk_event = respond_to_frame(
+        &gpk_frame,
+        &bunker_keys,
+        client_keys.public_key(),
+        &user_pk_hex,
+    );
     let effects3 = state.on_relay_event(&gpk_event, TEST_NOW);
 
     // Expect: SignerReady
@@ -83,7 +88,10 @@ fn happy_path_connect_then_get_public_key_returns_signer_ready() {
         other => panic!("expected SignerReady, got {other:?}"),
     };
     assert_eq!(sr.user_pubkey_hex, user_pk_hex);
-    assert_eq!(sr.remote_signer_pubkey_hex, bunker_keys.public_key().to_hex());
+    assert_eq!(
+        sr.remote_signer_pubkey_hex,
+        bunker_keys.public_key().to_hex()
+    );
     assert!(sr.granted_perms.is_none());
 }
 
@@ -97,7 +105,11 @@ fn start_bunker_emits_connecting_progress_with_code() {
 
     let progress = effects.iter().find_map(|e| {
         if let Effect::Progress { stage, code, .. } = e {
-            if stage == "connecting" { Some(code.clone()) } else { None }
+            if stage == "connecting" {
+                Some(code.clone())
+            } else {
+                None
+            }
         } else {
             None
         }
@@ -126,7 +138,10 @@ fn bunker_error_response_to_connect_produces_error_effect() {
 
     // Extract connect request id, send bunker error.
     let parsed: Value = serde_json::from_str(&connect_frame).unwrap();
-    let ct = parsed.as_array().unwrap()[1].get("content").and_then(|v| v.as_str()).unwrap();
+    let ct = parsed.as_array().unwrap()[1]
+        .get("content")
+        .and_then(|v| v.as_str())
+        .unwrap();
     let plain = nostr::nips::nip44::decrypt(
         bunker_keys.secret_key(),
         &client_keys.public_key(),
@@ -135,7 +150,8 @@ fn bunker_error_response_to_connect_produces_error_effect() {
     .unwrap();
     let req: Value = serde_json::from_str(&plain).unwrap();
     let req_id = req.get("id").and_then(|v| v.as_str()).unwrap();
-    let err_rpc = json!({ "id": req_id, "result": Value::Null, "error": "user rejected the request" });
+    let err_rpc =
+        json!({ "id": req_id, "result": Value::Null, "error": "user rejected the request" });
     let event = make_response_event(&bunker_keys, client_keys.public_key(), err_rpc);
 
     let result_effects = state.on_relay_event(&event, TEST_NOW);
@@ -163,7 +179,10 @@ fn non_string_result_produces_protocol_error() {
     };
 
     let parsed: Value = serde_json::from_str(&connect_frame).unwrap();
-    let ct = parsed.as_array().unwrap()[1].get("content").and_then(|v| v.as_str()).unwrap();
+    let ct = parsed.as_array().unwrap()[1]
+        .get("content")
+        .and_then(|v| v.as_str())
+        .unwrap();
     let plain = nostr::nips::nip44::decrypt(
         bunker_keys.secret_key(),
         &client_keys.public_key(),
@@ -211,7 +230,10 @@ fn stray_events_are_skipped_then_genuine_response_completes() {
         json!({"id": "noise", "result": "ignored"}),
     );
     let skip_effects = state.on_relay_event(&stray, TEST_NOW);
-    assert!(skip_effects.is_empty(), "stray event from stranger must be skipped: {skip_effects:?}");
+    assert!(
+        skip_effects.is_empty(),
+        "stray event from stranger must be skipped: {skip_effects:?}"
+    );
 
     // Stray 2: event with garbage ciphertext.
     let mut garbage = make_response_event(
@@ -221,19 +243,31 @@ fn stray_events_are_skipped_then_genuine_response_completes() {
     );
     garbage["content"] = json!("not-real-ciphertext");
     let skip_effects2 = state.on_relay_event(&garbage, TEST_NOW);
-    assert!(skip_effects2.is_empty(), "garbage ciphertext must be skipped");
+    assert!(
+        skip_effects2.is_empty(),
+        "garbage ciphertext must be skipped"
+    );
 
     // Now the genuine response arrives.
-    let ack_event =
-        respond_to_frame(&connect_frame, &bunker_keys, client_keys.public_key(), "ack");
+    let ack_event = respond_to_frame(
+        &connect_frame,
+        &bunker_keys,
+        client_keys.public_key(),
+        "ack",
+    );
     let effects2 = state.on_relay_event(&ack_event, TEST_NOW);
     assert!(
-        effects2.iter().any(|e| matches!(e, Effect::Progress { stage, .. } if stage == "awaiting_pubkey")),
+        effects2
+            .iter()
+            .any(|e| matches!(e, Effect::Progress { stage, .. } if stage == "awaiting_pubkey")),
         "genuine connect response must advance to awaiting_pubkey"
     );
 
     // Continue with gpk.
-    let gpk_frame = match effects2.iter().find(|e| matches!(e, Effect::SendFrame { .. })) {
+    let gpk_frame = match effects2
+        .iter()
+        .find(|e| matches!(e, Effect::SendFrame { .. }))
+    {
         Some(Effect::SendFrame { text, .. }) => text.clone(),
         _ => panic!("expected gpk SendFrame"),
     };
@@ -262,7 +296,12 @@ fn events_after_done_phase_are_silently_ignored() {
         Effect::SendFrame { text, .. } => text.clone(),
         _ => panic!(),
     };
-    let ack = respond_to_frame(&connect_frame, &bunker_keys, client_keys.public_key(), "ack");
+    let ack = respond_to_frame(
+        &connect_frame,
+        &bunker_keys,
+        client_keys.public_key(),
+        "ack",
+    );
     let eff2 = state.on_relay_event(&ack, TEST_NOW);
     let gpk_frame = match eff2.iter().find(|e| matches!(e, Effect::SendFrame { .. })) {
         Some(Effect::SendFrame { text, .. }) => text.clone(),
@@ -361,7 +400,12 @@ fn on_relay_text_ignores_frames_for_other_subscriptions() {
 
     // A genuine, decryptable connect ack — but wrapped in an EVENT frame whose
     // sub id is NOT this session's. It must be ignored despite valid content.
-    let ack_event = respond_to_frame(&connect_frame, &bunker_keys, client_keys.public_key(), "ack");
+    let ack_event = respond_to_frame(
+        &connect_frame,
+        &bunker_keys,
+        client_keys.public_key(),
+        "ack",
+    );
     let wrong_sub_frame =
         json!(["EVENT", "some-other-subscription", ack_event.clone()]).to_string();
     let ignored = state.on_relay_text(&wrong_sub_frame, TEST_NOW);

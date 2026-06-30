@@ -2,7 +2,7 @@
 //! file-size ownership). Gated by `test-support`/`native`; re-exports the
 //! actor test entrypoints and the NIP golden-tag conformance harness.
 
-pub use crate::actor::{ActorCommand, TestSupportCommand, spawn_test_actor};
+pub use crate::actor::{spawn_test_actor, ActorCommand, TestSupportCommand};
 pub use crate::kernel::{
     PROCESS_PROJECTIONS_CHANGED, PROCESS_PROJECTIONS_SERIALIZED, PROCESS_RAM_EVENTS_EVICTED,
     PROCESS_STORE_LRU_EVICTED,
@@ -57,10 +57,10 @@ pub fn spawn_actor_with_storage_path(
     mpsc::Receiver<crate::update_envelope::UpdateFrameBytes>,
 ) {
     use crate::actor::{
-        ActorChannels, ActorConfigSources, ActorRuntimeSlots, run_actor_with_observers,
+        run_actor_with_observers, ActorChannels, ActorConfigSources, ActorRuntimeSlots,
     };
     use crate::slots::new_storage_path_slot;
-    use std::sync::{Arc, Mutex, atomic::AtomicU64};
+    use std::sync::{atomic::AtomicU64, Arc, Mutex};
 
     let (command_tx, command_rx) = crate::CommandSender::bounded_channel();
     let (update_tx, update_rx) = mpsc::channel();

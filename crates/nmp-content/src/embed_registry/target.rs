@@ -1,8 +1,8 @@
 //! Embed-target identity types — the keys the registry refcounts and the
 //! opaque [`ClaimHandle`] tokens it hands back.
 
-use nmp_nostr_id::NostrUri;
 use nmp_core::substrate::{EventId, KernelEvent};
+use nmp_nostr_id::NostrUri;
 use serde::{Deserialize, Serialize};
 
 /// Stable identity for an embed target — covers both event-id-addressed

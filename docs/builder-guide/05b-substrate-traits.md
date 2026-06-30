@@ -185,16 +185,11 @@ Registration (`crates/nmp-nip29/src/register.rs`):
 
 ```rust
 pub fn register_actions(app: &mut NmpApp) {
-    // The SOLE kind-agnostic write surface; per-kind events (kind:7 reactions,
-    // kind:16 reposts, …) are built by their owning NIP/app and routed through
-    // this envelope — NIP-29 never names a kind.
     app.register_action(PublishGroupEventAction);
     app.register_action(CreatePublicGroupAction);
     app.register_action(DiscoverGroupsAction);
     app.register_action(JoinGroupAction);
-    // … lifecycle/admin actions (leave, put_user, create_invite, set_parent,
-    // edit_metadata). NOTE: no per-kind named action (react/repost/share) —
-    // nmp-nip29 never names a foreign kind; the owning NIP builds the event.
+    // additional NIP-29 owner actions
 }
 ```
 

@@ -3,7 +3,7 @@ namespace nmp.nip51;
 // Typed FlatBuffers wire for the `nmp.nip51.mute_list` snapshot projection.
 //
 // The producer is the `MuteListProjection` closure registered in
-// `crates/nmp-defaults/src/runtimes/mute_runtime.rs` (`register_mute_runtime`),
+// `crates/explicit composition/src/runtimes/mute_runtime.rs` (`register_mute_runtime`),
 // which serialises the active account's `MuteListSnapshot { muted_pubkeys:
 // Vec<String>, muted_event_ids: Vec<String> }`. That generic `Value` projection
 // stays the source of truth (still registered via `register_snapshot_projection`);

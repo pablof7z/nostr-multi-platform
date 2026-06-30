@@ -149,7 +149,11 @@ mod tests {
 
     #[test]
     fn kind1_reply_marker_wins_over_root_and_bare() {
-        let tags = vec![etag("bare"), etag_m("rootid", "root"), etag_m("replyid", "reply")];
+        let tags = vec![
+            etag("bare"),
+            etag_m("rootid", "root"),
+            etag_m("replyid", "reply"),
+        ];
         let (ck, target) = classify(1, &tags).unwrap();
         assert_eq!(ck, CounterKind::Reply);
         assert_eq!(target, "replyid");
@@ -164,9 +168,18 @@ mod tests {
 
     #[test]
     fn reaction_repost_zap_first_etag() {
-        assert_eq!(classify(7, &[etag("a")]).unwrap(), (CounterKind::Reaction, "a".into()));
-        assert_eq!(classify(6, &[etag("b")]).unwrap(), (CounterKind::Repost, "b".into()));
-        assert_eq!(classify(9735, &[etag("c")]).unwrap(), (CounterKind::Zap, "c".into()));
+        assert_eq!(
+            classify(7, &[etag("a")]).unwrap(),
+            (CounterKind::Reaction, "a".into())
+        );
+        assert_eq!(
+            classify(6, &[etag("b")]).unwrap(),
+            (CounterKind::Repost, "b".into())
+        );
+        assert_eq!(
+            classify(9735, &[etag("c")]).unwrap(),
+            (CounterKind::Zap, "c".into())
+        );
     }
 
     #[test]

@@ -4,6 +4,10 @@
 **Status:** accepted
 **Depends on:** ADR-0009
 
+**Supersession note (2026-06-30):** `the deleted defaults bundle` is deleted. References below
+to it as a default composition library are historical context only; current
+app/runtime roots use `nmp-substrate` plus explicit protocol/app installers.
+
 ## Context
 
 The extension boundary needs two properties at once:
@@ -20,7 +24,7 @@ NMP uses runtime registration plus generated bindings for payload formats:
 - Write intents register through `ActionModule` and `register_action`.
 - Host dispatch routes by namespace through the registered action table.
 - State output registers through snapshot and typed-projection registration.
-- `nmp-defaults` is the default composition library; app crates call it and add
+- `explicit composition` is the default composition library; app crates call it and add
   their own registrations.
 - Binding/codegen tools may generate Swift/Kotlin/FlatBuffers type helpers, but
   they do not generate an app-specific composition crate.
@@ -35,4 +39,4 @@ crate that owns the behavior.
 - Hosts depend on runtime registration and shared transport helpers, not
   generated per-app FFI crates.
 - `nmp init` scaffolds a thin app shell; the framework wiring comes from
-  `nmp-defaults`.
+  `explicit composition`.

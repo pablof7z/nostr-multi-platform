@@ -41,9 +41,14 @@ fn upgrade_switches_manifest_to_versioned_nmp_release() {
         "upgrade must repoint nmp-core to the v0.2.0 git tag:\n{app_core}"
     );
     assert!(
-        app_core.contains("package = \"nmp-defaults\"")
-            && app_core.contains("package = \"nmp-native-runtime\""),
-        "upgrade must repoint nmp-defaults and nmp-native-runtime too:\n{app_core}"
+        app_core.contains("package = \"nmp-native-runtime\"")
+            && app_core.contains("package = \"nmp-substrate\"")
+            && app_core.contains("package = \"nmp-nip50\"")
+            && app_core.contains("package = \"nmp-nip51\"")
+            && app_core.contains("package = \"nmp-nip17\"")
+            && app_core.contains("package = \"nmp-content\"")
+            && !app_core.contains("package = \"nmp-defaults\""),
+        "upgrade must repoint explicit owner crates and must not restore nmp-defaults:\n{app_core}"
     );
     assert!(
         !root.join("apps").exists(),

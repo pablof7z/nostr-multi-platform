@@ -53,7 +53,10 @@ fn authors_kind_global_order_across_authors() {
 #[test]
 fn kind_time_empty_kinds_is_any_kind() {
     let (sql, params) = build_kind_time(&[], None, None, 10);
-    assert!(!sql.contains("kind IN"), "empty kinds must not constrain kind");
+    assert!(
+        !sql.contains("kind IN"),
+        "empty kinds must not constrain kind"
+    );
     assert!(sql.contains("FROM events WHERE 1 ORDER BY"));
     assert_eq!(ints(&params), vec![10]); // just the limit
 }
@@ -96,7 +99,7 @@ fn tags_and_across_letters_or_within_values_index_served() {
     // OR within e's value set, OR across the two letters.
     assert!(sql.contains("tag_value IN (?,?)")); // e: X,Y
     assert!(sql.contains(" OR ")); // across letters
-    // AND across letters via the distinct-letter count == 2.
+                                   // AND across letters via the distinct-letter count == 2.
     assert!(sql.contains("HAVING COUNT(DISTINCT tag_name) = ?"));
     // Newest-first over the joined candidate set.
     assert!(sql.contains("ORDER BY e.created_at DESC, e.id ASC LIMIT ?"));

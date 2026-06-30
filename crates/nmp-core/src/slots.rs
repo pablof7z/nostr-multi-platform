@@ -269,7 +269,7 @@ pub fn new_routing_substrate_slot() -> RoutingSubstrateSlot {
 // ─── Publish-resolver factory (spec §271, 2026-05-25) ───────────────────────
 //
 // Per-app substrate-publish-resolver factory. Mirrors `RoutingSubstrateFactory`:
-// production composition (`nmp-defaults::register_defaults`) writes a
+// production composition writes a
 // closure into the [`PublishResolverSlot`] via
 // `NmpApp::set_publish_resolver_factory`; actor startup snapshots it and
 // applies the produced `Arc<dyn OutboxResolver>` via

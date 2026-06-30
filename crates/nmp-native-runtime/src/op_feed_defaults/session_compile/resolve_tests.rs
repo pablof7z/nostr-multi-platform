@@ -77,7 +77,7 @@ fn session_wot_graph_ignores_non_contact_events() {
 // These build the SAME framework projection the resolver registers and assert
 // the resulting live predicate admits members and REJECTS non-members
 // (fail-closed admission). Full open/close + interest lifecycle is proven in
-// the `nmp-defaults` `tests/` integration suite over a live `NmpApp`.
+// the `explicit composition` `tests/` integration suite over a live `NmpApp`.
 
 use std::sync::{Arc, Mutex};
 

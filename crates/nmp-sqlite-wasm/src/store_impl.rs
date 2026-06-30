@@ -63,7 +63,10 @@ mod wasm_impl {
         /// last (the `EventStore` contract; [`Self::peek_by_id`] stays write-free).
         /// One point-read becomes one short write txn; bulk scans never stamp, so
         /// write-amplification is bounded to point reads (V-60 LRU design).
-        pub fn get_by_id(&self, id: &EventId) -> Result<Option<StoredEngineEvent>, SqliteWasmError> {
+        pub fn get_by_id(
+            &self,
+            id: &EventId,
+        ) -> Result<Option<StoredEngineEvent>, SqliteWasmError> {
             let found = self.read_stored(
                 "SELECT raw, received_at_ms FROM events WHERE id = ?1",
                 &[SqlVal::Blob(id)],

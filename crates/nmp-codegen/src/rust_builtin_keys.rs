@@ -133,15 +133,10 @@ pub fn render_builtin_deps() -> String {
          // `all_builtin_keys_have_dependency_entries` test pins every built-in key\n\
          // to a row here, so the table and the key set cannot diverge.\n",
     );
-    out.push_str(
-        "pub(crate) const BUILTIN_PROJECTION_DEPENDENCIES: &[(&str, &[&str])] = &[\n",
-    );
+    out.push_str("pub(crate) const BUILTIN_PROJECTION_DEPENDENCIES: &[(&str, &[&str])] = &[\n");
     for (key, deps) in &rows {
         let dep_idents: Vec<String> = deps.iter().map(|d| src_const_ident(d)).collect();
-        out.push_str(&format!(
-            "    ({key:?}, &[{}]),\n",
-            dep_idents.join(", ")
-        ));
+        out.push_str(&format!("    ({key:?}, &[{}]),\n", dep_idents.join(", ")));
     }
     out.push_str("];\n");
     out
@@ -319,10 +314,7 @@ mod tests {
     fn src_ident_mapping_round_trips_known_names() {
         assert_eq!(src_const_ident("profiles_ver"), "SRC_PROFILES");
         assert_eq!(src_const_ident("ref_event_rows_ver"), "SRC_REF_EVENT_ROWS");
-        assert_eq!(
-            src_const_ident("active_account_ver"),
-            "SRC_ACTIVE_ACCOUNT"
-        );
+        assert_eq!(src_const_ident("active_account_ver"), "SRC_ACTIVE_ACCOUNT");
     }
 
     #[test]
@@ -334,7 +326,10 @@ mod tests {
         // The out-of-registry built-in signed_events is present.
         // ADR-0063 Lane H: mention_profiles removed (kernel no longer emits it).
         assert!(a.contains("\"signed_events\""));
-        assert!(!a.contains("\"mention_profiles\""), "mention_profiles must be removed (ADR-0063 Lane H)");
+        assert!(
+            !a.contains("\"mention_profiles\""),
+            "mention_profiles must be removed (ADR-0063 Lane H)"
+        );
         // A Tier-2 decodable built-in is present.
         assert!(a.contains("\"relay_diagnostics\""));
         // A Tier-1 host registration is NOT a built-in.

@@ -106,8 +106,7 @@ fn marmot_full_round_trip_create_giftwrap_join_message() {
     }
 
     // Alice sends an application message; Bob decrypts it.
-    let rumor =
-        EventBuilder::new(Kind::TextNote, "hello bob").build(alice_keys.public_key());
+    let rumor = EventBuilder::new(Kind::TextNote, "hello bob").build(alice_keys.public_key());
     let msg_event = alice
         .create_message(&group_id, rumor)
         .expect("alice creates message");
@@ -156,7 +155,9 @@ fn pending_change_clear_unblocks_group_ops() {
     su.clear().expect("clear pending commit on publish failure");
 
     // A fresh self_update now succeeds (group not wedged).
-    let su2 = alice.self_update(&group_id).expect("self_update after clear");
+    let su2 = alice
+        .self_update(&group_id)
+        .expect("self_update after clear");
     su2.commit().expect("merge after clear");
 }
 
@@ -234,7 +235,10 @@ fn bootstrap_pair(admin: &Actor, joiner: &Actor) -> mdk_core::prelude::GroupId {
 
     // MIP-02 mandatory post-join self-update; admin processes the commit so
     // both converge.
-    let su = joiner.service.self_update(&group_id).expect("post-join self_update");
+    let su = joiner
+        .service
+        .self_update(&group_id)
+        .expect("post-join self_update");
     let su_commit = su.evolution_event.clone();
     su.commit().expect("joiner merges self_update");
     match admin
@@ -415,10 +419,7 @@ fn decline_welcome_leaves_group_inactive_for_invitee() {
     let bob_kp = bob.service.publish_key_package(test_relays()).unwrap();
     let (group, pending) = alice
         .service
-        .create_group(
-            vec![bob_kp.event_30443],
-            group_config(vec![alice.pubkey()]),
-        )
+        .create_group(vec![bob_kp.event_30443], group_config(vec![alice.pubkey()]))
         .expect("alice creates group");
     let group_id = group.mls_group_id.clone();
     let rumor = pending.welcome_rumors[0].clone();
@@ -469,16 +470,14 @@ fn read_projections_reflect_group_state() {
     // group_leaf_map's pubkey set equals get_members.
     let members = alice.service.get_members(&group_id).unwrap();
     let leaf_map = alice.service.group_leaf_map(&group_id).expect("leaf map");
-    let leaf_pubkeys: std::collections::BTreeSet<PublicKey> =
-        leaf_map.values().cloned().collect();
+    let leaf_pubkeys: std::collections::BTreeSet<PublicKey> = leaf_map.values().cloned().collect();
     assert_eq!(
         leaf_pubkeys, members,
         "leaf map pubkeys must match the member set"
     );
 
     // An application message round-trips into get_messages on the receiver.
-    let rumor = EventBuilder::new(Kind::TextNote, "history check")
-        .build(alice.pubkey());
+    let rumor = EventBuilder::new(Kind::TextNote, "history check").build(alice.pubkey());
     let msg = alice
         .service
         .create_message(&group_id, rumor)

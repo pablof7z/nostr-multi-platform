@@ -73,6 +73,20 @@ fn generated_builders_match_contract() {
 }
 
 #[test]
+fn deleted_defaults_example_action_is_absent() {
+    assert!(
+        lookup("nmp.app.topic_articles").is_none(),
+        "topic_articles was a deleted defaults example, not a framework action contract"
+    );
+    assert!(
+        ACTION_BUILDERS
+            .iter()
+            .all(|builder| builder.namespace != "nmp.app.topic_articles"),
+        "topic_articles must not generate host action builders"
+    );
+}
+
+#[test]
 fn publish_union_builder_is_contract_declared() {
     let contract = contract_for(PUBLISH_NAMESPACE);
     assert_eq!(

@@ -25,9 +25,7 @@ use serde::{Deserialize, Serialize};
 /// `Failed` is **fail-closed** (ADR-0019): a relay that demanded AUTH and
 /// failed it withholds its gated REQs rather than silently downgrading to
 /// unauthenticated reads. Recovery is reconnect-only.
-#[derive(
-    Clone, Debug, Default, Hash, PartialEq, Eq, Serialize, Deserialize,
-)]
+#[derive(Clone, Debug, Default, Hash, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RelayAuthState {
     /// No AUTH challenge has arrived for this relay. Subscriptions flow
@@ -50,7 +48,7 @@ pub enum RelayAuthState {
 impl RelayAuthState {
     /// Wire key the diagnostics UI displays in `RelayStatus.auth`. Matches
     /// the snake-case serde serialization (ADR-0007 §1).
-    #[must_use] 
+    #[must_use]
     pub fn as_status_key(&self) -> &'static str {
         match self {
             Self::NotRequired => "not_required",

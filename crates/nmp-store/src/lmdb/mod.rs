@@ -26,11 +26,11 @@ mod delete;
 // #1811 — durable LMDB full-text-search inverted index (postings / doc-terms /
 // term-stats sub-dbs + same-txn maintenance + query planner + backfill).
 #[cfg(feature = "lmdb-backend")]
-mod fts;
-#[cfg(feature = "lmdb-backend")]
 pub(crate) mod domain;
 #[cfg(feature = "lmdb-backend")]
 mod dump;
+#[cfg(feature = "lmdb-backend")]
+mod fts;
 #[cfg(feature = "lmdb-backend")]
 mod gc;
 // Phase 3+3b tombstone purge extracted from gc.rs for the 500-LOC hard cap.
@@ -262,7 +262,10 @@ impl EventStore for LmdbEventStore {
         &'a self,
         _authors: &std::collections::BTreeSet<PubKey>,
         _kinds: &[u32],
-        _tags: &std::collections::BTreeMap<nostr::SingleLetterTag, std::collections::BTreeSet<String>>,
+        _tags: &std::collections::BTreeMap<
+            nostr::SingleLetterTag,
+            std::collections::BTreeSet<String>,
+        >,
         _since: Option<u64>,
         _until: Option<u64>,
         _limit: usize,

@@ -3,7 +3,7 @@ name = "nmp-app-gallery"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "NmpGallery explicit composition root over nmp-native-runtime and nmp-defaults. Produces libnmp_app_gallery for iOS and Android using ADR-0069 named installers."
+description = "NmpGallery explicit composition root over nmp-native-runtime. Produces libnmp_app_gallery for iOS and Android."
 
 [lib]
 # `staticlib` so the iOS shell can link `-lnmp_app_gallery` alongside the
@@ -36,12 +36,22 @@ nmp-native-runtime = { path = "../../../../crates/nmp-native-runtime" }
 # function (below) also relies on `nmp_uniffi::NmpApp::inner` for the Arc→
 # native pointer extraction.
 nmp-uniffi = { path = "../../../../crates/nmp-uniffi", default-features = false }
-# Reusable composition installers. The gallery calls the named ADR-0069
-# substrate/protocol installers directly from its app composition root.
-nmp-defaults = { path = "../../../../crates/nmp-defaults" }
 nmp-core = { path = "../../../../crates/nmp-core" }
 nmp-nostr-id = { path = "../../../../crates/nmp-nostr-id" }
 nmp-content = { path = "../../../../crates/nmp-content" }
+nmp-nip02 = { path = "../../../../crates/nmp-nip02" }
+nmp-nip17 = { path = "../../../../crates/nmp-nip17" }
+nmp-nip18 = { path = "../../../../crates/nmp-nip18" }
+nmp-nip22 = { path = "../../../../crates/nmp-nip22" }
+nmp-nip25 = { path = "../../../../crates/nmp-nip25" }
+nmp-nip29 = { path = "../../../../crates/nmp-nip29" }
+nmp-nip50 = { path = "../../../../crates/nmp-nip50" }
+nmp-nip51 = { path = "../../../../crates/nmp-nip51" }
+nmp-nip84 = { path = "../../../../crates/nmp-nip84" }
+nmp-replies = { path = "../../../../crates/nmp-replies" }
+nmp-router = { path = "../../../../crates/nmp-router" }
+nmp-substrate = { path = "../../../../crates/nmp-substrate" }
+nmp-wot = { path = "../../../../crates/nmp-wot" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 zeroize = { workspace = true }

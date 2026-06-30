@@ -106,7 +106,7 @@ pub struct LookupInvoiceResult {
 
 impl NwcResponse {
     /// Extract balance in msats from a `get_balance` response.
-    #[must_use] 
+    #[must_use]
     pub fn balance_msats(&self) -> Option<u64> {
         if self.result_type != "get_balance" || self.error.is_some() {
             return None;
@@ -118,7 +118,7 @@ impl NwcResponse {
     }
 
     /// Extract the payment preimage from a `pay_invoice` response.
-    #[must_use] 
+    #[must_use]
     pub fn pay_preimage(&self) -> Option<String> {
         if self.result_type != "pay_invoice" || self.error.is_some() {
             return None;
@@ -186,14 +186,21 @@ mod tests {
     /// A `lookup_invoice` accessor on a `pay_invoice` response must return None.
     #[test]
     fn lookup_invoice_result_wrong_result_type_is_none() {
-        let r = response("pay_invoice", None, json!({ "payment_hash": "x", "state": "settled" }));
+        let r = response(
+            "pay_invoice",
+            None,
+            json!({ "payment_hash": "x", "state": "settled" }),
+        );
         assert!(r.lookup_invoice_result().is_none());
     }
 
     /// An error response must never surface a usable lookup result.
     #[test]
     fn lookup_invoice_result_with_error_is_none() {
-        let err = NwcError { code: "NOT_FOUND".into(), message: "no such invoice".into() };
+        let err = NwcError {
+            code: "NOT_FOUND".into(),
+            message: "no such invoice".into(),
+        };
         let r = response(
             "lookup_invoice",
             Some(err),
@@ -202,9 +209,11 @@ mod tests {
         assert!(r.lookup_invoice_result().is_none());
     }
 
-    fn response(result_type: &str, error: Option<NwcError>, result: serde_json::Value)
-        -> NwcResponse
-    {
+    fn response(
+        result_type: &str,
+        error: Option<NwcError>,
+        result: serde_json::Value,
+    ) -> NwcResponse {
         NwcResponse {
             result_type: result_type.to_string(),
             error,
@@ -230,7 +239,10 @@ mod tests {
     /// wallet did not actually return a usable balance.
     #[test]
     fn balance_msats_with_error_is_none() {
-        let err = NwcError { code: "INTERNAL".into(), message: "boom".into() };
+        let err = NwcError {
+            code: "INTERNAL".into(),
+            message: "boom".into(),
+        };
         let r = response("get_balance", Some(err), json!({ "balance": 777_u64 }));
         assert_eq!(r.balance_msats(), None);
     }

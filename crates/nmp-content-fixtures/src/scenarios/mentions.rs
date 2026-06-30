@@ -65,12 +65,9 @@ pub fn build(ids: &Identities) -> Vec<ScenarioDto> {
 
     // S-M03: mention with NO kind:0 at all -> D1 identicon + npub label.
     let store = EmbedStore::default();
-    let e = ids.alice.sign(
-        1,
-        BASE + 2,
-        vec![],
-        format!("ping {}", ids.dave.npub_uri()),
-    );
+    let e = ids
+        .alice
+        .sign(1, BASE + 2, vec![], format!("ping {}", ids.dave.npub_uri()));
     out.push(scenario(
         "S-M03",
         "mentions",

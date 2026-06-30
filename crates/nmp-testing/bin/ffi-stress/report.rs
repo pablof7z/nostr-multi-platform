@@ -57,7 +57,11 @@ fn gate_to_perf(g: &Gate) -> PerfGate {
         name: g.name.clone(),
         threshold,
         measured: Some(format!("{:.4}", g.measured)),
-        verdict: if g.passed { GateVerdict::Pass } else { GateVerdict::Fail },
+        verdict: if g.passed {
+            GateVerdict::Pass
+        } else {
+            GateVerdict::Fail
+        },
         note: g.note.clone(),
     };
     if let Some(note) = &g.note {

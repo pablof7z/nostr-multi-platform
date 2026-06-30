@@ -18,8 +18,8 @@
 use nmp_core::actor::ActorCommand;
 use nmp_core::actor::InterestsCommand;
 use nmp_core::substrate::{
-    ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
-    build_record_action_success,
+    build_record_action_success, ActionContext, ActionModule, ActionPayload,
+    ActionPayloadDecodeError, ActionRejection,
 };
 use serde::{Deserialize, Serialize};
 

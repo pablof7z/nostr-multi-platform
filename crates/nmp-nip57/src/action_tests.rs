@@ -139,11 +139,9 @@ fn start_accepts_no_lnurl_kernel_resolves() {
     // Shells that know only the pubkey and amount pass `lnurl: None`.
     // The kernel resolves the address from the cached kind:0 profile at
     // execute time — `start` must not reject it.
-    assert!(
-        zap_action()
-            .start(&mut ctx(), well_formed_input_no_lnurl())
-            .is_ok()
-    );
+    assert!(zap_action()
+        .start(&mut ctx(), well_formed_input_no_lnurl())
+        .is_ok());
 }
 
 #[test]

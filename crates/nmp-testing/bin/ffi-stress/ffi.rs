@@ -98,8 +98,8 @@ pub(crate) fn nmp_app_declare_incremental_apply(app: *mut NmpApp) -> i32 {
 
 /// Inject `count` real Schnorr-signed kind-1 events (test-support path).
 pub(crate) fn nmp_app_inject_signed_events(app: *mut NmpApp, base_created_at: u64, count: u32) {
-    use nostr::{EventBuilder, Keys, Timestamp};
     use nmp_core::actor::{ActorCommand, TestSupportCommand};
+    use nostr::{EventBuilder, Keys, Timestamp};
 
     if app.is_null() {
         return;
@@ -117,7 +117,11 @@ pub(crate) fn nmp_app_inject_signed_events(app: *mut NmpApp, base_created_at: u6
                 pubkey: nostr_event.pubkey.to_hex(),
                 created_at: nostr_event.created_at.as_secs(),
                 kind: nostr_event.kind.as_u16() as u32,
-                tags: nostr_event.tags.iter().map(|t| t.as_slice().to_vec()).collect(),
+                tags: nostr_event
+                    .tags
+                    .iter()
+                    .map(|t| t.as_slice().to_vec())
+                    .collect(),
                 content: nostr_event.content.clone(),
                 sig: nostr_event.sig.to_string(),
             };
@@ -270,10 +274,7 @@ pub(crate) fn nmp_app_release_ref(
 
 /// Read process-global projection churn stats.
 /// Both output pointers may be null.
-pub(crate) fn nmp_app_read_projection_churn_stats(
-    out_serialized: *mut u64,
-    out_changed: *mut u64,
-) {
+pub(crate) fn nmp_app_read_projection_churn_stats(out_serialized: *mut u64, out_changed: *mut u64) {
     use std::sync::atomic::Ordering;
     if !out_serialized.is_null() {
         unsafe {
@@ -283,8 +284,7 @@ pub(crate) fn nmp_app_read_projection_churn_stats(
     }
     if !out_changed.is_null() {
         unsafe {
-            *out_changed =
-                nmp_core::testing::PROCESS_PROJECTIONS_CHANGED.load(Ordering::Relaxed);
+            *out_changed = nmp_core::testing::PROCESS_PROJECTIONS_CHANGED.load(Ordering::Relaxed);
         }
     }
 }
@@ -342,7 +342,11 @@ pub(crate) fn process_rss_bytes() -> u64 {
                 &mut count,
             )
         };
-        if ret == 0 { info.resident_size } else { 0 }
+        if ret == 0 {
+            info.resident_size
+        } else {
+            0
+        }
     }
     #[cfg(not(target_os = "macos"))]
     {

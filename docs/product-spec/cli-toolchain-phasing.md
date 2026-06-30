@@ -20,9 +20,9 @@ nmp doctor                           Diagnose toolchain and build environment.
 nmp upgrade                          Bump NMP dependencies and run migrations.
 ```
 
-Composition is an app-owned Rust root that calls explicit named installers from
-`nmp-defaults`, protocol crates, and app modules, then hands the composed app to
-the selected platform runtime builder. Native uses
+Composition is an app-owned Rust root that calls `nmp-substrate` plus explicit
+named installers from protocol crates and app modules, then hands the composed
+app to the selected platform runtime builder. Native uses
 `nmp-native-runtime::NmpAppBuilder` surfaced through UniFFI; web uses
 `nmp-browser-runtime::BrowserAppBuilder` surfaced through wasm-bindgen.
 

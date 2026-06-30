@@ -230,7 +230,10 @@ impl Inner {
     /// then stays relay-served, never a panic).
     pub(crate) fn fts_cache_scopes(
         &self,
-    ) -> Vec<(crate::text_search::SearchScopeId, std::collections::BTreeSet<u32>)> {
+    ) -> Vec<(
+        crate::text_search::SearchScopeId,
+        std::collections::BTreeSet<u32>,
+    )> {
         match self.fts_specs.read() {
             Ok(g) => g
                 .iter()

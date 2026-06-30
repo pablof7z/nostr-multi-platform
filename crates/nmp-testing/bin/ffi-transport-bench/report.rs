@@ -30,8 +30,8 @@
 // as such in config.rs COLLAPSE_SMALL_ABS_NS and here in compute_verdict).
 
 use crate::config::{
-    COLLAPSE_SMALL_ABS_NS, COLLAPSE_THRESHOLD_NS, KEEP_THRESHOLD_NS,
-    JNI_MANAGED_SURCHARGE_FACTOR, WEIGHT_LARGE, WEIGHT_MEDIUM, WEIGHT_SMALL,
+    COLLAPSE_SMALL_ABS_NS, COLLAPSE_THRESHOLD_NS, JNI_MANAGED_SURCHARGE_FACTOR, KEEP_THRESHOLD_NS,
+    WEIGHT_LARGE, WEIGHT_MEDIUM, WEIGHT_SMALL,
 };
 use serde::Serialize;
 use std::fs;
@@ -177,10 +177,7 @@ impl BuildInfo {
 ///
 /// The SMALL-bucket gate uses `uniffi_small_batch_mean_p99_ns`, which is the
 /// p99 of per-1000-frame means.  See the module comment for implications.
-pub fn compute_verdict(
-    surcharged_delta_ns: i64,
-    uniffi_small_batch_mean_p99_ns: u64,
-) -> Verdict {
+pub fn compute_verdict(surcharged_delta_ns: i64, uniffi_small_batch_mean_p99_ns: u64) -> Verdict {
     let delta = surcharged_delta_ns.max(0) as u64;
     if delta < COLLAPSE_THRESHOLD_NS && uniffi_small_batch_mean_p99_ns < COLLAPSE_SMALL_ABS_NS {
         Verdict::Collapse
@@ -259,7 +256,10 @@ fn markdown_report(report: &TransportBenchReport) -> String {
     let mut out = String::new();
     out.push_str("# FFI Transport Bench Report\n\n");
     out.push_str(&format!("- Tool: `{}`\n", report.tool));
-    out.push_str(&format!("- Started at unix: `{}`\n", report.started_at_unix));
+    out.push_str(&format!(
+        "- Started at unix: `{}`\n",
+        report.started_at_unix
+    ));
     out.push_str(&format!(
         "- Build: opt-level={}, debug-assertions={}, target={}, rustc={}\n\n",
         report.build_info.opt_level,
@@ -274,7 +274,7 @@ fn markdown_report(report: &TransportBenchReport) -> String {
         per-1000-frame MEANS, not over individual frame wall times.  \
         Averaging 1000 frames suppresses tail variation by roughly 32x (CLT).  \
         `p99/frame` is a true per-frame p99 (100k individual samples); \
-        reported for MEDIUM and LARGE only (SMALL is sub-us and below timer resolution).\n\n"
+        reported for MEDIUM and LARGE only (SMALL is sub-us and below timer resolution).\n\n",
     );
     out.push_str("| Lane | Bucket | Bytes (min-max) | p50 batch-mean (ns) | p95 batch-mean (ns) | p99 batch-mean (ns) | p99/frame (ns) |\n");
     out.push_str("|------|--------|-----------------|---------------------|---------------------|---------------------|----------------|\n");
@@ -287,7 +287,8 @@ fn markdown_report(report: &TransportBenchReport) -> String {
             bucket.p50_batch_mean_ns,
             bucket.p95_batch_mean_ns,
             bucket.p99_batch_mean_ns,
-            bucket.p99_per_frame_ns
+            bucket
+                .p99_per_frame_ns
                 .map(|v| v.to_string())
                 .unwrap_or_else(|| "n/a (sub-us)".to_string()),
         ));
@@ -301,7 +302,8 @@ fn markdown_report(report: &TransportBenchReport) -> String {
             bucket.p50_batch_mean_ns,
             bucket.p95_batch_mean_ns,
             bucket.p99_batch_mean_ns,
-            bucket.p99_per_frame_ns
+            bucket
+                .p99_per_frame_ns
                 .map(|v| v.to_string())
                 .unwrap_or_else(|| "n/a (sub-us)".to_string()),
         ));
@@ -311,7 +313,7 @@ fn markdown_report(report: &TransportBenchReport) -> String {
     out.push_str("## Delta Analysis\n\n");
     out.push_str(
         "> Weighted-p99 values below are computed from per-bucket `p99_batch_mean_ns` \
-        (see metric note above).\n\n"
+        (see metric note above).\n\n",
     );
     out.push_str(&format!(
         "- Weighted-p99 C-lane (batch-mean): {:.0} ns\n",
@@ -331,18 +333,14 @@ fn markdown_report(report: &TransportBenchReport) -> String {
     ));
     out.push_str(&format!(
         "- Surcharged delta (raw + foreign-copy x{}): {} ns\n",
-        JNI_MANAGED_SURCHARGE_FACTOR,
-        report.weighted_p99_delta_surcharged_ns
+        JNI_MANAGED_SURCHARGE_FACTOR, report.weighted_p99_delta_surcharged_ns
     ));
     out.push_str(&format!(
         "- Surcharged delta as % of 16.67 ms budget: {:.2}%\n\n",
         report.surcharged_delta_pct_of_frame_budget * 100.0
     ));
 
-    out.push_str(&format!(
-        "## Verdict: **{}**\n\n",
-        report.verdict
-    ));
+    out.push_str(&format!("## Verdict: **{}**\n\n", report.verdict));
     out.push_str(&format!(
         "Pre-registered thresholds: COLLAPSE < {} ns ({:.0}% of budget), KEEP >= {} ns ({:.0}% of budget).\n\n",
         COLLAPSE_THRESHOLD_NS,

@@ -37,7 +37,7 @@ impl<T: Send + 'static> SignerOp<T> {
     }
 
     /// Construct a ready-now error.
-    #[must_use] 
+    #[must_use]
     pub fn err(error: SignerError) -> Self {
         Self::Ready(Err(error))
     }

@@ -18,8 +18,8 @@
 
 use zeroize::Zeroizing;
 
-use crate::NmpApp;
 use crate::identity::RelayConfigEntry;
+use crate::NmpApp;
 
 #[uniffi::export]
 impl NmpApp {
@@ -80,8 +80,7 @@ impl NmpApp {
         mls: bool,
         make_active: bool,
     ) {
-        let relays: Vec<(String, String)> =
-            relays.into_iter().map(|r| (r.url, r.role)).collect();
+        let relays: Vec<(String, String)> = relays.into_iter().map(|r| (r.url, r.role)).collect();
         self.inner.set_pending_mls_autopublish(mls);
         self.inner
             .create_account(profile, relays, Vec::new(), mls, make_active);
@@ -164,7 +163,10 @@ mod tests {
     #[test]
     fn parity_signin_bunker_does_not_set_autopublish() {
         let app = crate::NmpApp::new();
-        app.signin_bunker("bunker://fakekey@wss://relay.example.com?secret=abc".to_string(), true);
+        app.signin_bunker(
+            "bunker://fakekey@wss://relay.example.com?secret=abc".to_string(),
+            true,
+        );
         assert!(
             !app.inner.take_pending_mls_autopublish(),
             "bunker sign-in must NOT set pending_mls_autopublish"
@@ -201,7 +203,11 @@ mod tests {
     #[test]
     fn parity_switch_and_remove_no_panic() {
         let app = crate::NmpApp::new();
-        app.switch_active("3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d".to_string());
-        app.remove_account("3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d".to_string());
+        app.switch_active(
+            "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d".to_string(),
+        );
+        app.remove_account(
+            "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d".to_string(),
+        );
     }
 }

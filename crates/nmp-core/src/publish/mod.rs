@@ -83,7 +83,7 @@ pub use fs_store::FsPublishStore;
 pub(crate) use policy::{relay_emit_is_sanctioned, validate_publish_routing};
 // `Nip65OutboxResolver` lives in `nmp-router` (spec §271, 2026-05-25). The
 // `OutboxResolver` trait stays here (publish-side seam); production
-// composition (`nmp-defaults::register_defaults`) installs the
+// composition (`explicit owner composition`) installs the
 // router-side resolver via `NmpApp::set_publish_resolver_factory` →
 // `Kernel::set_publish_resolver`. The kernel default is
 // `NoopOutboxResolver` (below) so a kernel without router-side composition

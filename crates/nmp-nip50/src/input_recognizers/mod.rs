@@ -16,7 +16,10 @@
 
 use std::sync::Arc;
 
-use nmp_core::substrate::{InputIntentTarget, InputScopeId, InputScopeRecognizer, InputScopeRegistrar, ResolvedInput, TextSearchTargets};
+use nmp_core::substrate::{
+    InputIntentTarget, InputScopeId, InputScopeRecognizer, InputScopeRegistrar, ResolvedInput,
+    TextSearchTargets,
+};
 use serde_json;
 
 use crate::request::{SearchRequest, SearchScope, SearchTargets};
@@ -42,8 +45,7 @@ fn make_text_query(
     scope: SearchScope,
     targets: &TextSearchTargets,
 ) -> Option<InputIntentTarget> {
-    let request =
-        SearchRequest::new(free_text, scope, translate_targets(targets), None)?;
+    let request = SearchRequest::new(free_text, scope, translate_targets(targets), None)?;
     let request_json = serde_json::to_string(&request).ok()?;
     Some(InputIntentTarget::TextQuery { request_json })
 }

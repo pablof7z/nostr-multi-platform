@@ -60,13 +60,16 @@ pub use embed_registry::{
     EmbedRegistrySnapshot, EmbedTarget, EventRefResolver, NoopEventRefResolver, ResolvedEvent,
 };
 pub use longform::{
-    longform_acquisition_kinds, longform_feed_predicate, ArticleFeedItem, LongformFeed,
-    LongformFeedEntry, LongformFeedPredicate, LongformProjection, LongformRepostAttribution,
-    KIND_LONG_FORM_ARTICLE, LONGFORM_PROJECTION_KEY,
+    longform_acquisition_kinds, longform_feed_predicate, register_longform_projection,
+    ArticleFeedItem, LongformFeed, LongformFeedEntry, LongformFeedPredicate, LongformProjection,
+    LongformRepostAttribution, KIND_LONG_FORM_ARTICLE, LONGFORM_PROJECTION_KEY,
 };
 pub use markdown::{MarkdownInline, MarkdownNode};
 pub use mode::{sniff_mode_from_kind, RenderMode};
-pub use pointer_source::{PointerItem, PointerSortMode, PointerSourceModel};
+pub use pointer_source::{
+    open_pointer_source, register_pointer_source, PointerItem, PointerSortMode, PointerSourceModel,
+    PointerSourceParams, PointerSourceSession,
+};
 pub use segment::{ContentTree, InvoiceKind, MediaKind, Segment};
 pub use tokenizer::{tokenize, tokenize_with_kind};
 pub use wire::{

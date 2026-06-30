@@ -33,8 +33,8 @@ pub(crate) fn read_manifest_with_sections(manifest_path: &Path) -> Result<String
     for name in REGISTRY_SECTION_FILES {
         let section = dir.join(name);
         if section.exists() {
-            let s = fs::read_to_string(&section)
-                .map_err(|e| format!("{}: {e}", section.display()))?;
+            let s =
+                fs::read_to_string(&section).map_err(|e| format!("{}: {e}", section.display()))?;
             content.push('\n');
             content.push_str(&s);
         }

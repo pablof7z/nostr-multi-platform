@@ -8,8 +8,8 @@ use nmp_network::role::RelayRole;
 use nmp_nwc::NwcMethod;
 use serde_json::json;
 
-use crate::status::{NwcConnectionState, WalletStatus};
 use super::runtime_utils::encode_frame;
+use crate::status::{NwcConnectionState, WalletStatus};
 
 /// Result of a [`WalletRuntime::tick_heartbeat`] call.
 pub struct HeartbeatOutbound {
@@ -63,7 +63,13 @@ impl WalletRuntime {
     ) -> HeartbeatOutbound {
         let conn = match self.connection.as_mut() {
             Some(c) => c,
-            None => return HeartbeatOutbound { ready_frames: Vec::new(), needs_probe: false, state_changed: false },
+            None => {
+                return HeartbeatOutbound {
+                    ready_frames: Vec::new(),
+                    needs_probe: false,
+                    state_changed: false,
+                }
+            }
         };
 
         // Before the first cadence window has elapsed, arm the baseline.
@@ -71,13 +77,21 @@ impl WalletRuntime {
             // Record "just connected" as the baseline so the first probe fires
             // ~cadence_secs after connect.
             conn.last_probe_sent_secs = now_secs;
-            return HeartbeatOutbound { ready_frames: Vec::new(), needs_probe: false, state_changed: false };
+            return HeartbeatOutbound {
+                ready_frames: Vec::new(),
+                needs_probe: false,
+                state_changed: false,
+            };
         }
 
         let elapsed = now_secs.saturating_sub(conn.last_probe_sent_secs);
         if elapsed < cadence_secs {
             // Still within the current cadence window — nothing to do.
-            return HeartbeatOutbound { ready_frames: Vec::new(), needs_probe: false, state_changed: false };
+            return HeartbeatOutbound {
+                ready_frames: Vec::new(),
+                needs_probe: false,
+                state_changed: false,
+            };
         }
 
         // A new cadence window opened. If a probe from the *previous* window
@@ -150,7 +164,11 @@ impl WalletRuntime {
         }
 
         // Always request a get_info probe at the cadence boundary.
-        HeartbeatOutbound { ready_frames, needs_probe: true, state_changed }
+        HeartbeatOutbound {
+            ready_frames,
+            needs_probe: true,
+            state_changed,
+        }
     }
 
     /// Build and enqueue a `get_info` heartbeat probe for the connected relay.
@@ -164,8 +182,15 @@ impl WalletRuntime {
         kernel: &dyn WalletKernelAccess,
     ) -> Option<OutboundMessage> {
         let relay = self.connection.as_ref()?.relay_url.clone();
-        super::request_builder::build_request(self, kernel, &relay, NwcMethod::GetInfo, json!({}), None)
-            .map(|(msg, _id)| msg)
+        super::request_builder::build_request(
+            self,
+            kernel,
+            &relay,
+            NwcMethod::GetInfo,
+            json!({}),
+            None,
+        )
+        .map(|(msg, _id)| msg)
     }
 
     /// Push the current `connection_state` into the `status_slot` and mark the

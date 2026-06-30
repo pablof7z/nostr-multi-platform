@@ -4,7 +4,7 @@
 //! exactly like `nak`) a kind:10002 NIP-65 list naming a read relay R
 //! (`wss://nos.lol`) AND a kind:10007 NIP-51 search-relay list naming
 //! `wss://nostr.wine`, both to R. A real `NmpApp` then cold-starts with ONLY
-//! `nmp_defaults::register_defaults` — NO manual search-relay-source install, NO
+//! owner-local NIP-50/NIP-51 composition — NO manual search-relay-source install, NO
 //! explicit relay argument anywhere in this test. The kernel:
 //!
 //!   1. signs the fresh account in,
@@ -13,7 +13,7 @@
 //!      its read relay R (the proven path that also fetches kind:0/3/10002/10006),
 //!   3. R returns the kind:10007, the `SearchRelayListProjection` ingests it,
 //!   4. the auto-wired default search-relay source (installed by
-//!      `register_defaults` via `nmp_nip50::install_search_relay_source`) now
+//!      `nmp_nip51::register_search_relay_runtime_with_fallbacks` now
 //!      resolves `UserPreferred` to `wss://nostr.wine`.
 //!
 //! Then we call ONLY `open_search("bitcoin", Users, UserPreferred, ..)` and
@@ -24,7 +24,7 @@
 //! With #1829's kind:10007 self-fetch on master this scenario should PASS (it was
 //! a skip-with-finding before #1829, when the kind:10007 interest never reached
 //! the wire). The hermetic counterpart is
-//! `nmp-defaults/tests/search_relay_transparency.rs` (#1829) +
+//! hermetic search-relay transparency proof +
 //! `nmp-ffi`'s `open_search_user_preferred_fans_out_to_installed_primary_relays`.
 //!
 //! Readiness uses the kernel's own snapshot-update callback signal (no sleeps,
@@ -145,7 +145,7 @@ pub(crate) fn run() {
         Err(e) => return skip("transparency", &format!("publish kind:10007: {e}")),
     }
 
-    // ── Cold-start a REAL NmpApp with ONLY register_defaults ─────────────────
+    // ── Cold-start a REAL NmpApp with only the needed owners ─────────────────
     let rx = install_update_signal();
     let app = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
     unsafe { &*app }.set_update_listener(Some(std::sync::Arc::new(|bytes: &[u8]| {
@@ -155,12 +155,21 @@ pub(crate) fn run() {
     // The ONLY wiring. No manual search-relay-source install. No explicit relay.
     // SAFETY: `app` is a live pointer from `nmp_app_new`; the exclusive borrow
     // is released before any other access.
-    nmp_defaults::register_defaults(unsafe { &mut *app });
+    {
+        let app = unsafe { &mut *app };
+        nmp_substrate::install(app, nmp_substrate::SubstrateConfig::default());
+        nmp_nip50::register_search_scopes(app);
+        nmp_nip50::register_input_scopes(app);
+        nmp_nip51::register_search_relay_runtime_with_fallbacks(
+            app,
+            nmp_nip50::SearchFallbackRelays::default(),
+        );
+    }
 
     unsafe { &*app }.start_runtime(256, 8); // emit_hz=8 → ~125ms snapshot cadence
-                                // Add R as read+indexer so (a) the kind:10007 interest routes here and
-                                // (b) the active-account bootstrap OneShot lands here. NO search relay is
-                                // added — discovery must come from the published kind:10007 alone.
+                                            // Add R as read+indexer so (a) the kind:10007 interest routes here and
+                                            // (b) the active-account bootstrap OneShot lands here. NO search relay is
+                                            // added — discovery must come from the published kind:10007 alone.
     unsafe { &*app }.add_relay(READ_RELAY.to_owned(), "both,indexer".to_owned());
 
     unsafe { &*app }.signin_nsec_for_test(&my_nsec, true);
@@ -182,7 +191,7 @@ pub(crate) fn run() {
                 Verdict::Pass,
                 &format!(
                     "ZERO explicit relay wiring. Published kind:10007 → {WINE}; the auto-wired \
-                     SearchRelaySource (register_defaults glue) resolved UserPreferred to the \
+                     SearchRelaySource resolved UserPreferred to the \
                      discovered kind:10007 relay and open_search fanned the REQ to {WINE}, \
                      returning {distinct} result(s) (hit provenance names nostr.wine={from_wine})."
                 ),
@@ -302,7 +311,7 @@ fn drive_and_assert(app: *mut nmp_native_runtime::NmpApp, rx: &Receiver<()>) -> 
                  open_search surface + NMP pool DID return hits from {WINE} (explicit_proved={explicit_proved}). \
                  With #1829's kind:10007 self-fetch on master this should PASS; a skip here means the live \
                  network was too slow/flaky to complete boot → kind:10007 self-fetch from R → projection \
-                 within budget (the hermetic counterparts — nmp-defaults search_relay_transparency + \
+                 within budget (the hermetic search-relay transparency counterparts + \
                  nmp-ffi open_search_user_preferred_fans_out_to_installed_primary_relays — prove the path \
                  deterministically)."
             ));

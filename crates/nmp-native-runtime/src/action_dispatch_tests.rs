@@ -5,12 +5,12 @@
 //! (`nmp-uniffi`). They prove correlation_id/error/code semantics so the same
 //! assertions need not be duplicated at both ABI layers.
 
+use nmp_core::actor::ActorCommand;
 use nmp_core::dispatch_envelope::{
     encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION, MAX_DISPATCH_ENVELOPE_BYTES,
 };
 use nmp_core::substrate::ActionContext;
 use nmp_core::substrate::{ActionModule, ActionPayload, ActionRejection};
-use nmp_core::actor::ActorCommand;
 
 use super::dispatch_action_bytes_typed;
 use crate::new_app;
@@ -122,7 +122,10 @@ fn make_envelope(correlation_id: &str, namespace: &str) -> Vec<u8> {
 fn malformed_envelope_produces_error_outcome() {
     let app = new_app();
     let outcome = dispatch_action_bytes_typed(&app, &[0u8; 16]);
-    assert!(outcome.error.is_some(), "expected error for malformed bytes");
+    assert!(
+        outcome.error.is_some(),
+        "expected error for malformed bytes"
+    );
     assert!(outcome.correlation_id.is_none());
     assert!(outcome.code.is_none());
 }
@@ -136,7 +139,10 @@ fn oversize_bytes_produce_error_outcome() {
     // len exceeds MAX is rejected by the inline guard and the decoder alike).
     let oversize = vec![0u8; MAX_DISPATCH_ENVELOPE_BYTES + 1];
     let outcome = dispatch_action_bytes_typed(&app, &oversize);
-    assert!(outcome.error.is_some(), "expected error for oversize envelope");
+    assert!(
+        outcome.error.is_some(),
+        "expected error for oversize envelope"
+    );
     assert!(outcome.correlation_id.is_none());
 }
 
@@ -165,7 +171,10 @@ fn coded_rejection_carries_both_error_and_code() {
     let envelope = make_envelope("corr-coded", CodedRejectModule::NAMESPACE);
     let outcome = dispatch_action_bytes_typed(&app, &envelope);
     assert!(
-        outcome.error.as_deref().map_or(false, |e| e.contains("typed core coded rejection")),
+        outcome
+            .error
+            .as_deref()
+            .map_or(false, |e| e.contains("typed core coded rejection")),
         "error must carry the human message; got {:?}",
         outcome.error
     );
@@ -187,8 +196,14 @@ fn plain_rejection_has_error_but_no_code() {
     let _ = app.register_action(PlainRejectModule);
     let envelope = make_envelope("corr-plain", PlainRejectModule::NAMESPACE);
     let outcome = dispatch_action_bytes_typed(&app, &envelope);
-    assert!(outcome.error.is_some(), "plain rejection must have an error");
-    assert!(outcome.code.is_none(), "plain rejection must NOT have a code");
+    assert!(
+        outcome.error.is_some(),
+        "plain rejection must have an error"
+    );
+    assert!(
+        outcome.code.is_none(),
+        "plain rejection must NOT have a code"
+    );
     assert!(outcome.correlation_id.is_none());
 }
 
@@ -198,6 +213,9 @@ fn unknown_namespace_produces_error_outcome() {
     let app = new_app();
     let envelope = make_envelope("corr-unknown", "test.dispatch_core.no_such_module");
     let outcome = dispatch_action_bytes_typed(&app, &envelope);
-    assert!(outcome.error.is_some(), "unknown namespace must produce an error outcome");
+    assert!(
+        outcome.error.is_some(),
+        "unknown namespace must produce an error outcome"
+    );
     assert!(outcome.correlation_id.is_none());
 }

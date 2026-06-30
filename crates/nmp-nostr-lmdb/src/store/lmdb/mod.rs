@@ -3,8 +3,8 @@
 // Copyright (c) 2023-2025 Rust Nostr Developers
 // Distributed under the MIT software license
 
-use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
+use std::sync::Arc;
 
 use heed::byteorder::NativeEndian;
 use heed::types::{Bytes, Unit, U64};
@@ -12,10 +12,10 @@ use heed::{Database, Env, RoTxn, RwTxn};
 
 use super::filter::DatabaseFilter;
 
-mod index;
 mod cursor;
-mod freshness_delete;
 mod freshness;
+mod freshness_delete;
+mod index;
 mod migration;
 mod query;
 mod setup;

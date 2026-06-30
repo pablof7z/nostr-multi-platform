@@ -31,7 +31,11 @@ mod tests {
     fn drain_enqueue_outbound(rx: &mpsc::Receiver<ActorMail>) -> Vec<(RelayRole, String, String)> {
         let mut frames = Vec::new();
         while let Ok(mail) = rx.recv_timeout(Duration::from_millis(100)) {
-            if let ActorMail::Command(ActorCommand::EnqueueOutbound { role, relay_url, text }) = mail
+            if let ActorMail::Command(ActorCommand::EnqueueOutbound {
+                role,
+                relay_url,
+                text,
+            }) = mail
             {
                 frames.push((role, relay_url, text));
             }
@@ -62,19 +66,19 @@ mod tests {
         let remote_pubkey = local_keys.public_key(); // use same key as self-encryption for test
         let relay_url = "wss://bunker.relay".to_string();
 
-        let transport = ActorLaneTransport::new(
-            sender,
-            local_keys,
-            remote_pubkey,
-            relay_url.clone(),
-        );
+        let transport =
+            ActorLaneTransport::new(sender, local_keys, remote_pubkey, relay_url.clone());
 
         let rpc = make_rpc("rpc-001", r#"{"method":"get_public_key","params":[]}"#);
         let result = transport.send_rpc(rpc);
         assert!(result.is_ok(), "send_rpc must return Ok(()) for valid keys");
 
         let frames = drain_enqueue_outbound(&rx);
-        assert_eq!(frames.len(), 1, "exactly one EnqueueOutbound frame expected");
+        assert_eq!(
+            frames.len(),
+            1,
+            "exactly one EnqueueOutbound frame expected"
+        );
 
         let (role, url, text) = &frames[0];
         assert_eq!(*role, RelayRole::Signer);
@@ -99,12 +103,8 @@ mod tests {
         let remote_pubkey = local_keys.public_key();
         let relay_url = "wss://bunker.relay".to_string();
 
-        let transport = ActorLaneTransport::new(
-            sender,
-            local_keys,
-            remote_pubkey,
-            relay_url.clone(),
-        );
+        let transport =
+            ActorLaneTransport::new(sender, local_keys, remote_pubkey, relay_url.clone());
 
         for i in 0..3u8 {
             let rpc = make_rpc(
@@ -115,7 +115,11 @@ mod tests {
         }
 
         let frames = drain_enqueue_outbound(&rx);
-        assert_eq!(frames.len(), 3, "all 3 RPCs must produce EnqueueOutbound frames");
+        assert_eq!(
+            frames.len(),
+            3,
+            "all 3 RPCs must produce EnqueueOutbound frames"
+        );
 
         // All must target the Signer role and correct relay URL.
         for (i, (role, url, _)) in frames.iter().enumerate() {

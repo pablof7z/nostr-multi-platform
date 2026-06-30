@@ -26,7 +26,10 @@ pub fn http_url_for_relay(relay_url: &str) -> Option<String> {
     // the whole URL (the path may be case-sensitive).
     let lower = trimmed.to_ascii_lowercase();
     if let Some(rest) = lower.strip_prefix("wss://") {
-        return Some(format!("https://{}", &trimmed[trimmed.len() - rest.len()..]));
+        return Some(format!(
+            "https://{}",
+            &trimmed[trimmed.len() - rest.len()..]
+        ));
     }
     if let Some(rest) = lower.strip_prefix("ws://") {
         return Some(format!("http://{}", &trimmed[trimmed.len() - rest.len()..]));

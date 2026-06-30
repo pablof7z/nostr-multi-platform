@@ -20,15 +20,13 @@
 //!   back to an author outbox.
 //! * the deferred-op store + last-op-error banner — see
 //!   [`crate::projection::deferred`].
-//!
 //! ## Relay seams — both CLOSED
-//!
-//! * **Outbound (publish).** Dispatch ops publish their signed events
-//!   INTERNALLY via [`crate::projection::publish`] through the actor/protocol
+//! * **Outbound (publish).** Dispatch ops publish signed events internally via
+//!   [`crate::projection::publish`] through the actor/protocol
 //!   runtime port. The op result still carries the signed event JSON but it is
 //!   INFORMATIONAL — publish already happened (fire-and-forget).
-//! * **Inbound (receive).** [`crate::projection::tap::MarmotIngestParser`]
-//!   drives accepted kind:445 / kind:1059 events through
+//! * **Inbound (receive).** [`crate::projection::tap::MarmotIngestParser`] drives
+//!   accepted kind:445 / kind:1059 events through
 //!   `ops::ingest_signed_event_core`; received Welcomes / messages surface
 //!   in the next `snapshot` automatically (seam 2 below has the detail).
 //!
@@ -46,7 +44,7 @@
 //!    kernel-level `Keys` provider exists yet, so the host register path
 //!    takes the secret key directly. Replace with a `KeyringCapability`
 //!    seam when one lands on `NmpApp`.
-//! 2. **Lossy-observer seam — RESOLVED (inbound ingest CLOSED).** The
+//! 2. **Lossy-observer seam resolved.** The
 //!    `ObservedProjectionSink` fan-out carries no signature, so
 //!    `on_kernel_event` uses it for *metadata* only. Actual MLS ingest of
 //!    kind:445 / kind:1059 is driven by
@@ -58,9 +56,8 @@
 //!    [`crate::projection::deferred`]).** `create_group` / `invite` need
 //!    the invitees' signed kind:30443 key packages. When one is missing
 //!    the op is PARKED (not terminally failed): the KP fetch fires and the
-//!    op re-runs on KP arrival, recording its verdict under the original
-//!    `correlation_id`. Parked ops expire against actor/kernel-authored time
-//!    (60 s).
+//!    op re-runs on KP arrival under the original `correlation_id`. Parked ops
+//!    expire against actor/kernel-authored time (60 s).
 //!    Callers may still pass an explicit `signed_key_package_events_json`
 //!    array to bypass the cache entirely.
 
@@ -390,7 +387,10 @@ impl<'a> InnerHandle<'a> {
             .collect::<Vec<_>>();
         let _ = sender.send(ActorCommand::Publish(PublishCommand::SignedEvent {
             raw,
-            target: PublishTarget::explicit(relays, nmp_core::publish::PublishRouteClass::ImportedOrPresigned),
+            target: PublishTarget::explicit(
+                relays,
+                nmp_core::publish::PublishRouteClass::ImportedOrPresigned,
+            ),
             correlation_id: None,
         }));
     }

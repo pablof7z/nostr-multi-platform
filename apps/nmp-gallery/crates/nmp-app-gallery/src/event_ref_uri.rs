@@ -4,8 +4,8 @@
 //! module converts a user/content URI into the raw resolver key plus metadata
 //! those adapters expect, without exposing a generic stateless C helper.
 
-use nmp_nostr_id::{NaddrData, NeventData, Nip19Entity};
 use nmp_nostr_id::{nip21, NostrUri};
+use nmp_nostr_id::{NaddrData, NeventData, Nip19Entity};
 use serde::Serialize;
 use std::ffi::{c_char, CStr, CString};
 

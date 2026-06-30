@@ -195,8 +195,7 @@ mod tests {
 
     #[test]
     fn positional_three_uses_first_and_last() {
-        let edges =
-            parse_reply_edges(&[e("root1", None), e("mid2", None), e("parent3", None)]);
+        let edges = parse_reply_edges(&[e("root1", None), e("mid2", None), e("parent3", None)]);
         assert_eq!(edges.root.as_deref(), Some("root1"));
         assert_eq!(edges.reply_to.as_deref(), Some("parent3"));
     }

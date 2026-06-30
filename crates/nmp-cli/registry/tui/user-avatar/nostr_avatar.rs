@@ -5,7 +5,7 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Widget},
 };
-use ratatui_image::{Image, protocol::Protocol};
+use ratatui_image::{protocol::Protocol, Image};
 
 use super::profile_wire::ProfileWire;
 

@@ -17,8 +17,8 @@ use nmp_core::substrate::{
 
 use crate::runtime::{
     handle_nwc_text as runtime_handle_nwc_text, wallet_connect as runtime_wallet_connect,
-    wallet_disconnect as runtime_wallet_disconnect, wallet_pay_invoice as runtime_wallet_pay_invoice,
-    WalletRuntimeHandle,
+    wallet_disconnect as runtime_wallet_disconnect,
+    wallet_pay_invoice as runtime_wallet_pay_invoice, WalletRuntimeHandle,
 };
 
 /// V-38 replacement for `ActorCommand::WalletConnect`.
@@ -53,7 +53,10 @@ pub struct WalletPayInvoiceCommand {
 /// shared `&dyn`, so it is read before the runtime mutex is locked and handed
 /// to the runtime helper alongside the `&mut WalletRuntime`.
 fn with_runtime_and_kernel<
-    F: FnOnce(&mut crate::runtime::WalletRuntime, &dyn WalletKernelAccess) -> Vec<nmp_core::OutboundMessage>,
+    F: FnOnce(
+        &mut crate::runtime::WalletRuntime,
+        &dyn WalletKernelAccess,
+    ) -> Vec<nmp_core::OutboundMessage>,
 >(
     handle: &WalletRuntimeHandle,
     ctx: &mut ProtocolCommandContext<'_>,
@@ -65,9 +68,7 @@ fn with_runtime_and_kernel<
         ProtocolCommandError::new(format!("{op_label}: wallet runtime mutex poisoned"))
     })?;
     let Some(runtime) = guard.as_mut() else {
-        wk.set_last_error_toast(Some(format!(
-            "{op_label}: wallet runtime not installed"
-        )));
+        wk.set_last_error_toast(Some(format!("{op_label}: wallet runtime not installed")));
         return Ok(());
     };
     let outbound = f(runtime, wk);

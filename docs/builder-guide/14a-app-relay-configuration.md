@@ -73,8 +73,8 @@ In-memory mode always uses the declared defaults; there is no sidecar.
 
 ### No built-in defaults
 
-`nmp-defaults` ships no real public relay URLs. Apps must make an explicit
-initial-relay decision before `start()`:
+NMP ships no real public relay URLs and no defaults bundle that can provide
+them. Apps must make an explicit initial-relay decision before `start()`:
 
 - `.with_relays([...])` declares the app-owned operator defaults.
 - `.without_initial_relays()` starts with an empty `configured_relays` set for
@@ -89,8 +89,9 @@ The same app-owned rule applies to relay-like defaults outside the main app
 relay set:
 
 - NIP-50 search relays use the user's kind:10007 list as the first authority.
-  If the user has no list, the app may pass
-  `NmpDefaults { search_defaults: SearchDefaults::with_default_relays([...]), .. }`.
+  If the user has no list, the app may pass an app-owned
+  `nmp_nip51::SearchFallbackRelays::with_default_relays([...])` into the NIP-51
+  search-relay runtime registration.
   If both are empty, search stays cache-only and does not fan out to a public
   relay chosen by NMP.
 - NIP-29 group-create suggestions are app/operator policy. Register an app

@@ -44,9 +44,18 @@ mod tests {
     #[test]
     fn parity_add_relay_explicit_role_no_panic() {
         let app = crate::NmpApp::new();
-        app.add_relay("wss://relay.example.com".to_string(), Some("both".to_string()));
-        app.add_relay("wss://read.example.com".to_string(), Some("read".to_string()));
-        app.add_relay("wss://write.example.com".to_string(), Some("write".to_string()));
+        app.add_relay(
+            "wss://relay.example.com".to_string(),
+            Some("both".to_string()),
+        );
+        app.add_relay(
+            "wss://read.example.com".to_string(),
+            Some("read".to_string()),
+        );
+        app.add_relay(
+            "wss://write.example.com".to_string(),
+            Some("write".to_string()),
+        );
     }
 
     /// Parity with C-ABI `nmp_app_add_relay(url, NULL)`:

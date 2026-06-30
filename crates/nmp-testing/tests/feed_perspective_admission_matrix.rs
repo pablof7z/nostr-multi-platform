@@ -8,8 +8,8 @@
 //!   * a compiled admission predicate ([`nmp_feed::AdmitExpr`] for static sets /
 //!     `#t` tag terms / a live framework projection for reactive scopes) — never
 //!     an app closure;
-//!   * internal acquisition interests (proven in the `nmp-defaults` open/close
-//!     integration suite).
+//!   * internal acquisition interests (proven in the explicit composition
+//!     open/close integration suite).
 //!
 //! The resolution projections used here are the SAME single-source mechanisms the
 //! compiler reuses (D4): [`nmp_nip02::ActiveFollowSet`] (kind:3),

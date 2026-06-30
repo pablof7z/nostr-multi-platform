@@ -34,7 +34,10 @@ fn insert_registers_event_in_relay_index() {
         .unwrap();
 
     let ids = store.list_events_seen_on(RELAY_A).unwrap();
-    assert!(ids.contains(&id), "inserted event must appear in relay A index");
+    assert!(
+        ids.contains(&id),
+        "inserted event must appear in relay A index"
+    );
 }
 
 /// Re-delivering the same event from relay B registers it in both indexes.
@@ -74,9 +77,15 @@ fn relay_index_is_relay_scoped() {
     let ids_a = store.list_events_seen_on(RELAY_A).unwrap();
     let ids_b = store.list_events_seen_on(RELAY_B).unwrap();
     assert!(ids_a.contains(&id_a), "event A must be in relay A index");
-    assert!(!ids_a.contains(&id_b), "event B must NOT be in relay A index");
+    assert!(
+        !ids_a.contains(&id_b),
+        "event B must NOT be in relay A index"
+    );
     assert!(ids_b.contains(&id_b), "event B must be in relay B index");
-    assert!(!ids_b.contains(&id_a), "event A must NOT be in relay B index");
+    assert!(
+        !ids_b.contains(&id_a),
+        "event A must NOT be in relay B index"
+    );
 }
 
 /// After `delete_by_filter` removes an event, it must disappear from the relay
@@ -130,16 +139,28 @@ fn delete_by_relay_only_uses_index_and_respects_provenance() {
     let removed = store
         .delete_by_filter(DeleteFilter::ByRelayOnly(RELAY_A.to_string()))
         .unwrap();
-    assert_eq!(removed, 1, "only the relay-A-exclusive event must be deleted");
+    assert_eq!(
+        removed, 1,
+        "only the relay-A-exclusive event must be deleted"
+    );
 
     // `only_a` is gone from the store and from relay A's index.
     assert!(store.get_by_id(&only_a_id).unwrap().is_none());
-    assert!(!store.list_events_seen_on(RELAY_A).unwrap().contains(&only_a_id));
+    assert!(!store
+        .list_events_seen_on(RELAY_A)
+        .unwrap()
+        .contains(&only_a_id));
 
     // `both` survives and remains indexed on both relays.
     assert!(store.get_by_id(&both_id).unwrap().is_some());
-    assert!(store.list_events_seen_on(RELAY_A).unwrap().contains(&both_id));
-    assert!(store.list_events_seen_on(RELAY_B).unwrap().contains(&both_id));
+    assert!(store
+        .list_events_seen_on(RELAY_A)
+        .unwrap()
+        .contains(&both_id));
+    assert!(store
+        .list_events_seen_on(RELAY_B)
+        .unwrap()
+        .contains(&both_id));
 }
 
 /// An unknown relay returns an empty list.
@@ -171,7 +192,10 @@ fn replaceable_supersession_removes_old_event_from_relay_index() {
         .unwrap();
 
     let ids = store.list_events_seen_on(RELAY_A).unwrap();
-    assert!(!ids.contains(&old_id), "replaced event must not be in index");
+    assert!(
+        !ids.contains(&old_id),
+        "replaced event must not be in index"
+    );
     assert!(ids.contains(&new_id), "replacing event must be in index");
 }
 
@@ -221,7 +245,10 @@ fn relay_index_backfilled_from_provenance_on_open() {
         // one-shot backfill gate key so the next open re-runs the backfill.
         let inner = store.inner_for_test();
         let mut txn = inner.env.write_txn().expect("write_txn");
-        inner.relay_index.clear(&mut txn).expect("clear relay_index");
+        inner
+            .relay_index
+            .clear(&mut txn)
+            .expect("clear relay_index");
         inner
             .domain_versions
             .delete(&mut txn, b"nmp-relay-index".as_slice())

@@ -55,23 +55,18 @@ fn put_user_emits_host_pinned_kind_9000_with_role_on_p_tag() {
             assert_eq!(event.kind, KIND_PUT_USER);
             assert_eq!(relays, &vec!["wss://groups.example.com".to_string()]);
             assert_eq!(correlation_id.as_deref(), Some("cid-admin"));
-            assert!(
-                event
-                    .tags
-                    .iter()
-                    .any(|t| t == &vec!["h".to_string(), "rust-nostr".to_string()])
-            );
-            assert!(
-                event
-                    .tags
-                    .iter()
-                    .any(|t| t == &vec!["p".to_string(), "a".repeat(64), "admin".to_string()])
-            );
-            assert!(
-                event.tags.iter().any(|t| {
-                    t == &vec!["reason".to_string(), "trusted maintainer".to_string()]
-                })
-            );
+            assert!(event
+                .tags
+                .iter()
+                .any(|t| t == &vec!["h".to_string(), "rust-nostr".to_string()]));
+            assert!(event
+                .tags
+                .iter()
+                .any(|t| t == &vec!["p".to_string(), "a".repeat(64), "admin".to_string()]));
+            assert!(event
+                .tags
+                .iter()
+                .any(|t| { t == &vec!["reason".to_string(), "trusted maintainer".to_string()] }));
         }
         other => panic!("expected publish command, got {other:?}"),
     }
@@ -89,7 +84,9 @@ fn create_invite_fans_out_at_ten_codes_per_event() {
         .iter()
         .map(|cmd| match cmd {
             ActorCommand::Publish(PublishCommand::OwnedUnsignedEventToRelays {
-                event, relays, ..
+                event,
+                relays,
+                ..
             }) => {
                 assert_eq!(event.kind, KIND_CREATE_INVITE);
                 assert_eq!(relays, &vec!["wss://groups.example.com".to_string()]);
@@ -135,15 +132,13 @@ fn invalid_invite_code_is_rejected() {
 fn well_formed_inputs_pass_validation() {
     let mut ctx = ActionContext::default();
     assert!(PutUserAction.start(&mut ctx, put_input()).is_ok());
-    assert!(
-        CreateInviteAction
-            .start(
-                &mut ctx,
-                CreateInviteInput {
-                    group: group(),
-                    codes: vec!["alpha".to_string()]
-                }
-            )
-            .is_ok()
-    );
+    assert!(CreateInviteAction
+        .start(
+            &mut ctx,
+            CreateInviteInput {
+                group: group(),
+                codes: vec!["alpha".to_string()]
+            }
+        )
+        .is_ok());
 }

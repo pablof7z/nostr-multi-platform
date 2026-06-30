@@ -354,7 +354,7 @@ fn action_namespace_positive_fixture_fires() {
         "positive fixture must emit action_namespace finding; stdout:\n{}",
         stdout
     );
-    for token in ["nip29.post_chat_message", "nip29.react_in_group"] {
+    for token in ["nip29.post_chat_message", "nip29.publish_group_event"] {
         assert!(
             stdout.contains(token),
             "action_namespace positive must name `{}`; stdout:\n{}",

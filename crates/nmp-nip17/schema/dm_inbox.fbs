@@ -3,13 +3,9 @@ namespace nmp.nip17;
 // Typed FlatBuffers wire for `nmp_nip17::inbox::DmInboxSnapshot` (the app noun
 // projected onto the snapshot under `projections["nmp.nip17.dm_inbox"]`).
 //
-// This is the typed sidecar counterpart to the authoritative serde JSON of
-// `DmInboxSnapshot`: the generic `Value` projection stays the source of truth
-// (`crates/nmp-app-template/src/runtimes.rs` still registers it via
-// `register_snapshot_projection`), and this buffer is emitted ALONGSIDE it in
-// every `SnapshotFrame`'s `typed_projections` sidecar (ADR-0037). A host with a
-// `NDMI` decoder prefers this typed payload; an un-updated host falls back to
-// the generic `Value` subtree. Purely additive (Wave A).
+// This is the typed sidecar for the `DmInboxSnapshot` emitted by
+// `nmp_nip17::register_runtime` in every `SnapshotFrame`'s
+// `typed_projections` sidecar (ADR-0037).
 //
 // Field-for-field mirror of the Rust structs (raw protocol values only):
 //   * String fields are required (non-optional in the serde struct).

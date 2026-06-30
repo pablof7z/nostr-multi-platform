@@ -3,7 +3,7 @@
 //! The low-level tests drive `pump::drain_inbox` directly with a seeded
 //! `KernelReducer` so each `CommandApplyOutcome` arm and the bounded-drain
 //! budget are asserted in isolation. The high-level tests go through the public
-//! `BrowserAppBuilder` to prove `register_defaults` wiring and the command
+//! `BrowserAppBuilder` to prove `explicit owner composition` wiring and the command
 //! inbox round-trip.
 
 use std::cell::{Cell, RefCell};

@@ -93,7 +93,10 @@ mod tests {
     #[test]
     fn idempotent_on_already_canonical() {
         let once = canonicalize_relay_url("wss://relay.example").expect("canonical");
-        assert_eq!(canonicalize_relay_url(&once).as_deref(), Some(once.as_str()));
+        assert_eq!(
+            canonicalize_relay_url(&once).as_deref(),
+            Some(once.as_str())
+        );
     }
 
     #[test]

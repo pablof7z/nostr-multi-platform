@@ -40,7 +40,7 @@ flatbuffers = { workspace = true }
 tracing = "0.1"
 
 [features]
-# Default-on so existing native consumers (nmp-defaults, app FFI crates) are
+# Default-on so existing native consumers (explicit composition, app FFI crates) are
 # byte-for-byte unchanged. Disable with `default-features = false` for wasm32.
 default = ["native"]
 native = ["nmp-core/native"]

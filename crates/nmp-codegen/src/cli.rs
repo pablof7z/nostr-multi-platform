@@ -231,8 +231,8 @@ pub fn run_gen_projection_cache(args: Vec<String>, help: &str) -> Result<(), Str
         }
         "kotlin" => {
             if check {
-                let outcome = nmp_codegen::check_kotlin_projection_cache(&out)
-                    .map_err(|e| e.to_string())?;
+                let outcome =
+                    nmp_codegen::check_kotlin_projection_cache(&out).map_err(|e| e.to_string())?;
                 if outcome.up_to_date {
                     println!(
                         "nmp gen projection-cache --platform kotlin --check: ok ({})",
@@ -254,8 +254,7 @@ pub fn run_gen_projection_cache(args: Vec<String>, help: &str) -> Result<(), Str
                     ))
                 }
             } else {
-                nmp_codegen::generate_kotlin_projection_cache(&out)
-                    .map_err(|e| e.to_string())?;
+                nmp_codegen::generate_kotlin_projection_cache(&out).map_err(|e| e.to_string())?;
                 println!("wrote {}", out.display());
                 Ok(())
             }
@@ -300,7 +299,8 @@ pub fn run_gen_keyed_ref_cache(args: Vec<String>, help: &str) -> Result<(), Stri
         }
         index += 1;
     }
-    let out = out.ok_or_else(|| "--out is required (the app-owned destination path)".to_string())?;
+    let out =
+        out.ok_or_else(|| "--out is required (the app-owned destination path)".to_string())?;
 
     match platform.as_str() {
         "swift" => {
@@ -311,7 +311,11 @@ pub fn run_gen_keyed_ref_cache(args: Vec<String>, help: &str) -> Result<(), Stri
                     println!("nmp gen keyed-ref-cache --check: ok ({})", out.display());
                     Ok(())
                 } else {
-                    Err(stale_message("keyed-ref-cache (swift)", &out, outcome.first_diff_line))
+                    Err(stale_message(
+                        "keyed-ref-cache (swift)",
+                        &out,
+                        outcome.first_diff_line,
+                    ))
                 }
             } else {
                 nmp_codegen::generate_keyed_ref_cache(&out).map_err(|e| e.to_string())?;
@@ -330,7 +334,11 @@ pub fn run_gen_keyed_ref_cache(args: Vec<String>, help: &str) -> Result<(), Stri
                     );
                     Ok(())
                 } else {
-                    Err(stale_message("keyed-ref-cache (kotlin)", &out, outcome.first_diff_line))
+                    Err(stale_message(
+                        "keyed-ref-cache (kotlin)",
+                        &out,
+                        outcome.first_diff_line,
+                    ))
                 }
             } else {
                 nmp_codegen::generate_kotlin_keyed_ref_cache(&out).map_err(|e| e.to_string())?;
@@ -343,7 +351,6 @@ pub fn run_gen_keyed_ref_cache(args: Vec<String>, help: &str) -> Result<(), Stri
         )),
     }
 }
-
 
 /// `nmp gen signer-catalog [--catalog - | <path>] [--check]`.
 ///

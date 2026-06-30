@@ -218,7 +218,6 @@ impl MemState {
             fts: fts::FtsState::default(),
         }
     }
-
 }
 
 // ─── MemEventStore ───────────────────────────────────────────────────────────

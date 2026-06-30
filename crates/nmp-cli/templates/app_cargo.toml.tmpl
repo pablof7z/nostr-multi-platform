@@ -5,13 +5,25 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-# Reusable NMP installer library. The starter calls named installers from its
-# app Rust composition root; production policy is not hidden behind a preset.
-nmp-defaults = {{nmp_defaults_dep}}
 # Native runtime owner: `NmpAppBuilder` plus Rust-native lifecycle helpers.
 nmp-native-runtime = {{nmp_native_runtime_dep}}
 # Kernel substrate — `AppHost`, action/observer traits, the reducer. Your
 # app-owned nouns live in THIS crate, never in `nmp-core` (doctrine D0).
 nmp-core = {{nmp_core_dep}}
+# Substrate floor and selected protocol/runtime owners called directly by
+# `src/lib.rs::register`.
+nmp-substrate = {{nmp_substrate_dep}}
+nmp-nip50 = {{nmp_nip50_dep}}
+nmp-nip02 = {{nmp_nip02_dep}}
+nmp-replies = {{nmp_replies_dep}}
+nmp-nip25 = {{nmp_nip25_dep}}
+nmp-nip18 = {{nmp_nip18_dep}}
+nmp-nip84 = {{nmp_nip84_dep}}
+nmp-nip29 = {{nmp_nip29_dep}}
+nmp-wot = {{nmp_wot_dep}}
+nmp-nip51 = {{nmp_nip51_dep}}
+nmp-nip17 = {{nmp_nip17_dep}}
+nmp-nip22 = {{nmp_nip22_dep}}
+nmp-content = {{nmp_content_dep}}
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

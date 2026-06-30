@@ -74,6 +74,7 @@ fn git_tracked_under(root: &Path, roots: &[&str]) -> Vec<PathBuf> {
     String::from_utf8_lossy(&output.stdout)
         .lines()
         .map(|line| root.join(line))
+        .filter(|path| path.exists())
         .filter(|path| raw_abi_scan_file_in_scope(root, path))
         .collect()
 }

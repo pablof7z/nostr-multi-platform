@@ -25,7 +25,7 @@
 //!   installed, replaced, or rejected after start.
 //! * **dropped late wiring** — a setter invoked after `nmp_app_start`, whose
 //!   value the actor will never read. This finally implements the
-//!   `KernelDiagnostic::LateWiring` promise that `nmp-defaults/src/builder.rs`
+//!   `KernelDiagnostic::LateWiring` promise that `explicit composition/src/builder.rs`
 //!   documented but never built.
 //!
 //! NOT recorded: the hot path. The ledger is written only during host-init

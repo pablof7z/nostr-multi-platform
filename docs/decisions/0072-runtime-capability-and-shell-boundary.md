@@ -4,6 +4,10 @@
 
 Accepted for the architecture redesign direction.
 
+**Supersession note (2026-06-30):** `the deleted defaults bundle` is deleted. Any reference
+below to it as reusable composition is historical context only; current runtime
+composition uses `nmp-substrate` plus explicit protocol/app installers.
+
 ## Context
 
 NMP inherits RMP's core rule: Rust owns durable behavior and each platform
@@ -57,7 +61,7 @@ Runtime crates own runtime lifecycle and platform constraints.
 hosts. Raw app-owned glue, where still present, is delivery-specific and must not
 be taught as reusable framework API.
 `nmp-browser-runtime` owns browser worker/runtime/wasm-bindgen ABI glue and
-browser capability brokerage. `nmp-defaults` remains reusable composition, not a
+browser capability brokerage. `explicit composition` remains reusable composition, not a
 runtime.
 
 Browser durable storage must initialize before product start when durable mode

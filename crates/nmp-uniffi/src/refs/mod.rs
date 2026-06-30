@@ -24,9 +24,9 @@
 //! Release is idempotent (D6): the kernel's refcount map is a no-op on
 //! unknown (namespace, key, consumer_id) triples.
 
-pub mod ref_;
-pub mod profile;
 pub mod embed;
+pub mod profile;
+pub mod ref_;
 
 // ── Shared UniFFI types ───────────────────────────────────────────────────────
 

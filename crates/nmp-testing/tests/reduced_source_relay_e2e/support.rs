@@ -42,15 +42,18 @@ pub(crate) fn uninstall_update_signal() {
     }
 }
 
-pub(crate) fn new_started_default_app() -> *mut NmpApp {
-    let app = new_default_app_before_start();
+pub(crate) fn new_started_reduced_source_app() -> *mut NmpApp {
+    let app = new_reduced_source_app_before_start();
     unsafe { &*app }.start_runtime(256, 8);
     app
 }
 
-pub(crate) fn new_default_app_before_start() -> *mut NmpApp {
+pub(crate) fn new_reduced_source_app_before_start() -> *mut NmpApp {
     let app = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
-    nmp_defaults::register_defaults(unsafe { &mut *app });
+    nmp_substrate::install(
+        unsafe { &mut *app },
+        nmp_substrate::SubstrateConfig::default(),
+    );
     unsafe { &*app }.set_update_listener(Some(std::sync::Arc::new(|bytes: &[u8]| {
         update_signal_callback(std::ptr::null_mut(), bytes.as_ptr(), bytes.len());
     })));

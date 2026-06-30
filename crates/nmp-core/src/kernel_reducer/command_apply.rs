@@ -471,5 +471,4 @@ impl super::KernelReducer {
             Err(reason) => Unsupported { reason },
         }
     }
-
 }

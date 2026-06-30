@@ -20,6 +20,7 @@ nmp-nip18 = { path = "../nmp-nip18" }
 # segment model, embed registry, and wire projection consume
 # `nmp_nostr_id::{NostrUri, parse_nostr_uri, format_nostr_uri}`. Issue #2515.
 nmp-nostr-id = { path = "../nmp-nostr-id" }
+nmp-planner = { path = "../nmp-planner" }
 pulldown-cmark = { version = "0.13", default-features = false }
 regex = "1.11"
 serde = { version = "1.0", features = ["derive"] }

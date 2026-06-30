@@ -83,17 +83,18 @@ fn planner_owns_mechanisms_not_event_kinds() {
 }
 
 #[test]
-fn legacy_relations_crate_claims_no_engagement_semantics() {
+fn no_relations_crate_owner_descriptor() {
     let workspace = ownership_workspace();
     let relations = workspace
         .descriptors
         .iter()
-        .find(|descriptor| descriptor.crate_name == "nmp-relations")
-        .expect("nmp-relations descriptor must exist while the legacy crate remains");
+        .filter(|descriptor| descriptor.crate_name == "nmp-relations")
+        .map(|descriptor| descriptor.source_path.display().to_string())
+        .collect::<Vec<_>>();
     assert!(
-        relations.claims.is_empty(),
-        "nmp-relations is a legacy compatibility adapter, not an engagement owner; claims: {:?}",
-        relations.claims
+        relations.is_empty(),
+        "nmp-relations is a rejected central owner per #2508; descriptors found:\n{}",
+        relations.join("\n")
     );
 }
 

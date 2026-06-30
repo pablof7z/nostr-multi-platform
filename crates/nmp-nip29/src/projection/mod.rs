@@ -21,17 +21,15 @@
 //!   group-detail screen renders).
 
 pub mod discovered;
-pub mod group_events;
 pub mod group_defaults;
+pub mod group_events;
 pub mod joined;
 pub mod roster;
 
 pub use discovered::{DiscoveredGroup, DiscoveredGroupsProjection, DiscoveredGroupsSnapshot};
-pub use group_events::{GroupEvent, GroupEventsProjection, GroupEventsSnapshot};
 pub use group_defaults::{
     GroupDefaultsProjection, GroupDefaultsSnapshot, DEFAULT_PUBLIC_GROUP_RELAY_URL,
 };
+pub use group_events::{GroupEvent, GroupEventsProjection, GroupEventsSnapshot};
 pub use joined::{JoinedGroup, JoinedGroupsProjection, JoinedGroupsSnapshot};
-pub use roster::{
-    GroupRole, GroupRosterMember, GroupRosterProjection, GroupRosterSnapshot,
-};
+pub use roster::{GroupRole, GroupRosterMember, GroupRosterProjection, GroupRosterSnapshot};

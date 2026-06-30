@@ -137,8 +137,9 @@ framework absorbs the Nostr-specific lifecycle work.
 ### Composition
 
 The app Rust crate installs explicit features. Hidden production presets are not
-the architecture. `nmp-defaults` can provide reusable installers, but it must not
-own leaf-app policy.
+the architecture, and the defaults bundle is deleted rather than preserved as a
+compatibility or test helper. Shared substrate construction lives in
+`nmp-substrate`; protocol and app features are composed by name.
 
 ### Runtime
 
@@ -203,7 +204,7 @@ below identifies the migration targets.
 
 | Surface | Disposition | Where it lives now |
 |---|---|---|
-| Legacy preset installer | Tutorial/test/migration compatibility only; not the production app root (ADR-0069) | `nmp-defaults` preset crate |
+| Legacy preset installer | Deleted; not a production, tutorial, test, or migration setup path | none |
 | Low-level acquisition handle | Internal machinery behind typed read sessions (ADR-0070); not app-facing | `nmp-core` substrate |
 | typed read helpers | The surviving product read door | UniFFI native session helpers / wasm structured controls / Rust app helpers |
 | Observed delivery | Internal event-delivery and replay machinery behind typed read sessions (ADR-0070); not app-facing | `nmp-core` substrate |

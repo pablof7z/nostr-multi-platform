@@ -68,8 +68,7 @@ impl NmpApp {
 mod tests {
     use super::*;
 
-    const VALID_PUBKEY: &str =
-        "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
+    const VALID_PUBKEY: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
 
     /// Parity with `nmp_app_resolve_profile_ref`: must not panic.
     #[test]
