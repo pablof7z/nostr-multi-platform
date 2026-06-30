@@ -294,7 +294,8 @@ impl Kernel {
     /// 2. drop the per-consumer demanded-shape map for the key (D5),
     /// 3. drop the `Live` tailing registry slot + the per-coordinate live-owner
     ///    record (idempotent — the per-consumer release may already have done this),
-    /// 4. release the W5 claim-expansion retarget tracker,
+    /// 4. release the W5 claim-expansion retarget tracker and its one-shot
+    ///    registry owner,
     /// 5. stamp the projection (`changed_since_emit`, `claimed_event_content_ver`),
     /// 6. `clear_event_row`: bump the per-key rev to its final post-clear value
     ///    (the value an ADR-0055 `Cleared` row would carry) and IMMEDIATELY remove

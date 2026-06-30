@@ -384,9 +384,8 @@ impl Kernel {
     /// The `event` reference release (ADR-0063), CANONICAL raw-key entry. The
     /// `event` arm of the origin-blind `release_ref` seam routes here with the
     /// raw key. Drop the consumer's refcount, tear the slot down on the last
-    /// owner (incl. the `Live` tailing registry owner, if any), and bump the
-    /// per-key rev. The OneshotApi row is NOT released here — the existing
-    /// `complete_unknown_oneshot` path releases it on EOSE.
+    /// owner (incl. the `Live` tailing registry owner and event-claim one-shot
+    /// owner, if any), and bump the per-key rev.
     pub(in crate::kernel) fn release_event_ref(
         &mut self,
         key: &str,
