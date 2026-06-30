@@ -83,19 +83,18 @@ fn planner_owns_mechanisms_not_event_kinds() {
 }
 
 #[test]
-fn relations_crate_claims_only_visible_relation_action_namespace() {
+fn no_relations_crate_owner_descriptor() {
     let workspace = ownership_workspace();
     let relations = workspace
         .descriptors
         .iter()
-        .find(|descriptor| descriptor.crate_name == "nmp-relations")
-        .expect("nmp-relations descriptor must exist");
+        .filter(|descriptor| descriptor.crate_name == "nmp-relations")
+        .map(|descriptor| descriptor.source_path.display().to_string())
+        .collect::<Vec<_>>();
     assert!(
-        relations.claims.iter().all(|claim| claim.claim_type == "namespace"
-            && claim.scope_kind == "action"
-            && claim.scope_value == "nmp.nip01.visible_note_relations"),
-        "nmp-relations owns the visible-row action namespace only; it must not claim engagement semantics or event kinds: {:?}",
-        relations.claims
+        relations.is_empty(),
+        "nmp-relations is a rejected central owner per #2508; descriptors found:\n{}",
+        relations.join("\n")
     );
 }
 

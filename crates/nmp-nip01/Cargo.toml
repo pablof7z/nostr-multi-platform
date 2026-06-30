@@ -22,8 +22,8 @@ nmp-feed = { path = "../nmp-feed" }
 # NIP-18 reposts are part of the base note-feed surface (a repost is a boost of
 # a kind:1 note shown in the timeline), so this crate decodes them for the feed.
 # Cross-protocol engagement aggregation (reactions/comments/etc.) does NOT live
-# here — it moved to `nmp-relations` (#1728), which is why this crate does not
-# depend on sibling NIP engagement crates.
+# here. Concept owners expose their own active reads; this crate does not depend
+# on sibling NIP engagement crates.
 nmp-nip18 = { path = "../nmp-nip18" }
 nmp-threading = { path = "../nmp-threading" }
 serde = { workspace = true, features = ["derive"] }

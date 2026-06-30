@@ -84,7 +84,7 @@ impl RelationCountInterest {
     #[must_use]
     pub fn zaps(event_id: &str) -> Self {
         Self {
-            namespace: "nmp.nip01.visible_note_relations".to_string(),
+            namespace: "nmp.nip57.event_zaps".to_string(),
             target_event_id: event_id.to_string(),
             tag: "e".to_string(),
         }
@@ -116,9 +116,8 @@ pub struct TargetRelationCounts {
 ///
 /// `Reply` is native to NIP-01 (a kind:1 NIP-10 threaded reply). The other
 /// variants are cross-protocol or sibling-protocol counts produced by this
-/// crate's feed code or an injected [`NoteRelationClassifier`] (see
-/// `nmp-relations`), so this base crate does not own the full cross-protocol
-/// aggregation policy.
+/// crate's feed code or an injected [`NoteRelationClassifier`]. The remaining
+/// bucket vocabulary is #2508 debt; new reads must be concept-owned.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RelationKind {
     Reply,
@@ -143,10 +142,10 @@ pub struct ClassifiedRelation {
 /// it expresses toward a target note, or `None` if it is not a relation event.
 ///
 /// NIP-01 handles its own kind:1 replies natively; this trait is the injection
-/// point for cross-protocol relation sources (reactions, reposts, comments, or
-/// a future app/protocol-supplied relation kind) so that aggregation lives in
-/// `nmp-relations`, not in the base note crate (#1728). Inject a concrete
-/// classifier via [`NoteRelationIndex::new`] or
+/// point for legacy cross-protocol relation sources (reactions, reposts,
+/// comments, or a future app/protocol-supplied relation kind). This seam is
+/// #2508 debt; new surfaces use concept-owned active reads instead of a central
+/// classifier. Inject a concrete classifier via [`NoteRelationIndex::new`] or
 /// [`crate::ModularTimelineProjection::with_relation_classifier`]; absent one,
 /// only kind:1 replies are tallied.
 pub trait NoteRelationClassifier: Send + Sync {
@@ -170,9 +169,9 @@ impl Default for NoteRelationIndex {
 
 impl NoteRelationIndex {
     /// Construct an index with an optional cross-protocol
-    /// [`NoteRelationClassifier`]. Pass
-    /// `Some(nmp_relations::default_note_relation_classifier())` to count
-    /// reactions/reposts/comments alongside the native kind:1 replies.
+    /// [`NoteRelationClassifier`]. Passing `None` counts only native kind:1
+    /// replies. Non-reply engagement counts belong to their concept-owned
+    /// active reads.
     #[must_use]
     pub fn new(classifier: Option<Arc<dyn NoteRelationClassifier>>) -> Self {
         Self {
@@ -382,10 +381,8 @@ mod tests {
         assert_eq!(counts.comments, RelationCount::Known { count: 0 });
     }
 
-    /// Cross-protocol classification (reactions/reposts/comments/etc.) is owned
-    /// by `nmp-relations`; this test verifies the seam — an injected classifier
-    /// drives the non-reply buckets. The concrete cross-protocol classifier and
-    /// its NIP-22/18 coverage are tested in `nmp-relations`.
+    /// This legacy seam allows an injected classifier to drive non-reply
+    /// buckets, but new counts/state belong to concept-owned active reads.
     #[test]
     fn injected_classifier_drives_cross_protocol_counts() {
         struct AlwaysRepost;

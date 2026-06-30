@@ -13,9 +13,9 @@
 //! function is a pure transform over `&[Vec<String>]`. Per-kind decoders
 //! (kind 7 → `ReactionRecord`, etc.) stay in their protocol crates.
 //!
-//! Both the per-NIP relation crates and the `nmp-relations` facade consume
-//! these helpers so tag construction and NIP-10 interpretation are defined
-//! exactly once.
+//! Protocol and app concept owners consume these helpers so tag construction
+//! and NIP-10 interpretation are defined exactly once without a central
+//! relation aggregator.
 
 use serde::{Deserialize, Serialize};
 

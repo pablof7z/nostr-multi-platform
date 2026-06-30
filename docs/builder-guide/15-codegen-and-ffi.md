@@ -341,9 +341,10 @@ The shell receives a pushed binary `UpdateFrame`, applies the
 pull snapshot getter is allowed. Projection keys, output manifests, and change
 gates are runtime/output machinery governed by ADR-0070 and ADR-0055.
 
-Do not model zap counts as a global snapshot projection. Zap counts are
-visible-note relation data: the owning card or detail view claims a bounded
-`nmp.nip01.visible_note_relations` interest for its `#e=<event_id>` target.
+Do not model zap counts as a global snapshot projection or a shared relation
+bucket. The owning card or detail view asks the zap concept owner for a bounded
+target read; app-owned social bars compose concept-owned reads rather than
+claiming a central relation namespace.
 
 ### Internal seam — typed output registration
 

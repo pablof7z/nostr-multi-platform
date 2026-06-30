@@ -112,10 +112,9 @@ pub use view::{
     RepliesDelta, RepliesPayload, RepliesSpec, RepliesState, RepliesView, ThreadDelta, ThreadNode,
     ThreadPayload, ThreadSpec, ThreadState, ThreadView,
 };
-// NOTE: the visible-note-relations action and the cross-protocol relation
-// classifier moved to the `nmp-relations` crate (#1728) — this base crate owns
-// the relation-count vocabulary + the `NoteRelationClassifier` seam, not the
-// cross-protocol aggregation.
+// NOTE: relation-count vocabulary + the `NoteRelationClassifier` seam are
+// tracked #2508 debt. New counts/state must be concept-owned active reads, not
+// a central relation aggregator.
 
 // NOTE: `nmp-nip01` exposes its view types (`RepliesView`, `ThreadView`,
 // `Nip10ModularTimelineView`) as plain public types whose `open` /

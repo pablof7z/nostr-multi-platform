@@ -100,12 +100,6 @@ path = "crates/nmp-replies"
 name = "nmp-substrate"
 path = "crates/nmp-substrate"
 
-# nmp-relations is a legacy compatibility crate with no protected ownership
-# claims. It remains listed because it is an active workspace package.
-[[public_crates]]
-name = "nmp-relations"
-path = "crates/nmp-relations"
-
 [[public_crates]]
 name = "nmp-nip02"
 path = "crates/nmp-nip02"

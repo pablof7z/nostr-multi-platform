@@ -205,39 +205,6 @@ pub(super) const BROWSE_RELAY: ActionBuilder = ActionBuilder {
     doc: "Open or close a relay-pinned browse subscription.",
 };
 
-pub(super) const VISIBLE_NOTE_RELATIONS: ActionBuilder = ActionBuilder {
-    namespace: "nmp.nip01.visible_note_relations",
-    method: "visibleNoteRelations",
-    fields: &[
-        PayloadField {
-            name: "lifecycle",
-            kind: FieldKind::Ubyte,
-            optional: false,
-        },
-        PayloadField {
-            name: "targetEventId",
-            kind: FieldKind::Str,
-            optional: false,
-        },
-        PayloadField {
-            name: "targetKind",
-            kind: FieldKind::Uint,
-            optional: false,
-        },
-        PayloadField {
-            name: "consumerId",
-            kind: FieldKind::Str,
-            optional: false,
-        },
-        PayloadField {
-            name: "targetAddress",
-            kind: FieldKind::Str,
-            optional: true,
-        },
-    ],
-    doc: "Claim or release visible note relation-count subscriptions.",
-};
-
 // ── NIP-29 group actions ──────────────────────────────────────────────────────
 
 pub(super) const DISCOVER_GROUPS: ActionBuilder = ActionBuilder {

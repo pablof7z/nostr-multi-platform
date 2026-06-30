@@ -120,7 +120,7 @@ evaluated in `lattice/mod.rs` order 6, 9, 1, 2, 3, 4, 5, 7, 8):
 | **Register** | `register_typed_snapshot_projection(key, Fn() -> Option<TypedProjectionData>)` from the session/helper runtime |
 | **Delivery** | Appended to the reactive push frame every emit tick — no pull symbol, no polling |
 | **Read** | `snapshot.typed_projections[key]` in the host `apply()` |
-| **Exemplar** | `nmp-nip29/src/register.rs:66`; Chirp `register.rs:371` (`nmp.follow_list`); scoped relation-count projections |
+| **Exemplar** | `nmp-nip29/src/register.rs:66`; Chirp `register.rs:371` (`nmp.follow_list`); scoped concept-owned projections |
 | **Public read lifecycle** | claim/release the typed read-session helper; this card describes only its output transport |
 | **Status** | Structural permanent — `ffi-deprecation-calendar.md:61` ("keep, freeze-locked") |
 
@@ -128,8 +128,9 @@ evaluated in `lattice/mod.rs` order 6, 9, 1, 2, 3, 4, 5, 7, 8):
 screens claim typed read sessions and render typed sidecars from the pushed
 frame. See [15](15-codegen-and-ffi.md) / [17](17-ios-shell.md).
 
-Zap counts are not a global snapshot projection. They are visible-note relation
-state claimed through `nmp.nip01.visible_note_relations`.
+Zap counts are not a global snapshot projection and do not go through a central
+relation namespace. They come from a zap-owned read or an app-owned social bar
+recipe over concept-owned reads.
 
 ## Anti-patterns
 

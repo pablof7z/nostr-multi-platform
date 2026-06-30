@@ -4469,22 +4469,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nmp-relations"
-version = "0.8.4"
-dependencies = [
- "flatbuffers",
- "nmp-core",
- "nmp-kinds",
- "nmp-nip01",
- "nmp-nip18",
- "nmp-nip22",
- "nmp-nip57",
- "nmp-ownership",
- "nmp-planner",
- "serde",
-]
-
-[[package]]
 name = "nmp-relay-url"
 version = "0.8.4"
 dependencies = [

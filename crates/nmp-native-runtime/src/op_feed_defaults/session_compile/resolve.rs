@@ -30,7 +30,9 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use crate::{FeedOpenError, NmpApp};
-use nmp_core::substrate::{KernelEvent, ObservedProjection, ObservedProjectionRegistrar};
+use nmp_core::substrate::{
+    KernelEvent, ObservedProjection, ObservedProjectionReconciler, ObservedProjectionRegistrar,
+};
 use nmp_core::ObservedProjectionSink;
 use nmp_feed::RootAdmission;
 use nmp_kinds::KIND_FOLLOW_SET;
@@ -131,26 +133,30 @@ fn resolve_active_follow_set(
     // A fresh ActiveFollowSet over the same active-account slot, registered as a
     // session observer so kind:3 ingest keeps the predicate live (reactive).
     let follow_set = nmp_nip02::ActiveFollowSet::new(app.active_account_handle());
-    let observer_shape = initial_viewer
-        .as_deref()
-        .map(seed_contacts_shape)
-        .unwrap_or_else(|| InterestShape {
-            kinds: [KIND_CONTACT_LIST].into_iter().collect(),
-            ..Default::default()
-        });
-    let observer_id = app.open_observed_projection(ObservedProjection::from_shape(
-        Arc::clone(&follow_set) as Arc<dyn ObservedProjectionSink>,
+    let resolver_shape_slot = app.active_account_handle();
+    let resolver_live_shape: LiveShape = Arc::new(move || {
+        let viewer = super::super::read_active(&resolver_shape_slot)?;
+        Some(seed_contacts_shape(&viewer))
+    });
+    let follow_observer: Arc<dyn ObservedProjectionSink> = follow_set.clone();
+    let resolver_reconciler = ObservedProjectionReconciler::new(
+        app.observed_projection_registrar_handle(),
+        follow_observer,
         "nmp.feed.resolver.follow_set",
         0,
-        observer_shape,
         64,
-    ));
+        resolver_live_shape,
+    );
+    resolver_reconciler.sync();
+    let resolver_for_identity = resolver_reconciler.clone();
+    let resolver_for_teardown = resolver_reconciler.clone();
     let follow_set_for_identity = Arc::clone(&follow_set);
     let follow_set_for_replay = Arc::clone(&follow_set);
     let replay_slot = app.active_account_handle();
     let replay_pull = app.feed_pull_fn();
     let identity_observer_id = app.register_identity_change_observer(move |_| {
         follow_set_for_identity.notify_account_changed();
+        resolver_for_identity.sync();
         if let Some(viewer) = super::super::read_active(&replay_slot) {
             super::source_replay::replay_source_shape_with_pull(
                 &replay_pull,
@@ -192,9 +198,9 @@ fn resolve_active_follow_set(
         extra_acquisition,
         live_shape,
         reset_hooks: vec![reset_hook],
-        resolver_observer_ids: vec![observer_id],
+        resolver_observer_ids: Vec::new(),
         identity_observer_ids: vec![identity_observer_id],
-        resolver_teardown: Vec::new(),
+        resolver_teardown: vec![Box::new(move || resolver_for_teardown.close_current())],
         active_follow_set: Some(follow_set),
     })
 }

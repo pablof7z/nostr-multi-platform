@@ -47,7 +47,6 @@ members = [
     "crates/nmp-nip78",
     "crates/nmp-ownership",
     "crates/nmp-relay-url",
-    "crates/nmp-relations",
     "crates/nmp-wot",
     "crates/nmp-substrate",
     "crates/nmp-example-login-timeline",
@@ -125,7 +124,7 @@ version = "0.8.4"
 # TODO: migrate the remaining crates to `*.workspace = true`. Done so far:
 #   nmp-core, nmp-nip01, nmp-marmot, nmp-signers.
 #   Still copy-pasting versions: nmp-nip59, nmp-nwc, nmp-nostr-lmdb,
-#   nmp-testing, nmp-content, nmp-relations, nmp-replies,
+#   nmp-testing, nmp-content, nmp-replies,
 #   nmp-threading, nmp-nip23/29/42/57, nmp-cli, nmp-codegen, etc.
 [workspace.dependencies]
 flatbuffers = "25.12.19"

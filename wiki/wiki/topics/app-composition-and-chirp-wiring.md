@@ -41,14 +41,14 @@ or register app-specific projections. It is not product identity.
 owners:
 
 - NIP-29 actions and group projections;
-- visible note relation actions from `nmp-nip01`;
+- concept-owned reply/reaction/repost/zap reads;
 - optional NIP-47 wallet runtime;
-- visible-target zap counts through `nmp.nip01.visible_note_relations`;
+- visible-target zap counts through zap-owned or app-owned read composition;
 - home-feed projection under `nmp.feed.home`;
 - typed home-feed sidecar emission for the same feed window.
 
-The iOS shell links the aggregate app crate, but the grouping, relation,
-visible-target zap, feed, and routing decisions remain in Rust.
+The iOS shell links the aggregate app crate, but the grouping, concept-owned
+read, visible-target zap, feed, and routing decisions remain in Rust.
 
 ## `nmp.feed.home`
 

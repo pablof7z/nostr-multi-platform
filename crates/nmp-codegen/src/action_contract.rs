@@ -33,11 +33,11 @@ pub enum ActionDefaultTier {
     /// so the no-marmot contract set-equality test stays green without a dep on
     /// `nmp-marmot`.
     Marmot,
-    /// Registered by an app-component crate (e.g. `nmp-relations`, `nmp-blossom`)
+    /// Registered by an app-component crate (e.g. `nmp-blossom`)
     /// that is wired in at app-assembly time. Excluded from
     /// [`canonical_default_action_namespaces`] and from the
     /// `contract_matches_modules_and_default_payload_reexports` test so the
-    /// no-blossom / no-relations default build stays green.
+    /// no-blossom default build stays green.
     ComponentRegistered,
 }
 

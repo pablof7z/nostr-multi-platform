@@ -36,7 +36,6 @@ nmp-nip92-types
 nmp-nostr-lmdb
 nmp-nwc
 nmp-planner
-nmp-relations
 nmp-relay-url
 nmp-router
 nmp-signer-iface

@@ -129,8 +129,5 @@ fn reply_counts_handle_out_of_order_and_duplicate_delivery() {
     assert_eq!(root.relation_counts.replies, RelationCount::known(1));
 }
 
-// NOTE: cross-protocol relation counting (reactions/reposts/zaps via the
-// injected `NoteRelationClassifier`) is exercised in `nmp-relations`
-// (`tests/timeline_projection_relations.rs`) — that crate owns the
-// cross-protocol classifier and depends on NIP-18 / NIP-57 (#1728). This base
-// crate only counts its own native kind:1 replies.
+// NOTE: this base crate only counts its own native kind:1 replies. Non-reply
+// engagement counts/state must come from concept-owned active reads.

@@ -28,7 +28,6 @@ pub(crate) fn crate_layer(name: &str) -> Option<u8> {
         | "nmp-feed"
         | "nmp-threading"
         | "nmp-wot"
-        | "nmp-relations"
         | "nmp-marmot"
         | "nmp-intent"
         | "nmp-nwc" => Some(4),
