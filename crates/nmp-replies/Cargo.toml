@@ -1,19 +1,24 @@
 [package]
-name = "nmp-nip22"
+name = "nmp-replies"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 repository.workspace = true
-description = "NIP-22 comment (kind:1111) decode, builder, and threaded comment projection for NMP apps."
+description = "Protocol-owned reply read plans, reply targets, and reply event builder for NMP apps."
 
 [lib]
 crate-type = ["rlib"]
 
 [dependencies]
+flatbuffers = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false }
-nmp-signer-iface = { path = "../nmp-signer-iface" }
 nmp-kinds = { path = "../nmp-kinds" }
+nmp-nip01 = { path = "../nmp-nip01" }
+nmp-nip22 = { path = "../nmp-nip22" }
+nmp-signer-iface = { path = "../nmp-signer-iface" }
+nmp-store = { path = "../nmp-store" }
 serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"] }

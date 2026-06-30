@@ -1,9 +1,8 @@
 //! NIP-22 comment runtime wiring.
 //!
-//! Installs one shared [`CommentThreadProjection`] as the kind:1111 observer
-//! and registers the `nmp.nip22.post_comment` action. Mirrors
-//! [`super::bookmarks_runtime`] — observer + action wired against the same
-//! crate-owned read model.
+//! Installs one shared [`CommentThreadProjection`] as the kind:1111 observer.
+//! App-facing reply writes are registered through `nmp-replies`, which owns the
+//! NIP-10-vs-NIP-22 policy.
 
 use std::sync::Arc;
 
@@ -11,7 +10,7 @@ use nmp_core::substrate::{ActionRegistrar, ObservedProjection, ObservedProjectio
 use nmp_core::ObservedProjectionSink;
 use nmp_nip22::{CommentThreadProjection, KIND_NIP22_COMMENT};
 
-/// Wire the kind:1111 comment-thread projection and the post-comment action.
+/// Wire the kind:1111 comment-thread projection.
 ///
 /// Returns the shared `Arc<CommentThreadProjection>` so an app that renders
 /// comment threads can snapshot it directly; callers that only need the
@@ -29,6 +28,5 @@ pub fn register_comment_runtime(
         512,
     ));
 
-    nmp_nip22::register_actions(app);
     projection
 }

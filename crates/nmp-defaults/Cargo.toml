@@ -53,8 +53,10 @@ nmp-nip25 = { path = "../nmp-nip25" }
 # `nmp.nip84.publish_highlight` action module (yielding default).
 nmp-nip84 = { path = "../nmp-nip84" }
 # NIP-22 comments: `register_comment_runtime` installs the kind:1111
-# `CommentThreadProjection` observer + the `nmp.nip22.post_comment` action.
+# `CommentThreadProjection` observer. App-facing reply writes are registered
+# through nmp-replies so apps do not choose NIP-10 vs NIP-22 themselves.
 nmp-nip22 = { path = "../nmp-nip22" }
+nmp-replies = { path = "../nmp-replies" }
 # NIP-11 relay information document fetcher — native transport (ureq). Made
 # optional so the neutral wasm path does not require native I/O.
 nmp-nip11 = { path = "../nmp-nip11", optional = true }

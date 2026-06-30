@@ -41,7 +41,7 @@ implementation is injected at composition time.
 | 1 | Storage, network transport, concrete signer transport | `nmp-store`, `nmp-nostr-lmdb`, `nmp-network`, `nmp-signers` |
 | 2 | Routing and subscription planning algorithms | `nmp-router`, `nmp-planner` |
 | 3 | Kernel substrate contracts and actor state | `nmp-core`, `nmp-coverage-gate` |
-| 4 | Reusable Nostr protocol/product modules | `nmp-nip01`, `nmp-nip02`, `nmp-nip17`, `nmp-nip18`, `nmp-nip29`, `nmp-nip42`, `nmp-nip47`, `nmp-nip51`, `nmp-nip57`, `nmp-nip60`, `nmp-nip77`, `nmp-nwc`, `nmp-marmot`, `nmp-relations`, `nmp-threading`, `nmp-feed`, `nmp-wot`, `nmp-content`, `nmp-content-fixtures` |
+| 4 | Reusable Nostr protocol/product modules | `nmp-nip01`, `nmp-replies`, `nmp-nip02`, `nmp-nip17`, `nmp-nip18`, `nmp-nip29`, `nmp-nip42`, `nmp-nip47`, `nmp-nip51`, `nmp-nip57`, `nmp-nip60`, `nmp-nip77`, `nmp-nwc`, `nmp-marmot`, `nmp-relations`, `nmp-threading`, `nmp-feed`, `nmp-wot`, `nmp-content`, `nmp-content-fixtures` |
 | 5 | App composition | `nmp-defaults`, `apps/<app>/...` Rust crates |
 | 6 | Platform runtimes, bindings, and deliverables | `nmp-native-runtime`, `nmp-uniffi`, `nmp-browser-runtime`, app-owned delivery crates |
 | Sidecars | Tooling, tests, diagnostics | `nmp-cli`, `nmp-codegen`, `nmp-testing`, app shells |
@@ -236,6 +236,11 @@ Examples:
   relation-count vocabulary (`NoteRelationCounts`), and the
   `NoteRelationClassifier` seam. It does NOT own cross-protocol engagement
   aggregation.
+- `nmp-replies` owns app-facing reply policy and read planning: a `ReplyTarget`
+  plus content becomes either a NIP-10 kind:1 note or a NIP-22 kind:1111
+  comment. Apps do not choose tag names, NIP-10 markers, NIP-22 root scopes, or
+  kind:1-vs-kind:1111; protocol crates supply the lower-level builders and
+  decoders.
 - `nmp-relations` owns cross-protocol social-relation aggregation: the
   `DefaultNoteRelationClassifier` that tallies reactions (NIP-25), reposts
   (NIP-18), zaps (NIP-57), and comments (NIP-22) onto a note, and the

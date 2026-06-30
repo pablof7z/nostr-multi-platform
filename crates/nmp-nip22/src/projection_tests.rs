@@ -13,6 +13,7 @@ fn record(event_id: &str, parent_value: &str, created_at: u64) -> CommentRecord 
         root_tag_name: "E".to_string(),
         root_tag_value: ROOT.to_string(),
         root_kind: "11".to_string(),
+        root_author_pubkey: String::new(),
         parent_tag_name: "e".to_string(),
         parent_tag_value: parent_value.to_string(),
         parent_kind: "1111".to_string(),

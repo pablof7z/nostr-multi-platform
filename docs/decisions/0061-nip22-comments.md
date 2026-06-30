@@ -1,6 +1,7 @@
-# ADR-0061 - NIP-22 Comments (kind:1111) Crate, Projection, Action, and Count
+# ADR-0061 - NIP-22 Comments (kind:1111) Crate, Projection, Reply Owner, and Count
 
-> **Status:** Accepted pending implementation.
+> **Status:** Accepted; updated by #2508 to move app-facing reply policy to
+> `nmp-replies`.
 > **Date:** 2026-06-20.
 > **Issue:** #1633.
 > **Companions:** ADR-0037 (typed sidecar wire), ADR-0038 (OP-feed golden
@@ -17,7 +18,7 @@ belong in an NMP crate, not in app-specific Rust (AGENTS.md "NMP crates vs.
 app-specific crates").
 
 Before this change nmp had no kind:1111 surface at all: no crate, no kind
-literal, no comment action, no comment projection, and no comment-count
+literal, no comment builder, no comment projection, and no comment-count
 aggregation. The Highlighter (hl) app therefore carried a bespoke
 `comments.rs` and could not move its comment/discussion surfaces onto the
 kernel. This was the last fully-blocked Phase-4 content domain
@@ -47,7 +48,10 @@ without changing its on-wire shape.
 ## Decision
 
 Add a per-NIP `nmp-nip22` crate (the established per-NIP pattern; `nmp-nip25`,
-`nmp-nip51`) with three seams, plus a count integration and a defaults runtime.
+`nmp-nip51`) with raw decode/build/projection seams, plus a count integration
+and a defaults runtime. App-facing "reply to this target" behavior belongs in
+`nmp-replies`, because choosing NIP-10/kind:1 vs NIP-22/kind:1111 is reply
+policy, not something every app should reconstruct.
 
 ### 1. Kind constant in `nmp-kinds` (Layer-0)
 
@@ -77,18 +81,20 @@ The tree builder promotes comments whose parent is absent from the bounded
 window to the top level (fetched content stays visible) and breaks
 self-referential parent edges so a malformed thread cannot recurse unbounded.
 
-### 4. Action — `nmp.nip22.post_comment`
+### 4. Reply owner — `nmp-replies`
 
-A standard `ActionModule` (the `nmp.nip25.react` shape) producing an unsigned
-kind:1111 event with the correct two-scope tag set. Serde-typed
-`PostCommentAction { root_tag_name, root_tag_value, root_kind, parent_event_id,
-root_author_pubkey, parent_author_pubkey, content }`. `parent_event_id == None`
-builds a top-level comment (parent mirrors root); `Some(id)` builds a reply
-scoped to that comment. When the caller knows them, the root author is emitted
-as the uppercase `P` notify tag and the parent author as the lowercase `p`
-notify tag (NIP-22 §"who to notify"); both are optional and omitted when
-absent. Validation rejects blank content, an empty/unknown root scope, a
-non-hex `E`-root value, and non-hex parent/author pubkeys.
+The app-facing action is `nmp.replies.reply`, not a protocol-specific comment
+posting action. A caller supplies a target event/address/external
+identifier plus content; Rust resolves local target events when available and
+chooses the correct wire form:
+
+- NIP-10 kind:1 for short-text note targets, using `nmp-nip01`'s marked tag
+  builder.
+- NIP-22 kind:1111 for non-note event targets, address targets, external
+  targets, and replies to existing NIP-22 comments.
+
+`nmp-nip22` still owns the raw kind:1111 builder and decoder, but apps do not
+pass `A`/`E`/`I`, root kind, parent tag names, or NIP-22 notify-tag details.
 
 The read-path decoder is deliberately lenient (Postel's law for a
 projection): it requires the load-bearing root scope tag but tolerates a
@@ -111,10 +117,9 @@ decoder reading old bytes sees a known-zero comment count
 
 ### 6. Defaults runtime — `register_comment_runtime`
 
-Installs the shared `CommentThreadProjection` as the kind:1111 observer and
-registers the post-comment action (mirrors `register_bookmark_runtime`). An app
-that wants comments installs this protocol feature explicitly in its composition
-root.
+Installs the shared `CommentThreadProjection` as the kind:1111 observer. The
+default social composition registers `nmp.replies.reply` through `nmp-replies`
+so reply authoring has one app-facing route.
 
 ## Doctrine compliance
 
@@ -123,8 +128,9 @@ root.
 - **D1 (raw projections).** `CommentRecord`, the thread forest, and the count
   hold raw protocol facts; all labels/symbols/counts-as-strings stay in the
   shell.
-- **D4 (single writer per fact).** Comment threading is owned solely by
-  `nmp-nip22`; the count is owned solely by `note_relations`.
+- **D4 (single writer per fact).** NIP-22 tag construction is owned by
+  `nmp-nip22`; reply protocol selection is owned by `nmp-replies`; the count is
+  owned solely by `note_relations`.
 - **D8 (no polling).** The projection is a push observer; the count index
   ingests on the kernel-event tick.
 
