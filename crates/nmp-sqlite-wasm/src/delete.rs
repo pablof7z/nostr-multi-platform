@@ -2,7 +2,7 @@
 //! (#1007 PR-3).
 //!
 //! Mirrors `nmp-store/src/lmdb/insert_kind5.rs`, minus the index families PR-3
-//! does not yet own (FTS, LRU, interaction counters, freshness — later PRs). The
+//! does not yet own (FTS, LRU, freshness — later PRs). The
 //! tombstone-row read/write half lives in [`crate::tombstones`] (mirroring the
 //! LMDB split between `insert_kind5.rs` and `tombstones.rs`).
 //!

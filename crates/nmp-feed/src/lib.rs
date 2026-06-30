@@ -10,8 +10,8 @@
 //!   policy.
 //! - D5: feed state and emitted snapshots are bounded by the visible window.
 //! - D11: feed engines never claim secondary data such as profiles, missing
-//!   targets, relation counts, or previews; components and sibling modules own
-//!   those dependencies.
+//!   targets, concept-owned counts, or previews; components and sibling modules
+//!   own those dependencies.
 
 mod admit;
 mod flat;

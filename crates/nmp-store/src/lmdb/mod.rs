@@ -61,9 +61,6 @@ mod tombstones;
 // W2 — relay-author-scores LMDB encode/decode layer.
 #[cfg(feature = "lmdb-backend")]
 pub mod relay_scores;
-// Issue #1519 — interaction-counter sidecar.
-#[cfg(feature = "lmdb-backend")]
-mod interaction_counters;
 // Sub-db + env open logic extracted for LOC budget.
 #[cfg(feature = "lmdb-backend")]
 mod open;
@@ -109,9 +106,6 @@ mod tests_gc_stage3;
 // Secondary-index integrity tests (Bug-1: kind:5 a-tag leaks; Bug-2: freshness leaks).
 #[cfg(all(test, feature = "lmdb-backend"))]
 mod tests_secondary_index;
-// Issue #1519 — interaction-counter sidecar tests.
-#[cfg(all(test, feature = "lmdb-backend"))]
-mod tests_interaction_counters;
 // #1521 — typed LMDB health diagnostics: classifier unit tests + integration tests.
 #[cfg(all(test, feature = "lmdb-backend"))]
 mod tests_health_diag;

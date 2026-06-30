@@ -302,7 +302,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         schema_id: "nmp.nip01.opfeed",
         file_identifier: "NOFS",
         // nmp-nip01 op_feed/typed_wire::OP_FEED_SCHEMA_VERSION
-        version: 1,
+        version: 2,
         declaration_policy: DeclarationPolicy::RegistrationGated,
         dependency_versions: &[],
         presence_policy: PresencePolicy::None,

@@ -15,7 +15,7 @@
 //!
 //! To regenerate after an intentional schema change: run this test with
 //! `--nocapture`, copy the `actual op_feed_<name> hex:` line into the matching
-//! `tests/fixtures/op_feed_<name>.fb.hex`, and re-run.
+//! `tests/fixtures/op_feed_<name>_v2.fb.hex`, and re-run.
 
 use nmp_feed::{FeedCursor, FeedPage, FeedWindowMetrics, RootCard, RootFeedSnapshot};
 use nmp_nip01::op_feed::{
@@ -23,10 +23,7 @@ use nmp_nip01::op_feed::{
     OP_FEED_SCHEMA_ID, OP_FEED_SCHEMA_VERSION,
 };
 use nmp_nip01::timeline_projection::RepostAttribution;
-use nmp_nip01::{
-    AuthorDisplay, Nip10ReplyAttribution, NoteRelationCounts, RelationCount, RelationCountInterest,
-    TimelineEventCard,
-};
+use nmp_nip01::{AuthorDisplay, Nip10ReplyAttribution, TimelineEventCard};
 
 /// Deterministic 32-byte hex id from a single byte (`0xab` -> "abab...ab").
 fn hex32(byte: u8) -> String {
@@ -54,15 +51,6 @@ fn root_card() -> TimelineEventCard {
         created_at: 1_700_000_500,
         content: "a thread root".to_string(),
         content_tree: content_tree(),
-        relation_counts: NoteRelationCounts {
-            replies: RelationCount::Known { count: 1 },
-            reactions: RelationCount::Known { count: 0 },
-            reposts: RelationCount::Known { count: 0 },
-            zaps: RelationCount::Loading {
-                interest: RelationCountInterest::zaps(&hex32(0x03)),
-            },
-            comments: RelationCount::Known { count: 2 },
-        },
         reposted_by: None,
         relay_provenance: Vec::new(),
     }
@@ -77,15 +65,6 @@ fn repost_card() -> TimelineEventCard {
         created_at: 1_700_000_000,
         content: "hello world".to_string(),
         content_tree: content_tree(),
-        relation_counts: NoteRelationCounts {
-            replies: RelationCount::Known { count: 2 },
-            reactions: RelationCount::Loading {
-                interest: RelationCountInterest::reactions(&hex32(0xaa)),
-            },
-            reposts: RelationCount::Known { count: 1 },
-            zaps: RelationCount::Known { count: 0 },
-            comments: RelationCount::Known { count: 5 },
-        },
         reposted_by: Some(RepostAttribution {
             author_pubkey: hex32(0x42),
             note_created_at: 1_699_000_000,
@@ -169,26 +148,26 @@ fn encode_hex(bytes: &[u8]) -> String {
 #[test]
 fn op_feed_empty_golden_fixture_is_stable() {
     let wire = encode_op_feed_snapshot(&empty_snapshot());
-    let expected = decode_hex(include_str!("fixtures/op_feed_empty_v1.fb.hex"));
+    let expected = decode_hex(include_str!("fixtures/op_feed_empty_v2.fb.hex"));
     if wire != expected {
-        eprintln!("actual op_feed_empty_v1 hex:\n{}", encode_hex(&wire));
+        eprintln!("actual op_feed_empty_v2 hex:\n{}", encode_hex(&wire));
     }
     assert_eq!(
         wire, expected,
-        "OpFeedSnapshot empty v1 golden fixture drifted"
+        "OpFeedSnapshot empty v2 golden fixture drifted"
     );
 }
 
 #[test]
 fn op_feed_populated_golden_fixture_is_stable() {
     let wire = encode_op_feed_snapshot(&populated_snapshot());
-    let expected = decode_hex(include_str!("fixtures/op_feed_populated_v1.fb.hex"));
+    let expected = decode_hex(include_str!("fixtures/op_feed_populated_v2.fb.hex"));
     if wire != expected {
-        eprintln!("actual op_feed_populated_v1 hex:\n{}", encode_hex(&wire));
+        eprintln!("actual op_feed_populated_v2 hex:\n{}", encode_hex(&wire));
     }
     assert_eq!(
         wire, expected,
-        "OpFeedSnapshot populated v1 golden fixture drifted"
+        "OpFeedSnapshot populated v2 golden fixture drifted"
     );
 }
 
@@ -206,7 +185,7 @@ fn op_feed_golden_fixture_has_nofs_identifier() {
 #[test]
 fn op_feed_schema_id_is_stable() {
     assert_eq!(OP_FEED_SCHEMA_ID, "nmp.nip01.opfeed");
-    assert_eq!(OP_FEED_SCHEMA_VERSION, 1);
+    assert_eq!(OP_FEED_SCHEMA_VERSION, 2);
 }
 
 /// ADR-0037 acceptance criterion: parity between typed and generic. The typed

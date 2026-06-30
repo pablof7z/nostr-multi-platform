@@ -119,21 +119,6 @@ pub struct Inner {
     /// (ADR-0056 §2.1).
     pub(crate) coverage: Database<Bytes, Bytes>,
 
-    /// Interaction-counter sidecar (issue #1519).
-    ///
-    /// Key: `target_event_id(32) || counter_kind(1)`.
-    /// Value: `count(8 bytes, big-endian u64)`.
-    ///
-    /// Written atomically with event inserts and removes — same `RwTxn`
-    /// (ADR-0011). Counts are always consistent with the stored event set.
-    pub(crate) interaction_counters: Database<Bytes, Bytes>,
-
-    /// True when the `nmp-interaction-counters` sub-db schema version is
-    /// known (version == 1). Set false if an unknown future version is
-    /// detected on open, causing reads to fall back to
-    /// `TargetInteractionCounts::default()` (forward-compat safeguard).
-    pub(crate) interaction_counters_usable: bool,
-
     // ── ADR-0058 §4 ingest-log sub-dbs ───────────────────────────────────────
     /// Ingest-log store: seq(8 BE) → JSON(LogEntryPersist).
     pub(crate) ingest_log: Database<Bytes, Bytes>,

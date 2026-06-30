@@ -1,4 +1,4 @@
-# ADR-0061 - NIP-22 Comments (kind:1111) Crate, Projection, Reply Owner, and Count
+# ADR-0061 - NIP-22 Comments (kind:1111) Crate, Projection, and Reply Owner
 
 > **Status:** Accepted; updated by #2508 to move app-facing reply policy to
 > `nmp-replies`.
@@ -18,10 +18,10 @@ belong in an NMP crate, not in app-specific Rust (AGENTS.md "NMP crates vs.
 app-specific crates").
 
 Before this change nmp had no kind:1111 surface at all: no crate, no kind
-literal, no comment builder, no comment projection, and no comment-count
-aggregation. The Highlighter (hl) app therefore carried a bespoke
-`comments.rs` and could not move its comment/discussion surfaces onto the
-kernel. This was the last fully-blocked Phase-4 content domain
+literal, no comment builder, and no comment projection. The Highlighter (hl) app
+therefore carried a bespoke `comments.rs` and could not move its
+comment/discussion surfaces onto the kernel. This was the last fully-blocked
+Phase-4 content domain
 (artifacts/highlights/reactions/bookmarks/search already had nmp APIs).
 
 ## Threading and scope model
@@ -48,18 +48,16 @@ without changing its on-wire shape.
 ## Decision
 
 Add a per-NIP `nmp-nip22` crate (the established per-NIP pattern; `nmp-nip25`,
-`nmp-nip51`) with raw decode/build/projection seams, plus a count integration
-and a defaults runtime. App-facing "reply to this target" behavior belongs in
-`nmp-replies`, because choosing NIP-10/kind:1 vs NIP-22/kind:1111 is reply
-policy, not something every app should reconstruct.
+`nmp-nip51`) with raw decode/build/projection seams plus a defaults runtime.
+App-facing "reply to this target" behavior belongs in `nmp-replies`, because
+choosing NIP-10/kind:1 vs NIP-22/kind:1111 is reply policy, not something every
+app should reconstruct.
 
 ### 1. Kind constant in `nmp-kinds` (Layer-0)
 
 `KIND_NIP22_COMMENT = 1111` is declared in the zero-dependency `nmp-kinds`
-registry (re-exported through `nmp_core::kinds`). This lets `nmp-nip01`'s
-`note_relations` recognise the kind for counting **without** depending on
-`nmp-nip22` for just the integer. The decode/build/projection logic stays in
-`nmp-nip22`.
+registry (re-exported through `nmp_core::kinds`). The decode/build/projection
+logic stays in `nmp-nip22`.
 
 ### 2. Decode — `nmp_nip22::CommentRecord`
 
@@ -103,17 +101,14 @@ root) and treats an absent `K`/`k` as an empty kind hint, mirroring hl's
 battle-tested `record_from_event`. Rejecting otherwise-threadable comments
 that lack a strictly-optional tag would silently drop real content.
 
-### 5. Comment-count aggregation — `nmp-nip01` `note_relations`
+### 5. Comment reads — concept-owned active read
 
-`NoteRelationIndex` gains a `Comment` relation that tallies kind:1111 against
-its UPPERCASE root scope target (the artifact), alongside the existing
-reply/reaction/repost/zap counts. A comment is counted as a `comment`, never
-as a kind:1 `reply` — the two are distinct facts and a node can carry both. A
-`comments:RelationCount` field is appended (after `zaps`) to the
-`NoteRelationCounts` typed sidecar; appending a field is FlatBuffers
-forward/backward compatible, so the OP-feed schema version is unchanged and a
-decoder reading old bytes sees a known-zero comment count
-(`RelationCountInterest::comments` provides the loading-interest seam).
+NIP-22 comment counts and lists are read from the NIP-22/comment owner, not from
+the NIP-01 timeline card. A caller that wants comments for a target opens the
+comment/reply read for that target and receives that concept's count/list,
+loading state, and teardown. A comment is still distinct from a NIP-10 kind:1
+reply; the replies owner decides which concepts to compose for an app-facing
+reply surface.
 
 ### 6. Defaults runtime — `register_comment_runtime`
 
@@ -128,18 +123,16 @@ so reply authoring has one app-facing route.
 - **D1 (raw projections).** `CommentRecord`, the thread forest, and the count
   hold raw protocol facts; all labels/symbols/counts-as-strings stay in the
   shell.
-- **D4 (single writer per fact).** NIP-22 tag construction is owned by
-  `nmp-nip22`; reply protocol selection is owned by `nmp-replies`; the count is
-  owned solely by `note_relations`.
-- **D8 (no polling).** The projection is a push observer; the count index
-  ingests on the kernel-event tick.
+- **D4 (single writer per fact).** NIP-22 tag construction and comment reads
+  are owned by `nmp-nip22`; reply protocol selection is owned by
+  `nmp-replies`.
+- **D8 (no polling).** The projection is a push observer.
 
 ## Alternatives considered
 
-- **Typed FlatBuffers sidecar for the thread (like nip23 articles).** Rejected
-  for the thread itself: comments are consumed by snapshot like
-  reactions/bookmarks, so the in-memory observer matches house style and
-  avoids a second schema. The *count* still rides the existing OP-feed sidecar
-  because comment counts surface on timeline cards.
-- **Bumping `OP_FEED_SCHEMA_VERSION`.** Unnecessary — an appended optional
-  FlatBuffers field is wire-compatible, so old decoders are unaffected.
+- **Typed FlatBuffers sidecar for the thread (like nip23 articles).** Rejected:
+  comments are consumed by target-specific reads like reactions/bookmarks, so
+  the in-memory observer matches house style and avoids a second feed schema.
+- **Putting comment counts on timeline cards.** Rejected by #2508. A timeline
+  card is not the owner of comment semantics, and a fixed social summary would
+  recreate a cross-protocol bucket API.

@@ -20,14 +20,14 @@ use nmp_nip18::try_from_kernel_event as try_from_repost_event;
 use nmp_threading::TimelineBlock;
 use serde::{Deserialize, Serialize};
 
-use crate::kinds::KIND_SHORT_TEXT_NOTE;
 use crate::meta_timeline::{
     ModularTimelinePayload, ModularTimelineSpec, ModularTimelineState, Nip10ModularTimelineView,
 };
-use crate::note_relations::{NoteRelationClassifier, NoteRelationCounts, NoteRelationIndex};
 use crate::profile_display::profile_from_event;
 
+mod card_payload;
 mod render_data;
+use card_payload::RenderPayload;
 pub use render_data::{ContentEventRenderData, ContentProfileRenderData, ContentRenderData};
 
 pub use nmp_feed::{
@@ -61,7 +61,6 @@ pub struct TimelineEventCard {
     /// tree to lay out mentions / embeds and resolves any referenced
     /// profile/event via `refs.profile` / `refs.event` (ADR-0063).
     pub content_tree: ContentTreeWire,
-    pub relation_counts: NoteRelationCounts,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub relay_provenance: Vec<String>,
     /// `None` for ordinary notes; `Some` when this card was surfaced because
@@ -110,12 +109,11 @@ impl TimelineEventCard {
     /// The generic `RootIndexedFeed` engine's `card_builder` closure receives a
     /// root event (and, for a repost wrapper, the superseded target event) and
     /// must produce a `TimelineEventCard` without access to the
-    /// `ModularTimelineProjection`'s internal profile / card / relation caches.
+    /// `ModularTimelineProjection`'s internal profile / card caches.
     /// This is the stateless reuse seam: it invokes the private
-    /// [`Self::from_event`] with empty caches and zero relation counts. Profile
-    /// display, relation counts, and other secondary data are not feed-owned;
-    /// mounted UI components or sibling projections claim and render those
-    /// dependencies independently when they need them.
+    /// [`Self::from_event`]. Profile display and other secondary data are not
+    /// feed-owned; mounted UI components or sibling projections claim and
+    /// render those dependencies independently when they need them.
     ///
     /// For a repost wrapper the `target` arg carries the superseded note so the
     /// NIP-18 `reposted_by` attribution is preserved (L-1 / L-5). For a plain
@@ -138,11 +136,7 @@ impl TimelineEventCard {
     pub fn from_event_for_op_feed(event: &KernelEvent, target: Option<&KernelEvent>) -> Self {
         let Some(repost) = try_from_repost_event(event) else {
             // Plain root: build directly from the event.
-            let counts = NoteRelationCounts::for_note(
-                &event.id,
-                crate::note_relations::TargetRelationCounts::default(),
-            );
-            return Self::from_event(event, counts);
+            return Self::from_event(event);
         };
 
         // Reposted root: the card identity is the superseded target id.
@@ -154,28 +148,13 @@ impl TimelineEventCard {
         // Body source priority: explicit target → embedded inner note → empty.
         let (mut card, note_created_at) = if let Some(target_event) = target {
             // L-5 backward hydration: the target arrived after the wrapper.
-            let counts = NoteRelationCounts::for_note(
-                &target_event.id,
-                crate::note_relations::TargetRelationCounts::default(),
-            );
-            (
-                Self::from_event(target_event, counts),
-                target_event.created_at,
-            )
+            (Self::from_event(target_event), target_event.created_at)
         } else if let Some(inner) = repost.embedded_event.as_ref() {
             // L-1: the wrapper embeds the inner note. `from_event` decodes it.
-            let counts = NoteRelationCounts::for_note(
-                &target_id,
-                crate::note_relations::TargetRelationCounts::default(),
-            );
-            (Self::from_event(event, counts), inner.created_at)
+            (Self::from_event(event), inner.created_at)
         } else {
             // L-3: e-tag-only repost, target not yet local → placeholder body.
-            let counts = NoteRelationCounts::for_note(
-                &target_id,
-                crate::note_relations::TargetRelationCounts::default(),
-            );
-            (Self::from_event(event, counts), event.created_at)
+            (Self::from_event(event), event.created_at)
         };
 
         // Force the card identity to the target id; the engine keys by it.
@@ -189,7 +168,7 @@ impl TimelineEventCard {
         card
     }
 
-    fn from_event(event: &KernelEvent, relation_counts: NoteRelationCounts) -> Self {
+    fn from_event(event: &KernelEvent) -> Self {
         let render_payload = RenderPayload::from_event(event);
         let content_tree = tokenize_with_kind(
             &render_payload.content,
@@ -212,72 +191,9 @@ impl TimelineEventCard {
             created_at: event.created_at,
             content: render_payload.content,
             content_tree,
-            relation_counts,
             relay_provenance: event.relay_provenance.clone(),
             reposted_by,
         }
-    }
-}
-
-struct RenderPayload {
-    content: String,
-    tags: Vec<Vec<String>>,
-    kind: u32,
-    /// `Some` when the source event is a NIP-18 repost with an embedded
-    /// inner note — the embedded note's author. `None` for ordinary notes
-    /// and for e-tag-only reposts (no inner data to attribute).
-    author: Option<String>,
-    /// `Some` when the source event is a NIP-18 repost with an embedded
-    /// inner note — the embedded note's publish time. Used to build the
-    /// repost attribution; the card's own `created_at` stays as the outer
-    /// event's timestamp so the feed cursor bumps it to the top.
-    note_created_at: Option<u64>,
-}
-
-impl RenderPayload {
-    fn from_event(event: &KernelEvent) -> Self {
-        if let Some(repost) = try_from_repost_event(event) {
-            if let Some(inner) = repost.embedded_event {
-                return Self {
-                    content: inner.content,
-                    tags: inner.tags,
-                    kind: inner.kind,
-                    author: Some(inner.author),
-                    note_created_at: Some(inner.created_at),
-                };
-            }
-            // E-tag-only repost: we don't have the inner note locally, so
-            // the card has no original author to attribute. Falls back to
-            // an empty placeholder card whose author + timestamp still
-            // come from the outer kind:6 (caller's existing behaviour).
-            return Self {
-                content: String::new(),
-                tags: Vec::new(),
-                kind: KIND_SHORT_TEXT_NOTE,
-                author: None,
-                note_created_at: None,
-            };
-        }
-
-        Self {
-            content: event.content.clone(),
-            tags: event.tags.clone(),
-            kind: event.kind,
-            author: None,
-            note_created_at: None,
-        }
-    }
-
-    /// Build the `reposted_by` attribution from the *outer* event (the kind:6
-    /// wrapper). Returns `None` for ordinary notes and e-tag-only reposts (no
-    /// inner note → no author/timestamp split). Carries the reposter's raw pubkey
-    /// only — the shell resolves the display name via `refs.profile` (ADR-0063).
-    fn repost_attribution(&self, outer_author: &str) -> Option<RepostAttribution> {
-        let note_created_at = self.note_created_at?;
-        Some(RepostAttribution {
-            author_pubkey: outer_author.to_string(),
-            note_created_at,
-        })
     }
 }
 
@@ -338,7 +254,6 @@ struct Inner {
     state: ModularTimelineState,
     window: nmp_feed::FeedWindowState,
     cards: BoundedMessageMap<String, TimelineEventCard>,
-    relations: NoteRelationIndex,
 }
 
 impl ModularTimelineProjection {
@@ -351,7 +266,6 @@ impl ModularTimelineProjection {
                 state,
                 window: nmp_feed::FeedWindowState::default(),
                 cards: BoundedMessageMap::new(MAX_PROJECTION_MESSAGES),
-                relations: NoteRelationIndex::default(),
             }),
             suppression: empty_suppression_lookup(),
         }
@@ -372,24 +286,6 @@ impl ModularTimelineProjection {
     /// by the app crate (Layer 5+) that depends on both.
     pub fn set_suppression(&mut self, lookup: Arc<dyn SuppressionLookup>) {
         self.suppression = lookup;
-    }
-
-    /// Wire the legacy cross-protocol relation classifier so timeline cards can
-    /// tally non-reply bucket counts alongside native kind:1 replies. Called
-    /// once at composition time, immediately after [`Self::new`], before the
-    /// projection ingests events.
-    ///
-    /// # Design
-    ///
-    /// This is retained only for #2508 legacy debt. New app-facing count/state
-    /// surfaces must use concept-owned active reads rather than a central
-    /// classifier or bucket summary.
-    #[must_use]
-    pub fn with_relation_classifier(self, classifier: Arc<dyn NoteRelationClassifier>) -> Self {
-        if let Ok(mut inner) = self.inner.lock() {
-            inner.relations = NoteRelationIndex::new(Some(classifier));
-        }
-        self
     }
 
     #[must_use]
@@ -503,25 +399,12 @@ impl ObservedProjectionSink for ModularTimelineProjection {
         if profile_from_event(event).is_some() {
             return;
         }
-        let changed_relation_targets = inner.relations.ingest(event);
-        for target in changed_relation_targets {
-            inner.refresh_relation_counts(&target);
-        }
         if has_render_card(event) {
-            let relation_counts = inner.relations.counts_for(&event.id);
-            let card = TimelineEventCard::from_event(event, relation_counts);
+            let card = TimelineEventCard::from_event(event);
             inner.cards.insert(event.id.clone(), card);
         }
         let _ = Nip10ModularTimelineView::on_event_inserted(&ctx, &mut inner.state, event);
         // delta unused — projection takes snapshots directly
-    }
-}
-
-impl Inner {
-    fn refresh_relation_counts(&mut self, event_id: &str) {
-        if let Some(card) = self.cards.get_mut(event_id) {
-            card.relation_counts = self.relations.counts_for(event_id);
-        }
     }
 }
 

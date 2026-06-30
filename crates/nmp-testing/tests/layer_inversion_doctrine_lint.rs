@@ -19,9 +19,8 @@
 //! * **Rule B — rejected relation-summary vocabulary.** Reusable crates must
 //!   not expose global relation summaries, bucket APIs, `NoteRelationCounts`,
 //!   `NoteRelationClassifier`, `TargetInteractionCounts`, or a central
-//!   `nmp-relations` owner. Existing debt is capped to open issues #2508 and
-//!   #2512 only; new concept-owned active reads must live with their concept
-//!   owner instead.
+//!   `nmp-relations` owner. Concept-owned active reads must live with their
+//!   concept owner instead.
 //! * **Rule C — kind-blind transport (`nmp-nip29`).** NIP-29 is kind-blind
 //!   `h`-tag transport: it owns ONE generic publish-into-group verb plus pure
 //!   envelope/admin ops. Kind-specific verbs (`react`/`repost`/`share`) and

@@ -10,7 +10,7 @@
 //!     (budget), not the corpus.
 //!   * `index_survives_reopen` — the index is durable (sub-dbs), not in-memory.
 //!   * `additional_dbs_slot_present` — the three FTS sub-dbs occupy real slots
-//!     (open succeeds with `NMP_ADDITIONAL_DBS` bumped to 17).
+//!     (open succeeds with `NMP_ADDITIONAL_DBS` covering those slots).
 //!   * `tokenizer_version_rebuild` — a fresh open backfills the gate key.
 
 #![cfg(all(test, feature = "lmdb-backend"))]
@@ -169,8 +169,8 @@ fn index_survives_reopen() {
 
 #[test]
 fn additional_dbs_slot_present() {
-    // The three FTS sub-dbs occupy real slots: open succeeds (NMP_ADDITIONAL_DBS
-    // bumped 14 → 17) and a search round-trips end-to-end.
+    // The three FTS sub-dbs occupy real slots: open succeeds and a search
+    // round-trips end-to-end.
     let (store, _d) = store_with_index();
     ins(
         &store,

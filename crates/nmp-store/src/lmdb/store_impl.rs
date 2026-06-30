@@ -196,13 +196,6 @@ impl EventStore for LmdbEventStore {
         dump_mod::dump(&self.inner, out, format)
     }
 
-    fn interaction_counts(
-        &self,
-        target: &crate::types::EventId,
-    ) -> Result<crate::TargetInteractionCounts, crate::StoreError> {
-        super::interaction_counters::read_counts(&self.inner, target)
-    }
-
     // ─── Full-text search (issue #1811) — durable LMDB inverted index ───────────
 
     fn install_search_index_specs(&self, specs: Vec<crate::text_search::CompiledIndexSpec>) {

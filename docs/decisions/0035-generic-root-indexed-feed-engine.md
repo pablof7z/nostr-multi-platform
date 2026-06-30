@@ -87,10 +87,10 @@ pointers into `nostr:` URIs, or otherwise turn a rendered edge into a new
 acquisition request.
 
 Why: a feed is a bounded indexing and viewport machine. Missing targets,
-profiles, ancestors, relation counts, previews, and other secondary data are
-dependencies of the component or sibling module that renders or calculates with
-them. Putting those claims in the feed would couple the feed primitive to one
-protocol's event model and make it an oversized building block.
+profiles, ancestors, concept-owned counts, previews, and other secondary data
+are dependencies of the component or sibling module that renders or calculates
+with them. Putting those claims in the feed would couple the feed primitive to
+one protocol's event model and make it an oversized building block.
 
 Consequence: missing roots remain bounded pending feed state until the root
 arrives through normal ingest, a perspective reset clears the feed, or D5

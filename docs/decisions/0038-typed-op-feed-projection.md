@@ -21,7 +21,7 @@ typed FlatBuffers sidecar owned by `nmp-nip01`:
 
 - `schema_id = "nmp.nip01.opfeed"`
 - `file_identifier = "NOFS"`
-- `schema_version = 1`
+- `schema_version = 2`
 - root table: `OpFeedSnapshot`
 
 `OpFeedSnapshot` carries root cards, reply attribution, and the feed-window
@@ -30,6 +30,10 @@ sub-buffer. It reuses existing typed tables where ownership already exists:
 - `TimelineEventCard` from `nmp-nip01`;
 - content-tree sub-buffers from `nmp-content`;
 - feed-window bytes from `nmp-feed`.
+
+Schema version 2 removes social/action-row metric fields from timeline cards.
+Those facts are opened through their concept owners when a host needs them; the
+OP-feed projection stays a raw feed/card surface.
 
 `nmp-nip01` owns the encoder/decoder and descriptor constants. The composition
 root registers the typed projection by snapshotting the OP-feed engine and

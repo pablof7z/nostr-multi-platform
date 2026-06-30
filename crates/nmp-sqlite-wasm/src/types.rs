@@ -1,7 +1,7 @@
 //! Crate-local value types for the PR-5 engine surface (#1007).
 //!
 //! GC budgets/reports, the delete filter, dump stats, the replaceable-freshness
-//! key, interaction counts, and the domain-migration staging buffer — each a
+//! key and the domain-migration staging buffer — each a
 //! field-for-field mirror of its `nmp_store` counterpart (`types::gc`,
 //! `types::outcomes`, `domain_migration`, `ReplaceableKey`). The crate cannot
 //! depend on `nmp-store` (Cargo cycle — see the crate-level docs), so the
@@ -179,21 +179,6 @@ impl ReplaceableKey {
             }
         }
     }
-}
-
-// ─── Interaction counts (mirror nmp_store::TargetInteractionCounts) ─────────────
-
-/// Aggregate interaction counts for one target event id.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct TargetInteractionCounts {
-    /// kind:1 events that reply-/root-/bare-`e`-tag the target.
-    pub replies: u64,
-    /// kind:7 reactions e-tagging the target.
-    pub reactions: u64,
-    /// kind:6 reposts e-tagging the target.
-    pub reposts: u64,
-    /// kind:9735 zap receipts e-tagging the target.
-    pub zaps: u64,
 }
 
 // ─── Domain migration staging (mirror nmp_store::{DomainMigration, MigrationTx}) ─

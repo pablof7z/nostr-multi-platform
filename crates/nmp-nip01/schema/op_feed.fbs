@@ -67,7 +67,7 @@ table RootCard {
 // -----------------------------------------------------------------------------
 
 table OpFeedSnapshot {
-  schema_version:uint32 = 1;     // mirrors OP_FEED_SCHEMA_VERSION
+  schema_version:uint32 = 2;     // mirrors OP_FEED_SCHEMA_VERSION
   // Visible-window root cards, newest-first (the engine emits only the current
   // window — D5).
   cards:[RootCard];

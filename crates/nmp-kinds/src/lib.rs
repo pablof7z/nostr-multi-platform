@@ -63,10 +63,8 @@ pub const KIND_CHAT_MESSAGE: u32 = 14;
 /// NIP-22 comment (kind:1111). A threaded comment on any root — an event
 /// (uppercase `E`), an addressable artifact (uppercase `A`), or external
 /// content (uppercase `I`) — carrying a lowercase parent scope (`e`/`a`/`i`)
-/// for the immediate parent. Declared here as Layer-0 vocabulary so
-/// `nmp-nip01`'s `note_relations` comment-count aggregation can recognise the
-/// kind without depending on `nmp-nip22`; all NIP-22 decode/build/projection
-/// logic lives in `nmp-nip22`.
+/// for the immediate parent. Declared here as Layer-0 vocabulary; all NIP-22
+/// decode/build/projection logic lives in `nmp-nip22`.
 pub const KIND_NIP22_COMMENT: u32 = 1111;
 
 /// NIP-28 channel metadata (kind:41). Replaceable per `nostr::Kind`

@@ -147,22 +147,19 @@ pub(super) fn gc_step(
             for (index_key, id) in &to_reap {
                 // Load the event before deletion to capture the freshness key
                 // (Bug-2 fix: stale replaceable_freshness must be cleaned) and
-                // its kind+tags (#1518: relay×kind index cleanup; #1519: IC decrement).
-                let (freshness_key, kind, event_tags) = match inner
+                // its kind (#1518: relay×kind index cleanup).
+                let (freshness_key, kind) = match inner
                     .lmdb
                     .get_event_by_id(&txn, id)
-                    .map_err(|e| {
-                    StoreError::Io(format!("get_by_id: {e}"))
-                })? {
+                    .map_err(|e| StoreError::Io(format!("get_by_id: {e}")))?
+                {
                     Some(ev) => {
                         let owned = ev.into_owned();
                         let fk = freshness_key_from_event(&owned);
                         let kind = owned.kind.as_u16() as u32;
-                        let tags: Vec<Vec<String>> =
-                            owned.tags.iter().map(|t| t.clone().to_vec()).collect();
-                        (fk, kind, Some(tags))
+                        (fk, kind)
                     }
-                    None => (None, 0, None),
+                    None => (None, 0),
                 };
                 // Remove the index entry first (we already hold its exact key).
                 inner
@@ -193,15 +190,6 @@ pub(super) fn gc_step(
                         .lmdb
                         .delete_freshness(&mut txn, &fk)
                         .map_err(|e| StoreError::Io(format!("expiry delete_freshness: {e}")))?;
-                }
-                // Issue #1519: decrement interaction-counter for expired event.
-                if let Some(ref tags) = event_tags {
-                    super::interaction_counters::apply_on_remove(
-                        inner.interaction_counters,
-                        &mut txn,
-                        kind,
-                        tags,
-                    )?;
                 }
                 tombstones::put(
                     inner.tombstones,
@@ -317,12 +305,12 @@ pub(super) fn gc_step(
                     // K3 Stage D3 backstop.
                     // Use the write txn for the read (heed RwTxn derefs to
                     // RoTxn; mirrors the pattern in delete.rs:by_ids).
-                    let (expiry, freshness_key, guard_fields, kind, event_tags) = match inner
+                    let (expiry, freshness_key, guard_fields, kind) = match inner
                         .lmdb
                         .get_event_by_id(&txn, id)
                         .map_err(|e| StoreError::Io(format!("get_by_id: {e}")))?
                     {
-                        None => (None, None, None, 0, None),
+                        None => (None, None, None, 0),
                         Some(ev) => {
                             let owned = ev.into_owned();
                             let exp = owned.tags.expiration().map(|ts| ts.as_secs());
@@ -340,7 +328,7 @@ pub(super) fn gc_step(
                                     tags.clone(),
                                 ))
                             };
-                            (exp, fk, gf, kind, Some(tags))
+                            (exp, fk, gf, kind)
                         }
                     };
                     let f = Filter::new().id(nostr::EventId::from_slice(id)
@@ -362,15 +350,6 @@ pub(super) fn gc_step(
                     fts::fts_remove_by_id(inner, &mut txn, id)?;
                     // V-118: clean expiry-index using the known expiry timestamp.
                     expiry_index_delete_exact(inner, &mut txn, expiry, id)?;
-                    // Issue #1519: decrement interaction-counter for evicted event.
-                    if let Some(ref tags) = event_tags {
-                        super::interaction_counters::apply_on_remove(
-                            inner.interaction_counters,
-                            &mut txn,
-                            kind,
-                            tags,
-                        )?;
-                    }
                     // Bug-2 fix: delete stale replaceable_freshness row so a
                     // re-fetch after eviction is not wrongly skipped.
                     if let Some(fk) = freshness_key {

@@ -191,95 +191,6 @@ pub mod nmp {
         }
 
         impl ::flatbuffers::SimpleToVerifyInSlice for TimelineBlockKind {}
-        #[deprecated(
-            since = "2.0.0",
-            note = "Use associated constants instead. This will no longer be generated in 2021."
-        )]
-        pub const ENUM_MIN_RELATION_COUNT_STATE: u8 = 0;
-        #[deprecated(
-            since = "2.0.0",
-            note = "Use associated constants instead. This will no longer be generated in 2021."
-        )]
-        pub const ENUM_MAX_RELATION_COUNT_STATE: u8 = 1;
-        #[deprecated(
-            since = "2.0.0",
-            note = "Use associated constants instead. This will no longer be generated in 2021."
-        )]
-        #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_RELATION_COUNT_STATE: [RelationCountState; 2] =
-            [RelationCountState::Known, RelationCountState::Loading];
-
-        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-        #[repr(transparent)]
-        pub struct RelationCountState(pub u8);
-        #[allow(non_upper_case_globals)]
-        impl RelationCountState {
-            pub const Known: Self = Self(0);
-            pub const Loading: Self = Self(1);
-
-            pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 1;
-            pub const ENUM_VALUES: &'static [Self] = &[Self::Known, Self::Loading];
-            /// Returns the variant's name or "" if unknown.
-            pub fn variant_name(self) -> Option<&'static str> {
-                match self {
-                    Self::Known => Some("Known"),
-                    Self::Loading => Some("Loading"),
-                    _ => None,
-                }
-            }
-        }
-        impl ::core::fmt::Debug for RelationCountState {
-            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-                if let Some(name) = self.variant_name() {
-                    f.write_str(name)
-                } else {
-                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
-                }
-            }
-        }
-        impl<'a> ::flatbuffers::Follow<'a> for RelationCountState {
-            type Inner = Self;
-            #[inline]
-            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
-                Self(b)
-            }
-        }
-
-        impl ::flatbuffers::Push for RelationCountState {
-            type Output = RelationCountState;
-            #[inline]
-            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
-                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
-            }
-        }
-
-        impl ::flatbuffers::EndianScalar for RelationCountState {
-            type Scalar = u8;
-            #[inline]
-            fn to_little_endian(self) -> u8 {
-                self.0.to_le()
-            }
-            #[inline]
-            #[allow(clippy::wrong_self_convention)]
-            fn from_little_endian(v: u8) -> Self {
-                let b = u8::from_le(v);
-                Self(b)
-            }
-        }
-
-        impl<'a> ::flatbuffers::Verifiable for RelationCountState {
-            #[inline]
-            fn run_verifier(
-                v: &mut ::flatbuffers::Verifier,
-                pos: usize,
-            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-                u8::run_verifier(v, pos)
-            }
-        }
-
-        impl ::flatbuffers::SimpleToVerifyInSlice for RelationCountState {}
         pub enum ThreadPointerOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -938,620 +849,6 @@ pub mod nmp {
                 ds.field("module_event_ids", &self.module_event_ids());
                 ds.field("module_has_gap", &self.module_has_gap());
                 ds.field("module_root", &self.module_root());
-                ds.finish()
-            }
-        }
-        pub enum RelationCountInterestOffset {}
-        #[derive(Copy, Clone, PartialEq)]
-
-        pub struct RelationCountInterest<'a> {
-            pub _tab: ::flatbuffers::Table<'a>,
-        }
-
-        impl<'a> ::flatbuffers::Follow<'a> for RelationCountInterest<'a> {
-            type Inner = RelationCountInterest<'a>;
-            #[inline]
-            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-                Self {
-                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
-                }
-            }
-        }
-
-        impl<'a> RelationCountInterest<'a> {
-            pub const VT_NAMESPACE: ::flatbuffers::VOffsetT = 4;
-            pub const VT_TARGET_EVENT_ID: ::flatbuffers::VOffsetT = 6;
-            pub const VT_TAG: ::flatbuffers::VOffsetT = 8;
-
-            #[inline]
-            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-                RelationCountInterest { _tab: table }
-            }
-            #[allow(unused_mut)]
-            pub fn create<
-                'bldr: 'args,
-                'args: 'mut_bldr,
-                'mut_bldr,
-                A: ::flatbuffers::Allocator + 'bldr,
-            >(
-                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-                args: &'args RelationCountInterestArgs<'args>,
-            ) -> ::flatbuffers::WIPOffset<RelationCountInterest<'bldr>> {
-                let mut builder = RelationCountInterestBuilder::new(_fbb);
-                if let Some(x) = args.tag {
-                    builder.add_tag(x);
-                }
-                if let Some(x) = args.target_event_id {
-                    builder.add_target_event_id(x);
-                }
-                if let Some(x) = args.namespace {
-                    builder.add_namespace(x);
-                }
-                builder.finish()
-            }
-
-            #[inline]
-            pub fn namespace(&self) -> Option<&'a str> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        RelationCountInterest::VT_NAMESPACE,
-                        None,
-                    )
-                }
-            }
-            #[inline]
-            pub fn target_event_id(&self) -> Option<&'a str> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        RelationCountInterest::VT_TARGET_EVENT_ID,
-                        None,
-                    )
-                }
-            }
-            #[inline]
-            pub fn tag(&self) -> Option<&'a str> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        RelationCountInterest::VT_TAG,
-                        None,
-                    )
-                }
-            }
-        }
-
-        impl ::flatbuffers::Verifiable for RelationCountInterest<'_> {
-            #[inline]
-            fn run_verifier(
-                v: &mut ::flatbuffers::Verifier,
-                pos: usize,
-            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-                v.visit_table(pos)?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "namespace",
-                        Self::VT_NAMESPACE,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "target_event_id",
-                        Self::VT_TARGET_EVENT_ID,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "tag",
-                        Self::VT_TAG,
-                        false,
-                    )?
-                    .finish();
-                Ok(())
-            }
-        }
-        pub struct RelationCountInterestArgs<'a> {
-            pub namespace: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub target_event_id: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub tag: Option<::flatbuffers::WIPOffset<&'a str>>,
-        }
-        impl<'a> Default for RelationCountInterestArgs<'a> {
-            #[inline]
-            fn default() -> Self {
-                RelationCountInterestArgs {
-                    namespace: None,
-                    target_event_id: None,
-                    tag: None,
-                }
-            }
-        }
-
-        pub struct RelationCountInterestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-        }
-        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RelationCountInterestBuilder<'a, 'b, A> {
-            #[inline]
-            pub fn add_namespace(&mut self, namespace: ::flatbuffers::WIPOffset<&'b str>) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    RelationCountInterest::VT_NAMESPACE,
-                    namespace,
-                );
-            }
-            #[inline]
-            pub fn add_target_event_id(
-                &mut self,
-                target_event_id: ::flatbuffers::WIPOffset<&'b str>,
-            ) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    RelationCountInterest::VT_TARGET_EVENT_ID,
-                    target_event_id,
-                );
-            }
-            #[inline]
-            pub fn add_tag(&mut self, tag: ::flatbuffers::WIPOffset<&'b str>) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    RelationCountInterest::VT_TAG,
-                    tag,
-                );
-            }
-            #[inline]
-            pub fn new(
-                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-            ) -> RelationCountInterestBuilder<'a, 'b, A> {
-                let start = _fbb.start_table();
-                RelationCountInterestBuilder {
-                    fbb_: _fbb,
-                    start_: start,
-                }
-            }
-            #[inline]
-            pub fn finish(self) -> ::flatbuffers::WIPOffset<RelationCountInterest<'a>> {
-                let o = self.fbb_.end_table(self.start_);
-                ::flatbuffers::WIPOffset::new(o.value())
-            }
-        }
-
-        impl ::core::fmt::Debug for RelationCountInterest<'_> {
-            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-                let mut ds = f.debug_struct("RelationCountInterest");
-                ds.field("namespace", &self.namespace());
-                ds.field("target_event_id", &self.target_event_id());
-                ds.field("tag", &self.tag());
-                ds.finish()
-            }
-        }
-        pub enum RelationCountOffset {}
-        #[derive(Copy, Clone, PartialEq)]
-
-        pub struct RelationCount<'a> {
-            pub _tab: ::flatbuffers::Table<'a>,
-        }
-
-        impl<'a> ::flatbuffers::Follow<'a> for RelationCount<'a> {
-            type Inner = RelationCount<'a>;
-            #[inline]
-            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-                Self {
-                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
-                }
-            }
-        }
-
-        impl<'a> RelationCount<'a> {
-            pub const VT_STATE: ::flatbuffers::VOffsetT = 4;
-            pub const VT_COUNT: ::flatbuffers::VOffsetT = 6;
-            pub const VT_INTEREST: ::flatbuffers::VOffsetT = 8;
-
-            #[inline]
-            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-                RelationCount { _tab: table }
-            }
-            #[allow(unused_mut)]
-            pub fn create<
-                'bldr: 'args,
-                'args: 'mut_bldr,
-                'mut_bldr,
-                A: ::flatbuffers::Allocator + 'bldr,
-            >(
-                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-                args: &'args RelationCountArgs<'args>,
-            ) -> ::flatbuffers::WIPOffset<RelationCount<'bldr>> {
-                let mut builder = RelationCountBuilder::new(_fbb);
-                builder.add_count(args.count);
-                if let Some(x) = args.interest {
-                    builder.add_interest(x);
-                }
-                builder.add_state(args.state);
-                builder.finish()
-            }
-
-            #[inline]
-            pub fn state(&self) -> RelationCountState {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<RelationCountState>(
-                            RelationCount::VT_STATE,
-                            Some(RelationCountState::Known),
-                        )
-                        .unwrap()
-                }
-            }
-            #[inline]
-            pub fn count(&self) -> u64 {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<u64>(RelationCount::VT_COUNT, Some(0))
-                        .unwrap()
-                }
-            }
-            #[inline]
-            pub fn interest(&self) -> Option<RelationCountInterest<'a>> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<::flatbuffers::ForwardsUOffset<RelationCountInterest>>(
-                            RelationCount::VT_INTEREST,
-                            None,
-                        )
-                }
-            }
-        }
-
-        impl ::flatbuffers::Verifiable for RelationCount<'_> {
-            #[inline]
-            fn run_verifier(
-                v: &mut ::flatbuffers::Verifier,
-                pos: usize,
-            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-                v.visit_table(pos)?
-                    .visit_field::<RelationCountState>("state", Self::VT_STATE, false)?
-                    .visit_field::<u64>("count", Self::VT_COUNT, false)?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<RelationCountInterest>>(
-                        "interest",
-                        Self::VT_INTEREST,
-                        false,
-                    )?
-                    .finish();
-                Ok(())
-            }
-        }
-        pub struct RelationCountArgs<'a> {
-            pub state: RelationCountState,
-            pub count: u64,
-            pub interest: Option<::flatbuffers::WIPOffset<RelationCountInterest<'a>>>,
-        }
-        impl<'a> Default for RelationCountArgs<'a> {
-            #[inline]
-            fn default() -> Self {
-                RelationCountArgs {
-                    state: RelationCountState::Known,
-                    count: 0,
-                    interest: None,
-                }
-            }
-        }
-
-        pub struct RelationCountBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-        }
-        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RelationCountBuilder<'a, 'b, A> {
-            #[inline]
-            pub fn add_state(&mut self, state: RelationCountState) {
-                self.fbb_.push_slot::<RelationCountState>(
-                    RelationCount::VT_STATE,
-                    state,
-                    RelationCountState::Known,
-                );
-            }
-            #[inline]
-            pub fn add_count(&mut self, count: u64) {
-                self.fbb_
-                    .push_slot::<u64>(RelationCount::VT_COUNT, count, 0);
-            }
-            #[inline]
-            pub fn add_interest(
-                &mut self,
-                interest: ::flatbuffers::WIPOffset<RelationCountInterest<'b>>,
-            ) {
-                self.fbb_
-                    .push_slot_always::<::flatbuffers::WIPOffset<RelationCountInterest>>(
-                        RelationCount::VT_INTEREST,
-                        interest,
-                    );
-            }
-            #[inline]
-            pub fn new(
-                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-            ) -> RelationCountBuilder<'a, 'b, A> {
-                let start = _fbb.start_table();
-                RelationCountBuilder {
-                    fbb_: _fbb,
-                    start_: start,
-                }
-            }
-            #[inline]
-            pub fn finish(self) -> ::flatbuffers::WIPOffset<RelationCount<'a>> {
-                let o = self.fbb_.end_table(self.start_);
-                ::flatbuffers::WIPOffset::new(o.value())
-            }
-        }
-
-        impl ::core::fmt::Debug for RelationCount<'_> {
-            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-                let mut ds = f.debug_struct("RelationCount");
-                ds.field("state", &self.state());
-                ds.field("count", &self.count());
-                ds.field("interest", &self.interest());
-                ds.finish()
-            }
-        }
-        pub enum NoteRelationCountsOffset {}
-        #[derive(Copy, Clone, PartialEq)]
-
-        pub struct NoteRelationCounts<'a> {
-            pub _tab: ::flatbuffers::Table<'a>,
-        }
-
-        impl<'a> ::flatbuffers::Follow<'a> for NoteRelationCounts<'a> {
-            type Inner = NoteRelationCounts<'a>;
-            #[inline]
-            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-                Self {
-                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
-                }
-            }
-        }
-
-        impl<'a> NoteRelationCounts<'a> {
-            pub const VT_REPLIES: ::flatbuffers::VOffsetT = 4;
-            pub const VT_REACTIONS: ::flatbuffers::VOffsetT = 6;
-            pub const VT_REPOSTS: ::flatbuffers::VOffsetT = 8;
-            pub const VT_ZAPS: ::flatbuffers::VOffsetT = 10;
-            pub const VT_COMMENTS: ::flatbuffers::VOffsetT = 12;
-
-            #[inline]
-            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-                NoteRelationCounts { _tab: table }
-            }
-            #[allow(unused_mut)]
-            pub fn create<
-                'bldr: 'args,
-                'args: 'mut_bldr,
-                'mut_bldr,
-                A: ::flatbuffers::Allocator + 'bldr,
-            >(
-                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-                args: &'args NoteRelationCountsArgs<'args>,
-            ) -> ::flatbuffers::WIPOffset<NoteRelationCounts<'bldr>> {
-                let mut builder = NoteRelationCountsBuilder::new(_fbb);
-                if let Some(x) = args.comments {
-                    builder.add_comments(x);
-                }
-                if let Some(x) = args.zaps {
-                    builder.add_zaps(x);
-                }
-                if let Some(x) = args.reposts {
-                    builder.add_reposts(x);
-                }
-                if let Some(x) = args.reactions {
-                    builder.add_reactions(x);
-                }
-                if let Some(x) = args.replies {
-                    builder.add_replies(x);
-                }
-                builder.finish()
-            }
-
-            #[inline]
-            pub fn replies(&self) -> Option<RelationCount<'a>> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<::flatbuffers::ForwardsUOffset<RelationCount>>(
-                            NoteRelationCounts::VT_REPLIES,
-                            None,
-                        )
-                }
-            }
-            #[inline]
-            pub fn reactions(&self) -> Option<RelationCount<'a>> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<::flatbuffers::ForwardsUOffset<RelationCount>>(
-                            NoteRelationCounts::VT_REACTIONS,
-                            None,
-                        )
-                }
-            }
-            #[inline]
-            pub fn reposts(&self) -> Option<RelationCount<'a>> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<::flatbuffers::ForwardsUOffset<RelationCount>>(
-                            NoteRelationCounts::VT_REPOSTS,
-                            None,
-                        )
-                }
-            }
-            #[inline]
-            pub fn zaps(&self) -> Option<RelationCount<'a>> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<::flatbuffers::ForwardsUOffset<RelationCount>>(
-                            NoteRelationCounts::VT_ZAPS,
-                            None,
-                        )
-                }
-            }
-            #[inline]
-            pub fn comments(&self) -> Option<RelationCount<'a>> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<::flatbuffers::ForwardsUOffset<RelationCount>>(
-                            NoteRelationCounts::VT_COMMENTS,
-                            None,
-                        )
-                }
-            }
-        }
-
-        impl ::flatbuffers::Verifiable for NoteRelationCounts<'_> {
-            #[inline]
-            fn run_verifier(
-                v: &mut ::flatbuffers::Verifier,
-                pos: usize,
-            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-                v.visit_table(pos)?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<RelationCount>>(
-                        "replies",
-                        Self::VT_REPLIES,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<RelationCount>>(
-                        "reactions",
-                        Self::VT_REACTIONS,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<RelationCount>>(
-                        "reposts",
-                        Self::VT_REPOSTS,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<RelationCount>>(
-                        "zaps",
-                        Self::VT_ZAPS,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<RelationCount>>(
-                        "comments",
-                        Self::VT_COMMENTS,
-                        false,
-                    )?
-                    .finish();
-                Ok(())
-            }
-        }
-        pub struct NoteRelationCountsArgs<'a> {
-            pub replies: Option<::flatbuffers::WIPOffset<RelationCount<'a>>>,
-            pub reactions: Option<::flatbuffers::WIPOffset<RelationCount<'a>>>,
-            pub reposts: Option<::flatbuffers::WIPOffset<RelationCount<'a>>>,
-            pub zaps: Option<::flatbuffers::WIPOffset<RelationCount<'a>>>,
-            pub comments: Option<::flatbuffers::WIPOffset<RelationCount<'a>>>,
-        }
-        impl<'a> Default for NoteRelationCountsArgs<'a> {
-            #[inline]
-            fn default() -> Self {
-                NoteRelationCountsArgs {
-                    replies: None,
-                    reactions: None,
-                    reposts: None,
-                    zaps: None,
-                    comments: None,
-                }
-            }
-        }
-
-        pub struct NoteRelationCountsBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-        }
-        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> NoteRelationCountsBuilder<'a, 'b, A> {
-            #[inline]
-            pub fn add_replies(&mut self, replies: ::flatbuffers::WIPOffset<RelationCount<'b>>) {
-                self.fbb_
-                    .push_slot_always::<::flatbuffers::WIPOffset<RelationCount>>(
-                        NoteRelationCounts::VT_REPLIES,
-                        replies,
-                    );
-            }
-            #[inline]
-            pub fn add_reactions(
-                &mut self,
-                reactions: ::flatbuffers::WIPOffset<RelationCount<'b>>,
-            ) {
-                self.fbb_
-                    .push_slot_always::<::flatbuffers::WIPOffset<RelationCount>>(
-                        NoteRelationCounts::VT_REACTIONS,
-                        reactions,
-                    );
-            }
-            #[inline]
-            pub fn add_reposts(&mut self, reposts: ::flatbuffers::WIPOffset<RelationCount<'b>>) {
-                self.fbb_
-                    .push_slot_always::<::flatbuffers::WIPOffset<RelationCount>>(
-                        NoteRelationCounts::VT_REPOSTS,
-                        reposts,
-                    );
-            }
-            #[inline]
-            pub fn add_zaps(&mut self, zaps: ::flatbuffers::WIPOffset<RelationCount<'b>>) {
-                self.fbb_
-                    .push_slot_always::<::flatbuffers::WIPOffset<RelationCount>>(
-                        NoteRelationCounts::VT_ZAPS,
-                        zaps,
-                    );
-            }
-            #[inline]
-            pub fn add_comments(&mut self, comments: ::flatbuffers::WIPOffset<RelationCount<'b>>) {
-                self.fbb_
-                    .push_slot_always::<::flatbuffers::WIPOffset<RelationCount>>(
-                        NoteRelationCounts::VT_COMMENTS,
-                        comments,
-                    );
-            }
-            #[inline]
-            pub fn new(
-                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-            ) -> NoteRelationCountsBuilder<'a, 'b, A> {
-                let start = _fbb.start_table();
-                NoteRelationCountsBuilder {
-                    fbb_: _fbb,
-                    start_: start,
-                }
-            }
-            #[inline]
-            pub fn finish(self) -> ::flatbuffers::WIPOffset<NoteRelationCounts<'a>> {
-                let o = self.fbb_.end_table(self.start_);
-                ::flatbuffers::WIPOffset::new(o.value())
-            }
-        }
-
-        impl ::core::fmt::Debug for NoteRelationCounts<'_> {
-            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-                let mut ds = f.debug_struct("NoteRelationCounts");
-                ds.field("replies", &self.replies());
-                ds.field("reactions", &self.reactions());
-                ds.field("reposts", &self.reposts());
-                ds.field("zaps", &self.zaps());
-                ds.field("comments", &self.comments());
                 ds.finish()
             }
         }
@@ -2789,14 +2086,13 @@ pub mod nmp {
             pub const VT_CONTENT: ::flatbuffers::VOffsetT = 14;
             pub const VT_CONTENT_TREE_BYTES: ::flatbuffers::VOffsetT = 16;
             pub const VT_CONTENT_RENDER: ::flatbuffers::VOffsetT = 18;
-            pub const VT_RELATION_COUNTS: ::flatbuffers::VOffsetT = 20;
-            pub const VT_HAS_AUTHOR_DISPLAY_NAME: ::flatbuffers::VOffsetT = 22;
-            pub const VT_AUTHOR_DISPLAY_NAME: ::flatbuffers::VOffsetT = 24;
-            pub const VT_HAS_AUTHOR_PICTURE_URL: ::flatbuffers::VOffsetT = 26;
-            pub const VT_AUTHOR_PICTURE_URL: ::flatbuffers::VOffsetT = 28;
-            pub const VT_CONTENT_PREVIEW: ::flatbuffers::VOffsetT = 30;
-            pub const VT_REPOSTED_BY: ::flatbuffers::VOffsetT = 32;
-            pub const VT_RELAY_PROVENANCE: ::flatbuffers::VOffsetT = 34;
+            pub const VT_HAS_AUTHOR_DISPLAY_NAME: ::flatbuffers::VOffsetT = 20;
+            pub const VT_AUTHOR_DISPLAY_NAME: ::flatbuffers::VOffsetT = 22;
+            pub const VT_HAS_AUTHOR_PICTURE_URL: ::flatbuffers::VOffsetT = 24;
+            pub const VT_AUTHOR_PICTURE_URL: ::flatbuffers::VOffsetT = 26;
+            pub const VT_CONTENT_PREVIEW: ::flatbuffers::VOffsetT = 28;
+            pub const VT_REPOSTED_BY: ::flatbuffers::VOffsetT = 30;
+            pub const VT_RELAY_PROVENANCE: ::flatbuffers::VOffsetT = 32;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -2828,9 +2124,6 @@ pub mod nmp {
                 }
                 if let Some(x) = args.author_display_name {
                     builder.add_author_display_name(x);
-                }
-                if let Some(x) = args.relation_counts {
-                    builder.add_relation_counts(x);
                 }
                 if let Some(x) = args.content_render {
                     builder.add_content_render(x);
@@ -2947,19 +2240,6 @@ pub mod nmp {
                     self._tab
                         .get::<::flatbuffers::ForwardsUOffset<ContentRenderData>>(
                             TimelineEventCard::VT_CONTENT_RENDER,
-                            None,
-                        )
-                }
-            }
-            #[inline]
-            pub fn relation_counts(&self) -> Option<NoteRelationCounts<'a>> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<::flatbuffers::ForwardsUOffset<NoteRelationCounts>>(
-                            TimelineEventCard::VT_RELATION_COUNTS,
                             None,
                         )
                 }
@@ -3086,11 +2366,6 @@ pub mod nmp {
                         Self::VT_CONTENT_RENDER,
                         false,
                     )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<NoteRelationCounts>>(
-                        "relation_counts",
-                        Self::VT_RELATION_COUNTS,
-                        false,
-                    )?
                     .visit_field::<bool>(
                         "has_author_display_name",
                         Self::VT_HAS_AUTHOR_DISPLAY_NAME,
@@ -3137,7 +2412,6 @@ pub mod nmp {
             pub content: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub content_tree_bytes: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, u8>>>,
             pub content_render: Option<::flatbuffers::WIPOffset<ContentRenderData<'a>>>,
-            pub relation_counts: Option<::flatbuffers::WIPOffset<NoteRelationCounts<'a>>>,
             pub has_author_display_name: bool,
             pub author_display_name: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub has_author_picture_url: bool,
@@ -3162,7 +2436,6 @@ pub mod nmp {
                     content: None,
                     content_tree_bytes: None,
                     content_render: None,
-                    relation_counts: None,
                     has_author_display_name: false,
                     author_display_name: None,
                     has_author_picture_url: false,
@@ -3238,17 +2511,6 @@ pub mod nmp {
                     .push_slot_always::<::flatbuffers::WIPOffset<ContentRenderData>>(
                         TimelineEventCard::VT_CONTENT_RENDER,
                         content_render,
-                    );
-            }
-            #[inline]
-            pub fn add_relation_counts(
-                &mut self,
-                relation_counts: ::flatbuffers::WIPOffset<NoteRelationCounts<'b>>,
-            ) {
-                self.fbb_
-                    .push_slot_always::<::flatbuffers::WIPOffset<NoteRelationCounts>>(
-                        TimelineEventCard::VT_RELATION_COUNTS,
-                        relation_counts,
                     );
             }
             #[inline]
@@ -3348,7 +2610,6 @@ pub mod nmp {
                 ds.field("content", &self.content());
                 ds.field("content_tree_bytes", &self.content_tree_bytes());
                 ds.field("content_render", &self.content_render());
-                ds.field("relation_counts", &self.relation_counts());
                 ds.field("has_author_display_name", &self.has_author_display_name());
                 ds.field("author_display_name", &self.author_display_name());
                 ds.field("has_author_picture_url", &self.has_author_picture_url());
@@ -3417,7 +2678,7 @@ pub mod nmp {
                 // which contains a valid value in this slot
                 unsafe {
                     self._tab
-                        .get::<u32>(ModularTimelineSnapshot::VT_SCHEMA_VERSION, Some(1))
+                        .get::<u32>(ModularTimelineSnapshot::VT_SCHEMA_VERSION, Some(2))
                         .unwrap()
                 }
             }
@@ -3525,7 +2786,7 @@ pub mod nmp {
             #[inline]
             fn default() -> Self {
                 ModularTimelineSnapshotArgs {
-                    schema_version: 1,
+                    schema_version: 2,
                     blocks: None,
                     cards: None,
                     feed_window_bytes: None,
@@ -3543,7 +2804,7 @@ pub mod nmp {
                 self.fbb_.push_slot::<u32>(
                     ModularTimelineSnapshot::VT_SCHEMA_VERSION,
                     schema_version,
-                    1,
+                    2,
                 );
             }
             #[inline]

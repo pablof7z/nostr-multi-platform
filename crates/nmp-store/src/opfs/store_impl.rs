@@ -459,24 +459,6 @@ impl EventStore for OpfsSqliteEventStore {
         }
     }
 
-    // ─── Interaction counts ─────────────────────────────────────────────────────
-
-    fn interaction_counts(
-        &self,
-        target: &EventId,
-    ) -> Result<crate::TargetInteractionCounts, StoreError> {
-        let c = self
-            .inner
-            .interaction_counts(target)
-            .map_err(conv::store_err)?;
-        Ok(crate::TargetInteractionCounts {
-            replies: c.replies,
-            reactions: c.reactions,
-            reposts: c.reposts,
-            zaps: c.zaps,
-        })
-    }
-
     // ─── Full-text search ────────────────────────────────────────────────────────
     //
     // The OPFS-SQLite engine ships no FTS index yet, so the trait defaults apply:
