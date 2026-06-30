@@ -14,6 +14,11 @@ impl GalleryNativeApp {
     fn new() -> Self {
         let mut app = nmp_native_runtime::new_app();
         register_gallery_composition(&mut app);
+        // ADR-0053 / Workstream-E4 — mirrors nmp_app_gallery_register and
+        // nmp_app_gallery_register_uniffi: the gallery showcases the full
+        // built-in component set, so it must declare that read intent before
+        // start_runtime, or NmpApp::start_runtime aborts (undeclared intent).
+        app.consume_all_builtin_projections();
         Self { app }
     }
 }
