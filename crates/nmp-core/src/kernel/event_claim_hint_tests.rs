@@ -5,11 +5,13 @@
 //! file-size gate as separate ownership areas.
 
 use super::*;
+use crate::kernel::claim_expansion::{Phase, PHASE_1_BUDGET_MS};
 use crate::kernel::{EventShape, RefLiveness};
-use nmp_nostr_id::{NeventData, encode_nevent};
-use nmp_nostr_id::{parse_nostr_uri, NostrUri};
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::subs::WireFrame;
+use nmp_nostr_id::{encode_nevent, NeventData};
+use nmp_nostr_id::{parse_nostr_uri, NostrUri};
+use std::time::{Duration, Instant};
 
 /// Helper: build a 64-hex event id from a single-char prefix (rest zeros).
 fn hex64(prefix: &str) -> String {
@@ -180,6 +182,69 @@ fn resolve_event_ref_parked_with_uri_hint_registers_and_targets_hint_relay() {
             .iter()
             .any(|u| u.contains("hint.publisher.example")),
         "a compiled REQ must target the URI hint relay; got {req_targets:?}"
+    );
+}
+
+/// A bootstrap/content-lane EOSE for a hinted event claim must not release the
+/// claim's OneshotApi owner. Phase 2 mutates that same owner to retarget the
+/// request to the URI hint relay; if EOSE released it first, `advance_to_phase2`
+/// silently returned and the embed stayed pending forever.
+#[test]
+fn bootstrap_eose_preserves_event_claim_owner_for_phase2_hint_retarget() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+    let id = hex64("f3");
+    let hint = "wss://phase2-hint.publisher.example";
+    let bootstrap = "wss://bootstrap-no-match.example";
+    let uri = nevent_uri_with_relays(&id, &[hint]);
+
+    let _ = resolve_event_uri(
+        &mut kernel,
+        &uri,
+        "view-hint-phase2".to_string(),
+        true,
+        false,
+    );
+    let interest_id = kernel
+        .test_claim_interest_id(&id)
+        .expect("hinted event claim must register a pending claim");
+    let sub_id = "sub-bootstrap-no-match".to_string();
+    kernel.register_wire_frames_for_test(&[WireFrame::Req {
+        relay_url: bootstrap.to_string(),
+        sub_id: sub_id.clone(),
+        filter_json: r#"{"ids":["x"],"limit":1}"#.to_string(),
+        interest_id,
+        lifecycle: crate::planner::InterestLifecycle::OneShot,
+    }]);
+
+    kernel.complete_unknown_oneshot(&sub_id);
+    kernel.record_claim_expansion_eose_no_match(&sub_id, bootstrap);
+    assert_eq!(
+        kernel.test_oneshot_in_flight(),
+        1,
+        "claim EOSE must keep the owner alive for Phase-2 hint mutation"
+    );
+
+    let later = Instant::now() + Duration::from_millis(PHASE_1_BUDGET_MS + 100);
+    let _ = kernel.poll_claim_expansion(later);
+    assert_eq!(
+        kernel.test_claim_phase(&id),
+        Some(Phase::Phase2InFlight),
+        "Phase 2 must advance after bootstrap no-match instead of stalling"
+    );
+
+    let req_targets = drained_req_targets(&mut kernel);
+    assert!(
+        req_targets.iter().any(|u| u.contains("phase2-hint")),
+        "Phase 2 must emit a REQ to the URI hint relay; got {req_targets:?}"
+    );
+
+    kernel.test_mark_event_known(&id);
+    let _ = kernel.poll_claim_expansion(Instant::now());
+    assert_eq!(
+        kernel.test_oneshot_in_flight(),
+        0,
+        "claim hit preflight must release the owner after retargeting"
     );
 }
 

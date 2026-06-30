@@ -19,6 +19,28 @@ use super::{
 };
 
 impl Kernel {
+    /// Release the OneshotApi owner backing an event-claim interest.
+    ///
+    /// Event claims keep their one-shot registry owner after the first relay
+    /// EOSE so Phase 2 can replace hints on the same interest. This helper is
+    /// the claim-owned teardown site for Hit, terminal miss, and explicit ref
+    /// release. It also clears any pre-wire bridge entry so a released claim
+    /// cannot be resurrected by a later planner frame.
+    pub(super) fn release_claim_oneshot_owner(&mut self, interest_id: &InterestId) {
+        let token = self
+            .pending_discovery_oneshots
+            .remove(interest_id)
+            .or_else(|| self.oneshot.token_for_interest(interest_id));
+        let Some(token) = token else {
+            return;
+        };
+
+        self.oneshot_subs
+            .retain(|_, (registered_token, _)| *registered_token != token);
+        let registry = self.lifecycle.registry_mut();
+        let _ = self.oneshot.release(registry, token);
+    }
+
     /// Advance a claim to Phase 2 or fill open Phase-2 slots.
     ///
     /// Rebuilds the candidate queue, takes up to `MAX_EXPANSION_CONCURRENCY`
@@ -174,37 +196,38 @@ impl Kernel {
     /// so the reverse index never accumulates stale entries. A debug_assert
     /// at the end verifies the index invariant.
     pub(super) fn terminate_claim(&mut self, iid: InterestId, reason: ClaimTermination) {
-        let Some(claim) = self.pending_claims.get_mut(&iid) else {
-            return;
+        let (primary_id, interest_id, is_terminal_miss) = {
+            let Some(claim) = self.pending_claims.get_mut(&iid) else {
+                return;
+            };
+            let author = claim.author.clone().unwrap_or_default();
+            let primary_id = claim.primary_id.clone();
+            let interest_id = claim.interest_id.clone();
+            let from = match &claim.phase {
+                Phase::Phase1 => "phase1",
+                Phase::Phase2InFlight => "phase2",
+                Phase::Terminal(_) => "terminal",
+            };
+            let to = match &reason {
+                ClaimTermination::Hit => "terminal_hit",
+                ClaimTermination::Exhausted => "terminal_exhausted",
+                ClaimTermination::Budget => "terminal_budget",
+            };
+            let is_terminal_miss = matches!(
+                reason,
+                ClaimTermination::Exhausted | ClaimTermination::Budget
+            );
+            wire_log::log_wire(wire_log::WireLogEvent::ClaimPhaseAdvance {
+                author: &author,
+                from,
+                to,
+                reason: to,
+            });
+            claim.phase = Phase::Terminal(reason);
+            (primary_id, interest_id, is_terminal_miss)
         };
-        let author = claim.author.clone().unwrap_or_default();
-        // Cloned inside the borrow for the terminal-miss teardown below (run
-        // after the borrow ends so `record_event_claim_released` can take
-        // `&mut self`).
-        let primary_id = claim.primary_id.clone();
-        let from = match &claim.phase {
-            Phase::Phase1 => "phase1",
-            Phase::Phase2InFlight => "phase2",
-            Phase::Terminal(_) => "terminal",
-        };
-        let to = match &reason {
-            ClaimTermination::Hit => "terminal_hit",
-            ClaimTermination::Exhausted => "terminal_exhausted",
-            ClaimTermination::Budget => "terminal_budget",
-        };
-        // Compute the terminal-miss decision BEFORE `reason` is moved into
-        // `Phase::Terminal(reason)` below (ClaimTermination is not `Copy`).
-        let is_terminal_miss = matches!(
-            reason,
-            ClaimTermination::Exhausted | ClaimTermination::Budget
-        );
-        wire_log::log_wire(wire_log::WireLogEvent::ClaimPhaseAdvance {
-            author: &author,
-            from,
-            to,
-            reason: to,
-        });
-        claim.phase = Phase::Terminal(reason);
+
+        self.release_claim_oneshot_owner(&interest_id);
 
         // B3: remove all reverse-index entries pointing to this claim
         self.claim_sub_index.retain(|_, v| *v != iid);

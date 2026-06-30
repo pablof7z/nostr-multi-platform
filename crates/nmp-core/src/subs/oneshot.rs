@@ -201,6 +201,18 @@ impl OneshotApi {
             .map(|p| p.identity.clone())
     }
 
+    /// Return the active token for a one-shot interest, if any.
+    ///
+    /// Claim-expansion owns event-claim teardown after the first relay EOSE.
+    /// It needs the token so it can drop the same registry owner that
+    /// [`Self::prepare`] minted, without manufacturing a second owner.
+    pub(crate) fn token_for_interest(&self, interest_id: &InterestId) -> Option<OneshotToken> {
+        self.pending
+            .iter()
+            .find(|(_, p)| p.identity.key.0 == interest_id.0)
+            .map(|(token, _)| *token)
+    }
+
     /// Number of in-flight (registered) oneshots. Diagnostics/tests.
     #[must_use]
     pub fn in_flight(&self) -> usize {

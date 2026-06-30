@@ -418,6 +418,7 @@ impl Kernel {
             .find(|c| c.primary_id == primary_id)
             .map(|c| c.interest_id.clone());
         if let Some(iid) = maybe_iid {
+            self.release_claim_oneshot_owner(&iid);
             // B3: remove all reverse-index entries that pointed to this claim
             self.claim_sub_index.retain(|_, v| *v != iid);
             self.pending_claims.remove(&iid);

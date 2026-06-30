@@ -5,9 +5,9 @@ use std::sync::{Arc, Mutex};
 
 use super::event_claim_released::EventClaimReleasedObserver;
 use super::{EventShape, Kernel, RefLiveness, RefNamespace, RefShape};
-use crate::relay::{DEFAULT_VISIBLE_LIMIT};
-use nmp_network::role::RelayRole;
+use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::subs::WireFrame;
+use nmp_network::role::RelayRole;
 
 fn hex64(prefix: &str) -> String {
     let mut s = prefix.to_string();
@@ -106,6 +106,11 @@ fn terminal_miss_clears_claim_and_pushes_to_release_ring() {
         1,
         "a single relay's EOSE must NOT release the claim (race guard)"
     );
+    assert_eq!(
+        kernel.test_oneshot_in_flight(),
+        1,
+        "a single relay's EOSE must keep the claim owner for Phase-2 retargeting"
+    );
     assert!(
         kernel.event_claim_released().is_empty(),
         "release ring stays empty until the claim genuinely exhausts"
@@ -128,6 +133,11 @@ fn terminal_miss_clears_claim_and_pushes_to_release_ring() {
         kernel.event_claim_released(),
         vec![id.clone()],
         "the released primary_id must be pushed into the ring in arrival order"
+    );
+    assert_eq!(
+        kernel.test_oneshot_in_flight(),
+        0,
+        "terminal miss must release the claim's one-shot registry owner"
     );
 }
 

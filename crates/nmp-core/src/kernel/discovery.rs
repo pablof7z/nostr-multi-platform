@@ -307,9 +307,10 @@ impl Kernel {
     }
 
     /// EOSE seam: the oneshot for `sub_id` has delivered its first stored set.
-    /// Mark the token complete, then drain+release it — the registry owner is
-    /// dropped (the deduped slot GCs when its last owner leaves). No-op for a
-    /// non-oneshot sub-id (D6: never panics).
+    /// Mark the token complete, then release it for ordinary discovery reads.
+    /// Event-claim reads keep the registry owner alive because claim-expansion
+    /// may still retarget that same owner to URI relay hints after this relay's
+    /// no-match EOSE.
     pub(in crate::kernel) fn complete_unknown_oneshot(&mut self, sub_id: &str) {
         let Some((token, _kind)) = self.oneshot_subs.remove(sub_id) else {
             return;
@@ -329,17 +330,21 @@ impl Kernel {
         //
         // The per-relay EOSE is recorded by `record_claim_expansion_eose_no_match`
         // (called immediately after this in the EOSE arm), which removes this
-        // relay's `in_flight_attempts` slot. The claim is released ONLY when the
-        // controller (`poll_claim_expansion`) observes genuine terminal-miss —
-        // `Terminal(Exhausted)` (all candidate relays tried, none in flight) or
-        // `Terminal(Budget)` (total budget elapsed). The `event_claims` teardown
-        // + release-ring fan-out lives in `terminate_claim`, gated on those two
-        // reasons (a `Hit` keeps the row so the projection surfaces the event).
+        // relay's `in_flight_attempts` slot. The claim owner is released ONLY
+        // when the controller observes Hit/Exhausted/Budget or the user releases
+        // the event ref. Releasing it here leaves a pending claim with no
+        // registry owner, so Phase 2 cannot mutate hints on the original
+        // one-shot interest.
+        let claim_expansion_owns_teardown = self.claim_sub_index.contains_key(sub_id);
         self.oneshot.complete(token);
-        // `drain_completed` keeps the idempotent-drain contract; we release
-        // immediately because the kernel reads results from the store/cache,
-        // not from a buffered oneshot payload (idempotent poll model).
+        // `drain_completed` keeps the idempotent-drain contract. Ordinary
+        // discovery releases immediately because the kernel reads results from
+        // the store/cache, not from a buffered oneshot payload; event claims
+        // keep the same token as their Phase-2 retarget owner.
         let _ = self.oneshot.drain_completed();
+        if claim_expansion_owns_teardown {
+            return;
+        }
         let registry = self.lifecycle.registry_mut();
         self.oneshot.release(registry, token);
     }

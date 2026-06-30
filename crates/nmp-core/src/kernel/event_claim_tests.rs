@@ -16,13 +16,13 @@
 
 use super::*;
 use crate::kernel::{EventShape, RefLiveness};
-use nmp_nostr_id::{NaddrData, NeventData, encode_naddr, encode_nevent};
-use nmp_nostr_id::{parse_nostr_uri, NostrUri};
-use crate::refs::{REFS_EVENT_KEY, RefEventStore};
+use crate::refs::{RefEventStore, REFS_EVENT_KEY};
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
-use nmp_network::role::RelayRole;
 use crate::store::{RawEvent, VerifiedEvent};
 use crate::update_envelope::{decode_snapshot_envelope, decode_snapshot_typed_projections};
+use nmp_network::role::RelayRole;
+use nmp_nostr_id::{encode_naddr, encode_nevent, NaddrData, NeventData};
+use nmp_nostr_id::{parse_nostr_uri, NostrUri};
 
 const TEST_AUTHOR_HEX: &str = "abababababababababababababababababababababababababababababababab";
 const TEST_D_TAG: &str = "kind-dispatch";
@@ -161,11 +161,8 @@ fn apply_event_refs(kernel: &mut Kernel, store: &mut RefEventStore) {
     let envelope = decode_snapshot_envelope(&frame).expect("decode snapshot envelope");
     let typed = decode_snapshot_typed_projections(&frame).expect("decode typed projections");
     for entry in typed.iter().filter(|entry| entry.key == REFS_EVENT_KEY) {
-        let outcome = store.apply_sidecar(
-            &entry.payload,
-            envelope.session_id,
-            envelope.snapshot_epoch,
-        );
+        let outcome =
+            store.apply_sidecar(&entry.payload, envelope.session_id, envelope.snapshot_epoch);
         assert!(
             !outcome.decode_failed,
             "refs.event rows emitted by the kernel must pass decode-before-commit"
@@ -215,8 +212,8 @@ fn resolve_event_ref_for_known_event_id_resolves_without_relay() {
     assert_eq!(kernel.event_claims_len_for_test(&id), 1);
 
     let mut event_store = RefEventStore::new();
-    let entry = event_ref_row(&mut kernel, &mut event_store, &id)
-        .expect("refs.event row must be present");
+    let entry =
+        event_ref_row(&mut kernel, &mut event_store, &id).expect("refs.event row must be present");
     assert_eq!(entry.id, id);
     assert_eq!(entry.kind, 1);
     assert_eq!(entry.author_pubkey, TEST_AUTHOR_HEX);
@@ -443,12 +440,22 @@ fn release_event_ref_cancels_claim_expansion_on_empty_set() {
         kernel.test_claim_phase(&id).is_some(),
         "the tracker must be live while a consumer holds the claim"
     );
+    assert_eq!(
+        kernel.test_oneshot_in_flight(),
+        1,
+        "the claim owns one one-shot registry owner while live"
+    );
 
     // First release: a consumer remains, so the tracker stays.
     let _ = release_event_uri_as_ref(&mut kernel, &uri, "view-0");
     assert!(
         kernel.test_claim_phase(&id).is_some(),
         "claim-expansion tracker must persist while any consumer holds the claim"
+    );
+    assert_eq!(
+        kernel.test_oneshot_in_flight(),
+        1,
+        "the one-shot owner must persist while a consumer still holds the claim"
     );
 
     // Last release: the refcount hits zero, so the tracker is cancelled.
@@ -461,5 +468,10 @@ fn release_event_ref_cancels_claim_expansion_on_empty_set() {
     assert!(
         kernel.test_claim_phase(&id).is_none(),
         "the claim-expansion tracker must be gone after the last release"
+    );
+    assert_eq!(
+        kernel.test_oneshot_in_flight(),
+        0,
+        "the final release must drop the claim's one-shot registry owner"
     );
 }
