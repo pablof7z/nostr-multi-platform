@@ -11,17 +11,16 @@ use std::sync::{Arc, Mutex};
 
 use nmp_core::publish::OutboxResolver;
 use nmp_core::slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot};
-use nmp_store::{EventStore, RawEvent, VerifiedEvent};
 use nmp_core::subs::PlanCoverageHook;
 use nmp_core::substrate::{
     ActionModule, ActionRegistrar, BlockedRelayLookup, BlockedRelayLookupRegistrar,
     CoverageHookRegistrar, IngestParser, IngestParserRegistrar, KernelReaderRegistrar,
-    MailboxCache, OutboxRouter,
-    RelayConnectedHook, RelayConnectedHookRegistrar, RelayTextInterceptor,
-    RelayTextInterceptorRegistrar, ReqFrameInterceptor, ReqFrameInterceptorRegistrar,
-    RoutingFactoryRegistrar, RoutingTraceObserver,
+    MailboxCache, OutboxRouter, RelayConnectedHook, RelayConnectedHookRegistrar,
+    RelayTextInterceptor, RelayTextInterceptorRegistrar, ReqFrameInterceptor,
+    ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar, RoutingTraceObserver,
 };
 use nmp_coverage_gate::CoverageGate;
+use nmp_store::{EventStore, RawEvent, VerifiedEvent};
 
 // ─── CompositionSpy ──────────────────────────────────────────────────────────
 

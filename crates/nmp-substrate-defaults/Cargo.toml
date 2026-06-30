@@ -4,13 +4,37 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Wasm-safe default substrate cache/parser wiring shared by nmp-defaults and reducer-owned web composition roots."
+description = "Default substrate cache/parser wiring and AppHost-level substrate construction (register_substrate) shared by nmp-defaults and reducer-owned web composition roots."
+
+[features]
+# Off by default — native consumers enable it through nmp-defaults/native or
+# by explicitly requesting `nmp-substrate-defaults/native`. The browser
+# runtime depends on this crate without any features, which correctly gives
+# a native-free (wasm-safe) build.
+native = [
+    "dep:nmp-nip11",
+    "nmp-core/native",
+    "nmp-router/native",
+]
 
 [dependencies]
 nmp-ownership = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false }
 nmp-nip01 = { path = "../nmp-nip01", default-features = false }
 nmp-router = { path = "../nmp-router", default-features = false }
+# D2 coverage-gate policy: thresholds + back-off rules for the default
+# `set_coverage_hook` installation and the NIP-77 negentropy runtime.
+# Zero `nmp-core` dep (the gate is pure policy data).
+nmp-coverage-gate = { path = "../nmp-coverage-gate" }
+# EventStore trait — needed by the publish-resolver factory closure signature.
+nmp-store = { path = "../nmp-store" }
+# NIP-77 negentropy sync runtime: replaces eligible large one-shot author×kind
+# REQs with negentropy. Shares the `CoverageGate` value with the coverage hook.
+nmp-nip77 = { path = "../nmp-nip77" }
+# NIP-11 relay information document fetcher — native transport (ureq). Optional
+# so the neutral wasm path does not require native I/O. Enabled by the `native`
+# feature above.
+nmp-nip11 = { path = "../nmp-nip11", optional = true }
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"] }
