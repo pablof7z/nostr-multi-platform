@@ -40,7 +40,9 @@ fn browser_group_events_emits_ngev_rows_from_h_tagged_relay_hits() {
         .fire_event_observers_for_test(&KernelEvent {
             id: "11".repeat(32),
             author: "22".repeat(32),
-            kind: nmp_nip29::kinds::KIND_CHAT_MESSAGE,
+            // kind:9 is the NIP-29-routed chat kind, owned by the caller (not
+            // nmp-nip29, which is kind-blind about non-9xxx/3900x kinds).
+            kind: 9,
             created_at: 42,
             tags: vec![vec!["h".to_string(), GROUP_ID.to_string()]],
             content: "hello from a browser group timeline".to_string(),
@@ -54,7 +56,7 @@ fn browser_group_events_emits_ngev_rows_from_h_tagged_relay_hits() {
         snapshot.events[0].content,
         "hello from a browser group timeline"
     );
-    assert_eq!(snapshot.events[0].kind, nmp_nip29::kinds::KIND_CHAT_MESSAGE);
+    assert_eq!(snapshot.events[0].kind, 9);
 }
 
 #[test]

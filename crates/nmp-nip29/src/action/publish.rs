@@ -89,10 +89,9 @@ fn previous_prefixes_from_context(
 /// group: the caller's tags, plus the injected `["h", local_id]` envelope tag
 /// and the `["previous", …]` timeline references read from the store cache.
 ///
-/// This is the single NIP-29 publish route; every group-publishing action
-/// (`publish_group_event`, `react_in_group`, `share_event_in_group`,
-/// `repost_in_group`) flows through it so the envelope is built in exactly one
-/// place.
+/// This is the single NIP-29 publish route; the generic `publish_group_event`
+/// action flows through it so the `h` / `previous` / pin envelope is built in
+/// exactly one place, regardless of the event's kind.
 pub(crate) fn group_publish_plan(
     ctx: &ActionContext,
     group: &GroupId,
