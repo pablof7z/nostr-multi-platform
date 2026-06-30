@@ -29,6 +29,8 @@ mod group_feed;
 mod incremental_apply;
 mod intent;
 mod keyring_forget;
+#[cfg(feature = "marmot")]
+mod marmot;
 mod observed_projection_handle;
 mod passive_start;
 mod prestart_config;

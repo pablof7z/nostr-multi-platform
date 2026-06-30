@@ -48,6 +48,16 @@ impl<S> SnapshotProjectionRegistrar for BrowserAppBuilder<S> {
         g.reducer.register_typed_snapshot_projection(key, f);
     }
 
+    fn register_typed_snapshot_projection_with_time<K, F>(&self, key: K, f: F)
+    where
+        K: Into<String>,
+        F: Fn(u64) -> Option<TypedProjectionData> + Send + Sync + 'static,
+    {
+        let Ok(g) = self.inner.lock() else { return };
+        g.reducer
+            .register_typed_snapshot_projection_with_time(key, f);
+    }
+
     fn declare_consumed_projections<I, K>(&self, keys: I)
     where
         I: IntoIterator<Item = K>,

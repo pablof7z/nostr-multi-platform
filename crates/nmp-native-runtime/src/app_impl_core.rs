@@ -2,8 +2,7 @@
 //! under the 500-LOC ceiling (AGENTS.md file-size rule).
 //!
 //! Covers: `send_cmd`, `show_toast`, `mark_changed_since_emit`,
-//! action-registry methods, composition-ledger helpers,
-//! `set_pending_mls_autopublish`, `take_pending_mls_autopublish`.
+//! action-registry methods, and composition-ledger helpers.
 
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -242,20 +241,6 @@ impl NmpApp {
         };
         self.composition_ledger
             .record(seam, key, key, disposition, None);
-    }
-
-    /// Set the one-shot MLS-autopublish intent (consumed by
-    /// [`Self::take_pending_mls_autopublish`] in `register_with_keys`).
-    pub fn set_pending_mls_autopublish(&self, enabled: bool) {
-        self.pending_mls_autopublish
-            .store(enabled, Ordering::Release);
-    }
-
-    /// Reads the one-shot MLS-autopublish intent and clears it in the same
-    /// atomic step (`swap`), so a second caller cannot re-observe the flag.
-    #[must_use]
-    pub fn take_pending_mls_autopublish(&self) -> bool {
-        self.pending_mls_autopublish.swap(false, Ordering::AcqRel)
     }
 
     /// Route a `nostr:` URI (or bare NIP-19 entity) through the kernel reducer

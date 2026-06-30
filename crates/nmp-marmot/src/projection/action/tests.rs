@@ -1,6 +1,7 @@
 use super::*;
 
 fn test_module() -> MarmotActionModule {
+    use crate::projection::state::MarmotProjection;
     use crate::service::MarmotService;
     use mdk_core::MdkConfig;
     use mdk_sqlite_storage::MdkSqliteStorage;
@@ -9,7 +10,10 @@ fn test_module() -> MarmotActionModule {
     let storage =
         MdkSqliteStorage::new_in_memory().expect("in-memory MDK storage should construct");
     let service = MarmotService::from_storage(storage, Keys::generate(), MdkConfig::default());
-    MarmotActionModule::new(Arc::new(MarmotProjection::new(service, None)))
+    let projection = Arc::new(MarmotProjection::new(service, None));
+    MarmotActionModule::new(crate::runtime::MarmotRuntime::from_projection_for_tests(
+        projection,
+    ))
 }
 
 /// The typed enum's JSON shape MUST accept the supported host-produced

@@ -2,8 +2,8 @@
 //! `lib.rs` to keep each file under the 500-LOC ceiling (AGENTS.md
 //! file-size rule).
 //!
-//! Covers: `ensure_interest`, `dispatch_capability`, `mls_local_nsec`,
-//! `active_local_keys`, `active_account_handle`,
+//! Covers: `ensure_interest`, `dispatch_capability`, `active_local_keys`,
+//! `active_account_handle`,
 //! `register_identity_change_observer`, `event_store_handle`,
 //! `pull_cursor_registry_handle`, `event_observers_handle`,
 //! `command_sender`, `event_by_id`, `routing_trace`,
@@ -24,7 +24,6 @@ use nmp_core::slots::{
     PullCursorRegistryHandleSlot,
 };
 use nmp_core::ObservedProjectionId;
-use zeroize::Zeroizing;
 
 use crate::app_struct::NmpApp;
 
@@ -64,13 +63,6 @@ impl NmpApp {
             correlation_id: request.correlation_id.clone(),
             result_json: r#"{"status":"error","os_status":-50}"#.to_string(),
         })
-    }
-
-    /// Return the active local (nsec-backed) secret key in `nsec1…` bech32
-    /// form, or `None` when no local account is active.
-    #[must_use]
-    pub fn mls_local_nsec(&self) -> Option<Zeroizing<String>> {
-        self.read_handles.mls_local_nsec.lock().ok()?.clone()
     }
 
     /// Clone of the active-local-`nostr::Keys` slot — substrate-generic.
@@ -176,12 +168,9 @@ impl NmpApp {
         self.tx.clone()
     }
 
-    /// Add a signer through the actor-owned identity reducer — the **single
-    /// documented entry point** for all sign-in paths.
+    /// Add a signer through the actor-owned identity reducer - the single
+    /// documented entry point for all sign-in paths.
     pub fn add_signer(&self, source: nmp_core::SignerSource, make_active: bool) {
-        if make_active && matches!(source, nmp_core::SignerSource::LocalNsec(_)) {
-            self.set_pending_mls_autopublish(true);
-        }
         self.send_cmd(ActorCommand::Identity(IdentityCommand::AddSigner {
             source,
             make_active,

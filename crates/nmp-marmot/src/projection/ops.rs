@@ -22,8 +22,9 @@
 //!
 //! [`ingest_signed_event_core`] is the single path driving signed inbound
 //! events into `MarmotService` (1059 welcomes, 445 messages, 30443 KPs).
-//! Legacy kind:443 is no longer ingested. The automatic
-//! [`crate::projection::tap`] raw-event observer is production ingress.
+//! Legacy kind:443 is no longer ingested. The
+//! [`crate::projection::tap::MarmotIngestParser`] installed by
+//! [`crate::install`] is production ingress.
 //!
 //! ## Pending-commit discipline (mdk-api.md §7.7)
 //!
@@ -36,7 +37,7 @@
 //! epoch). We never wedge the group; `clear` is reachable via `clear_pending`.
 //! * `leave_group` is SelfRemove: `commit()` is a documented no-op there.
 
-use nostr::{EventBuilder, JsonUtil, Kind, RelayUrl};
+use nostr::{EventBuilder, JsonUtil, Kind};
 use serde_json::{json, Value};
 
 use mdk_core::prelude::NostrGroupConfigData;
@@ -47,6 +48,8 @@ use crate::projection::state::{hex_encode, InnerHandle};
 
 #[path = "ops/input.rs"]
 mod input;
+#[path = "ops/welcome.rs"]
+mod welcome;
 use input::{
     fill_key_packages_from_cache, group_id_from_hex, parse_pubkeys, parse_relays, resolve_invitees,
     resolve_write_relays, signed_key_package_events,
@@ -139,8 +142,12 @@ pub fn dispatch(
             group_id_hex,
             member_npubs,
         } => remove(h, group_id_hex, member_npubs),
-        MarmotAction::AcceptWelcome { welcome_id_hex } => accept_welcome(h, welcome_id_hex),
-        MarmotAction::DeclineWelcome { welcome_id_hex } => decline_welcome(h, welcome_id_hex),
+        MarmotAction::AcceptWelcome { welcome_id_hex } => {
+            welcome::accept_welcome(h, welcome_id_hex)
+        }
+        MarmotAction::DeclineWelcome { welcome_id_hex } => {
+            welcome::decline_welcome(h, welcome_id_hex)
+        }
         MarmotAction::ClearPending { group_id_hex } => clear_pending(h, group_id_hex),
     };
     match r {
@@ -204,52 +211,6 @@ fn publish_key_package(
     }))
 }
 
-/// NIP-59 gift-wrap each kind:444 welcome rumor for its invitee and publish
-/// the resulting signed kind:1059 INTERNALLY.
-///
-/// Recipient pairing: `welcome_rumors[i]` pairs with `kp_events[i].pubkey`
-/// (the KP author IS the invitee MDK built that welcome for — ground truth,
-/// more reliable than the caller-supplied `invitee_npubs` hint). Length
-/// divergence → wrap every pairable rumor, skip the tail (never panic).
-///
-/// Inbox-routing APPROXIMATION: no NIP-65 inbox resolver for invitees, so the
-/// kind:1059 goes to the GROUP's relays (members fetch from there). **D10
-/// provenance guard**: a group-relay cache miss suppresses wire dispatch —
-/// [`publish_to`](crate::projection::publish::publish_to) refuses an unpinned
-/// kind:1059 (it would leak the Welcome's existence to the author's public
-/// outbox). The signed JSON still appears in the INFORMATIONAL return.
-///
-/// Returns the signed kind:1059 JSONs (INFORMATIONAL — already submitted). A
-/// `wrap_welcome` failure → `Err` (D6 → `{"ok":false,...}`; no panic crosses
-/// a host boundary).
-fn wrap_and_publish_welcomes(
-    h: &InnerHandle<'_>,
-    group_relays: &[RelayUrl],
-    kp_events: &[nostr::Event],
-    rumors: &[nostr::UnsignedEvent],
-) -> Result<Vec<String>, String> {
-    let mut out = Vec::with_capacity(rumors.len());
-    for (i, rumor) in rumors.iter().enumerate() {
-        // Pair rumor i with key-package i's author (the invitee).
-        let Some(kp) = kp_events.get(i) else {
-            // More rumors than key-packages should not happen; skip the
-            // unpairable tail rather than misroute / panic.
-            break;
-        };
-        let receiver = kp.pubkey;
-        let wrapped = h
-            .service()
-            .wrap_welcome(&receiver, rumor.clone())
-            .map_err(|e| e.to_string())?;
-        // kind:1059 is ALREADY signed (NIP-59 ephemeral key) — publish
-        // verbatim, never re-sign. Inbox approximation → group relays
-        // (empty → kernel explicit-target fail-closed).
-        h.publish_explicit(&wrapped, group_relays);
-        out.push(wrapped.as_json());
-    }
-    Ok(out)
-}
-
 fn create_group(
     h: &mut InnerHandle<'_>,
     action: &MarmotAction,
@@ -269,7 +230,7 @@ fn create_group(
     let relays = parse_relays(&urls)?;
     let invitee_npubs = resolve_invitees(invitee_text, invitee_npubs);
     let mut kp_events = signed_key_package_events(signed_key_package_events_json)?;
-    // Fill from kp_cache (populated by the app's raw-event tap when the
+    // Fill from kp_cache (populated by Marmot's ingest parser when the
     // kernel delivers peers' kind:30443 events), then require EVERY requested
     // invitee to have a signed KeyPackage. A partial cache must not silently
     // create a group missing some requested members.
@@ -305,7 +266,7 @@ fn create_group(
     let rumors = pending.welcome_rumors.clone();
     // NIP-59 gift-wrap + internally publish each kind:444 welcome to the
     // group relays (inbox-routing approximation; empty → fail closed).
-    let welcomes = wrap_and_publish_welcomes(h, &relays, &kp_events, &rumors)?;
+    let welcomes = welcome::wrap_and_publish_welcomes(h, &relays, &kp_events, &rumors)?;
     // Events produced + submitted → commit eagerly so the group is not
     // wedged (pending-commit discipline, see module rustdoc). This drops
     // `pending`'s borrow of `h`, so the cache write below is free.
@@ -333,7 +294,7 @@ fn invite(
     let gid = group_id_from_hex(group_id_hex)?;
     let invitee_npubs = resolve_invitees(invitee_text, invitee_npubs);
     let mut kp_events = signed_key_package_events(signed_key_package_events_json)?;
-    // Fill from kp_cache (populated by the tap), then require EVERY requested
+    // Fill from kp_cache (populated by the ingest parser), then require EVERY requested
     // invitee to have a signed KeyPackage. A partial cache must not silently
     // invite fewer members than the user requested.
     if !invitee_npubs.is_empty() {
@@ -364,7 +325,7 @@ fn invite(
     h.publish_explicit(&pending.evolution_event, &group_relays);
     let rumors = pending.welcome_rumors.clone();
     // kind:444 rumors → NIP-59 gift-wrap + internal publish.
-    let welcomes = wrap_and_publish_welcomes(h, &group_relays, &kp_events, &rumors)?;
+    let welcomes = welcome::wrap_and_publish_welcomes(h, &group_relays, &kp_events, &rumors)?;
     pending.commit().map_err(|e| e.to_string())?;
     Ok(json!({
         // INFORMATIONAL — kind:445 commit + signed kind:1059 gift-wraps,
@@ -426,86 +387,21 @@ fn remove(
     Ok(json!({ "evolution_event": evolution }))
 }
 
-fn accept_welcome(h: &mut InnerHandle<'_>, welcome_id_hex: &str) -> Result<Value, String> {
-    let wid = welcome_id_hex.to_string();
-    let Some(gift) = h.take_welcome_gift_wrap(&wid) else {
-        return Err(format!("no pending welcome `{wid}`"));
-    };
-    // Idempotent re-derive of the typed Welcome (process_welcome returns
-    // the stored one when already processed — verified vs mdk-core 0.8.0).
-    let (welcome, _sender) = match h.service().unwrap_and_process_welcome(&gift) {
-        Ok(w) => w,
-        Err(e) => {
-            // Restore so the row reappears for a retry.
-            restore(h, &wid, gift);
-            return Err(e.to_string());
-        }
-    };
-    if let Err(e) = h.service().accept_welcome(&welcome) {
-        restore(h, &wid, gift);
-        return Err(e.to_string());
-    }
-    let group_id_hex = hex_encode(welcome.mls_group_id.as_slice());
-    // Seed the relay-pinned cache from the GROUND-TRUTH group relays
-    // carried in the Welcome (NostrGroupDataExtension → group_relays).
-    // MUST happen BEFORE the post-join self_update so that kind:445
-    // commit routes to the group relay (Explicit), not the author outbox.
-    h.cache_group_relays(
-        group_id_hex.clone(),
-        welcome.group_relays.iter().cloned().collect(),
-    );
-    // MIP-02: post-join self-update is mandatory. Trigger it + publish
-    // the signed kind:445 commit INTERNALLY to the group-pinned relays.
-    let self_update = match h.service().self_update(&welcome.mls_group_id) {
-        Ok(p) => {
-            let ev = p.evolution_event.as_json();
-            h.publish_group_pinned(&group_id_hex, &p.evolution_event);
-            p.commit().map_err(|e| e.to_string())?;
-            Some(ev)
-        }
-        // Joined OK; the rotation can be retried via the `self_update`
-        // path. Don't fail the accept (don't wedge the join).
-        Err(_) => None,
-    };
-    Ok(json!({
-        "group_id_hex": group_id_hex,
-        "post_join_self_update_event": self_update,
-    }))
-}
-
-fn decline_welcome(h: &mut InnerHandle<'_>, welcome_id_hex: &str) -> Result<Value, String> {
-    let wid = welcome_id_hex.to_string();
-    let Some(gift) = h.take_welcome_gift_wrap(&wid) else {
-        return Err(format!("no pending welcome `{wid}`"));
-    };
-    let (welcome, _sender) = match h.service().unwrap_and_process_welcome(&gift) {
-        Ok(w) => w,
-        Err(e) => {
-            restore(h, &wid, gift);
-            return Err(e.to_string());
-        }
-    };
-    h.service()
-        .decline_welcome(&welcome)
-        .map_err(|e| e.to_string())?;
-    Ok(json!({ "declined": wid }))
-}
-
 /// INBOUND ingest seam — CLOSED (the shared core).
 ///
 /// Drives a *signed* `nostr::Event` into `MarmotService`: kind:1059
 /// gift-wrap → `unwrap_and_process_welcome` (+ seed the `group_id→relays`
 /// cache from `Welcome::group_relays` and cache the pending-welcome row);
 /// kind:445 → `process_message`. Any other kind is a deliberate **silent
-/// skip** (`Ok(None)`): the raw-event tap registers `[444, 445, 1059]`
-/// defensively, and a bare kind:444 rumor (should never reach the wire —
+/// skip** (`Ok(None)`): the Marmot ingest parser registers the Marmot
+/// envelope kinds defensively, and a bare kind:444 rumor (should never reach the wire —
 /// the wire welcome is the kind:1059 gift-wrap) must not be treated as an
 /// error there.
 ///
-/// The automatic [`crate::projection::tap`] raw-event observer is the caller:
-/// the kernel delivers every accepted inbound signed kind:1059/445/30443 here.
-/// The tap discards the `Result` (D6: a poisoned/duplicate/malformed event is a
-/// silent no-op on the actor thread, never a panic across a host boundary).
+/// The crate-owned [`crate::projection::tap::MarmotIngestParser`] is the
+/// caller: the kernel delivers every accepted inbound signed Marmot kind here.
+/// The parser discards the `Result` (D6: a poisoned/duplicate/malformed event
+/// is a silent no-op on the actor thread, never a panic across a host boundary).
 ///
 /// `Ok(Some(Value))` carries per-kind informational payload for tests and
 /// deferred-op retry assertions. The projection mutation (pending-welcome row,
@@ -579,15 +475,4 @@ fn clear_pending(h: &mut InnerHandle<'_>, group_id_hex: &str) -> Result<Value, S
     let pending = h.service().self_update(&gid).map_err(|e| e.to_string())?;
     pending.clear().map_err(|e| e.to_string())?;
     Ok(json!({ "cleared": true }))
-}
-
-fn restore(h: &mut InnerHandle<'_>, wid: &str, gift: nostr::Event) {
-    // Re-derive display strings best-effort; empty on failure (the row
-    // still reappears so the user can retry).
-    let (name, npub) = h
-        .service()
-        .unwrap_and_process_welcome(&gift)
-        .map(|(w, s)| (w.group_name.clone(), s.to_hex()))
-        .unwrap_or_default();
-    h.restore_welcome(wid.to_string(), gift, name, npub);
 }

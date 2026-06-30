@@ -7,7 +7,7 @@
   `crates/nmp-ffi/src/action.rs`.
 - Date: 2026-05-21
 - Related: ADR-0010 (generated app enum vs type-erased registry),
-  ADR-0025 (Marmot bespoke FFI cluster — named exception),
+  ADR-0025 (Marmot credential-slot exception),
   ADR-0026 (signer NIP-44 seal seam),
   memory: `dual_action_seam_footgun.md`
 - Doctrine: aim.md §6 doctrine #3 ("All writes through actor-owned workflows")
@@ -121,9 +121,9 @@ C representation.
 The decision: **the unified `register_action_module<M>` is Rust-only.** A
 non-Rust host that wants a custom action namespace registers a typed
 `ActionModule` impl from a Rust shim crate it controls, or stays on the
-existing built-in namespaces. This is consistent with how the Marmot cluster
-is structured today (Rust-side composition root in `apps/chirp/crates/nmp-app-chirp`)
-and with ADR-0010's generated-app-enum direction.
+existing built-in namespaces. This is consistent with `nmp-marmot`: the
+protocol crate owns its action module and installs it through explicit Rust
+composition, while native bindings use the generic dispatch door.
 
 The two C-ABI symbols (`nmp_app_register_action_executor`,
 `nmp_app_register_action_module`) become un-needed at the same time. Both are
@@ -176,9 +176,9 @@ zero Swift / Kotlin / Objective-C callers, so deletion was empirically safe.
   separate, larger architectural conversation. **This ADR is scoped to the
   *registration* seam only**: validator + executor become one trait impl,
   one call.
-- The Marmot bespoke FFI cluster (ADR-0025) is unchanged. Marmot's dormant
-  `ActionModule` impls are out of scope; if they should be deleted, that is
-  a follow-on ADR.
+- Marmot's runtime install policy beyond the generic `ActionModule` seam.
+  ADR-0025 now records the remaining credential-slot exception; Marmot-specific
+  native lifecycle symbols are deleted and are not an accepted exception.
 - The C-ABI surface for non-Rust hosts that want custom action namespaces.
   This ADR chooses Rust-only registration; if a future host needs a C-ABI
   path, that requires its own ADR specifying a stable serialization for

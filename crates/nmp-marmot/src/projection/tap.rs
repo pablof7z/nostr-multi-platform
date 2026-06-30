@@ -1,27 +1,21 @@
-//! Inbound ingest seam — `IngestParser` registration (raw-tap PR-2).
+//! Inbound ingest seam — `IngestParser` registration.
 //!
-//! Migrated from `RawEventObserver` to [`nmp_core::substrate::IngestParser`]
-//! in PR-2 of the raw-tap retirement ladder (rule A5). The kernel's
-//! `EventIngestDispatcher` delivers every accepted inbound signed event of the
-//! registered kinds to this parser; the parser reconstructs the verbatim
-//! signed `nostr::Event` from [`nmp_store::VerifiedEvent::raw`] (same
-//! pattern as `nmp-nip17/src/inbox.rs`, PR-1) and calls the existing
-//! [`crate::projection::ops::ingest_signed_event_core`] unchanged.
+//! The kernel's `EventIngestDispatcher` delivers every accepted inbound signed
+//! event of the registered kinds to this parser; the parser reconstructs the
+//! verbatim signed `nostr::Event` from [`nmp_store::VerifiedEvent::raw`] and
+//! calls [`crate::projection::ops::ingest_signed_event_core`].
 //!
 //! ## Why `IngestParser` and not `RawEventObserver`
 //!
-//! The `RawEventObserver` tap was the ONLY way MDK (which requires a signed
-//! `nostr::Event` with `sig` present for gift-wrap unwrapping and kind:445
-//! decryption) could ride the kernel ingest path — the lossy
-//! `ObservedProjectionSink` strips the signature. PR-1 of the raw-tap ladder
-//! proved the pattern: `DmInboxProjection` serialises the `VerifiedEvent`'s
-//! `RawEvent` to JSON and parses a `nostr::Event` from it, recovering the
-//! `sig` field that MDK needs. This module applies the same technique to
-//! Marmot's five registered kinds.
+//! MDK requires a signed `nostr::Event` with `sig` present for gift-wrap
+//! unwrapping and kind:445 decryption. The lossy `ObservedProjectionSink`
+//! strips the signature, so Marmot uses the substrate `IngestParser` seam:
+//! serialise the `VerifiedEvent`'s `RawEvent` to JSON and parse a
+//! `nostr::Event` from it, recovering the `sig` field that MDK needs.
 //!
 //! ## Slot key
 //!
-//! Registered under the `"marmot"` slot key via
+//! Registered under the `"nmp.marmot"` slot key via
 //! `EventIngestDispatcher::replace_kind_parser`. The NIP-17 DM inbox uses the
 //! `"nip17.dm_inbox"` slot, so both parsers coexist safely on kind:1059
 //! without evicting each other. See `substrate/ingest.rs` §Slot-keyed replace.
@@ -44,20 +38,20 @@ use nmp_store::VerifiedEvent;
 use nostr::{Event, JsonUtil};
 
 use crate::projection::ops::ingest_signed_event_core;
-use crate::projection::state::MarmotProjection;
+use crate::runtime::MarmotRuntime;
 
 /// `IngestParser` that bridges the substrate dispatcher into the Marmot
-/// projection. Holds an `Arc<MarmotProjection>`. The dispatcher owns this
-/// parser as an `Arc<dyn IngestParser>` until teardown via the slot-keyed
-/// replace seam.
-pub struct MarmotIngestParser {
-    projection: Arc<MarmotProjection>,
+/// runtime. The runtime owns whichever projection is active for the current
+/// identity, so this parser survives account switches without retaining stale
+/// per-account state.
+pub(crate) struct MarmotIngestParser {
+    runtime: Arc<MarmotRuntime>,
 }
 
 impl MarmotIngestParser {
     #[must_use]
-    pub fn new(projection: Arc<MarmotProjection>) -> Self {
-        Self { projection }
+    pub(crate) fn new(runtime: Arc<MarmotRuntime>) -> Self {
+        Self { runtime }
     }
 }
 
@@ -88,8 +82,11 @@ impl IngestParser for MarmotIngestParser {
         let Ok(event) = Event::from_json(&json) else {
             return; // Parse failure → silent no-op (D6).
         };
+        let Some(projection) = self.runtime.projection() else {
+            return;
+        };
         // Lock the projection's inner state. Poisoned mutex → silent no-op.
-        let _ = self.projection.with_inner(|h| {
+        let _ = projection.with_inner(|h| {
             // Discard the Result: the parser has no caller to surface a
             // duplicate / unsupported-kind / decrypt error to (D6). The
             // projection side-effects (pending-welcome row, relay cache,

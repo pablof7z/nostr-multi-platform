@@ -75,6 +75,8 @@ use std::marker::PhantomData;
 use crate::{new_app, NmpApp};
 
 mod app_host_impl; // ADR-0053: `impl AppHost for NmpAppBuilder` child submodule (LOC ceiling).
+#[cfg(feature = "marmot")]
+mod marmot;
 mod transitions;
 mod wallet; // `with_wallet` (NIP-47 wiring) — child submodule; see builder/wallet.rs.
 

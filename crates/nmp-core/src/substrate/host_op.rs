@@ -69,9 +69,9 @@ pub struct HostOpCommand {
 }
 
 /// Build a [`HostOpCommand`] for `action_json` under `correlation_id`. The
-/// producer is an `ActionModule::execute` body in an app crate (today
-/// `nmp-app-marmot`'s `MarmotActionModule`) that serialises its typed action to
-/// JSON; the handler installed by the same crate parses it back out.
+/// producer is an `ActionModule::execute` body in an owner crate that
+/// serialises its typed action to JSON; the handler installed by the same
+/// crate parses it back out.
 #[must_use]
 pub fn host_op_command(action_json: String, correlation_id: String) -> HostOpCommand {
     HostOpCommand {

@@ -9,7 +9,9 @@
 use super::snapshot_registry::{new_snapshot_projection_slot, SnapshotRegistry};
 use super::*;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
+use crate::time::{Duration, UNIX_EPOCH};
 use crate::update_envelope::{TypedProjectionData, WireProjectionState};
+use std::sync::Arc;
 
 /// Build a minimal opaque [`TypedProjectionData`] entry for the typed-sidecar
 /// tests (ADR-0037). Payload bytes are arbitrary — `nmp-core` never reads them.
@@ -257,4 +259,42 @@ fn typed_projection_surfaces_through_kernel_run_typed_projections() {
     assert_eq!(typed.len(), 1);
     assert_eq!(typed[0].key, "nmp.feed.home");
     assert_eq!(typed[0].payload, vec![0xab, 0xcd]);
+}
+
+/// Time-aware typed projections receive the current kernel clock value when the
+/// snapshot is emitted, not a registration-time/default timestamp.
+#[test]
+fn time_aware_typed_projection_uses_injected_time_on_emit() {
+    const BASE_SECS: u64 = 1_987_654_321;
+    const ADVANCE_SECS: u64 = 37;
+    const KEY: &str = "host.time_probe";
+
+    let clock = Arc::new(MonotonicSecondClock::new(
+        UNIX_EPOCH + Duration::from_secs(BASE_SECS),
+    ));
+    let mut reducer = crate::KernelReducer::new();
+    let kernel_clock: Arc<dyn crate::Clock> = clock.clone();
+    reducer.set_clock_for_test(kernel_clock);
+    reducer.register_typed_snapshot_projection_with_time(KEY, |now_secs| {
+        Some(typed_entry(KEY, &now_secs.to_le_bytes()))
+    });
+
+    let payload_for = |frame: &crate::UpdateFrameBytes| {
+        crate::decode_snapshot_typed_projections(frame)
+            .expect("typed projections decode")
+            .into_iter()
+            .find(|entry| entry.key == KEY)
+            .unwrap_or_else(|| panic!("{KEY} projection must be emitted"))
+            .payload
+    };
+
+    let first_frame = reducer.make_update_frame(true);
+    assert_eq!(payload_for(&first_frame), BASE_SECS.to_le_bytes().to_vec());
+
+    clock.advance_secs(ADVANCE_SECS);
+    let second_frame = reducer.make_update_frame(true);
+    assert_eq!(
+        payload_for(&second_frame),
+        (BASE_SECS + ADVANCE_SECS).to_le_bytes().to_vec()
+    );
 }

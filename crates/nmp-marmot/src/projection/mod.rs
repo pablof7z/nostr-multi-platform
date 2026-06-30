@@ -11,8 +11,8 @@
 //!   `mdk-core` input types are named for this layer.
 //! * [`publish`] — the internal relay-publish bridge that CLOSES the
 //!   outbound seam through the actor/protocol runtime port.
-//! * [`tap`] — the inbound raw-event observer that CLOSES the inbound
-//!   ingest seam (drives accepted kind:1059/445 events through the shared
+//! * [`tap`] — Marmot's ingest parser that CLOSES the inbound ingest seam
+//!   (drives accepted kind:1059/445/30443 events through the shared
 //!   `ops::ingest_signed_event_core`).
 
 pub mod action;

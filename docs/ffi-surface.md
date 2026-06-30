@@ -176,7 +176,7 @@ second framework native public API.
 | Surface | Current status | Owner |
 |---|---|---|
 | Gallery app/native and Android bridge shims | App-owned delivery glue for `apps/nmp-gallery`, not reusable NMP framework ABI. | app owner |
-| Marmot native surface under `crates/nmp-marmot` | Post-v1/provisional mixed binding shape; do not promote it into a durable public native ABI. | #2232 |
+| Marmot native surface under `crates/nmp-marmot` | Deleted. Current Marmot installation is Rust explicit composition through `nmp_marmot::install`; native shells use generic action dispatch plus pushed typed projections. | #2232 / #2495 |
 
 Any proposal to keep a raw native byte lane after its UniFFI replacement exists
 must meet ADR-0030's exception gate: measured production budget failure through

@@ -42,14 +42,11 @@
 //!    NO MDK types — they satisfy the kernel-boundary grep.
 //!    Marmot write capabilities (key-package publish, group-scoped ops:
 //!    `CreateGroup`, `Invite`, `Send`, `Leave`, `Remove`, etc.) are dispatched
-//!    through the substrate-generic [`projection::action::MarmotActionModule`]
-//!    registered under the `"nmp.marmot"` namespace. The runtime's normal
-//!    action dispatcher targets that namespace, and a typed
-//!    [`projection::action::MarmotProtocolCommand`] runs the op against the
-//!    live `MarmotProjection` on the actor thread. The legacy bespoke
-//!    `nmp_marmot_dispatch` C symbol (ADR-0025) was DELETED in PR 3
-//!    (2026-05-23), and the remaining `nmp_marmot_*` C shell was deleted
-//!    in #2232.
+//!    under the `"nmp.marmot"` action namespace installed by [`install`]. The
+//!    runtime's normal action dispatcher targets that namespace, and a typed
+//!    protocol command runs the op against the live crate-owned runtime on the
+//!    actor thread. The ADR-0025 native lifecycle exception is retired;
+//!    explicit Rust composition installs the runtime.
 //! 2. **Service layer** ([`service::MarmotService`]) — the real MDK-driving
 //!    API. Holds an `MDK<S>` + `nostr::Keys`. This is what the in-crate
 //!    round-trip tests exercise and what a headless integration-test driver
@@ -73,11 +70,14 @@
 pub mod domain;
 pub mod interest;
 pub mod projection;
+mod runtime;
 pub mod service;
 /// `impl MarmotService` read-projection methods, split out of `service.rs`.
 mod service_reads;
 pub mod view;
 pub mod wire;
+
+pub use runtime::{install, MarmotConfig, MarmotInstallError, MarmotLocalCredentialSlot};
 
 /// Re-exports of the handful of `mdk-core` types that appear in the public
 /// [`service::MarmotService`] signature. Callers that drive the service
@@ -96,11 +96,10 @@ pub mod mls_types {
 // `nmp-marmot` exposes its 4 record types and 4 view types as public types
 // under `domain` and `view`. View types are plain types reached via static
 // dispatch; the live extension path is `ObservedProjectionSink` (the Marmot
-// projection registers one in `projection/`). Write capabilities are
-// dispatched through `projection::action::MarmotActionModule` registered
-// under the `"nmp.marmot"` namespace; the legacy bespoke
-// `nmp_marmot_dispatch` C cluster (ADR-0025) was DELETED in PR 3
-// (2026-05-23), and #2232 deleted the remaining Marmot C-ABI shell.
+// projection registers one in `projection/`). Write capabilities dispatch
+// through the `"nmp.marmot"` namespace installed by `nmp_marmot::install`.
+// Explicit Rust composition installs Marmot; there is no Marmot-specific
+// native lifecycle shell.
 
 #[cfg(test)]
 mod tests;

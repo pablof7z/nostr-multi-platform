@@ -70,6 +70,18 @@ relay policy, or product defaults behind a preset.
 
 Hidden default presets are rejected as production app architecture.
 
+Stateful protocol crates follow the same rule. For example, Marmot MLS support
+is explicit composition:
+
+```rust
+let marmot_config = app.marmot_config(app_support_dir.join("marmot"));
+nmp_marmot::install(app, marmot_config)?;
+```
+
+The runtime may provide a narrow credential-slot wrapper for Marmot, but Marmot
+owns the raw-key read, its MDK store, action namespace, ingest parsers, identity
+rebinding, and projection teardown.
+
 App-specific behavior belongs in app Rust crates unless it is a reusable Nostr
 mechanism. A request from one downstream app is evidence, not permission to add
 app-named helpers or product policy to NMP crates.

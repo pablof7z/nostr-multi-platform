@@ -615,12 +615,10 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             swift_reader_type: Some("nmp_kernel_SettingsHubSnapshot"),
         }),
     },
-    // V-107 / ADR-0039: Marmot (MLS-over-Nostr) push projections. Both are
-    // host-registered in `nmp_marmot::ffi::register_with_keys` on every
-    // Marmot sign-in; the projection slot emits empty objects on sign-out
-    // (D1 forward-compat: `nil` on a kernel build that predates registration
-    // OR an empty `{}` when the slot is None — both decode safely because all
-    // fields are optional).
+    // V-107 / ADR-0039 / ADR-0025-amended: Marmot (MLS-over-Nostr) push
+    // projections. Both are registered by `nmp_marmot::install` during
+    // explicit Rust composition. The runtime emits empty objects when no
+    // local-key Marmot projection is active.
     //
     // `nmp.marmot.snapshot` has no `_` segment, so post-convertFromSnakeCase
     // the key is identical: `"nmp.marmot.snapshot"`. The CodingKeys case
@@ -636,9 +634,9 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             // (`nmp_marmot_MarmotSnapshot`, wrapping `nmp_marmot_MarmotGroupRow` /
             // `nmp_marmot_PendingWelcomeRow` / `nmp_marmot_KeyPackageStatus`) ships
             // with this batch from `crates/nmp-marmot/schema/marmot_snapshot.fbs`.
-            // Host-registered typed producer in `crates/nmp-marmot/src/ffi.rs`
-            // (`register_typed_snapshot_projection("nmp.marmot.snapshot", …)` →
-            // `crate::wire::snapshot_fb::typed_projection`). Nested-vector copy of
+            // Host-registered typed producer in `crates/nmp-marmot/src/runtime.rs`
+            // (`nmp_marmot::install` -> `crate::wire::snapshot_fb::typed_projection`).
+            // Nested-vector copy of
             // `groups`/`pendingWelcomes` plus the `keyPackage` sub-table; every
             // `has_*` companion bool maps the optional `String?`/`UInt32?`/`UInt64?`
             // (nil when absent) so the typed value is byte-identical to the JSON
@@ -664,9 +662,9 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             // (`nmp_marmot_MarmotMessages`, wrapping `nmp_marmot_MarmotGroupMessages`
             // / `nmp_marmot_MarmotMessageRow`) ships with this batch from
             // `crates/nmp-marmot/schema/marmot_messages.fbs`. Host-registered typed
-            // producer in `crates/nmp-marmot/src/ffi.rs`
-            // (`register_typed_snapshot_projection("nmp.marmot.messages", …)` →
-            // `crate::wire::messages_fb::typed_projection`). FlatBuffers has no map
+            // producer in `crates/nmp-marmot/src/runtime.rs`
+            // (`nmp_marmot::install` -> `crate::wire::messages_fb::typed_projection`).
+            // FlatBuffers has no map
             // type, so the producer flattens the `group_id_hex -> [MarmotMessageRow]`
             // JSON map to a `group_id_hex`-sorted `[MarmotGroupMessages]` vector;
             // the glue rebuilds the domain `[String: [MarmotMessage]]` dict

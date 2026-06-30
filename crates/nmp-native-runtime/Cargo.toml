@@ -31,6 +31,7 @@ external-signer = [
 ]
 android-ffi = ["native", "external-signer"]
 test-support = ["native", "nmp-core/test-support"]
+marmot = ["native", "dep:nmp-marmot"]
 
 [dependencies]
 nmp-ownership = { workspace = true }
@@ -54,6 +55,7 @@ nmp-nip47 = { path = "../nmp-nip47" }
 nmp-nip50 = { path = "../nmp-nip50" }
 nmp-nip51 = { path = "../nmp-nip51" }
 nmp-nip57 = { path = "../nmp-nip57", default-features = false }
+nmp-marmot = { path = "../nmp-marmot", optional = true }
 nmp-intent = { path = "../nmp-intent" }
 nmp-wot = { path = "../nmp-wot" }
 nmp-signer-iface = { path = "../nmp-signer-iface", optional = true }
