@@ -451,3 +451,6 @@ pub mod __ffi_internal {
 /// thread to spawn and no harness handlers to drive.
 #[cfg(all(any(test, feature = "test-support"), feature = "native"))]
 pub mod testing;
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

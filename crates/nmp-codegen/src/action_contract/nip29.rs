@@ -4,8 +4,9 @@
 //! Each constant is a named `ActionContract` entry assembled into
 //! `ACTION_CONTRACT` in `table.rs` by name.
 
-use super::{ActionContract, ActionDefaultTier, BuilderSupport, PublicReExportPolicy,
-    TypedDispatchPolicy};
+use super::{
+    ActionContract, ActionDefaultTier, BuilderSupport, PublicReExportPolicy, TypedDispatchPolicy,
+};
 
 const PUBLIC_REEXPORT: PublicReExportPolicy = PublicReExportPolicy::DefaultsActionPayloads;
 const TYPED_ONLY: TypedDispatchPolicy = TypedDispatchPolicy::TypedOnly;
@@ -15,6 +16,7 @@ pub const NIP29_DISCOVER: ActionContract = ActionContract {
     producer: "nmp-nip29 action",
     module_type: "nmp_nip29::DiscoverGroupsAction",
     payload_type: "nmp_nip29::DiscoverGroupsInput",
+    owner_claim: "action.nmp.nip29.discover",
     schema_id: "nmp.nip29.discover",
     schema_path: "crates/nmp-nip29/schema/discover_groups_action.fbs",
     root_type: "DiscoverGroupsPayload",
@@ -31,6 +33,7 @@ pub const NIP29_PUBLISH_GROUP_EVENT: ActionContract = ActionContract {
     producer: "nmp-nip29 action",
     module_type: "nmp_nip29::PublishGroupEventAction",
     payload_type: "nmp_nip29::PublishGroupEventInput",
+    owner_claim: "action.nmp.nip29.publish_group_event",
     schema_id: "nmp.nip29.publish_group_event",
     schema_path: "crates/nmp-nip29/schema/publish_group_event_action.fbs",
     root_type: "PublishGroupEventPayload",
@@ -47,6 +50,7 @@ pub const NIP29_JOIN: ActionContract = ActionContract {
     producer: "nmp-nip29 action",
     module_type: "nmp_nip29::JoinGroupAction",
     payload_type: "nmp_nip29::JoinGroupInput",
+    owner_claim: "action.nmp.nip29.join",
     schema_id: "nmp.nip29.join",
     schema_path: "crates/nmp-nip29/schema/join_group_action.fbs",
     root_type: "JoinGroupPayload",
@@ -63,6 +67,7 @@ pub const NIP29_CREATE_PUBLIC_GROUP: ActionContract = ActionContract {
     producer: "nmp-nip29 action",
     module_type: "nmp_nip29::CreatePublicGroupAction",
     payload_type: "nmp_nip29::CreatePublicGroupInput",
+    owner_claim: "action.nmp.nip29.create_public_group",
     schema_id: "nmp.nip29.create_public_group",
     schema_path: "crates/nmp-nip29/schema/create_public_group_action.fbs",
     root_type: "CreatePublicGroupPayload",
@@ -79,6 +84,7 @@ pub const NIP29_EDIT_METADATA: ActionContract = ActionContract {
     producer: "nmp-nip29 action",
     module_type: "nmp_nip29::EditMetadataAction",
     payload_type: "nmp_nip29::EditMetadataInput",
+    owner_claim: "action.nmp.nip29.edit_metadata",
     schema_id: "nmp.nip29.edit_metadata",
     schema_path: "crates/nmp-nip29/schema/edit_metadata_action.fbs",
     root_type: "EditMetadataPayload",

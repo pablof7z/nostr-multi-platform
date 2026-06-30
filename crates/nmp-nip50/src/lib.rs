@@ -44,3 +44,6 @@ pub use wire::{
     FILE_IDENTIFIER as SEARCH_RESULTS_FILE_IDENTIFIER, SCHEMA_ID as SEARCH_RESULTS_SCHEMA_ID,
     SCHEMA_VERSION as SEARCH_RESULTS_SCHEMA_VERSION,
 };
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

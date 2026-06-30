@@ -12,6 +12,7 @@ std = ["nostr/std"]
 wrap = ["std"]
 
 [dependencies]
+nmp-ownership = { workspace = true }
 nostr = { version = "0.44", default-features = false, features = ["nip44", "nip59"] }
 # Zero-dependency Layer-0 kind-integer registry. nmp-nip59 cannot import
 # KIND_GIFT_WRAP from nmp-core (that direction would create a compile cycle

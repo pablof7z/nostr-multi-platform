@@ -115,7 +115,7 @@ pub(super) fn maybe_publish_relay_list_after_edit(
     let Some(unsigned) = commands::build_relay_list_event(projection_after) else {
         return Vec::new();
     };
-    commands::publish_unsigned_event(identity, kernel, unsigned, None, None, parked_ops)
+    commands::publish_unsigned_event(identity, kernel, unsigned, None, None, None, parked_ops)
 }
 
 /// Parse a host sign-and-return draft into an [`nmp_signer_iface::UnsignedEvent`].

@@ -26,6 +26,7 @@ native = ["nmp-uniffi/native"]
 android-ffi = ["dep:jni", "nmp-uniffi/native"]
 
 [dependencies]
+nmp-ownership = { workspace = true }
 # Native runtime owner — `NmpApp` handle + lifecycle API.
 nmp-native-runtime = { path = "../../../../crates/nmp-native-runtime" }
 # M14 UniFFI shell migration: the gallery iOS shell migrates from the nmp-ffi

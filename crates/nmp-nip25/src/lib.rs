@@ -34,3 +34,6 @@ pub use wire::reaction_aggregate_fb::{
     REACTION_AGGREGATE_FILE_IDENTIFIER, REACTION_AGGREGATE_SCHEMA_ID,
     REACTION_AGGREGATE_SCHEMA_VERSION,
 };
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

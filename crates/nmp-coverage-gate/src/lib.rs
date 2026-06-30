@@ -329,3 +329,6 @@ mod tests {
         assert_eq!(gate.since_bump_secs(101), 50); // floor of 50.5
     }
 }
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

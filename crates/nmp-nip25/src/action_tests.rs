@@ -71,12 +71,14 @@ fn react_protocol_publishes_kind7_via_one_door() {
             .expect("execute succeeds");
     });
     match run_one_protocol(cmd) {
-        ActorCommand::Publish(PublishCommand::UnsignedEvent {
+        ActorCommand::Publish(PublishCommand::OwnedUnsignedEvent {
             event,
+            ownership,
             correlation_id,
             signer_pubkey,
         }) => {
             assert_eq!(event.kind, KIND_REACTION);
+            assert_eq!(ownership, crate::ownership::REACTION_EVENT_PROVENANCE);
             assert_eq!(event.created_at, 0);
             assert_eq!(event.pubkey, "");
             assert_eq!(event.content, "+");
@@ -85,7 +87,7 @@ fn react_protocol_publishes_kind7_via_one_door() {
             assert_eq!(correlation_id.as_deref(), Some("react-cid"));
             assert_eq!(signer_pubkey, None);
         }
-        other => panic!("expected PublishUnsignedEvent, got {other:?}"),
+        other => panic!("expected OwnedUnsignedEvent, got {other:?}"),
     }
 }
 
@@ -125,12 +127,12 @@ fn react_execute_resolves_target_author_from_action_context_store() {
     });
 
     match run_one_protocol(cmd) {
-        ActorCommand::Publish(PublishCommand::UnsignedEvent { event, .. }) => {
+        ActorCommand::Publish(PublishCommand::OwnedUnsignedEvent { event, .. }) => {
             assert_eq!(event.kind, KIND_REACTION);
             assert_eq!(event.tags[0], vec!["e".to_string(), TARGET.to_string()]);
             assert_eq!(event.tags[1], vec!["p".to_string(), AUTHOR.to_string()]);
         }
-        other => panic!("expected PublishUnsignedEvent, got {other:?}"),
+        other => panic!("expected OwnedUnsignedEvent, got {other:?}"),
     }
 }
 
@@ -150,12 +152,17 @@ fn unreact_protocol_publishes_kind5_deletion() {
             .expect("execute succeeds");
     });
     match run_one_protocol(cmd) {
-        ActorCommand::Publish(PublishCommand::UnsignedEvent {
+        ActorCommand::Publish(PublishCommand::OwnedUnsignedEvent {
             event,
+            ownership,
             correlation_id,
             signer_pubkey,
         }) => {
             assert_eq!(event.kind, KIND_REACTION_DELETE);
+            assert_eq!(
+                ownership,
+                crate::ownership::REACTION_DELETE_EVENT_PROVENANCE
+            );
             assert_eq!(
                 event.tags,
                 vec![vec!["e".to_string(), REACTION.to_string()]]
@@ -164,6 +171,6 @@ fn unreact_protocol_publishes_kind5_deletion() {
             assert_eq!(correlation_id.as_deref(), Some("unreact-cid"));
             assert_eq!(signer_pubkey, None);
         }
-        other => panic!("expected PublishUnsignedEvent, got {other:?}"),
+        other => panic!("expected OwnedUnsignedEvent, got {other:?}"),
     }
 }

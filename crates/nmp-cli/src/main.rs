@@ -15,6 +15,7 @@
 //! The scaffold compiles immediately after `nmp init`. See `docs/cli.md`.
 
 mod component;
+mod crate_ownership;
 mod doctor;
 mod export;
 mod init;
@@ -39,6 +40,7 @@ fn run() -> Result<(), String> {
     match args.first().map(String::as_str) {
         Some("init") => init::run(&args[1..]),
         Some("doctor") => doctor::run(&args[1..]),
+        Some("crate-ownership") => crate_ownership::run(&args[1..]),
         Some("upgrade") => upgrade::run(&args[1..]),
         Some("add") => component::run_add(&args[1..]),
         Some("update") => component::run_update(&args[1..]),
@@ -85,6 +87,11 @@ fn help() -> String {
         "      Validate the app's NMP dependency policy and report the release",
         "      or local checkout baseline in use.",
         "",
+        "  nmp crate-ownership [--format human|tsv|json]",
+        "      Report positive ownership descriptors declared by active workspace",
+        "      crates. Use `audit --deny` to fail on missing descriptors or",
+        "      duplicate exclusive ownership scopes.",
+        "",
         "  nmp export jsrepo [--output DIR] [--registry DIR]",
         "      Emit a jsrepo/shadcn-compatible registry.json (full index) plus",
         "      per-component r/<slug>.json files into DIR (default current",
@@ -94,3 +101,5 @@ fn help() -> String {
     ]
     .join("\n")
 }
+
+mod ownership;

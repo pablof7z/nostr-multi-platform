@@ -11,6 +11,7 @@ name = "nmp_nostr_lmdb"
 path = "src/lib.rs"
 
 [dependencies]
+nmp-ownership = { workspace = true }
 async-utility = "0.3"
 flume = "0.11"
 nostr = { version = "0.44", default-features = false, features = ["std"] }

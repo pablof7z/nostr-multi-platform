@@ -95,3 +95,6 @@ pub(crate) fn app_ref<'a>(app: *mut NmpApp) -> Option<&'a NmpApp> {
         Some(unsafe { &*app })
     }
 }
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

@@ -115,7 +115,8 @@ impl ConformanceHarness {
         );
     }
 
-    /// Drive a kind:7 reaction draft through the generic unsigned publish door.
+    /// Drive a kind:7 reaction draft through the owner-certified unsigned
+    /// publish door.
     /// Returns the emitted `EVENT` JSON object.
     pub fn emit_reaction(&mut self, target_event_id: &str, reaction: &str) -> Value {
         let author = self.kernel.event_author(target_event_id);
@@ -133,6 +134,13 @@ impl ConformanceHarness {
             &self.identity,
             &mut self.kernel,
             unsigned,
+            Some(nmp_ownership::EventOwnershipProvenance::new(
+                Some(nmp_ownership::ArtifactProvenance::new(
+                    "nmp.nip25",
+                    "nostr.kind.7.reaction",
+                )),
+                &[],
+            )),
             None,
             None,
             &mut crate::actor::pending_sign::ParkedSignerOps::new(),
@@ -187,6 +195,7 @@ impl ConformanceHarness {
             unsigned,
             None,
             None,
+            None,
             &mut crate::actor::pending_sign::ParkedSignerOps::new(),
         );
         last_event_json(&outbound)
@@ -210,6 +219,7 @@ impl ConformanceHarness {
             &self.identity,
             &mut self.kernel,
             unsigned,
+            None,
             None,
             // Conformance harness signs with the active account.
             None,

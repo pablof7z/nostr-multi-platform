@@ -14,6 +14,7 @@ name = "nmp-codegen"
 path = "src/main.rs"
 
 [dependencies]
+nmp-ownership = { workspace = true }
 # V6 Stage 1 — Swift `Decodable` emitter input parsing. The emitter consumes
 # the JSON document produced by `cargo run -p nmp-core --features codegen-schema
 # --bin dump_projection_schemas`; `serde_json` decodes it into the typed

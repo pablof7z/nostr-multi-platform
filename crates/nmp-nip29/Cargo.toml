@@ -7,6 +7,7 @@ repository.workspace = true
 description = "NIP-29 relay-based groups as an NMP protocol crate. Kind-blind transport: owns only the group-routing envelope (h / previous / host-pin) and the 9000-9022 / 39000-39003 kind namespace; foreign kinds are authored by their owning NIP and routed via the generic publish_group_event surface. Declares host-relay-pinned routing via the third lane (Rule 9)."
 
 [dependencies]
+nmp-ownership = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false }
 nmp-signer-iface = { path = "../nmp-signer-iface" }
 # Direct dep on nmp-planner for InterestId / InterestLifecycle / InterestScope /

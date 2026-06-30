@@ -62,3 +62,6 @@ pub fn classify(
 ) -> InputIntentClassification {
     classifier::classify_impl(req, recognizers)
 }
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

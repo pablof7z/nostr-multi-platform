@@ -66,7 +66,7 @@ pub enum PublishCommand {
     },
     /// Generic, kind-agnostic publish — take an `UnsignedEvent` already built
     /// by any protocol-crate builder (`nmp_nip23::Article`, `nmp_nip01::Note`,
-    /// `nmp_relations::Reaction`, …), sign with the active account's keys, and
+    /// `nmp_nip25::ReactAction`, …), sign with the active account's keys, and
     /// route through the NIP-65 outbox resolver (D3). The kernel does not
     /// inspect the kind — that's the protocol crate's concern (D0).
     ///
@@ -89,6 +89,16 @@ pub enum PublishCommand {
         /// This lets a non-active account publish without first switching
         /// active. `None` preserves the legacy behaviour (sign with the active
         /// account and fail closed when no account is active).
+        signer_pubkey: Option<String>,
+    },
+    /// Owner-certified unsigned event. Protected artifacts and envelopes use
+    /// this path so the publish engine can verify positive ownership before
+    /// signing.
+    OwnedUnsignedEvent {
+        event: nmp_signer_iface::UnsignedEvent,
+        ownership: nmp_ownership::EventOwnershipProvenance,
+        correlation_id: Option<String>,
+        /// Optional non-active signer selector; see [`Self::UnsignedEvent`].
         signer_pubkey: Option<String>,
     },
     /// Publish an unsigned event to an explicit relay set, bypassing the
@@ -122,6 +132,17 @@ pub enum PublishCommand {
         /// matches — looked up across BOTH local keys and remote signers —
         /// via `sign_with_account_nonblocking`, instead of the active account.
         /// `None` preserves the legacy behaviour (sign with the active account).
+        signer_pubkey: Option<String>,
+    },
+    /// Owner-certified unsigned event published to explicit relays.
+    OwnedUnsignedEventToRelays {
+        event: nmp_signer_iface::UnsignedEvent,
+        ownership: nmp_ownership::EventOwnershipProvenance,
+        relays: Vec<crate::publish::RelayUrl>,
+        route_class: crate::publish::PublishRouteClass,
+        /// Registry-minted action id; see [`Self::UnsignedEventToRelays`].
+        correlation_id: Option<String>,
+        /// Optional non-active signer selector; see [`Self::UnsignedEvent`].
         signer_pubkey: Option<String>,
     },
     /// Generic publish of an **already-signed** event. The kernel verifies
@@ -158,4 +179,43 @@ pub enum PublishCommand {
     /// raw publish handle is also accepted (the index self-maps it) so
     /// internal callers that only know the handle still resolve.
     CancelPublish { correlation_id: String },
+}
+
+impl PublishCommand {
+    /// Convert an owner-certified draft into the publish command that routes
+    /// through the normal NIP-65 outbox path.
+    #[must_use]
+    pub fn owned_draft(
+        draft: nmp_ownership::OwnedEventDraft<nmp_signer_iface::UnsignedEvent>,
+        correlation_id: Option<String>,
+        signer_pubkey: Option<String>,
+    ) -> Self {
+        let (event, ownership) = draft.into_parts();
+        Self::OwnedUnsignedEvent {
+            event,
+            ownership,
+            correlation_id,
+            signer_pubkey,
+        }
+    }
+
+    /// Convert an owner-certified draft into an explicit-relay publish command.
+    #[must_use]
+    pub fn owned_draft_to_relays(
+        draft: nmp_ownership::OwnedEventDraft<nmp_signer_iface::UnsignedEvent>,
+        relays: Vec<crate::publish::RelayUrl>,
+        route_class: crate::publish::PublishRouteClass,
+        correlation_id: Option<String>,
+        signer_pubkey: Option<String>,
+    ) -> Self {
+        let (event, ownership) = draft.into_parts();
+        Self::OwnedUnsignedEventToRelays {
+            event,
+            ownership,
+            relays,
+            route_class,
+            correlation_id,
+            signer_pubkey,
+        }
+    }
 }

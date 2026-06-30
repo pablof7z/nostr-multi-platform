@@ -51,3 +51,6 @@ pub use uri_encode::percent_encode_query_value;
 
 #[cfg(test)]
 mod tests;
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

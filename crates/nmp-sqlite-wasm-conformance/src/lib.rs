@@ -446,3 +446,6 @@ pub async fn run_conformance() -> Result<JsValue, JsValue> {
         Err(JsValue::from_str(&json))
     }
 }
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

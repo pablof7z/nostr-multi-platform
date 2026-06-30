@@ -188,3 +188,6 @@ mod tests {
         assert!(result.unwrap_err().contains("non-empty"));
     }
 }
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

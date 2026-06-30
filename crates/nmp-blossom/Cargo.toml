@@ -10,6 +10,7 @@ repository.workspace = true
 description = "Blossom (BUD-02) blob uploads as an NMP protocol crate — kind:24242 auth builder + BlossomUploadCommand (ProtocolCommand) streaming PUT, signing via the generic backend-transparent SignEventForAccount port (ADR-0043)."
 
 [dependencies]
+nmp-ownership = { workspace = true }
 # Substrate seams: ProtocolCommand / ProtocolCommandContext, ActorCommand,
 # UnsignedEvent / SignedEvent, the generic SignEventForAccount sign port.
 nmp-core = { path = "../nmp-core" }

@@ -124,3 +124,6 @@ pub use view::{
 // `register(&mut ModuleRegistry)` entry point were both deleted because no
 // kernel-side registry ever drove them. The live extension path is
 // `ObservedProjectionSink` — see `nmp_core::substrate` module docs.
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

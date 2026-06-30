@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 pub const KIND_REACTION: u32 = 7;
 pub const KIND_REACTION_DELETE: u32 = 5;
 
+type ReactionDraft = nmp_ownership::OwnedEventDraft<UnsignedEvent>;
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ReactAction {
     pub target_event_id: String,
@@ -113,11 +115,12 @@ impl ProtocolCommand for PublishReactionCommand {
     ) -> Result<(), ProtocolCommandError> {
         let event = build_reaction_event(&self.action)
             .map_err(|err| ProtocolCommandError::new(format!("react: {err}")))?;
-        ctx.send(ActorCommand::Publish(PublishCommand::UnsignedEvent {
-            event,
-            correlation_id: Some(self.correlation_id),
-            signer_pubkey: None,
-        }));
+        let draft = ReactionDraft::new(event, crate::ownership::REACTION_EVENT_PROVENANCE);
+        ctx.send(ActorCommand::Publish(PublishCommand::owned_draft(
+            draft,
+            Some(self.correlation_id),
+            None,
+        )));
         Ok(())
     }
 }
@@ -127,17 +130,12 @@ impl ProtocolCommand for UnreactReactionCommand {
         self: Box<Self>,
         ctx: &mut ProtocolCommandContext<'_>,
     ) -> Result<(), ProtocolCommandError> {
-        ctx.send(ActorCommand::Publish(PublishCommand::UnsignedEvent {
-            event: UnsignedEvent {
-                pubkey: String::new(),
-                kind: KIND_REACTION_DELETE,
-                tags: vec![vec!["e".to_string(), self.action.reaction_event_id]],
-                content: self.action.reason,
-                created_at: 0,
-            },
-            correlation_id: Some(self.correlation_id),
-            signer_pubkey: None,
-        }));
+        let draft = reaction_delete_draft(self.action.reaction_event_id, self.action.reason);
+        ctx.send(ActorCommand::Publish(PublishCommand::owned_draft(
+            draft,
+            Some(self.correlation_id),
+            None,
+        )));
         Ok(())
     }
 }
@@ -227,6 +225,19 @@ fn reaction_tags(action: &ReactAction) -> Option<(Vec<Vec<String>>, String)> {
         tags.push(vec!["p".to_string(), author.clone()]);
     }
     Some((tags, content))
+}
+
+fn reaction_delete_draft(reaction_event_id: String, reason: String) -> ReactionDraft {
+    ReactionDraft::new(
+        UnsignedEvent {
+            pubkey: String::new(),
+            kind: KIND_REACTION_DELETE,
+            tags: vec![vec!["e".to_string(), reaction_event_id]],
+            content: reason,
+            created_at: 0,
+        },
+        crate::ownership::REACTION_DELETE_EVENT_PROVENANCE,
+    )
 }
 
 fn resolve_target_author_pubkey(ctx: &ActionContext, action: &ReactAction) -> Option<String> {

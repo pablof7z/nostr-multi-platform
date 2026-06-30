@@ -61,3 +61,6 @@ pub use nip44_session::{
 pub use nip46_transport::{Nip46Rpc, Nip46Transport};
 pub use op::SignerOp;
 pub use signing::{SignedEvent, SigningError, UnsignedEvent};
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;

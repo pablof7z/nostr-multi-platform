@@ -19,6 +19,7 @@ default = ["native"]
 native = ["dep:tungstenite", "dep:mio", "dep:rustls"]
 
 [dependencies]
+nmp-ownership = { workspace = true }
 # Step 8 phase A: `nmp-network` is the lowest layer of the migration ladder —
 # it MUST NOT depend on `nmp-core` (the cycle direction would be
 # `nmp-core → nmp-network → nmp-core`). The transport-layer value types

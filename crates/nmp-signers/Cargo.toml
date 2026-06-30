@@ -17,6 +17,7 @@ default = []
 wasm = []
 
 [dependencies]
+nmp-ownership = { workspace = true }
 # `nmp-signers` no longer depends on `nmp-core` (issue #1720). The signing
 # substrate vocabulary it names — `SignedEvent`, `UnsignedEvent`, and the
 # `RemoteSignerHandle` trait — now lives in the tier-0 `nmp-signer-iface` crate,

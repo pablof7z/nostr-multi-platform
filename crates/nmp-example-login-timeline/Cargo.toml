@@ -9,6 +9,7 @@ publish = false
 description = "Canonical DX worked example: login → following-timeline render → live update, a thin shell over NMP that touches zero relay/cache/subscription code (proves docs/aim.md §1)."
 
 [dependencies]
+nmp-ownership = { workspace = true }
 # Reusable composition installers. The example uses the same explicit named
 # installer sequence the starter teaches.
 nmp-defaults = { path = "../nmp-defaults" }

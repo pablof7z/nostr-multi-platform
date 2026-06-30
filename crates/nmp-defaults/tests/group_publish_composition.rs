@@ -1,5 +1,5 @@
 //! Composition seam: build a foreign-NIP event with its owning crate, then
-//! route it into a NIP-29 group through the generic `publish_group_event`
+//! route it into a NIP-29 group through the owner-certified `wrap_owned_draft`
 //! surface (#2513).
 //!
 //! This is the path that replaces the deleted per-kind `react_in_group` /
@@ -9,22 +9,19 @@
 //!   - `nmp-nip25` / `nmp-nip18` own event construction — they build the bare
 //!     `kind:7` reaction / `kind:16` repost event (`e` / `p` / `k` tags) with
 //!     no group / `h` / routing concern,
-//!   - `nmp-nip29` owns only the envelope — `publish_group_event` injects the
-//!     `["h", local_id]` group tag (+ `previous` / host pin) and never inspects
-//!     or names the event's kind.
+//!   - `nmp-nip29` owns only the envelope — `wrap_owned_draft` injects the
+//!     `["h", local_id]` group tag and the publish command host-pins it.
 //!
 //! Neither side knows the other's concern: NIP-25/NIP-18 never name the `h`
 //! tag; NIP-29 never names kind:7/16. The app composes them.
 
-use std::cell::RefCell;
-
 use nmp_core::actor::{ActorCommand, PublishCommand};
 use nmp_core::publish::PublishRouteClass;
-use nmp_core::substrate::{ActionContext, ActionModule};
 use nmp_nip18::{build_repost_event, RepostAction, KIND_GENERIC_REPOST};
 use nmp_nip25::{build_reaction_event, ReactAction, KIND_REACTION};
-use nmp_nip29::action::{PublishGroupEventAction, PublishGroupEventInput};
+use nmp_nip29::action::wrap_owned_draft;
 use nmp_nip29::GroupId;
+use nmp_ownership::{EventOwnershipProvenance, OwnedEventDraft};
 
 const TARGET_ID: &str = "ab";
 const AUTHOR_PK: &str = "cd";
@@ -41,38 +38,27 @@ fn group() -> GroupId {
     GroupId::new("wss://groups.example.com", "room")
 }
 
-/// Run `publish_group_event` for an already-built `(kind, content, tags)` and
-/// return the single `ActorCommand` it emits.
-fn route_into_group(kind: u32, content: String, tags: Vec<Vec<String>>) -> ActorCommand {
-    let input = PublishGroupEventInput {
-        group: group(),
-        kind,
-        content,
-        tags,
-    };
-
-    // The envelope-only validator must accept a foreign-NIP event verbatim:
-    // it carries no `h` / `previous` tags, only the owning NIP's `e` / `p` rows.
-    let mut ctx = ActionContext::default();
-    PublishGroupEventAction
-        .start(&mut ctx, input.clone())
-        .expect("publish_group_event accepts a bare foreign-NIP event");
-
-    let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
-    PublishGroupEventAction
-        .execute(&ActionContext::default(), input, "test-cid", &|cmd| {
-            captured.borrow_mut().push(cmd);
-        })
-        .expect("publish_group_event executes");
-
-    let mut cmds = captured.into_inner();
-    assert_eq!(cmds.len(), 1, "expected exactly one publish command");
-    cmds.pop().unwrap()
-}
-
 fn has_tag(tags: &[Vec<String>], name: &str, value: &str) -> bool {
     tags.iter()
         .any(|t| t.len() >= 2 && t[0] == name && t[1] == value)
+}
+
+fn assert_artifact(ownership: EventOwnershipProvenance, owner_id: &str, claim_id: &str) {
+    assert!(
+        ownership
+            .artifact
+            .is_some_and(|artifact| artifact.owner_id == owner_id && artifact.claim_id == claim_id),
+        "missing artifact provenance {owner_id}:{claim_id}: {ownership:?}"
+    );
+}
+
+fn assert_group_envelope(ownership: EventOwnershipProvenance) {
+    assert!(
+        ownership.envelopes.iter().any(|envelope| {
+            envelope.owner_id == "nmp.nip29" && envelope.claim_id == "nostr.nip29.group_envelope"
+        }),
+        "missing NIP-29 group envelope provenance: {ownership:?}"
+    );
 }
 
 #[test]
@@ -92,11 +78,24 @@ fn reaction_built_by_nip25_routes_into_group_via_nip29_envelope() {
         "nip25 must NOT add the NIP-29 `h` envelope tag"
     );
 
+    let draft = OwnedEventDraft::new(reaction, nmp_nip25::ownership::REACTION_EVENT_PROVENANCE);
+
     // 2. nip29 wraps it: same kind, content, tags + the injected `h` envelope.
-    let cmd = route_into_group(reaction.kind, reaction.content.clone(), reaction.tags.clone());
+    let group = group();
+    let relay = group.host_relay_url.clone();
+    let wrapped = wrap_owned_draft(&group, draft, Vec::<String>::new())
+        .expect("nmp-nip29 wraps owner-certified reaction draft");
+    let cmd = ActorCommand::Publish(PublishCommand::owned_draft_to_relays(
+        wrapped,
+        vec![relay],
+        PublishRouteClass::GroupHostPin,
+        Some("test-cid".to_string()),
+        None,
+    ));
     match cmd {
-        ActorCommand::Publish(PublishCommand::UnsignedEventToRelays {
+        ActorCommand::Publish(PublishCommand::OwnedUnsignedEventToRelays {
             event,
+            ownership,
             relays,
             route_class,
             ..
@@ -115,6 +114,8 @@ fn reaction_built_by_nip25_routes_into_group_via_nip29_envelope() {
             // Host-pinned routing (never the NIP-65 outbox).
             assert_eq!(relays, vec!["wss://groups.example.com".to_string()]);
             assert_eq!(route_class, PublishRouteClass::GroupHostPin);
+            assert_artifact(ownership, "nmp.nip25", "nostr.kind.7.reaction");
+            assert_group_envelope(ownership);
         }
         other => panic!("expected a host-pinned publish command, got {other:?}"),
     }
@@ -138,11 +139,27 @@ fn repost_built_by_nip18_routes_into_group_via_nip29_envelope() {
         "nip18 must NOT add the NIP-29 `h` envelope tag"
     );
 
+    let draft = OwnedEventDraft::new(
+        repost,
+        nmp_nip18::ownership::GENERIC_REPOST_EVENT_PROVENANCE,
+    );
+
     // 2. nip29 wraps it: same kind + the injected `h` envelope.
-    let cmd = route_into_group(repost.kind, repost.content.clone(), repost.tags.clone());
+    let group = group();
+    let relay = group.host_relay_url.clone();
+    let wrapped = wrap_owned_draft(&group, draft, Vec::<String>::new())
+        .expect("nmp-nip29 wraps owner-certified repost draft");
+    let cmd = ActorCommand::Publish(PublishCommand::owned_draft_to_relays(
+        wrapped,
+        vec![relay],
+        PublishRouteClass::GroupHostPin,
+        Some("test-cid".to_string()),
+        None,
+    ));
     match cmd {
-        ActorCommand::Publish(PublishCommand::UnsignedEventToRelays {
+        ActorCommand::Publish(PublishCommand::OwnedUnsignedEventToRelays {
             event,
+            ownership,
             relays,
             route_class,
             ..
@@ -156,6 +173,8 @@ fn repost_built_by_nip18_routes_into_group_via_nip29_envelope() {
             assert!(has_tag(&event.tags, "k", "9"));
             assert_eq!(relays, vec!["wss://groups.example.com".to_string()]);
             assert_eq!(route_class, PublishRouteClass::GroupHostPin);
+            assert_artifact(ownership, "nmp.nip18", "nostr.kind.16.generic_repost");
+            assert_group_envelope(ownership);
         }
         other => panic!("expected a host-pinned publish command, got {other:?}"),
     }

@@ -43,3 +43,6 @@ pub use signers::{
 pub use signers::sign_event_via_extension;
 
 pub use nostr::{PublicKey, SecretKey};
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;
