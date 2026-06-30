@@ -48,6 +48,27 @@ pub struct OwnershipNote {
     pub text: &'static str,
 }
 
+/// Linker-visible marker emitted for each exclusive ownership scope.
+///
+/// The marker's exported symbol name is derived from the claim type, scope
+/// kind, scope value, and context. If two linked crates claim the same
+/// exclusive scope, they export the same symbol and the binary fails to link.
+#[repr(C)]
+pub struct ExclusiveClaimSymbol {
+    /// Stable owner id that emitted the symbol.
+    pub owner_id: &'static str,
+    /// Stable claim id that emitted the symbol.
+    pub claim_id: &'static str,
+}
+
+impl ExclusiveClaimSymbol {
+    /// Build a linker collision marker.
+    #[must_use]
+    pub const fn new(owner_id: &'static str, claim_id: &'static str) -> Self {
+        Self { owner_id, claim_id }
+    }
+}
+
 /// Provenance proving which owner minted an artifact draft.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ArtifactProvenance {
@@ -116,6 +137,62 @@ impl EventOwnershipProvenance {
     }
 }
 
+/// Event draft minted by an ownership claim before signing.
+///
+/// The event payload is generic so `nmp-ownership` stays below signer/core
+/// crates in the dependency graph. Protocol crates commonly use
+/// `OwnedEventDraft<nmp_signer_iface::UnsignedEvent>`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OwnedEventDraft<E> {
+    event: E,
+    ownership: EventOwnershipProvenance,
+}
+
+impl<E> OwnedEventDraft<E> {
+    /// Create an owner-certified event draft.
+    #[must_use]
+    pub fn new(event: E, ownership: EventOwnershipProvenance) -> Self {
+        Self { event, ownership }
+    }
+
+    /// Borrow the unsigned event payload.
+    #[must_use]
+    pub fn event(&self) -> &E {
+        &self.event
+    }
+
+    /// Borrow the ownership provenance.
+    #[must_use]
+    pub fn ownership(&self) -> EventOwnershipProvenance {
+        self.ownership
+    }
+
+    /// Consume the draft into its event payload and ownership provenance.
+    #[must_use]
+    pub fn into_parts(self) -> (E, EventOwnershipProvenance) {
+        (self.event, self.ownership)
+    }
+
+    /// Transform the event payload while preserving ownership provenance.
+    #[must_use]
+    pub fn map_event<T>(self, f: impl FnOnce(E) -> T) -> OwnedEventDraft<T> {
+        let (event, ownership) = self.into_parts();
+        OwnedEventDraft::new(f(event), ownership)
+    }
+
+    /// Return a draft with replacement ownership provenance.
+    #[must_use]
+    pub fn with_ownership(self, ownership: EventOwnershipProvenance) -> Self {
+        Self {
+            event: self.event,
+            ownership,
+        }
+    }
+}
+
+/// An event draft after a contextual owner has added envelope provenance.
+pub type EnvelopedEventDraft<E> = OwnedEventDraft<E>;
+
 /// Error raised when a publishable event lacks required ownership provenance.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PublishOwnershipError {
@@ -173,7 +250,10 @@ pub fn validate_publish_ownership(
             "NIP-29 group metadata events must be built by nmp-nip29",
         )?;
     }
-    if matches!(kind, 9000 | 9001 | 9002 | 9005 | 9007 | 9008 | 9009 | 9021 | 9022) {
+    if matches!(
+        kind,
+        9000 | 9001 | 9002 | 9005 | 9007 | 9008 | 9009 | 9021 | 9022
+    ) {
         require_artifact(
             proof,
             "nmp.nip29",
@@ -232,14 +312,53 @@ fn require_envelope(
 }
 
 fn has_tag(tags: &[Vec<String>], name: &str) -> bool {
-    tags.iter().any(|tag| tag.first().is_some_and(|t| t == name))
+    tags.iter()
+        .any(|tag| tag.first().is_some_and(|t| t == name))
 }
 
 fn deletes_kind_7_reaction(tags: &[Vec<String>]) -> bool {
     tags.iter().any(|tag| {
-        tag.first().is_some_and(|t| t == "k")
-            && tag.get(1).is_some_and(|kind| kind == "7")
+        tag.first().is_some_and(|t| t == "k") && tag.get(1).is_some_and(|kind| kind == "7")
     })
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __nmp_exclusive_claim_symbol {
+    (
+        true,
+        $owner_id:literal,
+        $id:literal,
+        $claim_type:literal,
+        $scope_kind:literal,
+        $scope_value:literal,
+        $context:literal
+    ) => {
+        const _: () = {
+            #[used]
+            #[unsafe(export_name = concat!(
+                                "__nmp_own__",
+                                $claim_type,
+                                "__",
+                                $scope_kind,
+                                "__",
+                                $scope_value,
+                                "__",
+                                $context
+                            ))]
+            static CLAIM: $crate::ExclusiveClaimSymbol =
+                $crate::ExclusiveClaimSymbol::new($owner_id, $id);
+        };
+    };
+    (
+        false,
+        $owner_id:literal,
+        $id:literal,
+        $claim_type:literal,
+        $scope_kind:literal,
+        $scope_value:literal,
+        $context:literal
+    ) => {};
 }
 
 /// Declare a crate's positive ownership descriptor.
@@ -258,7 +377,7 @@ macro_rules! declare_crate_ownership {
                 {
                     claim_type: $claim_type:literal,
                     id: $id:literal,
-                    exclusive: $exclusive:literal,
+                    exclusive: $exclusive:tt,
                     scope: {
                         kind: $scope_kind:literal,
                         value: $scope_value:literal,
@@ -311,6 +430,18 @@ macro_rules! declare_crate_ownership {
         pub const fn ownership_descriptor() -> &'static $crate::CrateOwnershipDescriptor {
             &OWNERSHIP
         }
+
+        $(
+            $crate::__nmp_exclusive_claim_symbol!(
+                $exclusive,
+                $owner_id,
+                $id,
+                $claim_type,
+                $scope_kind,
+                $scope_value,
+                $context
+            );
+        )*
     };
 }
 
@@ -318,7 +449,8 @@ macro_rules! declare_crate_ownership {
 mod tests {
     use crate::{
         validate_publish_ownership, ArtifactProvenance, CrateOwnershipDescriptor,
-        EnvelopeProvenance, EventOwnershipProvenance, OwnershipClaim, OwnershipNote,
+        EnvelopeProvenance, EventOwnershipProvenance, OwnedEventDraft, OwnershipClaim,
+        OwnershipNote,
     };
 
     #[test]
@@ -353,7 +485,10 @@ mod tests {
     #[test]
     fn protected_reaction_requires_nip25_artifact_provenance() {
         let proof = EventOwnershipProvenance::new(
-            Some(ArtifactProvenance::new("nmp.nip25", "nostr.kind.7.reaction")),
+            Some(ArtifactProvenance::new(
+                "nmp.nip25",
+                "nostr.kind.7.reaction",
+            )),
             &[],
         );
         assert!(validate_publish_ownership(7, &[], Some(proof), false).is_ok());
@@ -371,6 +506,21 @@ mod tests {
         assert!(validate_publish_ownership(9, &tags, Some(proof), true).is_ok());
         assert!(validate_publish_ownership(9, &tags, Some(proof), false).is_err());
         assert!(validate_publish_ownership(9, &tags, None, true).is_err());
+    }
+
+    #[test]
+    fn owned_draft_carries_event_and_provenance_together() {
+        let proof = EventOwnershipProvenance::new(
+            Some(ArtifactProvenance::new("nmp.test", "test.claim")),
+            &[],
+        );
+        let draft = OwnedEventDraft::new("event", proof);
+        assert_eq!(draft.event(), &"event");
+        assert_eq!(draft.ownership(), proof);
+        let mapped = draft.map_event(|event| format!("{event}-mapped"));
+        let (event, ownership) = mapped.into_parts();
+        assert_eq!(event, "event-mapped");
+        assert_eq!(ownership, proof);
     }
 }
 

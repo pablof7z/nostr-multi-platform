@@ -16,6 +16,58 @@ nmp_ownership::declare_crate_ownership! {
                 "NIP-47 wallet runtime and pay-invoice action semantics",
             ],
         },
+        {
+            claim_type: "namespace",
+            id: "projection.wallet",
+            exclusive: true,
+            scope: {
+                kind: "projection",
+                value: "wallet",
+                context: "",
+            },
+            owns: [
+                "wallet projection key",
+            ],
+        },
+        {
+            claim_type: "namespace",
+            id: "action.nmp.wallet.connect",
+            exclusive: true,
+            scope: {
+                kind: "action",
+                value: "nmp.wallet.connect",
+                context: "",
+            },
+            owns: [
+                "wallet connect action namespace",
+            ],
+        },
+        {
+            claim_type: "namespace",
+            id: "action.nmp.wallet.disconnect",
+            exclusive: true,
+            scope: {
+                kind: "action",
+                value: "nmp.wallet.disconnect",
+                context: "",
+            },
+            owns: [
+                "wallet disconnect action namespace",
+            ],
+        },
+        {
+            claim_type: "namespace",
+            id: "action.nmp.wallet.pay_invoice",
+            exclusive: true,
+            scope: {
+                kind: "action",
+                value: "nmp.wallet.pay_invoice",
+                context: "",
+            },
+            owns: [
+                "wallet pay-invoice action namespace",
+            ],
+        },
     ],
     notes: [
     ],

@@ -31,6 +31,19 @@ nmp_ownership::declare_crate_ownership! {
                 "profile metadata parsing and read semantics",
             ],
         },
+        {
+            claim_type: "namespace",
+            id: "projection.nmp.feed.home",
+            exclusive: true,
+            scope: {
+                kind: "projection",
+                value: "nmp.feed.home",
+                context: "",
+            },
+            owns: [
+                "home feed projection key",
+            ],
+        },
     ],
     notes: [
     ],

@@ -16,6 +16,19 @@ nmp_ownership::declare_crate_ownership! {
                 "standard NMP crate composition installer",
             ],
         },
+        {
+            claim_type: "namespace",
+            id: "action.nmp.app.topic_articles",
+            exclusive: true,
+            scope: {
+                kind: "action",
+                value: "nmp.app.topic_articles",
+                context: "",
+            },
+            owns: [
+                "topic articles example action namespace",
+            ],
+        },
     ],
     notes: [
     ],

@@ -16,6 +16,19 @@ nmp_ownership::declare_crate_ownership! {
                 "NIP-84 highlight publish action semantics",
             ],
         },
+        {
+            claim_type: "namespace",
+            id: "action.nmp.nip84.publish_highlight",
+            exclusive: true,
+            scope: {
+                kind: "action",
+                value: "nmp.nip84.publish_highlight",
+                context: "",
+            },
+            owns: [
+                "highlight publish action namespace",
+            ],
+        },
     ],
     notes: [
     ],

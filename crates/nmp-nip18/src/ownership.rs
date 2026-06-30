@@ -42,6 +42,32 @@ nmp_ownership::declare_crate_ownership! {
                 "delete folding for repost projections",
             ],
         },
+        {
+            claim_type: "namespace",
+            id: "action.nmp.nip18.repost",
+            exclusive: true,
+            scope: {
+                kind: "action",
+                value: "nmp.nip18.repost",
+                context: "",
+            },
+            owns: [
+                "repost action namespace",
+            ],
+        },
+        {
+            claim_type: "namespace",
+            id: "action.nmp.nip18.quote_repost",
+            exclusive: true,
+            scope: {
+                kind: "action",
+                value: "nmp.nip18.quote_repost",
+                context: "",
+            },
+            owns: [
+                "quote repost action namespace",
+            ],
+        },
     ],
     notes: [
     ],

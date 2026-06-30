@@ -98,6 +98,8 @@ pub struct ActionContract {
     pub module_type: &'static str,
     /// Rust `ActionPayload` type decoded for this namespace.
     pub payload_type: &'static str,
+    /// Positive ownership claim that owns this action namespace/surface.
+    pub owner_claim: &'static str,
     /// Stable payload schema id (`ActionPayload::SCHEMA_ID`).
     pub schema_id: &'static str,
     /// FlatBuffers schema file path, relative to the repo root.

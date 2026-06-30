@@ -180,3 +180,42 @@ pub enum PublishCommand {
     /// internal callers that only know the handle still resolve.
     CancelPublish { correlation_id: String },
 }
+
+impl PublishCommand {
+    /// Convert an owner-certified draft into the publish command that routes
+    /// through the normal NIP-65 outbox path.
+    #[must_use]
+    pub fn owned_draft(
+        draft: nmp_ownership::OwnedEventDraft<nmp_signer_iface::UnsignedEvent>,
+        correlation_id: Option<String>,
+        signer_pubkey: Option<String>,
+    ) -> Self {
+        let (event, ownership) = draft.into_parts();
+        Self::OwnedUnsignedEvent {
+            event,
+            ownership,
+            correlation_id,
+            signer_pubkey,
+        }
+    }
+
+    /// Convert an owner-certified draft into an explicit-relay publish command.
+    #[must_use]
+    pub fn owned_draft_to_relays(
+        draft: nmp_ownership::OwnedEventDraft<nmp_signer_iface::UnsignedEvent>,
+        relays: Vec<crate::publish::RelayUrl>,
+        route_class: crate::publish::PublishRouteClass,
+        correlation_id: Option<String>,
+        signer_pubkey: Option<String>,
+    ) -> Self {
+        let (event, ownership) = draft.into_parts();
+        Self::OwnedUnsignedEventToRelays {
+            event,
+            ownership,
+            relays,
+            route_class,
+            correlation_id,
+            signer_pubkey,
+        }
+    }
+}

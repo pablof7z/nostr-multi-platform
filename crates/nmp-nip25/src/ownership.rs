@@ -62,11 +62,11 @@ nmp_ownership::declare_crate_ownership! {
         },
         {
             claim_type: "namespace",
-            id: "projection.nmp.nip25.reaction_aggregate",
+            id: "projection.nmp.nip25.reactions",
             exclusive: true,
             scope: {
                 kind: "projection",
-                value: "nmp.nip25.reaction_aggregate",
+                value: "nmp.nip25.reactions",
                 context: "",
             },
             owns: [
@@ -82,10 +82,7 @@ pub const REACTION_ARTIFACT: nmp_ownership::ArtifactProvenance =
     nmp_ownership::ArtifactProvenance::new("nmp.nip25", "nostr.kind.7.reaction");
 
 pub const REACTION_DELETE_ARTIFACT: nmp_ownership::ArtifactProvenance =
-    nmp_ownership::ArtifactProvenance::new(
-        "nmp.nip25",
-        "nostr.kind.5.delete_kind_7_reaction",
-    );
+    nmp_ownership::ArtifactProvenance::new("nmp.nip25", "nostr.kind.5.delete_kind_7_reaction");
 
 pub const REACTION_EVENT_PROVENANCE: nmp_ownership::EventOwnershipProvenance =
     nmp_ownership::EventOwnershipProvenance::new(Some(REACTION_ARTIFACT), &[]);

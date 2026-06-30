@@ -29,6 +29,19 @@ nmp_ownership::declare_crate_ownership! {
                 "zap receipt decoder and zaps view",
             ],
         },
+        {
+            claim_type: "namespace",
+            id: "action.nmp.nip57.zap",
+            exclusive: true,
+            scope: {
+                kind: "action",
+                value: "nmp.nip57.zap",
+                context: "",
+            },
+            owns: [
+                "zap action namespace",
+            ],
+        },
     ],
     notes: [
     ],

@@ -104,6 +104,8 @@ pub struct ProjectionContract {
     /// A short human-readable note of the producing crate/module — purely for
     /// auditability of the manifest (where this projection originates).
     pub producer: &'static str,
+    /// Positive ownership claim that owns this projection key/surface.
+    pub owner_claim: &'static str,
     /// `TypedPayload.schema_id` — the buffer's stable schema identity (the
     /// `*_SCHEMA_ID` constant on the producer crate). For most Tier-2 built-ins
     /// `key == schema_id`; for the op-feed / follow-list the producer
@@ -134,7 +136,6 @@ pub struct ProjectionContract {
 // resolves unchanged.
 mod table;
 pub use table::PROJECTION_CONTRACT;
-
 
 /// Look up a projection's contract by its kernel-emitted key. Returns `None`
 /// for an unknown key — callers that require the contract use [`contract_for`]

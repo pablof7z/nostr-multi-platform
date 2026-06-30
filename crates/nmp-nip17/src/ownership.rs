@@ -29,6 +29,71 @@ nmp_ownership::declare_crate_ownership! {
                 "DM relay-list parsing and interest semantics",
             ],
         },
+        {
+            claim_type: "namespace",
+            id: "projection.nmp.nip17.dm_inbox",
+            exclusive: true,
+            scope: {
+                kind: "projection",
+                value: "nmp.nip17.dm_inbox",
+                context: "",
+            },
+            owns: [
+                "DM inbox projection key",
+            ],
+        },
+        {
+            claim_type: "namespace",
+            id: "projection.nmp.nip17.dm_relay_list",
+            exclusive: true,
+            scope: {
+                kind: "projection",
+                value: "nmp.nip17.dm_relay_list",
+                context: "",
+            },
+            owns: [
+                "DM relay-list projection key",
+            ],
+        },
+        {
+            claim_type: "namespace",
+            id: "action.nmp.nip17.send",
+            exclusive: true,
+            scope: {
+                kind: "action",
+                value: "nmp.nip17.send",
+                context: "",
+            },
+            owns: [
+                "NIP-17 send action namespace",
+            ],
+        },
+        {
+            claim_type: "namespace",
+            id: "action.nmp.nip17.publish_relay_list",
+            exclusive: true,
+            scope: {
+                kind: "action",
+                value: "nmp.nip17.publish_relay_list",
+                context: "",
+            },
+            owns: [
+                "NIP-17 DM relay-list publish action namespace",
+            ],
+        },
+        {
+            claim_type: "namespace",
+            id: "action.nmp.nip17.hydrate_peer_relay_list",
+            exclusive: true,
+            scope: {
+                kind: "action",
+                value: "nmp.nip17.hydrate_peer_relay_list",
+                context: "",
+            },
+            owns: [
+                "NIP-17 peer relay-list hydration action namespace",
+            ],
+        },
     ],
     notes: [
     ],

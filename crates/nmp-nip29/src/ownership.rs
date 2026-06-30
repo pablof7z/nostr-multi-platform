@@ -229,6 +229,110 @@ nmp_ownership::declare_crate_ownership! {
                 "group event projection key",
             ],
         },
+        {
+            claim_type: "namespace",
+            id: "projection.nmp.nip29.discovered_groups",
+            exclusive: true,
+            scope: {
+                kind: "projection",
+                value: "nmp.nip29.discovered_groups",
+                context: "",
+            },
+            owns: [
+                "discovered groups projection key",
+            ],
+        },
+        {
+            claim_type: "namespace",
+            id: "projection.nmp.nip29.group_defaults",
+            exclusive: true,
+            scope: {
+                kind: "projection",
+                value: "nmp.nip29.group_defaults",
+                context: "",
+            },
+            owns: [
+                "group defaults projection key",
+            ],
+        },
+        {
+            claim_type: "namespace",
+            id: "projection.nmp.nip29.joined_groups",
+            exclusive: true,
+            scope: {
+                kind: "projection",
+                value: "nmp.nip29.joined_groups",
+                context: "",
+            },
+            owns: [
+                "joined groups projection key",
+            ],
+        },
+        {
+            claim_type: "namespace",
+            id: "projection.nmp.nip29.group_roster",
+            exclusive: true,
+            scope: {
+                kind: "projection",
+                value: "nmp.nip29.group_roster",
+                context: "",
+            },
+            owns: [
+                "group roster projection key",
+            ],
+        },
+        {
+            claim_type: "namespace",
+            id: "action.nmp.nip29.discover",
+            exclusive: true,
+            scope: {
+                kind: "action",
+                value: "nmp.nip29.discover",
+                context: "",
+            },
+            owns: [
+                "group discovery action namespace",
+            ],
+        },
+        {
+            claim_type: "namespace",
+            id: "action.nmp.nip29.join",
+            exclusive: true,
+            scope: {
+                kind: "action",
+                value: "nmp.nip29.join",
+                context: "",
+            },
+            owns: [
+                "group join action namespace",
+            ],
+        },
+        {
+            claim_type: "namespace",
+            id: "action.nmp.nip29.create_public_group",
+            exclusive: true,
+            scope: {
+                kind: "action",
+                value: "nmp.nip29.create_public_group",
+                context: "",
+            },
+            owns: [
+                "group creation action namespace",
+            ],
+        },
+        {
+            claim_type: "namespace",
+            id: "action.nmp.nip29.edit_metadata",
+            exclusive: true,
+            scope: {
+                kind: "action",
+                value: "nmp.nip29.edit_metadata",
+                context: "",
+            },
+            owns: [
+                "group metadata edit action namespace",
+            ],
+        },
     ],
     notes: [
         {

@@ -55,6 +55,32 @@ nmp_ownership::declare_crate_ownership! {
                 "Marmot action namespace family",
             ],
         },
+        {
+            claim_type: "namespace",
+            id: "projection.nmp.marmot.snapshot",
+            exclusive: true,
+            scope: {
+                kind: "projection",
+                value: "nmp.marmot.snapshot",
+                context: "",
+            },
+            owns: [
+                "Marmot snapshot projection key",
+            ],
+        },
+        {
+            claim_type: "namespace",
+            id: "projection.nmp.marmot.messages",
+            exclusive: true,
+            scope: {
+                kind: "projection",
+                value: "nmp.marmot.messages",
+                context: "",
+            },
+            owns: [
+                "Marmot messages projection key",
+            ],
+        },
     ],
     notes: [
     ],

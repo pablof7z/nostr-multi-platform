@@ -16,6 +16,19 @@ nmp_ownership::declare_crate_ownership! {
                 "content tokenization, rendering, embed registry, and recursion guard",
             ],
         },
+        {
+            claim_type: "namespace",
+            id: "projection.refs.event.envelopes",
+            exclusive: true,
+            scope: {
+                kind: "projection",
+                value: "refs.event.envelopes",
+                context: "",
+            },
+            owns: [
+                "event embed sidecar projection key",
+            ],
+        },
     ],
     notes: [
     ],

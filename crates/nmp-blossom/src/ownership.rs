@@ -16,6 +16,19 @@ nmp_ownership::declare_crate_ownership! {
                 "Blossom authorization event builder and upload command",
             ],
         },
+        {
+            claim_type: "namespace",
+            id: "action.nmp.blossom.upload",
+            exclusive: true,
+            scope: {
+                kind: "action",
+                value: "nmp.blossom.upload",
+                context: "",
+            },
+            owns: [
+                "Blossom upload action namespace",
+            ],
+        },
     ],
     notes: [
     ],

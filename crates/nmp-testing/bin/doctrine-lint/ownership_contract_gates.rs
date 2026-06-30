@@ -6,7 +6,9 @@
 
 use nmp_codegen::{
     load_workspace_ownership, render_ownership_tsv, OwnershipQuery, OwnershipWorkspace,
+    ACTION_CONTRACT, PROJECTION_CONTRACT,
 };
+use std::collections::BTreeSet;
 
 use super::workspace_root;
 
@@ -93,4 +95,44 @@ fn legacy_relations_crate_claims_no_engagement_semantics() {
         "nmp-relations is a legacy compatibility adapter, not an engagement owner; claims: {:?}",
         relations.claims
     );
+}
+
+#[test]
+fn action_contracts_reference_positive_owner_claims() {
+    let workspace = ownership_workspace();
+    let claim_ids = ownership_claim_ids(&workspace);
+    let missing = ACTION_CONTRACT
+        .iter()
+        .filter(|contract| !claim_ids.contains(contract.owner_claim))
+        .map(|contract| format!("{} -> {}", contract.namespace, contract.owner_claim))
+        .collect::<Vec<_>>();
+    assert!(
+        missing.is_empty(),
+        "action contracts must cite existing ownership claims:\n{}",
+        missing.join("\n")
+    );
+}
+
+#[test]
+fn projection_contracts_reference_positive_owner_claims() {
+    let workspace = ownership_workspace();
+    let claim_ids = ownership_claim_ids(&workspace);
+    let missing = PROJECTION_CONTRACT
+        .iter()
+        .filter(|contract| !claim_ids.contains(contract.owner_claim))
+        .map(|contract| format!("{} -> {}", contract.key, contract.owner_claim))
+        .collect::<Vec<_>>();
+    assert!(
+        missing.is_empty(),
+        "projection contracts must cite existing ownership claims:\n{}",
+        missing.join("\n")
+    );
+}
+
+fn ownership_claim_ids(workspace: &OwnershipWorkspace) -> BTreeSet<&str> {
+    workspace
+        .descriptors
+        .iter()
+        .flat_map(|descriptor| descriptor.claims.iter().map(|claim| claim.id.as_str()))
+        .collect()
 }

@@ -7,12 +7,10 @@
 //!
 //! ## Action layout
 //!
-//! - `publish` — `PublishGroupEvent`: the SOLE group-event publish surface
-//!   (any kind; injects the `h` / `previous` / pin envelope). NIP-29 owns the
-//!   envelope, not the event kind — "chat" is just `kind:9`, a reaction is a
-//!   NIP-25 `kind:7`, a repost a NIP-18 `kind:16`. Callers build the event with
-//!   the right kind + `e`/`p` tags and hand it to this generic action; NIP-29
-//!   never names, classifies, or owns a foreign kind.
+//! - `publish` — `PublishGroupEvent`: legacy/group-private raw publish action
+//!   plus the owner-certified [`wrap_owned_draft`] seam. NIP-29 owns the
+//!   envelope, not the event kind: a reaction is a NIP-25 `kind:7` draft carried
+//!   through the NIP-29 envelope, not a NIP-29 artifact.
 //! - `create` — `CreatePublicGroup` (kind:9007 + kind:9002).
 //! - `discover` — `DiscoverGroups` (no publish; pushes a metadata interest).
 //! - `join` — `JoinGroup` (kind:9021, user-management request).
@@ -40,11 +38,11 @@ mod set_parent;
 pub use admin::{
     CreateInviteAction, CreateInviteInput, PutUserAction, PutUserInput, MAX_CODES_PER_INVITE_EVENT,
 };
-pub use publish::{PublishGroupEventAction, PublishGroupEventInput, DEFAULT_PREVIOUS_LIMIT};
 pub use create::{CreatePublicGroupAction, CreatePublicGroupInput, GroupAccess, GroupVisibility};
 pub use discover::{DiscoverGroupsAction, DiscoverGroupsInput};
 pub use edit_metadata::{EditMetadataAction, EditMetadataInput};
 pub use join::{JoinGroupAction, JoinGroupInput};
 pub use leave::{LeaveGroupAction, LeaveGroupInput};
-pub use publish_plan::{PublishPlan, PublishPlanError, RelayPin};
+pub use publish::{PublishGroupEventAction, PublishGroupEventInput, DEFAULT_PREVIOUS_LIMIT};
+pub use publish_plan::{wrap_owned_draft, PublishPlan, PublishPlanError, RelayPin};
 pub use set_parent::{SetParentAction, SetParentInput};
