@@ -1,8 +1,11 @@
 use super::*;
 use crate::group_id::GroupId;
 use crate::group_query::{GroupEventKinds, GroupEventsQuery};
-use crate::kinds::{KIND_CHAT_MESSAGE, KIND_DISCUSSION_OR_ARTIFACT};
 use std::sync::Arc;
+
+// kind:9 (chat) and kind:11 (thread) are caller-declared kinds; the projection
+// is kind-agnostic, so the tests pass literal kind numbers — NIP-29 owns no
+// constant for these foreign kinds.
 
 /// The group every test event in this module targets.
 fn group() -> GroupId {
@@ -11,7 +14,7 @@ fn group() -> GroupId {
 
 /// A chat-scoped query (kinds {9, 11}) for the test group.
 fn chat_query() -> GroupEventsQuery {
-    GroupEventsQuery::from_kinds(group(), vec![KIND_CHAT_MESSAGE, KIND_DISCUSSION_OR_ARTIFACT])
+    GroupEventsQuery::from_kinds(group(), vec![9, 11])
 }
 
 /// An all-kinds query for the test group.
@@ -49,7 +52,7 @@ fn fresh_projection_yields_empty_snapshot() {
 #[test]
 fn matching_chat_event_is_retained() {
     let proj = GroupEventsProjection::new(chat_query());
-    proj.on_kernel_event(&event("e1", KIND_CHAT_MESSAGE, 100, h_tag("rust-nostr")));
+    proj.on_kernel_event(&event("e1", 9, 100, h_tag("rust-nostr")));
 
     let snap = proj.snapshot();
     assert_eq!(snap.events.len(), 1);
@@ -58,7 +61,7 @@ fn matching_chat_event_is_retained() {
     assert_eq!(msg.pubkey, "author-of-e1");
     assert_eq!(msg.content, "content of e1");
     assert_eq!(msg.created_at, 100);
-    assert_eq!(msg.kind, KIND_CHAT_MESSAGE);
+    assert_eq!(msg.kind, 9);
 }
 
 #[test]
@@ -66,7 +69,7 @@ fn thread_kind_is_retained() {
     let proj = GroupEventsProjection::new(chat_query());
     proj.on_kernel_event(&event(
         "thread",
-        KIND_DISCUSSION_OR_ARTIFACT,
+        11,
         10,
         h_tag("rust-nostr"),
     ));
@@ -74,7 +77,7 @@ fn thread_kind_is_retained() {
     let snap = proj.snapshot();
     assert_eq!(snap.events.len(), 1);
     let kinds: Vec<u32> = snap.events.iter().map(|m| m.kind).collect();
-    assert!(kinds.contains(&KIND_DISCUSSION_OR_ARTIFACT));
+    assert!(kinds.contains(&11));
 }
 
 #[test]
@@ -83,14 +86,14 @@ fn all_kinds_query_retains_any_h_tagged_kind() {
     // accepts a kind:1111 comment, a kind:9 chat, and a future kind:40000 alike,
     // as long as they carry the matching `h` tag.
     let proj = GroupEventsProjection::new(all_query());
-    proj.on_kernel_event(&event("chat", KIND_CHAT_MESSAGE, 100, h_tag("rust-nostr")));
+    proj.on_kernel_event(&event("chat", 9, 100, h_tag("rust-nostr")));
     proj.on_kernel_event(&event("comment", 1111, 110, h_tag("rust-nostr")));
     proj.on_kernel_event(&event("future", 40000, 120, h_tag("rust-nostr")));
 
     let snap = proj.snapshot();
     let kinds: Vec<u32> = snap.events.iter().map(|m| m.kind).collect();
     assert_eq!(snap.events.len(), 3);
-    assert!(kinds.contains(&KIND_CHAT_MESSAGE));
+    assert!(kinds.contains(&9));
     assert!(kinds.contains(&1111));
     assert!(kinds.contains(&40000));
 }
@@ -101,7 +104,7 @@ fn specific_query_kind_gates_other_same_h_kinds() {
     // it is delivered (cache replay / store hydration can deliver kinds the wire
     // filter did not request — the projection is the second gate).
     let proj = GroupEventsProjection::new(chat_query());
-    proj.on_kernel_event(&event("chat", KIND_CHAT_MESSAGE, 100, h_tag("rust-nostr")));
+    proj.on_kernel_event(&event("chat", 9, 100, h_tag("rust-nostr")));
     proj.on_kernel_event(&event("comment", 1111, 110, h_tag("rust-nostr")));
 
     let snap = proj.snapshot();
@@ -115,7 +118,7 @@ fn event_for_a_different_group_is_excluded() {
     // Correct kind, but the `h` tag names a different group.
     proj.on_kernel_event(&event(
         "other",
-        KIND_CHAT_MESSAGE,
+        9,
         100,
         h_tag("some-other-room"),
     ));
@@ -127,7 +130,7 @@ fn event_with_no_h_tag_is_excluded_even_under_all_kinds() {
     // h-tag-only rejection: an event with no `h` tag is never a group event, no
     // matter how permissive the kind selection.
     let proj = GroupEventsProjection::new(all_query());
-    proj.on_kernel_event(&event("loose", KIND_CHAT_MESSAGE, 100, vec![]));
+    proj.on_kernel_event(&event("loose", 9, 100, vec![]));
     proj.on_kernel_event(&event("loose2", 1, 100, vec![]));
     assert!(proj.snapshot().events.is_empty());
 }
@@ -146,9 +149,9 @@ fn off_kind_event_with_matching_h_tag_is_excluded() {
 fn events_are_ordered_newest_first() {
     let proj = GroupEventsProjection::new(chat_query());
     // Deliver out of chronological order.
-    proj.on_kernel_event(&event("mid", KIND_CHAT_MESSAGE, 200, h_tag("rust-nostr")));
-    proj.on_kernel_event(&event("old", KIND_CHAT_MESSAGE, 100, h_tag("rust-nostr")));
-    proj.on_kernel_event(&event("new", KIND_CHAT_MESSAGE, 300, h_tag("rust-nostr")));
+    proj.on_kernel_event(&event("mid", 9, 200, h_tag("rust-nostr")));
+    proj.on_kernel_event(&event("old", 9, 100, h_tag("rust-nostr")));
+    proj.on_kernel_event(&event("new", 9, 300, h_tag("rust-nostr")));
 
     let snap = proj.snapshot();
     let ids: Vec<&str> = snap.events.iter().map(|m| m.id.as_str()).collect();
@@ -159,8 +162,8 @@ fn events_are_ordered_newest_first() {
 fn created_at_ties_break_on_id_descending() {
     let proj = GroupEventsProjection::new(chat_query());
     // Same `created_at` — order must still be total and deterministic.
-    proj.on_kernel_event(&event("aaa", KIND_CHAT_MESSAGE, 500, h_tag("rust-nostr")));
-    proj.on_kernel_event(&event("zzz", KIND_CHAT_MESSAGE, 500, h_tag("rust-nostr")));
+    proj.on_kernel_event(&event("aaa", 9, 500, h_tag("rust-nostr")));
+    proj.on_kernel_event(&event("zzz", 9, 500, h_tag("rust-nostr")));
 
     let snap = proj.snapshot();
     let ids: Vec<&str> = snap.events.iter().map(|m| m.id.as_str()).collect();
@@ -170,7 +173,7 @@ fn created_at_ties_break_on_id_descending() {
 #[test]
 fn duplicate_event_id_is_not_duplicated() {
     let proj = GroupEventsProjection::new(chat_query());
-    let evt = event("dup", KIND_CHAT_MESSAGE, 100, h_tag("rust-nostr"));
+    let evt = event("dup", 9, 100, h_tag("rust-nostr"));
     proj.on_kernel_event(&evt);
     proj.on_kernel_event(&evt);
 
@@ -181,10 +184,10 @@ fn duplicate_event_id_is_not_duplicated() {
 #[test]
 fn snapshot_json_contains_the_events() {
     let proj = GroupEventsProjection::new(chat_query());
-    proj.on_kernel_event(&event("e1", KIND_CHAT_MESSAGE, 100, h_tag("rust-nostr")));
+    proj.on_kernel_event(&event("e1", 9, 100, h_tag("rust-nostr")));
     proj.on_kernel_event(&event(
         "e2",
-        KIND_DISCUSSION_OR_ARTIFACT,
+        11,
         200,
         h_tag("rust-nostr"),
     ));
@@ -211,7 +214,7 @@ fn snapshot_json_contains_the_events() {
 #[test]
 fn round_trips_through_serde() {
     let proj = GroupEventsProjection::new(chat_query());
-    proj.on_kernel_event(&event("e1", KIND_CHAT_MESSAGE, 100, h_tag("rust-nostr")));
+    proj.on_kernel_event(&event("e1", 9, 100, h_tag("rust-nostr")));
     let snap = proj.snapshot();
     let encoded = serde_json::to_string(&snap).expect("snapshot serialises");
     let decoded: GroupEventsSnapshot =
@@ -225,7 +228,7 @@ fn drives_through_observer_trait_object() {
     // that is exactly how a host passes it into an observed projection.
     let proj = Arc::new(GroupEventsProjection::new(chat_query()));
     let observer: Arc<dyn ObservedProjectionSink> = Arc::clone(&proj) as _;
-    observer.on_kernel_event(&event("e1", KIND_CHAT_MESSAGE, 100, h_tag("rust-nostr")));
+    observer.on_kernel_event(&event("e1", 9, 100, h_tag("rust-nostr")));
     assert_eq!(proj.snapshot().events.len(), 1);
 }
 
@@ -240,7 +243,7 @@ fn poisoned_mutex_yields_empty_snapshot() {
     // D6: a poisoned internal mutex degrades to an empty snapshot rather than
     // panicking on the actor thread.
     let proj = GroupEventsProjection::new(chat_query());
-    proj.on_kernel_event(&event("e1", KIND_CHAT_MESSAGE, 100, h_tag("rust-nostr")));
+    proj.on_kernel_event(&event("e1", 9, 100, h_tag("rust-nostr")));
     let proj = Arc::new(proj);
     let poisoner = Arc::clone(&proj);
     let _ = std::thread::spawn(move || {
@@ -262,7 +265,7 @@ fn empty_snapshot_constructor_yields_no_events() {
 #[test]
 fn standalone_chat_event_has_no_reply_edges() {
     let proj = GroupEventsProjection::new(chat_query());
-    proj.on_kernel_event(&event("e1", KIND_CHAT_MESSAGE, 100, h_tag("rust-nostr")));
+    proj.on_kernel_event(&event("e1", 9, 100, h_tag("rust-nostr")));
     let snap = proj.snapshot();
     let row = &snap.events[0];
     assert_eq!(row.reply_to, None);
@@ -282,7 +285,7 @@ fn marked_reply_surfaces_parent_and_root() {
         vec!["e".into(), "rootid".into(), String::new(), "root".into()],
         vec!["e".into(), "parentid".into(), String::new(), "reply".into()],
     ];
-    proj.on_kernel_event(&event("e1", KIND_CHAT_MESSAGE, 100, tags));
+    proj.on_kernel_event(&event("e1", 9, 100, tags));
     let snap = proj.snapshot();
     let row = &snap.events[0];
     assert_eq!(row.reply_to.as_deref(), Some("parentid"));
@@ -297,7 +300,7 @@ fn positional_thread_event_uses_first_root_last_parent() {
         vec!["e".into(), "rootid".into()],
         vec!["e".into(), "parentid".into()],
     ];
-    proj.on_kernel_event(&event("e1", KIND_DISCUSSION_OR_ARTIFACT, 100, tags));
+    proj.on_kernel_event(&event("e1", 11, 100, tags));
     let snap = proj.snapshot();
     let row = &snap.events[0];
     assert_eq!(row.root.as_deref(), Some("rootid"));

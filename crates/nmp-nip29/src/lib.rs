@@ -19,9 +19,10 @@
 //!
 //! - [`group_id`] — `GroupId { host_relay_url, local_id }` + URI codec.
 //! - [`kinds`] — NIP-29 kind constants and the `["h", ...]` dispatch helper.
-//! - [`action`] — the group `ActionModule` impls, fronted by the generic
-//!   `PublishGroupEvent` (publish any event to a group), plus react / share /
-//!   repost conveniences and the lifecycle/admin actions.
+//! - [`action`] — the group `ActionModule` impls. The sole group-event publish
+//!   surface is the generic `PublishGroupEvent` (publish any event to a group);
+//!   NIP-29 owns the `h`-tag envelope, never the event kind. Plus the
+//!   lifecycle/admin actions.
 //! - [`cache`] — `previous_tag_prefix` helper, `JoinedHostsCache`,
 //!   `TofuSignerCache` (metadata-signer trust).
 //! - [`interest`] — helpers for constructing pinned `LogicalInterest`s.
@@ -53,7 +54,7 @@ pub use group_query::{GroupEventKinds, GroupEventsQuery};
 pub use input_scope::{
     register_input_scopes, GroupIdentPayload, GroupInputScopeRecognizer, GROUP_INPUT_SCOPE_LABEL,
 };
-pub use kinds::{event_is_group_event, group_id_from_tags, GroupEventClass, KindClass};
+pub use kinds::{event_is_group_event, group_id_from_tags, KindClass};
 pub use projection::{
     DiscoveredGroup, DiscoveredGroupsProjection, DiscoveredGroupsSnapshot, GroupEvent,
     GroupEventsProjection, GroupEventsSnapshot, GroupDefaultsProjection, GroupDefaultsSnapshot,

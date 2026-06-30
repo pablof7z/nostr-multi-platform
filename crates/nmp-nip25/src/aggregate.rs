@@ -54,10 +54,11 @@ pub struct ReactionEmojiCount {
 /// token plus the raw hex id of the viewer's kind:7 reaction event.
 ///
 /// This is the retraction handle: to toggle a reaction off, the app deletes the
-/// kind:7 event named by [`ViewerReaction::reaction_event_id`] (via the
-/// host-pinned `nmp.nip29.unreact_in_group` action in a group). Surfacing the id
-/// here is what makes toggle-off supportable — the aggregate is the only place
-/// that knows which of the viewer's events backs a given (target, emoji).
+/// kind:7 event named by [`ViewerReaction::reaction_event_id`] (in a group, by
+/// building a NIP-09 kind:5 deletion and publishing it through the generic
+/// host-pinned `nmp.nip29.publish_group_event` action). Surfacing the id here is
+/// what makes toggle-off supportable — the aggregate is the only place that
+/// knows which of the viewer's events backs a given (target, emoji).
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ViewerReaction {
     /// The raw reaction token (verbatim content; empty content normalizes to
