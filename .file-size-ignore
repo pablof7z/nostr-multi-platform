@@ -1,5 +1,5 @@
 # .file-size-ignore — gitignore-style globs for files exempt from the
-# AGENTS.md 300/500 LOC gate.
+# AGENTS.md file-size gate (300/500 LOC for source, 800 for non-code docs/config).
 #
 # Rules:
 # - Generated, vendored, lockfile, binary, and benchmark-output artifacts are exempt.

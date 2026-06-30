@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
-# check-file-size.sh — enforce AGENTS.md 300/500 LOC limits on hand-authored source.
+# check-file-size.sh — enforce AGENTS.md LOC limits on hand-authored files.
+#
+# Two limit tiers (see AGENTS.md "File size"):
+#   * Source code  — 300 LOC soft warning, 500 LOC hard cap.
+#   * Non-code     — 800 LOC hard cap (documentation and other non-code text:
+#                    .md, .toml, .yml, .yaml). No soft tier; prose/config has a
+#                    weaker cohesion constraint than code.
 #
 # LOC is counted by `wc -l` (blank lines + comments included), matching AGENTS.md wording.
 # Extensions checked: .rs .swift .md .ts .tsx .kt .kts .java .toml .yml
@@ -25,12 +31,15 @@
 #
 # Exit codes:
 #   0  all files within limits (or --dry-run)
-#   1  one or more files exceed the 500-LOC hard cap
+#   1  one or more files exceed their hard cap (500 source / 800 non-code)
 
 set -euo pipefail
 
 WARN_LOC=300
 HARD_LOC=500
+# Non-code files (docs/config) get a single, looser hard cap and no soft tier.
+DOC_WARN_LOC=800
+DOC_HARD_LOC=800
 DRY_RUN=0
 CHANGED_ONLY=0
 FROM_REF=""
@@ -252,6 +261,25 @@ is_checked_file() {
     esac
 }
 
+# Non-code = documentation and declarative config/data (no executable logic).
+# These get the looser DOC_* hard cap. Classified by extension so a non-code
+# file keeps the doc cap even under .githooks/, ci/, or scripts/.
+is_noncode_file() {
+    case "$1" in
+        *.md|*.toml|*.yml|*.yaml) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Echo "<warn> <hard>" for the given path's tier.
+caps_for_file() {
+    if is_noncode_file "$1"; then
+        echo "$DOC_WARN_LOC $DOC_HARD_LOC"
+    else
+        echo "$WARN_LOC $HARD_LOC"
+    fi
+}
+
 has_staged_baseline_reason() {
     local reason="$1"
     [[ "$reason" == staged:* && -n "${reason#staged:}" ]]
@@ -280,22 +308,23 @@ while IFS= read -r rel_path; do
     # Check ignore rules
     is_ignored "$rel_path" && continue
 
+    read -r warn_loc hard_loc < <(caps_for_file "$rel_path")
     loc=$(wc -l < "$abs_path")
 
-    if [[ $loc -ge $HARD_LOC ]]; then
+    if [[ $loc -ge $hard_loc ]]; then
         baseline="$(baseline_loc_for "$rel_path" || true)"
         if [[ -n "$baseline" && $loc -le $baseline ]]; then
-            echo "BASELINE hard-cap debt ($loc LOC >= $HARD_LOC, baseline $baseline): $rel_path" >&2
+            echo "BASELINE hard-cap debt ($loc LOC >= $hard_loc, baseline $baseline): $rel_path" >&2
             BASELINED=$((BASELINED + 1))
         elif [[ -n "$baseline" ]]; then
             echo "HARD-cap expansion ($loc LOC > baseline $baseline): $rel_path" >&2
             FAILURES=$((FAILURES + 1))
         else
-            echo "HARD-cap violation ($loc LOC >= $HARD_LOC): $rel_path" >&2
+            echo "HARD-cap violation ($loc LOC >= $hard_loc): $rel_path" >&2
             FAILURES=$((FAILURES + 1))
         fi
-    elif [[ $loc -ge $WARN_LOC ]]; then
-        echo "SOFT-cap warning ($loc LOC >= $WARN_LOC): $rel_path" >&2
+    elif [[ $loc -ge $warn_loc ]]; then
+        echo "SOFT-cap warning ($loc LOC >= $warn_loc): $rel_path" >&2
         WARNINGS=$((WARNINGS + 1))
     fi
 done < "$_FILES_TMP"
@@ -318,9 +347,10 @@ for idx in "${!CURRENT_BASELINE_PATHS[@]}"; do
         continue
     fi
 
+    read -r _warn_loc hard_loc < <(caps_for_file "$rel_path")
     loc=$(wc -l < "$abs_path")
-    if [[ $loc -lt $HARD_LOC ]]; then
-        echo "STALE baseline entry below hard cap ($loc LOC < $HARD_LOC, baseline $baseline): $rel_path" >&2
+    if [[ $loc -lt $hard_loc ]]; then
+        echo "STALE baseline entry below hard cap ($loc LOC < $hard_loc, baseline $baseline): $rel_path" >&2
         FAILURES=$((FAILURES + 1))
     elif [[ $baseline -gt $loc ]]; then
         if has_staged_baseline_reason "$reason"; then
@@ -337,7 +367,7 @@ done
 if [[ $FAILURES -gt 0 ]]; then
     echo "" >&2
     echo "file-size gate: $FAILURES hard-cap violation(s) detected." >&2
-    echo "  Split file(s) into cohesive submodules (AGENTS.md: 500 LOC hard ceiling)." >&2
+    echo "  Split file(s) into cohesive submodules (AGENTS.md: 500 LOC hard ceiling for source, 800 for non-code docs/config)." >&2
     echo "  Legacy hard-cap debt must not exceed .file-size-baseline." >&2
     echo "  Delete retired baseline entries; lower stale entries or add staged:<issue>." >&2
     echo "  Exempt generated/output files via .file-size-ignore." >&2
