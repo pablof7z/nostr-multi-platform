@@ -7,7 +7,7 @@ import SwiftUI
 /// The kernel emits the canonical role token (`both`, `read`, `write`,
 /// `indexer`, `both,indexer`, …). The Swift shell maps that role to label and
 /// color locally.
-public struct NostrRelayEditRow: Codable, Identifiable, Equatable, Sendable {
+public struct NostrRelayEditRow: Codable, Identifiable, Equatable, Sendable, RenderIdentifiable {
     public var id: String { url }
     public let url: String
     public let role: String
@@ -15,6 +15,11 @@ public struct NostrRelayEditRow: Codable, Identifiable, Equatable, Sendable {
     public init(url: String, role: String) {
         self.url = url
         self.role = role
+    }
+
+    public func rendersIdentically(_ other: Self) -> Bool {
+        self.url == other.url
+            && self.role == other.role
     }
 }
 
@@ -44,6 +49,17 @@ public struct NostrRelayConnectionStatus: Codable, Equatable {
 }
 
 // MARK: - Component
+
+/// Row model for the relay list ForEach, bundling relay + connection status
+/// so that EquatableRow sees the full render state when connection status changes.
+private struct RelayListRowModel: RenderIdentifiable, Sendable {
+    let relay: NostrRelayEditRow
+    let connection: String?
+
+    func rendersIdentically(_ other: Self) -> Bool {
+        relay.rendersIdentically(other.relay) && connection == other.connection
+    }
+}
 
 /// Relay list component — shows a user's configured relays with
 /// connection-status dots and role badges.
@@ -81,12 +97,15 @@ public struct NostrRelayList: View {
         } else {
             VStack(spacing: 0) {
                 ForEach(relays) { relay in
-                    NostrRelayRow(
-                        url: relay.url,
-                        role: relay.role,
-                        connection: connectionStatus[relay.url],
-                        onTap: onRelayTap.map { handler in { handler(relay) } }
-                    )
+                    EquatableRow(model: RelayListRowModel(relay: relay, connection: connectionStatus[relay.url])) { m in
+                        NostrRelayRow(
+                            url: m.relay.url,
+                            role: m.relay.role,
+                            connection: m.connection,
+                            onTap: onRelayTap.map { handler in { handler(m.relay) } }
+                        )
+                    }
+                    .equatable()
                 }
             }
         }

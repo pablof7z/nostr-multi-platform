@@ -25,6 +25,7 @@ public struct NostrUserCard: View {
     public var body: some View {
         HStack(spacing: 10) {
             NostrAvatar(profile: profile, size: avatarSize)
+                .equatable()
 
             VStack(alignment: .leading, spacing: 2) {
                 NostrProfileName(profile: profile)

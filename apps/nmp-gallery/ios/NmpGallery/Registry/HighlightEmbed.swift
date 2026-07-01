@@ -52,7 +52,8 @@ public struct HighlightEmbed: KindRenderer {
                 // Source footer.
                 sourceFooter(highlight: highlight)
 
-                // Author byline.
+                // Author byline. The name self-claims the author's kind:0 from
+                // the pubkey — no author display field rides the projection wire.
                 HStack(spacing: 8) {
                     Image(systemName: "highlighter")
                         .font(.caption)
@@ -60,9 +61,6 @@ public struct HighlightEmbed: KindRenderer {
                     Text("highlighted by")
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                    // Self-claiming byline: the name component owns claiming the
-                    // author's kind:0 — the kernel never fetches it.
                     NostrProfileName(
                         pubkey: highlight.authorPubkey,
                         font: .caption.weight(.medium),

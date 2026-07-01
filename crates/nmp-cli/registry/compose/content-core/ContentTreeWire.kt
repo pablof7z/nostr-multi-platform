@@ -16,10 +16,19 @@
 
 package nmp.content
 
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonClassDiscriminator
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Dp
 
 @Serializable
 public data class ContentTreeWire(
@@ -304,5 +313,35 @@ public object NostrIdenticon {
             hash = hash * 33u + byte.toUByte().toUInt()
         }
         return hash
+    }
+}
+
+/**
+ * Renders the 5×5 symmetric identicon grid for [pubkey] using [NostrIdenticon].
+ * Filled cells are drawn in the pubkey color; empty cells show the same color
+ * at 15% opacity so the tile reads as a tinted patch rather than blank.
+ */
+@Composable
+public fun NostrIdenticonGrid(pubkey: String, size: Dp, modifier: Modifier = Modifier) {
+    val color = NostrIdenticon.colorForPubkey(pubkey)
+    val cells = remember(pubkey) { NostrIdenticon.cellsForPubkey(pubkey) }
+    Canvas(
+        modifier = modifier
+            .size(size)
+            .background(color.copy(alpha = 0.15f)),
+    ) {
+        val spacing = 1f
+        val cellPx = (minOf(this.size.width, this.size.height) - spacing * 4f) / 5f
+        for (row in 0..4) {
+            for (col in 0..4) {
+                if (cells[row][col]) {
+                    drawRect(
+                        color = color,
+                        topLeft = Offset(col * (cellPx + spacing), row * (cellPx + spacing)),
+                        size = Size(cellPx, cellPx),
+                    )
+                }
+            }
+        }
     }
 }

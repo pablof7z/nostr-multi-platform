@@ -23,14 +23,10 @@ public struct NostrNip05Badge: View {
         self.nip05 = nip05
     }
 
-    /// Display form of the NIP-05 identifier. The root identifier `_@domain`
-    /// is shown as just `domain` per the NIP-05 convention — never the raw
-    /// `_@` (matrix rule). A normal `name@domain` is shown verbatim.
-    var displayLabel: String {
-        if nip05.hasPrefix("_@") {
-            return String(nip05.dropFirst(2))
-        }
-        return nip05
+    /// `_@domain` is a NIP-05 shorthand meaning the domain IS the identity.
+    /// Strip the `_@` prefix and display just the domain.
+    private var displayText: String {
+        nip05.hasPrefix("_@") ? String(nip05.dropFirst(2)) : nip05
     }
 
     public var body: some View {
@@ -38,12 +34,12 @@ public struct NostrNip05Badge: View {
             Image(systemName: "checkmark.seal.fill")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(Color.accentColor)
-            Text(displayLabel)
+            Text(displayText)
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Verified: \(displayLabel)")
+        .accessibilityLabel("Verified: \(displayText)")
     }
 }

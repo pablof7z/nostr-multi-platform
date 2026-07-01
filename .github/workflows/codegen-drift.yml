@@ -105,6 +105,12 @@ jobs:
       - name: Check iOS callers are clean of deleted nmp-ffi raw symbols
         run: bash ci/check-ios-uniffi-clean-break.sh
 
+      # #2599 — nmp-gallery is the stock component showcase. Its checked-in
+      # SwiftUI and Compose registry copies must stay mechanically synced with
+      # crates/nmp-cli/registry; Compose differs only by the app package line.
+      - name: Check nmp-gallery component registry copies are in sync
+        run: python3 ci/check-gallery-registry-drift.py
+
   # PR-B (#991/#979), hardened by #1931 — Rust flatc binding drift gate. Every
   # checked-in Rust FlatBuffers binding under crates/*/src/**/<stem>_generated.rs
   # must have an owning crates/<crate>/schema/<stem>.fbs schema and must be

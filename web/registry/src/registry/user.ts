@@ -93,7 +93,7 @@ export const userComponents: Component[] = [
         status: "stable",
         installId: "swiftui/user-avatar",
         version: "0.1.0",
-        dependencies: [],
+        dependencies: ["content-core"],
         longDescription:
           "`NostrAvatar(pubkey:)` claims/releases its own profile interest through `NostrProfileHost`, reads the current Rust-owned profile projection, and falls back to a deterministic identicon until the picture URL arrives. Install once; every other user component depends on the shared `ProfileWire`.",
         files: [
@@ -111,7 +111,7 @@ export const userComponents: Component[] = [
         status: "stable",
         installId: "compose/user-avatar",
         version: "0.1.0",
-        dependencies: [],
+        dependencies: ["content-core"],
         longDescription:
           "`NostrAvatar(pubkey = ...)` claims/releases its own profile interest through `LocalNostrProfileHost`, reads the current Rust-owned profile projection, and falls back to a deterministic identicon until the picture URL arrives. Install once; every other Compose user component depends on the shared `ProfileWire`.",
         files: [

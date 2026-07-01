@@ -102,6 +102,9 @@ struct ContentCorePage: View {
 struct ContentViewPage: View {
     @Environment(GalleryModel.self) private var model
     @State private var rawMode = false
+    @State private var selectedQuote: String?
+    @State private var selectedContext: String?
+    @State private var tappedDecoration: String?
 
     var body: some View {
         VStack(spacing: 16) {
@@ -122,10 +125,46 @@ struct ContentViewPage: View {
                             ? uri.uri
                             : model.profile(forPubkey: uri.primaryId)?.displayName
                                 ?? NostrContentView.defaultMentionLabel(uri)
-                    }
+                    },
+                    decorations: [
+                        NostrContentDecoration(
+                            id: "gallery-highlight-preview",
+                            quote: "relay note",
+                            color: .yellow.opacity(0.35)
+                        ),
+                    ],
+                    selectionEnabled: true
                 )
             }
+            if let selectedQuote, let selectedContext {
+                ContentPageFrame(caption: "onTextSelected") {
+                    Text(selectedQuote)
+                        .font(.caption.monospaced())
+                    Text(selectedContext)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if let tappedDecoration {
+                ContentPageFrame(caption: "onDecorationTap") {
+                    Text(tappedDecoration)
+                        .font(.caption.monospaced())
+                }
+            }
         }
+        .nostrContentRenderer(
+            NostrContentRenderer(
+                callbacks: NostrContentCallbacks(
+                    onTextSelected: { quote, context in
+                        selectedQuote = quote
+                        selectedContext = context
+                    },
+                    onDecorationTap: { id in
+                        tappedDecoration = id.raw
+                    }
+                )
+            )
+        )
     }
 }
 
@@ -239,14 +278,7 @@ struct ContentMinimalPage: View {
     }
 
     private var runs: [NostrContentRun] {
-        ShowcaseContent.richTree.nostrMinimalRuns(
-            mentionLabel: rawMode
-                ? { uri in uri.uri }
-                : { uri in
-                    model.profile(forPubkey: uri.primaryId)?.displayName
-                        ?? NostrContentView.defaultMentionLabel(uri)
-                }
-        )
+        ShowcaseContent.richTree.nostrMinimalRuns()
     }
 }
 

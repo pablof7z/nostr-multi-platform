@@ -77,7 +77,7 @@ fun NostrProfileName(
         consumerId ?: "nostr-profile-name.${UUID.randomUUID()}"
     }
 
-    DisposableEffect(pubkey, profileHost, resolvedConsumerId) {
+    DisposableEffect(pubkey, resolvedConsumerId) {
         profileHost?.resolveProfileRef(pubkey, resolvedConsumerId)
         onDispose {
             profileHost?.releaseProfileRef(pubkey, resolvedConsumerId)
