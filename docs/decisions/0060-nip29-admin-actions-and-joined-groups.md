@@ -28,10 +28,10 @@ must not grow NIP-29 command variants, group nouns, or router branches.
 - `interest`: `joined_groups_for_host`, which builds one host-pinned
   39001/39002 interest for one `(user_pubkey, host_relay_url)`.
 - `projection`: `GroupChatProjection`, `DiscoveredGroupsProjection`,
-  `GroupDefaultsProjection`, `GroupEventsProjection`, and — added by this ADR —
-  `JoinedGroupsProjection` (wired via `wire_joined_groups`).
-- `register`: wiring for group chat, group discovery, group events, defaults,
-  joined groups, and the actions above.
+  `GroupEventsProjection`, and — added by this ADR — `JoinedGroupsProjection`
+  (wired via `wire_joined_groups`).
+- `register`: wiring for group chat, group discovery, group events, joined
+  groups, and the actions above.
 
 > **Note.** `register.rs` also registers `RepostInGroupAction` (group reposts).
 > It ships in `nmp-nip29` but is outside this ADR's scope; it is listed here

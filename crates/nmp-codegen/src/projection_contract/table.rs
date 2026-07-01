@@ -354,19 +354,6 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         presence_policy: PresencePolicy::None,
     },
     ProjectionContract {
-        key: "nmp.nip29.group_defaults",
-        tier: ProjectionTier::HostRegistered,
-        producer: "nmp-nip29 register::wire_group_defaults",
-        owner_claim: "projection.nmp.nip29.group_defaults",
-        schema_id: "nmp.nip29.group_defaults",
-        file_identifier: "NGDF",
-        // nmp-nip29 wire/group_defaults_fb::GROUP_DEFAULTS_SCHEMA_VERSION
-        version: 1,
-        declaration_policy: DeclarationPolicy::RegistrationGated,
-        dependency_versions: &[],
-        presence_policy: PresencePolicy::None,
-    },
-    ProjectionContract {
         // Registered by `NmpApp::open_nip29_joined_groups_session` (NIP-29 native-runtime read session,
         // #2088 — moved off the prior bare-observer `nmp_nip29::wire_joined_groups`
         // so the view hydrates already-cached membership snapshots). A real

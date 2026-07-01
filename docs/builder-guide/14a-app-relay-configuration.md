@@ -83,7 +83,7 @@ them. Apps must make an explicit initial-relay decision before `start()`:
 There is no framework fallback. If the app chooses no initial relays, network
 operations fail closed until the user or host adds relays at runtime.
 
-### Search and group-create defaults
+### Search defaults
 
 The same app-owned rule applies to relay-like defaults outside the main app
 relay set:
@@ -94,9 +94,11 @@ relay set:
   search-relay runtime registration.
   If both are empty, search stays cache-only and does not fan out to a public
   relay chosen by NMP.
-- NIP-29 group-create suggestions are app/operator policy. Register an app
-  value with `wire_group_defaults_with_relay(...)`; the shared
-  `wire_group_defaults(...)` helper emits an empty suggestion.
+- NIP-29 group-create suggestions (e.g. a suggested relay URL to pre-fill on
+  a create-group form) are ordinary app/operator policy: a leaf app owns that
+  string as plain config. There is no kernel projection for it — a prior
+  `nmp-nip29` `GroupDefaultsProjection` round-trip for this had no live host
+  composition-root consumer and was removed.
 
 ---
 

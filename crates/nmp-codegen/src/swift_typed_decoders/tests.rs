@@ -170,9 +170,6 @@ fn real_registry_emits_exactly_the_proof_keys() {
     );
     assert!(out.contains("enum TypedGroupEventsDecoder {"));
     assert!(out.contains("enum TypedDiscoveredGroupsDecoder {"));
-    // #626: crate-owned NIP-29 group-create defaults (`groupDefaults` →
-    // `TypedGroupDefaultsDecoder`).
-    assert!(out.contains("enum TypedGroupDefaultsDecoder {"));
     // Profile key — serves via the refs.profile KPRF NRRD row-delta sidecar
     // (ADR-0063). The old claimed_profiles (KCPR) and resolved_profiles (KRPR)
     // JSON-snapshot decoders are deleted in Lane H.
@@ -228,8 +225,8 @@ fn real_registry_emits_exactly_the_proof_keys() {
         })
         .count();
     assert_eq!(
-        emitted, 26,
-        "exactly 26 keys have a checked-in flatc --swift reader binding \
+        emitted, 25,
+        "exactly 25 keys have a checked-in flatc --swift reader binding \
          today (accounts + active_account from PR #1039; the Wave B batch #2: \
          configured_relays, relay_role_options, outbox_summary, \
          publish_outbox, publish_queue; the Wave B batch #3: \
@@ -245,9 +242,10 @@ fn real_registry_emits_exactly_the_proof_keys() {
          plus the wallet (producer field-add) + settings_hub (kernel built-in) \
          flips; Wave C: action_results, action_stages; signer_state \
          (ADR-0048 D6, generalised from V-14 bunker_connection_state); \
-         #626: nmp.nip29.group_defaults; #1283 Phase 1: \
+         #1283 Phase 1: \
          refs.event.envelopes (NEMB); #2091: global zaps sidecar deleted; \
-         if this changed, \
+         nmp.nip29.group_defaults DELETED (dead projection, no live \
+         consumer); if this changed, \
          regenerate TypedProjectionDecoders.generated.swift and update this test"
     );
 }

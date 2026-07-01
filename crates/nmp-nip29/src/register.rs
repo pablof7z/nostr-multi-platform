@@ -2,8 +2,7 @@
 //!
 //! These functions do the mechanical plumbing that every host app (Chirp,
 //! a TUI, a test harness) would otherwise have to repeat verbatim: binding the
-//! typed NIP-29 `ActionModule` impls against the action registry, and wiring
-//! the output-only group-create defaults projection.
+//! typed NIP-29 `ActionModule` impls against the action registry.
 //!
 //! ## Where the per-open read views live now (#2088)
 //!
@@ -24,72 +23,15 @@
 //!
 //! These helpers depend on `nmp-core` only through its public extension seams
 //! (`register_action`, `register_typed_snapshot_projection`). `nmp-core` gains
-//! zero NIP-29 nouns; composition happens here (defaults) and in `nmp-ffi`
-//! (the hydrating read views), never in the kernel.
+//! zero NIP-29 nouns; composition happens here and in `nmp-ffi` (the hydrating
+//! read views), never in the kernel.
 
-use nmp_core::substrate::{ActionRegistrar, RegistrationError, SnapshotProjectionRegistrar};
+use nmp_core::substrate::{ActionRegistrar, RegistrationError};
 
 use crate::action::{
     CreateInviteAction, CreateGroupAction, DiscoverGroupsAction, EditMetadataAction,
     JoinGroupAction, LeaveGroupAction, PublishGroupEventAction, PutUserAction, SetParentAction,
 };
-use crate::projection::{GroupDefaultsProjection, GroupDefaultsSnapshot};
-
-/// Wire an empty NIP-29 group-create defaults projection into `app`.
-///
-/// Exposes [`GroupDefaultsProjection::snapshot`] under
-/// `"nmp.nip29.group_defaults"` as a typed FlatBuffers snapshot projection
-/// (`NGDF`). No generic `Value` projection is registered for this key. The
-/// no-arg path emits an empty `suggested_relay_url`: shared crates do not own
-/// public relay/operator policy.
-///
-/// Output-only: this projection observes no kernel events — its snapshot is a
-/// pure function of the registration-time config — so no `ObservedProjectionSink`
-/// is registered. `app` must outlive the registration.
-pub fn wire_group_defaults(app: &impl SnapshotProjectionRegistrar) {
-    wire_group_defaults_with_snapshot(app, GroupDefaultsSnapshot::from_defaults());
-}
-
-/// Wire NIP-29 group-create defaults with an app/operator-supplied relay URL.
-///
-/// This is the app-owned policy path for clients such as Chirp: NIP-29 owns the
-/// projection shape and typed transport, while the leaf app owns the concrete
-/// public relay URL it wants to pre-fill.
-pub fn wire_group_defaults_with_relay(
-    app: &impl SnapshotProjectionRegistrar,
-    suggested_relay_url: impl Into<String>,
-) {
-    wire_group_defaults_with_snapshot(
-        app,
-        GroupDefaultsSnapshot::with_suggested_relay_url(suggested_relay_url),
-    );
-}
-
-/// Wire NIP-29 group-create defaults with an explicit snapshot.
-pub fn wire_group_defaults_with_snapshot(
-    app: &impl SnapshotProjectionRegistrar,
-    snapshot: GroupDefaultsSnapshot,
-) {
-    let projection = GroupDefaultsProjection::with_snapshot(snapshot);
-    // Typed FlatBuffers snapshot projection (`NGDF`). Unlike older
-    // typed+generic registrations in this module, group defaults has no generic
-    // `Value` projection under the same key; hosts read this typed payload or
-    // treat the defaults as absent.
-    app.register_typed_snapshot_projection("nmp.nip29.group_defaults", move || {
-        let snapshot = projection.snapshot();
-        Some(nmp_core::TypedProjectionData {
-            key: "nmp.nip29.group_defaults".to_string(),
-            schema_id: crate::wire::group_defaults_fb::GROUP_DEFAULTS_SCHEMA_ID.to_string(),
-            schema_version: crate::wire::group_defaults_fb::GROUP_DEFAULTS_SCHEMA_VERSION,
-            file_identifier: String::from_utf8_lossy(
-                crate::wire::group_defaults_fb::GROUP_DEFAULTS_FILE_IDENTIFIER,
-            )
-            .into_owned(),
-            payload: crate::wire::group_defaults_fb::encode_group_defaults_snapshot(&snapshot),
-            ..Default::default()
-        })
-    });
-}
 
 /// Register the NIP-29 action namespaces against `app`'s action registry.
 ///

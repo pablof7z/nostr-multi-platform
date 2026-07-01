@@ -244,19 +244,6 @@ nmp_ownership::declare_crate_ownership! {
         },
         {
             claim_type: "namespace",
-            id: "projection.nmp.nip29.group_defaults",
-            exclusive: true,
-            scope: {
-                kind: "projection",
-                value: "nmp.nip29.group_defaults",
-                context: "",
-            },
-            owns: [
-                "group defaults projection key",
-            ],
-        },
-        {
-            claim_type: "namespace",
             id: "projection.nmp.nip29.joined_groups",
             exclusive: true,
             scope: {

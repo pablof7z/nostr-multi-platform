@@ -58,7 +58,7 @@ views to open and which actions to expose.
 | Surface | Current implementation | Notes |
 |---|---|---|
 | Typed group identity | `GroupId { host_relay_url, local_id }` plus the host-pinned `group_metadata_filter_json` builder. Kind policy lives on the consumer, not on `GroupId`: a `GroupEventsQuery { group, kinds }` (with `GroupEventKinds::{All, Specific}`) builds the group read filter via `GroupEventsQuery::filter_json`. | Every read/write path carries the host relay explicitly; a bare `h` value is never enough to identify a group. NIP-29 owns only the `["h", local_id]` routing; the consumer declares which kinds it wants (issue #2187). |
-| Read projections | `GroupEventsProjection` (consumer-parameterized by group + kind set), `DiscoveredGroupsProjection`, `JoinedGroupsProjection`, and `GroupDefaultsProjection` | Per-open read views are hydrated through typed group sessions in the native/browser runtimes; the default snapshot is registered directly by `wire_group_defaults*`. A chat view is a consumer that opens `GroupEventsProjection` with kinds `[9, 11]`. |
+| Read projections | `GroupEventsProjection` (consumer-parameterized by group + kind set), `DiscoveredGroupsProjection`, and `JoinedGroupsProjection` | Per-open read views are hydrated through typed group sessions in the native/browser runtimes. A chat view is a consumer that opens `GroupEventsProjection` with kinds `[9, 11]`. |
 | Actions | `register_actions` installs the supported NIP-29 write actions with the app action registrar | Writes remain protocol-owned and host-pinned; the app shell does not derive relay routing from UI state. |
 | Small protocol caches/helpers | `RecentGroupEvents`, `JoinedHostsCache`, input-scope recognizers, and previous-tag helpers | These are protocol-internal helpers; durable app read state is exposed through projections and snapshot sidecars. |
 
@@ -80,6 +80,10 @@ producer for each `nmp.nip29.*` projection key.
   model; signer/account state stays in the session/signers layer.
 - **No app-owned persistence schema in `nmp-core`.** NIP-29 read models are
   protocol-owned Rust state surfaced through projections.
+- **No group-create-defaults projection.** A prior `GroupDefaultsProjection`
+  (suggested relay URL for the create-group form, #626) had no live host
+  composition-root consumer and was removed; a leaf app that wants to pre-fill
+  a suggested relay owns that as ordinary app config, not a kernel snapshot.
 
 ## 4. The load-bearing constraint: host-relay-pin
 
