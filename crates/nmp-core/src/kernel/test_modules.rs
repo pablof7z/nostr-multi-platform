@@ -120,6 +120,8 @@ mod pull_cursor_retention_tests;
 #[cfg(test)]
 mod pull_cursor_wake_tests;
 #[cfg(test)]
+mod pull_relay_pin_tests;
+#[cfg(test)]
 mod pull_tests;
 #[cfg(test)]
 mod ram_eviction_tests;
