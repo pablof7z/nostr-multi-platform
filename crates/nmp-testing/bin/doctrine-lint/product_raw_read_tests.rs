@@ -32,7 +32,7 @@ fn product_raw_read_positive_fixture_fires() {
         stdout, stderr
     );
     assert!(
-        stdout.contains("error[product_raw_read]"),
+        stdout.contains(&format!("error[{}]", product_raw_read::ID)),
         "positive fixture must emit product_raw_read finding; stdout:\n{}",
         stdout
     );
@@ -64,7 +64,7 @@ fn product_raw_read_negative_fixture_is_clean() {
         stdout, stderr
     );
     assert!(
-        !stdout.contains("error[product_raw_read]"),
+        !stdout.contains(&format!("error[{}]", product_raw_read::ID)),
         "negative fixture must produce no product_raw_read finding; stdout:\n{}",
         stdout
     );

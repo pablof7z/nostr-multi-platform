@@ -19,7 +19,7 @@
 //! This file remains the kernel's public `publish_signed` entrypoint so
 //! `actor/commands/publish.rs` stays untouched.
 
-use super::{is_hex_pubkey, Kernel, OutboundMessage};
+use super::{Kernel, OutboundMessage};
 use crate::publish::PublishTarget;
 use nmp_signer_iface::SignedEvent;
 

@@ -27,7 +27,7 @@ impl Kernel {
     ///
     /// Returns `true` iff the store accepted the event as canonical
     /// (`Inserted | Replaced`), mirroring the old method's "stored?" boolean.
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     pub(in crate::kernel) fn ingest_timeline_event(
         &mut self,
         _role: super::super::RelayRole,

@@ -19,6 +19,7 @@ thread_local! {
         RefCell::new(BTreeSet::new());
 }
 
+#[cfg(test)]
 pub(crate) fn register_claim_expansion_sub(sub_id: &str, author: &str) {
     CLAIM_EXPANSION_SUBS.with(|m| {
         m.borrow_mut()
@@ -48,6 +49,7 @@ pub(crate) fn take_claim_expansion_match_seen(sub_id: &str, relay_url: &str) -> 
     })
 }
 
+#[cfg(test)]
 pub(crate) fn clear_claim_expansion_subs() {
     CLAIM_EXPANSION_SUBS.with(|m| m.borrow_mut().clear());
     CLAIM_EXPANSION_MATCHES.with(|m| m.borrow_mut().clear());

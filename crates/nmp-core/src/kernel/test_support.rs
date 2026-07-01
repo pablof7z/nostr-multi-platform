@@ -12,9 +12,10 @@ mod preverified_support;
 // existing `test_support::<fn>` call sites in `relay_score_record.rs` and the
 // claim-expansion tests keep resolving after the split for the file-size cap.
 pub(crate) use self::claim_expansion::{
-    clear_claim_expansion_subs, get_claim_expansion_author, mark_claim_expansion_match_seen,
-    register_claim_expansion_sub, take_claim_expansion_match_seen,
+    get_claim_expansion_author, mark_claim_expansion_match_seen, take_claim_expansion_match_seen,
 };
+#[cfg(test)]
+pub(crate) use self::claim_expansion::{clear_claim_expansion_subs, register_claim_expansion_sub};
 
 pub(crate) fn test_support_now() -> Instant {
     Instant::now()

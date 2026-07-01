@@ -95,7 +95,7 @@ impl Kernel {
     }
 
     /// Test-only: push a NIP-65 cache entry without going through the kind:10002 ingest path.
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     pub(crate) fn seed_mailbox_relay_list(
         &self,
         pubkey: &str,
@@ -108,7 +108,7 @@ impl Kernel {
     }
 
     /// Test-only: shared handle to the substrate `MailboxCache`.
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     pub(crate) fn mailbox_cache_arc(&self) -> Arc<dyn MailboxCache> {
         Arc::clone(&self.mailbox_cache)
     }
@@ -136,7 +136,7 @@ impl Kernel {
     }
 
     /// Test-only: inject a `store_open_failure` string without requiring a real LMDB failure.
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     pub(crate) fn set_store_open_failure_for_test(&mut self, reason: impl Into<String>) {
         self.set_store_open_failure(reason);
     }
@@ -148,7 +148,7 @@ impl Kernel {
     }
 
     /// Test-only: cache a kind:0 profile without going through the ingest chokepoint.
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     pub(crate) fn seed_profile_kind0_for_test(
         &self,
         pubkey: &str,

@@ -60,6 +60,7 @@ pub(super) fn stamp_typed_projections(
 /// NEXT tick's presence computation is accurate. Production-only: in
 /// test/test-support builds the oracle does this AFTER its check (the oracle
 /// MUST run before `record_emitted` so it sees the pre-emit tracker state).
+#[allow(dead_code)] // Test-support builds advance via the projection oracle instead.
 pub(super) fn record_emitted_for_manifest(
     tracker: &mut ProjectionRevTracker,
     manifest: &ProjectionManifest,

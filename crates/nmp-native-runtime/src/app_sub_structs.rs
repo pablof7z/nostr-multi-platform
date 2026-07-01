@@ -142,5 +142,7 @@ pub(crate) struct ReadHandles {
     pub(crate) active_local_keys: ActiveLocalKeysSlot,
     /// Raw bech32 nsec slot handed to Marmot's credential wrapper.
     /// Only `nmp-marmot` parses this value; native runtime only owns the slot.
+    #[allow(dead_code)]
+    // Remove when default validation enables `marmot` or this slot is cfg-split.
     pub(crate) mls_local_nsec: MlsLocalNsecSlot,
 }

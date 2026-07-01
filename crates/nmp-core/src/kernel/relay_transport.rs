@@ -242,7 +242,7 @@ impl Kernel {
     /// transport row and mark the snapshot dirty so the `relay_diagnostics`
     /// projection surfaces the new metadata on the next emit. Called from the
     /// actor's [`crate::ActorCommand::SetRelayInfo`] dispatch arm.
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     pub(crate) fn set_relay_info(&mut self, relay_url: &str, doc: RelayInfoDoc) {
         self.set_relay_info_at(
             relay_url,

@@ -45,7 +45,7 @@ impl Kernel {
     /// — the event twin of a `Live` profile ref. Immutable event-ids cannot
     /// change, so `Live` degrades to the one-shot fetch for them. `caller_hints`
     /// are optional relay hints carried by the raw-key caller.
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     #[allow(clippy::too_many_arguments)] // origin-blind seam; trimmed in Lane H.
     pub(in crate::kernel) fn resolve_event_ref(
         &mut self,
@@ -98,7 +98,7 @@ impl Kernel {
 
     /// Same raw-key event resolver with metadata decoded by an app-owned URI
     /// adapter. The key is still a raw event-id/coordinate, not a URI.
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     #[allow(clippy::too_many_arguments)] // metadata-bearing raw seam.
     pub(in crate::kernel) fn resolve_event_ref_with_metadata(
         &mut self,

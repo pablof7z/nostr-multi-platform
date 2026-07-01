@@ -50,6 +50,15 @@ jobs:
       - name: Build doctrine-lint
         run: cargo build -p nmp-testing --bin doctrine-lint
 
+      - name: Warning ratchet - nmp-core
+        run: RUSTFLAGS="-Dwarnings" cargo check -p nmp-core --lib --features test-support
+
+      - name: Warning ratchet - nmp-native-runtime
+        run: RUSTFLAGS="-Dwarnings" cargo check -p nmp-native-runtime --lib --features test-support,signer-broker
+
+      - name: Warning ratchet - nmp-testing
+        run: RUSTFLAGS="-Dwarnings" cargo check -p nmp-testing --bin ffi-stress --test doctrine_lint_smoke
+
       - name: Run doctrine-lint against nmp-core
         run: cargo run --quiet -p nmp-testing --bin doctrine-lint -- --crate nmp-core
 
