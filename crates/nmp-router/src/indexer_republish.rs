@@ -5,6 +5,7 @@
 //! and pool send; this crate owns the routing/provenance decision.
 
 use std::collections::{HashSet, VecDeque};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use nmp_core::slots::IndexerRelaysSlot;
@@ -18,9 +19,37 @@ use nmp_store::{EventStore, RawEvent};
 
 const DEDUP_CAPACITY: usize = 4096;
 
+/// Runtime control handle for indexer republish policy state.
+///
+/// The handle is intentionally tiny and lock-free so composition roots can keep
+/// it and toggle forwarding without rebuilding the policy registry or resetting
+/// the kernel.
+#[derive(Clone, Debug)]
+pub struct IndexerRepublishPolicyHandle {
+    enabled: Arc<AtomicBool>,
+}
+
+impl IndexerRepublishPolicyHandle {
+    #[must_use]
+    pub fn new(enabled: bool) -> Self {
+        Self {
+            enabled: Arc::new(AtomicBool::new(enabled)),
+        }
+    }
+
+    pub fn set_enabled(&self, enabled: bool) {
+        self.enabled.store(enabled, Ordering::Release);
+    }
+
+    #[must_use]
+    pub fn is_enabled(&self) -> bool {
+        self.enabled.load(Ordering::Acquire)
+    }
+}
+
 /// Policy for forwarding replaceable events to indexer relays.
 pub struct IndexerRepublishPolicy {
-    enabled: bool,
+    handle: IndexerRepublishPolicyHandle,
     indexer_relays: IndexerRelaysSlot,
     store: Arc<dyn EventStore>,
     dedup: Mutex<DedupCache>,
@@ -56,9 +85,12 @@ impl DedupCache {
 
 impl IndexerRepublishPolicy {
     #[must_use]
-    pub fn new(enabled: bool, context: RawEventForwardPolicyContext) -> Self {
+    pub fn new(
+        handle: IndexerRepublishPolicyHandle,
+        context: RawEventForwardPolicyContext,
+    ) -> Self {
         Self {
-            enabled,
+            handle,
             indexer_relays: context.indexer_relays,
             store: context.event_store,
             dedup: Mutex::new(DedupCache::new()),
@@ -67,7 +99,7 @@ impl IndexerRepublishPolicy {
 
     #[must_use]
     pub fn enabled(context: RawEventForwardPolicyContext) -> Self {
-        Self::new(true, context)
+        Self::new(IndexerRepublishPolicyHandle::new(true), context)
     }
 
     #[must_use]
@@ -111,7 +143,7 @@ impl ExternalEventSinkPolicy for IndexerRepublishPolicy {
         let raw = frame.raw.as_ref();
         let source_relay_url = frame.source_relay.as_deref();
 
-        if !self.enabled || (!raw.is_replaceable() && !raw.is_param_replaceable()) {
+        if !self.handle.is_enabled() || (!raw.is_replaceable() && !raw.is_param_replaceable()) {
             return Vec::new();
         }
 
