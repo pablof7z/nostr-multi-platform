@@ -219,11 +219,6 @@ pub const PRODUCER_CONST_TARGETS: &[ProducerConstTarget] = &[
         "crates/nmp-nip29/src/wire/discovered_groups_producer_consts.generated.rs",
     ),
     pub_target(
-        "nmp.nip29.group_defaults",
-        "GROUP_DEFAULTS",
-        "crates/nmp-nip29/src/wire/group_defaults_producer_consts.generated.rs",
-    ),
-    pub_target(
         "nmp.nip29.joined_groups",
         "JOINED_GROUPS",
         "crates/nmp-nip29/src/wire/joined_groups_producer_consts.generated.rs",

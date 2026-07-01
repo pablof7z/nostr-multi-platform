@@ -11,18 +11,20 @@ use super::*;
 /// silent.
 #[test]
 fn registry_size_is_locked() {
-    // 26 entries: 31 (the #1610 baseline) minus 3 old-surface entries removed
+    // 25 entries: 31 (the #1610 baseline) minus 3 old-surface entries removed
     // in ADR-0063 Lane H (#1671): `claimed_profiles` (KCPR),
     // `resolved_profiles` (KRPR), and the host-visible `claimed_events`
     // whole-map projection. KCEV remains only as the refs.event row codec.
     // Profile/event data is now served via refs.profile / refs.event NRRD
     // row-delta sidecars; minus the deleted global zaps sidecar (#2091);
-    // minus the deleted framework-owned OP-feed product key (#2574).
+    // minus the deleted framework-owned OP-feed product key (#2574);
+    // minus the dead `nmp.nip29.group_defaults` projection (no live
+    // consumer — every host-composition-root wiring call site was unreferenced).
     // Bump this (and add a new SnapshotProjectionEntry above) when a new
     // projection is wired.
     assert_eq!(
         SNAPSHOT_PROJECTIONS.len(),
-        26,
+        25,
         "registry size changed — regenerate KernelTypes.generated.swift and update this test"
     );
 }
@@ -69,12 +71,12 @@ fn all_dotted_keys_are_present() {
         .map(|e| e.key)
         .filter(|k| k.contains('.'))
         .collect();
-    // Nine dotted keys. App-owned NNFS OP-feed sessions are decoded by their
-    // caller-selected projection keys and are not shared registry members.
+    // Eight dotted keys. App-owned NNFS OP-feed sessions are decoded by their
+    // caller-selected projection keys and are not shared registry members;
+    // the dead NIP-29 group-defaults projection was removed.
     let expected = [
         "nmp.nip29.group_events",
         "nmp.nip29.discovered_groups",
-        "nmp.nip29.group_defaults",
         "nmp.nip17.dm_inbox",
         "nmp.follow_list",
         "nmp.nip17.dm_relay_list",

@@ -10,10 +10,6 @@
 //! - [`discovered`] — [`DiscoveredGroupsProjection`]: a single relay's
 //!   group catalog, accumulated from kinds 39000/39001/39002. The read-side
 //!   of `JoinGroupView` / discovery flows.
-//! - [`group_defaults`] — [`GroupDefaultsProjection`]: app-supplied defaults
-//!   for the public-group create flow (the suggested relay URL, #626/#1924).
-//!   Output-only: not a `ObservedProjectionSink` — its snapshot is captured from
-//!   registration-time app config.
 //! - [`joined`] — [`JoinedGroupsProjection`]: active-account membership/admin
 //!   status derived from relay-signed 39001/39002 snapshots.
 //! - [`roster`] — [`GroupRosterProjection`]: one group's full member roster,
@@ -21,15 +17,11 @@
 //!   group-detail screen renders).
 
 pub mod discovered;
-pub mod group_defaults;
 pub mod group_events;
 pub mod joined;
 pub mod roster;
 
 pub use discovered::{DiscoveredGroup, DiscoveredGroupsProjection, DiscoveredGroupsSnapshot};
-pub use group_defaults::{
-    GroupDefaultsProjection, GroupDefaultsSnapshot, DEFAULT_PUBLIC_GROUP_RELAY_URL,
-};
 pub use group_events::{GroupEvent, GroupEventsProjection, GroupEventsSnapshot};
 pub use joined::{JoinedGroup, JoinedGroupsProjection, JoinedGroupsSnapshot};
 pub use roster::{GroupRole, GroupRosterMember, GroupRosterProjection, GroupRosterSnapshot};

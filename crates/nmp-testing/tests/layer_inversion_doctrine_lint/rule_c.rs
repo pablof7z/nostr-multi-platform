@@ -26,7 +26,6 @@ pub(crate) const RULE_C_NS_ALLOWLIST: &[&str] = &[
     "join",
     "leave",
     "set_parent",
-    "group_defaults",
     "joined_groups",
     "joined_hosts",
     "tofu_signer",

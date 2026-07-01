@@ -55,10 +55,10 @@ pub use input_scope::{
 };
 pub use kinds::{event_is_group_event, group_id_from_tags, KindClass};
 pub use projection::{
-    DiscoveredGroup, DiscoveredGroupsProjection, DiscoveredGroupsSnapshot, GroupDefaultsProjection,
-    GroupDefaultsSnapshot, GroupEvent, GroupEventsProjection, GroupEventsSnapshot, GroupRole,
-    GroupRosterMember, GroupRosterProjection, GroupRosterSnapshot, JoinedGroup,
-    JoinedGroupsProjection, JoinedGroupsSnapshot, DEFAULT_PUBLIC_GROUP_RELAY_URL,
+    DiscoveredGroup, DiscoveredGroupsProjection, DiscoveredGroupsSnapshot, GroupEvent,
+    GroupEventsProjection, GroupEventsSnapshot, GroupRole, GroupRosterMember,
+    GroupRosterProjection, GroupRosterSnapshot, JoinedGroup, JoinedGroupsProjection,
+    JoinedGroupsSnapshot,
 };
 pub use register::register_actions;
 pub use search::{register_search_scopes, GroupMetadataSearchScope, GROUP_SEARCH_SCOPE_LABEL};
@@ -66,10 +66,6 @@ pub use wire::discovered_groups_fb::{
     decode_discovered_groups_snapshot, encode_discovered_groups_snapshot,
     DISCOVERED_GROUPS_FILE_IDENTIFIER, DISCOVERED_GROUPS_SCHEMA_ID,
     DISCOVERED_GROUPS_SCHEMA_VERSION,
-};
-pub use wire::group_defaults_fb::{
-    decode_group_defaults_snapshot, encode_group_defaults_snapshot, GROUP_DEFAULTS_FILE_IDENTIFIER,
-    GROUP_DEFAULTS_SCHEMA_ID, GROUP_DEFAULTS_SCHEMA_VERSION,
 };
 pub use wire::group_events_fb::{
     decode_group_events_snapshot, encode_group_events_snapshot, GROUP_EVENTS_FILE_IDENTIFIER,

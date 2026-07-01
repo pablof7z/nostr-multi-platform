@@ -507,22 +507,6 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
         }),
     },
     SnapshotProjectionEntry {
-        key: "nmp.nip29.group_defaults",
-        swift_field: "groupDefaults",
-        swift_type: "GroupDefaultsSnapshot",
-        typed_sidecar: Some(TypedSidecar {
-            // #626: the crate-owned NIP-29 public-group create defaults (the
-            // suggested host relay URL). Host-registered producer in
-            // `apps/chirp/.../ffi/register.rs`
-            // (`nmp_nip29::register::wire_group_defaults` →
-            // `register_typed_snapshot_projection("nmp.nip29.group_defaults", …)`).
-            // The `flatc --swift` reader (`nmp_nip29_GroupDefaultsSnapshot`) ships
-            // from `crates/nmp-nip29/schema/group_defaults.fbs`. Flat copy:
-            // `{ suggested_relay_url }`. See `TypedProjectionGlue.groupDefaults`.
-            swift_reader_type: Some("nmp_nip29_GroupDefaultsSnapshot"),
-        }),
-    },
-    SnapshotProjectionEntry {
         key: "nmp.nip17.dm_relay_list",
         swift_field: "dmRelayList",
         swift_type: "DmRelayListSnapshot",
