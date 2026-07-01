@@ -10,7 +10,7 @@ use nmp_core::dispatch_envelope::{
     encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION, MAX_DISPATCH_ENVELOPE_BYTES,
 };
 use nmp_core::substrate::ActionContext;
-use nmp_core::substrate::{ActionModule, ActionPayload, ActionRejection};
+use nmp_core::substrate::{ActionModule, ActionRejection};
 
 use super::dispatch_action_bytes_typed;
 use crate::new_app;
@@ -154,7 +154,7 @@ fn oversize_bytes_produce_error_outcome() {
 fn dispatch_preserves_host_supplied_correlation_id() {
     let mut app = new_app();
     let _ = app.register_action(EchoModule);
-    let envelope = make_envelope("corr-typed-core-1", EchoModule::NAMESPACE);
+    let envelope = make_envelope("corr-typed-core-1", EchoModule::NAMESPACE.as_str());
     let outcome = dispatch_action_bytes_typed(&app, &envelope);
     assert_eq!(
         outcome.correlation_id.as_deref(),
@@ -171,7 +171,7 @@ fn dispatch_preserves_host_supplied_correlation_id() {
 fn coded_rejection_carries_both_error_and_code() {
     let mut app = new_app();
     let _ = app.register_action(CodedRejectModule);
-    let envelope = make_envelope("corr-coded", CodedRejectModule::NAMESPACE);
+    let envelope = make_envelope("corr-coded", CodedRejectModule::NAMESPACE.as_str());
     let outcome = dispatch_action_bytes_typed(&app, &envelope);
     assert!(
         outcome
@@ -197,7 +197,7 @@ fn coded_rejection_carries_both_error_and_code() {
 fn plain_rejection_has_error_but_no_code() {
     let mut app = new_app();
     let _ = app.register_action(PlainRejectModule);
-    let envelope = make_envelope("corr-plain", PlainRejectModule::NAMESPACE);
+    let envelope = make_envelope("corr-plain", PlainRejectModule::NAMESPACE.as_str());
     let outcome = dispatch_action_bytes_typed(&app, &envelope);
     assert!(
         outcome.error.is_some(),

@@ -90,7 +90,7 @@ fn action_result_observer_fires_on_dispatch() {
 
     let envelope = encode_dispatch_envelope(
         "corr-obs-1",
-        SucceedModule::NAMESPACE,
+        SucceedModule::NAMESPACE.as_str(),
         DISPATCH_ENVELOPE_SCHEMA_VERSION,
         &[0u8; 4],
     );
@@ -121,7 +121,7 @@ fn action_result_observer_replace_is_safe() {
 
     let env1 = encode_dispatch_envelope(
         "corr-obs-2a",
-        SucceedModule::NAMESPACE,
+        SucceedModule::NAMESPACE.as_str(),
         DISPATCH_ENVELOPE_SCHEMA_VERSION,
         &[0u8; 4],
     );
@@ -137,7 +137,7 @@ fn action_result_observer_replace_is_safe() {
 
     let env2 = encode_dispatch_envelope(
         "corr-obs-2b",
-        SucceedModule::NAMESPACE,
+        SucceedModule::NAMESPACE.as_str(),
         DISPATCH_ENVELOPE_SCHEMA_VERSION,
         &[0u8; 4],
     );
@@ -174,7 +174,7 @@ fn action_result_observer_panic_is_contained() {
 
     let envelope = encode_dispatch_envelope(
         "corr-obs-panic",
-        SucceedModule::NAMESPACE,
+        SucceedModule::NAMESPACE.as_str(),
         DISPATCH_ENVELOPE_SCHEMA_VERSION,
         &[0u8; 4],
     );
@@ -205,7 +205,7 @@ fn action_result_observer_clear_waits_for_in_flight() {
     let dispatch = thread::spawn(move || {
         let envelope = encode_dispatch_envelope(
             "corr-obs-clear",
-            SucceedModule::NAMESPACE,
+            SucceedModule::NAMESPACE.as_str(),
             DISPATCH_ENVELOPE_SCHEMA_VERSION,
             &[0u8; 4],
         );

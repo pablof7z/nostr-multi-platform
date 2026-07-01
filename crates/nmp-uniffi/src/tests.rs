@@ -431,7 +431,7 @@ fn dispatch_wrapper_passes_through_code_field() {
 
     let envelope = encode_dispatch_envelope(
         "corr-code-wrap",
-        UniffiCodedRejectModule::NAMESPACE,
+        UniffiCodedRejectModule::NAMESPACE.as_str(),
         DISPATCH_ENVELOPE_SCHEMA_VERSION,
         &[0u8; 4],
     );
