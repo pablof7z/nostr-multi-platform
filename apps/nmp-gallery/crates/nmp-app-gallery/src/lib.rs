@@ -315,7 +315,7 @@ fn register_gallery_composition(app: &mut impl nmp_core::substrate::AppHost) {
 /// * `10002` — NIP-65 relay list (`nmp_router::register_actions`, wired by
 ///   `nmp_substrate::install`).
 /// * `10003` — bookmark list (`nmp-nip51` add/remove bookmark).
-/// * `10006` — blocked-relay list (`nmp_router::register_block_relay_actions`,
+/// * `10006` — blocked-relay list (`nmp_nip51::register_block_relay_actions`,
 ///   wired by `nmp_substrate::install`).
 /// * `10050` — DM relay list (`nmp-nip17` publish_relay_list).
 /// * `30003`, `30004` — bookmark sets / curation sets (`nmp-nip51`).

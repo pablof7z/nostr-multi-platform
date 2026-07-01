@@ -6,7 +6,7 @@ extern crate alloc;
 pub mod nmp {
 
     #[allow(unused_imports, dead_code)]
-    pub mod router {
+    pub mod nip_51 {
 
         pub enum UnblockRelayPayloadOffset {}
         #[derive(Copy, Clone, PartialEq)]
@@ -288,5 +288,5 @@ pub mod nmp {
         ) {
             fbb.finish_size_prefixed(root, Some(UNBLOCK_RELAY_PAYLOAD_IDENTIFIER));
         }
-    } // pub mod router
+    } // pub mod nip_51
 } // pub mod nmp

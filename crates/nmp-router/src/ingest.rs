@@ -91,11 +91,10 @@ fn parse_relay_list(tags: &[Vec<String>]) -> ParsedRelayList {
         // `ws://…`, bare host, etc.) does not poison the routing cache.
         //
         // Canonicalise via the shared `canonical::canonicalize_relay_url`
-        // (lowercase host, strip empty-path trailing slash) — the SAME
-        // helper `blocked_relays.rs` (kind:10006) applies. Without this,
+        // (lowercase host, strip empty-path trailing slash). Without this,
         // a kind:10002 write entry `wss://Block.Example` would never match
-        // a blocked entry stored as `wss://block.example`, silently
-        // defeating the blocked-relay filter (a privacy regression).
+        // a blocked-relay lookup entry stored as `wss://block.example`,
+        // silently defeating the blocked-relay filter.
         // Fail-closed: a `wss://`-prefixed but hostless URL (`wss://`,
         // `wss:///path`) is rejected by the canonical authority and dropped
         // rather than poisoning the routing cache (#967).
@@ -326,7 +325,7 @@ mod tests {
         );
     }
 
-    // ─── Bug 2: URL canonicalisation (kind:10002 ⇄ kind:10006 collision) ────
+    // ─── Bug 2: URL canonicalisation (mailbox ⇄ blocked lookup collision) ───
 
     #[test]
     fn parse_relay_list_canonicalizes_urls() {

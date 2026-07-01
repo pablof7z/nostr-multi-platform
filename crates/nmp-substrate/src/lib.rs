@@ -4,7 +4,8 @@
 //! roots: one mailbox cache shared by the NIP-65 reader, router factory, and
 //! kind:10002 parser; one profile cache shared by the kernel profile reader and
 //! kind:0 parser; plus the routing, publish resolver, raw forwarding, coverage,
-//! NIP-77, blocked-relay, and native NIP-11 hooks that make the kernel routable.
+//! NIP-77, NIP-51 blocked-relay owner wiring, and native NIP-11 hooks that make
+//! the kernel routable.
 //!
 //! Protocol and app features are deliberately not installed here. App/runtime
 //! roots compose those owner crates explicitly after this substrate floor.
@@ -22,8 +23,8 @@ use nmp_core::substrate::{
 use nmp_core::KernelReducer;
 use nmp_coverage_gate::CoverageGate;
 use nmp_router::{
-    GenericOutboxRouter, InMemoryBlockedRelayCache, InMemoryMailboxCache, IndexerRepublishPolicy,
-    IndexerRepublishPolicyHandle, Kind10006Parser, Nip65OutboxResolver,
+    GenericOutboxRouter, InMemoryMailboxCache, IndexerRepublishPolicy,
+    IndexerRepublishPolicyHandle, Nip65OutboxResolver,
 };
 use nmp_store::EventStore;
 
@@ -198,7 +199,7 @@ pub fn install_on_reducer(reducer: &mut KernelReducer) {
 /// Install the full substrate floor every NMP app/runtime root needs.
 ///
 /// This is substrate correctness only: routing action, shared cache/parser
-/// wiring, blocked-relay parser/actions, publish resolver, raw-event forwarding,
+/// wiring, blocked-relay owner parser/actions, publish resolver, raw-event forwarding,
 /// coverage trimming, NIP-77 interceptors, and native NIP-11 relay metadata.
 /// Product/protocol features such as follows, DMs, search scopes, mutes,
 /// comments, longform, WOT, and app relays are composed separately by their
@@ -219,14 +220,15 @@ pub fn install(
 
     let mailbox_cache = install_on_app_host(app);
 
-    let blocked_cache: Arc<InMemoryBlockedRelayCache> = Arc::new(InMemoryBlockedRelayCache::new());
+    let blocked_cache: Arc<nmp_nip51::InMemoryBlockedRelayCache> =
+        Arc::new(nmp_nip51::InMemoryBlockedRelayCache::new());
     app.set_blocked_relay_lookup(
         Arc::clone(&blocked_cache) as Arc<dyn nmp_core::substrate::BlockedRelayLookup>
     );
     let blocked_parser: Arc<dyn nmp_core::substrate::IngestParser> =
-        Arc::new(Kind10006Parser::new(Arc::clone(&blocked_cache)));
+        Arc::new(nmp_nip51::Kind10006Parser::new(Arc::clone(&blocked_cache)));
     app.register_ingest_parser(10_006, blocked_parser);
-    nmp_router::register_block_relay_actions(app, blocked_cache);
+    nmp_nip51::register_block_relay_actions(app, blocked_cache);
 
     app.set_publish_resolver_factory(
         |store: Arc<dyn EventStore>,

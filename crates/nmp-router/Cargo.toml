@@ -29,12 +29,11 @@ nmp-planner = { path = "../nmp-planner", default-features = false }
 # Direct dep on nmp-store for EventStore / VerifiedEvent / RawEvent / StoredEvent
 # / MemEventStore / PubKey — the nmp_core::store compat facade is deleted (#1608).
 nmp-store = { path = "../nmp-store" }
-# Layer-0 kind-constant registry — re-exports KIND_BLOCKED_RELAYS
-# so this crate no longer duplicates that value (V-57).
+# Layer-0 kind helpers used by routing discovery and p-tag recipient handling.
 nmp-kinds = { path = "../nmp-kinds" }
 serde = { workspace = true, features = ["derive"] }
-# Typed FlatBuffers action payloads (ADR-0064 / #1756) for the three relay-list
-# action modules this crate owns (block/unblock relay + NIP-65 publish). Pinned
+# Typed FlatBuffers action payloads (ADR-0064 / #1756) for the router-owned
+# NIP-65 publish relay-list action. Pinned
 # to the workspace version verified by ci/check-flatbuffers-version-pins.sh.
 flatbuffers = { workspace = true }
 tracing = "0.1"
@@ -47,4 +46,5 @@ native = ["nmp-core/native"]
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"] }
+nmp-nip51 = { path = "../nmp-nip51" }
 serde_json.workspace = true

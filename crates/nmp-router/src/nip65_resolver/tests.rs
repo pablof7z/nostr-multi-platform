@@ -23,7 +23,7 @@ use nmp_core::substrate::BlockedRelaySet;
 use nmp_store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
 
 /// Empty blocked-relay set — the common case for tests that don't exercise
-/// the kind:10006 block filter. Spelled once so each `resolve` call site reads
+/// the blocked-relay filter. Spelled once so each `resolve` call site reads
 /// `&no_block()` rather than `&BlockedRelaySet::new()`.
 fn no_block() -> BlockedRelaySet {
     BlockedRelaySet::new()

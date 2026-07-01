@@ -9,7 +9,7 @@
 //! — wiring this trait through closes that gap.
 //!
 //! The concrete cache (kind:10006 today, possibly more sources later) lives
-//! in the `nmp-router` crate so the kernel never names the wire shape of a
+//! in the owning protocol crate so the kernel never names the wire shape of a
 //! kind:10006 event (D0 — `nmp-core` does not embed protocol nouns). The
 //! kernel holds an [`Arc<dyn BlockedRelayLookup>`] populated at composition
 //! time; a kernel built without any backend uses the
@@ -22,7 +22,7 @@
 //! Mirrors the pattern [`crate::substrate::DmInboxRelayLookup`] uses for
 //! kind:10050:
 //!
-//! - The **writer** is `nmp-router`'s `Kind10006Parser`
+//! - The **writer** is `nmp-nip51`'s `Kind10006Parser`
 //!   ([`crate::substrate::IngestParser`]) — registered with the kernel's
 //!   [`crate::substrate::EventIngestDispatcher`] at composition time.
 //! - The **reader** is the kernel (`build_routing_context` snapshots a
@@ -30,7 +30,7 @@
 //!   does NOT know the wire shape of a kind:10006 event.
 //!
 //! Both ends agree on a shared `Arc<InMemoryBlockedRelayCache>` (the
-//! concrete type in `nmp-router`) at composition time; the kernel sees it
+//! concrete type in `nmp-nip51`) at composition time; the kernel sees it
 //! only as `Arc<dyn BlockedRelayLookup>`.
 
 use std::sync::Arc;

@@ -203,7 +203,7 @@ pub trait DmInboxRelayRegistrar {
 }
 
 /// Install the blocked-relay lookup — the composition root passes the SAME
-/// `Arc<InMemoryBlockedRelayCache>` (from `nmp-router`) it backs the
+/// `Arc<InMemoryBlockedRelayCache>` (from `nmp-nip51`) it backs the
 /// `Kind10006Parser` with, so the kernel's routing context always reads from
 /// the same cache the parser writes.
 ///

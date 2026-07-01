@@ -10,6 +10,7 @@
 //! |-----------|------------------|--------|----------|
 //! | 10000     | Public mute      | NIP-51 | Shipped  |
 //! | 10003     | Global bookmarks | NIP-51 | Shipped as raw projection + safe RMW builders |
+//! | 10006     | Blocked relays   | NIP-51 | Shipped as routing-policy facts + safe RMW builders |
 //! | 10007     | Search relays    | NIP-51 | Shipped as active-account facts |
 //! | 30003     | Bookmark sets    | NIP-51 | Shipped as raw projection + safe RMW builders |
 //! | 30004     | Curation sets    | NIP-51 | Shipped as raw projection + safe RMW builders |
@@ -27,6 +28,11 @@
 //! It also exposes [`SearchRelayListProjection`], a kind:10007 active-account
 //! relay-list projection. Search query semantics and ranking stay with the
 //! owning search module; this crate only parses `["relay", <url>]` facts.
+//!
+//! It also exposes [`Kind10006Parser`] plus [`InMemoryBlockedRelayCache`] for
+//! kind:10006 blocked relays. Routing receives those facts only through
+//! [`nmp_core::substrate::BlockedRelayLookup`]; this crate owns the NIP-51 wire
+//! parser, builder, and action namespaces.
 //!
 //! It also exposes [`BookmarkListProjection`] plus
 //! [`AddBookmarkAction`] / [`RemoveBookmarkAction`] for the active account's
@@ -87,6 +93,8 @@
 //! suppression** (this crate) and **soft trust scoring** (`nmp-wot`) is
 //! preserved — only the tag-parse step is shared.
 
+pub mod block_relay;
+pub mod blocked_relays;
 pub mod bookmark_sets;
 pub mod bookmarks;
 pub mod interests;
@@ -98,6 +106,11 @@ pub mod search_relays;
 pub mod web_bookmarks;
 pub mod wire;
 
+pub use block_relay::{
+    register_block_relay_actions, BlockRelayAction, BlockRelayInput, UnblockRelayAction,
+    UnblockRelayInput,
+};
+pub use blocked_relays::{InMemoryBlockedRelayCache, Kind10006Parser};
 pub use interests::{
     active_bookmark_list_identity, active_bookmark_list_interest, active_bookmark_list_interest_id,
     active_mute_list_identity, active_mute_list_interest, active_mute_list_interest_id,

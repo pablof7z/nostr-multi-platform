@@ -14,11 +14,17 @@
 //! - [`bookmark_set_update_fb`] — WRITE-direction typed action payload for
 //!   `"nmp.nip51.add_bookmark_set_item"` /
 //!   `"nmp.nip51.remove_bookmark_set_item"` (`N51S`).
+//! - [`block_relay_fb`] — WRITE-direction typed action payload for
+//!   `"nmp.nip51.block_relay"` (`NBLK`).
+//! - [`unblock_relay_fb`] — WRITE-direction typed action payload for
+//!   `"nmp.nip51.unblock_relay"` (`NUBL`).
 //! - [`web_bookmark_publish_fb`] — WRITE-direction typed action payload for
 //!   `"nmp.nip51.publish_web_bookmark"` (`N51W`).
 
+pub mod block_relay_fb;
 pub mod bookmark_list_fb;
 pub mod bookmark_set_update_fb;
 pub mod bookmark_update_fb;
 pub mod mute_list_fb;
+pub mod unblock_relay_fb;
 pub mod web_bookmark_publish_fb;

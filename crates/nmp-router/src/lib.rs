@@ -40,8 +40,6 @@
 //! `author_relay_lists` HashMap with reads through the substrate
 //! [`InMemoryMailboxCache`] held as `Arc<dyn MailboxCache>`.
 
-mod block_relay;
-mod blocked_relays;
 mod cache;
 mod canonical;
 mod discovery;
@@ -54,11 +52,6 @@ mod router;
 pub mod publish_relay_list;
 pub mod wire;
 
-pub use block_relay::{
-    register_block_relay_actions, BlockRelayAction, BlockRelayInput, UnblockRelayAction,
-    UnblockRelayInput,
-};
-pub use blocked_relays::{InMemoryBlockedRelayCache, Kind10006Parser};
 pub use cache::InMemoryMailboxCache;
 pub use indexer_republish::{IndexerRepublishPolicy, IndexerRepublishPolicyHandle};
 pub use ingest::Kind10002Parser;
