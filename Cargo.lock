@@ -3835,6 +3835,7 @@ name = "nmp-cli"
 version = "0.8.4"
 dependencies = [
  "nmp-codegen",
+ "nmp-component-registry",
  "nmp-ownership",
  "serde",
  "serde_json",
@@ -3850,6 +3851,16 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+]
+
+[[package]]
+name = "nmp-component-registry"
+version = "0.8.4"
+dependencies = [
+ "nmp-ownership",
+ "serde",
+ "serde_json",
+ "toml 0.8.23",
 ]
 
 [[package]]

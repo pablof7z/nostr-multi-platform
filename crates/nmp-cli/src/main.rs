@@ -20,7 +20,6 @@ mod doctor;
 mod export;
 mod init;
 mod manifest_edit;
-mod registry_manifest;
 mod upgrade;
 
 use std::env;

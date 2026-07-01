@@ -83,12 +83,12 @@ class VendorDriftGateTest {
     /**
      * The web showcase no longer carries a hand-copied vendor fork: it reads the
      * Compose source straight out of the gated `registry.json` export (generated
-     * from `crates/nmp-cli/registry/`, verified by `crates/nmp-cli/tests/export.rs`).
+     * from `crates/nmp-component-registry/registry/`, verified by `crates/nmp-cli/tests/export.rs`).
      * So the CLI registry copy below is the only remaining vendored copy on the
      * web path, and the gallery -> CLI -> registry.json chain stays fully gated.
      */
     private fun copyPaths(file: String): List<String> =
-        listOf("crates/nmp-cli/registry/compose/login-block/$file")
+        listOf("crates/nmp-component-registry/registry/compose/login-block/$file")
 
     @Test
     fun allVendoredCopiesMatchGalleryCanonical() {

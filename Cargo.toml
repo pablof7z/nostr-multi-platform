@@ -4,6 +4,7 @@ members = [
     "apps/nmp-gallery/tui",
     "apps/nmp-gallery/desktop",
     "crates/nmp-cli",
+    "crates/nmp-component-registry",
     "crates/nmp-blossom",
     "crates/nmp-browser-runtime",
     "crates/nmp-browser-runtime-conformance",

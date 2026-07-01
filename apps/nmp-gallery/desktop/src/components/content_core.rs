@@ -1,1 +1,3 @@
-include!("../../../../../crates/nmp-cli/registry/desktop/content-core/content_core.rs");
+include!(
+    "../../../../../crates/nmp-component-registry/registry/desktop/content-core/content_core.rs"
+);

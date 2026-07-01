@@ -1,8 +1,8 @@
 /*
  * Static component manifest for the registry showcase site.
  *
- * Install-critical metadata is mirrored from the CLI manifest at
- * crates/nmp-cli/registry/registry.toml. The nmp-cli integration tests compare
+ * Install-critical metadata is mirrored from the component registry manifest at
+ * crates/nmp-component-registry/registry/registry.toml. The nmp-cli integration tests compare
  * install ids, platform versions, dependencies, and file mappings so this
  * showcase cannot drift from the offline registry apps actually install.
  */

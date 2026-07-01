@@ -154,9 +154,9 @@ replace those fixtures with their real shell bridge.
 
 Component contract:
 
-- `crates/nmp-cli/registry/registry.toml` is the install authority. Showcase
+- `crates/nmp-component-registry/registry/registry.toml` is the install authority. Showcase
   pages and docs may add copy, but ids, versions, targets, dependencies, and
-  file mappings must mirror the CLI manifest.
+  file mappings must mirror the component registry manifest.
 - Content components are copied source owned by the app after install. They
   are not linked framework packages.
 - Rust owns content structure through `nmp-content` / `ContentTreeWire`.

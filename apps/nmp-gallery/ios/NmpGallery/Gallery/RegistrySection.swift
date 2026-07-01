@@ -12,7 +12,7 @@ struct RegistrySection: Decodable, Identifiable, Hashable {
 /// detail view uses to pick the right page builder.
 struct RegistryComponent: Decodable, Identifiable, Hashable {
     /// Stable registry slug (e.g. `"user-avatar"`). MUST match the slugs
-    /// `crates/nmp-cli/registry/swiftui/` uses on disk.
+    /// `crates/nmp-component-registry/registry/swiftui/` uses on disk.
     let id: String
     /// Display label — the public Swift type name the component exports.
     let label: String

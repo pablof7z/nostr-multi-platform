@@ -2,8 +2,8 @@
 // component bodies shown in the showcase's copy-paste code panels.
 //
 // These bodies are read out of `public/registry.json` — the committed,
-// drift-gated artifact produced by `nmp export jsrepo` from the canonical CLI
-// registry (`crates/nmp-cli/registry/`) and verified by
+// drift-gated artifact produced by `nmp export jsrepo` from the canonical
+// component registry (`crates/nmp-component-registry/registry/`) and verified by
 // `crates/nmp-cli/tests/export.rs`. There is no hand-copied vendor fork to
 // drift: this is the one canonical path.
 //

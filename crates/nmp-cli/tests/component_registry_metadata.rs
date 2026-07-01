@@ -1,20 +1,20 @@
 //! Regression guard for the web registry mirror.
 //!
-//! The CLI manifest is the install authority. The showcase site may add
+//! The component registry manifest is the install authority. The showcase site may add
 //! marketing copy, screenshots, and customization notes, but the fields that
 //! decide what users install must match `registry.toml`.
 
 use serde::Deserialize;
 
-// The CLI catalog is split by platform target (file-size rule); concatenation
-// mirrors REGISTRY_SECTION_FILES in src/registry_manifest.rs.
+// The component registry catalog is split by platform target (file-size rule);
+// concatenation mirrors REGISTRY_SECTION_FILES in nmp-component-registry.
 const CLI_REGISTRY_SECTIONS: &[&str] = &[
-    include_str!("../registry/registry.toml"),
-    include_str!("../registry/registry.swiftui.toml"),
-    include_str!("../registry/registry.compose.toml"),
-    include_str!("../registry/registry.tui.toml"),
-    include_str!("../registry/registry.desktop.toml"),
-    include_str!("../registry/registry.web.toml"),
+    include_str!("../../nmp-component-registry/registry/registry.toml"),
+    include_str!("../../nmp-component-registry/registry/registry.swiftui.toml"),
+    include_str!("../../nmp-component-registry/registry/registry.compose.toml"),
+    include_str!("../../nmp-component-registry/registry/registry.tui.toml"),
+    include_str!("../../nmp-component-registry/registry/registry.desktop.toml"),
+    include_str!("../../nmp-component-registry/registry/registry.web.toml"),
 ];
 const WEB_REGISTRY_INDEX: &str = include_str!("../../../web/registry/src/registry.ts");
 const WEB_REGISTRY_TYPES: &str = include_str!("../../../web/registry/src/registry/types.ts");
@@ -67,7 +67,7 @@ fn web_registry_install_metadata_mirrors_cli_manifest() {
     for component in manifest.components {
         assert!(
             component.id.starts_with(&format!("{}/", component.target)),
-            "{} id/target mismatch in CLI manifest",
+            "{} id/target mismatch in component registry manifest",
             component.id
         );
 

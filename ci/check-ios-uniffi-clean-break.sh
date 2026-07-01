@@ -22,8 +22,8 @@ import sys
 
 pattern = re.compile(sys.argv[1])
 roots = ["apps"]
-if os.path.isdir("crates/nmp-cli/registry/swiftui"):
-    roots.append("crates/nmp-cli/registry/swiftui")
+if os.path.isdir("crates/nmp-component-registry/registry/swiftui"):
+    roots.append("crates/nmp-component-registry/registry/swiftui")
 
 extensions = (".swift", ".h", ".m", ".mm", ".modulemap", ".pbxproj", ".xcconfig", ".yml", ".yaml")
 excluded_parts = (

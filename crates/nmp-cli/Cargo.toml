@@ -17,6 +17,7 @@ path = "src/main.rs"
 [dependencies]
 nmp-ownership = { workspace = true }
 nmp-codegen = { path = "../nmp-codegen" }
+nmp-component-registry = { path = "../nmp-component-registry" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sha2 = "0.10"

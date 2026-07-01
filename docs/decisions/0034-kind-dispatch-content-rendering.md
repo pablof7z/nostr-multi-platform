@@ -4,7 +4,7 @@
 - **Relates to:** ADR-0032 (raw-data projection doctrine), ADR-0018 (ContentTreeWire),
   F-08 (component registry + content rendering kits)
 - **Scope:** `nmp-content`, `nmp-content-fixtures`, the `nmp-cli` registry components
-  (`crates/nmp-cli/registry/{swiftui,compose,tui}/`), and every platform's content
+  (`crates/nmp-component-registry/registry/{swiftui,compose,tui}/`), and every platform's content
   rendering consumer (iOS Chirp, Android gallery, chirp-tui).
 
 ## Context

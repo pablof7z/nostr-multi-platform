@@ -12,8 +12,8 @@ use std::path::Path;
 
 /// Per-target manifest sections merged after `registry.toml`, in catalog
 /// order. Adding a new platform target means adding its file here AND in the
-/// builtin `include_str!` list in `component/registry.rs`.
-pub(crate) const REGISTRY_SECTION_FILES: &[&str] = &[
+/// builtin `include_str!` list in `registry.rs`.
+pub const REGISTRY_SECTION_FILES: &[&str] = &[
     "registry.swiftui.toml",
     "registry.compose.toml",
     "registry.tui.toml",
@@ -26,7 +26,7 @@ pub(crate) const REGISTRY_SECTION_FILES: &[&str] = &[
 ///
 /// Section files are optional: test-fixture registries (and any external
 /// `--registry` dir) may ship a single self-contained `registry.toml`.
-pub(crate) fn read_manifest_with_sections(manifest_path: &Path) -> Result<String, String> {
+pub fn read_manifest_with_sections(manifest_path: &Path) -> Result<String, String> {
     let mut content = fs::read_to_string(manifest_path)
         .map_err(|e| format!("{}: {e}", manifest_path.display()))?;
     let dir = manifest_path.parent().unwrap_or(Path::new("."));

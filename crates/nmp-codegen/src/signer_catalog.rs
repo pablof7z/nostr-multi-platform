@@ -88,7 +88,7 @@ const KOTLIN_TARGETS: &[KotlinTarget] = &[
     },
     // The CLI install registry copy (vendored into consumer apps).
     KotlinTarget {
-        path: "crates/nmp-cli/registry/compose/login-block/KnownSigners.generated.kt",
+        path: "crates/nmp-component-registry/registry/compose/login-block/KnownSigners.generated.kt",
         package: "org.nmp.registry",
     },
 ];
@@ -97,7 +97,7 @@ const SWIFT_TARGETS: &[&str] = &[
     // Gallery canonical.
     "apps/nmp-gallery/ios/NmpGallery/Registry/KnownSigners.generated.swift",
     // CLI install registry copy.
-    "crates/nmp-cli/registry/swiftui/login-block/KnownSigners.generated.swift",
+    "crates/nmp-component-registry/registry/swiftui/login-block/KnownSigners.generated.swift",
 ];
 
 const ANDROID_MANIFEST: &str = "apps/nmp-gallery/android/app/src/main/AndroidManifest.xml";

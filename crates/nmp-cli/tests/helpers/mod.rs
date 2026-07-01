@@ -57,7 +57,7 @@ pub fn nmp(cwd: &Path, args: &[&str]) -> Output {
 
 /// Synthetic registry builder used by the `update` and `add` edge-case tests.
 ///
-/// Mirrors the on-disk shape of `crates/nmp-cli/registry/registry.toml` but
+/// Mirrors the on-disk shape of `crates/nmp-component-registry/registry/registry.toml` but
 /// stays out-of-tree so a test can flip the "upstream" content + version
 /// between install and update. The returned path is the directory containing
 /// `registry.toml` (suitable for `--registry`).

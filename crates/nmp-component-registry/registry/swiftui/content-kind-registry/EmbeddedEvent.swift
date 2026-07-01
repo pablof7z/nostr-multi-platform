@@ -6,7 +6,7 @@ import SwiftUI
 /// reads the resolved `EmbeddedEventEnvelope` from the host bound by the
 /// caller, and lets the registry pick the right renderer.
 ///
-/// Mirrors the TUI's `EmbeddedEvent` widget (`crates/nmp-cli/registry/tui/
+/// Mirrors the TUI's `EmbeddedEvent` widget (`crates/nmp-component-registry/registry/tui/
 /// content-kind-registry/embedded_event.rs`).
 ///
 /// Lifecycle (D8 — no polling; aligned with task instructions to never resolve

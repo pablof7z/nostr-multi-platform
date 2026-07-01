@@ -1,1 +1,1 @@
-include!("../../../../../crates/nmp-cli/registry/desktop/content-mention-chip/mention_chip.rs");
+include!("../../../../../crates/nmp-component-registry/registry/desktop/content-mention-chip/mention_chip.rs");

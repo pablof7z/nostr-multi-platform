@@ -107,7 +107,7 @@ jobs:
 
       # #2599 — nmp-gallery is the stock component showcase. Its checked-in
       # SwiftUI and Compose registry copies must stay mechanically synced with
-      # crates/nmp-cli/registry; Compose differs only by the app package line.
+      # crates/nmp-component-registry/registry; Compose differs only by the app package line.
       - name: Check nmp-gallery component registry copies are in sync
         run: python3 ci/check-gallery-registry-drift.py
 
