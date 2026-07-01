@@ -143,7 +143,7 @@ protocol, app, publish/signing, and capability features by name, then wires
 app-specific seams. The starter sequence begins with `nmp_substrate::install`,
 then calls the owner-crate installers the app actually needs, such as
 `nmp_nip50::register_search_scopes`, `nmp_nip02::register_follow_actions`,
-`nmp_nip17::register_runtime`, and `nmp_content::register_longform_projection`:
+`nmp_nip17::register_runtime`, and `nmp_nip23::register_longform_projection`:
 
 ```rust
 let mut builder = NmpAppBuilder::new();

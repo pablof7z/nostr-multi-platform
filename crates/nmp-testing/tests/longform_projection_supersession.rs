@@ -2,28 +2,26 @@
 //! typed NIP-23 [`LongformProjection`], decoded back from the `NL23`
 //! FlatBuffers sidecar payload (NOT a JSON map).
 //!
-//! The `LongformProjection` does an unconditional `state.insert(address, ...)`
-//! with **no `created_at` comparison** — by design (the brief: "do NOT
-//! reimplement is-newer"). That correctness rests entirely on ONE external
-//! invariant: the kernel fans an event out to `ObservedProjectionSink`s **only on
-//! store outcome `Inserted | Replaced`** (see
-//! `crates/nmp-core/src/kernel/ingest/`), and the param-replaceable store
-//! returns `Superseded` (NOT `Inserted | Replaced`) for an older
-//! `(author, kind, d_tag)` arrival.
+//! The `LongformProjection` has its own latest-at-coordinate guard, and normal
+//! runtime correctness also rests on the kernel fan-out invariant: the kernel
+//! hands events to `ObservedProjectionSink`s **only on store outcome
+//! `Inserted | Replaced`** (see `crates/nmp-core/src/kernel/ingest/`), and the
+//! param-replaceable store returns `Superseded` (NOT `Inserted | Replaced`) for
+//! an older `(author, kind, d_tag)` arrival.
 //!
-//! The unit tests in `nmp-content` call `on_kernel_event` directly and so only
+//! The unit tests in `nmp-nip23` call `on_kernel_event` directly and so only
 //! prove in-order last-write-wins — they bypass the store. This test closes the
-//! gap: it drives kind:30023 events through the REAL `EventStore` in
+//! runtime path: it drives kind:30023 events through the REAL `EventStore` in
 //! **newer-first, older-second** order (the adversarial order), reproduces the
 //! kernel's exact fan-out gate against the typed `InsertOutcome`, and asserts
 //! the projection keeps the newest event — the older `id` never appears. If the
 //! store ever stopped suppressing the older arrival, this test fails loudly
 //! instead of the projection silently overwriting the winner with the loser.
 
-use nmp_content::wire::longform_fb::decode_longform_articles;
-use nmp_content::{LongformProjection, KIND_LONG_FORM_ARTICLE, LONGFORM_PROJECTION_KEY};
 use nmp_core::substrate::KernelEvent;
 use nmp_core::ObservedProjectionSink;
+use nmp_nip23::wire::longform_fb::decode_longform_articles;
+use nmp_nip23::{LongformProjection, KIND_LONG_FORM_ARTICLE, LONGFORM_PROJECTION_KEY};
 use nmp_store::InsertOutcome;
 use nmp_testing::store_harness::{StoreHarness, ALICE_HEX, BOB_HEX};
 

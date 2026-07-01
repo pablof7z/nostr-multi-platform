@@ -86,7 +86,7 @@ pub fn register(app: &mut (impl AppHost + ActionRegistrar)) {
     nmp_nip17::register_actions(app);
     nmp_nip17::register_runtime(app);
 
-    nmp_content::register_longform_projection(app);
+    nmp_nip23::register_longform_projection(app);
     ActionRegistrar::register_action(app, private_status::PublishStatusModule)
         .expect("starter private status action namespace must be unique");
 }

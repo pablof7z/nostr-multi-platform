@@ -42,6 +42,7 @@ nmp-content = { path = "../../../../crates/nmp-content" }
 nmp-nip02 = { path = "../../../../crates/nmp-nip02" }
 nmp-nip17 = { path = "../../../../crates/nmp-nip17" }
 nmp-nip18 = { path = "../../../../crates/nmp-nip18" }
+nmp-nip23 = { path = "../../../../crates/nmp-nip23" }
 nmp-nip22 = { path = "../../../../crates/nmp-nip22" }
 nmp-nip25 = { path = "../../../../crates/nmp-nip25" }
 nmp-nip29 = { path = "../../../../crates/nmp-nip29" }

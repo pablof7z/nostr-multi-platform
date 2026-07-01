@@ -16,7 +16,6 @@
 //! `unwrap`/`expect`/indexing that can panic on non-test paths).
 
 pub mod embed_sidecar_fb;
-pub mod longform_fb;
 mod projection;
 pub mod typed_fb;
 
@@ -28,11 +27,6 @@ pub use embed_sidecar_fb::{
     FILE_IDENTIFIER as EMBED_SIDECAR_FILE_IDENTIFIER,
     PROJECTION_KEY as EMBED_SIDECAR_PROJECTION_KEY, SCHEMA_ID as EMBED_SIDECAR_SCHEMA_ID,
     SCHEMA_VERSION as EMBED_SIDECAR_SCHEMA_VERSION,
-};
-pub use longform_fb::{
-    decode_longform_articles, encode_longform_articles, LongformArticles,
-    FILE_IDENTIFIER as LONGFORM_FILE_IDENTIFIER, SCHEMA_ID as LONGFORM_SCHEMA_ID,
-    SCHEMA_VERSION as LONGFORM_SCHEMA_VERSION,
 };
 pub use typed_fb::{
     decode_content_tree, encode_content_tree, FILE_IDENTIFIER, SCHEMA_ID, SCHEMA_VERSION,

@@ -284,7 +284,7 @@ fn register_gallery_composition(app: &mut impl nmp_core::substrate::AppHost) {
     nmp_nip17::register_actions(app);
     nmp_nip17::register_runtime(app);
 
-    nmp_content::register_longform_projection(app);
+    nmp_nip23::register_longform_projection(app);
 }
 
 /// The NIP-55 (Amber) first-connect permission batch this gallery composition

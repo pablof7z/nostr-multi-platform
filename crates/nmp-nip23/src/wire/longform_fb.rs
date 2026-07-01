@@ -1,5 +1,5 @@
 //! Typed FlatBuffers wire codec for the NIP-23 long-form snapshot projection
-//! ([`crate::longform::LongformProjection`]).
+//! ([`crate::LongformProjection`]).
 //!
 //! This is the **typed sidecar** (ADR-0037) carried in every `SnapshotFrame`'s
 //! `typed_projections` slot under the key `nmp.nip23.articles`. Unlike the other
@@ -9,11 +9,12 @@
 //! retired and this typed payload is the surface hosts read.
 //!
 //! The shape mirrors the existing NIP-23 resolver output
-//! ([`crate::embed_projection::ArticleProjection`]); see `schema/longform.fbs`
+//! ([`nmp_content::embed_projection::ArticleProjection`]); see
+//! `schema/longform.fbs`
 //! for the field map. The full article body
 //! ([`ArticleProjection::content_tree`]) is carried as the verbatim
-//! [`ContentTreeWire`](crate::wire::ContentTreeWire) typed buffer (`NFCT` root)
-//! via the existing [`encode_content_tree`](crate::wire::encode_content_tree)
+//! [`ContentTreeWire`](nmp_content::wire::ContentTreeWire) typed buffer (`NFCT`
+//! root) via the existing [`encode_content_tree`](nmp_content::wire::encode_content_tree)
 //! codec — reused as an opaque-bytes unit, not re-`include`d into this schema.
 //!
 //! Honours D6 (no panics): [`decode_longform_articles`] returns `Err(String)` on
@@ -28,8 +29,8 @@
 //! `ci/check-flatbuffers-version-pins.sh`. The schema is self-contained:
 //!
 //! ```sh
-//! flatc --rust -o crates/nmp-content/src/wire/generated \
-//!       crates/nmp-content/schema/longform.fbs
+//! flatc --rust -o crates/nmp-nip23/src/wire/generated \
+//!       crates/nmp-nip23/schema/longform.fbs
 //! ```
 
 // The generated FlatBuffers bindings are intrinsically `unsafe` (every accessor
@@ -53,9 +54,10 @@ use std::collections::BTreeMap;
 use flatbuffers::{FlatBufferBuilder, WIPOffset};
 use generated::nmp::nip_23 as fb;
 
-use crate::embed_projection::ArticleProjection;
-use crate::longform::ArticleFeedItem;
-use crate::wire::{decode_content_tree, encode_content_tree};
+use nmp_content::embed_projection::ArticleProjection;
+use nmp_content::wire::{decode_content_tree, encode_content_tree};
+
+use crate::ArticleFeedItem;
 
 /// Stable schema identifier carried in the typed-projection envelope.
 pub const SCHEMA_ID: &str = "nmp.nip23.articles";

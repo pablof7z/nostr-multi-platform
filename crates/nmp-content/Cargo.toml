@@ -13,7 +13,6 @@ name = "nmp_content"
 nmp-ownership = { workspace = true }
 flatbuffers = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false }
-nmp-feed = { path = "../nmp-feed" }
 nmp-kinds = { path = "../nmp-kinds" }
 # Canonical DeleteRecord (kind:5 decode) and AddressCoordinate (a-tag identity)
 # for NIP-23 article delete-folding — nmp-nip18 is not the generic deletion

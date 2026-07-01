@@ -279,7 +279,7 @@ fn g5_example_uses_explicit_composition() {
         "nmp_nip02::register_follow_actions",
         "nmp_nip51::register_mute_runtime",
         "nmp_nip17::register_runtime",
-        "nmp_content::register_longform_projection",
+        "nmp_nip23::register_longform_projection",
     ] {
         let index = content[cursor..]
             .find(installer)

@@ -25,7 +25,7 @@ const OTHER_TOPIC: &str = "music";
 
 fn longform_event(keys: &Keys, d_tag: &str, topic: &str, created_at: u64, content: &str) -> Event {
     EventBuilder::new(
-        Kind::from_u16(nmp_content::KIND_LONG_FORM_ARTICLE as u16),
+        Kind::from_u16(nmp_nip23::KIND_LONG_FORM_ARTICLE as u16),
         content,
     )
     .tags([
@@ -48,7 +48,7 @@ fn generic_repost(keys: &Keys, target: &Event, created_at: u64) -> Event {
     .tags([
         Tag::parse(["e", &target.id.to_hex()]).unwrap(),
         Tag::parse(["p", &target.pubkey.to_hex()]).unwrap(),
-        Tag::parse(["k", &nmp_content::KIND_LONG_FORM_ARTICLE.to_string()]).unwrap(),
+        Tag::parse(["k", &nmp_nip23::KIND_LONG_FORM_ARTICLE.to_string()]).unwrap(),
     ])
     .custom_created_at(Timestamp::from_secs(created_at))
     .sign_with_keys(keys)
@@ -59,7 +59,7 @@ fn tag_only_repost(keys: &Keys, target_id: &str, created_at: u64) -> Event {
     EventBuilder::new(Kind::from_u16(nmp_nip18::KIND_GENERIC_REPOST as u16), "")
         .tags([
             Tag::parse(["e", target_id]).unwrap(),
-            Tag::parse(["k", &nmp_content::KIND_LONG_FORM_ARTICLE.to_string()]).unwrap(),
+            Tag::parse(["k", &nmp_nip23::KIND_LONG_FORM_ARTICLE.to_string()]).unwrap(),
         ])
         .custom_created_at(Timestamp::from_secs(created_at))
         .sign_with_keys(keys)
@@ -144,9 +144,7 @@ fn direct_topic_article_filter(topic: &str) -> Value {
     let mut filter = Map::new();
     filter.insert(
         "kinds".to_string(),
-        Value::Array(vec![Value::from(
-            nmp_content::KIND_LONG_FORM_ARTICLE as u64,
-        )]),
+        Value::Array(vec![Value::from(nmp_nip23::KIND_LONG_FORM_ARTICLE as u64)]),
     );
     filter.insert("#t".to_string(), Value::Array(vec![Value::from(topic)]));
     Value::Object(filter)
@@ -161,7 +159,7 @@ fn longform_repost_filter() -> Value {
     filter.insert(
         "#k".to_string(),
         Value::Array(vec![Value::from(
-            nmp_content::KIND_LONG_FORM_ARTICLE.to_string(),
+            nmp_nip23::KIND_LONG_FORM_ARTICLE.to_string(),
         )]),
     );
     Value::Object(filter)
@@ -252,7 +250,7 @@ fn is_eose(text: &str, sub_id: &str) -> bool {
 fn address(author: &Keys, d_tag: &str) -> String {
     format!(
         "{}:{}:{d_tag}",
-        nmp_content::KIND_LONG_FORM_ARTICLE,
+        nmp_nip23::KIND_LONG_FORM_ARTICLE,
         author.public_key().to_hex()
     )
 }
@@ -293,7 +291,7 @@ fn topic_article_feed_renders_kind30023_and_kind16_without_secondary_hydration()
 
     assert_eq!(
         integer_set(observed_direct_filter.get("kinds")),
-        [nmp_content::KIND_LONG_FORM_ARTICLE as u64]
+        [nmp_nip23::KIND_LONG_FORM_ARTICLE as u64]
             .into_iter()
             .collect()
     );
@@ -317,7 +315,7 @@ fn topic_article_feed_renders_kind30023_and_kind16_without_secondary_hydration()
     );
     assert_eq!(
         string_set(observed_repost_filter.get("#k")),
-        [nmp_content::KIND_LONG_FORM_ARTICLE.to_string()]
+        [nmp_nip23::KIND_LONG_FORM_ARTICLE.to_string()]
             .into_iter()
             .collect()
     );
@@ -357,9 +355,9 @@ fn topic_article_feed_renders_kind30023_and_kind16_without_secondary_hydration()
         "kind:0 profiles are not feed-owned dependencies"
     );
 
-    let feed = nmp_content::LongformFeed::for_topic(
+    let feed = nmp_nip23::LongformFeed::for_topic(
         TOPIC,
-        nmp_content::longform_feed_predicate(Arc::new(|_| true)),
+        nmp_nip23::longform_feed_predicate(Arc::new(|_| true)),
         Arc::new(|_| None),
     );
     for event in direct_events.iter().chain(repost_events.iter()) {
