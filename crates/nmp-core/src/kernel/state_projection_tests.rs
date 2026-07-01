@@ -140,18 +140,63 @@ fn profile_metadata_appears_in_snapshot_after_kind0_ingest() {
         "before any kind:0 the profile card picture_url must be null",
     );
 
-    // Ingest a kind:0 carrying real metadata.
-    let event = nostr::NostrEvent {
-        id: "0000000000000000000000000000000000000000000000000000000000000010".to_string(),
-        pubkey: ACCOUNT.to_string(),
-        created_at: 1_700_000_000,
-        kind: 0,
-        tags: vec![],
-        content: r#"{"name":"sat","display_name":"Satoshi","displayName":"Satoshi Camel","nip05":"sat@example.com","about":"hi there","picture":"https://example.com/sat.png","banner":"https://example.com/banner.png","website":"https://satoshi.example","lud16":"sat@ln.example","lud06":"lnurl1sat"}"#
-            .to_string(),
-        sig: String::new(),
-    };
-    kernel.inject_profile(event);
+    // Seed cached profile metadata.
+    let mut raw_fields = serde_json::Map::new();
+    raw_fields.insert("name".into(), serde_json::Value::String("sat".into()));
+    raw_fields.insert(
+        "display_name".into(),
+        serde_json::Value::String("Satoshi".into()),
+    );
+    raw_fields.insert(
+        "displayName".into(),
+        serde_json::Value::String("Satoshi Camel".into()),
+    );
+    raw_fields.insert(
+        "nip05".into(),
+        serde_json::Value::String("sat@example.com".into()),
+    );
+    raw_fields.insert(
+        "about".into(),
+        serde_json::Value::String("hi there".into()),
+    );
+    raw_fields.insert(
+        "picture".into(),
+        serde_json::Value::String("https://example.com/sat.png".into()),
+    );
+    raw_fields.insert(
+        "banner".into(),
+        serde_json::Value::String("https://example.com/banner.png".into()),
+    );
+    raw_fields.insert(
+        "website".into(),
+        serde_json::Value::String("https://satoshi.example".into()),
+    );
+    raw_fields.insert(
+        "lud16".into(),
+        serde_json::Value::String("sat@ln.example".into()),
+    );
+    raw_fields.insert("lud06".into(), serde_json::Value::String("lnurl1sat".into()));
+    kernel.seed_profile_view_for_test(
+        ACCOUNT,
+        crate::substrate::ProfileView {
+            event_id: "0000000000000000000000000000000000000000000000000000000000000010"
+                .to_string(),
+            created_at: 1_700_000_000,
+            display: "Satoshi".to_string(),
+            name: Some("sat".to_string()),
+            raw_display_name: Some("Satoshi".to_string()),
+            display_name_camel: Some("Satoshi Camel".to_string()),
+            nip05: "sat@example.com".to_string(),
+            about: "hi there".to_string(),
+            picture_url: Some("https://example.com/sat.png".to_string()),
+            banner: Some("https://example.com/banner.png".to_string()),
+            website: Some("https://satoshi.example".to_string()),
+            lud16: Some("sat@ln.example".to_string()),
+            lud06: Some("lnurl1sat".to_string()),
+            lnurl: Some("sat@ln.example".to_string()),
+            raw_fields,
+        },
+    );
 
     let after = snapshot(&mut kernel);
     let card = &after["projections"]["profile"];

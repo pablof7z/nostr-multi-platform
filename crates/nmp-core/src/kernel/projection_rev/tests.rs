@@ -217,6 +217,7 @@ fn s2_profile_update_after_claim_does_not_bump_refs_event() {
     let (prof_before, _) = live_state(&kernel, "profile");
 
     // kind:0 for the claimed note's author arrives (real signed).
+    kernel.install_profile_view_seed_parser_for_test("alice");
     let profile = signed_profile(&keys, "alice", 1_700_000_500);
     ingest(&mut kernel, RelayRole::Indexer, "meta-sub", &profile);
 
@@ -447,8 +448,8 @@ fn s7_relay_status_transition_advances_relay_diagnostics() {
 /// S9 (F4): RAM-tier eviction removes profile rows the `profile` / `accounts` /
 /// `refs.profile` projections derive from. `evict_profiles_cache` must bump
 /// `profiles_ver` when it removes ≥1 row, else the host serves a profile the
-/// kernel no longer holds. Driven through the REAL `inject_replaceable_event`
-/// (kind:0) population + `evict_ram_caches` path.
+/// kernel no longer holds. Driven through direct profile-view seeding plus
+/// `evict_ram_caches`.
 #[test]
 fn s9_ram_eviction_of_profiles_advances_profile_rev() {
     use crate::kernel::ram_eviction::PROFILES_RAM_HWM;
@@ -461,14 +462,14 @@ fn s9_ram_eviction_of_profiles_advances_profile_rev() {
     for i in 0..over {
         let pubkey = format!("{:0>64x}", 0x20000usize + i);
         let id = format!("{:0>64x}", 0x40000usize + i);
-        kernel.inject_replaceable_event(
-            &id,
+        kernel.seed_profile_view_for_test(
             &pubkey,
-            1_700_000_000 + i as u64,
-            0,
-            vec![],
-            "wss://relay.test/",
-            (1_700_000_000 + i as u64) * 1_000,
+            crate::substrate::ProfileView {
+                event_id: id,
+                created_at: 1_700_000_000 + i as u64,
+                display: format!("profile {i}"),
+                ..Default::default()
+            },
         );
     }
 

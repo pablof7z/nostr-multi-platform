@@ -286,9 +286,9 @@ pub struct Kernel {
     /// Test-only handle to `TestDmInboxRelayCache`.
     #[cfg(any(test, feature = "test-support"))]
     test_dm_inbox_cache: Option<Arc<crate::substrate::TestDmInboxRelayCache>>,
-    /// Test-only handle to `TestProfileCache` (backs `profile_lookup` in test builds).
-    #[cfg(any(test, feature = "test-support"))]
-    test_profile_cache: Arc<crate::substrate::TestProfileCache>,
+    /// Test-only handle to `TestProfileLookup` (backs `profile_lookup` in test builds).
+    #[cfg(test)]
+    test_profile_lookup: Arc<crate::substrate::TestProfileLookup>,
     pub(crate) timeline_authors: BTreeSet<String>,
     /// Source owner -> complete current set of child interests it produced.
     dependent_interest_sets: BTreeMap<

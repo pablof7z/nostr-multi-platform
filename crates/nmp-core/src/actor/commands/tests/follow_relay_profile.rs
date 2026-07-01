@@ -243,11 +243,34 @@ fn publish_profile_merges_edits_onto_cached_kind0_fields() {
     let (mut id, mut kernel) = fresh();
     sign_in_with_nip65(&mut id, &mut kernel);
     let active_pubkey = id.active_pubkey().unwrap();
-    kernel.seed_profile_kind0_for_test(
+    let mut raw_fields = serde_json::Map::new();
+    raw_fields.insert("name".into(), serde_json::Value::String("marcus".into()));
+    raw_fields.insert(
+        "display_name".into(),
+        serde_json::Value::String("Marcus Webb".into()),
+    );
+    raw_fields.insert(
+        "banner".into(),
+        serde_json::Value::String("https://example.com/banner.png".into()),
+    );
+    raw_fields.insert(
+        "website".into(),
+        serde_json::Value::String("https://example.com".into()),
+    );
+    raw_fields.insert("third_party".into(), serde_json::json!({"keep": true}));
+    kernel.seed_profile_view_for_test(
         &active_pubkey,
-        "kind0-current",
-        1_700_000_000,
-        r#"{"name":"marcus","display_name":"Marcus Webb","banner":"https://example.com/banner.png","website":"https://example.com","third_party":{"keep":true}}"#,
+        crate::substrate::ProfileView {
+            event_id: "kind0-current".to_string(),
+            created_at: 1_700_000_000,
+            display: "Marcus Webb".to_string(),
+            name: Some("marcus".to_string()),
+            raw_display_name: Some("Marcus Webb".to_string()),
+            banner: Some("https://example.com/banner.png".to_string()),
+            website: Some("https://example.com".to_string()),
+            raw_fields,
+            ..Default::default()
+        },
     );
     let mut fields = serde_json::Map::new();
     fields.insert(

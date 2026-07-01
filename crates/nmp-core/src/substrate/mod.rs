@@ -118,9 +118,9 @@ pub use intent::{
     INPUT_SCOPE_LEDGER_SEAM,
 };
 pub use payment::{PaymentIntent, PaymentPort};
-pub use profile_lookup::{empty_profile_lookup, EmptyProfileLookup, ProfileLookup, ProfileView};
 #[cfg(any(test, feature = "test-support"))]
-pub use profile_lookup::{TestKind0Parser, TestProfileCache};
+pub use profile_lookup::TestProfileLookup;
+pub use profile_lookup::{empty_profile_lookup, EmptyProfileLookup, ProfileLookup, ProfileView};
 pub use suppression::{empty_suppression_lookup, EmptySuppressionLookup, SuppressionLookup};
 
 pub use content_parser::{ContentParser, NoopContentParser};

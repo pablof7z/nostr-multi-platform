@@ -43,16 +43,16 @@ fn refs_event_carries_raw_author_pubkey_without_profile_enrichment() {
         TEST_AUTHOR_HEX,
         "profile should not enrich this",
     );
-    kernel.inject_profile(NostrEvent {
-        id: hex64("8"),
-        pubkey: TEST_AUTHOR_HEX.to_string(),
-        created_at: 1_700_000_001,
-        kind: 0,
-        tags: vec![],
-        content: r#"{"display_name":"Alice","picture":"https://example.com/alice.png"}"#
-            .to_string(),
-        sig: "a".repeat(128),
-    });
+    kernel.seed_profile_view_for_test(
+        TEST_AUTHOR_HEX,
+        crate::substrate::ProfileView {
+            event_id: hex64("8"),
+            created_at: 1_700_000_001,
+            display: "Alice".to_string(),
+            picture_url: Some("https://example.com/alice.png".to_string()),
+            ..Default::default()
+        },
+    );
 
     let _ = kernel.resolve_ref(
         RefNamespace::Event,

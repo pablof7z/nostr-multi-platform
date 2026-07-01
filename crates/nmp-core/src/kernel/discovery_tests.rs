@@ -588,9 +588,7 @@ fn v56_known_profile_not_re_added() {
     let npub = encode_npub(pk).expect("encode_npub must succeed");
 
     // Pre-seed the profile cache so the pubkey is "known".
-    kernel
-        .test_profile_cache
-        .upsert_view(pk, crate::substrate::ProfileView::default());
+    kernel.seed_profile_view_for_test(pk, crate::substrate::ProfileView::default());
 
     let content = format!("Say hello to nostr:{npub}");
     kernel.collect_content_mention_pubkeys(&content);

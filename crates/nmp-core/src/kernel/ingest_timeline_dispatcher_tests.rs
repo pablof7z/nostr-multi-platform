@@ -214,9 +214,7 @@ fn ingest_timeline_event_no_parser_registered_no_dispatch() {
     kernel.timeline_authors.insert(author.clone());
 
     // No kind:1 parser is registered — is_interested(1) == false, clone must be
-    // skipped. (ADR-0057 PR 2: the test kernel auto-registers a kind:0
-    // `TestKind0Parser` on its dispatcher, so the registry is not globally
-    // empty; the contract under test is that NO parser fires for kind:1.)
+    // skipped. The contract under test is that NO parser fires for kind:1.
     assert!(
         !kernel.ingest_dispatcher_slot().read().unwrap().is_interested(1),
         "no kind:1 parser must be registered before ingest",

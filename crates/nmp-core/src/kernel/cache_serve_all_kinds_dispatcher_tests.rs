@@ -25,7 +25,7 @@ use crate::relay::{DEFAULT_VISIBLE_LIMIT};
 use nmp_network::role::RelayRole;
 use crate::store::VerifiedEvent;
 use crate::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
-use crate::substrate::IngestParser;
+use crate::substrate::{IngestParser, ProfileView, TestProfileLookup};
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
@@ -50,6 +50,35 @@ impl CapturingIngestParser {
 impl IngestParser for CapturingIngestParser {
     fn parse(&self, evt: &VerifiedEvent) {
         self.seen_kinds.lock().unwrap().push(evt.raw().kind);
+    }
+}
+
+pub(super) struct ProfileViewWriterParser {
+    lookup: Arc<TestProfileLookup>,
+    display: String,
+}
+
+impl ProfileViewWriterParser {
+    pub(super) fn new(lookup: Arc<TestProfileLookup>, display: &str) -> Arc<Self> {
+        Arc::new(Self {
+            lookup,
+            display: display.to_string(),
+        })
+    }
+}
+
+impl IngestParser for ProfileViewWriterParser {
+    fn parse(&self, evt: &VerifiedEvent) {
+        let raw = evt.raw();
+        self.lookup.seed_view(
+            &raw.pubkey,
+            ProfileView {
+                event_id: raw.id.clone(),
+                created_at: raw.created_at,
+                display: self.display.clone(),
+                ..Default::default()
+            },
+        );
     }
 }
 

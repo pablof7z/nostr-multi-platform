@@ -23,6 +23,11 @@ fn cache_served_kind0_bumps_profiles_ver_and_populates_cache() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.active_account = Some(hex_pk("aa"));
     kernel.timeline_authors.insert(author.clone());
+    let profile_lookup = Arc::new(TestProfileLookup::new());
+    kernel.set_profile_lookup(Arc::clone(&profile_lookup) as Arc<dyn ProfileLookup>);
+    if let Ok(mut d) = kernel.ingest_dispatcher_slot().write() {
+        d.register_kind(0, ProfileViewWriterParser::new(Arc::clone(&profile_lookup), "Nova"));
+    }
 
     // Phase 1: live-ingest a kind:0 into the store (also populates the cache).
     live_ingest(
@@ -57,7 +62,7 @@ fn cache_served_kind0_bumps_profiles_ver_and_populates_cache() {
         kernel.profile_lookup().profile(&author).map(|p| p.display),
         Some("Nova".to_string()),
         "cache-served kind:0 must repopulate the capability profile cache via \
-         the shared project_accepted_event → registered Kind0Parser",
+         the shared project_accepted_event → registered profile-view writer",
     );
     assert!(
         profiles_ver(&kernel) > ver_before,

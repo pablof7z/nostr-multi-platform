@@ -200,7 +200,6 @@ mod tests {
     //! via `borrowed`), the zap-profile lookup read, and the borrow-contention
     //! behaviour (total no-op in release, `debug_assert!` panic in debug).
 
-    use super::super::nostr::NostrEvent;
     use super::KernelWalletAccess;
     use crate::kernel::Kernel;
     use crate::relay::DEFAULT_VISIBLE_LIMIT;
@@ -261,19 +260,18 @@ mod tests {
     fn zap_profile_lookup_reads_cached_kind0() {
         let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
         let pk = "0000000000000000000000000000000000000000000000000000000000000001";
-        // Seed a kind:0 carrying an `lud16` lightning address. `inject_profile`
-        // is the kernel's test-support kind:0 ingest seam (`parse_profile`
-        // reads only `content`).
-        let event = NostrEvent {
-            id: "1".repeat(64),
-            pubkey: pk.to_string(),
-            created_at: 1_700_000_000,
-            kind: 0,
-            tags: Vec::new(),
-            content: r#"{"name":"alice","lud16":"alice@example.com"}"#.to_string(),
-            sig: String::new(),
-        };
-        kernel.inject_profile(event);
+        // Seed a cached profile carrying an `lud16` lightning address.
+        kernel.seed_profile_view_for_test(
+            pk,
+            crate::substrate::ProfileView {
+                event_id: "1".repeat(64),
+                created_at: 1_700_000_000,
+                display: "alice".to_string(),
+                lud16: Some("alice@example.com".to_string()),
+                lnurl: Some("alice@example.com".to_string()),
+                ..Default::default()
+            },
+        );
 
         let access = kernel.as_wallet_access();
         assert_eq!(

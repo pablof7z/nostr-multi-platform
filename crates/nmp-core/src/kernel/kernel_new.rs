@@ -210,11 +210,10 @@ impl Kernel {
         #[cfg(any(test, feature = "test-support"))]
         publish_engine.set_outbox(test_publish_resolver);
 
-        // ADR-0057 PR 2 — test / test-support profile cache (shared between the
-        // `profile_lookup` reader default and the `test_profile_cache` writer
-        // handle so in-crate tests can seed + read profiles).
+        // Test / test-support profile lookup seeded directly by core tests. NIP-01
+        // parser/cache semantics live in nmp-nip01; core only needs a reader seam.
         #[cfg(any(test, feature = "test-support"))]
-        let test_profile_cache = Arc::new(crate::substrate::TestProfileCache::new());
+        let test_profile_lookup = Arc::new(crate::substrate::TestProfileLookup::new());
 
         let mut kernel = Self {
             store,
@@ -234,15 +233,15 @@ impl Kernel {
                 .map(|role| (role, RelayHealth::default()))
                 .collect(),
             transport_relays: RelayTransportMap::default(),
-            // ADR-0057 PR 2 — production starts cold (empty lookup); apps inject
-            // `nmp_nip01::ProfileCache` via `set_profile_lookup`. Test / test-support
-            // builds default to a `TestProfileCache` shared with `test_profile_cache`
-            // so in-crate tests can seed + read profiles without depending on
-            // `nmp-nip01` (mirrors the `mailbox_cache` test default).
+            // Production starts cold (empty lookup); apps inject
+            // `nmp_nip01::ProfileCache` via `set_profile_lookup`. Test /
+            // test-support builds default to a seed-only `TestProfileLookup` so
+            // in-crate tests can seed + read profiles without depending on
+            // `nmp-nip01`.
             #[cfg(not(any(test, feature = "test-support")))]
             profile_lookup: empty_profile_lookup(),
             #[cfg(any(test, feature = "test-support"))]
-            profile_lookup: Arc::clone(&test_profile_cache) as Arc<dyn ProfileLookup>,
+            profile_lookup: Arc::clone(&test_profile_lookup) as Arc<dyn ProfileLookup>,
             events: HashMap::new(),
             metric_note_events: 0,
             metric_duplicate_events: 0,
@@ -266,8 +265,8 @@ impl Kernel {
             ingest_dispatcher: Arc::new(std::sync::RwLock::new(EventIngestDispatcher::new())),
             #[cfg(any(test, feature = "test-support"))]
             test_dm_inbox_cache: None,
-            #[cfg(any(test, feature = "test-support"))]
-            test_profile_cache,
+            #[cfg(test)]
+            test_profile_lookup,
             timeline_authors: BTreeSet::new(),
             dependent_interest_sets: BTreeMap::new(),
             profile_claims: HashMap::new(),
@@ -360,21 +359,6 @@ impl Kernel {
         };
         if let Some(store) = store_bundle.relay_score_store {
             kernel.set_relay_score_store(store);
-        }
-        // ADR-0057 PR 2 — in test / test-support builds, register a kind:0
-        // parser writing the shared `TestProfileCache` on the kernel's own
-        // dispatcher. This makes the real chokepoint path
-        // (`verify_and_persist` → `EventIngestDispatcher` → parser) write the
-        // profile cache exactly as production does (where
-        // `nmp_substrate::install` registers `nmp_nip01::Kind0Parser`),
-        // so read-your-writes for a locally published kind:0 works in-crate
-        // without depending on `nmp-nip01`.
-        #[cfg(any(test, feature = "test-support"))]
-        {
-            let parser: Arc<dyn crate::substrate::IngestParser> = Arc::new(
-                crate::substrate::TestKind0Parser::new(Arc::clone(&kernel.test_profile_cache)),
-            );
-            kernel.register_ingest_parser(0, parser);
         }
         kernel
     }
