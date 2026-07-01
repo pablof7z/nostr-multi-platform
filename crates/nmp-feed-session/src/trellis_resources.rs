@@ -126,11 +126,13 @@ impl From<&InterestScope> for FeedSessionInterestScope {
     }
 }
 
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub(crate) enum FeedSessionRouteProvenance {
     ActiveFollowTimeline,
     Nip51ListMembers,
     Nip29GroupTimeline,
+    WotTimeline,
+    PointerTargetHydration,
     StaticFeedScope,
     SetAlgebra,
 }
@@ -141,6 +143,8 @@ impl FeedSessionRouteProvenance {
             Self::ActiveFollowTimeline => "active-follow-timeline",
             Self::Nip51ListMembers => "nip51-list-members",
             Self::Nip29GroupTimeline => "nip29-group-timeline",
+            Self::WotTimeline => "wot-timeline",
+            Self::PointerTargetHydration => "pointer-target-hydration",
             Self::StaticFeedScope => "static-feed-scope",
             Self::SetAlgebra => "set-algebra",
         }

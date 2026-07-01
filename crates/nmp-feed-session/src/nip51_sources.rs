@@ -12,6 +12,7 @@ use super::source::{
     one_live_shape, AcquisitionInterest, ExtraAcquisition, LiveShape, OpSessionIdentity,
     ReducedSource, ResetHook, SourceEffectHook,
 };
+use super::trellis_resources::FeedSessionRouteProvenance;
 
 pub(super) fn resolve_list_members(
     app: &impl FeedSessionHost,
@@ -253,13 +254,17 @@ fn list_members_extra_acquisition(
     Arc::new(move || {
         let mut shapes = Vec::new();
         if let Some(viewer) = crate::read_active(&slot) {
-            shapes.push(AcquisitionInterest::active_account(viewer_list_shape(
-                &viewer,
-            )));
+            shapes.push(AcquisitionInterest::active_account_with_provenance(
+                viewer_list_shape(&viewer),
+                FeedSessionRouteProvenance::Nip51ListMembers,
+            ));
         }
         if !projection.members(&list_id).is_empty() && !kinds.is_empty() {
             if let Some(shape) = live_shape() {
-                shapes.push(AcquisitionInterest::active_account(shape));
+                shapes.push(AcquisitionInterest::active_account_with_provenance(
+                    shape,
+                    FeedSessionRouteProvenance::Nip51ListMembers,
+                ));
             }
         }
         shapes
@@ -278,13 +283,17 @@ fn active_mute_list_extra_acquisition(
     Arc::new(move || {
         let mut shapes = Vec::new();
         if let Some(viewer) = crate::read_active(&slot) {
-            shapes.push(AcquisitionInterest::active_account(active_mute_list_shape(
-                &viewer,
-            )));
+            shapes.push(AcquisitionInterest::active_account_with_provenance(
+                active_mute_list_shape(&viewer),
+                FeedSessionRouteProvenance::Nip51ListMembers,
+            ));
         }
         if !projection.muted_pubkeys().is_empty() && !kinds.is_empty() {
             if let Some(shape) = live_shape() {
-                shapes.push(AcquisitionInterest::active_account(shape));
+                shapes.push(AcquisitionInterest::active_account_with_provenance(
+                    shape,
+                    FeedSessionRouteProvenance::Nip51ListMembers,
+                ));
             }
         }
         shapes

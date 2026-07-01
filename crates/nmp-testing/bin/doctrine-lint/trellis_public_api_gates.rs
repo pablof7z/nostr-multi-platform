@@ -27,6 +27,7 @@ const BUILDER_SURFACE_ROOTS: &[&str] = &[
 
 const ALLOWED_PRIVATE_TRELLIS_PATHS: &[&str] = &[
     "crates/nmp-nip02/src/active_follow_set/reactive_graph.rs",
+    "crates/nmp-feed-session/src/trellis_adapter.rs",
     "crates/nmp-feed-session/src/trellis_resources.rs",
     "crates/nmp-feed-session/src/trellis_resources_tests.rs",
     "crates/nmp-testing/tests/trellis_read_session_contract.rs",
