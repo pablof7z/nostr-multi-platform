@@ -24,4 +24,4 @@ nmp-wot = { path = "../nmp-wot" }
 serde_json = { workspace = true }
 
 [dev-dependencies]
-trellis-core = "0.1.1"
+trellis-core = "0.1.2"
