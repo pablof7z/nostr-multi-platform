@@ -31,6 +31,7 @@ mod contract;
 mod dm_send;
 mod feed_attribution;
 mod feed_composition;
+mod feed_reactivity;
 mod group_discovery;
 mod group_events;
 mod pump;

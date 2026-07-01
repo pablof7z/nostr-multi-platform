@@ -2,8 +2,8 @@
 //!
 //! Step 3 left every `Custom` reference fail-closed; this module resolves a
 //! `Custom` reference back to its REGISTERED [`nmp_feed::CustomPerspectiveDef`]
-//! (a CLOSED `FeedScope` + ranking — pure data, registered out-of-band via
-//! `NmpApp::register_custom_perspective`) and compiles it through the SAME step-3
+//! (a CLOSED `FeedScope` + ranking — pure data, registered out-of-band by the
+//! host runtime) and compiles it through the SAME step-3
 //! resolver. There is NO second resolver and NO closure crosses the boundary:
 //! the registry stores data, this module looks it up and calls
 //! [`super::resolve::resolve_scope`].
@@ -28,8 +28,8 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use crate::{FeedOpenError, NmpApp};
-use nmp_core::substrate::{KernelEvent, ObservedProjectionRegistrar};
+use crate::{FeedOpenError, FeedSessionHost};
+use nmp_core::substrate::KernelEvent;
 use nmp_feed::{CustomPerspectiveId, FeedRanking, FeedScope, RootAdmission};
 use nmp_planner::InterestShape;
 
@@ -47,7 +47,10 @@ fn not_supported(scope: &'static str) -> FeedOpenError {
 /// perspective's ranking, which is itself validated the same way — an
 /// unregistered id, or a registered ranking the engine cannot honor, fails
 /// closed rather than silently mis-ordering (D6).
-pub(super) fn resolve_ranking(app: &NmpApp, ranking: &FeedRanking) -> Result<(), FeedOpenError> {
+pub(super) fn resolve_ranking(
+    app: &impl FeedSessionHost,
+    ranking: &FeedRanking,
+) -> Result<(), FeedOpenError> {
     match ranking {
         FeedRanking::ChronologicalDesc => Ok(()),
         FeedRanking::ChronologicalAsc => Err(not_supported("custom-ranking")),
@@ -78,7 +81,7 @@ pub(super) fn resolve_ranking(app: &NmpApp, ranking: &FeedRanking) -> Result<(),
 /// compiler — so set algebra (e.g. a registered `Intersection(Tag, ContactList)`)
 /// composes exactly as a directly-declared scope would.
 pub(super) fn resolve_acquisition(
-    app: &NmpApp,
+    app: &impl FeedSessionHost,
     scope: &FeedScope,
     kinds: &BTreeSet<u32>,
 ) -> Result<ReducedSource, FeedOpenError> {
@@ -122,7 +125,7 @@ pub(super) fn resolve_acquisition(
 /// An unregistered id fails closed; the acquisition's already-registered resolver
 /// observers are revoked first so nothing leaks (D8).
 pub(super) fn apply_custom_admission(
-    app: &NmpApp,
+    app: &impl FeedSessionHost,
     acquisition: ReducedSource,
     id: &CustomPerspectiveId,
     kinds: &BTreeSet<u32>,
@@ -149,7 +152,7 @@ pub(super) fn apply_custom_admission(
 
 /// Combine an acquisition's resolved scope with a gate's resolved scope as an
 /// admission INTERSECTION (the pure core of [`apply_custom_admission`], factored
-/// out so it is unit-testable without an `NmpApp`).
+/// out so it is unit-testable without a runtime host).
 ///
 /// * admission: AND the two LIVE predicates (admit iff BOTH admit);
 /// * acquisition: KEEP the gate's interests/live_shape/extra so its predicate
@@ -252,16 +255,16 @@ fn merge_live_shapes(left: &LiveShape, right: &LiveShape) -> Option<InterestShap
 
 /// Revoke every resolver observer a resolved scope registered (fail-closed
 /// cleanup when a later resolution step errors — no leak, D8).
-fn revoke_observers(app: &NmpApp, resolved: &ReducedSource) {
+fn revoke_observers(app: &impl FeedSessionHost, resolved: &ReducedSource) {
     for id in &resolved.resolver_observer_ids {
-        app.close_observed_projection(*id);
+        app.observed_projection_handle().close(*id);
     }
     for id in &resolved.identity_observer_ids {
-        app.unregister_identity_change_observer(*id);
+        (app.unregister_identity_change_observer_action(*id))();
     }
 }
 
-fn revoke_resolved(app: &NmpApp, resolved: ReducedSource) {
+fn revoke_resolved(app: &impl FeedSessionHost, resolved: ReducedSource) {
     revoke_observers(app, &resolved);
     for teardown in resolved.resolver_teardown {
         teardown();
@@ -277,9 +280,9 @@ mod tests {
     //! gate's DEPENDENCY acquisition is preserved (so a `ListMembers`/`Wot` gate
     //! predicate can go live on a cold open).
 
-    use super::super::source::AcquisitionInterest;
-    use super::super::source::OpSessionIdentity;
     use super::*;
+    use crate::source::AcquisitionInterest;
+    use crate::source::OpSessionIdentity;
     use nmp_core::substrate::{EventId, KernelEvent};
     use nmp_feed::AdmitExpr;
     use nmp_planner::{InterestScope, InterestShape};

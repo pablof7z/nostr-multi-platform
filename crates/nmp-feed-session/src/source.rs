@@ -91,7 +91,7 @@ pub(super) struct ReducedSource {
     pub live_shape: LiveShape,
     /// Extra acquisition that may change as the source projection changes.
     pub extra_acquisition: ExtraAcquisition,
-    /// Legacy reactive-reset installers for sources not yet on graph effects.
+    /// Reactive-reset installers for sources without a graph effect owner.
     pub reset_hooks: Vec<ResetHook>,
     /// Graph source-effect installers. These carry source-set changes through
     /// the same dependent acquisition replacement and feed reset path.

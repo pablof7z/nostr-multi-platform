@@ -1,8 +1,8 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use crate::{FeedOpenError, NmpApp};
-use nmp_core::substrate::{KernelEvent, ObservedProjectionReconciler, ObservedProjectionRegistrar};
+use crate::{FeedOpenError, FeedSessionHost};
+use nmp_core::substrate::{KernelEvent, ObservedProjectionReconciler};
 use nmp_core::ObservedProjectionSink;
 use nmp_feed::RootAdmission;
 use nmp_kinds::{KIND_FOLLOW_SET, KIND_MUTE_LIST};
@@ -14,7 +14,7 @@ use super::source::{
 };
 
 pub(super) fn resolve_list_members(
-    app: &NmpApp,
+    app: &impl FeedSessionHost,
     list_id: &str,
     kinds: &BTreeSet<u32>,
 ) -> Result<ReducedSource, FeedOpenError> {
@@ -22,7 +22,7 @@ pub(super) fn resolve_list_members(
         return resolve_active_mute_list_members(app, kinds);
     }
 
-    let viewer = super::super::read_active(&app.active_account_handle())
+    let viewer = crate::read_active(&app.active_account_handle())
         .ok_or_else(|| super::resolve::not_supported("ListMembers-no-active-account"))?;
 
     let projection = Arc::new(nmp_nip51::PeopleListProjection::new(
@@ -30,7 +30,7 @@ pub(super) fn resolve_list_members(
     ));
     let resolver_shape_slot = app.active_account_handle();
     let resolver_live_shape: LiveShape = Arc::new(move || {
-        let viewer = super::super::read_active(&resolver_shape_slot)?;
+        let viewer = crate::read_active(&resolver_shape_slot)?;
         Some(viewer_list_shape(&viewer))
     });
     let projection_observer: Arc<dyn ObservedProjectionSink> = projection.clone();
@@ -52,7 +52,7 @@ pub(super) fn resolve_list_members(
     let identity_observer_id = app.register_identity_change_observer(move |_| {
         projection_for_identity.notify_account_changed();
         resolver_for_identity.sync();
-        if let Some(viewer) = super::super::read_active(&replay_slot) {
+        if let Some(viewer) = crate::read_active(&replay_slot) {
             super::source_replay::replay_source_shape_with_pull(
                 &replay_pull,
                 projection_for_replay.as_ref(),
@@ -120,10 +120,10 @@ pub(super) fn resolve_list_members(
 }
 
 pub(super) fn resolve_active_mute_list_members(
-    app: &NmpApp,
+    app: &impl FeedSessionHost,
     kinds: &BTreeSet<u32>,
 ) -> Result<ReducedSource, FeedOpenError> {
-    let viewer = super::super::read_active(&app.active_account_handle()).ok_or_else(|| {
+    let viewer = crate::read_active(&app.active_account_handle()).ok_or_else(|| {
         super::resolve::not_supported("ListMembers-active-mute-no-active-account")
     })?;
 
@@ -132,7 +132,7 @@ pub(super) fn resolve_active_mute_list_members(
     ));
     let resolver_shape_slot = app.active_account_handle();
     let resolver_live_shape: LiveShape = Arc::new(move || {
-        let viewer = super::super::read_active(&resolver_shape_slot)?;
+        let viewer = crate::read_active(&resolver_shape_slot)?;
         Some(active_mute_list_shape(&viewer))
     });
     let projection_observer: Arc<dyn ObservedProjectionSink> = projection.clone();
@@ -154,7 +154,7 @@ pub(super) fn resolve_active_mute_list_members(
     let identity_observer_id = app.register_identity_change_observer(move |_| {
         projection_for_identity.notify_account_changed();
         resolver_for_identity.sync();
-        if let Some(viewer) = super::super::read_active(&replay_slot) {
+        if let Some(viewer) = crate::read_active(&replay_slot) {
             super::source_replay::replay_source_shape_with_pull(
                 &replay_pull,
                 projection_for_replay.as_ref(),
@@ -246,7 +246,7 @@ fn list_members_extra_acquisition(
     let live_shape = Arc::clone(live_shape);
     Arc::new(move || {
         let mut shapes = Vec::new();
-        if let Some(viewer) = super::super::read_active(&slot) {
+        if let Some(viewer) = crate::read_active(&slot) {
             shapes.push(AcquisitionInterest::active_account(viewer_list_shape(
                 &viewer,
             )));
@@ -271,7 +271,7 @@ fn active_mute_list_extra_acquisition(
     let live_shape = Arc::clone(live_shape);
     Arc::new(move || {
         let mut shapes = Vec::new();
-        if let Some(viewer) = super::super::read_active(&slot) {
+        if let Some(viewer) = crate::read_active(&slot) {
             shapes.push(AcquisitionInterest::active_account(active_mute_list_shape(
                 &viewer,
             )));

@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
-use crate::{FeedOpenError, NmpApp};
+use crate::{FeedOpenError, FeedSessionHost};
 use nmp_content::{EmbedTarget, PointerSortMode, PointerSourceModel};
 use nmp_core::substrate::KernelEvent;
 use nmp_core::ObservedProjectionSink;
@@ -17,7 +17,7 @@ use super::source::{
 type ResetSlot = Arc<Mutex<Option<Arc<dyn Fn() + Send + Sync>>>>;
 
 pub(super) fn resolve_pointer_targets(
-    app: &NmpApp,
+    app: &impl FeedSessionHost,
     pointers: &nmp_feed::FeedScope,
     pointer_kinds: &[u32],
     primary_kinds: &BTreeSet<u32>,
@@ -40,7 +40,7 @@ pub(super) fn resolve_pointer_targets(
         pointer_kinds: pointer_kind_set,
         reset_slot: Arc::clone(&reset_slot),
     });
-    let pointer_dynamic = super::super::dynamic_observer::DynamicObservedProjection::new(
+    let pointer_dynamic = crate::dynamic_observer::DynamicObservedProjection::new(
         app.observed_projection_handle(),
         pointer_observer,
         "nmp.feed.resolver.pointer_targets.pointer",

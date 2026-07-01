@@ -45,6 +45,7 @@ nmp-store = { path = "../nmp-store" }
 nmp-network = { path = "../nmp-network", default-features = false }
 nmp-signer-iface = { path = "../nmp-signer-iface" }
 nmp-feed = { path = "../nmp-feed" }
+nmp-feed-session = { path = "../nmp-feed-session" }
 nmp-kinds = { path = "../nmp-kinds" }
 nmp-note-feed = { path = "../nmp-note-feed" }
 nmp-nip01 = { path = "../nmp-nip01" }

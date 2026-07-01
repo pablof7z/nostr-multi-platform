@@ -153,9 +153,9 @@ impl Kernel {
     // V-112 (ADR-0042): is_thread_hydration_requested() deleted —
     // ThreadViewState (including pending_ids / requested_ids) removed from kernel.
 
-    /// Seed a kind:10002 (NIP-65 relay list) into the kernel's event store and
-    /// deliver it through the post-store projection fan-out for `author_pubkey`
-    /// with `write_urls` as its write-marker relay tags.
+    /// Seed a kind:10002 (NIP-65 relay list) into the kernel's event store,
+    /// parsed mailbox cache, and post-store projection fan-out for
+    /// `author_pubkey` with `write_urls` as its write-marker relay tags.
     ///
     /// Required by tests that exercise the publish path after
     /// T-publish-resolver-indexer (codex f81f735): `Nip65OutboxResolver` is now
@@ -176,11 +176,14 @@ impl Kernel {
         self.seed_kind10002_tags_for_test(author_pubkey, tags, u64::MAX);
     }
 
-    /// Seed a kind:10002 with caller-supplied tags through the same
-    /// store-first projection fan-out used by live/cache/local accepted events.
+    /// Seed a kind:10002 with caller-supplied tags into the parsed mailbox
+    /// cache and through the same store-first projection fan-out used by
+    /// live/cache/local accepted events.
     ///
     /// This exists for tests that need read-only or unmarked relay-list rows.
-    /// It deliberately does not expose a mailbox-cache write API.
+    /// The production parser remains `nmp-router::Kind10002Parser`; this helper
+    /// only writes parsed test facts because `nmp-core` cannot depend upward on
+    /// `nmp-router`.
     #[allow(dead_code)]
     pub(crate) fn seed_kind10002_tags_for_test(
         &mut self,
@@ -194,9 +197,25 @@ impl Kernel {
         // pubkey started with the same two hex chars as FIATJAF_HEX ("3b")
         // or SEED_NPUB_HEX ("fa"), making the store return Duplicate for that
         // author.
-        let id = author_pubkey.to_string();
+        let event_id = author_pubkey.to_string();
+        let parsed = nmp_nip65_types::parse_relay_list_tags(&tags);
+        let mailbox_before = self.mailbox_cache().snapshot(&author_pubkey.to_string());
+        if parsed.is_empty() {
+            self.mailbox_cache().remove(&author_pubkey.to_string());
+        } else {
+            self.mailbox_cache().upsert(
+                author_pubkey.to_string(),
+                crate::substrate::ParsedRelayList {
+                    read: parsed.read,
+                    write: parsed.write,
+                    both: parsed.both,
+                },
+            );
+        }
+        let mailbox_after = self.mailbox_cache().snapshot(&author_pubkey.to_string());
+
         let verified = crate::store::VerifiedEvent::from_raw_unchecked(crate::store::RawEvent {
-            id,
+            id: event_id.clone(),
             pubkey: author_pubkey.to_string(),
             created_at,
             kind: 10002,
@@ -210,6 +229,9 @@ impl Kernel {
             1_700_000_000_000,
         );
         self.project_accepted_event(&verified);
+        if mailbox_before != mailbox_after {
+            self.on_mailbox_changed(author_pubkey, &event_id, created_at);
+        }
     }
 
     /// Test seam for delivering a kind:3 contact list through the genuine

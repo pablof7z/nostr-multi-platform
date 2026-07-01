@@ -1,13 +1,13 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use crate::NmpApp;
+use crate::FeedSessionHost;
 use nmp_core::ObservedProjectionSink;
 
 use super::source::AcquisitionInterest;
 
 pub(super) fn replay_fixed_event_ids(
-    app: &NmpApp,
+    app: &impl FeedSessionHost,
     feed: &Arc<nmp_note_feed::FlatFeed>,
     interests: &[AcquisitionInterest],
 ) -> bool {

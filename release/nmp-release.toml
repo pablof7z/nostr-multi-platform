@@ -102,6 +102,10 @@ name = "nmp-feed"
 path = "crates/nmp-feed"
 
 [[public_crates]]
+name = "nmp-feed-session"
+path = "crates/nmp-feed-session"
+
+[[public_crates]]
 name = "nmp-marmot"
 path = "crates/nmp-marmot"
 

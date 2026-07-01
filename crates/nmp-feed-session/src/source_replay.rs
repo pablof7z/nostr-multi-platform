@@ -1,10 +1,10 @@
-use crate::NmpApp;
+use crate::FeedSessionHost;
 use nmp_core::substrate::KernelEvent;
 use nmp_core::ObservedProjectionSink;
 use nmp_planner::InterestShape;
 
 pub(super) fn replay_source_shape(
-    app: &NmpApp,
+    app: &impl FeedSessionHost,
     observer: &dyn ObservedProjectionSink,
     shape: InterestShape,
 ) {

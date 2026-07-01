@@ -1,9 +1,9 @@
 //! Unit tests for the pure resolution helpers (#1740 step 3).
 //!
-//! Full open/close + admission behavior over a live `NmpApp` lives in the
-//! `nmp-testing` perspective fixture. These cover the
-//! framework-internal, app-free pieces: the session WoT graph (reusing the
-//! #1698 ranked query) and the typed acquisition shapes the interests use.
+//! Full open/close + admission behavior lives in runtime/browser fixtures.
+//! These cover the framework-internal, host-free pieces: the session WoT graph
+//! (reusing the #1698 ranked query) and the typed acquisition shapes the
+//! interests use.
 
 use super::wot_graph::SessionWotGraph;
 use nmp_core::substrate::{EventId, KernelEvent};
@@ -131,54 +131,6 @@ fn contact_list_predicate_admits_follows_rejects_strangers() {
 
     assert!(admit(MEMBER), "followed pubkey is admitted");
     assert!(!admit(STRANGER), "non-follow is NOT admitted (fail-closed)");
-}
-
-#[test]
-fn active_user_follows_uses_source_effects_not_legacy_reset_hooks() {
-    let app = crate::new_app();
-    let kinds = std::collections::BTreeSet::from([1u32]);
-    let resolved =
-        super::resolve::resolve_scope(&app, &nmp_feed::FeedScope::ActiveUserFollows, &kinds)
-            .expect("ActiveUserFollows resolves before sign-in");
-
-    assert!(
-        resolved.reset_hooks.is_empty(),
-        "ActiveUserFollows must not install the legacy reset-hook bridge"
-    );
-    assert!(
-        resolved.active_follow_set.is_some(),
-        "ActiveUserFollows must expose the graph-backed source effect owner"
-    );
-    assert_eq!(
-        resolved.source_effect_hooks.len(),
-        1,
-        "ActiveUserFollows must install one graph source-effect hook"
-    );
-}
-
-#[test]
-fn list_members_uses_source_effects_not_legacy_reset_hooks() {
-    let app = crate::new_app();
-    *app.active_account_handle().lock().unwrap() = Some(ALICE.to_string());
-    let kinds = std::collections::BTreeSet::from([1u32]);
-    let resolved = super::resolve::resolve_scope(
-        &app,
-        &nmp_feed::FeedScope::ListMembers {
-            list: nmp_feed::ListId("team".to_string()),
-        },
-        &kinds,
-    )
-    .expect("ListMembers resolves with active account");
-
-    assert!(
-        resolved.reset_hooks.is_empty(),
-        "ListMembers must not install the legacy reset-hook bridge"
-    );
-    assert_eq!(
-        resolved.source_effect_hooks.len(),
-        1,
-        "ListMembers must expose the graph-backed source effect hook"
-    );
 }
 
 // ── Authors { authors } — static author-set timeline ─────────────────────

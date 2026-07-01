@@ -283,7 +283,7 @@ fn invalid_primary_kinds_fail_closed_before_the_compiler_runs() {
 /// run LAST in execution order, AFTER the registry removals AND the
 /// active-follows interest clear. The `FeedSessionRegistry` runs the recorded
 /// teardown Vec in REVERSE registration order (`nmp-feed/src/session.rs`), so
-/// the production recipe in `explicit composition/.../session_compile.rs` puts
+/// the production recipe in the shared feed-session compiler puts
 /// `mark_changed` FIRST in the Vec (→ runs last) and the controller-unregister
 /// LAST in the Vec (→ runs first).
 ///

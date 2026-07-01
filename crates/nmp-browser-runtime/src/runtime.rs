@@ -28,7 +28,8 @@
 //! `diagnostics.rs`.
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
+use std::sync::{Arc, Mutex};
 
 use nmp_core::actor::ActorMail;
 use nmp_core::publish::PublishTarget;
@@ -121,6 +122,52 @@ pub(crate) struct PendingSignedPublish {
     pub(crate) target: PublishTarget,
 }
 
+pub(crate) type BrowserIdentityObserverFn = Arc<dyn Fn(Option<String>) + Send + Sync + 'static>;
+
+pub(crate) struct BrowserIdentityObserverRegistration {
+    pub(crate) id: u64,
+    pub(crate) callback: BrowserIdentityObserverFn,
+}
+
+pub(crate) type BrowserIdentityObserverSlot = Arc<Mutex<Vec<BrowserIdentityObserverRegistration>>>;
+
+pub(crate) fn browser_identity_observer_slot(
+    observers: Vec<BrowserIdentityObserverFn>,
+) -> (BrowserIdentityObserverSlot, Arc<AtomicU64>) {
+    let mut next_id = 1u64;
+    let registrations = observers
+        .into_iter()
+        .map(|callback| {
+            let id = next_id;
+            next_id = next_id.saturating_add(1);
+            BrowserIdentityObserverRegistration { id, callback }
+        })
+        .collect();
+    (
+        Arc::new(Mutex::new(registrations)),
+        Arc::new(AtomicU64::new(next_id)),
+    )
+}
+
+pub(crate) fn snapshot_identity_observers(
+    slot: &BrowserIdentityObserverSlot,
+) -> Vec<BrowserIdentityObserverFn> {
+    slot.lock()
+        .map(|registrations| {
+            registrations
+                .iter()
+                .map(|registration| Arc::clone(&registration.callback))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+pub(crate) fn unregister_identity_observer(slot: &BrowserIdentityObserverSlot, id: u64) {
+    if let Ok(mut registrations) = slot.lock() {
+        registrations.retain(|registration| registration.id != id);
+    }
+}
+
 // ── Pump outcome ─────────────────────────────────────────────────────────────
 
 /// The result of one `BrowserRuntimeHandle::pump()` turn.
@@ -176,7 +223,7 @@ pub(crate) struct BrowserRuntime {
     /// (D8 no-blocking).
     pub(crate) relay_connected_hooks: Vec<Arc<dyn RelayConnectedHook>>,
     /// Identity-change callbacks invoked on each identity-switch transition.
-    pub(crate) identity_change_observers: Vec<Box<dyn Fn(Option<String>) + Send + Sync + 'static>>,
+    pub(crate) identity_change_observers: BrowserIdentityObserverSlot,
     /// Configured-relay callbacks invoked when the relay set changes.
     pub(crate) configured_relays_change_observers: Vec<Box<dyn Fn() + Send + Sync + 'static>>,
     /// Browser relay pool — WebSocket drivers + inbound queue + maintenance
@@ -390,7 +437,8 @@ impl BrowserRuntime {
                         .and_then(|guard| guard.clone());
                     outbound.extend(self.reducer.set_active_account(pubkey.clone()));
                     if before.as_deref() != Some(pubkey.as_str()) {
-                        for observer in &self.identity_change_observers {
+                        for observer in snapshot_identity_observers(&self.identity_change_observers)
+                        {
                             observer(Some(pubkey.clone()));
                         }
                     }

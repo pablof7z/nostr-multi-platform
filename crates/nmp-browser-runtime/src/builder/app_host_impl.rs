@@ -203,7 +203,7 @@ impl<S> IdentityChangeRegistrar for BrowserAppBuilder<S> {
         F: Fn(Option<String>) + Send + Sync + 'static,
     {
         let Ok(mut g) = self.inner.lock() else { return };
-        g.identity_change_observers.push(Box::new(f));
+        g.identity_change_observers.push(Arc::new(f));
     }
 }
 

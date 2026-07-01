@@ -25,6 +25,7 @@ mod declared_projections;
 mod external_signer;
 mod feed;
 mod feed_session;
+mod feed_session_host;
 mod group_feed;
 mod incremental_apply;
 mod intent;

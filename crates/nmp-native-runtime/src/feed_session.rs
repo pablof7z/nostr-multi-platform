@@ -41,24 +41,7 @@ use nmp_feed::{
     FeedHandle, FeedParams, FeedRegistrySlot, FeedSessionBuild, FeedSessionId, ProjectionKey,
     TeardownAction,
 };
-
-/// Typed failure of [`NmpApp::open_feed`] (D6 — no panic across the seam).
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum FeedOpenError {
-    /// The declared [`FeedParams`] failed primary-kind validation (wrapper /
-    /// delete / empty primary kinds). Carries the underlying typed error.
-    InvalidParams(nmp_nip18::PrimaryKindError),
-    /// The declared [`nmp_feed::FeedScope`] is recognised by the model but not
-    /// yet wired by this step. Step 3 (the full perspective compiler) lands the
-    /// remaining variants; until then they fail closed with this typed error
-    /// rather than silently registering nothing. `scope` is a short stable
-    /// machine token naming the unsupported variant (e.g. `"ListMembers"`).
-    ScopeNotSupportedYet { scope: &'static str },
-    /// The compiler attempted the registration but the session registry could
-    /// not track it (a poisoned lock); the compile's teardown has already run,
-    /// so nothing leaked. The open is reported as failed.
-    RegistryUnavailable,
-}
+pub use nmp_feed_session::FeedOpenError;
 
 /// The result a [`FeedCompiler`] returns on success: the projection key the
 /// session emits under and the ordered teardown recipe that releases everything
