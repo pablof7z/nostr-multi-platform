@@ -12,14 +12,14 @@
 //! root (`explicit composition`, rung 6). The rationale is recorded in
 //! [ADR-0036](../../docs/decisions/0036-composition-root-followset-expansion.md).
 //!
-//! `ActiveFollowSet` is the **producer** of that closure. Internally it is now
-//! the first consumer of `nmp_core::reactive_source_graph`: the graph takes the
-//! active account and that account's contact-list follows as source inputs,
-//! derives the self-included active follow set, and emits one perspective-change
-//! effect when downstream consumers should reconcile acquisition, observed
-//! projections, and feed windows. A small `Arc<RwLock<BTreeSet<String>>>`
-//! remains as the hot predicate read cache. The graph is the only writer that
-//! decides when that cache is replaced.
+//! `ActiveFollowSet` is the **producer** of that closure. Internally it uses
+//! Trellis as a private source graph: the graph takes the active account and
+//! that account's contact-list follows as source inputs, derives the
+//! self-included active follow set, and emits one perspective-change effect when
+//! downstream consumers should reconcile acquisition, observed projections, and
+//! feed windows. A small `Arc<RwLock<BTreeSet<String>>>` remains as the hot
+//! predicate read cache. The graph is the only writer that decides when that
+//! cache is replaced.
 //!
 //! * [`ActiveFollowSet::follows`] — a sorted `Vec<String>` snapshot read.
 //! * [`ActiveFollowSet::predicate`] — a closure that captures a clone of the
