@@ -186,7 +186,7 @@ Registration (`crates/nmp-nip29/src/register.rs`):
 ```rust
 pub fn register_actions(app: &mut NmpApp) {
     app.register_action(PublishGroupEventAction);
-    app.register_action(CreatePublicGroupAction);
+    app.register_action(CreateGroupAction);
     app.register_action(DiscoverGroupsAction);
     app.register_action(JoinGroupAction);
     // additional NIP-29 owner actions

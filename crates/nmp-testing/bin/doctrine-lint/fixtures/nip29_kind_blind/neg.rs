@@ -12,10 +12,10 @@ impl PublishGroupEventAction {
     pub const NAMESPACE: &'static str = "nmp.nip29.publish_group_event";
 }
 
-pub struct CreatePublicGroupAction;
+pub struct CreateGroupAction;
 
-impl CreatePublicGroupAction {
-    pub const NAMESPACE: &'static str = "nmp.nip29.create_public_group";
+impl CreateGroupAction {
+    pub const NAMESPACE: &'static str = "nmp.nip29.create_group";
 }
 
 pub struct JoinGroupAction;

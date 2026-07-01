@@ -1,7 +1,7 @@
 namespace nmp.nip29;
 
 // ADR-0064 / S9 (#1747) — typed FlatBuffers payload for the
-// `nmp.nip29.create_public_group` `ActionModule` (publishes a kind:9007 create
+// `nmp.nip29.create_group` `ActionModule` (publishes a kind:9007 create
 // followed by a kind:9002 metadata edit).
 //
 // The OPAQUE `DispatchEnvelope.payload` for that namespace; the registry adapter
@@ -11,7 +11,7 @@ namespace nmp.nip29;
 // Self-contained (no `include`). Regenerate the checked-in Rust bindings only
 // with the workspace FlatBuffers pin (25.12.19):
 //   flatc --rust -o crates/nmp-nip29/src/wire/generated \
-//         crates/nmp-nip29/schema/create_public_group_action.fbs
+//         crates/nmp-nip29/schema/create_group_action.fbs
 
 table GroupRef {
   host_relay_url:string (required);
@@ -30,7 +30,7 @@ enum GroupAccess:byte {
   Closed = 1,
 }
 
-table CreatePublicGroupPayload {
+table CreateGroupPayload {
   schema_version:uint;
   group:GroupRef (required);
   // `start()` rejects an empty (trimmed) name — preserved verbatim.
@@ -49,5 +49,5 @@ table CreatePublicGroupPayload {
   parent:string;
 }
 
-file_identifier "N29P";
-root_type CreatePublicGroupPayload;
+file_identifier "N29C";
+root_type CreateGroupPayload;

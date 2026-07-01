@@ -744,7 +744,7 @@ export const GeneratedActionBuilders = {
   },
 
   /** Create a new public NIP-29 group. */
-  createPublicGroup(
+  createGroup(
     correlationId: string,
     group: { hostRelayUrl: string; localId: string },
     name: string,
@@ -775,9 +775,9 @@ export const GeneratedActionBuilders = {
     fbb.addFieldInt8(6, access, 0); // slot 6: access
     if (parentOffset !== 0) fbb.addFieldOffset(7, parentOffset, 0); // slot 7: parent
     const payloadRoot = fbb.endObject();
-    fbb.finish(payloadRoot, "N29P");
+    fbb.finish(payloadRoot, "N29C");
     const payload = fbb.asUint8Array();
-    return encodeDispatchEnvelope(correlationId, "nmp.nip29.create_public_group", payload);
+    return encodeDispatchEnvelope(correlationId, "nmp.nip29.create_group", payload);
   },
 
   /** Edit an existing NIP-29 group's name/about/picture/visibility/access. */

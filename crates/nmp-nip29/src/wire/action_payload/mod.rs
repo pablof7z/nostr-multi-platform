@@ -10,7 +10,7 @@
 //! panics on the decode path (D6).
 //!
 //! The impls are split by action family to stay under the file-size cap:
-//! - [`group`] — `join` / `leave` / `publish_group_event` / `create_public_group`.
+//! - [`group`] — `join` / `leave` / `publish_group_event` / `create_group`.
 //! - [`admin`] — `put_user` / `create_invite`.
 //! - [`discover`] — `discover_groups` (`nmp.nip29.discover`).
 //!
@@ -48,8 +48,8 @@ generated_action_module!(
     "../generated/publish_group_event_action_generated.rs"
 );
 generated_action_module!(
-    create_public_group_action_generated,
-    "../generated/create_public_group_action_generated.rs"
+    create_group_action_generated,
+    "../generated/create_group_action_generated.rs"
 );
 generated_action_module!(
     put_user_action_generated,

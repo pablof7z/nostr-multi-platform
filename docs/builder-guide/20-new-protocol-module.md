@@ -100,7 +100,7 @@ the ownership." Pick *one* such rule and document it in your `lib.rs`.
 // Called from an app-core composition root during init.
 pub fn register_actions(app: &mut impl AppHost) {
     app.register_action(PublishGroupEventAction);
-    app.register_action(CreatePublicGroupAction);
+    app.register_action(CreateGroupAction);
     app.register_action(DiscoverGroupsAction);
     app.register_action(JoinGroupAction);
     // additional NIP-29 owner actions

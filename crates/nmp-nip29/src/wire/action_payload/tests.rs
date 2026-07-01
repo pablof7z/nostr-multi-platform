@@ -3,7 +3,7 @@
 //! optional-string PRESENCE invariant asserts both `None` and `Some("")`.
 
 use crate::action::{
-    CreateInviteInput, CreatePublicGroupInput, DiscoverGroupsInput, EditMetadataInput, GroupAccess,
+    CreateInviteInput, CreateGroupInput, DiscoverGroupsInput, EditMetadataInput, GroupAccess,
     GroupVisibility, JoinGroupInput, LeaveGroupInput, PublishGroupEventInput, PutUserInput,
     SetParentInput,
 };
@@ -121,11 +121,11 @@ fn publish_preserves_empty_content_and_empty_tags() {
     assert!(d.tags.is_empty());
 }
 
-// --- create_public_group -----------------------------------------------------
+// --- create_group -----------------------------------------------------
 
 #[test]
 fn create_round_trips_all_fields() {
-    let action = CreatePublicGroupInput {
+    let action = CreateGroupInput {
         group: group(),
         name: "Rust Nostr".to_string(),
         about: Some("a group".to_string()),
@@ -135,14 +135,14 @@ fn create_round_trips_all_fields() {
         parent: Some("tech".to_string()),
     };
     assert_eq!(
-        CreatePublicGroupInput::decode(&action.encode()).expect("decodes"),
+        CreateGroupInput::decode(&action.encode()).expect("decodes"),
         action
     );
 }
 
 #[test]
 fn create_defaults_and_presence() {
-    let action = CreatePublicGroupInput {
+    let action = CreateGroupInput {
         group: group(),
         name: "G".to_string(),
         about: None,
@@ -151,7 +151,7 @@ fn create_defaults_and_presence() {
         access: GroupAccess::Open,
         parent: None,
     };
-    let d = CreatePublicGroupInput::decode(&action.encode()).expect("decodes");
+    let d = CreateGroupInput::decode(&action.encode()).expect("decodes");
     assert!(d.about.is_none());
     assert_eq!(d.picture.as_deref(), Some(""));
     assert_eq!(d.visibility, GroupVisibility::Public);

@@ -30,7 +30,7 @@
 use nmp_core::substrate::{ActionRegistrar, RegistrationError, SnapshotProjectionRegistrar};
 
 use crate::action::{
-    CreateInviteAction, CreatePublicGroupAction, DiscoverGroupsAction, EditMetadataAction,
+    CreateInviteAction, CreateGroupAction, DiscoverGroupsAction, EditMetadataAction,
     JoinGroupAction, LeaveGroupAction, PublishGroupEventAction, PutUserAction, SetParentAction,
 };
 use crate::projection::{GroupDefaultsProjection, GroupDefaultsSnapshot};
@@ -95,7 +95,7 @@ pub fn wire_group_defaults_with_snapshot(
 ///
 /// Binds the typed [`ActionModule`](nmp_core::substrate::ActionModule) impls for:
 /// - `nmp.nip29.publish_group_event`
-/// - `nmp.nip29.create_public_group`
+/// - `nmp.nip29.create_group`
 /// - `nmp.nip29.discover`
 /// - `nmp.nip29.join`
 /// - `nmp.nip29.leave`
@@ -123,7 +123,7 @@ pub fn wire_group_defaults_with_snapshot(
 /// A collision means two init calls for the same app — the caller's bug.
 pub fn register_actions(app: &mut impl ActionRegistrar) -> Result<(), RegistrationError> {
     app.register_action(PublishGroupEventAction)?;
-    app.register_action(CreatePublicGroupAction)?;
+    app.register_action(CreateGroupAction)?;
     app.register_action(DiscoverGroupsAction)?;
     app.register_action(JoinGroupAction)?;
     app.register_action(LeaveGroupAction)?;

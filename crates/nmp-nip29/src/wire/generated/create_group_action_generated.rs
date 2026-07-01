@@ -343,15 +343,15 @@ pub mod nmp {
                 ds.finish()
             }
         }
-        pub enum CreatePublicGroupPayloadOffset {}
+        pub enum CreateGroupPayloadOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
-        pub struct CreatePublicGroupPayload<'a> {
+        pub struct CreateGroupPayload<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
 
-        impl<'a> ::flatbuffers::Follow<'a> for CreatePublicGroupPayload<'a> {
-            type Inner = CreatePublicGroupPayload<'a>;
+        impl<'a> ::flatbuffers::Follow<'a> for CreateGroupPayload<'a> {
+            type Inner = CreateGroupPayload<'a>;
             #[inline]
             unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
                 Self {
@@ -360,7 +360,7 @@ pub mod nmp {
             }
         }
 
-        impl<'a> CreatePublicGroupPayload<'a> {
+        impl<'a> CreateGroupPayload<'a> {
             pub const VT_SCHEMA_VERSION: ::flatbuffers::VOffsetT = 4;
             pub const VT_GROUP: ::flatbuffers::VOffsetT = 6;
             pub const VT_NAME: ::flatbuffers::VOffsetT = 8;
@@ -372,7 +372,7 @@ pub mod nmp {
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-                CreatePublicGroupPayload { _tab: table }
+                CreateGroupPayload { _tab: table }
             }
             #[allow(unused_mut)]
             pub fn create<
@@ -382,9 +382,9 @@ pub mod nmp {
                 A: ::flatbuffers::Allocator + 'bldr,
             >(
                 _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-                args: &'args CreatePublicGroupPayloadArgs<'args>,
-            ) -> ::flatbuffers::WIPOffset<CreatePublicGroupPayload<'bldr>> {
-                let mut builder = CreatePublicGroupPayloadBuilder::new(_fbb);
+                args: &'args CreateGroupPayloadArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<CreateGroupPayload<'bldr>> {
+                let mut builder = CreateGroupPayloadBuilder::new(_fbb);
                 if let Some(x) = args.parent {
                     builder.add_parent(x);
                 }
@@ -413,7 +413,7 @@ pub mod nmp {
                 // which contains a valid value in this slot
                 unsafe {
                     self._tab
-                        .get::<u32>(CreatePublicGroupPayload::VT_SCHEMA_VERSION, Some(0))
+                        .get::<u32>(CreateGroupPayload::VT_SCHEMA_VERSION, Some(0))
                         .unwrap()
                 }
             }
@@ -425,7 +425,7 @@ pub mod nmp {
                 unsafe {
                     self._tab
                         .get::<::flatbuffers::ForwardsUOffset<GroupRef>>(
-                            CreatePublicGroupPayload::VT_GROUP,
+                            CreateGroupPayload::VT_GROUP,
                             None,
                         )
                         .unwrap()
@@ -439,7 +439,7 @@ pub mod nmp {
                 unsafe {
                     self._tab
                         .get::<::flatbuffers::ForwardsUOffset<&str>>(
-                            CreatePublicGroupPayload::VT_NAME,
+                            CreateGroupPayload::VT_NAME,
                             None,
                         )
                         .unwrap()
@@ -452,7 +452,7 @@ pub mod nmp {
                 // which contains a valid value in this slot
                 unsafe {
                     self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        CreatePublicGroupPayload::VT_ABOUT,
+                        CreateGroupPayload::VT_ABOUT,
                         None,
                     )
                 }
@@ -464,7 +464,7 @@ pub mod nmp {
                 // which contains a valid value in this slot
                 unsafe {
                     self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        CreatePublicGroupPayload::VT_PICTURE,
+                        CreateGroupPayload::VT_PICTURE,
                         None,
                     )
                 }
@@ -477,7 +477,7 @@ pub mod nmp {
                 unsafe {
                     self._tab
                         .get::<GroupVisibility>(
-                            CreatePublicGroupPayload::VT_VISIBILITY,
+                            CreateGroupPayload::VT_VISIBILITY,
                             Some(GroupVisibility::Public),
                         )
                         .unwrap()
@@ -490,10 +490,7 @@ pub mod nmp {
                 // which contains a valid value in this slot
                 unsafe {
                     self._tab
-                        .get::<GroupAccess>(
-                            CreatePublicGroupPayload::VT_ACCESS,
-                            Some(GroupAccess::Open),
-                        )
+                        .get::<GroupAccess>(CreateGroupPayload::VT_ACCESS, Some(GroupAccess::Open))
                         .unwrap()
                 }
             }
@@ -504,14 +501,14 @@ pub mod nmp {
                 // which contains a valid value in this slot
                 unsafe {
                     self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        CreatePublicGroupPayload::VT_PARENT,
+                        CreateGroupPayload::VT_PARENT,
                         None,
                     )
                 }
             }
         }
 
-        impl ::flatbuffers::Verifiable for CreatePublicGroupPayload<'_> {
+        impl ::flatbuffers::Verifiable for CreateGroupPayload<'_> {
             #[inline]
             fn run_verifier(
                 v: &mut ::flatbuffers::Verifier,
@@ -550,7 +547,7 @@ pub mod nmp {
                 Ok(())
             }
         }
-        pub struct CreatePublicGroupPayloadArgs<'a> {
+        pub struct CreateGroupPayloadArgs<'a> {
             pub schema_version: u32,
             pub group: Option<::flatbuffers::WIPOffset<GroupRef<'a>>>,
             pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
@@ -560,10 +557,10 @@ pub mod nmp {
             pub access: GroupAccess,
             pub parent: Option<::flatbuffers::WIPOffset<&'a str>>,
         }
-        impl<'a> Default for CreatePublicGroupPayloadArgs<'a> {
+        impl<'a> Default for CreateGroupPayloadArgs<'a> {
             #[inline]
             fn default() -> Self {
-                CreatePublicGroupPayloadArgs {
+                CreateGroupPayloadArgs {
                     schema_version: 0,
                     group: None, // required field
                     name: None,  // required field
@@ -576,15 +573,15 @@ pub mod nmp {
             }
         }
 
-        pub struct CreatePublicGroupPayloadBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+        pub struct CreateGroupPayloadBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
             fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
             start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
         }
-        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> CreatePublicGroupPayloadBuilder<'a, 'b, A> {
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> CreateGroupPayloadBuilder<'a, 'b, A> {
             #[inline]
             pub fn add_schema_version(&mut self, schema_version: u32) {
                 self.fbb_.push_slot::<u32>(
-                    CreatePublicGroupPayload::VT_SCHEMA_VERSION,
+                    CreateGroupPayload::VT_SCHEMA_VERSION,
                     schema_version,
                     0,
                 );
@@ -593,35 +590,35 @@ pub mod nmp {
             pub fn add_group(&mut self, group: ::flatbuffers::WIPOffset<GroupRef<'b>>) {
                 self.fbb_
                     .push_slot_always::<::flatbuffers::WIPOffset<GroupRef>>(
-                        CreatePublicGroupPayload::VT_GROUP,
+                        CreateGroupPayload::VT_GROUP,
                         group,
                     );
             }
             #[inline]
             pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b str>) {
                 self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    CreatePublicGroupPayload::VT_NAME,
+                    CreateGroupPayload::VT_NAME,
                     name,
                 );
             }
             #[inline]
             pub fn add_about(&mut self, about: ::flatbuffers::WIPOffset<&'b str>) {
                 self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    CreatePublicGroupPayload::VT_ABOUT,
+                    CreateGroupPayload::VT_ABOUT,
                     about,
                 );
             }
             #[inline]
             pub fn add_picture(&mut self, picture: ::flatbuffers::WIPOffset<&'b str>) {
                 self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    CreatePublicGroupPayload::VT_PICTURE,
+                    CreateGroupPayload::VT_PICTURE,
                     picture,
                 );
             }
             #[inline]
             pub fn add_visibility(&mut self, visibility: GroupVisibility) {
                 self.fbb_.push_slot::<GroupVisibility>(
-                    CreatePublicGroupPayload::VT_VISIBILITY,
+                    CreateGroupPayload::VT_VISIBILITY,
                     visibility,
                     GroupVisibility::Public,
                 );
@@ -629,7 +626,7 @@ pub mod nmp {
             #[inline]
             pub fn add_access(&mut self, access: GroupAccess) {
                 self.fbb_.push_slot::<GroupAccess>(
-                    CreatePublicGroupPayload::VT_ACCESS,
+                    CreateGroupPayload::VT_ACCESS,
                     access,
                     GroupAccess::Open,
                 );
@@ -637,34 +634,32 @@ pub mod nmp {
             #[inline]
             pub fn add_parent(&mut self, parent: ::flatbuffers::WIPOffset<&'b str>) {
                 self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    CreatePublicGroupPayload::VT_PARENT,
+                    CreateGroupPayload::VT_PARENT,
                     parent,
                 );
             }
             #[inline]
             pub fn new(
                 _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-            ) -> CreatePublicGroupPayloadBuilder<'a, 'b, A> {
+            ) -> CreateGroupPayloadBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
-                CreatePublicGroupPayloadBuilder {
+                CreateGroupPayloadBuilder {
                     fbb_: _fbb,
                     start_: start,
                 }
             }
             #[inline]
-            pub fn finish(self) -> ::flatbuffers::WIPOffset<CreatePublicGroupPayload<'a>> {
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<CreateGroupPayload<'a>> {
                 let o = self.fbb_.end_table(self.start_);
-                self.fbb_
-                    .required(o, CreatePublicGroupPayload::VT_GROUP, "group");
-                self.fbb_
-                    .required(o, CreatePublicGroupPayload::VT_NAME, "name");
+                self.fbb_.required(o, CreateGroupPayload::VT_GROUP, "group");
+                self.fbb_.required(o, CreateGroupPayload::VT_NAME, "name");
                 ::flatbuffers::WIPOffset::new(o.value())
             }
         }
 
-        impl ::core::fmt::Debug for CreatePublicGroupPayload<'_> {
+        impl ::core::fmt::Debug for CreateGroupPayload<'_> {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-                let mut ds = f.debug_struct("CreatePublicGroupPayload");
+                let mut ds = f.debug_struct("CreateGroupPayload");
                 ds.field("schema_version", &self.schema_version());
                 ds.field("group", &self.group());
                 ds.field("name", &self.name());
@@ -677,107 +672,101 @@ pub mod nmp {
             }
         }
         #[inline]
-        /// Verifies that a buffer of bytes contains a `CreatePublicGroupPayload`
+        /// Verifies that a buffer of bytes contains a `CreateGroupPayload`
         /// and returns it.
         /// Note that verification is still experimental and may not
         /// catch every error, or be maximally performant. For the
         /// previous, unchecked, behavior use
-        /// `root_as_create_public_group_payload_unchecked`.
-        pub fn root_as_create_public_group_payload(
+        /// `root_as_create_group_payload_unchecked`.
+        pub fn root_as_create_group_payload(
             buf: &[u8],
-        ) -> Result<CreatePublicGroupPayload<'_>, ::flatbuffers::InvalidFlatbuffer> {
-            ::flatbuffers::root::<CreatePublicGroupPayload>(buf)
+        ) -> Result<CreateGroupPayload<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root::<CreateGroupPayload>(buf)
         }
         #[inline]
         /// Verifies that a buffer of bytes contains a size prefixed
-        /// `CreatePublicGroupPayload` and returns it.
+        /// `CreateGroupPayload` and returns it.
         /// Note that verification is still experimental and may not
         /// catch every error, or be maximally performant. For the
         /// previous, unchecked, behavior use
-        /// `size_prefixed_root_as_create_public_group_payload_unchecked`.
-        pub fn size_prefixed_root_as_create_public_group_payload(
+        /// `size_prefixed_root_as_create_group_payload_unchecked`.
+        pub fn size_prefixed_root_as_create_group_payload(
             buf: &[u8],
-        ) -> Result<CreatePublicGroupPayload<'_>, ::flatbuffers::InvalidFlatbuffer> {
-            ::flatbuffers::size_prefixed_root::<CreatePublicGroupPayload>(buf)
+        ) -> Result<CreateGroupPayload<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root::<CreateGroupPayload>(buf)
         }
         #[inline]
         /// Verifies, with the given options, that a buffer of bytes
-        /// contains a `CreatePublicGroupPayload` and returns it.
+        /// contains a `CreateGroupPayload` and returns it.
         /// Note that verification is still experimental and may not
         /// catch every error, or be maximally performant. For the
         /// previous, unchecked, behavior use
-        /// `root_as_create_public_group_payload_unchecked`.
-        pub fn root_as_create_public_group_payload_with_opts<'b, 'o>(
+        /// `root_as_create_group_payload_unchecked`.
+        pub fn root_as_create_group_payload_with_opts<'b, 'o>(
             opts: &'o ::flatbuffers::VerifierOptions,
             buf: &'b [u8],
-        ) -> Result<CreatePublicGroupPayload<'b>, ::flatbuffers::InvalidFlatbuffer> {
-            ::flatbuffers::root_with_opts::<CreatePublicGroupPayload<'b>>(opts, buf)
+        ) -> Result<CreateGroupPayload<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root_with_opts::<CreateGroupPayload<'b>>(opts, buf)
         }
         #[inline]
         /// Verifies, with the given verifier options, that a buffer of
-        /// bytes contains a size prefixed `CreatePublicGroupPayload` and returns
+        /// bytes contains a size prefixed `CreateGroupPayload` and returns
         /// it. Note that verification is still experimental and may not
         /// catch every error, or be maximally performant. For the
         /// previous, unchecked, behavior use
-        /// `root_as_create_public_group_payload_unchecked`.
-        pub fn size_prefixed_root_as_create_public_group_payload_with_opts<'b, 'o>(
+        /// `root_as_create_group_payload_unchecked`.
+        pub fn size_prefixed_root_as_create_group_payload_with_opts<'b, 'o>(
             opts: &'o ::flatbuffers::VerifierOptions,
             buf: &'b [u8],
-        ) -> Result<CreatePublicGroupPayload<'b>, ::flatbuffers::InvalidFlatbuffer> {
-            ::flatbuffers::size_prefixed_root_with_opts::<CreatePublicGroupPayload<'b>>(opts, buf)
+        ) -> Result<CreateGroupPayload<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root_with_opts::<CreateGroupPayload<'b>>(opts, buf)
         }
         #[inline]
-        /// Assumes, without verification, that a buffer of bytes contains a CreatePublicGroupPayload and returns it.
+        /// Assumes, without verification, that a buffer of bytes contains a CreateGroupPayload and returns it.
         /// # Safety
-        /// Callers must trust the given bytes do indeed contain a valid `CreatePublicGroupPayload`.
-        pub unsafe fn root_as_create_public_group_payload_unchecked(
-            buf: &[u8],
-        ) -> CreatePublicGroupPayload<'_> {
-            unsafe { ::flatbuffers::root_unchecked::<CreatePublicGroupPayload>(buf) }
+        /// Callers must trust the given bytes do indeed contain a valid `CreateGroupPayload`.
+        pub unsafe fn root_as_create_group_payload_unchecked(buf: &[u8]) -> CreateGroupPayload<'_> {
+            unsafe { ::flatbuffers::root_unchecked::<CreateGroupPayload>(buf) }
         }
         #[inline]
-        /// Assumes, without verification, that a buffer of bytes contains a size prefixed CreatePublicGroupPayload and returns it.
+        /// Assumes, without verification, that a buffer of bytes contains a size prefixed CreateGroupPayload and returns it.
         /// # Safety
-        /// Callers must trust the given bytes do indeed contain a valid size prefixed `CreatePublicGroupPayload`.
-        pub unsafe fn size_prefixed_root_as_create_public_group_payload_unchecked(
+        /// Callers must trust the given bytes do indeed contain a valid size prefixed `CreateGroupPayload`.
+        pub unsafe fn size_prefixed_root_as_create_group_payload_unchecked(
             buf: &[u8],
-        ) -> CreatePublicGroupPayload<'_> {
-            unsafe { ::flatbuffers::size_prefixed_root_unchecked::<CreatePublicGroupPayload>(buf) }
+        ) -> CreateGroupPayload<'_> {
+            unsafe { ::flatbuffers::size_prefixed_root_unchecked::<CreateGroupPayload>(buf) }
         }
-        pub const CREATE_PUBLIC_GROUP_PAYLOAD_IDENTIFIER: &str = "N29P";
+        pub const CREATE_GROUP_PAYLOAD_IDENTIFIER: &str = "N29C";
 
         #[inline]
-        pub fn create_public_group_payload_buffer_has_identifier(buf: &[u8]) -> bool {
-            ::flatbuffers::buffer_has_identifier(buf, CREATE_PUBLIC_GROUP_PAYLOAD_IDENTIFIER, false)
-        }
-
-        #[inline]
-        pub fn create_public_group_payload_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
-            ::flatbuffers::buffer_has_identifier(buf, CREATE_PUBLIC_GROUP_PAYLOAD_IDENTIFIER, true)
+        pub fn create_group_payload_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, CREATE_GROUP_PAYLOAD_IDENTIFIER, false)
         }
 
         #[inline]
-        pub fn finish_create_public_group_payload_buffer<
+        pub fn create_group_payload_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, CREATE_GROUP_PAYLOAD_IDENTIFIER, true)
+        }
+
+        #[inline]
+        pub fn finish_create_group_payload_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<CreateGroupPayload<'a>>,
+        ) {
+            fbb.finish(root, Some(CREATE_GROUP_PAYLOAD_IDENTIFIER));
+        }
+
+        #[inline]
+        pub fn finish_size_prefixed_create_group_payload_buffer<
             'a,
             'b,
             A: ::flatbuffers::Allocator + 'a,
         >(
             fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-            root: ::flatbuffers::WIPOffset<CreatePublicGroupPayload<'a>>,
+            root: ::flatbuffers::WIPOffset<CreateGroupPayload<'a>>,
         ) {
-            fbb.finish(root, Some(CREATE_PUBLIC_GROUP_PAYLOAD_IDENTIFIER));
-        }
-
-        #[inline]
-        pub fn finish_size_prefixed_create_public_group_payload_buffer<
-            'a,
-            'b,
-            A: ::flatbuffers::Allocator + 'a,
-        >(
-            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-            root: ::flatbuffers::WIPOffset<CreatePublicGroupPayload<'a>>,
-        ) {
-            fbb.finish_size_prefixed(root, Some(CREATE_PUBLIC_GROUP_PAYLOAD_IDENTIFIER));
+            fbb.finish_size_prefixed(root, Some(CREATE_GROUP_PAYLOAD_IDENTIFIER));
         }
     } // pub mod nip29
 } // pub mod nmp

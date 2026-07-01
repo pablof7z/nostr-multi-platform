@@ -1,18 +1,18 @@
 //! `ActionPayload` codecs for the core group-lifecycle / content actions:
-//! `join`, `leave`, `publish_group_event`, and `create_public_group`
+//! `join`, `leave`, `publish_group_event`, and `create_group`
 //! (ADR-0064 / S9 #1747).
 
 use nmp_core::substrate::{ActionPayload, ActionPayloadDecodeError};
 
 use crate::action::{
-    CreatePublicGroupInput, GroupAccess, GroupVisibility, JoinGroupInput, LeaveGroupInput,
+    CreateGroupInput, GroupAccess, GroupVisibility, JoinGroupInput, LeaveGroupInput,
     PublishGroupEventInput,
 };
 use crate::group_id::GroupId;
 
 use super::{gate_schema_version, malformed, SCHEMA_VERSION};
 
-use super::create_public_group_action_generated::nmp::nip_29 as create_fb;
+use super::create_group_action_generated::nmp::nip_29 as create_fb;
 use super::join_group_action_generated::nmp::nip_29 as join_fb;
 use super::leave_group_action_generated::nmp::nip_29 as leave_fb;
 use super::publish_group_event_action_generated::nmp::nip_29 as publish_fb;
@@ -197,10 +197,10 @@ impl ActionPayload for PublishGroupEventInput {
     }
 }
 
-// --- CreatePublicGroupInput --------------------------------------------------
+// --- CreateGroupInput --------------------------------------------------
 
-impl ActionPayload for CreatePublicGroupInput {
-    const SCHEMA_ID: &'static str = "nmp.nip29.create_public_group";
+impl ActionPayload for CreateGroupInput {
+    const SCHEMA_ID: &'static str = "nmp.nip29.create_group";
     const SCHEMA_VERSION: u32 = SCHEMA_VERSION;
 
     fn encode(&self) -> Vec<u8> {
@@ -219,9 +219,9 @@ impl ActionPayload for CreatePublicGroupInput {
         let picture = self.picture.as_ref().map(|s| fbb.create_string(s));
         // NIP-29 subgroups (#2319): optional parent local id on create.
         let parent = self.parent.as_ref().map(|s| fbb.create_string(s));
-        let payload = create_fb::CreatePublicGroupPayload::create(
+        let payload = create_fb::CreateGroupPayload::create(
             &mut fbb,
-            &create_fb::CreatePublicGroupPayloadArgs {
+            &create_fb::CreateGroupPayloadArgs {
                 schema_version: SCHEMA_VERSION,
                 group: Some(group),
                 name: Some(name),
@@ -232,19 +232,19 @@ impl ActionPayload for CreatePublicGroupInput {
                 parent,
             },
         );
-        create_fb::finish_create_public_group_payload_buffer(&mut fbb, payload);
+        create_fb::finish_create_group_payload_buffer(&mut fbb, payload);
         fbb.finished_data().to_vec()
     }
 
     fn decode(bytes: &[u8]) -> Result<Self, ActionPayloadDecodeError> {
-        if bytes.len() < 8 || !create_fb::create_public_group_payload_buffer_has_identifier(bytes) {
-            return Err(malformed("missing N29P file identifier"));
+        if bytes.len() < 8 || !create_fb::create_group_payload_buffer_has_identifier(bytes) {
+            return Err(malformed("missing N29C file identifier"));
         }
-        let root = create_fb::root_as_create_public_group_payload(bytes)
-            .map_err(|e| malformed(format!("not a valid CreatePublicGroupPayload buffer: {e}")))?;
+        let root = create_fb::root_as_create_group_payload(bytes)
+            .map_err(|e| malformed(format!("not a valid CreateGroupPayload buffer: {e}")))?;
         gate_schema_version(root.schema_version())?;
         let group = root.group();
-        Ok(CreatePublicGroupInput {
+        Ok(CreateGroupInput {
             group: GroupId::new(group.host_relay_url(), group.local_id()),
             name: root.name().to_string(),
             about: root.about().map(str::to_string),

@@ -62,17 +62,17 @@ pub const NIP29_JOIN: ActionContract = ActionContract {
     typed_dispatch: TYPED_ONLY,
 };
 
-pub const NIP29_CREATE_PUBLIC_GROUP: ActionContract = ActionContract {
-    namespace: "nmp.nip29.create_public_group",
+pub const NIP29_CREATE_GROUP: ActionContract = ActionContract {
+    namespace: "nmp.nip29.create_group",
     producer: "nmp-nip29 action",
-    module_type: "nmp_nip29::CreatePublicGroupAction",
-    payload_type: "nmp_nip29::CreatePublicGroupInput",
-    owner_claim: "action.nmp.nip29.create_public_group",
-    schema_id: "nmp.nip29.create_public_group",
-    schema_path: "crates/nmp-nip29/schema/create_public_group_action.fbs",
-    root_type: "CreatePublicGroupPayload",
+    module_type: "nmp_nip29::CreateGroupAction",
+    payload_type: "nmp_nip29::CreateGroupInput",
+    owner_claim: "action.nmp.nip29.create_group",
+    schema_id: "nmp.nip29.create_group",
+    schema_path: "crates/nmp-nip29/schema/create_group_action.fbs",
+    root_type: "CreateGroupPayload",
     schema_version: 1,
-    file_identifier: "N29P",
+    file_identifier: "N29C",
     default_tier: ActionDefaultTier::ComponentRegistered,
     builder_support: BuilderSupport::GeneratedFlatTable,
     public_re_export: PUBLIC_REEXPORT,

@@ -23,7 +23,7 @@ table GroupRef {
 
 // Tri-state visibility: `Unset` (slot default 0) leaves the relay's prior value
 // untouched (NIP-29: absent tags keep prior values); `Public` / `Private` emit
-// the corresponding marker tag. Distinct from `create_public_group`'s 2-value
+// the corresponding marker tag. Distinct from `create_group`'s 2-value
 // enum because an edit must distinguish "don't change" from "set public".
 enum EditVisibility:byte {
   Unset = 0,

@@ -2,7 +2,7 @@
 //!
 //! Emits a single `kind:9002` (edit-metadata) carrying `["h", local_id]` plus
 //! whichever of `name` / `about` / `picture` / visibility / access the caller
-//! set. This is the post-creation counterpart to `CreatePublicGroupAction`
+//! set. This is the post-creation counterpart to `CreateGroupAction`
 //! (which emits 9007 + an initial 9002) and the sibling of `SetParentAction`
 //! (which edits only the `parent` field of the same 9002 surface).
 //!
