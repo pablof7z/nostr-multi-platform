@@ -12,6 +12,9 @@ nmp-content = { path = "../nmp-content" }
 nmp-core = { path = "../nmp-core", default-features = false }
 nmp-feed = { path = "../nmp-feed" }
 nmp-nip01 = { path = "../nmp-nip01" }
+# Canonical DeleteRecord (kind:5 decode) for kind:1 note delete-folding —
+# nmp-nip18 is not the generic deletion owner (ADR-0074, widened by #2589).
+nmp-nip09 = { path = "../nmp-nip09" }
 nmp-nip18 = { path = "../nmp-nip18" }
 nmp-ownership = { workspace = true }
 nmp-planner = { path = "../nmp-planner", default-features = false }

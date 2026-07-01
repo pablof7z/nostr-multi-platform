@@ -222,7 +222,7 @@ pub fn op_feed_observer(
 }
 
 impl OpFeedObserver {
-    fn apply_delete(&self, record: &nmp_nip18::DeleteRecord) {
+    fn apply_delete(&self, record: &nmp_nip09::DeleteRecord) {
         // NIP-01 short-text notes are not addressable, so only `e`-tag
         // (event-id) targets resolve to a row; an `a`-tag coordinate has no
         // op-feed root and is a no-op. A delete only removes a row the same
@@ -286,7 +286,7 @@ impl OpFeedObserver {
 
 impl ObservedProjectionSink for OpFeedObserver {
     fn on_kernel_event(&self, event: &KernelEvent) {
-        if let Some(record) = nmp_nip18::DeleteRecord::try_from_kernel_event(event) {
+        if let Some(record) = nmp_nip09::DeleteRecord::try_from_kernel_event(event) {
             self.apply_delete(&record);
             return;
         }

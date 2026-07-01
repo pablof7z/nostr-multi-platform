@@ -218,7 +218,7 @@ fn project_uri(uri: &NostrUri) -> Option<WireNostrUri> {
             // single canonical address-coordinate primitive (issue #1740 step 5)
             // so this naddr identity path cannot drift from the repost/feed/
             // delete coordinate string.
-            primary_id: nmp_nip18::AddressCoordinate::new(
+            primary_id: nmp_nip09::AddressCoordinate::new(
                 *kind,
                 pubkey.clone(),
                 identifier.clone(),

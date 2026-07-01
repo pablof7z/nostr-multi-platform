@@ -134,13 +134,13 @@ impl ArticleFeedItem {
 /// `kind:author_hex:d_tag`. This is the supersession identity — newest event
 /// for a given coordinate wins.
 ///
-/// Delegates to [`nmp_nip18::AddressCoordinate`], the single canonical place
-/// that computes address-coordinate identity (issue #1740 step 5). The `d_tag`
-/// passed here comes from the same resolved article projection the row renders,
-/// so the wire string stays consistent with the repost `a` tag and the kind:5
-/// tombstone key.
+/// Delegates to [`nmp_nip09::AddressCoordinate`], the single canonical place
+/// that computes address-coordinate identity (issue #1740 step 5; ownership
+/// widened to `nmp-nip09` by #2589). The `d_tag` passed here comes from the
+/// same resolved article projection the row renders, so the wire string stays
+/// consistent with the repost `a` tag and the kind:5 tombstone key.
 fn article_address(event: &KernelEvent, d_tag: &str) -> String {
-    nmp_nip18::AddressCoordinate::new(event.kind, event.author.clone(), d_tag).to_wire()
+    nmp_nip09::AddressCoordinate::new(event.kind, event.author.clone(), d_tag).to_wire()
 }
 
 /// Long-form (kind:30023) typed snapshot projection.
@@ -206,7 +206,7 @@ impl ObservedProjectionSink for LongformProjection {
         // NIP-09: a kind:5 deletion retracts a stored coordinate (issue #1740
         // step 5), so the typed projection cannot keep serving a deleted
         // article after `LongformFeed` drops it.
-        if let Some(record) = nmp_nip18::DeleteRecord::try_from_kernel_event(event) {
+        if let Some(record) = nmp_nip09::DeleteRecord::try_from_kernel_event(event) {
             self.apply_delete(&record);
             return;
         }
@@ -252,7 +252,7 @@ impl LongformProjection {
     /// created at or before the deletion; an `e`-tag retracts the coordinate
     /// whose winning event id matches and whose author owns it. Unresolvable and
     /// foreign targets are no-ops — never guess a coordinate.
-    fn apply_delete(&self, record: &nmp_nip18::DeleteRecord) {
+    fn apply_delete(&self, record: &nmp_nip09::DeleteRecord) {
         let Ok(mut state) = self.state.lock() else {
             return;
         };

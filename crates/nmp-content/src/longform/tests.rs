@@ -18,7 +18,7 @@ const AUTHOR_B: &str = "bb22bb22bb22bb22bb22bb22bb22bb22bb22bb22bb22bb22bb22bb22
 /// string — they assert against the same `AddressCoordinate` the projection key
 /// is built from.
 fn addr(author: &str, d_tag: &str) -> String {
-    nmp_nip18::AddressCoordinate::new(KIND_LONG_FORM_ARTICLE, author, d_tag).to_wire()
+    nmp_nip09::AddressCoordinate::new(KIND_LONG_FORM_ARTICLE, author, d_tag).to_wire()
 }
 
 fn article_event(

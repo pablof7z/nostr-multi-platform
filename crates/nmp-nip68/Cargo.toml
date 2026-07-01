@@ -15,6 +15,9 @@ nmp-feed = { path = "../nmp-feed" }
 # compat facade is deleted (#1608).
 nmp-store = { path = "../nmp-store" }
 nmp-kinds = { path = "../nmp-kinds" }
+# Canonical DeleteRecord (kind:5 decode) for picture-source delete-folding —
+# nmp-nip18 is not the generic deletion owner (ADR-0074, widened by #2589).
+nmp-nip09 = { path = "../nmp-nip09" }
 nmp-nip18 = { path = "../nmp-nip18" }
 nmp-nip92-types = { path = "../nmp-nip92-types" }
 nmp-planner = { path = "../nmp-planner" }

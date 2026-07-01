@@ -6,7 +6,7 @@ use nmp_content::{EmbedTarget, PointerSortMode, PointerSourceModel};
 use nmp_core::substrate::KernelEvent;
 use nmp_core::ObservedProjectionSink;
 use nmp_feed::RootAdmission;
-use nmp_nip18::AddressCoordinate;
+use nmp_nip09::AddressCoordinate;
 use nmp_planner::{InterestShape, NaddrCoord};
 
 use super::resolve::{not_supported, resolve_scope};

@@ -132,7 +132,7 @@ impl ObservedProjectionSink for LongformFeed {
         // NIP-09: a kind:5 deletion suppresses rows it can prove (issue #1740
         // step 5). Apply it before normal ingest; a non-delete event flows to
         // the inner feed unchanged.
-        if let Some(record) = nmp_nip18::DeleteRecord::try_from_kernel_event(event) {
+        if let Some(record) = nmp_nip09::DeleteRecord::try_from_kernel_event(event) {
             self.apply_delete(&record);
             return;
         }
@@ -157,7 +157,7 @@ impl LongformFeed {
     ///   article from living on through a repost: A's `e:art` delete clears A's
     ///   article from C's repost row even though C's wrapper id differs.
     /// * An unresolvable target removes nothing — never guess a coordinate.
-    fn apply_delete(&self, record: &nmp_nip18::DeleteRecord) {
+    fn apply_delete(&self, record: &nmp_nip09::DeleteRecord) {
         for coord in &record.address_targets {
             if coord.pubkey != record.author {
                 continue;
@@ -317,7 +317,7 @@ fn article_item_from_repost(
 /// event-id-only wrapper (no proven coordinate).
 fn longform_target_coordinate(
     record: &nmp_nip18::RepostRecord,
-) -> Option<nmp_nip18::AddressCoordinate> {
+) -> Option<nmp_nip09::AddressCoordinate> {
     record
         .target_address
         .clone()

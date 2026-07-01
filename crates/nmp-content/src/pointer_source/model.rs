@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use nmp_core::substrate::{EventId, KernelEvent};
-use nmp_nip18::AddressCoordinate;
+use nmp_nip09::AddressCoordinate;
 
 use crate::embed_registry::{EmbedTarget, ResolvedEvent};
 

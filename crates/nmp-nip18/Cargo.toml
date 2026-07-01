@@ -10,6 +10,10 @@ description = "NIP-18 repost decoding and read-surfacing projections for NMP."
 nmp-ownership = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false }
 nmp-kinds = { path = "../nmp-kinds" }
+# Canonical DeleteRecord (kind:5 decode) and AddressCoordinate (a-tag identity)
+# — nmp-nip09 is the exclusive owner of the generic NIP-09 deletion grammar
+# and the address-coordinate type it decodes (ADR-0074, widened by #2589).
+nmp-nip09 = { path = "../nmp-nip09" }
 nmp-planner = { path = "../nmp-planner", default-features = false }
 nmp-signer-iface = { path = "../nmp-signer-iface" }
 flatbuffers = { workspace = true }

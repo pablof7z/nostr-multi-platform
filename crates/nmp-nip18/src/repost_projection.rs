@@ -11,12 +11,10 @@ use std::sync::Mutex;
 use nmp_core::substrate::{BoundedMessageMap, KernelEvent, MAX_PROJECTION_MESSAGES};
 use nmp_core::ObservedProjectionSink;
 use nmp_kinds::KIND_LONG_FORM_ARTICLE;
+use nmp_nip09::{AddressCoordinate, DeleteRecord};
 use nmp_planner::InterestShape;
 
-use crate::{
-    try_from_kernel_event, AddressCoordinate, DeleteRecord, RepostRecord, KIND_DELETE,
-    KIND_GENERIC_REPOST, KIND_REPOST,
-};
+use crate::{try_from_kernel_event, RepostRecord, KIND_DELETE, KIND_GENERIC_REPOST, KIND_REPOST};
 
 /// Canonical target identity for repost read-surfacing.
 ///

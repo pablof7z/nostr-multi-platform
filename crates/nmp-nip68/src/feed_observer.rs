@@ -29,7 +29,7 @@ pub fn picture_feed_observer(
 
 impl ObservedProjectionSink for PictureFeedObserver {
     fn on_kernel_event(&self, event: &KernelEvent) {
-        if let Some(record) = nmp_nip18::DeleteRecord::try_from_kernel_event(event) {
+        if let Some(record) = nmp_nip09::DeleteRecord::try_from_kernel_event(event) {
             // kind:20 picture events are not addressable, so only the `e`-tag
             // (event-id) targets resolve to a picture row; an `a`-tag target
             // names a coordinate that has no picture row and is a no-op. The

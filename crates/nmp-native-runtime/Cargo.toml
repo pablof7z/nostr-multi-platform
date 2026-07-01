@@ -45,6 +45,7 @@ nmp-note-feed = { path = "../nmp-note-feed" }
 nmp-nip01 = { path = "../nmp-nip01" }
 nmp-nip02 = { path = "../nmp-nip02" }
 nmp-nip05 = { path = "../nmp-nip05" }
+nmp-nip09 = { path = "../nmp-nip09" }
 nmp-nip11 = { path = "../nmp-nip11" }
 nmp-nip18 = { path = "../nmp-nip18" }
 nmp-nip25 = { path = "../nmp-nip25" }

@@ -232,9 +232,11 @@ impl ReactionAggregateProjection {
     }
 
     fn ingest_delete(&self, event: &KernelEvent) {
-        // Delegate `e`-tag parsing to the nmp-nip09 read seam so tag grammar
+        // Delegate tag parsing to the nmp-nip09 read seam so tag grammar
         // interpretation is centralised in the deletion owner (ADR-0074).
-        let deleted_ids = nmp_nip09::deletion_targets(&event.tags).event_ids;
+        let deleted_ids = nmp_nip09::DeleteRecord::try_from_kernel_event(event)
+            .map(|record| record.event_targets)
+            .unwrap_or_default();
         if deleted_ids.is_empty() {
             return;
         }

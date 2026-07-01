@@ -24,9 +24,11 @@ nmp_ownership::declare_crate_ownership! {
                 "kind:5 deletion construction",
                 "deleted-event e tag grammar",
                 "deleted-kind k tag grammar",
+                "deleted-address a tag grammar (address-coordinate targets)",
+                "canonical address-coordinate identity (kind:pubkey:d) shared by every a-tag reader/writer",
                 "deletion content/reason rules",
                 "deletion identity rules",
-                "generic deletion read semantics",
+                "generic deletion read semantics (DeleteRecord)",
             ],
         },
         {

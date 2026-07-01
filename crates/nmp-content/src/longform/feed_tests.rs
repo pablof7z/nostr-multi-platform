@@ -14,7 +14,7 @@ fn address(author: &str, d_tag: &str) -> String {
     // Use the canonical identity primitive (not a hand-rolled format!) so these
     // tests cannot pass by mirroring a buggy wire string — they exercise the
     // same `AddressCoordinate` the production row id is built from.
-    nmp_nip18::AddressCoordinate::new(KIND_LONG_FORM_ARTICLE, author, d_tag).to_wire()
+    nmp_nip09::AddressCoordinate::new(KIND_LONG_FORM_ARTICLE, author, d_tag).to_wire()
 }
 
 fn article(id: &str, author: &str, d_tag: &str, created_at: u64, topic: &str) -> KernelEvent {
