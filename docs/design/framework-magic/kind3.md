@@ -26,9 +26,10 @@ supersession rule (C1) accepts it as current, the framework:
    feed handle remains valid; the platform receives an updated payload, not a
    teardown/reopen cycle.
 
-**App writes:** open one typed feed session, for example `FeedParams {
-acquisition: FeedScope::ActiveUserFollows, primary_kinds: [1], ... }`. The app
-does not watch kind:3, does not pass concrete follow pubkeys, and does not issue
+**App writes:** open one feed-shaped typed-session helper. The helper compiles
+into a descriptor such as `FeedParams { source:
+FeedSourceExpr::ActiveUserFollows, primary_kinds: [1], ... }`. The app does not
+watch kind:3, does not pass concrete follow pubkeys, and does not issue
 identity-change repair calls.
 
 **Failure mode prevented:** the canonical NDK-era bug: app code listens for
@@ -102,7 +103,7 @@ They are instances of the same ReducedSource/dependent-interest mechanism.
 
 ## 7. What this bullet does not cover
 
-- **The "following timeline" feed/projection itself.** Its payload and recompute logic live above the kernel feed-session seam. C5 cares only that any `FeedScope::ActiveUserFollows` ReducedSource declaration gets the recompile.
+- **The "following timeline" feed/projection itself.** Its payload and recompute logic live above the kernel feed-session seam. C5 cares only that any `FeedSourceExpr::ActiveUserFollows` source declaration gets the recompile.
 - **Other people's follow lists.** A feed/projection that opens kind:3 for `pubkey != active_account` is asking a one-shot question, not declaring a reactive dependency on the social graph. That path uses the normal C1 supersession; no C5 trigger fires.
 
 These exclusions keep the bullet sharp: C5 is exactly *"the active account's follow-list change re-shapes the open-subscription set."* Everything outside that sentence routes through other contract bullets.

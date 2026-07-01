@@ -30,12 +30,14 @@ delivery, source reducers, projection emission) is hidden executor machinery.
 
 | Path | Open | Close |
 |---|---|---|
-| Native (Rust) | `NmpApp::open_feed(FeedParams, compiler)` | `NmpApp::close_feed(&handle)` |
-| UniFFI (iOS/Android) | `NmpAppHandle::open_feed_json(params_json)` | `NmpAppHandle::close_feed_session(session_id)` |
+| Native (Rust) | `app.feeds().open(feed_key, feed_spec)` / generated feed helper | `app.feeds().close(&handle)` |
+| UniFFI (iOS/Android) | generated/app-owned facade over `open_feed_session` | generated/app-owned close by handle/session id |
 | NIP-50 search | `NmpApp::open_search_session(descriptor)` | `NmpApp::close_search_session(&handle)` |
 
 The shell opens one, renders the pushed typed output on the projection key, and passes the
 handle to close. These are typed session helpers, not lifecycle peers of `open_interest`.
+`NmpApp::open_feed(params, compiler)` and `open_feed_session` are lower-level
+compiler/bridge mechanics, not the product API taught to apps.
 
 ## Substrate-only primitives — NOT the product read API
 

@@ -121,13 +121,14 @@ source reducer:
 source interest -> deterministic reducer -> materialized child interests
 ```
 
-App feed code opens `FeedParams` with primary content kinds and a closed
-`FeedScope` / `PubkeySetExpr` source expression. Protocol/defaults code owns
-the NIP-specific reducer, replaces the full child-interest set when the source
-changes, and sends those children through the same registry and compiler as
-ordinary claims. Component/read-model dependencies use the same lifecycle:
-avatars claim profiles, target previews claim events/addresses, and pointer
-feeds claim the targets they render.
+App feed code opens the feed-shaped typed-session helper from ADR-0076, backed
+by `FeedParams`: primary content kinds plus a closed `FeedSourceExpr` source
+expression. Protocol/defaults code owns the NIP-specific reducer, replaces the
+full child-interest set when the source changes, and sends those children
+through the same registry and compiler as ordinary claims. Component/read-model
+dependencies use the same lifecycle: avatars claim profiles, target previews
+claim events/addresses, and pointer feeds claim the targets they explicitly
+render.
 
 Current default reducers include active-account follows, NIP-51 people-list
 members, and the active account's public mute-list `p` tags. They differ only in

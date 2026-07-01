@@ -147,17 +147,20 @@ This rules out:
 *View-dependent cluster (only present when the view is subscribed): `timeline`,
 `inserted`, `updated`, `removed` appear only when the app/defaults layer opens a
 typed feed session over declared primary content kinds and source expressions.
-Chirp declares primary kind `[1]`; protocol adapters derive repost wrapper
-acquisition below that app-facing declaration. The shell does not pass concrete
-follow pubkeys and does not own follow-feed lifecycle policy. Author and thread
-screens open app-owned dynamic typed feed sessions keyed by author or event id
-and close those handles on teardown. Secondary profile, event, address, and
-count dependencies are dependent interests owned by the component/read model
-that renders them. Under incremental apply, omitted keys mean retain cached
-state and an explicit `Cleared` row means drop it. Domain empty states are
-encoded in their payloads, not inferred from absence. The event store, gossip
-cache, sync watermarks, working set, and signer state live exclusively in the
-Rust actor.*
+ADR-0076 makes the normal product API a feed-shaped helper over that session:
+`app.feeds().open(feed_key, spec)` compiles through the standard NMP feed
+compiler and returns a handle for close/pagination. Chirp declares primary kind
+`[1]`; protocol adapters derive repost wrapper acquisition below that
+app-facing declaration. The shell does not pass concrete follow pubkeys, choose
+feed compilers, assemble raw interests, or own follow-feed lifecycle policy.
+Author and thread screens open app-owned dynamic typed feed sessions keyed by
+author or event id and close those handles on teardown. Secondary profile,
+event, address, and count dependencies are dependent interests owned by the
+component/read model that renders them. Under incremental apply, omitted keys
+mean retain cached state and an explicit `Cleared` row means drop it. Domain
+empty states are encoded in their payloads, not inferred from absence. The event
+store, gossip cache, sync watermarks, working set, and signer state live
+exclusively in the Rust actor.*
 
 *Read-model declaration rule: production app/product read models are declared
 resources, not ambient event taps. A read model MUST NOT subscribe to a public,

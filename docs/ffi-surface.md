@@ -82,9 +82,14 @@ close the remaining app-owned-facade gaps:
 | Rebuild a session after a perspective change | `reopen_feed_session` | Idempotent close of the prior id + open from the retained declaration. For account-pinned sessions only — `ActiveUserFollows` feeds re-seed in place (see below). |
 | React to an active-account change | `register_account_change_sink`, `unregister_account_change_sink`, `account_change_observer_from_sink` | Arc-sink + panic-contained wrapper over `nmp-native-runtime::NmpApp::register_identity_change_observer`. The sink receives only the new identity; it never captures the runtime. |
 
+These helpers are bridge mechanics below ADR-0076's feed-shaped app helper.
+Product facades should expose generated or app-owned feed-session methods, not
+compiler selection, raw interest JSON, observer wiring, pull-controller wiring,
+or teardown recipes.
+
 Account-change handling has two layers and a facade picks the lighter one:
 
-- Account-**reactive** feeds (`FeedScope::ActiveUserFollows` and friends) re-seed
+- Account-**reactive** feeds (`FeedSourceExpr::ActiveUserFollows` and friends) re-seed
   **in place** — the native runtime's identity-change wiring clears and
   repopulates the live session. No reopen, no facade glue.
 - Account-**pinned** app-specific sessions (e.g. a NIP-29 joined-groups view

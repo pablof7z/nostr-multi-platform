@@ -90,6 +90,22 @@ surfaces, but their durable contract is ADR-0070's typed-session lifecycle.
 `NmpApp` reference-resolution methods remain the refcounted typed hydration
 surface for profile and event refs.
 
+Feed-shaped product reads follow ADR-0076. The normal app-facing API is a
+helper over typed sessions, for example `app.feeds().open(feed_key, feed_spec)`
+returning a `FeedHandle`. The helper compiles through the standard NMP feed
+compiler and hides raw interests, observer registration, source-effect hooks,
+projection registrars, pull controllers, and teardown recipes from app/native
+callers. `FeedParams` remains the serializable descriptor behind that helper,
+but lower-level `open_feed(params, compiler)` seams are internal/test/advanced
+composition surfaces, not the taught product API.
+
+Feed descriptors declare app-owned keys, primary content kinds only, source
+expressions, admission/order policy, bounded window policy, and an item
+projection/schema contract. Protocol wrapper and maintenance kinds are derived
+below the app boundary. Feed rows may expose stable refs, but profile hydration,
+event embeds, reply counts, media, target hydration, and thread hydration belong
+to the component/read model that renders those refs.
+
 Current permanent concepts:
 
 - typed session constructors for product reads;
