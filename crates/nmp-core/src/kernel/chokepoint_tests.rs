@@ -394,6 +394,12 @@ fn local_kind10002_publish_notifies_event_observers_immediately() {
         "wss://seed",
         500,
     );
+    kernel.seed_mailbox_relay_list(
+        &author,
+        Vec::new(),
+        vec!["wss://write.test".to_string()],
+        Vec::new(),
+    );
 
     let slot = new_event_observer_slot();
     let observer = CapturingObserver::new();

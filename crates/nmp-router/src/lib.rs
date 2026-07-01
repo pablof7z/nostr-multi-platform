@@ -19,7 +19,8 @@
 //!    publish (action builds the event).
 //! 5. [`Nip65OutboxResolver`] — the publish-side concrete
 //!    [`nmp_core::publish::OutboxResolver`] impl that reads kind:10002 from
-//!    an `EventStore` (crate-boundary spec §271; moved out of
+//!    the shared [`MailboxCache`](nmp_core::substrate::MailboxCache)
+//!    (crate-boundary spec §271; moved out of
 //!    `nmp-core::publish::nip65` so the substrate stays NIP-neutral per D0).
 //!    Production composition installs it via
 //!    `AppHost::set_publish_resolver_factory` →

@@ -238,6 +238,7 @@ impl ActorConfig {
         if let Some(factory) = &self.publish_resolver {
             let resolver = factory(
                 kernel.event_store_handle(),
+                kernel.mailbox_cache_arc(),
                 kernel.indexer_relays_handle(),
                 kernel.local_write_relays_handle(),
                 kernel.active_account_handle(),

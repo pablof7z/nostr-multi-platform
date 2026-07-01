@@ -54,6 +54,12 @@ fn seed_kind10002(kernel: &mut Kernel, author_pubkey: &str, write_urls: &[&str])
         .store
         .insert(verified, &"wss://seed".to_string(), 1_700_000_000_000)
         .expect("seed_kind10002 insert");
+    kernel.seed_mailbox_relay_list(
+        author_pubkey,
+        Vec::new(),
+        write_urls.iter().map(|url| (*url).to_string()).collect(),
+        Vec::new(),
+    );
 }
 
 fn single_action_result(kernel: &mut Kernel) -> serde_json::Value {

@@ -296,13 +296,14 @@ pub fn new_routing_substrate_slot() -> RoutingSubstrateSlot {
 // applies the produced `Arc<dyn OutboxResolver>` via
 // `Kernel::set_publish_resolver`.
 //
-// The closure receives the four kernel-owned handles the router-side
-// `Nip65OutboxResolver` needs (`EventStore` + indexer / local-write /
-// active-account slots) so the resolver reads through the same shared
-// state the kernel actor writes to. `Fn` (not `FnOnce`) so the `Reset`
-// dispatch arm can re-invoke against the rebuilt kernel's fresh handles.
+// The closure receives the kernel-owned handles publish resolvers may need.
+// `Nip65OutboxResolver` reads the `MailboxCache` written by `Kind10002Parser`;
+// the `EventStore` remains available for other resolver implementations.
+// `Fn` (not `FnOnce`) so the `Reset` dispatch arm can re-invoke against the
+// rebuilt kernel's fresh handles.
 pub type PublishResolverFactory = dyn Fn(
         Arc<dyn crate::store::EventStore>,
+        Arc<dyn crate::substrate::MailboxCache>,
         IndexerRelaysSlot,
         LocalWriteRelaysSlot,
         ActiveAccountSlot,

@@ -231,13 +231,14 @@ pub fn install(
     nmp_nip51::register_block_relay_actions(app, blocked_cache);
 
     app.set_publish_resolver_factory(
-        |store: Arc<dyn EventStore>,
+        |_store: Arc<dyn EventStore>,
+         mailbox_cache: Arc<dyn MailboxCache>,
          indexer_relays: IndexerRelaysSlot,
          local_write_relays: LocalWriteRelaysSlot,
          active_account: ActiveAccountSlot|
          -> Arc<dyn OutboxResolver> {
             Arc::new(Nip65OutboxResolver::with_local_relays(
-                store,
+                mailbox_cache,
                 indexer_relays,
                 local_write_relays,
                 active_account,

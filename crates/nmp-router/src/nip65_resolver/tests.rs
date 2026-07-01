@@ -15,23 +15,18 @@ use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
 use super::{Nip65OutboxResolver, RECIPIENT_INBOX_FANOUT_PTAG_THRESHOLD};
+use crate::{InMemoryMailboxCache, Kind10002Parser};
 use nmp_core::publish::{OutboxResolver, PublishTarget, RelaySelectionReason, ResolvedRelay};
 use nmp_core::slots::{
     new_indexer_relays_slot, new_local_write_relays_slot, IndexerRelaysSlot, LocalWriteRelaysSlot,
 };
-use nmp_core::substrate::BlockedRelaySet;
-use nmp_store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
+use nmp_core::substrate::{BlockedRelaySet, MailboxCache};
+use nmp_store::{RawEvent, VerifiedEvent};
 
-/// Empty blocked-relay set — the common case for tests that don't exercise
-/// the blocked-relay filter. Spelled once so each `resolve` call site reads
-/// `&no_block()` rather than `&BlockedRelaySet::new()`.
 fn no_block() -> BlockedRelaySet {
     BlockedRelaySet::new()
 }
 
-/// Test helper — typed [`IndexerRelaysSlot`] pre-populated with `urls`.
-/// Centralizes typed-slot construction so tests that need a non-empty
-/// indexer set don't each spell `Arc::new(Mutex::new(...))` inline.
 fn indexer_slot_with(urls: Vec<String>) -> IndexerRelaysSlot {
     let slot = new_indexer_relays_slot();
     if let Ok(mut guard) = slot.lock() {
@@ -40,8 +35,6 @@ fn indexer_slot_with(urls: Vec<String>) -> IndexerRelaysSlot {
     slot
 }
 
-/// Test helper — typed [`LocalWriteRelaysSlot`] pre-populated with
-/// `urls`. Same rationale as [`indexer_slot_with`].
 fn local_write_slot_with(urls: Vec<String>) -> LocalWriteRelaysSlot {
     let slot = new_local_write_relays_slot();
     if let Ok(mut guard) = slot.lock() {
@@ -50,30 +43,20 @@ fn local_write_slot_with(urls: Vec<String>) -> LocalWriteRelaysSlot {
     slot
 }
 
-/// Test helper — collapse the trait's `Vec<ResolvedRelay>` to the set of URLs.
-/// Most assertions in this file only care about which URLs were selected;
-/// reason-specific assertions use `find_reason` directly.
 fn urls_of(resolved: &[ResolvedRelay]) -> BTreeSet<String> {
     resolved.iter().map(|r| r.url.clone()).collect()
 }
 
-/// Test helper — find the first `reason` variant for the given URL, or None
-/// if the URL was not selected.
 fn find_reason<'a>(resolved: &'a [ResolvedRelay], url: &str) -> Option<&'a RelaySelectionReason> {
     resolved.iter().find(|r| r.url == url).map(|r| &r.reason)
 }
 
 const AUTHOR_HEX: &str = "1111111111111111111111111111111111111111111111111111111111111111";
 const RECIPIENT_HEX: &str = "2222222222222222222222222222222222222222222222222222222222222222";
-/// Common p-tag fanout fixture URLs.
-/// The same strings are used in setup and assertions so the tests keep proving
-/// recipient inbox inclusion/exclusion instead of typoing one side.
 const AUTHOR_WRITE_RELAY: &str = "wss://author-write.example";
 const RECIPIENT_READ_RELAY: &str = "wss://recipient-read.example";
 
-fn store_kind10002(store: &dyn EventStore, author_hex: &str, tags: Vec<Vec<String>>) {
-    // Construct a unique 64-hex id keyed off author + kind so multiple
-    // inserts in the same test do not collide.
+fn seed_kind10002(cache: &Arc<InMemoryMailboxCache>, author_hex: &str, tags: Vec<Vec<String>>) {
     let prefix = &author_hex[..2];
     let id = format!("{:0<64}", format!("{}e10002", prefix));
     let raw = RawEvent {
@@ -86,13 +69,9 @@ fn store_kind10002(store: &dyn EventStore, author_hex: &str, tags: Vec<Vec<Strin
         sig: "0".repeat(128),
     };
     let verified = VerifiedEvent::from_raw_unchecked(raw);
-    store
-        .insert(verified, &"wss://test".to_string(), 1_700_000_000_000)
-        .expect("insert");
+    Kind10002Parser::new(Arc::clone(cache)).parse_event(&verified);
 }
 
-/// Build a NIP-65 relay tag with an optional marker.
-/// `None` covers unmarked tags, which the resolver treats as both read/write.
 fn relay_tag(url: &str, marker: Option<&str>) -> Vec<String> {
     let mut tag = vec!["r".to_string(), url.to_string()];
     if let Some(marker) = marker {
@@ -101,13 +80,13 @@ fn relay_tag(url: &str, marker: Option<&str>) -> Vec<String> {
     tag
 }
 
-/// Store one relay tag for an author's kind:10002 fixture.
-fn store_relay(store: &dyn EventStore, author_hex: &str, url: &str, marker: &str) {
-    store_kind10002(store, author_hex, vec![relay_tag(url, Some(marker))]);
+fn seed_relay(cache: &Arc<InMemoryMailboxCache>, author_hex: &str, url: &str, marker: &str) {
+    seed_kind10002(cache, author_hex, vec![relay_tag(url, Some(marker))]);
 }
 
-fn mk_resolver(store: Arc<dyn EventStore>) -> Nip65OutboxResolver {
-    Nip65OutboxResolver::new(store, new_indexer_relays_slot())
+fn mk_resolver(cache: &Arc<InMemoryMailboxCache>) -> Nip65OutboxResolver {
+    let mailbox_cache: Arc<dyn MailboxCache> = cache.clone();
+    Nip65OutboxResolver::new(mailbox_cache, new_indexer_relays_slot())
 }
 
 fn pk(n: u8) -> String {
@@ -122,16 +101,16 @@ fn threshold_recipients() -> Vec<String> {
 
 #[test]
 fn nip65_resolver_uses_author_writes_when_present() {
-    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
-    store_kind10002(
-        store.as_ref(),
+    let cache = Arc::new(InMemoryMailboxCache::new());
+    seed_kind10002(
+        &cache,
         AUTHOR_HEX,
         vec![
             relay_tag("wss://write.example", Some("write")),
             relay_tag("wss://read.example", Some("read")),
         ],
     );
-    let resolver = mk_resolver(store);
+    let resolver = mk_resolver(&cache);
     let out = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto, 1, &no_block());
     let urls = urls_of(&out);
     assert!(urls.contains("wss://write.example"));
@@ -148,8 +127,8 @@ fn nip65_resolver_uses_author_writes_when_present() {
 /// This mirrors T134's subscription-side `unroutable_authors` semantics.
 #[test]
 fn nip65_resolver_returns_empty_when_no_kind10002() {
-    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
-    let resolver = mk_resolver(store);
+    let cache = Arc::new(InMemoryMailboxCache::new());
+    let resolver = mk_resolver(&cache);
     let out = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto, 1, &no_block());
     assert!(
         out.is_empty(),
@@ -160,9 +139,12 @@ fn nip65_resolver_returns_empty_when_no_kind10002() {
 
 #[test]
 fn nip65_resolver_uses_local_writes_for_active_account_only() {
-    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
+    let cache = Arc::new(InMemoryMailboxCache::new());
     let resolver = Nip65OutboxResolver::with_local_relays(
-        store,
+        {
+            let mailbox_cache: Arc<dyn MailboxCache> = cache.clone();
+            mailbox_cache
+        },
         new_indexer_relays_slot(),
         local_write_slot_with(vec!["wss://local-write.example".to_string()]),
         Arc::new(Mutex::new(Some(AUTHOR_HEX.to_string()))),
@@ -183,9 +165,9 @@ fn nip65_resolver_uses_local_writes_for_active_account_only() {
 
 #[test]
 fn nip65_resolver_unions_recipient_reads_for_p_tags() {
-    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
-    store_kind10002(
-        store.as_ref(),
+    let cache = Arc::new(InMemoryMailboxCache::new());
+    seed_kind10002(
+        &cache,
         AUTHOR_HEX,
         vec![vec![
             "r".into(),
@@ -193,8 +175,8 @@ fn nip65_resolver_unions_recipient_reads_for_p_tags() {
             "write".into(),
         ]],
     );
-    store_kind10002(
-        store.as_ref(),
+    seed_kind10002(
+        &cache,
         RECIPIENT_HEX,
         vec![vec![
             "r".into(),
@@ -202,7 +184,7 @@ fn nip65_resolver_unions_recipient_reads_for_p_tags() {
             "read".into(),
         ]],
     );
-    let resolver = mk_resolver(store);
+    let resolver = mk_resolver(&cache);
     let out = resolver.resolve(
         AUTHOR_HEX,
         &[RECIPIENT_HEX.to_string()],
@@ -217,12 +199,12 @@ fn nip65_resolver_unions_recipient_reads_for_p_tags() {
 
 #[test]
 fn nip65_resolver_skips_recipient_reads_at_p_tag_threshold() {
-    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
-    store_relay(store.as_ref(), AUTHOR_HEX, AUTHOR_WRITE_RELAY, "write");
-    store_relay(store.as_ref(), RECIPIENT_HEX, RECIPIENT_READ_RELAY, "read");
+    let cache = Arc::new(InMemoryMailboxCache::new());
+    seed_relay(&cache, AUTHOR_HEX, AUTHOR_WRITE_RELAY, "write");
+    seed_relay(&cache, RECIPIENT_HEX, RECIPIENT_READ_RELAY, "read");
     let recipients = threshold_recipients();
 
-    let resolver = mk_resolver(store);
+    let resolver = mk_resolver(&cache);
     let out = resolver.resolve(
         AUTHOR_HEX,
         &recipients,
@@ -241,12 +223,15 @@ fn nip65_resolver_skips_recipient_reads_at_p_tag_threshold() {
 
 #[test]
 fn nip65_resolver_keeps_discovery_indexers_when_p_tag_threshold_skips_inboxes() {
-    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
-    store_relay(store.as_ref(), AUTHOR_HEX, AUTHOR_WRITE_RELAY, "write");
-    store_relay(store.as_ref(), RECIPIENT_HEX, RECIPIENT_READ_RELAY, "read");
+    let cache = Arc::new(InMemoryMailboxCache::new());
+    seed_relay(&cache, AUTHOR_HEX, AUTHOR_WRITE_RELAY, "write");
+    seed_relay(&cache, RECIPIENT_HEX, RECIPIENT_READ_RELAY, "read");
     let recipients = threshold_recipients();
     let resolver = Nip65OutboxResolver::new(
-        store,
+        {
+            let mailbox_cache: Arc<dyn MailboxCache> = cache.clone();
+            mailbox_cache
+        },
         indexer_slot_with(vec!["wss://indexer.example".to_string()]),
     );
 
@@ -266,8 +251,8 @@ fn nip65_resolver_keeps_discovery_indexers_when_p_tag_threshold_skips_inboxes() 
 
 #[test]
 fn nip65_resolver_returns_explicit_unchanged() {
-    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
-    let resolver = mk_resolver(store);
+    let cache = Arc::new(InMemoryMailboxCache::new());
+    let resolver = mk_resolver(&cache);
     let explicit = vec!["wss://a.example".to_string(), "wss://b.example".to_string()];
     let out = resolver.resolve(
         AUTHOR_HEX,
@@ -284,9 +269,9 @@ fn nip65_resolver_returns_explicit_unchanged() {
 
 #[test]
 fn nip65_resolver_handles_malformed_kind10002_gracefully() {
-    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
-    store_kind10002(
-        store.as_ref(),
+    let cache = Arc::new(InMemoryMailboxCache::new());
+    seed_kind10002(
+        &cache,
         AUTHOR_HEX,
         vec![
             // Missing url tag → skip
@@ -299,7 +284,7 @@ fn nip65_resolver_handles_malformed_kind10002_gracefully() {
             vec!["x".into(), "wss://wrong-tag.example".into()],
         ],
     );
-    let resolver = mk_resolver(store);
+    let resolver = mk_resolver(&cache);
     let out = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto, 1, &no_block());
     let urls = urls_of(&out);
     assert!(urls.contains("wss://valid.example"));
@@ -309,18 +294,18 @@ fn nip65_resolver_handles_malformed_kind10002_gracefully() {
 
 #[test]
 fn nip65_resolver_unmarked_tag_is_both() {
-    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
-    store_kind10002(
-        store.as_ref(),
+    let cache = Arc::new(InMemoryMailboxCache::new());
+    seed_kind10002(
+        &cache,
         AUTHOR_HEX,
         vec![relay_tag("wss://both.example", None)],
     );
-    store_kind10002(
-        store.as_ref(),
+    seed_kind10002(
+        &cache,
         RECIPIENT_HEX,
         vec![relay_tag("wss://recipient-both.example", None)],
     );
-    let resolver = mk_resolver(store);
+    let resolver = mk_resolver(&cache);
     let out = resolver.resolve(
         AUTHOR_HEX,
         &[RECIPIENT_HEX.to_string()],
@@ -340,8 +325,8 @@ fn nip65_resolver_unmarked_tag_is_both() {
 /// → empty relay set (fail-closed). Same `NoTargets` outcome upstream.
 #[test]
 fn nip65_resolver_invalid_author_hex_returns_empty() {
-    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
-    let resolver = mk_resolver(store);
+    let cache = Arc::new(InMemoryMailboxCache::new());
+    let resolver = mk_resolver(&cache);
     // Short / non-hex author → lookup returns None → empty (fail-closed).
     let out = resolver.resolve("not-hex", &[], &PublishTarget::Auto, 1, &no_block());
     assert!(
@@ -359,9 +344,9 @@ fn nip65_resolver_invalid_author_hex_returns_empty() {
 /// wire boundary (`publish_outbox::format_relay_reason`).
 #[test]
 fn resolve_returns_nip65_write_relay_reason() {
-    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
-    store_relay(store.as_ref(), AUTHOR_HEX, "wss://write.example", "write");
-    let resolver = mk_resolver(store);
+    let cache = Arc::new(InMemoryMailboxCache::new());
+    seed_relay(&cache, AUTHOR_HEX, "wss://write.example", "write");
+    let resolver = mk_resolver(&cache);
     let out = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto, 1, &no_block());
     assert!(matches!(
         find_reason(&out, "wss://write.example"),
@@ -374,9 +359,12 @@ fn resolve_returns_nip65_write_relay_reason() {
 /// `RelaySelectionReason::LocalConfigRelay` variant.
 #[test]
 fn resolve_returns_app_relay_reason_when_no_kind10002() {
-    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
+    let cache = Arc::new(InMemoryMailboxCache::new());
     let resolver = Nip65OutboxResolver::with_local_relays(
-        store,
+        {
+            let mailbox_cache: Arc<dyn MailboxCache> = cache.clone();
+            mailbox_cache
+        },
         new_indexer_relays_slot(),
         local_write_slot_with(vec!["wss://local-write.example".to_string()]),
         Arc::new(Mutex::new(Some(AUTHOR_HEX.to_string()))),
@@ -395,11 +383,14 @@ fn resolve_returns_app_relay_reason_when_no_kind10002() {
 /// replaceable.
 #[test]
 fn resolve_returns_discovery_indexer_reason_for_kind0() {
-    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
+    let cache = Arc::new(InMemoryMailboxCache::new());
     // No kind:10002 → the discovery indexer is the only source. This isolates
     // code path 3 (indexer) from code path 1 (author writes).
     let resolver = Nip65OutboxResolver::new(
-        store,
+        {
+            let mailbox_cache: Arc<dyn MailboxCache> = cache.clone();
+            mailbox_cache
+        },
         indexer_slot_with(vec!["wss://indexer.example".to_string()]),
     );
     let out = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto, 0, &no_block());
@@ -416,10 +407,10 @@ fn resolve_returns_discovery_indexer_reason_for_kind0() {
 /// `display::*` abbreviation helpers; the shell renders its own short form.
 #[test]
 fn resolve_returns_inbox_relay_reason_for_p_tags() {
-    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
-    store_relay(store.as_ref(), AUTHOR_HEX, AUTHOR_WRITE_RELAY, "write");
-    store_relay(store.as_ref(), RECIPIENT_HEX, RECIPIENT_READ_RELAY, "read");
-    let resolver = mk_resolver(store);
+    let cache = Arc::new(InMemoryMailboxCache::new());
+    seed_relay(&cache, AUTHOR_HEX, AUTHOR_WRITE_RELAY, "write");
+    seed_relay(&cache, RECIPIENT_HEX, RECIPIENT_READ_RELAY, "read");
+    let resolver = mk_resolver(&cache);
     let out = resolver.resolve(
         AUTHOR_HEX,
         &[RECIPIENT_HEX.to_string()],
@@ -458,17 +449,15 @@ fn resolve_returns_inbox_relay_reason_for_p_tags() {
 /// durable state, not a hardcoded fallback).
 #[test]
 fn resolve_fail_closed_when_kind10002_has_only_read_relays_non_discovery() {
-    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
+    let cache = Arc::new(InMemoryMailboxCache::new());
     // kind:10002 with a single read-only relay (no write entries).
-    store_relay(
-        store.as_ref(),
-        AUTHOR_HEX,
-        "wss://read-only.example",
-        "read",
-    );
+    seed_relay(&cache, AUTHOR_HEX, "wss://read-only.example", "read");
     // Active account + non-empty local_write_relays — the fallback must NOT fire.
     let resolver = Nip65OutboxResolver::with_local_relays(
-        store,
+        {
+            let mailbox_cache: Arc<dyn MailboxCache> = cache.clone();
+            mailbox_cache
+        },
         new_indexer_relays_slot(),
         local_write_slot_with(vec!["wss://local-write.example".to_string()]),
         Arc::new(Mutex::new(Some(AUTHOR_HEX.to_string()))),
@@ -492,10 +481,13 @@ fn resolve_fail_closed_when_kind10002_has_only_read_relays_non_discovery() {
 /// the deliberate bootstrap behavior so the fix cannot overshoot.
 #[test]
 fn resolve_local_write_fallback_fires_when_no_kind10002_at_all() {
-    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
+    let cache = Arc::new(InMemoryMailboxCache::new());
     // No kind:10002 stored at all → lookup returns None.
     let resolver = Nip65OutboxResolver::with_local_relays(
-        store,
+        {
+            let mailbox_cache: Arc<dyn MailboxCache> = cache.clone();
+            mailbox_cache
+        },
         new_indexer_relays_slot(),
         local_write_slot_with(vec!["wss://local-write.example".to_string()]),
         Arc::new(Mutex::new(Some(AUTHOR_HEX.to_string()))),
@@ -518,8 +510,8 @@ fn resolve_local_write_fallback_fires_when_no_kind10002_at_all() {
 /// `RelaySelectionReason::Explicit` variant.
 #[test]
 fn resolve_returns_explicit_relay_reason() {
-    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
-    let resolver = mk_resolver(store);
+    let cache = Arc::new(InMemoryMailboxCache::new());
+    let resolver = mk_resolver(&cache);
     let explicit = vec!["wss://a.example".to_string(), "wss://b.example".to_string()];
     let out = resolver.resolve(
         AUTHOR_HEX,

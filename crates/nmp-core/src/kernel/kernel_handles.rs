@@ -67,8 +67,11 @@ impl Kernel {
         );
     }
 
-    /// Test-only: shared handle to the substrate `MailboxCache`.
-    #[cfg(test)]
+    /// Shared handle to the substrate `MailboxCache`.
+    ///
+    /// Production composition passes this to the publish resolver after the
+    /// routing substrate installs the parser-owned cache. Tests also use it to
+    /// assert cache transitions without reaching through private fields.
     pub(crate) fn mailbox_cache_arc(&self) -> Arc<dyn MailboxCache> {
         Arc::clone(&self.mailbox_cache)
     }

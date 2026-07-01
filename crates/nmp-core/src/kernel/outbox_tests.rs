@@ -217,8 +217,8 @@ fn publish_fans_out_to_author_write_relays_via_outbox() {
 
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 
-    // Author Alice has two write relays declared via NIP-65. Inject the
-    // kind:10002 through the store so Nip65OutboxResolver reads it back.
+    // Author Alice has two write relays declared via NIP-65. Seed both the
+    // store fixture and parsed mailbox cache; the resolver reads the latter.
     let nip65_tags = vec![
         vec![
             "r".to_string(),
@@ -244,6 +244,15 @@ fn publish_fans_out_to_author_write_relays_via_outbox() {
     let _ = kernel
         .store
         .insert(verified, &"wss://bootstrap/".to_string(), 2_000_000);
+    kernel.seed_mailbox_relay_list(
+        ALICE,
+        Vec::new(),
+        vec![
+            "wss://alice.primary/".to_string(),
+            "wss://alice.archive/".to_string(),
+        ],
+        Vec::new(),
+    );
 
     // Build a synthetic signed kind:1 from Alice. The publish path doesn't
     // verify the signature itself; the store does (and we bypass it via

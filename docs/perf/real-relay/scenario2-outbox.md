@@ -9,7 +9,7 @@ relays: ["wss://relay.damus.io"]
 
 ## Verdict: PASS
 
-Fetched author **jb55** (`82341f882b6eabcd2ba7f1ef90aad961cf074af15b9ef44a09f9d2a8fbfbe6a2`) live kind:10002 from `wss://relay.damus.io`, inserted the real signed event into a `MemEventStore`, and resolved `PublishTarget::Auto` through `Nip65OutboxResolver::with_default_fallback`.
+Fetched author **jb55** (`82341f882b6eabcd2ba7f1ef90aad961cf074af15b9ef44a09f9d2a8fbfbe6a2`) live kind:10002 from `wss://relay.damus.io`, parsed the real signed event through `nmp_router::Kind10002Parser` into the mailbox cache, and resolved `PublishTarget::Auto` through `Nip65OutboxResolver::with_default_fallback`.
 
 The resolved relay set is **exactly** the author's declared write-relay set (6 relay(s)) — proving NIP-65 outbox routing against live network data, not the indexer fallback.
 
@@ -24,4 +24,3 @@ The resolved relay set is **exactly** the author's declared write-relay set (6 r
 - `wss://relay.primal.net`
 - resolved == declared write-set: ✅ (BTreeSet equality)
 - indexer fallback (non-overlapping URLs) absent: ✅
-

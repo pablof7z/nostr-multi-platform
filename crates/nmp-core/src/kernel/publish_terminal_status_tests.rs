@@ -23,7 +23,6 @@
 use crate::kernel::publish_engine::OkFramePayload;
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
-use crate::store::{RawEvent, VerifiedEvent};
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 /// T128 test relay URLs — declared as NIP-65 write relays in kind:10002.
@@ -52,34 +51,15 @@ fn ok_payload<'a>(event_id: &'a str, accepted: bool, reason: &'a str) -> OkFrame
     }
 }
 
-/// Seed a kind:10002 into the kernel's event store for `author_pubkey` with
-/// `write_urls` as write-marker relay tags. Required by T-publish-resolver-
-/// indexer: without a kind:10002 the resolver returns empty (NoTargets).
+/// Seed parsed kind:10002 mailbox facts for `author_pubkey`. Required by
+/// T-publish-resolver-indexer: without a kind:10002 the resolver returns empty
+/// (NoTargets).
 fn seed_kind10002(kernel: &mut Kernel, author_pubkey: &str, write_urls: &[&str]) {
-    let tags: Vec<Vec<String>> = write_urls
+    let write_urls = write_urls
         .iter()
-        .map(|url| vec!["r".to_string(), url.to_string(), "write".to_string()])
+        .map(|url| (*url).to_string())
         .collect();
-    // Use the author pubkey as the event id — guaranteed valid hex (64 hex
-    // chars) and unique per author.  The old two-char prefix approach embedded
-    // a literal 'k' which is not a valid hex character; V-70 strengthened
-    // `is_structurally_valid()` to check hex chars, so those synthetic events
-    // were rejected as Malformed and never entered the store.
-    let id = author_pubkey.to_string();
-    let raw = RawEvent {
-        id,
-        pubkey: author_pubkey.to_string(),
-        created_at: 1_700_000_000,
-        kind: 10002,
-        tags,
-        content: String::new(),
-        sig: "0".repeat(128),
-    };
-    let verified = VerifiedEvent::from_raw_unchecked(raw);
-    kernel
-        .store
-        .insert(verified, &"wss://seed".to_string(), 1_700_000_000_000)
-        .expect("seed_kind10002 insert");
+    kernel.seed_mailbox_relay_list(author_pubkey, Vec::new(), write_urls, Vec::new());
 }
 
 /// Helper: locate the queue entry for `event_id` in the kernel's snapshot.

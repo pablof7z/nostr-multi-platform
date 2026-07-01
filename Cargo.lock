@@ -4139,6 +4139,7 @@ dependencies = [
  "nmp-nip25",
  "nmp-ownership",
  "nmp-store",
+ "nmp-substrate",
  "nostr",
  "serde",
  "serde_json",

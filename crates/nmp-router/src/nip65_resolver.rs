@@ -1,5 +1,5 @@
-//! `Nip65OutboxResolver` — concrete `OutboxResolver` impl reading kind:10002
-//! relay lists from an `EventStore`.
+//! `Nip65OutboxResolver` — concrete `OutboxResolver` impl reading parsed
+//! kind:10002 relay-list facts from a `MailboxCache`.
 //!
 //! Per NIP-65:
 //! - kind:10002 events carry `["r", <url>, <marker?>]` tags where `<marker?>`
@@ -26,9 +26,9 @@
 //! than silently widening to arbitrary public relays. This mirrors T134's
 //! subscription-side semantics (`CompiledPlan::unroutable_authors`).
 //!
-//! D7 (capabilities report): bad-shape kind:10002 tags (missing url, non-wss)
-//! are logged via `tracing::debug!` and skipped — never crash; never return an
-//! exception across the resolver boundary.
+//! D7 (capabilities report): bad-shape kind:10002 tags are handled by
+//! [`Kind10002Parser`](crate::Kind10002Parser). The resolver consumes only the
+//! parsed cache shape and never re-parses raw event tags.
 //!
 //! **Crate-boundary spec §271 (2026-05-25)**: this resolver lives in
 //! `nmp-router`, not `nmp-core`. The publish-side `OutboxResolver` trait
@@ -43,7 +43,6 @@
 
 use std::sync::Arc;
 
-use nmp_core::kinds::KIND_RELAY_LIST;
 use nmp_core::publish::{
     OutboxResolver, PublishTarget, RelaySelectionReason, RelayUrl, ResolvedRelay,
 };
@@ -51,9 +50,8 @@ use nmp_core::slots::{
     new_active_account_slot, new_indexer_relays_slot, new_local_write_relays_slot,
     ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot,
 };
-use nmp_core::substrate::{canonicalize_relay_url, BlockedRelaySet};
+use nmp_core::substrate::{BlockedRelaySet, MailboxCache};
 use nmp_kinds::ptags_are_recipients;
-use nmp_store::{EventStore, PubKey, StoredEvent};
 
 /// Maximum distinct `#p` pubkeys that still get recipient inbox fan-out.
 ///
@@ -62,8 +60,8 @@ use nmp_store::{EventStore, PubKey, StoredEvent};
 /// indexers, but do not fan out to every tagged pubkey's read relays.
 pub const RECIPIENT_INBOX_FANOUT_PTAG_THRESHOLD: usize = 15;
 
-/// Resolve `PublishTarget::Auto` to a concrete relay set per NIP-65, using an
-/// `EventStore` as the source of truth for kind:10002 lookups.
+/// Resolve `PublishTarget::Auto` to a concrete relay set per NIP-65, using a
+/// `MailboxCache` as the source of truth for parsed kind:10002 lookups.
 ///
 /// When the author has no kind:10002 on file (or the lookup fails) and the
 /// event is **not** a discovery kind, the resolver returns an **empty relay
@@ -74,7 +72,7 @@ pub const RECIPIENT_INBOX_FANOUT_PTAG_THRESHOLD: usize = 15;
 /// kind:10000–19999) instead fan out to the indexer relays even for an
 /// uncached author — see [`is_discovery_kind`].
 pub struct Nip65OutboxResolver {
-    store: Arc<dyn EventStore>,
+    mailbox_cache: Arc<dyn MailboxCache>,
     /// Indexer relay URLs, kept in sync with the kernel's relay config.
     /// Discovery kinds (kind:0, kind:3, kind:1xxxx) fan out to these in
     /// addition to the author's NIP-65 write relays.
@@ -94,14 +92,14 @@ pub struct Nip65OutboxResolver {
 pub use crate::discovery::is_discovery_kind;
 
 impl Nip65OutboxResolver {
-    /// Build a resolver backed by the given event store and a shared indexer
-    /// relay list. The kernel holds a clone of the Arc and updates it whenever
-    /// relay config changes, so the resolver always sees current URLs.
+    /// Build a resolver backed by the given mailbox cache and a shared indexer
+    /// relay list. The cache must be the same instance written by
+    /// [`Kind10002Parser`](crate::Kind10002Parser).
     ///
     #[must_use]
-    pub fn new(store: Arc<dyn EventStore>, indexer_relays: IndexerRelaysSlot) -> Self {
+    pub fn new(mailbox_cache: Arc<dyn MailboxCache>, indexer_relays: IndexerRelaysSlot) -> Self {
         Self::with_local_relays(
-            store,
+            mailbox_cache,
             indexer_relays,
             new_local_write_relays_slot(),
             new_active_account_slot(),
@@ -110,18 +108,19 @@ impl Nip65OutboxResolver {
 
     /// Build a resolver with explicit handles for every slot the kernel
     /// shares with it. Production composition uses this constructor so the
-    /// kernel and the resolver read the same `IndexerRelaysSlot` /
+    /// kernel and the resolver read the same `MailboxCache` /
+    /// `IndexerRelaysSlot` /
     /// `LocalWriteRelaysSlot` / `ActiveAccountSlot` instances — the actor is
     /// the sole writer, the resolver is a reader, D4 holds.
     #[must_use]
     pub fn with_local_relays(
-        store: Arc<dyn EventStore>,
+        mailbox_cache: Arc<dyn MailboxCache>,
         indexer_relays: IndexerRelaysSlot,
         local_write_relays: LocalWriteRelaysSlot,
         active_account: ActiveAccountSlot,
     ) -> Self {
         Self {
-            store,
+            mailbox_cache,
             indexer_relays,
             local_write_relays,
             active_account,
@@ -138,20 +137,15 @@ impl Nip65OutboxResolver {
     /// integration tests in a sibling crate.
     #[doc(hidden)]
     #[must_use]
-    pub fn with_default_fallback(store: Arc<dyn EventStore>) -> Self {
-        Self::new(store, new_indexer_relays_slot())
+    pub fn with_default_fallback(mailbox_cache: Arc<dyn MailboxCache>) -> Self {
+        Self::new(mailbox_cache, new_indexer_relays_slot())
     }
 
-    /// Look up the latest kind:10002 for `author_hex` and parse it into
+    /// Look up the parsed kind:10002 facts for `author_hex` and return
     /// `(write_relays, read_relays)`. `(both, both)` is the unmarked case.
     fn lookup_kind10002(&self, author_hex: &str) -> Option<(Vec<RelayUrl>, Vec<RelayUrl>)> {
-        let author = hex_to_pubkey(author_hex)?;
-        let iter = self
-            .store
-            .scan_by_author_kind(&author, &[KIND_RELAY_LIST], None, None, 1)
-            .ok()?;
-        let stored = iter.into_iter().next()?.ok()?;
-        Some(parse_nip65_tags(&stored))
+        let parsed = self.mailbox_cache.snapshot(&author_hex.to_string())?;
+        Some((parsed.write_set(), parsed.read_set()))
     }
 }
 
@@ -292,73 +286,6 @@ impl Nip65OutboxResolver {
             .ok()
             .and_then(|guard| guard.clone())
             .is_some_and(|active| active == author_pubkey)
-    }
-}
-
-/// Parse a stored kind:10002 event into `(write_relays, read_relays)`.
-///
-/// Per NIP-65 tag shape: `["r", <url>, <marker?>]` where `<marker?>` ∈
-/// `{"read", "write"}`. Absent marker ⇒ both (the relay appears in both
-/// returned lists). Malformed tags (missing url, non-wss) are skipped.
-fn parse_nip65_tags(stored: &StoredEvent) -> (Vec<RelayUrl>, Vec<RelayUrl>) {
-    let mut writes = Vec::new();
-    let mut reads = Vec::new();
-    for tag in &stored.raw.tags {
-        if tag.first().map(String::as_str) != Some("r") {
-            continue;
-        }
-        let Some(raw_url) = tag.get(1) else {
-            tracing::debug!(target: "nmp.router.nip65", reason = "missing url", "skipping malformed kind:10002 tag");
-            continue;
-        };
-        // Canonicalize via the single workspace authority (nmp-relay-url Layer 0).
-        // Fail-closed: a tag that cannot be canonicalized (bad scheme, missing
-        // authority, etc.) is dropped so it can never bypass the blocked-relay
-        // filter under a different spelling.
-        let Some(url) = canonicalize_relay_url(raw_url) else {
-            tracing::debug!(target: "nmp.router.nip65", url = %raw_url, reason = "un-canonicalizable url", "skipping malformed kind:10002 tag");
-            continue;
-        };
-        match tag.get(2).map(String::as_str) {
-            Some("write") => writes.push(url.clone()),
-            Some("read") => reads.push(url.clone()),
-            None | Some("") => {
-                writes.push(url.clone());
-                reads.push(url.clone());
-            }
-            Some(_other) => {
-                // Unknown marker — most clients (Damus, Amethyst) treat
-                // unknown markers as "both", per NIP-65's tolerant parsing
-                // intent. Mirror that.
-                writes.push(url.clone());
-                reads.push(url.clone());
-            }
-        }
-    }
-    (writes, reads)
-}
-
-/// Decode a 64-char lowercase-hex pubkey into a `PubKey` (`[u8; 32]`). Returns
-/// `None` on any malformed input — caller treats `None` as "no lookup".
-fn hex_to_pubkey(hex: &str) -> Option<PubKey> {
-    if hex.len() != 64 {
-        return None;
-    }
-    let mut out = [0u8; 32];
-    for (i, chunk) in hex.as_bytes().chunks(2).enumerate() {
-        let hi = hex_nibble(chunk[0])?;
-        let lo = hex_nibble(chunk[1])?;
-        out[i] = (hi << 4) | lo;
-    }
-    Some(out)
-}
-
-fn hex_nibble(b: u8) -> Option<u8> {
-    match b {
-        b'0'..=b'9' => Some(b - b'0'),
-        b'a'..=b'f' => Some(b - b'a' + 10),
-        b'A'..=b'F' => Some(b - b'A' + 10),
-        _ => None,
     }
 }
 

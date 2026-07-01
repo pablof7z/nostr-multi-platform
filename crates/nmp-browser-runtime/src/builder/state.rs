@@ -41,6 +41,7 @@ type RoutingSubstrateFactory = Box<
 type PublishResolverFactory = Box<
     dyn Fn(
             Arc<dyn nmp_store::EventStore>,
+            Arc<dyn MailboxCache>,
             IndexerRelaysSlot,
             LocalWriteRelaysSlot,
             ActiveAccountSlot,

@@ -227,6 +227,7 @@ pub trait RoutingFactoryRegistrar {
     where
         F: Fn(
                 Arc<dyn EventStore>,
+                Arc<dyn MailboxCache>,
                 IndexerRelaysSlot,
                 LocalWriteRelaysSlot,
                 ActiveAccountSlot,

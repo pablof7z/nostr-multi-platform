@@ -51,6 +51,12 @@ fn seed_kind10002(kernel: &mut Kernel, author_pubkey: &str, write_url: &str) {
             1_700_000_000_000,
         )
         .expect("seed kind:10002");
+    kernel.seed_mailbox_relay_list(
+        author_pubkey,
+        Vec::new(),
+        vec![write_url.to_string()],
+        Vec::new(),
+    );
 }
 
 fn ok_payload<'a>(event_id: &'a str) -> OkFramePayload<'a> {

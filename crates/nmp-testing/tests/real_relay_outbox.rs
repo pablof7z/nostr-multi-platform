@@ -5,9 +5,10 @@
 //! kind:10002 we sign ourselves. That does not prove the resolver routes a
 //! publish to the relays a real, well-known author actually declared on the
 //! live network. This scenario closes that gap: fetch a stable author's live
-//! kind:10002 over a real socket, feed it through the real store + resolver,
-//! and assert the resolved relay set is *exactly* that author's declared
-//! write-relay set — i.e. NIP-65 outbox routing, not the indexer fallback.
+//! kind:10002 over a real socket, feed it through the real parser/cache +
+//! resolver, and assert the resolved relay set is *exactly* that author's
+//! declared write-relay set — i.e. NIP-65 outbox routing, not the indexer
+//! fallback.
 //!
 //! Honest-validation: if no candidate author yields a usable kind:10002 (≥1
 //! write `r`-tag) from any candidate relay within budget, this writes a SKIP
@@ -29,10 +30,11 @@ use common::{
     PURPLEPAG_ES,
 };
 use nmp_core::publish::{OutboxResolver, PublishTarget};
-use nmp_store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
+use nmp_core::substrate::MailboxCache;
+use nmp_store::{RawEvent, VerifiedEvent};
 // Spec §271 (2026-05-25): `Nip65OutboxResolver` was moved from
 // `nmp_core::publish::nip65` into `nmp-router`.
-use nmp_router::Nip65OutboxResolver;
+use nmp_router::{InMemoryMailboxCache, Kind10002Parser, Nip65OutboxResolver};
 use serde_json::Value;
 
 /// Per (author, relay) fetch budget. Short so a relay that does not hold the
@@ -233,20 +235,15 @@ fn outbox_routes_real_author_kind10002_writes() {
         return;
     };
 
-    // Feed the REAL event through the REAL store + resolver.
+    // Feed the REAL event through the REAL parser/cache + resolver.
     let raw: RawEvent =
         serde_json::from_str(&listing.event_json).expect("RawEvent decode of live kind:10002");
     let verified = VerifiedEvent::try_from_raw(raw).expect("verify live kind:10002 signature");
-    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
-    store
-        .insert(
-            verified,
-            &"wss://fetch".to_string(),
-            common::now_ms() as u64,
-        )
-        .expect("insert live kind:10002");
+    let cache = Arc::new(InMemoryMailboxCache::new());
+    Kind10002Parser::new(Arc::clone(&cache)).parse_event(&verified);
 
-    let resolver = Nip65OutboxResolver::with_default_fallback(store);
+    let mailbox_cache: Arc<dyn MailboxCache> = cache;
+    let resolver = Nip65OutboxResolver::with_default_fallback(mailbox_cache);
     let resolved: BTreeSet<String> = resolver
         .resolve(
             &listing.author_hex,
@@ -293,8 +290,9 @@ fn outbox_routes_real_author_kind10002_writes() {
         .join("\n");
     let body = format!(
         "Fetched author **{label}** (`{hex}`) live kind:10002 from \
-         `{relay}`, inserted the real signed event into a `MemEventStore`, \
-         and resolved `PublishTarget::Auto` through \
+         `{relay}`, parsed the real signed event through \
+         `nmp_router::Kind10002Parser` into the mailbox cache, and resolved \
+         `PublishTarget::Auto` through \
          `Nip65OutboxResolver::with_default_fallback`.\n\n\
          The resolved relay set is **exactly** the author's declared \
          write-relay set ({n} relay(s)) — proving NIP-65 outbox routing \

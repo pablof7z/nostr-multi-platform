@@ -253,6 +253,12 @@ fn seed_kind10002(kernel: &mut Kernel, author: &str, write_url: &str) {
             1_700_000_000_000,
         )
         .expect("seed_kind10002 insert");
+    kernel.seed_mailbox_relay_list(
+        author,
+        Vec::new(),
+        vec![write_url.to_string()],
+        Vec::new(),
+    );
 }
 
 /// A `["OK", id, true, ""]` frame parsed off the wire (`handle_text` →
