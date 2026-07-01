@@ -64,15 +64,28 @@ pub fn resolve_embed_projection(event: &KernelEvent, _ctx: &RenderContext) -> Em
 
     match event.kind {
         KIND_PROFILE_METADATA => {
-            // Profile (kind:0). The embed IS a kind:0 event, so its `content` is
-            // the profile metadata JSON — parse it here (a rendering/projection
-            // concern, D0-clean: serde_json on already-claimed content, no crypto,
-            // no kind dispatch leaking to the shell). This is what lets the shell
-            // delete its in-Swift `parseProfileMetadata` (#1283) and fixes the
-            // #1299 inverted `display_name` precedence: NIP-01/24 says
-            // `display_name` wins over `displayName` wins over `name` (mirrors the
-            // kernel's `parse_profile` in `nmp-core::kernel::nostr`).
-            EmbedKindProjection::Profile(parse_profile_metadata(&event.content, author_pubkey))
+            // Profile (kind:0) semantics belong to the NIP-01 owner. This crate
+            // only adapts the owner projection into the embed wire shape.
+            let Some(profile) = nmp_nip01::profile_metadata_projection_from_event(event) else {
+                return EmbedKindProjection::Profile(ProfileProjection {
+                    pubkey: event.author.clone(),
+                    display_name: None,
+                    picture_url: None,
+                    about: None,
+                    nip05: None,
+                    lud16: None,
+                    banner_url: None,
+                });
+            };
+            EmbedKindProjection::Profile(ProfileProjection {
+                pubkey: profile.pubkey,
+                display_name: profile.display_name,
+                picture_url: profile.picture_url,
+                about: profile.about,
+                nip05: profile.nip05,
+                lud16: profile.lud16,
+                banner_url: profile.banner_url,
+            })
         }
         KIND_SHORT_TEXT_NOTE => {
             // Short note
@@ -90,21 +103,29 @@ pub fn resolve_embed_projection(event: &KernelEvent, _ctx: &RenderContext) -> Em
             })
         }
         KIND_HIGHLIGHT => {
-            // NIP-84 highlight
-            let source_event_id = tag_value("e");
-            let source_event_addr = tag_value("a");
-            let source_url = tag_value("r");
-            let context = tag_value("context");
-
+            // Highlight (kind:9802) semantics belong to the NIP-84 owner. This
+            // crate only adapts the owner projection into the embed wire shape.
+            let Some(highlight) = nmp_nip84::highlight_projection_from_event(event) else {
+                return EmbedKindProjection::Highlight(HighlightProjection {
+                    id,
+                    author_pubkey,
+                    created_at,
+                    highlighted_text: event.content.clone(),
+                    source_event_id: None,
+                    source_event_addr: None,
+                    source_url: None,
+                    context: None,
+                });
+            };
             EmbedKindProjection::Highlight(HighlightProjection {
-                id,
-                author_pubkey,
-                created_at,
-                highlighted_text: event.content.clone(),
-                source_event_id,
-                source_event_addr,
-                source_url,
-                context,
+                id: highlight.id,
+                author_pubkey: highlight.author_pubkey,
+                created_at: highlight.created_at,
+                highlighted_text: highlight.highlighted_text,
+                source_event_id: highlight.source_event_id,
+                source_event_addr: highlight.source_event_addr,
+                source_url: highlight.source_url,
+                context: highlight.context,
             })
         }
         KIND_LONG_FORM_ARTICLE => {
@@ -141,56 +162,6 @@ pub fn resolve_embed_projection(event: &KernelEvent, _ctx: &RenderContext) -> Em
                 alt_text,
             })
         }
-    }
-}
-
-/// Parse a kind:0 profile metadata JSON `content` into a [`ProfileProjection`].
-///
-/// NIP-01/24 display-name precedence: `display_name` wins over the camelCase
-/// `displayName` alias wins over `name` (mirrors `nmp_core::kernel::nostr::
-/// parse_profile`; the old in-Swift resolver had this INVERTED — see #1299).
-/// Empty / whitespace-only values are normalised to `None` so the shell never
-/// renders a blank name. `picture` / `banner` must be http(s) URLs. A malformed
-/// or empty content yields a projection with only the `pubkey` populated (D6 —
-/// never a panic).
-fn parse_profile_metadata(content: &str, pubkey: String) -> ProfileProjection {
-    #[derive(Default, serde::Deserialize)]
-    struct ProfileContent {
-        name: Option<String>,
-        display_name: Option<String>,
-        #[serde(rename = "displayName")]
-        display_name_camel: Option<String>,
-        picture: Option<String>,
-        nip05: Option<String>,
-        about: Option<String>,
-        lud16: Option<String>,
-        banner: Option<String>,
-    }
-
-    let parsed = serde_json::from_str::<ProfileContent>(content).unwrap_or_default();
-    let non_empty = |value: Option<String>| -> Option<String> {
-        value
-            .map(|v| v.trim().to_string())
-            .filter(|v| !v.is_empty())
-    };
-    let http_url = |value: Option<String>| -> Option<String> {
-        value.filter(|v| v.starts_with("http://") || v.starts_with("https://"))
-    };
-
-    ProfileProjection {
-        pubkey,
-        // NIP-01/24 precedence: display_name → displayName → name (#1299).
-        display_name: non_empty(
-            parsed
-                .display_name
-                .or(parsed.display_name_camel)
-                .or(parsed.name),
-        ),
-        picture_url: http_url(parsed.picture),
-        about: non_empty(parsed.about),
-        nip05: non_empty(parsed.nip05),
-        lud16: non_empty(parsed.lud16),
-        banner_url: http_url(parsed.banner),
     }
 }
 

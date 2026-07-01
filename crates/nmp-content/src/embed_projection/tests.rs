@@ -141,6 +141,67 @@ fn resolves_profile_with_display_name_precedence() {
 }
 
 #[test]
+fn profile_embed_matches_nip01_owner_projection() {
+    let ev = make_event(
+        &"ee".repeat(32),
+        &"ee".repeat(32),
+        0,
+        r#"{"name":"name","displayName":"Camel","display_name":" Owner ","picture":"https://x.com/a.jpg","about":" hi ","nip05":"ee@example.com","lud16":"ee@ln.example"}"#,
+        vec![],
+    );
+    let owner = nmp_nip01::profile_metadata_projection_from_event(&ev).expect("owner projection");
+    let ctx = RenderContext::new();
+
+    match resolve_embed_projection(&ev, &ctx) {
+        EmbedKindProjection::Profile(p) => {
+            assert_eq!(p.pubkey, owner.pubkey);
+            assert_eq!(p.display_name, owner.display_name);
+            assert_eq!(p.picture_url, owner.picture_url);
+            assert_eq!(p.about, owner.about);
+            assert_eq!(p.nip05, owner.nip05);
+            assert_eq!(p.lud16, owner.lud16);
+        }
+        other => panic!("expected Profile, got {other:?}"),
+    }
+}
+
+#[test]
+fn highlight_embed_matches_nip84_owner_projection() {
+    let tags = vec![
+        vec!["e".to_string(), "11".repeat(32)],
+        vec![
+            "a".to_string(),
+            format!("30023:{}:article", "22".repeat(32)),
+        ],
+        vec!["r".to_string(), "https://example.com/source".to_string()],
+        vec!["context".to_string(), "surrounding text".to_string()],
+    ];
+    let ev = make_event(
+        &"33".repeat(32),
+        &"44".repeat(32),
+        9802,
+        "highlighted words",
+        tags,
+    );
+    let owner = nmp_nip84::highlight_projection_from_event(&ev).expect("owner projection");
+    let ctx = RenderContext::new();
+
+    match resolve_embed_projection(&ev, &ctx) {
+        EmbedKindProjection::Highlight(p) => {
+            assert_eq!(p.id, owner.id);
+            assert_eq!(p.author_pubkey, owner.author_pubkey);
+            assert_eq!(p.created_at, owner.created_at);
+            assert_eq!(p.highlighted_text, owner.highlighted_text);
+            assert_eq!(p.source_event_id, owner.source_event_id);
+            assert_eq!(p.source_event_addr, owner.source_event_addr);
+            assert_eq!(p.source_url, owner.source_url);
+            assert_eq!(p.context, owner.context);
+        }
+        other => panic!("expected Highlight, got {other:?}"),
+    }
+}
+
+#[test]
 fn resolves_profile_camel_alias_beats_name() {
     let ev = make_event(
         &"bb".repeat(32),

@@ -1,8 +1,21 @@
 use super::*;
+use nmp_core::substrate::KernelEvent;
 use std::cell::RefCell;
 
 const EVENT_ID: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const AUTHOR: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+fn kernel_event(kind: u32, content: &str, tags: Vec<Vec<String>>) -> KernelEvent {
+    KernelEvent {
+        id: "11".repeat(32),
+        author: "22".repeat(32),
+        kind,
+        created_at: 1710000000,
+        tags,
+        content: content.to_string(),
+        relay_provenance: Vec::new(),
+    }
+}
 
 fn run_one_protocol(cmd: ActorCommand) -> ActorCommand {
     let ActorCommand::Protocol(cmd) = cmd else {
@@ -78,6 +91,45 @@ fn highlight_with_all_fields_emits_expected_tags() {
         }
         other => panic!("expected PublishUnsignedEvent, got {other:?}"),
     }
+}
+
+#[test]
+fn highlight_projection_extracts_nip84_fields() {
+    let event = kernel_event(
+        KIND_HIGHLIGHT,
+        "selected text",
+        vec![
+            vec!["e".to_string(), EVENT_ID.to_string()],
+            vec!["a".to_string(), "30023:abc:article".to_string()],
+            vec!["r".to_string(), "https://example.com/source".to_string()],
+            vec!["context".to_string(), "surrounding words".to_string()],
+        ],
+    );
+
+    let projection = highlight_projection_from_event(&event).expect("projection");
+
+    assert_eq!(projection.id, "11".repeat(32));
+    assert_eq!(projection.author_pubkey, "22".repeat(32));
+    assert_eq!(projection.created_at, 1710000000);
+    assert_eq!(projection.highlighted_text, "selected text");
+    assert_eq!(projection.source_event_id.as_deref(), Some(EVENT_ID));
+    assert_eq!(
+        projection.source_event_addr.as_deref(),
+        Some("30023:abc:article")
+    );
+    assert_eq!(
+        projection.source_url.as_deref(),
+        Some("https://example.com/source")
+    );
+    assert_eq!(projection.context.as_deref(), Some("surrounding words"));
+}
+
+#[test]
+fn highlight_projection_ignores_other_kinds() {
+    assert_eq!(
+        highlight_projection_from_event(&kernel_event(1, "note", Vec::new())),
+        None
+    );
 }
 
 #[test]

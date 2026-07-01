@@ -74,7 +74,7 @@ impl IngestParser for Kind0Parser {
 
 /// Decode a kind:0 `content` JSON object into a [`ProfileView`]. Verbatim port
 /// of the kernel's former `parse_profile`.
-fn parse_profile_view(event_id: &str, created_at: u64, content: &str) -> ProfileView {
+pub(crate) fn parse_profile_view(event_id: &str, created_at: u64, content: &str) -> ProfileView {
     let raw_fields = serde_json::from_str::<Map<String, Value>>(content).unwrap_or_default();
     let name = string_field(&raw_fields, "name");
     let raw_display_name = string_field(&raw_fields, "display_name");

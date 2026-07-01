@@ -2,7 +2,7 @@ use nmp_core::actor::ActorCommand;
 use nmp_core::actor::PublishCommand;
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRegistrar,
-    ActionRejection, ProtocolCommand, ProtocolCommandContext, ProtocolCommandError,
+    ActionRejection, KernelEvent, ProtocolCommand, ProtocolCommandContext, ProtocolCommandError,
     ProtocolDescriptor,
 };
 use nmp_signer_iface::UnsignedEvent;
@@ -42,6 +42,22 @@ pub struct PublishHighlightAction {
     /// corresponding deduplicated `k` tags are derived from these values.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub external_ids: Vec<String>,
+}
+
+/// Owner-provided render adapter for an embedded NIP-84 kind:9802 highlight.
+///
+/// Rendering crates may adapt this into their wire envelope, but the NIP-84
+/// content/tag semantics stay in this crate.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct HighlightProjection {
+    pub id: String,
+    pub author_pubkey: String,
+    pub created_at: u64,
+    pub highlighted_text: String,
+    pub source_event_id: Option<String>,
+    pub source_event_addr: Option<String>,
+    pub source_url: Option<String>,
+    pub context: Option<String>,
 }
 
 #[derive(Debug)]
@@ -158,6 +174,29 @@ fn validate_highlight(action: &PublishHighlightAction) -> Result<(), ActionRejec
         ));
     }
     Ok(())
+}
+
+#[must_use]
+pub fn highlight_projection_from_event(event: &KernelEvent) -> Option<HighlightProjection> {
+    if event.kind != KIND_HIGHLIGHT {
+        return None;
+    }
+    Some(HighlightProjection {
+        id: event.id.clone(),
+        author_pubkey: event.author.clone(),
+        created_at: event.created_at,
+        highlighted_text: event.content.clone(),
+        source_event_id: tag_value(&event.tags, "e"),
+        source_event_addr: tag_value(&event.tags, "a"),
+        source_url: tag_value(&event.tags, "r"),
+        context: tag_value(&event.tags, "context"),
+    })
+}
+
+fn tag_value(tags: &[Vec<String>], key: &str) -> Option<String> {
+    tags.iter()
+        .find(|tag| tag.first().is_some_and(|candidate| candidate == key))
+        .and_then(|tag| tag.get(1).cloned())
 }
 
 /// Build the kind:9802 tag set. Returns `None` if a hex-shaped field is
