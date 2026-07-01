@@ -18,8 +18,8 @@
 //!   projection sources without a graph source-effect owner.
 //! * `source_effect_hooks` — graph-proven source changes that drive the same
 //!   acquisition replacement and reset path. `ActiveUserFollows` and ordinary
-//!   `ListMembers` use this lane. NIP-51 simple-group feeds use the same lane,
-//!   expanding one source into per-host relay-pinned NIP-29 group interests.
+//!   `ListMembers` use this lane. Hosted-group feeds use the same lane,
+//!   expanding one source into per-host relay-pinned group interests.
 //!
 //! Deferred / fail-closed (typed `ScopeNotSupportedYet`, no registration):
 //! * `RelaySet` — no framework relay-set-id resolver exists; relay-pinned
@@ -59,7 +59,7 @@ pub(super) fn resolve_scope(
         S::ActiveUserFollows => resolve_active_user_follows(app, kinds),
         S::ContactList { owner } => resolve_contact_list(app, owner, kinds),
         S::ListMembers { list } => super::nip51_sources::resolve_list_members(app, &list.0, kinds),
-        S::ActiveUserNip51SimpleGroups => {
+        S::ActiveUserHostedGroups => {
             super::nip29_group_sources::resolve_active_simple_groups(app, kinds)
         }
         S::Wot { seed, .. } => resolve_wot(app, &seed.0, kinds),

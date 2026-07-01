@@ -139,8 +139,8 @@ pub trait FeedSessionHost {
 ///   composes faithfully inside set algebra — see `resolve::resolve_tag`).
 /// * `Union`/`Intersection`/`Difference` → set algebra over the compiled
 ///   children.
-/// * `ActiveUserNip51SimpleGroups` → the active account's kind:10009
-///   NIP-51 list, reduced into one host-pinned NIP-29 `#h` source per relay.
+/// * `ActiveUserHostedGroups` → the active account's kind:10009 NIP-51 list,
+///   reduced into one host-pinned NIP-29 `#h` source per relay.
 /// * `RelaySet` and `CustomPerspectiveId` stay fail-closed (no resolver / step
 ///   4 respectively).
 pub fn compile_feed_params<H: FeedSessionHost>(

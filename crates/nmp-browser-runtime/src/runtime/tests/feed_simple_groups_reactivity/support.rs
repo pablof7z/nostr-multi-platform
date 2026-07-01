@@ -37,7 +37,7 @@ pub(super) fn open_simple_group_feed(
     let params = nmp_feed::FeedParams {
         primary_kinds: vec![nmp_kinds::KIND_SHORT_TEXT_NOTE],
         render: nmp_feed::FeedRender::OpCentric,
-        acquisition: nmp_feed::FeedScope::ActiveUserNip51SimpleGroups,
+        acquisition: nmp_feed::FeedScope::ActiveUserHostedGroups,
         admission: nmp_feed::FeedAdmission::All,
         ranking: nmp_feed::FeedRanking::ChronologicalDesc,
         window: nmp_feed::FeedWindow {

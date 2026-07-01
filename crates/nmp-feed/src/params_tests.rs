@@ -40,7 +40,7 @@ fn pubkey_set_expr_variants_construct() {
         pointers: Box::new(FeedScope::ActiveUserFollows),
         pointer_kinds: vec![7, 1111],
     };
-    let simple_groups = FeedScope::ActiveUserNip51SimpleGroups;
+    let hosted_groups = FeedScope::ActiveUserHostedGroups;
     let custom = FeedScope::CustomPerspectiveId(CustomPerspectiveId("trending".into()));
 
     let union = FeedScope::Union(Box::new(follows.clone()), Box::new(list.clone()));
@@ -58,7 +58,7 @@ fn pubkey_set_expr_variants_construct() {
         tag,
         referrer,
         pointer_targets,
-        simple_groups,
+        hosted_groups,
         custom,
         union,
         inter,
@@ -81,7 +81,7 @@ fn describe(expr: &PubkeySetExpr) -> &'static str {
         PubkeySetExpr::Tag { .. } => "tag",
         PubkeySetExpr::Referrer { .. } => "referrer",
         PubkeySetExpr::PointerTargets { .. } => "pointer-targets",
-        PubkeySetExpr::ActiveUserNip51SimpleGroups => "active-user-simple-groups",
+        PubkeySetExpr::ActiveUserHostedGroups => "active-user-hosted-groups",
         PubkeySetExpr::Union(..) => "union",
         PubkeySetExpr::Intersection(..) => "intersection",
         PubkeySetExpr::Difference(..) => "difference",
@@ -90,9 +90,9 @@ fn describe(expr: &PubkeySetExpr) -> &'static str {
 }
 
 #[test]
-fn simple_group_source_is_not_a_pubkey_list() {
-    let scope = FeedScope::ActiveUserNip51SimpleGroups;
-    assert_eq!(describe(&scope), "active-user-simple-groups");
+fn hosted_group_source_is_not_a_pubkey_list() {
+    let scope = FeedScope::ActiveUserHostedGroups;
+    assert_eq!(describe(&scope), "active-user-hosted-groups");
 
     let json = serde_json::to_string(&scope).expect("serialize");
     let back: FeedScope = serde_json::from_str(&json).expect("deserialize");

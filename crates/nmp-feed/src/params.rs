@@ -120,13 +120,13 @@ pub enum FeedSourceExpr {
         pointers: Box<PubkeySetExpr>,
         pointer_kinds: Vec<u32>,
     },
-    /// The active account's NIP-51 kind:10009 simple-groups list.
+    /// The active account's hosted group set.
     ///
-    /// This source draws rows from NIP-29 groups, not pubkeys. The compiler
-    /// resolves the active account's public `["group", local_id, relay_url]`
-    /// tags and emits one relay-pinned `#h` interest per host relay. Empty list
-    /// or no active account fails closed.
-    ActiveUserNip51SimpleGroups,
+    /// This source draws rows from relay-hosted groups, not pubkeys. The
+    /// composition compiler resolves the active account's group declarations
+    /// and emits one relay-pinned group-tag interest per host relay. Empty
+    /// declaration or no active account fails closed.
+    ActiveUserHostedGroups,
     /// Set union of two sub-expressions.
     Union(Box<PubkeySetExpr>, Box<PubkeySetExpr>),
     /// Set intersection of two sub-expressions.
