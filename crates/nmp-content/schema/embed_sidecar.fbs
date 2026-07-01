@@ -20,7 +20,7 @@ namespace nmp.embed;
 //     crosses). Each per-kind table mirrors its `*Projection` struct.
 //
 // `Option<String>` resolver fields use the `has_*` presence convention from
-// `longform.fbs` / `wallet_status.fbs` (a `has_* : bool` flag + a value string
+// `nmp-nip23`'s `longform.fbs` / `wallet_status.fbs` (a `has_* : bool` flag + a value string
 // that is empty when absent) so `Some("")` round-trips distinctly from `None`.
 //
 // Display separation (#2514): every non-`Profile` per-kind table carries ONLY
@@ -32,7 +32,7 @@ namespace nmp.embed;
 // The per-kind `content_tree` body is the existing `ContentTreeWire` typed
 // buffer (`NFCT` root, `crates/nmp-content/schema/content_tree.fbs`) carried
 // verbatim as opaque bytes via the standalone `encode_content_tree` /
-// `decode_content_tree` codec — exactly as `longform.fbs` carries it. We do NOT
+// `decode_content_tree` codec — exactly as `nmp-nip23`'s `longform.fbs` carries it. We do NOT
 // `include "content_tree.fbs"` here: the codec is reused as a unit and the
 // transport treats the nested buffer as opaque bytes.
 //

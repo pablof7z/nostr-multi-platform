@@ -6,10 +6,11 @@ use super::{
     decode_longform_articles, encode_longform_articles, LongformArticles, FILE_IDENTIFIER,
     SCHEMA_ID, SCHEMA_VERSION,
 };
-use crate::embed_projection::ArticleProjection;
-use crate::longform::ArticleFeedItem;
-use crate::wire::ContentTreeWire;
-use crate::{tokenize_with_kind, RenderMode};
+use nmp_content::embed_projection::ArticleProjection;
+use nmp_content::wire::ContentTreeWire;
+use nmp_content::{tokenize_with_kind, RenderMode};
+
+use crate::ArticleFeedItem;
 
 fn body_tree(markdown: &str) -> ContentTreeWire {
     tokenize_with_kind(markdown, &[], RenderMode::Auto, 30_023).to_wire()

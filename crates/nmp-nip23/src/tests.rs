@@ -9,6 +9,7 @@
 
 use super::*;
 use crate::wire::longform_fb::{decode_longform_articles, LongformArticles};
+use nmp_core::substrate::KernelEvent;
 
 const AUTHOR_A: &str = "aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11a";
 const AUTHOR_B: &str = "bb22bb22bb22bb22bb22bb22bb22bb22bb22bb22bb22bb22bb22bb22bb22bb22b";

@@ -21,12 +21,12 @@
 
 use std::sync::Arc;
 
-use nmp_content::{longform_feed_predicate, LongformFeed, KIND_LONG_FORM_ARTICLE};
 use nmp_core::substrate::KernelEvent;
 use nmp_core::ObservedProjectionSink;
 use nmp_feed::FeedRequest;
 use nmp_nip09::AddressCoordinate;
 use nmp_nip18::{KIND_DELETE, KIND_GENERIC_REPOST};
+use nmp_nip23::{longform_feed_predicate, LongformFeed, KIND_LONG_FORM_ARTICLE};
 
 const AUTHOR_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const REPOSTER: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
@@ -134,7 +134,7 @@ fn open_feed() -> Arc<LongformFeed> {
 /// observer acts on. Without it the delete handling would be dead in production.
 #[test]
 fn h06_addressable_feed_acquires_kind5_deletes() {
-    let kinds = nmp_content::longform_acquisition_kinds();
+    let kinds = nmp_nip23::longform_acquisition_kinds();
     assert!(
         kinds.contains(&KIND_DELETE),
         "a [30023] feed must acquire kind:5 so deletes reach the observer; got {kinds:?}"

@@ -1,0 +1,24 @@
+[package]
+name = "nmp-nip23"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "NIP-23 long-form article projections and feed semantics for NMP."
+
+[lib]
+name = "nmp_nip23"
+
+[dependencies]
+nmp-ownership = { workspace = true }
+flatbuffers = { workspace = true }
+nmp-content = { path = "../nmp-content" }
+nmp-core = { path = "../nmp-core", default-features = false }
+nmp-feed = { path = "../nmp-feed" }
+nmp-kinds = { path = "../nmp-kinds" }
+nmp-nip09 = { path = "../nmp-nip09" }
+nmp-nip18 = { path = "../nmp-nip18" }
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+serde_json = { workspace = true }

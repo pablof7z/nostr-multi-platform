@@ -1,7 +1,7 @@
 namespace nmp.nip23;
 
 // Typed FlatBuffers wire for the NIP-23 long-form (kind:30023) snapshot
-// projection (`nmp_content::longform::LongformProjection`), emitted under the
+// projection (`nmp_nip23::LongformProjection`), emitted under the
 // projection key `nmp.nip23.articles`.
 //
 // This is the TYPED sidecar payload carried in every `SnapshotFrame`'s
@@ -37,8 +37,8 @@ namespace nmp.nip23;
 // Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
 // pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh. The schema
 // has no `include`, so generate plainly:
-//   flatc --rust -o crates/nmp-content/src/wire/generated \
-//         crates/nmp-content/schema/longform.fbs
+//   flatc --rust -o crates/nmp-nip23/src/wire/generated \
+//         crates/nmp-nip23/schema/longform.fbs
 
 // Trimmed, screen-shaped feed-list row (D5: no `content_tree`). Display fields
 // are non-optional placeholders (D1): an absent tag is an empty string.

@@ -29,7 +29,7 @@ const STARTER_INSTALLER_SEQUENCE: [&str; 19] = [
     "nmp_nip17::register_actions",
     "nmp_nip17::register_runtime",
     "nmp_nip22::register_runtime",
-    "nmp_content::register_longform_projection",
+    "nmp_nip23::register_longform_projection",
 ];
 
 #[test]
@@ -74,6 +74,7 @@ fn init_scaffold_is_a_compiling_composition_shell() {
             && cargo_toml.contains("nmp-nip50")
             && cargo_toml.contains("nmp-nip51")
             && cargo_toml.contains("nmp-nip17")
+            && cargo_toml.contains("nmp-nip23")
             && cargo_toml.contains("nmp-content"),
         "scaffolded Cargo.toml must depend on explicit owner crates, not nmp-defaults:\n{cargo_toml}"
     );

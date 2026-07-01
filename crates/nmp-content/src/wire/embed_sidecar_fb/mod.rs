@@ -14,7 +14,7 @@
 //! [`ContentTreeWire`](crate::wire::ContentTreeWire) typed buffer (`NFCT` root)
 //! via the existing [`encode_content_tree`](crate::wire::encode_content_tree)
 //! codec, reused as an opaque-bytes unit (no schema `include`), exactly as
-//! `longform_fb` carries the article body.
+//! `nmp-nip23` carries the article body in the long-form sidecar.
 //!
 //! Honours D6 (no panics): [`decode_ref_event_envelopes`] returns `Err(String)`
 //! on any malformed input; there are no `unwrap`/`expect`/panicking operations on
@@ -22,7 +22,7 @@
 //!
 //! ## Module layout
 //!
-//! Mirrors the `longform_fb` precedent (a sibling-module directory): this `mod.rs`
+//! Mirrors the typed-sidecar precedent (a sibling-module directory): this `mod.rs`
 //! root holds the generated-binding declaration, the wire constants, and the two
 //! public entry points; the per-variant encode / decode halves live in
 //! [`encode`] / [`decode`] submodules so no hand-authored file exceeds the

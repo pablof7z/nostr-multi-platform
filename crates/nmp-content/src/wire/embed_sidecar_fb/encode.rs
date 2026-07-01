@@ -246,7 +246,7 @@ fn encode_tag_row<'a>(
 }
 
 /// Encode an `Option<&str>` as a `(has_*, value)` pair: `Some` → `(true, v)`,
-/// `None` → `(false, "")`. Matches the `longform_fb` convention.
+/// `None` → `(false, "")`. Matches the typed sidecar convention.
 fn opt_string<'a>(
     fbb: &mut FlatBufferBuilder<'a>,
     value: Option<&str>,

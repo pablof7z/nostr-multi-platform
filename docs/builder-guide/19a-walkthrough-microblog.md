@@ -223,7 +223,7 @@ pub fn register(app: &mut impl AppHost) -> FeedStore {
     nmp_nip17::register_actions(app);
     nmp_nip17::register_runtime(app);
     let _comment_runtime = nmp_nip22::register_runtime(app);
-    nmp_content::register_longform_projection(app);
+    nmp_nip23::register_longform_projection(app);
 
     // 2. Write path.
     app.register_action(NoteActionModule);

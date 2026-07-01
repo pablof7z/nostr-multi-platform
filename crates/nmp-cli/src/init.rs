@@ -124,6 +124,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
     let nmp_replies_dep = nmp_crate_dependency(&nmp_dependency, "nmp-replies");
     let nmp_nip25_dep = nmp_crate_dependency(&nmp_dependency, "nmp-nip25");
     let nmp_nip18_dep = nmp_crate_dependency(&nmp_dependency, "nmp-nip18");
+    let nmp_nip23_dep = nmp_crate_dependency(&nmp_dependency, "nmp-nip23");
     let nmp_nip84_dep = nmp_crate_dependency(&nmp_dependency, "nmp-nip84");
     let nmp_nip29_dep = nmp_crate_dependency(&nmp_dependency, "nmp-nip29");
     let nmp_wot_dep = nmp_crate_dependency(&nmp_dependency, "nmp-wot");
@@ -146,6 +147,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
             .replace("{{nmp_replies_dep}}", &nmp_replies_dep)
             .replace("{{nmp_nip25_dep}}", &nmp_nip25_dep)
             .replace("{{nmp_nip18_dep}}", &nmp_nip18_dep)
+            .replace("{{nmp_nip23_dep}}", &nmp_nip23_dep)
             .replace("{{nmp_nip84_dep}}", &nmp_nip84_dep)
             .replace("{{nmp_nip29_dep}}", &nmp_nip29_dep)
             .replace("{{nmp_wot_dep}}", &nmp_wot_dep)

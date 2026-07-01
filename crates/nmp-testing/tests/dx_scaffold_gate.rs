@@ -342,7 +342,7 @@ fn g3_shell_uses_nmp_app_builder() {
         "nmp_nip02::register_follow_actions",
         "nmp_nip51::register_mute_runtime",
         "nmp_nip17::register_runtime",
-        "nmp_content::register_longform_projection",
+        "nmp_nip23::register_longform_projection",
     ] {
         let index = lib_rs[cursor..]
             .find(installer)

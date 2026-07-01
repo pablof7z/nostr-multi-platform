@@ -87,8 +87,8 @@ concept's owner for it ([#2508](https://github.com/pablof7z/nostr-multi-platform
 
 Use for NIP-23 articles, topic feeds, or a direct `naddr` reader.
 
-- Reusable NMP: `nmp-content` parses kind `30023` as markdown, long-form
-  projection handles parameterized replaceable supersession, and
+- Reusable NMP: `nmp-nip23` owns the long-form projection and parameterized
+  replaceable supersession, `nmp-content` parses kind `30023` as markdown, and
   `refs.event.envelopes` carries article embed render data.
 - App Rust core: owns reader queues, bookmarks, topic curation, and any
   app-specific article projection.

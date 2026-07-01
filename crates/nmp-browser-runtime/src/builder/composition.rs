@@ -29,5 +29,5 @@ pub(crate) fn install_browser_production_composition(
     nmp_nip17::register_actions(app);
     nmp_nip17::register_runtime(app);
 
-    nmp_content::register_longform_projection(app);
+    nmp_nip23::register_longform_projection(app);
 }

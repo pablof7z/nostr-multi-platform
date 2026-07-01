@@ -40,7 +40,6 @@ pub mod context;
 pub mod embed_projection;
 pub mod embed_registry;
 mod grouper;
-pub mod longform;
 pub mod markdown;
 pub mod mode;
 pub mod pointer_source;
@@ -58,11 +57,6 @@ pub use embed_projection::{
 pub use embed_registry::{
     ClaimHandle, EmbedClaimDelta, EmbedClaimRegistry, EmbedClaimSpec, EmbedClaimState,
     EmbedRegistrySnapshot, EmbedTarget, EventRefResolver, NoopEventRefResolver, ResolvedEvent,
-};
-pub use longform::{
-    longform_acquisition_kinds, longform_feed_predicate, register_longform_projection,
-    ArticleFeedItem, LongformFeed, LongformFeedEntry, LongformFeedPredicate, LongformProjection,
-    LongformRepostAttribution, KIND_LONG_FORM_ARTICLE, LONGFORM_PROJECTION_KEY,
 };
 pub use markdown::{MarkdownInline, MarkdownNode};
 pub use mode::{sniff_mode_from_kind, RenderMode};

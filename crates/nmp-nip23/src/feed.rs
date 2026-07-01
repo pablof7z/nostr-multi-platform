@@ -17,9 +17,10 @@ use nmp_feed::{
 };
 use serde::{Deserialize, Serialize};
 
-use super::{article_address, ArticleFeedItem, KIND_LONG_FORM_ARTICLE};
-use crate::context::RenderContext;
-use crate::embed_projection::{resolve_embed_projection, EmbedKindProjection};
+use nmp_content::context::RenderContext;
+use nmp_content::embed_projection::{resolve_embed_projection, EmbedKindProjection};
+
+use crate::{article_address, ArticleFeedItem, KIND_LONG_FORM_ARTICLE};
 
 /// Admission predicate supplied by the app/protocol composition layer.
 pub type LongformFeedPredicate = Arc<dyn Fn(&KernelEvent) -> bool + Send + Sync>;
@@ -220,8 +221,10 @@ fn e_tag_delete_matches(
 /// Compile kind:30023 primary feed acquisition kinds.
 #[must_use]
 pub fn longform_acquisition_kinds() -> BTreeSet<u32> {
-    nmp_nip18::try_acquisition_kinds_for_primary([KIND_LONG_FORM_ARTICLE])
-        .expect("kind:30023 is a primary feed kind")
+    match nmp_nip18::try_acquisition_kinds_for_primary([KIND_LONG_FORM_ARTICLE]) {
+        Ok(kinds) => kinds,
+        Err(_) => [KIND_LONG_FORM_ARTICLE].into_iter().collect(),
+    }
 }
 
 /// Build a source-event predicate for a long-form feed.
