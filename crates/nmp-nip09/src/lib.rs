@@ -6,8 +6,12 @@
 //! - [`build_deletion_draft`] / [`build_deletion_event`] — the canonical
 //!   construction seam. All crates that need to publish a kind:5 event call
 //!   this rather than hand-assembling tags.
-//! - [`deletion_targets`] — the generic read seam. Projections that ingest
-//!   kind:5 events parse their `e`/`k` tags through this function.
+//! - [`DeleteRecord`] / [`DeleteRecord::try_from_kernel_event`] — the generic
+//!   read seam. Projections that ingest kind:5 events decode their `e`/`a`/`k`
+//!   tags through this type rather than hand-parsing tags (#2589).
+//! - [`AddressCoordinate`] — the canonical `kind:pubkey:d` address-coordinate
+//!   identity for the `a`-tag grammar. Shared by every crate that reads or
+//!   writes an addressable-event coordinate, not only deletion (#2589).
 //! - [`Nip09Descriptor`] / [`DeleteModule`] — a generic "delete my event"
 //!   action that apps can dispatch without writing any kind:5 wire code.
 //! - [`ownership`] — the compiled ownership descriptor (ADR-0074).
@@ -17,17 +21,23 @@
 //! - Reaction semantics or viewer-reaction identity (`nmp-nip25`).
 //! - Group envelopes, host relay pins, or `h`/`previous` tags (`nmp-nip29`).
 //! - Publish signing, routing mechanics, or relay selection (`nmp-core`).
+//! - Repost-target derivation or same-author-retracts-wrapper comparison
+//!   logic — that stays caller-side (`nmp-nip18`, `nmp-content`,
+//!   `nmp-note-feed`), which compares `DeleteRecord::author`/`created_at`
+//!   against their own stored rows.
 //! - App-private deletion policy beyond the generic NIP-09 construction rule.
 
 mod action;
 mod builder;
+mod coordinate;
 mod read;
 
 pub use action::{DeleteAction, DeleteModule, Nip09Descriptor};
 pub use builder::{
     build_deletion_draft, build_deletion_event, DeletionRequest, OwnedDeletionDraft,
 };
-pub use read::{deletion_targets, DeletionTargets};
+pub use coordinate::{is_addressable_kind, AddressCoordinate};
+pub use read::DeleteRecord;
 
 /// NIP-09 deletion event kind.
 pub const KIND_DELETION: u32 = 5;

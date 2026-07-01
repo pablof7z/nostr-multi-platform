@@ -150,7 +150,7 @@ That document is the narrative companion to this ADR spine.
 | 0071 | Current | Redesign spine: write intents and route provenance. |
 | 0072 | Current | Redesign spine: runtime/capability/shell boundary. |
 | 0073 | Current | Redesign spine: ADR reset and ratchets. |
-| 0074 | Current | `nmp-nip09` exclusive owner of NIP-09 kind:5 deletion artifacts (#2511). |
+| 0074 | Current | `nmp-nip09` exclusive owner of NIP-09 kind:5 deletion artifacts (#2511), widened to `a`-tag grammar and `AddressCoordinate` (#2589). |
 
 ## Follow-Up Rule
 

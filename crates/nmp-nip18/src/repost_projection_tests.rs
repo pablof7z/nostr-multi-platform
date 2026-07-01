@@ -3,9 +3,10 @@ use std::collections::BTreeSet;
 use nmp_core::substrate::KernelEvent;
 use nmp_core::ObservedProjectionSink;
 use nmp_kinds::KIND_LONG_FORM_ARTICLE;
+use nmp_nip09::AddressCoordinate;
 
 use super::*;
-use crate::{AddressCoordinate, KIND_DELETE, KIND_GENERIC_REPOST, KIND_REPOST};
+use crate::{KIND_DELETE, KIND_GENERIC_REPOST, KIND_REPOST};
 
 fn event(
     id: &str,

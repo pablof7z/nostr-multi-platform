@@ -5,7 +5,8 @@
 //! address-coordinate target identity. The unit tests in `nmp-nip18`,
 //! `nmp-content`, and `nmp-nip68` cover the decode/feed seams; this file binds
 //! the contract end-to-end through the app-neutral long-form feed adapter and
-//! the canonical `nmp_nip18` identity primitives:
+//! the canonical `nmp_nip09` identity primitives (ownership widened from
+//! `nmp-nip18` by #2589):
 //!
 //! * **E02** — versions at one coordinate collapse to a single row; a newer
 //!   event at `(pubkey, kind, d)` supersedes the older. Reposts and the direct
@@ -24,7 +25,8 @@ use nmp_content::{longform_feed_predicate, LongformFeed, KIND_LONG_FORM_ARTICLE}
 use nmp_core::substrate::KernelEvent;
 use nmp_core::ObservedProjectionSink;
 use nmp_feed::FeedRequest;
-use nmp_nip18::{AddressCoordinate, KIND_DELETE, KIND_GENERIC_REPOST};
+use nmp_nip09::AddressCoordinate;
+use nmp_nip18::{KIND_DELETE, KIND_GENERIC_REPOST};
 
 const AUTHOR_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const REPOSTER: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";

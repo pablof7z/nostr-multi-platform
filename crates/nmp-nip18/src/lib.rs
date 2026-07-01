@@ -4,11 +4,10 @@
 //! choose relay policy, or depend on any app crate.
 
 use nmp_core::substrate::KernelEvent;
+use nmp_nip09::AddressCoordinate;
 use serde::Deserialize;
 
 mod action;
-mod coordinate;
-mod delete;
 mod primary_kind;
 mod repost_projection;
 mod wire;
@@ -17,8 +16,6 @@ pub use action::{
     build_repost_event, register_actions, Nip18Descriptor, QuoteRepostAction, QuoteRepostModule,
     RepostAction, RepostModule,
 };
-pub use coordinate::{is_addressable_kind, AddressCoordinate};
-pub use delete::{DeleteRecord, KIND_DELETE};
 pub use primary_kind::{
     acquisition_kinds_for_primary, try_acquisition_kinds_for_primary, validate_primary_kinds,
     PrimaryKindError,
@@ -33,6 +30,12 @@ pub const KIND_REPOST: u32 = 6;
 
 /// NIP-18 generic repost event kind for non-kind:1 targets.
 pub const KIND_GENERIC_REPOST: u32 = 16;
+
+/// NIP-09 deletion event kind. Not owned here — `nmp-nip09` is the exclusive
+/// owner of kind:5 construction/parsing (ADR-0074) — but every repost
+/// acquisition shape and delete-fold call site in this crate needs the kind
+/// literal to subscribe to and recognise deletes of repost wrappers.
+pub const KIND_DELETE: u32 = 5;
 
 /// Return whether `kind` is a NIP-18 repost wrapper kind.
 #[must_use]
@@ -63,7 +66,7 @@ pub struct RepostRecord {
     /// generic repost of a replaceable/addressable event) or embeds an
     /// addressable event. This is the canonical row identity for addressable
     /// targets — present means the coordinate is *proven*, never guessed from an
-    /// event id. See [`crate::AddressCoordinate`].
+    /// event id. See [`nmp_nip09::AddressCoordinate`].
     pub target_address: Option<AddressCoordinate>,
     pub embedded_event: Option<EmbeddedEvent>,
 }

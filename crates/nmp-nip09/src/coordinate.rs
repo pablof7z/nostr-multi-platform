@@ -3,18 +3,21 @@
 //! A parameterized-replaceable event (NIP-01 kinds 30000–39999) is identified
 //! not by its event id but by its **address coordinate** `(kind, pubkey, d-tag)`.
 //! The newest event at a coordinate supersedes older ones — versions collapse to
-//! one row, they do not stack. NIP-18 generic reposts (kind:16) of such events,
-//! NIP-23 long-form article feeds, NIP-68 picture feeds, and NIP-09 deletes that
-//! carry an `a` tag all share this one identity.
+//! one row, they do not stack. NIP-09 deletes that carry an `a` tag identify
+//! their target this way, and so does every other crate that reads or writes an
+//! `a` tag: NIP-18 generic reposts (kind:16) of an addressable event, NIP-23
+//! long-form article feeds, and NIP-68 picture feeds.
 //!
 //! This module is the **single canonical place** that computes that identity
-//! for the *feed/render* layer (issue #1740 step 5). Every feed-side consumer —
-//! `nmp-content`'s long-form adapter, `nmp-nip68`, and `nmp-note-feed` delete
-//! handling — formats and parses the coordinate here rather than each
-//! re-deriving `format!("{kind}:{pubkey}:{d}")`. Keeping it in one function
-//! means the wire string for the `a` tag and the feed row id can never silently
-//! diverge. (The `nmp-store` kind:5 tombstone path independently parses `a`
-//! tags at the storage layer; the two agree on the `kind:pubkey:d` form.)
+//! (issue #1740 step 5, widened by #2589). `nmp-nip09` is the natural owner: it
+//! already owns the kind:5 `a`-tag deletion grammar (ADR-0074), and that grammar
+//! IS this coordinate. Every other consumer — `nmp-nip18`'s repost-target
+//! identity, `nmp-content`'s long-form adapter, and `nmp-nip68` — depends on
+//! this crate for the type rather than each re-deriving
+//! `format!("{kind}:{pubkey}:{d}")`. Keeping it in one place means the wire
+//! string for the `a` tag and the feed row id can never silently diverge. (The
+//! `nmp-store` kind:5 tombstone path independently parses `a` tags at the
+//! storage layer; the two agree on the `kind:pubkey:d` form.)
 
 use nmp_core::substrate::KernelEvent;
 

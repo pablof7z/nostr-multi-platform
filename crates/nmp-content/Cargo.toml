@@ -15,6 +15,10 @@ flatbuffers = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false }
 nmp-feed = { path = "../nmp-feed" }
 nmp-kinds = { path = "../nmp-kinds" }
+# Canonical DeleteRecord (kind:5 decode) and AddressCoordinate (a-tag identity)
+# for NIP-23 article delete-folding — nmp-nip18 is not the generic deletion
+# owner (ADR-0074, widened by #2589).
+nmp-nip09 = { path = "../nmp-nip09" }
 nmp-nip18 = { path = "../nmp-nip18" }
 # NIP-19 codec + NIP-21 `nostr:` URI vocabulary (Layer 0). The tokenizer,
 # segment model, embed registry, and wire projection consume
