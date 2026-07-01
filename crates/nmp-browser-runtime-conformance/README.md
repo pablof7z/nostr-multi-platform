@@ -88,12 +88,21 @@ npm test
 
 `.github/workflows/browser-runtime-conformance.yml` runs this in headless
 Chromium. Unlike `sqlite-wasm-conformance.yml` (a genuinely *blocking* gate
-because `nmp-sqlite-wasm` has no C dependency), this gate is **non-blocking by
-construction** — it runs on a nightly schedule + manual dispatch, NOT on every
-PR. The honest reason is the same constraint documented in
-`chirp-web-acceptance.yml`'s `full-e2e-wasm` job and `browser-runtime.yml`'s
-`wasm32-smoke` job: building the full runtime to wasm32 needs a wasm C toolchain
-(`secp256k1-sys`), which `ubuntu-latest` lacks by default. Installing it + a debug
-wasm build adds minutes to every run, so the coverage runs nightly + on demand
-rather than blocking every PR. The coverage is **not skipped** — it runs nightly
-and can be triggered on any branch via `workflow_dispatch`.
+because `nmp-sqlite-wasm` has no C dependency), this gate is **release-gating
+rather than ordinary-PR-gating**.
+
+The honest reason is the same constraint documented in `browser-runtime.yml`'s
+true wasm32 job: building the full runtime to wasm32 needs a wasm C toolchain
+(`secp256k1-sys`), Playwright, headless Chromium, and a debug wasm bundle.
+Installing and running that stack adds minutes to every run, so ordinary PRs
+continue to rely on the faster browser-runtime compile/test gates. The full OPFS
+durability harness runs where it can block shipping:
+
+- every `nmp-v*` release tag through `release-readiness`, which calls this
+  workflow against the exact tagged SHA;
+- direct `browser-runtime-conformance` runs for `release/**` branch pushes and
+  PRs that touch browser runtime, OPFS/store, core reducer/hydration,
+  feed/reactivity compiler, or the harness itself.
+
+The coverage is **not skipped**: it also runs nightly and can be triggered on
+any branch via `workflow_dispatch`.
