@@ -19,7 +19,7 @@ must not grow NIP-29 command variants, group nouns, or router branches.
 `nmp-nip29` now registers these live action surfaces (the full set in
 `crates/nmp-nip29/src/register.rs::register_actions`):
 
-- `action`: `PublishGroupEventAction`, `CreatePublicGroupAction` (9007 then
+- `action`: `PublishGroupEventAction`, `CreateGroupAction` (9007 then
   9002), `DiscoverGroupsAction`, `JoinGroupAction` (9021 with optional `code`),
   and — added by this ADR — `PutUserAction` (9000) and `CreateInviteAction`
   (9009).

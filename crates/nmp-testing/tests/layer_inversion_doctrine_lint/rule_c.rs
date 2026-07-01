@@ -20,7 +20,7 @@ pub(crate) const RULE_C_NS_ALLOWLIST: &[&str] = &[
     "publish_group_event",
     "put_user",
     "create_invite",
-    "create_public_group",
+    "create_group",
     "discover",
     "edit_metadata",
     "join",

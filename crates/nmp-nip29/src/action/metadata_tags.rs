@@ -2,7 +2,7 @@
 //! `kind:9002` (edit-metadata) event.
 //!
 //! NIP-29 subgroups (nips PR #2319) added a second author of kind:9002 — the
-//! `SetParent` action — alongside the existing `CreatePublicGroupAction`. To
+//! `SetParent` action — alongside the existing `CreateGroupAction`. To
 //! avoid two hand-built 9002 tag paths (AGENTS.md "no fragmentation"), this
 //! module is the single canonical constructor. `create.rs::metadata_plan`
 //! builds a full metadata edit (name/about/picture/visibility/access +

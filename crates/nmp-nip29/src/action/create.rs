@@ -1,5 +1,6 @@
-//! Public group creation action: publish a kind:9007 create-group request
-//! followed by the conventional kind:9002 metadata edit.
+//! Group creation action (public or private, per `GroupVisibility`): publish
+//! a kind:9007 create-group request followed by the conventional kind:9002
+//! metadata edit.
 //!
 //! Per `docs/design/nip29/kinds.md` §2.3, kind:9007 establishes the group
 //! and the relay treats the signer as the founding admin. The immediate
@@ -41,7 +42,7 @@ pub enum GroupAccess {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
-pub struct CreatePublicGroupInput {
+pub struct CreateGroupInput {
     pub group: GroupId,
     pub name: String,
     #[serde(default)]
@@ -68,7 +69,7 @@ pub struct CreatePublicGroupInput {
     pub parent: Option<String>,
 }
 
-fn create_group_plan(action: &CreatePublicGroupInput) -> PublishPlan {
+fn create_group_plan(action: &CreateGroupInput) -> PublishPlan {
     PublishPlan::pinned(
         &action.group,
         KIND_CREATE_GROUP,
@@ -77,7 +78,7 @@ fn create_group_plan(action: &CreatePublicGroupInput) -> PublishPlan {
     )
 }
 
-fn metadata_plan(action: &CreatePublicGroupInput) -> PublishPlan {
+fn metadata_plan(action: &CreateGroupInput) -> PublishPlan {
     // Single canonical 9002 tag builder (metadata_tags.rs) — shared with the
     // `SetParent` action so there is one code path for kind:9002 authoring
     // (AGENTS.md "no fragmentation"). Create passes every field; SetParent
@@ -109,15 +110,15 @@ fn validate_group_id(group: &GroupId) -> Result<(), String> {
     Ok(())
 }
 
-pub struct CreatePublicGroupAction;
-impl ActionModule for CreatePublicGroupAction {
-    const NAMESPACE: &'static str = "nmp.nip29.create_public_group";
-    type Action = CreatePublicGroupInput;
+pub struct CreateGroupAction;
+impl ActionModule for CreateGroupAction {
+    const NAMESPACE: &'static str = "nmp.nip29.create_group";
+    type Action = CreateGroupInput;
 
     /// ADR-0064 / S9 (#1747): opt into the typed FlatBuffers payload doorway; the
     /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
     fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
-        Some(<CreatePublicGroupInput as ActionPayload>::decode(bytes))
+        Some(<CreateGroupInput as ActionPayload>::decode(bytes))
     }
 
     fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
@@ -161,8 +162,8 @@ mod tests {
     use nmp_core::actor::PublishCommand;
     use std::cell::RefCell;
 
-    fn input() -> CreatePublicGroupInput {
-        CreatePublicGroupInput {
+    fn input() -> CreateGroupInput {
+        CreateGroupInput {
             group: GroupId::new("wss://groups.example.com", "rust-nostr"),
             name: "Rust Nostr".to_string(),
             about: Some("Protocol work".to_string()),
@@ -170,9 +171,9 @@ mod tests {
         }
     }
 
-    fn run_execute(input: CreatePublicGroupInput) -> Result<Vec<ActorCommand>, String> {
+    fn run_execute(input: CreateGroupInput) -> Result<Vec<ActorCommand>, String> {
         let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
-        CreatePublicGroupAction.execute(
+        CreateGroupAction.execute(
             &nmp_core::substrate::ActionContext::default(),
             input,
             "cid-create",
@@ -195,7 +196,7 @@ mod tests {
     #[test]
     fn well_formed_passes_validator() {
         let mut ctx = ActionContext::default();
-        assert!(CreatePublicGroupAction.start(&mut ctx, input()).is_ok());
+        assert!(CreateGroupAction.start(&mut ctx, input()).is_ok());
     }
 
     #[test]
@@ -254,12 +255,12 @@ mod tests {
     #[test]
     fn invalid_local_id_is_rejected() {
         let mut ctx = ActionContext::default();
-        let action = CreatePublicGroupInput {
+        let action = CreateGroupInput {
             group: GroupId::new("wss://groups.example.com", "Rust Nostr"),
             ..input()
         };
         assert!(matches!(
-            CreatePublicGroupAction.start(&mut ctx, action),
+            CreateGroupAction.start(&mut ctx, action),
             Err(ActionRejection::Invalid(_))
         ));
     }
@@ -267,12 +268,12 @@ mod tests {
     #[test]
     fn non_websocket_host_is_rejected() {
         let mut ctx = ActionContext::default();
-        let action = CreatePublicGroupInput {
+        let action = CreateGroupInput {
             group: GroupId::new("https://groups.example.com", "room"),
             ..input()
         };
         assert!(matches!(
-            CreatePublicGroupAction.start(&mut ctx, action),
+            CreateGroupAction.start(&mut ctx, action),
             Err(ActionRejection::Invalid(_))
         ));
     }
@@ -280,12 +281,12 @@ mod tests {
     #[test]
     fn empty_name_is_rejected() {
         let mut ctx = ActionContext::default();
-        let action = CreatePublicGroupInput {
+        let action = CreateGroupInput {
             name: "  ".to_string(),
             ..input()
         };
         assert!(matches!(
-            CreatePublicGroupAction.start(&mut ctx, action),
+            CreateGroupAction.start(&mut ctx, action),
             Err(ActionRejection::Invalid(_))
         ));
     }
@@ -294,7 +295,7 @@ mod tests {
 
     #[test]
     fn private_visibility_emits_private_tag_not_public() {
-        let action = CreatePublicGroupInput {
+        let action = CreateGroupInput {
             visibility: GroupVisibility::Private,
             ..input()
         };
@@ -312,7 +313,7 @@ mod tests {
 
     #[test]
     fn closed_access_emits_closed_tag_not_open() {
-        let action = CreatePublicGroupInput {
+        let action = CreateGroupInput {
             access: GroupAccess::Closed,
             ..input()
         };
@@ -330,7 +331,7 @@ mod tests {
 
     #[test]
     fn picture_some_non_empty_emits_picture_tag() {
-        let action = CreatePublicGroupInput {
+        let action = CreateGroupInput {
             picture: Some("https://example.com/img.jpg".to_string()),
             ..input()
         };
@@ -348,7 +349,7 @@ mod tests {
 
     #[test]
     fn picture_none_does_not_emit_picture_tag() {
-        let action = CreatePublicGroupInput {
+        let action = CreateGroupInput {
             picture: None,
             ..input()
         };
@@ -364,7 +365,7 @@ mod tests {
 
     #[test]
     fn picture_some_empty_does_not_emit_picture_tag() {
-        let action = CreatePublicGroupInput {
+        let action = CreateGroupInput {
             picture: Some("   ".to_string()),
             ..input()
         };
@@ -391,7 +392,7 @@ mod tests {
             "\"name\":\"Test Room\"",
             "}"
         );
-        let parsed: CreatePublicGroupInput = serde_json::from_str(json).unwrap();
+        let parsed: CreateGroupInput = serde_json::from_str(json).unwrap();
         assert_eq!(parsed.picture, None);
         assert_eq!(parsed.visibility, GroupVisibility::Public);
         assert_eq!(parsed.access, GroupAccess::Open);
@@ -399,7 +400,7 @@ mod tests {
 
     #[test]
     fn visibility_and_access_roundtrip_lowercase_json() {
-        let action = CreatePublicGroupInput {
+        let action = CreateGroupInput {
             group: GroupId::new("wss://groups.example.com", "room-2"),
             name: "Room".to_string(),
             visibility: GroupVisibility::Private,
@@ -415,7 +416,7 @@ mod tests {
             json.contains("\"closed\""),
             "access must serialise as \"closed\", got {json}"
         );
-        let roundtripped: CreatePublicGroupInput = serde_json::from_str(&json).unwrap();
+        let roundtripped: CreateGroupInput = serde_json::from_str(&json).unwrap();
         assert_eq!(roundtripped.visibility, GroupVisibility::Private);
         assert_eq!(roundtripped.access, GroupAccess::Closed);
     }
@@ -424,7 +425,7 @@ mod tests {
 
     #[test]
     fn parent_some_emits_parent_tag_on_metadata_9002() {
-        let action = CreatePublicGroupInput {
+        let action = CreateGroupInput {
             parent: Some("tech".to_string()),
             ..input()
         };
@@ -439,7 +440,7 @@ mod tests {
 
     #[test]
     fn parent_none_omits_parent_tag() {
-        let action = CreatePublicGroupInput {
+        let action = CreateGroupInput {
             parent: None,
             ..input()
         };
@@ -456,14 +457,14 @@ mod tests {
     #[test]
     fn parent_equal_to_local_id_is_rejected_as_self_reference() {
         let mut ctx = ActionContext::default();
-        let action = CreatePublicGroupInput {
+        let action = CreateGroupInput {
             group: GroupId::new("wss://groups.example.com", "rust-nostr"),
             name: "Rust Nostr".to_string(),
             parent: Some("rust-nostr".to_string()),
             ..Default::default()
         };
         assert!(matches!(
-            CreatePublicGroupAction.start(&mut ctx, action),
+            CreateGroupAction.start(&mut ctx, action),
             Err(ActionRejection::Invalid(_))
         ));
     }
@@ -476,7 +477,7 @@ mod tests {
             "\"name\":\"Test Room\"",
             "}"
         );
-        let parsed: CreatePublicGroupInput = serde_json::from_str(json).unwrap();
+        let parsed: CreateGroupInput = serde_json::from_str(json).unwrap();
         assert_eq!(parsed.parent, None);
     }
 }

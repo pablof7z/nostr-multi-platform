@@ -8,7 +8,7 @@
 //! existence are relay-enforced (the PR is explicit: relays MUST reject).
 //!
 //! The 9002 tag construction reuses [`super::metadata_tags::metadata_edit_tags`]
-//! — the single canonical builder shared with `CreatePublicGroupAction` — so
+//! — the single canonical builder shared with `CreateGroupAction` — so
 //! there is one code path for kind:9002 authoring (AGENTS.md "no
 //! fragmentation"). `SetParent` passes `None` for name/about/picture/
 //! visibility/access so the relay retains the group's prior metadata (NIP-29:

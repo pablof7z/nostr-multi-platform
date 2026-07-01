@@ -309,11 +309,11 @@ nmp_ownership::declare_crate_ownership! {
         },
         {
             claim_type: "namespace",
-            id: "action.nmp.nip29.create_public_group",
+            id: "action.nmp.nip29.create_group",
             exclusive: true,
             scope: {
                 kind: "action",
-                value: "nmp.nip29.create_public_group",
+                value: "nmp.nip29.create_group",
                 context: "",
             },
             owns: [

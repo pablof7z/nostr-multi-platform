@@ -309,9 +309,9 @@ pub(super) const EDIT_METADATA: ActionBuilder = ActionBuilder {
     doc: "Edit an existing NIP-29 group's name/about/picture/visibility/access.",
 };
 
-pub(super) const CREATE_PUBLIC_GROUP: ActionBuilder = ActionBuilder {
-    namespace: "nmp.nip29.create_public_group",
-    method: "createPublicGroup",
+pub(super) const CREATE_GROUP: ActionBuilder = ActionBuilder {
+    namespace: "nmp.nip29.create_group",
+    method: "createGroup",
     fields: &[
         PayloadField {
             name: "group",

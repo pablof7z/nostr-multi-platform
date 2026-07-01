@@ -46,8 +46,8 @@ pub const ID: &str = "nip29_kind_blind";
 /// lifecycle / admin / envelope-routing action that NIP-29 genuinely owns —
 /// never a per-kind authoring verb for a foreign event kind:
 ///
+/// - `create_group` — kind:9007 + kind:9002 group creation (public or private).
 /// - `create_invite` — kind:9009 admin invite.
-/// - `create_public_group` — kind:9007 + kind:9002 group creation.
 /// - `discover` — pushes a metadata interest (no publish).
 /// - `edit_metadata` — kind:9002 admin metadata edit.
 /// - `join` — kind:9021 user-management request.
@@ -57,8 +57,8 @@ pub const ID: &str = "nip29_kind_blind";
 /// - `put_user` — kind:9000 admin moderation.
 /// - `set_parent` — kind:9002 subgroups edit (NIP-29 subgroups).
 pub const ALLOWED_VERBS: &[&str] = &[
+    "create_group",
     "create_invite",
-    "create_public_group",
     "discover",
     "edit_metadata",
     "join",

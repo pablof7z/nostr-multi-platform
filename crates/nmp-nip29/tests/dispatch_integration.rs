@@ -19,7 +19,7 @@ use nmp_core::__ffi_internal::ActionRegistry;
 use nmp_core::substrate::{ActionContext, ActionPayload, ActionRejection};
 
 use nmp_nip29::action::{
-    CreateInviteAction, CreateInviteInput, CreatePublicGroupAction, CreatePublicGroupInput,
+    CreateInviteAction, CreateInviteInput, CreateGroupAction, CreateGroupInput,
     EditMetadataAction, EditMetadataInput, GroupAccess, GroupVisibility, JoinGroupAction,
     JoinGroupInput, LeaveGroupAction, LeaveGroupInput, PublishGroupEventAction,
     PublishGroupEventInput, PutUserAction, PutUserInput,
@@ -33,7 +33,7 @@ fn registry() -> ActionRegistry {
     r.register(LeaveGroupAction).expect("leave registers");
     r.register(PublishGroupEventAction)
         .expect("publish group event registers");
-    r.register(CreatePublicGroupAction)
+    r.register(CreateGroupAction)
         .expect("create public group registers");
     r.register(PutUserAction).expect("put user registers");
     r.register(CreateInviteAction)
@@ -123,8 +123,8 @@ fn publish() -> PublishGroupEventInput {
         tags: vec![vec!["t".into(), "nostr".into()]],
     }
 }
-fn create() -> CreatePublicGroupInput {
-    CreatePublicGroupInput {
+fn create() -> CreateGroupInput {
+    CreateGroupInput {
         group: GroupId::new("wss://groups.example.com", "rust-nostr"),
         name: "Rust Nostr".into(),
         about: Some("about".into()),
@@ -166,7 +166,7 @@ fn start_bytes_rejects_wrong_schema_version_for_every_namespace() {
     assert_bad_version_rejected("nmp.nip29.join", join().encode());
     assert_bad_version_rejected("nmp.nip29.leave", leave().encode());
     assert_bad_version_rejected("nmp.nip29.publish_group_event", publish().encode());
-    assert_bad_version_rejected("nmp.nip29.create_public_group", create().encode());
+    assert_bad_version_rejected("nmp.nip29.create_group", create().encode());
     assert_bad_version_rejected("nmp.nip29.put_user", put_user().encode());
     assert_bad_version_rejected("nmp.nip29.create_invite", create_invite().encode());
     assert_bad_version_rejected("nmp.nip29.edit_metadata", edit_metadata().encode());
@@ -179,7 +179,7 @@ fn start_bytes_accepts_well_formed_typed_payload_for_every_namespace() {
     assert_good_accepted("nmp.nip29.join", join().encode());
     assert_good_accepted("nmp.nip29.leave", leave().encode());
     assert_good_accepted("nmp.nip29.publish_group_event", publish().encode());
-    assert_good_accepted("nmp.nip29.create_public_group", create().encode());
+    assert_good_accepted("nmp.nip29.create_group", create().encode());
     assert_good_accepted("nmp.nip29.put_user", put_user().encode());
     assert_good_accepted("nmp.nip29.create_invite", create_invite().encode());
     assert_good_accepted("nmp.nip29.edit_metadata", edit_metadata().encode());

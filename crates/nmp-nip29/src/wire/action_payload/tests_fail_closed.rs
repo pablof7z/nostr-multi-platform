@@ -3,7 +3,7 @@
 //! Every assertion is the NEGATIVE — a reject, never a silent decode.
 
 use crate::action::{
-    CreateInviteInput, CreatePublicGroupInput, DiscoverGroupsInput, GroupAccess, GroupVisibility,
+    CreateInviteInput, CreateGroupInput, DiscoverGroupsInput, GroupAccess, GroupVisibility,
     JoinGroupInput, LeaveGroupInput, PublishGroupEventInput, PutUserInput, SetParentInput,
 };
 use crate::group_id::GroupId;
@@ -30,7 +30,7 @@ fn malformed_buffers_are_rejected_for_every_payload() {
         Err(ActionPayloadDecodeError::Malformed { .. })
     ));
     assert!(matches!(
-        CreatePublicGroupInput::decode(b"junk"),
+        CreateGroupInput::decode(b"junk"),
         Err(ActionPayloadDecodeError::Malformed { .. })
     ));
     assert!(matches!(
@@ -111,8 +111,8 @@ fn wrong_file_identifier_is_rejected_for_every_payload() {
         }
     );
     assert_wrong_fid_rejected!(
-        CreatePublicGroupInput,
-        CreatePublicGroupInput {
+        CreateGroupInput,
+        CreateGroupInput {
             group: group(),
             name: "G".to_string(),
             about: None,
@@ -230,8 +230,8 @@ fn wrong_schema_version_is_rejected_for_every_payload() {
         }
     );
     assert_bad_version!(
-        CreatePublicGroupInput,
-        CreatePublicGroupInput {
+        CreateGroupInput,
+        CreateGroupInput {
             group: group(),
             name: "G".to_string(),
             about: None,

@@ -9,9 +9,9 @@ use super::{
     ActionContract, ActionDefaultTier, BuilderSupport, PublicReExportPolicy, TypedDispatchPolicy,
 };
 // NIP-29 entries (split out for 500-LOC cap): discover, publish_group_event,
-// join, create_public_group, edit_metadata.
+// join, create_group, edit_metadata.
 use super::nip29::{
-    NIP29_CREATE_PUBLIC_GROUP, NIP29_DISCOVER, NIP29_EDIT_METADATA, NIP29_JOIN,
+    NIP29_CREATE_GROUP, NIP29_DISCOVER, NIP29_EDIT_METADATA, NIP29_JOIN,
     NIP29_PUBLISH_GROUP_EVENT,
 };
 
@@ -470,6 +470,6 @@ pub const ACTION_CONTRACT: &[ActionContract] = &[
     NIP29_DISCOVER,
     NIP29_PUBLISH_GROUP_EVENT,
     NIP29_JOIN,
-    NIP29_CREATE_PUBLIC_GROUP,
+    NIP29_CREATE_GROUP,
     NIP29_EDIT_METADATA,
 ];

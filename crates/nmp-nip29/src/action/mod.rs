@@ -11,7 +11,7 @@
 //!   plus the owner-certified [`wrap_owned_draft`] seam. NIP-29 owns the
 //!   envelope, not the event kind: a reaction is a NIP-25 `kind:7` draft carried
 //!   through the NIP-29 envelope, not a NIP-29 artifact.
-//! - `create` — `CreatePublicGroup` (kind:9007 + kind:9002).
+//! - `create` — `CreateGroup` (kind:9007 + kind:9002).
 //! - `discover` — `DiscoverGroups` (no publish; pushes a metadata interest).
 //! - `join` — `JoinGroup` (kind:9021, user-management request).
 //! - `leave` — `LeaveGroup` (kind:9022, user-management request).
@@ -20,7 +20,7 @@
 //! - `edit_metadata` — `EditMetadata` (kind:9002 edit-metadata): edit an
 //!   existing group's name/about/picture/visibility/access (admin action).
 //!
-//! NIP-29 ships public group creation, generic group-event publishing,
+//! NIP-29 ships group creation (public or private), generic group-event publishing,
 //! discovery, join, and the ADR-0060 admin subset (`9000` / `9009`) in v1. The
 //! other moderation actions remain out of this increment.
 
@@ -38,7 +38,7 @@ mod set_parent;
 pub use admin::{
     CreateInviteAction, CreateInviteInput, PutUserAction, PutUserInput, MAX_CODES_PER_INVITE_EVENT,
 };
-pub use create::{CreatePublicGroupAction, CreatePublicGroupInput, GroupAccess, GroupVisibility};
+pub use create::{CreateGroupAction, CreateGroupInput, GroupAccess, GroupVisibility};
 pub use discover::{DiscoverGroupsAction, DiscoverGroupsInput};
 pub use edit_metadata::{EditMetadataAction, EditMetadataInput};
 pub use join::{JoinGroupAction, JoinGroupInput};
