@@ -47,4 +47,3 @@ crates/nmp-testing/bin/doctrine-lint/rules/d8.rs	523
 crates/nmp-testing/tests/e2e_full_pipeline.rs	848
 crates/nmp-threading/src/grouper.rs	595
 crates/nmp-threading/tests/grouper.rs	657
-web/registry/public/registry.json	1221
