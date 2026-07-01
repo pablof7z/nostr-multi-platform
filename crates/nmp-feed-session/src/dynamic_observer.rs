@@ -12,26 +12,26 @@ use nmp_core::{ObservedProjectionId, ObservedProjectionSink};
 use nmp_feed::TeardownAction;
 use nmp_planner::InterestShape;
 
-type LiveShape = Arc<dyn Fn() -> Option<InterestShape> + Send + Sync>;
+type LiveShapes = Arc<dyn Fn() -> Vec<InterestShape> + Send + Sync>;
 
 #[derive(Clone)]
-pub(super) struct DynamicObservedProjection {
+pub(super) struct DynamicObservedProjectionSet {
     handle: ObservedProjectionCommandHandle,
     observer: Arc<dyn ObservedProjectionSink>,
     consumer_id: String,
     scope: u32,
-    live_shape: LiveShape,
+    live_shapes: LiveShapes,
     replay_limit: usize,
-    current: Arc<Mutex<Option<(InterestShape, ObservedProjectionId)>>>,
+    current: Arc<Mutex<Vec<(InterestShape, ObservedProjectionId)>>>,
 }
 
-impl DynamicObservedProjection {
+impl DynamicObservedProjectionSet {
     pub(super) fn new(
         handle: ObservedProjectionCommandHandle,
         observer: Arc<dyn ObservedProjectionSink>,
         consumer_id: impl Into<String>,
         scope: u32,
-        live_shape: LiveShape,
+        live_shapes: LiveShapes,
         replay_limit: usize,
     ) -> Self {
         Self {
@@ -39,39 +39,34 @@ impl DynamicObservedProjection {
             observer,
             consumer_id: consumer_id.into(),
             scope,
-            live_shape,
+            live_shapes,
             replay_limit,
-            current: Arc::new(Mutex::new(None)),
+            current: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
     pub(super) fn sync(&self) {
-        let desired = (self.live_shape)();
+        let desired = dedupe_shapes((self.live_shapes)());
         let Ok(mut current) = self.current.lock() else {
             return;
         };
-        if current
-            .as_ref()
-            .map(|(shape, _)| Some(shape) == desired.as_ref())
-            .unwrap_or(desired.is_none())
-        {
+        if same_shape_set(&current, &desired) {
             return;
         }
-        if let Some((_, id)) = current.take() {
+        for (_, id) in current.drain(..) {
             self.handle.close(id);
         }
-        let Some(shape) = desired else {
-            return;
-        };
-        let id = self.handle.open(ObservedProjection::from_shape(
-            Arc::clone(&self.observer),
-            self.consumer_id.clone(),
-            self.scope,
-            shape.clone(),
-            self.replay_limit,
-        ));
-        if id.0 != 0 {
-            *current = Some((shape, id));
+        for shape in desired {
+            let id = self.handle.open(ObservedProjection::from_shape(
+                Arc::clone(&self.observer),
+                self.consumer_id.clone(),
+                self.scope,
+                shape.clone(),
+                self.replay_limit,
+            ));
+            if id.0 != 0 {
+                current.push((shape, id));
+            }
         }
     }
 
@@ -81,13 +76,35 @@ impl DynamicObservedProjection {
     }
 
     fn close_current(&self) {
-        let id = self
+        let ids = self
             .current
             .lock()
-            .ok()
-            .and_then(|mut current| current.take().map(|(_, id)| id));
-        if let Some(id) = id {
+            .map(|mut current| current.drain(..).map(|(_, id)| id).collect::<Vec<_>>())
+            .unwrap_or_default();
+        for id in ids {
             self.handle.close(id);
         }
     }
+}
+
+fn dedupe_shapes(shapes: Vec<InterestShape>) -> Vec<InterestShape> {
+    let mut out = Vec::new();
+    for shape in shapes {
+        if !out.contains(&shape) {
+            out.push(shape);
+        }
+    }
+    out
+}
+
+fn same_shape_set(
+    current: &[(InterestShape, ObservedProjectionId)],
+    desired: &[InterestShape],
+) -> bool {
+    current.len() == desired.len()
+        && current
+            .iter()
+            .map(|(shape, _)| shape)
+            .zip(desired)
+            .all(|(left, right)| left == right)
 }

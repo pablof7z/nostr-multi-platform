@@ -14,13 +14,12 @@ use std::sync::{Arc, Mutex};
 use nmp_core::substrate::KernelEvent;
 use nmp_core::PullScope;
 use nmp_planner::InterestShape;
-use nmp_store::{LogOp, PullGap, PullPage, RawEvent, ScanLogResult, StoreLogEntry};
+use nmp_store::{LogOp, PullPage, RawEvent, ScanLogResult, StoreLogEntry};
 
 use super::{
     ClosureInterestShape, FeedAdvance, FeedApply, FeedReplace, FeedReset, PullFeedController,
     PullFn,
 };
-use crate::{FeedController, FeedRegistry};
 
 mod basic_pull;
 mod reset_replace;

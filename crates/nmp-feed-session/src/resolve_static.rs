@@ -17,11 +17,11 @@ use std::sync::Arc;
 
 use crate::FeedOpenError;
 use nmp_feed::{AdmitExpr, RootAdmission};
-use nmp_planner::InterestShape;
+use nmp_planner::{InterestScope, InterestShape};
 
 use super::resolve::not_supported;
 use super::source::{
-    empty_extra, AcquisitionInterest, LiveShape, OpSessionIdentity, ReducedSource,
+    empty_extra, one_live_shape, AcquisitionInterest, LiveShape, OpSessionIdentity, ReducedSource,
 };
 
 // ── Authors { authors } — static author-set timeline ─────────────────────
@@ -62,6 +62,7 @@ pub(super) fn resolve_authors(
     let shape = InterestShape::timeline_for(authors.clone(), kinds.clone());
     let interests = vec![AcquisitionInterest::global(shape.clone())];
     let live_shape: LiveShape = Arc::new(move || Some(shape.clone()));
+    let live_shapes = one_live_shape(Arc::clone(&live_shape));
 
     Ok(ReducedSource {
         op_session_identity: OpSessionIdentity::RequireActive,
@@ -69,6 +70,8 @@ pub(super) fn resolve_authors(
         attribution,
         interests,
         live_shape,
+        live_shapes,
+        observer_scope: InterestScope::Global,
         extra_acquisition: empty_extra(),
         reset_hooks: Vec::new(),
         source_effect_hooks: Vec::new(),
@@ -95,12 +98,15 @@ pub(super) fn resolve_tag(term: &str, kinds: &BTreeSet<u32>) -> ReducedSource {
         let shape = tag_live_shape(term, kinds);
         Arc::new(move || shape.clone())
     };
+    let live_shapes = one_live_shape(Arc::clone(&live_shape));
     ReducedSource {
         op_session_identity: OpSessionIdentity::RequireActive,
         admission,
         attribution,
         interests,
         live_shape,
+        live_shapes,
+        observer_scope: InterestScope::Global,
         // The #t acquisition is fully static (the fixed Global interest above);
         // nothing to re-sync.
         extra_acquisition: empty_extra(),
@@ -184,12 +190,15 @@ pub(super) fn resolve_referrer(
         let k = kinds.clone();
         Arc::new(move || referrer_live_shape(&id, &k))
     };
+    let live_shapes = one_live_shape(Arc::clone(&live_shape));
     Ok(ReducedSource {
         op_session_identity: OpSessionIdentity::RequireActive,
         admission,
         attribution,
         interests,
         live_shape,
+        live_shapes,
+        observer_scope: InterestScope::Global,
         extra_acquisition: empty_extra(),
         reset_hooks: Vec::new(),
         source_effect_hooks: Vec::new(),

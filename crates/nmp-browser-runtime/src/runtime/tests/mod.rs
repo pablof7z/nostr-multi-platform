@@ -32,6 +32,7 @@ mod dm_send;
 mod feed_attribution;
 mod feed_composition;
 mod feed_reactivity;
+mod feed_simple_groups_reactivity;
 mod group_discovery;
 mod group_events;
 mod pump;

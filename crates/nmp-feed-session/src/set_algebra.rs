@@ -20,7 +20,7 @@ use std::collections::BTreeSet;
 use crate::{FeedOpenError, FeedSessionHost};
 use nmp_core::substrate::KernelEvent;
 use nmp_feed::RootAdmission;
-use nmp_planner::InterestShape;
+use nmp_planner::{InterestScope, InterestShape};
 
 use super::resolve::{resolve_scope, SetOp};
 use super::source::{ExtraAcquisition, LiveShape, ReducedSource};
@@ -100,6 +100,19 @@ pub(super) fn resolve_set_op(
         let include_right = !matches!(op, SetOp::Difference);
         std::sync::Arc::new(move || merge_shapes(&ls, &rs, include_right, &kinds))
     };
+    let live_shapes = {
+        let ls = l.live_shapes.clone();
+        let rs = r.live_shapes.clone();
+        let include_right = !matches!(op, SetOp::Difference);
+        std::sync::Arc::new(move || {
+            let mut shapes = ls();
+            if include_right {
+                shapes.extend(rs());
+            }
+            shapes
+        })
+    };
+    let observer_scope = combine_observer_scope(&l.observer_scope, &r.observer_scope);
 
     // ── Extra acquisition — left always; right only when its rows are sources ─
     //
@@ -141,6 +154,8 @@ pub(super) fn resolve_set_op(
         attribution,
         interests,
         live_shape,
+        live_shapes,
+        observer_scope,
         extra_acquisition,
         reset_hooks,
         source_effect_hooks,
@@ -149,6 +164,14 @@ pub(super) fn resolve_set_op(
         resolver_teardown,
         active_follow_set,
     })
+}
+
+fn combine_observer_scope(left: &InterestScope, right: &InterestScope) -> InterestScope {
+    if matches!(left, InterestScope::Global) || matches!(right, InterestScope::Global) {
+        InterestScope::Global
+    } else {
+        InterestScope::ActiveAccount
+    }
 }
 
 /// Merge two live acquisition shapes by unioning their author + kind sets. A

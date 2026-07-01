@@ -3997,6 +3997,7 @@ dependencies = [
  "nmp-nip02",
  "nmp-nip09",
  "nmp-nip18",
+ "nmp-nip29",
  "nmp-nip51",
  "nmp-note-feed",
  "nmp-ownership",

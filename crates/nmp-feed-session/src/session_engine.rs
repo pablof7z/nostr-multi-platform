@@ -33,15 +33,13 @@ use nmp_core::subs::SubOwnerKey;
 use nmp_core::substrate::{KernelEvent, SuppressionLookup};
 use nmp_core::ObservedProjectionSink;
 use nmp_feed::{
-    ClosureInterestShape, FeedAdvance, FeedApply, FeedController, FeedRender, FeedReset,
+    ClosureInterestShapes, FeedAdvance, FeedApply, FeedController, FeedRender, FeedReset,
     FeedSessionBuild, PullFeedController, RootAdmission,
 };
 use nmp_note_feed::OpFeedEngine;
 use nmp_planner::InterestScope;
 
-use super::source::{
-    acquisition_children, AcquisitionInterest, ExtraAcquisition, OpSessionIdentity, ReducedSource,
-};
+use super::source::{acquisition_children, ExtraAcquisition, OpSessionIdentity, ReducedSource};
 
 mod flat_session;
 
@@ -94,7 +92,9 @@ fn build_op_scope_session(
         admission,
         attribution,
         interests,
-        live_shape,
+        live_shape: _,
+        live_shapes,
+        observer_scope,
         extra_acquisition,
         reset_hooks,
         source_effect_hooks,
@@ -144,20 +144,20 @@ fn build_op_scope_session(
         suppression,
     );
     let observer_for_registry: Arc<dyn ObservedProjectionSink> = observer.clone();
-    let engine_observer = crate::dynamic_observer::DynamicObservedProjection::new(
+    let engine_observer = crate::dynamic_observer::DynamicObservedProjectionSet::new(
         app.observed_projection_handle(),
         observer_for_registry,
         format!("{key}.observer"),
-        observed_projection_scope(&interests),
-        live_shape.clone(),
+        interest_scope_code(observer_scope.clone()),
+        live_shapes.clone(),
         512,
     );
     engine_observer.sync();
 
     // ── 3. Pull controller over the live acquisition shape ───────────────
-    let provider: Arc<dyn nmp_feed::FeedInterestShape + Send + Sync> = {
-        let live_shape = live_shape.clone();
-        Arc::new(ClosureInterestShape::new(move || live_shape()))
+    let provider: Arc<dyn nmp_feed::FeedInterestShapes + Send + Sync> = {
+        let live_shapes = live_shapes.clone();
+        Arc::new(ClosureInterestShapes::new(move || live_shapes()))
     };
     let pull = app.feed_pull_fn();
     let apply: FeedApply = {
@@ -184,7 +184,7 @@ fn build_op_scope_session(
         })
     };
     let controller: Arc<dyn FeedController> =
-        PullFeedController::new_with_perspective(provider, pull, apply, None, Some(reset), advance);
+        PullFeedController::new_with_shape_set(provider, pull, apply, None, Some(reset), advance);
     app.register_feed(key.to_string(), controller.clone());
 
     // ── 3b. Typed NNFS sidecar + feed-author auto-resolve provider, STRUCTURALLY
@@ -336,14 +336,10 @@ pub(super) fn session_acquisition_owner(key: &str) -> SubOwnerKey {
     SubOwnerKey::new(("feed-session-acquisition", key))
 }
 
-pub(super) fn observed_projection_scope(interests: &[AcquisitionInterest]) -> u32 {
-    if interests
-        .iter()
-        .any(|interest| matches!(interest.scope, InterestScope::Global))
-    {
-        1
-    } else {
-        0
+pub(super) fn interest_scope_code(scope: InterestScope) -> u32 {
+    match scope {
+        InterestScope::ActiveAccount | InterestScope::Account(_) => 0,
+        InterestScope::Global => 1,
     }
 }
 

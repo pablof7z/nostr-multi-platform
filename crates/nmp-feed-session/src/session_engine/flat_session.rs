@@ -5,13 +5,12 @@ use nmp_core::actor::{ActorCommand, InterestsCommand};
 use nmp_core::substrate::KernelEvent;
 use nmp_core::ObservedProjectionSink;
 use nmp_feed::{
-    ClosureInterestShape, FeedAdvance, FeedApply, FeedController, FeedReset, FeedSessionBuild,
+    ClosureInterestShapes, FeedAdvance, FeedApply, FeedController, FeedReset, FeedSessionBuild,
     PullFeedController,
 };
 
 use super::{
-    clear_acquisition_set, observed_projection_scope, session_acquisition_owner,
-    visible_flat_payload,
+    clear_acquisition_set, interest_scope_code, session_acquisition_owner, visible_flat_payload,
 };
 use crate::source::{acquisition_children, ExtraAcquisition, ReducedSource};
 
@@ -25,7 +24,9 @@ pub(super) fn build_flat_scope_session(
         admission,
         attribution: _,
         interests,
-        live_shape,
+        live_shape: _,
+        live_shapes,
+        observer_scope,
         extra_acquisition,
         reset_hooks,
         source_effect_hooks,
@@ -37,19 +38,19 @@ pub(super) fn build_flat_scope_session(
 
     let feed = nmp_note_feed::FlatFeed::new(admission);
     let observer_for_registry: Arc<dyn ObservedProjectionSink> = feed.clone();
-    let engine_observer = crate::dynamic_observer::DynamicObservedProjection::new(
+    let engine_observer = crate::dynamic_observer::DynamicObservedProjectionSet::new(
         app.observed_projection_handle(),
         observer_for_registry,
         format!("{key}.observer"),
-        observed_projection_scope(&interests),
-        live_shape.clone(),
+        interest_scope_code(observer_scope),
+        live_shapes.clone(),
         512,
     );
     engine_observer.sync();
 
-    let provider: Arc<dyn nmp_feed::FeedInterestShape + Send + Sync> = {
-        let live_shape = live_shape.clone();
-        Arc::new(ClosureInterestShape::new(move || live_shape()))
+    let provider: Arc<dyn nmp_feed::FeedInterestShapes + Send + Sync> = {
+        let live_shapes = live_shapes.clone();
+        Arc::new(ClosureInterestShapes::new(move || live_shapes()))
     };
     let pull = app.feed_pull_fn();
     let apply: FeedApply = {
@@ -71,7 +72,7 @@ pub(super) fn build_flat_scope_session(
         Arc::new(move || feed.reset_for_perspective_change())
     };
     let controller: Arc<dyn FeedController> =
-        PullFeedController::new_with_perspective(provider, pull, apply, None, Some(reset), advance);
+        PullFeedController::new_with_shape_set(provider, pull, apply, None, Some(reset), advance);
     app.register_feed(key.to_string(), controller.clone());
 
     let feed_for_typed = Arc::clone(&feed);

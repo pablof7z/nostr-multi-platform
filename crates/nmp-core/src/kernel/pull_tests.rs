@@ -9,7 +9,7 @@ use crate::kernel::pull::{PullError, PullLimits, PullScope};
 use crate::kernel::Kernel;
 use crate::planner::{InterestShape, NaddrCoord};
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
-use crate::store::{EventStore, LogOp, RawEvent, ScanLogResult, VerifiedEvent};
+use crate::store::{LogOp, RawEvent, ScanLogResult, VerifiedEvent};
 use std::collections::BTreeSet;
 
 // ─── Test helpers ────────────────────────────────────────────────────────────
@@ -35,7 +35,11 @@ fn unchecked(r: RawEvent) -> VerifiedEvent { VerifiedEvent::from_raw_unchecked(r
 const RELAY: &str = "wss://test/";
 
 fn seed(k: &Kernel, r: RawEvent) -> u64 {
-    k.event_store_handle().insert(unchecked(r), &RELAY.to_string(), 0).unwrap();
+    seed_on(k, r, RELAY)
+}
+
+fn seed_on(k: &Kernel, r: RawEvent, relay: &str) -> u64 {
+    k.event_store_handle().insert(unchecked(r), &relay.to_string(), 0).unwrap();
     k.event_store_handle().latest_ingest_seq().unwrap()
 }
 
@@ -61,6 +65,17 @@ fn page(r: ScanLogResult) -> crate::store::PullPage {
 fn pull_interest(k: &Kernel, shape: InterestShape, after: u64, max: usize, scan: usize)
     -> ScanLogResult {
     k.pull_page(PullScope::InterestShape(shape), after, lim(max, scan)).unwrap()
+}
+
+fn h_shape(local_id: &str, relay_pin: &str, kinds: impl IntoIterator<Item = u32>)
+    -> InterestShape {
+    let mut shape = InterestShape {
+        relay_pin: Some(relay_pin.to_string()),
+        ..InterestShape::default()
+    };
+    shape.kinds.extend(kinds);
+    shape.tags.insert("h".to_string(), [local_id.to_string()].into());
+    shape
 }
 
 // ─── GlobalLog ───────────────────────────────────────────────────────────────
@@ -191,7 +206,6 @@ fn interest_shape_matches_ptag() {
 fn interest_shape_matches_kind_dtag_with_pubkey_guard() {
     let k = new_kernel();
     let author_a = hex64(0xAA);
-    let author_b = hex64(0xBB);
     // Both have (kind=30023, d="article-1") but different pubkeys.
     seed(&k, raw_tags(1, 0xAA, 30023, 1000, vec![vec!["d".into(), "article-1".into()]]));
     seed(&k, raw_tags(2, 0xBB, 30023, 2000, vec![vec!["d".into(), "article-1".into()]]));
@@ -273,6 +287,113 @@ fn tag_shapes_pull_pages_hydrate() {
 }
 
 #[test]
+fn relay_pin_filters_interest_shape_by_source_relay() {
+    let k = new_kernel();
+    seed_on(
+        &k,
+        raw_tags(1, 0xAA, 9, 1000, vec![vec!["h".into(), "room".into()]]),
+        "wss://relay-a",
+    );
+    seed_on(
+        &k,
+        raw_tags(2, 0xBB, 9, 1100, vec![vec!["h".into(), "room".into()]]),
+        "wss://relay-b",
+    );
+    seed_on(
+        &k,
+        raw_tags(3, 0xCC, 9, 1200, vec![vec!["h".into(), "room".into()]]),
+        "local://publish",
+    );
+
+    let p = page(pull_interest(&k, h_shape("room", "wss://relay-a", [9]), 0, 10, 100));
+    let ids = p
+        .entries
+        .iter()
+        .map(|entry| entry.raw_event.as_ref().unwrap().id.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        ids,
+        vec![hex64(1), hex64(3)],
+        "relay-pinned pull must include only the pinned host plus local publishes"
+    );
+}
+
+#[test]
+fn relay_pinned_pull_uses_current_provenance_after_duplicate_delivery() {
+    let k = new_kernel();
+    let event = raw_tags(1, 0xAA, 9, 1000, vec![vec!["h".into(), "room".into()]]);
+    seed_on(&k, event.clone(), "wss://relay-b");
+    seed_on(&k, event, "wss://relay-a");
+
+    let p = page(pull_interest(&k, h_shape("room", "wss://relay-a", [9]), 0, 10, 100));
+    assert_eq!(p.entries.len(), 1);
+    assert_eq!(
+        p.entries[0].raw_event.as_ref().unwrap().id,
+        hex64(1),
+        "host provenance learned by duplicate delivery must make the original log row visible"
+    );
+}
+
+#[test]
+fn interest_shapes_union_preserves_non_mergeable_relay_pins() {
+    let k = new_kernel();
+    seed_on(
+        &k,
+        raw_tags(1, 0xAA, 9, 1000, vec![vec!["h".into(), "room-a".into()]]),
+        "wss://relay-a",
+    );
+    seed_on(
+        &k,
+        raw_tags(2, 0xBB, 9, 1100, vec![vec!["h".into(), "room-b".into()]]),
+        "wss://relay-b",
+    );
+    seed_on(
+        &k,
+        raw_tags(3, 0xCC, 9, 1200, vec![vec!["h".into(), "room-a".into()]]),
+        "wss://relay-b",
+    );
+
+    let p = page(
+        k.pull_page(
+            PullScope::InterestShapes(vec![
+                h_shape("room-a", "wss://relay-a", [9]),
+                h_shape("room-b", "wss://relay-b", [9]),
+            ]),
+            0,
+            lim(10, 100),
+        )
+        .unwrap(),
+    );
+    let ids = p
+        .entries
+        .iter()
+        .map(|entry| entry.raw_event.as_ref().unwrap().id.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        ids,
+        vec![hex64(1), hex64(2)],
+        "multi-shape pull must union exact host-pinned interests without admitting same-h on another host"
+    );
+}
+
+#[test]
+fn interest_shapes_reject_any_unsupported_member() {
+    let k = new_kernel();
+    let mut unsupported = InterestShape::default();
+    unsupported.kinds.insert(1);
+    unsupported.event_ids.insert(hex64(1));
+
+    let err = k
+        .pull_page(
+            PullScope::InterestShapes(vec![shape_ak(0xAA, [1]), unsupported]),
+            0,
+            lim(10, 100),
+        )
+        .unwrap_err();
+    assert!(matches!(err, PullError::UnsupportedInterestShape));
+}
+
+#[test]
 fn scan_budget_caps_nonmatching_run() {
     let k = new_kernel();
     // 10 events from 0xBB (won't match shape for 0xAA).
@@ -307,7 +428,6 @@ fn entry_limit_does_not_advance_past_unprocessed_matches() {
 #[cfg(test)]
 mod gap_store {
     use std::collections::{BTreeSet, HashSet};
-    use std::ops::ControlFlow;
 
     use crate::store::{
         DeleteFilter, DomainHandle, DomainMigration, DumpFormat, DumpStats, EventId,

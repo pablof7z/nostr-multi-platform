@@ -178,6 +178,10 @@ pub const KIND_BLOCKED_RELAYS: u32 = 10_006;
 /// NIP-50 search requests. Tag shape: `["relay", <wss-url>]`.
 pub const KIND_SEARCH_RELAYS: u32 = 10_007;
 
+/// NIP-51 simple groups list (kind:10009). Public group memberships are
+/// represented as `["group", <group-id>, <relay-url>, <optional-name>]` tags.
+pub const KIND_SIMPLE_GROUPS: u32 = 10_009;
+
 /// NIP-51 follow set / people list (kind:30000). An addressable
 /// (parameterized-replaceable) list of people identified by a `d`-tag, whose
 /// `["p", <pubkey>]` tags are the list's MEMBERS (subjects, not recipients —

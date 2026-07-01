@@ -12,6 +12,7 @@
 //! | 10003     | Global bookmarks | NIP-51 | Shipped as raw projection + safe RMW builders |
 //! | 10006     | Blocked relays   | NIP-51 | Shipped as routing-policy facts + safe RMW builders |
 //! | 10007     | Search relays    | NIP-51 | Shipped as active-account facts |
+//! | 10009     | Simple groups    | NIP-51 | Shipped as active-account public group refs |
 //! | 30003     | Bookmark sets    | NIP-51 | Shipped as raw projection + safe RMW builders |
 //! | 30004     | Curation sets    | NIP-51 | Shipped as raw projection + safe RMW builders |
 //! | 39701     | Web bookmarks    | NIP-B0 | Shipped as raw projection + safe publish builder |
@@ -28,6 +29,11 @@
 //! It also exposes [`SearchRelayListProjection`], a kind:10007 active-account
 //! relay-list projection. Search query semantics and ranking stay with the
 //! owning search module; this crate only parses `["relay", <url>]` facts.
+//!
+//! It also exposes [`SimpleGroupListProjection`], a kind:10009 active-account
+//! projection over public NIP-51 `["group", <group-id>, <relay-url>, ...]`
+//! facts. NIP-29 routing semantics stay with `nmp-nip29`; this crate only owns
+//! the NIP-51 list parse and reactive active-account source graph.
 //!
 //! It also exposes [`Kind10006Parser`] plus [`InMemoryBlockedRelayCache`] for
 //! kind:10006 blocked relays. Routing receives those facts only through
@@ -97,6 +103,8 @@ pub mod block_relay;
 pub mod blocked_relays;
 pub mod bookmark_sets;
 pub mod bookmarks;
+pub mod group_list;
+mod group_list_graph;
 pub mod interests;
 pub mod people_list;
 mod people_list_graph;
@@ -128,6 +136,10 @@ pub use bookmarks::{
     build_bookmark_list_event, register_bookmark_actions, AddBookmarkAction, BookmarkItem,
     BookmarkListMetadata, BookmarkListProjection, BookmarkListSnapshot, BookmarkUpdateInput,
     RemoveBookmarkAction,
+};
+pub use group_list::{
+    simple_groups_from_tags, SimpleGroupListProjection, SimpleGroupListSnapshot,
+    SimpleGroupListSourceEffect, SimpleGroupRef,
 };
 pub use people_list::{PeopleListProjection, PeopleListSnapshot};
 pub use projection::{

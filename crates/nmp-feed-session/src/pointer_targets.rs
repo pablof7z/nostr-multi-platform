@@ -11,7 +11,8 @@ use nmp_planner::{InterestShape, NaddrCoord};
 
 use super::resolve::{not_supported, resolve_scope};
 use super::source::{
-    AcquisitionInterest, ExtraAcquisition, LiveShape, ReducedSource, ResetHook, SourceEffectHook,
+    one_live_shape, AcquisitionInterest, ExtraAcquisition, LiveShape, ReducedSource, ResetHook,
+    SourceEffectHook,
 };
 
 type ResetSlot = Arc<Mutex<Option<Arc<dyn Fn() + Send + Sync>>>>;
@@ -40,12 +41,12 @@ pub(super) fn resolve_pointer_targets(
         pointer_kinds: pointer_kind_set,
         reset_slot: Arc::clone(&reset_slot),
     });
-    let pointer_dynamic = crate::dynamic_observer::DynamicObservedProjection::new(
+    let pointer_dynamic = crate::dynamic_observer::DynamicObservedProjectionSet::new(
         app.observed_projection_handle(),
         pointer_observer,
         "nmp.feed.resolver.pointer_targets.pointer",
-        0,
-        Arc::clone(&pointer_source.live_shape),
+        interest_scope_code(pointer_source.observer_scope),
+        Arc::clone(&pointer_source.live_shapes),
         512,
     );
     pointer_dynamic.sync();
@@ -53,6 +54,7 @@ pub(super) fn resolve_pointer_targets(
     let admission = target_admission(&model, primary_kinds);
     let attribution = pointer_source.attribution.clone();
     let live_shape = target_live_shape(&model, primary_kinds);
+    let live_shapes = one_live_shape(Arc::clone(&live_shape));
 
     let mut reset_hooks = Vec::new();
     for hook in pointer_source.reset_hooks {
@@ -91,6 +93,8 @@ pub(super) fn resolve_pointer_targets(
         attribution,
         interests: pointer_source.interests,
         live_shape,
+        live_shapes,
+        observer_scope: nmp_planner::InterestScope::Global,
         extra_acquisition,
         reset_hooks,
         source_effect_hooks,
@@ -103,6 +107,14 @@ pub(super) fn resolve_pointer_targets(
         },
         active_follow_set: None,
     })
+}
+
+fn interest_scope_code(scope: nmp_planner::InterestScope) -> u32 {
+    match scope {
+        nmp_planner::InterestScope::ActiveAccount => 0,
+        nmp_planner::InterestScope::Global => 1,
+        nmp_planner::InterestScope::Account(_) => 0,
+    }
 }
 
 struct PointerIngest {
