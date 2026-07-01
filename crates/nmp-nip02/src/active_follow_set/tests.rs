@@ -300,6 +300,52 @@ fn on_change_fires_on_each_change() {
 }
 
 #[test]
+fn unchanged_kind3_echo_does_not_fire_on_change() {
+    let set = active_set(Some(ALICE));
+
+    let fired = Arc::new(AtomicUsize::new(0));
+    let fired_cb = Arc::clone(&fired);
+    set.on_change(Box::new(move || {
+        fired_cb.fetch_add(1, Ordering::SeqCst);
+    }));
+
+    let contacts = kind3(ALICE, &[BOB, CAROL]);
+    set.on_kernel_event(&contacts);
+    assert_eq!(fired.load(Ordering::SeqCst), 1);
+
+    set.on_kernel_event(&contacts);
+    assert_eq!(
+        fired.load(Ordering::SeqCst),
+        1,
+        "relay echo of identical contacts must not trigger a feed reset"
+    );
+}
+
+#[test]
+fn unchanged_account_notification_does_not_fire_on_change() {
+    let cache = Arc::new(TestContactsCache::new());
+    upsert_contacts(&cache, ALICE, &[BOB]);
+    let lookup: Arc<dyn ContactsLookup> = cache.clone();
+
+    let slot = slot(Some(ALICE));
+    let set = ActiveFollowSet::new(Arc::clone(&slot), lookup);
+    assert_eq!(set.follows(), vec![ALICE.to_string(), BOB.to_string()]);
+
+    let fired = Arc::new(AtomicUsize::new(0));
+    let fired_cb = Arc::clone(&fired);
+    set.on_change(Box::new(move || {
+        fired_cb.fetch_add(1, Ordering::SeqCst);
+    }));
+
+    set.notify_account_changed();
+    assert_eq!(
+        fired.load(Ordering::SeqCst),
+        0,
+        "same account and same cached follows are not a membership transition"
+    );
+}
+
+#[test]
 fn multiple_callbacks_all_fire() {
     let set = active_set(Some(ALICE));
     let a = Arc::new(AtomicUsize::new(0));

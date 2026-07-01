@@ -62,9 +62,9 @@
 //! change path every other subsystem already uses). It re-reads the slot,
 //! rebuilds the set for the new active account from the canonical contacts
 //! lookup (clearing it entirely on logout, when the slot is `None`), and fires
-//! `on_change`. A kind:3 ingest does not cover logout — there is no
-//! logout-triggered kind:3 — so the explicit seam is required for correctness,
-//! not convenience.
+//! `on_change` when that rebuild changes membership. A kind:3 ingest does not
+//! cover logout — there is no logout-triggered kind:3 — so the explicit seam is
+//! required for correctness, not convenience.
 //!
 //! # Compiled follow-feed acquisition kinds
 //!
@@ -253,28 +253,28 @@ impl ActiveFollowSet {
     /// * **Logout** (slot is `None`) — the set is cleared entirely; the
     ///   predicate returns `false` for everyone.
     ///
-    /// Fires `on_change` unconditionally (the active account changed, which is
-    /// itself an observable transition even if the resulting set is empty).
+    /// Fires `on_change` only when the rebuilt membership differs from the
+    /// current set. A duplicate identity notification for the same account, or
+    /// an unchanged cache hydrate, must not force downstream feed resets.
     ///
     /// This is the explicit account-change seam: [`ActiveAccountSlot`] carries
     /// no push notification, so the composition root (rung 6) calls this from
     /// the identity-change path.
     pub fn notify_account_changed(&self) {
-        self.rebuild_for_active_account();
-        self.fire_on_change();
+        if self.rebuild_for_active_account() {
+            self.fire_on_change();
+        }
     }
 
     /// Rebuild the set for the *current* active account: clear, hydrate cached
     /// follows from the canonical contacts lookup, then re-seed self-inclusion.
-    /// Does not fire callbacks (the caller decides when to fire).
-    fn rebuild_for_active_account(&self) {
+    /// Returns whether membership changed; does not fire callbacks.
+    fn rebuild_for_active_account(&self) -> bool {
         let rebuilt = match active_pubkey(&self.active_pubkey) {
             Some(active) => self.follow_set_for_active(active),
             None => BTreeSet::new(),
         };
-        if let Ok(mut guard) = self.follows.write() {
-            *guard = rebuilt;
-        }
+        self.replace_follows_if_changed(rebuilt)
     }
 
     /// Build membership for an active account from the canonical contacts
@@ -289,6 +289,19 @@ impl ActiveFollowSet {
             .collect();
         rebuilt.insert(active);
         rebuilt
+    }
+
+    /// Replace the membership set if it changed. Returns `false` for poisoned
+    /// locks so callers fail closed without firing stale callbacks.
+    fn replace_follows_if_changed(&self, rebuilt: BTreeSet<String>) -> bool {
+        let Ok(mut guard) = self.follows.write() else {
+            return false;
+        };
+        if *guard == rebuilt {
+            return false;
+        }
+        *guard = rebuilt;
+        true
     }
 
     /// Fire every registered `on_change` callback. Poisoned registry lock →
@@ -318,7 +331,7 @@ impl ObservedProjectionSink for ActiveFollowSet {
     ///
     /// Gate by `kind == 3` **and** author == active pubkey, then rebuild the
     /// set from the event's `p`-tagged pubkeys plus the active account's own
-    /// pubkey (self-inclusion). Fires `on_change` on a successful rebuild.
+    /// pubkey (self-inclusion). Fires `on_change` when membership changes.
     ///
     /// # Why the author gate
     ///
@@ -357,13 +370,9 @@ impl ObservedProjectionSink for ActiveFollowSet {
         // Self-inclusion: the active account's own pubkey is always a member.
         rebuilt.insert(active);
 
-        {
-            let Ok(mut guard) = self.follows.write() else {
-                return;
-            };
-            *guard = rebuilt;
+        if self.replace_follows_if_changed(rebuilt) {
+            self.fire_on_change();
         }
-        self.fire_on_change();
     }
 }
 
