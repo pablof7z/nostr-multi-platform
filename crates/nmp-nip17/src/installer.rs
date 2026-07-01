@@ -52,6 +52,7 @@ pub fn register_dm_runtime(
     let controller = Arc::new(DmRuntimeController {
         relay_slot: app.configured_relays_handle(),
         active_pubkey: app.active_pubkey(),
+        event_store: app.event_store_handle(),
         tx: app.actor_sender(),
         state: Mutex::new(DmRuntimeState::default()),
         inbox_projection,
@@ -228,6 +229,7 @@ impl DmInboxController {
 struct DmRuntimeController {
     relay_slot: AppRelaySlot,
     active_pubkey: nmp_core::slots::ActiveAccountSlot,
+    event_store: nmp_core::slots::EventStoreSlot,
     tx: nmp_core::CommandSender,
     state: Mutex<DmRuntimeState>,
     inbox_projection: Arc<DmInboxProjection>,
@@ -236,6 +238,9 @@ struct DmRuntimeController {
 impl DmRuntimeController {
     /// Event-driven reconciler.
     pub(crate) fn sync(&self) {
+        let _ = self
+            .inbox_projection
+            .launch_batch_backfill(&self.event_store);
         let relay_list = self.typed_relay_list();
         let mut state = self
             .state

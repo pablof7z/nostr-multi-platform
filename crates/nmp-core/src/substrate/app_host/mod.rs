@@ -27,7 +27,7 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use crate::publish::OutboxResolver;
-use crate::slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot};
+use crate::slots::{ActiveAccountSlot, EventStoreSlot, IndexerRelaysSlot, LocalWriteRelaysSlot};
 use crate::store::EventStore;
 use crate::subs::PlanCoverageHook;
 use crate::AppRelaySlot;
@@ -326,6 +326,16 @@ pub trait HostCapabilities {
     fn actor_sender(&self) -> crate::actor::CommandSender;
 
     fn configured_relays_handle(&self) -> AppRelaySlot;
+
+    /// Clone the kernel-published [`EventStoreSlot`] when a reusable runtime
+    /// needs cache-first replay from canonical storage.
+    ///
+    /// Default is an empty slot so scaffold/test hosts that only need active
+    /// account + command access keep compiling. Real composition hosts override
+    /// this with the actor-published slot.
+    fn event_store_handle(&self) -> EventStoreSlot {
+        crate::slots::new_event_store_slot()
+    }
 
     /// Install a host-side preferred-relay provider (a `(primary, fallback)`
     /// relay-list pair the host resolves at use time, e.g. the active account's

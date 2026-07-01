@@ -10,7 +10,7 @@
 
 use std::sync::Arc;
 
-use super::store::{DecryptState, InboxStore, MAX_IN_FLIGHT_DECRYPTS};
+use super::store::{BatchBackfillFinish, DecryptState, InboxStore, MAX_IN_FLIGHT_DECRYPTS};
 
 // ── Regression #1349 Defect 1: over_bound drains on successful re-admit ──────
 
@@ -174,5 +174,76 @@ fn stale_epoch_chain_done_does_not_corrupt_new_account_counter() {
         store.decrypt_status(true).0,
         DecryptState::Ok,
         "after the legitimate chain_done(new_gen) the new account's state returns to ok"
+    );
+}
+
+#[test]
+fn batch_backfill_success_clears_scalar_over_bound_residue() {
+    let store = Arc::new(InboxStore::new());
+    let gen = store.generation();
+    let deferred = 2;
+
+    for _ in 0..MAX_IN_FLIGHT_DECRYPTS {
+        assert!(store.admit());
+    }
+    for _ in 0..deferred {
+        assert!(!store.admit());
+    }
+    for _ in 0..MAX_IN_FLIGHT_DECRYPTS {
+        store.chain_done(gen);
+    }
+    assert_eq!(
+        store.decrypt_status(true),
+        (DecryptState::Limited, deferred as u32),
+        "scalar residue is status only before the store-backed replay finishes"
+    );
+
+    assert!(store.begin_batch_backfill(gen, deferred));
+    assert_eq!(
+        store.decrypt_status(true),
+        (DecryptState::Limited, (deferred * 2) as u32),
+        "active batch work is tracked separately from scalar over-bound residue"
+    );
+
+    store.finish_batch_backfill(gen, deferred, BatchBackfillFinish::Succeeded);
+    assert_eq!(
+        store.decrypt_status(true),
+        (DecryptState::Ok, 0),
+        "a successful store-sourced replay proves the old scalar residue stale"
+    );
+    assert!(
+        !store.begin_batch_backfill(gen, deferred),
+        "the same candidate set must not replay repeatedly after success"
+    );
+}
+
+#[test]
+fn unsupported_batch_backfill_blocks_retries_until_account_epoch_changes() {
+    let store = Arc::new(InboxStore::new());
+    let gen = store.generation();
+
+    assert!(store.begin_batch_backfill(gen, 3));
+    store.finish_batch_backfill(gen, 3, BatchBackfillFinish::Unsupported);
+    assert_eq!(
+        store.decrypt_status(true),
+        (DecryptState::Ok, 0),
+        "unsupported capability is not pending work"
+    );
+    assert!(
+        !store.begin_batch_backfill(gen, 4),
+        "unsupported for this account epoch falls back to the scalar path without spamming begin"
+    );
+    assert!(
+        !store.may_probe_batch_backfill(gen),
+        "unsupported signer should not trigger repeated store scans in the same epoch"
+    );
+
+    store.clear();
+    let next_gen = store.generation();
+    assert_ne!(gen, next_gen);
+    assert!(store.may_probe_batch_backfill(next_gen));
+    assert!(
+        store.begin_batch_backfill(next_gen, 4),
+        "a new account epoch may probe the capability again"
     );
 }

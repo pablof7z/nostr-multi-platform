@@ -125,10 +125,13 @@ pub(super) fn nip44_decrypt_for_account(
 
 pub(super) fn nip44_decrypt_session_begin(
     ctx: &mut ActorContext,
-    request: nmp_signer_iface::Nip44DecryptSessionBeginRequest,
+    mut request: nmp_signer_iface::Nip44DecryptSessionBeginRequest,
     signer_pubkey: Option<String>,
     continuation: Nip44DecryptSessionBeginContinuation,
 ) -> Option<Vec<OutboundMessage>> {
+    if request.expires_at == 0 {
+        request.expires_at = ctx.kernel.now_secs().saturating_add(300);
+    }
     let result = commands::nip44_decrypt_session_begin_nonblocking(
         ctx.identity,
         signer_pubkey.as_deref(),

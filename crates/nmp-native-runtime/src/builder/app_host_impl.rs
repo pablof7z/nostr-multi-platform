@@ -284,6 +284,11 @@ impl<S> HostCapabilities for NmpAppBuilder<S> {
         app.configured_relays_handle()
     }
 
+    fn event_store_handle(&self) -> nmp_core::slots::EventStoreSlot {
+        let app: &NmpApp = unsafe { &*self.app };
+        app.event_store_handle()
+    }
+
     fn install_preferred_relay_source(
         &self,
         source: Arc<dyn nmp_core::substrate::PreferredRelaySource>,

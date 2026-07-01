@@ -246,6 +246,10 @@ impl HostCapabilities for NmpApp {
         NmpApp::configured_relays_handle(self)
     }
 
+    fn event_store_handle(&self) -> nmp_core::slots::EventStoreSlot {
+        NmpApp::event_store_handle(self)
+    }
+
     /// Store the host-installed preferred-relay source (NIP-50 search reads it
     /// back in `open_search`). Overrides the trait's no-op default so the real
     /// composition host actually retains the provider; scaffolded hosts keep the

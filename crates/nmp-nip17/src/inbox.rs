@@ -66,6 +66,7 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use nmp_core::slots::ActiveAccountSlot;
+use nmp_core::slots::EventStoreSlot;
 use nmp_core::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 use nmp_core::substrate::{IngestParser, ViewDependencies};
 use nmp_core::{CommandSender, KindFilter};
@@ -269,6 +270,23 @@ impl DmInboxProjection {
         self.store.clear();
     }
 
+    /// Try a store-backed batch decrypt-session replay for the active account.
+    ///
+    /// This is the #1259 capable-bunker path: candidates are read from the
+    /// canonical event store, not from `undecrypted_count`.
+    pub(crate) fn launch_batch_backfill(&self, event_store: &EventStoreSlot) -> bool {
+        let Some(signer_hex) = self.active_pubkey_hex() else {
+            return false;
+        };
+        batch::launch_store_backfill(
+            self.tx.clone(),
+            Arc::clone(&self.store),
+            event_store,
+            signer_hex,
+            self.store.generation(),
+        )
+    }
+
     /// Snapshot as a `serde_json::Value` — the exact shape a host
     /// `register_snapshot_projection` closure must return.
     ///
@@ -457,6 +475,9 @@ mod store;
 #[path = "inbox/chain.rs"]
 mod chain;
 
+#[path = "inbox/batch.rs"]
+mod batch;
+
 #[cfg(test)]
 #[path = "inbox/tests.rs"]
 mod tests;
@@ -472,3 +493,7 @@ mod chain_tests;
 #[cfg(test)]
 #[path = "inbox/store_tests.rs"]
 mod store_tests;
+
+#[cfg(test)]
+#[path = "inbox/batch_tests.rs"]
+mod batch_tests;
