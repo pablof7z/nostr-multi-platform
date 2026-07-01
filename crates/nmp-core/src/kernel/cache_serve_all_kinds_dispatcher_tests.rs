@@ -212,8 +212,9 @@ pub(super) fn open_kind10002_interest(kernel: &mut Kernel, seed: u64, author_hex
     kernel.open_interest_sub(sub_id(seed), interest);
 }
 
-/// Minimal kind:10002 ingest parser writing the substrate mailbox cache —
-/// mirrors `nmp_router::Kind10002Parser` (which `nmp-core` cannot depend on).
+/// Test probe for kind:10002 parser dispatch. It writes a sentinel mailbox row
+/// so cache-serve tests can prove the registered parser ran; NIP-65 parsing
+/// itself is owned by `nmp-router`.
 pub(super) struct TestKind10002Parser {
     pub(super) cache: Arc<dyn crate::substrate::MailboxCache>,
 }
@@ -224,12 +225,17 @@ impl crate::substrate::IngestParser for TestKind10002Parser {
         if raw.kind != 10_002 {
             return;
         }
-        let parsed = super::parse_relay_list_to_substrate(&raw.tags);
-        let empty = parsed.read.is_empty() && parsed.write.is_empty() && parsed.both.is_empty();
-        if empty {
+        if raw.tags.is_empty() {
             self.cache.remove(&raw.pubkey);
         } else {
-            self.cache.upsert(raw.pubkey.clone(), parsed);
+            self.cache.upsert(
+                raw.pubkey.clone(),
+                crate::substrate::ParsedRelayList {
+                    read: Vec::new(),
+                    write: vec![format!("parser-hit:{}", raw.id)],
+                    both: Vec::new(),
+                },
+            );
         }
     }
 }

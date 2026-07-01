@@ -2,7 +2,7 @@
 //!
 //! Holds all struct/enum definitions with no behaviour of their own: `StoredEvent`,
 //! `ProfileCard`, view payloads, relay health/status, wire
-//! subscription state, counters, and the `AuthorRelayList` cache entry.
+//! subscription state and counters.
 
 use std::collections::VecDeque;
 
@@ -348,19 +348,6 @@ impl Default for RelayHealth {
             negentropy_probe_state: "unknown".to_string(),
         }
     }
-}
-
-// ── NIP-65 relay list cache ───────────────────────────────────────────────────
-
-/// Cached kind:10002 relay list for an author.
-///
-/// Supersession is enforced by the store before `ingest_relay_list` is called;
-/// the kernel-side cache holds only the resolved relay sets.
-#[derive(Clone, Debug, Default)]
-pub(super) struct AuthorRelayList {
-    pub(super) read_relays: Vec<String>,
-    pub(super) write_relays: Vec<String>,
-    pub(super) both_relays: Vec<String>,
 }
 
 // V-68 / V-112 (ADR-0042): ViewInterest + AuthorViewState / ThreadViewState

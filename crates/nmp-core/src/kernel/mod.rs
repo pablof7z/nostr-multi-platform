@@ -7,8 +7,6 @@ mod composition_accessors;
 pub mod composition_ledger;
 mod composition_seams;
 pub(crate) mod handle_correlation; // handle ↔ dispatch-correlation_id (S7, #1754)
-mod relay_list_substrate;
-pub(crate) use relay_list_substrate::parse_relay_list_to_substrate;
 include!("test_modules.rs");
 mod active_timeline_authors;
 mod auth;
@@ -164,7 +162,7 @@ pub use nostr::{is_hex_id, is_hex_pubkey};
 use nostr::{ratio, short_hex, truncate, NostrEvent};
 
 use crate::store::EventStore;
-use crate::subs::{CompileTrigger, OneshotApi, SubscriptionLifecycle, UnknownIds};
+use crate::subs::{OneshotApi, SubscriptionLifecycle, UnknownIds};
 #[cfg(not(any(test, feature = "test-support")))]
 use crate::substrate::EmptyMailboxCache;
 #[cfg(any(test, feature = "test-support"))]
@@ -172,7 +170,7 @@ use crate::substrate::TestInMemoryMailboxCache;
 use crate::substrate::{
     empty_blocked_relay_lookup, empty_dm_inbox_relay_lookup, BlockedRelayLookup,
     DmInboxRelayLookup, EmptyOutboxRouter, EventIngestDispatcher, MailboxCache, OutboxRouter,
-    ParsedRelayList, ProfileLookup, MAX_PROJECTION_MESSAGES,
+    ProfileLookup, MAX_PROJECTION_MESSAGES,
 };
 use crate::util::sort_dedup;
 pub use action_registry::{default_registry, ActionRegistry, RegistrationError};

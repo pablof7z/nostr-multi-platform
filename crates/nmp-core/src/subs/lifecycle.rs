@@ -28,10 +28,10 @@ impl SubscriptionLifecycle {
     ///
     /// T132: the lifecycle no longer owns a mailbox cache. The caller passes a
     /// `&dyn MailboxCache` into `recompile_and_diff` / `drain_tick`, sourced
-    /// from the kernel's `author_relay_lists` (via `KernelMailboxes`) in
+    /// from the kernel's substrate `MailboxCache` (via `KernelMailboxes`) in
     /// production, or an `InMemoryMailboxCache` constructed inline in tests.
     /// This eliminates the dual source-of-truth seam the planner-side cache
-    /// previously created (T105 made `Kernel::author_relay_lists` authoritative).
+    /// previously created.
     #[must_use]
     pub fn new() -> Self {
         Self {

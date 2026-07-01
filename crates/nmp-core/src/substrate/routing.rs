@@ -383,7 +383,7 @@ pub trait MailboxCache: Send + Sync {
 
     /// Remove the entry for `author`. Called by the kind:10002 ingest
     /// path when an author publishes an empty kind:10002 (the canonical
-    /// "I cleared my NIP-65 metadata" signal — `ingest_relay_list`).
+    /// "I cleared my NIP-65 metadata" signal).
     fn remove(&self, author: &Pubkey);
 
     /// Single writer — only called by `nmp-router`'s kind:10002 ingest path.

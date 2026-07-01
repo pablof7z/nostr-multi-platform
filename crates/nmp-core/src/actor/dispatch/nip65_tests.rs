@@ -235,8 +235,8 @@ fn remove_relay_existing_does_republish() {
 fn empty_projection_after_remove_does_not_republish() {
     // Guard 3: removing the user's last NIP-65-eligible row leaves
     // the projection empty. We must NOT publish an empty kind:10002
-    // because `ingest_relay_list` treats that as "clear my NIP-65
-    // metadata" (destructive — see kernel/ingest/relay_list.rs:31).
+    // because an empty kind:10002 is the "clear my NIP-65 metadata"
+    // signal consumed by the kind:10002 parser.
     // The user explicitly removing a relay is NOT the same intent as
     // "wipe my NIP-65 outbox"; that needs its own explicit verb.
     let mut kernel = fresh_kernel();
@@ -259,6 +259,6 @@ fn empty_projection_after_remove_does_not_republish() {
         0,
         "removing the user's last NIP-65-eligible row MUST NOT \
          publish an empty kind:10002 (that would clear the \
-         author_relay_lists cache on ingest — destructive)",
+         mailbox cache on ingest — destructive)",
     );
 }

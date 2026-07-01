@@ -36,8 +36,8 @@
 //!    addresses. Composable via [`GenericOutboxRouter::with_admission_policy`].
 //!
 //! Step 3 cuts the kernel over to `Arc<dyn OutboxRouter>` injection,
-//! deletes `nmp_core::kernel::outbox`, and replaces the kernel's
-//! `author_relay_lists` HashMap with reads through the substrate
+//! deletes `nmp_core::kernel::outbox`, and replaces the old kernel-owned
+//! relay-list map with reads through the substrate
 //! [`InMemoryMailboxCache`] held as `Arc<dyn MailboxCache>`.
 
 mod cache;

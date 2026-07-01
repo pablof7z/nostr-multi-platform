@@ -26,10 +26,10 @@ impl SubscriptionLifecycle {
     /// against the last-compiled plan, and return the `WireFrame` delta.
     ///
     /// T132: the mailbox cache is no longer owned by the lifecycle. The kernel
-    /// passes its `KernelMailboxes` adapter (a view onto `author_relay_lists`,
-    /// populated by `ingest_relay_list` from real kind:10002 events); tests
-    /// pass a local `InMemoryMailboxCache`. This eliminates the dual-source
-    /// hazard the planner-side cache previously created.
+    /// passes its `KernelMailboxes` adapter over the substrate `MailboxCache`
+    /// populated by the registered kind:10002 parser; tests pass a local
+    /// `InMemoryMailboxCache`. This eliminates the dual-source hazard the
+    /// planner-side cache previously created.
     ///
     /// Updates the lifecycle gate; diverts REQs targeting auth-paused relays
     /// into the pending-auth buffer.
@@ -271,11 +271,11 @@ impl SubscriptionLifecycle {
         // Implicit kind:10002 discovery (D3). Any author this REQ targets
         // whose mailbox is neither cached NOR previously probed gets an
         // auto-emitted `kinds:[10002]` REQ. The relay's answer lands in the
-        // kernel's mailbox cache via `ingest_relay_list`, which fires
-        // `Nip65Arrived` → the next recompile routes the author through their
-        // declared write relays. Authors who never published a kind:10002 are
-        // probed exactly once (the empty EOSE still marks them probed) so we
-        // don't re-REQ every recompile.
+        // kernel's mailbox cache via the registered kind:10002 parser, which
+        // fires `Nip65Arrived` → the next recompile routes the author through
+        // their declared write relays. Authors who never published a kind:10002
+        // are probed exactly once (the empty EOSE still marks them probed) so
+        // we don't re-REQ every recompile.
         //
         // Probe target = `indexer_relays ∪ app_relays`. The probe is additive
         // to app relays for the same reason the Case A kind:0/discovery lane is

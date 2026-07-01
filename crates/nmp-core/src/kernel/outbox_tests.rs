@@ -183,28 +183,8 @@ fn cold_start_routes_to_bootstrap_then_replans_after_nip65_arrives() {
         "pre-NIP65 drain must NOT route to alice's resolved relay; got {first_req_urls:?}"
     );
 
-    // Inject kind:10002 for ALICE — Nip65Arrived trigger fires.
-    use crate::store::InsertOutcome;
-    let nip65 = vec![vec![
-        "r".to_string(),
-        "wss://alice.write/".to_string(),
-        "write".to_string(),
-    ]];
-    let outcome = kernel
-        .inject_replaceable_event(
-            "2222222222222222222222222222222222222222222222222222222222222222",
-            ALICE,
-            2_000,
-            10002,
-            nip65,
-            "wss://seed.relay/",
-            2_000_000,
-        )
-        .expect("inject kind:10002 must succeed");
-    assert!(matches!(
-        outcome,
-        InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. }
-    ));
+    // Seed kind:10002 for ALICE — Nip65Arrived trigger fires.
+    kernel.seed_kind10002_for_test(ALICE, &["wss://alice.write/"]);
 
     // Second M2 drain: Nip65Arrived trigger → recompile → resolved relay REQ.
     // The prior probe (kind:10002 discovery to indexer) was emitted as an

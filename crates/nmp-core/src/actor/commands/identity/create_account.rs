@@ -49,6 +49,12 @@ pub(crate) fn create_account(
     if !relays.is_empty() {
         kernel.set_configured_relays(relay_rows.clone());
     }
+    // Install the account-scoped reactive interests before publishing the
+    // account's first replaceables. Then the local accepted-event path sees
+    // those interests as active, caches the event as already projected, and
+    // later cache-serve wakeups dedup instead of replaying the same event.
+    kernel.reconcile_feed_sources_after_identity_change();
+    let mut outbound = kernel.active_account_bootstrap_requests();
 
     // Operator policy (which accounts a fresh account auto-follows) is supplied
     // by the app, never hardcoded in NMP (the old `DEFAULT_FOLLOWS` const lived
@@ -161,11 +167,6 @@ pub(crate) fn create_account(
                 .and_then(|r| r.map_err(|e| format!("sign failed: {e}")))
         }) {
             Ok(signed) => {
-                kernel.prepopulate_author_relay_list(
-                    signed.unsigned.pubkey.clone(),
-                    signed.unsigned.created_at,
-                    signed.unsigned.tags.clone(),
-                );
                 // Cold-start routing. A brand-new account has no kind:10002 on
                 // file yet, so the NIP-65 outbox resolver (`PublishTarget::Auto`)
                 // would resolve `NoTargets` and the publish engine would silently
@@ -175,6 +176,10 @@ pub(crate) fn create_account(
                 // relays the user just declared (the canonical NIP-65 home of a
                 // relay list — publish it to the relays it names) unioned with the
                 // well-known discovery seed so others can find the new account.
+                // `publish_signed_to` also routes the signed event through the
+                // local accepted-event chokepoint, so the NIP-65 read model is
+                // updated by the canonical kind:10002 parser path rather than a
+                // side-channel cache write.
                 let target_relays = cold_start_publish_targets(kernel, &relay_rows);
                 if target_relays.is_empty() {
                     // D6: no usable cold-start relay — surface a toast, never
@@ -211,8 +216,6 @@ pub(crate) fn create_account(
         }
     }
 
-    kernel.reconcile_feed_sources_after_identity_change();
-    let mut outbound = kernel.active_account_bootstrap_requests();
     outbound.extend(retarget_timeline(identity, kernel, relays_ready));
     outbound.extend(publish_outbound);
     outbound.extend(publish_initial_follows(

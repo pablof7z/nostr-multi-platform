@@ -347,10 +347,9 @@ impl PlannerMailboxCache for KernelMailboxes {
 
     fn generation(&self) -> u64 {
         // Phase 1: no generation counter on the substrate cache. Plan-id
-        // stability is preserved at the kernel call site (the kernel
-        // triggers a recompile only when a kind:10002 actually mutated
-        // the cache — see `ingest::relay_list::ingest_relay_list`'s
-        // empty-vs-non-empty guard).
+        // stability is preserved at the kernel call site: the registered
+        // kind:10002 parser mutates the substrate cache, and the projection
+        // sweep triggers a recompile only when that cache changed.
         0
     }
 }

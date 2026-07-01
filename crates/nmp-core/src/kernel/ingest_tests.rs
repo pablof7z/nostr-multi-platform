@@ -18,13 +18,9 @@
 //! handlers. Real Schnorr signing is unnecessary because the ingest method
 //! does not re-verify; the `sig` field is never read past `verify_and_persist`.
 //!
-//! Pre-2026-05-25 this file also exercised `ingest_relay_list` (kind:10002,
-//! NIP-65) directly. That kernel-side method was deleted alongside the
-//! `10002 =>` arm in `kernel/ingest/mod.rs` when the substrate
-//! `nmp_router::Kind10002Parser` became the production writer. Equivalent
-//! coverage now lives in `crates/nmp-router/src/ingest.rs` (`parse_event` /
-//! `IngestParser::parse`); the empty-list-removes-known-entry semantics
-//! moved with it.
+//! Kind:10002 (NIP-65) parsing is owned by `nmp-router::Kind10002Parser`.
+//! Kernel ingest tests cover the parser-dispatch seam, not NIP-65 tag parsing
+//! itself; parser behavior lives in `crates/nmp-router/src/ingest.rs`.
 
 use super::nostr::NostrEvent;
 use super::*;
@@ -38,10 +34,8 @@ const FOLLOW_B: &str = "22222222222222222222222222222222222222222222222222222222
 
 /// Build a `NostrEvent` of `kind` for `pubkey` with the supplied tags.
 ///
-/// `id` is derived from `created_at` so two events for the same author have
-/// distinct ids (the supersession tiebreak in `ingest_relay_list` compares
-/// event ids on a `created_at` tie). `sig` is a placeholder — the ingest
-/// methods never read it (they run post-verification).
+/// `sig` is a placeholder — the ingest methods never read it (they run
+/// post-verification).
 fn make_event(
     id: &str,
     pubkey: &str,

@@ -77,13 +77,13 @@ fn t142_drain_lifecycle_tick_empty_registry_no_op() {
 // ─── Test 2 — interest + trigger → REQ frames emitted through kernel ──────────
 
 /// The key wiring test: register a follow interest via `lifecycle_mut()`,
-/// cache a kind:10002 relay list for alice in `author_relay_lists`, enqueue
+/// cache a kind:10002 relay list for alice in the substrate mailbox cache, enqueue
 /// a trigger, then call `drain_lifecycle_tick()` — which is the exact call the
 /// actor idle loop makes. The returned frames must include a REQ aimed at
 /// alice's resolved write relay, proving:
 ///
 /// a. `drain_lifecycle_tick` correctly calls `lifecycle.drain_tick(&mailboxes)`.
-/// b. `KernelMailboxes` bridges `author_relay_lists` → planner `MailboxCache`.
+/// b. `KernelMailboxes` bridges the substrate cache → planner `MailboxCache`.
 /// c. The planner uses the NIP-65 relay list to route the REQ correctly.
 ///
 /// If anyone removes `drain_lifecycle_tick` or the actor call site, this test
