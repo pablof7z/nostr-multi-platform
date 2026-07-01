@@ -156,3 +156,30 @@ fn nmp_core_command_modules_are_d26_clean() {
         );
     }
 }
+
+#[test]
+fn app_host_supertrait_stays_methodless() {
+    let root = workspace_root();
+    let path = root.join("crates/nmp-core/src/substrate/app_host/mod.rs");
+    let body = std::fs::read_to_string(&path)
+        .unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()));
+    let start = body
+        .find("pub trait AppHost:")
+        .expect("AppHost trait definition must exist");
+    let after_start = &body[start..];
+    let open = after_start
+        .find('{')
+        .expect("AppHost trait must have an opening brace");
+    let after_open = &after_start[open + 1..];
+    let close = after_open
+        .find("\n}")
+        .expect("AppHost trait must have a closing brace");
+    let trait_body = &after_open[..close];
+
+    assert!(
+        !trait_body.contains("fn "),
+        "AppHost must stay a methodless composition super-trait. Add product or \
+         builder semantics to a narrow registrar trait, owner installer, or \
+         app/runtime composition root instead."
+    );
+}

@@ -138,6 +138,48 @@ impl CompositionLedger {
         }
     }
 
+    /// Claim a singleton composition slot.
+    ///
+    /// Production app/runtime roots use this for exactly-once composition
+    /// contracts. The first claim for `(seam, key)` records `Installed` and
+    /// returns `true`; later claims record `YieldedToExisting` and return
+    /// `false`, so the caller can decline to run the installer a second time.
+    #[must_use]
+    pub fn claim_once(
+        &self,
+        seam: &'static str,
+        key: impl Into<String>,
+        provider: impl Into<String>,
+    ) -> bool {
+        let key = key.into();
+        let provider = provider.into();
+        let Ok(mut records) = self.records.lock() else {
+            return false;
+        };
+        if let Some(existing_provider) = records
+            .iter()
+            .find(|record| record.seam == seam && record.key == key)
+            .map(|record| record.provider.clone())
+        {
+            records.push(CompositionRecord {
+                seam,
+                key,
+                provider,
+                disposition: Disposition::YieldedToExisting,
+                replaced: Some(existing_provider),
+            });
+            return false;
+        }
+        records.push(CompositionRecord {
+            seam,
+            key,
+            provider,
+            disposition: Disposition::Installed,
+            replaced: None,
+        });
+        true
+    }
+
     /// Snapshot the ledger as the canonical report JSON value.
     ///
     /// Shape (stable, schema-versioned):

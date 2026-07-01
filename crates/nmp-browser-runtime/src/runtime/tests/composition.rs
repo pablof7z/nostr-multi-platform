@@ -1,6 +1,6 @@
-//! Browser/default composition parity gates (#2061).
+//! Browser production composition parity gates (#2061).
 //!
-//! Native default-composition coverage already asserts
+//! Native production-composition coverage already asserts
 //! `nmp_codegen::canonical_default_action_namespaces()` through the FFI-backed
 //! app. These browser-runtime tests pin the same canonical namespace source and
 //! the browser builder's deferred substrate slots.
@@ -80,7 +80,7 @@ fn browser_start_registers_every_canonical_default_action_namespace() {
     for ns in nmp_codegen::canonical_default_action_namespaces() {
         assert!(
             registered.iter().any(|registered| registered == ns),
-            "browser default composition omitted canonical action namespace `{ns}`; \
+            "browser production composition omitted canonical action namespace `{ns}`; \
              registered namespaces: {registered:?}"
         );
     }
@@ -94,7 +94,7 @@ fn browser_start_registers_every_canonical_default_action_namespace() {
 }
 
 #[test]
-fn browser_defaults_defer_required_substrate_slots_before_start() {
+fn browser_production_composition_defers_required_substrate_slots_before_start() {
     let mut builder = BrowserAppBuilder::new()
         .in_memory()
         .consume_all_builtin_projections()
@@ -115,4 +115,19 @@ fn browser_defaults_defer_required_substrate_slots_before_start() {
     assert!(inner.dm_inbox_relay_lookup.is_some());
     assert!(inner.blocked_relay_lookup.is_some());
     assert!(inner.coverage_hook.is_some());
+}
+
+#[test]
+#[should_panic(
+    expected = "BrowserAppBuilder production composition must be installed exactly once"
+)]
+fn browser_production_composition_rejects_duplicate_install() {
+    let mut builder = BrowserAppBuilder::new()
+        .in_memory()
+        .consume_all_builtin_projections()
+        .without_initial_relays()
+        .decide_providers(BrowserRunConfig::default());
+
+    crate::builder::install_browser_production_composition(&mut builder);
+    crate::builder::install_browser_production_composition(&mut builder);
 }

@@ -37,6 +37,26 @@ fn gallery_app_crate_does_not_use_hidden_defaults_preset() {
     );
 }
 
+#[test]
+fn gallery_composition_root_claims_exactly_once() {
+    let root = workspace_root();
+    let lib = root.join("apps/nmp-gallery/crates/nmp-app-gallery/src/lib.rs");
+    let body = std::fs::read_to_string(&lib)
+        .unwrap_or_else(|err| panic!("failed to read {}: {err}", lib.display()));
+
+    for token in [
+        "GALLERY_COMPOSITION_ROOT",
+        "claim_composition_root",
+        "install_gallery_composition(app)",
+    ] {
+        assert!(
+            body.contains(token),
+            "Gallery composition root must keep the one-shot runtime claim and \
+             explicit owner installer body; missing `{token}`"
+        );
+    }
+}
+
 fn scan_file_for_hidden_defaults(root: &PathBuf, path: &PathBuf, violations: &mut Vec<String>) {
     let body = std::fs::read_to_string(path)
         .unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()));

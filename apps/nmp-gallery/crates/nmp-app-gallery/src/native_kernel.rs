@@ -13,7 +13,11 @@ pub struct GalleryNativeApp {
 impl GalleryNativeApp {
     fn new() -> Self {
         let mut app = nmp_native_runtime::new_app();
-        register_gallery_composition(&mut app);
+        let installed = register_gallery_composition(&mut app);
+        debug_assert!(
+            installed,
+            "fresh GalleryNativeApp must install its composition root"
+        );
         // ADR-0053 / Workstream-E4 — mirrors nmp_app_gallery_register and
         // nmp_app_gallery_register_uniffi: the gallery showcases the full
         // built-in component set, so it must declare that read intent before

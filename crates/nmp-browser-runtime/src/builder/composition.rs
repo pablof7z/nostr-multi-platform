@@ -3,6 +3,8 @@ use super::{BrowserAppBuilder, ProvidersDecided};
 pub(crate) fn install_browser_production_composition(
     app: &mut BrowserAppBuilder<ProvidersDecided>,
 ) {
+    claim_browser_production_composition(app);
+
     let _substrate = nmp_substrate::install(app, nmp_substrate::SubstrateConfig::default());
 
     nmp_nip50::register_search_scopes(app);
@@ -30,4 +32,15 @@ pub(crate) fn install_browser_production_composition(
     nmp_nip17::register_runtime(app);
 
     nmp_nip23::register_longform_projection(app);
+}
+
+fn claim_browser_production_composition(app: &BrowserAppBuilder<ProvidersDecided>) {
+    let Ok(mut inner) = app.inner.lock() else {
+        return;
+    };
+    assert!(
+        !inner.production_composition_installed,
+        "BrowserAppBuilder production composition must be installed exactly once"
+    );
+    inner.production_composition_installed = true;
 }

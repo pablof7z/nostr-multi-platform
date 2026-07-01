@@ -35,6 +35,14 @@ const RENAMED_PRESET_TOKENS: &[&str] = &[
     "TestDefaults",
     "testing_defaults",
     "test_defaults",
+    "install_production_preset",
+    "install_production_bundle",
+    "production_preset",
+    "production_bundle",
+    "production_defaults",
+    "ProductionPreset",
+    "ProductionBundle",
+    "ProductionDefaults",
 ];
 
 /// True iff deleted-defaults should scan `path`.
@@ -145,6 +153,10 @@ mod tests {
     #[test]
     fn flags_renamed_preset_names() {
         let hits = check("let preset = TestDefaults::new();", false, false);
+        assert_eq!(hits.len(), 1);
+        assert!(hits[0].1.contains("replacement bundle"));
+
+        let hits = check("install_production_preset(app);", false, false);
         assert_eq!(hits.len(), 1);
         assert!(hits[0].1.contains("replacement bundle"));
     }

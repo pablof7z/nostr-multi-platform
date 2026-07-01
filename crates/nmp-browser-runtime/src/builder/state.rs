@@ -132,6 +132,10 @@ pub(crate) struct BrowserBuilderInner {
     /// `BrowserAppBuilder::with_capability_providers`. Moved into the
     /// `CapabilityProviderRegistry` in `from_builder_inner` at `start()`.
     pub(crate) capability_providers: Vec<Arc<dyn nmp_signers::Signer>>,
+    /// One-shot guard for the browser production composition root. `start()`
+    /// consumes the builder, but crate-local tests/helpers can still call the
+    /// installer directly; this prevents duplicate feature registration there.
+    pub(crate) production_composition_installed: bool,
 
     // ── Gate-specific fields set by typestate-advancing builder methods ────────
     /// Relay bootstrap list set at `set_relays()` gate; applied at `start()`.
@@ -189,6 +193,7 @@ impl BrowserBuilderInner {
             identity_change_observers: Vec::new(),
             configured_relays_change_observers: Vec::new(),
             capability_providers: Vec::new(),
+            production_composition_installed: false,
             relay_bootstrap: Vec::new(),
             clock: None,
             store_open_failure: None,
