@@ -3,11 +3,14 @@
 
 use super::*;
 use std::collections::BTreeSet;
-use std::sync::Mutex;
+use std::sync::mpsc::{channel, Receiver};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use nmp_core::substrate::{ContactsLookup, ContactsView, KernelEvent, TestContactsCache};
 use nmp_core::ObservedProjectionSink;
 use nmp_nip02::ActiveFollowSet;
+use nostr::{Event, EventBuilder, JsonUtil, Keys, SecretKey, Timestamp, ToBech32};
 
 fn kind3(author: &str, follows: &[&str]) -> KernelEvent {
     let mut tags: Vec<Vec<String>> = follows
@@ -36,6 +39,50 @@ fn upsert_contacts(cache: &TestContactsCache, owner: &str, follows: &[&str]) {
             follows: follows.iter().map(|pk| (*pk).to_string()).collect(),
         },
     );
+}
+
+fn keys_from_byte(byte: u8) -> Keys {
+    let secret = SecretKey::from_slice(&[byte; 32]).expect("valid fixture secret");
+    Keys::new(secret)
+}
+
+fn signed_note(keys: &Keys, content: &str, created_at: u64) -> Event {
+    EventBuilder::text_note(content)
+        .custom_created_at(Timestamp::from_secs(created_at))
+        .sign_with_keys(keys)
+        .expect("sign note")
+}
+
+fn wait_for(rx: &Receiver<()>, label: &str, pred: impl Fn() -> bool) {
+    if pred() {
+        return;
+    }
+    loop {
+        rx.recv_timeout(Duration::from_secs(10))
+            .unwrap_or_else(|_| panic!("timed out waiting for {label}"));
+        if pred() {
+            return;
+        }
+    }
+}
+
+fn visible_home_feed_ids(app: &crate::NmpApp) -> Vec<String> {
+    let Some(row) = app
+        .run_typed_snapshot_projections()
+        .into_iter()
+        .find(|row| {
+            row.key == nmp_note_feed::op_feed::OP_FEED_SNAPSHOT_KEY
+                && row.state != nmp_core::WireProjectionState::Cleared
+        })
+    else {
+        return Vec::new();
+    };
+    nmp_note_feed::op_feed::decode_op_feed_snapshot(&row.payload)
+        .expect("nmp.feed.home NNFS payload decodes")
+        .cards
+        .into_iter()
+        .map(|card| card.card.id)
+        .collect()
 }
 
 /// B1 logout race: the active-account slot can be cleared BEFORE the async
@@ -103,6 +150,71 @@ fn provider_hydrates_shape_from_cached_contacts_before_kind3_echo() {
     assert!(shape.authors.contains(&bob), "cached follow is included");
     assert_eq!(shape.authors.len(), 2);
     assert_eq!(shape.kinds, kinds);
+}
+
+/// Regression for #2574 / #2500 product failure shape: exercise the production
+/// default-home composition path, not just the helper shape provider. Cached
+/// contacts hydrate the session-owned active follows before the active account's
+/// kind:3 relays back; a followed author's ingested note must then appear in the
+/// typed `nmp.feed.home` projection.
+#[test]
+fn default_home_projection_renders_followed_note_from_cached_contacts() {
+    let alice = keys_from_byte(11);
+    let bob = keys_from_byte(12);
+    let alice_pk = alice.public_key().to_hex();
+    let bob_pk = bob.public_key().to_hex();
+    let bob_note = signed_note(&bob, "visible from cached contacts", 110);
+    let bob_note_id = bob_note.id.to_hex();
+
+    let app = crate::new_app();
+    let cache = Arc::new(TestContactsCache::new());
+    upsert_contacts(&cache, &alice_pk, &[&bob_pk]);
+    let lookup: Arc<dyn ContactsLookup> = cache;
+    assert_eq!(
+        app.set_contacts_lookup(lookup),
+        crate::NmpConfigStatus::Ok,
+        "test contacts cache must be the app's canonical contacts lookup"
+    );
+
+    let defaults = crate::register_op_feed_defaults(&app, alice_pk.clone(), vec![1]);
+    assert!(
+        defaults.handle.is_some(),
+        "default home feed opens through the ordinary feed-session compiler"
+    );
+    assert!(
+        app.registered_typed_projection_keys()
+            .iter()
+            .any(|key| key == nmp_note_feed::op_feed::OP_FEED_SNAPSHOT_KEY),
+        "default home feed registers the typed nmp.feed.home projection"
+    );
+
+    let (tx, rx) = channel::<()>();
+    app.set_update_listener(Some(Arc::new(move |_| {
+        let _ = tx.send(());
+    })));
+    app.start_runtime(256, 8);
+
+    let nsec = alice.secret_key().to_bech32().expect("nsec fixture");
+    app.signin_nsec_for_test(nsec, true);
+    wait_for(&rx, "active follows hydrated from cached contacts", || {
+        app.active_account_handle().lock().unwrap().as_deref() == Some(&alice_pk)
+            && defaults.follow_set.follows().contains(&bob_pk)
+    });
+    assert!(
+        app.wait_barrier_for_test(Duration::from_secs(5)),
+        "identity-triggered observer registration must drain before note ingest"
+    );
+
+    assert!(
+        app.inject_signed_event_json_for_test(&bob_note.as_json()),
+        "signed followed-author note verifies and enters ingest"
+    );
+    wait_for(&rx, "visible default home feed row", || {
+        visible_home_feed_ids(&app) == vec![bob_note_id.clone()]
+    });
+
+    app.set_update_listener(None);
+    app.stop_runtime();
 }
 
 /// Empty host kinds also fail closed, regardless of slot/follows.
