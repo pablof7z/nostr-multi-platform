@@ -11,8 +11,8 @@ nmp-ownership = { workspace = true }
 # Substrate seams: RelayConnectedHook slot, ActorCommand::SetRelayInfo,
 # the RelayInfoDoc carried-through type.
 nmp-core = { path = "../nmp-core" }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 # Off-thread HTTP GET. Same crate + feature set as nmp-nip57's LNURL fetcher
 # and nmp-blossom's upload PUT — runs on a `std::thread::spawn` worker, never
 # the actor thread (D8). Not a wasm dependency; excluded from wasm32 targets.
@@ -21,4 +21,4 @@ tracing = "0.1"
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"] }
-serde_json = "1"
+serde_json = { workspace = true }

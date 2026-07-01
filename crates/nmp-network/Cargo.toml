@@ -54,7 +54,7 @@ nmp-nip42-types = { path = "../nmp-nip42-types" }
 # key identical to the kernel/router key. `nmp-relay-url` is dependency-free, so
 # this does not violate the "no nmp-core" rule above (Layer 1 may depend on L0).
 nmp-relay-url = { path = "../nmp-relay-url" }
-serde_json = "1"
+serde_json = { workspace = true }
 
 # Step 8 phase C — `BrowserRelayDriver` owns the `web_sys::WebSocket`
 # lifecycle. Feature set kept minimal (mirrors what the retired `nmp-wasm` carried

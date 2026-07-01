@@ -37,8 +37,8 @@ flatbuffers = { workspace = true }
 # emits a payment through the injected `nmp_core::substrate::PaymentPort`
 # (NIP-47 supplies the concrete adapter at composition time). NIP-57 no longer
 # depends on `nmp-nip47`; the dependency edge inverted to `nmp-nip47 → nmp-core`.
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 # LNURL-pay fetcher dependencies (V-41). The fetcher runs on
 # `std::thread::spawn` from the actor's `Protocol(...)` dispatch arm and
 # uses `ureq` for the two-leg HTTP round-trip. `bech32` decodes LUD-01

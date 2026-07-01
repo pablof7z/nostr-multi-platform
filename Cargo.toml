@@ -123,11 +123,11 @@ version = "0.8.4"
 #   deferred to keep this commit scoped. Feature unification keeps `std` on
 #   regardless, so this is a clarity gap, not a build-correctness one.
 #
-# TODO: migrate the remaining crates to `*.workspace = true`. Done so far:
-#   nmp-core, nmp-nip01, nmp-marmot, nmp-signers.
-#   Still copy-pasting versions: nmp-nip59, nmp-nwc, nmp-nostr-lmdb,
-#   nmp-testing, nmp-content, nmp-replies,
-#   nmp-threading, nmp-nip23/29/42/57, nmp-cli, nmp-codegen, etc.
+# Mechanical workspace-owned dependency migration is complete for serde,
+# serde_json, zeroize, rustls, tungstenite, and nmp-ownership; the
+# doctrine_lint_smoke manifest ratchet rejects member manifests that
+# reintroduce explicit version/path declarations for those deps. `nostr`
+# remains the policy boundary above.
 [workspace.dependencies]
 flatbuffers = "25.12.19"
 nostr = "0.44"

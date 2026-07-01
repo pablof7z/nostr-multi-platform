@@ -18,11 +18,11 @@ nostr = { version = "0.44", features = ["std", "nip04", "nip44"] }
 # delegating to `nip04::decrypt`. Same version as nmp-blossom; must not
 # be reimplemented inline (docs/aim.md § "use rust-nostr, not scratch crypto").
 base64 = "0.22"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-zeroize = { version = "1", features = ["alloc"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+zeroize = { workspace = true, features = ["alloc"] }
 
 [dev-dependencies]
-tungstenite = { version = "0.24", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
-rustls = { version = "0.23", default-features = false, features = ["ring"] }
+tungstenite = { workspace = true, default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
+rustls = { workspace = true, default-features = false, features = ["ring"] }
 url = "2"
