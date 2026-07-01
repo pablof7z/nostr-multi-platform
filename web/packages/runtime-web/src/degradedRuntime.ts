@@ -130,7 +130,7 @@ export class DegradedRuntime {
         return [
           {
             type: "capability_failure",
-            capability: "nmp.relations.notifications.open",
+            capability: "nmp.notifications.open",
             correlation_id: request.correlation_id,
             reason: this.unavailableReason,
           },
@@ -139,7 +139,7 @@ export class DegradedRuntime {
         return [
           {
             type: "capability_failure",
-            capability: "nmp.relations.notifications.close",
+            capability: "nmp.notifications.close",
             correlation_id: request.correlation_id,
             reason: this.unavailableReason,
           },
@@ -148,7 +148,7 @@ export class DegradedRuntime {
         return [
           {
             type: "capability_failure",
-            capability: "nmp.relations.notifications.mark_read",
+            capability: "nmp.notifications.mark_read",
             correlation_id: request.correlation_id,
             reason: this.unavailableReason,
           },

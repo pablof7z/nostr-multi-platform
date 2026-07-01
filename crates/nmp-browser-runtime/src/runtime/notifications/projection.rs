@@ -10,8 +10,8 @@ use nmp_nip18::{is_repost_kind, try_from_kernel_event};
 use nmp_planner::InterestShape;
 use serde::{Deserialize, Serialize};
 
-pub const NOTIFICATIONS_KEY: &str = "nmp.relations.notifications";
-pub const NOTIFICATIONS_SCHEMA_ID: &str = "nmp.relations.notifications";
+pub const NOTIFICATIONS_KEY: &str = "nmp.notifications";
+pub const NOTIFICATIONS_SCHEMA_ID: &str = "nmp.notifications";
 pub const NOTIFICATIONS_SCHEMA_VERSION: u32 = 1;
 pub const NOTIFICATIONS_FILE_IDENTIFIER: &[u8; 4] = b"NNTF";
 pub const NOTIFICATIONS_LIMIT: u32 = 200;

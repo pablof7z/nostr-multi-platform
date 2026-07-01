@@ -1,6 +1,8 @@
 use crate::support::is_comment;
 
 const REJECTED_RELATION_TOKENS: &[&str] = &[
+    "nmp.relations",
+    "relations.notifications",
     "EventRelationSummary",
     "TargetInteractionCounts",
     "NoteRelationCounts",

@@ -65,6 +65,16 @@ const TS_BOUNDARY_TOKENS: &[(&str, &str)] = &[
 
 const BROWSER_LOCAL_FEED_SESSION_MODEL_DEFS: &[&str] =
     &["struct FeedParams", "struct FeedSessionRegistry"];
+const GALLERY_DEMAND_RETRY_TOKENS: &[(&str, &str)] = &[
+    (
+        "setInterval(",
+        "gallery must not poll/retry runtime demand from the shell",
+    ),
+    (
+        "runtime.releaseEvent(",
+        "gallery must not release/reclaim refs to force fetch retry",
+    ),
+];
 
 #[test]
 fn nmp_browser_runtime_is_direct_doctrine_lint_clean() {
@@ -238,6 +248,44 @@ fn runtime_web_boundary_checker_flags_obvious_violations() {
     }
 }
 
+#[test]
+fn gallery_app_does_not_retry_runtime_demand_from_shell() {
+    let root = workspace_root();
+    let src_root = root.join("web/nmp-gallery/src");
+    let mut files = Vec::new();
+    collect_ts_files(&src_root, &mut files);
+    assert!(!files.is_empty(), "nmp-gallery TS sources must exist");
+
+    let mut violations = Vec::new();
+    for path in files {
+        if should_skip_gallery_source(&path) {
+            continue;
+        }
+        let body = std::fs::read_to_string(&path)
+            .unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()));
+        let mut in_block_comment = false;
+        for (idx, line) in body.lines().enumerate() {
+            let live = strip_line_comments(line, &mut in_block_comment);
+            for (token, message) in GALLERY_DEMAND_RETRY_TOKENS {
+                if live.contains(token) {
+                    violations.push(format!(
+                        "{}:{} `{token}` {message}",
+                        relative_to(&root, &path).display(),
+                        idx + 1
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "nmp-gallery renders components and declares demand; runtime/kernel own \
+         ref fetch mechanics, retry/wake behavior, and transport buffering:\n{}",
+        violations.join("\n")
+    );
+}
+
 fn collect_ts_files(dir: &Path, out: &mut Vec<PathBuf>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
@@ -278,6 +326,15 @@ fn should_skip_runtime_web_source(path: &Path) -> bool {
         return true;
     };
     name.ends_with(".generated.ts") || name.ends_with(".test.ts")
+}
+
+fn should_skip_gallery_source(path: &Path) -> bool {
+    path.components().any(|component| {
+        component
+            .as_os_str()
+            .to_str()
+            .is_some_and(|part| part == "generated")
+    }) || should_skip_runtime_web_source(path)
 }
 
 fn ts_boundary_findings(line: &str) -> Vec<String> {

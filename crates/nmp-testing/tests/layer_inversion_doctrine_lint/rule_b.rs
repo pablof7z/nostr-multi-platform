@@ -8,6 +8,7 @@ use crate::rule_b_matchers::{
 };
 use crate::support::{
     collect_files, crates_dir, field_ident, lang_of, nmp_nip_crates, read, rel, scan_blocks,
+    workspace_root,
 };
 
 fn is_test_source(path: &Path) -> bool {
@@ -17,10 +18,24 @@ fn is_test_source(path: &Path) -> bool {
 
 fn collect_rule_b_files(crate_name: &str, out: &mut Vec<PathBuf>) {
     let cd = crates_dir().join(crate_name);
+    collect_rule_b_path(&cd, &["rs", "fbs"], out);
+}
+
+fn collect_rule_b_path(root: &Path, exts: &[&str], out: &mut Vec<PathBuf>) {
     let mut files = Vec::new();
-    collect_files(&cd.join("src"), &["rs"], &mut files);
-    collect_files(&cd.join("schema"), &["fbs"], &mut files);
+    collect_files(&root.join("src"), exts, &mut files);
+    collect_files(&root.join("schema"), exts, &mut files);
     out.extend(files.into_iter().filter(|path| !is_test_source(path)));
+}
+
+fn collect_rejected_vocabulary_files(out: &mut Vec<PathBuf>) {
+    let root = workspace_root();
+    collect_rule_b_path(
+        &root.join("crates/nmp-browser-runtime"),
+        &["rs", "fbs"],
+        out,
+    );
+    collect_files(&root.join("web/packages/runtime-web/src"), &["ts"], out);
 }
 
 fn record_hit(
@@ -54,10 +69,15 @@ fn rule_b_no_global_relation_summary_or_bucket_api() {
         collect_rule_b_files(d, &mut storage_files);
     }
 
-    let mut all_files = storage_files.clone();
+    let mut relation_files = storage_files.clone();
     for d in &relation_scope {
-        collect_rule_b_files(d, &mut all_files);
+        collect_rule_b_files(d, &mut relation_files);
     }
+    relation_files.sort();
+    relation_files.dedup();
+
+    let mut all_files = relation_files.clone();
+    collect_rejected_vocabulary_files(&mut all_files);
     all_files.sort();
     all_files.dedup();
     assert!(
@@ -74,6 +94,7 @@ fn rule_b_no_global_relation_summary_or_bucket_api() {
         let content = read(file);
         let scan = scan_blocks(&content);
         let is_storage = storage_files.iter().any(|f| f == file);
+        let is_relation_summary_scope = relation_files.iter().any(|f| f == file);
 
         if path.starts_with("crates/nmp-relations/src/") {
             record_hit(
@@ -85,18 +106,20 @@ fn rule_b_no_global_relation_summary_or_bucket_api() {
             );
         }
 
-        for block in &scan.blocks {
-            if contains_token(&block.name, "InteractionCounts")
-                || contains_token(&block.name, "RelationCounts")
-                || contains_token(&block.name, "RelationSummary")
-            {
-                record_hit(
-                    file,
-                    block.first_line,
-                    format!("aggregate relation/count type `{}`", block.name),
-                    &mut counts,
-                    &mut violations,
-                );
+        if is_relation_summary_scope {
+            for block in &scan.blocks {
+                if contains_token(&block.name, "InteractionCounts")
+                    || contains_token(&block.name, "RelationCounts")
+                    || contains_token(&block.name, "RelationSummary")
+                {
+                    record_hit(
+                        file,
+                        block.first_line,
+                        format!("aggregate relation/count type `{}`", block.name),
+                        &mut counts,
+                        &mut violations,
+                    );
+                }
             }
         }
 
@@ -141,12 +164,14 @@ fn rule_b_no_global_relation_summary_or_bucket_api() {
                     );
                 }
             }
-            let Some(block_id) = lc.block else { continue };
-            let Some(field) = field_ident(trimmed, lang) else {
-                continue;
-            };
-            if let Some(noun) = ENGAGEMENT_NOUNS.iter().find(|n| **n == field) {
-                per_block.entry(block_id).or_default().insert(*noun);
+            if is_relation_summary_scope {
+                let Some(block_id) = lc.block else { continue };
+                let Some(field) = field_ident(trimmed, lang) else {
+                    continue;
+                };
+                if let Some(noun) = ENGAGEMENT_NOUNS.iter().find(|n| **n == field) {
+                    per_block.entry(block_id).or_default().insert(*noun);
+                }
             }
         }
         for (block_id, nouns) in &per_block {

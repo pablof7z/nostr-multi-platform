@@ -10,7 +10,7 @@ use crate::card_payload::RenderPayload;
 ///
 /// This is a feed-composition type, not a NIP-01 protocol primitive. It carries
 /// raw event ids/pubkeys/content plus structural content parsing. Presentation
-/// data such as profile display, previews, counts, and relation buckets are
+/// data such as profile display, previews, counts, and social action state are
 /// owned by the component or concept read that asks for them.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct NoteFeedItem {
