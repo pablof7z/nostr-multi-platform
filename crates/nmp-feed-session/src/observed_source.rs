@@ -14,7 +14,7 @@ use crate::trellis_adapter::FeedSessionTrellisAdapter;
 use crate::{FeedOpenError, FeedSessionHost};
 use nmp_core::substrate::KernelEvent;
 use nmp_core::ObservedProjectionSink;
-use nmp_feed::{FeedAdmission, FeedParams, FeedSessionBuild, ProjectionKey};
+use nmp_feed::{FeedAdmission, FeedParams, FeedRender, FeedSessionBuild, ProjectionKey};
 
 /// Options for wiring a Rust app projection to a compiled feed source.
 pub struct ObservedFeedSourceOptions {
@@ -45,12 +45,19 @@ pub fn compile_observed_feed_source<H: FeedSessionHost>(
         resolved = crate::custom::apply_custom_admission(app, resolved, id, acquisition_kinds)?;
     }
 
-    build_observed_source_session(app, params.projection.as_str(), resolved, options)
+    build_observed_source_session(
+        app,
+        params.projection.as_str(),
+        params.render.clone(),
+        resolved,
+        options,
+    )
 }
 
 fn build_observed_source_session(
     app: &impl FeedSessionHost,
     key: &str,
+    render: FeedRender,
     resolved: ReducedSource,
     options: ObservedFeedSourceOptions,
 ) -> Result<FeedSessionBuild, FeedOpenError> {
@@ -86,20 +93,19 @@ fn build_observed_source_session(
     source_observer.sync();
 
     let sender = app.command_sender();
-    let acquisition_adapter = FeedSessionTrellisAdapter::new(key, interests, sender.clone())?;
+    let acquisition_adapter = FeedSessionTrellisAdapter::new(key, render, interests, sender)?;
     acquisition_adapter.sync(&extra_acquisition, "feed-observed-source-acquisition");
 
     for hook in reset_hooks {
         let extra = Arc::clone(&extra_acquisition);
         let acquisition_adapter = acquisition_adapter.clone();
         let sync_observer = source_observer.clone();
-        let notify = sender.clone();
         let reset = options.reset_on_source_change.clone();
         let trigger: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
             reset_app_projection(reset.as_ref());
             sync_observer.sync();
             acquisition_adapter.sync(&extra, "feed-observed-source-acquisition");
-            notify.mark_changed_since_emit();
+            acquisition_adapter.rebaseline_output_if_changed(true);
         });
         hook(trigger);
     }
@@ -108,21 +114,19 @@ fn build_observed_source_session(
         let extra = Arc::clone(&extra_acquisition);
         let acquisition_adapter = acquisition_adapter.clone();
         let sync_observer = source_observer.clone();
-        let notify = sender.clone();
         let reset = options.reset_on_source_change.clone();
         let trigger: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
             reset_app_projection(reset.as_ref());
             sync_observer.sync();
             acquisition_adapter.sync(&extra, "feed-observed-source-acquisition");
-            notify.mark_changed_since_emit();
+            acquisition_adapter.rebaseline_output_if_changed(true);
         });
         hook(trigger);
     }
 
     let mut teardown: Vec<nmp_feed::TeardownAction> = Vec::new();
     teardown.push(app.mark_changed_action());
-    teardown.push(acquisition_adapter.close_action());
-    teardown.push(app.remove_projection_action(key.to_string()));
+    teardown.push(acquisition_adapter.close_action(app.remove_projection_action(key.to_string())));
     for id in resolver_observer_ids {
         let handle = app.observed_projection_handle();
         teardown.push(Box::new(move || handle.close(id)));

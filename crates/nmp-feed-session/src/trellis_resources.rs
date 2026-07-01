@@ -261,13 +261,6 @@ pub(crate) struct ProjectionAttachment {
 
 impl ProjectionAttachment {
     #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "staged output attachment payload for #2631 adapter slice"
-        )
-    )]
     pub(crate) fn new(projection: ProjectionKey, render: FeedRender) -> Self {
         Self { projection, render }
     }

@@ -4,8 +4,8 @@ use crate::{FeedOpenError, FeedSessionHost};
 use nmp_core::substrate::KernelEvent;
 use nmp_core::ObservedProjectionSink;
 use nmp_feed::{
-    ClosureInterestShapes, FeedAdvance, FeedApply, FeedController, FeedReset, FeedSessionBuild,
-    PullFeedController,
+    ClosureInterestShapes, FeedAdvance, FeedApply, FeedController, FeedRender, FeedReset,
+    FeedSessionBuild, PullFeedController,
 };
 
 use super::{interest_scope_code, visible_flat_payload};
@@ -89,29 +89,25 @@ pub(super) fn build_flat_scope_session(
             ..Default::default()
         })
     });
+    let sender = app.command_sender();
+    let acquisition_adapter =
+        FeedSessionTrellisAdapter::new(key, FeedRender::Flat, interests.clone(), sender)?;
     let replayed_tail = app.load_older_feed(key);
     let replayed_ids = super::super::flat_replay::replay_fixed_event_ids(app, &feed, &interests);
-    if replayed_ids && !replayed_tail {
-        (app.mark_changed_action())();
-    }
+    acquisition_adapter.rebaseline_output_if_changed(replayed_ids && !replayed_tail);
 
-    let sender = app.command_sender();
-    let acquisition_adapter = FeedSessionTrellisAdapter::new(key, interests, sender.clone())?;
     acquisition_adapter.sync(&extra_acquisition, "feed-session-acquisition");
     for hook in reset_hooks {
         let controller_for_reset = controller.clone();
         let extra = extra_acquisition.clone();
         let acquisition_adapter = acquisition_adapter.clone();
         let sync_observer = engine_observer.clone();
-        let notify = sender.clone();
         let reset_trigger: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
             sync_observer.sync();
             acquisition_adapter.sync(&extra, "feed-session-acquisition");
             let reset = controller_for_reset.reset();
             let replayed = controller_for_reset.load_older();
-            if reset || replayed {
-                notify.mark_changed_since_emit();
-            }
+            acquisition_adapter.rebaseline_output_if_changed(reset || replayed);
         });
         hook(reset_trigger);
     }
@@ -120,23 +116,19 @@ pub(super) fn build_flat_scope_session(
         let extra = extra_acquisition.clone();
         let acquisition_adapter = acquisition_adapter.clone();
         let sync_observer = engine_observer.clone();
-        let notify = sender.clone();
         let source_effect_trigger: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
             sync_observer.sync();
             acquisition_adapter.sync(&extra, "feed-session-acquisition");
             let reset = controller_for_reset.reset();
             let replayed = controller_for_reset.load_older();
-            if reset || replayed {
-                notify.mark_changed_since_emit();
-            }
+            acquisition_adapter.rebaseline_output_if_changed(reset || replayed);
         });
         hook(source_effect_trigger);
     }
 
     let mut teardown: Vec<nmp_feed::TeardownAction> = Vec::new();
     teardown.push(app.mark_changed_action());
-    teardown.push(acquisition_adapter.close_action());
-    teardown.push(app.remove_projection_action(key.to_string()));
+    teardown.push(acquisition_adapter.close_action(app.remove_projection_action(key.to_string())));
     for id in resolver_observer_ids {
         let handle = app.observed_projection_handle();
         teardown.push(Box::new(move || handle.close(id)));
