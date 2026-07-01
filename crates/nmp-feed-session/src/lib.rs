@@ -51,6 +51,11 @@ mod source;
 mod source_replay;
 #[cfg(test)]
 mod source_tests;
+// #2629 owns the private taxonomy; #2630 is the first production adapter user.
+#[allow(dead_code)]
+mod trellis_resources;
+#[cfg(test)]
+mod trellis_resources_tests;
 mod wot_graph;
 pub(crate) use active_shape::read_active;
 pub use session_engine::OpScopeSessionArtifacts;

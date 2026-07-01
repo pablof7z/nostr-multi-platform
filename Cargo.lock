@@ -4005,6 +4005,7 @@ dependencies = [
  "nmp-store",
  "nmp-wot",
  "serde_json",
+ "trellis-core",
 ]
 
 [[package]]
