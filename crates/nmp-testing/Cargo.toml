@@ -44,10 +44,8 @@ uniffi_core = "0.29"
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core" }
-# Draft integration proof: trellis-core is not available from crates.io yet, so
-# this pins the current public Git revision until the Trellis 0.1 release lands.
-trellis-core = { git = "https://github.com/pablof7z/trellis", rev = "d2fd74a3f132cef521ea129b1d2dd0057d76e93e" }
-trellis-testing = { git = "https://github.com/pablof7z/trellis", rev = "d2fd74a3f132cef521ea129b1d2dd0057d76e93e", package = "trellis-testing" }
+trellis-core = "0.1.1"
+trellis-testing = "0.1.0"
 # Direct dev dep on nmp-planner for InterestId / InterestLifecycle / etc. in
 # integration tests — nmp_core::planner compat facade deleted (#1608).
 nmp-planner = { path = "../nmp-planner" }

@@ -7657,13 +7657,15 @@ dependencies = [
 
 [[package]]
 name = "trellis-core"
-version = "0.1.0"
-source = "git+https://github.com/pablof7z/trellis?rev=d2fd74a3f132cef521ea129b1d2dd0057d76e93e#d2fd74a3f132cef521ea129b1d2dd0057d76e93e"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8d08a888129960437c89c211f690aad29187f5f030b1c8b479f527259d271b8b"
 
 [[package]]
 name = "trellis-testing"
 version = "0.1.0"
-source = "git+https://github.com/pablof7z/trellis?rev=d2fd74a3f132cef521ea129b1d2dd0057d76e93e#d2fd74a3f132cef521ea129b1d2dd0057d76e93e"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "93c9e22ea5c789cc126294bb6e85a7fe02f63eec16e23cea9d8e28fdd975af8e"
 dependencies = [
  "trellis-core",
 ]
